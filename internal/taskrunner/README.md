@@ -95,13 +95,23 @@ result, err := NewPendingTask(task).
 
 ### Background Task with Callbacks
 ```go
+// Create template engine
+engine, _ := NewTemplateEngine()
+
 // Generate webhook URLs
 urls := webhookHandler.GenerateCallbackURLs(baseURL, taskID, 60)
 
-// Wrap script with callback handling
-wrappedScript, _ := CreateBackgroundWrapper(script, timeout, urls)
+// Render callback wrapper with your script
+wrappedScript, _ := engine.Render("callback_wrapper", CallbackWrapperData{
+    Script:      yourScript,
+    Timeout:     600,
+    FinishedURL: urls.Finished,
+    FailedURL:   urls.Failed,
+    TimeoutURL:  urls.Timeout,
+})
 
 task := &BaseTask{
+    TaskName: "my-task",
     Template: wrappedScript,
 }
 
