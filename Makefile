@@ -1,8 +1,9 @@
-.PHONY: build run worker test lint migrate help
+.PHONY: build run worker test lint migrate shellcheck help
 
 # Build variables
 BINARY_API=bin/api
 BINARY_WORKER=bin/worker
+BINARY_SHELLCHECK=bin/shellcheck
 GO_FILES=$(shell find . -name '*.go' -type f -not -path "./vendor/*")
 
 # Default target
@@ -81,9 +82,20 @@ docker-down:
 docker-logs:
 	@docker-compose logs -f
 
+## shellcheck-render: Render shell scripts for ShellCheck validation
+shellcheck-render:
+	@go run ./cmd/shellcheck -output storage/shellcheck
+	@echo "Scripts rendered to storage/shellcheck/"
+
+## shellcheck: Run ShellCheck on rendered scripts
+shellcheck: shellcheck-render
+	@echo "Running ShellCheck..."
+	@shellcheck storage/shellcheck/*.sh || true
+
 ## clean: Clean build artifacts
 clean:
 	@rm -rf bin/
+	@rm -rf storage/shellcheck/
 	@rm -f coverage.out coverage.html
 
 ## help: Show this help message
