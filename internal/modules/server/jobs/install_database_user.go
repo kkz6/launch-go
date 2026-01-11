@@ -6,6 +6,10 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks/mysql"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks/postgresql"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -52,13 +56,41 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) erro
 
 	j.broadcastProgress(dbUser.ServerID, "creating", fmt.Sprintf("Creating database user: %s", dbUser.Name))
 
-	// TODO: Run the actual database user creation task
-	// _, err = j.RunTask(dbUser.Server, tasks.NewCreateDatabaseUser(&dbUser, payload.Password)).
-	//     AsRoot().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
+	// Determine the database type from installed services
+	var dbService models.InstalledService
+	if err := j.DB.Where("server_id = ? AND type IN (?, ?)",
+		dbUser.ServerID, enums.ServiceTypeMySql, enums.ServiceTypePostgreSql).
+		First(&dbService).Error; err != nil {
+		return fmt.Errorf("no database service found on server: %w", err)
+	}
+
+	// Create the database user based on the service type
+	switch enums.ServiceType(dbService.Type) {
+	case enums.ServiceTypeMySql:
+		task := mysql.NewCreateUser(dbUser.Server, dbUser.Name, payload.Password).
+			OnServer(dbUser.Server)
+		_, err = j.RunTask(dbUser.Server, task).
+			AsRoot().
+			Throw().
+			Dispatch(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create MySQL user: %w", err)
+		}
+
+	case enums.ServiceTypePostgreSql:
+		task := postgresql.NewCreateUser(dbUser.Server, dbUser.Name, payload.Password).
+			OnServer(dbUser.Server)
+		_, err = j.RunTask(dbUser.Server, task).
+			AsRoot().
+			Throw().
+			Dispatch(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create PostgreSQL user: %w", err)
+		}
+
+	default:
+		return fmt.Errorf("unsupported database type: %s", dbService.Type)
+	}
 
 	// Mark the database user as installed
 	if err := j.MarkAsInstalled(j.DB, dbUser); err != nil {
