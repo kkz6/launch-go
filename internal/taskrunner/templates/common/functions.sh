@@ -4,6 +4,62 @@
 */}}
 
 # ==============================================================================
+# Task Output Markers (for SSH streaming in local development)
+# ==============================================================================
+
+# These markers are parsed by the StreamMonitor to detect task status
+# without requiring HTTP callbacks (useful for local development)
+
+# Signal that task has started
+function taskStarted()
+{
+    echo "::LAUNCH_TASK_STARTED::"
+}
+
+# Signal task completion with exit code
+function taskFinished()
+{
+    local exit_code=${1:-0}
+    echo "::LAUNCH_EXIT_CODE::${exit_code}"
+    echo "::LAUNCH_TASK_FINISHED::"
+}
+
+# Signal task failure with exit code
+function taskFailed()
+{
+    local exit_code=${1:-1}
+    echo "::LAUNCH_EXIT_CODE::${exit_code}"
+    echo "::LAUNCH_TASK_FAILED::"
+}
+
+# Report progress (0-100)
+function taskProgress()
+{
+    local progress=${1:-0}
+    echo "::LAUNCH_TASK_PROGRESS::${progress}"
+}
+
+# Report status message
+function taskStatus()
+{
+    local message="$1"
+    echo "::LAUNCH_TASK_STATUS::${message}"
+}
+
+# Wrapper to run a command and report result
+function runAndReport()
+{
+    "$@"
+    local exit_code=$?
+    if [ $exit_code -eq 0 ]; then
+        return 0
+    else
+        taskFailed $exit_code
+        exit $exit_code
+    fi
+}
+
+# ==============================================================================
 # HTTP Functions
 # ==============================================================================
 

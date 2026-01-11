@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -14,6 +15,7 @@ import (
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
+	"github.com/kkz6/launch-go/internal/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -36,6 +38,20 @@ func main() {
 	// Initialize WebSocket hub for broadcasting job progress
 	wsHub := websocket.NewHub()
 	go wsHub.Run()
+
+	// Initialize task dispatcher with local mode support
+	// In local mode, tasks use SSH streaming instead of HTTP callbacks
+	dispatcher := taskrunner.NewDispatcherWithConfig(appLogger, wsHub, &taskrunner.DispatcherConfig{
+		LocalMode:         cfg.App.IsLocal(),
+		BroadcastInterval: 2 * time.Second,
+	})
+
+	if cfg.App.IsLocal() {
+		appLogger.Info().Msg("Running in local mode - using SSH streaming for task output")
+	}
+
+	// Make dispatcher available for job handlers (can be used via dependency injection)
+	_ = dispatcher
 
 	// Create Asynq server
 	srv := asynq.NewServer(
