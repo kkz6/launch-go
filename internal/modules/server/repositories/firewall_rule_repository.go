@@ -30,6 +30,21 @@ func (r *Repository) FindFirewallRuleByID(ctx context.Context, id string) (*mode
 	return &rule, nil
 }
 
+// FindFirewallRuleByIDWithServer finds a firewall rule by ID with the Server relation preloaded
+func (r *Repository) FindFirewallRuleByIDWithServer(ctx context.Context, id string) (*models.FirewallRule, error) {
+	var rule models.FirewallRule
+	err := r.db.WithContext(ctx).Preload("Server").First(&rule, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrFirewallRuleNotFound
+		}
+
+		return nil, err
+	}
+
+	return &rule, nil
+}
+
 // FindFirewallRuleByIDAndServer finds a firewall rule by ID and server ID
 func (r *Repository) FindFirewallRuleByIDAndServer(ctx context.Context, id, serverID string) (*models.FirewallRule, error) {
 	var rule models.FirewallRule

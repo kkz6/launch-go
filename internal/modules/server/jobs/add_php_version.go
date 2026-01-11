@@ -2,16 +2,13 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 const TypeAddPhpVersion = "server:add_php_version"
@@ -25,65 +22,57 @@ type AddPhpVersionPayload struct {
 
 // AddPhpVersionJob handles adding a PHP version to a server
 type AddPhpVersionJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
-}
-
-// NewAddPhpVersionJob creates a new add PHP version job handler
-func NewAddPhpVersionJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *AddPhpVersionJob {
-	return &AddPhpVersionJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
-	}
+	*JobContext
+	jobs.InstallationTracker
 }
 
 // NewAddPhpVersionTask creates a new asynq task for adding a PHP version
 func NewAddPhpVersionTask(serverID string, phpVersion enums.Software, serviceID string) (*asynq.Task, error) {
-	payload, err := json.Marshal(AddPhpVersionPayload{
+	return jobs.NewTask(TypeAddPhpVersion, AddPhpVersionPayload{
 		ServerID:   serverID,
 		PhpVersion: phpVersion,
 		ServiceID:  serviceID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeAddPhpVersion, payload), nil
 }
 
 // Handle processes the add PHP version job
 func (j *AddPhpVersionJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload AddPhpVersionPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.UnmarshalPayload[AddPhpVersionPayload](t)
+	if err != nil {
+		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("server_id", payload.ServerID).
 		Str("php_version", string(payload.PhpVersion)).
 		Msg("Adding PHP version to server")
 
 	// Fetch the server
-	var server models.Server
-	if err := j.db.First(&server, "id = ?", payload.ServerID).Error; err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+	server, err := j.FindServer(ctx, payload.ServerID)
+	if err != nil {
+		return err
 	}
 
 	j.broadcastProgress(payload.ServerID, "installing", fmt.Sprintf("Installing %s...", payload.PhpVersion.Label()))
 
-	// TODO: Implement actual PHP installation:
-	// 1. Connect to server via SSH
-	// 2. Run AddPhpVersion task script
-	// 3. Configure PHP-FPM
-	// 4. Update service status
+	// TODO: Run the actual PHP installation task
+	// result, err := j.RunTask(server, tasks.NewAddPhpVersion(server, payload.PhpVersion)).
+	//     AsRoot().
+	//     KeepTrack().
+	//     Dispatch(ctx)
+	// if err != nil {
+	//     return err
+	// }
 
 	// Update the service task_id if service_id is provided
 	if payload.ServiceID != "" {
-		// Create a task record and associate it with the service
-		// This would be done through the task runner
+		// TODO: Associate task result with service
+		// j.DB.Model(&models.InstalledService{}).
+		//     Where("id = ?", payload.ServiceID).
+		//     Update("task_id", result.TaskModel.ID)
 	}
+
+	_ = server // use server when implementing task execution
 
 	j.broadcastProgress(payload.ServerID, "installed", fmt.Sprintf("%s installed successfully", payload.PhpVersion.Label()))
 
@@ -92,29 +81,27 @@ func (j *AddPhpVersionJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 // Failed handles job failure
 func (j *AddPhpVersionJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload AddPhpVersionPayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, unmarshalErr := jobs.UnmarshalPayload[AddPhpVersionPayload](t)
+	if unmarshalErr != nil {
+		j.Logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("server_id", payload.ServerID).
 		Str("php_version", string(payload.PhpVersion)).
 		Msg("Failed to add PHP version")
 
 	// Delete the service record that was created before dispatching the job
-	j.db.Where("server_id = ? AND software = ?", payload.ServerID, payload.PhpVersion).
+	j.DB.Where("server_id = ? AND software = ?", payload.ServerID, payload.PhpVersion).
 		Delete(&models.InstalledService{})
 
 	j.broadcastProgress(payload.ServerID, "failed", fmt.Sprintf("Failed to install %s", payload.PhpVersion.Label()))
-
-	// TODO: Dispatch PhpInstallFailed event
 }
 
 func (j *AddPhpVersionJob) broadcastProgress(serverID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "server.service.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "server.service.progress", map[string]interface{}{
 		"server_id": serverID,
 		"status":    status,
 		"message":   message,

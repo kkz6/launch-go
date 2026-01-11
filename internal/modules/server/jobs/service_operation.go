@@ -2,16 +2,13 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 const TypeServiceOperation = "server:service_operation"
@@ -26,80 +23,68 @@ type ServiceOperationPayload struct {
 
 // ServiceOperationJob handles service operation tasks
 type ServiceOperationJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
-}
-
-// NewServiceOperationJob creates a new service operation job handler
-func NewServiceOperationJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *ServiceOperationJob {
-	return &ServiceOperationJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
-	}
+	*JobContext
 }
 
 // NewServiceOperationTask creates a new asynq task for service operations
 func NewServiceOperationTask(serverID, serviceID, operation string, userID *string) (*asynq.Task, error) {
-	payload, err := json.Marshal(ServiceOperationPayload{
+	return jobs.NewTask(TypeServiceOperation, ServiceOperationPayload{
 		ServerID:  serverID,
 		ServiceID: serviceID,
 		Operation: operation,
 		UserID:    userID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeServiceOperation, payload), nil
 }
 
 // Handle processes the service operation job
 func (j *ServiceOperationJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload ServiceOperationPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.UnmarshalPayload[ServiceOperationPayload](t)
+	if err != nil {
+		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("server_id", payload.ServerID).
 		Str("service_id", payload.ServiceID).
 		Str("operation", payload.Operation).
 		Msg("Processing service operation")
 
 	// Fetch the server
-	var server models.Server
-	if err := j.db.First(&server, "id = ?", payload.ServerID).Error; err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+	server, err := j.FindServer(ctx, payload.ServerID)
+	if err != nil {
+		return err
 	}
 
 	// Fetch the installed service
 	var service models.InstalledService
-	if err := j.db.First(&service, "id = ?", payload.ServiceID).Error; err != nil {
+	if err := j.DB.First(&service, "id = ?", payload.ServiceID).Error; err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
 	j.broadcastProgress(payload.ServerID, payload.ServiceID, "processing",
 		fmt.Sprintf("Processing %s operation for service: %s", payload.Operation, service.Software))
 
-	// TODO: Implement actual service operations:
-	// 1. Connect to server via SSH
-	// 2. Execute appropriate systemctl command based on operation
-	// 3. Update service status in database
+	// TODO: Run the actual service operation task
+	// _, err = j.RunTask(server, tasks.NewServiceOperation(&service, payload.Operation)).
+	//     AsRoot().
+	//     Dispatch(ctx)
+	// if err != nil {
+	//     return err
+	// }
+
+	_ = server // use server when implementing task execution
 
 	switch payload.Operation {
 	case "restart":
-		// TODO: systemctl restart <service>
+		// TODO: implement restart
 	case "stop":
-		// TODO: systemctl stop <service>
+		// TODO: implement stop
 	case "remove":
-		// TODO: systemctl stop <service> && systemctl disable <service>
-		if err := j.db.Delete(&service).Error; err != nil {
+		if err := j.DB.Delete(&service).Error; err != nil {
 			return fmt.Errorf("failed to delete service record: %w", err)
 		}
 	case "status":
-		// TODO: systemctl status <service>
+		// TODO: implement status check
 	default:
 		return fmt.Errorf("unknown operation: %s", payload.Operation)
 	}
@@ -112,13 +97,13 @@ func (j *ServiceOperationJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 // Failed handles job failure
 func (j *ServiceOperationJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload ServiceOperationPayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, unmarshalErr := jobs.UnmarshalPayload[ServiceOperationPayload](t)
+	if unmarshalErr != nil {
+		j.Logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("server_id", payload.ServerID).
 		Str("service_id", payload.ServiceID).
@@ -130,7 +115,7 @@ func (j *ServiceOperationJob) Failed(ctx context.Context, t *asynq.Task, err err
 }
 
 func (j *ServiceOperationJob) broadcastProgress(serverID, serviceID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "service.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "service.progress", map[string]interface{}{
 		"server_id":  serverID,
 		"service_id": serviceID,
 		"status":     status,

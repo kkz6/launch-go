@@ -2,16 +2,11 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 const TypeInstallCron = "server:install_cron"
@@ -25,62 +20,50 @@ type InstallCronPayload struct {
 
 // InstallCronJob handles installing a cron job on a server
 type InstallCronJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
-}
-
-// NewInstallCronJob creates a new install cron job handler
-func NewInstallCronJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *InstallCronJob {
-	return &InstallCronJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
-	}
+	*JobContext
+	jobs.InstallationTracker
 }
 
 // NewInstallCronTask creates a new asynq task for installing a cron job
 func NewInstallCronTask(serverID, cronID string, userID *string) (*asynq.Task, error) {
-	payload, err := json.Marshal(InstallCronPayload{
+	return jobs.NewTask(TypeInstallCron, InstallCronPayload{
 		ServerID: serverID,
 		CronID:   cronID,
 		UserID:   userID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeInstallCron, payload), nil
 }
 
 // Handle processes the install cron job
 func (j *InstallCronJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload InstallCronPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.UnmarshalPayload[InstallCronPayload](t)
+	if err != nil {
+		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("server_id", payload.ServerID).
 		Str("cron_id", payload.CronID).
 		Msg("Installing cron job")
 
 	// Fetch the cron with server
-	var cron models.Cron
-	if err := j.db.Preload("Server").First(&cron, "id = ?", payload.CronID).Error; err != nil {
+	cron, err := j.Repo.FindCronByIDWithServer(ctx, payload.CronID)
+	if err != nil {
 		return fmt.Errorf("failed to find cron: %w", err)
 	}
 
 	j.broadcastProgress(payload.ServerID, "installing", fmt.Sprintf("Installing cron job: %s", cron.Command))
 
-	// TODO: Implement actual cron installation:
-	// 1. Build cron configuration content
-	// 2. Upload cron file to /etc/cron.d/
-	// 3. Set proper permissions
+	// TODO: Run the actual cron installation task
+	// result, err := j.RunTask(cron.Server, tasks.NewInstallCron(cron)).
+	//     AsRoot().
+	//     KeepTrack().
+	//     Dispatch(ctx)
+	// if err != nil {
+	//     return err
+	// }
 
 	// Mark the cron as installed
-	now := time.Now()
-	if err := j.db.Model(&cron).Update("installed_at", &now).Error; err != nil {
+	if err := j.Repo.MarkCronInstalled(ctx, cron.ID); err != nil {
 		return fmt.Errorf("failed to update cron status: %w", err)
 	}
 
@@ -91,34 +74,33 @@ func (j *InstallCronJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 // Failed handles job failure
 func (j *InstallCronJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload InstallCronPayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, unmarshalErr := jobs.UnmarshalPayload[InstallCronPayload](t)
+	if unmarshalErr != nil {
+		j.Logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("server_id", payload.ServerID).
 		Str("cron_id", payload.CronID).
 		Msg("Failed to install cron job")
 
 	// Fetch the cron for updating status
-	var cron models.Cron
-	if findErr := j.db.First(&cron, "id = ?", payload.CronID).Error; findErr != nil {
+	cron, findErr := j.Repo.FindCronByID(ctx, payload.CronID)
+	if findErr != nil {
 		j.broadcastProgress(payload.ServerID, "failed", "Failed to install cron job")
 		return
 	}
 
 	// Mark installation as failed
-	now := time.Now()
-	j.db.Model(&cron).Update("installation_failed_at", &now)
+	j.MarkInstallationFailed(j.DB, cron)
 
 	j.broadcastProgress(payload.ServerID, "failed", fmt.Sprintf("Failed to install cron job: %s", cron.Command))
 }
 
 func (j *InstallCronJob) broadcastProgress(serverID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "server.cron.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "server.cron.progress", map[string]interface{}{
 		"server_id": serverID,
 		"status":    status,
 		"message":   message,

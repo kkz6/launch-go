@@ -2,14 +2,12 @@ package jobs
 
 import (
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
-
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // Registry holds all job handlers for the server module
 type Registry struct {
+	ctx *JobContext
+
 	// Server management
 	ProvisionServer *ProvisionServerJob
 	RebootServer    *RebootServerJob
@@ -48,43 +46,45 @@ type Registry struct {
 }
 
 // NewRegistry creates a new registry with all job handlers initialized
-func NewRegistry(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *Registry {
+func NewRegistry(ctx *JobContext) *Registry {
 	return &Registry{
+		ctx: ctx,
+
 		// Server management
-		ProvisionServer: NewProvisionServerJob(db, ws, logger),
-		RebootServer:    NewRebootServerJob(db, ws, logger),
-		DeleteServer:    NewDeleteServerJob(db, ws, logger),
+		ProvisionServer: &ProvisionServerJob{JobContext: ctx},
+		RebootServer:    &RebootServerJob{JobContext: ctx},
+		DeleteServer:    &DeleteServerJob{JobContext: ctx},
 
 		// PHP version management
-		AddPhpVersion:    NewAddPhpVersionJob(db, ws, logger),
-		RemovePhpVersion: NewRemovePhpVersionJob(db, ws, logger),
+		AddPhpVersion:    &AddPhpVersionJob{JobContext: ctx},
+		RemovePhpVersion: &RemovePhpVersionJob{JobContext: ctx},
 
 		// SSH key management
-		AddSshKey:    NewAddSshKeyJob(db, ws, logger),
-		RemoveSshKey: NewRemoveSshKeyJob(db, ws, logger),
+		AddSshKey:    &AddSshKeyJob{JobContext: ctx},
+		RemoveSshKey: &RemoveSshKeyJob{JobContext: ctx},
 
 		// Firewall management
-		InstallFirewallRule:   NewInstallFirewallRuleJob(db, ws, logger),
-		UninstallFirewallRule: NewUninstallFirewallRuleJob(db, ws, logger),
+		InstallFirewallRule:   &InstallFirewallRuleJob{JobContext: ctx},
+		UninstallFirewallRule: &UninstallFirewallRuleJob{JobContext: ctx},
 
 		// Daemon management
-		InstallDaemon:   NewInstallDaemonJob(db, ws, logger),
-		UninstallDaemon: NewUninstallDaemonJob(db, ws, logger),
-		RestartDaemon:   NewRestartDaemonJob(db, ws, logger),
+		InstallDaemon:   &InstallDaemonJob{JobContext: ctx},
+		UninstallDaemon: &UninstallDaemonJob{JobContext: ctx},
+		RestartDaemon:   &RestartDaemonJob{JobContext: ctx},
 
 		// Cron management
-		InstallCron:   NewInstallCronJob(db, ws, logger),
-		UninstallCron: NewUninstallCronJob(db, ws, logger),
+		InstallCron:   &InstallCronJob{JobContext: ctx},
+		UninstallCron: &UninstallCronJob{JobContext: ctx},
 
 		// Database management
-		InstallDatabase:     NewInstallDatabaseJob(db, ws, logger),
-		InstallDatabaseUser: NewInstallDatabaseUserJob(db, ws, logger),
+		InstallDatabase:     &InstallDatabaseJob{JobContext: ctx},
+		InstallDatabaseUser: &InstallDatabaseUserJob{JobContext: ctx},
 
 		// Service management
-		RestartService:   NewRestartServiceJob(db, ws, logger),
-		AddService:       NewAddServiceJob(db, ws, logger),
-		RemoveService:    NewRemoveServiceJob(db, ws, logger),
-		ServiceOperation: NewServiceOperationJob(db, ws, logger),
+		RestartService:   &RestartServiceJob{JobContext: ctx},
+		AddService:       &AddServiceJob{JobContext: ctx},
+		RemoveService:    &RemoveServiceJob{JobContext: ctx},
+		ServiceOperation: &ServiceOperationJob{JobContext: ctx},
 	}
 }
 

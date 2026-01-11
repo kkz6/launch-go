@@ -2,16 +2,11 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"time"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 const TypeInstallDatabase = "server:install_database"
@@ -24,60 +19,47 @@ type InstallDatabasePayload struct {
 
 // InstallDatabaseJob handles creating a database on a server
 type InstallDatabaseJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
-}
-
-// NewInstallDatabaseJob creates a new install database job handler
-func NewInstallDatabaseJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *InstallDatabaseJob {
-	return &InstallDatabaseJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
-	}
+	*JobContext
+	jobs.InstallationTracker
 }
 
 // NewInstallDatabaseTask creates a new asynq task for creating a database
 func NewInstallDatabaseTask(databaseID string, userID *string) (*asynq.Task, error) {
-	payload, err := json.Marshal(InstallDatabasePayload{
+	return jobs.NewTask(TypeInstallDatabase, InstallDatabasePayload{
 		DatabaseID: databaseID,
 		UserID:     userID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeInstallDatabase, payload), nil
 }
 
 // Handle processes the install database job
 func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload InstallDatabasePayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.UnmarshalPayload[InstallDatabasePayload](t)
+	if err != nil {
+		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("database_id", payload.DatabaseID).
 		Msg("Creating database")
 
 	// Fetch the database with server
-	var database models.Database
-	if err := j.db.Preload("Server").First(&database, "id = ?", payload.DatabaseID).Error; err != nil {
+	database, err := j.Repo.FindDatabaseByIDWithServer(ctx, payload.DatabaseID)
+	if err != nil {
 		return fmt.Errorf("failed to find database: %w", err)
 	}
 
 	j.broadcastProgress(database.ServerID, "creating", fmt.Sprintf("Creating database: %s", database.Name))
 
-	// TODO: Implement actual database creation:
-	// 1. Connect to server via SSH
-	// 2. Use database manager to create database
-	// 3. Execute CREATE DATABASE command
+	// TODO: Run the actual database creation task
+	// _, err = j.RunTask(database.Server, tasks.NewCreateDatabase(&database)).
+	//     AsRoot().
+	//     Dispatch(ctx)
+	// if err != nil {
+	//     return err
+	// }
 
 	// Mark the database as installed
-	now := time.Now()
-	if err := j.db.Model(&database).Update("installed_at", &now).Error; err != nil {
+	if err := j.MarkAsInstalled(j.DB, database); err != nil {
 		return fmt.Errorf("failed to update database status: %w", err)
 	}
 
@@ -88,37 +70,31 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 // Failed handles job failure
 func (j *InstallDatabaseJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload InstallDatabasePayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, unmarshalErr := jobs.UnmarshalPayload[InstallDatabasePayload](t)
+	if unmarshalErr != nil {
+		j.Logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("database_id", payload.DatabaseID).
 		Msg("Failed to create database")
 
 	// Fetch the database to get server ID for broadcasting
-	var database models.Database
-	if findErr := j.db.First(&database, "id = ?", payload.DatabaseID).Error; findErr != nil {
+	database, findErr := j.Repo.FindDatabaseByID(ctx, payload.DatabaseID)
+	if findErr != nil {
 		return
 	}
 
-	// Try to drop the database if it was partially created
-	// TODO: Call database manager to drop database
-
 	// Mark installation as failed
-	now := time.Now()
-	j.db.Model(&database).Update("installation_failed_at", &now)
+	j.MarkInstallationFailed(j.DB, database)
 
 	j.broadcastProgress(database.ServerID, "failed", fmt.Sprintf("Failed to create database: %s", database.Name))
-
-	// TODO: Notify user about creation failure
 }
 
 func (j *InstallDatabaseJob) broadcastProgress(serverID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "server.database.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "server.database.progress", map[string]interface{}{
 		"server_id": serverID,
 		"status":    status,
 		"message":   message,
