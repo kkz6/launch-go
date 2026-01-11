@@ -16,7 +16,7 @@ func init() {
 	})
 }
 
-// Team model for migration (matches Laravel schema exactly)
+// teamMigration model for migration (matches Laravel schema exactly)
 type teamMigration struct {
 	ID                   string     `gorm:"type:char(26);primaryKey"`
 	UserID               string     `gorm:"column:user_id;type:char(26);not null;index"`
@@ -31,6 +31,26 @@ func (teamMigration) TableName() string {
 	return "teams"
 }
 
+// teamWithUserFK defines the foreign key relationship for teams.user_id -> users.id
+type teamWithUserFK struct {
+	UserID string          `gorm:"column:user_id"`
+	User   *userMigration `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE"`
+}
+
+func (teamWithUserFK) TableName() string {
+	return "teams"
+}
+
+// userWithTeamFK defines the foreign key relationship for users.current_team_id -> teams.id
+type userWithTeamFK struct {
+	CurrentTeamID *string         `gorm:"column:current_team_id"`
+	CurrentTeam   *teamMigration `gorm:"foreignKey:CurrentTeamID;references:ID;constraint:OnDelete:SET NULL"`
+}
+
+func (userWithTeamFK) TableName() string {
+	return "users"
+}
+
 func createTeamsTableUp(db *gorm.DB) error {
 	migrator := db.Migrator()
 
@@ -39,19 +59,13 @@ func createTeamsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	// Add foreign key constraint for user_id -> users.id
-	if err := db.Exec(`
-		ALTER TABLE teams ADD CONSTRAINT teams_user_id_foreign
-		FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-	`).Error; err != nil {
+	// Add foreign key constraint for teams.user_id -> users.id
+	if err := migrator.CreateConstraint(&teamWithUserFK{}, "User"); err != nil {
 		return err
 	}
 
 	// Add foreign key constraint for users.current_team_id -> teams.id
-	if err := db.Exec(`
-		ALTER TABLE users ADD CONSTRAINT users_current_team_id_foreign
-		FOREIGN KEY (current_team_id) REFERENCES teams (id) ON DELETE SET NULL
-	`).Error; err != nil {
+	if err := migrator.CreateConstraint(&userWithTeamFK{}, "CurrentTeam"); err != nil {
 		return err
 	}
 
@@ -62,9 +76,9 @@ func createTeamsTableDown(db *gorm.DB) error {
 	migrator := db.Migrator()
 
 	// Drop foreign key from users table
-	_ = db.Exec("ALTER TABLE users DROP FOREIGN KEY users_current_team_id_foreign").Error
+	_ = migrator.DropConstraint(&userWithTeamFK{}, "CurrentTeam")
 
-	// Drop teams table
+	// Drop teams table (will cascade drop teams_user_id_foreign)
 	if err := migrator.DropTable(&teamMigration{}); err != nil {
 		return err
 	}

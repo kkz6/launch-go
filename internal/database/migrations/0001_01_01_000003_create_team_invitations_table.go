@@ -16,7 +16,7 @@ func init() {
 	})
 }
 
-// TeamInvitation model for migration (matches Laravel schema exactly)
+// teamInvitationMigration model for migration (matches Laravel schema exactly)
 type teamInvitationMigration struct {
 	ID        string     `gorm:"type:char(26);primaryKey"`
 	TeamID    string     `gorm:"column:team_id;type:char(26);not null;uniqueIndex:team_invitations_team_id_email_unique,priority:1"`
@@ -30,6 +30,16 @@ func (teamInvitationMigration) TableName() string {
 	return "team_invitations"
 }
 
+// teamInvitationWithFK defines the foreign key relationship for team_invitations.team_id -> teams.id
+type teamInvitationWithFK struct {
+	TeamID string         `gorm:"column:team_id"`
+	Team   *teamMigration `gorm:"foreignKey:TeamID;references:ID;constraint:OnDelete:CASCADE"`
+}
+
+func (teamInvitationWithFK) TableName() string {
+	return "team_invitations"
+}
+
 func createTeamInvitationsTableUp(db *gorm.DB) error {
 	migrator := db.Migrator()
 
@@ -38,11 +48,8 @@ func createTeamInvitationsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	// Add foreign key constraint
-	if err := db.Exec(`
-		ALTER TABLE team_invitations
-		ADD CONSTRAINT team_invitations_team_id_foreign FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE
-	`).Error; err != nil {
+	// Add foreign key constraint for team_invitations.team_id -> teams.id
+	if err := migrator.CreateConstraint(&teamInvitationWithFK{}, "Team"); err != nil {
 		return err
 	}
 

@@ -16,7 +16,7 @@ func init() {
 	})
 }
 
-// TeamUser model for migration (pivot table, matches Laravel schema exactly)
+// teamUserMigration model for migration (pivot table, matches Laravel schema exactly)
 type teamUserMigration struct {
 	ID        uint64     `gorm:"type:bigint unsigned;primaryKey;autoIncrement"`
 	TeamID    string     `gorm:"column:team_id;type:char(26);not null;uniqueIndex:team_user_team_id_user_id_unique,priority:1"`
@@ -30,6 +30,18 @@ func (teamUserMigration) TableName() string {
 	return "team_user"
 }
 
+// teamUserWithFK defines the foreign key relationships for team_user table
+type teamUserWithFK struct {
+	TeamID string          `gorm:"column:team_id"`
+	UserID string          `gorm:"column:user_id"`
+	Team   *teamMigration  `gorm:"foreignKey:TeamID;references:ID;constraint:OnDelete:CASCADE"`
+	User   *userMigration `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE"`
+}
+
+func (teamUserWithFK) TableName() string {
+	return "team_user"
+}
+
 func createTeamUserTableUp(db *gorm.DB) error {
 	migrator := db.Migrator()
 
@@ -38,12 +50,13 @@ func createTeamUserTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	// Add foreign key constraints
-	if err := db.Exec(`
-		ALTER TABLE team_user
-		ADD CONSTRAINT team_user_team_id_foreign FOREIGN KEY (team_id) REFERENCES teams (id) ON DELETE CASCADE,
-		ADD CONSTRAINT team_user_user_id_foreign FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-	`).Error; err != nil {
+	// Add foreign key constraint for team_user.team_id -> teams.id
+	if err := migrator.CreateConstraint(&teamUserWithFK{}, "Team"); err != nil {
+		return err
+	}
+
+	// Add foreign key constraint for team_user.user_id -> users.id
+	if err := migrator.CreateConstraint(&teamUserWithFK{}, "User"); err != nil {
 		return err
 	}
 
