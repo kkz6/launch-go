@@ -5,7 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // RemoveLaunchAgent removes the launch-agent from the server

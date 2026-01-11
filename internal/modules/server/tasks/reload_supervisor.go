@@ -3,7 +3,7 @@ package tasks
 import (
 	"time"
 
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // ReloadSupervisor reloads Supervisor configuration (reread and update)

@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // ProvisionServer provisions a fresh server with all required software
@@ -50,24 +50,59 @@ func (t *ProvisionServer) Data() map[string]interface{} {
 	}
 }
 
-// SwapInMegabytes returns the calculated swap size
+// SwapInMegabytes returns the calculated swap size based on server memory
 func (t *ProvisionServer) SwapInMegabytes() int {
-	return taskrunner.SwapInMegabytes(t.GetMemoryMB())
+	memoryMB := t.GetMemoryMB()
+	switch {
+	case memoryMB <= 2048:
+		return 1024
+	case memoryMB <= 4096:
+		return 2048
+	case memoryMB <= 8192:
+		return 3072
+	default:
+		return 4096
+	}
 }
 
-// Swappiness returns the calculated swappiness value
+// Swappiness returns the calculated swappiness value based on server memory
 func (t *ProvisionServer) Swappiness() int {
-	return taskrunner.Swappiness(t.GetMemoryMB())
+	memoryMB := t.GetMemoryMB()
+	switch {
+	case memoryMB <= 1024:
+		return 20
+	case memoryMB <= 2048:
+		return 35
+	case memoryMB <= 4096:
+		return 50
+	default:
+		return 60
+	}
 }
 
-// MySQLMaxConnections returns the calculated MySQL max connections
+// MySQLMaxConnections returns the calculated MySQL max connections based on server memory
 func (t *ProvisionServer) MySQLMaxConnections() int {
-	return taskrunner.MySQLMaxConnections(t.GetMemoryMB())
+	memoryMB := t.GetMemoryMB()
+	switch {
+	case memoryMB <= 1024:
+		return 100
+	case memoryMB <= 2048:
+		return 200
+	case memoryMB <= 4096:
+		return 400
+	default:
+		return 500
+	}
 }
 
-// MaxChildrenPhpPoolValue returns the calculated PHP-FPM max children
+// MaxChildrenPhpPoolValue returns the calculated PHP-FPM max children based on server memory
 func (t *ProvisionServer) MaxChildrenPhpPoolValue() int {
-	return taskrunner.MaxChildrenPhpPool(t.GetMemoryMB())
+	memoryMB := t.GetMemoryMB()
+	gigabytes := memoryMB/1024 - 1
+	if gigabytes < 1 {
+		gigabytes = 1
+	}
+	return int(float64(gigabytes) * 5 * 0.9)
 }
 
 // ProvisionSteps returns the provision steps for the server

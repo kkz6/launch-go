@@ -5,7 +5,7 @@ import (
 
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // SiteInfo contains minimal site information for Caddy imports

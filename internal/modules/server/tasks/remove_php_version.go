@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // RemovePhpVersion removes a PHP version from a server

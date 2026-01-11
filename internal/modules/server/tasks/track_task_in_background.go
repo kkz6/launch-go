@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // TrackTaskInBackground wraps a task to run in the background with callback URLs

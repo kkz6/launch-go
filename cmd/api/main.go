@@ -22,20 +22,21 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server"
 	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // Application holds all application dependencies
 type Application struct {
-	config      *config.Config
-	logger      *zerolog.Logger
-	db          *gorm.DB
-	queueClient *queue.Client
-	wsHub       *websocket.Hub
-	dispatcher  *taskrunner.Dispatcher
-	fiber       *fiber.App
+	config       *config.Config
+	logger       *zerolog.Logger
+	db           *gorm.DB
+	queueClient  *queue.Client
+	wsHub        *websocket.Hub
+	dispatcher   *taskrunner.Dispatcher
+	fiber        *fiber.App
+	serverModule *server.Module
 }
 
 func main() {
@@ -103,8 +104,9 @@ func (app *Application) registerMiddleware() {
 // registerRoutes sets up all application routes
 func (app *Application) registerRoutes() {
 	app.registerWebSocketRoutes()
-	app.registerWebhookRoutes()
 	app.registerAPIRoutes()
+	// Register webhook routes after API routes since serverModule is initialized there
+	app.registerWebhookRoutes()
 }
 
 // registerWebSocketRoutes sets up WebSocket endpoints
@@ -120,7 +122,9 @@ func (app *Application) registerWebSocketRoutes() {
 
 // registerWebhookRoutes sets up webhook endpoints (no auth required)
 func (app *Application) registerWebhookRoutes() {
-	taskrunner.RegisterRoutes(app.fiber, app.db, app.config.App.Key)
+	if app.serverModule != nil {
+		app.serverModule.RegisterWebhookRoutes(app.fiber)
+	}
 }
 
 // registerAPIRoutes sets up API endpoints
@@ -135,8 +139,8 @@ func (app *Application) registerAPIRoutes() {
 	authModule := auth.NewModule(app.db, app.config, app.logger)
 	authModule.RegisterRoutes(api)
 
-	serverModule := server.NewModule(app.db, app.queueClient, app.wsHub, app.dispatcher, app.logger)
-	serverModule.RegisterRoutes(api, authMiddleware)
+	app.serverModule = server.NewModule(app.db, app.queueClient, app.wsHub, app.dispatcher, app.logger, app.config.App.Key)
+	app.serverModule.RegisterRoutes(api, authMiddleware)
 
 	siteModule := site.NewModule(app.db, app.queueClient, app.wsHub, app.logger)
 	siteModule.RegisterRoutes(api, authMiddleware)

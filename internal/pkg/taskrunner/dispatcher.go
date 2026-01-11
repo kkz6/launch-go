@@ -10,15 +10,18 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-
-	"github.com/kkz6/launch-go/internal/ssh"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
+
+// Broadcaster interface for WebSocket broadcasting
+// This allows the dispatcher to work without importing the websocket package directly
+type Broadcaster interface {
+	Broadcast(channel string, event string, data interface{})
+}
 
 // Dispatcher handles task execution
 type Dispatcher struct {
 	logger        *zerolog.Logger
-	ws            *websocket.Hub
+	ws            Broadcaster
 	streamMonitor *StreamMonitor
 	localMode     bool
 }
@@ -29,7 +32,8 @@ type DispatcherConfig struct {
 	BroadcastInterval time.Duration // How often to broadcast output updates
 }
 
-func NewDispatcher(logger *zerolog.Logger, ws *websocket.Hub) *Dispatcher {
+// NewDispatcher creates a new task dispatcher
+func NewDispatcher(logger *zerolog.Logger, ws Broadcaster) *Dispatcher {
 	return &Dispatcher{
 		logger:    logger,
 		ws:        ws,
@@ -38,7 +42,7 @@ func NewDispatcher(logger *zerolog.Logger, ws *websocket.Hub) *Dispatcher {
 }
 
 // NewDispatcherWithConfig creates a new dispatcher with configuration
-func NewDispatcherWithConfig(logger *zerolog.Logger, ws *websocket.Hub, cfg *DispatcherConfig) *Dispatcher {
+func NewDispatcherWithConfig(logger *zerolog.Logger, ws Broadcaster, cfg *DispatcherConfig) *Dispatcher {
 	d := &Dispatcher{
 		logger:    logger,
 		ws:        ws,
@@ -141,7 +145,7 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 	conn := pt.Connection
 
 	// Create SSH client
-	sshClient, err := ssh.NewClient(ssh.Config{
+	sshClient, err := NewSSHClient(SSHConfig{
 		Host:       conn.Host,
 		Port:       conn.Port,
 		User:       conn.User,
@@ -187,7 +191,7 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 
 func (d *Dispatcher) runRemoteForeground(
 	ctx context.Context,
-	client *ssh.Client,
+	client *SSHClient,
 	pt *PendingTask,
 	scriptFile, outputFile string,
 	startTime time.Time,
@@ -233,7 +237,7 @@ func (d *Dispatcher) runRemoteForeground(
 
 func (d *Dispatcher) runRemoteBackground(
 	ctx context.Context,
-	client *ssh.Client,
+	client *SSHClient,
 	pt *PendingTask,
 	scriptFile, outputFile string,
 	startTime time.Time,
@@ -332,7 +336,7 @@ func (d *Dispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*Ta
 	conn := pt.Connection
 
 	// Create SSH client
-	sshClient, err := ssh.NewClient(ssh.Config{
+	sshClient, err := NewSSHClient(SSHConfig{
 		Host:       conn.Host,
 		Port:       conn.Port,
 		User:       conn.User,
@@ -425,7 +429,7 @@ func (d *Dispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*Ta
 
 // GetTaskOutput fetches output from a remote task
 func (d *Dispatcher) GetTaskOutput(ctx context.Context, conn *Connection, taskID string) (string, error) {
-	sshClient, err := ssh.NewClient(ssh.Config{
+	sshClient, err := NewSSHClient(SSHConfig{
 		Host:       conn.Host,
 		Port:       conn.Port,
 		User:       conn.User,
@@ -451,7 +455,7 @@ func (d *Dispatcher) GetTaskOutput(ctx context.Context, conn *Connection, taskID
 
 // CheckTaskStatus checks if a background task is still running
 func (d *Dispatcher) CheckTaskStatus(ctx context.Context, conn *Connection, pid string) (bool, int, error) {
-	sshClient, err := ssh.NewClient(ssh.Config{
+	sshClient, err := NewSSHClient(SSHConfig{
 		Host:       conn.Host,
 		Port:       conn.Port,
 		User:       conn.User,

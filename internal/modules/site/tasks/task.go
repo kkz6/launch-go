@@ -2,7 +2,7 @@ package tasks
 
 import (
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // SiteTask extends the base Task interface with site-specific methods

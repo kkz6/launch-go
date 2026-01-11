@@ -16,7 +16,7 @@ import (
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 

@@ -9,7 +9,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server"
 	"github.com/kkz6/launch-go/internal/modules/site"
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 func main() {

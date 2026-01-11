@@ -1,4 +1,4 @@
-package ssh
+package taskrunner
 
 import (
 	"bufio"
@@ -15,7 +15,8 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-type Client struct {
+// SSHClient handles SSH connections and remote command execution
+type SSHClient struct {
 	config  *ssh.ClientConfig
 	conn    *ssh.Client
 	host    string
@@ -23,7 +24,8 @@ type Client struct {
 	timeout time.Duration
 }
 
-type Config struct {
+// SSHConfig holds SSH connection configuration
+type SSHConfig struct {
 	Host           string
 	Port           int
 	User           string
@@ -33,13 +35,15 @@ type Config struct {
 	Timeout        time.Duration
 }
 
-type CommandResult struct {
+// SSHCommandResult contains the result of a remote command execution
+type SSHCommandResult struct {
 	Stdout   string
 	Stderr   string
 	ExitCode int
 }
 
-func NewClient(cfg Config) (*Client, error) {
+// NewSSHClient creates a new SSH client with the given configuration
+func NewSSHClient(cfg SSHConfig) (*SSHClient, error) {
 	var authMethods []ssh.AuthMethod
 
 	// Private key authentication
@@ -87,7 +91,7 @@ func NewClient(cfg Config) (*Client, error) {
 		port = 22
 	}
 
-	return &Client{
+	return &SSHClient{
 		config:  sshConfig,
 		host:    cfg.Host,
 		port:    port,
@@ -95,7 +99,8 @@ func NewClient(cfg Config) (*Client, error) {
 	}, nil
 }
 
-func (c *Client) Connect() error {
+// Connect establishes the SSH connection
+func (c *SSHClient) Connect() error {
 	addr := fmt.Sprintf("%s:%d", c.host, c.port)
 
 	conn, err := ssh.Dial("tcp", addr, c.config)
@@ -107,14 +112,16 @@ func (c *Client) Connect() error {
 	return nil
 }
 
-func (c *Client) Close() error {
+// Close closes the SSH connection
+func (c *SSHClient) Close() error {
 	if c.conn != nil {
 		return c.conn.Close()
 	}
 	return nil
 }
 
-func (c *Client) Run(ctx context.Context, command string) (*CommandResult, error) {
+// Run executes a command on the remote server
+func (c *SSHClient) Run(ctx context.Context, command string) (*SSHCommandResult, error) {
 	if c.conn == nil {
 		if err := c.Connect(); err != nil {
 			return nil, err
@@ -142,7 +149,7 @@ func (c *Client) Run(ctx context.Context, command string) (*CommandResult, error
 		session.Signal(ssh.SIGTERM)
 		return nil, ctx.Err()
 	case err := <-done:
-		result := &CommandResult{
+		result := &SSHCommandResult{
 			Stdout: stdout.String(),
 			Stderr: stderr.String(),
 		}
@@ -159,13 +166,15 @@ func (c *Client) Run(ctx context.Context, command string) (*CommandResult, error
 	}
 }
 
-func (c *Client) RunScript(ctx context.Context, script string) (*CommandResult, error) {
+// RunScript executes a script on the remote server
+func (c *SSHClient) RunScript(ctx context.Context, script string) (*SSHCommandResult, error) {
 	// Wrap script in bash
 	command := fmt.Sprintf("bash -c %q", script)
 	return c.Run(ctx, command)
 }
 
-func (c *Client) RunWithOutput(ctx context.Context, command string, output io.Writer) error {
+// RunWithOutput executes a command and writes output to the provided writer
+func (c *SSHClient) RunWithOutput(ctx context.Context, command string, output io.Writer) error {
 	if c.conn == nil {
 		if err := c.Connect(); err != nil {
 			return err
@@ -195,7 +204,8 @@ func (c *Client) RunWithOutput(ctx context.Context, command string, output io.Wr
 	}
 }
 
-func (c *Client) Upload(ctx context.Context, content []byte, remotePath string, mode os.FileMode) error {
+// Upload uploads content to a remote file
+func (c *SSHClient) Upload(ctx context.Context, content []byte, remotePath string, mode os.FileMode) error {
 	if c.conn == nil {
 		if err := c.Connect(); err != nil {
 			return err
@@ -221,7 +231,8 @@ func (c *Client) Upload(ctx context.Context, content []byte, remotePath string, 
 	return session.Run(fmt.Sprintf("scp -tr %s", dir))
 }
 
-func (c *Client) Download(ctx context.Context, remotePath string) ([]byte, error) {
+// Download downloads content from a remote file
+func (c *SSHClient) Download(ctx context.Context, remotePath string) ([]byte, error) {
 	result, err := c.Run(ctx, fmt.Sprintf("cat %s", remotePath))
 	if err != nil {
 		return nil, err
@@ -229,7 +240,8 @@ func (c *Client) Download(ctx context.Context, remotePath string) ([]byte, error
 	return []byte(result.Stdout), nil
 }
 
-func (c *Client) FileExists(ctx context.Context, path string) (bool, error) {
+// FileExists checks if a file exists on the remote server
+func (c *SSHClient) FileExists(ctx context.Context, path string) (bool, error) {
 	result, err := c.Run(ctx, fmt.Sprintf("test -f %s && echo 'exists'", path))
 	if err != nil {
 		return false, nil // File doesn't exist
@@ -237,7 +249,8 @@ func (c *Client) FileExists(ctx context.Context, path string) (bool, error) {
 	return strings.TrimSpace(result.Stdout) == "exists", nil
 }
 
-func (c *Client) DirExists(ctx context.Context, path string) (bool, error) {
+// DirExists checks if a directory exists on the remote server
+func (c *SSHClient) DirExists(ctx context.Context, path string) (bool, error) {
 	result, err := c.Run(ctx, fmt.Sprintf("test -d %s && echo 'exists'", path))
 	if err != nil {
 		return false, nil
@@ -245,14 +258,15 @@ func (c *Client) DirExists(ctx context.Context, path string) (bool, error) {
 	return strings.TrimSpace(result.Stdout) == "exists", nil
 }
 
-func (c *Client) MkdirAll(ctx context.Context, path string) error {
+// MkdirAll creates a directory and all parent directories on the remote server
+func (c *SSHClient) MkdirAll(ctx context.Context, path string) error {
 	_, err := c.Run(ctx, fmt.Sprintf("mkdir -p %s", path))
 	return err
 }
 
 // StreamOutput streams output from a command, calling the callback for each line
 // This keeps the SSH connection open and reads output as it arrives
-func (c *Client) StreamOutput(ctx context.Context, command string, callback func(line string) error) error {
+func (c *SSHClient) StreamOutput(ctx context.Context, command string, callback func(line string) error) error {
 	if c.conn == nil {
 		if err := c.Connect(); err != nil {
 			return err
@@ -281,7 +295,7 @@ func (c *Client) StreamOutput(ctx context.Context, command string, callback func
 
 	// Create a combined reader
 	combined := io.MultiReader(stdout, stderr)
-	reader := NewLineReader(combined)
+	reader := newLineReader(combined)
 
 	// Read lines in a goroutine
 	lineChan := make(chan string, 100)
@@ -289,7 +303,7 @@ func (c *Client) StreamOutput(ctx context.Context, command string, callback func
 
 	go func() {
 		for {
-			line, err := reader.ReadLine()
+			line, err := reader.readLine()
 			if err != nil {
 				if err != io.EOF {
 					errChan <- err
@@ -322,26 +336,8 @@ func (c *Client) StreamOutput(ctx context.Context, command string, callback func
 	}
 }
 
-// LineReader reads lines from an io.Reader
-type LineReader struct {
-	reader *bufio.Reader
-}
-
-// NewLineReader creates a new LineReader
-func NewLineReader(r io.Reader) *LineReader {
-	return &LineReader{reader: bufio.NewReader(r)}
-}
-
-// ReadLine reads a single line
-func (r *LineReader) ReadLine() (string, error) {
-	line, err := r.reader.ReadString('\n')
-	if err != nil {
-		return line, err
-	}
-	return strings.TrimSuffix(line, "\n"), nil
-}
-
-func (c *Client) WaitForConnection(ctx context.Context, maxRetries int) error {
+// WaitForConnection waits for the SSH connection to become available
+func (c *SSHClient) WaitForConnection(ctx context.Context, maxRetries int) error {
 	var lastErr error
 
 	for i := 0; i < maxRetries; i++ {
@@ -362,6 +358,25 @@ func (c *Client) WaitForConnection(ctx context.Context, maxRetries int) error {
 	}
 
 	return fmt.Errorf("failed to connect after %d retries: %w", maxRetries, lastErr)
+}
+
+// lineReader reads lines from an io.Reader
+type lineReader struct {
+	reader *bufio.Reader
+}
+
+// newLineReader creates a new lineReader
+func newLineReader(r io.Reader) *lineReader {
+	return &lineReader{reader: bufio.NewReader(r)}
+}
+
+// readLine reads a single line
+func (r *lineReader) readLine() (string, error) {
+	line, err := r.reader.ReadString('\n')
+	if err != nil {
+		return line, err
+	}
+	return strings.TrimSuffix(line, "\n"), nil
 }
 
 func expandPath(path string) string {

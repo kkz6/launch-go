@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // RestartAllSiteQueues restarts all supervisor queue workers for a site
