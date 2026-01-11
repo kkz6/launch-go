@@ -10,7 +10,16 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/database/serializers"
 )
+
+// InitEncryption initializes the encryption key for the serializers
+func InitEncryption(appKey string) error {
+	if appKey == "" {
+		return nil // Encryption not configured
+	}
+	return serializers.SetEncryptionKeyFromBase64(appKey)
+}
 
 func Connect(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	var dialector gorm.Dialector

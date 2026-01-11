@@ -24,6 +24,7 @@ type AppConfig struct {
 	Port        string
 	Debug       bool
 	URL         string
+	Key         string // Encryption key (base64 encoded, same as Laravel APP_KEY)
 }
 
 type DatabaseConfig struct {
@@ -105,6 +106,7 @@ func Load() (*Config, error) {
 			Port:        viper.GetString("APP_PORT"),
 			Debug:       viper.GetBool("APP_DEBUG"),
 			URL:         viper.GetString("APP_URL"),
+			Key:         viper.GetString("APP_KEY"),
 		},
 		Database: DatabaseConfig{
 			Driver:   viper.GetString("DB_DRIVER"),
