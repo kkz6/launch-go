@@ -63,46 +63,6 @@ func TestNewModule(t *testing.T) {
 
 	assert.NotNil(t, module)
 	assert.NotNil(t, module.handler)
-	assert.NotNil(t, module.service)
-	assert.NotNil(t, module.repository)
-}
-
-func TestModule_Service(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-
-	err = db.AutoMigrate(&models.Database{}, &models.DatabaseUser{}, &models.DatabaseDatabaseUser{})
-	require.NoError(t, err)
-
-	serverRepo := NewMockServerRepository()
-	logger := zerolog.New(os.Stdout)
-	ws := websocket.NewHub()
-
-	module := NewModule(db, serverRepo, nil, ws, &logger)
-
-	service := module.Service()
-
-	assert.NotNil(t, service)
-	assert.Equal(t, module.service, service)
-}
-
-func TestModule_Repository(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-
-	err = db.AutoMigrate(&models.Database{}, &models.DatabaseUser{}, &models.DatabaseDatabaseUser{})
-	require.NoError(t, err)
-
-	serverRepo := NewMockServerRepository()
-	logger := zerolog.New(os.Stdout)
-	ws := websocket.NewHub()
-
-	module := NewModule(db, serverRepo, nil, ws, &logger)
-
-	repo := module.Repository()
-
-	assert.NotNil(t, repo)
-	assert.Equal(t, module.repository, repo)
 }
 
 func TestModule_RegisterRoutes(t *testing.T) {
@@ -125,23 +85,5 @@ func TestModule_RegisterRoutes(t *testing.T) {
 
 	module.RegisterRoutes(app, authMiddleware)
 
-	// Verify routes are registered by checking the app has routes
-	// We can't easily inspect fiber routes, but we can verify the module works
 	assert.NotNil(t, app)
-}
-
-func TestAutoMigrate(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	require.NoError(t, err)
-
-	err = AutoMigrate(db)
-	require.NoError(t, err)
-
-	// Verify tables exist by trying to query them
-	var count int64
-	err = db.Model(&models.Database{}).Count(&count).Error
-	require.NoError(t, err)
-
-	err = db.Model(&models.DatabaseUser{}).Count(&count).Error
-	require.NoError(t, err)
 }

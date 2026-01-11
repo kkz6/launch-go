@@ -5,8 +5,6 @@ import (
 	"errors"
 
 	"gorm.io/gorm"
-
-	"github.com/kkz6/launch-go/internal/modules/database/contracts"
 )
 
 var (
@@ -27,7 +25,7 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 // Transaction executes a function within a database transaction
-func (r *Repository) Transaction(ctx context.Context, fn func(tx contracts.Repository) error) error {
+func (r *Repository) Transaction(ctx context.Context, fn func(tx *Repository) error) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		return fn(&Repository{db: tx})
 	})
