@@ -1,6 +1,7 @@
 package ssh
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
@@ -247,6 +248,97 @@ func (c *Client) DirExists(ctx context.Context, path string) (bool, error) {
 func (c *Client) MkdirAll(ctx context.Context, path string) error {
 	_, err := c.Run(ctx, fmt.Sprintf("mkdir -p %s", path))
 	return err
+}
+
+// StreamOutput streams output from a command, calling the callback for each line
+// This keeps the SSH connection open and reads output as it arrives
+func (c *Client) StreamOutput(ctx context.Context, command string, callback func(line string) error) error {
+	if c.conn == nil {
+		if err := c.Connect(); err != nil {
+			return err
+		}
+	}
+
+	session, err := c.conn.NewSession()
+	if err != nil {
+		return fmt.Errorf("failed to create session: %w", err)
+	}
+	defer session.Close()
+
+	stdout, err := session.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stdout pipe: %w", err)
+	}
+
+	stderr, err := session.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("failed to get stderr pipe: %w", err)
+	}
+
+	if err := session.Start(command); err != nil {
+		return fmt.Errorf("failed to start command: %w", err)
+	}
+
+	// Create a combined reader
+	combined := io.MultiReader(stdout, stderr)
+	reader := NewLineReader(combined)
+
+	// Read lines in a goroutine
+	lineChan := make(chan string, 100)
+	errChan := make(chan error, 1)
+
+	go func() {
+		for {
+			line, err := reader.ReadLine()
+			if err != nil {
+				if err != io.EOF {
+					errChan <- err
+				}
+				close(lineChan)
+				return
+			}
+			lineChan <- line
+		}
+	}()
+
+	// Process lines until context is cancelled or stream ends
+	for {
+		select {
+		case <-ctx.Done():
+			session.Signal(ssh.SIGTERM)
+			return ctx.Err()
+		case err := <-errChan:
+			return err
+		case line, ok := <-lineChan:
+			if !ok {
+				// Stream ended
+				return session.Wait()
+			}
+			if err := callback(line); err != nil {
+				session.Signal(ssh.SIGTERM)
+				return err
+			}
+		}
+	}
+}
+
+// LineReader reads lines from an io.Reader
+type LineReader struct {
+	reader *bufio.Reader
+}
+
+// NewLineReader creates a new LineReader
+func NewLineReader(r io.Reader) *LineReader {
+	return &LineReader{reader: bufio.NewReader(r)}
+}
+
+// ReadLine reads a single line
+func (r *LineReader) ReadLine() (string, error) {
+	line, err := r.reader.ReadString('\n')
+	if err != nil {
+		return line, err
+	}
+	return strings.TrimSuffix(line, "\n"), nil
 }
 
 func (c *Client) WaitForConnection(ctx context.Context, maxRetries int) error {
