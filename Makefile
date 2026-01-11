@@ -79,6 +79,13 @@ migrate-fresh:
 migrate-status:
 	@go run ./cmd/migrate status
 
+## migrate-encryption: Migrate Laravel-encrypted data to new format (one-time)
+migrate-encryption:
+	@echo "⚠️  This will decrypt Laravel-encrypted data and store as plaintext."
+	@echo "    Make sure your APP_KEY is set correctly in .env"
+	@echo ""
+	@go run ./cmd/migrate-encryption
+
 ## docker-build: Build docker image
 docker-build:
 	@docker build -t launch-go .

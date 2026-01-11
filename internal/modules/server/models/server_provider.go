@@ -16,7 +16,7 @@ type ServerProvider struct {
 	TeamID      *string              `gorm:"column:team_id;type:char(26);index" json:"team_id,omitempty"`
 	Profile     *string              `gorm:"type:varchar(255)" json:"profile,omitempty"`
 	Provider    enums.ServerProvider `gorm:"type:varchar(255);not null" json:"provider"`
-	Credentials string               `gorm:"type:longtext;not null" json:"-"`
+	Credentials string               `gorm:"type:longtext;not null;serializer:encrypted" json:"-"`
 	Connected   bool                 `gorm:"type:tinyint(1);not null;default:1" json:"connected"`
 	CreatedAt   *time.Time           `gorm:"type:timestamp null" json:"created_at,omitempty"`
 	UpdatedAt   *time.Time           `gorm:"type:timestamp null" json:"updated_at,omitempty"`

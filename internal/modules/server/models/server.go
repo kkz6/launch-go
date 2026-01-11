@@ -44,12 +44,12 @@ type Server struct {
 	Status                    enums.ServerStatus   `gorm:"type:varchar(255);not null" json:"status"`
 	PublicIPv4                *string              `gorm:"column:public_ipv4;type:varchar(255)" json:"public_ipv4,omitempty"`
 	PrivateIPv4               *string              `gorm:"column:private_ipv4;type:varchar(255)" json:"-"`
-	PublicKey                 *string              `gorm:"type:longtext" json:"-"`
-	PrivateKey                *string              `gorm:"type:longtext" json:"-"`
-	UserPublicKey             *string              `gorm:"column:user_public_key;type:longtext" json:"-"`
+	PublicKey                 *string              `gorm:"type:longtext;serializer:encrypted" json:"-"`
+	PrivateKey                *string              `gorm:"type:longtext;serializer:encrypted" json:"-"`
+	UserPublicKey             *string              `gorm:"column:user_public_key;type:longtext;serializer:encrypted" json:"-"`
 	Username                  *string              `gorm:"type:varchar(255)" json:"username,omitempty"`
-	Password                  *string              `gorm:"type:longtext" json:"-"`
-	DatabasePassword          *string              `gorm:"column:database_password;type:longtext" json:"-"`
+	Password                  *string              `gorm:"type:longtext;serializer:encrypted" json:"-"`
+	DatabasePassword          *string              `gorm:"column:database_password;type:longtext;serializer:encrypted" json:"-"`
 	SSHPort                   *int                 `gorm:"column:ssh_port;type:int" json:"ssh_port,omitempty"`
 	WorkingDirectory          *string              `gorm:"column:working_directory;type:varchar(255)" json:"-"`
 	CompletedProvisionSteps   *string              `gorm:"column:completed_provision_steps;type:json" json:"-"`

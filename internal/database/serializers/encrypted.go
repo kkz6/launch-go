@@ -16,10 +16,10 @@ import (
 )
 
 var (
-	ErrKeyNotSet      = errors.New("encryption key not set")
-	ErrInvalidKey     = errors.New("encryption key must be 32 bytes for AES-256")
-	ErrDecryptFailed  = errors.New("decryption failed")
-	ErrInvalidData    = errors.New("invalid encrypted data")
+	ErrKeyNotSet     = errors.New("encryption key not set")
+	ErrInvalidKey    = errors.New("encryption key must be 32 bytes for AES-256")
+	ErrDecryptFailed = errors.New("decryption failed")
+	ErrInvalidData   = errors.New("invalid encrypted data")
 )
 
 var (
@@ -91,18 +91,23 @@ func (s *EncryptedSerializer) Scan(ctx context.Context, field *schema.Field, dst
 		return nil
 	}
 
-	decrypted, err := decrypt(encrypted)
+	decrypted, err := Decrypt(encrypted)
 	if err != nil {
 		return fmt.Errorf("encrypted serializer: %w", err)
 	}
 
-	// Set the decrypted value based on field type
-	fieldValue := dst
-	if dst.Kind() == reflect.Ptr {
-		if dst.IsNil() {
-			dst.Set(reflect.New(dst.Type().Elem()))
+	// Get the actual field value from the struct
+	fieldValue := field.ReflectValueOf(ctx, dst)
+	if !fieldValue.IsValid() {
+		return nil
+	}
+
+	// Handle pointer types
+	if fieldValue.Kind() == reflect.Ptr {
+		if fieldValue.IsNil() {
+			fieldValue.Set(reflect.New(fieldValue.Type().Elem()))
 		}
-		fieldValue = dst.Elem()
+		fieldValue = fieldValue.Elem()
 	}
 
 	switch fieldValue.Kind() {
@@ -144,7 +149,7 @@ func (s *EncryptedSerializer) Value(ctx context.Context, field *schema.Field, ds
 		return "", nil
 	}
 
-	encrypted, err := encrypt(plaintext)
+	encrypted, err := Encrypt(plaintext)
 	if err != nil {
 		return nil, fmt.Errorf("encrypted serializer: %w", err)
 	}
@@ -152,8 +157,8 @@ func (s *EncryptedSerializer) Value(ctx context.Context, field *schema.Field, ds
 	return encrypted, nil
 }
 
-// encrypt encrypts plaintext using AES-256-GCM and returns base64-encoded ciphertext
-func encrypt(plaintext string) (string, error) {
+// Encrypt encrypts plaintext using AES-256-GCM and returns base64-encoded ciphertext
+func Encrypt(plaintext string) (string, error) {
 	key, err := getKey()
 	if err != nil {
 		return "", err
@@ -181,48 +186,44 @@ func encrypt(plaintext string) (string, error) {
 	return base64.StdEncoding.EncodeToString(ciphertext), nil
 }
 
-// decrypt decrypts base64-encoded ciphertext using AES-256-GCM
-func decrypt(encrypted string) (string, error) {
+// Decrypt decrypts base64-encoded ciphertext using AES-256-GCM
+// If decryption fails, returns the original string (assumes plaintext)
+func Decrypt(encrypted string) (string, error) {
 	key, err := getKey()
 	if err != nil {
-		return "", err
+		// No key set, return as-is (plaintext)
+		return encrypted, nil
 	}
 
+	// Try to base64 decode
 	ciphertext, err := base64.StdEncoding.DecodeString(encrypted)
 	if err != nil {
-		return "", ErrInvalidData
+		// Not base64, assume plaintext
+		return encrypted, nil
 	}
 
 	block, err := aes.NewCipher(key)
 	if err != nil {
-		return "", err
+		return encrypted, nil
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return "", err
+		return encrypted, nil
 	}
 
 	nonceSize := gcm.NonceSize()
 	if len(ciphertext) < nonceSize {
-		return "", ErrInvalidData
+		// Too short to be encrypted, assume plaintext
+		return encrypted, nil
 	}
 
-	nonce, ciphertext := ciphertext[:nonceSize], ciphertext[nonceSize:]
-	plaintext, err := gcm.Open(nil, nonce, ciphertext, nil)
+	nonce, cipherData := ciphertext[:nonceSize], ciphertext[nonceSize:]
+	plaintext, err := gcm.Open(nil, nonce, cipherData, nil)
 	if err != nil {
-		return "", ErrDecryptFailed
+		// Decryption failed, assume plaintext
+		return encrypted, nil
 	}
 
 	return string(plaintext), nil
-}
-
-// Encrypt is a helper function for manual encryption
-func Encrypt(plaintext string) (string, error) {
-	return encrypt(plaintext)
-}
-
-// Decrypt is a helper function for manual decryption
-func Decrypt(encrypted string) (string, error) {
-	return decrypt(encrypted)
 }
