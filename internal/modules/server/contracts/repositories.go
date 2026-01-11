@@ -108,6 +108,14 @@ type MetricRepository interface {
 	DeleteOldMetrics(ctx context.Context, serverID string, before time.Time) error
 }
 
+// ServerProviderRepository defines the interface for server provider database operations
+type ServerProviderRepository interface {
+	FindServerProvidersByTeam(ctx context.Context, teamID string) ([]models.ServerProvider, error)
+	FindServerProviderByID(ctx context.Context, id string) (*models.ServerProvider, error)
+	CreateServerProvider(ctx context.Context, provider *models.ServerProvider) error
+	DeleteServerProvider(ctx context.Context, id string) error
+}
+
 // Repository combines all repository interfaces
 type Repository interface {
 	ServerRepository
@@ -118,5 +126,6 @@ type Repository interface {
 	SshKeyRepository
 	TaskRepository
 	MetricRepository
+	ServerProviderRepository
 	Transaction(ctx context.Context, fn func(tx Repository) error) error
 }

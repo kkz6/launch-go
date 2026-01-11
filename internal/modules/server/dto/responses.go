@@ -3,6 +3,7 @@ package dto
 import (
 	"time"
 
+	serverconfig "github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 )
@@ -626,5 +627,57 @@ func GetServerIndexPageData(servers []models.Server, total int64) ServerIndexPag
 		Providers:        GetAllProviders(),
 		ServerTypes:      GetAllServerTypes(),
 		OperatingSystems: GetAllOperatingSystems(),
+	}
+}
+
+// CreateServerOptionsResponse represents the response for server creation options
+type CreateServerOptionsResponse struct {
+	PhpVersions      map[string]string                      `json:"phpVersions"`
+	DatabaseTypes    map[string]string                      `json:"databaseTypes"`
+	ServerTypes      map[string]string                      `json:"serverTypes"`
+	OperatingSystems map[string]string                      `json:"operatingSystems"`
+	Plans            map[string]serverconfig.ProviderConfig `json:"plans"`
+	CanCreateServer  bool                                   `json:"canCreateServer"`
+}
+
+// GetCreateServerOptions builds the create server options response
+func GetCreateServerOptions() CreateServerOptionsResponse {
+	return CreateServerOptionsResponse{
+		PhpVersions:      serverconfig.GetPhpVersions(),
+		DatabaseTypes:    serverconfig.GetDatabaseTypes(),
+		ServerTypes:      serverconfig.GetServerTypes(),
+		OperatingSystems: serverconfig.GetOperatingSystems(),
+		Plans:            serverconfig.GetProviderConfigs(),
+		CanCreateServer:  true,
+	}
+}
+
+// ServerProviderResponse represents a connected server provider
+type ServerProviderResponse struct {
+	ID        string `json:"id"`
+	Profile   string `json:"profile"`
+	Provider  string `json:"provider"`
+	Connected bool   `json:"connected"`
+	CreatedAt string `json:"created_at"`
+}
+
+// ToServerProviderResponse converts a ServerProvider model to response
+func ToServerProviderResponse(sp *models.ServerProvider) ServerProviderResponse {
+	createdAt := ""
+	if sp.CreatedAt != nil {
+		createdAt = sp.CreatedAt.Format(time.RFC3339)
+	}
+
+	profile := ""
+	if sp.Profile != nil {
+		profile = *sp.Profile
+	}
+
+	return ServerProviderResponse{
+		ID:        sp.ID,
+		Profile:   profile,
+		Provider:  sp.Provider.String(),
+		Connected: sp.Connected,
+		CreatedAt: createdAt,
 	}
 }
