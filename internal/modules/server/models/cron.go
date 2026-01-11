@@ -61,3 +61,11 @@ func (c *Cron) LogPath(workingDirectory string) string {
 
 	return fmt.Sprintf("/home/%s/%s/cron-%s.log", c.User, workingDirectory, c.ID)
 }
+
+// GetLogPath returns the path to the cron log file
+func (c *Cron) GetLogPath() string {
+	if c.User == "root" {
+		return fmt.Sprintf("/root/cron-%s.log", c.ID)
+	}
+	return fmt.Sprintf("/home/%s/cron-%s.log", c.User, c.ID)
+}

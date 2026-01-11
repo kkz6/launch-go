@@ -90,3 +90,19 @@ func (d *Daemon) SetInfo(info map[string]interface{}) error {
 
 	return nil
 }
+
+// GetLogPath returns the path to the output log file
+func (d *Daemon) GetLogPath() string {
+	if d.User == "root" {
+		return fmt.Sprintf("/root/daemon-%s.log", d.ID)
+	}
+	return fmt.Sprintf("/home/%s/daemon-%s.log", d.User, d.ID)
+}
+
+// GetErrorLogPath returns the path to the error log file
+func (d *Daemon) GetErrorLogPath() string {
+	if d.User == "root" {
+		return fmt.Sprintf("/root/daemon-%s.err", d.ID)
+	}
+	return fmt.Sprintf("/home/%s/daemon-%s.err", d.User, d.ID)
+}

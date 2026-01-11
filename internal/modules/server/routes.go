@@ -84,6 +84,9 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		// Metrics
 		servers.Get("/:id/metrics", m.handler.GetMetrics)
 		servers.Get("/:id/metrics/latest", m.handler.GetLatestMetric)
+
+		// Logs
+		servers.Get("/:id/logs", m.handler.ListLogs)
 	}
 }
 

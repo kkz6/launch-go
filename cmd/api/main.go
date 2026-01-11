@@ -82,6 +82,10 @@ func main() {
 	terminalHandler := websocket.NewTerminalHandler(db, cfg.JWT.Secret, *appLogger)
 	app.Get("/terminal/ws", terminalHandler.Handler())
 
+	// Logs WebSocket endpoint
+	logsHandler := websocket.NewLogsHandler(db, cfg.JWT.Secret, *appLogger)
+	app.Get("/terminal/logs", logsHandler.Handler())
+
 	// API routes
 	api := app.Group("/api")
 
