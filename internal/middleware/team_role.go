@@ -1,27 +1,33 @@
-package middlewares
+package middleware
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/kkz6/launch-go/internal/modules/auth/enums"
-	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
-// TeamScopeMiddleware ensures a team context is present
-func TeamScopeMiddleware() fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		teamID := c.Locals("teamID")
-		if teamID == nil || teamID == "" {
-			return response.Forbidden(c, "Team context required")
-		}
-
-		return c.Next()
-	}
+// TeamService defines the interface for team-related operations needed by middlewares
+type TeamService interface {
+	GetTeam(ctx context.Context, teamID string) (TeamInfo, error)
+	IsTeamMember(ctx context.Context, teamID, userID string) (bool, error)
+	GetTeamMember(ctx context.Context, teamID, userID string) (TeamMemberInfo, error)
 }
 
-// TeamMemberMiddleware checks if the user is a member of the specified team
-func TeamMemberMiddleware(service *services.Service) fiber.Handler {
+// TeamInfo represents minimal team information needed by middlewares
+type TeamInfo interface {
+	GetUserID() string
+}
+
+// TeamMemberInfo represents minimal team member information needed by middlewares
+type TeamMemberInfo interface {
+	GetRole() string
+	IsAdmin() bool
+}
+
+// TeamMember checks if the user is a member of the specified team
+func TeamMember(service TeamService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID, ok := c.Locals("userID").(string)
 		if !ok || userID == "" {
@@ -37,7 +43,7 @@ func TeamMemberMiddleware(service *services.Service) fiber.Handler {
 			return response.Forbidden(c, "Team context required")
 		}
 
-		isMember, err := service.Repository().IsTeamMember(c.Context(), teamID, userID)
+		isMember, err := service.IsTeamMember(c.Context(), teamID, userID)
 		if err != nil {
 			return response.Error(c, fiber.StatusInternalServerError, "Failed to check team membership")
 		}
@@ -50,8 +56,8 @@ func TeamMemberMiddleware(service *services.Service) fiber.Handler {
 	}
 }
 
-// TeamOwnerMiddleware checks if the user is the owner of the specified team
-func TeamOwnerMiddleware(service *services.Service) fiber.Handler {
+// TeamOwner checks if the user is the owner of the specified team
+func TeamOwner(service TeamService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID, ok := c.Locals("userID").(string)
 		if !ok || userID == "" {
@@ -72,7 +78,7 @@ func TeamOwnerMiddleware(service *services.Service) fiber.Handler {
 			return response.NotFound(c, "Team not found")
 		}
 
-		if team.UserID != userID {
+		if team.GetUserID() != userID {
 			return response.Forbidden(c, "Only team owner can perform this action")
 		}
 
@@ -80,8 +86,8 @@ func TeamOwnerMiddleware(service *services.Service) fiber.Handler {
 	}
 }
 
-// TeamAdminMiddleware checks if the user is an admin or owner of the specified team
-func TeamAdminMiddleware(service *services.Service) fiber.Handler {
+// TeamAdmin checks if the user is an admin or owner of the specified team
+func TeamAdmin(service TeamService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID, ok := c.Locals("userID").(string)
 		if !ok || userID == "" {
@@ -102,18 +108,16 @@ func TeamAdminMiddleware(service *services.Service) fiber.Handler {
 			return response.NotFound(c, "Team not found")
 		}
 
-		// Check if owner
-		if team.UserID == userID {
+		if team.GetUserID() == userID {
 			return c.Next()
 		}
 
-		// Check if admin
-		member, err := service.Repository().GetTeamMember(c.Context(), teamID, userID)
+		member, err := service.GetTeamMember(c.Context(), teamID, userID)
 		if err != nil {
 			return response.Error(c, fiber.StatusInternalServerError, "Failed to check membership")
 		}
 
-		if member == nil || member.Role == nil || *member.Role != enums.TeamRoleAdmin.String() {
+		if member == nil || !member.IsAdmin() {
 			return response.Forbidden(c, "Only team admins can perform this action")
 		}
 

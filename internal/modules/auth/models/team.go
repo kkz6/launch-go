@@ -72,3 +72,8 @@ func (t *Team) HasUser(user *User) bool {
 
 	return false
 }
+
+// GetUserID returns the team owner's user ID (implements middleware.TeamInfo)
+func (t *Team) GetUserID() string {
+	return t.UserID
+}
