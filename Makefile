@@ -36,7 +36,7 @@ worker:
 
 ## dev: Run API with hot reload (requires air)
 dev:
-	@air -c .air.toml
+	@$(shell go env GOPATH)/bin/air -c .air.toml
 
 ## test: Run tests
 test:
