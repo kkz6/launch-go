@@ -8,6 +8,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks/services"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -55,15 +56,20 @@ func (j *RestartServiceJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	j.broadcastProgress(payload.ServerID, "operating", fmt.Sprintf("%s %s...", payload.Operation.Label(), payload.Software.Label()))
 
-	// TODO: Run the actual service operation task
-	// _, err = j.RunTask(server, tasks.NewServiceOperation(payload.Software, payload.Operation)).
-	//     AsRoot().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
+	// Get the service name from the software
+	serviceName := getServiceName(payload.Software)
+	if serviceName == "" {
+		return fmt.Errorf("unknown service for software: %s", payload.Software)
+	}
 
-	_ = server // use server when implementing task execution
+	// Run the restart service task
+	_, err = j.RunTask(server, services.NewRestartService(server, serviceName)).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to restart service: %w", err)
+	}
 
 	// Update service status to running
 	if err := j.DB.Model(&models.InstalledService{}).
@@ -101,4 +107,44 @@ func (j *RestartServiceJob) broadcastProgress(serverID, status, message string) 
 		"status":    status,
 		"message":   message,
 	})
+}
+
+// getServiceName maps a software to its systemd service name
+func getServiceName(software enums.Software) string {
+	switch software {
+	case enums.SoftwareMySql80:
+		return "mysql"
+	case enums.SoftwarePostgreSql16:
+		return "postgresql"
+	case enums.SoftwareRedis:
+		return "redis-server"
+	case enums.SoftwareCaddy2:
+		return "caddy"
+	case enums.SoftwareSupervisor:
+		return "supervisor"
+	case enums.SoftwarePhp56:
+		return "php5.6-fpm"
+	case enums.SoftwarePhp70:
+		return "php7.0-fpm"
+	case enums.SoftwarePhp71:
+		return "php7.1-fpm"
+	case enums.SoftwarePhp72:
+		return "php7.2-fpm"
+	case enums.SoftwarePhp73:
+		return "php7.3-fpm"
+	case enums.SoftwarePhp74:
+		return "php7.4-fpm"
+	case enums.SoftwarePhp80:
+		return "php8.0-fpm"
+	case enums.SoftwarePhp81:
+		return "php8.1-fpm"
+	case enums.SoftwarePhp82:
+		return "php8.2-fpm"
+	case enums.SoftwarePhp83:
+		return "php8.3-fpm"
+	case enums.SoftwarePhp84:
+		return "php8.4-fpm"
+	default:
+		return ""
+	}
 }

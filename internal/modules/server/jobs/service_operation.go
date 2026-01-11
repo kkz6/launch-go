@@ -7,7 +7,9 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks/services"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -64,27 +66,33 @@ func (j *ServiceOperationJob) Handle(ctx context.Context, t *asynq.Task) error {
 	j.broadcastProgress(payload.ServerID, payload.ServiceID, "processing",
 		fmt.Sprintf("Processing %s operation for service: %s", payload.Operation, service.Software))
 
-	// TODO: Run the actual service operation task
-	// _, err = j.RunTask(server, tasks.NewServiceOperation(&service, payload.Operation)).
-	//     AsRoot().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
-
-	_ = server // use server when implementing task execution
+	// Get the service name from the software
+	serviceName := getServiceName(enums.Software(service.Software))
+	if serviceName == "" {
+		return fmt.Errorf("unknown service for software: %s", service.Software)
+	}
 
 	switch payload.Operation {
 	case "restart":
-		// TODO: implement restart
+		_, err = j.RunTask(server, services.NewRestartService(server, serviceName)).
+			AsRoot().
+			Throw().
+			Dispatch(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to restart service: %w", err)
+		}
 	case "stop":
-		// TODO: implement stop
+		_, err = j.RunTask(server, services.NewStopService(server, serviceName)).
+			AsRoot().
+			Throw().
+			Dispatch(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to stop service: %w", err)
+		}
 	case "remove":
 		if err := j.DB.Delete(&service).Error; err != nil {
 			return fmt.Errorf("failed to delete service record: %w", err)
 		}
-	case "status":
-		// TODO: implement status check
 	default:
 		return fmt.Errorf("unknown operation: %s", payload.Operation)
 	}

@@ -7,6 +7,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -60,15 +61,23 @@ func (j *RemoveSshKeyJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	j.broadcastProgress(payload.ServerID, "removing", "Removing SSH key...")
 
-	// TODO: Run the actual SSH key removal task
-	// _, err = j.RunTask(server, tasks.NewDeauthorizePublicKey(&sshKey)).
-	//     AsRoot().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
+	// Deauthorize the public key from the server (for both root and default user)
+	_, err = j.RunTask(server, tasks.NewDeauthorizePublicKey(server, sshKey.PublicKey, true)).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to deauthorize SSH key for root: %w", err)
+	}
 
-	_ = server // use server when implementing task execution
+	// Also deauthorize for the default user
+	_, err = j.RunTask(server, tasks.NewDeauthorizePublicKey(server, sshKey.PublicKey, false)).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to deauthorize SSH key for user: %w", err)
+	}
 
 	// Detach the SSH key from the server
 	if err := j.DB.Exec("DELETE FROM server_ssh_keys WHERE server_id = ? AND ssh_key_id = ?",

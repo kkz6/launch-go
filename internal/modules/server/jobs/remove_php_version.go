@@ -7,6 +7,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -58,15 +59,19 @@ func (j *RemovePhpVersionJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	j.broadcastProgress(payload.ServerID, "removing", fmt.Sprintf("Removing PHP %s...", service.Version))
 
-	// TODO: Run the actual PHP removal task
-	// _, err = j.RunTask(server, tasks.NewRemovePhpVersion(&service)).
-	//     AsRoot().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
+	// Run the PHP removal task
+	_, err = j.RunTask(server, tasks.NewRemovePhpVersion(server, &service, service.Version)).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to remove PHP version: %w", err)
+	}
 
-	_ = server // use server when implementing task execution
+	// Delete the service record
+	if err := j.DB.Delete(&service).Error; err != nil {
+		return fmt.Errorf("failed to delete service record: %w", err)
+	}
 
 	j.broadcastProgress(payload.ServerID, "removed", fmt.Sprintf("PHP %s removed successfully", service.Version))
 
