@@ -1,14 +1,25 @@
-package middlewares
+package middleware
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
-// EmailVerifiedMiddleware checks if the user's email is verified
-func EmailVerifiedMiddleware(service *services.Service) fiber.Handler {
+// UserService defines the interface for user-related operations needed by middlewares
+type UserService interface {
+	GetUser(ctx context.Context, userID string) (UserInfo, error)
+}
+
+// UserInfo represents minimal user information needed by middlewares
+type UserInfo interface {
+	HasVerifiedEmail() bool
+}
+
+// EmailVerified checks if the user's email is verified
+func EmailVerified(service UserService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID, ok := c.Locals("userID").(string)
 		if !ok || userID == "" {

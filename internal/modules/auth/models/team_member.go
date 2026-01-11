@@ -22,3 +22,16 @@ type TeamMember struct {
 func (tm *TeamMember) TableName() string {
 	return "team_user"
 }
+
+// GetRole returns the team member's role (implements middleware.TeamMemberInfo)
+func (tm *TeamMember) GetRole() string {
+	if tm.Role == nil {
+		return ""
+	}
+	return *tm.Role
+}
+
+// IsAdmin returns true if the team member has admin role (implements middleware.TeamMemberInfo)
+func (tm *TeamMember) IsAdmin() bool {
+	return tm.Role != nil && *tm.Role == "admin"
+}

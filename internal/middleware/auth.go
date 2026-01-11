@@ -1,4 +1,4 @@
-package middlewares
+package middleware
 
 import (
 	"strings"
@@ -9,8 +9,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
-// AuthMiddleware validates JWT tokens and sets user context
-func AuthMiddleware(jwtSecret string) fiber.Handler {
+func Auth(jwtSecret string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
@@ -26,7 +25,6 @@ func AuthMiddleware(jwtSecret string) fiber.Handler {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fiber.ErrUnauthorized
 			}
-
 			return []byte(jwtSecret), nil
 		})
 
@@ -39,13 +37,11 @@ func AuthMiddleware(jwtSecret string) fiber.Handler {
 			return response.Unauthorized(c, "Invalid token claims")
 		}
 
-		// Check token type
 		tokenType, ok := claims["type"].(string)
 		if !ok || tokenType != "access" {
 			return response.Unauthorized(c, "Invalid token type")
 		}
 
-		// Set user info in context
 		c.Locals("userID", claims["sub"])
 		c.Locals("email", claims["email"])
 
@@ -57,29 +53,27 @@ func AuthMiddleware(jwtSecret string) fiber.Handler {
 	}
 }
 
-// OptionalAuthMiddleware attempts to authenticate but allows anonymous access
-func OptionalAuthMiddleware(jwtSecret string) fiber.Handler {
+func OptionalAuth(jwtSecret string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		authHeader := c.Get("Authorization")
 		if authHeader == "" {
-			return c.Next() // No auth header, continue as anonymous
+			return c.Next()
 		}
 
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenString == authHeader {
-			return c.Next() // Invalid format, continue as anonymous
+			return c.Next()
 		}
 
 		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fiber.ErrUnauthorized
 			}
-
 			return []byte(jwtSecret), nil
 		})
 
 		if err != nil || !token.Valid {
-			return c.Next() // Invalid token, continue as anonymous
+			return c.Next()
 		}
 
 		claims, ok := token.Claims.(jwt.MapClaims)
@@ -87,13 +81,11 @@ func OptionalAuthMiddleware(jwtSecret string) fiber.Handler {
 			return c.Next()
 		}
 
-		// Check token type
 		tokenType, ok := claims["type"].(string)
 		if !ok || tokenType != "access" {
 			return c.Next()
 		}
 
-		// Set user info in context
 		c.Locals("userID", claims["sub"])
 		c.Locals("email", claims["email"])
 

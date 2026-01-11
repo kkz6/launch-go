@@ -6,8 +6,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
-	"github.com/kkz6/launch-go/internal/modules/auth/middlewares"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
@@ -40,17 +40,19 @@ func NewModule(db *gorm.DB, cfg *config.Config, logger *zerolog.Logger) *Module 
 // RegisterRoutes registers all auth-related routes
 func (m *Module) RegisterRoutes(router fiber.Router) {
 	auth := router.Group("/auth")
+	authMiddleware := middleware.Auth(m.config.JWT.Secret)
+	adapter := NewMiddlewareAdapter(m.service)
 
 	// Public routes (no authentication required)
 	m.registerPublicRoutes(auth)
 
 	// Protected routes (authentication required)
-	protected := auth.Group("", middlewares.AuthMiddleware(m.config.JWT.Secret))
+	protected := auth.Group("", authMiddleware)
 	m.registerProtectedRoutes(protected)
 
 	// Team routes (require authentication)
-	teams := router.Group("/teams", middlewares.AuthMiddleware(m.config.JWT.Secret))
-	m.registerTeamRoutes(teams)
+	teams := router.Group("/teams", authMiddleware)
+	m.registerTeamRoutes(teams, adapter)
 }
 
 // registerPublicRoutes registers routes that don't require authentication
@@ -101,22 +103,22 @@ func (m *Module) registerProtectedRoutes(router fiber.Router) {
 }
 
 // registerTeamRoutes registers team management routes
-func (m *Module) registerTeamRoutes(router fiber.Router) {
+func (m *Module) registerTeamRoutes(router fiber.Router, adapter *MiddlewareAdapter) {
 	// Team CRUD
 	router.Post("/", m.handler.Team.CreateTeam)
-	router.Get("/:teamId", middlewares.TeamMemberMiddleware(m.service), m.handler.Team.GetTeam)
-	router.Put("/:teamId", middlewares.TeamOwnerMiddleware(m.service), m.handler.Team.UpdateTeam)
-	router.Delete("/:teamId", middlewares.TeamOwnerMiddleware(m.service), m.handler.Team.DeleteTeam)
+	router.Get("/:teamId", middleware.TeamMember(adapter), m.handler.Team.GetTeam)
+	router.Put("/:teamId", middleware.TeamOwner(adapter), m.handler.Team.UpdateTeam)
+	router.Delete("/:teamId", middleware.TeamOwner(adapter), m.handler.Team.DeleteTeam)
 
 	// Team Members
-	router.Get("/:teamId/members", middlewares.TeamMemberMiddleware(m.service), m.handler.TeamMember.GetTeamMembers)
-	router.Post("/:teamId/members", middlewares.TeamAdminMiddleware(m.service), m.handler.TeamMember.InviteTeamMember)
-	router.Put("/:teamId/members/:memberId", middlewares.TeamOwnerMiddleware(m.service), m.handler.TeamMember.UpdateTeamMemberRole)
+	router.Get("/:teamId/members", middleware.TeamMember(adapter), m.handler.TeamMember.GetTeamMembers)
+	router.Post("/:teamId/members", middleware.TeamAdmin(adapter), m.handler.TeamMember.InviteTeamMember)
+	router.Put("/:teamId/members/:memberId", middleware.TeamOwner(adapter), m.handler.TeamMember.UpdateTeamMemberRole)
 	router.Delete("/:teamId/members/:memberId", m.handler.TeamMember.RemoveTeamMember)
 
 	// Team Invitations
-	router.Get("/:teamId/invitations", middlewares.TeamAdminMiddleware(m.service), m.handler.TeamMember.GetTeamInvitations)
-	router.Delete("/:teamId/invitations/:invitationId", middlewares.TeamAdminMiddleware(m.service), m.handler.TeamMember.CancelTeamInvitation)
+	router.Get("/:teamId/invitations", middleware.TeamAdmin(adapter), m.handler.TeamMember.GetTeamInvitations)
+	router.Delete("/:teamId/invitations/:invitationId", middleware.TeamAdmin(adapter), m.handler.TeamMember.CancelTeamInvitation)
 }
 
 // Service returns the auth service
