@@ -1,6 +1,7 @@
 package postgresql
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
@@ -63,4 +64,14 @@ func (t *GetDatabases) Data() map[string]interface{} {
 		"PgDatabase": "postgres",
 		"SQL":        t.SQL(),
 	}
+}
+
+// Script returns the command to run
+func (t *GetDatabases) Script() (string, error) {
+	return fmt.Sprintf(
+		`PGPASSWORD=%s psql -U %s -d postgres -t -A -c "%s"`,
+		t.pgPassword,
+		t.pgUser,
+		t.SQL(),
+	), nil
 }

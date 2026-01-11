@@ -31,8 +31,8 @@ func NewUninstallCron(server *models.Server, cron *models.Cron) *UninstallCron {
 // Data returns the template data
 func (t *UninstallCron) Data() map[string]interface{} {
 	return map[string]interface{}{
-		"Server":       t.server,
-		"Path":         t.Path(),
+		"Server":        t.server,
+		"Path":          t.Path(),
 		"IgnoreMissing": true,
 	}
 }

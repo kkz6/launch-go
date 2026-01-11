@@ -181,7 +181,7 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
 // getDatabaseServiceType finds the database service type on the server
 func (j *SyncDatabasesJob) getDatabaseServiceType(server *servermodels.Server) enums.ServiceType {
 	for _, service := range server.Services {
-		if service.Type.IsDatabase() && service.Status == enums.ServiceStatusInstalled {
+		if service.Type.IsDatabase() && service.Status.IsActive() {
 			return service.Type
 		}
 	}

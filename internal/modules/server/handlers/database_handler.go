@@ -55,3 +55,20 @@ func (h *Handler) CreateDatabase(c *fiber.Ctx) error {
 
 	return response.Created(c, "Database created", db)
 }
+
+// SyncDatabases syncs databases from the server
+func (h *Handler) SyncDatabases(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	serverID := c.Params("id")
+
+	var userID *string
+	if uid, ok := c.Locals("userID").(string); ok && uid != "" {
+		userID = &uid
+	}
+
+	if err := h.service.SyncDatabases(c.Context(), serverID, teamID, userID); err != nil {
+		return response.HandleErrorOrInternalErr(c, err, "Failed to sync databases")
+	}
+
+	return response.OK(c, "Database sync started", nil)
+}

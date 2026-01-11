@@ -31,6 +31,11 @@ func main() {
 	// Initialize logger
 	appLogger := logger.New(cfg.App.Environment)
 
+	// Initialize encryption for encrypted fields
+	if err := database.InitEncryption(cfg.App.Key); err != nil {
+		appLogger.Fatal().Err(err).Msg("Failed to initialize encryption")
+	}
+
 	// Initialize database
 	db, err := database.Connect(cfg.Database)
 	if err != nil {
