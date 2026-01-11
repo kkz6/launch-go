@@ -7,6 +7,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -57,15 +58,23 @@ func (j *AddSshKeyJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	j.broadcastProgress(payload.ServerID, "adding", "Adding SSH key...")
 
-	// TODO: Run the actual SSH key addition task
-	// _, err = j.RunTask(server, tasks.NewAuthorizePublicKey(&sshKey)).
-	//     AsRoot().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
+	// Authorize the public key on the server (for both root and default user)
+	_, err = j.RunTask(server, tasks.NewAuthorizePublicKey(server, sshKey.PublicKey, true)).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to authorize SSH key for root: %w", err)
+	}
 
-	_ = server // use server when implementing task execution
+	// Also authorize for the default user
+	_, err = j.RunTask(server, tasks.NewAuthorizePublicKey(server, sshKey.PublicKey, false)).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to authorize SSH key for user: %w", err)
+	}
 
 	j.broadcastProgress(payload.ServerID, "added", "SSH key added successfully")
 
