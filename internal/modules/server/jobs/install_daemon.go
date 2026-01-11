@@ -18,6 +18,7 @@ const TypeInstallDaemon = "server:install_daemon"
 
 // InstallDaemonPayload contains data for installing a daemon
 type InstallDaemonPayload struct {
+	ServerID string  `json:"server_id"`
 	DaemonID string  `json:"daemon_id"`
 	UserID   *string `json:"user_id,omitempty"`
 }
@@ -39,8 +40,9 @@ func NewInstallDaemonJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger)
 }
 
 // NewInstallDaemonTask creates a new asynq task for installing a daemon
-func NewInstallDaemonTask(daemonID string, userID *string) (*asynq.Task, error) {
+func NewInstallDaemonTask(serverID, daemonID string, userID *string) (*asynq.Task, error) {
 	payload, err := json.Marshal(InstallDaemonPayload{
+		ServerID: serverID,
 		DaemonID: daemonID,
 		UserID:   userID,
 	})
@@ -59,6 +61,7 @@ func (j *InstallDaemonJob) Handle(ctx context.Context, t *asynq.Task) error {
 	}
 
 	j.logger.Info().
+		Str("server_id", payload.ServerID).
 		Str("daemon_id", payload.DaemonID).
 		Msg("Installing daemon")
 
@@ -68,7 +71,7 @@ func (j *InstallDaemonJob) Handle(ctx context.Context, t *asynq.Task) error {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
 
-	j.broadcastProgress(daemon.ServerID, "installing", fmt.Sprintf("Installing daemon: %s", daemon.Command))
+	j.broadcastProgress(payload.ServerID, "installing", fmt.Sprintf("Installing daemon: %s", daemon.Command))
 
 	// TODO: Implement actual daemon installation:
 	// 1. Build supervisor program configuration
@@ -82,7 +85,7 @@ func (j *InstallDaemonJob) Handle(ctx context.Context, t *asynq.Task) error {
 		return fmt.Errorf("failed to update daemon status: %w", err)
 	}
 
-	j.broadcastProgress(daemon.ServerID, "installed", "Daemon installed successfully")
+	j.broadcastProgress(payload.ServerID, "installed", "Daemon installed successfully")
 
 	return nil
 }
@@ -97,12 +100,14 @@ func (j *InstallDaemonJob) Failed(ctx context.Context, t *asynq.Task, err error)
 
 	j.logger.Error().
 		Err(err).
+		Str("server_id", payload.ServerID).
 		Str("daemon_id", payload.DaemonID).
 		Msg("Failed to install daemon")
 
-	// Fetch the daemon to get server ID for broadcasting
+	// Fetch the daemon for updating status
 	var daemon models.Daemon
 	if findErr := j.db.First(&daemon, "id = ?", payload.DaemonID).Error; findErr != nil {
+		j.broadcastProgress(payload.ServerID, "failed", "Failed to install daemon")
 		return
 	}
 
@@ -110,7 +115,7 @@ func (j *InstallDaemonJob) Failed(ctx context.Context, t *asynq.Task, err error)
 	now := time.Now()
 	j.db.Model(&daemon).Update("installation_failed_at", &now)
 
-	j.broadcastProgress(daemon.ServerID, "failed", fmt.Sprintf("Failed to install daemon: %s", daemon.Command))
+	j.broadcastProgress(payload.ServerID, "failed", fmt.Sprintf("Failed to install daemon: %s", daemon.Command))
 
 	// TODO: Notify user about installation failure
 }

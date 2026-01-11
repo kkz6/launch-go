@@ -198,7 +198,7 @@ func (s *Service) RebootServer(ctx context.Context, id, teamID string) error {
 		return ErrServerNotProvisioned
 	}
 
-	task, err := jobs.NewRebootTask(server.ID)
+	task, err := jobs.NewRebootServerTask(server.ID, nil)
 	if err != nil {
 		return err
 	}
@@ -335,7 +335,7 @@ func (s *Service) dispatchProvisionJob(server *models.Server) error {
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewProvisionTask(server.ID, server.TeamID)
+	task, err := jobs.NewProvisionServerTask(server.ID, server.TeamID, nil)
 	if err != nil {
 		return err
 	}
@@ -350,7 +350,7 @@ func (s *Service) dispatchDeleteJob(server *models.Server) error {
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewDeleteTask(server.ID, server.TeamID)
+	task, err := jobs.NewDeleteServerTask(server.ID, server.TeamID, nil)
 	if err != nil {
 		return err
 	}

@@ -18,8 +18,9 @@ const TypeInstallCron = "server:install_cron"
 
 // InstallCronPayload contains data for installing a cron job
 type InstallCronPayload struct {
-	CronID string  `json:"cron_id"`
-	UserID *string `json:"user_id,omitempty"`
+	ServerID string  `json:"server_id"`
+	CronID   string  `json:"cron_id"`
+	UserID   *string `json:"user_id,omitempty"`
 }
 
 // InstallCronJob handles installing a cron job on a server
@@ -39,10 +40,11 @@ func NewInstallCronJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *
 }
 
 // NewInstallCronTask creates a new asynq task for installing a cron job
-func NewInstallCronTask(cronID string, userID *string) (*asynq.Task, error) {
+func NewInstallCronTask(serverID, cronID string, userID *string) (*asynq.Task, error) {
 	payload, err := json.Marshal(InstallCronPayload{
-		CronID: cronID,
-		UserID: userID,
+		ServerID: serverID,
+		CronID:   cronID,
+		UserID:   userID,
 	})
 	if err != nil {
 		return nil, err
@@ -59,6 +61,7 @@ func (j *InstallCronJob) Handle(ctx context.Context, t *asynq.Task) error {
 	}
 
 	j.logger.Info().
+		Str("server_id", payload.ServerID).
 		Str("cron_id", payload.CronID).
 		Msg("Installing cron job")
 
@@ -68,7 +71,7 @@ func (j *InstallCronJob) Handle(ctx context.Context, t *asynq.Task) error {
 		return fmt.Errorf("failed to find cron: %w", err)
 	}
 
-	j.broadcastProgress(cron.ServerID, "installing", fmt.Sprintf("Installing cron job: %s", cron.Command))
+	j.broadcastProgress(payload.ServerID, "installing", fmt.Sprintf("Installing cron job: %s", cron.Command))
 
 	// TODO: Implement actual cron installation:
 	// 1. Build cron configuration content
@@ -81,7 +84,7 @@ func (j *InstallCronJob) Handle(ctx context.Context, t *asynq.Task) error {
 		return fmt.Errorf("failed to update cron status: %w", err)
 	}
 
-	j.broadcastProgress(cron.ServerID, "installed", "Cron job installed successfully")
+	j.broadcastProgress(payload.ServerID, "installed", "Cron job installed successfully")
 
 	return nil
 }
@@ -96,12 +99,14 @@ func (j *InstallCronJob) Failed(ctx context.Context, t *asynq.Task, err error) {
 
 	j.logger.Error().
 		Err(err).
+		Str("server_id", payload.ServerID).
 		Str("cron_id", payload.CronID).
 		Msg("Failed to install cron job")
 
-	// Fetch the cron to get server ID for broadcasting
+	// Fetch the cron for updating status
 	var cron models.Cron
 	if findErr := j.db.First(&cron, "id = ?", payload.CronID).Error; findErr != nil {
+		j.broadcastProgress(payload.ServerID, "failed", "Failed to install cron job")
 		return
 	}
 
@@ -109,9 +114,7 @@ func (j *InstallCronJob) Failed(ctx context.Context, t *asynq.Task, err error) {
 	now := time.Now()
 	j.db.Model(&cron).Update("installation_failed_at", &now)
 
-	j.broadcastProgress(cron.ServerID, "failed", fmt.Sprintf("Failed to install cron job: %s", cron.Command))
-
-	// TODO: Notify user about installation failure
+	j.broadcastProgress(payload.ServerID, "failed", fmt.Sprintf("Failed to install cron job: %s", cron.Command))
 }
 
 func (j *InstallCronJob) broadcastProgress(serverID, status, message string) {

@@ -141,7 +141,7 @@ func (s *Service) dispatchFirewallRuleInstallJob(server *models.Server, rule *mo
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewFirewallRuleTask(server.ID, rule.ID, "install")
+	task, err := jobs.NewInstallFirewallRuleTask(server.ID, rule.ID, nil)
 	if err != nil {
 		return err
 	}
@@ -156,7 +156,7 @@ func (s *Service) dispatchFirewallRuleUninstallJob(server *models.Server, rule *
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewFirewallRuleTask(server.ID, rule.ID, "uninstall")
+	task, err := jobs.NewUninstallFirewallRuleTask(server.ID, rule.ID, nil)
 	if err != nil {
 		return err
 	}
