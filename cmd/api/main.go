@@ -33,10 +33,10 @@ func main() {
 	}
 
 	// Initialize logger
-	appLogger := logger.New(cfg.App.Environment)
+	appLogger := logger.NewWithConfig(cfg.App.Environment, cfg.App.Debug)
 
-	// Initialize database
-	db, err := database.Connect(cfg.Database)
+	// Initialize database with custom logger
+	db, err := database.ConnectWithLogger(cfg.Database, appLogger)
 	if err != nil {
 		appLogger.Fatal().Err(err).Msg("Failed to connect to database")
 	}

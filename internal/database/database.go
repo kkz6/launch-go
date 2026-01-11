@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rs/zerolog"
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
-	"gorm.io/gorm/logger"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/database/serializers"
+	"github.com/kkz6/launch-go/internal/pkg/logger"
 )
 
 // InitEncryption initializes the encryption key for the serializers
@@ -21,7 +22,13 @@ func InitEncryption(appKey string) error {
 	return serializers.SetEncryptionKeyFromBase64(appKey)
 }
 
+// Connect establishes a database connection with custom logging
 func Connect(cfg config.DatabaseConfig) (*gorm.DB, error) {
+	return ConnectWithLogger(cfg, nil)
+}
+
+// ConnectWithLogger establishes a database connection with a custom zerolog logger
+func ConnectWithLogger(cfg config.DatabaseConfig, appLogger *zerolog.Logger) (*gorm.DB, error) {
 	var dialector gorm.Dialector
 
 	switch cfg.Driver {
@@ -33,12 +40,19 @@ func Connect(cfg config.DatabaseConfig) (*gorm.DB, error) {
 		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
 	}
 
-	db, err := gorm.Open(dialector, &gorm.Config{
-		Logger:                                   logger.Default.LogMode(logger.Info),
+	// Configure GORM
+	gormConfig := &gorm.Config{
 		SkipDefaultTransaction:                   true,
 		PrepareStmt:                              true,
 		DisableForeignKeyConstraintWhenMigrating: true,
-	})
+	}
+
+	// Use custom logger if provided
+	if appLogger != nil {
+		gormConfig.Logger = logger.NewGormLogger(appLogger)
+	}
+
+	db, err := gorm.Open(dialector, gormConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
