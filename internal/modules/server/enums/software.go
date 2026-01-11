@@ -231,3 +231,36 @@ func AllPhpVersions() []Software {
 func AllDatabaseTypes() []Software {
 	return []Software{SoftwareMySql80, SoftwarePostgreSql16}
 }
+
+// LogPath returns the log file path for the software
+func (s Software) LogPath() string {
+	paths := map[Software]string{
+		SoftwareMySql80:      "/var/log/mysql/error.log",
+		SoftwarePostgreSql16: "/var/log/postgresql/postgresql-16-main.log",
+		SoftwareRedis:        "/var/log/redis/redis-server.log",
+		SoftwarePhp56:        "/var/log/php5.6-fpm.log",
+		SoftwarePhp70:        "/var/log/php7.0-fpm.log",
+		SoftwarePhp71:        "/var/log/php7.1-fpm.log",
+		SoftwarePhp72:        "/var/log/php7.2-fpm.log",
+		SoftwarePhp73:        "/var/log/php7.3-fpm.log",
+		SoftwarePhp74:        "/var/log/php7.4-fpm.log",
+		SoftwarePhp80:        "/var/log/php8.0-fpm.log",
+		SoftwarePhp81:        "/var/log/php8.1-fpm.log",
+		SoftwarePhp82:        "/var/log/php8.2-fpm.log",
+		SoftwarePhp83:        "/var/log/php8.3-fpm.log",
+		SoftwarePhp84:        "/var/log/php8.4-fpm.log",
+		SoftwareCaddy2:       "/var/log/caddy/access.log",
+		SoftwareSupervisor:   "/var/log/supervisor/supervisord.log",
+	}
+
+	if path, ok := paths[s]; ok {
+		return path
+	}
+
+	return ""
+}
+
+// HasLogPath returns true if the software has a log file path
+func (s Software) HasLogPath() bool {
+	return s.LogPath() != ""
+}

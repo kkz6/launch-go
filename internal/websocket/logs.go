@@ -12,6 +12,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
 )
@@ -32,24 +33,6 @@ func NewLogsHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger) *LogsH
 	}
 }
 
-// softwareLogPaths maps software identifiers to their log file paths
-var softwareLogPaths = map[string]string{
-	"mysql80":    "/var/log/mysql/error.log",
-	"redis":      "/var/log/redis/redis-server.log",
-	"php56":      "/var/log/php5.6-fpm.log",
-	"php70":      "/var/log/php7.0-fpm.log",
-	"php71":      "/var/log/php7.1-fpm.log",
-	"php72":      "/var/log/php7.2-fpm.log",
-	"php73":      "/var/log/php7.3-fpm.log",
-	"php74":      "/var/log/php7.4-fpm.log",
-	"php80":      "/var/log/php8.0-fpm.log",
-	"php81":      "/var/log/php8.1-fpm.log",
-	"php82":      "/var/log/php8.2-fpm.log",
-	"php83":      "/var/log/php8.3-fpm.log",
-	"php84":      "/var/log/php8.4-fpm.log",
-	"caddy2":     "/var/log/caddy/access.log",
-	"supervisor": "/var/log/supervisor/supervisord.log",
-}
 
 // Handler returns a Fiber handler for log streaming WebSocket connections
 func (h *LogsHandler) Handler() fiber.Handler {
@@ -102,8 +85,9 @@ func (h *LogsHandler) Handler() fiber.Handler {
 		switch entity {
 		case "server":
 			// Server-level logs based on software
-			if path, ok := softwareLogPaths[software]; ok {
-				logFilePath = path
+			sw := enums.Software(software)
+			if sw.HasLogPath() {
+				logFilePath = sw.LogPath()
 			} else {
 				c.WriteMessage(websocket.TextMessage, []byte("Unknown software type"))
 				c.Close()

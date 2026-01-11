@@ -9,6 +9,7 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/taskrunner/repositories"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -22,16 +23,17 @@ const (
 // TaskJobHandler handles task-related background jobs
 type TaskJobHandler struct {
 	db         *gorm.DB
-	repo       *TaskRepository
+	repo       *repositories.TaskRepository
 	dispatcher *Dispatcher
 	ws         *websocket.Hub
 	logger     *zerolog.Logger
 }
 
+// NewTaskJobHandler creates a new task job handler
 func NewTaskJobHandler(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *TaskJobHandler {
 	return &TaskJobHandler{
 		db:         db,
-		repo:       NewTaskRepository(db),
+		repo:       repositories.NewTaskRepository(db),
 		dispatcher: NewDispatcher(logger, ws),
 		ws:         ws,
 		logger:     logger,
@@ -72,11 +74,9 @@ func (h *TaskJobHandler) HandleRunTask(ctx context.Context, t *asynq.Task) error
 		Str("server_id", payload.ServerID).
 		Msg("Running task")
 
-	// Update task status to running
-	h.repo.UpdateStatus(payload.TaskID, TaskStatusRunning)
-	h.broadcastTaskUpdate(payload.TaskID, TaskStatusRunning, "Task started")
+	h.repo.UpdateStatus(payload.TaskID, "running")
+	h.broadcastTaskUpdate(payload.TaskID, "running", "Task started")
 
-	// Create connection
 	conn := &Connection{
 		Host:       payload.Host,
 		Port:       payload.Port,
@@ -84,7 +84,6 @@ func (h *TaskJobHandler) HandleRunTask(ctx context.Context, t *asynq.Task) error
 		PrivateKey: payload.PrivateKey,
 	}
 
-	// Create task wrapper
 	task := &BaseTask{
 		TaskName:    "remote-task",
 		TaskTimeout: time.Duration(payload.Timeout) * time.Second,
@@ -96,7 +95,6 @@ func (h *TaskJobHandler) HandleRunTask(ctx context.Context, t *asynq.Task) error
 		},
 	}
 
-	// Create pending task
 	pt := NewPendingTask(task).
 		OnConnection(conn).
 		WithID(payload.TaskID)
@@ -105,21 +103,19 @@ func (h *TaskJobHandler) HandleRunTask(ctx context.Context, t *asynq.Task) error
 		pt.InBackground()
 	}
 
-	// Execute
 	result, err := h.dispatcher.Run(ctx, pt)
 	if err != nil {
 		h.logger.Error().Err(err).Str("task_id", payload.TaskID).Msg("Task execution failed")
-		h.repo.UpdateResult(payload.TaskID, TaskStatusFailed, 1, err.Error())
-		h.broadcastTaskUpdate(payload.TaskID, TaskStatusFailed, err.Error())
+		h.repo.UpdateResult(payload.TaskID, "failed", 1, err.Error())
+		h.broadcastTaskUpdate(payload.TaskID, "failed", err.Error())
 		return err
 	}
 
-	// Update result
-	status := TaskStatusFinished
+	status := "finished"
 	if result.TimedOut {
-		status = TaskStatusTimeout
+		status = "timeout"
 	} else if result.ExitCode != 0 {
-		status = TaskStatusFailed
+		status = "failed"
 	}
 
 	h.repo.UpdateResult(payload.TaskID, status, result.ExitCode, result.Output)
@@ -164,11 +160,9 @@ func (h *TaskJobHandler) HandleUpdateTaskOutput(ctx context.Context, t *asynq.Ta
 	output, err := h.dispatcher.GetTaskOutput(ctx, conn, payload.TaskID)
 	if err != nil {
 		h.logger.Warn().Err(err).Str("task_id", payload.TaskID).Msg("Failed to get task output")
-		// Don't fail the job - output might not be ready yet
 		return nil
 	}
 
-	// Update output in database
 	h.repo.UpdateOutput(payload.TaskID, output)
 	h.broadcastTaskOutput(payload.TaskID, output)
 
@@ -214,18 +208,16 @@ func (h *TaskJobHandler) HandleCheckTaskStatus(ctx context.Context, t *asynq.Tas
 	}
 
 	if isRunning {
-		// Still running - this job will be retried
 		return nil
 	}
 
-	// Task completed - fetch final output and update status
 	output, _ := h.dispatcher.GetTaskOutput(ctx, conn, payload.TaskID)
 
-	status := TaskStatusFinished
+	status := "finished"
 	if exitCode == 124 {
-		status = TaskStatusTimeout
+		status = "timeout"
 	} else if exitCode != 0 {
-		status = TaskStatusFailed
+		status = "failed"
 	}
 
 	h.repo.UpdateResult(payload.TaskID, status, exitCode, output)
@@ -234,8 +226,7 @@ func (h *TaskJobHandler) HandleCheckTaskStatus(ctx context.Context, t *asynq.Tas
 	return nil
 }
 
-// Helper methods
-func (h *TaskJobHandler) broadcastTaskUpdate(taskID string, status TaskStatus, message string) {
+func (h *TaskJobHandler) broadcastTaskUpdate(taskID string, status string, message string) {
 	h.ws.Broadcast("task."+taskID, "task.updated", map[string]interface{}{
 		"task_id": taskID,
 		"status":  status,
