@@ -16,6 +16,7 @@ import (
 	"github.com/kkz6/launch-go/internal/database"
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/auth"
+	"github.com/kkz6/launch-go/internal/modules/dns"
 	"github.com/kkz6/launch-go/internal/modules/server"
 	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/modules/team"
@@ -88,12 +89,14 @@ func main() {
 	teamModule := team.NewModule(db, appLogger)
 	serverModule := server.NewModule(db, queueClient, wsHub, dispatcher, appLogger)
 	siteModule := site.NewModule(db, queueClient, wsHub, appLogger)
+	dnsModule := dns.NewModule(db, appLogger)
 
 	// Register routes
 	authModule.RegisterRoutes(api)
 	teamModule.RegisterRoutes(api, middleware.Auth(cfg.JWT.Secret))
 	serverModule.RegisterRoutes(api, middleware.Auth(cfg.JWT.Secret))
 	siteModule.RegisterRoutes(api, middleware.Auth(cfg.JWT.Secret))
+	dnsModule.RegisterRoutes(api, middleware.Auth(cfg.JWT.Secret))
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
