@@ -71,12 +71,12 @@ func (r *Repository) FindServerWithRelations(ctx context.Context, id, teamID str
 	return &server, nil
 }
 
-// FindAllServersByTeam finds all servers for a team
+// FindAllServersByTeam finds all active (non-archived) servers for a team
 func (r *Repository) FindAllServersByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
 	var servers []models.Server
 	err := r.db.WithContext(ctx).
 		Preload("Services").
-		Where("team_id = ?", teamID).
+		Where("team_id = ? AND archived_at IS NULL", teamID).
 		Order("created_at DESC").
 		Find(&servers).Error
 
