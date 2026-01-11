@@ -68,6 +68,11 @@ func (t *GetDatabases) SQL() string {
 	return "SHOW DATABASES;"
 }
 
+// Script returns the command to run
+func (t *GetDatabases) Script() (string, error) {
+	return BuildMySQLCommand(t.mySQLUser, t.mySQLPassword, t.SQL()), nil
+}
+
 // onFinished handles successful completion
 func (t *GetDatabases) onFinished(ctx context.Context, result *taskrunner.TaskResult) {
 	// Databases retrieved successfully

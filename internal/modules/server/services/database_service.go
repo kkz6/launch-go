@@ -2,7 +2,9 @@ package services
 
 import (
 	"context"
+	"fmt"
 
+	dbjobs "github.com/kkz6/launch-go/internal/modules/database/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 )
@@ -42,4 +44,28 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 	}
 
 	return db, nil
+}
+
+// SyncDatabases syncs databases from the server
+func (s *Service) SyncDatabases(ctx context.Context, serverID, teamID string, userID *string) error {
+	// Verify server belongs to team
+	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+		return err
+	}
+
+	if s.queue == nil {
+		return ErrQueueNotConfigured
+	}
+
+	task, err := dbjobs.NewSyncDatabasesTask(serverID, userID)
+	if err != nil {
+		return fmt.Errorf("failed to create sync task: %w", err)
+	}
+
+	if _, err := s.queue.EnqueueDefault(task); err != nil {
+		s.logger.Error().Err(err).Str("server_id", serverID).Msg("Failed to enqueue sync databases job")
+		return fmt.Errorf("failed to enqueue sync job: %w", err)
+	}
+
+	return nil
 }
