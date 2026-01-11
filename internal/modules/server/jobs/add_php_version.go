@@ -8,6 +8,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -55,24 +56,21 @@ func (j *AddPhpVersionJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	j.broadcastProgress(payload.ServerID, "installing", fmt.Sprintf("Installing %s...", payload.PhpVersion.Label()))
 
-	// TODO: Run the actual PHP installation task
-	// result, err := j.RunTask(server, tasks.NewAddPhpVersion(server, payload.PhpVersion)).
-	//     AsRoot().
-	//     KeepTrack().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
-
-	// Update the service task_id if service_id is provided
-	if payload.ServiceID != "" {
-		// TODO: Associate task result with service
-		// j.DB.Model(&models.InstalledService{}).
-		//     Where("id = ?", payload.ServiceID).
-		//     Update("task_id", result.TaskModel.ID)
+	// Run the PHP installation task with tracking
+	result, err := j.RunTask(server, tasks.NewAddPhpVersion(server, payload.PhpVersion)).
+		AsRoot().
+		KeepTrack().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to install PHP version: %w", err)
 	}
 
-	_ = server // use server when implementing task execution
+	// Update the service task_id to link to the tracked task
+	if result.TaskModel != nil {
+		j.DB.Model(&models.InstalledService{}).
+			Where("server_id = ? AND software = ?", payload.ServerID, payload.PhpVersion).
+			Update("task_id", result.TaskModel.ID)
+	}
 
 	j.broadcastProgress(payload.ServerID, "installed", fmt.Sprintf("%s installed successfully", payload.PhpVersion.Label()))
 

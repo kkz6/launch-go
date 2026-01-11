@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -53,14 +54,14 @@ func (j *InstallCronJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	j.broadcastProgress(payload.ServerID, "installing", fmt.Sprintf("Installing cron job: %s", cron.Command))
 
-	// TODO: Run the actual cron installation task
-	// result, err := j.RunTask(cron.Server, tasks.NewInstallCron(cron)).
-	//     AsRoot().
-	//     KeepTrack().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
+	// Install the cron job on the server
+	_, err = j.RunTask(cron.Server, tasks.NewInstallCron(cron.Server, cron)).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to install cron: %w", err)
+	}
 
 	// Mark the cron as installed
 	if err := j.Repo.MarkCronInstalled(ctx, cron.ID); err != nil {

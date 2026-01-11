@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -53,13 +54,14 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context, t *asynq.Task) erro
 
 	j.broadcastProgress(payload.ServerID, "installing", fmt.Sprintf("Installing firewall rule: %s", rule.FormatAsUfwRule()))
 
-	// TODO: Run the actual firewall rule installation task
-	// _, err = j.RunTask(rule.Server, tasks.NewAddFirewallRule(&rule)).
-	//     AsRoot().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
+	// Run the firewall rule installation task
+	_, err = j.RunTask(rule.Server, tasks.NewAddFirewallRule(rule.Server, rule)).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to add firewall rule: %w", err)
+	}
 
 	// Mark the rule as installed
 	if err := j.Repo.MarkFirewallRuleInstalled(ctx, rule.ID); err != nil {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -54,15 +55,16 @@ func (j *UninstallCronJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	j.broadcastProgress(payload.ServerID, "uninstalling", fmt.Sprintf("Uninstalling cron job: %s", cron.Command))
 
-	// TODO: Run the actual cron uninstallation task
-	// _, err = j.RunTask(cron.Server, tasks.NewUninstallCron(&cron)).
-	//     AsRoot().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
+	// Uninstall the cron job from the server
+	_, err = j.RunTask(cron.Server, tasks.NewUninstallCron(cron.Server, cron)).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to uninstall cron: %w", err)
+	}
 
-	// Delete the cron record
+	// Delete the cron record from database
 	if err := j.Repo.DeleteCron(ctx, cron.ID); err != nil {
 		return fmt.Errorf("failed to delete cron record: %w", err)
 	}

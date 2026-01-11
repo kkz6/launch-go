@@ -50,16 +50,9 @@ func (c *Cron) IsInstalled() bool {
 	return c.InstalledAt != nil
 }
 
+// Path returns the path to the cron file
 func (c *Cron) Path() string {
 	return fmt.Sprintf("/etc/cron.d/cron-%s", c.ID)
-}
-
-func (c *Cron) LogPath(workingDirectory string) string {
-	if c.User == "root" {
-		return fmt.Sprintf("/root/%s/cron-%s.log", workingDirectory, c.ID)
-	}
-
-	return fmt.Sprintf("/home/%s/%s/cron-%s.log", c.User, workingDirectory, c.ID)
 }
 
 // GetLogPath returns the path to the cron log file
