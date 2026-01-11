@@ -76,20 +76,15 @@ func main() {
 		},
 	)
 
-	// Create job handlers
-	serverJobHandler := serverjobs.NewHandler(db, wsHub, appLogger)
-	installDatabaseJob := serverjobs.NewInstallDatabaseJob(db, wsHub, appLogger)
+	// Create job registries
+	serverJobRegistry := serverjobs.NewRegistry(db, wsHub, appLogger)
 	siteJobHandler := sitejobs.NewHandler(db, wsHub, appLogger)
 
 	// Register handlers
 	mux := asynq.NewServeMux()
 
-	// Server jobs
-	mux.HandleFunc(serverjobs.TypeProvision, serverJobHandler.HandleProvision)
-	mux.HandleFunc(serverjobs.TypeInstallPHP, serverJobHandler.HandleInstallPHP)
-	mux.HandleFunc(serverjobs.TypeConfigureFirewall, serverJobHandler.HandleConfigureFirewall)
-	mux.HandleFunc(serverjobs.TypeInstallDatabase, installDatabaseJob.Handle)
-	mux.HandleFunc(serverjobs.TypeReboot, serverJobHandler.HandleReboot)
+	// Server jobs - use registry pattern
+	serverJobRegistry.RegisterHandlers(mux)
 
 	// Site jobs
 	mux.HandleFunc(sitejobs.TypeDeploy, siteJobHandler.HandleDeploy)

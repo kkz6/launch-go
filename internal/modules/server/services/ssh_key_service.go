@@ -124,7 +124,7 @@ func (s *Service) dispatchSshKeyAddJob(server *models.Server, key *models.SshKey
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewSshKeyTask(server.ID, key.ID, "add")
+	task, err := jobs.NewAddSshKeyTask(server.ID, key.ID)
 	if err != nil {
 		return err
 	}
@@ -139,7 +139,7 @@ func (s *Service) dispatchSshKeyRemoveJob(server *models.Server, key *models.Ssh
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewSshKeyTask(server.ID, key.ID, "remove")
+	task, err := jobs.NewRemoveSshKeyTask(server.ID, key.ID, false)
 	if err != nil {
 		return err
 	}

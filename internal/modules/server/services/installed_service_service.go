@@ -105,7 +105,7 @@ func (s *Service) dispatchServiceInstallJob(server *models.Server, service *mode
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewInstallServiceTask(server.ID, service.ID, service.Software)
+	task, err := jobs.NewAddServiceTask(server.ID, service.ID, enums.Software(service.Software))
 	if err != nil {
 		return err
 	}
@@ -120,7 +120,7 @@ func (s *Service) dispatchServiceRestartJob(server *models.Server, service *mode
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, "restart")
+	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, "restart", nil)
 	if err != nil {
 		return err
 	}
@@ -135,7 +135,7 @@ func (s *Service) dispatchServiceStopJob(server *models.Server, service *models.
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, "stop")
+	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, "stop", nil)
 	if err != nil {
 		return err
 	}
@@ -150,7 +150,7 @@ func (s *Service) dispatchServiceRemoveJob(server *models.Server, service *model
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, "remove")
+	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, "remove", nil)
 	if err != nil {
 		return err
 	}
@@ -165,7 +165,7 @@ func (s *Service) dispatchServiceStatusJob(server *models.Server, service *model
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, "status")
+	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, "status", nil)
 	if err != nil {
 		return err
 	}

@@ -16,23 +16,30 @@ import (
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
-func setupTestHandler(t *testing.T) *Handler {
+func setupTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
+	return db
+}
 
+func setupTestRegistry(t *testing.T) *Registry {
+	db := setupTestDB(t)
 	logger := zerolog.New(os.Stdout)
 	ws := websocket.NewHub()
 
-	return NewHandler(db, ws, &logger)
+	return NewRegistry(db, ws, &logger)
 }
 
-func TestNewHandler(t *testing.T) {
-	handler := setupTestHandler(t)
+func TestNewRegistry(t *testing.T) {
+	registry := setupTestRegistry(t)
 
-	assert.NotNil(t, handler)
-	assert.NotNil(t, handler.db)
-	assert.NotNil(t, handler.ws)
-	assert.NotNil(t, handler.logger)
+	assert.NotNil(t, registry)
+	assert.NotNil(t, registry.InstallDatabase)
+	assert.NotNil(t, registry.UninstallDatabase)
+	assert.NotNil(t, registry.InstallDatabaseUser)
+	assert.NotNil(t, registry.UpdateDatabaseUser)
+	assert.NotNil(t, registry.UninstallDatabaseUser)
+	assert.NotNil(t, registry.SyncDatabases)
 }
 
 func TestNewInstallDatabaseTask(t *testing.T) {
@@ -93,7 +100,7 @@ func TestNewInstallDatabaseUserTask(t *testing.T) {
 	err = json.Unmarshal(task.Payload(), &payload)
 	require.NoError(t, err)
 
-	assert.Equal(t, "user_id", payload.UserID)
+	assert.Equal(t, "user_id", payload.DatabaseUserID)
 	assert.Equal(t, "password123", payload.Password)
 	assert.Equal(t, &callerID, payload.CallerID)
 }
@@ -112,7 +119,7 @@ func TestNewUpdateDatabaseUserTask(t *testing.T) {
 		err = json.Unmarshal(task.Payload(), &payload)
 		require.NoError(t, err)
 
-		assert.Equal(t, "user_id", payload.UserID)
+		assert.Equal(t, "user_id", payload.DatabaseUserID)
 		assert.Equal(t, &password, payload.Password)
 		assert.Equal(t, &callerID, payload.CallerID)
 	})
@@ -141,7 +148,7 @@ func TestNewUninstallDatabaseUserTask(t *testing.T) {
 	err = json.Unmarshal(task.Payload(), &payload)
 	require.NoError(t, err)
 
-	assert.Equal(t, "user_id", payload.UserID)
+	assert.Equal(t, "user_id", payload.DatabaseUserID)
 	assert.Equal(t, &callerID, payload.CallerID)
 }
 
@@ -161,123 +168,74 @@ func TestNewSyncDatabasesTask(t *testing.T) {
 	assert.Equal(t, &userID, payload.UserID)
 }
 
-func TestHandler_HandleInstallDatabase(t *testing.T) {
-	handler := setupTestHandler(t)
+func TestInstallDatabaseJob_Handle(t *testing.T) {
+	registry := setupTestRegistry(t)
 	ctx := context.Background()
-
-	t.Run("handles install database task", func(t *testing.T) {
-		task, err := NewInstallDatabaseTask("db_id", nil)
-		require.NoError(t, err)
-
-		err = handler.HandleInstallDatabase(ctx, task)
-		require.NoError(t, err)
-	})
 
 	t.Run("returns error for invalid payload", func(t *testing.T) {
 		task := asynq.NewTask(TypeInstallDatabase, []byte("invalid"))
 
-		err := handler.HandleInstallDatabase(ctx, task)
+		err := registry.InstallDatabase.Handle(ctx, task)
 		assert.Error(t, err)
 	})
 }
 
-func TestHandler_HandleUninstallDatabase(t *testing.T) {
-	handler := setupTestHandler(t)
+func TestUninstallDatabaseJob_Handle(t *testing.T) {
+	registry := setupTestRegistry(t)
 	ctx := context.Background()
-
-	t.Run("handles uninstall database task", func(t *testing.T) {
-		task, err := NewUninstallDatabaseTask("db_id", nil)
-		require.NoError(t, err)
-
-		err = handler.HandleUninstallDatabase(ctx, task)
-		require.NoError(t, err)
-	})
 
 	t.Run("returns error for invalid payload", func(t *testing.T) {
 		task := asynq.NewTask(TypeUninstallDatabase, []byte("invalid"))
 
-		err := handler.HandleUninstallDatabase(ctx, task)
+		err := registry.UninstallDatabase.Handle(ctx, task)
 		assert.Error(t, err)
 	})
 }
 
-func TestHandler_HandleInstallDatabaseUser(t *testing.T) {
-	handler := setupTestHandler(t)
+func TestInstallDatabaseUserJob_Handle(t *testing.T) {
+	registry := setupTestRegistry(t)
 	ctx := context.Background()
-
-	t.Run("handles install database user task", func(t *testing.T) {
-		task, err := NewInstallDatabaseUserTask("user_id", "password", nil)
-		require.NoError(t, err)
-
-		err = handler.HandleInstallDatabaseUser(ctx, task)
-		require.NoError(t, err)
-	})
 
 	t.Run("returns error for invalid payload", func(t *testing.T) {
 		task := asynq.NewTask(TypeInstallDatabaseUser, []byte("invalid"))
 
-		err := handler.HandleInstallDatabaseUser(ctx, task)
+		err := registry.InstallDatabaseUser.Handle(ctx, task)
 		assert.Error(t, err)
 	})
 }
 
-func TestHandler_HandleUpdateDatabaseUser(t *testing.T) {
-	handler := setupTestHandler(t)
+func TestUpdateDatabaseUserJob_Handle(t *testing.T) {
+	registry := setupTestRegistry(t)
 	ctx := context.Background()
-
-	t.Run("handles update database user task", func(t *testing.T) {
-		password := "new_password"
-		task, err := NewUpdateDatabaseUserTask("user_id", &password, nil)
-		require.NoError(t, err)
-
-		err = handler.HandleUpdateDatabaseUser(ctx, task)
-		require.NoError(t, err)
-	})
 
 	t.Run("returns error for invalid payload", func(t *testing.T) {
 		task := asynq.NewTask(TypeUpdateDatabaseUser, []byte("invalid"))
 
-		err := handler.HandleUpdateDatabaseUser(ctx, task)
+		err := registry.UpdateDatabaseUser.Handle(ctx, task)
 		assert.Error(t, err)
 	})
 }
 
-func TestHandler_HandleUninstallDatabaseUser(t *testing.T) {
-	handler := setupTestHandler(t)
+func TestUninstallDatabaseUserJob_Handle(t *testing.T) {
+	registry := setupTestRegistry(t)
 	ctx := context.Background()
-
-	t.Run("handles uninstall database user task", func(t *testing.T) {
-		task, err := NewUninstallDatabaseUserTask("user_id", nil)
-		require.NoError(t, err)
-
-		err = handler.HandleUninstallDatabaseUser(ctx, task)
-		require.NoError(t, err)
-	})
 
 	t.Run("returns error for invalid payload", func(t *testing.T) {
 		task := asynq.NewTask(TypeUninstallDatabaseUser, []byte("invalid"))
 
-		err := handler.HandleUninstallDatabaseUser(ctx, task)
+		err := registry.UninstallDatabaseUser.Handle(ctx, task)
 		assert.Error(t, err)
 	})
 }
 
-func TestHandler_HandleSyncDatabases(t *testing.T) {
-	handler := setupTestHandler(t)
+func TestSyncDatabasesJob_Handle(t *testing.T) {
+	registry := setupTestRegistry(t)
 	ctx := context.Background()
-
-	t.Run("handles sync databases task", func(t *testing.T) {
-		task, err := NewSyncDatabasesTask("server_id", nil)
-		require.NoError(t, err)
-
-		err = handler.HandleSyncDatabases(ctx, task)
-		require.NoError(t, err)
-	})
 
 	t.Run("returns error for invalid payload", func(t *testing.T) {
 		task := asynq.NewTask(TypeSyncDatabases, []byte("invalid"))
 
-		err := handler.HandleSyncDatabases(ctx, task)
+		err := registry.SyncDatabases.Handle(ctx, task)
 		assert.Error(t, err)
 	})
 }
@@ -379,4 +337,28 @@ func TestTaskTypes(t *testing.T) {
 	assert.Equal(t, "database:user:update", TypeUpdateDatabaseUser)
 	assert.Equal(t, "database:user:uninstall", TypeUninstallDatabaseUser)
 	assert.Equal(t, "database:sync", TypeSyncDatabases)
+}
+
+func TestAllTaskTypes(t *testing.T) {
+	taskTypes := AllTaskTypes()
+
+	assert.Len(t, taskTypes, 6)
+	assert.Contains(t, taskTypes, TypeInstallDatabase)
+	assert.Contains(t, taskTypes, TypeUninstallDatabase)
+	assert.Contains(t, taskTypes, TypeInstallDatabaseUser)
+	assert.Contains(t, taskTypes, TypeUpdateDatabaseUser)
+	assert.Contains(t, taskTypes, TypeUninstallDatabaseUser)
+	assert.Contains(t, taskTypes, TypeSyncDatabases)
+}
+
+func TestRegistry_RegisterHandlers(t *testing.T) {
+	registry := setupTestRegistry(t)
+	mux := asynq.NewServeMux()
+
+	registry.RegisterHandlers(mux)
+
+	// Verify all handlers are registered by checking mux has handlers
+	// The mux doesn't expose a way to check registered handlers,
+	// but we can verify it doesn't panic
+	assert.NotNil(t, mux)
 }

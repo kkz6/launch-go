@@ -132,7 +132,7 @@ func (s *Service) dispatchCronInstallJob(server *models.Server, cron *models.Cro
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewCronTask(server.ID, cron.ID, "install")
+	task, err := jobs.NewInstallCronTask(server.ID, cron.ID, nil)
 	if err != nil {
 		return err
 	}
@@ -147,7 +147,7 @@ func (s *Service) dispatchCronUninstallJob(server *models.Server, cron *models.C
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewCronTask(server.ID, cron.ID, "uninstall")
+	task, err := jobs.NewUninstallCronTask(server.ID, cron.ID, nil)
 	if err != nil {
 		return err
 	}

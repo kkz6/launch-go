@@ -18,8 +18,9 @@ const TypeInstallFirewallRule = "server:install_firewall_rule"
 
 // InstallFirewallRulePayload contains data for installing a firewall rule
 type InstallFirewallRulePayload struct {
-	RuleID string  `json:"rule_id"`
-	UserID *string `json:"user_id,omitempty"`
+	ServerID string  `json:"server_id"`
+	RuleID   string  `json:"rule_id"`
+	UserID   *string `json:"user_id,omitempty"`
 }
 
 // InstallFirewallRuleJob handles installing a firewall rule on a server
@@ -39,10 +40,11 @@ func NewInstallFirewallRuleJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.L
 }
 
 // NewInstallFirewallRuleTask creates a new asynq task for installing a firewall rule
-func NewInstallFirewallRuleTask(ruleID string, userID *string) (*asynq.Task, error) {
+func NewInstallFirewallRuleTask(serverID, ruleID string, userID *string) (*asynq.Task, error) {
 	payload, err := json.Marshal(InstallFirewallRulePayload{
-		RuleID: ruleID,
-		UserID: userID,
+		ServerID: serverID,
+		RuleID:   ruleID,
+		UserID:   userID,
 	})
 	if err != nil {
 		return nil, err
@@ -59,6 +61,7 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context, t *asynq.Task) erro
 	}
 
 	j.logger.Info().
+		Str("server_id", payload.ServerID).
 		Str("rule_id", payload.RuleID).
 		Msg("Installing firewall rule")
 
@@ -68,7 +71,7 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context, t *asynq.Task) erro
 		return fmt.Errorf("failed to find firewall rule: %w", err)
 	}
 
-	j.broadcastProgress(rule.ServerID, "installing", fmt.Sprintf("Installing firewall rule: %s", rule.FormatAsUfwRule()))
+	j.broadcastProgress(payload.ServerID, "installing", fmt.Sprintf("Installing firewall rule: %s", rule.FormatAsUfwRule()))
 
 	// TODO: Implement actual firewall rule installation:
 	// 1. Connect to server via SSH
@@ -81,7 +84,7 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context, t *asynq.Task) erro
 		return fmt.Errorf("failed to update rule status: %w", err)
 	}
 
-	j.broadcastProgress(rule.ServerID, "installed", "Firewall rule installed successfully")
+	j.broadcastProgress(payload.ServerID, "installed", "Firewall rule installed successfully")
 
 	return nil
 }
@@ -96,12 +99,14 @@ func (j *InstallFirewallRuleJob) Failed(ctx context.Context, t *asynq.Task, err 
 
 	j.logger.Error().
 		Err(err).
+		Str("server_id", payload.ServerID).
 		Str("rule_id", payload.RuleID).
 		Msg("Failed to install firewall rule")
 
-	// Fetch the rule to get server ID for broadcasting
+	// Fetch the rule for updating status
 	var rule models.FirewallRule
 	if findErr := j.db.First(&rule, "id = ?", payload.RuleID).Error; findErr != nil {
+		j.broadcastProgress(payload.ServerID, "failed", "Failed to install firewall rule")
 		return
 	}
 
@@ -109,9 +114,7 @@ func (j *InstallFirewallRuleJob) Failed(ctx context.Context, t *asynq.Task, err 
 	now := time.Now()
 	j.db.Model(&rule).Update("installation_failed_at", &now)
 
-	j.broadcastProgress(rule.ServerID, "failed", "Failed to install firewall rule")
-
-	// TODO: Notify user about installation failure
+	j.broadcastProgress(payload.ServerID, "failed", "Failed to install firewall rule")
 }
 
 func (j *InstallFirewallRuleJob) broadcastProgress(serverID, status, message string) {

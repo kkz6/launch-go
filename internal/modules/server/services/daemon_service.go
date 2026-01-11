@@ -150,7 +150,7 @@ func (s *Service) dispatchDaemonInstallJob(server *models.Server, daemon *models
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewDaemonTask(server.ID, daemon.ID, "install")
+	task, err := jobs.NewInstallDaemonTask(server.ID, daemon.ID, nil)
 	if err != nil {
 		return err
 	}
@@ -165,7 +165,7 @@ func (s *Service) dispatchDaemonUninstallJob(server *models.Server, daemon *mode
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewDaemonTask(server.ID, daemon.ID, "uninstall")
+	task, err := jobs.NewUninstallDaemonTask(server.ID, daemon.ID, nil)
 	if err != nil {
 		return err
 	}
