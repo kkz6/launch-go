@@ -60,9 +60,9 @@ func (s *StorageProviderService) ConnectStorageProvider(ctx context.Context, use
 	// Create the storage provider record
 	provider := &models.StorageProvider{
 		UserID:    userID,
-		TeamID:    teamID,
+		TeamID:    &teamID,
 		Provider:  driver,
-		Label:     req.Label,
+		Label:     &req.Label,
 		Connected: true,
 	}
 
@@ -75,7 +75,7 @@ func (s *StorageProviderService) ConnectStorageProvider(ctx context.Context, use
 	}
 
 	s.logger.Info().
-		Uint("provider_id", provider.ID).
+		Uint64("provider_id", provider.ID).
 		Str("provider_type", req.Provider).
 		Msg("Storage provider connected successfully")
 
@@ -83,7 +83,7 @@ func (s *StorageProviderService) ConnectStorageProvider(ctx context.Context, use
 }
 
 // UpdateStorageProvider updates an existing storage provider
-func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id uint, req *dto.UpdateStorageProviderRequest) (*models.StorageProvider, error) {
+func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id uint64, req *dto.UpdateStorageProviderRequest) (*models.StorageProvider, error) {
 	provider, err := s.providerRepo.FindStorageProviderByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -108,7 +108,7 @@ func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id u
 		return nil, ErrConnectionFailed
 	}
 
-	provider.Label = req.Label
+	provider.Label = &req.Label
 	provider.Provider = driver
 	provider.Connected = true
 
@@ -124,14 +124,14 @@ func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id u
 	s.dispatchSyncServerLaunchConfig(provider.ID)
 
 	s.logger.Info().
-		Uint("provider_id", provider.ID).
+		Uint64("provider_id", provider.ID).
 		Msg("Storage provider updated successfully")
 
 	return provider, nil
 }
 
 // DeleteStorageProvider deletes a storage provider
-func (s *StorageProviderService) DeleteStorageProvider(ctx context.Context, id uint) error {
+func (s *StorageProviderService) DeleteStorageProvider(ctx context.Context, id uint64) error {
 	// First verify the provider exists
 	_, err := s.providerRepo.FindStorageProviderByID(ctx, id)
 	if err != nil {
@@ -152,14 +152,14 @@ func (s *StorageProviderService) DeleteStorageProvider(ctx context.Context, id u
 	}
 
 	s.logger.Info().
-		Uint("provider_id", id).
+		Uint64("provider_id", id).
 		Msg("Storage provider deleted successfully")
 
 	return nil
 }
 
 // GetStorageProvider retrieves a storage provider by ID
-func (s *StorageProviderService) GetStorageProvider(ctx context.Context, id uint) (*models.StorageProvider, error) {
+func (s *StorageProviderService) GetStorageProvider(ctx context.Context, id uint64) (*models.StorageProvider, error) {
 	return s.providerRepo.FindStorageProviderByID(ctx, id)
 }
 
@@ -169,7 +169,7 @@ func (s *StorageProviderService) ListStorageProvidersByTeam(ctx context.Context,
 }
 
 // GetStorageProviderConfig gets the agent configuration for a storage provider
-func (s *StorageProviderService) GetStorageProviderConfig(ctx context.Context, id uint) (map[string]interface{}, error) {
+func (s *StorageProviderService) GetStorageProviderConfig(ctx context.Context, id uint64) (map[string]interface{}, error) {
 	provider, err := s.providerRepo.FindStorageProviderByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -228,12 +228,12 @@ func (s *StorageProviderService) buildCredentialsFromUpdate(req *dto.UpdateStora
 	return credentials
 }
 
-func (s *StorageProviderService) dispatchSyncServerLaunchConfig(providerID uint) {
+func (s *StorageProviderService) dispatchSyncServerLaunchConfig(providerID uint64) {
 	if s.queue == nil {
 		return
 	}
 	// In production, this would enqueue a SyncServerLaunchConfig job
 	s.logger.Debug().
-		Uint("provider_id", providerID).
+		Uint64("provider_id", providerID).
 		Msg("Dispatching SyncServerLaunchConfig job")
 }

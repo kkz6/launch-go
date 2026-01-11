@@ -2,7 +2,9 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/rs/zerolog"
 
@@ -51,8 +53,16 @@ func (s *AgentConfigService) GetAgentBackupConfig(ctx context.Context, backupID,
 		return nil, err
 	}
 
-	includeFiles, _ := backup.IncludeFiles.ToStringSlice()
-	excludeFiles, _ := backup.ExcludeFiles.ToStringSlice()
+	// Parse include/exclude files from JSON strings
+	var includeFiles []string
+	if err := json.Unmarshal([]byte(backup.IncludeFiles), &includeFiles); err != nil {
+		includeFiles = []string{}
+	}
+
+	var excludeFiles []string
+	if err := json.Unmarshal([]byte(backup.ExcludeFiles), &excludeFiles); err != nil {
+		excludeFiles = []string{}
+	}
 
 	return &dto.AgentBackupConfig{
 		ID:             backup.ID,
@@ -64,6 +74,6 @@ func (s *AgentConfigService) GetAgentBackupConfig(ctx context.Context, backupID,
 		ExcludeFiles:   excludeFiles,
 		Databases:      databaseIDs,
 		Storage:        storageConfig,
-		StorageDriver:  backup.StorageProviderID,
+		StorageDriver:  strconv.FormatUint(backup.StorageProviderID, 10),
 	}, nil
 }

@@ -6,7 +6,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/queue"
@@ -56,7 +55,7 @@ func (s *RedirectService) Create(ctx context.Context, siteID, serverID, userID s
 	redirect := &models.Redirect{
 		SiteID: siteID,
 		UserID: userID,
-		Mode:   enums.RedirectMode(req.Mode),
+		Mode:   req.Mode,
 		From:   req.From,
 		To:     req.To,
 		Status: "pending",

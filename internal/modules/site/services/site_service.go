@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -89,6 +90,26 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		}
 	}
 
+	// Convert SourceControlRepositoriesID from *string to *uint64
+	var scRepoID *uint64
+	if req.SourceControlRepositoriesID != nil && *req.SourceControlRepositoriesID != "" {
+		id, err := strconv.ParseUint(*req.SourceControlRepositoriesID, 10, 64)
+		if err == nil {
+			scRepoID = &id
+		}
+	}
+
+	// Convert string fields to pointers where needed
+	var phpVersion *string
+	if req.PhpVersion != "" {
+		phpVersion = &req.PhpVersion
+	}
+
+	var repoBranch *string
+	if req.RepositoryBranch != "" {
+		repoBranch = &req.RepositoryBranch
+	}
+
 	site := &models.Site{
 		ServerID:                    serverID,
 		UserID:                      userID,
@@ -97,14 +118,13 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		TlsSetting:                  enums.TlsSettingAuto,
 		ZeroDowntimeDeployment:      req.ZeroDowntimeDeployment,
 		DeploymentReleasesRetention: 5,
-		RepositoryBranch:            req.RepositoryBranch,
+		RepositoryBranch:            repoBranch,
 		User:                        username,
 		Path:                        path,
 		WebFolder:                   webFolder,
-		PhpVersion:                  req.PhpVersion,
+		PhpVersion:                  phpVersion,
 		SourceControlID:             req.SourceControlID,
-		SourceControlRepositoriesID: req.SourceControlRepositoriesID,
-		ConnectedDomainID:           req.ConnectedDomainID,
+		SourceControlRepositoriesID: scRepoID,
 	}
 
 	// Set aliases
@@ -134,20 +154,20 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		}
 	}
 
-	if hook, ok := defaults["hook_before_updating_repository"].(string); ok {
-		site.HookBeforeUpdatingRepository = hook
+	if hook, ok := defaults["hook_before_updating_repository"].(string); ok && hook != "" {
+		site.HookBeforeUpdatingRepository = &hook
 	}
 
-	if hook, ok := defaults["hook_after_updating_repository"].(string); ok {
-		site.HookAfterUpdatingRepository = hook
+	if hook, ok := defaults["hook_after_updating_repository"].(string); ok && hook != "" {
+		site.HookAfterUpdatingRepository = &hook
 	}
 
-	if hook, ok := defaults["hook_before_making_current"].(string); ok {
-		site.HookBeforeMakingCurrent = hook
+	if hook, ok := defaults["hook_before_making_current"].(string); ok && hook != "" {
+		site.HookBeforeMakingCurrent = &hook
 	}
 
-	if hook, ok := defaults["hook_after_making_current"].(string); ok {
-		site.HookAfterMakingCurrent = hook
+	if hook, ok := defaults["hook_after_making_current"].(string); ok && hook != "" {
+		site.HookAfterMakingCurrent = &hook
 	}
 
 	if err := s.siteRepo.Create(ctx, site); err != nil {
@@ -200,8 +220,8 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 
 	// Update fields
 	if req.PhpVersion != nil {
-		site.PhpVersion = *req.PhpVersion
-		if *req.PhpVersion != oldPhpVersion {
+		site.PhpVersion = req.PhpVersion
+		if oldPhpVersion == nil || *req.PhpVersion != *oldPhpVersion {
 			updateCaddyfile = true
 		}
 	}
@@ -214,7 +234,7 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 	}
 
 	if req.RepositoryBranch != nil && site.Type != enums.SiteTypeWordpress {
-		site.RepositoryBranch = *req.RepositoryBranch
+		site.RepositoryBranch = req.RepositoryBranch
 	}
 
 	if req.DeployNotificationEmail != nil {
@@ -231,19 +251,23 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 
 	// Handle hooks
 	if req.HookBeforeUpdatingRepository != nil {
-		site.HookBeforeUpdatingRepository = normalizeLineEndings(*req.HookBeforeUpdatingRepository)
+		normalized := normalizeLineEndings(*req.HookBeforeUpdatingRepository)
+		site.HookBeforeUpdatingRepository = &normalized
 	}
 
 	if req.HookAfterUpdatingRepository != nil {
-		site.HookAfterUpdatingRepository = normalizeLineEndings(*req.HookAfterUpdatingRepository)
+		normalized := normalizeLineEndings(*req.HookAfterUpdatingRepository)
+		site.HookAfterUpdatingRepository = &normalized
 	}
 
 	if req.HookBeforeMakingCurrent != nil {
-		site.HookBeforeMakingCurrent = normalizeLineEndings(*req.HookBeforeMakingCurrent)
+		normalized := normalizeLineEndings(*req.HookBeforeMakingCurrent)
+		site.HookBeforeMakingCurrent = &normalized
 	}
 
 	if req.HookAfterMakingCurrent != nil {
-		site.HookAfterMakingCurrent = normalizeLineEndings(*req.HookAfterMakingCurrent)
+		normalized := normalizeLineEndings(*req.HookAfterMakingCurrent)
+		site.HookAfterMakingCurrent = &normalized
 	}
 
 	// Handle directories and files
@@ -338,7 +362,8 @@ func (s *SiteService) RegenerateDeployToken(ctx context.Context, id, serverID st
 		return err
 	}
 
-	site.DeployToken = models.GenerateRandomToken(32)
+	token := models.GenerateRandomToken(32)
+	site.DeployToken = &token
 
 	return s.siteRepo.Update(ctx, site)
 }

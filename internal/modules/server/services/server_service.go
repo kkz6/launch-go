@@ -225,7 +225,7 @@ func (s *Service) ConnectServer(ctx context.Context, id, teamID string) error {
 
 	client, err := sshClient.NewClient(sshClient.Config{
 		Host:       *server.PublicIPv4,
-		Port:       server.SSHPort,
+		Port:       server.GetSSHPort(),
 		User:       server.RootUsername(),
 		PrivateKey: *server.PrivateKey,
 		Timeout:    30 * time.Second,
@@ -380,4 +380,3 @@ func generateSSHKeyPair() (string, string, error) {
 
 	return string(privateKeyPEM), publicKeyStr, nil
 }
-

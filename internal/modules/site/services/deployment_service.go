@@ -97,7 +97,7 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 		"rollback_to":   targetDeployment.ID,
 	}
 
-	if targetDeployment.CommitData != "" {
+	if targetDeployment.CommitData != nil && *targetDeployment.CommitData != "" {
 		existingData := targetDeployment.GetCommitData()
 		for k, v := range existingData {
 			if k != "rollback_from" && k != "rollback_to" {

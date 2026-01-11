@@ -2,7 +2,9 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"strconv"
 
 	"github.com/rs/zerolog"
 
@@ -38,15 +40,21 @@ func NewBackupService(
 
 // CreateBackup creates a new backup configuration
 func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID string, req *dto.CreateBackupRequest) (*models.Backup, error) {
-	// Convert include/exclude files to JSON
-	includeFiles, err := models.FromStringSlice(req.IncludeFiles)
+	// Convert include/exclude files to JSON strings
+	includeFilesJSON, err := json.Marshal(req.IncludeFiles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process include files: %w", err)
 	}
 
-	excludeFiles, err := models.FromStringSlice(req.ExcludeFiles)
+	excludeFilesJSON, err := json.Marshal(req.ExcludeFiles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process exclude files: %w", err)
+	}
+
+	// Convert StorageProviderID from string to uint64
+	storageProviderID, err := strconv.ParseUint(req.StorageProviderID, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid storage provider ID: %w", err)
 	}
 
 	retention := req.Retention
@@ -56,11 +64,11 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID strin
 
 	backup := &models.Backup{
 		ServerID:              serverID,
-		UserID:                userID,
-		StorageProviderID:     req.StorageProviderID,
+		UserID:                &userID,
+		StorageProviderID:     storageProviderID,
 		CronExpression:        req.CronExpression,
-		IncludeFiles:          includeFiles,
-		ExcludeFiles:          excludeFiles,
+		IncludeFiles:          string(includeFilesJSON),
+		ExcludeFiles:          string(excludeFilesJSON),
 		Retention:             retention,
 		NotificationOnFailure: req.NotificationOnFailure,
 		NotificationOnSuccess: req.NotificationOnSuccess,
@@ -92,23 +100,29 @@ func (s *BackupService) UpdateBackup(ctx context.Context, id string, req *dto.Up
 		return nil, err
 	}
 
-	// Convert include/exclude files to JSON
-	includeFiles, err := models.FromStringSlice(req.IncludeFiles)
+	// Convert include/exclude files to JSON strings
+	includeFilesJSON, err := json.Marshal(req.IncludeFiles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process include files: %w", err)
 	}
 
-	excludeFiles, err := models.FromStringSlice(req.ExcludeFiles)
+	excludeFilesJSON, err := json.Marshal(req.ExcludeFiles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process exclude files: %w", err)
+	}
+
+	// Convert StorageProviderID from string to uint64
+	storageProviderID, err := strconv.ParseUint(req.StorageProviderID, 10, 64)
+	if err != nil {
+		return nil, fmt.Errorf("invalid storage provider ID: %w", err)
 	}
 
 	backup.CronExpression = req.CronExpression
 	backup.Path = req.Path
 	backup.Enabled = req.Enabled
-	backup.StorageProviderID = req.StorageProviderID
-	backup.IncludeFiles = includeFiles
-	backup.ExcludeFiles = excludeFiles
+	backup.StorageProviderID = storageProviderID
+	backup.IncludeFiles = string(includeFilesJSON)
+	backup.ExcludeFiles = string(excludeFilesJSON)
 	if req.Retention > 0 {
 		backup.Retention = req.Retention
 	}

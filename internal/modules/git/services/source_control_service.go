@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -71,12 +72,19 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 	now := time.Now()
 	repoSelection := installation.RepositorySelection
 
+	// Serialize ProviderData and Permissions to JSON strings
+	providerDataJSON, _ := json.Marshal(installation.ToMap())
+	providerDataStr := string(providerDataJSON)
+	permissionsJSON, _ := json.Marshal(installation.Permissions)
+	permissionsStr := string(permissionsJSON)
+	initialRepoCount := 0
+
 	sc := &models.SourceControl{
 		UserID:                  userID,
-		TeamID:                  teamID,
+		TeamID:                  &teamID,
 		Provider:                providerType,
-		ProviderID:              &installationID,
-		ProviderData:            installation.ToMap(),
+		ProviderID:              installationID,
+		ProviderData:            &providerDataStr,
 		ProviderAccountID:       &installation.AccountID,
 		Login:                   &installation.AccountLogin,
 		Name:                    &installation.AccountLogin,
@@ -84,10 +92,10 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 		AvatarURL:               &installation.AccountAvatarURL,
 		HTMLURL:                 &installation.HTMLURL,
 		InstallationID:          &installationID,
-		Permissions:             installation.Permissions,
+		Permissions:             &permissionsStr,
 		RepositorySelection:     &repoSelection,
 		HasMultipleRepositories: installation.HasMultipleRepositories,
-		RepositoryCount:         0,
+		RepositoryCount:         &initialRepoCount,
 		ConnectedAt:             &now,
 		LastSyncedAt:            &now,
 	}
@@ -107,7 +115,8 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 		existing.Permissions = sc.Permissions
 		existing.RepositorySelection = sc.RepositorySelection
 		existing.HasMultipleRepositories = sc.HasMultipleRepositories
-		existing.LastSyncedAt = &now
+		nowTime := time.Now()
+		existing.LastSyncedAt = &nowTime
 
 		if err := s.scRepo.Update(ctx, existing); err != nil {
 			return nil, err
@@ -245,19 +254,22 @@ func (s *SourceControlService) SyncInstallationRepositories(ctx context.Context,
 	var reposToDelete []string
 	existingRepoIDs := make(map[string]bool)
 	for _, repo := range existingRepos {
-		if repo.AdditionalData != nil {
-			if id, ok := repo.AdditionalData["id"]; ok {
-				var idStr string
-				if idFloat, ok := id.(float64); ok {
-					idStr = fmt.Sprintf("%.0f", idFloat)
-				} else if str, ok := id.(string); ok {
-					idStr = str
-				}
-				if idStr != "" {
-					existingRepoIDs[idStr] = true
-					if !apiRepoIDs[idStr] {
-						// TODO: Check if repo has associated sites before deleting
-						reposToDelete = append(reposToDelete, repo.ID)
+		if repo.AdditionalData != nil && *repo.AdditionalData != "" {
+			var additionalData map[string]interface{}
+			if err := json.Unmarshal([]byte(*repo.AdditionalData), &additionalData); err == nil {
+				if id, ok := additionalData["id"]; ok {
+					var idStr string
+					if idFloat, ok := id.(float64); ok {
+						idStr = fmt.Sprintf("%.0f", idFloat)
+					} else if str, ok := id.(string); ok {
+						idStr = str
+					}
+					if idStr != "" {
+						existingRepoIDs[idStr] = true
+						if !apiRepoIDs[idStr] {
+							// TODO: Check if repo has associated sites before deleting
+							reposToDelete = append(reposToDelete, fmt.Sprintf("%d", repo.ID))
+						}
 					}
 				}
 			}
@@ -347,11 +359,17 @@ func (s *SourceControlService) SyncUserInstallation(ctx context.Context, provide
 		},
 	}
 
+	// Serialize to JSON strings
+	providerDataJSON, _ := json.Marshal(providerData)
+	providerDataStr := string(providerDataJSON)
+	permissionsJSON, _ := json.Marshal(installation.Permissions)
+	permissionsStr := string(permissionsJSON)
+
 	sc := &models.SourceControl{
-		TeamID:                  teamID,
+		TeamID:                  &teamID,
 		UserID:                  userID,
 		Provider:                providerType,
-		ProviderID:              &installation.ID,
+		ProviderID:              installation.ID,
 		ProviderAccountID:       &installation.AccountID,
 		Login:                   &installation.AccountLogin,
 		Name:                    &installation.AccountLogin,
@@ -359,10 +377,10 @@ func (s *SourceControlService) SyncUserInstallation(ctx context.Context, provide
 		AvatarURL:               &installation.AccountAvatarURL,
 		HTMLURL:                 &installation.HTMLURL,
 		InstallationID:          &installation.ID,
-		Permissions:             installation.Permissions,
+		Permissions:             &permissionsStr,
 		RepositorySelection:     &repoSelection,
 		HasMultipleRepositories: installation.HasMultipleRepositories,
-		ProviderData:            providerData,
+		ProviderData:            &providerDataStr,
 		ConnectedAt:             &now,
 		LastSyncedAt:            &now,
 	}

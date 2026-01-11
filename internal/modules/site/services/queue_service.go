@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -66,18 +65,22 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 		directory = &appDir
 	}
 
+	// Convert int values to *int for the model
+	restSecondsOnEmpty := req.RestSecondsOnEmpty
+	maxSecondsPerJob := req.MaxSecondsPerJob
+	failedJobDelaySeconds := req.FailedJobDelaySeconds
+
 	queueModel := &models.Queue{
 		SiteID:                site.ID,
 		ServerID:              serverID,
 		UserID:                userID,
-		Name:                  fmt.Sprintf("%s-worker", site.Address),
-		Directory:             *directory,
+		Directory:             directory,
 		User:                  *user,
 		QueueConnection:       req.QueueConnection,
 		QueueName:             req.Queue,
-		RestSecondsOnEmpty:    req.RestSecondsOnEmpty,
-		MaxSecondsPerJob:      req.MaxSecondsPerJob,
-		FailedJobDelaySeconds: req.FailedJobDelaySeconds,
+		RestSecondsOnEmpty:    &restSecondsOnEmpty,
+		MaxSecondsPerJob:      &maxSecondsPerJob,
+		FailedJobDelaySeconds: &failedJobDelaySeconds,
 		RunOnMaintenance:      req.RunOnMaintenance,
 		RunWithListen:         req.RunWithListen,
 		AutoStart:             true,
@@ -88,13 +91,14 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 	}
 
 	if req.MaxTries != nil {
-		queueModel.MaxTries = *req.MaxTries
+		queueModel.MaxTries = req.MaxTries
 	}
 
 	if req.MaxMemory != nil {
-		queueModel.MaxMemory = *req.MaxMemory
+		queueModel.MaxMemory = req.MaxMemory
 	} else {
-		queueModel.MaxMemory = 128
+		defaultMemory := 128
+		queueModel.MaxMemory = &defaultMemory
 	}
 
 	if req.NumProcs != nil {

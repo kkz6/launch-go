@@ -25,8 +25,8 @@ func (s *Service) ListServerSshKeys(ctx context.Context, serverID, teamID string
 // CreateSshKey creates a new SSH key
 func (s *Service) CreateSshKey(ctx context.Context, teamID, userID string, req *dto.CreateSshKeyRequest) (*models.SshKey, error) {
 	key := &models.SshKey{
-		TeamID:      &teamID,
-		UserID:      &userID,
+		TeamID:      teamID,
+		UserID:      userID,
 		Name:        req.Name,
 		PublicKey:   req.PublicKey,
 		Description: req.Description,
@@ -112,7 +112,7 @@ func (s *Service) DeleteSshKey(ctx context.Context, teamID, sshKeyID string) err
 		return err
 	}
 
-	if key.TeamID != nil && *key.TeamID != teamID {
+	if key.TeamID != teamID {
 		return ErrSshKeyNotFound
 	}
 

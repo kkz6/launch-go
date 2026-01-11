@@ -52,11 +52,17 @@ func (s *BackupJobService) CreateBackupJob(ctx context.Context, backupID, token 
 		errorMsg = &req.Error
 	}
 
+	var size *int
+	if req.Size > 0 {
+		sizeInt := int(req.Size)
+		size = &sizeInt
+	}
+
 	job := &models.BackupJob{
 		BackupID:          backupID,
 		StorageProviderID: backup.StorageProviderID,
 		Status:            req.Status,
-		Size:              req.Size,
+		Size:              size,
 		Error:             errorMsg,
 	}
 

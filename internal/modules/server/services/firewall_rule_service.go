@@ -31,16 +31,11 @@ func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID strin
 		return nil, err
 	}
 
-	port := ""
-	if req.Port != nil {
-		port = *req.Port
-	}
-
 	rule := &models.FirewallRule{
 		ServerID: serverID,
 		Name:     req.Name,
 		Action:   action,
-		Port:     port,
+		Port:     req.Port,
 		FromIPv4: req.FromIPv4,
 		Mask:     req.Mask,
 		Note:     req.Note,
