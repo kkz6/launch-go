@@ -6,6 +6,10 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks/mysql"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks/postgresql"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -50,13 +54,41 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	j.broadcastProgress(database.ServerID, "creating", fmt.Sprintf("Creating database: %s", database.Name))
 
-	// TODO: Run the actual database creation task
-	// _, err = j.RunTask(database.Server, tasks.NewCreateDatabase(&database)).
-	//     AsRoot().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
+	// Determine the database type from installed services
+	var dbService models.InstalledService
+	if err := j.DB.Where("server_id = ? AND type IN (?, ?)",
+		database.ServerID, enums.ServiceTypeMySql, enums.ServiceTypePostgreSql).
+		First(&dbService).Error; err != nil {
+		return fmt.Errorf("no database service found on server: %w", err)
+	}
+
+	// Create the database based on the service type
+	switch enums.ServiceType(dbService.Type) {
+	case enums.ServiceTypeMySql:
+		task := mysql.NewCreateDatabase(database.Server, database.Name, "utf8mb4", "utf8mb4_unicode_ci").
+			OnServer(database.Server)
+		_, err = j.RunTask(database.Server, task).
+			AsRoot().
+			Throw().
+			Dispatch(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create MySQL database: %w", err)
+		}
+
+	case enums.ServiceTypePostgreSql:
+		task := postgresql.NewCreateDatabase(database.Server, database.Name).
+			OnServer(database.Server)
+		_, err = j.RunTask(database.Server, task).
+			AsRoot().
+			Throw().
+			Dispatch(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create PostgreSQL database: %w", err)
+		}
+
+	default:
+		return fmt.Errorf("unsupported database type: %s", dbService.Type)
+	}
 
 	// Mark the database as installed
 	if err := j.MarkAsInstalled(j.DB, database); err != nil {
