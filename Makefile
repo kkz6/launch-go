@@ -1,20 +1,29 @@
-.PHONY: build run worker test lint migrate shellcheck help
+.PHONY: build run worker test lint migrate migrate-rollback migrate-fresh migrate-status shellcheck help
+
+# Load environment variables from .env file
+ifneq (,$(wildcard ./.env))
+include .env
+export
+endif
 
 # Build variables
 BINARY_API=bin/api
 BINARY_WORKER=bin/worker
+BINARY_MIGRATE=bin/migrate
 BINARY_SHELLCHECK=bin/shellcheck
 GO_FILES=$(shell find . -name '*.go' -type f -not -path "./vendor/*")
 
 # Default target
 all: build
 
-## build: Build the API and worker binaries
+## build: Build the API, worker, and migrate binaries
 build:
 	@echo "Building API..."
 	@go build -o $(BINARY_API) ./cmd/api
 	@echo "Building Worker..."
 	@go build -o $(BINARY_WORKER) ./cmd/worker
+	@echo "Building Migrate..."
+	@go build -o $(BINARY_MIGRATE) ./cmd/migrate
 	@echo "Build complete!"
 
 ## run: Run the API server
@@ -54,17 +63,21 @@ tidy:
 deps:
 	@go mod download
 
-## migrate-up: Run database migrations
-migrate-up:
-	@migrate -path migrations -database "$(DATABASE_URL)" up
+## migrate: Run all pending migrations
+migrate:
+	@go run ./cmd/migrate migrate
 
-## migrate-down: Rollback last migration
-migrate-down:
-	@migrate -path migrations -database "$(DATABASE_URL)" down 1
+## migrate-rollback: Rollback the last batch of migrations
+migrate-rollback:
+	@go run ./cmd/migrate rollback
 
-## migrate-create: Create a new migration (usage: make migrate-create name=create_users_table)
-migrate-create:
-	@migrate create -ext sql -dir migrations -seq $(name)
+## migrate-fresh: Drop all tables and re-run all migrations
+migrate-fresh:
+	@go run ./cmd/migrate fresh
+
+## migrate-status: Show the status of all migrations
+migrate-status:
+	@go run ./cmd/migrate status
 
 ## docker-build: Build docker image
 docker-build:

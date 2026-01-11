@@ -145,18 +145,18 @@ func TestUser_DefaultProfilePhotoURL(t *testing.T) {
 
 func TestUser_OwnsTeam(t *testing.T) {
 	user := &models.User{ID: "user1"}
-	team := &models.Team{OwnerID: "user1"}
+	team := &models.Team{UserID: "user1"}
 
 	assert.True(t, user.OwnsTeam(team))
 
-	team2 := &models.Team{OwnerID: "user2"}
+	team2 := &models.Team{UserID: "user2"}
 	assert.False(t, user.OwnsTeam(team2))
 }
 
 func TestUser_BelongsToTeam(t *testing.T) {
 	t.Run("returns true if owner", func(t *testing.T) {
 		user := &models.User{ID: "user1"}
-		team := &models.Team{ID: "team1", OwnerID: "user1"}
+		team := &models.Team{ID: "team1", UserID: "user1"}
 		assert.True(t, user.BelongsToTeam(team))
 	})
 
@@ -165,7 +165,7 @@ func TestUser_BelongsToTeam(t *testing.T) {
 			ID:    "user1",
 			Teams: []models.Team{{ID: "team1"}},
 		}
-		team := &models.Team{ID: "team1", OwnerID: "user2"}
+		team := &models.Team{ID: "team1", UserID: "user2"}
 		assert.True(t, user.BelongsToTeam(team))
 	})
 
@@ -174,7 +174,7 @@ func TestUser_BelongsToTeam(t *testing.T) {
 			ID:    "user1",
 			Teams: []models.Team{{ID: "team2"}},
 		}
-		team := &models.Team{ID: "team1", OwnerID: "user2"}
+		team := &models.Team{ID: "team1", UserID: "user2"}
 		assert.False(t, user.BelongsToTeam(team))
 	})
 }
@@ -192,7 +192,7 @@ func TestTeam_BeforeCreate(t *testing.T) {
 	t.Run("generates ULID if empty", func(t *testing.T) {
 		team := &models.Team{
 			Name:    "Test Team",
-			OwnerID: "owner1",
+			UserID: "owner1",
 		}
 
 		err := db.Create(team).Error
@@ -232,14 +232,14 @@ func TestTeam_DefaultImageURL(t *testing.T) {
 
 func TestTeam_HasUser(t *testing.T) {
 	t.Run("returns true for owner", func(t *testing.T) {
-		team := &models.Team{OwnerID: "user1"}
+		team := &models.Team{UserID: "user1"}
 		user := &models.User{ID: "user1"}
 		assert.True(t, team.HasUser(user))
 	})
 
 	t.Run("returns true for member", func(t *testing.T) {
 		team := &models.Team{
-			OwnerID: "user2",
+			UserID: "user2",
 			Members: []models.User{{ID: "user1"}},
 		}
 		user := &models.User{ID: "user1"}
@@ -248,7 +248,7 @@ func TestTeam_HasUser(t *testing.T) {
 
 	t.Run("returns false for non-member", func(t *testing.T) {
 		team := &models.Team{
-			OwnerID: "user2",
+			UserID: "user2",
 			Members: []models.User{{ID: "user3"}},
 		}
 		user := &models.User{ID: "user1"}
@@ -270,7 +270,7 @@ func TestTeamMember_BeforeCreate(t *testing.T) {
 	user := &models.User{Name: "Test", Email: "test@test.com", Password: "pass"}
 	require.NoError(t, db.Create(user).Error)
 
-	team := &models.Team{Name: "Test Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Test Team", UserID: user.ID}
 	require.NoError(t, db.Create(team).Error)
 
 	t.Run("generates ULID if empty", func(t *testing.T) {
@@ -301,7 +301,7 @@ func TestTeamInvitation_BeforeCreate(t *testing.T) {
 	user := &models.User{Name: "Test", Email: "test@test.com", Password: "pass"}
 	require.NoError(t, db.Create(user).Error)
 
-	team := &models.Team{Name: "Test Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Test Team", UserID: user.ID}
 	require.NoError(t, db.Create(team).Error)
 
 	t.Run("generates ULID if empty", func(t *testing.T) {

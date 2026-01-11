@@ -157,7 +157,7 @@ func TestService_Register_WithInvitation(t *testing.T) {
 	// Create a team
 	team := &models.Team{
 		Name:    "Test Team",
-		OwnerID: owner.ID,
+		UserID: owner.ID,
 	}
 	err := db.Create(team).Error
 	require.NoError(t, err)
@@ -506,7 +506,7 @@ func TestService_DeleteAccount(t *testing.T) {
 		// Create a team
 		team := &models.Team{
 			Name:    "Team to Delete",
-			OwnerID: user.ID,
+			UserID: user.ID,
 		}
 		err := db.Create(team).Error
 		require.NoError(t, err)
@@ -978,7 +978,7 @@ func TestService_CreateTeam(t *testing.T) {
 		team, err := service.CreateTeam(ctx, user.ID, req)
 		require.NoError(t, err)
 		assert.Equal(t, "My Team", team.Name)
-		assert.Equal(t, user.ID, team.OwnerID)
+		assert.Equal(t, user.ID, team.UserID)
 	})
 
 	t.Run("personal team", func(t *testing.T) {
@@ -1002,7 +1002,7 @@ func TestService_UpdateTeam(t *testing.T) {
 
 	team := &models.Team{
 		Name:    "Original Name",
-		OwnerID: user.ID,
+		UserID: user.ID,
 	}
 	err := db.Create(team).Error
 	require.NoError(t, err)
@@ -1048,7 +1048,7 @@ func TestService_DeleteTeam(t *testing.T) {
 	t.Run("successful delete", func(t *testing.T) {
 		team := &models.Team{
 			Name:         "To Delete",
-			OwnerID:      user.ID,
+			UserID:      user.ID,
 			PersonalTeam: false,
 		}
 		err := db.Create(team).Error
@@ -1066,7 +1066,7 @@ func TestService_DeleteTeam(t *testing.T) {
 	t.Run("personal team fails", func(t *testing.T) {
 		team := &models.Team{
 			Name:         "Personal",
-			OwnerID:      user.ID,
+			UserID:      user.ID,
 			PersonalTeam: true,
 		}
 		err := db.Create(team).Error
@@ -1080,7 +1080,7 @@ func TestService_DeleteTeam(t *testing.T) {
 	t.Run("non-owner fails", func(t *testing.T) {
 		team := &models.Team{
 			Name:    "Not Yours",
-			OwnerID: user.ID,
+			UserID: user.ID,
 		}
 		err := db.Create(team).Error
 		require.NoError(t, err)
@@ -1103,7 +1103,7 @@ func TestService_GetTeam(t *testing.T) {
 
 	team := &models.Team{
 		Name:    "Test Team",
-		OwnerID: user.ID,
+		UserID: user.ID,
 	}
 	err := db.Create(team).Error
 	require.NoError(t, err)
@@ -1131,7 +1131,7 @@ func TestService_GetUserTeams(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		team := &models.Team{
 			Name:    "Team " + string(rune('A'+i)),
-			OwnerID: user.ID,
+			UserID: user.ID,
 		}
 		err := db.Create(team).Error
 		require.NoError(t, err)
@@ -1160,7 +1160,7 @@ func TestService_SwitchTeam(t *testing.T) {
 
 	team := &models.Team{
 		Name:    "Switch To",
-		OwnerID: user.ID,
+		UserID: user.ID,
 	}
 	err := db.Create(team).Error
 	require.NoError(t, err)
@@ -1199,7 +1199,7 @@ func TestService_InviteTeamMember(t *testing.T) {
 
 	team := &models.Team{
 		Name:    "Invite Team",
-		OwnerID: owner.ID,
+		UserID: owner.ID,
 	}
 	err := db.Create(team).Error
 	require.NoError(t, err)
@@ -1305,7 +1305,7 @@ func TestService_AcceptTeamInvitation(t *testing.T) {
 
 	team := &models.Team{
 		Name:    "Accept Team",
-		OwnerID: owner.ID,
+		UserID: owner.ID,
 	}
 	err := db.Create(team).Error
 	require.NoError(t, err)
@@ -1373,7 +1373,7 @@ func TestService_CancelTeamInvitation(t *testing.T) {
 
 	team := &models.Team{
 		Name:    "Cancel Team",
-		OwnerID: owner.ID,
+		UserID: owner.ID,
 	}
 	err := db.Create(team).Error
 	require.NoError(t, err)
@@ -1439,7 +1439,7 @@ func TestService_CancelTeamInvitation(t *testing.T) {
 	t.Run("wrong team fails", func(t *testing.T) {
 		otherTeam := &models.Team{
 			Name:    "Other Team",
-			OwnerID: owner.ID,
+			UserID: owner.ID,
 		}
 		db.Create(otherTeam)
 
@@ -1468,7 +1468,7 @@ func TestService_UpdateTeamMemberRole(t *testing.T) {
 
 	team := &models.Team{
 		Name:    "Role Team",
-		OwnerID: owner.ID,
+		UserID: owner.ID,
 	}
 	err := db.Create(team).Error
 	require.NoError(t, err)
@@ -1535,7 +1535,7 @@ func TestService_RemoveTeamMember(t *testing.T) {
 
 	team := &models.Team{
 		Name:    "Remove Team",
-		OwnerID: owner.ID,
+		UserID: owner.ID,
 	}
 	err := db.Create(team).Error
 	require.NoError(t, err)
@@ -1599,8 +1599,8 @@ func TestService_RemoveTeamMember_SwitchesTeam(t *testing.T) {
 
 	owner := createTestUserWithPassword(t, db, "switchowner@example.com", "password")
 
-	team1 := &models.Team{Name: "Team 1", OwnerID: owner.ID}
-	team2 := &models.Team{Name: "Team 2", OwnerID: owner.ID}
+	team1 := &models.Team{Name: "Team 1", UserID: owner.ID}
+	team2 := &models.Team{Name: "Team 2", UserID: owner.ID}
 	db.Create(team1)
 	db.Create(team2)
 
@@ -1631,7 +1631,7 @@ func TestService_GetTeamMembers(t *testing.T) {
 
 	team := &models.Team{
 		Name:    "Get Members Team",
-		OwnerID: owner.ID,
+		UserID: owner.ID,
 	}
 	err := db.Create(team).Error
 	require.NoError(t, err)
@@ -1653,7 +1653,7 @@ func TestService_GetTeamMembers(t *testing.T) {
 	})
 
 	t.Run("empty team", func(t *testing.T) {
-		emptyTeam := &models.Team{Name: "Empty", OwnerID: owner.ID}
+		emptyTeam := &models.Team{Name: "Empty", UserID: owner.ID}
 		db.Create(emptyTeam)
 
 		members, err := service.GetTeamMembers(ctx, emptyTeam.ID)
@@ -1670,7 +1670,7 @@ func TestService_GetTeamInvitations(t *testing.T) {
 
 	team := &models.Team{
 		Name:    "Get Invitations Team",
-		OwnerID: owner.ID,
+		UserID: owner.ID,
 	}
 	err := db.Create(team).Error
 	require.NoError(t, err)
@@ -1691,7 +1691,7 @@ func TestService_GetTeamInvitations(t *testing.T) {
 	})
 
 	t.Run("empty team", func(t *testing.T) {
-		emptyTeam := &models.Team{Name: "No Invites", OwnerID: owner.ID}
+		emptyTeam := &models.Team{Name: "No Invites", UserID: owner.ID}
 		db.Create(emptyTeam)
 
 		invitations, err := service.GetTeamInvitations(ctx, emptyTeam.ID)

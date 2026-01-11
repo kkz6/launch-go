@@ -128,7 +128,7 @@ func TestToUserResponse(t *testing.T) {
 		team := &models.Team{
 			ID:      teamID,
 			Name:    "Test Team",
-			OwnerID: "owner123",
+			UserID: "owner123",
 		}
 		user := &models.User{
 			ID:            "user123",
@@ -168,7 +168,7 @@ func TestToTeamResponse(t *testing.T) {
 	team := models.Team{
 		ID:           "team123",
 		Name:         "Test Team",
-		OwnerID:      "owner123",
+		UserID:      "owner123",
 		PersonalTeam: false,
 	}
 
@@ -176,7 +176,7 @@ func TestToTeamResponse(t *testing.T) {
 
 	assert.Equal(t, "team123", resp.ID)
 	assert.Equal(t, "Test Team", resp.Name)
-	assert.Equal(t, "owner123", resp.OwnerID)
+	assert.Equal(t, "owner123", resp.UserID)
 	assert.False(t, resp.PersonalTeam)
 	assert.NotEmpty(t, resp.ImageURL)
 }
@@ -191,7 +191,7 @@ func TestToTeamResponsePtr(t *testing.T) {
 		team := &models.Team{
 			ID:      "team123",
 			Name:    "Test Team",
-			OwnerID: "owner123",
+			UserID: "owner123",
 		}
 
 		resp := dto.ToTeamResponsePtr(team)
@@ -243,7 +243,7 @@ func TestToTeamInvitationResponse(t *testing.T) {
 		team := &models.Team{
 			ID:      "team123",
 			Name:    "Test Team",
-			OwnerID: "owner123",
+			UserID: "owner123",
 		}
 		invitation := &models.TeamInvitation{
 			ID:    "inv123",
@@ -272,8 +272,8 @@ func TestToTeamsResponse(t *testing.T) {
 
 	t.Run("multiple teams", func(t *testing.T) {
 		teams := []models.Team{
-			{ID: "team1", Name: "Team 1", OwnerID: "owner1"},
-			{ID: "team2", Name: "Team 2", OwnerID: "owner2"},
+			{ID: "team1", Name: "Team 1", UserID: "owner1"},
+			{ID: "team2", Name: "Team 2", UserID: "owner2"},
 		}
 
 		resp := dto.ToTeamsResponse(teams)

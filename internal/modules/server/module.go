@@ -7,6 +7,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/server/handlers"
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/queue"
@@ -26,6 +27,21 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, dispat
 	return &Module{
 		handler: handler,
 	}
+}
+
+// AutoMigrate runs database migrations for server models
+func AutoMigrate(db *gorm.DB) error {
+	return db.AutoMigrate(
+		&models.Server{},
+		&models.InstalledService{},
+		&models.FirewallRule{},
+		&models.Cron{},
+		&models.Daemon{},
+		&models.SshKey{},
+		&models.ServerSshKey{},
+		&models.Task{},
+		&models.Metric{},
+	)
 }
 
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {

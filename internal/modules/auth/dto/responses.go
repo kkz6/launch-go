@@ -34,7 +34,7 @@ type UserResponse struct {
 type TeamResponse struct {
 	ID           string `json:"id"`
 	Name         string `json:"name"`
-	OwnerID      string `json:"owner_id"`
+	UserID       string `json:"user_id"`
 	PersonalTeam bool   `json:"personal_team"`
 	ImageURL     string `json:"image_url"`
 	CreatedAt    string `json:"created_at"`
@@ -109,7 +109,7 @@ func ToTeamResponse(team models.Team) TeamResponse {
 	return TeamResponse{
 		ID:           team.ID,
 		Name:         team.Name,
-		OwnerID:      team.OwnerID,
+		UserID:      team.UserID,
 		PersonalTeam: team.PersonalTeam,
 		ImageURL:     team.ImageURL(),
 		CreatedAt:    team.CreatedAt.Format(time.RFC3339),
@@ -170,7 +170,11 @@ func ToTeamMembersResponse(members []models.TeamMember) []TeamMemberResponse {
 	responses := make([]TeamMemberResponse, len(members))
 	for i, member := range members {
 		if member.User != nil {
-			responses[i] = ToTeamMemberResponse(member.User, member.Role, member.CreatedAt)
+			role := ""
+			if member.Role != nil {
+				role = *member.Role
+			}
+			responses[i] = ToTeamMemberResponse(member.User, role, member.CreatedAt)
 		}
 	}
 

@@ -24,7 +24,7 @@ func (r *TeamMemberRepository) AddUser(ctx context.Context, teamID, userID, role
 	member := models.TeamMember{
 		TeamID: teamID,
 		UserID: userID,
-		Role:   role,
+		Role:   &role,
 	}
 
 	return r.db.WithContext(ctx).Create(&member).Error
@@ -78,7 +78,7 @@ func (r *TeamMemberRepository) IsMember(ctx context.Context, teamID, userID stri
 		return false, err
 	}
 
-	if team.OwnerID == userID {
+	if team.UserID == userID {
 		return true, nil
 	}
 

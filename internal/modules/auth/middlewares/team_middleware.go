@@ -72,7 +72,7 @@ func TeamOwnerMiddleware(service *services.Service) fiber.Handler {
 			return response.NotFound(c, "Team not found")
 		}
 
-		if team.OwnerID != userID {
+		if team.UserID != userID {
 			return response.Forbidden(c, "Only team owner can perform this action")
 		}
 
@@ -103,7 +103,7 @@ func TeamAdminMiddleware(service *services.Service) fiber.Handler {
 		}
 
 		// Check if owner
-		if team.OwnerID == userID {
+		if team.UserID == userID {
 			return c.Next()
 		}
 
@@ -113,7 +113,7 @@ func TeamAdminMiddleware(service *services.Service) fiber.Handler {
 			return response.Error(c, fiber.StatusInternalServerError, "Failed to check membership")
 		}
 
-		if member == nil || member.Role != enums.TeamRoleAdmin.String() {
+		if member == nil || member.Role == nil || *member.Role != enums.TeamRoleAdmin.String() {
 			return response.Forbidden(c, "Only team admins can perform this action")
 		}
 

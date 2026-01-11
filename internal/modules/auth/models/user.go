@@ -3,34 +3,32 @@ package models
 import (
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/kkz6/launch-go/internal/pkg/utils"
+	"gorm.io/gorm"
 )
 
 // User represents an authenticated user in the system
 type User struct {
-	ID                      string         `gorm:"primaryKey;size:26" json:"id"`
-	Name                    string         `gorm:"size:255;not null" json:"name"`
-	Email                   string         `gorm:"size:255;uniqueIndex;not null" json:"email"`
-	Password                string         `gorm:"size:255;not null" json:"-"`
-	EmailVerifiedAt         *time.Time     `json:"email_verified_at,omitempty"`
-	RememberToken           *string        `gorm:"size:100" json:"-"`
-	CurrentTeamID           *string        `gorm:"size:26" json:"current_team_id,omitempty"`
-	ProfilePhotoPath        *string        `gorm:"size:2048" json:"profile_photo_path,omitempty"`
-	TwoFactorSecret         *string        `gorm:"size:255" json:"-"`
-	TwoFactorConfirmedAt    *time.Time     `json:"-"`
-	TwoFactorRecoveryCodes  *string        `gorm:"type:text" json:"-"`
-	Timezone                string         `gorm:"size:50;default:'UTC'" json:"timezone"`
-	Onboarded               bool           `gorm:"default:false" json:"onboarded"`
-	CreatedAt               time.Time      `json:"created_at"`
-	UpdatedAt               time.Time      `json:"updated_at"`
-	DeletedAt               gorm.DeletedAt `gorm:"index" json:"-"`
+	ID                     string     `gorm:"primaryKey;size:26" json:"id"`
+	Name                   string     `gorm:"size:255;not null" json:"name"`
+	Email                  string     `gorm:"size:255;uniqueIndex;not null" json:"email"`
+	EmailVerifiedAt        *time.Time `json:"email_verified_at,omitempty"`
+	Password               string     `gorm:"size:255;not null" json:"-"`
+	RememberToken          *string    `gorm:"size:100" json:"-"`
+	CurrentTeamID          *string    `gorm:"size:26" json:"current_team_id,omitempty"`
+	ProfilePhotoPath       *string    `gorm:"size:2048" json:"profile_photo_path,omitempty"`
+	TwoFactorSecret        *string    `gorm:"type:text" json:"-"`
+	TwoFactorRecoveryCodes *string    `gorm:"type:text" json:"-"`
+	TwoFactorConfirmedAt   *time.Time `json:"-"`
+	Timezone               string     `gorm:"size:50;default:'UTC'" json:"timezone"`
+	Onboarded              bool       `gorm:"default:false" json:"onboarded"`
+	CreatedAt              time.Time  `json:"created_at"`
+	UpdatedAt              time.Time  `json:"updated_at"`
 
 	// Relations
-	Teams       []Team `gorm:"many2many:team_members;" json:"teams,omitempty"`
+	Teams       []Team `gorm:"many2many:team_user;" json:"teams,omitempty"`
 	CurrentTeam *Team  `gorm:"foreignKey:CurrentTeamID" json:"current_team,omitempty"`
-	OwnedTeams  []Team `gorm:"foreignKey:OwnerID" json:"owned_teams,omitempty"`
+	OwnedTeams  []Team `gorm:"foreignKey:UserID" json:"owned_teams,omitempty"`
 }
 
 // TableName returns the table name for the User model
@@ -83,7 +81,7 @@ func (u *User) DefaultProfilePhotoURL() string {
 
 // OwnsTeam checks if the user owns the given team
 func (u *User) OwnsTeam(team *Team) bool {
-	return u.ID == team.OwnerID
+	return u.ID == team.UserID
 }
 
 // BelongsToTeam checks if the user belongs to the given team

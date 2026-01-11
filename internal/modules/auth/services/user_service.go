@@ -118,7 +118,7 @@ func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
 	}
 
 	for _, team := range ownedTeams {
-		if team.OwnerID == userID {
+		if team.UserID == userID {
 			s.repo.DeleteTeam(ctx, team.ID)
 		}
 	}

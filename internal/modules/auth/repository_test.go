@@ -40,7 +40,7 @@ func createTestUser(t *testing.T, repo *repositories.Repository, email string) *
 func createTestTeam(t *testing.T, repo *repositories.Repository, ownerID, name string) *models.Team {
 	team := &models.Team{
 		Name:    name,
-		OwnerID: ownerID,
+		UserID: ownerID,
 	}
 	err := repo.CreateTeam(context.Background(), team)
 	require.NoError(t, err)
@@ -192,7 +192,7 @@ func TestRepository_CreateTeam(t *testing.T) {
 	user := createTestUser(t, repo, "test@example.com")
 	team := &models.Team{
 		Name:    "Test Team",
-		OwnerID: user.ID,
+		UserID: user.ID,
 	}
 
 	err := repo.CreateTeam(ctx, team)

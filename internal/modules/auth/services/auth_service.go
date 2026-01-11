@@ -228,7 +228,7 @@ func (s *AuthService) handleInvitation(ctx context.Context, user *models.User, i
 func (s *AuthService) createPersonalTeam(ctx context.Context, user *models.User) error {
 	team := &models.Team{
 		Name:         user.Name + "'s Team",
-		OwnerID:      user.ID,
+		UserID:      user.ID,
 		PersonalTeam: true,
 	}
 

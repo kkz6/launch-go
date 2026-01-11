@@ -770,7 +770,7 @@ func TestHandler_GetTeam(t *testing.T) {
 	app.Get("/teams/:teamId", handler.Team.GetTeam)
 
 	user := createTestUserForHandler(t, db, "getteam@example.com", "password")
-	team := &models.Team{Name: "Test Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Test Team", UserID: user.ID}
 	db.Create(team)
 
 	t.Run("returns team", func(t *testing.T) {
@@ -790,7 +790,7 @@ func TestHandler_UpdateTeam(t *testing.T) {
 	app.Put("/teams/:teamId", handler.Team.UpdateTeam)
 
 	user := createTestUserForHandler(t, db, "updateteam@example.com", "password")
-	team := &models.Team{Name: "Original Name", OwnerID: user.ID}
+	team := &models.Team{Name: "Original Name", UserID: user.ID}
 	db.Create(team)
 
 	t.Run("successful update", func(t *testing.T) {
@@ -825,7 +825,7 @@ func TestHandler_DeleteTeam(t *testing.T) {
 	app.Delete("/teams/:teamId", handler.Team.DeleteTeam)
 
 	user := createTestUserForHandler(t, db, "deleteteam@example.com", "password")
-	team := &models.Team{Name: "To Delete", OwnerID: user.ID, PersonalTeam: false}
+	team := &models.Team{Name: "To Delete", UserID: user.ID, PersonalTeam: false}
 	db.Create(team)
 
 	t.Run("successful delete", func(t *testing.T) {
@@ -840,8 +840,8 @@ func TestHandler_GetUserTeams(t *testing.T) {
 	app.Get("/user/teams", handler.Team.GetUserTeams)
 
 	user := createTestUserForHandler(t, db, "userteams@example.com", "password")
-	db.Create(&models.Team{Name: "Team 1", OwnerID: user.ID})
-	db.Create(&models.Team{Name: "Team 2", OwnerID: user.ID})
+	db.Create(&models.Team{Name: "Team 1", UserID: user.ID})
+	db.Create(&models.Team{Name: "Team 2", UserID: user.ID})
 
 	t.Run("returns teams", func(t *testing.T) {
 		resp, _ := makeRequest(app, "GET", "/user/teams", nil, user.ID)
@@ -855,7 +855,7 @@ func TestHandler_SwitchTeam(t *testing.T) {
 	app.Post("/teams/:teamId/switch", handler.Team.SwitchTeam)
 
 	user := createTestUserForHandler(t, db, "switchteam@example.com", "password")
-	team := &models.Team{Name: "Switch To", OwnerID: user.ID}
+	team := &models.Team{Name: "Switch To", UserID: user.ID}
 	db.Create(team)
 	db.Create(&models.TeamMember{TeamID: team.ID, UserID: user.ID, Role: "owner"})
 
@@ -873,7 +873,7 @@ func TestHandler_InviteTeamMember(t *testing.T) {
 	app.Post("/teams/:teamId/members", handler.TeamMember.InviteTeamMember)
 
 	user := createTestUserForHandler(t, db, "inviteowner@example.com", "password")
-	team := &models.Team{Name: "Invite Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Invite Team", UserID: user.ID}
 	db.Create(team)
 
 	t.Run("successful invite", func(t *testing.T) {
@@ -910,7 +910,7 @@ func TestHandler_AcceptTeamInvitation(t *testing.T) {
 
 	owner := createTestUserForHandler(t, db, "acceptowner@example.com", "password")
 	invitee := createTestUserForHandler(t, db, "invitee@example.com", "password")
-	team := &models.Team{Name: "Accept Team", OwnerID: owner.ID}
+	team := &models.Team{Name: "Accept Team", UserID: owner.ID}
 	db.Create(team)
 
 	invitation := &models.TeamInvitation{
@@ -932,7 +932,7 @@ func TestHandler_CancelTeamInvitation(t *testing.T) {
 	app.Delete("/teams/:teamId/invitations/:invitationId", handler.TeamMember.CancelTeamInvitation)
 
 	user := createTestUserForHandler(t, db, "cancelowner@example.com", "password")
-	team := &models.Team{Name: "Cancel Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Cancel Team", UserID: user.ID}
 	db.Create(team)
 
 	invitation := &models.TeamInvitation{
@@ -955,7 +955,7 @@ func TestHandler_UpdateTeamMemberRole(t *testing.T) {
 
 	owner := createTestUserForHandler(t, db, "roleowner@example.com", "password")
 	member := createTestUserForHandler(t, db, "rolemember@example.com", "password")
-	team := &models.Team{Name: "Role Team", OwnerID: owner.ID}
+	team := &models.Team{Name: "Role Team", UserID: owner.ID}
 	db.Create(team)
 	db.Create(&models.TeamMember{TeamID: team.ID, UserID: member.ID, Role: "member"})
 
@@ -992,7 +992,7 @@ func TestHandler_RemoveTeamMember(t *testing.T) {
 
 	owner := createTestUserForHandler(t, db, "removeowner@example.com", "password")
 	member := createTestUserForHandler(t, db, "removemember@example.com", "password")
-	team := &models.Team{Name: "Remove Team", OwnerID: owner.ID}
+	team := &models.Team{Name: "Remove Team", UserID: owner.ID}
 	db.Create(team)
 	db.Create(&models.TeamMember{TeamID: team.ID, UserID: member.ID, Role: "member"})
 
@@ -1008,7 +1008,7 @@ func TestHandler_GetTeamMembers(t *testing.T) {
 	app.Get("/teams/:teamId/members", handler.TeamMember.GetTeamMembers)
 
 	user := createTestUserForHandler(t, db, "getmembers@example.com", "password")
-	team := &models.Team{Name: "Members Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Members Team", UserID: user.ID}
 	db.Create(team)
 	db.Create(&models.TeamMember{TeamID: team.ID, UserID: user.ID, Role: "owner"})
 
@@ -1024,7 +1024,7 @@ func TestHandler_GetTeamInvitations(t *testing.T) {
 	app.Get("/teams/:teamId/invitations", handler.TeamMember.GetTeamInvitations)
 
 	user := createTestUserForHandler(t, db, "getinvitations@example.com", "password")
-	team := &models.Team{Name: "Invitations Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Invitations Team", UserID: user.ID}
 	db.Create(team)
 	db.Create(&models.TeamInvitation{TeamID: team.ID, Email: "invite@example.com", Role: "member"})
 

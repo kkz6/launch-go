@@ -289,7 +289,7 @@ func TestTeamMemberMiddleware(t *testing.T) {
 	app, service, db, _ := setupMiddlewareTestApp(t)
 	user := createMiddlewareTestUser(t, db, "member@example.com", "password")
 
-	team := &models.Team{Name: "Test Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Test Team", UserID: user.ID}
 	db.Create(team)
 	db.Create(&models.TeamMember{TeamID: team.ID, UserID: user.ID, Role: "owner"})
 
@@ -368,7 +368,7 @@ func TestTeamOwnerMiddleware(t *testing.T) {
 	owner := createMiddlewareTestUser(t, db, "owner@example.com", "password")
 	member := createMiddlewareTestUser(t, db, "member2@example.com", "password")
 
-	team := &models.Team{Name: "Owner Team", OwnerID: owner.ID}
+	team := &models.Team{Name: "Owner Team", UserID: owner.ID}
 	db.Create(team)
 	db.Create(&models.TeamMember{TeamID: team.ID, UserID: member.ID, Role: "member"})
 
@@ -438,7 +438,7 @@ func TestTeamAdminMiddleware(t *testing.T) {
 	admin := createMiddlewareTestUser(t, db, "admin@example.com", "password")
 	regularMember := createMiddlewareTestUser(t, db, "regular@example.com", "password")
 
-	team := &models.Team{Name: "Admin Team", OwnerID: owner.ID}
+	team := &models.Team{Name: "Admin Team", UserID: owner.ID}
 	db.Create(team)
 	db.Create(&models.TeamMember{TeamID: team.ID, UserID: admin.ID, Role: "admin"})
 	db.Create(&models.TeamMember{TeamID: team.ID, UserID: regularMember.ID, Role: "member"})

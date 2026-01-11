@@ -36,13 +36,13 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 	}
 
 	// Check if user has permission to invite
-	if team.OwnerID != userID {
+	if team.UserID != userID {
 		member, err := s.repo.GetTeamMember(ctx, teamID, userID)
 		if err != nil {
 			return err
 		}
 
-		if member == nil || member.Role != enums.TeamRoleAdmin.String() {
+		if member == nil || member.Role == nil || *member.Role != enums.TeamRoleAdmin.String() {
 			return apperrors.ErrForbidden
 		}
 	}
@@ -130,13 +130,13 @@ func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, te
 	}
 
 	// Check permission
-	if team.OwnerID != userID {
+	if team.UserID != userID {
 		member, err := s.repo.GetTeamMember(ctx, teamID, userID)
 		if err != nil {
 			return err
 		}
 
-		if member == nil || member.Role != enums.TeamRoleAdmin.String() {
+		if member == nil || member.Role == nil || *member.Role != enums.TeamRoleAdmin.String() {
 			return apperrors.ErrForbidden
 		}
 	}
@@ -165,12 +165,12 @@ func (s *TeamMemberService) UpdateTeamMemberRole(ctx context.Context, userID, te
 	}
 
 	// Only owner can update roles
-	if team.OwnerID != userID {
+	if team.UserID != userID {
 		return apperrors.ErrForbidden
 	}
 
 	// Cannot update owner's role
-	if memberID == team.OwnerID {
+	if memberID == team.UserID {
 		return errors.New("cannot update owner's role")
 	}
 
@@ -189,12 +189,12 @@ func (s *TeamMemberService) RemoveTeamMember(ctx context.Context, userID, teamID
 	}
 
 	// Check permission (owner or self-removal)
-	if team.OwnerID != userID && userID != memberID {
+	if team.UserID != userID && userID != memberID {
 		return apperrors.ErrForbidden
 	}
 
 	// Cannot remove owner
-	if memberID == team.OwnerID {
+	if memberID == team.UserID {
 		return errors.New("cannot remove team owner")
 	}
 

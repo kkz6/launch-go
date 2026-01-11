@@ -10,20 +10,19 @@ import (
 
 // Team represents a team/organization in the system
 type Team struct {
-	ID                   string         `gorm:"primaryKey;size:26" json:"id"`
-	Name                 string         `gorm:"size:255;not null" json:"name"`
-	OwnerID              string         `gorm:"size:26;not null;index" json:"owner_id"`
-	PersonalTeam         bool           `gorm:"default:false" json:"personal_team"`
-	ImagePath            *string        `gorm:"size:2048" json:"image_path,omitempty"`
-	RequiresSubscription bool           `gorm:"default:false" json:"requires_subscription"`
-	TrialEndsAt          *time.Time     `json:"trial_ends_at,omitempty"`
-	CreatedAt            time.Time      `json:"created_at"`
-	UpdatedAt            time.Time      `json:"updated_at"`
-	DeletedAt            gorm.DeletedAt `gorm:"index" json:"-"`
+	ID                   string     `gorm:"primaryKey;size:26" json:"id"`
+	UserID               string     `gorm:"column:user_id;size:26;not null;index" json:"user_id"`
+	Name                 string     `gorm:"size:255;not null" json:"name"`
+	PersonalTeam         bool       `gorm:"default:false" json:"personal_team"`
+	ImagePath            *string    `gorm:"size:2048" json:"image_path,omitempty"`
+	RequiresSubscription bool       `gorm:"default:true" json:"requires_subscription"`
+	TrialEndsAt          *time.Time `json:"trial_ends_at,omitempty"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
 
 	// Relations
-	Owner       *User            `gorm:"foreignKey:OwnerID" json:"owner,omitempty"`
-	Members     []User           `gorm:"many2many:team_members;" json:"members,omitempty"`
+	Owner       *User            `gorm:"foreignKey:UserID" json:"owner,omitempty"`
+	Members     []User           `gorm:"many2many:team_user;" json:"members,omitempty"`
 	Invitations []TeamInvitation `gorm:"foreignKey:TeamID" json:"invitations,omitempty"`
 }
 
@@ -62,7 +61,7 @@ func (t *Team) DefaultImageURL() string {
 
 // HasUser checks if a user belongs to the team
 func (t *Team) HasUser(user *User) bool {
-	if user.ID == t.OwnerID {
+	if user.ID == t.UserID {
 		return true
 	}
 
@@ -74,3 +73,4 @@ func (t *Team) HasUser(user *User) bool {
 
 	return false
 }
+

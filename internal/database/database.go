@@ -25,9 +25,10 @@ func Connect(cfg config.DatabaseConfig) (*gorm.DB, error) {
 	}
 
 	db, err := gorm.Open(dialector, &gorm.Config{
-		Logger:                 logger.Default.LogMode(logger.Info),
-		SkipDefaultTransaction: true,
-		PrepareStmt:            true,
+		Logger:                                   logger.Default.LogMode(logger.Info),
+		SkipDefaultTransaction:                   true,
+		PrepareStmt:                              true,
+		DisableForeignKeyConstraintWhenMigrating: true,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to database: %w", err)

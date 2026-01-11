@@ -25,7 +25,7 @@ func NewTeamService(repo *repositories.Repository) *TeamService {
 func (s *TeamService) CreateTeam(ctx context.Context, userID string, req *dto.CreateTeamRequest) (*models.Team, error) {
 	team := &models.Team{
 		Name:         req.Name,
-		OwnerID:      userID,
+		UserID:      userID,
 		PersonalTeam: req.PersonalTeam,
 	}
 
@@ -53,7 +53,7 @@ func (s *TeamService) UpdateTeam(ctx context.Context, userID, teamID string, req
 	}
 
 	// Check ownership
-	if team.OwnerID != userID {
+	if team.UserID != userID {
 		return nil, apperrors.ErrForbidden
 	}
 
@@ -78,7 +78,7 @@ func (s *TeamService) DeleteTeam(ctx context.Context, userID, teamID string) err
 	}
 
 	// Check ownership
-	if team.OwnerID != userID {
+	if team.UserID != userID {
 		return apperrors.ErrForbidden
 	}
 
