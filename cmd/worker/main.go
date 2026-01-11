@@ -12,6 +12,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/database"
+	databasejobs "github.com/kkz6/launch-go/internal/modules/database/jobs"
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
@@ -77,13 +78,17 @@ func main() {
 	)
 
 	// Create job registries
+	databaseJobRegistry := databasejobs.NewRegistry(db, wsHub, dispatcher, appLogger)
 	serverJobRegistry := serverjobs.NewRegistry(db, wsHub, appLogger)
 	siteJobHandler := sitejobs.NewHandler(db, wsHub, appLogger)
 
 	// Register handlers
 	mux := asynq.NewServeMux()
 
-	// Server jobs - use registry pattern
+	// Database jobs
+	databaseJobRegistry.RegisterHandlers(mux)
+
+	// Server jobs
 	serverJobRegistry.RegisterHandlers(mux)
 
 	// Site jobs

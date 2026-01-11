@@ -27,7 +27,8 @@ func setupTestRegistry(t *testing.T) *Registry {
 	logger := zerolog.New(os.Stdout)
 	ws := websocket.NewHub()
 
-	return NewRegistry(db, ws, &logger)
+	// Pass nil dispatcher since we don't need actual SSH execution in tests
+	return NewRegistry(db, ws, nil, &logger)
 }
 
 func TestNewRegistry(t *testing.T) {

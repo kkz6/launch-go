@@ -5,6 +5,7 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -19,14 +20,14 @@ type Registry struct {
 }
 
 // NewRegistry creates a new registry with all job handlers initialized
-func NewRegistry(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *Registry {
+func NewRegistry(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *Registry {
 	return &Registry{
 		InstallDatabase:       NewInstallDatabaseJob(db, ws, logger),
 		UninstallDatabase:     NewUninstallDatabaseJob(db, ws, logger),
 		InstallDatabaseUser:   NewInstallDatabaseUserJob(db, ws, logger),
 		UpdateDatabaseUser:    NewUpdateDatabaseUserJob(db, ws, logger),
 		UninstallDatabaseUser: NewUninstallDatabaseUserJob(db, ws, logger),
-		SyncDatabases:         NewSyncDatabasesJob(db, ws, logger),
+		SyncDatabases:         NewSyncDatabasesJob(db, ws, dispatcher, logger),
 	}
 }
 
