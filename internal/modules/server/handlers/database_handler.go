@@ -21,6 +21,19 @@ func (h *Handler) ListDatabases(c *fiber.Ctx) error {
 	return response.OK(c, "Databases retrieved", databases)
 }
 
+// ListDatabaseUsers returns all database users for a server
+func (h *Handler) ListDatabaseUsers(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	serverID := c.Params("id")
+
+	users, err := h.service.ListDatabaseUsers(c.Context(), serverID, teamID)
+	if err != nil {
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch database users")
+	}
+
+	return response.OK(c, "Database users retrieved", users)
+}
+
 // CreateDatabase creates a new database
 func (h *Handler) CreateDatabase(c *fiber.Ctx) error {
 	teamID := c.Locals("teamID").(string)

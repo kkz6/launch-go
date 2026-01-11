@@ -116,6 +116,22 @@ type ServerProviderRepository interface {
 	DeleteServerProvider(ctx context.Context, id string) error
 }
 
+// DatabaseRepository defines the interface for database operations
+type DatabaseRepository interface {
+	FindDatabasesByServer(ctx context.Context, serverID string) ([]models.Database, error)
+	FindDatabaseByID(ctx context.Context, id string) (*models.Database, error)
+	CreateDatabase(ctx context.Context, db *models.Database) error
+	DeleteDatabase(ctx context.Context, id string) error
+}
+
+// DatabaseUserRepository defines the interface for database user operations
+type DatabaseUserRepository interface {
+	FindDatabaseUsersByServer(ctx context.Context, serverID string) ([]models.DatabaseUser, error)
+	FindDatabaseUserByID(ctx context.Context, id string) (*models.DatabaseUser, error)
+	CreateDatabaseUser(ctx context.Context, user *models.DatabaseUser) error
+	DeleteDatabaseUser(ctx context.Context, id string) error
+}
+
 // Repository combines all repository interfaces
 type Repository interface {
 	ServerRepository
@@ -127,5 +143,7 @@ type Repository interface {
 	TaskRepository
 	MetricRepository
 	ServerProviderRepository
+	DatabaseRepository
+	DatabaseUserRepository
 	Transaction(ctx context.Context, fn func(tx Repository) error) error
 }
