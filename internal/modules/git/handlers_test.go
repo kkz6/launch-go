@@ -77,13 +77,10 @@ func setupTestApp(handler *Handler) *fiber.App {
 }
 
 func TestNewHandler(t *testing.T) {
-	handler, service, _ := setupTestHandler(t)
+	handler, _, _ := setupTestHandler(t)
 
 	if handler == nil {
 		t.Fatal("NewHandler() returned nil")
-	}
-	if handler.service != service {
-		t.Error("Service should be set")
 	}
 }
 

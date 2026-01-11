@@ -6,22 +6,24 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
+
+	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 )
 
 func TestRecordType_String(t *testing.T) {
 	tests := []struct {
-		rt       RecordType
+		rt       enums.RecordType
 		expected string
 	}{
-		{RecordTypeA, "A"},
-		{RecordTypeAAAA, "AAAA"},
-		{RecordTypeCNAME, "CNAME"},
-		{RecordTypeMX, "MX"},
-		{RecordTypeNS, "NS"},
-		{RecordTypeSRV, "SRV"},
-		{RecordTypeTXT, "TXT"},
-		{RecordTypeSOA, "SOA"},
-		{RecordTypeCAA, "CAA"},
+		{enums.RecordTypeA, "A"},
+		{enums.RecordTypeAAAA, "AAAA"},
+		{enums.RecordTypeCNAME, "CNAME"},
+		{enums.RecordTypeMX, "MX"},
+		{enums.RecordTypeNS, "NS"},
+		{enums.RecordTypeSRV, "SRV"},
+		{enums.RecordTypeTXT, "TXT"},
+		{enums.RecordTypeSOA, "SOA"},
+		{enums.RecordTypeCAA, "CAA"},
 	}
 
 	for _, tt := range tests {
@@ -33,20 +35,20 @@ func TestRecordType_String(t *testing.T) {
 
 func TestRecordType_IsValid(t *testing.T) {
 	tests := []struct {
-		rt       RecordType
+		rt       enums.RecordType
 		expected bool
 	}{
-		{RecordTypeA, true},
-		{RecordTypeAAAA, true},
-		{RecordTypeCNAME, true},
-		{RecordTypeMX, true},
-		{RecordTypeNS, true},
-		{RecordTypeSRV, true},
-		{RecordTypeTXT, true},
-		{RecordTypeSOA, true},
-		{RecordTypeCAA, true},
-		{RecordType("INVALID"), false},
-		{RecordType(""), false},
+		{enums.RecordTypeA, true},
+		{enums.RecordTypeAAAA, true},
+		{enums.RecordTypeCNAME, true},
+		{enums.RecordTypeMX, true},
+		{enums.RecordTypeNS, true},
+		{enums.RecordTypeSRV, true},
+		{enums.RecordTypeTXT, true},
+		{enums.RecordTypeSOA, true},
+		{enums.RecordTypeCAA, true},
+		{enums.RecordType("INVALID"), false},
+		{enums.RecordType(""), false},
 	}
 
 	for _, tt := range tests {
@@ -58,18 +60,18 @@ func TestRecordType_IsValid(t *testing.T) {
 
 func TestRecordType_SupportsProxy(t *testing.T) {
 	tests := []struct {
-		rt       RecordType
+		rt       enums.RecordType
 		expected bool
 	}{
-		{RecordTypeA, true},
-		{RecordTypeAAAA, true},
-		{RecordTypeCNAME, true},
-		{RecordTypeMX, false},
-		{RecordTypeNS, false},
-		{RecordTypeSRV, false},
-		{RecordTypeTXT, false},
-		{RecordTypeSOA, false},
-		{RecordTypeCAA, false},
+		{enums.RecordTypeA, true},
+		{enums.RecordTypeAAAA, true},
+		{enums.RecordTypeCNAME, true},
+		{enums.RecordTypeMX, false},
+		{enums.RecordTypeNS, false},
+		{enums.RecordTypeSRV, false},
+		{enums.RecordTypeTXT, false},
+		{enums.RecordTypeSOA, false},
+		{enums.RecordTypeCAA, false},
 	}
 
 	for _, tt := range tests {
@@ -81,18 +83,18 @@ func TestRecordType_SupportsProxy(t *testing.T) {
 
 func TestRecordType_RequiresPriority(t *testing.T) {
 	tests := []struct {
-		rt       RecordType
+		rt       enums.RecordType
 		expected bool
 	}{
-		{RecordTypeA, false},
-		{RecordTypeAAAA, false},
-		{RecordTypeCNAME, false},
-		{RecordTypeMX, true},
-		{RecordTypeNS, false},
-		{RecordTypeSRV, true},
-		{RecordTypeTXT, false},
-		{RecordTypeSOA, false},
-		{RecordTypeCAA, false},
+		{enums.RecordTypeA, false},
+		{enums.RecordTypeAAAA, false},
+		{enums.RecordTypeCNAME, false},
+		{enums.RecordTypeMX, true},
+		{enums.RecordTypeNS, false},
+		{enums.RecordTypeSRV, true},
+		{enums.RecordTypeTXT, false},
+		{enums.RecordTypeSOA, false},
+		{enums.RecordTypeCAA, false},
 	}
 
 	for _, tt := range tests {
@@ -103,42 +105,42 @@ func TestRecordType_RequiresPriority(t *testing.T) {
 }
 
 func TestAllRecordTypes(t *testing.T) {
-	types := AllRecordTypes()
+	types := enums.AllRecordTypes()
 
 	assert.Len(t, types, 9)
-	assert.Contains(t, types, RecordTypeA)
-	assert.Contains(t, types, RecordTypeAAAA)
-	assert.Contains(t, types, RecordTypeCNAME)
-	assert.Contains(t, types, RecordTypeMX)
-	assert.Contains(t, types, RecordTypeNS)
-	assert.Contains(t, types, RecordTypeSRV)
-	assert.Contains(t, types, RecordTypeTXT)
-	assert.Contains(t, types, RecordTypeSOA)
-	assert.Contains(t, types, RecordTypeCAA)
+	assert.Contains(t, types, enums.RecordTypeA)
+	assert.Contains(t, types, enums.RecordTypeAAAA)
+	assert.Contains(t, types, enums.RecordTypeCNAME)
+	assert.Contains(t, types, enums.RecordTypeMX)
+	assert.Contains(t, types, enums.RecordTypeNS)
+	assert.Contains(t, types, enums.RecordTypeSRV)
+	assert.Contains(t, types, enums.RecordTypeTXT)
+	assert.Contains(t, types, enums.RecordTypeSOA)
+	assert.Contains(t, types, enums.RecordTypeCAA)
 }
 
 func TestParseRecordType(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected RecordType
+		expected enums.RecordType
 		wantErr  bool
 	}{
-		{"A", RecordTypeA, false},
-		{"AAAA", RecordTypeAAAA, false},
-		{"CNAME", RecordTypeCNAME, false},
-		{"MX", RecordTypeMX, false},
-		{"NS", RecordTypeNS, false},
-		{"SRV", RecordTypeSRV, false},
-		{"TXT", RecordTypeTXT, false},
-		{"SOA", RecordTypeSOA, false},
-		{"CAA", RecordTypeCAA, false},
-		{"INVALID", RecordType(""), true},
-		{"", RecordType(""), true},
+		{"A", enums.RecordTypeA, false},
+		{"AAAA", enums.RecordTypeAAAA, false},
+		{"CNAME", enums.RecordTypeCNAME, false},
+		{"MX", enums.RecordTypeMX, false},
+		{"NS", enums.RecordTypeNS, false},
+		{"SRV", enums.RecordTypeSRV, false},
+		{"TXT", enums.RecordTypeTXT, false},
+		{"SOA", enums.RecordTypeSOA, false},
+		{"CAA", enums.RecordTypeCAA, false},
+		{"INVALID", enums.RecordType(""), true},
+		{"", enums.RecordType(""), true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			rt, err := ParseRecordType(tt.input)
+			rt, err := enums.ParseRecordType(tt.input)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -152,11 +154,11 @@ func TestParseRecordType(t *testing.T) {
 
 func TestDnsProvider_String(t *testing.T) {
 	tests := []struct {
-		p        DnsProvider
+		p        enums.DnsProvider
 		expected string
 	}{
-		{DnsProviderCloudflare, "cloudflare"},
-		{DnsProviderDigitalOcean, "digitalocean"},
+		{enums.DnsProviderCloudflare, "cloudflare"},
+		{enums.DnsProviderDigitalOcean, "digitalocean"},
 	}
 
 	for _, tt := range tests {
@@ -168,12 +170,12 @@ func TestDnsProvider_String(t *testing.T) {
 
 func TestDnsProvider_Label(t *testing.T) {
 	tests := []struct {
-		p        DnsProvider
+		p        enums.DnsProvider
 		expected string
 	}{
-		{DnsProviderCloudflare, "Cloudflare"},
-		{DnsProviderDigitalOcean, "DigitalOcean"},
-		{DnsProvider("unknown"), "unknown"},
+		{enums.DnsProviderCloudflare, "Cloudflare"},
+		{enums.DnsProviderDigitalOcean, "DigitalOcean"},
+		{enums.DnsProvider("unknown"), "unknown"},
 	}
 
 	for _, tt := range tests {
@@ -185,13 +187,13 @@ func TestDnsProvider_Label(t *testing.T) {
 
 func TestDnsProvider_IsValid(t *testing.T) {
 	tests := []struct {
-		p        DnsProvider
+		p        enums.DnsProvider
 		expected bool
 	}{
-		{DnsProviderCloudflare, true},
-		{DnsProviderDigitalOcean, true},
-		{DnsProvider("invalid"), false},
-		{DnsProvider(""), false},
+		{enums.DnsProviderCloudflare, true},
+		{enums.DnsProviderDigitalOcean, true},
+		{enums.DnsProvider("invalid"), false},
+		{enums.DnsProvider(""), false},
 	}
 
 	for _, tt := range tests {
@@ -202,7 +204,7 @@ func TestDnsProvider_IsValid(t *testing.T) {
 }
 
 func TestDnsProvider_Value(t *testing.T) {
-	p := DnsProviderCloudflare
+	p := enums.DnsProviderCloudflare
 	val, err := p.Value()
 
 	require.NoError(t, err)
@@ -213,19 +215,19 @@ func TestDnsProvider_Scan(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    interface{}
-		expected DnsProvider
+		expected enums.DnsProvider
 		wantErr  bool
 	}{
-		{"string cloudflare", "cloudflare", DnsProviderCloudflare, false},
-		{"string digitalocean", "digitalocean", DnsProviderDigitalOcean, false},
-		{"bytes", []byte("cloudflare"), DnsProviderCloudflare, false},
-		{"nil", nil, DnsProvider(""), false},
-		{"invalid type", 123, DnsProvider(""), true},
+		{"string cloudflare", "cloudflare", enums.DnsProviderCloudflare, false},
+		{"string digitalocean", "digitalocean", enums.DnsProviderDigitalOcean, false},
+		{"bytes", []byte("cloudflare"), enums.DnsProviderCloudflare, false},
+		{"nil", nil, enums.DnsProvider(""), false},
+		{"invalid type", 123, enums.DnsProvider(""), true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var p DnsProvider
+			var p enums.DnsProvider
 			err := p.Scan(tt.input)
 
 			if tt.wantErr {
@@ -239,28 +241,28 @@ func TestDnsProvider_Scan(t *testing.T) {
 }
 
 func TestAllDnsProviders(t *testing.T) {
-	providers := AllDnsProviders()
+	providers := enums.AllDnsProviders()
 
 	assert.Len(t, providers, 2)
-	assert.Contains(t, providers, DnsProviderCloudflare)
-	assert.Contains(t, providers, DnsProviderDigitalOcean)
+	assert.Contains(t, providers, enums.DnsProviderCloudflare)
+	assert.Contains(t, providers, enums.DnsProviderDigitalOcean)
 }
 
 func TestParseDnsProvider(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected DnsProvider
+		expected enums.DnsProvider
 		wantErr  bool
 	}{
-		{"cloudflare", DnsProviderCloudflare, false},
-		{"digitalocean", DnsProviderDigitalOcean, false},
-		{"invalid", DnsProvider(""), true},
-		{"", DnsProvider(""), true},
+		{"cloudflare", enums.DnsProviderCloudflare, false},
+		{"digitalocean", enums.DnsProviderDigitalOcean, false},
+		{"invalid", enums.DnsProvider(""), true},
+		{"", enums.DnsProvider(""), true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			p, err := ParseDnsProvider(tt.input)
+			p, err := enums.ParseDnsProvider(tt.input)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -274,13 +276,13 @@ func TestParseDnsProvider(t *testing.T) {
 
 func TestSyncStatus_String(t *testing.T) {
 	tests := []struct {
-		s        SyncStatus
+		s        enums.SyncStatus
 		expected string
 	}{
-		{SyncStatusPending, "pending"},
-		{SyncStatusSyncing, "syncing"},
-		{SyncStatusCompleted, "completed"},
-		{SyncStatusFailed, "failed"},
+		{enums.SyncStatusPending, "pending"},
+		{enums.SyncStatusSyncing, "syncing"},
+		{enums.SyncStatusCompleted, "completed"},
+		{enums.SyncStatusFailed, "failed"},
 	}
 
 	for _, tt := range tests {
@@ -292,15 +294,15 @@ func TestSyncStatus_String(t *testing.T) {
 
 func TestSyncStatus_IsValid(t *testing.T) {
 	tests := []struct {
-		s        SyncStatus
+		s        enums.SyncStatus
 		expected bool
 	}{
-		{SyncStatusPending, true},
-		{SyncStatusSyncing, true},
-		{SyncStatusCompleted, true},
-		{SyncStatusFailed, true},
-		{SyncStatus("invalid"), false},
-		{SyncStatus(""), false},
+		{enums.SyncStatusPending, true},
+		{enums.SyncStatusSyncing, true},
+		{enums.SyncStatusCompleted, true},
+		{enums.SyncStatusFailed, true},
+		{enums.SyncStatus("invalid"), false},
+		{enums.SyncStatus(""), false},
 	}
 
 	for _, tt := range tests {
@@ -311,7 +313,7 @@ func TestSyncStatus_IsValid(t *testing.T) {
 }
 
 func TestSyncStatus_Value(t *testing.T) {
-	s := SyncStatusCompleted
+	s := enums.SyncStatusCompleted
 	val, err := s.Value()
 
 	require.NoError(t, err)
@@ -322,19 +324,19 @@ func TestSyncStatus_Scan(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    interface{}
-		expected SyncStatus
+		expected enums.SyncStatus
 		wantErr  bool
 	}{
-		{"string pending", "pending", SyncStatusPending, false},
-		{"string completed", "completed", SyncStatusCompleted, false},
-		{"bytes", []byte("syncing"), SyncStatusSyncing, false},
-		{"nil", nil, SyncStatus(""), false},
-		{"invalid type", 123, SyncStatus(""), true},
+		{"string pending", "pending", enums.SyncStatusPending, false},
+		{"string completed", "completed", enums.SyncStatusCompleted, false},
+		{"bytes", []byte("syncing"), enums.SyncStatusSyncing, false},
+		{"nil", nil, enums.SyncStatus(""), false},
+		{"invalid type", 123, enums.SyncStatus(""), true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var s SyncStatus
+			var s enums.SyncStatus
 			err := s.Scan(tt.input)
 
 			if tt.wantErr {
@@ -348,11 +350,11 @@ func TestSyncStatus_Scan(t *testing.T) {
 }
 
 func TestDnsProvider_ToProviderType(t *testing.T) {
-	p := DnsProviderCloudflare
+	p := enums.DnsProviderCloudflare
 	pt := p.ToProviderType()
 	assert.Equal(t, "cloudflare", pt.String())
 
-	p = DnsProviderDigitalOcean
+	p = enums.DnsProviderDigitalOcean
 	pt = p.ToProviderType()
 	assert.Equal(t, "digitalocean", pt.String())
 }

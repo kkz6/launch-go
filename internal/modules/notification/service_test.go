@@ -11,9 +11,14 @@ import (
 	"gorm.io/gorm/logger"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
+	"github.com/kkz6/launch-go/internal/modules/notification/dto"
+	"github.com/kkz6/launch-go/internal/modules/notification/enums"
+	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	"github.com/kkz6/launch-go/internal/modules/notification/repositories"
+	"github.com/kkz6/launch-go/internal/modules/notification/services"
 )
 
-func setupTestService(t *testing.T) (*Service, *Repository) {
+func setupTestService(t *testing.T) (*services.NotificationChannelService, *repositories.NotificationChannelRepository) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
@@ -21,11 +26,11 @@ func setupTestService(t *testing.T) (*Service, *Repository) {
 		t.Fatalf("failed to connect database: %v", err)
 	}
 
-	if err := db.AutoMigrate(&NotificationChannel{}); err != nil {
+	if err := db.AutoMigrate(&models.NotificationChannel{}); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
 
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 
 	mockHTTP := &channels.MockHTTPClient{
 		PostFunc: func(ctx context.Context, url string, body interface{}) ([]byte, int, error) {
@@ -36,7 +41,7 @@ func setupTestService(t *testing.T) (*Service, *Repository) {
 	factory := channels.NewFactoryWithEmail(mockHTTP, mockEmail)
 
 	log := zerolog.Nop()
-	service := NewService(repo, factory, &log)
+	service := services.NewNotificationChannelService(repo, factory, &log)
 
 	return service, repo
 }
@@ -47,12 +52,12 @@ func TestService_CreateChannel(t *testing.T) {
 
 	tests := []struct {
 		name      string
-		req       *CreateChannelRequest
+		req       *dto.CreateChannelRequest
 		expectErr bool
 	}{
 		{
 			name: "create email channel",
-			req: &CreateChannelRequest{
+			req: &dto.CreateChannelRequest{
 				Provider: "email",
 				Label:    "My Email",
 				Email:    "test@example.com",
@@ -61,7 +66,7 @@ func TestService_CreateChannel(t *testing.T) {
 		},
 		{
 			name: "create slack channel",
-			req: &CreateChannelRequest{
+			req: &dto.CreateChannelRequest{
 				Provider:   "slack",
 				Label:      "My Slack",
 				WebhookURL: "https://hooks.slack.com/xxx",
@@ -70,7 +75,7 @@ func TestService_CreateChannel(t *testing.T) {
 		},
 		{
 			name: "invalid provider",
-			req: &CreateChannelRequest{
+			req: &dto.CreateChannelRequest{
 				Provider: "invalid",
 				Label:    "Test",
 			},
@@ -114,8 +119,8 @@ func TestService_CreateChannel_ConnectionFailed(t *testing.T) {
 	db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
-	_ = db.AutoMigrate(&NotificationChannel{})
-	repo := NewRepository(db)
+	_ = db.AutoMigrate(&models.NotificationChannel{})
+	repo := repositories.NewNotificationChannelRepository(db)
 
 	mockHTTP := &channels.MockHTTPClient{
 		PostFunc: func(ctx context.Context, url string, body interface{}) ([]byte, int, error) {
@@ -124,9 +129,9 @@ func TestService_CreateChannel_ConnectionFailed(t *testing.T) {
 	}
 	factory := channels.NewFactory(mockHTTP)
 	log := zerolog.Nop()
-	service := NewService(repo, factory, &log)
+	service := services.NewNotificationChannelService(repo, factory, &log)
 
-	req := &CreateChannelRequest{
+	req := &dto.CreateChannelRequest{
 		Provider:   "slack",
 		Label:      "My Slack",
 		WebhookURL: "https://hooks.slack.com/xxx",
@@ -136,7 +141,7 @@ func TestService_CreateChannel_ConnectionFailed(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for connection failure")
 	}
-	if !errors.Is(err, ErrConnectionFailed) {
+	if !errors.Is(err, services.ErrConnectionFailed) {
 		t.Errorf("expected ErrConnectionFailed, got %v", err)
 	}
 }
@@ -146,18 +151,18 @@ func TestService_UpdateChannel(t *testing.T) {
 	ctx := context.Background()
 
 	// Create a channel first
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "user123",
 		TeamID:    "team123",
-		Provider:  ChannelTypeSlack,
+		Provider:  enums.ChannelTypeSlack,
 		Label:     "Original",
-		Data:      ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
+		Data:      models.ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
 		Connected: true,
 	}
 	_ = repo.Create(ctx, channel)
 
-	req := &UpdateChannelRequest{
+	req := &dto.UpdateChannelRequest{
 		Label:      "Updated",
 		WebhookURL: "https://hooks.slack.com/yyy",
 		AppDeploy:  true,
@@ -181,7 +186,7 @@ func TestService_UpdateChannel_NotFound(t *testing.T) {
 	service, _ := setupTestService(t)
 	ctx := context.Background()
 
-	req := &UpdateChannelRequest{Label: "Test"}
+	req := &dto.UpdateChannelRequest{Label: "Test"}
 	_, err := service.UpdateChannel(ctx, "nonexistent", "user123", "team123", req)
 
 	if err == nil {
@@ -193,11 +198,11 @@ func TestService_DeleteChannel(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:       "01HXYZ123456789ABCDEFGHIJ",
 		UserID:   "user123",
 		TeamID:   "team123",
-		Provider: ChannelTypeEmail,
+		Provider: enums.ChannelTypeEmail,
 		Label:    "To Delete",
 	}
 	_ = repo.Create(ctx, channel)
@@ -209,7 +214,7 @@ func TestService_DeleteChannel(t *testing.T) {
 
 	// Verify deleted
 	_, err = repo.FindByID(ctx, channel.ID)
-	if err != ErrChannelNotFound {
+	if err != repositories.ErrChannelNotFound {
 		t.Errorf("expected ErrChannelNotFound, got %v", err)
 	}
 }
@@ -218,11 +223,11 @@ func TestService_DeleteChannel_WrongTeam(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:       "01HXYZ123456789ABCDEFGHIJ",
 		UserID:   "user123",
 		TeamID:   "team123",
-		Provider: ChannelTypeEmail,
+		Provider: enums.ChannelTypeEmail,
 		Label:    "Test",
 	}
 	_ = repo.Create(ctx, channel)
@@ -237,11 +242,11 @@ func TestService_GetChannel(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:       "01HXYZ123456789ABCDEFGHIJ",
 		UserID:   "user123",
 		TeamID:   "team123",
-		Provider: ChannelTypeEmail,
+		Provider: enums.ChannelTypeEmail,
 		Label:    "Test",
 	}
 	_ = repo.Create(ctx, channel)
@@ -261,13 +266,13 @@ func TestService_ListChannels(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channels := []NotificationChannel{
-		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team123", Provider: ChannelTypeEmail, Label: "Email 1"},
-		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team123", Provider: ChannelTypeSlack, Label: "Slack 1"},
-		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user2", TeamID: "other-team", Provider: ChannelTypeEmail, Label: "Email 2"},
+	chans := []models.NotificationChannel{
+		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team123", Provider: enums.ChannelTypeEmail, Label: "Email 1"},
+		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team123", Provider: enums.ChannelTypeSlack, Label: "Slack 1"},
+		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user2", TeamID: "other-team", Provider: enums.ChannelTypeEmail, Label: "Email 2"},
 	}
 
-	for _, ch := range channels {
+	for _, ch := range chans {
 		_ = repo.Create(ctx, &ch)
 	}
 
@@ -286,13 +291,13 @@ func TestService_TestChannel(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "user123",
 		TeamID:    "team123",
-		Provider:  ChannelTypeSlack,
+		Provider:  enums.ChannelTypeSlack,
 		Label:     "Test Slack",
-		Data:      ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
+		Data:      models.ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
 		Connected: true,
 	}
 	_ = repo.Create(ctx, channel)
@@ -317,17 +322,17 @@ func TestService_SendToTeam(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channels := []NotificationChannel{
-		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team123", Provider: ChannelTypeSlack, Label: "Slack 1", Connected: true, Data: ChannelData{WebhookURL: "https://hooks.slack.com/1"}},
-		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team123", Provider: ChannelTypeDiscord, Label: "Discord 1", Connected: true, Data: ChannelData{WebhookURL: "https://discord.com/api/webhooks/1"}},
-		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user1", TeamID: "team123", Provider: ChannelTypeEmail, Label: "Email 1", Connected: false}, // Not connected
+	chans := []models.NotificationChannel{
+		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team123", Provider: enums.ChannelTypeSlack, Label: "Slack 1", Connected: true, Data: models.ChannelData{WebhookURL: "https://hooks.slack.com/1"}},
+		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team123", Provider: enums.ChannelTypeDiscord, Label: "Discord 1", Connected: true, Data: models.ChannelData{WebhookURL: "https://discord.com/api/webhooks/1"}},
+		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user1", TeamID: "team123", Provider: enums.ChannelTypeEmail, Label: "Email 1", Connected: false}, // Not connected
 	}
 
-	for _, ch := range channels {
+	for _, ch := range chans {
 		_ = repo.Create(ctx, &ch)
 	}
 
-	notif := NewBaseNotification(NotificationTypeServerProvisioned, "Server is ready")
+	notif := models.NewBaseNotification(enums.NotificationTypeServerProvisioned, "Server is ready")
 
 	err := service.SendToTeam(ctx, "team123", notif)
 	if err != nil {
@@ -339,8 +344,8 @@ func TestService_SendToTeam_AllFailed(t *testing.T) {
 	db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
-	_ = db.AutoMigrate(&NotificationChannel{})
-	repo := NewRepository(db)
+	_ = db.AutoMigrate(&models.NotificationChannel{})
+	repo := repositories.NewNotificationChannelRepository(db)
 
 	mockHTTP := &channels.MockHTTPClient{
 		PostFunc: func(ctx context.Context, url string, body interface{}) ([]byte, int, error) {
@@ -349,20 +354,20 @@ func TestService_SendToTeam_AllFailed(t *testing.T) {
 	}
 	factory := channels.NewFactory(mockHTTP)
 	log := zerolog.Nop()
-	service := NewService(repo, factory, &log)
+	service := services.NewNotificationChannelService(repo, factory, &log)
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "user123",
 		TeamID:    "team123",
-		Provider:  ChannelTypeSlack,
+		Provider:  enums.ChannelTypeSlack,
 		Label:     "Test",
-		Data:      ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
+		Data:      models.ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
 		Connected: true,
 	}
 	_ = repo.Create(context.Background(), channel)
 
-	notif := NewBaseNotification(NotificationTypeServerProvisioned, "Test")
+	notif := models.NewBaseNotification(enums.NotificationTypeServerProvisioned, "Test")
 	err := service.SendToTeam(context.Background(), "team123", notif)
 
 	if err == nil {
@@ -374,18 +379,18 @@ func TestService_SendToChannel(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "user123",
 		TeamID:    "team123",
-		Provider:  ChannelTypeSlack,
+		Provider:  enums.ChannelTypeSlack,
 		Label:     "Test Slack",
-		Data:      ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
+		Data:      models.ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
 		Connected: true,
 	}
 	_ = repo.Create(ctx, channel)
 
-	notif := NewBaseNotification(NotificationTypeServerProvisioned, "Test notification")
+	notif := models.NewBaseNotification(enums.NotificationTypeServerProvisioned, "Test notification")
 
 	err := service.SendToChannel(ctx, channel.ID, notif)
 	if err != nil {
@@ -397,18 +402,18 @@ func TestService_SendToChannel_NotConnected(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "user123",
 		TeamID:    "team123",
-		Provider:  ChannelTypeSlack,
+		Provider:  enums.ChannelTypeSlack,
 		Label:     "Test Slack",
-		Data:      ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
+		Data:      models.ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
 		Connected: false,
 	}
 	_ = repo.Create(ctx, channel)
 
-	notif := NewBaseNotification(NotificationTypeServerProvisioned, "Test")
+	notif := models.NewBaseNotification(enums.NotificationTypeServerProvisioned, "Test")
 
 	err := service.SendToChannel(ctx, channel.ID, notif)
 	if err == nil {
@@ -420,12 +425,12 @@ func TestService_SetChannelDefault(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channels := []NotificationChannel{
-		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team123", Provider: ChannelTypeEmail, Label: "Email 1", IsDefault: true},
-		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team123", Provider: ChannelTypeEmail, Label: "Email 2", IsDefault: false},
+	chans := []models.NotificationChannel{
+		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team123", Provider: enums.ChannelTypeEmail, Label: "Email 1", IsDefault: true},
+		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team123", Provider: enums.ChannelTypeEmail, Label: "Email 2", IsDefault: false},
 	}
 
-	for _, ch := range channels {
+	for _, ch := range chans {
 		_ = repo.Create(ctx, &ch)
 	}
 
@@ -450,11 +455,11 @@ func TestService_DisconnectChannel(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "user123",
 		TeamID:    "team123",
-		Provider:  ChannelTypeEmail,
+		Provider:  enums.ChannelTypeEmail,
 		Label:     "Test",
 		Connected: true,
 	}
@@ -476,13 +481,13 @@ func TestService_ReconnectChannel(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "user123",
 		TeamID:    "team123",
-		Provider:  ChannelTypeSlack,
+		Provider:  enums.ChannelTypeSlack,
 		Label:     "Test",
-		Data:      ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
+		Data:      models.ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
 		Connected: false,
 	}
 	_ = repo.Create(ctx, channel)
@@ -503,8 +508,8 @@ func TestService_ReconnectChannel_Failed(t *testing.T) {
 	db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
-	_ = db.AutoMigrate(&NotificationChannel{})
-	repo := NewRepository(db)
+	_ = db.AutoMigrate(&models.NotificationChannel{})
+	repo := repositories.NewNotificationChannelRepository(db)
 
 	mockHTTP := &channels.MockHTTPClient{
 		PostFunc: func(ctx context.Context, url string, body interface{}) ([]byte, int, error) {
@@ -513,15 +518,15 @@ func TestService_ReconnectChannel_Failed(t *testing.T) {
 	}
 	factory := channels.NewFactory(mockHTTP)
 	log := zerolog.Nop()
-	service := NewService(repo, factory, &log)
+	service := services.NewNotificationChannelService(repo, factory, &log)
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "user123",
 		TeamID:    "team123",
-		Provider:  ChannelTypeSlack,
+		Provider:  enums.ChannelTypeSlack,
 		Label:     "Test",
-		Data:      ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
+		Data:      models.ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
 		Connected: false,
 	}
 	_ = repo.Create(context.Background(), channel)
@@ -534,20 +539,14 @@ func TestService_ReconnectChannel_Failed(t *testing.T) {
 
 func TestNewService(t *testing.T) {
 	db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	factory := channels.NewFactory(&channels.MockHTTPClient{})
 	log := zerolog.Nop()
 
-	service := NewService(repo, factory, &log)
+	service := services.NewNotificationChannelService(repo, factory, &log)
 
 	if service == nil {
-		t.Error("NewService() returned nil")
-	}
-	if service.repo != repo {
-		t.Error("repo not set correctly")
-	}
-	if service.channelFactory != factory {
-		t.Error("channelFactory not set correctly")
+		t.Error("NewNotificationChannelService() returned nil")
 	}
 }
 
@@ -556,10 +555,10 @@ func TestServiceErrors(t *testing.T) {
 		name string
 		err  error
 	}{
-		{"ErrInvalidProvider", ErrInvalidProvider},
-		{"ErrConnectionFailed", ErrConnectionFailed},
-		{"ErrNotificationFailed", ErrNotificationFailed},
-		{"ErrUnauthorized", ErrUnauthorized},
+		{"ErrInvalidProvider", services.ErrInvalidProvider},
+		{"ErrConnectionFailed", services.ErrConnectionFailed},
+		{"ErrNotificationFailed", services.ErrNotificationFailed},
+		{"ErrUnauthorized", services.ErrUnauthorized},
 	}
 
 	for _, tt := range tests {
@@ -578,7 +577,7 @@ func TestService_SendToTeam_NoChannels(t *testing.T) {
 	service, _ := setupTestService(t)
 	ctx := context.Background()
 
-	notif := NewBaseNotification(NotificationTypeServerProvisioned, "Test")
+	notif := models.NewBaseNotification(enums.NotificationTypeServerProvisioned, "Test")
 	err := service.SendToTeam(ctx, "nonexistent-team", notif)
 
 	// Should not error if no channels, just no-op
@@ -591,7 +590,7 @@ func TestService_SendToChannel_NotFound(t *testing.T) {
 	service, _ := setupTestService(t)
 	ctx := context.Background()
 
-	notif := NewBaseNotification(NotificationTypeServerProvisioned, "Test")
+	notif := models.NewBaseNotification(enums.NotificationTypeServerProvisioned, "Test")
 	err := service.SendToChannel(ctx, "nonexistent", notif)
 
 	if err == nil {
@@ -603,18 +602,18 @@ func TestService_SendToTeam_WithEmail(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "user123",
 		TeamID:    "team123",
-		Provider:  ChannelTypeEmail,
+		Provider:  enums.ChannelTypeEmail,
 		Label:     "Test Email",
-		Data:      ChannelData{Email: "test@example.com"},
+		Data:      models.ChannelData{Email: "test@example.com"},
 		Connected: true,
 	}
 	_ = repo.Create(ctx, channel)
 
-	notif := NewBaseNotification(NotificationTypeServerProvisioned, "Test email notification")
+	notif := models.NewBaseNotification(enums.NotificationTypeServerProvisioned, "Test email notification")
 
 	err := service.SendToTeam(ctx, "team123", notif)
 	if err != nil {
@@ -626,13 +625,13 @@ func TestService_SendToTeam_WithTelegram(t *testing.T) {
 	service, repo := setupTestService(t)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:       "01HXYZ123456789ABCDEFGHIJ",
 		UserID:   "user123",
 		TeamID:   "team123",
-		Provider: ChannelTypeTelegram,
+		Provider: enums.ChannelTypeTelegram,
 		Label:    "Test Telegram",
-		Data: ChannelData{
+		Data: models.ChannelData{
 			BotToken: "123456:ABC",
 			ChatID:   "-123456789",
 		},
@@ -640,7 +639,7 @@ func TestService_SendToTeam_WithTelegram(t *testing.T) {
 	}
 	_ = repo.Create(ctx, channel)
 
-	notif := NewBaseNotification(NotificationTypeServerProvisioned, "Test telegram notification")
+	notif := models.NewBaseNotification(enums.NotificationTypeServerProvisioned, "Test telegram notification")
 
 	err := service.SendToTeam(ctx, "team123", notif)
 	if err != nil {

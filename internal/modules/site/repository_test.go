@@ -9,41 +9,53 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/modules/site/enums"
+	"github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 )
 
-func setupTestRepository(t *testing.T) (*Repository, *gorm.DB) {
+func setupTestRepository(t *testing.T) (*repositories.SiteRepository, *repositories.DeploymentRepository, *repositories.CertificateRepository, *repositories.QueueRepository, *repositories.CommandRepository, *repositories.RedirectRepository, *repositories.ReleaseRepository, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&Site{}, &Deployment{}, &Certificate{}, &Queue{}, &Command{}, &Redirect{}, &Release{})
+	err = db.AutoMigrate(&models.Site{}, &models.Deployment{}, &models.Certificate{}, &models.Queue{}, &models.Command{}, &models.Redirect{}, &models.Release{})
 	require.NoError(t, err)
 
-	return NewRepository(db), db
+	siteRepo := repositories.NewSiteRepository(db)
+	deploymentRepo := repositories.NewDeploymentRepository(db)
+	certificateRepo := repositories.NewCertificateRepository(db)
+	queueRepo := repositories.NewQueueRepository(db)
+	commandRepo := repositories.NewCommandRepository(db)
+	redirectRepo := repositories.NewRedirectRepository(db)
+	releaseRepo := repositories.NewReleaseRepository(db)
+
+	return siteRepo, deploymentRepo, certificateRepo, queueRepo, commandRepo, redirectRepo, releaseRepo, db
 }
 
-func createTestSite(t *testing.T, repo *Repository, serverID, address string) *Site {
-	site := &Site{
+func createTestSite(t *testing.T, siteRepo *repositories.SiteRepository, serverID, address string) *models.Site {
+	site := &models.Site{
 		ServerID: serverID,
 		UserID:   "01ARZ3NDEKTSV4RRFFQ69G5FAU",
 		Address:  address,
-		Type:     SiteTypeLaravel,
+		Type:     enums.SiteTypeLaravel,
 		User:     "deploy",
 		Path:     "/home/deploy/" + address,
 	}
-	err := repo.Create(context.Background(), site)
+	err := siteRepo.Create(context.Background(), site)
 	require.NoError(t, err)
 
 	return site
 }
 
-func createTestDeployment(t *testing.T, repo *Repository, siteID string, status DeploymentStatus) *Deployment {
+func createTestDeployment(t *testing.T, deploymentRepo *repositories.DeploymentRepository, siteID string, status enums.DeploymentStatus) *models.Deployment {
 	userID := "01ARZ3NDEKTSV4RRFFQ69G5FAU"
-	deployment := &Deployment{
+	deployment := &models.Deployment{
 		SiteID: siteID,
 		UserID: &userID,
 		Status: status,
 	}
-	err := repo.CreateDeployment(context.Background(), deployment)
+	err := deploymentRepo.Create(context.Background(), deployment)
 	require.NoError(t, err)
 
 	return deployment
@@ -53,25 +65,24 @@ func TestNewRepository(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	repo := NewRepository(db)
+	repo := repositories.NewSiteRepository(db)
 
 	assert.NotNil(t, repo)
-	assert.Equal(t, db, repo.db)
 }
 
 // Site repository tests
 
 func TestRepository_Create(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := &Site{
+	site := &models.Site{
 		ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
 		UserID:   "01ARZ3NDEKTSV4RRFFQ69G5FAU",
 		Address:  "example.com",
 	}
 
-	err := repo.Create(ctx, site)
+	err := siteRepo.Create(ctx, site)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, site.ID)
@@ -80,13 +91,13 @@ func TestRepository_Create(t *testing.T) {
 }
 
 func TestRepository_FindByID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
 	t.Run("finds existing site", func(t *testing.T) {
-		created := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+		created := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
-		found, err := repo.FindByID(ctx, created.ID)
+		found, err := siteRepo.FindByID(ctx, created.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, created.ID, found.ID)
@@ -94,21 +105,21 @@ func TestRepository_FindByID(t *testing.T) {
 	})
 
 	t.Run("returns error for non-existent site", func(t *testing.T) {
-		_, err := repo.FindByID(ctx, "non_existent_id")
+		_, err := siteRepo.FindByID(ctx, "non_existent_id")
 
-		assert.ErrorIs(t, err, ErrSiteNotFound)
+		assert.ErrorIs(t, err, repositories.ErrSiteNotFound)
 	})
 }
 
 func TestRepository_FindByIDWithDeployments(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	createTestDeployment(t, repo, site.ID, DeploymentStatusFinished)
-	createTestDeployment(t, repo, site.ID, DeploymentStatusPending)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusFinished)
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusPending)
 
-	found, err := repo.FindByIDWithDeployments(ctx, site.ID)
+	found, err := siteRepo.FindByIDWithDeployments(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, site.ID, found.ID)
@@ -116,53 +127,53 @@ func TestRepository_FindByIDWithDeployments(t *testing.T) {
 }
 
 func TestRepository_FindByIDAndServer(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
 	t.Run("finds site by ID and server", func(t *testing.T) {
 		serverID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-		created := createTestSite(t, repo, serverID, "example.com")
+		created := createTestSite(t, siteRepo, serverID, "example.com")
 
-		found, err := repo.FindByIDAndServer(ctx, created.ID, serverID)
+		found, err := siteRepo.FindByIDAndServer(ctx, created.ID, serverID)
 		require.NoError(t, err)
 
 		assert.Equal(t, created.ID, found.ID)
 	})
 
 	t.Run("returns error for wrong server", func(t *testing.T) {
-		created := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example2.com")
+		created := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example2.com")
 
-		_, err := repo.FindByIDAndServer(ctx, created.ID, "different_server")
+		_, err := siteRepo.FindByIDAndServer(ctx, created.ID, "different_server")
 
-		assert.ErrorIs(t, err, ErrSiteNotFound)
+		assert.ErrorIs(t, err, repositories.ErrSiteNotFound)
 	})
 }
 
 func TestRepository_FindByServer(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
 	serverID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
-	createTestSite(t, repo, serverID, "site1.com")
-	createTestSite(t, repo, serverID, "site2.com")
-	createTestSite(t, repo, "other_server", "site3.com")
+	createTestSite(t, siteRepo, serverID, "site1.com")
+	createTestSite(t, siteRepo, serverID, "site2.com")
+	createTestSite(t, siteRepo, "other_server", "site3.com")
 
-	sites, err := repo.FindByServer(ctx, serverID)
+	sites, err := siteRepo.FindByServer(ctx, serverID)
 	require.NoError(t, err)
 
 	assert.Len(t, sites, 2)
 }
 
 func TestRepository_FindByServerWithLatestDeployment(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
 	serverID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-	site := createTestSite(t, repo, serverID, "example.com")
-	createTestDeployment(t, repo, site.ID, DeploymentStatusFinished)
+	site := createTestSite(t, siteRepo, serverID, "example.com")
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusFinished)
 
-	sites, err := repo.FindByServerWithLatestDeployment(ctx, serverID)
+	sites, err := siteRepo.FindByServerWithLatestDeployment(ctx, serverID)
 	require.NoError(t, err)
 
 	assert.Len(t, sites, 1)
@@ -170,110 +181,110 @@ func TestRepository_FindByServerWithLatestDeployment(t *testing.T) {
 }
 
 func TestRepository_FindByAddress(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
 	t.Run("finds site by address and server", func(t *testing.T) {
 		serverID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-		created := createTestSite(t, repo, serverID, "unique.example.com")
+		created := createTestSite(t, siteRepo, serverID, "unique.example.com")
 
-		found, err := repo.FindByAddress(ctx, "unique.example.com", serverID)
+		found, err := siteRepo.FindByAddress(ctx, "unique.example.com", serverID)
 		require.NoError(t, err)
 
 		assert.Equal(t, created.ID, found.ID)
 	})
 
 	t.Run("returns error for non-existent address", func(t *testing.T) {
-		_, err := repo.FindByAddress(ctx, "nonexistent.com", "server_id")
+		_, err := siteRepo.FindByAddress(ctx, "nonexistent.com", "server_id")
 
-		assert.ErrorIs(t, err, ErrSiteNotFound)
+		assert.ErrorIs(t, err, repositories.ErrSiteNotFound)
 	})
 }
 
 func TestRepository_FindByRepositoryAndBranch(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
 	serverID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
-	site1 := createTestSite(t, repo, serverID, "site1.com")
+	site1 := createTestSite(t, siteRepo, serverID, "site1.com")
 	site1.RepositoryBranch = "main"
 	site1.AutoDeployment = true
-	repo.Update(ctx, site1)
+	siteRepo.Update(ctx, site1)
 
-	site2 := createTestSite(t, repo, serverID, "site2.com")
+	site2 := createTestSite(t, siteRepo, serverID, "site2.com")
 	site2.RepositoryBranch = "main"
 	site2.AutoDeployment = false
-	repo.Update(ctx, site2)
+	siteRepo.Update(ctx, site2)
 
-	sites, err := repo.FindByRepositoryAndBranch(ctx, "repo", "main")
+	sites, err := siteRepo.FindByRepositoryAndBranch(ctx, "repo", "main")
 	require.NoError(t, err)
 
 	assert.Len(t, sites, 1)
 }
 
 func TestRepository_Update(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
 	now := time.Now()
 	site.InstalledAt = &now
 
-	err := repo.Update(ctx, site)
+	err := siteRepo.Update(ctx, site)
 	require.NoError(t, err)
 
-	found, err := repo.FindByID(ctx, site.ID)
+	found, err := siteRepo.FindByID(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.NotNil(t, found.InstalledAt)
 }
 
 func TestRepository_UpdateFields(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
-	err := repo.UpdateFields(ctx, site.ID, map[string]interface{}{
+	err := siteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
 		"auto_deployment": true,
 	})
 	require.NoError(t, err)
 
-	found, err := repo.FindByID(ctx, site.ID)
+	found, err := siteRepo.FindByID(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.True(t, found.AutoDeployment)
 }
 
 func TestRepository_Delete(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "to_delete.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "to_delete.com")
 
-	err := repo.Delete(ctx, site.ID)
+	err := siteRepo.Delete(ctx, site.ID)
 	require.NoError(t, err)
 
-	_, err = repo.FindByID(ctx, site.ID)
-	assert.ErrorIs(t, err, ErrSiteNotFound)
+	_, err = siteRepo.FindByID(ctx, site.ID)
+	assert.ErrorIs(t, err, repositories.ErrSiteNotFound)
 }
 
 // Deployment repository tests
 
 func TestRepository_CreateDeployment(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
-	deployment := &Deployment{
+	deployment := &models.Deployment{
 		SiteID: site.ID,
-		Status: DeploymentStatusPending,
+		Status: enums.DeploymentStatusPending,
 	}
 
-	err := repo.CreateDeployment(ctx, deployment)
+	err := deploymentRepo.Create(ctx, deployment)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, deployment.ID)
@@ -281,82 +292,82 @@ func TestRepository_CreateDeployment(t *testing.T) {
 }
 
 func TestRepository_FindDeploymentByID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
 	t.Run("finds existing deployment", func(t *testing.T) {
-		created := createTestDeployment(t, repo, site.ID, DeploymentStatusPending)
+		created := createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusPending)
 
-		found, err := repo.FindDeploymentByID(ctx, created.ID)
+		found, err := deploymentRepo.FindByID(ctx, created.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, created.ID, found.ID)
 	})
 
 	t.Run("returns error for non-existent deployment", func(t *testing.T) {
-		_, err := repo.FindDeploymentByID(ctx, "non_existent_id")
+		_, err := deploymentRepo.FindByID(ctx, "non_existent_id")
 
-		assert.ErrorIs(t, err, ErrDeploymentNotFound)
+		assert.ErrorIs(t, err, repositories.ErrDeploymentNotFound)
 	})
 }
 
 func TestRepository_FindDeploymentByIDAndSite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	deployment := createTestDeployment(t, repo, site.ID, DeploymentStatusPending)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	deployment := createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusPending)
 
 	t.Run("finds deployment by ID and site", func(t *testing.T) {
-		found, err := repo.FindDeploymentByIDAndSite(ctx, deployment.ID, site.ID)
+		found, err := deploymentRepo.FindByIDAndSite(ctx, deployment.ID, site.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, deployment.ID, found.ID)
 	})
 
 	t.Run("returns error for wrong site", func(t *testing.T) {
-		_, err := repo.FindDeploymentByIDAndSite(ctx, deployment.ID, "different_site")
+		_, err := deploymentRepo.FindByIDAndSite(ctx, deployment.ID, "different_site")
 
-		assert.ErrorIs(t, err, ErrDeploymentNotFound)
+		assert.ErrorIs(t, err, repositories.ErrDeploymentNotFound)
 	})
 }
 
 func TestRepository_FindDeploymentsBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	createTestDeployment(t, repo, site.ID, DeploymentStatusPending)
-	createTestDeployment(t, repo, site.ID, DeploymentStatusFinished)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusPending)
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusFinished)
 
-	deployments, err := repo.FindDeploymentsBySite(ctx, site.ID)
+	deployments, err := deploymentRepo.FindBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Len(t, deployments, 2)
 }
 
 func TestRepository_FindLatestDeploymentBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
 	t.Run("returns latest deployment", func(t *testing.T) {
-		site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-		createTestDeployment(t, repo, site.ID, DeploymentStatusFinished)
+		site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+		createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusFinished)
 		time.Sleep(10 * time.Millisecond)
-		latest := createTestDeployment(t, repo, site.ID, DeploymentStatusPending)
+		latest := createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusPending)
 
-		found, err := repo.FindLatestDeploymentBySite(ctx, site.ID)
+		found, err := deploymentRepo.FindLatestBySite(ctx, site.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, latest.ID, found.ID)
 	})
 
 	t.Run("returns nil for site without deployments", func(t *testing.T) {
-		site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "empty.com")
+		site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "empty.com")
 
-		found, err := repo.FindLatestDeploymentBySite(ctx, site.ID)
+		found, err := deploymentRepo.FindLatestBySite(ctx, site.ID)
 		require.NoError(t, err)
 
 		assert.Nil(t, found)
@@ -364,34 +375,34 @@ func TestRepository_FindLatestDeploymentBySite(t *testing.T) {
 }
 
 func TestRepository_FindActiveDeploymentBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
 	t.Run("finds pending deployment", func(t *testing.T) {
-		site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "site1.com")
-		active := createTestDeployment(t, repo, site.ID, DeploymentStatusPending)
+		site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "site1.com")
+		active := createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusPending)
 
-		found, err := repo.FindActiveDeploymentBySite(ctx, site.ID)
+		found, err := deploymentRepo.FindActiveBySite(ctx, site.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, active.ID, found.ID)
 	})
 
 	t.Run("finds installing deployment", func(t *testing.T) {
-		site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "site2.com")
-		active := createTestDeployment(t, repo, site.ID, DeploymentStatusInstalling)
+		site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "site2.com")
+		active := createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusInstalling)
 
-		found, err := repo.FindActiveDeploymentBySite(ctx, site.ID)
+		found, err := deploymentRepo.FindActiveBySite(ctx, site.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, active.ID, found.ID)
 	})
 
 	t.Run("returns nil for finished deployments", func(t *testing.T) {
-		site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "site3.com")
-		createTestDeployment(t, repo, site.ID, DeploymentStatusFinished)
+		site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "site3.com")
+		createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusFinished)
 
-		found, err := repo.FindActiveDeploymentBySite(ctx, site.ID)
+		found, err := deploymentRepo.FindActiveBySite(ctx, site.ID)
 		require.NoError(t, err)
 
 		assert.Nil(t, found)
@@ -399,82 +410,82 @@ func TestRepository_FindActiveDeploymentBySite(t *testing.T) {
 }
 
 func TestRepository_FindQueuedDeploymentsBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	createTestDeployment(t, repo, site.ID, DeploymentStatusQueued)
-	createTestDeployment(t, repo, site.ID, DeploymentStatusQueued)
-	createTestDeployment(t, repo, site.ID, DeploymentStatusFinished)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusQueued)
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusQueued)
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusFinished)
 
-	deployments, err := repo.FindQueuedDeploymentsBySite(ctx, site.ID)
+	deployments, err := deploymentRepo.FindQueuedBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Len(t, deployments, 2)
 }
 
 func TestRepository_CountQueuedDeploymentsBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	createTestDeployment(t, repo, site.ID, DeploymentStatusQueued)
-	createTestDeployment(t, repo, site.ID, DeploymentStatusQueued)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusQueued)
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusQueued)
 
-	count, err := repo.CountQueuedDeploymentsBySite(ctx, site.ID)
+	count, err := deploymentRepo.CountQueuedBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(2), count)
 }
 
 func TestRepository_UpdateDeployment(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	deployment := createTestDeployment(t, repo, site.ID, DeploymentStatusPending)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	deployment := createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusPending)
 
-	deployment.Status = DeploymentStatusFinished
-	err := repo.UpdateDeployment(ctx, deployment)
+	deployment.Status = enums.DeploymentStatusFinished
+	err := deploymentRepo.Update(ctx, deployment)
 	require.NoError(t, err)
 
-	found, err := repo.FindDeploymentByID(ctx, deployment.ID)
+	found, err := deploymentRepo.FindByID(ctx, deployment.ID)
 	require.NoError(t, err)
 
-	assert.Equal(t, DeploymentStatusFinished, found.Status)
+	assert.Equal(t, enums.DeploymentStatusFinished, found.Status)
 }
 
 func TestRepository_UpdateDeploymentStatus(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	deployment := createTestDeployment(t, repo, site.ID, DeploymentStatusPending)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	deployment := createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusPending)
 
-	err := repo.UpdateDeploymentStatus(ctx, deployment.ID, DeploymentStatusFailed)
+	err := deploymentRepo.UpdateStatus(ctx, deployment.ID, enums.DeploymentStatusFailed)
 	require.NoError(t, err)
 
-	found, err := repo.FindDeploymentByID(ctx, deployment.ID)
+	found, err := deploymentRepo.FindByID(ctx, deployment.ID)
 	require.NoError(t, err)
 
-	assert.Equal(t, DeploymentStatusFailed, found.Status)
+	assert.Equal(t, enums.DeploymentStatusFailed, found.Status)
 }
 
 func TestRepository_CancelQueuedDeployments(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, deploymentRepo, _, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	createTestDeployment(t, repo, site.ID, DeploymentStatusQueued)
-	createTestDeployment(t, repo, site.ID, DeploymentStatusQueued)
-	createTestDeployment(t, repo, site.ID, DeploymentStatusPending)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusQueued)
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusQueued)
+	createTestDeployment(t, deploymentRepo, site.ID, enums.DeploymentStatusPending)
 
-	count, err := repo.CancelQueuedDeployments(ctx, site.ID)
+	count, err := deploymentRepo.CancelQueued(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(2), count)
 
-	queuedCount, err := repo.CountQueuedDeploymentsBySite(ctx, site.ID)
+	queuedCount, err := deploymentRepo.CountQueuedBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(0), queuedCount)
@@ -483,79 +494,79 @@ func TestRepository_CancelQueuedDeployments(t *testing.T) {
 // Certificate repository tests
 
 func TestRepository_CreateCertificate(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, certificateRepo, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
-	cert := &Certificate{
+	cert := &models.Certificate{
 		SiteID: site.ID,
-		Type:   CertificateTypeAuto,
+		Type:   enums.CertificateTypeAuto,
 	}
 
-	err := repo.CreateCertificate(ctx, cert)
+	err := certificateRepo.Create(ctx, cert)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, cert.ID)
 }
 
 func TestRepository_FindCertificateByID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, certificateRepo, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
 	t.Run("finds existing certificate", func(t *testing.T) {
-		cert := &Certificate{SiteID: site.ID, Type: CertificateTypeAuto}
-		repo.CreateCertificate(ctx, cert)
+		cert := &models.Certificate{SiteID: site.ID, Type: enums.CertificateTypeAuto}
+		certificateRepo.Create(ctx, cert)
 
-		found, err := repo.FindCertificateByID(ctx, cert.ID)
+		found, err := certificateRepo.FindByID(ctx, cert.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, cert.ID, found.ID)
 	})
 
 	t.Run("returns error for non-existent certificate", func(t *testing.T) {
-		_, err := repo.FindCertificateByID(ctx, "non_existent_id")
+		_, err := certificateRepo.FindByID(ctx, "non_existent_id")
 
-		assert.ErrorIs(t, err, ErrCertificateNotFound)
+		assert.ErrorIs(t, err, repositories.ErrCertificateNotFound)
 	})
 }
 
 func TestRepository_FindCertificatesBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, certificateRepo, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	repo.CreateCertificate(ctx, &Certificate{SiteID: site.ID, Type: CertificateTypeAuto})
-	repo.CreateCertificate(ctx, &Certificate{SiteID: site.ID, Type: CertificateTypeCustom})
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	certificateRepo.Create(ctx, &models.Certificate{SiteID: site.ID, Type: enums.CertificateTypeAuto})
+	certificateRepo.Create(ctx, &models.Certificate{SiteID: site.ID, Type: enums.CertificateTypeCustom})
 
-	certs, err := repo.FindCertificatesBySite(ctx, site.ID)
+	certs, err := certificateRepo.FindBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Len(t, certs, 2)
 }
 
 func TestRepository_FindActiveCertificateBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, certificateRepo, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
 	t.Run("finds active certificate", func(t *testing.T) {
-		cert := &Certificate{SiteID: site.ID, Type: CertificateTypeAuto, IsActive: true}
-		repo.CreateCertificate(ctx, cert)
+		cert := &models.Certificate{SiteID: site.ID, Type: enums.CertificateTypeAuto, IsActive: true}
+		certificateRepo.Create(ctx, cert)
 
-		found, err := repo.FindActiveCertificateBySite(ctx, site.ID)
+		found, err := certificateRepo.FindActiveBySite(ctx, site.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, cert.ID, found.ID)
 	})
 
 	t.Run("returns nil when no active certificate", func(t *testing.T) {
-		site2 := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "site2.com")
+		site2 := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "site2.com")
 
-		found, err := repo.FindActiveCertificateBySite(ctx, site2.ID)
+		found, err := certificateRepo.FindActiveBySite(ctx, site2.ID)
 		require.NoError(t, err)
 
 		assert.Nil(t, found)
@@ -563,52 +574,52 @@ func TestRepository_FindActiveCertificateBySite(t *testing.T) {
 }
 
 func TestRepository_UpdateCertificate(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, certificateRepo, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	cert := &Certificate{SiteID: site.ID, Type: CertificateTypeAuto}
-	repo.CreateCertificate(ctx, cert)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	cert := &models.Certificate{SiteID: site.ID, Type: enums.CertificateTypeAuto}
+	certificateRepo.Create(ctx, cert)
 
 	cert.IsActive = true
-	err := repo.UpdateCertificate(ctx, cert)
+	err := certificateRepo.Update(ctx, cert)
 	require.NoError(t, err)
 
-	found, err := repo.FindCertificateByID(ctx, cert.ID)
+	found, err := certificateRepo.FindByID(ctx, cert.ID)
 	require.NoError(t, err)
 
 	assert.True(t, found.IsActive)
 }
 
 func TestRepository_DeleteCertificate(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, certificateRepo, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	cert := &Certificate{SiteID: site.ID, Type: CertificateTypeAuto}
-	repo.CreateCertificate(ctx, cert)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	cert := &models.Certificate{SiteID: site.ID, Type: enums.CertificateTypeAuto}
+	certificateRepo.Create(ctx, cert)
 
-	err := repo.DeleteCertificate(ctx, cert.ID)
+	err := certificateRepo.Delete(ctx, cert.ID)
 	require.NoError(t, err)
 
-	_, err = repo.FindCertificateByID(ctx, cert.ID)
-	assert.ErrorIs(t, err, ErrCertificateNotFound)
+	_, err = certificateRepo.FindByID(ctx, cert.ID)
+	assert.ErrorIs(t, err, repositories.ErrCertificateNotFound)
 }
 
 func TestRepository_DeactivateAllCertificates(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, certificateRepo, _, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	cert1 := &Certificate{SiteID: site.ID, Type: CertificateTypeAuto, IsActive: true}
-	cert2 := &Certificate{SiteID: site.ID, Type: CertificateTypeCustom, IsActive: true}
-	repo.CreateCertificate(ctx, cert1)
-	repo.CreateCertificate(ctx, cert2)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	cert1 := &models.Certificate{SiteID: site.ID, Type: enums.CertificateTypeAuto, IsActive: true}
+	cert2 := &models.Certificate{SiteID: site.ID, Type: enums.CertificateTypeCustom, IsActive: true}
+	certificateRepo.Create(ctx, cert1)
+	certificateRepo.Create(ctx, cert2)
 
-	err := repo.DeactivateAllCertificates(ctx, site.ID)
+	err := certificateRepo.DeactivateAll(ctx, site.ID)
 	require.NoError(t, err)
 
-	certs, err := repo.FindCertificatesBySite(ctx, site.ID)
+	certs, err := certificateRepo.FindBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	for _, cert := range certs {
@@ -619,482 +630,436 @@ func TestRepository_DeactivateAllCertificates(t *testing.T) {
 // Queue repository tests
 
 func TestRepository_CreateQueue(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, queueRepo, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
-	queue := &Queue{
+	queue := &models.Queue{
 		SiteID:   site.ID,
 		ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
 		UserID:   "01ARZ3NDEKTSV4RRFFQ69G5FAU",
 	}
 
-	err := repo.CreateQueue(ctx, queue)
+	err := queueRepo.Create(ctx, queue)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, queue.ID)
 }
 
 func TestRepository_FindQueueByID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, queueRepo, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
 	t.Run("finds existing queue", func(t *testing.T) {
-		queue := &Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"}
-		repo.CreateQueue(ctx, queue)
+		queue := &models.Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"}
+		queueRepo.Create(ctx, queue)
 
-		found, err := repo.FindQueueByID(ctx, queue.ID)
+		found, err := queueRepo.FindByID(ctx, queue.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, queue.ID, found.ID)
 	})
 
 	t.Run("returns error for non-existent queue", func(t *testing.T) {
-		_, err := repo.FindQueueByID(ctx, "non_existent_id")
+		_, err := queueRepo.FindByID(ctx, "non_existent_id")
 
-		assert.ErrorIs(t, err, ErrQueueNotFound)
+		assert.ErrorIs(t, err, repositories.ErrQueueNotFound)
 	})
 }
 
 func TestRepository_FindQueueByIDAndSite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, queueRepo, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	queue := &Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"}
-	repo.CreateQueue(ctx, queue)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	queue := &models.Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"}
+	queueRepo.Create(ctx, queue)
 
 	t.Run("finds queue by ID and site", func(t *testing.T) {
-		found, err := repo.FindQueueByIDAndSite(ctx, queue.ID, site.ID)
+		found, err := queueRepo.FindByIDAndSite(ctx, queue.ID, site.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, queue.ID, found.ID)
 	})
 
 	t.Run("returns error for wrong site", func(t *testing.T) {
-		_, err := repo.FindQueueByIDAndSite(ctx, queue.ID, "different_site")
+		_, err := queueRepo.FindByIDAndSite(ctx, queue.ID, "different_site")
 
-		assert.ErrorIs(t, err, ErrQueueNotFound)
+		assert.ErrorIs(t, err, repositories.ErrQueueNotFound)
 	})
 }
 
 func TestRepository_FindQueuesBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, queueRepo, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	repo.CreateQueue(ctx, &Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"})
-	repo.CreateQueue(ctx, &Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"})
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	queueRepo.Create(ctx, &models.Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"})
+	queueRepo.Create(ctx, &models.Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"})
 
-	queues, err := repo.FindQueuesBySite(ctx, site.ID)
+	queues, err := queueRepo.FindBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Len(t, queues, 2)
 }
 
 func TestRepository_FindQueuesByServer(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, queueRepo, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
 	serverID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-	site := createTestSite(t, repo, serverID, "example.com")
-	repo.CreateQueue(ctx, &Queue{SiteID: site.ID, ServerID: serverID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"})
-	repo.CreateQueue(ctx, &Queue{SiteID: site.ID, ServerID: serverID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"})
+	site := createTestSite(t, siteRepo, serverID, "example.com")
+	queueRepo.Create(ctx, &models.Queue{SiteID: site.ID, ServerID: serverID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"})
+	queueRepo.Create(ctx, &models.Queue{SiteID: site.ID, ServerID: serverID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"})
 
-	queues, err := repo.FindQueuesByServer(ctx, serverID)
+	queues, err := queueRepo.FindByServer(ctx, serverID)
 	require.NoError(t, err)
 
 	assert.Len(t, queues, 2)
 }
 
 func TestRepository_CountQueuesBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, queueRepo, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	repo.CreateQueue(ctx, &Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"})
-	repo.CreateQueue(ctx, &Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"})
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	queueRepo.Create(ctx, &models.Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"})
+	queueRepo.Create(ctx, &models.Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"})
 
-	count, err := repo.CountQueuesBySite(ctx, site.ID)
+	count, err := queueRepo.CountBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(2), count)
 }
 
 func TestRepository_UpdateQueue(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, queueRepo, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	queue := &Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"}
-	repo.CreateQueue(ctx, queue)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	queue := &models.Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"}
+	queueRepo.Create(ctx, queue)
 
 	now := time.Now()
 	queue.InstalledAt = &now
-	err := repo.UpdateQueue(ctx, queue)
+	err := queueRepo.Update(ctx, queue)
 	require.NoError(t, err)
 
-	found, err := repo.FindQueueByID(ctx, queue.ID)
+	found, err := queueRepo.FindByID(ctx, queue.ID)
 	require.NoError(t, err)
 
 	assert.NotNil(t, found.InstalledAt)
 }
 
 func TestRepository_DeleteQueue(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, queueRepo, _, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	queue := &Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"}
-	repo.CreateQueue(ctx, queue)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	queue := &models.Queue{SiteID: site.ID, ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV", UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU"}
+	queueRepo.Create(ctx, queue)
 
-	err := repo.DeleteQueue(ctx, queue.ID)
+	err := queueRepo.Delete(ctx, queue.ID)
 	require.NoError(t, err)
 
-	_, err = repo.FindQueueByID(ctx, queue.ID)
-	assert.ErrorIs(t, err, ErrQueueNotFound)
+	_, err = queueRepo.FindByID(ctx, queue.ID)
+	assert.ErrorIs(t, err, repositories.ErrQueueNotFound)
 }
 
 // Command repository tests
 
 func TestRepository_CreateCommand(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, commandRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
-	cmd := &Command{
+	cmd := &models.Command{
 		SiteID:  site.ID,
 		UserID:  "01ARZ3NDEKTSV4RRFFQ69G5FAU",
 		Command: "php artisan migrate",
 	}
 
-	err := repo.CreateCommand(ctx, cmd)
+	err := commandRepo.Create(ctx, cmd)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, cmd.ID)
 }
 
 func TestRepository_FindCommandByID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, commandRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
 	t.Run("finds existing command", func(t *testing.T) {
-		cmd := &Command{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Command: "test"}
-		repo.CreateCommand(ctx, cmd)
+		cmd := &models.Command{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Command: "test"}
+		commandRepo.Create(ctx, cmd)
 
-		found, err := repo.FindCommandByID(ctx, cmd.ID)
+		found, err := commandRepo.FindByID(ctx, cmd.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, cmd.ID, found.ID)
 	})
 
 	t.Run("returns error for non-existent command", func(t *testing.T) {
-		_, err := repo.FindCommandByID(ctx, "non_existent_id")
+		_, err := commandRepo.FindByID(ctx, "non_existent_id")
 
-		assert.ErrorIs(t, err, ErrCommandNotFound)
+		assert.ErrorIs(t, err, repositories.ErrCommandNotFound)
 	})
 }
 
 func TestRepository_FindCommandsBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, commandRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	repo.CreateCommand(ctx, &Command{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Command: "cmd1"})
-	repo.CreateCommand(ctx, &Command{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Command: "cmd2"})
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	commandRepo.Create(ctx, &models.Command{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Command: "cmd1"})
+	commandRepo.Create(ctx, &models.Command{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Command: "cmd2"})
 
-	cmds, err := repo.FindCommandsBySite(ctx, site.ID)
+	cmds, err := commandRepo.FindBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Len(t, cmds, 2)
 }
 
 func TestRepository_UpdateCommand(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, commandRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	cmd := &Command{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Command: "test"}
-	repo.CreateCommand(ctx, cmd)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	cmd := &models.Command{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Command: "test"}
+	commandRepo.Create(ctx, cmd)
 
 	output := "success"
 	exitCode := 0
 	cmd.Output = &output
 	cmd.ExitCode = &exitCode
-	cmd.Status = CommandStatusFinished
-	err := repo.UpdateCommand(ctx, cmd)
+	cmd.Status = enums.CommandStatusFinished
+	err := commandRepo.Update(ctx, cmd)
 	require.NoError(t, err)
 
-	found, err := repo.FindCommandByID(ctx, cmd.ID)
+	found, err := commandRepo.FindByID(ctx, cmd.ID)
 	require.NoError(t, err)
 
-	assert.Equal(t, CommandStatusFinished, found.Status)
+	assert.Equal(t, enums.CommandStatusFinished, found.Status)
 	assert.Equal(t, "success", *found.Output)
 }
 
 func TestRepository_DeleteCommand(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, commandRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	cmd := &Command{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Command: "test"}
-	repo.CreateCommand(ctx, cmd)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	cmd := &models.Command{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Command: "test"}
+	commandRepo.Create(ctx, cmd)
 
-	err := repo.DeleteCommand(ctx, cmd.ID)
+	err := commandRepo.Delete(ctx, cmd.ID)
 	require.NoError(t, err)
 
-	_, err = repo.FindCommandByID(ctx, cmd.ID)
-	assert.ErrorIs(t, err, ErrCommandNotFound)
+	_, err = commandRepo.FindByID(ctx, cmd.ID)
+	assert.ErrorIs(t, err, repositories.ErrCommandNotFound)
 }
 
 // Redirect repository tests
 
 func TestRepository_CreateRedirect(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, redirectRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
-	redirect := &Redirect{
+	redirect := &models.Redirect{
 		SiteID: site.ID,
 		UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU",
-		Mode:   RedirectModePermanent,
+		Mode:   enums.RedirectModePermanent,
 		From:   "/old",
 		To:     "/new",
 	}
 
-	err := repo.CreateRedirect(ctx, redirect)
+	err := redirectRepo.Create(ctx, redirect)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, redirect.ID)
 }
 
 func TestRepository_FindRedirectByID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, redirectRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
 	t.Run("finds existing redirect", func(t *testing.T) {
-		redirect := &Redirect{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Mode: RedirectModePermanent, From: "/a", To: "/b"}
-		repo.CreateRedirect(ctx, redirect)
+		redirect := &models.Redirect{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Mode: enums.RedirectModePermanent, From: "/a", To: "/b"}
+		redirectRepo.Create(ctx, redirect)
 
-		found, err := repo.FindRedirectByID(ctx, redirect.ID)
+		found, err := redirectRepo.FindByID(ctx, redirect.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, redirect.ID, found.ID)
 	})
 
 	t.Run("returns error for non-existent redirect", func(t *testing.T) {
-		_, err := repo.FindRedirectByID(ctx, "non_existent_id")
+		_, err := redirectRepo.FindByID(ctx, "non_existent_id")
 
-		assert.ErrorIs(t, err, ErrRedirectNotFound)
+		assert.ErrorIs(t, err, repositories.ErrRedirectNotFound)
 	})
 }
 
 func TestRepository_FindRedirectsBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, redirectRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	repo.CreateRedirect(ctx, &Redirect{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Mode: RedirectModePermanent, From: "/a", To: "/b"})
-	repo.CreateRedirect(ctx, &Redirect{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Mode: RedirectModeTemporary, From: "/c", To: "/d"})
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	redirectRepo.Create(ctx, &models.Redirect{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Mode: enums.RedirectModePermanent, From: "/a", To: "/b"})
+	redirectRepo.Create(ctx, &models.Redirect{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Mode: enums.RedirectModeTemporary, From: "/c", To: "/d"})
 
-	redirects, err := repo.FindRedirectsBySite(ctx, site.ID)
+	redirects, err := redirectRepo.FindBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Len(t, redirects, 2)
 }
 
 func TestRepository_UpdateRedirect(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, redirectRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	redirect := &Redirect{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Mode: RedirectModePermanent, From: "/a", To: "/b", Status: "pending"}
-	repo.CreateRedirect(ctx, redirect)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	redirect := &models.Redirect{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Mode: enums.RedirectModePermanent, From: "/a", To: "/b", Status: "pending"}
+	redirectRepo.Create(ctx, redirect)
 
 	redirect.Status = "active"
-	err := repo.UpdateRedirect(ctx, redirect)
+	err := redirectRepo.Update(ctx, redirect)
 	require.NoError(t, err)
 
-	found, err := repo.FindRedirectByID(ctx, redirect.ID)
+	found, err := redirectRepo.FindByID(ctx, redirect.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, "active", found.Status)
 }
 
 func TestRepository_DeleteRedirect(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, redirectRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	redirect := &Redirect{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Mode: RedirectModePermanent, From: "/a", To: "/b"}
-	repo.CreateRedirect(ctx, redirect)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	redirect := &models.Redirect{SiteID: site.ID, UserID: "01ARZ3NDEKTSV4RRFFQ69G5FAU", Mode: enums.RedirectModePermanent, From: "/a", To: "/b"}
+	redirectRepo.Create(ctx, redirect)
 
-	err := repo.DeleteRedirect(ctx, redirect.ID)
+	err := redirectRepo.Delete(ctx, redirect.ID)
 	require.NoError(t, err)
 
-	_, err = repo.FindRedirectByID(ctx, redirect.ID)
-	assert.ErrorIs(t, err, ErrRedirectNotFound)
+	_, err = redirectRepo.FindByID(ctx, redirect.ID)
+	assert.ErrorIs(t, err, repositories.ErrRedirectNotFound)
 }
 
 // Release repository tests
 
 func TestRepository_CreateRelease(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, releaseRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
-	release := &Release{
+	release := &models.Release{
 		SiteID: site.ID,
 		Path:   "/home/deploy/example.com/releases/20240101120000",
 	}
 
-	err := repo.CreateRelease(ctx, release)
+	err := releaseRepo.Create(ctx, release)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, release.ID)
 }
 
 func TestRepository_FindReleaseByID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, releaseRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
 	t.Run("finds existing release", func(t *testing.T) {
-		release := &Release{SiteID: site.ID, Path: "/path/to/release"}
-		repo.CreateRelease(ctx, release)
+		release := &models.Release{SiteID: site.ID, Path: "/path/to/release"}
+		releaseRepo.Create(ctx, release)
 
-		found, err := repo.FindReleaseByID(ctx, release.ID)
+		found, err := releaseRepo.FindByID(ctx, release.ID)
 		require.NoError(t, err)
 
 		assert.Equal(t, release.ID, found.ID)
 	})
 
 	t.Run("returns error for non-existent release", func(t *testing.T) {
-		_, err := repo.FindReleaseByID(ctx, "non_existent_id")
+		_, err := releaseRepo.FindByID(ctx, "non_existent_id")
 
-		assert.ErrorIs(t, err, ErrReleaseNotFound)
+		assert.ErrorIs(t, err, repositories.ErrReleaseNotFound)
 	})
 }
 
 func TestRepository_FindReleasesBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, releaseRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	repo.CreateRelease(ctx, &Release{SiteID: site.ID, Path: "/path1"})
-	repo.CreateRelease(ctx, &Release{SiteID: site.ID, Path: "/path2"})
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	releaseRepo.Create(ctx, &models.Release{SiteID: site.ID, Path: "/path1"})
+	releaseRepo.Create(ctx, &models.Release{SiteID: site.ID, Path: "/path2"})
 
-	releases, err := repo.FindReleasesBySite(ctx, site.ID)
+	releases, err := releaseRepo.FindBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Len(t, releases, 2)
 }
 
 func TestRepository_CountReleasesBySite(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, releaseRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	repo.CreateRelease(ctx, &Release{SiteID: site.ID, Path: "/path1"})
-	repo.CreateRelease(ctx, &Release{SiteID: site.ID, Path: "/path2"})
-	repo.CreateRelease(ctx, &Release{SiteID: site.ID, Path: "/path3"})
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	releaseRepo.Create(ctx, &models.Release{SiteID: site.ID, Path: "/path1"})
+	releaseRepo.Create(ctx, &models.Release{SiteID: site.ID, Path: "/path2"})
+	releaseRepo.Create(ctx, &models.Release{SiteID: site.ID, Path: "/path3"})
 
-	count, err := repo.CountReleasesBySite(ctx, site.ID)
+	count, err := releaseRepo.CountBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(3), count)
 }
 
 func TestRepository_DeleteRelease(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, releaseRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
-	release := &Release{SiteID: site.ID, Path: "/path"}
-	repo.CreateRelease(ctx, release)
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	release := &models.Release{SiteID: site.ID, Path: "/path"}
+	releaseRepo.Create(ctx, release)
 
-	err := repo.DeleteRelease(ctx, release.ID)
+	err := releaseRepo.Delete(ctx, release.ID)
 	require.NoError(t, err)
 
-	_, err = repo.FindReleaseByID(ctx, release.ID)
-	assert.ErrorIs(t, err, ErrReleaseNotFound)
+	_, err = releaseRepo.FindByID(ctx, release.ID)
+	assert.ErrorIs(t, err, repositories.ErrReleaseNotFound)
 }
 
 func TestRepository_DeleteOldReleases(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	siteRepo, _, _, _, _, _, releaseRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	site := createTestSite(t, repo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
+	site := createTestSite(t, siteRepo, "01ARZ3NDEKTSV4RRFFQ69G5FAV", "example.com")
 
 	// Create 5 releases
 	for i := 0; i < 5; i++ {
-		repo.CreateRelease(ctx, &Release{SiteID: site.ID, Path: "/path" + string(rune('0'+i))})
+		releaseRepo.Create(ctx, &models.Release{SiteID: site.ID, Path: "/path" + string(rune('0'+i))})
 		time.Sleep(10 * time.Millisecond)
 	}
 
 	// Keep only 3
-	err := repo.DeleteOldReleases(ctx, site.ID, 3)
+	err := releaseRepo.DeleteOld(ctx, site.ID, 3)
 	require.NoError(t, err)
 
-	count, err := repo.CountReleasesBySite(ctx, site.ID)
+	count, err := releaseRepo.CountBySite(ctx, site.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(3), count)
-}
-
-// Transaction tests
-
-func TestRepository_WithTransaction(t *testing.T) {
-	repo, _ := setupTestRepository(t)
-	ctx := context.Background()
-
-	t.Run("commits on success", func(t *testing.T) {
-		var siteID string
-		err := repo.WithTransaction(ctx, func(tx *Repository) error {
-			site := &Site{
-				ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-				UserID:   "01ARZ3NDEKTSV4RRFFQ69G5FAU",
-				Address:  "tx-success.com",
-			}
-			if err := tx.Create(ctx, site); err != nil {
-				return err
-			}
-			siteID = site.ID
-			return nil
-		})
-		require.NoError(t, err)
-
-		found, err := repo.FindByID(ctx, siteID)
-		require.NoError(t, err)
-		assert.Equal(t, "tx-success.com", found.Address)
-	})
-
-	t.Run("rolls back on error", func(t *testing.T) {
-		err := repo.WithTransaction(ctx, func(tx *Repository) error {
-			site := &Site{
-				ServerID: "01ARZ3NDEKTSV4RRFFQ69G5FAV",
-				UserID:   "01ARZ3NDEKTSV4RRFFQ69G5FAU",
-				Address:  "tx-rollback.com",
-			}
-			if err := tx.Create(ctx, site); err != nil {
-				return err
-			}
-			return assert.AnError
-		})
-		require.Error(t, err)
-
-		_, err = repo.FindByAddress(ctx, "tx-rollback.com", "01ARZ3NDEKTSV4RRFFQ69G5FAV")
-		assert.ErrorIs(t, err, ErrSiteNotFound)
-	})
 }

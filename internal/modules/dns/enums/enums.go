@@ -1,0 +1,165 @@
+package enums
+
+import (
+	"database/sql/driver"
+	"fmt"
+
+	"github.com/kkz6/launch-go/internal/modules/dns/providers"
+)
+
+// RecordType is an alias to providers.RecordType for use in GORM models
+type RecordType = providers.RecordType
+
+// Record type constants (re-exported from providers package)
+const (
+	RecordTypeA     = providers.RecordTypeA
+	RecordTypeAAAA  = providers.RecordTypeAAAA
+	RecordTypeCNAME = providers.RecordTypeCNAME
+	RecordTypeMX    = providers.RecordTypeMX
+	RecordTypeNS    = providers.RecordTypeNS
+	RecordTypeSRV   = providers.RecordTypeSRV
+	RecordTypeTXT   = providers.RecordTypeTXT
+	RecordTypeSOA   = providers.RecordTypeSOA
+	RecordTypeCAA   = providers.RecordTypeCAA
+)
+
+// AllRecordTypes returns all valid record types
+func AllRecordTypes() []RecordType {
+	return providers.AllRecordTypes()
+}
+
+// ParseRecordType parses a string into a RecordType
+func ParseRecordType(s string) (RecordType, error) {
+	return providers.ParseRecordType(s)
+}
+
+// DnsProvider represents a DNS provider
+type DnsProvider string
+
+const (
+	DnsProviderCloudflare   DnsProvider = "cloudflare"
+	DnsProviderDigitalOcean DnsProvider = "digitalocean"
+)
+
+// String returns the string representation of DnsProvider
+func (p DnsProvider) String() string {
+	return string(p)
+}
+
+// Label returns a human-readable label for the provider
+func (p DnsProvider) Label() string {
+	switch p {
+	case DnsProviderCloudflare:
+		return "Cloudflare"
+	case DnsProviderDigitalOcean:
+		return "DigitalOcean"
+	default:
+		return string(p)
+	}
+}
+
+// IsValid checks if the DnsProvider is valid
+func (p DnsProvider) IsValid() bool {
+	switch p {
+	case DnsProviderCloudflare, DnsProviderDigitalOcean:
+		return true
+	}
+
+	return false
+}
+
+// Value implements driver.Valuer for database storage
+func (p DnsProvider) Value() (driver.Value, error) {
+	return string(p), nil
+}
+
+// Scan implements sql.Scanner for database retrieval
+func (p *DnsProvider) Scan(value interface{}) error {
+	if value == nil {
+		*p = ""
+		return nil
+	}
+
+	switch v := value.(type) {
+	case string:
+		*p = DnsProvider(v)
+	case []byte:
+		*p = DnsProvider(v)
+	default:
+		return fmt.Errorf("cannot scan type %T into DnsProvider", value)
+	}
+
+	return nil
+}
+
+// AllDnsProviders returns all valid DNS providers
+func AllDnsProviders() []DnsProvider {
+	return []DnsProvider{
+		DnsProviderCloudflare,
+		DnsProviderDigitalOcean,
+	}
+}
+
+// ParseDnsProvider parses a string into a DnsProvider
+func ParseDnsProvider(s string) (DnsProvider, error) {
+	p := DnsProvider(s)
+	if !p.IsValid() {
+		return "", fmt.Errorf("invalid dns provider: %s", s)
+	}
+
+	return p, nil
+}
+
+// ToProviderType converts DnsProvider to providers.DnsProviderType
+func (p DnsProvider) ToProviderType() providers.DnsProviderType {
+	return providers.DnsProviderType(p)
+}
+
+// SyncStatus represents the synchronization status of a domain provider
+type SyncStatus string
+
+const (
+	SyncStatusPending   SyncStatus = "pending"
+	SyncStatusSyncing   SyncStatus = "syncing"
+	SyncStatusCompleted SyncStatus = "completed"
+	SyncStatusFailed    SyncStatus = "failed"
+)
+
+// String returns the string representation of SyncStatus
+func (s SyncStatus) String() string {
+	return string(s)
+}
+
+// IsValid checks if the SyncStatus is valid
+func (s SyncStatus) IsValid() bool {
+	switch s {
+	case SyncStatusPending, SyncStatusSyncing, SyncStatusCompleted, SyncStatusFailed:
+		return true
+	}
+
+	return false
+}
+
+// Value implements driver.Valuer for database storage
+func (s SyncStatus) Value() (driver.Value, error) {
+	return string(s), nil
+}
+
+// Scan implements sql.Scanner for database retrieval
+func (s *SyncStatus) Scan(value interface{}) error {
+	if value == nil {
+		*s = ""
+		return nil
+	}
+
+	switch v := value.(type) {
+	case string:
+		*s = SyncStatus(v)
+	case []byte:
+		*s = SyncStatus(v)
+	default:
+		return fmt.Errorf("cannot scan type %T into SyncStatus", value)
+	}
+
+	return nil
+}

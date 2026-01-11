@@ -9,34 +9,39 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/modules/server/contracts"
+	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 )
 
-func setupTestRepository(t *testing.T) (*Repository, *gorm.DB) {
+func setupTestRepository(t *testing.T) (*repositories.Repository, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(AllModels()...)
+	err = db.AutoMigrate(models.AllModels()...)
 	require.NoError(t, err)
 
-	return NewRepository(db), db
+	return repositories.NewRepository(db), db
 }
 
-func createTestServer(t *testing.T, repo *Repository, teamID, name string) *Server {
-	server := &Server{
+func createTestServer(t *testing.T, repo *repositories.Repository, teamID, name string) *models.Server {
+	server := &models.Server{
 		TeamID:          teamID,
 		UserID:          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
 		Name:            name,
-		Provider:        ProviderDigitalOcean,
-		Type:            ServerTypePhp,
-		OperatingSystem: OSUbuntu24,
+		Provider:        enums.ProviderDigitalOcean,
+		Type:            enums.ServerTypePhp,
+		OperatingSystem: enums.OSUbuntu24,
 	}
 	err := repo.CreateServer(context.Background(), server)
 	require.NoError(t, err)
 	return server
 }
 
-func createTestService(t *testing.T, repo *Repository, serverID string, software Software) *InstalledService {
-	service := &InstalledService{
+func createTestService(t *testing.T, repo *repositories.Repository, serverID string, software enums.Software) *models.InstalledService {
+	service := &models.InstalledService{
 		ServerID: serverID,
 		Type:     software.GetServiceType(),
 		Name:     software.Label(),
@@ -51,7 +56,7 @@ func TestNewRepository(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	repo := NewRepository(db)
+	repo := repositories.NewRepository(db)
 
 	assert.NotNil(t, repo)
 }
@@ -60,20 +65,20 @@ func TestRepository_CreateServer(t *testing.T) {
 	repo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	server := &Server{
+	server := &models.Server{
 		TeamID:          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
 		UserID:          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
 		Name:            "test-server",
-		Provider:        ProviderDigitalOcean,
-		Type:            ServerTypePhp,
-		OperatingSystem: OSUbuntu24,
+		Provider:        enums.ProviderDigitalOcean,
+		Type:            enums.ServerTypePhp,
+		OperatingSystem: enums.OSUbuntu24,
 	}
 
 	err := repo.CreateServer(ctx, server)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, server.ID)
-	assert.Equal(t, ServerStatusNew, server.Status)
+	assert.Equal(t, enums.ServerStatusNew, server.Status)
 	assert.NotZero(t, server.CreatedAt)
 }
 
@@ -93,7 +98,7 @@ func TestRepository_FindServerByID(t *testing.T) {
 
 	t.Run("returns error for non-existent server", func(t *testing.T) {
 		_, err := repo.FindServerByID(ctx, "non_existent_id")
-		assert.ErrorIs(t, err, ErrServerNotFound)
+		assert.ErrorIs(t, err, repositories.ErrServerNotFound)
 	})
 }
 
@@ -115,7 +120,7 @@ func TestRepository_FindServerByIDAndTeam(t *testing.T) {
 		created := createTestServer(t, repo, "team1", "test-server-2")
 
 		_, err := repo.FindServerByIDAndTeam(ctx, created.ID, "different_team")
-		assert.ErrorIs(t, err, ErrServerNotFound)
+		assert.ErrorIs(t, err, repositories.ErrServerNotFound)
 	})
 }
 
@@ -127,7 +132,7 @@ func TestRepository_FindServerWithRelations(t *testing.T) {
 	server := createTestServer(t, repo, teamID, "test-server")
 
 	// Create related entities
-	createTestService(t, repo, server.ID, SoftwarePhp84)
+	createTestService(t, repo, server.ID, enums.SoftwarePhp84)
 
 	found, err := repo.FindServerWithRelations(ctx, server.ID, teamID)
 	require.NoError(t, err)
@@ -198,13 +203,13 @@ func TestRepository_UpdateServerStatus(t *testing.T) {
 
 	server := createTestServer(t, repo, "team1", "test-server")
 
-	err := repo.UpdateServerStatus(ctx, server.ID, ServerStatusRunning)
+	err := repo.UpdateServerStatus(ctx, server.ID, enums.ServerStatusRunning)
 	require.NoError(t, err)
 
 	found, err := repo.FindServerByID(ctx, server.ID)
 	require.NoError(t, err)
 
-	assert.Equal(t, ServerStatusRunning, found.Status)
+	assert.Equal(t, enums.ServerStatusRunning, found.Status)
 }
 
 func TestRepository_UpdateServerProgress(t *testing.T) {
@@ -237,7 +242,7 @@ func TestRepository_ArchiveServer(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotNil(t, found.ArchivedAt)
-	assert.Equal(t, ServerStatusArchived, found.Status)
+	assert.Equal(t, enums.ServerStatusArchived, found.Status)
 }
 
 func TestRepository_UnarchiveServer(t *testing.T) {
@@ -255,7 +260,7 @@ func TestRepository_UnarchiveServer(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Nil(t, found.ArchivedAt)
-	assert.Equal(t, ServerStatusStopped, found.Status)
+	assert.Equal(t, enums.ServerStatusStopped, found.Status)
 }
 
 func TestRepository_DeleteServer(t *testing.T) {
@@ -268,7 +273,7 @@ func TestRepository_DeleteServer(t *testing.T) {
 	require.NoError(t, err)
 
 	_, err = repo.FindServerByID(ctx, server.ID)
-	assert.ErrorIs(t, err, ErrServerNotFound)
+	assert.ErrorIs(t, err, repositories.ErrServerNotFound)
 }
 
 // Service tests
@@ -279,10 +284,10 @@ func TestRepository_CreateService(t *testing.T) {
 
 	server := createTestServer(t, repo, "team1", "test-server")
 
-	software := SoftwarePhp84
-	service := &InstalledService{
+	software := enums.SoftwarePhp84
+	service := &models.InstalledService{
 		ServerID: server.ID,
-		Type:     ServiceTypePhp,
+		Type:     enums.ServiceTypePhp,
 		Name:     "PHP 8.4",
 		Software: &software,
 	}
@@ -291,7 +296,7 @@ func TestRepository_CreateService(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, service.ID)
-	assert.Equal(t, ServiceStatusPending, service.Status)
+	assert.Equal(t, enums.ServiceStatusPending, service.Status)
 }
 
 func TestRepository_FindServiceByID(t *testing.T) {
@@ -299,7 +304,7 @@ func TestRepository_FindServiceByID(t *testing.T) {
 	ctx := context.Background()
 
 	server := createTestServer(t, repo, "team1", "test-server")
-	service := createTestService(t, repo, server.ID, SoftwarePhp84)
+	service := createTestService(t, repo, server.ID, enums.SoftwarePhp84)
 
 	found, err := repo.FindServiceByID(ctx, service.ID)
 	require.NoError(t, err)
@@ -312,8 +317,8 @@ func TestRepository_FindServicesByServer(t *testing.T) {
 	ctx := context.Background()
 
 	server := createTestServer(t, repo, "team1", "test-server")
-	createTestService(t, repo, server.ID, SoftwarePhp84)
-	createTestService(t, repo, server.ID, SoftwareMySql80)
+	createTestService(t, repo, server.ID, enums.SoftwarePhp84)
+	createTestService(t, repo, server.ID, enums.SoftwareMySql80)
 
 	services, err := repo.FindServicesByServer(ctx, server.ID)
 	require.NoError(t, err)
@@ -326,15 +331,15 @@ func TestRepository_UpdateServiceStatus(t *testing.T) {
 	ctx := context.Background()
 
 	server := createTestServer(t, repo, "team1", "test-server")
-	service := createTestService(t, repo, server.ID, SoftwarePhp84)
+	service := createTestService(t, repo, server.ID, enums.SoftwarePhp84)
 
-	err := repo.UpdateServiceStatus(ctx, service.ID, ServiceStatusRunning)
+	err := repo.UpdateServiceStatus(ctx, service.ID, enums.ServiceStatusRunning)
 	require.NoError(t, err)
 
 	found, err := repo.FindServiceByID(ctx, service.ID)
 	require.NoError(t, err)
 
-	assert.Equal(t, ServiceStatusRunning, found.Status)
+	assert.Equal(t, enums.ServiceStatusRunning, found.Status)
 }
 
 func TestRepository_DeleteService(t *testing.T) {
@@ -342,13 +347,13 @@ func TestRepository_DeleteService(t *testing.T) {
 	ctx := context.Background()
 
 	server := createTestServer(t, repo, "team1", "test-server")
-	service := createTestService(t, repo, server.ID, SoftwarePhp84)
+	service := createTestService(t, repo, server.ID, enums.SoftwarePhp84)
 
 	err := repo.DeleteService(ctx, service.ID)
 	require.NoError(t, err)
 
 	_, err = repo.FindServiceByID(ctx, service.ID)
-	assert.ErrorIs(t, err, ErrServiceNotFound)
+	assert.ErrorIs(t, err, repositories.ErrServiceNotFound)
 }
 
 // Firewall rule tests
@@ -360,11 +365,11 @@ func TestRepository_CreateFirewallRule(t *testing.T) {
 	server := createTestServer(t, repo, "team1", "test-server")
 
 	port := "22"
-	rule := &FirewallRule{
+	rule := &models.FirewallRule{
 		ServerID: server.ID,
 		Name:     "SSH",
 		Port:     &port,
-		Action:   RuleActionAllow,
+		Action:   enums.RuleActionAllow,
 	}
 
 	err := repo.CreateFirewallRule(ctx, rule)
@@ -381,8 +386,8 @@ func TestRepository_FindFirewallRulesByServer(t *testing.T) {
 
 	port22 := "22"
 	port80 := "80"
-	rule1 := &FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port22, Action: RuleActionAllow}
-	rule2 := &FirewallRule{ServerID: server.ID, Name: "HTTP", Port: &port80, Action: RuleActionAllow}
+	rule1 := &models.FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port22, Action: enums.RuleActionAllow}
+	rule2 := &models.FirewallRule{ServerID: server.ID, Name: "HTTP", Port: &port80, Action: enums.RuleActionAllow}
 	repo.CreateFirewallRule(ctx, rule1)
 	repo.CreateFirewallRule(ctx, rule2)
 
@@ -398,7 +403,7 @@ func TestRepository_MarkFirewallRuleInstalled(t *testing.T) {
 
 	server := createTestServer(t, repo, "team1", "test-server")
 	port := "22"
-	rule := &FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port, Action: RuleActionAllow}
+	rule := &models.FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port, Action: enums.RuleActionAllow}
 	repo.CreateFirewallRule(ctx, rule)
 
 	err := repo.MarkFirewallRuleInstalled(ctx, rule.ID)
@@ -416,14 +421,14 @@ func TestRepository_DeleteFirewallRule(t *testing.T) {
 
 	server := createTestServer(t, repo, "team1", "test-server")
 	port := "22"
-	rule := &FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port, Action: RuleActionAllow}
+	rule := &models.FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port, Action: enums.RuleActionAllow}
 	repo.CreateFirewallRule(ctx, rule)
 
 	err := repo.DeleteFirewallRule(ctx, rule.ID)
 	require.NoError(t, err)
 
 	_, err = repo.FindFirewallRuleByID(ctx, rule.ID)
-	assert.ErrorIs(t, err, ErrFirewallRuleNotFound)
+	assert.ErrorIs(t, err, repositories.ErrFirewallRuleNotFound)
 }
 
 // Cron tests
@@ -434,7 +439,7 @@ func TestRepository_CreateCron(t *testing.T) {
 
 	server := createTestServer(t, repo, "team1", "test-server")
 
-	cron := &Cron{
+	cron := &models.Cron{
 		ServerID:   server.ID,
 		User:       "root",
 		Expression: "*/5 * * * *",
@@ -453,8 +458,8 @@ func TestRepository_FindCronsByServer(t *testing.T) {
 
 	server := createTestServer(t, repo, "team1", "test-server")
 
-	cron1 := &Cron{ServerID: server.ID, User: "root", Expression: "*/5 * * * *", Command: "cmd1"}
-	cron2 := &Cron{ServerID: server.ID, User: "root", Expression: "0 * * * *", Command: "cmd2"}
+	cron1 := &models.Cron{ServerID: server.ID, User: "root", Expression: "*/5 * * * *", Command: "cmd1"}
+	cron2 := &models.Cron{ServerID: server.ID, User: "root", Expression: "0 * * * *", Command: "cmd2"}
 	repo.CreateCron(ctx, cron1)
 	repo.CreateCron(ctx, cron2)
 
@@ -469,14 +474,14 @@ func TestRepository_DeleteCron(t *testing.T) {
 	ctx := context.Background()
 
 	server := createTestServer(t, repo, "team1", "test-server")
-	cron := &Cron{ServerID: server.ID, User: "root", Expression: "*/5 * * * *", Command: "cmd1"}
+	cron := &models.Cron{ServerID: server.ID, User: "root", Expression: "*/5 * * * *", Command: "cmd1"}
 	repo.CreateCron(ctx, cron)
 
 	err := repo.DeleteCron(ctx, cron.ID)
 	require.NoError(t, err)
 
 	_, err = repo.FindCronByID(ctx, cron.ID)
-	assert.ErrorIs(t, err, ErrCronNotFound)
+	assert.ErrorIs(t, err, repositories.ErrCronNotFound)
 }
 
 // Daemon tests
@@ -488,7 +493,7 @@ func TestRepository_CreateDaemon(t *testing.T) {
 	server := createTestServer(t, repo, "team1", "test-server")
 
 	dir := "/var/www/app"
-	daemon := &Daemon{
+	daemon := &models.Daemon{
 		ServerID:  server.ID,
 		Command:   "php artisan queue:work",
 		User:      "deploy",
@@ -509,8 +514,8 @@ func TestRepository_FindDaemonsByServer(t *testing.T) {
 	server := createTestServer(t, repo, "team1", "test-server")
 
 	dir := "/tmp"
-	daemon1 := &Daemon{ServerID: server.ID, Command: "cmd1", User: "root", Directory: &dir}
-	daemon2 := &Daemon{ServerID: server.ID, Command: "cmd2", User: "root", Directory: &dir}
+	daemon1 := &models.Daemon{ServerID: server.ID, Command: "cmd1", User: "root", Directory: &dir}
+	daemon2 := &models.Daemon{ServerID: server.ID, Command: "cmd2", User: "root", Directory: &dir}
 	repo.CreateDaemon(ctx, daemon1)
 	repo.CreateDaemon(ctx, daemon2)
 
@@ -526,7 +531,7 @@ func TestRepository_UpdateDaemonStatus(t *testing.T) {
 
 	server := createTestServer(t, repo, "team1", "test-server")
 	dir := "/tmp"
-	daemon := &Daemon{ServerID: server.ID, Command: "cmd", User: "root", Directory: &dir}
+	daemon := &models.Daemon{ServerID: server.ID, Command: "cmd", User: "root", Directory: &dir}
 	repo.CreateDaemon(ctx, daemon)
 
 	err := repo.UpdateDaemonStatus(ctx, daemon.ID, true)
@@ -545,14 +550,14 @@ func TestRepository_DeleteDaemon(t *testing.T) {
 
 	server := createTestServer(t, repo, "team1", "test-server")
 	dir := "/tmp"
-	daemon := &Daemon{ServerID: server.ID, Command: "cmd", User: "root", Directory: &dir}
+	daemon := &models.Daemon{ServerID: server.ID, Command: "cmd", User: "root", Directory: &dir}
 	repo.CreateDaemon(ctx, daemon)
 
 	err := repo.DeleteDaemon(ctx, daemon.ID)
 	require.NoError(t, err)
 
 	_, err = repo.FindDaemonByID(ctx, daemon.ID)
-	assert.ErrorIs(t, err, ErrDaemonNotFound)
+	assert.ErrorIs(t, err, repositories.ErrDaemonNotFound)
 }
 
 // SSH Key tests
@@ -563,7 +568,7 @@ func TestRepository_CreateSshKey(t *testing.T) {
 
 	teamID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 	userID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
-	key := &SshKey{
+	key := &models.SshKey{
 		TeamID:    &teamID,
 		UserID:    &userID,
 		Name:      "My SSH Key",
@@ -582,8 +587,8 @@ func TestRepository_FindSshKeysByTeam(t *testing.T) {
 
 	teamID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
-	key1 := &SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 1", PublicKey: "ssh-rsa AAA1"}
-	key2 := &SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 2", PublicKey: "ssh-rsa AAA2"}
+	key1 := &models.SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 1", PublicKey: "ssh-rsa AAA1"}
+	key2 := &models.SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 2", PublicKey: "ssh-rsa AAA2"}
 	repo.CreateSshKey(ctx, key1)
 	repo.CreateSshKey(ctx, key2)
 
@@ -600,7 +605,7 @@ func TestRepository_AttachDetachSshKey(t *testing.T) {
 	server := createTestServer(t, repo, "team1", "test-server")
 	teamID := "team1"
 	userID := "user1"
-	key := &SshKey{TeamID: &teamID, UserID: &userID, Name: "Key 1", PublicKey: "ssh-rsa AAA"}
+	key := &models.SshKey{TeamID: &teamID, UserID: &userID, Name: "Key 1", PublicKey: "ssh-rsa AAA"}
 	repo.CreateSshKey(ctx, key)
 
 	// Attach
@@ -630,7 +635,7 @@ func TestRepository_CreateTask(t *testing.T) {
 
 	taskName := "provision"
 	taskScript := "echo 'hello'"
-	task := &Task{
+	task := &models.Task{
 		ServerID: server.ID,
 		Type:     "provision",
 		Name:     &taskName,
@@ -654,8 +659,8 @@ func TestRepository_FindTasksByServer(t *testing.T) {
 	name2 := "task2"
 	script1 := "cmd1"
 	script2 := "cmd2"
-	task1 := &Task{ServerID: server.ID, Type: "task", Name: &name1, Script: &script1}
-	task2 := &Task{ServerID: server.ID, Type: "task", Name: &name2, Script: &script2}
+	task1 := &models.Task{ServerID: server.ID, Type: "task", Name: &name1, Script: &script1}
+	task2 := &models.Task{ServerID: server.ID, Type: "task", Name: &name2, Script: &script2}
 	repo.CreateTask(ctx, task1)
 	repo.CreateTask(ctx, task2)
 
@@ -674,12 +679,12 @@ func TestRepository_FindLatestTaskByServer(t *testing.T) {
 	name1 := "first"
 	name2 := "second"
 	script := "cmd"
-	task1 := &Task{ServerID: server.ID, Type: "task", Name: &name1, Script: &script}
+	task1 := &models.Task{ServerID: server.ID, Type: "task", Name: &name1, Script: &script}
 	repo.CreateTask(ctx, task1)
 
 	time.Sleep(10 * time.Millisecond) // Ensure different timestamps
 
-	task2 := &Task{ServerID: server.ID, Type: "task", Name: &name2, Script: &script}
+	task2 := &models.Task{ServerID: server.ID, Type: "task", Name: &name2, Script: &script}
 	repo.CreateTask(ctx, task2)
 
 	latest, err := repo.FindLatestTaskByServer(ctx, server.ID)
@@ -696,7 +701,7 @@ func TestRepository_CreateMetric(t *testing.T) {
 
 	server := createTestServer(t, repo, "team1", "test-server")
 
-	metric := &Metric{
+	metric := &models.Metric{
 		ServerID:    server.ID,
 		CPUUsage:    25.5,
 		MemoryUsage: 60.0,
@@ -716,7 +721,7 @@ func TestRepository_FindMetricsByServer(t *testing.T) {
 	server := createTestServer(t, repo, "team1", "test-server")
 
 	for i := 0; i < 5; i++ {
-		metric := &Metric{
+		metric := &models.Metric{
 			ServerID: server.ID,
 			CPUUsage: float64(10 * (i + 1)),
 		}
@@ -736,10 +741,10 @@ func TestRepository_FindLatestMetricByServer(t *testing.T) {
 	server := createTestServer(t, repo, "team1", "test-server")
 
 	now := time.Now()
-	metric1 := &Metric{ServerID: server.ID, CPUUsage: 10.0, RecordedAt: now}
+	metric1 := &models.Metric{ServerID: server.ID, CPUUsage: 10.0, RecordedAt: now}
 	repo.CreateMetric(ctx, metric1)
 
-	metric2 := &Metric{ServerID: server.ID, CPUUsage: 50.0, RecordedAt: now.Add(time.Second)}
+	metric2 := &models.Metric{ServerID: server.ID, CPUUsage: 50.0, RecordedAt: now.Add(time.Second)}
 	repo.CreateMetric(ctx, metric2)
 
 	latest, err := repo.FindLatestMetricByServer(ctx, server.ID)
@@ -778,9 +783,9 @@ func TestRepository_ServerHasLaunchAgent(t *testing.T) {
 	assert.False(t, has)
 
 	// Add launch agent
-	agent := &InstalledService{
+	agent := &models.InstalledService{
 		ServerID: server.ID,
-		Type:     ServiceTypeLaunchAgent,
+		Type:     enums.ServiceTypeLaunchAgent,
 		Name:     "Launch Agent",
 	}
 	repo.CreateService(ctx, agent)
@@ -795,14 +800,14 @@ func TestRepository_Transaction(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("successful transaction", func(t *testing.T) {
-		err := repo.Transaction(ctx, func(tx *Repository) error {
-			server := &Server{
+		err := repo.Transaction(ctx, func(tx contracts.Repository) error {
+			server := &models.Server{
 				TeamID:          "team1",
 				UserID:          "user1",
 				Name:            "tx-server",
-				Provider:        ProviderCustom,
-				Type:            ServerTypePhp,
-				OperatingSystem: OSUbuntu24,
+				Provider:        enums.ProviderCustom,
+				Type:            enums.ServerTypePhp,
+				OperatingSystem: enums.OSUbuntu24,
 			}
 			return tx.CreateServer(ctx, server)
 		})
@@ -815,14 +820,14 @@ func TestRepository_Transaction(t *testing.T) {
 	t.Run("rollback on error", func(t *testing.T) {
 		initialCount, _ := repo.CountServersByTeam(ctx, "team2")
 
-		err := repo.Transaction(ctx, func(tx *Repository) error {
-			server := &Server{
+		err := repo.Transaction(ctx, func(tx contracts.Repository) error {
+			server := &models.Server{
 				TeamID:          "team2",
 				UserID:          "user1",
 				Name:            "should-not-exist",
-				Provider:        ProviderCustom,
-				Type:            ServerTypePhp,
-				OperatingSystem: OSUbuntu24,
+				Provider:        enums.ProviderCustom,
+				Type:            enums.ServerTypePhp,
+				OperatingSystem: enums.OSUbuntu24,
 			}
 			tx.CreateServer(ctx, server)
 			return assert.AnError // Force rollback

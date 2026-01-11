@@ -9,20 +9,23 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/modules/auth/models"
+	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 )
 
-func setupTestRepository(t *testing.T) (*Repository, *gorm.DB) {
+func setupTestRepository(t *testing.T) (*repositories.Repository, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&User{}, &Team{}, &TeamMember{}, &TeamInvitation{}, &PersonalAccessToken{}, &PasswordResetToken{})
+	err = db.AutoMigrate(&models.User{}, &models.Team{}, &models.TeamMember{}, &models.TeamInvitation{}, &models.PersonalAccessToken{}, &models.PasswordResetToken{})
 	require.NoError(t, err)
 
-	return NewRepository(db), db
+	return repositories.NewRepository(db), db
 }
 
-func createTestUser(t *testing.T, repo *Repository, email string) *User {
-	user := &User{
+func createTestUser(t *testing.T, repo *repositories.Repository, email string) *models.User {
+	user := &models.User{
 		Name:     "Test User",
 		Email:    email,
 		Password: "hashedpassword",
@@ -34,8 +37,8 @@ func createTestUser(t *testing.T, repo *Repository, email string) *User {
 	return user
 }
 
-func createTestTeam(t *testing.T, repo *Repository, ownerID, name string) *Team {
-	team := &Team{
+func createTestTeam(t *testing.T, repo *repositories.Repository, ownerID, name string) *models.Team {
+	team := &models.Team{
 		Name:    name,
 		OwnerID: ownerID,
 	}
@@ -51,7 +54,7 @@ func TestRepository_CreateUser(t *testing.T) {
 	repo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	user := &User{
+	user := &models.User{
 		Name:     "Test User",
 		Email:    "test@example.com",
 		Password: "password",
@@ -187,7 +190,7 @@ func TestRepository_CreateTeam(t *testing.T) {
 	ctx := context.Background()
 
 	user := createTestUser(t, repo, "test@example.com")
-	team := &Team{
+	team := &models.Team{
 		Name:    "Test Team",
 		OwnerID: user.ID,
 	}
@@ -245,7 +248,7 @@ func TestRepository_DeleteTeam(t *testing.T) {
 	err := repo.AddUserToTeam(ctx, team.ID, user.ID, "member")
 	require.NoError(t, err)
 
-	invitation := &TeamInvitation{
+	invitation := &models.TeamInvitation{
 		TeamID: team.ID,
 		Email:  "invite@example.com",
 		Role:   "member",
@@ -432,7 +435,7 @@ func TestRepository_CreateTeamInvitation(t *testing.T) {
 	user := createTestUser(t, repo, "test@example.com")
 	team := createTestTeam(t, repo, user.ID, "Test Team")
 
-	invitation := &TeamInvitation{
+	invitation := &models.TeamInvitation{
 		TeamID: team.ID,
 		Email:  "invite@example.com",
 		Role:   "member",
@@ -450,7 +453,7 @@ func TestRepository_FindTeamInvitationByID(t *testing.T) {
 	user := createTestUser(t, repo, "test@example.com")
 	team := createTestTeam(t, repo, user.ID, "Test Team")
 
-	invitation := &TeamInvitation{
+	invitation := &models.TeamInvitation{
 		TeamID: team.ID,
 		Email:  "invite@example.com",
 		Role:   "member",
@@ -479,7 +482,7 @@ func TestRepository_FindTeamInvitationByEmail(t *testing.T) {
 	user := createTestUser(t, repo, "test@example.com")
 	team := createTestTeam(t, repo, user.ID, "Test Team")
 
-	invitation := &TeamInvitation{
+	invitation := &models.TeamInvitation{
 		TeamID: team.ID,
 		Email:  "invite@example.com",
 		Role:   "member",
@@ -509,7 +512,7 @@ func TestRepository_GetTeamInvitations(t *testing.T) {
 	team := createTestTeam(t, repo, user.ID, "Test Team")
 
 	for i := 0; i < 3; i++ {
-		invitation := &TeamInvitation{
+		invitation := &models.TeamInvitation{
 			TeamID: team.ID,
 			Email:  "invite" + string(rune('1'+i)) + "@example.com",
 			Role:   "member",
@@ -530,7 +533,7 @@ func TestRepository_DeleteTeamInvitation(t *testing.T) {
 	user := createTestUser(t, repo, "test@example.com")
 	team := createTestTeam(t, repo, user.ID, "Test Team")
 
-	invitation := &TeamInvitation{
+	invitation := &models.TeamInvitation{
 		TeamID: team.ID,
 		Email:  "invite@example.com",
 		Role:   "member",
@@ -552,7 +555,7 @@ func TestRepository_CreatePasswordResetToken(t *testing.T) {
 	repo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	token := &PasswordResetToken{
+	token := &models.PasswordResetToken{
 		Email:     "test@example.com",
 		Token:     "hashedtoken",
 		CreatedAt: time.Now(),
@@ -566,7 +569,7 @@ func TestRepository_CreatePasswordResetToken_ReplacesExisting(t *testing.T) {
 	repo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	token1 := &PasswordResetToken{
+	token1 := &models.PasswordResetToken{
 		Email:     "test@example.com",
 		Token:     "token1",
 		CreatedAt: time.Now(),
@@ -574,7 +577,7 @@ func TestRepository_CreatePasswordResetToken_ReplacesExisting(t *testing.T) {
 	err := repo.CreatePasswordResetToken(ctx, token1)
 	require.NoError(t, err)
 
-	token2 := &PasswordResetToken{
+	token2 := &models.PasswordResetToken{
 		Email:     "test@example.com",
 		Token:     "token2",
 		CreatedAt: time.Now(),
@@ -591,7 +594,7 @@ func TestRepository_FindPasswordResetToken(t *testing.T) {
 	repo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	token := &PasswordResetToken{
+	token := &models.PasswordResetToken{
 		Email:     "test@example.com",
 		Token:     "hashedtoken",
 		CreatedAt: time.Now(),
@@ -617,7 +620,7 @@ func TestRepository_DeletePasswordResetToken(t *testing.T) {
 	repo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	token := &PasswordResetToken{
+	token := &models.PasswordResetToken{
 		Email:     "test@example.com",
 		Token:     "hashedtoken",
 		CreatedAt: time.Now(),
@@ -641,7 +644,7 @@ func TestRepository_CreatePersonalAccessToken(t *testing.T) {
 
 	user := createTestUser(t, repo, "test@example.com")
 
-	token := &PersonalAccessToken{
+	token := &models.PersonalAccessToken{
 		UserID: user.ID,
 		Name:   "Test Token",
 		Token:  "token123",
@@ -658,7 +661,7 @@ func TestRepository_FindPersonalAccessToken(t *testing.T) {
 
 	user := createTestUser(t, repo, "test@example.com")
 
-	token := &PersonalAccessToken{
+	token := &models.PersonalAccessToken{
 		UserID: user.ID,
 		Name:   "Test Token",
 		Token:  "token123",
@@ -686,7 +689,7 @@ func TestRepository_UpdatePersonalAccessTokenLastUsed(t *testing.T) {
 
 	user := createTestUser(t, repo, "test@example.com")
 
-	token := &PersonalAccessToken{
+	token := &models.PersonalAccessToken{
 		UserID: user.ID,
 		Name:   "Test Token",
 		Token:  "token123",
@@ -710,7 +713,7 @@ func TestRepository_DeletePersonalAccessToken(t *testing.T) {
 
 	user := createTestUser(t, repo, "test@example.com")
 
-	token := &PersonalAccessToken{
+	token := &models.PersonalAccessToken{
 		UserID: user.ID,
 		Name:   "Test Token",
 		Token:  "token123",
@@ -733,7 +736,7 @@ func TestRepository_GetUserPersonalAccessTokens(t *testing.T) {
 	user := createTestUser(t, repo, "test@example.com")
 
 	for i := 0; i < 3; i++ {
-		token := &PersonalAccessToken{
+		token := &models.PersonalAccessToken{
 			UserID: user.ID,
 			Name:   "Token " + string(rune('1'+i)),
 			Token:  "token" + string(rune('1'+i)),
@@ -754,8 +757,8 @@ func TestRepository_Transaction(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("commits on success", func(t *testing.T) {
-		err := repo.Transaction(ctx, func(tx *Repository) error {
-			user := &User{
+		err := repo.Transaction(ctx, func(tx *repositories.Repository) error {
+			user := &models.User{
 				Name:     "Transaction User",
 				Email:    "tx@example.com",
 				Password: "password",
@@ -770,8 +773,8 @@ func TestRepository_Transaction(t *testing.T) {
 	})
 
 	t.Run("rolls back on error", func(t *testing.T) {
-		err := repo.Transaction(ctx, func(tx *Repository) error {
-			user := &User{
+		err := repo.Transaction(ctx, func(tx *repositories.Repository) error {
+			user := &models.User{
 				Name:     "Rollback User",
 				Email:    "rollback@example.com",
 				Password: "password",

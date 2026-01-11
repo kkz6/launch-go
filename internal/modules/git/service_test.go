@@ -151,12 +151,6 @@ func TestNewService(t *testing.T) {
 	if service == nil {
 		t.Fatal("NewService() returned nil")
 	}
-	if service.repo != repo {
-		t.Error("Repository should be set")
-	}
-	if service.providerFactory != factory {
-		t.Error("Provider factory should be set")
-	}
 }
 
 func TestService_ListSourceControls(t *testing.T) {

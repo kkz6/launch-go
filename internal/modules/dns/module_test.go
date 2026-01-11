@@ -9,13 +9,15 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/modules/dns/models"
 )
 
-func setupTestModule(t *testing.T) (*Module, *gorm.DB) {
+func setupModuleTestDB(t *testing.T) (*Module, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&DomainProvider{}, &Domain{}, &DnsRecord{})
+	err = db.AutoMigrate(&models.DomainProvider{}, &models.Domain{}, &models.DnsRecord{})
 	require.NoError(t, err)
 
 	logger := zerolog.Nop()
@@ -25,30 +27,57 @@ func setupTestModule(t *testing.T) (*Module, *gorm.DB) {
 }
 
 func TestNewModule(t *testing.T) {
-	module, _ := setupTestModule(t)
+	module, _ := setupModuleTestDB(t)
 
 	assert.NotNil(t, module)
-	assert.NotNil(t, module.handler)
-	assert.NotNil(t, module.service)
-	assert.NotNil(t, module.repo)
+	assert.NotNil(t, module.GetProviderService())
+	assert.NotNil(t, module.GetDomainService())
+	assert.NotNil(t, module.GetRecordService())
+	assert.NotNil(t, module.GetProviderRepository())
+	assert.NotNil(t, module.GetDomainRepository())
+	assert.NotNil(t, module.GetRecordRepository())
 }
 
-func TestModule_GetService(t *testing.T) {
-	module, _ := setupTestModule(t)
+func TestModule_GetServices(t *testing.T) {
+	module, _ := setupModuleTestDB(t)
 
-	service := module.GetService()
-	assert.NotNil(t, service)
+	t.Run("GetProviderService", func(t *testing.T) {
+		svc := module.GetProviderService()
+		assert.NotNil(t, svc)
+	})
+
+	t.Run("GetDomainService", func(t *testing.T) {
+		svc := module.GetDomainService()
+		assert.NotNil(t, svc)
+	})
+
+	t.Run("GetRecordService", func(t *testing.T) {
+		svc := module.GetRecordService()
+		assert.NotNil(t, svc)
+	})
 }
 
-func TestModule_GetRepository(t *testing.T) {
-	module, _ := setupTestModule(t)
+func TestModule_GetRepositories(t *testing.T) {
+	module, _ := setupModuleTestDB(t)
 
-	repo := module.GetRepository()
-	assert.NotNil(t, repo)
+	t.Run("GetProviderRepository", func(t *testing.T) {
+		repo := module.GetProviderRepository()
+		assert.NotNil(t, repo)
+	})
+
+	t.Run("GetDomainRepository", func(t *testing.T) {
+		repo := module.GetDomainRepository()
+		assert.NotNil(t, repo)
+	})
+
+	t.Run("GetRecordRepository", func(t *testing.T) {
+		repo := module.GetRecordRepository()
+		assert.NotNil(t, repo)
+	})
 }
 
 func TestModule_RegisterRoutes(t *testing.T) {
-	module, _ := setupTestModule(t)
+	module, _ := setupModuleTestDB(t)
 
 	app := fiber.New()
 	router := app.Group("/api")
@@ -106,13 +135,13 @@ func TestModule_AutoMigrate(t *testing.T) {
 
 	// Verify tables exist by checking if we can query them
 	var count int64
-	err = db.Model(&DomainProvider{}).Count(&count).Error
+	err = db.Model(&models.DomainProvider{}).Count(&count).Error
 	require.NoError(t, err)
 
-	err = db.Model(&Domain{}).Count(&count).Error
+	err = db.Model(&models.Domain{}).Count(&count).Error
 	require.NoError(t, err)
 
-	err = db.Model(&DnsRecord{}).Count(&count).Error
+	err = db.Model(&models.DnsRecord{}).Count(&count).Error
 	require.NoError(t, err)
 }
 

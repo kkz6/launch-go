@@ -8,36 +8,44 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/modules/dns/enums"
+	"github.com/kkz6/launch-go/internal/modules/dns/models"
+	"github.com/kkz6/launch-go/internal/modules/dns/repositories"
 )
 
-func setupTestRepository(t *testing.T) (*Repository, *gorm.DB) {
+func setupTestRepository(t *testing.T) (*repositories.DomainProviderRepository, *repositories.DomainRepository, *repositories.DnsRecordRepository, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&DomainProvider{}, &Domain{}, &DnsRecord{})
+	err = db.AutoMigrate(&models.DomainProvider{}, &models.Domain{}, &models.DnsRecord{})
 	require.NoError(t, err)
 
-	return NewRepository(db), db
+	providerRepo := repositories.NewDomainProviderRepository(db)
+	domainRepo := repositories.NewDomainRepository(db)
+	dnsRecordRepo := repositories.NewDnsRecordRepository(db)
+
+	return providerRepo, domainRepo, dnsRecordRepo, db
 }
 
-func createTestProvider(t *testing.T, repo *Repository) *DomainProvider {
+func createTestProvider(t *testing.T, repo *repositories.DomainProviderRepository) *models.DomainProvider {
 	ctx := context.Background()
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Test Provider",
-		Provider:    DnsProviderCloudflare,
+		Provider:    enums.DnsProviderCloudflare,
 		Credentials: `{"token": "test"}`,
 		Connected:   true,
 	}
-	err := repo.CreateDomainProvider(ctx, dp)
+	err := repo.Create(ctx, dp)
 	require.NoError(t, err)
 	return dp
 }
 
-func createTestDomain(t *testing.T, repo *Repository, providerID string) *Domain {
+func createTestDomain(t *testing.T, repo *repositories.DomainRepository, providerID string) *models.Domain {
 	ctx := context.Background()
-	d := &Domain{
+	d := &models.Domain{
 		UserID:           "user123",
 		TeamID:           "team123",
 		DomainProviderID: providerID,
@@ -45,22 +53,22 @@ func createTestDomain(t *testing.T, repo *Repository, providerID string) *Domain
 		Label:            "Test Domain",
 		Address:          "example.com",
 	}
-	err := repo.CreateDomain(ctx, d)
+	err := repo.Create(ctx, d)
 	require.NoError(t, err)
 	return d
 }
 
-func createTestRecord(t *testing.T, repo *Repository, domainID string) *DnsRecord {
+func createTestRecord(t *testing.T, repo *repositories.DnsRecordRepository, domainID string) *models.DnsRecord {
 	ctx := context.Background()
-	r := &DnsRecord{
+	r := &models.DnsRecord{
 		DomainID:   domainID,
 		ProviderID: "rec-123",
-		Type:       RecordTypeA,
+		Type:       enums.RecordTypeA,
 		Name:       "@",
 		Value:      "1.2.3.4",
 		TTL:        3600,
 	}
-	err := repo.CreateDnsRecord(ctx, r)
+	err := repo.Create(ctx, r)
 	require.NoError(t, err)
 	return r
 }
@@ -68,30 +76,30 @@ func createTestRecord(t *testing.T, repo *Repository, domainID string) *DnsRecor
 // DomainProvider Tests
 
 func TestRepository_CreateDomainProvider(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Test Provider",
-		Provider:    DnsProviderCloudflare,
+		Provider:    enums.DnsProviderCloudflare,
 		Credentials: `{"token": "test"}`,
 		Connected:   true,
 	}
 
-	err := repo.CreateDomainProvider(ctx, dp)
+	err := providerRepo.Create(ctx, dp)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, dp.ID)
 }
 
 func TestRepository_FindDomainProviderByID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
+	dp := createTestProvider(t, providerRepo)
 
-	found, err := repo.FindDomainProviderByID(ctx, dp.ID)
+	found, err := providerRepo.FindByID(ctx, dp.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, dp.ID, found.ID)
@@ -99,48 +107,48 @@ func TestRepository_FindDomainProviderByID(t *testing.T) {
 }
 
 func TestRepository_FindDomainProviderByID_NotFound(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	_, err := repo.FindDomainProviderByID(ctx, "nonexistent")
+	_, err := providerRepo.FindByID(ctx, "nonexistent")
 	assert.Error(t, err)
 }
 
 func TestRepository_FindDomainProviderByIDAndTeam(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
+	dp := createTestProvider(t, providerRepo)
 
-	found, err := repo.FindDomainProviderByIDAndTeam(ctx, dp.ID, "team123")
+	found, err := providerRepo.FindByIDAndTeam(ctx, dp.ID, "team123")
 	require.NoError(t, err)
 
 	assert.Equal(t, dp.ID, found.ID)
 }
 
 func TestRepository_FindDomainProviderByIDAndTeam_WrongTeam(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
+	dp := createTestProvider(t, providerRepo)
 
-	_, err := repo.FindDomainProviderByIDAndTeam(ctx, dp.ID, "wrong-team")
+	_, err := providerRepo.FindByIDAndTeam(ctx, dp.ID, "wrong-team")
 	assert.Error(t, err)
 }
 
 func TestRepository_FindDomainProvidersByTeam(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	dp1 := createTestProvider(t, repo)
-	dp2 := &DomainProvider{
+	dp1 := createTestProvider(t, providerRepo)
+	dp2 := &models.DomainProvider{
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Second Provider",
-		Provider:    DnsProviderDigitalOcean,
+		Provider:    enums.DnsProviderDigitalOcean,
 		Credentials: `{"token": "test2"}`,
 	}
-	repo.CreateDomainProvider(ctx, dp2)
+	providerRepo.Create(ctx, dp2)
 
-	providers, err := repo.FindDomainProvidersByTeam(ctx, "team123")
+	providers, err := providerRepo.FindByTeam(ctx, "team123")
 	require.NoError(t, err)
 
 	assert.Len(t, providers, 2)
@@ -149,14 +157,23 @@ func TestRepository_FindDomainProvidersByTeam(t *testing.T) {
 }
 
 func TestRepository_FindDomainProvidersByTeamWithDomainCount(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	dp := createTestProvider(t, repo)
-	createTestDomain(t, repo, dp.ID)
-	createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	createTestDomain(t, domainRepo, dp.ID)
+	// Create second domain with different address
+	d2 := &models.Domain{
+		UserID:           "user123",
+		TeamID:           "team123",
+		DomainProviderID: dp.ID,
+		ProviderID:       "ext-456",
+		Label:            "Test Domain 2",
+		Address:          "example2.com",
+	}
+	domainRepo.Create(ctx, d2)
 
-	providers, counts, err := repo.FindDomainProvidersByTeamWithDomainCount(ctx, "team123")
+	providers, counts, err := providerRepo.FindByTeamWithDomainCount(ctx, "team123")
 	require.NoError(t, err)
 
 	assert.Len(t, providers, 1)
@@ -164,17 +181,17 @@ func TestRepository_FindDomainProvidersByTeamWithDomainCount(t *testing.T) {
 }
 
 func TestRepository_UpdateDomainProvider(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
+	dp := createTestProvider(t, providerRepo)
 
 	dp.Profile = "Updated Profile"
 	dp.Connected = false
 
-	err := repo.UpdateDomainProvider(ctx, dp)
+	err := providerRepo.Update(ctx, dp)
 	require.NoError(t, err)
 
-	found, err := repo.FindDomainProviderByID(ctx, dp.ID)
+	found, err := providerRepo.FindByID(ctx, dp.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, "Updated Profile", found.Profile)
@@ -182,44 +199,53 @@ func TestRepository_UpdateDomainProvider(t *testing.T) {
 }
 
 func TestRepository_UpdateDomainProviderFields(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
+	dp := createTestProvider(t, providerRepo)
 
-	err := repo.UpdateDomainProviderFields(ctx, dp.ID, map[string]interface{}{
+	err := providerRepo.UpdateFields(ctx, dp.ID, map[string]interface{}{
 		"connected":   false,
-		"sync_status": SyncStatusFailed,
+		"sync_status": enums.SyncStatusFailed,
 	})
 	require.NoError(t, err)
 
-	found, err := repo.FindDomainProviderByID(ctx, dp.ID)
+	found, err := providerRepo.FindByID(ctx, dp.ID)
 	require.NoError(t, err)
 
 	assert.False(t, found.Connected)
-	assert.Equal(t, SyncStatusFailed, found.SyncStatus)
+	assert.Equal(t, enums.SyncStatusFailed, found.SyncStatus)
 }
 
 func TestRepository_DeleteDomainProvider(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
+	dp := createTestProvider(t, providerRepo)
 
-	err := repo.DeleteDomainProvider(ctx, dp.ID)
+	err := providerRepo.Delete(ctx, dp.ID)
 	require.NoError(t, err)
 
-	_, err = repo.FindDomainProviderByID(ctx, dp.ID)
+	_, err = providerRepo.FindByID(ctx, dp.ID)
 	assert.Error(t, err)
 }
 
 func TestRepository_CountDomainsByProvider(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	dp := createTestProvider(t, repo)
-	createTestDomain(t, repo, dp.ID)
-	createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	createTestDomain(t, domainRepo, dp.ID)
+	// Create second domain with different address
+	d2 := &models.Domain{
+		UserID:           "user123",
+		TeamID:           "team123",
+		DomainProviderID: dp.ID,
+		ProviderID:       "ext-456",
+		Label:            "Test Domain 2",
+		Address:          "example2.com",
+	}
+	domainRepo.Create(ctx, d2)
 
-	count, err := repo.CountDomainsByProvider(ctx, dp.ID)
+	count, err := providerRepo.CountDomainsByProvider(ctx, dp.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, int64(2), count)
@@ -228,11 +254,11 @@ func TestRepository_CountDomainsByProvider(t *testing.T) {
 // Domain Tests
 
 func TestRepository_CreateDomain(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
+	dp := createTestProvider(t, providerRepo)
 
-	d := &Domain{
+	d := &models.Domain{
 		UserID:           "user123",
 		TeamID:           "team123",
 		DomainProviderID: dp.ID,
@@ -241,19 +267,19 @@ func TestRepository_CreateDomain(t *testing.T) {
 		Address:          "example.com",
 	}
 
-	err := repo.CreateDomain(ctx, d)
+	err := domainRepo.Create(ctx, d)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, d.ID)
 }
 
 func TestRepository_FindDomainByID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
 
-	found, err := repo.FindDomainByID(ctx, d.ID)
+	found, err := domainRepo.FindByID(ctx, d.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, d.ID, found.ID)
@@ -262,95 +288,104 @@ func TestRepository_FindDomainByID(t *testing.T) {
 }
 
 func TestRepository_FindDomainByID_NotFound(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	_, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	_, err := repo.FindDomainByID(ctx, "nonexistent")
+	_, err := domainRepo.FindByID(ctx, "nonexistent")
 	assert.Error(t, err)
 }
 
 func TestRepository_FindDomainByIDAndTeam(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
 
-	found, err := repo.FindDomainByIDAndTeam(ctx, d.ID, "team123")
+	found, err := domainRepo.FindByIDAndTeam(ctx, d.ID, "team123")
 	require.NoError(t, err)
 
 	assert.Equal(t, d.ID, found.ID)
 }
 
 func TestRepository_FindDomainByIDAndTeam_WrongTeam(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
 
-	_, err := repo.FindDomainByIDAndTeam(ctx, d.ID, "wrong-team")
+	_, err := domainRepo.FindByIDAndTeam(ctx, d.ID, "wrong-team")
 	assert.Error(t, err)
 }
 
 func TestRepository_FindDomainsByTeam(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	createTestDomain(t, domainRepo, dp.ID)
 
-	domains, err := repo.FindDomainsByTeam(ctx, "team123")
+	domains, err := domainRepo.FindByTeam(ctx, "team123")
 	require.NoError(t, err)
 
 	assert.Len(t, domains, 1)
 }
 
 func TestRepository_FindDomainsByProvider(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	createTestDomain(t, repo, dp.ID)
-	createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	createTestDomain(t, domainRepo, dp.ID)
+	// Create second domain with different address
+	d2 := &models.Domain{
+		UserID:           "user123",
+		TeamID:           "team123",
+		DomainProviderID: dp.ID,
+		ProviderID:       "ext-456",
+		Label:            "Test Domain 2",
+		Address:          "example2.com",
+	}
+	domainRepo.Create(ctx, d2)
 
-	domains, err := repo.FindDomainsByProvider(ctx, dp.ID)
+	domains, err := domainRepo.FindByProvider(ctx, dp.ID)
 	require.NoError(t, err)
 
 	assert.Len(t, domains, 2)
 }
 
 func TestRepository_FindDomainByAddressAndProvider(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
 
-	found, err := repo.FindDomainByAddressAndProvider(ctx, d.Address, dp.ID)
+	found, err := domainRepo.FindByAddressAndProvider(ctx, d.Address, dp.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, d.ID, found.ID)
 }
 
 func TestRepository_UpdateDomain(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
 
 	d.Label = "Updated Label"
 
-	err := repo.UpdateDomain(ctx, d)
+	err := domainRepo.Update(ctx, d)
 	require.NoError(t, err)
 
-	found, err := repo.FindDomainByID(ctx, d.ID)
+	found, err := domainRepo.FindByID(ctx, d.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, "Updated Label", found.Label)
 }
 
 func TestRepository_UpdateOrCreateDomain_Create(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
+	dp := createTestProvider(t, providerRepo)
 
-	domain, err := repo.UpdateOrCreateDomain(ctx, map[string]interface{}{
+	domain, err := domainRepo.UpdateOrCreate(ctx, map[string]interface{}{
 		"provider_id":        "new-ext-123",
 		"domain_provider_id": dp.ID,
 		"address":            "new.example.com",
@@ -366,12 +401,12 @@ func TestRepository_UpdateOrCreateDomain_Create(t *testing.T) {
 }
 
 func TestRepository_UpdateOrCreateDomain_Update(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
 
-	domain, err := repo.UpdateOrCreateDomain(ctx, map[string]interface{}{
+	domain, err := domainRepo.UpdateOrCreate(ctx, map[string]interface{}{
 		"provider_id":        d.ProviderID,
 		"domain_provider_id": dp.ID,
 		"address":            d.Address,
@@ -385,49 +420,49 @@ func TestRepository_UpdateOrCreateDomain_Update(t *testing.T) {
 }
 
 func TestRepository_DeleteDomain(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
 
-	err := repo.DeleteDomain(ctx, d.ID)
+	err := domainRepo.Delete(ctx, d.ID)
 	require.NoError(t, err)
 
-	_, err = repo.FindDomainByID(ctx, d.ID)
+	_, err = domainRepo.FindByID(ctx, d.ID)
 	assert.Error(t, err)
 }
 
 // DnsRecord Tests
 
 func TestRepository_CreateDnsRecord(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, dnsRecordRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
 
-	r := &DnsRecord{
+	r := &models.DnsRecord{
 		DomainID:   d.ID,
 		ProviderID: "rec-123",
-		Type:       RecordTypeA,
+		Type:       enums.RecordTypeA,
 		Name:       "@",
 		Value:      "1.2.3.4",
 		TTL:        3600,
 	}
 
-	err := repo.CreateDnsRecord(ctx, r)
+	err := dnsRecordRepo.Create(ctx, r)
 	require.NoError(t, err)
 
 	assert.NotEmpty(t, r.ID)
 }
 
 func TestRepository_FindDnsRecordByID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, dnsRecordRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
-	r := createTestRecord(t, repo, d.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
+	r := createTestRecord(t, dnsRecordRepo, d.ID)
 
-	found, err := repo.FindDnsRecordByID(ctx, r.ID)
+	found, err := dnsRecordRepo.FindByID(ctx, r.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, r.ID, found.ID)
@@ -435,98 +470,98 @@ func TestRepository_FindDnsRecordByID(t *testing.T) {
 }
 
 func TestRepository_FindDnsRecordByID_NotFound(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	_, _, dnsRecordRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	_, err := repo.FindDnsRecordByID(ctx, "nonexistent")
+	_, err := dnsRecordRepo.FindByID(ctx, "nonexistent")
 	assert.Error(t, err)
 }
 
 func TestRepository_FindDnsRecordByIDAndDomain(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, dnsRecordRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
-	r := createTestRecord(t, repo, d.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
+	r := createTestRecord(t, dnsRecordRepo, d.ID)
 
-	found, err := repo.FindDnsRecordByIDAndDomain(ctx, r.ID, d.ID)
+	found, err := dnsRecordRepo.FindByIDAndDomain(ctx, r.ID, d.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, r.ID, found.ID)
 }
 
 func TestRepository_FindDnsRecordByIDAndDomain_WrongDomain(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, dnsRecordRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
-	r := createTestRecord(t, repo, d.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
+	r := createTestRecord(t, dnsRecordRepo, d.ID)
 
-	_, err := repo.FindDnsRecordByIDAndDomain(ctx, r.ID, "wrong-domain")
+	_, err := dnsRecordRepo.FindByIDAndDomain(ctx, r.ID, "wrong-domain")
 	assert.Error(t, err)
 }
 
 func TestRepository_FindDnsRecordsByDomain(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, dnsRecordRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
-	createTestRecord(t, repo, d.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
+	createTestRecord(t, dnsRecordRepo, d.ID)
 
-	r2 := &DnsRecord{
+	r2 := &models.DnsRecord{
 		DomainID:   d.ID,
 		ProviderID: "rec-456",
-		Type:       RecordTypeCNAME,
+		Type:       enums.RecordTypeCNAME,
 		Name:       "www",
 		Value:      "example.com",
 		TTL:        3600,
 	}
-	repo.CreateDnsRecord(ctx, r2)
+	dnsRecordRepo.Create(ctx, r2)
 
-	records, err := repo.FindDnsRecordsByDomain(ctx, d.ID)
+	records, err := dnsRecordRepo.FindByDomain(ctx, d.ID)
 	require.NoError(t, err)
 
 	assert.Len(t, records, 2)
 }
 
 func TestRepository_FindDnsRecordsByType(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, dnsRecordRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
-	createTestRecord(t, repo, d.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
+	createTestRecord(t, dnsRecordRepo, d.ID)
 
-	r2 := &DnsRecord{
+	r2 := &models.DnsRecord{
 		DomainID:   d.ID,
 		ProviderID: "rec-456",
-		Type:       RecordTypeCNAME,
+		Type:       enums.RecordTypeCNAME,
 		Name:       "www",
 		Value:      "example.com",
 		TTL:        3600,
 	}
-	repo.CreateDnsRecord(ctx, r2)
+	dnsRecordRepo.Create(ctx, r2)
 
-	records, err := repo.FindDnsRecordsByType(ctx, d.ID, RecordTypeA)
+	records, err := dnsRecordRepo.FindByType(ctx, d.ID, enums.RecordTypeA)
 	require.NoError(t, err)
 
 	assert.Len(t, records, 1)
-	assert.Equal(t, RecordTypeA, records[0].Type)
+	assert.Equal(t, enums.RecordTypeA, records[0].Type)
 }
 
 func TestRepository_UpdateDnsRecord(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, dnsRecordRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
-	r := createTestRecord(t, repo, d.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
+	r := createTestRecord(t, dnsRecordRepo, d.ID)
 
 	r.Value = "5.6.7.8"
 	r.TTL = 7200
 
-	err := repo.UpdateDnsRecord(ctx, r)
+	err := dnsRecordRepo.Update(ctx, r)
 	require.NoError(t, err)
 
-	found, err := repo.FindDnsRecordByID(ctx, r.ID)
+	found, err := dnsRecordRepo.FindByID(ctx, r.ID)
 	require.NoError(t, err)
 
 	assert.Equal(t, "5.6.7.8", found.Value)
@@ -534,14 +569,14 @@ func TestRepository_UpdateDnsRecord(t *testing.T) {
 }
 
 func TestRepository_UpdateOrCreateDnsRecord_Create(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, dnsRecordRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
 
-	record, err := repo.UpdateOrCreateDnsRecord(ctx, map[string]interface{}{
+	record, err := dnsRecordRepo.UpdateOrCreate(ctx, map[string]interface{}{
 		"domain_id":   d.ID,
-		"type":        RecordTypeA,
+		"type":        enums.RecordTypeA,
 		"name":        "new",
 		"provider_id": "new-rec-123",
 	}, map[string]interface{}{
@@ -554,13 +589,13 @@ func TestRepository_UpdateOrCreateDnsRecord_Create(t *testing.T) {
 }
 
 func TestRepository_UpdateOrCreateDnsRecord_Update(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, dnsRecordRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
-	r := createTestRecord(t, repo, d.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
+	r := createTestRecord(t, dnsRecordRepo, d.ID)
 
-	record, err := repo.UpdateOrCreateDnsRecord(ctx, map[string]interface{}{
+	record, err := dnsRecordRepo.UpdateOrCreate(ctx, map[string]interface{}{
 		"domain_id":   d.ID,
 		"type":        r.Type,
 		"name":        r.Name,
@@ -575,31 +610,40 @@ func TestRepository_UpdateOrCreateDnsRecord_Update(t *testing.T) {
 }
 
 func TestRepository_DeleteDnsRecord(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, dnsRecordRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
-	r := createTestRecord(t, repo, d.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
+	r := createTestRecord(t, dnsRecordRepo, d.ID)
 
-	err := repo.DeleteDnsRecord(ctx, r.ID)
+	err := dnsRecordRepo.Delete(ctx, r.ID)
 	require.NoError(t, err)
 
-	_, err = repo.FindDnsRecordByID(ctx, r.ID)
+	_, err = dnsRecordRepo.FindByID(ctx, r.ID)
 	assert.Error(t, err)
 }
 
 func TestRepository_DeleteDnsRecordsByDomain(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, domainRepo, dnsRecordRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
-	dp := createTestProvider(t, repo)
-	d := createTestDomain(t, repo, dp.ID)
-	createTestRecord(t, repo, d.ID)
-	createTestRecord(t, repo, d.ID)
+	dp := createTestProvider(t, providerRepo)
+	d := createTestDomain(t, domainRepo, dp.ID)
+	createTestRecord(t, dnsRecordRepo, d.ID)
+	// Create second record
+	r2 := &models.DnsRecord{
+		DomainID:   d.ID,
+		ProviderID: "rec-456",
+		Type:       enums.RecordTypeCNAME,
+		Name:       "www",
+		Value:      "example.com",
+		TTL:        3600,
+	}
+	dnsRecordRepo.Create(ctx, r2)
 
-	err := repo.DeleteDnsRecordsByDomain(ctx, d.ID)
+	err := dnsRecordRepo.DeleteByDomain(ctx, d.ID)
 	require.NoError(t, err)
 
-	records, err := repo.FindDnsRecordsByDomain(ctx, d.ID)
+	records, err := dnsRecordRepo.FindByDomain(ctx, d.ID)
 	require.NoError(t, err)
 
 	assert.Len(t, records, 0)
@@ -608,46 +652,46 @@ func TestRepository_DeleteDnsRecordsByDomain(t *testing.T) {
 // Transaction Tests
 
 func TestRepository_BeginTransaction(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	tx := repo.BeginTransaction(ctx)
+	tx := providerRepo.BeginTransaction(ctx)
 	assert.NotNil(t, tx)
 
 	tx.Rollback()
 }
 
 func TestRepository_WithTransaction_Success(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	err := repo.WithTransaction(ctx, func(tx *gorm.DB) error {
-		dp := &DomainProvider{
+	err := providerRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		dp := &models.DomainProvider{
 			UserID:      "user123",
 			TeamID:      "team123",
 			Profile:     "Test",
-			Provider:    DnsProviderCloudflare,
+			Provider:    enums.DnsProviderCloudflare,
 			Credentials: `{"token": "test"}`,
 		}
 		return tx.Create(dp).Error
 	})
 	require.NoError(t, err)
 
-	providers, err := repo.FindDomainProvidersByTeam(ctx, "team123")
+	providers, err := providerRepo.FindByTeam(ctx, "team123")
 	require.NoError(t, err)
 	assert.Len(t, providers, 1)
 }
 
 func TestRepository_WithTransaction_Rollback(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	providerRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	err := repo.WithTransaction(ctx, func(tx *gorm.DB) error {
-		dp := &DomainProvider{
+	err := providerRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		dp := &models.DomainProvider{
 			UserID:      "user123",
 			TeamID:      "team123",
 			Profile:     "Test",
-			Provider:    DnsProviderCloudflare,
+			Provider:    enums.DnsProviderCloudflare,
 			Credentials: `{"token": "test"}`,
 		}
 		if err := tx.Create(dp).Error; err != nil {
@@ -657,7 +701,7 @@ func TestRepository_WithTransaction_Rollback(t *testing.T) {
 	})
 	assert.Error(t, err)
 
-	providers, err := repo.FindDomainProvidersByTeam(ctx, "team123")
+	providers, err := providerRepo.FindByTeam(ctx, "team123")
 	require.NoError(t, err)
 	assert.Len(t, providers, 0)
 }

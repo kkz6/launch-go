@@ -6,19 +6,22 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/middleware"
+	"github.com/kkz6/launch-go/internal/modules/server/handlers"
+	"github.com/kkz6/launch-go/internal/modules/server/repositories"
+	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 type Module struct {
-	handler *Handler
+	handler *handlers.Handler
 }
 
 func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *Module {
-	repo := NewRepository(db)
-	service := NewService(repo, queueClient, ws, dispatcher, logger)
-	handler := NewHandler(service)
+	repo := repositories.NewRepository(db)
+	service := services.NewService(repo, queueClient, ws, dispatcher, logger)
+	handler := handlers.NewHandler(service)
 
 	return &Module{
 		handler: handler,

@@ -5,12 +5,15 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/kkz6/launch-go/internal/modules/auth/dto"
+	"github.com/kkz6/launch-go/internal/modules/auth/models"
 )
 
 // Normalize Tests
 
 func TestRegisterRequest_Normalize(t *testing.T) {
-	req := &RegisterRequest{
+	req := &dto.RegisterRequest{
 		Name:  "  John Doe  ",
 		Email: "  JOHN@EXAMPLE.COM  ",
 	}
@@ -22,7 +25,7 @@ func TestRegisterRequest_Normalize(t *testing.T) {
 }
 
 func TestLoginRequest_Normalize(t *testing.T) {
-	req := &LoginRequest{
+	req := &dto.LoginRequest{
 		Email: "  LOGIN@EXAMPLE.COM  ",
 	}
 
@@ -32,7 +35,7 @@ func TestLoginRequest_Normalize(t *testing.T) {
 }
 
 func TestUpdateProfileRequest_Normalize(t *testing.T) {
-	req := &UpdateProfileRequest{
+	req := &dto.UpdateProfileRequest{
 		Name:  "  Jane Doe  ",
 		Email: "  JANE@EXAMPLE.COM  ",
 	}
@@ -44,7 +47,7 @@ func TestUpdateProfileRequest_Normalize(t *testing.T) {
 }
 
 func TestForgotPasswordRequest_Normalize(t *testing.T) {
-	req := &ForgotPasswordRequest{
+	req := &dto.ForgotPasswordRequest{
 		Email: "  FORGOT@EXAMPLE.COM  ",
 	}
 
@@ -54,7 +57,7 @@ func TestForgotPasswordRequest_Normalize(t *testing.T) {
 }
 
 func TestResetPasswordRequest_Normalize(t *testing.T) {
-	req := &ResetPasswordRequest{
+	req := &dto.ResetPasswordRequest{
 		Email: "  RESET@EXAMPLE.COM  ",
 	}
 
@@ -64,7 +67,7 @@ func TestResetPasswordRequest_Normalize(t *testing.T) {
 }
 
 func TestInviteTeamMemberRequest_Normalize(t *testing.T) {
-	req := &InviteTeamMemberRequest{
+	req := &dto.InviteTeamMemberRequest{
 		Email: "  INVITE@EXAMPLE.COM  ",
 	}
 
@@ -74,7 +77,7 @@ func TestInviteTeamMemberRequest_Normalize(t *testing.T) {
 }
 
 func TestCheckUserStatusRequest_Normalize(t *testing.T) {
-	req := &CheckUserStatusRequest{
+	req := &dto.CheckUserStatusRequest{
 		Email: "  STATUS@EXAMPLE.COM  ",
 	}
 
@@ -87,14 +90,14 @@ func TestCheckUserStatusRequest_Normalize(t *testing.T) {
 
 func TestToUserResponse(t *testing.T) {
 	t.Run("basic user", func(t *testing.T) {
-		user := &User{
+		user := &models.User{
 			ID:       "user123",
 			Name:     "Test User",
 			Email:    "test@example.com",
 			Timezone: "UTC",
 		}
 
-		resp := ToUserResponse(user)
+		resp := dto.ToUserResponse(user)
 
 		assert.Equal(t, "user123", resp.ID)
 		assert.Equal(t, "Test User", resp.Name)
@@ -108,26 +111,26 @@ func TestToUserResponse(t *testing.T) {
 
 	t.Run("user with verified email", func(t *testing.T) {
 		now := time.Now()
-		user := &User{
+		user := &models.User{
 			ID:              "user123",
 			Name:            "Test User",
 			Email:           "test@example.com",
 			EmailVerifiedAt: &now,
 		}
 
-		resp := ToUserResponse(user)
+		resp := dto.ToUserResponse(user)
 
 		assert.NotNil(t, resp.EmailVerifiedAt)
 	})
 
 	t.Run("user with current team", func(t *testing.T) {
 		teamID := "team123"
-		team := &Team{
+		team := &models.Team{
 			ID:      teamID,
 			Name:    "Test Team",
 			OwnerID: "owner123",
 		}
-		user := &User{
+		user := &models.User{
 			ID:            "user123",
 			Name:          "Test User",
 			Email:         "test@example.com",
@@ -135,7 +138,7 @@ func TestToUserResponse(t *testing.T) {
 			CurrentTeam:   team,
 		}
 
-		resp := ToUserResponse(user)
+		resp := dto.ToUserResponse(user)
 
 		assert.NotNil(t, resp.CurrentTeamID)
 		assert.NotNil(t, resp.CurrentTeam)
@@ -145,7 +148,7 @@ func TestToUserResponse(t *testing.T) {
 	t.Run("user with 2FA enabled", func(t *testing.T) {
 		secret := "secret"
 		now := time.Now()
-		user := &User{
+		user := &models.User{
 			ID:                   "user123",
 			Name:                 "Test User",
 			Email:                "test@example.com",
@@ -153,7 +156,7 @@ func TestToUserResponse(t *testing.T) {
 			TwoFactorConfirmedAt: &now,
 		}
 
-		resp := ToUserResponse(user)
+		resp := dto.ToUserResponse(user)
 
 		assert.True(t, resp.TwoFactorEnabled)
 	})
@@ -162,14 +165,14 @@ func TestToUserResponse(t *testing.T) {
 // ToTeamResponse Tests
 
 func TestToTeamResponse(t *testing.T) {
-	team := Team{
+	team := models.Team{
 		ID:           "team123",
 		Name:         "Test Team",
 		OwnerID:      "owner123",
 		PersonalTeam: false,
 	}
 
-	resp := ToTeamResponse(team)
+	resp := dto.ToTeamResponse(team)
 
 	assert.Equal(t, "team123", resp.ID)
 	assert.Equal(t, "Test Team", resp.Name)
@@ -180,18 +183,18 @@ func TestToTeamResponse(t *testing.T) {
 
 func TestToTeamResponsePtr(t *testing.T) {
 	t.Run("nil team", func(t *testing.T) {
-		resp := ToTeamResponsePtr(nil)
+		resp := dto.ToTeamResponsePtr(nil)
 		assert.Nil(t, resp)
 	})
 
 	t.Run("valid team", func(t *testing.T) {
-		team := &Team{
+		team := &models.Team{
 			ID:      "team123",
 			Name:    "Test Team",
 			OwnerID: "owner123",
 		}
 
-		resp := ToTeamResponsePtr(team)
+		resp := dto.ToTeamResponsePtr(team)
 
 		assert.NotNil(t, resp)
 		assert.Equal(t, "team123", resp.ID)
@@ -201,7 +204,7 @@ func TestToTeamResponsePtr(t *testing.T) {
 // ToTeamMemberResponse Tests
 
 func TestToTeamMemberResponse(t *testing.T) {
-	user := &User{
+	user := &models.User{
 		ID:    "user123",
 		Name:  "Test User",
 		Email: "test@example.com",
@@ -209,7 +212,7 @@ func TestToTeamMemberResponse(t *testing.T) {
 	role := "admin"
 	joinedAt := time.Now()
 
-	resp := ToTeamMemberResponse(user, role, joinedAt)
+	resp := dto.ToTeamMemberResponse(user, role, joinedAt)
 
 	assert.Equal(t, "user123", resp.ID)
 	assert.Equal(t, "Test User", resp.Name)
@@ -223,13 +226,13 @@ func TestToTeamMemberResponse(t *testing.T) {
 
 func TestToTeamInvitationResponse(t *testing.T) {
 	t.Run("invitation without team", func(t *testing.T) {
-		invitation := &TeamInvitation{
+		invitation := &models.TeamInvitation{
 			ID:    "inv123",
 			Email: "invite@example.com",
 			Role:  "member",
 		}
 
-		resp := ToTeamInvitationResponse(invitation)
+		resp := dto.ToTeamInvitationResponse(invitation)
 
 		assert.Equal(t, "inv123", resp.ID)
 		assert.Equal(t, "invite@example.com", resp.Email)
@@ -237,19 +240,19 @@ func TestToTeamInvitationResponse(t *testing.T) {
 	})
 
 	t.Run("invitation with team", func(t *testing.T) {
-		team := &Team{
+		team := &models.Team{
 			ID:      "team123",
 			Name:    "Test Team",
 			OwnerID: "owner123",
 		}
-		invitation := &TeamInvitation{
+		invitation := &models.TeamInvitation{
 			ID:    "inv123",
 			Email: "invite@example.com",
 			Role:  "member",
 			Team:  team,
 		}
 
-		resp := ToTeamInvitationResponse(invitation)
+		resp := dto.ToTeamInvitationResponse(invitation)
 
 		assert.Equal(t, "inv123", resp.ID)
 		assert.Equal(t, "team123", resp.Team.ID)
@@ -260,20 +263,20 @@ func TestToTeamInvitationResponse(t *testing.T) {
 
 func TestToTeamsResponse(t *testing.T) {
 	t.Run("empty slice", func(t *testing.T) {
-		teams := []Team{}
+		teams := []models.Team{}
 
-		resp := ToTeamsResponse(teams)
+		resp := dto.ToTeamsResponse(teams)
 
 		assert.Empty(t, resp)
 	})
 
 	t.Run("multiple teams", func(t *testing.T) {
-		teams := []Team{
+		teams := []models.Team{
 			{ID: "team1", Name: "Team 1", OwnerID: "owner1"},
 			{ID: "team2", Name: "Team 2", OwnerID: "owner2"},
 		}
 
-		resp := ToTeamsResponse(teams)
+		resp := dto.ToTeamsResponse(teams)
 
 		assert.Len(t, resp, 2)
 		assert.Equal(t, "team1", resp[0].ID)
@@ -285,22 +288,22 @@ func TestToTeamsResponse(t *testing.T) {
 
 func TestToTeamMembersResponse(t *testing.T) {
 	t.Run("empty slice", func(t *testing.T) {
-		members := []TeamMember{}
+		members := []models.TeamMember{}
 
-		resp := ToTeamMembersResponse(members)
+		resp := dto.ToTeamMembersResponse(members)
 
 		assert.Empty(t, resp)
 	})
 
 	t.Run("members with users", func(t *testing.T) {
-		user1 := &User{ID: "user1", Name: "User 1", Email: "user1@example.com"}
-		user2 := &User{ID: "user2", Name: "User 2", Email: "user2@example.com"}
-		members := []TeamMember{
+		user1 := &models.User{ID: "user1", Name: "User 1", Email: "user1@example.com"}
+		user2 := &models.User{ID: "user2", Name: "User 2", Email: "user2@example.com"}
+		members := []models.TeamMember{
 			{ID: "m1", UserID: "user1", Role: "admin", User: user1},
 			{ID: "m2", UserID: "user2", Role: "member", User: user2},
 		}
 
-		resp := ToTeamMembersResponse(members)
+		resp := dto.ToTeamMembersResponse(members)
 
 		assert.Len(t, resp, 2)
 		assert.Equal(t, "user1", resp[0].ID)
@@ -310,11 +313,11 @@ func TestToTeamMembersResponse(t *testing.T) {
 	})
 
 	t.Run("member without user", func(t *testing.T) {
-		members := []TeamMember{
+		members := []models.TeamMember{
 			{ID: "m1", UserID: "user1", Role: "admin", User: nil},
 		}
 
-		resp := ToTeamMembersResponse(members)
+		resp := dto.ToTeamMembersResponse(members)
 
 		assert.Len(t, resp, 1)
 		// User is nil, so response fields will be empty
@@ -326,20 +329,20 @@ func TestToTeamMembersResponse(t *testing.T) {
 
 func TestToTeamInvitationsResponse(t *testing.T) {
 	t.Run("empty slice", func(t *testing.T) {
-		invitations := []TeamInvitation{}
+		invitations := []models.TeamInvitation{}
 
-		resp := ToTeamInvitationsResponse(invitations)
+		resp := dto.ToTeamInvitationsResponse(invitations)
 
 		assert.Empty(t, resp)
 	})
 
 	t.Run("multiple invitations", func(t *testing.T) {
-		invitations := []TeamInvitation{
+		invitations := []models.TeamInvitation{
 			{ID: "inv1", Email: "a@example.com", Role: "admin"},
 			{ID: "inv2", Email: "b@example.com", Role: "member"},
 		}
 
-		resp := ToTeamInvitationsResponse(invitations)
+		resp := dto.ToTeamInvitationsResponse(invitations)
 
 		assert.Len(t, resp, 2)
 		assert.Equal(t, "inv1", resp[0].ID)

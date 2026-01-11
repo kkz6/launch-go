@@ -1,0 +1,234 @@
+package services
+
+import (
+	"context"
+	"errors"
+	"strings"
+
+	"github.com/kkz6/launch-go/internal/modules/auth/dto"
+	"github.com/kkz6/launch-go/internal/modules/auth/enums"
+	"github.com/kkz6/launch-go/internal/modules/auth/models"
+	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+)
+
+// TeamMemberService handles team member management operations
+type TeamMemberService struct {
+	repo *repositories.Repository
+}
+
+// NewTeamMemberService creates a new TeamMemberService instance
+func NewTeamMemberService(repo *repositories.Repository) *TeamMemberService {
+	return &TeamMemberService{repo: repo}
+}
+
+// InviteTeamMember invites a user to a team
+func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID string, req *dto.InviteTeamMemberRequest) error {
+	req.Normalize()
+
+	team, err := s.repo.FindTeamByID(ctx, teamID)
+	if err != nil {
+		return err
+	}
+
+	if team == nil {
+		return apperrors.ErrNotFound
+	}
+
+	// Check if user has permission to invite
+	if team.OwnerID != userID {
+		member, err := s.repo.GetTeamMember(ctx, teamID, userID)
+		if err != nil {
+			return err
+		}
+
+		if member == nil || member.Role != enums.TeamRoleAdmin.String() {
+			return apperrors.ErrForbidden
+		}
+	}
+
+	// Check if user is already a member
+	existingUser, err := s.repo.FindUserByEmail(ctx, req.Email)
+	if err != nil {
+		return err
+	}
+
+	if existingUser != nil {
+		isMember, err := s.repo.IsTeamMember(ctx, teamID, existingUser.ID)
+		if err != nil {
+			return err
+		}
+
+		if isMember {
+			return errors.New("user is already a team member")
+		}
+	}
+
+	// Check if invitation already exists
+	existingInvitation, err := s.repo.FindTeamInvitationByEmail(ctx, teamID, req.Email)
+	if err != nil {
+		return err
+	}
+
+	if existingInvitation != nil {
+		return errors.New("invitation already sent to this email")
+	}
+
+	// Create invitation
+	invitation := &models.TeamInvitation{
+		TeamID: teamID,
+		Email:  req.Email,
+		Role:   req.Role,
+	}
+
+	return s.repo.CreateTeamInvitation(ctx, invitation)
+}
+
+// AcceptTeamInvitation accepts a team invitation
+func (s *TeamMemberService) AcceptTeamInvitation(ctx context.Context, userID, invitationID string) error {
+	invitation, err := s.repo.FindTeamInvitationByID(ctx, invitationID)
+	if err != nil {
+		return err
+	}
+
+	if invitation == nil {
+		return apperrors.ErrNotFound
+	}
+
+	user, err := s.repo.FindUserByID(ctx, userID)
+	if err != nil {
+		return err
+	}
+
+	if user == nil {
+		return apperrors.ErrNotFound
+	}
+
+	// Verify invitation is for this user
+	if !strings.EqualFold(invitation.Email, user.Email) {
+		return apperrors.ErrForbidden
+	}
+
+	// Add user to team
+	if err := s.repo.AddUserToTeam(ctx, invitation.TeamID, userID, invitation.Role); err != nil {
+		return err
+	}
+
+	// Delete invitation
+	return s.repo.DeleteTeamInvitation(ctx, invitationID)
+}
+
+// CancelTeamInvitation cancels a team invitation
+func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, teamID, invitationID string) error {
+	team, err := s.repo.FindTeamByID(ctx, teamID)
+	if err != nil {
+		return err
+	}
+
+	if team == nil {
+		return apperrors.ErrNotFound
+	}
+
+	// Check permission
+	if team.OwnerID != userID {
+		member, err := s.repo.GetTeamMember(ctx, teamID, userID)
+		if err != nil {
+			return err
+		}
+
+		if member == nil || member.Role != enums.TeamRoleAdmin.String() {
+			return apperrors.ErrForbidden
+		}
+	}
+
+	invitation, err := s.repo.FindTeamInvitationByID(ctx, invitationID)
+	if err != nil {
+		return err
+	}
+
+	if invitation == nil || invitation.TeamID != teamID {
+		return apperrors.ErrNotFound
+	}
+
+	return s.repo.DeleteTeamInvitation(ctx, invitationID)
+}
+
+// UpdateTeamMemberRole updates a team member's role
+func (s *TeamMemberService) UpdateTeamMemberRole(ctx context.Context, userID, teamID, memberID string, req *dto.UpdateTeamMemberRequest) error {
+	team, err := s.repo.FindTeamByID(ctx, teamID)
+	if err != nil {
+		return err
+	}
+
+	if team == nil {
+		return apperrors.ErrNotFound
+	}
+
+	// Only owner can update roles
+	if team.OwnerID != userID {
+		return apperrors.ErrForbidden
+	}
+
+	// Cannot update owner's role
+	if memberID == team.OwnerID {
+		return errors.New("cannot update owner's role")
+	}
+
+	return s.repo.UpdateTeamMemberRole(ctx, teamID, memberID, req.Role)
+}
+
+// RemoveTeamMember removes a member from a team
+func (s *TeamMemberService) RemoveTeamMember(ctx context.Context, userID, teamID, memberID string) error {
+	team, err := s.repo.FindTeamByID(ctx, teamID)
+	if err != nil {
+		return err
+	}
+
+	if team == nil {
+		return apperrors.ErrNotFound
+	}
+
+	// Check permission (owner or self-removal)
+	if team.OwnerID != userID && userID != memberID {
+		return apperrors.ErrForbidden
+	}
+
+	// Cannot remove owner
+	if memberID == team.OwnerID {
+		return errors.New("cannot remove team owner")
+	}
+
+	// Remove from team
+	if err := s.repo.RemoveUserFromTeam(ctx, teamID, memberID); err != nil {
+		return err
+	}
+
+	// If this was their current team, switch to another
+	member, err := s.repo.FindUserByID(ctx, memberID)
+	if err != nil {
+		return nil // Member removed successfully, ignore this error
+	}
+
+	if member != nil && member.CurrentTeamID != nil && *member.CurrentTeamID == teamID {
+		teams, err := s.repo.GetUserTeams(ctx, memberID)
+		if err != nil {
+			return nil
+		}
+
+		if len(teams) > 0 {
+			s.repo.SetCurrentTeam(ctx, memberID, teams[0].ID)
+		}
+	}
+
+	return nil
+}
+
+// GetTeamMembers gets all members of a team
+func (s *TeamMemberService) GetTeamMembers(ctx context.Context, teamID string) ([]models.TeamMember, error) {
+	return s.repo.GetTeamMembers(ctx, teamID)
+}
+
+// GetTeamInvitations gets all invitations for a team
+func (s *TeamMemberService) GetTeamInvitations(ctx context.Context, teamID string) ([]models.TeamInvitation, error) {
+	return s.repo.GetTeamInvitations(ctx, teamID)
+}

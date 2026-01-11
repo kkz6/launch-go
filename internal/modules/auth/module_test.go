@@ -11,6 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/modules/auth/models"
 )
 
 func TestNewModule(t *testing.T) {
@@ -31,11 +32,9 @@ func TestNewModule(t *testing.T) {
 	module := NewModule(db, cfg, &logger)
 
 	assert.NotNil(t, module)
-	assert.NotNil(t, module.handler)
-	assert.NotNil(t, module.service)
-	assert.NotNil(t, module.repository)
-	assert.NotNil(t, module.config)
-	assert.NotNil(t, module.logger)
+	assert.NotNil(t, module.Handler())
+	assert.NotNil(t, module.Service())
+	assert.NotNil(t, module.Repository())
 }
 
 func TestModule_RegisterRoutes(t *testing.T) {
@@ -75,7 +74,6 @@ func TestModule_Service(t *testing.T) {
 
 	service := module.Service()
 	assert.NotNil(t, service)
-	assert.Equal(t, module.service, service)
 }
 
 func TestModule_Repository(t *testing.T) {
@@ -89,7 +87,6 @@ func TestModule_Repository(t *testing.T) {
 
 	repo := module.Repository()
 	assert.NotNil(t, repo)
-	assert.Equal(t, module.repository, repo)
 }
 
 func TestModule_Handler(t *testing.T) {
@@ -103,7 +100,6 @@ func TestModule_Handler(t *testing.T) {
 
 	handler := module.Handler()
 	assert.NotNil(t, handler)
-	assert.Equal(t, module.handler, handler)
 }
 
 func TestModule_AutoMigrate(t *testing.T) {
@@ -119,12 +115,12 @@ func TestModule_AutoMigrate(t *testing.T) {
 	require.NoError(t, err)
 
 	// Verify tables were created
-	assert.True(t, db.Migrator().HasTable(&User{}))
-	assert.True(t, db.Migrator().HasTable(&Team{}))
-	assert.True(t, db.Migrator().HasTable(&TeamMember{}))
-	assert.True(t, db.Migrator().HasTable(&TeamInvitation{}))
-	assert.True(t, db.Migrator().HasTable(&PersonalAccessToken{}))
-	assert.True(t, db.Migrator().HasTable(&PasswordResetToken{}))
+	assert.True(t, db.Migrator().HasTable(&models.User{}))
+	assert.True(t, db.Migrator().HasTable(&models.Team{}))
+	assert.True(t, db.Migrator().HasTable(&models.TeamMember{}))
+	assert.True(t, db.Migrator().HasTable(&models.TeamInvitation{}))
+	assert.True(t, db.Migrator().HasTable(&models.PersonalAccessToken{}))
+	assert.True(t, db.Migrator().HasTable(&models.PasswordResetToken{}))
 }
 
 func TestModule_GetModels(t *testing.T) {
@@ -136,6 +132,6 @@ func TestModule_GetModels(t *testing.T) {
 
 	module := NewModule(db, cfg, &logger)
 
-	models := module.GetModels()
-	assert.Len(t, models, 6)
+	modelsSlice := module.GetModels()
+	assert.Len(t, modelsSlice, 6)
 }

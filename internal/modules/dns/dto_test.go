@@ -5,25 +5,29 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+
+	"github.com/kkz6/launch-go/internal/modules/dns/dto"
+	"github.com/kkz6/launch-go/internal/modules/dns/enums"
+	"github.com/kkz6/launch-go/internal/modules/dns/models"
 )
 
 func TestToDomainProviderResponse(t *testing.T) {
 	now := time.Now()
 	errMsg := "sync failed"
 
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		ID:               "provider123",
 		Profile:          "My Provider",
-		Provider:         DnsProviderCloudflare,
+		Provider:         enums.DnsProviderCloudflare,
 		Connected:        true,
-		SyncStatus:       SyncStatusCompleted,
+		SyncStatus:       enums.SyncStatusCompleted,
 		LastSyncedAt:     &now,
 		SyncErrorMessage: &errMsg,
 		CreatedAt:        now,
 		UpdatedAt:        now,
 	}
 
-	resp := ToDomainProviderResponse(dp, 5)
+	resp := dto.ToDomainProviderResponse(dp, 5)
 
 	assert.Equal(t, "provider123", resp.ID)
 	assert.Equal(t, "My Provider", resp.Profile)
@@ -41,7 +45,7 @@ func TestToDomainProviderResponse(t *testing.T) {
 func TestToDomainResponse(t *testing.T) {
 	now := time.Now()
 
-	domain := &Domain{
+	domain := &models.Domain{
 		ID:               "domain123",
 		Label:            "My Domain",
 		Address:          "example.com",
@@ -49,17 +53,17 @@ func TestToDomainResponse(t *testing.T) {
 		DomainProviderID: "provider123",
 		CreatedAt:        now,
 		UpdatedAt:        now,
-		Provider: &DomainProvider{
+		Provider: &models.DomainProvider{
 			ID:       "provider123",
 			Profile:  "My Provider",
-			Provider: DnsProviderCloudflare,
+			Provider: enums.DnsProviderCloudflare,
 		},
-		Records: []DnsRecord{
+		Records: []models.DnsRecord{
 			{
 				ID:         "record1",
 				DomainID:   "domain123",
 				ProviderID: "ext-rec1",
-				Type:       RecordTypeA,
+				Type:       enums.RecordTypeA,
 				Name:       "@",
 				Value:      "1.2.3.4",
 				TTL:        3600,
@@ -69,7 +73,7 @@ func TestToDomainResponse(t *testing.T) {
 		},
 	}
 
-	resp := ToDomainResponse(domain)
+	resp := dto.ToDomainResponse(domain)
 
 	assert.Equal(t, "domain123", resp.ID)
 	assert.Equal(t, "My Domain", resp.Label)
@@ -86,15 +90,15 @@ func TestToDomainResponse(t *testing.T) {
 }
 
 func TestToDomainResponse_NoProvider(t *testing.T) {
-	domain := &Domain{
+	domain := &models.Domain{
 		ID:       "domain123",
 		Label:    "My Domain",
 		Address:  "example.com",
 		Provider: nil,
-		Records:  []DnsRecord{},
+		Records:  []models.DnsRecord{},
 	}
 
-	resp := ToDomainResponse(domain)
+	resp := dto.ToDomainResponse(domain)
 
 	assert.Nil(t, resp.Provider)
 	assert.Equal(t, 0, resp.RecordsCount)
@@ -108,7 +112,7 @@ func TestCreateDnsRecordRequest_ToModel(t *testing.T) {
 	flags := 0
 	proxied := true
 
-	req := &CreateDnsRecordRequest{
+	req := &dto.CreateDnsRecordRequest{
 		Name:     "mail",
 		Value:    "mail.example.com",
 		Type:     "MX",
@@ -125,7 +129,7 @@ func TestCreateDnsRecordRequest_ToModel(t *testing.T) {
 	record := req.ToModel("domain123")
 
 	assert.Equal(t, "domain123", record.DomainID)
-	assert.Equal(t, RecordTypeMX, record.Type)
+	assert.Equal(t, enums.RecordTypeMX, record.Type)
 	assert.Equal(t, "mail", record.Name)
 	assert.Equal(t, "mail.example.com", record.Value)
 	assert.Equal(t, 7200, record.TTL)
@@ -139,7 +143,7 @@ func TestCreateDnsRecordRequest_ToModel(t *testing.T) {
 }
 
 func TestCreateDnsRecordRequest_ToModel_DefaultTTL(t *testing.T) {
-	req := &CreateDnsRecordRequest{
+	req := &dto.CreateDnsRecordRequest{
 		Name:  "@",
 		Value: "1.2.3.4",
 		Type:  "A",
@@ -152,7 +156,7 @@ func TestCreateDnsRecordRequest_ToModel_DefaultTTL(t *testing.T) {
 }
 
 func TestCreateDnsRecordRequest_ToModel_EmptyOptionalFields(t *testing.T) {
-	req := &CreateDnsRecordRequest{
+	req := &dto.CreateDnsRecordRequest{
 		Name:    "@",
 		Value:   "1.2.3.4",
 		Type:    "A",
@@ -179,7 +183,7 @@ func TestUpdateDnsRecordRequest_ApplyToModel(t *testing.T) {
 	flags := 1
 	proxied := false
 
-	req := &UpdateDnsRecordRequest{
+	req := &dto.UpdateDnsRecordRequest{
 		Name:     "www",
 		Value:    "1.2.3.5",
 		Type:     "A",
@@ -193,10 +197,10 @@ func TestUpdateDnsRecordRequest_ApplyToModel(t *testing.T) {
 		Proxied:  &proxied,
 	}
 
-	record := &DnsRecord{
+	record := &models.DnsRecord{
 		ID:       "record123",
 		DomainID: "domain123",
-		Type:     RecordTypeCNAME,
+		Type:     enums.RecordTypeCNAME,
 		Name:     "old",
 		Value:    "old.example.com",
 		TTL:      3600,
@@ -206,7 +210,7 @@ func TestUpdateDnsRecordRequest_ApplyToModel(t *testing.T) {
 
 	assert.Equal(t, "record123", record.ID)
 	assert.Equal(t, "domain123", record.DomainID)
-	assert.Equal(t, RecordTypeA, record.Type)
+	assert.Equal(t, enums.RecordTypeA, record.Type)
 	assert.Equal(t, "www", record.Name)
 	assert.Equal(t, "1.2.3.5", record.Value)
 	assert.Equal(t, 7200, record.TTL)
@@ -223,9 +227,9 @@ func TestUpdateDnsRecordRequest_ApplyToModel_ClearOptionalFields(t *testing.T) {
 	tag := "old-tag"
 	comment := "old-comment"
 
-	record := &DnsRecord{
+	record := &models.DnsRecord{
 		ID:      "record123",
-		Type:    RecordTypeA,
+		Type:    enums.RecordTypeA,
 		Name:    "www",
 		Value:   "1.2.3.4",
 		TTL:     3600,
@@ -233,7 +237,7 @@ func TestUpdateDnsRecordRequest_ApplyToModel_ClearOptionalFields(t *testing.T) {
 		Comment: &comment,
 	}
 
-	req := &UpdateDnsRecordRequest{
+	req := &dto.UpdateDnsRecordRequest{
 		Name:    "www",
 		Value:   "1.2.3.4",
 		Type:    "A",
@@ -249,15 +253,15 @@ func TestUpdateDnsRecordRequest_ApplyToModel_ClearOptionalFields(t *testing.T) {
 }
 
 func TestUpdateDnsRecordRequest_ApplyToModel_KeepTTL(t *testing.T) {
-	record := &DnsRecord{
+	record := &models.DnsRecord{
 		ID:    "record123",
-		Type:  RecordTypeA,
+		Type:  enums.RecordTypeA,
 		Name:  "www",
 		Value: "1.2.3.4",
 		TTL:   7200,
 	}
 
-	req := &UpdateDnsRecordRequest{
+	req := &dto.UpdateDnsRecordRequest{
 		Name:  "www",
 		Value: "1.2.3.4",
 		Type:  "A",
@@ -276,11 +280,11 @@ func TestToDnsRecordResponse(t *testing.T) {
 	comment := "Test comment"
 	proxied := true
 
-	record := &DnsRecord{
+	record := &models.DnsRecord{
 		ID:         "record123",
 		DomainID:   "domain123",
 		ProviderID: "ext-123",
-		Type:       RecordTypeMX,
+		Type:       enums.RecordTypeMX,
 		Name:       "mail",
 		Value:      "mail.example.com",
 		TTL:        3600,
@@ -292,7 +296,7 @@ func TestToDnsRecordResponse(t *testing.T) {
 		UpdatedAt:  now,
 	}
 
-	resp := ToDnsRecordResponse(record)
+	resp := dto.ToDnsRecordResponse(record)
 
 	assert.Equal(t, "record123", resp.ID)
 	assert.Equal(t, "domain123", resp.DomainID)
@@ -311,33 +315,33 @@ func TestToDnsRecordResponse(t *testing.T) {
 }
 
 func TestToDnsRecordResponse_NSRecord(t *testing.T) {
-	record := &DnsRecord{
-		ID:       "record123",
-		Type:     RecordTypeNS,
-		Name:     "@",
-		Value:    "ns1.example.com",
-		TTL:      86400,
+	record := &models.DnsRecord{
+		ID:    "record123",
+		Type:  enums.RecordTypeNS,
+		Name:  "@",
+		Value: "ns1.example.com",
+		TTL:   86400,
 	}
 
-	resp := ToDnsRecordResponse(record)
+	resp := dto.ToDnsRecordResponse(record)
 
 	assert.Equal(t, "NS", resp.Type)
 	assert.False(t, resp.IsEditable)
 }
 
 func TestDeleteDomainRequest(t *testing.T) {
-	req := DeleteDomainRequest{
+	req := dto.DeleteDomainRequest{
 		DeleteFromProvider: true,
 	}
 
 	assert.True(t, req.DeleteFromProvider)
 
-	req2 := DeleteDomainRequest{}
+	req2 := dto.DeleteDomainRequest{}
 	assert.False(t, req2.DeleteFromProvider)
 }
 
 func TestSyncDomainsRequest(t *testing.T) {
-	req := SyncDomainsRequest{
+	req := dto.SyncDomainsRequest{
 		ProviderID: "provider123",
 	}
 
@@ -345,7 +349,7 @@ func TestSyncDomainsRequest(t *testing.T) {
 }
 
 func TestCreateDomainProviderRequest(t *testing.T) {
-	req := CreateDomainProviderRequest{
+	req := dto.CreateDomainProviderRequest{
 		Profile:   "My Provider",
 		Provider:  "cloudflare",
 		Token:     "test-token",
@@ -359,7 +363,7 @@ func TestCreateDomainProviderRequest(t *testing.T) {
 }
 
 func TestUpdateDomainProviderRequest(t *testing.T) {
-	req := UpdateDomainProviderRequest{
+	req := dto.UpdateDomainProviderRequest{
 		Profile: "Updated Provider",
 	}
 
@@ -367,7 +371,7 @@ func TestUpdateDomainProviderRequest(t *testing.T) {
 }
 
 func TestCreateDomainRequest(t *testing.T) {
-	req := CreateDomainRequest{
+	req := dto.CreateDomainRequest{
 		Label:    "My Domain",
 		Address:  "example.com",
 		Provider: "provider123",
@@ -379,7 +383,7 @@ func TestCreateDomainRequest(t *testing.T) {
 }
 
 func TestProviderSummary(t *testing.T) {
-	ps := ProviderSummary{
+	ps := dto.ProviderSummary{
 		ID:       "provider123",
 		Profile:  "My Provider",
 		Provider: "cloudflare",

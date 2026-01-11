@@ -2,21 +2,23 @@ package billing
 
 import (
 	"testing"
+
+	"github.com/kkz6/launch-go/internal/modules/billing/enums"
 )
 
 func TestSubscriptionStatus_String(t *testing.T) {
 	tests := []struct {
 		name   string
-		status SubscriptionStatus
+		status enums.SubscriptionStatus
 		want   string
 	}{
-		{"on_trial", SubscriptionStatusOnTrial, "on_trial"},
-		{"active", SubscriptionStatusActive, "active"},
-		{"paused", SubscriptionStatusPaused, "paused"},
-		{"past_due", SubscriptionStatusPastDue, "past_due"},
-		{"unpaid", SubscriptionStatusUnpaid, "unpaid"},
-		{"cancelled", SubscriptionStatusCancelled, "cancelled"},
-		{"expired", SubscriptionStatusExpired, "expired"},
+		{"on_trial", enums.SubscriptionStatusOnTrial, "on_trial"},
+		{"active", enums.SubscriptionStatusActive, "active"},
+		{"paused", enums.SubscriptionStatusPaused, "paused"},
+		{"past_due", enums.SubscriptionStatusPastDue, "past_due"},
+		{"unpaid", enums.SubscriptionStatusUnpaid, "unpaid"},
+		{"cancelled", enums.SubscriptionStatusCancelled, "cancelled"},
+		{"expired", enums.SubscriptionStatusExpired, "expired"},
 	}
 
 	for _, tt := range tests {
@@ -31,18 +33,18 @@ func TestSubscriptionStatus_String(t *testing.T) {
 func TestSubscriptionStatus_IsValid(t *testing.T) {
 	tests := []struct {
 		name   string
-		status SubscriptionStatus
+		status enums.SubscriptionStatus
 		want   bool
 	}{
-		{"on_trial is valid", SubscriptionStatusOnTrial, true},
-		{"active is valid", SubscriptionStatusActive, true},
-		{"paused is valid", SubscriptionStatusPaused, true},
-		{"past_due is valid", SubscriptionStatusPastDue, true},
-		{"unpaid is valid", SubscriptionStatusUnpaid, true},
-		{"cancelled is valid", SubscriptionStatusCancelled, true},
-		{"expired is valid", SubscriptionStatusExpired, true},
-		{"invalid status", SubscriptionStatus("invalid"), false},
-		{"empty status", SubscriptionStatus(""), false},
+		{"on_trial is valid", enums.SubscriptionStatusOnTrial, true},
+		{"active is valid", enums.SubscriptionStatusActive, true},
+		{"paused is valid", enums.SubscriptionStatusPaused, true},
+		{"past_due is valid", enums.SubscriptionStatusPastDue, true},
+		{"unpaid is valid", enums.SubscriptionStatusUnpaid, true},
+		{"cancelled is valid", enums.SubscriptionStatusCancelled, true},
+		{"expired is valid", enums.SubscriptionStatusExpired, true},
+		{"invalid status", enums.SubscriptionStatus("invalid"), false},
+		{"empty status", enums.SubscriptionStatus(""), false},
 	}
 
 	for _, tt := range tests {
@@ -57,15 +59,15 @@ func TestSubscriptionStatus_IsValid(t *testing.T) {
 func TestSubscriptionStatus_IsActive(t *testing.T) {
 	tests := []struct {
 		name   string
-		status SubscriptionStatus
+		status enums.SubscriptionStatus
 		want   bool
 	}{
-		{"active is active", SubscriptionStatusActive, true},
-		{"on_trial is active", SubscriptionStatusOnTrial, true},
-		{"paused is not active", SubscriptionStatusPaused, false},
-		{"past_due is not active", SubscriptionStatusPastDue, false},
-		{"cancelled is not active", SubscriptionStatusCancelled, false},
-		{"expired is not active", SubscriptionStatusExpired, false},
+		{"active is active", enums.SubscriptionStatusActive, true},
+		{"on_trial is active", enums.SubscriptionStatusOnTrial, true},
+		{"paused is not active", enums.SubscriptionStatusPaused, false},
+		{"past_due is not active", enums.SubscriptionStatusPastDue, false},
+		{"cancelled is not active", enums.SubscriptionStatusCancelled, false},
+		{"expired is not active", enums.SubscriptionStatusExpired, false},
 	}
 
 	for _, tt := range tests {
@@ -80,12 +82,12 @@ func TestSubscriptionStatus_IsActive(t *testing.T) {
 func TestSubscriptionStatus_IsCancelled(t *testing.T) {
 	tests := []struct {
 		name   string
-		status SubscriptionStatus
+		status enums.SubscriptionStatus
 		want   bool
 	}{
-		{"cancelled is cancelled", SubscriptionStatusCancelled, true},
-		{"active is not cancelled", SubscriptionStatusActive, false},
-		{"expired is not cancelled", SubscriptionStatusExpired, false},
+		{"cancelled is cancelled", enums.SubscriptionStatusCancelled, true},
+		{"active is not cancelled", enums.SubscriptionStatusActive, false},
+		{"expired is not cancelled", enums.SubscriptionStatusExpired, false},
 	}
 
 	for _, tt := range tests {
@@ -100,11 +102,11 @@ func TestSubscriptionStatus_IsCancelled(t *testing.T) {
 func TestSubscriptionStatus_IsPaused(t *testing.T) {
 	tests := []struct {
 		name   string
-		status SubscriptionStatus
+		status enums.SubscriptionStatus
 		want   bool
 	}{
-		{"paused is paused", SubscriptionStatusPaused, true},
-		{"active is not paused", SubscriptionStatusActive, false},
+		{"paused is paused", enums.SubscriptionStatusPaused, true},
+		{"active is not paused", enums.SubscriptionStatusActive, false},
 	}
 
 	for _, tt := range tests {
@@ -119,11 +121,11 @@ func TestSubscriptionStatus_IsPaused(t *testing.T) {
 func TestSubscriptionStatus_IsOnTrial(t *testing.T) {
 	tests := []struct {
 		name   string
-		status SubscriptionStatus
+		status enums.SubscriptionStatus
 		want   bool
 	}{
-		{"on_trial is on trial", SubscriptionStatusOnTrial, true},
-		{"active is not on trial", SubscriptionStatusActive, false},
+		{"on_trial is on trial", enums.SubscriptionStatusOnTrial, true},
+		{"active is not on trial", enums.SubscriptionStatusActive, false},
 	}
 
 	for _, tt := range tests {
@@ -136,7 +138,7 @@ func TestSubscriptionStatus_IsOnTrial(t *testing.T) {
 }
 
 func TestAllSubscriptionStatuses(t *testing.T) {
-	statuses := AllSubscriptionStatuses()
+	statuses := enums.AllSubscriptionStatuses()
 	if len(statuses) != 7 {
 		t.Errorf("AllSubscriptionStatuses() returned %d statuses, want 7", len(statuses))
 	}
@@ -151,11 +153,11 @@ func TestAllSubscriptionStatuses(t *testing.T) {
 func TestPlanInterval_String(t *testing.T) {
 	tests := []struct {
 		name     string
-		interval PlanInterval
+		interval enums.PlanInterval
 		want     string
 	}{
-		{"monthly", PlanIntervalMonthly, "monthly"},
-		{"yearly", PlanIntervalYearly, "yearly"},
+		{"monthly", enums.PlanIntervalMonthly, "monthly"},
+		{"yearly", enums.PlanIntervalYearly, "yearly"},
 	}
 
 	for _, tt := range tests {
@@ -170,13 +172,13 @@ func TestPlanInterval_String(t *testing.T) {
 func TestPlanInterval_IsValid(t *testing.T) {
 	tests := []struct {
 		name     string
-		interval PlanInterval
+		interval enums.PlanInterval
 		want     bool
 	}{
-		{"monthly is valid", PlanIntervalMonthly, true},
-		{"yearly is valid", PlanIntervalYearly, true},
-		{"invalid interval", PlanInterval("weekly"), false},
-		{"empty interval", PlanInterval(""), false},
+		{"monthly is valid", enums.PlanIntervalMonthly, true},
+		{"yearly is valid", enums.PlanIntervalYearly, true},
+		{"invalid interval", enums.PlanInterval("weekly"), false},
+		{"empty interval", enums.PlanInterval(""), false},
 	}
 
 	for _, tt := range tests {
@@ -191,11 +193,11 @@ func TestPlanInterval_IsValid(t *testing.T) {
 func TestPlanInterval_IsMonthly(t *testing.T) {
 	tests := []struct {
 		name     string
-		interval PlanInterval
+		interval enums.PlanInterval
 		want     bool
 	}{
-		{"monthly is monthly", PlanIntervalMonthly, true},
-		{"yearly is not monthly", PlanIntervalYearly, false},
+		{"monthly is monthly", enums.PlanIntervalMonthly, true},
+		{"yearly is not monthly", enums.PlanIntervalYearly, false},
 	}
 
 	for _, tt := range tests {
@@ -210,11 +212,11 @@ func TestPlanInterval_IsMonthly(t *testing.T) {
 func TestPlanInterval_IsYearly(t *testing.T) {
 	tests := []struct {
 		name     string
-		interval PlanInterval
+		interval enums.PlanInterval
 		want     bool
 	}{
-		{"yearly is yearly", PlanIntervalYearly, true},
-		{"monthly is not yearly", PlanIntervalMonthly, false},
+		{"yearly is yearly", enums.PlanIntervalYearly, true},
+		{"monthly is not yearly", enums.PlanIntervalMonthly, false},
 	}
 
 	for _, tt := range tests {
@@ -227,7 +229,7 @@ func TestPlanInterval_IsYearly(t *testing.T) {
 }
 
 func TestAllPlanIntervals(t *testing.T) {
-	intervals := AllPlanIntervals()
+	intervals := enums.AllPlanIntervals()
 	if len(intervals) != 2 {
 		t.Errorf("AllPlanIntervals() returned %d intervals, want 2", len(intervals))
 	}
@@ -242,14 +244,14 @@ func TestAllPlanIntervals(t *testing.T) {
 func TestOrderStatus_String(t *testing.T) {
 	tests := []struct {
 		name   string
-		status OrderStatus
+		status enums.OrderStatus
 		want   string
 	}{
-		{"pending", OrderStatusPending, "pending"},
-		{"paid", OrderStatusPaid, "paid"},
-		{"failed", OrderStatusFailed, "failed"},
-		{"refunded", OrderStatusRefunded, "refunded"},
-		{"disputed", OrderStatusDisputed, "disputed"},
+		{"pending", enums.OrderStatusPending, "pending"},
+		{"paid", enums.OrderStatusPaid, "paid"},
+		{"failed", enums.OrderStatusFailed, "failed"},
+		{"refunded", enums.OrderStatusRefunded, "refunded"},
+		{"disputed", enums.OrderStatusDisputed, "disputed"},
 	}
 
 	for _, tt := range tests {
@@ -264,15 +266,15 @@ func TestOrderStatus_String(t *testing.T) {
 func TestOrderStatus_IsValid(t *testing.T) {
 	tests := []struct {
 		name   string
-		status OrderStatus
+		status enums.OrderStatus
 		want   bool
 	}{
-		{"pending is valid", OrderStatusPending, true},
-		{"paid is valid", OrderStatusPaid, true},
-		{"failed is valid", OrderStatusFailed, true},
-		{"refunded is valid", OrderStatusRefunded, true},
-		{"disputed is valid", OrderStatusDisputed, true},
-		{"invalid status", OrderStatus("invalid"), false},
+		{"pending is valid", enums.OrderStatusPending, true},
+		{"paid is valid", enums.OrderStatusPaid, true},
+		{"failed is valid", enums.OrderStatusFailed, true},
+		{"refunded is valid", enums.OrderStatusRefunded, true},
+		{"disputed is valid", enums.OrderStatusDisputed, true},
+		{"invalid status", enums.OrderStatus("invalid"), false},
 	}
 
 	for _, tt := range tests {
@@ -287,12 +289,12 @@ func TestOrderStatus_IsValid(t *testing.T) {
 func TestOrderStatus_IsPaid(t *testing.T) {
 	tests := []struct {
 		name   string
-		status OrderStatus
+		status enums.OrderStatus
 		want   bool
 	}{
-		{"paid is paid", OrderStatusPaid, true},
-		{"pending is not paid", OrderStatusPending, false},
-		{"failed is not paid", OrderStatusFailed, false},
+		{"paid is paid", enums.OrderStatusPaid, true},
+		{"pending is not paid", enums.OrderStatusPending, false},
+		{"failed is not paid", enums.OrderStatusFailed, false},
 	}
 
 	for _, tt := range tests {
@@ -305,7 +307,7 @@ func TestOrderStatus_IsPaid(t *testing.T) {
 }
 
 func TestAllOrderStatuses(t *testing.T) {
-	statuses := AllOrderStatuses()
+	statuses := enums.AllOrderStatuses()
 	if len(statuses) != 5 {
 		t.Errorf("AllOrderStatuses() returned %d statuses, want 5", len(statuses))
 	}
@@ -320,12 +322,12 @@ func TestAllOrderStatuses(t *testing.T) {
 func TestWebhookEventType_String(t *testing.T) {
 	tests := []struct {
 		name  string
-		event WebhookEventType
+		event enums.WebhookEventType
 		want  string
 	}{
-		{"subscription_created", WebhookEventSubscriptionCreated, "subscription_created"},
-		{"subscription_updated", WebhookEventSubscriptionUpdated, "subscription_updated"},
-		{"order_created", WebhookEventOrderCreated, "order_created"},
+		{"subscription_created", enums.WebhookEventSubscriptionCreated, "subscription_created"},
+		{"subscription_updated", enums.WebhookEventSubscriptionUpdated, "subscription_updated"},
+		{"order_created", enums.WebhookEventOrderCreated, "order_created"},
 	}
 
 	for _, tt := range tests {
@@ -340,22 +342,22 @@ func TestWebhookEventType_String(t *testing.T) {
 func TestWebhookEventType_IsValid(t *testing.T) {
 	tests := []struct {
 		name  string
-		event WebhookEventType
+		event enums.WebhookEventType
 		want  bool
 	}{
-		{"subscription_created is valid", WebhookEventSubscriptionCreated, true},
-		{"subscription_updated is valid", WebhookEventSubscriptionUpdated, true},
-		{"subscription_cancelled is valid", WebhookEventSubscriptionCancelled, true},
-		{"subscription_resumed is valid", WebhookEventSubscriptionResumed, true},
-		{"subscription_expired is valid", WebhookEventSubscriptionExpired, true},
-		{"subscription_paused is valid", WebhookEventSubscriptionPaused, true},
-		{"subscription_unpaused is valid", WebhookEventSubscriptionUnpaused, true},
-		{"subscription_payment_success is valid", WebhookEventSubscriptionPaymentSuccess, true},
-		{"subscription_payment_failed is valid", WebhookEventSubscriptionPaymentFailed, true},
-		{"subscription_payment_recovered is valid", WebhookEventSubscriptionPaymentRecovered, true},
-		{"order_created is valid", WebhookEventOrderCreated, true},
-		{"order_refunded is valid", WebhookEventOrderRefunded, true},
-		{"invalid event", WebhookEventType("invalid"), false},
+		{"subscription_created is valid", enums.WebhookEventSubscriptionCreated, true},
+		{"subscription_updated is valid", enums.WebhookEventSubscriptionUpdated, true},
+		{"subscription_cancelled is valid", enums.WebhookEventSubscriptionCancelled, true},
+		{"subscription_resumed is valid", enums.WebhookEventSubscriptionResumed, true},
+		{"subscription_expired is valid", enums.WebhookEventSubscriptionExpired, true},
+		{"subscription_paused is valid", enums.WebhookEventSubscriptionPaused, true},
+		{"subscription_unpaused is valid", enums.WebhookEventSubscriptionUnpaused, true},
+		{"subscription_payment_success is valid", enums.WebhookEventSubscriptionPaymentSuccess, true},
+		{"subscription_payment_failed is valid", enums.WebhookEventSubscriptionPaymentFailed, true},
+		{"subscription_payment_recovered is valid", enums.WebhookEventSubscriptionPaymentRecovered, true},
+		{"order_created is valid", enums.WebhookEventOrderCreated, true},
+		{"order_refunded is valid", enums.WebhookEventOrderRefunded, true},
+		{"invalid event", enums.WebhookEventType("invalid"), false},
 	}
 
 	for _, tt := range tests {
@@ -370,15 +372,15 @@ func TestWebhookEventType_IsValid(t *testing.T) {
 func TestWebhookEventType_IsSubscriptionEvent(t *testing.T) {
 	tests := []struct {
 		name  string
-		event WebhookEventType
+		event enums.WebhookEventType
 		want  bool
 	}{
-		{"subscription_created is subscription event", WebhookEventSubscriptionCreated, true},
-		{"subscription_updated is subscription event", WebhookEventSubscriptionUpdated, true},
-		{"subscription_cancelled is subscription event", WebhookEventSubscriptionCancelled, true},
-		{"subscription_payment_success is subscription event", WebhookEventSubscriptionPaymentSuccess, true},
-		{"order_created is not subscription event", WebhookEventOrderCreated, false},
-		{"order_refunded is not subscription event", WebhookEventOrderRefunded, false},
+		{"subscription_created is subscription event", enums.WebhookEventSubscriptionCreated, true},
+		{"subscription_updated is subscription event", enums.WebhookEventSubscriptionUpdated, true},
+		{"subscription_cancelled is subscription event", enums.WebhookEventSubscriptionCancelled, true},
+		{"subscription_payment_success is subscription event", enums.WebhookEventSubscriptionPaymentSuccess, true},
+		{"order_created is not subscription event", enums.WebhookEventOrderCreated, false},
+		{"order_refunded is not subscription event", enums.WebhookEventOrderRefunded, false},
 	}
 
 	for _, tt := range tests {
@@ -393,12 +395,12 @@ func TestWebhookEventType_IsSubscriptionEvent(t *testing.T) {
 func TestWebhookEventType_IsOrderEvent(t *testing.T) {
 	tests := []struct {
 		name  string
-		event WebhookEventType
+		event enums.WebhookEventType
 		want  bool
 	}{
-		{"order_created is order event", WebhookEventOrderCreated, true},
-		{"order_refunded is order event", WebhookEventOrderRefunded, true},
-		{"subscription_created is not order event", WebhookEventSubscriptionCreated, false},
+		{"order_created is order event", enums.WebhookEventOrderCreated, true},
+		{"order_refunded is order event", enums.WebhookEventOrderRefunded, true},
+		{"subscription_created is not order event", enums.WebhookEventSubscriptionCreated, false},
 	}
 
 	for _, tt := range tests {
@@ -411,7 +413,7 @@ func TestWebhookEventType_IsOrderEvent(t *testing.T) {
 }
 
 func TestAllWebhookEventTypes(t *testing.T) {
-	events := AllWebhookEventTypes()
+	events := enums.AllWebhookEventTypes()
 	if len(events) != 12 {
 		t.Errorf("AllWebhookEventTypes() returned %d events, want 12", len(events))
 	}
@@ -426,12 +428,12 @@ func TestAllWebhookEventTypes(t *testing.T) {
 func TestUserRole_String(t *testing.T) {
 	tests := []struct {
 		name string
-		role UserRole
+		role enums.UserRole
 		want string
 	}{
-		{"customer", UserRoleCustomer, "customer"},
-		{"manager", UserRoleManager, "manager"},
-		{"admin", UserRoleAdmin, "admin"},
+		{"customer", enums.UserRoleCustomer, "customer"},
+		{"manager", enums.UserRoleManager, "manager"},
+		{"admin", enums.UserRoleAdmin, "admin"},
 	}
 
 	for _, tt := range tests {
@@ -446,13 +448,13 @@ func TestUserRole_String(t *testing.T) {
 func TestUserRole_IsValid(t *testing.T) {
 	tests := []struct {
 		name string
-		role UserRole
+		role enums.UserRole
 		want bool
 	}{
-		{"customer is valid", UserRoleCustomer, true},
-		{"manager is valid", UserRoleManager, true},
-		{"admin is valid", UserRoleAdmin, true},
-		{"invalid role", UserRole("superuser"), false},
+		{"customer is valid", enums.UserRoleCustomer, true},
+		{"manager is valid", enums.UserRoleManager, true},
+		{"admin is valid", enums.UserRoleAdmin, true},
+		{"invalid role", enums.UserRole("superuser"), false},
 	}
 
 	for _, tt := range tests {
@@ -467,12 +469,12 @@ func TestUserRole_IsValid(t *testing.T) {
 func TestUserRole_IsAdmin(t *testing.T) {
 	tests := []struct {
 		name string
-		role UserRole
+		role enums.UserRole
 		want bool
 	}{
-		{"admin is admin", UserRoleAdmin, true},
-		{"manager is admin", UserRoleManager, true},
-		{"customer is not admin", UserRoleCustomer, false},
+		{"admin is admin", enums.UserRoleAdmin, true},
+		{"manager is admin", enums.UserRoleManager, true},
+		{"customer is not admin", enums.UserRoleCustomer, false},
 	}
 
 	for _, tt := range tests {
@@ -485,7 +487,7 @@ func TestUserRole_IsAdmin(t *testing.T) {
 }
 
 func TestAllUserRoles(t *testing.T) {
-	roles := AllUserRoles()
+	roles := enums.AllUserRoles()
 	if len(roles) != 3 {
 		t.Errorf("AllUserRoles() returned %d roles, want 3", len(roles))
 	}

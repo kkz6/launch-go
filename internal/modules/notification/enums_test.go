@@ -2,18 +2,20 @@ package notification
 
 import (
 	"testing"
+
+	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 )
 
 func TestChannelType_String(t *testing.T) {
 	tests := []struct {
 		name     string
-		ct       ChannelType
+		ct       enums.ChannelType
 		expected string
 	}{
-		{"email", ChannelTypeEmail, "email"},
-		{"slack", ChannelTypeSlack, "slack"},
-		{"discord", ChannelTypeDiscord, "discord"},
-		{"telegram", ChannelTypeTelegram, "telegram"},
+		{"email", enums.ChannelTypeEmail, "email"},
+		{"slack", enums.ChannelTypeSlack, "slack"},
+		{"discord", enums.ChannelTypeDiscord, "discord"},
+		{"telegram", enums.ChannelTypeTelegram, "telegram"},
 	}
 
 	for _, tt := range tests {
@@ -28,14 +30,14 @@ func TestChannelType_String(t *testing.T) {
 func TestChannelType_Label(t *testing.T) {
 	tests := []struct {
 		name     string
-		ct       ChannelType
+		ct       enums.ChannelType
 		expected string
 	}{
-		{"email label", ChannelTypeEmail, "Email"},
-		{"slack label", ChannelTypeSlack, "Slack"},
-		{"discord label", ChannelTypeDiscord, "Discord"},
-		{"telegram label", ChannelTypeTelegram, "Telegram"},
-		{"unknown label", ChannelType("unknown"), "unknown"},
+		{"email label", enums.ChannelTypeEmail, "Email"},
+		{"slack label", enums.ChannelTypeSlack, "Slack"},
+		{"discord label", enums.ChannelTypeDiscord, "Discord"},
+		{"telegram label", enums.ChannelTypeTelegram, "Telegram"},
+		{"unknown label", enums.ChannelType("unknown"), "unknown"},
 	}
 
 	for _, tt := range tests {
@@ -50,15 +52,15 @@ func TestChannelType_Label(t *testing.T) {
 func TestChannelType_IsValid(t *testing.T) {
 	tests := []struct {
 		name     string
-		ct       ChannelType
+		ct       enums.ChannelType
 		expected bool
 	}{
-		{"email valid", ChannelTypeEmail, true},
-		{"slack valid", ChannelTypeSlack, true},
-		{"discord valid", ChannelTypeDiscord, true},
-		{"telegram valid", ChannelTypeTelegram, true},
-		{"invalid type", ChannelType("webhook"), false},
-		{"empty type", ChannelType(""), false},
+		{"email valid", enums.ChannelTypeEmail, true},
+		{"slack valid", enums.ChannelTypeSlack, true},
+		{"discord valid", enums.ChannelTypeDiscord, true},
+		{"telegram valid", enums.ChannelTypeTelegram, true},
+		{"invalid type", enums.ChannelType("webhook"), false},
+		{"empty type", enums.ChannelType(""), false},
 	}
 
 	for _, tt := range tests {
@@ -74,18 +76,18 @@ func TestChannelType_Scan(t *testing.T) {
 	tests := []struct {
 		name      string
 		value     interface{}
-		expected  ChannelType
+		expected  enums.ChannelType
 		expectErr bool
 	}{
-		{"scan string", "email", ChannelTypeEmail, false},
-		{"scan bytes", []byte("slack"), ChannelTypeSlack, false},
+		{"scan string", "email", enums.ChannelTypeEmail, false},
+		{"scan bytes", []byte("slack"), enums.ChannelTypeSlack, false},
 		{"scan nil", nil, "", false},
 		{"scan int", 123, "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var ct ChannelType
+			var ct enums.ChannelType
 			err := ct.Scan(tt.value)
 
 			if tt.expectErr {
@@ -108,7 +110,7 @@ func TestChannelType_Scan(t *testing.T) {
 }
 
 func TestChannelType_Value(t *testing.T) {
-	ct := ChannelTypeEmail
+	ct := enums.ChannelTypeEmail
 	val, err := ct.Value()
 	if err != nil {
 		t.Errorf("unexpected error: %v", err)
@@ -122,20 +124,20 @@ func TestParseChannelType(t *testing.T) {
 	tests := []struct {
 		name      string
 		input     string
-		expected  ChannelType
+		expected  enums.ChannelType
 		expectErr bool
 	}{
-		{"parse email", "email", ChannelTypeEmail, false},
-		{"parse slack", "slack", ChannelTypeSlack, false},
-		{"parse discord", "discord", ChannelTypeDiscord, false},
-		{"parse telegram", "telegram", ChannelTypeTelegram, false},
+		{"parse email", "email", enums.ChannelTypeEmail, false},
+		{"parse slack", "slack", enums.ChannelTypeSlack, false},
+		{"parse discord", "discord", enums.ChannelTypeDiscord, false},
+		{"parse telegram", "telegram", enums.ChannelTypeTelegram, false},
 		{"parse invalid", "webhook", "", true},
 		{"parse empty", "", "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			ct, err := ParseChannelType(tt.input)
+			ct, err := enums.ParseChannelType(tt.input)
 
 			if tt.expectErr {
 				if err == nil {
@@ -157,16 +159,16 @@ func TestParseChannelType(t *testing.T) {
 }
 
 func TestAllChannelTypes(t *testing.T) {
-	types := AllChannelTypes()
+	types := enums.AllChannelTypes()
 	if len(types) != 4 {
 		t.Errorf("AllChannelTypes() returned %d types, want 4", len(types))
 	}
 
-	expected := map[ChannelType]bool{
-		ChannelTypeEmail:    true,
-		ChannelTypeSlack:    true,
-		ChannelTypeDiscord:  true,
-		ChannelTypeTelegram: true,
+	expected := map[enums.ChannelType]bool{
+		enums.ChannelTypeEmail:    true,
+		enums.ChannelTypeSlack:    true,
+		enums.ChannelTypeDiscord:  true,
+		enums.ChannelTypeTelegram: true,
 	}
 
 	for _, ct := range types {
@@ -177,7 +179,7 @@ func TestAllChannelTypes(t *testing.T) {
 }
 
 func TestNotificationType_String(t *testing.T) {
-	nt := NotificationTypeServerProvisioned
+	nt := enums.NotificationTypeServerProvisioned
 	if nt.String() != "server_provisioned" {
 		t.Errorf("NotificationType.String() = %v, want server_provisioned", nt.String())
 	}
@@ -186,22 +188,22 @@ func TestNotificationType_String(t *testing.T) {
 func TestNotificationType_IsValid(t *testing.T) {
 	tests := []struct {
 		name     string
-		nt       NotificationType
+		nt       enums.NotificationType
 		expected bool
 	}{
-		{"server provisioned", NotificationTypeServerProvisioned, true},
-		{"server provisioning failed", NotificationTypeServerProvisioningFailed, true},
-		{"server connection lost", NotificationTypeServerConnectionLost, true},
-		{"server threshold exceeded", NotificationTypeServerThresholdExceeded, true},
-		{"deployment failed", NotificationTypeDeploymentFailed, true},
-		{"site installation failed", NotificationTypeSiteInstallationFailed, true},
-		{"job on server failed", NotificationTypeJobOnServerFailed, true},
-		{"php installation failed", NotificationTypePhpInstallationFailed, true},
-		{"php extension install failed", NotificationTypePhpExtensionInstallFailed, true},
-		{"php extension uninstall failed", NotificationTypePhpExtensionUninstallFailed, true},
-		{"vulnerability audit completed", NotificationTypeVulnerabilityAuditCompleted, true},
-		{"failed to delete server", NotificationTypeFailedToDeleteServer, true},
-		{"invalid type", NotificationType("invalid"), false},
+		{"server provisioned", enums.NotificationTypeServerProvisioned, true},
+		{"server provisioning failed", enums.NotificationTypeServerProvisioningFailed, true},
+		{"server connection lost", enums.NotificationTypeServerConnectionLost, true},
+		{"server threshold exceeded", enums.NotificationTypeServerThresholdExceeded, true},
+		{"deployment failed", enums.NotificationTypeDeploymentFailed, true},
+		{"site installation failed", enums.NotificationTypeSiteInstallationFailed, true},
+		{"job on server failed", enums.NotificationTypeJobOnServerFailed, true},
+		{"php installation failed", enums.NotificationTypePhpInstallationFailed, true},
+		{"php extension install failed", enums.NotificationTypePhpExtensionInstallFailed, true},
+		{"php extension uninstall failed", enums.NotificationTypePhpExtensionUninstallFailed, true},
+		{"vulnerability audit completed", enums.NotificationTypeVulnerabilityAuditCompleted, true},
+		{"failed to delete server", enums.NotificationTypeFailedToDeleteServer, true},
+		{"invalid type", enums.NotificationType("invalid"), false},
 	}
 
 	for _, tt := range tests {

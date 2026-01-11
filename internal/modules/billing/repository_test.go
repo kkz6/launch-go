@@ -6,6 +6,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/modules/billing/enums"
+	"github.com/kkz6/launch-go/internal/modules/billing/models"
+	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
@@ -19,7 +22,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 	})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&Subscription{}, &Order{}, &WebhookEvent{})
+	err = db.AutoMigrate(&models.Subscription{}, &models.Order{}, &models.WebhookEvent{})
 	require.NoError(t, err)
 
 	return db
@@ -27,9 +30,9 @@ func setupTestDB(t *testing.T) *gorm.DB {
 
 var subscriptionCounter int
 
-func createTestSubscription(t *testing.T, repo *Repository, teamID string, status SubscriptionStatus) *Subscription {
+func createTestSubscription(t *testing.T, repo *repositories.BillingRepository, teamID string, status enums.SubscriptionStatus) *models.Subscription {
 	subscriptionCounter++
-	subscription := &Subscription{
+	subscription := &models.Subscription{
 		TeamID:         teamID,
 		LemonSqueezyID: fmt.Sprintf("ls_%s_%d", teamID, subscriptionCounter),
 		ProductID:      "prod_1",
@@ -48,9 +51,9 @@ func createTestSubscription(t *testing.T, repo *Repository, teamID string, statu
 
 var orderCounter int
 
-func createTestOrder(t *testing.T, repo *Repository, teamID string) *Order {
+func createTestOrder(t *testing.T, repo *repositories.BillingRepository, teamID string) *models.Order {
 	orderCounter++
-	order := &Order{
+	order := &models.Order{
 		TeamID:         teamID,
 		LemonSqueezyID: fmt.Sprintf("ls_order_%s_%d", teamID, orderCounter),
 		CustomerID:     "cust_1",
@@ -63,7 +66,7 @@ func createTestOrder(t *testing.T, repo *Repository, teamID string) *Order {
 		DiscountTotal:  0,
 		Tax:            100,
 		Total:          1100,
-		Status:         OrderStatusPaid,
+		Status:         enums.OrderStatusPaid,
 	}
 
 	err := repo.CreateOrder(context.Background(), order)
@@ -75,15 +78,15 @@ func createTestOrder(t *testing.T, repo *Repository, teamID string) *Order {
 
 func TestRepository_CreateSubscription(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	subscription := &Subscription{
+	subscription := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_123",
 		ProductID:      "prod_1",
 		VariantID:      "var_1",
 		Name:           "Pro Plan",
-		Status:         SubscriptionStatusActive,
+		Status:         enums.SubscriptionStatusActive,
 		BillingAnchor:  1,
 	}
 
@@ -94,9 +97,9 @@ func TestRepository_CreateSubscription(t *testing.T) {
 
 func TestRepository_FindSubscriptionByID(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	created := createTestSubscription(t, repo, "team_1", SubscriptionStatusActive)
+	created := createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusActive)
 
 	found, err := repo.FindSubscriptionByID(context.Background(), created.ID)
 	assert.NoError(t, err)
@@ -107,7 +110,7 @@ func TestRepository_FindSubscriptionByID(t *testing.T) {
 
 func TestRepository_FindSubscriptionByID_NotFound(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
 	_, err := repo.FindSubscriptionByID(context.Background(), "nonexistent")
 	assert.Error(t, err)
@@ -115,9 +118,9 @@ func TestRepository_FindSubscriptionByID_NotFound(t *testing.T) {
 
 func TestRepository_FindSubscriptionByLemonSqueezyID(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	created := createTestSubscription(t, repo, "team_1", SubscriptionStatusActive)
+	created := createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusActive)
 
 	found, err := repo.FindSubscriptionByLemonSqueezyID(context.Background(), created.LemonSqueezyID)
 	assert.NoError(t, err)
@@ -126,11 +129,11 @@ func TestRepository_FindSubscriptionByLemonSqueezyID(t *testing.T) {
 
 func TestRepository_FindSubscriptionsByTeam(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	createTestSubscription(t, repo, "team_1", SubscriptionStatusActive)
-	createTestSubscription(t, repo, "team_1", SubscriptionStatusCancelled)
-	createTestSubscription(t, repo, "team_2", SubscriptionStatusActive)
+	createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusActive)
+	createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusCancelled)
+	createTestSubscription(t, repo, "team_2", enums.SubscriptionStatusActive)
 
 	subscriptions, err := repo.FindSubscriptionsByTeam(context.Background(), "team_1")
 	assert.NoError(t, err)
@@ -139,10 +142,10 @@ func TestRepository_FindSubscriptionsByTeam(t *testing.T) {
 
 func TestRepository_FindActiveSubscriptionByTeam(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	createTestSubscription(t, repo, "team_1", SubscriptionStatusCancelled)
-	active := createTestSubscription(t, repo, "team_1", SubscriptionStatusActive)
+	createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusCancelled)
+	active := createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusActive)
 
 	found, err := repo.FindActiveSubscriptionByTeam(context.Background(), "team_1")
 	assert.NoError(t, err)
@@ -151,9 +154,9 @@ func TestRepository_FindActiveSubscriptionByTeam(t *testing.T) {
 
 func TestRepository_FindActiveSubscriptionByTeam_OnTrial(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	trial := createTestSubscription(t, repo, "team_1", SubscriptionStatusOnTrial)
+	trial := createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusOnTrial)
 
 	found, err := repo.FindActiveSubscriptionByTeam(context.Background(), "team_1")
 	assert.NoError(t, err)
@@ -162,9 +165,9 @@ func TestRepository_FindActiveSubscriptionByTeam_OnTrial(t *testing.T) {
 
 func TestRepository_FindActiveSubscriptionByTeam_NotFound(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	createTestSubscription(t, repo, "team_1", SubscriptionStatusCancelled)
+	createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusCancelled)
 
 	_, err := repo.FindActiveSubscriptionByTeam(context.Background(), "team_1")
 	assert.Error(t, err)
@@ -172,11 +175,11 @@ func TestRepository_FindActiveSubscriptionByTeam_NotFound(t *testing.T) {
 
 func TestRepository_UpdateSubscription(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	subscription := createTestSubscription(t, repo, "team_1", SubscriptionStatusActive)
+	subscription := createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusActive)
 
-	subscription.Status = SubscriptionStatusCancelled
+	subscription.Status = enums.SubscriptionStatusCancelled
 	now := time.Now()
 	subscription.EndsAt = &now
 
@@ -185,29 +188,29 @@ func TestRepository_UpdateSubscription(t *testing.T) {
 
 	found, err := repo.FindSubscriptionByID(context.Background(), subscription.ID)
 	assert.NoError(t, err)
-	assert.Equal(t, SubscriptionStatusCancelled, found.Status)
+	assert.Equal(t, enums.SubscriptionStatusCancelled, found.Status)
 	assert.NotNil(t, found.EndsAt)
 }
 
 func TestRepository_UpdateSubscriptionStatus(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	subscription := createTestSubscription(t, repo, "team_1", SubscriptionStatusActive)
+	subscription := createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusActive)
 
-	err := repo.UpdateSubscriptionStatus(context.Background(), subscription.ID, SubscriptionStatusPaused)
+	err := repo.UpdateSubscriptionStatus(context.Background(), subscription.ID, enums.SubscriptionStatusPaused)
 	assert.NoError(t, err)
 
 	found, err := repo.FindSubscriptionByID(context.Background(), subscription.ID)
 	assert.NoError(t, err)
-	assert.Equal(t, SubscriptionStatusPaused, found.Status)
+	assert.Equal(t, enums.SubscriptionStatusPaused, found.Status)
 }
 
 func TestRepository_UpdateSubscriptionFields(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	subscription := createTestSubscription(t, repo, "team_1", SubscriptionStatusActive)
+	subscription := createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusActive)
 
 	cardBrand := "visa"
 	err := repo.UpdateSubscriptionFields(context.Background(), subscription.ID, map[string]interface{}{
@@ -224,9 +227,9 @@ func TestRepository_UpdateSubscriptionFields(t *testing.T) {
 
 func TestRepository_DeleteSubscription(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	subscription := createTestSubscription(t, repo, "team_1", SubscriptionStatusActive)
+	subscription := createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusActive)
 
 	err := repo.DeleteSubscription(context.Background(), subscription.ID)
 	assert.NoError(t, err)
@@ -237,11 +240,11 @@ func TestRepository_DeleteSubscription(t *testing.T) {
 
 func TestRepository_CountActiveSubscriptionsByTeam(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	createTestSubscription(t, repo, "team_1", SubscriptionStatusActive)
-	createTestSubscription(t, repo, "team_1", SubscriptionStatusOnTrial)
-	createTestSubscription(t, repo, "team_1", SubscriptionStatusCancelled)
+	createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusActive)
+	createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusOnTrial)
+	createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusCancelled)
 
 	count, err := repo.CountActiveSubscriptionsByTeam(context.Background(), "team_1")
 	assert.NoError(t, err)
@@ -250,9 +253,9 @@ func TestRepository_CountActiveSubscriptionsByTeam(t *testing.T) {
 
 func TestRepository_IsTeamSubscribed(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	createTestSubscription(t, repo, "team_1", SubscriptionStatusActive)
+	createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusActive)
 
 	subscribed, err := repo.IsTeamSubscribed(context.Background(), "team_1")
 	assert.NoError(t, err)
@@ -265,9 +268,9 @@ func TestRepository_IsTeamSubscribed(t *testing.T) {
 
 func TestRepository_CreateOrder(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	order := &Order{
+	order := &models.Order{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_order_123",
 		CustomerID:     "cust_1",
@@ -278,7 +281,7 @@ func TestRepository_CreateOrder(t *testing.T) {
 		CurrencyRate:   "1.0",
 		Subtotal:       1000,
 		Total:          1100,
-		Status:         OrderStatusPaid,
+		Status:         enums.OrderStatusPaid,
 	}
 
 	err := repo.CreateOrder(context.Background(), order)
@@ -288,7 +291,7 @@ func TestRepository_CreateOrder(t *testing.T) {
 
 func TestRepository_FindOrderByID(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
 	created := createTestOrder(t, repo, "team_1")
 
@@ -300,7 +303,7 @@ func TestRepository_FindOrderByID(t *testing.T) {
 
 func TestRepository_FindOrderByLemonSqueezyID(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
 	created := createTestOrder(t, repo, "team_1")
 
@@ -311,7 +314,7 @@ func TestRepository_FindOrderByLemonSqueezyID(t *testing.T) {
 
 func TestRepository_FindOrdersByTeam(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
 	createTestOrder(t, repo, "team_1")
 	createTestOrder(t, repo, "team_1")
@@ -324,11 +327,11 @@ func TestRepository_FindOrdersByTeam(t *testing.T) {
 
 func TestRepository_FindOrdersBySubscription(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	subscription := createTestSubscription(t, repo, "team_1", SubscriptionStatusActive)
+	subscription := createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusActive)
 
-	order := &Order{
+	order := &models.Order{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_order_1",
 		SubscriptionID: &subscription.ID,
@@ -340,7 +343,7 @@ func TestRepository_FindOrdersBySubscription(t *testing.T) {
 		CurrencyRate:   "1.0",
 		Subtotal:       1000,
 		Total:          1100,
-		Status:         OrderStatusPaid,
+		Status:         enums.OrderStatusPaid,
 	}
 
 	err := repo.CreateOrder(context.Background(), order)
@@ -353,11 +356,11 @@ func TestRepository_FindOrdersBySubscription(t *testing.T) {
 
 func TestRepository_UpdateOrder(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
 	order := createTestOrder(t, repo, "team_1")
 
-	order.Status = OrderStatusRefunded
+	order.Status = enums.OrderStatusRefunded
 	now := time.Now()
 	order.RefundedAt = &now
 
@@ -366,29 +369,29 @@ func TestRepository_UpdateOrder(t *testing.T) {
 
 	found, err := repo.FindOrderByID(context.Background(), order.ID)
 	assert.NoError(t, err)
-	assert.Equal(t, OrderStatusRefunded, found.Status)
+	assert.Equal(t, enums.OrderStatusRefunded, found.Status)
 }
 
 func TestRepository_UpdateOrderStatus(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
 	order := createTestOrder(t, repo, "team_1")
 
-	err := repo.UpdateOrderStatus(context.Background(), order.ID, OrderStatusRefunded)
+	err := repo.UpdateOrderStatus(context.Background(), order.ID, enums.OrderStatusRefunded)
 	assert.NoError(t, err)
 
 	found, err := repo.FindOrderByID(context.Background(), order.ID)
 	assert.NoError(t, err)
-	assert.Equal(t, OrderStatusRefunded, found.Status)
+	assert.Equal(t, enums.OrderStatusRefunded, found.Status)
 }
 
 func TestRepository_CreateWebhookEvent(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	event := &WebhookEvent{
-		EventName: WebhookEventSubscriptionCreated,
+	event := &models.WebhookEvent{
+		EventName: enums.WebhookEventSubscriptionCreated,
 		Payload:   `{"data": "test"}`,
 		Signature: "sig_123",
 		Processed: false,
@@ -401,10 +404,10 @@ func TestRepository_CreateWebhookEvent(t *testing.T) {
 
 func TestRepository_FindWebhookEventByID(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	event := &WebhookEvent{
-		EventName: WebhookEventSubscriptionCreated,
+	event := &models.WebhookEvent{
+		EventName: enums.WebhookEventSubscriptionCreated,
 		Payload:   `{"data": "test"}`,
 		Signature: "sig_123",
 		Processed: false,
@@ -421,24 +424,24 @@ func TestRepository_FindWebhookEventByID(t *testing.T) {
 
 func TestRepository_FindUnprocessedWebhookEvents(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	event1 := &WebhookEvent{
-		EventName:  WebhookEventSubscriptionCreated,
+	event1 := &models.WebhookEvent{
+		EventName:  enums.WebhookEventSubscriptionCreated,
 		Payload:    `{}`,
 		Signature:  "sig_1",
 		Processed:  false,
 		RetryCount: 0,
 	}
-	event2 := &WebhookEvent{
-		EventName:  WebhookEventSubscriptionUpdated,
+	event2 := &models.WebhookEvent{
+		EventName:  enums.WebhookEventSubscriptionUpdated,
 		Payload:    `{}`,
 		Signature:  "sig_2",
 		Processed:  true,
 		RetryCount: 0,
 	}
-	event3 := &WebhookEvent{
-		EventName:  WebhookEventOrderCreated,
+	event3 := &models.WebhookEvent{
+		EventName:  enums.WebhookEventOrderCreated,
 		Payload:    `{}`,
 		Signature:  "sig_3",
 		Processed:  false,
@@ -457,10 +460,10 @@ func TestRepository_FindUnprocessedWebhookEvents(t *testing.T) {
 
 func TestRepository_MarkWebhookEventProcessed(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	event := &WebhookEvent{
-		EventName: WebhookEventSubscriptionCreated,
+	event := &models.WebhookEvent{
+		EventName: enums.WebhookEventSubscriptionCreated,
 		Payload:   `{}`,
 		Signature: "sig_1",
 		Processed: false,
@@ -479,10 +482,10 @@ func TestRepository_MarkWebhookEventProcessed(t *testing.T) {
 
 func TestRepository_MarkWebhookEventFailed(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	event := &WebhookEvent{
-		EventName:  WebhookEventSubscriptionCreated,
+	event := &models.WebhookEvent{
+		EventName:  enums.WebhookEventSubscriptionCreated,
 		Payload:    `{}`,
 		Signature:  "sig_1",
 		Processed:  false,
@@ -502,23 +505,23 @@ func TestRepository_MarkWebhookEventFailed(t *testing.T) {
 
 func TestRepository_DeleteOldProcessedWebhookEvents(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
 	now := time.Now()
 	oldTime := now.Add(-48 * time.Hour)
 
-	event1 := &WebhookEvent{
-		EventName: WebhookEventSubscriptionCreated,
+	event1 := &models.WebhookEvent{
+		EventName: enums.WebhookEventSubscriptionCreated,
 		Payload:   `{}`,
 		Signature: "sig_1",
 		Processed: true,
 	}
 
 	repo.CreateWebhookEvent(context.Background(), event1)
-	db.Model(&WebhookEvent{}).Where("id = ?", event1.ID).Update("processed_at", oldTime)
+	db.Model(&models.WebhookEvent{}).Where("id = ?", event1.ID).Update("processed_at", oldTime)
 
-	event2 := &WebhookEvent{
-		EventName: WebhookEventSubscriptionUpdated,
+	event2 := &models.WebhookEvent{
+		EventName: enums.WebhookEventSubscriptionUpdated,
 		Payload:   `{}`,
 		Signature: "sig_2",
 		Processed: true,
@@ -540,20 +543,20 @@ func TestRepository_DeleteOldProcessedWebhookEvents(t *testing.T) {
 
 func TestRepository_GetTeamSubscriptionInfo(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	subscription := createTestSubscription(t, repo, "team_1", SubscriptionStatusActive)
+	subscription := createTestSubscription(t, repo, "team_1", enums.SubscriptionStatusActive)
 
 	info, err := repo.GetTeamSubscriptionInfo(context.Background(), "team_1")
 	assert.NoError(t, err)
 	assert.NotNil(t, info)
 	assert.Equal(t, subscription.ID, info.SubscriptionID)
-	assert.Equal(t, SubscriptionStatusActive, info.Status)
+	assert.Equal(t, enums.SubscriptionStatusActive, info.Status)
 }
 
 func TestRepository_GetTeamSubscriptionInfo_NoSubscription(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
 	info, err := repo.GetTeamSubscriptionInfo(context.Background(), "team_1")
 	assert.NoError(t, err)
@@ -562,16 +565,16 @@ func TestRepository_GetTeamSubscriptionInfo_NoSubscription(t *testing.T) {
 
 func TestRepository_WithTransaction(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
-	err := repo.WithTransaction(context.Background(), func(tx *Repository) error {
-		subscription := &Subscription{
+	err := repo.WithTransaction(context.Background(), func(tx *repositories.BillingRepository) error {
+		subscription := &models.Subscription{
 			TeamID:         "team_tx",
 			LemonSqueezyID: "ls_tx_123",
 			ProductID:      "prod_1",
 			VariantID:      "var_1",
 			Name:           "TX Plan",
-			Status:         SubscriptionStatusActive,
+			Status:         enums.SubscriptionStatusActive,
 			BillingAnchor:  1,
 		}
 
@@ -579,7 +582,7 @@ func TestRepository_WithTransaction(t *testing.T) {
 			return err
 		}
 
-		order := &Order{
+		order := &models.Order{
 			TeamID:         "team_tx",
 			LemonSqueezyID: "ls_order_tx",
 			SubscriptionID: &subscription.ID,
@@ -591,7 +594,7 @@ func TestRepository_WithTransaction(t *testing.T) {
 			CurrencyRate:   "1.0",
 			Subtotal:       1000,
 			Total:          1000,
-			Status:         OrderStatusPaid,
+			Status:         enums.OrderStatusPaid,
 		}
 
 		return tx.CreateOrder(context.Background(), order)
@@ -610,7 +613,7 @@ func TestRepository_WithTransaction(t *testing.T) {
 
 func TestRepository_GetDB(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 
 	gotDB := repo.GetDB()
 	assert.NotNil(t, gotDB)

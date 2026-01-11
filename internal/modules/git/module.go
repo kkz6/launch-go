@@ -5,15 +5,20 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/modules/git/enums"
+	"github.com/kkz6/launch-go/internal/modules/git/handlers"
+	"github.com/kkz6/launch-go/internal/modules/git/models"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
+	"github.com/kkz6/launch-go/internal/modules/git/repositories"
+	"github.com/kkz6/launch-go/internal/modules/git/services"
 	"github.com/kkz6/launch-go/internal/queue"
 )
 
 // Module represents the git module
 type Module struct {
-	handler         *Handler
-	webhookHandler  *WebhookHandler
-	service         *Service
+	handler         *handlers.SourceControlHandler
+	webhookHandler  *handlers.WebhookHandler
+	service         *services.SourceControlService
 	providerFactory *providers.ProviderFactory
 }
 
@@ -50,11 +55,12 @@ type BitbucketConfig struct {
 
 // NewModule creates a new git module
 func NewModule(db *gorm.DB, queueClient *queue.Client, logger *zerolog.Logger, config Config) *Module {
-	repo := NewRepository(db)
+	scRepo := repositories.NewSourceControlRepository(db)
+	repoRepo := repositories.NewSourceControlRepoRepository(db)
 	providerFactory := createProviderFactory(config)
-	service := NewService(repo, providerFactory, queueClient, logger)
-	handler := NewHandler(service)
-	webhookHandler := NewWebhookHandler(service, providerFactory, logger)
+	service := services.NewSourceControlService(scRepo, repoRepo, providerFactory, queueClient, logger)
+	handler := handlers.NewSourceControlHandler(service)
+	webhookHandler := handlers.NewWebhookHandler(service, providerFactory, logger)
 
 	return &Module{
 		handler:         handler,
@@ -70,7 +76,7 @@ func createProviderFactory(config Config) *providers.ProviderFactory {
 
 	// Register GitHub provider
 	if config.GitHub.AppID != "" {
-		factory.RegisterConfig(providers.GitProviderType(GitProviderGitHub), &providers.ProviderConfig{
+		factory.RegisterConfig(providers.GitProviderType(enums.GitProviderGitHub), &providers.ProviderConfig{
 			AppID:         config.GitHub.AppID,
 			PrivateKey:    config.GitHub.PrivateKey,
 			WebhookSecret: config.GitHub.WebhookSecret,
@@ -82,7 +88,7 @@ func createProviderFactory(config Config) *providers.ProviderFactory {
 
 	// Register GitLab provider
 	if config.GitLab.ClientID != "" {
-		factory.RegisterConfig(providers.GitProviderType(GitProviderGitLab), &providers.ProviderConfig{
+		factory.RegisterConfig(providers.GitProviderType(enums.GitProviderGitLab), &providers.ProviderConfig{
 			ClientID:      config.GitLab.ClientID,
 			ClientSecret:  config.GitLab.ClientSecret,
 			WebhookSecret: config.GitLab.WebhookSecret,
@@ -91,7 +97,7 @@ func createProviderFactory(config Config) *providers.ProviderFactory {
 
 	// Register Bitbucket provider
 	if config.Bitbucket.ClientID != "" {
-		factory.RegisterConfig(providers.GitProviderType(GitProviderBitbucket), &providers.ProviderConfig{
+		factory.RegisterConfig(providers.GitProviderType(enums.GitProviderBitbucket), &providers.ProviderConfig{
 			ClientID:      config.Bitbucket.ClientID,
 			ClientSecret:  config.Bitbucket.ClientSecret,
 			WebhookSecret: config.Bitbucket.WebhookSecret,
@@ -101,7 +107,7 @@ func createProviderFactory(config Config) *providers.ProviderFactory {
 	return factory
 }
 
-// RegisterRoutes registers all git routes with the router
+// RegisterRoutesWithMiddleware registers all git routes with the router
 func (m *Module) RegisterRoutesWithMiddleware(router fiber.Router, authMiddleware fiber.Handler, teamMiddleware fiber.Handler) {
 	// Settings routes (authenticated + team scope)
 	settings := router.Group("/settings", authMiddleware, teamMiddleware)
@@ -142,7 +148,7 @@ func (m *Module) RegisterRoutesWithMiddleware(router fiber.Router, authMiddlewar
 }
 
 // Service returns the git service for use by other modules
-func (m *Module) Service() *Service {
+func (m *Module) Service() *services.SourceControlService {
 	return m.service
 }
 
@@ -154,7 +160,7 @@ func (m *Module) ProviderFactory() *providers.ProviderFactory {
 // AutoMigrate runs auto-migration for git models
 func AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
-		&SourceControl{},
-		&SourceControlRepository{},
+		&models.SourceControl{},
+		&models.SourceControlRepository{},
 	)
 }

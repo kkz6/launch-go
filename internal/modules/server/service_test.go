@@ -10,31 +10,37 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/repositories"
+	"github.com/kkz6/launch-go/internal/modules/server/services"
 )
 
-func setupTestService(t *testing.T) (*Service, *Repository, *gorm.DB) {
+func setupTestService(t *testing.T) (*services.Service, *repositories.Repository, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(AllModels()...)
+	err = db.AutoMigrate(models.AllModels()...)
 	require.NoError(t, err)
 
-	repo := NewRepository(db)
+	repo := repositories.NewRepository(db)
 	logger := zerolog.Nop()
-	service := NewService(repo, nil, nil, nil, &logger)
+	service := services.NewService(repo, nil, nil, nil, &logger)
 
 	return service, repo, db
 }
 
-func createTestServerForService(t *testing.T, repo *Repository, teamID, name string) *Server {
-	server := &Server{
+func createTestServerForService(t *testing.T, repo *repositories.Repository, teamID, name string) *models.Server {
+	server := &models.Server{
 		TeamID:          teamID,
 		UserID:          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
 		Name:            name,
-		Provider:        ProviderDigitalOcean,
-		Type:            ServerTypePhp,
-		OperatingSystem: OSUbuntu24,
-		Status:          ServerStatusRunning,
+		Provider:        enums.ProviderDigitalOcean,
+		Type:            enums.ServerTypePhp,
+		OperatingSystem: enums.OSUbuntu24,
+		Status:          enums.ServerStatusRunning,
 	}
 	err := repo.CreateServer(context.Background(), server)
 	require.NoError(t, err)
@@ -45,10 +51,9 @@ func TestNewService(t *testing.T) {
 	_, repo, _ := setupTestService(t)
 	logger := zerolog.Nop()
 
-	service := NewService(repo, nil, nil, nil, &logger)
+	service := services.NewService(repo, nil, nil, nil, &logger)
 
 	assert.NotNil(t, service)
-	assert.Equal(t, repo, service.repo)
 }
 
 func TestService_ListServers(t *testing.T) {
@@ -97,12 +102,12 @@ func TestService_GetServer(t *testing.T) {
 
 	t.Run("returns error for non-existent server", func(t *testing.T) {
 		_, err := service.GetServer(ctx, "non-existent", teamID)
-		assert.ErrorIs(t, err, ErrServerNotFound)
+		assert.ErrorIs(t, err, services.ErrServerNotFound)
 	})
 
 	t.Run("returns error for wrong team", func(t *testing.T) {
 		_, err := service.GetServer(ctx, created.ID, "wrong-team")
-		assert.ErrorIs(t, err, ErrServerNotFound)
+		assert.ErrorIs(t, err, services.ErrServerNotFound)
 	})
 }
 
@@ -113,7 +118,7 @@ func TestService_CreateServer(t *testing.T) {
 	userID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
 	t.Run("creates server successfully", func(t *testing.T) {
-		req := &CreateServerRequest{
+		req := &dto.CreateServerRequest{
 			Name:            "new-server",
 			Provider:        "digitalocean",
 			Type:            "php",
@@ -125,13 +130,13 @@ func TestService_CreateServer(t *testing.T) {
 
 		assert.NotEmpty(t, server.ID)
 		assert.Equal(t, "new-server", server.Name)
-		assert.Equal(t, ProviderDigitalOcean, server.Provider)
-		assert.Equal(t, ServerTypePhp, server.Type)
-		assert.Equal(t, ServerStatusNew, server.Status)
+		assert.Equal(t, enums.ProviderDigitalOcean, server.Provider)
+		assert.Equal(t, enums.ServerTypePhp, server.Type)
+		assert.Equal(t, enums.ServerStatusNew, server.Status)
 	})
 
 	t.Run("returns error for invalid provider", func(t *testing.T) {
-		req := &CreateServerRequest{
+		req := &dto.CreateServerRequest{
 			Name:            "invalid-server",
 			Provider:        "invalid_provider",
 			Type:            "php",
@@ -139,11 +144,11 @@ func TestService_CreateServer(t *testing.T) {
 		}
 
 		_, err := service.CreateServer(ctx, teamID, userID, req)
-		assert.ErrorIs(t, err, ErrInvalidProvider)
+		assert.ErrorIs(t, err, services.ErrInvalidProvider)
 	})
 
 	t.Run("returns error for invalid server type", func(t *testing.T) {
-		req := &CreateServerRequest{
+		req := &dto.CreateServerRequest{
 			Name:            "invalid-server",
 			Provider:        "digitalocean",
 			Type:            "invalid_type",
@@ -151,7 +156,7 @@ func TestService_CreateServer(t *testing.T) {
 		}
 
 		_, err := service.CreateServer(ctx, teamID, userID, req)
-		assert.ErrorIs(t, err, ErrInvalidServerType)
+		assert.ErrorIs(t, err, services.ErrInvalidServerType)
 	})
 }
 
@@ -163,7 +168,7 @@ func TestService_UpdateServer(t *testing.T) {
 	server := createTestServerForService(t, repo, teamID, "original-name")
 
 	t.Run("updates server successfully", func(t *testing.T) {
-		req := &UpdateServerRequest{
+		req := &dto.UpdateServerRequest{
 			Name: strPtr("updated-name"),
 		}
 
@@ -174,9 +179,9 @@ func TestService_UpdateServer(t *testing.T) {
 	})
 
 	t.Run("returns error for non-existent server", func(t *testing.T) {
-		req := &UpdateServerRequest{Name: strPtr("new-name")}
+		req := &dto.UpdateServerRequest{Name: strPtr("new-name")}
 		_, err := service.UpdateServer(ctx, "non-existent", teamID, req)
-		assert.ErrorIs(t, err, ErrServerNotFound)
+		assert.ErrorIs(t, err, services.ErrServerNotFound)
 	})
 }
 
@@ -186,14 +191,14 @@ func TestService_DeleteServer(t *testing.T) {
 	teamID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
 	// Create a custom server which can be deleted immediately
-	server := &Server{
+	server := &models.Server{
 		TeamID:          teamID,
 		UserID:          "01ARZ3NDEKTSV4RRFFQ69G5FAV",
 		Name:            "to-delete",
-		Provider:        ProviderCustom,
-		Type:            ServerTypePhp,
-		OperatingSystem: OSUbuntu24,
-		Status:          ServerStatusRunning,
+		Provider:        enums.ProviderCustom,
+		Type:            enums.ServerTypePhp,
+		OperatingSystem: enums.OSUbuntu24,
+		Status:          enums.ServerStatusRunning,
 	}
 	err := repo.CreateServer(ctx, server)
 	require.NoError(t, err)
@@ -203,7 +208,7 @@ func TestService_DeleteServer(t *testing.T) {
 
 	// Verify server is deleted
 	_, err = service.GetServer(ctx, server.ID, teamID)
-	assert.ErrorIs(t, err, ErrServerNotFound)
+	assert.ErrorIs(t, err, services.ErrServerNotFound)
 }
 
 func TestService_ArchiveServer(t *testing.T) {
@@ -220,7 +225,7 @@ func TestService_ArchiveServer(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.NotNil(t, found.ArchivedAt)
-	assert.Equal(t, ServerStatusArchived, found.Status)
+	assert.Equal(t, enums.ServerStatusArchived, found.Status)
 }
 
 func TestService_UnarchiveServer(t *testing.T) {
@@ -238,7 +243,7 @@ func TestService_UnarchiveServer(t *testing.T) {
 	require.NoError(t, err)
 
 	assert.Nil(t, found.ArchivedAt)
-	assert.Equal(t, ServerStatusStopped, found.Status)
+	assert.Equal(t, enums.ServerStatusStopped, found.Status)
 }
 
 func TestService_RebootServer(t *testing.T) {
@@ -249,7 +254,7 @@ func TestService_RebootServer(t *testing.T) {
 	t.Run("reboots provisioned server", func(t *testing.T) {
 		server := createTestServerForService(t, repo, teamID, "reboot-test")
 		// Ensure server is provisioned (running state)
-		repo.UpdateServerStatus(ctx, server.ID, ServerStatusRunning)
+		repo.UpdateServerStatus(ctx, server.ID, enums.ServerStatusRunning)
 
 		err := service.RebootServer(ctx, server.ID, teamID)
 		// Without queue client, this will fail, but we can test the validation logic
@@ -257,24 +262,24 @@ func TestService_RebootServer(t *testing.T) {
 	})
 
 	t.Run("returns error for non-provisioned server", func(t *testing.T) {
-		server := &Server{
+		server := &models.Server{
 			TeamID:          teamID,
 			UserID:          "user1",
 			Name:            "new-server",
-			Provider:        ProviderDigitalOcean,
-			Type:            ServerTypePhp,
-			OperatingSystem: OSUbuntu24,
-			Status:          ServerStatusNew, // Not provisioned
+			Provider:        enums.ProviderDigitalOcean,
+			Type:            enums.ServerTypePhp,
+			OperatingSystem: enums.OSUbuntu24,
+			Status:          enums.ServerStatusNew, // Not provisioned
 		}
 		repo.CreateServer(ctx, server)
 
 		err := service.RebootServer(ctx, server.ID, teamID)
-		assert.ErrorIs(t, err, ErrServerNotProvisioned)
+		assert.ErrorIs(t, err, services.ErrServerNotProvisioned)
 	})
 
 	t.Run("returns error for non-existent server", func(t *testing.T) {
 		err := service.RebootServer(ctx, "non-existent", teamID)
-		assert.ErrorIs(t, err, ErrServerNotFound)
+		assert.ErrorIs(t, err, services.ErrServerNotFound)
 	})
 }
 
@@ -286,17 +291,17 @@ func TestService_ListServices(t *testing.T) {
 	server := createTestServerForService(t, repo, teamID, "test-server")
 
 	// Create some services
-	php := SoftwarePhp84
-	mysql := SoftwareMySql80
-	svc1 := &InstalledService{ServerID: server.ID, Type: ServiceTypePhp, Name: "PHP 8.4", Software: &php}
-	svc2 := &InstalledService{ServerID: server.ID, Type: ServiceTypeMySql, Name: "MySQL 8.0", Software: &mysql}
+	php := enums.SoftwarePhp84
+	mysql := enums.SoftwareMySql80
+	svc1 := &models.InstalledService{ServerID: server.ID, Type: enums.ServiceTypePhp, Name: "PHP 8.4", Software: &php}
+	svc2 := &models.InstalledService{ServerID: server.ID, Type: enums.ServiceTypeMySql, Name: "MySQL 8.0", Software: &mysql}
 	repo.CreateService(ctx, svc1)
 	repo.CreateService(ctx, svc2)
 
-	services, err := service.ListServices(ctx, server.ID, teamID)
+	svcs, err := service.ListServices(ctx, server.ID, teamID)
 	require.NoError(t, err)
 
-	assert.Len(t, services, 2)
+	assert.Len(t, svcs, 2)
 }
 
 func TestService_InstallService(t *testing.T) {
@@ -307,7 +312,7 @@ func TestService_InstallService(t *testing.T) {
 	server := createTestServerForService(t, repo, teamID, "test-server")
 
 	t.Run("installs service successfully", func(t *testing.T) {
-		req := &CreateServiceRequest{
+		req := &dto.CreateServiceRequest{
 			Software: "php84",
 		}
 
@@ -315,26 +320,26 @@ func TestService_InstallService(t *testing.T) {
 		// Will fail because queue is nil, but validates input
 		if err == nil {
 			assert.NotEmpty(t, svc.ID)
-			assert.Equal(t, ServiceTypePhp, svc.Type)
+			assert.Equal(t, enums.ServiceTypePhp, svc.Type)
 		}
 	})
 
 	t.Run("returns error for invalid software", func(t *testing.T) {
-		req := &CreateServiceRequest{
+		req := &dto.CreateServiceRequest{
 			Software: "invalid_software",
 		}
 
 		_, err := service.InstallService(ctx, server.ID, teamID, req)
-		assert.ErrorIs(t, err, ErrInvalidSoftware)
+		assert.ErrorIs(t, err, services.ErrInvalidSoftware)
 	})
 
 	t.Run("returns error for non-existent server", func(t *testing.T) {
-		req := &CreateServiceRequest{
+		req := &dto.CreateServiceRequest{
 			Software: "php84",
 		}
 
 		_, err := service.InstallService(ctx, "non-existent", teamID, req)
-		assert.ErrorIs(t, err, ErrServerNotFound)
+		assert.ErrorIs(t, err, services.ErrServerNotFound)
 	})
 }
 
@@ -344,17 +349,17 @@ func TestService_HandleServiceOperation(t *testing.T) {
 	teamID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
 	server := createTestServerForService(t, repo, teamID, "test-server")
-	php := SoftwarePhp84
-	svc := &InstalledService{ServerID: server.ID, Type: ServiceTypePhp, Name: "PHP 8.4", Software: &php}
+	php := enums.SoftwarePhp84
+	svc := &models.InstalledService{ServerID: server.ID, Type: enums.ServiceTypePhp, Name: "PHP 8.4", Software: &php}
 	repo.CreateService(ctx, svc)
 
 	// These will fail without queue, but we can test the validation
-	err := service.HandleServiceOperation(ctx, server.ID, teamID, svc.ID, ServiceOptionStatus)
+	err := service.HandleServiceOperation(ctx, server.ID, teamID, svc.ID, enums.ServiceOptionStatus)
 	assert.Error(t, err) // Queue is nil
 
 	t.Run("returns error for non-existent service", func(t *testing.T) {
-		err := service.HandleServiceOperation(ctx, server.ID, teamID, "non-existent", ServiceOptionRestart)
-		assert.ErrorIs(t, err, ErrServiceNotFound)
+		err := service.HandleServiceOperation(ctx, server.ID, teamID, "non-existent", enums.ServiceOptionRestart)
+		assert.ErrorIs(t, err, services.ErrServiceNotFound)
 	})
 }
 
@@ -367,8 +372,8 @@ func TestService_ListFirewallRules(t *testing.T) {
 
 	port22 := "22"
 	port80 := "80"
-	rule1 := &FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port22, Action: RuleActionAllow}
-	rule2 := &FirewallRule{ServerID: server.ID, Name: "HTTP", Port: &port80, Action: RuleActionAllow}
+	rule1 := &models.FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port22, Action: enums.RuleActionAllow}
+	rule2 := &models.FirewallRule{ServerID: server.ID, Name: "HTTP", Port: &port80, Action: enums.RuleActionAllow}
 	repo.CreateFirewallRule(ctx, rule1)
 	repo.CreateFirewallRule(ctx, rule2)
 
@@ -385,7 +390,7 @@ func TestService_CreateFirewallRule(t *testing.T) {
 
 	server := createTestServerForService(t, repo, teamID, "test-server")
 
-	req := &CreateFirewallRuleRequest{
+	req := &dto.CreateFirewallRuleRequest{
 		Name:   "SSH",
 		Port:   "22",
 		Action: "allow",
@@ -406,7 +411,7 @@ func TestService_DeleteFirewallRule(t *testing.T) {
 
 	server := createTestServerForService(t, repo, teamID, "test-server")
 	port := "22"
-	rule := &FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port, Action: RuleActionAllow}
+	rule := &models.FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port, Action: enums.RuleActionAllow}
 	repo.CreateFirewallRule(ctx, rule)
 
 	// Rule is not installed, so it just deletes from database without needing queue
@@ -426,8 +431,8 @@ func TestService_ListCrons(t *testing.T) {
 
 	server := createTestServerForService(t, repo, teamID, "test-server")
 
-	cron1 := &Cron{ServerID: server.ID, User: "root", Expression: "*/5 * * * *", Command: "cmd1"}
-	cron2 := &Cron{ServerID: server.ID, User: "root", Expression: "0 * * * *", Command: "cmd2"}
+	cron1 := &models.Cron{ServerID: server.ID, User: "root", Expression: "*/5 * * * *", Command: "cmd1"}
+	cron2 := &models.Cron{ServerID: server.ID, User: "root", Expression: "0 * * * *", Command: "cmd2"}
 	repo.CreateCron(ctx, cron1)
 	repo.CreateCron(ctx, cron2)
 
@@ -444,7 +449,7 @@ func TestService_CreateCron(t *testing.T) {
 
 	server := createTestServerForService(t, repo, teamID, "test-server")
 
-	req := &CreateCronRequest{
+	req := &dto.CreateCronRequest{
 		Expression: "*/5 * * * *",
 		Command:    "php artisan schedule:run",
 		User:       "deploy",
@@ -466,8 +471,8 @@ func TestService_ListDaemons(t *testing.T) {
 	server := createTestServerForService(t, repo, teamID, "test-server")
 
 	dir := "/tmp"
-	daemon1 := &Daemon{ServerID: server.ID, Command: "cmd1", User: "root", Directory: &dir}
-	daemon2 := &Daemon{ServerID: server.ID, Command: "cmd2", User: "root", Directory: &dir}
+	daemon1 := &models.Daemon{ServerID: server.ID, Command: "cmd1", User: "root", Directory: &dir}
+	daemon2 := &models.Daemon{ServerID: server.ID, Command: "cmd2", User: "root", Directory: &dir}
 	repo.CreateDaemon(ctx, daemon1)
 	repo.CreateDaemon(ctx, daemon2)
 
@@ -485,7 +490,7 @@ func TestService_CreateDaemon(t *testing.T) {
 	server := createTestServerForService(t, repo, teamID, "test-server")
 
 	dir := "/var/www/app"
-	req := &CreateDaemonRequest{
+	req := &dto.CreateDaemonRequest{
 		Command:   "php artisan queue:work",
 		User:      "deploy",
 		Directory: &dir,
@@ -505,8 +510,8 @@ func TestService_ListSshKeys(t *testing.T) {
 	ctx := context.Background()
 	teamID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
-	key1 := &SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 1", PublicKey: "ssh-rsa AAA1"}
-	key2 := &SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 2", PublicKey: "ssh-rsa AAA2"}
+	key1 := &models.SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 1", PublicKey: "ssh-rsa AAA1"}
+	key2 := &models.SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 2", PublicKey: "ssh-rsa AAA2"}
 	repo.CreateSshKey(ctx, key1)
 	repo.CreateSshKey(ctx, key2)
 
@@ -522,7 +527,7 @@ func TestService_CreateSshKey(t *testing.T) {
 	teamID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 	userID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
-	req := &CreateSshKeyRequest{
+	req := &dto.CreateSshKeyRequest{
 		Name:      "My SSH Key",
 		PublicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@example.com",
 	}
@@ -540,7 +545,7 @@ func TestService_AttachSshKey(t *testing.T) {
 	teamID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
 	server := createTestServerForService(t, repo, teamID, "test-server")
-	key := &SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 1", PublicKey: "ssh-rsa AAA1"}
+	key := &models.SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 1", PublicKey: "ssh-rsa AAA1"}
 	repo.CreateSshKey(ctx, key)
 
 	err := service.AttachSshKey(ctx, server.ID, teamID, key.ID)
@@ -559,7 +564,7 @@ func TestService_DetachSshKey(t *testing.T) {
 	teamID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
 	server := createTestServerForService(t, repo, teamID, "test-server")
-	key := &SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 1", PublicKey: "ssh-rsa AAA1"}
+	key := &models.SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 1", PublicKey: "ssh-rsa AAA1"}
 	repo.CreateSshKey(ctx, key)
 	repo.AttachSshKeyToServer(ctx, server.ID, key.ID)
 
@@ -578,7 +583,7 @@ func TestService_DeleteSshKey(t *testing.T) {
 	ctx := context.Background()
 	teamID := "01ARZ3NDEKTSV4RRFFQ69G5FAV"
 
-	key := &SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 1", PublicKey: "ssh-rsa AAA1"}
+	key := &models.SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 1", PublicKey: "ssh-rsa AAA1"}
 	repo.CreateSshKey(ctx, key)
 
 	err := service.DeleteSshKey(ctx, teamID, key.ID)
@@ -586,7 +591,7 @@ func TestService_DeleteSshKey(t *testing.T) {
 
 	// Verify key is deleted
 	_, err = repo.FindSshKeyByID(ctx, key.ID)
-	assert.ErrorIs(t, err, ErrSshKeyNotFound)
+	assert.ErrorIs(t, err, services.ErrSshKeyNotFound)
 }
 
 func TestService_ListTasks(t *testing.T) {
@@ -600,8 +605,8 @@ func TestService_ListTasks(t *testing.T) {
 	name2 := "task2"
 	script1 := "cmd1"
 	script2 := "cmd2"
-	task1 := &Task{ServerID: server.ID, Type: "task", Name: &name1, Script: &script1}
-	task2 := &Task{ServerID: server.ID, Type: "task", Name: &name2, Script: &script2}
+	task1 := &models.Task{ServerID: server.ID, Type: "task", Name: &name1, Script: &script1}
+	task2 := &models.Task{ServerID: server.ID, Type: "task", Name: &name2, Script: &script2}
 	repo.CreateTask(ctx, task1)
 	repo.CreateTask(ctx, task2)
 
@@ -621,12 +626,12 @@ func TestService_GetLatestTask(t *testing.T) {
 	name1 := "first"
 	name2 := "second"
 	script := "cmd"
-	task1 := &Task{ServerID: server.ID, Type: "task", Name: &name1, Script: &script}
+	task1 := &models.Task{ServerID: server.ID, Type: "task", Name: &name1, Script: &script}
 	repo.CreateTask(ctx, task1)
 
 	time.Sleep(10 * time.Millisecond)
 
-	task2 := &Task{ServerID: server.ID, Type: "task", Name: &name2, Script: &script}
+	task2 := &models.Task{ServerID: server.ID, Type: "task", Name: &name2, Script: &script}
 	repo.CreateTask(ctx, task2)
 
 	latest, err := service.GetLatestTask(ctx, server.ID, teamID)
@@ -643,10 +648,10 @@ func TestService_GetLatestMetric(t *testing.T) {
 	server := createTestServerForService(t, repo, teamID, "test-server")
 
 	now := time.Now()
-	metric1 := &Metric{ServerID: server.ID, CPUUsage: 10.0, RecordedAt: now}
+	metric1 := &models.Metric{ServerID: server.ID, CPUUsage: 10.0, RecordedAt: now}
 	repo.CreateMetric(ctx, metric1)
 
-	metric2 := &Metric{ServerID: server.ID, CPUUsage: 50.0, RecordedAt: now.Add(time.Second)}
+	metric2 := &models.Metric{ServerID: server.ID, CPUUsage: 50.0, RecordedAt: now.Add(time.Second)}
 	repo.CreateMetric(ctx, metric2)
 
 	latest, err := service.GetLatestMetric(ctx, server.ID, teamID)
@@ -663,7 +668,7 @@ func TestService_GetMetrics(t *testing.T) {
 	server := createTestServerForService(t, repo, teamID, "test-server")
 
 	for i := 0; i < 5; i++ {
-		metric := &Metric{ServerID: server.ID, CPUUsage: float64(10 * (i + 1))}
+		metric := &models.Metric{ServerID: server.ID, CPUUsage: float64(10 * (i + 1))}
 		repo.CreateMetric(ctx, metric)
 	}
 
@@ -686,9 +691,9 @@ func TestService_HasLaunchAgent(t *testing.T) {
 	assert.False(t, has)
 
 	// Add launch agent
-	agent := &InstalledService{
+	agent := &models.InstalledService{
 		ServerID: server.ID,
-		Type:     ServiceTypeLaunchAgent,
+		Type:     enums.ServiceTypeLaunchAgent,
 		Name:     "Launch Agent",
 	}
 	repo.CreateService(ctx, agent)
@@ -719,7 +724,7 @@ func TestService_CreateDatabase(t *testing.T) {
 
 	server := createTestServerForService(t, repo, teamID, "test-server")
 
-	req := &CreateDatabaseRequest{
+	req := &dto.CreateDatabaseRequest{
 		Name: "my_database",
 	}
 
@@ -738,12 +743,12 @@ func TestService_GetShowPageData(t *testing.T) {
 	server := createTestServerForService(t, repo, teamID, "test-server")
 
 	// Add some related data
-	php := SoftwarePhp84
-	svc := &InstalledService{ServerID: server.ID, Type: ServiceTypePhp, Name: "PHP 8.4", Software: &php}
+	php := enums.SoftwarePhp84
+	svc := &models.InstalledService{ServerID: server.ID, Type: enums.ServiceTypePhp, Name: "PHP 8.4", Software: &php}
 	repo.CreateService(ctx, svc)
 
 	port := "22"
-	rule := &FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port, Action: RuleActionAllow}
+	rule := &models.FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port, Action: enums.RuleActionAllow}
 	repo.CreateFirewallRule(ctx, rule)
 
 	data, err := service.GetShowPageData(ctx, server.ID, teamID)
@@ -752,13 +757,4 @@ func TestService_GetShowPageData(t *testing.T) {
 	assert.Equal(t, server.ID, data.Server.ID)
 	assert.Len(t, data.Services, 1)
 	assert.Len(t, data.FirewallRules, 1)
-}
-
-func TestGenerateSSHKeyPair(t *testing.T) {
-	privateKey, publicKey, err := generateSSHKeyPair()
-	require.NoError(t, err)
-
-	assert.Contains(t, privateKey, "-----BEGIN RSA PRIVATE KEY-----")
-	assert.Contains(t, privateKey, "-----END RSA PRIVATE KEY-----")
-	assert.Contains(t, publicKey, "ssh-rsa ")
 }

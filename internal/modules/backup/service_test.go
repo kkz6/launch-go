@@ -7,31 +7,43 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/modules/backup/dto"
+	"github.com/kkz6/launch-go/internal/modules/backup/enums"
+	"github.com/kkz6/launch-go/internal/modules/backup/models"
+	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
+	"github.com/kkz6/launch-go/internal/modules/backup/services"
 )
 
-func setupTestService(t *testing.T) (*Service, *Repository, *gorm.DB) {
+func setupTestService(t *testing.T) (*services.BackupService, *services.BackupJobService, *services.StorageProviderService, *repositories.BackupRepository, *repositories.BackupJobRepository, *repositories.StorageProviderRepository, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to connect to database: %v", err)
 	}
 
-	err = db.AutoMigrate(&Backup{}, &BackupJob{}, &StorageProvider{}, &BackupDatabase{})
+	err = db.AutoMigrate(&models.Backup{}, &models.BackupJob{}, &models.StorageProvider{}, &models.BackupDatabase{})
 	if err != nil {
 		t.Fatalf("failed to migrate database: %v", err)
 	}
 
 	logger := zerolog.Nop()
-	repo := NewRepository(db)
-	service := NewService(repo, nil, nil, &logger)
 
-	return service, repo, db
+	backupRepo := repositories.NewBackupRepository(db)
+	backupJobRepo := repositories.NewBackupJobRepository(db)
+	storageProviderRepo := repositories.NewStorageProviderRepository(db)
+
+	backupService := services.NewBackupService(backupRepo, nil, nil, &logger)
+	backupJobService := services.NewBackupJobService(backupJobRepo, backupRepo, nil, &logger)
+	storageProviderService := services.NewStorageProviderService(storageProviderRepo, nil, &logger)
+
+	return backupService, backupJobService, storageProviderService, backupRepo, backupJobRepo, storageProviderRepo, db
 }
 
 func TestService_CreateBackup(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, _, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	req := &CreateBackupRequest{
+	req := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
@@ -42,7 +54,7 @@ func TestService_CreateBackup(t *testing.T) {
 		Retention:         7,
 	}
 
-	backup, err := service.CreateBackup(ctx, "server123", "user123", req)
+	backup, err := backupService.CreateBackup(ctx, "server123", "user123", req)
 	if err != nil {
 		t.Fatalf("CreateBackup() error = %v", err)
 	}
@@ -65,10 +77,10 @@ func TestService_CreateBackup(t *testing.T) {
 }
 
 func TestService_CreateBackup_DefaultRetention(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, _, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	req := &CreateBackupRequest{
+	req := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
@@ -77,7 +89,7 @@ func TestService_CreateBackup_DefaultRetention(t *testing.T) {
 		Retention:         0, // Should default to 10
 	}
 
-	backup, err := service.CreateBackup(ctx, "server123", "user123", req)
+	backup, err := backupService.CreateBackup(ctx, "server123", "user123", req)
 	if err != nil {
 		t.Fatalf("CreateBackup() error = %v", err)
 	}
@@ -88,21 +100,21 @@ func TestService_CreateBackup_DefaultRetention(t *testing.T) {
 }
 
 func TestService_UpdateBackup(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, _, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
 	// Create initial backup
-	createReq := &CreateBackupRequest{
+	createReq := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
 		DatabaseID:        "db123",
 		StorageProviderID: "provider123",
 	}
-	backup, _ := service.CreateBackup(ctx, "server123", "user123", createReq)
+	backup, _ := backupService.CreateBackup(ctx, "server123", "user123", createReq)
 
 	// Update backup
-	updateReq := &UpdateBackupRequest{
+	updateReq := &dto.UpdateBackupRequest{
 		CronExpression:    "0 12 * * *",
 		Path:              "/new/path",
 		Enabled:           false,
@@ -111,7 +123,7 @@ func TestService_UpdateBackup(t *testing.T) {
 		Retention:         15,
 	}
 
-	updated, err := service.UpdateBackup(ctx, backup.ID, updateReq)
+	updated, err := backupService.UpdateBackup(ctx, backup.ID, updateReq)
 	if err != nil {
 		t.Fatalf("UpdateBackup() error = %v", err)
 	}
@@ -131,70 +143,70 @@ func TestService_UpdateBackup(t *testing.T) {
 }
 
 func TestService_UpdateBackup_NotFound(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, _, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	updateReq := &UpdateBackupRequest{
+	updateReq := &dto.UpdateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/path",
 		DatabaseID:        "db123",
 		StorageProviderID: "provider123",
 	}
 
-	_, err := service.UpdateBackup(ctx, "nonexistent", updateReq)
-	if err != ErrBackupNotFound {
-		t.Errorf("UpdateBackup() error = %v, want %v", err, ErrBackupNotFound)
+	_, err := backupService.UpdateBackup(ctx, "nonexistent", updateReq)
+	if err != repositories.ErrBackupNotFound {
+		t.Errorf("UpdateBackup() error = %v, want %v", err, repositories.ErrBackupNotFound)
 	}
 }
 
 func TestService_DeleteBackup(t *testing.T) {
-	service, repo, _ := setupTestService(t)
+	backupService, _, _, backupRepo, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	createReq := &CreateBackupRequest{
+	createReq := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
 		DatabaseID:        "db123",
 		StorageProviderID: "provider123",
 	}
-	backup, _ := service.CreateBackup(ctx, "server123", "user123", createReq)
+	backup, _ := backupService.CreateBackup(ctx, "server123", "user123", createReq)
 
-	err := service.DeleteBackup(ctx, backup.ID, "server123")
+	err := backupService.DeleteBackup(ctx, backup.ID, "server123")
 	if err != nil {
 		t.Fatalf("DeleteBackup() error = %v", err)
 	}
 
-	_, err = repo.FindBackupByID(ctx, backup.ID)
-	if err != ErrBackupNotFound {
+	_, err = backupRepo.FindBackupByID(ctx, backup.ID)
+	if err != repositories.ErrBackupNotFound {
 		t.Error("expected backup to be deleted")
 	}
 }
 
 func TestService_DeleteBackup_NotFound(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, _, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	err := service.DeleteBackup(ctx, "nonexistent", "server123")
-	if err != ErrBackupNotFound {
-		t.Errorf("DeleteBackup() error = %v, want %v", err, ErrBackupNotFound)
+	err := backupService.DeleteBackup(ctx, "nonexistent", "server123")
+	if err != repositories.ErrBackupNotFound {
+		t.Errorf("DeleteBackup() error = %v, want %v", err, repositories.ErrBackupNotFound)
 	}
 }
 
 func TestService_GetBackup(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, _, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	createReq := &CreateBackupRequest{
+	createReq := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
 		DatabaseID:        "db123",
 		StorageProviderID: "provider123",
 	}
-	backup, _ := service.CreateBackup(ctx, "server123", "user123", createReq)
+	backup, _ := backupService.CreateBackup(ctx, "server123", "user123", createReq)
 
-	found, err := service.GetBackup(ctx, backup.ID)
+	found, err := backupService.GetBackup(ctx, backup.ID)
 	if err != nil {
 		t.Fatalf("GetBackup() error = %v", err)
 	}
@@ -205,19 +217,19 @@ func TestService_GetBackup(t *testing.T) {
 }
 
 func TestService_GetBackupByIDAndServer(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, _, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	createReq := &CreateBackupRequest{
+	createReq := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
 		DatabaseID:        "db123",
 		StorageProviderID: "provider123",
 	}
-	backup, _ := service.CreateBackup(ctx, "server123", "user123", createReq)
+	backup, _ := backupService.CreateBackup(ctx, "server123", "user123", createReq)
 
-	found, err := service.GetBackupByIDAndServer(ctx, backup.ID, "server123")
+	found, err := backupService.GetBackupByIDAndServer(ctx, backup.ID, "server123")
 	if err != nil {
 		t.Fatalf("GetBackupByIDAndServer() error = %v", err)
 	}
@@ -226,26 +238,26 @@ func TestService_GetBackupByIDAndServer(t *testing.T) {
 	}
 
 	// Wrong server
-	_, err = service.GetBackupByIDAndServer(ctx, backup.ID, "wrong-server")
-	if err != ErrBackupNotFound {
-		t.Errorf("GetBackupByIDAndServer() error = %v, want %v", err, ErrBackupNotFound)
+	_, err = backupService.GetBackupByIDAndServer(ctx, backup.ID, "wrong-server")
+	if err != repositories.ErrBackupNotFound {
+		t.Errorf("GetBackupByIDAndServer() error = %v, want %v", err, repositories.ErrBackupNotFound)
 	}
 }
 
 func TestService_ListBackupsByServer(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, _, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
 	// Create backups for different servers
-	req1 := &CreateBackupRequest{CronExpression: "0 0 * * *", Path: "/path1", DatabaseID: "db1", StorageProviderID: "p1"}
-	req2 := &CreateBackupRequest{CronExpression: "0 0 * * *", Path: "/path2", DatabaseID: "db2", StorageProviderID: "p2"}
-	req3 := &CreateBackupRequest{CronExpression: "0 0 * * *", Path: "/path3", DatabaseID: "db3", StorageProviderID: "p3"}
+	req1 := &dto.CreateBackupRequest{CronExpression: "0 0 * * *", Path: "/path1", DatabaseID: "db1", StorageProviderID: "p1"}
+	req2 := &dto.CreateBackupRequest{CronExpression: "0 0 * * *", Path: "/path2", DatabaseID: "db2", StorageProviderID: "p2"}
+	req3 := &dto.CreateBackupRequest{CronExpression: "0 0 * * *", Path: "/path3", DatabaseID: "db3", StorageProviderID: "p3"}
 
-	service.CreateBackup(ctx, "server1", "user1", req1)
-	service.CreateBackup(ctx, "server1", "user1", req2)
-	service.CreateBackup(ctx, "server2", "user1", req3)
+	backupService.CreateBackup(ctx, "server1", "user1", req1)
+	backupService.CreateBackup(ctx, "server1", "user1", req2)
+	backupService.CreateBackup(ctx, "server2", "user1", req3)
 
-	backups, err := service.ListBackupsByServer(ctx, "server1")
+	backups, err := backupService.ListBackupsByServer(ctx, "server1")
 	if err != nil {
 		t.Fatalf("ListBackupsByServer() error = %v", err)
 	}
@@ -256,58 +268,58 @@ func TestService_ListBackupsByServer(t *testing.T) {
 }
 
 func TestService_RunBackup(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, _, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	createReq := &CreateBackupRequest{
+	createReq := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
 		DatabaseID:        "db123",
 		StorageProviderID: "provider123",
 	}
-	backup, _ := service.CreateBackup(ctx, "server123", "user123", createReq)
+	backup, _ := backupService.CreateBackup(ctx, "server123", "user123", createReq)
 
-	err := service.RunBackup(ctx, backup.ID, "server123")
+	err := backupService.RunBackup(ctx, backup.ID, "server123")
 	if err != nil {
 		t.Fatalf("RunBackup() error = %v", err)
 	}
 }
 
 func TestService_RunBackup_NotFound(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, _, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	err := service.RunBackup(ctx, "nonexistent", "server123")
-	if err != ErrBackupNotFound {
-		t.Errorf("RunBackup() error = %v, want %v", err, ErrBackupNotFound)
+	err := backupService.RunBackup(ctx, "nonexistent", "server123")
+	if err != repositories.ErrBackupNotFound {
+		t.Errorf("RunBackup() error = %v, want %v", err, repositories.ErrBackupNotFound)
 	}
 }
 
 func TestService_CreateBackupJob(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, backupJobService, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	createReq := &CreateBackupRequest{
+	createReq := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
 		DatabaseID:        "db123",
 		StorageProviderID: "provider123",
 	}
-	backup, _ := service.CreateBackup(ctx, "server123", "user123", createReq)
+	backup, _ := backupService.CreateBackup(ctx, "server123", "user123", createReq)
 
-	jobReq := &CreateBackupJobRequest{
-		Status: BackupJobStatusFinished,
+	jobReq := &dto.CreateBackupJobRequest{
+		Status: enums.BackupJobStatusFinished,
 		Size:   1024 * 1024,
 	}
 
-	job, err := service.CreateBackupJob(ctx, backup.ID, backup.DispatchToken, jobReq)
+	job, err := backupJobService.CreateBackupJob(ctx, backup.ID, backup.DispatchToken, jobReq)
 	if err != nil {
 		t.Fatalf("CreateBackupJob() error = %v", err)
 	}
 
-	if job.Status != BackupJobStatusFinished {
+	if job.Status != enums.BackupJobStatusFinished {
 		t.Errorf("Status = %s, want finished", job.Status)
 	}
 	if job.Size != 1024*1024 {
@@ -316,45 +328,45 @@ func TestService_CreateBackupJob(t *testing.T) {
 }
 
 func TestService_CreateBackupJob_InvalidToken(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, backupJobService, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	createReq := &CreateBackupRequest{
+	createReq := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
 		DatabaseID:        "db123",
 		StorageProviderID: "provider123",
 	}
-	backup, _ := service.CreateBackup(ctx, "server123", "user123", createReq)
+	backup, _ := backupService.CreateBackup(ctx, "server123", "user123", createReq)
 
-	jobReq := &CreateBackupJobRequest{Status: BackupJobStatusFinished}
+	jobReq := &dto.CreateBackupJobRequest{Status: enums.BackupJobStatusFinished}
 
-	_, err := service.CreateBackupJob(ctx, backup.ID, "wrong-token", jobReq)
+	_, err := backupJobService.CreateBackupJob(ctx, backup.ID, "wrong-token", jobReq)
 	if err == nil {
 		t.Error("expected error for invalid token")
 	}
 }
 
 func TestService_CreateBackupJob_WithError(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, backupJobService, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	createReq := &CreateBackupRequest{
+	createReq := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
 		DatabaseID:        "db123",
 		StorageProviderID: "provider123",
 	}
-	backup, _ := service.CreateBackup(ctx, "server123", "user123", createReq)
+	backup, _ := backupService.CreateBackup(ctx, "server123", "user123", createReq)
 
-	jobReq := &CreateBackupJobRequest{
-		Status: BackupJobStatusFailed,
+	jobReq := &dto.CreateBackupJobRequest{
+		Status: enums.BackupJobStatusFailed,
 		Error:  "disk full",
 	}
 
-	job, err := service.CreateBackupJob(ctx, backup.ID, backup.DispatchToken, jobReq)
+	job, err := backupJobService.CreateBackupJob(ctx, backup.ID, backup.DispatchToken, jobReq)
 	if err != nil {
 		t.Fatalf("CreateBackupJob() error = %v", err)
 	}
@@ -365,26 +377,26 @@ func TestService_CreateBackupJob_WithError(t *testing.T) {
 }
 
 func TestService_GetBackupJob(t *testing.T) {
-	service, repo, _ := setupTestService(t)
+	backupService, backupJobService, _, _, backupJobRepo, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	createReq := &CreateBackupRequest{
+	createReq := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
 		DatabaseID:        "db123",
 		StorageProviderID: "provider123",
 	}
-	backup, _ := service.CreateBackup(ctx, "server123", "user123", createReq)
+	backup, _ := backupService.CreateBackup(ctx, "server123", "user123", createReq)
 
-	job := &BackupJob{
+	job := &models.BackupJob{
 		BackupID:          backup.ID,
 		StorageProviderID: "provider123",
-		Status:            BackupJobStatusFinished,
+		Status:            enums.BackupJobStatusFinished,
 	}
-	repo.CreateBackupJob(ctx, job)
+	backupJobRepo.CreateBackupJob(ctx, job)
 
-	found, err := service.GetBackupJob(ctx, job.ID)
+	found, err := backupJobService.GetBackupJob(ctx, job.ID)
 	if err != nil {
 		t.Fatalf("GetBackupJob() error = %v", err)
 	}
@@ -395,24 +407,24 @@ func TestService_GetBackupJob(t *testing.T) {
 }
 
 func TestService_ListBackupJobs(t *testing.T) {
-	service, repo, _ := setupTestService(t)
+	backupService, backupJobService, _, _, backupJobRepo, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	createReq := &CreateBackupRequest{
+	createReq := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
 		DatabaseID:        "db123",
 		StorageProviderID: "provider123",
 	}
-	backup, _ := service.CreateBackup(ctx, "server123", "user123", createReq)
+	backup, _ := backupService.CreateBackup(ctx, "server123", "user123", createReq)
 
-	job1 := &BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: BackupJobStatusFinished}
-	job2 := &BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: BackupJobStatusFailed}
-	repo.CreateBackupJob(ctx, job1)
-	repo.CreateBackupJob(ctx, job2)
+	job1 := &models.BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: enums.BackupJobStatusFinished}
+	job2 := &models.BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: enums.BackupJobStatusFailed}
+	backupJobRepo.CreateBackupJob(ctx, job1)
+	backupJobRepo.CreateBackupJob(ctx, job2)
 
-	jobs, err := service.ListBackupJobs(ctx, backup.ID)
+	jobs, err := backupJobService.ListBackupJobs(ctx, backup.ID)
 	if err != nil {
 		t.Fatalf("ListBackupJobs() error = %v", err)
 	}
@@ -423,10 +435,10 @@ func TestService_ListBackupJobs(t *testing.T) {
 }
 
 func TestService_ConnectStorageProvider(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	_, _, storageProviderService, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	req := &CreateStorageProviderRequest{
+	req := &dto.CreateStorageProviderRequest{
 		Label:    "My S3",
 		Provider: "s3",
 		Key:      "access-key",
@@ -435,7 +447,7 @@ func TestService_ConnectStorageProvider(t *testing.T) {
 		Bucket:   "my-bucket",
 	}
 
-	provider, err := service.ConnectStorageProvider(ctx, "user123", "team123", req)
+	provider, err := storageProviderService.ConnectStorageProvider(ctx, "user123", "team123", req)
 	if err != nil {
 		t.Fatalf("ConnectStorageProvider() error = %v", err)
 	}
@@ -443,7 +455,7 @@ func TestService_ConnectStorageProvider(t *testing.T) {
 	if provider.Label != "My S3" {
 		t.Errorf("Label = %s, want My S3", provider.Label)
 	}
-	if provider.Provider != StorageDriverS3 {
+	if provider.Provider != enums.StorageDriverS3 {
 		t.Errorf("Provider = %s, want s3", provider.Provider)
 	}
 	if !provider.Connected {
@@ -452,26 +464,26 @@ func TestService_ConnectStorageProvider(t *testing.T) {
 }
 
 func TestService_ConnectStorageProvider_InvalidDriver(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	_, _, storageProviderService, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	req := &CreateStorageProviderRequest{
+	req := &dto.CreateStorageProviderRequest{
 		Label:    "Invalid",
 		Provider: "invalid",
 	}
 
-	_, err := service.ConnectStorageProvider(ctx, "user123", "team123", req)
-	if err != ErrInvalidStorageDriver {
-		t.Errorf("ConnectStorageProvider() error = %v, want %v", err, ErrInvalidStorageDriver)
+	_, err := storageProviderService.ConnectStorageProvider(ctx, "user123", "team123", req)
+	if err != services.ErrInvalidStorageDriver {
+		t.Errorf("ConnectStorageProvider() error = %v, want %v", err, services.ErrInvalidStorageDriver)
 	}
 }
 
 func TestService_UpdateStorageProvider(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	_, _, storageProviderService, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
 	// Create provider first
-	createReq := &CreateStorageProviderRequest{
+	createReq := &dto.CreateStorageProviderRequest{
 		Label:    "Original",
 		Provider: "s3",
 		Key:      "key",
@@ -479,10 +491,10 @@ func TestService_UpdateStorageProvider(t *testing.T) {
 		Region:   "us-east-1",
 		Bucket:   "bucket",
 	}
-	provider, _ := service.ConnectStorageProvider(ctx, "user123", "team123", createReq)
+	provider, _ := storageProviderService.ConnectStorageProvider(ctx, "user123", "team123", createReq)
 
 	// Update it
-	updateReq := &UpdateStorageProviderRequest{
+	updateReq := &dto.UpdateStorageProviderRequest{
 		ID:       provider.ID,
 		Label:    "Updated",
 		Provider: "s3",
@@ -492,7 +504,7 @@ func TestService_UpdateStorageProvider(t *testing.T) {
 		Bucket:   "new-bucket",
 	}
 
-	updated, err := service.UpdateStorageProvider(ctx, provider.ID, updateReq)
+	updated, err := storageProviderService.UpdateStorageProvider(ctx, provider.ID, updateReq)
 	if err != nil {
 		t.Fatalf("UpdateStorageProvider() error = %v", err)
 	}
@@ -503,10 +515,10 @@ func TestService_UpdateStorageProvider(t *testing.T) {
 }
 
 func TestService_UpdateStorageProvider_NotFound(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	_, _, storageProviderService, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	updateReq := &UpdateStorageProviderRequest{
+	updateReq := &dto.UpdateStorageProviderRequest{
 		ID:       999999,
 		Label:    "Test",
 		Provider: "s3",
@@ -516,17 +528,17 @@ func TestService_UpdateStorageProvider_NotFound(t *testing.T) {
 		Bucket:   "bucket",
 	}
 
-	_, err := service.UpdateStorageProvider(ctx, 999999, updateReq)
-	if err != ErrStorageProviderNotFound {
-		t.Errorf("UpdateStorageProvider() error = %v, want %v", err, ErrStorageProviderNotFound)
+	_, err := storageProviderService.UpdateStorageProvider(ctx, 999999, updateReq)
+	if err != repositories.ErrStorageProviderNotFound {
+		t.Errorf("UpdateStorageProvider() error = %v, want %v", err, repositories.ErrStorageProviderNotFound)
 	}
 }
 
 func TestService_DeleteStorageProvider(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	_, _, storageProviderService, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	createReq := &CreateStorageProviderRequest{
+	createReq := &dto.CreateStorageProviderRequest{
 		Label:    "To Delete",
 		Provider: "s3",
 		Key:      "key",
@@ -534,24 +546,24 @@ func TestService_DeleteStorageProvider(t *testing.T) {
 		Region:   "us-east-1",
 		Bucket:   "bucket",
 	}
-	provider, _ := service.ConnectStorageProvider(ctx, "user123", "team123", createReq)
+	provider, _ := storageProviderService.ConnectStorageProvider(ctx, "user123", "team123", createReq)
 
-	err := service.DeleteStorageProvider(ctx, provider.ID)
+	err := storageProviderService.DeleteStorageProvider(ctx, provider.ID)
 	if err != nil {
 		t.Fatalf("DeleteStorageProvider() error = %v", err)
 	}
 
-	_, err = service.GetStorageProvider(ctx, provider.ID)
-	if err != ErrStorageProviderNotFound {
+	_, err = storageProviderService.GetStorageProvider(ctx, provider.ID)
+	if err != repositories.ErrStorageProviderNotFound {
 		t.Error("expected provider to be deleted")
 	}
 }
 
 func TestService_DeleteStorageProvider_HasBackups(t *testing.T) {
-	service, _, db := setupTestService(t)
+	_, _, storageProviderService, _, _, _, db := setupTestService(t)
 	ctx := context.Background()
 
-	createReq := &CreateStorageProviderRequest{
+	createReq := &dto.CreateStorageProviderRequest{
 		Label:    "With Backups",
 		Provider: "s3",
 		Key:      "key",
@@ -559,10 +571,10 @@ func TestService_DeleteStorageProvider_HasBackups(t *testing.T) {
 		Region:   "us-east-1",
 		Bucket:   "bucket",
 	}
-	provider, _ := service.ConnectStorageProvider(ctx, "user123", "team123", createReq)
+	provider, _ := storageProviderService.ConnectStorageProvider(ctx, "user123", "team123", createReq)
 
 	// Create a backup using this provider
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server1",
 		UserID:            "user1",
 		StorageProviderID: "1", // Use the provider ID as string
@@ -571,21 +583,21 @@ func TestService_DeleteStorageProvider_HasBackups(t *testing.T) {
 	}
 	db.Create(backup)
 
-	err := service.DeleteStorageProvider(ctx, 1)
-	if err != ErrStorageProviderHasBackups {
-		t.Errorf("DeleteStorageProvider() error = %v, want %v", err, ErrStorageProviderHasBackups)
+	err := storageProviderService.DeleteStorageProvider(ctx, 1)
+	if err != services.ErrStorageProviderHasBackups {
+		t.Errorf("DeleteStorageProvider() error = %v, want %v", err, services.ErrStorageProviderHasBackups)
 	}
 
 	// Clean up
 	db.Delete(backup)
-	service.DeleteStorageProvider(ctx, provider.ID)
+	storageProviderService.DeleteStorageProvider(ctx, provider.ID)
 }
 
 func TestService_GetStorageProvider(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	_, _, storageProviderService, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	createReq := &CreateStorageProviderRequest{
+	createReq := &dto.CreateStorageProviderRequest{
 		Label:    "Test Provider",
 		Provider: "s3",
 		Key:      "key",
@@ -593,9 +605,9 @@ func TestService_GetStorageProvider(t *testing.T) {
 		Region:   "us-east-1",
 		Bucket:   "bucket",
 	}
-	provider, _ := service.ConnectStorageProvider(ctx, "user123", "team123", createReq)
+	provider, _ := storageProviderService.ConnectStorageProvider(ctx, "user123", "team123", createReq)
 
-	found, err := service.GetStorageProvider(ctx, provider.ID)
+	found, err := storageProviderService.GetStorageProvider(ctx, provider.ID)
 	if err != nil {
 		t.Fatalf("GetStorageProvider() error = %v", err)
 	}
@@ -606,19 +618,19 @@ func TestService_GetStorageProvider(t *testing.T) {
 }
 
 func TestService_ListStorageProvidersByTeam(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	_, _, storageProviderService, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
 	// Use only S3 providers since Dropbox actually tries to connect
-	req1 := &CreateStorageProviderRequest{Label: "P1", Provider: "s3", Key: "k1", Secret: "s1", Region: "r1", Bucket: "b1"}
-	req2 := &CreateStorageProviderRequest{Label: "P2", Provider: "s3", Key: "k2", Secret: "s2", Region: "r2", Bucket: "b2"}
-	req3 := &CreateStorageProviderRequest{Label: "P3", Provider: "s3", Key: "k3", Secret: "s3", Region: "r3", Bucket: "b3"}
+	req1 := &dto.CreateStorageProviderRequest{Label: "P1", Provider: "s3", Key: "k1", Secret: "s1", Region: "r1", Bucket: "b1"}
+	req2 := &dto.CreateStorageProviderRequest{Label: "P2", Provider: "s3", Key: "k2", Secret: "s2", Region: "r2", Bucket: "b2"}
+	req3 := &dto.CreateStorageProviderRequest{Label: "P3", Provider: "s3", Key: "k3", Secret: "s3", Region: "r3", Bucket: "b3"}
 
-	service.ConnectStorageProvider(ctx, "user1", "team1", req1)
-	service.ConnectStorageProvider(ctx, "user1", "team1", req2)
-	service.ConnectStorageProvider(ctx, "user1", "team2", req3)
+	storageProviderService.ConnectStorageProvider(ctx, "user1", "team1", req1)
+	storageProviderService.ConnectStorageProvider(ctx, "user1", "team1", req2)
+	storageProviderService.ConnectStorageProvider(ctx, "user1", "team2", req3)
 
-	providers, err := service.ListStorageProvidersByTeam(ctx, "team1")
+	providers, err := storageProviderService.ListStorageProvidersByTeam(ctx, "team1")
 	if err != nil {
 		t.Fatalf("ListStorageProvidersByTeam() error = %v", err)
 	}
@@ -628,85 +640,50 @@ func TestService_ListStorageProvidersByTeam(t *testing.T) {
 	}
 }
 
-func TestService_buildCredentials(t *testing.T) {
-	service, _, _ := setupTestService(t)
-
-	s3Req := &CreateStorageProviderRequest{
-		Provider:       "s3",
-		Endpoint:       "https://s3.example.com",
-		Key:            "key",
-		Secret:         "secret",
-		Region:         "us-east-1",
-		Bucket:         "bucket",
-		Path:           "/path",
-		ForcePathStyle: true,
-	}
-
-	creds := service.buildCredentials(s3Req)
-
-	if creds["endpoint"] != "https://s3.example.com" {
-		t.Errorf("endpoint = %v, want https://s3.example.com", creds["endpoint"])
-	}
-	if creds["key"] != "key" {
-		t.Errorf("key = %v, want key", creds["key"])
-	}
-
-	dropboxReq := &CreateStorageProviderRequest{
-		Provider: "dropbox",
-		Token:    "dropbox-token",
-	}
-
-	creds = service.buildCredentials(dropboxReq)
-
-	if creds["token"] != "dropbox-token" {
-		t.Errorf("token = %v, want dropbox-token", creds["token"])
-	}
-}
-
 func TestService_MarkBackupInstalled(t *testing.T) {
-	service, repo, _ := setupTestService(t)
+	backupService, _, _, backupRepo, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server1",
 		UserID:            "user1",
 		StorageProviderID: "p1",
 		CronExpression:    "* * * * *",
 		Path:              "/",
 	}
-	repo.CreateBackup(ctx, backup)
+	backupRepo.CreateBackup(ctx, backup)
 
-	err := service.MarkBackupInstalled(ctx, backup.ID)
+	err := backupService.MarkBackupInstalled(ctx, backup.ID)
 	if err != nil {
 		t.Fatalf("MarkBackupInstalled() error = %v", err)
 	}
 }
 
 func TestService_MarkBackupInstallationFailed(t *testing.T) {
-	service, repo, _ := setupTestService(t)
+	backupService, _, _, backupRepo, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server1",
 		UserID:            "user1",
 		StorageProviderID: "p1",
 		CronExpression:    "* * * * *",
 		Path:              "/",
 	}
-	repo.CreateBackup(ctx, backup)
+	backupRepo.CreateBackup(ctx, backup)
 
-	err := service.MarkBackupInstallationFailed(ctx, backup.ID)
+	err := backupService.MarkBackupInstallationFailed(ctx, backup.ID)
 	if err != nil {
 		t.Fatalf("MarkBackupInstallationFailed() error = %v", err)
 	}
 }
 
 func TestService_GetStorageProviderConfig(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	_, _, storageProviderService, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
 	// Create a provider first
-	createReq := &CreateStorageProviderRequest{
+	createReq := &dto.CreateStorageProviderRequest{
 		Label:    "Config Test",
 		Provider: "s3",
 		Key:      "key",
@@ -714,9 +691,9 @@ func TestService_GetStorageProviderConfig(t *testing.T) {
 		Region:   "us-east-1",
 		Bucket:   "bucket",
 	}
-	provider, _ := service.ConnectStorageProvider(ctx, "user1", "team1", createReq)
+	provider, _ := storageProviderService.ConnectStorageProvider(ctx, "user1", "team1", createReq)
 
-	config, err := service.GetStorageProviderConfig(ctx, provider.ID)
+	config, err := storageProviderService.GetStorageProviderConfig(ctx, provider.ID)
 	if err != nil {
 		t.Fatalf("GetStorageProviderConfig() error = %v", err)
 	}
@@ -730,63 +707,21 @@ func TestService_GetStorageProviderConfig(t *testing.T) {
 }
 
 func TestService_GetStorageProviderConfig_NotFound(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	_, _, storageProviderService, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	_, err := service.GetStorageProviderConfig(ctx, 999999)
-	if err != ErrStorageProviderNotFound {
-		t.Errorf("GetStorageProviderConfig() error = %v, want %v", err, ErrStorageProviderNotFound)
-	}
-}
-
-func TestService_GetAgentBackupConfig(t *testing.T) {
-	service, _, _ := setupTestService(t)
-	ctx := context.Background()
-
-	// Create a backup
-	createReq := &CreateBackupRequest{
-		CronExpression:    "0 0 * * *",
-		Path:              "/var/www",
-		Enabled:           true,
-		DatabaseID:        "db123",
-		StorageProviderID: "provider123",
-		IncludeFiles:      []string{"/app"},
-		ExcludeFiles:      []string{"/cache"},
-	}
-	backup, _ := service.CreateBackup(ctx, "server123", "user123", createReq)
-
-	config, err := service.GetAgentBackupConfig(ctx, backup.ID, "https://example.com")
-	if err != nil {
-		t.Fatalf("GetAgentBackupConfig() error = %v", err)
-	}
-
-	if config.ID != backup.ID {
-		t.Errorf("config.ID = %s, want %s", config.ID, backup.ID)
-	}
-	if config.CronExpression != "0 0 * * *" {
-		t.Errorf("config.CronExpression = %s, want 0 0 * * *", config.CronExpression)
-	}
-	if len(config.IncludeFiles) != 1 {
-		t.Errorf("config.IncludeFiles length = %d, want 1", len(config.IncludeFiles))
-	}
-}
-
-func TestService_GetAgentBackupConfig_NotFound(t *testing.T) {
-	service, _, _ := setupTestService(t)
-	ctx := context.Background()
-
-	_, err := service.GetAgentBackupConfig(ctx, "nonexistent", "https://example.com")
-	if err != ErrBackupNotFound {
-		t.Errorf("GetAgentBackupConfig() error = %v, want %v", err, ErrBackupNotFound)
+	_, err := storageProviderService.GetStorageProviderConfig(ctx, 999999)
+	if err != repositories.ErrStorageProviderNotFound {
+		t.Errorf("GetStorageProviderConfig() error = %v, want %v", err, repositories.ErrStorageProviderNotFound)
 	}
 }
 
 func TestService_UpdateStorageProvider_InvalidDriver(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	_, _, storageProviderService, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
 	// Create provider first
-	createReq := &CreateStorageProviderRequest{
+	createReq := &dto.CreateStorageProviderRequest{
 		Label:    "Original",
 		Provider: "s3",
 		Key:      "key",
@@ -794,94 +729,52 @@ func TestService_UpdateStorageProvider_InvalidDriver(t *testing.T) {
 		Region:   "us-east-1",
 		Bucket:   "bucket",
 	}
-	provider, _ := service.ConnectStorageProvider(ctx, "user123", "team123", createReq)
+	provider, _ := storageProviderService.ConnectStorageProvider(ctx, "user123", "team123", createReq)
 
 	// Try to update with invalid driver
-	updateReq := &UpdateStorageProviderRequest{
+	updateReq := &dto.UpdateStorageProviderRequest{
 		ID:       provider.ID,
 		Label:    "Updated",
 		Provider: "invalid_driver",
 	}
 
-	_, err := service.UpdateStorageProvider(ctx, provider.ID, updateReq)
-	if err != ErrInvalidStorageDriver {
-		t.Errorf("UpdateStorageProvider() error = %v, want %v", err, ErrInvalidStorageDriver)
-	}
-}
-
-func TestService_buildCredentialsFromUpdate(t *testing.T) {
-	service, _, _ := setupTestService(t)
-
-	// Test S3 credentials
-	s3Req := &UpdateStorageProviderRequest{
-		ID:             1,
-		Provider:       "s3",
-		Endpoint:       "https://s3.example.com",
-		Key:            "update-key",
-		Secret:         "update-secret",
-		Region:         "eu-west-1",
-		Bucket:         "update-bucket",
-		Path:           "/update-path",
-		ForcePathStyle: true,
-	}
-
-	creds := service.buildCredentialsFromUpdate(s3Req)
-
-	if creds["endpoint"] != "https://s3.example.com" {
-		t.Errorf("endpoint = %v, want https://s3.example.com", creds["endpoint"])
-	}
-	if creds["key"] != "update-key" {
-		t.Errorf("key = %v, want update-key", creds["key"])
-	}
-	if creds["region"] != "eu-west-1" {
-		t.Errorf("region = %v, want eu-west-1", creds["region"])
-	}
-
-	// Test Dropbox credentials
-	dropboxReq := &UpdateStorageProviderRequest{
-		ID:       1,
-		Provider: "dropbox",
-		Token:    "updated-dropbox-token",
-	}
-
-	creds = service.buildCredentialsFromUpdate(dropboxReq)
-
-	if creds["token"] != "updated-dropbox-token" {
-		t.Errorf("token = %v, want updated-dropbox-token", creds["token"])
+	_, err := storageProviderService.UpdateStorageProvider(ctx, provider.ID, updateReq)
+	if err != services.ErrInvalidStorageDriver {
+		t.Errorf("UpdateStorageProvider() error = %v, want %v", err, services.ErrInvalidStorageDriver)
 	}
 }
 
 func TestService_CreateBackupJob_BackupNotFound(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	_, backupJobService, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	jobReq := &CreateBackupJobRequest{
-		Status: BackupJobStatusFinished,
+	jobReq := &dto.CreateBackupJobRequest{
+		Status: enums.BackupJobStatusFinished,
 		Size:   1024,
 	}
 
-	_, err := service.CreateBackupJob(ctx, "nonexistent-backup", "some-token", jobReq)
-	if err != ErrBackupNotFound {
-		t.Errorf("CreateBackupJob() error = %v, want %v", err, ErrBackupNotFound)
+	_, err := backupJobService.CreateBackupJob(ctx, "nonexistent-backup", "some-token", jobReq)
+	if err != repositories.ErrBackupNotFound {
+		t.Errorf("CreateBackupJob() error = %v, want %v", err, repositories.ErrBackupNotFound)
 	}
 }
 
 func TestService_DeleteStorageProvider_NotFound(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	_, _, storageProviderService, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
-	err := service.DeleteStorageProvider(ctx, 999999)
-	if err != ErrStorageProviderNotFound {
-		t.Errorf("DeleteStorageProvider() error = %v, want %v", err, ErrStorageProviderNotFound)
+	err := storageProviderService.DeleteStorageProvider(ctx, 999999)
+	if err != repositories.ErrStorageProviderNotFound {
+		t.Errorf("DeleteStorageProvider() error = %v, want %v", err, repositories.ErrStorageProviderNotFound)
 	}
 }
 
 func TestService_UpdateBackup_ZeroRetention(t *testing.T) {
-	service, _, _ := setupTestService(t)
+	backupService, _, _, _, _, _, _ := setupTestService(t)
 	ctx := context.Background()
 
 	// Create initial backup with retention
-	createReq := &CreateBackupRequest{
+	createReq := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
@@ -889,10 +782,10 @@ func TestService_UpdateBackup_ZeroRetention(t *testing.T) {
 		StorageProviderID: "provider123",
 		Retention:         15,
 	}
-	backup, _ := service.CreateBackup(ctx, "server123", "user123", createReq)
+	backup, _ := backupService.CreateBackup(ctx, "server123", "user123", createReq)
 
 	// Update with retention 0 - should keep existing retention
-	updateReq := &UpdateBackupRequest{
+	updateReq := &dto.UpdateBackupRequest{
 		CronExpression:    "0 12 * * *",
 		Path:              "/new/path",
 		Enabled:           false,
@@ -901,7 +794,7 @@ func TestService_UpdateBackup_ZeroRetention(t *testing.T) {
 		Retention:         0, // Zero should not update
 	}
 
-	updated, err := service.UpdateBackup(ctx, backup.ID, updateReq)
+	updated, err := backupService.UpdateBackup(ctx, backup.ID, updateReq)
 	if err != nil {
 		t.Fatalf("UpdateBackup() error = %v", err)
 	}

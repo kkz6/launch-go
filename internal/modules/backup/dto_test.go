@@ -3,16 +3,20 @@ package backup
 import (
 	"testing"
 	"time"
+
+	"github.com/kkz6/launch-go/internal/modules/backup/dto"
+	"github.com/kkz6/launch-go/internal/modules/backup/enums"
+	"github.com/kkz6/launch-go/internal/modules/backup/models"
 )
 
 func TestToBackupResponse(t *testing.T) {
 	now := time.Now()
 	installedAt := now.Add(-time.Hour)
 
-	includeFiles, _ := FromStringSlice([]string{"/app", "/config"})
-	excludeFiles, _ := FromStringSlice([]string{"/cache"})
+	includeFiles, _ := models.FromStringSlice([]string{"/app", "/config"})
+	excludeFiles, _ := models.FromStringSlice([]string{"/cache"})
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ID:                    "backup123",
 		ServerID:              "server123",
 		UserID:                "user123",
@@ -28,17 +32,17 @@ func TestToBackupResponse(t *testing.T) {
 		InstalledAt:           &installedAt,
 		CreatedAt:             now,
 		UpdatedAt:             now,
-		Jobs: []BackupJob{
-			{ID: "job1", Status: BackupJobStatusFinished, Size: 1024 * 1024},
-			{ID: "job2", Status: BackupJobStatusFailed, Size: 512 * 1024},
+		Jobs: []models.BackupJob{
+			{ID: "job1", Status: enums.BackupJobStatusFinished, Size: 1024 * 1024},
+			{ID: "job2", Status: enums.BackupJobStatusFailed, Size: 512 * 1024},
 		},
-		Databases: []BackupDatabase{
+		Databases: []models.BackupDatabase{
 			{DatabaseID: "db1"},
 			{DatabaseID: "db2"},
 		},
 	}
 
-	resp := ToBackupResponse(backup)
+	resp := dto.ToBackupResponse(backup)
 
 	if resp.ID != "backup123" {
 		t.Errorf("ID = %s, want backup123", resp.ID)
@@ -79,7 +83,7 @@ func TestToBackupResponse(t *testing.T) {
 }
 
 func TestToBackupResponse_Empty(t *testing.T) {
-	backup := &Backup{
+	backup := &models.Backup{
 		ID:             "backup123",
 		ServerID:       "server123",
 		UserID:         "user123",
@@ -88,7 +92,7 @@ func TestToBackupResponse_Empty(t *testing.T) {
 		UpdatedAt:      time.Now(),
 	}
 
-	resp := ToBackupResponse(backup)
+	resp := dto.ToBackupResponse(backup)
 
 	if resp.InstalledAt != nil {
 		t.Error("expected InstalledAt to be nil")
@@ -111,7 +115,7 @@ func TestToBackupResponse_InstallationFailed(t *testing.T) {
 	now := time.Now()
 	failedAt := now.Add(-time.Hour)
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ID:                   "backup123",
 		ServerID:             "server123",
 		UserID:               "user123",
@@ -121,7 +125,7 @@ func TestToBackupResponse_InstallationFailed(t *testing.T) {
 		UpdatedAt:            now,
 	}
 
-	resp := ToBackupResponse(backup)
+	resp := dto.ToBackupResponse(backup)
 
 	if resp.InstallationFailedAt == nil {
 		t.Error("expected InstallationFailedAt to be set")
@@ -132,18 +136,18 @@ func TestToBackupJobResponse(t *testing.T) {
 	now := time.Now()
 	errorMsg := "disk full"
 
-	job := &BackupJob{
+	job := &models.BackupJob{
 		ID:                "job123",
 		BackupID:          "backup123",
 		StorageProviderID: "provider123",
-		Status:            BackupJobStatusFailed,
+		Status:            enums.BackupJobStatusFailed,
 		Size:              2 * 1024 * 1024,
 		Error:             &errorMsg,
 		CreatedAt:         now,
 		UpdatedAt:         now,
 	}
 
-	resp := ToBackupJobResponse(job)
+	resp := dto.ToBackupJobResponse(job)
 
 	if resp.ID != "job123" {
 		t.Errorf("ID = %s, want job123", resp.ID)
@@ -166,15 +170,15 @@ func TestToBackupJobResponse(t *testing.T) {
 }
 
 func TestToBackupJobResponse_NoError(t *testing.T) {
-	job := &BackupJob{
+	job := &models.BackupJob{
 		ID:        "job123",
 		BackupID:  "backup123",
-		Status:    BackupJobStatusFinished,
+		Status:    enums.BackupJobStatusFinished,
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
-	resp := ToBackupJobResponse(job)
+	resp := dto.ToBackupJobResponse(job)
 
 	if resp.Error != "" {
 		t.Errorf("Error = %s, want empty", resp.Error)
@@ -185,11 +189,11 @@ func TestToStorageProviderResponse(t *testing.T) {
 	now := time.Now()
 	expiresAt := now.Add(time.Hour)
 
-	provider := &StorageProvider{
+	provider := &models.StorageProvider{
 		ID:             1,
 		UserID:         "user123",
 		TeamID:         "team123",
-		Provider:       StorageDriverS3,
+		Provider:       enums.StorageDriverS3,
 		Label:          "My S3",
 		Connected:      true,
 		TokenExpiresAt: &expiresAt,
@@ -197,7 +201,7 @@ func TestToStorageProviderResponse(t *testing.T) {
 		UpdatedAt:      now,
 	}
 
-	resp := ToStorageProviderResponse(provider)
+	resp := dto.ToStorageProviderResponse(provider)
 
 	if resp.ID != 1 {
 		t.Errorf("ID = %d, want 1", resp.ID)
@@ -226,15 +230,15 @@ func TestToStorageProviderResponse(t *testing.T) {
 }
 
 func TestToStorageProviderResponse_NoExpiry(t *testing.T) {
-	provider := &StorageProvider{
+	provider := &models.StorageProvider{
 		ID:        1,
-		Provider:  StorageDriverDropbox,
+		Provider:  enums.StorageDriverDropbox,
 		Label:     "My Dropbox",
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
 	}
 
-	resp := ToStorageProviderResponse(provider)
+	resp := dto.ToStorageProviderResponse(provider)
 
 	if resp.TokenExpiresAt != nil {
 		t.Error("expected TokenExpiresAt to be nil")
@@ -245,12 +249,12 @@ func TestToStorageProviderResponse_NoExpiry(t *testing.T) {
 }
 
 func TestToStorageProviderListItem(t *testing.T) {
-	provider := &StorageProvider{
+	provider := &models.StorageProvider{
 		ID:    42,
 		Label: "Production S3",
 	}
 
-	item := ToStorageProviderListItem(provider)
+	item := dto.ToStorageProviderListItem(provider)
 
 	if item.ID != 42 {
 		t.Errorf("ID = %d, want 42", item.ID)
@@ -261,7 +265,7 @@ func TestToStorageProviderListItem(t *testing.T) {
 }
 
 func TestAgentBackupConfig(t *testing.T) {
-	config := AgentBackupConfig{
+	config := dto.AgentBackupConfig{
 		ID:             "backup123",
 		CronExpression: "0 0 * * *",
 		Path:           "/var/www",
@@ -301,7 +305,7 @@ func TestAgentBackupConfig(t *testing.T) {
 }
 
 func TestCreateBackupRequest_Fields(t *testing.T) {
-	req := CreateBackupRequest{
+	req := dto.CreateBackupRequest{
 		CronExpression:        "0 0 * * *",
 		Path:                  "/var/www",
 		Enabled:               true,
@@ -326,7 +330,7 @@ func TestCreateBackupRequest_Fields(t *testing.T) {
 }
 
 func TestUpdateBackupRequest_Fields(t *testing.T) {
-	req := UpdateBackupRequest{
+	req := dto.UpdateBackupRequest{
 		CronExpression:        "0 12 * * *",
 		Path:                  "/new/path",
 		Enabled:               false,
@@ -348,13 +352,13 @@ func TestUpdateBackupRequest_Fields(t *testing.T) {
 }
 
 func TestCreateBackupJobRequest_Fields(t *testing.T) {
-	req := CreateBackupJobRequest{
-		Status: BackupJobStatusFinished,
+	req := dto.CreateBackupJobRequest{
+		Status: enums.BackupJobStatusFinished,
 		Size:   1024 * 1024,
 		Error:  "",
 	}
 
-	if req.Status != BackupJobStatusFinished {
+	if req.Status != enums.BackupJobStatusFinished {
 		t.Errorf("Status = %s, want finished", req.Status)
 	}
 	if req.Size != 1024*1024 {
@@ -362,8 +366,8 @@ func TestCreateBackupJobRequest_Fields(t *testing.T) {
 	}
 
 	// With error
-	req = CreateBackupJobRequest{
-		Status: BackupJobStatusFailed,
+	req = dto.CreateBackupJobRequest{
+		Status: enums.BackupJobStatusFailed,
 		Error:  "connection timeout",
 	}
 
@@ -373,7 +377,7 @@ func TestCreateBackupJobRequest_Fields(t *testing.T) {
 }
 
 func TestCreateStorageProviderRequest_S3(t *testing.T) {
-	req := CreateStorageProviderRequest{
+	req := dto.CreateStorageProviderRequest{
 		Label:          "Production S3",
 		Provider:       "s3",
 		Endpoint:       "https://s3.custom.com",
@@ -397,7 +401,7 @@ func TestCreateStorageProviderRequest_S3(t *testing.T) {
 }
 
 func TestCreateStorageProviderRequest_Dropbox(t *testing.T) {
-	req := CreateStorageProviderRequest{
+	req := dto.CreateStorageProviderRequest{
 		Label:    "My Dropbox",
 		Provider: "dropbox",
 		Token:    "dropbox-token",
@@ -412,7 +416,7 @@ func TestCreateStorageProviderRequest_Dropbox(t *testing.T) {
 }
 
 func TestUpdateStorageProviderRequest_Fields(t *testing.T) {
-	req := UpdateStorageProviderRequest{
+	req := dto.UpdateStorageProviderRequest{
 		ID:             42,
 		Label:          "Updated Provider",
 		Provider:       "s3",

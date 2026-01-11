@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
+	"github.com/kkz6/launch-go/internal/modules/notification/enums"
+	"github.com/kkz6/launch-go/internal/modules/notification/models"
 )
 
 func TestChannelData_Scan(t *testing.T) {
@@ -45,7 +47,7 @@ func TestChannelData_Scan(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var cd ChannelData
+			var cd models.ChannelData
 			err := cd.Scan(tt.value)
 
 			if tt.expectErr {
@@ -68,7 +70,7 @@ func TestChannelData_Scan(t *testing.T) {
 }
 
 func TestChannelData_Value(t *testing.T) {
-	cd := ChannelData{
+	cd := models.ChannelData{
 		Email:      "test@example.com",
 		WebhookURL: "https://example.com/webhook",
 		AppDeploy:  true,
@@ -85,7 +87,7 @@ func TestChannelData_Value(t *testing.T) {
 		return
 	}
 
-	var decoded ChannelData
+	var decoded models.ChannelData
 	if err := json.Unmarshal(bytes, &decoded); err != nil {
 		t.Errorf("failed to unmarshal: %v", err)
 		return
@@ -100,7 +102,7 @@ func TestChannelData_Value(t *testing.T) {
 }
 
 func TestChannelData_ToChannelsData(t *testing.T) {
-	cd := ChannelData{
+	cd := models.ChannelData{
 		Email:          "test@example.com",
 		WebhookURL:     "https://hooks.slack.com/xxx",
 		BotToken:       "123456:ABC",
@@ -141,7 +143,7 @@ func TestFromChannelsData(t *testing.T) {
 		DatabaseBackup: true,
 	}
 
-	result := FromChannelsData(cd)
+	result := models.FromChannelsData(cd)
 
 	if result.Email != cd.Email {
 		t.Errorf("Email = %v, want %v", result.Email, cd.Email)
@@ -152,15 +154,15 @@ func TestFromChannelsData(t *testing.T) {
 }
 
 func TestNotificationChannel_TableName(t *testing.T) {
-	nc := NotificationChannel{}
+	nc := models.NotificationChannel{}
 	if got := nc.TableName(); got != "notification_channels" {
 		t.Errorf("TableName() = %v, want notification_channels", got)
 	}
 }
 
 func TestNotificationChannel_GetEmail(t *testing.T) {
-	nc := NotificationChannel{
-		Data: ChannelData{Email: "test@example.com"},
+	nc := models.NotificationChannel{
+		Data: models.ChannelData{Email: "test@example.com"},
 	}
 	if got := nc.GetEmail(); got != "test@example.com" {
 		t.Errorf("GetEmail() = %v, want test@example.com", got)
@@ -168,8 +170,8 @@ func TestNotificationChannel_GetEmail(t *testing.T) {
 }
 
 func TestNotificationChannel_GetWebhookURL(t *testing.T) {
-	nc := NotificationChannel{
-		Data: ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
+	nc := models.NotificationChannel{
+		Data: models.ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
 	}
 	if got := nc.GetWebhookURL(); got != "https://hooks.slack.com/xxx" {
 		t.Errorf("GetWebhookURL() = %v, want https://hooks.slack.com/xxx", got)
@@ -177,8 +179,8 @@ func TestNotificationChannel_GetWebhookURL(t *testing.T) {
 }
 
 func TestNotificationChannel_GetTelegramBotToken(t *testing.T) {
-	nc := NotificationChannel{
-		Data: ChannelData{BotToken: "123456:ABC"},
+	nc := models.NotificationChannel{
+		Data: models.ChannelData{BotToken: "123456:ABC"},
 	}
 	if got := nc.GetTelegramBotToken(); got != "123456:ABC" {
 		t.Errorf("GetTelegramBotToken() = %v, want 123456:ABC", got)
@@ -186,8 +188,8 @@ func TestNotificationChannel_GetTelegramBotToken(t *testing.T) {
 }
 
 func TestNotificationChannel_GetTelegramChatID(t *testing.T) {
-	nc := NotificationChannel{
-		Data: ChannelData{ChatID: "-123456789"},
+	nc := models.NotificationChannel{
+		Data: models.ChannelData{ChatID: "-123456789"},
 	}
 	if got := nc.GetTelegramChatID(); got != "-123456789" {
 		t.Errorf("GetTelegramChatID() = %v, want -123456789", got)
@@ -195,13 +197,13 @@ func TestNotificationChannel_GetTelegramChatID(t *testing.T) {
 }
 
 func TestNotificationChannel_ToChannelsNotificationChannel(t *testing.T) {
-	nc := NotificationChannel{
+	nc := models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "user123",
 		TeamID:    "team123",
-		Provider:  ChannelTypeEmail,
+		Provider:  enums.ChannelTypeEmail,
 		Label:     "Test Email",
-		Data:      ChannelData{Email: "test@example.com"},
+		Data:      models.ChannelData{Email: "test@example.com"},
 		Connected: true,
 		IsDefault: false,
 	}
@@ -220,11 +222,11 @@ func TestNotificationChannel_ToChannelsNotificationChannel(t *testing.T) {
 }
 
 func TestBaseNotification(t *testing.T) {
-	notif := NewBaseNotification(NotificationTypeServerProvisioned, "Server has been provisioned")
+	notif := models.NewBaseNotification(enums.NotificationTypeServerProvisioned, "Server has been provisioned")
 
 	t.Run("Type", func(t *testing.T) {
-		if got := notif.Type(); got != NotificationTypeServerProvisioned {
-			t.Errorf("Type() = %v, want %v", got, NotificationTypeServerProvisioned)
+		if got := notif.Type(); got != enums.NotificationTypeServerProvisioned {
+			t.Errorf("Type() = %v, want %v", got, enums.NotificationTypeServerProvisioned)
 		}
 	})
 

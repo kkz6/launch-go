@@ -627,21 +627,21 @@ func TestInstallationQueryOptions(t *testing.T) {
 			name: "WithUserID",
 			opts: []InstallationQueryOption{WithUserID("user-123")},
 			verify: func(o *installationQueryOptions) bool {
-				return o.userID == "user-123"
+				return o.UserID == "user-123"
 			},
 		},
 		{
 			name: "WithProviderID",
 			opts: []InstallationQueryOption{WithProviderID("prov-456")},
 			verify: func(o *installationQueryOptions) bool {
-				return o.providerID == "prov-456"
+				return o.ProviderID == "prov-456"
 			},
 		},
 		{
 			name: "RequireInstallationID",
 			opts: []InstallationQueryOption{RequireInstallationID()},
 			verify: func(o *installationQueryOptions) bool {
-				return o.requireInstallationID
+				return o.RequireInstallationID
 			},
 		},
 		{
@@ -652,9 +652,9 @@ func TestInstallationQueryOptions(t *testing.T) {
 				RequireInstallationID(),
 			},
 			verify: func(o *installationQueryOptions) bool {
-				return o.userID == "user-123" &&
-					o.providerID == "prov-456" &&
-					o.requireInstallationID
+				return o.UserID == "user-123" &&
+					o.ProviderID == "prov-456" &&
+					o.RequireInstallationID
 			},
 		},
 	}

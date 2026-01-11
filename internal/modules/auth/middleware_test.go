@@ -16,16 +16,20 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/modules/auth/middlewares"
+	"github.com/kkz6/launch-go/internal/modules/auth/models"
+	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/modules/auth/services"
 )
 
-func setupMiddlewareTestApp(t *testing.T) (*fiber.App, *Service, *gorm.DB, *config.Config) {
+func setupMiddlewareTestApp(t *testing.T) (*fiber.App, *services.Service, *gorm.DB, *config.Config) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&User{}, &Team{}, &TeamMember{}, &TeamInvitation{}, &PersonalAccessToken{}, &PasswordResetToken{})
+	err = db.AutoMigrate(&models.User{}, &models.Team{}, &models.TeamMember{}, &models.TeamInvitation{}, &models.PersonalAccessToken{}, &models.PasswordResetToken{})
 	require.NoError(t, err)
 
-	repo := NewRepository(db)
+	repo := repositories.NewRepository(db)
 	cfg := &config.Config{
 		App: config.AppConfig{
 			Name: "TestApp",
@@ -36,7 +40,7 @@ func setupMiddlewareTestApp(t *testing.T) (*fiber.App, *Service, *gorm.DB, *conf
 		},
 	}
 	logger := zerolog.Nop()
-	service := NewService(repo, cfg, &logger)
+	service := services.NewService(repo, cfg, &logger)
 
 	app := fiber.New()
 
@@ -62,11 +66,11 @@ func generateTestToken(secret string, userID string, tokenType string, email str
 	return tokenString
 }
 
-func createMiddlewareTestUser(t *testing.T, db *gorm.DB, email, password string) *User {
+func createMiddlewareTestUser(t *testing.T, db *gorm.DB, email, password string) *models.User {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	require.NoError(t, err)
 
-	user := &User{
+	user := &models.User{
 		Name:     "Test User",
 		Email:    email,
 		Password: string(hashedPassword),
@@ -84,7 +88,7 @@ func TestAuthMiddleware(t *testing.T) {
 	app, _, db, cfg := setupMiddlewareTestApp(t)
 	user := createMiddlewareTestUser(t, db, "auth@example.com", "password")
 
-	app.Use(AuthMiddleware(cfg.JWT.Secret))
+	app.Use(middlewares.AuthMiddleware(cfg.JWT.Secret))
 	app.Get("/protected", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"user_id": c.Locals("userID")})
 	})
@@ -191,7 +195,7 @@ func TestTwoFactorMiddleware(t *testing.T) {
 		}
 		return c.Next()
 	})
-	app.Use(TwoFactorMiddleware(service))
+	app.Use(middlewares.TwoFactorMiddleware(service))
 	app.Get("/protected", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"success": true})
 	})
@@ -258,7 +262,7 @@ func TestTeamScopeMiddleware(t *testing.T) {
 		}
 		return c.Next()
 	})
-	app.Use(TeamScopeMiddleware())
+	app.Use(middlewares.TeamScopeMiddleware())
 	app.Get("/team", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"success": true})
 	})
@@ -285,9 +289,9 @@ func TestTeamMemberMiddleware(t *testing.T) {
 	app, service, db, _ := setupMiddlewareTestApp(t)
 	user := createMiddlewareTestUser(t, db, "member@example.com", "password")
 
-	team := &Team{Name: "Test Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Test Team", OwnerID: user.ID}
 	db.Create(team)
-	db.Create(&TeamMember{TeamID: team.ID, UserID: user.ID, Role: "owner"})
+	db.Create(&models.TeamMember{TeamID: team.ID, UserID: user.ID, Role: "owner"})
 
 	app.Use(func(c *fiber.Ctx) error {
 		userID := c.Get("X-User-ID")
@@ -296,7 +300,7 @@ func TestTeamMemberMiddleware(t *testing.T) {
 		}
 		return c.Next()
 	})
-	app.Get("/teams/:teamId", TeamMemberMiddleware(service), func(c *fiber.Ctx) error {
+	app.Get("/teams/:teamId", middlewares.TeamMemberMiddleware(service), func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"success": true})
 	})
 
@@ -332,7 +336,7 @@ func TestTeamMemberMiddleware(t *testing.T) {
 			c.Locals("teamID", team.ID)
 			return c.Next()
 		})
-		app2.Get("/protected", TeamMemberMiddleware(service), func(c *fiber.Ctx) error {
+		app2.Get("/protected", middlewares.TeamMemberMiddleware(service), func(c *fiber.Ctx) error {
 			return c.JSON(fiber.Map{"success": true})
 		})
 
@@ -347,7 +351,7 @@ func TestTeamMemberMiddleware(t *testing.T) {
 			c.Locals("userID", user.ID)
 			return c.Next()
 		})
-		app2.Get("/protected", TeamMemberMiddleware(service), func(c *fiber.Ctx) error {
+		app2.Get("/protected", middlewares.TeamMemberMiddleware(service), func(c *fiber.Ctx) error {
 			return c.JSON(fiber.Map{"success": true})
 		})
 
@@ -364,9 +368,9 @@ func TestTeamOwnerMiddleware(t *testing.T) {
 	owner := createMiddlewareTestUser(t, db, "owner@example.com", "password")
 	member := createMiddlewareTestUser(t, db, "member2@example.com", "password")
 
-	team := &Team{Name: "Owner Team", OwnerID: owner.ID}
+	team := &models.Team{Name: "Owner Team", OwnerID: owner.ID}
 	db.Create(team)
-	db.Create(&TeamMember{TeamID: team.ID, UserID: member.ID, Role: "member"})
+	db.Create(&models.TeamMember{TeamID: team.ID, UserID: member.ID, Role: "member"})
 
 	app.Use(func(c *fiber.Ctx) error {
 		userID := c.Get("X-User-ID")
@@ -375,7 +379,7 @@ func TestTeamOwnerMiddleware(t *testing.T) {
 		}
 		return c.Next()
 	})
-	app.Get("/teams/:teamId", TeamOwnerMiddleware(service), func(c *fiber.Ctx) error {
+	app.Get("/teams/:teamId", middlewares.TeamOwnerMiddleware(service), func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"success": true})
 	})
 
@@ -408,7 +412,7 @@ func TestTeamOwnerMiddleware(t *testing.T) {
 			c.Locals("userID", owner.ID)
 			return c.Next()
 		})
-		app2.Get("/protected", TeamOwnerMiddleware(service), func(c *fiber.Ctx) error {
+		app2.Get("/protected", middlewares.TeamOwnerMiddleware(service), func(c *fiber.Ctx) error {
 			return c.JSON(fiber.Map{"success": true})
 		})
 
@@ -434,10 +438,10 @@ func TestTeamAdminMiddleware(t *testing.T) {
 	admin := createMiddlewareTestUser(t, db, "admin@example.com", "password")
 	regularMember := createMiddlewareTestUser(t, db, "regular@example.com", "password")
 
-	team := &Team{Name: "Admin Team", OwnerID: owner.ID}
+	team := &models.Team{Name: "Admin Team", OwnerID: owner.ID}
 	db.Create(team)
-	db.Create(&TeamMember{TeamID: team.ID, UserID: admin.ID, Role: "admin"})
-	db.Create(&TeamMember{TeamID: team.ID, UserID: regularMember.ID, Role: "member"})
+	db.Create(&models.TeamMember{TeamID: team.ID, UserID: admin.ID, Role: "admin"})
+	db.Create(&models.TeamMember{TeamID: team.ID, UserID: regularMember.ID, Role: "member"})
 
 	app.Use(func(c *fiber.Ctx) error {
 		userID := c.Get("X-User-ID")
@@ -446,7 +450,7 @@ func TestTeamAdminMiddleware(t *testing.T) {
 		}
 		return c.Next()
 	})
-	app.Get("/teams/:teamId", TeamAdminMiddleware(service), func(c *fiber.Ctx) error {
+	app.Get("/teams/:teamId", middlewares.TeamAdminMiddleware(service), func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"success": true})
 	})
 
@@ -487,7 +491,7 @@ func TestTeamAdminMiddleware(t *testing.T) {
 			c.Locals("userID", owner.ID)
 			return c.Next()
 		})
-		app2.Get("/protected", TeamAdminMiddleware(service), func(c *fiber.Ctx) error {
+		app2.Get("/protected", middlewares.TeamAdminMiddleware(service), func(c *fiber.Ctx) error {
 			return c.JSON(fiber.Map{"success": true})
 		})
 
@@ -533,7 +537,7 @@ func TestEmailVerifiedMiddleware(t *testing.T) {
 		}
 		return c.Next()
 	})
-	app.Get("/protected", EmailVerifiedMiddleware(service), func(c *fiber.Ctx) error {
+	app.Get("/protected", middlewares.EmailVerifiedMiddleware(service), func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"success": true})
 	})
 
@@ -575,7 +579,7 @@ func TestOptionalAuthMiddleware(t *testing.T) {
 	app, _, db, cfg := setupMiddlewareTestApp(t)
 	user := createMiddlewareTestUser(t, db, "optional@example.com", "password")
 
-	app.Use(OptionalAuthMiddleware(cfg.JWT.Secret))
+	app.Use(middlewares.OptionalAuthMiddleware(cfg.JWT.Secret))
 	app.Get("/optional", func(c *fiber.Ctx) error {
 		userID := c.Locals("userID")
 		if userID != nil {
@@ -661,7 +665,7 @@ func TestOptionalAuthMiddleware(t *testing.T) {
 func TestRateLimitMiddleware(t *testing.T) {
 	app, _, _, _ := setupMiddlewareTestApp(t)
 
-	app.Use(RateLimitMiddleware(100, 60))
+	app.Use(middlewares.RateLimitMiddleware(100, 60))
 	app.Get("/limited", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"success": true})
 	})

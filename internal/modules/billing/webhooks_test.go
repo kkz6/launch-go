@@ -13,6 +13,11 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/kkz6/launch-go/internal/modules/billing/enums"
+	"github.com/kkz6/launch-go/internal/modules/billing/handlers"
+	"github.com/kkz6/launch-go/internal/modules/billing/models"
+	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
+	"github.com/kkz6/launch-go/internal/modules/billing/services"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -23,25 +28,25 @@ import (
 
 const testWebhookSecret = "test-webhook-secret"
 
-func setupTestWebhookHandler(t *testing.T) (*WebhookHandler, *fiber.App, *Repository, *gorm.DB) {
+func setupTestWebhookHandler(t *testing.T) (*handlers.WebhookHandler, *fiber.App, *repositories.BillingRepository, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&Subscription{}, &Order{}, &WebhookEvent{})
+	err = db.AutoMigrate(&models.Subscription{}, &models.Order{}, &models.WebhookEvent{})
 	require.NoError(t, err)
 
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 	log := zerolog.Nop()
 
-	config := &Config{
+	config := &services.Config{
 		SubscriptionsEnabled: true,
-		Plans:                DefaultPlans(),
+		Plans:                models.DefaultPlans(),
 	}
 
-	service := NewService(repo, nil, config, &log)
-	webhookHandler := NewWebhookHandler(repo, service, testWebhookSecret, &log)
+	service := services.NewBillingService(repo, nil, config, &log)
+	webhookHandler := handlers.NewWebhookHandler(repo, service, testWebhookSecret, &log)
 
 	app := fiber.New()
 
@@ -194,13 +199,13 @@ func TestWebhookHandler_HandleWebhook_SubscriptionCreated(t *testing.T) {
 func TestWebhookHandler_HandleWebhook_SubscriptionUpdated(t *testing.T) {
 	webhookHandler, app, repo, _ := setupTestWebhookHandler(t)
 
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_123",
 		ProductID:      "1",
 		VariantID:      "1",
 		Name:           "Old Name",
-		Status:         SubscriptionStatusActive,
+		Status:         enums.SubscriptionStatusActive,
 		BillingAnchor:  1,
 	}
 	repo.CreateSubscription(context.Background(), sub)
@@ -226,13 +231,13 @@ func TestWebhookHandler_HandleWebhook_SubscriptionUpdated(t *testing.T) {
 func TestWebhookHandler_HandleWebhook_SubscriptionCancelled(t *testing.T) {
 	webhookHandler, app, repo, _ := setupTestWebhookHandler(t)
 
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_123",
 		ProductID:      "1",
 		VariantID:      "1",
 		Name:           "Test",
-		Status:         SubscriptionStatusActive,
+		Status:         enums.SubscriptionStatusActive,
 		BillingAnchor:  1,
 	}
 	repo.CreateSubscription(context.Background(), sub)
@@ -273,7 +278,7 @@ func TestWebhookHandler_HandleWebhook_SubscriptionCancelled(t *testing.T) {
 
 	updated, err := repo.FindSubscriptionByLemonSqueezyID(context.Background(), "ls_123")
 	assert.NoError(t, err)
-	assert.Equal(t, SubscriptionStatusCancelled, updated.Status)
+	assert.Equal(t, enums.SubscriptionStatusCancelled, updated.Status)
 	assert.NotNil(t, updated.EndsAt)
 }
 
@@ -281,13 +286,13 @@ func TestWebhookHandler_HandleWebhook_SubscriptionResumed(t *testing.T) {
 	webhookHandler, app, repo, _ := setupTestWebhookHandler(t)
 
 	endsAt := time.Now().Add(7 * 24 * time.Hour)
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_123",
 		ProductID:      "1",
 		VariantID:      "1",
 		Name:           "Test",
-		Status:         SubscriptionStatusCancelled,
+		Status:         enums.SubscriptionStatusCancelled,
 		EndsAt:         &endsAt,
 		BillingAnchor:  1,
 	}
@@ -329,20 +334,20 @@ func TestWebhookHandler_HandleWebhook_SubscriptionResumed(t *testing.T) {
 
 	updated, err := repo.FindSubscriptionByLemonSqueezyID(context.Background(), "ls_123")
 	assert.NoError(t, err)
-	assert.Equal(t, SubscriptionStatusActive, updated.Status)
+	assert.Equal(t, enums.SubscriptionStatusActive, updated.Status)
 	assert.Nil(t, updated.EndsAt)
 }
 
 func TestWebhookHandler_HandleWebhook_SubscriptionPaused(t *testing.T) {
 	webhookHandler, app, repo, _ := setupTestWebhookHandler(t)
 
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_123",
 		ProductID:      "1",
 		VariantID:      "1",
 		Name:           "Test",
-		Status:         SubscriptionStatusActive,
+		Status:         enums.SubscriptionStatusActive,
 		BillingAnchor:  1,
 	}
 	repo.CreateSubscription(context.Background(), sub)
@@ -383,7 +388,7 @@ func TestWebhookHandler_HandleWebhook_SubscriptionPaused(t *testing.T) {
 
 	updated, err := repo.FindSubscriptionByLemonSqueezyID(context.Background(), "ls_123")
 	assert.NoError(t, err)
-	assert.Equal(t, SubscriptionStatusPaused, updated.Status)
+	assert.Equal(t, enums.SubscriptionStatusPaused, updated.Status)
 	assert.NotNil(t, updated.PausedAt)
 }
 
@@ -413,7 +418,7 @@ func TestWebhookHandler_HandleWebhook_OrderCreated(t *testing.T) {
 func TestWebhookHandler_HandleWebhook_OrderRefunded(t *testing.T) {
 	webhookHandler, app, repo, _ := setupTestWebhookHandler(t)
 
-	order := &Order{
+	order := &models.Order{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_order_123",
 		CustomerID:     "cust_1",
@@ -424,7 +429,7 @@ func TestWebhookHandler_HandleWebhook_OrderRefunded(t *testing.T) {
 		CurrencyRate:   "1.0",
 		Subtotal:       1000,
 		Total:          1000,
-		Status:         OrderStatusPaid,
+		Status:         enums.OrderStatusPaid,
 	}
 	repo.CreateOrder(context.Background(), order)
 
@@ -443,7 +448,7 @@ func TestWebhookHandler_HandleWebhook_OrderRefunded(t *testing.T) {
 
 	updated, err := repo.FindOrderByLemonSqueezyID(context.Background(), "ls_order_123")
 	assert.NoError(t, err)
-	assert.Equal(t, OrderStatusRefunded, updated.Status)
+	assert.Equal(t, enums.OrderStatusRefunded, updated.Status)
 	assert.NotNil(t, updated.RefundedAt)
 }
 
@@ -505,8 +510,8 @@ func TestWebhookHandler_ProcessPendingWebhooks(t *testing.T) {
 	webhookHandler, _, repo, _ := setupTestWebhookHandler(t)
 
 	payload := createWebhookPayload("subscription_created", "team_1", "ls_pending_123")
-	event := &WebhookEvent{
-		EventName:  WebhookEventSubscriptionCreated,
+	event := &models.WebhookEvent{
+		EventName:  enums.WebhookEventSubscriptionCreated,
 		Payload:    string(payload),
 		Signature:  "sig",
 		Processed:  false,
@@ -526,14 +531,14 @@ func TestWebhookHandler_CleanupOldWebhookEvents(t *testing.T) {
 	webhookHandler, _, repo, db := setupTestWebhookHandler(t)
 
 	oldTime := time.Now().Add(-48 * time.Hour)
-	event := &WebhookEvent{
-		EventName: WebhookEventSubscriptionCreated,
+	event := &models.WebhookEvent{
+		EventName: enums.WebhookEventSubscriptionCreated,
 		Payload:   "{}",
 		Signature: "sig",
 		Processed: true,
 	}
 	repo.CreateWebhookEvent(context.Background(), event)
-	db.Model(&WebhookEvent{}).Where("id = ?", event.ID).Update("processed_at", oldTime)
+	db.Model(&models.WebhookEvent{}).Where("id = ?", event.ID).Update("processed_at", oldTime)
 
 	err := webhookHandler.CleanupOldWebhookEvents(context.Background(), 24*time.Hour)
 	assert.NoError(t, err)
@@ -548,29 +553,29 @@ func TestWebhookHandler_VerifySignature(t *testing.T) {
 	payload := []byte("test payload")
 	validSignature := signPayload(payload, testWebhookSecret)
 
-	assert.True(t, webhookHandler.verifySignature(payload, validSignature))
-	assert.False(t, webhookHandler.verifySignature(payload, "invalid"))
-	assert.False(t, webhookHandler.verifySignature([]byte("different"), validSignature))
+	assert.True(t, webhookHandler.VerifySignature(payload, validSignature))
+	assert.False(t, webhookHandler.VerifySignature(payload, "invalid"))
+	assert.False(t, webhookHandler.VerifySignature([]byte("different"), validSignature))
 }
 
 func TestMapLemonSqueezyStatus(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected SubscriptionStatus
+		expected enums.SubscriptionStatus
 	}{
-		{"on_trial", SubscriptionStatusOnTrial},
-		{"active", SubscriptionStatusActive},
-		{"paused", SubscriptionStatusPaused},
-		{"past_due", SubscriptionStatusPastDue},
-		{"unpaid", SubscriptionStatusUnpaid},
-		{"cancelled", SubscriptionStatusCancelled},
-		{"expired", SubscriptionStatusExpired},
-		{"unknown", SubscriptionStatusActive},
+		{"on_trial", enums.SubscriptionStatusOnTrial},
+		{"active", enums.SubscriptionStatusActive},
+		{"paused", enums.SubscriptionStatusPaused},
+		{"past_due", enums.SubscriptionStatusPastDue},
+		{"unpaid", enums.SubscriptionStatusUnpaid},
+		{"cancelled", enums.SubscriptionStatusCancelled},
+		{"expired", enums.SubscriptionStatusExpired},
+		{"unknown", enums.SubscriptionStatusActive},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			result := mapLemonSqueezyStatus(tt.input)
+			result := handlers.MapLemonSqueezyStatus(tt.input)
 			assert.Equal(t, tt.expected, result)
 		})
 	}
@@ -581,29 +586,29 @@ func TestParseTime(t *testing.T) {
 	invalidTime := "invalid"
 	emptyTime := ""
 
-	result := parseTime(&validTime)
+	result := handlers.ParseTime(&validTime)
 	assert.NotNil(t, result)
 
-	result = parseTime(&invalidTime)
+	result = handlers.ParseTime(&invalidTime)
 	assert.Nil(t, result)
 
-	result = parseTime(&emptyTime)
+	result = handlers.ParseTime(&emptyTime)
 	assert.Nil(t, result)
 
-	result = parseTime(nil)
+	result = handlers.ParseTime(nil)
 	assert.Nil(t, result)
 }
 
 func TestWebhookHandler_SubscriptionPaymentSuccess(t *testing.T) {
 	webhookHandler, app, repo, _ := setupTestWebhookHandler(t)
 
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_123",
 		ProductID:      "1",
 		VariantID:      "1",
 		Name:           "Test",
-		Status:         SubscriptionStatusPastDue,
+		Status:         enums.SubscriptionStatusPastDue,
 		BillingAnchor:  1,
 	}
 	repo.CreateSubscription(context.Background(), sub)
@@ -644,19 +649,19 @@ func TestWebhookHandler_SubscriptionPaymentSuccess(t *testing.T) {
 
 	updated, err := repo.FindSubscriptionByLemonSqueezyID(context.Background(), "ls_123")
 	assert.NoError(t, err)
-	assert.Equal(t, SubscriptionStatusActive, updated.Status)
+	assert.Equal(t, enums.SubscriptionStatusActive, updated.Status)
 }
 
 func TestWebhookHandler_SubscriptionPaymentFailed(t *testing.T) {
 	webhookHandler, app, repo, _ := setupTestWebhookHandler(t)
 
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_123",
 		ProductID:      "1",
 		VariantID:      "1",
 		Name:           "Test",
-		Status:         SubscriptionStatusActive,
+		Status:         enums.SubscriptionStatusActive,
 		BillingAnchor:  1,
 	}
 	repo.CreateSubscription(context.Background(), sub)
@@ -697,13 +702,13 @@ func TestWebhookHandler_SubscriptionPaymentFailed(t *testing.T) {
 func TestWebhookHandler_SubscriptionExpired(t *testing.T) {
 	webhookHandler, app, repo, _ := setupTestWebhookHandler(t)
 
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_123",
 		ProductID:      "1",
 		VariantID:      "1",
 		Name:           "Test",
-		Status:         SubscriptionStatusCancelled,
+		Status:         enums.SubscriptionStatusCancelled,
 		BillingAnchor:  1,
 	}
 	repo.CreateSubscription(context.Background(), sub)
@@ -746,13 +751,13 @@ func TestWebhookHandler_SubscriptionUnpaused(t *testing.T) {
 
 	pausedAt := time.Now().Add(-24 * time.Hour)
 	resumesAt := time.Now().Add(7 * 24 * time.Hour)
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_123",
 		ProductID:      "1",
 		VariantID:      "1",
 		Name:           "Test",
-		Status:         SubscriptionStatusPaused,
+		Status:         enums.SubscriptionStatusPaused,
 		PausedAt:       &pausedAt,
 		ResumesAt:      &resumesAt,
 		BillingAnchor:  1,
@@ -793,7 +798,7 @@ func TestWebhookHandler_SubscriptionUnpaused(t *testing.T) {
 
 	updated, err := repo.FindSubscriptionByLemonSqueezyID(context.Background(), "ls_123")
 	assert.NoError(t, err)
-	assert.Equal(t, SubscriptionStatusActive, updated.Status)
+	assert.Equal(t, enums.SubscriptionStatusActive, updated.Status)
 	assert.Nil(t, updated.PausedAt)
 	assert.Nil(t, updated.ResumesAt)
 }

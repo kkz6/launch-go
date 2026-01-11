@@ -8,21 +8,25 @@ import (
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
+	"github.com/kkz6/launch-go/internal/modules/notification/handlers"
+	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	"github.com/kkz6/launch-go/internal/modules/notification/repositories"
+	"github.com/kkz6/launch-go/internal/modules/notification/services"
 )
 
 // Module represents the notification module
 type Module struct {
-	handler *Handler
+	handler *handlers.NotificationChannelHandler
 	config  *config.Config
 }
 
 // NewModule creates a new notification module
 func NewModule(db *gorm.DB, cfg *config.Config, logger *zerolog.Logger) *Module {
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	httpClient := channels.NewDefaultHTTPClient()
 	channelFactory := channels.NewFactory(httpClient)
-	service := NewService(repo, channelFactory, logger)
-	handler := NewHandler(service)
+	service := services.NewNotificationChannelService(repo, channelFactory, logger)
+	handler := handlers.NewNotificationChannelHandler(service)
 
 	return &Module{
 		handler: handler,
@@ -32,13 +36,13 @@ func NewModule(db *gorm.DB, cfg *config.Config, logger *zerolog.Logger) *Module 
 
 // NewModuleWithDependencies creates a new notification module with custom dependencies (for testing)
 func NewModuleWithDependencies(
-	repo *Repository,
+	repo *repositories.NotificationChannelRepository,
 	channelFactory *channels.Factory,
 	cfg *config.Config,
 	logger *zerolog.Logger,
 ) *Module {
-	service := NewService(repo, channelFactory, logger)
-	handler := NewHandler(service)
+	service := services.NewNotificationChannelService(repo, channelFactory, logger)
+	handler := handlers.NewNotificationChannelHandler(service)
 
 	return &Module{
 		handler: handler,
@@ -65,11 +69,11 @@ func (m *Module) RegisterRoutes(router fiber.Router) {
 }
 
 // GetService returns the notification service (for use by other modules)
-func (m *Module) GetService() *Service {
-	return m.handler.service
+func (m *Module) GetService() *services.NotificationChannelService {
+	return m.handler.GetService()
 }
 
 // AutoMigrate runs the database migrations for the notification module
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(&NotificationChannel{})
+	return db.AutoMigrate(&models.NotificationChannel{})
 }

@@ -5,22 +5,27 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/modules/database/contracts"
+	"github.com/kkz6/launch-go/internal/modules/database/handlers"
+	"github.com/kkz6/launch-go/internal/modules/database/models"
+	"github.com/kkz6/launch-go/internal/modules/database/repositories"
+	"github.com/kkz6/launch-go/internal/modules/database/services"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // Module represents the database module
 type Module struct {
-	handler    *Handler
-	service    *Service
-	repository *Repository
+	handler    *handlers.Handler
+	service    contracts.Service
+	repository contracts.Repository
 }
 
 // NewModule creates a new database module
-func NewModule(db *gorm.DB, serverRepo ServerRepository, queueClient *queue.Client, ws *websocket.Hub, logger *zerolog.Logger) *Module {
-	repo := NewRepository(db)
-	service := NewService(repo, serverRepo, queueClient, ws, logger)
-	handler := NewHandler(service)
+func NewModule(db *gorm.DB, serverRepo services.ServerRepository, queueClient *queue.Client, ws *websocket.Hub, logger *zerolog.Logger) *Module {
+	repo := repositories.NewRepository(db)
+	service := services.NewService(repo, serverRepo, queueClient, ws, logger)
+	handler := handlers.NewHandler(service)
 
 	return &Module{
 		handler:    handler,
@@ -30,12 +35,12 @@ func NewModule(db *gorm.DB, serverRepo ServerRepository, queueClient *queue.Clie
 }
 
 // Service returns the database service
-func (m *Module) Service() *Service {
+func (m *Module) Service() contracts.Service {
 	return m.service
 }
 
 // Repository returns the database repository
-func (m *Module) Repository() *Repository {
+func (m *Module) Repository() contracts.Repository {
 	return m.repository
 }
 
@@ -62,5 +67,5 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 // AutoMigrate runs auto-migration for database models
 func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(&Database{}, &DatabaseUser{}, &DatabaseDatabaseUser{})
+	return db.AutoMigrate(models.AllModels()...)
 }

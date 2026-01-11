@@ -21,18 +21,21 @@ func TestNewModule(t *testing.T) {
 	if module == nil {
 		t.Fatal("expected module to be created")
 	}
-	if module.handler == nil {
-		t.Error("expected handler to be created")
+	if module.GetBackupService() == nil {
+		t.Error("expected backup service to be created")
 	}
-	if module.service == nil {
-		t.Error("expected service to be created")
+	if module.GetBackupRepository() == nil {
+		t.Error("expected backup repository to be created")
 	}
-	if module.repo == nil {
-		t.Error("expected repo to be created")
+	if module.GetBackupJobService() == nil {
+		t.Error("expected backup job service to be created")
+	}
+	if module.GetStorageProviderService() == nil {
+		t.Error("expected storage provider service to be created")
 	}
 }
 
-func TestModule_GetService(t *testing.T) {
+func TestModule_GetBackupService(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to connect to database: %v", err)
@@ -41,13 +44,13 @@ func TestModule_GetService(t *testing.T) {
 	logger := zerolog.Nop()
 	module := NewModule(db, nil, nil, &logger)
 
-	service := module.GetService()
+	service := module.GetBackupService()
 	if service == nil {
-		t.Error("expected GetService to return service")
+		t.Error("expected GetBackupService to return service")
 	}
 }
 
-func TestModule_GetRepository(t *testing.T) {
+func TestModule_GetBackupRepository(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to connect to database: %v", err)
@@ -56,13 +59,13 @@ func TestModule_GetRepository(t *testing.T) {
 	logger := zerolog.Nop()
 	module := NewModule(db, nil, nil, &logger)
 
-	repo := module.GetRepository()
+	repo := module.GetBackupRepository()
 	if repo == nil {
-		t.Error("expected GetRepository to return repository")
+		t.Error("expected GetBackupRepository to return repository")
 	}
 }
 
-func TestModule_GetHandler(t *testing.T) {
+func TestModule_GetBackupJobService(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to connect to database: %v", err)
@@ -71,9 +74,39 @@ func TestModule_GetHandler(t *testing.T) {
 	logger := zerolog.Nop()
 	module := NewModule(db, nil, nil, &logger)
 
-	handler := module.GetHandler()
-	if handler == nil {
-		t.Error("expected GetHandler to return handler")
+	service := module.GetBackupJobService()
+	if service == nil {
+		t.Error("expected GetBackupJobService to return service")
+	}
+}
+
+func TestModule_GetStorageProviderService(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to connect to database: %v", err)
+	}
+
+	logger := zerolog.Nop()
+	module := NewModule(db, nil, nil, &logger)
+
+	service := module.GetStorageProviderService()
+	if service == nil {
+		t.Error("expected GetStorageProviderService to return service")
+	}
+}
+
+func TestModule_GetAgentConfigService(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to connect to database: %v", err)
+	}
+
+	logger := zerolog.Nop()
+	module := NewModule(db, nil, nil, &logger)
+
+	service := module.GetAgentConfigService()
+	if service == nil {
+		t.Error("expected GetAgentConfigService to return service")
 	}
 }
 
@@ -103,14 +136,14 @@ func TestModule_RegisterRoutes(t *testing.T) {
 	routes := app.GetRoutes()
 
 	expectedRoutes := map[string]bool{
-		"/api/v1/servers/:serverId/backups":          false,
-		"/api/v1/servers/:serverId/backups/:id":      false,
-		"/api/v1/servers/:serverId/backups/:id/run":  false,
-		"/api/v1/storage-providers":                  false,
-		"/api/v1/storage-providers/dropdown":         false,
-		"/api/v1/storage-providers/:id":              false,
+		"/api/v1/servers/:serverId/backups":           false,
+		"/api/v1/servers/:serverId/backups/:id":       false,
+		"/api/v1/servers/:serverId/backups/:id/run":   false,
+		"/api/v1/storage-providers":                   false,
+		"/api/v1/storage-providers/dropdown":          false,
+		"/api/v1/storage-providers/:id":               false,
 		"/api/v1/storage-providers/:provider/connect": false,
-		"/api/v1/storage-providers/:provider":        false,
+		"/api/v1/storage-providers/:provider":         false,
 	}
 
 	for _, route := range routes {

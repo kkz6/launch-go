@@ -7,6 +7,9 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/modules/backup/enums"
+	"github.com/kkz6/launch-go/internal/modules/backup/models"
 )
 
 func setupTestDB(t *testing.T) *gorm.DB {
@@ -15,7 +18,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to connect to database: %v", err)
 	}
 
-	err = db.AutoMigrate(&Backup{}, &BackupJob{}, &StorageProvider{}, &BackupDatabase{})
+	err = db.AutoMigrate(&models.Backup{}, &models.BackupJob{}, &models.StorageProvider{}, &models.BackupDatabase{})
 	if err != nil {
 		t.Fatalf("failed to migrate database: %v", err)
 	}
@@ -26,7 +29,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 func TestBackup_BeforeCreate(t *testing.T) {
 	db := setupTestDB(t)
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
@@ -55,7 +58,7 @@ func TestBackup_BeforeCreate(t *testing.T) {
 func TestBackup_BeforeCreate_WithExistingValues(t *testing.T) {
 	db := setupTestDB(t)
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ID:                "existing-id",
 		ServerID:          "server123",
 		UserID:            "user123",
@@ -85,11 +88,11 @@ func TestBackup_BeforeCreate_WithExistingValues(t *testing.T) {
 }
 
 func TestBackup_GetSizeInMB(t *testing.T) {
-	backup := &Backup{
-		Jobs: []BackupJob{
-			{Size: 1024 * 1024},       // 1 MB
-			{Size: 2 * 1024 * 1024},   // 2 MB
-			{Size: 512 * 1024},        // 0.5 MB (will round down)
+	backup := &models.Backup{
+		Jobs: []models.BackupJob{
+			{Size: 1024 * 1024},     // 1 MB
+			{Size: 2 * 1024 * 1024}, // 2 MB
+			{Size: 512 * 1024},      // 0.5 MB (will round down)
 		},
 	}
 
@@ -102,7 +105,7 @@ func TestBackup_GetSizeInMB(t *testing.T) {
 }
 
 func TestBackup_GetSizeInMB_Empty(t *testing.T) {
-	backup := &Backup{}
+	backup := &models.Backup{}
 
 	sizeInMB := backup.GetSizeInMB()
 	if sizeInMB != 0 {
@@ -115,12 +118,12 @@ func TestBackup_IsInstalled(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		backup Backup
+		backup models.Backup
 		want   bool
 	}{
 		{
 			name: "installed",
-			backup: Backup{
+			backup: models.Backup{
 				InstalledAt:          &now,
 				InstallationFailedAt: nil,
 			},
@@ -128,7 +131,7 @@ func TestBackup_IsInstalled(t *testing.T) {
 		},
 		{
 			name: "not installed",
-			backup: Backup{
+			backup: models.Backup{
 				InstalledAt:          nil,
 				InstallationFailedAt: nil,
 			},
@@ -136,7 +139,7 @@ func TestBackup_IsInstalled(t *testing.T) {
 		},
 		{
 			name: "installation failed",
-			backup: Backup{
+			backup: models.Backup{
 				InstalledAt:          &now,
 				InstallationFailedAt: &now,
 			},
@@ -158,12 +161,12 @@ func TestBackup_IsPendingInstallation(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		backup Backup
+		backup models.Backup
 		want   bool
 	}{
 		{
 			name: "pending",
-			backup: Backup{
+			backup: models.Backup{
 				InstalledAt:          nil,
 				InstallationFailedAt: nil,
 			},
@@ -171,7 +174,7 @@ func TestBackup_IsPendingInstallation(t *testing.T) {
 		},
 		{
 			name: "installed",
-			backup: Backup{
+			backup: models.Backup{
 				InstalledAt:          &now,
 				InstallationFailedAt: nil,
 			},
@@ -179,7 +182,7 @@ func TestBackup_IsPendingInstallation(t *testing.T) {
 		},
 		{
 			name: "failed",
-			backup: Backup{
+			backup: models.Backup{
 				InstalledAt:          nil,
 				InstallationFailedAt: &now,
 			},
@@ -201,19 +204,19 @@ func TestBackup_IsInstallationFailed(t *testing.T) {
 
 	tests := []struct {
 		name   string
-		backup Backup
+		backup models.Backup
 		want   bool
 	}{
 		{
 			name: "failed",
-			backup: Backup{
+			backup: models.Backup{
 				InstallationFailedAt: &now,
 			},
 			want: true,
 		},
 		{
 			name: "not failed",
-			backup: Backup{
+			backup: models.Backup{
 				InstallationFailedAt: nil,
 			},
 			want: false,
@@ -230,7 +233,7 @@ func TestBackup_IsInstallationFailed(t *testing.T) {
 }
 
 func TestBackup_TableName(t *testing.T) {
-	backup := Backup{}
+	backup := models.Backup{}
 	if got := backup.TableName(); got != "backups" {
 		t.Errorf("TableName() = %s, want backups", got)
 	}
@@ -240,7 +243,7 @@ func TestBackupJob_BeforeCreate(t *testing.T) {
 	db := setupTestDB(t)
 
 	// First create a backup
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
@@ -249,7 +252,7 @@ func TestBackupJob_BeforeCreate(t *testing.T) {
 	}
 	db.Create(backup)
 
-	job := &BackupJob{
+	job := &models.BackupJob{
 		BackupID:          backup.ID,
 		StorageProviderID: "provider123",
 	}
@@ -263,7 +266,7 @@ func TestBackupJob_BeforeCreate(t *testing.T) {
 		t.Error("expected ID to be generated")
 	}
 
-	if job.Status != BackupJobStatusPending {
+	if job.Status != enums.BackupJobStatusPending {
 		t.Errorf("expected Status to be pending, got %s", job.Status)
 	}
 }
@@ -282,7 +285,7 @@ func TestBackupJob_GetSizeInMB(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			job := &BackupJob{Size: tt.size}
+			job := &models.BackupJob{Size: tt.size}
 			if got := job.GetSizeInMB(); got != tt.want {
 				t.Errorf("GetSizeInMB() = %d, want %d", got, tt.want)
 			}
@@ -293,21 +296,21 @@ func TestBackupJob_GetSizeInMB(t *testing.T) {
 func TestBackupJob_StatusMethods(t *testing.T) {
 	tests := []struct {
 		name       string
-		status     BackupJobStatus
+		status     enums.BackupJobStatus
 		isFinished bool
 		isFailed   bool
 		isRunning  bool
 		isPending  bool
 	}{
-		{"pending", BackupJobStatusPending, false, false, false, true},
-		{"running", BackupJobStatusRunning, false, false, true, false},
-		{"finished", BackupJobStatusFinished, true, false, false, false},
-		{"failed", BackupJobStatusFailed, false, true, false, false},
+		{"pending", enums.BackupJobStatusPending, false, false, false, true},
+		{"running", enums.BackupJobStatusRunning, false, false, true, false},
+		{"finished", enums.BackupJobStatusFinished, true, false, false, false},
+		{"failed", enums.BackupJobStatusFailed, false, true, false, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			job := &BackupJob{Status: tt.status}
+			job := &models.BackupJob{Status: tt.status}
 
 			if got := job.IsFinished(); got != tt.isFinished {
 				t.Errorf("IsFinished() = %v, want %v", got, tt.isFinished)
@@ -326,21 +329,21 @@ func TestBackupJob_StatusMethods(t *testing.T) {
 }
 
 func TestBackupJob_TableName(t *testing.T) {
-	job := BackupJob{}
+	job := models.BackupJob{}
 	if got := job.TableName(); got != "backup_jobs" {
 		t.Errorf("TableName() = %s, want backup_jobs", got)
 	}
 }
 
 func TestStorageProvider_TableName(t *testing.T) {
-	provider := StorageProvider{}
+	provider := models.StorageProvider{}
 	if got := provider.TableName(); got != "storage_providers" {
 		t.Errorf("TableName() = %s, want storage_providers", got)
 	}
 }
 
 func TestStorageProvider_Credentials(t *testing.T) {
-	provider := &StorageProvider{}
+	provider := &models.StorageProvider{}
 
 	creds := map[string]interface{}{
 		"key":    "test-key",
@@ -370,7 +373,7 @@ func TestStorageProvider_Credentials(t *testing.T) {
 }
 
 func TestStorageProvider_GetCredentials_Empty(t *testing.T) {
-	provider := &StorageProvider{}
+	provider := &models.StorageProvider{}
 
 	got, err := provider.GetCredentials()
 	if err != nil {
@@ -385,7 +388,7 @@ func TestStorageProvider_GetCredentials_Empty(t *testing.T) {
 func TestBackupDatabase_BeforeCreate(t *testing.T) {
 	db := setupTestDB(t)
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
@@ -394,7 +397,7 @@ func TestBackupDatabase_BeforeCreate(t *testing.T) {
 	}
 	db.Create(backup)
 
-	backupDB := &BackupDatabase{
+	backupDB := &models.BackupDatabase{
 		BackupID:   backup.ID,
 		DatabaseID: "db123",
 	}
@@ -410,7 +413,7 @@ func TestBackupDatabase_BeforeCreate(t *testing.T) {
 }
 
 func TestBackupDatabase_TableName(t *testing.T) {
-	backupDB := BackupDatabase{}
+	backupDB := models.BackupDatabase{}
 	if got := backupDB.TableName(); got != "backup_databases" {
 		t.Errorf("TableName() = %s, want backup_databases", got)
 	}
@@ -419,7 +422,7 @@ func TestBackupDatabase_TableName(t *testing.T) {
 func TestJSON_MarshalUnmarshal(t *testing.T) {
 	original := []string{"file1.txt", "file2.txt", "dir/file3.txt"}
 
-	jsonData, err := FromStringSlice(original)
+	jsonData, err := models.FromStringSlice(original)
 	if err != nil {
 		t.Fatalf("FromStringSlice() error = %v", err)
 	}
@@ -441,7 +444,7 @@ func TestJSON_MarshalUnmarshal(t *testing.T) {
 }
 
 func TestJSON_Empty(t *testing.T) {
-	var j JSON
+	var j models.JSON
 
 	result, err := j.ToStringSlice()
 	if err != nil {
@@ -454,7 +457,7 @@ func TestJSON_Empty(t *testing.T) {
 }
 
 func TestJSON_NilSlice(t *testing.T) {
-	jsonData, err := FromStringSlice(nil)
+	jsonData, err := models.FromStringSlice(nil)
 	if err != nil {
 		t.Fatalf("FromStringSlice(nil) error = %v", err)
 	}
@@ -472,11 +475,11 @@ func TestJSON_NilSlice(t *testing.T) {
 func TestJSON_Value(t *testing.T) {
 	tests := []struct {
 		name string
-		j    JSON
+		j    models.JSON
 		want string
 	}{
-		{"empty", JSON{}, "[]"},
-		{"with data", JSON(`["a","b"]`), `["a","b"]`},
+		{"empty", models.JSON{}, "[]"},
+		{"with data", models.JSON(`["a","b"]`), `["a","b"]`},
 	}
 
 	for _, tt := range tests {
@@ -496,16 +499,16 @@ func TestJSON_Scan(t *testing.T) {
 	tests := []struct {
 		name  string
 		value interface{}
-		want  JSON
+		want  models.JSON
 	}{
-		{"nil", nil, JSON("[]")},
-		{"bytes", []byte(`["a","b"]`), JSON(`["a","b"]`)},
-		{"string", `["c","d"]`, JSON(`["c","d"]`)},
+		{"nil", nil, models.JSON("[]")},
+		{"bytes", []byte(`["a","b"]`), models.JSON(`["a","b"]`)},
+		{"string", `["c","d"]`, models.JSON(`["c","d"]`)},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var j JSON
+			var j models.JSON
 			err := j.Scan(tt.value)
 			if err != nil {
 				t.Fatalf("Scan() error = %v", err)
@@ -520,11 +523,11 @@ func TestJSON_Scan(t *testing.T) {
 func TestJSON_MarshalJSON(t *testing.T) {
 	tests := []struct {
 		name string
-		j    JSON
+		j    models.JSON
 		want string
 	}{
-		{"empty", JSON{}, "[]"},
-		{"with data", JSON(`["a","b"]`), `["a","b"]`},
+		{"empty", models.JSON{}, "[]"},
+		{"with data", models.JSON(`["a","b"]`), `["a","b"]`},
 	}
 
 	for _, tt := range tests {
@@ -541,7 +544,7 @@ func TestJSON_MarshalJSON(t *testing.T) {
 }
 
 func TestJSON_UnmarshalJSON(t *testing.T) {
-	var j JSON
+	var j models.JSON
 	data := []byte(`["x","y","z"]`)
 
 	err := j.UnmarshalJSON(data)
@@ -560,7 +563,7 @@ func TestEncryptedJSON_NewAndDecrypt(t *testing.T) {
 		"number": float64(42),
 	}
 
-	encrypted, err := NewEncryptedJSON(data)
+	encrypted, err := models.NewEncryptedJSON(data)
 	if err != nil {
 		t.Fatalf("NewEncryptedJSON() error = %v", err)
 	}
@@ -579,7 +582,7 @@ func TestEncryptedJSON_NewAndDecrypt(t *testing.T) {
 }
 
 func TestEncryptedJSON_Empty(t *testing.T) {
-	var e EncryptedJSON
+	var e models.EncryptedJSON
 
 	result, err := e.Decrypt()
 	if err != nil {
@@ -594,11 +597,11 @@ func TestEncryptedJSON_Empty(t *testing.T) {
 func TestEncryptedJSON_Value(t *testing.T) {
 	tests := []struct {
 		name string
-		e    EncryptedJSON
+		e    models.EncryptedJSON
 		want string
 	}{
-		{"empty", EncryptedJSON{}, ""},
-		{"with data", EncryptedJSON(`{"key":"value"}`), `{"key":"value"}`},
+		{"empty", models.EncryptedJSON{}, ""},
+		{"with data", models.EncryptedJSON(`{"key":"value"}`), `{"key":"value"}`},
 	}
 
 	for _, tt := range tests {
@@ -618,16 +621,16 @@ func TestEncryptedJSON_Scan(t *testing.T) {
 	tests := []struct {
 		name  string
 		value interface{}
-		want  EncryptedJSON
+		want  models.EncryptedJSON
 	}{
-		{"nil", nil, EncryptedJSON{}},
-		{"bytes", []byte(`{"key":"value"}`), EncryptedJSON(`{"key":"value"}`)},
-		{"string", `{"foo":"bar"}`, EncryptedJSON(`{"foo":"bar"}`)},
+		{"nil", nil, models.EncryptedJSON{}},
+		{"bytes", []byte(`{"key":"value"}`), models.EncryptedJSON(`{"key":"value"}`)},
+		{"string", `{"foo":"bar"}`, models.EncryptedJSON(`{"foo":"bar"}`)},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var e EncryptedJSON
+			var e models.EncryptedJSON
 			err := e.Scan(tt.value)
 			if err != nil {
 				t.Fatalf("Scan() error = %v", err)
@@ -640,7 +643,7 @@ func TestEncryptedJSON_Scan(t *testing.T) {
 }
 
 func TestS3Credentials(t *testing.T) {
-	creds := S3Credentials{
+	creds := models.S3Credentials{
 		Endpoint:       "https://s3.example.com",
 		Key:            "access-key",
 		Secret:         "secret-key",
@@ -655,7 +658,7 @@ func TestS3Credentials(t *testing.T) {
 		t.Fatalf("Marshal() error = %v", err)
 	}
 
-	var result S3Credentials
+	var result models.S3Credentials
 	err = json.Unmarshal(data, &result)
 	if err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
@@ -685,7 +688,7 @@ func TestS3Credentials(t *testing.T) {
 }
 
 func TestDropboxCredentials(t *testing.T) {
-	creds := DropboxCredentials{
+	creds := models.DropboxCredentials{
 		Token: "dropbox-token",
 	}
 
@@ -694,7 +697,7 @@ func TestDropboxCredentials(t *testing.T) {
 		t.Fatalf("Marshal() error = %v", err)
 	}
 
-	var result DropboxCredentials
+	var result models.DropboxCredentials
 	err = json.Unmarshal(data, &result)
 	if err != nil {
 		t.Fatalf("Unmarshal() error = %v", err)
@@ -706,7 +709,7 @@ func TestDropboxCredentials(t *testing.T) {
 }
 
 func TestJSON_UnknownTypeScan(t *testing.T) {
-	var j JSON
+	var j models.JSON
 	err := j.Scan(12345) // Unknown type - current impl doesn't error, just ignores
 	if err != nil {
 		t.Fatalf("Scan() error = %v", err)
@@ -718,7 +721,7 @@ func TestJSON_UnknownTypeScan(t *testing.T) {
 }
 
 func TestEncryptedJSON_UnknownTypeScan(t *testing.T) {
-	var e EncryptedJSON
+	var e models.EncryptedJSON
 	err := e.Scan(12345) // Unknown type - current impl doesn't error, just ignores
 	if err != nil {
 		t.Fatalf("Scan() error = %v", err)
@@ -730,7 +733,7 @@ func TestEncryptedJSON_UnknownTypeScan(t *testing.T) {
 }
 
 func TestJSON_ToStringSlice_InvalidJSON(t *testing.T) {
-	j := JSON(`{invalid json}`)
+	j := models.JSON(`{invalid json}`)
 	_, err := j.ToStringSlice()
 	if err == nil {
 		t.Error("expected error for invalid JSON")
@@ -738,7 +741,7 @@ func TestJSON_ToStringSlice_InvalidJSON(t *testing.T) {
 }
 
 func TestEncryptedJSON_Decrypt_InvalidJSON(t *testing.T) {
-	e := EncryptedJSON(`{invalid json}`)
+	e := models.EncryptedJSON(`{invalid json}`)
 	_, err := e.Decrypt()
 	if err == nil {
 		t.Error("expected error for invalid JSON")
@@ -748,7 +751,7 @@ func TestEncryptedJSON_Decrypt_InvalidJSON(t *testing.T) {
 func TestBackupJob_BeforeCreate_WithExistingStatus(t *testing.T) {
 	db := setupTestDB(t)
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
@@ -757,11 +760,11 @@ func TestBackupJob_BeforeCreate_WithExistingStatus(t *testing.T) {
 	}
 	db.Create(backup)
 
-	job := &BackupJob{
+	job := &models.BackupJob{
 		ID:                "existing-job-id",
 		BackupID:          backup.ID,
 		StorageProviderID: "provider123",
-		Status:            BackupJobStatusRunning, // Pre-set status
+		Status:            enums.BackupJobStatusRunning, // Pre-set status
 	}
 
 	err := db.Create(job).Error
@@ -770,7 +773,7 @@ func TestBackupJob_BeforeCreate_WithExistingStatus(t *testing.T) {
 	}
 
 	// Status should remain as running
-	if job.Status != BackupJobStatusRunning {
+	if job.Status != enums.BackupJobStatusRunning {
 		t.Errorf("expected Status to be running, got %s", job.Status)
 	}
 
@@ -781,7 +784,7 @@ func TestBackupJob_BeforeCreate_WithExistingStatus(t *testing.T) {
 }
 
 func TestStorageProvider_SetCredentials_EmptyMap(t *testing.T) {
-	provider := &StorageProvider{}
+	provider := &models.StorageProvider{}
 
 	// Set empty map (not nil)
 	err := provider.SetCredentials(map[string]interface{}{})
@@ -803,7 +806,7 @@ func TestStorageProvider_SetCredentials_EmptyMap(t *testing.T) {
 func TestBackupDatabase_BeforeCreate_WithExistingID(t *testing.T) {
 	db := setupTestDB(t)
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
@@ -812,7 +815,7 @@ func TestBackupDatabase_BeforeCreate_WithExistingID(t *testing.T) {
 	}
 	db.Create(backup)
 
-	backupDB := &BackupDatabase{
+	backupDB := &models.BackupDatabase{
 		ID:         "existing-backupdb-id",
 		BackupID:   backup.ID,
 		DatabaseID: "db123",

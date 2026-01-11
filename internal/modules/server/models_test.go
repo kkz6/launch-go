@@ -3,10 +3,13 @@ package server
 import (
 	"testing"
 	"time"
+
+	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 )
 
 func TestServer_BeforeCreate(t *testing.T) {
-	server := &Server{}
+	server := &models.Server{}
 
 	if err := server.BeforeCreate(nil); err != nil {
 		t.Errorf("BeforeCreate() error = %v", err)
@@ -18,7 +21,7 @@ func TestServer_BeforeCreate(t *testing.T) {
 	if len(server.ID) != 26 {
 		t.Errorf("Expected ULID of length 26, got %d", len(server.ID))
 	}
-	if server.Status != ServerStatusNew {
+	if server.Status != enums.ServerStatusNew {
 		t.Errorf("Expected status to be new, got %v", server.Status)
 	}
 	if server.LaunchToken == "" {
@@ -26,9 +29,9 @@ func TestServer_BeforeCreate(t *testing.T) {
 	}
 
 	// Test that existing values are not overwritten
-	existingServer := &Server{
+	existingServer := &models.Server{
 		ID:     "existing-id",
-		Status: ServerStatusRunning,
+		Status: enums.ServerStatusRunning,
 	}
 	if err := existingServer.BeforeCreate(nil); err != nil {
 		t.Errorf("BeforeCreate() error = %v", err)
@@ -36,13 +39,13 @@ func TestServer_BeforeCreate(t *testing.T) {
 	if existingServer.ID != "existing-id" {
 		t.Error("Expected existing ID to be preserved")
 	}
-	if existingServer.Status != ServerStatusRunning {
+	if existingServer.Status != enums.ServerStatusRunning {
 		t.Error("Expected existing status to be preserved")
 	}
 }
 
 func TestServer_TableName(t *testing.T) {
-	server := &Server{}
+	server := &models.Server{}
 	if got := server.TableName(); got != "servers" {
 		t.Errorf("TableName() = %v, want 'servers'", got)
 	}
@@ -52,25 +55,25 @@ func TestServer_IsProvisioned(t *testing.T) {
 	now := time.Now()
 
 	// Server with ProvisionedAt is provisioned
-	server := &Server{ProvisionedAt: &now}
+	server := &models.Server{ProvisionedAt: &now}
 	if !server.IsProvisioned() {
 		t.Error("Expected server with ProvisionedAt to be provisioned")
 	}
 
 	// Server without ProvisionedAt is not provisioned
-	server2 := &Server{}
+	server2 := &models.Server{}
 	if server2.IsProvisioned() {
 		t.Error("Expected server without ProvisionedAt to not be provisioned")
 	}
 }
 
 func TestServer_IsConnected(t *testing.T) {
-	server := &Server{Connected: true}
+	server := &models.Server{Connected: true}
 	if !server.IsConnected() {
 		t.Error("Expected server to be connected")
 	}
 
-	server2 := &Server{Connected: false}
+	server2 := &models.Server{Connected: false}
 	if server2.IsConnected() {
 		t.Error("Expected server to not be connected")
 	}
@@ -89,7 +92,7 @@ func TestServer_IsArchived(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			server := &Server{ArchivedAt: tt.archivedAt}
+			server := &models.Server{ArchivedAt: tt.archivedAt}
 			if got := server.IsArchived(); got != tt.expected {
 				t.Errorf("IsArchived() = %v, want %v", got, tt.expected)
 			}
@@ -98,9 +101,9 @@ func TestServer_IsArchived(t *testing.T) {
 }
 
 func TestServer_RootUsername(t *testing.T) {
-	server := &Server{
-		Provider:        ProviderDigitalOcean,
-		OperatingSystem: OSUbuntu24,
+	server := &models.Server{
+		Provider:        enums.ProviderDigitalOcean,
+		OperatingSystem: enums.OSUbuntu24,
 	}
 	got := server.RootUsername()
 	if got != "root" {
@@ -109,7 +112,7 @@ func TestServer_RootUsername(t *testing.T) {
 }
 
 func TestServer_GetProvisionCommand(t *testing.T) {
-	server := &Server{ID: "test-id-123"}
+	server := &models.Server{ID: "test-id-123"}
 	cmd := server.GetProvisionCommand()
 	if cmd == "" {
 		t.Error("Expected provision command to be generated")
@@ -117,17 +120,17 @@ func TestServer_GetProvisionCommand(t *testing.T) {
 }
 
 func TestServer_HasFeature(t *testing.T) {
-	server := &Server{Type: ServerTypePhp}
-	if !server.HasFeature(ServerFeaturePhpManagement) {
+	server := &models.Server{Type: enums.ServerTypePhp}
+	if !server.HasFeature(enums.ServerFeaturePhpManagement) {
 		t.Error("Expected PHP server to have PHP management feature")
 	}
-	if !server.HasFeature(ServerFeatureSites) {
+	if !server.HasFeature(enums.ServerFeatureSites) {
 		t.Error("Expected PHP server to have sites feature")
 	}
 }
 
 func TestServer_GetFeatures(t *testing.T) {
-	server := &Server{Type: ServerTypePhp}
+	server := &models.Server{Type: enums.ServerTypePhp}
 	features := server.GetFeatures()
 	if len(features) == 0 {
 		t.Error("Expected PHP server to have features")
@@ -135,7 +138,7 @@ func TestServer_GetFeatures(t *testing.T) {
 }
 
 func TestServer_GetProcessManager(t *testing.T) {
-	server := &Server{Type: ServerTypePhp}
+	server := &models.Server{Type: enums.ServerTypePhp}
 	pm := server.GetProcessManager()
 	if pm == "" {
 		t.Error("Expected server to have a process manager")
@@ -143,7 +146,7 @@ func TestServer_GetProcessManager(t *testing.T) {
 }
 
 func TestServer_SetProviderData(t *testing.T) {
-	server := &Server{}
+	server := &models.Server{}
 	data := map[string]interface{}{
 		"region":  "nyc1",
 		"size":    "s-1vcpu-1gb",
@@ -166,7 +169,7 @@ func TestServer_SetProviderData(t *testing.T) {
 
 func TestServer_GetProviderData(t *testing.T) {
 	// Test nil data
-	server := &Server{}
+	server := &models.Server{}
 	if got := server.GetProviderData(); got != nil {
 		t.Errorf("Expected nil for empty ProviderData, got %v", got)
 	}
@@ -181,7 +184,7 @@ func TestServer_GetProviderData(t *testing.T) {
 }
 
 func TestServer_CompletedSteps(t *testing.T) {
-	server := &Server{}
+	server := &models.Server{}
 
 	// Set steps
 	steps := []string{"step1", "step2", "step3"}
@@ -200,7 +203,7 @@ func TestServer_CompletedSteps(t *testing.T) {
 }
 
 func TestInstalledService_BeforeCreate(t *testing.T) {
-	service := &InstalledService{}
+	service := &models.InstalledService{}
 
 	if err := service.BeforeCreate(nil); err != nil {
 		t.Errorf("BeforeCreate() error = %v", err)
@@ -209,13 +212,13 @@ func TestInstalledService_BeforeCreate(t *testing.T) {
 	if service.ID == "" {
 		t.Error("Expected ID to be generated")
 	}
-	if service.Status != ServiceStatusPending {
+	if service.Status != enums.ServiceStatusPending {
 		t.Errorf("Expected status to be pending, got %v", service.Status)
 	}
 }
 
 func TestInstalledService_TableName(t *testing.T) {
-	service := &InstalledService{}
+	service := &models.InstalledService{}
 	if got := service.TableName(); got != "services" {
 		t.Errorf("TableName() = %v, want 'services'", got)
 	}
@@ -223,28 +226,28 @@ func TestInstalledService_TableName(t *testing.T) {
 
 func TestInstalledService_GetFormattedVersion(t *testing.T) {
 	// Test with software
-	php := SoftwarePhp84
-	service := &InstalledService{Software: &php}
+	php := enums.SoftwarePhp84
+	service := &models.InstalledService{Software: &php}
 	if got := service.GetFormattedVersion(); got != "8.4" {
 		t.Errorf("GetFormattedVersion() = %v, want '8.4'", got)
 	}
 
 	// Test with version string
 	version := "8.0.30"
-	service2 := &InstalledService{Version: &version}
+	service2 := &models.InstalledService{Version: &version}
 	if got := service2.GetFormattedVersion(); got != "8.0.30" {
 		t.Errorf("GetFormattedVersion() = %v, want '8.0.30'", got)
 	}
 
 	// Test with neither
-	service3 := &InstalledService{}
+	service3 := &models.InstalledService{}
 	if got := service3.GetFormattedVersion(); got != "" {
 		t.Errorf("GetFormattedVersion() = %v, want empty string", got)
 	}
 }
 
 func TestInstalledService_TypeData(t *testing.T) {
-	service := &InstalledService{}
+	service := &models.InstalledService{}
 
 	data := map[string]interface{}{
 		"port":     float64(3306),
@@ -262,7 +265,7 @@ func TestInstalledService_TypeData(t *testing.T) {
 }
 
 func TestFirewallRule_BeforeCreate(t *testing.T) {
-	rule := &FirewallRule{}
+	rule := &models.FirewallRule{}
 
 	if err := rule.BeforeCreate(nil); err != nil {
 		t.Errorf("BeforeCreate() error = %v", err)
@@ -271,13 +274,13 @@ func TestFirewallRule_BeforeCreate(t *testing.T) {
 	if rule.ID == "" {
 		t.Error("Expected ID to be generated")
 	}
-	if rule.Action != RuleActionAllow {
+	if rule.Action != enums.RuleActionAllow {
 		t.Errorf("Expected action to be allow, got %v", rule.Action)
 	}
 }
 
 func TestFirewallRule_TableName(t *testing.T) {
-	rule := &FirewallRule{}
+	rule := &models.FirewallRule{}
 	if got := rule.TableName(); got != "firewall_rules" {
 		t.Errorf("TableName() = %v, want 'firewall_rules'", got)
 	}
@@ -296,7 +299,7 @@ func TestFirewallRule_IsInstalled(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rule := &FirewallRule{InstalledAt: tt.installedAt}
+			rule := &models.FirewallRule{InstalledAt: tt.installedAt}
 			if got := rule.IsInstalled(); got != tt.expected {
 				t.Errorf("IsInstalled() = %v, want %v", got, tt.expected)
 			}
@@ -319,7 +322,7 @@ func TestFirewallRule_IsPending(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rule := &FirewallRule{
+			rule := &models.FirewallRule{
 				InstalledAt:          tt.installedAt,
 				InstallationFailedAt: tt.installationFailedAt,
 			}
@@ -343,7 +346,7 @@ func TestFirewallRule_HasFailed(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			rule := &FirewallRule{InstallationFailedAt: tt.installationFailedAt}
+			rule := &models.FirewallRule{InstallationFailedAt: tt.installationFailedAt}
 			if got := rule.HasFailed(); got != tt.expected {
 				t.Errorf("HasFailed() = %v, want %v", got, tt.expected)
 			}
@@ -357,21 +360,21 @@ func TestFirewallRule_FormatAsUfwRule(t *testing.T) {
 
 	tests := []struct {
 		name     string
-		rule     FirewallRule
+		rule     models.FirewallRule
 		expected string
 	}{
 		{
 			name: "simple allow",
-			rule: FirewallRule{
-				Action: RuleActionAllow,
+			rule: models.FirewallRule{
+				Action: enums.RuleActionAllow,
 				Port:   &port,
 			},
 			expected: "allow 22",
 		},
 		{
 			name: "deny with from",
-			rule: FirewallRule{
-				Action:   RuleActionDeny,
+			rule: models.FirewallRule{
+				Action:   enums.RuleActionDeny,
 				Port:     &port,
 				FromIPv4: &fromIP,
 			},
@@ -389,7 +392,7 @@ func TestFirewallRule_FormatAsUfwRule(t *testing.T) {
 }
 
 func TestCron_BeforeCreate(t *testing.T) {
-	cron := &Cron{}
+	cron := &models.Cron{}
 
 	if err := cron.BeforeCreate(nil); err != nil {
 		t.Errorf("BeforeCreate() error = %v", err)
@@ -404,7 +407,7 @@ func TestCron_BeforeCreate(t *testing.T) {
 }
 
 func TestCron_TableName(t *testing.T) {
-	cron := &Cron{}
+	cron := &models.Cron{}
 	if got := cron.TableName(); got != "crons" {
 		t.Errorf("TableName() = %v, want 'crons'", got)
 	}
@@ -423,7 +426,7 @@ func TestCron_IsInstalled(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cron := &Cron{InstalledAt: tt.installedAt}
+			cron := &models.Cron{InstalledAt: tt.installedAt}
 			if got := cron.IsInstalled(); got != tt.expected {
 				t.Errorf("IsInstalled() = %v, want %v", got, tt.expected)
 			}
@@ -432,7 +435,7 @@ func TestCron_IsInstalled(t *testing.T) {
 }
 
 func TestCron_Path(t *testing.T) {
-	cron := &Cron{ID: "test-cron-id"}
+	cron := &models.Cron{ID: "test-cron-id"}
 	expected := "/etc/cron.d/cron-test-cron-id"
 	if got := cron.Path(); got != expected {
 		t.Errorf("Path() = %v, want %v", got, expected)
@@ -441,14 +444,14 @@ func TestCron_Path(t *testing.T) {
 
 func TestCron_LogPath(t *testing.T) {
 	// Test root user
-	cron := &Cron{ID: "test-cron-id", User: "root"}
+	cron := &models.Cron{ID: "test-cron-id", User: "root"}
 	expected := "/root/.launch/cron-test-cron-id.log"
 	if got := cron.LogPath(".launch"); got != expected {
 		t.Errorf("LogPath() = %v, want %v", got, expected)
 	}
 
 	// Test non-root user
-	cron2 := &Cron{ID: "test-cron-id", User: "deploy"}
+	cron2 := &models.Cron{ID: "test-cron-id", User: "deploy"}
 	expected2 := "/home/deploy/.launch/cron-test-cron-id.log"
 	if got := cron2.LogPath(".launch"); got != expected2 {
 		t.Errorf("LogPath() = %v, want %v", got, expected2)
@@ -456,7 +459,7 @@ func TestCron_LogPath(t *testing.T) {
 }
 
 func TestDaemon_BeforeCreate(t *testing.T) {
-	daemon := &Daemon{}
+	daemon := &models.Daemon{}
 
 	if err := daemon.BeforeCreate(nil); err != nil {
 		t.Errorf("BeforeCreate() error = %v", err)
@@ -477,7 +480,7 @@ func TestDaemon_BeforeCreate(t *testing.T) {
 }
 
 func TestDaemon_TableName(t *testing.T) {
-	daemon := &Daemon{}
+	daemon := &models.Daemon{}
 	if got := daemon.TableName(); got != "daemons" {
 		t.Errorf("TableName() = %v, want 'daemons'", got)
 	}
@@ -496,7 +499,7 @@ func TestDaemon_IsInstalled(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			daemon := &Daemon{InstalledAt: tt.installedAt}
+			daemon := &models.Daemon{InstalledAt: tt.installedAt}
 			if got := daemon.IsInstalled(); got != tt.expected {
 				t.Errorf("IsInstalled() = %v, want %v", got, tt.expected)
 			}
@@ -505,7 +508,7 @@ func TestDaemon_IsInstalled(t *testing.T) {
 }
 
 func TestDaemon_Path(t *testing.T) {
-	daemon := &Daemon{ID: "test-daemon-id"}
+	daemon := &models.Daemon{ID: "test-daemon-id"}
 	expected := "/etc/supervisor/conf.d/daemon-test-daemon-id.conf"
 	if got := daemon.Path(); got != expected {
 		t.Errorf("Path() = %v, want %v", got, expected)
@@ -513,7 +516,7 @@ func TestDaemon_Path(t *testing.T) {
 }
 
 func TestDaemon_Info(t *testing.T) {
-	daemon := &Daemon{}
+	daemon := &models.Daemon{}
 
 	// Test nil info
 	if got := daemon.GetInfo(); got != nil {
@@ -537,7 +540,7 @@ func TestDaemon_Info(t *testing.T) {
 }
 
 func TestSshKey_BeforeCreate(t *testing.T) {
-	key := &SshKey{
+	key := &models.SshKey{
 		PublicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@example.com",
 	}
 
@@ -551,14 +554,14 @@ func TestSshKey_BeforeCreate(t *testing.T) {
 }
 
 func TestSshKey_TableName(t *testing.T) {
-	key := &SshKey{}
+	key := &models.SshKey{}
 	if got := key.TableName(); got != "ssh_keys" {
 		t.Errorf("TableName() = %v, want 'ssh_keys'", got)
 	}
 }
 
 func TestSshKey_GetFingerprint(t *testing.T) {
-	key := &SshKey{
+	key := &models.SshKey{
 		PublicKey: "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC test@example.com",
 	}
 
@@ -570,14 +573,14 @@ func TestSshKey_GetFingerprint(t *testing.T) {
 }
 
 func TestServerSshKey_TableName(t *testing.T) {
-	join := &ServerSshKey{}
+	join := &models.ServerSshKey{}
 	if got := join.TableName(); got != "server_ssh_keys" {
 		t.Errorf("TableName() = %v, want 'server_ssh_keys'", got)
 	}
 }
 
 func TestTask_BeforeCreate(t *testing.T) {
-	task := &Task{}
+	task := &models.Task{}
 
 	if err := task.BeforeCreate(nil); err != nil {
 		t.Errorf("BeforeCreate() error = %v", err)
@@ -592,7 +595,7 @@ func TestTask_BeforeCreate(t *testing.T) {
 }
 
 func TestTask_TableName(t *testing.T) {
-	task := &Task{}
+	task := &models.Task{}
 	if got := task.TableName(); got != "tasks" {
 		t.Errorf("TableName() = %v, want 'tasks'", got)
 	}
@@ -611,7 +614,7 @@ func TestTask_IsSuccessful(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			task := &Task{ExitCode: tt.exitCode}
+			task := &models.Task{ExitCode: tt.exitCode}
 			if got := task.IsSuccessful(); got != tt.expected {
 				t.Errorf("IsSuccessful() = %v, want %v", got, tt.expected)
 			}
@@ -622,7 +625,7 @@ func TestTask_IsSuccessful(t *testing.T) {
 func TestTask_Duration(t *testing.T) {
 	start := time.Now().Add(-time.Minute)
 	finish := time.Now()
-	task := &Task{
+	task := &models.Task{
 		StartedAt:  &start,
 		FinishedAt: &finish,
 	}
@@ -633,20 +636,20 @@ func TestTask_Duration(t *testing.T) {
 	}
 
 	// Test with no finish time
-	task2 := &Task{StartedAt: &start}
+	task2 := &models.Task{StartedAt: &start}
 	if duration2 := task2.Duration(); duration2 != 0 {
 		t.Errorf("Duration() = %v, expected 0 for unfinished task", duration2)
 	}
 
 	// Test with no start time
-	task3 := &Task{}
+	task3 := &models.Task{}
 	if duration3 := task3.Duration(); duration3 != 0 {
 		t.Errorf("Duration() = %v, expected 0", duration3)
 	}
 }
 
 func TestMetric_BeforeCreate(t *testing.T) {
-	metric := &Metric{}
+	metric := &models.Metric{}
 
 	if err := metric.BeforeCreate(nil); err != nil {
 		t.Errorf("BeforeCreate() error = %v", err)
@@ -658,29 +661,29 @@ func TestMetric_BeforeCreate(t *testing.T) {
 }
 
 func TestMetric_TableName(t *testing.T) {
-	metric := &Metric{}
+	metric := &models.Metric{}
 	if got := metric.TableName(); got != "metrics" {
 		t.Errorf("TableName() = %v, want 'metrics'", got)
 	}
 }
 
 func TestAllModels(t *testing.T) {
-	models := AllModels()
-	if len(models) != 9 {
-		t.Errorf("Expected 9 models, got %d", len(models))
+	allModels := models.AllModels()
+	if len(allModels) != 9 {
+		t.Errorf("Expected 9 models, got %d", len(allModels))
 	}
 }
 
 func TestGenerateSSHFingerprint(t *testing.T) {
 	// Test with valid SSH key format
 	validKey := "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCxq" // simplified, valid format
-	fingerprint := GenerateSSHFingerprint(validKey, FingerprintAlgorithmMD5)
+	fingerprint := models.GenerateSSHFingerprint(validKey, models.FingerprintAlgorithmMD5)
 	// The fingerprint may be empty if base64 decode fails, that's acceptable
 	t.Logf("Fingerprint: %s", fingerprint)
 
 	// Test with invalid format
 	invalidKey := "not-an-ssh-key"
-	if got := GenerateSSHFingerprint(invalidKey, FingerprintAlgorithmMD5); got != "" {
+	if got := models.GenerateSSHFingerprint(invalidKey, models.FingerprintAlgorithmMD5); got != "" {
 		t.Errorf("Expected empty fingerprint for invalid key, got %v", got)
 	}
 }

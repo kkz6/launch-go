@@ -8,13 +8,14 @@ import (
 	"testing"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/modules/billing/providers"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
 func TestDefaultLemonSqueezyConfig(t *testing.T) {
-	config := DefaultLemonSqueezyConfig()
+	config := providers.DefaultLemonSqueezyConfig()
 
 	assert.Equal(t, "https://api.lemonsqueezy.com/v1", config.BaseURL)
 	assert.NotZero(t, config.Timeout)
@@ -24,28 +25,30 @@ func TestNewLemonSqueezyClient(t *testing.T) {
 	logger := zerolog.Nop()
 
 	t.Run("with default values", func(t *testing.T) {
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		assert.NotNil(t, client)
-		assert.Equal(t, "https://api.lemonsqueezy.com/v1", client.config.BaseURL)
-		assert.NotZero(t, client.config.Timeout)
+		// Default BaseURL is set internally when empty
+		assert.Equal(t, "https://api.lemonsqueezy.com/v1", config.BaseURL)
 	})
 
 	t.Run("with custom values", func(t *testing.T) {
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: "https://custom.api.com",
-			Timeout: 60,
+			Timeout: 60 * time.Second,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
-		assert.Equal(t, "https://custom.api.com", client.config.BaseURL)
-		assert.Equal(t, config.Timeout, client.config.Timeout)
+		assert.NotNil(t, client)
+		// Config values are preserved
+		assert.Equal(t, "https://custom.api.com", config.BaseURL)
+		assert.Equal(t, 60*time.Second, config.Timeout)
 	})
 }
 
@@ -69,12 +72,12 @@ func TestLemonSqueezyClient_CreateCheckout(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		url, err := client.CreateCheckout(context.Background(), "456", "Pro Plan", "team_1", "https://redirect.com")
 		require.NoError(t, err)
@@ -94,12 +97,12 @@ func TestLemonSqueezyClient_CreateCheckout(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		url, err := client.CreateCheckout(context.Background(), "456", "Pro Plan", "team_1", "")
 		require.NoError(t, err)
@@ -107,11 +110,11 @@ func TestLemonSqueezyClient_CreateCheckout(t *testing.T) {
 	})
 
 	t.Run("invalid variant ID", func(t *testing.T) {
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		_, err := client.CreateCheckout(context.Background(), "invalid_variant", "Pro Plan", "team_1", "")
 		assert.Error(t, err)
@@ -125,12 +128,12 @@ func TestLemonSqueezyClient_CreateCheckout(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		_, err := client.CreateCheckout(context.Background(), "456", "Pro Plan", "team_1", "https://redirect.com")
 		assert.Error(t, err)
@@ -142,15 +145,15 @@ func TestLemonSqueezyClient_CreateCheckout(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "invalid_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		_, err := client.CreateCheckout(context.Background(), "456", "Pro Plan", "team_1", "https://redirect.com")
-		assert.ErrorIs(t, err, ErrLemonSqueezyUnauthorized)
+		assert.ErrorIs(t, err, providers.ErrLemonSqueezyUnauthorized)
 	})
 
 	t.Run("rate limited", func(t *testing.T) {
@@ -159,15 +162,15 @@ func TestLemonSqueezyClient_CreateCheckout(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		_, err := client.CreateCheckout(context.Background(), "456", "Pro Plan", "team_1", "https://redirect.com")
-		assert.ErrorIs(t, err, ErrLemonSqueezyRateLimited)
+		assert.ErrorIs(t, err, providers.ErrLemonSqueezyRateLimited)
 	})
 }
 
@@ -193,12 +196,12 @@ func TestLemonSqueezyClient_GetSubscription(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		response, err := client.GetSubscription(context.Background(), "sub_123")
 		require.NoError(t, err)
@@ -211,15 +214,15 @@ func TestLemonSqueezyClient_GetSubscription(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		_, err := client.GetSubscription(context.Background(), "sub_123")
-		assert.ErrorIs(t, err, ErrLemonSqueezyNotFound)
+		assert.ErrorIs(t, err, providers.ErrLemonSqueezyNotFound)
 	})
 }
 
@@ -242,12 +245,12 @@ func TestLemonSqueezyClient_CancelSubscription(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := &LemonSqueezyConfig{
+	config := &providers.LemonSqueezyConfig{
 		APIKey:  "test_key",
 		StoreID: 123,
 		BaseURL: server.URL,
 	}
-	client := NewLemonSqueezyClient(config, &logger)
+	client := providers.NewLemonSqueezyClient(config, &logger)
 
 	err := client.CancelSubscription(context.Background(), "sub_123")
 	assert.NoError(t, err)
@@ -272,12 +275,12 @@ func TestLemonSqueezyClient_ResumeSubscription(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := &LemonSqueezyConfig{
+	config := &providers.LemonSqueezyConfig{
 		APIKey:  "test_key",
 		StoreID: 123,
 		BaseURL: server.URL,
 	}
-	client := NewLemonSqueezyClient(config, &logger)
+	client := providers.NewLemonSqueezyClient(config, &logger)
 
 	err := client.ResumeSubscription(context.Background(), "sub_123")
 	assert.NoError(t, err)
@@ -303,12 +306,12 @@ func TestLemonSqueezyClient_PauseSubscription(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		err := client.PauseSubscription(context.Background(), "sub_123", "void", nil)
 		assert.NoError(t, err)
@@ -329,12 +332,12 @@ func TestLemonSqueezyClient_PauseSubscription(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		// Use a fixed time for testing
 		resumesAt := parseTestTime("2024-02-01T00:00:00Z")
@@ -362,12 +365,12 @@ func TestLemonSqueezyClient_UnpauseSubscription(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := &LemonSqueezyConfig{
+	config := &providers.LemonSqueezyConfig{
 		APIKey:  "test_key",
 		StoreID: 123,
 		BaseURL: server.URL,
 	}
-	client := NewLemonSqueezyClient(config, &logger)
+	client := providers.NewLemonSqueezyClient(config, &logger)
 
 	err := client.UnpauseSubscription(context.Background(), "sub_123")
 	assert.NoError(t, err)
@@ -392,12 +395,12 @@ func TestLemonSqueezyClient_UpdateSubscription(t *testing.T) {
 	}))
 	defer server.Close()
 
-	config := &LemonSqueezyConfig{
+	config := &providers.LemonSqueezyConfig{
 		APIKey:  "test_key",
 		StoreID: 123,
 		BaseURL: server.URL,
 	}
-	client := NewLemonSqueezyClient(config, &logger)
+	client := providers.NewLemonSqueezyClient(config, &logger)
 
 	err := client.UpdateSubscription(context.Background(), "sub_123", 456)
 	assert.NoError(t, err)
@@ -425,12 +428,12 @@ func TestLemonSqueezyClient_GetUpdatePaymentMethodURL(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		url, err := client.GetUpdatePaymentMethodURL(context.Background(), "sub_123")
 		require.NoError(t, err)
@@ -449,12 +452,12 @@ func TestLemonSqueezyClient_GetUpdatePaymentMethodURL(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		url, err := client.GetUpdatePaymentMethodURL(context.Background(), "sub_123")
 		require.NoError(t, err)
@@ -484,12 +487,12 @@ func TestLemonSqueezyClient_GetCustomerPortalURL(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		url, err := client.GetCustomerPortalURL(context.Background(), "sub_123")
 		require.NoError(t, err)
@@ -508,12 +511,12 @@ func TestLemonSqueezyClient_GetCustomerPortalURL(t *testing.T) {
 		}))
 		defer server.Close()
 
-		config := &LemonSqueezyConfig{
+		config := &providers.LemonSqueezyConfig{
 			APIKey:  "test_key",
 			StoreID: 123,
 			BaseURL: server.URL,
 		}
-		client := NewLemonSqueezyClient(config, &logger)
+		client := providers.NewLemonSqueezyClient(config, &logger)
 
 		url, err := client.GetCustomerPortalURL(context.Background(), "sub_123")
 		require.NoError(t, err)
@@ -556,7 +559,7 @@ func TestParseLemonSqueezyTime(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := ParseLemonSqueezyTime(tt.input)
+			result := providers.ParseLemonSqueezyTime(tt.input)
 
 			if tt.wantNil {
 				assert.Nil(t, result)

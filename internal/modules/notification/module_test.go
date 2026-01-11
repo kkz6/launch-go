@@ -11,6 +11,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
+	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	"github.com/kkz6/launch-go/internal/modules/notification/repositories"
 )
 
 func TestNewModule(t *testing.T) {
@@ -49,7 +51,7 @@ func TestNewModuleWithDependencies(t *testing.T) {
 		t.Fatalf("failed to connect database: %v", err)
 	}
 
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	factory := channels.NewFactory(&channels.MockHTTPClient{})
 	cfg := &config.Config{
 		JWT: config.JWTConfig{
@@ -69,7 +71,7 @@ func TestModule_RegisterRoutes(t *testing.T) {
 	db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
-	_ = db.AutoMigrate(&NotificationChannel{})
+	_ = db.AutoMigrate(&models.NotificationChannel{})
 
 	cfg := &config.Config{
 		JWT: config.JWTConfig{
@@ -145,7 +147,7 @@ func TestAutoMigrate(t *testing.T) {
 
 	// Verify table exists by trying to query it
 	var count int64
-	err = db.Model(&NotificationChannel{}).Count(&count).Error
+	err = db.Model(&models.NotificationChannel{}).Count(&count).Error
 	if err != nil {
 		t.Errorf("table should exist after migration: %v", err)
 	}
@@ -155,7 +157,7 @@ func TestModule_RouteMethods(t *testing.T) {
 	db, _ := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
-	_ = db.AutoMigrate(&NotificationChannel{})
+	_ = db.AutoMigrate(&models.NotificationChannel{})
 
 	cfg := &config.Config{
 		JWT: config.JWTConfig{
@@ -174,10 +176,10 @@ func TestModule_RouteMethods(t *testing.T) {
 	routes := app.GetRoutes()
 
 	methodChecks := map[string][]string{
-		"/api/settings/notifications/":             {"GET", "POST"},
-		"/api/settings/notifications/:id":          {"GET", "PUT", "DELETE"},
-		"/api/settings/notifications/:id/test":     {"POST"},
-		"/api/settings/notifications/:id/default":  {"POST"},
+		"/api/settings/notifications/":               {"GET", "POST"},
+		"/api/settings/notifications/:id":            {"GET", "PUT", "DELETE"},
+		"/api/settings/notifications/:id/test":       {"POST"},
+		"/api/settings/notifications/:id/default":    {"POST"},
 		"/api/settings/notifications/:id/disconnect": {"POST"},
 		"/api/settings/notifications/:id/reconnect":  {"POST"},
 	}

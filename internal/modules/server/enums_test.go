@@ -2,23 +2,25 @@ package server
 
 import (
 	"testing"
+
+	"github.com/kkz6/launch-go/internal/modules/server/enums"
 )
 
 func TestServerStatus_String(t *testing.T) {
 	tests := []struct {
-		status   ServerStatus
+		status   enums.ServerStatus
 		expected string
 	}{
-		{ServerStatusNew, "new"},
-		{ServerStatusStarting, "starting"},
-		{ServerStatusProvisioning, "provisioning"},
-		{ServerStatusRunning, "running"},
-		{ServerStatusPaused, "paused"},
-		{ServerStatusStopped, "stopped"},
-		{ServerStatusDeleting, "deleting"},
-		{ServerStatusArchived, "archived"},
-		{ServerStatusUnknown, "unknown"},
-		{ServerStatusFailed, "failed"},
+		{enums.ServerStatusNew, "new"},
+		{enums.ServerStatusStarting, "starting"},
+		{enums.ServerStatusProvisioning, "provisioning"},
+		{enums.ServerStatusRunning, "running"},
+		{enums.ServerStatusPaused, "paused"},
+		{enums.ServerStatusStopped, "stopped"},
+		{enums.ServerStatusDeleting, "deleting"},
+		{enums.ServerStatusArchived, "archived"},
+		{enums.ServerStatusUnknown, "unknown"},
+		{enums.ServerStatusFailed, "failed"},
 	}
 
 	for _, tt := range tests {
@@ -32,20 +34,20 @@ func TestServerStatus_String(t *testing.T) {
 
 func TestServerStatus_Label(t *testing.T) {
 	tests := []struct {
-		status   ServerStatus
+		status   enums.ServerStatus
 		expected string
 	}{
-		{ServerStatusNew, "Connecting"},
-		{ServerStatusStarting, "Starting"},
-		{ServerStatusProvisioning, "Provisioning"},
-		{ServerStatusRunning, "Running"},
-		{ServerStatusPaused, "Paused"},
-		{ServerStatusStopped, "Stopped"},
-		{ServerStatusDeleting, "Deleting"},
-		{ServerStatusArchived, "Archived"},
-		{ServerStatusUnknown, "Unknown"},
-		{ServerStatusFailed, "Failed"},
-		{ServerStatus("invalid"), "Unknown"},
+		{enums.ServerStatusNew, "Connecting"},
+		{enums.ServerStatusStarting, "Starting"},
+		{enums.ServerStatusProvisioning, "Provisioning"},
+		{enums.ServerStatusRunning, "Running"},
+		{enums.ServerStatusPaused, "Paused"},
+		{enums.ServerStatusStopped, "Stopped"},
+		{enums.ServerStatusDeleting, "Deleting"},
+		{enums.ServerStatusArchived, "Archived"},
+		{enums.ServerStatusUnknown, "Unknown"},
+		{enums.ServerStatusFailed, "Failed"},
+		{enums.ServerStatus("invalid"), "Unknown"},
 	}
 
 	for _, tt := range tests {
@@ -59,21 +61,21 @@ func TestServerStatus_Label(t *testing.T) {
 
 func TestServerStatus_IsValid(t *testing.T) {
 	tests := []struct {
-		status   ServerStatus
+		status   enums.ServerStatus
 		expected bool
 	}{
-		{ServerStatusNew, true},
-		{ServerStatusStarting, true},
-		{ServerStatusProvisioning, true},
-		{ServerStatusRunning, true},
-		{ServerStatusPaused, true},
-		{ServerStatusStopped, true},
-		{ServerStatusDeleting, true},
-		{ServerStatusArchived, true},
-		{ServerStatusUnknown, true},
-		{ServerStatusFailed, true},
-		{ServerStatus("invalid"), false},
-		{ServerStatus(""), false},
+		{enums.ServerStatusNew, true},
+		{enums.ServerStatusStarting, true},
+		{enums.ServerStatusProvisioning, true},
+		{enums.ServerStatusRunning, true},
+		{enums.ServerStatusPaused, true},
+		{enums.ServerStatusStopped, true},
+		{enums.ServerStatusDeleting, true},
+		{enums.ServerStatusArchived, true},
+		{enums.ServerStatusUnknown, true},
+		{enums.ServerStatusFailed, true},
+		{enums.ServerStatus("invalid"), false},
+		{enums.ServerStatus(""), false},
 	}
 
 	for _, tt := range tests {
@@ -87,16 +89,16 @@ func TestServerStatus_IsValid(t *testing.T) {
 
 func TestServerStatus_IsActive(t *testing.T) {
 	tests := []struct {
-		status   ServerStatus
+		status   enums.ServerStatus
 		expected bool
 	}{
-		{ServerStatusRunning, true},
-		{ServerStatusProvisioning, true},
-		{ServerStatusStarting, true},
-		{ServerStatusNew, false},
-		{ServerStatusPaused, false},
-		{ServerStatusStopped, false},
-		{ServerStatusArchived, false},
+		{enums.ServerStatusRunning, true},
+		{enums.ServerStatusProvisioning, true},
+		{enums.ServerStatusStarting, true},
+		{enums.ServerStatusNew, false},
+		{enums.ServerStatusPaused, false},
+		{enums.ServerStatusStopped, false},
+		{enums.ServerStatusArchived, false},
 	}
 
 	for _, tt := range tests {
@@ -110,14 +112,14 @@ func TestServerStatus_IsActive(t *testing.T) {
 
 func TestServerStatus_IsTerminal(t *testing.T) {
 	tests := []struct {
-		status   ServerStatus
+		status   enums.ServerStatus
 		expected bool
 	}{
-		{ServerStatusFailed, true},
-		{ServerStatusArchived, true},
-		{ServerStatusDeleting, true},
-		{ServerStatusRunning, false},
-		{ServerStatusNew, false},
+		{enums.ServerStatusFailed, true},
+		{enums.ServerStatusArchived, true},
+		{enums.ServerStatusDeleting, true},
+		{enums.ServerStatusRunning, false},
+		{enums.ServerStatusNew, false},
 	}
 
 	for _, tt := range tests {
@@ -130,26 +132,26 @@ func TestServerStatus_IsTerminal(t *testing.T) {
 }
 
 func TestServerStatus_Scan(t *testing.T) {
-	var ss ServerStatus
+	var ss enums.ServerStatus
 
 	if err := ss.Scan("running"); err != nil {
 		t.Errorf("Scan failed: %v", err)
 	}
-	if ss != ServerStatusRunning {
+	if ss != enums.ServerStatusRunning {
 		t.Errorf("Expected ServerStatusRunning, got %v", ss)
 	}
 
 	if err := ss.Scan([]byte("provisioning")); err != nil {
 		t.Errorf("Scan bytes failed: %v", err)
 	}
-	if ss != ServerStatusProvisioning {
+	if ss != enums.ServerStatusProvisioning {
 		t.Errorf("Expected ServerStatusProvisioning, got %v", ss)
 	}
 
 	if err := ss.Scan(nil); err != nil {
 		t.Errorf("Scan nil failed: %v", err)
 	}
-	if ss != ServerStatusUnknown {
+	if ss != enums.ServerStatusUnknown {
 		t.Errorf("Expected ServerStatusUnknown for nil, got %v", ss)
 	}
 
@@ -159,7 +161,7 @@ func TestServerStatus_Scan(t *testing.T) {
 }
 
 func TestServerStatus_Value(t *testing.T) {
-	ss := ServerStatusRunning
+	ss := enums.ServerStatusRunning
 	v, err := ss.Value()
 	if err != nil {
 		t.Errorf("Value failed: %v", err)
@@ -172,19 +174,19 @@ func TestServerStatus_Value(t *testing.T) {
 func TestParseServerStatus(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected ServerStatus
+		expected enums.ServerStatus
 		hasError bool
 	}{
-		{"running", ServerStatusRunning, false},
-		{"new", ServerStatusNew, false},
-		{"failed", ServerStatusFailed, false},
-		{"invalid", ServerStatusUnknown, true},
-		{"", ServerStatusUnknown, true},
+		{"running", enums.ServerStatusRunning, false},
+		{"new", enums.ServerStatusNew, false},
+		{"failed", enums.ServerStatusFailed, false},
+		{"invalid", enums.ServerStatusUnknown, true},
+		{"", enums.ServerStatusUnknown, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := ParseServerStatus(tt.input)
+			got, err := enums.ParseServerStatus(tt.input)
 			if (err != nil) != tt.hasError {
 				t.Errorf("ParseServerStatus() error = %v, wantError %v", err, tt.hasError)
 				return
@@ -197,7 +199,7 @@ func TestParseServerStatus(t *testing.T) {
 }
 
 func TestAllServerStatuses(t *testing.T) {
-	statuses := AllServerStatuses()
+	statuses := enums.AllServerStatuses()
 	if len(statuses) != 10 {
 		t.Errorf("Expected 10 server statuses, got %d", len(statuses))
 	}
@@ -205,11 +207,11 @@ func TestAllServerStatuses(t *testing.T) {
 
 func TestServerType_String(t *testing.T) {
 	tests := []struct {
-		serverType ServerType
+		serverType enums.ServerType
 		expected   string
 	}{
-		{ServerTypePhp, "php"},
-		{ServerTypeDatabase, "database"},
+		{enums.ServerTypePhp, "php"},
+		{enums.ServerTypeDatabase, "database"},
 	}
 
 	for _, tt := range tests {
@@ -223,12 +225,12 @@ func TestServerType_String(t *testing.T) {
 
 func TestServerType_Label(t *testing.T) {
 	tests := []struct {
-		serverType ServerType
+		serverType enums.ServerType
 		expected   string
 	}{
-		{ServerTypePhp, "PHP Application Server"},
-		{ServerTypeDatabase, "Database Server"},
-		{ServerType("invalid"), "Unknown"},
+		{enums.ServerTypePhp, "PHP Application Server"},
+		{enums.ServerTypeDatabase, "Database Server"},
+		{enums.ServerType("invalid"), "Unknown"},
 	}
 
 	for _, tt := range tests {
@@ -242,12 +244,12 @@ func TestServerType_Label(t *testing.T) {
 
 func TestServerType_IsValid(t *testing.T) {
 	tests := []struct {
-		serverType ServerType
+		serverType enums.ServerType
 		expected   bool
 	}{
-		{ServerTypePhp, true},
-		{ServerTypeDatabase, true},
-		{ServerType("invalid"), false},
+		{enums.ServerTypePhp, true},
+		{enums.ServerTypeDatabase, true},
+		{enums.ServerType("invalid"), false},
 	}
 
 	for _, tt := range tests {
@@ -260,14 +262,14 @@ func TestServerType_IsValid(t *testing.T) {
 }
 
 func TestServerType_GetFeatures(t *testing.T) {
-	phpFeatures := ServerTypePhp.GetFeatures()
+	phpFeatures := enums.ServerTypePhp.GetFeatures()
 	if len(phpFeatures) == 0 {
 		t.Error("Expected PHP server to have features")
 	}
 
 	hasPhpManagement := false
 	for _, f := range phpFeatures {
-		if f == ServerFeaturePhpManagement {
+		if f == enums.ServerFeaturePhpManagement {
 			hasPhpManagement = true
 			break
 		}
@@ -276,47 +278,47 @@ func TestServerType_GetFeatures(t *testing.T) {
 		t.Error("Expected PHP server to have PHP management feature")
 	}
 
-	dbFeatures := ServerTypeDatabase.GetFeatures()
+	dbFeatures := enums.ServerTypeDatabase.GetFeatures()
 	if len(dbFeatures) == 0 {
 		t.Error("Expected Database server to have features")
 	}
 }
 
 func TestServerType_HasFeature(t *testing.T) {
-	if !ServerTypePhp.HasFeature(ServerFeaturePhpManagement) {
+	if !enums.ServerTypePhp.HasFeature(enums.ServerFeaturePhpManagement) {
 		t.Error("Expected PHP server to have PHP management feature")
 	}
-	if !ServerTypePhp.HasFeature(ServerFeatureSites) {
+	if !enums.ServerTypePhp.HasFeature(enums.ServerFeatureSites) {
 		t.Error("Expected PHP server to have sites feature")
 	}
-	if ServerTypeDatabase.HasFeature(ServerFeaturePhpManagement) {
+	if enums.ServerTypeDatabase.HasFeature(enums.ServerFeaturePhpManagement) {
 		t.Error("Expected Database server to not have PHP management feature")
 	}
 }
 
 func TestServerType_GetProcessManager(t *testing.T) {
-	if pm := ServerTypePhp.GetProcessManager(); pm != ProcessManagerSupervisor {
+	if pm := enums.ServerTypePhp.GetProcessManager(); pm != enums.ProcessManagerSupervisor {
 		t.Errorf("Expected PHP server to use Supervisor, got %v", pm)
 	}
-	if pm := ServerTypeDatabase.GetProcessManager(); pm != ProcessManagerNone {
+	if pm := enums.ServerTypeDatabase.GetProcessManager(); pm != enums.ProcessManagerNone {
 		t.Errorf("Expected Database server to have no process manager, got %v", pm)
 	}
 }
 
 func TestServerType_Scan(t *testing.T) {
-	var st ServerType
+	var st enums.ServerType
 
 	if err := st.Scan("php"); err != nil {
 		t.Errorf("Scan failed: %v", err)
 	}
-	if st != ServerTypePhp {
+	if st != enums.ServerTypePhp {
 		t.Errorf("Expected ServerTypePhp, got %v", st)
 	}
 
 	if err := st.Scan([]byte("database")); err != nil {
 		t.Errorf("Scan bytes failed: %v", err)
 	}
-	if st != ServerTypeDatabase {
+	if st != enums.ServerTypeDatabase {
 		t.Errorf("Expected ServerTypeDatabase, got %v", st)
 	}
 
@@ -330,7 +332,7 @@ func TestServerType_Scan(t *testing.T) {
 }
 
 func TestServerType_Value(t *testing.T) {
-	st := ServerTypePhp
+	st := enums.ServerTypePhp
 	v, err := st.Value()
 	if err != nil {
 		t.Errorf("Value failed: %v", err)
@@ -343,17 +345,17 @@ func TestServerType_Value(t *testing.T) {
 func TestParseServerType(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected ServerType
+		expected enums.ServerType
 		hasError bool
 	}{
-		{"php", ServerTypePhp, false},
-		{"database", ServerTypeDatabase, false},
-		{"invalid", ServerTypePhp, true},
+		{"php", enums.ServerTypePhp, false},
+		{"database", enums.ServerTypeDatabase, false},
+		{"invalid", enums.ServerTypePhp, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := ParseServerType(tt.input)
+			got, err := enums.ParseServerType(tt.input)
 			if (err != nil) != tt.hasError {
 				t.Errorf("ParseServerType() error = %v, wantError %v", err, tt.hasError)
 				return
@@ -366,7 +368,7 @@ func TestParseServerType(t *testing.T) {
 }
 
 func TestAllServerTypes(t *testing.T) {
-	types := AllServerTypes()
+	types := enums.AllServerTypes()
 	if len(types) != 2 {
 		t.Errorf("Expected 2 server types, got %d", len(types))
 	}
@@ -374,15 +376,15 @@ func TestAllServerTypes(t *testing.T) {
 
 func TestServerProvider_String(t *testing.T) {
 	tests := []struct {
-		provider ServerProvider
+		provider enums.ServerProvider
 		expected string
 	}{
-		{ProviderDigitalOcean, "digitalocean"},
-		{ProviderHetzner, "hetzner"},
-		{ProviderLinode, "linode"},
-		{ProviderVultr, "vultr"},
-		{ProviderAWS, "aws"},
-		{ProviderCustom, "custom_server"},
+		{enums.ProviderDigitalOcean, "digitalocean"},
+		{enums.ProviderHetzner, "hetzner"},
+		{enums.ProviderLinode, "linode"},
+		{enums.ProviderVultr, "vultr"},
+		{enums.ProviderAWS, "aws"},
+		{enums.ProviderCustom, "custom_server"},
 	}
 
 	for _, tt := range tests {
@@ -396,16 +398,16 @@ func TestServerProvider_String(t *testing.T) {
 
 func TestServerProvider_Label(t *testing.T) {
 	tests := []struct {
-		provider ServerProvider
+		provider enums.ServerProvider
 		expected string
 	}{
-		{ProviderDigitalOcean, "DigitalOcean"},
-		{ProviderHetzner, "Hetzner Cloud"},
-		{ProviderLinode, "Linode"},
-		{ProviderVultr, "Vultr"},
-		{ProviderAWS, "AWS"},
-		{ProviderCustom, "Custom"},
-		{ServerProvider("invalid"), "Unknown"},
+		{enums.ProviderDigitalOcean, "DigitalOcean"},
+		{enums.ProviderHetzner, "Hetzner Cloud"},
+		{enums.ProviderLinode, "Linode"},
+		{enums.ProviderVultr, "Vultr"},
+		{enums.ProviderAWS, "AWS"},
+		{enums.ProviderCustom, "Custom"},
+		{enums.ServerProvider("invalid"), "Unknown"},
 	}
 
 	for _, tt := range tests {
@@ -419,16 +421,16 @@ func TestServerProvider_Label(t *testing.T) {
 
 func TestServerProvider_IsValid(t *testing.T) {
 	tests := []struct {
-		provider ServerProvider
+		provider enums.ServerProvider
 		expected bool
 	}{
-		{ProviderDigitalOcean, true},
-		{ProviderHetzner, true},
-		{ProviderLinode, true},
-		{ProviderVultr, true},
-		{ProviderAWS, true},
-		{ProviderCustom, true},
-		{ServerProvider("invalid"), false},
+		{enums.ProviderDigitalOcean, true},
+		{enums.ProviderHetzner, true},
+		{enums.ProviderLinode, true},
+		{enums.ProviderVultr, true},
+		{enums.ProviderAWS, true},
+		{enums.ProviderCustom, true},
+		{enums.ServerProvider("invalid"), false},
 	}
 
 	for _, tt := range tests {
@@ -442,12 +444,12 @@ func TestServerProvider_IsValid(t *testing.T) {
 
 func TestServerProvider_IsCloud(t *testing.T) {
 	tests := []struct {
-		provider ServerProvider
+		provider enums.ServerProvider
 		expected bool
 	}{
-		{ProviderDigitalOcean, true},
-		{ProviderHetzner, true},
-		{ProviderCustom, false},
+		{enums.ProviderDigitalOcean, true},
+		{enums.ProviderHetzner, true},
+		{enums.ProviderCustom, false},
 	}
 
 	for _, tt := range tests {
@@ -460,28 +462,28 @@ func TestServerProvider_IsCloud(t *testing.T) {
 }
 
 func TestServerProvider_GetDefaultUsername(t *testing.T) {
-	if username := ProviderAWS.GetDefaultUsername(OSUbuntu24); username != "ubuntu" {
+	if username := enums.ProviderAWS.GetDefaultUsername(enums.OSUbuntu24); username != "ubuntu" {
 		t.Errorf("Expected AWS default username 'ubuntu', got %v", username)
 	}
-	if username := ProviderDigitalOcean.GetDefaultUsername(OSUbuntu24); username != "root" {
+	if username := enums.ProviderDigitalOcean.GetDefaultUsername(enums.OSUbuntu24); username != "root" {
 		t.Errorf("Expected DigitalOcean default username 'root', got %v", username)
 	}
 }
 
 func TestServerProvider_Scan(t *testing.T) {
-	var sp ServerProvider
+	var sp enums.ServerProvider
 
 	if err := sp.Scan("digitalocean"); err != nil {
 		t.Errorf("Scan failed: %v", err)
 	}
-	if sp != ProviderDigitalOcean {
+	if sp != enums.ProviderDigitalOcean {
 		t.Errorf("Expected ProviderDigitalOcean, got %v", sp)
 	}
 
 	if err := sp.Scan([]byte("hetzner")); err != nil {
 		t.Errorf("Scan bytes failed: %v", err)
 	}
-	if sp != ProviderHetzner {
+	if sp != enums.ProviderHetzner {
 		t.Errorf("Expected ProviderHetzner, got %v", sp)
 	}
 
@@ -495,7 +497,7 @@ func TestServerProvider_Scan(t *testing.T) {
 }
 
 func TestServerProvider_Value(t *testing.T) {
-	sp := ProviderDigitalOcean
+	sp := enums.ProviderDigitalOcean
 	v, err := sp.Value()
 	if err != nil {
 		t.Errorf("Value failed: %v", err)
@@ -508,18 +510,18 @@ func TestServerProvider_Value(t *testing.T) {
 func TestParseServerProvider(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected ServerProvider
+		expected enums.ServerProvider
 		hasError bool
 	}{
-		{"digitalocean", ProviderDigitalOcean, false},
-		{"hetzner", ProviderHetzner, false},
-		{"custom_server", ProviderCustom, false},
-		{"invalid", ProviderCustom, true},
+		{"digitalocean", enums.ProviderDigitalOcean, false},
+		{"hetzner", enums.ProviderHetzner, false},
+		{"custom_server", enums.ProviderCustom, false},
+		{"invalid", enums.ProviderCustom, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := ParseServerProvider(tt.input)
+			got, err := enums.ParseServerProvider(tt.input)
 			if (err != nil) != tt.hasError {
 				t.Errorf("ParseServerProvider() error = %v, wantError %v", err, tt.hasError)
 				return
@@ -532,7 +534,7 @@ func TestParseServerProvider(t *testing.T) {
 }
 
 func TestAllServerProviders(t *testing.T) {
-	providers := AllServerProviders()
+	providers := enums.AllServerProviders()
 	if len(providers) != 6 {
 		t.Errorf("Expected 6 server providers, got %d", len(providers))
 	}
@@ -540,12 +542,12 @@ func TestAllServerProviders(t *testing.T) {
 
 func TestOperatingSystem_String(t *testing.T) {
 	tests := []struct {
-		os       OperatingSystem
+		os       enums.OperatingSystem
 		expected string
 	}{
-		{OSUbuntu20, "ubuntu_20"},
-		{OSUbuntu22, "ubuntu_22"},
-		{OSUbuntu24, "ubuntu_24"},
+		{enums.OSUbuntu20, "ubuntu_20"},
+		{enums.OSUbuntu22, "ubuntu_22"},
+		{enums.OSUbuntu24, "ubuntu_24"},
 	}
 
 	for _, tt := range tests {
@@ -559,13 +561,13 @@ func TestOperatingSystem_String(t *testing.T) {
 
 func TestOperatingSystem_Label(t *testing.T) {
 	tests := []struct {
-		os       OperatingSystem
+		os       enums.OperatingSystem
 		expected string
 	}{
-		{OSUbuntu20, "Ubuntu 20.04"},
-		{OSUbuntu22, "Ubuntu 22.04"},
-		{OSUbuntu24, "Ubuntu 24.04"},
-		{OperatingSystem("invalid"), "Unknown"},
+		{enums.OSUbuntu20, "Ubuntu 20.04"},
+		{enums.OSUbuntu22, "Ubuntu 22.04"},
+		{enums.OSUbuntu24, "Ubuntu 24.04"},
+		{enums.OperatingSystem("invalid"), "Unknown"},
 	}
 
 	for _, tt := range tests {
@@ -579,13 +581,13 @@ func TestOperatingSystem_Label(t *testing.T) {
 
 func TestOperatingSystem_IsValid(t *testing.T) {
 	tests := []struct {
-		os       OperatingSystem
+		os       enums.OperatingSystem
 		expected bool
 	}{
-		{OSUbuntu20, true},
-		{OSUbuntu22, true},
-		{OSUbuntu24, true},
-		{OperatingSystem("invalid"), false},
+		{enums.OSUbuntu20, true},
+		{enums.OSUbuntu22, true},
+		{enums.OSUbuntu24, true},
+		{enums.OperatingSystem("invalid"), false},
 	}
 
 	for _, tt := range tests {
@@ -598,19 +600,19 @@ func TestOperatingSystem_IsValid(t *testing.T) {
 }
 
 func TestOperatingSystem_Scan(t *testing.T) {
-	var os OperatingSystem
+	var os enums.OperatingSystem
 
 	if err := os.Scan("ubuntu_24"); err != nil {
 		t.Errorf("Scan failed: %v", err)
 	}
-	if os != OSUbuntu24 {
+	if os != enums.OSUbuntu24 {
 		t.Errorf("Expected OSUbuntu24, got %v", os)
 	}
 
 	if err := os.Scan([]byte("ubuntu_22")); err != nil {
 		t.Errorf("Scan bytes failed: %v", err)
 	}
-	if os != OSUbuntu22 {
+	if os != enums.OSUbuntu22 {
 		t.Errorf("Expected OSUbuntu22, got %v", os)
 	}
 
@@ -624,7 +626,7 @@ func TestOperatingSystem_Scan(t *testing.T) {
 }
 
 func TestOperatingSystem_Value(t *testing.T) {
-	os := OSUbuntu24
+	os := enums.OSUbuntu24
 	v, err := os.Value()
 	if err != nil {
 		t.Errorf("Value failed: %v", err)
@@ -637,18 +639,18 @@ func TestOperatingSystem_Value(t *testing.T) {
 func TestParseOperatingSystem(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected OperatingSystem
+		expected enums.OperatingSystem
 		hasError bool
 	}{
-		{"ubuntu_24", OSUbuntu24, false},
-		{"ubuntu_22", OSUbuntu22, false},
-		{"ubuntu_20", OSUbuntu20, false},
-		{"invalid", OSUbuntu24, true},
+		{"ubuntu_24", enums.OSUbuntu24, false},
+		{"ubuntu_22", enums.OSUbuntu22, false},
+		{"ubuntu_20", enums.OSUbuntu20, false},
+		{"invalid", enums.OSUbuntu24, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := ParseOperatingSystem(tt.input)
+			got, err := enums.ParseOperatingSystem(tt.input)
 			if (err != nil) != tt.hasError {
 				t.Errorf("ParseOperatingSystem() error = %v, wantError %v", err, tt.hasError)
 				return
@@ -661,7 +663,7 @@ func TestParseOperatingSystem(t *testing.T) {
 }
 
 func TestAllOperatingSystems(t *testing.T) {
-	oses := AllOperatingSystems()
+	oses := enums.AllOperatingSystems()
 	if len(oses) != 3 {
 		t.Errorf("Expected 3 operating systems, got %d", len(oses))
 	}
@@ -669,15 +671,15 @@ func TestAllOperatingSystems(t *testing.T) {
 
 func TestServiceType_String(t *testing.T) {
 	tests := []struct {
-		serviceType ServiceType
+		serviceType enums.ServiceType
 		expected    string
 	}{
-		{ServiceTypePhp, "php"},
-		{ServiceTypeMySql, "mysql"},
-		{ServiceTypePostgreSql, "postgresql"},
-		{ServiceTypeSupervisor, "process_manager"},
-		{ServiceTypeRedis, "memory_database"},
-		{ServiceTypeCaddy, "webserver"},
+		{enums.ServiceTypePhp, "php"},
+		{enums.ServiceTypeMySql, "mysql"},
+		{enums.ServiceTypePostgreSql, "postgresql"},
+		{enums.ServiceTypeSupervisor, "process_manager"},
+		{enums.ServiceTypeRedis, "memory_database"},
+		{enums.ServiceTypeCaddy, "webserver"},
 	}
 
 	for _, tt := range tests {
@@ -691,13 +693,13 @@ func TestServiceType_String(t *testing.T) {
 
 func TestServiceType_IsDatabase(t *testing.T) {
 	tests := []struct {
-		serviceType ServiceType
+		serviceType enums.ServiceType
 		expected    bool
 	}{
-		{ServiceTypeMySql, true},
-		{ServiceTypePostgreSql, true},
-		{ServiceTypePhp, false},
-		{ServiceTypeRedis, false},
+		{enums.ServiceTypeMySql, true},
+		{enums.ServiceTypePostgreSql, true},
+		{enums.ServiceTypePhp, false},
+		{enums.ServiceTypeRedis, false},
 	}
 
 	for _, tt := range tests {
@@ -710,37 +712,37 @@ func TestServiceType_IsDatabase(t *testing.T) {
 }
 
 func TestServiceType_GetDatabasePort(t *testing.T) {
-	if port := ServiceTypeMySql.GetDatabasePort(); port != 3306 {
+	if port := enums.ServiceTypeMySql.GetDatabasePort(); port != 3306 {
 		t.Errorf("Expected MySQL port 3306, got %d", port)
 	}
-	if port := ServiceTypePostgreSql.GetDatabasePort(); port != 5432 {
+	if port := enums.ServiceTypePostgreSql.GetDatabasePort(); port != 5432 {
 		t.Errorf("Expected PostgreSQL port 5432, got %d", port)
 	}
-	if port := ServiceTypePhp.GetDatabasePort(); port != 0 {
+	if port := enums.ServiceTypePhp.GetDatabasePort(); port != 0 {
 		t.Errorf("Expected PHP port 0, got %d", port)
 	}
 }
 
 func TestServiceType_GetDatabaseConnection(t *testing.T) {
-	if conn := ServiceTypeMySql.GetDatabaseConnection(); conn != "mysql" {
+	if conn := enums.ServiceTypeMySql.GetDatabaseConnection(); conn != "mysql" {
 		t.Errorf("Expected MySQL connection 'mysql', got %s", conn)
 	}
-	if conn := ServiceTypePostgreSql.GetDatabaseConnection(); conn != "pgsql" {
+	if conn := enums.ServiceTypePostgreSql.GetDatabaseConnection(); conn != "pgsql" {
 		t.Errorf("Expected PostgreSQL connection 'pgsql', got %s", conn)
 	}
 }
 
 func TestServiceStatus_String(t *testing.T) {
 	tests := []struct {
-		status   ServiceStatus
+		status   enums.ServiceStatus
 		expected string
 	}{
-		{ServiceStatusPending, "pending"},
-		{ServiceStatusInstalling, "installing"},
-		{ServiceStatusFailed, "failed"},
-		{ServiceStatusInstalled, "installed"},
-		{ServiceStatusStopped, "stopped"},
-		{ServiceStatusRunning, "running"},
+		{enums.ServiceStatusPending, "pending"},
+		{enums.ServiceStatusInstalling, "installing"},
+		{enums.ServiceStatusFailed, "failed"},
+		{enums.ServiceStatusInstalled, "installed"},
+		{enums.ServiceStatusStopped, "stopped"},
+		{enums.ServiceStatusRunning, "running"},
 	}
 
 	for _, tt := range tests {
@@ -754,13 +756,13 @@ func TestServiceStatus_String(t *testing.T) {
 
 func TestServiceStatus_IsActive(t *testing.T) {
 	tests := []struct {
-		status   ServiceStatus
+		status   enums.ServiceStatus
 		expected bool
 	}{
-		{ServiceStatusRunning, true},
-		{ServiceStatusInstalled, true},
-		{ServiceStatusPending, false},
-		{ServiceStatusFailed, false},
+		{enums.ServiceStatusRunning, true},
+		{enums.ServiceStatusInstalled, true},
+		{enums.ServiceStatusPending, false},
+		{enums.ServiceStatusFailed, false},
 	}
 
 	for _, tt := range tests {
@@ -774,12 +776,12 @@ func TestServiceStatus_IsActive(t *testing.T) {
 
 func TestRuleAction_String(t *testing.T) {
 	tests := []struct {
-		action   RuleAction
+		action   enums.RuleAction
 		expected string
 	}{
-		{RuleActionAllow, "allow"},
-		{RuleActionDeny, "deny"},
-		{RuleActionReject, "reject"},
+		{enums.RuleActionAllow, "allow"},
+		{enums.RuleActionDeny, "deny"},
+		{enums.RuleActionReject, "reject"},
 	}
 
 	for _, tt := range tests {
@@ -793,13 +795,13 @@ func TestRuleAction_String(t *testing.T) {
 
 func TestRuleAction_Label(t *testing.T) {
 	tests := []struct {
-		action   RuleAction
+		action   enums.RuleAction
 		expected string
 	}{
-		{RuleActionAllow, "Allow"},
-		{RuleActionDeny, "Deny"},
-		{RuleActionReject, "Reject"},
-		{RuleAction("invalid"), "Unknown"},
+		{enums.RuleActionAllow, "Allow"},
+		{enums.RuleActionDeny, "Deny"},
+		{enums.RuleActionReject, "Reject"},
+		{enums.RuleAction("invalid"), "Unknown"},
 	}
 
 	for _, tt := range tests {
@@ -814,18 +816,18 @@ func TestRuleAction_Label(t *testing.T) {
 func TestParseRuleAction(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected RuleAction
+		expected enums.RuleAction
 		hasError bool
 	}{
-		{"allow", RuleActionAllow, false},
-		{"deny", RuleActionDeny, false},
-		{"reject", RuleActionReject, false},
-		{"invalid", RuleActionAllow, true},
+		{"allow", enums.RuleActionAllow, false},
+		{"deny", enums.RuleActionDeny, false},
+		{"reject", enums.RuleActionReject, false},
+		{"invalid", enums.RuleActionAllow, true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := ParseRuleAction(tt.input)
+			got, err := enums.ParseRuleAction(tt.input)
 			if (err != nil) != tt.hasError {
 				t.Errorf("ParseRuleAction() error = %v, wantError %v", err, tt.hasError)
 				return
@@ -838,7 +840,7 @@ func TestParseRuleAction(t *testing.T) {
 }
 
 func TestAllRuleActions(t *testing.T) {
-	actions := AllRuleActions()
+	actions := enums.AllRuleActions()
 	if len(actions) != 3 {
 		t.Errorf("Expected 3 rule actions, got %d", len(actions))
 	}
@@ -846,12 +848,12 @@ func TestAllRuleActions(t *testing.T) {
 
 func TestSoftware_String(t *testing.T) {
 	tests := []struct {
-		software Software
+		software enums.Software
 		expected string
 	}{
-		{SoftwareCaddy2, "caddy2"},
-		{SoftwarePhp84, "php84"},
-		{SoftwareMySql80, "mysql80"},
+		{enums.SoftwareCaddy2, "caddy2"},
+		{enums.SoftwarePhp84, "php84"},
+		{enums.SoftwareMySql80, "mysql80"},
 	}
 
 	for _, tt := range tests {
@@ -865,14 +867,14 @@ func TestSoftware_String(t *testing.T) {
 
 func TestSoftware_Label(t *testing.T) {
 	tests := []struct {
-		software Software
+		software enums.Software
 		expected string
 	}{
-		{SoftwareCaddy2, "Caddy 2"},
-		{SoftwarePhp84, "PHP 8.4"},
-		{SoftwareMySql80, "MySQL 8.0"},
-		{SoftwareRedis, "Redis"},
-		{Software("invalid"), "Unknown"},
+		{enums.SoftwareCaddy2, "Caddy 2"},
+		{enums.SoftwarePhp84, "PHP 8.4"},
+		{enums.SoftwareMySql80, "MySQL 8.0"},
+		{enums.SoftwareRedis, "Redis"},
+		{enums.Software("invalid"), "Unknown"},
 	}
 
 	for _, tt := range tests {
@@ -886,13 +888,13 @@ func TestSoftware_Label(t *testing.T) {
 
 func TestSoftware_GetVersion(t *testing.T) {
 	tests := []struct {
-		software Software
+		software enums.Software
 		expected string
 	}{
-		{SoftwarePhp84, "8.4"},
-		{SoftwarePhp74, "7.4"},
-		{SoftwareMySql80, "8.0"},
-		{SoftwareRedis, "latest"},
+		{enums.SoftwarePhp84, "8.4"},
+		{enums.SoftwarePhp74, "7.4"},
+		{enums.SoftwareMySql80, "8.0"},
+		{enums.SoftwareRedis, "latest"},
 	}
 
 	for _, tt := range tests {
@@ -906,15 +908,15 @@ func TestSoftware_GetVersion(t *testing.T) {
 
 func TestSoftware_GetServiceType(t *testing.T) {
 	tests := []struct {
-		software    Software
-		serviceType ServiceType
+		software    enums.Software
+		serviceType enums.ServiceType
 	}{
-		{SoftwarePhp84, ServiceTypePhp},
-		{SoftwarePhp74, ServiceTypePhp},
-		{SoftwareMySql80, ServiceTypeMySql},
-		{SoftwarePostgreSql16, ServiceTypePostgreSql},
-		{SoftwareRedis, ServiceTypeRedis},
-		{SoftwareCaddy2, ServiceTypeCaddy},
+		{enums.SoftwarePhp84, enums.ServiceTypePhp},
+		{enums.SoftwarePhp74, enums.ServiceTypePhp},
+		{enums.SoftwareMySql80, enums.ServiceTypeMySql},
+		{enums.SoftwarePostgreSql16, enums.ServiceTypePostgreSql},
+		{enums.SoftwareRedis, enums.ServiceTypeRedis},
+		{enums.SoftwareCaddy2, enums.ServiceTypeCaddy},
 	}
 
 	for _, tt := range tests {
@@ -928,14 +930,14 @@ func TestSoftware_GetServiceType(t *testing.T) {
 
 func TestSoftware_IsPhp(t *testing.T) {
 	tests := []struct {
-		software Software
+		software enums.Software
 		expected bool
 	}{
-		{SoftwarePhp84, true},
-		{SoftwarePhp74, true},
-		{SoftwarePhp56, true},
-		{SoftwareMySql80, false},
-		{SoftwareRedis, false},
+		{enums.SoftwarePhp84, true},
+		{enums.SoftwarePhp74, true},
+		{enums.SoftwarePhp56, true},
+		{enums.SoftwareMySql80, false},
+		{enums.SoftwareRedis, false},
 	}
 
 	for _, tt := range tests {
@@ -949,13 +951,13 @@ func TestSoftware_IsPhp(t *testing.T) {
 
 func TestSoftware_IsDatabase(t *testing.T) {
 	tests := []struct {
-		software Software
+		software enums.Software
 		expected bool
 	}{
-		{SoftwareMySql80, true},
-		{SoftwarePostgreSql16, true},
-		{SoftwarePhp84, false},
-		{SoftwareRedis, false},
+		{enums.SoftwareMySql80, true},
+		{enums.SoftwarePostgreSql16, true},
+		{enums.SoftwarePhp84, false},
+		{enums.SoftwareRedis, false},
 	}
 
 	for _, tt := range tests {
@@ -969,13 +971,13 @@ func TestSoftware_IsDatabase(t *testing.T) {
 
 func TestSoftware_Group(t *testing.T) {
 	tests := []struct {
-		software Software
+		software enums.Software
 		expected string
 	}{
-		{SoftwarePhp84, "php"},
-		{SoftwareMySql80, "mysql"},
-		{SoftwarePostgreSql16, "postgresql"},
-		{SoftwareRedis, "redis"},
+		{enums.SoftwarePhp84, "php"},
+		{enums.SoftwareMySql80, "mysql"},
+		{enums.SoftwarePostgreSql16, "postgresql"},
+		{enums.SoftwareRedis, "redis"},
 	}
 
 	for _, tt := range tests {
@@ -990,18 +992,18 @@ func TestSoftware_Group(t *testing.T) {
 func TestParseSoftware(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected Software
+		expected enums.Software
 		hasError bool
 	}{
-		{"php84", SoftwarePhp84, false},
-		{"mysql80", SoftwareMySql80, false},
-		{"redis", SoftwareRedis, false},
-		{"invalid", Software(""), true},
+		{"php84", enums.SoftwarePhp84, false},
+		{"mysql80", enums.SoftwareMySql80, false},
+		{"redis", enums.SoftwareRedis, false},
+		{"invalid", enums.Software(""), true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := ParseSoftware(tt.input)
+			got, err := enums.ParseSoftware(tt.input)
 			if (err != nil) != tt.hasError {
 				t.Errorf("ParseSoftware() error = %v, wantError %v", err, tt.hasError)
 				return
@@ -1014,7 +1016,7 @@ func TestParseSoftware(t *testing.T) {
 }
 
 func TestAllPhpVersions(t *testing.T) {
-	versions := AllPhpVersions()
+	versions := enums.AllPhpVersions()
 	if len(versions) == 0 {
 		t.Error("Expected at least one PHP version")
 	}
@@ -1026,26 +1028,25 @@ func TestAllPhpVersions(t *testing.T) {
 }
 
 func TestAllDatabaseTypes(t *testing.T) {
-	types := AllDatabaseTypes()
+	types := enums.AllDatabaseTypes()
 	if len(types) != 2 {
 		t.Errorf("Expected 2 database types, got %d", len(types))
 	}
-	for _, t := range types {
-		if !t.IsDatabase() {
-			// Note: can't use t.Errorf here since we shadowed t
-			panic("Expected database type")
+	for _, dbType := range types {
+		if !dbType.IsDatabase() {
+			t.Errorf("Expected database type, got %v", dbType)
 		}
 	}
 }
 
 func TestServerFeature_String(t *testing.T) {
 	tests := []struct {
-		feature  ServerFeature
+		feature  enums.ServerFeature
 		expected string
 	}{
-		{ServerFeatureSites, "sites"},
-		{ServerFeaturePhpManagement, "php_management"},
-		{ServerFeatureDatabaseManagement, "database_management"},
+		{enums.ServerFeatureSites, "sites"},
+		{enums.ServerFeaturePhpManagement, "php_management"},
+		{enums.ServerFeatureDatabaseManagement, "database_management"},
 	}
 
 	for _, tt := range tests {
@@ -1059,12 +1060,12 @@ func TestServerFeature_String(t *testing.T) {
 
 func TestServerFeature_NavigationKey(t *testing.T) {
 	tests := []struct {
-		feature  ServerFeature
+		feature  enums.ServerFeature
 		expected string
 	}{
-		{ServerFeatureSites, "sites"},
-		{ServerFeatureDatabaseManagement, "databases"},
-		{ServerFeaturePhpManagement, "php"},
+		{enums.ServerFeatureSites, "sites"},
+		{enums.ServerFeatureDatabaseManagement, "databases"},
+		{enums.ServerFeaturePhpManagement, "php"},
 	}
 
 	for _, tt := range tests {
@@ -1078,11 +1079,11 @@ func TestServerFeature_NavigationKey(t *testing.T) {
 
 func TestProcessManager_String(t *testing.T) {
 	tests := []struct {
-		pm       ProcessManager
+		pm       enums.ProcessManager
 		expected string
 	}{
-		{ProcessManagerSupervisor, "supervisor"},
-		{ProcessManagerNone, "none"},
+		{enums.ProcessManagerSupervisor, "supervisor"},
+		{enums.ProcessManagerNone, "none"},
 	}
 
 	for _, tt := range tests {
@@ -1095,24 +1096,24 @@ func TestProcessManager_String(t *testing.T) {
 }
 
 func TestProcessManager_ServiceName(t *testing.T) {
-	if name := ProcessManagerSupervisor.ServiceName(); name != "supervisor" {
+	if name := enums.ProcessManagerSupervisor.ServiceName(); name != "supervisor" {
 		t.Errorf("Expected 'supervisor', got %s", name)
 	}
-	if name := ProcessManagerNone.ServiceName(); name != "" {
+	if name := enums.ProcessManagerNone.ServiceName(); name != "" {
 		t.Errorf("Expected empty string, got %s", name)
 	}
 }
 
 func TestServiceOption_String(t *testing.T) {
 	tests := []struct {
-		option   ServiceOption
+		option   enums.ServiceOption
 		expected string
 	}{
-		{ServiceOptionStart, "start"},
-		{ServiceOptionStop, "stop"},
-		{ServiceOptionRestart, "restart"},
-		{ServiceOptionRemove, "remove"},
-		{ServiceOptionStatus, "status"},
+		{enums.ServiceOptionStart, "start"},
+		{enums.ServiceOptionStop, "stop"},
+		{enums.ServiceOptionRestart, "restart"},
+		{enums.ServiceOptionRemove, "remove"},
+		{enums.ServiceOptionStatus, "status"},
 	}
 
 	for _, tt := range tests {
@@ -1126,15 +1127,15 @@ func TestServiceOption_String(t *testing.T) {
 
 func TestServiceOption_Label(t *testing.T) {
 	tests := []struct {
-		option   ServiceOption
+		option   enums.ServiceOption
 		expected string
 	}{
-		{ServiceOptionStart, "Start"},
-		{ServiceOptionStop, "Stop"},
-		{ServiceOptionRestart, "Restart"},
-		{ServiceOptionRemove, "Remove"},
-		{ServiceOptionStatus, "Status"},
-		{ServiceOption("invalid"), "Unknown"},
+		{enums.ServiceOptionStart, "Start"},
+		{enums.ServiceOptionStop, "Stop"},
+		{enums.ServiceOptionRestart, "Restart"},
+		{enums.ServiceOptionRemove, "Remove"},
+		{enums.ServiceOptionStatus, "Status"},
+		{enums.ServiceOption("invalid"), "Unknown"},
 	}
 
 	for _, tt := range tests {
@@ -1149,20 +1150,20 @@ func TestServiceOption_Label(t *testing.T) {
 func TestParseServiceOption(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected ServiceOption
+		expected enums.ServiceOption
 		hasError bool
 	}{
-		{"start", ServiceOptionStart, false},
-		{"stop", ServiceOptionStop, false},
-		{"restart", ServiceOptionRestart, false},
-		{"remove", ServiceOptionRemove, false},
-		{"status", ServiceOptionStatus, false},
-		{"invalid", ServiceOption(""), true},
+		{"start", enums.ServiceOptionStart, false},
+		{"stop", enums.ServiceOptionStop, false},
+		{"restart", enums.ServiceOptionRestart, false},
+		{"remove", enums.ServiceOptionRemove, false},
+		{"status", enums.ServiceOptionStatus, false},
+		{"invalid", enums.ServiceOption(""), true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := ParseServiceOption(tt.input)
+			got, err := enums.ParseServiceOption(tt.input)
 			if (err != nil) != tt.hasError {
 				t.Errorf("ParseServiceOption() error = %v, wantError %v", err, tt.hasError)
 				return
@@ -1175,7 +1176,7 @@ func TestParseServiceOption(t *testing.T) {
 }
 
 func TestAllServiceOptions(t *testing.T) {
-	options := AllServiceOptions()
+	options := enums.AllServiceOptions()
 	if len(options) != 5 {
 		t.Errorf("Expected 5 service options, got %d", len(options))
 	}

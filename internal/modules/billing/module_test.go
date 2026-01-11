@@ -4,6 +4,8 @@ import (
 	"testing"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/kkz6/launch-go/internal/modules/billing/models"
+	"github.com/kkz6/launch-go/internal/modules/billing/providers"
 	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -13,7 +15,7 @@ import (
 )
 
 func TestDefaultPlans(t *testing.T) {
-	plans := DefaultPlans()
+	plans := models.DefaultPlans()
 
 	assert.Len(t, plans, 3)
 
@@ -58,9 +60,9 @@ func TestNewModule(t *testing.T) {
 			DB:                   db,
 			Logger:               &log,
 			SubscriptionsEnabled: true,
-			Plans:                DefaultPlans(),
+			Plans:                models.DefaultPlans(),
 			WebhookSecret:        "test_secret",
-			LemonSqueezy: &LemonSqueezyConfig{
+			LemonSqueezy: &providers.LemonSqueezyConfig{
 				APIKey:  "test_key",
 				StoreID: 123,
 			},
@@ -79,7 +81,7 @@ func TestNewModule(t *testing.T) {
 			DB:                   db,
 			Logger:               &log,
 			SubscriptionsEnabled: true,
-			Plans:                DefaultPlans(),
+			Plans:                models.DefaultPlans(),
 			WebhookSecret:        "test_secret",
 		}
 
@@ -94,9 +96,9 @@ func TestNewModule(t *testing.T) {
 			DB:                   db,
 			Logger:               &log,
 			SubscriptionsEnabled: true,
-			Plans:                DefaultPlans(),
+			Plans:                models.DefaultPlans(),
 			WebhookSecret:        "test_secret",
-			LemonSqueezy: &LemonSqueezyConfig{
+			LemonSqueezy: &providers.LemonSqueezyConfig{
 				APIKey:  "",
 				StoreID: 123,
 			},
@@ -120,7 +122,7 @@ func TestModule_RegisterRoutes(t *testing.T) {
 		DB:                   db,
 		Logger:               &log,
 		SubscriptionsEnabled: true,
-		Plans:                DefaultPlans(),
+		Plans:                models.DefaultPlans(),
 		WebhookSecret:        "test_secret",
 	}
 
@@ -147,7 +149,7 @@ func TestModule_Migrate(t *testing.T) {
 		DB:                   db,
 		Logger:               &log,
 		SubscriptionsEnabled: true,
-		Plans:                DefaultPlans(),
+		Plans:                models.DefaultPlans(),
 		WebhookSecret:        "test_secret",
 	}
 
@@ -157,9 +159,9 @@ func TestModule_Migrate(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Verify tables exist
-	assert.True(t, db.Migrator().HasTable(&Subscription{}))
-	assert.True(t, db.Migrator().HasTable(&Order{}))
-	assert.True(t, db.Migrator().HasTable(&WebhookEvent{}))
+	assert.True(t, db.Migrator().HasTable(&models.Subscription{}))
+	assert.True(t, db.Migrator().HasTable(&models.Order{}))
+	assert.True(t, db.Migrator().HasTable(&models.WebhookEvent{}))
 }
 
 func TestModule_GettersReturnNonNil(t *testing.T) {
@@ -174,7 +176,7 @@ func TestModule_GettersReturnNonNil(t *testing.T) {
 		DB:                   db,
 		Logger:               &log,
 		SubscriptionsEnabled: true,
-		Plans:                DefaultPlans(),
+		Plans:                models.DefaultPlans(),
 		WebhookSecret:        "test_secret",
 	}
 

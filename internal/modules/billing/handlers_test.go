@@ -16,32 +16,38 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/kkz6/launch-go/internal/modules/billing/enums"
+	"github.com/kkz6/launch-go/internal/modules/billing/handlers"
+	"github.com/kkz6/launch-go/internal/modules/billing/models"
+	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
+	"github.com/kkz6/launch-go/internal/modules/billing/services"
 )
 
-func setupTestHandler(t *testing.T) (*Handler, *fiber.App, *Repository, *gorm.DB) {
+func setupTestHandler(t *testing.T) (*handlers.BillingHandler, *fiber.App, *repositories.BillingRepository, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&Subscription{}, &Order{}, &WebhookEvent{})
+	err = db.AutoMigrate(&models.Subscription{}, &models.Order{}, &models.WebhookEvent{})
 	require.NoError(t, err)
 
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 	log := zerolog.Nop()
 
-	config := &Config{
+	config := &services.Config{
 		SubscriptionsEnabled: true,
-		Plans:                DefaultPlans(),
+		Plans:                models.DefaultPlans(),
 	}
 
-	service := NewService(repo, nil, config, &log)
+	service := services.NewBillingService(repo, nil, config, &log)
 
 	serverCountFn := func(teamID string) (int, error) {
 		return 2, nil
 	}
 
-	handler := NewHandler(service, serverCountFn)
+	handler := handlers.NewBillingHandler(service, serverCountFn)
 
 	app := fiber.New()
 
@@ -58,18 +64,18 @@ func setupTestHandler(t *testing.T) (*Handler, *fiber.App, *Repository, *gorm.DB
 func TestHandler_Index(t *testing.T) {
 	handler, app, repo, _ := setupTestHandler(t)
 
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_1",
 		ProductID:      "starter_monthly",
 		VariantID:      "starter_monthly",
 		Name:           "Starter",
-		Status:         SubscriptionStatusActive,
+		Status:         enums.SubscriptionStatusActive,
 		BillingAnchor:  1,
 	}
 	repo.CreateSubscription(context.Background(), sub)
 
-	order := &Order{
+	order := &models.Order{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_order_1",
 		CustomerID:     "cust_1",
@@ -80,7 +86,7 @@ func TestHandler_Index(t *testing.T) {
 		CurrencyRate:   "1.0",
 		Subtotal:       1000,
 		Total:          1000,
-		Status:         OrderStatusPaid,
+		Status:         enums.OrderStatusPaid,
 	}
 	repo.CreateOrder(context.Background(), order)
 
@@ -267,13 +273,13 @@ func TestHandler_ResumeSubscription_NotFound(t *testing.T) {
 func TestHandler_ResumeSubscription_NotCancelled(t *testing.T) {
 	handler, app, repo, _ := setupTestHandler(t)
 
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_1",
 		ProductID:      "prod_1",
 		VariantID:      "var_1",
 		Name:           "Test",
-		Status:         SubscriptionStatusActive,
+		Status:         enums.SubscriptionStatusActive,
 		BillingAnchor:  1,
 	}
 	repo.CreateSubscription(context.Background(), sub)
@@ -296,13 +302,13 @@ func TestHandler_ResumeSubscription_NotCancelled(t *testing.T) {
 func TestHandler_GetSubscriptions(t *testing.T) {
 	handler, app, repo, _ := setupTestHandler(t)
 
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_1",
 		ProductID:      "starter_monthly",
 		VariantID:      "starter_monthly",
 		Name:           "Starter",
-		Status:         SubscriptionStatusActive,
+		Status:         enums.SubscriptionStatusActive,
 		BillingAnchor:  1,
 	}
 	repo.CreateSubscription(context.Background(), sub)
@@ -327,13 +333,13 @@ func TestHandler_GetSubscriptions(t *testing.T) {
 func TestHandler_GetSubscription(t *testing.T) {
 	handler, app, repo, _ := setupTestHandler(t)
 
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_1",
 		ProductID:      "starter_monthly",
 		VariantID:      "starter_monthly",
 		Name:           "Starter",
-		Status:         SubscriptionStatusActive,
+		Status:         enums.SubscriptionStatusActive,
 		BillingAnchor:  1,
 	}
 	repo.CreateSubscription(context.Background(), sub)
@@ -362,7 +368,7 @@ func TestHandler_GetSubscription_NotFound(t *testing.T) {
 func TestHandler_GetOrders(t *testing.T) {
 	handler, app, repo, _ := setupTestHandler(t)
 
-	order := &Order{
+	order := &models.Order{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_order_1",
 		CustomerID:     "cust_1",
@@ -373,7 +379,7 @@ func TestHandler_GetOrders(t *testing.T) {
 		CurrencyRate:   "1.0",
 		Subtotal:       1000,
 		Total:          1000,
-		Status:         OrderStatusPaid,
+		Status:         enums.OrderStatusPaid,
 	}
 	repo.CreateOrder(context.Background(), order)
 
@@ -397,13 +403,13 @@ func TestHandler_GetOrders(t *testing.T) {
 func TestHandler_GetSubscriptionOptions(t *testing.T) {
 	handler, app, repo, _ := setupTestHandler(t)
 
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_1",
 		ProductID:      "pro_monthly",
 		VariantID:      "pro_monthly",
 		Name:           "Pro",
-		Status:         SubscriptionStatusActive,
+		Status:         enums.SubscriptionStatusActive,
 		BillingAnchor:  1,
 	}
 	repo.CreateSubscription(context.Background(), sub)
@@ -429,13 +435,13 @@ func TestHandler_GetSubscriptionOptions(t *testing.T) {
 func TestHandler_RegisterSubscription_AlreadySubscribed(t *testing.T) {
 	handler, app, repo, _ := setupTestHandler(t)
 
-	sub := &Subscription{
+	sub := &models.Subscription{
 		TeamID:         "team_1",
 		LemonSqueezyID: "ls_1",
 		ProductID:      "prod_1",
 		VariantID:      "var_1",
 		Name:           "Test",
-		Status:         SubscriptionStatusActive,
+		Status:         enums.SubscriptionStatusActive,
 		BillingAnchor:  1,
 	}
 	repo.CreateSubscription(context.Background(), sub)
@@ -475,19 +481,19 @@ func TestHandler_Index_NoServerCountFn(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&Subscription{}, &Order{}, &WebhookEvent{})
+	err = db.AutoMigrate(&models.Subscription{}, &models.Order{}, &models.WebhookEvent{})
 	require.NoError(t, err)
 
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 	log := zerolog.Nop()
 
-	config := &Config{
+	config := &services.Config{
 		SubscriptionsEnabled: true,
-		Plans:                DefaultPlans(),
+		Plans:                models.DefaultPlans(),
 	}
 
-	service := NewService(repo, nil, config, &log)
-	handler := NewHandler(service, nil)
+	service := services.NewBillingService(repo, nil, config, &log)
+	handler := handlers.NewBillingHandler(service, nil)
 
 	app := fiber.New()
 	app.Use(func(c *fiber.Ctx) error {
@@ -517,19 +523,19 @@ func TestHandler_GetSubscriptionOptions_WithRole(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&Subscription{}, &Order{}, &WebhookEvent{})
+	err = db.AutoMigrate(&models.Subscription{}, &models.Order{}, &models.WebhookEvent{})
 	require.NoError(t, err)
 
-	repo := NewRepository(db)
+	repo := repositories.NewBillingRepository(db)
 	log := zerolog.Nop()
 
-	config := &Config{
+	config := &services.Config{
 		SubscriptionsEnabled: true,
-		Plans:                DefaultPlans(),
+		Plans:                models.DefaultPlans(),
 	}
 
-	service := NewService(repo, nil, config, &log)
-	handler := NewHandler(service, nil)
+	service := services.NewBillingService(repo, nil, config, &log)
+	handler := handlers.NewBillingHandler(service, nil)
 
 	app := fiber.New()
 	app.Use(func(c *fiber.Ctx) error {

@@ -3,6 +3,9 @@ package billing
 import (
 	"testing"
 	"time"
+
+	"github.com/kkz6/launch-go/internal/modules/billing/enums"
+	"github.com/kkz6/launch-go/internal/modules/billing/models"
 )
 
 func TestSubscription_IsActive(t *testing.T) {
@@ -12,58 +15,58 @@ func TestSubscription_IsActive(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		subscription *Subscription
+		subscription *models.Subscription
 		want         bool
 	}{
 		{
 			name: "active status is active",
-			subscription: &Subscription{
-				Status: SubscriptionStatusActive,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusActive,
 			},
 			want: true,
 		},
 		{
 			name: "on_trial with future trial_ends_at is active",
-			subscription: &Subscription{
-				Status:      SubscriptionStatusOnTrial,
+			subscription: &models.Subscription{
+				Status:      enums.SubscriptionStatusOnTrial,
 				TrialEndsAt: &future,
 			},
 			want: true,
 		},
 		{
 			name: "on_trial with past trial_ends_at is not active",
-			subscription: &Subscription{
-				Status:      SubscriptionStatusOnTrial,
+			subscription: &models.Subscription{
+				Status:      enums.SubscriptionStatusOnTrial,
 				TrialEndsAt: &past,
 			},
 			want: false,
 		},
 		{
 			name: "on_trial with nil trial_ends_at is not active",
-			subscription: &Subscription{
-				Status:      SubscriptionStatusOnTrial,
+			subscription: &models.Subscription{
+				Status:      enums.SubscriptionStatusOnTrial,
 				TrialEndsAt: nil,
 			},
 			want: false,
 		},
 		{
 			name: "cancelled status is not active",
-			subscription: &Subscription{
-				Status: SubscriptionStatusCancelled,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusCancelled,
 			},
 			want: false,
 		},
 		{
 			name: "paused status is not active",
-			subscription: &Subscription{
-				Status: SubscriptionStatusPaused,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusPaused,
 			},
 			want: false,
 		},
 		{
 			name: "expired status is not active",
-			subscription: &Subscription{
-				Status: SubscriptionStatusExpired,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusExpired,
 			},
 			want: false,
 		},
@@ -85,37 +88,37 @@ func TestSubscription_OnTrial(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		subscription *Subscription
+		subscription *models.Subscription
 		want         bool
 	}{
 		{
 			name: "on_trial with future trial_ends_at is on trial",
-			subscription: &Subscription{
-				Status:      SubscriptionStatusOnTrial,
+			subscription: &models.Subscription{
+				Status:      enums.SubscriptionStatusOnTrial,
 				TrialEndsAt: &future,
 			},
 			want: true,
 		},
 		{
 			name: "on_trial with past trial_ends_at is not on trial",
-			subscription: &Subscription{
-				Status:      SubscriptionStatusOnTrial,
+			subscription: &models.Subscription{
+				Status:      enums.SubscriptionStatusOnTrial,
 				TrialEndsAt: &past,
 			},
 			want: false,
 		},
 		{
 			name: "on_trial with nil trial_ends_at is not on trial",
-			subscription: &Subscription{
-				Status:      SubscriptionStatusOnTrial,
+			subscription: &models.Subscription{
+				Status:      enums.SubscriptionStatusOnTrial,
 				TrialEndsAt: nil,
 			},
 			want: false,
 		},
 		{
 			name: "active status is not on trial",
-			subscription: &Subscription{
-				Status:      SubscriptionStatusActive,
+			subscription: &models.Subscription{
+				Status:      enums.SubscriptionStatusActive,
 				TrialEndsAt: &future,
 			},
 			want: false,
@@ -138,37 +141,37 @@ func TestSubscription_OnGracePeriod(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		subscription *Subscription
+		subscription *models.Subscription
 		want         bool
 	}{
 		{
 			name: "cancelled with future ends_at is on grace period",
-			subscription: &Subscription{
-				Status: SubscriptionStatusCancelled,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusCancelled,
 				EndsAt: &future,
 			},
 			want: true,
 		},
 		{
 			name: "cancelled with past ends_at is not on grace period",
-			subscription: &Subscription{
-				Status: SubscriptionStatusCancelled,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusCancelled,
 				EndsAt: &past,
 			},
 			want: false,
 		},
 		{
 			name: "cancelled with nil ends_at is not on grace period",
-			subscription: &Subscription{
-				Status: SubscriptionStatusCancelled,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusCancelled,
 				EndsAt: nil,
 			},
 			want: false,
 		},
 		{
 			name: "active with ends_at is not on grace period",
-			subscription: &Subscription{
-				Status: SubscriptionStatusActive,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusActive,
 				EndsAt: &future,
 			},
 			want: false,
@@ -187,20 +190,20 @@ func TestSubscription_OnGracePeriod(t *testing.T) {
 func TestSubscription_IsCancelled(t *testing.T) {
 	tests := []struct {
 		name         string
-		subscription *Subscription
+		subscription *models.Subscription
 		want         bool
 	}{
 		{
 			name: "cancelled status is cancelled",
-			subscription: &Subscription{
-				Status: SubscriptionStatusCancelled,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusCancelled,
 			},
 			want: true,
 		},
 		{
 			name: "active status is not cancelled",
-			subscription: &Subscription{
-				Status: SubscriptionStatusActive,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusActive,
 			},
 			want: false,
 		},
@@ -218,20 +221,20 @@ func TestSubscription_IsCancelled(t *testing.T) {
 func TestSubscription_IsPaused(t *testing.T) {
 	tests := []struct {
 		name         string
-		subscription *Subscription
+		subscription *models.Subscription
 		want         bool
 	}{
 		{
 			name: "paused status is paused",
-			subscription: &Subscription{
-				Status: SubscriptionStatusPaused,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusPaused,
 			},
 			want: true,
 		},
 		{
 			name: "active status is not paused",
-			subscription: &Subscription{
-				Status: SubscriptionStatusActive,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusActive,
 			},
 			want: false,
 		},
@@ -253,36 +256,36 @@ func TestSubscription_HasExpired(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		subscription *Subscription
+		subscription *models.Subscription
 		want         bool
 	}{
 		{
 			name: "expired status has expired",
-			subscription: &Subscription{
-				Status: SubscriptionStatusExpired,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusExpired,
 			},
 			want: true,
 		},
 		{
 			name: "active with past ends_at has expired",
-			subscription: &Subscription{
-				Status: SubscriptionStatusActive,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusActive,
 				EndsAt: &past,
 			},
 			want: true,
 		},
 		{
 			name: "active with future ends_at has not expired",
-			subscription: &Subscription{
-				Status: SubscriptionStatusActive,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusActive,
 				EndsAt: &future,
 			},
 			want: false,
 		},
 		{
 			name: "active with nil ends_at has not expired",
-			subscription: &Subscription{
-				Status: SubscriptionStatusActive,
+			subscription: &models.Subscription{
+				Status: enums.SubscriptionStatusActive,
 				EndsAt: nil,
 			},
 			want: false,
@@ -301,22 +304,22 @@ func TestSubscription_HasExpired(t *testing.T) {
 func TestOrder_IsPaid(t *testing.T) {
 	tests := []struct {
 		name  string
-		order *Order
+		order *models.Order
 		want  bool
 	}{
 		{
 			name:  "paid status is paid",
-			order: &Order{Status: OrderStatusPaid},
+			order: &models.Order{Status: enums.OrderStatusPaid},
 			want:  true,
 		},
 		{
 			name:  "pending status is not paid",
-			order: &Order{Status: OrderStatusPending},
+			order: &models.Order{Status: enums.OrderStatusPending},
 			want:  false,
 		},
 		{
 			name:  "refunded status is not paid",
-			order: &Order{Status: OrderStatusRefunded},
+			order: &models.Order{Status: enums.OrderStatusRefunded},
 			want:  false,
 		},
 	}
@@ -333,17 +336,17 @@ func TestOrder_IsPaid(t *testing.T) {
 func TestOrder_IsRefunded(t *testing.T) {
 	tests := []struct {
 		name  string
-		order *Order
+		order *models.Order
 		want  bool
 	}{
 		{
 			name:  "refunded status is refunded",
-			order: &Order{Status: OrderStatusRefunded},
+			order: &models.Order{Status: enums.OrderStatusRefunded},
 			want:  true,
 		},
 		{
 			name:  "paid status is not refunded",
-			order: &Order{Status: OrderStatusPaid},
+			order: &models.Order{Status: enums.OrderStatusPaid},
 			want:  false,
 		},
 	}
@@ -358,7 +361,7 @@ func TestOrder_IsRefunded(t *testing.T) {
 }
 
 func TestOrder_FormattedAmounts(t *testing.T) {
-	order := &Order{
+	order := &models.Order{
 		Subtotal:      1999,
 		DiscountTotal: 200,
 		Tax:           100,
@@ -383,7 +386,7 @@ func TestOrder_FormattedAmounts(t *testing.T) {
 }
 
 func TestWebhookEvent_MarkProcessed(t *testing.T) {
-	event := &WebhookEvent{
+	event := &models.WebhookEvent{
 		Processed: false,
 	}
 
@@ -399,7 +402,7 @@ func TestWebhookEvent_MarkProcessed(t *testing.T) {
 }
 
 func TestWebhookEvent_MarkFailed(t *testing.T) {
-	event := &WebhookEvent{
+	event := &models.WebhookEvent{
 		RetryCount: 0,
 	}
 
@@ -423,13 +426,13 @@ func TestWebhookEvent_MarkFailed(t *testing.T) {
 func TestWebhookEvent_CanRetry(t *testing.T) {
 	tests := []struct {
 		name       string
-		event      *WebhookEvent
+		event      *models.WebhookEvent
 		maxRetries int
 		want       bool
 	}{
 		{
 			name: "unprocessed with retries remaining can retry",
-			event: &WebhookEvent{
+			event: &models.WebhookEvent{
 				Processed:  false,
 				RetryCount: 1,
 			},
@@ -438,7 +441,7 @@ func TestWebhookEvent_CanRetry(t *testing.T) {
 		},
 		{
 			name: "unprocessed at max retries cannot retry",
-			event: &WebhookEvent{
+			event: &models.WebhookEvent{
 				Processed:  false,
 				RetryCount: 3,
 			},
@@ -447,7 +450,7 @@ func TestWebhookEvent_CanRetry(t *testing.T) {
 		},
 		{
 			name: "processed cannot retry",
-			event: &WebhookEvent{
+			event: &models.WebhookEvent{
 				Processed:  true,
 				RetryCount: 0,
 			},
@@ -472,52 +475,52 @@ func TestTeamSubscription_IsSubscribed(t *testing.T) {
 
 	tests := []struct {
 		name string
-		ts   *TeamSubscription
+		ts   *models.TeamSubscription
 		want bool
 	}{
 		{
 			name: "active status is subscribed",
-			ts: &TeamSubscription{
-				Status: SubscriptionStatusActive,
+			ts: &models.TeamSubscription{
+				Status: enums.SubscriptionStatusActive,
 			},
 			want: true,
 		},
 		{
 			name: "on_trial with future trial_ends_at is subscribed",
-			ts: &TeamSubscription{
-				Status:      SubscriptionStatusOnTrial,
+			ts: &models.TeamSubscription{
+				Status:      enums.SubscriptionStatusOnTrial,
 				TrialEndsAt: &future,
 			},
 			want: true,
 		},
 		{
 			name: "on_trial with past trial_ends_at is not subscribed",
-			ts: &TeamSubscription{
-				Status:      SubscriptionStatusOnTrial,
+			ts: &models.TeamSubscription{
+				Status:      enums.SubscriptionStatusOnTrial,
 				TrialEndsAt: &past,
 			},
 			want: false,
 		},
 		{
 			name: "cancelled with future ends_at is subscribed (grace period)",
-			ts: &TeamSubscription{
-				Status: SubscriptionStatusCancelled,
+			ts: &models.TeamSubscription{
+				Status: enums.SubscriptionStatusCancelled,
 				EndsAt: &future,
 			},
 			want: true,
 		},
 		{
 			name: "cancelled with past ends_at is not subscribed",
-			ts: &TeamSubscription{
-				Status: SubscriptionStatusCancelled,
+			ts: &models.TeamSubscription{
+				Status: enums.SubscriptionStatusCancelled,
 				EndsAt: &past,
 			},
 			want: false,
 		},
 		{
 			name: "expired status is not subscribed",
-			ts: &TeamSubscription{
-				Status: SubscriptionStatusExpired,
+			ts: &models.TeamSubscription{
+				Status: enums.SubscriptionStatusExpired,
 			},
 			want: false,
 		},
@@ -533,10 +536,10 @@ func TestTeamSubscription_IsSubscribed(t *testing.T) {
 }
 
 func TestPlanOptions(t *testing.T) {
-	plan := &Plan{
+	plan := &models.Plan{
 		ID:   "test",
 		Name: "Test Plan",
-		Options: PlanOptions{
+		Options: models.PlanOptions{
 			MaxServers:            10,
 			MaxSitesPerServer:     20,
 			MaxDeploymentsPerSite: 5,

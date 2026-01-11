@@ -3,10 +3,14 @@ package notification
 import (
 	"testing"
 	"time"
+
+	"github.com/kkz6/launch-go/internal/modules/notification/dto"
+	"github.com/kkz6/launch-go/internal/modules/notification/enums"
+	"github.com/kkz6/launch-go/internal/modules/notification/models"
 )
 
 func TestCreateChannelRequest_ToChannelData(t *testing.T) {
-	req := &CreateChannelRequest{
+	req := &dto.CreateChannelRequest{
 		Provider:       "email",
 		Label:          "Test Email",
 		Email:          "test@example.com",
@@ -40,7 +44,7 @@ func TestCreateChannelRequest_ToChannelData(t *testing.T) {
 }
 
 func TestUpdateChannelRequest_ToChannelData(t *testing.T) {
-	req := &UpdateChannelRequest{
+	req := &dto.UpdateChannelRequest{
 		Label:          "Updated Email",
 		Email:          "updated@example.com",
 		AppDeploy:      true,
@@ -62,13 +66,13 @@ func TestUpdateChannelRequest_ToChannelData(t *testing.T) {
 
 func TestToChannelResponse(t *testing.T) {
 	now := time.Now()
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "01HXYZ987654321ZYXWVUTSRQ",
 		TeamID:    "01HXYZTEAM123456789ABCDEF",
-		Provider:  ChannelTypeEmail,
+		Provider:  enums.ChannelTypeEmail,
 		Label:     "My Email",
-		Data: ChannelData{
+		Data: models.ChannelData{
 			Email:          "test@example.com",
 			BotToken:       "1234567890:ABCDEFGHIJKLMNOP",
 			AppDeploy:      true,
@@ -80,7 +84,7 @@ func TestToChannelResponse(t *testing.T) {
 		UpdatedAt: now,
 	}
 
-	resp := ToChannelResponse(channel)
+	resp := dto.ToChannelResponse(channel)
 
 	if resp.ID != channel.ID {
 		t.Errorf("ID = %v, want %v", resp.ID, channel.ID)
@@ -114,10 +118,10 @@ func TestToChannelResponse(t *testing.T) {
 
 func TestToChannelResponses(t *testing.T) {
 	now := time.Now()
-	channels := []NotificationChannel{
+	channels := []models.NotificationChannel{
 		{
 			ID:        "01HXYZ123456789ABCDEFGHIJ",
-			Provider:  ChannelTypeEmail,
+			Provider:  enums.ChannelTypeEmail,
 			Label:     "Email 1",
 			Connected: true,
 			CreatedAt: now,
@@ -125,7 +129,7 @@ func TestToChannelResponses(t *testing.T) {
 		},
 		{
 			ID:        "01HXYZ123456789ABCDEFGHIK",
-			Provider:  ChannelTypeSlack,
+			Provider:  enums.ChannelTypeSlack,
 			Label:     "Slack 1",
 			Connected: true,
 			CreatedAt: now,
@@ -133,7 +137,7 @@ func TestToChannelResponses(t *testing.T) {
 		},
 	}
 
-	responses := ToChannelResponses(channels)
+	responses := dto.ToChannelResponses(channels)
 
 	if len(responses) != 2 {
 		t.Errorf("len(responses) = %d, want 2", len(responses))
@@ -146,30 +150,8 @@ func TestToChannelResponses(t *testing.T) {
 	}
 }
 
-func TestMaskToken(t *testing.T) {
-	tests := []struct {
-		name     string
-		token    string
-		expected string
-	}{
-		{"empty token", "", ""},
-		{"short token", "abc", "****"},
-		{"exactly 8 chars", "12345678", "****"},
-		{"normal token", "1234567890ABCD", "1234****ABCD"},
-		{"long token", "1234567890ABCDEFGHIJKLMNOPqrstuvwxyz", "1234****wxyz"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if got := maskToken(tt.token); got != tt.expected {
-				t.Errorf("maskToken(%q) = %q, want %q", tt.token, got, tt.expected)
-			}
-		})
-	}
-}
-
 func TestChannelDataResponse(t *testing.T) {
-	resp := ChannelDataResponse{
+	resp := dto.ChannelDataResponse{
 		Email:          "test@example.com",
 		WebhookURL:     "https://hooks.slack.com/xxx",
 		BotToken:       "masked",
@@ -187,8 +169,8 @@ func TestChannelDataResponse(t *testing.T) {
 }
 
 func TestListChannelsResponse(t *testing.T) {
-	resp := ListChannelsResponse{
-		Channels: []ChannelResponse{
+	resp := dto.ListChannelsResponse{
+		Channels: []dto.ChannelResponse{
 			{ID: "1", Label: "Channel 1"},
 			{ID: "2", Label: "Channel 2"},
 		},
@@ -200,7 +182,7 @@ func TestListChannelsResponse(t *testing.T) {
 }
 
 func TestSendNotificationRequest(t *testing.T) {
-	req := SendNotificationRequest{
+	req := dto.SendNotificationRequest{
 		TeamID:           "team123",
 		NotificationType: "deployment_failed",
 		Title:            "Deployment Failed",
@@ -216,7 +198,7 @@ func TestSendNotificationRequest(t *testing.T) {
 }
 
 func TestTestChannelRequest(t *testing.T) {
-	req := TestChannelRequest{
+	req := dto.TestChannelRequest{
 		Message: "Test message",
 	}
 

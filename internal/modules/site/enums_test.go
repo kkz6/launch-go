@@ -2,17 +2,19 @@ package site
 
 import (
 	"testing"
+
+	"github.com/kkz6/launch-go/internal/modules/site/enums"
 )
 
 func TestSiteType_String(t *testing.T) {
 	tests := []struct {
-		siteType SiteType
+		siteType enums.SiteType
 		expected string
 	}{
-		{SiteTypeLaravel, "laravel"},
-		{SiteTypeWordpress, "wordpress"},
-		{SiteTypeStatic, "static"},
-		{SiteTypeGeneric, "generic"},
+		{enums.SiteTypeLaravel, "laravel"},
+		{enums.SiteTypeWordpress, "wordpress"},
+		{enums.SiteTypeStatic, "static"},
+		{enums.SiteTypeGeneric, "generic"},
 	}
 
 	for _, tt := range tests {
@@ -26,14 +28,14 @@ func TestSiteType_String(t *testing.T) {
 
 func TestSiteType_Label(t *testing.T) {
 	tests := []struct {
-		siteType SiteType
+		siteType enums.SiteType
 		expected string
 	}{
-		{SiteTypeLaravel, "Laravel"},
-		{SiteTypeWordpress, "Wordpress"},
-		{SiteTypeStatic, "Static"},
-		{SiteTypeGeneric, "Generic"},
-		{SiteType("unknown"), "unknown"},
+		{enums.SiteTypeLaravel, "Laravel"},
+		{enums.SiteTypeWordpress, "Wordpress"},
+		{enums.SiteTypeStatic, "Static"},
+		{enums.SiteTypeGeneric, "Generic"},
+		{enums.SiteType("unknown"), "unknown"},
 	}
 
 	for _, tt := range tests {
@@ -47,15 +49,15 @@ func TestSiteType_Label(t *testing.T) {
 
 func TestSiteType_IsValid(t *testing.T) {
 	tests := []struct {
-		siteType SiteType
+		siteType enums.SiteType
 		expected bool
 	}{
-		{SiteTypeLaravel, true},
-		{SiteTypeWordpress, true},
-		{SiteTypeStatic, true},
-		{SiteTypeGeneric, true},
-		{SiteType("unknown"), false},
-		{SiteType(""), false},
+		{enums.SiteTypeLaravel, true},
+		{enums.SiteTypeWordpress, true},
+		{enums.SiteTypeStatic, true},
+		{enums.SiteTypeGeneric, true},
+		{enums.SiteType("unknown"), false},
+		{enums.SiteType(""), false},
 	}
 
 	for _, tt := range tests {
@@ -69,13 +71,13 @@ func TestSiteType_IsValid(t *testing.T) {
 
 func TestSiteType_HasEnvironment(t *testing.T) {
 	tests := []struct {
-		siteType SiteType
+		siteType enums.SiteType
 		expected bool
 	}{
-		{SiteTypeLaravel, true},
-		{SiteTypeWordpress, true},
-		{SiteTypeStatic, false},
-		{SiteTypeGeneric, false},
+		{enums.SiteTypeLaravel, true},
+		{enums.SiteTypeWordpress, true},
+		{enums.SiteTypeStatic, false},
+		{enums.SiteTypeGeneric, false},
 	}
 
 	for _, tt := range tests {
@@ -89,13 +91,13 @@ func TestSiteType_HasEnvironment(t *testing.T) {
 
 func TestSiteType_RequiresGitAccount(t *testing.T) {
 	tests := []struct {
-		siteType SiteType
+		siteType enums.SiteType
 		expected bool
 	}{
-		{SiteTypeLaravel, true},
-		{SiteTypeWordpress, false},
-		{SiteTypeStatic, true},
-		{SiteTypeGeneric, true},
+		{enums.SiteTypeLaravel, true},
+		{enums.SiteTypeWordpress, false},
+		{enums.SiteTypeStatic, true},
+		{enums.SiteTypeGeneric, true},
 	}
 
 	for _, tt := range tests {
@@ -108,7 +110,7 @@ func TestSiteType_RequiresGitAccount(t *testing.T) {
 }
 
 func TestSiteType_GetDatabaseEnvVarNames(t *testing.T) {
-	laravelVars := SiteTypeLaravel.GetDatabaseEnvVarNames()
+	laravelVars := enums.SiteTypeLaravel.GetDatabaseEnvVarNames()
 	if laravelVars["database"] != "DB_DATABASE" {
 		t.Errorf("Expected Laravel database var to be DB_DATABASE, got %s", laravelVars["database"])
 	}
@@ -116,7 +118,7 @@ func TestSiteType_GetDatabaseEnvVarNames(t *testing.T) {
 		t.Errorf("Expected Laravel port var to be DB_PORT, got %s", laravelVars["port"])
 	}
 
-	wordpressVars := SiteTypeWordpress.GetDatabaseEnvVarNames()
+	wordpressVars := enums.SiteTypeWordpress.GetDatabaseEnvVarNames()
 	if wordpressVars["database"] != "DB_NAME" {
 		t.Errorf("Expected WordPress database var to be DB_NAME, got %s", wordpressVars["database"])
 	}
@@ -127,7 +129,7 @@ func TestSiteType_GetDatabaseEnvVarNames(t *testing.T) {
 
 func TestSiteType_GetDefaultAttributes(t *testing.T) {
 	// Test Laravel defaults with zero downtime
-	laravelDefaults := SiteTypeLaravel.GetDefaultAttributes(true)
+	laravelDefaults := enums.SiteTypeLaravel.GetDefaultAttributes(true)
 	if _, ok := laravelDefaults["shared_directories"]; !ok {
 		t.Error("Expected Laravel defaults to have shared_directories")
 	}
@@ -136,38 +138,38 @@ func TestSiteType_GetDefaultAttributes(t *testing.T) {
 	}
 
 	// Test Laravel defaults without zero downtime
-	laravelNoZD := SiteTypeLaravel.GetDefaultAttributes(false)
+	laravelNoZD := enums.SiteTypeLaravel.GetDefaultAttributes(false)
 	if _, ok := laravelNoZD["hook_before_updating_repository"]; !ok {
 		t.Error("Expected Laravel non-ZD defaults to have hook_before_updating_repository")
 	}
 
 	// Test WordPress defaults
-	wpDefaults := SiteTypeWordpress.GetDefaultAttributes(true)
+	wpDefaults := enums.SiteTypeWordpress.GetDefaultAttributes(true)
 	if webFolder, ok := wpDefaults["web_folder"].(string); !ok || webFolder != "/" {
 		t.Errorf("Expected WordPress web_folder to be '/', got %v", wpDefaults["web_folder"])
 	}
 
 	// Test Static defaults
-	staticDefaults := SiteTypeStatic.GetDefaultAttributes(true)
+	staticDefaults := enums.SiteTypeStatic.GetDefaultAttributes(true)
 	if _, ok := staticDefaults["hook_before_making_current"]; !ok {
 		t.Error("Expected Static defaults to have hook_before_making_current")
 	}
 
 	// Test Generic defaults (empty)
-	genericDefaults := SiteTypeGeneric.GetDefaultAttributes(true)
+	genericDefaults := enums.SiteTypeGeneric.GetDefaultAttributes(true)
 	if len(genericDefaults) != 0 {
 		t.Errorf("Expected Generic defaults to be empty, got %v", genericDefaults)
 	}
 }
 
 func TestSiteType_Scan(t *testing.T) {
-	var st SiteType
+	var st enums.SiteType
 
 	// Test scanning string
 	if err := st.Scan("laravel"); err != nil {
 		t.Errorf("Scan failed: %v", err)
 	}
-	if st != SiteTypeLaravel {
+	if st != enums.SiteTypeLaravel {
 		t.Errorf("Expected SiteTypeLaravel, got %v", st)
 	}
 
@@ -175,7 +177,7 @@ func TestSiteType_Scan(t *testing.T) {
 	if err := st.Scan([]byte("wordpress")); err != nil {
 		t.Errorf("Scan bytes failed: %v", err)
 	}
-	if st != SiteTypeWordpress {
+	if st != enums.SiteTypeWordpress {
 		t.Errorf("Expected SiteTypeWordpress, got %v", st)
 	}
 
@@ -191,7 +193,7 @@ func TestSiteType_Scan(t *testing.T) {
 }
 
 func TestSiteType_Value(t *testing.T) {
-	st := SiteTypeLaravel
+	st := enums.SiteTypeLaravel
 	v, err := st.Value()
 	if err != nil {
 		t.Errorf("Value failed: %v", err)
@@ -204,20 +206,20 @@ func TestSiteType_Value(t *testing.T) {
 func TestParseSiteType(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected SiteType
+		expected enums.SiteType
 		hasError bool
 	}{
-		{"laravel", SiteTypeLaravel, false},
-		{"wordpress", SiteTypeWordpress, false},
-		{"static", SiteTypeStatic, false},
-		{"generic", SiteTypeGeneric, false},
+		{"laravel", enums.SiteTypeLaravel, false},
+		{"wordpress", enums.SiteTypeWordpress, false},
+		{"static", enums.SiteTypeStatic, false},
+		{"generic", enums.SiteTypeGeneric, false},
 		{"unknown", "", true},
 		{"", "", true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got, err := ParseSiteType(tt.input)
+			got, err := enums.ParseSiteType(tt.input)
 			if (err != nil) != tt.hasError {
 				t.Errorf("ParseSiteType() error = %v, wantError %v", err, tt.hasError)
 				return
@@ -230,7 +232,7 @@ func TestParseSiteType(t *testing.T) {
 }
 
 func TestAllSiteTypes(t *testing.T) {
-	types := AllSiteTypes()
+	types := enums.AllSiteTypes()
 	if len(types) != 4 {
 		t.Errorf("Expected 4 site types, got %d", len(types))
 	}
@@ -238,19 +240,19 @@ func TestAllSiteTypes(t *testing.T) {
 
 func TestDeploymentStatus(t *testing.T) {
 	tests := []struct {
-		status   DeploymentStatus
-		label    string
-		isValid  bool
-		isActive bool
+		status     enums.DeploymentStatus
+		label      string
+		isValid    bool
+		isActive   bool
 		isComplete bool
 	}{
-		{DeploymentStatusPending, "Pending", true, true, false},
-		{DeploymentStatusQueued, "Queued", true, false, false},
-		{DeploymentStatusInstalling, "Installing", true, true, false},
-		{DeploymentStatusFinished, "Finished", true, false, true},
-		{DeploymentStatusFailed, "Failed", true, false, true},
-		{DeploymentStatusTimeout, "Timeout", true, false, true},
-		{DeploymentStatus("unknown"), "unknown", false, false, false},
+		{enums.DeploymentStatusPending, "Pending", true, true, false},
+		{enums.DeploymentStatusQueued, "Queued", true, false, false},
+		{enums.DeploymentStatusInstalling, "Installing", true, true, false},
+		{enums.DeploymentStatusFinished, "Finished", true, false, true},
+		{enums.DeploymentStatusFailed, "Failed", true, false, true},
+		{enums.DeploymentStatusTimeout, "Timeout", true, false, true},
+		{enums.DeploymentStatus("unknown"), "unknown", false, false, false},
 	}
 
 	for _, tt := range tests {
@@ -272,19 +274,19 @@ func TestDeploymentStatus(t *testing.T) {
 }
 
 func TestDeploymentStatus_Scan(t *testing.T) {
-	var ds DeploymentStatus
+	var ds enums.DeploymentStatus
 
 	if err := ds.Scan("pending"); err != nil {
 		t.Errorf("Scan failed: %v", err)
 	}
-	if ds != DeploymentStatusPending {
+	if ds != enums.DeploymentStatusPending {
 		t.Errorf("Expected DeploymentStatusPending, got %v", ds)
 	}
 
 	if err := ds.Scan([]byte("finished")); err != nil {
 		t.Errorf("Scan bytes failed: %v", err)
 	}
-	if ds != DeploymentStatusFinished {
+	if ds != enums.DeploymentStatusFinished {
 		t.Errorf("Expected DeploymentStatusFinished, got %v", ds)
 	}
 
@@ -298,7 +300,7 @@ func TestDeploymentStatus_Scan(t *testing.T) {
 }
 
 func TestDeploymentStatus_Value(t *testing.T) {
-	ds := DeploymentStatusPending
+	ds := enums.DeploymentStatusPending
 	v, err := ds.Value()
 	if err != nil {
 		t.Errorf("Value failed: %v", err)
@@ -309,7 +311,7 @@ func TestDeploymentStatus_Value(t *testing.T) {
 }
 
 func TestAllDeploymentStatuses(t *testing.T) {
-	statuses := AllDeploymentStatuses()
+	statuses := enums.AllDeploymentStatuses()
 	if len(statuses) != 6 {
 		t.Errorf("Expected 6 deployment statuses, got %d", len(statuses))
 	}
@@ -317,18 +319,18 @@ func TestAllDeploymentStatuses(t *testing.T) {
 
 func TestTlsSetting(t *testing.T) {
 	tests := []struct {
-		setting   TlsSetting
+		setting   enums.TlsSetting
 		label     string
 		isValid   bool
 		isEnabled bool
 		port      int
 		protocol  string
 	}{
-		{TlsSettingAuto, "Auto", true, true, 443, "https"},
-		{TlsSettingCustom, "Custom", true, true, 443, "https"},
-		{TlsSettingInternal, "Internal", true, true, 443, "https"},
-		{TlsSettingOff, "Off", true, false, 80, "http"},
-		{TlsSetting("unknown"), "unknown", false, true, 443, "https"},
+		{enums.TlsSettingAuto, "Auto", true, true, 443, "https"},
+		{enums.TlsSettingCustom, "Custom", true, true, 443, "https"},
+		{enums.TlsSettingInternal, "Internal", true, true, 443, "https"},
+		{enums.TlsSettingOff, "Off", true, false, 80, "http"},
+		{enums.TlsSetting("unknown"), "unknown", false, true, 443, "https"},
 	}
 
 	for _, tt := range tests {
@@ -353,19 +355,19 @@ func TestTlsSetting(t *testing.T) {
 }
 
 func TestTlsSetting_Scan(t *testing.T) {
-	var ts TlsSetting
+	var ts enums.TlsSetting
 
 	if err := ts.Scan("auto"); err != nil {
 		t.Errorf("Scan failed: %v", err)
 	}
-	if ts != TlsSettingAuto {
+	if ts != enums.TlsSettingAuto {
 		t.Errorf("Expected TlsSettingAuto, got %v", ts)
 	}
 
 	if err := ts.Scan([]byte("custom")); err != nil {
 		t.Errorf("Scan bytes failed: %v", err)
 	}
-	if ts != TlsSettingCustom {
+	if ts != enums.TlsSettingCustom {
 		t.Errorf("Expected TlsSettingCustom, got %v", ts)
 	}
 
@@ -379,7 +381,7 @@ func TestTlsSetting_Scan(t *testing.T) {
 }
 
 func TestTlsSetting_Value(t *testing.T) {
-	ts := TlsSettingAuto
+	ts := enums.TlsSettingAuto
 	v, err := ts.Value()
 	if err != nil {
 		t.Errorf("Value failed: %v", err)
@@ -390,7 +392,7 @@ func TestTlsSetting_Value(t *testing.T) {
 }
 
 func TestAllTlsSettings(t *testing.T) {
-	settings := AllTlsSettings()
+	settings := enums.AllTlsSettings()
 	if len(settings) != 4 {
 		t.Errorf("Expected 4 TLS settings, got %d", len(settings))
 	}
@@ -398,14 +400,14 @@ func TestAllTlsSettings(t *testing.T) {
 
 func TestRedirectMode(t *testing.T) {
 	tests := []struct {
-		mode       RedirectMode
+		mode       enums.RedirectMode
 		statusCode int
 		label      string
 		isValid    bool
 	}{
-		{RedirectModePermanent, 301, "Permanent", true},
-		{RedirectModeTemporary, 302, "Temporary", true},
-		{RedirectMode(99), 302, "Unknown", false},
+		{enums.RedirectModePermanent, 301, "Permanent", true},
+		{enums.RedirectModeTemporary, 302, "Temporary", true},
+		{enums.RedirectMode(99), 302, "Unknown", false},
 	}
 
 	for _, tt := range tests {
@@ -424,19 +426,19 @@ func TestRedirectMode(t *testing.T) {
 }
 
 func TestRedirectMode_Scan(t *testing.T) {
-	var rm RedirectMode
+	var rm enums.RedirectMode
 
 	if err := rm.Scan(int64(1)); err != nil {
 		t.Errorf("Scan int64 failed: %v", err)
 	}
-	if rm != RedirectModePermanent {
+	if rm != enums.RedirectModePermanent {
 		t.Errorf("Expected RedirectModePermanent, got %v", rm)
 	}
 
 	if err := rm.Scan(2); err != nil {
 		t.Errorf("Scan int failed: %v", err)
 	}
-	if rm != RedirectModeTemporary {
+	if rm != enums.RedirectModeTemporary {
 		t.Errorf("Expected RedirectModeTemporary, got %v", rm)
 	}
 
@@ -450,7 +452,7 @@ func TestRedirectMode_Scan(t *testing.T) {
 }
 
 func TestRedirectMode_Value(t *testing.T) {
-	rm := RedirectModePermanent
+	rm := enums.RedirectModePermanent
 	v, err := rm.Value()
 	if err != nil {
 		t.Errorf("Value failed: %v", err)
@@ -462,15 +464,15 @@ func TestRedirectMode_Value(t *testing.T) {
 
 func TestCommandStatus(t *testing.T) {
 	tests := []struct {
-		status  CommandStatus
+		status  enums.CommandStatus
 		isValid bool
 	}{
-		{CommandStatusPending, true},
-		{CommandStatusRunning, true},
-		{CommandStatusFinished, true},
-		{CommandStatusFailed, true},
-		{CommandStatusTimeout, true},
-		{CommandStatus("unknown"), false},
+		{enums.CommandStatusPending, true},
+		{enums.CommandStatusRunning, true},
+		{enums.CommandStatusFinished, true},
+		{enums.CommandStatusFailed, true},
+		{enums.CommandStatusTimeout, true},
+		{enums.CommandStatus("unknown"), false},
 	}
 
 	for _, tt := range tests {
@@ -483,19 +485,19 @@ func TestCommandStatus(t *testing.T) {
 }
 
 func TestCommandStatus_Scan(t *testing.T) {
-	var cs CommandStatus
+	var cs enums.CommandStatus
 
 	if err := cs.Scan("pending"); err != nil {
 		t.Errorf("Scan failed: %v", err)
 	}
-	if cs != CommandStatusPending {
+	if cs != enums.CommandStatusPending {
 		t.Errorf("Expected CommandStatusPending, got %v", cs)
 	}
 
 	if err := cs.Scan([]byte("running")); err != nil {
 		t.Errorf("Scan bytes failed: %v", err)
 	}
-	if cs != CommandStatusRunning {
+	if cs != enums.CommandStatusRunning {
 		t.Errorf("Expected CommandStatusRunning, got %v", cs)
 	}
 
@@ -510,15 +512,15 @@ func TestCommandStatus_Scan(t *testing.T) {
 
 func TestQueueStatus(t *testing.T) {
 	tests := []struct {
-		status  QueueStatus
+		status  enums.QueueStatus
 		isValid bool
 	}{
-		{QueueStatusPending, true},
-		{QueueStatusInstalling, true},
-		{QueueStatusActive, true},
-		{QueueStatusFailed, true},
-		{QueueStatusUninstalling, true},
-		{QueueStatus("unknown"), false},
+		{enums.QueueStatusPending, true},
+		{enums.QueueStatusInstalling, true},
+		{enums.QueueStatusActive, true},
+		{enums.QueueStatusFailed, true},
+		{enums.QueueStatusUninstalling, true},
+		{enums.QueueStatus("unknown"), false},
 	}
 
 	for _, tt := range tests {
@@ -531,19 +533,19 @@ func TestQueueStatus(t *testing.T) {
 }
 
 func TestQueueStatus_Scan(t *testing.T) {
-	var qs QueueStatus
+	var qs enums.QueueStatus
 
 	if err := qs.Scan("pending"); err != nil {
 		t.Errorf("Scan failed: %v", err)
 	}
-	if qs != QueueStatusPending {
+	if qs != enums.QueueStatusPending {
 		t.Errorf("Expected QueueStatusPending, got %v", qs)
 	}
 
 	if err := qs.Scan([]byte("active")); err != nil {
 		t.Errorf("Scan bytes failed: %v", err)
 	}
-	if qs != QueueStatusActive {
+	if qs != enums.QueueStatusActive {
 		t.Errorf("Expected QueueStatusActive, got %v", qs)
 	}
 
@@ -558,12 +560,12 @@ func TestQueueStatus_Scan(t *testing.T) {
 
 func TestCertificateType(t *testing.T) {
 	tests := []struct {
-		certType CertificateType
+		certType enums.CertificateType
 		isValid  bool
 	}{
-		{CertificateTypeAuto, true},
-		{CertificateTypeCustom, true},
-		{CertificateType("unknown"), false},
+		{enums.CertificateTypeAuto, true},
+		{enums.CertificateTypeCustom, true},
+		{enums.CertificateType("unknown"), false},
 	}
 
 	for _, tt := range tests {
@@ -576,19 +578,19 @@ func TestCertificateType(t *testing.T) {
 }
 
 func TestCertificateType_Scan(t *testing.T) {
-	var ct CertificateType
+	var ct enums.CertificateType
 
 	if err := ct.Scan("auto"); err != nil {
 		t.Errorf("Scan failed: %v", err)
 	}
-	if ct != CertificateTypeAuto {
+	if ct != enums.CertificateTypeAuto {
 		t.Errorf("Expected CertificateTypeAuto, got %v", ct)
 	}
 
 	if err := ct.Scan([]byte("custom")); err != nil {
 		t.Errorf("Scan bytes failed: %v", err)
 	}
-	if ct != CertificateTypeCustom {
+	if ct != enums.CertificateTypeCustom {
 		t.Errorf("Expected CertificateTypeCustom, got %v", ct)
 	}
 
@@ -603,15 +605,15 @@ func TestCertificateType_Scan(t *testing.T) {
 
 func TestSiteStatus(t *testing.T) {
 	tests := []struct {
-		status  SiteStatus
+		status  enums.SiteStatus
 		isValid bool
 	}{
-		{SiteStatusPending, true},
-		{SiteStatusInstalling, true},
-		{SiteStatusActive, true},
-		{SiteStatusFailed, true},
-		{SiteStatusUninstalling, true},
-		{SiteStatus("unknown"), false},
+		{enums.SiteStatusPending, true},
+		{enums.SiteStatusInstalling, true},
+		{enums.SiteStatusActive, true},
+		{enums.SiteStatusFailed, true},
+		{enums.SiteStatusUninstalling, true},
+		{enums.SiteStatus("unknown"), false},
 	}
 
 	for _, tt := range tests {
@@ -624,19 +626,19 @@ func TestSiteStatus(t *testing.T) {
 }
 
 func TestSiteStatus_Scan(t *testing.T) {
-	var ss SiteStatus
+	var ss enums.SiteStatus
 
 	if err := ss.Scan("active"); err != nil {
 		t.Errorf("Scan failed: %v", err)
 	}
-	if ss != SiteStatusActive {
+	if ss != enums.SiteStatusActive {
 		t.Errorf("Expected SiteStatusActive, got %v", ss)
 	}
 
 	if err := ss.Scan([]byte("pending")); err != nil {
 		t.Errorf("Scan bytes failed: %v", err)
 	}
-	if ss != SiteStatusPending {
+	if ss != enums.SiteStatusPending {
 		t.Errorf("Expected SiteStatusPending, got %v", ss)
 	}
 

@@ -13,23 +13,38 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/modules/backup/dto"
+	"github.com/kkz6/launch-go/internal/modules/backup/handlers"
+	"github.com/kkz6/launch-go/internal/modules/backup/models"
+	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
+	"github.com/kkz6/launch-go/internal/modules/backup/services"
 )
 
-func setupTestHandler(t *testing.T) (*Handler, *Service, *fiber.App) {
+func setupTestHandler(t *testing.T) (*handlers.BackupHandler, *handlers.StorageProviderHandler, *services.BackupService, *services.StorageProviderService, *fiber.App) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to connect to database: %v", err)
 	}
 
-	err = db.AutoMigrate(&Backup{}, &BackupJob{}, &StorageProvider{}, &BackupDatabase{})
+	err = db.AutoMigrate(&models.Backup{}, &models.BackupJob{}, &models.StorageProvider{}, &models.BackupDatabase{})
 	if err != nil {
 		t.Fatalf("failed to migrate database: %v", err)
 	}
 
 	logger := zerolog.Nop()
-	repo := NewRepository(db)
-	service := NewService(repo, nil, nil, &logger)
-	handler := NewHandler(service)
+
+	backupRepo := repositories.NewBackupRepository(db)
+	backupJobRepo := repositories.NewBackupJobRepository(db)
+	storageProviderRepo := repositories.NewStorageProviderRepository(db)
+
+	backupService := services.NewBackupService(backupRepo, nil, nil, &logger)
+	backupJobService := services.NewBackupJobService(backupJobRepo, backupRepo, nil, &logger)
+	storageProviderService := services.NewStorageProviderService(storageProviderRepo, nil, &logger)
+
+	backupHandler := handlers.NewBackupHandler(backupService)
+	backupJobHandler := handlers.NewBackupJobHandler(backupJobService)
+	storageProviderHandler := handlers.NewStorageProviderHandler(storageProviderService)
 
 	app := fiber.New()
 
@@ -41,23 +56,23 @@ func setupTestHandler(t *testing.T) (*Handler, *Service, *fiber.App) {
 	})
 
 	// Register routes
-	app.Get("/servers/:serverId/backups", handler.ListBackups)
-	app.Post("/servers/:serverId/backups", handler.CreateBackup)
-	app.Get("/servers/:serverId/backups/:id", handler.ShowBackup)
-	app.Put("/servers/:serverId/backups/:id", handler.UpdateBackup)
-	app.Delete("/servers/:serverId/backups/:id", handler.DeleteBackup)
-	app.Post("/servers/:serverId/backups/:id/run", handler.RunManualBackup)
+	app.Get("/servers/:serverId/backups", backupHandler.ListBackups)
+	app.Post("/servers/:serverId/backups", backupHandler.CreateBackup)
+	app.Get("/servers/:serverId/backups/:id", backupHandler.ShowBackup)
+	app.Put("/servers/:serverId/backups/:id", backupHandler.UpdateBackup)
+	app.Delete("/servers/:serverId/backups/:id", backupHandler.DeleteBackup)
+	app.Post("/servers/:serverId/backups/:id/run", backupHandler.RunManualBackup)
 
-	app.Post("/backup/:backup/:token", handler.CreateBackupJob)
+	app.Post("/backup/:backup/:token", backupJobHandler.CreateBackupJob)
 
-	app.Get("/storage-providers", handler.ListStorageProviders)
-	app.Get("/storage-providers/dropdown", handler.ListStorageProvidersForDropdown)
-	app.Get("/storage-providers/:id", handler.ShowStorageProvider)
-	app.Post("/storage-providers/:provider/connect", handler.ConnectStorageProvider)
-	app.Put("/storage-providers/:provider", handler.UpdateStorageProvider)
-	app.Delete("/storage-providers/:provider", handler.DeleteStorageProvider)
+	app.Get("/storage-providers", storageProviderHandler.ListStorageProviders)
+	app.Get("/storage-providers/dropdown", storageProviderHandler.ListStorageProvidersForDropdown)
+	app.Get("/storage-providers/:id", storageProviderHandler.ShowStorageProvider)
+	app.Post("/storage-providers/:provider/connect", storageProviderHandler.ConnectStorageProvider)
+	app.Put("/storage-providers/:provider", storageProviderHandler.UpdateStorageProvider)
+	app.Delete("/storage-providers/:provider", storageProviderHandler.DeleteStorageProvider)
 
-	return handler, service, app
+	return backupHandler, storageProviderHandler, backupService, storageProviderService, app
 }
 
 func makeRequest(app *fiber.App, method, url string, body interface{}) (*http.Response, []byte) {
@@ -77,18 +92,18 @@ func makeRequest(app *fiber.App, method, url string, body interface{}) (*http.Re
 }
 
 func TestHandler_ListBackups(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, backupService, _, app := setupTestHandler(t)
 
 	// Create some backups
-	req := &CreateBackupRequest{
+	req := &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
 		DatabaseID:        "db123",
 		StorageProviderID: "provider123",
 	}
-	service.CreateBackup(t.Context(), "server1", "user123", req)
-	service.CreateBackup(t.Context(), "server1", "user123", req)
+	backupService.CreateBackup(t.Context(), "server1", "user123", req)
+	backupService.CreateBackup(t.Context(), "server1", "user123", req)
 
 	resp, body := makeRequest(app, "GET", "/servers/server1/backups", nil)
 
@@ -106,7 +121,7 @@ func TestHandler_ListBackups(t *testing.T) {
 }
 
 func TestHandler_CreateBackup(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	req := map[string]interface{}{
 		"cron_expression":     "0 0 * * *",
@@ -124,7 +139,7 @@ func TestHandler_CreateBackup(t *testing.T) {
 }
 
 func TestHandler_CreateBackup_ValidationError(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	req := map[string]interface{}{
 		"path": "/var/www",
@@ -139,9 +154,9 @@ func TestHandler_CreateBackup_ValidationError(t *testing.T) {
 }
 
 func TestHandler_ShowBackup(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, backupService, _, app := setupTestHandler(t)
 
-	backup, _ := service.CreateBackup(t.Context(), "server1", "user123", &CreateBackupRequest{
+	backup, _ := backupService.CreateBackup(t.Context(), "server1", "user123", &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
@@ -157,7 +172,7 @@ func TestHandler_ShowBackup(t *testing.T) {
 }
 
 func TestHandler_ShowBackup_NotFound(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	resp, _ := makeRequest(app, "GET", "/servers/server1/backups/nonexistent", nil)
 
@@ -167,9 +182,9 @@ func TestHandler_ShowBackup_NotFound(t *testing.T) {
 }
 
 func TestHandler_UpdateBackup(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, backupService, _, app := setupTestHandler(t)
 
-	backup, _ := service.CreateBackup(t.Context(), "server1", "user123", &CreateBackupRequest{
+	backup, _ := backupService.CreateBackup(t.Context(), "server1", "user123", &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
@@ -193,7 +208,7 @@ func TestHandler_UpdateBackup(t *testing.T) {
 }
 
 func TestHandler_UpdateBackup_NotFound(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	updateReq := map[string]interface{}{
 		"cron_expression":     "0 0 * * *",
@@ -211,9 +226,9 @@ func TestHandler_UpdateBackup_NotFound(t *testing.T) {
 }
 
 func TestHandler_DeleteBackup(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, backupService, _, app := setupTestHandler(t)
 
-	backup, _ := service.CreateBackup(t.Context(), "server1", "user123", &CreateBackupRequest{
+	backup, _ := backupService.CreateBackup(t.Context(), "server1", "user123", &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
@@ -229,7 +244,7 @@ func TestHandler_DeleteBackup(t *testing.T) {
 }
 
 func TestHandler_DeleteBackup_NotFound(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	resp, _ := makeRequest(app, "DELETE", "/servers/server1/backups/nonexistent", nil)
 
@@ -239,9 +254,9 @@ func TestHandler_DeleteBackup_NotFound(t *testing.T) {
 }
 
 func TestHandler_RunManualBackup(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, backupService, _, app := setupTestHandler(t)
 
-	backup, _ := service.CreateBackup(t.Context(), "server1", "user123", &CreateBackupRequest{
+	backup, _ := backupService.CreateBackup(t.Context(), "server1", "user123", &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
@@ -257,9 +272,9 @@ func TestHandler_RunManualBackup(t *testing.T) {
 }
 
 func TestHandler_CreateBackupJob(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, backupService, _, app := setupTestHandler(t)
 
-	backup, _ := service.CreateBackup(t.Context(), "server1", "user123", &CreateBackupRequest{
+	backup, _ := backupService.CreateBackup(t.Context(), "server1", "user123", &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
@@ -280,9 +295,9 @@ func TestHandler_CreateBackupJob(t *testing.T) {
 }
 
 func TestHandler_CreateBackupJob_InvalidToken(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, backupService, _, app := setupTestHandler(t)
 
-	backup, _ := service.CreateBackup(t.Context(), "server1", "user123", &CreateBackupRequest{
+	backup, _ := backupService.CreateBackup(t.Context(), "server1", "user123", &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
@@ -302,9 +317,9 @@ func TestHandler_CreateBackupJob_InvalidToken(t *testing.T) {
 }
 
 func TestHandler_ListStorageProviders(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, _, storageProviderService, app := setupTestHandler(t)
 
-	service.ConnectStorageProvider(t.Context(), "user123", "team123", &CreateStorageProviderRequest{
+	storageProviderService.ConnectStorageProvider(t.Context(), "user123", "team123", &dto.CreateStorageProviderRequest{
 		Label:    "S3",
 		Provider: "s3",
 		Key:      "key",
@@ -321,9 +336,9 @@ func TestHandler_ListStorageProviders(t *testing.T) {
 }
 
 func TestHandler_ListStorageProvidersForDropdown(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, _, storageProviderService, app := setupTestHandler(t)
 
-	service.ConnectStorageProvider(t.Context(), "user123", "team123", &CreateStorageProviderRequest{
+	storageProviderService.ConnectStorageProvider(t.Context(), "user123", "team123", &dto.CreateStorageProviderRequest{
 		Label:    "S3",
 		Provider: "s3",
 		Key:      "key",
@@ -340,7 +355,7 @@ func TestHandler_ListStorageProvidersForDropdown(t *testing.T) {
 }
 
 func TestHandler_ConnectStorageProvider(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	req := map[string]interface{}{
 		"label":    "My S3",
@@ -359,7 +374,7 @@ func TestHandler_ConnectStorageProvider(t *testing.T) {
 }
 
 func TestHandler_ConnectStorageProvider_InvalidProvider(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	req := map[string]interface{}{
 		"label":    "Invalid",
@@ -374,9 +389,9 @@ func TestHandler_ConnectStorageProvider_InvalidProvider(t *testing.T) {
 }
 
 func TestHandler_ShowStorageProvider(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, _, storageProviderService, app := setupTestHandler(t)
 
-	provider, _ := service.ConnectStorageProvider(t.Context(), "user123", "team123", &CreateStorageProviderRequest{
+	provider, _ := storageProviderService.ConnectStorageProvider(t.Context(), "user123", "team123", &dto.CreateStorageProviderRequest{
 		Label:    "S3",
 		Provider: "s3",
 		Key:      "key",
@@ -393,7 +408,7 @@ func TestHandler_ShowStorageProvider(t *testing.T) {
 }
 
 func TestHandler_ShowStorageProvider_NotFound(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	resp, _ := makeRequest(app, "GET", "/storage-providers/999999", nil)
 
@@ -403,7 +418,7 @@ func TestHandler_ShowStorageProvider_NotFound(t *testing.T) {
 }
 
 func TestHandler_ShowStorageProvider_InvalidID(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	resp, _ := makeRequest(app, "GET", "/storage-providers/invalid", nil)
 
@@ -413,9 +428,9 @@ func TestHandler_ShowStorageProvider_InvalidID(t *testing.T) {
 }
 
 func TestHandler_UpdateStorageProvider(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, _, storageProviderService, app := setupTestHandler(t)
 
-	provider, _ := service.ConnectStorageProvider(t.Context(), "user123", "team123", &CreateStorageProviderRequest{
+	provider, _ := storageProviderService.ConnectStorageProvider(t.Context(), "user123", "team123", &dto.CreateStorageProviderRequest{
 		Label:    "S3",
 		Provider: "s3",
 		Key:      "key",
@@ -442,7 +457,7 @@ func TestHandler_UpdateStorageProvider(t *testing.T) {
 }
 
 func TestHandler_UpdateStorageProvider_InvalidProvider(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	req := map[string]interface{}{
 		"id":       1,
@@ -458,9 +473,9 @@ func TestHandler_UpdateStorageProvider_InvalidProvider(t *testing.T) {
 }
 
 func TestHandler_DeleteStorageProvider(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, _, storageProviderService, app := setupTestHandler(t)
 
-	provider, _ := service.ConnectStorageProvider(t.Context(), "user123", "team123", &CreateStorageProviderRequest{
+	provider, _ := storageProviderService.ConnectStorageProvider(t.Context(), "user123", "team123", &dto.CreateStorageProviderRequest{
 		Label:    "S3",
 		Provider: "s3",
 		Key:      "key",
@@ -477,7 +492,7 @@ func TestHandler_DeleteStorageProvider(t *testing.T) {
 }
 
 func TestHandler_DeleteStorageProvider_NotFound(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	resp, _ := makeRequest(app, "DELETE", "/storage-providers/999999", nil)
 
@@ -487,7 +502,7 @@ func TestHandler_DeleteStorageProvider_NotFound(t *testing.T) {
 }
 
 func TestHandler_DeleteStorageProvider_InvalidID(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	resp, _ := makeRequest(app, "DELETE", "/storage-providers/invalid", nil)
 
@@ -497,7 +512,7 @@ func TestHandler_DeleteStorageProvider_InvalidID(t *testing.T) {
 }
 
 func TestHandler_RunManualBackup_NotFound(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	resp, _ := makeRequest(app, "POST", "/servers/server1/backups/nonexistent/run", nil)
 
@@ -507,9 +522,9 @@ func TestHandler_RunManualBackup_NotFound(t *testing.T) {
 }
 
 func TestHandler_CreateBackupJob_ValidationError(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, backupService, _, app := setupTestHandler(t)
 
-	backup, _ := service.CreateBackup(t.Context(), "server1", "user123", &CreateBackupRequest{
+	backup, _ := backupService.CreateBackup(t.Context(), "server1", "user123", &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
@@ -528,9 +543,9 @@ func TestHandler_CreateBackupJob_ValidationError(t *testing.T) {
 }
 
 func TestHandler_UpdateBackup_ValidationError(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, backupService, _, app := setupTestHandler(t)
 
-	backup, _ := service.CreateBackup(t.Context(), "server1", "user123", &CreateBackupRequest{
+	backup, _ := backupService.CreateBackup(t.Context(), "server1", "user123", &dto.CreateBackupRequest{
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 		Enabled:           true,
@@ -551,7 +566,7 @@ func TestHandler_UpdateBackup_ValidationError(t *testing.T) {
 }
 
 func TestHandler_ConnectStorageProvider_ValidationError(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	// Missing required fields for s3
 	req := map[string]interface{}{
@@ -568,9 +583,9 @@ func TestHandler_ConnectStorageProvider_ValidationError(t *testing.T) {
 }
 
 func TestHandler_UpdateStorageProvider_ValidationError(t *testing.T) {
-	_, service, app := setupTestHandler(t)
+	_, _, _, storageProviderService, app := setupTestHandler(t)
 
-	provider, _ := service.ConnectStorageProvider(t.Context(), "user123", "team123", &CreateStorageProviderRequest{
+	provider, _ := storageProviderService.ConnectStorageProvider(t.Context(), "user123", "team123", &dto.CreateStorageProviderRequest{
 		Label:    "S3",
 		Provider: "s3",
 		Key:      "key",
@@ -594,7 +609,7 @@ func TestHandler_UpdateStorageProvider_ValidationError(t *testing.T) {
 }
 
 func TestHandler_UpdateStorageProvider_NotFound(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	req := map[string]interface{}{
 		"id":       999999,
@@ -614,7 +629,7 @@ func TestHandler_UpdateStorageProvider_NotFound(t *testing.T) {
 }
 
 func TestHandler_CreateBackupJob_BackupNotFound(t *testing.T) {
-	_, _, app := setupTestHandler(t)
+	_, _, _, _, app := setupTestHandler(t)
 
 	jobReq := map[string]interface{}{
 		"status": "finished",

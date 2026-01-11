@@ -43,4 +43,4 @@ tmp/
 dist/
 
 # Storage (shellcheck output, etc)
-storage/
+/storage/

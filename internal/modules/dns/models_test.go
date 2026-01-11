@@ -8,31 +8,34 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/modules/dns/enums"
+	"github.com/kkz6/launch-go/internal/modules/dns/models"
 )
 
 func setupTestDB(t *testing.T) *gorm.DB {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&DomainProvider{}, &Domain{}, &DnsRecord{})
+	err = db.AutoMigrate(&models.DomainProvider{}, &models.Domain{}, &models.DnsRecord{})
 	require.NoError(t, err)
 
 	return db
 }
 
 func TestDomainProvider_TableName(t *testing.T) {
-	dp := DomainProvider{}
+	dp := models.DomainProvider{}
 	assert.Equal(t, "domain_providers", dp.TableName())
 }
 
 func TestDomainProvider_BeforeCreate(t *testing.T) {
 	db := setupTestDB(t)
 
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Test Profile",
-		Provider:    DnsProviderCloudflare,
+		Provider:    enums.DnsProviderCloudflare,
 		Credentials: `{"token": "test"}`,
 		Connected:   true,
 	}
@@ -48,12 +51,12 @@ func TestDomainProvider_BeforeCreate_WithExistingID(t *testing.T) {
 	db := setupTestDB(t)
 
 	existingID := "01HQXYZ123456789ABCDEFGH"
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		ID:          existingID,
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Test Profile",
-		Provider:    DnsProviderCloudflare,
+		Provider:    enums.DnsProviderCloudflare,
 		Credentials: `{"token": "test"}`,
 		Connected:   true,
 	}
@@ -65,7 +68,7 @@ func TestDomainProvider_BeforeCreate_WithExistingID(t *testing.T) {
 }
 
 func TestDomainProvider_GetCredentials(t *testing.T) {
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		Credentials: `{"token": "test-token", "key": "test-key"}`,
 	}
 
@@ -77,7 +80,7 @@ func TestDomainProvider_GetCredentials(t *testing.T) {
 }
 
 func TestDomainProvider_GetCredentials_Invalid(t *testing.T) {
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		Credentials: "invalid json",
 	}
 
@@ -86,7 +89,7 @@ func TestDomainProvider_GetCredentials_Invalid(t *testing.T) {
 }
 
 func TestDomainProvider_SetCredentials(t *testing.T) {
-	dp := &DomainProvider{}
+	dp := &models.DomainProvider{}
 
 	err := dp.SetCredentials(map[string]string{
 		"token": "new-token",
@@ -103,7 +106,7 @@ func TestDomainProvider_SetCredentials(t *testing.T) {
 
 func TestDomainProvider_GetAdditionalData(t *testing.T) {
 	data := `{"account_id": "abc123", "count": 42}`
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		AdditionalData: &data,
 	}
 
@@ -115,7 +118,7 @@ func TestDomainProvider_GetAdditionalData(t *testing.T) {
 }
 
 func TestDomainProvider_GetAdditionalData_Nil(t *testing.T) {
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		AdditionalData: nil,
 	}
 
@@ -126,7 +129,7 @@ func TestDomainProvider_GetAdditionalData_Nil(t *testing.T) {
 
 func TestDomainProvider_GetAdditionalData_Invalid(t *testing.T) {
 	data := "invalid json"
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		AdditionalData: &data,
 	}
 
@@ -135,7 +138,7 @@ func TestDomainProvider_GetAdditionalData_Invalid(t *testing.T) {
 }
 
 func TestDomainProvider_SetAdditionalData(t *testing.T) {
-	dp := &DomainProvider{}
+	dp := &models.DomainProvider{}
 
 	err := dp.SetAdditionalData(map[string]interface{}{
 		"account_id": "abc123",
@@ -152,7 +155,7 @@ func TestDomainProvider_SetAdditionalData(t *testing.T) {
 
 func TestDomainProvider_SetAdditionalData_Nil(t *testing.T) {
 	data := `{"test": "data"}`
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		AdditionalData: &data,
 	}
 
@@ -163,23 +166,23 @@ func TestDomainProvider_SetAdditionalData_Nil(t *testing.T) {
 
 func TestDomainProvider_ProviderLabel(t *testing.T) {
 	tests := []struct {
-		provider DnsProvider
+		provider enums.DnsProvider
 		expected string
 	}{
-		{DnsProviderCloudflare, "Cloudflare"},
-		{DnsProviderDigitalOcean, "DigitalOcean"},
+		{enums.DnsProviderCloudflare, "Cloudflare"},
+		{enums.DnsProviderDigitalOcean, "DigitalOcean"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.expected, func(t *testing.T) {
-			dp := &DomainProvider{Provider: tt.provider}
+			dp := &models.DomainProvider{Provider: tt.provider}
 			assert.Equal(t, tt.expected, dp.ProviderLabel())
 		})
 	}
 }
 
 func TestDomain_TableName(t *testing.T) {
-	d := Domain{}
+	d := models.Domain{}
 	assert.Equal(t, "domains", d.TableName())
 }
 
@@ -187,16 +190,16 @@ func TestDomain_BeforeCreate(t *testing.T) {
 	db := setupTestDB(t)
 
 	// Create provider first
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Test",
-		Provider:    DnsProviderCloudflare,
+		Provider:    enums.DnsProviderCloudflare,
 		Credentials: `{"token": "test"}`,
 	}
 	db.Create(dp)
 
-	d := &Domain{
+	d := &models.Domain{
 		UserID:           "user123",
 		TeamID:           "team123",
 		DomainProviderID: dp.ID,
@@ -215,17 +218,17 @@ func TestDomain_BeforeCreate(t *testing.T) {
 func TestDomain_BeforeCreate_WithExistingID(t *testing.T) {
 	db := setupTestDB(t)
 
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Test",
-		Provider:    DnsProviderCloudflare,
+		Provider:    enums.DnsProviderCloudflare,
 		Credentials: `{"token": "test"}`,
 	}
 	db.Create(dp)
 
 	existingID := "01HQXYZ123456789ABCDEFGH"
-	d := &Domain{
+	d := &models.Domain{
 		ID:               existingID,
 		UserID:           "user123",
 		TeamID:           "team123",
@@ -243,7 +246,7 @@ func TestDomain_BeforeCreate_WithExistingID(t *testing.T) {
 
 func TestDomain_GetAdditionalData(t *testing.T) {
 	data := `{"key": "value"}`
-	d := &Domain{
+	d := &models.Domain{
 		AdditionalData: &data,
 	}
 
@@ -253,7 +256,7 @@ func TestDomain_GetAdditionalData(t *testing.T) {
 }
 
 func TestDomain_GetAdditionalData_Nil(t *testing.T) {
-	d := &Domain{
+	d := &models.Domain{
 		AdditionalData: nil,
 	}
 
@@ -263,7 +266,7 @@ func TestDomain_GetAdditionalData_Nil(t *testing.T) {
 }
 
 func TestDomain_SetAdditionalData(t *testing.T) {
-	d := &Domain{}
+	d := &models.Domain{}
 
 	err := d.SetAdditionalData(map[string]interface{}{"key": "value"})
 	require.NoError(t, err)
@@ -275,7 +278,7 @@ func TestDomain_SetAdditionalData(t *testing.T) {
 
 func TestDomain_SetAdditionalData_Nil(t *testing.T) {
 	data := `{"test": "data"}`
-	d := &Domain{
+	d := &models.Domain{
 		AdditionalData: &data,
 	}
 
@@ -285,23 +288,23 @@ func TestDomain_SetAdditionalData_Nil(t *testing.T) {
 }
 
 func TestDnsRecord_TableName(t *testing.T) {
-	r := DnsRecord{}
+	r := models.DnsRecord{}
 	assert.Equal(t, "dns_records", r.TableName())
 }
 
 func TestDnsRecord_BeforeCreate(t *testing.T) {
 	db := setupTestDB(t)
 
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Test",
-		Provider:    DnsProviderCloudflare,
+		Provider:    enums.DnsProviderCloudflare,
 		Credentials: `{"token": "test"}`,
 	}
 	db.Create(dp)
 
-	d := &Domain{
+	d := &models.Domain{
 		UserID:           "user123",
 		TeamID:           "team123",
 		DomainProviderID: dp.ID,
@@ -311,10 +314,10 @@ func TestDnsRecord_BeforeCreate(t *testing.T) {
 	}
 	db.Create(d)
 
-	r := &DnsRecord{
+	r := &models.DnsRecord{
 		DomainID:   d.ID,
 		ProviderID: "record123",
-		Type:       RecordTypeA,
+		Type:       enums.RecordTypeA,
 		Name:       "@",
 		Value:      "1.2.3.4",
 		TTL:        3600,
@@ -330,16 +333,16 @@ func TestDnsRecord_BeforeCreate(t *testing.T) {
 func TestDnsRecord_BeforeCreate_WithExistingID(t *testing.T) {
 	db := setupTestDB(t)
 
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Test",
-		Provider:    DnsProviderCloudflare,
+		Provider:    enums.DnsProviderCloudflare,
 		Credentials: `{"token": "test"}`,
 	}
 	db.Create(dp)
 
-	d := &Domain{
+	d := &models.Domain{
 		UserID:           "user123",
 		TeamID:           "team123",
 		DomainProviderID: dp.ID,
@@ -350,11 +353,11 @@ func TestDnsRecord_BeforeCreate_WithExistingID(t *testing.T) {
 	db.Create(d)
 
 	existingID := "01HQXYZ123456789ABCDEFGH"
-	r := &DnsRecord{
+	r := &models.DnsRecord{
 		ID:         existingID,
 		DomainID:   d.ID,
 		ProviderID: "record123",
-		Type:       RecordTypeA,
+		Type:       enums.RecordTypeA,
 		Name:       "@",
 		Value:      "1.2.3.4",
 		TTL:        3600,
@@ -368,23 +371,23 @@ func TestDnsRecord_BeforeCreate_WithExistingID(t *testing.T) {
 
 func TestDnsRecord_IsEditable(t *testing.T) {
 	tests := []struct {
-		recordType RecordType
+		recordType enums.RecordType
 		editable   bool
 	}{
-		{RecordTypeA, true},
-		{RecordTypeAAAA, true},
-		{RecordTypeCNAME, true},
-		{RecordTypeMX, true},
-		{RecordTypeTXT, true},
-		{RecordTypeSRV, true},
-		{RecordTypeCAA, true},
-		{RecordTypeNS, false},
-		{RecordTypeSOA, false},
+		{enums.RecordTypeA, true},
+		{enums.RecordTypeAAAA, true},
+		{enums.RecordTypeCNAME, true},
+		{enums.RecordTypeMX, true},
+		{enums.RecordTypeTXT, true},
+		{enums.RecordTypeSRV, true},
+		{enums.RecordTypeCAA, true},
+		{enums.RecordTypeNS, false},
+		{enums.RecordTypeSOA, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(string(tt.recordType), func(t *testing.T) {
-			r := &DnsRecord{Type: tt.recordType}
+			r := &models.DnsRecord{Type: tt.recordType}
 			assert.Equal(t, tt.editable, r.IsEditable())
 		})
 	}
@@ -392,23 +395,23 @@ func TestDnsRecord_IsEditable(t *testing.T) {
 
 func TestDnsRecord_IsDeletable(t *testing.T) {
 	tests := []struct {
-		recordType RecordType
+		recordType enums.RecordType
 		deletable  bool
 	}{
-		{RecordTypeA, true},
-		{RecordTypeAAAA, true},
-		{RecordTypeCNAME, true},
-		{RecordTypeMX, true},
-		{RecordTypeTXT, true},
-		{RecordTypeSRV, true},
-		{RecordTypeCAA, true},
-		{RecordTypeNS, false},
-		{RecordTypeSOA, false},
+		{enums.RecordTypeA, true},
+		{enums.RecordTypeAAAA, true},
+		{enums.RecordTypeCNAME, true},
+		{enums.RecordTypeMX, true},
+		{enums.RecordTypeTXT, true},
+		{enums.RecordTypeSRV, true},
+		{enums.RecordTypeCAA, true},
+		{enums.RecordTypeNS, false},
+		{enums.RecordTypeSOA, false},
 	}
 
 	for _, tt := range tests {
 		t.Run(string(tt.recordType), func(t *testing.T) {
-			r := &DnsRecord{Type: tt.recordType}
+			r := &models.DnsRecord{Type: tt.recordType}
 			assert.Equal(t, tt.deletable, r.IsDeletable())
 		})
 	}
@@ -423,9 +426,9 @@ func TestProviderRecord(t *testing.T) {
 	comment := "Test comment"
 	proxied := true
 
-	pr := ProviderRecord{
+	pr := models.ProviderRecord{
 		ID:       "record123",
-		Type:     RecordTypeMX,
+		Type:     enums.RecordTypeMX,
 		Name:     "mail",
 		Value:    "mail.example.com",
 		TTL:      3600,
@@ -439,7 +442,7 @@ func TestProviderRecord(t *testing.T) {
 	}
 
 	assert.Equal(t, "record123", pr.ID)
-	assert.Equal(t, RecordTypeMX, pr.Type)
+	assert.Equal(t, enums.RecordTypeMX, pr.Type)
 	assert.Equal(t, "mail", pr.Name)
 	assert.Equal(t, "mail.example.com", pr.Value)
 	assert.Equal(t, 3600, pr.TTL)
@@ -455,17 +458,17 @@ func TestProviderRecord(t *testing.T) {
 func TestDomainProvider_Relations(t *testing.T) {
 	db := setupTestDB(t)
 
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Test",
-		Provider:    DnsProviderCloudflare,
+		Provider:    enums.DnsProviderCloudflare,
 		Credentials: `{"token": "test"}`,
 	}
 	err := db.Create(dp).Error
 	require.NoError(t, err)
 
-	domain := &Domain{
+	domain := &models.Domain{
 		UserID:           "user123",
 		TeamID:           "team123",
 		DomainProviderID: dp.ID,
@@ -477,7 +480,7 @@ func TestDomainProvider_Relations(t *testing.T) {
 	require.NoError(t, err)
 
 	// Load provider with domains
-	var loadedProvider DomainProvider
+	var loadedProvider models.DomainProvider
 	err = db.Preload("Domains").First(&loadedProvider, "id = ?", dp.ID).Error
 	require.NoError(t, err)
 
@@ -488,16 +491,16 @@ func TestDomainProvider_Relations(t *testing.T) {
 func TestDomain_Relations(t *testing.T) {
 	db := setupTestDB(t)
 
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Test",
-		Provider:    DnsProviderCloudflare,
+		Provider:    enums.DnsProviderCloudflare,
 		Credentials: `{"token": "test"}`,
 	}
 	db.Create(dp)
 
-	domain := &Domain{
+	domain := &models.Domain{
 		UserID:           "user123",
 		TeamID:           "team123",
 		DomainProviderID: dp.ID,
@@ -507,10 +510,10 @@ func TestDomain_Relations(t *testing.T) {
 	}
 	db.Create(domain)
 
-	record := &DnsRecord{
+	record := &models.DnsRecord{
 		DomainID:   domain.ID,
 		ProviderID: "record123",
-		Type:       RecordTypeA,
+		Type:       enums.RecordTypeA,
 		Name:       "@",
 		Value:      "1.2.3.4",
 		TTL:        3600,
@@ -518,7 +521,7 @@ func TestDomain_Relations(t *testing.T) {
 	db.Create(record)
 
 	// Load domain with relations
-	var loadedDomain Domain
+	var loadedDomain models.Domain
 	err := db.Preload("Provider").Preload("Records").First(&loadedDomain, "id = ?", domain.ID).Error
 	require.NoError(t, err)
 
@@ -531,16 +534,16 @@ func TestDomain_Relations(t *testing.T) {
 func TestDnsRecord_Relations(t *testing.T) {
 	db := setupTestDB(t)
 
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Test",
-		Provider:    DnsProviderCloudflare,
+		Provider:    enums.DnsProviderCloudflare,
 		Credentials: `{"token": "test"}`,
 	}
 	db.Create(dp)
 
-	domain := &Domain{
+	domain := &models.Domain{
 		UserID:           "user123",
 		TeamID:           "team123",
 		DomainProviderID: dp.ID,
@@ -550,10 +553,10 @@ func TestDnsRecord_Relations(t *testing.T) {
 	}
 	db.Create(domain)
 
-	record := &DnsRecord{
+	record := &models.DnsRecord{
 		DomainID:   domain.ID,
 		ProviderID: "record123",
-		Type:       RecordTypeA,
+		Type:       enums.RecordTypeA,
 		Name:       "@",
 		Value:      "1.2.3.4",
 		TTL:        3600,
@@ -561,7 +564,7 @@ func TestDnsRecord_Relations(t *testing.T) {
 	db.Create(record)
 
 	// Load record with domain
-	var loadedRecord DnsRecord
+	var loadedRecord models.DnsRecord
 	err := db.Preload("Domain").First(&loadedRecord, "id = ?", record.ID).Error
 	require.NoError(t, err)
 
@@ -572,11 +575,11 @@ func TestDnsRecord_Relations(t *testing.T) {
 func TestDomainProvider_Timestamps(t *testing.T) {
 	db := setupTestDB(t)
 
-	dp := &DomainProvider{
+	dp := &models.DomainProvider{
 		UserID:      "user123",
 		TeamID:      "team123",
 		Profile:     "Test",
-		Provider:    DnsProviderCloudflare,
+		Provider:    enums.DnsProviderCloudflare,
 		Credentials: `{"token": "test"}`,
 	}
 

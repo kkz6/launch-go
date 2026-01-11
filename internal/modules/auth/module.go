@@ -6,22 +6,27 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
+	"github.com/kkz6/launch-go/internal/modules/auth/middlewares"
+	"github.com/kkz6/launch-go/internal/modules/auth/models"
+	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/modules/auth/services"
 )
 
 // Module represents the auth module with all its dependencies
 type Module struct {
-	handler    *Handler
-	service    *Service
-	repository *Repository
+	handler    *handlers.Handler
+	service    *services.Service
+	repository *repositories.Repository
 	config     *config.Config
 	logger     *zerolog.Logger
 }
 
 // NewModule creates a new auth Module instance
 func NewModule(db *gorm.DB, cfg *config.Config, logger *zerolog.Logger) *Module {
-	repo := NewRepository(db)
-	service := NewService(repo, cfg, logger)
-	handler := NewHandler(service)
+	repo := repositories.NewRepository(db)
+	service := services.NewService(repo, cfg, logger)
+	handler := handlers.NewHandler(service)
 
 	return &Module{
 		handler:    handler,
@@ -40,115 +45,115 @@ func (m *Module) RegisterRoutes(router fiber.Router) {
 	m.registerPublicRoutes(auth)
 
 	// Protected routes (authentication required)
-	protected := auth.Group("", AuthMiddleware(m.config.JWT.Secret))
+	protected := auth.Group("", middlewares.AuthMiddleware(m.config.JWT.Secret))
 	m.registerProtectedRoutes(protected)
 
 	// Team routes (require authentication)
-	teams := router.Group("/teams", AuthMiddleware(m.config.JWT.Secret))
+	teams := router.Group("/teams", middlewares.AuthMiddleware(m.config.JWT.Secret))
 	m.registerTeamRoutes(teams)
 }
 
 // registerPublicRoutes registers routes that don't require authentication
 func (m *Module) registerPublicRoutes(router fiber.Router) {
 	// Registration and Login
-	router.Post("/register", m.handler.Register)
-	router.Post("/login", m.handler.Login)
-	router.Post("/refresh", m.handler.RefreshToken)
+	router.Post("/register", m.handler.Auth.Register)
+	router.Post("/login", m.handler.Auth.Login)
+	router.Post("/refresh", m.handler.Auth.RefreshToken)
 
 	// Password Reset
-	router.Post("/forgot-password", m.handler.ForgotPassword)
-	router.Post("/reset-password", m.handler.ResetPassword)
+	router.Post("/forgot-password", m.handler.Password.ForgotPassword)
+	router.Post("/reset-password", m.handler.Password.ResetPassword)
 
 	// Email Verification (public for verification links)
-	router.Get("/verify-email/:id/:hash", m.handler.VerifyEmail)
+	router.Get("/verify-email/:id/:hash", m.handler.Email.VerifyEmail)
 
 	// User Status Check (for login flow)
-	router.Post("/check-user-status", m.handler.CheckUserStatus)
+	router.Post("/check-user-status", m.handler.User.CheckUserStatus)
 }
 
 // registerProtectedRoutes registers routes that require authentication
 func (m *Module) registerProtectedRoutes(router fiber.Router) {
 	// User Management
-	router.Get("/user", m.handler.User)
-	router.Put("/profile", m.handler.UpdateProfile)
-	router.Put("/password", m.handler.ChangePassword)
-	router.Delete("/account", m.handler.DeleteAccount)
-	router.Post("/logout", m.handler.Logout)
+	router.Get("/user", m.handler.User.User)
+	router.Put("/profile", m.handler.User.UpdateProfile)
+	router.Put("/password", m.handler.User.ChangePassword)
+	router.Delete("/account", m.handler.User.DeleteAccount)
+	router.Post("/logout", m.handler.Auth.Logout)
 
 	// Email Verification (resend)
-	router.Post("/email/verification-notification", m.handler.ResendVerificationEmail)
+	router.Post("/email/verification-notification", m.handler.Email.ResendVerificationEmail)
 
 	// Two-Factor Authentication
 	twoFactor := router.Group("/two-factor")
-	twoFactor.Post("/enable", m.handler.EnableTwoFactor)
-	twoFactor.Post("/confirm", m.handler.ConfirmTwoFactor)
-	twoFactor.Delete("/disable", m.handler.DisableTwoFactor)
-	twoFactor.Post("/challenge", m.handler.TwoFactorChallenge)
-	twoFactor.Get("/recovery-codes", m.handler.GetRecoveryCodes)
-	twoFactor.Post("/recovery-codes", m.handler.RegenerateRecoveryCodes)
+	twoFactor.Post("/enable", m.handler.TwoFactor.EnableTwoFactor)
+	twoFactor.Post("/confirm", m.handler.TwoFactor.ConfirmTwoFactor)
+	twoFactor.Delete("/disable", m.handler.TwoFactor.DisableTwoFactor)
+	twoFactor.Post("/challenge", m.handler.TwoFactor.TwoFactorChallenge)
+	twoFactor.Get("/recovery-codes", m.handler.TwoFactor.GetRecoveryCodes)
+	twoFactor.Post("/recovery-codes", m.handler.TwoFactor.RegenerateRecoveryCodes)
 
 	// Current User's Teams
-	router.Get("/teams", m.handler.GetUserTeams)
-	router.Post("/switch-team/:teamId", m.handler.SwitchTeam)
+	router.Get("/teams", m.handler.Team.GetUserTeams)
+	router.Post("/switch-team/:teamId", m.handler.Team.SwitchTeam)
 
 	// Team Invitations (for accepting invitations)
-	router.Post("/team-invitations/:invitationId/accept", m.handler.AcceptTeamInvitation)
+	router.Post("/team-invitations/:invitationId/accept", m.handler.TeamMember.AcceptTeamInvitation)
 }
 
 // registerTeamRoutes registers team management routes
 func (m *Module) registerTeamRoutes(router fiber.Router) {
 	// Team CRUD
-	router.Post("/", m.handler.CreateTeam)
-	router.Get("/:teamId", TeamMemberMiddleware(m.service), m.handler.GetTeam)
-	router.Put("/:teamId", TeamOwnerMiddleware(m.service), m.handler.UpdateTeam)
-	router.Delete("/:teamId", TeamOwnerMiddleware(m.service), m.handler.DeleteTeam)
+	router.Post("/", m.handler.Team.CreateTeam)
+	router.Get("/:teamId", middlewares.TeamMemberMiddleware(m.service), m.handler.Team.GetTeam)
+	router.Put("/:teamId", middlewares.TeamOwnerMiddleware(m.service), m.handler.Team.UpdateTeam)
+	router.Delete("/:teamId", middlewares.TeamOwnerMiddleware(m.service), m.handler.Team.DeleteTeam)
 
 	// Team Members
-	router.Get("/:teamId/members", TeamMemberMiddleware(m.service), m.handler.GetTeamMembers)
-	router.Post("/:teamId/members", TeamAdminMiddleware(m.service), m.handler.InviteTeamMember)
-	router.Put("/:teamId/members/:memberId", TeamOwnerMiddleware(m.service), m.handler.UpdateTeamMemberRole)
-	router.Delete("/:teamId/members/:memberId", m.handler.RemoveTeamMember)
+	router.Get("/:teamId/members", middlewares.TeamMemberMiddleware(m.service), m.handler.TeamMember.GetTeamMembers)
+	router.Post("/:teamId/members", middlewares.TeamAdminMiddleware(m.service), m.handler.TeamMember.InviteTeamMember)
+	router.Put("/:teamId/members/:memberId", middlewares.TeamOwnerMiddleware(m.service), m.handler.TeamMember.UpdateTeamMemberRole)
+	router.Delete("/:teamId/members/:memberId", m.handler.TeamMember.RemoveTeamMember)
 
 	// Team Invitations
-	router.Get("/:teamId/invitations", TeamAdminMiddleware(m.service), m.handler.GetTeamInvitations)
-	router.Delete("/:teamId/invitations/:invitationId", TeamAdminMiddleware(m.service), m.handler.CancelTeamInvitation)
+	router.Get("/:teamId/invitations", middlewares.TeamAdminMiddleware(m.service), m.handler.TeamMember.GetTeamInvitations)
+	router.Delete("/:teamId/invitations/:invitationId", middlewares.TeamAdminMiddleware(m.service), m.handler.TeamMember.CancelTeamInvitation)
 }
 
 // Service returns the auth service
-func (m *Module) Service() *Service {
+func (m *Module) Service() *services.Service {
 	return m.service
 }
 
 // Repository returns the auth repository
-func (m *Module) Repository() *Repository {
+func (m *Module) Repository() *repositories.Repository {
 	return m.repository
 }
 
 // Handler returns the auth handler
-func (m *Module) Handler() *Handler {
+func (m *Module) Handler() *handlers.Handler {
 	return m.handler
 }
 
 // AutoMigrate runs database migrations for auth models
 func (m *Module) AutoMigrate(db *gorm.DB) error {
 	return db.AutoMigrate(
-		&User{},
-		&Team{},
-		&TeamMember{},
-		&TeamInvitation{},
-		&PersonalAccessToken{},
-		&PasswordResetToken{},
+		&models.User{},
+		&models.Team{},
+		&models.TeamMember{},
+		&models.TeamInvitation{},
+		&models.PersonalAccessToken{},
+		&models.PasswordResetToken{},
 	)
 }
 
 // GetModels returns all models for the auth module
 func (m *Module) GetModels() []interface{} {
 	return []interface{}{
-		&User{},
-		&Team{},
-		&TeamMember{},
-		&TeamInvitation{},
-		&PersonalAccessToken{},
-		&PasswordResetToken{},
+		&models.User{},
+		&models.Team{},
+		&models.TeamMember{},
+		&models.TeamInvitation{},
+		&models.PersonalAccessToken{},
+		&models.PasswordResetToken{},
 	}
 }

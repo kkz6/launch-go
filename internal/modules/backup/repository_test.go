@@ -6,28 +6,35 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/modules/backup/enums"
+	"github.com/kkz6/launch-go/internal/modules/backup/models"
+	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 )
 
-func setupTestRepository(t *testing.T) (*Repository, *gorm.DB) {
+func setupTestRepository(t *testing.T) (*repositories.BackupRepository, *repositories.BackupJobRepository, *repositories.StorageProviderRepository, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("failed to connect to database: %v", err)
 	}
 
-	err = db.AutoMigrate(&Backup{}, &BackupJob{}, &StorageProvider{}, &BackupDatabase{})
+	err = db.AutoMigrate(&models.Backup{}, &models.BackupJob{}, &models.StorageProvider{}, &models.BackupDatabase{})
 	if err != nil {
 		t.Fatalf("failed to migrate database: %v", err)
 	}
 
-	repo := NewRepository(db)
-	return repo, db
+	backupRepo := repositories.NewBackupRepository(db)
+	backupJobRepo := repositories.NewBackupJobRepository(db)
+	storageProviderRepo := repositories.NewStorageProviderRepository(db)
+
+	return backupRepo, backupJobRepo, storageProviderRepo, db
 }
 
 func TestRepository_CreateBackup(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
@@ -35,7 +42,7 @@ func TestRepository_CreateBackup(t *testing.T) {
 		Path:              "/var/www",
 	}
 
-	err := repo.CreateBackup(ctx, backup)
+	err := backupRepo.CreateBackup(ctx, backup)
 	if err != nil {
 		t.Fatalf("CreateBackup() error = %v", err)
 	}
@@ -46,10 +53,10 @@ func TestRepository_CreateBackup(t *testing.T) {
 }
 
 func TestRepository_CreateBackupWithDatabases(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
@@ -59,13 +66,13 @@ func TestRepository_CreateBackupWithDatabases(t *testing.T) {
 
 	databaseIDs := []string{"db1", "db2", "db3"}
 
-	err := repo.CreateBackupWithDatabases(ctx, backup, databaseIDs)
+	err := backupRepo.CreateBackupWithDatabases(ctx, backup, databaseIDs)
 	if err != nil {
 		t.Fatalf("CreateBackupWithDatabases() error = %v", err)
 	}
 
 	// Verify databases were associated
-	ids, err := repo.GetBackupDatabaseIDs(ctx, backup.ID)
+	ids, err := backupRepo.GetBackupDatabaseIDs(ctx, backup.ID)
 	if err != nil {
 		t.Fatalf("GetBackupDatabaseIDs() error = %v", err)
 	}
@@ -76,19 +83,19 @@ func TestRepository_CreateBackupWithDatabases(t *testing.T) {
 }
 
 func TestRepository_FindBackupByID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 	}
-	repo.CreateBackup(ctx, backup)
+	backupRepo.CreateBackup(ctx, backup)
 
-	found, err := repo.FindBackupByID(ctx, backup.ID)
+	found, err := backupRepo.FindBackupByID(ctx, backup.ID)
 	if err != nil {
 		t.Fatalf("FindBackupByID() error = %v", err)
 	}
@@ -99,29 +106,29 @@ func TestRepository_FindBackupByID(t *testing.T) {
 }
 
 func TestRepository_FindBackupByID_NotFound(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	_, err := repo.FindBackupByID(ctx, "nonexistent")
-	if err != ErrBackupNotFound {
-		t.Errorf("FindBackupByID() error = %v, want %v", err, ErrBackupNotFound)
+	_, err := backupRepo.FindBackupByID(ctx, "nonexistent")
+	if err != repositories.ErrBackupNotFound {
+		t.Errorf("FindBackupByID() error = %v, want %v", err, repositories.ErrBackupNotFound)
 	}
 }
 
 func TestRepository_FindBackupByIDAndServer(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 	}
-	repo.CreateBackup(ctx, backup)
+	backupRepo.CreateBackup(ctx, backup)
 
-	found, err := repo.FindBackupByIDAndServer(ctx, backup.ID, "server123")
+	found, err := backupRepo.FindBackupByIDAndServer(ctx, backup.ID, "server123")
 	if err != nil {
 		t.Fatalf("FindBackupByIDAndServer() error = %v", err)
 	}
@@ -131,26 +138,26 @@ func TestRepository_FindBackupByIDAndServer(t *testing.T) {
 	}
 
 	// Wrong server
-	_, err = repo.FindBackupByIDAndServer(ctx, backup.ID, "wrong-server")
-	if err != ErrBackupNotFound {
-		t.Errorf("FindBackupByIDAndServer() error = %v, want %v", err, ErrBackupNotFound)
+	_, err = backupRepo.FindBackupByIDAndServer(ctx, backup.ID, "wrong-server")
+	if err != repositories.ErrBackupNotFound {
+		t.Errorf("FindBackupByIDAndServer() error = %v, want %v", err, repositories.ErrBackupNotFound)
 	}
 }
 
 func TestRepository_FindBackupsByServerID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
 	// Create backups for different servers
-	backup1 := &Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
-	backup2 := &Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
-	backup3 := &Backup{ServerID: "server2", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
+	backup1 := &models.Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
+	backup2 := &models.Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
+	backup3 := &models.Backup{ServerID: "server2", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
 
-	repo.CreateBackup(ctx, backup1)
-	repo.CreateBackup(ctx, backup2)
-	repo.CreateBackup(ctx, backup3)
+	backupRepo.CreateBackup(ctx, backup1)
+	backupRepo.CreateBackup(ctx, backup2)
+	backupRepo.CreateBackup(ctx, backup3)
 
-	backups, err := repo.FindBackupsByServerID(ctx, "server1")
+	backups, err := backupRepo.FindBackupsByServerID(ctx, "server1")
 	if err != nil {
 		t.Fatalf("FindBackupsByServerID() error = %v", err)
 	}
@@ -161,10 +168,10 @@ func TestRepository_FindBackupsByServerID(t *testing.T) {
 }
 
 func TestRepository_UpdateBackup(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
@@ -172,17 +179,17 @@ func TestRepository_UpdateBackup(t *testing.T) {
 		Path:              "/var/www",
 		Enabled:           true,
 	}
-	repo.CreateBackup(ctx, backup)
+	backupRepo.CreateBackup(ctx, backup)
 
 	backup.Enabled = false
 	backup.Path = "/new/path"
 
-	err := repo.UpdateBackup(ctx, backup)
+	err := backupRepo.UpdateBackup(ctx, backup)
 	if err != nil {
 		t.Fatalf("UpdateBackup() error = %v", err)
 	}
 
-	found, _ := repo.FindBackupByID(ctx, backup.ID)
+	found, _ := backupRepo.FindBackupByID(ctx, backup.ID)
 	if found.Enabled != false {
 		t.Error("expected Enabled to be false")
 	}
@@ -192,35 +199,35 @@ func TestRepository_UpdateBackup(t *testing.T) {
 }
 
 func TestRepository_UpdateBackupWithDatabases(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 	}
-	repo.CreateBackupWithDatabases(ctx, backup, []string{"db1", "db2"})
+	backupRepo.CreateBackupWithDatabases(ctx, backup, []string{"db1", "db2"})
 
 	backup.Path = "/updated/path"
-	err := repo.UpdateBackupWithDatabases(ctx, backup, []string{"db3", "db4", "db5"})
+	err := backupRepo.UpdateBackupWithDatabases(ctx, backup, []string{"db3", "db4", "db5"})
 	if err != nil {
 		t.Fatalf("UpdateBackupWithDatabases() error = %v", err)
 	}
 
-	ids, _ := repo.GetBackupDatabaseIDs(ctx, backup.ID)
+	ids, _ := backupRepo.GetBackupDatabaseIDs(ctx, backup.ID)
 	if len(ids) != 3 {
 		t.Errorf("expected 3 databases, got %d", len(ids))
 	}
 }
 
 func TestRepository_UpdateBackupFields(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
@@ -228,9 +235,9 @@ func TestRepository_UpdateBackupFields(t *testing.T) {
 		Path:              "/var/www",
 		Retention:         10,
 	}
-	repo.CreateBackup(ctx, backup)
+	backupRepo.CreateBackup(ctx, backup)
 
-	err := repo.UpdateBackupFields(ctx, backup.ID, map[string]interface{}{
+	err := backupRepo.UpdateBackupFields(ctx, backup.ID, map[string]interface{}{
 		"retention": 20,
 		"path":      "/updated",
 	})
@@ -238,7 +245,7 @@ func TestRepository_UpdateBackupFields(t *testing.T) {
 		t.Fatalf("UpdateBackupFields() error = %v", err)
 	}
 
-	found, _ := repo.FindBackupByID(ctx, backup.ID)
+	found, _ := backupRepo.FindBackupByID(ctx, backup.ID)
 	if found.Retention != 20 {
 		t.Errorf("Retention = %d, want 20", found.Retention)
 	}
@@ -248,40 +255,40 @@ func TestRepository_UpdateBackupFields(t *testing.T) {
 }
 
 func TestRepository_DeleteBackup(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server123",
 		UserID:            "user123",
 		StorageProviderID: "provider123",
 		CronExpression:    "0 0 * * *",
 		Path:              "/var/www",
 	}
-	repo.CreateBackup(ctx, backup)
+	backupRepo.CreateBackup(ctx, backup)
 
-	err := repo.DeleteBackup(ctx, backup.ID)
+	err := backupRepo.DeleteBackup(ctx, backup.ID)
 	if err != nil {
 		t.Fatalf("DeleteBackup() error = %v", err)
 	}
 
-	_, err = repo.FindBackupByID(ctx, backup.ID)
-	if err != ErrBackupNotFound {
+	_, err = backupRepo.FindBackupByID(ctx, backup.ID)
+	if err != repositories.ErrBackupNotFound {
 		t.Error("expected backup to be deleted")
 	}
 }
 
 func TestRepository_GetLatestBackupByServerID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup1 := &Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/first"}
-	backup2 := &Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/second"}
+	backup1 := &models.Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/first"}
+	backup2 := &models.Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/second"}
 
-	repo.CreateBackup(ctx, backup1)
-	repo.CreateBackup(ctx, backup2)
+	backupRepo.CreateBackup(ctx, backup1)
+	backupRepo.CreateBackup(ctx, backup2)
 
-	latest, err := repo.GetLatestBackupByServerID(ctx, "server1")
+	latest, err := backupRepo.GetLatestBackupByServerID(ctx, "server1")
 	if err != nil {
 		t.Fatalf("GetLatestBackupByServerID() error = %v", err)
 	}
@@ -292,10 +299,10 @@ func TestRepository_GetLatestBackupByServerID(t *testing.T) {
 }
 
 func TestRepository_GetLatestBackupByServerID_None(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	latest, err := repo.GetLatestBackupByServerID(ctx, "nonexistent")
+	latest, err := backupRepo.GetLatestBackupByServerID(ctx, "nonexistent")
 	if err != nil {
 		t.Fatalf("GetLatestBackupByServerID() error = %v", err)
 	}
@@ -306,26 +313,26 @@ func TestRepository_GetLatestBackupByServerID_None(t *testing.T) {
 }
 
 func TestRepository_BackupJob_CRUD(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, backupJobRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
-	repo.CreateBackup(ctx, backup)
+	backup := &models.Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
+	backupRepo.CreateBackup(ctx, backup)
 
 	// Create
-	job := &BackupJob{
+	job := &models.BackupJob{
 		BackupID:          backup.ID,
 		StorageProviderID: "p1",
-		Status:            BackupJobStatusPending,
+		Status:            enums.BackupJobStatusPending,
 		Size:              1024,
 	}
-	err := repo.CreateBackupJob(ctx, job)
+	err := backupJobRepo.CreateBackupJob(ctx, job)
 	if err != nil {
 		t.Fatalf("CreateBackupJob() error = %v", err)
 	}
 
 	// Find
-	found, err := repo.FindBackupJobByID(ctx, job.ID)
+	found, err := backupJobRepo.FindBackupJobByID(ctx, job.ID)
 	if err != nil {
 		t.Fatalf("FindBackupJobByID() error = %v", err)
 	}
@@ -334,43 +341,43 @@ func TestRepository_BackupJob_CRUD(t *testing.T) {
 	}
 
 	// Update
-	job.Status = BackupJobStatusFinished
+	job.Status = enums.BackupJobStatusFinished
 	job.Size = 2048
-	err = repo.UpdateBackupJob(ctx, job)
+	err = backupJobRepo.UpdateBackupJob(ctx, job)
 	if err != nil {
 		t.Fatalf("UpdateBackupJob() error = %v", err)
 	}
 
-	found, _ = repo.FindBackupJobByID(ctx, job.ID)
-	if found.Status != BackupJobStatusFinished {
+	found, _ = backupJobRepo.FindBackupJobByID(ctx, job.ID)
+	if found.Status != enums.BackupJobStatusFinished {
 		t.Errorf("Status = %s, want finished", found.Status)
 	}
 
 	// Delete
-	err = repo.DeleteBackupJob(ctx, job.ID)
+	err = backupJobRepo.DeleteBackupJob(ctx, job.ID)
 	if err != nil {
 		t.Fatalf("DeleteBackupJob() error = %v", err)
 	}
 
-	_, err = repo.FindBackupJobByID(ctx, job.ID)
-	if err != ErrBackupJobNotFound {
+	_, err = backupJobRepo.FindBackupJobByID(ctx, job.ID)
+	if err != repositories.ErrBackupJobNotFound {
 		t.Error("expected job to be deleted")
 	}
 }
 
 func TestRepository_FindBackupJobsByBackupID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, backupJobRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
-	repo.CreateBackup(ctx, backup)
+	backup := &models.Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
+	backupRepo.CreateBackup(ctx, backup)
 
-	job1 := &BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: BackupJobStatusFinished}
-	job2 := &BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: BackupJobStatusFailed}
-	repo.CreateBackupJob(ctx, job1)
-	repo.CreateBackupJob(ctx, job2)
+	job1 := &models.BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: enums.BackupJobStatusFinished}
+	job2 := &models.BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: enums.BackupJobStatusFailed}
+	backupJobRepo.CreateBackupJob(ctx, job1)
+	backupJobRepo.CreateBackupJob(ctx, job2)
 
-	jobs, err := repo.FindBackupJobsByBackupID(ctx, backup.ID)
+	jobs, err := backupJobRepo.FindBackupJobsByBackupID(ctx, backup.ID)
 	if err != nil {
 		t.Fatalf("FindBackupJobsByBackupID() error = %v", err)
 	}
@@ -381,20 +388,20 @@ func TestRepository_FindBackupJobsByBackupID(t *testing.T) {
 }
 
 func TestRepository_FindFinishedBackupJobs(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, backupJobRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
-	repo.CreateBackup(ctx, backup)
+	backup := &models.Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
+	backupRepo.CreateBackup(ctx, backup)
 
-	job1 := &BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: BackupJobStatusFinished}
-	job2 := &BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: BackupJobStatusFailed}
-	job3 := &BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: BackupJobStatusFinished}
-	repo.CreateBackupJob(ctx, job1)
-	repo.CreateBackupJob(ctx, job2)
-	repo.CreateBackupJob(ctx, job3)
+	job1 := &models.BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: enums.BackupJobStatusFinished}
+	job2 := &models.BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: enums.BackupJobStatusFailed}
+	job3 := &models.BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: enums.BackupJobStatusFinished}
+	backupJobRepo.CreateBackupJob(ctx, job1)
+	backupJobRepo.CreateBackupJob(ctx, job2)
+	backupJobRepo.CreateBackupJob(ctx, job3)
 
-	jobs, err := repo.FindFinishedBackupJobs(ctx, backup.ID)
+	jobs, err := backupJobRepo.FindFinishedBackupJobs(ctx, backup.ID)
 	if err != nil {
 		t.Fatalf("FindFinishedBackupJobs() error = %v", err)
 	}
@@ -405,20 +412,20 @@ func TestRepository_FindFinishedBackupJobs(t *testing.T) {
 }
 
 func TestRepository_GetBackupJobsTotalSize(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, backupJobRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
-	repo.CreateBackup(ctx, backup)
+	backup := &models.Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
+	backupRepo.CreateBackup(ctx, backup)
 
-	job1 := &BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: BackupJobStatusFinished, Size: 1000}
-	job2 := &BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: BackupJobStatusFailed, Size: 500}
-	job3 := &BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: BackupJobStatusFinished, Size: 2000}
-	repo.CreateBackupJob(ctx, job1)
-	repo.CreateBackupJob(ctx, job2)
-	repo.CreateBackupJob(ctx, job3)
+	job1 := &models.BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: enums.BackupJobStatusFinished, Size: 1000}
+	job2 := &models.BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: enums.BackupJobStatusFailed, Size: 500}
+	job3 := &models.BackupJob{BackupID: backup.ID, StorageProviderID: "p1", Status: enums.BackupJobStatusFinished, Size: 2000}
+	backupJobRepo.CreateBackupJob(ctx, job1)
+	backupJobRepo.CreateBackupJob(ctx, job2)
+	backupJobRepo.CreateBackupJob(ctx, job3)
 
-	total, err := repo.GetBackupJobsTotalSize(ctx, backup.ID)
+	total, err := backupJobRepo.GetBackupJobsTotalSize(ctx, backup.ID)
 	if err != nil {
 		t.Fatalf("GetBackupJobsTotalSize() error = %v", err)
 	}
@@ -431,23 +438,23 @@ func TestRepository_GetBackupJobsTotalSize(t *testing.T) {
 }
 
 func TestRepository_StorageProvider_CRUD(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	_, _, storageProviderRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
 	// Create
-	provider := &StorageProvider{
+	provider := &models.StorageProvider{
 		UserID:   "user1",
 		TeamID:   "team1",
-		Provider: StorageDriverS3,
+		Provider: enums.StorageDriverS3,
 		Label:    "My S3",
 	}
-	err := repo.CreateStorageProvider(ctx, provider)
+	err := storageProviderRepo.CreateStorageProvider(ctx, provider)
 	if err != nil {
 		t.Fatalf("CreateStorageProvider() error = %v", err)
 	}
 
 	// Find by ID
-	found, err := repo.FindStorageProviderByID(ctx, provider.ID)
+	found, err := storageProviderRepo.FindStorageProviderByID(ctx, provider.ID)
 	if err != nil {
 		t.Fatalf("FindStorageProviderByID() error = %v", err)
 	}
@@ -457,41 +464,41 @@ func TestRepository_StorageProvider_CRUD(t *testing.T) {
 
 	// Update
 	provider.Label = "Updated S3"
-	err = repo.UpdateStorageProvider(ctx, provider)
+	err = storageProviderRepo.UpdateStorageProvider(ctx, provider)
 	if err != nil {
 		t.Fatalf("UpdateStorageProvider() error = %v", err)
 	}
 
-	found, _ = repo.FindStorageProviderByID(ctx, provider.ID)
+	found, _ = storageProviderRepo.FindStorageProviderByID(ctx, provider.ID)
 	if found.Label != "Updated S3" {
 		t.Errorf("Label = %s, want Updated S3", found.Label)
 	}
 
 	// Delete
-	err = repo.DeleteStorageProvider(ctx, provider.ID)
+	err = storageProviderRepo.DeleteStorageProvider(ctx, provider.ID)
 	if err != nil {
 		t.Fatalf("DeleteStorageProvider() error = %v", err)
 	}
 
-	_, err = repo.FindStorageProviderByID(ctx, provider.ID)
-	if err != ErrStorageProviderNotFound {
+	_, err = storageProviderRepo.FindStorageProviderByID(ctx, provider.ID)
+	if err != repositories.ErrStorageProviderNotFound {
 		t.Error("expected provider to be deleted")
 	}
 }
 
 func TestRepository_FindStorageProvidersByTeamID(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	_, _, storageProviderRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	provider1 := &StorageProvider{UserID: "user1", TeamID: "team1", Provider: StorageDriverS3, Label: "S3 1"}
-	provider2 := &StorageProvider{UserID: "user1", TeamID: "team1", Provider: StorageDriverDropbox, Label: "Dropbox 1"}
-	provider3 := &StorageProvider{UserID: "user1", TeamID: "team2", Provider: StorageDriverS3, Label: "S3 2"}
+	provider1 := &models.StorageProvider{UserID: "user1", TeamID: "team1", Provider: enums.StorageDriverS3, Label: "S3 1"}
+	provider2 := &models.StorageProvider{UserID: "user1", TeamID: "team1", Provider: enums.StorageDriverDropbox, Label: "Dropbox 1"}
+	provider3 := &models.StorageProvider{UserID: "user1", TeamID: "team2", Provider: enums.StorageDriverS3, Label: "S3 2"}
 
-	repo.CreateStorageProvider(ctx, provider1)
-	repo.CreateStorageProvider(ctx, provider2)
-	repo.CreateStorageProvider(ctx, provider3)
+	storageProviderRepo.CreateStorageProvider(ctx, provider1)
+	storageProviderRepo.CreateStorageProvider(ctx, provider2)
+	storageProviderRepo.CreateStorageProvider(ctx, provider3)
 
-	providers, err := repo.FindStorageProvidersByTeamID(ctx, "team1")
+	providers, err := storageProviderRepo.FindStorageProvidersByTeamID(ctx, "team1")
 	if err != nil {
 		t.Fatalf("FindStorageProvidersByTeamID() error = %v", err)
 	}
@@ -502,18 +509,18 @@ func TestRepository_FindStorageProvidersByTeamID(t *testing.T) {
 }
 
 func TestRepository_FindStorageProvidersByDriver(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	_, _, storageProviderRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	provider1 := &StorageProvider{UserID: "user1", TeamID: "team1", Provider: StorageDriverS3, Label: "S3 1"}
-	provider2 := &StorageProvider{UserID: "user1", TeamID: "team1", Provider: StorageDriverDropbox, Label: "Dropbox 1"}
-	provider3 := &StorageProvider{UserID: "user1", TeamID: "team2", Provider: StorageDriverS3, Label: "S3 2"}
+	provider1 := &models.StorageProvider{UserID: "user1", TeamID: "team1", Provider: enums.StorageDriverS3, Label: "S3 1"}
+	provider2 := &models.StorageProvider{UserID: "user1", TeamID: "team1", Provider: enums.StorageDriverDropbox, Label: "Dropbox 1"}
+	provider3 := &models.StorageProvider{UserID: "user1", TeamID: "team2", Provider: enums.StorageDriverS3, Label: "S3 2"}
 
-	repo.CreateStorageProvider(ctx, provider1)
-	repo.CreateStorageProvider(ctx, provider2)
-	repo.CreateStorageProvider(ctx, provider3)
+	storageProviderRepo.CreateStorageProvider(ctx, provider1)
+	storageProviderRepo.CreateStorageProvider(ctx, provider2)
+	storageProviderRepo.CreateStorageProvider(ctx, provider3)
 
-	providers, err := repo.FindStorageProvidersByDriver(ctx, StorageDriverS3)
+	providers, err := storageProviderRepo.FindStorageProvidersByDriver(ctx, enums.StorageDriverS3)
 	if err != nil {
 		t.Fatalf("FindStorageProvidersByDriver() error = %v", err)
 	}
@@ -524,18 +531,18 @@ func TestRepository_FindStorageProvidersByDriver(t *testing.T) {
 }
 
 func TestRepository_FindStorageProvidersByTeamAndDriver(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	_, _, storageProviderRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	provider1 := &StorageProvider{UserID: "user1", TeamID: "team1", Provider: StorageDriverS3, Label: "S3 1"}
-	provider2 := &StorageProvider{UserID: "user1", TeamID: "team1", Provider: StorageDriverDropbox, Label: "Dropbox 1"}
-	provider3 := &StorageProvider{UserID: "user1", TeamID: "team2", Provider: StorageDriverS3, Label: "S3 2"}
+	provider1 := &models.StorageProvider{UserID: "user1", TeamID: "team1", Provider: enums.StorageDriverS3, Label: "S3 1"}
+	provider2 := &models.StorageProvider{UserID: "user1", TeamID: "team1", Provider: enums.StorageDriverDropbox, Label: "Dropbox 1"}
+	provider3 := &models.StorageProvider{UserID: "user1", TeamID: "team2", Provider: enums.StorageDriverS3, Label: "S3 2"}
 
-	repo.CreateStorageProvider(ctx, provider1)
-	repo.CreateStorageProvider(ctx, provider2)
-	repo.CreateStorageProvider(ctx, provider3)
+	storageProviderRepo.CreateStorageProvider(ctx, provider1)
+	storageProviderRepo.CreateStorageProvider(ctx, provider2)
+	storageProviderRepo.CreateStorageProvider(ctx, provider3)
 
-	providers, err := repo.FindStorageProvidersByTeamAndDriver(ctx, "team1", StorageDriverS3)
+	providers, err := storageProviderRepo.FindStorageProvidersByTeamAndDriver(ctx, "team1", enums.StorageDriverS3)
 	if err != nil {
 		t.Fatalf("FindStorageProvidersByTeamAndDriver() error = %v", err)
 	}
@@ -546,31 +553,31 @@ func TestRepository_FindStorageProvidersByTeamAndDriver(t *testing.T) {
 }
 
 func TestRepository_SyncBackupDatabases(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
-	repo.CreateBackupWithDatabases(ctx, backup, []string{"db1", "db2"})
+	backup := &models.Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
+	backupRepo.CreateBackupWithDatabases(ctx, backup, []string{"db1", "db2"})
 
-	err := repo.SyncBackupDatabases(ctx, backup.ID, []string{"db3", "db4"})
+	err := backupRepo.SyncBackupDatabases(ctx, backup.ID, []string{"db3", "db4"})
 	if err != nil {
 		t.Fatalf("SyncBackupDatabases() error = %v", err)
 	}
 
-	ids, _ := repo.GetBackupDatabaseIDs(ctx, backup.ID)
+	ids, _ := backupRepo.GetBackupDatabaseIDs(ctx, backup.ID)
 	if len(ids) != 2 {
 		t.Errorf("expected 2 databases, got %d", len(ids))
 	}
 }
 
 func TestRepository_BackupExists(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
-	repo.CreateBackup(ctx, backup)
+	backup := &models.Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
+	backupRepo.CreateBackup(ctx, backup)
 
-	exists, err := repo.BackupExists(ctx, backup.ID)
+	exists, err := backupRepo.BackupExists(ctx, backup.ID)
 	if err != nil {
 		t.Fatalf("BackupExists() error = %v", err)
 	}
@@ -578,7 +585,7 @@ func TestRepository_BackupExists(t *testing.T) {
 		t.Error("expected backup to exist")
 	}
 
-	exists, err = repo.BackupExists(ctx, "nonexistent")
+	exists, err = backupRepo.BackupExists(ctx, "nonexistent")
 	if err != nil {
 		t.Fatalf("BackupExists() error = %v", err)
 	}
@@ -588,13 +595,13 @@ func TestRepository_BackupExists(t *testing.T) {
 }
 
 func TestRepository_StorageProviderExists(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	_, _, storageProviderRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	provider := &StorageProvider{UserID: "user1", TeamID: "team1", Provider: StorageDriverS3, Label: "S3"}
-	repo.CreateStorageProvider(ctx, provider)
+	provider := &models.StorageProvider{UserID: "user1", TeamID: "team1", Provider: enums.StorageDriverS3, Label: "S3"}
+	storageProviderRepo.CreateStorageProvider(ctx, provider)
 
-	exists, err := repo.StorageProviderExists(ctx, provider.ID)
+	exists, err := storageProviderRepo.StorageProviderExists(ctx, provider.ID)
 	if err != nil {
 		t.Fatalf("StorageProviderExists() error = %v", err)
 	}
@@ -602,7 +609,7 @@ func TestRepository_StorageProviderExists(t *testing.T) {
 		t.Error("expected provider to exist")
 	}
 
-	exists, err = repo.StorageProviderExists(ctx, 999999)
+	exists, err = storageProviderRepo.StorageProviderExists(ctx, 999999)
 	if err != nil {
 		t.Fatalf("StorageProviderExists() error = %v", err)
 	}
@@ -612,14 +619,14 @@ func TestRepository_StorageProviderExists(t *testing.T) {
 }
 
 func TestRepository_HasBackupsForStorageProvider(t *testing.T) {
-	repo, db := setupTestRepository(t)
+	backupRepo, _, storageProviderRepo, db := setupTestRepository(t)
 	ctx := context.Background()
 
-	provider := &StorageProvider{UserID: "user1", TeamID: "team1", Provider: StorageDriverS3, Label: "S3"}
-	repo.CreateStorageProvider(ctx, provider)
+	provider := &models.StorageProvider{UserID: "user1", TeamID: "team1", Provider: enums.StorageDriverS3, Label: "S3"}
+	storageProviderRepo.CreateStorageProvider(ctx, provider)
 
 	// No backups yet
-	hasBackups, err := repo.HasBackupsForStorageProvider(ctx, provider.ID)
+	hasBackups, err := storageProviderRepo.HasBackupsForStorageProvider(ctx, provider.ID)
 	if err != nil {
 		t.Fatalf("HasBackupsForStorageProvider() error = %v", err)
 	}
@@ -628,7 +635,7 @@ func TestRepository_HasBackupsForStorageProvider(t *testing.T) {
 	}
 
 	// Create a backup using this provider - need to use string ID
-	backup := &Backup{
+	backup := &models.Backup{
 		ServerID:          "server1",
 		UserID:            "user1",
 		StorageProviderID: "1", // First auto-increment ID
@@ -637,24 +644,27 @@ func TestRepository_HasBackupsForStorageProvider(t *testing.T) {
 	}
 	db.Create(backup)
 
-	hasBackups, err = repo.HasBackupsForStorageProvider(ctx, 1)
+	hasBackups, err = storageProviderRepo.HasBackupsForStorageProvider(ctx, 1)
 	if err != nil {
 		t.Fatalf("HasBackupsForStorageProvider() error = %v", err)
 	}
 	if !hasBackups {
 		t.Error("expected to have backups")
 	}
+
+	// Clean up
+	backupRepo.DeleteBackup(ctx, backup.ID)
 }
 
 func TestRepository_FindStorageProviderByIDString(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	_, _, storageProviderRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	provider := &StorageProvider{UserID: "user1", TeamID: "team1", Provider: StorageDriverS3, Label: "S3"}
-	repo.CreateStorageProvider(ctx, provider)
+	provider := &models.StorageProvider{UserID: "user1", TeamID: "team1", Provider: enums.StorageDriverS3, Label: "S3"}
+	storageProviderRepo.CreateStorageProvider(ctx, provider)
 
 	// Note: SQLite uses auto-increment so the string ID would be "1"
-	found, err := repo.FindStorageProviderByIDString(ctx, "1")
+	found, err := storageProviderRepo.FindStorageProviderByIDString(ctx, "1")
 	if err != nil {
 		t.Fatalf("FindStorageProviderByIDString() error = %v", err)
 	}
@@ -664,34 +674,34 @@ func TestRepository_FindStorageProviderByIDString(t *testing.T) {
 }
 
 func TestRepository_FindStorageProviderByIDString_NotFound(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	_, _, storageProviderRepo, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	_, err := repo.FindStorageProviderByIDString(ctx, "999999")
-	if err != ErrStorageProviderNotFound {
-		t.Errorf("FindStorageProviderByIDString() error = %v, want %v", err, ErrStorageProviderNotFound)
+	_, err := storageProviderRepo.FindStorageProviderByIDString(ctx, "999999")
+	if err != repositories.ErrStorageProviderNotFound {
+		t.Errorf("FindStorageProviderByIDString() error = %v, want %v", err, repositories.ErrStorageProviderNotFound)
 	}
 }
 
 func TestRepository_FindBackupJobByID_NotFound(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	_, backupJobRepo, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	_, err := repo.FindBackupJobByID(ctx, "nonexistent")
-	if err != ErrBackupJobNotFound {
-		t.Errorf("FindBackupJobByID() error = %v, want %v", err, ErrBackupJobNotFound)
+	_, err := backupJobRepo.FindBackupJobByID(ctx, "nonexistent")
+	if err != repositories.ErrBackupJobNotFound {
+		t.Errorf("FindBackupJobByID() error = %v, want %v", err, repositories.ErrBackupJobNotFound)
 	}
 }
 
 func TestRepository_GetBackupDatabaseIDs_Empty(t *testing.T) {
-	repo, _ := setupTestRepository(t)
+	backupRepo, _, _, _ := setupTestRepository(t)
 	ctx := context.Background()
 
-	backup := &Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
-	repo.CreateBackup(ctx, backup)
+	backup := &models.Backup{ServerID: "server1", UserID: "user1", StorageProviderID: "p1", CronExpression: "* * * * *", Path: "/"}
+	backupRepo.CreateBackup(ctx, backup)
 
 	// Get IDs for backup with no databases
-	ids, err := repo.GetBackupDatabaseIDs(ctx, backup.ID)
+	ids, err := backupRepo.GetBackupDatabaseIDs(ctx, backup.ID)
 	if err != nil {
 		t.Fatalf("GetBackupDatabaseIDs() error = %v", err)
 	}

@@ -14,19 +14,26 @@ import (
 	"github.com/stretchr/testify/require"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/handlers"
+	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/repositories"
+	"github.com/kkz6/launch-go/internal/modules/server/services"
 )
 
-func setupTestHandler(t *testing.T) (*fiber.App, *Handler, *Repository, *gorm.DB) {
+func setupTestHandler(t *testing.T) (*fiber.App, *handlers.Handler, *repositories.Repository, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(AllModels()...)
+	err = db.AutoMigrate(models.AllModels()...)
 	require.NoError(t, err)
 
-	repo := NewRepository(db)
+	repo := repositories.NewRepository(db)
 	logger := zerolog.Nop()
-	service := NewService(repo, nil, nil, nil, &logger)
-	handler := NewHandler(service)
+	service := services.NewService(repo, nil, nil, nil, &logger)
+	handler := handlers.NewHandler(service)
 
 	app := fiber.New()
 
@@ -40,15 +47,15 @@ func setupTestHandler(t *testing.T) (*fiber.App, *Handler, *Repository, *gorm.DB
 	return app, handler, repo, db
 }
 
-func createTestServerForHandler(t *testing.T, repo *Repository, teamID, name string) *Server {
-	server := &Server{
+func createTestServerForHandler(t *testing.T, repo *repositories.Repository, teamID, name string) *models.Server {
+	server := &models.Server{
 		TeamID:          teamID,
 		UserID:          "01ARZ3NDEKTSV4RRFFQ69G5FAU",
 		Name:            name,
-		Provider:        ProviderCustom, // Use custom provider to avoid queue operations
-		Type:            ServerTypePhp,
-		OperatingSystem: OSUbuntu24,
-		Status:          ServerStatusRunning,
+		Provider:        enums.ProviderCustom, // Use custom provider to avoid queue operations
+		Type:            enums.ServerTypePhp,
+		OperatingSystem: enums.OSUbuntu24,
+		Status:          enums.ServerStatusRunning,
 	}
 	err := repo.CreateServer(t.Context(), server)
 	require.NoError(t, err)
@@ -131,7 +138,7 @@ func TestHandler_Create(t *testing.T) {
 	app.Post("/servers", handler.Create)
 
 	t.Run("creates server successfully", func(t *testing.T) {
-		body := CreateServerRequest{
+		body := dto.CreateServerRequest{
 			Name:            "new-server",
 			Provider:        "custom_server",
 			Type:            "php",
@@ -194,7 +201,7 @@ func TestHandler_Update(t *testing.T) {
 	t.Run("updates server successfully", func(t *testing.T) {
 		server := createTestServerForHandler(t, repo, teamID, "original-name")
 
-		body := UpdateServerRequest{
+		body := dto.UpdateServerRequest{
 			Name: strPtr("updated-name"),
 		}
 
@@ -209,7 +216,7 @@ func TestHandler_Update(t *testing.T) {
 	})
 
 	t.Run("returns 404 for non-existent server", func(t *testing.T) {
-		body := UpdateServerRequest{
+		body := dto.UpdateServerRequest{
 			Name: strPtr("new-name"),
 		}
 
@@ -285,8 +292,8 @@ func TestHandler_ListServices(t *testing.T) {
 	server := createTestServerForHandler(t, repo, teamID, "test-server")
 
 	// Create services
-	php := SoftwarePhp84
-	svc := &InstalledService{ServerID: server.ID, Type: ServiceTypePhp, Name: "PHP 8.4", Software: &php}
+	php := enums.SoftwarePhp84
+	svc := &models.InstalledService{ServerID: server.ID, Type: enums.ServiceTypePhp, Name: "PHP 8.4", Software: &php}
 	repo.CreateService(t.Context(), svc)
 
 	resp, err := performRequest(app, "GET", "/servers/"+server.ID+"/services", nil)
@@ -309,7 +316,7 @@ func TestHandler_ListFirewallRules(t *testing.T) {
 
 	// Create firewall rules
 	port := "22"
-	rule := &FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port, Action: RuleActionAllow}
+	rule := &models.FirewallRule{ServerID: server.ID, Name: "SSH", Port: &port, Action: enums.RuleActionAllow}
 	repo.CreateFirewallRule(t.Context(), rule)
 
 	resp, err := performRequest(app, "GET", "/servers/"+server.ID+"/firewall-rules", nil)
@@ -331,7 +338,7 @@ func TestHandler_ListCrons(t *testing.T) {
 	server := createTestServerForHandler(t, repo, teamID, "test-server")
 
 	// Create cron
-	cron := &Cron{ServerID: server.ID, User: "root", Expression: "*/5 * * * *", Command: "cmd1"}
+	cron := &models.Cron{ServerID: server.ID, User: "root", Expression: "*/5 * * * *", Command: "cmd1"}
 	repo.CreateCron(t.Context(), cron)
 
 	resp, err := performRequest(app, "GET", "/servers/"+server.ID+"/crons", nil)
@@ -354,7 +361,7 @@ func TestHandler_ListDaemons(t *testing.T) {
 
 	// Create daemon
 	dir := "/tmp"
-	daemon := &Daemon{ServerID: server.ID, Command: "cmd", User: "root", Directory: &dir}
+	daemon := &models.Daemon{ServerID: server.ID, Command: "cmd", User: "root", Directory: &dir}
 	repo.CreateDaemon(t.Context(), daemon)
 
 	resp, err := performRequest(app, "GET", "/servers/"+server.ID+"/daemons", nil)
@@ -374,7 +381,7 @@ func TestHandler_ListSshKeys(t *testing.T) {
 	app.Get("/ssh-keys", handler.ListSshKeys)
 
 	// Create SSH keys
-	key := &SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 1", PublicKey: "ssh-rsa AAA1"}
+	key := &models.SshKey{TeamID: &teamID, UserID: &teamID, Name: "Key 1", PublicKey: "ssh-rsa AAA1"}
 	repo.CreateSshKey(t.Context(), key)
 
 	resp, err := performRequest(app, "GET", "/ssh-keys", nil)
@@ -392,7 +399,7 @@ func TestHandler_CreateSshKey(t *testing.T) {
 
 	app.Post("/ssh-keys", handler.CreateSshKey)
 
-	body := CreateSshKeyRequest{
+	body := dto.CreateSshKeyRequest{
 		Name:      "My SSH Key",
 		PublicKey: "ssh-rsa AAAAB3... user@example.com",
 	}
@@ -413,7 +420,7 @@ func TestHandler_DeleteSshKey(t *testing.T) {
 
 	app.Delete("/ssh-keys/:sshKeyId", handler.DeleteSshKey)
 
-	key := &SshKey{TeamID: &teamID, UserID: &teamID, Name: "To Delete", PublicKey: "ssh-rsa AAA"}
+	key := &models.SshKey{TeamID: &teamID, UserID: &teamID, Name: "To Delete", PublicKey: "ssh-rsa AAA"}
 	repo.CreateSshKey(t.Context(), key)
 
 	resp, err := performRequest(app, "DELETE", "/ssh-keys/"+key.ID, nil)
@@ -444,7 +451,7 @@ func TestHandler_CreateDatabase(t *testing.T) {
 
 	server := createTestServerForHandler(t, repo, teamID, "test-server")
 
-	body := CreateDatabaseRequest{
+	body := dto.CreateDatabaseRequest{
 		Name: "my_database",
 	}
 
@@ -469,7 +476,7 @@ func TestHandler_ListTasks(t *testing.T) {
 	// Create tasks
 	taskName := "provision"
 	taskScript := "cmd"
-	task := &Task{ServerID: server.ID, Type: "provision", Name: &taskName, Script: &taskScript}
+	task := &models.Task{ServerID: server.ID, Type: "provision", Name: &taskName, Script: &taskScript}
 	repo.CreateTask(t.Context(), task)
 
 	resp, err := performRequest(app, "GET", "/servers/"+server.ID+"/tasks", nil)
@@ -492,7 +499,7 @@ func TestHandler_GetLatestTask(t *testing.T) {
 
 	taskName := "provision"
 	taskScript := "cmd"
-	task := &Task{ServerID: server.ID, Type: "provision", Name: &taskName, Script: &taskScript}
+	task := &models.Task{ServerID: server.ID, Type: "provision", Name: &taskName, Script: &taskScript}
 	repo.CreateTask(t.Context(), task)
 
 	resp, err := performRequest(app, "GET", "/servers/"+server.ID+"/tasks/latest", nil)
@@ -510,7 +517,7 @@ func TestHandler_GetMetrics(t *testing.T) {
 	server := createTestServerForHandler(t, repo, teamID, "test-server")
 
 	// Create metrics
-	metric := &Metric{ServerID: server.ID, CPUUsage: 25.5}
+	metric := &models.Metric{ServerID: server.ID, CPUUsage: 25.5}
 	repo.CreateMetric(t.Context(), metric)
 
 	resp, err := performRequest(app, "GET", "/servers/"+server.ID+"/metrics", nil)
@@ -531,7 +538,7 @@ func TestHandler_GetLatestMetric(t *testing.T) {
 
 	server := createTestServerForHandler(t, repo, teamID, "test-server")
 
-	metric := &Metric{ServerID: server.ID, CPUUsage: 25.5}
+	metric := &models.Metric{ServerID: server.ID, CPUUsage: 25.5}
 	repo.CreateMetric(t.Context(), metric)
 
 	resp, err := performRequest(app, "GET", "/servers/"+server.ID+"/metrics/latest", nil)

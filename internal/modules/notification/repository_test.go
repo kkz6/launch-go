@@ -8,6 +8,10 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
+
+	"github.com/kkz6/launch-go/internal/modules/notification/enums"
+	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	"github.com/kkz6/launch-go/internal/modules/notification/repositories"
 )
 
 func setupTestDB(t *testing.T) *gorm.DB {
@@ -18,7 +22,7 @@ func setupTestDB(t *testing.T) *gorm.DB {
 		t.Fatalf("failed to connect database: %v", err)
 	}
 
-	if err := db.AutoMigrate(&NotificationChannel{}); err != nil {
+	if err := db.AutoMigrate(&models.NotificationChannel{}); err != nil {
 		t.Fatalf("failed to migrate: %v", err)
 	}
 
@@ -27,16 +31,16 @@ func setupTestDB(t *testing.T) *gorm.DB {
 
 func TestRepository_Create(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "user123",
 		TeamID:    "team123",
-		Provider:  ChannelTypeEmail,
+		Provider:  enums.ChannelTypeEmail,
 		Label:     "Test Email",
-		Data:      ChannelData{Email: "test@example.com"},
+		Data:      models.ChannelData{Email: "test@example.com"},
 		Connected: true,
 	}
 
@@ -57,16 +61,16 @@ func TestRepository_Create(t *testing.T) {
 
 func TestRepository_Update(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:       "01HXYZ123456789ABCDEFGHIJ",
 		UserID:   "user123",
 		TeamID:   "team123",
-		Provider: ChannelTypeEmail,
+		Provider: enums.ChannelTypeEmail,
 		Label:    "Original Label",
-		Data:     ChannelData{Email: "test@example.com"},
+		Data:     models.ChannelData{Email: "test@example.com"},
 	}
 
 	_ = repo.Create(ctx, channel)
@@ -85,16 +89,16 @@ func TestRepository_Update(t *testing.T) {
 
 func TestRepository_Delete(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:       "01HXYZ123456789ABCDEFGHIJ",
 		UserID:   "user123",
 		TeamID:   "team123",
-		Provider: ChannelTypeEmail,
+		Provider: enums.ChannelTypeEmail,
 		Label:    "To Delete",
-		Data:     ChannelData{Email: "test@example.com"},
+		Data:     models.ChannelData{Email: "test@example.com"},
 	}
 
 	_ = repo.Create(ctx, channel)
@@ -106,34 +110,34 @@ func TestRepository_Delete(t *testing.T) {
 
 	// Verify it was deleted (soft delete)
 	_, err = repo.FindByID(ctx, channel.ID)
-	if err != ErrChannelNotFound {
+	if err != repositories.ErrChannelNotFound {
 		t.Errorf("expected ErrChannelNotFound, got %v", err)
 	}
 }
 
 func TestRepository_Delete_NotFound(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
 	err := repo.Delete(ctx, "nonexistent")
-	if err != ErrChannelNotFound {
+	if err != repositories.ErrChannelNotFound {
 		t.Errorf("expected ErrChannelNotFound, got %v", err)
 	}
 }
 
 func TestRepository_FindByID(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:       "01HXYZ123456789ABCDEFGHIJ",
 		UserID:   "user123",
 		TeamID:   "team123",
-		Provider: ChannelTypeSlack,
+		Provider: enums.ChannelTypeSlack,
 		Label:    "Slack Channel",
-		Data:     ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
+		Data:     models.ChannelData{WebhookURL: "https://hooks.slack.com/xxx"},
 	}
 
 	_ = repo.Create(ctx, channel)
@@ -142,34 +146,34 @@ func TestRepository_FindByID(t *testing.T) {
 	if err != nil {
 		t.Errorf("FindByID() error = %v", err)
 	}
-	if found.Provider != ChannelTypeSlack {
+	if found.Provider != enums.ChannelTypeSlack {
 		t.Errorf("Provider = %v, want slack", found.Provider)
 	}
 }
 
 func TestRepository_FindByID_NotFound(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
 	_, err := repo.FindByID(ctx, "nonexistent")
-	if err != ErrChannelNotFound {
+	if err != repositories.ErrChannelNotFound {
 		t.Errorf("expected ErrChannelNotFound, got %v", err)
 	}
 }
 
 func TestRepository_FindByIDAndTeamID(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:       "01HXYZ123456789ABCDEFGHIJ",
 		UserID:   "user123",
 		TeamID:   "team123",
-		Provider: ChannelTypeEmail,
+		Provider: enums.ChannelTypeEmail,
 		Label:    "Team Channel",
-		Data:     ChannelData{Email: "test@example.com"},
+		Data:     models.ChannelData{Email: "test@example.com"},
 	}
 
 	_ = repo.Create(ctx, channel)
@@ -185,23 +189,23 @@ func TestRepository_FindByIDAndTeamID(t *testing.T) {
 
 	// Find with wrong team
 	_, err = repo.FindByIDAndTeamID(ctx, channel.ID, "wrong-team")
-	if err != ErrChannelNotFound {
+	if err != repositories.ErrChannelNotFound {
 		t.Errorf("expected ErrChannelNotFound, got %v", err)
 	}
 }
 
 func TestRepository_FindByTeamID(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channels := []NotificationChannel{
-		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team1", Provider: ChannelTypeEmail, Label: "Email 1"},
-		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team1", Provider: ChannelTypeSlack, Label: "Slack 1"},
-		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user2", TeamID: "team2", Provider: ChannelTypeEmail, Label: "Email 2"},
+	chans := []models.NotificationChannel{
+		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeEmail, Label: "Email 1"},
+		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeSlack, Label: "Slack 1"},
+		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user2", TeamID: "team2", Provider: enums.ChannelTypeEmail, Label: "Email 2"},
 	}
 
-	for _, ch := range channels {
+	for _, ch := range chans {
 		_ = repo.Create(ctx, &ch)
 	}
 
@@ -216,16 +220,16 @@ func TestRepository_FindByTeamID(t *testing.T) {
 
 func TestRepository_FindByUserID(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channels := []NotificationChannel{
-		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team1", Provider: ChannelTypeEmail, Label: "Email 1"},
-		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team2", Provider: ChannelTypeSlack, Label: "Slack 1"},
-		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user2", TeamID: "team1", Provider: ChannelTypeEmail, Label: "Email 2"},
+	chans := []models.NotificationChannel{
+		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeEmail, Label: "Email 1"},
+		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team2", Provider: enums.ChannelTypeSlack, Label: "Slack 1"},
+		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user2", TeamID: "team1", Provider: enums.ChannelTypeEmail, Label: "Email 2"},
 	}
 
-	for _, ch := range channels {
+	for _, ch := range chans {
 		_ = repo.Create(ctx, &ch)
 	}
 
@@ -240,20 +244,20 @@ func TestRepository_FindByUserID(t *testing.T) {
 
 func TestRepository_FindByProvider(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channels := []NotificationChannel{
-		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team1", Provider: ChannelTypeEmail, Label: "Email 1"},
-		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team1", Provider: ChannelTypeSlack, Label: "Slack 1"},
-		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user1", TeamID: "team1", Provider: ChannelTypeEmail, Label: "Email 2"},
+	chans := []models.NotificationChannel{
+		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeEmail, Label: "Email 1"},
+		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeSlack, Label: "Slack 1"},
+		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeEmail, Label: "Email 2"},
 	}
 
-	for _, ch := range channels {
+	for _, ch := range chans {
 		_ = repo.Create(ctx, &ch)
 	}
 
-	found, err := repo.FindByProvider(ctx, "team1", ChannelTypeEmail)
+	found, err := repo.FindByProvider(ctx, "team1", enums.ChannelTypeEmail)
 	if err != nil {
 		t.Errorf("FindByProvider() error = %v", err)
 	}
@@ -264,16 +268,16 @@ func TestRepository_FindByProvider(t *testing.T) {
 
 func TestRepository_FindConnected(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channels := []NotificationChannel{
-		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team1", Provider: ChannelTypeEmail, Label: "Email 1", Connected: true},
-		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team1", Provider: ChannelTypeSlack, Label: "Slack 1", Connected: false},
-		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user1", TeamID: "team1", Provider: ChannelTypeEmail, Label: "Email 2", Connected: true},
+	chans := []models.NotificationChannel{
+		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeEmail, Label: "Email 1", Connected: true},
+		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeSlack, Label: "Slack 1", Connected: false},
+		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeEmail, Label: "Email 2", Connected: true},
 	}
 
-	for _, ch := range channels {
+	for _, ch := range chans {
 		_ = repo.Create(ctx, &ch)
 	}
 
@@ -288,14 +292,14 @@ func TestRepository_FindConnected(t *testing.T) {
 
 func TestRepository_SetConnected(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:        "01HXYZ123456789ABCDEFGHIJ",
 		UserID:    "user123",
 		TeamID:    "team123",
-		Provider:  ChannelTypeEmail,
+		Provider:  enums.ChannelTypeEmail,
 		Label:     "Test",
 		Connected: false,
 	}
@@ -315,20 +319,20 @@ func TestRepository_SetConnected(t *testing.T) {
 
 func TestRepository_SetDefault(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channels := []NotificationChannel{
-		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team1", Provider: ChannelTypeEmail, Label: "Email 1", IsDefault: true},
-		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team1", Provider: ChannelTypeEmail, Label: "Email 2", IsDefault: false},
+	chans := []models.NotificationChannel{
+		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeEmail, Label: "Email 1", IsDefault: true},
+		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeEmail, Label: "Email 2", IsDefault: false},
 	}
 
-	for _, ch := range channels {
+	for _, ch := range chans {
 		_ = repo.Create(ctx, &ch)
 	}
 
 	// Set second channel as default
-	err := repo.SetDefault(ctx, "01HXYZ123456789ABCDEFGHI2", "team1", ChannelTypeEmail)
+	err := repo.SetDefault(ctx, "01HXYZ123456789ABCDEFGHI2", "team1", enums.ChannelTypeEmail)
 	if err != nil {
 		t.Errorf("SetDefault() error = %v", err)
 	}
@@ -348,14 +352,14 @@ func TestRepository_SetDefault(t *testing.T) {
 
 func TestRepository_Exists(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:       "01HXYZ123456789ABCDEFGHIJ",
 		UserID:   "user123",
 		TeamID:   "team123",
-		Provider: ChannelTypeEmail,
+		Provider: enums.ChannelTypeEmail,
 		Label:    "Test",
 	}
 
@@ -380,16 +384,16 @@ func TestRepository_Exists(t *testing.T) {
 
 func TestRepository_CountByTeamID(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channels := []NotificationChannel{
-		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team1", Provider: ChannelTypeEmail, Label: "Email 1"},
-		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team1", Provider: ChannelTypeSlack, Label: "Slack 1"},
-		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user2", TeamID: "team2", Provider: ChannelTypeEmail, Label: "Email 2"},
+	chans := []models.NotificationChannel{
+		{ID: "01HXYZ123456789ABCDEFGHI1", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeEmail, Label: "Email 1"},
+		{ID: "01HXYZ123456789ABCDEFGHI2", UserID: "user1", TeamID: "team1", Provider: enums.ChannelTypeSlack, Label: "Slack 1"},
+		{ID: "01HXYZ123456789ABCDEFGHI3", UserID: "user2", TeamID: "team2", Provider: enums.ChannelTypeEmail, Label: "Email 2"},
 	}
 
-	for _, ch := range channels {
+	for _, ch := range chans {
 		_ = repo.Create(ctx, &ch)
 	}
 
@@ -404,21 +408,21 @@ func TestRepository_CountByTeamID(t *testing.T) {
 
 func TestRepository_UpdateData(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:       "01HXYZ123456789ABCDEFGHIJ",
 		UserID:   "user123",
 		TeamID:   "team123",
-		Provider: ChannelTypeEmail,
+		Provider: enums.ChannelTypeEmail,
 		Label:    "Test",
-		Data:     ChannelData{Email: "old@example.com"},
+		Data:     models.ChannelData{Email: "old@example.com"},
 	}
 
 	_ = repo.Create(ctx, channel)
 
-	newData := ChannelData{Email: "new@example.com", AppDeploy: true}
+	newData := models.ChannelData{Email: "new@example.com", AppDeploy: true}
 	err := repo.UpdateData(ctx, channel.ID, newData)
 	if err != nil {
 		t.Errorf("UpdateData() error = %v", err)
@@ -435,12 +439,12 @@ func TestNotificationChannel_BeforeCreate(t *testing.T) {
 	ctx := context.Background()
 
 	// Create without ID - should auto-generate
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		UserID:   "user123",
 		TeamID:   "team123",
-		Provider: ChannelTypeEmail,
+		Provider: enums.ChannelTypeEmail,
 		Label:    "Auto ID",
-		Data:     ChannelData{Email: "test@example.com"},
+		Data:     models.ChannelData{Email: "test@example.com"},
 	}
 
 	err := db.WithContext(ctx).Create(channel).Error
@@ -458,14 +462,14 @@ func TestNotificationChannel_BeforeCreate(t *testing.T) {
 
 func TestRepository_CreatedAt_UpdatedAt(t *testing.T) {
 	db := setupTestDB(t)
-	repo := NewRepository(db)
+	repo := repositories.NewNotificationChannelRepository(db)
 	ctx := context.Background()
 
-	channel := &NotificationChannel{
+	channel := &models.NotificationChannel{
 		ID:       "01HXYZ123456789ABCDEFGHIJ",
 		UserID:   "user123",
 		TeamID:   "team123",
-		Provider: ChannelTypeEmail,
+		Provider: enums.ChannelTypeEmail,
 		Label:    "Test",
 	}
 

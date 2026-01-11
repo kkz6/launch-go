@@ -1,6 +1,7 @@
 package database
 
 import (
+	"context"
 	"os"
 	"testing"
 
@@ -11,14 +12,47 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/modules/database/models"
+	"github.com/kkz6/launch-go/internal/modules/database/services"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
+
+// MockServerRepository implements ServerRepository for testing
+type MockServerRepository struct {
+	servers map[string]interface{}
+}
+
+func NewMockServerRepository() *MockServerRepository {
+	return &MockServerRepository{
+		servers: make(map[string]interface{}),
+	}
+}
+
+func (m *MockServerRepository) AddServer(id string, server interface{}) {
+	m.servers[id] = server
+}
+
+func (m *MockServerRepository) FindByID(ctx context.Context, id string) (interface{}, error) {
+	if server, ok := m.servers[id]; ok {
+		return server, nil
+	}
+
+	return nil, services.ErrServerNotFound
+}
+
+func (m *MockServerRepository) FindByIDAndTeam(ctx context.Context, id, teamID string) (interface{}, error) {
+	if server, ok := m.servers[id]; ok {
+		return server, nil
+	}
+
+	return nil, services.ErrServerNotFound
+}
 
 func TestNewModule(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&Database{}, &DatabaseUser{}, &DatabaseDatabaseUser{})
+	err = db.AutoMigrate(&models.Database{}, &models.DatabaseUser{}, &models.DatabaseDatabaseUser{})
 	require.NoError(t, err)
 
 	serverRepo := NewMockServerRepository()
@@ -37,7 +71,7 @@ func TestModule_Service(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&Database{}, &DatabaseUser{}, &DatabaseDatabaseUser{})
+	err = db.AutoMigrate(&models.Database{}, &models.DatabaseUser{}, &models.DatabaseDatabaseUser{})
 	require.NoError(t, err)
 
 	serverRepo := NewMockServerRepository()
@@ -56,7 +90,7 @@ func TestModule_Repository(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&Database{}, &DatabaseUser{}, &DatabaseDatabaseUser{})
+	err = db.AutoMigrate(&models.Database{}, &models.DatabaseUser{}, &models.DatabaseDatabaseUser{})
 	require.NoError(t, err)
 
 	serverRepo := NewMockServerRepository()
@@ -75,7 +109,7 @@ func TestModule_RegisterRoutes(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&Database{}, &DatabaseUser{}, &DatabaseDatabaseUser{})
+	err = db.AutoMigrate(&models.Database{}, &models.DatabaseUser{}, &models.DatabaseDatabaseUser{})
 	require.NoError(t, err)
 
 	serverRepo := NewMockServerRepository()
@@ -105,9 +139,9 @@ func TestAutoMigrate(t *testing.T) {
 
 	// Verify tables exist by trying to query them
 	var count int64
-	err = db.Model(&Database{}).Count(&count).Error
+	err = db.Model(&models.Database{}).Count(&count).Error
 	require.NoError(t, err)
 
-	err = db.Model(&DatabaseUser{}).Count(&count).Error
+	err = db.Model(&models.DatabaseUser{}).Count(&count).Error
 	require.NoError(t, err)
 }

@@ -2,6 +2,9 @@ package auth
 
 import (
 	"bytes"
+	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -18,6 +21,11 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/modules/auth/dto"
+	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
+	"github.com/kkz6/launch-go/internal/modules/auth/models"
+	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/modules/auth/services"
 )
 
 type testResponse struct {
@@ -27,14 +35,14 @@ type testResponse struct {
 	Errors  interface{}     `json:"errors,omitempty"`
 }
 
-func setupTestApp(t *testing.T) (*fiber.App, *Handler, *Service, *gorm.DB) {
+func setupTestApp(t *testing.T) (*fiber.App, *handlers.Handler, *services.Service, *gorm.DB) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	err = db.AutoMigrate(&User{}, &Team{}, &TeamMember{}, &TeamInvitation{}, &PersonalAccessToken{}, &PasswordResetToken{})
+	err = db.AutoMigrate(&models.User{}, &models.Team{}, &models.TeamMember{}, &models.TeamInvitation{}, &models.PersonalAccessToken{}, &models.PasswordResetToken{})
 	require.NoError(t, err)
 
-	repo := NewRepository(db)
+	repo := repositories.NewRepository(db)
 	cfg := &config.Config{
 		App: config.AppConfig{
 			Name: "TestApp",
@@ -45,19 +53,19 @@ func setupTestApp(t *testing.T) (*fiber.App, *Handler, *Service, *gorm.DB) {
 		},
 	}
 	logger := zerolog.Nop()
-	service := NewService(repo, cfg, &logger)
-	handler := NewHandler(service)
+	service := services.NewService(repo, cfg, &logger)
+	handler := handlers.NewHandler(service)
 
 	app := fiber.New()
 
 	return app, handler, service, db
 }
 
-func createTestUserForHandler(t *testing.T, db *gorm.DB, email, password string) *User {
+func createTestUserForHandler(t *testing.T, db *gorm.DB, email, password string) *models.User {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	require.NoError(t, err)
 
-	user := &User{
+	user := &models.User{
 		Name:     "Test User",
 		Email:    email,
 		Password: string(hashedPassword),
@@ -99,11 +107,26 @@ func withAuthMiddleware(app *fiber.App, handler func(c *fiber.Ctx) error) {
 	})
 }
 
+// Helper function to generate email hash (replicates internal service method)
+// Uses email + JWT secret like the actual service
+func generateEmailHashForTest(email string) string {
+	// Must match the JWT secret used in setupTestApp config
+	jwtSecret := "test-secret-key-for-jwt-testing"
+	hash := sha256.Sum256([]byte(email + jwtSecret))
+	return hex.EncodeToString(hash[:])
+}
+
+// Helper function to hash token (replicates internal service method)
+func hashTokenForTest(token string) string {
+	hash := sha256.Sum256([]byte(token))
+	return hex.EncodeToString(hash[:])
+}
+
 // Authentication Handler Tests
 
 func TestHandler_Register(t *testing.T) {
 	app, handler, _, _ := setupTestApp(t)
-	app.Post("/register", handler.Register)
+	app.Post("/register", handler.Auth.Register)
 
 	t.Run("successful registration", func(t *testing.T) {
 		body := map[string]interface{}{
@@ -159,7 +182,7 @@ func TestHandler_Register(t *testing.T) {
 
 func TestHandler_Login(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	app.Post("/login", handler.Login)
+	app.Post("/login", handler.Auth.Login)
 
 	createTestUserForHandler(t, db, "login@example.com", "password123")
 
@@ -208,8 +231,8 @@ func TestHandler_Login(t *testing.T) {
 
 func TestHandler_Logout(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.Logout)
-	app.Post("/logout", handler.Logout)
+	withAuthMiddleware(app, handler.Auth.Logout)
+	app.Post("/logout", handler.Auth.Logout)
 
 	user := createTestUserForHandler(t, db, "logout@example.com", "password")
 
@@ -225,13 +248,13 @@ func TestHandler_Logout(t *testing.T) {
 
 func TestHandler_RefreshToken(t *testing.T) {
 	app, handler, service, db := setupTestApp(t)
-	app.Post("/refresh", handler.RefreshToken)
+	app.Post("/refresh", handler.Auth.RefreshToken)
 
 	createTestUserForHandler(t, db, "refresh@example.com", "password")
 
 	t.Run("successful refresh", func(t *testing.T) {
 		// Login first
-		loginResp, err := service.Login(nil, &LoginRequest{
+		loginResp, err := service.Login(context.Background(), &dto.LoginRequest{
 			Email:    "refresh@example.com",
 			Password: "password",
 		})
@@ -278,8 +301,8 @@ func TestHandler_RefreshToken(t *testing.T) {
 
 func TestHandler_User(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.User)
-	app.Get("/user", handler.User)
+	withAuthMiddleware(app, handler.User.User)
+	app.Get("/user", handler.User.User)
 
 	user := createTestUserForHandler(t, db, "user@example.com", "password")
 
@@ -300,8 +323,8 @@ func TestHandler_User(t *testing.T) {
 
 func TestHandler_UpdateProfile(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.UpdateProfile)
-	app.Put("/profile", handler.UpdateProfile)
+	withAuthMiddleware(app, handler.User.UpdateProfile)
+	app.Put("/profile", handler.User.UpdateProfile)
 
 	user := createTestUserForHandler(t, db, "profile@example.com", "password")
 
@@ -340,8 +363,8 @@ func TestHandler_UpdateProfile(t *testing.T) {
 
 func TestHandler_ChangePassword(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.ChangePassword)
-	app.Put("/password", handler.ChangePassword)
+	withAuthMiddleware(app, handler.User.ChangePassword)
+	app.Put("/password", handler.User.ChangePassword)
 
 	user := createTestUserForHandler(t, db, "changepass@example.com", "oldpassword")
 
@@ -377,8 +400,8 @@ func TestHandler_ChangePassword(t *testing.T) {
 
 func TestHandler_DeleteAccount(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.DeleteAccount)
-	app.Delete("/account", handler.DeleteAccount)
+	withAuthMiddleware(app, handler.User.DeleteAccount)
+	app.Delete("/account", handler.User.DeleteAccount)
 
 	user := createTestUserForHandler(t, db, "delete@example.com", "password")
 
@@ -391,11 +414,11 @@ func TestHandler_DeleteAccount(t *testing.T) {
 // Email Verification Handler Tests
 
 func TestHandler_VerifyEmail(t *testing.T) {
-	app, handler, service, db := setupTestApp(t)
-	app.Get("/verify/:id/:hash", handler.VerifyEmail)
+	app, handler, _, db := setupTestApp(t)
+	app.Get("/verify/:id/:hash", handler.Email.VerifyEmail)
 
 	user := createTestUserForHandler(t, db, "verify@example.com", "password")
-	hash := service.generateEmailHash("verify@example.com")
+	hash := generateEmailHashForTest("verify@example.com")
 
 	t.Run("successful verification", func(t *testing.T) {
 		resp, _ := makeRequest(app, "GET", "/verify/"+user.ID+"/"+hash, nil, "")
@@ -410,8 +433,8 @@ func TestHandler_VerifyEmail(t *testing.T) {
 
 func TestHandler_ResendVerificationEmail(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.ResendVerificationEmail)
-	app.Post("/resend", handler.ResendVerificationEmail)
+	withAuthMiddleware(app, handler.Email.ResendVerificationEmail)
+	app.Post("/resend", handler.Email.ResendVerificationEmail)
 
 	user := createTestUserForHandler(t, db, "resend@example.com", "password")
 
@@ -434,7 +457,7 @@ func TestHandler_ResendVerificationEmail(t *testing.T) {
 
 func TestHandler_ForgotPassword(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	app.Post("/forgot", handler.ForgotPassword)
+	app.Post("/forgot", handler.Password.ForgotPassword)
 
 	createTestUserForHandler(t, db, "forgot@example.com", "password")
 
@@ -473,16 +496,16 @@ func TestHandler_ForgotPassword(t *testing.T) {
 }
 
 func TestHandler_ResetPassword(t *testing.T) {
-	app, handler, service, db := setupTestApp(t)
-	app.Post("/reset", handler.ResetPassword)
+	app, handler, _, db := setupTestApp(t)
+	app.Post("/reset", handler.Password.ResetPassword)
 
 	createTestUserForHandler(t, db, "reset@example.com", "oldpassword")
 
 	t.Run("successful reset", func(t *testing.T) {
 		// Create a token
 		token := "test-token-123"
-		hashedToken := service.hashToken(token)
-		db.Create(&PasswordResetToken{
+		hashedToken := hashTokenForTest(token)
+		db.Create(&models.PasswordResetToken{
 			Email:     "reset@example.com",
 			Token:     hashedToken,
 			CreatedAt: time.Now(),
@@ -521,8 +544,8 @@ func TestHandler_ResetPassword(t *testing.T) {
 
 func TestHandler_EnableTwoFactor(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.EnableTwoFactor)
-	app.Post("/2fa/enable", handler.EnableTwoFactor)
+	withAuthMiddleware(app, handler.TwoFactor.EnableTwoFactor)
+	app.Post("/2fa/enable", handler.TwoFactor.EnableTwoFactor)
 
 	user := createTestUserForHandler(t, db, "enable2fa@example.com", "password")
 
@@ -538,8 +561,8 @@ func TestHandler_EnableTwoFactor(t *testing.T) {
 
 func TestHandler_ConfirmTwoFactor(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.ConfirmTwoFactor)
-	app.Post("/2fa/confirm", handler.ConfirmTwoFactor)
+	withAuthMiddleware(app, handler.TwoFactor.ConfirmTwoFactor)
+	app.Post("/2fa/confirm", handler.TwoFactor.ConfirmTwoFactor)
 
 	user := createTestUserForHandler(t, db, "confirm2fa@example.com", "password")
 
@@ -576,8 +599,8 @@ func TestHandler_ConfirmTwoFactor(t *testing.T) {
 
 func TestHandler_DisableTwoFactor(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.DisableTwoFactor)
-	app.Delete("/2fa/disable", handler.DisableTwoFactor)
+	withAuthMiddleware(app, handler.TwoFactor.DisableTwoFactor)
+	app.Delete("/2fa/disable", handler.TwoFactor.DisableTwoFactor)
 
 	user := createTestUserForHandler(t, db, "disable2fa@example.com", "password")
 
@@ -609,8 +632,8 @@ func TestHandler_DisableTwoFactor(t *testing.T) {
 
 func TestHandler_TwoFactorChallenge(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.TwoFactorChallenge)
-	app.Post("/2fa/challenge", handler.TwoFactorChallenge)
+	withAuthMiddleware(app, handler.TwoFactor.TwoFactorChallenge)
+	app.Post("/2fa/challenge", handler.TwoFactor.TwoFactorChallenge)
 
 	user := createTestUserForHandler(t, db, "challenge@example.com", "password")
 
@@ -664,8 +687,8 @@ func TestHandler_TwoFactorChallenge(t *testing.T) {
 
 func TestHandler_GetRecoveryCodes(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.GetRecoveryCodes)
-	app.Get("/2fa/recovery", handler.GetRecoveryCodes)
+	withAuthMiddleware(app, handler.TwoFactor.GetRecoveryCodes)
+	app.Get("/2fa/recovery", handler.TwoFactor.GetRecoveryCodes)
 
 	user := createTestUserForHandler(t, db, "recovery@example.com", "password")
 	codes := "CODE1,CODE2,CODE3"
@@ -680,8 +703,8 @@ func TestHandler_GetRecoveryCodes(t *testing.T) {
 
 func TestHandler_RegenerateRecoveryCodes(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.RegenerateRecoveryCodes)
-	app.Post("/2fa/recovery", handler.RegenerateRecoveryCodes)
+	withAuthMiddleware(app, handler.TwoFactor.RegenerateRecoveryCodes)
+	app.Post("/2fa/recovery", handler.TwoFactor.RegenerateRecoveryCodes)
 
 	user := createTestUserForHandler(t, db, "regen@example.com", "password")
 
@@ -706,8 +729,8 @@ func TestHandler_RegenerateRecoveryCodes(t *testing.T) {
 
 func TestHandler_CreateTeam(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.CreateTeam)
-	app.Post("/teams", handler.CreateTeam)
+	withAuthMiddleware(app, handler.Team.CreateTeam)
+	app.Post("/teams", handler.Team.CreateTeam)
 
 	user := createTestUserForHandler(t, db, "createteam@example.com", "password")
 
@@ -743,11 +766,11 @@ func TestHandler_CreateTeam(t *testing.T) {
 
 func TestHandler_GetTeam(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.GetTeam)
-	app.Get("/teams/:teamId", handler.GetTeam)
+	withAuthMiddleware(app, handler.Team.GetTeam)
+	app.Get("/teams/:teamId", handler.Team.GetTeam)
 
 	user := createTestUserForHandler(t, db, "getteam@example.com", "password")
-	team := &Team{Name: "Test Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Test Team", OwnerID: user.ID}
 	db.Create(team)
 
 	t.Run("returns team", func(t *testing.T) {
@@ -763,11 +786,11 @@ func TestHandler_GetTeam(t *testing.T) {
 
 func TestHandler_UpdateTeam(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.UpdateTeam)
-	app.Put("/teams/:teamId", handler.UpdateTeam)
+	withAuthMiddleware(app, handler.Team.UpdateTeam)
+	app.Put("/teams/:teamId", handler.Team.UpdateTeam)
 
 	user := createTestUserForHandler(t, db, "updateteam@example.com", "password")
-	team := &Team{Name: "Original Name", OwnerID: user.ID}
+	team := &models.Team{Name: "Original Name", OwnerID: user.ID}
 	db.Create(team)
 
 	t.Run("successful update", func(t *testing.T) {
@@ -798,11 +821,11 @@ func TestHandler_UpdateTeam(t *testing.T) {
 
 func TestHandler_DeleteTeam(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.DeleteTeam)
-	app.Delete("/teams/:teamId", handler.DeleteTeam)
+	withAuthMiddleware(app, handler.Team.DeleteTeam)
+	app.Delete("/teams/:teamId", handler.Team.DeleteTeam)
 
 	user := createTestUserForHandler(t, db, "deleteteam@example.com", "password")
-	team := &Team{Name: "To Delete", OwnerID: user.ID, PersonalTeam: false}
+	team := &models.Team{Name: "To Delete", OwnerID: user.ID, PersonalTeam: false}
 	db.Create(team)
 
 	t.Run("successful delete", func(t *testing.T) {
@@ -813,12 +836,12 @@ func TestHandler_DeleteTeam(t *testing.T) {
 
 func TestHandler_GetUserTeams(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.GetUserTeams)
-	app.Get("/user/teams", handler.GetUserTeams)
+	withAuthMiddleware(app, handler.Team.GetUserTeams)
+	app.Get("/user/teams", handler.Team.GetUserTeams)
 
 	user := createTestUserForHandler(t, db, "userteams@example.com", "password")
-	db.Create(&Team{Name: "Team 1", OwnerID: user.ID})
-	db.Create(&Team{Name: "Team 2", OwnerID: user.ID})
+	db.Create(&models.Team{Name: "Team 1", OwnerID: user.ID})
+	db.Create(&models.Team{Name: "Team 2", OwnerID: user.ID})
 
 	t.Run("returns teams", func(t *testing.T) {
 		resp, _ := makeRequest(app, "GET", "/user/teams", nil, user.ID)
@@ -828,13 +851,13 @@ func TestHandler_GetUserTeams(t *testing.T) {
 
 func TestHandler_SwitchTeam(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.SwitchTeam)
-	app.Post("/teams/:teamId/switch", handler.SwitchTeam)
+	withAuthMiddleware(app, handler.Team.SwitchTeam)
+	app.Post("/teams/:teamId/switch", handler.Team.SwitchTeam)
 
 	user := createTestUserForHandler(t, db, "switchteam@example.com", "password")
-	team := &Team{Name: "Switch To", OwnerID: user.ID}
+	team := &models.Team{Name: "Switch To", OwnerID: user.ID}
 	db.Create(team)
-	db.Create(&TeamMember{TeamID: team.ID, UserID: user.ID, Role: "owner"})
+	db.Create(&models.TeamMember{TeamID: team.ID, UserID: user.ID, Role: "owner"})
 
 	t.Run("successful switch", func(t *testing.T) {
 		resp, _ := makeRequest(app, "POST", "/teams/"+team.ID+"/switch", nil, user.ID)
@@ -846,11 +869,11 @@ func TestHandler_SwitchTeam(t *testing.T) {
 
 func TestHandler_InviteTeamMember(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.InviteTeamMember)
-	app.Post("/teams/:teamId/members", handler.InviteTeamMember)
+	withAuthMiddleware(app, handler.TeamMember.InviteTeamMember)
+	app.Post("/teams/:teamId/members", handler.TeamMember.InviteTeamMember)
 
 	user := createTestUserForHandler(t, db, "inviteowner@example.com", "password")
-	team := &Team{Name: "Invite Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Invite Team", OwnerID: user.ID}
 	db.Create(team)
 
 	t.Run("successful invite", func(t *testing.T) {
@@ -882,15 +905,15 @@ func TestHandler_InviteTeamMember(t *testing.T) {
 
 func TestHandler_AcceptTeamInvitation(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.AcceptTeamInvitation)
-	app.Post("/invitations/:invitationId/accept", handler.AcceptTeamInvitation)
+	withAuthMiddleware(app, handler.TeamMember.AcceptTeamInvitation)
+	app.Post("/invitations/:invitationId/accept", handler.TeamMember.AcceptTeamInvitation)
 
 	owner := createTestUserForHandler(t, db, "acceptowner@example.com", "password")
 	invitee := createTestUserForHandler(t, db, "invitee@example.com", "password")
-	team := &Team{Name: "Accept Team", OwnerID: owner.ID}
+	team := &models.Team{Name: "Accept Team", OwnerID: owner.ID}
 	db.Create(team)
 
-	invitation := &TeamInvitation{
+	invitation := &models.TeamInvitation{
 		TeamID: team.ID,
 		Email:  "invitee@example.com",
 		Role:   "member",
@@ -905,14 +928,14 @@ func TestHandler_AcceptTeamInvitation(t *testing.T) {
 
 func TestHandler_CancelTeamInvitation(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.CancelTeamInvitation)
-	app.Delete("/teams/:teamId/invitations/:invitationId", handler.CancelTeamInvitation)
+	withAuthMiddleware(app, handler.TeamMember.CancelTeamInvitation)
+	app.Delete("/teams/:teamId/invitations/:invitationId", handler.TeamMember.CancelTeamInvitation)
 
 	user := createTestUserForHandler(t, db, "cancelowner@example.com", "password")
-	team := &Team{Name: "Cancel Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Cancel Team", OwnerID: user.ID}
 	db.Create(team)
 
-	invitation := &TeamInvitation{
+	invitation := &models.TeamInvitation{
 		TeamID: team.ID,
 		Email:  "cancel@example.com",
 		Role:   "member",
@@ -927,14 +950,14 @@ func TestHandler_CancelTeamInvitation(t *testing.T) {
 
 func TestHandler_UpdateTeamMemberRole(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.UpdateTeamMemberRole)
-	app.Put("/teams/:teamId/members/:memberId", handler.UpdateTeamMemberRole)
+	withAuthMiddleware(app, handler.TeamMember.UpdateTeamMemberRole)
+	app.Put("/teams/:teamId/members/:memberId", handler.TeamMember.UpdateTeamMemberRole)
 
 	owner := createTestUserForHandler(t, db, "roleowner@example.com", "password")
 	member := createTestUserForHandler(t, db, "rolemember@example.com", "password")
-	team := &Team{Name: "Role Team", OwnerID: owner.ID}
+	team := &models.Team{Name: "Role Team", OwnerID: owner.ID}
 	db.Create(team)
-	db.Create(&TeamMember{TeamID: team.ID, UserID: member.ID, Role: "member"})
+	db.Create(&models.TeamMember{TeamID: team.ID, UserID: member.ID, Role: "member"})
 
 	t.Run("successful update", func(t *testing.T) {
 		body := map[string]interface{}{
@@ -964,14 +987,14 @@ func TestHandler_UpdateTeamMemberRole(t *testing.T) {
 
 func TestHandler_RemoveTeamMember(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.RemoveTeamMember)
-	app.Delete("/teams/:teamId/members/:memberId", handler.RemoveTeamMember)
+	withAuthMiddleware(app, handler.TeamMember.RemoveTeamMember)
+	app.Delete("/teams/:teamId/members/:memberId", handler.TeamMember.RemoveTeamMember)
 
 	owner := createTestUserForHandler(t, db, "removeowner@example.com", "password")
 	member := createTestUserForHandler(t, db, "removemember@example.com", "password")
-	team := &Team{Name: "Remove Team", OwnerID: owner.ID}
+	team := &models.Team{Name: "Remove Team", OwnerID: owner.ID}
 	db.Create(team)
-	db.Create(&TeamMember{TeamID: team.ID, UserID: member.ID, Role: "member"})
+	db.Create(&models.TeamMember{TeamID: team.ID, UserID: member.ID, Role: "member"})
 
 	t.Run("successful remove", func(t *testing.T) {
 		resp, _ := makeRequest(app, "DELETE", "/teams/"+team.ID+"/members/"+member.ID, nil, owner.ID)
@@ -981,13 +1004,13 @@ func TestHandler_RemoveTeamMember(t *testing.T) {
 
 func TestHandler_GetTeamMembers(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.GetTeamMembers)
-	app.Get("/teams/:teamId/members", handler.GetTeamMembers)
+	withAuthMiddleware(app, handler.TeamMember.GetTeamMembers)
+	app.Get("/teams/:teamId/members", handler.TeamMember.GetTeamMembers)
 
 	user := createTestUserForHandler(t, db, "getmembers@example.com", "password")
-	team := &Team{Name: "Members Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Members Team", OwnerID: user.ID}
 	db.Create(team)
-	db.Create(&TeamMember{TeamID: team.ID, UserID: user.ID, Role: "owner"})
+	db.Create(&models.TeamMember{TeamID: team.ID, UserID: user.ID, Role: "owner"})
 
 	t.Run("returns members", func(t *testing.T) {
 		resp, _ := makeRequest(app, "GET", "/teams/"+team.ID+"/members", nil, user.ID)
@@ -997,13 +1020,13 @@ func TestHandler_GetTeamMembers(t *testing.T) {
 
 func TestHandler_GetTeamInvitations(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	withAuthMiddleware(app, handler.GetTeamInvitations)
-	app.Get("/teams/:teamId/invitations", handler.GetTeamInvitations)
+	withAuthMiddleware(app, handler.TeamMember.GetTeamInvitations)
+	app.Get("/teams/:teamId/invitations", handler.TeamMember.GetTeamInvitations)
 
 	user := createTestUserForHandler(t, db, "getinvitations@example.com", "password")
-	team := &Team{Name: "Invitations Team", OwnerID: user.ID}
+	team := &models.Team{Name: "Invitations Team", OwnerID: user.ID}
 	db.Create(team)
-	db.Create(&TeamInvitation{TeamID: team.ID, Email: "invite@example.com", Role: "member"})
+	db.Create(&models.TeamInvitation{TeamID: team.ID, Email: "invite@example.com", Role: "member"})
 
 	t.Run("returns invitations", func(t *testing.T) {
 		resp, _ := makeRequest(app, "GET", "/teams/"+team.ID+"/invitations", nil, user.ID)
@@ -1015,7 +1038,7 @@ func TestHandler_GetTeamInvitations(t *testing.T) {
 
 func TestHandler_CheckUserStatus(t *testing.T) {
 	app, handler, _, db := setupTestApp(t)
-	app.Post("/check-status", handler.CheckUserStatus)
+	app.Post("/check-status", handler.User.CheckUserStatus)
 
 	createTestUserForHandler(t, db, "status@example.com", "password")
 
@@ -1063,13 +1086,19 @@ func TestNewHandler(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	require.NoError(t, err)
 
-	repo := NewRepository(db)
+	repo := repositories.NewRepository(db)
 	cfg := &config.Config{}
 	logger := zerolog.Nop()
-	service := NewService(repo, cfg, &logger)
+	service := services.NewService(repo, cfg, &logger)
 
-	handler := NewHandler(service)
+	handler := handlers.NewHandler(service)
 
 	assert.NotNil(t, handler)
-	assert.NotNil(t, handler.service)
+	assert.NotNil(t, handler.Auth)
+	assert.NotNil(t, handler.User)
+	assert.NotNil(t, handler.Email)
+	assert.NotNil(t, handler.Password)
+	assert.NotNil(t, handler.TwoFactor)
+	assert.NotNil(t, handler.Team)
+	assert.NotNil(t, handler.TeamMember)
 }
