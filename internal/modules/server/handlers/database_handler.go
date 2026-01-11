@@ -1,12 +1,9 @@
 package handlers
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
-	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
@@ -18,11 +15,7 @@ func (h *Handler) ListDatabases(c *fiber.Ctx) error {
 
 	databases, err := h.service.ListDatabases(c.Context(), serverID, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.InternalError(c, "Failed to fetch databases")
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch databases")
 	}
 
 	return response.OK(c, "Databases retrieved", databases)
@@ -38,17 +31,13 @@ func (h *Handler) CreateDatabase(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	if errs := validator.Validate(&req); errs != nil {
+		return response.ValidationError(c, errs)
 	}
 
 	db, err := h.service.CreateDatabase(c.Context(), serverID, teamID, &req)
 	if err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Database created", db)

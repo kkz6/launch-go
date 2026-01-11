@@ -1,27 +1,26 @@
 package services
 
 import (
-	"errors"
-
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
-// Service-specific errors
+// Service-specific errors with HTTP status codes
 var (
-	ErrServerNotProvisioned = errors.New("server is not provisioned")
-	ErrServerNotConnected   = errors.New("server is not connected")
-	ErrInvalidProvider      = errors.New("invalid server provider")
-	ErrInvalidServerType    = errors.New("invalid server type")
-	ErrInvalidSoftware      = errors.New("invalid software")
-	ErrServiceAlreadyExists = errors.New("service already exists")
-	ErrCannotDeleteService  = errors.New("cannot delete service")
-	ErrQueueNotConfigured   = errors.New("queue not configured")
+	ErrServerNotProvisioned = response.ErrBadRequest("Server is not provisioned")
+	ErrServerNotConnected   = response.ErrBadRequest("Server is not connected")
+	ErrInvalidProvider      = response.ErrBadRequest("Invalid server provider")
+	ErrInvalidServerType    = response.ErrBadRequest("Invalid server type")
+	ErrInvalidSoftware      = response.ErrBadRequest("Invalid software")
+	ErrServiceAlreadyExists = response.ErrConflict("Service already installed")
+	ErrCannotDeleteService  = response.ErrBadRequest("Cannot delete service")
+	ErrQueueNotConfigured   = response.ErrInternal("Queue not configured")
 )
 
 // Re-export repository errors for convenience
