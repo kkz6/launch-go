@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -56,15 +57,14 @@ func (j *RestartDaemonJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	j.broadcastProgress(payload.ServerID, "restarting", fmt.Sprintf("Restarting daemon: %s", daemon.Command))
 
-	// TODO: Run the actual daemon restart task
-	// _, err = j.RunTask(server, tasks.NewRestartDaemon(&daemon)).
-	//     AsRoot().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
-
-	_ = server // use server when implementing task execution
+	// Restart the daemon using supervisor
+	_, err = j.RunTask(server, tasks.NewRestartDaemon(daemon.ProgramName())).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to restart daemon: %w", err)
+	}
 
 	j.broadcastProgress(payload.ServerID, "running", "Daemon restarted successfully")
 

@@ -7,6 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -54,15 +55,25 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	j.broadcastProgress(payload.ServerID, payload.DaemonID, "uninstalling", fmt.Sprintf("Uninstalling daemon: %s", daemon.Command))
 
-	// TODO: Run the actual daemon uninstallation task
-	// _, err = j.RunTask(daemon.Server, tasks.NewUninstallDaemon(&daemon)).
-	//     AsRoot().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
+	// Uninstall the daemon configuration from the server
+	_, err = j.RunTask(daemon.Server, tasks.NewUninstallDaemon(daemon.Server, daemon)).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to uninstall daemon config: %w", err)
+	}
 
-	// Delete the daemon record
+	// Reload supervisor to stop and remove the daemon
+	_, err = j.RunTask(daemon.Server, tasks.NewReloadSupervisor()).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to reload supervisor: %w", err)
+	}
+
+	// Delete the daemon record from database
 	if err := j.Repo.DeleteDaemon(ctx, daemon.ID); err != nil {
 		return fmt.Errorf("failed to delete daemon record: %w", err)
 	}

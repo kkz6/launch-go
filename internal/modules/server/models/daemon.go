@@ -62,6 +62,7 @@ func (d *Daemon) IsInstalled() bool {
 	return d.InstalledAt != nil
 }
 
+// Path returns the path to the supervisor config file
 func (d *Daemon) Path() string {
 	return fmt.Sprintf("/etc/supervisor/conf.d/daemon-%s.conf", d.ID)
 }
@@ -105,4 +106,9 @@ func (d *Daemon) GetErrorLogPath() string {
 		return fmt.Sprintf("/root/daemon-%s.err", d.ID)
 	}
 	return fmt.Sprintf("/home/%s/daemon-%s.err", d.User, d.ID)
+}
+
+// ProgramName returns the supervisor program name
+func (d *Daemon) ProgramName() string {
+	return fmt.Sprintf("daemon-%s", d.ID)
 }

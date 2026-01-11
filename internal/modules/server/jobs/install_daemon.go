@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -53,14 +54,23 @@ func (j *InstallDaemonJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	j.broadcastProgress(payload.ServerID, "installing", fmt.Sprintf("Installing daemon: %s", daemon.Command))
 
-	// TODO: Run the actual daemon installation task
-	// _, err = j.RunTask(daemon.Server, tasks.NewInstallDaemon(&daemon)).
-	//     AsRoot().
-	//     KeepTrack().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
+	// Install the daemon configuration on the server
+	_, err = j.RunTask(daemon.Server, tasks.NewInstallDaemon(daemon.Server, daemon)).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to install daemon config: %w", err)
+	}
+
+	// Reload supervisor to pick up the new configuration
+	_, err = j.RunTask(daemon.Server, tasks.NewReloadSupervisor()).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to reload supervisor: %w", err)
+	}
 
 	// Mark the daemon as installed
 	if err := j.Repo.MarkDaemonInstalled(ctx, daemon.ID); err != nil {

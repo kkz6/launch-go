@@ -7,6 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -54,15 +55,16 @@ func (j *UninstallFirewallRuleJob) Handle(ctx context.Context, t *asynq.Task) er
 
 	j.broadcastProgress(payload.ServerID, payload.RuleID, "uninstalling", fmt.Sprintf("Removing firewall rule: %s (port %s)", rule.Name, rule.Port))
 
-	// TODO: Run the actual firewall rule uninstallation task
-	// _, err = j.RunTask(rule.Server, tasks.NewRemoveFirewallRule(&rule)).
-	//     AsRoot().
-	//     Dispatch(ctx)
-	// if err != nil {
-	//     return err
-	// }
+	// Run the firewall rule deletion task
+	_, err = j.RunTask(rule.Server, tasks.NewDeleteFirewallRule(rule.Server, rule)).
+		AsRoot().
+		Throw().
+		Dispatch(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to delete firewall rule: %w", err)
+	}
 
-	// Delete the firewall rule record
+	// Delete the firewall rule record from database
 	if err := j.Repo.DeleteFirewallRule(ctx, rule.ID); err != nil {
 		return fmt.Errorf("failed to delete firewall rule record: %w", err)
 	}
