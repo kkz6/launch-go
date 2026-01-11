@@ -80,16 +80,26 @@ type PasswordResetResponse struct {
 
 // ToUserResponse converts a User model to a UserResponse DTO
 func ToUserResponse(user *models.User) UserResponse {
+	timezone := ""
+	if user.Timezone != nil {
+		timezone = *user.Timezone
+	}
+
+	createdAt := ""
+	if user.CreatedAt != nil {
+		createdAt = user.CreatedAt.Format(time.RFC3339)
+	}
+
 	resp := UserResponse{
 		ID:               user.ID,
 		Name:             user.Name,
 		Email:            user.Email,
 		ProfilePhotoURL:  user.ProfilePhotoURL(),
 		CurrentTeamID:    user.CurrentTeamID,
-		Timezone:         user.Timezone,
+		Timezone:         timezone,
 		Onboarded:        user.Onboarded,
 		TwoFactorEnabled: user.TwoFactorEnabled(),
-		CreatedAt:        user.CreatedAt.Format(time.RFC3339),
+		CreatedAt:        createdAt,
 	}
 
 	if user.EmailVerifiedAt != nil {
@@ -141,11 +151,21 @@ func ToTeamMemberResponse(user *models.User, role string, joinedAt time.Time) Te
 
 // ToTeamInvitationResponse converts a TeamInvitation model to a TeamInvitationResponse DTO
 func ToTeamInvitationResponse(invitation *models.TeamInvitation) TeamInvitationResponse {
+	role := ""
+	if invitation.Role != nil {
+		role = *invitation.Role
+	}
+
+	createdAt := ""
+	if invitation.CreatedAt != nil {
+		createdAt = invitation.CreatedAt.Format(time.RFC3339)
+	}
+
 	resp := TeamInvitationResponse{
 		ID:        invitation.ID,
 		Email:     invitation.Email,
-		Role:      invitation.Role,
-		CreatedAt: invitation.CreatedAt.Format(time.RFC3339),
+		Role:      role,
+		CreatedAt: createdAt,
 	}
 
 	if invitation.Team != nil {
@@ -174,7 +194,13 @@ func ToTeamMembersResponse(members []models.TeamMember) []TeamMemberResponse {
 			if member.Role != nil {
 				role = *member.Role
 			}
-			responses[i] = ToTeamMemberResponse(member.User, role, member.CreatedAt)
+
+			joinedAt := time.Time{}
+			if member.CreatedAt != nil {
+				joinedAt = *member.CreatedAt
+			}
+
+			responses[i] = ToTeamMemberResponse(member.User, role, joinedAt)
 		}
 	}
 

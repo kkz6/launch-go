@@ -49,10 +49,11 @@ func (s *PasswordResetService) SendPasswordResetLink(ctx context.Context, email 
 	hashedToken := s.hashToken(token)
 
 	// Store token
+	now := time.Now()
 	resetToken := &models.PasswordResetToken{
 		Email:     email,
 		Token:     hashedToken,
-		CreatedAt: time.Now(),
+		CreatedAt: &now,
 	}
 
 	if err := s.repo.CreatePasswordResetToken(ctx, resetToken); err != nil {

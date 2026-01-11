@@ -11,33 +11,33 @@ import (
 
 // SourceControl represents a connected git provider account/installation
 type SourceControl struct {
-	ID                      string                `gorm:"primaryKey;size:26" json:"id"`
-	UserID                  string                `gorm:"size:26;not null;index" json:"user_id"`
-	TeamID                  string                `gorm:"size:26;not null;index" json:"team_id"`
-	Provider                enums.GitProviderType `gorm:"size:50;not null" json:"provider"`
-	URL                     *string               `gorm:"size:500" json:"url,omitempty"`
-	ProviderID              *string               `gorm:"size:255;index" json:"provider_id,omitempty"`
-	ProviderData            JSONMap               `gorm:"type:json" json:"provider_data,omitempty"`
-	ProviderAccountID       *string               `gorm:"size:255" json:"provider_account_id,omitempty"`
-	Login                   *string               `gorm:"size:255" json:"login,omitempty"`
-	Name                    *string               `gorm:"size:255" json:"name,omitempty"`
-	Type                    *string               `gorm:"size:50" json:"type,omitempty"`
-	AvatarURL               *string               `gorm:"size:500" json:"avatar_url,omitempty"`
-	HTMLURL                 *string               `gorm:"size:500" json:"html_url,omitempty"`
-	InstallationID          *string               `gorm:"size:255;index" json:"installation_id,omitempty"`
-	Permissions             JSONMap               `gorm:"type:json" json:"permissions,omitempty"`
-	RepositorySelection     *string               `gorm:"size:50" json:"repository_selection,omitempty"`
-	HasMultipleRepositories bool                  `gorm:"default:false" json:"has_multiple_repositories"`
-	RepositoryCount         int                   `gorm:"default:0" json:"repository_count"`
-	ConnectedAt             *time.Time            `json:"connected_at,omitempty"`
-	LastSyncedAt            *time.Time            `json:"last_synced_at,omitempty"`
-	AdditionalData          JSONMap               `gorm:"type:json" json:"additional_data,omitempty"`
-	CreatedAt               time.Time             `json:"created_at"`
-	UpdatedAt               time.Time             `json:"updated_at"`
-	DeletedAt               gorm.DeletedAt        `gorm:"index" json:"-"`
+	ID                      string                `gorm:"type:char(26);primaryKey" json:"id"`
+	UserID                  string                `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	TeamID                  *string               `gorm:"column:team_id;type:char(26);index" json:"team_id,omitempty"`
+	ProviderID              string                `gorm:"column:provider_id;type:varchar(255);not null;index" json:"provider_id"`
+	ProviderAccountID       *string               `gorm:"column:provider_account_id;type:varchar(255)" json:"provider_account_id,omitempty"`
+	Login                   *string               `gorm:"type:varchar(255)" json:"login,omitempty"`
+	Name                    *string               `gorm:"type:varchar(255)" json:"name,omitempty"`
+	Type                    *string               `gorm:"type:varchar(255)" json:"type,omitempty"`
+	AvatarURL               *string               `gorm:"column:avatar_url;type:varchar(255)" json:"avatar_url,omitempty"`
+	HTMLURL                 *string               `gorm:"column:html_url;type:varchar(255)" json:"html_url,omitempty"`
+	InstallationID          *string               `gorm:"column:installation_id;type:varchar(255)" json:"installation_id,omitempty"`
+	Permissions             *string               `gorm:"type:json" json:"permissions,omitempty"`
+	RepositorySelection     *string               `gorm:"column:repository_selection;type:varchar(255)" json:"repository_selection,omitempty"`
+	HasMultipleRepositories bool                  `gorm:"column:has_multiple_repositories;default:false" json:"has_multiple_repositories"`
+	RepositoryCount         *int                  `gorm:"column:repository_count" json:"repository_count,omitempty"`
+	ConnectedAt             *time.Time            `gorm:"column:connected_at;type:timestamp null" json:"connected_at,omitempty"`
+	LastSyncedAt            *time.Time            `gorm:"column:last_synced_at;type:timestamp null" json:"last_synced_at,omitempty"`
+	AdditionalData          *string               `gorm:"column:additional_data;type:json" json:"additional_data,omitempty"`
+	Provider                enums.GitProviderType `gorm:"type:varchar(255);not null;index" json:"provider"`
+	URL                     *string               `gorm:"type:varchar(255)" json:"url,omitempty"`
+	ProviderData            *string               `gorm:"column:provider_data;type:json" json:"provider_data,omitempty"`
+	TokenExpiresAt          *time.Time            `gorm:"column:token_expires_at;type:timestamp null" json:"token_expires_at,omitempty"`
+	CreatedAt               *time.Time            `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt               *time.Time            `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Repositories []SourceControlRepository `gorm:"foreignKey:SourceControlID" json:"repositories,omitempty"`
+	Repositories []SourceControlRepository `gorm:"foreignKey:SourceControlID;references:ID" json:"repositories,omitempty"`
 }
 
 // TableName returns the table name for SourceControl

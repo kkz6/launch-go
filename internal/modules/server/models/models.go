@@ -12,5 +12,8 @@ func AllModels() []interface{} {
 		&ServerSshKey{},
 		&Task{},
 		&Metric{},
+		&Script{},
+		&ScriptExecution{},
+		&Monitor{},
 	}
 }

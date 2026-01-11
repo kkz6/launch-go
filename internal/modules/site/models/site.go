@@ -14,58 +14,57 @@ import (
 
 // Site represents a web application deployed on a server
 type Site struct {
-	ID                            string           `gorm:"primaryKey;size:26" json:"id"`
-	ServerID                      string           `gorm:"size:26;not null;index" json:"server_id"`
-	UserID                        string           `gorm:"size:26;not null;index" json:"user_id"`
-	SourceControlID               *string          `gorm:"size:26;index" json:"source_control_id,omitempty"`
-	SourceControlRepositoriesID   *string          `gorm:"size:26;index" json:"source_control_repositories_id,omitempty"`
-	ConnectedDomainID             *string          `gorm:"size:26;index" json:"connected_domain_id,omitempty"`
-	Address                       string           `gorm:"size:255;not null" json:"address"`
-	Type                          enums.SiteType   `gorm:"size:50;not null;default:'laravel'" json:"type"`
-	TypeData                      string           `gorm:"type:json" json:"type_data,omitempty"`
-	VcsData                       string           `gorm:"type:json" json:"vcs_data,omitempty"`
-	Aliases                       string           `gorm:"type:json" json:"aliases,omitempty"`
-	TlsSetting                    enums.TlsSetting `gorm:"size:50;default:'auto'" json:"tls_setting"`
-	PendingTlsUpdateSince         *time.Time       `json:"pending_tls_update_since,omitempty"`
-	ZeroDowntimeDeployment        bool             `gorm:"default:true" json:"zero_downtime_deployment"`
-	DeploymentReleasesRetention   int              `gorm:"default:5" json:"deployment_releases_retention"`
-	RepositoryBranch              string           `gorm:"size:255;default:'main'" json:"repository_branch"`
-	DeployToken                   string           `gorm:"size:64" json:"-"`
-	DeployNotificationEmail       *string          `gorm:"size:255" json:"deploy_notification_email,omitempty"`
-	User                          string           `gorm:"size:100" json:"user"`
-	Path                          string           `gorm:"size:500" json:"path"`
-	WebFolder                     string           `gorm:"size:255;default:'public'" json:"web_folder"`
-	PhpVersion                    string           `gorm:"size:10" json:"php_version"`
-	PendingCaddyfileUpdateSince   *time.Time       `json:"pending_caddyfile_update_since,omitempty"`
-	SharedDirectories             string           `gorm:"type:json" json:"shared_directories,omitempty"`
-	WriteableDirectories          string           `gorm:"type:json" json:"writeable_directories,omitempty"`
-	SharedFiles                   string           `gorm:"type:json" json:"shared_files,omitempty"`
-	Progress                      *string          `gorm:"size:255" json:"progress,omitempty"`
-	AutoDeployment                bool             `gorm:"default:false" json:"auto_deployment"`
-	QueueDeployments              bool             `gorm:"default:false" json:"queue_deployments"`
-	AutoRestartQueue              bool             `gorm:"default:false" json:"auto_restart_queue"`
-	HookBeforeUpdatingRepository  string           `gorm:"type:text" json:"hook_before_updating_repository,omitempty"`
-	HookAfterUpdatingRepository   string           `gorm:"type:text" json:"hook_after_updating_repository,omitempty"`
-	HookBeforeMakingCurrent       string           `gorm:"type:text" json:"hook_before_making_current,omitempty"`
-	HookAfterMakingCurrent        string           `gorm:"type:text" json:"hook_after_making_current,omitempty"`
-	InstalledAt                   *time.Time       `json:"installed_at,omitempty"`
-	InstallationFailedAt          *time.Time       `json:"installation_failed_at,omitempty"`
-	UninstallationRequestedAt     *time.Time       `json:"uninstallation_requested_at,omitempty"`
-	UninstallationFailedAt        *time.Time       `json:"uninstallation_failed_at,omitempty"`
-	Features                      string           `gorm:"type:json" json:"features,omitempty"`
-	EnabledFeatures               string           `gorm:"type:json" json:"enabled_features,omitempty"`
-	PendingFeatures               string           `gorm:"type:json" json:"pending_features,omitempty"`
-	CreatedAt                     time.Time        `json:"created_at"`
-	UpdatedAt                     time.Time        `json:"updated_at"`
-	DeletedAt                     gorm.DeletedAt   `gorm:"index" json:"-"`
+	ID                            string           `gorm:"type:char(26);primaryKey" json:"id"`
+	ServerID                      string           `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	UserID                        string           `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	SourceControlID               *string          `gorm:"column:source_control_id;type:char(26);index" json:"source_control_id,omitempty"`
+	Address                       string           `gorm:"type:varchar(255);not null" json:"address"`
+	Type                          enums.SiteType   `gorm:"type:varchar(255);not null;index" json:"type"`
+	TypeData                      *string          `gorm:"column:type_data;type:json" json:"type_data,omitempty"`
+	VcsData                       *string          `gorm:"column:vcs_data;type:json" json:"vcs_data,omitempty"`
+	Aliases                       *string          `gorm:"type:json" json:"aliases,omitempty"`
+	TlsSetting                    enums.TlsSetting `gorm:"column:tls_setting;type:varchar(255);not null;index" json:"tls_setting"`
+	ZeroDowntimeDeployment        bool             `gorm:"column:zero_downtime_deployment;default:true" json:"zero_downtime_deployment"`
+	DeploymentReleasesRetention   int              `gorm:"column:deployment_releases_retention;default:10" json:"deployment_releases_retention"`
+	AutoDeployment                bool             `gorm:"column:auto_deployment;default:false" json:"auto_deployment"`
+	QueueDeployments              bool             `gorm:"column:queue_deployments;default:false" json:"queue_deployments"`
+	AutoRestartQueue              bool             `gorm:"column:auto_restart_queue;default:false" json:"auto_restart_queue"`
+	Features                      *string          `gorm:"type:json" json:"features,omitempty"`
+	SourceControlRepositoriesID   *uint64          `gorm:"column:source_control_repositories_id;index" json:"source_control_repositories_id,omitempty"`
+	RepositoryBranch              *string          `gorm:"column:repository_branch;type:varchar(255)" json:"repository_branch,omitempty"`
+	DeployToken                   *string          `gorm:"column:deploy_token;type:varchar(32)" json:"-"`
+	DeployNotificationEmail       *string          `gorm:"column:deploy_notification_email;type:varchar(255)" json:"deploy_notification_email,omitempty"`
+	DeployKeyPublic               *string          `gorm:"column:deploy_key_public;type:longtext" json:"-"`
+	DeployKeyPrivate              *string          `gorm:"column:deploy_key_private;type:longtext" json:"-"`
+	User                          string           `gorm:"type:varchar(255);not null" json:"user"`
+	Path                          string           `gorm:"type:varchar(255);not null" json:"path"`
+	WebFolder                     string           `gorm:"column:web_folder;type:varchar(255);not null" json:"web_folder"`
+	PhpVersion                    *string          `gorm:"column:php_version;type:varchar(255);index" json:"php_version,omitempty"`
+	PendingTlsUpdateSince         *time.Time       `gorm:"column:pending_tls_update_since;type:timestamp null" json:"pending_tls_update_since,omitempty"`
+	PendingCaddyfileUpdateSince   *time.Time       `gorm:"column:pending_caddyfile_update_since;type:timestamp null" json:"pending_caddyfile_update_since,omitempty"`
+	SharedDirectories             string           `gorm:"column:shared_directories;type:json;not null" json:"shared_directories"`
+	WriteableDirectories          string           `gorm:"column:writeable_directories;type:json;not null" json:"writeable_directories"`
+	SharedFiles                   string           `gorm:"column:shared_files;type:json;not null" json:"shared_files"`
+	Port                          *int             `gorm:"type:int" json:"port,omitempty"`
+	Progress                      *int             `gorm:"default:0" json:"progress,omitempty"`
+	HookBeforeUpdatingRepository  *string          `gorm:"column:hook_before_updating_repository;type:longtext" json:"hook_before_updating_repository,omitempty"`
+	HookAfterUpdatingRepository   *string          `gorm:"column:hook_after_updating_repository;type:longtext" json:"hook_after_updating_repository,omitempty"`
+	HookBeforeMakingCurrent       *string          `gorm:"column:hook_before_making_current;type:longtext" json:"hook_before_making_current,omitempty"`
+	HookAfterMakingCurrent        *string          `gorm:"column:hook_after_making_current;type:longtext" json:"hook_after_making_current,omitempty"`
+	InstalledAt                   *time.Time       `gorm:"column:installed_at;type:timestamp null" json:"installed_at,omitempty"`
+	InstallationFailedAt          *time.Time       `gorm:"column:installation_failed_at;type:timestamp null" json:"installation_failed_at,omitempty"`
+	UninstallationRequestedAt     *time.Time       `gorm:"column:uninstallation_requested_at;type:timestamp null" json:"-"`
+	UninstallationFailedAt        *time.Time       `gorm:"column:uninstallation_failed_at;type:timestamp null" json:"-"`
+	CreatedAt                     *time.Time       `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt                     *time.Time       `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Deployments      []Deployment  `gorm:"foreignKey:SiteID" json:"deployments,omitempty"`
+	Deployments      []Deployment  `gorm:"foreignKey:SiteID;references:ID" json:"deployments,omitempty"`
 	LatestDeployment *Deployment   `gorm:"-" json:"latest_deployment,omitempty"`
-	Certificates     []Certificate `gorm:"foreignKey:SiteID" json:"certificates,omitempty"`
-	Queues           []Queue       `gorm:"foreignKey:SiteID" json:"queues,omitempty"`
-	Commands         []Command     `gorm:"foreignKey:SiteID" json:"commands,omitempty"`
-	Redirects        []Redirect    `gorm:"foreignKey:SiteID" json:"redirects,omitempty"`
+	Certificates     []Certificate `gorm:"foreignKey:SiteID;references:ID" json:"certificates,omitempty"`
+	Queues           []Queue       `gorm:"foreignKey:SiteID;references:ID" json:"queues,omitempty"`
+	Commands         []Command     `gorm:"foreignKey:SiteID;references:ID" json:"commands,omitempty"`
+	Redirects        []Redirect    `gorm:"foreignKey:SiteID;references:ID" json:"redirects,omitempty"`
 }
 
 func (s *Site) TableName() string {
@@ -77,8 +76,9 @@ func (s *Site) BeforeCreate(tx *gorm.DB) error {
 		s.ID = utils.NewULID()
 	}
 
-	if s.DeployToken == "" {
-		s.DeployToken = GenerateRandomToken(32)
+	if s.DeployToken == nil || *s.DeployToken == "" {
+		token := GenerateRandomToken(32)
+		s.DeployToken = &token
 	}
 
 	if s.SharedDirectories == "" {
@@ -103,6 +103,10 @@ func (s *Site) GetURL() string {
 
 // GetPort returns the HTTP port based on TLS setting
 func (s *Site) GetPort() int {
+	if s.Port != nil {
+		return *s.Port
+	}
+
 	return s.TlsSetting.GetPort()
 }
 
@@ -146,12 +150,12 @@ func (s *Site) GenerateWebDirectory(folder string) string {
 
 // GetAliases returns the site aliases as a slice
 func (s *Site) GetAliases() []string {
-	if s.Aliases == "" || s.Aliases == "null" {
+	if s.Aliases == nil || *s.Aliases == "" || *s.Aliases == "null" {
 		return []string{}
 	}
 
 	var aliases []string
-	if err := json.Unmarshal([]byte(s.Aliases), &aliases); err != nil {
+	if err := json.Unmarshal([]byte(*s.Aliases), &aliases); err != nil {
 		return []string{}
 	}
 
@@ -165,7 +169,8 @@ func (s *Site) SetAliases(aliases []string) error {
 		return err
 	}
 
-	s.Aliases = string(data)
+	str := string(data)
+	s.Aliases = &str
 
 	return nil
 }
@@ -267,14 +272,23 @@ func (s *Site) HasFeature(feature string) bool {
 
 // GetFeatures returns features as a slice
 func (s *Site) GetFeatures() []string {
-	if s.Features == "" || s.Features == "null" {
+	if s.Features == nil || *s.Features == "" || *s.Features == "null" {
 		return []string{}
 	}
 
 	var features []string
-	if err := json.Unmarshal([]byte(s.Features), &features); err != nil {
+	if err := json.Unmarshal([]byte(*s.Features), &features); err != nil {
 		return []string{}
 	}
 
 	return features
+}
+
+// GetRepositoryBranch returns the repository branch or default
+func (s *Site) GetRepositoryBranch() string {
+	if s.RepositoryBranch != nil && *s.RepositoryBranch != "" {
+		return *s.RepositoryBranch
+	}
+
+	return "main"
 }

@@ -78,7 +78,7 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 	invitation := &models.TeamInvitation{
 		TeamID: teamID,
 		Email:  req.Email,
-		Role:   req.Role,
+		Role:   &req.Role,
 	}
 
 	return s.repo.CreateTeamInvitation(ctx, invitation)
@@ -110,7 +110,11 @@ func (s *TeamMemberService) AcceptTeamInvitation(ctx context.Context, userID, in
 	}
 
 	// Add user to team
-	if err := s.repo.AddUserToTeam(ctx, invitation.TeamID, userID, invitation.Role); err != nil {
+	role := "member"
+	if invitation.Role != nil {
+		role = *invitation.Role
+	}
+	if err := s.repo.AddUserToTeam(ctx, invitation.TeamID, userID, role); err != nil {
 		return err
 	}
 

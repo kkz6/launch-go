@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"gorm.io/gorm"
@@ -162,8 +163,8 @@ func (r *SourceControlRepository) FirstOrCreateByProviderAndInstallationAndTeam(
 	// Create new record
 	sc = models.SourceControl{
 		Provider:   provider,
-		ProviderID: &installationID,
-		TeamID:     teamID,
+		ProviderID: installationID,
+		TeamID:     &teamID,
 	}
 
 	// Apply defaults
@@ -172,7 +173,10 @@ func (r *SourceControlRepository) FirstOrCreateByProviderAndInstallationAndTeam(
 	}
 
 	if providerData, ok := defaults["provider_data"].(models.JSONMap); ok {
-		sc.ProviderData = providerData
+		if jsonBytes, err := json.Marshal(providerData); err == nil {
+			jsonStr := string(jsonBytes)
+			sc.ProviderData = &jsonStr
+		}
 	}
 
 	if err := r.db.WithContext(ctx).Create(&sc).Error; err != nil {

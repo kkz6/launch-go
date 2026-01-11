@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"strconv"
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
@@ -37,8 +38,18 @@ type ListChannelsResponse struct {
 
 // ToChannelResponse converts a NotificationChannel to a ChannelResponse
 func ToChannelResponse(channel *models.NotificationChannel) ChannelResponse {
+	createdAt := ""
+	if channel.CreatedAt != nil {
+		createdAt = channel.CreatedAt.Format(time.RFC3339)
+	}
+
+	updatedAt := ""
+	if channel.UpdatedAt != nil {
+		updatedAt = channel.UpdatedAt.Format(time.RFC3339)
+	}
+
 	return ChannelResponse{
-		ID:       channel.ID,
+		ID:       strconv.FormatUint(channel.ID, 10),
 		UserID:   channel.UserID,
 		TeamID:   channel.TeamID,
 		Provider: channel.Provider.String(),
@@ -53,8 +64,8 @@ func ToChannelResponse(channel *models.NotificationChannel) ChannelResponse {
 		},
 		Connected: channel.Connected,
 		IsDefault: channel.IsDefault,
-		CreatedAt: channel.CreatedAt.Format(time.RFC3339),
-		UpdatedAt: channel.UpdatedAt.Format(time.RFC3339),
+		CreatedAt: createdAt,
+		UpdatedAt: updatedAt,
 	}
 }
 

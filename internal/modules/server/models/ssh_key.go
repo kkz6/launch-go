@@ -14,15 +14,16 @@ import (
 
 // SshKey represents an SSH public key
 type SshKey struct {
-	ID          string    `gorm:"primaryKey;size:26" json:"id"`
-	UserID      *string   `gorm:"size:26;index" json:"user_id,omitempty"`
-	TeamID      *string   `gorm:"size:26;index" json:"team_id,omitempty"`
-	IsGlobal    bool      `gorm:"default:false" json:"is_global"`
-	PublicKey   string    `gorm:"type:text;not null" json:"-"`
-	Name        string    `gorm:"size:255;not null" json:"name"`
-	Description *string   `gorm:"type:text" json:"description,omitempty"`
-	CreatedAt   time.Time `json:"created_at"`
-	UpdatedAt   time.Time `json:"updated_at"`
+	ID          string     `gorm:"type:char(26);primaryKey" json:"id"`
+	UserID      string     `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	TeamID      string     `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
+	IsGlobal    bool       `gorm:"column:is_global;type:tinyint(1);not null;default:0" json:"is_global"`
+	Description *string    `gorm:"type:varchar(255)" json:"description,omitempty"`
+	PublicKey   string     `gorm:"type:longtext;not null" json:"-"`
+	Name        string     `gorm:"type:varchar(255);not null" json:"name"`
+	Fingerprint *string    `gorm:"type:varchar(255)" json:"fingerprint,omitempty"`
+	CreatedAt   *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt   *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
 	Servers []Server `gorm:"many2many:server_ssh_keys" json:"servers,omitempty"`
@@ -41,15 +42,19 @@ func (k *SshKey) TableName() string {
 }
 
 func (k *SshKey) GetFingerprint() string {
+	if k.Fingerprint != nil && *k.Fingerprint != "" {
+		return *k.Fingerprint
+	}
+
 	return GenerateSSHFingerprint(k.PublicKey, FingerprintAlgorithmMD5)
 }
 
 // ServerSshKey represents the many-to-many relationship between servers and SSH keys
 type ServerSshKey struct {
-	ServerID  string    `gorm:"primaryKey;size:26" json:"server_id"`
-	SshKeyID  string    `gorm:"primaryKey;size:26" json:"ssh_key_id"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ServerID  string     `gorm:"column:server_id;type:char(26);primaryKey" json:"server_id"`
+	SshKeyID  string     `gorm:"column:ssh_key_id;type:char(26);primaryKey" json:"ssh_key_id"`
+	CreatedAt *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 }
 
 func (s *ServerSshKey) TableName() string {

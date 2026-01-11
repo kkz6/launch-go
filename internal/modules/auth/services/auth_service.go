@@ -61,7 +61,7 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		Name:     req.Name,
 		Email:    req.Email,
 		Password: string(hashedPassword),
-		Timezone: timezone,
+		Timezone: &timezone,
 	}
 
 	if err := s.repo.CreateUser(ctx, user); err != nil {
@@ -209,7 +209,11 @@ func (s *AuthService) handleInvitation(ctx context.Context, user *models.User, i
 	}
 
 	// Add user to team
-	if err := s.repo.AddUserToTeam(ctx, invitation.TeamID, user.ID, invitation.Role); err != nil {
+	role := "member"
+	if invitation.Role != nil {
+		role = *invitation.Role
+	}
+	if err := s.repo.AddUserToTeam(ctx, invitation.TeamID, user.ID, role); err != nil {
 		return
 	}
 

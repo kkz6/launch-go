@@ -11,18 +11,18 @@ import (
 
 // Command represents a command executed on a site
 type Command struct {
-	ID        string              `gorm:"primaryKey;size:26" json:"id"`
-	SiteID    string              `gorm:"size:26;not null;index" json:"site_id"`
-	UserID    string              `gorm:"size:26;not null;index" json:"user_id"`
-	Command   string              `gorm:"type:text;not null" json:"command"`
-	Status    enums.CommandStatus `gorm:"size:50;default:'pending'" json:"status"`
-	Output    *string             `gorm:"type:text" json:"output,omitempty"`
-	ExitCode  *int                `json:"exit_code,omitempty"`
-	CreatedAt time.Time           `json:"created_at"`
-	UpdatedAt time.Time           `json:"updated_at"`
+	ID        string              `gorm:"type:char(26);primaryKey" json:"id"`
+	SiteID    string              `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
+	UserID    string              `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	Command   string              `gorm:"type:varchar(255);not null" json:"command"`
+	Status    enums.CommandStatus `gorm:"type:varchar(255);not null" json:"status"`
+	Output    *string             `gorm:"type:longtext" json:"output,omitempty"`
+	ExitCode  *int                `gorm:"column:exit_code" json:"exit_code,omitempty"`
+	CreatedAt *time.Time          `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt *time.Time          `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Site *Site `gorm:"foreignKey:SiteID" json:"site,omitempty"`
+	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
 }
 
 func (c *Command) TableName() string {
@@ -35,4 +35,9 @@ func (c *Command) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	return nil
+}
+
+// IsSuccessful returns true if the command completed successfully
+func (c *Command) IsSuccessful() bool {
+	return c.ExitCode != nil && *c.ExitCode == 0
 }

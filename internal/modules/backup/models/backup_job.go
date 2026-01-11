@@ -11,18 +11,18 @@ import (
 
 // BackupJob represents an individual backup execution
 type BackupJob struct {
-	ID                string               `gorm:"primaryKey;size:26" json:"id"`
-	BackupID          string               `gorm:"size:26;not null;index" json:"backup_id"`
-	StorageProviderID string               `gorm:"size:26;not null;index" json:"storage_provider_id"`
-	Status            enums.BackupJobStatus `gorm:"size:20;not null;default:'pending'" json:"status"`
-	Size              int64                `gorm:"default:0" json:"size"`
-	Error             *string              `gorm:"type:text" json:"error,omitempty"`
-	CreatedAt         time.Time            `json:"created_at"`
-	UpdatedAt         time.Time            `json:"updated_at"`
+	ID                string                `gorm:"type:char(26);primaryKey" json:"id"`
+	Status            enums.BackupJobStatus `gorm:"type:varchar(255);not null" json:"status"`
+	BackupID          string                `gorm:"column:backup_id;type:char(26);not null;index" json:"backup_id"`
+	StorageProviderID uint64                `gorm:"column:storage_provider_id;not null;index" json:"storage_provider_id"`
+	Size              *int                  `gorm:"type:int" json:"size,omitempty"`
+	Error             *string               `gorm:"type:longtext" json:"error,omitempty"`
+	CreatedAt         *time.Time            `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt         *time.Time            `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Backup          *Backup          `gorm:"foreignKey:BackupID" json:"backup,omitempty"`
-	StorageProvider *StorageProvider `gorm:"foreignKey:StorageProviderID" json:"storage_provider,omitempty"`
+	Backup          *Backup          `gorm:"foreignKey:BackupID;references:ID" json:"backup,omitempty"`
+	StorageProvider *StorageProvider `gorm:"foreignKey:StorageProviderID;references:ID" json:"storage_provider,omitempty"`
 }
 
 // BeforeCreate hook generates ULID
@@ -45,7 +45,11 @@ func (BackupJob) TableName() string {
 
 // GetSizeInMB returns the backup size in megabytes
 func (j *BackupJob) GetSizeInMB() int64 {
-	return j.Size / 1024 / 1024
+	if j.Size == nil {
+		return 0
+	}
+
+	return int64(*j.Size) / 1024 / 1024
 }
 
 // IsFinished returns true if the backup job has finished successfully

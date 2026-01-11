@@ -128,6 +128,26 @@ type DeletionSummaryResponse struct {
 
 // ToSiteResponse converts a Site model to a response DTO
 func ToSiteResponse(site *models.Site) SiteResponse {
+	repositoryBranch := ""
+	if site.RepositoryBranch != nil {
+		repositoryBranch = *site.RepositoryBranch
+	}
+
+	phpVersion := ""
+	if site.PhpVersion != nil {
+		phpVersion = *site.PhpVersion
+	}
+
+	createdAt := ""
+	if site.CreatedAt != nil {
+		createdAt = site.CreatedAt.Format(time.RFC3339)
+	}
+
+	updatedAt := ""
+	if site.UpdatedAt != nil {
+		updatedAt = site.UpdatedAt.Format(time.RFC3339)
+	}
+
 	resp := SiteResponse{
 		ID:                          site.ID,
 		ServerID:                    site.ServerID,
@@ -138,11 +158,11 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		TlsSetting:                  string(site.TlsSetting),
 		ZeroDowntimeDeployment:      site.ZeroDowntimeDeployment,
 		DeploymentReleasesRetention: site.DeploymentReleasesRetention,
-		RepositoryBranch:            site.RepositoryBranch,
+		RepositoryBranch:            repositoryBranch,
 		DeployNotificationEmail:     site.DeployNotificationEmail,
 		Path:                        site.Path,
 		WebFolder:                   site.WebFolder,
-		PhpVersion:                  site.PhpVersion,
+		PhpVersion:                  phpVersion,
 		AutoDeployment:              site.AutoDeployment,
 		QueueDeployments:            site.QueueDeployments,
 		AutoRestartQueue:            site.AutoRestartQueue,
@@ -151,8 +171,8 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		SharedFiles:                 site.GetSharedFiles(),
 		URL:                         site.GetURL(),
 		ApplicationDirectory:        site.GetApplicationDirectory(),
-		CreatedAt:                   site.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:                   site.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:                   createdAt,
+		UpdatedAt:                   updatedAt,
 	}
 
 	if site.InstalledAt != nil {
@@ -206,26 +226,53 @@ func ToCertificateResponse(cert *models.Certificate) CertificateResponse {
 
 // ToQueueResponse converts a Queue model to a response DTO
 func ToQueueResponse(queue *models.Queue) QueueResponse {
+	directory := ""
+	if queue.Directory != nil {
+		directory = *queue.Directory
+	}
+
+	var maxSecondsPerJob, maxTries, restSecondsOnEmpty, failedJobDelaySeconds, maxMemory int
+	if queue.MaxSecondsPerJob != nil {
+		maxSecondsPerJob = *queue.MaxSecondsPerJob
+	}
+	if queue.MaxTries != nil {
+		maxTries = *queue.MaxTries
+	}
+	if queue.RestSecondsOnEmpty != nil {
+		restSecondsOnEmpty = *queue.RestSecondsOnEmpty
+	}
+	if queue.FailedJobDelaySeconds != nil {
+		failedJobDelaySeconds = *queue.FailedJobDelaySeconds
+	}
+	if queue.MaxMemory != nil {
+		maxMemory = *queue.MaxMemory
+	}
+
+	createdAt := ""
+	if queue.CreatedAt != nil {
+		createdAt = queue.CreatedAt.Format(time.RFC3339)
+	}
+
 	resp := QueueResponse{
 		ID:                    queue.ID,
 		SiteID:                queue.SiteID,
 		ServerID:              queue.ServerID,
-		Name:                  queue.Name,
-		Directory:             queue.Directory,
+		Name:                  queue.QueueName,
+		Directory:             directory,
 		Command:               queue.BuildCommand(),
 		User:                  queue.User,
 		QueueConnection:       queue.QueueConnection,
 		Queue:                 queue.QueueName,
 		NumProcs:              queue.NumProcs,
-		MaxSecondsPerJob:      queue.MaxSecondsPerJob,
-		MaxTries:              queue.MaxTries,
-		RestSecondsOnEmpty:    queue.RestSecondsOnEmpty,
-		FailedJobDelaySeconds: queue.FailedJobDelaySeconds,
-		MaxMemory:             queue.MaxMemory,
+		MaxSecondsPerJob:      maxSecondsPerJob,
+		MaxTries:              maxTries,
+		RestSecondsOnEmpty:    restSecondsOnEmpty,
+		FailedJobDelaySeconds: failedJobDelaySeconds,
+		MaxMemory:             maxMemory,
 		RunOnMaintenance:      queue.RunOnMaintenance,
 		RunWithListen:         queue.RunWithListen,
 		Running:               queue.Running,
-		CreatedAt:             queue.CreatedAt.Format(time.RFC3339),
+		CreatedAt:             createdAt,
 	}
 
 	if queue.InstalledAt != nil {
@@ -238,6 +285,11 @@ func ToQueueResponse(queue *models.Queue) QueueResponse {
 
 // ToCommandResponse converts a Command model to a response DTO
 func ToCommandResponse(cmd *models.Command) CommandResponse {
+	createdAt := ""
+	if cmd.CreatedAt != nil {
+		createdAt = cmd.CreatedAt.Format(time.RFC3339)
+	}
+
 	return CommandResponse{
 		ID:        cmd.ID,
 		SiteID:    cmd.SiteID,
@@ -246,21 +298,31 @@ func ToCommandResponse(cmd *models.Command) CommandResponse {
 		Status:    string(cmd.Status),
 		Output:    cmd.Output,
 		ExitCode:  cmd.ExitCode,
-		CreatedAt: cmd.CreatedAt.Format(time.RFC3339),
+		CreatedAt: createdAt,
 	}
 }
 
 // ToRedirectResponse converts a Redirect model to a response DTO
 func ToRedirectResponse(redirect *models.Redirect) RedirectResponse {
+	modeLabel := "Temporary (302)"
+	if redirect.Mode == 301 {
+		modeLabel = "Permanent (301)"
+	}
+
+	createdAt := ""
+	if redirect.CreatedAt != nil {
+		createdAt = redirect.CreatedAt.Format(time.RFC3339)
+	}
+
 	return RedirectResponse{
 		ID:        redirect.ID,
 		SiteID:    redirect.SiteID,
-		Mode:      int(redirect.Mode),
-		ModeLabel: redirect.Mode.Label(),
+		Mode:      redirect.Mode,
+		ModeLabel: modeLabel,
 		From:      redirect.From,
 		To:        redirect.To,
 		Status:    redirect.Status,
-		CreatedAt: redirect.CreatedAt.Format(time.RFC3339),
+		CreatedAt: createdAt,
 	}
 }
 

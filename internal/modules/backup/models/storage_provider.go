@@ -8,21 +8,21 @@ import (
 
 // StorageProvider represents a configured storage destination
 type StorageProvider struct {
-	ID             uint                `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID         string              `gorm:"size:26;not null;index" json:"user_id"`
-	TeamID         string              `gorm:"size:26;not null;index" json:"team_id"`
-	Provider       enums.StorageDriver `gorm:"size:50;not null" json:"provider"`
-	Label          string              `gorm:"size:255;not null" json:"label"`
-	Token          *string             `gorm:"type:text" json:"-"`
-	Credentials    EncryptedJSON       `gorm:"type:text" json:"-"`
-	RefreshToken   *string             `gorm:"type:text" json:"-"`
-	Connected      bool                `gorm:"default:false" json:"connected"`
-	TokenExpiresAt *time.Time          `json:"token_expires_at,omitempty"`
-	CreatedAt      time.Time           `json:"created_at"`
-	UpdatedAt      time.Time           `json:"updated_at"`
+	ID             uint64              `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID         string              `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	TeamID         *string             `gorm:"column:team_id;type:char(26);index" json:"team_id,omitempty"`
+	Provider       enums.StorageDriver `gorm:"type:varchar(255);not null" json:"provider"`
+	Label          *string             `gorm:"type:varchar(255)" json:"label,omitempty"`
+	Token          *string             `gorm:"type:varchar(1000)" json:"-"`
+	Credentials    EncryptedJSON       `gorm:"type:longtext" json:"-"`
+	RefreshToken   *string             `gorm:"column:refresh_token;type:varchar(1000)" json:"-"`
+	Connected      bool                `gorm:"default:true" json:"connected"`
+	TokenExpiresAt *time.Time          `gorm:"column:token_expires_at;type:timestamp null" json:"token_expires_at,omitempty"`
+	CreatedAt      *time.Time          `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt      *time.Time          `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Backups []Backup `gorm:"foreignKey:StorageProviderID" json:"backups,omitempty"`
+	Backups []Backup `gorm:"foreignKey:StorageProviderID;references:ID" json:"backups,omitempty"`
 }
 
 // TableName returns the table name for StorageProvider

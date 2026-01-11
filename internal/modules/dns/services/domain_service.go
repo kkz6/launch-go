@@ -75,7 +75,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 		// Create domain record
 		domain = &models.Domain{
 			UserID:           userID,
-			TeamID:           teamID,
+			TeamID:           &teamID,
 			DomainProviderID: provider.ID,
 			ProviderID:       providerID,
 			Label:            req.Label,

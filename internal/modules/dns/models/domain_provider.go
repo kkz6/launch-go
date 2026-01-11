@@ -12,23 +12,22 @@ import (
 
 // DomainProvider represents a DNS provider configuration
 type DomainProvider struct {
-	ID               string              `gorm:"primaryKey;size:26" json:"id"`
-	UserID           string              `gorm:"size:26;not null;index" json:"user_id"`
-	TeamID           string              `gorm:"size:26;not null;index" json:"team_id"`
-	Profile          string              `gorm:"size:255" json:"profile"`
-	Provider         enums.DnsProvider   `gorm:"size:50;not null" json:"provider"`
-	Credentials      string              `gorm:"type:text;not null" json:"-"`
-	Connected        bool                `gorm:"default:true" json:"connected"`
-	AdditionalData   *string             `gorm:"type:json" json:"-"`
-	SyncStatus       enums.SyncStatus    `gorm:"size:50" json:"sync_status,omitempty"`
-	LastSyncedAt     *time.Time          `json:"last_synced_at,omitempty"`
-	SyncErrorMessage *string             `gorm:"size:1000" json:"sync_error_message,omitempty"`
-	CreatedAt        time.Time           `json:"created_at"`
-	UpdatedAt        time.Time           `json:"updated_at"`
-	DeletedAt        gorm.DeletedAt      `gorm:"index" json:"-"`
+	ID               string            `gorm:"type:char(26);primaryKey" json:"id"`
+	UserID           string            `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	TeamID           *string           `gorm:"column:team_id;type:char(26);index" json:"team_id,omitempty"`
+	Profile          *string           `gorm:"type:varchar(255)" json:"profile,omitempty"`
+	Provider         enums.DnsProvider `gorm:"type:varchar(255);not null" json:"provider"`
+	Credentials      string            `gorm:"type:longtext;not null" json:"-"`
+	Connected        bool              `gorm:"default:true" json:"connected"`
+	AdditionalData   *string           `gorm:"column:additional_data;type:json" json:"-"`
+	SyncStatus       enums.SyncStatus  `gorm:"column:sync_status;type:varchar(255);not null;default:idle" json:"sync_status"`
+	LastSyncedAt     *time.Time        `gorm:"column:last_synced_at;type:timestamp null" json:"last_synced_at,omitempty"`
+	SyncErrorMessage *string           `gorm:"column:sync_error_message;type:text" json:"sync_error_message,omitempty"`
+	CreatedAt        *time.Time        `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt        *time.Time        `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Domains []Domain `gorm:"foreignKey:DomainProviderID" json:"domains,omitempty"`
+	Domains []Domain `gorm:"foreignKey:DomainProviderID;references:ID" json:"domains,omitempty"`
 }
 
 // TableName specifies the table name for DomainProvider

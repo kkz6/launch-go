@@ -11,21 +11,20 @@ import (
 
 // Domain represents a domain managed by a DNS provider
 type Domain struct {
-	ID               string         `gorm:"primaryKey;size:26" json:"id"`
-	UserID           string         `gorm:"size:26;not null;index" json:"user_id"`
-	TeamID           string         `gorm:"size:26;not null;index" json:"team_id"`
-	DomainProviderID string         `gorm:"size:26;not null;index" json:"domain_provider_id"`
-	ProviderID       string         `gorm:"size:255;not null" json:"provider_id"`
-	Label            string         `gorm:"size:255;not null" json:"label"`
-	Address          string         `gorm:"size:255;not null" json:"address"`
-	AdditionalData   *string        `gorm:"type:json" json:"-"`
-	CreatedAt        time.Time      `json:"created_at"`
-	UpdatedAt        time.Time      `json:"updated_at"`
-	DeletedAt        gorm.DeletedAt `gorm:"index" json:"-"`
+	ID               string     `gorm:"type:char(26);primaryKey" json:"id"`
+	UserID           string     `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	TeamID           *string    `gorm:"column:team_id;type:char(26);index" json:"team_id,omitempty"`
+	DomainProviderID string     `gorm:"column:domain_provider_id;type:char(26);not null;index" json:"domain_provider_id"`
+	Label            string     `gorm:"type:varchar(255);not null" json:"label"`
+	Address          string     `gorm:"type:varchar(255);not null" json:"address"`
+	ProviderID       string     `gorm:"column:provider_id;type:varchar(255);not null" json:"provider_id"`
+	AdditionalData   *string    `gorm:"column:additional_data;type:json" json:"-"`
+	CreatedAt        *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt        *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Provider *DomainProvider `gorm:"foreignKey:DomainProviderID" json:"provider,omitempty"`
-	Records  []DnsRecord     `gorm:"foreignKey:DomainID" json:"records,omitempty"`
+	Provider *DomainProvider `gorm:"foreignKey:DomainProviderID;references:ID" json:"provider,omitempty"`
+	Records  []DnsRecord     `gorm:"foreignKey:DomainID;references:ID" json:"records,omitempty"`
 }
 
 // TableName specifies the table name for Domain

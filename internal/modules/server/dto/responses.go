@@ -51,6 +51,44 @@ type ServerResponse struct {
 
 // ToServerResponse converts a Server model to a ServerResponse DTO
 func ToServerResponse(server *models.Server) ServerResponse {
+	// Handle Type field (now *string instead of enum)
+	serverType := ""
+	serverTypeLabel := ""
+	if server.Type != nil && *server.Type != "" {
+		st := enums.ServerType(*server.Type)
+		serverType = st.String()
+		serverTypeLabel = st.Label()
+	}
+
+	// Handle OperatingSystem field (now *string instead of enum)
+	operatingSystem := ""
+	operatingSystemLabel := ""
+	if server.OperatingSystem != nil && *server.OperatingSystem != "" {
+		os := enums.OperatingSystem(*server.OperatingSystem)
+		operatingSystem = os.String()
+		operatingSystemLabel = os.Label()
+	}
+
+	// Handle Username and SSHPort (now pointers)
+	username := server.GetUsername()
+	sshPort := server.GetSSHPort()
+
+	// Handle timestamps
+	createdAt := ""
+	if server.CreatedAt != nil {
+		createdAt = server.CreatedAt.Format(time.RFC3339)
+	}
+	updatedAt := ""
+	if server.UpdatedAt != nil {
+		updatedAt = server.UpdatedAt.Format(time.RFC3339)
+	}
+
+	// Progress is int, needs to be converted to *int for response
+	var progress *int
+	if server.Progress > 0 {
+		progress = &server.Progress
+	}
+
 	resp := ServerResponse{
 		ID:                   server.ID,
 		TeamID:               server.TeamID,
@@ -58,25 +96,25 @@ func ToServerResponse(server *models.Server) ServerResponse {
 		Description:          server.Description,
 		Provider:             server.Provider.String(),
 		ProviderLabel:        server.Provider.Label(),
-		Type:                 server.Type.String(),
-		TypeLabel:            server.Type.Label(),
+		Type:                 serverType,
+		TypeLabel:            serverTypeLabel,
 		Connected:            server.Connected,
 		MonitoringEnabled:    server.MonitoringEnabled,
 		CPUCores:             server.CPUCores,
 		MemoryInMB:           server.MemoryInMB,
 		StorageInGB:          server.StorageInGB,
-		OperatingSystem:      server.OperatingSystem.String(),
-		OperatingSystemLabel: server.OperatingSystem.Label(),
+		OperatingSystem:      operatingSystem,
+		OperatingSystemLabel: operatingSystemLabel,
 		Status:               server.Status.String(),
 		StatusLabel:          server.Status.Label(),
 		PublicIPv4:           server.PublicIPv4,
-		Username:             server.Username,
-		SSHPort:              server.SSHPort,
+		Username:             username,
+		SSHPort:              sshPort,
 		AutoUpdate:           server.AutoUpdate,
-		Progress:             server.Progress,
+		Progress:             progress,
 		ProgressStep:         server.ProgressStep,
-		CreatedAt:            server.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:            server.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:            createdAt,
+		UpdatedAt:            updatedAt,
 		ServicesCount:        len(server.Services),
 	}
 
@@ -133,24 +171,42 @@ type ServiceResponse struct {
 
 // ToServiceResponse converts an InstalledService model to a ServiceResponse DTO
 func ToServiceResponse(service *models.InstalledService) ServiceResponse {
+	// Handle timestamps
+	createdAt := ""
+	if service.CreatedAt != nil {
+		createdAt = service.CreatedAt.Format(time.RFC3339)
+	}
+	updatedAt := ""
+	if service.UpdatedAt != nil {
+		updatedAt = service.UpdatedAt.Format(time.RFC3339)
+	}
+
+	// Handle Version (now string, convert to *string for response)
+	var version *string
+	if service.Version != "" {
+		version = &service.Version
+	}
+
 	resp := ServiceResponse{
 		ID:          service.ID,
 		ServerID:    service.ServerID,
 		Type:        service.Type.String(),
 		TypeLabel:   service.Type.Label(),
 		Name:        service.Name,
-		Version:     service.Version,
+		Version:     version,
 		Status:      service.Status.String(),
 		StatusLabel: service.Status.Label(),
 		IsDefault:   service.IsDefault,
-		CreatedAt:   service.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   service.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
 	}
 
-	if service.Software != nil {
-		sw := service.Software.String()
-		resp.Software = &sw
-		label := service.Software.Label()
+	// Handle Software (now string, convert to enum for labels)
+	if service.Software != "" {
+		sw := enums.Software(service.Software)
+		swStr := sw.String()
+		resp.Software = &swStr
+		label := sw.Label()
 		resp.SoftwareLabel = &label
 	}
 
@@ -179,13 +235,28 @@ type FirewallRuleResponse struct {
 
 // ToFirewallRuleResponse converts a FirewallRule model to a FirewallRuleResponse DTO
 func ToFirewallRuleResponse(rule *models.FirewallRule) FirewallRuleResponse {
+	createdAt := ""
+	if rule.CreatedAt != nil {
+		createdAt = rule.CreatedAt.Format(time.RFC3339)
+	}
+	updatedAt := ""
+	if rule.UpdatedAt != nil {
+		updatedAt = rule.UpdatedAt.Format(time.RFC3339)
+	}
+
+	// Port is string, convert to *string for response
+	var port *string
+	if rule.Port != "" {
+		port = &rule.Port
+	}
+
 	resp := FirewallRuleResponse{
 		ID:          rule.ID,
 		ServerID:    rule.ServerID,
 		Name:        rule.Name,
 		Action:      rule.Action.String(),
 		ActionLabel: rule.Action.Label(),
-		Port:        rule.Port,
+		Port:        port,
 		FromIPv4:    rule.FromIPv4,
 		Mask:        rule.Mask,
 		Note:        rule.Note,
@@ -193,8 +264,8 @@ func ToFirewallRuleResponse(rule *models.FirewallRule) FirewallRuleResponse {
 		IsPending:   rule.IsPending(),
 		HasFailed:   rule.HasFailed(),
 		UfwRule:     rule.FormatAsUfwRule(),
-		CreatedAt:   rule.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   rule.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
 	}
 
 	if rule.InstalledAt != nil {
@@ -224,6 +295,21 @@ type CronResponse struct {
 
 // ToCronResponse converts a Cron model to a CronResponse DTO
 func ToCronResponse(cron *models.Cron) CronResponse {
+	createdAt := ""
+	if cron.CreatedAt != nil {
+		createdAt = cron.CreatedAt.Format(time.RFC3339)
+	}
+	updatedAt := ""
+	if cron.UpdatedAt != nil {
+		updatedAt = cron.UpdatedAt.Format(time.RFC3339)
+	}
+
+	// Frequency is string, convert to *string for response
+	var frequency *string
+	if cron.Frequency != "" {
+		frequency = &cron.Frequency
+	}
+
 	resp := CronResponse{
 		ID:          cron.ID,
 		ServerID:    cron.ServerID,
@@ -231,12 +317,12 @@ func ToCronResponse(cron *models.Cron) CronResponse {
 		User:        cron.User,
 		Expression:  cron.Expression,
 		Command:     cron.Command,
-		Frequency:   cron.Frequency,
+		Frequency:   frequency,
 		Hidden:      cron.Hidden,
 		IsInstalled: cron.IsInstalled(),
 		Path:        cron.Path(),
-		CreatedAt:   cron.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   cron.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
 	}
 
 	if cron.InstalledAt != nil {
@@ -268,6 +354,21 @@ type DaemonResponse struct {
 
 // ToDaemonResponse converts a Daemon model to a DaemonResponse DTO
 func ToDaemonResponse(daemon *models.Daemon) DaemonResponse {
+	createdAt := ""
+	if daemon.CreatedAt != nil {
+		createdAt = daemon.CreatedAt.Format(time.RFC3339)
+	}
+	updatedAt := ""
+	if daemon.UpdatedAt != nil {
+		updatedAt = daemon.UpdatedAt.Format(time.RFC3339)
+	}
+
+	// StopSignal is string, convert to *string for response
+	var stopSignal *string
+	if daemon.StopSignal != "" {
+		stopSignal = &daemon.StopSignal
+	}
+
 	resp := DaemonResponse{
 		ID:              daemon.ID,
 		ServerID:        daemon.ServerID,
@@ -276,12 +377,12 @@ func ToDaemonResponse(daemon *models.Daemon) DaemonResponse {
 		Command:         daemon.Command,
 		Processes:       daemon.Processes,
 		StopWaitSeconds: daemon.StopWaitSeconds,
-		StopSignal:      daemon.StopSignal,
+		StopSignal:      stopSignal,
 		IsInstalled:     daemon.IsInstalled(),
 		Running:         daemon.Running,
 		Path:            daemon.Path(),
-		CreatedAt:       daemon.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:       daemon.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:       createdAt,
+		UpdatedAt:       updatedAt,
 	}
 
 	if daemon.InstalledAt != nil {
@@ -310,36 +411,47 @@ type SshKeyResponse struct {
 
 // ToSshKeyResponse converts an SshKey model to an SshKeyResponse DTO
 func ToSshKeyResponse(key *models.SshKey) SshKeyResponse {
+	createdAt := ""
+	if key.CreatedAt != nil {
+		createdAt = key.CreatedAt.Format(time.RFC3339)
+	}
+	updatedAt := ""
+	if key.UpdatedAt != nil {
+		updatedAt = key.UpdatedAt.Format(time.RFC3339)
+	}
+
 	return SshKeyResponse{
 		ID:          key.ID,
 		Name:        key.Name,
 		Fingerprint: key.GetFingerprint(),
 		Description: key.Description,
 		IsGlobal:    key.IsGlobal,
-		CreatedAt:   key.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:   key.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:   createdAt,
+		UpdatedAt:   updatedAt,
 	}
 }
 
 // TaskResponse represents the response for a task
 type TaskResponse struct {
-	ID         string  `json:"id"`
-	ServerID   string  `json:"server_id"`
-	Type       string  `json:"type"`
-	Status     string  `json:"status"`
-	Name       *string `json:"name,omitempty"`
-	User       *string `json:"user,omitempty"`
-	Output     *string `json:"output,omitempty"`
-	ExitCode   *int    `json:"exit_code,omitempty"`
-	Duration   *string `json:"duration,omitempty"`
-	StartedAt  *string `json:"started_at,omitempty"`
-	FinishedAt *string `json:"finished_at,omitempty"`
-	CreatedAt  string  `json:"created_at"`
+	ID        string  `json:"id"`
+	ServerID  string  `json:"server_id"`
+	Type      string  `json:"type"`
+	Status    string  `json:"status"`
+	Name      string  `json:"name"`
+	User      string  `json:"user"`
+	Output    *string `json:"output,omitempty"`
+	ExitCode  *int    `json:"exit_code,omitempty"`
+	CreatedAt string  `json:"created_at"`
 }
 
 // ToTaskResponse converts a Task model to a TaskResponse DTO
 func ToTaskResponse(task *models.Task) TaskResponse {
-	resp := TaskResponse{
+	createdAt := ""
+	if task.CreatedAt != nil {
+		createdAt = task.CreatedAt.Format(time.RFC3339)
+	}
+
+	return TaskResponse{
 		ID:        task.ID,
 		ServerID:  task.ServerID,
 		Type:      task.Type,
@@ -348,52 +460,46 @@ func ToTaskResponse(task *models.Task) TaskResponse {
 		User:      task.User,
 		Output:    task.Output,
 		ExitCode:  task.ExitCode,
-		CreatedAt: task.CreatedAt.Format(time.RFC3339),
+		CreatedAt: createdAt,
 	}
-
-	if task.StartedAt != nil {
-		formatted := task.StartedAt.Format(time.RFC3339)
-		resp.StartedAt = &formatted
-	}
-
-	if task.FinishedAt != nil {
-		formatted := task.FinishedAt.Format(time.RFC3339)
-		resp.FinishedAt = &formatted
-	}
-
-	if duration := task.Duration(); duration > 0 {
-		durationStr := duration.String()
-		resp.Duration = &durationStr
-	}
-
-	return resp
 }
 
 // MetricResponse represents the response for server metrics
 type MetricResponse struct {
-	ID            string  `json:"id"`
-	ServerID      string  `json:"server_id"`
-	CPUUsage      float64 `json:"cpu_usage"`
-	MemoryUsage   float64 `json:"memory_usage"`
-	DiskUsage     float64 `json:"disk_usage"`
-	LoadAverage1  float64 `json:"load_average_1"`
-	LoadAverage5  float64 `json:"load_average_5"`
-	LoadAverage15 float64 `json:"load_average_15"`
-	RecordedAt    string  `json:"recorded_at"`
+	ID                 uint64  `json:"id"`
+	ServerID           string  `json:"server_id"`
+	Load               float64 `json:"load"`
+	MemoryTotal        float64 `json:"memory_total"`
+	MemoryUsed         float64 `json:"memory_used"`
+	MemoryFree         float64 `json:"memory_free"`
+	MemoryUsagePercent float64 `json:"memory_usage_percent"`
+	DiskTotal          float64 `json:"disk_total"`
+	DiskUsed           float64 `json:"disk_used"`
+	DiskFree           float64 `json:"disk_free"`
+	DiskUsagePercent   float64 `json:"disk_usage_percent"`
+	CreatedAt          string  `json:"created_at"`
 }
 
 // ToMetricResponse converts a Metric model to a MetricResponse DTO
 func ToMetricResponse(metric *models.Metric) MetricResponse {
+	createdAt := ""
+	if metric.CreatedAt != nil {
+		createdAt = metric.CreatedAt.Format(time.RFC3339)
+	}
+
 	return MetricResponse{
-		ID:            metric.ID,
-		ServerID:      metric.ServerID,
-		CPUUsage:      metric.CPUUsage,
-		MemoryUsage:   metric.MemoryUsage,
-		DiskUsage:     metric.DiskUsage,
-		LoadAverage1:  metric.LoadAverage1,
-		LoadAverage5:  metric.LoadAverage5,
-		LoadAverage15: metric.LoadAverage15,
-		RecordedAt:    metric.RecordedAt.Format(time.RFC3339),
+		ID:                 metric.ID,
+		ServerID:           metric.ServerID,
+		Load:               metric.Load,
+		MemoryTotal:        metric.MemoryTotal,
+		MemoryUsed:         metric.MemoryUsed,
+		MemoryFree:         metric.MemoryFree,
+		MemoryUsagePercent: metric.MemoryUsagePercent(),
+		DiskTotal:          metric.DiskTotal,
+		DiskUsed:           metric.DiskUsed,
+		DiskFree:           metric.DiskFree,
+		DiskUsagePercent:   metric.DiskUsagePercent(),
+		CreatedAt:          createdAt,
 	}
 }
 

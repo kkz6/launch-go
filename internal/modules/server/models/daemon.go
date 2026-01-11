@@ -12,26 +12,26 @@ import (
 
 // Daemon represents a background process managed by supervisor
 type Daemon struct {
-	ID                        string     `gorm:"primaryKey;size:26" json:"id"`
-	ServerID                  string     `gorm:"size:26;not null;index" json:"server_id"`
-	User                      string     `gorm:"size:100;not null;default:'root'" json:"user"`
-	Directory                 *string    `gorm:"size:255" json:"directory,omitempty"`
-	Command                   string     `gorm:"type:text;not null" json:"command"`
-	Processes                 int        `gorm:"default:1" json:"processes"`
-	StopWaitSeconds           int        `gorm:"default:10" json:"stop_wait_seconds"`
-	StopSignal                *string    `gorm:"size:20" json:"stop_signal,omitempty"`
-	InstalledAt               *time.Time `json:"installed_at,omitempty"`
-	InstallationFailedAt      *time.Time `json:"installation_failed_at,omitempty"`
-	UninstallationRequestedAt *time.Time `json:"-"`
-	UninstallationFailedAt    *time.Time `json:"-"`
-	LastStatusCheck           *time.Time `json:"last_status_check,omitempty"`
-	Running                   bool       `gorm:"default:false" json:"running"`
+	ID                        string     `gorm:"type:char(26);primaryKey" json:"id"`
+	ServerID                  string     `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	User                      string     `gorm:"type:varchar(255);not null" json:"user"`
+	Directory                 *string    `gorm:"type:varchar(255)" json:"directory,omitempty"`
+	Command                   string     `gorm:"type:longtext;not null" json:"command"`
+	Processes                 int        `gorm:"type:int;not null;default:1" json:"processes"`
+	StopWaitSeconds           int        `gorm:"column:stop_wait_seconds;type:int;not null;default:10" json:"stop_wait_seconds"`
+	StopSignal                string     `gorm:"column:stop_signal;type:varchar(255);not null" json:"stop_signal"`
+	LastStatusCheck           *time.Time `gorm:"column:last_status_check;type:timestamp null" json:"last_status_check,omitempty"`
+	Running                   bool       `gorm:"type:tinyint(1);not null;default:0" json:"running"`
 	Info                      *string    `gorm:"type:json" json:"-"`
-	CreatedAt                 time.Time  `json:"created_at"`
-	UpdatedAt                 time.Time  `json:"updated_at"`
+	InstalledAt               *time.Time `gorm:"column:installed_at;type:timestamp null" json:"installed_at,omitempty"`
+	InstallationFailedAt      *time.Time `gorm:"column:installation_failed_at;type:timestamp null" json:"installation_failed_at,omitempty"`
+	UninstallationRequestedAt *time.Time `gorm:"column:uninstallation_requested_at;type:timestamp null" json:"-"`
+	UninstallationFailedAt    *time.Time `gorm:"column:uninstallation_failed_at;type:timestamp null" json:"-"`
+	CreatedAt                 *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt                 *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Server *Server `gorm:"foreignKey:ServerID" json:"server,omitempty"`
+	Server *Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
 }
 
 func (d *Daemon) BeforeCreate(tx *gorm.DB) error {

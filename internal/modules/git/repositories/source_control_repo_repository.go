@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 
 	"gorm.io/gorm"
@@ -137,16 +138,25 @@ func (r *SourceControlRepoRepository) UpsertRepository(ctx context.Context, sour
 		First(&repo).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		// Convert AdditionalData to *string
+		var additionalData *string
+		if data.AdditionalData != nil {
+			if jsonBytes, err := json.Marshal(data.AdditionalData); err == nil {
+				jsonStr := string(jsonBytes)
+				additionalData = &jsonStr
+			}
+		}
+
 		// Create new
 		repo = models.SourceControlRepository{
 			SourceControlID: sourceControlID,
 			Name:            data.Name,
 			FullName:        data.FullName,
 			Public:          data.IsPublic,
-			DefaultBranch:   &data.DefaultBranch,
+			DefaultBranch:   data.DefaultBranch,
 			HTMLURL:         &data.HTMLURL,
-			SSHURL:          &data.SSHURL,
-			AdditionalData:  data.AdditionalData,
+			SSHURL:          data.SSHURL,
+			AdditionalData:  additionalData,
 		}
 
 		if err := r.db.WithContext(ctx).Create(&repo).Error; err != nil {
@@ -160,13 +170,22 @@ func (r *SourceControlRepoRepository) UpsertRepository(ctx context.Context, sour
 		return nil, err
 	}
 
+	// Convert AdditionalData to *string
+	var additionalData *string
+	if data.AdditionalData != nil {
+		if jsonBytes, err := json.Marshal(data.AdditionalData); err == nil {
+			jsonStr := string(jsonBytes)
+			additionalData = &jsonStr
+		}
+	}
+
 	// Update existing
 	repo.Name = data.Name
 	repo.Public = data.IsPublic
-	repo.DefaultBranch = &data.DefaultBranch
+	repo.DefaultBranch = data.DefaultBranch
 	repo.HTMLURL = &data.HTMLURL
-	repo.SSHURL = &data.SSHURL
-	repo.AdditionalData = data.AdditionalData
+	repo.SSHURL = data.SSHURL
+	repo.AdditionalData = additionalData
 
 	if err := r.db.WithContext(ctx).Save(&repo).Error; err != nil {
 		return nil, err

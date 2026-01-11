@@ -40,6 +40,11 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 		stopWaitSeconds = req.StopWaitSeconds
 	}
 
+	stopSignal := "SIGTERM"
+	if req.StopSignal != nil {
+		stopSignal = *req.StopSignal
+	}
+
 	daemon := &models.Daemon{
 		ServerID:        serverID,
 		User:            user,
@@ -47,7 +52,7 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 		Command:         req.Command,
 		Processes:       processes,
 		StopWaitSeconds: stopWaitSeconds,
-		StopSignal:      req.StopSignal,
+		StopSignal:      stopSignal,
 	}
 
 	if err := s.repo.CreateDaemon(ctx, daemon); err != nil {
@@ -98,7 +103,7 @@ func (s *Service) UpdateDaemon(ctx context.Context, serverID, teamID, daemonID s
 	}
 
 	if req.StopSignal != nil {
-		daemon.StopSignal = req.StopSignal
+		daemon.StopSignal = *req.StopSignal
 	}
 
 	if err := s.repo.UpdateDaemon(ctx, daemon); err != nil {

@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/git/models"
@@ -28,13 +30,23 @@ type SourceControlResponse struct {
 
 // ToSourceControlResponse converts a SourceControl to SourceControlResponse
 func ToSourceControlResponse(sc *models.SourceControl) SourceControlResponse {
+	repositoryCount := 0
+	if sc.RepositoryCount != nil {
+		repositoryCount = *sc.RepositoryCount
+	}
+
+	createdAt := ""
+	if sc.CreatedAt != nil {
+		createdAt = sc.CreatedAt.Format(time.RFC3339)
+	}
+
 	resp := SourceControlResponse{
 		ID:                      sc.ID,
 		Provider:                sc.Provider.String(),
 		ProviderLabel:           sc.Provider.Label(),
 		HasMultipleRepositories: sc.HasMultipleRepositories,
-		RepositoryCount:         sc.RepositoryCount,
-		CreatedAt:               sc.CreatedAt.Format(time.RFC3339),
+		RepositoryCount:         repositoryCount,
+		CreatedAt:               createdAt,
 	}
 
 	if sc.Login != nil {
@@ -100,17 +112,20 @@ type RepositoryResponse struct {
 // ToRepositoryResponse converts a SourceControlRepository to RepositoryResponse
 func ToRepositoryResponse(repo *models.SourceControlRepository) RepositoryResponse {
 	resp := RepositoryResponse{
-		ID:            repo.ID,
+		ID:            strconv.FormatUint(repo.ID, 10),
 		Name:          repo.Name,
 		FullName:      repo.FullName,
 		Public:        repo.Public,
-		DefaultBranch: repo.GetDefaultBranch(),
+		DefaultBranch: repo.GetDefaultBranchOrMain(),
 		HTMLURL:       repo.GetHTMLURL(),
-		SSHURL:        repo.GetSSHURL(),
+		SSHURL:        repo.SSHURL,
 	}
 
 	if repo.AdditionalData != nil {
-		resp.AdditionalData = repo.AdditionalData
+		var additionalData map[string]interface{}
+		if err := json.Unmarshal([]byte(*repo.AdditionalData), &additionalData); err == nil {
+			resp.AdditionalData = additionalData
+		}
 	}
 
 	return resp
@@ -147,15 +162,17 @@ type InstallationSummaryData struct {
 
 // InstallationSummaryFromSourceControl creates an InstallationSummaryData from a SourceControl
 func InstallationSummaryFromSourceControl(sc *models.SourceControl) InstallationSummaryData {
+	repositoryCount := 0
+	if sc.RepositoryCount != nil {
+		repositoryCount = *sc.RepositoryCount
+	}
+
 	summary := InstallationSummaryData{
 		ID:                      sc.ID,
 		Provider:                sc.Provider.String(),
 		HasMultipleRepositories: sc.HasMultipleRepositories,
-		RepositoryCount:         sc.RepositoryCount,
-	}
-
-	if sc.ProviderID != nil {
-		summary.ProviderID = *sc.ProviderID
+		RepositoryCount:         repositoryCount,
+		ProviderID:              sc.ProviderID,
 	}
 
 	if sc.Login != nil {

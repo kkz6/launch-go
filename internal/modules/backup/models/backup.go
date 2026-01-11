@@ -12,31 +12,30 @@ import (
 
 // Backup represents a backup configuration for a server
 type Backup struct {
-	ID                        string          `gorm:"primaryKey;size:26" json:"id"`
-	ServerID                  string          `gorm:"size:26;not null;index" json:"server_id"`
-	UserID                    string          `gorm:"size:26;not null;index" json:"user_id"`
-	StorageProviderID         string          `gorm:"size:26;not null;index" json:"storage_provider_id"`
-	CronExpression            string          `gorm:"size:100;not null" json:"cron_expression"`
-	IncludeFiles              JSON            `gorm:"type:json" json:"include_files"`
-	ExcludeFiles              JSON            `gorm:"type:json" json:"exclude_files"`
-	Retention                 int             `gorm:"default:10" json:"retention"`
-	NotificationOnFailure     bool            `gorm:"default:false" json:"notification_on_failure"`
-	NotificationOnSuccess     bool            `gorm:"default:false" json:"notification_on_success"`
-	Enabled                   bool            `gorm:"default:true" json:"enabled"`
-	Path                      string          `gorm:"size:500" json:"path"`
-	DispatchToken             string          `gorm:"size:64;not null" json:"dispatch_token"`
-	InstalledAt               *time.Time      `json:"installed_at,omitempty"`
-	InstallationFailedAt      *time.Time      `json:"installation_failed_at,omitempty"`
-	UninstallationRequestedAt *time.Time      `json:"uninstallation_requested_at,omitempty"`
-	UninstallationFailedAt    *time.Time      `json:"uninstallation_failed_at,omitempty"`
-	CreatedAt                 time.Time       `json:"created_at"`
-	UpdatedAt                 time.Time       `json:"updated_at"`
-	DeletedAt                 gorm.DeletedAt  `gorm:"index" json:"-"`
+	ID                        string     `gorm:"type:char(26);primaryKey" json:"id"`
+	ServerID                  string     `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	UserID                    *string    `gorm:"column:user_id;type:char(26);index" json:"user_id,omitempty"`
+	StorageProviderID         uint64     `gorm:"column:storage_provider_id;not null;index" json:"storage_provider_id"`
+	DispatchToken             string     `gorm:"column:dispatch_token;type:varchar(32);not null" json:"dispatch_token"`
+	CronExpression            string     `gorm:"column:cron_expression;type:varchar(255);not null" json:"cron_expression"`
+	IncludeFiles              string     `gorm:"column:include_files;type:json;not null" json:"include_files"`
+	ExcludeFiles              string     `gorm:"column:exclude_files;type:json;not null" json:"exclude_files"`
+	Retention                 int        `gorm:"default:14" json:"retention"`
+	NotificationOnFailure     bool       `gorm:"column:notification_on_failure;default:true" json:"notification_on_failure"`
+	NotificationOnSuccess     bool       `gorm:"column:notification_on_success;default:true" json:"notification_on_success"`
+	Enabled                   bool       `gorm:"default:false" json:"enabled"`
+	Path                      string     `gorm:"type:varchar(255);not null" json:"path"`
+	InstalledAt               *time.Time `gorm:"column:installed_at;type:timestamp null" json:"installed_at,omitempty"`
+	InstallationFailedAt      *time.Time `gorm:"column:installation_failed_at;type:timestamp null" json:"installation_failed_at,omitempty"`
+	UninstallationRequestedAt *time.Time `gorm:"column:uninstallation_requested_at;type:timestamp null" json:"uninstallation_requested_at,omitempty"`
+	UninstallationFailedAt    *time.Time `gorm:"column:uninstallation_failed_at;type:timestamp null" json:"uninstallation_failed_at,omitempty"`
+	CreatedAt                 *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt                 *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Jobs            []BackupJob      `gorm:"foreignKey:BackupID" json:"jobs,omitempty"`
-	StorageProvider *StorageProvider `gorm:"foreignKey:StorageProviderID" json:"storage_provider,omitempty"`
-	Databases       []BackupDatabase `gorm:"foreignKey:BackupID" json:"databases,omitempty"`
+	Jobs            []BackupJob      `gorm:"foreignKey:BackupID;references:ID" json:"jobs,omitempty"`
+	StorageProvider *StorageProvider `gorm:"foreignKey:StorageProviderID;references:ID" json:"storage_provider,omitempty"`
+	Databases       []BackupDatabase `gorm:"foreignKey:BackupID;references:ID" json:"databases,omitempty"`
 }
 
 // BeforeCreate hook generates ULID and dispatch token
@@ -69,7 +68,9 @@ func (Backup) TableName() string {
 func (b *Backup) GetSizeInMB() int64 {
 	var totalSize int64
 	for _, job := range b.Jobs {
-		totalSize += job.Size
+		if job.Size != nil {
+			totalSize += int64(*job.Size)
+		}
 	}
 
 	return totalSize / 1024 / 1024

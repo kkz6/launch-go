@@ -66,27 +66,32 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		return nil, fmt.Errorf("failed to generate SSH key pair: %w", err)
 	}
 
+	serverTypeStr := serverType.String()
+	osStr := os.String()
+	defaultSSHPort := 22
+	defaultUsername := "launch"
+
 	server := &models.Server{
 		TeamID:          teamID,
 		UserID:          userID,
 		Name:            req.Name,
 		Description:     req.Description,
 		Provider:        provider,
-		Type:            serverType,
-		OperatingSystem: os,
+		Type:            &serverTypeStr,
+		OperatingSystem: &osStr,
 		Status:          enums.ServerStatusNew,
-		SSHPort:         22,
-		Username:        "launch",
+		SSHPort:         &defaultSSHPort,
+		Username:        &defaultUsername,
 		PrivateKey:      &privateKey,
 		PublicKey:       &publicKey,
 	}
 
 	if req.SSHPort > 0 {
-		server.SSHPort = req.SSHPort
+		server.SSHPort = &req.SSHPort
 	}
 
 	if req.SSHUser != "" {
-		server.Username = req.SSHUser
+		server.Username = &req.SSHUser
 	}
 
 	if provider == enums.ProviderCustom {

@@ -35,7 +35,7 @@ func (s *Service) CreateDatabaseUser(ctx context.Context, serverID string, req *
 	dbUser := &models.DatabaseUser{
 		ServerID: serverID,
 		Name:     req.Name,
-		Password: req.Password,
+		Password: &req.Password,
 	}
 
 	if err := s.repo.CreateUser(ctx, dbUser); err != nil {
@@ -87,7 +87,7 @@ func (s *Service) UpdateDatabaseUser(ctx context.Context, id, serverID string, r
 	}
 
 	// Update password
-	dbUser.Password = req.Password
+	dbUser.Password = &req.Password
 	if err := s.repo.UpdateUser(ctx, dbUser); err != nil {
 		return nil, fmt.Errorf("failed to update database user: %w", err)
 	}

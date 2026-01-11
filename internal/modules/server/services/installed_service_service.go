@@ -50,13 +50,11 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 		ServerID:  serverID,
 		Type:      software.GetServiceType(),
 		Name:      software.Label(),
-		Software:  &software,
+		Software:  software.String(),
 		Status:    enums.ServiceStatusPending,
 		IsDefault: false,
+		Version:   software.GetVersion(),
 	}
-
-	version := software.GetVersion()
-	service.Version = &version
 
 	if err := s.repo.CreateService(ctx, service); err != nil {
 		return nil, err
@@ -107,7 +105,7 @@ func (s *Service) dispatchServiceInstallJob(server *models.Server, service *mode
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewInstallServiceTask(server.ID, service.ID, service.Software.String())
+	task, err := jobs.NewInstallServiceTask(server.ID, service.ID, service.Software)
 	if err != nil {
 		return err
 	}

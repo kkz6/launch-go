@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"encoding/json"
+	"strconv"
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
@@ -32,11 +34,26 @@ type BackupResponse struct {
 
 // ToBackupResponse converts a Backup model to BackupResponse
 func ToBackupResponse(backup *models.Backup) BackupResponse {
+	userID := ""
+	if backup.UserID != nil {
+		userID = *backup.UserID
+	}
+
+	createdAt := ""
+	if backup.CreatedAt != nil {
+		createdAt = backup.CreatedAt.Format(time.RFC3339)
+	}
+
+	updatedAt := ""
+	if backup.UpdatedAt != nil {
+		updatedAt = backup.UpdatedAt.Format(time.RFC3339)
+	}
+
 	resp := BackupResponse{
 		ID:                    backup.ID,
 		ServerID:              backup.ServerID,
-		UserID:                backup.UserID,
-		StorageProviderID:     backup.StorageProviderID,
+		UserID:                userID,
+		StorageProviderID:     strconv.FormatUint(backup.StorageProviderID, 10),
 		CronExpression:        backup.CronExpression,
 		Retention:             backup.Retention,
 		NotificationOnFailure: backup.NotificationOnFailure,
@@ -44,18 +61,20 @@ func ToBackupResponse(backup *models.Backup) BackupResponse {
 		Enabled:               backup.Enabled,
 		Path:                  backup.Path,
 		SizeInMB:              backup.GetSizeInMB(),
-		CreatedAt:             backup.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:             backup.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:             createdAt,
+		UpdatedAt:             updatedAt,
 	}
 
-	// Handle include/exclude files
-	if includeFiles, err := backup.IncludeFiles.ToStringSlice(); err == nil {
+	// Handle include/exclude files (JSON strings)
+	var includeFiles []string
+	if err := json.Unmarshal([]byte(backup.IncludeFiles), &includeFiles); err == nil {
 		resp.IncludeFiles = includeFiles
 	} else {
 		resp.IncludeFiles = []string{}
 	}
 
-	if excludeFiles, err := backup.ExcludeFiles.ToStringSlice(); err == nil {
+	var excludeFiles []string
+	if err := json.Unmarshal([]byte(backup.ExcludeFiles), &excludeFiles); err == nil {
 		resp.ExcludeFiles = excludeFiles
 	} else {
 		resp.ExcludeFiles = []string{}
@@ -110,15 +129,30 @@ type BackupJobResponse struct {
 
 // ToBackupJobResponse converts a BackupJob model to BackupJobResponse
 func ToBackupJobResponse(job *models.BackupJob) BackupJobResponse {
+	var size int64
+	if job.Size != nil {
+		size = int64(*job.Size)
+	}
+
+	createdAt := ""
+	if job.CreatedAt != nil {
+		createdAt = job.CreatedAt.Format(time.RFC3339)
+	}
+
+	updatedAt := ""
+	if job.UpdatedAt != nil {
+		updatedAt = job.UpdatedAt.Format(time.RFC3339)
+	}
+
 	resp := BackupJobResponse{
 		ID:                job.ID,
 		BackupID:          job.BackupID,
-		StorageProviderID: job.StorageProviderID,
+		StorageProviderID: strconv.FormatUint(job.StorageProviderID, 10),
 		Status:            string(job.Status),
-		Size:              job.Size,
+		Size:              size,
 		SizeInMB:          job.GetSizeInMB(),
-		CreatedAt:         job.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:         job.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:         createdAt,
+		UpdatedAt:         updatedAt,
 	}
 
 	if job.Error != nil {
@@ -130,7 +164,7 @@ func ToBackupJobResponse(job *models.BackupJob) BackupJobResponse {
 
 // StorageProviderResponse represents the response for a storage provider
 type StorageProviderResponse struct {
-	ID             uint    `json:"id"`
+	ID             uint64  `json:"id"`
 	UserID         string  `json:"user_id"`
 	TeamID         string  `json:"team_id"`
 	Provider       string  `json:"provider"`
@@ -144,16 +178,36 @@ type StorageProviderResponse struct {
 
 // ToStorageProviderResponse converts a StorageProvider model to StorageProviderResponse
 func ToStorageProviderResponse(provider *models.StorageProvider) StorageProviderResponse {
+	teamID := ""
+	if provider.TeamID != nil {
+		teamID = *provider.TeamID
+	}
+
+	label := ""
+	if provider.Label != nil {
+		label = *provider.Label
+	}
+
+	createdAt := ""
+	if provider.CreatedAt != nil {
+		createdAt = provider.CreatedAt.Format(time.RFC3339)
+	}
+
+	updatedAt := ""
+	if provider.UpdatedAt != nil {
+		updatedAt = provider.UpdatedAt.Format(time.RFC3339)
+	}
+
 	resp := StorageProviderResponse{
 		ID:            provider.ID,
 		UserID:        provider.UserID,
-		TeamID:        provider.TeamID,
+		TeamID:        teamID,
 		Provider:      string(provider.Provider),
 		ProviderLabel: provider.Provider.Label(),
-		Label:         provider.Label,
+		Label:         label,
 		Connected:     provider.Connected,
-		CreatedAt:     provider.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:     provider.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:     createdAt,
+		UpdatedAt:     updatedAt,
 	}
 
 	if provider.TokenExpiresAt != nil {
@@ -166,15 +220,20 @@ func ToStorageProviderResponse(provider *models.StorageProvider) StorageProvider
 
 // StorageProviderListItem represents a simplified storage provider for list/dropdown
 type StorageProviderListItem struct {
-	ID    uint   `json:"id"`
+	ID    uint64 `json:"id"`
 	Label string `json:"label"`
 }
 
 // ToStorageProviderListItem converts a StorageProvider to a list item
 func ToStorageProviderListItem(provider *models.StorageProvider) StorageProviderListItem {
+	label := ""
+	if provider.Label != nil {
+		label = *provider.Label
+	}
+
 	return StorageProviderListItem{
 		ID:    provider.ID,
-		Label: provider.Label,
+		Label: label,
 	}
 }
 

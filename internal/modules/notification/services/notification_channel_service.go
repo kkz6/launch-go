@@ -230,19 +230,19 @@ func (s *NotificationChannelService) SendToTeam(ctx context.Context, teamID stri
 	for _, ch := range chans {
 		driver, err := s.channelFactory.CreateChannel(ch.ToChannelsNotificationChannel())
 		if err != nil {
-			s.logger.Warn().Err(err).Str("channel_id", ch.ID).Msg("failed to create channel driver")
+			s.logger.Warn().Err(err).Uint64("channel_id", ch.ID).Msg("failed to create channel driver")
 			sendErrors = append(sendErrors, err)
 			continue
 		}
 
 		if err := driver.Send(ctx, &notificationAdapter{notification: notif}); err != nil {
-			s.logger.Warn().Err(err).Str("channel_id", ch.ID).Msg("failed to send notification")
+			s.logger.Warn().Err(err).Uint64("channel_id", ch.ID).Msg("failed to send notification")
 			sendErrors = append(sendErrors, err)
 			continue
 		}
 
 		s.logger.Info().
-			Str("channel_id", ch.ID).
+			Uint64("channel_id", ch.ID).
 			Str("provider", ch.Provider.String()).
 			Str("notification_type", notif.Type().String()).
 			Msg("notification sent successfully")

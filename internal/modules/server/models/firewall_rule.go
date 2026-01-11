@@ -13,23 +13,23 @@ import (
 
 // FirewallRule represents a firewall rule on a server
 type FirewallRule struct {
-	ID                        string           `gorm:"primaryKey;size:26" json:"id"`
-	ServerID                  string           `gorm:"size:26;not null;index" json:"server_id"`
-	Name                      string           `gorm:"size:255;not null" json:"name"`
-	Action                    enums.RuleAction `gorm:"size:50;not null;default:'allow'" json:"action"`
-	Port                      *string          `gorm:"size:50" json:"port,omitempty"`
-	FromIPv4                  *string          `gorm:"size:45" json:"from_ipv4,omitempty"`
-	Mask                      *string          `gorm:"size:10" json:"mask,omitempty"`
+	ID                        string           `gorm:"type:char(26);primaryKey" json:"id"`
+	ServerID                  string           `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	Name                      string           `gorm:"type:varchar(255);not null" json:"name"`
+	Action                    enums.RuleAction `gorm:"type:varchar(255);not null" json:"action"`
+	Port                      string           `gorm:"type:varchar(255);not null" json:"port"`
+	FromIPv4                  *string          `gorm:"column:from_ipv4;type:varchar(255)" json:"from_ipv4,omitempty"`
+	Mask                      *string          `gorm:"type:varchar(255)" json:"mask,omitempty"`
 	Note                      *string          `gorm:"type:text" json:"note,omitempty"`
-	InstalledAt               *time.Time       `json:"installed_at,omitempty"`
-	InstallationFailedAt      *time.Time       `json:"installation_failed_at,omitempty"`
-	UninstallationRequestedAt *time.Time       `json:"-"`
-	UninstallationFailedAt    *time.Time       `json:"-"`
-	CreatedAt                 time.Time        `json:"created_at"`
-	UpdatedAt                 time.Time        `json:"updated_at"`
+	InstalledAt               *time.Time       `gorm:"column:installed_at;type:timestamp null" json:"installed_at,omitempty"`
+	InstallationFailedAt      *time.Time       `gorm:"column:installation_failed_at;type:timestamp null" json:"installation_failed_at,omitempty"`
+	UninstallationRequestedAt *time.Time       `gorm:"column:uninstallation_requested_at;type:timestamp null" json:"-"`
+	UninstallationFailedAt    *time.Time       `gorm:"column:uninstallation_failed_at;type:timestamp null" json:"-"`
+	CreatedAt                 *time.Time       `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt                 *time.Time       `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Server *Server `gorm:"foreignKey:ServerID" json:"server,omitempty"`
+	Server *Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
 }
 
 func (f *FirewallRule) BeforeCreate(tx *gorm.DB) error {
@@ -67,8 +67,8 @@ func (f *FirewallRule) FormatAsUfwRule() string {
 		parts = append(parts, fmt.Sprintf("from %s to any port", *f.FromIPv4))
 	}
 
-	if f.Port != nil && *f.Port != "" {
-		parts = append(parts, *f.Port)
+	if f.Port != "" {
+		parts = append(parts, f.Port)
 	}
 
 	return strings.Join(parts, " ")

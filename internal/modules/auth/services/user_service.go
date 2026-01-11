@@ -65,7 +65,7 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID string, req *dto
 	user.Email = req.Email
 
 	if req.Timezone != "" {
-		user.Timezone = req.Timezone
+		user.Timezone = &req.Timezone
 	}
 
 	if err := s.repo.UpdateUser(ctx, user); err != nil {

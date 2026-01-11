@@ -8,21 +8,19 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/utils"
 )
 
-// PersonalAccessToken represents a user's API token
+// PersonalAccessToken represents a user's API token (polymorphic relation)
 type PersonalAccessToken struct {
-	ID            string         `gorm:"primaryKey;size:26" json:"id"`
-	UserID        string         `gorm:"size:26;not null;index" json:"user_id"`
-	Name          string         `gorm:"size:255;not null" json:"name"`
-	Token         string         `gorm:"size:64;uniqueIndex;not null" json:"-"`
-	Abilities     string         `gorm:"type:text" json:"abilities,omitempty"`
-	LastUsedAt    *time.Time     `json:"last_used_at,omitempty"`
-	ExpiresAt     *time.Time     `json:"expires_at,omitempty"`
-	CreatedAt     time.Time      `json:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at"`
+	ID            string         `gorm:"type:char(26);primaryKey" json:"id"`
+	TokenableType string         `gorm:"column:tokenable_type;type:varchar(255);not null;index:personal_access_tokens_tokenable_type_tokenable_id_index,priority:1" json:"tokenable_type"`
+	TokenableID   uint64         `gorm:"column:tokenable_id;type:bigint unsigned;not null;index:personal_access_tokens_tokenable_type_tokenable_id_index,priority:2" json:"tokenable_id"`
+	Name          string         `gorm:"type:varchar(255);not null" json:"name"`
+	Token         string         `gorm:"type:varchar(64);uniqueIndex;not null" json:"-"`
+	Abilities     *string        `gorm:"type:text" json:"abilities,omitempty"`
+	LastUsedAt    *time.Time     `gorm:"column:last_used_at;type:timestamp null" json:"last_used_at,omitempty"`
+	ExpiresAt     *time.Time     `gorm:"column:expires_at;type:timestamp null" json:"expires_at,omitempty"`
+	CreatedAt     *time.Time     `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt     *time.Time     `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 	DeletedAt     gorm.DeletedAt `gorm:"index" json:"-"`
-
-	// Relations
-	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
 }
 
 // TableName returns the table name for the PersonalAccessToken model

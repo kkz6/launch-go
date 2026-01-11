@@ -9,26 +9,26 @@ import (
 
 // User represents an authenticated user in the system
 type User struct {
-	ID                     string     `gorm:"primaryKey;size:26" json:"id"`
-	Name                   string     `gorm:"size:255;not null" json:"name"`
-	Email                  string     `gorm:"size:255;uniqueIndex;not null" json:"email"`
-	EmailVerifiedAt        *time.Time `json:"email_verified_at,omitempty"`
-	Password               string     `gorm:"size:255;not null" json:"-"`
-	RememberToken          *string    `gorm:"size:100" json:"-"`
-	CurrentTeamID          *string    `gorm:"size:26" json:"current_team_id,omitempty"`
-	ProfilePhotoPath       *string    `gorm:"size:2048" json:"profile_photo_path,omitempty"`
+	ID                     string     `gorm:"type:char(26);primaryKey" json:"id"`
+	Name                   string     `gorm:"type:varchar(255);not null" json:"name"`
+	Email                  string     `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
+	EmailVerifiedAt        *time.Time `gorm:"type:timestamp null" json:"email_verified_at,omitempty"`
+	Password               string     `gorm:"type:varchar(255);not null" json:"-"`
 	TwoFactorSecret        *string    `gorm:"type:text" json:"-"`
 	TwoFactorRecoveryCodes *string    `gorm:"type:text" json:"-"`
-	TwoFactorConfirmedAt   *time.Time `json:"-"`
-	Timezone               string     `gorm:"size:50;default:'UTC'" json:"timezone"`
-	Onboarded              bool       `gorm:"default:false" json:"onboarded"`
-	CreatedAt              time.Time  `json:"created_at"`
-	UpdatedAt              time.Time  `json:"updated_at"`
+	TwoFactorConfirmedAt   *time.Time `gorm:"type:timestamp null" json:"-"`
+	RememberToken          *string    `gorm:"type:varchar(100)" json:"-"`
+	CurrentTeamID          *string    `gorm:"column:current_team_id;type:char(26)" json:"current_team_id,omitempty"`
+	ProfilePhotoPath       *string    `gorm:"column:profile_photo_path;type:varchar(2048)" json:"profile_photo_path,omitempty"`
+	Timezone               *string    `gorm:"type:varchar(255);default:'UTC'" json:"timezone,omitempty"`
+	Onboarded              bool       `gorm:"type:tinyint(1);not null;default:0" json:"onboarded"`
+	CreatedAt              *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt              *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
 	Teams       []Team `gorm:"many2many:team_user;" json:"teams,omitempty"`
-	CurrentTeam *Team  `gorm:"foreignKey:CurrentTeamID" json:"current_team,omitempty"`
-	OwnedTeams  []Team `gorm:"foreignKey:UserID" json:"owned_teams,omitempty"`
+	CurrentTeam *Team  `gorm:"foreignKey:CurrentTeamID;references:ID" json:"current_team,omitempty"`
+	OwnedTeams  []Team `gorm:"foreignKey:UserID;references:ID" json:"owned_teams,omitempty"`
 }
 
 // TableName returns the table name for the User model
@@ -77,6 +77,15 @@ func (u *User) DefaultProfilePhotoURL() string {
 	}
 
 	return "https://ui-avatars.com/api/?name=" + name + "&color=7F9CF5&background=EBF4FF"
+}
+
+// GetTimezone returns the user's timezone or UTC if not set
+func (u *User) GetTimezone() string {
+	if u.Timezone != nil && *u.Timezone != "" {
+		return *u.Timezone
+	}
+
+	return "UTC"
 }
 
 // OwnsTeam checks if the user owns the given team

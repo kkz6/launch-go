@@ -46,6 +46,14 @@ type ProviderSummary struct {
 
 // ToDomainResponse converts a Domain to DomainResponse
 func ToDomainResponse(d *models.Domain) DomainResponse {
+	var createdAt, updatedAt time.Time
+	if d.CreatedAt != nil {
+		createdAt = *d.CreatedAt
+	}
+	if d.UpdatedAt != nil {
+		updatedAt = *d.UpdatedAt
+	}
+
 	resp := DomainResponse{
 		ID:               d.ID,
 		Label:            d.Label,
@@ -53,14 +61,18 @@ func ToDomainResponse(d *models.Domain) DomainResponse {
 		ProviderID:       d.ProviderID,
 		DomainProviderID: d.DomainProviderID,
 		RecordsCount:     len(d.Records),
-		CreatedAt:        d.CreatedAt,
-		UpdatedAt:        d.UpdatedAt,
+		CreatedAt:        createdAt,
+		UpdatedAt:        updatedAt,
 	}
 
 	if d.Provider != nil {
+		profile := ""
+		if d.Provider.Profile != nil {
+			profile = *d.Provider.Profile
+		}
 		resp.Provider = &ProviderSummary{
 			ID:       d.Provider.ID,
-			Profile:  d.Provider.Profile,
+			Profile:  profile,
 			Provider: d.Provider.Provider.String(),
 		}
 	}

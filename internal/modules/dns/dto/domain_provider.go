@@ -36,9 +36,22 @@ type DomainProviderResponse struct {
 
 // ToDomainProviderResponse converts a DomainProvider to DomainProviderResponse
 func ToDomainProviderResponse(dp *models.DomainProvider, domainsCount int) DomainProviderResponse {
+	profile := ""
+	if dp.Profile != nil {
+		profile = *dp.Profile
+	}
+
+	var createdAt, updatedAt time.Time
+	if dp.CreatedAt != nil {
+		createdAt = *dp.CreatedAt
+	}
+	if dp.UpdatedAt != nil {
+		updatedAt = *dp.UpdatedAt
+	}
+
 	return DomainProviderResponse{
 		ID:               dp.ID,
-		Profile:          dp.Profile,
+		Profile:          profile,
 		Provider:         dp.Provider.String(),
 		ProviderLabel:    dp.ProviderLabel(),
 		Connected:        dp.Connected,
@@ -46,7 +59,7 @@ func ToDomainProviderResponse(dp *models.DomainProvider, domainsCount int) Domai
 		LastSyncedAt:     dp.LastSyncedAt,
 		SyncErrorMessage: dp.SyncErrorMessage,
 		DomainsCount:     domainsCount,
-		CreatedAt:        dp.CreatedAt,
-		UpdatedAt:        dp.UpdatedAt,
+		CreatedAt:        createdAt,
+		UpdatedAt:        updatedAt,
 	}
 }

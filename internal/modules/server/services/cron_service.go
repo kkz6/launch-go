@@ -30,13 +30,18 @@ func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *
 		user = req.User
 	}
 
+	frequency := ""
+	if req.Frequency != nil {
+		frequency = *req.Frequency
+	}
+
 	cron := &models.Cron{
 		ServerID:   serverID,
 		SiteID:     req.SiteID,
 		User:       user,
 		Expression: req.Expression,
 		Command:    req.Command,
-		Frequency:  req.Frequency,
+		Frequency:  frequency,
 		Hidden:     false,
 	}
 
@@ -80,7 +85,7 @@ func (s *Service) UpdateCron(ctx context.Context, serverID, teamID, cronID strin
 	}
 
 	if req.Frequency != nil {
-		cron.Frequency = req.Frequency
+		cron.Frequency = *req.Frequency
 	}
 
 	if err := s.repo.UpdateCron(ctx, cron); err != nil {

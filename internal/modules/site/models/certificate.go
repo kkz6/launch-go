@@ -13,21 +13,21 @@ import (
 
 // Certificate represents an SSL certificate for a site
 type Certificate struct {
-	ID          string               `gorm:"primaryKey;size:26" json:"id"`
-	SiteID      string               `gorm:"size:26;not null;index" json:"site_id"`
-	Type        enums.CertificateType `gorm:"size:50" json:"type"`
-	Domains     string               `gorm:"type:json" json:"domains,omitempty"`
-	CSR         *string              `gorm:"type:text" json:"csr,omitempty"`
-	PublicKey   *string              `gorm:"type:text" json:"public_key,omitempty"`
-	PrivateKey  *string              `gorm:"type:text" json:"-"`
-	Certificate *string              `gorm:"type:text" json:"certificate,omitempty"`
-	UploadedAt  *time.Time           `json:"uploaded_at,omitempty"`
-	IsActive    bool                 `gorm:"default:false" json:"is_active"`
-	CreatedAt   time.Time            `json:"created_at"`
-	UpdatedAt   time.Time            `json:"updated_at"`
+	ID          string                `gorm:"type:char(26);primaryKey" json:"id"`
+	SiteID      string                `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
+	Type        enums.CertificateType `gorm:"type:varchar(255);not null;default:letsencrypt" json:"type"`
+	Domains     *string               `gorm:"type:varchar(255)" json:"domains,omitempty"`
+	CSR         *string               `gorm:"column:csr;type:longtext" json:"csr,omitempty"`
+	PublicKey   *string               `gorm:"column:public_key;type:longtext" json:"public_key,omitempty"`
+	PrivateKey  *string               `gorm:"column:private_key;type:longtext" json:"-"`
+	Certificate *string               `gorm:"type:longtext" json:"certificate,omitempty"`
+	UploadedAt  *time.Time            `gorm:"column:uploaded_at;type:timestamp null" json:"uploaded_at,omitempty"`
+	IsActive    bool                  `gorm:"column:is_active;default:false" json:"is_active"`
+	CreatedAt   *time.Time            `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt   *time.Time            `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Site *Site `gorm:"foreignKey:SiteID" json:"site,omitempty"`
+	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
 }
 
 func (c *Certificate) TableName() string {
@@ -59,12 +59,12 @@ func (c *Certificate) PrivateKeyPath(sitePath string) string {
 
 // GetDomains returns domains as a slice
 func (c *Certificate) GetDomains() []string {
-	if c.Domains == "" || c.Domains == "null" {
+	if c.Domains == nil || *c.Domains == "" || *c.Domains == "null" {
 		return []string{}
 	}
 
 	var domains []string
-	if err := json.Unmarshal([]byte(c.Domains), &domains); err != nil {
+	if err := json.Unmarshal([]byte(*c.Domains), &domains); err != nil {
 		return []string{}
 	}
 
@@ -78,7 +78,8 @@ func (c *Certificate) SetDomains(domains []string) error {
 		return err
 	}
 
-	c.Domains = string(data)
+	str := string(data)
+	c.Domains = &str
 
 	return nil
 }

@@ -8,9 +8,9 @@ import (
 
 // PasswordResetToken represents a password reset request
 type PasswordResetToken struct {
-	Email     string    `gorm:"primaryKey;size:255" json:"email"`
-	Token     string    `gorm:"size:255;not null" json:"-"`
-	CreatedAt time.Time `json:"created_at"`
+	Email     string     `gorm:"type:varchar(255);primaryKey" json:"email"`
+	Token     string     `gorm:"type:varchar(255);not null" json:"-"`
+	CreatedAt *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
 }
 
 // TableName returns the table name for the PasswordResetToken model
@@ -20,7 +20,11 @@ func (p *PasswordResetToken) TableName() string {
 
 // IsExpired checks if the token has expired (default 60 minutes)
 func (p *PasswordResetToken) IsExpired() bool {
-	return time.Since(p.CreatedAt) > 60*time.Minute
+	if p.CreatedAt == nil {
+		return true
+	}
+
+	return time.Since(*p.CreatedAt) > 60*time.Minute
 }
 
 // GenerateToken creates a new random token for password reset

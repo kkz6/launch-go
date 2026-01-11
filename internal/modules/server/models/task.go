@@ -10,22 +10,22 @@ import (
 
 // Task represents a task execution record
 type Task struct {
-	ID         string     `gorm:"primaryKey;size:26" json:"id"`
-	ServerID   string     `gorm:"size:26;not null;index" json:"server_id"`
-	Type       string     `gorm:"size:255;not null" json:"type"`
-	Status     string     `gorm:"size:50;default:'pending'" json:"status"`
-	Name       *string    `gorm:"size:255" json:"name,omitempty"`
-	User       *string    `gorm:"size:100" json:"user,omitempty"`
-	Script     *string    `gorm:"type:text" json:"-"`
-	Output     *string    `gorm:"type:longtext" json:"output,omitempty"`
-	ExitCode   *int       `json:"exit_code,omitempty"`
-	StartedAt  *time.Time `json:"started_at,omitempty"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-	UpdatedAt  time.Time  `json:"updated_at"`
+	ID        string     `gorm:"type:char(26);primaryKey" json:"id"`
+	ServerID  string     `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	Name      string     `gorm:"type:varchar(255);not null" json:"name"`
+	User      string     `gorm:"type:varchar(255);not null" json:"user"`
+	Type      string     `gorm:"type:varchar(255);not null" json:"type"`
+	Instance  *string    `gorm:"type:longtext" json:"instance,omitempty"`
+	Script    string     `gorm:"type:longtext;not null" json:"-"`
+	Timeout   int        `gorm:"type:int;not null" json:"timeout"`
+	Status    string     `gorm:"type:varchar(255);not null" json:"status"`
+	Output    *string    `gorm:"type:longtext" json:"output,omitempty"`
+	ExitCode  *int       `gorm:"column:exit_code;type:int" json:"exit_code,omitempty"`
+	CreatedAt *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Server *Server `gorm:"foreignKey:ServerID" json:"server,omitempty"`
+	Server *Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
 }
 
 func (t *Task) BeforeCreate(tx *gorm.DB) error {
@@ -48,10 +48,14 @@ func (t *Task) IsSuccessful() bool {
 	return t.ExitCode != nil && *t.ExitCode == 0
 }
 
-func (t *Task) Duration() time.Duration {
-	if t.StartedAt == nil || t.FinishedAt == nil {
-		return 0
-	}
+func (t *Task) IsPending() bool {
+	return t.Status == "pending"
+}
 
-	return t.FinishedAt.Sub(*t.StartedAt)
+func (t *Task) IsRunning() bool {
+	return t.Status == "running"
+}
+
+func (t *Task) IsFinished() bool {
+	return t.Status == "finished" || t.Status == "failed"
 }

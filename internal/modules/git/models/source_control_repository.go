@@ -1,25 +1,19 @@
 package models
 
-import (
-	"gorm.io/gorm"
-
-	"github.com/kkz6/launch-go/internal/pkg/utils"
-)
-
 // SourceControlRepository represents a repository synced from a git provider
 type SourceControlRepository struct {
-	ID              string  `gorm:"primaryKey;size:26" json:"id"`
-	SourceControlID string  `gorm:"size:26;not null;index" json:"source_control_id"`
-	Name            string  `gorm:"size:255;not null" json:"name"`
-	FullName        string  `gorm:"size:500;not null;index" json:"full_name"`
-	Public          bool    `gorm:"default:true" json:"public"`
-	DefaultBranch   *string `gorm:"size:255" json:"default_branch,omitempty"`
-	HTMLURL         *string `gorm:"size:500" json:"html_url,omitempty"`
-	SSHURL          *string `gorm:"size:500" json:"ssh_url,omitempty"`
-	AdditionalData  JSONMap `gorm:"type:json" json:"additional_data,omitempty"`
+	ID              uint64  `gorm:"primaryKey;autoIncrement" json:"id"`
+	SourceControlID string  `gorm:"column:source_control_id;type:char(26);not null;index" json:"source_control_id"`
+	Name            string  `gorm:"type:varchar(255);not null" json:"name"`
+	FullName        string  `gorm:"column:full_name;type:varchar(255);not null" json:"full_name"`
+	Public          bool    `gorm:"default:false" json:"public"`
+	SSHURL          string  `gorm:"column:ssh_url;type:varchar(255);not null" json:"ssh_url"`
+	DefaultBranch   string  `gorm:"column:default_branch;type:varchar(255);not null" json:"default_branch"`
+	HTMLURL         *string `gorm:"column:html_url;type:varchar(255)" json:"html_url,omitempty"`
+	AdditionalData  *string `gorm:"column:additional_data;type:json" json:"additional_data,omitempty"`
 
 	// Relations
-	SourceControl *SourceControl `gorm:"foreignKey:SourceControlID" json:"source_control,omitempty"`
+	SourceControl *SourceControl `gorm:"foreignKey:SourceControlID;references:ID" json:"source_control,omitempty"`
 }
 
 // TableName returns the table name for SourceControlRepository
@@ -27,22 +21,13 @@ func (SourceControlRepository) TableName() string {
 	return "source_control_repositories"
 }
 
-// BeforeCreate is a GORM hook that generates a ULID before creating a record
-func (r *SourceControlRepository) BeforeCreate(tx *gorm.DB) error {
-	if r.ID == "" {
-		r.ID = utils.NewULID()
-	}
-
-	return nil
-}
-
-// GetDefaultBranch returns the default branch or "main" if not set
-func (r *SourceControlRepository) GetDefaultBranch() string {
-	if r.DefaultBranch == nil || *r.DefaultBranch == "" {
+// GetDefaultBranchOrMain returns the default branch or "main" if empty
+func (r *SourceControlRepository) GetDefaultBranchOrMain() string {
+	if r.DefaultBranch == "" {
 		return "main"
 	}
 
-	return *r.DefaultBranch
+	return r.DefaultBranch
 }
 
 // GetHTMLURL returns the HTML URL or empty string if nil
@@ -52,13 +37,4 @@ func (r *SourceControlRepository) GetHTMLURL() string {
 	}
 
 	return *r.HTMLURL
-}
-
-// GetSSHURL returns the SSH URL or empty string if nil
-func (r *SourceControlRepository) GetSSHURL() string {
-	if r.SSHURL == nil {
-		return ""
-	}
-
-	return *r.SSHURL
 }

@@ -72,7 +72,7 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID string, req *dto.
 	dbUser := &models.DatabaseUser{
 		ServerID: serverID,
 		Name:     req.UserName,
-		Password: req.UserPassword,
+		Password: &req.UserPassword,
 	}
 
 	if err := s.repo.CreateUser(ctx, dbUser); err != nil {

@@ -9,21 +9,27 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/utils"
 )
 
+// Compile-time check that Database uses gorm.DB in BeforeCreate
+var _ = (*gorm.DB)(nil)
+
 // Database represents a database on a server
 type Database struct {
-	ID                        string         `gorm:"primaryKey;size:26" json:"id"`
-	ServerID                  string         `gorm:"size:26;not null;index" json:"server_id"`
-	Name                      string         `gorm:"size:255;not null" json:"name"`
-	InstalledAt               *time.Time     `json:"installed_at,omitempty"`
-	InstallationFailedAt      *time.Time     `json:"installation_failed_at,omitempty"`
-	UninstallationRequestedAt *time.Time     `json:"uninstallation_requested_at,omitempty"`
-	UninstallationFailedAt    *time.Time     `json:"uninstallation_failed_at,omitempty"`
-	CreatedAt                 time.Time      `json:"created_at"`
-	UpdatedAt                 time.Time      `json:"updated_at"`
-	DeletedAt                 gorm.DeletedAt `gorm:"index" json:"-"`
+	ID                        string     `gorm:"type:char(26);primaryKey" json:"id"`
+	ServerID                  string     `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	Name                      string     `gorm:"type:varchar(255);not null" json:"name"`
+	InstalledAt               *time.Time `gorm:"column:installed_at;type:timestamp null" json:"installed_at,omitempty"`
+	InstallationFailedAt      *time.Time `gorm:"column:installation_failed_at;type:timestamp null" json:"installation_failed_at,omitempty"`
+	UninstallationRequestedAt *time.Time `gorm:"column:uninstallation_requested_at;type:timestamp null" json:"uninstallation_requested_at,omitempty"`
+	UninstallationFailedAt    *time.Time `gorm:"column:uninstallation_failed_at;type:timestamp null" json:"uninstallation_failed_at,omitempty"`
+	CreatedAt                 *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt                 *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
 	Users []DatabaseUser `gorm:"many2many:database_database_user;" json:"users,omitempty"`
+}
+
+func (Database) TableName() string {
+	return "databases"
 }
 
 func (d *Database) BeforeCreate(tx *gorm.DB) error {

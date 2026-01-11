@@ -12,26 +12,25 @@ import (
 
 // DnsRecord represents a DNS record for a domain
 type DnsRecord struct {
-	ID         string           `gorm:"primaryKey;size:26" json:"id"`
-	DomainID   string           `gorm:"size:26;not null;index" json:"domain_id"`
-	ProviderID string           `gorm:"size:255;not null" json:"provider_id"`
-	Type       enums.RecordType `gorm:"size:10;not null" json:"type"`
-	Name       string           `gorm:"size:255;not null" json:"name"`
-	Value      string           `gorm:"size:4096;not null" json:"value"`
-	TTL        int              `gorm:"not null;default:3600" json:"ttl"`
-	Priority   *int             `json:"priority,omitempty"`
-	Tag        *string          `gorm:"size:255" json:"tag,omitempty"`
-	Weight     *int             `json:"weight,omitempty"`
-	Port       *int             `json:"port,omitempty"`
-	Flags      *int             `json:"flags,omitempty"`
-	Comment    *string          `gorm:"size:1000" json:"comment,omitempty"`
-	Proxied    *bool            `json:"proxied,omitempty"`
-	CreatedAt  time.Time        `json:"created_at"`
-	UpdatedAt  time.Time        `json:"updated_at"`
-	DeletedAt  gorm.DeletedAt   `gorm:"index" json:"-"`
+	ID         string           `gorm:"type:char(26);primaryKey" json:"id"`
+	DomainID   string           `gorm:"column:domain_id;type:char(26);not null;index" json:"domain_id"`
+	ProviderID string           `gorm:"column:provider_id;type:varchar(255);not null" json:"provider_id"`
+	Type       enums.RecordType `gorm:"type:varchar(255);not null" json:"type"`
+	Name       string           `gorm:"type:varchar(255);not null" json:"name"`
+	Value      string           `gorm:"type:varchar(255);not null" json:"value"`
+	TTL        int              `gorm:"type:int;not null" json:"ttl"`
+	Priority   *int             `gorm:"type:int" json:"priority,omitempty"`
+	Tag        *string          `gorm:"type:varchar(255)" json:"tag,omitempty"`
+	Weight     *int             `gorm:"type:int" json:"weight,omitempty"`
+	Port       *int             `gorm:"type:int" json:"port,omitempty"`
+	Flags      *int             `gorm:"type:int" json:"flags,omitempty"`
+	Comment    *string          `gorm:"type:varchar(255)" json:"comment,omitempty"`
+	Proxied    *bool            `gorm:"type:boolean" json:"proxied,omitempty"`
+	CreatedAt  *time.Time       `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt  *time.Time       `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Domain *Domain `gorm:"foreignKey:DomainID" json:"domain,omitempty"`
+	Domain *Domain `gorm:"foreignKey:DomainID;references:ID" json:"domain,omitempty"`
 }
 
 // TableName specifies the table name for DnsRecord

@@ -6,16 +6,16 @@ import (
 
 // TeamMember represents the pivot table for team-user relationships
 type TeamMember struct {
-	ID        uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
-	TeamID    string    `gorm:"size:26;uniqueIndex:team_user_team_id_user_id_unique,priority:1;not null" json:"team_id"`
-	UserID    string    `gorm:"size:26;uniqueIndex:team_user_team_id_user_id_unique,priority:2;not null" json:"user_id"`
-	Role      *string   `gorm:"size:255" json:"role,omitempty"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uint64     `gorm:"type:bigint unsigned;primaryKey;autoIncrement" json:"id"`
+	TeamID    string     `gorm:"column:team_id;type:char(26);not null;uniqueIndex:team_user_team_id_user_id_unique,priority:1" json:"team_id"`
+	UserID    string     `gorm:"column:user_id;type:char(26);not null;uniqueIndex:team_user_team_id_user_id_unique,priority:2" json:"user_id"`
+	Role      *string    `gorm:"type:varchar(255)" json:"role,omitempty"`
+	CreatedAt *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Team *Team `gorm:"foreignKey:TeamID" json:"team,omitempty"`
-	User *User `gorm:"foreignKey:UserID" json:"user,omitempty"`
+	Team *Team `gorm:"foreignKey:TeamID;references:ID" json:"team,omitempty"`
+	User *User `gorm:"foreignKey:UserID;references:ID" json:"user,omitempty"`
 }
 
 // TableName returns the table name for the TeamMember model

@@ -12,22 +12,23 @@ import (
 
 // InstalledService represents an installed service on a server
 type InstalledService struct {
-	ID        string              `gorm:"primaryKey;size:26" json:"id"`
-	ServerID  string              `gorm:"size:26;not null;index" json:"server_id"`
-	Type      enums.ServiceType   `gorm:"size:50;not null" json:"type"`
+	ID        string              `gorm:"type:char(26);primaryKey" json:"id"`
+	ServerID  string              `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	Type      enums.ServiceType   `gorm:"type:varchar(255);not null" json:"type"`
 	TypeData  *string             `gorm:"type:json" json:"-"`
-	Name      string              `gorm:"size:255;not null" json:"name"`
-	Version   *string             `gorm:"size:50" json:"version,omitempty"`
-	Status    enums.ServiceStatus `gorm:"size:50;default:'pending'" json:"status"`
-	IsDefault bool                `gorm:"default:false" json:"is_default"`
-	Unit      *string             `gorm:"size:255" json:"unit,omitempty"`
-	Software  *enums.Software     `gorm:"size:50" json:"software,omitempty"`
-	TaskID    *string             `gorm:"size:26" json:"task_id,omitempty"`
-	CreatedAt time.Time           `json:"created_at"`
-	UpdatedAt time.Time           `json:"updated_at"`
+	Name      string              `gorm:"type:varchar(255);not null" json:"name"`
+	Version   string              `gorm:"type:varchar(255);not null" json:"version"`
+	Status    enums.ServiceStatus `gorm:"type:varchar(255);not null" json:"status"`
+	IsDefault bool                `gorm:"column:is_default;type:tinyint(1);not null;default:1" json:"is_default"`
+	Unit      *string             `gorm:"type:varchar(255)" json:"unit,omitempty"`
+	Software  string              `gorm:"type:varchar(255);not null" json:"software"`
+	TaskID    *string             `gorm:"column:task_id;type:char(26);index" json:"task_id,omitempty"`
+	CreatedAt *time.Time          `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt *time.Time          `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Server *Server `gorm:"foreignKey:ServerID" json:"server,omitempty"`
+	Server *Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
+	Task   *Task   `gorm:"foreignKey:TaskID;references:ID" json:"task,omitempty"`
 }
 
 func (s *InstalledService) BeforeCreate(tx *gorm.DB) error {
@@ -47,12 +48,8 @@ func (s *InstalledService) TableName() string {
 }
 
 func (s *InstalledService) GetFormattedVersion() string {
-	if s.Software != nil {
-		return s.Software.GetVersion()
-	}
-
-	if s.Version != nil {
-		return *s.Version
+	if s.Version != "" {
+		return s.Version
 	}
 
 	return ""
