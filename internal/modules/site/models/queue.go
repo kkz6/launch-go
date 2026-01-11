@@ -127,3 +127,19 @@ func (q *Queue) BuildCommand() string {
 func (q *Queue) IsInstalled() bool {
 	return q.InstalledAt != nil
 }
+
+// GetLogPath returns the path to the output log file
+func (q *Queue) GetLogPath() string {
+	if q.User == "root" {
+		return fmt.Sprintf("/root/daemon-%s.log", q.ID)
+	}
+	return fmt.Sprintf("/home/%s/daemon-%s.log", q.User, q.ID)
+}
+
+// GetErrorLogPath returns the path to the error log file
+func (q *Queue) GetErrorLogPath() string {
+	if q.User == "root" {
+		return fmt.Sprintf("/root/daemon-%s.err", q.ID)
+	}
+	return fmt.Sprintf("/home/%s/daemon-%s.err", q.User, q.ID)
+}
