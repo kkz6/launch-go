@@ -10,7 +10,6 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/git/enums"
-	"github.com/kkz6/launch-go/internal/modules/git/models"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
 )
@@ -197,9 +196,11 @@ func (h *WebhookHandler) handleInstallationCreated(ctx context.Context, data map
 	}
 
 	// Update with installer info
-	providerData := sc.ProviderData
-	if providerData == nil {
-		providerData = make(models.JSONMap)
+	providerData := make(map[string]interface{})
+	if sc.ProviderData != nil && *sc.ProviderData != "" {
+		if err := json.Unmarshal([]byte(*sc.ProviderData), &providerData); err != nil {
+			h.logger.Warn().Err(err).Msg("Failed to parse existing provider data")
+		}
 	}
 
 	providerData["github_installer"] = map[string]interface{}{
@@ -210,8 +211,15 @@ func (h *WebhookHandler) handleInstallationCreated(ctx context.Context, data map
 		"installed_via_webhook": true,
 	}
 
+	providerDataJSON, err := json.Marshal(providerData)
+	if err != nil {
+		h.logger.Error().Err(err).Msg("Failed to marshal provider data")
+		return
+	}
+	providerDataStr := string(providerDataJSON)
+
 	if err := h.service.GetSourceControlRepo().UpdateFields(ctx, sc.ID, map[string]interface{}{
-		"provider_data": providerData,
+		"provider_data": providerDataStr,
 	}); err != nil {
 		h.logger.Error().Err(err).Str("source_control_id", sc.ID).Msg("Failed to update source control with installer info")
 	}

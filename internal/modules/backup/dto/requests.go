@@ -59,7 +59,7 @@ type CreateStorageProviderRequest struct {
 
 // UpdateStorageProviderRequest represents a request to update a storage provider
 type UpdateStorageProviderRequest struct {
-	ID       uint   `json:"id" validate:"required"`
+	ID       uint64 `json:"id" validate:"required"`
 	Label    string `json:"label" validate:"required,max=255"`
 	Provider string `json:"provider" validate:"required,oneof=s3 dropbox"`
 

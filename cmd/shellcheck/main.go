@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/kkz6/launch-go/internal/modules/server"
+	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/taskrunner"
 )
 
@@ -25,6 +27,14 @@ func run(outputDir string, dryRun bool) error {
 	engine, err := taskrunner.NewTemplateEngine()
 	if err != nil {
 		return fmt.Errorf("failed to create template engine: %w", err)
+	}
+
+	// Register module templates
+	if err := engine.RegisterModuleTemplates(server.TemplateFS, "server"); err != nil {
+		return fmt.Errorf("failed to register server templates: %w", err)
+	}
+	if err := engine.RegisterModuleTemplates(site.TemplateFS, "site"); err != nil {
+		return fmt.Errorf("failed to register site templates: %w", err)
 	}
 
 	if !dryRun {
@@ -94,12 +104,112 @@ type taskData struct {
 	data     interface{}
 }
 
+// Data structures for template rendering
+
+type ServerProvisionData struct {
+	ServerName           string
+	Provider             string
+	Timezone             string
+	SwapSize             string
+	SSHPort              int
+	DisablePasswordAuth  bool
+	CreateUser           bool
+	Username             string
+	PublicKey            string
+	PHPVersion           string
+	NodeVersion          string
+	InstallCaddy         bool
+	DatabaseType         string
+	DatabaseRootPassword string
+	InstallRedis         bool
+	InstallSupervisor    bool
+}
+
+type InstallPHPData struct {
+	PHPVersion                string
+	UploadMaxFilesize         string
+	PostMaxSize               string
+	MemoryLimit               string
+	MaxExecutionTime          int
+	OpcacheEnabled            bool
+	OpcacheMemory             int
+	OpcacheValidateTimestamps bool
+	SetAsDefault              bool
+}
+
+type FirewallRule struct {
+	Name     string
+	Port     int
+	Protocol string
+	FromIP   string
+}
+
+type ConfigureFirewallData struct {
+	ServerName string
+	SSHPort    int
+	AllowHTTP  bool
+	AllowHTTPS bool
+	Rules      []FirewallRule
+}
+
+type DeployData struct {
+	SiteName         string
+	Domain           string
+	SitePath         string
+	Release          string
+	RepoURL          string
+	Branch           string
+	DeployKey        bool
+	DeployKeyPath    string
+	SharedDirs       []string
+	HasComposer      bool
+	HasNpm           bool
+	UseNpmCi         bool
+	BuildAssets      bool
+	BuildCommand     string
+	IsLaravel        bool
+	RunMigrations    bool
+	RunSeeders       bool
+	CustomScript     string
+	PHPVersion       string
+	RestartQueue     bool
+	RestartScheduler bool
+	UseSupervisor    bool
+	QueueWorkerName  string
+	ReleasesToKeep   int
+	HealthCheckURL   string
+}
+
+type RollbackData struct {
+	SiteName           string
+	SitePath           string
+	ReleaseID          string
+	ReleasePath        string
+	IsLaravel          bool
+	PHPVersion         string
+	RestartQueue       bool
+	UseSupervisor      bool
+	QueueWorkerName    string
+	PreRollbackScript  string
+	PostRollbackScript string
+	HealthCheckURL     string
+}
+
+type InstallSSLData struct {
+	Domain         string
+	Aliases        []string
+	Email          string
+	UseCaddy       bool
+	PHPVersion     string
+	HealthCheckURL string
+}
+
 func getTasksToRender() map[string]taskData {
 	// Sample data for rendering templates
 	return map[string]taskData{
 		"server-provision": {
-			template: taskrunner.TemplateServerProvision,
-			data: taskrunner.ServerProvisionData{
+			template: "server/provision",
+			data: ServerProvisionData{
 				ServerName:           "test-server",
 				Provider:             "digitalocean",
 				Timezone:             "UTC",
@@ -119,8 +229,8 @@ func getTasksToRender() map[string]taskData {
 			},
 		},
 		"server-install-php": {
-			template: taskrunner.TemplateServerInstallPHP,
-			data: taskrunner.InstallPHPData{
+			template: "server/install_php",
+			data: InstallPHPData{
 				PHPVersion:                "8.3",
 				UploadMaxFilesize:         "100M",
 				PostMaxSize:               "100M",
@@ -133,21 +243,21 @@ func getTasksToRender() map[string]taskData {
 			},
 		},
 		"server-configure-firewall": {
-			template: taskrunner.TemplateServerConfigureFirewall,
-			data: taskrunner.ConfigureFirewallData{
+			template: "server/configure_firewall",
+			data: ConfigureFirewallData{
 				ServerName: "test-server",
 				SSHPort:    22,
 				AllowHTTP:  true,
 				AllowHTTPS: true,
-				Rules: []taskrunner.FirewallRule{
+				Rules: []FirewallRule{
 					{Name: "MySQL", Port: 3306, Protocol: "tcp", FromIP: "10.0.0.0/8"},
 					{Name: "Redis", Port: 6379, Protocol: "tcp", FromIP: "10.0.0.0/8"},
 				},
 			},
 		},
 		"site-deploy": {
-			template: taskrunner.TemplateSiteDeploy,
-			data: taskrunner.DeployData{
+			template: "site/deploy",
+			data: DeployData{
 				SiteName:         "example-site",
 				Domain:           "example.com",
 				SitePath:         "/home/launch/example.com",
@@ -176,8 +286,8 @@ func getTasksToRender() map[string]taskData {
 			},
 		},
 		"site-rollback": {
-			template: taskrunner.TemplateSiteRollback,
-			data: taskrunner.RollbackData{
+			template: "site/rollback",
+			data: RollbackData{
 				SiteName:           "example-site",
 				SitePath:           "/home/launch/example.com",
 				ReleaseID:          "20240114120000",
@@ -193,8 +303,8 @@ func getTasksToRender() map[string]taskData {
 			},
 		},
 		"site-install-ssl": {
-			template: taskrunner.TemplateSiteInstallSSL,
-			data: taskrunner.InstallSSLData{
+			template: "site/install_ssl",
+			data: InstallSSLData{
 				Domain:         "example.com",
 				Aliases:        []string{"www.example.com"},
 				Email:          "admin@example.com",

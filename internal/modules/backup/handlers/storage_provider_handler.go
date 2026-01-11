@@ -49,9 +49,13 @@ func (h *StorageProviderHandler) ListStorageProvidersForDropdown(c *fiber.Ctx) e
 		return response.InternalError(c, "Failed to fetch storage providers")
 	}
 
-	result := make(map[uint]string)
+	result := make(map[uint64]string)
 	for _, provider := range providers {
-		result[provider.ID] = provider.Label
+		label := ""
+		if provider.Label != nil {
+			label = *provider.Label
+		}
+		result[provider.ID] = label
 	}
 
 	return response.OK(c, "Storage providers retrieved", result)
@@ -132,12 +136,12 @@ func (h *StorageProviderHandler) UpdateStorageProvider(c *fiber.Ctx) error {
 func (h *StorageProviderHandler) DeleteStorageProvider(c *fiber.Ctx) error {
 	providerIDStr := c.Params("provider")
 
-	providerID, err := strconv.ParseUint(providerIDStr, 10, 32)
+	providerID, err := strconv.ParseUint(providerIDStr, 10, 64)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid provider ID")
 	}
 
-	if err := h.providerService.DeleteStorageProvider(c.Context(), uint(providerID)); err != nil {
+	if err := h.providerService.DeleteStorageProvider(c.Context(), providerID); err != nil {
 		if err == repositories.ErrStorageProviderNotFound {
 			return response.NotFound(c, "Storage provider not found")
 		}
@@ -154,12 +158,12 @@ func (h *StorageProviderHandler) DeleteStorageProvider(c *fiber.Ctx) error {
 func (h *StorageProviderHandler) ShowStorageProvider(c *fiber.Ctx) error {
 	providerIDStr := c.Params("id")
 
-	providerID, err := strconv.ParseUint(providerIDStr, 10, 32)
+	providerID, err := strconv.ParseUint(providerIDStr, 10, 64)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid provider ID")
 	}
 
-	provider, err := h.providerService.GetStorageProvider(c.Context(), uint(providerID))
+	provider, err := h.providerService.GetStorageProvider(c.Context(), providerID)
 	if err != nil {
 		if err == repositories.ErrStorageProviderNotFound {
 			return response.NotFound(c, "Storage provider not found")

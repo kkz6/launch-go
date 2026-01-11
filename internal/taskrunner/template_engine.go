@@ -4,21 +4,23 @@ import (
 	"bytes"
 	"embed"
 	"fmt"
+	"io/fs"
+	"path/filepath"
 	"strings"
 	"text/template"
 )
 
-//go:embed templates/*
+//go:embed templates
 var templateFS embed.FS
 
 // TemplateEngine handles script template rendering
 type TemplateEngine struct {
 	templates *template.Template
+	funcMap   template.FuncMap
 }
 
-// NewTemplateEngine creates a new template engine with all embedded templates
+// NewTemplateEngine creates a new template engine with common templates
 func NewTemplateEngine() (*TemplateEngine, error) {
-	// Custom template functions
 	funcMap := template.FuncMap{
 		"join":     strings.Join,
 		"contains": strings.Contains,
@@ -26,6 +28,7 @@ func NewTemplateEngine() (*TemplateEngine, error) {
 		"upper":    strings.ToUpper,
 		"trim":     strings.TrimSpace,
 		"replace":  strings.ReplaceAll,
+		"dirName":  filepath.Dir,
 		"default": func(defaultVal, val interface{}) interface{} {
 			if val == nil || val == "" {
 				return defaultVal
@@ -36,45 +39,83 @@ func NewTemplateEngine() (*TemplateEngine, error) {
 			return fmt.Sprintf("%q", s)
 		},
 		"escape": func(s string) string {
-			// Escape single quotes for bash
 			return strings.ReplaceAll(s, "'", "'\"'\"'")
 		},
 	}
 
 	tmpl := template.New("").Funcs(funcMap)
 
-	// Parse all template files
-	patterns := []string{
-		"templates/common/*.sh",
-		"templates/server/*.sh",
-		"templates/site/*.sh",
-	}
-
-	for _, pattern := range patterns {
-		files, err := templateFS.ReadDir(strings.TrimSuffix(pattern, "/*.sh"))
+	// Load common templates
+	err := fs.WalkDir(templateFS, "templates", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
-			continue // Directory might not exist
+			return err
 		}
 
-		for _, file := range files {
-			if file.IsDir() {
-				continue
-			}
-
-			path := strings.TrimSuffix(pattern, "*.sh") + file.Name()
-			content, err := templateFS.ReadFile(path)
-			if err != nil {
-				return nil, fmt.Errorf("failed to read template %s: %w", path, err)
-			}
-
-			_, err = tmpl.Parse(string(content))
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse template %s: %w", path, err)
-			}
+		if d.IsDir() || !strings.HasSuffix(path, ".sh") {
+			return nil
 		}
+
+		content, err := templateFS.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to read template %s: %w", path, err)
+		}
+
+		// Create template name: templates/common/helpers.sh -> common/helpers
+		name := strings.TrimPrefix(path, "templates/")
+		name = strings.TrimSuffix(name, ".sh")
+
+		_, err = tmpl.New(name).Parse(string(content))
+		if err != nil {
+			return fmt.Errorf("failed to parse template %s: %w", path, err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to load templates: %w", err)
 	}
 
-	return &TemplateEngine{templates: tmpl}, nil
+	return &TemplateEngine{
+		templates: tmpl,
+		funcMap:   funcMap,
+	}, nil
+}
+
+// RegisterModuleTemplates registers templates from a module's embedded filesystem
+func (e *TemplateEngine) RegisterModuleTemplates(moduleFS embed.FS, prefix string) error {
+	err := fs.WalkDir(moduleFS, "templates", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		if d.IsDir() || !strings.HasSuffix(path, ".sh") {
+			return nil
+		}
+
+		content, err := moduleFS.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("failed to read template %s: %w", path, err)
+		}
+
+		// Create template name with module prefix: templates/provision.sh -> server/provision
+		name := strings.TrimPrefix(path, "templates/")
+		name = strings.TrimSuffix(name, ".sh")
+		name = prefix + "/" + name
+
+		_, err = e.templates.New(name).Parse(string(content))
+		if err != nil {
+			return fmt.Errorf("failed to parse template %s: %w", path, err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return fmt.Errorf("failed to register %s templates: %w", prefix, err)
+	}
+
+	return nil
 }
 
 // Render renders a template with the given data
@@ -109,129 +150,20 @@ func (e *TemplateEngine) RenderString(templateStr string, data interface{}) (str
 	return buf.String(), nil
 }
 
+// GetFuncMap returns the template function map for use by module engines
+func (e *TemplateEngine) GetFuncMap() template.FuncMap {
+	return e.funcMap
+}
+
 // Available template names
 const (
 	// Common templates
-	TemplateHelpers         = "helpers"
-	TemplateCallbackWrapper = "callback_wrapper"
-
-	// Server templates
-	TemplateServerProvision         = "server_provision"
-	TemplateServerInstallPHP        = "server_install_php"
-	TemplateServerConfigureFirewall = "server_configure_firewall"
-
-	// Site templates
-	TemplateSiteDeploy     = "site_deploy"
-	TemplateSiteRollback   = "site_rollback"
-	TemplateSiteInstallSSL = "site_install_ssl"
+	TemplateHelpers         = "common/helpers"
+	TemplateCallbackWrapper = "common/callback_wrapper"
+	TemplateFunctions       = "common/functions"
 )
 
 // Data structures for templates
-
-// ServerProvisionData contains data for server provisioning
-type ServerProvisionData struct {
-	ServerName           string
-	Provider             string
-	Timezone             string
-	SwapSize             string
-	SSHPort              int
-	DisablePasswordAuth  bool
-	CreateUser           bool
-	Username             string
-	PublicKey            string
-	PHPVersion           string
-	NodeVersion          string
-	InstallCaddy         bool
-	DatabaseType         string
-	DatabaseRootPassword string
-	InstallRedis         bool
-	InstallSupervisor    bool
-}
-
-// InstallPHPData contains data for PHP installation
-type InstallPHPData struct {
-	PHPVersion              string
-	UploadMaxFilesize       string
-	PostMaxSize             string
-	MemoryLimit             string
-	MaxExecutionTime        int
-	OpcacheEnabled          bool
-	OpcacheMemory           int
-	OpcacheValidateTimestamps bool
-	SetAsDefault            bool
-}
-
-// DeployData contains data for site deployment
-type DeployData struct {
-	SiteName        string
-	Domain          string
-	SitePath        string
-	Release         string
-	RepoURL         string
-	Branch          string
-	DeployKey       bool
-	DeployKeyPath   string
-	SharedDirs      []string
-	HasComposer     bool
-	HasNpm          bool
-	UseNpmCi        bool
-	BuildAssets     bool
-	BuildCommand    string
-	IsLaravel       bool
-	RunMigrations   bool
-	RunSeeders      bool
-	CustomScript    string
-	PHPVersion      string
-	RestartQueue    bool
-	RestartScheduler bool
-	UseSupervisor   bool
-	QueueWorkerName string
-	ReleasesToKeep  int
-	HealthCheckURL  string
-}
-
-// RollbackData contains data for rollback
-type RollbackData struct {
-	SiteName          string
-	SitePath          string
-	ReleaseID         string
-	ReleasePath       string
-	IsLaravel         bool
-	PHPVersion        string
-	RestartQueue      bool
-	UseSupervisor     bool
-	QueueWorkerName   string
-	PreRollbackScript string
-	PostRollbackScript string
-	HealthCheckURL    string
-}
-
-// FirewallRule represents a firewall rule
-type FirewallRule struct {
-	Name     string
-	Port     int
-	Protocol string
-	FromIP   string
-}
-
-// ConfigureFirewallData contains data for firewall configuration
-type ConfigureFirewallData struct {
-	ServerName string
-	SSHPort    int
-	AllowHTTP  bool
-	AllowHTTPS bool
-	Rules      []FirewallRule
-}
-
-// InstallSSLData contains data for SSL installation
-type InstallSSLData struct {
-	Domain         string
-	Aliases        []string
-	Email          string
-	UseCaddy       bool
-	PHPVersion     string
-	HealthCheckURL string
-}
 
 // CallbackWrapperData contains data for the callback wrapper
 type CallbackWrapperData struct {

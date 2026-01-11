@@ -23,6 +23,7 @@ type DatabaseUser struct {
 	UpdatedAt                 *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
+	Server    *Server    `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
 	Databases []Database `gorm:"many2many:database_database_user" json:"databases,omitempty"`
 }
 

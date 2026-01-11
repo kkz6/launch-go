@@ -13,6 +13,7 @@ import (
 	"log"
 	"strings"
 
+	"github.com/kkz6/launch-go/internal/database/serializers"
 	"github.com/spf13/viper"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
@@ -50,6 +51,11 @@ func main() {
 	encryptionKey, err = base64.StdEncoding.DecodeString(keyStr)
 	if err != nil {
 		log.Fatalf("Failed to decode APP_KEY: %v", err)
+	}
+
+	// Initialize Go encryption with the same key
+	if err := serializers.SetEncryptionKey(encryptionKey); err != nil {
+		log.Fatalf("Failed to set Go encryption key: %v", err)
 	}
 
 	// Connect to database
@@ -101,32 +107,32 @@ func migrateServers(db *gorm.DB) {
 		updates := make(map[string]interface{})
 
 		if server.PublicKey != nil && *server.PublicKey != "" {
-			if decrypted, err := decryptLaravel(*server.PublicKey); err == nil {
-				updates["public_key"] = decrypted
+			if encrypted, err := migrateEncryption(*server.PublicKey); err == nil {
+				updates["public_key"] = encrypted
 				updated = true
 			}
 		}
 		if server.PrivateKey != nil && *server.PrivateKey != "" {
-			if decrypted, err := decryptLaravel(*server.PrivateKey); err == nil {
-				updates["private_key"] = decrypted
+			if encrypted, err := migrateEncryption(*server.PrivateKey); err == nil {
+				updates["private_key"] = encrypted
 				updated = true
 			}
 		}
 		if server.UserPublicKey != nil && *server.UserPublicKey != "" {
-			if decrypted, err := decryptLaravel(*server.UserPublicKey); err == nil {
-				updates["user_public_key"] = decrypted
+			if encrypted, err := migrateEncryption(*server.UserPublicKey); err == nil {
+				updates["user_public_key"] = encrypted
 				updated = true
 			}
 		}
 		if server.Password != nil && *server.Password != "" {
-			if decrypted, err := decryptLaravel(*server.Password); err == nil {
-				updates["password"] = decrypted
+			if encrypted, err := migrateEncryption(*server.Password); err == nil {
+				updates["password"] = encrypted
 				updated = true
 			}
 		}
 		if server.DatabasePassword != nil && *server.DatabasePassword != "" {
-			if decrypted, err := decryptLaravel(*server.DatabasePassword); err == nil {
-				updates["database_password"] = decrypted
+			if encrypted, err := migrateEncryption(*server.DatabasePassword); err == nil {
+				updates["database_password"] = encrypted
 				updated = true
 			}
 		}
@@ -160,9 +166,9 @@ func migrateServerProviders(db *gorm.DB) {
 	migrated := 0
 	for _, provider := range providers {
 		if provider.Credentials != "" {
-			if decrypted, err := decryptLaravel(provider.Credentials); err == nil {
+			if encrypted, err := migrateEncryption(provider.Credentials); err == nil {
 				if err := db.Table("server_providers").Where("id = ?", provider.ID).
-					Update("credentials", decrypted).Error; err != nil {
+					Update("credentials", encrypted).Error; err != nil {
 					log.Printf("❌ Failed to update server_provider %s: %v", provider.ID, err)
 				} else {
 					migrated++
@@ -191,9 +197,9 @@ func migrateDomainProviders(db *gorm.DB) {
 	migrated := 0
 	for _, provider := range providers {
 		if provider.Credentials != "" {
-			if decrypted, err := decryptLaravel(provider.Credentials); err == nil {
+			if encrypted, err := migrateEncryption(provider.Credentials); err == nil {
 				if err := db.Table("domain_providers").Where("id = ?", provider.ID).
-					Update("credentials", decrypted).Error; err != nil {
+					Update("credentials", encrypted).Error; err != nil {
 					log.Printf("❌ Failed to update domain_provider %s: %v", provider.ID, err)
 				} else {
 					migrated++
@@ -203,6 +209,23 @@ func migrateDomainProviders(db *gorm.DB) {
 	}
 
 	log.Printf("✅ Migrated %d/%d domain_providers", migrated, len(providers))
+}
+
+// migrateEncryption decrypts Laravel-encrypted data and re-encrypts with Go format
+func migrateEncryption(encrypted string) (string, error) {
+	// First decrypt Laravel format
+	decrypted, err := decryptLaravel(encrypted)
+	if err != nil {
+		return "", err
+	}
+
+	// If it was already plaintext, encrypt it
+	if decrypted == encrypted {
+		return serializers.Encrypt(decrypted)
+	}
+
+	// Re-encrypt with Go format
+	return serializers.Encrypt(decrypted)
 }
 
 // decryptLaravel decrypts Laravel-encrypted data

@@ -85,10 +85,10 @@ func (h *TaskJobHandler) HandleRunTask(ctx context.Context, t *asynq.Task) error
 	}
 
 	task := &BaseTask{
-		TaskName:    "remote-task",
-		TaskTimeout: time.Duration(payload.Timeout) * time.Second,
-		Template:    payload.Script,
-		Data:        make(map[string]interface{}),
+		TaskName:     "remote-task",
+		TaskTimeout:  time.Duration(payload.Timeout) * time.Second,
+		TemplateName: payload.Script,
+		TemplateData: make(map[string]interface{}),
 		OutputCallback: func(output string) {
 			h.repo.UpdateOutput(payload.TaskID, output)
 			h.broadcastTaskOutput(payload.TaskID, output)

@@ -21,7 +21,8 @@ type Database struct {
 	UpdatedAt                 *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Users []DatabaseUser `gorm:"many2many:database_database_user" json:"users,omitempty"`
+	Server *Server        `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
+	Users  []DatabaseUser `gorm:"many2many:database_database_user" json:"users,omitempty"`
 }
 
 func (d *Database) TableName() string {

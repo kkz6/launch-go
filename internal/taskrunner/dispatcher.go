@@ -75,7 +75,7 @@ func (d *Dispatcher) runLocal(ctx context.Context, pt *PendingTask) (*TaskResult
 	if ctx.Err() == context.DeadlineExceeded {
 		result.TimedOut = true
 		result.ExitCode = 124
-		pt.Task.OnTimeout(result)
+		pt.Task.OnTimeout(ctx, result)
 		return result, nil
 	}
 
@@ -86,11 +86,11 @@ func (d *Dispatcher) runLocal(ctx context.Context, pt *PendingTask) (*TaskResult
 			result.Error = err
 			result.ExitCode = 1
 		}
-		pt.Task.OnFailed(result)
+		pt.Task.OnFailed(ctx, result)
 		return result, nil
 	}
 
-	pt.Task.OnFinished(result)
+	pt.Task.OnFinished(ctx, result)
 	return result, nil
 }
 
@@ -181,16 +181,16 @@ func (d *Dispatcher) runRemoteForeground(
 	// Exit code 124 means timeout
 	if result.ExitCode == 124 {
 		result.TimedOut = true
-		pt.Task.OnTimeout(result)
+		pt.Task.OnTimeout(ctx, result)
 		return result, nil
 	}
 
 	if result.ExitCode != 0 || result.Error != nil {
-		pt.Task.OnFailed(result)
+		pt.Task.OnFailed(ctx, result)
 		return result, nil
 	}
 
-	pt.Task.OnFinished(result)
+	pt.Task.OnFinished(ctx, result)
 	return result, nil
 }
 

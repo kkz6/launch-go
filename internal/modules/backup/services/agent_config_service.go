@@ -40,7 +40,7 @@ func (s *AgentConfigService) GetAgentBackupConfig(ctx context.Context, backupID,
 	}
 
 	// Get storage provider config
-	storageConfig, err := s.providerService.GetStorageProviderConfig(ctx, uint(0)) // Need to handle string to uint conversion
+	storageConfig, err := s.providerService.GetStorageProviderConfig(ctx, backup.StorageProviderID)
 	if err != nil {
 		// Log error but continue with empty config
 		s.logger.Error().Err(err).Msg("Failed to get storage provider config")
