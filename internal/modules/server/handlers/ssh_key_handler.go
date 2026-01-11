@@ -1,12 +1,9 @@
 package handlers
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
-	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
@@ -35,11 +32,7 @@ func (h *Handler) ListServerSshKeys(c *fiber.Ctx) error {
 
 	keys, err := h.service.ListServerSshKeys(c.Context(), serverID, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.InternalError(c, "Failed to fetch SSH keys")
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch SSH keys")
 	}
 
 	result := make([]dto.SshKeyResponse, len(keys))
@@ -60,13 +53,13 @@ func (h *Handler) CreateSshKey(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	if errs := validator.Validate(&req); errs != nil {
+		return response.ValidationError(c, errs)
 	}
 
 	key, err := h.service.CreateSshKey(c.Context(), teamID, userID, &req)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "SSH key created", dto.ToSshKeyResponse(key))
@@ -82,20 +75,12 @@ func (h *Handler) AttachSshKey(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	if errs := validator.Validate(&req); errs != nil {
+		return response.ValidationError(c, errs)
 	}
 
 	if err := h.service.AttachSshKey(c.Context(), serverID, teamID, req.SshKeyID); err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		if errors.Is(err, services.ErrSshKeyNotFound) {
-			return response.NotFound(c, "SSH key not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "SSH key attached", nil)
@@ -108,15 +93,7 @@ func (h *Handler) DetachSshKey(c *fiber.Ctx) error {
 	sshKeyID := c.Params("sshKeyId")
 
 	if err := h.service.DetachSshKey(c.Context(), serverID, teamID, sshKeyID); err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		if errors.Is(err, services.ErrSshKeyNotFound) {
-			return response.NotFound(c, "SSH key not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.NoContent(c)
@@ -128,11 +105,7 @@ func (h *Handler) DeleteSshKey(c *fiber.Ctx) error {
 	sshKeyID := c.Params("sshKeyId")
 
 	if err := h.service.DeleteSshKey(c.Context(), teamID, sshKeyID); err != nil {
-		if errors.Is(err, services.ErrSshKeyNotFound) {
-			return response.NotFound(c, "SSH key not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.NoContent(c)

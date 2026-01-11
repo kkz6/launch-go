@@ -1,13 +1,11 @@
 package handlers
 
 import (
-	"errors"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
-	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -18,11 +16,7 @@ func (h *Handler) GetLatestMetric(c *fiber.Ctx) error {
 
 	metric, err := h.service.GetLatestMetric(c.Context(), serverID, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.InternalError(c, "Failed to fetch metric")
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch metric")
 	}
 
 	if metric == nil {
@@ -44,11 +38,7 @@ func (h *Handler) GetMetrics(c *fiber.Ctx) error {
 
 	metrics, err := h.service.GetMetrics(c.Context(), serverID, teamID, nil, nil, limit)
 	if err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.InternalError(c, "Failed to fetch metrics")
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch metrics")
 	}
 
 	result := make([]dto.MetricResponse, len(metrics))

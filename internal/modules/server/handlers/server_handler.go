@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
@@ -48,21 +46,13 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	if errs := validator.Validate(&req); errs != nil {
+		return response.ValidationError(c, errs)
 	}
 
 	server, err := h.service.CreateServer(c.Context(), teamID, userID, &req)
 	if err != nil {
-		if errors.Is(err, services.ErrInvalidProvider) {
-			return response.Error(c, fiber.StatusBadRequest, "Invalid server provider")
-		}
-
-		if errors.Is(err, services.ErrInvalidServerType) {
-			return response.Error(c, fiber.StatusBadRequest, "Invalid server type")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Server created", dto.ToServerResponse(server))
@@ -75,11 +65,7 @@ func (h *Handler) Show(c *fiber.Ctx) error {
 
 	server, err := h.service.GetServerWithRelations(c.Context(), id, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.InternalError(c, "Failed to fetch server")
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch server")
 	}
 
 	return response.OK(c, "Server retrieved", dto.ToServerResponse(server))
@@ -95,17 +81,13 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	if errs := validator.Validate(&req); errs != nil {
+		return response.ValidationError(c, errs)
 	}
 
 	server, err := h.service.UpdateServer(c.Context(), id, teamID, &req)
 	if err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Server updated", dto.ToServerResponse(server))
@@ -117,11 +99,7 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.DeleteServer(c.Context(), id, teamID); err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.NoContent(c)
@@ -133,15 +111,7 @@ func (h *Handler) Reboot(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.RebootServer(c.Context(), id, teamID); err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		if errors.Is(err, services.ErrServerNotProvisioned) {
-			return response.Error(c, fiber.StatusBadRequest, "Server is not provisioned")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Server reboot initiated", nil)
@@ -153,11 +123,7 @@ func (h *Handler) Connect(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.ConnectServer(c.Context(), id, teamID); err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Server connection successful", nil)
@@ -169,11 +135,7 @@ func (h *Handler) Archive(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.ArchiveServer(c.Context(), id, teamID); err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Server archived", nil)
@@ -185,11 +147,7 @@ func (h *Handler) Unarchive(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.UnarchiveServer(c.Context(), id, teamID); err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Server unarchived", nil)
@@ -202,11 +160,7 @@ func (h *Handler) ShowPage(c *fiber.Ctx) error {
 
 	data, err := h.service.GetShowPageData(c.Context(), id, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.InternalError(c, "Failed to fetch server data")
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch server data")
 	}
 
 	return response.OK(c, "Server page data retrieved", data)

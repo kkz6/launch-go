@@ -2,22 +2,22 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
+	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
+// Repository errors with HTTP status codes
 var (
-	ErrServerNotFound       = errors.New("server not found")
-	ErrServiceNotFound      = errors.New("service not found")
-	ErrFirewallRuleNotFound = errors.New("firewall rule not found")
-	ErrCronNotFound         = errors.New("cron job not found")
-	ErrDaemonNotFound       = errors.New("daemon not found")
-	ErrSshKeyNotFound       = errors.New("ssh key not found")
-	ErrTaskNotFound         = errors.New("task not found")
-	ErrQueueNotConfigured   = errors.New("queue not configured")
+	ErrServerNotFound       = response.ErrNotFound("Server not found")
+	ErrServiceNotFound      = response.ErrNotFound("Service not found")
+	ErrFirewallRuleNotFound = response.ErrNotFound("Firewall rule not found")
+	ErrCronNotFound         = response.ErrNotFound("Cron job not found")
+	ErrDaemonNotFound       = response.ErrNotFound("Daemon not found")
+	ErrSshKeyNotFound       = response.ErrNotFound("SSH key not found")
+	ErrTaskNotFound         = response.ErrNotFound("Task not found")
 )
 
 // Repository provides database operations for server module

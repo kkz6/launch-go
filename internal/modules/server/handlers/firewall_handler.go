@@ -1,12 +1,9 @@
 package handlers
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
-	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
@@ -18,11 +15,7 @@ func (h *Handler) ListFirewallRules(c *fiber.Ctx) error {
 
 	rules, err := h.service.ListFirewallRules(c.Context(), serverID, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.InternalError(c, "Failed to fetch firewall rules")
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch firewall rules")
 	}
 
 	result := make([]dto.FirewallRuleResponse, len(rules))
@@ -43,17 +36,13 @@ func (h *Handler) CreateFirewallRule(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	if errs := validator.Validate(&req); errs != nil {
+		return response.ValidationError(c, errs)
 	}
 
 	rule, err := h.service.CreateFirewallRule(c.Context(), serverID, teamID, &req)
 	if err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Firewall rule created", dto.ToFirewallRuleResponse(rule))
@@ -70,21 +59,13 @@ func (h *Handler) UpdateFirewallRule(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	if errs := validator.Validate(&req); errs != nil {
+		return response.ValidationError(c, errs)
 	}
 
 	rule, err := h.service.UpdateFirewallRule(c.Context(), serverID, teamID, ruleID, &req)
 	if err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		if errors.Is(err, services.ErrFirewallRuleNotFound) {
-			return response.NotFound(c, "Firewall rule not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Firewall rule updated", dto.ToFirewallRuleResponse(rule))
@@ -97,15 +78,7 @@ func (h *Handler) DeleteFirewallRule(c *fiber.Ctx) error {
 	ruleID := c.Params("ruleId")
 
 	if err := h.service.DeleteFirewallRule(c.Context(), serverID, teamID, ruleID); err != nil {
-		if errors.Is(err, services.ErrServerNotFound) {
-			return response.NotFound(c, "Server not found")
-		}
-
-		if errors.Is(err, services.ErrFirewallRuleNotFound) {
-			return response.NotFound(c, "Firewall rule not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.NoContent(c)
