@@ -74,6 +74,9 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Get("/:id/databases", m.handler.ListDatabases)
 		servers.Post("/:id/databases", m.handler.CreateDatabase)
 
+		// Database Users
+		servers.Get("/:id/database-users", m.handler.ListDatabaseUsers)
+
 		// Tasks
 		servers.Get("/:id/tasks", m.handler.ListTasks)
 		servers.Get("/:id/tasks/latest", m.handler.GetLatestTask)
