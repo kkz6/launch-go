@@ -47,8 +47,8 @@ func ConnectWithLogger(cfg config.DatabaseConfig, appLogger *zerolog.Logger) (*g
 		DisableForeignKeyConstraintWhenMigrating: true,
 	}
 
-	// Use custom logger if provided
-	if appLogger != nil {
+	// Only enable query logging if explicitly configured
+	if appLogger != nil && cfg.LogQueries {
 		gormConfig.Logger = logger.NewGormLogger(appLogger)
 	}
 
