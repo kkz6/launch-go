@@ -131,6 +131,25 @@ func (s *DomainService) GetDomain(ctx context.Context, id, teamID string) (*mode
 	return domain, nil
 }
 
+// UpdateDomain updates a domain
+func (s *DomainService) UpdateDomain(ctx context.Context, id, teamID string, req *dto.UpdateDomainRequest) (*models.Domain, error) {
+	domain, err := s.domainRepo.FindByIDAndTeam(ctx, id, teamID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrDomainNotFound
+		}
+		return nil, err
+	}
+
+	domain.Label = req.Label
+
+	if err := s.domainRepo.Update(ctx, domain); err != nil {
+		return nil, err
+	}
+
+	return domain, nil
+}
+
 // ListDomains lists all domains for a team
 func (s *DomainService) ListDomains(ctx context.Context, teamID string) ([]dto.DomainResponse, error) {
 	domains, err := s.domainRepo.FindByTeam(ctx, teamID)

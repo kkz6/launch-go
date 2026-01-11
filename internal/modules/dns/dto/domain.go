@@ -13,6 +13,11 @@ type CreateDomainRequest struct {
 	Provider string `json:"provider" validate:"required,ulid"`
 }
 
+// UpdateDomainRequest represents a request to update a domain
+type UpdateDomainRequest struct {
+	Label string `json:"label" validate:"required,min=1,max=255"`
+}
+
 // DeleteDomainRequest represents a request to delete a domain
 type DeleteDomainRequest struct {
 	DeleteFromProvider bool `json:"delete_from_provider"`

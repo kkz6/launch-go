@@ -38,7 +38,7 @@ func (h *DomainHandler) ListDomains(c *fiber.Ctx) error {
 	providers, _ := h.providerService.ListProviders(c.Context(), teamID)
 
 	return response.OK(c, "Domains retrieved", fiber.Map{
-		"domains":   domains,
+		"data":      domains,
 		"providers": providers,
 	})
 }
@@ -81,13 +81,42 @@ func (h *DomainHandler) ShowDomain(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
 
+	// Get records for this domain
+	records, _ := h.domainService.GetDomainRecords(c.Context(), id, teamID)
+
 	recordService := services.NewDnsRecordService(nil, nil, nil)
 	recordTypes := recordService.GetRecordTypes()
 
 	return response.OK(c, "Domain retrieved", fiber.Map{
-		"domain":       dto.ToDomainResponse(domain),
-		"record_types": recordTypes,
+		"domain":      dto.ToDomainResponse(domain),
+		"records":     records,
+		"recordTypes": recordTypes,
 	})
+}
+
+// UpdateDomain updates a domain
+func (h *DomainHandler) UpdateDomain(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	id := c.Params("id")
+
+	var req dto.UpdateDomainRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	}
+
+	if errs := validator.Validate(&req); errs != nil {
+		return response.ValidationError(c, errs)
+	}
+
+	domain, err := h.domainService.UpdateDomain(c.Context(), id, teamID, &req)
+	if err != nil {
+		if errors.Is(err, services.ErrDomainNotFound) {
+			return response.NotFound(c, "Domain not found")
+		}
+		return response.Error(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	return response.OK(c, "Domain updated", dto.ToDomainResponse(domain))
 }
 
 // DeleteDomain deletes a domain
