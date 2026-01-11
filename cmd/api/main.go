@@ -21,6 +21,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/team"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -46,6 +47,9 @@ func main() {
 	// Initialize WebSocket hub
 	wsHub := websocket.NewHub()
 	go wsHub.Run()
+
+	// Initialize task runner dispatcher
+	dispatcher := taskrunner.NewDispatcher(appLogger, wsHub)
 
 	// Initialize Fiber app
 	app := fiber.New(fiber.Config{
@@ -82,7 +86,7 @@ func main() {
 	// Initialize modules
 	authModule := auth.NewModule(db, cfg, appLogger)
 	teamModule := team.NewModule(db, appLogger)
-	serverModule := server.NewModule(db, queueClient, wsHub, appLogger)
+	serverModule := server.NewModule(db, queueClient, wsHub, dispatcher, appLogger)
 	siteModule := site.NewModule(db, queueClient, wsHub, appLogger)
 
 	// Register routes

@@ -5,114 +5,118 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/middleware"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
+// Module represents the site module
 type Module struct {
-	db     *gorm.DB
-	queue  *queue.Client
-	ws     *websocket.Hub
-	logger *zerolog.Logger
+	db      *gorm.DB
+	repo    *Repository
+	service *Service
+	handler *Handler
+	queue   *queue.Client
+	ws      *websocket.Hub
+	logger  *zerolog.Logger
 }
 
+// NewModule creates a new site module
 func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger *zerolog.Logger) *Module {
+	repo := NewRepository(db)
+	service := NewService(repo, queueClient, ws, logger)
+	handler := NewHandler(service)
+
 	return &Module{
-		db:     db,
-		queue:  queueClient,
-		ws:     ws,
-		logger: logger,
+		db:      db,
+		repo:    repo,
+		service: service,
+		handler: handler,
+		queue:   queueClient,
+		ws:      ws,
+		logger:  logger,
 	}
 }
 
+// AutoMigrate runs database migrations for site models
+func (m *Module) AutoMigrate() error {
+	return m.db.AutoMigrate(
+		&Site{},
+		&Deployment{},
+		&Certificate{},
+		&Queue{},
+		&Command{},
+		&Redirect{},
+		&Release{},
+	)
+}
+
+// Repository returns the repository instance
+func (m *Module) Repository() *Repository {
+	return m.repo
+}
+
+// Service returns the service instance
+func (m *Module) Service() *Service {
+	return m.service
+}
+
+// Handler returns the handler instance
+func (m *Module) Handler() *Handler {
+	return m.handler
+}
+
+// RegisterRoutes registers HTTP routes for the site module
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
-	sites := router.Group("/sites", authMiddleware, middleware.TeamScope())
+	// Sites are nested under servers
+	servers := router.Group("/servers/:serverId", authMiddleware)
 
 	// Site CRUD
-	sites.Get("/", m.List)
-	sites.Post("/", m.Create)
-	sites.Get("/:id", m.Show)
-	sites.Put("/:id", m.Update)
-	sites.Delete("/:id", m.Delete)
+	sites := servers.Group("/sites")
+	sites.Get("/", m.handler.List)
+	sites.Post("/", m.handler.Create)
+	sites.Get("/:id", m.handler.Show)
+	sites.Put("/:id", m.handler.Update)
+	sites.Delete("/:id", m.handler.Delete)
+
+	// Site deletion summary
+	sites.Get("/:id/deletion-summary", m.handler.GetDeletionSummary)
 
 	// Deployments
-	sites.Post("/:id/deploy", m.Deploy)
-	sites.Get("/:id/deployments", m.ListDeployments)
-	sites.Get("/:id/deployments/:deploymentId", m.ShowDeployment)
-	sites.Post("/:id/rollback/:releaseId", m.Rollback)
+	sites.Post("/:id/deploy", m.handler.Deploy)
+	sites.Get("/:id/deployments", m.handler.ListDeployments)
+	sites.Get("/:id/deployments/:deploymentId", m.handler.ShowDeployment)
+	sites.Post("/:id/rollback/:deploymentId", m.handler.Rollback)
+	sites.Delete("/:id/deployments/queued", m.handler.CancelQueuedDeployments)
 
-	// Environment
-	sites.Get("/:id/environment", m.GetEnvironment)
-	sites.Put("/:id/environment", m.UpdateEnvironment)
+	// Auto-deployment
+	sites.Post("/:id/auto-deployment/enable", m.handler.EnableAutoDeployment)
+	sites.Post("/:id/auto-deployment/disable", m.handler.DisableAutoDeployment)
 
-	// SSL
-	sites.Post("/:id/ssl", m.EnableSSL)
-	sites.Delete("/:id/ssl", m.DisableSSL)
-}
+	// Auto-restart queue
+	sites.Post("/:id/auto-restart-queue/enable", m.handler.EnableAutoRestartQueue)
+	sites.Post("/:id/auto-restart-queue/disable", m.handler.DisableAutoRestartQueue)
 
-func (m *Module) List(c *fiber.Ctx) error {
-	// TODO: Implement
-	return response.OK(c, "Sites retrieved", []interface{}{})
-}
+	// Deploy token
+	sites.Post("/:id/deploy-token/regenerate", m.handler.RegenerateDeployToken)
 
-func (m *Module) Create(c *fiber.Ctx) error {
-	// TODO: Implement
-	return response.Created(c, "Site created", nil)
-}
+	// Deployment settings
+	sites.Put("/:id/deployment-settings", m.handler.UpdateDeploymentSettings)
 
-func (m *Module) Show(c *fiber.Ctx) error {
-	// TODO: Implement
-	return response.OK(c, "Site retrieved", nil)
-}
+	// SSL/TLS
+	sites.Put("/:id/ssl", m.handler.UpdateSSL)
+	sites.Get("/:id/certificates", m.handler.ListCertificates)
 
-func (m *Module) Update(c *fiber.Ctx) error {
-	// TODO: Implement
-	return response.OK(c, "Site updated", nil)
-}
+	// Queues
+	sites.Get("/:id/queues", m.handler.ListQueues)
+	sites.Post("/:id/queues", m.handler.CreateQueue)
+	sites.Delete("/:id/queues/:queueId", m.handler.DeleteQueue)
 
-func (m *Module) Delete(c *fiber.Ctx) error {
-	// TODO: Implement
-	return response.NoContent(c)
-}
+	// Commands
+	sites.Get("/:id/commands", m.handler.ListCommands)
+	sites.Post("/:id/commands", m.handler.CreateCommand)
 
-func (m *Module) Deploy(c *fiber.Ctx) error {
-	// TODO: Implement deployment trigger
-	return response.OK(c, "Deployment started", nil)
-}
-
-func (m *Module) ListDeployments(c *fiber.Ctx) error {
-	// TODO: Implement
-	return response.OK(c, "Deployments retrieved", []interface{}{})
-}
-
-func (m *Module) ShowDeployment(c *fiber.Ctx) error {
-	// TODO: Implement
-	return response.OK(c, "Deployment retrieved", nil)
-}
-
-func (m *Module) Rollback(c *fiber.Ctx) error {
-	// TODO: Implement rollback
-	return response.OK(c, "Rollback started", nil)
-}
-
-func (m *Module) GetEnvironment(c *fiber.Ctx) error {
-	// TODO: Implement
-	return response.OK(c, "Environment retrieved", nil)
-}
-
-func (m *Module) UpdateEnvironment(c *fiber.Ctx) error {
-	// TODO: Implement
-	return response.OK(c, "Environment updated", nil)
-}
-
-func (m *Module) EnableSSL(c *fiber.Ctx) error {
-	// TODO: Implement SSL provisioning
-	return response.OK(c, "SSL enabled", nil)
-}
-
-func (m *Module) DisableSSL(c *fiber.Ctx) error {
-	// TODO: Implement SSL removal
-	return response.OK(c, "SSL disabled", nil)
+	// Redirects
+	sites.Get("/:id/redirects", m.handler.ListRedirects)
+	sites.Post("/:id/redirects", m.handler.CreateRedirect)
+	sites.Delete("/:id/redirects/:redirectId", m.handler.DeleteRedirect)
 }

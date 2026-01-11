@@ -1,0 +1,33 @@
+	github.com/kkz6/launch-go/cmd/api		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/cmd/shellcheck		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/cmd/worker		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/config		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/database		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/middleware		coverage: 0.0% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/auth	36.622s	coverage: 87.9% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/backup	4.763s	coverage: 88.3% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/backup/storage	2.986s	coverage: 70.8% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/billing	6.178s	coverage: 87.1% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/database	4.303s	coverage: 80.4% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/database/jobs	3.838s	coverage: 92.3% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/dns	7.339s	coverage: 64.2% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/dns/providers	4.271s	coverage: 18.3% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/git	7.299s	coverage: 73.4% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/git/providers	3.786s	coverage: 41.2% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/notification	4.162s	coverage: 85.6% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/notification/channels	4.746s	coverage: 97.1% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/server	42.796s	coverage: 52.3% of statements
+	github.com/kkz6/launch-go/internal/modules/server/jobs		coverage: 0.0% of statements
+ok  	github.com/kkz6/launch-go/internal/modules/site	2.869s	coverage: 81.0% of statements
+	github.com/kkz6/launch-go/internal/modules/site/jobs		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/modules/team		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/pkg/errors		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/pkg/logger		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/pkg/pagination		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/pkg/response		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/pkg/utils		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/pkg/validator		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/queue		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/ssh		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/taskrunner		coverage: 0.0% of statements
+	github.com/kkz6/launch-go/internal/websocket		coverage: 0.0% of statements

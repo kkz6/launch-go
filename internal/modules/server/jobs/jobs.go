@@ -18,6 +18,13 @@ const (
 	TypeConfigureFirewall = "server:configure_firewall"
 	TypeInstallDatabase   = "server:install_database"
 	TypeReboot            = "server:reboot"
+	TypeDelete            = "server:delete"
+	TypeInstallService    = "server:install_service"
+	TypeServiceOperation  = "server:service_operation"
+	TypeFirewallRule      = "server:firewall_rule"
+	TypeCron              = "server:cron"
+	TypeDaemon            = "server:daemon"
+	TypeSshKey            = "server:ssh_key"
 )
 
 type Handler struct {
@@ -190,6 +197,252 @@ func (h *Handler) HandleReboot(ctx context.Context, t *asynq.Task) error {
 	h.logger.Info().Str("server_id", payload.ServerID).Msg("Rebooting server")
 
 	// TODO: Implement server reboot
+
+	return nil
+}
+
+// Delete Task
+type DeletePayload struct {
+	ServerID string `json:"server_id"`
+	TeamID   string `json:"team_id"`
+}
+
+func NewDeleteTask(serverID, teamID string) (*asynq.Task, error) {
+	payload, err := json.Marshal(DeletePayload{
+		ServerID: serverID,
+		TeamID:   teamID,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return asynq.NewTask(TypeDelete, payload), nil
+}
+
+func (h *Handler) HandleDelete(ctx context.Context, t *asynq.Task) error {
+	var payload DeletePayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return err
+	}
+
+	h.logger.Info().Str("server_id", payload.ServerID).Msg("Deleting server")
+
+	// TODO: Implement server deletion on cloud provider
+
+	return nil
+}
+
+// Install Service Task
+type InstallServicePayload struct {
+	ServerID  string `json:"server_id"`
+	ServiceID string `json:"service_id"`
+	Software  string `json:"software"`
+}
+
+func NewInstallServiceTask(serverID, serviceID, software string) (*asynq.Task, error) {
+	payload, err := json.Marshal(InstallServicePayload{
+		ServerID:  serverID,
+		ServiceID: serviceID,
+		Software:  software,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return asynq.NewTask(TypeInstallService, payload), nil
+}
+
+func (h *Handler) HandleInstallService(ctx context.Context, t *asynq.Task) error {
+	var payload InstallServicePayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return err
+	}
+
+	h.logger.Info().
+		Str("server_id", payload.ServerID).
+		Str("service_id", payload.ServiceID).
+		Str("software", payload.Software).
+		Msg("Installing service")
+
+	// TODO: Implement service installation
+
+	return nil
+}
+
+// Service Operation Task (start, stop, restart, remove, status)
+type ServiceOperationPayload struct {
+	ServerID  string `json:"server_id"`
+	ServiceID string `json:"service_id"`
+	Operation string `json:"operation"`
+}
+
+func NewServiceOperationTask(serverID, serviceID, operation string) (*asynq.Task, error) {
+	payload, err := json.Marshal(ServiceOperationPayload{
+		ServerID:  serverID,
+		ServiceID: serviceID,
+		Operation: operation,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return asynq.NewTask(TypeServiceOperation, payload), nil
+}
+
+func (h *Handler) HandleServiceOperation(ctx context.Context, t *asynq.Task) error {
+	var payload ServiceOperationPayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return err
+	}
+
+	h.logger.Info().
+		Str("server_id", payload.ServerID).
+		Str("service_id", payload.ServiceID).
+		Str("operation", payload.Operation).
+		Msg("Service operation")
+
+	// TODO: Implement service operations
+
+	return nil
+}
+
+// Firewall Rule Task
+type FirewallRulePayload struct {
+	ServerID  string `json:"server_id"`
+	RuleID    string `json:"rule_id"`
+	Operation string `json:"operation"`
+}
+
+func NewFirewallRuleTask(serverID, ruleID, operation string) (*asynq.Task, error) {
+	payload, err := json.Marshal(FirewallRulePayload{
+		ServerID:  serverID,
+		RuleID:    ruleID,
+		Operation: operation,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return asynq.NewTask(TypeFirewallRule, payload), nil
+}
+
+func (h *Handler) HandleFirewallRule(ctx context.Context, t *asynq.Task) error {
+	var payload FirewallRulePayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return err
+	}
+
+	h.logger.Info().
+		Str("server_id", payload.ServerID).
+		Str("rule_id", payload.RuleID).
+		Str("operation", payload.Operation).
+		Msg("Firewall rule operation")
+
+	// TODO: Implement firewall rule operations
+
+	return nil
+}
+
+// Cron Task
+type CronPayload struct {
+	ServerID  string `json:"server_id"`
+	CronID    string `json:"cron_id"`
+	Operation string `json:"operation"`
+}
+
+func NewCronTask(serverID, cronID, operation string) (*asynq.Task, error) {
+	payload, err := json.Marshal(CronPayload{
+		ServerID:  serverID,
+		CronID:    cronID,
+		Operation: operation,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return asynq.NewTask(TypeCron, payload), nil
+}
+
+func (h *Handler) HandleCron(ctx context.Context, t *asynq.Task) error {
+	var payload CronPayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return err
+	}
+
+	h.logger.Info().
+		Str("server_id", payload.ServerID).
+		Str("cron_id", payload.CronID).
+		Str("operation", payload.Operation).
+		Msg("Cron operation")
+
+	// TODO: Implement cron operations
+
+	return nil
+}
+
+// Daemon Task
+type DaemonPayload struct {
+	ServerID  string `json:"server_id"`
+	DaemonID  string `json:"daemon_id"`
+	Operation string `json:"operation"`
+}
+
+func NewDaemonTask(serverID, daemonID, operation string) (*asynq.Task, error) {
+	payload, err := json.Marshal(DaemonPayload{
+		ServerID:  serverID,
+		DaemonID:  daemonID,
+		Operation: operation,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return asynq.NewTask(TypeDaemon, payload), nil
+}
+
+func (h *Handler) HandleDaemon(ctx context.Context, t *asynq.Task) error {
+	var payload DaemonPayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return err
+	}
+
+	h.logger.Info().
+		Str("server_id", payload.ServerID).
+		Str("daemon_id", payload.DaemonID).
+		Str("operation", payload.Operation).
+		Msg("Daemon operation")
+
+	// TODO: Implement daemon operations
+
+	return nil
+}
+
+// SSH Key Task
+type SshKeyPayload struct {
+	ServerID  string `json:"server_id"`
+	SshKeyID  string `json:"ssh_key_id"`
+	Operation string `json:"operation"`
+}
+
+func NewSshKeyTask(serverID, sshKeyID, operation string) (*asynq.Task, error) {
+	payload, err := json.Marshal(SshKeyPayload{
+		ServerID:  serverID,
+		SshKeyID:  sshKeyID,
+		Operation: operation,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return asynq.NewTask(TypeSshKey, payload), nil
+}
+
+func (h *Handler) HandleSshKey(ctx context.Context, t *asynq.Task) error {
+	var payload SshKeyPayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return err
+	}
+
+	h.logger.Info().
+		Str("server_id", payload.ServerID).
+		Str("ssh_key_id", payload.SshKeyID).
+		Str("operation", payload.Operation).
+		Msg("SSH key operation")
+
+	// TODO: Implement SSH key operations
 
 	return nil
 }
