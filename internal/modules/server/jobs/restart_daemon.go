@@ -2,15 +2,11 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 const TypeRestartDaemon = "server:restart_daemon"
@@ -23,63 +19,52 @@ type RestartDaemonPayload struct {
 
 // RestartDaemonJob handles restarting a daemon on a server
 type RestartDaemonJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
-}
-
-// NewRestartDaemonJob creates a new restart daemon job handler
-func NewRestartDaemonJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *RestartDaemonJob {
-	return &RestartDaemonJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
-	}
+	*JobContext
 }
 
 // NewRestartDaemonTask creates a new asynq task for restarting a daemon
 func NewRestartDaemonTask(serverID, daemonID string) (*asynq.Task, error) {
-	payload, err := json.Marshal(RestartDaemonPayload{
+	return jobs.NewTask(TypeRestartDaemon, RestartDaemonPayload{
 		ServerID: serverID,
 		DaemonID: daemonID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeRestartDaemon, payload), nil
 }
 
 // Handle processes the restart daemon job
 func (j *RestartDaemonJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload RestartDaemonPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.UnmarshalPayload[RestartDaemonPayload](t)
+	if err != nil {
+		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("server_id", payload.ServerID).
 		Str("daemon_id", payload.DaemonID).
 		Msg("Restarting daemon")
 
 	// Fetch the server
-	var server models.Server
-	if err := j.db.First(&server, "id = ?", payload.ServerID).Error; err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+	server, err := j.FindServer(ctx, payload.ServerID)
+	if err != nil {
+		return err
 	}
 
 	// Fetch the daemon
-	var daemon models.Daemon
-	if err := j.db.First(&daemon, "id = ?", payload.DaemonID).Error; err != nil {
+	daemon, err := j.Repo.FindDaemonByID(ctx, payload.DaemonID)
+	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
 
 	j.broadcastProgress(payload.ServerID, "restarting", fmt.Sprintf("Restarting daemon: %s", daemon.Command))
 
-	// TODO: Implement actual daemon restart:
-	// 1. Connect to server via SSH
-	// 2. Run supervisor restart program command
-	// 3. Check daemon status
+	// TODO: Run the actual daemon restart task
+	// _, err = j.RunTask(server, tasks.NewRestartDaemon(&daemon)).
+	//     AsRoot().
+	//     Dispatch(ctx)
+	// if err != nil {
+	//     return err
+	// }
+
+	_ = server // use server when implementing task execution
 
 	j.broadcastProgress(payload.ServerID, "running", "Daemon restarted successfully")
 
@@ -88,13 +73,13 @@ func (j *RestartDaemonJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 // Failed handles job failure
 func (j *RestartDaemonJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload RestartDaemonPayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, unmarshalErr := jobs.UnmarshalPayload[RestartDaemonPayload](t)
+	if unmarshalErr != nil {
+		j.Logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("server_id", payload.ServerID).
 		Str("daemon_id", payload.DaemonID).
@@ -104,7 +89,7 @@ func (j *RestartDaemonJob) Failed(ctx context.Context, t *asynq.Task, err error)
 }
 
 func (j *RestartDaemonJob) broadcastProgress(serverID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "server.daemon.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "server.daemon.progress", map[string]interface{}{
 		"server_id": serverID,
 		"status":    status,
 		"message":   message,

@@ -2,16 +2,13 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 const TypeRemoveService = "server:remove_service"
@@ -25,83 +22,70 @@ type RemoveServicePayload struct {
 
 // RemoveServiceJob handles removing a service from a server
 type RemoveServiceJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
-}
-
-// NewRemoveServiceJob creates a new remove service job handler
-func NewRemoveServiceJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *RemoveServiceJob {
-	return &RemoveServiceJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
-	}
+	*JobContext
+	jobs.UninstallationTracker
 }
 
 // NewRemoveServiceTask creates a new asynq task for removing a service
 func NewRemoveServiceTask(serverID string, software enums.Software, operation enums.ServiceOption) (*asynq.Task, error) {
-	payload, err := json.Marshal(RemoveServicePayload{
+	return jobs.NewTask(TypeRemoveService, RemoveServicePayload{
 		ServerID:  serverID,
 		Software:  software,
 		Operation: operation,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeRemoveService, payload), nil
 }
 
 // Handle processes the remove service job
 func (j *RemoveServiceJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload RemoveServicePayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.UnmarshalPayload[RemoveServicePayload](t)
+	if err != nil {
+		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("server_id", payload.ServerID).
 		Str("software", string(payload.Software)).
 		Str("operation", string(payload.Operation)).
 		Msg("Removing service from server")
 
 	// Fetch the server
-	var server models.Server
-	if err := j.db.First(&server, "id = ?", payload.ServerID).Error; err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+	server, err := j.FindServer(ctx, payload.ServerID)
+	if err != nil {
+		return err
 	}
 
 	j.broadcastProgress(payload.ServerID, "removing", fmt.Sprintf("Removing %s...", payload.Software.Label()))
 
-	// TODO: Implement actual service removal:
-	// 1. Get the remove task for the software
-	// 2. Connect to server via SSH
-	// 3. Execute the removal command
-	// 4. Clean up configuration files
+	// TODO: Run the actual service removal task
+	// _, err = j.RunTask(server, tasks.NewRemoveService(payload.Software)).
+	//     AsRoot().
+	//     Dispatch(ctx)
+	// if err != nil {
+	//     return err
+	// }
+
+	_ = server // use server when implementing task execution
 
 	// Delete the service record
-	if err := j.db.Where("server_id = ? AND software = ?", payload.ServerID, payload.Software).
+	if err := j.DB.Where("server_id = ? AND software = ?", payload.ServerID, payload.Software).
 		Delete(&models.InstalledService{}).Error; err != nil {
 		return fmt.Errorf("failed to delete service record: %w", err)
 	}
 
 	j.broadcastProgress(payload.ServerID, "removed", fmt.Sprintf("%s removed successfully", payload.Software.Label()))
 
-	// TODO: Dispatch ServiceDeleted event
-
 	return nil
 }
 
 // Failed handles job failure
 func (j *RemoveServiceJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload RemoveServicePayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, unmarshalErr := jobs.UnmarshalPayload[RemoveServicePayload](t)
+	if unmarshalErr != nil {
+		j.Logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("server_id", payload.ServerID).
 		Str("software", string(payload.Software)).
@@ -112,7 +96,7 @@ func (j *RemoveServiceJob) Failed(ctx context.Context, t *asynq.Task, err error)
 }
 
 func (j *RemoveServiceJob) broadcastProgress(serverID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "server.service.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "server.service.progress", map[string]interface{}{
 		"server_id": serverID,
 		"status":    status,
 		"message":   message,

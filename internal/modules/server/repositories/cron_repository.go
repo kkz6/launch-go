@@ -30,6 +30,21 @@ func (r *Repository) FindCronByID(ctx context.Context, id string) (*models.Cron,
 	return &cron, nil
 }
 
+// FindCronByIDWithServer finds a cron job by ID with the Server relation preloaded
+func (r *Repository) FindCronByIDWithServer(ctx context.Context, id string) (*models.Cron, error) {
+	var cron models.Cron
+	err := r.db.WithContext(ctx).Preload("Server").First(&cron, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrCronNotFound
+		}
+
+		return nil, err
+	}
+
+	return &cron, nil
+}
+
 // FindCronByIDAndServer finds a cron job by ID and server ID
 func (r *Repository) FindCronByIDAndServer(ctx context.Context, id, serverID string) (*models.Cron, error) {
 	var cron models.Cron

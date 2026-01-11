@@ -2,16 +2,12 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 const TypeUninstallDaemon = "server:uninstall_daemon"
@@ -25,63 +21,49 @@ type UninstallDaemonPayload struct {
 
 // UninstallDaemonJob handles uninstalling a daemon from a server
 type UninstallDaemonJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
-}
-
-// NewUninstallDaemonJob creates a new uninstall daemon job handler
-func NewUninstallDaemonJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *UninstallDaemonJob {
-	return &UninstallDaemonJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
-	}
+	*JobContext
+	jobs.UninstallationTracker
 }
 
 // NewUninstallDaemonTask creates a new asynq task for uninstalling a daemon
 func NewUninstallDaemonTask(serverID, daemonID string, userID *string) (*asynq.Task, error) {
-	payload, err := json.Marshal(UninstallDaemonPayload{
+	return jobs.NewTask(TypeUninstallDaemon, UninstallDaemonPayload{
 		ServerID: serverID,
 		DaemonID: daemonID,
 		UserID:   userID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeUninstallDaemon, payload), nil
 }
 
 // Handle processes the uninstall daemon job
 func (j *UninstallDaemonJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload UninstallDaemonPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.UnmarshalPayload[UninstallDaemonPayload](t)
+	if err != nil {
+		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("server_id", payload.ServerID).
 		Str("daemon_id", payload.DaemonID).
 		Msg("Uninstalling daemon")
 
 	// Fetch the daemon with server
-	var daemon models.Daemon
-	if err := j.db.Preload("Server").First(&daemon, "id = ?", payload.DaemonID).Error; err != nil {
+	daemon, err := j.Repo.FindDaemonByIDWithServer(ctx, payload.DaemonID)
+	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
 
 	j.broadcastProgress(payload.ServerID, payload.DaemonID, "uninstalling", fmt.Sprintf("Uninstalling daemon: %s", daemon.Command))
 
-	// TODO: Implement actual daemon removal:
-	// 1. Connect to server via SSH
-	// 2. Stop the daemon service
-	// 3. Remove systemd service file
-	// 4. Reload systemd
-	// 5. Delete daemon record from database
+	// TODO: Run the actual daemon uninstallation task
+	// _, err = j.RunTask(daemon.Server, tasks.NewUninstallDaemon(&daemon)).
+	//     AsRoot().
+	//     Dispatch(ctx)
+	// if err != nil {
+	//     return err
+	// }
 
 	// Delete the daemon record
-	if err := j.db.Delete(&daemon).Error; err != nil {
+	if err := j.Repo.DeleteDaemon(ctx, daemon.ID); err != nil {
 		return fmt.Errorf("failed to delete daemon record: %w", err)
 	}
 
@@ -92,21 +74,21 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 // Failed handles job failure
 func (j *UninstallDaemonJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload UninstallDaemonPayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, unmarshalErr := jobs.UnmarshalPayload[UninstallDaemonPayload](t)
+	if unmarshalErr != nil {
+		j.Logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("server_id", payload.ServerID).
 		Str("daemon_id", payload.DaemonID).
 		Msg("Failed to uninstall daemon")
 
 	// Fetch the daemon for error message
-	var daemon models.Daemon
-	if findErr := j.db.First(&daemon, "id = ?", payload.DaemonID).Error; findErr != nil {
+	daemon, findErr := j.Repo.FindDaemonByID(ctx, payload.DaemonID)
+	if findErr != nil {
 		j.broadcastProgress(payload.ServerID, payload.DaemonID, "failed", "Failed to uninstall daemon")
 		return
 	}
@@ -115,7 +97,7 @@ func (j *UninstallDaemonJob) Failed(ctx context.Context, t *asynq.Task, err erro
 }
 
 func (j *UninstallDaemonJob) broadcastProgress(serverID, daemonID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "server.daemon.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "server.daemon.progress", map[string]interface{}{
 		"server_id": serverID,
 		"daemon_id": daemonID,
 		"status":    status,

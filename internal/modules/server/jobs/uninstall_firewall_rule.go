@@ -2,16 +2,12 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 const TypeUninstallFirewallRule = "server:uninstall_firewall_rule"
@@ -25,61 +21,49 @@ type UninstallFirewallRulePayload struct {
 
 // UninstallFirewallRuleJob handles uninstalling a firewall rule from a server
 type UninstallFirewallRuleJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
-}
-
-// NewUninstallFirewallRuleJob creates a new uninstall firewall rule job handler
-func NewUninstallFirewallRuleJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *UninstallFirewallRuleJob {
-	return &UninstallFirewallRuleJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
-	}
+	*JobContext
+	jobs.UninstallationTracker
 }
 
 // NewUninstallFirewallRuleTask creates a new asynq task for uninstalling a firewall rule
 func NewUninstallFirewallRuleTask(serverID, ruleID string, userID *string) (*asynq.Task, error) {
-	payload, err := json.Marshal(UninstallFirewallRulePayload{
+	return jobs.NewTask(TypeUninstallFirewallRule, UninstallFirewallRulePayload{
 		ServerID: serverID,
 		RuleID:   ruleID,
 		UserID:   userID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeUninstallFirewallRule, payload), nil
 }
 
 // Handle processes the uninstall firewall rule job
 func (j *UninstallFirewallRuleJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload UninstallFirewallRulePayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.UnmarshalPayload[UninstallFirewallRulePayload](t)
+	if err != nil {
+		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("server_id", payload.ServerID).
 		Str("rule_id", payload.RuleID).
 		Msg("Uninstalling firewall rule")
 
 	// Fetch the firewall rule with server
-	var rule models.FirewallRule
-	if err := j.db.Preload("Server").First(&rule, "id = ?", payload.RuleID).Error; err != nil {
+	rule, err := j.Repo.FindFirewallRuleByIDWithServer(ctx, payload.RuleID)
+	if err != nil {
 		return fmt.Errorf("failed to find firewall rule: %w", err)
 	}
 
 	j.broadcastProgress(payload.ServerID, payload.RuleID, "uninstalling", fmt.Sprintf("Removing firewall rule: %s (port %s)", rule.Name, rule.Port))
 
-	// TODO: Implement actual firewall rule removal:
-	// 1. Connect to server via SSH
-	// 2. Remove UFW rule
-	// 3. Delete rule record from database
+	// TODO: Run the actual firewall rule uninstallation task
+	// _, err = j.RunTask(rule.Server, tasks.NewRemoveFirewallRule(&rule)).
+	//     AsRoot().
+	//     Dispatch(ctx)
+	// if err != nil {
+	//     return err
+	// }
 
 	// Delete the firewall rule record
-	if err := j.db.Delete(&rule).Error; err != nil {
+	if err := j.Repo.DeleteFirewallRule(ctx, rule.ID); err != nil {
 		return fmt.Errorf("failed to delete firewall rule record: %w", err)
 	}
 
@@ -90,21 +74,21 @@ func (j *UninstallFirewallRuleJob) Handle(ctx context.Context, t *asynq.Task) er
 
 // Failed handles job failure
 func (j *UninstallFirewallRuleJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload UninstallFirewallRulePayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, unmarshalErr := jobs.UnmarshalPayload[UninstallFirewallRulePayload](t)
+	if unmarshalErr != nil {
+		j.Logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("server_id", payload.ServerID).
 		Str("rule_id", payload.RuleID).
 		Msg("Failed to uninstall firewall rule")
 
 	// Fetch the rule for error message
-	var rule models.FirewallRule
-	if findErr := j.db.First(&rule, "id = ?", payload.RuleID).Error; findErr != nil {
+	rule, findErr := j.Repo.FindFirewallRuleByID(ctx, payload.RuleID)
+	if findErr != nil {
 		j.broadcastProgress(payload.ServerID, payload.RuleID, "failed", "Failed to remove firewall rule")
 		return
 	}
@@ -113,7 +97,7 @@ func (j *UninstallFirewallRuleJob) Failed(ctx context.Context, t *asynq.Task, er
 }
 
 func (j *UninstallFirewallRuleJob) broadcastProgress(serverID, ruleID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "server.firewall.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "server.firewall.progress", map[string]interface{}{
 		"server_id": serverID,
 		"rule_id":   ruleID,
 		"status":    status,

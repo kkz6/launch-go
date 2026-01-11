@@ -30,6 +30,21 @@ func (r *Repository) FindDaemonByID(ctx context.Context, id string) (*models.Dae
 	return &daemon, nil
 }
 
+// FindDaemonByIDWithServer finds a daemon by ID with the Server relation preloaded
+func (r *Repository) FindDaemonByIDWithServer(ctx context.Context, id string) (*models.Daemon, error) {
+	var daemon models.Daemon
+	err := r.db.WithContext(ctx).Preload("Server").First(&daemon, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrDaemonNotFound
+		}
+
+		return nil, err
+	}
+
+	return &daemon, nil
+}
+
 // FindDaemonByIDAndServer finds a daemon by ID and server ID
 func (r *Repository) FindDaemonByIDAndServer(ctx context.Context, id, serverID string) (*models.Daemon, error) {
 	var daemon models.Daemon

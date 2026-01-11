@@ -2,16 +2,13 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 const TypeAddService = "server:add_service"
@@ -25,69 +22,57 @@ type AddServicePayload struct {
 
 // AddServiceJob handles adding a service to a server
 type AddServiceJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
-}
-
-// NewAddServiceJob creates a new add service job handler
-func NewAddServiceJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *AddServiceJob {
-	return &AddServiceJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
-	}
+	*JobContext
+	jobs.InstallationTracker
 }
 
 // NewAddServiceTask creates a new asynq task for adding a service
 func NewAddServiceTask(serverID, serviceID string, software enums.Software) (*asynq.Task, error) {
-	payload, err := json.Marshal(AddServicePayload{
+	return jobs.NewTask(TypeAddService, AddServicePayload{
 		ServerID:  serverID,
 		ServiceID: serviceID,
 		Software:  software,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeAddService, payload), nil
 }
 
 // Handle processes the add service job
 func (j *AddServiceJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload AddServicePayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.UnmarshalPayload[AddServicePayload](t)
+	if err != nil {
+		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("server_id", payload.ServerID).
 		Str("service_id", payload.ServiceID).
 		Str("software", string(payload.Software)).
 		Msg("Adding service to server")
 
 	// Fetch the server
-	var server models.Server
-	if err := j.db.First(&server, "id = ?", payload.ServerID).Error; err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+	server, err := j.FindServer(ctx, payload.ServerID)
+	if err != nil {
+		return err
 	}
 
 	// Fetch the service
 	var service models.InstalledService
-	if err := j.db.First(&service, "id = ?", payload.ServiceID).Error; err != nil {
+	if err := j.DB.First(&service, "id = ?", payload.ServiceID).Error; err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
 	j.broadcastProgress(payload.ServerID, "installing", fmt.Sprintf("Installing %s...", payload.Software.Label()))
 
-	// TODO: Implement actual service installation:
-	// 1. Connect to server via SSH
-	// 2. Run AddService task script
-	// 3. Configure the service
-	// 4. Start the service
+	// TODO: Run the actual service installation task
+	// result, err := j.RunTask(server, tasks.NewAddService(payload.Software)).
+	//     AsRoot().
+	//     KeepTrack().
+	//     Dispatch(ctx)
+	// if err != nil {
+	//     return err
+	// }
+	// Update service with task ID: j.DB.Model(&service).Update("task_id", result.TaskModel.ID)
 
-	// Create a task record and associate it with the service
-	// This would be done through the task runner
+	_ = server // use server when implementing task execution
 
 	j.broadcastProgress(payload.ServerID, "installed", fmt.Sprintf("%s installed successfully", payload.Software.Label()))
 
@@ -96,13 +81,13 @@ func (j *AddServiceJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 // Failed handles job failure
 func (j *AddServiceJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload AddServicePayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, unmarshalErr := jobs.UnmarshalPayload[AddServicePayload](t)
+	if unmarshalErr != nil {
+		j.Logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("server_id", payload.ServerID).
 		Str("service_id", payload.ServiceID).
@@ -110,7 +95,7 @@ func (j *AddServiceJob) Failed(ctx context.Context, t *asynq.Task, err error) {
 		Msg("Failed to add service")
 
 	// Update service status to failed
-	j.db.Model(&models.InstalledService{}).
+	j.DB.Model(&models.InstalledService{}).
 		Where("id = ?", payload.ServiceID).
 		Update("status", enums.ServiceStatusFailed)
 
@@ -118,7 +103,7 @@ func (j *AddServiceJob) Failed(ctx context.Context, t *asynq.Task, err error) {
 }
 
 func (j *AddServiceJob) broadcastProgress(serverID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "server.service.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "server.service.progress", map[string]interface{}{
 		"server_id": serverID,
 		"status":    status,
 		"message":   message,

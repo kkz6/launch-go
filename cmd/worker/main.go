@@ -14,6 +14,7 @@ import (
 	"github.com/kkz6/launch-go/internal/database"
 	databasejobs "github.com/kkz6/launch-go/internal/modules/database/jobs"
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
+	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -51,8 +52,8 @@ func main() {
 		appLogger.Info().Msg("Running in local mode - using SSH streaming for task output")
 	}
 
-	// Make dispatcher available for job handlers (can be used via dependency injection)
-	_ = dispatcher
+	// Create server repository for task tracking
+	serverRepo := serverrepos.NewRepository(db)
 
 	// Create Asynq server
 	srv := asynq.NewServer(
@@ -77,9 +78,12 @@ func main() {
 		},
 	)
 
+	// Create job context for server jobs
+	serverJobContext := serverjobs.NewJobContext(db, serverRepo, appLogger, wsHub, dispatcher, serverRepo)
+
 	// Create job registries
 	databaseJobRegistry := databasejobs.NewRegistry(db, wsHub, dispatcher, appLogger)
-	serverJobRegistry := serverjobs.NewRegistry(db, wsHub, appLogger)
+	serverJobRegistry := serverjobs.NewRegistry(serverJobContext)
 	siteJobHandler := sitejobs.NewHandler(db, wsHub, appLogger)
 
 	// Register handlers

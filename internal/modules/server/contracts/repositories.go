@@ -45,6 +45,7 @@ type ServiceRepository interface {
 type FirewallRuleRepository interface {
 	CreateFirewallRule(ctx context.Context, rule *models.FirewallRule) error
 	FindFirewallRuleByID(ctx context.Context, id string) (*models.FirewallRule, error)
+	FindFirewallRuleByIDWithServer(ctx context.Context, id string) (*models.FirewallRule, error)
 	FindFirewallRuleByIDAndServer(ctx context.Context, id, serverID string) (*models.FirewallRule, error)
 	FindFirewallRulesByServer(ctx context.Context, serverID string) ([]models.FirewallRule, error)
 	UpdateFirewallRule(ctx context.Context, rule *models.FirewallRule) error
@@ -57,6 +58,7 @@ type FirewallRuleRepository interface {
 type CronRepository interface {
 	CreateCron(ctx context.Context, cron *models.Cron) error
 	FindCronByID(ctx context.Context, id string) (*models.Cron, error)
+	FindCronByIDWithServer(ctx context.Context, id string) (*models.Cron, error)
 	FindCronByIDAndServer(ctx context.Context, id, serverID string) (*models.Cron, error)
 	FindCronsByServer(ctx context.Context, serverID string) ([]models.Cron, error)
 	FindVisibleCronsByServer(ctx context.Context, serverID string) ([]models.Cron, error)
@@ -69,6 +71,7 @@ type CronRepository interface {
 type DaemonRepository interface {
 	CreateDaemon(ctx context.Context, daemon *models.Daemon) error
 	FindDaemonByID(ctx context.Context, id string) (*models.Daemon, error)
+	FindDaemonByIDWithServer(ctx context.Context, id string) (*models.Daemon, error)
 	FindDaemonByIDAndServer(ctx context.Context, id, serverID string) (*models.Daemon, error)
 	FindDaemonsByServer(ctx context.Context, serverID string) ([]models.Daemon, error)
 	UpdateDaemon(ctx context.Context, daemon *models.Daemon) error
@@ -120,6 +123,7 @@ type ServerProviderRepository interface {
 type DatabaseRepository interface {
 	FindDatabasesByServer(ctx context.Context, serverID string) ([]models.Database, error)
 	FindDatabaseByID(ctx context.Context, id string) (*models.Database, error)
+	FindDatabaseByIDWithServer(ctx context.Context, id string) (*models.Database, error)
 	CreateDatabase(ctx context.Context, db *models.Database) error
 	DeleteDatabase(ctx context.Context, id string) error
 }
@@ -128,6 +132,7 @@ type DatabaseRepository interface {
 type DatabaseUserRepository interface {
 	FindDatabaseUsersByServer(ctx context.Context, serverID string) ([]models.DatabaseUser, error)
 	FindDatabaseUserByID(ctx context.Context, id string) (*models.DatabaseUser, error)
+	FindDatabaseUserByIDWithServer(ctx context.Context, id string) (*models.DatabaseUser, error)
 	CreateDatabaseUser(ctx context.Context, user *models.DatabaseUser) error
 	DeleteDatabaseUser(ctx context.Context, id string) error
 }

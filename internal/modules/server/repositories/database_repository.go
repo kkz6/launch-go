@@ -26,6 +26,16 @@ func (r *Repository) FindDatabaseByID(ctx context.Context, id string) (*models.D
 	return &database, nil
 }
 
+// FindDatabaseByIDWithServer returns a database by ID with the Server relation preloaded
+func (r *Repository) FindDatabaseByIDWithServer(ctx context.Context, id string) (*models.Database, error) {
+	var database models.Database
+	err := r.db.WithContext(ctx).Preload("Server").Where("id = ?", id).First(&database).Error
+	if err != nil {
+		return nil, err
+	}
+	return &database, nil
+}
+
 // CreateDatabase creates a new database
 func (r *Repository) CreateDatabase(ctx context.Context, db *models.Database) error {
 	return r.db.WithContext(ctx).Create(db).Error
@@ -50,6 +60,16 @@ func (r *Repository) FindDatabaseUsersByServer(ctx context.Context, serverID str
 func (r *Repository) FindDatabaseUserByID(ctx context.Context, id string) (*models.DatabaseUser, error) {
 	var user models.DatabaseUser
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&user).Error
+	if err != nil {
+		return nil, err
+	}
+	return &user, nil
+}
+
+// FindDatabaseUserByIDWithServer returns a database user by ID with the Server relation preloaded
+func (r *Repository) FindDatabaseUserByIDWithServer(ctx context.Context, id string) (*models.DatabaseUser, error) {
+	var user models.DatabaseUser
+	err := r.db.WithContext(ctx).Preload("Server").Preload("Databases").Where("id = ?", id).First(&user).Error
 	if err != nil {
 		return nil, err
 	}

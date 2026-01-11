@@ -2,16 +2,12 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 const TypeRebootServer = "server:reboot"
@@ -24,57 +20,43 @@ type RebootServerPayload struct {
 
 // RebootServerJob handles server reboot operations
 type RebootServerJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
-}
-
-// NewRebootServerJob creates a new reboot server job handler
-func NewRebootServerJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *RebootServerJob {
-	return &RebootServerJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
-	}
+	*JobContext
 }
 
 // NewRebootServerTask creates a new asynq task for rebooting a server
 func NewRebootServerTask(serverID string, userID *string) (*asynq.Task, error) {
-	payload, err := json.Marshal(RebootServerPayload{
+	return jobs.NewTask(TypeRebootServer, RebootServerPayload{
 		ServerID: serverID,
 		UserID:   userID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeRebootServer, payload), nil
 }
 
 // Handle processes the reboot server job
 func (j *RebootServerJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload RebootServerPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.UnmarshalPayload[RebootServerPayload](t)
+	if err != nil {
+		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("server_id", payload.ServerID).
 		Msg("Rebooting server")
 
 	// Fetch the server
-	var server models.Server
-	if err := j.db.First(&server, "id = ?", payload.ServerID).Error; err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+	server, err := j.FindServer(ctx, payload.ServerID)
+	if err != nil {
+		return err
 	}
 
 	j.broadcastProgress(payload.ServerID, "rebooting", fmt.Sprintf("Rebooting server: %s", server.Name))
 
-	// TODO: Implement actual server reboot:
-	// 1. Connect to server via SSH
-	// 2. Execute reboot command
-	// 3. Wait for server to come back online
-	// 4. Update server status
+	// TODO: Run the actual reboot task
+	// _, err = j.RunTask(server, tasks.NewRebootServer()).
+	//     AsRoot().
+	//     Dispatch(ctx)
+	// if err != nil {
+	//     return err
+	// }
 
 	j.broadcastProgress(payload.ServerID, "rebooted", fmt.Sprintf("Server %s rebooted successfully", server.Name))
 
@@ -83,13 +65,13 @@ func (j *RebootServerJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 // Failed handles job failure
 func (j *RebootServerJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload RebootServerPayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, unmarshalErr := jobs.UnmarshalPayload[RebootServerPayload](t)
+	if unmarshalErr != nil {
+		j.Logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("server_id", payload.ServerID).
 		Msg("Failed to reboot server")
@@ -98,7 +80,7 @@ func (j *RebootServerJob) Failed(ctx context.Context, t *asynq.Task, err error) 
 }
 
 func (j *RebootServerJob) broadcastProgress(serverID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "server.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "server.progress", map[string]interface{}{
 		"server_id": serverID,
 		"status":    status,
 		"message":   message,
