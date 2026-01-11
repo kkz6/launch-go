@@ -20,6 +20,7 @@ func init() {
 type cronMigration struct {
 	ID                        string     `gorm:"type:char(26);primaryKey"`
 	ServerID                  string     `gorm:"column:server_id;type:char(26);not null;index"`
+	SiteID                    *string    `gorm:"column:site_id;type:char(26);index"`
 	User                      string     `gorm:"type:varchar(255);not null"`
 	Expression                string     `gorm:"type:varchar(255);not null"`
 	Command                   string     `gorm:"type:longtext;not null"`

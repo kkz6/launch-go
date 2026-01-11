@@ -39,6 +39,7 @@ type serverMigration struct {
 	PrivateIPv4              *string    `gorm:"column:private_ipv4;type:varchar(255)"`
 	PublicKey                *string    `gorm:"type:longtext"`
 	PrivateKey               *string    `gorm:"type:longtext"`
+	UserPublicKey            *string    `gorm:"column:user_public_key;type:longtext"`
 	Username                 *string    `gorm:"type:varchar(255)"`
 	Password                 *string    `gorm:"type:longtext"`
 	DatabasePassword         *string    `gorm:"type:longtext"`
