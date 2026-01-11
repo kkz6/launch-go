@@ -6,7 +6,6 @@ import (
 
 	"github.com/rs/zerolog"
 
-	"github.com/kkz6/launch-go/internal/modules/database/contracts"
 	"github.com/kkz6/launch-go/internal/modules/database/repositories"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
@@ -36,7 +35,7 @@ type ServerRepository interface {
 
 // Service provides business logic for database operations
 type Service struct {
-	repo       contracts.Repository
+	repo       *repositories.Repository
 	serverRepo ServerRepository
 	queue      *queue.Client
 	ws         *websocket.Hub
@@ -44,7 +43,7 @@ type Service struct {
 }
 
 // NewService creates a new Service instance
-func NewService(repo contracts.Repository, serverRepo ServerRepository, queue *queue.Client, ws *websocket.Hub, logger *zerolog.Logger) *Service {
+func NewService(repo *repositories.Repository, serverRepo ServerRepository, queue *queue.Client, ws *websocket.Hub, logger *zerolog.Logger) *Service {
 	return &Service{
 		repo:       repo,
 		serverRepo: serverRepo,
