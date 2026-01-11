@@ -7,7 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 

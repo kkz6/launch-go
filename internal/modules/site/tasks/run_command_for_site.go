@@ -4,7 +4,7 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // RunCommandForSite runs an arbitrary command in the site's application directory

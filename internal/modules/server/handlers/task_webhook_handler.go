@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
@@ -11,44 +12,48 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
-// TaskRepository interface for webhook handler
-type TaskRepository interface {
-	FindByID(id string) (Task, error)
-	UpdateStatus(id string, status string) error
-	UpdateResult(id string, status string, exitCode int, output string) error
+// TaskWebhookRepository interface for webhook handler
+type TaskWebhookRepository interface {
+	FindTaskByID(ctx context.Context, id string) (*models.Task, error)
+	UpdateTask(ctx context.Context, task *models.Task) error
 }
 
-// Task interface for webhook handler
-type Task interface {
-	IsFinished() bool
-}
-
-// WebhookHandler handles task completion callbacks
-type WebhookHandler struct {
-	repo      TaskRepository
+// TaskWebhookHandler handles task completion callbacks
+type TaskWebhookHandler struct {
+	repo      TaskWebhookRepository
 	secretKey string
 }
 
-// NewWebhookHandler creates a new webhook handler
-func NewWebhookHandler(repo TaskRepository, secretKey string) *WebhookHandler {
-	return &WebhookHandler{
+// NewTaskWebhookHandler creates a new webhook handler
+func NewTaskWebhookHandler(repo TaskWebhookRepository, secretKey string) *TaskWebhookHandler {
+	return &TaskWebhookHandler{
 		repo:      repo,
 		secretKey: secretKey,
 	}
 }
 
+// RegisterTaskWebhookRoutes registers webhook routes
+func (h *TaskWebhookHandler) RegisterRoutes(router fiber.Router) {
+	webhooks := router.Group("/webhooks/tasks")
+	webhooks.Post("/:id/finished", h.MarkAsFinished)
+	webhooks.Post("/:id/failed", h.MarkAsFailed)
+	webhooks.Post("/:id/timeout", h.MarkAsTimeout)
+}
+
 // MarkAsFinished handles successful task completion
-func (h *WebhookHandler) MarkAsFinished(c *fiber.Ctx) error {
+func (h *TaskWebhookHandler) MarkAsFinished(c *fiber.Ctx) error {
 	taskID := c.Params("id")
+	ctx := c.Context()
 
 	if !h.verifySignature(c, taskID) {
 		return response.Unauthorized(c, "Invalid signature")
 	}
 
-	task, err := h.repo.FindByID(taskID)
+	task, err := h.repo.FindTaskByID(ctx, taskID)
 	if err != nil {
 		return response.NotFound(c, "Task not found")
 	}
@@ -57,20 +62,27 @@ func (h *WebhookHandler) MarkAsFinished(c *fiber.Ctx) error {
 		return response.OK(c, "Task already finished", nil)
 	}
 
-	h.repo.UpdateStatus(taskID, "finished")
+	task.Status = "finished"
+	exitCode := 0
+	task.ExitCode = &exitCode
+
+	if err := h.repo.UpdateTask(ctx, task); err != nil {
+		return response.InternalError(c, "Failed to update task")
+	}
 
 	return response.OK(c, "Task marked as finished", nil)
 }
 
 // MarkAsFailed handles task failure
-func (h *WebhookHandler) MarkAsFailed(c *fiber.Ctx) error {
+func (h *TaskWebhookHandler) MarkAsFailed(c *fiber.Ctx) error {
 	taskID := c.Params("id")
+	ctx := c.Context()
 
 	if !h.verifySignature(c, taskID) {
 		return response.Unauthorized(c, "Invalid signature")
 	}
 
-	task, err := h.repo.FindByID(taskID)
+	task, err := h.repo.FindTaskByID(ctx, taskID)
 	if err != nil {
 		return response.NotFound(c, "Task not found")
 	}
@@ -80,7 +92,8 @@ func (h *WebhookHandler) MarkAsFailed(c *fiber.Ctx) error {
 	}
 
 	var body struct {
-		ExitCode int `json:"exit_code"`
+		ExitCode int    `json:"exit_code"`
+		Output   string `json:"output"`
 	}
 	c.BodyParser(&body)
 
@@ -89,20 +102,29 @@ func (h *WebhookHandler) MarkAsFailed(c *fiber.Ctx) error {
 		exitCode = 1
 	}
 
-	h.repo.UpdateResult(taskID, "failed", exitCode, "")
+	task.Status = "failed"
+	task.ExitCode = &exitCode
+	if body.Output != "" {
+		task.Output = &body.Output
+	}
+
+	if err := h.repo.UpdateTask(ctx, task); err != nil {
+		return response.InternalError(c, "Failed to update task")
+	}
 
 	return response.OK(c, "Task marked as failed", nil)
 }
 
 // MarkAsTimeout handles task timeout
-func (h *WebhookHandler) MarkAsTimeout(c *fiber.Ctx) error {
+func (h *TaskWebhookHandler) MarkAsTimeout(c *fiber.Ctx) error {
 	taskID := c.Params("id")
+	ctx := c.Context()
 
 	if !h.verifySignature(c, taskID) {
 		return response.Unauthorized(c, "Invalid signature")
 	}
 
-	task, err := h.repo.FindByID(taskID)
+	task, err := h.repo.FindTaskByID(ctx, taskID)
 	if err != nil {
 		return response.NotFound(c, "Task not found")
 	}
@@ -111,13 +133,19 @@ func (h *WebhookHandler) MarkAsTimeout(c *fiber.Ctx) error {
 		return response.OK(c, "Task already finished", nil)
 	}
 
-	h.repo.UpdateResult(taskID, "timeout", 124, "")
+	task.Status = "timeout"
+	exitCode := 124
+	task.ExitCode = &exitCode
+
+	if err := h.repo.UpdateTask(ctx, task); err != nil {
+		return response.InternalError(c, "Failed to update task")
+	}
 
 	return response.OK(c, "Task marked as timeout", nil)
 }
 
 // verifySignature validates the webhook signature
-func (h *WebhookHandler) verifySignature(c *fiber.Ctx, taskID string) bool {
+func (h *TaskWebhookHandler) verifySignature(c *fiber.Ctx, taskID string) bool {
 	signature := c.Query("signature")
 	expires := c.Query("expires")
 
@@ -139,7 +167,7 @@ func (h *WebhookHandler) verifySignature(c *fiber.Ctx, taskID string) bool {
 }
 
 // generateSignature creates HMAC signature for webhook URL
-func (h *WebhookHandler) generateSignature(taskID, expires string) string {
+func (h *TaskWebhookHandler) generateSignature(taskID, expires string) string {
 	data := fmt.Sprintf("%s:%s", taskID, expires)
 	mac := hmac.New(sha256.New, []byte(h.secretKey))
 	mac.Write([]byte(data))
@@ -147,7 +175,7 @@ func (h *WebhookHandler) generateSignature(taskID, expires string) string {
 }
 
 // GenerateCallbackURLs creates signed URLs for task callbacks
-func (h *WebhookHandler) GenerateCallbackURLs(baseURL, taskID string, expireMinutes int) CallbackURLs {
+func (h *TaskWebhookHandler) GenerateCallbackURLs(baseURL, taskID string, expireMinutes int) CallbackURLs {
 	expires := strconv.FormatInt(time.Now().Add(time.Duration(expireMinutes)*time.Minute).Unix(), 10)
 	signature := h.generateSignature(taskID, expires)
 

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // RestartService is a base task for restarting system services

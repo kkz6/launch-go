@@ -3,7 +3,7 @@ package tasks
 import (
 	"time"
 
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // LaunchDaemonStatus checks the status of the Launch Agent daemon

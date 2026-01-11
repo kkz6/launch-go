@@ -7,7 +7,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // AddPhpVersion installs a PHP version on a server
@@ -42,7 +42,7 @@ func (t *AddPhpVersion) Data() map[string]interface{} {
 	return map[string]interface{}{
 		"Server":             t.server,
 		"Username":           t.server.GetUsername(),
-		"MaxChildrenPhpPool": taskrunner.MaxChildrenPhpPool(t.GetMemoryMB()),
+		"MaxChildrenPhpPool": t.MaxChildrenPhpPoolValue(),
 		"PhpVersion":         t.phpVersion.GetVersion(),
 	}
 }
@@ -52,9 +52,14 @@ func (t *AddPhpVersion) PhpVersion() enums.Software {
 	return t.phpVersion
 }
 
-// MaxChildrenPhpPoolValue returns the calculated max children for PHP-FPM pool
+// MaxChildrenPhpPoolValue returns the calculated max children for PHP-FPM pool based on server memory
 func (t *AddPhpVersion) MaxChildrenPhpPoolValue() int {
-	return taskrunner.MaxChildrenPhpPool(t.GetMemoryMB())
+	memoryMB := t.GetMemoryMB()
+	gigabytes := memoryMB/1024 - 1
+	if gigabytes < 1 {
+		gigabytes = 1
+	}
+	return int(float64(gigabytes) * 5 * 0.9)
 }
 
 // onFinished handles successful completion

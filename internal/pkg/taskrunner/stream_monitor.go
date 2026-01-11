@@ -11,9 +11,6 @@ import (
 	"time"
 
 	"github.com/rs/zerolog"
-
-	"github.com/kkz6/launch-go/internal/ssh"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // Task status markers that scripts should output
@@ -31,11 +28,11 @@ var ErrTaskCompleted = errors.New("task completed")
 
 // StreamMonitor monitors task output via persistent SSH connection
 type StreamMonitor struct {
-	logger          *zerolog.Logger
-	wsHub           *websocket.Hub
+	logger            *zerolog.Logger
+	wsHub             Broadcaster
 	broadcastInterval time.Duration
-	activeStreams   map[string]context.CancelFunc
-	mu              sync.RWMutex
+	activeStreams     map[string]context.CancelFunc
+	mu                sync.RWMutex
 }
 
 // StreamMonitorConfig holds configuration for the stream monitor
@@ -44,17 +41,17 @@ type StreamMonitorConfig struct {
 }
 
 // NewStreamMonitor creates a new stream monitor
-func NewStreamMonitor(logger *zerolog.Logger, wsHub *websocket.Hub, cfg *StreamMonitorConfig) *StreamMonitor {
+func NewStreamMonitor(logger *zerolog.Logger, wsHub Broadcaster, cfg *StreamMonitorConfig) *StreamMonitor {
 	interval := 2 * time.Second
 	if cfg != nil && cfg.BroadcastInterval > 0 {
 		interval = cfg.BroadcastInterval
 	}
 
 	return &StreamMonitor{
-		logger:          logger,
-		wsHub:           wsHub,
+		logger:            logger,
+		wsHub:             wsHub,
 		broadcastInterval: interval,
-		activeStreams:   make(map[string]context.CancelFunc),
+		activeStreams:     make(map[string]context.CancelFunc),
 	}
 }
 
@@ -97,7 +94,7 @@ func (m *StreamMonitor) StreamTaskOutput(
 	}()
 
 	// Create SSH client
-	sshClient, err := ssh.NewClient(ssh.Config{
+	sshClient, err := NewSSHClient(SSHConfig{
 		Host:       conn.Host,
 		Port:       conn.Port,
 		User:       conn.User,
@@ -305,7 +302,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 	}()
 
 	// Create SSH client - this single connection will be used throughout
-	sshClient, err := ssh.NewClient(ssh.Config{
+	sshClient, err := NewSSHClient(SSHConfig{
 		Host:       conn.Host,
 		Port:       conn.Port,
 		User:       conn.User,

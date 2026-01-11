@@ -16,7 +16,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	sshClient "github.com/kkz6/launch-go/internal/ssh"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // ListServers returns all servers for a team
@@ -223,7 +223,7 @@ func (s *Service) ConnectServer(ctx context.Context, id, teamID string) error {
 		return errors.New("server has no private key")
 	}
 
-	client, err := sshClient.NewClient(sshClient.Config{
+	client, err := taskrunner.NewSSHClient(taskrunner.SSHConfig{
 		Host:       *server.PublicIPv4,
 		Port:       server.GetSSHPort(),
 		User:       server.RootUsername(),

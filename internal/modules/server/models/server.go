@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/utils"
 )
 
@@ -214,4 +215,50 @@ func (s *Server) SetProviderData(data map[string]interface{}) error {
 	s.ProviderData = &str
 
 	return nil
+}
+
+// ConnectionAsRoot returns an SSH connection configured to connect as the root user
+func (s *Server) ConnectionAsRoot() *taskrunner.Connection {
+	privateKey := ""
+	if s.PrivateKey != nil {
+		privateKey = *s.PrivateKey
+	}
+
+	host := ""
+	if s.PublicIPv4 != nil {
+		host = *s.PublicIPv4
+	}
+
+	return &taskrunner.Connection{
+		Host:       host,
+		Port:       s.GetSSHPort(),
+		User:       s.RootUsername(),
+		PrivateKey: privateKey,
+	}
+}
+
+// ConnectionAsUser returns an SSH connection configured to connect as the specified user
+// If no username is provided, uses the default server username
+func (s *Server) ConnectionAsUser(username ...string) *taskrunner.Connection {
+	user := s.GetUsername()
+	if len(username) > 0 && username[0] != "" {
+		user = username[0]
+	}
+
+	privateKey := ""
+	if s.PrivateKey != nil {
+		privateKey = *s.PrivateKey
+	}
+
+	host := ""
+	if s.PublicIPv4 != nil {
+		host = *s.PublicIPv4
+	}
+
+	return &taskrunner.Connection{
+		Host:       host,
+		Port:       s.GetSSHPort(),
+		User:       user,
+		PrivateKey: privateKey,
+	}
 }

@@ -2,7 +2,7 @@ package tasks
 
 import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // ServerTask extends the base Task interface with server-specific methods
