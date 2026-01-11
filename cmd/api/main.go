@@ -36,6 +36,11 @@ func main() {
 	// Initialize logger
 	appLogger := logger.NewWithConfig(cfg.App.Environment, cfg.App.Debug)
 
+	// Initialize encryption for Laravel-encrypted fields
+	if err := database.InitEncryption(cfg.App.Key); err != nil {
+		appLogger.Fatal().Err(err).Msg("Failed to initialize encryption")
+	}
+
 	// Initialize database with custom logger
 	db, err := database.ConnectWithLogger(cfg.Database, appLogger)
 	if err != nil {
@@ -70,8 +75,12 @@ func main() {
 	}))
 	app.Use(middleware.RequestLogger(appLogger))
 
-	// WebSocket endpoint
+	// WebSocket endpoints
 	app.Get("/ws", websocket.Handler(wsHub, cfg.JWT.Secret))
+
+	// Terminal WebSocket endpoint
+	terminalHandler := websocket.NewTerminalHandler(db, cfg.JWT.Secret, *appLogger)
+	app.Get("/terminal/ws", terminalHandler.Handler())
 
 	// API routes
 	api := app.Group("/api")
