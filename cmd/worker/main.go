@@ -62,6 +62,7 @@ func main() {
 
 	// Create job handlers
 	serverJobHandler := serverjobs.NewHandler(db, wsHub, appLogger)
+	installDatabaseJob := serverjobs.NewInstallDatabaseJob(db, wsHub, appLogger)
 	siteJobHandler := sitejobs.NewHandler(db, wsHub, appLogger)
 
 	// Register handlers
@@ -71,7 +72,7 @@ func main() {
 	mux.HandleFunc(serverjobs.TypeProvision, serverJobHandler.HandleProvision)
 	mux.HandleFunc(serverjobs.TypeInstallPHP, serverJobHandler.HandleInstallPHP)
 	mux.HandleFunc(serverjobs.TypeConfigureFirewall, serverJobHandler.HandleConfigureFirewall)
-	mux.HandleFunc(serverjobs.TypeInstallDatabase, serverJobHandler.HandleInstallDatabase)
+	mux.HandleFunc(serverjobs.TypeInstallDatabase, installDatabaseJob.Handle)
 	mux.HandleFunc(serverjobs.TypeReboot, serverJobHandler.HandleReboot)
 
 	// Site jobs

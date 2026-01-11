@@ -11,28 +11,30 @@ import (
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
-// Task types
+// Legacy task types - kept for backward compatibility
+// Use the individual job type constants instead (e.g., TypeProvisionServer)
 const (
-	TypeProvision         = "server:provision"
-	TypeInstallPHP        = "server:install_php"
-	TypeConfigureFirewall = "server:configure_firewall"
-	TypeInstallDatabase   = "server:install_database"
-	TypeReboot            = "server:reboot"
+	TypeProvision         = "server:provision"          // Deprecated: Use TypeProvisionServer
+	TypeInstallPHP        = "server:install_php"        // Deprecated: Use TypeAddPhpVersion
+	TypeConfigureFirewall = "server:configure_firewall" // Use firewall rule jobs instead
+	TypeReboot = "server:reboot"
 	TypeDelete            = "server:delete"
-	TypeInstallService    = "server:install_service"
+	TypeInstallService    = "server:install_service" // Deprecated: Use TypeAddService
 	TypeServiceOperation  = "server:service_operation"
-	TypeFirewallRule      = "server:firewall_rule"
-	TypeCron              = "server:cron"
-	TypeDaemon            = "server:daemon"
-	TypeSshKey            = "server:ssh_key"
+	TypeFirewallRule      = "server:firewall_rule" // Deprecated: Use TypeInstallFirewallRule
+	TypeCron              = "server:cron"          // Deprecated: Use TypeInstallCron
+	TypeDaemon            = "server:daemon"        // Deprecated: Use TypeInstallDaemon
+	TypeSshKey            = "server:ssh_key"       // Deprecated: Use TypeAddSshKey/TypeRemoveSshKey
 )
 
+// Handler provides legacy job handling (deprecated - use individual job handlers)
 type Handler struct {
 	db     *gorm.DB
 	ws     *websocket.Hub
 	logger *zerolog.Logger
 }
 
+// NewHandler creates a new handler (deprecated - use NewRegistry instead)
 func NewHandler(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *Handler {
 	return &Handler{
 		db:     db,
@@ -41,153 +43,22 @@ func NewHandler(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *Handler
 	}
 }
 
-// Provision Task
-type ProvisionPayload struct {
-	ServerID string `json:"server_id"`
-	TeamID   string `json:"team_id"`
-}
-
-func NewProvisionTask(serverID, teamID string) (*asynq.Task, error) {
-	payload, err := json.Marshal(ProvisionPayload{
-		ServerID: serverID,
-		TeamID:   teamID,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return asynq.NewTask(TypeProvision, payload), nil
-}
-
-func (h *Handler) HandleProvision(ctx context.Context, t *asynq.Task) error {
-	var payload ProvisionPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return err
-	}
-
-	h.logger.Info().Str("server_id", payload.ServerID).Msg("Starting server provision")
-
-	// Broadcast progress
-	h.broadcastProgress(payload.ServerID, "provisioning", "Creating server instance...")
-
-	// TODO: Implement actual provisioning logic
-	// 1. Create server on cloud provider
-	// 2. Wait for server to be ready
-	// 3. Connect via SSH
-	// 4. Run provisioning scripts
-	// 5. Install PHP, web server, database
-	// 6. Configure firewall
-	// 7. Update server status
-
-	h.broadcastProgress(payload.ServerID, "active", "Server provisioned successfully")
-
-	return nil
-}
-
-// Install PHP Task
-type InstallPHPPayload struct {
-	ServerID   string `json:"server_id"`
-	PHPVersion string `json:"php_version"`
-}
-
-func NewInstallPHPTask(serverID, phpVersion string) (*asynq.Task, error) {
-	payload, err := json.Marshal(InstallPHPPayload{
-		ServerID:   serverID,
-		PHPVersion: phpVersion,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return asynq.NewTask(TypeInstallPHP, payload), nil
-}
-
-func (h *Handler) HandleInstallPHP(ctx context.Context, t *asynq.Task) error {
-	var payload InstallPHPPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return err
-	}
-
-	h.logger.Info().
-		Str("server_id", payload.ServerID).
-		Str("php_version", payload.PHPVersion).
-		Msg("Installing PHP version")
-
-	// TODO: Implement PHP installation
-
-	return nil
-}
-
-// Configure Firewall Task
-type ConfigureFirewallPayload struct {
-	ServerID string `json:"server_id"`
-}
-
-func NewConfigureFirewallTask(serverID string) (*asynq.Task, error) {
-	payload, err := json.Marshal(ConfigureFirewallPayload{ServerID: serverID})
-	if err != nil {
-		return nil, err
-	}
-	return asynq.NewTask(TypeConfigureFirewall, payload), nil
-}
-
-func (h *Handler) HandleConfigureFirewall(ctx context.Context, t *asynq.Task) error {
-	var payload ConfigureFirewallPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return err
-	}
-
-	h.logger.Info().Str("server_id", payload.ServerID).Msg("Configuring firewall")
-
-	// TODO: Implement firewall configuration
-
-	return nil
-}
-
-// Install Database Task
-type InstallDatabasePayload struct {
-	ServerID     string `json:"server_id"`
-	DatabaseType string `json:"database_type"`
-}
-
-func NewInstallDatabaseTask(serverID, databaseType string) (*asynq.Task, error) {
-	payload, err := json.Marshal(InstallDatabasePayload{
-		ServerID:     serverID,
-		DatabaseType: databaseType,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return asynq.NewTask(TypeInstallDatabase, payload), nil
-}
-
-func (h *Handler) HandleInstallDatabase(ctx context.Context, t *asynq.Task) error {
-	var payload InstallDatabasePayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return err
-	}
-
-	h.logger.Info().
-		Str("server_id", payload.ServerID).
-		Str("database_type", payload.DatabaseType).
-		Msg("Installing database")
-
-	// TODO: Implement database installation
-
-	return nil
-}
-
-// Reboot Task
+// RebootPayload contains data for rebooting a server
 type RebootPayload struct {
 	ServerID string `json:"server_id"`
 }
 
+// NewRebootTask creates a new asynq task for rebooting a server
 func NewRebootTask(serverID string) (*asynq.Task, error) {
 	payload, err := json.Marshal(RebootPayload{ServerID: serverID})
 	if err != nil {
 		return nil, err
 	}
+
 	return asynq.NewTask(TypeReboot, payload), nil
 }
 
+// HandleReboot handles a server reboot task
 func (h *Handler) HandleReboot(ctx context.Context, t *asynq.Task) error {
 	var payload RebootPayload
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
@@ -201,12 +72,13 @@ func (h *Handler) HandleReboot(ctx context.Context, t *asynq.Task) error {
 	return nil
 }
 
-// Delete Task
+// DeletePayload contains data for deleting a server
 type DeletePayload struct {
 	ServerID string `json:"server_id"`
 	TeamID   string `json:"team_id"`
 }
 
+// NewDeleteTask creates a new asynq task for deleting a server
 func NewDeleteTask(serverID, teamID string) (*asynq.Task, error) {
 	payload, err := json.Marshal(DeletePayload{
 		ServerID: serverID,
@@ -215,9 +87,11 @@ func NewDeleteTask(serverID, teamID string) (*asynq.Task, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	return asynq.NewTask(TypeDelete, payload), nil
 }
 
+// HandleDelete handles a server deletion task
 func (h *Handler) HandleDelete(ctx context.Context, t *asynq.Task) error {
 	var payload DeletePayload
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
@@ -231,49 +105,80 @@ func (h *Handler) HandleDelete(ctx context.Context, t *asynq.Task) error {
 	return nil
 }
 
-// Install Service Task
-type InstallServicePayload struct {
-	ServerID  string `json:"server_id"`
-	ServiceID string `json:"service_id"`
-	Software  string `json:"software"`
+// ConfigureFirewallPayload contains data for configuring firewall
+type ConfigureFirewallPayload struct {
+	ServerID string `json:"server_id"`
 }
 
-func NewInstallServiceTask(serverID, serviceID, software string) (*asynq.Task, error) {
-	payload, err := json.Marshal(InstallServicePayload{
-		ServerID:  serverID,
-		ServiceID: serviceID,
-		Software:  software,
-	})
+// NewConfigureFirewallTask creates a new asynq task for configuring firewall
+func NewConfigureFirewallTask(serverID string) (*asynq.Task, error) {
+	payload, err := json.Marshal(ConfigureFirewallPayload{ServerID: serverID})
 	if err != nil {
 		return nil, err
 	}
-	return asynq.NewTask(TypeInstallService, payload), nil
+
+	return asynq.NewTask(TypeConfigureFirewall, payload), nil
 }
 
-func (h *Handler) HandleInstallService(ctx context.Context, t *asynq.Task) error {
-	var payload InstallServicePayload
+// HandleConfigureFirewall handles a firewall configuration task
+func (h *Handler) HandleConfigureFirewall(ctx context.Context, t *asynq.Task) error {
+	var payload ConfigureFirewallPayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return err
+	}
+
+	h.logger.Info().Str("server_id", payload.ServerID).Msg("Configuring firewall")
+
+	// TODO: Implement firewall configuration
+
+	return nil
+}
+
+// HandleProvision handles a server provisioning task
+func (h *Handler) HandleProvision(ctx context.Context, t *asynq.Task) error {
+	var payload ProvisionTaskPayload
+	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
+		return err
+	}
+
+	h.logger.Info().Str("server_id", payload.ServerID).Msg("Provisioning server")
+
+	// TODO: Implement server provisioning
+
+	return nil
+}
+
+// InstallPHPPayload contains data for PHP installation
+type InstallPHPPayload struct {
+	ServerID   string `json:"server_id"`
+	PHPVersion string `json:"php_version"`
+}
+
+// HandleInstallPHP handles a PHP installation task
+func (h *Handler) HandleInstallPHP(ctx context.Context, t *asynq.Task) error {
+	var payload InstallPHPPayload
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
 		return err
 	}
 
 	h.logger.Info().
 		Str("server_id", payload.ServerID).
-		Str("service_id", payload.ServiceID).
-		Str("software", payload.Software).
-		Msg("Installing service")
+		Str("php_version", payload.PHPVersion).
+		Msg("Installing PHP")
 
-	// TODO: Implement service installation
+	// TODO: Implement PHP installation
 
 	return nil
 }
 
-// Service Operation Task (start, stop, restart, remove, status)
+// ServiceOperationPayload contains data for service operations
 type ServiceOperationPayload struct {
 	ServerID  string `json:"server_id"`
 	ServiceID string `json:"service_id"`
 	Operation string `json:"operation"`
 }
 
+// NewServiceOperationTask creates a new asynq task for service operations
 func NewServiceOperationTask(serverID, serviceID, operation string) (*asynq.Task, error) {
 	payload, err := json.Marshal(ServiceOperationPayload{
 		ServerID:  serverID,
@@ -283,9 +188,11 @@ func NewServiceOperationTask(serverID, serviceID, operation string) (*asynq.Task
 	if err != nil {
 		return nil, err
 	}
+
 	return asynq.NewTask(TypeServiceOperation, payload), nil
 }
 
+// HandleServiceOperation handles a service operation task
 func (h *Handler) HandleServiceOperation(ctx context.Context, t *asynq.Task) error {
 	var payload ServiceOperationPayload
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
@@ -303,155 +210,137 @@ func (h *Handler) HandleServiceOperation(ctx context.Context, t *asynq.Task) err
 	return nil
 }
 
-// Firewall Rule Task
-type FirewallRulePayload struct {
-	ServerID  string `json:"server_id"`
-	RuleID    string `json:"rule_id"`
-	Operation string `json:"operation"`
-}
-
-func NewFirewallRuleTask(serverID, ruleID, operation string) (*asynq.Task, error) {
-	payload, err := json.Marshal(FirewallRulePayload{
-		ServerID:  serverID,
-		RuleID:    ruleID,
-		Operation: operation,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return asynq.NewTask(TypeFirewallRule, payload), nil
-}
-
-func (h *Handler) HandleFirewallRule(ctx context.Context, t *asynq.Task) error {
-	var payload FirewallRulePayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return err
-	}
-
-	h.logger.Info().
-		Str("server_id", payload.ServerID).
-		Str("rule_id", payload.RuleID).
-		Str("operation", payload.Operation).
-		Msg("Firewall rule operation")
-
-	// TODO: Implement firewall rule operations
-
-	return nil
-}
-
-// Cron Task
-type CronPayload struct {
-	ServerID  string `json:"server_id"`
-	CronID    string `json:"cron_id"`
-	Operation string `json:"operation"`
-}
-
-func NewCronTask(serverID, cronID, operation string) (*asynq.Task, error) {
-	payload, err := json.Marshal(CronPayload{
-		ServerID:  serverID,
-		CronID:    cronID,
-		Operation: operation,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return asynq.NewTask(TypeCron, payload), nil
-}
-
-func (h *Handler) HandleCron(ctx context.Context, t *asynq.Task) error {
-	var payload CronPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return err
-	}
-
-	h.logger.Info().
-		Str("server_id", payload.ServerID).
-		Str("cron_id", payload.CronID).
-		Str("operation", payload.Operation).
-		Msg("Cron operation")
-
-	// TODO: Implement cron operations
-
-	return nil
-}
-
-// Daemon Task
-type DaemonPayload struct {
-	ServerID  string `json:"server_id"`
-	DaemonID  string `json:"daemon_id"`
-	Operation string `json:"operation"`
-}
-
-func NewDaemonTask(serverID, daemonID, operation string) (*asynq.Task, error) {
-	payload, err := json.Marshal(DaemonPayload{
-		ServerID:  serverID,
-		DaemonID:  daemonID,
-		Operation: operation,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return asynq.NewTask(TypeDaemon, payload), nil
-}
-
-func (h *Handler) HandleDaemon(ctx context.Context, t *asynq.Task) error {
-	var payload DaemonPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return err
-	}
-
-	h.logger.Info().
-		Str("server_id", payload.ServerID).
-		Str("daemon_id", payload.DaemonID).
-		Str("operation", payload.Operation).
-		Msg("Daemon operation")
-
-	// TODO: Implement daemon operations
-
-	return nil
-}
-
-// SSH Key Task
-type SshKeyPayload struct {
-	ServerID  string `json:"server_id"`
-	SshKeyID  string `json:"ssh_key_id"`
-	Operation string `json:"operation"`
-}
-
-func NewSshKeyTask(serverID, sshKeyID, operation string) (*asynq.Task, error) {
-	payload, err := json.Marshal(SshKeyPayload{
-		ServerID:  serverID,
-		SshKeyID:  sshKeyID,
-		Operation: operation,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return asynq.NewTask(TypeSshKey, payload), nil
-}
-
-func (h *Handler) HandleSshKey(ctx context.Context, t *asynq.Task) error {
-	var payload SshKeyPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return err
-	}
-
-	h.logger.Info().
-		Str("server_id", payload.ServerID).
-		Str("ssh_key_id", payload.SshKeyID).
-		Str("operation", payload.Operation).
-		Msg("SSH key operation")
-
-	// TODO: Implement SSH key operations
-
-	return nil
-}
-
-// Helper methods
+// broadcastProgress sends a progress update via WebSocket
 func (h *Handler) broadcastProgress(serverID, status, message string) {
 	h.ws.BroadcastToServer(serverID, "server.progress", map[string]interface{}{
 		"server_id": serverID,
 		"status":    status,
 		"message":   message,
 	})
+}
+
+// Convenience functions for services
+
+// CronTaskPayload contains data for cron tasks
+type CronTaskPayload struct {
+	ServerID string `json:"server_id"`
+	CronID   string `json:"cron_id"`
+	Action   string `json:"action"`
+}
+
+// NewCronTask creates a new cron task (install or uninstall)
+func NewCronTask(serverID, cronID, action string) (*asynq.Task, error) {
+	payload, err := json.Marshal(CronTaskPayload{
+		ServerID: serverID,
+		CronID:   cronID,
+		Action:   action,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return asynq.NewTask(TypeCron, payload), nil
+}
+
+// DaemonTaskPayload contains data for daemon tasks
+type DaemonTaskPayload struct {
+	ServerID string `json:"server_id"`
+	DaemonID string `json:"daemon_id"`
+	Action   string `json:"action"`
+}
+
+// NewDaemonTask creates a new daemon task (install or uninstall)
+func NewDaemonTask(serverID, daemonID, action string) (*asynq.Task, error) {
+	payload, err := json.Marshal(DaemonTaskPayload{
+		ServerID: serverID,
+		DaemonID: daemonID,
+		Action:   action,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return asynq.NewTask(TypeDaemon, payload), nil
+}
+
+// FirewallRuleTaskPayload contains data for firewall rule tasks
+type FirewallRuleTaskPayload struct {
+	ServerID string `json:"server_id"`
+	RuleID   string `json:"rule_id"`
+	Action   string `json:"action"`
+}
+
+// NewFirewallRuleTask creates a new firewall rule task (install or uninstall)
+func NewFirewallRuleTask(serverID, ruleID, action string) (*asynq.Task, error) {
+	payload, err := json.Marshal(FirewallRuleTaskPayload{
+		ServerID: serverID,
+		RuleID:   ruleID,
+		Action:   action,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return asynq.NewTask(TypeFirewallRule, payload), nil
+}
+
+// InstallServiceTaskPayload contains data for service installation
+type InstallServiceTaskPayload struct {
+	ServerID  string `json:"server_id"`
+	ServiceID string `json:"service_id"`
+	Software  string `json:"software"`
+}
+
+// NewInstallServiceTask creates a new service installation task
+func NewInstallServiceTask(serverID, serviceID, software string) (*asynq.Task, error) {
+	payload, err := json.Marshal(InstallServiceTaskPayload{
+		ServerID:  serverID,
+		ServiceID: serviceID,
+		Software:  software,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return asynq.NewTask(TypeInstallService, payload), nil
+}
+
+// ProvisionTaskPayload contains data for server provisioning
+type ProvisionTaskPayload struct {
+	ServerID string `json:"server_id"`
+	TeamID   string `json:"team_id"`
+}
+
+// NewProvisionTask creates a new server provisioning task
+func NewProvisionTask(serverID, teamID string) (*asynq.Task, error) {
+	payload, err := json.Marshal(ProvisionTaskPayload{
+		ServerID: serverID,
+		TeamID:   teamID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return asynq.NewTask(TypeProvision, payload), nil
+}
+
+// SshKeyTaskPayload contains data for SSH key tasks
+type SshKeyTaskPayload struct {
+	ServerID string `json:"server_id"`
+	KeyID    string `json:"key_id"`
+	Action   string `json:"action"`
+}
+
+// NewSshKeyTask creates a new SSH key task (add or remove)
+func NewSshKeyTask(serverID, keyID, action string) (*asynq.Task, error) {
+	payload, err := json.Marshal(SshKeyTaskPayload{
+		ServerID: serverID,
+		KeyID:    keyID,
+		Action:   action,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	return asynq.NewTask(TypeSshKey, payload), nil
 }

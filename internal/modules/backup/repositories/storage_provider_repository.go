@@ -26,7 +26,7 @@ func (r *StorageProviderRepository) CreateStorageProvider(ctx context.Context, p
 }
 
 // FindStorageProviderByID finds a storage provider by ID
-func (r *StorageProviderRepository) FindStorageProviderByID(ctx context.Context, id uint) (*models.StorageProvider, error) {
+func (r *StorageProviderRepository) FindStorageProviderByID(ctx context.Context, id uint64) (*models.StorageProvider, error) {
 	var provider models.StorageProvider
 	err := r.db.WithContext(ctx).First(&provider, id).Error
 
@@ -94,12 +94,12 @@ func (r *StorageProviderRepository) UpdateStorageProvider(ctx context.Context, p
 }
 
 // DeleteStorageProvider deletes a storage provider
-func (r *StorageProviderRepository) DeleteStorageProvider(ctx context.Context, id uint) error {
+func (r *StorageProviderRepository) DeleteStorageProvider(ctx context.Context, id uint64) error {
 	return r.db.WithContext(ctx).Delete(&models.StorageProvider{}, id).Error
 }
 
 // StorageProviderExists checks if a storage provider exists
-func (r *StorageProviderRepository) StorageProviderExists(ctx context.Context, id uint) (bool, error) {
+func (r *StorageProviderRepository) StorageProviderExists(ctx context.Context, id uint64) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&models.StorageProvider{}).
@@ -110,7 +110,7 @@ func (r *StorageProviderRepository) StorageProviderExists(ctx context.Context, i
 }
 
 // HasBackupsForStorageProvider checks if a storage provider has any associated backups
-func (r *StorageProviderRepository) HasBackupsForStorageProvider(ctx context.Context, providerID uint) (bool, error) {
+func (r *StorageProviderRepository) HasBackupsForStorageProvider(ctx context.Context, providerID uint64) (bool, error) {
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&models.Backup{}).

@@ -21,7 +21,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns"
 	"github.com/kkz6/launch-go/internal/modules/server"
 	"github.com/kkz6/launch-go/internal/modules/site"
-	"github.com/kkz6/launch-go/internal/modules/team"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/taskrunner"
@@ -135,9 +134,6 @@ func (app *Application) registerAPIRoutes() {
 	// Initialize and register modules
 	authModule := auth.NewModule(app.db, app.config, app.logger)
 	authModule.RegisterRoutes(api)
-
-	teamModule := team.NewModule(app.db, app.logger)
-	teamModule.RegisterRoutes(api, authMiddleware)
 
 	serverModule := server.NewModule(app.db, app.queueClient, app.wsHub, app.dispatcher, app.logger)
 	serverModule.RegisterRoutes(api, authMiddleware)
