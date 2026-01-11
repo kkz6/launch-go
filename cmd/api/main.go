@@ -69,19 +69,19 @@ func main() {
 	}))
 	app.Use(middleware.RequestLogger(appLogger))
 
-	// Health check
-	app.Get("/health", func(c *fiber.Ctx) error {
-		return c.JSON(fiber.Map{
-			"status": "ok",
-			"time":   time.Now().UTC(),
-		})
-	})
-
 	// WebSocket endpoint
 	app.Get("/ws", websocket.Handler(wsHub, cfg.JWT.Secret))
 
 	// API routes
 	api := app.Group("/api")
+
+	// Health check
+	api.Get("/health", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"status": "ok",
+			"time":   time.Now().UTC(),
+		})
+	})
 
 	// Initialize modules
 	authModule := auth.NewModule(db, cfg, appLogger)
