@@ -61,10 +61,7 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 
 	if server.IsProvisioned() {
 		if err := s.dispatchDaemonInstallJob(server, daemon); err != nil {
-			s.logger.Error().Err(err).
-				Str("server_id", serverID).
-				Str("daemon_id", daemon.ID).
-				Msg("Failed to dispatch daemon install job")
+			s.LogError(err, "Failed to dispatch daemon install job", "server_id", serverID, "daemon_id", daemon.ID)
 		}
 	}
 
@@ -133,10 +130,7 @@ func (s *Service) DeleteDaemon(ctx context.Context, serverID, teamID, daemonID s
 		}
 
 		if err := s.dispatchDaemonUninstallJob(server, daemon); err != nil {
-			s.logger.Error().Err(err).
-				Str("server_id", serverID).
-				Str("daemon_id", daemonID).
-				Msg("Failed to dispatch daemon uninstall job")
+			s.LogError(err, "Failed to dispatch daemon uninstall job", "server_id", serverID, "daemon_id", daemonID)
 		}
 
 		return nil
@@ -146,7 +140,7 @@ func (s *Service) DeleteDaemon(ctx context.Context, serverID, teamID, daemonID s
 }
 
 func (s *Service) dispatchDaemonInstallJob(server *models.Server, daemon *models.Daemon) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -155,13 +149,11 @@ func (s *Service) dispatchDaemonInstallJob(server *models.Server, daemon *models
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }
 
 func (s *Service) dispatchDaemonUninstallJob(server *models.Server, daemon *models.Daemon) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -170,7 +162,5 @@ func (s *Service) dispatchDaemonUninstallJob(server *models.Server, daemon *mode
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }

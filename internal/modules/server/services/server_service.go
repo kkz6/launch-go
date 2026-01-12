@@ -109,7 +109,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 
 	if provider != enums.ProviderCustom {
 		if err := s.dispatchProvisionJob(server); err != nil {
-			s.logger.Error().Err(err).Str("server_id", server.ID).Msg("Failed to dispatch provision job")
+			s.LogError(err, "Failed to dispatch provision job", "server_id", server.ID)
 		}
 	}
 
@@ -161,7 +161,7 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID string) error {
 
 	if server.Provider != enums.ProviderCustom {
 		if err := s.dispatchDeleteJob(server); err != nil {
-			s.logger.Error().Err(err).Str("server_id", server.ID).Msg("Failed to dispatch delete job")
+			s.LogError(err, "Failed to dispatch delete job", "server_id", server.ID)
 		}
 	}
 
@@ -203,9 +203,7 @@ func (s *Service) RebootServer(ctx context.Context, id, teamID string) error {
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }
 
 // ConnectServer tests the connection to a server
@@ -325,13 +323,11 @@ func (s *Service) GetShowPageData(ctx context.Context, serverID, teamID string) 
 }
 
 func (s *Service) broadcastServerUpdate(server *models.Server) {
-	if s.ws != nil {
-		s.ws.BroadcastToTeam(server.TeamID, "server.updated", dto.ToServerResponse(server))
-	}
+	s.BroadcastToTeam(server.TeamID, "server.updated", dto.ToServerResponse(server))
 }
 
 func (s *Service) dispatchProvisionJob(server *models.Server) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -340,13 +336,11 @@ func (s *Service) dispatchProvisionJob(server *models.Server) error {
 		return err
 	}
 
-	_, err = s.queue.EnqueueCritical(task)
-
-	return err
+	return s.EnqueueTaskWithOptions(task)
 }
 
 func (s *Service) dispatchDeleteJob(server *models.Server) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -355,9 +349,7 @@ func (s *Service) dispatchDeleteJob(server *models.Server) error {
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }
 
 func generateSSHKeyPair() (string, string, error) {

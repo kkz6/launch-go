@@ -6,12 +6,14 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // BaseService provides common service dependencies
 type BaseService struct {
+	service.Base
 	siteRepo        *repositories.SiteRepository
 	deploymentRepo  *repositories.DeploymentRepository
 	certificateRepo *repositories.CertificateRepository
@@ -19,9 +21,6 @@ type BaseService struct {
 	commandRepo     *repositories.CommandRepository
 	redirectRepo    *repositories.RedirectRepository
 	releaseRepo     *repositories.ReleaseRepository
-	queue           *queue.Client
-	ws              *websocket.Hub
-	logger          *zerolog.Logger
 }
 
 // NewBaseService creates a new base service
@@ -38,6 +37,7 @@ func NewBaseService(
 	logger *zerolog.Logger,
 ) *BaseService {
 	return &BaseService{
+		Base:            service.NewBase(queueClient, ws, logger),
 		siteRepo:        siteRepo,
 		deploymentRepo:  deploymentRepo,
 		certificateRepo: certificateRepo,
@@ -45,9 +45,6 @@ func NewBaseService(
 		commandRepo:     commandRepo,
 		redirectRepo:    redirectRepo,
 		releaseRepo:     releaseRepo,
-		queue:           queueClient,
-		ws:              ws,
-		logger:          logger,
 	}
 }
 

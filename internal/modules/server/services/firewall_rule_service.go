@@ -47,10 +47,7 @@ func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID strin
 
 	if server.IsProvisioned() {
 		if err := s.dispatchFirewallRuleInstallJob(server, rule); err != nil {
-			s.logger.Error().Err(err).
-				Str("server_id", serverID).
-				Str("rule_id", rule.ID).
-				Msg("Failed to dispatch firewall rule install job")
+			s.LogError(err, "Failed to dispatch firewall rule install job", "server_id", serverID, "rule_id", rule.ID)
 		}
 	}
 
@@ -124,10 +121,7 @@ func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, rule
 		}
 
 		if err := s.dispatchFirewallRuleUninstallJob(server, rule); err != nil {
-			s.logger.Error().Err(err).
-				Str("server_id", serverID).
-				Str("rule_id", ruleID).
-				Msg("Failed to dispatch firewall rule uninstall job")
+			s.LogError(err, "Failed to dispatch firewall rule uninstall job", "server_id", serverID, "rule_id", ruleID)
 		}
 
 		return nil
@@ -137,7 +131,7 @@ func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, rule
 }
 
 func (s *Service) dispatchFirewallRuleInstallJob(server *models.Server, rule *models.FirewallRule) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -146,13 +140,11 @@ func (s *Service) dispatchFirewallRuleInstallJob(server *models.Server, rule *mo
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }
 
 func (s *Service) dispatchFirewallRuleUninstallJob(server *models.Server, rule *models.FirewallRule) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -161,7 +153,5 @@ func (s *Service) dispatchFirewallRuleUninstallJob(server *models.Server, rule *
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }

@@ -71,10 +71,7 @@ func (s *CommandService) Create(ctx context.Context, siteID, serverID, userID st
 
 	// TODO: Dispatch command execution job
 
-	s.logger.Info().
-		Str("site_id", site.ID).
-		Str("command_id", cmd.ID).
-		Msg("Command created")
+	s.LogInfo("Command created", "site_id", site.ID, "command_id", cmd.ID)
 
 	return cmd, nil
 }

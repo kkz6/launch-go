@@ -51,10 +51,7 @@ func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *
 
 	if server.IsProvisioned() {
 		if err := s.dispatchCronInstallJob(server, cron); err != nil {
-			s.logger.Error().Err(err).
-				Str("server_id", serverID).
-				Str("cron_id", cron.ID).
-				Msg("Failed to dispatch cron install job")
+			s.LogError(err, "Failed to dispatch cron install job", "server_id", serverID, "cron_id", cron.ID)
 		}
 	}
 
@@ -115,10 +112,7 @@ func (s *Service) DeleteCron(ctx context.Context, serverID, teamID, cronID strin
 		}
 
 		if err := s.dispatchCronUninstallJob(server, cron); err != nil {
-			s.logger.Error().Err(err).
-				Str("server_id", serverID).
-				Str("cron_id", cronID).
-				Msg("Failed to dispatch cron uninstall job")
+			s.LogError(err, "Failed to dispatch cron uninstall job", "server_id", serverID, "cron_id", cronID)
 		}
 
 		return nil
@@ -128,7 +122,7 @@ func (s *Service) DeleteCron(ctx context.Context, serverID, teamID, cronID strin
 }
 
 func (s *Service) dispatchCronInstallJob(server *models.Server, cron *models.Cron) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -137,13 +131,11 @@ func (s *Service) dispatchCronInstallJob(server *models.Server, cron *models.Cro
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }
 
 func (s *Service) dispatchCronUninstallJob(server *models.Server, cron *models.Cron) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -152,7 +144,5 @@ func (s *Service) dispatchCronUninstallJob(server *models.Server, cron *models.C
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }

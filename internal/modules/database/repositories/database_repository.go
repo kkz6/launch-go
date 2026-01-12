@@ -11,7 +11,7 @@ import (
 
 // Create creates a new database
 func (r *Repository) Create(ctx context.Context, database *models.Database) error {
-	return r.db.WithContext(ctx).Create(database).Error
+	return r.database.Create(ctx, database)
 }
 
 // FindByID finds a database by ID
@@ -95,32 +95,37 @@ func (r *Repository) FindByUser(ctx context.Context, userID string) ([]models.Da
 
 // Update updates a database
 func (r *Repository) Update(ctx context.Context, database *models.Database) error {
-	return r.db.WithContext(ctx).Save(database).Error
+	return r.database.Update(ctx, database)
 }
 
 // UpdateFields updates specific fields of a database
 func (r *Repository) UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error {
-	return r.db.WithContext(ctx).
-		Model(&models.Database{}).
-		Where("id = ?", id).
-		Updates(fields).Error
+	return r.database.UpdateFields(ctx, id, fields)
 }
 
 // Delete deletes a database
 func (r *Repository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.Database{}, "id = ?", id).Error
+	return r.database.Delete(ctx, id)
 }
 
 // ExistsByNameAndServer checks if a database exists with the given name on the server
 func (r *Repository) ExistsByNameAndServer(ctx context.Context, name, serverID string) (bool, error) {
-	var count int64
+	return r.database.ExistsByNameAndServer(ctx, name, serverID)
+}
 
-	err := r.db.WithContext(ctx).
-		Model(&models.Database{}).
-		Where("name = ? AND server_id = ?", name, serverID).
-		Count(&count).Error
+// MarkAsInstalled marks a database as installed
+func (r *Repository) MarkAsInstalled(ctx context.Context, id string) error {
+	return r.database.MarkAsInstalled(ctx, id)
+}
 
-	return count > 0, err
+// MarkAsFailed marks a database installation as failed
+func (r *Repository) MarkAsFailed(ctx context.Context, id string) error {
+	return r.database.MarkAsFailed(ctx, id)
+}
+
+// MarkAsUninstalling marks a database as being uninstalled
+func (r *Repository) MarkAsUninstalling(ctx context.Context, id string) error {
+	return r.database.MarkAsUninstalling(ctx, id)
 }
 
 // AttachUser attaches a database user to a database

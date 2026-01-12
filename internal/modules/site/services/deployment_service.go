@@ -127,17 +127,11 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 		return nil, err
 	}
 
-	if s.queue != nil {
-		if _, err := s.queue.EnqueueDefault(task); err != nil {
-			s.logger.Error().Err(err).Str("deployment_id", deployment.ID).Msg("Failed to enqueue rollback job")
-		}
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue rollback job", "deployment_id", deployment.ID)
 	}
 
-	s.logger.Info().
-		Str("site_id", site.ID).
-		Str("deployment_id", deployment.ID).
-		Str("target_deployment_id", targetDeploymentID).
-		Msg("Rollback initiated")
+	s.LogInfo("Rollback initiated", "site_id", site.ID, "deployment_id", deployment.ID, "target_deployment_id", targetDeploymentID)
 
 	return deployment, nil
 }
@@ -165,10 +159,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 				return nil, err
 			}
 
-			s.logger.Info().
-				Str("site_id", site.ID).
-				Str("deployment_id", deployment.ID).
-				Msg("Deployment queued")
+			s.LogInfo("Deployment queued", "site_id", site.ID, "deployment_id", deployment.ID)
 
 			return deployment, nil
 		}
@@ -206,16 +197,11 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 		return nil, dispatchErr
 	}
 
-	if s.queue != nil {
-		if _, err := s.queue.EnqueueDefault(task); err != nil {
-			s.logger.Error().Err(err).Str("deployment_id", deployment.ID).Msg("Failed to enqueue deployment job")
-		}
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue deployment job", "deployment_id", deployment.ID)
 	}
 
-	s.logger.Info().
-		Str("site_id", site.ID).
-		Str("deployment_id", deployment.ID).
-		Msg("Deployment started")
+	s.LogInfo("Deployment started", "site_id", site.ID, "deployment_id", deployment.ID)
 
 	return deployment, nil
 }
@@ -284,10 +270,8 @@ func (s *DeploymentService) ProcessNextQueued(ctx context.Context, siteID string
 		return nil, dispatchErr
 	}
 
-	if s.queue != nil {
-		if _, err := s.queue.EnqueueDefault(task); err != nil {
-			s.logger.Error().Err(err).Str("deployment_id", deployment.ID).Msg("Failed to enqueue deployment job")
-		}
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue deployment job", "deployment_id", deployment.ID)
 	}
 
 	return deployment, nil
@@ -333,7 +317,7 @@ func (s *DeploymentService) DisableAutoDeployment(ctx context.Context, siteID, s
 
 // BroadcastProgress broadcasts deployment progress
 func (s *DeploymentService) BroadcastProgress(siteID, deploymentID, status, message string) {
-	s.ws.BroadcastToDeployment(deploymentID, "deployment.progress", map[string]interface{}{
+	s.BroadcastToDeployment(deploymentID, "deployment.progress", map[string]interface{}{
 		"site_id":       siteID,
 		"deployment_id": deploymentID,
 		"status":        status,
