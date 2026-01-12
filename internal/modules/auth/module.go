@@ -104,6 +104,9 @@ func (m *Module) registerProtectedRoutes(router fiber.Router) {
 
 // registerTeamRoutes registers team management routes
 func (m *Module) registerTeamRoutes(router fiber.Router, adapter *MiddlewareAdapter) {
+	// List all teams for current user
+	router.Get("/", m.handler.Team.GetUserTeams)
+
 	// Team CRUD
 	router.Post("/", m.handler.Team.CreateTeam)
 	router.Get("/:teamId", middleware.TeamMember(adapter), m.handler.Team.GetTeam)

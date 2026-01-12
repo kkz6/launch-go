@@ -16,9 +16,9 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/database"
-	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/auth"
+	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/dns"
 	"github.com/kkz6/launch-go/internal/modules/server"
 	"github.com/kkz6/launch-go/internal/modules/site"
