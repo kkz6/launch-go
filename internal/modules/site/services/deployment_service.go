@@ -97,24 +97,18 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 		"rollback_to":   targetDeployment.ID,
 	}
 
-	if targetDeployment.CommitData != nil && *targetDeployment.CommitData != "" {
-		existingData := targetDeployment.GetCommitData()
-		for k, v := range existingData {
-			if k != "rollback_from" && k != "rollback_to" {
-				commitData[k] = v
-			}
+	for k, v := range targetDeployment.CommitData {
+		if k != "rollback_from" && k != "rollback_to" {
+			commitData[k] = v
 		}
 	}
 
 	deployment := &models.Deployment{
-		SiteID:  site.ID,
-		UserID:  &userID,
-		Status:  enums.DeploymentStatusPending,
-		GitHash: targetDeployment.GitHash,
-	}
-
-	if err := deployment.SetCommitData(commitData); err != nil {
-		return nil, err
+		SiteID:     site.ID,
+		UserID:     &userID,
+		Status:     enums.DeploymentStatusPending,
+		GitHash:    targetDeployment.GitHash,
+		CommitData: commitData,
 	}
 
 	if err := s.deploymentRepo.Create(ctx, deployment); err != nil {
@@ -144,15 +138,10 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 		if site.QueueDeployments {
 			// Queue the deployment
 			deployment := &models.Deployment{
-				SiteID: site.ID,
-				UserID: &userID,
-				Status: enums.DeploymentStatusQueued,
-			}
-
-			if commitData != nil {
-				if err := deployment.SetCommitData(commitData); err != nil {
-					return nil, err
-				}
+				SiteID:     site.ID,
+				UserID:     &userID,
+				Status:     enums.DeploymentStatusQueued,
+				CommitData: commitData,
 			}
 
 			if err := s.deploymentRepo.Create(ctx, deployment); err != nil {
@@ -168,15 +157,10 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 	}
 
 	deployment := &models.Deployment{
-		SiteID: site.ID,
-		UserID: &userID,
-		Status: enums.DeploymentStatusPending,
-	}
-
-	if commitData != nil {
-		if err := deployment.SetCommitData(commitData); err != nil {
-			return nil, err
-		}
+		SiteID:     site.ID,
+		UserID:     &userID,
+		Status:     enums.DeploymentStatusPending,
+		CommitData: commitData,
 	}
 
 	if err := s.deploymentRepo.Create(ctx, deployment); err != nil {

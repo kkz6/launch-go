@@ -1,8 +1,6 @@
 package models
 
 import (
-	"encoding/json"
-
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
@@ -14,7 +12,7 @@ type InstalledService struct {
 	basemodels.BaseModel
 	ServerID  string              `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
 	Type      enums.ServiceType   `gorm:"type:varchar(255);not null" json:"type"`
-	TypeData  *string             `gorm:"type:json" json:"-"`
+	TypeData  basemodels.JSONMap  `gorm:"type:json" json:"-"`
 	Name      string              `gorm:"type:varchar(255);not null" json:"name"`
 	Version   string              `gorm:"type:varchar(255);not null" json:"version"`
 	Status    enums.ServiceStatus `gorm:"type:varchar(255);not null" json:"status"`
@@ -50,29 +48,4 @@ func (s *InstalledService) GetFormattedVersion() string {
 	}
 
 	return ""
-}
-
-func (s *InstalledService) GetTypeData() map[string]interface{} {
-	if s.TypeData == nil {
-		return nil
-	}
-
-	var data map[string]interface{}
-	if err := json.Unmarshal([]byte(*s.TypeData), &data); err != nil {
-		return nil
-	}
-
-	return data
-}
-
-func (s *InstalledService) SetTypeData(data map[string]interface{}) error {
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-
-	str := string(jsonData)
-	s.TypeData = &str
-
-	return nil
 }

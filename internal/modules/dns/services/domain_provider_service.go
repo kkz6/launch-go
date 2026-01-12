@@ -72,21 +72,13 @@ func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, team
 
 	// Create domain provider record
 	dp := &models.DomainProvider{
-		UserID:    userID,
-		TeamID:    &teamID,
-		Profile:   &req.Profile,
-		Provider:  providerType,
-		Connected: true,
-	}
-
-	if err := dp.SetCredentials(credentials); err != nil {
-		return nil, err
-	}
-
-	if additionalData != nil {
-		if err := dp.SetAdditionalData(additionalData); err != nil {
-			return nil, err
-		}
+		UserID:         userID,
+		TeamID:         &teamID,
+		Profile:        &req.Profile,
+		Provider:       providerType,
+		Connected:      true,
+		Credentials:    credentials,
+		AdditionalData: additionalData,
 	}
 
 	if err := s.providerRepo.Create(ctx, dp); err != nil {
@@ -157,17 +149,7 @@ func (s *DomainProviderService) CheckProviderConnectivity(ctx context.Context, i
 		return err
 	}
 
-	credentials, err := dp.GetCredentials()
-	if err != nil {
-		return err
-	}
-
-	additionalData, err := dp.GetAdditionalData()
-	if err != nil {
-		return err
-	}
-
-	provider, err := providers.NewProvider(providers.DnsProviderType(dp.Provider), credentials, additionalData)
+	provider, err := providers.NewProvider(providers.DnsProviderType(dp.Provider), dp.Credentials, dp.AdditionalData)
 	if err != nil {
 		return err
 	}
@@ -202,19 +184,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 		"sync_error_message": nil,
 	})
 
-	credentials, err := dp.GetCredentials()
-	if err != nil {
-		s.markSyncFailed(ctx, id, err.Error())
-		return err
-	}
-
-	additionalData, err := dp.GetAdditionalData()
-	if err != nil {
-		s.markSyncFailed(ctx, id, err.Error())
-		return err
-	}
-
-	provider, err := providers.NewProvider(providers.DnsProviderType(dp.Provider), credentials, additionalData)
+	provider, err := providers.NewProvider(providers.DnsProviderType(dp.Provider), dp.Credentials, dp.AdditionalData)
 	if err != nil {
 		s.markSyncFailed(ctx, id, err.Error())
 		return err

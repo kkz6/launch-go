@@ -125,7 +125,7 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 		}
 
 		// Get private key
-		if server.PrivateKey == nil || *server.PrivateKey == "" {
+		if server.PrivateKey.IsEmpty() {
 			h.logger.Error().Str("server_id", serverID).Msg("Server has no SSH key")
 			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ No SSH key configured\x1b[0m\r\n"))
 			c.Close()
@@ -133,7 +133,7 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 		}
 
 		// Establish SSH connection
-		h.handleSSHConnection(c, *sshHost, sshPort, sshUsername, *server.PrivateKey, server.Name, sitePath)
+		h.handleSSHConnection(c, *sshHost, sshPort, sshUsername, server.PrivateKey.String(), server.Name, sitePath)
 	})
 }
 

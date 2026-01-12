@@ -33,7 +33,6 @@ func NewLogsHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger) *LogsH
 	}
 }
 
-
 // Handler returns a Fiber handler for log streaming WebSocket connections
 func (h *LogsHandler) Handler() fiber.Handler {
 	return websocket.New(func(c *websocket.Conn) {
@@ -243,13 +242,13 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 		return
 	}
 
-	if server.PrivateKey == nil || *server.PrivateKey == "" {
+	if server.PrivateKey.IsEmpty() {
 		c.WriteMessage(websocket.TextMessage, []byte("No SSH key configured"))
 		return
 	}
 
 	// Parse private key
-	signer, err := ssh.ParsePrivateKey([]byte(*server.PrivateKey))
+	signer, err := ssh.ParsePrivateKey([]byte(server.PrivateKey))
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to parse private key")
 		c.WriteMessage(websocket.TextMessage, []byte("Invalid SSH key"))

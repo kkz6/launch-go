@@ -16,6 +16,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
@@ -82,8 +83,8 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		Status:          enums.ServerStatusNew,
 		SSHPort:         &defaultSSHPort,
 		Username:        &defaultUsername,
-		PrivateKey:      &privateKey,
-		PublicKey:       &publicKey,
+		PrivateKey:      basemodels.EncryptedString(privateKey),
+		PublicKey:       basemodels.EncryptedString(publicKey),
 	}
 
 	if req.SSHPort > 0 {
@@ -96,8 +97,8 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 
 	if provider == enums.ProviderCustom {
 		server.PublicIPv4 = &req.IPAddress
-		server.PrivateKey = &req.PrivateKey
-		server.PublicKey = nil
+		server.PrivateKey = basemodels.EncryptedString(req.PrivateKey)
+		server.PublicKey = ""
 	}
 
 	workingDir := ".launch"
@@ -217,7 +218,7 @@ func (s *Service) ConnectServer(ctx context.Context, id, teamID string) error {
 		return errors.New("server has no IP address")
 	}
 
-	if server.PrivateKey == nil || *server.PrivateKey == "" {
+	if server.PrivateKey.IsEmpty() {
 		return errors.New("server has no private key")
 	}
 
@@ -225,7 +226,7 @@ func (s *Service) ConnectServer(ctx context.Context, id, teamID string) error {
 		Host:       *server.PublicIPv4,
 		Port:       server.GetSSHPort(),
 		User:       server.RootUsername(),
-		PrivateKey: *server.PrivateKey,
+		PrivateKey: server.PrivateKey.String(),
 		Timeout:    30 * time.Second,
 	})
 	if err != nil {

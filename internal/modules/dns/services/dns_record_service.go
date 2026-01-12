@@ -47,17 +47,7 @@ func (s *DnsRecordService) CreateRecord(ctx context.Context, domainID, teamID st
 	record := req.ToModel(domainID)
 
 	// Get provider to add record
-	credentials, err := domain.Provider.GetCredentials()
-	if err != nil {
-		return nil, err
-	}
-
-	additionalData, err := domain.Provider.GetAdditionalData()
-	if err != nil {
-		return nil, err
-	}
-
-	dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), credentials, additionalData)
+	dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
 	if err != nil {
 		return nil, err
 	}
@@ -106,17 +96,7 @@ func (s *DnsRecordService) UpdateRecord(ctx context.Context, recordID, domainID,
 	}
 
 	// Get provider
-	credentials, err := domain.Provider.GetCredentials()
-	if err != nil {
-		return nil, err
-	}
-
-	additionalData, err := domain.Provider.GetAdditionalData()
-	if err != nil {
-		return nil, err
-	}
-
-	dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), credentials, additionalData)
+	dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
 	if err != nil {
 		return nil, err
 	}
@@ -165,17 +145,7 @@ func (s *DnsRecordService) DeleteRecord(ctx context.Context, recordID, domainID,
 	}
 
 	// Get provider
-	credentials, err := domain.Provider.GetCredentials()
-	if err != nil {
-		return err
-	}
-
-	additionalData, err := domain.Provider.GetAdditionalData()
-	if err != nil {
-		return err
-	}
-
-	dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), credentials, additionalData)
+	dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
 	if err != nil {
 		return err
 	}

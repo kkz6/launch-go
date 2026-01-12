@@ -21,9 +21,9 @@ type FileOnServer struct {
 	Description string             `json:"description"`
 	Path        string             `json:"path"`
 	Context     string             `json:"context,omitempty"`
-	Type        string             `json:"type"`        // "default" or "environment"
-	FileType    enums.SiteFileType `json:"file_type"`   // enum value for identification
-	ShowRoute   string             `json:"show_route"`  // encrypted URL parameter for viewing
+	Type        string             `json:"type"`         // "default" or "environment"
+	FileType    enums.SiteFileType `json:"file_type"`    // enum value for identification
+	ShowRoute   string             `json:"show_route"`   // encrypted URL parameter for viewing
 	UpdateRoute string             `json:"update_route"` // encrypted URL parameter for updating
 }
 
@@ -236,15 +236,10 @@ func (s *FileService) createSSHClient(server *servermodels.Server) (*taskrunner.
 		port = *server.SSHPort
 	}
 
-	privateKey := ""
-	if server.PrivateKey != nil {
-		privateKey = *server.PrivateKey
-	}
-
 	return taskrunner.NewSSHClient(taskrunner.SSHConfig{
 		Host:       host,
 		Port:       port,
 		User:       "launcher",
-		PrivateKey: privateKey,
+		PrivateKey: server.PrivateKey.String(),
 	})
 }

@@ -336,7 +336,7 @@ func (r *TaskRunner) getConnection() (*taskrunner.Connection, error) {
 		return nil, fmt.Errorf("server has no public IP address")
 	}
 
-	if r.server.PrivateKey == nil || *r.server.PrivateKey == "" {
+	if r.server.PrivateKey.IsEmpty() {
 		return nil, fmt.Errorf("server has no private key")
 	}
 

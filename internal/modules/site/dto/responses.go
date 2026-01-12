@@ -198,7 +198,7 @@ func ToDeploymentResponse(deployment *models.Deployment) DeploymentResponse {
 		Status:       string(deployment.Status),
 		GitHash:      deployment.GitHash,
 		ShortGitHash: deployment.GetShortGitHash(),
-		CommitData:   deployment.GetCommitData(),
+		CommitData:   deployment.CommitData,
 		IsRollback:   deployment.IsRollback(),
 		CreatedAt:    deployment.CreatedAt.Format(time.RFC3339),
 		UpdatedAt:    deployment.UpdatedAt.Format(time.RFC3339),
