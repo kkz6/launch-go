@@ -224,12 +224,7 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 // createPendingTask creates a pending task with SSH connection for the server
 func (j *SyncDatabasesJob) createPendingTask(ctx context.Context, server *servermodels.Server, task taskrunner.Task) (*taskrunner.PendingTask, error) {
 	// Get SSH credentials
-	privateKey := ""
-	if server.PrivateKey != nil {
-		privateKey = *server.PrivateKey
-	}
-
-	if privateKey == "" {
+	if server.PrivateKey.IsEmpty() {
 		return nil, fmt.Errorf("server has no private key configured")
 	}
 
@@ -248,7 +243,7 @@ func (j *SyncDatabasesJob) createPendingTask(ctx context.Context, server *server
 			Host:       publicIP,
 			Port:       server.GetSSHPort(),
 			User:       server.GetUsername(),
-			PrivateKey: privateKey,
+			PrivateKey: server.PrivateKey.String(),
 		},
 	}, nil
 }

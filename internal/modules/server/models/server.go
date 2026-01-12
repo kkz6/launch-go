@@ -3,7 +3,6 @@ package models
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -27,44 +26,44 @@ func generateRandomToken(length int) string {
 // Server represents a managed server
 type Server struct {
 	basemodels.BaseModel
-	ServerProviderID          *string              `gorm:"column:server_provider_id;type:char(26);index" json:"server_provider_id,omitempty"`
-	TeamID                    string               `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-	UserID                    string               `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	Name                      string               `gorm:"type:varchar(255);not null;index" json:"name"`
-	Description               *string              `gorm:"type:varchar(255)" json:"description,omitempty"`
-	Provider                  enums.ServerProvider `gorm:"type:varchar(255);not null" json:"provider"`
-	ProviderData              *string              `gorm:"type:json" json:"-"`
-	Type                      *string              `gorm:"type:varchar(255)" json:"type,omitempty"`
-	Connected                 bool                 `gorm:"type:tinyint(1);not null;default:0" json:"connected"`
-	LaunchToken               string               `gorm:"type:varchar(32);not null" json:"-"`
-	MonitoringEnabled         bool                 `gorm:"column:monitoring_enabled;type:tinyint(1);not null;default:0" json:"monitoring_enabled"`
-	CPUCores                  *int                 `gorm:"column:cpu_cores;type:int" json:"cpu_cores,omitempty"`
-	MemoryInMB                *int                 `gorm:"column:memory_in_mb;type:int" json:"memory_in_mb,omitempty"`
-	StorageInGB               *int                 `gorm:"column:storage_in_gb;type:int" json:"storage_in_gb,omitempty"`
-	OperatingSystem           *string              `gorm:"column:operating_system;type:varchar(255)" json:"operating_system,omitempty"`
-	Status                    enums.ServerStatus   `gorm:"type:varchar(255);not null" json:"status"`
-	PublicIPv4                *string              `gorm:"column:public_ipv4;type:varchar(255)" json:"public_ipv4,omitempty"`
-	PrivateIPv4               *string              `gorm:"column:private_ipv4;type:varchar(255)" json:"-"`
-	PublicKey                 *string              `gorm:"type:longtext;serializer:encrypted" json:"-"`
-	PrivateKey                *string              `gorm:"type:longtext;serializer:encrypted" json:"-"`
-	UserPublicKey             *string              `gorm:"column:user_public_key;type:longtext;serializer:encrypted" json:"-"`
-	Username                  *string              `gorm:"type:varchar(255)" json:"username,omitempty"`
-	Password                  *string              `gorm:"type:longtext;serializer:encrypted" json:"-"`
-	DatabasePassword          *string              `gorm:"column:database_password;type:longtext;serializer:encrypted" json:"-"`
-	SSHPort                   *int                 `gorm:"column:ssh_port;type:int" json:"ssh_port,omitempty"`
-	WorkingDirectory          *string              `gorm:"column:working_directory;type:varchar(255)" json:"-"`
-	CompletedProvisionSteps   *string              `gorm:"column:completed_provision_steps;type:json" json:"-"`
-	ProvisionedAt             *time.Time           `gorm:"column:provisioned_at;type:timestamp null" json:"provisioned_at,omitempty"`
-	UninstallationRequestedAt *time.Time           `gorm:"column:uninstallation_requested_at;type:timestamp null" json:"-"`
-	Updates                   bool                 `gorm:"type:tinyint(1);not null;default:0" json:"-"`
-	AutoUpdate                bool                 `gorm:"column:auto_update;type:tinyint(1);not null;default:0" json:"auto_update"`
-	AvailableUpdates          *int                 `gorm:"column:available_updates;type:int" json:"-"`
-	SecurityUpdates           *int                 `gorm:"column:security_updates;type:int" json:"-"`
-	Progress                  int                  `gorm:"type:int;not null;default:0" json:"progress"`
-	ProgressStep              *string              `gorm:"column:progress_step;type:varchar(255)" json:"progress_step,omitempty"`
-	LastUpdateCheck           *time.Time           `gorm:"column:last_update_check;type:timestamp null" json:"-"`
-	LastConnectivityCheck     *time.Time           `gorm:"column:last_connectivity_check;type:timestamp null" json:"last_connectivity_check,omitempty"`
-	ArchivedAt                *time.Time           `gorm:"column:archived_at;type:timestamp null" json:"archived_at,omitempty"`
+	ServerProviderID          *string                    `gorm:"column:server_provider_id;type:char(26);index" json:"server_provider_id,omitempty"`
+	TeamID                    string                     `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
+	UserID                    string                     `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	Name                      string                     `gorm:"type:varchar(255);not null;index" json:"name"`
+	Description               *string                    `gorm:"type:varchar(255)" json:"description,omitempty"`
+	Provider                  enums.ServerProvider       `gorm:"type:varchar(255);not null" json:"provider"`
+	ProviderData              basemodels.JSONMap         `gorm:"type:json" json:"-"`
+	Type                      *string                    `gorm:"type:varchar(255)" json:"type,omitempty"`
+	Connected                 bool                       `gorm:"type:tinyint(1);not null;default:0" json:"connected"`
+	LaunchToken               string                     `gorm:"type:varchar(32);not null" json:"-"`
+	MonitoringEnabled         bool                       `gorm:"column:monitoring_enabled;type:tinyint(1);not null;default:0" json:"monitoring_enabled"`
+	CPUCores                  *int                       `gorm:"column:cpu_cores;type:int" json:"cpu_cores,omitempty"`
+	MemoryInMB                *int                       `gorm:"column:memory_in_mb;type:int" json:"memory_in_mb,omitempty"`
+	StorageInGB               *int                       `gorm:"column:storage_in_gb;type:int" json:"storage_in_gb,omitempty"`
+	OperatingSystem           *string                    `gorm:"column:operating_system;type:varchar(255)" json:"operating_system,omitempty"`
+	Status                    enums.ServerStatus         `gorm:"type:varchar(255);not null" json:"status"`
+	PublicIPv4                *string                    `gorm:"column:public_ipv4;type:varchar(255)" json:"public_ipv4,omitempty"`
+	PrivateIPv4               *string                    `gorm:"column:private_ipv4;type:varchar(255)" json:"-"`
+	PublicKey                 basemodels.EncryptedString `gorm:"type:longtext" json:"-"`
+	PrivateKey                basemodels.EncryptedString `gorm:"type:longtext" json:"-"`
+	UserPublicKey             basemodels.EncryptedString `gorm:"column:user_public_key;type:longtext" json:"-"`
+	Username                  *string                    `gorm:"type:varchar(255)" json:"username,omitempty"`
+	Password                  basemodels.EncryptedString `gorm:"type:longtext" json:"-"`
+	DatabasePassword          basemodels.EncryptedString `gorm:"column:database_password;type:longtext" json:"-"`
+	SSHPort                   *int                       `gorm:"column:ssh_port;type:int" json:"ssh_port,omitempty"`
+	WorkingDirectory          *string                    `gorm:"column:working_directory;type:varchar(255)" json:"-"`
+	CompletedProvisionSteps   basemodels.JSONStringSlice `gorm:"column:completed_provision_steps;type:json" json:"-"`
+	ProvisionedAt             *time.Time                 `gorm:"column:provisioned_at;type:timestamp null" json:"provisioned_at,omitempty"`
+	UninstallationRequestedAt *time.Time                 `gorm:"column:uninstallation_requested_at;type:timestamp null" json:"-"`
+	Updates                   bool                       `gorm:"type:tinyint(1);not null;default:0" json:"-"`
+	AutoUpdate                bool                       `gorm:"column:auto_update;type:tinyint(1);not null;default:0" json:"auto_update"`
+	AvailableUpdates          *int                       `gorm:"column:available_updates;type:int" json:"-"`
+	SecurityUpdates           *int                       `gorm:"column:security_updates;type:int" json:"-"`
+	Progress                  int                        `gorm:"type:int;not null;default:0" json:"progress"`
+	ProgressStep              *string                    `gorm:"column:progress_step;type:varchar(255)" json:"progress_step,omitempty"`
+	LastUpdateCheck           *time.Time                 `gorm:"column:last_update_check;type:timestamp null" json:"-"`
+	LastConnectivityCheck     *time.Time                 `gorm:"column:last_connectivity_check;type:timestamp null" json:"last_connectivity_check,omitempty"`
+	ArchivedAt                *time.Time                 `gorm:"column:archived_at;type:timestamp null" json:"archived_at,omitempty"`
 
 	// Relations
 	Services      []InstalledService `gorm:"foreignKey:ServerID;references:ID" json:"services,omitempty"`
@@ -165,63 +164,8 @@ func (s *Server) GetSSHPort() int {
 	return 22
 }
 
-func (s *Server) GetCompletedSteps() []string {
-	if s.CompletedProvisionSteps == nil {
-		return nil
-	}
-
-	var steps []string
-	if err := json.Unmarshal([]byte(*s.CompletedProvisionSteps), &steps); err != nil {
-		return nil
-	}
-
-	return steps
-}
-
-func (s *Server) SetCompletedSteps(steps []string) error {
-	data, err := json.Marshal(steps)
-	if err != nil {
-		return err
-	}
-
-	str := string(data)
-	s.CompletedProvisionSteps = &str
-
-	return nil
-}
-
-func (s *Server) GetProviderData() map[string]interface{} {
-	if s.ProviderData == nil {
-		return nil
-	}
-
-	var data map[string]interface{}
-	if err := json.Unmarshal([]byte(*s.ProviderData), &data); err != nil {
-		return nil
-	}
-
-	return data
-}
-
-func (s *Server) SetProviderData(data map[string]interface{}) error {
-	jsonData, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-
-	str := string(jsonData)
-	s.ProviderData = &str
-
-	return nil
-}
-
 // ConnectionAsRoot returns an SSH connection configured to connect as the root user
 func (s *Server) ConnectionAsRoot() *taskrunner.Connection {
-	privateKey := ""
-	if s.PrivateKey != nil {
-		privateKey = *s.PrivateKey
-	}
-
 	host := ""
 	if s.PublicIPv4 != nil {
 		host = *s.PublicIPv4
@@ -231,7 +175,7 @@ func (s *Server) ConnectionAsRoot() *taskrunner.Connection {
 		Host:       host,
 		Port:       s.GetSSHPort(),
 		User:       s.RootUsername(),
-		PrivateKey: privateKey,
+		PrivateKey: s.PrivateKey.String(),
 	}
 }
 
@@ -243,11 +187,6 @@ func (s *Server) ConnectionAsUser(username ...string) *taskrunner.Connection {
 		user = username[0]
 	}
 
-	privateKey := ""
-	if s.PrivateKey != nil {
-		privateKey = *s.PrivateKey
-	}
-
 	host := ""
 	if s.PublicIPv4 != nil {
 		host = *s.PublicIPv4
@@ -257,6 +196,6 @@ func (s *Server) ConnectionAsUser(username ...string) *taskrunner.Connection {
 		Host:       host,
 		Port:       s.GetSSHPort(),
 		User:       user,
-		PrivateKey: privateKey,
+		PrivateKey: s.PrivateKey.String(),
 	}
 }
