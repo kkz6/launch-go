@@ -178,16 +178,13 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 	if s.deploymentService != nil {
 		deployment, err := s.deploymentService.createDeployment(ctx, site, userID, nil)
 		if err != nil {
-			s.logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to create initial deployment")
+			s.LogError(err, "Failed to create initial deployment", "site_id", site.ID)
 		} else {
 			site.LatestDeployment = deployment
 		}
 	}
 
-	s.logger.Info().
-		Str("site_id", site.ID).
-		Str("address", site.Address).
-		Msg("Site created")
+	s.LogInfo("Site created", "site_id", site.ID, "address", site.Address)
 
 	return site, nil
 }
@@ -308,9 +305,7 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 	deployment, _ := s.deploymentRepo.FindLatestBySite(ctx, site.ID)
 	site.LatestDeployment = deployment
 
-	s.logger.Info().
-		Str("site_id", site.ID).
-		Msg("Site updated")
+	s.LogInfo("Site updated", "site_id", site.ID)
 
 	return site, nil
 }
@@ -331,10 +326,7 @@ func (s *SiteService) Delete(ctx context.Context, id, serverID string) error {
 
 	// TODO: Dispatch site deletion job
 
-	s.logger.Info().
-		Str("site_id", site.ID).
-		Str("address", site.Address).
-		Msg("Site deletion requested")
+	s.LogInfo("Site deletion requested", "site_id", site.ID, "address", site.Address)
 
 	return nil
 }

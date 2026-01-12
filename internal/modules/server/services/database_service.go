@@ -53,7 +53,7 @@ func (s *Service) SyncDatabases(ctx context.Context, serverID, teamID string, us
 		return err
 	}
 
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -62,8 +62,8 @@ func (s *Service) SyncDatabases(ctx context.Context, serverID, teamID string, us
 		return fmt.Errorf("failed to create sync task: %w", err)
 	}
 
-	if _, err := s.queue.EnqueueDefault(task); err != nil {
-		s.logger.Error().Err(err).Str("server_id", serverID).Msg("Failed to enqueue sync databases job")
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue sync databases job", "server_id", serverID)
 		return fmt.Errorf("failed to enqueue sync job: %w", err)
 	}
 

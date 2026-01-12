@@ -45,7 +45,7 @@ func (s *Service) CreateDatabaseUser(ctx context.Context, serverID string, req *
 	// Attach databases
 	for _, dbID := range req.Databases {
 		if err := s.repo.AttachUser(ctx, dbID, dbUser.ID); err != nil {
-			s.logger.Error().Err(err).Str("database_id", dbID).Str("user_id", dbUser.ID).Msg("Failed to attach database to user")
+			s.LogError(err, "Failed to attach database to user", "database_id", dbID, "user_id", dbUser.ID)
 		}
 	}
 
@@ -131,7 +131,7 @@ func (s *Service) DeleteDatabaseUser(ctx context.Context, id, serverID string, u
 
 // BroadcastDatabaseUserStatus broadcasts a database user status update
 func (s *Service) BroadcastDatabaseUserStatus(serverID, userID, status, message string) {
-	s.ws.BroadcastToServer(serverID, "database_user.status", map[string]interface{}{
+	s.BroadcastToServer(serverID, "database_user.status", map[string]interface{}{
 		"server_id": serverID,
 		"user_id":   userID,
 		"status":    status,
@@ -142,52 +142,49 @@ func (s *Service) BroadcastDatabaseUserStatus(serverID, userID, status, message 
 // Helper methods
 
 func (s *Service) dispatchCreateDatabaseUser(ctx context.Context, user *models.DatabaseUser, password string, userID *string) {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return
 	}
 
 	task, err := jobs.NewInstallDatabaseUserTask(user.ID, password, userID)
 	if err != nil {
-		s.logger.Error().Err(err).Str("user_id", user.ID).Msg("Failed to create install user task")
-
+		s.LogError(err, "Failed to create install user task", "user_id", user.ID)
 		return
 	}
 
-	if _, err := s.queue.EnqueueDefault(task); err != nil {
-		s.logger.Error().Err(err).Str("user_id", user.ID).Msg("Failed to enqueue install user job")
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue install user job", "user_id", user.ID)
 	}
 }
 
 func (s *Service) dispatchUpdateDatabaseUser(ctx context.Context, user *models.DatabaseUser, password *string, userID *string) {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return
 	}
 
 	task, err := jobs.NewUpdateDatabaseUserTask(user.ID, password, userID)
 	if err != nil {
-		s.logger.Error().Err(err).Str("user_id", user.ID).Msg("Failed to create update user task")
-
+		s.LogError(err, "Failed to create update user task", "user_id", user.ID)
 		return
 	}
 
-	if _, err := s.queue.EnqueueDefault(task); err != nil {
-		s.logger.Error().Err(err).Str("user_id", user.ID).Msg("Failed to enqueue update user job")
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue update user job", "user_id", user.ID)
 	}
 }
 
 func (s *Service) dispatchDeleteDatabaseUser(ctx context.Context, user *models.DatabaseUser, userID *string) {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return
 	}
 
 	task, err := jobs.NewUninstallDatabaseUserTask(user.ID, userID)
 	if err != nil {
-		s.logger.Error().Err(err).Str("user_id", user.ID).Msg("Failed to create uninstall user task")
-
+		s.LogError(err, "Failed to create uninstall user task", "user_id", user.ID)
 		return
 	}
 
-	if _, err := s.queue.EnqueueDefault(task); err != nil {
-		s.logger.Error().Err(err).Str("user_id", user.ID).Msg("Failed to enqueue uninstall user job")
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue uninstall user job", "user_id", user.ID)
 	}
 }

@@ -6,8 +6,9 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -36,20 +37,21 @@ var (
 
 // Service provides business logic for server operations
 type Service struct {
+	service.Base
 	repo       contracts.Repository
-	queue      *queue.Client
-	ws         *websocket.Hub
 	dispatcher *taskrunner.Dispatcher
-	logger     *zerolog.Logger
 }
 
 // NewService creates a new Service instance
-func NewService(repo contracts.Repository, queue *queue.Client, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *Service {
+func NewService(repo contracts.Repository, q *queue.Client, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *Service {
 	return &Service{
+		Base:       service.NewBase(q, ws, logger),
 		repo:       repo,
-		queue:      queue,
-		ws:         ws,
 		dispatcher: dispatcher,
-		logger:     logger,
 	}
+}
+
+// Repo returns the repository for direct access when needed
+func (s *Service) Repo() contracts.Repository {
+	return s.repo
 }

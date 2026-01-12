@@ -121,10 +121,7 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 
 	// TODO: Dispatch queue installation job
 
-	s.logger.Info().
-		Str("site_id", site.ID).
-		Str("queue_id", queueModel.ID).
-		Msg("Queue created")
+	s.LogInfo("Queue created", "site_id", site.ID, "queue_id", queueModel.ID)
 
 	return queueModel, nil
 }
@@ -154,9 +151,7 @@ func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID str
 
 	// TODO: Dispatch queue uninstallation job
 
-	s.logger.Info().
-		Str("queue_id", queueID).
-		Msg("Queue deletion requested")
+	s.LogInfo("Queue deletion requested", "queue_id", queueID)
 
 	return nil
 }

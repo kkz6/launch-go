@@ -94,8 +94,8 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 
 		// Dispatch certificate installation job
 		task, err := jobs.NewInstallSSLTask(site.ID, site.Address)
-		if err == nil && s.queue != nil {
-			s.queue.EnqueueDefault(task)
+		if err == nil {
+			s.EnqueueTask(task)
 		}
 	}
 

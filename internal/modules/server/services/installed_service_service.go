@@ -61,10 +61,7 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 	}
 
 	if err := s.dispatchServiceInstallJob(server, service); err != nil {
-		s.logger.Error().Err(err).
-			Str("server_id", serverID).
-			Str("service_id", service.ID).
-			Msg("Failed to dispatch service install job")
+		s.LogError(err, "Failed to dispatch service install job", "server_id", serverID, "service_id", service.ID)
 	}
 
 	return service, nil
@@ -101,7 +98,7 @@ func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, 
 }
 
 func (s *Service) dispatchServiceInstallJob(server *models.Server, service *models.InstalledService) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -110,13 +107,11 @@ func (s *Service) dispatchServiceInstallJob(server *models.Server, service *mode
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }
 
 func (s *Service) dispatchServiceRestartJob(server *models.Server, service *models.InstalledService) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -125,13 +120,11 @@ func (s *Service) dispatchServiceRestartJob(server *models.Server, service *mode
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }
 
 func (s *Service) dispatchServiceStopJob(server *models.Server, service *models.InstalledService) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -140,13 +133,11 @@ func (s *Service) dispatchServiceStopJob(server *models.Server, service *models.
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }
 
 func (s *Service) dispatchServiceRemoveJob(server *models.Server, service *models.InstalledService) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -155,13 +146,11 @@ func (s *Service) dispatchServiceRemoveJob(server *models.Server, service *model
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }
 
 func (s *Service) dispatchServiceStatusJob(server *models.Server, service *models.InstalledService) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -170,7 +159,5 @@ func (s *Service) dispatchServiceStatusJob(server *models.Server, service *model
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }

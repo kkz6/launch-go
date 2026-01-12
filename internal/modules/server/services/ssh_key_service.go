@@ -67,10 +67,7 @@ func (s *Service) AttachSshKey(ctx context.Context, serverID, teamID, sshKeyID s
 
 	if server.IsProvisioned() {
 		if err := s.dispatchSshKeyAddJob(server, key); err != nil {
-			s.logger.Error().Err(err).
-				Str("server_id", serverID).
-				Str("ssh_key_id", sshKeyID).
-				Msg("Failed to dispatch SSH key add job")
+			s.LogError(err, "Failed to dispatch SSH key add job", "server_id", serverID, "ssh_key_id", sshKeyID)
 		}
 	}
 
@@ -95,10 +92,7 @@ func (s *Service) DetachSshKey(ctx context.Context, serverID, teamID, sshKeyID s
 
 	if server.IsProvisioned() {
 		if err := s.dispatchSshKeyRemoveJob(server, key); err != nil {
-			s.logger.Error().Err(err).
-				Str("server_id", serverID).
-				Str("ssh_key_id", sshKeyID).
-				Msg("Failed to dispatch SSH key remove job")
+			s.LogError(err, "Failed to dispatch SSH key remove job", "server_id", serverID, "ssh_key_id", sshKeyID)
 		}
 	}
 
@@ -120,7 +114,7 @@ func (s *Service) DeleteSshKey(ctx context.Context, teamID, sshKeyID string) err
 }
 
 func (s *Service) dispatchSshKeyAddJob(server *models.Server, key *models.SshKey) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -129,13 +123,11 @@ func (s *Service) dispatchSshKeyAddJob(server *models.Server, key *models.SshKey
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }
 
 func (s *Service) dispatchSshKeyRemoveJob(server *models.Server, key *models.SshKey) error {
-	if s.queue == nil {
+	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
@@ -144,7 +136,5 @@ func (s *Service) dispatchSshKeyRemoveJob(server *models.Server, key *models.Ssh
 		return err
 	}
 
-	_, err = s.queue.EnqueueDefault(task)
-
-	return err
+	return s.EnqueueTask(task)
 }

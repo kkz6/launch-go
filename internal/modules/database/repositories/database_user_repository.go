@@ -11,7 +11,7 @@ import (
 
 // CreateUser creates a new database user
 func (r *Repository) CreateUser(ctx context.Context, user *models.DatabaseUser) error {
-	return r.db.WithContext(ctx).Create(user).Error
+	return r.user.Create(ctx, user)
 }
 
 // FindUserByID finds a database user by ID
@@ -95,32 +95,37 @@ func (r *Repository) FindUsersByDatabase(ctx context.Context, databaseID string)
 
 // UpdateUser updates a database user
 func (r *Repository) UpdateUser(ctx context.Context, user *models.DatabaseUser) error {
-	return r.db.WithContext(ctx).Save(user).Error
+	return r.user.Update(ctx, user)
 }
 
 // UpdateUserFields updates specific fields of a database user
 func (r *Repository) UpdateUserFields(ctx context.Context, id string, fields map[string]interface{}) error {
-	return r.db.WithContext(ctx).
-		Model(&models.DatabaseUser{}).
-		Where("id = ?", id).
-		Updates(fields).Error
+	return r.user.UpdateFields(ctx, id, fields)
 }
 
 // DeleteUser deletes a database user
 func (r *Repository) DeleteUser(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.DatabaseUser{}, "id = ?", id).Error
+	return r.user.Delete(ctx, id)
 }
 
 // UserExistsByNameAndServer checks if a database user exists with the given name on the server
 func (r *Repository) UserExistsByNameAndServer(ctx context.Context, name, serverID string) (bool, error) {
-	var count int64
+	return r.user.ExistsByNameAndServer(ctx, name, serverID)
+}
 
-	err := r.db.WithContext(ctx).
-		Model(&models.DatabaseUser{}).
-		Where("name = ? AND server_id = ?", name, serverID).
-		Count(&count).Error
+// MarkUserAsInstalled marks a database user as installed
+func (r *Repository) MarkUserAsInstalled(ctx context.Context, id string) error {
+	return r.user.MarkAsInstalled(ctx, id)
+}
 
-	return count > 0, err
+// MarkUserAsFailed marks a database user installation as failed
+func (r *Repository) MarkUserAsFailed(ctx context.Context, id string) error {
+	return r.user.MarkAsFailed(ctx, id)
+}
+
+// MarkUserAsUninstalling marks a database user as being uninstalled
+func (r *Repository) MarkUserAsUninstalling(ctx context.Context, id string) error {
+	return r.user.MarkAsUninstalling(ctx, id)
 }
 
 // SyncUserDatabases syncs the databases attached to a user
