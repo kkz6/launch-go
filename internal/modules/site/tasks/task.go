@@ -1,22 +1,9 @@
+// Package tasks provides site task definitions using factory functions.
+//
+// Usage:
+//
+//	task := tasks.Deploy(tasks.DeployConfig{...})
+//	// Use with server's TaskRunner for execution
+//
+// All tasks use the factory function pattern for simplicity and consistency.
 package tasks
-
-import (
-	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-)
-
-// SiteTask extends the base Task interface with site-specific methods
-type SiteTask interface {
-	taskrunner.Task
-	Site() *models.Site
-}
-
-// BaseSiteTask embeds taskrunner.BaseTask and adds site reference
-type BaseSiteTask struct {
-	taskrunner.BaseTask
-	site *models.Site
-}
-
-func (t *BaseSiteTask) Site() *models.Site {
-	return t.site
-}

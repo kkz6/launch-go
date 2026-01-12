@@ -7,6 +7,7 @@ import (
 )
 
 // StorageProvider represents a configured storage destination
+// Note: Uses auto-increment ID
 type StorageProvider struct {
 	ID             uint64              `gorm:"primaryKey;autoIncrement" json:"id"`
 	UserID         string              `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`

@@ -2,25 +2,20 @@ package models
 
 import (
 	"encoding/json"
-	"time"
 
-	"gorm.io/gorm"
-
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // Domain represents a domain managed by a DNS provider
 type Domain struct {
-	ID               string     `gorm:"type:char(26);primaryKey" json:"id"`
-	UserID           string     `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	TeamID           *string    `gorm:"column:team_id;type:char(26);index" json:"team_id,omitempty"`
-	DomainProviderID string     `gorm:"column:domain_provider_id;type:char(26);not null;index" json:"domain_provider_id"`
-	Label            string     `gorm:"type:varchar(255);not null" json:"label"`
-	Address          string     `gorm:"type:varchar(255);not null" json:"address"`
-	ProviderID       string     `gorm:"column:provider_id;type:varchar(255);not null" json:"provider_id"`
-	AdditionalData   *string    `gorm:"column:additional_data;type:json" json:"-"`
-	CreatedAt        *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt        *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
+	basemodels.BaseModel
+	UserID           string  `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	TeamID           *string `gorm:"column:team_id;type:char(26);index" json:"team_id,omitempty"`
+	DomainProviderID string  `gorm:"column:domain_provider_id;type:char(26);not null;index" json:"domain_provider_id"`
+	Label            string  `gorm:"type:varchar(255);not null" json:"label"`
+	Address          string  `gorm:"type:varchar(255);not null" json:"address"`
+	ProviderID       string  `gorm:"column:provider_id;type:varchar(255);not null" json:"provider_id"`
+	AdditionalData   *string `gorm:"column:additional_data;type:json" json:"-"`
 
 	// Relations
 	Provider *DomainProvider `gorm:"foreignKey:DomainProviderID;references:ID" json:"provider,omitempty"`
@@ -30,15 +25,6 @@ type Domain struct {
 // TableName specifies the table name for Domain
 func (Domain) TableName() string {
 	return "domains"
-}
-
-// BeforeCreate hook to generate ULID
-func (d *Domain) BeforeCreate(tx *gorm.DB) error {
-	if d.ID == "" {
-		d.ID = utils.NewULID()
-	}
-
-	return nil
 }
 
 // GetAdditionalData returns additional data as a map

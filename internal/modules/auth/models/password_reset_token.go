@@ -7,6 +7,7 @@ import (
 )
 
 // PasswordResetToken represents a password reset request
+// Note: Uses email as primary key, no ULID
 type PasswordResetToken struct {
 	Email     string     `gorm:"type:varchar(255);primaryKey" json:"email"`
 	Token     string     `gorm:"type:varchar(255);not null" json:"-"`

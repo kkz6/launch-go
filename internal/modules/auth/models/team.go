@@ -1,23 +1,17 @@
 package models
 
 import (
-	"time"
-
-	"gorm.io/gorm"
-
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // Team represents a team/organization in the system
 type Team struct {
-	ID                   string     `gorm:"type:char(26);primaryKey" json:"id"`
-	UserID               string     `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	Name                 string     `gorm:"type:varchar(255);not null" json:"name"`
-	ImagePath            *string    `gorm:"column:image_path;type:varchar(255)" json:"image_path,omitempty"`
-	PersonalTeam         bool       `gorm:"type:tinyint(1);not null;default:0" json:"personal_team"`
-	RequiresSubscription bool       `gorm:"type:tinyint(1);not null;default:1" json:"requires_subscription"`
-	CreatedAt            *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt            *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
+	basemodels.BaseModel
+	UserID               string  `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	Name                 string  `gorm:"type:varchar(255);not null" json:"name"`
+	ImagePath            *string `gorm:"column:image_path;type:varchar(255)" json:"image_path,omitempty"`
+	PersonalTeam         bool    `gorm:"type:tinyint(1);not null;default:0" json:"personal_team"`
+	RequiresSubscription bool    `gorm:"type:tinyint(1);not null;default:1" json:"requires_subscription"`
 
 	// Relations
 	Owner       *User            `gorm:"foreignKey:UserID;references:ID" json:"owner,omitempty"`
@@ -28,15 +22,6 @@ type Team struct {
 // TableName returns the table name for the Team model
 func (t *Team) TableName() string {
 	return "teams"
-}
-
-// BeforeCreate is a GORM hook that sets the ID if not provided
-func (t *Team) BeforeCreate(tx *gorm.DB) error {
-	if t.ID == "" {
-		t.ID = utils.NewULID()
-	}
-
-	return nil
 }
 
 // ImageURL returns the team's image URL or a default avatar

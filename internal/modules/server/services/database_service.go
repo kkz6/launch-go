@@ -5,12 +5,12 @@ import (
 	"fmt"
 
 	dbjobs "github.com/kkz6/launch-go/internal/modules/database/jobs"
+	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
-	"github.com/kkz6/launch-go/internal/modules/server/models"
 )
 
 // ListDatabases returns all databases on a server
-func (s *Service) ListDatabases(ctx context.Context, serverID, teamID string) ([]models.Database, error) {
+func (s *Service) ListDatabases(ctx context.Context, serverID, teamID string) ([]dbmodels.Database, error) {
 	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
@@ -19,7 +19,7 @@ func (s *Service) ListDatabases(ctx context.Context, serverID, teamID string) ([
 }
 
 // ListDatabaseUsers returns all database users on a server
-func (s *Service) ListDatabaseUsers(ctx context.Context, serverID, teamID string) ([]models.DatabaseUser, error) {
+func (s *Service) ListDatabaseUsers(ctx context.Context, serverID, teamID string) ([]dbmodels.DatabaseUser, error) {
 	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
@@ -28,13 +28,13 @@ func (s *Service) ListDatabaseUsers(ctx context.Context, serverID, teamID string
 }
 
 // CreateDatabase creates a new database on a server
-func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, req *dto.CreateDatabaseRequest) (*models.Database, error) {
+func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, req *dto.CreateDatabaseRequest) (*dbmodels.Database, error) {
 	_, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
 
-	db := &models.Database{
+	db := &dbmodels.Database{
 		ServerID: serverID,
 		Name:     req.Name,
 	}

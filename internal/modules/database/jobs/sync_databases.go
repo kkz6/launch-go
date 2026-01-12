@@ -12,10 +12,9 @@ import (
 	"gorm.io/gorm"
 
 	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
+	dbtasks "github.com/kkz6/launch-go/internal/modules/database/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/modules/server/tasks/mysql"
-	"github.com/kkz6/launch-go/internal/modules/server/tasks/postgresql"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -137,7 +136,6 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	// Find databases that exist on server but not in application
 	var syncedCount int
-	now := time.Now()
 	for _, dbName := range userDatabases {
 		if existingNames[dbName] {
 			continue
@@ -145,10 +143,10 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 		// Create missing database record
 		database := &dbmodels.Database{
-			ServerID:    payload.ServerID,
-			Name:        dbName,
-			InstalledAt: &now, // Mark as installed since it exists on server
+			ServerID: payload.ServerID,
+			Name:     dbName,
 		}
+		database.MarkAsInstalled() // Mark as installed since it exists on server
 
 		if err := j.db.Create(database).Error; err != nil {
 			j.logger.Error().
@@ -194,13 +192,9 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 
 	switch dbType {
 	case enums.ServiceTypeMySql:
-		mysqlTask := mysql.NewGetDatabases(server)
-		mysqlTask.OnServer(server)
-		task = mysqlTask
+		task = dbtasks.MySQLGetDatabases(dbtasks.MySQLGetDatabasesConfig{})
 	case enums.ServiceTypePostgreSql:
-		pgTask := postgresql.NewGetDatabases(server)
-		pgTask.OnServer(server)
-		task = pgTask
+		task = dbtasks.PostgreSQLGetDatabases()
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", dbType)
 	}

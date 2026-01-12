@@ -3,11 +3,11 @@ package models
 import (
 	"time"
 
-	"github.com/kkz6/launch-go/internal/pkg/utils"
-	"gorm.io/gorm"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // Metric represents server performance metrics
+// Note: Uses auto-increment ID instead of ULID for high-volume time-series data
 type Metric struct {
 	ID          uint64     `gorm:"type:bigint unsigned;primaryKey;autoIncrement" json:"id"`
 	ServerID    string     `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
@@ -49,28 +49,19 @@ func (m *Metric) DiskUsagePercent() float64 {
 
 // Script represents a reusable script template
 type Script struct {
-	ID        string     `gorm:"type:char(26);primaryKey" json:"id"`
-	TeamID    string     `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-	UserID    string     `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	Name      string     `gorm:"type:varchar(255);not null" json:"name"`
-	Content   string     `gorm:"type:longtext;not null" json:"content"`
-	CreatedAt *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
+	basemodels.BaseModel
+	TeamID  string `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
+	UserID  string `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	Name    string `gorm:"type:varchar(255);not null" json:"name"`
+	Content string `gorm:"type:longtext;not null" json:"content"`
 }
 
 func (s *Script) TableName() string {
 	return "scripts"
 }
 
-func (s *Script) BeforeCreate(tx *gorm.DB) error {
-	if s.ID == "" {
-		s.ID = utils.NewULID()
-	}
-
-	return nil
-}
-
 // ScriptExecution represents an execution of a script on a server
+// Note: Uses auto-increment ID for high-volume execution records
 type ScriptExecution struct {
 	ID         uint64     `gorm:"type:bigint unsigned;primaryKey;autoIncrement" json:"id"`
 	ScriptID   string     `gorm:"column:script_id;type:char(26);not null;index" json:"script_id"`
@@ -90,6 +81,7 @@ func (se *ScriptExecution) TableName() string {
 }
 
 // Monitor represents a server monitoring rule
+// Note: Uses auto-increment ID
 type Monitor struct {
 	ID        uint64     `gorm:"type:bigint unsigned;primaryKey;autoIncrement" json:"id"`
 	ServerID  string     `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
@@ -101,8 +93,8 @@ type Monitor struct {
 	UpdatedAt *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Server               *Server                `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
-	NotificationChannels []NotificationChannel  `gorm:"many2many:monitor_notification_channel" json:"notification_channels,omitempty"`
+	Server               *Server               `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
+	NotificationChannels []NotificationChannel `gorm:"many2many:monitor_notification_channel" json:"notification_channels,omitempty"`
 }
 
 func (m *Monitor) TableName() string {

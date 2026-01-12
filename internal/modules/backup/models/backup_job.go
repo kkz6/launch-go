@@ -1,24 +1,20 @@
 package models
 
 import (
-	"time"
-
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/enums"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // BackupJob represents an individual backup execution
 type BackupJob struct {
-	ID                string                `gorm:"type:char(26);primaryKey" json:"id"`
+	basemodels.BaseModel
 	Status            enums.BackupJobStatus `gorm:"type:varchar(255);not null" json:"status"`
 	BackupID          string                `gorm:"column:backup_id;type:char(26);not null;index" json:"backup_id"`
 	StorageProviderID uint64                `gorm:"column:storage_provider_id;not null;index" json:"storage_provider_id"`
 	Size              *int                  `gorm:"type:int" json:"size,omitempty"`
 	Error             *string               `gorm:"type:longtext" json:"error,omitempty"`
-	CreatedAt         *time.Time            `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt         *time.Time            `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
 	Backup          *Backup          `gorm:"foreignKey:BackupID;references:ID" json:"backup,omitempty"`
@@ -27,8 +23,8 @@ type BackupJob struct {
 
 // BeforeCreate hook generates ULID
 func (j *BackupJob) BeforeCreate(tx *gorm.DB) error {
-	if j.ID == "" {
-		j.ID = utils.NewULID()
+	if err := j.BaseModel.BeforeCreate(tx); err != nil {
+		return err
 	}
 
 	if j.Status == "" {

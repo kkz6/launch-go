@@ -5,15 +5,13 @@ import (
 	"fmt"
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // Certificate represents an SSL certificate for a site
 type Certificate struct {
-	ID          string                `gorm:"type:char(26);primaryKey" json:"id"`
+	basemodels.BaseModel
 	SiteID      string                `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
 	Type        enums.CertificateType `gorm:"type:varchar(255);not null;default:letsencrypt" json:"type"`
 	Domains     *string               `gorm:"type:varchar(255)" json:"domains,omitempty"`
@@ -23,8 +21,6 @@ type Certificate struct {
 	Certificate *string               `gorm:"type:longtext" json:"certificate,omitempty"`
 	UploadedAt  *time.Time            `gorm:"column:uploaded_at;type:timestamp null" json:"uploaded_at,omitempty"`
 	IsActive    bool                  `gorm:"column:is_active;default:false" json:"is_active"`
-	CreatedAt   *time.Time            `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt   *time.Time            `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
 	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
@@ -32,14 +28,6 @@ type Certificate struct {
 
 func (c *Certificate) TableName() string {
 	return "certificates"
-}
-
-func (c *Certificate) BeforeCreate(tx *gorm.DB) error {
-	if c.ID == "" {
-		c.ID = utils.NewULID()
-	}
-
-	return nil
 }
 
 // SiteDirectory returns the directory path for the certificate

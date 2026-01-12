@@ -3,13 +3,12 @@ package models
 import (
 	"time"
 
-	"github.com/kkz6/launch-go/internal/pkg/utils"
-	"gorm.io/gorm"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // User represents an authenticated user in the system
 type User struct {
-	ID                     string     `gorm:"type:char(26);primaryKey" json:"id"`
+	basemodels.BaseModel
 	Name                   string     `gorm:"type:varchar(255);not null" json:"name"`
 	Email                  string     `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
 	EmailVerifiedAt        *time.Time `gorm:"type:timestamp null" json:"email_verified_at,omitempty"`
@@ -22,8 +21,6 @@ type User struct {
 	ProfilePhotoPath       *string    `gorm:"column:profile_photo_path;type:varchar(2048)" json:"profile_photo_path,omitempty"`
 	Timezone               *string    `gorm:"type:varchar(255);default:'UTC'" json:"timezone,omitempty"`
 	Onboarded              bool       `gorm:"type:tinyint(1);not null;default:0" json:"onboarded"`
-	CreatedAt              *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt              *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
 	Teams       []Team `gorm:"many2many:team_user;" json:"teams,omitempty"`
@@ -34,15 +31,6 @@ type User struct {
 // TableName returns the table name for the User model
 func (u *User) TableName() string {
 	return "users"
-}
-
-// BeforeCreate is a GORM hook that sets the ID if not provided
-func (u *User) BeforeCreate(tx *gorm.DB) error {
-	if u.ID == "" {
-		u.ID = utils.NewULID()
-	}
-
-	return nil
 }
 
 // HasVerifiedEmail checks if the user has verified their email

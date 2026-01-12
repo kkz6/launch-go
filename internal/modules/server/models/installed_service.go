@@ -2,17 +2,16 @@ package models
 
 import (
 	"encoding/json"
-	"time"
 
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // InstalledService represents an installed service on a server
 type InstalledService struct {
-	ID        string              `gorm:"type:char(26);primaryKey" json:"id"`
+	basemodels.BaseModel
 	ServerID  string              `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
 	Type      enums.ServiceType   `gorm:"type:varchar(255);not null" json:"type"`
 	TypeData  *string             `gorm:"type:json" json:"-"`
@@ -23,8 +22,6 @@ type InstalledService struct {
 	Unit      *string             `gorm:"type:varchar(255)" json:"unit,omitempty"`
 	Software  string              `gorm:"type:varchar(255);not null" json:"software"`
 	TaskID    *string             `gorm:"column:task_id;type:char(26);index" json:"task_id,omitempty"`
-	CreatedAt *time.Time          `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt *time.Time          `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
 	Server *Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
@@ -32,8 +29,8 @@ type InstalledService struct {
 }
 
 func (s *InstalledService) BeforeCreate(tx *gorm.DB) error {
-	if s.ID == "" {
-		s.ID = utils.NewULID()
+	if err := s.BaseModel.BeforeCreate(tx); err != nil {
+		return err
 	}
 
 	if s.Status == "" {

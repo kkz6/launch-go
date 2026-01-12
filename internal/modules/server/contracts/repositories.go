@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 )
@@ -121,19 +122,19 @@ type ServerProviderRepository interface {
 
 // DatabaseRepository defines the interface for database operations
 type DatabaseRepository interface {
-	FindDatabasesByServer(ctx context.Context, serverID string) ([]models.Database, error)
-	FindDatabaseByID(ctx context.Context, id string) (*models.Database, error)
-	FindDatabaseByIDWithServer(ctx context.Context, id string) (*models.Database, error)
-	CreateDatabase(ctx context.Context, db *models.Database) error
+	FindDatabasesByServer(ctx context.Context, serverID string) ([]dbmodels.Database, error)
+	FindDatabaseByID(ctx context.Context, id string) (*dbmodels.Database, error)
+	FindDatabaseByIDWithServer(ctx context.Context, id string) (*dbmodels.Database, error)
+	CreateDatabase(ctx context.Context, db *dbmodels.Database) error
 	DeleteDatabase(ctx context.Context, id string) error
 }
 
 // DatabaseUserRepository defines the interface for database user operations
 type DatabaseUserRepository interface {
-	FindDatabaseUsersByServer(ctx context.Context, serverID string) ([]models.DatabaseUser, error)
-	FindDatabaseUserByID(ctx context.Context, id string) (*models.DatabaseUser, error)
-	FindDatabaseUserByIDWithServer(ctx context.Context, id string) (*models.DatabaseUser, error)
-	CreateDatabaseUser(ctx context.Context, user *models.DatabaseUser) error
+	FindDatabaseUsersByServer(ctx context.Context, serverID string) ([]dbmodels.DatabaseUser, error)
+	FindDatabaseUserByID(ctx context.Context, id string) (*dbmodels.DatabaseUser, error)
+	FindDatabaseUserByIDWithServer(ctx context.Context, id string) (*dbmodels.DatabaseUser, error)
+	CreateDatabaseUser(ctx context.Context, user *dbmodels.DatabaseUser) error
 	DeleteDatabaseUser(ctx context.Context, id string) error
 }
 

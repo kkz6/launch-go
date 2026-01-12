@@ -5,36 +5,23 @@ import (
 	"encoding/base64"
 	"fmt"
 	"strings"
-	"time"
 
-	"gorm.io/gorm"
-
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // SshKey represents an SSH public key
 type SshKey struct {
-	ID          string     `gorm:"type:char(26);primaryKey" json:"id"`
-	UserID      string     `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	TeamID      string     `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-	IsGlobal    bool       `gorm:"column:is_global;type:tinyint(1);not null;default:0" json:"is_global"`
-	Description *string    `gorm:"type:varchar(255)" json:"description,omitempty"`
-	PublicKey   string     `gorm:"type:longtext;not null" json:"-"`
-	Name        string     `gorm:"type:varchar(255);not null" json:"name"`
-	Fingerprint *string    `gorm:"type:varchar(255)" json:"fingerprint,omitempty"`
-	CreatedAt   *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt   *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
+	basemodels.BaseModel
+	UserID      string  `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	TeamID      string  `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
+	IsGlobal    bool    `gorm:"column:is_global;type:tinyint(1);not null;default:0" json:"is_global"`
+	Description *string `gorm:"type:varchar(255)" json:"description,omitempty"`
+	PublicKey   string  `gorm:"type:longtext;not null" json:"-"`
+	Name        string  `gorm:"type:varchar(255);not null" json:"name"`
+	Fingerprint *string `gorm:"type:varchar(255)" json:"fingerprint,omitempty"`
 
 	// Relations
 	Servers []Server `gorm:"many2many:server_ssh_keys" json:"servers,omitempty"`
-}
-
-func (k *SshKey) BeforeCreate(tx *gorm.DB) error {
-	if k.ID == "" {
-		k.ID = utils.NewULID()
-	}
-
-	return nil
 }
 
 func (k *SshKey) TableName() string {
@@ -51,10 +38,9 @@ func (k *SshKey) GetFingerprint() string {
 
 // ServerSshKey represents the many-to-many relationship between servers and SSH keys
 type ServerSshKey struct {
-	ServerID  string     `gorm:"column:server_id;type:char(26);primaryKey" json:"server_id"`
-	SshKeyID  string     `gorm:"column:ssh_key_id;type:char(26);primaryKey" json:"ssh_key_id"`
-	CreatedAt *time.Time `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt *time.Time `gorm:"type:timestamp null" json:"updated_at,omitempty"`
+	basemodels.BaseModel
+	ServerID string `gorm:"column:server_id;type:char(26);primaryKey" json:"server_id"`
+	SshKeyID string `gorm:"column:ssh_key_id;type:char(26);primaryKey" json:"ssh_key_id"`
 }
 
 func (s *ServerSshKey) TableName() string {
