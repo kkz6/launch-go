@@ -3,15 +3,14 @@ package models
 import (
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/kkz6/launch-go/internal/modules/billing/enums"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // Order represents a payment order
 type Order struct {
-	ID             string            `gorm:"primaryKey;size:26" json:"id"`
+	basemodels.BaseModel
+	basemodels.SoftDeleteModel
 	TeamID         string            `gorm:"size:26;not null;index" json:"team_id"`
 	LemonSqueezyID string            `gorm:"size:255;uniqueIndex;not null" json:"lemon_squeezy_id"`
 	SubscriptionID *string           `gorm:"size:26;index" json:"subscription_id,omitempty"`
@@ -30,21 +29,9 @@ type Order struct {
 	ReceiptURL     *string           `gorm:"size:2048" json:"receipt_url,omitempty"`
 	OrderedAt      *time.Time        `json:"ordered_at,omitempty"`
 	RefundedAt     *time.Time        `json:"refunded_at,omitempty"`
-	CreatedAt      time.Time         `json:"created_at"`
-	UpdatedAt      time.Time         `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt    `gorm:"index" json:"-"`
 
 	// Relations
 	Subscription *Subscription `gorm:"foreignKey:SubscriptionID" json:"subscription,omitempty"`
-}
-
-// BeforeCreate hook to generate ULID
-func (o *Order) BeforeCreate(tx *gorm.DB) error {
-	if o.ID == "" {
-		o.ID = utils.NewULID()
-	}
-
-	return nil
 }
 
 // IsPaid checks if the order is paid

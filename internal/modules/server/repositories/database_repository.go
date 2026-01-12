@@ -3,7 +3,7 @@ package repositories
 import (
 	"context"
 
-	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/database/models"
 )
 
 // FindDatabasesByServer returns all databases for a server

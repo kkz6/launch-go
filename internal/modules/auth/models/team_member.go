@@ -5,6 +5,7 @@ import (
 )
 
 // TeamMember represents the pivot table for team-user relationships
+// Note: Uses auto-increment ID for pivot table
 type TeamMember struct {
 	ID        uint64     `gorm:"type:bigint unsigned;primaryKey;autoIncrement" json:"id"`
 	TeamID    string     `gorm:"column:team_id;type:char(26);not null;uniqueIndex:team_user_team_id_user_id_unique,priority:1" json:"team_id"`

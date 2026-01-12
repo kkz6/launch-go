@@ -79,10 +79,7 @@ func (d *Dispatcher) Run(ctx context.Context, pt *PendingTask) (*TaskResult, err
 
 // runLocal executes task on local machine
 func (d *Dispatcher) runLocal(ctx context.Context, pt *PendingTask) (*TaskResult, error) {
-	script, err := pt.Task.Script()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate script: %w", err)
-	}
+	script := pt.Task.Script()
 
 	// Create temp script file
 	tmpFile, err := os.CreateTemp("", "task-*.sh")
@@ -137,10 +134,7 @@ func (d *Dispatcher) runLocal(ctx context.Context, pt *PendingTask) (*TaskResult
 
 // runRemote executes task on remote server via SSH
 func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResult, error) {
-	script, err := pt.Task.Script()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate script: %w", err)
-	}
+	script := pt.Task.Script()
 
 	conn := pt.Connection
 
@@ -328,10 +322,7 @@ func (d *Dispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*Ta
 		return nil, fmt.Errorf("streaming requires a remote connection")
 	}
 
-	script, err := pt.Task.Script()
-	if err != nil {
-		return nil, fmt.Errorf("failed to generate script: %w", err)
-	}
+	script := pt.Task.Script()
 
 	conn := pt.Connection
 

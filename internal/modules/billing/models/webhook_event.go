@@ -3,33 +3,20 @@ package models
 import (
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/kkz6/launch-go/internal/modules/billing/enums"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // WebhookEvent represents a webhook event received from LemonSqueezy
 type WebhookEvent struct {
-	ID          string               `gorm:"primaryKey;size:26" json:"id"`
+	basemodels.BaseModel
 	EventName   enums.WebhookEventType `gorm:"size:100;not null;index" json:"event_name"`
-	Payload     string               `gorm:"type:text;not null" json:"payload"`
-	Signature   string               `gorm:"size:255;not null" json:"signature"`
-	Processed   bool                 `gorm:"default:false" json:"processed"`
-	ProcessedAt *time.Time           `json:"processed_at,omitempty"`
-	Error       *string              `gorm:"type:text" json:"error,omitempty"`
-	RetryCount  int                  `gorm:"default:0" json:"retry_count"`
-	CreatedAt   time.Time            `json:"created_at"`
-	UpdatedAt   time.Time            `json:"updated_at"`
-}
-
-// BeforeCreate hook to generate ULID
-func (w *WebhookEvent) BeforeCreate(tx *gorm.DB) error {
-	if w.ID == "" {
-		w.ID = utils.NewULID()
-	}
-
-	return nil
+	Payload     string                 `gorm:"type:text;not null" json:"payload"`
+	Signature   string                 `gorm:"size:255;not null" json:"signature"`
+	Processed   bool                   `gorm:"default:false" json:"processed"`
+	ProcessedAt *time.Time             `json:"processed_at,omitempty"`
+	Error       *string                `gorm:"type:text" json:"error,omitempty"`
+	RetryCount  int                    `gorm:"default:0" json:"retry_count"`
 }
 
 // MarkProcessed marks the webhook event as processed

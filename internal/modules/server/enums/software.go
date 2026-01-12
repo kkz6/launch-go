@@ -264,3 +264,69 @@ func (s Software) LogPath() string {
 func (s Software) HasLogPath() bool {
 	return s.LogPath() != ""
 }
+
+// InstallTemplateName returns the template path for installing this software
+func (s Software) InstallTemplateName() string {
+	// PHP versions use the generic install_php.sh template
+	if s.IsPhp() {
+		return "software/install-php.sh"
+	}
+
+	templateNames := map[Software]string{
+		SoftwareCaddy2:       "software/install-caddy2.sh",
+		SoftwareComposer2:    "software/install-composer2.sh",
+		SoftwareMySql80:      "software/install-mysql80.sh",
+		SoftwarePostgreSql16: "software/install-postgresql16.sh",
+		SoftwareNode21:       "software/install-node21.sh",
+		SoftwareBun:          "software/install-bun.sh",
+		SoftwareRedis:        "software/install-redis.sh",
+		SoftwareSupervisor:   "software/install-supervisor.sh",
+		SoftwareLaunchAgent:  "software/install-launch-agent.sh",
+	}
+
+	if name, ok := templateNames[s]; ok {
+		return name
+	}
+
+	return "software/install-" + string(s) + ".sh"
+}
+
+// RemoveTemplateName returns the template path for removing this software
+func (s Software) RemoveTemplateName() string {
+	if s.IsPhp() {
+		return "software/remove-php.sh"
+	}
+
+	return "software/remove-" + string(s) + ".sh"
+}
+
+// MaxConnections returns the recommended max connections based on server memory.
+// Only applicable to database software (MySQL, PostgreSQL).
+func (s Software) MaxConnections(memoryInMB int) int {
+	if !s.IsDatabase() {
+		return 0
+	}
+	switch {
+	case memoryInMB <= 1024:
+		return 100
+	case memoryInMB <= 2048:
+		return 200
+	case memoryInMB <= 4096:
+		return 400
+	default:
+		return 500
+	}
+}
+
+// MaxChildren returns the recommended PHP-FPM max children based on server memory.
+// Only applicable to PHP software.
+func (s Software) MaxChildren(memoryInMB int) int {
+	if !s.IsPhp() {
+		return 0
+	}
+	gigabytes := memoryInMB/1024 - 1
+	if gigabytes < 1 {
+		gigabytes = 1
+	}
+	return int(float64(gigabytes) * 5 * 0.9)
+}

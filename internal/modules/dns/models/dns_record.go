@@ -1,18 +1,14 @@
 package models
 
 import (
-	"time"
-
-	"gorm.io/gorm"
-
 	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // DnsRecord represents a DNS record for a domain
 type DnsRecord struct {
-	ID         string           `gorm:"type:char(26);primaryKey" json:"id"`
+	basemodels.BaseModel
 	DomainID   string           `gorm:"column:domain_id;type:char(26);not null;index" json:"domain_id"`
 	ProviderID string           `gorm:"column:provider_id;type:varchar(255);not null" json:"provider_id"`
 	Type       enums.RecordType `gorm:"type:varchar(255);not null" json:"type"`
@@ -26,8 +22,6 @@ type DnsRecord struct {
 	Flags      *int             `gorm:"type:int" json:"flags,omitempty"`
 	Comment    *string          `gorm:"type:varchar(255)" json:"comment,omitempty"`
 	Proxied    *bool            `gorm:"type:boolean" json:"proxied,omitempty"`
-	CreatedAt  *time.Time       `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt  *time.Time       `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
 	Domain *Domain `gorm:"foreignKey:DomainID;references:ID" json:"domain,omitempty"`
@@ -36,15 +30,6 @@ type DnsRecord struct {
 // TableName specifies the table name for DnsRecord
 func (DnsRecord) TableName() string {
 	return "dns_records"
-}
-
-// BeforeCreate hook to generate ULID
-func (r *DnsRecord) BeforeCreate(tx *gorm.DB) error {
-	if r.ID == "" {
-		r.ID = utils.NewULID()
-	}
-
-	return nil
 }
 
 // IsEditable returns true if this record type can be edited by users

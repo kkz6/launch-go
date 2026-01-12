@@ -3,15 +3,14 @@ package models
 import (
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/kkz6/launch-go/internal/modules/billing/enums"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // Subscription represents a team's subscription to a plan
 type Subscription struct {
-	ID             string                   `gorm:"primaryKey;size:26" json:"id"`
+	basemodels.BaseModel
+	basemodels.SoftDeleteModel
 	TeamID         string                   `gorm:"size:26;not null;index" json:"team_id"`
 	LemonSqueezyID string                   `gorm:"size:255;uniqueIndex;not null" json:"lemon_squeezy_id"`
 	OrderID        *string                  `gorm:"size:255" json:"order_id,omitempty"`
@@ -27,18 +26,6 @@ type Subscription struct {
 	EndsAt         *time.Time               `json:"ends_at,omitempty"`
 	PausedAt       *time.Time               `json:"paused_at,omitempty"`
 	ResumesAt      *time.Time               `json:"resumes_at,omitempty"`
-	CreatedAt      time.Time                `json:"created_at"`
-	UpdatedAt      time.Time                `json:"updated_at"`
-	DeletedAt      gorm.DeletedAt           `gorm:"index" json:"-"`
-}
-
-// BeforeCreate hook to generate ULID
-func (s *Subscription) BeforeCreate(tx *gorm.DB) error {
-	if s.ID == "" {
-		s.ID = utils.NewULID()
-	}
-
-	return nil
 }
 
 // IsActive checks if the subscription is active or on trial

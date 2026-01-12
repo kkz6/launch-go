@@ -10,8 +10,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
 )
 
 // generateRandomToken generates a random hex string of specified length
@@ -26,7 +26,7 @@ func generateRandomToken(length int) string {
 
 // Server represents a managed server
 type Server struct {
-	ID                        string               `gorm:"type:char(26);primaryKey" json:"id"`
+	basemodels.BaseModel
 	ServerProviderID          *string              `gorm:"column:server_provider_id;type:char(26);index" json:"server_provider_id,omitempty"`
 	TeamID                    string               `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
 	UserID                    string               `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
@@ -65,8 +65,6 @@ type Server struct {
 	LastUpdateCheck           *time.Time           `gorm:"column:last_update_check;type:timestamp null" json:"-"`
 	LastConnectivityCheck     *time.Time           `gorm:"column:last_connectivity_check;type:timestamp null" json:"last_connectivity_check,omitempty"`
 	ArchivedAt                *time.Time           `gorm:"column:archived_at;type:timestamp null" json:"archived_at,omitempty"`
-	CreatedAt                 *time.Time           `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt                 *time.Time           `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
 	Services      []InstalledService `gorm:"foreignKey:ServerID;references:ID" json:"services,omitempty"`
@@ -79,8 +77,8 @@ type Server struct {
 }
 
 func (s *Server) BeforeCreate(tx *gorm.DB) error {
-	if s.ID == "" {
-		s.ID = utils.NewULID()
+	if err := s.BaseModel.BeforeCreate(tx); err != nil {
+		return err
 	}
 
 	if s.Status == "" {

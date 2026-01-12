@@ -1,6 +1,7 @@
 package models
 
 // SourceControlRepository represents a repository synced from a git provider
+// Note: Uses auto-increment ID for high-volume repository records
 type SourceControlRepository struct {
 	ID              uint64  `gorm:"primaryKey;autoIncrement" json:"id"`
 	SourceControlID string  `gorm:"column:source_control_id;type:char(26);not null;index" json:"source_control_id"`

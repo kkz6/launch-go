@@ -3,15 +3,13 @@ package models
 import (
 	"time"
 
-	"gorm.io/gorm"
-
 	"github.com/kkz6/launch-go/internal/modules/git/enums"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // SourceControl represents a connected git provider account/installation
 type SourceControl struct {
-	ID                      string                `gorm:"type:char(26);primaryKey" json:"id"`
+	basemodels.BaseModel
 	UserID                  string                `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
 	TeamID                  *string               `gorm:"column:team_id;type:char(26);index" json:"team_id,omitempty"`
 	ProviderID              string                `gorm:"column:provider_id;type:varchar(255);not null;index" json:"provider_id"`
@@ -33,8 +31,6 @@ type SourceControl struct {
 	URL                     *string               `gorm:"type:varchar(255)" json:"url,omitempty"`
 	ProviderData            *string               `gorm:"column:provider_data;type:json" json:"provider_data,omitempty"`
 	TokenExpiresAt          *time.Time            `gorm:"column:token_expires_at;type:timestamp null" json:"token_expires_at,omitempty"`
-	CreatedAt               *time.Time            `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt               *time.Time            `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
 	Repositories []SourceControlRepository `gorm:"foreignKey:SourceControlID;references:ID" json:"repositories,omitempty"`
@@ -43,15 +39,6 @@ type SourceControl struct {
 // TableName returns the table name for SourceControl
 func (SourceControl) TableName() string {
 	return "source_controls"
-}
-
-// BeforeCreate is a GORM hook that generates a ULID before creating a record
-func (s *SourceControl) BeforeCreate(tx *gorm.DB) error {
-	if s.ID == "" {
-		s.ID = utils.NewULID()
-	}
-
-	return nil
 }
 
 // IsOrganization checks if this source control is for an organization
