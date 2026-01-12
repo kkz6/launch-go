@@ -29,7 +29,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ./worker
+    command: ["worker"]
     environment:
       - APP_ENV=development
       - DB_DRIVER=mysql

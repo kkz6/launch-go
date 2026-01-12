@@ -31,10 +31,20 @@ COPY --from=builder /worker .
 COPY migrations ./migrations
 COPY scripts ./scripts
 
+# Copy and set up entrypoint
+COPY scripts/entrypoint.sh ./entrypoint.sh
+RUN chmod +x ./entrypoint.sh
+
 # Create non-root user
 RUN adduser -D -g '' appuser
 USER appuser
 
 EXPOSE 8080
 
-CMD ["./api"]
+# Default mode is 'api', can be overridden with 'worker'
+# Usage:
+#   docker run <image>                    # runs api (default)
+#   docker run <image> api                # runs api explicitly
+#   docker run <image> worker             # runs worker
+ENTRYPOINT ["/app/entrypoint.sh"]
+CMD ["api"]
