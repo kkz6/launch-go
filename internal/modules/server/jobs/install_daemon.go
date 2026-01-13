@@ -7,6 +7,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -61,6 +62,17 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 	if err := j.Repo().MarkDaemonInstalled(ctx, daemon.ID); err != nil {
 		return fmt.Errorf("failed to mark daemon as installed: %w", err)
 	}
+
+	// Log activity
+	logger := activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("server").
+		On(daemon).
+		WithEvent("installed")
+	if j.Payload.UserID != nil {
+		logger.CausedByUser(*j.Payload.UserID)
+	}
+	logger.Log("Daemon was installed")
 
 	j.LogInfo("Daemon installed successfully",
 		"daemon_id", daemon.ID,

@@ -7,6 +7,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -49,6 +50,17 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 		j.LogError(nil, "Daemon deletion task completed with errors",
 			"output", result.GetOutput())
 	}
+
+	// Log activity before deletion
+	logger := activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("server").
+		On(daemon).
+		WithEvent("uninstalled")
+	if j.Payload.UserID != nil {
+		logger.CausedByUser(*j.Payload.UserID)
+	}
+	logger.Log("Daemon was uninstalled")
 
 	// Delete the daemon record
 	if err := j.Repo().DeleteDaemon(ctx, daemon.ID); err != nil {

@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 )
 
 // RebootServerJob reboots a server.
@@ -41,6 +42,17 @@ func (j *RebootServerJob) Handle(ctx context.Context) error {
 			"server_id", server.ID,
 		)
 	}
+
+	// Log activity
+	logger := activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("server").
+		On(server).
+		WithEvent("rebooted")
+	if j.Payload.UserID != nil {
+		logger.CausedByUser(*j.Payload.UserID)
+	}
+	logger.Log("Server reboot was initiated")
 
 	j.LogInfo("Server reboot initiated",
 		"server_id", server.ID,
