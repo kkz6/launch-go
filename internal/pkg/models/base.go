@@ -32,6 +32,12 @@ func (b *BaseModel) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
+// GetID returns the model's ID. This method enables models embedding
+// BaseModel to implement interfaces that require GetID().
+func (b *BaseModel) GetID() string {
+	return b.ID
+}
+
 // InstallableModel provides common fields for models that track installation status.
 // Embed this along with BaseModel for resources that can be installed/uninstalled.
 //
