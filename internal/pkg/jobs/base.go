@@ -48,12 +48,12 @@ type TaskExecutor interface {
 //	    CronID string `json:"cron_id"`
 //	}
 type BaseJob struct {
-	DB           *gorm.DB               `json:"-"`
-	Logger       *zerolog.Logger        `json:"-"`
-	WS           Broadcaster            `json:"-"`
-	Dispatcher   *taskrunner.Dispatcher `json:"-"`
-	Queue        *queue.Client          `json:"-"`
-	TaskExecutor TaskExecutor           `json:"-"`
+	DB           *gorm.DB                  `json:"-"`
+	Logger       *zerolog.Logger           `json:"-"`
+	WS           Broadcaster               `json:"-"`
+	Dispatcher   taskrunner.TaskDispatcher `json:"-"`
+	Queue        *queue.Client             `json:"-"`
+	TaskExecutor TaskExecutor              `json:"-"`
 }
 
 // SetDependencies sets the job dependencies
@@ -64,7 +64,7 @@ func (j *BaseJob) SetDependencies(db *gorm.DB, logger *zerolog.Logger, ws Broadc
 }
 
 // SetDispatcher sets the task dispatcher
-func (j *BaseJob) SetDispatcher(dispatcher *taskrunner.Dispatcher) {
+func (j *BaseJob) SetDispatcher(dispatcher taskrunner.TaskDispatcher) {
 	j.Dispatcher = dispatcher
 }
 
@@ -94,7 +94,7 @@ func (j *BaseJob) GetWS() Broadcaster {
 }
 
 // GetDispatcher returns the task dispatcher
-func (j *BaseJob) GetDispatcher() *taskrunner.Dispatcher {
+func (j *BaseJob) GetDispatcher() taskrunner.TaskDispatcher {
 	return j.Dispatcher
 }
 
@@ -185,7 +185,7 @@ type Registry struct {
 	db         *gorm.DB
 	logger     *zerolog.Logger
 	ws         Broadcaster
-	dispatcher *taskrunner.Dispatcher
+	dispatcher taskrunner.TaskDispatcher
 	queue      *queue.Client
 }
 
@@ -231,7 +231,7 @@ func (r *Registry) HandlerFunc(jobType string) asynq.HandlerFunc {
 		// Set dispatcher if available and job supports it
 		if r.dispatcher != nil {
 			if dispatcherSetter, ok := handler.(interface {
-				SetDispatcher(*taskrunner.Dispatcher)
+				SetDispatcher(taskrunner.TaskDispatcher)
 			}); ok {
 				dispatcherSetter.SetDispatcher(r.dispatcher)
 			}

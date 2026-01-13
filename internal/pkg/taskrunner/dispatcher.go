@@ -18,6 +18,12 @@ type Broadcaster interface {
 	Broadcast(channel string, event string, data interface{})
 }
 
+// TaskDispatcher interface defines the contract for task dispatchers.
+// Both Dispatcher and FakeDispatcher implement this interface.
+type TaskDispatcher interface {
+	Run(ctx context.Context, pt *PendingTask) (*TaskResult, error)
+}
+
 // Dispatcher handles task execution
 type Dispatcher struct {
 	logger        *zerolog.Logger

@@ -25,7 +25,7 @@ type JobContext struct {
 	Repo           *repositories.Repository
 	Logger         *zerolog.Logger
 	WS             jobs.Broadcaster
-	Dispatcher     *taskrunner.Dispatcher
+	Dispatcher     taskrunner.TaskDispatcher
 	Queue          *queue.Client
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
 }
@@ -35,7 +35,7 @@ func NewJobContext(
 	repo *repositories.Repository,
 	logger *zerolog.Logger,
 	ws jobs.Broadcaster,
-	dispatcher *taskrunner.Dispatcher,
+	dispatcher taskrunner.TaskDispatcher,
 	queueClient *queue.Client,
 ) *JobContext {
 	return &JobContext{

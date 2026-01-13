@@ -25,7 +25,7 @@ var (
 type Module struct {
 	db         *gorm.DB
 	ws         *websocket.Hub
-	dispatcher *taskrunner.Dispatcher
+	dispatcher taskrunner.TaskDispatcher
 	logger     *zerolog.Logger
 	handler    *handlers.Handler
 	repo       *repositories.Repository
@@ -38,7 +38,7 @@ func NewModule(db *gorm.DB, serverRepo services.ServerRepository, queueClient *q
 }
 
 // NewModuleWithDispatcher creates a new database module with a dispatcher for jobs
-func NewModuleWithDispatcher(db *gorm.DB, serverRepo services.ServerRepository, queueClient *queue.Client, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *Module {
+func NewModuleWithDispatcher(db *gorm.DB, serverRepo services.ServerRepository, queueClient *queue.Client, ws *websocket.Hub, dispatcher taskrunner.TaskDispatcher, logger *zerolog.Logger) *Module {
 	repo := repositories.NewRepository(db)
 	service := services.NewService(repo, serverRepo, queueClient, ws, logger)
 	handler := handlers.NewHandler(service)
