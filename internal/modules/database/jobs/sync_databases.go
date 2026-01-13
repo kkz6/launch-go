@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"time"
 
 	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
 	dbtasks "github.com/kkz6/launch-go/internal/modules/database/tasks"
@@ -14,7 +13,6 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
-// Protected databases that should not be synced
 var protectedMySQLDatabases = []string{
 	"information_schema",
 	"mysql",
@@ -28,25 +26,18 @@ var protectedPostgreSQLDatabases = []string{
 	"template1",
 }
 
-// SyncDatabasesJob handles syncing databases from a server.
-// Similar to Laravel's Modules\Database\Jobs\SyncDatabases
 type SyncDatabasesJob struct {
 	DatabaseJobBase
 	Payload SyncDatabasesPayload
 }
 
-// Type returns the job type identifier.
 func (j *SyncDatabasesJob) Type() string {
 	return TypeSyncDatabases
 }
 
-// Handle processes the sync databases job.
 func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 	j.LogInfo("Syncing databases from server", "server_id", j.Payload.ServerID)
 
-	j.broadcastProgress(j.Payload.ServerID, "syncing", "Syncing databases from server...")
-
-	// Fetch the server with its services
 	server, err := repository.NewQuery[servermodels.Server](j.DB, ctx).
 		WithModel("Server").
 		Preload("Services").
@@ -56,21 +47,20 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	// Find the database service type
+	j.BroadcastDatabaseProgress(server, "database.sync.progress", "", "syncing", "Syncing databases from server...")
+
 	dbServiceType := j.getDatabaseServiceType(server)
 	if dbServiceType == "" {
 		j.LogInfo("No database service found on server, skipping sync", "server_id", j.Payload.ServerID)
-		j.broadcastProgress(j.Payload.ServerID, "synced", "No database service found on server")
+		j.BroadcastDatabaseProgress(server, "database.sync.progress", "", "synced", "No database service found on server")
 		return nil
 	}
 
-	// Get databases from the server
 	serverDatabases, err := j.getDatabasesFromServer(ctx, server, dbServiceType)
 	if err != nil {
 		return fmt.Errorf("failed to get databases from server: %w", err)
 	}
 
-	// Filter out protected/system databases
 	var protectedDatabases []string
 	if dbServiceType == enums.ServiceTypeMySql {
 		protectedDatabases = protectedMySQLDatabases
@@ -86,7 +76,6 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		"user_databases", len(userDatabases),
 	)
 
-	// Get existing databases in the application
 	existingDatabases, err := repository.NewQuery[dbmodels.Database](j.DB, ctx).
 		Where("server_id = ?", j.Payload.ServerID).
 		All()
@@ -99,19 +88,17 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		existingNames[db.Name] = true
 	}
 
-	// Find databases that exist on server but not in application
 	var syncedCount int
 	for _, dbName := range userDatabases {
 		if existingNames[dbName] {
 			continue
 		}
 
-		// Create missing database record
 		database := &dbmodels.Database{
 			ServerID: j.Payload.ServerID,
 			Name:     dbName,
 		}
-		database.MarkAsInstalled() // Mark as installed since it exists on server
+		database.MarkAsInstalled()
 
 		if err := j.DB.WithContext(ctx).Create(database).Error; err != nil {
 			j.LogError(err, "Failed to create database record",
@@ -135,12 +122,11 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		"synced_databases", syncedCount,
 	)
 
-	j.broadcastProgress(j.Payload.ServerID, "synced", fmt.Sprintf("Database sync completed. Found %d databases, synced %d new.", len(userDatabases), syncedCount))
+	j.BroadcastDatabaseProgress(server, "database.sync.progress", "", "synced", fmt.Sprintf("Database sync completed. Found %d databases, synced %d new.", len(userDatabases), syncedCount))
 
 	return nil
 }
 
-// getDatabaseServiceType finds the database service type on the server.
 func (j *SyncDatabasesJob) getDatabaseServiceType(server *servermodels.Server) enums.ServiceType {
 	for _, service := range server.Services {
 		if service.Type.IsDatabase() && service.Status.IsActive() {
@@ -150,7 +136,6 @@ func (j *SyncDatabasesJob) getDatabaseServiceType(server *servermodels.Server) e
 	return ""
 }
 
-// getDatabasesFromServer retrieves the list of databases from the server via SSH.
 func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *servermodels.Server, dbType enums.ServiceType) ([]string, error) {
 	var task taskrunner.Task
 
@@ -163,13 +148,11 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 		return nil, fmt.Errorf("unsupported database type: %s", dbType)
 	}
 
-	// Create pending task with SSH connection
 	pt, err := j.createPendingTask(server, task)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pending task: %w", err)
 	}
 
-	// Run the task
 	result, err := j.Dispatcher.Run(ctx, pt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run get databases task: %w", err)
@@ -179,15 +162,12 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 		return nil, fmt.Errorf("get databases command failed with exit code %d: %s", result.ExitCode, result.Output)
 	}
 
-	// Parse the output - each line is a database name
 	databases := parseLines(result.Output)
 
 	return databases, nil
 }
 
-// createPendingTask creates a pending task with SSH connection for the server.
 func (j *SyncDatabasesJob) createPendingTask(server *servermodels.Server, task taskrunner.Task) (*taskrunner.PendingTask, error) {
-	// Get SSH credentials
 	if server.PrivateKey.IsEmpty() {
 		return nil, fmt.Errorf("server has no private key configured")
 	}
@@ -212,23 +192,17 @@ func (j *SyncDatabasesJob) createPendingTask(server *servermodels.Server, task t
 	}, nil
 }
 
-// Failed is called when the job fails after all retries.
 func (j *SyncDatabasesJob) Failed(ctx context.Context, err error) {
 	j.LogError(err, "Failed to sync databases", "server_id", j.Payload.ServerID)
 
-	j.broadcastProgress(j.Payload.ServerID, "failed", "Failed to sync databases from server")
+	server, findErr := repository.Find[servermodels.Server](j.DB, ctx, j.Payload.ServerID)
+	if findErr != nil {
+		return
+	}
+
+	j.BroadcastDatabaseProgress(server, "database.sync.progress", "", "failed", "Failed to sync databases from server")
 }
 
-func (j *SyncDatabasesJob) broadcastProgress(serverID, status, message string) {
-	j.BroadcastDatabaseEvent(serverID, "database.sync.progress", map[string]any{
-		"server_id": serverID,
-		"status":    status,
-		"message":   message,
-		"timestamp": time.Now().Format(time.RFC3339),
-	})
-}
-
-// filterProtectedDatabases removes protected databases from the list.
 func filterProtectedDatabases(databases, protected []string) []string {
 	protectedMap := make(map[string]bool)
 	for _, p := range protected {
@@ -245,7 +219,6 @@ func filterProtectedDatabases(databases, protected []string) []string {
 	return filtered
 }
 
-// parseLines splits the output into lines and filters empty ones.
 func parseLines(output string) []string {
 	lines := strings.Split(output, "\n")
 	var result []string

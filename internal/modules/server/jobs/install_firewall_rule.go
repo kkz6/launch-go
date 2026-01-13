@@ -67,7 +67,7 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(rule.ServerID, "firewall_rule.installed", map[string]interface{}{
+	j.BroadcastServerEvent(rule.ServerID, "firewall_rule.installed", map[string]any{
 		"rule_id":   rule.ID,
 		"server_id": rule.ServerID,
 	})

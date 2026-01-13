@@ -78,10 +78,6 @@ func (j *BaseJob) SetTaskExecutor(executor TaskExecutor) {
 	j.TaskExecutor = executor
 }
 
-// ===============================
-// Getter methods for DependencyAware interface
-// ===============================
-
 // GetDB returns the database connection
 func (j *BaseJob) GetDB() *gorm.DB {
 	return j.DB
@@ -106,10 +102,6 @@ func (j *BaseJob) GetDispatcher() *taskrunner.Dispatcher {
 func (j *BaseJob) GetQueue() *queue.Client {
 	return j.Queue
 }
-
-// ===============================
-// Individual setter methods
-// ===============================
 
 // SetDB sets the database connection
 func (j *BaseJob) SetDB(db *gorm.DB) {
@@ -169,10 +161,15 @@ func (j *BaseJob) Broadcast(channel, event string, data interface{}) {
 	}
 }
 
-// BroadcastToServer sends a websocket broadcast to a server channel
-func (j *BaseJob) BroadcastToServer(serverID, event string, data interface{}) {
+func (j *BaseJob) BroadcastToServer(serverID, event string, data any) {
 	if j.WS != nil {
 		j.WS.BroadcastToServer(serverID, event, data)
+	}
+}
+
+func (j *BaseJob) BroadcastToTeam(teamID, event string, data any) {
+	if j.WS != nil {
+		j.WS.BroadcastToTeam(teamID, event, data)
 	}
 }
 

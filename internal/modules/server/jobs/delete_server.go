@@ -52,7 +52,7 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 			j.LogError(err, "Failed to create provider, continuing with database deletion")
 		} else {
 			// Get credentials from server provider
-			var credentials map[string]interface{}
+			var credentials map[string]any
 			if server.ServerProviderID != nil {
 				serverProvider, err := j.Repo().FindServerProviderByID(ctx, *server.ServerProviderID)
 				if err == nil {
@@ -90,7 +90,7 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(server.ID, "server.deleted", map[string]interface{}{
+	j.BroadcastServerEvent(server.ID, "server.deleted", map[string]any{
 		"server_id": server.ID,
 	})
 

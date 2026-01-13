@@ -36,7 +36,7 @@ func (j *UnarchiveServerJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(server.ID, "server.unarchived", map[string]interface{}{
+	j.BroadcastServerEvent(server.ID, "server.unarchived", map[string]any{
 		"server_id": server.ID,
 	})
 

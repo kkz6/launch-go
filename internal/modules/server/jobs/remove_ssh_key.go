@@ -63,7 +63,7 @@ func (j *RemoveSshKeyJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(server.ID, "ssh_key.removed", map[string]interface{}{
+	j.BroadcastServerEvent(server.ID, "ssh_key.removed", map[string]any{
 		"key_id":    sshKey.ID,
 		"server_id": server.ID,
 	})
