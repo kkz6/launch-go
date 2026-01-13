@@ -26,14 +26,14 @@ func (p ProvisionStep) String() string {
 // TemplateName returns the template path for this provision step
 func (p ProvisionStep) TemplateName() string {
 	templateNames := map[ProvisionStep]string{
-		ProvisionStepAptUpdateUpgrade:         "provision/apt-update-upgrade.sh",
-		ProvisionStepConfigureFirewall:        "provision/configure-firewall.sh",
-		ProvisionStepConfigureSwap:            "provision/configure-swap.sh",
-		ProvisionStepInstallEssentialPackages: "provision/install-essential-packages.sh",
-		ProvisionStepSetupDefaultUser:         "provision/setup-default-user.sh",
-		ProvisionStepSetupRoot:                "provision/setup-root.sh",
-		ProvisionStepSetupUnattendedUpgrades:  "provision/setup-unattended-upgrades.sh",
-		ProvisionStepSSHSecurity:              "provision/ssh-security.sh",
+		ProvisionStepAptUpdateUpgrade:         "provision/apt_update_upgrade.sh",
+		ProvisionStepConfigureFirewall:        "provision/configure_firewall.sh",
+		ProvisionStepConfigureSwap:            "provision/configure_swap.sh",
+		ProvisionStepInstallEssentialPackages: "provision/install_essential_packages.sh",
+		ProvisionStepSetupDefaultUser:         "provision/setup_default_user.sh",
+		ProvisionStepSetupRoot:                "provision/setup_root.sh",
+		ProvisionStepSetupUnattendedUpgrades:  "provision/setup_unattended_upgrades.sh",
+		ProvisionStepSSHSecurity:              "provision/ssh_security.sh",
 	}
 
 	if name, ok := templateNames[p]; ok {

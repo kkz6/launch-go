@@ -52,3 +52,9 @@ func (c *Cron) GetLogPath() string {
 	}
 	return fmt.Sprintf("/home/%s/cron-%s.log", c.User, c.ID)
 }
+
+// ToCronFileContents generates the cron file contents
+func (c *Cron) ToCronFileContents() string {
+	// Format: expression user command >> logfile 2>&1
+	return fmt.Sprintf("%s %s %s >> %s 2>&1\n", c.Expression, c.User, c.Command, c.GetLogPath())
+}

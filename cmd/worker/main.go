@@ -12,10 +12,10 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/database"
-	databasejobs "github.com/kkz6/launch-go/internal/modules/database/jobs"
-	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
-	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
-	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
+	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
+	"github.com/kkz6/launch-go/internal/modules/server"
+	"github.com/kkz6/launch-go/internal/modules/site"
+	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
@@ -47,7 +47,6 @@ func main() {
 	go wsHub.Run()
 
 	// Initialize task dispatcher with local mode support
-	// In local mode, tasks use SSH streaming instead of HTTP callbacks
 	dispatcher := taskrunner.NewDispatcherWithConfig(appLogger, wsHub, &taskrunner.DispatcherConfig{
 		LocalMode:         cfg.App.IsLocal(),
 		BroadcastInterval: 2 * time.Second,
@@ -56,9 +55,6 @@ func main() {
 	if cfg.App.IsLocal() {
 		appLogger.Info().Msg("Running in local mode - using SSH streaming for task output")
 	}
-
-	// Create server repository for task tracking
-	serverRepo := serverrepos.NewRepository(db)
 
 	// Create Asynq server
 	srv := asynq.NewServer(
@@ -83,28 +79,21 @@ func main() {
 		},
 	)
 
-	// Create job context for server jobs
-	serverJobContext := serverjobs.NewJobContext(db, serverRepo, appLogger, wsHub, dispatcher, serverRepo)
+	// Create application context with all shared dependencies
+	ctx := app.NewContext(cfg, db, appLogger, nil, wsHub, dispatcher)
 
-	// Create job registries
-	databaseJobRegistry := databasejobs.NewRegistry(db, wsHub, dispatcher, appLogger)
-	serverJobRegistry := serverjobs.NewRegistry(serverJobContext)
-	siteJobHandler := sitejobs.NewHandler(db, wsHub, appLogger)
+	// Create application kernel for module registration
+	kernel := app.NewKernel(appLogger)
 
-	// Register handlers
+	// Register all modules with the kernel
+	kernel.
+		Register(server.NewModuleFromContext(ctx)).
+		Register(databasemodule.NewModuleFromContext(ctx)).
+		Register(site.NewModuleFromContext(ctx))
+
+	// Boot all jobs through the kernel
 	mux := asynq.NewServeMux()
-
-	// Database jobs
-	databaseJobRegistry.RegisterHandlers(mux)
-
-	// Server jobs
-	serverJobRegistry.RegisterHandlers(mux)
-
-	// Site jobs
-	mux.HandleFunc(sitejobs.TypeDeploy, siteJobHandler.HandleDeploy)
-	mux.HandleFunc(sitejobs.TypeDeployZeroDowntime, siteJobHandler.HandleDeployZeroDowntime)
-	mux.HandleFunc(sitejobs.TypeRollback, siteJobHandler.HandleRollback)
-	mux.HandleFunc(sitejobs.TypeInstallSSL, siteJobHandler.HandleInstallSSL)
+	kernel.BootJobs(mux)
 
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
@@ -121,9 +110,8 @@ func main() {
 	appLogger.Info().Msg("Shutting down worker...")
 
 	srv.Shutdown()
+	kernel.Shutdown()
 	wsHub.Shutdown()
-
-	_ = db
 
 	appLogger.Info().Msg("Worker stopped")
 }

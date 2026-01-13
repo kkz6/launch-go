@@ -9,6 +9,13 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/repositories"
 	"github.com/kkz6/launch-go/internal/modules/dns/services"
+	"github.com/kkz6/launch-go/internal/pkg/app"
+)
+
+// Ensure Module implements required interfaces
+var (
+	_ app.Module         = (*Module)(nil)
+	_ app.RouteRegistrar = (*Module)(nil)
 )
 
 // Module represents the DNS module
@@ -24,6 +31,16 @@ type Module struct {
 	providerRepo  *repositories.DomainProviderRepository
 	domainRepo    *repositories.DomainRepository
 	dnsRecordRepo *repositories.DnsRecordRepository
+}
+
+// NewModuleFromContext creates a new DNS module from app context
+func NewModuleFromContext(ctx *app.Context) *Module {
+	return NewModule(ctx.DB, ctx.Logger)
+}
+
+// Name returns the module name (implements app.Module)
+func (m *Module) Name() string {
+	return "dns"
 }
 
 // NewModule creates a new DNS module instance

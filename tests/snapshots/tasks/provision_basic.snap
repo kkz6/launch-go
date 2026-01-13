@@ -1,0 +1,409 @@
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+# Send a POST request to the given URL, ignoring the response and errors
+function httpPostSilently() {
+    if [ -z "${2:-}" ]; then
+        (curl -X POST --silent --max-time 15 --output /dev/null $1 || true)
+    else
+        (curl -X POST --silent --max-time 15 --output /dev/null $1 -H 'Content-Type: application/json' --data "$2" || true)
+    fi
+}
+
+function httpPostRawSilently() {
+    (curl -X POST --silent --max-time 15 --output /dev/null $1 --data "$2" || true)
+}
+
+# Wait for apt to be unlocked
+function waitForAptUnlock() {
+    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
+        echo "apt, apt-get or dpkg is running..."
+        sleep 5
+    done
+
+    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+        echo "Waiting: apt is locked..."
+        sleep 5
+    done
+
+    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
+        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
+            echo "Waiting: unattended-upgrades is locked..."
+            sleep 5
+        done
+    fi
+}
+
+
+# === Provision Step: Configure a swap file so the server can handle more memory-intensive tasks ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Configure swap"
+
+if [ ! -f /swapfile ]; then
+    sudo fallocate -l 1024M /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile || true
+
+    # Use tee to append to /etc/fstab with sudo privileges
+    echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab > /dev/null
+
+    # Use tee to append to /etc/sysctl.conf with sudo privileges
+    echo "vm.swappiness=35" | sudo tee -a /etc/sysctl.conf > /dev/null
+    echo "vm.vfs_cache_pressure=50" | sudo tee -a /etc/sysctl.conf > /dev/null
+fi
+
+
+# === Provision Step: Configure the firewall with the default rules (SSH, HTTP, HTTPS) ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Configure firewall with SSH port, HTTP and HTTPS"
+
+sudo ufw allow 22
+sudo ufw allow 80
+sudo ufw allow 443
+sudo yes | sudo ufw enable
+sudo service ufw restart
+
+
+# === Provision Step: Update package lists and installed system packages ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+# Wait for apt to be unlocked
+function waitForAptUnlock() {
+    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
+        echo "apt, apt-get or dpkg is running..."
+        sleep 5
+    done
+
+    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+        echo "Waiting: apt is locked..."
+        sleep 5
+    done
+
+    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
+        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
+            echo "Waiting: unattended-upgrades is locked..."
+            sleep 5
+        done
+    fi
+}
+
+echo "Update package repositories and upgrade packages"
+
+# This ensures that the cloud-init bundle is not overwritten by a different version when running apt-get upgrade.
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-mark hold cloud-init
+
+# Remove ALL MySQL repository files to prevent expired GPG key errors
+# The MySQL installation script will properly configure the repository later
+sudo rm -f /etc/apt/sources.list.d/*mysql*
+
+# Update package repositories
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+
+# Install software-properties-common
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-get install software-properties-common -y
+
+# Add universe repository
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive add-apt-repository universe -y
+
+# Update package repositories
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+
+# Upgrade packages
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+
+
+# === Provision Step: Install essential packages (curl, git, wget, etc.) ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Install essential packages"
+
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    acl \
+    apt-transport-https \
+    ca-certificates \
+    cron \
+    curl \
+    debian-archive-keyring \
+    debian-keyring \
+    fail2ban \
+    gcc \
+    git \
+    lsb-release \
+    make \
+    procps \
+    software-properties-common \
+    ufw \
+    unattended-upgrades \
+    unzip \
+    wget \
+    zip
+
+
+# === Provision Step: Configure unattended upgrades to keep the server up to date automatically ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Setup unattended upgrades"
+
+# Configure the allowed origins for unattended upgrades
+sudo tee /etc/apt/apt.conf.d/50unattended-upgrades > /dev/null <<EOF
+Unattended-Upgrade::Allowed-Origins {
+    "\${distro_id} \${distro_codename}-security";
+};
+Unattended-Upgrade::Package-Blacklist {
+    //
+};
+EOF
+
+# Configure the periodic settings for APT
+sudo tee /etc/apt/apt.conf.d/10periodic > /dev/null <<EOF
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::AutocleanInterval "7";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+
+
+# === Provision Step: Configure the root user ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Add public key for this server"
+
+sudo mkdir -p /root/.ssh
+sudo touch /root/.ssh/authorized_keys
+
+sudo tee -a /root/.ssh/authorized_keys > /dev/null <<EOF
+ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ... test@example.com
+EOF
+
+echo "Fix root permissions"
+
+sudo chown root:root /root
+sudo chown -R root:root /root/.ssh
+sudo chmod 700 /root/.ssh
+sudo chmod 600 /root/.ssh/authorized_keys
+
+echo "SSH Keyscans for Source Providers"
+
+sudo ssh-keygen -R github.com 2>/dev/null || true
+sudo ssh-keygen -R bitbucket.org 2>/dev/null || true
+sudo ssh-keygen -R gitlab.com 2>/dev/null || true
+sudo ssh-keyscan -H github.com | sudo tee -a /root/.ssh/known_hosts > /dev/null
+sudo ssh-keyscan -H bitbucket.org | sudo tee -a /root/.ssh/known_hosts > /dev/null
+sudo ssh-keyscan -H gitlab.com | sudo tee -a /root/.ssh/known_hosts > /dev/null
+
+
+
+
+# === Provision Step: Enhance SSH security by disabling password authentication and root login ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Enhance SSH security"
+
+sudo sed -i "/PasswordAuthentication yes/d" /etc/ssh/sshd_config
+echo "PasswordAuthentication no" | sudo tee -a /etc/ssh/sshd_config > /dev/null
+sudo service ssh restart
+
+echo "Setup SSH keys for root"
+
+if [ ! -d /root/.ssh ]
+then
+    sudo mkdir -p /root/.ssh
+    sudo touch /root/.ssh/authorized_keys
+fi
+
+
+# === Provision Step: Create a default user account ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Rename existing user 1000 if it exists, otherwise create a new user"
+
+TARGET_USER="launcher"
+PROTECTED_USERS=("ubuntu" "root" "ec2-user")
+
+if id "$TARGET_USER" > /dev/null 2>&1; then
+    echo "User $TARGET_USER already exists. Skipping user creation."
+elif getent passwd 1000 > /dev/null 2>&1; then
+    OLD_USERNAME=$(getent passwd 1000 | cut -d: -f1)
+
+    # Check if the current user is protected (ubuntu, root, ec2-user, etc.)
+    if [[ " ${PROTECTED_USERS[@]} " =~ " $OLD_USERNAME " ]]; then
+        echo "User $OLD_USERNAME is a protected user. Skipping renaming and adding user."
+        echo "Setup default user"
+        sudo useradd -m -d "/home/$TARGET_USER" -s /bin/bash "$TARGET_USER"
+    else
+        echo "Renaming existing user 1000 ($OLD_USERNAME)"
+        sudo pkill -9 -u "$OLD_USERNAME" || true
+        sudo pkill -KILL -u "$OLD_USERNAME" || true
+        sudo usermod --login "$TARGET_USER" --move-home --home "/home/$TARGET_USER" "$OLD_USERNAME"
+        sudo groupmod --new-name "$TARGET_USER" "$OLD_USERNAME"
+    fi
+else
+    echo "Setup default user"
+    sudo useradd -m -d "/home/$TARGET_USER" -s /bin/bash "$TARGET_USER"
+fi
+
+echo "Create the user's home directory"
+
+sudo mkdir -p /home/launcher/.launch
+sudo mkdir -p /home/launcher/.ssh
+
+echo "Add user to groups"
+
+sudo adduser launcher sudo
+sudo id launcher
+sudo groups launcher
+
+echo "Set shell"
+
+sudo chsh -s /bin/bash launcher
+
+echo "Init default profile/bashrc"
+
+sudo cp /root/.bashrc /home/launcher/.bashrc
+sudo cp /root/.profile /home/launcher/.profile
+
+echo "Copy SSH settings from root and create new key"
+
+sudo cp /root/.ssh/authorized_keys /home/launcher/.ssh/authorized_keys
+sudo cp /root/.ssh/known_hosts /home/launcher/.ssh/known_hosts
+sudo rm -f /home/launcher/.ssh/id_rsa /home/launcher/.ssh/id_rsa.pub
+sudo ssh-keygen -f /home/launcher/.ssh/id_rsa -t rsa -N ''
+
+
+echo "Add SSH keys to authorized_keys"
+
+sudo tee -a /home/launcher/.ssh/authorized_keys > /dev/null <<EOF
+ssh-rsa KEY1...
+EOF
+
+sudo tee -a /home/launcher/.ssh/authorized_keys > /dev/null <<EOF
+ssh-rsa KEY2...
+EOF
+
+
+
+echo "Set password"
+PASSWORD=$(mkpasswd -m sha-512 "securepassword123")
+
+echo "launcher:$PASSWORD" | sudo chpasswd
+
+# Add default Caddy page
+echo "Add default Caddy page"
+sudo mkdir -p /home/"launcher/default"
+sudo tee /home/"launcher/default/index.html" > /dev/null <<EOF
+This server is managed by <a href=""></a>.
+EOF
+
+echo "Fix user permissions"
+
+sudo chown -R launcher:launcher /home/launcher
+sudo chmod -R 755 /home/launcher
+sudo chmod 700 /home/launcher/.ssh
+sudo chmod 700 /home/launcher/.ssh/id_rsa
+sudo chmod 600 /home/launcher/.ssh/authorized_keys
+
+
+# === Install Software: Caddy 2 ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+# Wait for apt to be unlocked
+function waitForAptUnlock() {
+    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
+        echo "apt, apt-get or dpkg is running..."
+        sleep 5
+    done
+
+    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+        echo "Waiting: apt is locked..."
+        sleep 5
+    done
+
+    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
+        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
+            echo "Waiting: unattended-upgrades is locked..."
+            sleep 5
+        done
+    fi
+}
+
+echo "Install Caddy webserver"
+
+waitForAptUnlock
+sudo rm -f /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+waitForAptUnlock
+sudo apt-get update
+waitForAptUnlock
+sudo apt-get install -y caddy=2.*
+
+echo "Install default Caddyfile"
+
+# Set up the Caddyfile for the user
+sudo tee /etc/caddy/Sites.caddy > /dev/null <<EOF
+# import /home/launcher/example.com/Caddyfile
+EOF
+
+sudo tee /etc/caddy/Caddyfile > /dev/null <<EOF
+192.168.1.100:80 {
+    root * /home/launcher/default
+    file_server
+}
+
+# Do not remove this Sites.caddy import
+import /etc/caddy/Sites.caddy
+EOF
+
+echo "Update Caddy service config to run as user"
+
+sudo service caddy stop
+sudo mkdir -p /etc/systemd/system/caddy.service.d
+
+sudo tee /etc/systemd/system/caddy.service.d/override.conf > /dev/null <<EOF
+[Service]
+User=launcher
+Group=launcher
+EOF
+
+# Reload systemd configuration and start Caddy service
+sudo systemctl daemon-reload
+sudo service caddy start
+
+# Add caddy reload command to sudoers file without requiring password
+sudo tee -a /etc/sudoers.d/caddy > /dev/null <<EOF
+launcher ALL=(root) NOPASSWD: /usr/sbin/service caddy reload
+EOF
+
+
+# === Final Cleanup ===
+# See 'apt-update-upgrade'
+waitForAptUnlock
+sudo apt-mark unhold cloud-init

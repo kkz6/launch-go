@@ -1,15 +1,25 @@
 package site
 
 import (
+	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/site/handlers"
+	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
+)
+
+// Ensure Module implements required interfaces
+var (
+	_ app.Module         = (*Module)(nil)
+	_ app.RouteRegistrar = (*Module)(nil)
+	_ app.JobRegistrar   = (*Module)(nil)
 )
 
 // Module represents the site module
@@ -215,4 +225,23 @@ func (m *Module) CommandService() *services.CommandService {
 // RedirectService returns the redirect service instance
 func (m *Module) RedirectService() *services.RedirectService {
 	return m.redirectService
+}
+
+// Name returns the module name (implements app.Module)
+func (m *Module) Name() string {
+	return "site"
+}
+
+// NewModuleFromContext creates a new site module from app context
+func NewModuleFromContext(ctx *app.Context) *Module {
+	return NewModule(ctx.DB, ctx.Queue, ctx.WebSocket, ctx.Logger)
+}
+
+// RegisterJobs registers background job handlers (implements app.JobRegistrar)
+func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
+	handler := jobs.NewHandler(m.db, m.ws, m.logger)
+	mux.HandleFunc(jobs.TypeDeploy, handler.HandleDeploy)
+	mux.HandleFunc(jobs.TypeDeployZeroDowntime, handler.HandleDeployZeroDowntime)
+	mux.HandleFunc(jobs.TypeRollback, handler.HandleRollback)
+	mux.HandleFunc(jobs.TypeInstallSSL, handler.HandleInstallSSL)
 }

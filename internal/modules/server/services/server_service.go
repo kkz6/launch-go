@@ -332,7 +332,7 @@ func (s *Service) dispatchProvisionJob(server *models.Server) error {
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewProvisionServerTask(server.ID, server.TeamID, nil)
+	task, err := jobs.NewProvisionServerTask(server.ID, server.TeamID, nil, nil)
 	if err != nil {
 		return err
 	}

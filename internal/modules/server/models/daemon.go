@@ -103,3 +103,33 @@ func (d *Daemon) GetErrorLogPath() string {
 func (d *Daemon) ProgramName() string {
 	return fmt.Sprintf("daemon-%s", d.ID)
 }
+
+// ToSupervisorConfig generates the supervisor configuration file contents
+func (d *Daemon) ToSupervisorConfig() string {
+	dir := ""
+	if d.Directory != nil {
+		dir = *d.Directory
+	}
+
+	config := fmt.Sprintf(`[program:%s]
+process_name=%%(program_name)s_%%(process_num)02d
+command=%s
+autostart=true
+autorestart=true
+stopasgroup=true
+killasgroup=true
+user=%s
+numprocs=%d
+redirect_stderr=true
+stdout_logfile=%s
+stderr_logfile=%s
+stopwaitsecs=%d
+stopsignal=%s
+`, d.ProgramName(), d.Command, d.User, d.Processes, d.GetLogPath(), d.GetErrorLogPath(), d.StopWaitSeconds, d.StopSignal)
+
+	if dir != "" {
+		config += fmt.Sprintf("directory=%s\n", dir)
+	}
+
+	return config
+}
