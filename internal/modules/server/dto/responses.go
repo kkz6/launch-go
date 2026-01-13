@@ -317,7 +317,7 @@ func ToCronResponse(cron *models.Cron) CronResponse {
 		SiteID:      cron.SiteID,
 		User:        cron.User,
 		Expression:  cron.Expression,
-		Command:     cron.Command,
+		Command:     cron.Command.String(),
 		Frequency:   frequency,
 		Hidden:      cron.Hidden,
 		IsInstalled: cron.IsInstalled(),
