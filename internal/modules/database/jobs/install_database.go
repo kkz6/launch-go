@@ -17,6 +17,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -30,20 +31,18 @@ type InstallDatabasePayload struct {
 
 // InstallDatabaseJob handles database installation on a server
 type InstallDatabaseJob struct {
-	db         *gorm.DB
-	ws         *websocket.Hub
-	dispatcher *taskrunner.Dispatcher
-	logger     *zerolog.Logger
+	jobs.BaseJob
 }
 
 // NewInstallDatabaseJob creates a new install database job handler
-func NewInstallDatabaseJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *InstallDatabaseJob {
-	return &InstallDatabaseJob{
-		db:         db,
-		ws:         ws,
-		dispatcher: dispatcher,
-		logger:     logger,
-	}
+func NewInstallDatabaseJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, queueClient *queue.Client, logger *zerolog.Logger) *InstallDatabaseJob {
+	j := &InstallDatabaseJob{}
+	j.DB = db
+	j.WS = ws
+	j.Dispatcher = dispatcher
+	j.Queue = queueClient
+	j.Logger = logger
+	return j
 }
 
 // NewInstallDatabaseTask creates a new asynq task for installing a database
@@ -61,18 +60,18 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
 		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("database_id", payload.DatabaseID).
 		Msg("Installing database")
 
 	// Fetch the database
-	database, err := repository.Find[models.Database](j.db, ctx, payload.DatabaseID)
+	database, err := repository.Find[models.Database](j.DB, ctx, payload.DatabaseID)
 	if err != nil {
 		return err
 	}
 
 	// Fetch the server
-	server, err := repository.Find[servermodels.Server](j.db, ctx, database.ServerID)
+	server, err := repository.Find[servermodels.Server](j.DB, ctx, database.ServerID)
 	if err != nil {
 		return err
 	}
@@ -101,9 +100,10 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	// Use TaskRunner to execute on server
 	result, err := servertasks.NewTaskRunner(server, task).
-		WithDB(j.db).
-		WithDispatcher(j.dispatcher).
-		WithLogger(j.logger).
+		WithDB(j.DB).
+		WithQueue(j.Queue).
+		WithDispatcher(j.Dispatcher).
+		WithLogger(j.Logger).
 		AsRoot().
 		Run(ctx)
 	if err != nil {
@@ -116,7 +116,7 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	// Mark the database as installed
 	now := time.Now()
-	if err := j.db.WithContext(ctx).Model(database).Update("installed_at", &now).Error; err != nil {
+	if err := j.DB.WithContext(ctx).Model(database).Update("installed_at", &now).Error; err != nil {
 		return fmt.Errorf("failed to update database status: %w", err)
 	}
 
@@ -129,30 +129,30 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
 func (j *InstallDatabaseJob) Failed(ctx context.Context, t *asynq.Task, err error) {
 	payload, parseErr := jobs.ParsePayload[InstallDatabasePayload](t)
 	if parseErr != nil {
-		j.logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
+		j.Logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("database_id", payload.DatabaseID).
 		Msg("Failed to install database")
 
 	// Fetch the database to get server ID for broadcasting
-	database, findErr := repository.Find[models.Database](j.db, ctx, payload.DatabaseID)
+	database, findErr := repository.Find[models.Database](j.DB, ctx, payload.DatabaseID)
 	if findErr != nil {
 		return
 	}
 
 	// Mark installation as failed
 	now := time.Now()
-	j.db.WithContext(ctx).Model(database).Update("installation_failed_at", &now)
+	j.DB.WithContext(ctx).Model(database).Update("installation_failed_at", &now)
 
 	j.broadcastProgress(database.ServerID, payload.DatabaseID, "failed", fmt.Sprintf("Failed to create database: %s", database.Name))
 }
 
 func (j *InstallDatabaseJob) broadcastProgress(serverID, databaseID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "database.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "database.progress", map[string]interface{}{
 		"server_id":   serverID,
 		"database_id": databaseID,
 		"status":      status,
@@ -163,7 +163,7 @@ func (j *InstallDatabaseJob) broadcastProgress(serverID, databaseID, status, mes
 
 // getDatabaseType determines the database type from server's installed services
 func (j *InstallDatabaseJob) getDatabaseType(ctx context.Context, serverID string) string {
-	service, err := repository.NewQuery[servermodels.InstalledService](j.db, ctx).
+	service, err := repository.NewQuery[servermodels.InstalledService](j.DB, ctx).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
 			string(serverenums.ServiceTypePostgreSql),

@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -20,14 +21,14 @@ type Registry struct {
 }
 
 // NewRegistry creates a new registry with all job handlers initialized
-func NewRegistry(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *Registry {
+func NewRegistry(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, queueClient *queue.Client, logger *zerolog.Logger) *Registry {
 	return &Registry{
-		InstallDatabase:       NewInstallDatabaseJob(db, ws, dispatcher, logger),
-		UninstallDatabase:     NewUninstallDatabaseJob(db, ws, dispatcher, logger),
-		InstallDatabaseUser:   NewInstallDatabaseUserJob(db, ws, dispatcher, logger),
-		UpdateDatabaseUser:    NewUpdateDatabaseUserJob(db, ws, dispatcher, logger),
-		UninstallDatabaseUser: NewUninstallDatabaseUserJob(db, ws, dispatcher, logger),
-		SyncDatabases:         NewSyncDatabasesJob(db, ws, dispatcher, logger),
+		InstallDatabase:       NewInstallDatabaseJob(db, ws, dispatcher, queueClient, logger),
+		UninstallDatabase:     NewUninstallDatabaseJob(db, ws, dispatcher, queueClient, logger),
+		InstallDatabaseUser:   NewInstallDatabaseUserJob(db, ws, dispatcher, queueClient, logger),
+		UpdateDatabaseUser:    NewUpdateDatabaseUserJob(db, ws, dispatcher, queueClient, logger),
+		UninstallDatabaseUser: NewUninstallDatabaseUserJob(db, ws, dispatcher, queueClient, logger),
+		SyncDatabases:         NewSyncDatabasesJob(db, ws, dispatcher, queueClient, logger),
 	}
 }
 

@@ -10,6 +10,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/queue"
 )
 
 // JobContext holds all dependencies needed by server jobs.
@@ -34,6 +35,7 @@ func NewJobContext(
 	ws jobs.Broadcaster,
 	dispatcher *taskrunner.Dispatcher,
 	providerFactory *providers.Factory,
+	queueClient *queue.Client,
 ) *JobContext {
 	return &JobContext{
 		DB:              db,
@@ -44,6 +46,7 @@ func NewJobContext(
 		ProviderFactory: providerFactory,
 		TaskRunnerDeps: &tasks.TaskRunnerDeps{
 			DB:         db,
+			Queue:      queueClient,
 			Dispatcher: dispatcher,
 			Logger:     logger,
 		},

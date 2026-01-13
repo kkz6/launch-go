@@ -9,6 +9,9 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/queue"
 )
 
 // Handler is the interface that all jobs must implement.
@@ -45,10 +48,12 @@ type TaskExecutor interface {
 //	    CronID string `json:"cron_id"`
 //	}
 type BaseJob struct {
-	DB           *gorm.DB        `json:"-"`
-	Logger       *zerolog.Logger `json:"-"`
-	WS           Broadcaster     `json:"-"`
-	TaskExecutor TaskExecutor    `json:"-"`
+	DB           *gorm.DB               `json:"-"`
+	Logger       *zerolog.Logger        `json:"-"`
+	WS           Broadcaster            `json:"-"`
+	Dispatcher   *taskrunner.Dispatcher `json:"-"`
+	Queue        *queue.Client          `json:"-"`
+	TaskExecutor TaskExecutor           `json:"-"`
 }
 
 // SetDependencies sets the job dependencies
@@ -56,6 +61,16 @@ func (j *BaseJob) SetDependencies(db *gorm.DB, logger *zerolog.Logger, ws Broadc
 	j.DB = db
 	j.Logger = logger
 	j.WS = ws
+}
+
+// SetDispatcher sets the task dispatcher
+func (j *BaseJob) SetDispatcher(dispatcher *taskrunner.Dispatcher) {
+	j.Dispatcher = dispatcher
+}
+
+// SetQueue sets the queue client
+func (j *BaseJob) SetQueue(q *queue.Client) {
+	j.Queue = q
 }
 
 // SetTaskExecutor sets the task executor for running tasks on servers
@@ -121,10 +136,12 @@ type JobFactory interface {
 
 // Registry manages job registration and creation
 type Registry struct {
-	factories map[string]func(*asynq.Task) (Handler, error)
-	db        *gorm.DB
-	logger    *zerolog.Logger
-	ws        Broadcaster
+	factories  map[string]func(*asynq.Task) (Handler, error)
+	db         *gorm.DB
+	logger     *zerolog.Logger
+	ws         Broadcaster
+	dispatcher *taskrunner.Dispatcher
+	queue      *queue.Client
 }
 
 // NewRegistry creates a new job registry
@@ -164,6 +181,24 @@ func (r *Registry) HandlerFunc(jobType string) asynq.HandlerFunc {
 			SetDependencies(*gorm.DB, *zerolog.Logger, Broadcaster)
 		}); ok {
 			baseJob.SetDependencies(r.db, r.logger, r.ws)
+		}
+
+		// Set dispatcher if available and job supports it
+		if r.dispatcher != nil {
+			if dispatcherSetter, ok := handler.(interface {
+				SetDispatcher(*taskrunner.Dispatcher)
+			}); ok {
+				dispatcherSetter.SetDispatcher(r.dispatcher)
+			}
+		}
+
+		// Set queue if available and job supports it
+		if r.queue != nil {
+			if queueSetter, ok := handler.(interface {
+				SetQueue(*queue.Client)
+			}); ok {
+				queueSetter.SetQueue(r.queue)
+			}
 		}
 
 		return handler.Handle(ctx)
