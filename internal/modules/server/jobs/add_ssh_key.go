@@ -7,6 +7,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -55,6 +56,14 @@ func (j *AddSshKeyJob) Handle(ctx context.Context) error {
 	if err := j.Repo().AttachSshKeyToServer(ctx, server.ID, sshKey.ID); err != nil {
 		return fmt.Errorf("failed to attach SSH key to server: %w", err)
 	}
+
+	// Log activity
+	activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("server").
+		On(sshKey).
+		WithEvent("added").
+		Log("SSH key was added to server")
 
 	j.LogInfo("SSH key added successfully",
 		"key_id", sshKey.ID,

@@ -7,6 +7,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -54,6 +55,17 @@ func (j *UninstallFirewallRuleJob) Handle(ctx context.Context) error {
 	if !result.IsSuccessful() {
 		return fmt.Errorf("failed to remove firewall rule: %s", result.GetOutput())
 	}
+
+	// Log activity before deletion
+	logger := activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("server").
+		On(rule).
+		WithEvent("uninstalled")
+	if j.Payload.UserID != nil {
+		logger.CausedByUser(*j.Payload.UserID)
+	}
+	logger.Log("Firewall rule was uninstalled")
 
 	// Delete the rule record
 	if err := j.Repo().DeleteFirewallRule(ctx, rule.ID); err != nil {

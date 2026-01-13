@@ -7,6 +7,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -47,6 +48,17 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	if !result.IsSuccessful() {
 		return fmt.Errorf("failed to delete cron file: %s", result.GetOutput())
 	}
+
+	// Log activity before deletion
+	logger := activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("server").
+		On(cron).
+		WithEvent("uninstalled")
+	if j.Payload.UserID != nil {
+		logger.CausedByUser(*j.Payload.UserID)
+	}
+	logger.Log("Cron job was uninstalled")
 
 	// Delete the cron record
 	if err := j.Repo().DeleteCron(ctx, cron.ID); err != nil {

@@ -7,6 +7,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -59,6 +60,17 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 	if err := j.Repo().MarkFirewallRuleInstalled(ctx, rule.ID); err != nil {
 		return fmt.Errorf("failed to mark rule as installed: %w", err)
 	}
+
+	// Log activity
+	logger := activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("server").
+		On(rule).
+		WithEvent("installed")
+	if j.Payload.UserID != nil {
+		logger.CausedByUser(*j.Payload.UserID)
+	}
+	logger.Log("Firewall rule was installed")
 
 	j.LogInfo("Firewall rule installed successfully",
 		"rule_id", rule.ID,

@@ -7,6 +7,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -50,6 +51,17 @@ func (j *InstallCronJob) Handle(ctx context.Context) error {
 	if err := j.Repo().MarkCronInstalled(ctx, cron.ID); err != nil {
 		return fmt.Errorf("failed to mark cron as installed: %w", err)
 	}
+
+	// Log activity
+	logger := activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("server").
+		On(cron).
+		WithEvent("installed")
+	if j.Payload.UserID != nil {
+		logger.CausedByUser(*j.Payload.UserID)
+	}
+	logger.Log("Cron job was installed")
 
 	j.LogInfo("Cron installed successfully",
 		"cron_id", cron.ID,

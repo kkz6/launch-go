@@ -3,6 +3,8 @@ package jobs
 import (
 	"context"
 	"fmt"
+
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 )
 
 // ArchiveServerJob archives a server (soft delete).
@@ -29,6 +31,17 @@ func (j *ArchiveServerJob) Handle(ctx context.Context) error {
 	if err := j.Repo().ArchiveServer(ctx, server.ID); err != nil {
 		return fmt.Errorf("failed to archive server: %w", err)
 	}
+
+	// Log activity
+	logger := activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("server").
+		On(server).
+		WithEvent("archived")
+	if j.Payload.UserID != nil {
+		logger.CausedByUser(*j.Payload.UserID)
+	}
+	logger.Log("Server was archived")
 
 	j.LogInfo("Server archived successfully",
 		"server_id", server.ID,

@@ -7,6 +7,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -51,6 +52,14 @@ func (j *RemoveSshKeyJob) Handle(ctx context.Context) error {
 	if result != nil && !result.IsSuccessful() && !j.Payload.Force {
 		return fmt.Errorf("failed to remove SSH key: %s", result.GetOutput())
 	}
+
+	// Log activity before detaching
+	activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("server").
+		On(sshKey).
+		WithEvent("removed").
+		Log("SSH key was removed from server")
 
 	// Detach the key from server in the database
 	if err := j.Repo().DetachSshKeyFromServer(ctx, server.ID, sshKey.ID); err != nil {
