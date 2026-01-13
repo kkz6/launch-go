@@ -2,7 +2,6 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -15,6 +14,8 @@ import (
 	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -47,22 +48,17 @@ func NewInstallDatabaseJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunne
 
 // NewInstallDatabaseTask creates a new asynq task for installing a database
 func NewInstallDatabaseTask(databaseID string, userID *string) (*asynq.Task, error) {
-	payload, err := json.Marshal(InstallDatabasePayload{
+	return jobs.NewTask(TypeInstallDatabase, InstallDatabasePayload{
 		DatabaseID: databaseID,
 		UserID:     userID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeInstallDatabase, payload), nil
 }
 
 // Handle processes the install database job
 func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload InstallDatabasePayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.ParsePayload[InstallDatabasePayload](t)
+	if err != nil {
+		return err
 	}
 
 	j.logger.Info().
@@ -70,21 +66,21 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
 		Msg("Installing database")
 
 	// Fetch the database
-	var database models.Database
-	if err := j.db.First(&database, "id = ?", payload.DatabaseID).Error; err != nil {
-		return fmt.Errorf("failed to find database: %w", err)
+	database, err := repository.Find[models.Database](j.db, ctx, payload.DatabaseID)
+	if err != nil {
+		return err
 	}
 
 	// Fetch the server
-	var server servermodels.Server
-	if err := j.db.First(&server, "id = ?", database.ServerID).Error; err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+	server, err := repository.Find[servermodels.Server](j.db, ctx, database.ServerID)
+	if err != nil {
+		return err
 	}
 
 	j.broadcastProgress(database.ServerID, payload.DatabaseID, "installing", fmt.Sprintf("Creating database: %s", database.Name))
 
 	// Determine database type from installed services
-	dbType := j.getDatabaseType(database.ServerID)
+	dbType := j.getDatabaseType(ctx, database.ServerID)
 
 	// Create task based on database type
 	var task taskrunner.Task
@@ -104,13 +100,12 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
 	}
 
 	// Use TaskRunner to execute on server
-	taskRunner := servertasks.NewTaskRunner(&server, task).
+	result, err := servertasks.NewTaskRunner(server, task).
 		WithDB(j.db).
 		WithDispatcher(j.dispatcher).
 		WithLogger(j.logger).
-		AsRoot()
-
-	result, err := taskRunner.Run(ctx)
+		AsRoot().
+		Run(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create database: %w", err)
 	}
@@ -121,7 +116,7 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	// Mark the database as installed
 	now := time.Now()
-	if err := j.db.Model(&database).Update("installed_at", &now).Error; err != nil {
+	if err := j.db.WithContext(ctx).Model(database).Update("installed_at", &now).Error; err != nil {
 		return fmt.Errorf("failed to update database status: %w", err)
 	}
 
@@ -132,9 +127,9 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 // Failed handles job failure
 func (j *InstallDatabaseJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload InstallDatabasePayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, parseErr := jobs.ParsePayload[InstallDatabasePayload](t)
+	if parseErr != nil {
+		j.logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
@@ -144,14 +139,14 @@ func (j *InstallDatabaseJob) Failed(ctx context.Context, t *asynq.Task, err erro
 		Msg("Failed to install database")
 
 	// Fetch the database to get server ID for broadcasting
-	var database models.Database
-	if findErr := j.db.First(&database, "id = ?", payload.DatabaseID).Error; findErr != nil {
+	database, findErr := repository.Find[models.Database](j.db, ctx, payload.DatabaseID)
+	if findErr != nil {
 		return
 	}
 
 	// Mark installation as failed
 	now := time.Now()
-	j.db.Model(&database).Update("installation_failed_at", &now)
+	j.db.WithContext(ctx).Model(database).Update("installation_failed_at", &now)
 
 	j.broadcastProgress(database.ServerID, payload.DatabaseID, "failed", fmt.Sprintf("Failed to create database: %s", database.Name))
 }
@@ -167,12 +162,13 @@ func (j *InstallDatabaseJob) broadcastProgress(serverID, databaseID, status, mes
 }
 
 // getDatabaseType determines the database type from server's installed services
-func (j *InstallDatabaseJob) getDatabaseType(serverID string) string {
-	var service servermodels.InstalledService
-	err := j.db.Where("server_id = ? AND type IN ?", serverID, []string{
-		string(serverenums.ServiceTypeMySql),
-		string(serverenums.ServiceTypePostgreSql),
-	}).First(&service).Error
+func (j *InstallDatabaseJob) getDatabaseType(ctx context.Context, serverID string) string {
+	service, err := repository.NewQuery[servermodels.InstalledService](j.db, ctx).
+		Where("server_id = ? AND type IN ?", serverID, []string{
+			string(serverenums.ServiceTypeMySql),
+			string(serverenums.ServiceTypePostgreSql),
+		}).
+		First()
 
 	if err != nil {
 		return "mysql" // Default to MySQL

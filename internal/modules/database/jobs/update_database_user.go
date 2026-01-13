@@ -2,7 +2,6 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -15,6 +14,8 @@ import (
 	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -48,39 +49,38 @@ func NewUpdateDatabaseUserJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskru
 
 // NewUpdateDatabaseUserTask creates a new asynq task for updating a database user
 func NewUpdateDatabaseUserTask(databaseUserID string, password *string, callerID *string) (*asynq.Task, error) {
-	payload, err := json.Marshal(UpdateDatabaseUserPayload{
+	return jobs.NewTask(TypeUpdateDatabaseUser, UpdateDatabaseUserPayload{
 		DatabaseUserID: databaseUserID,
 		Password:       password,
 		CallerID:       callerID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeUpdateDatabaseUser, payload), nil
 }
 
 // Handle processes the update database user job
 func (j *UpdateDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload UpdateDatabaseUserPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.ParsePayload[UpdateDatabaseUserPayload](t)
+	if err != nil {
+		return err
 	}
 
 	j.logger.Info().
 		Str("database_user_id", payload.DatabaseUserID).
 		Msg("Updating database user")
 
-	// Fetch the database user with databases
-	var dbUser models.DatabaseUser
-	if err := j.db.Preload("Databases").First(&dbUser, "id = ?", payload.DatabaseUserID).Error; err != nil {
-		return fmt.Errorf("failed to find database user: %w", err)
+	// Fetch the database user with databases using OrFail pattern
+	dbUser, err := repository.NewQuery[models.DatabaseUser](j.db, ctx).
+		WithModel("DatabaseUser").
+		Preload("Databases").
+		FindByID(payload.DatabaseUserID).
+		FirstOrFail()
+	if err != nil {
+		return err
 	}
 
-	// Fetch the server
-	var server servermodels.Server
-	if err := j.db.First(&server, "id = ?", dbUser.ServerID).Error; err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+	// Fetch the server using OrFail pattern
+	server, err := repository.Find[servermodels.Server](j.db, ctx, dbUser.ServerID)
+	if err != nil {
+		return err
 	}
 
 	j.broadcastProgress(dbUser.ServerID, payload.DatabaseUserID, "updating", fmt.Sprintf("Updating database user: %s", dbUser.Name))
@@ -88,7 +88,7 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) error
 	// Update password if provided
 	if payload.Password != nil && *payload.Password != "" {
 		// Determine database type from installed services
-		dbType := j.getDatabaseType(dbUser.ServerID)
+		dbType := j.getDatabaseType(ctx, dbUser.ServerID)
 
 		var task taskrunner.Task
 		if dbType == "mysql" {
@@ -107,13 +107,12 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) error
 		}
 
 		// Use TaskRunner to execute on server
-		taskRunner := servertasks.NewTaskRunner(&server, task).
+		result, err := servertasks.NewTaskRunner(server, task).
 			WithDB(j.db).
 			WithDispatcher(j.dispatcher).
 			WithLogger(j.logger).
-			AsRoot()
-
-		result, err := taskRunner.Run(ctx)
+			AsRoot().
+			Run(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to update database user password: %w", err)
 		}
@@ -125,7 +124,7 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) error
 
 	// Update the database user record
 	now := time.Now()
-	if err := j.db.Model(&dbUser).Update("updated_at", &now).Error; err != nil {
+	if err := j.db.WithContext(ctx).Model(dbUser).Update("updated_at", &now).Error; err != nil {
 		return fmt.Errorf("failed to update database user record: %w", err)
 	}
 
@@ -136,9 +135,9 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) error
 
 // Failed handles job failure
 func (j *UpdateDatabaseUserJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload UpdateDatabaseUserPayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, parseErr := jobs.ParsePayload[UpdateDatabaseUserPayload](t)
+	if parseErr != nil {
+		j.logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
@@ -148,8 +147,8 @@ func (j *UpdateDatabaseUserJob) Failed(ctx context.Context, t *asynq.Task, err e
 		Msg("Failed to update database user")
 
 	// Fetch the database user to get server ID for broadcasting
-	var dbUser models.DatabaseUser
-	if findErr := j.db.First(&dbUser, "id = ?", payload.DatabaseUserID).Error; findErr != nil {
+	dbUser, findErr := repository.Find[models.DatabaseUser](j.db, ctx, payload.DatabaseUserID)
+	if findErr != nil {
 		return
 	}
 
@@ -167,12 +166,13 @@ func (j *UpdateDatabaseUserJob) broadcastProgress(serverID, userID, status, mess
 }
 
 // getDatabaseType determines the database type from server's installed services
-func (j *UpdateDatabaseUserJob) getDatabaseType(serverID string) string {
-	var service servermodels.InstalledService
-	err := j.db.Where("server_id = ? AND type IN ?", serverID, []string{
-		string(serverenums.ServiceTypeMySql),
-		string(serverenums.ServiceTypePostgreSql),
-	}).First(&service).Error
+func (j *UpdateDatabaseUserJob) getDatabaseType(ctx context.Context, serverID string) string {
+	service, err := repository.NewQuery[servermodels.InstalledService](j.db, ctx).
+		Where("server_id = ? AND type IN ?", serverID, []string{
+			string(serverenums.ServiceTypeMySql),
+			string(serverenums.ServiceTypePostgreSql),
+		}).
+		First()
 
 	if err != nil {
 		return "mysql" // Default to MySQL

@@ -3,13 +3,9 @@ package repository
 import (
 	"context"
 	"errors"
+	"reflect"
 
 	"gorm.io/gorm"
-)
-
-// Common repository errors
-var (
-	ErrNotFound = errors.New("record not found")
 )
 
 // Base provides common database operations using generics.
@@ -182,4 +178,56 @@ func (r *Base[T]) WithPreload(ctx context.Context, relations ...string) *gorm.DB
 		query = query.Preload(rel)
 	}
 	return query
+}
+
+// getModelName returns the type name of T for error messages
+func (r *Base[T]) getModelName() string {
+	var entity T
+	t := reflect.TypeOf(entity)
+	if t.Kind() == reflect.Ptr {
+		t = t.Elem()
+	}
+	return t.Name()
+}
+
+// FindByIDOrFail finds a record by ID or returns a typed error
+func (r *Base[T]) FindByIDOrFail(ctx context.Context, id string) (*T, error) {
+	entity, err := r.FindByID(ctx, id)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, NotFoundError(r.getModelName(), id)
+		}
+		return nil, WrapError(err, r.getModelName(), "failed to find "+r.getModelName())
+	}
+	return entity, nil
+}
+
+// FindByIDAndServerOrFail finds a record by ID and server ID or returns a typed error
+func (r *Base[T]) FindByIDAndServerOrFail(ctx context.Context, id, serverID string) (*T, error) {
+	entity, err := r.FindByIDAndServer(ctx, id, serverID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, NotFoundError(r.getModelName(), id)
+		}
+		return nil, WrapError(err, r.getModelName(), "failed to find "+r.getModelName())
+	}
+	return entity, nil
+}
+
+// FirstOrFail executes a query and returns an error if not found
+func (r *Base[T]) FirstOrFail(ctx context.Context, query *gorm.DB) (*T, error) {
+	var entity T
+	err := query.WithContext(ctx).First(&entity).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, NotFoundError(r.getModelName(), "")
+		}
+		return nil, WrapError(err, r.getModelName(), "failed to find "+r.getModelName())
+	}
+	return &entity, nil
+}
+
+// MustFind is an alias for FindByIDOrFail (more idiomatic Go naming)
+func (r *Base[T]) MustFind(ctx context.Context, id string) (*T, error) {
+	return r.FindByIDOrFail(ctx, id)
 }

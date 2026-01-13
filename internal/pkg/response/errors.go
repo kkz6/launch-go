@@ -61,7 +61,13 @@ func ErrInternal(message string) *AppError {
 	return NewAppError(http.StatusInternalServerError, message)
 }
 
-// HandleError checks if error is an AppError and returns appropriate response
+// HTTPStatusError is an interface for errors that have an HTTP status
+type HTTPStatusError interface {
+	error
+	HTTPStatus() int
+}
+
+// HandleError checks if error is an AppError or HTTPStatusError and returns appropriate response
 // Returns the error response, or nil if it's not an AppError
 func HandleError(c *fiber.Ctx, err error) error {
 	if err == nil {
@@ -72,6 +78,12 @@ func HandleError(c *fiber.Ctx, err error) error {
 	var appErr *AppError
 	if errors.As(err, &appErr) {
 		return Error(c, appErr.Status, appErr.Message)
+	}
+
+	// Check if it's an HTTPStatusError (like ModelError from repository)
+	var httpErr HTTPStatusError
+	if errors.As(err, &httpErr) {
+		return Error(c, httpErr.HTTPStatus(), err.Error())
 	}
 
 	// Default to bad request with error message
