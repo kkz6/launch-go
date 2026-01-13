@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 )
 
 // ListFirewallRules returns all firewall rules for a server
@@ -44,6 +45,13 @@ func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID strin
 	if err := s.repo.CreateFirewallRule(ctx, rule); err != nil {
 		return nil, err
 	}
+
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		On(rule).
+		WithEvent("created").
+		Log("Firewall rule was created")
 
 	if server.IsProvisioned() {
 		if err := s.dispatchFirewallRuleInstallJob(server, rule); err != nil {
@@ -98,6 +106,13 @@ func (s *Service) UpdateFirewallRule(ctx context.Context, serverID, teamID, rule
 		return nil, err
 	}
 
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		On(rule).
+		WithEvent("updated").
+		Log("Firewall rule was updated")
+
 	return rule, nil
 }
 
@@ -112,6 +127,13 @@ func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, rule
 	if err != nil {
 		return err
 	}
+
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		On(rule).
+		WithEvent("deleted").
+		Log("Firewall rule deletion requested")
 
 	if rule.IsInstalled() && server.IsProvisioned() {
 		now := time.Now()

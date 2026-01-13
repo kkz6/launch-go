@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 )
 
 // ListDaemons returns all daemons for a server
@@ -59,6 +60,13 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 		return nil, err
 	}
 
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		On(daemon).
+		WithEvent("created").
+		Log("Daemon was created")
+
 	if server.IsProvisioned() {
 		if err := s.dispatchDaemonInstallJob(server, daemon); err != nil {
 			s.LogError(err, "Failed to dispatch daemon install job", "server_id", serverID, "daemon_id", daemon.ID)
@@ -107,6 +115,13 @@ func (s *Service) UpdateDaemon(ctx context.Context, serverID, teamID, daemonID s
 		return nil, err
 	}
 
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		On(daemon).
+		WithEvent("updated").
+		Log("Daemon was updated")
+
 	return daemon, nil
 }
 
@@ -121,6 +136,13 @@ func (s *Service) DeleteDaemon(ctx context.Context, serverID, teamID, daemonID s
 	if err != nil {
 		return err
 	}
+
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		On(daemon).
+		WithEvent("deleted").
+		Log("Daemon deletion requested")
 
 	if daemon.IsInstalled() && server.IsProvisioned() {
 		now := time.Now()

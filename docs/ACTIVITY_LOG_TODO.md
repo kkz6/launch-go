@@ -163,12 +163,12 @@ if j.Payload.UserID != nil {
 - [x] Database user installed/uninstalled (job)
 
 ### Phase 3: Secondary Operations (Lower Priority)
-- [ ] Firewall rules
-- [ ] Cron jobs
-- [ ] Daemons
-- [ ] SSH keys
-- [ ] Redirects
-- [ ] Backups
+- [x] Firewall rules
+- [x] Cron jobs
+- [x] Daemons
+- [x] SSH keys
+- [x] Redirects
+- [x] Backups
 
 ---
 
