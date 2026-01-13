@@ -126,7 +126,7 @@ func DeploySite(config DeploySiteConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Deploy Site"),
 		taskrunner.WithScript(scriptBuilder.String()),
-		taskrunner.WithTimeout(600),
+		taskrunner.WithTimeoutSeconds(600),
 	)
 }
 
@@ -264,7 +264,7 @@ func DeploySiteWithoutDowntime(config DeploySiteConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Deploy Site (Zero Downtime)"),
 		taskrunner.WithScript(scriptBuilder.String()),
-		taskrunner.WithTimeout(600),
+		taskrunner.WithTimeoutSeconds(600),
 	)
 }
 
@@ -360,6 +360,6 @@ func RollbackDeployment(config RollbackDeploymentConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Rollback Deployment"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(60),
+		taskrunner.WithTimeoutSeconds(60),
 	)
 }

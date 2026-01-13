@@ -48,7 +48,7 @@ echo "Daemon config uploaded successfully"
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Upload Daemon Config"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -80,7 +80,7 @@ echo "Daemon removed successfully"
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Delete Daemon"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(60),
+		taskrunner.WithTimeoutSeconds(60),
 	)
 }
 
@@ -100,7 +100,7 @@ echo "Daemon restarted successfully"
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Restart Daemon"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(60),
+		taskrunner.WithTimeoutSeconds(60),
 	)
 }
 
@@ -116,6 +116,6 @@ echo "Supervisor reloaded successfully"
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Reload Supervisor"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }

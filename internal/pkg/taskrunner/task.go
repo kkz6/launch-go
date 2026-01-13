@@ -33,11 +33,17 @@ func WithScript(script string) TaskOption {
 	}
 }
 
-// WithTimeout sets the task timeout
+// WithTimeout sets the task timeout using a time.Duration value.
 func WithTimeout(timeout time.Duration) TaskOption {
 	return func(t *BaseTask) {
 		t.timeout = timeout
 	}
+}
+
+// WithTimeoutSeconds sets the task timeout using seconds as an integer.
+// This is a convenience wrapper around WithTimeout for cleaner task definitions.
+func WithTimeoutSeconds(seconds int) TaskOption {
+	return WithTimeout(time.Duration(seconds) * time.Second)
 }
 
 // WithCallbackURL sets the callback URL for async task completion

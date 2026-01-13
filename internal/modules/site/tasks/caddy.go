@@ -24,7 +24,7 @@ func UpdateCaddyfile(config UpdateCaddyfileConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Update Caddyfile"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(60),
+		taskrunner.WithTimeoutSeconds(60),
 	)
 }
 
@@ -49,7 +49,7 @@ func UpdateCaddySiteImports(config UpdateCaddySiteImportsConfig) *taskrunner.Bas
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Update Caddy Site Imports"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -71,6 +71,6 @@ echo "Caddyfile formatted successfully"
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Prettify Caddyfile"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }

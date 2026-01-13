@@ -24,7 +24,7 @@ func RunCommandForSite(config RunCommandForSiteConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Run Command"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -50,6 +50,6 @@ func RestartAllSiteQueues(config RestartAllSiteQueuesConfig) *taskrunner.BaseTas
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Restart All Site Queues"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(120),
+		taskrunner.WithTimeoutSeconds(120),
 	)
 }

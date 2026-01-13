@@ -23,7 +23,7 @@ func InstallMySQL80(config MySQLInstallConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Install MySQL 8.0"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(900),
+		taskrunner.WithTimeoutSeconds(900),
 	)
 }
 
@@ -39,7 +39,7 @@ func InstallPostgreSQL16(config PostgreSQLInstallConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Install PostgreSQL 16"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(900),
+		taskrunner.WithTimeoutSeconds(900),
 	)
 }
 
@@ -55,7 +55,7 @@ func InstallCaddy2(config CaddyInstallConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Install Caddy 2"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(600),
+		taskrunner.WithTimeoutSeconds(600),
 	)
 }
 
@@ -65,7 +65,7 @@ func InstallRedis() *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Install Redis"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -75,7 +75,7 @@ func InstallSupervisor() *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Install Supervisor"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -90,7 +90,7 @@ func InstallComposer2(config ComposerInstallConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Install Composer 2"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -100,7 +100,7 @@ func InstallNode21() *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Install Node.js 21"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(600),
+		taskrunner.WithTimeoutSeconds(600),
 	)
 }
 
@@ -110,7 +110,7 @@ func InstallBun() *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Install Bun"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -130,7 +130,7 @@ func InstallPHP(config PHPInstallConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Install PHP "+config.Version),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(900),
+		taskrunner.WithTimeoutSeconds(900),
 	)
 }
 
@@ -150,7 +150,7 @@ func InstallLaunchAgent(config LaunchAgentInstallConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Install Launch Agent"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -160,7 +160,7 @@ func RemoveRedis() *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Remove Redis"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -170,7 +170,7 @@ func RemoveSupervisor() *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Remove Supervisor"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -180,7 +180,7 @@ func RemoveLaunchAgent() *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Remove Launch Agent"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(120),
+		taskrunner.WithTimeoutSeconds(120),
 	)
 }
 
@@ -190,7 +190,7 @@ func RemoveMySQL() *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Remove MySQL"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -200,7 +200,7 @@ func RemovePostgreSQL() *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Remove PostgreSQL"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -215,7 +215,7 @@ func RemovePHP(config PHPRemoveConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Remove PHP "+config.Version),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -229,7 +229,7 @@ func InstallSoftware(software enums.Software) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Install "+software.Label()),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(900),
+		taskrunner.WithTimeoutSeconds(900),
 	)
 }
 
@@ -243,6 +243,6 @@ func RemoveSoftware(software enums.Software) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Remove "+software.Label()),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }

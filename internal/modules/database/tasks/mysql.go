@@ -26,7 +26,7 @@ func MySQLCreateDatabase(config MySQLCreateDatabaseConfig) *taskrunner.BaseTask 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Create MySQL Database"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -43,7 +43,7 @@ func MySQLDropDatabase(config MySQLDropDatabaseConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Drop MySQL Database"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -65,7 +65,7 @@ func MySQLCreateUser(config MySQLCreateUserConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Create MySQL User"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -86,7 +86,7 @@ func MySQLDropUser(config MySQLDropUserConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Drop MySQL User"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -108,7 +108,7 @@ func MySQLGrantPrivileges(config MySQLGrantPrivilegesConfig) *taskrunner.BaseTas
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Grant MySQL Privileges"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -130,7 +130,7 @@ func MySQLRevokePrivileges(config MySQLRevokePrivilegesConfig) *taskrunner.BaseT
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Revoke MySQL Privileges"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -152,7 +152,7 @@ func MySQLUpdatePassword(config MySQLUpdatePasswordConfig) *taskrunner.BaseTask 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Update MySQL Password"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -168,7 +168,7 @@ func MySQLGetDatabases(config MySQLGetDatabasesConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get MySQL Databases"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(15),
+		taskrunner.WithTimeoutSeconds(15),
 	)
 }
 
@@ -184,7 +184,7 @@ func MySQLGetUsers(config MySQLGetUsersConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get MySQL Users"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(15),
+		taskrunner.WithTimeoutSeconds(15),
 	)
 }
 
@@ -201,6 +201,6 @@ func MySQLGetTables(config MySQLGetTablesConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get MySQL Tables"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(15),
+		taskrunner.WithTimeoutSeconds(15),
 	)
 }

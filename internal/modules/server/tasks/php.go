@@ -19,7 +19,7 @@ sudo apt-get install -y php%s php%s-fpm php%s-cli php%s-common php%s-mysql php%s
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName(fmt.Sprintf("Install PHP %s", version)),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(600), // 10 minutes
+		taskrunner.WithTimeoutSeconds(600), // 10 minutes
 	)
 }
 
@@ -31,7 +31,7 @@ sudo apt-get autoremove -y`, version)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName(fmt.Sprintf("Remove PHP %s", version)),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -43,7 +43,7 @@ sudo service php%s-fpm restart`, version, extension, version)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName(fmt.Sprintf("Install PHP Extension %s", extension)),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -55,7 +55,7 @@ sudo service php%s-fpm restart`, version, extension, version)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName(fmt.Sprintf("Uninstall PHP Extension %s", extension)),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(120),
+		taskrunner.WithTimeoutSeconds(120),
 	)
 }
 
@@ -68,7 +68,7 @@ sudo update-alternatives --set phpize /usr/bin/phpize%s`, version, version, vers
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Update PHP Alternatives"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -79,7 +79,7 @@ func GetOpcacheStatus(version string) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get OPcache Status"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(15),
+		taskrunner.WithTimeoutSeconds(15),
 	)
 }
 
@@ -96,7 +96,7 @@ func ResetOpcache(version string, sitePath string) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Reset OPcache"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -117,6 +117,6 @@ sudo service php%s-fpm restart`, iniPath, strings.Join(lines, "\n"), version)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Configure OPcache"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
