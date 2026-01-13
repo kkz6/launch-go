@@ -52,8 +52,8 @@ func (q *Queue) GetPath() string {
 
 // ErrorLogPath returns the path to the error log file
 func (q *Queue) ErrorLogPath(workingDirectory string) string {
-	if q.User == "root" {
-		return fmt.Sprintf("/root/%s/daemon-%s.err", workingDirectory, q.ID)
+	if q.User == "root" || q.User == "ubuntu" {
+		return fmt.Sprintf("/%s/%s/daemon-%s.err", q.User, workingDirectory, q.ID)
 	}
 
 	return fmt.Sprintf("/home/%s/%s/daemon-%s.err", q.User, workingDirectory, q.ID)
@@ -61,8 +61,8 @@ func (q *Queue) ErrorLogPath(workingDirectory string) string {
 
 // OutputLogPath returns the path to the output log file
 func (q *Queue) OutputLogPath(workingDirectory string) string {
-	if q.User == "root" {
-		return fmt.Sprintf("/root/%s/daemon-%s.log", workingDirectory, q.ID)
+	if q.User == "root" || q.User == "ubuntu" {
+		return fmt.Sprintf("/%s/%s/daemon-%s.log", q.User, workingDirectory, q.ID)
 	}
 
 	return fmt.Sprintf("/home/%s/%s/daemon-%s.log", q.User, workingDirectory, q.ID)
@@ -108,18 +108,14 @@ func (q *Queue) BuildCommand() string {
 	return cmd
 }
 
-// GetLogPath returns the path to the output log file
+// GetLogPath returns the path to the output log file using default working directory
+// Use OutputLogPath(workingDirectory) for custom working directory
 func (q *Queue) GetLogPath() string {
-	if q.User == "root" {
-		return fmt.Sprintf("/root/daemon-%s.log", q.ID)
-	}
-	return fmt.Sprintf("/home/%s/daemon-%s.log", q.User, q.ID)
+	return q.OutputLogPath(".launch")
 }
 
-// GetErrorLogPath returns the path to the error log file
+// GetErrorLogPath returns the path to the error log file using default working directory
+// Use ErrorLogPath(workingDirectory) for custom working directory
 func (q *Queue) GetErrorLogPath() string {
-	if q.User == "root" {
-		return fmt.Sprintf("/root/daemon-%s.err", q.ID)
-	}
-	return fmt.Sprintf("/home/%s/daemon-%s.err", q.User, q.ID)
+	return q.ErrorLogPath(".launch")
 }

@@ -29,16 +29,17 @@ const (
 
 // TaskRunner handles task execution on servers
 type TaskRunner struct {
-	server       *models.Server
-	task         taskrunner.Task
-	db           *gorm.DB
-	dispatcher   *taskrunner.Dispatcher
-	logger       *zerolog.Logger
-	asRoot       bool
-	username     string
-	trackInDB    bool
-	throwOnError bool
-	callbackURLs *CallbackURLs
+	server           *models.Server
+	task             taskrunner.Task
+	db               *gorm.DB
+	dispatcher       *taskrunner.Dispatcher
+	logger           *zerolog.Logger
+	asRoot           bool
+	username         string
+	trackInDB        bool
+	throwOnError     bool
+	callbackURLs     *CallbackURLs
+	completionConfig *taskrunner.CompletionConfig
 }
 
 // CallbackURLs holds the webhook URLs for task status updates
@@ -152,6 +153,70 @@ func (r *TaskRunner) Throw() *TaskRunner {
 // WithCallbacks sets callback URLs for async tasks
 func (r *TaskRunner) WithCallbacks(urls *CallbackURLs) *TaskRunner {
 	r.callbackURLs = urls
+	return r
+}
+
+// OnComplete sets a job to dispatch when the task completes successfully.
+// This is the simple way to add continuation logic without implementing
+// the full CallbackPayload interface.
+//
+// Usage:
+//
+//	runner.NewRunner(server, task).
+//	    AsRoot().
+//	    TrackInBackground().
+//	    OnComplete("server:php-installed", map[string]string{
+//	        "server_id": serverID,
+//	        "version": version,
+//	    }).
+//	    Dispatch(ctx)
+func (r *TaskRunner) OnComplete(jobType string, payload interface{}) *TaskRunner {
+	jobRef, err := taskrunner.NewJobRef(jobType, payload)
+	if err != nil {
+		if r.logger != nil {
+			r.logger.Error().Err(err).Msg("Failed to create job ref for OnComplete")
+		}
+		return r
+	}
+
+	if r.completionConfig == nil {
+		r.completionConfig = &taskrunner.CompletionConfig{}
+	}
+	r.completionConfig.OnFinished = jobRef
+	return r
+}
+
+// OnFailed sets a job to dispatch when the task fails
+func (r *TaskRunner) OnFailed(jobType string, payload interface{}) *TaskRunner {
+	jobRef, err := taskrunner.NewJobRef(jobType, payload)
+	if err != nil {
+		if r.logger != nil {
+			r.logger.Error().Err(err).Msg("Failed to create job ref for OnFailed")
+		}
+		return r
+	}
+
+	if r.completionConfig == nil {
+		r.completionConfig = &taskrunner.CompletionConfig{}
+	}
+	r.completionConfig.OnFailed = jobRef
+	return r
+}
+
+// OnTimeout sets a job to dispatch when the task times out
+func (r *TaskRunner) OnTimeout(jobType string, payload interface{}) *TaskRunner {
+	jobRef, err := taskrunner.NewJobRef(jobType, payload)
+	if err != nil {
+		if r.logger != nil {
+			r.logger.Error().Err(err).Msg("Failed to create job ref for OnTimeout")
+		}
+		return r
+	}
+
+	if r.completionConfig == nil {
+		r.completionConfig = &taskrunner.CompletionConfig{}
+	}
+	r.completionConfig.OnTimeout = jobRef
 	return r
 }
 
@@ -372,6 +437,35 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 		Script:   script,
 		Timeout:  int(r.task.Timeout().Seconds()),
 		Status:   string(TaskStatusPending),
+	}
+
+	// Determine completion config - priority:
+	// 1. Explicitly set via OnComplete/OnFailed/OnTimeout
+	// 2. Task implements TaskWithCompletion
+	// 3. Task implements CallbackPayload (legacy)
+	completionConfig := r.completionConfig
+
+	// If no explicit config, check if task implements TaskWithCompletion
+	if completionConfig == nil {
+		if extracted, err := taskrunner.ExtractCompletionConfig(r.task); err == nil && extracted != nil {
+			completionConfig = extracted
+		}
+	}
+
+	// Store completion config if we have one
+	if completionConfig != nil {
+		instance, err := taskrunner.MarshalCompletionConfig(completionConfig)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal completion config: %w", err)
+		}
+		taskModel.Instance = &instance
+	} else if callbackTask, ok := r.task.(taskrunner.CallbackPayload); ok {
+		// Legacy: If task implements CallbackPayload, serialize it
+		instance, err := taskrunner.MarshalInstance(callbackTask)
+		if err != nil {
+			return nil, fmt.Errorf("failed to marshal callback payload: %w", err)
+		}
+		taskModel.Instance = &instance
 	}
 
 	if err := r.db.Create(taskModel).Error; err != nil {

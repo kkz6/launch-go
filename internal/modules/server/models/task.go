@@ -1,6 +1,8 @@
 package models
 
 import (
+	"fmt"
+
 	"gorm.io/gorm"
 
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
@@ -54,4 +56,32 @@ func (t *Task) IsRunning() bool {
 
 func (t *Task) IsFinished() bool {
 	return t.Status == "finished" || t.Status == "failed"
+}
+
+// GetLogPath returns the path to the task log file
+// Requires Server to be preloaded to determine root username
+func (t *Task) GetLogPath() string {
+	rootUser := "root"
+	if t.Server != nil {
+		rootUser = t.Server.RootUsername()
+	}
+
+	var scriptPath string
+	if t.User == rootUser {
+		// Use root's script path
+		if rootUser == "root" {
+			scriptPath = "/root/.launch-tasks"
+		} else {
+			scriptPath = fmt.Sprintf("/%s/.launch-tasks", rootUser)
+		}
+	} else {
+		// Use the task user's script path
+		if t.User == "root" || t.User == "ubuntu" {
+			scriptPath = fmt.Sprintf("/%s/.launch-tasks", t.User)
+		} else {
+			scriptPath = fmt.Sprintf("/home/%s/.launch-tasks", t.User)
+		}
+	}
+
+	return fmt.Sprintf("%s/task-%s.log", scriptPath, t.ID)
 }

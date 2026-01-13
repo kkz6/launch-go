@@ -6,8 +6,11 @@ import (
 
 // UploadDaemonConfig holds configuration for uploading a daemon config
 type UploadDaemonConfig struct {
-	Path     string
-	Contents string
+	Path         string
+	Contents     string
+	LogPath      string
+	ErrorLogPath string
+	User         string
 }
 
 // UploadDaemon creates a task to upload a daemon config file to the server
@@ -20,6 +23,26 @@ cat > "` + config.Path + `" << 'DAEMONEOF'
 DAEMONEOF
 
 chmod 644 "` + config.Path + `"
+
+# Create .launch directory and log files if they don't exist
+LOG_DIR=$(dirname "` + config.LogPath + `")
+mkdir -p "$LOG_DIR"
+
+if [ ! -f "` + config.LogPath + `" ]; then
+    touch "` + config.LogPath + `"
+    chown ` + config.User + `:` + config.User + ` "` + config.LogPath + `"
+    chmod 644 "` + config.LogPath + `"
+fi
+
+if [ ! -f "` + config.ErrorLogPath + `" ]; then
+    touch "` + config.ErrorLogPath + `"
+    chown ` + config.User + `:` + config.User + ` "` + config.ErrorLogPath + `"
+    chmod 644 "` + config.ErrorLogPath + `"
+fi
+
+# Ensure directory ownership
+chown ` + config.User + `:` + config.User + ` "$LOG_DIR"
+
 echo "Daemon config uploaded successfully"
 `
 	return taskrunner.NewBaseTask(
