@@ -42,6 +42,13 @@ type WebhookRegistrar interface {
 	RegisterWebhookRoutes(router fiber.Router)
 }
 
+// WebSocketRegistrar is implemented by modules that have WebSocket endpoints
+type WebSocketRegistrar interface {
+	Module
+	// RegisterWebSocketRoutes registers WebSocket routes at root level
+	RegisterWebSocketRoutes(router fiber.Router)
+}
+
 // JobRegistrar is implemented by modules that have background jobs
 type JobRegistrar interface {
 	Module

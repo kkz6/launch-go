@@ -1,4 +1,4 @@
-package websocket
+package handlers
 
 import (
 	"encoding/json"
@@ -10,7 +10,6 @@ import (
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
-	"github.com/golang-jwt/jwt/v5"
 	"github.com/rs/zerolog"
 	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
@@ -18,6 +17,7 @@ import (
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	ws "github.com/kkz6/launch-go/internal/websocket"
 )
 
 // TerminalResizeMessage represents a terminal resize request
@@ -47,32 +47,28 @@ func NewTerminalHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger) *T
 func (h *TerminalHandler) Handler() fiber.Handler {
 	return websocket.New(func(c *websocket.Conn) {
 		// Get parameters
-		token := c.Query("token")
 		serverID := c.Query("serverId")
 		siteID := c.Query("siteId")
 		username := c.Query("username", "launcher")
 
-		if token == "" || serverID == "" {
-			h.logger.Warn().Msg("Missing token or serverId")
-			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Missing authentication or server ID\x1b[0m\r\n"))
+		if serverID == "" {
+			h.logger.Warn().Msg("Missing serverId")
+			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Missing server ID\x1b[0m\r\n"))
 			c.Close()
 			return
 		}
 
-		// Validate JWT
-		claims, err := h.validateToken(token)
+		// Authenticate using centralized auth
+		claims, err := ws.AuthenticateWebSocket(c, h.jwtSecret)
 		if err != nil {
-			h.logger.Warn().Err(err).Msg("Invalid token")
+			h.logger.Warn().Err(err).Msg("Authentication failed")
 			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Authentication failed\x1b[0m\r\n"))
 			c.Close()
 			return
 		}
 
-		userID := claims["sub"].(string)
-		teamID := claims["team_id"].(string)
-
 		h.logger.Info().
-			Str("user_id", userID).
+			Str("user_id", claims.UserID).
 			Str("server_id", serverID).
 			Str("site_id", siteID).
 			Str("username", username).
@@ -80,7 +76,7 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 
 		// Fetch server from database
 		var server serverModels.Server
-		if err := h.db.Where("id = ? AND team_id = ?", serverID, teamID).First(&server).Error; err != nil {
+		if err := h.db.Where("id = ? AND team_id = ?", serverID, claims.TeamID).First(&server).Error; err != nil {
 			h.logger.Error().Err(err).Str("server_id", serverID).Msg("Server not found")
 			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Server not found\x1b[0m\r\n"))
 			c.Close()
@@ -133,23 +129,6 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 		// Establish SSH connection
 		h.handleSSHConnection(c, conn.Host, conn.Port, conn.User, conn.PrivateKey, server.Name, sitePath)
 	})
-}
-
-func (h *TerminalHandler) validateToken(tokenString string) (jwt.MapClaims, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte(h.jwtSecret), nil
-	})
-
-	if err != nil || !token.Valid {
-		return nil, err
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, jwt.ErrTokenInvalidClaims
-	}
-
-	return claims, nil
 }
 
 func (h *TerminalHandler) handleSSHConnection(wsConn *websocket.Conn, host string, port int, username, privateKey, serverName, sitePath string) {

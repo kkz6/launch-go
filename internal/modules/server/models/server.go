@@ -203,3 +203,22 @@ func (s *Server) ConnectionAsUser(username ...string) *taskrunner.Connection {
 		PrivateKey: s.PrivateKey.String(),
 	}
 }
+
+// GetTeamID returns the team ID for broadcasting
+func (s *Server) GetTeamID() string {
+	return s.TeamID
+}
+
+// BroadcastName returns the model name for broadcasting
+func (s *Server) BroadcastName() string {
+	return "server"
+}
+
+// BroadcastPayload returns the data to broadcast
+func (s *Server) BroadcastPayload() map[string]interface{} {
+	return map[string]interface{}{
+		"id":     s.ID,
+		"name":   s.Name,
+		"status": s.Status,
+	}
+}

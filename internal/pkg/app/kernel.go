@@ -82,6 +82,19 @@ func (k *Kernel) BootWebhooks(router fiber.Router) {
 	}
 }
 
+// BootWebSocket registers all WebSocket routes from all modules.
+// WebSocket routes are registered at the root level (not under /api).
+func (k *Kernel) BootWebSocket(router fiber.Router) {
+	for _, module := range k.modules {
+		if registrar, ok := module.(WebSocketRegistrar); ok {
+			registrar.RegisterWebSocketRoutes(router)
+			if k.logger != nil {
+				k.logger.Debug().Str("module", module.Name()).Msg("WebSocket routes registered")
+			}
+		}
+	}
+}
+
 // BootJobs registers all background job handlers from all modules.
 // Call this when setting up the worker.
 func (k *Kernel) BootJobs(mux *asynq.ServeMux) {
