@@ -40,7 +40,7 @@ func (h *BillingHandler) Index(c *fiber.Ctx) error {
 
 	data, err := h.service.GetBillingData(c.Context(), teamID, serverCount)
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch billing data")
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Billing data retrieved", data)
@@ -75,10 +75,7 @@ func (h *BillingHandler) GenerateCheckoutURL(c *fiber.Ctx) error {
 
 	url, err := h.service.GenerateCheckoutURL(c.Context(), teamID, &req, redirectURL)
 	if err != nil {
-		if err == services.ErrPlanNotFound {
-			return response.Error(c, fiber.StatusBadRequest, "Plan not found")
-		}
-		return response.InternalError(c, "Failed to generate checkout URL")
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Checkout URL generated", dto.GenerateCheckoutURLResponse{URL: url})
@@ -95,12 +92,8 @@ func (h *BillingHandler) CancelSubscription(c *fiber.Ctx) error {
 		return response.ValidationError(c, errors)
 	}
 
-	err := h.service.CancelSubscription(c.Context(), req.SubscriptionID)
-	if err != nil {
-		if err == services.ErrSubscriptionNotFound {
-			return response.NotFound(c, "Subscription not found")
-		}
-		return response.InternalError(c, "Failed to cancel subscription")
+	if err := h.service.CancelSubscription(c.Context(), req.SubscriptionID); err != nil {
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Subscription cancelled successfully", nil)
@@ -117,18 +110,8 @@ func (h *BillingHandler) ResumeSubscription(c *fiber.Ctx) error {
 		return response.ValidationError(c, errors)
 	}
 
-	err := h.service.ResumeSubscription(c.Context(), req.SubscriptionID)
-	if err != nil {
-		switch err {
-		case services.ErrSubscriptionNotFound:
-			return response.NotFound(c, "Subscription not found")
-		case services.ErrSubscriptionNotCancelled:
-			return response.Error(c, fiber.StatusBadRequest, "Subscription is not cancelled")
-		case services.ErrCannotResume:
-			return response.Error(c, fiber.StatusBadRequest, "Cannot resume subscription - grace period has ended")
-		default:
-			return response.InternalError(c, err.Error())
-		}
+	if err := h.service.ResumeSubscription(c.Context(), req.SubscriptionID); err != nil {
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Subscription resumed successfully", nil)
@@ -140,7 +123,7 @@ func (h *BillingHandler) GetSubscriptions(c *fiber.Ctx) error {
 
 	subscriptions, err := h.service.GetSubscriptions(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch subscriptions")
+		return response.HandleError(c, err)
 	}
 
 	subscriptionResponses := make([]dto.SubscriptionResponse, len(subscriptions))
@@ -158,7 +141,7 @@ func (h *BillingHandler) GetSubscription(c *fiber.Ctx) error {
 
 	subscription, err := h.service.GetSubscriptionByID(c.Context(), id)
 	if err != nil {
-		return response.NotFound(c, "Subscription not found")
+		return response.HandleError(c, err)
 	}
 
 	plan := h.service.GetPlanByProductID(subscription.ProductID)
@@ -171,7 +154,7 @@ func (h *BillingHandler) GetOrders(c *fiber.Ctx) error {
 
 	orders, err := h.service.GetOrders(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch orders")
+		return response.HandleError(c, err)
 	}
 
 	orderResponses := make([]dto.OrderResponse, len(orders))
@@ -207,7 +190,7 @@ func (h *BillingHandler) GetSubscriptionOptions(c *fiber.Ctx) error {
 
 	resp, err := options.GetSubscriptionOptionsResponse(c.Context())
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch subscription options")
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Subscription options retrieved", resp)
@@ -219,7 +202,7 @@ func (h *BillingHandler) RegisterSubscription(c *fiber.Ctx) error {
 
 	subscribed, _ := h.service.IsSubscribed(c.Context(), teamID)
 	if subscribed {
-		return response.Error(c, fiber.StatusBadRequest, "Team already has an active subscription")
+		return response.HandleError(c, services.ErrAlreadySubscribed)
 	}
 
 	plans := h.service.GetPlans()

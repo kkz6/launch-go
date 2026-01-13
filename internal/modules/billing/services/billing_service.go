@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -12,18 +11,19 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/billing/providers"
 	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
-// Common errors
+// Service errors with HTTP status codes
 var (
-	ErrSubscriptionNotFound     = errors.New("subscription not found")
-	ErrNoActiveSubscription     = errors.New("no active subscription found")
-	ErrAlreadySubscribed        = errors.New("team already has an active subscription")
-	ErrSubscriptionNotCancelled = errors.New("subscription is not cancelled")
-	ErrCannotResume             = errors.New("cannot resume subscription")
-	ErrPlanNotFound             = errors.New("plan not found")
-	ErrSubscriptionsNotEnabled  = errors.New("subscriptions are not enabled")
-	ErrLimitExceeded            = errors.New("limit exceeded")
+	ErrSubscriptionNotFound     = response.ErrNotFound("Subscription not found")
+	ErrNoActiveSubscription     = response.ErrNotFound("No active subscription found")
+	ErrAlreadySubscribed        = response.ErrConflict("Team already has an active subscription")
+	ErrSubscriptionNotCancelled = response.ErrBadRequest("Subscription is not cancelled")
+	ErrCannotResume             = response.ErrBadRequest("Cannot resume subscription - grace period has ended")
+	ErrPlanNotFound             = response.ErrNotFound("Plan not found")
+	ErrSubscriptionsNotEnabled  = response.ErrBadRequest("Subscriptions are not enabled")
+	ErrLimitExceeded            = response.ErrBadRequest("Limit exceeded")
 )
 
 // Config holds billing configuration
