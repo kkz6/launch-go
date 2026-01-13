@@ -11,6 +11,13 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	"github.com/kkz6/launch-go/internal/pkg/app"
+)
+
+// Ensure Module implements required interfaces
+var (
+	_ app.Module              = (*Module)(nil)
+	_ app.PublicRouteRegistrar = (*Module)(nil)
 )
 
 // Module represents the auth module with all its dependencies
@@ -37,8 +44,24 @@ func NewModule(db *gorm.DB, cfg *config.Config, logger *zerolog.Logger) *Module 
 	}
 }
 
-// RegisterRoutes registers all auth-related routes
+// NewModuleFromContext creates a new auth module from app context
+func NewModuleFromContext(ctx *app.Context) *Module {
+	return NewModule(ctx.DB, ctx.Config, ctx.Logger)
+}
+
+// Name returns the module name (implements app.Module)
+func (m *Module) Name() string {
+	return "auth"
+}
+
+// RegisterRoutes registers all auth-related routes (legacy method)
 func (m *Module) RegisterRoutes(router fiber.Router) {
+	m.RegisterPublicRoutes(router)
+}
+
+// RegisterPublicRoutes implements routing.PublicRouteModule interface.
+// Auth module is special because it handles its own auth middleware internally.
+func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 	auth := router.Group("/auth")
 	authMiddleware := middleware.Auth(m.config.JWT.Secret)
 	adapter := NewMiddlewareAdapter(m.service)

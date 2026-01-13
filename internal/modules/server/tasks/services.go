@@ -61,15 +61,6 @@ func RestartSupervisor() *taskrunner.BaseTask {
 	return RestartService("supervisor")
 }
 
-// ReloadSupervisor creates a task to reload Supervisor
-func ReloadSupervisor() *taskrunner.BaseTask {
-	return taskrunner.NewBaseTask(
-		taskrunner.WithName("Reload Supervisor"),
-		taskrunner.WithScript("sudo supervisorctl reread && sudo supervisorctl update"),
-		taskrunner.WithTimeout(30),
-	)
-}
-
 // ReloadCaddy creates a task to reload Caddy
 func ReloadCaddy() *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
@@ -85,15 +76,6 @@ func CheckServiceStatus(service string) *taskrunner.BaseTask {
 		taskrunner.WithName(fmt.Sprintf("Check %s Status", service)),
 		taskrunner.WithScript(fmt.Sprintf("systemctl is-active %s", service)),
 		taskrunner.WithTimeout(15),
-	)
-}
-
-// RestartDaemon creates a task to restart a supervisor daemon
-func RestartDaemon(program string) *taskrunner.BaseTask {
-	return taskrunner.NewBaseTask(
-		taskrunner.WithName(fmt.Sprintf("Restart Daemon %s", program)),
-		taskrunner.WithScript(fmt.Sprintf("sudo supervisorctl restart %s", program)),
-		taskrunner.WithTimeout(30),
 	)
 }
 

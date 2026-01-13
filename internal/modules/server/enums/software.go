@@ -269,35 +269,35 @@ func (s Software) HasLogPath() bool {
 func (s Software) InstallTemplateName() string {
 	// PHP versions use the generic install_php.sh template
 	if s.IsPhp() {
-		return "software/install-php.sh"
+		return "software/install_php.sh"
 	}
 
 	templateNames := map[Software]string{
-		SoftwareCaddy2:       "software/install-caddy2.sh",
-		SoftwareComposer2:    "software/install-composer2.sh",
-		SoftwareMySql80:      "software/install-mysql80.sh",
-		SoftwarePostgreSql16: "software/install-postgresql16.sh",
-		SoftwareNode21:       "software/install-node21.sh",
-		SoftwareBun:          "software/install-bun.sh",
-		SoftwareRedis:        "software/install-redis.sh",
-		SoftwareSupervisor:   "software/install-supervisor.sh",
-		SoftwareLaunchAgent:  "software/install-launch-agent.sh",
+		SoftwareCaddy2:       "software/install_caddy2.sh",
+		SoftwareComposer2:    "software/install_composer2.sh",
+		SoftwareMySql80:      "software/install_mysql80.sh",
+		SoftwarePostgreSql16: "software/install_postgresql16.sh",
+		SoftwareNode21:       "software/install_node21.sh",
+		SoftwareBun:          "software/install_bun.sh",
+		SoftwareRedis:        "software/install_redis.sh",
+		SoftwareSupervisor:   "software/install_supervisor.sh",
+		SoftwareLaunchAgent:  "software/install_launch_agent.sh",
 	}
 
 	if name, ok := templateNames[s]; ok {
 		return name
 	}
 
-	return "software/install-" + string(s) + ".sh"
+	return "software/install_" + string(s) + ".sh"
 }
 
 // RemoveTemplateName returns the template path for removing this software
 func (s Software) RemoveTemplateName() string {
 	if s.IsPhp() {
-		return "software/remove-php.sh"
+		return "software/remove_php.sh"
 	}
 
-	return "software/remove-" + string(s) + ".sh"
+	return "software/remove_" + string(s) + ".sh"
 }
 
 // MaxConnections returns the recommended max connections based on server memory.

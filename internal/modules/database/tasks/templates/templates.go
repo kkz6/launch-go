@@ -16,8 +16,13 @@ var templateFS embed.FS
 // templates holds all parsed templates
 var templates *template.Template
 
+// templateFuncs provides custom template functions
+var templateFuncs = template.FuncMap{
+	"shellDefaults": ShellDefaults,
+}
+
 func init() {
-	templates = template.New("")
+	templates = template.New("").Funcs(templateFuncs)
 
 	// Walk through embedded files and add each template with its full path
 	err := fs.WalkDir(templateFS, ".", func(path string, d fs.DirEntry, err error) error {
@@ -61,4 +66,10 @@ func MustRender(name string, data any) string {
 		panic(err)
 	}
 	return result
+}
+
+// ShellDefaults returns the standard shell script header
+func ShellDefaults() string {
+	return `set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive`
 }

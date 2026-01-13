@@ -2,19 +2,36 @@ package server
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/handlers"
+	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/server/services"
+	"github.com/kkz6/launch-go/internal/pkg/app"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
+// Ensure Module implements all required interfaces
+var (
+	_ app.Module           = (*Module)(nil)
+	_ app.RouteRegistrar   = (*Module)(nil)
+	_ app.WebhookRegistrar = (*Module)(nil)
+	_ app.JobRegistrar     = (*Module)(nil)
+)
+
 // Module represents the server module
 type Module struct {
+	db             *gorm.DB
+	queueClient    *queue.Client
+	ws             *websocket.Hub
+	dispatcher     *taskrunner.Dispatcher
+	logger         *zerolog.Logger
 	handler        *handlers.Handler
 	webhookHandler *handlers.TaskWebhookHandler
 	repo           *repositories.Repository
@@ -28,18 +45,57 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, dispat
 	webhookHandler := handlers.NewTaskWebhookHandler(repo, webhookSecretKey)
 
 	return &Module{
+		db:             db,
+		queueClient:    queueClient,
+		ws:             ws,
+		dispatcher:     dispatcher,
+		logger:         logger,
 		handler:        handler,
 		webhookHandler: webhookHandler,
 		repo:           repo,
 	}
 }
 
-// RegisterWebhookRoutes registers webhook routes (no auth required)
+// NewModuleFromContext creates a new server module from app context
+func NewModuleFromContext(ctx *app.Context) *Module {
+	return NewModule(
+		ctx.DB,
+		ctx.Queue,
+		ctx.WebSocket,
+		ctx.Dispatcher,
+		ctx.Logger,
+		ctx.Config.App.Key,
+	)
+}
+
+// Name returns the module name (implements app.Module)
+func (m *Module) Name() string {
+	return "server"
+}
+
+// RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
 func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 	m.webhookHandler.RegisterRoutes(router)
+}
+
+// RegisterJobs registers background job handlers (implements app.JobRegistrar)
+func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
+	// Set up job context
+	jobContext := jobs.NewJobContext(m.db, m.repo, m.logger, m.ws, m.dispatcher)
+	jobs.SetJobContext(jobContext)
+
+	// Create kernel and register jobs
+	kernel := pkgjobs.NewKernel(m.db, m.logger, m.ws)
+	kernel.RegisterModule(jobs.Register)
+	kernel.Boot(mux)
 }
 
 // GetWebhookHandler returns the webhook handler for generating callback URLs
 func (m *Module) GetWebhookHandler() *handlers.TaskWebhookHandler {
 	return m.webhookHandler
+}
+
+// Repository returns the server repository
+func (m *Module) Repository() *repositories.Repository {
+	return m.repo
 }

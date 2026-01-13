@@ -1,0 +1,653 @@
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+# Send a POST request to the given URL, ignoring the response and errors
+function httpPostSilently() {
+    if [ -z "${2:-}" ]; then
+        (curl -X POST --silent --max-time 15 --output /dev/null $1 || true)
+    else
+        (curl -X POST --silent --max-time 15 --output /dev/null $1 -H 'Content-Type: application/json' --data "$2" || true)
+    fi
+}
+
+function httpPostRawSilently() {
+    (curl -X POST --silent --max-time 15 --output /dev/null $1 --data "$2" || true)
+}
+
+# Wait for apt to be unlocked
+function waitForAptUnlock() {
+    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
+        echo "apt, apt-get or dpkg is running..."
+        sleep 5
+    done
+
+    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+        echo "Waiting: apt is locked..."
+        sleep 5
+    done
+
+    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
+        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
+            echo "Waiting: unattended-upgrades is locked..."
+            sleep 5
+        done
+    fi
+}
+
+
+# === Provision Step: Configure a swap file so the server can handle more memory-intensive tasks ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Configure swap"
+
+if [ ! -f /swapfile ]; then
+    sudo fallocate -l 1024M /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile || true
+
+    # Use tee to append to /etc/fstab with sudo privileges
+    echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab > /dev/null
+
+    # Use tee to append to /etc/sysctl.conf with sudo privileges
+    echo "vm.swappiness=35" | sudo tee -a /etc/sysctl.conf > /dev/null
+    echo "vm.vfs_cache_pressure=50" | sudo tee -a /etc/sysctl.conf > /dev/null
+fi
+
+
+# === Provision Step: Configure the firewall with the default rules (SSH, HTTP, HTTPS) ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Configure firewall with SSH port, HTTP and HTTPS"
+
+sudo ufw allow 2222
+sudo ufw allow 80
+sudo ufw allow 443
+sudo yes | sudo ufw enable
+sudo service ufw restart
+
+
+# === Provision Step: Update package lists and installed system packages ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+# Wait for apt to be unlocked
+function waitForAptUnlock() {
+    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
+        echo "apt, apt-get or dpkg is running..."
+        sleep 5
+    done
+
+    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+        echo "Waiting: apt is locked..."
+        sleep 5
+    done
+
+    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
+        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
+            echo "Waiting: unattended-upgrades is locked..."
+            sleep 5
+        done
+    fi
+}
+
+echo "Update package repositories and upgrade packages"
+
+# This ensures that the cloud-init bundle is not overwritten by a different version when running apt-get upgrade.
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-mark hold cloud-init
+
+# Remove ALL MySQL repository files to prevent expired GPG key errors
+# The MySQL installation script will properly configure the repository later
+sudo rm -f /etc/apt/sources.list.d/*mysql*
+
+# Update package repositories
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+
+# Install software-properties-common
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-get install software-properties-common -y
+
+# Add universe repository
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive add-apt-repository universe -y
+
+# Update package repositories
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+
+# Upgrade packages
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+
+
+# === Provision Step: Install essential packages (curl, git, wget, etc.) ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Install essential packages"
+
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    acl \
+    apt-transport-https \
+    ca-certificates \
+    cron \
+    curl \
+    debian-archive-keyring \
+    debian-keyring \
+    fail2ban \
+    gcc \
+    git \
+    lsb-release \
+    make \
+    procps \
+    software-properties-common \
+    ufw \
+    unattended-upgrades \
+    unzip \
+    wget \
+    zip
+
+
+# === Provision Step: Configure unattended upgrades to keep the server up to date automatically ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Setup unattended upgrades"
+
+# Configure the allowed origins for unattended upgrades
+sudo tee /etc/apt/apt.conf.d/50unattended-upgrades > /dev/null <<EOF
+Unattended-Upgrade::Allowed-Origins {
+    "\${distro_id} \${distro_codename}-security";
+};
+Unattended-Upgrade::Package-Blacklist {
+    //
+};
+EOF
+
+# Configure the periodic settings for APT
+sudo tee /etc/apt/apt.conf.d/10periodic > /dev/null <<EOF
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::AutocleanInterval "7";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+
+
+# === Provision Step: Configure the root user ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Add public key for this server"
+
+sudo mkdir -p /root/.ssh
+sudo touch /root/.ssh/authorized_keys
+
+sudo tee -a /root/.ssh/authorized_keys > /dev/null <<EOF
+ssh-rsa TESTKEY... user@host
+EOF
+
+echo "Fix root permissions"
+
+sudo chown root:root /root
+sudo chown -R root:root /root/.ssh
+sudo chmod 700 /root/.ssh
+sudo chmod 600 /root/.ssh/authorized_keys
+
+echo "SSH Keyscans for Source Providers"
+
+sudo ssh-keygen -R github.com 2>/dev/null || true
+sudo ssh-keygen -R bitbucket.org 2>/dev/null || true
+sudo ssh-keygen -R gitlab.com 2>/dev/null || true
+sudo ssh-keyscan -H github.com | sudo tee -a /root/.ssh/known_hosts > /dev/null
+sudo ssh-keyscan -H bitbucket.org | sudo tee -a /root/.ssh/known_hosts > /dev/null
+sudo ssh-keyscan -H gitlab.com | sudo tee -a /root/.ssh/known_hosts > /dev/null
+
+
+# Enable root login in SSH config
+echo "Enabling root login in SSH configuration..."
+sudo sed -i 's/^#\?PermitRootLogin .*/PermitRootLogin prohibit-password/' /etc/ssh/sshd_config
+
+# Define the path to the authorized_keys file
+AUTH_KEYS_FILE="/root/.ssh/authorized_keys"
+
+# Backup the original file
+sudo cp "$AUTH_KEYS_FILE" "$AUTH_KEYS_FILE.bak"
+
+# Remove the specified lines from the authorized_keys file
+sudo sed -i -e 's/.*exit 142" \(.*$\)/\1/' /root/.ssh/authorized_keys
+
+# Confirm the changes
+echo "Specified text removed from $AUTH_KEYS_FILE."
+
+# Restart the SSH service
+echo "Restarting SSH service..."
+sudo service ssh start
+
+# Reload Daemon
+echo "Reloading Daemon service..."
+sudo systemctl daemon-reload
+
+# Update cloud config to enable root
+echo "Updating cloud config to enable root..."
+sudo sed -i 's/^disable_root: .*/disable_root: false/' /etc/cloud/cloud.cfg
+
+echo "Script completed successfully."
+
+
+
+# === Provision Step: Enhance SSH security by disabling password authentication and root login ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Enhance SSH security"
+
+sudo sed -i "/PasswordAuthentication yes/d" /etc/ssh/sshd_config
+echo "PasswordAuthentication no" | sudo tee -a /etc/ssh/sshd_config > /dev/null
+sudo service ssh restart
+
+echo "Setup SSH keys for root"
+
+if [ ! -d /root/.ssh ]
+then
+    sudo mkdir -p /root/.ssh
+    sudo touch /root/.ssh/authorized_keys
+fi
+
+
+# === Provision Step: Create a default user account ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Rename existing user 1000 if it exists, otherwise create a new user"
+
+TARGET_USER="launcher"
+PROTECTED_USERS=("ubuntu" "root" "ec2-user")
+
+if id "$TARGET_USER" > /dev/null 2>&1; then
+    echo "User $TARGET_USER already exists. Skipping user creation."
+elif getent passwd 1000 > /dev/null 2>&1; then
+    OLD_USERNAME=$(getent passwd 1000 | cut -d: -f1)
+
+    # Check if the current user is protected (ubuntu, root, ec2-user, etc.)
+    if [[ " ${PROTECTED_USERS[@]} " =~ " $OLD_USERNAME " ]]; then
+        echo "User $OLD_USERNAME is a protected user. Skipping renaming and adding user."
+        echo "Setup default user"
+        sudo useradd -m -d "/home/$TARGET_USER" -s /bin/bash "$TARGET_USER"
+    else
+        echo "Renaming existing user 1000 ($OLD_USERNAME)"
+        sudo pkill -9 -u "$OLD_USERNAME" || true
+        sudo pkill -KILL -u "$OLD_USERNAME" || true
+        sudo usermod --login "$TARGET_USER" --move-home --home "/home/$TARGET_USER" "$OLD_USERNAME"
+        sudo groupmod --new-name "$TARGET_USER" "$OLD_USERNAME"
+    fi
+else
+    echo "Setup default user"
+    sudo useradd -m -d "/home/$TARGET_USER" -s /bin/bash "$TARGET_USER"
+fi
+
+echo "Create the user's home directory"
+
+sudo mkdir -p /home/launcher/.launch
+sudo mkdir -p /home/launcher/.ssh
+
+echo "Add user to groups"
+
+sudo adduser launcher sudo
+sudo id launcher
+sudo groups launcher
+
+echo "Set shell"
+
+sudo chsh -s /bin/bash launcher
+
+echo "Init default profile/bashrc"
+
+sudo cp /root/.bashrc /home/launcher/.bashrc
+sudo cp /root/.profile /home/launcher/.profile
+
+echo "Copy SSH settings from root and create new key"
+
+sudo cp /root/.ssh/authorized_keys /home/launcher/.ssh/authorized_keys
+sudo cp /root/.ssh/known_hosts /home/launcher/.ssh/known_hosts
+sudo rm -f /home/launcher/.ssh/id_rsa /home/launcher/.ssh/id_rsa.pub
+sudo ssh-keygen -f /home/launcher/.ssh/id_rsa -t rsa -N ''
+
+
+
+echo "Set password"
+PASSWORD=$(mkpasswd -m sha-512 "password123")
+
+echo "launcher:$PASSWORD" | sudo chpasswd
+
+# Add default Caddy page
+echo "Add default Caddy page"
+sudo mkdir -p /home/"launcher/default"
+sudo tee /home/"launcher/default/index.html" > /dev/null <<EOF
+This server is managed by <a href=""></a>.
+EOF
+
+echo "Fix user permissions"
+
+sudo chown -R launcher:launcher /home/launcher
+sudo chmod -R 755 /home/launcher
+sudo chmod 700 /home/launcher/.ssh
+sudo chmod 700 /home/launcher/.ssh/id_rsa
+sudo chmod 600 /home/launcher/.ssh/authorized_keys
+
+
+# === Install Software: Caddy 2 ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+# Wait for apt to be unlocked
+function waitForAptUnlock() {
+    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
+        echo "apt, apt-get or dpkg is running..."
+        sleep 5
+    done
+
+    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+        echo "Waiting: apt is locked..."
+        sleep 5
+    done
+
+    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
+        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
+            echo "Waiting: unattended-upgrades is locked..."
+            sleep 5
+        done
+    fi
+}
+
+echo "Install Caddy webserver"
+
+waitForAptUnlock
+sudo rm -f /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' | sudo tee /etc/apt/sources.list.d/caddy-stable.list
+waitForAptUnlock
+sudo apt-get update
+waitForAptUnlock
+sudo apt-get install -y caddy=2.*
+
+echo "Install default Caddyfile"
+
+# Set up the Caddyfile for the user
+sudo tee /etc/caddy/Sites.caddy > /dev/null <<EOF
+# import /home/launcher/example.com/Caddyfile
+EOF
+
+sudo tee /etc/caddy/Caddyfile > /dev/null <<EOF
+10.0.0.2:80 {
+    root * /home/launcher/default
+    file_server
+}
+
+# Do not remove this Sites.caddy import
+import /etc/caddy/Sites.caddy
+EOF
+
+echo "Update Caddy service config to run as user"
+
+sudo service caddy stop
+sudo mkdir -p /etc/systemd/system/caddy.service.d
+
+sudo tee /etc/systemd/system/caddy.service.d/override.conf > /dev/null <<EOF
+[Service]
+User=launcher
+Group=launcher
+EOF
+
+# Reload systemd configuration and start Caddy service
+sudo systemctl daemon-reload
+sudo service caddy start
+
+# Add caddy reload command to sudoers file without requiring password
+sudo tee -a /etc/sudoers.d/caddy > /dev/null <<EOF
+launcher ALL=(root) NOPASSWD: /usr/sbin/service caddy reload
+EOF
+
+
+# === Install Software: PHP 8.3 ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+# Wait for apt to be unlocked
+function waitForAptUnlock() {
+    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
+        echo "apt, apt-get or dpkg is running..."
+        sleep 5
+    done
+
+    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+        echo "Waiting: apt is locked..."
+        sleep 5
+    done
+
+    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
+        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
+            echo "Waiting: unattended-upgrades is locked..."
+            sleep 5
+        done
+    fi
+}
+
+function ensurePhpPpaInstalled() {
+    if ! grep -q "ondrej/php" /etc/apt/sources.list.d/*.list 2>/dev/null && ! grep -q "ondrej/php" /etc/apt/sources.list.d/*.sources 2>/dev/null; then
+        echo "Adding ondrej/php PPA..."
+        waitForAptUnlock
+        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
+        waitForAptUnlock
+        sudo DEBIAN_FRONTEND=noninteractive add-apt-repository ppa:ondrej/php -y
+        waitForAptUnlock
+        sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+        echo "ondrej/php PPA installed successfully"
+    else
+        echo "ondrej/php PPA already installed, refreshing package lists..."
+        waitForAptUnlock
+        sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+    fi
+}
+
+echo "Install PHP 8.3"
+
+ensurePhpPpaInstalled
+
+waitForAptUnlock
+
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -o Dpkg::Options::="--force-confdef" -o Dpkg::Options::="--force-confold" -y --allow-downgrades --allow-remove-essential --allow-change-held-packages \
+    php8.3-bcmath \
+    php8.3-cli \
+    php8.3-curl \
+    php8.3-dev \
+    php8.3-fpm \
+    php8.3-gd \
+    php8.3-imap \
+    php8.3-intl \
+    php8.3-mbstring \
+    php8.3-mysql \
+    php8.3-sqlite3 \
+    php8.3-common \
+    php8.3-xml \
+    php8.3-zip
+
+echo "Install Redis for PHP 8.3"
+
+waitForAptUnlock
+yes '' | sudo DEBIAN_FRONTEND=noninteractive apt-get -y install php8.3-redis || echo "php8.3-redis not available, skipping..."
+
+echo "Install Memcached for PHP 8.3"
+
+waitForAptUnlock
+yes '' | sudo DEBIAN_FRONTEND=noninteractive apt-get -y install php8.3-memcached || echo "php8.3-memcached not available, skipping..."
+
+echo "Update PHP CLI config"
+
+# Update PHP CLI settings in php.ini
+sudo sed -i "s/error_reporting = .*/error_reporting = E_ALL/" /etc/php/8.3/cli/php.ini
+sudo sed -i "s/display_errors = .*/display_errors = On/" /etc/php/8.3/cli/php.ini
+sudo sed -i "s/memory_limit = .*/memory_limit = 512M/" /etc/php/8.3/cli/php.ini
+sudo sed -i "s/;date.timezone.*/date.timezone = UTC/" /etc/php/8.3/cli/php.ini
+sudo sed -i "s/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/" /etc/php/8.3/cli/php.ini
+
+echo "Update PHP FPM config"
+
+# Update PHP FPM settings in php.ini
+sudo sed -i "s/error_reporting = .*/error_reporting = E_ALL/" /etc/php/8.3/fpm/php.ini
+sudo sed -i "s/display_errors = .*/display_errors = Off/" /etc/php/8.3/fpm/php.ini
+sudo sed -i "s/memory_limit = .*/memory_limit = 512M/" /etc/php/8.3/fpm/php.ini
+sudo sed -i "s/;date.timezone.*/date.timezone = UTC/" /etc/php/8.3/fpm/php.ini
+sudo sed -i "s/;cgi.fix_pathinfo=1/cgi.fix_pathinfo=0/" /etc/php/8.3/fpm/php.ini
+
+echo "Update PHP FPM pool config"
+
+# Update FPM pool configuration
+sudo sed -i "s/;request_terminate_timeout.*/request_terminate_timeout = 60/" /etc/php/8.3/fpm/pool.d/www.conf
+sudo sed -i "s/^user = www-data/user = launcher/" /etc/php/8.3/fpm/pool.d/www.conf
+sudo sed -i "s/^group = www-data/group = launcher/" /etc/php/8.3/fpm/pool.d/www.conf
+sudo sed -i "s/;listen\.owner.*/listen.owner = launcher/" /etc/php/8.3/fpm/pool.d/www.conf
+sudo sed -i "s/;listen\.group.*/listen.group = launcher/" /etc/php/8.3/fpm/pool.d/www.conf
+sudo sed -i "s/;listen\.mode.*/listen.mode = 0666/" /etc/php/8.3/fpm/pool.d/www.conf
+sudo sed -i "s/^pm.max_children.*=.*/pm.max_children = 4/" /etc/php/8.3/fpm/pool.d/www.conf
+
+echo "Update PHP session config"
+
+# Update session directory permissions
+sudo chmod 733 /var/lib/php/sessions
+# Set the sticky bit on the session directory to prevent other users from deleting session files
+sudo chmod +t /var/lib/php/sessions
+
+echo "PHP configuration updates complete."
+
+sudo service php8.3-fpm restart > /dev/null 2>&1
+
+echo "launcher ALL=NOPASSWD: /usr/sbin/service php8.3-fpm reload" | sudo tee /etc/sudoers.d/php-fpm > /dev/null
+
+
+# === Install Software: PostgreSQL 16 ===
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+# Wait for apt to be unlocked
+function waitForAptUnlock() {
+    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
+        echo "apt, apt-get or dpkg is running..."
+        sleep 5
+    done
+
+    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+        echo "Waiting: apt is locked..."
+        sleep 5
+    done
+
+    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
+        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
+            echo "Waiting: unattended-upgrades is locked..."
+            sleep 5
+        done
+    fi
+}
+
+echo "Install PostgreSQL 16"
+
+waitForAptUnlock
+
+DB_PASSWORD="pgpassword"
+DATABASE_NAME="app_db"
+LAUNCH_USER="app_db"
+
+# Add PostgreSQL official repository
+sudo apt-get install -y wget gnupg2 lsb-release
+
+# Import PostgreSQL repository signing key (remove existing if present)
+sudo rm -f /usr/share/keyrings/postgresql-archive-keyring.gpg
+wget --quiet -O - https://www.postgresql.org/media/keys/ACCC4CF8.asc | sudo gpg --batch --dearmor -o /usr/share/keyrings/postgresql-archive-keyring.gpg
+
+# Add PostgreSQL repository
+echo "deb [signed-by=/usr/share/keyrings/postgresql-archive-keyring.gpg] http://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+
+waitForAptUnlock
+sudo apt-get update
+
+waitForAptUnlock
+sudo apt-get install -y postgresql-16 postgresql-contrib-16
+
+# Wait for PostgreSQL to start
+sleep 2
+
+# Configure PostgreSQL authentication (pg_hba.conf)
+PG_HBA_CONF=$(sudo -u postgres psql -t -P format=unaligned -c "SHOW hba_file")
+
+# Backup original configuration
+sudo cp "$PG_HBA_CONF" "${PG_HBA_CONF}.backup"
+
+# Update pg_hba.conf to use md5 authentication for all connections
+sudo bash -c "cat > $PG_HBA_CONF << 'EOF'
+# PostgreSQL Client Authentication Configuration File
+# TYPE  DATABASE        USER            ADDRESS                 METHOD
+
+# Local connections
+local   all             postgres                                peer
+local   all             all                                     md5
+
+# IPv4 local connections
+host    all             all             127.0.0.1/32            md5
+host    all             all             0.0.0.0/0               md5
+
+# IPv6 local connections
+host    all             all             ::1/128                 md5
+host    all             all             ::/0                    md5
+EOF"
+
+# Configure PostgreSQL to listen on all interfaces
+POSTGRESQL_CONF=$(sudo -u postgres psql -t -P format=unaligned -c "SHOW config_file")
+sudo sed -i "s/#listen_addresses = 'localhost'/listen_addresses = '*'/" "$POSTGRESQL_CONF"
+sudo sed -i "s/listen_addresses = 'localhost'/listen_addresses = '*'/" "$POSTGRESQL_CONF"
+
+# Set max connections
+if sudo grep -q "^max_connections" "$POSTGRESQL_CONF" 2>/dev/null; then
+    sudo sed -i "s/^max_connections.*=.*/max_connections = 200/" "$POSTGRESQL_CONF"
+fi
+
+# Restart PostgreSQL to apply changes
+sudo systemctl restart postgresql
+
+# Wait for PostgreSQL to be ready
+sleep 3
+
+# Create launch superuser with password
+sudo -u postgres psql -c "CREATE USER ${LAUNCH_USER} WITH SUPERUSER CREATEDB CREATEROLE PASSWORD '${DB_PASSWORD}';"
+
+# Create default database
+sudo -u postgres psql -c "CREATE DATABASE ${DATABASE_NAME} OWNER ${LAUNCH_USER};"
+
+# Grant privileges
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE ${DATABASE_NAME} TO ${LAUNCH_USER};"
+
+# Enable and start PostgreSQL service
+sudo systemctl enable postgresql
+sudo systemctl restart postgresql
+
+echo "PostgreSQL 16 installation completed"
+
+
+# === Final Cleanup ===
+# See 'apt-update-upgrade'
+waitForAptUnlock
+sudo apt-mark unhold cloud-init
