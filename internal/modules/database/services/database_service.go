@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/dto"
 	"github.com/kkz6/launch-go/internal/modules/database/jobs"
 	"github.com/kkz6/launch-go/internal/modules/database/models"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 )
 
 // CreateDatabase creates a new database on a server
@@ -30,6 +31,16 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID string, req *dto.
 	if err := s.repo.Create(ctx, database); err != nil {
 		return nil, fmt.Errorf("failed to create database: %w", err)
 	}
+
+	logger := activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("database").
+		On(database).
+		WithEvent("created")
+	if userID != nil {
+		logger.CausedByUser(*userID)
+	}
+	logger.Log("Database was created")
 
 	// Attach root user if exists
 	s.attachRootUser(ctx, serverID, database.ID)
@@ -110,6 +121,16 @@ func (s *Service) DeleteDatabase(ctx context.Context, id, serverID string, userI
 	if database.IsUninstalling() {
 		return ErrDatabaseBeingUninstalled
 	}
+
+	logger := activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("database").
+		On(database).
+		WithEvent("deleted")
+	if userID != nil {
+		logger.CausedByUser(*userID)
+	}
+	logger.Log("Database deletion requested")
 
 	// Mark as uninstalling
 	database.MarkAsUninstalling()

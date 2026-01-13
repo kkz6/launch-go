@@ -10,6 +10,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 
@@ -72,6 +73,14 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID string, req *dto
 		return nil, err
 	}
 
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("auth").
+		CausedByUser(userID).
+		On(user).
+		WithEvent("updated").
+		Log("User profile was updated")
+
 	return user, nil
 }
 
@@ -97,7 +106,19 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dt
 
 	user.Password = string(hashedPassword)
 
-	return s.repo.UpdateUser(ctx, user)
+	if err := s.repo.UpdateUser(ctx, user); err != nil {
+		return err
+	}
+
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("auth").
+		CausedByUser(userID).
+		On(user).
+		WithEvent("password_changed").
+		Log("User password was changed")
+
+	return nil
 }
 
 // DeleteAccount deletes a user's account
@@ -110,6 +131,14 @@ func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
 	if user == nil {
 		return apperrors.ErrNotFound
 	}
+
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("auth").
+		CausedByUser(userID).
+		On(user).
+		WithEvent("deleted").
+		Log("User account was deleted")
 
 	// Delete owned teams
 	ownedTeams, err := s.repo.GetUserTeams(ctx, userID)

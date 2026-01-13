@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"gorm.io/gorm"
+
 	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
@@ -152,4 +154,5 @@ type Repository interface {
 	DatabaseRepository
 	DatabaseUserRepository
 	Transaction(ctx context.Context, fn func(tx Repository) error) error
+	DB() *gorm.DB
 }

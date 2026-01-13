@@ -36,3 +36,8 @@ func (r *Repository) Transaction(ctx context.Context, fn func(tx contracts.Repos
 		return fn(&Repository{db: tx})
 	})
 }
+
+// DB returns the underlying database connection
+func (r *Repository) DB() *gorm.DB {
+	return r.db
+}

@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -174,6 +175,14 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		return nil, err
 	}
 
+	activity.New(s.siteRepo.DB()).
+		WithContext(ctx).
+		UseLog("site").
+		CausedByUser(userID).
+		On(site).
+		WithEvent("created").
+		Log("Site was created")
+
 	// Create initial deployment
 	if s.deploymentService != nil {
 		deployment, err := s.deploymentService.createDeployment(ctx, site, userID, nil)
@@ -293,6 +302,14 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 		return nil, err
 	}
 
+	activity.New(s.siteRepo.DB()).
+		WithContext(ctx).
+		UseLog("site").
+		CausedByUser(userID).
+		On(site).
+		WithEvent("updated").
+		Log("Site was updated")
+
 	// If PHP version or web folder changed, update Caddyfile and deploy
 	if updateCaddyfile {
 		now := time.Now()
@@ -316,6 +333,13 @@ func (s *SiteService) Delete(ctx context.Context, id, serverID string) error {
 	if err != nil {
 		return err
 	}
+
+	activity.New(s.siteRepo.DB()).
+		WithContext(ctx).
+		UseLog("site").
+		On(site).
+		WithEvent("deleted").
+		Log("Site deletion requested")
 
 	now := time.Now()
 	site.UninstallationRequestedAt = &now
