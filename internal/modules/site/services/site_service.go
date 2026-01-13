@@ -82,9 +82,9 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		return nil, errors.New("a site with this address already exists on this server")
 	}
 
-	siteType, err := enums.ParseSiteType(req.Type)
-	if err != nil {
-		return nil, err
+	// Validate site type
+	if !req.Type.IsValid() {
+		return nil, fmt.Errorf("invalid site type: %s", req.Type)
 	}
 
 	// Build path
@@ -93,7 +93,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 	// Set default web folder
 	webFolder := req.WebFolder
 	if webFolder == "" {
-		webFolder = siteType.GetDefaultWebFolder()
+		webFolder = req.Type.GetDefaultWebFolder()
 	}
 
 	// Convert SourceControlRepositoriesID from *string to *uint64
@@ -120,7 +120,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		ServerID:                    serverID,
 		UserID:                      userID,
 		Address:                     req.Address,
-		Type:                        siteType,
+		Type:                        req.Type,
 		TlsSetting:                  enums.TlsSettingAuto,
 		ZeroDowntimeDeployment:      req.ZeroDowntimeDeployment,
 		DeploymentReleasesRetention: 5,
@@ -139,7 +139,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 	}
 
 	// Apply type-specific defaults
-	defaults := siteType.GetDefaultAttributes(req.ZeroDowntimeDeployment)
+	defaults := req.Type.GetDefaultAttributes(req.ZeroDowntimeDeployment)
 	if dirs, ok := defaults["shared_directories"].([]string); ok {
 		site.SharedDirectories = dirs
 	}

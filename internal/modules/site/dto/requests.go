@@ -1,11 +1,13 @@
 package dto
 
+import "github.com/kkz6/launch-go/internal/modules/site/enums"
+
 // CreateSiteRequest represents the request to create a new site
 type CreateSiteRequest struct {
-	Address                     string   `json:"address" validate:"required,max=255"`
-	Aliases                     []string `json:"aliases" validate:"omitempty,dive,max=255"`
-	PhpVersion                  string   `json:"php_version" validate:"required,oneof=8.1 8.2 8.3 8.4"`
-	Type                        string   `json:"type" validate:"required,oneof=laravel wordpress static generic"`
+	Address                     string         `json:"address" validate:"required,max=255"`
+	Aliases                     []string       `json:"aliases" validate:"omitempty,dive,max=255"`
+	PhpVersion                  string         `json:"php_version" validate:"required,oneof=8.1 8.2 8.3 8.4"`
+	Type                        enums.SiteType `json:"type" validate:"required,oneof=laravel wordpress static generic"`
 	WebFolder                   string   `json:"web_folder" validate:"omitempty,max=255"`
 	ZeroDowntimeDeployment      bool     `json:"zero_downtime_deployment"`
 	SourceControlID             *string  `json:"source_control_id" validate:"omitempty,ulid"`
