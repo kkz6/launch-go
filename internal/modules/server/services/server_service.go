@@ -16,6 +16,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
@@ -117,6 +118,14 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		return nil, fmt.Errorf("failed to create server: %w", err)
 	}
 
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		CausedByUser(userID).
+		On(server).
+		WithEvent("created").
+		Log("Server was created")
+
 	if provider != enums.ProviderCustom {
 		if err := s.dispatchCreateOnProviderJob(server, req.CredentialID, req.SSHKeyIDs); err != nil {
 			s.LogError(err, "Failed to dispatch create on provider job", "server_id", server.ID)
@@ -153,6 +162,13 @@ func (s *Service) UpdateServer(ctx context.Context, id, teamID string, req *dto.
 		return nil, err
 	}
 
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		On(server).
+		WithEvent("updated").
+		Log("Server was updated")
+
 	s.broadcastServerUpdate(server)
 
 	return server, nil
@@ -164,6 +180,13 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID string) error {
 	if err != nil {
 		return err
 	}
+
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		On(server).
+		WithEvent("deleted").
+		Log("Server deletion requested")
 
 	if err := s.repo.UpdateServerStatus(ctx, id, enums.ServerStatusDeleting); err != nil {
 		return err

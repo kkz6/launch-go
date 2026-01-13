@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/enums"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 
@@ -25,7 +26,7 @@ func NewTeamService(repo *repositories.Repository) *TeamService {
 func (s *TeamService) CreateTeam(ctx context.Context, userID string, req *dto.CreateTeamRequest) (*models.Team, error) {
 	team := &models.Team{
 		Name:         req.Name,
-		UserID:      userID,
+		UserID:       userID,
 		PersonalTeam: req.PersonalTeam,
 	}
 
@@ -37,6 +38,14 @@ func (s *TeamService) CreateTeam(ctx context.Context, userID string, req *dto.Cr
 	if err := s.repo.AddUserToTeam(ctx, team.ID, userID, enums.TeamRoleOwner.String()); err != nil {
 		return nil, err
 	}
+
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("auth").
+		CausedByUser(userID).
+		On(team).
+		WithEvent("created").
+		Log("Team was created")
 
 	return team, nil
 }
@@ -63,6 +72,14 @@ func (s *TeamService) UpdateTeam(ctx context.Context, userID, teamID string, req
 		return nil, err
 	}
 
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("auth").
+		CausedByUser(userID).
+		On(team).
+		WithEvent("updated").
+		Log("Team was updated")
+
 	return team, nil
 }
 
@@ -86,6 +103,14 @@ func (s *TeamService) DeleteTeam(ctx context.Context, userID, teamID string) err
 	if team.PersonalTeam {
 		return errors.New("cannot delete personal team")
 	}
+
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("auth").
+		CausedByUser(userID).
+		On(team).
+		WithEvent("deleted").
+		Log("Team was deleted")
 
 	return s.repo.DeleteTeam(ctx, teamID)
 }
