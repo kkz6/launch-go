@@ -5,6 +5,7 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/handlers"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
@@ -110,6 +111,10 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 
 	// Wire circular dependency
 	m.siteService.SetDeploymentService(m.deploymentService)
+
+	// Wire server repository for cross-module queries (PHP versions via relationship)
+	serverRepo := serverrepos.NewRepository(db)
+	m.siteService.SetServerRepository(serverRepo)
 
 	m.sslService = services.NewSSLService(
 		m.siteRepo,

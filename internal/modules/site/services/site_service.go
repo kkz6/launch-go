@@ -7,14 +7,16 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/kkz6/launch-go/internal/pkg/utils"
 	"github.com/rs/zerolog"
 
+	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
+	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/utils"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -23,6 +25,7 @@ import (
 type SiteService struct {
 	*BaseService
 	deploymentService *DeploymentService
+	serverRepo        *serverrepos.Repository
 }
 
 // NewSiteService creates a new site service
@@ -61,6 +64,11 @@ func (s *SiteService) SetDeploymentService(ds *DeploymentService) {
 	s.deploymentService = ds
 }
 
+// SetServerRepository sets the server repository for cross-module queries
+func (s *SiteService) SetServerRepository(repo *serverrepos.Repository) {
+	s.serverRepo = repo
+}
+
 // List returns all sites for a server
 func (s *SiteService) List(ctx context.Context, serverID string) ([]models.Site, error) {
 	return s.siteRepo.FindByServerWithLatestDeployment(ctx, serverID)
@@ -85,11 +93,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 	// Set default web folder
 	webFolder := req.WebFolder
 	if webFolder == "" {
-		if siteType == enums.SiteTypeWordpress {
-			webFolder = "/"
-		} else {
-			webFolder = "public"
-		}
+		webFolder = siteType.GetDefaultWebFolder()
 	}
 
 	// Convert SourceControlRepositoriesID from *string to *uint64
@@ -212,77 +216,51 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 		return nil, err
 	}
 
-	// Track if we need to update Caddyfile
+	// Build updates map for changed fields
+	updates := make(map[string]any)
 	updateCaddyfile := false
-	oldPhpVersion := site.PhpVersion
-	oldWebFolder := site.WebFolder
 
-	// Update fields
-	if req.PhpVersion != nil {
-		site.PhpVersion = req.PhpVersion
-		if oldPhpVersion == nil || *req.PhpVersion != *oldPhpVersion {
-			updateCaddyfile = true
-		}
-	}
+	// Simple pointer fields
+	addIfSet(updates, "php_version", req.PhpVersion)
+	addIfSet(updates, "web_folder", req.WebFolder)
+	addIfSet(updates, "deploy_notification_email", req.DeployNotificationEmail)
+	addIfSet(updates, "deployment_releases_retention", req.DeploymentReleasesRetention)
+	addIfSet(updates, "queue_deployments", req.QueueDeployments)
 
-	if req.WebFolder != nil {
-		site.WebFolder = *req.WebFolder
-		if *req.WebFolder != oldWebFolder {
-			updateCaddyfile = true
-		}
-	}
-
+	// Conditional field (not for WordPress)
 	if req.RepositoryBranch != nil && site.Type != enums.SiteTypeWordpress {
-		site.RepositoryBranch = req.RepositoryBranch
+		updates["repository_branch"] = req.RepositoryBranch
 	}
 
-	if req.DeployNotificationEmail != nil {
-		site.DeployNotificationEmail = req.DeployNotificationEmail
+	// Hook fields with line ending normalization
+	addHookIfSet(updates, "hook_before_updating_repository", req.HookBeforeUpdatingRepository)
+	addHookIfSet(updates, "hook_after_updating_repository", req.HookAfterUpdatingRepository)
+	addHookIfSet(updates, "hook_before_making_current", req.HookBeforeMakingCurrent)
+	addHookIfSet(updates, "hook_after_making_current", req.HookAfterMakingCurrent)
+
+	// Directory/file fields with multiline parsing
+	addSliceIfSet(updates, "shared_directories", req.SharedDirectories)
+	addSliceIfSet(updates, "shared_files", req.SharedFiles)
+	addSliceIfSet(updates, "writeable_directories", req.WriteableDirectories)
+
+	// Check if Caddyfile needs update (PHP version or web folder changed)
+	if req.PhpVersion != nil && (site.PhpVersion == nil || *req.PhpVersion != *site.PhpVersion) {
+		updateCaddyfile = true
+	}
+	if req.WebFolder != nil && *req.WebFolder != site.WebFolder {
+		updateCaddyfile = true
 	}
 
-	if req.DeploymentReleasesRetention != nil {
-		site.DeploymentReleasesRetention = *req.DeploymentReleasesRetention
+	// Apply updates if any
+	if len(updates) > 0 {
+		if err := s.siteRepo.UpdateFields(ctx, site.ID, updates); err != nil {
+			return nil, err
+		}
 	}
 
-	if req.QueueDeployments != nil {
-		site.QueueDeployments = *req.QueueDeployments
-	}
-
-	// Handle hooks
-	if req.HookBeforeUpdatingRepository != nil {
-		normalized := normalizeLineEndings(*req.HookBeforeUpdatingRepository)
-		site.HookBeforeUpdatingRepository = &normalized
-	}
-
-	if req.HookAfterUpdatingRepository != nil {
-		normalized := normalizeLineEndings(*req.HookAfterUpdatingRepository)
-		site.HookAfterUpdatingRepository = &normalized
-	}
-
-	if req.HookBeforeMakingCurrent != nil {
-		normalized := normalizeLineEndings(*req.HookBeforeMakingCurrent)
-		site.HookBeforeMakingCurrent = &normalized
-	}
-
-	if req.HookAfterMakingCurrent != nil {
-		normalized := normalizeLineEndings(*req.HookAfterMakingCurrent)
-		site.HookAfterMakingCurrent = &normalized
-	}
-
-	// Handle directories and files
-	if req.SharedDirectories != nil {
-		site.SharedDirectories = parseMultilineToSlice(*req.SharedDirectories)
-	}
-
-	if req.SharedFiles != nil {
-		site.SharedFiles = parseMultilineToSlice(*req.SharedFiles)
-	}
-
-	if req.WriteableDirectories != nil {
-		site.WriteableDirectories = parseMultilineToSlice(*req.WriteableDirectories)
-	}
-
-	if err := s.siteRepo.Update(ctx, site); err != nil {
+	// Reload site to get updated values
+	site, err = s.siteRepo.FindByIDAndServer(ctx, id, serverID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -410,25 +388,24 @@ func (s *SiteService) GetSettings(ctx context.Context, id, serverID string) (*Si
 	}, nil
 }
 
-// getServerPhpVersions returns installed PHP versions for a server
+// getServerPhpVersions returns installed PHP versions for a server using relationship
 func (s *SiteService) getServerPhpVersions(ctx context.Context, serverID string) []dto.PhpVersionResponse {
-	var services []struct {
-		Version   string `gorm:"column:version"`
-		IsDefault bool   `gorm:"column:is_default"`
+	if s.serverRepo == nil {
+		return nil
 	}
 
-	s.siteRepo.DB.WithContext(ctx).
-		Table("services").
-		Select("version, is_default").
-		Where("server_id = ? AND type = ?", serverID, "php").
-		Order("version DESC").
-		Find(&services)
+	server, err := s.serverRepo.FindServerByID(ctx, serverID)
+	if err != nil || server == nil {
+		return nil
+	}
 
-	result := make([]dto.PhpVersionResponse, len(services))
-	for i, svc := range services {
-		result[i] = dto.PhpVersionResponse{
-			Version:   svc.Version,
-			IsDefault: svc.IsDefault,
+	var result []dto.PhpVersionResponse
+	for _, svc := range server.Services {
+		if svc.Type == serverenums.ServiceTypePhp {
+			result = append(result, dto.PhpVersionResponse{
+				Version:   svc.Version,
+				IsDefault: svc.IsDefault,
+			})
 		}
 	}
 
