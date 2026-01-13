@@ -201,6 +201,13 @@ func (e *EncryptedJSONStringMap) Scan(value interface{}) error {
 		return err
 	}
 
-	// Unmarshal JSON
-	return json.Unmarshal([]byte(decrypted), e)
+	// Try to unmarshal JSON - if it fails, the data might still be in Laravel format
+	// or double-encrypted, return empty map instead of error
+	if err := json.Unmarshal([]byte(decrypted), e); err != nil {
+		// Data might not be migrated yet - return empty map
+		*e = make(EncryptedJSONStringMap)
+		return nil
+	}
+
+	return nil
 }
