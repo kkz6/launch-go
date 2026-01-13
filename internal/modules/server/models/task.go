@@ -9,16 +9,16 @@ import (
 // Task represents a task execution record
 type Task struct {
 	basemodels.BaseModel
-	ServerID string  `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
-	Name     string  `gorm:"type:varchar(255);not null" json:"name"`
-	User     string  `gorm:"type:varchar(255);not null" json:"user"`
-	Type     string  `gorm:"type:varchar(255);not null" json:"type"`
-	Instance *string `gorm:"type:longtext" json:"instance,omitempty"`
-	Script   string  `gorm:"type:longtext;not null" json:"-"`
-	Timeout  int     `gorm:"type:int;not null" json:"timeout"`
-	Status   string  `gorm:"type:varchar(255);not null" json:"status"`
-	Output   *string `gorm:"type:longtext" json:"output,omitempty"`
-	ExitCode *int    `gorm:"column:exit_code;type:int" json:"exit_code,omitempty"`
+	ServerID string                     `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	Name     string                     `gorm:"type:varchar(255);not null" json:"name"`
+	User     string                     `gorm:"type:varchar(255);not null" json:"user"`
+	Type     string                     `gorm:"type:varchar(255);not null" json:"type"`
+	Instance *string                    `gorm:"type:longtext" json:"instance,omitempty"`
+	Script   string                     `gorm:"type:longtext;not null" json:"-"`
+	Timeout  int                        `gorm:"type:int;not null" json:"timeout"`
+	Status   string                     `gorm:"type:varchar(255);not null" json:"status"`
+	Output   basemodels.EncryptedString `gorm:"type:longtext" json:"-"`
+	ExitCode *int                       `gorm:"column:exit_code;type:int" json:"exit_code,omitempty"`
 
 	// Relations
 	Server *Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`

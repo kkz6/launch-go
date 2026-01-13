@@ -62,10 +62,14 @@ func EncodeFileRouteParam(path, fileType string) (string, error) {
 // DecodeFileRouteParam decodes an encrypted file route parameter back to path and type
 // This matches Laravel's dataFromRouteParameter() method in FileOnServer
 func DecodeFileRouteParam(param string) (*FileRouteData, error) {
-	// 1. Decode URL-safe base64
+	// 1. Decode base64 - try URL-safe first, then standard
 	encrypted, err := base64.URLEncoding.DecodeString(param)
 	if err != nil {
-		return nil, fmt.Errorf("failed to decode base64: %w", err)
+		// Try standard base64 encoding (Laravel might use this)
+		encrypted, err = base64.StdEncoding.DecodeString(param)
+		if err != nil {
+			return nil, fmt.Errorf("failed to decode base64: %w", err)
+		}
 	}
 
 	// 2. Decrypt
