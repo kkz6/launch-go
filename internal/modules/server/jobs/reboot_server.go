@@ -48,7 +48,7 @@ func (j *RebootServerJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(server.ID, "server.rebooting", map[string]interface{}{
+	j.BroadcastServerEvent(server.ID, "server.rebooting", map[string]any{
 		"server_id": server.ID,
 	})
 

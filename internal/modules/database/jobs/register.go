@@ -1,80 +1,37 @@
 package jobs
 
 import (
-	"github.com/hibiken/asynq"
-
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
-// Register registers all database job handlers with the job registry.
-// This uses the Handler interface pattern (same as server module).
+func getContext() any {
+	return jobContext
+}
+
+// Register registers all database jobs with the registry.
 func Register(r *jobs.Registry) {
-	r.Register(TypeInstallDatabase, newInstallDatabaseJob)
-	r.Register(TypeUninstallDatabase, newUninstallDatabaseJob)
-	r.Register(TypeInstallDatabaseUser, newInstallDatabaseUserJob)
-	r.Register(TypeUpdateDatabaseUser, newUpdateDatabaseUserJob)
-	r.Register(TypeUninstallDatabaseUser, newUninstallDatabaseUserJob)
-	r.Register(TypeSyncDatabases, newSyncDatabasesJob)
-}
-
-// Factory functions for creating job handlers
-
-func newInstallDatabaseJob(t *asynq.Task) (jobs.Handler, error) {
-	payload, err := jobs.ParsePayload[InstallDatabasePayload](t)
-	if err != nil {
-		return nil, err
-	}
-	job := &InstallDatabaseJob{Payload: payload}
-	job.SetContext(jobContext)
-	return job, nil
-}
-
-func newUninstallDatabaseJob(t *asynq.Task) (jobs.Handler, error) {
-	payload, err := jobs.ParsePayload[UninstallDatabasePayload](t)
-	if err != nil {
-		return nil, err
-	}
-	job := &UninstallDatabaseJob{Payload: payload}
-	job.SetContext(jobContext)
-	return job, nil
-}
-
-func newInstallDatabaseUserJob(t *asynq.Task) (jobs.Handler, error) {
-	payload, err := jobs.ParsePayload[InstallDatabaseUserPayload](t)
-	if err != nil {
-		return nil, err
-	}
-	job := &InstallDatabaseUserJob{Payload: payload}
-	job.SetContext(jobContext)
-	return job, nil
-}
-
-func newUpdateDatabaseUserJob(t *asynq.Task) (jobs.Handler, error) {
-	payload, err := jobs.ParsePayload[UpdateDatabaseUserPayload](t)
-	if err != nil {
-		return nil, err
-	}
-	job := &UpdateDatabaseUserJob{Payload: payload}
-	job.SetContext(jobContext)
-	return job, nil
-}
-
-func newUninstallDatabaseUserJob(t *asynq.Task) (jobs.Handler, error) {
-	payload, err := jobs.ParsePayload[UninstallDatabaseUserPayload](t)
-	if err != nil {
-		return nil, err
-	}
-	job := &UninstallDatabaseUserJob{Payload: payload}
-	job.SetContext(jobContext)
-	return job, nil
-}
-
-func newSyncDatabasesJob(t *asynq.Task) (jobs.Handler, error) {
-	payload, err := jobs.ParsePayload[SyncDatabasesPayload](t)
-	if err != nil {
-		return nil, err
-	}
-	job := &SyncDatabasesJob{Payload: payload}
-	job.SetContext(jobContext)
-	return job, nil
+	r.Register(TypeInstallDatabase, jobs.MakeFactory(
+		func(p InstallDatabasePayload) *InstallDatabaseJob { return &InstallDatabaseJob{Payload: p} },
+		getContext,
+	))
+	r.Register(TypeUninstallDatabase, jobs.MakeFactory(
+		func(p UninstallDatabasePayload) *UninstallDatabaseJob { return &UninstallDatabaseJob{Payload: p} },
+		getContext,
+	))
+	r.Register(TypeInstallDatabaseUser, jobs.MakeFactory(
+		func(p InstallDatabaseUserPayload) *InstallDatabaseUserJob { return &InstallDatabaseUserJob{Payload: p} },
+		getContext,
+	))
+	r.Register(TypeUpdateDatabaseUser, jobs.MakeFactory(
+		func(p UpdateDatabaseUserPayload) *UpdateDatabaseUserJob { return &UpdateDatabaseUserJob{Payload: p} },
+		getContext,
+	))
+	r.Register(TypeUninstallDatabaseUser, jobs.MakeFactory(
+		func(p UninstallDatabaseUserPayload) *UninstallDatabaseUserJob { return &UninstallDatabaseUserJob{Payload: p} },
+		getContext,
+	))
+	r.Register(TypeSyncDatabases, jobs.MakeFactory(
+		func(p SyncDatabasesPayload) *SyncDatabasesJob { return &SyncDatabasesJob{Payload: p} },
+		getContext,
+	))
 }

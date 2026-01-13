@@ -72,7 +72,7 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(server.ID, "service.operation", map[string]interface{}{
+	j.BroadcastServerEvent(server.ID, "service.operation", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
 		"operation":  j.Payload.Operation,

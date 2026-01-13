@@ -63,7 +63,7 @@ func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(server.ID, "service.removed", map[string]interface{}{
+	j.BroadcastServerEvent(server.ID, "service.removed", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
 	})

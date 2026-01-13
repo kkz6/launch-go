@@ -37,7 +37,7 @@ func (j *UpdateConnectivityJob) Handle(ctx context.Context) error {
 	isConnected := err == nil && result != nil && result.IsSuccessful()
 
 	// Update server connectivity status
-	if err := j.Repo().UpdateServerFields(ctx, server.ID, map[string]interface{}{
+	if err := j.Repo().UpdateServerFields(ctx, server.ID, map[string]any{
 		"is_connected": isConnected,
 	}); err != nil {
 		return fmt.Errorf("failed to update connectivity status: %w", err)
@@ -49,7 +49,7 @@ func (j *UpdateConnectivityJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(server.ID, "server.connectivity", map[string]interface{}{
+	j.BroadcastServerEvent(server.ID, "server.connectivity", map[string]any{
 		"server_id":    server.ID,
 		"is_connected": isConnected,
 	})
@@ -64,7 +64,7 @@ func (j *UpdateConnectivityJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Mark server as disconnected on failure
-	_ = j.Repo().UpdateServerFields(ctx, j.Payload.ServerID, map[string]interface{}{
+	_ = j.Repo().UpdateServerFields(ctx, j.Payload.ServerID, map[string]any{
 		"is_connected": false,
 	})
 }
