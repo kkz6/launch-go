@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/pkg/utils"
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
@@ -167,7 +168,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		return nil, err
 	}
 
-	activity.New(s.siteRepo.DB()).
+	activity.New(s.siteRepo.DB).
 		WithContext(ctx).
 		UseLog("site").
 		CausedByUser(userID).
@@ -285,7 +286,7 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 		return nil, err
 	}
 
-	activity.New(s.siteRepo.DB()).
+	activity.New(s.siteRepo.DB).
 		WithContext(ctx).
 		UseLog("site").
 		CausedByUser(userID).
@@ -317,7 +318,7 @@ func (s *SiteService) Delete(ctx context.Context, id, serverID string) error {
 		return err
 	}
 
-	activity.New(s.siteRepo.DB()).
+	activity.New(s.siteRepo.DB).
 		WithContext(ctx).
 		UseLog("site").
 		On(site).
@@ -361,17 +362,26 @@ func (s *SiteService) RegenerateDeployToken(ctx context.Context, id, serverID st
 		return err
 	}
 
-	token := models.GenerateRandomToken(32)
+	token := utils.GenerateBase64Token(32)
 	site.DeployToken = &token
 
 	return s.siteRepo.Update(ctx, site)
 }
 
-// GetSettings returns site settings data including the active certificate
-func (s *SiteService) GetSettings(ctx context.Context, id, serverID string) (*models.Site, *models.Certificate, error) {
+// SiteSettingsData holds all data needed for the site settings page
+type SiteSettingsData struct {
+	Site              *models.Site
+	ActiveCertificate *models.Certificate
+	PhpVersions       []dto.PhpVersionResponse
+	SourceControl     *dto.SourceControlResponse
+	Repository        *dto.SourceControlRepositoryResponse
+}
+
+// GetSettings returns site settings data including the active certificate, PHP versions, and git info
+func (s *SiteService) GetSettings(ctx context.Context, id, serverID string) (*SiteSettingsData, error) {
 	site, err := s.siteRepo.FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
-		return nil, nil, err
+		return nil, err
 	}
 
 	// Load latest deployment
@@ -381,5 +391,104 @@ func (s *SiteService) GetSettings(ctx context.Context, id, serverID string) (*mo
 	// Get active certificate
 	activeCert, _ := s.certificateRepo.FindActiveBySite(ctx, site.ID)
 
-	return site, activeCert, nil
+	// Get PHP versions from server services
+	phpVersions := s.getServerPhpVersions(ctx, serverID)
+
+	// Get source control info if linked
+	var sourceControl *dto.SourceControlResponse
+	var repository *dto.SourceControlRepositoryResponse
+	if site.SourceControlID != nil && *site.SourceControlID != "" {
+		sourceControl, repository = s.getSourceControlInfo(ctx, *site.SourceControlID, site.SourceControlRepositoriesID)
+	}
+
+	return &SiteSettingsData{
+		Site:              site,
+		ActiveCertificate: activeCert,
+		PhpVersions:       phpVersions,
+		SourceControl:     sourceControl,
+		Repository:        repository,
+	}, nil
+}
+
+// getServerPhpVersions returns installed PHP versions for a server
+func (s *SiteService) getServerPhpVersions(ctx context.Context, serverID string) []dto.PhpVersionResponse {
+	var services []struct {
+		Version   string `gorm:"column:version"`
+		IsDefault bool   `gorm:"column:is_default"`
+	}
+
+	s.siteRepo.DB.WithContext(ctx).
+		Table("services").
+		Select("version, is_default").
+		Where("server_id = ? AND type = ?", serverID, "php").
+		Order("version DESC").
+		Find(&services)
+
+	result := make([]dto.PhpVersionResponse, len(services))
+	for i, svc := range services {
+		result[i] = dto.PhpVersionResponse{
+			Version:   svc.Version,
+			IsDefault: svc.IsDefault,
+		}
+	}
+
+	return result
+}
+
+// getSourceControlInfo returns source control and repository info
+func (s *SiteService) getSourceControlInfo(ctx context.Context, sourceControlID string, repoID *uint64) (*dto.SourceControlResponse, *dto.SourceControlRepositoryResponse) {
+	var sc struct {
+		ID       string  `gorm:"column:id"`
+		Provider string  `gorm:"column:provider"`
+		Login    *string `gorm:"column:login"`
+		Name     *string `gorm:"column:name"`
+		Type     *string `gorm:"column:type"`
+	}
+
+	err := s.siteRepo.DB.WithContext(ctx).
+		Table("source_controls").
+		Select("id, provider, login, name, type").
+		Where("id = ?", sourceControlID).
+		First(&sc).Error
+
+	if err != nil {
+		return nil, nil
+	}
+
+	sourceControl := &dto.SourceControlResponse{
+		ID:       sc.ID,
+		Provider: sc.Provider,
+		Login:    sc.Login,
+		Name:     sc.Name,
+		Type:     sc.Type,
+	}
+
+	var repository *dto.SourceControlRepositoryResponse
+	if repoID != nil {
+		var repo struct {
+			ID            uint64  `gorm:"column:id"`
+			Name          string  `gorm:"column:name"`
+			FullName      string  `gorm:"column:full_name"`
+			DefaultBranch string  `gorm:"column:default_branch"`
+			HTMLURL       *string `gorm:"column:html_url"`
+		}
+
+		err := s.siteRepo.DB.WithContext(ctx).
+			Table("source_control_repositories").
+			Select("id, name, full_name, default_branch, html_url").
+			Where("id = ?", *repoID).
+			First(&repo).Error
+
+		if err == nil {
+			repository = &dto.SourceControlRepositoryResponse{
+				ID:            repo.ID,
+				Name:          repo.Name,
+				FullName:      repo.FullName,
+				DefaultBranch: repo.DefaultBranch,
+				HTMLURL:       repo.HTMLURL,
+			}
+		}
+	}
+
+	return sourceControl, repository
 }

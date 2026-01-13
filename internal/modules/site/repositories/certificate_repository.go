@@ -7,44 +7,39 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
-// CertificateRepository handles database operations for certificates
+// CertificateRepository handles database operations for certificates.
+// Embeds repository.Base[T] for common CRUD operations.
 type CertificateRepository struct {
-	*BaseRepository
+	repository.Base[models.Certificate]
 }
 
 // NewCertificateRepository creates a new certificate repository
 func NewCertificateRepository(db *gorm.DB) *CertificateRepository {
 	return &CertificateRepository{
-		BaseRepository: NewBaseRepository(db),
+		Base: repository.NewBase[models.Certificate](db),
 	}
 }
 
-// Create creates a new certificate
-func (r *CertificateRepository) Create(ctx context.Context, cert *models.Certificate) error {
-	return r.db.WithContext(ctx).Create(cert).Error
-}
-
-// FindByID finds a certificate by ID
+// FindByID finds a certificate by ID with custom error.
+// Wraps the generic FindByID to return ErrCertificateNotFound.
 func (r *CertificateRepository) FindByID(ctx context.Context, id string) (*models.Certificate, error) {
-	var cert models.Certificate
-	err := r.db.WithContext(ctx).First(&cert, "id = ?", id).Error
+	cert, err := r.Base.FindByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if repository.IsNotFound(err) {
 			return nil, ErrCertificateNotFound
 		}
-
 		return nil, err
 	}
-
-	return &cert, nil
+	return cert, nil
 }
 
 // FindBySite finds all certificates for a site
 func (r *CertificateRepository) FindBySite(ctx context.Context, siteID string) ([]models.Certificate, error) {
 	var certs []models.Certificate
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("site_id = ?", siteID).
 		Order("created_at DESC").
 		Find(&certs).Error
@@ -55,7 +50,7 @@ func (r *CertificateRepository) FindBySite(ctx context.Context, siteID string) (
 // FindActiveBySite finds the active certificate for a site
 func (r *CertificateRepository) FindActiveBySite(ctx context.Context, siteID string) (*models.Certificate, error) {
 	var cert models.Certificate
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("site_id = ? AND is_active = ?", siteID, true).
 		First(&cert).Error
 	if err != nil {
@@ -69,20 +64,21 @@ func (r *CertificateRepository) FindActiveBySite(ctx context.Context, siteID str
 	return &cert, nil
 }
 
-// Update updates a certificate
-func (r *CertificateRepository) Update(ctx context.Context, cert *models.Certificate) error {
-	return r.db.WithContext(ctx).Save(cert).Error
-}
-
-// Delete deletes a certificate
-func (r *CertificateRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.Certificate{}, "id = ?", id).Error
-}
-
 // DeactivateAll deactivates all certificates for a site
 func (r *CertificateRepository) DeactivateAll(ctx context.Context, siteID string) error {
-	return r.db.WithContext(ctx).
+	return r.DB.WithContext(ctx).
 		Model(&models.Certificate{}).
 		Where("site_id = ?", siteID).
 		Update("is_active", false).Error
 }
+
+// Note: The following methods are inherited from repository.Base[T]:
+// - Create(ctx, entity) error
+// - Update(ctx, entity) error
+// - Delete(ctx, id) error
+// - UpdateFields(ctx, id, fields) error
+// - Exists(ctx, id) (bool, error)
+// - Count(ctx) (int64, error)
+// - Transaction(ctx, fn) error
+// - Query(ctx) *gorm.DB
+// - WithPreload(ctx, relations...) *gorm.DB

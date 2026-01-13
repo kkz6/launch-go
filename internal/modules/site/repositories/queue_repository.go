@@ -2,77 +2,57 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
-// QueueRepository handles database operations for queues
+// QueueRepository handles database operations for queues.
+// Embeds repository.Installable[T] for CRUD + installation status operations.
 type QueueRepository struct {
-	*BaseRepository
+	repository.Installable[models.Queue]
 }
 
 // NewQueueRepository creates a new queue repository
 func NewQueueRepository(db *gorm.DB) *QueueRepository {
 	return &QueueRepository{
-		BaseRepository: NewBaseRepository(db),
+		Installable: repository.NewInstallable[models.Queue](db),
 	}
 }
 
-// Create creates a new queue
-func (r *QueueRepository) Create(ctx context.Context, queue *models.Queue) error {
-	return r.db.WithContext(ctx).Create(queue).Error
-}
-
-// FindByID finds a queue by ID
+// FindByID finds a queue by ID with custom error.
 func (r *QueueRepository) FindByID(ctx context.Context, id string) (*models.Queue, error) {
-	var queue models.Queue
-	err := r.db.WithContext(ctx).First(&queue, "id = ?", id).Error
+	queue, err := r.Installable.FindByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if repository.IsNotFound(err) {
 			return nil, ErrQueueNotFound
 		}
-
 		return nil, err
 	}
-
-	return &queue, nil
+	return queue, nil
 }
 
 // FindByIDAndSite finds a queue by ID and site ID
 func (r *QueueRepository) FindByIDAndSite(ctx context.Context, id, siteID string) (*models.Queue, error) {
 	var queue models.Queue
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		First(&queue, "id = ? AND site_id = ?", id, siteID).Error
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if repository.IsNotFound(err) {
 			return nil, ErrQueueNotFound
 		}
-
 		return nil, err
 	}
-
 	return &queue, nil
 }
 
 // FindBySite finds all queues for a site
 func (r *QueueRepository) FindBySite(ctx context.Context, siteID string) ([]models.Queue, error) {
 	var queues []models.Queue
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("site_id = ?", siteID).
-		Order("created_at DESC").
-		Find(&queues).Error
-
-	return queues, err
-}
-
-// FindByServer finds all queues for a server
-func (r *QueueRepository) FindByServer(ctx context.Context, serverID string) ([]models.Queue, error) {
-	var queues []models.Queue
-	err := r.db.WithContext(ctx).
-		Where("server_id = ?", serverID).
 		Order("created_at DESC").
 		Find(&queues).Error
 
@@ -82,7 +62,7 @@ func (r *QueueRepository) FindByServer(ctx context.Context, serverID string) ([]
 // CountBySite counts queues for a site
 func (r *QueueRepository) CountBySite(ctx context.Context, siteID string) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Model(&models.Queue{}).
 		Where("site_id = ?", siteID).
 		Count(&count).Error
@@ -90,12 +70,21 @@ func (r *QueueRepository) CountBySite(ctx context.Context, siteID string) (int64
 	return count, err
 }
 
-// Update updates a queue
-func (r *QueueRepository) Update(ctx context.Context, queue *models.Queue) error {
-	return r.db.WithContext(ctx).Save(queue).Error
-}
-
-// Delete deletes a queue
-func (r *QueueRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.Queue{}, "id = ?", id).Error
-}
+// Note: The following methods are inherited from repository.Installable[T]:
+// From Base[T]:
+// - Create(ctx, entity) error
+// - FindByServer(ctx, serverID) ([]T, error)
+// - Update(ctx, entity) error
+// - Delete(ctx, id) error
+// - UpdateFields(ctx, id, fields) error
+// - CountByServer(ctx, serverID) (int64, error)
+// - Transaction(ctx, fn) error
+// From Installable[T]:
+// - MarkAsInstalled(ctx, id) error
+// - MarkAsFailed(ctx, id) error
+// - MarkAsUninstalling(ctx, id) error
+// - MarkUninstallationFailed(ctx, id) error
+// - FindInstalled(ctx, serverID) ([]T, error)
+// - FindPending(ctx, serverID) ([]T, error)
+// - FindFailed(ctx, serverID) ([]T, error)
+// - FindUninstalling(ctx, serverID) ([]T, error)

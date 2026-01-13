@@ -12,33 +12,17 @@ import (
 
 // CreateService creates a new service
 func (r *Repository) CreateService(ctx context.Context, service *models.InstalledService) error {
-	return r.db.WithContext(ctx).Create(service).Error
+	return create(r, ctx, service)
 }
 
 // FindServiceByID finds a service by ID
 func (r *Repository) FindServiceByID(ctx context.Context, id string) (*models.InstalledService, error) {
-	var service models.InstalledService
-	err := r.db.WithContext(ctx).First(&service, "id = ?", id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrServiceNotFound
-		}
-
-		return nil, err
-	}
-
-	return &service, nil
+	return findByID[models.InstalledService](r, ctx, id, ErrServiceNotFound)
 }
 
 // FindServicesByServer finds all services for a server
 func (r *Repository) FindServicesByServer(ctx context.Context, serverID string) ([]models.InstalledService, error) {
-	var services []models.InstalledService
-	err := r.db.WithContext(ctx).
-		Where("server_id = ?", serverID).
-		Order("created_at DESC").
-		Find(&services).Error
-
-	return services, err
+	return findByServer[models.InstalledService](r, ctx, serverID)
 }
 
 // FindServiceByServerAndType finds a service by server and type
@@ -50,10 +34,8 @@ func (r *Repository) FindServiceByServerAndType(ctx context.Context, serverID st
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrServiceNotFound
 		}
-
 		return nil, err
 	}
-
 	return &service, nil
 }
 
@@ -66,10 +48,8 @@ func (r *Repository) FindServiceByServerAndSoftware(ctx context.Context, serverI
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrServiceNotFound
 		}
-
 		return nil, err
 	}
-
 	return &service, nil
 }
 
@@ -82,16 +62,14 @@ func (r *Repository) FindDatabaseService(ctx context.Context, serverID string) (
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrServiceNotFound
 		}
-
 		return nil, err
 	}
-
 	return &service, nil
 }
 
 // UpdateService updates a service
 func (r *Repository) UpdateService(ctx context.Context, service *models.InstalledService) error {
-	return r.db.WithContext(ctx).Save(service).Error
+	return update(r, ctx, service)
 }
 
 // UpdateServiceStatus updates the service status
@@ -104,5 +82,5 @@ func (r *Repository) UpdateServiceStatus(ctx context.Context, id string, status 
 
 // DeleteService deletes a service
 func (r *Repository) DeleteService(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.InstalledService{}, "id = ?", id).Error
+	return deleteByID[models.InstalledService](r, ctx, id)
 }

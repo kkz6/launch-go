@@ -11,25 +11,15 @@ import (
 
 // CreateTask creates a new task
 func (r *Repository) CreateTask(ctx context.Context, task *models.Task) error {
-	return r.db.WithContext(ctx).Create(task).Error
+	return create(r, ctx, task)
 }
 
 // FindTaskByID finds a task by ID
 func (r *Repository) FindTaskByID(ctx context.Context, id string) (*models.Task, error) {
-	var task models.Task
-	err := r.db.WithContext(ctx).First(&task, "id = ?", id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrTaskNotFound
-		}
-
-		return nil, err
-	}
-
-	return &task, nil
+	return findByID[models.Task](r, ctx, id, ErrTaskNotFound)
 }
 
-// FindTasksByServer finds all tasks for a server
+// FindTasksByServer finds all tasks for a server with optional limit
 func (r *Repository) FindTasksByServer(ctx context.Context, serverID string, limit int) ([]models.Task, error) {
 	var tasks []models.Task
 	query := r.db.WithContext(ctx).
@@ -41,7 +31,6 @@ func (r *Repository) FindTasksByServer(ctx context.Context, serverID string, lim
 	}
 
 	err := query.Find(&tasks).Error
-
 	return tasks, err
 }
 
@@ -56,14 +45,12 @@ func (r *Repository) FindLatestTaskByServer(ctx context.Context, serverID string
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
-
 		return nil, err
 	}
-
 	return &task, nil
 }
 
 // UpdateTask updates a task
 func (r *Repository) UpdateTask(ctx context.Context, task *models.Task) error {
-	return r.db.WithContext(ctx).Save(task).Error
+	return update(r, ctx, task)
 }

@@ -1,9 +1,9 @@
 package repositories
 
-import "github.com/kkz6/launch-go/internal/pkg/response"
+import apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 
-// Repository errors with HTTP status codes
+// Repository errors - re-exported from centralized error package
 var (
-	ErrSourceControlNotFound = response.ErrNotFound("Source control not found")
-	ErrRepositoryNotFound    = response.ErrNotFound("Repository not found")
+	ErrSourceControlNotFound = apperrors.ErrSourceControlNotFound
+	ErrRepositoryNotFound    = apperrors.ErrRepositoryNotFound
 )

@@ -13,10 +13,10 @@ import (
 
 // CreateServer creates a new server
 func (r *Repository) CreateServer(ctx context.Context, server *models.Server) error {
-	return r.db.WithContext(ctx).Create(server).Error
+	return create(r, ctx, server)
 }
 
-// FindServerByID finds a server by ID
+// FindServerByID finds a server by ID with Services preloaded
 func (r *Repository) FindServerByID(ctx context.Context, id string) (*models.Server, error) {
 	var server models.Server
 	err := r.db.WithContext(ctx).
@@ -26,14 +26,12 @@ func (r *Repository) FindServerByID(ctx context.Context, id string) (*models.Ser
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrServerNotFound
 		}
-
 		return nil, err
 	}
-
 	return &server, nil
 }
 
-// FindServerByIDAndTeam finds a server by ID and team ID
+// FindServerByIDAndTeam finds a server by ID and team ID with Services preloaded
 func (r *Repository) FindServerByIDAndTeam(ctx context.Context, id, teamID string) (*models.Server, error) {
 	var server models.Server
 	err := r.db.WithContext(ctx).
@@ -43,10 +41,8 @@ func (r *Repository) FindServerByIDAndTeam(ctx context.Context, id, teamID strin
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrServerNotFound
 		}
-
 		return nil, err
 	}
-
 	return &server, nil
 }
 
@@ -118,7 +114,7 @@ func (r *Repository) FindArchivedServersByTeam(ctx context.Context, teamID strin
 
 // UpdateServer updates a server
 func (r *Repository) UpdateServer(ctx context.Context, server *models.Server) error {
-	return r.db.WithContext(ctx).Save(server).Error
+	return update(r, ctx, server)
 }
 
 // UpdateServerStatus updates only the server status
@@ -174,7 +170,7 @@ func (r *Repository) UnarchiveServer(ctx context.Context, id string) error {
 
 // DeleteServer deletes a server
 func (r *Repository) DeleteServer(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.Server{}, "id = ?", id).Error
+	return deleteByID[models.Server](r, ctx, id)
 }
 
 // CountServersByTeam counts the total number of servers for a team

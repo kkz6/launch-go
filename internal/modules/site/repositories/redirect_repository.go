@@ -2,49 +2,42 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
-// RedirectRepository handles database operations for redirects
+// RedirectRepository handles database operations for redirects.
+// Embeds repository.Base[T] for common CRUD operations.
 type RedirectRepository struct {
-	*BaseRepository
+	repository.Base[models.Redirect]
 }
 
 // NewRedirectRepository creates a new redirect repository
 func NewRedirectRepository(db *gorm.DB) *RedirectRepository {
 	return &RedirectRepository{
-		BaseRepository: NewBaseRepository(db),
+		Base: repository.NewBase[models.Redirect](db),
 	}
 }
 
-// Create creates a new redirect
-func (r *RedirectRepository) Create(ctx context.Context, redirect *models.Redirect) error {
-	return r.db.WithContext(ctx).Create(redirect).Error
-}
-
-// FindByID finds a redirect by ID
+// FindByID finds a redirect by ID with custom error.
 func (r *RedirectRepository) FindByID(ctx context.Context, id string) (*models.Redirect, error) {
-	var redirect models.Redirect
-	err := r.db.WithContext(ctx).First(&redirect, "id = ?", id).Error
+	redirect, err := r.Base.FindByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if repository.IsNotFound(err) {
 			return nil, ErrRedirectNotFound
 		}
-
 		return nil, err
 	}
-
-	return &redirect, nil
+	return redirect, nil
 }
 
 // FindBySite finds all redirects for a site
 func (r *RedirectRepository) FindBySite(ctx context.Context, siteID string) ([]models.Redirect, error) {
 	var redirects []models.Redirect
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("site_id = ?", siteID).
 		Order("created_at DESC").
 		Find(&redirects).Error
@@ -52,12 +45,9 @@ func (r *RedirectRepository) FindBySite(ctx context.Context, siteID string) ([]m
 	return redirects, err
 }
 
-// Update updates a redirect
-func (r *RedirectRepository) Update(ctx context.Context, redirect *models.Redirect) error {
-	return r.db.WithContext(ctx).Save(redirect).Error
-}
-
-// Delete deletes a redirect
-func (r *RedirectRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.Redirect{}, "id = ?", id).Error
-}
+// Note: The following methods are inherited from repository.Base[T]:
+// - Create(ctx, entity) error
+// - Update(ctx, entity) error
+// - Delete(ctx, id) error
+// - UpdateFields(ctx, id, fields) error
+// - Transaction(ctx, fn) error

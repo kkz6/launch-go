@@ -1,10 +1,10 @@
 package repositories
 
-import "github.com/kkz6/launch-go/internal/pkg/response"
+import apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 
-// Repository errors with HTTP status codes
+// Repository errors - re-exported from centralized error package
 var (
-	ErrBackupNotFound          = response.ErrNotFound("Backup not found")
-	ErrStorageProviderNotFound = response.ErrNotFound("Storage provider not found")
-	ErrBackupJobNotFound       = response.ErrNotFound("Backup job not found")
+	ErrBackupNotFound          = apperrors.ErrBackupNotFound
+	ErrStorageProviderNotFound = apperrors.ErrStorageProviderNotFound
+	ErrBackupJobNotFound       = apperrors.ErrBackupJobNotFound
 )
