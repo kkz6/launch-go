@@ -11,6 +11,11 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/database/models"
+	"github.com/kkz6/launch-go/internal/modules/database/tasks"
+	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -24,17 +29,19 @@ type UninstallDatabaseUserPayload struct {
 
 // UninstallDatabaseUserJob handles database user uninstallation from a server
 type UninstallDatabaseUserJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
+	db         *gorm.DB
+	ws         *websocket.Hub
+	dispatcher *taskrunner.Dispatcher
+	logger     *zerolog.Logger
 }
 
 // NewUninstallDatabaseUserJob creates a new uninstall database user job handler
-func NewUninstallDatabaseUserJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *UninstallDatabaseUserJob {
+func NewUninstallDatabaseUserJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *UninstallDatabaseUserJob {
 	return &UninstallDatabaseUserJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
+		db:         db,
+		ws:         ws,
+		dispatcher: dispatcher,
+		logger:     logger,
 	}
 }
 
@@ -62,19 +69,55 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) er
 		Str("database_user_id", payload.DatabaseUserID).
 		Msg("Uninstalling database user")
 
-	// Fetch the database user with server
+	// Fetch the database user
 	var dbUser models.DatabaseUser
-	if err := j.db.Preload("Server").First(&dbUser, "id = ?", payload.DatabaseUserID).Error; err != nil {
+	if err := j.db.First(&dbUser, "id = ?", payload.DatabaseUserID).Error; err != nil {
 		return fmt.Errorf("failed to find database user: %w", err)
+	}
+
+	// Fetch the server
+	var server servermodels.Server
+	if err := j.db.First(&server, "id = ?", dbUser.ServerID).Error; err != nil {
+		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	j.broadcastProgress(dbUser.ServerID, payload.DatabaseUserID, "uninstalling", fmt.Sprintf("Dropping database user: %s", dbUser.Name))
 
-	// TODO: Implement actual database user deletion:
-	// 1. Connect to server via SSH
-	// 2. Determine database type (MySQL/PostgreSQL)
-	// 3. Execute DROP USER command
-	// 4. Delete user record
+	// Determine database type from installed services
+	dbType := j.getDatabaseType(dbUser.ServerID)
+
+	// Create drop user task
+	var task taskrunner.Task
+	if dbType == "mysql" {
+		task = tasks.MySQLDropUser(tasks.MySQLDropUserConfig{
+			AdminUser:     "root",
+			AdminPassword: server.DatabasePassword.String(),
+			Username:      dbUser.Name,
+			Hosts:         []string{"%"},
+		})
+	} else {
+		task = tasks.PostgreSQLDropUser(tasks.PostgreSQLDropUserConfig{
+			Username: dbUser.Name,
+		})
+	}
+
+	// Use TaskRunner to execute on server
+	taskRunner := servertasks.NewTaskRunner(&server, task).
+		WithDB(j.db).
+		WithDispatcher(j.dispatcher).
+		WithLogger(j.logger).
+		AsRoot()
+
+	result, err := taskRunner.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to drop database user: %w", err)
+	}
+
+	if !result.IsSuccessful() {
+		j.logger.Warn().
+			Str("output", result.GetOutput()).
+			Msg("Database user drop completed with errors")
+	}
 
 	// Delete the database user record
 	if err := j.db.Delete(&dbUser).Error; err != nil {
@@ -116,4 +159,22 @@ func (j *UninstallDatabaseUserJob) broadcastProgress(serverID, userID, status, m
 		"message":   message,
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
+}
+
+// getDatabaseType determines the database type from server's installed services
+func (j *UninstallDatabaseUserJob) getDatabaseType(serverID string) string {
+	var service servermodels.InstalledService
+	err := j.db.Where("server_id = ? AND type IN ?", serverID, []string{
+		string(serverenums.ServiceTypeMySql),
+		string(serverenums.ServiceTypePostgreSql),
+	}).First(&service).Error
+
+	if err != nil {
+		return "mysql" // Default to MySQL
+	}
+
+	if service.Type == serverenums.ServiceTypePostgreSql {
+		return "postgresql"
+	}
+	return "mysql"
 }

@@ -22,16 +22,35 @@ func SetJobContext(ctx *JobContext) {
 //	serverjobs.SetJobContext(ctx)
 //	kernel.RegisterModule(serverjobs.Register)
 func Register(r *jobs.Registry) {
+	// Server lifecycle jobs
 	r.Register(TypeProvisionServer, newProvisionServerJob)
+	r.Register(TypeDeleteServer, newDeleteServerJob)
+	r.Register(TypeRebootServer, newRebootServerJob)
+	r.Register(TypeArchiveServer, newArchiveServerJob)
+	r.Register(TypeUnarchiveServer, newUnarchiveServerJob)
+	r.Register(TypeUpdateConnectivity, newUpdateConnectivityJob)
+
+	// Cron jobs
 	r.Register(TypeInstallCron, newInstallCronJob)
 	r.Register(TypeUninstallCron, newUninstallCronJob)
+
+	// Daemon jobs
 	r.Register(TypeInstallDaemon, newInstallDaemonJob)
 	r.Register(TypeUninstallDaemon, newUninstallDaemonJob)
 	r.Register(TypeRestartDaemon, newRestartDaemonJob)
+
+	// Firewall jobs
 	r.Register(TypeInstallFirewallRule, newInstallFirewallRuleJob)
 	r.Register(TypeUninstallFirewall, newUninstallFirewallRuleJob)
+
+	// SSH key jobs
 	r.Register(TypeAddSshKey, newAddSshKeyJob)
 	r.Register(TypeRemoveSshKey, newRemoveSshKeyJob)
+
+	// Service jobs
+	r.Register(TypeAddService, newAddServiceJob)
+	r.Register(TypeRemoveService, newRemoveServiceJob)
+	r.Register(TypeServiceOperation, newServiceOperationJob)
 }
 
 // Factory functions for each job type
@@ -132,6 +151,86 @@ func newRemoveSshKeyJob(t *asynq.Task) (jobs.Handler, error) {
 		return nil, err
 	}
 	job := &RemoveSshKeyJob{Payload: payload}
+	job.SetContext(jobContext)
+	return job, nil
+}
+
+func newDeleteServerJob(t *asynq.Task) (jobs.Handler, error) {
+	payload, err := jobs.ParsePayload[DeleteServerPayload](t)
+	if err != nil {
+		return nil, err
+	}
+	job := &DeleteServerJob{Payload: payload}
+	job.SetContext(jobContext)
+	return job, nil
+}
+
+func newRebootServerJob(t *asynq.Task) (jobs.Handler, error) {
+	payload, err := jobs.ParsePayload[RebootServerPayload](t)
+	if err != nil {
+		return nil, err
+	}
+	job := &RebootServerJob{Payload: payload}
+	job.SetContext(jobContext)
+	return job, nil
+}
+
+func newArchiveServerJob(t *asynq.Task) (jobs.Handler, error) {
+	payload, err := jobs.ParsePayload[ArchiveServerPayload](t)
+	if err != nil {
+		return nil, err
+	}
+	job := &ArchiveServerJob{Payload: payload}
+	job.SetContext(jobContext)
+	return job, nil
+}
+
+func newUnarchiveServerJob(t *asynq.Task) (jobs.Handler, error) {
+	payload, err := jobs.ParsePayload[UnarchiveServerPayload](t)
+	if err != nil {
+		return nil, err
+	}
+	job := &UnarchiveServerJob{Payload: payload}
+	job.SetContext(jobContext)
+	return job, nil
+}
+
+func newUpdateConnectivityJob(t *asynq.Task) (jobs.Handler, error) {
+	payload, err := jobs.ParsePayload[UpdateConnectivityPayload](t)
+	if err != nil {
+		return nil, err
+	}
+	job := &UpdateConnectivityJob{Payload: payload}
+	job.SetContext(jobContext)
+	return job, nil
+}
+
+func newAddServiceJob(t *asynq.Task) (jobs.Handler, error) {
+	payload, err := jobs.ParsePayload[AddServicePayload](t)
+	if err != nil {
+		return nil, err
+	}
+	job := &AddServiceJob{Payload: payload}
+	job.SetContext(jobContext)
+	return job, nil
+}
+
+func newRemoveServiceJob(t *asynq.Task) (jobs.Handler, error) {
+	payload, err := jobs.ParsePayload[RemoveServicePayload](t)
+	if err != nil {
+		return nil, err
+	}
+	job := &RemoveServiceJob{Payload: payload}
+	job.SetContext(jobContext)
+	return job, nil
+}
+
+func newServiceOperationJob(t *asynq.Task) (jobs.Handler, error) {
+	payload, err := jobs.ParsePayload[ServiceOperationPayload](t)
+	if err != nil {
+		return nil, err
+	}
+	job := &ServiceOperationJob{Payload: payload}
 	job.SetContext(jobContext)
 	return job, nil
 }

@@ -49,3 +49,35 @@ func (s *InstalledService) GetFormattedVersion() string {
 
 	return ""
 }
+
+// GetServiceName returns the systemd service name for this installed service
+func (s *InstalledService) GetServiceName() string {
+	if s.Unit != nil && *s.Unit != "" {
+		return *s.Unit
+	}
+
+	// Map service types to their typical systemd unit names
+	switch s.Type {
+	case enums.ServiceTypeMySql:
+		return "mysql"
+	case enums.ServiceTypePostgreSql:
+		return "postgresql"
+	case enums.ServiceTypeRedis:
+		return "redis-server"
+	case enums.ServiceTypeCaddy:
+		return "caddy"
+	case enums.ServiceTypeSupervisor:
+		return "supervisor"
+	case enums.ServiceTypePhp:
+		return "php" + s.Version + "-fpm"
+	case enums.ServiceTypeLaunchAgent:
+		return "launch-agent"
+	default:
+		return s.Name
+	}
+}
+
+// GetSoftware returns the software enum for this service
+func (s *InstalledService) GetSoftware() enums.Software {
+	return enums.Software(s.Software)
+}

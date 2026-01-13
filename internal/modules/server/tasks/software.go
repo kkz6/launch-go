@@ -1,6 +1,7 @@
 package tasks
 
 import (
+	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks/templates"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
@@ -213,6 +214,34 @@ func RemovePHP(config PHPRemoveConfig) *taskrunner.BaseTask {
 	script := templates.MustRender("software/remove_php.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Remove PHP "+config.Version),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeout(300),
+	)
+}
+
+// InstallSoftware creates a task to install software based on the software enum
+func InstallSoftware(software enums.Software) *taskrunner.BaseTask {
+	templateName := software.InstallTemplateName()
+	data := map[string]interface{}{
+		"Version": software.GetVersion(),
+	}
+	script := templates.MustRender(templateName, data)
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Install "+software.Label()),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeout(900),
+	)
+}
+
+// RemoveSoftware creates a task to remove software based on the software enum
+func RemoveSoftware(software enums.Software) *taskrunner.BaseTask {
+	templateName := software.RemoveTemplateName()
+	data := map[string]interface{}{
+		"Version": software.GetVersion(),
+	}
+	script := templates.MustRender(templateName, data)
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Remove "+software.Label()),
 		taskrunner.WithScript(script),
 		taskrunner.WithTimeout(300),
 	)

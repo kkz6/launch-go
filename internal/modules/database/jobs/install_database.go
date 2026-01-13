@@ -11,6 +11,11 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/database/models"
+	"github.com/kkz6/launch-go/internal/modules/database/tasks"
+	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -24,17 +29,19 @@ type InstallDatabasePayload struct {
 
 // InstallDatabaseJob handles database installation on a server
 type InstallDatabaseJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
+	db         *gorm.DB
+	ws         *websocket.Hub
+	dispatcher *taskrunner.Dispatcher
+	logger     *zerolog.Logger
 }
 
 // NewInstallDatabaseJob creates a new install database job handler
-func NewInstallDatabaseJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *InstallDatabaseJob {
+func NewInstallDatabaseJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *InstallDatabaseJob {
 	return &InstallDatabaseJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
+		db:         db,
+		ws:         ws,
+		dispatcher: dispatcher,
+		logger:     logger,
 	}
 }
 
@@ -62,19 +69,55 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error {
 		Str("database_id", payload.DatabaseID).
 		Msg("Installing database")
 
-	// Fetch the database with server
+	// Fetch the database
 	var database models.Database
-	if err := j.db.Preload("Server").First(&database, "id = ?", payload.DatabaseID).Error; err != nil {
+	if err := j.db.First(&database, "id = ?", payload.DatabaseID).Error; err != nil {
 		return fmt.Errorf("failed to find database: %w", err)
+	}
+
+	// Fetch the server
+	var server servermodels.Server
+	if err := j.db.First(&server, "id = ?", database.ServerID).Error; err != nil {
+		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	j.broadcastProgress(database.ServerID, payload.DatabaseID, "installing", fmt.Sprintf("Creating database: %s", database.Name))
 
-	// TODO: Implement actual database creation:
-	// 1. Connect to server via SSH
-	// 2. Determine database type (MySQL/PostgreSQL)
-	// 3. Execute CREATE DATABASE command
-	// 4. Update database status to installed
+	// Determine database type from installed services
+	dbType := j.getDatabaseType(database.ServerID)
+
+	// Create task based on database type
+	var task taskrunner.Task
+	if dbType == "mysql" {
+		task = tasks.MySQLCreateDatabase(tasks.MySQLCreateDatabaseConfig{
+			User:         "root",
+			Password:     server.DatabasePassword.String(),
+			DatabaseName: database.Name,
+			Charset:      "utf8mb4",
+			Collation:    "utf8mb4_unicode_ci",
+		})
+	} else {
+		task = tasks.PostgreSQLCreateDatabase(tasks.PostgreSQLCreateDatabaseConfig{
+			DatabaseName: database.Name,
+			Owner:        "postgres",
+		})
+	}
+
+	// Use TaskRunner to execute on server
+	taskRunner := servertasks.NewTaskRunner(&server, task).
+		WithDB(j.db).
+		WithDispatcher(j.dispatcher).
+		WithLogger(j.logger).
+		AsRoot()
+
+	result, err := taskRunner.Run(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to create database: %w", err)
+	}
+
+	if !result.IsSuccessful() {
+		return fmt.Errorf("failed to create database: %s", result.GetOutput())
+	}
 
 	// Mark the database as installed
 	now := time.Now()
@@ -121,4 +164,22 @@ func (j *InstallDatabaseJob) broadcastProgress(serverID, databaseID, status, mes
 		"message":     message,
 		"timestamp":   time.Now().Format(time.RFC3339),
 	})
+}
+
+// getDatabaseType determines the database type from server's installed services
+func (j *InstallDatabaseJob) getDatabaseType(serverID string) string {
+	var service servermodels.InstalledService
+	err := j.db.Where("server_id = ? AND type IN ?", serverID, []string{
+		string(serverenums.ServiceTypeMySql),
+		string(serverenums.ServiceTypePostgreSql),
+	}).First(&service).Error
+
+	if err != nil {
+		return "mysql" // Default to MySQL
+	}
+
+	if service.Type == serverenums.ServiceTypePostgreSql {
+		return "postgresql"
+	}
+	return "mysql"
 }

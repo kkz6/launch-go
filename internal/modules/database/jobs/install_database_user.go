@@ -11,6 +11,11 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/database/models"
+	"github.com/kkz6/launch-go/internal/modules/database/tasks"
+	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -25,17 +30,19 @@ type InstallDatabaseUserPayload struct {
 
 // InstallDatabaseUserJob handles database user installation on a server
 type InstallDatabaseUserJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
+	db         *gorm.DB
+	ws         *websocket.Hub
+	dispatcher *taskrunner.Dispatcher
+	logger     *zerolog.Logger
 }
 
 // NewInstallDatabaseUserJob creates a new install database user job handler
-func NewInstallDatabaseUserJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *InstallDatabaseUserJob {
+func NewInstallDatabaseUserJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *InstallDatabaseUserJob {
 	return &InstallDatabaseUserJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
+		db:         db,
+		ws:         ws,
+		dispatcher: dispatcher,
+		logger:     logger,
 	}
 }
 
@@ -64,20 +71,97 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) erro
 		Str("database_user_id", payload.DatabaseUserID).
 		Msg("Installing database user")
 
-	// Fetch the database user with server and databases
+	// Fetch the database user with databases
 	var dbUser models.DatabaseUser
-	if err := j.db.Preload("Server").Preload("Databases").First(&dbUser, "id = ?", payload.DatabaseUserID).Error; err != nil {
+	if err := j.db.Preload("Databases").First(&dbUser, "id = ?", payload.DatabaseUserID).Error; err != nil {
 		return fmt.Errorf("failed to find database user: %w", err)
+	}
+
+	// Fetch the server
+	var server servermodels.Server
+	if err := j.db.First(&server, "id = ?", dbUser.ServerID).Error; err != nil {
+		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	j.broadcastProgress(dbUser.ServerID, payload.DatabaseUserID, "installing", fmt.Sprintf("Creating database user: %s", dbUser.Name))
 
-	// TODO: Implement actual database user creation:
-	// 1. Connect to server via SSH
-	// 2. Determine database type (MySQL/PostgreSQL)
-	// 3. Execute CREATE USER command
-	// 4. Grant privileges on associated databases
-	// 5. Update user status to installed
+	// Determine database type from installed services
+	dbType := j.getDatabaseType(dbUser.ServerID)
+
+	// Create TaskRunner deps
+	taskRunnerDeps := &servertasks.TaskRunnerDeps{
+		DB:         j.db,
+		Dispatcher: j.dispatcher,
+		Logger:     j.logger,
+	}
+
+	if dbType == "mysql" {
+		// Create MySQL user
+		createUserTask := tasks.MySQLCreateUser(tasks.MySQLCreateUserConfig{
+			AdminUser:     "root",
+			AdminPassword: server.DatabasePassword.String(),
+			Username:      dbUser.Name,
+			UserPassword:  payload.Password,
+			Hosts:         []string{"%"},
+		})
+
+		result, err := taskRunnerDeps.NewRunner(&server, createUserTask).AsRoot().Run(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create database user: %w", err)
+		}
+
+		if !result.IsSuccessful() {
+			return fmt.Errorf("failed to create database user: %s", result.GetOutput())
+		}
+
+		// Grant privileges on each associated database
+		for _, db := range dbUser.Databases {
+			grantTask := tasks.MySQLGrantPrivileges(tasks.MySQLGrantPrivilegesConfig{
+				AdminUser:     "root",
+				AdminPassword: server.DatabasePassword.String(),
+				Username:      dbUser.Name,
+				DatabaseName:  db.Name,
+				Hosts:         []string{"%"},
+			})
+
+			result, err := taskRunnerDeps.NewRunner(&server, grantTask).AsRoot().Run(ctx)
+			if err != nil {
+				j.logger.Warn().Err(err).Str("database", db.Name).Msg("Failed to grant privileges")
+			} else if !result.IsSuccessful() {
+				j.logger.Warn().Str("output", result.GetOutput()).Str("database", db.Name).Msg("Grant privileges completed with errors")
+			}
+		}
+	} else {
+		// Create PostgreSQL user
+		createUserTask := tasks.PostgreSQLCreateUser(tasks.PostgreSQLCreateUserConfig{
+			Username: dbUser.Name,
+			Password: payload.Password,
+		})
+
+		result, err := taskRunnerDeps.NewRunner(&server, createUserTask).AsRoot().Run(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to create database user: %w", err)
+		}
+
+		if !result.IsSuccessful() {
+			return fmt.Errorf("failed to create database user: %s", result.GetOutput())
+		}
+
+		// Grant privileges on each associated database
+		for _, db := range dbUser.Databases {
+			grantTask := tasks.PostgreSQLGrantPrivileges(tasks.PostgreSQLGrantPrivilegesConfig{
+				Username:     dbUser.Name,
+				DatabaseName: db.Name,
+			})
+
+			result, err := taskRunnerDeps.NewRunner(&server, grantTask).AsRoot().Run(ctx)
+			if err != nil {
+				j.logger.Warn().Err(err).Str("database", db.Name).Msg("Failed to grant privileges")
+			} else if !result.IsSuccessful() {
+				j.logger.Warn().Str("output", result.GetOutput()).Str("database", db.Name).Msg("Grant privileges completed with errors")
+			}
+		}
+	}
 
 	// Mark the database user as installed
 	now := time.Now()
@@ -124,4 +208,22 @@ func (j *InstallDatabaseUserJob) broadcastProgress(serverID, userID, status, mes
 		"message":   message,
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
+}
+
+// getDatabaseType determines the database type from server's installed services
+func (j *InstallDatabaseUserJob) getDatabaseType(serverID string) string {
+	var service servermodels.InstalledService
+	err := j.db.Where("server_id = ? AND type IN ?", serverID, []string{
+		string(serverenums.ServiceTypeMySql),
+		string(serverenums.ServiceTypePostgreSql),
+	}).First(&service).Error
+
+	if err != nil {
+		return "mysql" // Default to MySQL
+	}
+
+	if service.Type == serverenums.ServiceTypePostgreSql {
+		return "postgresql"
+	}
+	return "mysql"
 }
