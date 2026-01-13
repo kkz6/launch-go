@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // ListCrons returns all cron jobs for a server
@@ -40,7 +41,7 @@ func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *
 		SiteID:     req.SiteID,
 		User:       user,
 		Expression: req.Expression,
-		Command:    req.Command,
+		Command:    basemodels.EncryptedString(req.Command),
 		Frequency:  frequency,
 		Hidden:     false,
 	}
@@ -78,7 +79,7 @@ func (s *Service) UpdateCron(ctx context.Context, serverID, teamID, cronID strin
 	}
 
 	if req.Command != nil {
-		cron.Command = *req.Command
+		cron.Command = basemodels.EncryptedString(*req.Command)
 	}
 
 	if req.Frequency != nil {

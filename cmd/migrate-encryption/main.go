@@ -81,6 +81,7 @@ func main() {
 		fixDoubleEncryptedServers(db)
 		fixDoubleEncryptedServerProviders(db)
 		fixDoubleEncryptedDomainProviders(db)
+		fixDoubleEncryptedCrons(db)
 		log.Println("✅ Fix completed!")
 		return
 	}
@@ -90,6 +91,7 @@ func main() {
 	migrateServerProviders(db)
 	migrateDomainProviders(db)
 	migrateTasks(db)
+	migrateCrons(db)
 
 	log.Println("✅ Migration completed successfully!")
 }
@@ -599,4 +601,68 @@ func extractPHPString(data []byte) string {
 	}
 
 	return str
+}
+
+func migrateCrons(db *gorm.DB) {
+	log.Println("🔄 Migrating crons table...")
+
+	type Cron struct {
+		ID      string `gorm:"primaryKey"`
+		Command string `gorm:"column:command"`
+	}
+
+	var crons []Cron
+	if err := db.Table("crons").Find(&crons).Error; err != nil {
+		log.Printf("❌ Failed to fetch crons: %v", err)
+		return
+	}
+
+	migrated := 0
+	for _, cron := range crons {
+		if cron.Command != "" {
+			if encrypted, err := migrateEncryption(cron.Command); err == nil {
+				if err := db.Table("crons").Where("id = ?", cron.ID).
+					Update("command", encrypted).Error; err != nil {
+					log.Printf("❌ Failed to update cron %s: %v", cron.ID, err)
+				} else {
+					migrated++
+				}
+			}
+		}
+	}
+
+	log.Printf("✅ Migrated %d/%d crons", migrated, len(crons))
+}
+
+// fixDoubleEncryptedCrons fixes crons that were accidentally double-encrypted
+func fixDoubleEncryptedCrons(db *gorm.DB) {
+	log.Println("🔄 Checking crons table for double-encrypted data...")
+
+	type Cron struct {
+		ID      string `gorm:"primaryKey"`
+		Command string `gorm:"column:command"`
+	}
+
+	var crons []Cron
+	if err := db.Table("crons").Find(&crons).Error; err != nil {
+		log.Printf("❌ Failed to fetch crons: %v", err)
+		return
+	}
+
+	fixed := 0
+	for _, cron := range crons {
+		if cron.Command != "" {
+			if fixedValue, ok := fixDoubleEncryptedValue(cron.Command); ok {
+				if err := db.Table("crons").Where("id = ?", cron.ID).
+					Update("command", fixedValue).Error; err != nil {
+					log.Printf("❌ Failed to fix cron %s: %v", cron.ID, err)
+				} else {
+					fixed++
+					log.Printf("  Fixed command for cron %s", cron.ID)
+				}
+			}
+		}
+	}
+
+	log.Printf("✅ Fixed %d/%d crons", fixed, len(crons))
 }

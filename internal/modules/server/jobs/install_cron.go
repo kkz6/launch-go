@@ -61,7 +61,7 @@ func (j *InstallCronJob) Handle(ctx context.Context) error {
 	j.LogInfo("Cron installed successfully",
 		"cron_id", cron.ID,
 		"server_id", cron.ServerID,
-		"command", cron.Command,
+		"command", cron.Command.String(),
 	)
 
 	// Broadcast event
