@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/database/serializers"
@@ -68,19 +69,231 @@ func main() {
 	)
 
 	db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{
-		Logger: logger.Default.LogMode(logger.Info),
+		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
+	}
+
+	// Check for --fix flag to fix double-encrypted data
+	if len(os.Args) > 1 && os.Args[1] == "--fix" {
+		log.Println("🔧 Fixing double-encrypted data...")
+		fixDoubleEncryptedServers(db)
+		fixDoubleEncryptedServerProviders(db)
+		fixDoubleEncryptedDomainProviders(db)
+		log.Println("✅ Fix completed!")
+		return
 	}
 
 	// Migrate each table
 	migrateServers(db)
 	migrateServerProviders(db)
 	migrateDomainProviders(db)
+	migrateTasks(db)
 
 	log.Println("✅ Migration completed successfully!")
-	log.Println("You can now remove internal/database/serializers/laravel.go")
+}
+
+// fixDoubleEncryptedServers fixes servers that were accidentally double-encrypted
+func fixDoubleEncryptedServers(db *gorm.DB) {
+	log.Println("🔄 Checking servers table for double-encrypted data...")
+
+	type Server struct {
+		ID               string  `gorm:"primaryKey"`
+		PublicKey        *string `gorm:"column:public_key"`
+		PrivateKey       *string `gorm:"column:private_key"`
+		UserPublicKey    *string `gorm:"column:user_public_key"`
+		Password         *string `gorm:"column:password"`
+		DatabasePassword *string `gorm:"column:database_password"`
+	}
+
+	var servers []Server
+	if err := db.Table("servers").Find(&servers).Error; err != nil {
+		log.Printf("❌ Failed to fetch servers: %v", err)
+		return
+	}
+
+	fixed := 0
+	for _, server := range servers {
+		updates := make(map[string]interface{})
+		updated := false
+
+		if server.PrivateKey != nil && *server.PrivateKey != "" {
+			if fixedValue, ok := fixDoubleEncryptedValue(*server.PrivateKey); ok {
+				updates["private_key"] = fixedValue
+				updated = true
+				log.Printf("  Fixed private_key for server %s", server.ID)
+			}
+		}
+		if server.PublicKey != nil && *server.PublicKey != "" {
+			if fixedValue, ok := fixDoubleEncryptedValue(*server.PublicKey); ok {
+				updates["public_key"] = fixedValue
+				updated = true
+			}
+		}
+		if server.UserPublicKey != nil && *server.UserPublicKey != "" {
+			if fixedValue, ok := fixDoubleEncryptedValue(*server.UserPublicKey); ok {
+				updates["user_public_key"] = fixedValue
+				updated = true
+			}
+		}
+		if server.Password != nil && *server.Password != "" {
+			if fixedValue, ok := fixDoubleEncryptedValue(*server.Password); ok {
+				updates["password"] = fixedValue
+				updated = true
+			}
+		}
+		if server.DatabasePassword != nil && *server.DatabasePassword != "" {
+			if fixedValue, ok := fixDoubleEncryptedValue(*server.DatabasePassword); ok {
+				updates["database_password"] = fixedValue
+				updated = true
+			}
+		}
+
+		if updated {
+			if err := db.Table("servers").Where("id = ?", server.ID).Updates(updates).Error; err != nil {
+				log.Printf("❌ Failed to fix server %s: %v", server.ID, err)
+			} else {
+				fixed++
+			}
+		}
+	}
+
+	log.Printf("✅ Fixed %d/%d servers", fixed, len(servers))
+}
+
+// fixDoubleEncryptedServerProviders fixes server_providers that were accidentally double-encrypted
+func fixDoubleEncryptedServerProviders(db *gorm.DB) {
+	log.Println("🔄 Checking server_providers table for double-encrypted data...")
+
+	type ServerProvider struct {
+		ID          string `gorm:"primaryKey"`
+		Credentials string `gorm:"column:credentials"`
+	}
+
+	var providers []ServerProvider
+	if err := db.Table("server_providers").Find(&providers).Error; err != nil {
+		log.Printf("❌ Failed to fetch server_providers: %v", err)
+		return
+	}
+
+	fixed := 0
+	for _, provider := range providers {
+		if provider.Credentials != "" {
+			if fixedValue, ok := fixDoubleEncryptedValue(provider.Credentials); ok {
+				if err := db.Table("server_providers").Where("id = ?", provider.ID).
+					Update("credentials", fixedValue).Error; err != nil {
+					log.Printf("❌ Failed to fix server_provider %s: %v", provider.ID, err)
+				} else {
+					fixed++
+					log.Printf("  Fixed credentials for server_provider %s", provider.ID)
+				}
+			}
+		}
+	}
+
+	log.Printf("✅ Fixed %d/%d server_providers", fixed, len(providers))
+}
+
+// fixDoubleEncryptedDomainProviders fixes domain_providers that were accidentally double-encrypted
+func fixDoubleEncryptedDomainProviders(db *gorm.DB) {
+	log.Println("🔄 Checking domain_providers table for double-encrypted data...")
+
+	type DomainProvider struct {
+		ID          string `gorm:"primaryKey"`
+		Credentials string `gorm:"column:credentials"`
+	}
+
+	var providers []DomainProvider
+	if err := db.Table("domain_providers").Find(&providers).Error; err != nil {
+		log.Printf("❌ Failed to fetch domain_providers: %v", err)
+		return
+	}
+
+	fixed := 0
+	for _, provider := range providers {
+		if provider.Credentials != "" {
+			if fixedValue, ok := fixDoubleEncryptedValue(provider.Credentials); ok {
+				if err := db.Table("domain_providers").Where("id = ?", provider.ID).
+					Update("credentials", fixedValue).Error; err != nil {
+					log.Printf("❌ Failed to fix domain_provider %s: %v", provider.ID, err)
+				} else {
+					fixed++
+					log.Printf("  Fixed credentials for domain_provider %s", provider.ID)
+				}
+			}
+		}
+	}
+
+	log.Printf("✅ Fixed %d/%d domain_providers", fixed, len(providers))
+}
+
+// fixDoubleEncryptedValue attempts to fix double-encrypted data
+// Returns the fixed value and true if it was double-encrypted, or empty string and false otherwise
+func fixDoubleEncryptedValue(encrypted string) (string, bool) {
+	// First, try to decrypt with Go format
+	firstDecrypt, err := serializers.Decrypt(encrypted)
+	if err != nil || firstDecrypt == encrypted {
+		// Not Go encrypted or decryption failed
+		return "", false
+	}
+
+	// Check if first decryption result is valid content
+	if strings.HasPrefix(firstDecrypt, "-----BEGIN") {
+		// Already valid SSH key after one decryption, not double-encrypted
+		return "", false
+	}
+	if strings.HasPrefix(firstDecrypt, "{") || strings.HasPrefix(firstDecrypt, "[") {
+		// Valid JSON after one decryption
+		return "", false
+	}
+
+	// Try second Go decryption (double Go-encrypted case)
+	secondDecrypt, err := serializers.Decrypt(firstDecrypt)
+	if err == nil && secondDecrypt != firstDecrypt {
+		// Second decryption worked! Check if result is valid
+		if strings.HasPrefix(secondDecrypt, "-----BEGIN") ||
+			strings.HasPrefix(secondDecrypt, "{") ||
+			strings.HasPrefix(secondDecrypt, "[") ||
+			len(secondDecrypt) > 50 {
+			// Valid content after double decryption - re-encrypt once
+			reEncrypted, err := serializers.Encrypt(secondDecrypt)
+			if err != nil {
+				log.Printf("  Warning: Re-encryption failed: %v", err)
+				return "", false
+			}
+			log.Printf("  Found double Go-encrypted data")
+			return reEncrypted, true
+		}
+	}
+
+	// Check if the result looks like Laravel encrypted data
+	jsonData, err := base64.StdEncoding.DecodeString(firstDecrypt)
+	if err != nil {
+		return "", false
+	}
+
+	var payload LaravelPayload
+	if err := json.Unmarshal(jsonData, &payload); err != nil {
+		return "", false
+	}
+
+	// It IS Laravel format inside Go encryption - this is Go wrapping Laravel
+	decrypted, err := decryptLaravel(firstDecrypt)
+	if err != nil {
+		log.Printf("  Warning: Laravel decryption failed: %v", err)
+		return "", false
+	}
+
+	// Re-encrypt with just Go format
+	reEncrypted, err := serializers.Encrypt(decrypted)
+	if err != nil {
+		log.Printf("  Warning: Re-encryption failed: %v", err)
+		return "", false
+	}
+
+	log.Printf("  Found Go-wrapped Laravel data")
+	return reEncrypted, true
 }
 
 func migrateServers(db *gorm.DB) {
@@ -211,21 +424,86 @@ func migrateDomainProviders(db *gorm.DB) {
 	log.Printf("✅ Migrated %d/%d domain_providers", migrated, len(providers))
 }
 
+func migrateTasks(db *gorm.DB) {
+	log.Println("🔄 Migrating tasks table...")
+
+	type Task struct {
+		ID     string  `gorm:"primaryKey"`
+		Output *string `gorm:"column:output"`
+	}
+
+	var tasks []Task
+	if err := db.Table("tasks").Find(&tasks).Error; err != nil {
+		log.Printf("❌ Failed to fetch tasks: %v", err)
+		return
+	}
+
+	migrated := 0
+	for _, task := range tasks {
+		if task.Output != nil && *task.Output != "" {
+			if encrypted, err := migrateEncryption(*task.Output); err == nil {
+				if err := db.Table("tasks").Where("id = ?", task.ID).
+					Update("output", encrypted).Error; err != nil {
+					log.Printf("❌ Failed to update task %s: %v", task.ID, err)
+				} else {
+					migrated++
+				}
+			}
+		}
+	}
+
+	log.Printf("✅ Migrated %d/%d tasks", migrated, len(tasks))
+}
+
 // migrateEncryption decrypts Laravel-encrypted data and re-encrypts with Go format
 func migrateEncryption(encrypted string) (string, error) {
-	// First decrypt Laravel format
+	// First, check if it's already in Go format by trying to decrypt
+	if isGoEncrypted(encrypted) {
+		// Already migrated, skip
+		return "", fmt.Errorf("already in Go format")
+	}
+
+	// Try to decrypt Laravel format
 	decrypted, err := decryptLaravel(encrypted)
 	if err != nil {
 		return "", err
 	}
 
-	// If it was already plaintext, encrypt it
+	// If it wasn't Laravel format (decrypted == encrypted), it might be plaintext
+	// Only encrypt if it looks like valid data (not empty)
 	if decrypted == encrypted {
-		return serializers.Encrypt(decrypted)
+		// Not Laravel format - could be plaintext or unknown format
+		// Only encrypt if it looks like actual content
+		if len(decrypted) > 0 {
+			return serializers.Encrypt(decrypted)
+		}
+		return "", fmt.Errorf("empty data")
 	}
 
 	// Re-encrypt with Go format
 	return serializers.Encrypt(decrypted)
+}
+
+// isGoEncrypted checks if data is already encrypted with Go AES-GCM format
+func isGoEncrypted(data string) bool {
+	// Try to decrypt with Go format
+	decrypted, err := serializers.Decrypt(data)
+	if err != nil {
+		return false
+	}
+	// If decryption succeeded and result is different, it was Go-encrypted
+	// Also check if decrypted looks like valid content (SSH key, JSON, etc.)
+	if decrypted != data && len(decrypted) > 0 {
+		// Additional check: valid SSH keys start with "-----BEGIN"
+		// Valid JSON starts with "{" or "["
+		if strings.HasPrefix(decrypted, "-----BEGIN") ||
+			strings.HasPrefix(decrypted, "{") ||
+			strings.HasPrefix(decrypted, "[") ||
+			len(decrypted) > 100 { // Reasonable content
+			return true
+		}
+	}
+	return false
 }
 
 // decryptLaravel decrypts Laravel-encrypted data
