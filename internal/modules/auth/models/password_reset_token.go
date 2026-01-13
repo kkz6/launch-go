@@ -15,7 +15,7 @@ type PasswordResetToken struct {
 }
 
 // TableName returns the table name for the PasswordResetToken model
-func (p *PasswordResetToken) TableName() string {
+func (PasswordResetToken) TableName() string {
 	return "password_reset_tokens"
 }
 

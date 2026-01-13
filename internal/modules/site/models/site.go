@@ -1,8 +1,8 @@
 package models
 
 import (
-	"encoding/json"
 	"fmt"
+	"slices"
 	"strings"
 	"time"
 
@@ -23,29 +23,29 @@ type Site struct {
 	Type                         enums.SiteType   `gorm:"type:varchar(255);not null;index" json:"type"`
 	TypeData                     *string          `gorm:"column:type_data;type:json" json:"type_data,omitempty"`
 	VcsData                      *string          `gorm:"column:vcs_data;type:json" json:"vcs_data,omitempty"`
-	Aliases                      *string          `gorm:"type:json" json:"aliases,omitempty"`
-	TlsSetting                   enums.TlsSetting `gorm:"column:tls_setting;type:varchar(255);not null;index" json:"tls_setting"`
+	Aliases                      basemodels.JSONStringSlice `gorm:"type:json" json:"aliases,omitempty"`
+	TlsSetting                   enums.TlsSetting           `gorm:"column:tls_setting;type:varchar(255);not null;index" json:"tls_setting"`
 	ZeroDowntimeDeployment       bool             `gorm:"column:zero_downtime_deployment;default:true" json:"zero_downtime_deployment"`
 	DeploymentReleasesRetention  int              `gorm:"column:deployment_releases_retention;default:10" json:"deployment_releases_retention"`
 	AutoDeployment               bool             `gorm:"column:auto_deployment;default:false" json:"auto_deployment"`
 	QueueDeployments             bool             `gorm:"column:queue_deployments;default:false" json:"queue_deployments"`
 	AutoRestartQueue             bool             `gorm:"column:auto_restart_queue;default:false" json:"auto_restart_queue"`
-	Features                     *string          `gorm:"type:json" json:"features,omitempty"`
+	Features                     basemodels.JSONStringSlice `gorm:"type:json" json:"features,omitempty"`
 	SourceControlRepositoriesID  *uint64          `gorm:"column:source_control_repositories_id;index" json:"source_control_repositories_id,omitempty"`
 	RepositoryBranch             *string          `gorm:"column:repository_branch;type:varchar(255)" json:"repository_branch,omitempty"`
 	DeployToken                  *string          `gorm:"column:deploy_token;type:varchar(32)" json:"-"`
 	DeployNotificationEmail      *string          `gorm:"column:deploy_notification_email;type:varchar(255)" json:"deploy_notification_email,omitempty"`
-	DeployKeyPublic              *string          `gorm:"column:deploy_key_public;type:longtext" json:"-"`
-	DeployKeyPrivate             *string          `gorm:"column:deploy_key_private;type:longtext" json:"-"`
+	DeployKeyPublic              *string                    `gorm:"column:deploy_key_public;type:longtext" json:"-"`
+	DeployKeyPrivate             basemodels.EncryptedString `gorm:"column:deploy_key_private;type:longtext" json:"-"`
 	User                         string           `gorm:"type:varchar(255);not null" json:"user"`
 	Path                         string           `gorm:"type:varchar(255);not null" json:"path"`
 	WebFolder                    string           `gorm:"column:web_folder;type:varchar(255);not null" json:"web_folder"`
 	PhpVersion                   *string          `gorm:"column:php_version;type:varchar(255);index" json:"php_version,omitempty"`
 	PendingTlsUpdateSince        *time.Time       `gorm:"column:pending_tls_update_since;type:timestamp null" json:"pending_tls_update_since,omitempty"`
 	PendingCaddyfileUpdateSince  *time.Time       `gorm:"column:pending_caddyfile_update_since;type:timestamp null" json:"pending_caddyfile_update_since,omitempty"`
-	SharedDirectories            string           `gorm:"column:shared_directories;type:json;not null" json:"shared_directories"`
-	WriteableDirectories         string           `gorm:"column:writeable_directories;type:json;not null" json:"writeable_directories"`
-	SharedFiles                  string           `gorm:"column:shared_files;type:json;not null" json:"shared_files"`
+	SharedDirectories            basemodels.JSONStringSlice `gorm:"column:shared_directories;type:json" json:"shared_directories"`
+	WriteableDirectories         basemodels.JSONStringSlice `gorm:"column:writeable_directories;type:json" json:"writeable_directories"`
+	SharedFiles                  basemodels.JSONStringSlice `gorm:"column:shared_files;type:json" json:"shared_files"`
 	Port                         *int             `gorm:"type:int" json:"port,omitempty"`
 	Progress                     *int             `gorm:"default:0" json:"progress,omitempty"`
 	HookBeforeUpdatingRepository *string          `gorm:"column:hook_before_updating_repository;type:longtext" json:"hook_before_updating_repository,omitempty"`
@@ -62,7 +62,7 @@ type Site struct {
 	Redirects        []Redirect    `gorm:"foreignKey:SiteID;references:ID" json:"redirects,omitempty"`
 }
 
-func (s *Site) TableName() string {
+func (Site) TableName() string {
 	return "sites"
 }
 
@@ -74,18 +74,6 @@ func (s *Site) BeforeCreate(tx *gorm.DB) error {
 	if s.DeployToken == nil || *s.DeployToken == "" {
 		token := GenerateRandomToken(32)
 		s.DeployToken = &token
-	}
-
-	if s.SharedDirectories == "" {
-		s.SharedDirectories = "[]"
-	}
-
-	if s.WriteableDirectories == "" {
-		s.WriteableDirectories = "[]"
-	}
-
-	if s.SharedFiles == "" {
-		s.SharedFiles = "[]"
 	}
 
 	return nil
@@ -143,135 +131,9 @@ func (s *Site) GenerateWebDirectory(folder string) string {
 	return strings.TrimRight(path, "/")
 }
 
-// GetAliases returns the site aliases as a slice
-func (s *Site) GetAliases() []string {
-	if s.Aliases == nil || *s.Aliases == "" || *s.Aliases == "null" {
-		return []string{}
-	}
-
-	var aliases []string
-	if err := json.Unmarshal([]byte(*s.Aliases), &aliases); err != nil {
-		return []string{}
-	}
-
-	return aliases
-}
-
-// SetAliases sets the site aliases from a slice
-func (s *Site) SetAliases(aliases []string) error {
-	data, err := json.Marshal(aliases)
-	if err != nil {
-		return err
-	}
-
-	str := string(data)
-	s.Aliases = &str
-
-	return nil
-}
-
-// GetSharedDirectories returns shared directories as a slice
-func (s *Site) GetSharedDirectories() []string {
-	if s.SharedDirectories == "" || s.SharedDirectories == "null" {
-		return []string{}
-	}
-
-	var dirs []string
-	if err := json.Unmarshal([]byte(s.SharedDirectories), &dirs); err != nil {
-		return []string{}
-	}
-
-	return dirs
-}
-
-// SetSharedDirectories sets shared directories from a slice
-func (s *Site) SetSharedDirectories(dirs []string) error {
-	data, err := json.Marshal(dirs)
-	if err != nil {
-		return err
-	}
-
-	s.SharedDirectories = string(data)
-
-	return nil
-}
-
-// GetWriteableDirectories returns writeable directories as a slice
-func (s *Site) GetWriteableDirectories() []string {
-	if s.WriteableDirectories == "" || s.WriteableDirectories == "null" {
-		return []string{}
-	}
-
-	var dirs []string
-	if err := json.Unmarshal([]byte(s.WriteableDirectories), &dirs); err != nil {
-		return []string{}
-	}
-
-	return dirs
-}
-
-// SetWriteableDirectories sets writeable directories from a slice
-func (s *Site) SetWriteableDirectories(dirs []string) error {
-	data, err := json.Marshal(dirs)
-	if err != nil {
-		return err
-	}
-
-	s.WriteableDirectories = string(data)
-
-	return nil
-}
-
-// GetSharedFiles returns shared files as a slice
-func (s *Site) GetSharedFiles() []string {
-	if s.SharedFiles == "" || s.SharedFiles == "null" {
-		return []string{}
-	}
-
-	var files []string
-	if err := json.Unmarshal([]byte(s.SharedFiles), &files); err != nil {
-		return []string{}
-	}
-
-	return files
-}
-
-// SetSharedFiles sets shared files from a slice
-func (s *Site) SetSharedFiles(files []string) error {
-	data, err := json.Marshal(files)
-	if err != nil {
-		return err
-	}
-
-	s.SharedFiles = string(data)
-
-	return nil
-}
-
 // HasFeature checks if the site has a specific feature
 func (s *Site) HasFeature(feature string) bool {
-	features := s.GetFeatures()
-	for _, f := range features {
-		if f == feature {
-			return true
-		}
-	}
-
-	return false
-}
-
-// GetFeatures returns features as a slice
-func (s *Site) GetFeatures() []string {
-	if s.Features == nil || *s.Features == "" || *s.Features == "null" {
-		return []string{}
-	}
-
-	var features []string
-	if err := json.Unmarshal([]byte(*s.Features), &features); err != nil {
-		return []string{}
-	}
-
-	return features
+	return slices.Contains(s.Features, feature)
 }
 
 // GetRepositoryBranch returns the repository branch or default

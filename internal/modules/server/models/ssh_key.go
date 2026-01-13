@@ -24,7 +24,7 @@ type SshKey struct {
 	Servers []Server `gorm:"many2many:server_ssh_keys" json:"servers,omitempty"`
 }
 
-func (k *SshKey) TableName() string {
+func (SshKey) TableName() string {
 	return "ssh_keys"
 }
 
@@ -43,7 +43,7 @@ type ServerSshKey struct {
 	SshKeyID string `gorm:"column:ssh_key_id;type:char(26);primaryKey" json:"ssh_key_id"`
 }
 
-func (s *ServerSshKey) TableName() string {
+func (ServerSshKey) TableName() string {
 	return "server_ssh_keys"
 }
 

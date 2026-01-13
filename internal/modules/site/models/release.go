@@ -16,7 +16,7 @@ type Release struct {
 	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
 }
 
-func (r *Release) TableName() string {
+func (Release) TableName() string {
 	return "releases"
 }
 

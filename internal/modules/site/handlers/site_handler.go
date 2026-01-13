@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
+	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	"github.com/kkz6/launch-go/internal/pkg/response"
@@ -194,4 +195,40 @@ func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 	}
 
 	return response.OK(c, "Deployment settings updated", dto.ToSiteResponse(site))
+}
+
+// GetSettings returns the site settings page data
+func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
+	serverID := c.Params("serverId")
+	siteID := c.Params("id")
+
+	site, activeCert, err := h.siteService.GetSettings(c.Context(), siteID, serverID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrSiteNotFound) {
+			return response.NotFound(c, "Site not found")
+		}
+
+		return response.InternalError(c, "Failed to fetch site settings")
+	}
+
+	// Build TLS options
+	tlsOptions := make([]dto.TlsOptionResponse, 0)
+	for _, tls := range enums.AllTlsSettings() {
+		tlsOptions = append(tlsOptions, dto.TlsOptionResponse{
+			Value: string(tls),
+			Label: tls.Label(),
+		})
+	}
+
+	resp := dto.SiteSettingsResponse{
+		Site:       dto.ToSiteResponse(site),
+		TlsOptions: tlsOptions,
+	}
+
+	if activeCert != nil {
+		certResp := dto.ToCertificateResponse(activeCert)
+		resp.ActiveCertificate = &certResp
+	}
+
+	return response.OK(c, "Site settings retrieved", resp)
 }

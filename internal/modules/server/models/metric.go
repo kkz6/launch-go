@@ -25,7 +25,7 @@ type Metric struct {
 	Server *Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
 }
 
-func (m *Metric) TableName() string {
+func (Metric) TableName() string {
 	return "metrics"
 }
 
@@ -56,7 +56,7 @@ type Script struct {
 	Content string `gorm:"type:longtext;not null" json:"content"`
 }
 
-func (s *Script) TableName() string {
+func (Script) TableName() string {
 	return "scripts"
 }
 
@@ -76,7 +76,7 @@ type ScriptExecution struct {
 	Server *Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
 }
 
-func (se *ScriptExecution) TableName() string {
+func (ScriptExecution) TableName() string {
 	return "script_executions"
 }
 
@@ -97,7 +97,7 @@ type Monitor struct {
 	NotificationChannels []NotificationChannel `gorm:"many2many:monitor_notification_channel" json:"notification_channels,omitempty"`
 }
 
-func (m *Monitor) TableName() string {
+func (Monitor) TableName() string {
 	return "monitors"
 }
 
@@ -106,6 +106,6 @@ type NotificationChannel struct {
 	ID uint64 `gorm:"type:bigint unsigned;primaryKey;autoIncrement" json:"id"`
 }
 
-func (nc *NotificationChannel) TableName() string {
+func (NotificationChannel) TableName() string {
 	return "notification_channels"
 }

@@ -41,7 +41,7 @@ type Queue struct {
 	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
 }
 
-func (q *Queue) TableName() string {
+func (Queue) TableName() string {
 	return "queues"
 }
 

@@ -1,8 +1,6 @@
 package models
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"time"
 
@@ -12,17 +10,8 @@ import (
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/utils"
 )
-
-// generateRandomToken generates a random hex string of specified length
-func generateRandomToken(length int) string {
-	bytes := make([]byte, length/2)
-	if _, err := rand.Read(bytes); err != nil {
-		return ""
-	}
-
-	return hex.EncodeToString(bytes)
-}
 
 // Server represents a managed server
 type Server struct {
@@ -86,13 +75,13 @@ func (s *Server) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	if s.LaunchToken == "" {
-		s.LaunchToken = generateRandomToken(32)
+		s.LaunchToken = utils.GenerateHexToken(32)
 	}
 
 	return nil
 }
 
-func (s *Server) TableName() string {
+func (Server) TableName() string {
 	return "servers"
 }
 

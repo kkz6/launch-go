@@ -38,7 +38,7 @@ func (t *Task) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (t *Task) TableName() string {
+func (Task) TableName() string {
 	return "tasks"
 }
 

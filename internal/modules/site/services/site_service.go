@@ -130,29 +130,21 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 
 	// Set aliases
 	if len(req.Aliases) > 0 {
-		if err := site.SetAliases(req.Aliases); err != nil {
-			return nil, err
-		}
+		site.Aliases = req.Aliases
 	}
 
 	// Apply type-specific defaults
 	defaults := siteType.GetDefaultAttributes(req.ZeroDowntimeDeployment)
 	if dirs, ok := defaults["shared_directories"].([]string); ok {
-		if err := site.SetSharedDirectories(dirs); err != nil {
-			return nil, err
-		}
+		site.SharedDirectories = dirs
 	}
 
 	if dirs, ok := defaults["writeable_directories"].([]string); ok {
-		if err := site.SetWriteableDirectories(dirs); err != nil {
-			return nil, err
-		}
+		site.WriteableDirectories = dirs
 	}
 
 	if files, ok := defaults["shared_files"].([]string); ok {
-		if err := site.SetSharedFiles(files); err != nil {
-			return nil, err
-		}
+		site.SharedFiles = files
 	}
 
 	if hook, ok := defaults["hook_before_updating_repository"].(string); ok && hook != "" {
@@ -278,24 +270,15 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 
 	// Handle directories and files
 	if req.SharedDirectories != nil {
-		dirs := parseMultilineToSlice(*req.SharedDirectories)
-		if err := site.SetSharedDirectories(dirs); err != nil {
-			return nil, err
-		}
+		site.SharedDirectories = parseMultilineToSlice(*req.SharedDirectories)
 	}
 
 	if req.SharedFiles != nil {
-		files := parseMultilineToSlice(*req.SharedFiles)
-		if err := site.SetSharedFiles(files); err != nil {
-			return nil, err
-		}
+		site.SharedFiles = parseMultilineToSlice(*req.SharedFiles)
 	}
 
 	if req.WriteableDirectories != nil {
-		dirs := parseMultilineToSlice(*req.WriteableDirectories)
-		if err := site.SetWriteableDirectories(dirs); err != nil {
-			return nil, err
-		}
+		site.WriteableDirectories = parseMultilineToSlice(*req.WriteableDirectories)
 	}
 
 	if err := s.siteRepo.Update(ctx, site); err != nil {
@@ -382,4 +365,21 @@ func (s *SiteService) RegenerateDeployToken(ctx context.Context, id, serverID st
 	site.DeployToken = &token
 
 	return s.siteRepo.Update(ctx, site)
+}
+
+// GetSettings returns site settings data including the active certificate
+func (s *SiteService) GetSettings(ctx context.Context, id, serverID string) (*models.Site, *models.Certificate, error) {
+	site, err := s.siteRepo.FindByIDAndServer(ctx, id, serverID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	// Load latest deployment
+	deployment, _ := s.deploymentRepo.FindLatestBySite(ctx, site.ID)
+	site.LatestDeployment = deployment
+
+	// Get active certificate
+	activeCert, _ := s.certificateRepo.FindActiveBySite(ctx, site.ID)
+
+	return site, activeCert, nil
 }

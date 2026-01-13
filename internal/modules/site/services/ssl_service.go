@@ -12,6 +12,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -70,20 +71,19 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 		}
 
 		// Create new certificate
+		privateKey := basemodels.EncryptedString("")
+		if req.PrivateKey != nil {
+			privateKey = basemodels.EncryptedString(*req.PrivateKey)
+		}
 		cert := &models.Certificate{
 			SiteID:      site.ID,
 			Type:        enums.CertificateTypeCustom,
-			PrivateKey:  req.PrivateKey,
+			PrivateKey:  privateKey,
 			Certificate: req.Certificate,
 			IsActive:    true,
 		}
 
-		domains := []string{site.Address}
-		domains = append(domains, site.GetAliases()...)
-
-		if err := cert.SetDomains(domains); err != nil {
-			return err
-		}
+		cert.Domains = append([]string{site.Address}, site.Aliases...)
 
 		now := time.Now()
 		cert.UploadedAt = &now

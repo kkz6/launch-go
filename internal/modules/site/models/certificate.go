@@ -1,7 +1,6 @@
 package models
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -12,12 +11,12 @@ import (
 // Certificate represents an SSL certificate for a site
 type Certificate struct {
 	basemodels.BaseModel
-	SiteID      string                `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
-	Type        enums.CertificateType `gorm:"type:varchar(255);not null;default:letsencrypt" json:"type"`
-	Domains     *string               `gorm:"type:varchar(255)" json:"domains,omitempty"`
-	CSR         *string               `gorm:"column:csr;type:longtext" json:"csr,omitempty"`
-	PublicKey   *string               `gorm:"column:public_key;type:longtext" json:"public_key,omitempty"`
-	PrivateKey  *string               `gorm:"column:private_key;type:longtext" json:"-"`
+	SiteID      string                     `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
+	Type        enums.CertificateType      `gorm:"type:varchar(255);not null;default:letsencrypt" json:"type"`
+	Domains     basemodels.JSONStringSlice `gorm:"type:json" json:"domains,omitempty"`
+	CSR         *string                    `gorm:"column:csr;type:longtext" json:"csr,omitempty"`
+	PublicKey   *string                    `gorm:"column:public_key;type:longtext" json:"public_key,omitempty"`
+	PrivateKey  basemodels.EncryptedString `gorm:"column:private_key;type:longtext" json:"-"`
 	Certificate *string               `gorm:"type:longtext" json:"certificate,omitempty"`
 	UploadedAt  *time.Time            `gorm:"column:uploaded_at;type:timestamp null" json:"uploaded_at,omitempty"`
 	IsActive    bool                  `gorm:"column:is_active;default:false" json:"is_active"`
@@ -26,7 +25,7 @@ type Certificate struct {
 	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
 }
 
-func (c *Certificate) TableName() string {
+func (Certificate) TableName() string {
 	return "certificates"
 }
 
@@ -45,29 +44,17 @@ func (c *Certificate) PrivateKeyPath(sitePath string) string {
 	return fmt.Sprintf("%s/private.key", c.SiteDirectory(sitePath))
 }
 
-// GetDomains returns domains as a slice
+// GetDomains returns the domains for the certificate
 func (c *Certificate) GetDomains() []string {
-	if c.Domains == nil || *c.Domains == "" || *c.Domains == "null" {
+	if c.Domains == nil {
 		return []string{}
 	}
-
-	var domains []string
-	if err := json.Unmarshal([]byte(*c.Domains), &domains); err != nil {
-		return []string{}
-	}
-
-	return domains
+	return c.Domains
 }
 
-// SetDomains sets domains from a slice
+// SetDomains sets the domains for the certificate
 func (c *Certificate) SetDomains(domains []string) error {
-	data, err := json.Marshal(domains)
-	if err != nil {
-		return err
-	}
-
-	str := string(data)
-	c.Domains = &str
-
+	c.Domains = domains
 	return nil
 }
+

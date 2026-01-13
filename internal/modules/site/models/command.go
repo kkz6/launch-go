@@ -19,7 +19,7 @@ type Command struct {
 	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
 }
 
-func (c *Command) TableName() string {
+func (Command) TableName() string {
 	return "commands"
 }
 

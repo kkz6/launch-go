@@ -25,6 +25,6 @@ type Passkey struct {
 }
 
 // TableName returns the table name for the Passkey model
-func (p *Passkey) TableName() string {
+func (Passkey) TableName() string {
 	return "passkeys"
 }

@@ -1,26 +1,17 @@
 package models
 
 import (
-	"crypto/rand"
-	"encoding/base64"
+	"github.com/kkz6/launch-go/internal/pkg/utils"
 )
 
-// GenerateRandomToken generates a random token of the specified length
+// GenerateRandomToken generates a random token of the specified length.
+// Deprecated: Use utils.GenerateBase64Token instead.
 func GenerateRandomToken(length int) string {
-	bytes := make([]byte, length)
-	if _, err := rand.Read(bytes); err != nil {
-		return ""
-	}
-
-	return base64.URLEncoding.EncodeToString(bytes)[:length]
+	return utils.GenerateBase64Token(length)
 }
 
-// GenerateAppKey generates a Laravel-style application key
+// GenerateAppKey generates a Laravel-style application key.
+// Deprecated: Use utils.GenerateAppKey instead.
 func GenerateAppKey() string {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		return ""
-	}
-
-	return "base64:" + base64.StdEncoding.EncodeToString(key)
+	return utils.GenerateAppKey()
 }

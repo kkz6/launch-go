@@ -36,7 +36,7 @@ func (c *Cron) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (c *Cron) TableName() string {
+func (Cron) TableName() string {
 	return "crons"
 }
 
@@ -48,15 +48,11 @@ func (c *Cron) Path() string {
 // GetLogPath returns the path to the cron log file
 // Requires Server to be preloaded for working_directory
 func (c *Cron) GetLogPath() string {
-	workingDir := ".launch"
-	if c.Server != nil && c.Server.WorkingDirectory != nil && *c.Server.WorkingDirectory != "" {
+	workingDir := ""
+	if c.Server != nil && c.Server.WorkingDirectory != nil {
 		workingDir = *c.Server.WorkingDirectory
 	}
-
-	if c.User == "root" || c.User == "ubuntu" {
-		return fmt.Sprintf("/%s/%s/cron-%s.log", c.User, workingDir, c.ID)
-	}
-	return fmt.Sprintf("/home/%s/%s/cron-%s.log", c.User, workingDir, c.ID)
+	return fmt.Sprintf("%s/cron-%s.log", basemodels.GetWorkingDir(c.User, workingDir), c.ID)
 }
 
 // ToCronFileContents generates the cron file contents

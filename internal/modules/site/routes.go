@@ -36,6 +36,9 @@ func (m *Module) registerSiteRoutes(router fiber.Router) {
 
 	// Deployment settings
 	router.Put("/:id/deployment-settings", m.siteHandler.UpdateDeploymentSettings)
+
+	// Site settings page
+	router.Get("/:id/settings", m.siteHandler.GetSettings)
 }
 
 // registerDeploymentRoutes registers deployment-related routes
