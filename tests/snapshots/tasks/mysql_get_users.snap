@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+sudo mysql --user="root" --password="rootpassword" -e "SELECT user, host FROM mysql.user;" -s -N

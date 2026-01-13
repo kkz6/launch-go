@@ -1,0 +1,8 @@
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+
+sudo mysql --user="root" --password="rootpassword" -e "REVOKE ALL PRIVILEGES ON myapp.* FROM 'appuser'@'%';"
+
+sudo mysql --user="root" --password="rootpassword" -e "FLUSH PRIVILEGES;"

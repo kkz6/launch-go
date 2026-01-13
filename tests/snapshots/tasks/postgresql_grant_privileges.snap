@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+sudo -u postgres psql -c "GRANT ALL PRIVILEGES ON DATABASE myapp TO appuser;"
