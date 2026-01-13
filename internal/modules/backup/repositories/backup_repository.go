@@ -19,6 +19,11 @@ func NewBackupRepository(db *gorm.DB) *BackupRepository {
 	return &BackupRepository{db: db}
 }
 
+// DB returns the database connection
+func (r *BackupRepository) DB() *gorm.DB {
+	return r.db
+}
+
 // CreateBackup creates a new backup configuration
 func (r *BackupRepository) CreateBackup(ctx context.Context, backup *models.Backup) error {
 	return r.db.WithContext(ctx).Create(backup).Error

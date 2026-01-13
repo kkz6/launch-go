@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -65,6 +66,13 @@ func (s *RedirectService) Create(ctx context.Context, siteID, serverID, userID s
 		return nil, err
 	}
 
+	activity.New(s.redirectRepo.DB()).
+		WithContext(ctx).
+		UseLog("site").
+		On(redirect).
+		WithEvent("created").
+		Log("Redirect was created")
+
 	// TODO: Dispatch Caddyfile update job
 
 	return redirect, nil
@@ -85,9 +93,17 @@ func (s *RedirectService) Delete(ctx context.Context, redirectID, siteID, server
 		return err
 	}
 
-	if _, err := s.redirectRepo.FindByID(ctx, redirectID); err != nil {
+	redirect, err := s.redirectRepo.FindByID(ctx, redirectID)
+	if err != nil {
 		return err
 	}
+
+	activity.New(s.redirectRepo.DB()).
+		WithContext(ctx).
+		UseLog("site").
+		On(redirect).
+		WithEvent("deleted").
+		Log("Redirect was deleted")
 
 	// TODO: Dispatch Caddyfile update job
 

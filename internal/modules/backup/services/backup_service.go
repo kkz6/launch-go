@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -82,6 +83,13 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID strin
 		return nil, fmt.Errorf("failed to create backup: %w", err)
 	}
 
+	activity.New(s.backupRepo.DB()).
+		WithContext(ctx).
+		UseLog("backup").
+		On(backup).
+		WithEvent("created").
+		Log("Backup was created")
+
 	// Dispatch installation job
 	s.dispatchInstallBackup(serverID, backup.ID)
 
@@ -135,6 +143,13 @@ func (s *BackupService) UpdateBackup(ctx context.Context, id string, req *dto.Up
 		return nil, fmt.Errorf("failed to update backup: %w", err)
 	}
 
+	activity.New(s.backupRepo.DB()).
+		WithContext(ctx).
+		UseLog("backup").
+		On(backup).
+		WithEvent("updated").
+		Log("Backup was updated")
+
 	s.logger.Info().
 		Str("backup_id", backup.ID).
 		Msg("Backup updated successfully")
@@ -148,6 +163,13 @@ func (s *BackupService) DeleteBackup(ctx context.Context, id, serverID string) e
 	if err != nil {
 		return err
 	}
+
+	activity.New(s.backupRepo.DB()).
+		WithContext(ctx).
+		UseLog("backup").
+		On(backup).
+		WithEvent("deleted").
+		Log("Backup was deleted")
 
 	// Dispatch deletion job
 	s.dispatchDeleteBackup(serverID, backup.ID)
