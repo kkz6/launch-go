@@ -56,6 +56,14 @@ func (s SiteType) RequiresGitAccount() bool {
 	return s != SiteTypeWordpress
 }
 
+// GetDefaultWebFolder returns the default web folder for the site type
+func (s SiteType) GetDefaultWebFolder() string {
+	if s == SiteTypeWordpress {
+		return "/"
+	}
+	return "public"
+}
+
 func (s *SiteType) Scan(value interface{}) error {
 	if value == nil {
 		*s = ""

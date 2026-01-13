@@ -70,3 +70,27 @@ func parseMultilineToSlice(s string) []string {
 
 	return result
 }
+
+// Update helper functions for building field maps
+
+// addIfSet adds a value to the updates map if the pointer is not nil
+func addIfSet[T any](updates map[string]any, key string, value *T) {
+	if value != nil {
+		updates[key] = *value
+	}
+}
+
+// addHookIfSet adds a hook value with normalized line endings
+func addHookIfSet(updates map[string]any, key string, value *string) {
+	if value != nil {
+		normalized := normalizeLineEndings(*value)
+		updates[key] = &normalized
+	}
+}
+
+// addSliceIfSet adds a multiline string as a slice
+func addSliceIfSet(updates map[string]any, key string, value *string) {
+	if value != nil {
+		updates[key] = parseMultilineToSlice(*value)
+	}
+}
