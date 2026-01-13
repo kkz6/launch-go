@@ -230,71 +230,87 @@ func fixDoubleEncryptedDomainProviders(db *gorm.DB) {
 	log.Printf("✅ Fixed %d/%d domain_providers", fixed, len(providers))
 }
 
-// fixDoubleEncryptedValue attempts to fix double-encrypted data
-// Returns the fixed value and true if it was double-encrypted, or empty string and false otherwise
+// isValidPlaintext checks if data looks like valid plaintext (not encrypted)
+func isValidPlaintext(data string) bool {
+	// SSH keys
+	if strings.HasPrefix(data, "-----BEGIN") {
+		return true
+	}
+	// JSON
+	if strings.HasPrefix(data, "{") || strings.HasPrefix(data, "[") {
+		return true
+	}
+	// Short strings (passwords, tokens) that aren't base64-like
+	// Real passwords are usually < 64 chars and don't look like base64
+	if len(data) <= 64 && !looksLikeBase64(data) {
+		return true
+	}
+	return false
+}
+
+// looksLikeBase64 checks if string looks like base64 encoded data
+func looksLikeBase64(s string) bool {
+	// Base64 strings are usually multiples of 4 and contain only base64 chars
+	if len(s) < 20 {
+		return false
+	}
+	// Check if it's valid base64
+	_, err := base64.StdEncoding.DecodeString(s)
+	return err == nil
+}
+
+// fixDoubleEncryptedValue attempts to fix multi-layer encrypted data
+// Returns the fixed value and true if it was multi-encrypted, or empty string and false otherwise
 func fixDoubleEncryptedValue(encrypted string) (string, bool) {
-	// First, try to decrypt with Go format
-	firstDecrypt, err := serializers.Decrypt(encrypted)
-	if err != nil || firstDecrypt == encrypted {
-		// Not Go encrypted or decryption failed
-		return "", false
-	}
+	// Recursively decrypt until we hit plaintext or can't decrypt anymore
+	current := encrypted
+	decryptCount := 0
+	maxDecrypts := 10 // Safety limit
 
-	// Check if first decryption result is valid content
-	if strings.HasPrefix(firstDecrypt, "-----BEGIN") {
-		// Already valid SSH key after one decryption, not double-encrypted
-		return "", false
-	}
-	if strings.HasPrefix(firstDecrypt, "{") || strings.HasPrefix(firstDecrypt, "[") {
-		// Valid JSON after one decryption
-		return "", false
-	}
+	for decryptCount < maxDecrypts {
+		decrypted, err := serializers.Decrypt(current)
+		if err != nil || decrypted == current {
+			// Can't decrypt further
+			break
+		}
 
-	// Try second Go decryption (double Go-encrypted case)
-	secondDecrypt, err := serializers.Decrypt(firstDecrypt)
-	if err == nil && secondDecrypt != firstDecrypt {
-		// Second decryption worked! Check if result is valid
-		if strings.HasPrefix(secondDecrypt, "-----BEGIN") ||
-			strings.HasPrefix(secondDecrypt, "{") ||
-			strings.HasPrefix(secondDecrypt, "[") ||
-			len(secondDecrypt) > 50 {
-			// Valid content after double decryption - re-encrypt once
-			reEncrypted, err := serializers.Encrypt(secondDecrypt)
-			if err != nil {
-				log.Printf("  Warning: Re-encryption failed: %v", err)
-				return "", false
+		decryptCount++
+		current = decrypted
+
+		// Check if this looks like valid plaintext
+		if isValidPlaintext(current) {
+			break
+		}
+
+		// Also check for Laravel format
+		if jsonData, err := base64.StdEncoding.DecodeString(current); err == nil {
+			var payload LaravelPayload
+			if json.Unmarshal(jsonData, &payload) == nil {
+				// It's Laravel encrypted - decrypt it
+				if laravelDecrypted, err := decryptLaravel(current); err == nil {
+					current = laravelDecrypted
+					decryptCount++
+					if isValidPlaintext(current) {
+						break
+					}
+				}
 			}
-			log.Printf("  Found double Go-encrypted data")
-			return reEncrypted, true
 		}
 	}
 
-	// Check if the result looks like Laravel encrypted data
-	jsonData, err := base64.StdEncoding.DecodeString(firstDecrypt)
-	if err != nil {
+	// If we only decrypted once, it's not multi-encrypted
+	if decryptCount <= 1 {
 		return "", false
 	}
 
-	var payload LaravelPayload
-	if err := json.Unmarshal(jsonData, &payload); err != nil {
-		return "", false
-	}
-
-	// It IS Laravel format inside Go encryption - this is Go wrapping Laravel
-	decrypted, err := decryptLaravel(firstDecrypt)
-	if err != nil {
-		log.Printf("  Warning: Laravel decryption failed: %v", err)
-		return "", false
-	}
-
-	// Re-encrypt with just Go format
-	reEncrypted, err := serializers.Encrypt(decrypted)
+	// Re-encrypt with single layer
+	reEncrypted, err := serializers.Encrypt(current)
 	if err != nil {
 		log.Printf("  Warning: Re-encryption failed: %v", err)
 		return "", false
 	}
 
-	log.Printf("  Found Go-wrapped Laravel data")
+	log.Printf("  Found %d-layer encrypted data", decryptCount)
 	return reEncrypted, true
 }
 

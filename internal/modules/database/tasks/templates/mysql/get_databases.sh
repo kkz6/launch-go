@@ -1,4 +1,4 @@
 #!/bin/bash
 {{ shellDefaults }}
 
-sudo mysql --user="{{ .User }}" --password="{{ .Password }}" -e "SHOW DATABASES;" -s -N
+sudo mysql --user="{{ .User }}" --password="{{ .Password }}" -e "SHOW DATABASES;" -s -N 2>/dev/null

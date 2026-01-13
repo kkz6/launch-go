@@ -7,6 +7,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
+	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/queue"
@@ -69,7 +70,13 @@ func (s *CommandService) Create(ctx context.Context, siteID, serverID, userID st
 		return nil, err
 	}
 
-	// TODO: Dispatch command execution job
+	// Dispatch command execution job
+	task, err := jobs.NewRunCommandTask(site.ID, cmd.ID)
+	if err != nil {
+		s.LogError(err, "Failed to create run command task", "command_id", cmd.ID)
+	} else if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue run command task", "command_id", cmd.ID)
+	}
 
 	s.LogInfo("Command created", "site_id", site.ID, "command_id", cmd.ID)
 
@@ -83,4 +90,32 @@ func (s *CommandService) List(ctx context.Context, siteID, serverID string) ([]m
 	}
 
 	return s.commandRepo.FindBySite(ctx, siteID)
+}
+
+// Delete deletes a command by ID
+func (s *CommandService) Delete(ctx context.Context, siteID, serverID, commandID string) error {
+	// Verify site exists and belongs to server
+	if _, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID); err != nil {
+		return err
+	}
+
+	// Find the command
+	cmd, err := s.commandRepo.FindByID(ctx, commandID)
+	if err != nil {
+		return err
+	}
+
+	// Verify command belongs to the site
+	if cmd.SiteID != siteID {
+		return repositories.ErrCommandNotFound
+	}
+
+	// Delete the command
+	if err := s.commandRepo.Delete(ctx, commandID); err != nil {
+		return err
+	}
+
+	s.LogInfo("Command deleted", "site_id", siteID, "command_id", commandID)
+
+	return nil
 }

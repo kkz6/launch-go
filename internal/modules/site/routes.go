@@ -76,6 +76,7 @@ func (m *Module) registerQueueRoutes(router fiber.Router) {
 func (m *Module) registerCommandRoutes(router fiber.Router) {
 	router.Get("/:id/commands", m.commandHandler.ListCommands)
 	router.Post("/:id/commands", m.commandHandler.CreateCommand)
+	router.Delete("/:id/commands/:commandId", m.commandHandler.DeleteCommand)
 }
 
 // registerRedirectRoutes registers redirect routes

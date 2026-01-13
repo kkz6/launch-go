@@ -1,11 +1,15 @@
 package activity
 
 import (
+	"time"
+
 	"github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 type ActivityLog struct {
-	models.BaseModel
+	ID          uint64         `json:"id" gorm:"primaryKey;autoIncrement"`
+	CreatedAt   time.Time      `json:"created_at"`
+	UpdatedAt   time.Time      `json:"updated_at"`
 	LogName     string         `json:"log_name" gorm:"index;size:255"`
 	Description string         `json:"description" gorm:"type:text"`
 	SubjectType *string        `json:"subject_type" gorm:"index;size:255"`

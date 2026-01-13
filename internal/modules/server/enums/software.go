@@ -232,6 +232,110 @@ func AllDatabaseTypes() []Software {
 	return []Software{SoftwareMySql80, SoftwarePostgreSql16}
 }
 
+// SoftwareGroup represents a group of software with the same service type
+type SoftwareGroup struct {
+	Group      string
+	Label      string
+	Type       ServiceType
+	ImagePath  string
+	Software   []Software
+	HasStart   bool
+	HasStop    bool
+	HasRestart bool
+	HasRemove  bool
+	HasStatus  bool
+}
+
+// GetAllSoftwareGroups returns all software grouped by service type
+func GetAllSoftwareGroups() []SoftwareGroup {
+	return []SoftwareGroup{
+		{
+			Group:      "php",
+			Label:      "PHP",
+			Type:       ServiceTypePhp,
+			ImagePath:  "/images/software/php.svg",
+			Software:   AllPhpVersions(),
+			HasStart:   true,
+			HasStop:    true,
+			HasRestart: true,
+			HasRemove:  true,
+			HasStatus:  true,
+		},
+		{
+			Group:      "mysql",
+			Label:      "MySQL",
+			Type:       ServiceTypeMySql,
+			ImagePath:  "/images/software/mysql.svg",
+			Software:   []Software{SoftwareMySql80},
+			HasStart:   true,
+			HasStop:    true,
+			HasRestart: true,
+			HasRemove:  true,
+			HasStatus:  true,
+		},
+		{
+			Group:      "postgresql",
+			Label:      "PostgreSQL",
+			Type:       ServiceTypePostgreSql,
+			ImagePath:  "/images/software/postgresql.svg",
+			Software:   []Software{SoftwarePostgreSql16},
+			HasStart:   true,
+			HasStop:    true,
+			HasRestart: true,
+			HasRemove:  true,
+			HasStatus:  true,
+		},
+		{
+			Group:      "redis",
+			Label:      "Redis",
+			Type:       ServiceTypeRedis,
+			ImagePath:  "/images/software/redis.svg",
+			Software:   []Software{SoftwareRedis},
+			HasStart:   true,
+			HasStop:    true,
+			HasRestart: true,
+			HasRemove:  true,
+			HasStatus:  true,
+		},
+		{
+			Group:      "supervisor",
+			Label:      "Supervisor",
+			Type:       ServiceTypeSupervisor,
+			ImagePath:  "/images/software/supervisor.svg",
+			Software:   []Software{SoftwareSupervisor},
+			HasStart:   true,
+			HasStop:    true,
+			HasRestart: true,
+			HasRemove:  true,
+			HasStatus:  true,
+		},
+		{
+			Group:      "node",
+			Label:      "Node.js",
+			Type:       ServiceTypeNode,
+			ImagePath:  "/images/software/nodejs.svg",
+			Software:   []Software{SoftwareNode21},
+			HasStart:   false,
+			HasStop:    false,
+			HasRestart: false,
+			HasRemove:  true,
+			HasStatus:  false,
+		},
+		{
+			Group:      "bun",
+			Label:      "Bun",
+			Type:       ServiceTypeBun,
+			ImagePath:  "/images/software/bun.svg",
+			Software:   []Software{SoftwareBun},
+			HasStart:   false,
+			HasStop:    false,
+			HasRestart: false,
+			HasRemove:  true,
+			HasStatus:  false,
+		},
+	}
+}
+
 // LogPath returns the log file path for the software
 func (s Software) LogPath() string {
 	paths := map[Software]string{

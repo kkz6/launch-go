@@ -667,6 +667,119 @@ type ServerProviderResponse struct {
 	CreatedAt string `json:"created_at"`
 }
 
+// PhpVersionResponse represents a PHP version with installation status
+type PhpVersionResponse struct {
+	Key         string           `json:"key"`
+	DisplayName string           `json:"display_name"`
+	Version     string           `json:"version"`
+	IsInstalled bool             `json:"is_installed"`
+	IsDefault   bool             `json:"is_default"`
+	Details     *ServiceResponse `json:"details,omitempty"`
+}
+
+// OpcacheStatusResponse represents the OPcache status
+type OpcacheStatusResponse struct {
+	Enabled          bool                    `json:"enabled"`
+	CacheFull        bool                    `json:"cache_full"`
+	RestartPending   bool                    `json:"restart_pending"`
+	RestartInProgress bool                   `json:"restart_in_progress"`
+	Memory           *OpcacheMemoryStatus    `json:"memory,omitempty"`
+	Statistics       *OpcacheStatistics      `json:"statistics,omitempty"`
+	InternedStrings  *OpcacheInternedStrings `json:"interned_strings,omitempty"`
+	JIT              *OpcacheJITStatus       `json:"jit,omitempty"`
+	Scripts          []OpcacheScript         `json:"scripts,omitempty"`
+	Directives       map[string]interface{}  `json:"directives,omitempty"`
+	Error            string                  `json:"error,omitempty"`
+}
+
+// OpcacheMemoryStatus represents OPcache memory usage
+type OpcacheMemoryStatus struct {
+	UsedMemory       int64   `json:"used_memory"`
+	FreeMemory       int64   `json:"free_memory"`
+	WastedMemory     int64   `json:"wasted_memory"`
+	CurrentWastedPct float64 `json:"current_wasted_percentage"`
+}
+
+// OpcacheStatistics represents OPcache statistics
+type OpcacheStatistics struct {
+	NumCachedScripts   int     `json:"num_cached_scripts"`
+	NumCachedKeys      int     `json:"num_cached_keys"`
+	MaxCachedKeys      int     `json:"max_cached_keys"`
+	Hits               int64   `json:"hits"`
+	Misses             int64   `json:"misses"`
+	BlacklistMisses    int64   `json:"blacklist_misses"`
+	BlacklistMissRatio float64 `json:"blacklist_miss_ratio"`
+	OomRestarts        int     `json:"oom_restarts"`
+	HashRestarts       int     `json:"hash_restarts"`
+	ManualRestarts     int     `json:"manual_restarts"`
+	HitRate            float64 `json:"hit_rate"`
+}
+
+// OpcacheInternedStrings represents interned strings buffer info
+type OpcacheInternedStrings struct {
+	BufferSize      int64 `json:"buffer_size"`
+	UsedMemory      int64 `json:"used_memory"`
+	FreeMemory      int64 `json:"free_memory"`
+	NumberOfStrings int   `json:"number_of_strings"`
+}
+
+// OpcacheJITStatus represents JIT status
+type OpcacheJITStatus struct {
+	Enabled    bool   `json:"enabled"`
+	On         bool   `json:"on"`
+	Kind       int    `json:"kind"`
+	OptLevel   int    `json:"opt_level"`
+	OptFlags   int    `json:"opt_flags"`
+	BufferSize int64  `json:"buffer_size"`
+	BufferFree int64  `json:"buffer_free"`
+}
+
+// OpcacheScript represents a cached script
+type OpcacheScript struct {
+	FullPath         string `json:"full_path"`
+	Hits             int64  `json:"hits"`
+	MemoryConsumption int64  `json:"memory_consumption"`
+	LastUsedTimestamp int64  `json:"last_used_timestamp"`
+}
+
+// OpcacheDefaultsResponse represents the default OPcache settings
+type OpcacheDefaultsResponse struct {
+	Enabled               bool   `json:"enabled"`
+	EnableCLI             bool   `json:"enable_cli"`
+	MemoryConsumption     int    `json:"memory_consumption"`
+	InternedStringsBuffer int    `json:"interned_strings_buffer"`
+	MaxAcceleratedFiles   int    `json:"max_accelerated_files"`
+	ValidateTimestamps    bool   `json:"validate_timestamps"`
+	RevalidateFreq        int    `json:"revalidate_freq"`
+	SaveComments          bool   `json:"save_comments"`
+	JITEnabled            bool   `json:"jit_enabled"`
+	JITBufferSize         string `json:"jit_buffer_size"`
+	JITMode               string `json:"jit_mode"`
+}
+
+// GetDefaultOpcacheSettings returns the default OPcache settings
+func GetDefaultOpcacheSettings() OpcacheDefaultsResponse {
+	return OpcacheDefaultsResponse{
+		Enabled:               true,
+		EnableCLI:             false,
+		MemoryConsumption:     128,
+		InternedStringsBuffer: 16,
+		MaxAcceleratedFiles:   10000,
+		ValidateTimestamps:    true,
+		RevalidateFreq:        2,
+		SaveComments:          true,
+		JITEnabled:            false,
+		JITBufferSize:         "100M",
+		JITMode:               "tracing",
+	}
+}
+
+// ComposerAuthResponse represents the Composer auth.json configuration
+type ComposerAuthResponse struct {
+	Path     string      `json:"path"`
+	Contents interface{} `json:"contents"`
+}
+
 // ToServerProviderResponse converts a ServerProvider model to response
 func ToServerProviderResponse(sp *models.ServerProvider) ServerProviderResponse {
 	createdAt := ""

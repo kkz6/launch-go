@@ -44,8 +44,20 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 
 		// Services
 		servers.Get("/:id/services", m.handler.ListServices)
+		servers.Get("/:id/services/create", m.handler.GetAvailableServices)
 		servers.Post("/:id/services", m.handler.InstallService)
 		servers.Post("/:id/services/:serviceId", m.handler.ServiceOperation)
+
+		// PHP
+		servers.Get("/:id/php", m.handler.ListPhpVersions)
+		servers.Get("/:id/php/opcache/defaults", m.handler.GetOpcacheDefaults)
+		servers.Get("/:id/php/:phpId/opcache/status", m.handler.GetOpcacheStatus)
+		servers.Post("/:id/php/:phpId/opcache/reset", m.handler.ResetOpcache)
+		servers.Post("/:id/php/:phpId/opcache/configure", m.handler.ConfigureOpcache)
+
+		// Composer Packages
+		servers.Get("/:id/packages", m.handler.GetComposerAuth)
+		servers.Put("/:id/packages", m.handler.UpdateComposerAuth)
 
 		// Firewall Rules
 		servers.Get("/:id/firewall-rules", m.handler.ListFirewallRules)

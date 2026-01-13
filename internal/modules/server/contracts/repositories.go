@@ -36,6 +36,7 @@ type ServiceRepository interface {
 	CreateService(ctx context.Context, service *models.InstalledService) error
 	FindServiceByID(ctx context.Context, id string) (*models.InstalledService, error)
 	FindServicesByServer(ctx context.Context, serverID string) ([]models.InstalledService, error)
+	FindServicesByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) ([]models.InstalledService, error)
 	FindServiceByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) (*models.InstalledService, error)
 	FindServiceByServerAndSoftware(ctx context.Context, serverID string, software enums.Software) (*models.InstalledService, error)
 	FindDatabaseService(ctx context.Context, serverID string) (*models.InstalledService, error)

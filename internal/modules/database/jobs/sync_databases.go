@@ -10,7 +10,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 var protectedMySQLDatabases = []string{
@@ -137,59 +136,24 @@ func (j *SyncDatabasesJob) getDatabaseServiceType(server *servermodels.Server) e
 }
 
 func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *servermodels.Server, dbType enums.ServiceType) ([]string, error) {
-	var task taskrunner.Task
+	factory := dbtasks.NewFactory(dbType)
+	task := factory.GetDatabases(dbtasks.GetDatabasesConfig{
+		AdminUser:     "root",
+		AdminPassword: server.DatabasePassword.String(),
+	})
 
-	switch dbType {
-	case enums.ServiceTypeMySql:
-		task = dbtasks.MySQLGetDatabases(dbtasks.MySQLGetDatabasesConfig{})
-	case enums.ServiceTypePostgreSql:
-		task = dbtasks.PostgreSQLGetDatabases()
-	default:
-		return nil, fmt.Errorf("unsupported database type: %s", dbType)
-	}
-
-	pt, err := j.createPendingTask(server, task)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create pending task: %w", err)
-	}
-
-	result, err := j.Dispatcher.Run(ctx, pt)
+	result, err := j.RunTaskOnServer(server, task).AsRoot().Run(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run get databases task: %w", err)
 	}
 
-	if result.ExitCode != 0 {
-		return nil, fmt.Errorf("get databases command failed with exit code %d: %s", result.ExitCode, result.Output)
+	if !result.IsSuccessful() {
+		return nil, fmt.Errorf("get databases command failed with exit code %d: %s", result.GetExitCode(), result.GetOutput())
 	}
 
-	databases := parseLines(result.Output)
+	databases := parseLines(result.GetOutput())
 
 	return databases, nil
-}
-
-func (j *SyncDatabasesJob) createPendingTask(server *servermodels.Server, task taskrunner.Task) (*taskrunner.PendingTask, error) {
-	if server.PrivateKey.IsEmpty() {
-		return nil, fmt.Errorf("server has no private key configured")
-	}
-
-	publicIP := ""
-	if server.PublicIPv4 != nil {
-		publicIP = *server.PublicIPv4
-	}
-
-	if publicIP == "" {
-		return nil, fmt.Errorf("server has no public IP configured")
-	}
-
-	return &taskrunner.PendingTask{
-		Task: task,
-		Connection: &taskrunner.Connection{
-			Host:       publicIP,
-			Port:       server.GetSSHPort(),
-			User:       server.GetUsername(),
-			PrivateKey: server.PrivateKey.String(),
-		},
-	}, nil
 }
 
 func (j *SyncDatabasesJob) Failed(ctx context.Context, err error) {

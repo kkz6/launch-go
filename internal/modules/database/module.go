@@ -1,6 +1,7 @@
 package database
 
 import (
+	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
@@ -19,6 +20,7 @@ import (
 var (
 	_ app.Module         = (*Module)(nil)
 	_ app.RouteRegistrar = (*Module)(nil)
+	_ app.JobRegistrar   = (*Module)(nil)
 )
 
 // Module represents the database module
@@ -73,6 +75,18 @@ func NewModuleFromContext(ctx *app.Context) *Module {
 // Name returns the module name (implements app.Module)
 func (m *Module) Name() string {
 	return "database"
+}
+
+// RegisterJobs registers background job handlers (implements app.JobRegistrar)
+func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
+	// Initialize the job context for this module
+	jobContext := jobs.NewJobContext(m.db, m.repo, m.logger, m.ws, m.dispatcher, m.queue)
+	jobs.SetJobContext(jobContext)
+
+	// Create kernel and register jobs
+	kernel := pkgjobs.NewKernel(m.db, m.logger, m.ws)
+	kernel.RegisterModule(jobs.Register)
+	kernel.Boot(mux)
 }
 
 // RegisterJobsWithRegistry registers jobs using the Handler interface pattern.

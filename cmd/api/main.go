@@ -18,6 +18,7 @@ import (
 	"github.com/kkz6/launch-go/internal/database"
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/auth"
+	"github.com/kkz6/launch-go/internal/modules/backup"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/dns"
 	"github.com/kkz6/launch-go/internal/modules/server"
@@ -131,6 +132,7 @@ func (a *Application) registerModules() {
 		Register(databasemodule.NewModuleFromContext(ctx)).
 		Register(site.NewModuleFromContext(ctx)).
 		Register(dns.NewModuleFromContext(ctx)).
+		Register(backup.NewModuleFromContext(ctx)).
 		Register(wsmodule.NewModuleFromContext(ctx))
 
 	api := a.fiber.Group("/api")

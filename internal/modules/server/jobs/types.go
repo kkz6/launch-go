@@ -20,6 +20,7 @@ const (
 	TypeUpdateConnectivity  = "server:update_connectivity"
 	TypeArchiveServer       = "server:archive"
 	TypeUnarchiveServer     = "server:unarchive"
+	TypeConfigureOpcache    = "server:configure_opcache"
 )
 
 type CreateOnProviderPayload struct {
@@ -132,4 +133,10 @@ type ArchiveServerPayload struct {
 type UnarchiveServerPayload struct {
 	ServerID string  `json:"server_id"`
 	UserID   *string `json:"user_id,omitempty"`
+}
+
+type ConfigureOpcachePayload struct {
+	ServerID  string            `json:"server_id"`
+	ServiceID string            `json:"service_id"`
+	Settings  map[string]string `json:"settings"`
 }

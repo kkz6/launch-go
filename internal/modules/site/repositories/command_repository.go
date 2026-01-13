@@ -24,20 +24,25 @@ func NewCommandRepository(db *gorm.DB) *CommandRepository {
 
 // FindByID finds a command by ID with custom error.
 func (r *CommandRepository) FindByID(ctx context.Context, id string) (*models.Command, error) {
-	cmd, err := r.Base.FindByID(ctx, id)
+	var cmd models.Command
+	err := r.DB.WithContext(ctx).
+		Preload("User").
+		Where("id = ?", id).
+		First(&cmd).Error
 	if err != nil {
 		if repository.IsNotFound(err) {
 			return nil, ErrCommandNotFound
 		}
 		return nil, err
 	}
-	return cmd, nil
+	return &cmd, nil
 }
 
 // FindBySite finds all commands for a site
 func (r *CommandRepository) FindBySite(ctx context.Context, siteID string) ([]models.Command, error) {
 	var cmds []models.Command
 	err := r.DB.WithContext(ctx).
+		Preload("User").
 		Where("site_id = ?", siteID).
 		Order("created_at DESC").
 		Find(&cmds).Error

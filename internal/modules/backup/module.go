@@ -10,8 +10,15 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
+	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
+)
+
+// Ensure Module implements required interfaces
+var (
+	_ app.Module         = (*Module)(nil)
+	_ app.RouteRegistrar = (*Module)(nil)
 )
 
 // Module represents the backup module
@@ -31,6 +38,16 @@ type Module struct {
 	backupRepo          *repositories.BackupRepository
 	backupJobRepo       *repositories.BackupJobRepository
 	storageProviderRepo *repositories.StorageProviderRepository
+}
+
+// NewModuleFromContext creates a new backup module from app context
+func NewModuleFromContext(ctx *app.Context) *Module {
+	return NewModule(ctx.DB, ctx.Queue, ctx.WebSocket, ctx.Logger)
+}
+
+// Name returns the module name (implements app.Module)
+func (m *Module) Name() string {
+	return "backup"
 }
 
 // NewModule creates a new backup module
