@@ -17,6 +17,7 @@ import (
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // TerminalResizeMessage represents a terminal resize request
@@ -107,25 +108,22 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 			return
 		}
 
-		// Get SSH connection details
-		sshHost := server.PublicIPv4
-		if sshHost == nil || *sshHost == "" {
+		// Get SSH connection using the server's connection method
+		var conn *taskrunner.Connection
+		if username == "root" {
+			conn = server.ConnectionAsRoot()
+		} else {
+			conn = server.ConnectionAsUser()
+		}
+
+		if conn.Host == "" {
 			h.logger.Error().Str("server_id", serverID).Msg("Server has no public IP")
 			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Server has no public IP\x1b[0m\r\n"))
 			c.Close()
 			return
 		}
 
-		sshPort := server.GetSSHPort()
-
-		// Determine SSH username
-		sshUsername := "launcher"
-		if username == "root" {
-			sshUsername = "root"
-		}
-
-		// Get private key
-		if server.PrivateKey.IsEmpty() {
+		if conn.PrivateKey == "" {
 			h.logger.Error().Str("server_id", serverID).Msg("Server has no SSH key")
 			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ No SSH key configured\x1b[0m\r\n"))
 			c.Close()
@@ -133,7 +131,7 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 		}
 
 		// Establish SSH connection
-		h.handleSSHConnection(c, *sshHost, sshPort, sshUsername, server.PrivateKey.String(), server.Name, sitePath)
+		h.handleSSHConnection(c, conn.Host, conn.Port, conn.User, conn.PrivateKey, server.Name, sitePath)
 	})
 }
 

@@ -50,6 +50,24 @@ func (j *JSONMap) Scan(value interface{}) error {
 		return nil
 	}
 
+	// Handle case where database contains an array instead of an object
+	// This can happen with legacy data or empty arrays stored as "[]"
+	var raw json.RawMessage
+	if err := json.Unmarshal(bytes, &raw); err != nil {
+		return err
+	}
+
+	// Check if it's an array (starts with '[')
+	trimmed := bytes
+	for len(trimmed) > 0 && (trimmed[0] == ' ' || trimmed[0] == '\t' || trimmed[0] == '\n' || trimmed[0] == '\r') {
+		trimmed = trimmed[1:]
+	}
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		// It's an array - treat as nil/empty map
+		*j = nil
+		return nil
+	}
+
 	return json.Unmarshal(bytes, j)
 }
 

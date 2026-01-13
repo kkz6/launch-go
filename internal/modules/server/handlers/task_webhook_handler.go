@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
@@ -101,7 +102,7 @@ func (h *TaskWebhookHandler) MarkAsFailed(c *fiber.Ctx) error {
 	task.Status = "failed"
 	task.ExitCode = &exitCode
 	if body.Output != "" {
-		task.Output = &body.Output
+		task.Output = basemodels.EncryptedString(body.Output)
 	}
 
 	if err := h.repo.UpdateTask(ctx, task); err != nil {

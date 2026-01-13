@@ -71,8 +71,8 @@ func (r *TaskRunnerResult) GetOutput() string {
 	if r.TaskResult != nil {
 		return r.TaskResult.Output
 	}
-	if r.TaskModel != nil && r.TaskModel.Output != nil {
-		return *r.TaskModel.Output
+	if r.TaskModel != nil && !r.TaskModel.Output.IsEmpty() {
+		return r.TaskModel.Output.String()
 	}
 	return ""
 }

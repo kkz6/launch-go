@@ -447,6 +447,12 @@ type TaskResponse struct {
 
 // ToTaskResponse converts a Task model to a TaskResponse DTO
 func ToTaskResponse(task *models.Task) TaskResponse {
+	var output *string
+	if !task.Output.IsEmpty() {
+		s := task.Output.String()
+		output = &s
+	}
+
 	createdAt := ""
 	if task.CreatedAt != nil {
 		createdAt = task.CreatedAt.Format(time.RFC3339)
@@ -459,7 +465,7 @@ func ToTaskResponse(task *models.Task) TaskResponse {
 		Status:    task.Status,
 		Name:      task.Name,
 		User:      task.User,
-		Output:    task.Output,
+		Output:    output,
 		ExitCode:  task.ExitCode,
 		CreatedAt: createdAt,
 	}
