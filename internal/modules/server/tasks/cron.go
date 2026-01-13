@@ -8,6 +8,8 @@ import (
 type UploadCronConfig struct {
 	Path     string
 	Contents string
+	LogPath  string
+	User     string
 }
 
 // UploadCron creates a task to upload a cron file to the server
@@ -15,11 +17,20 @@ func UploadCron(config UploadCronConfig) *taskrunner.BaseTask {
 	script := `#!/bin/bash
 set -euo pipefail
 
+# Upload cron file
 cat > "` + config.Path + `" << 'CRONEOF'
 ` + config.Contents + `
 CRONEOF
 
 chmod 644 "` + config.Path + `"
+
+# Create empty log file if it doesn't exist
+if [ ! -f "` + config.LogPath + `" ]; then
+    touch "` + config.LogPath + `"
+    chown ` + config.User + `:` + config.User + ` "` + config.LogPath + `"
+    chmod 644 "` + config.LogPath + `"
+fi
+
 echo "Cron file uploaded successfully"
 `
 	return taskrunner.NewBaseTask(
