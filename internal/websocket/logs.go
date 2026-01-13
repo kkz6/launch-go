@@ -15,6 +15,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/modules/site/support"
 )
 
 // LogsHandler handles WebSocket log streaming connections
@@ -42,6 +43,7 @@ func (h *LogsHandler) Handler() fiber.Handler {
 		entity := c.Query("entity", "server")
 		entityID := c.Query("entityId")
 		software := c.Query("software")
+		route := c.Query("route") // encrypted file route for site logs
 		tailStr := c.Query("tail", "100")
 		search := c.Query("search")
 		logType := c.Query("type", "output")
@@ -83,26 +85,55 @@ func (h *LogsHandler) Handler() fiber.Handler {
 
 		switch entity {
 		case "server":
-			// Server-level logs based on software
-			sw := enums.Software(software)
-			if sw.HasLogPath() {
-				logFilePath = sw.LogPath()
+			// Server-level logs - use route parameter if provided
+			if route != "" {
+				// Decode the encrypted route parameter to get the file path
+				routeData, err := support.DecodeFileRouteParam(route)
+				if err != nil {
+					h.logger.Error().Err(err).Msg("Failed to decode route parameter")
+					c.WriteMessage(websocket.TextMessage, []byte("Invalid route parameter"))
+					c.Close()
+					return
+				}
+				logFilePath = routeData.Path
+			} else if software != "" {
+				// Fallback to old behavior using software parameter
+				sw := enums.Software(software)
+				if sw.HasLogPath() {
+					logFilePath = sw.LogPath()
+				} else {
+					c.WriteMessage(websocket.TextMessage, []byte("Unknown software type"))
+					c.Close()
+					return
+				}
 			} else {
-				c.WriteMessage(websocket.TextMessage, []byte("Unknown software type"))
+				c.WriteMessage(websocket.TextMessage, []byte("Missing route or software parameter"))
 				c.Close()
 				return
 			}
 
 		case "site":
-			// Site-level logs
-			var site siteModels.Site
-			if err := h.db.Where("id = ? AND server_id = ?", entityID, serverID).First(&site).Error; err != nil {
-				c.WriteMessage(websocket.TextMessage, []byte("Site not found"))
-				c.Close()
-				return
+			// Site-level logs - use route parameter if provided
+			if route != "" {
+				// Decode the encrypted route parameter to get the file path
+				routeData, err := support.DecodeFileRouteParam(route)
+				if err != nil {
+					h.logger.Error().Err(err).Msg("Failed to decode route parameter")
+					c.WriteMessage(websocket.TextMessage, []byte("Invalid route parameter"))
+					c.Close()
+					return
+				}
+				logFilePath = routeData.Path
+			} else {
+				// Fallback to old behavior using software parameter
+				var site siteModels.Site
+				if err := h.db.Where("id = ? AND server_id = ?", entityID, serverID).First(&site).Error; err != nil {
+					c.WriteMessage(websocket.TextMessage, []byte("Site not found"))
+					c.Close()
+					return
+				}
+				logFilePath = h.getSiteLogPath(&site, software, logType)
 			}
-			// Site logs are typically in the site's logs directory
-			logFilePath = h.getSiteLogPath(&site, software, logType)
 
 		case "queue", "daemon", "cron":
 			// These entities have their own log paths stored in the database
@@ -220,8 +251,8 @@ func (h *LogsHandler) streamTaskOutput(c *websocket.Conn, taskID, serverID strin
 
 	// If task is finished, just send the output and close
 	if task.Status == "finished" || task.Status == "failed" {
-		if task.Output != nil {
-			c.WriteMessage(websocket.TextMessage, []byte(*task.Output))
+		if !task.Output.IsEmpty() {
+			c.WriteMessage(websocket.TextMessage, []byte(task.Output.String()))
 		}
 		c.Close()
 		return
@@ -229,26 +260,27 @@ func (h *LogsHandler) streamTaskOutput(c *websocket.Conn, taskID, serverID strin
 
 	// For running tasks, we'd need to stream from the log file
 	// For now, send current output
-	if task.Output != nil {
-		c.WriteMessage(websocket.TextMessage, []byte(*task.Output))
+	if !task.Output.IsEmpty() {
+		c.WriteMessage(websocket.TextMessage, []byte(task.Output.String()))
 	}
 	c.Close()
 }
 
 func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server, logFilePath string, tail int, search string) {
-	// Get SSH connection details
-	if server.PublicIPv4 == nil || *server.PublicIPv4 == "" {
+	// Get SSH connection config using the server's connection method
+	sshConfig := server.ConnectionAsRoot()
+	if sshConfig.Host == "" {
 		c.WriteMessage(websocket.TextMessage, []byte("Server has no public IP"))
 		return
 	}
 
-	if server.PrivateKey.IsEmpty() {
+	if sshConfig.PrivateKey == "" {
 		c.WriteMessage(websocket.TextMessage, []byte("No SSH key configured"))
 		return
 	}
 
 	// Parse private key
-	signer, err := ssh.ParsePrivateKey([]byte(server.PrivateKey))
+	signer, err := ssh.ParsePrivateKey([]byte(sshConfig.PrivateKey))
 	if err != nil {
 		h.logger.Error().Err(err).Msg("Failed to parse private key")
 		c.WriteMessage(websocket.TextMessage, []byte("Invalid SSH key"))
@@ -257,7 +289,7 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 
 	// SSH client config - use root for reading log files
 	config := &ssh.ClientConfig{
-		User: "root",
+		User: sshConfig.User,
 		Auth: []ssh.AuthMethod{
 			ssh.PublicKeys(signer),
 		},
@@ -266,7 +298,7 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 	}
 
 	// Connect to SSH server
-	addr := fmt.Sprintf("%s:%d", *server.PublicIPv4, server.GetSSHPort())
+	addr := fmt.Sprintf("%s:%d", sshConfig.Host, sshConfig.Port)
 	conn, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
 		h.logger.Error().Err(err).Str("addr", addr).Msg("Failed to connect to SSH")
