@@ -54,7 +54,7 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, dispat
 	}
 
 	handler := handlers.NewHandler(service, taskRunnerDeps)
-	webhookHandler := handlers.NewTaskWebhookHandler(repo, webhookSecretKey)
+	webhookHandler := handlers.NewTaskWebhookHandler(repo, webhookSecretKey, queueClient, logger)
 	provisionScriptHandler := handlers.NewProvisionScriptHandler(repo, service)
 
 	return &Module{

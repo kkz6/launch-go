@@ -24,12 +24,18 @@ CRONEOF
 
 chmod 644 "` + config.Path + `"
 
-# Create empty log file if it doesn't exist
+# Create .launch directory and empty log file if they don't exist
+LOG_DIR=$(dirname "` + config.LogPath + `")
+mkdir -p "$LOG_DIR"
+
 if [ ! -f "` + config.LogPath + `" ]; then
     touch "` + config.LogPath + `"
     chown ` + config.User + `:` + config.User + ` "` + config.LogPath + `"
     chmod 644 "` + config.LogPath + `"
 fi
+
+# Ensure directory ownership
+chown ` + config.User + `:` + config.User + ` "$LOG_DIR"
 
 echo "Cron file uploaded successfully"
 `

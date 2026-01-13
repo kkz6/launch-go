@@ -36,8 +36,11 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 
 	// Upload daemon config to server
 	uploadTask := tasks.UploadDaemon(tasks.UploadDaemonConfig{
-		Path:     daemon.Path(),
-		Contents: contents,
+		Path:         daemon.Path(),
+		Contents:     contents,
+		LogPath:      daemon.GetLogPath(),
+		ErrorLogPath: daemon.GetErrorLogPath(),
+		User:         daemon.User,
 	})
 
 	result, err := j.RunTaskOnServer(daemon.Server, uploadTask).

@@ -84,19 +84,31 @@ func (d *Daemon) SetInfo(info map[string]interface{}) error {
 }
 
 // GetLogPath returns the path to the output log file
+// Requires Server to be preloaded for working_directory
 func (d *Daemon) GetLogPath() string {
-	if d.User == "root" {
-		return fmt.Sprintf("/root/daemon-%s.log", d.ID)
+	workingDir := ".launch"
+	if d.Server != nil && d.Server.WorkingDirectory != nil && *d.Server.WorkingDirectory != "" {
+		workingDir = *d.Server.WorkingDirectory
 	}
-	return fmt.Sprintf("/home/%s/daemon-%s.log", d.User, d.ID)
+
+	if d.User == "root" || d.User == "ubuntu" {
+		return fmt.Sprintf("/%s/%s/daemon-%s.log", d.User, workingDir, d.ID)
+	}
+	return fmt.Sprintf("/home/%s/%s/daemon-%s.log", d.User, workingDir, d.ID)
 }
 
 // GetErrorLogPath returns the path to the error log file
+// Requires Server to be preloaded for working_directory
 func (d *Daemon) GetErrorLogPath() string {
-	if d.User == "root" {
-		return fmt.Sprintf("/root/daemon-%s.err", d.ID)
+	workingDir := ".launch"
+	if d.Server != nil && d.Server.WorkingDirectory != nil && *d.Server.WorkingDirectory != "" {
+		workingDir = *d.Server.WorkingDirectory
 	}
-	return fmt.Sprintf("/home/%s/daemon-%s.err", d.User, d.ID)
+
+	if d.User == "root" || d.User == "ubuntu" {
+		return fmt.Sprintf("/%s/%s/daemon-%s.err", d.User, workingDir, d.ID)
+	}
+	return fmt.Sprintf("/home/%s/%s/daemon-%s.err", d.User, workingDir, d.ID)
 }
 
 // ProgramName returns the supervisor program name
