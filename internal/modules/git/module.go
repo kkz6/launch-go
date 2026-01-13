@@ -2,11 +2,13 @@ package git
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/handlers"
+	"github.com/kkz6/launch-go/internal/modules/git/jobs"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/repositories"
@@ -16,6 +18,10 @@ import (
 
 // Module represents the git module
 type Module struct {
+	db              *gorm.DB
+	logger          *zerolog.Logger
+	scRepo          *repositories.SourceControlRepository
+	queueClient     *queue.Client
 	handler         *handlers.SourceControlHandler
 	webhookHandler  *handlers.WebhookHandler
 	service         *services.SourceControlService
@@ -63,6 +69,10 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, logger *zerolog.Logger, c
 	webhookHandler := handlers.NewWebhookHandler(service, providerFactory, logger)
 
 	return &Module{
+		db:              db,
+		logger:          logger,
+		scRepo:          scRepo,
+		queueClient:     queueClient,
 		handler:         handler,
 		webhookHandler:  webhookHandler,
 		service:         service,
@@ -155,6 +165,23 @@ func (m *Module) Service() *services.SourceControlService {
 // ProviderFactory returns the provider factory
 func (m *Module) ProviderFactory() *providers.ProviderFactory {
 	return m.providerFactory
+}
+
+// RegisterJobs registers background job handlers
+func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
+	// Set up job context
+	jobContext := jobs.NewJobContext(
+		m.db,
+		m.logger,
+		m.service,
+		m.providerFactory,
+		m.scRepo,
+		m.queueClient,
+	)
+	jobs.SetJobContext(jobContext)
+
+	// Register job handlers
+	jobs.RegisterHandlers(mux)
 }
 
 // AutoMigrate runs auto-migration for git models
