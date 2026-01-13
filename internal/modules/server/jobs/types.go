@@ -3,6 +3,7 @@ package jobs
 
 // Job type constants - these identify each job type in the queue
 const (
+	TypeCreateOnProvider    = "server:create_on_provider"
 	TypeProvisionServer     = "server:provision"
 	TypeDeleteServer        = "server:delete"
 	TypeRebootServer        = "server:reboot"
@@ -22,6 +23,15 @@ const (
 	TypeArchiveServer       = "server:archive"
 	TypeUnarchiveServer     = "server:unarchive"
 )
+
+// CreateOnProviderPayload is the payload for creating a server on the cloud provider
+type CreateOnProviderPayload struct {
+	ServerID         string   `json:"server_id"`
+	TeamID           string   `json:"team_id"`
+	UserID           *string  `json:"user_id,omitempty"`
+	SSHKeyIDs        []string `json:"ssh_key_ids,omitempty"`
+	ServerProviderID string   `json:"server_provider_id,omitempty"`
+}
 
 // ProvisionServerPayload is the payload for the provision server job
 type ProvisionServerPayload struct {

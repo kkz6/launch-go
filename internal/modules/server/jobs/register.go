@@ -23,6 +23,7 @@ func SetJobContext(ctx *JobContext) {
 //	kernel.RegisterModule(serverjobs.Register)
 func Register(r *jobs.Registry) {
 	// Server lifecycle jobs
+	r.Register(TypeCreateOnProvider, newCreateOnProviderJob)
 	r.Register(TypeProvisionServer, newProvisionServerJob)
 	r.Register(TypeDeleteServer, newDeleteServerJob)
 	r.Register(TypeRebootServer, newRebootServerJob)
@@ -54,6 +55,16 @@ func Register(r *jobs.Registry) {
 }
 
 // Factory functions for each job type
+
+func newCreateOnProviderJob(t *asynq.Task) (jobs.Handler, error) {
+	payload, err := jobs.ParsePayload[CreateOnProviderPayload](t)
+	if err != nil {
+		return nil, err
+	}
+	job := &CreateOnProviderJob{Payload: payload}
+	job.SetContext(jobContext)
+	return job, nil
+}
 
 func newProvisionServerJob(t *asynq.Task) (jobs.Handler, error) {
 	payload, err := jobs.ParsePayload[ProvisionServerPayload](t)

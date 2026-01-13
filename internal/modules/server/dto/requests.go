@@ -12,6 +12,7 @@ type CreateServerRequest struct {
 	PHPVersion      string  `json:"php_version" validate:"omitempty,oneof=5.6 7.0 7.1 7.2 7.3 7.4 8.0 8.1 8.2 8.3 8.4"`
 	DatabaseType    string  `json:"database_type" validate:"omitempty,oneof=mysql80 postgresql16"`
 	CredentialID    string  `json:"credential_id" validate:"required_unless=Provider custom_server,omitempty,ulid"`
+	SSHKeyIDs       []string `json:"ssh_key_ids" validate:"omitempty"`
 
 	// For custom servers
 	IPAddress  string `json:"ip_address" validate:"required_if=Provider custom_server,omitempty,ip"`

@@ -62,7 +62,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		}
 	}
 
-	privateKey, publicKey, err := generateSSHKeyPair()
+	privateKey, publicKey, err := GenerateSSHKeyPair()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate SSH key pair: %w", err)
 	}
@@ -104,13 +104,22 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 	workingDir := ".launch"
 	server.WorkingDirectory = &workingDir
 
+	// Set provider data for cloud servers
+	if provider != enums.ProviderCustom {
+		server.ServerProviderID = &req.CredentialID
+		server.ProviderData = map[string]interface{}{
+			"region": req.Region,
+			"plan":   req.Size,
+		}
+	}
+
 	if err := s.repo.CreateServer(ctx, server); err != nil {
 		return nil, fmt.Errorf("failed to create server: %w", err)
 	}
 
 	if provider != enums.ProviderCustom {
-		if err := s.dispatchProvisionJob(server); err != nil {
-			s.LogError(err, "Failed to dispatch provision job", "server_id", server.ID)
+		if err := s.dispatchCreateOnProviderJob(server, req.CredentialID, req.SSHKeyIDs); err != nil {
+			s.LogError(err, "Failed to dispatch create on provider job", "server_id", server.ID)
 		}
 	}
 
@@ -327,12 +336,25 @@ func (s *Service) broadcastServerUpdate(server *models.Server) {
 	s.BroadcastToTeam(server.TeamID, "server.updated", dto.ToServerResponse(server))
 }
 
-func (s *Service) dispatchProvisionJob(server *models.Server) error {
+func (s *Service) dispatchProvisionJob(server *models.Server, sshKeyIDs []string) error {
 	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewProvisionServerTask(server.ID, server.TeamID, nil, nil)
+	task, err := jobs.NewProvisionServerTask(server.ID, server.TeamID, nil, sshKeyIDs)
+	if err != nil {
+		return err
+	}
+
+	return s.EnqueueTaskWithOptions(task)
+}
+
+func (s *Service) dispatchCreateOnProviderJob(server *models.Server, serverProviderID string, sshKeyIDs []string) error {
+	if !s.HasQueue() {
+		return ErrQueueNotConfigured
+	}
+
+	task, err := jobs.NewCreateOnProviderTask(server.ID, server.TeamID, serverProviderID, nil, sshKeyIDs)
 	if err != nil {
 		return err
 	}
@@ -353,7 +375,8 @@ func (s *Service) dispatchDeleteJob(server *models.Server) error {
 	return s.EnqueueTask(task)
 }
 
-func generateSSHKeyPair() (string, string, error) {
+// GenerateSSHKeyPair generates an RSA SSH key pair
+func GenerateSSHKeyPair() (string, string, error) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return "", "", err
