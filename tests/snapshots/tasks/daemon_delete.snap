@@ -1,0 +1,16 @@
+#!/bin/bash
+set -euo pipefail
+
+# Stop the daemon process
+supervisorctl stop "queue-worker":* 2>/dev/null || true
+
+# Remove the config file
+if [ -f "/etc/supervisor/conf.d/queue-worker.conf" ]; then
+    rm -f "/etc/supervisor/conf.d/queue-worker.conf"
+fi
+
+# Reload supervisor
+supervisorctl reread
+supervisorctl update
+
+echo "Daemon removed successfully"

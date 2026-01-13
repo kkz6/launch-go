@@ -1,0 +1,33 @@
+#!/bin/bash
+set -euo pipefail
+
+cat > "/etc/supervisor/conf.d/queue-worker.conf" << 'DAEMONEOF'
+[program:queue-worker]
+command=php /home/launcher/site/artisan queue:work
+user=launcher
+autostart=true
+autorestart=true
+DAEMONEOF
+
+chmod 644 "/etc/supervisor/conf.d/queue-worker.conf"
+
+# Create .launch directory and log files if they don't exist
+LOG_DIR=$(dirname "/home/launcher/.launch/daemon-queue.log")
+mkdir -p "$LOG_DIR"
+
+if [ ! -f "/home/launcher/.launch/daemon-queue.log" ]; then
+    touch "/home/launcher/.launch/daemon-queue.log"
+    chown launcher:launcher "/home/launcher/.launch/daemon-queue.log"
+    chmod 644 "/home/launcher/.launch/daemon-queue.log"
+fi
+
+if [ ! -f "/home/launcher/.launch/daemon-queue-error.log" ]; then
+    touch "/home/launcher/.launch/daemon-queue-error.log"
+    chown launcher:launcher "/home/launcher/.launch/daemon-queue-error.log"
+    chmod 644 "/home/launcher/.launch/daemon-queue-error.log"
+fi
+
+# Ensure directory ownership
+chown launcher:launcher "$LOG_DIR"
+
+echo "Daemon config uploaded successfully"

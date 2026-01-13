@@ -1,0 +1,6 @@
+#!/bin/bash
+set -euo pipefail
+
+supervisorctl reread
+supervisorctl update
+echo "Supervisor reloaded successfully"

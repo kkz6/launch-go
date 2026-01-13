@@ -1,0 +1,1 @@
+cat /home/launcher/.ssh/authorized_keys 2>/dev/null || echo ''

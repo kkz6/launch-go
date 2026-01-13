@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 )
 
 // ListSshKeys returns all SSH keys for a team
@@ -36,6 +37,13 @@ func (s *Service) CreateSshKey(ctx context.Context, teamID, userID string, req *
 	if err := s.repo.CreateSshKey(ctx, key); err != nil {
 		return nil, err
 	}
+
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		On(key).
+		WithEvent("created").
+		Log("SSH key was created")
 
 	return key, nil
 }
@@ -109,6 +117,13 @@ func (s *Service) DeleteSshKey(ctx context.Context, teamID, sshKeyID string) err
 	if key.TeamID != teamID {
 		return ErrSshKeyNotFound
 	}
+
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		On(key).
+		WithEvent("deleted").
+		Log("SSH key was deleted")
 
 	return s.repo.DeleteSshKey(ctx, sshKeyID)
 }

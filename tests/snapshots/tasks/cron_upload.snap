@@ -1,0 +1,24 @@
+#!/bin/bash
+set -euo pipefail
+
+# Upload cron file
+cat > "/etc/cron.d/backup-job" << 'CRONEOF'
+0 2 * * * launcher /home/launcher/backup.sh >> /home/launcher/.launch/cron-backup.log 2>&1
+CRONEOF
+
+chmod 644 "/etc/cron.d/backup-job"
+
+# Create .launch directory and empty log file if they don't exist
+LOG_DIR=$(dirname "/home/launcher/.launch/cron-backup.log")
+mkdir -p "$LOG_DIR"
+
+if [ ! -f "/home/launcher/.launch/cron-backup.log" ]; then
+    touch "/home/launcher/.launch/cron-backup.log"
+    chown launcher:launcher "/home/launcher/.launch/cron-backup.log"
+    chmod 644 "/home/launcher/.launch/cron-backup.log"
+fi
+
+# Ensure directory ownership
+chown launcher:launcher "$LOG_DIR"
+
+echo "Cron file uploaded successfully"

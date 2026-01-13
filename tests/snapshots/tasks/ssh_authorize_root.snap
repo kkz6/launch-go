@@ -1,0 +1,5 @@
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+echo 'ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ... root@example.com' >> /root/.ssh/authorized_keys
+chmod 600 /root/.ssh/authorized_keys
+chown -R root:root /root/.ssh

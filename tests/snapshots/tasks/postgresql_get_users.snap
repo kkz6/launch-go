@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+export DEBIAN_FRONTEND=noninteractive
+
+sudo -u postgres psql -t -c "SELECT usename FROM pg_user;"

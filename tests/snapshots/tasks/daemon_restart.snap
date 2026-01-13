@@ -1,0 +1,5 @@
+#!/bin/bash
+set -euo pipefail
+
+supervisorctl restart "queue-worker":*
+echo "Daemon restarted successfully"

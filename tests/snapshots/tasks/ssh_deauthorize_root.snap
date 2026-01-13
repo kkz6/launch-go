@@ -1,0 +1,1 @@
+sed -i '\|ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQ...|d' /root/.ssh/authorized_keys
