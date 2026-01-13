@@ -39,6 +39,8 @@ func (j *InstallCronJob) Handle(ctx context.Context) error {
 	task := tasks.UploadCron(tasks.UploadCronConfig{
 		Path:     cron.Path(),
 		Contents: contents,
+		LogPath:  cron.GetLogPath(),
+		User:     cron.User,
 	})
 
 	result, err := j.RunTaskOnServer(cron.Server, task).
