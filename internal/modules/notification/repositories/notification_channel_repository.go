@@ -8,10 +8,12 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
+// Repository errors with HTTP status codes
 var (
-	ErrChannelNotFound = errors.New("notification channel not found")
+	ErrChannelNotFound = response.ErrNotFound("Notification channel not found")
 )
 
 // NotificationChannelRepository handles database operations for notification channels

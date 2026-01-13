@@ -2,24 +2,24 @@ package services
 
 import (
 	"context"
-	"errors"
 
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/database/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
-// Service-specific errors
+// Service-specific errors with HTTP status codes
 var (
-	ErrServerNotFound           = errors.New("server not found")
-	ErrDatabaseNameExists       = errors.New("a database with this name already exists on this server")
-	ErrDatabaseUserNameExists   = errors.New("a database user with this name already exists on this server")
-	ErrInvalidExistingUser      = errors.New("the specified existing user was not found")
-	ErrDatabaseBeingUninstalled = errors.New("database is being uninstalled")
-	ErrUserBeingUninstalled     = errors.New("user is being uninstalled")
+	ErrServerNotFound           = response.ErrNotFound("Server not found")
+	ErrDatabaseNameExists       = response.ErrConflict("A database with this name already exists on this server")
+	ErrDatabaseUserNameExists   = response.ErrConflict("A database user with this name already exists on this server")
+	ErrInvalidExistingUser      = response.ErrBadRequest("The specified existing user was not found")
+	ErrDatabaseBeingUninstalled = response.ErrConflict("Database is being uninstalled")
+	ErrUserBeingUninstalled     = response.ErrConflict("User is being uninstalled")
 )
 
 // Re-export repository errors for convenience

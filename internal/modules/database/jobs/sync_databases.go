@@ -2,7 +2,6 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
@@ -15,6 +14,8 @@ import (
 	dbtasks "github.com/kkz6/launch-go/internal/modules/database/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -61,22 +62,17 @@ func NewSyncDatabasesJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.
 
 // NewSyncDatabasesTask creates a new asynq task for syncing databases
 func NewSyncDatabasesTask(serverID string, userID *string) (*asynq.Task, error) {
-	payload, err := json.Marshal(SyncDatabasesPayload{
+	return jobs.NewTask(TypeSyncDatabases, SyncDatabasesPayload{
 		ServerID: serverID,
 		UserID:   userID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeSyncDatabases, payload), nil
 }
 
 // Handle processes the sync databases job
 func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload SyncDatabasesPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.ParsePayload[SyncDatabasesPayload](t)
+	if err != nil {
+		return err
 	}
 
 	j.logger.Info().
@@ -86,13 +82,17 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
 	j.broadcastProgress(payload.ServerID, "syncing", "Syncing databases from server...")
 
 	// Fetch the server with its services
-	var server servermodels.Server
-	if err := j.db.Preload("Services").First(&server, "id = ?", payload.ServerID).Error; err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+	server, err := repository.NewQuery[servermodels.Server](j.db, ctx).
+		WithModel("Server").
+		Preload("Services").
+		FindByID(payload.ServerID).
+		FirstOrFail()
+	if err != nil {
+		return err
 	}
 
 	// Find the database service type
-	dbServiceType := j.getDatabaseServiceType(&server)
+	dbServiceType := j.getDatabaseServiceType(server)
 	if dbServiceType == "" {
 		j.logger.Info().
 			Str("server_id", payload.ServerID).
@@ -102,7 +102,7 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
 	}
 
 	// Get databases from the server
-	serverDatabases, err := j.getDatabasesFromServer(ctx, &server, dbServiceType)
+	serverDatabases, err := j.getDatabasesFromServer(ctx, server, dbServiceType)
 	if err != nil {
 		return fmt.Errorf("failed to get databases from server: %w", err)
 	}
@@ -124,8 +124,10 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
 		Msg("Found databases on server")
 
 	// Get existing databases in the application
-	var existingDatabases []dbmodels.Database
-	if err := j.db.Where("server_id = ?", payload.ServerID).Find(&existingDatabases).Error; err != nil {
+	existingDatabases, err := repository.NewQuery[dbmodels.Database](j.db, ctx).
+		Where("server_id = ?", payload.ServerID).
+		All()
+	if err != nil {
 		return fmt.Errorf("failed to get existing databases: %w", err)
 	}
 
@@ -148,7 +150,7 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
 		}
 		database.MarkAsInstalled() // Mark as installed since it exists on server
 
-		if err := j.db.Create(database).Error; err != nil {
+		if err := j.db.WithContext(ctx).Create(database).Error; err != nil {
 			j.logger.Error().
 				Err(err).
 				Str("server_id", payload.ServerID).
@@ -200,7 +202,7 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 	}
 
 	// Create pending task with SSH connection
-	pt, err := j.createPendingTask(ctx, server, task)
+	pt, err := j.createPendingTask(server, task)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create pending task: %w", err)
 	}
@@ -222,7 +224,7 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 }
 
 // createPendingTask creates a pending task with SSH connection for the server
-func (j *SyncDatabasesJob) createPendingTask(ctx context.Context, server *servermodels.Server, task taskrunner.Task) (*taskrunner.PendingTask, error) {
+func (j *SyncDatabasesJob) createPendingTask(server *servermodels.Server, task taskrunner.Task) (*taskrunner.PendingTask, error) {
 	// Get SSH credentials
 	if server.PrivateKey.IsEmpty() {
 		return nil, fmt.Errorf("server has no private key configured")
@@ -250,9 +252,9 @@ func (j *SyncDatabasesJob) createPendingTask(ctx context.Context, server *server
 
 // Failed handles job failure
 func (j *SyncDatabasesJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload SyncDatabasesPayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, parseErr := jobs.ParsePayload[SyncDatabasesPayload](t)
+	if parseErr != nil {
+		j.logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
