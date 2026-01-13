@@ -20,7 +20,7 @@ type Deployment struct {
 	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
 }
 
-func (d *Deployment) TableName() string {
+func (Deployment) TableName() string {
 	return "deployments"
 }
 

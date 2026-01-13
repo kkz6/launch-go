@@ -20,7 +20,7 @@ type PersonalAccessToken struct {
 }
 
 // TableName returns the table name for the PersonalAccessToken model
-func (t *PersonalAccessToken) TableName() string {
+func (PersonalAccessToken) TableName() string {
 	return "personal_access_tokens"
 }
 

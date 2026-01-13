@@ -16,6 +16,6 @@ type TeamInvitation struct {
 }
 
 // TableName returns the table name for the TeamInvitation model
-func (ti *TeamInvitation) TableName() string {
+func (TeamInvitation) TableName() string {
 	return "team_invitations"
 }

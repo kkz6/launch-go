@@ -1,7 +1,6 @@
 package models
 
 import (
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -21,9 +20,9 @@ type Daemon struct {
 	Processes       int        `gorm:"type:int;not null;default:1" json:"processes"`
 	StopWaitSeconds int        `gorm:"column:stop_wait_seconds;type:int;not null;default:10" json:"stop_wait_seconds"`
 	StopSignal      string     `gorm:"column:stop_signal;type:varchar(255);not null" json:"stop_signal"`
-	LastStatusCheck *time.Time `gorm:"column:last_status_check;type:timestamp null" json:"last_status_check,omitempty"`
-	Running         bool       `gorm:"type:tinyint(1);not null;default:0" json:"running"`
-	Info            *string    `gorm:"type:json" json:"-"`
+	LastStatusCheck *time.Time       `gorm:"column:last_status_check;type:timestamp null" json:"last_status_check,omitempty"`
+	Running         bool             `gorm:"type:tinyint(1);not null;default:0" json:"running"`
+	Info            basemodels.JSONMap `gorm:"type:json" json:"-"`
 
 	// Relations
 	Server *Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
@@ -49,7 +48,7 @@ func (d *Daemon) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (d *Daemon) TableName() string {
+func (Daemon) TableName() string {
 	return "daemons"
 }
 
@@ -58,57 +57,37 @@ func (d *Daemon) Path() string {
 	return fmt.Sprintf("/etc/supervisor/conf.d/daemon-%s.conf", d.ID)
 }
 
+// GetInfo returns the daemon info
 func (d *Daemon) GetInfo() map[string]interface{} {
 	if d.Info == nil {
 		return nil
 	}
-
-	var info map[string]interface{}
-	if err := json.Unmarshal([]byte(*d.Info), &info); err != nil {
-		return nil
-	}
-
-	return info
+	return d.Info
 }
 
-func (d *Daemon) SetInfo(info map[string]interface{}) error {
-	data, err := json.Marshal(info)
-	if err != nil {
-		return err
-	}
-
-	str := string(data)
-	d.Info = &str
-
-	return nil
+// SetInfo sets the daemon info
+func (d *Daemon) SetInfo(info map[string]interface{}) {
+	d.Info = info
 }
 
 // GetLogPath returns the path to the output log file
 // Requires Server to be preloaded for working_directory
 func (d *Daemon) GetLogPath() string {
-	workingDir := ".launch"
-	if d.Server != nil && d.Server.WorkingDirectory != nil && *d.Server.WorkingDirectory != "" {
+	workingDir := ""
+	if d.Server != nil && d.Server.WorkingDirectory != nil {
 		workingDir = *d.Server.WorkingDirectory
 	}
-
-	if d.User == "root" || d.User == "ubuntu" {
-		return fmt.Sprintf("/%s/%s/daemon-%s.log", d.User, workingDir, d.ID)
-	}
-	return fmt.Sprintf("/home/%s/%s/daemon-%s.log", d.User, workingDir, d.ID)
+	return fmt.Sprintf("%s/daemon-%s.log", basemodels.GetWorkingDir(d.User, workingDir), d.ID)
 }
 
 // GetErrorLogPath returns the path to the error log file
 // Requires Server to be preloaded for working_directory
 func (d *Daemon) GetErrorLogPath() string {
-	workingDir := ".launch"
-	if d.Server != nil && d.Server.WorkingDirectory != nil && *d.Server.WorkingDirectory != "" {
+	workingDir := ""
+	if d.Server != nil && d.Server.WorkingDirectory != nil {
 		workingDir = *d.Server.WorkingDirectory
 	}
-
-	if d.User == "root" || d.User == "ubuntu" {
-		return fmt.Sprintf("/%s/%s/daemon-%s.err", d.User, workingDir, d.ID)
-	}
-	return fmt.Sprintf("/home/%s/%s/daemon-%s.err", d.User, workingDir, d.ID)
+	return fmt.Sprintf("%s/daemon-%s.err", basemodels.GetWorkingDir(d.User, workingDir), d.ID)
 }
 
 // ProgramName returns the supervisor program name

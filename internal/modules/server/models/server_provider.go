@@ -16,6 +16,6 @@ type ServerProvider struct {
 	Connected   bool                       `gorm:"type:tinyint(1);not null;default:1" json:"connected"`
 }
 
-func (s *ServerProvider) TableName() string {
+func (ServerProvider) TableName() string {
 	return "server_providers"
 }

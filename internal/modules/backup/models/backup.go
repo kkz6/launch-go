@@ -1,12 +1,10 @@
 package models
 
 import (
-	"crypto/rand"
-	"encoding/base64"
-
 	"gorm.io/gorm"
 
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/utils"
 )
 
 // Backup represents a backup configuration for a server
@@ -39,11 +37,11 @@ func (b *Backup) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	if b.DispatchToken == "" {
-		token := make([]byte, 32)
-		if _, err := rand.Read(token); err != nil {
+		token, err := utils.GenerateSecureToken(32)
+		if err != nil {
 			return err
 		}
-		b.DispatchToken = base64.URLEncoding.EncodeToString(token)
+		b.DispatchToken = token
 	}
 
 	if b.Retention == 0 {
@@ -70,12 +68,3 @@ func (b *Backup) GetSizeInMB() int64 {
 	return totalSize / 1024 / 1024
 }
 
-// IsPendingInstallation returns true if installation is pending
-func (b *Backup) IsPendingInstallation() bool {
-	return b.IsInstalling()
-}
-
-// IsInstallationFailed returns true if installation failed
-func (b *Backup) IsInstallationFailed() bool {
-	return b.IsFailed()
-}

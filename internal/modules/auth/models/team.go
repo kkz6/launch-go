@@ -20,7 +20,7 @@ type Team struct {
 }
 
 // TableName returns the table name for the Team model
-func (t *Team) TableName() string {
+func (Team) TableName() string {
 	return "teams"
 }
 

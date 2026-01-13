@@ -135,3 +135,26 @@ type TeamScopedModel struct {
 type UserScopedModel struct {
 	UserID string `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
 }
+
+// SiteScopedModel provides a SiteID field for models scoped to a site.
+type SiteScopedModel struct {
+	SiteID string `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
+}
+
+// GetUserHomeDir returns the home directory path for a given user.
+// For root and ubuntu users, returns /{user}, otherwise /home/{user}.
+func GetUserHomeDir(user string) string {
+	if user == "root" || user == "ubuntu" {
+		return "/" + user
+	}
+	return "/home/" + user
+}
+
+// GetWorkingDir returns the working directory path for a user with the given working directory name.
+// If workingDir is empty, defaults to ".launch".
+func GetWorkingDir(user, workingDir string) string {
+	if workingDir == "" {
+		workingDir = ".launch"
+	}
+	return GetUserHomeDir(user) + "/" + workingDir
+}

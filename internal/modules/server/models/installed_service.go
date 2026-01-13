@@ -38,7 +38,7 @@ func (s *InstalledService) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (s *InstalledService) TableName() string {
+func (InstalledService) TableName() string {
 	return "services"
 }
 

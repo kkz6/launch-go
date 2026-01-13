@@ -126,6 +126,19 @@ type DeletionSummaryResponse struct {
 	Crons  int `json:"crons"`
 }
 
+// TlsOptionResponse represents a TLS option for the settings page
+type TlsOptionResponse struct {
+	Value string `json:"value"`
+	Label string `json:"label"`
+}
+
+// SiteSettingsResponse represents the site settings page data
+type SiteSettingsResponse struct {
+	Site              SiteResponse         `json:"site"`
+	TlsOptions        []TlsOptionResponse  `json:"tls_options"`
+	ActiveCertificate *CertificateResponse `json:"active_certificate,omitempty"`
+}
+
 // ToSiteResponse converts a Site model to a response DTO
 func ToSiteResponse(site *models.Site) SiteResponse {
 	repositoryBranch := ""
@@ -154,7 +167,7 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		UserID:                      site.UserID,
 		Address:                     site.Address,
 		Type:                        string(site.Type),
-		Aliases:                     site.GetAliases(),
+		Aliases:                     site.Aliases,
 		TlsSetting:                  string(site.TlsSetting),
 		ZeroDowntimeDeployment:      site.ZeroDowntimeDeployment,
 		DeploymentReleasesRetention: site.DeploymentReleasesRetention,
@@ -166,9 +179,9 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		AutoDeployment:              site.AutoDeployment,
 		QueueDeployments:            site.QueueDeployments,
 		AutoRestartQueue:            site.AutoRestartQueue,
-		SharedDirectories:           site.GetSharedDirectories(),
-		WriteableDirectories:        site.GetWriteableDirectories(),
-		SharedFiles:                 site.GetSharedFiles(),
+		SharedDirectories:           site.SharedDirectories,
+		WriteableDirectories:        site.WriteableDirectories,
+		SharedFiles:                 site.SharedFiles,
 		URL:                         site.GetURL(),
 		ApplicationDirectory:        site.GetApplicationDirectory(),
 		CreatedAt:                   createdAt,
@@ -211,7 +224,7 @@ func ToCertificateResponse(cert *models.Certificate) CertificateResponse {
 		ID:        cert.ID,
 		SiteID:    cert.SiteID,
 		Type:      string(cert.Type),
-		Domains:   cert.GetDomains(),
+		Domains:   cert.Domains,
 		IsActive:  cert.IsActive,
 		CreatedAt: cert.CreatedAt.Format(time.RFC3339),
 	}

@@ -38,7 +38,7 @@ func (f *FirewallRule) BeforeCreate(tx *gorm.DB) error {
 	return nil
 }
 
-func (f *FirewallRule) TableName() string {
+func (FirewallRule) TableName() string {
 	return "firewall_rules"
 }
 

@@ -18,7 +18,7 @@ type Redirect struct {
 	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
 }
 
-func (r *Redirect) TableName() string {
+func (Redirect) TableName() string {
 	return "redirects"
 }
 
