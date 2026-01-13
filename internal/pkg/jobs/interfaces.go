@@ -133,17 +133,17 @@ type FailableJob interface {
 
 // ServerEventBroadcaster can broadcast events to server channels.
 type ServerEventBroadcaster interface {
-	BroadcastToServer(serverID, event string, data interface{})
+	BroadcastToServer(serverID, event string, data any)
 }
 
 // SiteEventBroadcaster can broadcast events to site channels.
 type SiteEventBroadcaster interface {
-	BroadcastToSite(siteID, event string, data interface{})
+	BroadcastToSite(siteID, event string, data any)
 }
 
 // DeploymentEventBroadcaster can broadcast events to deployment channels.
 type DeploymentEventBroadcaster interface {
-	BroadcastToDeployment(deploymentID, event string, data interface{})
+	BroadcastToDeployment(deploymentID, event string, data any)
 }
 
 // FullBroadcaster combines all broadcasting capabilities.

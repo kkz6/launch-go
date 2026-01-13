@@ -56,7 +56,7 @@ func (j *SyncInstallationReposJob) Handle(ctx context.Context) error {
 	}
 
 	// Update repository count
-	if err := j.ctx.SCRepo.UpdateFields(ctx, sc.ID, map[string]interface{}{
+	if err := j.ctx.SCRepo.UpdateFields(ctx, sc.ID, map[string]any{
 		"repository_count": len(repositories),
 	}); err != nil {
 		j.ctx.Logger.Warn().Err(err).Msg("Failed to update repository count")

@@ -30,7 +30,7 @@ type ProcessGitWebhookJob struct {
 
 // SiteRepository interface for site operations
 type SiteRepository interface {
-	FindByRepositoryAndBranch(ctx context.Context, repository, branch string) ([]interface{}, error)
+	FindByRepositoryAndBranch(ctx context.Context, repository, branch string) ([]any, error)
 }
 
 // QueueClient interface for dispatching jobs
@@ -61,7 +61,7 @@ func (j *ProcessGitWebhookJob) Handle(ctx context.Context) error {
 	}
 
 	// Parse payload
-	var data map[string]interface{}
+	var data map[string]any
 	if err := json.Unmarshal([]byte(j.Payload.Payload), &data); err != nil {
 		return fmt.Errorf("failed to parse payload: %w", err)
 	}
@@ -86,11 +86,11 @@ func (j *ProcessGitWebhookJob) Failed(ctx context.Context, err error) {
 		Msg("Failed to process git webhook")
 }
 
-func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data map[string]interface{}) error {
+func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data map[string]any) error {
 	action, _ := data["action"].(string)
 
 	// Handle installation events
-	if installation, ok := data["installation"].(map[string]interface{}); ok {
+	if installation, ok := data["installation"].(map[string]any); ok {
 		var installationID string
 		if idFloat, ok := installation["id"].(float64); ok {
 			installationID = fmt.Sprintf("%.0f", idFloat)
@@ -109,8 +109,8 @@ func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data ma
 	}
 
 	// Handle push events for deployments
-	if commits, ok := data["commits"].([]interface{}); ok && len(commits) > 0 {
-		if repository, ok := data["repository"].(map[string]interface{}); ok {
+	if commits, ok := data["commits"].([]any); ok && len(commits) > 0 {
+		if repository, ok := data["repository"].(map[string]any); ok {
 			fullName, _ := repository["full_name"].(string)
 			ref, _ := data["ref"].(string)
 			branch := strings.TrimPrefix(ref, "refs/heads/")
@@ -124,11 +124,11 @@ func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data ma
 	return nil
 }
 
-func (j *ProcessGitWebhookJob) processGitLabWebhook(ctx context.Context, data map[string]interface{}) error {
+func (j *ProcessGitWebhookJob) processGitLabWebhook(ctx context.Context, data map[string]any) error {
 	eventType, _ := data["event_type"].(string)
 
 	if eventType == "push" {
-		if project, ok := data["project"].(map[string]interface{}); ok {
+		if project, ok := data["project"].(map[string]any); ok {
 			fullName, _ := project["path_with_namespace"].(string)
 			ref, _ := data["ref"].(string)
 			branch := strings.TrimPrefix(ref, "refs/heads/")
@@ -142,15 +142,15 @@ func (j *ProcessGitWebhookJob) processGitLabWebhook(ctx context.Context, data ma
 	return nil
 }
 
-func (j *ProcessGitWebhookJob) processBitbucketWebhook(ctx context.Context, data map[string]interface{}) error {
-	if push, ok := data["push"].(map[string]interface{}); ok {
-		if changes, ok := push["changes"].([]interface{}); ok && len(changes) > 0 {
-			if repository, ok := data["repository"].(map[string]interface{}); ok {
+func (j *ProcessGitWebhookJob) processBitbucketWebhook(ctx context.Context, data map[string]any) error {
+	if push, ok := data["push"].(map[string]any); ok {
+		if changes, ok := push["changes"].([]any); ok && len(changes) > 0 {
+			if repository, ok := data["repository"].(map[string]any); ok {
 				fullName, _ := repository["full_name"].(string)
 
-				if change, ok := changes[0].(map[string]interface{}); ok {
+				if change, ok := changes[0].(map[string]any); ok {
 					var branch string
-					if newRef, ok := change["new"].(map[string]interface{}); ok {
+					if newRef, ok := change["new"].(map[string]any); ok {
 						branch, _ = newRef["name"].(string)
 					}
 
@@ -165,8 +165,8 @@ func (j *ProcessGitWebhookJob) processBitbucketWebhook(ctx context.Context, data
 	return nil
 }
 
-func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, data map[string]interface{}, installationID string) error {
-	sender, _ := data["sender"].(map[string]interface{})
+func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, data map[string]any, installationID string) error {
+	sender, _ := data["sender"].(map[string]any)
 	if sender == nil {
 		return nil
 	}
@@ -179,12 +179,12 @@ func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, da
 	}
 
 	// Update with installer info
-	providerData := make(map[string]interface{})
+	providerData := make(map[string]any)
 	if sc.ProviderData != nil && *sc.ProviderData != "" {
 		_ = json.Unmarshal([]byte(*sc.ProviderData), &providerData)
 	}
 
-	providerData["github_installer"] = map[string]interface{}{
+	providerData["github_installer"] = map[string]any{
 		"login":                 sender["login"],
 		"id":                    sender["id"],
 		"type":                  sender["type"],
@@ -195,7 +195,7 @@ func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, da
 	providerDataJSON, _ := json.Marshal(providerData)
 	providerDataStr := string(providerDataJSON)
 
-	return j.service.GetSourceControlRepo().UpdateFields(ctx, sc.ID, map[string]interface{}{
+	return j.service.GetSourceControlRepo().UpdateFields(ctx, sc.ID, map[string]any{
 		"provider_data": providerDataStr,
 	})
 }
@@ -208,7 +208,7 @@ func (j *ProcessGitWebhookJob) handleRepositoriesChanged(ctx context.Context, in
 	return j.service.SyncRepositoriesForInstallation(ctx, installationID)
 }
 
-func (j *ProcessGitWebhookJob) triggerDeployments(ctx context.Context, repository, branch string, webhookData map[string]interface{}, providerType enums.GitProviderType) error {
+func (j *ProcessGitWebhookJob) triggerDeployments(ctx context.Context, repository, branch string, webhookData map[string]any, providerType enums.GitProviderType) error {
 	j.logger.Info().
 		Str("repository", repository).
 		Str("branch", branch).
