@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/rs/zerolog"
@@ -96,15 +95,6 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		webFolder = req.Type.GetDefaultWebFolder()
 	}
 
-	// Convert SourceControlRepositoriesID from *string to *uint64
-	var scRepoID *uint64
-	if req.SourceControlRepositoriesID != nil && *req.SourceControlRepositoriesID != "" {
-		id, err := strconv.ParseUint(*req.SourceControlRepositoriesID, 10, 64)
-		if err == nil {
-			scRepoID = &id
-		}
-	}
-
 	// Convert string fields to pointers where needed
 	var phpVersion *string
 	if req.PhpVersion != "" {
@@ -130,7 +120,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		WebFolder:                   webFolder,
 		PhpVersion:                  phpVersion,
 		SourceControlID:             req.SourceControlID,
-		SourceControlRepositoriesID: scRepoID,
+		SourceControlRepositoriesID: req.SourceControlRepositoriesID,
 	}
 
 	// Set aliases

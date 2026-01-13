@@ -11,7 +11,7 @@ type CreateSiteRequest struct {
 	WebFolder                   string   `json:"web_folder" validate:"omitempty,max=255"`
 	ZeroDowntimeDeployment      bool     `json:"zero_downtime_deployment"`
 	SourceControlID             *string  `json:"source_control_id" validate:"omitempty,ulid"`
-	SourceControlRepositoriesID *string  `json:"source_control_repositories_id" validate:"omitempty,ulid"`
+	SourceControlRepositoriesID *uint64  `json:"source_control_repositories_id" validate:"omitempty"`
 	RepositoryBranch            string   `json:"repository_branch" validate:"omitempty,max=255"`
 	CreateDNSRecord             bool     `json:"create_dns_record"`
 	ConnectedDomainID           *string  `json:"connected_domain_id" validate:"omitempty,ulid"`
