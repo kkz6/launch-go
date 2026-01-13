@@ -7,44 +7,38 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
-// SiteRepository handles database operations for sites
+// SiteRepository handles database operations for sites.
+// Embeds repository.Installable[T] for CRUD + installation status operations.
 type SiteRepository struct {
-	*BaseRepository
+	repository.Installable[models.Site]
 }
 
 // NewSiteRepository creates a new site repository
 func NewSiteRepository(db *gorm.DB) *SiteRepository {
 	return &SiteRepository{
-		BaseRepository: NewBaseRepository(db),
+		Installable: repository.NewInstallable[models.Site](db),
 	}
 }
 
-// Create creates a new site
-func (r *SiteRepository) Create(ctx context.Context, site *models.Site) error {
-	return r.db.WithContext(ctx).Create(site).Error
-}
-
-// FindByID finds a site by ID
+// FindByID finds a site by ID with custom error.
 func (r *SiteRepository) FindByID(ctx context.Context, id string) (*models.Site, error) {
-	var site models.Site
-	err := r.db.WithContext(ctx).First(&site, "id = ?", id).Error
+	site, err := r.Installable.FindByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if repository.IsNotFound(err) {
 			return nil, ErrSiteNotFound
 		}
-
 		return nil, err
 	}
-
-	return &site, nil
+	return site, nil
 }
 
 // FindByIDWithDeployments finds a site by ID with its deployments
 func (r *SiteRepository) FindByIDWithDeployments(ctx context.Context, id string) (*models.Site, error) {
 	var site models.Site
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Preload("Deployments", func(db *gorm.DB) *gorm.DB {
 			return db.Order("created_at DESC").Limit(10)
 		}).
@@ -53,44 +47,27 @@ func (r *SiteRepository) FindByIDWithDeployments(ctx context.Context, id string)
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSiteNotFound
 		}
-
 		return nil, err
 	}
-
 	return &site, nil
 }
 
-// FindByIDAndServer finds a site by ID and server ID
+// FindByIDAndServer finds a site by ID and server ID with custom error.
 func (r *SiteRepository) FindByIDAndServer(ctx context.Context, id, serverID string) (*models.Site, error) {
-	var site models.Site
-	err := r.db.WithContext(ctx).
-		First(&site, "id = ? AND server_id = ?", id, serverID).Error
+	site, err := r.Installable.FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if repository.IsNotFound(err) {
 			return nil, ErrSiteNotFound
 		}
-
 		return nil, err
 	}
-
-	return &site, nil
-}
-
-// FindByServer finds all sites for a server
-func (r *SiteRepository) FindByServer(ctx context.Context, serverID string) ([]models.Site, error) {
-	var sites []models.Site
-	err := r.db.WithContext(ctx).
-		Where("server_id = ?", serverID).
-		Order("created_at DESC").
-		Find(&sites).Error
-
-	return sites, err
+	return site, nil
 }
 
 // FindByServerWithLatestDeployment finds sites with their latest deployment
 func (r *SiteRepository) FindByServerWithLatestDeployment(ctx context.Context, serverID string) ([]models.Site, error) {
 	var sites []models.Site
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("server_id = ?", serverID).
 		Order("created_at DESC").
 		Find(&sites).Error
@@ -101,7 +78,7 @@ func (r *SiteRepository) FindByServerWithLatestDeployment(ctx context.Context, s
 	// Load latest deployment for each site
 	for i := range sites {
 		var deployment models.Deployment
-		if err := r.db.WithContext(ctx).
+		if err := r.DB.WithContext(ctx).
 			Where("site_id = ?", sites[i].ID).
 			Order("created_at DESC").
 			First(&deployment).Error; err == nil {
@@ -115,43 +92,46 @@ func (r *SiteRepository) FindByServerWithLatestDeployment(ctx context.Context, s
 // FindByAddress finds a site by address and server ID
 func (r *SiteRepository) FindByAddress(ctx context.Context, address, serverID string) (*models.Site, error) {
 	var site models.Site
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		First(&site, "address = ? AND server_id = ?", address, serverID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrSiteNotFound
 		}
-
 		return nil, err
 	}
-
 	return &site, nil
 }
 
 // FindByRepositoryAndBranch finds sites with auto-deployment enabled for a repository and branch
 func (r *SiteRepository) FindByRepositoryAndBranch(ctx context.Context, repository, branch string) ([]models.Site, error) {
 	var sites []models.Site
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("repository_branch = ? AND auto_deployment = ?", branch, true).
 		Find(&sites).Error
 
 	return sites, err
 }
 
-// Update updates a site
-func (r *SiteRepository) Update(ctx context.Context, site *models.Site) error {
-	return r.db.WithContext(ctx).Save(site).Error
-}
-
-// UpdateFields updates specific fields of a site
-func (r *SiteRepository) UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error {
-	return r.db.WithContext(ctx).
-		Model(&models.Site{}).
-		Where("id = ?", id).
-		Updates(fields).Error
-}
-
-// Delete deletes a site
-func (r *SiteRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.Site{}, "id = ?", id).Error
-}
+// Note: The following methods are inherited from repository.Installable[T]:
+// From Base[T]:
+// - Create(ctx, entity) error
+// - FindByServer(ctx, serverID) ([]T, error)
+// - Update(ctx, entity) error
+// - UpdateFields(ctx, id, fields) error
+// - Delete(ctx, id) error
+// - Exists(ctx, id) (bool, error)
+// - Count(ctx) (int64, error)
+// - CountByServer(ctx, serverID) (int64, error)
+// - Transaction(ctx, fn) error
+// - Query(ctx) *gorm.DB
+// - WithPreload(ctx, relations...) *gorm.DB
+// From Installable[T]:
+// - MarkAsInstalled(ctx, id) error
+// - MarkAsFailed(ctx, id) error
+// - MarkAsUninstalling(ctx, id) error
+// - MarkUninstallationFailed(ctx, id) error
+// - FindInstalled(ctx, serverID) ([]T, error)
+// - FindPending(ctx, serverID) ([]T, error)
+// - FindFailed(ctx, serverID) ([]T, error)
+// - FindUninstalling(ctx, serverID) ([]T, error)

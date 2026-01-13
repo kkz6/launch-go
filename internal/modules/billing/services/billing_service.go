@@ -11,19 +11,19 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/billing/providers"
 	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
-	"github.com/kkz6/launch-go/internal/pkg/response"
+	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 
-// Service errors with HTTP status codes
+// Service errors - re-exported from centralized error package
 var (
-	ErrSubscriptionNotFound     = response.ErrNotFound("Subscription not found")
-	ErrNoActiveSubscription     = response.ErrNotFound("No active subscription found")
-	ErrAlreadySubscribed        = response.ErrConflict("Team already has an active subscription")
-	ErrSubscriptionNotCancelled = response.ErrBadRequest("Subscription is not cancelled")
-	ErrCannotResume             = response.ErrBadRequest("Cannot resume subscription - grace period has ended")
-	ErrPlanNotFound             = response.ErrNotFound("Plan not found")
-	ErrSubscriptionsNotEnabled  = response.ErrBadRequest("Subscriptions are not enabled")
-	ErrLimitExceeded            = response.ErrBadRequest("Limit exceeded")
+	ErrSubscriptionNotFound     = apperrors.ErrSubscriptionNotFound
+	ErrNoActiveSubscription     = apperrors.NotFound("No active subscription found")
+	ErrAlreadySubscribed        = apperrors.Conflict("Team already has an active subscription")
+	ErrSubscriptionNotCancelled = apperrors.BadRequest("Subscription is not cancelled")
+	ErrCannotResume             = apperrors.BadRequest("Cannot resume subscription - grace period has ended")
+	ErrPlanNotFound             = apperrors.ErrPlanNotFound
+	ErrSubscriptionsNotEnabled  = apperrors.BadRequest("Subscriptions are not enabled")
+	ErrLimitExceeded            = apperrors.BadRequest("Limit exceeded")
 )
 
 // Config holds billing configuration

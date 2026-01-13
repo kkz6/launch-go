@@ -12,7 +12,7 @@ import (
 
 // CreateMetric creates a new metric
 func (r *Repository) CreateMetric(ctx context.Context, metric *models.Metric) error {
-	return r.db.WithContext(ctx).Create(metric).Error
+	return create(r, ctx, metric)
 }
 
 // FindMetricsByServer finds metrics for a server with optional time range
@@ -36,7 +36,6 @@ func (r *Repository) FindMetricsByServer(ctx context.Context, serverID string, f
 	}
 
 	err := query.Find(&metrics).Error
-
 	return metrics, err
 }
 
@@ -51,10 +50,8 @@ func (r *Repository) FindLatestMetricByServer(ctx context.Context, serverID stri
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
-
 		return nil, err
 	}
-
 	return &metric, nil
 }
 

@@ -4,18 +4,18 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/repositories"
-	"github.com/kkz6/launch-go/internal/pkg/response"
+	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 
-// Service errors with HTTP status codes
+// Service errors - re-exported from centralized error package
 var (
-	ErrProviderNotFound         = response.ErrNotFound("Provider not found")
-	ErrDomainNotFound           = response.ErrNotFound("Domain not found")
-	ErrRecordNotFound           = response.ErrNotFound("Record not found")
-	ErrRecordNotEditable        = response.ErrBadRequest("Record cannot be edited")
-	ErrRecordNotDeletable       = response.ErrBadRequest("Record cannot be deleted")
-	ErrProviderHasActiveDomains = response.ErrConflict("Provider has active domains")
-	ErrInvalidCredentials       = response.ErrBadRequest("Invalid credentials")
+	ErrProviderNotFound         = apperrors.ErrDNSProviderNotFound
+	ErrDomainNotFound           = apperrors.ErrDomainNotFound
+	ErrRecordNotFound           = apperrors.ErrDNSRecordNotFound
+	ErrRecordNotEditable        = apperrors.BadRequest("Record cannot be edited")
+	ErrRecordNotDeletable       = apperrors.BadRequest("Record cannot be deleted")
+	ErrProviderHasActiveDomains = apperrors.Conflict("Provider has active domains")
+	ErrInvalidCredentials       = apperrors.BadRequest("Invalid credentials")
 )
 
 // BaseService provides common functionality for services

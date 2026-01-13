@@ -132,11 +132,38 @@ type TlsOptionResponse struct {
 	Label string `json:"label"`
 }
 
+// PhpVersionResponse represents an installed PHP version
+type PhpVersionResponse struct {
+	Version   string `json:"version"`
+	IsDefault bool   `json:"is_default"`
+}
+
+// SourceControlResponse represents source control info for a site
+type SourceControlResponse struct {
+	ID       string  `json:"id"`
+	Provider string  `json:"provider"`
+	Login    *string `json:"login,omitempty"`
+	Name     *string `json:"name,omitempty"`
+	Type     *string `json:"type,omitempty"`
+}
+
+// SourceControlRepositoryResponse represents a linked repository
+type SourceControlRepositoryResponse struct {
+	ID            uint64  `json:"id"`
+	Name          string  `json:"name"`
+	FullName      string  `json:"full_name"`
+	DefaultBranch string  `json:"default_branch"`
+	HTMLURL       *string `json:"html_url,omitempty"`
+}
+
 // SiteSettingsResponse represents the site settings page data
 type SiteSettingsResponse struct {
-	Site              SiteResponse         `json:"site"`
-	TlsOptions        []TlsOptionResponse  `json:"tls_options"`
-	ActiveCertificate *CertificateResponse `json:"active_certificate,omitempty"`
+	Site              SiteResponse                     `json:"site"`
+	TlsOptions        []TlsOptionResponse              `json:"tls_options"`
+	PhpVersions       []PhpVersionResponse             `json:"php_versions"`
+	ActiveCertificate *CertificateResponse             `json:"active_certificate,omitempty"`
+	SourceControl     *SourceControlResponse           `json:"source_control,omitempty"`
+	Repository        *SourceControlRepositoryResponse `json:"repository,omitempty"`
 }
 
 // ToSiteResponse converts a Site model to a response DTO

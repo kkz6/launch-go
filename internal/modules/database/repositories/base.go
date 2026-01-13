@@ -6,16 +6,16 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/database/models"
+	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
-// Repository errors with HTTP status codes
+// Repository errors - re-exported from centralized error package
 var (
-	ErrDatabaseNotFound     = response.ErrNotFound("Database not found")
-	ErrDatabaseUserNotFound = response.ErrNotFound("Database user not found")
-	ErrDuplicateName        = response.ErrConflict("A database with this name already exists on this server")
-	ErrDuplicateUserName    = response.ErrConflict("A database user with this name already exists on this server")
+	ErrDatabaseNotFound     = apperrors.ErrDatabaseNotFound
+	ErrDatabaseUserNotFound = apperrors.ErrDatabaseUserNotFound
+	ErrDuplicateName        = apperrors.Conflict("A database with this name already exists on this server")
+	ErrDuplicateUserName    = apperrors.Conflict("A database user with this name already exists on this server")
 )
 
 // Repository provides database operations for database module

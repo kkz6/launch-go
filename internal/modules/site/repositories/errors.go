@@ -1,14 +1,14 @@
 package repositories
 
-import "github.com/kkz6/launch-go/internal/pkg/response"
+import apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 
-// Repository errors with HTTP status codes
+// Repository errors - re-exported from centralized error package
 var (
-	ErrSiteNotFound        = response.ErrNotFound("Site not found")
-	ErrDeploymentNotFound  = response.ErrNotFound("Deployment not found")
-	ErrQueueNotFound       = response.ErrNotFound("Queue not found")
-	ErrCertificateNotFound = response.ErrNotFound("Certificate not found")
-	ErrRedirectNotFound    = response.ErrNotFound("Redirect not found")
-	ErrCommandNotFound     = response.ErrNotFound("Command not found")
-	ErrReleaseNotFound     = response.ErrNotFound("Release not found")
+	ErrSiteNotFound        = apperrors.ErrSiteNotFound
+	ErrDeploymentNotFound  = apperrors.ErrDeploymentNotFound
+	ErrQueueNotFound       = apperrors.ErrQueueNotFound
+	ErrCertificateNotFound = apperrors.ErrCertificateNotFound
+	ErrRedirectNotFound    = apperrors.ErrRedirectNotFound
+	ErrCommandNotFound     = apperrors.ErrCommandNotFound
+	ErrReleaseNotFound     = apperrors.ErrReleaseNotFound
 )

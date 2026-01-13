@@ -8,60 +8,52 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
-// DeploymentRepository handles database operations for deployments
+// DeploymentRepository handles database operations for deployments.
+// Embeds repository.Base[T] for common CRUD operations.
 type DeploymentRepository struct {
-	*BaseRepository
+	repository.Base[models.Deployment]
 }
 
 // NewDeploymentRepository creates a new deployment repository
 func NewDeploymentRepository(db *gorm.DB) *DeploymentRepository {
 	return &DeploymentRepository{
-		BaseRepository: NewBaseRepository(db),
+		Base: repository.NewBase[models.Deployment](db),
 	}
 }
 
-// Create creates a new deployment
-func (r *DeploymentRepository) Create(ctx context.Context, deployment *models.Deployment) error {
-	return r.db.WithContext(ctx).Create(deployment).Error
-}
-
-// FindByID finds a deployment by ID
+// FindByID finds a deployment by ID with custom error.
 func (r *DeploymentRepository) FindByID(ctx context.Context, id string) (*models.Deployment, error) {
-	var deployment models.Deployment
-	err := r.db.WithContext(ctx).First(&deployment, "id = ?", id).Error
+	deployment, err := r.Base.FindByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if repository.IsNotFound(err) {
 			return nil, ErrDeploymentNotFound
 		}
-
 		return nil, err
 	}
-
-	return &deployment, nil
+	return deployment, nil
 }
 
 // FindByIDAndSite finds a deployment by ID and site ID
 func (r *DeploymentRepository) FindByIDAndSite(ctx context.Context, id, siteID string) (*models.Deployment, error) {
 	var deployment models.Deployment
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		First(&deployment, "id = ? AND site_id = ?", id, siteID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrDeploymentNotFound
 		}
-
 		return nil, err
 	}
-
 	return &deployment, nil
 }
 
 // FindBySite finds all deployments for a site
 func (r *DeploymentRepository) FindBySite(ctx context.Context, siteID string) ([]models.Deployment, error) {
 	var deployments []models.Deployment
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("site_id = ?", siteID).
 		Order("created_at DESC").
 		Find(&deployments).Error
@@ -72,7 +64,7 @@ func (r *DeploymentRepository) FindBySite(ctx context.Context, siteID string) ([
 // FindLatestBySite finds the latest deployment for a site
 func (r *DeploymentRepository) FindLatestBySite(ctx context.Context, siteID string) (*models.Deployment, error) {
 	var deployment models.Deployment
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("site_id = ?", siteID).
 		Order("created_at DESC").
 		First(&deployment).Error
@@ -80,17 +72,15 @@ func (r *DeploymentRepository) FindLatestBySite(ctx context.Context, siteID stri
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
-
 		return nil, err
 	}
-
 	return &deployment, nil
 }
 
 // FindActiveBySite finds an active deployment for a site
 func (r *DeploymentRepository) FindActiveBySite(ctx context.Context, siteID string) (*models.Deployment, error) {
 	var deployment models.Deployment
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("site_id = ? AND status IN ?", siteID, []enums.DeploymentStatus{enums.DeploymentStatusPending, enums.DeploymentStatusInstalling}).
 		Order("created_at DESC").
 		First(&deployment).Error
@@ -98,17 +88,15 @@ func (r *DeploymentRepository) FindActiveBySite(ctx context.Context, siteID stri
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, nil
 		}
-
 		return nil, err
 	}
-
 	return &deployment, nil
 }
 
 // FindQueuedBySite finds queued deployments for a site
 func (r *DeploymentRepository) FindQueuedBySite(ctx context.Context, siteID string) ([]models.Deployment, error) {
 	var deployments []models.Deployment
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("site_id = ? AND status = ?", siteID, enums.DeploymentStatusQueued).
 		Order("created_at ASC").
 		Find(&deployments).Error
@@ -119,7 +107,7 @@ func (r *DeploymentRepository) FindQueuedBySite(ctx context.Context, siteID stri
 // CountQueuedBySite counts queued deployments for a site
 func (r *DeploymentRepository) CountQueuedBySite(ctx context.Context, siteID string) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Model(&models.Deployment{}).
 		Where("site_id = ? AND status = ?", siteID, enums.DeploymentStatusQueued).
 		Count(&count).Error
@@ -127,14 +115,9 @@ func (r *DeploymentRepository) CountQueuedBySite(ctx context.Context, siteID str
 	return count, err
 }
 
-// Update updates a deployment
-func (r *DeploymentRepository) Update(ctx context.Context, deployment *models.Deployment) error {
-	return r.db.WithContext(ctx).Save(deployment).Error
-}
-
 // UpdateStatus updates a deployment's status
 func (r *DeploymentRepository) UpdateStatus(ctx context.Context, id string, status enums.DeploymentStatus) error {
-	return r.db.WithContext(ctx).
+	return r.DB.WithContext(ctx).
 		Model(&models.Deployment{}).
 		Where("id = ?", id).
 		Update("status", status).Error
@@ -142,10 +125,17 @@ func (r *DeploymentRepository) UpdateStatus(ctx context.Context, id string, stat
 
 // CancelQueued cancels all queued deployments for a site
 func (r *DeploymentRepository) CancelQueued(ctx context.Context, siteID string) (int64, error) {
-	result := r.db.WithContext(ctx).
+	result := r.DB.WithContext(ctx).
 		Model(&models.Deployment{}).
 		Where("site_id = ? AND status = ?", siteID, enums.DeploymentStatusQueued).
 		Update("status", enums.DeploymentStatusFailed)
 
 	return result.RowsAffected, result.Error
 }
+
+// Note: The following methods are inherited from repository.Base[T]:
+// - Create(ctx, entity) error
+// - Update(ctx, entity) error
+// - UpdateFields(ctx, id, fields) error
+// - Delete(ctx, id) error
+// - Transaction(ctx, fn) error

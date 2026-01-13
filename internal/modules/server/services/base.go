@@ -5,23 +5,23 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
-	"github.com/kkz6/launch-go/internal/pkg/response"
+	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
-// Service-specific errors with HTTP status codes
+// Service-specific errors - using centralized error package
 var (
-	ErrServerNotProvisioned = response.ErrBadRequest("Server is not provisioned")
-	ErrServerNotConnected   = response.ErrBadRequest("Server is not connected")
-	ErrInvalidProvider      = response.ErrBadRequest("Invalid server provider")
-	ErrInvalidServerType    = response.ErrBadRequest("Invalid server type")
-	ErrInvalidSoftware      = response.ErrBadRequest("Invalid software")
-	ErrServiceAlreadyExists = response.ErrConflict("Service already installed")
-	ErrCannotDeleteService  = response.ErrBadRequest("Cannot delete service")
-	ErrQueueNotConfigured   = response.ErrInternal("Queue not configured")
+	ErrServerNotProvisioned = apperrors.BadRequest("Server is not provisioned")
+	ErrServerNotConnected   = apperrors.BadRequest("Server is not connected")
+	ErrInvalidProvider      = apperrors.BadRequest("Invalid server provider")
+	ErrInvalidServerType    = apperrors.BadRequest("Invalid server type")
+	ErrInvalidSoftware      = apperrors.BadRequest("Invalid software")
+	ErrServiceAlreadyExists = apperrors.Conflict("Service already installed")
+	ErrCannotDeleteService  = apperrors.BadRequest("Cannot delete service")
+	ErrQueueNotConfigured   = apperrors.Internal("Queue not configured")
 )
 
 // Re-export repository errors for convenience

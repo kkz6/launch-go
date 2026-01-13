@@ -202,7 +202,7 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
 
-	site, activeCert, err := h.siteService.GetSettings(c.Context(), siteID, serverID)
+	settingsData, err := h.siteService.GetSettings(c.Context(), siteID, serverID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
 			return response.NotFound(c, "Site not found")
@@ -221,12 +221,15 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 	}
 
 	resp := dto.SiteSettingsResponse{
-		Site:       dto.ToSiteResponse(site),
-		TlsOptions: tlsOptions,
+		Site:          dto.ToSiteResponse(settingsData.Site),
+		TlsOptions:    tlsOptions,
+		PhpVersions:   settingsData.PhpVersions,
+		SourceControl: settingsData.SourceControl,
+		Repository:    settingsData.Repository,
 	}
 
-	if activeCert != nil {
-		certResp := dto.ToCertificateResponse(activeCert)
+	if settingsData.ActiveCertificate != nil {
+		certResp := dto.ToCertificateResponse(settingsData.ActiveCertificate)
 		resp.ActiveCertificate = &certResp
 	}
 

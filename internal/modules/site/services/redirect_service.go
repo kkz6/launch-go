@@ -66,7 +66,7 @@ func (s *RedirectService) Create(ctx context.Context, siteID, serverID, userID s
 		return nil, err
 	}
 
-	activity.New(s.redirectRepo.DB()).
+	activity.New(s.redirectRepo.DB).
 		WithContext(ctx).
 		UseLog("site").
 		On(redirect).
@@ -98,7 +98,7 @@ func (s *RedirectService) Delete(ctx context.Context, redirectID, siteID, server
 		return err
 	}
 
-	activity.New(s.redirectRepo.DB()).
+	activity.New(s.redirectRepo.DB).
 		WithContext(ctx).
 		UseLog("site").
 		On(redirect).
