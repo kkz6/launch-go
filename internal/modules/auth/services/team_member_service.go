@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
@@ -10,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 // TeamMemberService handles team member management operations
@@ -235,4 +237,11 @@ func (s *TeamMemberService) GetTeamMembers(ctx context.Context, teamID string) (
 // GetTeamInvitations gets all invitations for a team
 func (s *TeamMemberService) GetTeamInvitations(ctx context.Context, teamID string) ([]models.TeamInvitation, error) {
 	return s.repo.GetTeamInvitations(ctx, teamID)
+}
+
+// GenerateInvitationURL generates a permanent signed URL for accepting a team invitation
+// Team invitations don't expire - they remain valid until cancelled
+func (s *TeamMemberService) GenerateInvitationURL(invitationID string) string {
+	path := fmt.Sprintf("/api/auth/team-invitations/%s/accept", invitationID)
+	return signedurl.PermanentSign(path, nil)
 }

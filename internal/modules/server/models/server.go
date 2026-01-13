@@ -10,6 +10,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
@@ -117,11 +118,14 @@ func (s *Server) RootUsername() string {
 }
 
 func (s *Server) GetProvisionCommand() string {
-	return fmt.Sprintf("wget --no-verbose -O - %s | bash", s.GetProvisionScriptURL())
+	return fmt.Sprintf("wget --no-verbose -O - '%s' | bash", s.GetProvisionScriptURL())
 }
 
+// GetProvisionScriptURL returns a signed URL for the provision script
+// This uses a permanent signature since custom servers need to run this at any time
 func (s *Server) GetProvisionScriptURL() string {
-	return fmt.Sprintf("/servers/%s/provision-script", s.ID)
+	path := fmt.Sprintf("/servers/%s/provision-script", s.ID)
+	return signedurl.PermanentSign(path, nil)
 }
 
 func (s *Server) HasFeature(feature enums.ServerFeature) bool {

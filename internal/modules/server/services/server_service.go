@@ -396,3 +396,59 @@ func GenerateSSHKeyPair() (string, string, error) {
 
 	return string(privateKeyPEM), publicKeyStr, nil
 }
+
+// GetProvisionScript returns the provision script for a server
+// This is used for custom servers that need to run the provision script manually
+func (s *Service) GetProvisionScript(ctx context.Context, serverID string) (string, error) {
+	// Find server (including archived)
+	server, err := s.repo.FindServerByID(ctx, serverID)
+	if err != nil {
+		return "", err
+	}
+
+	if server == nil {
+		return "", errors.New("server not found")
+	}
+
+	// Only custom servers or archived servers can get provision script
+	if server.Provider != enums.ProviderCustom && server.ArchivedAt == nil {
+		return "", nil
+	}
+
+	// Generate the provision script that authorizes our management key
+	script := s.generateAuthorizeKeyScript(server)
+	return script, nil
+}
+
+// generateAuthorizeKeyScript generates a bash script to authorize the management key
+func (s *Service) generateAuthorizeKeyScript(server *models.Server) string {
+	publicKey := string(server.PublicKey)
+
+	script := `#!/bin/bash
+set -e
+
+# Launch Server Provisioning Script
+# Server: %s
+
+echo "Authorizing Launch management key..."
+
+# Create .ssh directory if it doesn't exist
+mkdir -p ~/.ssh
+chmod 700 ~/.ssh
+
+# Add the public key to authorized_keys if not already present
+PUBLIC_KEY="%s"
+
+if ! grep -q "$PUBLIC_KEY" ~/.ssh/authorized_keys 2>/dev/null; then
+    echo "$PUBLIC_KEY" >> ~/.ssh/authorized_keys
+    chmod 600 ~/.ssh/authorized_keys
+    echo "Management key authorized successfully."
+else
+    echo "Management key already authorized."
+fi
+
+# Notify the server that provisioning is complete
+echo "Provisioning script completed."
+`
+	return fmt.Sprintf(script, server.Name, publicKey)
+}

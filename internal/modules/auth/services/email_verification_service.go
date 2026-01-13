@@ -5,10 +5,13 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"time"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 // EmailVerificationService handles email verification operations
@@ -73,4 +76,13 @@ func (s *EmailVerificationService) generateEmailHash(email string) string {
 	hash := sha256.Sum256([]byte(email + s.config.JWT.Secret))
 
 	return hex.EncodeToString(hash[:])
+}
+
+// GenerateVerificationURL generates a signed URL for email verification
+// The URL expires after 60 minutes (similar to Laravel's default)
+func (s *EmailVerificationService) GenerateVerificationURL(userID, email string) string {
+	hash := s.generateEmailHash(email)
+	path := fmt.Sprintf("/api/auth/verify-email/%s/%s", userID, hash)
+
+	return signedurl.TemporarySign(path, nil, 60*time.Minute)
 }

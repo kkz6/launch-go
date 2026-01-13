@@ -28,14 +28,16 @@ var (
 
 // Module represents the server module
 type Module struct {
-	db             *gorm.DB
-	queueClient    *queue.Client
-	ws             *websocket.Hub
-	dispatcher     *taskrunner.Dispatcher
-	logger         *zerolog.Logger
-	handler        *handlers.Handler
-	webhookHandler *handlers.TaskWebhookHandler
-	repo           *repositories.Repository
+	db                     *gorm.DB
+	queueClient            *queue.Client
+	ws                     *websocket.Hub
+	dispatcher             *taskrunner.Dispatcher
+	logger                 *zerolog.Logger
+	handler                *handlers.Handler
+	webhookHandler         *handlers.TaskWebhookHandler
+	provisionScriptHandler *handlers.ProvisionScriptHandler
+	repo                   *repositories.Repository
+	service                *services.Service
 }
 
 // NewModule creates a new server module instance
@@ -44,16 +46,19 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, dispat
 	service := services.NewService(repo, queueClient, ws, dispatcher, logger)
 	handler := handlers.NewHandler(service)
 	webhookHandler := handlers.NewTaskWebhookHandler(repo, webhookSecretKey)
+	provisionScriptHandler := handlers.NewProvisionScriptHandler(repo, service)
 
 	return &Module{
-		db:             db,
-		queueClient:    queueClient,
-		ws:             ws,
-		dispatcher:     dispatcher,
-		logger:         logger,
-		handler:        handler,
-		webhookHandler: webhookHandler,
-		repo:           repo,
+		db:                     db,
+		queueClient:            queueClient,
+		ws:                     ws,
+		dispatcher:             dispatcher,
+		logger:                 logger,
+		handler:                handler,
+		webhookHandler:         webhookHandler,
+		provisionScriptHandler: provisionScriptHandler,
+		repo:                   repo,
+		service:                service,
 	}
 }
 
@@ -77,6 +82,7 @@ func (m *Module) Name() string {
 // RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
 func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 	m.webhookHandler.RegisterRoutes(router)
+	m.provisionScriptHandler.RegisterRoutes(router)
 }
 
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)
