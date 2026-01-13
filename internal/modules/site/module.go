@@ -5,12 +5,14 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/handlers"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -24,10 +26,11 @@ var (
 
 // Module represents the site module
 type Module struct {
-	db     *gorm.DB
-	queue  *queue.Client
-	ws     *websocket.Hub
-	logger *zerolog.Logger
+	db         *gorm.DB
+	queue      *queue.Client
+	ws         *websocket.Hub
+	logger     *zerolog.Logger
+	dispatcher *taskrunner.Dispatcher
 
 	// Repositories
 	siteRepo        *repositories.SiteRepository
@@ -60,12 +63,13 @@ type Module struct {
 }
 
 // NewModule creates a new site module
-func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger *zerolog.Logger) *Module {
+func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger *zerolog.Logger, dispatcher *taskrunner.Dispatcher) *Module {
 	m := &Module{
-		db:     db,
-		queue:  queueClient,
-		ws:     ws,
-		logger: logger,
+		db:         db,
+		queue:      queueClient,
+		ws:         ws,
+		logger:     logger,
+		dispatcher: dispatcher,
 	}
 
 	// Initialize repositories
@@ -160,7 +164,12 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 	)
 
 	// Initialize file service (needs db for server access)
-	m.fileService = services.NewFileService(db, m.siteRepo, logger)
+	taskRunnerDeps := &servertasks.TaskRunnerDeps{
+		DB:         db,
+		Dispatcher: dispatcher,
+		Logger:     logger,
+	}
+	m.fileService = services.NewFileService(db, m.siteRepo, logger, taskRunnerDeps)
 
 	// Initialize handlers
 	m.siteHandler = handlers.NewSiteHandler(m.siteService)
@@ -234,7 +243,7 @@ func (m *Module) Name() string {
 
 // NewModuleFromContext creates a new site module from app context
 func NewModuleFromContext(ctx *app.Context) *Module {
-	return NewModule(ctx.DB, ctx.Queue, ctx.WebSocket, ctx.Logger)
+	return NewModule(ctx.DB, ctx.Queue, ctx.WebSocket, ctx.Logger, ctx.Dispatcher)
 }
 
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)

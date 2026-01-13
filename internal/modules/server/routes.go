@@ -80,6 +80,7 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 
 		// Logs
 		servers.Get("/:id/logs", m.handler.ListLogs)
+		servers.Get("/:id/logs/:log", m.handler.GetLogContent)
 	}
 }
 

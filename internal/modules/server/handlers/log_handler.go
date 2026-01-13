@@ -1,9 +1,13 @@
 package handlers
 
 import (
+	"fmt"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/site/support"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -11,25 +15,8 @@ import (
 type LogInfo struct {
 	Name      string `json:"name"`
 	Software  string `json:"software"`
+	Path      string `json:"path"`
 	ShowRoute string `json:"show_route"`
-}
-
-// softwareLogMap maps software types to their log information
-var softwareLogMap = map[enums.Software]LogInfo{
-	enums.SoftwareMySql80: {Name: "MySQL Error Log", Software: "mysql80", ShowRoute: "/var/log/mysql/error.log"},
-	enums.SoftwareRedis:   {Name: "Redis Server Log", Software: "redis", ShowRoute: "/var/log/redis/redis-server.log"},
-	enums.SoftwarePhp56:   {Name: "PHP 5.6 FPM Log", Software: "php56", ShowRoute: "/var/log/php5.6-fpm.log"},
-	enums.SoftwarePhp70:   {Name: "PHP 7.0 FPM Log", Software: "php70", ShowRoute: "/var/log/php7.0-fpm.log"},
-	enums.SoftwarePhp71:   {Name: "PHP 7.1 FPM Log", Software: "php71", ShowRoute: "/var/log/php7.1-fpm.log"},
-	enums.SoftwarePhp72:   {Name: "PHP 7.2 FPM Log", Software: "php72", ShowRoute: "/var/log/php7.2-fpm.log"},
-	enums.SoftwarePhp73:   {Name: "PHP 7.3 FPM Log", Software: "php73", ShowRoute: "/var/log/php7.3-fpm.log"},
-	enums.SoftwarePhp74:   {Name: "PHP 7.4 FPM Log", Software: "php74", ShowRoute: "/var/log/php7.4-fpm.log"},
-	enums.SoftwarePhp80:   {Name: "PHP 8.0 FPM Log", Software: "php80", ShowRoute: "/var/log/php8.0-fpm.log"},
-	enums.SoftwarePhp81:   {Name: "PHP 8.1 FPM Log", Software: "php81", ShowRoute: "/var/log/php8.1-fpm.log"},
-	enums.SoftwarePhp82:   {Name: "PHP 8.2 FPM Log", Software: "php82", ShowRoute: "/var/log/php8.2-fpm.log"},
-	enums.SoftwarePhp83:   {Name: "PHP 8.3 FPM Log", Software: "php83", ShowRoute: "/var/log/php8.3-fpm.log"},
-	enums.SoftwarePhp84:   {Name: "PHP 8.4 FPM Log", Software: "php84", ShowRoute: "/var/log/php8.4-fpm.log"},
-	enums.SoftwareCaddy2:  {Name: "Caddy Access Log", Software: "caddy2", ShowRoute: "/var/log/caddy/access.log"},
 }
 
 // ListLogs returns available logs for a server based on installed services
@@ -48,8 +35,17 @@ func (h *Handler) ListLogs(c *fiber.Ctx) error {
 
 	for _, service := range server.Services {
 		software := enums.Software(service.Software)
-		if logInfo, ok := softwareLogMap[software]; ok {
-			logs = append(logs, logInfo)
+		if software.HasLogPath() {
+			logPath := software.LogPath()
+			// Generate encrypted route parameter
+			showRoute, _ := support.EncodeFileRouteParam(logPath, "log")
+
+			logs = append(logs, LogInfo{
+				Name:      fmt.Sprintf("%s Log", software.Label()),
+				Software:  software.String(),
+				Path:      logPath,
+				ShowRoute: showRoute,
+			})
 		}
 	}
 
@@ -59,4 +55,61 @@ func (h *Handler) ListLogs(c *fiber.Ctx) error {
 	}
 
 	return response.OK(c, "Logs retrieved", logs)
+}
+
+// GetLogContent returns the content of a log file
+// Route: GET /servers/:id/logs/:log
+func (h *Handler) GetLogContent(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	serverID := c.Params("id")
+	logParam := c.Params("log")
+
+	if logParam == "" {
+		return response.Error(c, fiber.StatusBadRequest, "Log parameter is required")
+	}
+
+	// Decode the encrypted log parameter
+	data, err := support.DecodeFileRouteParam(logParam)
+	if err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Invalid log parameter")
+	}
+
+	// Verify the path is an allowed log path
+	if !isAllowedLogPath(data.Path) {
+		return response.Error(c, fiber.StatusBadRequest, "Log path not allowed")
+	}
+
+	// Get server
+	server, err := h.service.GetServerWithRelations(c.Context(), serverID, teamID)
+	if err != nil {
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch server")
+	}
+
+	// Create task to read log content
+	task := tasks.GetFile(tasks.GetFileConfig{
+		Path: data.Path,
+	})
+
+	// Run task using task runner
+	result, err := h.taskRunner.NewRunner(server, task).
+		AsRoot().
+		Run(c.Context())
+	if err != nil {
+		return response.Error(c, fiber.StatusInternalServerError, "Failed to read log: "+err.Error())
+	}
+
+	return response.OK(c, "Log content retrieved", map[string]string{
+		"content": result.GetOutput(),
+		"path":    data.Path,
+	})
+}
+
+// isAllowedLogPath checks if the path is in the allowed log paths
+func isAllowedLogPath(path string) bool {
+	for _, software := range enums.AllSoftware() {
+		if software.LogPath() == path {
+			return true
+		}
+	}
+	return false
 }
