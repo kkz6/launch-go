@@ -18,7 +18,7 @@ import (
 	"github.com/kkz6/launch-go/internal/queue"
 )
 
-// TaskStatus represents the status of a task execution
+// TaskStatus represents the status of a task execution.
 type TaskStatus string
 
 const (
@@ -29,7 +29,55 @@ const (
 	TaskStatusTimeout  TaskStatus = "timeout"
 )
 
-// TaskRunner handles task execution on servers
+// CallbackURLs holds the webhook URLs for task status updates.
+type CallbackURLs struct {
+	FinishedURL string
+	FailedURL   string
+	TimeoutURL  string
+}
+
+// TaskRunnerResult holds the result of a task execution.
+type TaskRunnerResult struct {
+	TaskModel  *models.Task
+	TaskResult *taskrunner.TaskResult
+	Error      error
+}
+
+// IsSuccessful returns true if the task completed successfully.
+func (r *TaskRunnerResult) IsSuccessful() bool {
+	if r.TaskResult != nil {
+		return r.TaskResult.IsSuccessful()
+	}
+	if r.TaskModel != nil {
+		return r.TaskModel.IsSuccessful()
+	}
+	return false
+}
+
+// GetOutput returns the task output.
+func (r *TaskRunnerResult) GetOutput() string {
+	if r.TaskResult != nil {
+		return r.TaskResult.Output
+	}
+	if r.TaskModel != nil && !r.TaskModel.Output.IsEmpty() {
+		return r.TaskModel.Output.String()
+	}
+	return ""
+}
+
+// GetExitCode returns the task exit code.
+func (r *TaskRunnerResult) GetExitCode() int {
+	if r.TaskResult != nil {
+		return r.TaskResult.ExitCode
+	}
+	if r.TaskModel != nil && r.TaskModel.ExitCode != nil {
+		return *r.TaskModel.ExitCode
+	}
+	return -1
+}
+
+// TaskRunner handles task execution on servers.
+// Use the builder pattern to configure and execute tasks.
 type TaskRunner struct {
 	server           *models.Server
 	task             taskrunner.Task
@@ -45,54 +93,7 @@ type TaskRunner struct {
 	completionConfig *taskrunner.CompletionConfig
 }
 
-// CallbackURLs holds the webhook URLs for task status updates
-type CallbackURLs struct {
-	FinishedURL string
-	FailedURL   string
-	TimeoutURL  string
-}
-
-// TaskRunnerResult holds the result of a task execution
-type TaskRunnerResult struct {
-	TaskModel  *models.Task
-	TaskResult *taskrunner.TaskResult
-	Error      error
-}
-
-// IsSuccessful returns true if the task completed successfully
-func (r *TaskRunnerResult) IsSuccessful() bool {
-	if r.TaskResult != nil {
-		return r.TaskResult.IsSuccessful()
-	}
-	if r.TaskModel != nil {
-		return r.TaskModel.IsSuccessful()
-	}
-	return false
-}
-
-// GetOutput returns the task output
-func (r *TaskRunnerResult) GetOutput() string {
-	if r.TaskResult != nil {
-		return r.TaskResult.Output
-	}
-	if r.TaskModel != nil && !r.TaskModel.Output.IsEmpty() {
-		return r.TaskModel.Output.String()
-	}
-	return ""
-}
-
-// GetExitCode returns the task exit code
-func (r *TaskRunnerResult) GetExitCode() int {
-	if r.TaskResult != nil {
-		return r.TaskResult.ExitCode
-	}
-	if r.TaskModel != nil && r.TaskModel.ExitCode != nil {
-		return *r.TaskModel.ExitCode
-	}
-	return -1
-}
-
-// NewTaskRunner creates a new TaskRunner for a server
+// NewTaskRunner creates a new TaskRunner for a server.
 func NewTaskRunner(server *models.Server, task taskrunner.Task) *TaskRunner {
 	return &TaskRunner{
 		server: server,
@@ -100,38 +101,38 @@ func NewTaskRunner(server *models.Server, task taskrunner.Task) *TaskRunner {
 	}
 }
 
-// WithDB sets the database connection for task tracking
+// WithDB sets the database connection for task tracking.
 func (r *TaskRunner) WithDB(db *gorm.DB) *TaskRunner {
 	r.db = db
 	return r
 }
 
-// WithDispatcher sets the task dispatcher
+// WithDispatcher sets the task dispatcher.
 func (r *TaskRunner) WithDispatcher(dispatcher *taskrunner.Dispatcher) *TaskRunner {
 	r.dispatcher = dispatcher
 	return r
 }
 
-// WithQueue sets the queue client for dispatching completion jobs
+// WithQueue sets the queue client for dispatching completion jobs.
 func (r *TaskRunner) WithQueue(q *queue.Client) *TaskRunner {
 	r.queue = q
 	return r
 }
 
-// WithLogger sets the logger
+// WithLogger sets the logger.
 func (r *TaskRunner) WithLogger(logger *zerolog.Logger) *TaskRunner {
 	r.logger = logger
 	return r
 }
 
-// AsRoot sets the task to run as root
+// AsRoot sets the task to run as root.
 func (r *TaskRunner) AsRoot() *TaskRunner {
 	r.asRoot = true
 	r.username = ""
 	return r
 }
 
-// AsUser sets the task to run as a specific user
+// AsUser sets the task to run as a specific user.
 func (r *TaskRunner) AsUser(username ...string) *TaskRunner {
 	r.asRoot = false
 	if len(username) > 0 && username[0] != "" {
@@ -142,44 +143,31 @@ func (r *TaskRunner) AsUser(username ...string) *TaskRunner {
 	return r
 }
 
-// TrackInDB enables database tracking for the task
+// TrackInDB enables database tracking for the task.
 func (r *TaskRunner) TrackInDB() *TaskRunner {
 	r.trackInDB = true
 	return r
 }
 
-// ThrowOnError enables throwing errors on task failure
+// ThrowOnError enables throwing errors on task failure.
 func (r *TaskRunner) ThrowOnError() *TaskRunner {
 	r.throwOnError = true
 	return r
 }
 
-// Throw is an alias for ThrowOnError
+// Throw is an alias for ThrowOnError.
 func (r *TaskRunner) Throw() *TaskRunner {
 	return r.ThrowOnError()
 }
 
-// WithCallbacks sets callback URLs for async tasks
+// WithCallbacks sets callback URLs for async tasks.
 func (r *TaskRunner) WithCallbacks(urls *CallbackURLs) *TaskRunner {
 	r.callbackURLs = urls
 	return r
 }
 
 // OnComplete sets a job to dispatch when the task completes successfully.
-// This is the simple way to add continuation logic without implementing
-// the full CallbackPayload interface.
-//
-// Usage:
-//
-//	runner.NewRunner(server, task).
-//	    AsRoot().
-//	    TrackInBackground().
-//	    OnComplete("server:php-installed", map[string]string{
-//	        "server_id": serverID,
-//	        "version": version,
-//	    }).
-//	    Dispatch(ctx)
-func (r *TaskRunner) OnComplete(jobType string, payload interface{}) *TaskRunner {
+func (r *TaskRunner) OnComplete(jobType string, payload any) *TaskRunner {
 	jobRef, err := taskrunner.NewJobRef(jobType, payload)
 	if err != nil {
 		if r.logger != nil {
@@ -195,8 +183,8 @@ func (r *TaskRunner) OnComplete(jobType string, payload interface{}) *TaskRunner
 	return r
 }
 
-// OnFailed sets a job to dispatch when the task fails
-func (r *TaskRunner) OnFailed(jobType string, payload interface{}) *TaskRunner {
+// OnFailed sets a job to dispatch when the task fails.
+func (r *TaskRunner) OnFailed(jobType string, payload any) *TaskRunner {
 	jobRef, err := taskrunner.NewJobRef(jobType, payload)
 	if err != nil {
 		if r.logger != nil {
@@ -212,8 +200,8 @@ func (r *TaskRunner) OnFailed(jobType string, payload interface{}) *TaskRunner {
 	return r
 }
 
-// OnTimeout sets a job to dispatch when the task times out
-func (r *TaskRunner) OnTimeout(jobType string, payload interface{}) *TaskRunner {
+// OnTimeout sets a job to dispatch when the task times out.
+func (r *TaskRunner) OnTimeout(jobType string, payload any) *TaskRunner {
 	jobRef, err := taskrunner.NewJobRef(jobType, payload)
 	if err != nil {
 		if r.logger != nil {
@@ -229,7 +217,7 @@ func (r *TaskRunner) OnTimeout(jobType string, payload interface{}) *TaskRunner 
 	return r
 }
 
-// Run executes the task synchronously and returns the result
+// Run executes the task synchronously and returns the result.
 func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 	conn, err := r.getConnection()
 	if err != nil {
@@ -240,19 +228,15 @@ func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 		return nil, fmt.Errorf("no dispatcher set: call WithDispatcher() first")
 	}
 
-	// Create task model if tracking is enabled
 	var taskModel *models.Task
 	if r.trackInDB && r.db != nil {
 		taskModel, err = r.createTaskModel()
 		if err != nil {
 			return nil, fmt.Errorf("failed to create task model: %w", err)
 		}
-
-		// Update status to running
 		r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
 	}
 
-	// Create pending task and execute
 	pendingTask := taskrunner.NewPendingTask(r.task)
 	pendingTask.OnConnection(conn)
 
@@ -270,12 +254,10 @@ func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 		Error:      err,
 	}
 
-	// Update task model with results
 	if taskModel != nil && taskResult != nil {
 		r.updateTaskModel(taskModel, taskResult)
 	}
 
-	// Handle errors
 	if err != nil && r.throwOnError {
 		return result, err
 	}
@@ -288,12 +270,12 @@ func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 	return result, nil
 }
 
-// Dispatch is an alias for Run (for compatibility)
+// Dispatch is an alias for Run (for compatibility).
 func (r *TaskRunner) Dispatch(ctx context.Context) (*TaskRunnerResult, error) {
 	return r.Run(ctx)
 }
 
-// RunAsync executes the task asynchronously in a goroutine
+// RunAsync executes the task asynchronously in a goroutine.
 func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 	r.trackInDB = true
 
@@ -310,23 +292,18 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 		return nil, fmt.Errorf("database required for async tasks")
 	}
 
-	// Create task model
 	taskModel, err := r.createTaskModel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task model: %w", err)
 	}
 
-	// Execute in goroutine
 	go func() {
-		// Update status to running
 		r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
 
-		// Create pending task
 		pendingTask := taskrunner.NewPendingTask(r.task)
 		pendingTask.OnConnection(conn)
 		pendingTask.As("task-" + taskModel.ID)
 
-		// Use background context since original ctx may be cancelled
 		bgCtx := context.Background()
 		taskResult, err := r.dispatcher.Run(bgCtx, pendingTask)
 
@@ -337,18 +314,16 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 				Msg("Async task execution failed")
 		}
 
-		// Update task model
 		if taskResult != nil {
 			r.updateTaskModel(taskModel, taskResult)
 		} else if err != nil {
 			errStr := err.Error()
-			r.db.Model(taskModel).Updates(map[string]interface{}{
+			r.db.Model(taskModel).Updates(map[string]any{
 				"status": string(TaskStatusFailed),
 				"output": errStr,
 			})
 		}
 
-		// Send callbacks
 		r.sendCallbacks(taskModel, taskResult, err)
 	}()
 
@@ -359,8 +334,6 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 // The execution mode is automatically determined:
 //   - If callback URLs are configured: Uses HTTP callbacks (production mode)
 //   - If no callback URLs: Uses long-running SSH connection (local/dev mode)
-//
-// Both modes track the task in the database and handle completion jobs.
 func (r *TaskRunner) RunInBackground(ctx context.Context) (*models.Task, error) {
 	r.trackInDB = true
 
@@ -372,7 +345,6 @@ func (r *TaskRunner) RunInBackground(ctx context.Context) (*models.Task, error) 
 		return nil, fmt.Errorf("database required for background tasks")
 	}
 
-	// Auto-detect execution mode based on callback URL availability
 	if r.hasCallbackURLs() {
 		return r.runWithCallbacks(ctx)
 	}
@@ -380,25 +352,21 @@ func (r *TaskRunner) RunInBackground(ctx context.Context) (*models.Task, error) 
 	return r.runLongRunning(ctx)
 }
 
-// hasCallbackURLs checks if callback URLs are configured
 func (r *TaskRunner) hasCallbackURLs() bool {
 	return r.callbackURLs != nil && r.callbackURLs.FinishedURL != ""
 }
 
-// runWithCallbacks executes using HTTP callbacks (production mode)
 func (r *TaskRunner) runWithCallbacks(ctx context.Context) (*models.Task, error) {
 	conn, err := r.getConnection()
 	if err != nil {
 		return nil, err
 	}
 
-	// Create task model
 	taskModel, err := r.createTaskModel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task model: %w", err)
 	}
 
-	// Wrap task for background execution with callback URLs
 	wrappedScript := r.wrapTaskForBackground(taskModel)
 	wrappedTask := taskrunner.NewBaseTask(
 		taskrunner.WithName(r.task.Name()+" (Background)"),
@@ -406,7 +374,6 @@ func (r *TaskRunner) runWithCallbacks(ctx context.Context) (*models.Task, error)
 		taskrunner.WithTimeout(r.task.Timeout()+30*time.Second),
 	)
 
-	// Create pending task and run in background on server
 	pendingTask := taskrunner.NewPendingTask(wrappedTask)
 	pendingTask.OnConnection(conn)
 	pendingTask.InBackground()
@@ -418,7 +385,6 @@ func (r *TaskRunner) runWithCallbacks(ctx context.Context) (*models.Task, error)
 		return taskModel, err
 	}
 
-	// Update status to running - callback will update to finished/failed
 	r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
 
 	if r.logger != nil {
@@ -432,14 +398,12 @@ func (r *TaskRunner) runWithCallbacks(ctx context.Context) (*models.Task, error)
 	return taskModel, nil
 }
 
-// runLongRunning executes using long-running SSH connection (local/dev mode)
 func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 	conn, err := r.getConnection()
 	if err != nil {
 		return nil, err
 	}
 
-	// Create task model
 	taskModel, err := r.createTaskModel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task model: %w", err)
@@ -453,17 +417,13 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 			Msg("Task started with long-running SSH connection")
 	}
 
-	// Execute in goroutine with long-running SSH connection
 	go func() {
-		// Update status to running
 		r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
 
-		// Create pending task - NOT in background, we wait for it
 		pendingTask := taskrunner.NewPendingTask(r.task)
 		pendingTask.OnConnection(conn)
 		pendingTask.As("task-" + taskModel.ID)
 
-		// Use background context since original ctx may be cancelled
 		bgCtx := context.Background()
 		taskResult, execErr := r.dispatcher.Run(bgCtx, pendingTask)
 
@@ -474,18 +434,16 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 				Msg("Long-running task execution failed")
 		}
 
-		// Update task model with results
 		if taskResult != nil {
 			r.updateTaskModel(taskModel, taskResult)
 		} else if execErr != nil {
 			errStr := execErr.Error()
-			r.db.Model(taskModel).Updates(map[string]interface{}{
+			r.db.Model(taskModel).Updates(map[string]any{
 				"status": string(TaskStatusFailed),
 				"output": errStr,
 			})
 		}
 
-		// Dispatch completion jobs directly (no webhook needed)
 		r.dispatchCompletionJobs(taskResult, execErr)
 
 		if r.logger != nil {
@@ -510,9 +468,7 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 	return taskModel, nil
 }
 
-// dispatchCompletionJobs dispatches asynq jobs based on task result
 func (r *TaskRunner) dispatchCompletionJobs(result *taskrunner.TaskResult, execErr error) {
-	// Get completion config from task or explicit setting
 	config := r.completionConfig
 	if config == nil {
 		if extracted, err := taskrunner.ExtractCompletionConfig(r.task); err == nil {
@@ -548,7 +504,6 @@ func (r *TaskRunner) dispatchCompletionJobs(result *taskrunner.TaskResult, execE
 		return
 	}
 
-	// Dispatch the asynq job
 	asynqTask := asynq.NewTask(jobRef.Type, jobRef.Payload)
 	if _, err := r.queue.Enqueue(asynqTask); err != nil {
 		if r.logger != nil {
@@ -563,7 +518,6 @@ func (r *TaskRunner) dispatchCompletionJobs(result *taskrunner.TaskResult, execE
 	}
 }
 
-// getConnection returns the SSH connection for the server
 func (r *TaskRunner) getConnection() (*taskrunner.Connection, error) {
 	if r.server.PublicIPv4 == nil || *r.server.PublicIPv4 == "" {
 		return nil, fmt.Errorf("server has no public IP address")
@@ -584,12 +538,10 @@ func (r *TaskRunner) getConnection() (*taskrunner.Connection, error) {
 	return r.server.ConnectionAsUser(), nil
 }
 
-// createTaskModel creates a Task model record in the database
 func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 	script := r.task.Script()
 	taskType := getTaskTypeName(r.task)
 
-	// Determine the user
 	user := r.server.GetUsername()
 	if r.asRoot {
 		user = r.server.RootUsername()
@@ -607,20 +559,14 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 		Status:   string(TaskStatusPending),
 	}
 
-	// Determine completion config - priority:
-	// 1. Explicitly set via OnComplete/OnFailed/OnTimeout
-	// 2. Task implements TaskWithCompletion
-	// 3. Task implements CallbackPayload (legacy)
 	completionConfig := r.completionConfig
 
-	// If no explicit config, check if task implements TaskWithCompletion
 	if completionConfig == nil {
 		if extracted, err := taskrunner.ExtractCompletionConfig(r.task); err == nil && extracted != nil {
 			completionConfig = extracted
 		}
 	}
 
-	// Store completion config if we have one
 	if completionConfig != nil {
 		instance, err := taskrunner.MarshalCompletionConfig(completionConfig)
 		if err != nil {
@@ -628,7 +574,6 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 		}
 		taskModel.Instance = &instance
 	} else if callbackTask, ok := r.task.(taskrunner.CallbackPayload); ok {
-		// Legacy: If task implements CallbackPayload, serialize it
 		instance, err := taskrunner.MarshalInstance(callbackTask)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal callback payload: %w", err)
@@ -643,9 +588,8 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 	return taskModel, nil
 }
 
-// updateTaskModel updates the task model with execution results
 func (r *TaskRunner) updateTaskModel(taskModel *models.Task, result *taskrunner.TaskResult) {
-	updates := map[string]interface{}{}
+	updates := map[string]any{}
 
 	updates["output"] = result.Output
 	updates["exit_code"] = result.ExitCode
@@ -661,7 +605,6 @@ func (r *TaskRunner) updateTaskModel(taskModel *models.Task, result *taskrunner.
 	r.db.Model(taskModel).Updates(updates)
 }
 
-// sendCallbacks sends HTTP callbacks for task status
 func (r *TaskRunner) sendCallbacks(taskModel *models.Task, result *taskrunner.TaskResult, err error) {
 	if r.callbackURLs == nil {
 		return
@@ -692,7 +635,6 @@ func (r *TaskRunner) sendCallbacks(taskModel *models.Task, result *taskrunner.Ta
 	client.Do(req)
 }
 
-// wrapTaskForBackground wraps a task script for background execution with tracking
 func (r *TaskRunner) wrapTaskForBackground(taskModel *models.Task) string {
 	actualScript := r.task.Script()
 	timeout := r.task.Timeout()
@@ -722,12 +664,10 @@ FILENAME=$(basename "$0")
 EXT="${FILENAME##*.}"
 PATH_ACTUAL_SCRIPT="$DIRECTORY/${FILENAME%%.*}-original.$EXT"
 
-# Writing actual script
 cat > $PATH_ACTUAL_SCRIPT << 'TASK_EOF'
 %s
 TASK_EOF
 
-# Running actual script
 %sbash $PATH_ACTUAL_SCRIPT
 EXIT_CODE=$?
 
@@ -740,10 +680,9 @@ else
 fi
 
 exit $EXIT_CODE
-`, CommonFunctions(), strings.TrimSpace(actualScript), timeoutCmd, finishedURL, timeoutURL, failedURL)
+`, taskrunner.CommonFunctions(), strings.TrimSpace(actualScript), timeoutCmd, finishedURL, timeoutURL, failedURL)
 }
 
-// getTaskTypeName returns the type name of a task
 func getTaskTypeName(task taskrunner.Task) string {
 	t := reflect.TypeOf(task)
 	if t.Kind() == reflect.Ptr {
@@ -752,7 +691,7 @@ func getTaskTypeName(task taskrunner.Task) string {
 	return t.PkgPath() + "." + t.Name()
 }
 
-// TaskRunnerDeps holds dependencies for creating TaskRunners
+// TaskRunnerDeps holds dependencies for creating TaskRunners.
 type TaskRunnerDeps struct {
 	DB         *gorm.DB
 	Queue      *queue.Client
@@ -760,7 +699,7 @@ type TaskRunnerDeps struct {
 	Logger     *zerolog.Logger
 }
 
-// NewRunner creates a new TaskRunner with dependencies pre-configured
+// NewRunner creates a new TaskRunner with dependencies pre-configured.
 func (d *TaskRunnerDeps) NewRunner(server *models.Server, task taskrunner.Task) *TaskRunner {
 	return NewTaskRunner(server, task).
 		WithDB(d.DB).
@@ -769,7 +708,7 @@ func (d *TaskRunnerDeps) NewRunner(server *models.Server, task taskrunner.Task) 
 		WithLogger(d.Logger)
 }
 
-// RunTask is a convenience function to run a task on a server
+// RunTask is a convenience function to run a task on a server synchronously.
 func (d *TaskRunnerDeps) RunTask(ctx context.Context, server *models.Server, task taskrunner.Task, asRoot bool) (*TaskRunnerResult, error) {
 	runner := d.NewRunner(server, task)
 	if asRoot {

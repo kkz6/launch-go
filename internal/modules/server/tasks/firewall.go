@@ -6,7 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
-// FirewallAction represents the action for a firewall rule
+// FirewallAction represents the action for a firewall rule.
 type FirewallAction string
 
 const (
@@ -14,31 +14,15 @@ const (
 	FirewallDeny  FirewallAction = "deny"
 )
 
-// FirewallRuleConfig holds configuration for a firewall rule
+// FirewallRuleConfig holds configuration for a firewall rule.
 type FirewallRuleConfig struct {
 	Action   FirewallAction
 	Port     string
-	Protocol string // tcp, udp, or empty for both
-	FromIP   string // optional source IP
+	Protocol string
+	FromIP   string
 }
 
-// AddFirewallRuleTask adds a firewall rule
-type AddFirewallRuleTask struct {
-	*ServerTask
-	Rule FirewallRuleConfig
-}
-
-// NewAddFirewallRuleTask creates a new AddFirewallRuleTask
-func NewAddFirewallRuleTask(rule FirewallRuleConfig) *AddFirewallRuleTask {
-	script := formatUfwRule(rule, false)
-
-	return &AddFirewallRuleTask{
-		ServerTask: NewServerTaskWithName("Add Firewall Rule", script, 30),
-		Rule:       rule,
-	}
-}
-
-// AddFirewallRule creates a task to add a firewall rule
+// AddFirewallRule creates a task to add a UFW firewall rule.
 func AddFirewallRule(action FirewallAction, port string, protocol string, fromIP string) *taskrunner.BaseTask {
 	rule := FirewallRuleConfig{
 		Action:   action,
@@ -50,27 +34,11 @@ func AddFirewallRule(action FirewallAction, port string, protocol string, fromIP
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Add Firewall Rule"),
 		taskrunner.WithScript(formatUfwRule(rule, false)),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
-// DeleteFirewallRuleTask deletes a firewall rule
-type DeleteFirewallRuleTask struct {
-	*ServerTask
-	Rule FirewallRuleConfig
-}
-
-// NewDeleteFirewallRuleTask creates a new DeleteFirewallRuleTask
-func NewDeleteFirewallRuleTask(rule FirewallRuleConfig) *DeleteFirewallRuleTask {
-	script := formatUfwRule(rule, true)
-
-	return &DeleteFirewallRuleTask{
-		ServerTask: NewServerTaskWithName("Delete Firewall Rule", script, 30),
-		Rule:       rule,
-	}
-}
-
-// DeleteFirewallRule creates a task to delete a firewall rule
+// DeleteFirewallRule creates a task to delete a UFW firewall rule.
 func DeleteFirewallRule(action FirewallAction, port string, protocol string, fromIP string) *taskrunner.BaseTask {
 	rule := FirewallRuleConfig{
 		Action:   action,
@@ -82,11 +50,10 @@ func DeleteFirewallRule(action FirewallAction, port string, protocol string, fro
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Delete Firewall Rule"),
 		taskrunner.WithScript(formatUfwRule(rule, true)),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
-// formatUfwRule formats a UFW rule command
 func formatUfwRule(rule FirewallRuleConfig, delete bool) string {
 	var parts []string
 
@@ -95,7 +62,6 @@ func formatUfwRule(rule FirewallRuleConfig, delete bool) string {
 	if delete {
 		parts = append(parts, "delete")
 	} else if rule.Action == FirewallDeny {
-		// Insert deny rules at position 1 (before allow rules)
 		parts = append(parts, "insert 1")
 	}
 

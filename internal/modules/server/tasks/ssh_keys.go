@@ -17,7 +17,7 @@ func GenerateRsaKeyPair(keyPath string, bits int) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Generate RSA Key Pair"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -28,7 +28,7 @@ func GenerateEd25519KeyPair(keyPath string) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Generate Ed25519 Key Pair"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -39,7 +39,7 @@ func GeneratePublicKey(privateKeyPath string) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Generate Public Key"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(15),
+		taskrunner.WithTimeoutSeconds(15),
 	)
 }
 
@@ -59,7 +59,7 @@ chown -R %s:%s %s/.ssh`, homeDir, homeDir, publicKey, homeDir, homeDir, user, us
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Authorize Public Key"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -76,7 +76,7 @@ func DeauthorizePublicKey(publicKey string, user string) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Deauthorize Public Key"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -90,6 +90,6 @@ func GetAuthorizedKeys(user string) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get Authorized Keys"),
 		taskrunner.WithScript(fmt.Sprintf("cat %s/.ssh/authorized_keys 2>/dev/null || echo ''", homeDir)),
-		taskrunner.WithTimeout(15),
+		taskrunner.WithTimeoutSeconds(15),
 	)
 }

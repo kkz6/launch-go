@@ -42,7 +42,7 @@ echo "Cron file uploaded successfully"
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Upload Cron File"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -66,6 +66,6 @@ fi
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Delete Cron File"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }

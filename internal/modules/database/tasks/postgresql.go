@@ -17,7 +17,7 @@ func PostgreSQLCreateDatabase(config PostgreSQLCreateDatabaseConfig) *taskrunner
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Create PostgreSQL Database"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -32,7 +32,7 @@ func PostgreSQLDropDatabase(config PostgreSQLDropDatabaseConfig) *taskrunner.Bas
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Drop PostgreSQL Database"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -48,7 +48,7 @@ func PostgreSQLCreateUser(config PostgreSQLCreateUserConfig) *taskrunner.BaseTas
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Create PostgreSQL User"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -63,7 +63,7 @@ func PostgreSQLDropUser(config PostgreSQLDropUserConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Drop PostgreSQL User"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -79,7 +79,7 @@ func PostgreSQLGrantPrivileges(config PostgreSQLGrantPrivilegesConfig) *taskrunn
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Grant PostgreSQL Privileges"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -95,7 +95,7 @@ func PostgreSQLRevokePrivileges(config PostgreSQLRevokePrivilegesConfig) *taskru
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Revoke PostgreSQL Privileges"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -111,7 +111,7 @@ func PostgreSQLUpdatePassword(config PostgreSQLUpdatePasswordConfig) *taskrunner
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Update PostgreSQL Password"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(30),
+		taskrunner.WithTimeoutSeconds(30),
 	)
 }
 
@@ -121,7 +121,7 @@ func PostgreSQLGetDatabases() *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get PostgreSQL Databases"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(15),
+		taskrunner.WithTimeoutSeconds(15),
 	)
 }
 
@@ -131,7 +131,7 @@ func PostgreSQLGetUsers() *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get PostgreSQL Users"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(15),
+		taskrunner.WithTimeoutSeconds(15),
 	)
 }
 
@@ -146,6 +146,6 @@ func PostgreSQLGetTables(config PostgreSQLGetTablesConfig) *taskrunner.BaseTask 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get PostgreSQL Tables"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(15),
+		taskrunner.WithTimeoutSeconds(15),
 	)
 }

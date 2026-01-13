@@ -18,7 +18,7 @@ func RunBackup(config RunBackupConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Run Backup"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(3600), // 1 hour for backups
+		taskrunner.WithTimeoutSeconds(3600), // 1 hour for backups
 	)
 }
 
@@ -34,7 +34,7 @@ func DeleteBackup(config DeleteBackupConfig) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Delete Backup"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(300),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
@@ -63,6 +63,6 @@ echo "Launch Agent configuration synced successfully"
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Sync Launch Config"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeout(120),
+		taskrunner.WithTimeoutSeconds(120),
 	)
 }
