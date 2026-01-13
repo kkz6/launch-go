@@ -106,7 +106,7 @@ func ProvisionFreshServer(config ProvisionFreshServerConfig) *taskrunner.BaseTas
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Provision Fresh Server"),
 		taskrunner.WithScript(scriptBuilder.String()),
-		taskrunner.WithTimeout(15*60), // 15 minutes
+		taskrunner.WithTimeoutSeconds(15*60),
 	)
 }
 

@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -54,6 +55,16 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 	if !result.IsSuccessful() {
 		j.LogInfo("Database user drop completed with errors", "output", result.GetOutput())
 	}
+
+	logger := activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("database").
+		On(dbUser).
+		WithEvent("uninstalled")
+	if j.Payload.CallerID != nil {
+		logger.CausedByUser(*j.Payload.CallerID)
+	}
+	logger.Log("Database user was uninstalled")
 
 	if err := j.MarkAsUninstalled(j.DB, dbUser); err != nil {
 		return fmt.Errorf("failed to delete database user record: %w", err)
