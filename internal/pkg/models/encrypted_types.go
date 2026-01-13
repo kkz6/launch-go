@@ -2,6 +2,7 @@ package models
 
 import (
 	"database/sql/driver"
+	"encoding/json"
 	"errors"
 
 	"github.com/kkz6/launch-go/internal/database/serializers"
@@ -140,4 +141,66 @@ func (e *EncryptedNullableString) Set(s string) {
 func (e *EncryptedNullableString) Clear() {
 	e.String = ""
 	e.Valid = false
+}
+
+// EncryptedJSONStringMap is a map[string]string that is stored as encrypted JSON in the database.
+// Use this for credentials and other sensitive key-value data.
+//
+// Usage:
+//
+//	type MyModel struct {
+//	    Credentials models.EncryptedJSONStringMap `gorm:"type:longtext" json:"-"`
+//	}
+//
+//	// Direct access:
+//	model.Credentials = models.EncryptedJSONStringMap{"api_key": "secret"}
+//	value := model.Credentials["api_key"]
+type EncryptedJSONStringMap map[string]string
+
+// Value implements driver.Valuer - JSON marshals and encrypts when storing to database
+func (e EncryptedJSONStringMap) Value() (driver.Value, error) {
+	if e == nil {
+		return nil, nil
+	}
+
+	// Marshal to JSON
+	jsonBytes, err := json.Marshal(e)
+	if err != nil {
+		return nil, err
+	}
+
+	// Encrypt the JSON string
+	return serializers.Encrypt(string(jsonBytes))
+}
+
+// Scan implements sql.Scanner - decrypts and JSON unmarshals when reading from database
+func (e *EncryptedJSONStringMap) Scan(value interface{}) error {
+	if value == nil {
+		*e = nil
+		return nil
+	}
+
+	var encrypted string
+	switch v := value.(type) {
+	case []byte:
+		encrypted = string(v)
+	case string:
+		encrypted = v
+	default:
+		return errors.New("unsupported type for EncryptedJSONStringMap")
+	}
+
+	if encrypted == "" {
+		*e = nil
+		return nil
+	}
+
+	// Decrypt the value
+	decrypted, err := serializers.Decrypt(encrypted)
+	if err != nil {
+		return err
+	}
+
+	// Unmarshal JSON
+	return json.Unmarshal([]byte(decrypted), e)
 }

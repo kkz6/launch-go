@@ -14,7 +14,7 @@ type DomainProvider struct {
 	TeamID           *string                  `gorm:"column:team_id;type:char(26);index" json:"team_id,omitempty"`
 	Profile          *string                  `gorm:"type:varchar(255)" json:"profile,omitempty"`
 	Provider         enums.DnsProvider        `gorm:"type:varchar(255);not null" json:"provider"`
-	Credentials      basemodels.JSONStringMap `gorm:"type:longtext;not null;serializer:encrypted,json" json:"-"`
+	Credentials      basemodels.EncryptedJSONStringMap `gorm:"type:longtext;not null" json:"-"`
 	Connected        bool                     `gorm:"default:true" json:"connected"`
 	AdditionalData   basemodels.JSONMap       `gorm:"column:additional_data;type:json" json:"-"`
 	SyncStatus       enums.SyncStatus         `gorm:"column:sync_status;type:varchar(255);not null;default:idle" json:"sync_status"`
