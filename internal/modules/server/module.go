@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/server/services"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -44,7 +45,15 @@ type Module struct {
 func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger, webhookSecretKey string) *Module {
 	repo := repositories.NewRepository(db)
 	service := services.NewService(repo, queueClient, ws, dispatcher, logger)
-	handler := handlers.NewHandler(service)
+
+	// Create task runner deps for handlers
+	taskRunnerDeps := &tasks.TaskRunnerDeps{
+		DB:         db,
+		Dispatcher: dispatcher,
+		Logger:     logger,
+	}
+
+	handler := handlers.NewHandler(service, taskRunnerDeps)
 	webhookHandler := handlers.NewTaskWebhookHandler(repo, webhookSecretKey)
 	provisionScriptHandler := handlers.NewProvisionScriptHandler(repo, service)
 

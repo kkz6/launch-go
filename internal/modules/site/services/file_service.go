@@ -8,11 +8,11 @@ import (
 	"gorm.io/gorm"
 
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // FileOnServer represents an editable file on the server
@@ -24,22 +24,24 @@ type FileOnServer struct {
 	Type        string             `json:"type"`         // "default" or "environment"
 	FileType    enums.SiteFileType `json:"file_type"`    // enum value for identification
 	ShowRoute   string             `json:"show_route"`   // encrypted URL parameter for viewing
-	UpdateRoute string             `json:"update_route"` // encrypted URL parameter for updating
+	UpdateRoute string             `json:"update_route,omitempty"` // encrypted URL parameter for updating (not included for logs)
 }
 
 // FileService handles file operations on sites
 type FileService struct {
-	db       *gorm.DB
-	siteRepo *repositories.SiteRepository
-	logger   *zerolog.Logger
+	db         *gorm.DB
+	siteRepo   *repositories.SiteRepository
+	logger     *zerolog.Logger
+	taskRunner *tasks.TaskRunnerDeps
 }
 
 // NewFileService creates a new FileService instance
-func NewFileService(db *gorm.DB, siteRepo *repositories.SiteRepository, logger *zerolog.Logger) *FileService {
+func NewFileService(db *gorm.DB, siteRepo *repositories.SiteRepository, logger *zerolog.Logger, taskRunner *tasks.TaskRunnerDeps) *FileService {
 	return &FileService{
-		db:       db,
-		siteRepo: siteRepo,
-		logger:   logger,
+		db:         db,
+		siteRepo:   siteRepo,
+		logger:     logger,
+		taskRunner: taskRunner,
 	}
 }
 
@@ -68,17 +70,18 @@ func (s *FileService) ListLogFiles(ctx context.Context, serverID, siteID string)
 // getEditableFiles returns the list of editable files based on site type
 func (s *FileService) getEditableFiles(site *models.Site) []FileOnServer {
 	fileTypes := enums.EditableFilesForSiteType(site.Type)
-	return s.buildFileList(site, fileTypes)
+	return s.buildFileList(site, fileTypes, true)
 }
 
 // getLogFiles returns the list of log files based on site type
 func (s *FileService) getLogFiles(site *models.Site) []FileOnServer {
 	fileTypes := enums.LogFilesForSiteType(site.Type)
-	return s.buildFileList(site, fileTypes)
+	return s.buildFileList(site, fileTypes, false)
 }
 
 // buildFileList builds a list of FileOnServer from file types
-func (s *FileService) buildFileList(site *models.Site, fileTypes []enums.SiteFileType) []FileOnServer {
+// includeUpdateRoute determines if the update route should be included (false for log files)
+func (s *FileService) buildFileList(site *models.Site, fileTypes []enums.SiteFileType, includeUpdateRoute bool) []FileOnServer {
 	files := make([]FileOnServer, 0, len(fileTypes))
 
 	for _, ft := range fileTypes {
@@ -87,9 +90,8 @@ func (s *FileService) buildFileList(site *models.Site, fileTypes []enums.SiteFil
 
 		// Generate encrypted route parameters
 		showRoute, _ := support.EncodeFileRouteParam(path, fileType)
-		updateRoute, _ := support.EncodeFileRouteParam(path, fileType)
 
-		files = append(files, FileOnServer{
+		file := FileOnServer{
 			Name:        ft.Name(),
 			Description: ft.Description(),
 			Path:        path,
@@ -97,8 +99,14 @@ func (s *FileService) buildFileList(site *models.Site, fileTypes []enums.SiteFil
 			Type:        fileType,
 			FileType:    ft,
 			ShowRoute:   showRoute,
-			UpdateRoute: updateRoute,
-		})
+		}
+
+		// Only include update route for editable files
+		if includeUpdateRoute {
+			file.UpdateRoute, _ = support.EncodeFileRouteParam(path, fileType)
+		}
+
+		files = append(files, file)
 	}
 
 	return files
@@ -123,25 +131,20 @@ func (s *FileService) GetFileContent(ctx context.Context, serverID, siteID, file
 		return "", fmt.Errorf("server not found: %w", err)
 	}
 
-	// Create SSH connection
-	sshClient, err := s.createSSHClient(&server)
-	if err != nil {
-		return "", fmt.Errorf("failed to connect to server: %w", err)
-	}
-	defer sshClient.Close()
+	// Create task to read file content using the predefined GetFile task
+	task := tasks.GetFile(tasks.GetFileConfig{
+		Path: filePath,
+	})
 
-	if err := sshClient.Connect(); err != nil {
-		return "", fmt.Errorf("failed to establish SSH connection: %w", err)
-	}
-
-	// Read file content
-	cmd := fmt.Sprintf(`cat "%s" 2>/dev/null || echo ""`, filePath)
-	result, err := sshClient.Run(ctx, cmd)
+	// Run task using task runner
+	result, err := s.taskRunner.NewRunner(&server, task).
+		AsUser().
+		Run(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file: %w", err)
 	}
 
-	return result.Stdout, nil
+	return result.GetOutput(), nil
 }
 
 // UpdateFileContent updates the content of a file on the server
@@ -163,29 +166,23 @@ func (s *FileService) UpdateFileContent(ctx context.Context, serverID, siteID, f
 		return fmt.Errorf("server not found: %w", err)
 	}
 
-	// Create SSH connection
-	sshClient, err := s.createSSHClient(&server)
-	if err != nil {
-		return fmt.Errorf("failed to connect to server: %w", err)
-	}
-	defer sshClient.Close()
+	// Create task to write file content using the predefined UploadFile task
+	task := tasks.UploadFile(tasks.UploadFileConfig{
+		Path:     filePath,
+		Contents: content,
+	})
 
-	if err := sshClient.Connect(); err != nil {
-		return fmt.Errorf("failed to establish SSH connection: %w", err)
-	}
-
-	// Write file content using heredoc
-	cmd := fmt.Sprintf(`cat > "%s" << 'LAUNCH_EOF'
-%s
-LAUNCH_EOF`, filePath, content)
-
-	result, err := sshClient.Run(ctx, cmd)
+	// Run task using task runner
+	result, err := s.taskRunner.NewRunner(&server, task).
+		AsUser().
+		Throw().
+		Run(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to write file: %w", err)
 	}
 
-	if result.ExitCode != 0 {
-		return fmt.Errorf("failed to write file: exit code %d", result.ExitCode)
+	if !result.IsSuccessful() {
+		return fmt.Errorf("failed to write file: exit code %d", result.GetExitCode())
 	}
 
 	return nil
@@ -222,24 +219,4 @@ func (s *FileService) isEditableFilePath(site *models.Site, filePath string) boo
 	}
 
 	return false
-}
-
-// createSSHClient creates an SSH client for the server
-func (s *FileService) createSSHClient(server *servermodels.Server) (*taskrunner.SSHClient, error) {
-	host := ""
-	if server.PublicIPv4 != nil {
-		host = *server.PublicIPv4
-	}
-
-	port := 22
-	if server.SSHPort != nil {
-		port = *server.SSHPort
-	}
-
-	return taskrunner.NewSSHClient(taskrunner.SSHConfig{
-		Host:       host,
-		Port:       port,
-		User:       "launcher",
-		PrivateKey: server.PrivateKey.String(),
-	})
 }

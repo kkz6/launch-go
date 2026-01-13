@@ -5,18 +5,23 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/services"
+	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // Handler handles all server-related HTTP requests
 type Handler struct {
-	service *services.Service
+	service    *services.Service
+	taskRunner *tasks.TaskRunnerDeps
 }
 
 // NewHandler creates a new server handler
-func NewHandler(service *services.Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *services.Service, taskRunner *tasks.TaskRunnerDeps) *Handler {
+	return &Handler{
+		service:    service,
+		taskRunner: taskRunner,
+	}
 }
 
 // List returns all servers for the team

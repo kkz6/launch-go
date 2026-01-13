@@ -85,6 +85,8 @@ func (m *Module) registerRedirectRoutes(router fiber.Router) {
 // registerFileRoutes registers file management routes
 func (m *Module) registerFileRoutes(router fiber.Router) {
 	router.Get("/:id/files", m.fileHandler.ListFiles)
-	router.Get("/:id/files/content", m.fileHandler.GetFileContent)
-	router.Put("/:id/files/content", m.fileHandler.UpdateFileContent)
+	router.Get("/:id/files/:file", m.fileHandler.ShowFile)        // Get file content by encoded param
+	router.Put("/:id/files/:file", m.fileHandler.UpdateFile)      // Update file content by encoded param
+	router.Patch("/:id/files/:file", m.fileHandler.UpdateFile)    // Update file content by encoded param (PATCH)
+	router.Get("/:id/logs", m.fileHandler.ListLogs)
 }
