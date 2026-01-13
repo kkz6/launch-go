@@ -6,25 +6,16 @@ import (
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
-	"github.com/golang-jwt/jwt/v5"
 )
 
+// Message represents a WebSocket message
 type Message struct {
 	Event   string      `json:"event"`
 	Channel string      `json:"channel"`
 	Data    interface{} `json:"data"`
 }
 
-type Client struct {
-	ID       string
-	UserID   string
-	TeamID   string
-	Conn     *websocket.Conn
-	Channels map[string]bool
-	Send     chan []byte
-	mu       sync.RWMutex
-}
-
+// Hub manages WebSocket clients and message broadcasting
 type Hub struct {
 	clients    map[*Client]bool
 	channels   map[string]map[*Client]bool
@@ -35,6 +26,7 @@ type Hub struct {
 	done       chan struct{}
 }
 
+// NewHub creates a new WebSocket hub
 func NewHub() *Hub {
 	return &Hub{
 		clients:    make(map[*Client]bool),
@@ -46,6 +38,7 @@ func NewHub() *Hub {
 	}
 }
 
+// Run starts the hub's main event loop
 func (h *Hub) Run() {
 	for {
 		select {
@@ -58,22 +51,7 @@ func (h *Hub) Run() {
 			h.mu.Unlock()
 
 		case client := <-h.unregister:
-			h.mu.Lock()
-			if _, ok := h.clients[client]; ok {
-				delete(h.clients, client)
-				close(client.Send)
-
-				// Remove from all channels
-				for channel := range client.Channels {
-					if clients, ok := h.channels[channel]; ok {
-						delete(clients, client)
-						if len(clients) == 0 {
-							delete(h.channels, channel)
-						}
-					}
-				}
-			}
-			h.mu.Unlock()
+			h.removeClient(client)
 
 		case message := <-h.broadcast:
 			h.broadcastToChannel(message)
@@ -81,29 +59,65 @@ func (h *Hub) Run() {
 	}
 }
 
-func (h *Hub) broadcastToChannel(message *Message) {
-	h.mu.RLock()
-	clients, ok := h.channels[message.Channel]
-	h.mu.RUnlock()
+// removeClient removes a client from the hub and all its channels
+func (h *Hub) removeClient(client *Client) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
-	if !ok {
+	if _, ok := h.clients[client]; !ok {
 		return
 	}
 
+	// Mark client as closing before closing the channel
+	client.Close()
+
+	delete(h.clients, client)
+	close(client.Send)
+
+	// Remove from all channels
+	for channel := range client.Channels {
+		if clients, ok := h.channels[channel]; ok {
+			delete(clients, client)
+			if len(clients) == 0 {
+				delete(h.channels, channel)
+			}
+		}
+	}
+}
+
+// broadcastToChannel sends a message to all clients subscribed to the channel
+func (h *Hub) broadcastToChannel(message *Message) {
 	data, err := json.Marshal(message)
 	if err != nil {
 		return
 	}
 
+	h.mu.RLock()
+	clients, ok := h.channels[message.Channel]
+	if !ok {
+		h.mu.RUnlock()
+		return
+	}
+
+	// Copy clients to avoid holding lock during send
+	clientsCopy := make([]*Client, 0, len(clients))
 	for client := range clients {
-		select {
-		case client.Send <- data:
-		default:
-			h.unregister <- client
+		clientsCopy = append(clientsCopy, client)
+	}
+	h.mu.RUnlock()
+
+	// Send to all clients
+	for _, client := range clientsCopy {
+		if !client.SafeSend(data) {
+			// Client buffer full or closing, schedule for removal
+			go func(c *Client) {
+				h.unregister <- c
+			}(client)
 		}
 	}
 }
 
+// Subscribe adds a client to a channel
 func (h *Hub) Subscribe(client *Client, channel string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -113,11 +127,10 @@ func (h *Hub) Subscribe(client *Client, channel string) {
 	}
 
 	h.channels[channel][client] = true
-	client.mu.Lock()
-	client.Channels[channel] = true
-	client.mu.Unlock()
+	client.AddChannel(channel)
 }
 
+// Unsubscribe removes a client from a channel
 func (h *Hub) Unsubscribe(client *Client, channel string) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
@@ -129,11 +142,10 @@ func (h *Hub) Unsubscribe(client *Client, channel string) {
 		}
 	}
 
-	client.mu.Lock()
-	delete(client.Channels, channel)
-	client.mu.Unlock()
+	client.RemoveChannel(channel)
 }
 
+// Broadcast sends a message to all clients subscribed to a channel
 func (h *Hub) Broadcast(channel string, event string, data interface{}) {
 	h.broadcast <- &Message{
 		Event:   event,
@@ -142,109 +154,90 @@ func (h *Hub) Broadcast(channel string, event string, data interface{}) {
 	}
 }
 
+// BroadcastToServer sends a message to the server's channel
 func (h *Hub) BroadcastToServer(serverID string, event string, data interface{}) {
 	h.Broadcast("server."+serverID, event, data)
 }
 
+// BroadcastToSite sends a message to the site's channel
 func (h *Hub) BroadcastToSite(siteID string, event string, data interface{}) {
 	h.Broadcast("site."+siteID, event, data)
 }
 
+// BroadcastToDeployment sends a message to the deployment's channel
 func (h *Hub) BroadcastToDeployment(deploymentID string, event string, data interface{}) {
 	h.Broadcast("deployment."+deploymentID, event, data)
 }
 
+// BroadcastToTeam sends a message to the team's channel
 func (h *Hub) BroadcastToTeam(teamID string, event string, data interface{}) {
 	h.Broadcast("team."+teamID, event, data)
 }
 
+// BroadcastModelCreated broadcasts a model creation event to the team channel
+func (h *Hub) BroadcastModelCreated(teamID, modelName, modelID string, payload interface{}) {
+	h.BroadcastToTeam(teamID, modelName+".created", map[string]interface{}{
+		"id":      modelID,
+		"model":   modelName,
+		"action":  "created",
+		"team_id": teamID,
+		"data":    payload,
+	})
+}
+
+// BroadcastModelUpdated broadcasts a model update event to the team channel
+func (h *Hub) BroadcastModelUpdated(teamID, modelName, modelID string, payload interface{}) {
+	h.BroadcastToTeam(teamID, modelName+".updated", map[string]interface{}{
+		"id":      modelID,
+		"model":   modelName,
+		"action":  "updated",
+		"team_id": teamID,
+		"data":    payload,
+	})
+}
+
+// BroadcastModelDeleted broadcasts a model deletion event to the team channel
+func (h *Hub) BroadcastModelDeleted(teamID, modelName, modelID string, payload interface{}) {
+	h.BroadcastToTeam(teamID, modelName+".deleted", map[string]interface{}{
+		"id":      modelID,
+		"model":   modelName,
+		"action":  "deleted",
+		"team_id": teamID,
+		"data":    payload,
+	})
+}
+
+// Shutdown gracefully shuts down the hub
 func (h *Hub) Shutdown() {
 	close(h.done)
 }
 
+// Register registers a client with the hub
+func (h *Hub) Register(client *Client) {
+	h.register <- client
+}
+
+// Handler returns a Fiber handler for the main WebSocket endpoint
 func Handler(hub *Hub, jwtSecret string) fiber.Handler {
 	return websocket.New(func(c *websocket.Conn) {
-		// Get token from query params
-		token := c.Query("token")
-		if token == "" {
-			c.Close()
-			return
-		}
-
-		// Validate JWT
-		claims, err := validateToken(token, jwtSecret)
+		// Authenticate
+		claims, err := AuthenticateWebSocket(c, jwtSecret)
 		if err != nil {
 			c.Close()
 			return
 		}
 
-		client := &Client{
-			ID:       claims["sub"].(string),
-			UserID:   claims["sub"].(string),
-			TeamID:   claims["team_id"].(string),
-			Conn:     c,
-			Channels: make(map[string]bool),
-			Send:     make(chan []byte, 256),
-		}
+		// Create client
+		client := NewClient(hub, c, claims.UserID, claims.TeamID)
 
-		hub.register <- client
+		// Register with hub
+		hub.Register(client)
 
 		// Auto-subscribe to team channel
 		hub.Subscribe(client, "team."+client.TeamID)
 
-		go writePump(client)
-		readPump(hub, client)
+		// Start pumps
+		go client.WritePump()
+		client.ReadPump()
 	})
-}
-
-func validateToken(tokenString, secret string) (jwt.MapClaims, error) {
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte(secret), nil
-	})
-
-	if err != nil || !token.Valid {
-		return nil, err
-	}
-
-	claims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, jwt.ErrTokenInvalidClaims
-	}
-
-	return claims, nil
-}
-
-func readPump(hub *Hub, client *Client) {
-	defer func() {
-		hub.unregister <- client
-		client.Conn.Close()
-	}()
-
-	for {
-		var msg struct {
-			Action  string `json:"action"`
-			Channel string `json:"channel"`
-		}
-
-		if err := client.Conn.ReadJSON(&msg); err != nil {
-			break
-		}
-
-		switch msg.Action {
-		case "subscribe":
-			hub.Subscribe(client, msg.Channel)
-		case "unsubscribe":
-			hub.Unsubscribe(client, msg.Channel)
-		}
-	}
-}
-
-func writePump(client *Client) {
-	defer client.Conn.Close()
-
-	for message := range client.Send {
-		if err := client.Conn.WriteMessage(websocket.TextMessage, message); err != nil {
-			break
-		}
-	}
 }

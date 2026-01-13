@@ -63,3 +63,29 @@ func (c *Cron) ToCronFileContents() string {
 func (c *Cron) GetCommand() string {
 	return c.Command.String()
 }
+
+// GetTeamID returns the team ID for broadcasting (requires Server to be preloaded)
+func (c *Cron) GetTeamID() string {
+	if c.Server != nil {
+		return c.Server.TeamID
+	}
+	return ""
+}
+
+// GetServerID returns the server ID
+func (c *Cron) GetServerID() string {
+	return c.ServerID
+}
+
+// BroadcastName returns the model name for broadcasting
+func (c *Cron) BroadcastName() string {
+	return "cron"
+}
+
+// BroadcastPayload returns the data to broadcast
+func (c *Cron) BroadcastPayload() map[string]interface{} {
+	return map[string]interface{}{
+		"id":        c.ID,
+		"server_id": c.ServerID,
+	}
+}

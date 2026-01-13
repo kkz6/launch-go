@@ -50,6 +50,12 @@ func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *
 		return nil, err
 	}
 
+	// Broadcast cron created event
+	s.BroadcastToTeam(server.TeamID, "cron.created", map[string]interface{}{
+		"id":        cron.ID,
+		"server_id": serverID,
+	})
+
 	if server.IsProvisioned() {
 		if err := s.dispatchCronInstallJob(server, cron); err != nil {
 			s.LogError(err, "Failed to dispatch cron install job", "server_id", serverID, "cron_id", cron.ID)
@@ -90,6 +96,12 @@ func (s *Service) UpdateCron(ctx context.Context, serverID, teamID, cronID strin
 		return nil, err
 	}
 
+	// Broadcast cron updated event
+	s.BroadcastToTeam(teamID, "cron.updated", map[string]interface{}{
+		"id":        cron.ID,
+		"server_id": serverID,
+	})
+
 	return cron, nil
 }
 
@@ -116,10 +128,26 @@ func (s *Service) DeleteCron(ctx context.Context, serverID, teamID, cronID strin
 			s.LogError(err, "Failed to dispatch cron uninstall job", "server_id", serverID, "cron_id", cronID)
 		}
 
+		// Broadcast cron deleted event
+		s.BroadcastToTeam(teamID, "cron.deleted", map[string]interface{}{
+			"id":        cronID,
+			"server_id": serverID,
+		})
+
 		return nil
 	}
 
-	return s.repo.DeleteCron(ctx, cronID)
+	if err := s.repo.DeleteCron(ctx, cronID); err != nil {
+		return err
+	}
+
+	// Broadcast cron deleted event
+	s.BroadcastToTeam(teamID, "cron.deleted", map[string]interface{}{
+		"id":        cronID,
+		"server_id": serverID,
+	})
+
+	return nil
 }
 
 func (s *Service) dispatchCronInstallJob(server *models.Server, cron *models.Cron) error {

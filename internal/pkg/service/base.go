@@ -4,6 +4,7 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 
+	"github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -142,4 +143,46 @@ func (s *Base) HasQueue() bool {
 // HasWebsocket returns true if a websocket hub is configured
 func (s *Base) HasWebsocket() bool {
 	return s.WS != nil
+}
+
+// BroadcastModelCreated broadcasts a model creation event to the team channel.
+// The model must implement the Broadcastable interface.
+func (s *Base) BroadcastModelCreated(model models.Broadcastable) {
+	if s.WS == nil {
+		return
+	}
+	s.WS.BroadcastModelCreated(
+		model.GetTeamID(),
+		model.BroadcastName(),
+		model.BroadcastPayload()["id"].(string),
+		model.BroadcastPayload(),
+	)
+}
+
+// BroadcastModelUpdated broadcasts a model update event to the team channel.
+// The model must implement the Broadcastable interface.
+func (s *Base) BroadcastModelUpdated(model models.Broadcastable) {
+	if s.WS == nil {
+		return
+	}
+	s.WS.BroadcastModelUpdated(
+		model.GetTeamID(),
+		model.BroadcastName(),
+		model.BroadcastPayload()["id"].(string),
+		model.BroadcastPayload(),
+	)
+}
+
+// BroadcastModelDeleted broadcasts a model deletion event to the team channel.
+// The model must implement the Broadcastable interface.
+func (s *Base) BroadcastModelDeleted(model models.Broadcastable) {
+	if s.WS == nil {
+		return
+	}
+	s.WS.BroadcastModelDeleted(
+		model.GetTeamID(),
+		model.BroadcastName(),
+		model.BroadcastPayload()["id"].(string),
+		model.BroadcastPayload(),
+	)
 }

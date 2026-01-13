@@ -22,6 +22,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns"
 	"github.com/kkz6/launch-go/internal/modules/server"
 	"github.com/kkz6/launch-go/internal/modules/site"
+	wsmodule "github.com/kkz6/launch-go/internal/modules/websocket"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
@@ -129,10 +130,8 @@ func (a *Application) registerModules() {
 		Register(server.NewModuleFromContext(ctx)).
 		Register(databasemodule.NewModuleFromContext(ctx)).
 		Register(site.NewModuleFromContext(ctx)).
-		Register(dns.NewModuleFromContext(ctx))
-
-	// Set up routes
-	a.registerWebSocketRoutes()
+		Register(dns.NewModuleFromContext(ctx)).
+		Register(wsmodule.NewModuleFromContext(ctx))
 
 	api := a.fiber.Group("/api")
 	api.Get("/health", a.healthCheck)
@@ -144,17 +143,9 @@ func (a *Application) registerModules() {
 
 	// Boot webhook routes (at root level, no /api prefix)
 	a.kernel.BootWebhooks(a.fiber)
-}
 
-// registerWebSocketRoutes sets up WebSocket endpoints
-func (a *Application) registerWebSocketRoutes() {
-	a.fiber.Get("/ws", websocket.Handler(a.wsHub, a.config.JWT.Secret))
-
-	terminalHandler := websocket.NewTerminalHandler(a.db, a.config.JWT.Secret, *a.logger)
-	a.fiber.Get("/terminal/ws", terminalHandler.Handler())
-
-	logsHandler := websocket.NewLogsHandler(a.db, a.config.JWT.Secret, *a.logger)
-	a.fiber.Get("/terminal/logs", logsHandler.Handler())
+	// Boot WebSocket routes (at root level, no /api prefix)
+	a.kernel.BootWebSocket(a.fiber)
 }
 
 // healthCheck handles the health check endpoint
@@ -193,10 +184,9 @@ func (a *Application) shutdown() {
 		a.logger.Error().Err(err).Msg("Server forced to shutdown")
 	}
 
-	// Shutdown modules through kernel
+	// Shutdown modules through kernel (includes WebSocket hub)
 	a.kernel.Shutdown()
 
-	a.wsHub.Shutdown()
 	a.queueClient.Close()
 
 	a.logger.Info().Msg("Server stopped")
