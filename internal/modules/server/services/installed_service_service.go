@@ -161,3 +161,145 @@ func (s *Service) dispatchServiceStatusJob(server *models.Server, service *model
 
 	return s.EnqueueTask(task)
 }
+
+// GetAvailableServices returns all available services grouped by type with installation status
+func (s *Service) GetAvailableServices(ctx context.Context, serverID, teamID string) ([]dto.AvailableSoftwareResponse, error) {
+	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+		return nil, err
+	}
+
+	// Get all installed services for this server
+	installedServices, err := s.repo.FindServicesByServer(ctx, serverID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build a map of installed software
+	installedMap := make(map[string]*models.InstalledService)
+	var installedDbType enums.ServiceType
+	for i := range installedServices {
+		svc := &installedServices[i]
+		installedMap[svc.Software] = svc
+		// Track which database type is installed
+		if svc.Type.IsDatabase() {
+			installedDbType = svc.Type
+		}
+	}
+
+	// Get all software groups
+	groups := enums.GetAllSoftwareGroups()
+	result := make([]dto.AvailableSoftwareResponse, 0, len(groups))
+
+	for _, group := range groups {
+		// Skip conflicting database types
+		if installedDbType != "" && group.Type.IsDatabase() && group.Type != installedDbType {
+			continue
+		}
+
+		// Build versions list
+		versions := make([]dto.SoftwareVersionResponse, len(group.Software))
+		groupInstalled := false
+		var groupStatus *string
+
+		for i, software := range group.Software {
+			installedSvc := installedMap[software.String()]
+			isInstalled := installedSvc != nil
+
+			version := dto.SoftwareVersionResponse{
+				Software:  software.String(),
+				Label:     software.Label(),
+				Version:   software.GetVersion(),
+				Installed: isInstalled,
+			}
+
+			if installedSvc != nil {
+				status := installedSvc.Status.String()
+				version.Status = &status
+				groupInstalled = true
+				groupStatus = &status
+			}
+
+			versions[i] = version
+		}
+
+		resp := dto.AvailableSoftwareResponse{
+			Group:      group.Group,
+			Label:      group.Label,
+			Type:       group.Type.String(),
+			ImagePath:  group.ImagePath,
+			Installed:  groupInstalled,
+			Status:     groupStatus,
+			Versions:   versions,
+			HasStart:   group.HasStart,
+			HasStop:    group.HasStop,
+			HasRestart: group.HasRestart,
+			HasRemove:  group.HasRemove,
+			HasStatus:  group.HasStatus,
+		}
+
+		result = append(result, resp)
+	}
+
+	return result, nil
+}
+
+// GetPhpVersions returns all PHP versions with their installation status for a server
+func (s *Service) GetPhpVersions(ctx context.Context, serverID, teamID string) ([]dto.PhpVersionResponse, error) {
+	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+		return nil, err
+	}
+
+	// Get all installed PHP services
+	installedServices, err := s.repo.FindServicesByServerAndType(ctx, serverID, enums.ServiceTypePhp)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build a map of installed PHP versions
+	installedMap := make(map[string]*models.InstalledService)
+	var defaultService *models.InstalledService
+	for i := range installedServices {
+		svc := &installedServices[i]
+		installedMap[svc.Software] = svc
+		if svc.IsDefault {
+			defaultService = svc
+		}
+	}
+
+	// If no default is set, use the first installed one
+	if defaultService == nil && len(installedServices) > 0 {
+		for i := range installedServices {
+			if installedServices[i].Status.IsActive() {
+				defaultService = &installedServices[i]
+				break
+			}
+		}
+	}
+
+	// Get all available PHP versions
+	allPhpVersions := enums.AllPhpVersions()
+	result := make([]dto.PhpVersionResponse, len(allPhpVersions))
+
+	for i, software := range allPhpVersions {
+		installedSvc := installedMap[software.String()]
+		isInstalled := installedSvc != nil
+		isDefault := isInstalled && defaultService != nil && installedSvc.ID == defaultService.ID
+
+		resp := dto.PhpVersionResponse{
+			Key:         software.String(),
+			DisplayName: software.Label(),
+			Version:     software.GetVersion(),
+			IsInstalled: isInstalled,
+			IsDefault:   isDefault,
+		}
+
+		if installedSvc != nil {
+			svcResp := dto.ToServiceResponse(installedSvc)
+			resp.Details = &svcResp
+		}
+
+		result[i] = resp
+	}
+
+	return result, nil
+}

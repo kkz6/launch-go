@@ -74,3 +74,25 @@ func (h *CommandHandler) ListCommands(c *fiber.Ctx) error {
 
 	return response.OK(c, "Commands retrieved", result)
 }
+
+// DeleteCommand deletes a command
+func (h *CommandHandler) DeleteCommand(c *fiber.Ctx) error {
+	serverID := c.Params("serverId")
+	siteID := c.Params("id")
+	commandID := c.Params("commandId")
+
+	err := h.commandService.Delete(c.Context(), siteID, serverID, commandID)
+	if err != nil {
+		if errors.Is(err, repositories.ErrSiteNotFound) {
+			return response.NotFound(c, "Site not found")
+		}
+
+		if errors.Is(err, repositories.ErrCommandNotFound) {
+			return response.NotFound(c, "Command not found")
+		}
+
+		return response.InternalError(c, "Failed to delete command")
+	}
+
+	return response.OK(c, "Command deleted", nil)
+}

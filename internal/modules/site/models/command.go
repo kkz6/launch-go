@@ -1,6 +1,7 @@
 package models
 
 import (
+	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
@@ -16,7 +17,8 @@ type Command struct {
 	ExitCode *int                `gorm:"column:exit_code" json:"exit_code,omitempty"`
 
 	// Relations
-	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
+	Site *Site              `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
+	User *authmodels.User   `gorm:"foreignKey:UserID;references:ID" json:"user,omitempty"`
 }
 
 func (Command) TableName() string {

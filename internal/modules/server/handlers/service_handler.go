@@ -75,3 +75,29 @@ func (h *Handler) ServiceOperation(c *fiber.Ctx) error {
 
 	return response.OK(c, "Service operation initiated", nil)
 }
+
+// ListPhpVersions returns all PHP versions with their installation status for a server
+func (h *Handler) ListPhpVersions(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	serverID := c.Params("id")
+
+	phpVersions, err := h.service.GetPhpVersions(c.Context(), serverID, teamID)
+	if err != nil {
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch PHP versions")
+	}
+
+	return response.OK(c, "PHP versions retrieved", phpVersions)
+}
+
+// GetAvailableServices returns all available services that can be installed on a server
+func (h *Handler) GetAvailableServices(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	serverID := c.Params("id")
+
+	services, err := h.service.GetAvailableServices(c.Context(), serverID, teamID)
+	if err != nil {
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch available services")
+	}
+
+	return response.OK(c, "Available services retrieved", services)
+}

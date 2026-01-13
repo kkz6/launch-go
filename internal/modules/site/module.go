@@ -14,6 +14,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
@@ -43,6 +44,7 @@ type Module struct {
 	commandRepo     *repositories.CommandRepository
 	redirectRepo    *repositories.RedirectRepository
 	releaseRepo     *repositories.ReleaseRepository
+	serverRepo      *serverrepos.Repository
 
 	// Services
 	siteService       *services.SiteService
@@ -116,8 +118,8 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 	m.siteService.SetDeploymentService(m.deploymentService)
 
 	// Wire server repository for cross-module queries (PHP versions via relationship)
-	serverRepo := serverrepos.NewRepository(db)
-	m.siteService.SetServerRepository(serverRepo)
+	m.serverRepo = serverrepos.NewRepository(db)
+	m.siteService.SetServerRepository(m.serverRepo)
 
 	m.sslService = services.NewSSLService(
 		m.siteRepo,
@@ -267,9 +269,26 @@ func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
-	handler := jobs.NewHandler(m.db, m.ws, m.logger)
-	mux.HandleFunc(jobs.TypeDeploy, handler.HandleDeploy)
-	mux.HandleFunc(jobs.TypeDeployZeroDowntime, handler.HandleDeployZeroDowntime)
-	mux.HandleFunc(jobs.TypeRollback, handler.HandleRollback)
-	mux.HandleFunc(jobs.TypeInstallSSL, handler.HandleInstallSSL)
+	// Set up job context with all dependencies
+	jobContext := jobs.NewJobContext(
+		m.db,
+		m.logger,
+		m.ws,
+		m.dispatcher,
+		m.queue,
+		m.siteRepo,
+		m.commandRepo,
+		m.deploymentRepo,
+		m.certificateRepo,
+		m.queueRepo,
+		m.redirectRepo,
+		m.releaseRepo,
+		m.serverRepo,
+	)
+	jobs.SetJobContext(jobContext)
+
+	// Create kernel and register jobs
+	kernel := pkgjobs.NewKernel(m.db, m.logger, m.ws)
+	kernel.RegisterModule(jobs.Register)
+	kernel.Boot(mux)
 }

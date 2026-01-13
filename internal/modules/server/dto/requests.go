@@ -124,3 +124,23 @@ type RunCommandRequest struct {
 type CreateDatabaseRequest struct {
 	Name string `json:"name" validate:"required,min=1,max=64"`
 }
+
+// ConfigureOpcacheRequest represents the request body for configuring OPcache
+type ConfigureOpcacheRequest struct {
+	Enabled                bool   `json:"enabled"`
+	EnableCLI              bool   `json:"enable_cli"`
+	MemoryConsumption      int    `json:"memory_consumption" validate:"omitempty,min=32,max=1024"`
+	InternedStringsBuffer  int    `json:"interned_strings_buffer" validate:"omitempty,min=4,max=128"`
+	MaxAcceleratedFiles    int    `json:"max_accelerated_files" validate:"omitempty,min=200,max=1000000"`
+	ValidateTimestamps     bool   `json:"validate_timestamps"`
+	RevalidateFreq         int    `json:"revalidate_freq" validate:"omitempty,min=0,max=3600"`
+	SaveComments           bool   `json:"save_comments"`
+	JITEnabled             bool   `json:"jit_enabled"`
+	JITBufferSize          string `json:"jit_buffer_size" validate:"omitempty,max=10"`
+	JITMode                string `json:"jit_mode" validate:"omitempty,oneof=disable tracing function"`
+}
+
+// UpdateComposerAuthRequest represents the request body for updating Composer auth.json
+type UpdateComposerAuthRequest struct {
+	Contents string `json:"contents" validate:"required"`
+}

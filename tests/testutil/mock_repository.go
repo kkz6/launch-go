@@ -616,6 +616,19 @@ func (m *MockRepository) FindServicesByServer(ctx context.Context, serverID stri
 	return services, nil
 }
 
+func (m *MockRepository) FindServicesByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) ([]models.InstalledService, error) {
+	if err := m.getError("FindServicesByServerAndType"); err != nil {
+		return nil, err
+	}
+	var services []models.InstalledService
+	for _, s := range m.Services {
+		if s.ServerID == serverID && s.Type == serviceType {
+			services = append(services, *s)
+		}
+	}
+	return services, nil
+}
+
 func (m *MockRepository) FindServiceByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) (*models.InstalledService, error) {
 	if err := m.getError("FindServiceByServerAndType"); err != nil {
 		return nil, err

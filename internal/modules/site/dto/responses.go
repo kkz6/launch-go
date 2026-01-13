@@ -93,16 +93,25 @@ type QueueResponse struct {
 	CreatedAt             string  `json:"created_at"`
 }
 
+// UserSummaryResponse represents limited user info in API responses
+type UserSummaryResponse struct {
+	ID    string  `json:"id"`
+	Name  string  `json:"name"`
+	Email string  `json:"email"`
+	Photo *string `json:"photo,omitempty"`
+}
+
 // CommandResponse represents a command in API responses
 type CommandResponse struct {
-	ID        string  `json:"id"`
-	SiteID    string  `json:"site_id"`
-	UserID    string  `json:"user_id"`
-	Command   string  `json:"command"`
-	Status    string  `json:"status"`
-	Output    *string `json:"output,omitempty"`
-	ExitCode  *int    `json:"exit_code,omitempty"`
-	CreatedAt string  `json:"created_at"`
+	ID        string               `json:"id"`
+	SiteID    string               `json:"site_id"`
+	UserID    string               `json:"user_id"`
+	User      *UserSummaryResponse `json:"user,omitempty"`
+	Command   string               `json:"command"`
+	Status    string               `json:"status"`
+	Output    *string              `json:"output,omitempty"`
+	ExitCode  *int                 `json:"exit_code,omitempty"`
+	CreatedAt string               `json:"created_at"`
 }
 
 // RedirectResponse represents a redirect in API responses
@@ -348,7 +357,7 @@ func ToCommandResponse(cmd *models.Command) CommandResponse {
 		createdAt = cmd.CreatedAt.Format(time.RFC3339)
 	}
 
-	return CommandResponse{
+	resp := CommandResponse{
 		ID:        cmd.ID,
 		SiteID:    cmd.SiteID,
 		UserID:    cmd.UserID,
@@ -358,6 +367,18 @@ func ToCommandResponse(cmd *models.Command) CommandResponse {
 		ExitCode:  cmd.ExitCode,
 		CreatedAt: createdAt,
 	}
+
+	// Include user details if loaded
+	if cmd.User != nil {
+		resp.User = &UserSummaryResponse{
+			ID:    cmd.User.ID,
+			Name:  cmd.User.Name,
+			Email: cmd.User.Email,
+			Photo: cmd.User.ProfilePhotoPath,
+		}
+	}
+
+	return resp
 }
 
 // ToRedirectResponse converts a Redirect model to a response DTO

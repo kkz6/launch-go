@@ -104,9 +104,15 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 		}
 	}
 
+	// Convert empty userID to nil
+	var userIDPtr *string
+	if userID != "" {
+		userIDPtr = &userID
+	}
+
 	deployment := &models.Deployment{
 		SiteID:     site.ID,
-		UserID:     &userID,
+		UserID:     userIDPtr,
 		Status:     enums.DeploymentStatusPending,
 		GitHash:    targetDeployment.GitHash,
 		CommitData: commitData,
@@ -133,6 +139,12 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 
 // createDeployment creates a new deployment for a site
 func (s *DeploymentService) createDeployment(ctx context.Context, site *models.Site, userID string, commitData map[string]interface{}) (*models.Deployment, error) {
+	// Convert empty userID to nil (webhook deployments have no user)
+	var userIDPtr *string
+	if userID != "" {
+		userIDPtr = &userID
+	}
+
 	// Check for active deployment
 	activeDeployment, _ := s.deploymentRepo.FindActiveBySite(ctx, site.ID)
 	if activeDeployment != nil {
@@ -140,7 +152,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 			// Queue the deployment
 			deployment := &models.Deployment{
 				SiteID:     site.ID,
-				UserID:     &userID,
+				UserID:     userIDPtr,
 				Status:     enums.DeploymentStatusQueued,
 				CommitData: commitData,
 			}
@@ -159,7 +171,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 
 	deployment := &models.Deployment{
 		SiteID:     site.ID,
-		UserID:     &userID,
+		UserID:     userIDPtr,
 		Status:     enums.DeploymentStatusPending,
 		CommitData: commitData,
 	}

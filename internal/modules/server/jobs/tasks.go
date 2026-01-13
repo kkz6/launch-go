@@ -67,3 +67,12 @@ func NewUnarchiveServerTask(serverID string, userID *string) (*asynq.Task, error
 		UserID:   userID,
 	})
 }
+
+// NewConfigureOpcacheTask creates an asynq task for configuring OPcache
+func NewConfigureOpcacheTask(serverID, serviceID string, settings map[string]string) (*asynq.Task, error) {
+	return jobs.NewTask(TypeConfigureOpcache, ConfigureOpcachePayload{
+		ServerID:  serverID,
+		ServiceID: serviceID,
+		Settings:  settings,
+	})
+}

@@ -25,6 +25,18 @@ func (r *Repository) FindServicesByServer(ctx context.Context, serverID string) 
 	return findByServer[models.InstalledService](r, ctx, serverID)
 }
 
+// FindServicesByServerAndType finds all services by server and type
+func (r *Repository) FindServicesByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) ([]models.InstalledService, error) {
+	var services []models.InstalledService
+	err := r.db.WithContext(ctx).
+		Where("server_id = ? AND type = ?", serverID, serviceType).
+		Find(&services).Error
+	if err != nil {
+		return nil, err
+	}
+	return services, nil
+}
+
 // FindServiceByServerAndType finds a service by server and type
 func (r *Repository) FindServiceByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) (*models.InstalledService, error) {
 	var service models.InstalledService
