@@ -9,4 +9,6 @@ var (
 	ErrDeploymentNotBelongToSite = errors.New("target deployment does not belong to this site")
 	ErrSourceControlNotConnected = errors.New("source control is not connected")
 	ErrSiteNotInstalled          = errors.New("site is not installed")
+	ErrInvalidDeployToken        = errors.New("invalid deploy token")
+	ErrBranchMismatch            = errors.New("branch mismatch")
 )

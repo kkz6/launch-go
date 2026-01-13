@@ -8,33 +8,39 @@ import (
 
 // SiteResponse represents a site in API responses
 type SiteResponse struct {
-	ID                          string              `json:"id"`
-	ServerID                    string              `json:"server_id"`
-	UserID                      string              `json:"user_id"`
-	Address                     string              `json:"address"`
-	Type                        string              `json:"type"`
-	Aliases                     []string            `json:"aliases,omitempty"`
-	TlsSetting                  string              `json:"tls_setting"`
-	ZeroDowntimeDeployment      bool                `json:"zero_downtime_deployment"`
-	DeploymentReleasesRetention int                 `json:"deployment_releases_retention"`
-	RepositoryBranch            string              `json:"repository_branch"`
-	DeployNotificationEmail     *string             `json:"deploy_notification_email,omitempty"`
-	Path                        string              `json:"path"`
-	WebFolder                   string              `json:"web_folder"`
-	PhpVersion                  string              `json:"php_version"`
-	AutoDeployment              bool                `json:"auto_deployment"`
-	QueueDeployments            bool                `json:"queue_deployments"`
-	AutoRestartQueue            bool                `json:"auto_restart_queue"`
-	SharedDirectories           []string            `json:"shared_directories,omitempty"`
-	WriteableDirectories        []string            `json:"writeable_directories,omitempty"`
-	SharedFiles                 []string            `json:"shared_files,omitempty"`
-	URL                         string              `json:"url"`
-	ApplicationDirectory        string              `json:"app_directory"`
-	RepositoryURL               *string             `json:"repository_url,omitempty"`
-	InstalledAt                 *string             `json:"installed_at,omitempty"`
-	LatestDeployment            *DeploymentResponse `json:"latest_deployment,omitempty"`
-	CreatedAt                   string              `json:"created_at"`
-	UpdatedAt                   string              `json:"updated_at"`
+	ID                           string              `json:"id"`
+	ServerID                     string              `json:"server_id"`
+	UserID                       string              `json:"user_id"`
+	Address                      string              `json:"address"`
+	Type                         string              `json:"type"`
+	Aliases                      []string            `json:"aliases,omitempty"`
+	TlsSetting                   string              `json:"tls_setting"`
+	ZeroDowntimeDeployment       bool                `json:"zero_downtime_deployment"`
+	DeploymentReleasesRetention  int                 `json:"deployment_releases_retention"`
+	RepositoryBranch             string              `json:"repository_branch"`
+	DeployNotificationEmail      *string             `json:"deploy_notification_email,omitempty"`
+	Path                         string              `json:"path"`
+	WebFolder                    string              `json:"web_folder"`
+	PhpVersion                   string              `json:"php_version"`
+	AutoDeployment               bool                `json:"auto_deployment"`
+	QueueDeployments             bool                `json:"queue_deployments"`
+	AutoRestartQueue             bool                `json:"auto_restart_queue"`
+	SharedDirectories            []string            `json:"shared_directories,omitempty"`
+	WriteableDirectories         []string            `json:"writeable_directories,omitempty"`
+	SharedFiles                  []string            `json:"shared_files,omitempty"`
+	HookBeforeUpdatingRepository *string             `json:"hook_before_updating_repository,omitempty"`
+	HookAfterUpdatingRepository  *string             `json:"hook_after_updating_repository,omitempty"`
+	HookBeforeMakingCurrent      *string             `json:"hook_before_making_current,omitempty"`
+	HookAfterMakingCurrent       *string             `json:"hook_after_making_current,omitempty"`
+	DeployToken                  *string             `json:"deploy_token,omitempty"`
+	DeployWebhookURL             string              `json:"deploy_webhook_url,omitempty"`
+	URL                          string              `json:"url"`
+	ApplicationDirectory         string              `json:"app_directory"`
+	RepositoryURL                *string             `json:"repository_url,omitempty"`
+	InstalledAt                  *string             `json:"installed_at,omitempty"`
+	LatestDeployment             *DeploymentResponse `json:"latest_deployment,omitempty"`
+	CreatedAt                    string              `json:"created_at"`
+	UpdatedAt                    string              `json:"updated_at"`
 }
 
 // DeploymentResponse represents a deployment in API responses
@@ -188,31 +194,43 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		updatedAt = site.UpdatedAt.Format(time.RFC3339)
 	}
 
+	// Build deploy webhook URL if token exists
+	var deployWebhookURL string
+	if site.DeployToken != nil && *site.DeployToken != "" {
+		deployWebhookURL = "/deploy/" + site.ID + "/" + *site.DeployToken
+	}
+
 	resp := SiteResponse{
-		ID:                          site.ID,
-		ServerID:                    site.ServerID,
-		UserID:                      site.UserID,
-		Address:                     site.Address,
-		Type:                        string(site.Type),
-		Aliases:                     site.Aliases,
-		TlsSetting:                  string(site.TlsSetting),
-		ZeroDowntimeDeployment:      site.ZeroDowntimeDeployment,
-		DeploymentReleasesRetention: site.DeploymentReleasesRetention,
-		RepositoryBranch:            repositoryBranch,
-		DeployNotificationEmail:     site.DeployNotificationEmail,
-		Path:                        site.Path,
-		WebFolder:                   site.WebFolder,
-		PhpVersion:                  phpVersion,
-		AutoDeployment:              site.AutoDeployment,
-		QueueDeployments:            site.QueueDeployments,
-		AutoRestartQueue:            site.AutoRestartQueue,
-		SharedDirectories:           site.SharedDirectories,
-		WriteableDirectories:        site.WriteableDirectories,
-		SharedFiles:                 site.SharedFiles,
-		URL:                         site.GetURL(),
-		ApplicationDirectory:        site.GetApplicationDirectory(),
-		CreatedAt:                   createdAt,
-		UpdatedAt:                   updatedAt,
+		ID:                           site.ID,
+		ServerID:                     site.ServerID,
+		UserID:                       site.UserID,
+		Address:                      site.Address,
+		Type:                         string(site.Type),
+		Aliases:                      site.Aliases,
+		TlsSetting:                   string(site.TlsSetting),
+		ZeroDowntimeDeployment:       site.ZeroDowntimeDeployment,
+		DeploymentReleasesRetention:  site.DeploymentReleasesRetention,
+		RepositoryBranch:             repositoryBranch,
+		DeployNotificationEmail:      site.DeployNotificationEmail,
+		Path:                         site.Path,
+		WebFolder:                    site.WebFolder,
+		PhpVersion:                   phpVersion,
+		AutoDeployment:               site.AutoDeployment,
+		QueueDeployments:             site.QueueDeployments,
+		AutoRestartQueue:             site.AutoRestartQueue,
+		SharedDirectories:            site.SharedDirectories,
+		WriteableDirectories:         site.WriteableDirectories,
+		SharedFiles:                  site.SharedFiles,
+		HookBeforeUpdatingRepository: site.HookBeforeUpdatingRepository,
+		HookAfterUpdatingRepository:  site.HookAfterUpdatingRepository,
+		HookBeforeMakingCurrent:      site.HookBeforeMakingCurrent,
+		HookAfterMakingCurrent:       site.HookAfterMakingCurrent,
+		DeployToken:                  site.DeployToken,
+		DeployWebhookURL:             deployWebhookURL,
+		URL:                          site.GetURL(),
+		ApplicationDirectory:         site.GetApplicationDirectory(),
+		CreatedAt:                    createdAt,
+		UpdatedAt:                    updatedAt,
 	}
 
 	if site.InstalledAt != nil {
