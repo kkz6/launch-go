@@ -46,7 +46,7 @@ func NewKernel(db *gorm.DB, logger *zerolog.Logger, ws Broadcaster) *Kernel {
 }
 
 // WithDispatcher sets the task dispatcher on the kernel's registry
-func (k *Kernel) WithDispatcher(dispatcher *taskrunner.Dispatcher) *Kernel {
+func (k *Kernel) WithDispatcher(dispatcher taskrunner.TaskDispatcher) *Kernel {
 	k.registry.dispatcher = dispatcher
 	return k
 }

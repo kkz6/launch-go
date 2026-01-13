@@ -83,7 +83,7 @@ type TaskRunner struct {
 	task             taskrunner.Task
 	db               *gorm.DB
 	queue            *queue.Client
-	dispatcher       *taskrunner.Dispatcher
+	dispatcher       taskrunner.TaskDispatcher
 	logger           *zerolog.Logger
 	asRoot           bool
 	username         string
@@ -108,7 +108,7 @@ func (r *TaskRunner) WithDB(db *gorm.DB) *TaskRunner {
 }
 
 // WithDispatcher sets the task dispatcher.
-func (r *TaskRunner) WithDispatcher(dispatcher *taskrunner.Dispatcher) *TaskRunner {
+func (r *TaskRunner) WithDispatcher(dispatcher taskrunner.TaskDispatcher) *TaskRunner {
 	r.dispatcher = dispatcher
 	return r
 }
@@ -695,7 +695,7 @@ func getTaskTypeName(task taskrunner.Task) string {
 type TaskRunnerDeps struct {
 	DB         *gorm.DB
 	Queue      *queue.Client
-	Dispatcher *taskrunner.Dispatcher
+	Dispatcher taskrunner.TaskDispatcher
 	Logger     *zerolog.Logger
 }
 

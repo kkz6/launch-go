@@ -48,7 +48,7 @@ type DependencyAware interface {
 	GetDB() *gorm.DB
 	GetLogger() *zerolog.Logger
 	GetWS() Broadcaster
-	GetDispatcher() *taskrunner.Dispatcher
+	GetDispatcher() taskrunner.TaskDispatcher
 	GetQueue() *queue.Client
 }
 
@@ -57,7 +57,7 @@ type DependencySetter interface {
 	SetDB(db *gorm.DB)
 	SetLogger(logger *zerolog.Logger)
 	SetWS(ws Broadcaster)
-	SetDispatcher(dispatcher *taskrunner.Dispatcher)
+	SetDispatcher(dispatcher taskrunner.TaskDispatcher)
 	SetQueue(q *queue.Client)
 }
 

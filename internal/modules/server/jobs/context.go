@@ -18,7 +18,7 @@ type JobContext struct {
 	Repo            contracts.Repository
 	Logger          *zerolog.Logger
 	WS              jobs.Broadcaster
-	Dispatcher      *taskrunner.Dispatcher
+	Dispatcher      taskrunner.TaskDispatcher
 	ProviderFactory *providers.Factory
 	TaskRunnerDeps  *tasks.TaskRunnerDeps
 }
