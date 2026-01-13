@@ -11,6 +11,11 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/database/models"
+	"github.com/kkz6/launch-go/internal/modules/database/tasks"
+	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -25,17 +30,19 @@ type UpdateDatabaseUserPayload struct {
 
 // UpdateDatabaseUserJob handles database user updates on a server
 type UpdateDatabaseUserJob struct {
-	db     *gorm.DB
-	ws     *websocket.Hub
-	logger *zerolog.Logger
+	db         *gorm.DB
+	ws         *websocket.Hub
+	dispatcher *taskrunner.Dispatcher
+	logger     *zerolog.Logger
 }
 
 // NewUpdateDatabaseUserJob creates a new update database user job handler
-func NewUpdateDatabaseUserJob(db *gorm.DB, ws *websocket.Hub, logger *zerolog.Logger) *UpdateDatabaseUserJob {
+func NewUpdateDatabaseUserJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *UpdateDatabaseUserJob {
 	return &UpdateDatabaseUserJob{
-		db:     db,
-		ws:     ws,
-		logger: logger,
+		db:         db,
+		ws:         ws,
+		dispatcher: dispatcher,
+		logger:     logger,
 	}
 }
 
@@ -64,20 +71,57 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) error
 		Str("database_user_id", payload.DatabaseUserID).
 		Msg("Updating database user")
 
-	// Fetch the database user with server and databases
+	// Fetch the database user with databases
 	var dbUser models.DatabaseUser
-	if err := j.db.Preload("Server").Preload("Databases").First(&dbUser, "id = ?", payload.DatabaseUserID).Error; err != nil {
+	if err := j.db.Preload("Databases").First(&dbUser, "id = ?", payload.DatabaseUserID).Error; err != nil {
 		return fmt.Errorf("failed to find database user: %w", err)
+	}
+
+	// Fetch the server
+	var server servermodels.Server
+	if err := j.db.First(&server, "id = ?", dbUser.ServerID).Error; err != nil {
+		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	j.broadcastProgress(dbUser.ServerID, payload.DatabaseUserID, "updating", fmt.Sprintf("Updating database user: %s", dbUser.Name))
 
-	// TODO: Implement actual database user update:
-	// 1. Connect to server via SSH
-	// 2. Determine database type (MySQL/PostgreSQL)
-	// 3. Execute ALTER USER command (if password changed)
-	// 4. Update GRANT/REVOKE statements for database access changes
-	// 5. Update user record
+	// Update password if provided
+	if payload.Password != nil && *payload.Password != "" {
+		// Determine database type from installed services
+		dbType := j.getDatabaseType(dbUser.ServerID)
+
+		var task taskrunner.Task
+		if dbType == "mysql" {
+			task = tasks.MySQLUpdatePassword(tasks.MySQLUpdatePasswordConfig{
+				AdminUser:     "root",
+				AdminPassword: server.DatabasePassword.String(),
+				Username:      dbUser.Name,
+				NewPassword:   *payload.Password,
+				Hosts:         []string{"%"},
+			})
+		} else {
+			task = tasks.PostgreSQLUpdatePassword(tasks.PostgreSQLUpdatePasswordConfig{
+				Username:    dbUser.Name,
+				NewPassword: *payload.Password,
+			})
+		}
+
+		// Use TaskRunner to execute on server
+		taskRunner := servertasks.NewTaskRunner(&server, task).
+			WithDB(j.db).
+			WithDispatcher(j.dispatcher).
+			WithLogger(j.logger).
+			AsRoot()
+
+		result, err := taskRunner.Run(ctx)
+		if err != nil {
+			return fmt.Errorf("failed to update database user password: %w", err)
+		}
+
+		if !result.IsSuccessful() {
+			return fmt.Errorf("failed to update database user password: %s", result.GetOutput())
+		}
+	}
 
 	// Update the database user record
 	now := time.Now()
@@ -120,4 +164,22 @@ func (j *UpdateDatabaseUserJob) broadcastProgress(serverID, userID, status, mess
 		"message":   message,
 		"timestamp": time.Now().Format(time.RFC3339),
 	})
+}
+
+// getDatabaseType determines the database type from server's installed services
+func (j *UpdateDatabaseUserJob) getDatabaseType(serverID string) string {
+	var service servermodels.InstalledService
+	err := j.db.Where("server_id = ? AND type IN ?", serverID, []string{
+		string(serverenums.ServiceTypeMySql),
+		string(serverenums.ServiceTypePostgreSql),
+	}).First(&service).Error
+
+	if err != nil {
+		return "mysql" // Default to MySQL
+	}
+
+	if service.Type == serverenums.ServiceTypePostgreSql {
+		return "postgresql"
+	}
+	return "mysql"
 }

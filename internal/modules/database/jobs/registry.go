@@ -22,11 +22,11 @@ type Registry struct {
 // NewRegistry creates a new registry with all job handlers initialized
 func NewRegistry(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *Registry {
 	return &Registry{
-		InstallDatabase:       NewInstallDatabaseJob(db, ws, logger),
-		UninstallDatabase:     NewUninstallDatabaseJob(db, ws, logger),
-		InstallDatabaseUser:   NewInstallDatabaseUserJob(db, ws, logger),
-		UpdateDatabaseUser:    NewUpdateDatabaseUserJob(db, ws, logger),
-		UninstallDatabaseUser: NewUninstallDatabaseUserJob(db, ws, logger),
+		InstallDatabase:       NewInstallDatabaseJob(db, ws, dispatcher, logger),
+		UninstallDatabase:     NewUninstallDatabaseJob(db, ws, dispatcher, logger),
+		InstallDatabaseUser:   NewInstallDatabaseUserJob(db, ws, dispatcher, logger),
+		UpdateDatabaseUser:    NewUpdateDatabaseUserJob(db, ws, dispatcher, logger),
+		UninstallDatabaseUser: NewUninstallDatabaseUserJob(db, ws, dispatcher, logger),
 		SyncDatabases:         NewSyncDatabasesJob(db, ws, dispatcher, logger),
 	}
 }

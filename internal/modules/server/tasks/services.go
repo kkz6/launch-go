@@ -96,3 +96,21 @@ func StartService(service string) *taskrunner.BaseTask {
 		taskrunner.WithTimeout(30),
 	)
 }
+
+// ReloadService creates a task to reload a service
+func ReloadService(service string) *taskrunner.BaseTask {
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName(fmt.Sprintf("Reload %s", service)),
+		taskrunner.WithScript(fmt.Sprintf("sudo systemctl reload %s", service)),
+		taskrunner.WithTimeout(30),
+	)
+}
+
+// RebootServer creates a task to reboot the server
+func RebootServer() *taskrunner.BaseTask {
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Reboot Server"),
+		taskrunner.WithScript("sudo reboot"),
+		taskrunner.WithTimeout(15),
+	)
+}
