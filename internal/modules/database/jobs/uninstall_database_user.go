@@ -17,6 +17,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -30,20 +31,18 @@ type UninstallDatabaseUserPayload struct {
 
 // UninstallDatabaseUserJob handles database user uninstallation from a server
 type UninstallDatabaseUserJob struct {
-	db         *gorm.DB
-	ws         *websocket.Hub
-	dispatcher *taskrunner.Dispatcher
-	logger     *zerolog.Logger
+	jobs.BaseJob
 }
 
 // NewUninstallDatabaseUserJob creates a new uninstall database user job handler
-func NewUninstallDatabaseUserJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *UninstallDatabaseUserJob {
-	return &UninstallDatabaseUserJob{
-		db:         db,
-		ws:         ws,
-		dispatcher: dispatcher,
-		logger:     logger,
-	}
+func NewUninstallDatabaseUserJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, queueClient *queue.Client, logger *zerolog.Logger) *UninstallDatabaseUserJob {
+	j := &UninstallDatabaseUserJob{}
+	j.DB = db
+	j.WS = ws
+	j.Dispatcher = dispatcher
+	j.Queue = queueClient
+	j.Logger = logger
+	return j
 }
 
 // NewUninstallDatabaseUserTask creates a new asynq task for uninstalling a database user
@@ -61,18 +60,18 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) er
 		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("database_user_id", payload.DatabaseUserID).
 		Msg("Uninstalling database user")
 
 	// Fetch the database user
-	dbUser, err := repository.Find[models.DatabaseUser](j.db, ctx, payload.DatabaseUserID)
+	dbUser, err := repository.Find[models.DatabaseUser](j.DB, ctx, payload.DatabaseUserID)
 	if err != nil {
 		return err
 	}
 
 	// Fetch the server
-	server, err := repository.Find[servermodels.Server](j.db, ctx, dbUser.ServerID)
+	server, err := repository.Find[servermodels.Server](j.DB, ctx, dbUser.ServerID)
 	if err != nil {
 		return err
 	}
@@ -99,9 +98,9 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) er
 
 	// Use TaskRunner to execute on server
 	result, err := servertasks.NewTaskRunner(server, task).
-		WithDB(j.db).
-		WithDispatcher(j.dispatcher).
-		WithLogger(j.logger).
+		WithDB(j.DB).
+		WithDispatcher(j.Dispatcher).
+		WithLogger(j.Logger).
 		AsRoot().
 		Run(ctx)
 	if err != nil {
@@ -109,13 +108,13 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) er
 	}
 
 	if !result.IsSuccessful() {
-		j.logger.Warn().
+		j.Logger.Warn().
 			Str("output", result.GetOutput()).
 			Msg("Database user drop completed with errors")
 	}
 
 	// Delete the database user record
-	if err := j.db.WithContext(ctx).Delete(dbUser).Error; err != nil {
+	if err := j.DB.WithContext(ctx).Delete(dbUser).Error; err != nil {
 		return fmt.Errorf("failed to delete database user record: %w", err)
 	}
 
@@ -128,17 +127,17 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) er
 func (j *UninstallDatabaseUserJob) Failed(ctx context.Context, t *asynq.Task, err error) {
 	payload, parseErr := jobs.ParsePayload[UninstallDatabaseUserPayload](t)
 	if parseErr != nil {
-		j.logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
+		j.Logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("database_user_id", payload.DatabaseUserID).
 		Msg("Failed to uninstall database user")
 
 	// Fetch the database user to get server ID for broadcasting
-	dbUser, findErr := repository.Find[models.DatabaseUser](j.db, ctx, payload.DatabaseUserID)
+	dbUser, findErr := repository.Find[models.DatabaseUser](j.DB, ctx, payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
@@ -147,7 +146,7 @@ func (j *UninstallDatabaseUserJob) Failed(ctx context.Context, t *asynq.Task, er
 }
 
 func (j *UninstallDatabaseUserJob) broadcastProgress(serverID, userID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "database_user.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "database_user.progress", map[string]interface{}{
 		"server_id": serverID,
 		"user_id":   userID,
 		"status":    status,
@@ -158,7 +157,7 @@ func (j *UninstallDatabaseUserJob) broadcastProgress(serverID, userID, status, m
 
 // getDatabaseType determines the database type from server's installed services
 func (j *UninstallDatabaseUserJob) getDatabaseType(ctx context.Context, serverID string) string {
-	service, err := repository.NewQuery[servermodels.InstalledService](j.db, ctx).
+	service, err := repository.NewQuery[servermodels.InstalledService](j.DB, ctx).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
 			string(serverenums.ServiceTypePostgreSql),

@@ -4,6 +4,9 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/queue"
 )
 
 // Kernel is the central job registration point.
@@ -40,6 +43,18 @@ func NewKernel(db *gorm.DB, logger *zerolog.Logger, ws Broadcaster) *Kernel {
 		modules:    make([]ModuleRegistrar, 0),
 		muxModules: make([]MuxModuleRegistrar, 0),
 	}
+}
+
+// WithDispatcher sets the task dispatcher on the kernel's registry
+func (k *Kernel) WithDispatcher(dispatcher *taskrunner.Dispatcher) *Kernel {
+	k.registry.dispatcher = dispatcher
+	return k
+}
+
+// WithQueue sets the queue client on the kernel's registry
+func (k *Kernel) WithQueue(q *queue.Client) *Kernel {
+	k.registry.queue = q
+	return k
 }
 
 // RegisterModule adds a module's job registrar (Handler interface pattern)

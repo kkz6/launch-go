@@ -17,6 +17,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -31,20 +32,18 @@ type UpdateDatabaseUserPayload struct {
 
 // UpdateDatabaseUserJob handles database user updates on a server
 type UpdateDatabaseUserJob struct {
-	db         *gorm.DB
-	ws         *websocket.Hub
-	dispatcher *taskrunner.Dispatcher
-	logger     *zerolog.Logger
+	jobs.BaseJob
 }
 
 // NewUpdateDatabaseUserJob creates a new update database user job handler
-func NewUpdateDatabaseUserJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *UpdateDatabaseUserJob {
-	return &UpdateDatabaseUserJob{
-		db:         db,
-		ws:         ws,
-		dispatcher: dispatcher,
-		logger:     logger,
-	}
+func NewUpdateDatabaseUserJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, queueClient *queue.Client, logger *zerolog.Logger) *UpdateDatabaseUserJob {
+	j := &UpdateDatabaseUserJob{}
+	j.DB = db
+	j.WS = ws
+	j.Dispatcher = dispatcher
+	j.Queue = queueClient
+	j.Logger = logger
+	return j
 }
 
 // NewUpdateDatabaseUserTask creates a new asynq task for updating a database user
@@ -63,12 +62,12 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) error
 		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("database_user_id", payload.DatabaseUserID).
 		Msg("Updating database user")
 
 	// Fetch the database user with databases using OrFail pattern
-	dbUser, err := repository.NewQuery[models.DatabaseUser](j.db, ctx).
+	dbUser, err := repository.NewQuery[models.DatabaseUser](j.DB, ctx).
 		WithModel("DatabaseUser").
 		Preload("Databases").
 		FindByID(payload.DatabaseUserID).
@@ -78,7 +77,7 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) error
 	}
 
 	// Fetch the server using OrFail pattern
-	server, err := repository.Find[servermodels.Server](j.db, ctx, dbUser.ServerID)
+	server, err := repository.Find[servermodels.Server](j.DB, ctx, dbUser.ServerID)
 	if err != nil {
 		return err
 	}
@@ -108,9 +107,9 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) error
 
 		// Use TaskRunner to execute on server
 		result, err := servertasks.NewTaskRunner(server, task).
-			WithDB(j.db).
-			WithDispatcher(j.dispatcher).
-			WithLogger(j.logger).
+			WithDB(j.DB).
+			WithDispatcher(j.Dispatcher).
+			WithLogger(j.Logger).
 			AsRoot().
 			Run(ctx)
 		if err != nil {
@@ -124,7 +123,7 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) error
 
 	// Update the database user record
 	now := time.Now()
-	if err := j.db.WithContext(ctx).Model(dbUser).Update("updated_at", &now).Error; err != nil {
+	if err := j.DB.WithContext(ctx).Model(dbUser).Update("updated_at", &now).Error; err != nil {
 		return fmt.Errorf("failed to update database user record: %w", err)
 	}
 
@@ -137,17 +136,17 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) error
 func (j *UpdateDatabaseUserJob) Failed(ctx context.Context, t *asynq.Task, err error) {
 	payload, parseErr := jobs.ParsePayload[UpdateDatabaseUserPayload](t)
 	if parseErr != nil {
-		j.logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
+		j.Logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("database_user_id", payload.DatabaseUserID).
 		Msg("Failed to update database user")
 
 	// Fetch the database user to get server ID for broadcasting
-	dbUser, findErr := repository.Find[models.DatabaseUser](j.db, ctx, payload.DatabaseUserID)
+	dbUser, findErr := repository.Find[models.DatabaseUser](j.DB, ctx, payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
@@ -156,7 +155,7 @@ func (j *UpdateDatabaseUserJob) Failed(ctx context.Context, t *asynq.Task, err e
 }
 
 func (j *UpdateDatabaseUserJob) broadcastProgress(serverID, userID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "database_user.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "database_user.progress", map[string]interface{}{
 		"server_id": serverID,
 		"user_id":   userID,
 		"status":    status,
@@ -167,7 +166,7 @@ func (j *UpdateDatabaseUserJob) broadcastProgress(serverID, userID, status, mess
 
 // getDatabaseType determines the database type from server's installed services
 func (j *UpdateDatabaseUserJob) getDatabaseType(ctx context.Context, serverID string) string {
-	service, err := repository.NewQuery[servermodels.InstalledService](j.db, ctx).
+	service, err := repository.NewQuery[servermodels.InstalledService](j.DB, ctx).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
 			string(serverenums.ServiceTypePostgreSql),

@@ -42,7 +42,7 @@ func NewModuleWithDispatcher(db *gorm.DB, serverRepo services.ServerRepository, 
 	repo := repositories.NewRepository(db)
 	service := services.NewService(repo, serverRepo, queueClient, ws, logger)
 	handler := handlers.NewHandler(service)
-	jobRegistry := jobs.NewRegistry(db, ws, dispatcher, logger)
+	jobRegistry := jobs.NewRegistry(db, ws, dispatcher, queueClient, logger)
 
 	return &Module{
 		db:          db,

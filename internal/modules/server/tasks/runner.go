@@ -8,12 +8,14 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hibiken/asynq"
 	"github.com/oklog/ulid/v2"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/queue"
 )
 
 // TaskStatus represents the status of a task execution
@@ -32,6 +34,7 @@ type TaskRunner struct {
 	server           *models.Server
 	task             taskrunner.Task
 	db               *gorm.DB
+	queue            *queue.Client
 	dispatcher       *taskrunner.Dispatcher
 	logger           *zerolog.Logger
 	asRoot           bool
@@ -106,6 +109,12 @@ func (r *TaskRunner) WithDB(db *gorm.DB) *TaskRunner {
 // WithDispatcher sets the task dispatcher
 func (r *TaskRunner) WithDispatcher(dispatcher *taskrunner.Dispatcher) *TaskRunner {
 	r.dispatcher = dispatcher
+	return r
+}
+
+// WithQueue sets the queue client for dispatching completion jobs
+func (r *TaskRunner) WithQueue(q *queue.Client) *TaskRunner {
+	r.queue = q
 	return r
 }
 
@@ -346,14 +355,14 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 	return taskModel, nil
 }
 
-// RunInBackground executes the task in the background on the server
+// RunInBackground executes the task in the background.
+// The execution mode is automatically determined:
+//   - If callback URLs are configured: Uses HTTP callbacks (production mode)
+//   - If no callback URLs: Uses long-running SSH connection (local/dev mode)
+//
+// Both modes track the task in the database and handle completion jobs.
 func (r *TaskRunner) RunInBackground(ctx context.Context) (*models.Task, error) {
 	r.trackInDB = true
-
-	conn, err := r.getConnection()
-	if err != nil {
-		return nil, err
-	}
 
 	if r.dispatcher == nil {
 		return nil, fmt.Errorf("no dispatcher set")
@@ -363,13 +372,33 @@ func (r *TaskRunner) RunInBackground(ctx context.Context) (*models.Task, error) 
 		return nil, fmt.Errorf("database required for background tasks")
 	}
 
+	// Auto-detect execution mode based on callback URL availability
+	if r.hasCallbackURLs() {
+		return r.runWithCallbacks(ctx)
+	}
+
+	return r.runLongRunning(ctx)
+}
+
+// hasCallbackURLs checks if callback URLs are configured
+func (r *TaskRunner) hasCallbackURLs() bool {
+	return r.callbackURLs != nil && r.callbackURLs.FinishedURL != ""
+}
+
+// runWithCallbacks executes using HTTP callbacks (production mode)
+func (r *TaskRunner) runWithCallbacks(ctx context.Context) (*models.Task, error) {
+	conn, err := r.getConnection()
+	if err != nil {
+		return nil, err
+	}
+
 	// Create task model
 	taskModel, err := r.createTaskModel()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create task model: %w", err)
 	}
 
-	// Wrap task for background execution with tracking
+	// Wrap task for background execution with callback URLs
 	wrappedScript := r.wrapTaskForBackground(taskModel)
 	wrappedTask := taskrunner.NewBaseTask(
 		taskrunner.WithName(r.task.Name()+" (Background)"),
@@ -377,7 +406,7 @@ func (r *TaskRunner) RunInBackground(ctx context.Context) (*models.Task, error) 
 		taskrunner.WithTimeout(r.task.Timeout()+30*time.Second),
 	)
 
-	// Create pending task and run in background
+	// Create pending task and run in background on server
 	pendingTask := taskrunner.NewPendingTask(wrappedTask)
 	pendingTask.OnConnection(conn)
 	pendingTask.InBackground()
@@ -389,10 +418,149 @@ func (r *TaskRunner) RunInBackground(ctx context.Context) (*models.Task, error) 
 		return taskModel, err
 	}
 
-	// Update status to running
+	// Update status to running - callback will update to finished/failed
 	r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
 
+	if r.logger != nil {
+		r.logger.Info().
+			Str("task_id", taskModel.ID).
+			Str("task_name", taskModel.Name).
+			Str("mode", "callback").
+			Msg("Task started in background with callbacks")
+	}
+
 	return taskModel, nil
+}
+
+// runLongRunning executes using long-running SSH connection (local/dev mode)
+func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
+	conn, err := r.getConnection()
+	if err != nil {
+		return nil, err
+	}
+
+	// Create task model
+	taskModel, err := r.createTaskModel()
+	if err != nil {
+		return nil, fmt.Errorf("failed to create task model: %w", err)
+	}
+
+	if r.logger != nil {
+		r.logger.Info().
+			Str("task_id", taskModel.ID).
+			Str("task_name", taskModel.Name).
+			Str("mode", "long_running").
+			Msg("Task started with long-running SSH connection")
+	}
+
+	// Execute in goroutine with long-running SSH connection
+	go func() {
+		// Update status to running
+		r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
+
+		// Create pending task - NOT in background, we wait for it
+		pendingTask := taskrunner.NewPendingTask(r.task)
+		pendingTask.OnConnection(conn)
+		pendingTask.As("task-" + taskModel.ID)
+
+		// Use background context since original ctx may be cancelled
+		bgCtx := context.Background()
+		taskResult, execErr := r.dispatcher.Run(bgCtx, pendingTask)
+
+		if execErr != nil && r.logger != nil {
+			r.logger.Error().Err(execErr).
+				Str("task_id", taskModel.ID).
+				Str("task_name", taskModel.Name).
+				Msg("Long-running task execution failed")
+		}
+
+		// Update task model with results
+		if taskResult != nil {
+			r.updateTaskModel(taskModel, taskResult)
+		} else if execErr != nil {
+			errStr := execErr.Error()
+			r.db.Model(taskModel).Updates(map[string]interface{}{
+				"status": string(TaskStatusFailed),
+				"output": errStr,
+			})
+		}
+
+		// Dispatch completion jobs directly (no webhook needed)
+		r.dispatchCompletionJobs(taskResult, execErr)
+
+		if r.logger != nil {
+			status := "unknown"
+			if taskResult != nil {
+				if taskResult.IsSuccessful() {
+					status = "finished"
+				} else if taskResult.TimedOut {
+					status = "timeout"
+				} else {
+					status = "failed"
+				}
+			}
+			r.logger.Info().
+				Str("task_id", taskModel.ID).
+				Str("task_name", taskModel.Name).
+				Str("status", status).
+				Msg("Long-running task completed")
+		}
+	}()
+
+	return taskModel, nil
+}
+
+// dispatchCompletionJobs dispatches asynq jobs based on task result
+func (r *TaskRunner) dispatchCompletionJobs(result *taskrunner.TaskResult, execErr error) {
+	// Get completion config from task or explicit setting
+	config := r.completionConfig
+	if config == nil {
+		if extracted, err := taskrunner.ExtractCompletionConfig(r.task); err == nil {
+			config = extracted
+		}
+	}
+
+	if config == nil {
+		return
+	}
+
+	if r.queue == nil {
+		if r.logger != nil {
+			r.logger.Warn().Msg("Queue client not available, cannot dispatch completion job")
+		}
+		return
+	}
+
+	var jobRef *taskrunner.JobRef
+	if result != nil {
+		if result.IsSuccessful() {
+			jobRef = config.OnFinished
+		} else if result.TimedOut {
+			jobRef = config.OnTimeout
+		} else {
+			jobRef = config.OnFailed
+		}
+	} else if execErr != nil {
+		jobRef = config.OnFailed
+	}
+
+	if jobRef == nil || jobRef.Type == "" {
+		return
+	}
+
+	// Dispatch the asynq job
+	asynqTask := asynq.NewTask(jobRef.Type, jobRef.Payload)
+	if _, err := r.queue.Enqueue(asynqTask); err != nil {
+		if r.logger != nil {
+			r.logger.Error().Err(err).
+				Str("job_type", jobRef.Type).
+				Msg("Failed to dispatch completion job")
+		}
+	} else if r.logger != nil {
+		r.logger.Info().
+			Str("job_type", jobRef.Type).
+			Msg("Dispatched completion job")
+	}
 }
 
 // getConnection returns the SSH connection for the server
@@ -587,6 +755,7 @@ func getTaskTypeName(task taskrunner.Task) string {
 // TaskRunnerDeps holds dependencies for creating TaskRunners
 type TaskRunnerDeps struct {
 	DB         *gorm.DB
+	Queue      *queue.Client
 	Dispatcher *taskrunner.Dispatcher
 	Logger     *zerolog.Logger
 }
@@ -595,6 +764,7 @@ type TaskRunnerDeps struct {
 func (d *TaskRunnerDeps) NewRunner(server *models.Server, task taskrunner.Task) *TaskRunner {
 	return NewTaskRunner(server, task).
 		WithDB(d.DB).
+		WithQueue(d.Queue).
 		WithDispatcher(d.Dispatcher).
 		WithLogger(d.Logger)
 }

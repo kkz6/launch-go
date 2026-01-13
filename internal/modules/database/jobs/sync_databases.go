@@ -17,6 +17,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -44,20 +45,18 @@ type SyncDatabasesPayload struct {
 
 // SyncDatabasesJob handles syncing databases from a server
 type SyncDatabasesJob struct {
-	db         *gorm.DB
-	ws         *websocket.Hub
-	dispatcher *taskrunner.Dispatcher
-	logger     *zerolog.Logger
+	jobs.BaseJob
 }
 
 // NewSyncDatabasesJob creates a new sync databases job handler
-func NewSyncDatabasesJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *SyncDatabasesJob {
-	return &SyncDatabasesJob{
-		db:         db,
-		ws:         ws,
-		dispatcher: dispatcher,
-		logger:     logger,
-	}
+func NewSyncDatabasesJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, queueClient *queue.Client, logger *zerolog.Logger) *SyncDatabasesJob {
+	j := &SyncDatabasesJob{}
+	j.DB = db
+	j.WS = ws
+	j.Dispatcher = dispatcher
+	j.Queue = queueClient
+	j.Logger = logger
+	return j
 }
 
 // NewSyncDatabasesTask creates a new asynq task for syncing databases
@@ -75,14 +74,14 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
 		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("server_id", payload.ServerID).
 		Msg("Syncing databases from server")
 
 	j.broadcastProgress(payload.ServerID, "syncing", "Syncing databases from server...")
 
 	// Fetch the server with its services
-	server, err := repository.NewQuery[servermodels.Server](j.db, ctx).
+	server, err := repository.NewQuery[servermodels.Server](j.DB, ctx).
 		WithModel("Server").
 		Preload("Services").
 		FindByID(payload.ServerID).
@@ -94,7 +93,7 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
 	// Find the database service type
 	dbServiceType := j.getDatabaseServiceType(server)
 	if dbServiceType == "" {
-		j.logger.Info().
+		j.Logger.Info().
 			Str("server_id", payload.ServerID).
 			Msg("No database service found on server, skipping sync")
 		j.broadcastProgress(payload.ServerID, "synced", "No database service found on server")
@@ -117,14 +116,14 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
 
 	userDatabases := filterProtectedDatabases(serverDatabases, protectedDatabases)
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("server_id", payload.ServerID).
 		Int("total_databases", len(serverDatabases)).
 		Int("user_databases", len(userDatabases)).
 		Msg("Found databases on server")
 
 	// Get existing databases in the application
-	existingDatabases, err := repository.NewQuery[dbmodels.Database](j.db, ctx).
+	existingDatabases, err := repository.NewQuery[dbmodels.Database](j.DB, ctx).
 		Where("server_id = ?", payload.ServerID).
 		All()
 	if err != nil {
@@ -150,8 +149,8 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
 		}
 		database.MarkAsInstalled() // Mark as installed since it exists on server
 
-		if err := j.db.WithContext(ctx).Create(database).Error; err != nil {
-			j.logger.Error().
+		if err := j.DB.WithContext(ctx).Create(database).Error; err != nil {
+			j.Logger.Error().
 				Err(err).
 				Str("server_id", payload.ServerID).
 				Str("database_name", dbName).
@@ -160,13 +159,13 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context, t *asynq.Task) error {
 		}
 
 		syncedCount++
-		j.logger.Info().
+		j.Logger.Info().
 			Str("server_id", payload.ServerID).
 			Str("database_name", dbName).
 			Msg("Synced database from server")
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("server_id", payload.ServerID).
 		Int("total_server_databases", len(userDatabases)).
 		Int("existing_in_app", len(existingDatabases)).
@@ -208,7 +207,7 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 	}
 
 	// Run the task
-	result, err := j.dispatcher.Run(ctx, pt)
+	result, err := j.Dispatcher.Run(ctx, pt)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run get databases task: %w", err)
 	}
@@ -254,11 +253,11 @@ func (j *SyncDatabasesJob) createPendingTask(server *servermodels.Server, task t
 func (j *SyncDatabasesJob) Failed(ctx context.Context, t *asynq.Task, err error) {
 	payload, parseErr := jobs.ParsePayload[SyncDatabasesPayload](t)
 	if parseErr != nil {
-		j.logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
+		j.Logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("server_id", payload.ServerID).
 		Msg("Failed to sync databases")
@@ -267,7 +266,7 @@ func (j *SyncDatabasesJob) Failed(ctx context.Context, t *asynq.Task, err error)
 }
 
 func (j *SyncDatabasesJob) broadcastProgress(serverID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "database.sync.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "database.sync.progress", map[string]interface{}{
 		"server_id": serverID,
 		"status":    status,
 		"message":   message,

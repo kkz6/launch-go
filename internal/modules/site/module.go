@@ -166,6 +166,7 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 	// Initialize file service (needs db for server access)
 	taskRunnerDeps := &servertasks.TaskRunnerDeps{
 		DB:         db,
+		Queue:      queueClient,
 		Dispatcher: dispatcher,
 		Logger:     logger,
 	}

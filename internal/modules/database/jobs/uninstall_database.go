@@ -17,6 +17,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -30,20 +31,18 @@ type UninstallDatabasePayload struct {
 
 // UninstallDatabaseJob handles database uninstallation from a server
 type UninstallDatabaseJob struct {
-	db         *gorm.DB
-	ws         *websocket.Hub
-	dispatcher *taskrunner.Dispatcher
-	logger     *zerolog.Logger
+	jobs.BaseJob
 }
 
 // NewUninstallDatabaseJob creates a new uninstall database job handler
-func NewUninstallDatabaseJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *UninstallDatabaseJob {
-	return &UninstallDatabaseJob{
-		db:         db,
-		ws:         ws,
-		dispatcher: dispatcher,
-		logger:     logger,
-	}
+func NewUninstallDatabaseJob(db *gorm.DB, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, queueClient *queue.Client, logger *zerolog.Logger) *UninstallDatabaseJob {
+	j := &UninstallDatabaseJob{}
+	j.DB = db
+	j.WS = ws
+	j.Dispatcher = dispatcher
+	j.Queue = queueClient
+	j.Logger = logger
+	return j
 }
 
 // NewUninstallDatabaseTask creates a new asynq task for uninstalling a database
@@ -61,18 +60,18 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error 
 		return err
 	}
 
-	j.logger.Info().
+	j.Logger.Info().
 		Str("database_id", payload.DatabaseID).
 		Msg("Uninstalling database")
 
 	// Fetch the database
-	database, err := repository.Find[models.Database](j.db, ctx, payload.DatabaseID)
+	database, err := repository.Find[models.Database](j.DB, ctx, payload.DatabaseID)
 	if err != nil {
 		return err
 	}
 
 	// Fetch the server
-	server, err := repository.Find[servermodels.Server](j.db, ctx, database.ServerID)
+	server, err := repository.Find[servermodels.Server](j.DB, ctx, database.ServerID)
 	if err != nil {
 		return err
 	}
@@ -98,9 +97,9 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error 
 
 	// Use TaskRunner to execute on server
 	result, err := servertasks.NewTaskRunner(server, task).
-		WithDB(j.db).
-		WithDispatcher(j.dispatcher).
-		WithLogger(j.logger).
+		WithDB(j.DB).
+		WithDispatcher(j.Dispatcher).
+		WithLogger(j.Logger).
 		AsRoot().
 		Run(ctx)
 	if err != nil {
@@ -108,13 +107,13 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error 
 	}
 
 	if !result.IsSuccessful() {
-		j.logger.Warn().
+		j.Logger.Warn().
 			Str("output", result.GetOutput()).
 			Msg("Database drop completed with errors")
 	}
 
 	// Delete the database record
-	if err := j.db.WithContext(ctx).Delete(database).Error; err != nil {
+	if err := j.DB.WithContext(ctx).Delete(database).Error; err != nil {
 		return fmt.Errorf("failed to delete database record: %w", err)
 	}
 
@@ -127,17 +126,17 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context, t *asynq.Task) error 
 func (j *UninstallDatabaseJob) Failed(ctx context.Context, t *asynq.Task, err error) {
 	payload, parseErr := jobs.ParsePayload[UninstallDatabasePayload](t)
 	if parseErr != nil {
-		j.logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
+		j.Logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
-	j.logger.Error().
+	j.Logger.Error().
 		Err(err).
 		Str("database_id", payload.DatabaseID).
 		Msg("Failed to uninstall database")
 
 	// Fetch the database to get server ID for broadcasting
-	database, findErr := repository.Find[models.Database](j.db, ctx, payload.DatabaseID)
+	database, findErr := repository.Find[models.Database](j.DB, ctx, payload.DatabaseID)
 	if findErr != nil {
 		return
 	}
@@ -146,7 +145,7 @@ func (j *UninstallDatabaseJob) Failed(ctx context.Context, t *asynq.Task, err er
 }
 
 func (j *UninstallDatabaseJob) broadcastProgress(serverID, databaseID, status, message string) {
-	j.ws.BroadcastToServer(serverID, "database.progress", map[string]interface{}{
+	j.BroadcastToServer(serverID, "database.progress", map[string]interface{}{
 		"server_id":   serverID,
 		"database_id": databaseID,
 		"status":      status,
@@ -157,7 +156,7 @@ func (j *UninstallDatabaseJob) broadcastProgress(serverID, databaseID, status, m
 
 // getDatabaseType determines the database type from server's installed services
 func (j *UninstallDatabaseJob) getDatabaseType(ctx context.Context, serverID string) string {
-	service, err := repository.NewQuery[servermodels.InstalledService](j.db, ctx).
+	service, err := repository.NewQuery[servermodels.InstalledService](j.DB, ctx).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
 			string(serverenums.ServiceTypePostgreSql),

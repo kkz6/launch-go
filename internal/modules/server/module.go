@@ -49,6 +49,7 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, dispat
 	// Create task runner deps for handlers
 	taskRunnerDeps := &tasks.TaskRunnerDeps{
 		DB:         db,
+		Queue:      queueClient,
 		Dispatcher: dispatcher,
 		Logger:     logger,
 	}
@@ -101,7 +102,7 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 	providerFactory := providers.NewFactory(keyGen)
 
 	// Set up job context
-	jobContext := jobs.NewJobContext(m.db, m.repo, m.logger, m.ws, m.dispatcher, providerFactory)
+	jobContext := jobs.NewJobContext(m.db, m.repo, m.logger, m.ws, m.dispatcher, providerFactory, m.queueClient)
 	jobs.SetJobContext(jobContext)
 
 	// Create kernel and register jobs
