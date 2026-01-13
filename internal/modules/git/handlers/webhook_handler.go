@@ -7,18 +7,26 @@ import (
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/git/enums"
+	"github.com/kkz6/launch-go/internal/modules/git/jobs"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
 )
+
+// QueueClient interface for dispatching jobs
+type QueueClient interface {
+	Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
+}
 
 // WebhookHandler handles git webhooks
 type WebhookHandler struct {
 	service         *services.SourceControlService
 	providerFactory *providers.ProviderFactory
 	logger          *zerolog.Logger
+	queueClient     QueueClient
 }
 
 // NewWebhookHandler creates a new webhook handler
@@ -28,6 +36,11 @@ func NewWebhookHandler(service *services.SourceControlService, providerFactory *
 		providerFactory: providerFactory,
 		logger:          logger,
 	}
+}
+
+// SetQueueClient sets the queue client for async processing
+func (h *WebhookHandler) SetQueueClient(client QueueClient) {
+	h.queueClient = client
 }
 
 // HandleWebhook handles incoming webhooks from git providers
@@ -59,17 +72,32 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).SendString("Invalid signature")
 	}
 
-	// Parse payload
+	// Dispatch job for async processing
+	if h.queueClient != nil {
+		task, err := jobs.NewProcessGitWebhookTask(providerStr, string(payload), signature)
+		if err != nil {
+			h.logger.Error().Err(err).Msg("Failed to create webhook task")
+		} else {
+			if _, err := h.queueClient.Enqueue(task); err != nil {
+				h.logger.Error().Err(err).Msg("Failed to enqueue webhook task")
+			} else {
+				h.logger.Info().Str("provider", providerStr).Msg("Webhook queued for async processing")
+				return c.Status(fiber.StatusOK).SendString("OK")
+			}
+		}
+	}
+
+	// Fallback: Process synchronously if no queue
 	var data map[string]interface{}
 	if err := json.Unmarshal(payload, &data); err != nil {
 		h.logger.Error().Err(err).Str("provider", providerStr).Msg("Failed to parse webhook payload")
 		return c.Status(fiber.StatusBadRequest).SendString("Invalid JSON payload")
 	}
 
-	// Process webhook asynchronously
+	// Process webhook in goroutine as fallback
 	go h.processWebhook(providerType, data, signature)
 
-	h.logger.Info().Str("provider", providerStr).Msg("Webhook received and queued for processing")
+	h.logger.Info().Str("provider", providerStr).Msg("Webhook received and processing")
 
 	return c.Status(fiber.StatusOK).SendString("OK")
 }
