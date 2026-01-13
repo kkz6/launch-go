@@ -12,11 +12,12 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 // Ensure Module implements required interfaces
 var (
-	_ app.Module              = (*Module)(nil)
+	_ app.Module               = (*Module)(nil)
 	_ app.PublicRouteRegistrar = (*Module)(nil)
 )
 
@@ -89,8 +90,8 @@ func (m *Module) registerPublicRoutes(router fiber.Router) {
 	router.Post("/forgot-password", m.handler.Password.ForgotPassword)
 	router.Post("/reset-password", m.handler.Password.ResetPassword)
 
-	// Email Verification (public for verification links)
-	router.Get("/verify-email/:id/:hash", m.handler.Email.VerifyEmail)
+	// Email Verification (public for verification links, requires signed URL)
+	router.Get("/verify-email/:id/:hash", signedurl.RequireSignedURL(nil), m.handler.Email.VerifyEmail)
 
 	// User Status Check (for login flow)
 	router.Post("/check-user-status", m.handler.User.CheckUserStatus)
@@ -121,8 +122,8 @@ func (m *Module) registerProtectedRoutes(router fiber.Router) {
 	router.Get("/teams", m.handler.Team.GetUserTeams)
 	router.Post("/switch-team/:teamId", m.handler.Team.SwitchTeam)
 
-	// Team Invitations (for accepting invitations)
-	router.Post("/team-invitations/:invitationId/accept", m.handler.TeamMember.AcceptTeamInvitation)
+	// Team Invitations (for accepting invitations, requires signed URL)
+	router.Post("/team-invitations/:invitationId/accept", signedurl.RequireSignedURL(nil), m.handler.TeamMember.AcceptTeamInvitation)
 }
 
 // registerTeamRoutes registers team management routes

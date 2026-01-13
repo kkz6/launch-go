@@ -2,18 +2,14 @@ package handlers
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"net/url"
-	"strconv"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/response"
+	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 // TaskWebhookRepository interface for webhook handler
@@ -24,15 +20,15 @@ type TaskWebhookRepository interface {
 
 // TaskWebhookHandler handles task completion callbacks
 type TaskWebhookHandler struct {
-	repo      TaskWebhookRepository
-	secretKey string
+	repo   TaskWebhookRepository
+	signer *signedurl.Signer
 }
 
 // NewTaskWebhookHandler creates a new webhook handler
 func NewTaskWebhookHandler(repo TaskWebhookRepository, secretKey string) *TaskWebhookHandler {
 	return &TaskWebhookHandler{
-		repo:      repo,
-		secretKey: secretKey,
+		repo:   repo,
+		signer: signedurl.NewSigner(secretKey),
 	}
 }
 
@@ -49,7 +45,7 @@ func (h *TaskWebhookHandler) MarkAsFinished(c *fiber.Ctx) error {
 	taskID := c.Params("id")
 	ctx := c.Context()
 
-	if !h.verifySignature(c, taskID) {
+	if !h.verifySignature(c) {
 		return response.Unauthorized(c, "Invalid signature")
 	}
 
@@ -78,7 +74,7 @@ func (h *TaskWebhookHandler) MarkAsFailed(c *fiber.Ctx) error {
 	taskID := c.Params("id")
 	ctx := c.Context()
 
-	if !h.verifySignature(c, taskID) {
+	if !h.verifySignature(c) {
 		return response.Unauthorized(c, "Invalid signature")
 	}
 
@@ -120,7 +116,7 @@ func (h *TaskWebhookHandler) MarkAsTimeout(c *fiber.Ctx) error {
 	taskID := c.Params("id")
 	ctx := c.Context()
 
-	if !h.verifySignature(c, taskID) {
+	if !h.verifySignature(c) {
 		return response.Unauthorized(c, "Invalid signature")
 	}
 
@@ -144,50 +140,26 @@ func (h *TaskWebhookHandler) MarkAsTimeout(c *fiber.Ctx) error {
 	return response.OK(c, "Task marked as timeout", nil)
 }
 
-// verifySignature validates the webhook signature
-func (h *TaskWebhookHandler) verifySignature(c *fiber.Ctx, taskID string) bool {
-	signature := c.Query("signature")
-	expires := c.Query("expires")
-
-	if signature == "" || expires == "" {
-		return false
-	}
-
-	expiresInt, err := strconv.ParseInt(expires, 10, 64)
-	if err != nil {
-		return false
-	}
-
-	if time.Now().Unix() > expiresInt {
-		return false
-	}
-
-	expected := h.generateSignature(taskID, expires)
-	return hmac.Equal([]byte(signature), []byte(expected))
-}
-
-// generateSignature creates HMAC signature for webhook URL
-func (h *TaskWebhookHandler) generateSignature(taskID, expires string) string {
-	data := fmt.Sprintf("%s:%s", taskID, expires)
-	mac := hmac.New(sha256.New, []byte(h.secretKey))
-	mac.Write([]byte(data))
-	return hex.EncodeToString(mac.Sum(nil))
+// verifySignature validates the webhook signature using signedurl package
+func (h *TaskWebhookHandler) verifySignature(c *fiber.Ctx) bool {
+	return signedurl.ValidateSignedURL(c, h.signer)
 }
 
 // GenerateCallbackURLs creates signed URLs for task callbacks
 func (h *TaskWebhookHandler) GenerateCallbackURLs(baseURL, taskID string, expireMinutes int) CallbackURLs {
-	expires := strconv.FormatInt(time.Now().Add(time.Duration(expireMinutes)*time.Minute).Unix(), 10)
-	signature := h.generateSignature(taskID, expires)
+	expireDuration := time.Duration(expireMinutes) * time.Minute
 
-	params := url.Values{}
-	params.Set("signature", signature)
-	params.Set("expires", expires)
-	query := params.Encode()
+	finishedPath := fmt.Sprintf("/webhooks/tasks/%s/finished", taskID)
+	failedPath := fmt.Sprintf("/webhooks/tasks/%s/failed", taskID)
+	timeoutPath := fmt.Sprintf("/webhooks/tasks/%s/timeout", taskID)
+
+	// Use the signer with the base URL for generating absolute URLs
+	signerWithBase := h.signer.WithBaseURL(baseURL)
 
 	return CallbackURLs{
-		Finished: fmt.Sprintf("%s/webhooks/tasks/%s/finished?%s", baseURL, taskID, query),
-		Failed:   fmt.Sprintf("%s/webhooks/tasks/%s/failed?%s", baseURL, taskID, query),
-		Timeout:  fmt.Sprintf("%s/webhooks/tasks/%s/timeout?%s", baseURL, taskID, query),
+		Finished: signerWithBase.SignedURL(finishedPath, nil, expireDuration),
+		Failed:   signerWithBase.SignedURL(failedPath, nil, expireDuration),
+		Timeout:  signerWithBase.SignedURL(timeoutPath, nil, expireDuration),
 	}
 }
 
