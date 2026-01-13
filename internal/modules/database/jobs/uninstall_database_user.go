@@ -2,7 +2,6 @@ package jobs
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
@@ -15,6 +14,8 @@ import (
 	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -47,22 +48,17 @@ func NewUninstallDatabaseUserJob(db *gorm.DB, ws *websocket.Hub, dispatcher *tas
 
 // NewUninstallDatabaseUserTask creates a new asynq task for uninstalling a database user
 func NewUninstallDatabaseUserTask(databaseUserID string, callerID *string) (*asynq.Task, error) {
-	payload, err := json.Marshal(UninstallDatabaseUserPayload{
+	return jobs.NewTask(TypeUninstallDatabaseUser, UninstallDatabaseUserPayload{
 		DatabaseUserID: databaseUserID,
 		CallerID:       callerID,
 	})
-	if err != nil {
-		return nil, err
-	}
-
-	return asynq.NewTask(TypeUninstallDatabaseUser, payload), nil
 }
 
 // Handle processes the uninstall database user job
 func (j *UninstallDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) error {
-	var payload UninstallDatabaseUserPayload
-	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
-		return fmt.Errorf("failed to unmarshal payload: %w", err)
+	payload, err := jobs.ParsePayload[UninstallDatabaseUserPayload](t)
+	if err != nil {
+		return err
 	}
 
 	j.logger.Info().
@@ -70,21 +66,21 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) er
 		Msg("Uninstalling database user")
 
 	// Fetch the database user
-	var dbUser models.DatabaseUser
-	if err := j.db.First(&dbUser, "id = ?", payload.DatabaseUserID).Error; err != nil {
-		return fmt.Errorf("failed to find database user: %w", err)
+	dbUser, err := repository.Find[models.DatabaseUser](j.db, ctx, payload.DatabaseUserID)
+	if err != nil {
+		return err
 	}
 
 	// Fetch the server
-	var server servermodels.Server
-	if err := j.db.First(&server, "id = ?", dbUser.ServerID).Error; err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+	server, err := repository.Find[servermodels.Server](j.db, ctx, dbUser.ServerID)
+	if err != nil {
+		return err
 	}
 
 	j.broadcastProgress(dbUser.ServerID, payload.DatabaseUserID, "uninstalling", fmt.Sprintf("Dropping database user: %s", dbUser.Name))
 
 	// Determine database type from installed services
-	dbType := j.getDatabaseType(dbUser.ServerID)
+	dbType := j.getDatabaseType(ctx, dbUser.ServerID)
 
 	// Create drop user task
 	var task taskrunner.Task
@@ -102,13 +98,12 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) er
 	}
 
 	// Use TaskRunner to execute on server
-	taskRunner := servertasks.NewTaskRunner(&server, task).
+	result, err := servertasks.NewTaskRunner(server, task).
 		WithDB(j.db).
 		WithDispatcher(j.dispatcher).
 		WithLogger(j.logger).
-		AsRoot()
-
-	result, err := taskRunner.Run(ctx)
+		AsRoot().
+		Run(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to drop database user: %w", err)
 	}
@@ -120,7 +115,7 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) er
 	}
 
 	// Delete the database user record
-	if err := j.db.Delete(&dbUser).Error; err != nil {
+	if err := j.db.WithContext(ctx).Delete(dbUser).Error; err != nil {
 		return fmt.Errorf("failed to delete database user record: %w", err)
 	}
 
@@ -131,9 +126,9 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context, t *asynq.Task) er
 
 // Failed handles job failure
 func (j *UninstallDatabaseUserJob) Failed(ctx context.Context, t *asynq.Task, err error) {
-	var payload UninstallDatabaseUserPayload
-	if unmarshalErr := json.Unmarshal(t.Payload(), &payload); unmarshalErr != nil {
-		j.logger.Error().Err(unmarshalErr).Msg("Failed to unmarshal payload in failure handler")
+	payload, parseErr := jobs.ParsePayload[UninstallDatabaseUserPayload](t)
+	if parseErr != nil {
+		j.logger.Error().Err(parseErr).Msg("Failed to unmarshal payload in failure handler")
 		return
 	}
 
@@ -143,8 +138,8 @@ func (j *UninstallDatabaseUserJob) Failed(ctx context.Context, t *asynq.Task, er
 		Msg("Failed to uninstall database user")
 
 	// Fetch the database user to get server ID for broadcasting
-	var dbUser models.DatabaseUser
-	if findErr := j.db.First(&dbUser, "id = ?", payload.DatabaseUserID).Error; findErr != nil {
+	dbUser, findErr := repository.Find[models.DatabaseUser](j.db, ctx, payload.DatabaseUserID)
+	if findErr != nil {
 		return
 	}
 
@@ -162,12 +157,13 @@ func (j *UninstallDatabaseUserJob) broadcastProgress(serverID, userID, status, m
 }
 
 // getDatabaseType determines the database type from server's installed services
-func (j *UninstallDatabaseUserJob) getDatabaseType(serverID string) string {
-	var service servermodels.InstalledService
-	err := j.db.Where("server_id = ? AND type IN ?", serverID, []string{
-		string(serverenums.ServiceTypeMySql),
-		string(serverenums.ServiceTypePostgreSql),
-	}).First(&service).Error
+func (j *UninstallDatabaseUserJob) getDatabaseType(ctx context.Context, serverID string) string {
+	service, err := repository.NewQuery[servermodels.InstalledService](j.db, ctx).
+		Where("server_id = ? AND type IN ?", serverID, []string{
+			string(serverenums.ServiceTypeMySql),
+			string(serverenums.ServiceTypePostgreSql),
+		}).
+		First()
 
 	if err != nil {
 		return "mysql" // Default to MySQL
