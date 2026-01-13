@@ -1,7 +1,6 @@
 package database
 
 import (
-	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
@@ -10,6 +9,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/repositories"
 	"github.com/kkz6/launch-go/internal/modules/database/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
@@ -19,17 +19,17 @@ import (
 var (
 	_ app.Module         = (*Module)(nil)
 	_ app.RouteRegistrar = (*Module)(nil)
-	_ app.JobRegistrar   = (*Module)(nil)
 )
 
 // Module represents the database module
 type Module struct {
-	db          *gorm.DB
-	ws          *websocket.Hub
-	dispatcher  *taskrunner.Dispatcher
-	logger      *zerolog.Logger
-	handler     *handlers.Handler
-	jobRegistry *jobs.Registry
+	db         *gorm.DB
+	ws         *websocket.Hub
+	dispatcher *taskrunner.Dispatcher
+	logger     *zerolog.Logger
+	handler    *handlers.Handler
+	repo       *repositories.Repository
+	queue      *queue.Client
 }
 
 // NewModule creates a new database module
@@ -42,15 +42,19 @@ func NewModuleWithDispatcher(db *gorm.DB, serverRepo services.ServerRepository, 
 	repo := repositories.NewRepository(db)
 	service := services.NewService(repo, serverRepo, queueClient, ws, logger)
 	handler := handlers.NewHandler(service)
-	jobRegistry := jobs.NewRegistry(db, ws, dispatcher, queueClient, logger)
+
+	// Initialize the job context for this module
+	jobContext := jobs.NewJobContext(db, repo, logger, ws, dispatcher, queueClient)
+	jobs.SetJobContext(jobContext)
 
 	return &Module{
-		db:          db,
-		ws:          ws,
-		dispatcher:  dispatcher,
-		logger:      logger,
-		handler:     handler,
-		jobRegistry: jobRegistry,
+		db:         db,
+		ws:         ws,
+		dispatcher: dispatcher,
+		logger:     logger,
+		handler:    handler,
+		repo:       repo,
+		queue:      queueClient,
 	}
 }
 
@@ -71,7 +75,8 @@ func (m *Module) Name() string {
 	return "database"
 }
 
-// RegisterJobs registers background job handlers (implements app.JobRegistrar)
-func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
-	m.jobRegistry.RegisterHandlers(mux)
+// RegisterJobsWithRegistry registers jobs using the Handler interface pattern.
+// This is called by the kernel to register jobs.
+func (m *Module) RegisterJobsWithRegistry(r *pkgjobs.Registry) {
+	jobs.Register(r)
 }

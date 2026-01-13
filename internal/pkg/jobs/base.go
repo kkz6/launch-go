@@ -78,6 +78,54 @@ func (j *BaseJob) SetTaskExecutor(executor TaskExecutor) {
 	j.TaskExecutor = executor
 }
 
+// ===============================
+// Getter methods for DependencyAware interface
+// ===============================
+
+// GetDB returns the database connection
+func (j *BaseJob) GetDB() *gorm.DB {
+	return j.DB
+}
+
+// GetLogger returns the logger
+func (j *BaseJob) GetLogger() *zerolog.Logger {
+	return j.Logger
+}
+
+// GetWS returns the broadcaster
+func (j *BaseJob) GetWS() Broadcaster {
+	return j.WS
+}
+
+// GetDispatcher returns the task dispatcher
+func (j *BaseJob) GetDispatcher() *taskrunner.Dispatcher {
+	return j.Dispatcher
+}
+
+// GetQueue returns the queue client
+func (j *BaseJob) GetQueue() *queue.Client {
+	return j.Queue
+}
+
+// ===============================
+// Individual setter methods
+// ===============================
+
+// SetDB sets the database connection
+func (j *BaseJob) SetDB(db *gorm.DB) {
+	j.DB = db
+}
+
+// SetLogger sets the logger
+func (j *BaseJob) SetLogger(logger *zerolog.Logger) {
+	j.Logger = logger
+}
+
+// SetWS sets the broadcaster
+func (j *BaseJob) SetWS(ws Broadcaster) {
+	j.WS = ws
+}
+
 // RunTask executes a task on a server
 func (j *BaseJob) RunTask(ctx context.Context, serverID string, task interface{}, asRoot bool) error {
 	if j.TaskExecutor == nil {
