@@ -10,30 +10,30 @@ import (
 
 func TestServiceErrors(t *testing.T) {
 	t.Run("ErrProviderNotFound", func(t *testing.T) {
-		assert.EqualError(t, services.ErrProviderNotFound, "provider not found")
+		assert.EqualError(t, services.ErrProviderNotFound, "Provider not found")
 	})
 
 	t.Run("ErrDomainNotFound", func(t *testing.T) {
-		assert.EqualError(t, services.ErrDomainNotFound, "domain not found")
+		assert.EqualError(t, services.ErrDomainNotFound, "Domain not found")
 	})
 
 	t.Run("ErrRecordNotFound", func(t *testing.T) {
-		assert.EqualError(t, services.ErrRecordNotFound, "record not found")
+		assert.EqualError(t, services.ErrRecordNotFound, "Record not found")
 	})
 
 	t.Run("ErrRecordNotEditable", func(t *testing.T) {
-		assert.EqualError(t, services.ErrRecordNotEditable, "record cannot be edited")
+		assert.EqualError(t, services.ErrRecordNotEditable, "Record cannot be edited")
 	})
 
 	t.Run("ErrRecordNotDeletable", func(t *testing.T) {
-		assert.EqualError(t, services.ErrRecordNotDeletable, "record cannot be deleted")
+		assert.EqualError(t, services.ErrRecordNotDeletable, "Record cannot be deleted")
 	})
 
 	t.Run("ErrProviderHasActiveDomains", func(t *testing.T) {
-		assert.EqualError(t, services.ErrProviderHasActiveDomains, "provider has active domains")
+		assert.EqualError(t, services.ErrProviderHasActiveDomains, "Provider has active domains")
 	})
 
 	t.Run("ErrInvalidCredentials", func(t *testing.T) {
-		assert.EqualError(t, services.ErrInvalidCredentials, "invalid credentials")
+		assert.EqualError(t, services.ErrInvalidCredentials, "Invalid credentials")
 	})
 }

@@ -107,16 +107,17 @@ func TestModule_RegisterRoutes(t *testing.T) {
 	assert.True(t, routePaths["POST /api/dns-providers/:id/sync"], "POST /api/dns-providers/:id/sync should be registered")
 
 	// Domain routes
-	assert.True(t, routePaths["GET /api/domains/"], "GET /api/domains should be registered")
-	assert.True(t, routePaths["POST /api/domains/"], "POST /api/domains should be registered")
-	assert.True(t, routePaths["GET /api/domains/:id"], "GET /api/domains/:id should be registered")
-	assert.True(t, routePaths["DELETE /api/domains/:id"], "DELETE /api/domains/:id should be registered")
+	assert.True(t, routePaths["GET /api/dns/domains/"], "GET /api/dns/domains should be registered")
+	assert.True(t, routePaths["POST /api/dns/domains/"], "POST /api/dns/domains should be registered")
+	assert.True(t, routePaths["GET /api/dns/domains/:id"], "GET /api/dns/domains/:id should be registered")
+	assert.True(t, routePaths["PATCH /api/dns/domains/:id"], "PATCH /api/dns/domains/:id should be registered")
+	assert.True(t, routePaths["DELETE /api/dns/domains/:id"], "DELETE /api/dns/domains/:id should be registered")
 
 	// Record routes
-	assert.True(t, routePaths["GET /api/domains/:id/records"], "GET /api/domains/:id/records should be registered")
-	assert.True(t, routePaths["POST /api/domains/:id/records"], "POST /api/domains/:id/records should be registered")
-	assert.True(t, routePaths["PUT /api/domains/:domainId/records/:recordId"], "PUT /api/domains/:domainId/records/:recordId should be registered")
-	assert.True(t, routePaths["DELETE /api/domains/:domainId/records/:recordId"], "DELETE /api/domains/:domainId/records/:recordId should be registered")
+	assert.True(t, routePaths["GET /api/dns/domains/:id/records"], "GET /api/dns/domains/:id/records should be registered")
+	assert.True(t, routePaths["POST /api/dns/domains/:id/records"], "POST /api/dns/domains/:id/records should be registered")
+	assert.True(t, routePaths["POST /api/dns/domains/:domainId/records/:recordId"], "POST /api/dns/domains/:domainId/records/:recordId should be registered")
+	assert.True(t, routePaths["DELETE /api/dns/domains/:domainId/records/:recordId"], "DELETE /api/dns/domains/:domainId/records/:recordId should be registered")
 
 	// Utility routes
 	assert.True(t, routePaths["GET /api/dns/record-types"], "GET /api/dns/record-types should be registered")
