@@ -2,10 +2,11 @@ package activity
 
 import (
 	"context"
-	"encoding/json"
 	"reflect"
 
 	"gorm.io/gorm"
+
+	"github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 type Subject interface {
@@ -128,11 +129,7 @@ func (l *Logger) save() (*ActivityLog, error) {
 	}
 
 	if len(l.properties) > 0 {
-		propsJSON, err := json.Marshal(l.properties)
-		if err != nil {
-			return nil, err
-		}
-		activity.Properties = propsJSON
+		activity.Properties = models.JSONMap(l.properties)
 	}
 
 	if err := l.db.WithContext(l.ctx).Create(activity).Error; err != nil {
