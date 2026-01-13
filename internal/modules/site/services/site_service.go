@@ -324,16 +324,20 @@ func (s *SiteService) GetDeletionSummary(ctx context.Context, id, serverID strin
 }
 
 // RegenerateDeployToken regenerates the deploy token for a site
-func (s *SiteService) RegenerateDeployToken(ctx context.Context, id, serverID string) error {
+func (s *SiteService) RegenerateDeployToken(ctx context.Context, id, serverID string) (*models.Site, error) {
 	site, err := s.siteRepo.FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	token := utils.GenerateBase64Token(32)
 	site.DeployToken = &token
 
-	return s.siteRepo.Update(ctx, site)
+	if err := s.siteRepo.Update(ctx, site); err != nil {
+		return nil, err
+	}
+
+	return site, nil
 }
 
 // SiteSettingsData holds all data needed for the site settings page

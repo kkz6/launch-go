@@ -145,7 +145,8 @@ func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
 
-	if err := h.siteService.RegenerateDeployToken(c.Context(), siteID, serverID); err != nil {
+	site, err := h.siteService.RegenerateDeployToken(c.Context(), siteID, serverID)
+	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
 			return response.NotFound(c, "Site not found")
 		}
@@ -153,7 +154,7 @@ func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	return response.OK(c, "Deploy token regenerated", nil)
+	return response.OK(c, "Deploy token regenerated", dto.ToSiteResponse(site))
 }
 
 // UpdateDeploymentSettings updates deployment settings

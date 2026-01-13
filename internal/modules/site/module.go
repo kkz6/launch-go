@@ -1,6 +1,7 @@
 package site
 
 import (
+	"github.com/gofiber/fiber/v2"
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
@@ -20,9 +21,10 @@ import (
 
 // Ensure Module implements required interfaces
 var (
-	_ app.Module         = (*Module)(nil)
-	_ app.RouteRegistrar = (*Module)(nil)
-	_ app.JobRegistrar   = (*Module)(nil)
+	_ app.Module            = (*Module)(nil)
+	_ app.RouteRegistrar    = (*Module)(nil)
+	_ app.WebhookRegistrar  = (*Module)(nil)
+	_ app.JobRegistrar      = (*Module)(nil)
 )
 
 // Module represents the site module
@@ -58,6 +60,7 @@ type Module struct {
 	commandHandler    *handlers.CommandHandler
 	redirectHandler   *handlers.RedirectHandler
 	fileHandler       *handlers.FileHandler
+	webhookHandler    *handlers.WebhookHandler
 
 	// Additional services
 	fileService *services.FileService
@@ -185,6 +188,7 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 	m.commandHandler = handlers.NewCommandHandler(m.commandService)
 	m.redirectHandler = handlers.NewRedirectHandler(m.redirectService)
 	m.fileHandler = handlers.NewFileHandler(m.fileService)
+	m.webhookHandler = handlers.NewWebhookHandler(m.deploymentService)
 
 	return m
 }
@@ -250,6 +254,15 @@ func (m *Module) Name() string {
 // NewModuleFromContext creates a new site module from app context
 func NewModuleFromContext(ctx *app.Context) *Module {
 	return NewModule(ctx.DB, ctx.Queue, ctx.WebSocket, ctx.Logger, ctx.Dispatcher)
+}
+
+// RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
+// These routes don't require authentication - they use deploy tokens for auth
+func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
+	// Deployment webhook - triggered by git providers (GitHub, GitLab, Bitbucket)
+	// URL: /deploy/:siteId/:token
+	router.Post("/deploy/:siteId/:token", m.webhookHandler.DeployWebhook)
+	router.Get("/deploy/:siteId/:token", m.webhookHandler.DeployWebhook) // Some providers use GET
 }
 
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)
