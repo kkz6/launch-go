@@ -35,7 +35,7 @@ type Payload interface {
 
 // TaskExecutor interface for executing tasks on servers
 type TaskExecutor interface {
-	RunTask(ctx context.Context, serverID string, task interface{}, asRoot bool) error
+	RunTask(ctx context.Context, serverID string, task any, asRoot bool) error
 }
 
 // BaseJob provides common functionality for all jobs.
@@ -119,7 +119,7 @@ func (j *BaseJob) SetWS(ws Broadcaster) {
 }
 
 // RunTask executes a task on a server
-func (j *BaseJob) RunTask(ctx context.Context, serverID string, task interface{}, asRoot bool) error {
+func (j *BaseJob) RunTask(ctx context.Context, serverID string, task any, asRoot bool) error {
 	if j.TaskExecutor == nil {
 		return fmt.Errorf("task executor not configured")
 	}
@@ -127,7 +127,7 @@ func (j *BaseJob) RunTask(ctx context.Context, serverID string, task interface{}
 }
 
 // LogInfo logs an info message
-func (j *BaseJob) LogInfo(msg string, fields ...interface{}) {
+func (j *BaseJob) LogInfo(msg string, fields ...any) {
 	if j.Logger == nil {
 		return
 	}
@@ -141,7 +141,7 @@ func (j *BaseJob) LogInfo(msg string, fields ...interface{}) {
 }
 
 // LogError logs an error message
-func (j *BaseJob) LogError(err error, msg string, fields ...interface{}) {
+func (j *BaseJob) LogError(err error, msg string, fields ...any) {
 	if j.Logger == nil {
 		return
 	}
@@ -155,7 +155,7 @@ func (j *BaseJob) LogError(err error, msg string, fields ...interface{}) {
 }
 
 // Broadcast sends a websocket broadcast
-func (j *BaseJob) Broadcast(channel, event string, data interface{}) {
+func (j *BaseJob) Broadcast(channel, event string, data any) {
 	if j.WS != nil {
 		j.WS.Broadcast(channel, event, data)
 	}

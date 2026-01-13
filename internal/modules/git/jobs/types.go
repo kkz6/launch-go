@@ -27,5 +27,5 @@ type TriggerDeploymentPayload struct {
 	Provider    string                 `json:"provider"`
 	Repository  string                 `json:"repository"`
 	Branch      string                 `json:"branch"`
-	WebhookData map[string]interface{} `json:"webhook_data"`
+	WebhookData map[string]any `json:"webhook_data"`
 }

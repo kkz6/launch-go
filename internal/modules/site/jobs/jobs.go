@@ -67,7 +67,7 @@ const (
 
 // NewDeployTask creates a deploy job
 func NewDeployTask(siteID, deploymentID string, userID string) (*asynq.Task, error) {
-	return jobs.NewTask(TypeDeploy, map[string]interface{}{
+	return jobs.NewTask(TypeDeploy, map[string]any{
 		"site_id":       siteID,
 		"deployment_id": deploymentID,
 		"user_id":       userID,
@@ -76,7 +76,7 @@ func NewDeployTask(siteID, deploymentID string, userID string) (*asynq.Task, err
 
 // NewDeployZeroDowntimeTask creates a zero-downtime deploy job
 func NewDeployZeroDowntimeTask(siteID, deploymentID string, userID string) (*asynq.Task, error) {
-	return jobs.NewTask(TypeDeployZeroDowntime, map[string]interface{}{
+	return jobs.NewTask(TypeDeployZeroDowntime, map[string]any{
 		"site_id":       siteID,
 		"deployment_id": deploymentID,
 		"user_id":       userID,
@@ -85,7 +85,7 @@ func NewDeployZeroDowntimeTask(siteID, deploymentID string, userID string) (*asy
 
 // NewRollbackTask creates a rollback job
 func NewRollbackTask(siteID, deploymentID, targetDeploymentID, userID string) (*asynq.Task, error) {
-	return jobs.NewTask(TypeRollback, map[string]interface{}{
+	return jobs.NewTask(TypeRollback, map[string]any{
 		"site_id":              siteID,
 		"deployment_id":        deploymentID,
 		"target_deployment_id": targetDeploymentID,
@@ -95,7 +95,7 @@ func NewRollbackTask(siteID, deploymentID, targetDeploymentID, userID string) (*
 
 // NewInstallSSLTask creates an install SSL job
 func NewInstallSSLTask(siteID, address string) (*asynq.Task, error) {
-	return jobs.NewTask(TypeInstallSSL, map[string]interface{}{
+	return jobs.NewTask(TypeInstallSSL, map[string]any{
 		"site_id": siteID,
 		"address": address,
 	})
