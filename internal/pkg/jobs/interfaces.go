@@ -10,10 +10,6 @@ import (
 	"github.com/kkz6/launch-go/internal/queue"
 )
 
-// ===============================
-// Model Interfaces for Trackers
-// ===============================
-
 // Installable is implemented by models that can track installation status.
 // This provides compile-time safety for installation tracking.
 //
@@ -46,10 +42,6 @@ type TaskTrackable interface {
 	TableName() string
 }
 
-// ===============================
-// Job Capability Interfaces
-// ===============================
-
 // DependencyAware is implemented by jobs that need the standard dependencies.
 // Use this interface to ensure a job has access to required services.
 type DependencyAware interface {
@@ -68,10 +60,6 @@ type DependencySetter interface {
 	SetDispatcher(dispatcher *taskrunner.Dispatcher)
 	SetQueue(q *queue.Client)
 }
-
-// ===============================
-// Server Connection Interface
-// ===============================
 
 // ServerConnectable represents a server that can be connected to via SSH.
 // This abstraction allows jobs to work with server models without
@@ -97,10 +85,6 @@ type ServerConnectable interface {
 	ConnectionAsUser(username ...string) *taskrunner.Connection
 }
 
-// ===============================
-// Repository Interfaces
-// ===============================
-
 // GenericRepository is a generic interface for basic CRUD operations.
 type GenericRepository[T any] interface {
 	FindByID(ctx context.Context, id string) (T, error)
@@ -108,10 +92,6 @@ type GenericRepository[T any] interface {
 	Update(ctx context.Context, model T) error
 	Delete(ctx context.Context, id string) error
 }
-
-// ===============================
-// Job Handler Interfaces
-// ===============================
 
 // HandlerWithPayload is a Handler that also exposes its payload type.
 // This is useful for jobs that need to access their payload generically.
@@ -126,10 +106,6 @@ type HandlerWithPayload[P any] interface {
 type FailableJob interface {
 	Failed(ctx context.Context, err error)
 }
-
-// ===============================
-// Event Broadcasting
-// ===============================
 
 // ServerEventBroadcaster can broadcast events to server channels.
 type ServerEventBroadcaster interface {
@@ -153,10 +129,6 @@ type FullBroadcaster interface {
 	SiteEventBroadcaster
 	DeploymentEventBroadcaster
 }
-
-// ===============================
-// Compile-time Interface Checks
-// ===============================
 
 // These ensure BaseJob implements the required interfaces.
 var (

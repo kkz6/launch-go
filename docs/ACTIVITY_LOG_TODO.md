@@ -158,9 +158,9 @@ if j.Payload.UserID != nil {
 - [x] User profile/password changes (service)
 
 ### Phase 2: Job Completions (Medium Priority)
-- [ ] Server provisioned (job)
-- [ ] Database installed/uninstalled (job)
-- [ ] Database user installed/uninstalled (job)
+- [ ] Server provisioned (job) - Note: Runs in background, completion handled elsewhere
+- [x] Database installed/uninstalled (job)
+- [x] Database user installed/uninstalled (job)
 
 ### Phase 3: Secondary Operations (Lower Priority)
 - [ ] Firewall rules

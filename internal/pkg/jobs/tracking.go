@@ -6,10 +6,6 @@ import (
 	"gorm.io/gorm"
 )
 
-// ===============================
-// Legacy Trackers (for backward compatibility)
-// ===============================
-
 // InstallationTracker provides common installation tracking methods.
 // Embed this in jobs that install things (services, crons, daemons, etc.)
 //
@@ -98,13 +94,9 @@ func (t *StatusTracker) UpdateFields(db *gorm.DB, model any, fields map[string]a
 	return db.Model(model).Updates(fields).Error
 }
 
-// ===============================
-// Generic Type-Safe Trackers
-// ===============================
+// TypedInstallationTracker provides type-safe installation tracking.
 // These provide compile-time type checking by using the interfaces
 // defined in interfaces.go.
-
-// TypedInstallationTracker provides type-safe installation tracking.
 // Use this when you want compile-time guarantees that the model
 // implements the Installable interface.
 //

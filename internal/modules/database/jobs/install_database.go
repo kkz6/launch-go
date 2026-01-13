@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -60,6 +61,16 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context) error {
 	if err := j.MarkAsInstalled(j.DB, database); err != nil {
 		return fmt.Errorf("failed to update database status: %w", err)
 	}
+
+	logger := activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("database").
+		On(database).
+		WithEvent("installed")
+	if j.Payload.UserID != nil {
+		logger.CausedByUser(*j.Payload.UserID)
+	}
+	logger.Log("Database was installed")
 
 	j.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "installed", fmt.Sprintf("Database %s created successfully", database.Name))
 

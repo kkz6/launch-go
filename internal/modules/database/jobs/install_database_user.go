@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -77,6 +78,16 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 	if err := j.MarkAsInstalled(j.DB, dbUser); err != nil {
 		return fmt.Errorf("failed to update database user status: %w", err)
 	}
+
+	logger := activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("database").
+		On(dbUser).
+		WithEvent("installed")
+	if j.Payload.CallerID != nil {
+		logger.CausedByUser(*j.Payload.CallerID)
+	}
+	logger.Log("Database user was installed")
 
 	j.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "installed", fmt.Sprintf("Database user %s created successfully", dbUser.Name))
 

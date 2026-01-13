@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -53,6 +54,16 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context) error {
 	if !result.IsSuccessful() {
 		j.LogInfo("Database drop completed with errors", "output", result.GetOutput())
 	}
+
+	logger := activity.New(j.DB).
+		WithContext(ctx).
+		UseLog("database").
+		On(database).
+		WithEvent("uninstalled")
+	if j.Payload.UserID != nil {
+		logger.CausedByUser(*j.Payload.UserID)
+	}
+	logger.Log("Database was uninstalled")
 
 	if err := j.MarkAsUninstalled(j.DB, database); err != nil {
 		return fmt.Errorf("failed to delete database record: %w", err)
