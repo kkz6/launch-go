@@ -97,10 +97,10 @@ func (p *VultrProvider) Create(ctx context.Context, server *models.Server, crede
 
 	serverName := strings.ReplaceAll(strings.ToLower(server.Name), " ", "-")
 	instanceResp, err := p.doRequest(ctx, token, "POST", "/instances", map[string]interface{}{
-		"label":    serverName,
-		"region":   region,
-		"plan":     plan,
-		"os_id":    osID,
+		"label":     serverName,
+		"region":    region,
+		"plan":      plan,
+		"os_id":     osID,
 		"sshkey_id": []string{sshKeyID},
 	})
 	if err != nil {
