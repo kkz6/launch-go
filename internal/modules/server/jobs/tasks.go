@@ -17,15 +17,6 @@ func NewRebootServerTask(serverID string, userID *string) (*asynq.Task, error) {
 	})
 }
 
-// NewDeleteServerTask creates an asynq task for deleting a server
-func NewDeleteServerTask(serverID, teamID string, userID *string) (*asynq.Task, error) {
-	return jobs.NewTask(TypeDeleteServer, DeleteServerPayload{
-		ServerID: serverID,
-		TeamID:   teamID,
-		UserID:   userID,
-	})
-}
-
 // NewAddServiceTask creates an asynq task for adding a service
 func NewAddServiceTask(serverID, serviceID string, software enums.Software) (*asynq.Task, error) {
 	return jobs.NewTask(TypeAddService, AddServicePayload{

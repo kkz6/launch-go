@@ -6,6 +6,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -14,11 +15,12 @@ import (
 // JobContext holds all dependencies needed by server jobs.
 // This is similar to Laravel's dependency injection for jobs.
 type JobContext struct {
-	DB         *gorm.DB
-	Repo       contracts.Repository
-	Logger     *zerolog.Logger
-	WS         jobs.Broadcaster
-	Dispatcher *taskrunner.Dispatcher
+	DB              *gorm.DB
+	Repo            contracts.Repository
+	Logger          *zerolog.Logger
+	WS              jobs.Broadcaster
+	Dispatcher      *taskrunner.Dispatcher
+	ProviderFactory *providers.Factory
 
 	// TaskRunner dependencies for executing tasks on servers
 	TaskRunnerDeps *tasks.TaskRunnerDeps
@@ -31,13 +33,15 @@ func NewJobContext(
 	logger *zerolog.Logger,
 	ws jobs.Broadcaster,
 	dispatcher *taskrunner.Dispatcher,
+	providerFactory *providers.Factory,
 ) *JobContext {
 	return &JobContext{
-		DB:         db,
-		Repo:       repo,
-		Logger:     logger,
-		WS:         ws,
-		Dispatcher: dispatcher,
+		DB:              db,
+		Repo:            repo,
+		Logger:          logger,
+		WS:              ws,
+		Dispatcher:      dispatcher,
+		ProviderFactory: providerFactory,
 		TaskRunnerDeps: &tasks.TaskRunnerDeps{
 			DB:         db,
 			Dispatcher: dispatcher,
@@ -97,6 +101,11 @@ func (j *ServerJobBase) RunTaskOnServer(server *models.Server, task taskrunner.T
 // Repo returns the repository for database operations
 func (j *ServerJobBase) Repo() contracts.Repository {
 	return j.Ctx.Repo
+}
+
+// ProviderFactory returns the cloud provider factory
+func (j *ServerJobBase) ProviderFactory() *providers.Factory {
+	return j.Ctx.ProviderFactory
 }
 
 // BroadcastServerEvent broadcasts an event to a server's channel
