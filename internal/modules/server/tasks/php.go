@@ -184,16 +184,25 @@ func ConfigureOpcache(version string, settings map[string]string) *taskrunner.Ba
 		lines = append(lines, fmt.Sprintf("opcache.%s=%s", key, value))
 	}
 
-	iniPath := fmt.Sprintf("/etc/php/%s/mods-available/opcache.ini", version)
-	script := fmt.Sprintf(`sudo cat > %s << 'EOF'
-zend_extension=opcache.so
+	iniPath := fmt.Sprintf("/etc/php/%s/mods-available/opcache-custom.ini", version)
+	script := fmt.Sprintf(`echo "Configuring OPcache for PHP %s"
+
+sudo tee %s > /dev/null << 'OPCACHE_EOF'
+[opcache]
 %s
-EOF
-sudo service php%s-fpm restart`, iniPath, strings.Join(lines, "\n"), version)
+OPCACHE_EOF
+
+echo "Enabling OPcache configuration..."
+sudo phpenmod -v %s opcache-custom || true
+
+echo "Restarting PHP-FPM..."
+sudo service php%s-fpm restart || true
+
+echo "OPcache configuration complete"`, version, iniPath, strings.Join(lines, "\n"), version, version)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Configure OPcache"),
 		taskrunner.WithScript(script),
-		taskrunner.WithTimeoutSeconds(30),
+		taskrunner.WithTimeoutSeconds(60),
 	)
 }
