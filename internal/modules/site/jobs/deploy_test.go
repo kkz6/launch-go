@@ -270,3 +270,40 @@ func TestStringValue(t *testing.T) {
 		})
 	}
 }
+
+func TestNewSyncQueuesTask(t *testing.T) {
+	siteID := "site123"
+	serverID := "server456"
+	userID := "user789"
+
+	task, err := NewSyncQueuesTask(siteID, serverID, &userID)
+
+	require.NoError(t, err)
+	assert.NotNil(t, task)
+	assert.Equal(t, TypeSyncQueues, task.Type())
+}
+
+func TestNewSyncQueuesTask_NilUserID(t *testing.T) {
+	siteID := "site123"
+	serverID := "server456"
+
+	task, err := NewSyncQueuesTask(siteID, serverID, nil)
+
+	require.NoError(t, err)
+	assert.NotNil(t, task)
+	assert.Equal(t, TypeSyncQueues, task.Type())
+}
+
+func TestSyncQueuesPayload(t *testing.T) {
+	userID := "user123"
+	payload := SyncQueuesPayload{
+		SiteID:   "site456",
+		ServerID: "server789",
+		UserID:   &userID,
+	}
+
+	assert.Equal(t, "site456", payload.SiteID)
+	assert.Equal(t, "server789", payload.ServerID)
+	assert.NotNil(t, payload.UserID)
+	assert.Equal(t, "user123", *payload.UserID)
+}

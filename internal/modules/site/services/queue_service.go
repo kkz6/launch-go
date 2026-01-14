@@ -7,6 +7,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
+	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/queue"
@@ -168,4 +169,54 @@ func (s *QueueService) DisableAutoRestart(ctx context.Context, siteID, serverID 
 	return s.siteRepo.UpdateFields(ctx, siteID, map[string]interface{}{
 		"auto_restart_queue": false,
 	})
+}
+
+// SyncStatus triggers a status synchronization for all queue workers of a site
+func (s *QueueService) SyncStatus(ctx context.Context, siteID, serverID, userID string) error {
+	site, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID)
+	if err != nil {
+		return err
+	}
+
+	queues, err := s.queueRepo.FindBySite(ctx, siteID)
+	if err != nil {
+		return err
+	}
+
+	if len(queues) == 0 {
+		s.LogInfo("No queues to sync", "site_id", siteID)
+		return nil
+	}
+
+	// Update last status check time for all queues
+	now := time.Now()
+	for i := range queues {
+		queues[i].LastStatusCheck = &now
+		if err := s.queueRepo.Update(ctx, &queues[i]); err != nil {
+			s.LogError(err, "Failed to update queue last status check", "queue_id", queues[i].ID)
+		}
+	}
+
+	// Dispatch the sync job to check supervisor status on the server
+	var userIDPtr *string
+	if userID != "" {
+		userIDPtr = &userID
+	}
+
+	task, err := jobs.NewSyncQueuesTask(site.ID, serverID, userIDPtr)
+	if err != nil {
+		s.LogError(err, "Failed to create sync queues task")
+		return err
+	}
+
+	if s.Queue != nil {
+		if _, err := s.Queue.Enqueue(task); err != nil {
+			s.LogError(err, "Failed to enqueue sync queues job")
+			return err
+		}
+	}
+
+	s.LogInfo("Queue sync initiated", "site_id", siteID, "queue_count", len(queues))
+
+	return nil
 }
