@@ -475,3 +475,34 @@ echo "Provisioning script completed."
 `
 	return fmt.Sprintf(script, server.Name, publicKey)
 }
+
+// RunVulnerabilityAudit runs a security vulnerability audit on a server
+func (s *Service) RunVulnerabilityAudit(ctx context.Context, serverID, teamID, userID string, emailRecipient *string) error {
+	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return err
+	}
+
+	if !server.IsProvisioned() {
+		return ErrServerNotProvisioned
+	}
+
+	if !server.IsConnected() {
+		return ErrServerNotConnected
+	}
+
+	task, err := jobs.NewVulnerabilityAuditTask(server.ID, teamID, &userID, emailRecipient)
+	if err != nil {
+		return err
+	}
+
+	activity.New(s.repo.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		CausedByUser(userID).
+		On(server).
+		WithEvent("vulnerability_audit_started").
+		Log("Vulnerability audit was initiated")
+
+	return s.EnqueueTask(task)
+}

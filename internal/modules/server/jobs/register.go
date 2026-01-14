@@ -108,4 +108,10 @@ func Register(r *jobs.Registry) {
 		func(p ConfigureOpcachePayload) *ConfigureOpcacheJob { return &ConfigureOpcacheJob{Payload: p} },
 		getContext,
 	))
+
+	// Security audit jobs
+	r.Register(TypeVulnerabilityAudit, jobs.MakeFactory(
+		func(p VulnerabilityAuditPayload) *VulnerabilityAuditJob { return &VulnerabilityAuditJob{Payload: p} },
+		getContext,
+	))
 }

@@ -41,6 +41,7 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Post("/:id/connect", m.handler.Connect)
 		servers.Post("/:id/archive", m.handler.Archive)
 		servers.Post("/:id/unarchive", m.handler.Unarchive)
+		servers.Post("/:id/vulnerability-audit", m.handler.RunVulnerabilityAudit)
 
 		// Services
 		servers.Get("/:id/services", m.handler.ListServices)

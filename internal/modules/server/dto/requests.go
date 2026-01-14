@@ -144,3 +144,8 @@ type ConfigureOpcacheRequest struct {
 type UpdateComposerAuthRequest struct {
 	Contents string `json:"contents" validate:"required"`
 }
+
+// VulnerabilityAuditRequest represents the request body for running a vulnerability audit
+type VulnerabilityAuditRequest struct {
+	Email *string `json:"email" validate:"omitempty,email"`
+}
