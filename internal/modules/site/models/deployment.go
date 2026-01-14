@@ -1,6 +1,8 @@
 package models
 
 import (
+	"time"
+
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
@@ -15,6 +17,9 @@ type Deployment struct {
 	GitHash    *string                `gorm:"column:git_hash;type:varchar(255)" json:"git_hash,omitempty"`
 	CommitData basemodels.JSONMap     `gorm:"column:commit_data;type:json" json:"commit_data,omitempty"`
 	VcsData    basemodels.JSONMap     `gorm:"column:vcs_data;type:json" json:"vcs_data,omitempty"`
+	StartedAt  *time.Time             `gorm:"column:started_at;type:timestamp null" json:"started_at,omitempty"`
+	FinishedAt *time.Time             `gorm:"column:finished_at;type:timestamp null" json:"finished_at,omitempty"`
+	Output     *string                `gorm:"column:output;type:longtext" json:"output,omitempty"`
 
 	// Relations
 	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`

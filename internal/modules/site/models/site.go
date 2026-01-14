@@ -25,7 +25,7 @@ type Site struct {
 	VcsData                      *string          `gorm:"column:vcs_data;type:json" json:"vcs_data,omitempty"`
 	Aliases                      basemodels.JSONStringSlice `gorm:"type:json" json:"aliases,omitempty"`
 	TlsSetting                   enums.TlsSetting           `gorm:"column:tls_setting;type:varchar(255);not null;index" json:"tls_setting"`
-	ZeroDowntimeDeployment       bool             `gorm:"column:zero_downtime_deployment;default:true" json:"zero_downtime_deployment"`
+	ZeroDowntimeDeployment       bool             `gorm:"column:zero_downtime_deployment" json:"zero_downtime_deployment"`
 	DeploymentReleasesRetention  int              `gorm:"column:deployment_releases_retention;default:10" json:"deployment_releases_retention"`
 	AutoDeployment               bool             `gorm:"column:auto_deployment;default:false" json:"auto_deployment"`
 	QueueDeployments             bool             `gorm:"column:queue_deployments;default:false" json:"queue_deployments"`

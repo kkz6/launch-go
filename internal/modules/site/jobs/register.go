@@ -23,7 +23,7 @@ func Register(r *jobs.Registry) {
 		getContext,
 	))
 
-	// Deployment jobs (TODO: implement handlers)
+	// Deployment jobs
 	r.Register(TypeDeploy, jobs.MakeFactory(
 		func(p DeployPayload) *DeployJob { return &DeployJob{Payload: p} },
 		getContext,
@@ -42,6 +42,22 @@ func Register(r *jobs.Registry) {
 	// SSL jobs (TODO: implement handler)
 	r.Register(TypeInstallSSL, jobs.MakeFactory(
 		func(p InstallSSLPayload) *InstallSSLJob { return &InstallSSLJob{Payload: p} },
+		getContext,
+	))
+
+	// Caddyfile jobs
+	r.Register(TypeInstallCaddyfile, jobs.MakeFactory(
+		func(p CaddyfilePayload) *InstallCaddyfileJob { return &InstallCaddyfileJob{Payload: p} },
+		getContext,
+	))
+
+	r.Register(TypeUpdateCaddyfile, jobs.MakeFactory(
+		func(p CaddyfilePayload) *UpdateCaddyfileJob { return &UpdateCaddyfileJob{Payload: p} },
+		getContext,
+	))
+
+	r.Register(TypeUninstallCaddyfile, jobs.MakeFactory(
+		func(p CaddyfilePayload) *UninstallCaddyfileJob { return &UninstallCaddyfileJob{Payload: p} },
 		getContext,
 	))
 }

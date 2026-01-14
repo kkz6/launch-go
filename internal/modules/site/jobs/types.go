@@ -8,16 +8,19 @@ import (
 
 // Task type constants
 const (
-	TypeDeploy             = "site:deploy"
-	TypeDeployZeroDowntime = "site:deploy_zero_downtime"
-	TypeRollback           = "site:rollback"
-	TypeInstallSSL         = "site:install_ssl"
-	TypeRunCommand         = "site:run_command"
-	TypeInstallQueue       = "site:install_queue"
-	TypeRestartQueue       = "site:restart_queue"
-	TypeUninstallQueue     = "site:uninstall_queue"
-	TypeInstallRedirect    = "site:install_redirect"
-	TypeUninstallRedirect  = "site:uninstall_redirect"
+	TypeDeploy              = "site:deploy"
+	TypeDeployZeroDowntime  = "site:deploy_zero_downtime"
+	TypeRollback            = "site:rollback"
+	TypeInstallSSL          = "site:install_ssl"
+	TypeRunCommand          = "site:run_command"
+	TypeInstallQueue        = "site:install_queue"
+	TypeRestartQueue        = "site:restart_queue"
+	TypeUninstallQueue      = "site:uninstall_queue"
+	TypeInstallRedirect     = "site:install_redirect"
+	TypeUninstallRedirect   = "site:uninstall_redirect"
+	TypeInstallCaddyfile    = "site:install_caddyfile"
+	TypeUninstallCaddyfile  = "site:uninstall_caddyfile"
+	TypeUpdateCaddyfile     = "site:update_caddyfile"
 )
 
 // RunCommandPayload holds data for running a command on a site
@@ -80,6 +83,12 @@ type UninstallRedirectPayload struct {
 	SiteID     string  `json:"site_id"`
 	RedirectID string  `json:"redirect_id"`
 	UserID     *string `json:"user_id,omitempty"`
+}
+
+// CaddyfilePayload holds data for Caddyfile operations
+type CaddyfilePayload struct {
+	SiteID string  `json:"site_id"`
+	UserID *string `json:"user_id,omitempty"`
 }
 
 // NewDeployTask creates a deploy job
@@ -180,5 +189,29 @@ func NewUninstallRedirectTask(siteID, redirectID string, userID *string) (*asynq
 		SiteID:     siteID,
 		RedirectID: redirectID,
 		UserID:     userID,
+	})
+}
+
+// NewInstallCaddyfileTask creates an install Caddyfile job
+func NewInstallCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {
+	return jobs.NewTask(TypeInstallCaddyfile, CaddyfilePayload{
+		SiteID: siteID,
+		UserID: userID,
+	})
+}
+
+// NewUninstallCaddyfileTask creates an uninstall Caddyfile job
+func NewUninstallCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {
+	return jobs.NewTask(TypeUninstallCaddyfile, CaddyfilePayload{
+		SiteID: siteID,
+		UserID: userID,
+	})
+}
+
+// NewUpdateCaddyfileTask creates an update Caddyfile job
+func NewUpdateCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {
+	return jobs.NewTask(TypeUpdateCaddyfile, CaddyfilePayload{
+		SiteID: siteID,
+		UserID: userID,
 	})
 }

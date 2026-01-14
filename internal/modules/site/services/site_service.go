@@ -8,8 +8,12 @@ import (
 
 	"github.com/rs/zerolog"
 
+	databasedto "github.com/kkz6/launch-go/internal/modules/database/dto"
+	databaseservices "github.com/kkz6/launch-go/internal/modules/database/services"
+	serverdto "github.com/kkz6/launch-go/internal/modules/server/dto"
 	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
+	serverservices "github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
@@ -25,6 +29,8 @@ type SiteService struct {
 	*BaseService
 	deploymentService *DeploymentService
 	serverRepo        *serverrepos.Repository
+	serverService     *serverservices.Service
+	databaseService   *databaseservices.Service
 }
 
 // NewSiteService creates a new site service
@@ -68,6 +74,16 @@ func (s *SiteService) SetServerRepository(repo *serverrepos.Repository) {
 	s.serverRepo = repo
 }
 
+// SetServerService sets the server service for cross-module operations
+func (s *SiteService) SetServerService(svc *serverservices.Service) {
+	s.serverService = svc
+}
+
+// SetDatabaseService sets the database service for cross-module operations
+func (s *SiteService) SetDatabaseService(svc *databaseservices.Service) {
+	s.databaseService = svc
+}
+
 // List returns all sites for a server
 func (s *SiteService) List(ctx context.Context, serverID string) ([]models.Site, error) {
 	return s.siteRepo.FindByServerWithLatestDeployment(ctx, serverID)
@@ -106,13 +122,19 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		repoBranch = &req.RepositoryBranch
 	}
 
+	// WordPress sites don't support zero-downtime deployment
+	zeroDowntime := req.ZeroDowntimeDeployment
+	if req.Type == enums.SiteTypeWordpress {
+		zeroDowntime = false
+	}
+
 	site := &models.Site{
 		ServerID:                    serverID,
 		UserID:                      userID,
 		Address:                     req.Address,
 		Type:                        req.Type,
 		TlsSetting:                  enums.TlsSettingAuto,
-		ZeroDowntimeDeployment:      req.ZeroDowntimeDeployment,
+		ZeroDowntimeDeployment:      zeroDowntime,
 		DeploymentReleasesRetention: 5,
 		RepositoryBranch:            repoBranch,
 		User:                        username,
@@ -170,9 +192,37 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		WithEvent("created").
 		Log("Site was created")
 
-	// Create initial deployment
+	// Handle database creation if requested
+	var envVars map[string]string
+	if req.CreateDatabase && s.databaseService != nil {
+		envVars = s.handleDatabaseCreation(ctx, site, serverID, userID, req)
+	}
+
+	// Handle scheduler creation for Laravel and WordPress sites
+	if req.CreateScheduler && s.serverService != nil {
+		if req.Type == enums.SiteTypeLaravel || req.Type == enums.SiteTypeWordpress {
+			s.handleSchedulerCreation(ctx, site, serverID, userID)
+		}
+	}
+
+	// Handle queue worker creation for Laravel sites
+	if req.CreateQueue && req.Type == enums.SiteTypeLaravel {
+		s.handleQueueCreation(ctx, site, serverID, userID)
+	}
+
+	// Create initial deployment with environment variables
 	if s.deploymentService != nil {
-		deployment, err := s.deploymentService.createDeployment(ctx, site, userID, nil)
+		commitData := make(map[string]interface{})
+		if len(envVars) > 0 {
+			commitData["env_variables"] = envVars
+		}
+
+		var deployCommitData map[string]interface{}
+		if len(commitData) > 0 {
+			deployCommitData = commitData
+		}
+
+		deployment, err := s.deploymentService.createDeployment(ctx, site, userID, deployCommitData)
 		if err != nil {
 			s.LogError(err, "Failed to create initial deployment", "site_id", site.ID)
 		} else {
@@ -183,6 +233,191 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 	s.LogInfo("Site created", "site_id", site.ID, "address", site.Address)
 
 	return site, nil
+}
+
+// handleDatabaseCreation creates a database during site creation
+func (s *SiteService) handleDatabaseCreation(ctx context.Context, site *models.Site, serverID, userID string, req *dto.CreateSiteRequest) map[string]string {
+	envVars := make(map[string]string)
+	envVarNames := site.Type.GetDatabaseEnvVarNames()
+
+	// Use existing database
+	if req.DatabaseOption == "existing" && req.DatabaseID != nil {
+		// Fetch existing database details and build env vars
+		dbInfo := s.getExistingDatabaseInfo(ctx, *req.DatabaseID, serverID)
+		if dbInfo != nil {
+			if envVarNames["database"] != "" {
+				envVars[envVarNames["database"]] = dbInfo.Name
+			}
+			if envVarNames["host"] != "" {
+				envVars[envVarNames["host"]] = "127.0.0.1"
+			}
+			if envVarNames["connection"] != "" {
+				envVars[envVarNames["connection"]] = "mysql"
+			}
+			if envVarNames["port"] != "" {
+				envVars[envVarNames["port"]] = "3306"
+			}
+		}
+		return envVars
+	}
+
+	// Create new database
+	if req.DatabaseName == nil || *req.DatabaseName == "" {
+		return envVars
+	}
+
+	dbReq := &databasedto.CreateDatabaseRequest{
+		Name: *req.DatabaseName,
+	}
+
+	if req.DatabaseUserOption == "new" && req.DatabaseUserName != nil && req.DatabaseUserPassword != nil {
+		dbReq.CreateUser = true
+		dbReq.UserName = *req.DatabaseUserName
+		dbReq.UserPassword = *req.DatabaseUserPassword
+	} else if req.DatabaseUserOption == "existing" && req.DatabaseUserID != nil {
+		dbReq.CreateUser = false
+		dbReq.ExistingUserID = req.DatabaseUserID
+	}
+
+	database, err := s.databaseService.CreateDatabase(ctx, serverID, dbReq, &userID)
+	if err != nil {
+		s.LogError(err, "Failed to create database during site creation", "site_id", site.ID)
+		return envVars
+	}
+
+	// Build environment variables
+	if envVarNames["database"] != "" {
+		envVars[envVarNames["database"]] = database.Name
+	}
+	if envVarNames["host"] != "" {
+		envVars[envVarNames["host"]] = "127.0.0.1"
+	}
+	if envVarNames["connection"] != "" {
+		envVars[envVarNames["connection"]] = "mysql"
+	}
+	if envVarNames["port"] != "" {
+		envVars[envVarNames["port"]] = "3306"
+	}
+
+	// Add user credentials if new user was created
+	if req.DatabaseUserOption == "new" && req.DatabaseUserName != nil && req.DatabaseUserPassword != nil {
+		if envVarNames["username"] != "" {
+			envVars[envVarNames["username"]] = *req.DatabaseUserName
+		}
+		if envVarNames["password"] != "" {
+			envVars[envVarNames["password"]] = *req.DatabaseUserPassword
+		}
+	}
+
+	s.LogInfo("Database created for site", "site_id", site.ID, "database_id", database.ID)
+
+	return envVars
+}
+
+// getExistingDatabaseInfo fetches database info for existing database
+func (s *SiteService) getExistingDatabaseInfo(ctx context.Context, databaseID, serverID string) *struct{ Name string } {
+	if s.databaseService == nil {
+		return nil
+	}
+
+	database, err := s.databaseService.GetDatabase(ctx, databaseID, serverID)
+	if err != nil {
+		return nil
+	}
+
+	return &struct{ Name string }{Name: database.Name}
+}
+
+// handleSchedulerCreation creates a cron job for Laravel/WordPress scheduler
+func (s *SiteService) handleSchedulerCreation(ctx context.Context, site *models.Site, serverID, userID string) {
+	// Get team ID from server
+	server, err := s.serverRepo.FindServerByID(ctx, serverID)
+	if err != nil {
+		s.LogError(err, "Failed to get server for scheduler creation", "site_id", site.ID)
+		return
+	}
+
+	// Build the scheduler command based on site type
+	phpBinary := "php"
+	if site.PhpVersion != nil {
+		phpBinary = fmt.Sprintf("php%s", *site.PhpVersion)
+	}
+
+	var command string
+	switch site.Type {
+	case enums.SiteTypeWordpress:
+		// WordPress cron uses wp-cron.php
+		command = fmt.Sprintf("cd %s && %s wp-cron.php >> /dev/null 2>&1", site.GetWebDirectory(), phpBinary)
+	case enums.SiteTypeLaravel:
+		// Laravel uses artisan schedule:run
+		command = fmt.Sprintf("cd %s && %s artisan schedule:run >> /dev/null 2>&1", site.GetApplicationDirectory(), phpBinary)
+	default:
+		s.LogError(nil, "Scheduler not supported for site type", "site_id", site.ID, "type", site.Type)
+		return
+	}
+
+	frequency := "every_minute"
+
+	cronReq := &serverdto.CreateCronRequest{
+		Expression: "* * * * *",
+		Command:    command,
+		User:       site.User,
+		Frequency:  &frequency,
+		SiteID:     &site.ID,
+	}
+
+	_, err = s.serverService.CreateCron(ctx, serverID, server.TeamID, cronReq)
+	if err != nil {
+		s.LogError(err, "Failed to create scheduler cron for site", "site_id", site.ID)
+		return
+	}
+
+	s.LogInfo("Scheduler cron created for site", "site_id", site.ID)
+}
+
+// handleQueueCreation creates a queue worker for Laravel sites
+func (s *SiteService) handleQueueCreation(ctx context.Context, site *models.Site, serverID, userID string) {
+	queueReq := &dto.CreateQueueRequest{
+		QueueConnection:       "database",
+		Queue:                 "default",
+		User:                  &site.User,
+		RestSecondsOnEmpty:    3,
+		MaxSecondsPerJob:      60,
+		FailedJobDelaySeconds: 3,
+		RunOnMaintenance:      false,
+		RunWithListen:         false,
+	}
+
+	maxTries := 3
+	queueReq.MaxTries = &maxTries
+
+	maxMemory := 128
+	queueReq.MaxMemory = &maxMemory
+
+	numProcs := 1
+	queueReq.NumProcs = &numProcs
+
+	// Use shared BaseService to create queue service with proper dependencies
+	queueService := NewQueueService(
+		s.siteRepo,
+		s.deploymentRepo,
+		s.certificateRepo,
+		s.queueRepo,
+		s.commandRepo,
+		s.redirectRepo,
+		s.releaseRepo,
+		s.Queue,
+		s.WS,
+		s.Logger,
+	)
+
+	_, err := queueService.Create(ctx, site.ID, serverID, userID, queueReq)
+	if err != nil {
+		s.LogError(err, "Failed to create queue worker for site", "site_id", site.ID)
+		return
+	}
+
+	s.LogInfo("Queue worker created for site", "site_id", site.ID)
 }
 
 // FindByID finds a site by ID
