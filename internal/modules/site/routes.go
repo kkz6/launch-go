@@ -65,6 +65,7 @@ func (m *Module) registerSSLRoutes(router fiber.Router) {
 func (m *Module) registerQueueRoutes(router fiber.Router) {
 	router.Get("/:id/queues", m.queueHandler.ListQueues)
 	router.Post("/:id/queues", m.queueHandler.CreateQueue)
+	router.Post("/:id/queues/sync", m.queueHandler.SyncQueues)
 	router.Delete("/:id/queues/:queueId", m.queueHandler.DeleteQueue)
 
 	// Auto-restart queue

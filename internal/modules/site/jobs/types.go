@@ -16,6 +16,7 @@ const (
 	TypeInstallQueue        = "site:install_queue"
 	TypeRestartQueue        = "site:restart_queue"
 	TypeUninstallQueue      = "site:uninstall_queue"
+	TypeSyncQueues          = "site:sync_queues"
 	TypeInstallRedirect     = "site:install_redirect"
 	TypeUninstallRedirect   = "site:uninstall_redirect"
 	TypeInstallCaddyfile    = "site:install_caddyfile"
@@ -69,6 +70,13 @@ type UninstallQueuePayload struct {
 	SiteID  string  `json:"site_id"`
 	QueueID string  `json:"queue_id"`
 	UserID  *string `json:"user_id,omitempty"`
+}
+
+// SyncQueuesPayload holds data for queue status synchronization
+type SyncQueuesPayload struct {
+	SiteID   string  `json:"site_id"`
+	ServerID string  `json:"server_id"`
+	UserID   *string `json:"user_id,omitempty"`
 }
 
 // InstallRedirectPayload holds data for redirect installation
@@ -171,6 +179,15 @@ func NewUninstallQueueTask(siteID, queueID string, userID *string) (*asynq.Task,
 		SiteID:  siteID,
 		QueueID: queueID,
 		UserID:  userID,
+	})
+}
+
+// NewSyncQueuesTask creates a sync queues status job
+func NewSyncQueuesTask(siteID, serverID string, userID *string) (*asynq.Task, error) {
+	return jobs.NewTask(TypeSyncQueues, SyncQueuesPayload{
+		SiteID:   siteID,
+		ServerID: serverID,
+		UserID:   userID,
 	})
 }
 

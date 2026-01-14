@@ -123,3 +123,20 @@ func (h *QueueHandler) DisableAutoRestartQueue(c *fiber.Ctx) error {
 
 	return response.OK(c, "Auto-restart queue disabled", nil)
 }
+
+// SyncQueues triggers a status synchronization for all queue workers
+func (h *QueueHandler) SyncQueues(c *fiber.Ctx) error {
+	serverID := c.Params("serverId")
+	siteID := c.Params("id")
+	userID := c.Locals("userID").(string)
+
+	if err := h.queueService.SyncStatus(c.Context(), siteID, serverID, userID); err != nil {
+		if errors.Is(err, repositories.ErrSiteNotFound) {
+			return response.NotFound(c, "Site not found")
+		}
+
+		return response.Error(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	return response.OK(c, "Queue sync initiated", nil)
+}
