@@ -104,6 +104,10 @@ func Register(r *jobs.Registry) {
 		func(p ServiceOperationPayload) *ServiceOperationJob { return &ServiceOperationJob{Payload: p} },
 		getContext,
 	))
+	r.Register(TypeCheckServiceStatus, jobs.MakeFactory(
+		func(p CheckServiceStatusPayload) *CheckServiceStatusJob { return &CheckServiceStatusJob{Payload: p} },
+		getContext,
+	))
 	r.Register(TypeConfigureOpcache, jobs.MakeFactory(
 		func(p ConfigureOpcachePayload) *ConfigureOpcacheJob { return &ConfigureOpcacheJob{Payload: p} },
 		getContext,

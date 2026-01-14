@@ -20,7 +20,7 @@ func (r *Repository) FindSshKeyByID(ctx context.Context, id string) (*models.Ssh
 func (r *Repository) FindSshKeysByTeam(ctx context.Context, teamID string) ([]models.SshKey, error) {
 	var keys []models.SshKey
 	err := r.db.WithContext(ctx).
-		Where("team_id = ? OR is_global = ?", teamID, true).
+		Where("team_id = ?", teamID).
 		Order("created_at DESC").
 		Find(&keys).Error
 	return keys, err

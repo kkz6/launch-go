@@ -15,6 +15,7 @@ const (
 	TypeAddService           = "server:add_service"
 	TypeRemoveService        = "server:remove_service"
 	TypeServiceOperation     = "server:service_operation"
+	TypeCheckServiceStatus   = "server:check_service_status"
 	TypeAddSshKey            = "server:add_ssh_key"
 	TypeRemoveSshKey         = "server:remove_ssh_key"
 	TypeUpdateConnectivity   = "server:update_connectivity"
@@ -147,4 +148,10 @@ type VulnerabilityAuditPayload struct {
 	TeamID         string  `json:"team_id"`
 	UserID         *string `json:"user_id,omitempty"`
 	EmailRecipient *string `json:"email_recipient,omitempty"`
+}
+
+type CheckServiceStatusPayload struct {
+	ServerID  string  `json:"server_id"`
+	ServiceID string  `json:"service_id"`
+	UserID    *string `json:"user_id,omitempty"`
 }

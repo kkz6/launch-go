@@ -101,3 +101,30 @@ func (h *Handler) GetAvailableServices(c *fiber.Ctx) error {
 
 	return response.OK(c, "Available services retrieved", services)
 }
+
+// GetServiceStatus returns the current status of a service
+func (h *Handler) GetServiceStatus(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	serverID := c.Params("id")
+	serviceID := c.Params("serviceId")
+
+	service, err := h.service.GetServiceStatus(c.Context(), serverID, teamID, serviceID)
+	if err != nil {
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch service status")
+	}
+
+	return response.OK(c, "Service status retrieved", dto.ToServiceResponse(service))
+}
+
+// CheckServiceStatus triggers a status check on the server for a service
+func (h *Handler) CheckServiceStatus(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	serverID := c.Params("id")
+	serviceID := c.Params("serviceId")
+
+	if err := h.service.CheckServiceStatus(c.Context(), serverID, teamID, serviceID); err != nil {
+		return response.HandleError(c, err)
+	}
+
+	return response.OK(c, "Service status check initiated", nil)
+}
