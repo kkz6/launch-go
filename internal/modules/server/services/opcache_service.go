@@ -147,8 +147,8 @@ func (s *Service) ConfigureOpcache(ctx context.Context, serverID, teamID, phpID 
 	software := enums.Software(service.Software)
 	version := software.GetVersion()
 	if isPhp8OrNewer(version) && req.JITEnabled {
-		settings["jit"] = "1"
 		settings["jit_buffer_size"] = req.JITBufferSize
+		settings["jit"] = req.JITMode
 	}
 
 	// Dispatch the configuration job
