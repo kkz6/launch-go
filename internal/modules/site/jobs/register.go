@@ -60,4 +60,10 @@ func Register(r *jobs.Registry) {
 		func(p CaddyfilePayload) *UninstallCaddyfileJob { return &UninstallCaddyfileJob{Payload: p} },
 		getContext,
 	))
+
+	// Queue jobs
+	r.Register(TypeSyncQueues, jobs.MakeFactory(
+		func(p SyncQueuesPayload) *SyncQueuesJob { return &SyncQueuesJob{Payload: p} },
+		getContext,
+	))
 }
