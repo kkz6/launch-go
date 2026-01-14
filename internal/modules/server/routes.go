@@ -47,6 +47,8 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Get("/:id/services", m.handler.ListServices)
 		servers.Get("/:id/services/create", m.handler.GetAvailableServices)
 		servers.Post("/:id/services", m.handler.InstallService)
+		servers.Get("/:id/services/:serviceId/status", m.handler.GetServiceStatus)
+		servers.Post("/:id/services/:serviceId/status", m.handler.CheckServiceStatus)
 		servers.Post("/:id/services/:serviceId", m.handler.ServiceOperation)
 
 		// PHP

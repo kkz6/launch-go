@@ -42,6 +42,7 @@ type ServiceRepository interface {
 	FindDatabaseService(ctx context.Context, serverID string) (*models.InstalledService, error)
 	UpdateService(ctx context.Context, service *models.InstalledService) error
 	UpdateServiceStatus(ctx context.Context, id string, status enums.ServiceStatus) error
+	UpdateServiceWithTypeData(ctx context.Context, id string, status enums.ServiceStatus, typeData map[string]any) error
 	DeleteService(ctx context.Context, id string) error
 }
 

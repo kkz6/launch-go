@@ -154,12 +154,49 @@ func (s *Service) dispatchServiceStatusJob(server *models.Server, service *model
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, "status", nil)
+	task, err := jobs.NewCheckServiceStatusTask(server.ID, service.ID, nil)
 	if err != nil {
 		return err
 	}
 
 	return s.EnqueueTask(task)
+}
+
+// GetServiceStatus returns the current status of a service from the database
+func (s *Service) GetServiceStatus(ctx context.Context, serverID, teamID, serviceID string) (*models.InstalledService, error) {
+	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+		return nil, err
+	}
+
+	service, err := s.repo.FindServiceByID(ctx, serviceID)
+	if err != nil {
+		return nil, err
+	}
+
+	if service.ServerID != serverID {
+		return nil, ErrServiceNotFound
+	}
+
+	return service, nil
+}
+
+// CheckServiceStatus triggers a status check on the server for a service
+func (s *Service) CheckServiceStatus(ctx context.Context, serverID, teamID, serviceID string) error {
+	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return err
+	}
+
+	service, err := s.repo.FindServiceByID(ctx, serviceID)
+	if err != nil {
+		return err
+	}
+
+	if service.ServerID != serverID {
+		return ErrServiceNotFound
+	}
+
+	return s.dispatchServiceStatusJob(server, service)
 }
 
 // GetAvailableServices returns all available services grouped by type with installation status

@@ -155,19 +155,22 @@ type ServerListResponse struct {
 
 // ServiceResponse represents the response for a service
 type ServiceResponse struct {
-	ID            string  `json:"id"`
-	ServerID      string  `json:"server_id"`
-	Type          string  `json:"type"`
-	TypeLabel     string  `json:"type_label"`
-	Name          string  `json:"name"`
-	Version       *string `json:"version,omitempty"`
-	Status        string  `json:"status"`
-	StatusLabel   string  `json:"status_label"`
-	IsDefault     bool    `json:"is_default"`
-	Software      *string `json:"software,omitempty"`
-	SoftwareLabel *string `json:"software_label,omitempty"`
-	CreatedAt     string  `json:"created_at"`
-	UpdatedAt     string  `json:"updated_at"`
+	ID              string                 `json:"id"`
+	ServerID        string                 `json:"server_id"`
+	Type            string                 `json:"type"`
+	TypeLabel       string                 `json:"type_label"`
+	Name            string                 `json:"name"`
+	Version         *string                `json:"version,omitempty"`
+	Status          string                 `json:"status"`
+	StatusLabel     string                 `json:"status_label"`
+	IsDefault       bool                   `json:"is_default"`
+	Software        *string                `json:"software,omitempty"`
+	SoftwareLabel   *string                `json:"software_label,omitempty"`
+	LastStatusCheck *string                `json:"last_status_check,omitempty"`
+	StatusDetails   map[string]any         `json:"status_details,omitempty"`
+	StatusOutput    *string                `json:"status_output,omitempty"`
+	CreatedAt       string                 `json:"created_at"`
+	UpdatedAt       string                 `json:"updated_at"`
 }
 
 // ToServiceResponse converts an InstalledService model to a ServiceResponse DTO
@@ -209,6 +212,19 @@ func ToServiceResponse(service *models.InstalledService) ServiceResponse {
 		resp.Software = &swStr
 		label := sw.Label()
 		resp.SoftwareLabel = &label
+	}
+
+	// Extract status details from TypeData
+	if service.TypeData != nil {
+		if lastStatusCheck, ok := service.TypeData["last_status_check"].(string); ok {
+			resp.LastStatusCheck = &lastStatusCheck
+		}
+		if statusDetails, ok := service.TypeData["status_details"].(map[string]any); ok {
+			resp.StatusDetails = statusDetails
+		}
+		if statusOutput, ok := service.TypeData["status_output"].(string); ok {
+			resp.StatusOutput = &statusOutput
+		}
 	}
 
 	return resp

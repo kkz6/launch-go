@@ -92,6 +92,30 @@ func (r *Repository) UpdateServiceStatus(ctx context.Context, id string, status 
 		Update("status", status).Error
 }
 
+// UpdateServiceWithTypeData updates the service status and type data
+func (r *Repository) UpdateServiceWithTypeData(ctx context.Context, id string, status enums.ServiceStatus, typeData map[string]any) error {
+	service, err := r.FindServiceByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	// Merge existing type_data with new data
+	if service.TypeData == nil {
+		service.TypeData = make(map[string]any)
+	}
+	for k, v := range typeData {
+		service.TypeData[k] = v
+	}
+
+	return r.db.WithContext(ctx).
+		Model(&models.InstalledService{}).
+		Where("id = ?", id).
+		Updates(map[string]any{
+			"status":    status,
+			"type_data": service.TypeData,
+		}).Error
+}
+
 // DeleteService deletes a service
 func (r *Repository) DeleteService(ctx context.Context, id string) error {
 	return deleteByID[models.InstalledService](r, ctx, id)

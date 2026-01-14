@@ -86,3 +86,12 @@ func NewVulnerabilityAuditTask(serverID, teamID string, userID, emailRecipient *
 		EmailRecipient: emailRecipient,
 	})
 }
+
+// NewCheckServiceStatusTask creates an asynq task for checking a service status
+func NewCheckServiceStatusTask(serverID, serviceID string, userID *string) (*asynq.Task, error) {
+	return jobs.NewTask(TypeCheckServiceStatus, CheckServiceStatusPayload{
+		ServerID:  serverID,
+		ServiceID: serviceID,
+		UserID:    userID,
+	})
+}

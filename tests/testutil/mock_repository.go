@@ -678,6 +678,22 @@ func (m *MockRepository) UpdateServiceStatus(ctx context.Context, id string, sta
 	return nil
 }
 
+func (m *MockRepository) UpdateServiceWithTypeData(ctx context.Context, id string, status enums.ServiceStatus, typeData map[string]any) error {
+	if err := m.getError("UpdateServiceWithTypeData"); err != nil {
+		return err
+	}
+	if service, ok := m.Services[id]; ok {
+		service.Status = status
+		if service.TypeData == nil {
+			service.TypeData = make(map[string]any)
+		}
+		for k, v := range typeData {
+			service.TypeData[k] = v
+		}
+	}
+	return nil
+}
+
 func (m *MockRepository) DeleteService(ctx context.Context, id string) error {
 	if err := m.getError("DeleteService"); err != nil {
 		return err
