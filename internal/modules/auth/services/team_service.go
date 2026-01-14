@@ -120,6 +120,30 @@ func (s *TeamService) GetTeam(ctx context.Context, teamID string) (*models.Team,
 	return s.repo.FindTeamByID(ctx, teamID)
 }
 
+// GetTeamWithDetails retrieves a team with its members and invitations
+func (s *TeamService) GetTeamWithDetails(ctx context.Context, teamID string) (*models.Team, []models.TeamMember, []models.TeamInvitation, error) {
+	team, err := s.repo.FindTeamByID(ctx, teamID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	if team == nil {
+		return nil, nil, nil, apperrors.ErrNotFound
+	}
+
+	members, err := s.repo.GetTeamMembers(ctx, teamID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	invitations, err := s.repo.GetTeamInvitations(ctx, teamID)
+	if err != nil {
+		return nil, nil, nil, err
+	}
+
+	return team, members, invitations, nil
+}
+
 // GetUserTeams retrieves all teams for a user
 func (s *TeamService) GetUserTeams(ctx context.Context, userID string) ([]models.Team, error) {
 	return s.repo.GetUserTeams(ctx, userID)

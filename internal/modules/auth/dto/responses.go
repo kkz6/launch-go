@@ -40,6 +40,32 @@ type TeamResponse struct {
 	CreatedAt    string `json:"created_at"`
 }
 
+// TeamDetailResponse represents a detailed team response with members and permissions
+type TeamDetailResponse struct {
+	TeamResponse
+	Owner           *UserResponse            `json:"owner,omitempty"`
+	Members         []TeamMemberResponse     `json:"members,omitempty"`
+	Invitations     []TeamInvitationResponse `json:"invitations,omitempty"`
+	AvailableRoles  []RoleOption             `json:"available_roles"`
+	Permissions     TeamPermissions          `json:"permissions"`
+}
+
+// RoleOption represents an available role option
+type RoleOption struct {
+	Key         string `json:"key"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+// TeamPermissions represents the user's permissions on a team
+type TeamPermissions struct {
+	CanUpdateTeam        bool `json:"can_update_team"`
+	CanDeleteTeam        bool `json:"can_delete_team"`
+	CanAddTeamMembers    bool `json:"can_add_team_members"`
+	CanUpdateTeamMembers bool `json:"can_update_team_members"`
+	CanRemoveTeamMembers bool `json:"can_remove_team_members"`
+}
+
 // TeamMemberResponse represents a team member in responses
 type TeamMemberResponse struct {
 	ID        string `json:"id"`
@@ -215,4 +241,51 @@ func ToTeamInvitationsResponse(invitations []models.TeamInvitation) []TeamInvita
 	}
 
 	return responses
+}
+
+// GetAvailableRoles returns the available roles for team members
+func GetAvailableRoles() []RoleOption {
+	return []RoleOption{
+		{Key: "admin", Name: "Administrator", Description: "Can manage members and settings"},
+		{Key: "editor", Name: "Editor", Description: "Can create and edit resources"},
+		{Key: "member", Name: "Member", Description: "Can view resources"},
+	}
+}
+
+// ToTeamDetailResponse converts a Team model to a detailed TeamDetailResponse DTO
+func ToTeamDetailResponse(team *models.Team, members []models.TeamMember, invitations []models.TeamInvitation, userID string) TeamDetailResponse {
+	isOwner := team.UserID == userID
+	isAdmin := isOwner
+
+	if !isOwner {
+		for _, member := range members {
+			if member.UserID == userID && member.Role != nil && *member.Role == "admin" {
+				isAdmin = true
+
+				break
+			}
+		}
+	}
+
+	resp := TeamDetailResponse{
+		TeamResponse:   ToTeamResponse(*team),
+		AvailableRoles: GetAvailableRoles(),
+		Permissions: TeamPermissions{
+			CanUpdateTeam:        isOwner,
+			CanDeleteTeam:        isOwner && !team.PersonalTeam,
+			CanAddTeamMembers:    isOwner || isAdmin,
+			CanUpdateTeamMembers: isOwner,
+			CanRemoveTeamMembers: isOwner || isAdmin,
+		},
+	}
+
+	if team.Owner != nil {
+		ownerResp := ToUserResponse(team.Owner)
+		resp.Owner = &ownerResp
+	}
+
+	resp.Members = ToTeamMembersResponse(members)
+	resp.Invitations = ToTeamInvitationsResponse(invitations)
+
+	return resp
 }

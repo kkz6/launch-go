@@ -6,13 +6,14 @@ type TeamRole string
 const (
 	TeamRoleOwner  TeamRole = "owner"
 	TeamRoleAdmin  TeamRole = "admin"
+	TeamRoleEditor TeamRole = "editor"
 	TeamRoleMember TeamRole = "member"
 )
 
 // IsValid checks if the role is valid
 func (r TeamRole) IsValid() bool {
 	switch r {
-	case TeamRoleOwner, TeamRoleAdmin, TeamRoleMember:
+	case TeamRoleOwner, TeamRoleAdmin, TeamRoleEditor, TeamRoleMember:
 		return true
 	}
 

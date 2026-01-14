@@ -117,7 +117,7 @@ type UpdateTeamRequest struct {
 // InviteTeamMemberRequest represents a team member invitation request
 type InviteTeamMemberRequest struct {
 	Email string `json:"email" validate:"required,email"`
-	Role  string `json:"role" validate:"required,oneof=admin member"`
+	Role  string `json:"role" validate:"required,oneof=admin editor member"`
 }
 
 // Normalize normalizes the email to lowercase
@@ -127,7 +127,7 @@ func (r *InviteTeamMemberRequest) Normalize() {
 
 // UpdateTeamMemberRequest represents a team member role update request
 type UpdateTeamMemberRequest struct {
-	Role string `json:"role" validate:"required,oneof=admin member"`
+	Role string `json:"role" validate:"required,oneof=admin editor member"`
 }
 
 // SwitchTeamRequest represents a request to switch the current team
