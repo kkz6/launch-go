@@ -8,12 +8,14 @@ import (
 type Release struct {
 	basemodels.BaseModel
 	basemodels.SoftDeleteModel
-	SiteID     string  `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
-	Path       string  `gorm:"type:varchar(500);not null" json:"path"`
-	CommitHash *string `gorm:"column:commit_hash;type:varchar(40)" json:"commit_hash,omitempty"`
+	SiteID       string  `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
+	DeploymentID string  `gorm:"column:deployment_id;type:char(26);not null;index" json:"deployment_id"`
+	Path         string  `gorm:"type:varchar(500);not null" json:"path"`
+	CommitHash   *string `gorm:"column:commit_hash;type:varchar(40)" json:"commit_hash,omitempty"`
 
 	// Relations
-	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
+	Site       *Site       `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
+	Deployment *Deployment `gorm:"foreignKey:DeploymentID;references:ID" json:"deployment,omitempty"`
 }
 
 func (Release) TableName() string {
