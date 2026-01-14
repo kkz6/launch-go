@@ -69,7 +69,7 @@ func (h *TeamMemberHandler) CancelTeamInvitation(c *fiber.Ctx) error {
 func (h *TeamMemberHandler) UpdateTeamMemberRole(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
 	teamID := c.Params("teamId")
-	memberID := c.Params("memberId")
+	targetUserID := c.Params("userId")
 
 	var req dto.UpdateTeamMemberRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -80,7 +80,7 @@ func (h *TeamMemberHandler) UpdateTeamMemberRole(c *fiber.Ctx) error {
 		return response.ValidationError(c, errors)
 	}
 
-	if err := h.service.UpdateTeamMemberRole(c.Context(), userID, teamID, memberID, &req); err != nil {
+	if err := h.service.UpdateTeamMemberRole(c.Context(), userID, teamID, targetUserID, &req); err != nil {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
 
@@ -91,9 +91,9 @@ func (h *TeamMemberHandler) UpdateTeamMemberRole(c *fiber.Ctx) error {
 func (h *TeamMemberHandler) RemoveTeamMember(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
 	teamID := c.Params("teamId")
-	memberID := c.Params("memberId")
+	targetUserID := c.Params("userId")
 
-	if err := h.service.RemoveTeamMember(c.Context(), userID, teamID, memberID); err != nil {
+	if err := h.service.RemoveTeamMember(c.Context(), userID, teamID, targetUserID); err != nil {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
 

@@ -120,7 +120,7 @@ func (m *Module) registerProtectedRoutes(router fiber.Router) {
 
 	// Current User's Teams
 	router.Get("/teams", m.handler.Team.GetUserTeams)
-	router.Post("/switch-team/:teamId", m.handler.Team.SwitchTeam)
+	router.Put("/current-team", m.handler.Team.SwitchTeam)
 
 	// Team Invitations (for accepting invitations, requires signed URL)
 	router.Post("/team-invitations/:invitationId/accept", signedurl.RequireSignedURL(nil), m.handler.TeamMember.AcceptTeamInvitation)
@@ -140,8 +140,8 @@ func (m *Module) registerTeamRoutes(router fiber.Router, adapter *MiddlewareAdap
 	// Team Members
 	router.Get("/:teamId/members", middleware.TeamMember(adapter), m.handler.TeamMember.GetTeamMembers)
 	router.Post("/:teamId/members", middleware.TeamAdmin(adapter), m.handler.TeamMember.InviteTeamMember)
-	router.Put("/:teamId/members/:memberId", middleware.TeamOwner(adapter), m.handler.TeamMember.UpdateTeamMemberRole)
-	router.Delete("/:teamId/members/:memberId", m.handler.TeamMember.RemoveTeamMember)
+	router.Put("/:teamId/members/:userId", middleware.TeamOwner(adapter), m.handler.TeamMember.UpdateTeamMemberRole)
+	router.Delete("/:teamId/members/:userId", m.handler.TeamMember.RemoveTeamMember)
 
 	// Team Invitations
 	router.Get("/:teamId/invitations", middleware.TeamAdmin(adapter), m.handler.TeamMember.GetTeamInvitations)

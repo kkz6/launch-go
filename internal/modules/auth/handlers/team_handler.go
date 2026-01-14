@@ -40,11 +40,12 @@ func (h *TeamHandler) CreateTeam(c *fiber.Ctx) error {
 	return response.Created(c, "Team created successfully", dto.ToTeamResponse(*team))
 }
 
-// GetTeam retrieves a team
+// GetTeam retrieves a team with details
 func (h *TeamHandler) GetTeam(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(string)
 	teamID := c.Params("teamId")
 
-	team, err := h.service.GetTeam(c.Context(), teamID)
+	team, members, invitations, err := h.service.GetTeamWithDetails(c.Context(), teamID)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
@@ -53,7 +54,7 @@ func (h *TeamHandler) GetTeam(c *fiber.Ctx) error {
 		return response.NotFound(c, "Team not found")
 	}
 
-	return response.OK(c, "Team retrieved", dto.ToTeamResponse(*team))
+	return response.OK(c, "Team retrieved", dto.ToTeamDetailResponse(team, members, invitations, userID))
 }
 
 // UpdateTeam updates a team
@@ -105,9 +106,17 @@ func (h *TeamHandler) GetUserTeams(c *fiber.Ctx) error {
 // SwitchTeam switches the user's current team
 func (h *TeamHandler) SwitchTeam(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
-	teamID := c.Params("teamId")
 
-	user, err := h.service.SwitchTeam(c.Context(), userID, teamID)
+	var req dto.SwitchTeamRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	}
+
+	if errors := validator.Validate(&req); errors != nil {
+		return response.ValidationError(c, errors)
+	}
+
+	user, err := h.service.SwitchTeam(c.Context(), userID, req.TeamID)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}

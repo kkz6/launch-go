@@ -159,6 +159,10 @@ func (s *Service) GetTeam(ctx context.Context, teamID string) (*models.Team, err
 	return s.team.GetTeam(ctx, teamID)
 }
 
+func (s *Service) GetTeamWithDetails(ctx context.Context, teamID string) (*models.Team, []models.TeamMember, []models.TeamInvitation, error) {
+	return s.team.GetTeamWithDetails(ctx, teamID)
+}
+
 func (s *Service) GetUserTeams(ctx context.Context, userID string) ([]models.Team, error) {
 	return s.team.GetUserTeams(ctx, userID)
 }
