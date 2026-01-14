@@ -76,3 +76,13 @@ func NewConfigureOpcacheTask(serverID, serviceID string, settings map[string]str
 		Settings:  settings,
 	})
 }
+
+// NewVulnerabilityAuditTask creates an asynq task for running a vulnerability audit
+func NewVulnerabilityAuditTask(serverID, teamID string, userID, emailRecipient *string) (*asynq.Task, error) {
+	return jobs.NewTask(TypeVulnerabilityAudit, VulnerabilityAuditPayload{
+		ServerID:       serverID,
+		TeamID:         teamID,
+		UserID:         userID,
+		EmailRecipient: emailRecipient,
+	})
+}

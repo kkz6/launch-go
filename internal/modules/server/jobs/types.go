@@ -1,26 +1,27 @@
 package jobs
 
 const (
-	TypeCreateOnProvider    = "server:create_on_provider"
-	TypeProvisionServer     = "server:provision"
-	TypeDeleteServer        = "server:delete"
-	TypeRebootServer        = "server:reboot"
-	TypeInstallCron         = "server:install_cron"
-	TypeUninstallCron       = "server:uninstall_cron"
-	TypeInstallDaemon       = "server:install_daemon"
-	TypeUninstallDaemon     = "server:uninstall_daemon"
-	TypeRestartDaemon       = "server:restart_daemon"
-	TypeInstallFirewallRule = "server:install_firewall_rule"
-	TypeUninstallFirewall   = "server:uninstall_firewall_rule"
-	TypeAddService          = "server:add_service"
-	TypeRemoveService       = "server:remove_service"
-	TypeServiceOperation    = "server:service_operation"
-	TypeAddSshKey           = "server:add_ssh_key"
-	TypeRemoveSshKey        = "server:remove_ssh_key"
-	TypeUpdateConnectivity  = "server:update_connectivity"
-	TypeArchiveServer       = "server:archive"
-	TypeUnarchiveServer     = "server:unarchive"
-	TypeConfigureOpcache    = "server:configure_opcache"
+	TypeCreateOnProvider     = "server:create_on_provider"
+	TypeProvisionServer      = "server:provision"
+	TypeDeleteServer         = "server:delete"
+	TypeRebootServer         = "server:reboot"
+	TypeInstallCron          = "server:install_cron"
+	TypeUninstallCron        = "server:uninstall_cron"
+	TypeInstallDaemon        = "server:install_daemon"
+	TypeUninstallDaemon      = "server:uninstall_daemon"
+	TypeRestartDaemon        = "server:restart_daemon"
+	TypeInstallFirewallRule  = "server:install_firewall_rule"
+	TypeUninstallFirewall    = "server:uninstall_firewall_rule"
+	TypeAddService           = "server:add_service"
+	TypeRemoveService        = "server:remove_service"
+	TypeServiceOperation     = "server:service_operation"
+	TypeAddSshKey            = "server:add_ssh_key"
+	TypeRemoveSshKey         = "server:remove_ssh_key"
+	TypeUpdateConnectivity   = "server:update_connectivity"
+	TypeArchiveServer        = "server:archive"
+	TypeUnarchiveServer      = "server:unarchive"
+	TypeConfigureOpcache     = "server:configure_opcache"
+	TypeVulnerabilityAudit   = "server:vulnerability_audit"
 )
 
 type CreateOnProviderPayload struct {
@@ -139,4 +140,11 @@ type ConfigureOpcachePayload struct {
 	ServerID  string            `json:"server_id"`
 	ServiceID string            `json:"service_id"`
 	Settings  map[string]string `json:"settings"`
+}
+
+type VulnerabilityAuditPayload struct {
+	ServerID       string  `json:"server_id"`
+	TeamID         string  `json:"team_id"`
+	UserID         *string `json:"user_id,omitempty"`
+	EmailRecipient *string `json:"email_recipient,omitempty"`
 }

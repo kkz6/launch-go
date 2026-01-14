@@ -170,3 +170,25 @@ func (h *Handler) ShowPage(c *fiber.Ctx) error {
 
 	return response.OK(c, "Server page data retrieved", data)
 }
+
+// RunVulnerabilityAudit runs a security vulnerability audit on a server
+func (h *Handler) RunVulnerabilityAudit(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	userID := c.Locals("userID").(string)
+	id := c.Params("id")
+
+	var req dto.VulnerabilityAuditRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	}
+
+	if errs := validator.Validate(&req); errs != nil {
+		return response.ValidationError(c, errs)
+	}
+
+	if err := h.service.RunVulnerabilityAudit(c.Context(), id, teamID, userID, req.Email); err != nil {
+		return response.HandleError(c, err)
+	}
+
+	return response.OK(c, "Vulnerability audit has been queued and will be sent to your email when completed.", nil)
+}
