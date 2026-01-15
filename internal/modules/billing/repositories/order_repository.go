@@ -27,9 +27,7 @@ func (r *OrderRepository) Create(ctx context.Context, order *models.Order) error
 // FindByID finds an order by ID
 func (r *OrderRepository) FindByID(ctx context.Context, id string) (*models.Order, error) {
 	var order models.Order
-	err := r.db.WithContext(ctx).
-		Preload("Subscription").
-		First(&order, "id = ?", id).Error
+	err := r.db.WithContext(ctx).First(&order, "id = ?", id).Error
 	if err != nil {
 		return nil, err
 	}
@@ -40,9 +38,7 @@ func (r *OrderRepository) FindByID(ctx context.Context, id string) (*models.Orde
 // FindByLemonSqueezyID finds an order by LemonSqueezy ID
 func (r *OrderRepository) FindByLemonSqueezyID(ctx context.Context, lemonSqueezyID string) (*models.Order, error) {
 	var order models.Order
-	err := r.db.WithContext(ctx).
-		Preload("Subscription").
-		First(&order, "lemon_squeezy_id = ?", lemonSqueezyID).Error
+	err := r.db.WithContext(ctx).First(&order, "lemon_squeezy_id = ?", lemonSqueezyID).Error
 	if err != nil {
 		return nil, err
 	}
@@ -54,8 +50,7 @@ func (r *OrderRepository) FindByLemonSqueezyID(ctx context.Context, lemonSqueezy
 func (r *OrderRepository) FindByTeam(ctx context.Context, teamID string) ([]models.Order, error) {
 	var orders []models.Order
 	err := r.db.WithContext(ctx).
-		Preload("Subscription").
-		Where("team_id = ?", teamID).
+		Where("billable_type = ? AND billable_id = ?", models.BillableTypeTeam, teamID).
 		Order("created_at DESC").
 		Find(&orders).Error
 

@@ -69,7 +69,7 @@ func (s *BillingService) GetPlanByID(planID string) *models.Plan {
 // GetPlanByProductID finds a plan by its product ID
 func (s *BillingService) GetPlanByProductID(productID string) *models.Plan {
 	for i := range s.config.Plans {
-		if s.config.Plans[i].MonthlyID == productID || s.config.Plans[i].YearlyID == productID {
+		if s.config.Plans[i].ID == productID {
 			return &s.config.Plans[i]
 		}
 	}

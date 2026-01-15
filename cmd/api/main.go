@@ -19,6 +19,7 @@ import (
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/auth"
 	"github.com/kkz6/launch-go/internal/modules/backup"
+	"github.com/kkz6/launch-go/internal/modules/billing"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/dns"
 	"github.com/kkz6/launch-go/internal/modules/server"
@@ -138,6 +139,7 @@ func (a *Application) registerModules() {
 		Register(siteModule).
 		Register(dnsModule).
 		Register(backup.NewModuleFromContext(ctx)).
+		Register(billing.NewModuleFromContext(ctx)).
 		Register(wsmodule.NewModuleFromContext(ctx))
 
 	// Wire cross-module dependencies

@@ -14,6 +14,7 @@ type Config struct {
 	JWT      JWTConfig
 	Cors     CorsConfig
 	Queue    QueueConfig
+	Billing  BillingConfig
 }
 
 // Load loads all configuration from environment variables and .env file
@@ -41,6 +42,7 @@ func Load() (*Config, error) {
 		JWT:      loadJWTConfig(),
 		Cors:     loadCorsConfig(),
 		Queue:    loadQueueConfig(),
+		Billing:  loadBillingConfig(),
 	}, nil
 }
 
@@ -52,4 +54,5 @@ func setDefaults() {
 	setJWTDefaults()
 	setCorsDefaults()
 	setQueueDefaults()
+	setBillingDefaults()
 }

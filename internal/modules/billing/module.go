@@ -10,6 +10,14 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/billing/providers"
 	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
 	"github.com/kkz6/launch-go/internal/modules/billing/services"
+	"github.com/kkz6/launch-go/internal/pkg/app"
+)
+
+// Ensure Module implements required interfaces
+var (
+	_ app.Module            = (*Module)(nil)
+	_ app.RouteRegistrar    = (*Module)(nil)
+	_ app.WebhookRegistrar  = (*Module)(nil)
 )
 
 // Module represents the billing module
@@ -18,6 +26,7 @@ type Module struct {
 	webhookHandler *handlers.WebhookHandler
 	service        *services.BillingService
 	repo           *repositories.BillingRepository
+	config         *ModuleConfig
 }
 
 // ModuleConfig holds configuration for the billing module
@@ -54,12 +63,56 @@ func NewModule(config *ModuleConfig) *Module {
 		webhookHandler: webhookHandler,
 		service:        service,
 		repo:           repo,
+		config:         config,
 	}
 }
 
-// RegisterRoutes registers the module routes
+// NewModuleFromContext creates a billing module from app context
+func NewModuleFromContext(ctx *app.Context) *Module {
+	config := &ModuleConfig{
+		DB:                   ctx.DB,
+		Logger:               ctx.Logger,
+		SubscriptionsEnabled: ctx.Config.Billing.SubscriptionsEnabled,
+		Plans:                DefaultPlans(),
+		WebhookSecret:        ctx.Config.Billing.WebhookSecret,
+	}
+
+	if ctx.Config.Billing.LemonSqueezy.APIKey != "" {
+		config.LemonSqueezy = &providers.LemonSqueezyConfig{
+			APIKey:  ctx.Config.Billing.LemonSqueezy.APIKey,
+			StoreID: ctx.Config.Billing.LemonSqueezy.StoreID,
+		}
+	}
+
+	return NewModule(config)
+}
+
+// Name returns the module name (implements app.Module)
+func (m *Module) Name() string {
+	return "billing"
+}
+
+// RegisterRoutes registers the module routes (implements app.RouteRegistrar)
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
-	handlers.RegisterRoutes(router, m.handler, m.webhookHandler, authMiddleware)
+	billing := router.Group("/billing", authMiddleware)
+
+	billing.Get("/", m.handler.Index)
+	billing.Get("/plans", m.handler.GetPlans)
+	billing.Post("/checkout-url", m.handler.GenerateCheckoutURL)
+	billing.Post("/cancel-subscription", m.handler.CancelSubscription)
+	billing.Post("/resume-subscription", m.handler.ResumeSubscription)
+
+	billing.Get("/subscriptions", m.handler.GetSubscriptions)
+	billing.Get("/subscriptions/:id", m.handler.GetSubscription)
+	billing.Get("/orders", m.handler.GetOrders)
+	billing.Get("/options", m.handler.GetSubscriptionOptions)
+
+	router.Get("/register/subscription", authMiddleware, m.handler.RegisterSubscription)
+}
+
+// RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
+func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
+	router.Post("/webhooks/lemon-squeezy", m.webhookHandler.HandleWebhook)
 }
 
 // GetService returns the billing service
