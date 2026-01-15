@@ -310,7 +310,7 @@ func (h *SourceControlHandler) GetInstallationsWithCounts(c *fiber.Ctx) error {
 		return response.InternalError(c, "Failed to fetch installations")
 	}
 
-	// Get available providers
+	// Get available providers (matches Laravel's format)
 	providers := make([]fiber.Map, 0)
 	for _, p := range enums.AllGitProviders() {
 		providers = append(providers, fiber.Map{
@@ -319,8 +319,9 @@ func (h *SourceControlHandler) GetInstallationsWithCounts(c *fiber.Ctx) error {
 		})
 	}
 
+	// Return with camelCase keys to match Laravel's Inertia response format
 	return response.OK(c, "Installations retrieved", fiber.Map{
-		"app_installations":   installations,
-		"available_providers": providers,
+		"appInstallations":   installations,
+		"availableProviders": providers,
 	})
 }

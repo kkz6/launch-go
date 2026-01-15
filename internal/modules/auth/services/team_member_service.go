@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/enums"
@@ -229,9 +230,60 @@ func (s *TeamMemberService) RemoveTeamMember(ctx context.Context, userID, teamID
 	return nil
 }
 
-// GetTeamMembers gets all members of a team
+// GetTeamMembers gets all members of a team (excluding owner)
 func (s *TeamMemberService) GetTeamMembers(ctx context.Context, teamID string) ([]models.TeamMember, error) {
 	return s.repo.GetTeamMembers(ctx, teamID)
+}
+
+// GetAllTeamMembers gets all members of a team including the owner
+// This matches Laravel's allUsers() behavior
+func (s *TeamMemberService) GetAllTeamMembers(ctx context.Context, teamID string) ([]dto.TeamMemberResponse, error) {
+	// Get team with owner
+	team, err := s.repo.FindTeamByID(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	if team == nil {
+		return nil, apperrors.ErrNotFound
+	}
+
+	// Get members from pivot table
+	members, err := s.repo.GetTeamMembers(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Build response with owner first, then members
+	var allMembers []dto.TeamMemberResponse
+
+	// Add owner with "owner" role
+	if team.Owner != nil {
+		ownerJoinedAt := team.CreatedAt
+		if ownerJoinedAt == nil {
+			now := time.Now()
+			ownerJoinedAt = &now
+		}
+		allMembers = append(allMembers, dto.ToTeamMemberResponse(team.Owner, "owner", *ownerJoinedAt))
+	}
+
+	// Add other members from pivot table
+	for _, member := range members {
+		if member.User != nil {
+			role := ""
+			if member.Role != nil {
+				role = *member.Role
+			}
+
+			joinedAt := time.Time{}
+			if member.CreatedAt != nil {
+				joinedAt = *member.CreatedAt
+			}
+
+			allMembers = append(allMembers, dto.ToTeamMemberResponse(member.User, role, joinedAt))
+		}
+	}
+
+	return allMembers, nil
 }
 
 // GetTeamInvitations gets all invitations for a team

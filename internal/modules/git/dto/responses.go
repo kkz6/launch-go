@@ -143,21 +143,17 @@ type InstallationsResponse struct {
 	Provider      string                `json:"provider"`
 }
 
-// InstallationSummaryData represents a summary of an installation
+// InstallationSummaryData represents a summary of an installation (matches Laravel's InstallationSummaryData)
 type InstallationSummaryData struct {
-	ID                      string `json:"id"`
-	ProviderID              string `json:"provider_id"`
-	Provider                string `json:"provider"`
-	Login                   string `json:"login"`
-	Name                    string `json:"name"`
-	Type                    string `json:"type"`
-	AvatarURL               string `json:"avatar_url"`
-	HTMLURL                 string `json:"html_url"`
-	InstallationID          string `json:"installation_id"`
-	RepositorySelection     string `json:"repository_selection"`
-	HasMultipleRepositories bool   `json:"has_multiple_repositories"`
-	RepositoryCount         int    `json:"repository_count"`
-	LastSyncedAt            string `json:"last_synced_at,omitempty"`
+	ID                      string  `json:"id"`
+	AccountLogin            string  `json:"accountLogin"`
+	AccountType             string  `json:"accountType"`
+	AccountAvatarURL        *string `json:"accountAvatarUrl"`
+	HTMLURL                 *string `json:"htmlUrl"`
+	CreatedAt               *string `json:"createdAt"`
+	RepositorySelection     *string `json:"repositorySelection"`
+	HasMultipleRepositories bool    `json:"hasMultipleRepositories"`
+	RepositoryCount         int     `json:"repositoryCount"`
 }
 
 // InstallationSummaryFromSourceControl creates an InstallationSummaryData from a SourceControl
@@ -168,43 +164,44 @@ func InstallationSummaryFromSourceControl(sc *models.SourceControl) Installation
 	}
 
 	summary := InstallationSummaryData{
-		ID:                      sc.ID,
-		Provider:                sc.Provider.String(),
 		HasMultipleRepositories: sc.HasMultipleRepositories,
 		RepositoryCount:         repositoryCount,
-		ProviderID:              sc.ProviderID,
+	}
+
+	// Use installation_id as the id (matches Laravel's behavior)
+	if sc.InstallationID != nil && *sc.InstallationID != "" {
+		summary.ID = *sc.InstallationID
+	} else {
+		summary.ID = sc.ProviderID
 	}
 
 	if sc.Login != nil {
-		summary.Login = *sc.Login
-	}
-
-	if sc.Name != nil {
-		summary.Name = *sc.Name
+		summary.AccountLogin = *sc.Login
+	} else {
+		summary.AccountLogin = "Unknown"
 	}
 
 	if sc.Type != nil {
-		summary.Type = *sc.Type
+		summary.AccountType = *sc.Type
+	} else {
+		summary.AccountType = "User"
 	}
 
 	if sc.AvatarURL != nil {
-		summary.AvatarURL = *sc.AvatarURL
+		summary.AccountAvatarURL = sc.AvatarURL
 	}
 
 	if sc.HTMLURL != nil {
-		summary.HTMLURL = *sc.HTMLURL
+		summary.HTMLURL = sc.HTMLURL
 	}
 
-	if sc.InstallationID != nil {
-		summary.InstallationID = *sc.InstallationID
+	if sc.ConnectedAt != nil {
+		t := sc.ConnectedAt.Format(time.RFC3339)
+		summary.CreatedAt = &t
 	}
 
 	if sc.RepositorySelection != nil {
-		summary.RepositorySelection = *sc.RepositorySelection
-	}
-
-	if sc.LastSyncedAt != nil {
-		summary.LastSyncedAt = sc.LastSyncedAt.Format(time.RFC3339)
+		summary.RepositorySelection = sc.RepositorySelection
 	}
 
 	return summary

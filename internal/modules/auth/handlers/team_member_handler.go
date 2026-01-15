@@ -100,16 +100,16 @@ func (h *TeamMemberHandler) RemoveTeamMember(c *fiber.Ctx) error {
 	return response.OK(c, "Member removed", nil)
 }
 
-// GetTeamMembers retrieves all members of a team
+// GetTeamMembers retrieves all members of a team (including owner)
 func (h *TeamMemberHandler) GetTeamMembers(c *fiber.Ctx) error {
 	teamID := c.Params("teamId")
 
-	members, err := h.service.GetTeamMembers(c.Context(), teamID)
+	allMembers, err := h.service.GetAllTeamMembers(c.Context(), teamID)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	return response.OK(c, "Members retrieved", dto.ToTeamMembersResponse(members))
+	return response.OK(c, "Members retrieved", allMembers)
 }
 
 // GetTeamInvitations retrieves all invitations for a team
