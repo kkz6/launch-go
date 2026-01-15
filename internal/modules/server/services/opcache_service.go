@@ -57,16 +57,21 @@ func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID 
 	if output == "" {
 		return &dto.OpcacheStatusResponse{
 			Enabled: false,
-			Error:   "No output from OPcache status command",
+			Error:   "No output from OPcache status command. The PHP command may have failed silently.",
 		}, nil
 	}
 
 	// Try to extract JSON from the output (in case there's noise like PHP warnings)
 	jsonStr := extractJSON(output)
 	if jsonStr == "" {
+		// Include raw output (truncated) for debugging
+		rawOutput := output
+		if len(rawOutput) > 200 {
+			rawOutput = rawOutput[:200] + "..."
+		}
 		return &dto.OpcacheStatusResponse{
 			Enabled: false,
-			Error:   "No valid JSON output found in response",
+			Error:   fmt.Sprintf("No valid JSON output found in response. Raw output: %s", rawOutput),
 		}, nil
 	}
 
@@ -84,17 +89,42 @@ func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID 
 
 // extractJSON extracts a JSON object from a string that may contain other content
 func extractJSON(s string) string {
-	// Try to find a JSON object pattern in the string
-	// This regex matches nested JSON objects
+	// First, try to find JSON by looking for balanced braces
+	// Start from the first { and find the matching }
+	start := -1
+	braceCount := 0
+
+	for i, char := range s {
+		if char == '{' {
+			if start == -1 {
+				start = i
+			}
+			braceCount++
+		} else if char == '}' {
+			braceCount--
+			if braceCount == 0 && start != -1 {
+				candidate := s[start : i+1]
+				var js map[string]interface{}
+				if err := json.Unmarshal([]byte(candidate), &js); err == nil {
+					// Check if this looks like our expected response
+					if _, hasEnabled := js["enabled"]; hasEnabled {
+						return candidate
+					}
+				}
+				// Reset and look for the next JSON object
+				start = -1
+			}
+		}
+	}
+
+	// Fallback: try regex for simpler JSON objects
 	re := regexp.MustCompile(`\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}`)
 	matches := re.FindAllString(s, -1)
 
 	// Return the last match (usually the most complete JSON)
-	// Or validate each match to find valid JSON
 	for i := len(matches) - 1; i >= 0; i-- {
 		var js map[string]interface{}
 		if err := json.Unmarshal([]byte(matches[i]), &js); err == nil {
-			// Check if this looks like our expected response
 			if _, hasEnabled := js["enabled"]; hasEnabled {
 				return matches[i]
 			}
