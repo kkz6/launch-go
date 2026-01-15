@@ -431,3 +431,12 @@ func ToReleaseResponse(release *models.Release) ReleaseResponse {
 		CreatedAt:  release.CreatedAt.Format(time.RFC3339),
 	}
 }
+
+// VerifyDomainResponse represents the domain verification result
+type VerifyDomainResponse struct {
+	Verified          bool    `json:"verified"`
+	Domain            string  `json:"domain"`
+	BaseDomain        string  `json:"base_domain"`
+	ConnectedDomainID *string `json:"connected_domain_id,omitempty"`
+	CanCreateRecord   bool    `json:"can_create_record"`
+}

@@ -6,6 +6,10 @@ import (
 
 // RegisterRoutes registers all site module routes
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
+	// Top-level site routes (not nested under servers)
+	sitesGlobal := router.Group("/sites", authMiddleware)
+	m.registerGlobalSiteRoutes(sitesGlobal)
+
 	// Sites are nested under servers
 	servers := router.Group("/servers/:serverId", authMiddleware)
 	sites := servers.Group("/sites")
@@ -17,6 +21,12 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	m.registerCommandRoutes(sites)
 	m.registerRedirectRoutes(sites)
 	m.registerFileRoutes(sites)
+}
+
+// registerGlobalSiteRoutes registers site routes not nested under servers
+func (m *Module) registerGlobalSiteRoutes(router fiber.Router) {
+	// Domain verification
+	router.Get("/verify-domain", m.siteHandler.VerifyDomain)
 }
 
 // registerSiteRoutes registers site CRUD and settings routes

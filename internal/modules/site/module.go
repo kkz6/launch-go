@@ -6,6 +6,7 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
@@ -307,4 +308,9 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 // SetProviderFactory sets the git provider factory for app-based authentication
 func (m *Module) SetProviderFactory(factory *gitproviders.ProviderFactory) {
 	m.providerFactory = factory
+}
+
+// SetDomainRepository sets the domain repository for domain verification
+func (m *Module) SetDomainRepository(repo dnscontracts.DomainRepository) {
+	m.siteHandler.SetDomainRepository(repo)
 }
