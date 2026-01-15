@@ -51,7 +51,7 @@ func (r *SubscriptionRepository) FindByLemonSqueezyID(ctx context.Context, lemon
 func (r *SubscriptionRepository) FindByTeam(ctx context.Context, teamID string) ([]models.Subscription, error) {
 	var subscriptions []models.Subscription
 	err := r.db.WithContext(ctx).
-		Where("billable_type = ? AND billable_id = ?", models.BillableTypeTeam, teamID).
+		Where("billable_type IN ? AND billable_id = ?", models.TeamBillableTypes(), teamID).
 		Order("created_at DESC").
 		Find(&subscriptions).Error
 
@@ -62,7 +62,7 @@ func (r *SubscriptionRepository) FindByTeam(ctx context.Context, teamID string) 
 func (r *SubscriptionRepository) FindActiveByTeam(ctx context.Context, teamID string) (*models.Subscription, error) {
 	var subscription models.Subscription
 	err := r.db.WithContext(ctx).
-		Where("billable_type = ? AND billable_id = ?", models.BillableTypeTeam, teamID).
+		Where("billable_type IN ? AND billable_id = ?", models.TeamBillableTypes(), teamID).
 		Where("status IN ?", []enums.SubscriptionStatus{
 			enums.SubscriptionStatusActive,
 			enums.SubscriptionStatusOnTrial,
@@ -107,7 +107,7 @@ func (r *SubscriptionRepository) CountActiveByTeam(ctx context.Context, teamID s
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&models.Subscription{}).
-		Where("billable_type = ? AND billable_id = ?", models.BillableTypeTeam, teamID).
+		Where("billable_type IN ? AND billable_id = ?", models.TeamBillableTypes(), teamID).
 		Where("status IN ?", []enums.SubscriptionStatus{
 			enums.SubscriptionStatusActive,
 			enums.SubscriptionStatusOnTrial,

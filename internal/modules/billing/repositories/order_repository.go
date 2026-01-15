@@ -50,7 +50,7 @@ func (r *OrderRepository) FindByLemonSqueezyID(ctx context.Context, lemonSqueezy
 func (r *OrderRepository) FindByTeam(ctx context.Context, teamID string) ([]models.Order, error) {
 	var orders []models.Order
 	err := r.db.WithContext(ctx).
-		Where("billable_type = ? AND billable_id = ?", models.BillableTypeTeam, teamID).
+		Where("billable_type IN ? AND billable_id = ?", models.TeamBillableTypes(), teamID).
 		Order("created_at DESC").
 		Find(&orders).Error
 
