@@ -6,6 +6,8 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
+	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/handlers"
@@ -37,14 +39,18 @@ type Module struct {
 	dispatcher *taskrunner.Dispatcher
 
 	// Repositories
-	siteRepo        *repositories.SiteRepository
-	deploymentRepo  *repositories.DeploymentRepository
-	certificateRepo *repositories.CertificateRepository
-	queueRepo       *repositories.QueueRepository
-	commandRepo     *repositories.CommandRepository
-	redirectRepo    *repositories.RedirectRepository
-	releaseRepo     *repositories.ReleaseRepository
-	serverRepo      *serverrepos.Repository
+	siteRepo          *repositories.SiteRepository
+	deploymentRepo    *repositories.DeploymentRepository
+	certificateRepo   *repositories.CertificateRepository
+	queueRepo         *repositories.QueueRepository
+	commandRepo       *repositories.CommandRepository
+	redirectRepo      *repositories.RedirectRepository
+	releaseRepo       *repositories.ReleaseRepository
+	serverRepo        *serverrepos.Repository
+	sourceControlRepo *gitrepos.SourceControlRepository
+
+	// Git provider factory
+	providerFactory *gitproviders.ProviderFactory
 
 	// Services
 	siteService       *services.SiteService
@@ -120,6 +126,9 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 	// Wire server repository for cross-module queries (PHP versions via relationship)
 	m.serverRepo = serverrepos.NewRepository(db)
 	m.siteService.SetServerRepository(m.serverRepo)
+
+	// Initialize git source control repo
+	m.sourceControlRepo = gitrepos.NewSourceControlRepository(db)
 
 	m.sslService = services.NewSSLService(
 		m.siteRepo,
@@ -284,6 +293,8 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 		m.redirectRepo,
 		m.releaseRepo,
 		m.serverRepo,
+		m.sourceControlRepo,
+		m.providerFactory,
 	)
 	jobs.SetJobContext(jobContext)
 
@@ -291,4 +302,9 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 	kernel := pkgjobs.NewKernel(m.db, m.logger, m.ws)
 	kernel.RegisterModule(jobs.Register)
 	kernel.Boot(mux)
+}
+
+// SetProviderFactory sets the git provider factory for app-based authentication
+func (m *Module) SetProviderFactory(factory *gitproviders.ProviderFactory) {
+	m.providerFactory = factory
 }

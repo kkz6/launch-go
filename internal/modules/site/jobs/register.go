@@ -66,4 +66,25 @@ func Register(r *jobs.Registry) {
 		func(p SyncQueuesPayload) *SyncQueuesJob { return &SyncQueuesJob{Payload: p} },
 		getContext,
 	))
+
+	r.Register(TypeInstallQueue, jobs.MakeFactory(
+		func(p InstallQueuePayload) *InstallQueueJob { return &InstallQueueJob{Payload: p} },
+		getContext,
+	))
+
+	r.Register(TypeRestartQueue, jobs.MakeFactory(
+		func(p RestartQueuePayload) *RestartQueueJob { return &RestartQueueJob{Payload: p} },
+		getContext,
+	))
+
+	r.Register(TypeUninstallQueue, jobs.MakeFactory(
+		func(p UninstallQueuePayload) *UninstallQueueJob { return &UninstallQueueJob{Payload: p} },
+		getContext,
+	))
+
+	// Site uninstallation
+	r.Register(TypeUninstallSite, jobs.MakeFactory(
+		func(p UninstallSitePayload) *UninstallSiteJob { return &UninstallSiteJob{Payload: p} },
+		getContext,
+	))
 }

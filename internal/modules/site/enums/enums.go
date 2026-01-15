@@ -604,6 +604,85 @@ func (q QueueStatus) Value() (driver.Value, error) {
 	return string(q), nil
 }
 
+// LaravelFeature represents a Laravel feature that can be enabled/disabled
+type LaravelFeature string
+
+const (
+	LaravelFeatureScheduler LaravelFeature = "scheduler"
+	LaravelFeatureQueue     LaravelFeature = "queue"
+	LaravelFeatureHorizon   LaravelFeature = "horizon"
+	LaravelFeatureInertia   LaravelFeature = "inertia"
+	LaravelFeatureOctane    LaravelFeature = "octane"
+	LaravelFeatureReverb    LaravelFeature = "reverb"
+)
+
+func (f LaravelFeature) String() string {
+	return string(f)
+}
+
+func (f LaravelFeature) Label() string {
+	labels := map[LaravelFeature]string{
+		LaravelFeatureScheduler: "Task Scheduler",
+		LaravelFeatureQueue:     "Queue Workers",
+		LaravelFeatureHorizon:   "Horizon",
+		LaravelFeatureInertia:   "Inertia SSR",
+		LaravelFeatureOctane:    "Octane",
+		LaravelFeatureReverb:    "Reverb",
+	}
+	if label, ok := labels[f]; ok {
+		return label
+	}
+	return string(f)
+}
+
+func (f LaravelFeature) Description() string {
+	descriptions := map[LaravelFeature]string{
+		LaravelFeatureScheduler: "Run scheduled tasks using Laravel's task scheduler",
+		LaravelFeatureQueue:     "Process queued jobs in the background",
+		LaravelFeatureHorizon:   "Monitor and manage Laravel queues with Horizon",
+		LaravelFeatureInertia:   "Enable server-side rendering for Inertia.js",
+		LaravelFeatureOctane:    "Supercharge your application with Octane",
+		LaravelFeatureReverb:    "Real-time WebSocket broadcasting with Reverb",
+	}
+	if desc, ok := descriptions[f]; ok {
+		return desc
+	}
+	return ""
+}
+
+func (f LaravelFeature) IsValid() bool {
+	switch f {
+	case LaravelFeatureScheduler, LaravelFeatureQueue, LaravelFeatureHorizon,
+		LaravelFeatureInertia, LaravelFeatureOctane, LaravelFeatureReverb:
+		return true
+	}
+	return false
+}
+
+// ConflictsWith returns features that conflict with this feature
+func (f LaravelFeature) ConflictsWith() []LaravelFeature {
+	switch f {
+	case LaravelFeatureQueue:
+		return []LaravelFeature{LaravelFeatureHorizon}
+	case LaravelFeatureHorizon:
+		return []LaravelFeature{LaravelFeatureQueue}
+	default:
+		return nil
+	}
+}
+
+// AllLaravelFeatures returns all available Laravel features
+func AllLaravelFeatures() []LaravelFeature {
+	return []LaravelFeature{
+		LaravelFeatureScheduler,
+		LaravelFeatureQueue,
+		LaravelFeatureHorizon,
+		LaravelFeatureInertia,
+		LaravelFeatureOctane,
+		LaravelFeatureReverb,
+	}
+}
+
 // CertificateType represents the type of SSL certificate
 type CertificateType string
 

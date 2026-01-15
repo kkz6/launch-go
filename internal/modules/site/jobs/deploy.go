@@ -2,9 +2,12 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
+	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
+	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
@@ -101,9 +104,32 @@ func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Depl
 	}
 
 	repositoryURL := ""
+	var hasAppAuth bool
+	var tempToken, authURL, appName string
+
 	if site.SourceControlRepositoriesID != nil {
-		// Build repository URL from source control
-		repositoryURL = j.getRepositoryURL(site)
+		// Get repository and source control info
+		repo, sourceControl := j.getRepositoryAndSourceControl(site)
+		if repo != nil {
+			repositoryURL = repo.SSHURL
+
+			// Try to get app-based auth token
+			if sourceControl != nil && j.Ctx.ProviderFactory != nil {
+				token, url, name := j.getAppAuthToken(context.Background(), sourceControl, repo)
+				if token != "" {
+					hasAppAuth = true
+					tempToken = token
+					authURL = url
+					appName = name
+				}
+			}
+		}
+	}
+
+	// Generate environment variables for first deployment
+	var envVars map[string]string
+	if site.InstalledAt == nil {
+		envVars = site.GenerateEnvironmentVariables()
 	}
 
 	return tasks.DeploySiteConfig{
@@ -119,6 +145,11 @@ func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Depl
 		RepositoryDirectory:          fmt.Sprintf("%s/repository", site.Path),
 		LogsDirectory:                site.GetLogsDirectory(),
 		DeploymentID:                 deployment.ID,
+		HasAppAuth:                   hasAppAuth,
+		TempToken:                    tempToken,
+		AuthURL:                      authURL,
+		AppName:                      appName,
+		EnvVariables:                 envVars,
 		HookBeforeUpdatingRepository: stringValue(site.HookBeforeUpdatingRepository),
 		HookAfterUpdatingRepository:  stringValue(site.HookAfterUpdatingRepository),
 		HookBeforeMakingCurrent:      stringValue(site.HookBeforeMakingCurrent),
@@ -130,26 +161,108 @@ func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Depl
 	}
 }
 
-func (j *DeployJob) getRepositoryURL(site *models.Site) string {
+func (j *DeployJob) getRepositoryAndSourceControl(site *models.Site) (*gitmodels.SourceControlRepository, *gitmodels.SourceControl) {
 	if site.SourceControlID == nil || site.SourceControlRepositoriesID == nil {
-		return ""
+		return nil, nil
 	}
 
-	// Query repository URL from source_control_repositories table
-	var repo struct {
-		CloneURL string `gorm:"column:clone_url"`
+	// Query repository from source_control_repositories table
+	var repo gitmodels.SourceControlRepository
+	if err := j.DB.First(&repo, "id = ?", *site.SourceControlRepositoriesID).Error; err != nil {
+		return nil, nil
 	}
 
-	err := j.DB.Table("source_control_repositories").
-		Select("clone_url").
-		Where("id = ?", *site.SourceControlRepositoriesID).
-		First(&repo).Error
+	// Get source control
+	var sourceControl *gitmodels.SourceControl
+	if j.Ctx.SourceControlRepo != nil {
+		sc, err := j.Ctx.SourceControlRepo.FindByID(context.Background(), *site.SourceControlID)
+		if err == nil {
+			sourceControl = sc
+		}
+	}
 
+	return &repo, sourceControl
+}
+
+func (j *DeployJob) getAppAuthToken(ctx context.Context, sc *gitmodels.SourceControl, repo *gitmodels.SourceControlRepository) (token, authURL, appName string) {
+	if sc.InstallationID == nil || *sc.InstallationID == "" {
+		return "", "", ""
+	}
+
+	// Build source control data for the provider
+	scData := j.buildSourceControlData(sc)
+
+	// Get provider with source control context
+	provider, err := j.Ctx.ProviderFactory.GetProviderWithInstallation(
+		gitproviders.GitProviderType(sc.Provider),
+		scData,
+	)
 	if err != nil {
-		return ""
+		j.LogError(err, "Failed to get provider for app auth")
+		return "", "", ""
 	}
 
-	return repo.CloneURL
+	// Get installation token
+	installToken, err := provider.GetInstallationToken(ctx, *sc.InstallationID)
+	if err != nil {
+		j.LogError(err, "Failed to get installation token")
+		return "", "", ""
+	}
+
+	// Build auth URL based on provider
+	authURL = buildAuthURL(provider.GetType(), installToken, repo.FullName)
+	appName = string(sc.Provider)
+
+	return installToken, authURL, appName
+}
+
+func (j *DeployJob) buildSourceControlData(sc *gitmodels.SourceControl) *gitproviders.SourceControlData {
+	scData := &gitproviders.SourceControlData{
+		ID:             sc.ID,
+		UserID:         sc.UserID,
+		Provider:       gitproviders.GitProviderType(sc.Provider),
+		InstallationID: sc.InstallationID,
+	}
+
+	if sc.TeamID != nil {
+		scData.TeamID = *sc.TeamID
+	}
+	if sc.URL != nil {
+		scData.URL = sc.URL
+	}
+	if sc.Login != nil {
+		scData.Login = sc.Login
+	}
+	if sc.Name != nil {
+		scData.Name = sc.Name
+	}
+	if sc.Type != nil {
+		scData.Type = sc.Type
+	}
+
+	// Parse provider data JSON if present
+	if sc.ProviderData != nil && *sc.ProviderData != "" {
+		var providerData map[string]interface{}
+		if err := json.Unmarshal([]byte(*sc.ProviderData), &providerData); err == nil {
+			scData.ProviderData = providerData
+		}
+	}
+
+	return scData
+}
+
+// buildAuthURL builds the HTTPS URL with token authentication for the given provider
+func buildAuthURL(providerType gitproviders.GitProviderType, token, repoFullName string) string {
+	switch providerType {
+	case gitproviders.GitProviderGitHub:
+		return fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", token, repoFullName)
+	case gitproviders.GitProviderGitLab:
+		return fmt.Sprintf("https://gitlab-ci-token:%s@gitlab.com/%s.git", token, repoFullName)
+	case gitproviders.GitProviderBitbucket:
+		return fmt.Sprintf("https://x-token-auth:%s@bitbucket.org/%s.git", token, repoFullName)
+	default:
+		return ""
+	}
 }
 
 func (j *DeployJob) broadcastDeploymentProgress(siteID, deploymentID, status, message string) {
@@ -381,13 +494,37 @@ func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment 
 	}
 
 	repositoryURL := ""
+	var hasAppAuth bool
+	var tempToken, authURL, appName string
+
 	if site.SourceControlRepositoriesID != nil {
-		repositoryURL = j.getRepositoryURL(site)
+		// Get repository and source control info
+		repo, sourceControl := j.getRepositoryAndSourceControl(site)
+		if repo != nil {
+			repositoryURL = repo.SSHURL
+
+			// Try to get app-based auth token
+			if sourceControl != nil && j.Ctx.ProviderFactory != nil {
+				token, url, name := j.getAppAuthToken(context.Background(), sourceControl, repo)
+				if token != "" {
+					hasAppAuth = true
+					tempToken = token
+					authURL = url
+					appName = name
+				}
+			}
+		}
 	}
 
 	// Generate release directory with timestamp
 	releaseTimestamp := time.Now().Format("20060102150405")
 	releaseDirectory := fmt.Sprintf("%s/releases/%s", site.Path, releaseTimestamp)
+
+	// Generate environment variables for first deployment
+	var envVars map[string]string
+	if site.InstalledAt == nil {
+		envVars = site.GenerateEnvironmentVariables()
+	}
 
 	return tasks.DeploySiteConfig{
 		SitePath:                     site.Path,
@@ -406,6 +543,11 @@ func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment 
 		ReleasesDirectory:            fmt.Sprintf("%s/releases", site.Path),
 		CurrentDirectory:             fmt.Sprintf("%s/current", site.Path),
 		DeploymentID:                 deployment.ID,
+		HasAppAuth:                   hasAppAuth,
+		TempToken:                    tempToken,
+		AuthURL:                      authURL,
+		AppName:                      appName,
+		EnvVariables:                 envVars,
 		HookBeforeUpdatingRepository: stringValue(site.HookBeforeUpdatingRepository),
 		HookAfterUpdatingRepository:  stringValue(site.HookAfterUpdatingRepository),
 		HookBeforeMakingCurrent:      stringValue(site.HookBeforeMakingCurrent),
@@ -418,25 +560,94 @@ func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment 
 	}
 }
 
-func (j *DeployZeroDowntimeJob) getRepositoryURL(site *models.Site) string {
+func (j *DeployZeroDowntimeJob) getRepositoryAndSourceControl(site *models.Site) (*gitmodels.SourceControlRepository, *gitmodels.SourceControl) {
 	if site.SourceControlID == nil || site.SourceControlRepositoriesID == nil {
-		return ""
+		return nil, nil
 	}
 
-	var repo struct {
-		CloneURL string `gorm:"column:clone_url"`
+	// Query repository from source_control_repositories table
+	var repo gitmodels.SourceControlRepository
+	if err := j.DB.First(&repo, "id = ?", *site.SourceControlRepositoriesID).Error; err != nil {
+		return nil, nil
 	}
 
-	err := j.DB.Table("source_control_repositories").
-		Select("clone_url").
-		Where("id = ?", *site.SourceControlRepositoriesID).
-		First(&repo).Error
+	// Get source control
+	var sourceControl *gitmodels.SourceControl
+	if j.Ctx.SourceControlRepo != nil {
+		sc, err := j.Ctx.SourceControlRepo.FindByID(context.Background(), *site.SourceControlID)
+		if err == nil {
+			sourceControl = sc
+		}
+	}
 
+	return &repo, sourceControl
+}
+
+func (j *DeployZeroDowntimeJob) getAppAuthToken(ctx context.Context, sc *gitmodels.SourceControl, repo *gitmodels.SourceControlRepository) (token, authURL, appName string) {
+	if sc.InstallationID == nil || *sc.InstallationID == "" {
+		return "", "", ""
+	}
+
+	// Build source control data for the provider
+	scData := j.buildSourceControlData(sc)
+
+	// Get provider with source control context
+	provider, err := j.Ctx.ProviderFactory.GetProviderWithInstallation(
+		gitproviders.GitProviderType(sc.Provider),
+		scData,
+	)
 	if err != nil {
-		return ""
+		j.LogError(err, "Failed to get provider for app auth")
+		return "", "", ""
 	}
 
-	return repo.CloneURL
+	// Get installation token
+	installToken, err := provider.GetInstallationToken(ctx, *sc.InstallationID)
+	if err != nil {
+		j.LogError(err, "Failed to get installation token")
+		return "", "", ""
+	}
+
+	// Build auth URL based on provider
+	authURL = buildAuthURL(provider.GetType(), installToken, repo.FullName)
+	appName = string(sc.Provider)
+
+	return installToken, authURL, appName
+}
+
+func (j *DeployZeroDowntimeJob) buildSourceControlData(sc *gitmodels.SourceControl) *gitproviders.SourceControlData {
+	scData := &gitproviders.SourceControlData{
+		ID:             sc.ID,
+		UserID:         sc.UserID,
+		Provider:       gitproviders.GitProviderType(sc.Provider),
+		InstallationID: sc.InstallationID,
+	}
+
+	if sc.TeamID != nil {
+		scData.TeamID = *sc.TeamID
+	}
+	if sc.URL != nil {
+		scData.URL = sc.URL
+	}
+	if sc.Login != nil {
+		scData.Login = sc.Login
+	}
+	if sc.Name != nil {
+		scData.Name = sc.Name
+	}
+	if sc.Type != nil {
+		scData.Type = sc.Type
+	}
+
+	// Parse provider data JSON if present
+	if sc.ProviderData != nil && *sc.ProviderData != "" {
+		var providerData map[string]interface{}
+		if err := json.Unmarshal([]byte(*sc.ProviderData), &providerData); err == nil {
+			scData.ProviderData = providerData
+		}
+	}
+
+	return scData
 }
 
 func (j *DeployZeroDowntimeJob) broadcastDeploymentProgress(siteID, deploymentID, status, message string) {
