@@ -88,20 +88,21 @@ func TestSyncQueuesJob_ParseDaemonStatus(t *testing.T) {
 	job := &SyncQueuesJob{}
 
 	t.Run("parse valid JSON lines", func(t *testing.T) {
-		output := `{"daemon_id":"01abc123","status":"RUNNING","pid":"12345","uptime_seconds":3600,"description":"pid 12345, uptime 1:00:00","error":""}
-{"daemon_id":"01def456","status":"STOPPED","pid":"","uptime_seconds":0,"description":"Not started","error":"Not started"}
+		// Simulate actual supervisor output format where daemon_id is the ULID
+		output := `{"daemon_id":"01jvcrnjtmqpxgjasd485tjqym","status":"RUNNING","pid":"3936432","uptime_seconds":165323,"description":"pid 3936432, uptime 1 day, 21:55:23","error":""}
+{"daemon_id":"01jvcs12345abcdefghijklmno","status":"STOPPED","pid":"","uptime_seconds":0,"description":"Not started","error":"Not started"}
 ===STATUS_CHECK_COMPLETE===`
 
 		results := job.parseDaemonStatus(output)
 
 		require.Len(t, results, 2)
 
-		assert.Equal(t, "01abc123", results[0].DaemonID)
+		assert.Equal(t, "01jvcrnjtmqpxgjasd485tjqym", results[0].DaemonID)
 		assert.Equal(t, "RUNNING", results[0].Status)
-		assert.Equal(t, "12345", results[0].PID)
-		assert.Equal(t, 3600, results[0].UptimeSeconds)
+		assert.Equal(t, "3936432", results[0].PID)
+		assert.Equal(t, 165323, results[0].UptimeSeconds)
 
-		assert.Equal(t, "01def456", results[1].DaemonID)
+		assert.Equal(t, "01jvcs12345abcdefghijklmno", results[1].DaemonID)
 		assert.Equal(t, "STOPPED", results[1].Status)
 		assert.Equal(t, "", results[1].PID)
 		assert.Equal(t, 0, results[1].UptimeSeconds)
