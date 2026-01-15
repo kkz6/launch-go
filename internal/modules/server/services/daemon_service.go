@@ -186,3 +186,48 @@ func (s *Service) dispatchDaemonUninstallJob(server *models.Server, daemon *mode
 
 	return s.EnqueueTask(task)
 }
+
+// SyncDaemonsStatus triggers a status synchronization for all daemons on a server
+func (s *Service) SyncDaemonsStatus(ctx context.Context, serverID, teamID string, userID *string) error {
+	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return err
+	}
+
+	daemons, err := s.repo.FindDaemonsByServer(ctx, serverID)
+	if err != nil {
+		return err
+	}
+
+	if len(daemons) == 0 {
+		s.LogInfo("No daemons to sync", "server_id", serverID)
+		return nil
+	}
+
+	// Update last status check time for all daemons
+	now := time.Now()
+	for i := range daemons {
+		daemons[i].LastStatusCheck = &now
+		if err := s.repo.UpdateDaemon(ctx, &daemons[i]); err != nil {
+			s.LogError(err, "Failed to update daemon last status check", "daemon_id", daemons[i].ID)
+		}
+	}
+
+	// Dispatch the sync job to check supervisor status on the server
+	task, err := jobs.NewSyncDaemonsTask(server.ID, userID)
+	if err != nil {
+		s.LogError(err, "Failed to create sync daemons task")
+		return err
+	}
+
+	if s.HasQueue() {
+		if err := s.EnqueueTask(task); err != nil {
+			s.LogError(err, "Failed to enqueue sync daemons job")
+			return err
+		}
+	}
+
+	s.LogInfo("Daemon sync initiated", "server_id", serverID, "daemon_count", len(daemons))
+
+	return nil
+}

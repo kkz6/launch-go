@@ -352,21 +352,22 @@ func ToCronResponse(cron *models.Cron) CronResponse {
 
 // DaemonResponse represents the response for a daemon
 type DaemonResponse struct {
-	ID              string  `json:"id"`
-	ServerID        string  `json:"server_id"`
-	User            string  `json:"user"`
-	Directory       *string `json:"directory,omitempty"`
-	Command         string  `json:"command"`
-	Processes       int     `json:"processes"`
-	StopWaitSeconds int     `json:"stop_wait_seconds"`
-	StopSignal      *string `json:"stop_signal,omitempty"`
-	IsInstalled     bool    `json:"is_installed"`
-	Running         bool    `json:"running"`
-	Path            string  `json:"path"`
-	InstalledAt     *string `json:"installed_at,omitempty"`
-	LastStatusCheck *string `json:"last_status_check,omitempty"`
-	CreatedAt       string  `json:"created_at"`
-	UpdatedAt       string  `json:"updated_at"`
+	ID              string                 `json:"id"`
+	ServerID        string                 `json:"server_id"`
+	User            string                 `json:"user"`
+	Directory       *string                `json:"directory,omitempty"`
+	Command         string                 `json:"command"`
+	Processes       int                    `json:"processes"`
+	StopWaitSeconds int                    `json:"stop_wait_seconds"`
+	StopSignal      *string                `json:"stop_signal,omitempty"`
+	IsInstalled     bool                   `json:"is_installed"`
+	Running         bool                   `json:"running"`
+	Info            map[string]interface{} `json:"info,omitempty"`
+	Path            string                 `json:"path"`
+	InstalledAt     *string                `json:"installed_at,omitempty"`
+	LastStatusCheck *string                `json:"last_status_check,omitempty"`
+	CreatedAt       string                 `json:"created_at"`
+	UpdatedAt       string                 `json:"updated_at"`
 }
 
 // ToDaemonResponse converts a Daemon model to a DaemonResponse DTO
@@ -397,6 +398,7 @@ func ToDaemonResponse(daemon *models.Daemon) DaemonResponse {
 		StopSignal:      stopSignal,
 		IsInstalled:     daemon.IsInstalled(),
 		Running:         daemon.Running,
+		Info:            daemon.GetInfo(),
 		Path:            daemon.Path(),
 		CreatedAt:       createdAt,
 		UpdatedAt:       updatedAt,
