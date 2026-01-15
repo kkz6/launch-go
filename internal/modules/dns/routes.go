@@ -33,6 +33,7 @@ func RegisterRoutes(
 		domains.Get("/:id", domainHandler.ShowDomain)
 		domains.Patch("/:id", domainHandler.UpdateDomain)
 		domains.Delete("/:id", domainHandler.DeleteDomain)
+		domains.Post("/:id/sync", domainHandler.SyncDomain)
 
 		// DNS Record routes
 		domains.Get("/:id/records", recordHandler.ListRecords)
