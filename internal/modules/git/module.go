@@ -13,7 +13,14 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/repositories"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
+	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/queue"
+)
+
+// Ensure Module implements required interfaces
+var (
+	_ app.Module         = (*Module)(nil)
+	_ app.RouteRegistrar = (*Module)(nil)
 )
 
 // Module represents the git module
@@ -78,6 +85,37 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, logger *zerolog.Logger, c
 		service:         service,
 		providerFactory: providerFactory,
 	}
+}
+
+// NewModuleFromContext creates a new git module from app context
+func NewModuleFromContext(ctx *app.Context) *Module {
+	config := Config{
+		GitHub: GitHubConfig{
+			AppID:         ctx.Config.Git.GitHub.AppID,
+			PrivateKey:    ctx.Config.Git.GitHub.PrivateKey,
+			WebhookSecret: ctx.Config.Git.GitHub.WebhookSecret,
+			AppSlug:       ctx.Config.Git.GitHub.AppSlug,
+			ClientID:      ctx.Config.Git.GitHub.ClientID,
+			ClientSecret:  ctx.Config.Git.GitHub.ClientSecret,
+		},
+		GitLab: GitLabConfig{
+			ClientID:      ctx.Config.Git.GitLab.ClientID,
+			ClientSecret:  ctx.Config.Git.GitLab.ClientSecret,
+			WebhookSecret: ctx.Config.Git.GitLab.WebhookSecret,
+		},
+		Bitbucket: BitbucketConfig{
+			ClientID:      ctx.Config.Git.Bitbucket.ClientID,
+			ClientSecret:  ctx.Config.Git.Bitbucket.ClientSecret,
+			WebhookSecret: ctx.Config.Git.Bitbucket.WebhookSecret,
+		},
+	}
+
+	return NewModule(ctx.DB, ctx.Queue, ctx.Logger, config)
+}
+
+// Name returns the module name (implements app.Module)
+func (m *Module) Name() string {
+	return "git"
 }
 
 // createProviderFactory creates and configures the provider factory

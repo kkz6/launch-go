@@ -88,8 +88,8 @@ func (r *TeamRepository) GetUserTeams(ctx context.Context, userID string) ([]mod
 	// Get teams where user is a member
 	var memberTeams []models.Team
 	if err := r.db.WithContext(ctx).
-		Joins("JOIN team_members ON team_members.team_id = teams.id").
-		Where("team_members.user_id = ?", userID).
+		Joins("JOIN team_user ON team_user.team_id = teams.id").
+		Where("team_user.user_id = ?", userID).
 		Find(&memberTeams).Error; err != nil {
 		return nil, err
 	}
