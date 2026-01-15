@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strconv"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
@@ -60,9 +61,18 @@ func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID 
 		}, nil
 	}
 
+	// Try to extract JSON from the output (in case there's noise like PHP warnings)
+	jsonStr := extractJSON(output)
+	if jsonStr == "" {
+		return &dto.OpcacheStatusResponse{
+			Enabled: false,
+			Error:   "No valid JSON output found in response",
+		}, nil
+	}
+
 	// Parse JSON output
 	var status dto.OpcacheStatusResponse
-	if err := json.Unmarshal([]byte(output), &status); err != nil {
+	if err := json.Unmarshal([]byte(jsonStr), &status); err != nil {
 		return &dto.OpcacheStatusResponse{
 			Enabled: false,
 			Error:   fmt.Sprintf("Failed to parse OPcache status: %v", err),
@@ -70,6 +80,36 @@ func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID 
 	}
 
 	return &status, nil
+}
+
+// extractJSON extracts a JSON object from a string that may contain other content
+func extractJSON(s string) string {
+	// Try to find a JSON object pattern in the string
+	// This regex matches nested JSON objects
+	re := regexp.MustCompile(`\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}`)
+	matches := re.FindAllString(s, -1)
+
+	// Return the last match (usually the most complete JSON)
+	// Or validate each match to find valid JSON
+	for i := len(matches) - 1; i >= 0; i-- {
+		var js map[string]interface{}
+		if err := json.Unmarshal([]byte(matches[i]), &js); err == nil {
+			// Check if this looks like our expected response
+			if _, hasEnabled := js["enabled"]; hasEnabled {
+				return matches[i]
+			}
+		}
+	}
+
+	// If no match with "enabled" field, return the first valid JSON
+	for _, match := range matches {
+		var js map[string]interface{}
+		if err := json.Unmarshal([]byte(match), &js); err == nil {
+			return match
+		}
+	}
+
+	return ""
 }
 
 // ResetOpcache resets the OPcache for a PHP version
