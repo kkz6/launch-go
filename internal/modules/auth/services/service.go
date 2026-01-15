@@ -203,6 +203,10 @@ func (s *Service) GetTeamMembers(ctx context.Context, teamID string) ([]models.T
 	return s.teamMember.GetTeamMembers(ctx, teamID)
 }
 
+func (s *Service) GetAllTeamMembers(ctx context.Context, teamID string) ([]dto.TeamMemberResponse, error) {
+	return s.teamMember.GetAllTeamMembers(ctx, teamID)
+}
+
 func (s *Service) GetTeamInvitations(ctx context.Context, teamID string) ([]models.TeamInvitation, error) {
 	return s.teamMember.GetTeamInvitations(ctx, teamID)
 }
