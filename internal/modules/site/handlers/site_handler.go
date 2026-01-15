@@ -2,9 +2,11 @@ package handlers
 
 import (
 	"errors"
+	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
+	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
@@ -16,11 +18,17 @@ import (
 // SiteHandler handles HTTP requests for sites
 type SiteHandler struct {
 	siteService *services.SiteService
+	domainRepo  dnscontracts.DomainRepository
 }
 
 // NewSiteHandler creates a new site handler
 func NewSiteHandler(siteService *services.SiteService) *SiteHandler {
 	return &SiteHandler{siteService: siteService}
+}
+
+// SetDomainRepository sets the domain repository for cross-module queries
+func (h *SiteHandler) SetDomainRepository(repo dnscontracts.DomainRepository) {
+	h.domainRepo = repo
 }
 
 // List returns all sites for a server
@@ -235,4 +243,68 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 	}
 
 	return response.OK(c, "Site settings retrieved", resp)
+}
+
+// VerifyDomain checks if a domain is connected to the user's team
+func (h *SiteHandler) VerifyDomain(c *fiber.Ctx) error {
+	domain := c.Query("domain")
+	if domain == "" {
+		return response.Error(c, fiber.StatusBadRequest, "Domain is required")
+	}
+
+	teamID, ok := c.Locals("teamID").(string)
+	if !ok || teamID == "" {
+		return response.Error(c, fiber.StatusBadRequest, "Team ID is required")
+	}
+
+	// Extract the base domain (handles subdomains)
+	baseDomain := getBaseDomain(domain)
+
+	// Check if domain repository is configured
+	if h.domainRepo == nil {
+		// No domain repository configured, return not verified
+		return response.OK(c, "Domain verification result", dto.VerifyDomainResponse{
+			Verified:        false,
+			Domain:          domain,
+			BaseDomain:      baseDomain,
+			CanCreateRecord: false,
+		})
+	}
+
+	// Get user's connected domains
+	userDomains, err := h.domainRepo.FindByTeam(c.Context(), teamID)
+	if err != nil {
+		return response.InternalError(c, "Failed to fetch domains")
+	}
+
+	// Check if the base domain exists in user's connected domains
+	for _, userDomain := range userDomains {
+		if userDomain.Address == baseDomain {
+			return response.OK(c, "Domain verification result", dto.VerifyDomainResponse{
+				Verified:          true,
+				Domain:            domain,
+				BaseDomain:        baseDomain,
+				ConnectedDomainID: &userDomain.ID,
+				CanCreateRecord:   true,
+			})
+		}
+	}
+
+	return response.OK(c, "Domain verification result", dto.VerifyDomainResponse{
+		Verified:        false,
+		Domain:          domain,
+		BaseDomain:      baseDomain,
+		CanCreateRecord: false,
+	})
+}
+
+// getBaseDomain extracts the base domain from a full domain (handles subdomains)
+// e.g., "demo3.gig.code" -> "gig.code"
+func getBaseDomain(domain string) string {
+	parts := strings.Split(domain, ".")
+	if len(parts) <= 2 {
+		return domain
+	}
+
+	return strings.Join(parts[len(parts)-2:], ".")
 }
