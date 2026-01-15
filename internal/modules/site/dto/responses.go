@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/site/models"
@@ -71,26 +72,28 @@ type CertificateResponse struct {
 
 // QueueResponse represents a queue in API responses
 type QueueResponse struct {
-	ID                    string  `json:"id"`
-	SiteID                string  `json:"site_id"`
-	ServerID              string  `json:"server_id"`
-	Name                  string  `json:"name"`
-	Directory             string  `json:"directory"`
-	Command               string  `json:"command"`
-	User                  string  `json:"user"`
-	QueueConnection       string  `json:"queue_connection"`
-	Queue                 string  `json:"queue"`
-	NumProcs              int     `json:"numprocs"`
-	MaxSecondsPerJob      int     `json:"max_seconds_per_job"`
-	MaxTries              int     `json:"max_tries"`
-	RestSecondsOnEmpty    int     `json:"rest_seconds_on_empty"`
-	FailedJobDelaySeconds int     `json:"failed_job_delay_seconds"`
-	MaxMemory             int     `json:"max_memory"`
-	RunOnMaintenance      bool    `json:"run_on_maintenance"`
-	RunWithListen         bool    `json:"run_with_listen"`
-	Running               bool    `json:"running"`
-	InstalledAt           *string `json:"installed_at,omitempty"`
-	CreatedAt             string  `json:"created_at"`
+	ID                    string                 `json:"id"`
+	SiteID                string                 `json:"site_id"`
+	ServerID              string                 `json:"server_id"`
+	Name                  string                 `json:"name"`
+	Directory             string                 `json:"directory"`
+	Command               string                 `json:"command"`
+	User                  string                 `json:"user"`
+	QueueConnection       string                 `json:"queue_connection"`
+	Queue                 string                 `json:"queue"`
+	NumProcs              int                    `json:"numprocs"`
+	MaxSecondsPerJob      int                    `json:"max_seconds_per_job"`
+	MaxTries              int                    `json:"max_tries"`
+	RestSecondsOnEmpty    int                    `json:"rest_seconds_on_empty"`
+	FailedJobDelaySeconds int                    `json:"failed_job_delay_seconds"`
+	MaxMemory             int                    `json:"max_memory"`
+	RunOnMaintenance      bool                   `json:"run_on_maintenance"`
+	RunWithListen         bool                   `json:"run_with_listen"`
+	Running               bool                   `json:"running"`
+	Info                  map[string]interface{} `json:"info,omitempty"`
+	LastStatusCheck       *string                `json:"last_status_check,omitempty"`
+	InstalledAt           *string                `json:"installed_at,omitempty"`
+	CreatedAt             string                 `json:"created_at"`
 }
 
 // UserSummaryResponse represents limited user info in API responses
@@ -340,6 +343,19 @@ func ToQueueResponse(queue *models.Queue) QueueResponse {
 		RunWithListen:         queue.RunWithListen,
 		Running:               queue.Running,
 		CreatedAt:             createdAt,
+	}
+
+	// Parse info JSON if present
+	if queue.Info != nil && *queue.Info != "" {
+		var info map[string]interface{}
+		if err := json.Unmarshal([]byte(*queue.Info), &info); err == nil {
+			resp.Info = info
+		}
+	}
+
+	if queue.LastStatusCheck != nil {
+		lastCheck := queue.LastStatusCheck.Format(time.RFC3339)
+		resp.LastStatusCheck = &lastCheck
 	}
 
 	if queue.InstalledAt != nil {
