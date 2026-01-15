@@ -20,17 +20,15 @@ import (
 
 // ServiceStatus represents the status of a service
 type ServiceStatus struct {
-	ServiceID   string `json:"service_id"`
-	Software    string `json:"software"`
-	Name        string `json:"name"`
-	Status      string `json:"status"` // running, stopped, failed, unknown
-	IsActive    bool   `json:"is_active"`
-	Memory      string `json:"memory,omitempty"`
-	CPU         string `json:"cpu,omitempty"`
-	Uptime      string `json:"uptime,omitempty"`
-	PID         int    `json:"pid,omitempty"`
-	Connections int    `json:"connections,omitempty"`
-	Error       string `json:"error,omitempty"`
+	ID       string `json:"id"`
+	Software string `json:"software"`
+	Name     string `json:"name"`
+	Status   string `json:"status"` // running, stopped, failed, unknown
+	IsActive bool   `json:"is_active"`
+	Memory   string `json:"memory,omitempty"`
+	Uptime   string `json:"uptime,omitempty"`
+	PID      int    `json:"pid,omitempty"`
+	Error    string `json:"error,omitempty"`
 }
 
 // ServiceStatusMessage is the WebSocket message format
@@ -234,11 +232,11 @@ func (h *ServiceStatusHandler) checkAndSendStatus(c *websocket.Conn, conn *ssh.C
 
 func (h *ServiceStatusHandler) getServiceStatus(conn *ssh.Client, svc *serverModels.InstalledService) ServiceStatus {
 	status := ServiceStatus{
-		ServiceID: svc.ID,
-		Software:  svc.Software,
-		Name:      svc.Name,
-		Status:    "unknown",
-		IsActive:  false,
+		ID:       svc.ID,
+		Software: svc.Software,
+		Name:     svc.Name,
+		Status:   "unknown",
+		IsActive: false,
 	}
 
 	// Determine the systemd service name based on software
