@@ -36,6 +36,12 @@ type ListChannelsResponse struct {
 	Channels []ChannelResponse `json:"channels"`
 }
 
+// ChannelTypeResponse represents an available notification channel type
+type ChannelTypeResponse struct {
+	Type  string `json:"type"`
+	Label string `json:"label"`
+}
+
 // ToChannelResponse converts a NotificationChannel to a ChannelResponse
 func ToChannelResponse(channel *models.NotificationChannel) ChannelResponse {
 	createdAt := ""

@@ -27,6 +27,7 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 	{
 		// Options (must be before /:id routes)
 		servers.Get("/create-options", m.handler.GetCreateOptions)
+		servers.Get("/archived", m.handler.ListArchived)
 
 		// CRUD
 		servers.Get("/", m.handler.List)
