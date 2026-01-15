@@ -75,7 +75,11 @@ sudo update-alternatives --set phpize /usr/bin/phpize%s`, version, version, vers
 // GetOpcacheStatus creates a task to get OPcache status as JSON
 func GetOpcacheStatus(version string) *taskrunner.BaseTask {
 	// PHP script that outputs OPcache status as JSON
+	// Using error_reporting(0) and @ to suppress all PHP warnings/notices
 	phpScript := `<?php
+error_reporting(0);
+ini_set('display_errors', 0);
+
 $status = @opcache_get_status(true);
 $config = @opcache_get_configuration();
 
@@ -151,7 +155,8 @@ echo json_encode($result);
 `
 	// Escape single quotes for bash
 	escapedScript := strings.ReplaceAll(phpScript, "'", "'\\''")
-	script := fmt.Sprintf(`php%s -d opcache.enable_cli=1 -r '%s'`, version, escapedScript)
+	// Use 2>/dev/null to suppress any stderr output, and -d options to disable errors
+	script := fmt.Sprintf(`php%s -d opcache.enable_cli=1 -d display_errors=0 -d error_reporting=0 -r '%s' 2>/dev/null`, version, escapedScript)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get OPcache Status"),
