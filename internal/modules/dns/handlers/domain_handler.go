@@ -37,10 +37,12 @@ func (h *DomainHandler) ListDomains(c *fiber.Ctx) error {
 	// Also get providers for the dropdown
 	providers, _ := h.providerService.ListProviders(c.Context(), teamID)
 
-	return response.OK(c, "Domains retrieved", fiber.Map{
-		"data":      domains,
-		"providers": providers,
-	})
+	pageData := dto.DomainIndexPageData{
+		Domains:   domains,
+		Providers: providers,
+	}
+
+	return response.OK(c, "Domains retrieved", pageData)
 }
 
 // CreateDomain creates a new domain
@@ -84,14 +86,41 @@ func (h *DomainHandler) ShowDomain(c *fiber.Ctx) error {
 	// Get records for this domain
 	records, _ := h.domainService.GetDomainRecords(c.Context(), id, teamID)
 
+	// Get record types
 	recordService := services.NewDnsRecordService(nil, nil, nil)
-	recordTypes := recordService.GetRecordTypes()
+	recordTypesList := recordService.GetRecordTypes()
 
-	return response.OK(c, "Domain retrieved", fiber.Map{
-		"domain":      dto.ToDomainResponse(domain),
-		"records":     records,
-		"recordTypes": recordTypes,
-	})
+	// Convert record types to structured format
+	recordTypes := make([]dto.RecordTypeOption, len(recordTypesList))
+	for i, rt := range recordTypesList {
+		recordTypes[i] = dto.RecordTypeOption{
+			Value: rt,
+			Label: rt,
+		}
+	}
+
+	// Get nameservers
+	nameservers, _ := h.domainService.GetDomainNameservers(c.Context(), domain)
+	if nameservers == nil {
+		nameservers = []string{}
+	}
+
+	// Get provider details if available
+	var providerResponse *dto.DomainProviderResponse
+	if domain.Provider != nil {
+		pr := dto.ToDomainProviderResponse(domain.Provider, 0)
+		providerResponse = &pr
+	}
+
+	pageData := dto.DomainShowPageData{
+		Domain:      dto.ToDomainResponse(domain),
+		Records:     records,
+		RecordTypes: recordTypes,
+		Nameservers: nameservers,
+		Provider:    providerResponse,
+	}
+
+	return response.OK(c, "Domain retrieved", pageData)
 }
 
 // UpdateDomain updates a domain

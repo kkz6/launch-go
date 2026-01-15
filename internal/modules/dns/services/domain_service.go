@@ -204,3 +204,23 @@ func (s *DomainService) GetDomainRecords(ctx context.Context, domainID, teamID s
 
 	return responses, nil
 }
+
+// GetDomainNameservers retrieves nameservers for a domain from its provider
+func (s *DomainService) GetDomainNameservers(ctx context.Context, domain *models.Domain) ([]string, error) {
+	if domain.Provider == nil {
+		return nil, nil
+	}
+
+	dnsProvider, err := providers.NewProvider(
+		providers.DnsProviderType(domain.Provider.Provider),
+		domain.Provider.Credentials,
+		domain.Provider.AdditionalData,
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	dnsProvider.SetDomain(domain.Address)
+
+	return dnsProvider.GetNameservers(ctx)
+}
