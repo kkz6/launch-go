@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"context"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
@@ -10,10 +12,16 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
+// SiteCounter interface for counting sites by server
+type SiteCounter interface {
+	CountByServer(ctx context.Context, serverID string) (int64, error)
+}
+
 // Handler handles all server-related HTTP requests
 type Handler struct {
-	service    *services.Service
-	taskRunner *tasks.TaskRunnerDeps
+	service     *services.Service
+	taskRunner  *tasks.TaskRunnerDeps
+	siteCounter SiteCounter
 }
 
 // NewHandler creates a new server handler
@@ -22,6 +30,11 @@ func NewHandler(service *services.Service, taskRunner *tasks.TaskRunnerDeps) *Ha
 		service:    service,
 		taskRunner: taskRunner,
 	}
+}
+
+// SetSiteCounter sets the site counter for cross-module queries
+func (h *Handler) SetSiteCounter(counter SiteCounter) {
+	h.siteCounter = counter
 }
 
 // List returns all servers for the team
@@ -191,4 +204,27 @@ func (h *Handler) RunVulnerabilityAudit(c *fiber.Ctx) error {
 	}
 
 	return response.OK(c, "Vulnerability audit has been queued and will be sent to your email when completed.", nil)
+}
+
+// GetSiteCount returns the number of sites for a server
+func (h *Handler) GetSiteCount(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	serverID := c.Params("id")
+
+	// Verify server exists and belongs to team
+	if _, err := h.service.GetServer(c.Context(), serverID, teamID); err != nil {
+		return response.HandleError(c, err)
+	}
+
+	// Check if site counter is configured
+	if h.siteCounter == nil {
+		return response.OK(c, "Site count retrieved", fiber.Map{"count": 0})
+	}
+
+	count, err := h.siteCounter.CountByServer(c.Context(), serverID)
+	if err != nil {
+		return response.InternalError(c, "Failed to count sites")
+	}
+
+	return response.OK(c, "Site count retrieved", fiber.Map{"count": count})
 }

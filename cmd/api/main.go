@@ -126,13 +126,14 @@ func (a *Application) registerModules() {
 	a.kernel = app.NewKernel(a.logger)
 
 	// Create modules
+	serverModule := server.NewModuleFromContext(ctx)
 	siteModule := site.NewModuleFromContext(ctx)
 	dnsModule := dns.NewModuleFromContext(ctx)
 
 	// Register all modules with the kernel
 	a.kernel.
 		Register(auth.NewModuleFromContext(ctx)).
-		Register(server.NewModuleFromContext(ctx)).
+		Register(serverModule).
 		Register(databasemodule.NewModuleFromContext(ctx)).
 		Register(siteModule).
 		Register(dnsModule).
@@ -141,6 +142,7 @@ func (a *Application) registerModules() {
 
 	// Wire cross-module dependencies
 	siteModule.SetDomainRepository(dnsModule.GetDomainRepository())
+	serverModule.SetSiteCounter(siteModule.SiteRepository())
 
 	api := a.fiber.Group("/api")
 	api.Get("/health", a.healthCheck)

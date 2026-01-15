@@ -42,6 +42,16 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 	software := enums.Software(service.Software)
 	version := software.GetVersion()
 
+	// Mark as configuring
+	typeData := map[string]any{
+		"opcache": map[string]any{
+			"status": "configuring",
+		},
+	}
+	if err := j.Repo().UpdateServiceWithTypeData(ctx, service.ID, service.Status, typeData); err != nil {
+		j.LogError(err, "Failed to update service status")
+	}
+
 	// Create and run the configure opcache task
 	task := tasks.ConfigureOpcache(version, j.Payload.Settings)
 	result, err := j.RunTaskOnServer(server, task).
@@ -50,11 +60,49 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 		Dispatch(ctx)
 
 	if err != nil {
+		// Mark as failed
+		typeData["opcache"].(map[string]any)["status"] = "failed"
+		typeData["opcache"].(map[string]any)["error"] = err.Error()
+		_ = j.Repo().UpdateServiceWithTypeData(ctx, service.ID, service.Status, typeData)
 		return fmt.Errorf("failed to configure OPcache: %w", err)
 	}
 
 	if !result.IsSuccessful() {
+		// Mark as failed
+		typeData["opcache"].(map[string]any)["status"] = "failed"
+		typeData["opcache"].(map[string]any)["error"] = result.GetOutput()
+		_ = j.Repo().UpdateServiceWithTypeData(ctx, service.ID, service.Status, typeData)
 		return fmt.Errorf("failed to configure OPcache: %s", result.GetOutput())
+	}
+
+	// Save the OPcache settings to TypeData
+	opcacheSettings := map[string]any{
+		"status": "configured",
+	}
+	// Convert settings map to proper types for storage
+	for k, v := range j.Payload.Settings {
+		switch k {
+		case "enable":
+			opcacheSettings["enabled"] = v == "1"
+		case "enable_cli":
+			opcacheSettings["enable_cli"] = v == "1"
+		case "validate_timestamps":
+			opcacheSettings["validate_timestamps"] = v == "1"
+		case "save_comments":
+			opcacheSettings["save_comments"] = v == "1"
+		case "memory_consumption", "interned_strings_buffer", "max_accelerated_files", "revalidate_freq":
+			opcacheSettings[k] = v
+		case "jit_buffer_size":
+			opcacheSettings["jit_buffer_size"] = v
+			opcacheSettings["jit_enabled"] = true
+		case "jit":
+			opcacheSettings["jit_mode"] = v
+		}
+	}
+
+	typeData["opcache"] = opcacheSettings
+	if err := j.Repo().UpdateServiceWithTypeData(ctx, service.ID, service.Status, typeData); err != nil {
+		j.LogError(err, "Failed to save OPcache settings")
 	}
 
 	j.LogInfo("OPcache configuration completed",

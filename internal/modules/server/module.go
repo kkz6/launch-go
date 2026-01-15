@@ -141,3 +141,8 @@ func (m *Module) GetWebhookHandler() *handlers.TaskWebhookHandler {
 func (m *Module) Repository() *repositories.Repository {
 	return m.repo
 }
+
+// SetSiteCounter sets the site counter for cross-module queries
+func (m *Module) SetSiteCounter(counter handlers.SiteCounter) {
+	m.handler.SetSiteCounter(counter)
+}
