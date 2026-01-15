@@ -75,17 +75,29 @@ sudo update-alternatives --set phpize /usr/bin/phpize%s`, version, version, vers
 // GetOpcacheStatus creates a task to get OPcache status as JSON
 func GetOpcacheStatus(version string) *taskrunner.BaseTask {
 	// PHP script that outputs OPcache status as JSON
-	// Using error_reporting(0) and @ to suppress all PHP warnings/notices
+	// First checks if opcache extension is loaded before attempting to use it
 	phpScript := `<?php
 error_reporting(0);
 ini_set('display_errors', 0);
+
+// Check if OPcache extension is loaded
+if (!extension_loaded('Zend OPcache')) {
+    echo json_encode(['enabled' => false, 'error' => 'OPcache extension is not loaded']);
+    exit(0);
+}
+
+// Check if opcache_get_status function exists
+if (!function_exists('opcache_get_status')) {
+    echo json_encode(['enabled' => false, 'error' => 'OPcache functions not available']);
+    exit(0);
+}
 
 $status = @opcache_get_status(true);
 $config = @opcache_get_configuration();
 
 if ($status === false) {
-    echo json_encode(['enabled' => false, 'error' => 'OPcache is not enabled or not available']);
-    exit;
+    echo json_encode(['enabled' => false, 'error' => 'OPcache is not enabled for CLI']);
+    exit(0);
 }
 
 $result = [
@@ -153,10 +165,13 @@ if ($config && isset($config['directives'])) {
 
 echo json_encode($result);
 `
-	// Escape single quotes for bash
-	escapedScript := strings.ReplaceAll(phpScript, "'", "'\\''")
-	// Use 2>/dev/null to suppress any stderr output, and -d options to disable errors
-	script := fmt.Sprintf(`php%s -d opcache.enable_cli=1 -d display_errors=0 -d error_reporting=0 -r '%s' 2>/dev/null`, version, escapedScript)
+	// Write PHP script to a temp file and execute it to avoid shell quoting issues
+	script := fmt.Sprintf(`OPCACHE_SCRIPT=$(mktemp /tmp/opcache_status_XXXXXX.php)
+cat > "$OPCACHE_SCRIPT" << 'OPCACHE_PHP_EOF'
+%s
+OPCACHE_PHP_EOF
+php%s -d opcache.enable_cli=1 -d display_errors=0 -d error_reporting=0 "$OPCACHE_SCRIPT" 2>&1
+rm -f "$OPCACHE_SCRIPT"`, phpScript, version)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get OPcache Status"),
