@@ -23,25 +23,31 @@ var (
 
 // Module represents the auth module with all its dependencies
 type Module struct {
-	handler    *handlers.Handler
-	service    *services.Service
-	repository *repositories.Repository
-	config     *config.Config
-	logger     *zerolog.Logger
+	handler        *handlers.Handler
+	passkeyHandler *handlers.PasskeyHandler
+	service        *services.Service
+	repository     *repositories.Repository
+	passkeyRepo    *repositories.PasskeyRepository
+	config         *config.Config
+	logger         *zerolog.Logger
 }
 
 // NewModule creates a new auth Module instance
 func NewModule(db *gorm.DB, cfg *config.Config, logger *zerolog.Logger) *Module {
 	repo := repositories.NewRepository(db)
+	passkeyRepo := repositories.NewPasskeyRepository(db)
 	service := services.NewService(repo, cfg, logger)
 	handler := handlers.NewHandler(service)
+	passkeyHandler := handlers.NewPasskeyHandler(passkeyRepo)
 
 	return &Module{
-		handler:    handler,
-		service:    service,
-		repository: repo,
-		config:     cfg,
-		logger:     logger,
+		handler:        handler,
+		passkeyHandler: passkeyHandler,
+		service:        service,
+		repository:     repo,
+		passkeyRepo:    passkeyRepo,
+		config:         cfg,
+		logger:         logger,
 	}
 }
 
@@ -77,6 +83,10 @@ func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 	// Team routes (require authentication)
 	teams := router.Group("/teams", authMiddleware)
 	m.registerTeamRoutes(teams, adapter)
+
+	// User routes (require authentication)
+	user := router.Group("/user", authMiddleware)
+	m.registerUserRoutes(user)
 }
 
 // registerPublicRoutes registers routes that don't require authentication
@@ -146,6 +156,15 @@ func (m *Module) registerTeamRoutes(router fiber.Router, adapter *MiddlewareAdap
 	// Team Invitations
 	router.Get("/:teamId/invitations", middleware.TeamAdmin(adapter), m.handler.TeamMember.GetTeamInvitations)
 	router.Delete("/:teamId/invitations/:invitationId", middleware.TeamAdmin(adapter), m.handler.TeamMember.CancelTeamInvitation)
+}
+
+// registerUserRoutes registers user-related routes under /user
+func (m *Module) registerUserRoutes(router fiber.Router) {
+	// Passkeys
+	passkeys := router.Group("/passkeys")
+	passkeys.Get("/", m.passkeyHandler.Index)
+	passkeys.Put("/:id", m.passkeyHandler.Update)
+	passkeys.Delete("/:id", m.passkeyHandler.Delete)
 }
 
 // Service returns the auth service

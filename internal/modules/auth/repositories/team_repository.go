@@ -80,7 +80,7 @@ func (r *TeamRepository) GetUserTeams(ctx context.Context, userID string) ([]mod
 	// Get teams where user is owner
 	var ownedTeams []models.Team
 	if err := r.db.WithContext(ctx).
-		Where("owner_id = ?", userID).
+		Where("user_id = ?", userID).
 		Find(&ownedTeams).Error; err != nil {
 		return nil, err
 	}
