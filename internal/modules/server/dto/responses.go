@@ -169,8 +169,19 @@ type ServiceResponse struct {
 	LastStatusCheck *string                `json:"last_status_check,omitempty"`
 	StatusDetails   map[string]any         `json:"status_details,omitempty"`
 	StatusOutput    *string                `json:"status_output,omitempty"`
+	Extensions      []ExtensionResponse    `json:"extensions,omitempty"`
+	Opcache         map[string]any         `json:"opcache,omitempty"`
 	CreatedAt       string                 `json:"created_at"`
 	UpdatedAt       string                 `json:"updated_at"`
+}
+
+// ExtensionResponse represents a PHP extension with status
+type ExtensionResponse struct {
+	Value       string  `json:"value"`
+	Label       string  `json:"label"`
+	Status      *string `json:"status,omitempty"`
+	IsInstalled bool    `json:"is_installed"`
+	IsPending   bool    `json:"is_pending"`
 }
 
 // ToServiceResponse converts an InstalledService model to a ServiceResponse DTO
@@ -225,9 +236,36 @@ func ToServiceResponse(service *models.InstalledService) ServiceResponse {
 		if statusOutput, ok := service.TypeData["status_output"].(string); ok {
 			resp.StatusOutput = &statusOutput
 		}
+		// Extract OPcache settings
+		if opcache, ok := service.TypeData["opcache"].(map[string]any); ok {
+			resp.Opcache = opcache
+		}
+		// Extract extensions
+		if extensions, ok := service.TypeData["extensions"].(map[string]any); ok {
+			resp.Extensions = convertExtensionsToResponse(extensions)
+		}
 	}
 
 	return resp
+}
+
+// convertExtensionsToResponse converts extensions map to response slice
+func convertExtensionsToResponse(extensions map[string]any) []ExtensionResponse {
+	result := make([]ExtensionResponse, 0, len(extensions))
+	for name, status := range extensions {
+		statusStr, _ := status.(string)
+		ext := ExtensionResponse{
+			Value:       name,
+			Label:       name, // Can be enhanced with proper labels
+			IsInstalled: statusStr == "installed",
+			IsPending:   statusStr == "installing" || statusStr == "uninstalling",
+		}
+		if statusStr != "" {
+			ext.Status = &statusStr
+		}
+		result = append(result, ext)
+	}
+	return result
 }
 
 // FirewallRuleResponse represents the response for a firewall rule

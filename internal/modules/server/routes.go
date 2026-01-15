@@ -33,6 +33,7 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Post("/", m.handler.Create)
 		servers.Get("/:id", m.handler.Show)
 		servers.Get("/:id/page", m.handler.ShowPage)
+		servers.Get("/:id/site-count", m.handler.GetSiteCount)
 		servers.Put("/:id", m.handler.Update)
 		servers.Delete("/:id", m.handler.Delete)
 
