@@ -10,6 +10,7 @@ const (
 	TypeInstallDaemon        = "server:install_daemon"
 	TypeUninstallDaemon      = "server:uninstall_daemon"
 	TypeRestartDaemon        = "server:restart_daemon"
+	TypeSyncDaemons          = "server:sync_daemons"
 	TypeInstallFirewallRule  = "server:install_firewall_rule"
 	TypeUninstallFirewall    = "server:uninstall_firewall_rule"
 	TypeAddService           = "server:add_service"
@@ -78,6 +79,11 @@ type UninstallDaemonPayload struct {
 type RestartDaemonPayload struct {
 	ServerID string  `json:"server_id"`
 	DaemonID string  `json:"daemon_id"`
+	UserID   *string `json:"user_id,omitempty"`
+}
+
+type SyncDaemonsPayload struct {
+	ServerID string  `json:"server_id"`
 	UserID   *string `json:"user_id,omitempty"`
 }
 

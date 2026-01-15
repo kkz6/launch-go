@@ -95,3 +95,11 @@ func NewCheckServiceStatusTask(serverID, serviceID string, userID *string) (*asy
 		UserID:    userID,
 	})
 }
+
+// NewSyncDaemonsTask creates an asynq task for syncing daemon status
+func NewSyncDaemonsTask(serverID string, userID *string) (*asynq.Task, error) {
+	return jobs.NewTask(TypeSyncDaemons, SyncDaemonsPayload{
+		ServerID: serverID,
+		UserID:   userID,
+	})
+}

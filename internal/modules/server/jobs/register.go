@@ -70,6 +70,10 @@ func Register(r *jobs.Registry) {
 		func(p RestartDaemonPayload) *RestartDaemonJob { return &RestartDaemonJob{Payload: p} },
 		getContext,
 	))
+	r.Register(TypeSyncDaemons, jobs.MakeFactory(
+		func(p SyncDaemonsPayload) *SyncDaemonsJob { return &SyncDaemonsJob{Payload: p} },
+		getContext,
+	))
 
 	// Firewall jobs
 	r.Register(TypeInstallFirewallRule, jobs.MakeFactory(

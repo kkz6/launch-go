@@ -83,3 +83,16 @@ func (h *Handler) DeleteDaemon(c *fiber.Ctx) error {
 
 	return response.NoContent(c)
 }
+
+// SyncDaemons triggers a status synchronization for all daemons
+func (h *Handler) SyncDaemons(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	serverID := c.Params("id")
+	userID := c.Locals("userID").(string)
+
+	if err := h.service.SyncDaemonsStatus(c.Context(), serverID, teamID, &userID); err != nil {
+		return response.HandleError(c, err)
+	}
+
+	return response.OK(c, "Daemon sync initiated", nil)
+}
