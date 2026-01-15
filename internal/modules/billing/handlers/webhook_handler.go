@@ -191,23 +191,18 @@ func (h *WebhookHandler) handleSubscriptionCreated(ctx context.Context, teamID, 
 	status := MapLemonSqueezyStatus(attrs.Status)
 
 	subscription := &models.Subscription{
-		TeamID:         teamID,
+		BillableType:   models.BillableTypeTeam,
+		BillableID:     teamID,
+		Type:           "default",
 		LemonSqueezyID: lemonSqueezyID,
 		ProductID:      strconv.Itoa(attrs.ProductID),
 		VariantID:      strconv.Itoa(attrs.VariantID),
-		Name:           attrs.ProductName,
 		Status:         status,
 		CardBrand:      attrs.CardBrand,
 		CardLastFour:   attrs.CardLastFour,
-		BillingAnchor:  attrs.BillingAnchor,
 		TrialEndsAt:    ParseTime(attrs.TrialEndsAt),
 		RenewsAt:       ParseTime(attrs.RenewsAt),
 		EndsAt:         ParseTime(attrs.EndsAt),
-	}
-
-	if attrs.OrderID != nil {
-		orderID := strconv.Itoa(*attrs.OrderID)
-		subscription.OrderID = &orderID
 	}
 
 	return h.repo.CreateSubscription(ctx, subscription)
@@ -222,11 +217,9 @@ func (h *WebhookHandler) handleSubscriptionUpdated(ctx context.Context, lemonSqu
 
 	subscription.ProductID = strconv.Itoa(attrs.ProductID)
 	subscription.VariantID = strconv.Itoa(attrs.VariantID)
-	subscription.Name = attrs.ProductName
 	subscription.Status = MapLemonSqueezyStatus(attrs.Status)
 	subscription.CardBrand = attrs.CardBrand
 	subscription.CardLastFour = attrs.CardLastFour
-	subscription.BillingAnchor = attrs.BillingAnchor
 	subscription.TrialEndsAt = ParseTime(attrs.TrialEndsAt)
 	subscription.RenewsAt = ParseTime(attrs.RenewsAt)
 	subscription.EndsAt = ParseTime(attrs.EndsAt)
@@ -275,10 +268,10 @@ func (h *WebhookHandler) handleSubscriptionPaused(ctx context.Context, lemonSque
 		return err
 	}
 
-	now := time.Now()
+	pauseMode := "void"
 	subscription.Status = enums.SubscriptionStatusPaused
-	subscription.PausedAt = &now
-	subscription.ResumesAt = ParseTime(attrs.ResumesAt)
+	subscription.PauseMode = &pauseMode
+	subscription.PauseResumesAt = ParseTime(attrs.ResumesAt)
 
 	return h.repo.UpdateSubscription(ctx, subscription)
 }
@@ -291,8 +284,8 @@ func (h *WebhookHandler) handleSubscriptionUnpaused(ctx context.Context, lemonSq
 	}
 
 	subscription.Status = enums.SubscriptionStatusActive
-	subscription.PausedAt = nil
-	subscription.ResumesAt = nil
+	subscription.PauseMode = nil
+	subscription.PauseResumesAt = nil
 
 	return h.repo.UpdateSubscription(ctx, subscription)
 }
@@ -351,19 +344,14 @@ func (h *WebhookHandler) handleOrderEvent(ctx context.Context, eventType enums.W
 
 // handleOrderCreated handles order_created event
 func (h *WebhookHandler) handleOrderCreated(ctx context.Context, teamID, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	orderNumber := ""
+	orderNumber := 0
 	if attrs.OrderNumber != nil {
-		orderNumber = strconv.Itoa(*attrs.OrderNumber)
+		orderNumber = *attrs.OrderNumber
 	}
 
 	currency := "USD"
 	if attrs.Currency != nil {
 		currency = *attrs.Currency
-	}
-
-	currencyRate := "1.0"
-	if attrs.CurrencyRate != nil {
-		currencyRate = *attrs.CurrencyRate
 	}
 
 	var subtotal, discountTotal, tax, total int64
@@ -380,15 +368,21 @@ func (h *WebhookHandler) handleOrderCreated(ctx context.Context, teamID, lemonSq
 		total = *attrs.Total
 	}
 
+	identifier := ""
+	if attrs.Identifier != nil {
+		identifier = *attrs.Identifier
+	}
+
 	order := &models.Order{
-		TeamID:         teamID,
+		BillableType:   models.BillableTypeTeam,
+		BillableID:     teamID,
 		LemonSqueezyID: lemonSqueezyID,
 		CustomerID:     strconv.Itoa(attrs.CustomerID),
+		Identifier:     identifier,
 		ProductID:      strconv.Itoa(attrs.ProductID),
 		VariantID:      strconv.Itoa(attrs.VariantID),
 		OrderNumber:    orderNumber,
 		Currency:       currency,
-		CurrencyRate:   currencyRate,
 		Subtotal:       subtotal,
 		DiscountTotal:  discountTotal,
 		Tax:            tax,
@@ -396,10 +390,9 @@ func (h *WebhookHandler) handleOrderCreated(ctx context.Context, teamID, lemonSq
 		TaxName:        attrs.TaxName,
 		Status:         enums.OrderStatusPaid,
 		ReceiptURL:     attrs.ReceiptURL,
+		Refunded:       false,
+		OrderedAt:      time.Now(),
 	}
-
-	now := time.Now()
-	order.OrderedAt = &now
 
 	return h.repo.CreateOrder(ctx, order)
 }
@@ -413,6 +406,7 @@ func (h *WebhookHandler) handleOrderRefunded(ctx context.Context, lemonSqueezyID
 
 	now := time.Now()
 	order.Status = enums.OrderStatusRefunded
+	order.Refunded = true
 	order.RefundedAt = &now
 
 	return h.repo.UpdateOrder(ctx, order)

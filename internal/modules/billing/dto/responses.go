@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
@@ -28,7 +29,7 @@ type SubscriptionResponse struct {
 // ToSubscriptionResponse converts a Subscription model to SubscriptionResponse
 func ToSubscriptionResponse(s *models.Subscription, plan *models.Plan, updatePaymentURL string) SubscriptionResponse {
 	resp := SubscriptionResponse{
-		ID:               s.ID,
+		ID:               fmt.Sprintf("%d", s.ID),
 		Status:           string(s.Status),
 		Plan:             plan,
 		CardBrand:        s.CardBrand,
@@ -71,14 +72,9 @@ type OrderResponse struct {
 
 // ToOrderResponse converts an Order model to OrderResponse
 func ToOrderResponse(o *models.Order) OrderResponse {
-	orderedAt := ""
-	if o.OrderedAt != nil {
-		orderedAt = o.OrderedAt.Format("Jan 2, 2006")
-	}
-
 	return OrderResponse{
-		OrderedAt:   orderedAt,
-		OrderNumber: o.OrderNumber,
+		OrderedAt:   o.OrderedAt.Format("Jan 2, 2006"),
+		OrderNumber: fmt.Sprintf("%d", o.OrderNumber),
 		Discount:    o.FormattedDiscount(),
 		Subtotal:    o.FormattedSubtotal(),
 		Total:       o.FormattedTotal(),

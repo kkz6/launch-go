@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"fmt"
 
 	"gorm.io/gorm"
 
@@ -50,7 +51,7 @@ func (r *SubscriptionRepository) FindByLemonSqueezyID(ctx context.Context, lemon
 func (r *SubscriptionRepository) FindByTeam(ctx context.Context, teamID string) ([]models.Subscription, error) {
 	var subscriptions []models.Subscription
 	err := r.db.WithContext(ctx).
-		Where("team_id = ?", teamID).
+		Where("billable_type = ? AND billable_id = ?", models.BillableTypeTeam, teamID).
 		Order("created_at DESC").
 		Find(&subscriptions).Error
 
@@ -61,7 +62,7 @@ func (r *SubscriptionRepository) FindByTeam(ctx context.Context, teamID string) 
 func (r *SubscriptionRepository) FindActiveByTeam(ctx context.Context, teamID string) (*models.Subscription, error) {
 	var subscription models.Subscription
 	err := r.db.WithContext(ctx).
-		Where("team_id = ?", teamID).
+		Where("billable_type = ? AND billable_id = ?", models.BillableTypeTeam, teamID).
 		Where("status IN ?", []enums.SubscriptionStatus{
 			enums.SubscriptionStatusActive,
 			enums.SubscriptionStatusOnTrial,
@@ -106,7 +107,7 @@ func (r *SubscriptionRepository) CountActiveByTeam(ctx context.Context, teamID s
 	var count int64
 	err := r.db.WithContext(ctx).
 		Model(&models.Subscription{}).
-		Where("team_id = ?", teamID).
+		Where("billable_type = ? AND billable_id = ?", models.BillableTypeTeam, teamID).
 		Where("status IN ?", []enums.SubscriptionStatus{
 			enums.SubscriptionStatusActive,
 			enums.SubscriptionStatusOnTrial,
@@ -137,8 +138,8 @@ func (r *SubscriptionRepository) GetTeamSubscriptionInfo(ctx context.Context, te
 	}
 
 	return &models.TeamSubscription{
-		TeamID:         subscription.TeamID,
-		SubscriptionID: subscription.ID,
+		TeamID:         subscription.BillableID,
+		SubscriptionID: fmt.Sprintf("%d", subscription.ID),
 		ProductID:      subscription.ProductID,
 		VariantID:      subscription.VariantID,
 		Status:         subscription.Status,

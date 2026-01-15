@@ -4,34 +4,42 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/enums"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // Order represents a payment order
 type Order struct {
-	basemodels.BaseModel
-	basemodels.SoftDeleteModel
-	TeamID         string            `gorm:"size:26;not null;index" json:"team_id"`
+	ID             uint              `gorm:"primaryKey" json:"id"`
+	BillableType   string            `gorm:"size:255;not null;index:idx_billable" json:"billable_type"`
+	BillableID     string            `gorm:"size:26;not null;index:idx_billable" json:"billable_id"`
 	LemonSqueezyID string            `gorm:"size:255;uniqueIndex;not null" json:"lemon_squeezy_id"`
-	SubscriptionID *string           `gorm:"size:26;index" json:"subscription_id,omitempty"`
 	CustomerID     string            `gorm:"size:255;not null" json:"customer_id"`
-	ProductID      string            `gorm:"size:255;not null" json:"product_id"`
-	VariantID      string            `gorm:"size:255;not null" json:"variant_id"`
-	OrderNumber    string            `gorm:"size:255;not null" json:"order_number"`
-	Currency       string            `gorm:"size:3;not null;default:'USD'" json:"currency"`
-	CurrencyRate   string            `gorm:"size:50" json:"currency_rate"`
+	Identifier     string            `gorm:"size:36;uniqueIndex;not null" json:"identifier"`
+	ProductID      string            `gorm:"size:255;not null;index" json:"product_id"`
+	VariantID      string            `gorm:"size:255;not null;index" json:"variant_id"`
+	OrderNumber    int               `gorm:"uniqueIndex;not null" json:"order_number"`
+	Currency       string            `gorm:"size:3;not null" json:"currency"`
 	Subtotal       int64             `gorm:"not null" json:"subtotal"`
-	DiscountTotal  int64             `gorm:"default:0" json:"discount_total"`
-	Tax            int64             `gorm:"default:0" json:"tax"`
+	DiscountTotal  int64             `gorm:"not null" json:"discount_total"`
+	Tax            int64             `gorm:"not null" json:"tax"`
 	Total          int64             `gorm:"not null" json:"total"`
 	TaxName        *string           `gorm:"size:255" json:"tax_name,omitempty"`
-	Status         enums.OrderStatus `gorm:"size:50;not null;default:'pending'" json:"status"`
+	Status         enums.OrderStatus `gorm:"size:50;not null" json:"status"`
 	ReceiptURL     *string           `gorm:"size:2048" json:"receipt_url,omitempty"`
-	OrderedAt      *time.Time        `json:"ordered_at,omitempty"`
+	Refunded       bool              `gorm:"not null;default:false" json:"refunded"`
 	RefundedAt     *time.Time        `json:"refunded_at,omitempty"`
+	OrderedAt      time.Time         `json:"ordered_at"`
+	CreatedAt      time.Time         `json:"created_at"`
+	UpdatedAt      time.Time         `json:"updated_at"`
+}
 
-	// Relations
-	Subscription *Subscription `gorm:"foreignKey:SubscriptionID" json:"subscription,omitempty"`
+// TeamID returns the team ID (alias for BillableID when BillableType is Team)
+func (o *Order) TeamID() string {
+	return o.BillableID
+}
+
+// TableName returns the table name for GORM
+func (Order) TableName() string {
+	return "lemon_squeezy_orders"
 }
 
 // IsPaid checks if the order is paid

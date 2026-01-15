@@ -19,6 +19,11 @@ type WebhookEvent struct {
 	RetryCount  int                    `gorm:"default:0" json:"retry_count"`
 }
 
+// TableName returns the table name for GORM
+func (WebhookEvent) TableName() string {
+	return "lemon_squeezy_webhook_events"
+}
+
 // MarkProcessed marks the webhook event as processed
 func (w *WebhookEvent) MarkProcessed() {
 	w.Processed = true

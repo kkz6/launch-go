@@ -4,28 +4,40 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/enums"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // Subscription represents a team's subscription to a plan
 type Subscription struct {
-	basemodels.BaseModel
-	basemodels.SoftDeleteModel
-	TeamID         string                   `gorm:"size:26;not null;index" json:"team_id"`
+	ID             uint                     `gorm:"primaryKey" json:"id"`
+	BillableType   string                   `gorm:"size:255;not null;index:idx_billable" json:"billable_type"`
+	BillableID     string                   `gorm:"size:26;not null;index:idx_billable" json:"billable_id"`
+	Type           string                   `gorm:"size:255;not null" json:"type"`
 	LemonSqueezyID string                   `gorm:"size:255;uniqueIndex;not null" json:"lemon_squeezy_id"`
-	OrderID        *string                  `gorm:"size:255" json:"order_id,omitempty"`
+	Status         enums.SubscriptionStatus `gorm:"size:50;not null" json:"status"`
 	ProductID      string                   `gorm:"size:255;not null" json:"product_id"`
 	VariantID      string                   `gorm:"size:255;not null" json:"variant_id"`
-	Name           string                   `gorm:"size:255;not null" json:"name"`
-	Status         enums.SubscriptionStatus `gorm:"size:50;not null;default:'active'" json:"status"`
 	CardBrand      *string                  `gorm:"size:50" json:"card_brand,omitempty"`
 	CardLastFour   *string                  `gorm:"size:4" json:"card_last_four,omitempty"`
+	PauseMode      *string                  `gorm:"size:50" json:"pause_mode,omitempty"`
+	PauseResumesAt *time.Time               `json:"pause_resumes_at,omitempty"`
 	TrialEndsAt    *time.Time               `json:"trial_ends_at,omitempty"`
-	BillingAnchor  int                      `gorm:"default:1" json:"billing_anchor"`
 	RenewsAt       *time.Time               `json:"renews_at,omitempty"`
 	EndsAt         *time.Time               `json:"ends_at,omitempty"`
-	PausedAt       *time.Time               `json:"paused_at,omitempty"`
-	ResumesAt      *time.Time               `json:"resumes_at,omitempty"`
+	CreatedAt      time.Time                `json:"created_at"`
+	UpdatedAt      time.Time                `json:"updated_at"`
+}
+
+// BillableTypeTeam is the billable type for teams
+const BillableTypeTeam = "App\\Models\\Team"
+
+// TeamID returns the team ID (alias for BillableID when BillableType is Team)
+func (s *Subscription) TeamID() string {
+	return s.BillableID
+}
+
+// TableName returns the table name for GORM
+func (Subscription) TableName() string {
+	return "lemon_squeezy_subscriptions"
 }
 
 // IsActive checks if the subscription is active or on trial
