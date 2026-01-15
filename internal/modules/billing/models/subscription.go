@@ -27,8 +27,8 @@ type Subscription struct {
 	UpdatedAt      time.Time                `json:"updated_at"`
 }
 
-// BillableTypeTeam is the billable type for teams
-const BillableTypeTeam = "App\\Models\\Team"
+// BillableTypeTeam is the billable type for teams (matches Laravel's Modules\Auth\Models\Team)
+const BillableTypeTeam = "Modules\\Auth\\Models\\Team"
 
 // TeamID returns the team ID (alias for BillableID when BillableType is Team)
 func (s *Subscription) TeamID() string {
