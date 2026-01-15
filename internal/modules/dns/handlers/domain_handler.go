@@ -168,3 +168,19 @@ func (h *DomainHandler) DeleteDomain(c *fiber.Ctx) error {
 
 	return response.NoContent(c)
 }
+
+// SyncDomain syncs DNS records from the provider to the local database
+func (h *DomainHandler) SyncDomain(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	id := c.Params("id")
+
+	err := h.domainService.SyncDomainRecords(c.Context(), id, teamID)
+	if err != nil {
+		if errors.Is(err, services.ErrDomainNotFound) {
+			return response.NotFound(c, "Domain not found")
+		}
+		return response.Error(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	return response.OK(c, "DNS records synced successfully", nil)
+}

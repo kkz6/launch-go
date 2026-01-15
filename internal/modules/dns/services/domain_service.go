@@ -224,3 +224,69 @@ func (s *DomainService) GetDomainNameservers(ctx context.Context, domain *models
 
 	return dnsProvider.GetNameservers(ctx)
 }
+
+// SyncDomainRecords syncs DNS records from the provider to the local database
+func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID string) error {
+	domain, err := s.domainRepo.FindByIDAndTeam(ctx, domainID, teamID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrDomainNotFound
+		}
+		return err
+	}
+
+	if domain.Provider == nil {
+		return errors.New("domain has no provider configured")
+	}
+
+	// Create provider instance
+	dnsProvider, err := providers.NewProvider(
+		providers.DnsProviderType(domain.Provider.Provider),
+		domain.Provider.Credentials,
+		domain.Provider.AdditionalData,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create provider: %w", err)
+	}
+
+	dnsProvider.SetDomain(domain.Address)
+
+	// Fetch records from provider
+	providerRecords, err := dnsProvider.ListRecords(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to fetch records from provider: %w", err)
+	}
+
+	// Sync records in a transaction
+	return s.domainRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+		// Delete existing records for this domain
+		if err := s.dnsRecordRepo.DeleteByDomain(ctx, domainID); err != nil {
+			return fmt.Errorf("failed to delete existing records: %w", err)
+		}
+
+		// Insert new records from provider
+		for _, pr := range providerRecords {
+			record := &models.DnsRecord{
+				DomainID:   domainID,
+				ProviderID: pr.ID,
+				Type:       enums.RecordType(pr.Type),
+				Name:       pr.Name,
+				Value:      pr.Value,
+				TTL:        pr.TTL,
+				Priority:   pr.Priority,
+				Tag:        pr.Tag,
+				Weight:     pr.Weight,
+				Port:       pr.Port,
+				Flags:      pr.Flags,
+				Comment:    pr.Comment,
+				Proxied:    pr.Proxied,
+			}
+
+			if err := s.dnsRecordRepo.Create(ctx, record); err != nil {
+				s.logger.Warn().Err(err).Str("record", pr.Name).Msg("Failed to create record during sync")
+			}
+		}
+
+		return nil
+	})
+}
