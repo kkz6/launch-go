@@ -103,7 +103,7 @@ func (h *TeamHandler) GetUserTeams(c *fiber.Ctx) error {
 	return response.OK(c, "Teams retrieved", dto.ToTeamsResponse(teams))
 }
 
-// SwitchTeam switches the user's current team
+// SwitchTeam switches the user's current team (from request body)
 func (h *TeamHandler) SwitchTeam(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
 
@@ -117,6 +117,23 @@ func (h *TeamHandler) SwitchTeam(c *fiber.Ctx) error {
 	}
 
 	user, err := h.service.SwitchTeam(c.Context(), userID, req.TeamID)
+	if err != nil {
+		return response.Error(c, fiber.StatusBadRequest, err.Error())
+	}
+
+	return response.OK(c, "Team switched", dto.ToUserResponse(user))
+}
+
+// SwitchTeamByID switches the user's current team using URL parameter
+func (h *TeamHandler) SwitchTeamByID(c *fiber.Ctx) error {
+	userID := c.Locals("userID").(string)
+	teamID := c.Params("teamId")
+
+	if teamID == "" {
+		return response.Error(c, fiber.StatusBadRequest, "Team ID is required")
+	}
+
+	user, err := h.service.SwitchTeam(c.Context(), userID, teamID)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
