@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
@@ -63,10 +64,13 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 		j.LogError(err, "Failed to update site imports", "site_id", site.ID)
 	}
 
-	// Clear pending Caddyfile update flag
+	// Mark site as installed and clear pending flags
+	now := time.Now()
+	site.InstalledAt = &now
+	site.InstallationFailedAt = nil
 	site.PendingCaddyfileUpdateSince = nil
 	if err := j.Ctx.SiteRepo.Update(ctx, site); err != nil {
-		j.LogError(err, "Failed to clear pending Caddyfile update flag")
+		j.LogError(err, "Failed to update site installed status")
 	}
 
 	j.LogInfo("Caddyfile installed successfully", "site_id", site.ID)
@@ -77,6 +81,17 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 // Failed handles job failure
 func (j *InstallCaddyfileJob) Failed(ctx context.Context, err error) {
 	j.LogError(err, "Install Caddyfile job failed", "site_id", j.Payload.SiteID)
+
+	// Mark site installation as failed
+	site, findErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	if findErr != nil {
+		return
+	}
+
+	now := time.Now()
+	site.InstalledAt = nil
+	site.InstallationFailedAt = &now
+	_ = j.Ctx.SiteRepo.Update(ctx, site)
 }
 
 // generateCaddyfileContent generates the Caddyfile content for a site

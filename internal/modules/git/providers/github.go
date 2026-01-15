@@ -79,8 +79,9 @@ func (p *GitHubProvider) generateJWT() (string, error) {
 	return token.SignedString(key)
 }
 
-// getInstallationToken gets an access token for an installation
-func (p *GitHubProvider) getInstallationToken(ctx context.Context, installationID string) (string, error) {
+// GetInstallationToken gets an access token for an installation
+// Implements Provider interface
+func (p *GitHubProvider) GetInstallationToken(ctx context.Context, installationID string) (string, error) {
 	jwtToken, err := p.generateJWT()
 	if err != nil {
 		return "", err
@@ -213,7 +214,7 @@ func (p *GitHubProvider) GetAllInstallations(ctx context.Context) ([]AppInstalla
 
 // GetInstallationRepositories gets repositories for an installation
 func (p *GitHubProvider) GetInstallationRepositories(ctx context.Context, installationID string) ([]map[string]interface{}, error) {
-	token, err := p.getInstallationToken(ctx, installationID)
+	token, err := p.GetInstallationToken(ctx, installationID)
 	if err != nil {
 		return nil, err
 	}
@@ -268,7 +269,7 @@ func (p *GitHubProvider) GetInstallationRepositories(ctx context.Context, instal
 
 // GetRepository gets a specific repository
 func (p *GitHubProvider) GetRepository(ctx context.Context, installationID, owner, repo string) (map[string]interface{}, error) {
-	token, err := p.getInstallationToken(ctx, installationID)
+	token, err := p.GetInstallationToken(ctx, installationID)
 	if err != nil {
 		return nil, err
 	}
@@ -349,7 +350,7 @@ func (p *GitHubProvider) DeployKey(ctx context.Context, sourceControlID, title, 
 		return errors.New("no source control configured")
 	}
 
-	token, err := p.getInstallationToken(ctx, *p.sourceControl.InstallationID)
+	token, err := p.GetInstallationToken(ctx, *p.sourceControl.InstallationID)
 	if err != nil {
 		return err
 	}
@@ -395,7 +396,7 @@ func (p *GitHubProvider) GetLastCommit(ctx context.Context, sourceControlID, rep
 		return nil, errors.New("no source control configured")
 	}
 
-	token, err := p.getInstallationToken(ctx, *p.sourceControl.InstallationID)
+	token, err := p.GetInstallationToken(ctx, *p.sourceControl.InstallationID)
 	if err != nil {
 		return nil, err
 	}

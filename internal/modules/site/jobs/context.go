@@ -4,6 +4,8 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
+	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
@@ -15,20 +17,22 @@ import (
 
 // JobContext holds dependencies for site job execution
 type JobContext struct {
-	DB              *gorm.DB
-	Logger          *zerolog.Logger
-	WS              jobs.Broadcaster
-	Dispatcher      taskrunner.TaskDispatcher
-	Queue           *queue.Client
-	SiteRepo        *repositories.SiteRepository
-	CommandRepo     *repositories.CommandRepository
-	DeploymentRepo  *repositories.DeploymentRepository
-	CertificateRepo *repositories.CertificateRepository
-	QueueRepo       *repositories.QueueRepository
-	RedirectRepo    *repositories.RedirectRepository
-	ReleaseRepo     *repositories.ReleaseRepository
-	ServerRepo      *serverrepos.Repository
-	TaskRunnerDeps  *servertasks.TaskRunnerDeps
+	DB                *gorm.DB
+	Logger            *zerolog.Logger
+	WS                jobs.Broadcaster
+	Dispatcher        taskrunner.TaskDispatcher
+	Queue             *queue.Client
+	SiteRepo          *repositories.SiteRepository
+	CommandRepo       *repositories.CommandRepository
+	DeploymentRepo    *repositories.DeploymentRepository
+	CertificateRepo   *repositories.CertificateRepository
+	QueueRepo         *repositories.QueueRepository
+	RedirectRepo      *repositories.RedirectRepository
+	ReleaseRepo       *repositories.ReleaseRepository
+	ServerRepo        *serverrepos.Repository
+	SourceControlRepo *gitrepos.SourceControlRepository
+	ProviderFactory   *gitproviders.ProviderFactory
+	TaskRunnerDeps    *servertasks.TaskRunnerDeps
 }
 
 // NewJobContext creates a new site job context
@@ -46,21 +50,25 @@ func NewJobContext(
 	redirectRepo *repositories.RedirectRepository,
 	releaseRepo *repositories.ReleaseRepository,
 	serverRepo *serverrepos.Repository,
+	sourceControlRepo *gitrepos.SourceControlRepository,
+	providerFactory *gitproviders.ProviderFactory,
 ) *JobContext {
 	return &JobContext{
-		DB:              db,
-		Logger:          logger,
-		WS:              ws,
-		Dispatcher:      dispatcher,
-		Queue:           queueClient,
-		SiteRepo:        siteRepo,
-		CommandRepo:     commandRepo,
-		DeploymentRepo:  deploymentRepo,
-		CertificateRepo: certificateRepo,
-		QueueRepo:       queueRepo,
-		RedirectRepo:    redirectRepo,
-		ReleaseRepo:     releaseRepo,
-		ServerRepo:      serverRepo,
+		DB:                db,
+		Logger:            logger,
+		WS:                ws,
+		Dispatcher:        dispatcher,
+		Queue:             queueClient,
+		SiteRepo:          siteRepo,
+		CommandRepo:       commandRepo,
+		DeploymentRepo:    deploymentRepo,
+		CertificateRepo:   certificateRepo,
+		QueueRepo:         queueRepo,
+		RedirectRepo:      redirectRepo,
+		ReleaseRepo:       releaseRepo,
+		ServerRepo:        serverRepo,
+		SourceControlRepo: sourceControlRepo,
+		ProviderFactory:   providerFactory,
 		TaskRunnerDeps: &servertasks.TaskRunnerDeps{
 			DB:         db,
 			Queue:      queueClient,

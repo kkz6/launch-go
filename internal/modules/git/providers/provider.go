@@ -56,6 +56,10 @@ type Provider interface {
 
 	// GetLastCommit gets the last commit for a repository and branch
 	GetLastCommit(ctx context.Context, sourceControlID, repo, branch string) (*CommitData, error)
+
+	// GetInstallationToken gets a temporary access token for an installation
+	// Used for HTTPS-based git cloning during deployments
+	GetInstallationToken(ctx context.Context, installationID string) (string, error)
 }
 
 // ProviderConfig holds configuration for a git provider

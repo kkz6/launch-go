@@ -140,6 +140,21 @@ func (p *BitbucketProvider) GetLastCommit(ctx context.Context, sourceControlID, 
 	return nil, ErrProviderNotConfigured
 }
 
+// GetInstallationToken returns the OAuth access token for Bitbucket
+// Bitbucket uses OAuth tokens stored in source control data, not app installation tokens
+func (p *BitbucketProvider) GetInstallationToken(ctx context.Context, installationID string) (string, error) {
+	if p.sourceControl == nil || p.sourceControl.ProviderData == nil {
+		return "", ErrAuthenticationFailed
+	}
+
+	token, ok := p.sourceControl.ProviderData["access_token"].(string)
+	if !ok || token == "" {
+		return "", ErrAuthenticationFailed
+	}
+
+	return token, nil
+}
+
 // makeAuthenticatedRequest makes an authenticated request to the Bitbucket API
 func (p *BitbucketProvider) makeAuthenticatedRequest(ctx context.Context, method, url string, body io.Reader) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, method, url, body)

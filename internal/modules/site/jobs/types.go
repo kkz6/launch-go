@@ -22,6 +22,7 @@ const (
 	TypeInstallCaddyfile    = "site:install_caddyfile"
 	TypeUninstallCaddyfile  = "site:uninstall_caddyfile"
 	TypeUpdateCaddyfile     = "site:update_caddyfile"
+	TypeUninstallSite       = "site:uninstall"
 )
 
 // RunCommandPayload holds data for running a command on a site
@@ -97,6 +98,13 @@ type UninstallRedirectPayload struct {
 type CaddyfilePayload struct {
 	SiteID string  `json:"site_id"`
 	UserID *string `json:"user_id,omitempty"`
+}
+
+// UninstallSitePayload holds data for site uninstallation
+type UninstallSitePayload struct {
+	SiteID   string  `json:"site_id"`
+	ServerID string  `json:"server_id"`
+	UserID   *string `json:"user_id,omitempty"`
 }
 
 // NewDeployTask creates a deploy job
@@ -230,5 +238,14 @@ func NewUpdateCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) 
 	return jobs.NewTask(TypeUpdateCaddyfile, CaddyfilePayload{
 		SiteID: siteID,
 		UserID: userID,
+	})
+}
+
+// NewUninstallSiteTask creates an uninstall site job
+func NewUninstallSiteTask(siteID, serverID string, userID *string) (*asynq.Task, error) {
+	return jobs.NewTask(TypeUninstallSite, UninstallSitePayload{
+		SiteID:   siteID,
+		ServerID: serverID,
+		UserID:   userID,
 	})
 }

@@ -139,6 +139,21 @@ func (p *GitLabProvider) GetLastCommit(ctx context.Context, sourceControlID, rep
 	return nil, ErrProviderNotConfigured
 }
 
+// GetInstallationToken returns the OAuth access token for GitLab
+// GitLab uses OAuth tokens stored in source control data, not app installation tokens
+func (p *GitLabProvider) GetInstallationToken(ctx context.Context, installationID string) (string, error) {
+	if p.sourceControl == nil || p.sourceControl.ProviderData == nil {
+		return "", ErrAuthenticationFailed
+	}
+
+	token, ok := p.sourceControl.ProviderData["access_token"].(string)
+	if !ok || token == "" {
+		return "", ErrAuthenticationFailed
+	}
+
+	return token, nil
+}
+
 // generateSignature generates a webhook signature for testing
 func (p *GitLabProvider) generateSignature(payload []byte) string {
 	mac := hmac.New(sha256.New, []byte(p.config.WebhookSecret))

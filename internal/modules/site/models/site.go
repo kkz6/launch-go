@@ -1,7 +1,12 @@
 package models
 
 import (
+	"crypto/rand"
+	"database/sql/driver"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
+	mrand "math/rand"
 	"slices"
 	"strings"
 	"time"
@@ -31,6 +36,8 @@ type Site struct {
 	QueueDeployments             bool             `gorm:"column:queue_deployments;default:false" json:"queue_deployments"`
 	AutoRestartQueue             bool             `gorm:"column:auto_restart_queue;default:false" json:"auto_restart_queue"`
 	Features                     basemodels.JSONStringSlice `gorm:"type:json" json:"features,omitempty"`
+	EnabledFeatures              EnabledFeaturesSlice       `gorm:"column:enabled_features;type:json" json:"enabled_features,omitempty"`
+	PendingFeatures              basemodels.JSONStringSlice `gorm:"column:pending_features;type:json" json:"pending_features,omitempty"`
 	SourceControlRepositoriesID  *uint64          `gorm:"column:source_control_repositories_id;index" json:"source_control_repositories_id,omitempty"`
 	RepositoryBranch             *string          `gorm:"column:repository_branch;type:varchar(255)" json:"repository_branch,omitempty"`
 	DeployToken                  *string          `gorm:"column:deploy_token;type:varchar(32)" json:"-"`
@@ -143,4 +150,161 @@ func (s *Site) GetRepositoryBranch() string {
 	}
 
 	return "main"
+}
+
+// GenerateEnvironmentVariables generates framework-specific environment variables
+func (s *Site) GenerateEnvironmentVariables() map[string]string {
+	variables := make(map[string]string)
+
+	switch s.Type {
+	case enums.SiteTypeLaravel:
+		variables["APP_KEY"] = generateLaravelAppKey()
+		variables["APP_URL"] = s.GetURL()
+
+	case enums.SiteTypeWordpress:
+		wpSaltKeys := []string{
+			"AUTH_KEY", "AUTH_SALT", "LOGGED_IN_KEY", "LOGGED_IN_SALT",
+			"NONCE_KEY", "NONCE_SALT", "SECURE_AUTH_KEY", "SECURE_AUTH_SALT",
+		}
+		for _, key := range wpSaltKeys {
+			variables[key] = escapeWordpressSpecialChars(generateWordpressKey())
+		}
+	}
+
+	return variables
+}
+
+// generateLaravelAppKey generates a Laravel-style application key
+func generateLaravelAppKey() string {
+	key := make([]byte, 32)
+	if _, err := rand.Read(key); err != nil {
+		// Fallback to math/rand if crypto/rand fails
+		for i := range key {
+			key[i] = byte(mrand.Intn(256))
+		}
+	}
+	return "base64:" + base64.StdEncoding.EncodeToString(key)
+}
+
+// generateWordpressKey generates a random key for WordPress
+func generateWordpressKey() string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()-_ []{}<>~`+=,.;:/?|"
+	key := make([]byte, 64)
+	for i := range key {
+		key[i] = charset[mrand.Intn(len(charset))]
+	}
+	return string(key)
+}
+
+// escapeWordpressSpecialChars escapes special characters for WordPress config
+func escapeWordpressSpecialChars(s string) string {
+	s = strings.ReplaceAll(s, "&", "\\&")
+	s = strings.ReplaceAll(s, "!", "\\!")
+	s = strings.ReplaceAll(s, "$", "\\$")
+	return s
+}
+
+// EnabledFeature represents an enabled Laravel feature with metadata
+type EnabledFeature struct {
+	Name      string     `json:"name"`
+	QueueID   *string    `json:"queue_id,omitempty"`
+	CronID    *string    `json:"cron_id,omitempty"`
+	EnabledAt *time.Time `json:"enabled_at,omitempty"`
+}
+
+// EnabledFeaturesSlice is a slice of EnabledFeature that handles JSON serialization
+type EnabledFeaturesSlice []EnabledFeature
+
+// Scan implements sql.Scanner for EnabledFeaturesSlice
+func (e *EnabledFeaturesSlice) Scan(value interface{}) error {
+	if value == nil {
+		*e = nil
+		return nil
+	}
+
+	var bytes []byte
+	switch v := value.(type) {
+	case []byte:
+		bytes = v
+	case string:
+		bytes = []byte(v)
+	default:
+		return fmt.Errorf("failed to scan EnabledFeaturesSlice: %T", value)
+	}
+
+	if len(bytes) == 0 || string(bytes) == "null" {
+		*e = nil
+		return nil
+	}
+
+	return json.Unmarshal(bytes, e)
+}
+
+// Value implements driver.Valuer for EnabledFeaturesSlice
+func (e EnabledFeaturesSlice) Value() (driver.Value, error) {
+	if e == nil {
+		return nil, nil
+	}
+	return json.Marshal(e)
+}
+
+// HasEnabledFeature checks if a specific feature is enabled
+func (s *Site) HasEnabledFeature(featureName string) bool {
+	for _, f := range s.EnabledFeatures {
+		if f.Name == featureName {
+			return true
+		}
+	}
+	return false
+}
+
+// GetEnabledFeature returns the enabled feature data if found
+func (s *Site) GetEnabledFeature(featureName string) *EnabledFeature {
+	for _, f := range s.EnabledFeatures {
+		if f.Name == featureName {
+			return &f
+		}
+	}
+	return nil
+}
+
+// HasPendingFeature checks if a feature is pending enable/disable
+func (s *Site) HasPendingFeature(featureName string) bool {
+	return slices.Contains(s.PendingFeatures, featureName)
+}
+
+// AddEnabledFeature adds a feature to the enabled features list
+func (s *Site) AddEnabledFeature(feature EnabledFeature) {
+	// Remove if already exists
+	s.RemoveEnabledFeature(feature.Name)
+	s.EnabledFeatures = append(s.EnabledFeatures, feature)
+}
+
+// RemoveEnabledFeature removes a feature from the enabled features list
+func (s *Site) RemoveEnabledFeature(featureName string) {
+	result := make([]EnabledFeature, 0, len(s.EnabledFeatures))
+	for _, f := range s.EnabledFeatures {
+		if f.Name != featureName {
+			result = append(result, f)
+		}
+	}
+	s.EnabledFeatures = result
+}
+
+// AddPendingFeature adds a feature to the pending features list
+func (s *Site) AddPendingFeature(featureName string) {
+	if !s.HasPendingFeature(featureName) {
+		s.PendingFeatures = append(s.PendingFeatures, featureName)
+	}
+}
+
+// RemovePendingFeature removes a feature from the pending features list
+func (s *Site) RemovePendingFeature(featureName string) {
+	result := make([]string, 0, len(s.PendingFeatures))
+	for _, f := range s.PendingFeatures {
+		if f != featureName {
+			result = append(result, f)
+		}
+	}
+	s.PendingFeatures = result
 }
