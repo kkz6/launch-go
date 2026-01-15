@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/dto"
+	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/repositories"
 	"github.com/kkz6/launch-go/internal/modules/notification/services"
 	"github.com/kkz6/launch-go/internal/pkg/response"
@@ -224,4 +225,19 @@ func (h *NotificationChannelHandler) Reconnect(c *fiber.Ctx) error {
 // GetService returns the underlying service for use by other modules
 func (h *NotificationChannelHandler) GetService() *services.NotificationChannelService {
 	return h.service
+}
+
+// ListChannelTypes returns all available notification channel types
+func (h *NotificationChannelHandler) ListChannelTypes(c *fiber.Ctx) error {
+	channelTypes := enums.AllChannelTypes()
+
+	result := make([]dto.ChannelTypeResponse, len(channelTypes))
+	for i, ct := range channelTypes {
+		result[i] = dto.ChannelTypeResponse{
+			Type:  ct.String(),
+			Label: ct.Label(),
+		}
+	}
+
+	return response.OK(c, "Notification channel types retrieved", result)
 }

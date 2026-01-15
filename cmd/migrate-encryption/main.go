@@ -9,9 +9,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"flag"
 	"fmt"
 	"log"
-	"os"
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/database/serializers"
@@ -29,8 +29,27 @@ type LaravelPayload struct {
 }
 
 var encryptionKey []byte
+var debugMode bool
 
 func main() {
+	// Parse command line flags
+	fix := flag.Bool("fix", false, "Fix double-encrypted data")
+	migrate := flag.Bool("migrate", false, "Migrate Laravel encryption to Go format")
+	debug := flag.Bool("debug", false, "Enable debug output")
+	check := flag.Bool("check", false, "Check encryption status without making changes")
+
+	// Table selection flags
+	servers := flag.Bool("servers", false, "Process servers table")
+	serverProviders := flag.Bool("server-providers", false, "Process server_providers table")
+	domainProviders := flag.Bool("domain-providers", false, "Process domain_providers table")
+	tasks := flag.Bool("tasks", false, "Process tasks table")
+	crons := flag.Bool("crons", false, "Process crons table")
+	all := flag.Bool("all", false, "Process all tables")
+
+	flag.Parse()
+
+	debugMode = *debug
+
 	// Load config
 	viper.SetConfigName(".env")
 	viper.SetConfigType("env")
@@ -75,25 +94,286 @@ func main() {
 		log.Fatalf("Failed to connect to database: %v", err)
 	}
 
-	// Check for --fix flag to fix double-encrypted data
-	if len(os.Args) > 1 && os.Args[1] == "--fix" {
+	// Determine which tables to process
+	processAll := *all || (!*servers && !*serverProviders && !*domainProviders && !*tasks && !*crons)
+	processServers := *servers || processAll
+	processServerProviders := *serverProviders || processAll
+	processDomainProviders := *domainProviders || processAll
+	processTasks := *tasks || processAll
+	processCrons := *crons || processAll
+
+	// Check mode - just show status
+	if *check {
+		log.Println("🔍 Checking encryption status...")
+		if processServers {
+			checkServers(db)
+		}
+		if processServerProviders {
+			checkServerProviders(db)
+		}
+		if processDomainProviders {
+			checkDomainProviders(db)
+		}
+		if processTasks {
+			checkTasks(db)
+		}
+		if processCrons {
+			checkCrons(db)
+		}
+		return
+	}
+
+	// Fix mode
+	if *fix {
 		log.Println("🔧 Fixing double-encrypted data...")
-		fixDoubleEncryptedServers(db)
-		fixDoubleEncryptedServerProviders(db)
-		fixDoubleEncryptedDomainProviders(db)
-		fixDoubleEncryptedCrons(db)
+		if processServers {
+			fixDoubleEncryptedServers(db)
+		}
+		if processServerProviders {
+			fixDoubleEncryptedServerProviders(db)
+		}
+		if processDomainProviders {
+			fixDoubleEncryptedDomainProviders(db)
+		}
+		if processCrons {
+			fixDoubleEncryptedCrons(db)
+		}
+		if processTasks {
+			fixDoubleEncryptedTasks(db)
+		}
 		log.Println("✅ Fix completed!")
 		return
 	}
 
-	// Migrate each table
-	migrateServers(db)
-	migrateServerProviders(db)
-	migrateDomainProviders(db)
-	migrateTasks(db)
-	migrateCrons(db)
+	// Migrate mode
+	if *migrate {
+		log.Println("🔄 Migrating encryption...")
+		if processServers {
+			migrateServers(db)
+		}
+		if processServerProviders {
+			migrateServerProviders(db)
+		}
+		if processDomainProviders {
+			migrateDomainProviders(db)
+		}
+		if processTasks {
+			migrateTasks(db)
+		}
+		if processCrons {
+			migrateCrons(db)
+		}
+		log.Println("✅ Migration completed!")
+		return
+	}
 
-	log.Println("✅ Migration completed successfully!")
+	// Show usage if no action specified
+	fmt.Println("Usage: migrate-encryption [action] [options]")
+	fmt.Println("")
+	fmt.Println("Actions:")
+	fmt.Println("  -migrate    Migrate Laravel encryption to Go format")
+	fmt.Println("  -fix        Fix double-encrypted data")
+	fmt.Println("  -check      Check encryption status without changes")
+	fmt.Println("")
+	fmt.Println("Table selection (default: all):")
+	fmt.Println("  -all              Process all tables")
+	fmt.Println("  -servers          Process servers table")
+	fmt.Println("  -server-providers Process server_providers table")
+	fmt.Println("  -domain-providers Process domain_providers table")
+	fmt.Println("  -tasks            Process tasks table")
+	fmt.Println("  -crons            Process crons table")
+	fmt.Println("")
+	fmt.Println("Options:")
+	fmt.Println("  -debug      Enable debug output")
+	fmt.Println("")
+	fmt.Println("Examples:")
+	fmt.Println("  migrate-encryption -check -servers")
+	fmt.Println("  migrate-encryption -fix -servers -debug")
+	fmt.Println("  migrate-encryption -migrate -all")
+}
+
+// checkServers checks the encryption status of servers
+func checkServers(db *gorm.DB) {
+	log.Println("🔍 Checking servers table...")
+
+	type Server struct {
+		ID               string  `gorm:"primaryKey"`
+		Name             string  `gorm:"column:name"`
+		PublicKey        *string `gorm:"column:public_key"`
+		PrivateKey       *string `gorm:"column:private_key"`
+		UserPublicKey    *string `gorm:"column:user_public_key"`
+		Password         *string `gorm:"column:password"`
+		DatabasePassword *string `gorm:"column:database_password"`
+	}
+
+	var servers []Server
+	if err := db.Table("servers").Find(&servers).Error; err != nil {
+		log.Printf("❌ Failed to fetch servers: %v", err)
+		return
+	}
+
+	for _, server := range servers {
+		log.Printf("\n  Server: %s (%s)", server.ID, server.Name)
+
+		checkField("private_key", server.PrivateKey)
+		checkField("public_key", server.PublicKey)
+		checkField("user_public_key", server.UserPublicKey)
+		checkField("password", server.Password)
+		checkField("database_password", server.DatabasePassword)
+	}
+}
+
+// checkField checks a single encrypted field and reports its status
+func checkField(name string, value *string) {
+	if value == nil || *value == "" {
+		log.Printf("    %s: (empty)", name)
+		return
+	}
+
+	raw := *value
+
+	// Try Go decryption
+	decrypted1, err1 := serializers.Decrypt(raw)
+	if err1 != nil {
+		// Check if it's Laravel format
+		if isLaravelEncrypted(raw) {
+			log.Printf("    %s: ⚠️  Laravel format (needs migration)", name)
+		} else {
+			log.Printf("    %s: ❌ Cannot decrypt (error: %v)", name, err1)
+		}
+		return
+	}
+
+	// Check if decrypted value looks like plaintext
+	if isValidPlaintext(decrypted1) {
+		// Try to decrypt again to check for double-encryption
+		decrypted2, err2 := serializers.Decrypt(decrypted1)
+		if err2 == nil && decrypted2 != decrypted1 && isValidPlaintext(decrypted2) {
+			log.Printf("    %s: ⚠️  Double-encrypted! (needs fix)", name)
+			if debugMode {
+				log.Printf("      Layer 1 (%d chars): %s...", len(decrypted1), truncate(decrypted1, 50))
+				log.Printf("      Layer 2 (%d chars): %s...", len(decrypted2), truncate(decrypted2, 50))
+			}
+		} else {
+			log.Printf("    %s: ✅ OK (Go format)", name)
+			if debugMode {
+				log.Printf("      Decrypted (%d chars): %s...", len(decrypted1), truncate(decrypted1, 50))
+			}
+		}
+	} else {
+		// Decrypted but doesn't look like plaintext - might be multi-layer
+		log.Printf("    %s: ⚠️  Decrypted but unclear format", name)
+		if debugMode {
+			log.Printf("      Raw length: %d", len(raw))
+			log.Printf("      Decrypted length: %d", len(decrypted1))
+			log.Printf("      First 100 chars: %s", truncate(decrypted1, 100))
+		}
+	}
+}
+
+func truncate(s string, max int) string {
+	if len(s) <= max {
+		return s
+	}
+	return s[:max]
+}
+
+func isLaravelEncrypted(data string) bool {
+	jsonData, err := base64.StdEncoding.DecodeString(data)
+	if err != nil {
+		return false
+	}
+	var payload LaravelPayload
+	return json.Unmarshal(jsonData, &payload) == nil && payload.IV != "" && payload.Value != ""
+}
+
+// checkServerProviders checks the encryption status of server_providers
+func checkServerProviders(db *gorm.DB) {
+	log.Println("🔍 Checking server_providers table...")
+
+	type ServerProvider struct {
+		ID          string `gorm:"primaryKey"`
+		Name        string `gorm:"column:name"`
+		Credentials string `gorm:"column:credentials"`
+	}
+
+	var providers []ServerProvider
+	if err := db.Table("server_providers").Find(&providers).Error; err != nil {
+		log.Printf("❌ Failed to fetch server_providers: %v", err)
+		return
+	}
+
+	for _, provider := range providers {
+		log.Printf("\n  Provider: %s (%s)", provider.ID, provider.Name)
+		creds := provider.Credentials
+		checkField("credentials", &creds)
+	}
+}
+
+// checkDomainProviders checks the encryption status of domain_providers
+func checkDomainProviders(db *gorm.DB) {
+	log.Println("🔍 Checking domain_providers table...")
+
+	type DomainProvider struct {
+		ID          string `gorm:"primaryKey"`
+		Name        string `gorm:"column:name"`
+		Credentials string `gorm:"column:credentials"`
+	}
+
+	var providers []DomainProvider
+	if err := db.Table("domain_providers").Find(&providers).Error; err != nil {
+		log.Printf("❌ Failed to fetch domain_providers: %v", err)
+		return
+	}
+
+	for _, provider := range providers {
+		log.Printf("\n  Provider: %s (%s)", provider.ID, provider.Name)
+		creds := provider.Credentials
+		checkField("credentials", &creds)
+	}
+}
+
+// checkTasks checks the encryption status of tasks
+func checkTasks(db *gorm.DB) {
+	log.Println("🔍 Checking tasks table (sample of 5)...")
+
+	type Task struct {
+		ID     string  `gorm:"primaryKey"`
+		Output *string `gorm:"column:output"`
+	}
+
+	var tasks []Task
+	if err := db.Table("tasks").Where("output IS NOT NULL AND output != ''").Limit(5).Find(&tasks).Error; err != nil {
+		log.Printf("❌ Failed to fetch tasks: %v", err)
+		return
+	}
+
+	for _, task := range tasks {
+		log.Printf("\n  Task: %s", task.ID)
+		checkField("output", task.Output)
+	}
+}
+
+// checkCrons checks the encryption status of crons
+func checkCrons(db *gorm.DB) {
+	log.Println("🔍 Checking crons table...")
+
+	type Cron struct {
+		ID      string `gorm:"primaryKey"`
+		Command string `gorm:"column:command"`
+	}
+
+	var crons []Cron
+	if err := db.Table("crons").Find(&crons).Error; err != nil {
+		log.Printf("❌ Failed to fetch crons: %v", err)
+		return
+	}
+
+	for _, cron := range crons {
+		log.Printf("\n  Cron: %s", cron.ID)
+		cmd := cron.Command
+		checkField("command", &cmd)
+	}
 }
 
 // fixDoubleEncryptedServers fixes servers that were accidentally double-encrypted
@@ -236,13 +516,32 @@ func isValidPlaintext(data string) bool {
 	if strings.HasPrefix(data, "-----BEGIN") {
 		return true
 	}
+	// SSH public keys
+	if strings.HasPrefix(data, "ssh-") {
+		return true
+	}
 	// JSON
 	if strings.HasPrefix(data, "{") || strings.HasPrefix(data, "[") {
 		return true
 	}
-	// Short strings (passwords, tokens) that aren't base64-like
-	// Real passwords are usually < 64 chars and don't look like base64
-	if len(data) <= 64 && !looksLikeBase64(data) {
+	// Short strings - passwords, tokens (typically <= 64 chars)
+	// Even if they look like base64, short alphanumeric strings are likely passwords
+	if len(data) <= 64 {
+		return true
+	}
+	// Task outputs - contains newlines, common shell output patterns
+	if strings.Contains(data, "\n") {
+		return true
+	}
+	// Common command output patterns
+	if strings.Contains(data, "exit") || strings.Contains(data, "error") ||
+		strings.Contains(data, "success") || strings.Contains(data, "failed") ||
+		strings.Contains(data, "/") || strings.Contains(data, ":") {
+		return true
+	}
+	// Cron commands - typically contain paths or common commands
+	if strings.HasPrefix(data, "/") || strings.HasPrefix(data, "php ") ||
+		strings.HasPrefix(data, "cd ") || strings.Contains(data, "artisan") {
 		return true
 	}
 	return false
@@ -648,6 +947,38 @@ func migrateCrons(db *gorm.DB) {
 	}
 
 	log.Printf("✅ Migrated %d/%d crons", migrated, len(crons))
+}
+
+// fixDoubleEncryptedTasks fixes tasks that were accidentally double-encrypted
+func fixDoubleEncryptedTasks(db *gorm.DB) {
+	log.Println("🔄 Checking tasks table for double-encrypted data...")
+
+	type Task struct {
+		ID     string  `gorm:"primaryKey"`
+		Output *string `gorm:"column:output"`
+	}
+
+	var tasks []Task
+	if err := db.Table("tasks").Find(&tasks).Error; err != nil {
+		log.Printf("❌ Failed to fetch tasks: %v", err)
+		return
+	}
+
+	fixed := 0
+	for _, task := range tasks {
+		if task.Output != nil && *task.Output != "" {
+			if fixedValue, ok := fixDoubleEncryptedValue(*task.Output); ok {
+				if err := db.Table("tasks").Where("id = ?", task.ID).
+					Update("output", fixedValue).Error; err != nil {
+					log.Printf("❌ Failed to fix task %s: %v", task.ID, err)
+				} else {
+					fixed++
+				}
+			}
+		}
+	}
+
+	log.Printf("✅ Fixed %d/%d tasks", fixed, len(tasks))
 }
 
 // fixDoubleEncryptedCrons fixes crons that were accidentally double-encrypted

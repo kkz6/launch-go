@@ -54,6 +54,23 @@ func (h *Handler) List(c *fiber.Ctx) error {
 	return response.OK(c, "Servers retrieved", result)
 }
 
+// ListArchived returns all archived servers for the team
+func (h *Handler) ListArchived(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+
+	servers, err := h.service.ListArchivedServers(c.Context(), teamID)
+	if err != nil {
+		return response.InternalError(c, "Failed to fetch archived servers")
+	}
+
+	result := make([]dto.ServerResponse, len(servers))
+	for i, server := range servers {
+		result[i] = dto.ToServerResponse(&server)
+	}
+
+	return response.OK(c, "Archived servers retrieved", result)
+}
+
 // Create creates a new server
 func (h *Handler) Create(c *fiber.Ctx) error {
 	teamID := c.Locals("teamID").(string)

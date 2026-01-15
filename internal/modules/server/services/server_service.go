@@ -26,6 +26,11 @@ func (s *Service) ListServers(ctx context.Context, teamID string) ([]models.Serv
 	return s.repo.FindAllServersByTeam(ctx, teamID)
 }
 
+// ListArchivedServers returns all archived servers for a team
+func (s *Service) ListArchivedServers(ctx context.Context, teamID string) ([]models.Server, error) {
+	return s.repo.FindArchivedServersByTeam(ctx, teamID)
+}
+
 // ListServersPaginated returns servers with pagination
 func (s *Service) ListServersPaginated(ctx context.Context, teamID string, page, perPage int) ([]models.Server, int64, error) {
 	offset := (page - 1) * perPage

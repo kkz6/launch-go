@@ -12,12 +12,18 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	"github.com/kkz6/launch-go/internal/modules/notification/repositories"
 	"github.com/kkz6/launch-go/internal/modules/notification/services"
+	"github.com/kkz6/launch-go/internal/pkg/app"
 )
 
 // Module represents the notification module
 type Module struct {
 	handler *handlers.NotificationChannelHandler
 	config  *config.Config
+}
+
+// Name returns the module name
+func (m *Module) Name() string {
+	return "notification"
 }
 
 // NewModule creates a new notification module
@@ -32,6 +38,11 @@ func NewModule(db *gorm.DB, cfg *config.Config, logger *zerolog.Logger) *Module 
 		handler: handler,
 		config:  cfg,
 	}
+}
+
+// NewModuleFromContext creates a new notification module from application context
+func NewModuleFromContext(ctx *app.Context) *Module {
+	return NewModule(ctx.DB, ctx.Config, ctx.Logger)
 }
 
 // NewModuleWithDependencies creates a new notification module with custom dependencies (for testing)
@@ -50,9 +61,10 @@ func NewModuleWithDependencies(
 	}
 }
 
-// RegisterRoutes registers the notification routes
-func (m *Module) RegisterRoutes(router fiber.Router) {
-	notifications := router.Group("/settings/notifications", middleware.Auth(m.config.JWT.Secret))
+// RegisterRoutes registers the notification routes (implements RouteRegistrar interface)
+func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
+	// Settings notifications routes
+	notifications := router.Group("/settings/notifications", authMiddleware, middleware.TeamScope())
 
 	// CRUD routes
 	notifications.Get("/", m.handler.Index)
@@ -66,6 +78,10 @@ func (m *Module) RegisterRoutes(router fiber.Router) {
 	notifications.Post("/:id/default", m.handler.SetDefault)
 	notifications.Post("/:id/disconnect", m.handler.Disconnect)
 	notifications.Post("/:id/reconnect", m.handler.Reconnect)
+
+	// Notification channels (available channel types)
+	channelsGroup := router.Group("/notification-channels", authMiddleware, middleware.TeamScope())
+	channelsGroup.Get("/", m.handler.ListChannelTypes)
 }
 
 // GetService returns the notification service (for use by other modules)
