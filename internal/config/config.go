@@ -15,6 +15,7 @@ type Config struct {
 	Cors     CorsConfig
 	Queue    QueueConfig
 	Billing  BillingConfig
+	Git      GitConfig
 }
 
 // Load loads all configuration from environment variables and .env file
@@ -43,6 +44,7 @@ func Load() (*Config, error) {
 		Cors:     loadCorsConfig(),
 		Queue:    loadQueueConfig(),
 		Billing:  loadBillingConfig(),
+		Git:      loadGitConfig(),
 	}, nil
 }
 
@@ -55,4 +57,5 @@ func setDefaults() {
 	setCorsDefaults()
 	setQueueDefaults()
 	setBillingDefaults()
+	setGitDefaults()
 }
