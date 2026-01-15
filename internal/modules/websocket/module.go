@@ -12,10 +12,11 @@ import (
 
 // Module is the WebSocket module that manages all WebSocket routes
 type Module struct {
-	hub             *ws.Hub
-	terminalHandler *handlers.TerminalHandler
-	logsHandler     *handlers.LogsHandler
-	jwtSecret       string
+	hub                  *ws.Hub
+	terminalHandler      *handlers.TerminalHandler
+	logsHandler          *handlers.LogsHandler
+	serviceStatusHandler *handlers.ServiceStatusHandler
+	jwtSecret            string
 }
 
 // Ensure Module implements required interfaces
@@ -26,10 +27,11 @@ var _ app.Shutdownable = (*Module)(nil)
 // NewModule creates a new WebSocket module
 func NewModule(hub *ws.Hub, db *gorm.DB, jwtSecret string, logger *zerolog.Logger) *Module {
 	return &Module{
-		hub:             hub,
-		terminalHandler: handlers.NewTerminalHandler(db, jwtSecret, *logger),
-		logsHandler:     handlers.NewLogsHandler(db, jwtSecret, *logger),
-		jwtSecret:       jwtSecret,
+		hub:                  hub,
+		terminalHandler:      handlers.NewTerminalHandler(db, jwtSecret, *logger),
+		logsHandler:          handlers.NewLogsHandler(db, jwtSecret, *logger),
+		serviceStatusHandler: handlers.NewServiceStatusHandler(db, jwtSecret, *logger),
+		jwtSecret:            jwtSecret,
 	}
 }
 
@@ -53,6 +55,9 @@ func (m *Module) RegisterWebSocketRoutes(router fiber.Router) {
 
 	// Log streaming WebSocket endpoint
 	router.Get("/terminal/logs", m.logsHandler.Handler())
+
+	// Service status monitoring WebSocket endpoint
+	router.Get("/services/status", m.serviceStatusHandler.Handler())
 }
 
 // Shutdown gracefully shuts down the WebSocket module
