@@ -99,10 +99,12 @@ func (h *DomainHandler) ShowDomain(c *fiber.Ctx) error {
 		}
 	}
 
-	// Get nameservers
-	nameservers, _ := h.domainService.GetDomainNameservers(c.Context(), domain)
-	if nameservers == nil {
-		nameservers = []string{}
+	// Extract nameservers from NS records (already in database)
+	nameservers := make([]string, 0)
+	for _, record := range records {
+		if record.Type == "NS" {
+			nameservers = append(nameservers, record.Value)
+		}
 	}
 
 	// Get provider details if available
