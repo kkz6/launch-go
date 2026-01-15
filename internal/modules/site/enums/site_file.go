@@ -167,10 +167,10 @@ func EditableFilesForSiteType(siteType SiteType) []SiteFileType {
 	case SiteTypeWordpress:
 		files = append(files, SiteFileWordpressConfig)
 	case SiteTypeLaravel:
-		files = append(files, SiteFileEnvironment, SiteFileComposerAuth)
+		files = append(files, SiteFileEnvironment)
 	default:
 		if siteType.HasEnvironment() {
-			files = append(files, SiteFileEnvironment, SiteFileComposerAuth)
+			files = append(files, SiteFileEnvironment)
 		}
 	}
 
