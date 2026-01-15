@@ -180,15 +180,22 @@ rm -f "$OPCACHE_SCRIPT"`, phpScript, version)
 	)
 }
 
-// ResetOpcache creates a task to reset OPcache
+// ResetOpcache creates a task to reset OPcache by reloading PHP-FPM
+// Note: CLI and FPM have separate OPcache instances, so we must reload FPM
 func ResetOpcache(version string, sitePath string) *taskrunner.BaseTask {
-	var script string
-	if sitePath != "" {
-		// Reset via the web application
-		script = fmt.Sprintf(`php%s %s/artisan opcache:clear 2>/dev/null || php%s -r "opcache_reset();"`, version, sitePath, version)
-	} else {
-		script = fmt.Sprintf(`php%s -r "opcache_reset();"`, version)
-	}
+	// Reset OPcache by reloading PHP-FPM service
+	// This is the only reliable way to reset FPM's OPcache
+	script := fmt.Sprintf(`echo "Resetting OPcache for PHP %s FPM..."
+
+sudo service php%s-fpm reload
+
+if [ $? -eq 0 ]; then
+    echo "OPcache reset complete - PHP-FPM reloaded successfully"
+else
+    echo "FPM reload failed, attempting full restart..."
+    sudo service php%s-fpm restart
+    echo "OPcache reset complete - PHP-FPM restarted"
+fi`, version, version, version)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Reset OPcache"),
