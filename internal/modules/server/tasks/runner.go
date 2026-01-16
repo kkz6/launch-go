@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
@@ -86,6 +87,7 @@ type TaskRunner struct {
 	queue            *queue.Client
 	dispatcher       taskrunner.TaskDispatcher
 	logger           *zerolog.Logger
+	broadcaster      broadcast.TeamBroadcaster
 	asRoot           bool
 	username         string
 	trackInDB        bool
@@ -123,6 +125,12 @@ func (r *TaskRunner) WithQueue(q *queue.Client) *TaskRunner {
 // WithLogger sets the logger.
 func (r *TaskRunner) WithLogger(logger *zerolog.Logger) *TaskRunner {
 	r.logger = logger
+	return r
+}
+
+// WithBroadcaster sets the broadcaster for task events.
+func (r *TaskRunner) WithBroadcaster(b broadcast.TeamBroadcaster) *TaskRunner {
+	r.broadcaster = b
 	return r
 }
 
@@ -236,6 +244,7 @@ func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 			return nil, fmt.Errorf("failed to create task model: %w", err)
 		}
 		r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
+		r.broadcastTaskRunning(taskModel)
 	}
 
 	pendingTask := taskrunner.NewPendingTask(r.task)
@@ -300,6 +309,7 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 
 	go func() {
 		r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
+		r.broadcastTaskRunning(taskModel)
 
 		pendingTask := taskrunner.NewPendingTask(r.task)
 		pendingTask.OnConnection(conn)
@@ -321,6 +331,8 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 			taskModel.Status = string(TaskStatusFailed)
 			taskModel.Output = basemodels.EncryptedString(err.Error())
 			r.db.Save(taskModel)
+			// Broadcast failure
+			r.broadcastTaskEvent("task.updated", taskModel, err.Error())
 		}
 
 		r.sendCallbacks(taskModel, taskResult, err)
@@ -381,10 +393,12 @@ func (r *TaskRunner) runWithCallbacks(ctx context.Context) (*models.Task, error)
 	_, err = r.dispatcher.Run(ctx, pendingTask)
 	if err != nil {
 		r.db.Model(taskModel).Update("status", string(TaskStatusFailed))
+		r.broadcastTaskEvent("task.updated", taskModel, err.Error())
 		return taskModel, err
 	}
 
 	r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
+	r.broadcastTaskRunning(taskModel)
 
 	if r.logger != nil {
 		r.logger.Info().
@@ -418,6 +432,7 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 
 	go func() {
 		r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
+		r.broadcastTaskRunning(taskModel)
 
 		pendingTask := taskrunner.NewPendingTask(r.task)
 		pendingTask.OnConnection(conn)
@@ -439,6 +454,8 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 			taskModel.Status = string(TaskStatusFailed)
 			taskModel.Output = basemodels.EncryptedString(execErr.Error())
 			r.db.Save(taskModel)
+			// Broadcast failure
+			r.broadcastTaskEvent("task.updated", taskModel, execErr.Error())
 		}
 
 		r.dispatchCompletionJobs(taskResult, execErr)
@@ -582,6 +599,9 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 		return nil, err
 	}
 
+	// Broadcast task created event
+	r.broadcastTaskEvent("task.created", taskModel, "")
+
 	return taskModel, nil
 }
 
@@ -599,6 +619,50 @@ func (r *TaskRunner) updateTaskModel(taskModel *models.Task, result *taskrunner.
 	}
 
 	r.db.Save(taskModel)
+
+	// Broadcast task updated event with output
+	r.broadcastTaskEvent("task.updated", taskModel, result.Output)
+}
+
+// broadcastTaskEvent broadcasts a task event to the server's team channel.
+func (r *TaskRunner) broadcastTaskEvent(event string, taskModel *models.Task, output string) {
+	if r.broadcaster == nil || r.server == nil {
+		return
+	}
+
+	data := map[string]interface{}{
+		"task_id":   taskModel.ID,
+		"server_id": taskModel.ServerID,
+		"name":      taskModel.Name,
+		"status":    taskModel.Status,
+		"user":      taskModel.User,
+	}
+
+	// Include exit code if available
+	if taskModel.ExitCode != nil {
+		data["exit_code"] = *taskModel.ExitCode
+	}
+
+	// Include output for updated events
+	if output != "" {
+		data["output"] = output
+	}
+
+	r.broadcaster.BroadcastToTeam(r.server.TeamID, event, data)
+}
+
+// broadcastTaskRunning broadcasts that a task has started running.
+func (r *TaskRunner) broadcastTaskRunning(taskModel *models.Task) {
+	if r.broadcaster == nil || r.server == nil {
+		return
+	}
+
+	r.broadcaster.BroadcastToTeam(r.server.TeamID, "task.running", map[string]interface{}{
+		"task_id":   taskModel.ID,
+		"server_id": taskModel.ServerID,
+		"name":      taskModel.Name,
+		"status":    string(TaskStatusRunning),
+	})
 }
 
 func (r *TaskRunner) sendCallbacks(taskModel *models.Task, result *taskrunner.TaskResult, err error) {
@@ -689,10 +753,11 @@ func getTaskTypeName(task taskrunner.Task) string {
 
 // TaskRunnerDeps holds dependencies for creating TaskRunners.
 type TaskRunnerDeps struct {
-	DB         *gorm.DB
-	Queue      *queue.Client
-	Dispatcher taskrunner.TaskDispatcher
-	Logger     *zerolog.Logger
+	DB          *gorm.DB
+	Queue       *queue.Client
+	Dispatcher  taskrunner.TaskDispatcher
+	Logger      *zerolog.Logger
+	Broadcaster broadcast.TeamBroadcaster
 }
 
 // NewRunner creates a new TaskRunner with dependencies pre-configured.
@@ -701,7 +766,8 @@ func (d *TaskRunnerDeps) NewRunner(server *models.Server, task taskrunner.Task) 
 		WithDB(d.DB).
 		WithQueue(d.Queue).
 		WithDispatcher(d.Dispatcher).
-		WithLogger(d.Logger)
+		WithLogger(d.Logger).
+		WithBroadcaster(d.Broadcaster)
 }
 
 // RunTask is a convenience function to run a task on a server synchronously.
