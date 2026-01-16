@@ -6,6 +6,13 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for backup operations
+const (
+	RunBackupTaskType        = "server:run_backup"
+	DeleteBackupTaskType     = "server:delete_backup"
+	SyncLaunchConfigTaskType = "server:sync_launch_config"
+)
+
 // RunBackupConfig holds configuration for running a backup
 type RunBackupConfig struct {
 	BackupID string

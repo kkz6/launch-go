@@ -5,6 +5,13 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for Caddy operations
+const (
+	UpdateCaddyfileTaskType        = "site:update_caddyfile"
+	UpdateCaddySiteImportsTaskType = "site:update_caddy_site_imports"
+	PrettifyCaddyfileTaskType      = "site:prettify_caddyfile"
+)
+
 // UpdateCaddyfileConfig holds configuration for updating a site's Caddyfile
 type UpdateCaddyfileConfig struct {
 	CaddyfilePath    string

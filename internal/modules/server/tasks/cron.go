@@ -4,6 +4,12 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for cron operations
+const (
+	UploadCronTaskType = "server:upload_cron"
+	DeleteCronTaskType = "server:delete_cron"
+)
+
 // UploadCronConfig holds configuration for uploading a cron file
 type UploadCronConfig struct {
 	Path     string

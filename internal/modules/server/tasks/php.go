@@ -7,6 +7,19 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for PHP operations
+const (
+	AddPhpVersionTaskType        = "server:add_php_version"
+	RemovePhpVersionTaskType     = "server:remove_php_version"
+	InstallPhpExtensionTaskType  = "server:install_php_extension"
+	UninstallPhpExtensionTaskType = "server:uninstall_php_extension"
+	UpdateAlternativesTaskType   = "server:update_alternatives"
+	GetOpcacheStatusTaskType     = "server:get_opcache_status"
+	ResetOpcacheTaskType         = "server:reset_opcache"
+	ClearOpcacheTaskType         = "server:clear_opcache"
+	ConfigureOpcacheTaskType     = "server:configure_opcache"
+)
+
 // AddPhpVersion creates a task to install a PHP version
 func AddPhpVersion(version string) *taskrunner.BaseTask {
 	script := fmt.Sprintf(`sudo add-apt-repository ppa:ondrej/php -y

@@ -6,6 +6,17 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for service operations
+const (
+	RestartServiceTaskType     = "server:restart_service"
+	StopServiceTaskType        = "server:stop_service"
+	StartServiceTaskType       = "server:start_service"
+	ReloadServiceTaskType      = "server:reload_service"
+	CheckServiceStatusTaskType = "server:check_service_status"
+	ReloadCaddyTaskType        = "server:reload_caddy"
+	RebootServerTaskType       = "server:reboot_server"
+)
+
 // RestartService creates a task to restart a system service.
 func RestartService(service string) *taskrunner.BaseTask {
 	return taskrunner.NewBaseTask(

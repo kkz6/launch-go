@@ -4,6 +4,14 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for daemon operations
+const (
+	UploadDaemonTaskType     = "server:upload_daemon"
+	DeleteDaemonTaskType     = "server:delete_daemon"
+	RestartDaemonTaskType    = "server:restart_daemon"
+	ReloadSupervisorTaskType = "server:reload_supervisor"
+)
+
 // UploadDaemonConfig holds configuration for uploading a daemon config
 type UploadDaemonConfig struct {
 	Path         string

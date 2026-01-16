@@ -6,6 +6,17 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for SSH key operations
+const (
+	GenerateRsaKeyPairTaskType     = "server:generate_rsa_keypair"
+	GenerateEd25519KeyPairTaskType = "server:generate_ed25519_keypair"
+	GeneratePublicKeyTaskType      = "server:generate_public_key"
+	AuthorizePublicKeyTaskType     = "server:authorize_public_key"
+	DeauthorizePublicKeyTaskType   = "server:deauthorize_public_key"
+	GetAuthorizedKeysTaskType      = "server:get_authorized_keys"
+	UpdateAuthorizedKeysTaskType   = "server:update_authorized_keys"
+)
+
 // GenerateRsaKeyPair creates a task to generate RSA SSH key pair
 func GenerateRsaKeyPair(keyPath string, bits int) *taskrunner.BaseTask {
 	if bits == 0 {

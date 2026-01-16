@@ -6,6 +6,11 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for feature analysis
+const (
+	ReadComposerJSONTaskType = "site:read_composer_json"
+)
+
 // ReadComposerJSON creates a task to read composer.json from a site directory
 func ReadComposerJSON(appDirectory string) *taskrunner.BaseTask {
 	script := fmt.Sprintf(`#!/bin/bash

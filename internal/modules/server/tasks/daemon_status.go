@@ -4,6 +4,11 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for daemon status operations
+const (
+	CheckServerDaemonStatusTaskType = "server:check_daemon_status"
+)
+
 // CheckDaemonStatus creates a task to check the status of all supervisor daemons
 // The output is in a format that can be parsed to extract daemon status information
 func CheckDaemonStatus() *taskrunner.BaseTask {
