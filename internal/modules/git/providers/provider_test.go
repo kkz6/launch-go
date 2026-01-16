@@ -1202,8 +1202,8 @@ func TestAppInstallationData_ToMap(t *testing.T) {
 
 func TestCommitData_ToMap(t *testing.T) {
 	c := &CommitData{
-		CommitID: "abc123",
-		SHA:      "abc123",
+		CommitID: "abc123def456",
+		SHA:      "abc123def456",
 		Name:     "Test User",
 		Email:    "test@example.com",
 		Message:  "Test commit",
@@ -1213,11 +1213,20 @@ func TestCommitData_ToMap(t *testing.T) {
 
 	result := c.ToMap()
 
-	if result["commit_id"] != "abc123" {
-		t.Errorf("ToMap() commit_id = %v, want abc123", result["commit_id"])
+	if result["sha"] != "abc123def456" {
+		t.Errorf("ToMap() sha = %v, want abc123def456", result["sha"])
 	}
-	if result["branch"] != "main" {
-		t.Errorf("ToMap() branch = %v, want main", result["branch"])
+	if result["name"] != "Test User" {
+		t.Errorf("ToMap() name = %v, want Test User", result["name"])
+	}
+	if result["email"] != "test@example.com" {
+		t.Errorf("ToMap() email = %v, want test@example.com", result["email"])
+	}
+	if result["message"] != "Test commit" {
+		t.Errorf("ToMap() message = %v, want Test commit", result["message"])
+	}
+	if result["url"] != "https://example.com/commit/abc123" {
+		t.Errorf("ToMap() url = %v, want https://example.com/commit/abc123", result["url"])
 	}
 }
 

@@ -116,8 +116,9 @@ func (m *Module) createServices(taskRunnerDeps *servertasks.TaskRunnerDeps) *ser
 
 	// Set cross-module dependencies
 	registry.SetCrossModuleDeps(&services.CrossModuleDeps{
-		ServerRepos: m.serverRepos,
-		GitRepos:    m.gitRepos,
+		ServerRepos:     m.serverRepos,
+		GitRepos:        m.gitRepos,
+		ProviderFactory: m.providerFactory,
 	})
 
 	return registry

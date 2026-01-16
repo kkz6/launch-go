@@ -42,6 +42,8 @@ func NewInstallCaddyfileJob(ctx *JobContext, payload CaddyfilePayload) *InstallC
 
 // Handle executes the install Caddyfile job
 func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
+	j.ctx.LogInfo("InstallCaddyfile job started", "site_id", j.Payload.SiteID)
+
 	// Get site
 	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {

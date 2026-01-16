@@ -10,6 +10,7 @@ import (
 
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
+	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
@@ -36,8 +37,18 @@ type DeployJob struct {
 
 // Handle executes the deploy job
 func (j *DeployJob) Handle(ctx context.Context) error {
-	// Get deployment
-	deployment, err := j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+	// Get deployment with retry (handles race condition where job runs before DB commit is visible)
+	var deployment *models.Deployment
+	var err error
+	for i := 0; i < 3; i++ {
+		deployment, err = j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+		if err == nil {
+			break
+		}
+		if i < 2 {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("failed to find deployment: %w", err)
 	}
@@ -91,6 +102,11 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	exitCode := result.GetExitCode()
 
 	if exitCode != 0 {
+		j.ctx.LogError(nil, "Deployment script failed",
+			"deployment_id", deployment.ID,
+			"exit_code", exitCode,
+			"output", output,
+		)
 		j.handleDeploymentFailure(ctx, deployment, site, fmt.Sprintf("Deployment failed with exit code %d: %s", exitCode, output))
 		return fmt.Errorf("deployment failed with exit code %d", exitCode)
 	}
@@ -117,10 +133,11 @@ func (j *DeployJob) Failed(ctx context.Context, err error) {
 }
 
 func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Deployment) tasks.DeploySiteConfig {
-	phpBinary := "php"
+	phpVersion := ""
 	if site.PhpVersion != nil {
-		phpBinary = fmt.Sprintf("php%s", *site.PhpVersion)
+		phpVersion = *site.PhpVersion
 	}
+	phpBinary := serverenums.PhpBinaryFromVersion(phpVersion)
 
 	repositoryURL := ""
 	var hasAppAuth bool
@@ -140,6 +157,9 @@ func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Depl
 					tempToken = token
 					authURL = url
 					appName = name
+					// Use HTTPS URL for app-based auth (credentials helper will provide token)
+					providerType := gitproviders.GitProviderType(sourceControl.Provider)
+					repositoryURL = providerType.HTTPSURL(repo.FullName)
 				}
 			}
 		}
@@ -230,7 +250,7 @@ func (j *DeployJob) getAppAuthToken(ctx context.Context, sc *gitmodels.SourceCon
 	}
 
 	// Build auth URL based on provider
-	authURL = buildAuthURL(provider.GetType(), installToken, repo.FullName)
+	authURL = provider.GetType().AuthURL(installToken, repo.FullName)
 	appName = string(sc.Provider)
 
 	return installToken, authURL, appName
@@ -271,20 +291,6 @@ func (j *DeployJob) buildSourceControlData(sc *gitmodels.SourceControl) *gitprov
 	return scData
 }
 
-// buildAuthURL builds the HTTPS URL with token authentication for the given provider
-func buildAuthURL(providerType gitproviders.GitProviderType, token, repoFullName string) string {
-	switch providerType {
-	case gitproviders.GitProviderGitHub:
-		return fmt.Sprintf("https://x-access-token:%s@github.com/%s.git", token, repoFullName)
-	case gitproviders.GitProviderGitLab:
-		return fmt.Sprintf("https://gitlab-ci-token:%s@gitlab.com/%s.git", token, repoFullName)
-	case gitproviders.GitProviderBitbucket:
-		return fmt.Sprintf("https://x-token-auth:%s@bitbucket.org/%s.git", token, repoFullName)
-	default:
-		return ""
-	}
-}
-
 func (j *DeployJob) broadcastDeploymentProgress(ctx context.Context, siteID, deploymentID, status, message string) {
 	site, err := j.ctx.SiteRepo.FindByID(ctx, siteID)
 	if err != nil {
@@ -317,14 +323,19 @@ func (j *DeployJob) handleDeploymentSuccess(ctx context.Context, deployment *mod
 	// If first deployment, dispatch InstallCaddyfile job to set up web server
 	isFirstDeployment := site != nil && site.InstalledAt == nil
 	if isFirstDeployment {
+		j.ctx.LogInfo("First deployment completed, dispatching InstallCaddyfile job", "site_id", site.ID)
 		// Dispatch InstallCaddyfile job - this will set installed_at on success
 		task, err := NewInstallCaddyfileTask(site.ID, nil)
 		if err != nil {
-			j.ctx.LogError(err, "Failed to create InstallCaddyfile task")
+			j.ctx.LogError(err, "Failed to create InstallCaddyfile task", "site_id", site.ID)
 		} else if j.ctx.Queue != nil {
 			if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-				j.ctx.LogError(err, "Failed to enqueue InstallCaddyfile job")
+				j.ctx.LogError(err, "Failed to enqueue InstallCaddyfile job", "site_id", site.ID)
+			} else {
+				j.ctx.LogInfo("InstallCaddyfile job enqueued successfully", "site_id", site.ID)
 			}
+		} else {
+			j.ctx.LogError(nil, "Queue is nil, cannot enqueue InstallCaddyfile job", "site_id", site.ID)
 		}
 	}
 
@@ -553,8 +564,18 @@ type DeployZeroDowntimeJob struct {
 
 // Handle executes the zero-downtime deploy job
 func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
-	// Get deployment
-	deployment, err := j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+	// Get deployment with retry (handles race condition where job runs before DB commit is visible)
+	var deployment *models.Deployment
+	var err error
+	for i := 0; i < 3; i++ {
+		deployment, err = j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+		if err == nil {
+			break
+		}
+		if i < 2 {
+			time.Sleep(500 * time.Millisecond)
+		}
+	}
 	if err != nil {
 		return fmt.Errorf("failed to find deployment: %w", err)
 	}
@@ -608,6 +629,11 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 	exitCode := result.GetExitCode()
 
 	if exitCode != 0 {
+		j.ctx.LogError(nil, "Zero-downtime deployment script failed",
+			"deployment_id", deployment.ID,
+			"exit_code", exitCode,
+			"output", output,
+		)
 		j.handleDeploymentFailure(ctx, deployment, site, fmt.Sprintf("Deployment failed with exit code %d: %s", exitCode, output))
 		return fmt.Errorf("deployment failed with exit code %d", exitCode)
 	}
@@ -634,10 +660,11 @@ func (j *DeployZeroDowntimeJob) Failed(ctx context.Context, err error) {
 }
 
 func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment *models.Deployment) tasks.DeploySiteConfig {
-	phpBinary := "php"
+	phpVersion := ""
 	if site.PhpVersion != nil {
-		phpBinary = fmt.Sprintf("php%s", *site.PhpVersion)
+		phpVersion = *site.PhpVersion
 	}
+	phpBinary := serverenums.PhpBinaryFromVersion(phpVersion)
 
 	repositoryURL := ""
 	var hasAppAuth bool
@@ -657,6 +684,9 @@ func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment 
 					tempToken = token
 					authURL = url
 					appName = name
+					// Use HTTPS URL for app-based auth (credentials helper will provide token)
+					providerType := gitproviders.GitProviderType(sourceControl.Provider)
+					repositoryURL = providerType.HTTPSURL(repo.FullName)
 				}
 			}
 		}
@@ -756,7 +786,7 @@ func (j *DeployZeroDowntimeJob) getAppAuthToken(ctx context.Context, sc *gitmode
 	}
 
 	// Build auth URL based on provider
-	authURL = buildAuthURL(provider.GetType(), installToken, repo.FullName)
+	authURL = provider.GetType().AuthURL(installToken, repo.FullName)
 	appName = string(sc.Provider)
 
 	return installToken, authURL, appName
@@ -829,14 +859,19 @@ func (j *DeployZeroDowntimeJob) handleDeploymentSuccess(ctx context.Context, dep
 	// If first deployment, dispatch InstallCaddyfile job to set up web server
 	isFirstDeployment := site != nil && site.InstalledAt == nil
 	if isFirstDeployment {
+		j.ctx.LogInfo("First deployment completed, dispatching InstallCaddyfile job", "site_id", site.ID)
 		// Dispatch InstallCaddyfile job - this will set installed_at on success
 		task, err := NewInstallCaddyfileTask(site.ID, nil)
 		if err != nil {
-			j.ctx.LogError(err, "Failed to create InstallCaddyfile task")
+			j.ctx.LogError(err, "Failed to create InstallCaddyfile task", "site_id", site.ID)
 		} else if j.ctx.Queue != nil {
 			if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-				j.ctx.LogError(err, "Failed to enqueue InstallCaddyfile job")
+				j.ctx.LogError(err, "Failed to enqueue InstallCaddyfile job", "site_id", site.ID)
+			} else {
+				j.ctx.LogInfo("InstallCaddyfile job enqueued successfully", "site_id", site.ID)
 			}
+		} else {
+			j.ctx.LogError(nil, "Queue is nil, cannot enqueue InstallCaddyfile job", "site_id", site.ID)
 		}
 	}
 

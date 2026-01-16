@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	databaseservices "github.com/kkz6/launch-go/internal/modules/database/services"
+	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	serverservices "github.com/kkz6/launch-go/internal/modules/server/services"
@@ -68,6 +69,7 @@ type CrossModuleDeps struct {
 	GitRepos        *gitrepos.Registry
 	ServerService   *serverservices.Service
 	DatabaseService *databaseservices.Service
+	ProviderFactory *gitproviders.ProviderFactory
 }
 
 // NewServiceRegistry creates all services and wires them together
@@ -94,12 +96,16 @@ func (r *ServiceRegistry) SetCrossModuleDeps(deps *CrossModuleDeps) {
 	}
 	if deps.GitRepos != nil {
 		r.site.SetGitRepos(deps.GitRepos)
+		r.deployment.SetGitRepos(deps.GitRepos)
 	}
 	if deps.ServerService != nil {
 		r.site.SetServerService(deps.ServerService)
 	}
 	if deps.DatabaseService != nil {
 		r.site.SetDatabaseService(deps.DatabaseService)
+	}
+	if deps.ProviderFactory != nil {
+		r.deployment.SetProviderFactory(deps.ProviderFactory)
 	}
 }
 

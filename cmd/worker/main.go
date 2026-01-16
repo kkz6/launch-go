@@ -20,6 +20,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/module"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -58,6 +59,9 @@ func main() {
 		appLogger.Info().Msg("Running in local mode - using SSH streaming for task output")
 	}
 
+	// Initialize queue client for dispatching jobs from within jobs
+	queueClient := queue.NewClient(cfg.Redis)
+
 	// Create Asynq server
 	srv := asynq.NewServer(
 		asynq.RedisClientOpt{
@@ -82,7 +86,7 @@ func main() {
 	)
 
 	// Create application context with all shared dependencies
-	ctx := app.NewContext(cfg, db, appLogger, nil, wsHub, dispatcher)
+	ctx := app.NewContext(cfg, db, appLogger, queueClient, wsHub, dispatcher)
 
 	// Create application kernel for module registration
 	kernel := app.NewKernel(appLogger)
@@ -123,6 +127,7 @@ func main() {
 	srv.Shutdown()
 	kernel.Shutdown()
 	wsHub.Shutdown()
+	queueClient.Close()
 
 	appLogger.Info().Msg("Worker stopped")
 }

@@ -43,6 +43,48 @@ func (p GitProviderType) IsValid() bool {
 	}
 }
 
+// HTTPSURL returns the plain HTTPS clone URL for a repository
+func (p GitProviderType) HTTPSURL(repoFullName string) string {
+	switch p {
+	case GitProviderGitHub:
+		return "https://github.com/" + repoFullName + ".git"
+	case GitProviderGitLab:
+		return "https://gitlab.com/" + repoFullName + ".git"
+	case GitProviderBitbucket:
+		return "https://bitbucket.org/" + repoFullName + ".git"
+	default:
+		return ""
+	}
+}
+
+// SSHURL returns the SSH clone URL for a repository
+func (p GitProviderType) SSHURL(repoFullName string) string {
+	switch p {
+	case GitProviderGitHub:
+		return "git@github.com:" + repoFullName + ".git"
+	case GitProviderGitLab:
+		return "git@gitlab.com:" + repoFullName + ".git"
+	case GitProviderBitbucket:
+		return "git@bitbucket.org:" + repoFullName + ".git"
+	default:
+		return ""
+	}
+}
+
+// AuthURL returns the HTTPS URL with embedded token for authenticated cloning
+func (p GitProviderType) AuthURL(token, repoFullName string) string {
+	switch p {
+	case GitProviderGitHub:
+		return "https://x-access-token:" + token + "@github.com/" + repoFullName + ".git"
+	case GitProviderGitLab:
+		return "https://gitlab-ci-token:" + token + "@gitlab.com/" + repoFullName + ".git"
+	case GitProviderBitbucket:
+		return "https://x-token-auth:" + token + "@bitbucket.org/" + repoFullName + ".git"
+	default:
+		return ""
+	}
+}
+
 // AppInstallationData represents data from a git provider app installation
 type AppInstallationData struct {
 	ID                      string                 `json:"id"`
@@ -115,18 +157,14 @@ type CommitData struct {
 	Branch   string `json:"branch,omitempty"`
 }
 
-// ToMap converts commit data to a map for storage
+// ToMap converts commit data to a flat map for storage
 func (c *CommitData) ToMap() map[string]interface{} {
 	return map[string]interface{}{
-		"commit_id": c.CommitID,
-		"branch":    c.Branch,
-		"commit_data": map[string]interface{}{
-			"sha":     c.SHA,
-			"name":    c.Name,
-			"email":   c.Email,
-			"message": c.Message,
-			"url":     c.URL,
-		},
+		"sha":     c.SHA,
+		"url":     c.URL,
+		"name":    c.Name,
+		"email":   c.Email,
+		"message": c.Message,
 	}
 }
 

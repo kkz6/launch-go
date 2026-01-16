@@ -79,18 +79,14 @@ type CommitData struct {
 	Branch   string `json:"branch,omitempty"`
 }
 
-// ToMap converts commit data to a map for storage
+// ToMap converts commit data to a flat map for storage
 func (c *CommitData) ToMap() map[string]interface{} {
 	return map[string]interface{}{
-		"commit_id": c.CommitID,
-		"branch":    c.Branch,
-		"commit_data": map[string]interface{}{
-			"sha":     c.SHA,
-			"name":    c.Name,
-			"email":   c.Email,
-			"message": c.Message,
-			"url":     c.URL,
-		},
+		"sha":     c.SHA,
+		"url":     c.URL,
+		"name":    c.Name,
+		"email":   c.Email,
+		"message": c.Message,
 	}
 }
 

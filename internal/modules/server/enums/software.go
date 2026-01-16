@@ -459,3 +459,83 @@ func (s Software) MaxChildren(memoryInMB int) int {
 	}
 	return int(float64(gigabytes) * 5 * 0.9)
 }
+
+// BinaryPath returns the executable binary path for the software.
+// For PHP versions, returns "php8.3", "php8.2", etc.
+func (s Software) BinaryPath() string {
+	if s.IsPhp() {
+		return "php" + s.GetVersion()
+	}
+	return ""
+}
+
+// FpmServiceName returns the PHP-FPM service name for the software.
+// For PHP versions, returns "php8.3-fpm", "php8.2-fpm", etc.
+func (s Software) FpmServiceName() string {
+	if s.IsPhp() {
+		return "php" + s.GetVersion() + "-fpm"
+	}
+	return ""
+}
+
+// PhpFpmServiceFromVersion returns the PHP-FPM service name from a version string or software name.
+// Accepts both formats:
+//   - Version string: "8.3" returns "php8.3-fpm"
+//   - Software name: "php83" returns "php8.3-fpm"
+func PhpFpmServiceFromVersion(version string) string {
+	if version == "" {
+		return ""
+	}
+
+	// Check if it's a software enum value like "php83"
+	software := Software(version)
+	if software.IsPhp() {
+		return software.FpmServiceName()
+	}
+
+	// Otherwise treat as version string like "8.3"
+	return "php" + version + "-fpm"
+}
+
+// PhpBinaryFromVersion returns the PHP binary name from a version string or software name.
+// Accepts both formats:
+//   - Version string: "8.3" returns "php8.3"
+//   - Software name: "php83" returns "php8.3"
+//
+// If version is empty, returns "php" as the default.
+func PhpBinaryFromVersion(version string) string {
+	if version == "" {
+		return "php"
+	}
+
+	// Check if it's a software enum value like "php83"
+	software := Software(version)
+	if software.IsPhp() {
+		return software.BinaryPath()
+	}
+
+	// Otherwise treat as version string like "8.3"
+	return "php" + version
+}
+
+// SoftwareFromPhpVersion returns the Software enum for a PHP version string.
+// For example, "8.3" returns SoftwarePhp83.
+func SoftwareFromPhpVersion(version string) Software {
+	versionMap := map[string]Software{
+		"5.6": SoftwarePhp56,
+		"7.0": SoftwarePhp70,
+		"7.1": SoftwarePhp71,
+		"7.2": SoftwarePhp72,
+		"7.3": SoftwarePhp73,
+		"7.4": SoftwarePhp74,
+		"8.0": SoftwarePhp80,
+		"8.1": SoftwarePhp81,
+		"8.2": SoftwarePhp82,
+		"8.3": SoftwarePhp83,
+		"8.4": SoftwarePhp84,
+	}
+	if s, ok := versionMap[version]; ok {
+		return s
+	}
+	return ""
+}
