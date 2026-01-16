@@ -10,7 +10,7 @@ import (
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
-	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 )
@@ -19,7 +19,7 @@ import (
 type JobContext struct {
 	DB                *gorm.DB
 	Logger            *zerolog.Logger
-	WS                jobs.Broadcaster
+	WS                broadcast.TeamBroadcaster
 	Dispatcher        taskrunner.TaskDispatcher
 	Queue             *queue.Client
 	SiteRepo          *repositories.SiteRepository
@@ -39,7 +39,7 @@ type JobContext struct {
 func NewJobContext(
 	db *gorm.DB,
 	logger *zerolog.Logger,
-	ws jobs.Broadcaster,
+	ws broadcast.TeamBroadcaster,
 	dispatcher taskrunner.TaskDispatcher,
 	queueClient *queue.Client,
 	siteRepo *repositories.SiteRepository,
@@ -88,17 +88,17 @@ func (c *JobContext) RunTaskOnServer(server *servermodels.Server, task taskrunne
 	return c.TaskRunnerDeps.NewRunner(server, task)
 }
 
-// BroadcastToSite broadcasts an event for a site
-func (c *JobContext) BroadcastToSite(siteID, event string, data any) {
+// BroadcastToTeam sends a websocket event to a team channel.
+func (c *JobContext) BroadcastToTeam(teamID, event string, data any) {
 	if c.WS != nil {
-		c.WS.BroadcastToSite(siteID, event, data)
+		c.WS.BroadcastToTeam(teamID, event, data)
 	}
 }
 
-// BroadcastToServer broadcasts an event to a server channel
-func (c *JobContext) BroadcastToServer(serverID, event string, data any) {
-	if c.WS != nil {
-		c.WS.BroadcastToServer(serverID, event, data)
+// BroadcastServerEvent broadcasts an event for a server to its team channel.
+func (c *JobContext) BroadcastServerEvent(server *servermodels.Server, event string, data any) {
+	if c.WS != nil && server != nil {
+		c.WS.BroadcastToTeam(server.TeamID, event, data)
 	}
 }
 

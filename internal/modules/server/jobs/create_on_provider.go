@@ -144,7 +144,7 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 		}
 	}
 
-	j.ctx.BroadcastToServer(server.ID, "server.created_on_provider", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "server.created_on_provider", map[string]any{
 		"server_id":          server.ID,
 		"provider_server_id": result.ProviderServerID,
 		"public_ipv4":        result.PublicIPv4,
@@ -206,10 +206,13 @@ func (j *CreateOnProviderJob) Failed(ctx context.Context, err error) {
 		j.ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 
-	j.ctx.BroadcastToServer(j.Payload.ServerID, "server.create_failed", map[string]any{
-		"server_id": j.Payload.ServerID,
-		"error":     err.Error(),
-	})
+	server, findErr := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
+	if findErr == nil {
+		j.ctx.BroadcastServerEvent(server, "server.create_failed", map[string]any{
+			"server_id": j.Payload.ServerID,
+			"error":     err.Error(),
+		})
+	}
 }
 
 // NewCreateOnProviderTask creates an asynq task for creating a server on the provider

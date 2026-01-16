@@ -71,7 +71,7 @@ func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
 		"status", status,
 	)
 
-	j.ctx.BroadcastToServer(server.ID, "service.status_checked", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "service.status_checked", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
 		"status":     status.String(),

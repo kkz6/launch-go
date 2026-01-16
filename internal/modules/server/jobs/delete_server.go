@@ -105,7 +105,7 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastToServer(server.ID, "server.deleted", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "server.deleted", map[string]any{
 		"server_id": server.ID,
 	})
 

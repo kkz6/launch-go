@@ -75,7 +75,7 @@ func (j *RemoveSshKeyJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastToServer(server.ID, "ssh_key.removed", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "ssh_key.removed", map[string]any{
 		"key_id":    sshKey.ID,
 		"server_id": server.ID,
 	})

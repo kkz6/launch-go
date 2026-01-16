@@ -63,12 +63,7 @@ func (j *RunCommandJob) Handle(ctx context.Context) error {
 	}
 
 	// Broadcast that command is running with full command data
-	j.ctx.BroadcastToSite(site.ID, "command.updated", map[string]any{
-		"command": dto.ToCommandResponse(command),
-	})
-
-	// Also broadcast to server channel for server-wide listeners
-	j.ctx.BroadcastToServer(server.ID, "command.updated", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "command.updated", map[string]any{
 		"command": dto.ToCommandResponse(command),
 	})
 
@@ -111,12 +106,7 @@ func (j *RunCommandJob) Handle(ctx context.Context) error {
 	}
 
 	// Broadcast completion with full command data
-	j.ctx.BroadcastToSite(site.ID, "command.updated", map[string]any{
-		"command": dto.ToCommandResponse(command),
-	})
-
-	// Also broadcast to server channel
-	j.ctx.BroadcastToServer(server.ID, "command.updated", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "command.updated", map[string]any{
 		"command": dto.ToCommandResponse(command),
 	})
 
@@ -157,8 +147,21 @@ func (j *RunCommandJob) Failed(ctx context.Context, err error) {
 		return
 	}
 
+	// Get site and server for broadcasting
+	site, siteErr := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	if siteErr != nil {
+		j.ctx.LogError(siteErr, "Failed to find site for broadcast")
+		return
+	}
+
+	server, serverErr := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	if serverErr != nil {
+		j.ctx.LogError(serverErr, "Failed to find server for broadcast")
+		return
+	}
+
 	// Broadcast failure with full command data
-	j.ctx.BroadcastToSite(j.Payload.SiteID, "command.updated", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "command.updated", map[string]any{
 		"command": dto.ToCommandResponse(command),
 	})
 }

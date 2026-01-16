@@ -154,7 +154,7 @@ fi
 	}
 
 	// Step 6: Broadcast event
-	j.ctx.BroadcastToServer(server.ID, "site.deleted", map[string]interface{}{
+	j.ctx.BroadcastServerEvent(server, "site.deleted", map[string]interface{}{
 		"site_id":   site.ID,
 		"server_id": server.ID,
 		"address":   site.Address,
@@ -176,31 +176,31 @@ func (j *UninstallSiteJob) Failed(ctx context.Context, err error) {
 	)
 }
 
-func (j *UninstallSiteJob) deleteDeployments(ctx context.Context, siteID string) error {
+func (j *UninstallSiteJob) deleteDeployments(_ context.Context, siteID string) error {
 	return j.ctx.DB.Where("site_id = ?", siteID).Delete(&struct {
 		ID string `gorm:"primaryKey"`
 	}{}).Error
 }
 
-func (j *UninstallSiteJob) deleteCertificates(ctx context.Context, siteID string) error {
+func (j *UninstallSiteJob) deleteCertificates(_ context.Context, siteID string) error {
 	return j.ctx.DB.Table("certificates").Where("site_id = ?", siteID).Delete(&struct {
 		ID string `gorm:"primaryKey"`
 	}{}).Error
 }
 
-func (j *UninstallSiteJob) deleteCommands(ctx context.Context, siteID string) error {
+func (j *UninstallSiteJob) deleteCommands(_ context.Context, siteID string) error {
 	return j.ctx.DB.Table("commands").Where("site_id = ?", siteID).Delete(&struct {
 		ID string `gorm:"primaryKey"`
 	}{}).Error
 }
 
-func (j *UninstallSiteJob) deleteRedirects(ctx context.Context, siteID string) error {
+func (j *UninstallSiteJob) deleteRedirects(_ context.Context, siteID string) error {
 	return j.ctx.DB.Table("redirects").Where("site_id = ?", siteID).Delete(&struct {
 		ID string `gorm:"primaryKey"`
 	}{}).Error
 }
 
-func (j *UninstallSiteJob) deleteReleases(ctx context.Context, siteID string) error {
+func (j *UninstallSiteJob) deleteReleases(_ context.Context, siteID string) error {
 	return j.ctx.DB.Table("releases").Where("site_id = ?", siteID).Delete(&struct {
 		ID string `gorm:"primaryKey"`
 	}{}).Error

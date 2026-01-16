@@ -79,7 +79,7 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 		"task_id", taskModel.ID,
 	)
 
-	j.ctx.BroadcastToServer(server.ID, "server.provisioning", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "server.provisioning", map[string]any{
 		"server_id": server.ID,
 		"status":    "provisioning",
 		"task_id":   taskModel.ID,
@@ -97,10 +97,13 @@ func (j *ProvisionServerJob) Failed(ctx context.Context, err error) {
 		j.ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 
-	j.ctx.BroadcastToServer(j.Payload.ServerID, "server.provision_failed", map[string]any{
-		"server_id": j.Payload.ServerID,
-		"error":     err.Error(),
-	})
+	server, findErr := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
+	if findErr == nil {
+		j.ctx.BroadcastServerEvent(server, "server.provision_failed", map[string]any{
+			"server_id": j.Payload.ServerID,
+			"error":     err.Error(),
+		})
+	}
 }
 
 // NewProvisionServerJob creates a new ProvisionServerJob with the given context and payload.

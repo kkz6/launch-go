@@ -127,7 +127,7 @@ func (j *SyncDaemonsJob) Handle(ctx context.Context) error {
 	j.ctx.LogInfo("Daemon status sync completed", "server_id", server.ID, "daemon_count", len(daemons))
 
 	// Broadcast status update
-	j.ctx.BroadcastToServer(server.ID, "daemons.synced", map[string]interface{}{
+	j.ctx.BroadcastServerEvent(server, "daemons.synced", map[string]interface{}{
 		"server_id":    server.ID,
 		"daemon_count": len(daemons),
 	})

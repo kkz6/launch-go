@@ -63,7 +63,7 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	}
 
 	// Broadcast deployment started
-	j.broadcastDeploymentProgress(site.ID, deployment.ID, "installing", "Deployment started")
+	j.broadcastDeploymentProgress(ctx, site.ID, deployment.ID, "installing", "Deployment started")
 
 	// Build deploy config
 	config := j.buildDeployConfig(site, deployment)
@@ -275,8 +275,18 @@ func buildAuthURL(providerType gitproviders.GitProviderType, token, repoFullName
 	}
 }
 
-func (j *DeployJob) broadcastDeploymentProgress(siteID, deploymentID, status, message string) {
-	j.ctx.BroadcastToSite(siteID, "deployment.progress", map[string]interface{}{
+func (j *DeployJob) broadcastDeploymentProgress(ctx context.Context, siteID, deploymentID, status, message string) {
+	site, err := j.ctx.SiteRepo.FindByID(ctx, siteID)
+	if err != nil {
+		return
+	}
+
+	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	if err != nil {
+		return
+	}
+
+	j.ctx.BroadcastServerEvent(server, "deployment.progress", map[string]interface{}{
 		"site_id":       siteID,
 		"deployment_id": deploymentID,
 		"status":        status,
@@ -313,14 +323,14 @@ func (j *DeployJob) handleDeploymentSuccess(ctx context.Context, deployment *mod
 		j.restartQueueWorkers(ctx, site)
 	}
 
-	j.broadcastDeploymentProgress(deployment.SiteID, deployment.ID, "finished", "Deployment completed successfully")
+	j.broadcastDeploymentProgress(ctx, deployment.SiteID, deployment.ID, "finished", "Deployment completed successfully")
 	j.ctx.LogInfo("Deployment finished successfully", "deployment_id", deployment.ID)
 
 	// Process next queued deployment if any
 	j.processNextQueuedDeployment(ctx, deployment.SiteID)
 }
 
-func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
+func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, _ *models.Site, message string) {
 	now := time.Now()
 	deployment.Status = enums.DeploymentStatusFailed
 	deployment.FinishedAt = &now
@@ -330,7 +340,7 @@ func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *mod
 		j.ctx.LogError(err, "Failed to update deployment status to failed")
 	}
 
-	j.broadcastDeploymentProgress(deployment.SiteID, deployment.ID, "failed", message)
+	j.broadcastDeploymentProgress(ctx, deployment.SiteID, deployment.ID, "failed", message)
 	j.ctx.LogError(nil, "Deployment failed", "deployment_id", deployment.ID, "message", message)
 
 	// Process next queued deployment if any
@@ -443,7 +453,7 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 	}
 
 	// Broadcast deployment started
-	j.broadcastDeploymentProgress(site.ID, deployment.ID, "installing", "Zero-downtime deployment started")
+	j.broadcastDeploymentProgress(ctx, site.ID, deployment.ID, "installing", "Zero-downtime deployment started")
 
 	// Build deploy config
 	config := j.buildDeployConfig(site, deployment)
@@ -655,8 +665,18 @@ func (j *DeployZeroDowntimeJob) buildSourceControlData(sc *gitmodels.SourceContr
 	return scData
 }
 
-func (j *DeployZeroDowntimeJob) broadcastDeploymentProgress(siteID, deploymentID, status, message string) {
-	j.ctx.BroadcastToSite(siteID, "deployment.progress", map[string]interface{}{
+func (j *DeployZeroDowntimeJob) broadcastDeploymentProgress(ctx context.Context, siteID, deploymentID, status, message string) {
+	site, err := j.ctx.SiteRepo.FindByID(ctx, siteID)
+	if err != nil {
+		return
+	}
+
+	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	if err != nil {
+		return
+	}
+
+	j.ctx.BroadcastServerEvent(server, "deployment.progress", map[string]interface{}{
 		"site_id":       siteID,
 		"deployment_id": deploymentID,
 		"status":        status,
@@ -693,14 +713,14 @@ func (j *DeployZeroDowntimeJob) handleDeploymentSuccess(ctx context.Context, dep
 		j.restartQueueWorkers(ctx, site)
 	}
 
-	j.broadcastDeploymentProgress(deployment.SiteID, deployment.ID, "finished", "Deployment completed successfully")
+	j.broadcastDeploymentProgress(ctx, deployment.SiteID, deployment.ID, "finished", "Deployment completed successfully")
 	j.ctx.LogInfo("Zero-downtime deployment finished successfully", "deployment_id", deployment.ID)
 
 	// Process next queued deployment if any
 	j.processNextQueuedDeployment(ctx, deployment.SiteID)
 }
 
-func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
+func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, _ *models.Site, message string) {
 	now := time.Now()
 	deployment.Status = enums.DeploymentStatusFailed
 	deployment.FinishedAt = &now
@@ -710,7 +730,7 @@ func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, dep
 		j.ctx.LogError(err, "Failed to update deployment status to failed")
 	}
 
-	j.broadcastDeploymentProgress(deployment.SiteID, deployment.ID, "failed", message)
+	j.broadcastDeploymentProgress(ctx, deployment.SiteID, deployment.ID, "failed", message)
 	j.ctx.LogError(nil, "Zero-downtime deployment failed", "deployment_id", deployment.ID, "message", message)
 
 	// Process next queued deployment if any

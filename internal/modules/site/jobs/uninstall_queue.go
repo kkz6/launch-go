@@ -79,7 +79,7 @@ func (j *UninstallQueueJob) Handle(ctx context.Context) error {
 	}
 
 	// Broadcast success
-	j.ctx.BroadcastToSite(site.ID, "queue.uninstalled", map[string]interface{}{
+	j.ctx.BroadcastServerEvent(server, "queue.uninstalled", map[string]interface{}{
 		"site_id":  site.ID,
 		"queue_id": queue.ID,
 	})
