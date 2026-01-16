@@ -10,7 +10,6 @@ import (
 
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
-	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
@@ -81,7 +80,7 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	config := j.buildDeployConfig(site, deployment)
 
 	// Create deploy task
-	task := tasks.DeploySite(config)
+	task := tasks.DeploySiteTask(config)
 
 	// Execute the deploy task on the server (with DB tracking)
 	result, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().Dispatch(ctx)
@@ -132,13 +131,7 @@ func (j *DeployJob) Failed(ctx context.Context, err error) {
 	}
 }
 
-func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Deployment) tasks.DeploySiteConfig {
-	phpVersion := ""
-	if site.PhpVersion != nil {
-		phpVersion = *site.PhpVersion
-	}
-	phpBinary := serverenums.PhpBinaryFromVersion(phpVersion)
-
+func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Deployment) tasks.DeployOptions {
 	repositoryURL := ""
 	var hasAppAuth bool
 	var tempToken, authURL, appName string
@@ -171,33 +164,15 @@ func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Depl
 		envVars = site.GenerateEnvironmentVariables()
 	}
 
-	return tasks.DeploySiteConfig{
-		SitePath:                     site.Path,
-		SiteType:                     tasks.SiteType(site.Type),
-		SiteAddress:                  site.Address,
-		Username:                     site.User,
-		PHPBinary:                    phpBinary,
-		RepositoryURL:                repositoryURL,
-		RepositoryBranch:             site.GetRepositoryBranch(),
-		InstalledAt:                  site.InstalledAt != nil,
-		ZeroDowntimeDeployment:       false,
-		RepositoryDirectory:          fmt.Sprintf("%s/repository", site.Path),
-		LogsDirectory:                site.GetLogsDirectory(),
-		DeploymentID:                 deployment.ID,
-		HasAppAuth:                   hasAppAuth,
-		TempToken:                    tempToken,
-		AuthURL:                      authURL,
-		AppName:                      appName,
-		DeployKeyPrivate:             site.DeployKeyPrivate.String(),
-		EnvVariables:                 envVars,
-		HookBeforeUpdatingRepository: stringValue(site.HookBeforeUpdatingRepository),
-		HookAfterUpdatingRepository:  stringValue(site.HookAfterUpdatingRepository),
-		HookBeforeMakingCurrent:      stringValue(site.HookBeforeMakingCurrent),
-		HookAfterMakingCurrent:       stringValue(site.HookAfterMakingCurrent),
-		SharedDirectories:            site.SharedDirectories,
-		SharedFiles:                  site.SharedFiles,
-		WritableDirectories:          site.WriteableDirectories,
-		RetentionCount:               site.DeploymentReleasesRetention,
+	return tasks.DeployOptions{
+		Site:          site,
+		Deployment:    deployment,
+		RepositoryURL: repositoryURL,
+		HasAppAuth:    hasAppAuth,
+		TempToken:     tempToken,
+		AuthURL:       authURL,
+		AppName:       appName,
+		EnvVariables:  envVars,
 	}
 }
 
@@ -609,7 +584,7 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 	config := j.buildDeployConfig(site, deployment)
 
 	// Create zero-downtime deploy task
-	task := tasks.DeploySiteWithoutDowntime(config)
+	task := tasks.DeploySiteTask(config)
 
 	// Execute the deploy task on the server (with DB tracking)
 	result, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().Dispatch(ctx)
@@ -660,13 +635,7 @@ func (j *DeployZeroDowntimeJob) Failed(ctx context.Context, err error) {
 	}
 }
 
-func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment *models.Deployment) tasks.DeploySiteConfig {
-	phpVersion := ""
-	if site.PhpVersion != nil {
-		phpVersion = *site.PhpVersion
-	}
-	phpBinary := serverenums.PhpBinaryFromVersion(phpVersion)
-
+func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment *models.Deployment) tasks.DeployOptions {
 	repositoryURL := ""
 	var hasAppAuth bool
 	var tempToken, authURL, appName string
@@ -693,9 +662,8 @@ func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment 
 		}
 	}
 
-	// Generate release directory with timestamp
+	// Generate release timestamp for zero-downtime deployment
 	releaseTimestamp := time.Now().Format("20060102150405")
-	releaseDirectory := fmt.Sprintf("%s/releases/%s", site.Path, releaseTimestamp)
 
 	// Generate environment variables for first deployment
 	var envVars map[string]string
@@ -703,38 +671,16 @@ func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment 
 		envVars = site.GenerateEnvironmentVariables()
 	}
 
-	return tasks.DeploySiteConfig{
-		SitePath:                     site.Path,
-		SiteType:                     tasks.SiteType(site.Type),
-		SiteAddress:                  site.Address,
-		Username:                     site.User,
-		PHPBinary:                    phpBinary,
-		RepositoryURL:                repositoryURL,
-		RepositoryBranch:             site.GetRepositoryBranch(),
-		InstalledAt:                  site.InstalledAt != nil,
-		ZeroDowntimeDeployment:       true,
-		RepositoryDirectory:          fmt.Sprintf("%s/repository", site.Path),
-		LogsDirectory:                site.GetLogsDirectory(),
-		SharedDirectory:              fmt.Sprintf("%s/shared", site.Path),
-		ReleaseDirectory:             releaseDirectory,
-		ReleasesDirectory:            fmt.Sprintf("%s/releases", site.Path),
-		CurrentDirectory:             fmt.Sprintf("%s/current", site.Path),
-		DeploymentID:                 deployment.ID,
-		HasAppAuth:                   hasAppAuth,
-		TempToken:                    tempToken,
-		AuthURL:                      authURL,
-		AppName:                      appName,
-		DeployKeyPrivate:             site.DeployKeyPrivate.String(),
-		EnvVariables:                 envVars,
-		HookBeforeUpdatingRepository: stringValue(site.HookBeforeUpdatingRepository),
-		HookAfterUpdatingRepository:  stringValue(site.HookAfterUpdatingRepository),
-		HookBeforeMakingCurrent:      stringValue(site.HookBeforeMakingCurrent),
-		HookAfterMakingCurrent:       stringValue(site.HookAfterMakingCurrent),
-		SharedDirectories:            site.SharedDirectories,
-		SharedFiles:                  site.SharedFiles,
-		WritableDirectories:          site.WriteableDirectories,
-		LatestDeploymentTimestamp:    releaseTimestamp,
-		RetentionCount:               site.DeploymentReleasesRetention,
+	return tasks.DeployOptions{
+		Site:             site,
+		Deployment:       deployment,
+		RepositoryURL:    repositoryURL,
+		HasAppAuth:       hasAppAuth,
+		TempToken:        tempToken,
+		AuthURL:          authURL,
+		AppName:          appName,
+		ReleaseTimestamp: releaseTimestamp,
+		EnvVariables:     envVars,
 	}
 }
 

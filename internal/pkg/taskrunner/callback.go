@@ -5,6 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"sync"
+
+	"github.com/hibiken/asynq"
+	"github.com/rs/zerolog"
+	"gorm.io/gorm"
 )
 
 // CallbackType represents the type of callback
@@ -17,17 +21,31 @@ const (
 	CallbackCustom   CallbackType = "custom"
 )
 
+// CallbackContext provides dependencies to callback handlers.
+// This is similar to Laravel's service container - it allows reconstructed
+// handlers to access DB, queue, and other services.
+type CallbackContext struct {
+	DB     *gorm.DB
+	Queue  QueueClient
+	Logger *zerolog.Logger
+}
+
+// QueueClient interface for enqueueing jobs
+type QueueClient interface {
+	Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
+}
+
 // CallbackHandler is implemented by tasks that need continuation logic after
 // the task completes on the server. This is similar to Laravel's HasCallbacks interface.
 type CallbackHandler interface {
-	// HandleFinished is called when the task completes successfully
-	HandleFinished(ctx context.Context, taskID string) error
+	// OnSuccess is called when the task completes successfully
+	OnSuccess(ctx context.Context, cbCtx *CallbackContext, taskID string) error
 
-	// HandleFailed is called when the task fails with an exit code
-	HandleFailed(ctx context.Context, taskID string, exitCode int) error
+	// OnFailure is called when the task fails with an exit code
+	OnFailure(ctx context.Context, cbCtx *CallbackContext, taskID string, exitCode int) error
 
-	// HandleTimeout is called when the task times out
-	HandleTimeout(ctx context.Context, taskID string) error
+	// OnExpired is called when the task times out
+	OnExpired(ctx context.Context, cbCtx *CallbackContext, taskID string) error
 }
 
 // CallbackPayload represents a task that can be serialized for storage

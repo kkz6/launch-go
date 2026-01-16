@@ -758,6 +758,12 @@ type TaskRunnerDeps struct {
 	Dispatcher  taskrunner.TaskDispatcher
 	Logger      *zerolog.Logger
 	Broadcaster broadcast.TeamBroadcaster
+	LocalMode   bool // When true, tasks run synchronously via SSH instead of background with callbacks
+}
+
+// IsLocalMode returns true if running in local development mode
+func (d *TaskRunnerDeps) IsLocalMode() bool {
+	return d.LocalMode
 }
 
 // NewRunner creates a new TaskRunner with dependencies pre-configured.

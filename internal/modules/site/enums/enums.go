@@ -722,3 +722,138 @@ func (c *CertificateType) Scan(value interface{}) error {
 func (c CertificateType) Value() (driver.Value, error) {
 	return string(c), nil
 }
+
+// PhpVersion represents a PHP version for a site
+type PhpVersion string
+
+const (
+	PhpVersion56 PhpVersion = "php56"
+	PhpVersion70 PhpVersion = "php70"
+	PhpVersion71 PhpVersion = "php71"
+	PhpVersion72 PhpVersion = "php72"
+	PhpVersion73 PhpVersion = "php73"
+	PhpVersion74 PhpVersion = "php74"
+	PhpVersion80 PhpVersion = "php80"
+	PhpVersion81 PhpVersion = "php81"
+	PhpVersion82 PhpVersion = "php82"
+	PhpVersion83 PhpVersion = "php83"
+	PhpVersion84 PhpVersion = "php84"
+)
+
+func (p PhpVersion) String() string {
+	return string(p)
+}
+
+func (p PhpVersion) Label() string {
+	labels := map[PhpVersion]string{
+		PhpVersion56: "PHP 5.6",
+		PhpVersion70: "PHP 7.0",
+		PhpVersion71: "PHP 7.1",
+		PhpVersion72: "PHP 7.2",
+		PhpVersion73: "PHP 7.3",
+		PhpVersion74: "PHP 7.4",
+		PhpVersion80: "PHP 8.0",
+		PhpVersion81: "PHP 8.1",
+		PhpVersion82: "PHP 8.2",
+		PhpVersion83: "PHP 8.3",
+		PhpVersion84: "PHP 8.4",
+	}
+	if label, ok := labels[p]; ok {
+		return label
+	}
+	return string(p)
+}
+
+func (p PhpVersion) IsValid() bool {
+	switch p {
+	case PhpVersion56, PhpVersion70, PhpVersion71, PhpVersion72, PhpVersion73,
+		PhpVersion74, PhpVersion80, PhpVersion81, PhpVersion82, PhpVersion83, PhpVersion84:
+		return true
+	}
+	return false
+}
+
+// GetVersion returns the version string (e.g., "8.3")
+func (p PhpVersion) GetVersion() string {
+	versions := map[PhpVersion]string{
+		PhpVersion56: "5.6",
+		PhpVersion70: "7.0",
+		PhpVersion71: "7.1",
+		PhpVersion72: "7.2",
+		PhpVersion73: "7.3",
+		PhpVersion74: "7.4",
+		PhpVersion80: "8.0",
+		PhpVersion81: "8.1",
+		PhpVersion82: "8.2",
+		PhpVersion83: "8.3",
+		PhpVersion84: "8.4",
+	}
+	if v, ok := versions[p]; ok {
+		return v
+	}
+	return ""
+}
+
+// BinaryPath returns the PHP binary path (e.g., "php8.3")
+func (p PhpVersion) BinaryPath() string {
+	if !p.IsValid() {
+		return "php"
+	}
+	return "php" + p.GetVersion()
+}
+
+// FpmServiceName returns the PHP-FPM service name (e.g., "php8.3-fpm")
+func (p PhpVersion) FpmServiceName() string {
+	if !p.IsValid() {
+		return ""
+	}
+	return "php" + p.GetVersion() + "-fpm"
+}
+
+// SocketPath returns the PHP-FPM socket path (e.g., "/run/php/php8.3-fpm.sock")
+func (p PhpVersion) SocketPath() string {
+	if !p.IsValid() {
+		return ""
+	}
+	return "/run/php/php" + p.GetVersion() + "-fpm.sock"
+}
+
+func (p *PhpVersion) Scan(value interface{}) error {
+	if value == nil {
+		*p = ""
+		return nil
+	}
+
+	str, ok := value.(string)
+	if !ok {
+		bytes, ok := value.([]byte)
+		if !ok {
+			return fmt.Errorf("failed to scan PhpVersion: %v", value)
+		}
+		str = string(bytes)
+	}
+
+	*p = PhpVersion(str)
+	return nil
+}
+
+func (p PhpVersion) Value() (driver.Value, error) {
+	return string(p), nil
+}
+
+// AllPhpVersions returns all supported PHP versions (newest first)
+func AllPhpVersions() []PhpVersion {
+	return []PhpVersion{
+		PhpVersion84, PhpVersion83, PhpVersion82, PhpVersion81, PhpVersion80,
+		PhpVersion74, PhpVersion73, PhpVersion72, PhpVersion71, PhpVersion70, PhpVersion56,
+	}
+}
+
+// ParsePhpVersion parses a string into a PhpVersion
+func ParsePhpVersion(s string) (PhpVersion, error) {
+	p := PhpVersion(s)
+	if !p.IsValid() {
+		return "", fmt.Errorf("invalid PHP version: %s", s)
+	}
+	return p, nil
+}
