@@ -71,7 +71,17 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterHandler(mux, TypeSetDefaultPhp, jobContext, NewSetDefaultPhpJob)
 	pkgjobs.RegisterHandler(mux, TypeInstallPhpExtension, jobContext, NewInstallPhpExtensionJob)
 	pkgjobs.RegisterHandler(mux, TypeUninstallPhpExtension, jobContext, NewUninstallPhpExtensionJob)
+	pkgjobs.RegisterHandler(mux, TypeCleanupFailedPhpInstallation, jobContext, NewCleanupFailedPhpInstallationJob)
+	pkgjobs.RegisterHandler(mux, TypeCleanupFailedPhpExtensionInstall, jobContext, NewCleanupFailedPhpExtensionInstallJob)
+	pkgjobs.RegisterHandler(mux, TypeCleanupFailedPhpExtensionUninstall, jobContext, NewCleanupFailedPhpExtensionUninstallJob)
 
 	// Security audit jobs
 	pkgjobs.RegisterHandler(mux, TypeVulnerabilityAudit, jobContext, NewVulnerabilityAuditJob)
+
+	// Task and maintenance jobs
+	pkgjobs.RegisterHandler(mux, TypeCheckDaemonStatus, jobContext, NewCheckDaemonStatusJob)
+	pkgjobs.RegisterHandler(mux, TypeUpdateTaskOutput, jobContext, NewUpdateTaskOutputJob)
+	pkgjobs.RegisterHandler(mux, TypeUpdateUserPublicKey, jobContext, NewUpdateUserPublicKeyJob)
+	pkgjobs.RegisterHandler(mux, TypeInstallTaskCleanupCron, jobContext, NewInstallTaskCleanupCronJob)
+	pkgjobs.RegisterHandler(mux, TypeRunAfterUpdate, jobContext, NewRunAfterUpdateJob)
 }
