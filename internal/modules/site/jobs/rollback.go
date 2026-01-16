@@ -3,7 +3,6 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -65,8 +64,6 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 
 	// Update deployment status to Installing
 	currentDeployment.Status = enums.DeploymentStatusInstalling
-	now := time.Now()
-	currentDeployment.StartedAt = &now
 	if err := j.ctx.DeploymentRepo.Update(ctx, currentDeployment); err != nil {
 		j.ctx.LogError(err, "Failed to update deployment status to installing")
 	}
@@ -104,10 +101,6 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 	}
 
 	exitCode := result.GetExitCode()
-	output := result.GetOutput()
-
-	// Update deployment with output
-	currentDeployment.Output = &output
 
 	if exitCode != 0 {
 		j.handleRollbackFailure(ctx, currentDeployment, site.ID, targetDeployment.ID,
@@ -123,9 +116,7 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 
 // handleRollbackSuccess handles successful rollback
 func (j *RollbackJob) handleRollbackSuccess(ctx context.Context, deployment *models.Deployment, siteID, targetDeploymentID string) {
-	now := time.Now()
 	deployment.Status = enums.DeploymentStatusFinished
-	deployment.FinishedAt = &now
 
 	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		j.ctx.LogError(err, "Failed to update deployment status to finished")
@@ -160,9 +151,7 @@ func (j *RollbackJob) handleRollbackSuccess(ctx context.Context, deployment *mod
 
 // handleRollbackFailure handles failed rollback
 func (j *RollbackJob) handleRollbackFailure(ctx context.Context, deployment *models.Deployment, siteID, targetDeploymentID string, err error) {
-	now := time.Now()
 	deployment.Status = enums.DeploymentStatusFailed
-	deployment.FinishedAt = &now
 
 	if updateErr := j.ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
 		j.ctx.LogError(updateErr, "Failed to update deployment status to failed")
@@ -219,9 +208,7 @@ func (j *RollbackJob) Failed(ctx context.Context, err error) {
 		return
 	}
 
-	now := time.Now()
 	deployment.Status = enums.DeploymentStatusFailed
-	deployment.FinishedAt = &now
 	_ = j.ctx.DeploymentRepo.Update(ctx, deployment)
 
 	// Get site and server for broadcasting

@@ -13,13 +13,11 @@ type Deployment struct {
 	SiteID     string                 `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
 	UserID     *string                `gorm:"column:user_id;type:char(26);index" json:"user_id,omitempty"`
 	TaskID     *string                `gorm:"column:task_id;type:char(26);index" json:"task_id,omitempty"`
-	Status     enums.DeploymentStatus `gorm:"type:varchar(255);not null" json:"status"`
-	GitHash    *string                `gorm:"column:git_hash;type:varchar(255)" json:"git_hash,omitempty"`
-	CommitData basemodels.JSONMap     `gorm:"column:commit_data;type:json" json:"commit_data,omitempty"`
-	VcsData    basemodels.JSONMap     `gorm:"column:vcs_data;type:json" json:"vcs_data,omitempty"`
-	StartedAt  *time.Time             `gorm:"column:started_at;type:timestamp null" json:"started_at,omitempty"`
-	FinishedAt *time.Time             `gorm:"column:finished_at;type:timestamp null" json:"finished_at,omitempty"`
-	Output     *string                `gorm:"column:output;type:longtext" json:"output,omitempty"`
+	Status         enums.DeploymentStatus `gorm:"type:varchar(255);not null" json:"status"`
+	GitHash        *string                `gorm:"column:git_hash;type:varchar(255)" json:"git_hash,omitempty"`
+	CommitData     basemodels.JSONMap     `gorm:"column:commit_data;type:json" json:"commit_data,omitempty"`
+	VcsData        basemodels.JSONMap     `gorm:"column:vcs_data;type:json" json:"vcs_data,omitempty"`
+	UserNotifiedAt *time.Time             `gorm:"column:user_notified_at;type:timestamp null" json:"user_notified_at,omitempty"`
 
 	// Relations
 	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
