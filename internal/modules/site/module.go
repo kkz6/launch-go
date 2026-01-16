@@ -77,7 +77,6 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 		m.repos.Certificate(),
 		m.repos.Queue(),
 		m.repos.Redirect(),
-		m.repos.Release(),
 		m.serverRepos,
 		m.gitRepos.SourceControl(),
 		m.providerFactory,

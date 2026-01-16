@@ -77,8 +77,6 @@ func createProviderFactory(cfg config.GitConfig) *providers.ProviderFactory {
 			PrivateKey:    cfg.GitHub.PrivateKey,
 			WebhookSecret: cfg.GitHub.WebhookSecret,
 			AppSlug:       cfg.GitHub.AppSlug,
-			ClientID:      cfg.GitHub.ClientID,
-			ClientSecret:  cfg.GitHub.ClientSecret,
 		})
 	}
 

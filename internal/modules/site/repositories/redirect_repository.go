@@ -45,6 +45,13 @@ func (r *RedirectRepository) FindBySite(ctx context.Context, siteID string) ([]m
 	return redirects, err
 }
 
+// DeleteBySite deletes all redirects for a site
+func (r *RedirectRepository) DeleteBySite(ctx context.Context, siteID string) error {
+	return r.DB.WithContext(ctx).
+		Where("site_id = ?", siteID).
+		Delete(&models.Redirect{}).Error
+}
+
 // Note: The following methods are inherited from repository.Base[T]:
 // - Create(ctx, entity) error
 // - Update(ctx, entity) error

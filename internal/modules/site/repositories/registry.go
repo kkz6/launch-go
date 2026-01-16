@@ -12,7 +12,6 @@ type Registry struct {
 	queue       *QueueRepository
 	command     *CommandRepository
 	redirect    *RedirectRepository
-	release     *ReleaseRepository
 }
 
 // NewRegistry creates all repositories
@@ -24,7 +23,6 @@ func NewRegistry(db *gorm.DB) *Registry {
 		queue:       NewQueueRepository(db),
 		command:     NewCommandRepository(db),
 		redirect:    NewRedirectRepository(db),
-		release:     NewReleaseRepository(db),
 	}
 }
 
@@ -45,6 +43,3 @@ func (r *Registry) Command() *CommandRepository { return r.command }
 
 // Redirect returns the redirect repository
 func (r *Registry) Redirect() *RedirectRepository { return r.redirect }
-
-// Release returns the release repository
-func (r *Registry) Release() *ReleaseRepository { return r.release }

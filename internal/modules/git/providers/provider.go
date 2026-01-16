@@ -75,8 +75,9 @@ type ProviderConfig struct {
 	PrivateKey    string
 	WebhookSecret string
 	AppSlug       string
-	ClientID      string
-	ClientSecret  string
+	// ClientID and ClientSecret are only used for GitLab/Bitbucket OAuth
+	ClientID     string
+	ClientSecret string
 }
 
 // ProviderFactory creates providers based on type

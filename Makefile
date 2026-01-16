@@ -1,11 +1,5 @@
 .PHONY: build run worker test lint migrate migrate-rollback migrate-fresh migrate-status shellcheck help
 
-# Load environment variables from .env file
-ifneq (,$(wildcard ./.env))
-include .env
-export
-endif
-
 # Build variables
 BINARY_API=bin/api
 BINARY_WORKER=bin/worker

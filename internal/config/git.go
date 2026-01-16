@@ -17,8 +17,6 @@ type GitHubConfig struct {
 	PrivateKey    string
 	WebhookSecret string
 	AppSlug       string
-	ClientID      string
-	ClientSecret  string
 }
 
 // GitLabConfig holds GitLab-specific configuration
@@ -42,8 +40,6 @@ func loadGitConfig() GitConfig {
 			PrivateKey:    viper.GetString("GITHUB_PRIVATE_KEY"),
 			WebhookSecret: viper.GetString("GITHUB_WEBHOOK_SECRET"),
 			AppSlug:       viper.GetString("GITHUB_APP_SLUG"),
-			ClientID:      viper.GetString("GITHUB_CLIENT_ID"),
-			ClientSecret:  viper.GetString("GITHUB_CLIENT_SECRET"),
 		},
 		GitLab: GitLabConfig{
 			ClientID:      viper.GetString("GITLAB_CLIENT_ID"),
@@ -63,8 +59,6 @@ func setGitDefaults() {
 	viper.SetDefault("GITHUB_PRIVATE_KEY", "")
 	viper.SetDefault("GITHUB_WEBHOOK_SECRET", "")
 	viper.SetDefault("GITHUB_APP_SLUG", "")
-	viper.SetDefault("GITHUB_CLIENT_ID", "")
-	viper.SetDefault("GITHUB_CLIENT_SECRET", "")
 	viper.SetDefault("GITLAB_CLIENT_ID", "")
 	viper.SetDefault("GITLAB_CLIENT_SECRET", "")
 	viper.SetDefault("GITLAB_WEBHOOK_SECRET", "")
