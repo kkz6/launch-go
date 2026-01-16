@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/database"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
+	"github.com/kkz6/launch-go/internal/modules/git"
 	"github.com/kkz6/launch-go/internal/modules/server"
 	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/pkg/app"
@@ -87,11 +88,19 @@ func main() {
 	kernel := app.NewKernel(appLogger)
 	builder := module.NewBuilderFromContext(ctx)
 
+	// Initialize modules
+	gitModule := git.NewModule(builder)
+	siteModule := site.NewModule(builder)
+
+	// Set up cross-module dependencies
+	siteModule.SetProviderFactory(gitModule.ProviderFactory())
+
 	// Register all modules with the kernel
 	kernel.
 		Register(server.NewModule(builder)).
 		Register(databasemodule.NewModule(builder)).
-		Register(site.NewModule(builder))
+		Register(gitModule).
+		Register(siteModule)
 
 	// Boot all jobs through the kernel
 	mux := asynq.NewServeMux()
