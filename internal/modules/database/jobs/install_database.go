@@ -12,6 +12,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
+	"github.com/kkz6/launch-go/internal/pkg/traits"
 )
 
 const TypeInstallDatabase = "database:install"
@@ -24,7 +25,7 @@ type InstallDatabasePayload struct {
 
 type InstallDatabaseJob struct {
 	ctx *JobContext
-	pkgjobs.InstallationTracker
+	traits.InstallationTracker
 	Payload InstallDatabasePayload
 }
 

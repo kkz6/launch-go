@@ -12,6 +12,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
+	"github.com/kkz6/launch-go/internal/pkg/traits"
 )
 
 const TypeUninstallDatabase = "database:uninstall"
@@ -24,7 +25,7 @@ type UninstallDatabasePayload struct {
 
 type UninstallDatabaseJob struct {
 	ctx *JobContext
-	pkgjobs.UninstallationTracker
+	traits.UninstallationTracker
 	Payload UninstallDatabasePayload
 }
 
