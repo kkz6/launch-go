@@ -6,10 +6,10 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/database/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // Service-specific errors - using centralized error package
@@ -42,7 +42,7 @@ type Service struct {
 }
 
 // NewService creates a new Service instance
-func NewService(repos *repositories.Registry, serverRepo ServerRepository, q *queue.Client, ws *websocket.Hub, logger *zerolog.Logger) *Service {
+func NewService(repos *repositories.Registry, serverRepo ServerRepository, q *queue.Client, ws broadcast.ModelBroadcaster, logger *zerolog.Logger) *Service {
 	return &Service{
 		Base:       service.NewBase(q, ws, logger),
 		repos:      repos,

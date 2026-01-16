@@ -5,9 +5,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // Context holds all shared application dependencies.
@@ -18,7 +18,7 @@ type Context struct {
 	DB         *gorm.DB
 	Logger     *zerolog.Logger
 	Queue      *queue.Client
-	WebSocket  *websocket.Hub
+	WebSocket  broadcast.ModelBroadcaster
 	Dispatcher *taskrunner.Dispatcher
 }
 
@@ -28,7 +28,7 @@ func NewContext(
 	db *gorm.DB,
 	logger *zerolog.Logger,
 	queueClient *queue.Client,
-	wsHub *websocket.Hub,
+	wsBroadcaster broadcast.ModelBroadcaster,
 	dispatcher *taskrunner.Dispatcher,
 ) *Context {
 	return &Context{
@@ -36,7 +36,7 @@ func NewContext(
 		DB:         db,
 		Logger:     logger,
 		Queue:      queueClient,
-		WebSocket:  wsHub,
+		WebSocket:  wsBroadcaster,
 		Dispatcher: dispatcher,
 	}
 }

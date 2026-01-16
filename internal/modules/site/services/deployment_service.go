@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -47,13 +48,13 @@ func (s *DeploymentService) Deploy(ctx context.Context, siteID, serverID, userID
 	}
 
 	// Fetch the latest commit data from the git provider
-	commitData := s.fetchLatestCommitData(ctx, site)
+	commitData := s.FetchLatestCommitData(ctx, site)
 
 	return s.createDeployment(ctx, site, userID, commitData)
 }
 
-// fetchLatestCommitData fetches the latest commit data from the git provider
-func (s *DeploymentService) fetchLatestCommitData(ctx context.Context, site *models.Site) map[string]interface{} {
+// FetchLatestCommitData fetches the latest commit data from the git provider
+func (s *DeploymentService) FetchLatestCommitData(ctx context.Context, site *models.Site) map[string]interface{} {
 	if site.SourceControlID == nil || site.SourceControlRepositoriesID == nil {
 		return nil
 	}
@@ -199,7 +200,8 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 		return nil, err
 	}
 
-	if err := s.EnqueueTask(task); err != nil {
+	// Add a small delay to ensure the database transaction is fully committed
+	if err := s.EnqueueTaskWithOptions(task, asynq.ProcessIn(1*time.Second)); err != nil {
 		s.LogError(err, "Failed to enqueue rollback job", "deployment_id", deployment.ID)
 	}
 
@@ -270,7 +272,9 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 		return nil, dispatchErr
 	}
 
-	if err := s.EnqueueTask(task); err != nil {
+	// Add a small delay to ensure the database transaction is fully committed
+	// before the job starts processing
+	if err := s.EnqueueTaskWithOptions(task, asynq.ProcessIn(1*time.Second)); err != nil {
 		s.LogError(err, "Failed to enqueue deployment job", "deployment_id", deployment.ID)
 	}
 

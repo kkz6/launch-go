@@ -4,9 +4,9 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // Base provides common service dependencies.
@@ -20,12 +20,12 @@ import (
 //	}
 type Base struct {
 	Queue  *queue.Client
-	WS     *websocket.Hub
+	WS     broadcast.ModelBroadcaster
 	Logger *zerolog.Logger
 }
 
 // NewBase creates a new Base service
-func NewBase(q *queue.Client, ws *websocket.Hub, logger *zerolog.Logger) Base {
+func NewBase(q *queue.Client, ws broadcast.ModelBroadcaster, logger *zerolog.Logger) Base {
 	return Base{
 		Queue:  q,
 		WS:     ws,

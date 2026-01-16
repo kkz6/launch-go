@@ -1,0 +1,127 @@
+#!/bin/bash
+set -eu
+export DEBIAN_FRONTEND=noninteractive
+
+export PHP_BINARY=php8.3
+
+# Create the necessary directories
+mkdir -p /home/launcher/example.com/repository
+mkdir -p /home/launcher/example.com/logs
+
+# Check if the repository exists and if the remote URL is correct, if not, delete it
+if [ -f "/home/launcher/example.com/repository/HEAD" ]; then
+    cd /home/launcher/example.com/repository
+    CURRENT_REMOTE_URL=$(git config --get remote.origin.url || echo '');
+
+    if [ "$CURRENT_REMOTE_URL" != 'git@github.com:user/repo.git' ]; then
+        
+            git remote set-url origin git@github.com:user/repo.git
+        
+    fi
+fi
+
+# Set up deployment-specific variables to avoid race conditions
+DEPLOYMENT_ID="deploy789"
+CREDENTIALS_FILE="/tmp/git-credentials-${DEPLOYMENT_ID}"
+USE_APP_AUTH=false
+USE_SSH_AUTH=false
+
+# Cleanup function to ensure credentials are always removed
+cleanup_credentials() {
+    if [ -f "$CREDENTIALS_FILE" ]; then
+        rm -f "$CREDENTIALS_FILE"
+        echo "🧹 Cleaned up deployment credentials"
+    fi
+    # Reset git config to system defaults
+    git config --global --unset credential.helper 2>/dev/null || true
+}
+
+# Set trap to cleanup on script exit
+trap cleanup_credentials EXIT
+
+# Try to configure app-based authentication first
+
+    # Check if site has SSH deploy keys as fallback
+    
+        echo "🔑 App-based authentication not available, falling back to SSH deployment keys..."
+
+        # Set up SSH authentication using deploy keys
+        DEPLOY_KEY_PATH="/home/launcher/example.com/deploy_key"
+
+        # Create deploy key file if it doesn't exist
+        if [ ! -f "$DEPLOY_KEY_PATH" ]; then
+            cat <<EOF > "$DEPLOY_KEY_PATH"
+-----BEGIN OPENSSH PRIVATE KEY-----
+test-key-content
+-----END OPENSSH PRIVATE KEY-----
+EOF
+            chmod 600 "$DEPLOY_KEY_PATH"
+        fi
+
+        # Configure git to use the deploy key
+        export GIT_SSH_COMMAND="ssh -i $DEPLOY_KEY_PATH -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
+
+        USE_SSH_AUTH=true
+        echo "✅ SSH authentication configured successfully"
+    
+
+
+cd /home/launcher/example.com
+
+echo "📦 Cloning/updating repository..."
+
+# Clone the repository if it doesn't exist
+
+    if [ ! -f "/home/launcher/example.com/repository/.git/HEAD" ]; then
+        if git clone git@github.com:user/repo.git /home/launcher/example.com/repository; then
+            echo "✅ Repository cloned"
+        else
+            echo "❌ Failed to clone repository"
+            exit 1
+        fi
+    fi
+
+
+cd /home/launcher/example.com/repository
+
+echo "🔄 Fetching latest changes..."
+
+
+    if git fetch origin && git reset --hard origin/main; then
+        echo "✅ Updated to latest: main"
+    else
+        echo "❌ Failed to update to latest: main"
+        exit 1
+    fi
+
+
+# Success message with authentication method used
+if [ "$USE_APP_AUTH" = true ]; then
+    echo "✅ Repository updated successfully with app-based authentication"
+elif [ "$USE_SSH_AUTH" = true ]; then
+    echo "✅ Repository updated successfully with SSH deploy keys"
+fi
+
+
+
+# Cleanup is handled by the trap function
+cd /home/launcher/example.com
+
+cd /home/launcher/example.com
+
+cd /home/launcher/example.com
+
+ENV_PATH="/home/launcher/example.com/repository/.env"
+EXAMPLE_ENV_PATH="/home/launcher/example.com/repository/.env.example"
+
+if [ ! -f $ENV_PATH ] && [ -f $EXAMPLE_ENV_PATH ]; then
+    cp $EXAMPLE_ENV_PATH $ENV_PATH
+    cd /home/launcher/example.com/repository
+
+    
+
+fi
+
+cd /home/launcher/example.com
+
+echo "Done!"

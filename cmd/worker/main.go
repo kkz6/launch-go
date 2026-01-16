@@ -45,12 +45,12 @@ func main() {
 		appLogger.Fatal().Err(err).Msg("Failed to connect to database")
 	}
 
-	// Initialize WebSocket hub for broadcasting job progress
-	wsHub := websocket.NewHub()
-	go wsHub.Run()
+	// Initialize Redis broadcaster for cross-process WebSocket messaging
+	// The worker publishes to Redis, and the API server subscribes and forwards to clients
+	redisBroadcaster := websocket.NewRedisBroadcaster(cfg.Redis.Address, cfg.Redis.Password, cfg.Redis.DB, appLogger)
 
 	// Initialize task dispatcher with local mode support
-	dispatcher := taskrunner.NewDispatcherWithConfig(appLogger, wsHub, &taskrunner.DispatcherConfig{
+	dispatcher := taskrunner.NewDispatcherWithConfig(appLogger, redisBroadcaster, &taskrunner.DispatcherConfig{
 		LocalMode:         cfg.App.IsLocal(),
 		BroadcastInterval: 2 * time.Second,
 	})
@@ -86,7 +86,7 @@ func main() {
 	)
 
 	// Create application context with all shared dependencies
-	ctx := app.NewContext(cfg, db, appLogger, queueClient, wsHub, dispatcher)
+	ctx := app.NewContext(cfg, db, appLogger, queueClient, redisBroadcaster, dispatcher)
 
 	// Create application kernel for module registration
 	kernel := app.NewKernel(appLogger)
@@ -126,7 +126,7 @@ func main() {
 
 	srv.Shutdown()
 	kernel.Shutdown()
-	wsHub.Shutdown()
+	redisBroadcaster.Close()
 	queueClient.Close()
 
 	appLogger.Info().Msg("Worker stopped")

@@ -13,9 +13,9 @@ import (
 	serverservices "github.com/kkz6/launch-go/internal/modules/server/services"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // ServiceDeps holds all dependencies needed for site services
@@ -23,7 +23,7 @@ type ServiceDeps struct {
 	DB             *gorm.DB
 	Logger         *zerolog.Logger
 	Queue          *queue.Client
-	WebSocket      *websocket.Hub
+	WebSocket      broadcast.ModelBroadcaster
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
 	Repos          *repositories.Registry
 

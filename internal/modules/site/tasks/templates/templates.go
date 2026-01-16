@@ -71,7 +71,8 @@ func MustRender(name string, data any) string {
 }
 
 // ShellDefaults returns the standard shell script header
+// Uses set -eu (not pipefail) to match Laravel behavior
 func ShellDefaults() string {
-	return `set -euo pipefail
+	return `set -eu
 export DEBIAN_FRONTEND=noninteractive`
 }

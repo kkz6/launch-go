@@ -303,6 +303,7 @@ func (j *DeployJob) broadcastDeploymentProgress(ctx context.Context, siteID, dep
 	}
 
 	j.ctx.BroadcastServerEvent(server, "deployment.progress", map[string]interface{}{
+		"team_id":       server.TeamID,
 		"site_id":       siteID,
 		"deployment_id": deploymentID,
 		"status":        status,
@@ -839,6 +840,7 @@ func (j *DeployZeroDowntimeJob) broadcastDeploymentProgress(ctx context.Context,
 	}
 
 	j.ctx.BroadcastServerEvent(server, "deployment.progress", map[string]interface{}{
+		"team_id":       server.TeamID,
 		"site_id":       siteID,
 		"deployment_id": deploymentID,
 		"status":        status,

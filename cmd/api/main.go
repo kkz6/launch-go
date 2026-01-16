@@ -38,14 +38,15 @@ import (
 
 // Application holds all application dependencies
 type Application struct {
-	config      *config.Config
-	logger      *zerolog.Logger
-	db          *gorm.DB
-	queueClient *queue.Client
-	wsHub       *websocket.Hub
-	dispatcher  *taskrunner.Dispatcher
-	fiber       *fiber.App
-	kernel      *app.Kernel
+	config         *config.Config
+	logger         *zerolog.Logger
+	db             *gorm.DB
+	queueClient    *queue.Client
+	wsHub          *websocket.Hub
+	wsSubscriber   *websocket.RedisSubscriber
+	dispatcher     *taskrunner.Dispatcher
+	fiber          *fiber.App
+	kernel         *app.Kernel
 }
 
 func main() {
@@ -82,6 +83,10 @@ func bootstrap() *Application {
 	wsHub := websocket.NewHub()
 	go wsHub.Run()
 
+	// Start Redis subscriber to receive broadcasts from the worker process
+	wsSubscriber := websocket.NewRedisSubscriber(cfg.Redis.Address, cfg.Redis.Password, cfg.Redis.DB, wsHub, appLogger)
+	wsSubscriber.Start()
+
 	dispatcher := taskrunner.NewDispatcher(appLogger, wsHub)
 
 	fiberApp := fiber.New(fiber.Config{
@@ -92,13 +97,14 @@ func bootstrap() *Application {
 	})
 
 	return &Application{
-		config:      cfg,
-		logger:      appLogger,
-		db:          db,
-		queueClient: queueClient,
-		wsHub:       wsHub,
-		dispatcher:  dispatcher,
-		fiber:       fiberApp,
+		config:       cfg,
+		logger:       appLogger,
+		db:           db,
+		queueClient:  queueClient,
+		wsHub:        wsHub,
+		wsSubscriber: wsSubscriber,
+		dispatcher:   dispatcher,
+		fiber:        fiberApp,
 	}
 }
 
@@ -217,6 +223,9 @@ func (a *Application) shutdown() {
 
 	// Shutdown modules through kernel (includes WebSocket hub)
 	a.kernel.Shutdown()
+
+	// Stop Redis subscriber
+	a.wsSubscriber.Stop()
 
 	a.queueClient.Close()
 

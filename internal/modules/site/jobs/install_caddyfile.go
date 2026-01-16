@@ -8,6 +8,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -93,6 +95,14 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 		j.ctx.LogError(err, "Failed to update site installed status")
 	}
 
+	// Broadcast site.installed event
+	j.ctx.BroadcastServerEvent(server, "site.installed", map[string]interface{}{
+		"team_id":   server.TeamID,
+		"site_id":   site.ID,
+		"server_id": server.ID,
+		"address":   site.Address,
+	})
+
 	j.ctx.LogInfo("Caddyfile installed successfully", "site_id", site.ID)
 
 	return nil
@@ -112,49 +122,118 @@ func (j *InstallCaddyfileJob) Failed(ctx context.Context, err error) {
 	site.InstalledAt = nil
 	site.InstallationFailedAt = &now
 	_ = j.ctx.SiteRepo.Update(ctx, site)
+
+	// Broadcast site.installation_failed event
+	server, serverErr := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	if serverErr == nil {
+		j.ctx.BroadcastServerEvent(server, "site.installation_failed", map[string]interface{}{
+			"team_id":   server.TeamID,
+			"site_id":   site.ID,
+			"server_id": server.ID,
+			"address":   site.Address,
+			"error":     err.Error(),
+		})
+	}
 }
 
 // generateCaddyfileContent generates the Caddyfile content for a site
 func (j *InstallCaddyfileJob) generateCaddyfileContent(site *models.Site) string {
-	var builder strings.Builder
+	return generateCaddyfile(site)
+}
 
-	// Add site address and aliases
-	addresses := []string{site.Address}
-	if len(site.Aliases) > 0 {
-		addresses = append(addresses, site.Aliases...)
+// generateCaddyfile generates the Caddyfile content for a site (shared function)
+func generateCaddyfile(site *models.Site) string {
+	var builder strings.Builder
+	port := site.GetPort()
+
+	// WWW redirect handling
+	if site.StartsWithWww() {
+		// Site starts with www, redirect non-www to www
+		nonWwwAddress := strings.TrimPrefix(site.Address, "www.")
+		builder.WriteString(fmt.Sprintf("%s:%d {\n", nonWwwAddress, port))
+		builder.WriteString("\tredir {scheme}://www.{host}{uri}\n")
+		builder.WriteString("}\n\n")
+	} else {
+		// Site doesn't start with www, redirect www to non-www
+		builder.WriteString(fmt.Sprintf("www.%s:%d {\n", site.Address, port))
+		builder.WriteString(fmt.Sprintf("\tredir {scheme}://%s{uri}\n", site.Address))
+		builder.WriteString("}\n\n")
 	}
 
-	builder.WriteString(strings.Join(addresses, ", "))
-	builder.WriteString(" {\n")
+	// TLS snippet
+	builder.WriteString("# Do not remove this tls-* snippet\n")
+	builder.WriteString(generateTlsSnippet(site))
+	builder.WriteString("\n")
 
-	// Root directive
-	builder.WriteString(fmt.Sprintf("\troot * %s\n", site.GetWebDirectory()))
+	// Main server block
+	builder.WriteString(fmt.Sprintf("%s:%d {\n", site.Address, port))
+	builder.WriteString(fmt.Sprintf("root * %s\n", site.GetWebDirectory()))
+	builder.WriteString("encode zstd gzip\n\n")
 
-	// Encode directive
-	builder.WriteString("\tencode gzip\n")
+	// Import TLS snippet
+	builder.WriteString(fmt.Sprintf("import tls-%s\n\n", site.ID))
 
-	// PHP handling if PHP version is set
-	if site.PhpVersion != nil && *site.PhpVersion != "" {
-		phpFpmSocket := fmt.Sprintf("unix//run/php/php%s-fpm.sock", *site.PhpVersion)
-		builder.WriteString(fmt.Sprintf("\tphp_fastcgi %s\n", phpFpmSocket))
+	// Security headers
+	builder.WriteString("header {\n")
+	builder.WriteString("\t-Server\n")
+	builder.WriteString("\tX-Content-Type-Options nosniff\n")
+	builder.WriteString("\tX-Frame-Options SAMEORIGIN\n")
+	builder.WriteString("\tX-Powered-By \"Launch\"\n")
+	builder.WriteString("\tX-XSS-Protection \"1; mode=block\"\n")
+	builder.WriteString("}\n\n")
+
+	// PHP FastCGI for non-static sites
+	if site.Type != enums.SiteTypeStatic && site.PhpVersion != nil && *site.PhpVersion != "" {
+		phpSocket := serverenums.PhpSocketFromVersion(*site.PhpVersion)
+		builder.WriteString(fmt.Sprintf("php_fastcgi unix/%s {\n", phpSocket))
+		builder.WriteString("\tresolve_root_symlink\n")
+		builder.WriteString("\ttry_files {path} {path}/index.html {path}/index.htm index.php\n")
+		builder.WriteString("}\n\n")
+	}
+
+	// WordPress-specific rules
+	if site.Type == enums.SiteTypeWordpress {
+		builder.WriteString("@disallowed {\n")
+		builder.WriteString("\tpath /xmlrpc.php\n")
+		builder.WriteString("\tpath *.sql\n")
+		builder.WriteString("\tpath /wp-content/uploads/*.php\n")
+		builder.WriteString("}\n\n")
+		builder.WriteString("rewrite @disallowed '/index.php'\n\n")
 	}
 
 	// File server
-	builder.WriteString("\tfile_server\n")
+	builder.WriteString("file_server\n\n")
 
-	// Logs
-	builder.WriteString(fmt.Sprintf("\tlog {\n\t\toutput file %s/access.log\n\t}\n", site.GetLogsDirectory()))
+	// Logging with rotation
+	builder.WriteString("log {\n")
+	builder.WriteString(fmt.Sprintf("\toutput file %s/caddy.log {\n", site.Path+"/logs"))
+	builder.WriteString("\t\troll_size 100mb\n")
+	builder.WriteString("\t\troll_keep 30\n")
+	builder.WriteString("\t\troll_keep_for 720h\n")
+	builder.WriteString("\t}\n")
+	builder.WriteString("}\n")
 
-	// TLS settings
+	builder.WriteString("}\n")
+
+	return builder.String()
+}
+
+// generateTlsSnippet generates the TLS snippet for a site
+func generateTlsSnippet(site *models.Site) string {
+	var builder strings.Builder
+
+	builder.WriteString(fmt.Sprintf("(tls-%s) {\n", site.ID))
+
 	switch site.TlsSetting {
-	case "off":
-		// No TLS block needed
-	case "internal":
+	case enums.TlsSettingCustom:
+		// TODO: Get active certificate and use its paths
+		// For now, just add a placeholder comment
+		builder.WriteString("\t# Custom TLS certificate\n")
+	case enums.TlsSettingInternal:
 		builder.WriteString("\ttls internal\n")
-	case "custom":
-		// Custom TLS would be configured via certificate
 	default:
-		// Auto TLS is the default (no config needed)
+		// Auto TLS or Off - no specific TLS config needed
+		builder.WriteString("\t#\n")
 	}
 
 	builder.WriteString("}\n")
@@ -284,50 +363,7 @@ func (j *UpdateCaddyfileJob) Failed(ctx context.Context, err error) {
 
 // generateCaddyfileContent generates the Caddyfile content for a site
 func (j *UpdateCaddyfileJob) generateCaddyfileContent(site *models.Site) string {
-	var builder strings.Builder
-
-	// Add site address and aliases
-	addresses := []string{site.Address}
-	if len(site.Aliases) > 0 {
-		addresses = append(addresses, site.Aliases...)
-	}
-
-	builder.WriteString(strings.Join(addresses, ", "))
-	builder.WriteString(" {\n")
-
-	// Root directive
-	builder.WriteString(fmt.Sprintf("\troot * %s\n", site.GetWebDirectory()))
-
-	// Encode directive
-	builder.WriteString("\tencode gzip\n")
-
-	// PHP handling if PHP version is set
-	if site.PhpVersion != nil && *site.PhpVersion != "" {
-		phpFpmSocket := fmt.Sprintf("unix//run/php/php%s-fpm.sock", *site.PhpVersion)
-		builder.WriteString(fmt.Sprintf("\tphp_fastcgi %s\n", phpFpmSocket))
-	}
-
-	// File server
-	builder.WriteString("\tfile_server\n")
-
-	// Logs
-	builder.WriteString(fmt.Sprintf("\tlog {\n\t\toutput file %s/access.log\n\t}\n", site.GetLogsDirectory()))
-
-	// TLS settings
-	switch site.TlsSetting {
-	case "off":
-		// No TLS block needed
-	case "internal":
-		builder.WriteString("\ttls internal\n")
-	case "custom":
-		// Custom TLS would be configured via certificate
-	default:
-		// Auto TLS is the default (no config needed)
-	}
-
-	builder.WriteString("}\n")
-
-	return builder.String()
+	return generateCaddyfile(site)
 }
 
 // UninstallCaddyfileJob handles site Caddyfile uninstallation

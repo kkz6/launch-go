@@ -4,7 +4,20 @@ package broadcast
 // TeamBroadcaster broadcasts events to team channels.
 // All events are sent to team.{teamID} channel for simplicity.
 type TeamBroadcaster interface {
+	// BroadcastToTeam sends an event to the team channel
 	BroadcastToTeam(teamID string, event string, data any)
+
+	// BroadcastToServer sends an event to the server channel
+	BroadcastToServer(serverID string, event string, data any)
+
+	// BroadcastToSite sends an event to the site channel
+	BroadcastToSite(siteID string, event string, data any)
+
+	// BroadcastToDeployment sends an event to the deployment channel
+	BroadcastToDeployment(deploymentID string, event string, data any)
+
+	// Broadcast sends an event to a specific channel
+	Broadcast(channel string, event string, data any)
 }
 
 // ModelBroadcaster extends TeamBroadcaster with model-specific broadcasting methods.

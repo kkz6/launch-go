@@ -218,10 +218,8 @@ func CommitDataFromGitHubPayload(data map[string]interface{}) *CommitData {
 		return nil
 	}
 
+	// Store full SHA - UI can truncate for display
 	sha := commitID
-	if len(sha) > 7 {
-		sha = sha[:7]
-	}
 
 	var name, email string
 	if author, ok := headCommit["author"].(map[string]interface{}); ok {
@@ -263,10 +261,8 @@ func CommitDataFromGitLabPayload(data map[string]interface{}) *CommitData {
 		return nil
 	}
 
+	// Store full SHA - UI can truncate for display
 	sha := commitID
-	if len(sha) > 7 {
-		sha = sha[:7]
-	}
 
 	var name, email string
 	if author, ok := firstCommit["author"].(map[string]interface{}); ok {
@@ -323,10 +319,8 @@ func CommitDataFromBitbucketPayload(data map[string]interface{}) *CommitData {
 		return nil
 	}
 
+	// Store full SHA - UI can truncate for display
 	sha := hash
-	if len(sha) > 7 {
-		sha = sha[:7]
-	}
 
 	var name, email string
 	if author, ok := firstCommit["author"].(map[string]interface{}); ok {

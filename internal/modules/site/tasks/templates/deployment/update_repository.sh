@@ -24,7 +24,7 @@ USE_SSH_AUTH=false
 cleanup_credentials() {
     if [ -f "$CREDENTIALS_FILE" ]; then
         rm -f "$CREDENTIALS_FILE"
-        echo "Cleaned up deployment credentials"
+        echo "🧹 Cleaned up deployment credentials"
     fi
     # Reset git config to system defaults
     git config --global --unset credential.helper 2>/dev/null || true
@@ -35,7 +35,7 @@ trap cleanup_credentials EXIT
 
 # Try to configure app-based authentication first
 {{ if and .HasAppAuth .TempToken .AuthURL }}
-    echo "Setting up app-based authentication for deployment ${DEPLOYMENT_ID}..."
+    echo "🔐 Setting up app-based authentication for deployment ${DEPLOYMENT_ID}..."
 
     # Set up HTTPS authentication with temporary installation token using deployment-specific file
     git config --global credential.helper "store --file=$CREDENTIALS_FILE"
@@ -46,11 +46,11 @@ trap cleanup_credentials EXIT
     git config --global user.name "{{ .AppName }} Deployment"
 
     USE_APP_AUTH=true
-    echo "App-based authentication configured successfully"
+    echo "✅ App-based authentication configured successfully"
 {{ else }}
     # Check if site has SSH deploy keys as fallback
     {{ if .DeployKeyPrivate }}
-        echo "App-based authentication not available, falling back to SSH deployment keys..."
+        echo "🔑 App-based authentication not available, falling back to SSH deployment keys..."
 
         # Set up SSH authentication using deploy keys
         DEPLOY_KEY_PATH="{{ .SitePath }}/deploy_key"
@@ -67,9 +67,9 @@ EOF
         export GIT_SSH_COMMAND="ssh -i $DEPLOY_KEY_PATH -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null"
 
         USE_SSH_AUTH=true
-        echo "SSH authentication configured successfully"
+        echo "✅ SSH authentication configured successfully"
     {{ else }}
-        echo "No authentication method available"
+        echo "❌ No authentication method available"
         echo "This site requires either:"
         echo "  1. App-based authentication"
         echo "  2. SSH deploy keys (legacy method)"
@@ -81,24 +81,24 @@ EOF
 
 cd {{ .SitePath }}
 
-echo "Cloning/updating repository..."
+echo "📦 Cloning/updating repository..."
 
 # Clone the repository if it doesn't exist
 {{ if .ZeroDowntimeDeployment }}
     if [ ! -f "{{ .RepositoryDirectory }}/HEAD" ]; then
         if git clone --mirror {{ .RepositoryURL }} {{ .RepositoryDirectory }}; then
-            echo "Repository cloned (mirror mode)"
+            echo "✅ Repository cloned (mirror mode)"
         else
-            echo "Failed to clone repository"
+            echo "❌ Failed to clone repository"
             exit 1
         fi
     fi
 {{ else }}
     if [ ! -f "{{ .RepositoryDirectory }}/.git/HEAD" ]; then
         if git clone {{ .RepositoryURL }} {{ .RepositoryDirectory }}; then
-            echo "Repository cloned"
+            echo "✅ Repository cloned"
         else
-            echo "Failed to clone repository"
+            echo "❌ Failed to clone repository"
             exit 1
         fi
     fi
@@ -106,39 +106,39 @@ echo "Cloning/updating repository..."
 
 cd {{ .RepositoryDirectory }}
 
-echo "Fetching latest changes..."
+echo "🔄 Fetching latest changes..."
 
 {{ if .ZeroDowntimeDeployment }}
     if git fetch origin {{ .RepositoryBranch }}; then
-        echo "Fetched branch: {{ .RepositoryBranch }}"
+        echo "✅ Fetched branch: {{ .RepositoryBranch }}"
     else
-        echo "Failed to fetch branch: {{ .RepositoryBranch }}"
+        echo "❌ Failed to fetch branch: {{ .RepositoryBranch }}"
         exit 1
     fi
 {{ else }}
     if git fetch origin && git reset --hard origin/{{ .RepositoryBranch }}; then
-        echo "Updated to latest: {{ .RepositoryBranch }}"
+        echo "✅ Updated to latest: {{ .RepositoryBranch }}"
     else
-        echo "Failed to update to latest: {{ .RepositoryBranch }}"
+        echo "❌ Failed to update to latest: {{ .RepositoryBranch }}"
         exit 1
     fi
 {{ end }}
 
 # Success message with authentication method used
 if [ "$USE_APP_AUTH" = true ]; then
-    echo "Repository updated successfully with app-based authentication"
+    echo "✅ Repository updated successfully with app-based authentication"
 elif [ "$USE_SSH_AUTH" = true ]; then
-    echo "Repository updated successfully with SSH deploy keys"
+    echo "✅ Repository updated successfully with SSH deploy keys"
 fi
 
 {{ if .ZeroDowntimeDeployment }}
     # Clone the repository into the release directory
-    echo "Exporting code to release directory..."
+    echo "📂 Exporting code to release directory..."
     cd {{ .ReleaseDirectory }}
     if git clone -l {{ .RepositoryDirectory }} . && git checkout --force {{ .RepositoryBranch }}; then
-        echo "Code exported to release directory"
+        echo "✅ Code exported to release directory"
     else
-        echo "Failed to export code to release directory"
+        echo "❌ Failed to export code to release directory"
         exit 1
     fi
 {{ end }}

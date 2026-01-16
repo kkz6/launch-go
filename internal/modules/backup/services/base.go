@@ -6,9 +6,9 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/backup/storage"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // ServiceDeps holds all dependencies needed for backup services
@@ -16,7 +16,7 @@ type ServiceDeps struct {
 	DB        *gorm.DB
 	Logger    *zerolog.Logger
 	Queue     *queue.Client
-	WebSocket *websocket.Hub
+	WebSocket broadcast.ModelBroadcaster
 	Repos     *repositories.Registry
 
 	// Service registry - allows services to access other services

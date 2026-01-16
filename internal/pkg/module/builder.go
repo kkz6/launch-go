@@ -6,16 +6,16 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // Deps holds common dependencies for all modules
 type Deps struct {
 	DB         *gorm.DB
 	Queue      *queue.Client
-	WebSocket  *websocket.Hub
+	WebSocket  broadcast.ModelBroadcaster
 	Dispatcher *taskrunner.Dispatcher
 	Logger     *zerolog.Logger
 	Config     *config.Config
@@ -60,8 +60,8 @@ func (b *Builder) Queue() *queue.Client {
 	return b.deps.Queue
 }
 
-// WebSocket returns the websocket hub
-func (b *Builder) WebSocket() *websocket.Hub {
+// WebSocket returns the websocket broadcaster
+func (b *Builder) WebSocket() broadcast.ModelBroadcaster {
 	return b.deps.WebSocket
 }
 
