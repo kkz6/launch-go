@@ -1,10 +1,36 @@
-package jobs
+// Package traits provides embeddable structs that add behavior to models and jobs.
+// Similar to Laravel traits, these can be embedded to gain common functionality.
+package traits
 
 import (
 	"time"
 
 	"gorm.io/gorm"
 )
+
+// Installable is implemented by models that can track installation status.
+type Installable interface {
+	GetID() string
+	TableName() string
+}
+
+// Uninstallable is implemented by models that can be uninstalled/deleted.
+type Uninstallable interface {
+	GetID() string
+	TableName() string
+}
+
+// StatusTrackable is implemented by models that have a status field.
+type StatusTrackable interface {
+	GetID() string
+	TableName() string
+}
+
+// TaskTrackable is implemented by models that track server task IDs.
+type TaskTrackable interface {
+	GetID() string
+	TableName() string
+}
 
 // InstallationTracker provides common installation tracking methods.
 // Embed this in jobs that install things (services, crons, daemons, etc.)
@@ -13,7 +39,7 @@ import (
 //
 //	type InstallCronJob struct {
 //	    *JobContext
-//	    jobs.InstallationTracker
+//	    traits.InstallationTracker
 //	    CronID string
 //	}
 //
@@ -43,14 +69,6 @@ func (t *InstallationTracker) MarkInstallationFailed(db *gorm.DB, model any) err
 
 // UninstallationTracker provides common uninstallation tracking methods.
 // Embed this in jobs that uninstall things.
-//
-// Usage:
-//
-//	type UninstallCronJob struct {
-//	    *JobContext
-//	    jobs.UninstallationTracker
-//	    CronID string
-//	}
 type UninstallationTracker struct{}
 
 // MarkAsUninstalled marks a model as successfully uninstalled (deleted)
@@ -95,24 +113,13 @@ func (t *StatusTracker) UpdateFields(db *gorm.DB, model any, fields map[string]a
 }
 
 // TypedInstallationTracker provides type-safe installation tracking.
-// These provide compile-time type checking by using the interfaces
-// defined in interfaces.go.
 // Use this when you want compile-time guarantees that the model
 // implements the Installable interface.
-//
-// Usage:
-//
-//	type InstallCronJob struct {
-//	    *JobContext
-//	    jobs.TypedInstallationTracker[*models.Cron]
-//	    Payload InstallCronPayload
-//	}
 type TypedInstallationTracker[T Installable] struct {
 	db *gorm.DB
 }
 
 // SetTrackerDB sets the database connection for the tracker.
-// This must be called before using the tracking methods.
 func (t *TypedInstallationTracker[T]) SetTrackerDB(db *gorm.DB) {
 	t.db = db
 }

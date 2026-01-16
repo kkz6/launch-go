@@ -6,38 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
-// Installable is implemented by models that can track installation status.
-// This provides compile-time safety for installation tracking.
-//
-// Models should implement:
-//   - GetID() string - returns the model's primary key
-//   - TableName() string - returns the database table name
-type Installable interface {
-	GetID() string
-	TableName() string
-}
-
-// Uninstallable is implemented by models that can be uninstalled/deleted.
-// Use this with UninstallationTracker to ensure type safety.
-type Uninstallable interface {
-	GetID() string
-	TableName() string
-}
-
-// StatusTrackable is implemented by models that have a status field.
-// Use this with StatusTracker for type-safe status updates.
-type StatusTrackable interface {
-	GetID() string
-	TableName() string
-}
-
-// TaskTrackable is implemented by models that track server task IDs.
-// Use this with TaskTracker for type-safe task ID management.
-type TaskTrackable interface {
-	GetID() string
-	TableName() string
-}
-
 // ServerConnectable represents a server that can be connected to via SSH.
 // This abstraction allows jobs to work with server models without
 // importing the server module directly.
