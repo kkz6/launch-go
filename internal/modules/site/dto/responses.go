@@ -190,7 +190,7 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 
 	phpVersion := ""
 	if site.PhpVersion != nil {
-		phpVersion = *site.PhpVersion
+		phpVersion = site.PhpVersion.String()
 	}
 
 	createdAt := ""

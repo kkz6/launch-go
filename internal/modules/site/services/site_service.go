@@ -140,9 +140,10 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID string, req *
 	}
 
 	// Convert string fields to pointers where needed
-	var phpVersion *string
+	var phpVersion *enums.PhpVersion
 	if req.PhpVersion != "" {
-		phpVersion = &req.PhpVersion
+		pv := enums.PhpVersion(req.PhpVersion)
+		phpVersion = &pv
 	}
 
 	var repoBranch *string
@@ -449,11 +450,7 @@ func (s *SiteService) handleSchedulerCreation(ctx context.Context, site *models.
 	}
 
 	// Build the scheduler command based on site type
-	phpVersion := ""
-	if site.PhpVersion != nil {
-		phpVersion = *site.PhpVersion
-	}
-	phpBinary := serverenums.PhpBinaryFromVersion(phpVersion)
+	phpBinary := site.GetPhpBinary()
 
 	var command string
 	switch site.Type {
@@ -683,7 +680,7 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 	addSliceIfSet(updates, "writeable_directories", req.WriteableDirectories)
 
 	// Check if Caddyfile needs update (PHP version or web folder changed)
-	if req.PhpVersion != nil && (site.PhpVersion == nil || *req.PhpVersion != *site.PhpVersion) {
+	if req.PhpVersion != nil && (site.PhpVersion == nil || *req.PhpVersion != site.PhpVersion.String()) {
 		updateCaddyfile = true
 	}
 	if req.WebFolder != nil && *req.WebFolder != site.WebFolder {

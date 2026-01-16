@@ -8,6 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
@@ -30,6 +31,7 @@ type TaskWebhookHandler struct {
 	registry *taskrunner.TaskTypeRegistry
 	queue    *queue.Client
 	logger   *zerolog.Logger
+	db       *gorm.DB
 }
 
 // NewTaskWebhookHandler creates a new webhook handler
@@ -46,6 +48,12 @@ func NewTaskWebhookHandler(repo TaskWebhookRepository, secretKey string, queueCl
 // WithRegistry sets a custom task type registry
 func (h *TaskWebhookHandler) WithRegistry(registry *taskrunner.TaskTypeRegistry) *TaskWebhookHandler {
 	h.registry = registry
+	return h
+}
+
+// WithDB sets the database connection for callback context
+func (h *TaskWebhookHandler) WithDB(db *gorm.DB) *TaskWebhookHandler {
+	h.db = db
 	return h
 }
 
@@ -244,15 +252,22 @@ func (h *TaskWebhookHandler) handleLegacyCallback(ctx context.Context, task *mod
 		return
 	}
 
+	// Create callback context with dependencies
+	cbCtx := &taskrunner.CallbackContext{
+		DB:     h.db,
+		Queue:  h.queue,
+		Logger: h.logger,
+	}
+
 	// Execute callback based on type
 	var callbackErr error
 	switch callbackType {
 	case taskrunner.CallbackFinished:
-		callbackErr = handler.HandleFinished(ctx, task.ID)
+		callbackErr = handler.OnSuccess(ctx, cbCtx, task.ID)
 	case taskrunner.CallbackFailed:
-		callbackErr = handler.HandleFailed(ctx, task.ID, exitCode)
+		callbackErr = handler.OnFailure(ctx, cbCtx, task.ID, exitCode)
 	case taskrunner.CallbackTimeout:
-		callbackErr = handler.HandleTimeout(ctx, task.ID)
+		callbackErr = handler.OnExpired(ctx, cbCtx, task.ID)
 	}
 
 	if callbackErr != nil && h.logger != nil {

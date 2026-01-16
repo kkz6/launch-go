@@ -1,275 +1,464 @@
 package tasks
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
+	"github.com/hibiken/asynq"
+
+	"github.com/kkz6/launch-go/internal/modules/site/enums"
+	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks/templates"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
-// SiteType represents the type of site (Laravel, WordPress, etc.)
-type SiteType string
-
 const (
-	SiteTypeLaravel   SiteType = "laravel"
-	SiteTypeWordpress SiteType = "wordpress"
-	SiteTypeStatic    SiteType = "static"
-	SiteTypeGeneric   SiteType = "generic"
+	// DeploySiteTaskType is the registered type name for callback reconstruction
+	DeploySiteTaskType = "site:deploy"
 )
 
-// DeploySiteConfig holds configuration for deploying a site
-type DeploySiteConfig struct {
-	// Site info
-	SitePath             string
-	SiteType             SiteType
-	SiteAddress          string
-	Username             string
-	PHPBinary            string
-	RepositoryURL        string
-	RepositoryBranch     string
-	InstalledAt          bool // Whether site has been installed before
-	ZeroDowntimeDeployment bool
+// DeployOptions holds options for deploying a site
+type DeployOptions struct {
+	Site       *models.Site
+	Deployment *models.Deployment
 
-	// Directories
-	RepositoryDirectory string
-	LogsDirectory       string
-	SharedDirectory     string
-	ReleaseDirectory    string
-	ReleasesDirectory   string
-	CurrentDirectory    string
+	// Git authentication (set by job after checking source control)
+	RepositoryURL string
+	HasAppAuth    bool
+	TempToken     string
+	AuthURL       string
+	AppName       string
 
-	// Authentication
-	DeploymentID     string
-	HasAppAuth       bool
-	TempToken        string
-	AuthURL          string
-	DeployKeyPrivate string
-	AppName          string
+	// Zero-downtime specific
+	ReleaseTimestamp string
 
-	// Hooks
-	HookBeforeUpdatingRepository string
-	HookAfterUpdatingRepository  string
-	HookBeforeMakingCurrent      string
-	HookAfterMakingCurrent       string
-
-	// Environment
+	// Environment variables (for first deployment)
 	EnvVariables map[string]string
-
-	// Shared paths
-	SharedDirectories    []string
-	SharedFiles          []string
-	WritableDirectories  []string
-
-	// Cleanup
-	LatestDeploymentTimestamp string
-	RetentionCount            int
-
-	// Callback
-	CallbackURL string
 }
 
-// DeploySite creates a task that deploys a site (without zero-downtime)
-func DeploySite(config DeploySiteConfig) *taskrunner.BaseTask {
+// callbackData holds data needed for callback handling (serialized to instance field)
+type callbackData struct {
+	SiteID           string `json:"site_id"`
+	DeploymentID     string `json:"deployment_id"`
+	SiteType         string `json:"site_type"`
+	IsFirstDeploy    bool   `json:"is_first_deploy"`
+	QueueDeployments bool   `json:"queue_deployments"`
+	AutoRestartQueue bool   `json:"auto_restart_queue"`
+}
+
+// deploySiteTask implements Task and CallbackPayload interfaces.
+type deploySiteTask struct {
+	*taskrunner.BaseTask
+	opts     DeployOptions
+	callback callbackData
+}
+
+// DeploySiteTask creates a new deployment task with callback support.
+func DeploySiteTask(opts DeployOptions) *deploySiteTask {
+	var name, script string
+
+	if opts.Site.ZeroDowntimeDeployment {
+		name = "Deploy Site (Zero Downtime)"
+		script = buildZeroDowntimeScript(opts)
+	} else {
+		name = "Deploy Site"
+		script = buildStandardScript(opts)
+	}
+
+	return &deploySiteTask{
+		BaseTask: taskrunner.NewBaseTask(
+			taskrunner.WithName(name),
+			taskrunner.WithScript(script),
+			taskrunner.WithTimeoutSeconds(600),
+		),
+		opts: opts,
+		callback: callbackData{
+			SiteID:           opts.Site.ID,
+			DeploymentID:     opts.Deployment.ID,
+			SiteType:         string(opts.Site.Type),
+			IsFirstDeploy:    opts.Site.InstalledAt == nil,
+			QueueDeployments: opts.Site.QueueDeployments,
+			AutoRestartQueue: opts.Site.AutoRestartQueue,
+		},
+	}
+}
+
+// TypeName returns the registered type name for reconstruction
+func (t *deploySiteTask) TypeName() string {
+	return DeploySiteTaskType
+}
+
+// MarshalPayload returns JSON representation of the task state needed for callbacks
+func (t *deploySiteTask) MarshalPayload() ([]byte, error) {
+	return json.Marshal(t.callback)
+}
+
+// OnSuccess is called when the task completes successfully
+func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+	if cbCtx.Logger != nil {
+		cbCtx.Logger.Info().
+			Str("task_id", taskID).
+			Str("site_id", t.callback.SiteID).
+			Str("deployment_id", t.callback.DeploymentID).
+			Msg("DeploySite: onFinished callback triggered")
+	}
+
+	// Update deployment status to finished
+	if err := cbCtx.DB.Model(&models.Deployment{}).
+		Where("id = ?", t.callback.DeploymentID).
+		Update("status", enums.DeploymentStatusFinished).Error; err != nil {
+		return fmt.Errorf("failed to update deployment status: %w", err)
+	}
+
+	// If first deployment, dispatch InstallCaddyfile job
+	if t.callback.IsFirstDeploy {
+		t.dispatchJob(cbCtx, "site:install_caddyfile", map[string]string{
+			"site_id": t.callback.SiteID,
+		})
+	}
+
+	// Analyze Laravel features for Laravel sites
+	if t.callback.SiteType == string(enums.SiteTypeLaravel) {
+		t.dispatchJob(cbCtx, "site:analyze_laravel_features", map[string]string{
+			"site_id": t.callback.SiteID,
+		})
+	}
+
+	// Process next queued deployment if enabled
+	if t.callback.QueueDeployments {
+		t.processNextQueuedDeployment(ctx, cbCtx)
+	}
+
+	// Restart queue workers if auto-restart is enabled
+	if t.callback.AutoRestartQueue {
+		t.restartQueueWorkers(ctx, cbCtx)
+	}
+
+	return nil
+}
+
+// OnFailure is called when the task fails with an exit code
+func (t *deploySiteTask) OnFailure(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string, exitCode int) error {
+	if cbCtx.Logger != nil {
+		cbCtx.Logger.Error().
+			Str("task_id", taskID).
+			Str("site_id", t.callback.SiteID).
+			Str("deployment_id", t.callback.DeploymentID).
+			Int("exit_code", exitCode).
+			Msg("DeploySite: onFailed callback triggered")
+	}
+
+	// Update deployment status to failed
+	if err := cbCtx.DB.Model(&models.Deployment{}).
+		Where("id = ?", t.callback.DeploymentID).
+		Update("status", enums.DeploymentStatusFailed).Error; err != nil {
+		return fmt.Errorf("failed to update deployment status: %w", err)
+	}
+
+	// If first deployment, mark site installation as failed
+	if t.callback.IsFirstDeploy {
+		cbCtx.DB.Model(&models.Site{}).
+			Where("id = ?", t.callback.SiteID).
+			Update("installation_failed_at", time.Now())
+	}
+
+	// Process next queued deployment if enabled
+	if t.callback.QueueDeployments {
+		t.processNextQueuedDeployment(ctx, cbCtx)
+	}
+
+	return nil
+}
+
+// OnExpired is called when the task times out
+func (t *deploySiteTask) OnExpired(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+	if cbCtx.Logger != nil {
+		cbCtx.Logger.Error().
+			Str("task_id", taskID).
+			Str("site_id", t.callback.SiteID).
+			Str("deployment_id", t.callback.DeploymentID).
+			Msg("DeploySite: onTimeout callback triggered")
+	}
+
+	// Update deployment status to timeout
+	if err := cbCtx.DB.Model(&models.Deployment{}).
+		Where("id = ?", t.callback.DeploymentID).
+		Update("status", enums.DeploymentStatusTimeout).Error; err != nil {
+		return fmt.Errorf("failed to update deployment status: %w", err)
+	}
+
+	// Process next queued deployment if enabled
+	if t.callback.QueueDeployments {
+		t.processNextQueuedDeployment(ctx, cbCtx)
+	}
+
+	return nil
+}
+
+// dispatchJob is a helper to dispatch an asynq job
+func (t *deploySiteTask) dispatchJob(cbCtx *taskrunner.CallbackContext, jobType string, payload map[string]string) {
+	if cbCtx.Queue == nil {
+		return
+	}
+	data, _ := json.Marshal(payload)
+	task := asynq.NewTask(jobType, data)
+	if _, err := cbCtx.Queue.Enqueue(task); err != nil && cbCtx.Logger != nil {
+		cbCtx.Logger.Error().Err(err).Str("job_type", jobType).Msg("Failed to dispatch job")
+	}
+}
+
+// processNextQueuedDeployment finds and dispatches the next queued deployment
+func (t *deploySiteTask) processNextQueuedDeployment(ctx context.Context, cbCtx *taskrunner.CallbackContext) {
+	var nextDeployment models.Deployment
+	err := cbCtx.DB.Where("site_id = ? AND status = ?", t.callback.SiteID, enums.DeploymentStatusQueued).
+		Order("created_at ASC").
+		First(&nextDeployment).Error
+
+	if err != nil {
+		return
+	}
+
+	// Update status to pending
+	cbCtx.DB.Model(&nextDeployment).Update("status", enums.DeploymentStatusPending)
+
+	// Get site to check zero downtime setting
+	var site models.Site
+	if err := cbCtx.DB.First(&site, "id = ?", t.callback.SiteID).Error; err != nil {
+		return
+	}
+
+	jobType := "site:deploy"
+	if site.ZeroDowntimeDeployment {
+		jobType = "site:deploy_zero_downtime"
+	}
+
+	t.dispatchJob(cbCtx, jobType, map[string]string{
+		"site_id":       t.callback.SiteID,
+		"deployment_id": nextDeployment.ID,
+	})
+}
+
+// restartQueueWorkers restarts queue workers after deployment
+func (t *deploySiteTask) restartQueueWorkers(ctx context.Context, cbCtx *taskrunner.CallbackContext) {
+	var queues []models.Queue
+	cbCtx.DB.Where("site_id = ? AND installed_at IS NOT NULL", t.callback.SiteID).Find(&queues)
+
+	for _, q := range queues {
+		t.dispatchJob(cbCtx, "site:restart_queue", map[string]string{
+			"site_id":  t.callback.SiteID,
+			"queue_id": q.ID,
+		})
+	}
+}
+
+// deploySiteTaskFactory creates a deploySiteTask from stored payload for callback handling
+func deploySiteTaskFactory(payload []byte) (taskrunner.CallbackHandler, error) {
+	var data callbackData
+	if err := json.Unmarshal(payload, &data); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
+	}
+
+	return &deploySiteTask{
+		BaseTask: taskrunner.NewBaseTask(),
+		callback: data,
+	}, nil
+}
+
+// Register the task type with the default registry
+func init() {
+	taskrunner.Register(DeploySiteTaskType, deploySiteTaskFactory)
+}
+
+// buildStandardScript generates the deployment script for standard deployment
+func buildStandardScript(opts DeployOptions) string {
+	site := opts.Site
+	repoDir := fmt.Sprintf("%s/repository", site.Path)
+	logsDir := site.GetLogsDirectory()
+	phpBinary := site.GetPhpBinary()
+
 	var scriptBuilder strings.Builder
 
-	// Shell defaults
 	scriptBuilder.WriteString("#!/bin/bash\n")
 	scriptBuilder.WriteString(templates.ShellDefaults())
 	scriptBuilder.WriteString("\n\n")
 
-	// Shell variables (PHP binary)
 	scriptBuilder.WriteString(templates.MustRender("deployment/shell_variables.sh", struct {
 		PHPBinary string
-	}{config.PHPBinary}))
+	}{phpBinary}))
 	scriptBuilder.WriteString("\n")
 
-	// Create necessary directories
-	scriptBuilder.WriteString(fmt.Sprintf("# Create the necessary directories\n"))
-	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", config.RepositoryDirectory))
-	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", config.LogsDirectory))
+	scriptBuilder.WriteString("# Create the necessary directories\n")
+	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", repoDir))
+	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", logsDir))
 	scriptBuilder.WriteString("\n")
 
-	// Hook: before updating repository
-	if config.InstalledAt && config.HookBeforeUpdatingRepository != "" {
+	if site.InstalledAt != nil && site.HookBeforeUpdatingRepository != nil && *site.HookBeforeUpdatingRepository != "" {
 		scriptBuilder.WriteString("echo \"Running hook before updating repository\"\n")
-		scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", config.RepositoryDirectory))
-		scriptBuilder.WriteString(config.HookBeforeUpdatingRepository + "\n\n")
+		scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", repoDir))
+		scriptBuilder.WriteString(*site.HookBeforeUpdatingRepository + "\n\n")
 	}
 
-	// Update repository
-	if config.RepositoryURL != "" {
-		scriptBuilder.WriteString(renderUpdateRepository(config))
+	if opts.RepositoryURL != "" {
+		scriptBuilder.WriteString(renderUpdateRepository(opts, repoDir, ""))
 		scriptBuilder.WriteString("\n")
 
-		// Hook: after updating repository
-		if config.HookAfterUpdatingRepository != "" {
+		if site.HookAfterUpdatingRepository != nil && *site.HookAfterUpdatingRepository != "" {
 			scriptBuilder.WriteString("echo \"Running hook after updating repository\"\n")
-			scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", config.RepositoryDirectory))
-			scriptBuilder.WriteString(config.HookAfterUpdatingRepository + "\n\n")
+			scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", repoDir))
+			scriptBuilder.WriteString(*site.HookAfterUpdatingRepository + "\n\n")
 		}
 	}
 
-	// Prepare fresh installation (first deploy)
-	if !config.InstalledAt {
-		scriptBuilder.WriteString(renderPrepareFreshInstallation(config))
+	if site.InstalledAt == nil {
+		scriptBuilder.WriteString(renderPrepareFreshInstallation(opts, repoDir, "", ""))
 		scriptBuilder.WriteString("\n")
 	}
 
-	// WordPress already installed message
-	if config.InstalledAt && config.SiteType == SiteTypeWordpress {
+	if site.InstalledAt != nil && site.Type == enums.SiteTypeWordpress {
 		scriptBuilder.WriteString("echo \"Wordpress already installed!\"\n\n")
 	}
 
 	scriptBuilder.WriteString("echo \"Done!\"\n")
 
-	return taskrunner.NewBaseTask(
-		taskrunner.WithName("Deploy Site"),
-		taskrunner.WithScript(scriptBuilder.String()),
-		taskrunner.WithTimeoutSeconds(600),
-	)
+	return scriptBuilder.String()
 }
 
-// DeploySiteWithoutDowntime creates a task that deploys a site with zero-downtime
-func DeploySiteWithoutDowntime(config DeploySiteConfig) *taskrunner.BaseTask {
-	config.ZeroDowntimeDeployment = true
+// buildZeroDowntimeScript generates the deployment script for zero-downtime deployment
+func buildZeroDowntimeScript(opts DeployOptions) string {
+	site := opts.Site
+	phpBinary := site.GetPhpBinary()
+
+	// Derive directories from site
+	repoDir := fmt.Sprintf("%s/repository", site.Path)
+	sharedDir := fmt.Sprintf("%s/shared", site.Path)
+	releasesDir := fmt.Sprintf("%s/releases", site.Path)
+	releaseDir := fmt.Sprintf("%s/%s", releasesDir, opts.ReleaseTimestamp)
+	currentDir := fmt.Sprintf("%s/current", site.Path)
+	logsDir := site.GetLogsDirectory()
+
 	var scriptBuilder strings.Builder
 
-	// Shell defaults
 	scriptBuilder.WriteString("#!/bin/bash\n")
 	scriptBuilder.WriteString(templates.ShellDefaults())
 	scriptBuilder.WriteString("\n\n")
 
-	// Shell variables
 	scriptBuilder.WriteString(templates.MustRender("deployment/shell_variables.sh", struct {
 		PHPBinary string
-	}{config.PHPBinary}))
+	}{phpBinary}))
 	scriptBuilder.WriteString("\n")
 
-	// Create necessary directories
 	scriptBuilder.WriteString("# Create the necessary directories\n")
-	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", config.RepositoryDirectory))
-	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", config.SharedDirectory))
-	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", config.ReleaseDirectory))
-	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", config.LogsDirectory))
+	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", repoDir))
+	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", sharedDir))
+	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", releaseDir))
+	scriptBuilder.WriteString(fmt.Sprintf("mkdir -p %s\n", logsDir))
 	scriptBuilder.WriteString("\n")
 
-	// Cleanup old releases
 	scriptBuilder.WriteString("# Cleanup old releases\n")
 	scriptBuilder.WriteString(templates.MustRender("deployment/cleanup_old_releases.sh", struct {
 		LatestDeploymentTimestamp string
 		ReleasesDirectory         string
 		RetentionCount            int
 	}{
-		LatestDeploymentTimestamp: config.LatestDeploymentTimestamp,
-		ReleasesDirectory:         config.ReleasesDirectory,
-		RetentionCount:            config.RetentionCount,
+		LatestDeploymentTimestamp: opts.ReleaseTimestamp,
+		ReleasesDirectory:         releasesDir,
+		RetentionCount:            site.DeploymentReleasesRetention,
 	}))
 	scriptBuilder.WriteString("\n")
 
-	// Hook: before updating repository
-	if config.HookBeforeUpdatingRepository != "" {
+	if site.HookBeforeUpdatingRepository != nil && *site.HookBeforeUpdatingRepository != "" {
 		scriptBuilder.WriteString("echo \"Running hook before updating repository\"\n")
-		scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", config.ReleaseDirectory))
-		scriptBuilder.WriteString(config.HookBeforeUpdatingRepository + "\n\n")
+		scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", releaseDir))
+		scriptBuilder.WriteString(*site.HookBeforeUpdatingRepository + "\n\n")
 	}
 
-	// Update repository
-	if config.RepositoryURL != "" {
-		scriptBuilder.WriteString(renderUpdateRepository(config))
+	if opts.RepositoryURL != "" {
+		scriptBuilder.WriteString(renderUpdateRepository(opts, repoDir, releaseDir))
 		scriptBuilder.WriteString("\n")
 
-		// Hook: after updating repository
-		if config.HookAfterUpdatingRepository != "" {
+		if site.HookAfterUpdatingRepository != nil && *site.HookAfterUpdatingRepository != "" {
 			scriptBuilder.WriteString("echo \"Running hook after updating repository\"\n")
-			scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", config.ReleaseDirectory))
-			scriptBuilder.WriteString(config.HookAfterUpdatingRepository + "\n\n")
+			scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", releaseDir))
+			scriptBuilder.WriteString(*site.HookAfterUpdatingRepository + "\n\n")
 		}
 	}
 
-	// Prepare fresh installation
-	if !config.InstalledAt {
-		scriptBuilder.WriteString(renderPrepareFreshInstallation(config))
+	if site.InstalledAt == nil {
+		scriptBuilder.WriteString(renderPrepareFreshInstallation(opts, repoDir, releaseDir, sharedDir))
 		scriptBuilder.WriteString("\n")
 	}
 
-	// Link shared directories
 	scriptBuilder.WriteString("# Link shared directories\n")
 	scriptBuilder.WriteString(templates.MustRender("deployment/link_shared_directories.sh", struct {
 		SharedDirectories []string
 		SharedDirectory   string
 		ReleaseDirectory  string
 	}{
-		SharedDirectories: config.SharedDirectories,
-		SharedDirectory:   config.SharedDirectory,
-		ReleaseDirectory:  config.ReleaseDirectory,
+		SharedDirectories: site.SharedDirectories,
+		SharedDirectory:   sharedDir,
+		ReleaseDirectory:  releaseDir,
 	}))
 	scriptBuilder.WriteString("\n")
 
-	// Link shared files
 	scriptBuilder.WriteString("# Link shared files\n")
 	scriptBuilder.WriteString(templates.MustRender("deployment/link_shared_files.sh", struct {
 		SharedFiles      []string
 		SharedDirectory  string
 		ReleaseDirectory string
 	}{
-		SharedFiles:      config.SharedFiles,
-		SharedDirectory:  config.SharedDirectory,
-		ReleaseDirectory: config.ReleaseDirectory,
+		SharedFiles:      site.SharedFiles,
+		SharedDirectory:  sharedDir,
+		ReleaseDirectory: releaseDir,
 	}))
 	scriptBuilder.WriteString("\n")
 
-	// Make directories writable
 	scriptBuilder.WriteString("# Make directories writable\n")
 	scriptBuilder.WriteString(templates.MustRender("deployment/make_directories_writable.sh", struct {
 		WritableDirectories []string
 		ReleaseDirectory    string
 		Username            string
 	}{
-		WritableDirectories: config.WritableDirectories,
-		ReleaseDirectory:    config.ReleaseDirectory,
-		Username:            config.Username,
+		WritableDirectories: site.WriteableDirectories,
+		ReleaseDirectory:    releaseDir,
+		Username:            site.User,
 	}))
 	scriptBuilder.WriteString("\n")
 
-	// Hook: before making current
-	if config.HookBeforeMakingCurrent != "" {
+	if site.HookBeforeMakingCurrent != nil && *site.HookBeforeMakingCurrent != "" {
 		scriptBuilder.WriteString("echo \"Running hook before putting the site live\"\n")
-		scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", config.ReleaseDirectory))
-		scriptBuilder.WriteString(config.HookBeforeMakingCurrent + "\n\n")
+		scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", releaseDir))
+		scriptBuilder.WriteString(*site.HookBeforeMakingCurrent + "\n\n")
 	}
 
-	// Make deployment current
 	scriptBuilder.WriteString("# Make deployment current\n")
 	scriptBuilder.WriteString(templates.MustRender("deployment/make_deployment_current.sh", struct {
 		SitePath         string
 		ReleaseDirectory string
 		CurrentDirectory string
 	}{
-		SitePath:         config.SitePath,
-		ReleaseDirectory: config.ReleaseDirectory,
-		CurrentDirectory: config.CurrentDirectory,
+		SitePath:         site.Path,
+		ReleaseDirectory: releaseDir,
+		CurrentDirectory: currentDir,
 	}))
 	scriptBuilder.WriteString("\n")
 
-	// Hook: after making current
-	if config.HookAfterMakingCurrent != "" {
+	if site.HookAfterMakingCurrent != nil && *site.HookAfterMakingCurrent != "" {
 		scriptBuilder.WriteString("echo \"Running hook after putting the site live\"\n")
-		scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", config.ReleaseDirectory))
-		scriptBuilder.WriteString(config.HookAfterMakingCurrent + "\n\n")
+		scriptBuilder.WriteString(fmt.Sprintf("cd %s\n", releaseDir))
+		scriptBuilder.WriteString(*site.HookAfterMakingCurrent + "\n\n")
 	}
 
 	scriptBuilder.WriteString("echo \"Done!\"\n")
 
-	return taskrunner.NewBaseTask(
-		taskrunner.WithName("Deploy Site (Zero Downtime)"),
-		taskrunner.WithScript(scriptBuilder.String()),
-		taskrunner.WithTimeoutSeconds(600),
-	)
+	return scriptBuilder.String()
 }
 
 // renderUpdateRepository renders the update repository template
-func renderUpdateRepository(config DeploySiteConfig) string {
+func renderUpdateRepository(opts DeployOptions, repoDir, releaseDir string) string {
+	site := opts.Site
 	return templates.MustRender("deployment/update_repository.sh", struct {
 		RepositoryDirectory    string
 		RepositoryURL          string
@@ -284,28 +473,29 @@ func renderUpdateRepository(config DeploySiteConfig) string {
 		AppName                string
 		ReleaseDirectory       string
 	}{
-		RepositoryDirectory:    config.RepositoryDirectory,
-		RepositoryURL:          config.RepositoryURL,
-		RepositoryBranch:       config.RepositoryBranch,
-		SitePath:               config.SitePath,
-		ZeroDowntimeDeployment: config.ZeroDowntimeDeployment,
-		DeploymentID:           config.DeploymentID,
-		HasAppAuth:             config.HasAppAuth,
-		TempToken:              config.TempToken,
-		AuthURL:                config.AuthURL,
-		DeployKeyPrivate:       config.DeployKeyPrivate,
-		AppName:                config.AppName,
-		ReleaseDirectory:       config.ReleaseDirectory,
+		RepositoryDirectory:    repoDir,
+		RepositoryURL:          opts.RepositoryURL,
+		RepositoryBranch:       site.GetRepositoryBranch(),
+		SitePath:               site.Path,
+		ZeroDowntimeDeployment: site.ZeroDowntimeDeployment,
+		DeploymentID:           opts.Deployment.ID,
+		HasAppAuth:             opts.HasAppAuth,
+		TempToken:              opts.TempToken,
+		AuthURL:                opts.AuthURL,
+		DeployKeyPrivate:       string(site.DeployKeyPrivate),
+		AppName:                opts.AppName,
+		ReleaseDirectory:       releaseDir,
 	})
 }
 
 // renderPrepareFreshInstallation renders the prepare fresh installation template
-func renderPrepareFreshInstallation(config DeploySiteConfig) string {
+func renderPrepareFreshInstallation(opts DeployOptions, repoDir, releaseDir, sharedDir string) string {
+	site := opts.Site
 	var scriptBuilder strings.Builder
-	scriptBuilder.WriteString(fmt.Sprintf("cd %s\n\n", config.SitePath))
+	scriptBuilder.WriteString(fmt.Sprintf("cd %s\n\n", site.Path))
 
-	switch config.SiteType {
-	case SiteTypeLaravel:
+	switch site.Type {
+	case enums.SiteTypeLaravel:
 		scriptBuilder.WriteString(templates.MustRender("deployment/prepare_fresh_installation/laravel.sh", struct {
 			SitePath               string
 			ZeroDowntimeDeployment bool
@@ -314,27 +504,27 @@ func renderPrepareFreshInstallation(config DeploySiteConfig) string {
 			RepositoryDirectory    string
 			EnvVariables           map[string]string
 		}{
-			SitePath:               config.SitePath,
-			ZeroDowntimeDeployment: config.ZeroDowntimeDeployment,
-			SharedDirectory:        config.SharedDirectory,
-			ReleaseDirectory:       config.ReleaseDirectory,
-			RepositoryDirectory:    config.RepositoryDirectory,
-			EnvVariables:           config.EnvVariables,
+			SitePath:               site.Path,
+			ZeroDowntimeDeployment: site.ZeroDowntimeDeployment,
+			SharedDirectory:        sharedDir,
+			ReleaseDirectory:       releaseDir,
+			RepositoryDirectory:    repoDir,
+			EnvVariables:           opts.EnvVariables,
 		}))
 
-	case SiteTypeWordpress:
+	case enums.SiteTypeWordpress:
 		scriptBuilder.WriteString(templates.MustRender("deployment/prepare_fresh_installation/wordpress.sh", struct {
 			SitePath            string
 			RepositoryDirectory string
 			EnvVariables        map[string]string
 		}{
-			SitePath:            config.SitePath,
-			RepositoryDirectory: config.RepositoryDirectory,
-			EnvVariables:        config.EnvVariables,
+			SitePath:            site.Path,
+			RepositoryDirectory: repoDir,
+			EnvVariables:        opts.EnvVariables,
 		}))
 	}
 
-	scriptBuilder.WriteString(fmt.Sprintf("\ncd %s\n", config.SitePath))
+	scriptBuilder.WriteString(fmt.Sprintf("\ncd %s\n", site.Path))
 	return scriptBuilder.String()
 }
 
@@ -363,3 +553,4 @@ func RollbackDeployment(config RollbackDeploymentConfig) *taskrunner.BaseTask {
 		taskrunner.WithTimeoutSeconds(60),
 	)
 }
+

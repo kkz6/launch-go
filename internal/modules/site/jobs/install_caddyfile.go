@@ -8,7 +8,6 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
@@ -183,8 +182,8 @@ func generateCaddyfile(site *models.Site) string {
 	builder.WriteString("}\n\n")
 
 	// PHP FastCGI for non-static sites
-	if site.Type != enums.SiteTypeStatic && site.PhpVersion != nil && *site.PhpVersion != "" {
-		phpSocket := serverenums.PhpSocketFromVersion(*site.PhpVersion)
+	if site.Type != enums.SiteTypeStatic && site.PhpVersion != nil && site.PhpVersion.IsValid() {
+		phpSocket := site.PhpVersion.SocketPath()
 		builder.WriteString(fmt.Sprintf("php_fastcgi unix/%s {\n", phpSocket))
 		builder.WriteString("\tresolve_root_symlink\n")
 		builder.WriteString("\ttry_files {path} {path}/index.html {path}/index.htm index.php\n")

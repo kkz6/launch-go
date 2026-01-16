@@ -7,7 +7,6 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
@@ -127,14 +126,8 @@ func (j *EnableLaravelSchedulerJob) Handle(ctx context.Context) error {
 
 // buildSchedulerCommand builds the artisan schedule:run command
 func (j *EnableLaravelSchedulerJob) buildSchedulerCommand(site *models.Site) string {
-	phpVersion := ""
-	if site.PhpVersion != nil {
-		phpVersion = *site.PhpVersion
-	}
-	phpBinary := serverenums.PhpBinaryFromVersion(phpVersion)
-
 	return fmt.Sprintf("cd %s && %s artisan schedule:run >> /dev/null 2>&1",
-		site.GetApplicationDirectory(), phpBinary)
+		site.GetApplicationDirectory(), site.GetPhpBinary())
 }
 
 // dispatchInstallCron dispatches the server InstallCron job

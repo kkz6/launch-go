@@ -47,7 +47,7 @@ type Site struct {
 	User                         string           `gorm:"type:varchar(255);not null" json:"user"`
 	Path                         string           `gorm:"type:varchar(255);not null" json:"path"`
 	WebFolder                    string           `gorm:"column:web_folder;type:varchar(255);not null" json:"web_folder"`
-	PhpVersion                   *string          `gorm:"column:php_version;type:varchar(255);index" json:"php_version,omitempty"`
+	PhpVersion                   *enums.PhpVersion `gorm:"column:php_version;type:varchar(255);index" json:"php_version,omitempty"`
 	PendingTlsUpdateSince        *time.Time       `gorm:"column:pending_tls_update_since;type:timestamp null" json:"pending_tls_update_since,omitempty"`
 	PendingCaddyfileUpdateSince  *time.Time       `gorm:"column:pending_caddyfile_update_since;type:timestamp null" json:"pending_caddyfile_update_since,omitempty"`
 	SharedDirectories            basemodels.JSONStringSlice `gorm:"column:shared_directories;type:json" json:"shared_directories"`
@@ -151,6 +151,14 @@ func (s *Site) GetRepositoryBranch() string {
 	}
 
 	return "main"
+}
+
+// GetPhpBinary returns the PHP binary path based on the site's PHP version
+func (s *Site) GetPhpBinary() string {
+	if s.PhpVersion == nil {
+		return "php"
+	}
+	return s.PhpVersion.BinaryPath()
 }
 
 // GenerateEnvironmentVariables generates framework-specific environment variables

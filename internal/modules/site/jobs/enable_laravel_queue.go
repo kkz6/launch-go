@@ -7,7 +7,6 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -153,14 +152,8 @@ func (j *EnableLaravelQueueJob) Handle(ctx context.Context) error {
 
 // buildQueueCommand builds the artisan queue:work command
 func (j *EnableLaravelQueueJob) buildQueueCommand(site *models.Site) string {
-	phpVersion := ""
-	if site.PhpVersion != nil {
-		phpVersion = *site.PhpVersion
-	}
-	phpBinary := serverenums.PhpBinaryFromVersion(phpVersion)
-
 	return fmt.Sprintf("%s %s/artisan queue:work",
-		phpBinary, site.GetApplicationDirectory())
+		site.GetPhpBinary(), site.GetApplicationDirectory())
 }
 
 // dispatchInstallQueue dispatches the InstallQueue job
