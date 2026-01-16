@@ -457,6 +457,149 @@ func (p *GitHubProvider) GetLastCommit(ctx context.Context, sourceControlID, rep
 	}, nil
 }
 
+// CreateDeployment creates a deployment on GitHub
+func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentInfo) (*DeploymentResult, error) {
+	if p.sourceControl == nil || p.sourceControl.InstallationID == nil {
+		return nil, errors.New("no source control configured")
+	}
+
+	token, err := p.GetInstallationToken(ctx, *p.sourceControl.InstallationID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get installation token: %w", err)
+	}
+
+	// Create deployment
+	url := fmt.Sprintf("%s/repos/%s/deployments", githubAPIURL, info.RepoFullName)
+	body := map[string]interface{}{
+		"ref":         info.Branch,
+		"description": info.Description,
+		"environment": info.Environment,
+		"auto_merge":  false,
+	}
+	if info.GitHash != "" {
+		body["sha"] = info.GitHash
+	}
+
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(bodyBytes)))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to create deployment: %s", string(respBody))
+	}
+
+	var deploymentResp map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&deploymentResp); err != nil {
+		return nil, err
+	}
+
+	// Extract deployment ID
+	deploymentID := ""
+	if idFloat, ok := deploymentResp["id"].(float64); ok {
+		deploymentID = fmt.Sprintf("%.0f", idFloat)
+	}
+
+	statusesURL, _ := deploymentResp["statuses_url"].(string)
+
+	// Create initial status (in_progress)
+	if statusesURL != "" {
+		statusBody := map[string]interface{}{
+			"state":           DeploymentStatusInProgress.GitHubStatus(),
+			"description":     "Deployment in progress",
+			"environment_url": info.SiteURL,
+		}
+		statusBodyBytes, _ := json.Marshal(statusBody)
+
+		statusReq, err := http.NewRequestWithContext(ctx, "POST", statusesURL, strings.NewReader(string(statusBodyBytes)))
+		if err == nil {
+			statusReq.Header.Set("Authorization", "Bearer "+token)
+			statusReq.Header.Set("Accept", "application/vnd.github.v3+json")
+			statusReq.Header.Set("Content-Type", "application/json")
+			statusResp, _ := p.httpClient.Do(statusReq)
+			if statusResp != nil {
+				statusResp.Body.Close()
+			}
+		}
+	}
+
+	// Remove creator from data to avoid storing sensitive info
+	delete(deploymentResp, "creator")
+
+	return &DeploymentResult{
+		ID:          deploymentID,
+		StatusesURL: statusesURL,
+		Data:        deploymentResp,
+	}, nil
+}
+
+// UpdateDeploymentStatus updates the status of a deployment on GitHub
+func (p *GitHubProvider) UpdateDeploymentStatus(ctx context.Context, info *DeploymentInfo, vcsData map[string]interface{}, status DeploymentStatus) error {
+	if p.sourceControl == nil || p.sourceControl.InstallationID == nil {
+		return nil
+	}
+
+	statusesURL, ok := vcsData["statuses_url"].(string)
+	if !ok || statusesURL == "" {
+		return nil
+	}
+
+	token, err := p.GetInstallationToken(ctx, *p.sourceControl.InstallationID)
+	if err != nil {
+		return fmt.Errorf("failed to get installation token: %w", err)
+	}
+
+	description := "Deployment " + string(status)
+	body := map[string]interface{}{
+		"state":           status.GitHubStatus(),
+		"description":     description,
+		"environment_url": info.SiteURL,
+	}
+
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", statusesURL, strings.NewReader(string(bodyBytes)))
+	if err != nil {
+		return err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		respBody, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to update deployment status: %s", string(respBody))
+	}
+
+	return nil
+}
+
 // mapInstallationData maps raw installation data to AppInstallationData
 func (p *GitHubProvider) mapInstallationData(data map[string]interface{}) *AppInstallationData {
 	id := ""

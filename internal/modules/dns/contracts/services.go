@@ -33,4 +33,6 @@ type DnsRecordService interface {
 	UpdateRecord(ctx context.Context, recordID, domainID, teamID string, req *dto.UpdateDnsRecordRequest) (*models.DnsRecord, error)
 	DeleteRecord(ctx context.Context, recordID, domainID, teamID string) error
 	GetRecordTypes() []string
+	// CreateRecordForSite creates a DNS A record for a site, handling subdomain calculation internally
+	CreateRecordForSite(ctx context.Context, domainID, teamID, siteAddress, serverIP string) error
 }

@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	databaseservices "github.com/kkz6/launch-go/internal/modules/database/services"
+	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	serverservices "github.com/kkz6/launch-go/internal/modules/server/services"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
@@ -64,6 +65,7 @@ func (r *ServiceRegistry) File() *FileService { return r.file }
 // CrossModuleDeps holds dependencies from other modules
 type CrossModuleDeps struct {
 	ServerRepos     *serverrepos.Registry
+	GitRepos        *gitrepos.Registry
 	ServerService   *serverservices.Service
 	DatabaseService *databaseservices.Service
 }
@@ -89,6 +91,9 @@ func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
 func (r *ServiceRegistry) SetCrossModuleDeps(deps *CrossModuleDeps) {
 	if deps.ServerRepos != nil {
 		r.site.SetServerRepos(deps.ServerRepos)
+	}
+	if deps.GitRepos != nil {
+		r.site.SetGitRepos(deps.GitRepos)
 	}
 	if deps.ServerService != nil {
 		r.site.SetServerService(deps.ServerService)

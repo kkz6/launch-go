@@ -60,6 +60,13 @@ type Provider interface {
 	// GetInstallationToken gets a temporary access token for an installation
 	// Used for HTTPS-based git cloning during deployments
 	GetInstallationToken(ctx context.Context, installationID string) (string, error)
+
+	// CreateDeployment creates a deployment on the git provider
+	// This is used to show deployment status in the provider's UI (e.g., GitHub Deployments)
+	CreateDeployment(ctx context.Context, info *DeploymentInfo) (*DeploymentResult, error)
+
+	// UpdateDeploymentStatus updates the status of a deployment on the git provider
+	UpdateDeploymentStatus(ctx context.Context, info *DeploymentInfo, vcsData map[string]interface{}, status DeploymentStatus) error
 }
 
 // ProviderConfig holds configuration for a git provider

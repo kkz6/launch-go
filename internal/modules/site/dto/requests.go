@@ -6,12 +6,12 @@ import "github.com/kkz6/launch-go/internal/modules/site/enums"
 type CreateSiteRequest struct {
 	Address                     string         `json:"address" validate:"required,max=255"`
 	Aliases                     []string       `json:"aliases" validate:"omitempty,dive,max=255"`
-	PhpVersion                  string         `json:"php_version" validate:"required,oneof=8.1 8.2 8.3 8.4"`
+	PhpVersion                  string         `json:"php_version" validate:"required"`
 	Type                        enums.SiteType `json:"type" validate:"required,oneof=laravel wordpress static generic"`
 	WebFolder                   string   `json:"web_folder" validate:"omitempty,max=255"`
 	ZeroDowntimeDeployment      bool     `json:"zero_downtime_deployment"`
 	SourceControlID             *string  `json:"source_control_id" validate:"omitempty,ulid"`
-	SourceControlRepositoriesID *uint64  `json:"source_control_repositories_id" validate:"omitempty"`
+	SourceControlRepositoriesID *string  `json:"source_control_repositories_id" validate:"omitempty"`
 	RepositoryBranch            string   `json:"repository_branch" validate:"omitempty,max=255"`
 	CreateDNSRecord             bool     `json:"create_dns_record"`
 	ConnectedDomainID           *string  `json:"connected_domain_id" validate:"omitempty,ulid"`
@@ -29,7 +29,7 @@ type CreateSiteRequest struct {
 
 // UpdateSiteRequest represents the request to update a site
 type UpdateSiteRequest struct {
-	PhpVersion                   *string `json:"php_version" validate:"omitempty,oneof=8.1 8.2 8.3 8.4"`
+	PhpVersion                   *string `json:"php_version" validate:"omitempty,oneof=php80 php81 php82 php83 php84"`
 	WebFolder                    *string `json:"web_folder" validate:"omitempty,max=255"`
 	RepositoryBranch             *string `json:"repository_branch" validate:"omitempty,max=255"`
 	TlsSetting                   *string `json:"tls_setting" validate:"omitempty,oneof=auto custom internal off"`

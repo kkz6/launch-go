@@ -175,6 +175,20 @@ func (p *BitbucketProvider) makeAuthenticatedRequest(ctx context.Context, method
 	return p.httpClient.Do(req)
 }
 
+// CreateDeployment creates a deployment on Bitbucket
+// Bitbucket doesn't have the same deployment API as GitHub/GitLab, so this is a no-op
+func (p *BitbucketProvider) CreateDeployment(ctx context.Context, info *DeploymentInfo) (*DeploymentResult, error) {
+	// Bitbucket doesn't support deployment status in the same way
+	return nil, nil
+}
+
+// UpdateDeploymentStatus updates the status of a deployment on Bitbucket
+// Bitbucket doesn't have the same deployment API as GitHub/GitLab, so this is a no-op
+func (p *BitbucketProvider) UpdateDeploymentStatus(ctx context.Context, info *DeploymentInfo, vcsData map[string]interface{}, status DeploymentStatus) error {
+	// Bitbucket doesn't support deployment status in the same way
+	return nil
+}
+
 // parseBitbucketRepository parses a Bitbucket repository response into a standard format
 func parseBitbucketRepository(repo map[string]interface{}) map[string]interface{} {
 	fullName, _ := repo["full_name"].(string)

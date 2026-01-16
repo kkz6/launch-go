@@ -62,6 +62,9 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
+	// Create deployment status on git provider (if source control is configured)
+	j.createProviderDeployment(ctx, site, server.ID, deployment)
+
 	// Broadcast deployment started
 	j.broadcastDeploymentProgress(ctx, site.ID, deployment.ID, "installing", "Deployment started")
 
@@ -304,6 +307,9 @@ func (j *DeployJob) handleDeploymentSuccess(ctx context.Context, deployment *mod
 		j.ctx.LogError(err, "Failed to update deployment status to finished")
 	}
 
+	// Update deployment status on git provider
+	j.updateProviderDeploymentStatus(ctx, site, deployment, gitproviders.DeploymentStatusSuccess)
+
 	// If first deployment, dispatch InstallCaddyfile job to set up web server
 	isFirstDeployment := site != nil && site.InstalledAt == nil
 	if isFirstDeployment {
@@ -330,7 +336,7 @@ func (j *DeployJob) handleDeploymentSuccess(ctx context.Context, deployment *mod
 	j.processNextQueuedDeployment(ctx, deployment.SiteID)
 }
 
-func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, _ *models.Site, message string) {
+func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
 	now := time.Now()
 	deployment.Status = enums.DeploymentStatusFailed
 	deployment.FinishedAt = &now
@@ -339,6 +345,9 @@ func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *mod
 	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		j.ctx.LogError(err, "Failed to update deployment status to failed")
 	}
+
+	// Update deployment status on git provider
+	j.updateProviderDeploymentStatus(ctx, site, deployment, gitproviders.DeploymentStatusFailure)
 
 	j.broadcastDeploymentProgress(ctx, deployment.SiteID, deployment.ID, "failed", message)
 	j.ctx.LogError(nil, "Deployment failed", "deployment_id", deployment.ID, "message", message)
@@ -418,6 +427,115 @@ func (j *DeployJob) processNextQueuedDeployment(ctx context.Context, siteID stri
 	}
 }
 
+// createProviderDeployment creates a deployment on the git provider
+func (j *DeployJob) createProviderDeployment(ctx context.Context, site *models.Site, serverID string, deployment *models.Deployment) {
+	if site.SourceControlID == nil || site.SourceControlRepositoriesID == nil {
+		return
+	}
+
+	repo, sourceControl := j.getRepositoryAndSourceControl(site)
+	if repo == nil || sourceControl == nil {
+		return
+	}
+
+	if j.ctx.ProviderFactory == nil {
+		return
+	}
+
+	scData := j.buildSourceControlData(sourceControl)
+	provider, err := j.ctx.ProviderFactory.GetProviderWithInstallation(
+		gitproviders.GitProviderType(sourceControl.Provider),
+		scData,
+	)
+	if err != nil {
+		j.ctx.LogError(err, "Failed to get provider for deployment status")
+		return
+	}
+
+	// Build deployment info
+	gitHash := ""
+	if deployment.GitHash != nil {
+		gitHash = *deployment.GitHash
+	}
+
+	projectID := getProjectIDFromRepo(repo)
+
+	info := &gitproviders.DeploymentInfo{
+		ServerID:     serverID,
+		SiteID:       site.ID,
+		DeploymentID: deployment.ID,
+		RepoFullName: repo.FullName,
+		Branch:       site.GetRepositoryBranch(),
+		GitHash:      gitHash,
+		SiteURL:      site.GetURL(),
+		Environment:  "production",
+		Description:  "Deployment via Launch",
+		ProjectID:    projectID,
+	}
+
+	result, err := provider.CreateDeployment(ctx, info)
+	if err != nil {
+		j.ctx.LogError(err, "Failed to create deployment on provider")
+		return
+	}
+
+	if result != nil && result.Data != nil {
+		// Update deployment with VCS data
+		deployment.VcsData = result.Data
+		if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
+			j.ctx.LogError(err, "Failed to update deployment with VCS data")
+		}
+	}
+}
+
+// updateProviderDeploymentStatus updates the deployment status on the git provider
+func (j *DeployJob) updateProviderDeploymentStatus(ctx context.Context, site *models.Site, deployment *models.Deployment, status gitproviders.DeploymentStatus) {
+	if site == nil || deployment == nil {
+		return
+	}
+
+	if site.SourceControlID == nil || site.SourceControlRepositoriesID == nil {
+		return
+	}
+
+	if deployment.VcsData == nil || len(deployment.VcsData) == 0 {
+		return
+	}
+
+	repo, sourceControl := j.getRepositoryAndSourceControl(site)
+	if repo == nil || sourceControl == nil {
+		return
+	}
+
+	if j.ctx.ProviderFactory == nil {
+		return
+	}
+
+	scData := j.buildSourceControlData(sourceControl)
+	provider, err := j.ctx.ProviderFactory.GetProviderWithInstallation(
+		gitproviders.GitProviderType(sourceControl.Provider),
+		scData,
+	)
+	if err != nil {
+		j.ctx.LogError(err, "Failed to get provider for deployment status update")
+		return
+	}
+
+	projectID := getProjectIDFromRepo(repo)
+
+	info := &gitproviders.DeploymentInfo{
+		SiteID:       site.ID,
+		DeploymentID: deployment.ID,
+		RepoFullName: repo.FullName,
+		SiteURL:      site.GetURL(),
+		ProjectID:    projectID,
+	}
+
+	if err := provider.UpdateDeploymentStatus(ctx, info, deployment.VcsData, status); err != nil {
+		j.ctx.LogError(err, "Failed to update deployment status on provider")
+	}
+}
+
 // DeployZeroDowntimeJob handles zero-downtime site deployment
 type DeployZeroDowntimeJob struct {
 	ctx     *JobContext
@@ -451,6 +569,9 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
+
+	// Create deployment status on git provider (if source control is configured)
+	j.createProviderDeployment(ctx, site, server.ID, deployment)
 
 	// Broadcast deployment started
 	j.broadcastDeploymentProgress(ctx, site.ID, deployment.ID, "installing", "Zero-downtime deployment started")
@@ -694,6 +815,9 @@ func (j *DeployZeroDowntimeJob) handleDeploymentSuccess(ctx context.Context, dep
 		j.ctx.LogError(err, "Failed to update deployment status to finished")
 	}
 
+	// Update deployment status on git provider
+	j.updateProviderDeploymentStatus(ctx, site, deployment, gitproviders.DeploymentStatusSuccess)
+
 	// If first deployment, dispatch InstallCaddyfile job to set up web server
 	isFirstDeployment := site != nil && site.InstalledAt == nil
 	if isFirstDeployment {
@@ -720,7 +844,7 @@ func (j *DeployZeroDowntimeJob) handleDeploymentSuccess(ctx context.Context, dep
 	j.processNextQueuedDeployment(ctx, deployment.SiteID)
 }
 
-func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, _ *models.Site, message string) {
+func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
 	now := time.Now()
 	deployment.Status = enums.DeploymentStatusFailed
 	deployment.FinishedAt = &now
@@ -729,6 +853,9 @@ func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, dep
 	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		j.ctx.LogError(err, "Failed to update deployment status to failed")
 	}
+
+	// Update deployment status on git provider
+	j.updateProviderDeploymentStatus(ctx, site, deployment, gitproviders.DeploymentStatusFailure)
 
 	j.broadcastDeploymentProgress(ctx, deployment.SiteID, deployment.ID, "failed", message)
 	j.ctx.LogError(nil, "Zero-downtime deployment failed", "deployment_id", deployment.ID, "message", message)
@@ -812,6 +939,132 @@ func (j *DeployZeroDowntimeJob) createRelease(ctx context.Context, site *models.
 	}
 
 	return j.ctx.ReleaseRepo.Create(ctx, release)
+}
+
+// createProviderDeployment creates a deployment on the git provider
+func (j *DeployZeroDowntimeJob) createProviderDeployment(ctx context.Context, site *models.Site, serverID string, deployment *models.Deployment) {
+	if site.SourceControlID == nil || site.SourceControlRepositoriesID == nil {
+		return
+	}
+
+	repo, sourceControl := j.getRepositoryAndSourceControl(site)
+	if repo == nil || sourceControl == nil {
+		return
+	}
+
+	if j.ctx.ProviderFactory == nil {
+		return
+	}
+
+	scData := j.buildSourceControlData(sourceControl)
+	provider, err := j.ctx.ProviderFactory.GetProviderWithInstallation(
+		gitproviders.GitProviderType(sourceControl.Provider),
+		scData,
+	)
+	if err != nil {
+		j.ctx.LogError(err, "Failed to get provider for deployment status")
+		return
+	}
+
+	gitHash := ""
+	if deployment.GitHash != nil {
+		gitHash = *deployment.GitHash
+	}
+
+	projectID := getProjectIDFromRepo(repo)
+
+	info := &gitproviders.DeploymentInfo{
+		ServerID:     serverID,
+		SiteID:       site.ID,
+		DeploymentID: deployment.ID,
+		RepoFullName: repo.FullName,
+		Branch:       site.GetRepositoryBranch(),
+		GitHash:      gitHash,
+		SiteURL:      site.GetURL(),
+		Environment:  "production",
+		Description:  "Zero-downtime deployment via Launch",
+		ProjectID:    projectID,
+	}
+
+	result, err := provider.CreateDeployment(ctx, info)
+	if err != nil {
+		j.ctx.LogError(err, "Failed to create deployment on provider")
+		return
+	}
+
+	if result != nil && result.Data != nil {
+		deployment.VcsData = result.Data
+		if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
+			j.ctx.LogError(err, "Failed to update deployment with VCS data")
+		}
+	}
+}
+
+// updateProviderDeploymentStatus updates the deployment status on the git provider
+func (j *DeployZeroDowntimeJob) updateProviderDeploymentStatus(ctx context.Context, site *models.Site, deployment *models.Deployment, status gitproviders.DeploymentStatus) {
+	if site == nil || deployment == nil {
+		return
+	}
+
+	if site.SourceControlID == nil || site.SourceControlRepositoriesID == nil {
+		return
+	}
+
+	if deployment.VcsData == nil || len(deployment.VcsData) == 0 {
+		return
+	}
+
+	repo, sourceControl := j.getRepositoryAndSourceControl(site)
+	if repo == nil || sourceControl == nil {
+		return
+	}
+
+	if j.ctx.ProviderFactory == nil {
+		return
+	}
+
+	scData := j.buildSourceControlData(sourceControl)
+	provider, err := j.ctx.ProviderFactory.GetProviderWithInstallation(
+		gitproviders.GitProviderType(sourceControl.Provider),
+		scData,
+	)
+	if err != nil {
+		j.ctx.LogError(err, "Failed to get provider for deployment status update")
+		return
+	}
+
+	projectID := getProjectIDFromRepo(repo)
+
+	info := &gitproviders.DeploymentInfo{
+		SiteID:       site.ID,
+		DeploymentID: deployment.ID,
+		RepoFullName: repo.FullName,
+		SiteURL:      site.GetURL(),
+		ProjectID:    projectID,
+	}
+
+	if err := provider.UpdateDeploymentStatus(ctx, info, deployment.VcsData, status); err != nil {
+		j.ctx.LogError(err, "Failed to update deployment status on provider")
+	}
+}
+
+// getProjectIDFromRepo extracts the project ID from repository additional data
+// For GitLab, the project ID is needed for deployment status API calls
+func getProjectIDFromRepo(repo *gitmodels.SourceControlRepository) string {
+	if repo.AdditionalData == nil || *repo.AdditionalData == "" {
+		return ""
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal([]byte(*repo.AdditionalData), &data); err != nil {
+		return ""
+	}
+
+	if id, ok := data["id"]; ok {
+		return fmt.Sprintf("%v", id)
+	}
+
+	return ""
 }
 
 // Helper function

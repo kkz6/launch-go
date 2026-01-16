@@ -66,6 +66,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	{
 		sourceControls.Get("/", handler.ListSourceControls)
 		sourceControls.Get("/:id", handler.GetSourceControl)
+		sourceControls.Get("/:id/repositories", handler.GetSourceControlRepositories)
 		sourceControls.Post("/", handler.Connect)
 		sourceControls.Delete("/:id", handler.Disconnect)
 	}
@@ -91,6 +92,7 @@ func (m *Module) RegisterAPIRoutes(router fiber.Router, authMiddleware fiber.Han
 		// Source controls
 		api.Get("/source-controls", handler.ListSourceControls)
 		api.Get("/source-controls/:id", handler.GetSourceControl)
+		api.Get("/source-controls/:id/repositories", handler.GetSourceControlRepositories)
 		api.Post("/source-controls", handler.Connect)
 		api.Delete("/source-controls/:id", handler.Disconnect)
 

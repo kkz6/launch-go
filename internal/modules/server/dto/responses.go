@@ -733,6 +733,15 @@ type PhpVersionResponse struct {
 	Details     *ServiceResponse `json:"details,omitempty"`
 }
 
+// InstalledPhpVersionResponse represents a simple installed PHP version for dropdowns
+type InstalledPhpVersionResponse struct {
+	ID          string `json:"id"`
+	Key         string `json:"key"`
+	DisplayName string `json:"display_name"`
+	Version     string `json:"version"`
+	IsDefault   bool   `json:"is_default"`
+}
+
 // OpcacheStatusResponse represents the OPcache status
 type OpcacheStatusResponse struct {
 	Enabled          bool                    `json:"enabled"`
