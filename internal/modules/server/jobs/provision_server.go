@@ -49,6 +49,8 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 	}
 
 	config := tasks.ProvisionFreshServerConfig{
+		ServerID:         server.ID,
+		TeamID:           server.TeamID,
 		MemoryInMB:       getMemoryInMB(server),
 		PublicIPv4:       getPublicIP(server),
 		Provider:         string(server.Provider),
