@@ -21,32 +21,32 @@ var (
 // Module represents the DNS module
 type Module struct {
 	module.Base
+
+	// Repository registry
+	repos *repositories.Registry
+
+	// Handlers
 	providerHandler *handlers.DomainProviderHandler
 	domainHandler   *handlers.DomainHandler
 	recordHandler   *handlers.DnsRecordHandler
 
+	// Services
 	providerService *services.DomainProviderService
 	domainService   *services.DomainService
 	recordService   *services.DnsRecordService
-
-	providerRepo  *repositories.DomainProviderRepository
-	domainRepo    *repositories.DomainRepository
-	dnsRecordRepo *repositories.DnsRecordRepository
 }
 
 // NewModule creates a new DNS module instance
 func NewModule(b *module.Builder) *Module {
 	deps := b.Deps()
 
-	// Initialize repositories
-	providerRepo := repositories.NewDomainProviderRepository(deps.DB)
-	domainRepo := repositories.NewDomainRepository(deps.DB)
-	dnsRecordRepo := repositories.NewDnsRecordRepository(deps.DB)
+	// Initialize repository registry
+	repos := repositories.NewRegistry(deps.DB)
 
 	// Initialize services
-	providerService := services.NewDomainProviderService(providerRepo, domainRepo, dnsRecordRepo, deps.Logger)
-	domainService := services.NewDomainService(providerRepo, domainRepo, dnsRecordRepo, deps.Logger)
-	recordService := services.NewDnsRecordService(domainRepo, dnsRecordRepo, deps.Logger)
+	providerService := services.NewDomainProviderService(repos.Provider(), repos.Domain(), repos.DnsRecord(), deps.Logger)
+	domainService := services.NewDomainService(repos.Provider(), repos.Domain(), repos.DnsRecord(), deps.Logger)
+	recordService := services.NewDnsRecordService(repos.Domain(), repos.DnsRecord(), deps.Logger)
 
 	// Initialize handlers
 	providerHandler := handlers.NewDomainProviderHandler(providerService)
@@ -54,7 +54,9 @@ func NewModule(b *module.Builder) *Module {
 	recordHandler := handlers.NewDnsRecordHandler(recordService, domainService)
 
 	return &Module{
-		Base:            module.NewBase(ModuleName, b),
+		Base:  module.NewBase(ModuleName, b),
+		repos: repos,
+
 		providerHandler: providerHandler,
 		domainHandler:   domainHandler,
 		recordHandler:   recordHandler,
@@ -62,10 +64,6 @@ func NewModule(b *module.Builder) *Module {
 		providerService: providerService,
 		domainService:   domainService,
 		recordService:   recordService,
-
-		providerRepo:  providerRepo,
-		domainRepo:    domainRepo,
-		dnsRecordRepo: dnsRecordRepo,
 	}
 }
 
@@ -91,15 +89,15 @@ func (m *Module) GetRecordService() *services.DnsRecordService {
 
 // GetProviderRepository returns the domain provider repository
 func (m *Module) GetProviderRepository() *repositories.DomainProviderRepository {
-	return m.providerRepo
+	return m.repos.Provider()
 }
 
 // GetDomainRepository returns the domain repository
 func (m *Module) GetDomainRepository() *repositories.DomainRepository {
-	return m.domainRepo
+	return m.repos.Domain()
 }
 
 // GetRecordRepository returns the DNS record repository
 func (m *Module) GetRecordRepository() *repositories.DnsRecordRepository {
-	return m.dnsRecordRepo
+	return m.repos.DnsRecord()
 }

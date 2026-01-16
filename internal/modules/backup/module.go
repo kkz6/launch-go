@@ -23,6 +23,9 @@ var (
 type Module struct {
 	module.Base
 
+	// Repository registry
+	repos *repositories.Registry
+
 	// Handlers
 	backupHandler          *handlers.BackupHandler
 	backupJobHandler       *handlers.BackupJobHandler
@@ -33,27 +36,20 @@ type Module struct {
 	backupJobService       *services.BackupJobService
 	storageProviderService *services.StorageProviderService
 	agentConfigService     *services.AgentConfigService
-
-	// Repositories
-	backupRepo          *repositories.BackupRepository
-	backupJobRepo       *repositories.BackupJobRepository
-	storageProviderRepo *repositories.StorageProviderRepository
 }
 
 // NewModule creates a new backup module
 func NewModule(b *module.Builder) *Module {
 	deps := b.Deps()
 
-	// Initialize repositories
-	backupRepo := repositories.NewBackupRepository(deps.DB)
-	backupJobRepo := repositories.NewBackupJobRepository(deps.DB)
-	storageProviderRepo := repositories.NewStorageProviderRepository(deps.DB)
+	// Initialize repository registry
+	repos := repositories.NewRegistry(deps.DB)
 
 	// Initialize services
-	backupService := services.NewBackupService(backupRepo, deps.Queue, deps.WebSocket, deps.Logger)
-	backupJobService := services.NewBackupJobService(backupJobRepo, backupRepo, deps.WebSocket, deps.Logger)
-	storageProviderService := services.NewStorageProviderService(storageProviderRepo, deps.Queue, deps.Logger)
-	agentConfigService := services.NewAgentConfigService(backupRepo, storageProviderService, deps.Logger)
+	backupService := services.NewBackupService(repos.Backup(), deps.Queue, deps.WebSocket, deps.Logger)
+	backupJobService := services.NewBackupJobService(repos.BackupJob(), repos.Backup(), deps.WebSocket, deps.Logger)
+	storageProviderService := services.NewStorageProviderService(repos.StorageProvider(), deps.Queue, deps.Logger)
+	agentConfigService := services.NewAgentConfigService(repos.Backup(), storageProviderService, deps.Logger)
 
 	// Initialize handlers
 	backupHandler := handlers.NewBackupHandler(backupService)
@@ -61,7 +57,8 @@ func NewModule(b *module.Builder) *Module {
 	storageProviderHandler := handlers.NewStorageProviderHandler(storageProviderService)
 
 	return &Module{
-		Base: module.NewBase(ModuleName, b),
+		Base:  module.NewBase(ModuleName, b),
+		repos: repos,
 
 		// Handlers
 		backupHandler:          backupHandler,
@@ -73,11 +70,6 @@ func NewModule(b *module.Builder) *Module {
 		backupJobService:       backupJobService,
 		storageProviderService: storageProviderService,
 		agentConfigService:     agentConfigService,
-
-		// Repositories
-		backupRepo:          backupRepo,
-		backupJobRepo:       backupJobRepo,
-		storageProviderRepo: storageProviderRepo,
 	}
 }
 
@@ -134,15 +126,15 @@ func (m *Module) GetAgentConfigService() *services.AgentConfigService {
 
 // GetBackupRepository returns the backup repository
 func (m *Module) GetBackupRepository() *repositories.BackupRepository {
-	return m.backupRepo
+	return m.repos.Backup()
 }
 
 // GetBackupJobRepository returns the backup job repository
 func (m *Module) GetBackupJobRepository() *repositories.BackupJobRepository {
-	return m.backupJobRepo
+	return m.repos.BackupJob()
 }
 
 // GetStorageProviderRepository returns the storage provider repository
 func (m *Module) GetStorageProviderRepository() *repositories.StorageProviderRepository {
-	return m.storageProviderRepo
+	return m.repos.StorageProvider()
 }
