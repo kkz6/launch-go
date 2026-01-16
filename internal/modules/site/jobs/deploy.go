@@ -56,8 +56,6 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 
 	// Update deployment status to installing
 	deployment.Status = enums.DeploymentStatusInstalling
-	now := time.Now()
-	deployment.StartedAt = &now
 	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
@@ -298,10 +296,7 @@ func (j *DeployJob) broadcastDeploymentProgress(ctx context.Context, siteID, dep
 }
 
 func (j *DeployJob) handleDeploymentSuccess(ctx context.Context, deployment *models.Deployment, site *models.Site, output string) {
-	now := time.Now()
 	deployment.Status = enums.DeploymentStatusFinished
-	deployment.FinishedAt = &now
-	deployment.Output = &output
 
 	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		j.ctx.LogError(err, "Failed to update deployment status to finished")
@@ -337,10 +332,7 @@ func (j *DeployJob) handleDeploymentSuccess(ctx context.Context, deployment *mod
 }
 
 func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
-	now := time.Now()
 	deployment.Status = enums.DeploymentStatusFailed
-	deployment.FinishedAt = &now
-	deployment.Output = &message
 
 	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		j.ctx.LogError(err, "Failed to update deployment status to failed")
@@ -564,8 +556,6 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 
 	// Update deployment status to installing
 	deployment.Status = enums.DeploymentStatusInstalling
-	now := time.Now()
-	deployment.StartedAt = &now
 	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
@@ -806,10 +796,7 @@ func (j *DeployZeroDowntimeJob) broadcastDeploymentProgress(ctx context.Context,
 }
 
 func (j *DeployZeroDowntimeJob) handleDeploymentSuccess(ctx context.Context, deployment *models.Deployment, site *models.Site, output string) {
-	now := time.Now()
 	deployment.Status = enums.DeploymentStatusFinished
-	deployment.FinishedAt = &now
-	deployment.Output = &output
 
 	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		j.ctx.LogError(err, "Failed to update deployment status to finished")
@@ -845,10 +832,7 @@ func (j *DeployZeroDowntimeJob) handleDeploymentSuccess(ctx context.Context, dep
 }
 
 func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
-	now := time.Now()
 	deployment.Status = enums.DeploymentStatusFailed
-	deployment.FinishedAt = &now
-	deployment.Output = &message
 
 	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		j.ctx.LogError(err, "Failed to update deployment status to failed")
