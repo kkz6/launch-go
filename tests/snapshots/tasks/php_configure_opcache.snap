@@ -1,0 +1,18 @@
+echo "Configuring OPcache for PHP 8.2"
+
+sudo tee /etc/php/8.2/mods-available/opcache-custom.ini > /dev/null << 'OPCACHE_EOF'
+[opcache]
+opcache.memory_consumption=128
+opcache.interned_strings_buffer=8
+opcache.max_accelerated_files=10000
+opcache.revalidate_freq=2
+opcache.enable_cli=1
+OPCACHE_EOF
+
+echo "Enabling OPcache configuration..."
+sudo phpenmod -v 8.2 opcache-custom || true
+
+echo "Restarting PHP-FPM..."
+sudo service php8.2-fpm restart || true
+
+echo "OPcache configuration complete"

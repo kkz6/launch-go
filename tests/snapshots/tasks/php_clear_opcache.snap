@@ -1,0 +1,8 @@
+echo "Clearing OPcache for all PHP versions..."
+
+for service in $(systemctl list-units --type=service --state=running | grep 'php.*-fpm' | awk '{print $1}'); do
+    echo "Reloading $service..."
+    sudo systemctl reload "$service" 2>/dev/null || true
+done
+
+echo "OPcache cleared for all running PHP-FPM services"

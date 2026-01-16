@@ -1,0 +1,11 @@
+echo "Resetting OPcache for PHP 8.2 FPM..."
+
+sudo service php8.2-fpm reload
+
+if [ $? -eq 0 ]; then
+    echo "OPcache reset complete - PHP-FPM reloaded successfully"
+else
+    echo "FPM reload failed, attempting full restart..."
+    sudo service php8.2-fpm restart
+    echo "OPcache reset complete - PHP-FPM restarted"
+fi

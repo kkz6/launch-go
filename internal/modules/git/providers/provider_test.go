@@ -340,8 +340,8 @@ func TestGitHubProvider_GetCommitData(t *testing.T) {
 	if commitData.CommitID != "abc123def456789" {
 		t.Errorf("CommitID = %v, want abc123def456789", commitData.CommitID)
 	}
-	if commitData.SHA != "abc123d" {
-		t.Errorf("SHA = %v, want abc123d", commitData.SHA)
+	if commitData.SHA != "abc123def456789" {
+		t.Errorf("SHA = %v, want abc123def456789", commitData.SHA)
 	}
 	if commitData.Name != "testuser" {
 		t.Errorf("Name = %v, want testuser", commitData.Name)
@@ -891,8 +891,8 @@ func TestBitbucketProvider_GetCommitData(t *testing.T) {
 	if commitData.CommitID != "abc123def456789" {
 		t.Errorf("CommitID = %v, want abc123def456789", commitData.CommitID)
 	}
-	if commitData.SHA != "abc123d" {
-		t.Errorf("SHA = %v, want abc123d", commitData.SHA)
+	if commitData.SHA != "abc123def456789" {
+		t.Errorf("SHA = %v, want abc123def456789", commitData.SHA)
 	}
 	if commitData.Name != "testuser" {
 		t.Errorf("Name = %v, want testuser", commitData.Name)

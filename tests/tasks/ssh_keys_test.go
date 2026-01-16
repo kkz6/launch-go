@@ -114,3 +114,30 @@ func TestGetAuthorizedKeys_RootUser(t *testing.T) {
 		ScriptContains("cat /root/.ssh/authorized_keys").
 		ScriptMatches("tasks/ssh_get_keys_root")
 }
+
+func TestUpdateAuthorizedKeys_RegularUser(t *testing.T) {
+	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAA... user@example.com"
+
+	task := tasks.UpdateAuthorizedKeys("launcher", publicKey)
+
+	testutil.AssertTask(t, task).
+		HasName("Update Authorized Keys").
+		ScriptContains("mkdir -p /home/launcher/.ssh").
+		ScriptContains("chmod 700").
+		ScriptContains("authorized_keys").
+		ScriptContains("chmod 600").
+		ScriptContains("chown -R launcher:launcher").
+		ScriptMatches("tasks/ssh_update_keys_user")
+}
+
+func TestUpdateAuthorizedKeys_RootUser(t *testing.T) {
+	publicKey := "ssh-rsa AAAAB3NzaC1yc2EAAA... root@example.com"
+
+	task := tasks.UpdateAuthorizedKeys("root", publicKey)
+
+	testutil.AssertTask(t, task).
+		HasName("Update Authorized Keys").
+		ScriptContains("/root/.ssh").
+		ScriptContains("chown -R root:root").
+		ScriptMatches("tasks/ssh_update_keys_root")
+}

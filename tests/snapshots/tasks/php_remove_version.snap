@@ -1,0 +1,2 @@
+sudo apt-get purge -y 'php8.1-*'
+sudo apt-get autoremove -y

@@ -1,0 +1,7 @@
+mkdir -p /home/launcher/.ssh
+chmod 700 /home/launcher/.ssh
+cat > /home/launcher/.ssh/authorized_keys << 'LAUNCH_EOF'
+ssh-rsa AAAAB3NzaC1yc2EAAA... user@example.com
+LAUNCH_EOF
+chmod 600 /home/launcher/.ssh/authorized_keys
+chown -R launcher:launcher /home/launcher/.ssh
