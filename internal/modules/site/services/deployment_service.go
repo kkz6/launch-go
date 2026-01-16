@@ -5,14 +5,10 @@ import (
 	"errors"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
-	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // DeploymentService handles business logic for deployments
@@ -21,37 +17,15 @@ type DeploymentService struct {
 }
 
 // NewDeploymentService creates a new deployment service
-func NewDeploymentService(
-	siteRepo *repositories.SiteRepository,
-	deploymentRepo *repositories.DeploymentRepository,
-	certificateRepo *repositories.CertificateRepository,
-	queueRepo *repositories.QueueRepository,
-	commandRepo *repositories.CommandRepository,
-	redirectRepo *repositories.RedirectRepository,
-	releaseRepo *repositories.ReleaseRepository,
-	queueClient *queue.Client,
-	ws *websocket.Hub,
-	logger *zerolog.Logger,
-) *DeploymentService {
+func NewDeploymentService(deps *ServiceDeps) *DeploymentService {
 	return &DeploymentService{
-		BaseService: NewBaseService(
-			siteRepo,
-			deploymentRepo,
-			certificateRepo,
-			queueRepo,
-			commandRepo,
-			redirectRepo,
-			releaseRepo,
-			queueClient,
-			ws,
-			logger,
-		),
+		BaseService: NewBaseService(deps),
 	}
 }
 
 // Deploy triggers a new deployment for a site
 func (s *DeploymentService) Deploy(ctx context.Context, siteID, serverID, userID string) (*models.Deployment, error) {
-	site, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -61,7 +35,7 @@ func (s *DeploymentService) Deploy(ctx context.Context, siteID, serverID, userID
 
 // Rollback rolls back to a previous deployment
 func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targetDeploymentID, userID string) (*models.Deployment, error) {
-	site, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -70,7 +44,7 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 		return nil, ErrRollbackNotSupported
 	}
 
-	targetDeployment, err := s.deploymentRepo.FindByID(ctx, targetDeploymentID)
+	targetDeployment, err := s.Repos().Deployment().FindByID(ctx, targetDeploymentID)
 	if err != nil {
 		return nil, err
 	}
@@ -84,13 +58,13 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 	}
 
 	// Check for active deployment
-	activeDeployment, _ := s.deploymentRepo.FindActiveBySite(ctx, site.ID)
+	activeDeployment, _ := s.Repos().Deployment().FindActiveBySite(ctx, site.ID)
 	if activeDeployment != nil {
 		return nil, ErrPendingDeployment
 	}
 
 	// Get latest deployment for rollback metadata
-	latestDeployment, _ := s.deploymentRepo.FindLatestBySite(ctx, site.ID)
+	latestDeployment, _ := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
 
 	// Create rollback deployment
 	commitData := map[string]interface{}{
@@ -118,7 +92,7 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 		CommitData: commitData,
 	}
 
-	if err := s.deploymentRepo.Create(ctx, deployment); err != nil {
+	if err := s.Repos().Deployment().Create(ctx, deployment); err != nil {
 		return nil, err
 	}
 
@@ -146,7 +120,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 	}
 
 	// Check for active deployment
-	activeDeployment, _ := s.deploymentRepo.FindActiveBySite(ctx, site.ID)
+	activeDeployment, _ := s.Repos().Deployment().FindActiveBySite(ctx, site.ID)
 	if activeDeployment != nil {
 		if site.QueueDeployments {
 			// Queue the deployment
@@ -157,7 +131,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 				CommitData: commitData,
 			}
 
-			if err := s.deploymentRepo.Create(ctx, deployment); err != nil {
+			if err := s.Repos().Deployment().Create(ctx, deployment); err != nil {
 				return nil, err
 			}
 
@@ -176,7 +150,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 		CommitData: commitData,
 	}
 
-	if err := s.deploymentRepo.Create(ctx, deployment); err != nil {
+	if err := s.Repos().Deployment().Create(ctx, deployment); err != nil {
 		return nil, err
 	}
 
@@ -206,38 +180,38 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 // List returns all deployments for a site
 func (s *DeploymentService) List(ctx context.Context, siteID, serverID string) ([]models.Deployment, error) {
 	// Verify site exists and belongs to server
-	if _, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return nil, err
 	}
 
-	return s.deploymentRepo.FindBySite(ctx, siteID)
+	return s.Repos().Deployment().FindBySite(ctx, siteID)
 }
 
 // FindByID finds a deployment by ID
 func (s *DeploymentService) FindByID(ctx context.Context, id, siteID, serverID string) (*models.Deployment, error) {
 	// Verify site exists and belongs to server
-	if _, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return nil, err
 	}
 
-	return s.deploymentRepo.FindByIDAndSite(ctx, id, siteID)
+	return s.Repos().Deployment().FindByIDAndSite(ctx, id, siteID)
 }
 
 // ProcessNextQueued processes the next queued deployment
 func (s *DeploymentService) ProcessNextQueued(ctx context.Context, siteID string) (*models.Deployment, error) {
-	site, err := s.siteRepo.FindByID(ctx, siteID)
+	site, err := s.Repos().Site().FindByID(ctx, siteID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Check for active deployment
-	activeDeployment, _ := s.deploymentRepo.FindActiveBySite(ctx, site.ID)
+	activeDeployment, _ := s.Repos().Deployment().FindActiveBySite(ctx, site.ID)
 	if activeDeployment != nil {
 		return nil, nil
 	}
 
 	// Get next queued deployment
-	queuedDeployments, err := s.deploymentRepo.FindQueuedBySite(ctx, site.ID)
+	queuedDeployments, err := s.Repos().Deployment().FindQueuedBySite(ctx, site.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -249,7 +223,7 @@ func (s *DeploymentService) ProcessNextQueued(ctx context.Context, siteID string
 	deployment := &queuedDeployments[0]
 	deployment.Status = enums.DeploymentStatusPending
 
-	if err := s.deploymentRepo.Update(ctx, deployment); err != nil {
+	if err := s.Repos().Deployment().Update(ctx, deployment); err != nil {
 		return nil, err
 	}
 
@@ -276,22 +250,22 @@ func (s *DeploymentService) ProcessNextQueued(ctx context.Context, siteID string
 
 // GetQueuedCount returns the count of queued deployments
 func (s *DeploymentService) GetQueuedCount(ctx context.Context, siteID string) (int64, error) {
-	return s.deploymentRepo.CountQueuedBySite(ctx, siteID)
+	return s.Repos().Deployment().CountQueuedBySite(ctx, siteID)
 }
 
 // CancelQueued cancels all queued deployments
 func (s *DeploymentService) CancelQueued(ctx context.Context, siteID, serverID string) (int64, error) {
 	// Verify site exists and belongs to server
-	if _, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return 0, err
 	}
 
-	return s.deploymentRepo.CancelQueued(ctx, siteID)
+	return s.Repos().Deployment().CancelQueued(ctx, siteID)
 }
 
 // EnableAutoDeployment enables auto-deployment for a site
 func (s *DeploymentService) EnableAutoDeployment(ctx context.Context, siteID, serverID string) error {
-	site, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return err
 	}
@@ -302,12 +276,12 @@ func (s *DeploymentService) EnableAutoDeployment(ctx context.Context, siteID, se
 
 	site.AutoDeployment = true
 
-	return s.siteRepo.Update(ctx, site)
+	return s.Repos().Site().Update(ctx, site)
 }
 
 // DisableAutoDeployment disables auto-deployment for a site
 func (s *DeploymentService) DisableAutoDeployment(ctx context.Context, siteID, serverID string) error {
-	return s.siteRepo.UpdateFields(ctx, siteID, map[string]interface{}{
+	return s.Repos().Site().UpdateFields(ctx, siteID, map[string]interface{}{
 		"auto_deployment": false,
 	})
 }
@@ -326,7 +300,7 @@ func (s *DeploymentService) BroadcastProgress(siteID, deploymentID, status, mess
 // This is called without authentication - the deploy token serves as auth
 func (s *DeploymentService) DeployFromWebhook(ctx context.Context, siteID, token string, payload map[string]any) error {
 	// Find site by ID
-	site, err := s.siteRepo.FindByID(ctx, siteID)
+	site, err := s.Repos().Site().FindByID(ctx, siteID)
 	if err != nil {
 		return errors.New("site not found")
 	}

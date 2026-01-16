@@ -3,14 +3,9 @@ package services
 import (
 	"context"
 
-	"github.com/rs/zerolog"
-
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
-	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // RedirectService handles business logic for redirects
@@ -19,37 +14,15 @@ type RedirectService struct {
 }
 
 // NewRedirectService creates a new redirect service
-func NewRedirectService(
-	siteRepo *repositories.SiteRepository,
-	deploymentRepo *repositories.DeploymentRepository,
-	certificateRepo *repositories.CertificateRepository,
-	queueRepo *repositories.QueueRepository,
-	commandRepo *repositories.CommandRepository,
-	redirectRepo *repositories.RedirectRepository,
-	releaseRepo *repositories.ReleaseRepository,
-	queueClient *queue.Client,
-	ws *websocket.Hub,
-	logger *zerolog.Logger,
-) *RedirectService {
+func NewRedirectService(deps *ServiceDeps) *RedirectService {
 	return &RedirectService{
-		BaseService: NewBaseService(
-			siteRepo,
-			deploymentRepo,
-			certificateRepo,
-			queueRepo,
-			commandRepo,
-			redirectRepo,
-			releaseRepo,
-			queueClient,
-			ws,
-			logger,
-		),
+		BaseService: NewBaseService(deps),
 	}
 }
 
 // Create creates a new redirect
 func (s *RedirectService) Create(ctx context.Context, siteID, serverID, userID string, req *dto.CreateRedirectRequest) (*models.Redirect, error) {
-	if _, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return nil, err
 	}
 
@@ -62,11 +35,11 @@ func (s *RedirectService) Create(ctx context.Context, siteID, serverID, userID s
 		Status: "pending",
 	}
 
-	if err := s.redirectRepo.Create(ctx, redirect); err != nil {
+	if err := s.Repos().Redirect().Create(ctx, redirect); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.redirectRepo.DB).
+	activity.New(s.Repos().Redirect().DB).
 		WithContext(ctx).
 		UseLog("site").
 		On(redirect).
@@ -80,25 +53,25 @@ func (s *RedirectService) Create(ctx context.Context, siteID, serverID, userID s
 
 // List returns all redirects for a site
 func (s *RedirectService) List(ctx context.Context, siteID, serverID string) ([]models.Redirect, error) {
-	if _, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return nil, err
 	}
 
-	return s.redirectRepo.FindBySite(ctx, siteID)
+	return s.Repos().Redirect().FindBySite(ctx, siteID)
 }
 
 // Delete deletes a redirect
 func (s *RedirectService) Delete(ctx context.Context, redirectID, siteID, serverID string) error {
-	if _, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return err
 	}
 
-	redirect, err := s.redirectRepo.FindByID(ctx, redirectID)
+	redirect, err := s.Repos().Redirect().FindByID(ctx, redirectID)
 	if err != nil {
 		return err
 	}
 
-	activity.New(s.redirectRepo.DB).
+	activity.New(s.Repos().Redirect().DB).
 		WithContext(ctx).
 		UseLog("site").
 		On(redirect).
@@ -107,5 +80,5 @@ func (s *RedirectService) Delete(ctx context.Context, redirectID, siteID, server
 
 	// TODO: Dispatch Caddyfile update job
 
-	return s.redirectRepo.Delete(ctx, redirectID)
+	return s.Repos().Redirect().Delete(ctx, redirectID)
 }

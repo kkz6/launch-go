@@ -4,14 +4,9 @@ import (
 	"context"
 	"time"
 
-	"github.com/rs/zerolog"
-
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
-	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // QueueService handles business logic for queue workers
@@ -20,37 +15,15 @@ type QueueService struct {
 }
 
 // NewQueueService creates a new queue service
-func NewQueueService(
-	siteRepo *repositories.SiteRepository,
-	deploymentRepo *repositories.DeploymentRepository,
-	certificateRepo *repositories.CertificateRepository,
-	queueRepo *repositories.QueueRepository,
-	commandRepo *repositories.CommandRepository,
-	redirectRepo *repositories.RedirectRepository,
-	releaseRepo *repositories.ReleaseRepository,
-	queueClient *queue.Client,
-	ws *websocket.Hub,
-	logger *zerolog.Logger,
-) *QueueService {
+func NewQueueService(deps *ServiceDeps) *QueueService {
 	return &QueueService{
-		BaseService: NewBaseService(
-			siteRepo,
-			deploymentRepo,
-			certificateRepo,
-			queueRepo,
-			commandRepo,
-			redirectRepo,
-			releaseRepo,
-			queueClient,
-			ws,
-			logger,
-		),
+		BaseService: NewBaseService(deps),
 	}
 }
 
 // Create creates a new queue worker
 func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID string, req *dto.CreateQueueRequest) (*models.Queue, error) {
-	site, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +89,7 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 		queueModel.Environment = req.Environment
 	}
 
-	if err := s.queueRepo.Create(ctx, queueModel); err != nil {
+	if err := s.Repos().Queue().Create(ctx, queueModel); err != nil {
 		return nil, err
 	}
 
@@ -129,16 +102,16 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 
 // List returns all queues for a site
 func (s *QueueService) List(ctx context.Context, siteID, serverID string) ([]models.Queue, error) {
-	if _, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return nil, err
 	}
 
-	return s.queueRepo.FindBySite(ctx, siteID)
+	return s.Repos().Queue().FindBySite(ctx, siteID)
 }
 
 // Delete deletes a queue
 func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID string) error {
-	queueModel, err := s.queueRepo.FindByIDAndSite(ctx, queueID, siteID)
+	queueModel, err := s.Repos().Queue().FindByIDAndSite(ctx, queueID, siteID)
 	if err != nil {
 		return err
 	}
@@ -146,7 +119,7 @@ func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID str
 	now := time.Now()
 	queueModel.UninstallationRequestedAt = &now
 
-	if err := s.queueRepo.Update(ctx, queueModel); err != nil {
+	if err := s.Repos().Queue().Update(ctx, queueModel); err != nil {
 		return err
 	}
 
@@ -159,26 +132,26 @@ func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID str
 
 // EnableAutoRestart enables auto-restart for queue workers
 func (s *QueueService) EnableAutoRestart(ctx context.Context, siteID, serverID string) error {
-	return s.siteRepo.UpdateFields(ctx, siteID, map[string]interface{}{
+	return s.Repos().Site().UpdateFields(ctx, siteID, map[string]interface{}{
 		"auto_restart_queue": true,
 	})
 }
 
 // DisableAutoRestart disables auto-restart for queue workers
 func (s *QueueService) DisableAutoRestart(ctx context.Context, siteID, serverID string) error {
-	return s.siteRepo.UpdateFields(ctx, siteID, map[string]interface{}{
+	return s.Repos().Site().UpdateFields(ctx, siteID, map[string]interface{}{
 		"auto_restart_queue": false,
 	})
 }
 
 // SyncStatus triggers a status synchronization for all queue workers of a site
 func (s *QueueService) SyncStatus(ctx context.Context, siteID, serverID, userID string) error {
-	site, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return err
 	}
 
-	queues, err := s.queueRepo.FindBySite(ctx, siteID)
+	queues, err := s.Repos().Queue().FindBySite(ctx, siteID)
 	if err != nil {
 		return err
 	}
@@ -192,7 +165,7 @@ func (s *QueueService) SyncStatus(ctx context.Context, siteID, serverID, userID 
 	now := time.Now()
 	for i := range queues {
 		queues[i].LastStatusCheck = &now
-		if err := s.queueRepo.Update(ctx, &queues[i]); err != nil {
+		if err := s.Repos().Queue().Update(ctx, &queues[i]); err != nil {
 			s.LogError(err, "Failed to update queue last status check", "queue_id", queues[i].ID)
 		}
 	}

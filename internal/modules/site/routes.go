@@ -3,9 +3,9 @@ package site
 import (
 	"github.com/gofiber/fiber/v2"
 
+	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/handlers"
-	"github.com/kkz6/launch-go/internal/modules/site/services"
 )
 
 // RegisterRoutes registers all site module routes
@@ -20,44 +20,71 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 		Logger:     deps.Logger,
 	}
 
-	// Update file service with task runner deps
-	m.fileService = services.NewFileService(deps.DB, m.siteRepo, deps.Logger, taskRunnerDeps)
+	// Create service registry
+	svc := m.createServices(taskRunnerDeps)
 
 	// Create handlers
-	siteHandler := handlers.NewSiteHandler(m.siteService)
+	siteHandler := handlers.NewSiteHandler(svc.Site())
 	siteHandler.SetDomainRepository(m.domainRepo)
-	deploymentHandler := handlers.NewDeploymentHandler(m.deploymentService)
-	sslHandler := handlers.NewSSLHandler(m.sslService)
-	queueHandler := handlers.NewQueueHandler(m.queueService)
-	commandHandler := handlers.NewCommandHandler(m.commandService)
-	redirectHandler := handlers.NewRedirectHandler(m.redirectService)
-	fileHandler := handlers.NewFileHandler(m.fileService)
+	deploymentHandler := handlers.NewDeploymentHandler(svc.Deployment())
+	sslHandler := handlers.NewSSLHandler(svc.SSL())
+	queueHandler := handlers.NewQueueHandler(svc.Queue())
+	commandHandler := handlers.NewCommandHandler(svc.Command())
+	redirectHandler := handlers.NewRedirectHandler(svc.Redirect())
+	fileHandler := handlers.NewFileHandler(svc.File())
 
 	// Top-level site routes (not nested under servers)
 	sitesGlobal := router.Group("/sites", authMiddleware)
-	m.registerGlobalSiteRoutes(sitesGlobal, siteHandler)
+	registerGlobalSiteRoutes(sitesGlobal, siteHandler)
 
 	// Sites are nested under servers
 	servers := router.Group("/servers/:serverId", authMiddleware)
 	sites := servers.Group("/sites")
 
-	m.registerSiteRoutes(sites, siteHandler)
-	m.registerDeploymentRoutes(sites, deploymentHandler)
-	m.registerSSLRoutes(sites, sslHandler)
-	m.registerQueueRoutes(sites, queueHandler)
-	m.registerCommandRoutes(sites, commandHandler)
-	m.registerRedirectRoutes(sites, redirectHandler)
-	m.registerFileRoutes(sites, fileHandler)
+	registerSiteRoutes(sites, siteHandler)
+	registerDeploymentRoutes(sites, deploymentHandler)
+	registerSSLRoutes(sites, sslHandler)
+	registerQueueRoutes(sites, queueHandler)
+	registerCommandRoutes(sites, commandHandler)
+	registerRedirectRoutes(sites, redirectHandler)
+	registerFileRoutes(sites, fileHandler)
+}
+
+// RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
+// These routes don't require authentication - they use deploy tokens for auth
+func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
+	deps := m.Deps()
+
+	// Create minimal task runner deps (webhooks don't need file service features)
+	taskRunnerDeps := &servertasks.TaskRunnerDeps{
+		DB:         deps.DB,
+		Queue:      deps.Queue,
+		Dispatcher: deps.Dispatcher,
+		Logger:     deps.Logger,
+	}
+
+	svc := m.createServices(taskRunnerDeps)
+	webhookHandler := handlers.NewWebhookHandler(svc.Deployment())
+
+	// Deployment webhook - triggered by git providers (GitHub, GitLab, Bitbucket)
+	// URL: /deploy/:siteId/:token
+	router.Post("/deploy/:siteId/:token", webhookHandler.DeployWebhook)
+	router.Get("/deploy/:siteId/:token", webhookHandler.DeployWebhook) // Some providers use GET
+}
+
+// DomainRepository returns the domain repository for cross-module access
+func (m *Module) DomainRepository() dnscontracts.DomainRepository {
+	return m.domainRepo
 }
 
 // registerGlobalSiteRoutes registers site routes not nested under servers
-func (m *Module) registerGlobalSiteRoutes(router fiber.Router, handler *handlers.SiteHandler) {
+func registerGlobalSiteRoutes(router fiber.Router, handler *handlers.SiteHandler) {
 	// Domain verification
 	router.Get("/verify-domain", handler.VerifyDomain)
 }
 
 // registerSiteRoutes registers site CRUD and settings routes
-func (m *Module) registerSiteRoutes(router fiber.Router, handler *handlers.SiteHandler) {
+func registerSiteRoutes(router fiber.Router, handler *handlers.SiteHandler) {
 	// CRUD
 	router.Get("/", handler.List)
 	router.Post("/", handler.Create)
@@ -79,7 +106,7 @@ func (m *Module) registerSiteRoutes(router fiber.Router, handler *handlers.SiteH
 }
 
 // registerDeploymentRoutes registers deployment-related routes
-func (m *Module) registerDeploymentRoutes(router fiber.Router, handler *handlers.DeploymentHandler) {
+func registerDeploymentRoutes(router fiber.Router, handler *handlers.DeploymentHandler) {
 	// Deployments
 	router.Post("/:id/deploy", handler.Deploy)
 	router.Get("/:id/deployments", handler.ListDeployments)
@@ -93,13 +120,13 @@ func (m *Module) registerDeploymentRoutes(router fiber.Router, handler *handlers
 }
 
 // registerSSLRoutes registers SSL/TLS routes
-func (m *Module) registerSSLRoutes(router fiber.Router, handler *handlers.SSLHandler) {
+func registerSSLRoutes(router fiber.Router, handler *handlers.SSLHandler) {
 	router.Put("/:id/ssl", handler.UpdateSSL)
 	router.Get("/:id/certificates", handler.ListCertificates)
 }
 
 // registerQueueRoutes registers queue routes
-func (m *Module) registerQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
+func registerQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
 	router.Get("/:id/queues", handler.ListQueues)
 	router.Post("/:id/queues", handler.CreateQueue)
 	router.Post("/:id/queues/sync", handler.SyncQueues)
@@ -111,34 +138,24 @@ func (m *Module) registerQueueRoutes(router fiber.Router, handler *handlers.Queu
 }
 
 // registerCommandRoutes registers command routes
-func (m *Module) registerCommandRoutes(router fiber.Router, handler *handlers.CommandHandler) {
+func registerCommandRoutes(router fiber.Router, handler *handlers.CommandHandler) {
 	router.Get("/:id/commands", handler.ListCommands)
 	router.Post("/:id/commands", handler.CreateCommand)
 	router.Delete("/:id/commands/:commandId", handler.DeleteCommand)
 }
 
 // registerRedirectRoutes registers redirect routes
-func (m *Module) registerRedirectRoutes(router fiber.Router, handler *handlers.RedirectHandler) {
+func registerRedirectRoutes(router fiber.Router, handler *handlers.RedirectHandler) {
 	router.Get("/:id/redirects", handler.ListRedirects)
 	router.Post("/:id/redirects", handler.CreateRedirect)
 	router.Delete("/:id/redirects/:redirectId", handler.DeleteRedirect)
 }
 
 // registerFileRoutes registers file management routes
-func (m *Module) registerFileRoutes(router fiber.Router, handler *handlers.FileHandler) {
+func registerFileRoutes(router fiber.Router, handler *handlers.FileHandler) {
 	router.Get("/:id/files", handler.ListFiles)
 	router.Get("/:id/files/:file", handler.ShowFile)     // Get file content by encoded param
 	router.Put("/:id/files/:file", handler.UpdateFile)   // Update file content by encoded param
 	router.Patch("/:id/files/:file", handler.UpdateFile) // Update file content by encoded param (PATCH)
 	router.Get("/:id/logs", handler.ListLogs)
-}
-
-// RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
-// These routes don't require authentication - they use deploy tokens for auth
-func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
-	webhookHandler := handlers.NewWebhookHandler(m.deploymentService)
-	// Deployment webhook - triggered by git providers (GitHub, GitLab, Bitbucket)
-	// URL: /deploy/:siteId/:token
-	router.Post("/deploy/:siteId/:token", webhookHandler.DeployWebhook)
-	router.Get("/deploy/:siteId/:token", webhookHandler.DeployWebhook) // Some providers use GET
 }
