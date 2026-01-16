@@ -511,9 +511,10 @@ func (r *TaskRunner) invokeTaskCallbacks(ctx context.Context, taskModel *models.
 
 	// Create callback context with dependencies
 	cbCtx := &taskrunner.CallbackContext{
-		DB:     r.db,
-		Queue:  r.queue,
-		Logger: r.logger,
+		DB:          r.db,
+		Queue:       r.queue,
+		Logger:      r.logger,
+		Broadcaster: r.broadcaster,
 	}
 
 	var err error

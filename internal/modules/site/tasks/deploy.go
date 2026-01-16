@@ -25,6 +25,9 @@ type DeployOptions struct {
 	Site       *models.Site
 	Deployment *models.Deployment
 
+	// TeamID for broadcasting events (from server.TeamID)
+	TeamID string
+
 	// Git authentication (set by job after checking source control)
 	RepositoryURL string
 	HasAppAuth    bool
@@ -43,6 +46,7 @@ type DeployOptions struct {
 type callbackData struct {
 	SiteID           string `json:"site_id"`
 	ServerID         string `json:"server_id"`
+	TeamID           string `json:"team_id"`
 	DeploymentID     string `json:"deployment_id"`
 	SiteType         string `json:"site_type"`
 	IsFirstDeploy    bool   `json:"is_first_deploy"`
@@ -79,6 +83,7 @@ func DeploySiteTask(opts DeployOptions) *deploySiteTask {
 		callback: callbackData{
 			SiteID:           opts.Site.ID,
 			ServerID:         opts.Site.ServerID,
+			TeamID:           opts.TeamID,
 			DeploymentID:     opts.Deployment.ID,
 			SiteType:         string(opts.Site.Type),
 			IsFirstDeploy:    opts.Site.InstalledAt == nil,
@@ -114,6 +119,14 @@ func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.Callba
 		Update("status", enums.DeploymentStatusFinished).Error; err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
+
+	// Broadcast deployment finished event
+	cbCtx.BroadcastToTeam(t.callback.TeamID, "deployment.finished", map[string]interface{}{
+		"site_id":       t.callback.SiteID,
+		"server_id":     t.callback.ServerID,
+		"deployment_id": t.callback.DeploymentID,
+		"status":        "finished",
+	})
 
 	// If first deployment, dispatch InstallCaddyfile job
 	if t.callback.IsFirstDeploy {
@@ -156,6 +169,15 @@ func (t *deploySiteTask) OnFailure(ctx context.Context, cbCtx *taskrunner.Callba
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
+	// Broadcast deployment failed event
+	cbCtx.BroadcastToTeam(t.callback.TeamID, "deployment.failed", map[string]interface{}{
+		"site_id":       t.callback.SiteID,
+		"server_id":     t.callback.ServerID,
+		"deployment_id": t.callback.DeploymentID,
+		"status":        "failed",
+		"exit_code":     exitCode,
+	})
+
 	// If first deployment, mark site installation as failed
 	if t.callback.IsFirstDeploy {
 		cbCtx.DB.Model(&models.Site{}).
@@ -187,6 +209,14 @@ func (t *deploySiteTask) OnExpired(ctx context.Context, cbCtx *taskrunner.Callba
 		Update("status", enums.DeploymentStatusTimeout).Error; err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
+
+	// Broadcast deployment timeout event
+	cbCtx.BroadcastToTeam(t.callback.TeamID, "deployment.timeout", map[string]interface{}{
+		"site_id":       t.callback.SiteID,
+		"server_id":     t.callback.ServerID,
+		"deployment_id": t.callback.DeploymentID,
+		"status":        "timeout",
+	})
 
 	// Process next queued deployment if enabled
 	if t.callback.QueueDeployments {

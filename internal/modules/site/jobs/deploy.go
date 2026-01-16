@@ -77,7 +77,7 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	j.broadcastDeploymentProgress(ctx, site.ID, deployment.ID, "installing", "Deployment started")
 
 	// Build deploy config
-	config := j.buildDeployConfig(site, deployment)
+	config := j.buildDeployConfig(site, deployment, server.TeamID)
 
 	// Create deploy task
 	task := tasks.DeploySiteTask(config)
@@ -122,7 +122,7 @@ func (j *DeployJob) Failed(ctx context.Context, err error) {
 	}
 }
 
-func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Deployment) tasks.DeployOptions {
+func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Deployment, teamID string) tasks.DeployOptions {
 	repositoryURL := ""
 	var hasAppAuth bool
 	var tempToken, authURL, appName string
@@ -158,6 +158,7 @@ func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Depl
 	return tasks.DeployOptions{
 		Site:          site,
 		Deployment:    deployment,
+		TeamID:        teamID,
 		RepositoryURL: repositoryURL,
 		HasAppAuth:    hasAppAuth,
 		TempToken:     tempToken,
@@ -509,7 +510,7 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 	j.broadcastDeploymentProgress(ctx, site.ID, deployment.ID, "installing", "Zero-downtime deployment started")
 
 	// Build deploy config
-	config := j.buildDeployConfig(site, deployment)
+	config := j.buildDeployConfig(site, deployment, server.TeamID)
 
 	// Create zero-downtime deploy task
 	task := tasks.DeploySiteTask(config)
@@ -554,7 +555,7 @@ func (j *DeployZeroDowntimeJob) Failed(ctx context.Context, err error) {
 	}
 }
 
-func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment *models.Deployment) tasks.DeployOptions {
+func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment *models.Deployment, teamID string) tasks.DeployOptions {
 	repositoryURL := ""
 	var hasAppAuth bool
 	var tempToken, authURL, appName string
@@ -593,6 +594,7 @@ func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment 
 	return tasks.DeployOptions{
 		Site:             site,
 		Deployment:       deployment,
+		TeamID:           teamID,
 		RepositoryURL:    repositoryURL,
 		HasAppAuth:       hasAppAuth,
 		TempToken:        tempToken,
