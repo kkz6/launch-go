@@ -33,8 +33,10 @@ func Register(mux *asynq.ServeMux, deps module.Deps, repos contracts.RepositoryR
 func registerHandlers(mux *asynq.ServeMux) {
 	// Server lifecycle jobs
 	pkgjobs.RegisterHandler(mux, TypeCreateOnProvider, jobContext, NewCreateOnProviderJob)
+	pkgjobs.RegisterHandler(mux, TypeWaitForServerToConnect, jobContext, NewWaitForServerToConnectJob)
 	pkgjobs.RegisterHandler(mux, TypeProvisionServer, jobContext, NewProvisionServerJob)
 	pkgjobs.RegisterHandler(mux, TypeDeleteServer, jobContext, NewDeleteServerJob)
+	pkgjobs.RegisterHandler(mux, TypeCleanupFailedProvisioning, jobContext, NewCleanupFailedProvisioningJob)
 	pkgjobs.RegisterHandler(mux, TypeRebootServer, jobContext, NewRebootServerJob)
 	pkgjobs.RegisterHandler(mux, TypeArchiveServer, jobContext, NewArchiveServerJob)
 	pkgjobs.RegisterHandler(mux, TypeUnarchiveServer, jobContext, NewUnarchiveServerJob)
@@ -64,6 +66,11 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterHandler(mux, TypeServiceOperation, jobContext, NewServiceOperationJob)
 	pkgjobs.RegisterHandler(mux, TypeCheckServiceStatus, jobContext, NewCheckServiceStatusJob)
 	pkgjobs.RegisterHandler(mux, TypeConfigureOpcache, jobContext, NewConfigureOpcacheJob)
+
+	// PHP jobs
+	pkgjobs.RegisterHandler(mux, TypeSetDefaultPhp, jobContext, NewSetDefaultPhpJob)
+	pkgjobs.RegisterHandler(mux, TypeInstallPhpExtension, jobContext, NewInstallPhpExtensionJob)
+	pkgjobs.RegisterHandler(mux, TypeUninstallPhpExtension, jobContext, NewUninstallPhpExtensionJob)
 
 	// Security audit jobs
 	pkgjobs.RegisterHandler(mux, TypeVulnerabilityAudit, jobContext, NewVulnerabilityAuditJob)

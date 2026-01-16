@@ -150,9 +150,42 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 		"public_ipv4":        result.PublicIPv4,
 	})
 
-	j.ctx.LogInfo("Server created on provider, ready for provisioning",
+	j.ctx.LogInfo("Server created on provider, dispatching wait for connection job",
 		"server_id", server.ID,
 		"provider_server_id", result.ProviderServerID,
+	)
+
+	// Dispatch WaitForServerToConnect job to wait for SSH connectivity
+	if err := j.dispatchWaitForConnection(); err != nil {
+		return fmt.Errorf("failed to dispatch wait for connection job: %w", err)
+	}
+
+	return nil
+}
+
+// dispatchWaitForConnection dispatches the WaitForServerToConnect job
+func (j *CreateOnProviderJob) dispatchWaitForConnection() error {
+	if j.ctx.Queue == nil {
+		return fmt.Errorf("queue client not available")
+	}
+
+	task, err := NewWaitForServerToConnectTask(
+		j.Payload.ServerID,
+		j.Payload.TeamID,
+		j.Payload.ServerProviderID,
+		j.Payload.UserID,
+		j.Payload.SSHKeyIDs,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to create wait for connection task: %w", err)
+	}
+
+	if _, err := j.ctx.Queue.Enqueue(task); err != nil {
+		return fmt.Errorf("failed to enqueue wait for connection job: %w", err)
+	}
+
+	j.ctx.LogInfo("WaitForServerToConnect job dispatched",
+		"server_id", j.Payload.ServerID,
 	)
 
 	return nil

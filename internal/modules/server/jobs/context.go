@@ -22,6 +22,7 @@ type JobContext struct {
 	Dispatcher      taskrunner.TaskDispatcher
 	ProviderFactory *providers.Factory
 	TaskRunnerDeps  *tasks.TaskRunnerDeps
+	Queue           *queue.Client
 }
 
 // NewJobContext creates a new job context with all dependencies.
@@ -41,6 +42,7 @@ func NewJobContext(
 		WS:              ws,
 		Dispatcher:      dispatcher,
 		ProviderFactory: providerFactory,
+		Queue:           queueClient,
 		TaskRunnerDeps: &tasks.TaskRunnerDeps{
 			DB:         db,
 			Queue:      queueClient,

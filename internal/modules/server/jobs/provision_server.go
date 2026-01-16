@@ -103,7 +103,45 @@ func (j *ProvisionServerJob) Failed(ctx context.Context, err error) {
 			"server_id": j.Payload.ServerID,
 			"error":     err.Error(),
 		})
+
+		// Dispatch CleanupFailedServerProvisioning job
+		j.dispatchCleanupJob(server, err.Error())
 	}
+}
+
+// dispatchCleanupJob dispatches the cleanup job for failed provisioning
+func (j *ProvisionServerJob) dispatchCleanupJob(server *models.Server, reason string) {
+	if j.ctx.Queue == nil {
+		j.ctx.LogError(nil, "Queue not available, cannot dispatch cleanup job")
+		return
+	}
+
+	serverProviderID := ""
+	if server.ServerProviderID != nil {
+		serverProviderID = *server.ServerProviderID
+	}
+
+	task, err := NewCleanupFailedProvisioningTask(
+		j.Payload.ServerID,
+		j.Payload.TeamID,
+		serverProviderID,
+		j.Payload.UserID,
+		"Provisioning failed: "+reason,
+		false, // Don't delete the record, keep it for debugging
+	)
+	if err != nil {
+		j.ctx.LogError(err, "Failed to create cleanup task")
+		return
+	}
+
+	if _, err := j.ctx.Queue.Enqueue(task); err != nil {
+		j.ctx.LogError(err, "Failed to enqueue cleanup job")
+		return
+	}
+
+	j.ctx.LogInfo("CleanupFailedProvisioning job dispatched",
+		"server_id", j.Payload.ServerID,
+	)
 }
 
 // NewProvisionServerJob creates a new ProvisionServerJob with the given context and payload.

@@ -84,6 +84,20 @@ func (h *Handler) DeleteDaemon(c *fiber.Ctx) error {
 	return response.NoContent(c)
 }
 
+// RestartDaemon restarts a daemon
+func (h *Handler) RestartDaemon(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	serverID := c.Params("id")
+	daemonID := c.Params("daemonId")
+	userID := c.Locals("userID").(string)
+
+	if err := h.service.RestartDaemon(c.Context(), serverID, teamID, daemonID, &userID); err != nil {
+		return response.HandleError(c, err)
+	}
+
+	return response.OK(c, "Daemon restart initiated", nil)
+}
+
 // SyncDaemons triggers a status synchronization for all daemons
 func (h *Handler) SyncDaemons(c *fiber.Ctx) error {
 	teamID := c.Locals("teamID").(string)

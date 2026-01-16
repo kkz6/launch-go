@@ -141,3 +141,19 @@ func (r *ServiceRepository) UpdateWithTypeData(ctx context.Context, id string, s
 func (r *ServiceRepository) Delete(ctx context.Context, id string) error {
 	return r.DB().WithContext(ctx).Delete(&models.InstalledService{}, "id = ?", id).Error
 }
+
+// SetDefault sets the is_default flag for a service
+func (r *ServiceRepository) SetDefault(ctx context.Context, id string, isDefault bool) error {
+	return r.DB().WithContext(ctx).
+		Model(&models.InstalledService{}).
+		Where("id = ?", id).
+		Update("is_default", isDefault).Error
+}
+
+// UnsetDefaultPhp unsets the is_default flag for all PHP services on a server
+func (r *ServiceRepository) UnsetDefaultPhp(ctx context.Context, serverID string) error {
+	return r.DB().WithContext(ctx).
+		Model(&models.InstalledService{}).
+		Where("server_id = ? AND type = ?", serverID, enums.ServiceTypePhp).
+		Update("is_default", false).Error
+}

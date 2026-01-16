@@ -22,6 +22,7 @@ var (
 	ErrServiceAlreadyExists = apperrors.Conflict("Service already installed")
 	ErrCannotDeleteService  = apperrors.BadRequest("Cannot delete service")
 	ErrQueueNotConfigured   = apperrors.Internal("Queue not configured")
+	ErrDaemonNotInstalled   = apperrors.BadRequest("Daemon is not installed")
 )
 
 // Re-export repository errors for convenience

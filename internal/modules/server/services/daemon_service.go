@@ -187,6 +187,47 @@ func (s *Service) dispatchDaemonUninstallJob(server *models.Server, daemon *mode
 	return s.EnqueueTask(task)
 }
 
+// RestartDaemon restarts a daemon on the server
+func (s *Service) RestartDaemon(ctx context.Context, serverID, teamID, daemonID string, userID *string) error {
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return err
+	}
+
+	daemon, err := s.repos.Daemon().FindByIDAndServer(ctx, daemonID, serverID)
+	if err != nil {
+		return err
+	}
+
+	if !daemon.IsInstalled() || !server.IsProvisioned() {
+		return ErrDaemonNotInstalled
+	}
+
+	activity.New(s.repos.DB()).
+		WithContext(ctx).
+		UseLog("server").
+		On(daemon).
+		WithEvent("restarting").
+		Log("Daemon restart requested")
+
+	task, err := jobs.NewRestartDaemonTask(server.ID, daemon.ID, userID)
+	if err != nil {
+		s.LogError(err, "Failed to create restart daemon task")
+		return err
+	}
+
+	if s.HasQueue() {
+		if err := s.EnqueueTask(task); err != nil {
+			s.LogError(err, "Failed to enqueue restart daemon job")
+			return err
+		}
+	}
+
+	s.LogInfo("Daemon restart initiated", "server_id", serverID, "daemon_id", daemonID)
+
+	return nil
+}
+
 // SyncDaemonsStatus triggers a status synchronization for all daemons on a server
 func (s *Service) SyncDaemonsStatus(ctx context.Context, serverID, teamID string, userID *string) error {
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
