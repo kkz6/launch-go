@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/git/contracts"
@@ -445,6 +446,59 @@ func (s *SourceControlService) TestConnection(ctx context.Context, providerType 
 // GetSourceControlRepo returns the source control repository for webhook handlers
 func (s *SourceControlService) GetSourceControlRepo() *repositories.SourceControlRepository {
 	return s.Repos().SourceControl()
+}
+
+// GetRepositoriesBySourceControlID gets all repositories for a source control
+func (s *SourceControlService) GetRepositoriesBySourceControlID(ctx context.Context, sourceControlID, teamID string) ([]models.SourceControlRepository, error) {
+	// Verify the source control belongs to the team
+	if _, err := s.Repos().SourceControl().FindByIDAndTeam(ctx, sourceControlID, teamID); err != nil {
+		return nil, err
+	}
+
+	return s.Repos().SourceControlRepo().FindRepositoriesBySourceControlID(ctx, sourceControlID)
+}
+
+// SaveRepository fetches a repository from the git provider and saves it to the database
+func (s *SourceControlService) SaveRepository(ctx context.Context, sourceControlID, repoFullName string) (*models.SourceControlRepository, error) {
+	// Get the source control
+	sc, err := s.Repos().SourceControl().FindByID(ctx, sourceControlID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to find source control: %w", err)
+	}
+
+	if sc.InstallationID == nil || *sc.InstallationID == "" {
+		return nil, ErrNoInstallationID
+	}
+
+	// Get the provider
+	provider, err := s.ProviderFactory().GetProvider(providers.GitProviderType(sc.Provider))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get provider: %w", err)
+	}
+
+	// Parse owner and repo from full_name (e.g., "owner/repo")
+	parts := strings.SplitN(repoFullName, "/", 2)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid repository full name: %s", repoFullName)
+	}
+	owner, repoName := parts[0], parts[1]
+
+	// Fetch repository from provider
+	repoData, err := provider.GetRepository(ctx, *sc.InstallationID, owner, repoName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch repository from provider: %w", err)
+	}
+
+	// Convert to RepositoryData
+	data := dto.RepositoryDataFromAPIResponse(repoData)
+
+	// Upsert the repository
+	repo, err := s.Repos().SourceControlRepo().UpsertRepository(ctx, sourceControlID, data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to save repository: %w", err)
+	}
+
+	return repo, nil
 }
 
 // fromProviderAppInstallationData converts providers.AppInstallationData to dto.AppInstallationData

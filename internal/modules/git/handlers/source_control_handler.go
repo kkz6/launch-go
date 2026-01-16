@@ -52,6 +52,27 @@ func (h *SourceControlHandler) GetSourceControl(c *fiber.Ctx) error {
 	return response.OK(c, "Source control retrieved", dto.ToSourceControlResponse(sc))
 }
 
+// GetSourceControlRepositories gets all repositories for a source control
+func (h *SourceControlHandler) GetSourceControlRepositories(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	id := c.Params("id")
+
+	repos, err := h.service.GetRepositoriesBySourceControlID(c.Context(), id, teamID)
+	if err != nil {
+		if err == repositories.ErrSourceControlNotFound {
+			return response.NotFound(c, "Source control not found")
+		}
+		return response.InternalError(c, "Failed to fetch repositories")
+	}
+
+	result := make([]dto.RepositoryResponse, len(repos))
+	for i, repo := range repos {
+		result[i] = dto.ToRepositoryResponse(&repo)
+	}
+
+	return response.OK(c, "Repositories retrieved", result)
+}
+
 // Connect connects a git provider
 func (h *SourceControlHandler) Connect(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)

@@ -52,7 +52,6 @@ func (h *SiteHandler) List(c *fiber.Ctx) error {
 func (h *SiteHandler) Create(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	userID := c.Locals("userID").(string)
-	username := c.Locals("username").(string)
 
 	var req dto.CreateSiteRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -63,7 +62,7 @@ func (h *SiteHandler) Create(c *fiber.Ctx) error {
 		return response.ValidationError(c, errs)
 	}
 
-	site, err := h.siteService.Create(c.Context(), serverID, userID, username, &req)
+	site, err := h.siteService.Create(c.Context(), serverID, userID, &req)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
@@ -85,7 +84,18 @@ func (h *SiteHandler) Show(c *fiber.Ctx) error {
 		return response.InternalError(c, "Failed to fetch site")
 	}
 
-	return response.OK(c, "Site retrieved", dto.ToSiteResponse(site))
+	resp := dto.ToSiteResponse(site)
+
+	// Include source control and repository info if linked
+	if site.SourceControlID != nil && *site.SourceControlID != "" {
+		resp.SourceControl, resp.Repository = h.siteService.GetSourceControlInfo(
+			c.Context(),
+			*site.SourceControlID,
+			site.SourceControlRepositoriesID,
+		)
+	}
+
+	return response.OK(c, "Site retrieved", resp)
 }
 
 // Update updates a site

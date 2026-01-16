@@ -89,6 +89,19 @@ func (h *Handler) ListPhpVersions(c *fiber.Ctx) error {
 	return response.OK(c, "PHP versions retrieved", phpVersions)
 }
 
+// ListInstalledPhpVersions returns only the installed PHP versions for a server
+func (h *Handler) ListInstalledPhpVersions(c *fiber.Ctx) error {
+	teamID := c.Locals("teamID").(string)
+	serverID := c.Params("id")
+
+	phpVersions, err := h.service.GetInstalledPhpVersions(c.Context(), serverID, teamID)
+	if err != nil {
+		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch installed PHP versions")
+	}
+
+	return response.OK(c, "Installed PHP versions retrieved", phpVersions)
+}
+
 // GetAvailableServices returns all available services that can be installed on a server
 func (h *Handler) GetAvailableServices(c *fiber.Ctx) error {
 	teamID := c.Locals("teamID").(string)

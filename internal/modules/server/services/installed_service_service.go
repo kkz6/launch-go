@@ -3,6 +3,9 @@ package services
 import (
 	"context"
 	"fmt"
+	"sort"
+	"strconv"
+	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
@@ -339,4 +342,81 @@ func (s *Service) GetPhpVersions(ctx context.Context, serverID, teamID string) (
 	}
 
 	return result, nil
+}
+
+// GetInstalledPhpVersions returns only the installed PHP versions for a server (simplified for dropdowns)
+func (s *Service) GetInstalledPhpVersions(ctx context.Context, serverID, teamID string) ([]dto.InstalledPhpVersionResponse, error) {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
+		return nil, err
+	}
+
+	// Get all installed PHP services
+	installedServices, err := s.repos.Service().FindByServerAndType(ctx, serverID, enums.ServiceTypePhp)
+	if err != nil {
+		return nil, err
+	}
+
+	// Find the default PHP version
+	var defaultID string
+	for _, svc := range installedServices {
+		if svc.IsDefault {
+			defaultID = svc.ID
+			break
+		}
+	}
+
+	// If no default is set, use the first active one
+	if defaultID == "" {
+		for _, svc := range installedServices {
+			if svc.Status.IsActive() {
+				defaultID = svc.ID
+				break
+			}
+		}
+	}
+
+	result := make([]dto.InstalledPhpVersionResponse, 0, len(installedServices))
+	for _, svc := range installedServices {
+		sw := enums.Software(svc.Software)
+		result = append(result, dto.InstalledPhpVersionResponse{
+			ID:          svc.ID,
+			Key:         svc.Software,
+			DisplayName: sw.Label(),
+			Version:     svc.Version,
+			IsDefault:   svc.ID == defaultID,
+		})
+	}
+
+	// Sort by version descending (newest first)
+	sort.Slice(result, func(i, j int) bool {
+		return compareVersions(result[i].Version, result[j].Version) > 0
+	})
+
+	return result, nil
+}
+
+// compareVersions compares two version strings (e.g., "8.2" vs "8.1")
+// Returns positive if v1 > v2, negative if v1 < v2, 0 if equal
+func compareVersions(v1, v2 string) int {
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var n1, n2 int
+		if i < len(parts1) {
+			n1, _ = strconv.Atoi(parts1[i])
+		}
+		if i < len(parts2) {
+			n2, _ = strconv.Atoi(parts2[i])
+		}
+		if n1 != n2 {
+			return n1 - n2
+		}
+	}
+	return 0
 }

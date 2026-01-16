@@ -66,6 +66,7 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 
 		// PHP
 		servers.Get("/:id/php", handler.ListPhpVersions)
+		servers.Get("/:id/php-versions", handler.ListInstalledPhpVersions)
 		servers.Get("/:id/php/opcache/defaults", handler.GetOpcacheDefaults)
 		servers.Get("/:id/php/:phpId/opcache/status", handler.GetOpcacheStatus)
 		servers.Post("/:id/php/:phpId/opcache/reset", handler.ResetOpcache)

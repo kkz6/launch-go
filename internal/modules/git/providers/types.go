@@ -339,3 +339,71 @@ func parseCommitter(raw string) (name, email string) {
 
 	return "", ""
 }
+
+// DeploymentStatus represents the status of a deployment on the git provider
+type DeploymentStatus string
+
+const (
+	DeploymentStatusPending    DeploymentStatus = "pending"
+	DeploymentStatusInProgress DeploymentStatus = "in_progress"
+	DeploymentStatusSuccess    DeploymentStatus = "success"
+	DeploymentStatusFailure    DeploymentStatus = "failure"
+	DeploymentStatusError      DeploymentStatus = "error"
+)
+
+// GitHubDeploymentStatus returns the GitHub-specific status string
+func (s DeploymentStatus) GitHubStatus() string {
+	switch s {
+	case DeploymentStatusPending:
+		return "pending"
+	case DeploymentStatusInProgress:
+		return "in_progress"
+	case DeploymentStatusSuccess:
+		return "success"
+	case DeploymentStatusFailure:
+		return "failure"
+	case DeploymentStatusError:
+		return "error"
+	default:
+		return "pending"
+	}
+}
+
+// GitLabDeploymentStatus returns the GitLab-specific status string
+func (s DeploymentStatus) GitLabStatus() string {
+	switch s {
+	case DeploymentStatusPending:
+		return "created"
+	case DeploymentStatusInProgress:
+		return "running"
+	case DeploymentStatusSuccess:
+		return "success"
+	case DeploymentStatusFailure:
+		return "failed"
+	case DeploymentStatusError:
+		return "failed"
+	default:
+		return "created"
+	}
+}
+
+// DeploymentInfo contains information for creating a deployment on the git provider
+type DeploymentInfo struct {
+	ServerID       string
+	SiteID         string
+	DeploymentID   string
+	RepoFullName   string
+	Branch         string
+	GitHash        string
+	SiteURL        string
+	Environment    string
+	Description    string
+	ProjectID      string // For GitLab (numeric project ID from additional_data)
+}
+
+// DeploymentResult contains the result of creating a deployment on the git provider
+type DeploymentResult struct {
+	ID          string                 `json:"id"`
+	StatusesURL string                 `json:"statuses_url,omitempty"`
+	Data        map[string]interface{} `json:"data,omitempty"`
+}

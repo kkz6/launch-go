@@ -204,6 +204,157 @@ func parseGitLabRepository(project map[string]interface{}) map[string]interface{
 	}
 }
 
+// CreateDeployment creates a deployment on GitLab
+func (p *GitLabProvider) CreateDeployment(ctx context.Context, info *DeploymentInfo) (*DeploymentResult, error) {
+	if p.sourceControl == nil {
+		return nil, nil
+	}
+
+	token, err := p.GetInstallationToken(ctx, "")
+	if err != nil {
+		return nil, nil // Don't fail deployment if we can't get token
+	}
+
+	projectID := info.ProjectID
+	if projectID == "" {
+		return nil, nil // Need project ID for GitLab
+	}
+
+	environment := info.Environment
+	if environment == "" {
+		environment = "production"
+	}
+
+	// Create deployment
+	url := fmt.Sprintf("%s/projects/%s/deployments", gitlabAPIURL, projectID)
+	body := map[string]interface{}{
+		"ref":         info.Branch,
+		"environment": environment,
+		"status":      DeploymentStatusInProgress.GitLabStatus(),
+	}
+	if info.GitHash != "" {
+		body["sha"] = info.GitHash
+	}
+
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "POST", url, jsonReader(bodyBytes))
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return nil, nil // Don't fail if deployment creation fails
+	}
+
+	var deploymentResp map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&deploymentResp); err != nil {
+		return nil, err
+	}
+
+	deploymentID := ""
+	if idFloat, ok := deploymentResp["id"].(float64); ok {
+		deploymentID = fmt.Sprintf("%.0f", idFloat)
+	}
+
+	// Remove user from data
+	delete(deploymentResp, "user")
+
+	return &DeploymentResult{
+		ID:   deploymentID,
+		Data: deploymentResp,
+	}, nil
+}
+
+// UpdateDeploymentStatus updates the status of a deployment on GitLab
+func (p *GitLabProvider) UpdateDeploymentStatus(ctx context.Context, info *DeploymentInfo, vcsData map[string]interface{}, status DeploymentStatus) error {
+	if p.sourceControl == nil {
+		return nil
+	}
+
+	deploymentID, ok := vcsData["id"].(float64)
+	if !ok {
+		// Try string
+		if idStr, ok := vcsData["id"].(string); ok {
+			_, err := fmt.Sscanf(idStr, "%f", &deploymentID)
+			if err != nil {
+				return nil
+			}
+		} else {
+			return nil
+		}
+	}
+
+	projectID := info.ProjectID
+	if projectID == "" {
+		return nil
+	}
+
+	token, err := p.GetInstallationToken(ctx, "")
+	if err != nil {
+		return nil
+	}
+
+	url := fmt.Sprintf("%s/projects/%s/deployments/%.0f", gitlabAPIURL, projectID, deploymentID)
+	body := map[string]interface{}{
+		"status": status.GitLabStatus(),
+	}
+
+	bodyBytes, err := json.Marshal(body)
+	if err != nil {
+		return err
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "PUT", url, jsonReader(bodyBytes))
+	if err != nil {
+		return nil
+	}
+
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := p.httpClient.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer resp.Body.Close()
+
+	return nil
+}
+
+// jsonReader creates an io.Reader from bytes
+func jsonReader(data []byte) io.Reader {
+	return &byteReader{data: data}
+}
+
+type byteReader struct {
+	data []byte
+	pos  int
+}
+
+func (r *byteReader) Read(p []byte) (n int, err error) {
+	if r.pos >= len(r.data) {
+		return 0, io.EOF
+	}
+	n = copy(p, r.data[r.pos:])
+	r.pos += n
+	return n, nil
+}
+
 // fetchProjects fetches projects from GitLab API with pagination
 func (p *GitLabProvider) fetchProjects(ctx context.Context, accessToken string) ([]map[string]interface{}, error) {
 	var allProjects []map[string]interface{}

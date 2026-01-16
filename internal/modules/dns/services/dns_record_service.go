@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -155,6 +156,39 @@ func (s *DnsRecordService) DeleteRecord(ctx context.Context, recordID, domainID,
 // GetRecordTypes returns all available record types
 func (s *DnsRecordService) GetRecordTypes() []string {
 	return GetRecordTypes()
+}
+
+// CreateRecordForSite creates a DNS A record for a site
+func (s *DnsRecordService) CreateRecordForSite(ctx context.Context, domainID, teamID, siteAddress, serverIP string) error {
+	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return ErrDomainNotFound
+		}
+		return err
+	}
+
+	// Determine record name (subdomain)
+	recordName := "@"
+	baseDomain := domain.Address
+
+	if siteAddress != baseDomain {
+		// Extract subdomain (e.g., 'www' from 'www.example.com')
+		recordName = strings.TrimSuffix(siteAddress, "."+baseDomain)
+	}
+
+	// Create A record request
+	comment := "Auto-created for site: " + siteAddress
+	req := &dto.CreateDnsRecordRequest{
+		Name:    recordName,
+		Value:   serverIP,
+		Type:    "A",
+		TTL:     3600,
+		Comment: comment,
+	}
+
+	_, err = s.CreateRecord(ctx, domainID, teamID, req)
+	return err
 }
 
 // GetRecordTypes returns all available record types (package-level function)

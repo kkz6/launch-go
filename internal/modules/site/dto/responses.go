@@ -39,9 +39,11 @@ type SiteResponse struct {
 	ApplicationDirectory         string              `json:"app_directory"`
 	RepositoryURL                *string             `json:"repository_url,omitempty"`
 	InstalledAt                  *string             `json:"installed_at,omitempty"`
-	LatestDeployment             *DeploymentResponse `json:"latest_deployment,omitempty"`
-	CreatedAt                    string              `json:"created_at"`
-	UpdatedAt                    string              `json:"updated_at"`
+	LatestDeployment             *DeploymentResponse              `json:"latest_deployment,omitempty"`
+	SourceControl                *SourceControlResponse           `json:"source_control,omitempty"`
+	Repository                   *SourceControlRepositoryResponse `json:"repository,omitempty"`
+	CreatedAt                    string                           `json:"created_at"`
+	UpdatedAt                    string                           `json:"updated_at"`
 }
 
 // DeploymentResponse represents a deployment in API responses

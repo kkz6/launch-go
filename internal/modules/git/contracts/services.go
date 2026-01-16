@@ -27,4 +27,6 @@ type SourceControlService interface {
 	DeleteByInstallationID(ctx context.Context, installationID string) error
 	GetSourceControlByInstallation(ctx context.Context, providerType enums.GitProviderType, installationID string, opts ...InstallationQueryOption) (*models.SourceControl, error)
 	TestConnection(ctx context.Context, providerType enums.GitProviderType) error
+	// SaveRepository fetches a repository from the git provider and saves it to the database
+	SaveRepository(ctx context.Context, sourceControlID, repoFullName string) (*models.SourceControlRepository, error)
 }

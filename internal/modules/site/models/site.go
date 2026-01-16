@@ -59,6 +59,7 @@ type Site struct {
 	HookAfterUpdatingRepository  *string          `gorm:"column:hook_after_updating_repository;type:longtext" json:"hook_after_updating_repository,omitempty"`
 	HookBeforeMakingCurrent      *string          `gorm:"column:hook_before_making_current;type:longtext" json:"hook_before_making_current,omitempty"`
 	HookAfterMakingCurrent       *string          `gorm:"column:hook_after_making_current;type:longtext" json:"hook_after_making_current,omitempty"`
+	ConnectedDomainID            *string          `gorm:"column:connected_domain_id;type:char(26);index" json:"connected_domain_id,omitempty"`
 
 	// Relations
 	Deployments      []Deployment  `gorm:"foreignKey:SiteID;references:ID" json:"deployments,omitempty"`

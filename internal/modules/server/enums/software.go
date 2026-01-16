@@ -404,6 +404,31 @@ func (s Software) RemoveTemplateName() string {
 	return "software/remove_" + string(s) + ".sh"
 }
 
+// ConnectionName returns the database driver name for use in application configuration.
+// Returns "mysql" for MySQL and "pgsql" for PostgreSQL.
+func (s Software) ConnectionName() string {
+	switch s {
+	case SoftwareMySql80:
+		return "mysql"
+	case SoftwarePostgreSql16:
+		return "pgsql"
+	default:
+		return ""
+	}
+}
+
+// Port returns the default port for the database type.
+func (s Software) Port() string {
+	switch s {
+	case SoftwareMySql80:
+		return "3306"
+	case SoftwarePostgreSql16:
+		return "5432"
+	default:
+		return ""
+	}
+}
+
 // MaxConnections returns the recommended max connections based on server memory.
 // Only applicable to database software (MySQL, PostgreSQL).
 func (s Software) MaxConnections(memoryInMB int) int {

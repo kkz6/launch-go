@@ -4,10 +4,16 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
+
+	"gorm.io/gorm"
 
 	databasedto "github.com/kkz6/launch-go/internal/modules/database/dto"
 	databaseservices "github.com/kkz6/launch-go/internal/modules/database/services"
+	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
+	gitcontracts "github.com/kkz6/launch-go/internal/modules/git/contracts"
+	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
 	serverdto "github.com/kkz6/launch-go/internal/modules/server/dto"
 	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
@@ -22,9 +28,12 @@ import (
 // SiteService handles business logic for sites
 type SiteService struct {
 	*BaseService
-	serverRepos     *serverrepos.Registry
-	serverService   *serverservices.Service
-	databaseService *databaseservices.Service
+	serverRepos          *serverrepos.Registry
+	gitRepos             *gitrepos.Registry
+	serverService        *serverservices.Service
+	databaseService      *databaseservices.Service
+	dnsRecordService     dnscontracts.DnsRecordService
+	sourceControlService gitcontracts.SourceControlService
 }
 
 // NewSiteService creates a new site service
@@ -39,6 +48,11 @@ func (s *SiteService) SetServerRepos(repos *serverrepos.Registry) {
 	s.serverRepos = repos
 }
 
+// SetGitRepos sets the git repository registry for cross-module queries
+func (s *SiteService) SetGitRepos(repos *gitrepos.Registry) {
+	s.gitRepos = repos
+}
+
 // SetServerService sets the server service for cross-module operations
 func (s *SiteService) SetServerService(svc *serverservices.Service) {
 	s.serverService = svc
@@ -49,13 +63,54 @@ func (s *SiteService) SetDatabaseService(svc *databaseservices.Service) {
 	s.databaseService = svc
 }
 
+// SetDnsRecordService sets the DNS record service for cross-module operations
+func (s *SiteService) SetDnsRecordService(svc dnscontracts.DnsRecordService) {
+	s.dnsRecordService = svc
+}
+
+// SetSourceControlService sets the source control service for cross-module operations
+func (s *SiteService) SetSourceControlService(svc gitcontracts.SourceControlService) {
+	s.sourceControlService = svc
+}
+
 // List returns all sites for a server
 func (s *SiteService) List(ctx context.Context, serverID string) ([]models.Site, error) {
 	return s.Repos().Site().FindByServerWithLatestDeployment(ctx, serverID)
 }
 
 // Create creates a new site
-func (s *SiteService) Create(ctx context.Context, serverID, userID, username string, req *dto.CreateSiteRequest) (*models.Site, error) {
+func (s *SiteService) Create(ctx context.Context, serverID, userID string, req *dto.CreateSiteRequest) (*models.Site, error) {
+	// Get server to determine username and validate PHP version
+	if s.serverRepos == nil {
+		return nil, errors.New("server repository not configured")
+	}
+
+	server, err := s.serverRepos.Server().FindByID(ctx, serverID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch server: %w", err)
+	}
+
+	username := server.GetUsername()
+
+	// Validate PHP version is a valid enum and installed on server
+	phpSoftware, err := serverenums.ParseSoftware(req.PhpVersion)
+	if err != nil || !phpSoftware.IsPhp() {
+		return nil, fmt.Errorf("invalid PHP version: %s", req.PhpVersion)
+	}
+
+	// Check if PHP version is installed on the server
+	phpInstalled := false
+	expectedVersion := phpSoftware.GetVersion() // e.g., "8.3"
+	for _, svc := range server.Services {
+		if svc.Type == serverenums.ServiceTypePhp && svc.Version == expectedVersion {
+			phpInstalled = true
+			break
+		}
+	}
+	if !phpInstalled {
+		return nil, fmt.Errorf("PHP version %s is not installed on this server", req.PhpVersion)
+	}
+
 	// Check if site with same address exists
 	existing, _ := s.Repos().Site().FindByAddress(ctx, req.Address, serverID)
 	if existing != nil {
@@ -65,6 +120,13 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 	// Validate site type
 	if !req.Type.IsValid() {
 		return nil, fmt.Errorf("invalid site type: %s", req.Type)
+	}
+
+	// Validate source control for non-WordPress sites
+	if req.Type != enums.SiteTypeWordpress && req.SourceControlID != nil && *req.SourceControlID != "" {
+		if err := s.validateSourceControl(ctx, req.SourceControlID, req.SourceControlRepositoriesID); err != nil {
+			return nil, err
+		}
 	}
 
 	// Build path
@@ -93,6 +155,16 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		zeroDowntime = false
 	}
 
+	// Convert source control repositories ID from string to uint64
+	var sourceControlRepoID *uint64
+	if req.SourceControlRepositoriesID != nil && *req.SourceControlRepositoriesID != "" {
+		parsed, err := strconv.ParseUint(*req.SourceControlRepositoriesID, 10, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid source_control_repositories_id: %w", err)
+		}
+		sourceControlRepoID = &parsed
+	}
+
 	site := &models.Site{
 		ServerID:                    serverID,
 		UserID:                      userID,
@@ -107,7 +179,8 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		WebFolder:                   webFolder,
 		PhpVersion:                  phpVersion,
 		SourceControlID:             req.SourceControlID,
-		SourceControlRepositoriesID: req.SourceControlRepositoriesID,
+		SourceControlRepositoriesID: sourceControlRepoID,
+		ConnectedDomainID:           req.ConnectedDomainID,
 	}
 
 	// Set aliases
@@ -145,22 +218,45 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		site.HookAfterMakingCurrent = &hook
 	}
 
-	if err := s.Repos().Site().Create(ctx, site); err != nil {
+	// Use transaction for site creation
+	var envVars map[string]string
+	err = s.Repos().Site().DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(site).Error; err != nil {
+			return err
+		}
+
+		activity.New(tx).
+			WithContext(ctx).
+			UseLog("site").
+			CausedByUser(userID).
+			On(site).
+			WithEvent("created").
+			Log("Site was created")
+
+		return nil
+	})
+
+	if err != nil {
 		return nil, err
 	}
 
-	activity.New(s.Repos().Site().DB).
-		WithContext(ctx).
-		UseLog("site").
-		CausedByUser(userID).
-		On(site).
-		WithEvent("created").
-		Log("Site was created")
+	// Save repository to source control provider (non-WordPress sites only)
+	if req.Type != enums.SiteTypeWordpress && req.SourceControlID != nil && *req.SourceControlID != "" && sourceControlRepoID != nil {
+		s.handleSourceControlRepository(ctx, *req.SourceControlID, *sourceControlRepoID)
+	}
 
-	// Handle database creation if requested
-	var envVars map[string]string
+	// Handle database creation if requested (outside main transaction)
 	if req.CreateDatabase && s.databaseService != nil {
 		envVars = s.handleDatabaseCreation(ctx, site, serverID, userID, req)
+	}
+
+	// Handle DNS record creation (outside transaction - non-critical)
+	if req.CreateDNSRecord && req.ConnectedDomainID != nil && *req.ConnectedDomainID != "" {
+		serverIP := ""
+		if server.PublicIPv4 != nil {
+			serverIP = *server.PublicIPv4
+		}
+		s.handleDnsRecordCreation(ctx, site, *req.ConnectedDomainID, server.TeamID, serverIP)
 	}
 
 	// Handle scheduler creation for Laravel and WordPress sites
@@ -217,10 +313,10 @@ func (s *SiteService) handleDatabaseCreation(ctx context.Context, site *models.S
 				envVars[envVarNames["host"]] = "127.0.0.1"
 			}
 			if envVarNames["connection"] != "" {
-				envVars[envVarNames["connection"]] = "mysql"
+				envVars[envVarNames["connection"]] = dbInfo.ConnectionName
 			}
 			if envVarNames["port"] != "" {
-				envVars[envVarNames["port"]] = "3306"
+				envVars[envVarNames["port"]] = dbInfo.Port
 			}
 		}
 		return envVars
@@ -250,6 +346,9 @@ func (s *SiteService) handleDatabaseCreation(ctx context.Context, site *models.S
 		return envVars
 	}
 
+	// Get the database type from the server's installed services
+	dbType := s.getDatabaseTypeForServer(ctx, serverID)
+
 	// Build environment variables
 	if envVarNames["database"] != "" {
 		envVars[envVarNames["database"]] = database.Name
@@ -258,10 +357,10 @@ func (s *SiteService) handleDatabaseCreation(ctx context.Context, site *models.S
 		envVars[envVarNames["host"]] = "127.0.0.1"
 	}
 	if envVarNames["connection"] != "" {
-		envVars[envVarNames["connection"]] = "mysql"
+		envVars[envVarNames["connection"]] = dbType.ConnectionName()
 	}
 	if envVarNames["port"] != "" {
-		envVars[envVarNames["port"]] = "3306"
+		envVars[envVarNames["port"]] = dbType.Port()
 	}
 
 	// Add user credentials if new user was created
@@ -279,8 +378,15 @@ func (s *SiteService) handleDatabaseCreation(ctx context.Context, site *models.S
 	return envVars
 }
 
+// DatabaseInfo holds database connection details
+type DatabaseInfo struct {
+	Name           string
+	ConnectionName string
+	Port           string
+}
+
 // getExistingDatabaseInfo fetches database info for existing database
-func (s *SiteService) getExistingDatabaseInfo(ctx context.Context, databaseID, serverID string) *struct{ Name string } {
+func (s *SiteService) getExistingDatabaseInfo(ctx context.Context, databaseID, serverID string) *DatabaseInfo {
 	if s.databaseService == nil {
 		return nil
 	}
@@ -290,7 +396,34 @@ func (s *SiteService) getExistingDatabaseInfo(ctx context.Context, databaseID, s
 		return nil
 	}
 
-	return &struct{ Name string }{Name: database.Name}
+	// Get the database type from the server's installed services
+	dbType := s.getDatabaseTypeForServer(ctx, serverID)
+
+	return &DatabaseInfo{
+		Name:           database.Name,
+		ConnectionName: dbType.ConnectionName(),
+		Port:           dbType.Port(),
+	}
+}
+
+// getDatabaseTypeForServer returns the database software type installed on the server
+func (s *SiteService) getDatabaseTypeForServer(ctx context.Context, serverID string) serverenums.Software {
+	// Query installed services to find the database type
+	services, err := s.serverRepos.Service().FindByServer(ctx, serverID)
+	if err != nil {
+		return serverenums.SoftwareMySql80 // Default to MySQL if we can't determine
+	}
+
+	for _, service := range services {
+		if service.Type == serverenums.ServiceTypeMySql {
+			return serverenums.SoftwareMySql80
+		}
+		if service.Type == serverenums.ServiceTypePostgreSql {
+			return serverenums.SoftwarePostgreSql16
+		}
+	}
+
+	return serverenums.SoftwareMySql80 // Default to MySQL
 }
 
 // handleSchedulerCreation creates a cron job for Laravel/WordPress scheduler
@@ -331,10 +464,24 @@ func (s *SiteService) handleSchedulerCreation(ctx context.Context, site *models.
 		SiteID:     &site.ID,
 	}
 
-	_, err = s.serverService.CreateCron(ctx, serverID, server.TeamID, cronReq)
+	cron, err := s.serverService.CreateCron(ctx, serverID, server.TeamID, cronReq)
 	if err != nil {
 		s.LogError(err, "Failed to create scheduler cron for site", "site_id", site.ID)
 		return
+	}
+
+	// Update enabled_features with scheduler info
+	now := time.Now()
+	feature := models.EnabledFeature{
+		Name:      "scheduler",
+		CronID:    &cron.ID,
+		EnabledAt: &now,
+	}
+	site.AddEnabledFeature(feature)
+	if err := s.Repos().Site().UpdateFields(ctx, site.ID, map[string]interface{}{
+		"enabled_features": site.EnabledFeatures,
+	}); err != nil {
+		s.LogError(err, "Failed to update enabled_features for scheduler", "site_id", site.ID)
 	}
 
 	s.LogInfo("Scheduler cron created for site", "site_id", site.ID)
@@ -363,13 +510,114 @@ func (s *SiteService) handleQueueCreation(ctx context.Context, site *models.Site
 	queueReq.NumProcs = &numProcs
 
 	// Use service registry to access queue service
-	_, err := s.Services().Queue().Create(ctx, site.ID, serverID, userID, queueReq)
+	queue, err := s.Services().Queue().Create(ctx, site.ID, serverID, userID, queueReq)
 	if err != nil {
 		s.LogError(err, "Failed to create queue worker for site", "site_id", site.ID)
 		return
 	}
 
+	// Update enabled_features with queue info
+	now := time.Now()
+	feature := models.EnabledFeature{
+		Name:      "queue",
+		QueueID:   &queue.ID,
+		EnabledAt: &now,
+	}
+	site.AddEnabledFeature(feature)
+	if err := s.Repos().Site().UpdateFields(ctx, site.ID, map[string]interface{}{
+		"enabled_features": site.EnabledFeatures,
+	}); err != nil {
+		s.LogError(err, "Failed to update enabled_features for queue", "site_id", site.ID)
+	}
+
 	s.LogInfo("Queue worker created for site", "site_id", site.ID)
+}
+
+// validateSourceControl validates source control and repository exist
+func (s *SiteService) validateSourceControl(ctx context.Context, sourceControlID *string, repoID *string) error {
+	if sourceControlID == nil || *sourceControlID == "" {
+		return nil
+	}
+
+	// Check source control exists
+	var count int64
+	err := s.Repos().Site().DB.WithContext(ctx).
+		Table("source_controls").
+		Where("id = ?", *sourceControlID).
+		Count(&count).Error
+	if err != nil {
+		return fmt.Errorf("failed to validate source control: %w", err)
+	}
+	if count == 0 {
+		return errors.New("source control not found")
+	}
+
+	// Check repository exists if provided
+	if repoID != nil && *repoID != "" {
+		err := s.Repos().Site().DB.WithContext(ctx).
+			Table("source_control_repositories").
+			Where("id = ?", *repoID).
+			Count(&count).Error
+		if err != nil {
+			return fmt.Errorf("failed to validate repository: %w", err)
+		}
+		if count == 0 {
+			return errors.New("repository not found")
+		}
+	}
+
+	return nil
+}
+
+// handleDnsRecordCreation creates a DNS A record for a site
+func (s *SiteService) handleDnsRecordCreation(ctx context.Context, site *models.Site, domainID, teamID, serverIP string) {
+	if s.dnsRecordService == nil {
+		s.LogError(nil, "DNS service not configured, skipping DNS record creation", "site_id", site.ID)
+		return
+	}
+
+	if serverIP == "" {
+		s.LogError(nil, "Server has no public IP, skipping DNS record creation", "site_id", site.ID)
+		return
+	}
+
+	// Create DNS record via service (handles subdomain calculation internally)
+	err := s.dnsRecordService.CreateRecordForSite(ctx, domainID, teamID, site.Address, serverIP)
+	if err != nil {
+		s.LogError(err, "Failed to create DNS record for site", "site_id", site.ID, "domain_id", domainID)
+		return
+	}
+
+	s.LogInfo("DNS record created for site", "site_id", site.ID)
+}
+
+// handleSourceControlRepository fetches and saves repository data from the git provider
+func (s *SiteService) handleSourceControlRepository(ctx context.Context, sourceControlID string, repoID uint64) {
+	if s.sourceControlService == nil {
+		s.LogError(nil, "Source control service not configured, skipping repository save")
+		return
+	}
+
+	if s.gitRepos == nil {
+		s.LogError(nil, "Git repositories not configured, skipping repository save")
+		return
+	}
+
+	// Get repository from database using the ID
+	repo, err := s.gitRepos.SourceControlRepo().FindRepositoryByID(ctx, strconv.FormatUint(repoID, 10))
+	if err != nil {
+		s.LogError(err, "Failed to get repository", "repo_id", repoID)
+		return
+	}
+
+	// Save repository to source control (fetches latest data from provider)
+	_, err = s.sourceControlService.SaveRepository(ctx, sourceControlID, repo.FullName)
+	if err != nil {
+		s.LogError(err, "Failed to save repository to source control", "source_control_id", sourceControlID, "full_name", repo.FullName)
+		return
+	}
+
+	s.LogInfo("Repository saved to source control", "source_control_id", sourceControlID, "full_name", repo.FullName)
 }
 
 // FindByID finds a site by ID
@@ -557,7 +805,7 @@ func (s *SiteService) GetSettings(ctx context.Context, id, serverID string) (*Si
 	var sourceControl *dto.SourceControlResponse
 	var repository *dto.SourceControlRepositoryResponse
 	if site.SourceControlID != nil && *site.SourceControlID != "" {
-		sourceControl, repository = s.getSourceControlInfo(ctx, *site.SourceControlID, site.SourceControlRepositoriesID)
+		sourceControl, repository = s.GetSourceControlInfo(ctx, *site.SourceControlID, site.SourceControlRepositoriesID)
 	}
 
 	return &SiteSettingsData{
@@ -593,29 +841,20 @@ func (s *SiteService) getServerPhpVersions(ctx context.Context, serverID string)
 	return result
 }
 
-// getSourceControlInfo returns source control and repository info
-func (s *SiteService) getSourceControlInfo(ctx context.Context, sourceControlID string, repoID *uint64) (*dto.SourceControlResponse, *dto.SourceControlRepositoryResponse) {
-	var sc struct {
-		ID       string  `gorm:"column:id"`
-		Provider string  `gorm:"column:provider"`
-		Login    *string `gorm:"column:login"`
-		Name     *string `gorm:"column:name"`
-		Type     *string `gorm:"column:type"`
+// GetSourceControlInfo returns source control and repository info
+func (s *SiteService) GetSourceControlInfo(ctx context.Context, sourceControlID string, repoID *uint64) (*dto.SourceControlResponse, *dto.SourceControlRepositoryResponse) {
+	if s.gitRepos == nil {
+		return nil, nil
 	}
 
-	err := s.Repos().Site().DB.WithContext(ctx).
-		Table("source_controls").
-		Select("id, provider, login, name, type").
-		Where("id = ?", sourceControlID).
-		First(&sc).Error
-
+	sc, err := s.gitRepos.SourceControl().FindByID(ctx, sourceControlID)
 	if err != nil {
 		return nil, nil
 	}
 
 	sourceControl := &dto.SourceControlResponse{
 		ID:       sc.ID,
-		Provider: sc.Provider,
+		Provider: string(sc.Provider),
 		Login:    sc.Login,
 		Name:     sc.Name,
 		Type:     sc.Type,
@@ -623,20 +862,7 @@ func (s *SiteService) getSourceControlInfo(ctx context.Context, sourceControlID 
 
 	var repository *dto.SourceControlRepositoryResponse
 	if repoID != nil {
-		var repo struct {
-			ID            uint64  `gorm:"column:id"`
-			Name          string  `gorm:"column:name"`
-			FullName      string  `gorm:"column:full_name"`
-			DefaultBranch string  `gorm:"column:default_branch"`
-			HTMLURL       *string `gorm:"column:html_url"`
-		}
-
-		err := s.Repos().Site().DB.WithContext(ctx).
-			Table("source_control_repositories").
-			Select("id, name, full_name, default_branch, html_url").
-			Where("id = ?", *repoID).
-			First(&repo).Error
-
+		repo, err := s.gitRepos.SourceControlRepo().FindRepositoryByID(ctx, strconv.FormatUint(*repoID, 10))
 		if err == nil {
 			repository = &dto.SourceControlRepositoryResponse{
 				ID:            repo.ID,
