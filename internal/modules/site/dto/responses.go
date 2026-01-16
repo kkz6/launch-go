@@ -39,10 +39,10 @@ type SiteResponse struct {
 	ApplicationDirectory          string              `json:"app_directory"`
 	RepositoryURL                 *string             `json:"repository_url,omitempty"`
 	Status                        string              `json:"status"`
-	InstalledAt                   *string             `json:"installed_at,omitempty"`
-	InstallationFailedAt          *string             `json:"installation_failed_at,omitempty"`
-	UninstallationRequestedAt     *string             `json:"uninstallation_requested_at,omitempty"`
-	UninstallationFailedAt        *string             `json:"uninstallation_failed_at,omitempty"`
+	InstalledAt                   *string             `json:"installed_at"`
+	InstallationFailedAt          *string             `json:"installation_failed_at"`
+	UninstallationRequestedAt     *string             `json:"uninstallation_requested_at"`
+	UninstallationFailedAt        *string             `json:"uninstallation_failed_at"`
 	LatestDeployment              *DeploymentResponse              `json:"latest_deployment,omitempty"`
 	SourceControl                *SourceControlResponse           `json:"source_control,omitempty"`
 	Repository                   *SourceControlRepositoryResponse `json:"repository,omitempty"`
