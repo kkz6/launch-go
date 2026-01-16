@@ -46,11 +46,6 @@ type QueueClient interface {
 	Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
 }
 
-// Type returns the job type identifier
-func (j *ProcessGitWebhookJob) Type() string {
-	return TypeProcessGitWebhook
-}
-
 // Handle processes the webhook
 func (j *ProcessGitWebhookJob) Handle(ctx context.Context) error {
 	providerType, err := enums.ParseGitProviderType(j.Payload.Provider)
