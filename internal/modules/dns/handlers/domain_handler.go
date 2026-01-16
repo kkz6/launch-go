@@ -87,8 +87,7 @@ func (h *DomainHandler) ShowDomain(c *fiber.Ctx) error {
 	records, _ := h.domainService.GetDomainRecords(c.Context(), id, teamID)
 
 	// Get record types
-	recordService := services.NewDnsRecordService(nil, nil, nil)
-	recordTypesList := recordService.GetRecordTypes()
+	recordTypesList := services.GetRecordTypes()
 
 	// Convert record types to structured format
 	recordTypes := make([]dto.RecordTypeOption, len(recordTypesList))

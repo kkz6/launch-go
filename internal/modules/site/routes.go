@@ -35,19 +35,19 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 	// Top-level site routes (not nested under servers)
 	sitesGlobal := router.Group("/sites", authMiddleware)
-	registerGlobalSiteRoutes(sitesGlobal, siteHandler)
+	m.registerGlobalSiteRoutes(sitesGlobal, siteHandler)
 
 	// Sites are nested under servers
 	servers := router.Group("/servers/:serverId", authMiddleware)
 	sites := servers.Group("/sites")
 
-	registerSiteRoutes(sites, siteHandler)
-	registerDeploymentRoutes(sites, deploymentHandler)
-	registerSSLRoutes(sites, sslHandler)
-	registerQueueRoutes(sites, queueHandler)
-	registerCommandRoutes(sites, commandHandler)
-	registerRedirectRoutes(sites, redirectHandler)
-	registerFileRoutes(sites, fileHandler)
+	m.registerSiteRoutes(sites, siteHandler)
+	m.registerDeploymentRoutes(sites, deploymentHandler)
+	m.registerSSLRoutes(sites, sslHandler)
+	m.registerQueueRoutes(sites, queueHandler)
+	m.registerCommandRoutes(sites, commandHandler)
+	m.registerRedirectRoutes(sites, redirectHandler)
+	m.registerFileRoutes(sites, fileHandler)
 }
 
 // RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
@@ -78,13 +78,13 @@ func (m *Module) DomainRepository() dnscontracts.DomainRepository {
 }
 
 // registerGlobalSiteRoutes registers site routes not nested under servers
-func registerGlobalSiteRoutes(router fiber.Router, handler *handlers.SiteHandler) {
+func (m *Module) registerGlobalSiteRoutes(router fiber.Router, handler *handlers.SiteHandler) {
 	// Domain verification
 	router.Get("/verify-domain", handler.VerifyDomain)
 }
 
 // registerSiteRoutes registers site CRUD and settings routes
-func registerSiteRoutes(router fiber.Router, handler *handlers.SiteHandler) {
+func (m *Module) registerSiteRoutes(router fiber.Router, handler *handlers.SiteHandler) {
 	// CRUD
 	router.Get("/", handler.List)
 	router.Post("/", handler.Create)
@@ -106,7 +106,7 @@ func registerSiteRoutes(router fiber.Router, handler *handlers.SiteHandler) {
 }
 
 // registerDeploymentRoutes registers deployment-related routes
-func registerDeploymentRoutes(router fiber.Router, handler *handlers.DeploymentHandler) {
+func (m *Module) registerDeploymentRoutes(router fiber.Router, handler *handlers.DeploymentHandler) {
 	// Deployments
 	router.Post("/:id/deploy", handler.Deploy)
 	router.Get("/:id/deployments", handler.ListDeployments)
@@ -120,13 +120,13 @@ func registerDeploymentRoutes(router fiber.Router, handler *handlers.DeploymentH
 }
 
 // registerSSLRoutes registers SSL/TLS routes
-func registerSSLRoutes(router fiber.Router, handler *handlers.SSLHandler) {
+func (m *Module) registerSSLRoutes(router fiber.Router, handler *handlers.SSLHandler) {
 	router.Put("/:id/ssl", handler.UpdateSSL)
 	router.Get("/:id/certificates", handler.ListCertificates)
 }
 
 // registerQueueRoutes registers queue routes
-func registerQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
+func (m *Module) registerQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
 	router.Get("/:id/queues", handler.ListQueues)
 	router.Post("/:id/queues", handler.CreateQueue)
 	router.Post("/:id/queues/sync", handler.SyncQueues)
@@ -138,21 +138,21 @@ func registerQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
 }
 
 // registerCommandRoutes registers command routes
-func registerCommandRoutes(router fiber.Router, handler *handlers.CommandHandler) {
+func (m *Module) registerCommandRoutes(router fiber.Router, handler *handlers.CommandHandler) {
 	router.Get("/:id/commands", handler.ListCommands)
 	router.Post("/:id/commands", handler.CreateCommand)
 	router.Delete("/:id/commands/:commandId", handler.DeleteCommand)
 }
 
 // registerRedirectRoutes registers redirect routes
-func registerRedirectRoutes(router fiber.Router, handler *handlers.RedirectHandler) {
+func (m *Module) registerRedirectRoutes(router fiber.Router, handler *handlers.RedirectHandler) {
 	router.Get("/:id/redirects", handler.ListRedirects)
 	router.Post("/:id/redirects", handler.CreateRedirect)
 	router.Delete("/:id/redirects/:redirectId", handler.DeleteRedirect)
 }
 
 // registerFileRoutes registers file management routes
-func registerFileRoutes(router fiber.Router, handler *handlers.FileHandler) {
+func (m *Module) registerFileRoutes(router fiber.Router, handler *handlers.FileHandler) {
 	router.Get("/:id/files", handler.ListFiles)
 	router.Get("/:id/files/:file", handler.ShowFile)     // Get file content by encoded param
 	router.Put("/:id/files/:file", handler.UpdateFile)   // Update file content by encoded param

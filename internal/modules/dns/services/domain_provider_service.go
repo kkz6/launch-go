@@ -4,37 +4,24 @@ import (
 	"context"
 	"errors"
 
-	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
 	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
-	"github.com/kkz6/launch-go/internal/modules/dns/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/utils"
 )
 
 // DomainProviderService handles business logic for domain providers
 type DomainProviderService struct {
-	providerRepo  *repositories.DomainProviderRepository
-	domainRepo    *repositories.DomainRepository
-	dnsRecordRepo *repositories.DnsRecordRepository
-	logger        *zerolog.Logger
+	*BaseService
 }
 
 // NewDomainProviderService creates a new DomainProviderService instance
-func NewDomainProviderService(
-	providerRepo *repositories.DomainProviderRepository,
-	domainRepo *repositories.DomainRepository,
-	dnsRecordRepo *repositories.DnsRecordRepository,
-	logger *zerolog.Logger,
-) *DomainProviderService {
+func NewDomainProviderService(deps *ServiceDeps) *DomainProviderService {
 	return &DomainProviderService{
-		providerRepo:  providerRepo,
-		domainRepo:    domainRepo,
-		dnsRecordRepo: dnsRecordRepo,
-		logger:        logger,
+		BaseService: NewBaseService(deps),
 	}
 }
 
@@ -66,7 +53,7 @@ func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, team
 
 	// Validate credentials
 	if err := provider.ValidateCredentials(ctx); err != nil {
-		s.logger.Error().Err(err).Str("provider", req.Provider).Msg("Failed to validate credentials")
+		s.Logger().Error().Err(err).Str("provider", req.Provider).Msg("Failed to validate credentials")
 		return nil, ErrInvalidCredentials
 	}
 
@@ -81,7 +68,7 @@ func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, team
 		AdditionalData: additionalData,
 	}
 
-	if err := s.providerRepo.Create(ctx, dp); err != nil {
+	if err := s.Repos().Provider().Create(ctx, dp); err != nil {
 		return nil, err
 	}
 
@@ -90,7 +77,7 @@ func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, team
 
 // GetProvider retrieves a DNS provider by ID
 func (s *DomainProviderService) GetProvider(ctx context.Context, id, teamID string) (*models.DomainProvider, error) {
-	provider, err := s.providerRepo.FindByIDAndTeam(ctx, id, teamID)
+	provider, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrProviderNotFound
@@ -103,7 +90,7 @@ func (s *DomainProviderService) GetProvider(ctx context.Context, id, teamID stri
 
 // ListProviders lists all DNS providers for a team
 func (s *DomainProviderService) ListProviders(ctx context.Context, teamID string) ([]dto.DomainProviderResponse, error) {
-	providersList, counts, err := s.providerRepo.FindByTeamWithDomainCount(ctx, teamID)
+	providersList, counts, err := s.Repos().Provider().FindByTeamWithDomainCount(ctx, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -118,7 +105,7 @@ func (s *DomainProviderService) ListProviders(ctx context.Context, teamID string
 
 // DeleteProvider deletes a DNS provider
 func (s *DomainProviderService) DeleteProvider(ctx context.Context, id, teamID string) error {
-	provider, err := s.providerRepo.FindByIDAndTeam(ctx, id, teamID)
+	_, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrProviderNotFound
@@ -127,7 +114,7 @@ func (s *DomainProviderService) DeleteProvider(ctx context.Context, id, teamID s
 	}
 
 	// Check if provider has domains
-	count, err := s.providerRepo.CountDomainsByProvider(ctx, id)
+	count, err := s.Repos().Provider().CountDomainsByProvider(ctx, id)
 	if err != nil {
 		return err
 	}
@@ -136,12 +123,12 @@ func (s *DomainProviderService) DeleteProvider(ctx context.Context, id, teamID s
 		return ErrProviderHasActiveDomains
 	}
 
-	return s.providerRepo.Delete(ctx, provider.ID)
+	return s.Repos().Provider().Delete(ctx, id)
 }
 
 // CheckProviderConnectivity checks if the provider credentials are still valid
 func (s *DomainProviderService) CheckProviderConnectivity(ctx context.Context, id, teamID string) error {
-	dp, err := s.providerRepo.FindByIDAndTeam(ctx, id, teamID)
+	dp, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrProviderNotFound
@@ -155,13 +142,13 @@ func (s *DomainProviderService) CheckProviderConnectivity(ctx context.Context, i
 	}
 
 	if err := provider.ValidateCredentials(ctx); err != nil {
-		s.providerRepo.UpdateFields(ctx, id, map[string]interface{}{
+		s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 			"connected": false,
 		})
 		return err
 	}
 
-	s.providerRepo.UpdateFields(ctx, id, map[string]interface{}{
+	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"connected": true,
 	})
 
@@ -170,7 +157,7 @@ func (s *DomainProviderService) CheckProviderConnectivity(ctx context.Context, i
 
 // SyncDomains synchronizes domains from a provider
 func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, teamID string) error {
-	dp, err := s.providerRepo.FindByIDAndTeam(ctx, id, teamID)
+	dp, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrProviderNotFound
@@ -179,7 +166,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 	}
 
 	// Update sync status
-	s.providerRepo.UpdateFields(ctx, id, map[string]interface{}{
+	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"sync_status":        enums.SyncStatusSyncing,
 		"sync_error_message": nil,
 	})
@@ -198,10 +185,10 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 	}
 
 	// Sync domains within a transaction
-	err = s.providerRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.Repos().Provider().WithTransaction(ctx, func(tx *gorm.DB) error {
 		for providerID, domainName := range domainsList {
 			// Create or update domain
-			domain, err := s.domainRepo.UpdateOrCreate(ctx, map[string]interface{}{
+			domain, err := s.Repos().Domain().UpdateOrCreate(ctx, map[string]interface{}{
 				"provider_id":        providerID,
 				"domain_provider_id": dp.ID,
 				"address":            domainName,
@@ -218,13 +205,13 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 			provider.SetDomain(domainName)
 			records, err := provider.ListRecords(ctx)
 			if err != nil {
-				s.logger.Warn().Err(err).Str("domain", domainName).Msg("Failed to list records for domain")
+				s.Logger().Warn().Err(err).Str("domain", domainName).Msg("Failed to list records for domain")
 				continue
 			}
 
 			for _, r := range records {
 				pr := fromProviderRecord(r)
-				_, err := s.dnsRecordRepo.UpdateOrCreate(ctx, map[string]interface{}{
+				_, err := s.Repos().DnsRecord().UpdateOrCreate(ctx, map[string]interface{}{
 					"domain_id":   domain.ID,
 					"type":        pr.Type,
 					"name":        pr.Name,
@@ -240,7 +227,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 					"proxied":  pr.Proxied,
 				})
 				if err != nil {
-					s.logger.Warn().Err(err).Str("domain", domainName).Str("record", r.Name).Msg("Failed to sync record")
+					s.Logger().Warn().Err(err).Str("domain", domainName).Str("record", r.Name).Msg("Failed to sync record")
 				}
 			}
 		}
@@ -255,7 +242,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 
 	// Update sync status to completed
 	now := utils.NewULID() // Using ULID for timestamp as a workaround
-	s.providerRepo.UpdateFields(ctx, id, map[string]interface{}{
+	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"sync_status":        enums.SyncStatusCompleted,
 		"last_synced_at":     now,
 		"sync_error_message": nil,
@@ -266,11 +253,11 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 
 // CountDomainsByProvider counts domains for a provider
 func (s *DomainProviderService) CountDomainsByProvider(ctx context.Context, providerID string) (int64, error) {
-	return s.providerRepo.CountDomainsByProvider(ctx, providerID)
+	return s.Repos().Provider().CountDomainsByProvider(ctx, providerID)
 }
 
 func (s *DomainProviderService) markSyncFailed(ctx context.Context, id, errMsg string) {
-	s.providerRepo.UpdateFields(ctx, id, map[string]interface{}{
+	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"sync_status":        enums.SyncStatusFailed,
 		"sync_error_message": errMsg,
 	})

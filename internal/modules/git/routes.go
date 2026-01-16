@@ -10,9 +10,12 @@ import (
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
 	deps := m.Deps()
 
+	// Create services
+	svc := m.createServices()
+
 	// Create handlers
-	handler := handlers.NewSourceControlHandler(m.service)
-	webhookHandler := handlers.NewWebhookHandler(m.service, m.providerFactory, deps.Logger)
+	handler := handlers.NewSourceControlHandler(svc.SourceControl())
+	webhookHandler := handlers.NewWebhookHandler(svc.SourceControl(), m.providerFactory, deps.Logger)
 
 	// Settings routes (authenticated)
 	settings := router.Group("/settings", authMiddleware)
@@ -76,8 +79,11 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 // RegisterAPIRoutes registers API-only routes
 func (m *Module) RegisterAPIRoutes(router fiber.Router, authMiddleware fiber.Handler) {
+	// Create services
+	svc := m.createServices()
+
 	// Create handler
-	handler := handlers.NewSourceControlHandler(m.service)
+	handler := handlers.NewSourceControlHandler(svc.SourceControl())
 
 	// API v1 routes
 	api := router.Group("/git", authMiddleware)

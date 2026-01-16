@@ -5,43 +5,30 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
 	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
-	"github.com/kkz6/launch-go/internal/modules/dns/repositories"
 )
 
 // DomainService handles business logic for domains
 type DomainService struct {
-	providerRepo  *repositories.DomainProviderRepository
-	domainRepo    *repositories.DomainRepository
-	dnsRecordRepo *repositories.DnsRecordRepository
-	logger        *zerolog.Logger
+	*BaseService
 }
 
 // NewDomainService creates a new DomainService instance
-func NewDomainService(
-	providerRepo *repositories.DomainProviderRepository,
-	domainRepo *repositories.DomainRepository,
-	dnsRecordRepo *repositories.DnsRecordRepository,
-	logger *zerolog.Logger,
-) *DomainService {
+func NewDomainService(deps *ServiceDeps) *DomainService {
 	return &DomainService{
-		providerRepo:  providerRepo,
-		domainRepo:    domainRepo,
-		dnsRecordRepo: dnsRecordRepo,
-		logger:        logger,
+		BaseService: NewBaseService(deps),
 	}
 }
 
 // CreateDomain creates a new domain
 func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string, req *dto.CreateDomainRequest) (*models.Domain, error) {
 	// Get the provider
-	provider, err := s.providerRepo.FindByIDAndTeam(ctx, req.Provider, teamID)
+	provider, err := s.Repos().Provider().FindByIDAndTeam(ctx, req.Provider, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrProviderNotFound
@@ -55,7 +42,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 	}
 
 	var domain *models.Domain
-	err = s.domainRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.Repos().Domain().WithTransaction(ctx, func(tx *gorm.DB) error {
 		// Add domain to provider
 		providerID, err := dnsProvider.AddDomain(ctx, req.Address)
 		if err != nil {
@@ -72,7 +59,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 			Address:          req.Address,
 		}
 
-		if err := s.domainRepo.Create(ctx, domain); err != nil {
+		if err := s.Repos().Domain().Create(ctx, domain); err != nil {
 			return err
 		}
 
@@ -80,7 +67,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 		dnsProvider.SetDomain(req.Address)
 		nameservers, err := dnsProvider.GetNameservers(ctx)
 		if err != nil {
-			s.logger.Warn().Err(err).Str("domain", req.Address).Msg("Failed to get nameservers")
+			s.Logger().Warn().Err(err).Str("domain", req.Address).Msg("Failed to get nameservers")
 			return nil // Don't fail the whole operation
 		}
 
@@ -93,8 +80,8 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 				Value:      ns,
 				TTL:        3600,
 			}
-			if err := s.dnsRecordRepo.Create(ctx, nsRecord); err != nil {
-				s.logger.Warn().Err(err).Str("ns", ns).Msg("Failed to create NS record")
+			if err := s.Repos().DnsRecord().Create(ctx, nsRecord); err != nil {
+				s.Logger().Warn().Err(err).Str("ns", ns).Msg("Failed to create NS record")
 			}
 		}
 
@@ -110,7 +97,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 
 // GetDomain retrieves a domain by ID
 func (s *DomainService) GetDomain(ctx context.Context, id, teamID string) (*models.Domain, error) {
-	domain, err := s.domainRepo.FindByIDAndTeam(ctx, id, teamID)
+	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrDomainNotFound
@@ -123,7 +110,7 @@ func (s *DomainService) GetDomain(ctx context.Context, id, teamID string) (*mode
 
 // UpdateDomain updates a domain
 func (s *DomainService) UpdateDomain(ctx context.Context, id, teamID string, req *dto.UpdateDomainRequest) (*models.Domain, error) {
-	domain, err := s.domainRepo.FindByIDAndTeam(ctx, id, teamID)
+	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrDomainNotFound
@@ -133,7 +120,7 @@ func (s *DomainService) UpdateDomain(ctx context.Context, id, teamID string, req
 
 	domain.Label = req.Label
 
-	if err := s.domainRepo.Update(ctx, domain); err != nil {
+	if err := s.Repos().Domain().Update(ctx, domain); err != nil {
 		return nil, err
 	}
 
@@ -142,7 +129,7 @@ func (s *DomainService) UpdateDomain(ctx context.Context, id, teamID string, req
 
 // ListDomains lists all domains for a team
 func (s *DomainService) ListDomains(ctx context.Context, teamID string) ([]dto.DomainResponse, error) {
-	domains, err := s.domainRepo.FindByTeam(ctx, teamID)
+	domains, err := s.Repos().Domain().FindByTeam(ctx, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +144,7 @@ func (s *DomainService) ListDomains(ctx context.Context, teamID string) ([]dto.D
 
 // DeleteDomain deletes a domain
 func (s *DomainService) DeleteDomain(ctx context.Context, id, teamID string, deleteFromProvider bool) error {
-	domain, err := s.domainRepo.FindByIDAndTeam(ctx, id, teamID)
+	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrDomainNotFound
@@ -169,22 +156,22 @@ func (s *DomainService) DeleteDomain(ctx context.Context, id, teamID string, del
 		dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
 		if err == nil {
 			if err := dnsProvider.DeleteDomain(ctx, domain.Address); err != nil {
-				s.logger.Warn().Err(err).Str("domain", domain.Address).Msg("Failed to delete domain from provider")
+				s.Logger().Warn().Err(err).Str("domain", domain.Address).Msg("Failed to delete domain from provider")
 			}
 		}
 	}
 
 	// Delete records first
-	if err := s.dnsRecordRepo.DeleteByDomain(ctx, id); err != nil {
+	if err := s.Repos().DnsRecord().DeleteByDomain(ctx, id); err != nil {
 		return err
 	}
 
-	return s.domainRepo.Delete(ctx, id)
+	return s.Repos().Domain().Delete(ctx, id)
 }
 
 // GetDomainRecords retrieves all DNS records for a domain
 func (s *DomainService) GetDomainRecords(ctx context.Context, domainID, teamID string) ([]dto.DnsRecordResponse, error) {
-	domain, err := s.domainRepo.FindByIDAndTeam(ctx, domainID, teamID)
+	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrDomainNotFound
@@ -192,7 +179,7 @@ func (s *DomainService) GetDomainRecords(ctx context.Context, domainID, teamID s
 		return nil, err
 	}
 
-	records, err := s.dnsRecordRepo.FindByDomain(ctx, domain.ID)
+	records, err := s.Repos().DnsRecord().FindByDomain(ctx, domain.ID)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +214,7 @@ func (s *DomainService) GetDomainNameservers(ctx context.Context, domain *models
 
 // SyncDomainRecords syncs DNS records from the provider to the local database
 func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID string) error {
-	domain, err := s.domainRepo.FindByIDAndTeam(ctx, domainID, teamID)
+	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrDomainNotFound
@@ -258,9 +245,9 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 	}
 
 	// Sync records in a transaction
-	return s.domainRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+	return s.Repos().Domain().WithTransaction(ctx, func(tx *gorm.DB) error {
 		// Delete existing records for this domain
-		if err := s.dnsRecordRepo.DeleteByDomain(ctx, domainID); err != nil {
+		if err := s.Repos().DnsRecord().DeleteByDomain(ctx, domainID); err != nil {
 			return fmt.Errorf("failed to delete existing records: %w", err)
 		}
 
@@ -282,8 +269,8 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 				Proxied:    pr.Proxied,
 			}
 
-			if err := s.dnsRecordRepo.Create(ctx, record); err != nil {
-				s.logger.Warn().Err(err).Str("record", pr.Name).Msg("Failed to create record during sync")
+			if err := s.Repos().DnsRecord().Create(ctx, record); err != nil {
+				s.Logger().Warn().Err(err).Str("record", pr.Name).Msg("Failed to create record during sync")
 			}
 		}
 

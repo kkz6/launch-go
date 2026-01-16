@@ -4,40 +4,25 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/rs/zerolog"
-
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
-	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // BackupJobService handles business logic for backup jobs
 type BackupJobService struct {
-	jobRepo    *repositories.BackupJobRepository
-	backupRepo *repositories.BackupRepository
-	ws         *websocket.Hub
-	logger     *zerolog.Logger
+	*BaseService
 }
 
 // NewBackupJobService creates a new backup job service
-func NewBackupJobService(
-	jobRepo *repositories.BackupJobRepository,
-	backupRepo *repositories.BackupRepository,
-	ws *websocket.Hub,
-	logger *zerolog.Logger,
-) *BackupJobService {
+func NewBackupJobService(deps *ServiceDeps) *BackupJobService {
 	return &BackupJobService{
-		jobRepo:    jobRepo,
-		backupRepo: backupRepo,
-		ws:         ws,
-		logger:     logger,
+		BaseService: NewBaseService(deps),
 	}
 }
 
 // CreateBackupJob creates a new backup job (called by agent webhook)
 func (s *BackupJobService) CreateBackupJob(ctx context.Context, backupID, token string, req *dto.CreateBackupJobRequest) (*models.BackupJob, error) {
-	backup, err := s.backupRepo.FindBackupByID(ctx, backupID)
+	backup, err := s.Repos().Backup().FindBackupByID(ctx, backupID)
 	if err != nil {
 		return nil, err
 	}
@@ -66,14 +51,14 @@ func (s *BackupJobService) CreateBackupJob(ctx context.Context, backupID, token 
 		Error:             errorMsg,
 	}
 
-	if err := s.jobRepo.CreateBackupJob(ctx, job); err != nil {
+	if err := s.Repos().BackupJob().CreateBackupJob(ctx, job); err != nil {
 		return nil, fmt.Errorf("failed to create backup job: %w", err)
 	}
 
 	// Broadcast job status
 	s.broadcastBackupJobStatus(backup.ServerID, job)
 
-	s.logger.Info().
+	s.Logger.Info().
 		Str("job_id", job.ID).
 		Str("backup_id", backupID).
 		Str("status", string(job.Status)).
@@ -84,22 +69,22 @@ func (s *BackupJobService) CreateBackupJob(ctx context.Context, backupID, token 
 
 // GetBackupJob retrieves a backup job by ID
 func (s *BackupJobService) GetBackupJob(ctx context.Context, id string) (*models.BackupJob, error) {
-	return s.jobRepo.FindBackupJobByID(ctx, id)
+	return s.Repos().BackupJob().FindBackupJobByID(ctx, id)
 }
 
 // ListBackupJobs lists all jobs for a backup
 func (s *BackupJobService) ListBackupJobs(ctx context.Context, backupID string) ([]models.BackupJob, error) {
-	return s.jobRepo.FindBackupJobsByBackupID(ctx, backupID)
+	return s.Repos().BackupJob().FindBackupJobsByBackupID(ctx, backupID)
 }
 
 // Broadcast helpers
 
 func (s *BackupJobService) broadcastBackupJobStatus(serverID string, job *models.BackupJob) {
-	if s.ws == nil {
+	if s.WS == nil {
 		return
 	}
 
-	s.ws.BroadcastToServer(serverID, "backup.job.status", map[string]interface{}{
+	s.WS.BroadcastToServer(serverID, "backup.job.status", map[string]interface{}{
 		"job_id":    job.ID,
 		"backup_id": job.BackupID,
 		"status":    string(job.Status),

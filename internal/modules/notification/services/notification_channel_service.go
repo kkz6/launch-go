@@ -5,10 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/rs/zerolog"
-
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/contracts"
 	"github.com/kkz6/launch-go/internal/modules/notification/dto"
 	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
@@ -23,21 +20,13 @@ var (
 
 // NotificationChannelService handles notification channel business logic
 type NotificationChannelService struct {
-	repo           contracts.NotificationChannelRepository
-	channelFactory *channels.Factory
-	logger         *zerolog.Logger
+	*BaseService
 }
 
 // NewNotificationChannelService creates a new notification channel service
-func NewNotificationChannelService(
-	repo contracts.NotificationChannelRepository,
-	channelFactory *channels.Factory,
-	logger *zerolog.Logger,
-) *NotificationChannelService {
+func NewNotificationChannelService(deps *ServiceDeps) *NotificationChannelService {
 	return &NotificationChannelService{
-		repo:           repo,
-		channelFactory: channelFactory,
-		logger:         logger,
+		BaseService: NewBaseService(deps),
 	}
 }
 
@@ -61,14 +50,14 @@ func (s *NotificationChannelService) CreateChannel(ctx context.Context, userID, 
 	}
 
 	// Get the channel driver
-	driver, err := s.channelFactory.CreateChannel(channel.ToChannelsNotificationChannel())
+	driver, err := s.ChannelFactory().CreateChannel(channel.ToChannelsNotificationChannel())
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidProvider, err)
 	}
 
 	// Test connection
 	if err := driver.Connect(ctx); err != nil {
-		s.logger.Warn().Err(err).Str("provider", req.Provider).Msg("failed to connect to notification channel")
+		s.Logger().Warn().Err(err).Str("provider", req.Provider).Msg("failed to connect to notification channel")
 		return nil, fmt.Errorf("%w: %v", ErrConnectionFailed, err)
 	}
 
@@ -76,7 +65,7 @@ func (s *NotificationChannelService) CreateChannel(ctx context.Context, userID, 
 	channel.Connected = true
 
 	// Save to database
-	if err := s.repo.Create(ctx, channel); err != nil {
+	if err := s.Repos().NotificationChannel().Create(ctx, channel); err != nil {
 		return nil, err
 	}
 
@@ -86,7 +75,7 @@ func (s *NotificationChannelService) CreateChannel(ctx context.Context, userID, 
 // UpdateChannel updates an existing notification channel
 func (s *NotificationChannelService) UpdateChannel(ctx context.Context, id, userID, teamID string, req *dto.UpdateChannelRequest) (*models.NotificationChannel, error) {
 	// Find the existing channel
-	channel, err := s.repo.FindByIDAndTeamID(ctx, id, teamID)
+	channel, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -117,21 +106,21 @@ func (s *NotificationChannelService) UpdateChannel(ctx context.Context, id, user
 	channel.Data = newData
 
 	// Get the channel driver
-	driver, err := s.channelFactory.CreateChannel(channel.ToChannelsNotificationChannel())
+	driver, err := s.ChannelFactory().CreateChannel(channel.ToChannelsNotificationChannel())
 	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidProvider, err)
 	}
 
 	// Test connection
 	if err := driver.Connect(ctx); err != nil {
-		s.logger.Warn().Err(err).Str("id", id).Msg("failed to reconnect notification channel")
+		s.Logger().Warn().Err(err).Str("id", id).Msg("failed to reconnect notification channel")
 		return nil, fmt.Errorf("%w: %v", ErrConnectionFailed, err)
 	}
 
 	channel.Connected = true
 
 	// Save updates
-	if err := s.repo.Update(ctx, channel); err != nil {
+	if err := s.Repos().NotificationChannel().Update(ctx, channel); err != nil {
 		return nil, err
 	}
 
@@ -141,7 +130,7 @@ func (s *NotificationChannelService) UpdateChannel(ctx context.Context, id, user
 // DeleteChannel deletes a notification channel
 func (s *NotificationChannelService) DeleteChannel(ctx context.Context, id, teamID string) error {
 	// Verify the channel belongs to the team
-	channel, err := s.repo.FindByIDAndTeamID(ctx, id, teamID)
+	channel, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
 	if err != nil {
 		return err
 	}
@@ -150,17 +139,17 @@ func (s *NotificationChannelService) DeleteChannel(ctx context.Context, id, team
 		return ErrUnauthorized
 	}
 
-	return s.repo.Delete(ctx, id)
+	return s.Repos().NotificationChannel().Delete(ctx, id)
 }
 
 // GetChannel retrieves a notification channel by ID
 func (s *NotificationChannelService) GetChannel(ctx context.Context, id, teamID string) (*models.NotificationChannel, error) {
-	return s.repo.FindByIDAndTeamID(ctx, id, teamID)
+	return s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
 }
 
 // ListChannels lists all notification channels for a team
 func (s *NotificationChannelService) ListChannels(ctx context.Context, teamID string) ([]models.NotificationChannel, error) {
-	return s.repo.FindByTeamID(ctx, teamID)
+	return s.Repos().NotificationChannel().FindByTeamID(ctx, teamID)
 }
 
 // notificationAdapter adapts our Notification interface to the channels.Notification interface
@@ -191,13 +180,13 @@ func (a *notificationAdapter) ToTelegram() string {
 // TestChannel tests a notification channel by sending a test message
 func (s *NotificationChannelService) TestChannel(ctx context.Context, id, teamID string, message string) error {
 	// Find the channel
-	channel, err := s.repo.FindByIDAndTeamID(ctx, id, teamID)
+	channel, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
 	if err != nil {
 		return err
 	}
 
 	// Get the channel driver
-	driver, err := s.channelFactory.CreateChannel(channel.ToChannelsNotificationChannel())
+	driver, err := s.ChannelFactory().CreateChannel(channel.ToChannelsNotificationChannel())
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidProvider, err)
 	}
@@ -210,7 +199,7 @@ func (s *NotificationChannelService) TestChannel(ctx context.Context, id, teamID
 
 	// Send the test notification
 	if err := driver.Send(ctx, &notificationAdapter{notification: testNotif}); err != nil {
-		s.logger.Warn().Err(err).Str("id", id).Msg("failed to send test notification")
+		s.Logger().Warn().Err(err).Str("id", id).Msg("failed to send test notification")
 		return fmt.Errorf("%w: %v", ErrNotificationFailed, err)
 	}
 
@@ -220,7 +209,7 @@ func (s *NotificationChannelService) TestChannel(ctx context.Context, id, teamID
 // SendToTeam sends a notification to all connected channels for a team
 func (s *NotificationChannelService) SendToTeam(ctx context.Context, teamID string, notif models.Notification) error {
 	// Get all connected channels for the team
-	chans, err := s.repo.FindConnected(ctx, teamID)
+	chans, err := s.Repos().NotificationChannel().FindConnected(ctx, teamID)
 	if err != nil {
 		return err
 	}
@@ -228,20 +217,20 @@ func (s *NotificationChannelService) SendToTeam(ctx context.Context, teamID stri
 	var sendErrors []error
 
 	for _, ch := range chans {
-		driver, err := s.channelFactory.CreateChannel(ch.ToChannelsNotificationChannel())
+		driver, err := s.ChannelFactory().CreateChannel(ch.ToChannelsNotificationChannel())
 		if err != nil {
-			s.logger.Warn().Err(err).Uint64("channel_id", ch.ID).Msg("failed to create channel driver")
+			s.Logger().Warn().Err(err).Uint64("channel_id", ch.ID).Msg("failed to create channel driver")
 			sendErrors = append(sendErrors, err)
 			continue
 		}
 
 		if err := driver.Send(ctx, &notificationAdapter{notification: notif}); err != nil {
-			s.logger.Warn().Err(err).Uint64("channel_id", ch.ID).Msg("failed to send notification")
+			s.Logger().Warn().Err(err).Uint64("channel_id", ch.ID).Msg("failed to send notification")
 			sendErrors = append(sendErrors, err)
 			continue
 		}
 
-		s.logger.Info().
+		s.Logger().Info().
 			Uint64("channel_id", ch.ID).
 			Str("provider", ch.Provider.String()).
 			Str("notification_type", notif.Type().String()).
@@ -257,7 +246,7 @@ func (s *NotificationChannelService) SendToTeam(ctx context.Context, teamID stri
 
 // SendToChannel sends a notification to a specific channel
 func (s *NotificationChannelService) SendToChannel(ctx context.Context, channelID string, notif models.Notification) error {
-	channel, err := s.repo.FindByID(ctx, channelID)
+	channel, err := s.Repos().NotificationChannel().FindByID(ctx, channelID)
 	if err != nil {
 		return err
 	}
@@ -266,17 +255,17 @@ func (s *NotificationChannelService) SendToChannel(ctx context.Context, channelI
 		return channels.ErrChannelDisabled
 	}
 
-	driver, err := s.channelFactory.CreateChannel(channel.ToChannelsNotificationChannel())
+	driver, err := s.ChannelFactory().CreateChannel(channel.ToChannelsNotificationChannel())
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidProvider, err)
 	}
 
 	if err := driver.Send(ctx, &notificationAdapter{notification: notif}); err != nil {
-		s.logger.Warn().Err(err).Str("channel_id", channelID).Msg("failed to send notification")
+		s.Logger().Warn().Err(err).Str("channel_id", channelID).Msg("failed to send notification")
 		return fmt.Errorf("%w: %v", ErrNotificationFailed, err)
 	}
 
-	s.logger.Info().
+	s.Logger().Info().
 		Str("channel_id", channelID).
 		Str("provider", channel.Provider.String()).
 		Str("notification_type", notif.Type().String()).
@@ -287,41 +276,41 @@ func (s *NotificationChannelService) SendToChannel(ctx context.Context, channelI
 
 // SetChannelDefault sets a channel as the default for its provider type
 func (s *NotificationChannelService) SetChannelDefault(ctx context.Context, id, teamID string) error {
-	channel, err := s.repo.FindByIDAndTeamID(ctx, id, teamID)
+	channel, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
 	if err != nil {
 		return err
 	}
 
-	return s.repo.SetDefault(ctx, id, teamID, channel.Provider)
+	return s.Repos().NotificationChannel().SetDefault(ctx, id, teamID, channel.Provider)
 }
 
 // DisconnectChannel marks a channel as disconnected
 func (s *NotificationChannelService) DisconnectChannel(ctx context.Context, id, teamID string) error {
 	// Verify the channel belongs to the team
-	_, err := s.repo.FindByIDAndTeamID(ctx, id, teamID)
+	_, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
 	if err != nil {
 		return err
 	}
 
-	return s.repo.SetConnected(ctx, id, false)
+	return s.Repos().NotificationChannel().SetConnected(ctx, id, false)
 }
 
 // ReconnectChannel attempts to reconnect a channel
 func (s *NotificationChannelService) ReconnectChannel(ctx context.Context, id, teamID string) error {
-	channel, err := s.repo.FindByIDAndTeamID(ctx, id, teamID)
+	channel, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
 	if err != nil {
 		return err
 	}
 
-	driver, err := s.channelFactory.CreateChannel(channel.ToChannelsNotificationChannel())
+	driver, err := s.ChannelFactory().CreateChannel(channel.ToChannelsNotificationChannel())
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrInvalidProvider, err)
 	}
 
 	if err := driver.Connect(ctx); err != nil {
-		s.logger.Warn().Err(err).Str("id", id).Msg("failed to reconnect notification channel")
+		s.Logger().Warn().Err(err).Str("id", id).Msg("failed to reconnect notification channel")
 		return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
 	}
 
-	return s.repo.SetConnected(ctx, id, true)
+	return s.Repos().NotificationChannel().SetConnected(ctx, id, true)
 }
