@@ -108,6 +108,20 @@ func (k *Kernel) BootJobs(mux *asynq.ServeMux) {
 	}
 }
 
+// BootTaskCallbacks registers all task callback handlers from all modules.
+// Task callbacks handle completion events for SSH tasks.
+// Call this when setting up the worker or API server.
+func (k *Kernel) BootTaskCallbacks() {
+	for _, module := range k.modules {
+		if registrar, ok := module.(TaskCallbackRegistrar); ok {
+			registrar.RegisterTaskCallbacks()
+			if k.logger != nil {
+				k.logger.Debug().Str("module", module.Name()).Msg("Task callbacks registered")
+			}
+		}
+	}
+}
+
 // Boot calls Boot() on all bootable modules.
 // Call this after all routes and jobs are registered.
 func (k *Kernel) Boot() error {

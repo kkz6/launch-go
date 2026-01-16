@@ -82,37 +82,28 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	// Create deploy task
 	task := tasks.DeploySiteTask(config)
 
-	// Execute the deploy task on the server (with DB tracking)
-	result, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().Dispatch(ctx)
+	// Execute the deploy task on the server in background mode
+	// The task's callback methods (OnSuccess, OnFailure, OnExpired) will handle completion
+	// - In production mode: via HTTP webhook callbacks
+	// - In local mode: via SSH streaming with direct callback invocation
+	taskModel, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().RunInBackground(ctx)
 	if err != nil {
-		j.handleDeploymentFailure(ctx, deployment, site, fmt.Sprintf("Deployment failed: %v", err))
+		j.handleDeploymentFailure(ctx, deployment, site, fmt.Sprintf("Failed to start deployment: %v", err))
 		return err
 	}
 
 	// Update deployment with task ID
-	if result.TaskModel != nil {
-		deployment.TaskID = &result.TaskModel.ID
-		if updateErr := j.ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
-			j.ctx.LogError(updateErr, "Failed to update deployment with task ID")
-		}
+	deployment.TaskID = &taskModel.ID
+	if updateErr := j.ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
+		j.ctx.LogError(updateErr, "Failed to update deployment with task ID")
 	}
 
-	output := result.GetOutput()
-	exitCode := result.GetExitCode()
+	j.ctx.LogInfo("Deployment task started in background",
+		"deployment_id", deployment.ID,
+		"task_id", taskModel.ID,
+	)
 
-	if exitCode != 0 {
-		j.ctx.LogError(nil, "Deployment script failed",
-			"deployment_id", deployment.ID,
-			"exit_code", exitCode,
-			"output", output,
-		)
-		j.handleDeploymentFailure(ctx, deployment, site, fmt.Sprintf("Deployment failed with exit code %d: %s", exitCode, output))
-		return fmt.Errorf("deployment failed with exit code %d", exitCode)
-	}
-
-	// Mark deployment as finished
-	j.handleDeploymentSuccess(ctx, deployment, site, output)
-
+	// Job completes here - task completion is handled by callbacks
 	return nil
 }
 
@@ -286,47 +277,6 @@ func (j *DeployJob) broadcastDeploymentProgress(ctx context.Context, siteID, dep
 	})
 }
 
-func (j *DeployJob) handleDeploymentSuccess(ctx context.Context, deployment *models.Deployment, site *models.Site, output string) {
-	deployment.Status = enums.DeploymentStatusFinished
-
-	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
-		j.ctx.LogError(err, "Failed to update deployment status to finished")
-	}
-
-	// Update deployment status on git provider
-	j.updateProviderDeploymentStatus(ctx, site, deployment, gitproviders.DeploymentStatusSuccess)
-
-	// If first deployment, dispatch InstallCaddyfile job to set up web server
-	isFirstDeployment := site != nil && site.InstalledAt == nil
-	if isFirstDeployment {
-		j.ctx.LogInfo("First deployment completed, dispatching InstallCaddyfile job", "site_id", site.ID)
-		// Dispatch InstallCaddyfile job - this will set installed_at on success
-		task, err := NewInstallCaddyfileTask(site.ID, nil)
-		if err != nil {
-			j.ctx.LogError(err, "Failed to create InstallCaddyfile task", "site_id", site.ID)
-		} else if j.ctx.Queue != nil {
-			if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-				j.ctx.LogError(err, "Failed to enqueue InstallCaddyfile job", "site_id", site.ID)
-			} else {
-				j.ctx.LogInfo("InstallCaddyfile job enqueued successfully", "site_id", site.ID)
-			}
-		} else {
-			j.ctx.LogError(nil, "Queue is nil, cannot enqueue InstallCaddyfile job", "site_id", site.ID)
-		}
-	}
-
-	// Restart queue workers if auto-restart is enabled
-	if site != nil && site.AutoRestartQueue {
-		j.restartQueueWorkers(ctx, site)
-	}
-
-	j.broadcastDeploymentProgress(ctx, deployment.SiteID, deployment.ID, "finished", "Deployment completed successfully")
-	j.ctx.LogInfo("Deployment finished successfully", "deployment_id", deployment.ID)
-
-	// Process next queued deployment if any
-	j.processNextQueuedDeployment(ctx, deployment.SiteID)
-}
-
 func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
 	deployment.Status = enums.DeploymentStatusFailed
 
@@ -350,28 +300,6 @@ func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *mod
 
 	// Process next queued deployment if any
 	j.processNextQueuedDeployment(ctx, deployment.SiteID)
-}
-
-func (j *DeployJob) restartQueueWorkers(ctx context.Context, site *models.Site) {
-	// Get all active queue workers for this site
-	queues, err := j.ctx.QueueRepo.FindBySite(ctx, site.ID)
-	if err != nil {
-		j.ctx.LogError(err, "Failed to get queue workers for restart")
-		return
-	}
-
-	for _, q := range queues {
-		task, err := NewRestartQueueTask(site.ID, q.ID, nil)
-		if err != nil {
-			j.ctx.LogError(err, "Failed to create restart queue task", "queue_id", q.ID)
-			continue
-		}
-		if j.ctx.Queue != nil {
-			if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-				j.ctx.LogError(err, "Failed to enqueue restart queue job", "queue_id", q.ID)
-			}
-		}
-	}
 }
 
 func (j *DeployJob) processNextQueuedDeployment(ctx context.Context, siteID string) {
@@ -586,37 +514,28 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 	// Create zero-downtime deploy task
 	task := tasks.DeploySiteTask(config)
 
-	// Execute the deploy task on the server (with DB tracking)
-	result, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().Dispatch(ctx)
+	// Execute the deploy task on the server in background mode
+	// The task's callback methods (OnSuccess, OnFailure, OnExpired) will handle completion
+	// - In production mode: via HTTP webhook callbacks
+	// - In local mode: via SSH streaming with direct callback invocation
+	taskModel, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().RunInBackground(ctx)
 	if err != nil {
-		j.handleDeploymentFailure(ctx, deployment, site, fmt.Sprintf("Deployment failed: %v", err))
+		j.handleDeploymentFailure(ctx, deployment, site, fmt.Sprintf("Failed to start deployment: %v", err))
 		return err
 	}
 
 	// Update deployment with task ID
-	if result.TaskModel != nil {
-		deployment.TaskID = &result.TaskModel.ID
-		if updateErr := j.ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
-			j.ctx.LogError(updateErr, "Failed to update deployment with task ID")
-		}
+	deployment.TaskID = &taskModel.ID
+	if updateErr := j.ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
+		j.ctx.LogError(updateErr, "Failed to update deployment with task ID")
 	}
 
-	output := result.GetOutput()
-	exitCode := result.GetExitCode()
+	j.ctx.LogInfo("Zero-downtime deployment task started in background",
+		"deployment_id", deployment.ID,
+		"task_id", taskModel.ID,
+	)
 
-	if exitCode != 0 {
-		j.ctx.LogError(nil, "Zero-downtime deployment script failed",
-			"deployment_id", deployment.ID,
-			"exit_code", exitCode,
-			"output", output,
-		)
-		j.handleDeploymentFailure(ctx, deployment, site, fmt.Sprintf("Deployment failed with exit code %d: %s", exitCode, output))
-		return fmt.Errorf("deployment failed with exit code %d", exitCode)
-	}
-
-	// Mark deployment as finished
-	j.handleDeploymentSuccess(ctx, deployment, site, output)
-
+	// Job completes here - task completion is handled by callbacks
 	return nil
 }
 
@@ -794,47 +713,6 @@ func (j *DeployZeroDowntimeJob) broadcastDeploymentProgress(ctx context.Context,
 	})
 }
 
-func (j *DeployZeroDowntimeJob) handleDeploymentSuccess(ctx context.Context, deployment *models.Deployment, site *models.Site, output string) {
-	deployment.Status = enums.DeploymentStatusFinished
-
-	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
-		j.ctx.LogError(err, "Failed to update deployment status to finished")
-	}
-
-	// Update deployment status on git provider
-	j.updateProviderDeploymentStatus(ctx, site, deployment, gitproviders.DeploymentStatusSuccess)
-
-	// If first deployment, dispatch InstallCaddyfile job to set up web server
-	isFirstDeployment := site != nil && site.InstalledAt == nil
-	if isFirstDeployment {
-		j.ctx.LogInfo("First deployment completed, dispatching InstallCaddyfile job", "site_id", site.ID)
-		// Dispatch InstallCaddyfile job - this will set installed_at on success
-		task, err := NewInstallCaddyfileTask(site.ID, nil)
-		if err != nil {
-			j.ctx.LogError(err, "Failed to create InstallCaddyfile task", "site_id", site.ID)
-		} else if j.ctx.Queue != nil {
-			if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-				j.ctx.LogError(err, "Failed to enqueue InstallCaddyfile job", "site_id", site.ID)
-			} else {
-				j.ctx.LogInfo("InstallCaddyfile job enqueued successfully", "site_id", site.ID)
-			}
-		} else {
-			j.ctx.LogError(nil, "Queue is nil, cannot enqueue InstallCaddyfile job", "site_id", site.ID)
-		}
-	}
-
-	// Restart queue workers if auto-restart is enabled
-	if site != nil && site.AutoRestartQueue {
-		j.restartQueueWorkers(ctx, site)
-	}
-
-	j.broadcastDeploymentProgress(ctx, deployment.SiteID, deployment.ID, "finished", "Deployment completed successfully")
-	j.ctx.LogInfo("Zero-downtime deployment finished successfully", "deployment_id", deployment.ID)
-
-	// Process next queued deployment if any
-	j.processNextQueuedDeployment(ctx, deployment.SiteID)
-}
-
 func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
 	deployment.Status = enums.DeploymentStatusFailed
 
@@ -858,28 +736,6 @@ func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, dep
 
 	// Process next queued deployment if any
 	j.processNextQueuedDeployment(ctx, deployment.SiteID)
-}
-
-func (j *DeployZeroDowntimeJob) restartQueueWorkers(ctx context.Context, site *models.Site) {
-	// Get all active queue workers for this site
-	queues, err := j.ctx.QueueRepo.FindBySite(ctx, site.ID)
-	if err != nil {
-		j.ctx.LogError(err, "Failed to get queue workers for restart")
-		return
-	}
-
-	for _, q := range queues {
-		task, err := NewRestartQueueTask(site.ID, q.ID, nil)
-		if err != nil {
-			j.ctx.LogError(err, "Failed to create restart queue task", "queue_id", q.ID)
-			continue
-		}
-		if j.ctx.Queue != nil {
-			if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-				j.ctx.LogError(err, "Failed to enqueue restart queue job", "queue_id", q.ID)
-			}
-		}
-	}
 }
 
 func (j *DeployZeroDowntimeJob) processNextQueuedDeployment(ctx context.Context, siteID string) {
@@ -1051,14 +907,6 @@ func getProjectIDFromRepo(repo *gitmodels.SourceControlRepository) string {
 	}
 
 	return ""
-}
-
-// Helper function
-func stringValue(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
 }
 
 // NewDeployJob creates a new DeployJob with the given context and payload

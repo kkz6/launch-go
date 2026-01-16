@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	sitetasks "github.com/kkz6/launch-go/internal/modules/site/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/module"
 )
@@ -19,10 +20,11 @@ const ModuleName = "site"
 
 // Ensure Module implements required interfaces
 var (
-	_ app.Module           = (*Module)(nil)
-	_ app.RouteRegistrar   = (*Module)(nil)
-	_ app.WebhookRegistrar = (*Module)(nil)
-	_ app.JobRegistrar     = (*Module)(nil)
+	_ app.Module                 = (*Module)(nil)
+	_ app.RouteRegistrar         = (*Module)(nil)
+	_ app.WebhookRegistrar       = (*Module)(nil)
+	_ app.JobRegistrar           = (*Module)(nil)
+	_ app.TaskCallbackRegistrar  = (*Module)(nil)
 )
 
 // Module represents the site module
@@ -85,6 +87,11 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 
 	// Register job handlers
 	jobs.RegisterHandlers(mux)
+}
+
+// RegisterTaskCallbacks registers task callback handlers (implements app.TaskCallbackRegistrar)
+func (m *Module) RegisterTaskCallbacks() {
+	sitetasks.RegisterTaskCallbacks()
 }
 
 // SetProviderFactory sets the git provider factory for app-based authentication

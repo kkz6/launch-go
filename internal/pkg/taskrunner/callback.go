@@ -21,6 +21,11 @@ const (
 	CallbackCustom   CallbackType = "custom"
 )
 
+// QueueClient interface for enqueueing jobs
+type QueueClient interface {
+	Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
+}
+
 // CallbackContext provides dependencies to callback handlers.
 // This is similar to Laravel's service container - it allows reconstructed
 // handlers to access DB, queue, and other services.
@@ -30,9 +35,32 @@ type CallbackContext struct {
 	Logger *zerolog.Logger
 }
 
-// QueueClient interface for enqueueing jobs
-type QueueClient interface {
-	Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
+// DispatchJob is a helper to dispatch an asynq job from a callback handler
+func (c *CallbackContext) DispatchJob(jobType string, payload interface{}) error {
+	if c.Queue == nil {
+		if c.Logger != nil {
+			c.Logger.Warn().Str("job_type", jobType).Msg("Queue not available, cannot dispatch job")
+		}
+		return fmt.Errorf("queue not available")
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal job payload: %w", err)
+	}
+
+	task := asynq.NewTask(jobType, data)
+	if _, err := c.Queue.Enqueue(task); err != nil {
+		if c.Logger != nil {
+			c.Logger.Error().Err(err).Str("job_type", jobType).Msg("Failed to dispatch job")
+		}
+		return err
+	}
+
+	if c.Logger != nil {
+		c.Logger.Info().Str("job_type", jobType).Msg("Job dispatched from callback")
+	}
+	return nil
 }
 
 // CallbackHandler is implemented by tasks that need continuation logic after
@@ -172,4 +200,67 @@ func ReconstructFromInstance(data string) (CallbackHandler, error) {
 	}
 
 	return Reconstruct(instance.TypeName, instance.Payload)
+}
+
+// RegisterCallback registers a task callback handler using generics.
+// This provides a clean, one-line registration similar to job handlers.
+//
+// Type parameters:
+//   - S: The state struct type that gets serialized (must contain only IDs/simple data)
+//   - H: The callback handler type
+//
+// The newHandler function receives the unmarshaled state and returns the handler.
+//
+// Example usage in a module's register.go:
+//
+//	func RegisterTaskCallbacks() {
+//	    taskrunner.RegisterCallback("site:deploy", NewDeploySiteCallback)
+//	    taskrunner.RegisterCallback("site:rollback", NewRollbackCallback)
+//	}
+//
+//	func NewDeploySiteCallback(state DeployTaskState) *deploySiteTask {
+//	    return &deploySiteTask{state: state}
+//	}
+func RegisterCallback[S any, H CallbackHandler](typeName string, newHandler func(state S) H) {
+	Register(typeName, func(payload []byte) (CallbackHandler, error) {
+		var state S
+		if err := json.Unmarshal(payload, &state); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal state for %s: %w", typeName, err)
+		}
+		return newHandler(state), nil
+	})
+}
+
+// CallbackStateFactory is implemented by state structs that can create their own task.
+// This eliminates the need for separate factory functions.
+//
+// Example:
+//
+//	type DeployState struct {
+//	    SiteID string `json:"site_id"`
+//	}
+//
+//	func (s DeployState) NewTask() taskrunner.CallbackHandler {
+//	    return &deploySiteTask{callback: s}
+//	}
+type CallbackStateFactory interface {
+	NewTask() CallbackHandler
+}
+
+// RegisterCallbackState registers a task using a state struct that implements CallbackStateFactory.
+// This is the simplest registration - just pass the type name.
+//
+// Example usage:
+//
+//	func RegisterTaskCallbacks() {
+//	    taskrunner.RegisterCallbackState[DeployState](DeploySiteTaskType)
+//	}
+func RegisterCallbackState[S CallbackStateFactory](typeName string) {
+	Register(typeName, func(payload []byte) (CallbackHandler, error) {
+		var state S
+		if err := json.Unmarshal(payload, &state); err != nil {
+			return nil, fmt.Errorf("failed to unmarshal state for %s: %w", typeName, err)
+		}
+		return state.NewTask(), nil
+	})
 }

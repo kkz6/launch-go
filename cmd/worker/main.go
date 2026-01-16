@@ -106,6 +106,9 @@ func main() {
 		Register(gitModule).
 		Register(siteModule)
 
+	// Boot task callbacks (for local mode SSH streaming callbacks)
+	kernel.BootTaskCallbacks()
+
 	// Boot all jobs through the kernel
 	mux := asynq.NewServeMux()
 	kernel.BootJobs(mux)

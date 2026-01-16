@@ -167,6 +167,9 @@ func (a *Application) registerModules() {
 		Register(notificationModule).
 		Register(wsModule)
 
+	// Boot task callbacks (needed for webhook handlers in production mode)
+	a.kernel.BootTaskCallbacks()
+
 	api := a.fiber.Group("/api")
 	api.Get("/health", a.healthCheck)
 

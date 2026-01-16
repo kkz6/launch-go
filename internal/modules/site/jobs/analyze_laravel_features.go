@@ -120,8 +120,10 @@ func (j *AnalyzeLaravelFeaturesJob) Handle(ctx context.Context) error {
 
 	// Update site's features field
 	if len(detectedFeatures) > 0 {
+		// JSON marshal for MySQL JSON column (GORM Updates with map bypasses model serializers)
+		featuresJSON, _ := json.Marshal(detectedFeatures)
 		if err := j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
-			"features": detectedFeatures,
+			"features": string(featuresJSON),
 		}); err != nil {
 			j.ctx.LogError(err, "Failed to update site features", "site_id", site.ID)
 			return err
