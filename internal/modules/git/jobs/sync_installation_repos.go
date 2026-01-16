@@ -26,11 +26,6 @@ type SyncInstallationReposJob struct {
 	Payload SyncInstallationReposPayload
 }
 
-// Type returns the job type identifier
-func (j *SyncInstallationReposJob) Type() string {
-	return TypeSyncInstallationRepos
-}
-
 // Handle processes the job
 func (j *SyncInstallationReposJob) Handle(ctx context.Context) error {
 	providerType, err := enums.ParseGitProviderType(j.Payload.Provider)
