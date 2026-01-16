@@ -1,15 +1,10 @@
 package auth
 
 import (
-	"github.com/gofiber/fiber/v2"
-
-	"github.com/kkz6/launch-go/internal/middleware"
-	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/module"
-	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 const ModuleName = "auth"
@@ -23,11 +18,9 @@ var (
 // Module represents the auth module with all its dependencies
 type Module struct {
 	module.Base
-	handler        *handlers.Handler
-	passkeyHandler *handlers.PasskeyHandler
-	service        *services.Service
-	repository     *repositories.Repository
-	passkeyRepo    *repositories.PasskeyRepository
+	service     *services.Service
+	repository  *repositories.Repository
+	passkeyRepo *repositories.PasskeyRepository
 }
 
 // NewModule creates a new auth Module instance
@@ -36,127 +29,13 @@ func NewModule(b *module.Builder) *Module {
 	repo := repositories.NewRepository(deps.DB)
 	passkeyRepo := repositories.NewPasskeyRepository(deps.DB)
 	service := services.NewService(repo, deps.Config, deps.Logger)
-	handler := handlers.NewHandler(service)
-	passkeyHandler := handlers.NewPasskeyHandler(passkeyRepo)
 
 	return &Module{
-		Base:           module.NewBase(ModuleName, b),
-		handler:        handler,
-		passkeyHandler: passkeyHandler,
-		service:        service,
-		repository:     repo,
-		passkeyRepo:    passkeyRepo,
+		Base:        module.NewBase(ModuleName, b),
+		service:     service,
+		repository:  repo,
+		passkeyRepo: passkeyRepo,
 	}
-}
-
-// RegisterRoutes registers all auth-related routes (legacy method)
-func (m *Module) RegisterRoutes(router fiber.Router) {
-	m.RegisterPublicRoutes(router)
-}
-
-// RegisterPublicRoutes implements routing.PublicRouteModule interface.
-// Auth module is special because it handles its own auth middleware internally.
-func (m *Module) RegisterPublicRoutes(router fiber.Router) {
-	auth := router.Group("/auth")
-	deps := m.Deps()
-	authMiddleware := middleware.Auth(deps.Config.JWT.Secret)
-	adapter := NewMiddlewareAdapter(m.service)
-
-	// Public routes (no authentication required)
-	m.registerPublicRoutes(auth)
-
-	// Protected routes (authentication required)
-	protected := auth.Group("", authMiddleware)
-	m.registerProtectedRoutes(protected)
-
-	// Team routes (require authentication)
-	teams := router.Group("/teams", authMiddleware)
-	m.registerTeamRoutes(teams, adapter)
-
-	// User routes (require authentication)
-	user := router.Group("/user", authMiddleware)
-	m.registerUserRoutes(user)
-}
-
-// registerPublicRoutes registers routes that don't require authentication
-func (m *Module) registerPublicRoutes(router fiber.Router) {
-	// Registration and Login
-	router.Post("/register", m.handler.Auth.Register)
-	router.Post("/login", m.handler.Auth.Login)
-	router.Post("/refresh", m.handler.Auth.RefreshToken)
-
-	// Password Reset
-	router.Post("/forgot-password", m.handler.Password.ForgotPassword)
-	router.Post("/reset-password", m.handler.Password.ResetPassword)
-
-	// Email Verification (public for verification links, requires signed URL)
-	router.Get("/verify-email/:id/:hash", signedurl.RequireSignedURL(nil), m.handler.Email.VerifyEmail)
-
-	// User Status Check (for login flow)
-	router.Post("/check-user-status", m.handler.User.CheckUserStatus)
-}
-
-// registerProtectedRoutes registers routes that require authentication
-func (m *Module) registerProtectedRoutes(router fiber.Router) {
-	// User Management
-	router.Get("/user", m.handler.User.User)
-	router.Put("/profile", m.handler.User.UpdateProfile)
-	router.Put("/password", m.handler.User.ChangePassword)
-	router.Delete("/account", m.handler.User.DeleteAccount)
-	router.Post("/logout", m.handler.Auth.Logout)
-
-	// Email Verification (resend)
-	router.Post("/email/verification-notification", m.handler.Email.ResendVerificationEmail)
-
-	// Two-Factor Authentication
-	twoFactor := router.Group("/two-factor")
-	twoFactor.Post("/enable", m.handler.TwoFactor.EnableTwoFactor)
-	twoFactor.Post("/confirm", m.handler.TwoFactor.ConfirmTwoFactor)
-	twoFactor.Delete("/disable", m.handler.TwoFactor.DisableTwoFactor)
-	twoFactor.Post("/challenge", m.handler.TwoFactor.TwoFactorChallenge)
-	twoFactor.Get("/recovery-codes", m.handler.TwoFactor.GetRecoveryCodes)
-	twoFactor.Post("/recovery-codes", m.handler.TwoFactor.RegenerateRecoveryCodes)
-
-	// Current User's Teams
-	router.Get("/teams", m.handler.Team.GetUserTeams)
-	router.Put("/current-team", m.handler.Team.SwitchTeam)
-
-	// Team Invitations (for accepting invitations, requires signed URL)
-	router.Post("/team-invitations/:invitationId/accept", signedurl.RequireSignedURL(nil), m.handler.TeamMember.AcceptTeamInvitation)
-}
-
-// registerTeamRoutes registers team management routes
-func (m *Module) registerTeamRoutes(router fiber.Router, adapter *MiddlewareAdapter) {
-	// List all teams for current user
-	router.Get("/", m.handler.Team.GetUserTeams)
-
-	// Team CRUD
-	router.Post("/", m.handler.Team.CreateTeam)
-	router.Get("/:teamId", middleware.TeamMember(adapter), m.handler.Team.GetTeam)
-	router.Put("/:teamId", middleware.TeamOwner(adapter), m.handler.Team.UpdateTeam)
-	router.Delete("/:teamId", middleware.TeamOwner(adapter), m.handler.Team.DeleteTeam)
-
-	// Team switching
-	router.Post("/:teamId/switch", m.handler.Team.SwitchTeamByID)
-
-	// Team Members
-	router.Get("/:teamId/members", middleware.TeamMember(adapter), m.handler.TeamMember.GetTeamMembers)
-	router.Post("/:teamId/members", middleware.TeamAdmin(adapter), m.handler.TeamMember.InviteTeamMember)
-	router.Put("/:teamId/members/:userId", middleware.TeamOwner(adapter), m.handler.TeamMember.UpdateTeamMemberRole)
-	router.Delete("/:teamId/members/:userId", m.handler.TeamMember.RemoveTeamMember)
-
-	// Team Invitations
-	router.Get("/:teamId/invitations", middleware.TeamAdmin(adapter), m.handler.TeamMember.GetTeamInvitations)
-	router.Delete("/:teamId/invitations/:invitationId", middleware.TeamAdmin(adapter), m.handler.TeamMember.CancelTeamInvitation)
-}
-
-// registerUserRoutes registers user-related routes under /user
-func (m *Module) registerUserRoutes(router fiber.Router) {
-	// Passkeys
-	passkeys := router.Group("/passkeys")
-	passkeys.Get("/", m.passkeyHandler.Index)
-	passkeys.Put("/:id", m.passkeyHandler.Update)
-	passkeys.Delete("/:id", m.passkeyHandler.Delete)
 }
 
 // Service returns the auth service
@@ -167,9 +46,4 @@ func (m *Module) Service() *services.Service {
 // Repository returns the auth repository
 func (m *Module) Repository() *repositories.Repository {
 	return m.repository
-}
-
-// Handler returns the auth handler
-func (m *Module) Handler() *handlers.Handler {
-	return m.handler
 }
