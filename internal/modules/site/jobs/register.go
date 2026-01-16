@@ -35,6 +35,7 @@ func RegisterHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterHandler(mux, TypeSyncQueues, jobContext, NewSyncQueuesJob)
 	pkgjobs.RegisterHandler(mux, TypeInstallQueue, jobContext, NewInstallQueueJob)
 	pkgjobs.RegisterHandler(mux, TypeRestartQueue, jobContext, NewRestartQueueJob)
+	pkgjobs.RegisterHandler(mux, TypeRestartAllSiteQueues, jobContext, NewRestartAllSiteQueuesJob)
 	pkgjobs.RegisterHandler(mux, TypeUninstallQueue, jobContext, NewUninstallQueueJob)
 
 	// Site uninstallation
@@ -47,4 +48,10 @@ func RegisterHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterHandler(mux, TypeDisableLaravelQueue, jobContext, NewDisableLaravelQueueJob)
 	pkgjobs.RegisterHandler(mux, TypeEnableLaravelHorizon, jobContext, NewEnableLaravelHorizonJob)
 	pkgjobs.RegisterHandler(mux, TypeDisableLaravelHorizon, jobContext, NewDisableLaravelHorizonJob)
+	pkgjobs.RegisterHandler(mux, TypeAnalyzeLaravelFeatures, jobContext, NewAnalyzeLaravelFeaturesJob)
+	pkgjobs.RegisterHandler(mux, TypeEnableLaravelInertia, jobContext, NewEnableLaravelInertiaJob)
+	pkgjobs.RegisterHandler(mux, TypeDisableLaravelInertia, jobContext, NewDisableLaravelInertiaJob)
+
+	// WordPress jobs
+	pkgjobs.RegisterHandler(mux, TypeInstallWordpressCron, jobContext, NewInstallWordpressCronJob)
 }
