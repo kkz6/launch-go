@@ -162,7 +162,7 @@ func (h *TaskWebhookHandler) MarkAsTimeout(c *fiber.Ctx) error {
 // 1. Dispatching a job from CompletionConfig (new simple approach)
 // 2. Reconstructing and calling a CallbackHandler (legacy approach)
 func (h *TaskWebhookHandler) handleCallback(ctx context.Context, task *models.Task, callbackType taskrunner.CallbackType, exitCode int) {
-	if task.Instance == nil || *task.Instance == "" {
+	if task.Instance.IsEmpty() {
 		return
 	}
 
@@ -177,7 +177,7 @@ func (h *TaskWebhookHandler) handleCallback(ctx context.Context, task *models.Ta
 
 // handleCompletionConfig dispatches an asynq job based on the completion config
 func (h *TaskWebhookHandler) handleCompletionConfig(task *models.Task, callbackType taskrunner.CallbackType) bool {
-	config, err := taskrunner.UnmarshalCompletionConfig(*task.Instance)
+	config, err := taskrunner.UnmarshalCompletionConfig(task.Instance.String())
 	if err != nil || config == nil {
 		return false // Not a CompletionConfig, try legacy approach
 	}
@@ -229,7 +229,7 @@ func (h *TaskWebhookHandler) handleCompletionConfig(task *models.Task, callbackT
 
 // handleLegacyCallback reconstructs a CallbackHandler and calls its methods
 func (h *TaskWebhookHandler) handleLegacyCallback(ctx context.Context, task *models.Task, callbackType taskrunner.CallbackType, exitCode int) {
-	handler, err := taskrunner.ReconstructFromInstance(*task.Instance)
+	handler, err := taskrunner.ReconstructFromInstance(task.Instance.String())
 	if err != nil {
 		if h.logger != nil {
 			h.logger.Error().Err(err).
