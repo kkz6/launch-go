@@ -48,10 +48,11 @@ func NewJobContext(
 		Dispatcher: dispatcher,
 		Queue:      queueClient,
 		TaskRunnerDeps: &servertasks.TaskRunnerDeps{
-			DB:         db,
-			Queue:      queueClient,
-			Dispatcher: dispatcher,
-			Logger:     logger,
+			DB:          db,
+			Queue:       queueClient,
+			Dispatcher:  dispatcher,
+			Logger:      logger,
+			Broadcaster: ws,
 		},
 	}
 }

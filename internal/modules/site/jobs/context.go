@@ -67,10 +67,11 @@ func NewJobContext(
 		SourceControlRepo: sourceControlRepo,
 		ProviderFactory:   providerFactory,
 		TaskRunnerDeps: &servertasks.TaskRunnerDeps{
-			DB:         db,
-			Queue:      queueClient,
-			Dispatcher: dispatcher,
-			Logger:     logger,
+			DB:          db,
+			Queue:       queueClient,
+			Dispatcher:  dispatcher,
+			Logger:      logger,
+			Broadcaster: ws,
 		},
 	}
 }
