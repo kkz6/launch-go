@@ -102,7 +102,7 @@ func (s *Service) dispatchServiceInstallJob(server *models.Server, service *mode
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewAddServiceTask(server.ID, service.ID, enums.Software(service.Software))
+	task, err := jobs.NewAddServiceTask(server.ID, service.ID, string(service.Software))
 	if err != nil {
 		return err
 	}

@@ -11,6 +11,15 @@ import (
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
+const TypeSyncInstallationRepos = "git:sync_installation_repos"
+
+type SyncInstallationReposPayload struct {
+	Provider       string `json:"provider"`
+	InstallationID string `json:"installation_id"`
+	TeamID         string `json:"team_id"`
+	UserID         string `json:"user_id"`
+}
+
 // SyncInstallationReposJob syncs repositories for a git installation
 type SyncInstallationReposJob struct {
 	ctx     *JobContext
@@ -98,3 +107,4 @@ func NewSyncInstallationReposJob(ctx *JobContext, payload SyncInstallationReposP
 		Payload: payload,
 	}
 }
+

@@ -4,47 +4,60 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
-	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
+const TypeUninstallDatabase = "database:uninstall"
+
+// UninstallDatabasePayload holds data for database uninstallation
+type UninstallDatabasePayload struct {
+	DatabaseID string  `json:"database_id"`
+	UserID     *string `json:"user_id,omitempty"`
+}
+
 type UninstallDatabaseJob struct {
-	DatabaseJobBase
-	jobs.UninstallationTracker
+	ctx *JobContext
+	pkgjobs.UninstallationTracker
 	Payload UninstallDatabasePayload
 }
 
-func (j *UninstallDatabaseJob) Type() string {
-	return TypeUninstallDatabase
+func NewUninstallDatabaseJob(ctx *JobContext, payload UninstallDatabasePayload) *UninstallDatabaseJob {
+	return &UninstallDatabaseJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
 }
 
 func (j *UninstallDatabaseJob) Handle(ctx context.Context) error {
-	j.LogInfo("Uninstalling database", "database_id", j.Payload.DatabaseID)
+	j.ctx.LogInfo("Uninstalling database", "database_id", j.Payload.DatabaseID)
 
-	database, err := repository.Find[models.Database](j.DB, ctx, j.Payload.DatabaseID)
+	database, err := repository.Find[models.Database](j.ctx.DB, ctx, j.Payload.DatabaseID)
 	if err != nil {
 		return fmt.Errorf("failed to find database: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](j.DB, ctx, database.ServerID)
+	server, err := repository.Find[servermodels.Server](j.ctx.DB, ctx, database.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "uninstalling", fmt.Sprintf("Dropping database: %s", database.Name))
+	j.ctx.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "uninstalling", fmt.Sprintf("Dropping database: %s", database.Name))
 
-	factory := j.GetTaskFactory(ctx, database.ServerID)
+	factory := j.ctx.GetTaskFactory(ctx, database.ServerID)
 	task := factory.DropDatabase(tasks.DropDatabaseConfig{
 		DatabaseName:  database.Name,
 		AdminUser:     "root",
 		AdminPassword: server.DatabasePassword.String(),
 	})
 
-	result, err := j.RunTaskOnServer(server, task).
+	result, err := j.ctx.RunTaskOnServer(server, task).
 		AsRoot().
 		Dispatch(ctx)
 	if err != nil {
@@ -52,10 +65,10 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context) error {
 	}
 
 	if !result.IsSuccessful() {
-		j.LogInfo("Database drop completed with errors", "output", result.GetOutput())
+		j.ctx.LogInfo("Database drop completed with errors", "output", result.GetOutput())
 	}
 
-	logger := activity.New(j.DB).
+	logger := activity.New(j.ctx.DB).
 		WithContext(ctx).
 		UseLog("database").
 		On(database).
@@ -65,27 +78,35 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context) error {
 	}
 	logger.Log("Database was uninstalled")
 
-	if err := j.MarkAsUninstalled(j.DB, database); err != nil {
+	if err := j.MarkAsUninstalled(j.ctx.DB, database); err != nil {
 		return fmt.Errorf("failed to delete database record: %w", err)
 	}
 
-	j.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "deleted", fmt.Sprintf("Database %s deleted successfully", database.Name))
+	j.ctx.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "deleted", fmt.Sprintf("Database %s deleted successfully", database.Name))
 
 	return nil
 }
 
 func (j *UninstallDatabaseJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Failed to uninstall database", "database_id", j.Payload.DatabaseID)
+	j.ctx.LogError(err, "Failed to uninstall database", "database_id", j.Payload.DatabaseID)
 
-	database, findErr := repository.Find[models.Database](j.DB, ctx, j.Payload.DatabaseID)
+	database, findErr := repository.Find[models.Database](j.ctx.DB, ctx, j.Payload.DatabaseID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](j.DB, ctx, database.ServerID)
+	server, findErr := repository.Find[servermodels.Server](j.ctx.DB, ctx, database.ServerID)
 	if findErr != nil {
 		return
 	}
 
-	j.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "failed", fmt.Sprintf("Failed to delete database: %s", database.Name))
+	j.ctx.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "failed", fmt.Sprintf("Failed to delete database: %s", database.Name))
+}
+
+// NewUninstallDatabaseTask creates a database uninstallation job
+func NewUninstallDatabaseTask(databaseID string, userID *string) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeUninstallDatabase, UninstallDatabasePayload{
+		DatabaseID: databaseID,
+		UserID:     userID,
+	})
 }

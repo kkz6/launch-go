@@ -5,12 +5,23 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/hibiken/asynq"
+
 	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
 	dbtasks "github.com/kkz6/launch-go/internal/modules/database/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
+
+const TypeSyncDatabases = "database:sync"
+
+// SyncDatabasesPayload holds data for database sync job
+type SyncDatabasesPayload struct {
+	ServerID string  `json:"server_id"`
+	UserID   *string `json:"user_id,omitempty"`
+}
 
 var protectedMySQLDatabases = []string{
 	"information_schema",
@@ -26,18 +37,21 @@ var protectedPostgreSQLDatabases = []string{
 }
 
 type SyncDatabasesJob struct {
-	DatabaseJobBase
+	ctx     *JobContext
 	Payload SyncDatabasesPayload
 }
 
-func (j *SyncDatabasesJob) Type() string {
-	return TypeSyncDatabases
+func NewSyncDatabasesJob(ctx *JobContext, payload SyncDatabasesPayload) *SyncDatabasesJob {
+	return &SyncDatabasesJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
 }
 
 func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
-	j.LogInfo("Syncing databases from server", "server_id", j.Payload.ServerID)
+	j.ctx.LogInfo("Syncing databases from server", "server_id", j.Payload.ServerID)
 
-	server, err := repository.NewQuery[servermodels.Server](j.DB, ctx).
+	server, err := repository.NewQuery[servermodels.Server](j.ctx.DB, ctx).
 		WithModel("Server").
 		Preload("Services").
 		FindByID(j.Payload.ServerID).
@@ -46,12 +60,12 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.BroadcastDatabaseProgress(server, "database.sync.progress", "", "syncing", "Syncing databases from server...")
+	j.ctx.BroadcastDatabaseProgress(server, "database.sync.progress", "", "syncing", "Syncing databases from server...")
 
 	dbServiceType := j.getDatabaseServiceType(server)
 	if dbServiceType == "" {
-		j.LogInfo("No database service found on server, skipping sync", "server_id", j.Payload.ServerID)
-		j.BroadcastDatabaseProgress(server, "database.sync.progress", "", "synced", "No database service found on server")
+		j.ctx.LogInfo("No database service found on server, skipping sync", "server_id", j.Payload.ServerID)
+		j.ctx.BroadcastDatabaseProgress(server, "database.sync.progress", "", "synced", "No database service found on server")
 		return nil
 	}
 
@@ -69,13 +83,13 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 
 	userDatabases := filterProtectedDatabases(serverDatabases, protectedDatabases)
 
-	j.LogInfo("Found databases on server",
+	j.ctx.LogInfo("Found databases on server",
 		"server_id", j.Payload.ServerID,
 		"total_databases", len(serverDatabases),
 		"user_databases", len(userDatabases),
 	)
 
-	existingDatabases, err := repository.NewQuery[dbmodels.Database](j.DB, ctx).
+	existingDatabases, err := repository.NewQuery[dbmodels.Database](j.ctx.DB, ctx).
 		Where("server_id = ?", j.Payload.ServerID).
 		All()
 	if err != nil {
@@ -99,8 +113,8 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		}
 		database.MarkAsInstalled()
 
-		if err := j.DB.WithContext(ctx).Create(database).Error; err != nil {
-			j.LogError(err, "Failed to create database record",
+		if err := j.ctx.DB.WithContext(ctx).Create(database).Error; err != nil {
+			j.ctx.LogError(err, "Failed to create database record",
 				"server_id", j.Payload.ServerID,
 				"database_name", dbName,
 			)
@@ -108,20 +122,20 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		}
 
 		syncedCount++
-		j.LogInfo("Synced database from server",
+		j.ctx.LogInfo("Synced database from server",
 			"server_id", j.Payload.ServerID,
 			"database_name", dbName,
 		)
 	}
 
-	j.LogInfo("Database sync completed",
+	j.ctx.LogInfo("Database sync completed",
 		"server_id", j.Payload.ServerID,
 		"total_server_databases", len(userDatabases),
 		"existing_in_app", len(existingDatabases),
 		"synced_databases", syncedCount,
 	)
 
-	j.BroadcastDatabaseProgress(server, "database.sync.progress", "", "synced", fmt.Sprintf("Database sync completed. Found %d databases, synced %d new.", len(userDatabases), syncedCount))
+	j.ctx.BroadcastDatabaseProgress(server, "database.sync.progress", "", "synced", fmt.Sprintf("Database sync completed. Found %d databases, synced %d new.", len(userDatabases), syncedCount))
 
 	return nil
 }
@@ -142,7 +156,7 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 		AdminPassword: server.DatabasePassword.String(),
 	})
 
-	result, err := j.RunTaskOnServer(server, task).AsRoot().Run(ctx)
+	result, err := j.ctx.RunTaskOnServer(server, task).AsRoot().Run(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run get databases task: %w", err)
 	}
@@ -157,14 +171,14 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 }
 
 func (j *SyncDatabasesJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Failed to sync databases", "server_id", j.Payload.ServerID)
+	j.ctx.LogError(err, "Failed to sync databases", "server_id", j.Payload.ServerID)
 
-	server, findErr := repository.Find[servermodels.Server](j.DB, ctx, j.Payload.ServerID)
+	server, findErr := repository.Find[servermodels.Server](j.ctx.DB, ctx, j.Payload.ServerID)
 	if findErr != nil {
 		return
 	}
 
-	j.BroadcastDatabaseProgress(server, "database.sync.progress", "", "failed", "Failed to sync databases from server")
+	j.ctx.BroadcastDatabaseProgress(server, "database.sync.progress", "", "failed", "Failed to sync databases from server")
 }
 
 func filterProtectedDatabases(databases, protected []string) []string {
@@ -193,4 +207,12 @@ func parseLines(output string) []string {
 		}
 	}
 	return result
+}
+
+// NewSyncDatabasesTask creates a database sync job
+func NewSyncDatabasesTask(serverID string, userID *string) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeSyncDatabases, SyncDatabasesPayload{
+		ServerID: serverID,
+		UserID:   userID,
+	})
 }

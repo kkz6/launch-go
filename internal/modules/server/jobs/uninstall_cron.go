@@ -3,31 +3,34 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
-	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
+
+const TypeUninstallCron = "server:uninstall_cron"
+
+type UninstallCronPayload struct {
+	ServerID string  `json:"server_id"`
+	CronID   string  `json:"cron_id"`
+	UserID   *string `json:"user_id,omitempty"`
+}
 
 // UninstallCronJob uninstalls a cron job from a server.
 // Similar to Laravel's Modules\Server\Jobs\UninstallCron
 type UninstallCronJob struct {
-	ServerJobBase
-	jobs.UninstallationTracker
+	ctx     *JobContext
 	Payload UninstallCronPayload
-}
-
-// Type returns the job type identifier
-func (j *UninstallCronJob) Type() string {
-	return TypeUninstallCron
 }
 
 // Handle processes the job
 func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	// Find the cron with server preloaded
-	cron, err := j.Repo().FindCronByIDWithServer(ctx, j.Payload.CronID)
+	cron, err := j.ctx.Repo.FindCronByIDWithServer(ctx, j.Payload.CronID)
 	if err != nil {
 		return fmt.Errorf("failed to find cron: %w", err)
 	}
@@ -37,7 +40,7 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 		Path: cron.Path(),
 	})
 
-	result, err := j.RunTaskOnServer(cron.Server, task).
+	result, err := j.ctx.ForServer(cron.Server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -50,7 +53,7 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	logger := activity.New(j.DB).
+	logger := activity.New(j.ctx.DB).
 		WithContext(ctx).
 		UseLog("server").
 		On(cron).
@@ -61,17 +64,17 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	logger.Log("Cron job was uninstalled")
 
 	// Delete the cron record
-	if err := j.Repo().DeleteCron(ctx, cron.ID); err != nil {
+	if err := j.ctx.Repo.DeleteCron(ctx, cron.ID); err != nil {
 		return fmt.Errorf("failed to delete cron: %w", err)
 	}
 
-	j.LogInfo("Cron uninstalled successfully",
+	j.ctx.LogInfo("Cron uninstalled successfully",
 		"cron_id", cron.ID,
 		"server_id", cron.ServerID,
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(cron.ServerID, "cron.uninstalled", map[string]any{
+	j.ctx.BroadcastToServer(cron.ServerID, "cron.uninstalled", map[string]any{
 		"cron_id":   cron.ID,
 		"server_id": cron.ServerID,
 	})
@@ -81,21 +84,32 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *UninstallCronJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Failed to uninstall cron",
+	j.ctx.LogError(err, "Failed to uninstall cron",
 		"cron_id", j.Payload.CronID,
 		"server_id", j.Payload.ServerID,
 	)
 
 	// Mark uninstallation as failed
-	cron, findErr := j.Repo().FindCronByID(ctx, j.Payload.CronID)
+	cron, findErr := j.ctx.Repo.FindCronByID(ctx, j.Payload.CronID)
 	if findErr == nil && cron != nil {
-		j.MarkUninstallationFailed(j.DB, cron)
+		now := time.Now()
+		j.ctx.DB.Model(cron).Updates(map[string]any{
+			"uninstallation_requested_at": nil,
+			"uninstallation_failed_at":    &now,
+		})
+	}
+}
+
+func NewUninstallCronJob(ctx *JobContext, payload UninstallCronPayload) *UninstallCronJob {
+	return &UninstallCronJob{
+		ctx:     ctx,
+		Payload: payload,
 	}
 }
 
 // NewUninstallCronTask creates an asynq task for uninstalling a cron
 func NewUninstallCronTask(serverID, cronID string, userID *string) (*asynq.Task, error) {
-	return jobs.NewTask(TypeUninstallCron, UninstallCronPayload{
+	return pkgjobs.NewTask(TypeUninstallCron, UninstallCronPayload{
 		ServerID: serverID,
 		CronID:   cronID,
 		UserID:   userID,

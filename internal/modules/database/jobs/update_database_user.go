@@ -5,25 +5,40 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
+const TypeUpdateDatabaseUser = "database:user:update"
+
+// UpdateDatabaseUserPayload holds data for database user update
+type UpdateDatabaseUserPayload struct {
+	DatabaseUserID string  `json:"database_user_id"`
+	Password       *string `json:"password,omitempty"`
+	CallerID       *string `json:"caller_id,omitempty"`
+}
+
 type UpdateDatabaseUserJob struct {
-	DatabaseJobBase
+	ctx     *JobContext
 	Payload UpdateDatabaseUserPayload
 }
 
-func (j *UpdateDatabaseUserJob) Type() string {
-	return TypeUpdateDatabaseUser
+func NewUpdateDatabaseUserJob(ctx *JobContext, payload UpdateDatabaseUserPayload) *UpdateDatabaseUserJob {
+	return &UpdateDatabaseUserJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
 }
 
 func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
-	j.LogInfo("Updating database user", "database_user_id", j.Payload.DatabaseUserID)
+	j.ctx.LogInfo("Updating database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, err := repository.NewQuery[models.DatabaseUser](j.DB, ctx).
+	dbUser, err := repository.NewQuery[models.DatabaseUser](j.ctx.DB, ctx).
 		WithModel("DatabaseUser").
 		Preload("Databases").
 		FindByID(j.Payload.DatabaseUserID).
@@ -32,15 +47,15 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find database user: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](j.DB, ctx, dbUser.ServerID)
+	server, err := repository.Find[servermodels.Server](j.ctx.DB, ctx, dbUser.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "updating", fmt.Sprintf("Updating database user: %s", dbUser.Name))
+	j.ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "updating", fmt.Sprintf("Updating database user: %s", dbUser.Name))
 
 	if j.Payload.Password != nil && *j.Payload.Password != "" {
-		factory := j.GetTaskFactory(ctx, dbUser.ServerID)
+		factory := j.ctx.GetTaskFactory(ctx, dbUser.ServerID)
 		task := factory.UpdatePassword(tasks.UpdatePasswordConfig{
 			Username:      dbUser.Name,
 			NewPassword:   *j.Payload.Password,
@@ -49,7 +64,7 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 			Hosts:         []string{"%"},
 		})
 
-		result, err := j.RunTaskOnServer(server, task).
+		result, err := j.ctx.RunTaskOnServer(server, task).
 			AsRoot().
 			Dispatch(ctx)
 		if err != nil {
@@ -62,27 +77,36 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 	}
 
 	now := time.Now()
-	if err := j.DB.WithContext(ctx).Model(dbUser).Update("updated_at", &now).Error; err != nil {
+	if err := j.ctx.DB.WithContext(ctx).Model(dbUser).Update("updated_at", &now).Error; err != nil {
 		return fmt.Errorf("failed to update database user record: %w", err)
 	}
 
-	j.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "updated", fmt.Sprintf("Database user %s updated successfully", dbUser.Name))
+	j.ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "updated", fmt.Sprintf("Database user %s updated successfully", dbUser.Name))
 
 	return nil
 }
 
 func (j *UpdateDatabaseUserJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Failed to update database user", "database_user_id", j.Payload.DatabaseUserID)
+	j.ctx.LogError(err, "Failed to update database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, findErr := repository.Find[models.DatabaseUser](j.DB, ctx, j.Payload.DatabaseUserID)
+	dbUser, findErr := repository.Find[models.DatabaseUser](j.ctx.DB, ctx, j.Payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](j.DB, ctx, dbUser.ServerID)
+	server, findErr := repository.Find[servermodels.Server](j.ctx.DB, ctx, dbUser.ServerID)
 	if findErr != nil {
 		return
 	}
 
-	j.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "failed", fmt.Sprintf("Failed to update database user: %s", dbUser.Name))
+	j.ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "failed", fmt.Sprintf("Failed to update database user: %s", dbUser.Name))
+}
+
+// NewUpdateDatabaseUserTask creates a database user update job
+func NewUpdateDatabaseUserTask(databaseUserID string, password, callerID *string) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeUpdateDatabaseUser, UpdateDatabaseUserPayload{
+		DatabaseUserID: databaseUserID,
+		Password:       password,
+		CallerID:       callerID,
+	})
 }

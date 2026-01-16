@@ -8,8 +8,18 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
+
+const TypeSyncDaemons = "server:sync_daemons"
+
+type SyncDaemonsPayload struct {
+	ServerID string  `json:"server_id"`
+	UserID   *string `json:"user_id,omitempty"`
+}
 
 // DaemonStatusInfo represents the info stored in the daemon's info field
 type DaemonStatusInfo struct {
@@ -31,39 +41,34 @@ type daemonStatusResult struct {
 
 // SyncDaemonsJob handles synchronizing daemon status from the server
 type SyncDaemonsJob struct {
-	ServerJobBase
+	ctx     *JobContext
 	Payload SyncDaemonsPayload
-}
-
-// Type returns the job type
-func (j *SyncDaemonsJob) Type() string {
-	return TypeSyncDaemons
 }
 
 // Handle executes the sync daemons job
 func (j *SyncDaemonsJob) Handle(ctx context.Context) error {
 	// Get server
-	server, err := j.Repo().FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Get all daemons for this server
-	daemons, err := j.Repo().FindDaemonsByServer(ctx, j.Payload.ServerID)
+	daemons, err := j.ctx.Repo.FindDaemonsByServer(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to get daemons: %w", err)
 	}
 
 	if len(daemons) == 0 {
-		j.LogInfo("No daemons to sync", "server_id", server.ID)
+		j.ctx.LogInfo("No daemons to sync", "server_id", server.ID)
 		return nil
 	}
 
 	// Create and run the daemon status check task
 	task := tasks.CheckDaemonStatus()
-	result, err := j.RunTaskOnServer(server, task).AsRoot().Dispatch(ctx)
+	result, err := j.ctx.ForServer(server).RunTask(task).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.LogError(err, "Failed to check daemon status", "server_id", server.ID)
+		j.ctx.LogError(err, "Failed to check daemon status", "server_id", server.ID)
 		return err
 	}
 
@@ -114,15 +119,15 @@ func (j *SyncDaemonsJob) Handle(ctx context.Context) error {
 		}
 
 		// Update the daemon in the database
-		if err := j.Repo().UpdateDaemon(ctx, daemon); err != nil {
-			j.LogError(err, "Failed to update daemon status", "daemon_id", daemon.ID)
+		if err := j.ctx.Repo.UpdateDaemon(ctx, daemon); err != nil {
+			j.ctx.LogError(err, "Failed to update daemon status", "daemon_id", daemon.ID)
 		}
 	}
 
-	j.LogInfo("Daemon status sync completed", "server_id", server.ID, "daemon_count", len(daemons))
+	j.ctx.LogInfo("Daemon status sync completed", "server_id", server.ID, "daemon_count", len(daemons))
 
 	// Broadcast status update
-	j.BroadcastServerEvent(server.ID, "daemons.synced", map[string]interface{}{
+	j.ctx.BroadcastToServer(server.ID, "daemons.synced", map[string]interface{}{
 		"server_id":    server.ID,
 		"daemon_count": len(daemons),
 	})
@@ -132,7 +137,7 @@ func (j *SyncDaemonsJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *SyncDaemonsJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Sync daemons job failed", "server_id", j.Payload.ServerID)
+	j.ctx.LogError(err, "Sync daemons job failed", "server_id", j.Payload.ServerID)
 }
 
 // parseDaemonStatus parses the output of the daemon status check task
@@ -158,6 +163,20 @@ func (j *SyncDaemonsJob) parseDaemonStatus(output string) []daemonStatusResult {
 	}
 
 	return results
+}
+
+func NewSyncDaemonsJob(ctx *JobContext, payload SyncDaemonsPayload) *SyncDaemonsJob {
+	return &SyncDaemonsJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
+}
+
+func NewSyncDaemonsTask(serverID string, userID *string) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeSyncDaemons, SyncDaemonsPayload{
+		ServerID: serverID,
+		UserID:   userID,
+	})
 }
 
 // formatUptime converts seconds to a human-readable uptime string

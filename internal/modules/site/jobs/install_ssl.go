@@ -2,17 +2,32 @@ package jobs
 
 import (
 	"context"
+
+	"github.com/hibiken/asynq"
+
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
+
+const TypeInstallSSL = "site:install_ssl"
+
+// InstallSSLPayload holds data for SSL installation
+type InstallSSLPayload struct {
+	SiteID  string `json:"site_id"`
+	Address string `json:"address"`
+}
 
 // InstallSSLJob handles SSL certificate installation
 type InstallSSLJob struct {
-	SiteJobBase
+	ctx     *JobContext
 	Payload InstallSSLPayload
 }
 
-// Type returns the job type
-func (j *InstallSSLJob) Type() string {
-	return TypeInstallSSL
+// NewInstallSSLJob creates a new InstallSSLJob with the given context and payload
+func NewInstallSSLJob(ctx *JobContext, payload InstallSSLPayload) *InstallSSLJob {
+	return &InstallSSLJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
 }
 
 // Handle executes the install SSL job
@@ -23,7 +38,7 @@ func (j *InstallSSLJob) Handle(ctx context.Context) error {
 	// 3. Update Caddy configuration
 	// 4. Reload Caddy
 	// 5. Update certificate record
-	j.LogInfo("Install SSL job executed (not implemented)",
+	j.ctx.LogInfo("Install SSL job executed (not implemented)",
 		"site_id", j.Payload.SiteID,
 		"address", j.Payload.Address,
 	)
@@ -32,8 +47,16 @@ func (j *InstallSSLJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *InstallSSLJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Install SSL job failed",
+	j.ctx.LogError(err, "Install SSL job failed",
 		"site_id", j.Payload.SiteID,
 		"address", j.Payload.Address,
 	)
+}
+
+// NewInstallSSLTask creates an install SSL job
+func NewInstallSSLTask(siteID, address string) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeInstallSSL, InstallSSLPayload{
+		SiteID:  siteID,
+		Address: address,
+	})
 }

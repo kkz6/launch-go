@@ -9,35 +9,39 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
+const TypeProvisionServer = "server:provision"
+
+type ProvisionServerPayload struct {
+	ServerID  string   `json:"server_id"`
+	TeamID    string   `json:"team_id"`
+	UserID    *string  `json:"user_id,omitempty"`
+	SSHKeyIDs []string `json:"ssh_key_ids,omitempty"`
+}
+
 type ProvisionServerJob struct {
-	ServerJobBase
-	jobs.StatusTracker
+	ctx     *JobContext
 	Payload ProvisionServerPayload
 }
 
-func (j *ProvisionServerJob) Type() string {
-	return TypeProvisionServer
-}
-
 func (j *ProvisionServerJob) Handle(ctx context.Context) error {
-	server, err := j.Repo().FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	if err := j.Repo().UpdateServerStatus(ctx, server.ID, enums.ServerStatusProvisioning); err != nil {
+	if err := j.ctx.Repo.UpdateServerStatus(ctx, server.ID, enums.ServerStatusProvisioning); err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
 	var sshKeyContents []string
 	if len(j.Payload.SSHKeyIDs) > 0 {
 		for _, keyID := range j.Payload.SSHKeyIDs {
-			key, err := j.Repo().FindSshKeyByID(ctx, keyID)
+			key, err := j.ctx.Repo.FindSshKeyByID(ctx, keyID)
 			if err != nil {
-				j.LogError(err, "Failed to find SSH key", "key_id", keyID)
+				j.ctx.LogError(err, "Failed to find SSH key", "key_id", keyID)
 				continue
 			}
 			sshKeyContents = append(sshKeyContents, key.PublicKey)
@@ -60,7 +64,7 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 
 	task := tasks.ProvisionFreshServer(config)
 
-	taskModel, err := j.RunTaskOnServer(server, task).
+	taskModel, err := j.ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		TrackInDB().
 		RunInBackground(ctx)
@@ -69,13 +73,13 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to execute provision task: %w", err)
 	}
 
-	j.LogInfo("Server provisioning started",
+	j.ctx.LogInfo("Server provisioning started",
 		"server_id", server.ID,
 		"server_name", server.Name,
 		"task_id", taskModel.ID,
 	)
 
-	j.BroadcastServerEvent(server.ID, "server.provisioning", map[string]any{
+	j.ctx.BroadcastToServer(server.ID, "server.provisioning", map[string]any{
 		"server_id": server.ID,
 		"status":    "provisioning",
 		"task_id":   taskModel.ID,
@@ -85,18 +89,26 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 }
 
 func (j *ProvisionServerJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Failed to provision server",
+	j.ctx.LogError(err, "Failed to provision server",
 		"server_id", j.Payload.ServerID,
 	)
 
-	if updateErr := j.Repo().UpdateServerStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
-		j.LogError(updateErr, "Failed to update server status to failed")
+	if updateErr := j.ctx.Repo.UpdateServerStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
+		j.ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 
-	j.BroadcastServerEvent(j.Payload.ServerID, "server.provision_failed", map[string]any{
+	j.ctx.BroadcastToServer(j.Payload.ServerID, "server.provision_failed", map[string]any{
 		"server_id": j.Payload.ServerID,
 		"error":     err.Error(),
 	})
+}
+
+// NewProvisionServerJob creates a new ProvisionServerJob with the given context and payload.
+func NewProvisionServerJob(ctx *JobContext, payload ProvisionServerPayload) *ProvisionServerJob {
+	return &ProvisionServerJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
 }
 
 func getMemoryInMB(server *models.Server) int {
@@ -131,8 +143,9 @@ func getDefaultSoftwareStack() []enums.Software {
 	}
 }
 
+// NewProvisionServerTask creates an asynq task for provisioning a server.
 func NewProvisionServerTask(serverID, teamID string, userID *string, sshKeyIDs []string) (*asynq.Task, error) {
-	return jobs.NewTask(TypeProvisionServer, ProvisionServerPayload{
+	return pkgjobs.NewTask(TypeProvisionServer, ProvisionServerPayload{
 		ServerID:  serverID,
 		TeamID:    teamID,
 		UserID:    userID,

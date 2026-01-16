@@ -4,36 +4,41 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/pkg/activity"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
+
+const TypeArchiveServer = "server:archive"
+
+type ArchiveServerPayload struct {
+	ServerID string  `json:"server_id"`
+	UserID   *string `json:"user_id,omitempty"`
+}
 
 // ArchiveServerJob archives a server (soft delete).
 // Similar to Laravel's Modules\Server\Jobs\ArchiveServer
 type ArchiveServerJob struct {
-	ServerJobBase
+	ctx     *JobContext
 	Payload ArchiveServerPayload
-}
-
-// Type returns the job type identifier
-func (j *ArchiveServerJob) Type() string {
-	return TypeArchiveServer
 }
 
 // Handle processes the job
 func (j *ArchiveServerJob) Handle(ctx context.Context) error {
 	// Find the server
-	server, err := j.Repo().FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Archive the server
-	if err := j.Repo().ArchiveServer(ctx, server.ID); err != nil {
+	if err := j.ctx.Repo.ArchiveServer(ctx, server.ID); err != nil {
 		return fmt.Errorf("failed to archive server: %w", err)
 	}
 
 	// Log activity
-	logger := activity.New(j.DB).
+	logger := activity.New(j.ctx.DB).
 		WithContext(ctx).
 		UseLog("server").
 		On(server).
@@ -43,13 +48,13 @@ func (j *ArchiveServerJob) Handle(ctx context.Context) error {
 	}
 	logger.Log("Server was archived")
 
-	j.LogInfo("Server archived successfully",
+	j.ctx.LogInfo("Server archived successfully",
 		"server_id", server.ID,
 		"server_name", server.Name,
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(server.ID, "server.archived", map[string]any{
+	j.ctx.BroadcastToServer(server.ID, "server.archived", map[string]any{
 		"server_id": server.ID,
 	})
 
@@ -58,7 +63,23 @@ func (j *ArchiveServerJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *ArchiveServerJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Failed to archive server",
+	j.ctx.LogError(err, "Failed to archive server",
 		"server_id", j.Payload.ServerID,
 	)
+}
+
+// NewArchiveServerJob creates a new ArchiveServerJob with the given context and payload.
+func NewArchiveServerJob(ctx *JobContext, payload ArchiveServerPayload) *ArchiveServerJob {
+	return &ArchiveServerJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
+}
+
+// NewArchiveServerTask creates an asynq task for archiving a server
+func NewArchiveServerTask(serverID string, userID *string) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeArchiveServer, ArchiveServerPayload{
+		ServerID: serverID,
+		UserID:   userID,
+	})
 }

@@ -7,25 +7,28 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
+
+const TypeRestartDaemon = "server:restart_daemon"
+
+type RestartDaemonPayload struct {
+	ServerID string  `json:"server_id"`
+	DaemonID string  `json:"daemon_id"`
+	UserID   *string `json:"user_id,omitempty"`
+}
 
 // RestartDaemonJob restarts a daemon on a server.
 // Similar to Laravel's Modules\Server\Jobs\RestartDaemon
 type RestartDaemonJob struct {
-	ServerJobBase
+	ctx     *JobContext
 	Payload RestartDaemonPayload
-}
-
-// Type returns the job type identifier
-func (j *RestartDaemonJob) Type() string {
-	return TypeRestartDaemon
 }
 
 // Handle processes the job
 func (j *RestartDaemonJob) Handle(ctx context.Context) error {
 	// Find the daemon with server preloaded
-	daemon, err := j.Repo().FindDaemonByIDWithServer(ctx, j.Payload.DaemonID)
+	daemon, err := j.ctx.Repo.FindDaemonByIDWithServer(ctx, j.Payload.DaemonID)
 	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
@@ -35,7 +38,7 @@ func (j *RestartDaemonJob) Handle(ctx context.Context) error {
 		ProgramName: daemon.ProgramName(),
 	})
 
-	result, err := j.RunTaskOnServer(daemon.Server, task).
+	result, err := j.ctx.ForServer(daemon.Server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -47,13 +50,13 @@ func (j *RestartDaemonJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to restart daemon: %s", result.GetOutput())
 	}
 
-	j.LogInfo("Daemon restarted successfully",
+	j.ctx.LogInfo("Daemon restarted successfully",
 		"daemon_id", daemon.ID,
 		"server_id", daemon.ServerID,
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(daemon.ServerID, "daemon.restarted", map[string]any{
+	j.ctx.BroadcastToServer(daemon.ServerID, "daemon.restarted", map[string]any{
 		"daemon_id": daemon.ID,
 		"server_id": daemon.ServerID,
 	})
@@ -63,15 +66,22 @@ func (j *RestartDaemonJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *RestartDaemonJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Failed to restart daemon",
+	j.ctx.LogError(err, "Failed to restart daemon",
 		"daemon_id", j.Payload.DaemonID,
 		"server_id", j.Payload.ServerID,
 	)
 }
 
+func NewRestartDaemonJob(ctx *JobContext, payload RestartDaemonPayload) *RestartDaemonJob {
+	return &RestartDaemonJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
+}
+
 // NewRestartDaemonTask creates an asynq task for restarting a daemon
 func NewRestartDaemonTask(serverID, daemonID string, userID *string) (*asynq.Task, error) {
-	return jobs.NewTask(TypeRestartDaemon, RestartDaemonPayload{
+	return pkgjobs.NewTask(TypeRestartDaemon, RestartDaemonPayload{
 		ServerID: serverID,
 		DaemonID: daemonID,
 		UserID:   userID,

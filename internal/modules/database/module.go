@@ -10,7 +10,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/repositories"
 	"github.com/kkz6/launch-go/internal/modules/database/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
@@ -83,14 +82,6 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 	jobContext := jobs.NewJobContext(m.db, m.repo, m.logger, m.ws, m.dispatcher, m.queue)
 	jobs.SetJobContext(jobContext)
 
-	// Create kernel and register jobs
-	kernel := pkgjobs.NewKernel(m.db, m.logger, m.ws)
-	kernel.RegisterModule(jobs.Register)
-	kernel.Boot(mux)
-}
-
-// RegisterJobsWithRegistry registers jobs using the Handler interface pattern.
-// This is called by the kernel to register jobs.
-func (m *Module) RegisterJobsWithRegistry(r *pkgjobs.Registry) {
-	jobs.Register(r)
+	// Register job handlers
+	jobs.RegisterHandlers(mux)
 }

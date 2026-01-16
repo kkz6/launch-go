@@ -12,7 +12,7 @@ import (
 // Usage:
 //
 //	type InstallCronJob struct {
-//	    jobs.BaseJob
+//	    *JobContext
 //	    jobs.InstallationTracker
 //	    CronID string
 //	}
@@ -47,7 +47,7 @@ func (t *InstallationTracker) MarkInstallationFailed(db *gorm.DB, model any) err
 // Usage:
 //
 //	type UninstallCronJob struct {
-//	    jobs.BaseJob
+//	    *JobContext
 //	    jobs.UninstallationTracker
 //	    CronID string
 //	}
@@ -103,7 +103,7 @@ func (t *StatusTracker) UpdateFields(db *gorm.DB, model any, fields map[string]a
 // Usage:
 //
 //	type InstallCronJob struct {
-//	    jobs.BaseJob
+//	    *JobContext
 //	    jobs.TypedInstallationTracker[*models.Cron]
 //	    Payload InstallCronPayload
 //	}
