@@ -93,7 +93,24 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 		return nil, err
 	}
 
-	// TODO: Dispatch queue installation job
+	// Dispatch queue installation job
+	var userIDPtr *string
+	if userID != "" {
+		userIDPtr = &userID
+	}
+
+	task, err := jobs.NewInstallQueueTask(site.ID, queueModel.ID, userIDPtr)
+	if err != nil {
+		s.LogError(err, "Failed to create install queue task")
+		return nil, err
+	}
+
+	if s.Queue != nil {
+		if _, err := s.Queue.Enqueue(task); err != nil {
+			s.LogError(err, "Failed to enqueue install queue job")
+			return nil, err
+		}
+	}
 
 	s.LogInfo("Queue created", "site_id", site.ID, "queue_id", queueModel.ID)
 
@@ -123,7 +140,19 @@ func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID str
 		return err
 	}
 
-	// TODO: Dispatch queue uninstallation job
+	// Dispatch queue uninstallation job
+	task, err := jobs.NewUninstallQueueTask(siteID, queueID, nil)
+	if err != nil {
+		s.LogError(err, "Failed to create uninstall queue task")
+		return err
+	}
+
+	if s.Queue != nil {
+		if _, err := s.Queue.Enqueue(task); err != nil {
+			s.LogError(err, "Failed to enqueue uninstall queue job")
+			return err
+		}
+	}
 
 	s.LogInfo("Queue deletion requested", "queue_id", queueID)
 

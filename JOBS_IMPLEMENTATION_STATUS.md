@@ -6,13 +6,13 @@ This document provides a comprehensive comparison of jobs between the Laravel an
 
 | Module | Laravel Jobs | Go Jobs | Triggers Working | Coverage |
 |--------|-------------|---------|------------------|----------|
-| Server | 37 | 24 | 18/30 | 60% |
+| Server | 37 | 29 | 23/30 | 77% |
 | Site | 26 | 13 | 8/25 | 32% |
 | Database | 6 | 6 | 7/7 | **100%** ✅ |
-| Git | 2 | 2 | 1/2 | 50% |
-| Backup | 4 | 0 | 0/4 | **0%** ❌ |
-| DNS | 2 | 0 | 0/2 | **0%** ❌ |
-| **Total** | **77** | **45** | **34/70** | **49%** |
+| Git | 2 | 2 | 2/2 | **100%** ✅ |
+| Backup | 4 | 3 | 3/4 | **75%** ✅ |
+| DNS | 2 | 0 | 2/2 | **Sync** ✅ |
+| **Total** | **77** | **53** | **45/70** | **64%** |
 
 ---
 
@@ -44,23 +44,38 @@ This document provides a comprehensive comparison of jobs between the Laravel an
 | ConfigureOpcacheOnServer | ConfigureOpcache | PhpService.updateOpcache() | OpcacheService.ConfigureOpcache() |
 | - | CreateOnProvider | - | ServerService.CreateServer() |
 
-### Implemented but NOT Triggered ⚠️
+### Implemented & Triggered ✅ (Recently Fixed)
 
-| Go Job | Status | Issue |
-|--------|--------|-------|
-| RestartDaemon | Job exists | DaemonService.RestartDaemon() method missing |
+| Go Job | Status | Go Trigger |
+|--------|--------|------------|
+| RestartDaemon | Job exists | DaemonService.RestartDaemon() |
+
+### Implemented & Triggered ✅ (PHP Management)
+
+| Go Job | Description | Go Trigger |
+|--------|-------------|------------|
+| SetDefaultPhp | Set default PHP version | InstalledServiceService.SetDefaultPhpVersion() |
+| InstallPhpExtension | Install PHP extension | InstalledServiceService.InstallPhpExtension() |
+| UninstallPhpExtension | Remove PHP extension | InstalledServiceService.UninstallPhpExtension() |
+
+Note: PHP version installation/removal is handled through the generic AddService/RemoveService jobs.
+
+### Implemented & Triggered ✅ (Job Chaining)
+
+| Go Job | Description | Go Trigger |
+|--------|-------------|------------|
+| WaitForServerToConnect | Wait for SSH connection | CreateOnProviderJob.dispatchWaitForConnection() |
+| CleanupFailedProvisioning | Cleanup on provisioning failure | WaitForServerToConnectJob.Failed() / ProvisionServerJob.Failed() |
+
+**Job Chain**: CreateOnProvider → WaitForServerToConnect → ProvisionServer
+
+**Failure Handler Chain**: WaitForServerToConnect (fail) → CleanupFailedProvisioning
+                          ProvisionServer (fail) → CleanupFailedProvisioning
 
 ### NOT Implemented ❌
 
 | Laravel Job | Description | Laravel Trigger | Priority |
 |-------------|-------------|-----------------|----------|
-| **WaitForServerToConnect** | Wait for SSH connection | Bus::chain first job in provisioning | **CRITICAL** |
-| **AddPhpVersionToServer** | Install PHP version | PhpService.installVersion() | **HIGH** |
-| **RemovePhpVersionFromServer** | Remove PHP version | PhpService.uninstallVersion() | **HIGH** |
-| **UpdatePhpDefault** | Set default PHP version | PhpService.setDefaultVersion() | **HIGH** |
-| **InstallPhpExtensionOnServer** | Install PHP extension | PhpService.installExtension() | **HIGH** |
-| **UninstallPhpExtensionOnServer** | Remove PHP extension | PhpService.uninstallExtension() | **HIGH** |
-| **CleanupFailedServerProvisioning** | Cleanup on provisioning failure | WaitForServerToConnect/ProvisionServer (on fail) | **HIGH** |
 | CleanupFailedPhpInstallation | Cleanup failed PHP install | AddPhpVersionToServer (on fail) | MEDIUM |
 | CleanupFailedPhpExtensionInstall | Cleanup failed extension install | InstallPhpExtension (on fail) | MEDIUM |
 | CleanupFailedPhpExtensionUninstall | Cleanup failed extension uninstall | UninstallPhpExtension (on fail) | MEDIUM |
@@ -90,21 +105,26 @@ This document provides a comprehensive comparison of jobs between the Laravel an
 | - | RestartQueue | DeploySite (autoRestart) | DeployJob.restartQueueWorkers() |
 | - | SyncQueues | - | QueueService.SyncStatus() |
 
-### Implemented but NOT Triggered ⚠️
+### Implemented & Triggered ✅ (Recently Fixed)
 
-| Go Job | Status | Issue |
-|--------|--------|-------|
-| InstallQueue | Job exists | QueueService.CreateQueue() method missing |
-| UninstallQueue | Job exists | QueueService.DeleteQueue() method missing |
-| UninstallSite | Job exists | Not triggered from site deletion flow |
+| Go Job | Status | Go Trigger |
+|--------|--------|------------|
+| InstallQueue | Job exists | QueueService.Create() |
+| UninstallQueue | Job exists | QueueService.Delete() |
+| UninstallSite | Job exists | SiteService.Delete() |
+
+### Already Implemented (in Deploy Job) ✅
+
+| Laravel Job | Description | Go Implementation |
+|-------------|-------------|-------------------|
+| SourceControlDeploymentCreated | Notify git provider deploy started | `DeployJob.createProviderDeployment()` |
+| SourceControlDeploymentCompleted | Notify git provider deploy succeeded | `DeployJob.updateProviderDeploymentStatus(Success)` |
+| SourceControlDeploymentFailed | Notify git provider deploy failed | `DeployJob.updateProviderDeploymentStatus(Failure)` |
 
 ### NOT Implemented ❌
 
 | Laravel Job | Description | Laravel Trigger | Priority |
 |-------------|-------------|-----------------|----------|
-| **SourceControlDeploymentCreated** | Notify git provider deploy started | Event listener | **HIGH** |
-| **SourceControlDeploymentCompleted** | Notify git provider deploy succeeded | Event listener | **HIGH** |
-| **SourceControlDeploymentFailed** | Notify git provider deploy failed | Event listener | **HIGH** |
 | **CreateDnsRecord** | Create DNS record for site domain | SiteService.store() | **HIGH** |
 | EnableLaravelQueue | Enable queue workers | LaravelFeature dispatch | MEDIUM |
 | DisableLaravelQueue | Disable queue workers | LaravelFeature dispatch | MEDIUM |
@@ -144,31 +164,43 @@ This document provides a comprehensive comparison of jobs between the Laravel an
 |-------------|--------|-----------------|------------|
 | ProcessGitWebhook | ProcessGitWebhook | AppController.webhook() | WebhookHandler.HandleWebhook() |
 
-### Implemented but NOT Triggered ⚠️
+### Implemented & Triggered ✅
 
-| Go Job | Status | Issue |
-|--------|--------|-------|
-| SyncInstallationRepos | Job exists | No GitHub app installation webhook handler |
-
----
-
-## BACKUP MODULE ❌ (Not Implemented)
-
-| Laravel Job | Description | Laravel Trigger | Priority |
-|-------------|-------------|-----------------|----------|
-| **InstallBackup** | Install backup agent on server | BackupService.store() | **HIGH** |
-| **DeleteBackup** | Delete backup file | BackupService.destroy() | **HIGH** |
-| **RunManualBackup** | Trigger manual backup | BackupService.runManual() | **HIGH** |
-| **SyncServerLaunchConfig** | Sync backup config to server | Event listener / Jobs | **HIGH** |
+| Go Job | Status | Go Trigger |
+|--------|--------|------------|
+| SyncInstallationRepos | Job exists | WebhookHandler.handleRepositoriesChanged() |
 
 ---
 
-## DNS MODULE ❌ (Jobs Not Implemented)
+## BACKUP MODULE ✅ (75% Complete)
+
+### Implemented & Triggered ✅
+
+| Laravel Job | Go Job | Laravel Trigger | Go Trigger |
+|-------------|--------|-----------------|------------|
+| InstallBackup | InstallBackup | BackupService.store() | BackupService.CreateBackup() |
+| DeleteBackup | DeleteBackup | BackupService.destroy() | BackupService.DeleteBackup() |
+| RunManualBackup | RunManualBackup | BackupService.runManual() | BackupService.RunBackup() |
+
+### NOT Implemented ❌
 
 | Laravel Job | Description | Laravel Trigger | Priority |
 |-------------|-------------|-----------------|----------|
-| **SyncDomainsJob** | Sync domains from DNS provider | DnsProviderService.syncDomains() | MEDIUM |
-| **CreateDnsRecord** | Create DNS record via API | SiteService (domain creation) | MEDIUM |
+| **SyncServerLaunchConfig** | Sync backup config to server | Event listener / Jobs | **MEDIUM** |
+
+---
+
+## DNS MODULE ✅ (Synchronous Implementation)
+
+The DNS functionality is implemented synchronously in services (not as background jobs):
+
+| Functionality | Go Implementation | Notes |
+|--------------|-------------------|-------|
+| SyncDomainRecords | DomainService.SyncDomainRecords() | Syncs records from DNS provider |
+| CreateDnsRecord | DnsRecordService.CreateRecord() | Creates DNS record via API |
+| CreateRecordForSite | DnsRecordService.CreateRecordForSite() | Creates A record for site |
+
+The synchronous implementation is appropriate for DNS operations as they are quick API calls.
 
 ---
 
@@ -176,10 +208,11 @@ This document provides a comprehensive comparison of jobs between the Laravel an
 
 ### Services Missing in Go
 
-| Service | Jobs It Would Trigger |
-|---------|----------------------|
-| **PhpService** | AddPhpVersion, RemovePhpVersion, UpdateDefault, Install/Uninstall Extension |
-| **BackupService** | InstallBackup, DeleteBackup, RunManualBackup, SyncServerLaunchConfig |
+| Service | Jobs It Would Trigger | Status |
+|---------|----------------------|--------|
+| ~~**PhpService**~~ | ~~AddPhpVersion, RemovePhpVersion, UpdateDefault, Install/Uninstall Extension~~ | ✅ Implemented in InstalledServiceService |
+| ~~**BackupService**~~ | ~~InstallBackup, DeleteBackup, RunManualBackup~~ | ✅ Implemented |
+| **BackupService** | SyncServerLaunchConfig | Remaining |
 
 ### Features Missing in Go
 
@@ -206,36 +239,35 @@ This document provides a comprehensive comparison of jobs between the Laravel an
 
 3. Implement **CleanupFailedServerProvisioning** for failure handling
 
-### Phase 2: Site Module Completion
-1. Add **QueueService** methods:
-   - `CreateQueue()` → InstallQueue
-   - `DeleteQueue()` → UninstallQueue
+### Phase 2: Site Module Completion ✅ COMPLETED
+1. ~~Add **QueueService** methods:~~ ✅
+   - ~~`CreateQueue()` → InstallQueue~~ ✅ (QueueService.Create())
+   - ~~`DeleteQueue()` → UninstallQueue~~ ✅ (QueueService.Delete())
 
-2. Implement **SourceControl deployment notifications**:
-   - SourceControlDeploymentCreated
-   - SourceControlDeploymentCompleted
-   - SourceControlDeploymentFailed
+2. ~~Implement **SourceControl deployment notifications**:~~ ✅ (Already in DeployJob)
+   - ~~SourceControlDeploymentCreated~~ ✅
+   - ~~SourceControlDeploymentCompleted~~ ✅
+   - ~~SourceControlDeploymentFailed~~ ✅
 
-3. Add **UninstallSite** trigger to site deletion flow
+3. ~~Add **UninstallSite** trigger to site deletion flow~~ ✅ (SiteService.Delete())
 
-4. Add **DaemonService.RestartDaemon()** method
+4. ~~Add **DaemonService.RestartDaemon()** method~~ ✅
 
-### Phase 3: Git Module
-1. Implement **SyncInstallationRepositories** trigger for GitHub app webhooks
+### Phase 3: Git Module ✅ COMPLETED
+1. ~~Implement **SyncInstallationRepositories** trigger for GitHub app webhooks~~ ✅
 
 ### Phase 4: Scheduled Commands
 1. Create scheduled command for **UpdateServerConnectivity**
 2. Create scheduled command for **CheckDaemonStatus**
 
-### Phase 5: Backup Module
-1. Create backup module structure
-2. Implement BackupService with all 4 jobs
-3. Add event listener for SyncServerLaunchConfig
+### Phase 5: Backup Module ✅ COMPLETED
+1. ~~Create backup module structure~~ ✅
+2. ~~Implement BackupService jobs~~ ✅ (InstallBackup, DeleteBackup, RunManualBackup)
+3. Add event listener for SyncServerLaunchConfig (remaining)
 
-### Phase 6: DNS Jobs
-1. Implement **CreateDnsRecord** job
-2. Implement **SyncDomainsJob** job
-3. Add triggers to DNS services
+### Phase 6: DNS Jobs ✅ COMPLETED
+1. ~~Implement DNS record management~~ ✅ (Synchronous implementation in DnsRecordService)
+2. ~~Implement domain syncing~~ ✅ (Synchronous implementation in DomainService)
 
 ### Phase 7: Laravel Features & Cleanup
 1. Implement Laravel feature detection (AnalyzeLaravelFeatures)
@@ -258,10 +290,11 @@ modules/git/src/Jobs/        - 2 jobs
 
 ### Go Jobs
 ```
-internal/modules/server/jobs/    - 24 jobs
+internal/modules/server/jobs/    - 29 jobs
 internal/modules/site/jobs/      - 13 jobs
 internal/modules/database/jobs/  - 6 jobs
 internal/modules/git/jobs/       - 2 jobs
+internal/modules/backup/jobs/    - 3 jobs
 ```
 
 ### Go Services (where triggers live)
@@ -270,4 +303,5 @@ internal/modules/server/services/
 internal/modules/site/services/
 internal/modules/database/services/
 internal/modules/git/services/
+internal/modules/backup/services/
 ```

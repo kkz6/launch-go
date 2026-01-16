@@ -43,6 +43,8 @@ type ServiceRepository interface {
 	UpdateStatus(ctx context.Context, id string, status enums.ServiceStatus) error
 	UpdateWithTypeData(ctx context.Context, id string, status enums.ServiceStatus, typeData map[string]any) error
 	Delete(ctx context.Context, id string) error
+	SetDefault(ctx context.Context, id string, isDefault bool) error
+	UnsetDefaultPhp(ctx context.Context, serverID string) error
 }
 
 // FirewallRuleRepository defines the interface for firewall rule database operations

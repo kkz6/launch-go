@@ -93,6 +93,7 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Post("/:id/daemons", handler.CreateDaemon)
 		servers.Post("/:id/daemons/sync", handler.SyncDaemons)
 		servers.Put("/:id/daemons/:daemonId", handler.UpdateDaemon)
+		servers.Post("/:id/daemons/:daemonId/restart", handler.RestartDaemon)
 		servers.Delete("/:id/daemons/:daemonId", handler.DeleteDaemon)
 
 		// SSH Keys (server-specific)

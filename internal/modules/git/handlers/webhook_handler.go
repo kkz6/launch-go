@@ -262,6 +262,36 @@ func (h *WebhookHandler) handleInstallationDeleted(ctx context.Context, installa
 
 // handleRepositoriesChanged handles changes to repositories for an installation
 func (h *WebhookHandler) handleRepositoriesChanged(ctx context.Context, installationID string) {
+	// Dispatch SyncInstallationRepos job via queue for async processing
+	if h.queueClient != nil {
+		// Get the source control to get team and user IDs
+		sc, err := h.service.GetSourceControlByInstallation(ctx, enums.GitProviderGitHub, installationID)
+		if err != nil {
+			h.logger.Error().Err(err).Str("installation_id", installationID).Msg("Failed to find source control for installation")
+			return
+		}
+
+		teamID := ""
+		if sc.TeamID != nil {
+			teamID = *sc.TeamID
+		}
+		task, err := jobs.NewSyncInstallationReposTask(
+			string(enums.GitProviderGitHub),
+			installationID,
+			teamID,
+			sc.UserID,
+		)
+		if err != nil {
+			h.logger.Error().Err(err).Msg("Failed to create sync installation repos task")
+		} else if _, err := h.queueClient.Enqueue(task); err != nil {
+			h.logger.Error().Err(err).Msg("Failed to enqueue sync installation repos task")
+		} else {
+			h.logger.Info().Str("installation_id", installationID).Msg("Sync installation repos job queued")
+			return
+		}
+	}
+
+	// Fallback: Process synchronously if no queue or enqueue failed
 	if err := h.service.SyncRepositoriesForInstallation(ctx, installationID); err != nil {
 		h.logger.Error().Err(err).Str("installation_id", installationID).Msg("Failed to sync repositories for installation")
 	}

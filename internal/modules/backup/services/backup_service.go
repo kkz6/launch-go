@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
+	"github.com/kkz6/launch-go/internal/modules/backup/jobs"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 )
@@ -221,33 +222,69 @@ func (s *BackupService) MarkBackupInstallationFailed(ctx context.Context, id str
 
 func (s *BackupService) dispatchInstallBackup(serverID, backupID string) {
 	if s.Queue == nil {
+		s.Logger.Warn().Msg("Queue not configured, skipping InstallBackup job")
 		return
 	}
-	// In production, this would enqueue an InstallBackup job
-	s.Logger.Debug().
+
+	task, err := jobs.NewInstallBackupTask(serverID, backupID, nil)
+	if err != nil {
+		s.Logger.Error().Err(err).Msg("Failed to create InstallBackup task")
+		return
+	}
+
+	if _, err := s.Queue.Enqueue(task); err != nil {
+		s.Logger.Error().Err(err).Msg("Failed to enqueue InstallBackup job")
+		return
+	}
+
+	s.Logger.Info().
 		Str("server_id", serverID).
 		Str("backup_id", backupID).
-		Msg("Dispatching InstallBackup job")
+		Msg("InstallBackup job enqueued")
 }
 
 func (s *BackupService) dispatchDeleteBackup(serverID, backupID string) {
 	if s.Queue == nil {
+		s.Logger.Warn().Msg("Queue not configured, skipping DeleteBackup job")
 		return
 	}
-	// In production, this would enqueue a DeleteBackup job
-	s.Logger.Debug().
+
+	task, err := jobs.NewDeleteBackupTask(serverID, backupID, nil)
+	if err != nil {
+		s.Logger.Error().Err(err).Msg("Failed to create DeleteBackup task")
+		return
+	}
+
+	if _, err := s.Queue.Enqueue(task); err != nil {
+		s.Logger.Error().Err(err).Msg("Failed to enqueue DeleteBackup job")
+		return
+	}
+
+	s.Logger.Info().
 		Str("server_id", serverID).
 		Str("backup_id", backupID).
-		Msg("Dispatching DeleteBackup job")
+		Msg("DeleteBackup job enqueued")
 }
 
 func (s *BackupService) dispatchRunManualBackup(serverID, backupID string) {
 	if s.Queue == nil {
+		s.Logger.Warn().Msg("Queue not configured, skipping RunManualBackup job")
 		return
 	}
-	// In production, this would enqueue a RunManualBackup job
-	s.Logger.Debug().
+
+	task, err := jobs.NewRunManualBackupTask(serverID, backupID, nil)
+	if err != nil {
+		s.Logger.Error().Err(err).Msg("Failed to create RunManualBackup task")
+		return
+	}
+
+	if _, err := s.Queue.Enqueue(task); err != nil {
+		s.Logger.Error().Err(err).Msg("Failed to enqueue RunManualBackup job")
+		return
+	}
+
+	s.Logger.Info().
 		Str("server_id", serverID).
 		Str("backup_id", backupID).
-		Msg("Dispatching RunManualBackup job")
+		Msg("RunManualBackup job enqueued")
 }

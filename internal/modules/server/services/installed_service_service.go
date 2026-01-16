@@ -420,3 +420,73 @@ func compareVersions(v1, v2 string) int {
 	}
 	return 0
 }
+
+// SetDefaultPhpVersion sets the default PHP version for a server
+func (s *Service) SetDefaultPhpVersion(ctx context.Context, serverID, teamID, serviceID string, userID *string) error {
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return err
+	}
+
+	service, err := s.repos.Service().FindByID(ctx, serviceID)
+	if err != nil {
+		return err
+	}
+
+	if service.ServerID != serverID {
+		return ErrServiceNotFound
+	}
+
+	if service.Type != enums.ServiceTypePhp {
+		return fmt.Errorf("service is not a PHP service")
+	}
+
+	if !s.HasQueue() {
+		return ErrQueueNotConfigured
+	}
+
+	task, err := jobs.NewSetDefaultPhpTask(server.ID, service.ID, service.Version, userID)
+	if err != nil {
+		return err
+	}
+
+	return s.EnqueueTask(task)
+}
+
+// InstallPhpExtension installs a PHP extension on a server
+func (s *Service) InstallPhpExtension(ctx context.Context, serverID, teamID, version, extension string, userID *string) error {
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return err
+	}
+
+	if !s.HasQueue() {
+		return ErrQueueNotConfigured
+	}
+
+	task, err := jobs.NewInstallPhpExtensionTask(server.ID, version, extension, userID)
+	if err != nil {
+		return err
+	}
+
+	return s.EnqueueTask(task)
+}
+
+// UninstallPhpExtension uninstalls a PHP extension from a server
+func (s *Service) UninstallPhpExtension(ctx context.Context, serverID, teamID, version, extension string, userID *string) error {
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return err
+	}
+
+	if !s.HasQueue() {
+		return ErrQueueNotConfigured
+	}
+
+	task, err := jobs.NewUninstallPhpExtensionTask(server.ID, version, extension, userID)
+	if err != nil {
+		return err
+	}
+
+	return s.EnqueueTask(task)
+}
