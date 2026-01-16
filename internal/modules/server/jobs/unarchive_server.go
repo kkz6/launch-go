@@ -27,13 +27,13 @@ type UnarchiveServerJob struct {
 // Handle processes the job
 func (j *UnarchiveServerJob) Handle(ctx context.Context) error {
 	// Find the server (including archived)
-	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Unarchive the server
-	if err := j.ctx.Repo.UnarchiveServer(ctx, server.ID); err != nil {
+	if err := j.ctx.Repos.Server().Unarchive(ctx, server.ID); err != nil {
 		return fmt.Errorf("failed to unarchive server: %w", err)
 	}
 

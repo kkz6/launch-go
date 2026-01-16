@@ -29,7 +29,7 @@ type JobContext struct {
 	QueueRepo         *repositories.QueueRepository
 	RedirectRepo      *repositories.RedirectRepository
 	ReleaseRepo       *repositories.ReleaseRepository
-	ServerRepo        *serverrepos.Repository
+	ServerRepos       *serverrepos.Registry
 	SourceControlRepo *gitrepos.SourceControlRepository
 	ProviderFactory   *gitproviders.ProviderFactory
 	TaskRunnerDeps    *servertasks.TaskRunnerDeps
@@ -49,7 +49,7 @@ func NewJobContext(
 	queueRepo *repositories.QueueRepository,
 	redirectRepo *repositories.RedirectRepository,
 	releaseRepo *repositories.ReleaseRepository,
-	serverRepo *serverrepos.Repository,
+	serverRepos *serverrepos.Registry,
 	sourceControlRepo *gitrepos.SourceControlRepository,
 	providerFactory *gitproviders.ProviderFactory,
 ) *JobContext {
@@ -66,7 +66,7 @@ func NewJobContext(
 		QueueRepo:         queueRepo,
 		RedirectRepo:      redirectRepo,
 		ReleaseRepo:       releaseRepo,
-		ServerRepo:        serverRepo,
+		ServerRepos:       serverRepos,
 		SourceControlRepo: sourceControlRepo,
 		ProviderFactory:   providerFactory,
 		TaskRunnerDeps: &servertasks.TaskRunnerDeps{

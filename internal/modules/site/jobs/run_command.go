@@ -49,7 +49,7 @@ func (j *RunCommandJob) Handle(ctx context.Context) error {
 	}
 
 	// Get the server for SSH connection
-	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -154,7 +154,7 @@ func (j *RunCommandJob) Failed(ctx context.Context, err error) {
 		return
 	}
 
-	server, serverErr := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, serverErr := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if serverErr != nil {
 		j.ctx.LogError(serverErr, "Failed to find server for broadcast")
 		return

@@ -28,13 +28,13 @@ type ConfigureOpcacheJob struct {
 // Handle processes the job
 func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 	// Find the service
-	service, err := j.ctx.Repo.FindServiceByID(ctx, j.Payload.ServiceID)
+	service, err := j.ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
 	// Find the server
-	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -54,7 +54,7 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 			"status": "configuring",
 		},
 	}
-	if err := j.ctx.Repo.UpdateServiceWithTypeData(ctx, service.ID, service.Status, typeData); err != nil {
+	if err := j.ctx.Repos.Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData); err != nil {
 		j.ctx.LogError(err, "Failed to update service status")
 	}
 
@@ -69,7 +69,7 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 		// Mark as failed
 		typeData["opcache"].(map[string]any)["status"] = "failed"
 		typeData["opcache"].(map[string]any)["error"] = err.Error()
-		_ = j.ctx.Repo.UpdateServiceWithTypeData(ctx, service.ID, service.Status, typeData)
+		_ = j.ctx.Repos.Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData)
 		return fmt.Errorf("failed to configure OPcache: %w", err)
 	}
 
@@ -77,7 +77,7 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 		// Mark as failed
 		typeData["opcache"].(map[string]any)["status"] = "failed"
 		typeData["opcache"].(map[string]any)["error"] = result.GetOutput()
-		_ = j.ctx.Repo.UpdateServiceWithTypeData(ctx, service.ID, service.Status, typeData)
+		_ = j.ctx.Repos.Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData)
 		return fmt.Errorf("failed to configure OPcache: %s", result.GetOutput())
 	}
 
@@ -107,7 +107,7 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 	}
 
 	typeData["opcache"] = opcacheSettings
-	if err := j.ctx.Repo.UpdateServiceWithTypeData(ctx, service.ID, service.Status, typeData); err != nil {
+	if err := j.ctx.Repos.Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData); err != nil {
 		j.ctx.LogError(err, "Failed to save OPcache settings")
 	}
 

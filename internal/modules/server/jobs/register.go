@@ -13,12 +13,12 @@ import (
 var jobContext *JobContext
 
 // Register initializes and registers all server job handlers.
-func Register(mux *asynq.ServeMux, deps module.Deps, repo contracts.Repository) {
+func Register(mux *asynq.ServeMux, deps module.Deps, repos contracts.RepositoryRegistry) {
 	providerFactory := providers.NewFactory(sshkey.NewGenerator())
 
 	jobContext = NewJobContext(
 		deps.DB,
-		repo,
+		repos,
 		deps.Logger,
 		deps.WebSocket,
 		deps.Dispatcher,

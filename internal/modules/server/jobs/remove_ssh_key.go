@@ -29,13 +29,13 @@ type RemoveSshKeyJob struct {
 // Handle processes the job
 func (j *RemoveSshKeyJob) Handle(ctx context.Context) error {
 	// Find the SSH key
-	sshKey, err := j.ctx.Repo.FindSshKeyByID(ctx, j.Payload.KeyID)
+	sshKey, err := j.ctx.Repos.SshKey().FindByID(ctx, j.Payload.KeyID)
 	if err != nil {
 		return fmt.Errorf("failed to find SSH key: %w", err)
 	}
 
 	// Find the server
-	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -65,7 +65,7 @@ func (j *RemoveSshKeyJob) Handle(ctx context.Context) error {
 		Log("SSH key was removed from server")
 
 	// Detach the key from server in the database
-	if err := j.ctx.Repo.DetachSshKeyFromServer(ctx, server.ID, sshKey.ID); err != nil {
+	if err := j.ctx.Repos.SshKey().DetachFromServer(ctx, server.ID, sshKey.ID); err != nil {
 		return fmt.Errorf("failed to detach SSH key from server: %w", err)
 	}
 

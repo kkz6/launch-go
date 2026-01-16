@@ -29,7 +29,7 @@ type InstallFirewallRuleJob struct {
 // Handle processes the job
 func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 	// Find the firewall rule with server preloaded
-	rule, err := j.ctx.Repo.FindFirewallRuleByIDWithServer(ctx, j.Payload.RuleID)
+	rule, err := j.ctx.Repos.FirewallRule().FindByIDWithServer(ctx, j.Payload.RuleID)
 	if err != nil {
 		return fmt.Errorf("failed to find firewall rule: %w", err)
 	}
@@ -59,7 +59,7 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 	}
 
 	// Mark as installed
-	if err := j.ctx.Repo.MarkFirewallRuleInstalled(ctx, rule.ID); err != nil {
+	if err := j.ctx.Repos.FirewallRule().MarkInstalled(ctx, rule.ID); err != nil {
 		return fmt.Errorf("failed to mark rule as installed: %w", err)
 	}
 
@@ -97,7 +97,7 @@ func (j *InstallFirewallRuleJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Mark installation as failed
-	if markErr := j.ctx.Repo.MarkFirewallRuleFailed(ctx, j.Payload.RuleID); markErr != nil {
+	if markErr := j.ctx.Repos.FirewallRule().MarkFailed(ctx, j.Payload.RuleID); markErr != nil {
 		j.ctx.LogError(markErr, "Failed to mark firewall rule as failed")
 	}
 }

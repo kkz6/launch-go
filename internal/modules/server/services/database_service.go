@@ -11,25 +11,25 @@ import (
 
 // ListDatabases returns all databases on a server
 func (s *Service) ListDatabases(ctx context.Context, serverID, teamID string) ([]dbmodels.Database, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	return s.repo.FindDatabasesByServer(ctx, serverID)
+	return s.repos.Database().FindByServer(ctx, serverID)
 }
 
 // ListDatabaseUsers returns all database users on a server
 func (s *Service) ListDatabaseUsers(ctx context.Context, serverID, teamID string) ([]dbmodels.DatabaseUser, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	return s.repo.FindDatabaseUsersByServer(ctx, serverID)
+	return s.repos.Database().FindUsersByServer(ctx, serverID)
 }
 
 // CreateDatabase creates a new database on a server
 func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, req *dto.CreateDatabaseRequest) (*dbmodels.Database, error) {
-	_, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	_, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -39,7 +39,7 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 		Name:     req.Name,
 	}
 
-	if err := s.repo.CreateDatabase(ctx, db); err != nil {
+	if err := s.repos.Database().Create(ctx, db); err != nil {
 		return nil, err
 	}
 
@@ -49,7 +49,7 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 // SyncDatabases syncs databases from the server
 func (s *Service) SyncDatabases(ctx context.Context, serverID, teamID string, userID *string) error {
 	// Verify server belongs to team
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return err
 	}
 

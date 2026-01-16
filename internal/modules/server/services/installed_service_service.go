@@ -12,11 +12,11 @@ import (
 
 // ListServices returns all services for a server
 func (s *Service) ListServices(ctx context.Context, serverID, teamID string) ([]models.InstalledService, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	services, err := s.repo.FindServicesByServer(ctx, serverID)
+	services, err := s.repos.Service().FindByServer(ctx, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -31,7 +31,7 @@ func (s *Service) ListServices(ctx context.Context, serverID, teamID string) ([]
 
 // InstallService installs a software on a server
 func (s *Service) InstallService(ctx context.Context, serverID, teamID string, req *dto.CreateServiceRequest) (*models.InstalledService, error) {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -41,7 +41,7 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 		return nil, ErrInvalidSoftware
 	}
 
-	existingService, _ := s.repo.FindServiceByServerAndSoftware(ctx, serverID, software)
+	existingService, _ := s.repos.Service().FindByServerAndSoftware(ctx, serverID, software)
 	if existingService != nil {
 		return nil, ErrServiceAlreadyExists
 	}
@@ -56,7 +56,7 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 		Version:   software.GetVersion(),
 	}
 
-	if err := s.repo.CreateService(ctx, service); err != nil {
+	if err := s.repos.Service().Create(ctx, service); err != nil {
 		return nil, err
 	}
 
@@ -69,12 +69,12 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 
 // HandleServiceOperation handles service operations (start, stop, restart, remove, status)
 func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, serviceID string, operation enums.ServiceOption) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
 	}
 
-	service, err := s.repo.FindServiceByID(ctx, serviceID)
+	service, err := s.repos.Service().FindByID(ctx, serviceID)
 	if err != nil {
 		return err
 	}
@@ -164,11 +164,11 @@ func (s *Service) dispatchServiceStatusJob(server *models.Server, service *model
 
 // GetServiceStatus returns the current status of a service from the database
 func (s *Service) GetServiceStatus(ctx context.Context, serverID, teamID, serviceID string) (*models.InstalledService, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	service, err := s.repo.FindServiceByID(ctx, serviceID)
+	service, err := s.repos.Service().FindByID(ctx, serviceID)
 	if err != nil {
 		return nil, err
 	}
@@ -182,12 +182,12 @@ func (s *Service) GetServiceStatus(ctx context.Context, serverID, teamID, servic
 
 // CheckServiceStatus triggers a status check on the server for a service
 func (s *Service) CheckServiceStatus(ctx context.Context, serverID, teamID, serviceID string) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
 	}
 
-	service, err := s.repo.FindServiceByID(ctx, serviceID)
+	service, err := s.repos.Service().FindByID(ctx, serviceID)
 	if err != nil {
 		return err
 	}
@@ -201,12 +201,12 @@ func (s *Service) CheckServiceStatus(ctx context.Context, serverID, teamID, serv
 
 // GetAvailableServices returns all available services grouped by type with installation status
 func (s *Service) GetAvailableServices(ctx context.Context, serverID, teamID string) ([]dto.AvailableSoftwareResponse, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
 	// Get all installed services for this server
-	installedServices, err := s.repo.FindServicesByServer(ctx, serverID)
+	installedServices, err := s.repos.Service().FindByServer(ctx, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -282,12 +282,12 @@ func (s *Service) GetAvailableServices(ctx context.Context, serverID, teamID str
 
 // GetPhpVersions returns all PHP versions with their installation status for a server
 func (s *Service) GetPhpVersions(ctx context.Context, serverID, teamID string) ([]dto.PhpVersionResponse, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
 	// Get all installed PHP services
-	installedServices, err := s.repo.FindServicesByServerAndType(ctx, serverID, enums.ServiceTypePhp)
+	installedServices, err := s.repos.Service().FindByServerAndType(ctx, serverID, enums.ServiceTypePhp)
 	if err != nil {
 		return nil, err
 	}

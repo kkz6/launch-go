@@ -30,7 +30,7 @@ type UninstallCronJob struct {
 // Handle processes the job
 func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	// Find the cron with server preloaded
-	cron, err := j.ctx.Repo.FindCronByIDWithServer(ctx, j.Payload.CronID)
+	cron, err := j.ctx.Repos.Cron().FindByIDWithServer(ctx, j.Payload.CronID)
 	if err != nil {
 		return fmt.Errorf("failed to find cron: %w", err)
 	}
@@ -64,7 +64,7 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	logger.Log("Cron job was uninstalled")
 
 	// Delete the cron record
-	if err := j.ctx.Repo.DeleteCron(ctx, cron.ID); err != nil {
+	if err := j.ctx.Repos.Cron().Delete(ctx, cron.ID); err != nil {
 		return fmt.Errorf("failed to delete cron: %w", err)
 	}
 
@@ -90,7 +90,7 @@ func (j *UninstallCronJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Mark uninstallation as failed
-	cron, findErr := j.ctx.Repo.FindCronByID(ctx, j.Payload.CronID)
+	cron, findErr := j.ctx.Repos.Cron().FindByID(ctx, j.Payload.CronID)
 	if findErr == nil && cron != nil {
 		now := time.Now()
 		j.ctx.DB.Model(cron).Updates(map[string]any{

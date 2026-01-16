@@ -13,7 +13,7 @@ import (
 
 // Service aggregates all auth-related services
 type Service struct {
-	repo              *repositories.Repository
+	repos             *repositories.Registry
 	config            *config.Config
 	logger            *zerolog.Logger
 	auth              *AuthService
@@ -26,18 +26,18 @@ type Service struct {
 }
 
 // NewService creates a new Service instance
-func NewService(repo *repositories.Repository, cfg *config.Config, logger *zerolog.Logger) *Service {
+func NewService(repos *repositories.Registry, cfg *config.Config, logger *zerolog.Logger) *Service {
 	return &Service{
-		repo:              repo,
+		repos:             repos,
 		config:            cfg,
 		logger:            logger,
-		auth:              NewAuthService(repo, cfg),
-		user:              NewUserService(repo),
-		emailVerification: NewEmailVerificationService(repo, cfg),
-		passwordReset:     NewPasswordResetService(repo),
-		twoFactor:         NewTwoFactorService(repo, cfg),
-		team:              NewTeamService(repo),
-		teamMember:        NewTeamMemberService(repo),
+		auth:              NewAuthService(repos, cfg),
+		user:              NewUserService(repos),
+		emailVerification: NewEmailVerificationService(repos, cfg),
+		passwordReset:     NewPasswordResetService(repos),
+		twoFactor:         NewTwoFactorService(repos, cfg),
+		team:              NewTeamService(repos),
+		teamMember:        NewTeamMemberService(repos),
 	}
 }
 
@@ -211,7 +211,7 @@ func (s *Service) GetTeamInvitations(ctx context.Context, teamID string) ([]mode
 	return s.teamMember.GetTeamInvitations(ctx, teamID)
 }
 
-// Repository returns the repository
-func (s *Service) Repository() *repositories.Repository {
-	return s.repo
+// Repos returns the repository registry
+func (s *Service) Repos() *repositories.Registry {
+	return s.repos
 }

@@ -17,13 +17,13 @@ var (
 
 // GetComposerAuth retrieves the Composer auth.json configuration from the server
 func (s *Service) GetComposerAuth(ctx context.Context, serverID, teamID string) (*dto.ComposerAuthResponse, error) {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Check if Composer is installed
-	composerService, _ := s.repo.FindServiceByServerAndType(ctx, serverID, enums.ServiceTypeComposer)
+	composerService, _ := s.repos.Service().FindOneByServerAndType(ctx, serverID, enums.ServiceTypeComposer)
 	if composerService == nil {
 		return nil, ErrComposerNotInstalled
 	}
@@ -75,13 +75,13 @@ func (s *Service) GetComposerAuth(ctx context.Context, serverID, teamID string) 
 
 // UpdateComposerAuth updates the Composer auth.json configuration on the server
 func (s *Service) UpdateComposerAuth(ctx context.Context, serverID, teamID string, req *dto.UpdateComposerAuthRequest) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
 	}
 
 	// Check if Composer is installed
-	composerService, _ := s.repo.FindServiceByServerAndType(ctx, serverID, enums.ServiceTypeComposer)
+	composerService, _ := s.repos.Service().FindOneByServerAndType(ctx, serverID, enums.ServiceTypeComposer)
 	if composerService == nil {
 		return ErrComposerNotInstalled
 	}

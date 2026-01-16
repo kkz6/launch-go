@@ -27,13 +27,13 @@ type ArchiveServerJob struct {
 // Handle processes the job
 func (j *ArchiveServerJob) Handle(ctx context.Context) error {
 	// Find the server
-	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Archive the server
-	if err := j.ctx.Repo.ArchiveServer(ctx, server.ID); err != nil {
+	if err := j.ctx.Repos.Server().Archive(ctx, server.ID); err != nil {
 		return fmt.Errorf("failed to archive server: %w", err)
 	}
 

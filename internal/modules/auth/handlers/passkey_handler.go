@@ -3,19 +3,20 @@ package handlers
 import (
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // PasskeyHandler handles passkey-related HTTP requests
 type PasskeyHandler struct {
-	passkeyRepo *repositories.PasskeyRepository
+	repos contracts.RepositoryRegistry
 }
 
 // NewPasskeyHandler creates a new PasskeyHandler instance
-func NewPasskeyHandler(passkeyRepo *repositories.PasskeyRepository) *PasskeyHandler {
+func NewPasskeyHandler(repos *repositories.Registry) *PasskeyHandler {
 	return &PasskeyHandler{
-		passkeyRepo: passkeyRepo,
+		repos: repos,
 	}
 }
 
@@ -32,7 +33,7 @@ type PasskeyResponse struct {
 func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
 
-	passkeys, err := h.passkeyRepo.FindByUserID(c.Context(), userID)
+	passkeys, err := h.repos.Passkey().FindByUserID(c.Context(), userID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -70,7 +71,7 @@ func (h *PasskeyHandler) Delete(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
 	passkeyID := c.Params("id")
 
-	err := h.passkeyRepo.DeleteByUserID(c.Context(), passkeyID, userID)
+	err := h.repos.Passkey().DeleteByUserID(c.Context(), passkeyID, userID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -93,7 +94,7 @@ func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
 	}
 
-	passkey, err := h.passkeyRepo.FindByID(c.Context(), passkeyID)
+	passkey, err := h.repos.Passkey().FindByID(c.Context(), passkeyID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -103,7 +104,7 @@ func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
 	}
 
 	passkey.Name = &req.Name
-	if err := h.passkeyRepo.Update(c.Context(), passkey); err != nil {
+	if err := h.repos.Passkey().Update(c.Context(), passkey); err != nil {
 		return response.HandleError(c, err)
 	}
 

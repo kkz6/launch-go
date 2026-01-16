@@ -22,7 +22,7 @@ import (
 // SiteService handles business logic for sites
 type SiteService struct {
 	*BaseService
-	serverRepo      *serverrepos.Repository
+	serverRepos     *serverrepos.Registry
 	serverService   *serverservices.Service
 	databaseService *databaseservices.Service
 }
@@ -34,9 +34,9 @@ func NewSiteService(deps *ServiceDeps) *SiteService {
 	}
 }
 
-// SetServerRepository sets the server repository for cross-module queries
-func (s *SiteService) SetServerRepository(repo *serverrepos.Repository) {
-	s.serverRepo = repo
+// SetServerRepos sets the server repository registry for cross-module queries
+func (s *SiteService) SetServerRepos(repos *serverrepos.Registry) {
+	s.serverRepos = repos
 }
 
 // SetServerService sets the server service for cross-module operations
@@ -296,7 +296,7 @@ func (s *SiteService) getExistingDatabaseInfo(ctx context.Context, databaseID, s
 // handleSchedulerCreation creates a cron job for Laravel/WordPress scheduler
 func (s *SiteService) handleSchedulerCreation(ctx context.Context, site *models.Site, serverID, userID string) {
 	// Get team ID from server
-	server, err := s.serverRepo.FindServerByID(ctx, serverID)
+	server, err := s.serverRepos.Server().FindByID(ctx, serverID)
 	if err != nil {
 		s.LogError(err, "Failed to get server for scheduler creation", "site_id", site.ID)
 		return
@@ -571,11 +571,11 @@ func (s *SiteService) GetSettings(ctx context.Context, id, serverID string) (*Si
 
 // getServerPhpVersions returns installed PHP versions for a server using relationship
 func (s *SiteService) getServerPhpVersions(ctx context.Context, serverID string) []dto.PhpVersionResponse {
-	if s.serverRepo == nil {
+	if s.serverRepos == nil {
 		return nil
 	}
 
-	server, err := s.serverRepo.FindServerByID(ctx, serverID)
+	server, err := s.serverRepos.Server().FindByID(ctx, serverID)
 	if err != nil || server == nil {
 		return nil
 	}

@@ -22,28 +22,28 @@ var (
 // Module represents the server module
 type Module struct {
 	module.Base
-	repo    *repositories.Repository
+	repos   *repositories.Registry
 	service *services.Service
 }
 
 // NewModule creates a new server module using the builder
 func NewModule(b *module.Builder) *Module {
-	repo := repositories.NewRepository(b.DB())
-	service := services.NewService(repo, b.Queue(), b.WebSocket(), b.Dispatcher(), b.Logger())
+	repos := repositories.NewRegistry(b.DB())
+	service := services.NewService(repos, b.Queue(), b.WebSocket(), b.Dispatcher(), b.Logger())
 
 	return &Module{
 		Base:    module.NewBase(ModuleName, b),
-		repo:    repo,
+		repos:   repos,
 		service: service,
 	}
 }
 
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
-	jobs.Register(mux, m.Deps(), m.repo)
+	jobs.Register(mux, m.Deps(), m.repos)
 }
 
-// Repository returns the server repository
-func (m *Module) Repository() *repositories.Repository {
-	return m.repo
+// Repos returns the repository registry
+func (m *Module) Repos() *repositories.Registry {
+	return m.repos
 }

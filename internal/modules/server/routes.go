@@ -126,8 +126,8 @@ func (m *Module) registerSshKeyRoutes(router fiber.Router, authMiddleware fiber.
 // RegisterWebhookRoutes registers all webhook routes (no auth required, uses signed URLs)
 func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 	deps := m.Deps()
-	webhookHandler := handlers.NewTaskWebhookHandler(m.repo, deps.Config.App.Key, deps.Queue, deps.Logger)
-	provisionScriptHandler := handlers.NewProvisionScriptHandler(m.repo, m.service)
+	webhookHandler := handlers.NewTaskWebhookHandler(m.repos, deps.Config.App.Key, deps.Queue, deps.Logger)
+	provisionScriptHandler := handlers.NewProvisionScriptHandler(m.repos, m.service)
 
 	m.registerTaskWebhookRoutes(router, webhookHandler)
 	m.registerProvisionScriptRoutes(router, provisionScriptHandler)

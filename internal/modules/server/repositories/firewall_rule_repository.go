@@ -2,51 +2,107 @@ package repositories
 
 import (
 	"context"
+	"errors"
+	"time"
+
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 )
 
-// CreateFirewallRule creates a new firewall rule
-func (r *Repository) CreateFirewallRule(ctx context.Context, rule *models.FirewallRule) error {
-	return create(r, ctx, rule)
+// FirewallRuleRepository handles firewall rule database operations
+type FirewallRuleRepository struct {
+	BaseRepository
 }
 
-// FindFirewallRuleByID finds a firewall rule by ID
-func (r *Repository) FindFirewallRuleByID(ctx context.Context, id string) (*models.FirewallRule, error) {
-	return findByID[models.FirewallRule](r, ctx, id, ErrFirewallRuleNotFound)
+// NewFirewallRuleRepository creates a new FirewallRuleRepository instance
+func NewFirewallRuleRepository(db *gorm.DB) *FirewallRuleRepository {
+	return &FirewallRuleRepository{
+		BaseRepository: NewBaseRepository(db),
+	}
 }
 
-// FindFirewallRuleByIDWithServer finds a firewall rule by ID with the Server relation preloaded
-func (r *Repository) FindFirewallRuleByIDWithServer(ctx context.Context, id string) (*models.FirewallRule, error) {
-	return findByIDWithPreload[models.FirewallRule](r, ctx, id, "Server", ErrFirewallRuleNotFound)
+// Create creates a new firewall rule
+func (r *FirewallRuleRepository) Create(ctx context.Context, rule *models.FirewallRule) error {
+	return r.DB().WithContext(ctx).Create(rule).Error
 }
 
-// FindFirewallRuleByIDAndServer finds a firewall rule by ID and server ID
-func (r *Repository) FindFirewallRuleByIDAndServer(ctx context.Context, id, serverID string) (*models.FirewallRule, error) {
-	return findByIDAndServer[models.FirewallRule](r, ctx, id, serverID, ErrFirewallRuleNotFound)
+// FindByID finds a firewall rule by ID
+func (r *FirewallRuleRepository) FindByID(ctx context.Context, id string) (*models.FirewallRule, error) {
+	var rule models.FirewallRule
+	err := r.DB().WithContext(ctx).First(&rule, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrFirewallRuleNotFound
+		}
+		return nil, err
+	}
+	return &rule, nil
 }
 
-// FindFirewallRulesByServer finds all firewall rules for a server
-func (r *Repository) FindFirewallRulesByServer(ctx context.Context, serverID string) ([]models.FirewallRule, error) {
-	return findByServer[models.FirewallRule](r, ctx, serverID)
+// FindByIDWithServer finds a firewall rule by ID with the Server relation preloaded
+func (r *FirewallRuleRepository) FindByIDWithServer(ctx context.Context, id string) (*models.FirewallRule, error) {
+	var rule models.FirewallRule
+	err := r.DB().WithContext(ctx).Preload("Server").First(&rule, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrFirewallRuleNotFound
+		}
+		return nil, err
+	}
+	return &rule, nil
 }
 
-// UpdateFirewallRule updates a firewall rule
-func (r *Repository) UpdateFirewallRule(ctx context.Context, rule *models.FirewallRule) error {
-	return update(r, ctx, rule)
+// FindByIDAndServer finds a firewall rule by ID and server ID
+func (r *FirewallRuleRepository) FindByIDAndServer(ctx context.Context, id, serverID string) (*models.FirewallRule, error) {
+	var rule models.FirewallRule
+	err := r.DB().WithContext(ctx).First(&rule, "id = ? AND server_id = ?", id, serverID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrFirewallRuleNotFound
+		}
+		return nil, err
+	}
+	return &rule, nil
 }
 
-// MarkFirewallRuleInstalled marks a firewall rule as installed
-func (r *Repository) MarkFirewallRuleInstalled(ctx context.Context, id string) error {
-	return markAsInstalled[models.FirewallRule](r, ctx, id)
+// FindByServer finds all firewall rules for a server
+func (r *FirewallRuleRepository) FindByServer(ctx context.Context, serverID string) ([]models.FirewallRule, error) {
+	var rules []models.FirewallRule
+	err := r.DB().WithContext(ctx).
+		Where("server_id = ?", serverID).
+		Order("created_at DESC").
+		Find(&rules).Error
+	return rules, err
 }
 
-// MarkFirewallRuleFailed marks a firewall rule installation as failed
-func (r *Repository) MarkFirewallRuleFailed(ctx context.Context, id string) error {
-	return markAsFailed[models.FirewallRule](r, ctx, id)
+// Update updates a firewall rule
+func (r *FirewallRuleRepository) Update(ctx context.Context, rule *models.FirewallRule) error {
+	return r.DB().WithContext(ctx).Save(rule).Error
 }
 
-// DeleteFirewallRule deletes a firewall rule
-func (r *Repository) DeleteFirewallRule(ctx context.Context, id string) error {
-	return deleteByID[models.FirewallRule](r, ctx, id)
+// MarkInstalled marks a firewall rule as installed
+func (r *FirewallRuleRepository) MarkInstalled(ctx context.Context, id string) error {
+	now := time.Now()
+	return r.DB().WithContext(ctx).
+		Model(&models.FirewallRule{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"installed_at":           now,
+			"installation_failed_at": nil,
+		}).Error
+}
+
+// MarkFailed marks a firewall rule installation as failed
+func (r *FirewallRuleRepository) MarkFailed(ctx context.Context, id string) error {
+	now := time.Now()
+	return r.DB().WithContext(ctx).
+		Model(&models.FirewallRule{}).
+		Where("id = ?", id).
+		Update("installation_failed_at", now).Error
+}
+
+// Delete deletes a firewall rule
+func (r *FirewallRuleRepository) Delete(ctx context.Context, id string) error {
+	return r.DB().WithContext(ctx).Delete(&models.FirewallRule{}, "id = ?", id).Error
 }

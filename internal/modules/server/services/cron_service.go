@@ -13,16 +13,16 @@ import (
 
 // ListCrons returns all cron jobs for a server
 func (s *Service) ListCrons(ctx context.Context, serverID, teamID string) ([]models.Cron, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	return s.repo.FindVisibleCronsByServer(ctx, serverID)
+	return s.repos.Cron().FindVisibleByServer(ctx, serverID)
 }
 
 // CreateCron creates a new cron job
 func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *dto.CreateCronRequest) (*models.Cron, error) {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -47,11 +47,11 @@ func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *
 		Hidden:     false,
 	}
 
-	if err := s.repo.CreateCron(ctx, cron); err != nil {
+	if err := s.repos.Cron().Create(ctx, cron); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(cron).
@@ -75,11 +75,11 @@ func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *
 
 // UpdateCron updates a cron job
 func (s *Service) UpdateCron(ctx context.Context, serverID, teamID, cronID string, req *dto.UpdateCronRequest) (*models.Cron, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	cron, err := s.repo.FindCronByIDAndServer(ctx, cronID, serverID)
+	cron, err := s.repos.Cron().FindByIDAndServer(ctx, cronID, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -100,11 +100,11 @@ func (s *Service) UpdateCron(ctx context.Context, serverID, teamID, cronID strin
 		cron.Frequency = *req.Frequency
 	}
 
-	if err := s.repo.UpdateCron(ctx, cron); err != nil {
+	if err := s.repos.Cron().Update(ctx, cron); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(cron).
@@ -122,17 +122,17 @@ func (s *Service) UpdateCron(ctx context.Context, serverID, teamID, cronID strin
 
 // DeleteCron deletes a cron job
 func (s *Service) DeleteCron(ctx context.Context, serverID, teamID, cronID string) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
 	}
 
-	cron, err := s.repo.FindCronByIDAndServer(ctx, cronID, serverID)
+	cron, err := s.repos.Cron().FindByIDAndServer(ctx, cronID, serverID)
 	if err != nil {
 		return err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(cron).
@@ -142,7 +142,7 @@ func (s *Service) DeleteCron(ctx context.Context, serverID, teamID, cronID strin
 	if cron.IsInstalled() && server.IsProvisioned() {
 		now := time.Now()
 		cron.UninstallationRequestedAt = &now
-		if err := s.repo.UpdateCron(ctx, cron); err != nil {
+		if err := s.repos.Cron().Update(ctx, cron); err != nil {
 			return err
 		}
 
@@ -159,7 +159,7 @@ func (s *Service) DeleteCron(ctx context.Context, serverID, teamID, cronID strin
 		return nil
 	}
 
-	if err := s.repo.DeleteCron(ctx, cronID); err != nil {
+	if err := s.repos.Cron().Delete(ctx, cronID); err != nil {
 		return err
 	}
 

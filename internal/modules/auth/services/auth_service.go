@@ -18,14 +18,14 @@ import (
 
 // AuthService handles authentication-related operations
 type AuthService struct {
-	repo   *repositories.Repository
+	repos  *repositories.Registry
 	config *config.Config
 }
 
 // NewAuthService creates a new AuthService instance
-func NewAuthService(repo *repositories.Repository, cfg *config.Config) *AuthService {
+func NewAuthService(repos *repositories.Registry, cfg *config.Config) *AuthService {
 	return &AuthService{
-		repo:   repo,
+		repos:  repos,
 		config: cfg,
 	}
 }
@@ -35,7 +35,7 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 	req.Normalize()
 
 	// Check if user exists
-	exists, err := s.repo.UserExistsByEmail(ctx, req.Email)
+	exists, err := s.repos.User().ExistsByEmail(ctx, req.Email)
 	if err != nil {
 		return nil, err
 	}
@@ -64,7 +64,7 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		Timezone: &timezone,
 	}
 
-	if err := s.repo.CreateUser(ctx, user); err != nil {
+	if err := s.repos.User().Create(ctx, user); err != nil {
 		return nil, err
 	}
 
@@ -104,7 +104,7 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.AuthResponse, error) {
 	req.Normalize()
 
-	user, err := s.repo.FindUserByEmail(ctx, req.Email)
+	user, err := s.repos.User().FindByEmail(ctx, req.Email)
 	if err != nil {
 		return nil, apperrors.ErrUnauthorized
 	}
@@ -173,7 +173,7 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		return nil, apperrors.ErrUnauthorized
 	}
 
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil || user == nil {
 		return nil, apperrors.ErrUnauthorized
 	}
@@ -199,7 +199,7 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 
 // handleInvitation handles team invitation during registration
 func (s *AuthService) handleInvitation(ctx context.Context, user *models.User, invitationID string) {
-	invitation, err := s.repo.FindTeamInvitationByID(ctx, invitationID)
+	invitation, err := s.repos.TeamInvitation().FindByID(ctx, invitationID)
 	if err != nil || invitation == nil {
 		return
 	}
@@ -213,40 +213,40 @@ func (s *AuthService) handleInvitation(ctx context.Context, user *models.User, i
 	if invitation.Role != nil {
 		role = *invitation.Role
 	}
-	if err := s.repo.AddUserToTeam(ctx, invitation.TeamID, user.ID, role); err != nil {
+	if err := s.repos.TeamMember().AddUser(ctx, invitation.TeamID, user.ID, role); err != nil {
 		return
 	}
 
 	// Set current team
-	if err := s.repo.SetCurrentTeam(ctx, user.ID, invitation.TeamID); err != nil {
+	if err := s.repos.User().SetCurrentTeam(ctx, user.ID, invitation.TeamID); err != nil {
 		return
 	}
 
 	user.CurrentTeamID = &invitation.TeamID
 
 	// Delete invitation
-	s.repo.DeleteTeamInvitation(ctx, invitation.ID)
+	s.repos.TeamInvitation().Delete(ctx, invitation.ID)
 }
 
 // createPersonalTeam creates a personal team for a new user
 func (s *AuthService) createPersonalTeam(ctx context.Context, user *models.User) error {
 	team := &models.Team{
 		Name:         user.Name + "'s Team",
-		UserID:      user.ID,
+		UserID:       user.ID,
 		PersonalTeam: true,
 	}
 
-	if err := s.repo.CreateTeam(ctx, team); err != nil {
+	if err := s.repos.Team().Create(ctx, team); err != nil {
 		return err
 	}
 
 	// Add user to team as owner
-	if err := s.repo.AddUserToTeam(ctx, team.ID, user.ID, enums.TeamRoleOwner.String()); err != nil {
+	if err := s.repos.TeamMember().AddUser(ctx, team.ID, user.ID, enums.TeamRoleOwner.String()); err != nil {
 		return err
 	}
 
 	// Set current team
-	if err := s.repo.SetCurrentTeam(ctx, user.ID, team.ID); err != nil {
+	if err := s.repos.User().SetCurrentTeam(ctx, user.ID, team.ID); err != nil {
 		return err
 	}
 

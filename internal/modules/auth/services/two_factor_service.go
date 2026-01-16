@@ -19,21 +19,21 @@ import (
 
 // TwoFactorService handles two-factor authentication operations
 type TwoFactorService struct {
-	repo   *repositories.Repository
+	repos  *repositories.Registry
 	config *config.Config
 }
 
 // NewTwoFactorService creates a new TwoFactorService instance
-func NewTwoFactorService(repo *repositories.Repository, cfg *config.Config) *TwoFactorService {
+func NewTwoFactorService(repos *repositories.Registry, cfg *config.Config) *TwoFactorService {
 	return &TwoFactorService{
-		repo:   repo,
+		repos:  repos,
 		config: cfg,
 	}
 }
 
 // EnableTwoFactor initiates 2FA setup
 func (s *TwoFactorService) EnableTwoFactor(ctx context.Context, userID string) (*dto.TwoFactorResponse, error) {
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -56,7 +56,7 @@ func (s *TwoFactorService) EnableTwoFactor(ctx context.Context, userID string) (
 	user.TwoFactorSecret = &secret
 	user.TwoFactorConfirmedAt = nil
 
-	if err := s.repo.UpdateUser(ctx, user); err != nil {
+	if err := s.repos.User().Update(ctx, user); err != nil {
 		return nil, err
 	}
 
@@ -68,7 +68,7 @@ func (s *TwoFactorService) EnableTwoFactor(ctx context.Context, userID string) (
 
 // ConfirmTwoFactor confirms 2FA setup
 func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, code string) error {
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -100,12 +100,12 @@ func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, code st
 	codesStr := strings.Join(recoveryCodes, ",")
 	user.TwoFactorRecoveryCodes = &codesStr
 
-	return s.repo.UpdateUser(ctx, user)
+	return s.repos.User().Update(ctx, user)
 }
 
 // DisableTwoFactor disables 2FA
 func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID, password string) error {
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -123,12 +123,12 @@ func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID, passwor
 	user.TwoFactorConfirmedAt = nil
 	user.TwoFactorRecoveryCodes = nil
 
-	return s.repo.UpdateUser(ctx, user)
+	return s.repos.User().Update(ctx, user)
 }
 
 // VerifyTwoFactor verifies a 2FA code
 func (s *TwoFactorService) VerifyTwoFactor(ctx context.Context, userID, code string) (bool, error) {
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return false, err
 	}
@@ -155,7 +155,7 @@ func (s *TwoFactorService) VerifyTwoFactor(ctx context.Context, userID, code str
 				codes = append(codes[:i], codes[i+1:]...)
 				codesStr := strings.Join(codes, ",")
 				user.TwoFactorRecoveryCodes = &codesStr
-				s.repo.UpdateUser(ctx, user)
+				s.repos.User().Update(ctx, user)
 
 				return true, nil
 			}
@@ -167,7 +167,7 @@ func (s *TwoFactorService) VerifyTwoFactor(ctx context.Context, userID, code str
 
 // GetRecoveryCodes returns the user's recovery codes
 func (s *TwoFactorService) GetRecoveryCodes(ctx context.Context, userID string) ([]string, error) {
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -185,7 +185,7 @@ func (s *TwoFactorService) GetRecoveryCodes(ctx context.Context, userID string) 
 
 // RegenerateRecoveryCodes generates new recovery codes
 func (s *TwoFactorService) RegenerateRecoveryCodes(ctx context.Context, userID string) ([]string, error) {
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +206,7 @@ func (s *TwoFactorService) RegenerateRecoveryCodes(ctx context.Context, userID s
 	codesStr := strings.Join(codes, ",")
 	user.TwoFactorRecoveryCodes = &codesStr
 
-	if err := s.repo.UpdateUser(ctx, user); err != nil {
+	if err := s.repos.User().Update(ctx, user); err != nil {
 		return nil, err
 	}
 
@@ -215,7 +215,7 @@ func (s *TwoFactorService) RegenerateRecoveryCodes(ctx context.Context, userID s
 
 // HasTwoFactorEnabled checks if user has 2FA enabled
 func (s *TwoFactorService) HasTwoFactorEnabled(ctx context.Context, userID string) (bool, error) {
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return false, err
 	}

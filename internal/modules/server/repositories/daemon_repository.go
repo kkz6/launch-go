@@ -2,45 +2,89 @@ package repositories
 
 import (
 	"context"
+	"errors"
 	"time"
+
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 )
 
-// CreateDaemon creates a new daemon
-func (r *Repository) CreateDaemon(ctx context.Context, daemon *models.Daemon) error {
-	return create(r, ctx, daemon)
+// DaemonRepository handles daemon database operations
+type DaemonRepository struct {
+	BaseRepository
 }
 
-// FindDaemonByID finds a daemon by ID
-func (r *Repository) FindDaemonByID(ctx context.Context, id string) (*models.Daemon, error) {
-	return findByID[models.Daemon](r, ctx, id, ErrDaemonNotFound)
+// NewDaemonRepository creates a new DaemonRepository instance
+func NewDaemonRepository(db *gorm.DB) *DaemonRepository {
+	return &DaemonRepository{
+		BaseRepository: NewBaseRepository(db),
+	}
 }
 
-// FindDaemonByIDWithServer finds a daemon by ID with the Server relation preloaded
-func (r *Repository) FindDaemonByIDWithServer(ctx context.Context, id string) (*models.Daemon, error) {
-	return findByIDWithPreload[models.Daemon](r, ctx, id, "Server", ErrDaemonNotFound)
+// Create creates a new daemon
+func (r *DaemonRepository) Create(ctx context.Context, daemon *models.Daemon) error {
+	return r.DB().WithContext(ctx).Create(daemon).Error
 }
 
-// FindDaemonByIDAndServer finds a daemon by ID and server ID
-func (r *Repository) FindDaemonByIDAndServer(ctx context.Context, id, serverID string) (*models.Daemon, error) {
-	return findByIDAndServer[models.Daemon](r, ctx, id, serverID, ErrDaemonNotFound)
+// FindByID finds a daemon by ID
+func (r *DaemonRepository) FindByID(ctx context.Context, id string) (*models.Daemon, error) {
+	var daemon models.Daemon
+	err := r.DB().WithContext(ctx).First(&daemon, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrDaemonNotFound
+		}
+		return nil, err
+	}
+	return &daemon, nil
 }
 
-// FindDaemonsByServer finds all daemons for a server
-func (r *Repository) FindDaemonsByServer(ctx context.Context, serverID string) ([]models.Daemon, error) {
-	return findByServer[models.Daemon](r, ctx, serverID)
+// FindByIDWithServer finds a daemon by ID with the Server relation preloaded
+func (r *DaemonRepository) FindByIDWithServer(ctx context.Context, id string) (*models.Daemon, error) {
+	var daemon models.Daemon
+	err := r.DB().WithContext(ctx).Preload("Server").First(&daemon, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrDaemonNotFound
+		}
+		return nil, err
+	}
+	return &daemon, nil
 }
 
-// UpdateDaemon updates a daemon
-func (r *Repository) UpdateDaemon(ctx context.Context, daemon *models.Daemon) error {
-	return update(r, ctx, daemon)
+// FindByIDAndServer finds a daemon by ID and server ID
+func (r *DaemonRepository) FindByIDAndServer(ctx context.Context, id, serverID string) (*models.Daemon, error) {
+	var daemon models.Daemon
+	err := r.DB().WithContext(ctx).First(&daemon, "id = ? AND server_id = ?", id, serverID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrDaemonNotFound
+		}
+		return nil, err
+	}
+	return &daemon, nil
 }
 
-// UpdateDaemonStatus updates a daemon's running status
-func (r *Repository) UpdateDaemonStatus(ctx context.Context, id string, running bool) error {
+// FindByServer finds all daemons for a server
+func (r *DaemonRepository) FindByServer(ctx context.Context, serverID string) ([]models.Daemon, error) {
+	var daemons []models.Daemon
+	err := r.DB().WithContext(ctx).
+		Where("server_id = ?", serverID).
+		Order("created_at DESC").
+		Find(&daemons).Error
+	return daemons, err
+}
+
+// Update updates a daemon
+func (r *DaemonRepository) Update(ctx context.Context, daemon *models.Daemon) error {
+	return r.DB().WithContext(ctx).Save(daemon).Error
+}
+
+// UpdateStatus updates a daemon's running status
+func (r *DaemonRepository) UpdateStatus(ctx context.Context, id string, running bool) error {
 	now := time.Now()
-	return r.db.WithContext(ctx).
+	return r.DB().WithContext(ctx).
 		Model(&models.Daemon{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
@@ -49,12 +93,19 @@ func (r *Repository) UpdateDaemonStatus(ctx context.Context, id string, running 
 		}).Error
 }
 
-// MarkDaemonInstalled marks a daemon as installed
-func (r *Repository) MarkDaemonInstalled(ctx context.Context, id string) error {
-	return markAsInstalled[models.Daemon](r, ctx, id)
+// MarkInstalled marks a daemon as installed
+func (r *DaemonRepository) MarkInstalled(ctx context.Context, id string) error {
+	now := time.Now()
+	return r.DB().WithContext(ctx).
+		Model(&models.Daemon{}).
+		Where("id = ?", id).
+		Updates(map[string]interface{}{
+			"installed_at":           now,
+			"installation_failed_at": nil,
+		}).Error
 }
 
-// DeleteDaemon deletes a daemon
-func (r *Repository) DeleteDaemon(ctx context.Context, id string) error {
-	return deleteByID[models.Daemon](r, ctx, id)
+// Delete deletes a daemon
+func (r *DaemonRepository) Delete(ctx context.Context, id string) error {
+	return r.DB().WithContext(ctx).Delete(&models.Daemon{}, "id = ?", id).Error
 }

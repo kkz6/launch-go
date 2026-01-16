@@ -9,20 +9,40 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 )
 
-// CreateTask creates a new task
-func (r *Repository) CreateTask(ctx context.Context, task *models.Task) error {
-	return create(r, ctx, task)
+// TaskRepository handles task database operations
+type TaskRepository struct {
+	BaseRepository
 }
 
-// FindTaskByID finds a task by ID
-func (r *Repository) FindTaskByID(ctx context.Context, id string) (*models.Task, error) {
-	return findByID[models.Task](r, ctx, id, ErrTaskNotFound)
+// NewTaskRepository creates a new TaskRepository instance
+func NewTaskRepository(db *gorm.DB) *TaskRepository {
+	return &TaskRepository{
+		BaseRepository: NewBaseRepository(db),
+	}
 }
 
-// FindTasksByServer finds all tasks for a server with optional limit
-func (r *Repository) FindTasksByServer(ctx context.Context, serverID string, limit int) ([]models.Task, error) {
+// Create creates a new task
+func (r *TaskRepository) Create(ctx context.Context, task *models.Task) error {
+	return r.DB().WithContext(ctx).Create(task).Error
+}
+
+// FindByID finds a task by ID
+func (r *TaskRepository) FindByID(ctx context.Context, id string) (*models.Task, error) {
+	var task models.Task
+	err := r.DB().WithContext(ctx).First(&task, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrTaskNotFound
+		}
+		return nil, err
+	}
+	return &task, nil
+}
+
+// FindByServer finds all tasks for a server with optional limit
+func (r *TaskRepository) FindByServer(ctx context.Context, serverID string, limit int) ([]models.Task, error) {
 	var tasks []models.Task
-	query := r.db.WithContext(ctx).
+	query := r.DB().WithContext(ctx).
 		Where("server_id = ?", serverID).
 		Order("created_at DESC")
 
@@ -34,10 +54,10 @@ func (r *Repository) FindTasksByServer(ctx context.Context, serverID string, lim
 	return tasks, err
 }
 
-// FindLatestTaskByServer finds the latest task for a server
-func (r *Repository) FindLatestTaskByServer(ctx context.Context, serverID string) (*models.Task, error) {
+// FindLatestByServer finds the latest task for a server
+func (r *TaskRepository) FindLatestByServer(ctx context.Context, serverID string) (*models.Task, error) {
 	var task models.Task
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Where("server_id = ?", serverID).
 		Order("created_at DESC").
 		First(&task).Error
@@ -50,7 +70,7 @@ func (r *Repository) FindLatestTaskByServer(ctx context.Context, serverID string
 	return &task, nil
 }
 
-// UpdateTask updates a task
-func (r *Repository) UpdateTask(ctx context.Context, task *models.Task) error {
-	return update(r, ctx, task)
+// Update updates a task
+func (r *TaskRepository) Update(ctx context.Context, task *models.Task) error {
+	return r.DB().WithContext(ctx).Save(task).Error
 }

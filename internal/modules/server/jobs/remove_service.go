@@ -30,13 +30,13 @@ type RemoveServiceJob struct {
 // Handle processes the job
 func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 	// Find the service with server
-	service, err := j.ctx.Repo.FindServiceByID(ctx, j.Payload.ServiceID)
+	service, err := j.ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
 	// Find the server
-	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -69,7 +69,7 @@ func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 	logger.Log("Service was removed")
 
 	// Delete the service record
-	if err := j.ctx.Repo.DeleteService(ctx, service.ID); err != nil {
+	if err := j.ctx.Repos.Service().Delete(ctx, service.ID); err != nil {
 		return fmt.Errorf("failed to delete service record: %w", err)
 	}
 
@@ -95,7 +95,7 @@ func (j *RemoveServiceJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Mark removal as failed
-	service, findErr := j.ctx.Repo.FindServiceByID(ctx, j.Payload.ServiceID)
+	service, findErr := j.ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
 	if findErr == nil && service != nil {
 		now := time.Now()
 		j.ctx.DB.Model(service).Updates(map[string]any{

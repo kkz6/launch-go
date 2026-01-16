@@ -49,7 +49,7 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -201,7 +201,7 @@ func (j *InstallCaddyfileJob) updateSiteImports(ctx context.Context, server any,
 	serverModel, ok := server.(*models.Site)
 	if !ok {
 		// Fetch server again
-		serverModel, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+		serverModel, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 		if err != nil {
 			return err
 		}
@@ -236,7 +236,7 @@ func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -351,7 +351,7 @@ func (j *UninstallCaddyfileJob) Handle(ctx context.Context) error {
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -405,7 +405,7 @@ func (j *UninstallCaddyfileJob) Failed(ctx context.Context, err error) {
 // updateSiteImportsAfterRemoval updates site imports after a site is removed
 func (j *UninstallCaddyfileJob) updateSiteImportsAfterRemoval(ctx context.Context, removedSite *models.Site) error {
 	// Get server
-	server, err := j.ctx.ServerRepo.FindServerByID(ctx, removedSite.ServerID)
+	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, removedSite.ServerID)
 	if err != nil {
 		return err
 	}

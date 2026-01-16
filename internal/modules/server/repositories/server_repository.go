@@ -11,15 +11,27 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 )
 
-// CreateServer creates a new server
-func (r *Repository) CreateServer(ctx context.Context, server *models.Server) error {
-	return create(r, ctx, server)
+// ServerRepository handles server database operations
+type ServerRepository struct {
+	BaseRepository
 }
 
-// FindServerByID finds a server by ID with Services preloaded
-func (r *Repository) FindServerByID(ctx context.Context, id string) (*models.Server, error) {
+// NewServerRepository creates a new ServerRepository instance
+func NewServerRepository(db *gorm.DB) *ServerRepository {
+	return &ServerRepository{
+		BaseRepository: NewBaseRepository(db),
+	}
+}
+
+// Create creates a new server
+func (r *ServerRepository) Create(ctx context.Context, server *models.Server) error {
+	return r.DB().WithContext(ctx).Create(server).Error
+}
+
+// FindByID finds a server by ID with Services preloaded
+func (r *ServerRepository) FindByID(ctx context.Context, id string) (*models.Server, error) {
 	var server models.Server
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Preload("Services").
 		First(&server, "id = ?", id).Error
 	if err != nil {
@@ -31,10 +43,10 @@ func (r *Repository) FindServerByID(ctx context.Context, id string) (*models.Ser
 	return &server, nil
 }
 
-// FindServerByIDAndTeam finds a server by ID and team ID with Services preloaded
-func (r *Repository) FindServerByIDAndTeam(ctx context.Context, id, teamID string) (*models.Server, error) {
+// FindByIDAndTeam finds a server by ID and team ID with Services preloaded
+func (r *ServerRepository) FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Server, error) {
 	var server models.Server
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Preload("Services").
 		First(&server, "id = ? AND team_id = ?", id, teamID).Error
 	if err != nil {
@@ -46,10 +58,10 @@ func (r *Repository) FindServerByIDAndTeam(ctx context.Context, id, teamID strin
 	return &server, nil
 }
 
-// FindServerWithRelations finds a server with all relations
-func (r *Repository) FindServerWithRelations(ctx context.Context, id, teamID string) (*models.Server, error) {
+// FindWithRelations finds a server with all relations
+func (r *ServerRepository) FindWithRelations(ctx context.Context, id, teamID string) (*models.Server, error) {
 	var server models.Server
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Preload("Services").
 		Preload("FirewallRules").
 		Preload("Crons").
@@ -60,31 +72,28 @@ func (r *Repository) FindServerWithRelations(ctx context.Context, id, teamID str
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrServerNotFound
 		}
-
 		return nil, err
 	}
-
 	return &server, nil
 }
 
-// FindAllServersByTeam finds all active (non-archived) servers for a team
-func (r *Repository) FindAllServersByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
+// FindAllByTeam finds all active (non-archived) servers for a team
+func (r *ServerRepository) FindAllByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
 	var servers []models.Server
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Preload("Services").
 		Where("team_id = ? AND archived_at IS NULL", teamID).
 		Order("created_at DESC").
 		Find(&servers).Error
-
 	return servers, err
 }
 
-// FindAllServersByTeamPaginated finds all servers for a team with pagination
-func (r *Repository) FindAllServersByTeamPaginated(ctx context.Context, teamID string, limit, offset int) ([]models.Server, int64, error) {
+// FindAllByTeamPaginated finds all servers for a team with pagination
+func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID string, limit, offset int) ([]models.Server, int64, error) {
 	var servers []models.Server
 	var total int64
 
-	query := r.db.WithContext(ctx).Model(&models.Server{}).Where("team_id = ?", teamID)
+	query := r.DB().WithContext(ctx).Model(&models.Server{}).Where("team_id = ?", teamID)
 
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
@@ -100,34 +109,33 @@ func (r *Repository) FindAllServersByTeamPaginated(ctx context.Context, teamID s
 	return servers, total, err
 }
 
-// FindArchivedServersByTeam finds all archived servers for a team
-func (r *Repository) FindArchivedServersByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
+// FindArchivedByTeam finds all archived servers for a team
+func (r *ServerRepository) FindArchivedByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
 	var servers []models.Server
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Unscoped().
 		Where("team_id = ? AND archived_at IS NOT NULL", teamID).
 		Order("archived_at DESC").
 		Find(&servers).Error
-
 	return servers, err
 }
 
-// UpdateServer updates a server
-func (r *Repository) UpdateServer(ctx context.Context, server *models.Server) error {
-	return update(r, ctx, server)
+// Update updates a server
+func (r *ServerRepository) Update(ctx context.Context, server *models.Server) error {
+	return r.DB().WithContext(ctx).Save(server).Error
 }
 
-// UpdateServerStatus updates only the server status
-func (r *Repository) UpdateServerStatus(ctx context.Context, id string, status enums.ServerStatus) error {
-	return r.db.WithContext(ctx).
+// UpdateStatus updates only the server status
+func (r *ServerRepository) UpdateStatus(ctx context.Context, id string, status enums.ServerStatus) error {
+	return r.DB().WithContext(ctx).
 		Model(&models.Server{}).
 		Where("id = ?", id).
 		Update("status", status).Error
 }
 
-// UpdateServerProgress updates server provisioning progress
-func (r *Repository) UpdateServerProgress(ctx context.Context, id string, progress int, step string) error {
-	return r.db.WithContext(ctx).
+// UpdateProgress updates server provisioning progress
+func (r *ServerRepository) UpdateProgress(ctx context.Context, id string, progress int, step string) error {
+	return r.DB().WithContext(ctx).
 		Model(&models.Server{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
@@ -136,19 +144,18 @@ func (r *Repository) UpdateServerProgress(ctx context.Context, id string, progre
 		}).Error
 }
 
-// UpdateServerFields updates specific fields on a server
-func (r *Repository) UpdateServerFields(ctx context.Context, id string, fields map[string]interface{}) error {
-	return r.db.WithContext(ctx).
+// UpdateFields updates specific fields on a server
+func (r *ServerRepository) UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error {
+	return r.DB().WithContext(ctx).
 		Model(&models.Server{}).
 		Where("id = ?", id).
 		Updates(fields).Error
 }
 
-// ArchiveServer archives a server
-func (r *Repository) ArchiveServer(ctx context.Context, id string) error {
+// Archive archives a server
+func (r *ServerRepository) Archive(ctx context.Context, id string) error {
 	now := time.Now()
-
-	return r.db.WithContext(ctx).
+	return r.DB().WithContext(ctx).
 		Model(&models.Server{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
@@ -157,9 +164,9 @@ func (r *Repository) ArchiveServer(ctx context.Context, id string) error {
 		}).Error
 }
 
-// UnarchiveServer unarchives a server
-func (r *Repository) UnarchiveServer(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).
+// Unarchive unarchives a server
+func (r *ServerRepository) Unarchive(ctx context.Context, id string) error {
+	return r.DB().WithContext(ctx).
 		Model(&models.Server{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
@@ -168,29 +175,27 @@ func (r *Repository) UnarchiveServer(ctx context.Context, id string) error {
 		}).Error
 }
 
-// DeleteServer deletes a server
-func (r *Repository) DeleteServer(ctx context.Context, id string) error {
-	return deleteByID[models.Server](r, ctx, id)
+// Delete deletes a server
+func (r *ServerRepository) Delete(ctx context.Context, id string) error {
+	return r.DB().WithContext(ctx).Delete(&models.Server{}, "id = ?", id).Error
 }
 
-// CountServersByTeam counts the total number of servers for a team
-func (r *Repository) CountServersByTeam(ctx context.Context, teamID string) (int64, error) {
+// CountByTeam counts the total number of servers for a team
+func (r *ServerRepository) CountByTeam(ctx context.Context, teamID string) (int64, error) {
 	var count int64
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Model(&models.Server{}).
 		Where("team_id = ?", teamID).
 		Count(&count).Error
-
 	return count, err
 }
 
-// ServerHasLaunchAgent checks if a server has the Launch Agent installed
-func (r *Repository) ServerHasLaunchAgent(ctx context.Context, serverID string) (bool, error) {
+// HasLaunchAgent checks if a server has the Launch Agent installed
+func (r *ServerRepository) HasLaunchAgent(ctx context.Context, serverID string) (bool, error) {
 	var count int64
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Model(&models.InstalledService{}).
 		Where("server_id = ? AND type = ?", serverID, enums.ServiceTypeLaunchAgent).
 		Count(&count).Error
-
 	return count > 0, err
 }

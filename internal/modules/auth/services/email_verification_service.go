@@ -16,21 +16,21 @@ import (
 
 // EmailVerificationService handles email verification operations
 type EmailVerificationService struct {
-	repo   *repositories.Repository
+	repos  *repositories.Registry
 	config *config.Config
 }
 
 // NewEmailVerificationService creates a new EmailVerificationService instance
-func NewEmailVerificationService(repo *repositories.Repository, cfg *config.Config) *EmailVerificationService {
+func NewEmailVerificationService(repos *repositories.Registry, cfg *config.Config) *EmailVerificationService {
 	return &EmailVerificationService{
-		repo:   repo,
+		repos:  repos,
 		config: cfg,
 	}
 }
 
 // VerifyEmail verifies a user's email address
 func (s *EmailVerificationService) VerifyEmail(ctx context.Context, userID, hash string) error {
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -49,12 +49,12 @@ func (s *EmailVerificationService) VerifyEmail(ctx context.Context, userID, hash
 		return nil // Already verified
 	}
 
-	return s.repo.MarkEmailAsVerified(ctx, userID)
+	return s.repos.User().MarkEmailAsVerified(ctx, userID)
 }
 
 // ResendVerificationEmail resends the email verification
 func (s *EmailVerificationService) ResendVerificationEmail(ctx context.Context, userID string) error {
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return err
 	}

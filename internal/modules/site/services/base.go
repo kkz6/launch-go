@@ -63,7 +63,7 @@ func (r *ServiceRegistry) File() *FileService { return r.file }
 
 // CrossModuleDeps holds dependencies from other modules
 type CrossModuleDeps struct {
-	ServerRepo      *serverrepos.Repository
+	ServerRepos     *serverrepos.Registry
 	ServerService   *serverservices.Service
 	DatabaseService *databaseservices.Service
 }
@@ -87,8 +87,8 @@ func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
 
 // SetCrossModuleDeps wires dependencies from other modules
 func (r *ServiceRegistry) SetCrossModuleDeps(deps *CrossModuleDeps) {
-	if deps.ServerRepo != nil {
-		r.site.SetServerRepository(deps.ServerRepo)
+	if deps.ServerRepos != nil {
+		r.site.SetServerRepos(deps.ServerRepos)
 	}
 	if deps.ServerService != nil {
 		r.site.SetServerService(deps.ServerService)

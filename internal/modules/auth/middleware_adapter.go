@@ -32,12 +32,12 @@ func (a *MiddlewareAdapter) GetTeam(ctx context.Context, teamID string) (middlew
 
 // IsTeamMember implements middleware.TeamService
 func (a *MiddlewareAdapter) IsTeamMember(ctx context.Context, teamID, userID string) (bool, error) {
-	return a.service.Repository().IsTeamMember(ctx, teamID, userID)
+	return a.service.Repos().TeamMember().IsMember(ctx, teamID, userID)
 }
 
 // GetTeamMember implements middleware.TeamService
 func (a *MiddlewareAdapter) GetTeamMember(ctx context.Context, teamID, userID string) (middleware.TeamMemberInfo, error) {
-	member, err := a.service.Repository().GetTeamMember(ctx, teamID, userID)
+	member, err := a.service.Repos().TeamMember().Get(ctx, teamID, userID)
 	if err != nil {
 		return nil, err
 	}

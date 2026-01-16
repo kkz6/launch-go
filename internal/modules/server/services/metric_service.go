@@ -9,18 +9,18 @@ import (
 
 // GetLatestMetric returns the latest metric for a server
 func (s *Service) GetLatestMetric(ctx context.Context, serverID, teamID string) (*models.Metric, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	return s.repo.FindLatestMetricByServer(ctx, serverID)
+	return s.repos.Metric().FindLatestByServer(ctx, serverID)
 }
 
 // GetMetrics returns metrics for a server
 func (s *Service) GetMetrics(ctx context.Context, serverID, teamID string, from, to *time.Time, limit int) ([]models.Metric, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	return s.repo.FindMetricsByServer(ctx, serverID, from, to, limit)
+	return s.repos.Metric().FindByServer(ctx, serverID, from, to, limit)
 }
