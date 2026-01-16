@@ -73,7 +73,7 @@ func (j *InstallCronJob) Handle(ctx context.Context) error {
 		"command", cron.Command.String(),
 	)
 
-	j.ctx.BroadcastToServer(cron.ServerID, "cron.installed", map[string]any{
+	j.ctx.BroadcastServerEvent(cron.Server, "cron.installed", map[string]any{
 		"cron_id":   cron.ID,
 		"server_id": cron.ServerID,
 	})

@@ -73,7 +73,7 @@ func (j *RestartQueueJob) Handle(ctx context.Context) error {
 	}
 
 	// Broadcast success
-	j.ctx.BroadcastToSite(site.ID, "queue.restarted", map[string]interface{}{
+	j.ctx.BroadcastServerEvent(server, "queue.restarted", map[string]interface{}{
 		"site_id":  site.ID,
 		"queue_id": queue.ID,
 	})
@@ -161,7 +161,7 @@ func (j *RestartAllSiteQueuesJob) Handle(ctx context.Context) error {
 	}
 
 	// Broadcast success
-	j.ctx.BroadcastToSite(site.ID, "queues.restarted", map[string]interface{}{
+	j.ctx.BroadcastServerEvent(server, "queues.restarted", map[string]interface{}{
 		"site_id":     site.ID,
 		"queue_count": len(queues),
 	})

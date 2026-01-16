@@ -79,7 +79,7 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastToServer(server.ID, "service.operation", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "service.operation", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
 		"operation":  j.Payload.Operation,

@@ -76,7 +76,7 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastToServer(daemon.ServerID, "daemon.uninstalled", map[string]any{
+	j.ctx.BroadcastServerEvent(daemon.Server, "daemon.uninstalled", map[string]any{
 		"daemon_id": daemon.ID,
 		"server_id": daemon.ServerID,
 	})

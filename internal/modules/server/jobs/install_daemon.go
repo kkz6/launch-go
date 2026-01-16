@@ -84,7 +84,7 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 		"command", daemon.Command,
 	)
 
-	j.ctx.BroadcastToServer(daemon.ServerID, "daemon.installed", map[string]any{
+	j.ctx.BroadcastServerEvent(daemon.Server, "daemon.installed", map[string]any{
 		"daemon_id": daemon.ID,
 		"server_id": daemon.ServerID,
 	})

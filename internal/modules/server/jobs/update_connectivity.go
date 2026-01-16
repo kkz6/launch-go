@@ -53,7 +53,7 @@ func (j *UpdateConnectivityJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastToServer(server.ID, "server.connectivity", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "server.connectivity", map[string]any{
 		"server_id":    server.ID,
 		"is_connected": isConnected,
 	})

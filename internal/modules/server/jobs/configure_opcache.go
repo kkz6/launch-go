@@ -117,7 +117,7 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastToServer(server.ID, "opcache.configured", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "opcache.configured", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
 	})

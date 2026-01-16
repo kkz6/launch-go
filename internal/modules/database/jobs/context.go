@@ -12,7 +12,7 @@ import (
 	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
@@ -25,7 +25,7 @@ type JobContext struct {
 	DB             *gorm.DB
 	Repo           *repositories.Repository
 	Logger         *zerolog.Logger
-	WS             jobs.Broadcaster
+	WS             broadcast.TeamBroadcaster
 	Dispatcher     taskrunner.TaskDispatcher
 	Queue          *queue.Client
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
@@ -36,7 +36,7 @@ func NewJobContext(
 	db *gorm.DB,
 	repo *repositories.Repository,
 	logger *zerolog.Logger,
-	ws jobs.Broadcaster,
+	ws broadcast.TeamBroadcaster,
 	dispatcher taskrunner.TaskDispatcher,
 	queueClient *queue.Client,
 ) *JobContext {

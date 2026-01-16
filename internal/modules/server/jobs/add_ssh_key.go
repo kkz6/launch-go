@@ -73,7 +73,7 @@ func (j *AddSshKeyJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastToServer(server.ID, "ssh_key.added", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "ssh_key.added", map[string]any{
 		"key_id":    sshKey.ID,
 		"server_id": server.ID,
 	})

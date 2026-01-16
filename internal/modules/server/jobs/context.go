@@ -8,7 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 )
@@ -18,7 +18,7 @@ type JobContext struct {
 	DB              *gorm.DB
 	Repo            contracts.Repository
 	Logger          *zerolog.Logger
-	WS              jobs.Broadcaster
+	WS              broadcast.TeamBroadcaster
 	Dispatcher      taskrunner.TaskDispatcher
 	ProviderFactory *providers.Factory
 	TaskRunnerDeps  *tasks.TaskRunnerDeps
@@ -29,7 +29,7 @@ func NewJobContext(
 	db *gorm.DB,
 	repo contracts.Repository,
 	logger *zerolog.Logger,
-	ws jobs.Broadcaster,
+	ws broadcast.TeamBroadcaster,
 	dispatcher *taskrunner.Dispatcher,
 	providerFactory *providers.Factory,
 	queueClient *queue.Client,
@@ -69,10 +69,17 @@ func (s *ServerTaskRunner) RunTask(task taskrunner.Task) *tasks.TaskRunner {
 	return s.ctx.TaskRunnerDeps.NewRunner(s.server, task)
 }
 
-// BroadcastToServer sends a websocket event to a server channel.
-func (c *JobContext) BroadcastToServer(serverID, event string, data any) {
+// BroadcastToTeam sends a websocket event to a team channel.
+func (c *JobContext) BroadcastToTeam(teamID, event string, data any) {
 	if c.WS != nil {
-		c.WS.BroadcastToServer(serverID, event, data)
+		c.WS.BroadcastToTeam(teamID, event, data)
+	}
+}
+
+// BroadcastServerEvent broadcasts an event for a server to its team channel.
+func (c *JobContext) BroadcastServerEvent(server *models.Server, event string, data any) {
+	if c.WS != nil && server != nil {
+		c.WS.BroadcastToTeam(server.TeamID, event, data)
 	}
 }
 

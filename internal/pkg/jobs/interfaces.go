@@ -37,27 +37,3 @@ type GenericRepository[T any] interface {
 	Update(ctx context.Context, model T) error
 	Delete(ctx context.Context, id string) error
 }
-
-
-// ServerEventBroadcaster can broadcast events to server channels.
-type ServerEventBroadcaster interface {
-	BroadcastToServer(serverID, event string, data any)
-}
-
-// SiteEventBroadcaster can broadcast events to site channels.
-type SiteEventBroadcaster interface {
-	BroadcastToSite(siteID, event string, data any)
-}
-
-// DeploymentEventBroadcaster can broadcast events to deployment channels.
-type DeploymentEventBroadcaster interface {
-	BroadcastToDeployment(deploymentID, event string, data any)
-}
-
-// FullBroadcaster combines all broadcasting capabilities.
-type FullBroadcaster interface {
-	Broadcaster
-	ServerEventBroadcaster
-	SiteEventBroadcaster
-	DeploymentEventBroadcaster
-}

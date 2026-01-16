@@ -66,7 +66,7 @@ func (j *AddServiceJob) Handle(ctx context.Context) error {
 		"software", j.Payload.Software,
 	)
 
-	j.ctx.BroadcastToServer(server.ID, "service.installed", map[string]any{
+	j.ctx.BroadcastServerEvent(server, "service.installed", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
 		"software":   j.Payload.Software,

@@ -74,7 +74,7 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastToServer(cron.ServerID, "cron.uninstalled", map[string]any{
+	j.ctx.BroadcastServerEvent(cron.Server, "cron.uninstalled", map[string]any{
 		"cron_id":   cron.ID,
 		"server_id": cron.ServerID,
 	})

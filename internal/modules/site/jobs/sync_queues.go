@@ -146,7 +146,7 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 	j.ctx.LogInfo("Queue status sync completed", "site_id", site.ID, "queue_count", len(queues))
 
 	// Broadcast status update
-	j.ctx.BroadcastToSite(site.ID, "queues.synced", map[string]interface{}{
+	j.ctx.BroadcastServerEvent(server, "queues.synced", map[string]interface{}{
 		"site_id":     site.ID,
 		"queue_count": len(queues),
 	})
