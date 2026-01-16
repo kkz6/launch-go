@@ -316,6 +316,155 @@ make migrate-up
 6. Write tests
 7. Update this document with any new patterns
 
+## Task Definition with Callbacks
+
+Tasks are SSH scripts that run on servers. Tasks that need post-completion logic (like updating deployment status) implement callbacks.
+
+### Task Structure
+
+A task with callbacks has three parts:
+
+1. **Callback Data** - Only store IDs, never full objects (they can't be serialized)
+2. **Task Struct** - Implements `Task` and `CallbackPayload` interfaces
+3. **Registration** - Register in `register.go` for callback reconstruction
+
+### Example: Defining a Task with Callbacks
+
+```go
+// internal/modules/site/tasks/deploy.go
+
+const DeploySiteTaskType = "site:deploy"
+
+// 1. Callback data - ONLY IDs and simple values (serialized to DB)
+type callbackData struct {
+    SiteID           string `json:"site_id"`
+    ServerID         string `json:"server_id"`    // Include ALL IDs needed by callbacks
+    DeploymentID     string `json:"deployment_id"`
+    SiteType         string `json:"site_type"`
+    IsFirstDeploy    bool   `json:"is_first_deploy"`
+}
+
+// 2. Task struct
+type deploySiteTask struct {
+    *taskrunner.BaseTask
+    opts     DeployOptions
+    callback callbackData
+}
+
+// Constructor - populate callback data from models
+func DeploySiteTask(opts DeployOptions) *deploySiteTask {
+    return &deploySiteTask{
+        BaseTask: taskrunner.NewBaseTask(
+            taskrunner.WithName("Deploy Site"),
+            taskrunner.WithScript(buildScript(opts)),
+            taskrunner.WithTimeoutSeconds(600),
+        ),
+        opts: opts,
+        callback: callbackData{
+            SiteID:        opts.Site.ID,
+            ServerID:      opts.Site.ServerID,  // Don't forget related IDs!
+            DeploymentID:  opts.Deployment.ID,
+            SiteType:      string(opts.Site.Type),
+            IsFirstDeploy: opts.Site.InstalledAt == nil,
+        },
+    }
+}
+
+// Required for CallbackPayload interface
+func (t *deploySiteTask) TypeName() string {
+    return DeploySiteTaskType
+}
+
+func (t *deploySiteTask) MarshalPayload() ([]byte, error) {
+    return json.Marshal(t.callback)
+}
+
+// Callback handlers - called after task completes
+func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+    // Update status, dispatch follow-up jobs, etc.
+    return cbCtx.DB.Model(&models.Deployment{}).
+        Where("id = ?", t.callback.DeploymentID).
+        Update("status", "finished").Error
+}
+
+func (t *deploySiteTask) OnFailure(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string, exitCode int) error {
+    return cbCtx.DB.Model(&models.Deployment{}).
+        Where("id = ?", t.callback.DeploymentID).
+        Update("status", "failed").Error
+}
+
+func (t *deploySiteTask) OnExpired(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+    return cbCtx.DB.Model(&models.Deployment{}).
+        Where("id = ?", t.callback.DeploymentID).
+        Update("status", "timeout").Error
+}
+
+// 3. CallbackStateFactory - enables reconstruction from serialized data
+func (s callbackData) NewTask() taskrunner.CallbackHandler {
+    return &deploySiteTask{
+        BaseTask: taskrunner.NewBaseTask(),
+        callback: s,
+    }
+}
+```
+
+### Registration
+
+```go
+// internal/modules/site/tasks/register.go
+
+func RegisterTaskCallbacks() {
+    taskrunner.RegisterCallbackState[callbackData](DeploySiteTaskType)
+}
+```
+
+### Type-Safe Job Dispatch from Callbacks
+
+When dispatching jobs from callbacks, use typed payload structs to catch missing fields at compile time:
+
+```go
+// Define payload structs that mirror job payloads (avoids circular imports)
+type analyzeFeaturesPayload struct {
+    SiteID   string `json:"site_id"`
+    ServerID string `json:"server_id"`  // Required - compiler won't catch if missing from map[string]string!
+}
+
+// Type-safe dispatch method
+func (t *deploySiteTask) dispatchAnalyzeFeatures(cbCtx *taskrunner.CallbackContext) {
+    t.dispatchJob(cbCtx, "site:analyze_features", analyzeFeaturesPayload{
+        SiteID:   t.callback.SiteID,
+        ServerID: t.callback.ServerID,  // IDE shows available fields
+    })
+}
+
+// Generic dispatch helper
+func (t *deploySiteTask) dispatchJob(cbCtx *taskrunner.CallbackContext, jobType string, payload any) {
+    if cbCtx.Queue == nil {
+        return
+    }
+    data, _ := json.Marshal(payload)
+    task := asynq.NewTask(jobType, data)
+    cbCtx.Queue.Enqueue(task)
+}
+```
+
+### Key Rules
+
+1. **Callback data must only contain IDs** - Never store model pointers or complex objects
+2. **Include ALL IDs needed by callbacks** - If a callback dispatches a job that needs `server_id`, include it in callback data
+3. **Use typed payloads for job dispatch** - Avoid `map[string]string` which has no compile-time safety
+4. **Register in register.go** - Don't use `init()` magic, explicit registration is preferred
+5. **Callbacks run in ALL execution modes** - Whether sync, async, or background with HTTP callbacks
+
+### Execution Modes
+
+Tasks can run in different modes based on environment:
+
+- **Local/Dev mode**: Long-running SSH connection, output streamed in real-time
+- **Production mode**: Script uploaded, runs in background, status updated via HTTP callbacks
+
+The TaskRunner automatically handles both modes - callbacks are invoked regardless of execution mode.
+
 ## Notes
 
 - The Laravel project uses Spatie packages extensively (permissions, activity log, data)

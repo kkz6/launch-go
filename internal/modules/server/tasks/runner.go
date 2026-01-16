@@ -3,7 +3,6 @@ package tasks
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"reflect"
 	"strings"
 	"time"
@@ -256,20 +255,25 @@ func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 		pendingTask.As("task-" + ulid.Make().String())
 	}
 
-	taskResult, err := r.dispatcher.Run(ctx, pendingTask)
+	taskResult, execErr := r.dispatcher.Run(ctx, pendingTask)
 
 	result := &TaskRunnerResult{
 		TaskModel:  taskModel,
 		TaskResult: taskResult,
-		Error:      err,
+		Error:      execErr,
 	}
 
 	if taskModel != nil && taskResult != nil {
 		r.updateTaskModel(taskModel, taskResult)
 	}
 
-	if err != nil && r.throwOnError {
-		return result, err
+	// Always invoke task callbacks regardless of execution mode
+	if taskModel != nil {
+		r.handleTaskCompletion(ctx, taskModel, taskResult, execErr)
+	}
+
+	if execErr != nil && r.throwOnError {
+		return result, execErr
 	}
 
 	if taskResult != nil && !taskResult.IsSuccessful() && r.throwOnError {
@@ -316,10 +320,10 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 		pendingTask.As("task-" + taskModel.ID)
 
 		bgCtx := context.Background()
-		taskResult, err := r.dispatcher.Run(bgCtx, pendingTask)
+		taskResult, execErr := r.dispatcher.Run(bgCtx, pendingTask)
 
-		if err != nil && r.logger != nil {
-			r.logger.Error().Err(err).
+		if execErr != nil && r.logger != nil {
+			r.logger.Error().Err(execErr).
 				Str("task_id", taskModel.ID).
 				Str("task_name", taskModel.Name).
 				Msg("Async task execution failed")
@@ -327,15 +331,16 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 
 		if taskResult != nil {
 			r.updateTaskModel(taskModel, taskResult)
-		} else if err != nil {
+		} else if execErr != nil {
 			taskModel.Status = string(TaskStatusFailed)
-			taskModel.Output = basemodels.EncryptedString(err.Error())
+			taskModel.Output = basemodels.EncryptedString(execErr.Error())
 			r.db.Save(taskModel)
 			// Broadcast failure
-			r.broadcastTaskEvent("task.updated", taskModel, err.Error())
+			r.broadcastTaskEvent("task.updated", taskModel, execErr.Error())
 		}
 
-		r.sendCallbacks(taskModel, taskResult, err)
+		// Always invoke task callbacks
+		r.handleTaskCompletion(bgCtx, taskModel, taskResult, execErr)
 	}()
 
 	return taskModel, nil
@@ -458,7 +463,8 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 			r.broadcastTaskEvent("task.updated", taskModel, execErr.Error())
 		}
 
-		r.dispatchCompletionJobs(taskResult, execErr)
+		// Handle task completion - invokes callbacks and dispatches completion jobs
+		r.handleTaskCompletion(bgCtx, taskModel, taskResult, execErr)
 
 		if r.logger != nil {
 			status := "unknown"
@@ -480,6 +486,55 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 	}()
 
 	return taskModel, nil
+}
+
+// handleTaskCompletion handles task completion in local mode.
+// It tries both approaches:
+// 1. CallbackPayload: Calls OnSuccess/OnFailure/OnExpired on the task itself
+// 2. CompletionConfig: Dispatches asynq jobs
+func (r *TaskRunner) handleTaskCompletion(ctx context.Context, taskModel *models.Task, result *taskrunner.TaskResult, execErr error) {
+	// First, try to invoke task callback methods directly (CallbackPayload approach)
+	r.invokeTaskCallbacks(ctx, taskModel, result, execErr)
+
+	// Then, dispatch completion jobs if configured (CompletionConfig approach)
+	r.dispatchCompletionJobs(result, execErr)
+}
+
+// invokeTaskCallbacks calls the task's callback methods if it implements CallbackPayload.
+// This is used in local mode where we don't have HTTP callbacks.
+func (r *TaskRunner) invokeTaskCallbacks(ctx context.Context, taskModel *models.Task, result *taskrunner.TaskResult, execErr error) {
+	// Check if task implements CallbackPayload
+	callbackTask, ok := r.task.(taskrunner.CallbackPayload)
+	if !ok {
+		return
+	}
+
+	// Create callback context with dependencies
+	cbCtx := &taskrunner.CallbackContext{
+		DB:     r.db,
+		Queue:  r.queue,
+		Logger: r.logger,
+	}
+
+	var err error
+	if result != nil {
+		if result.IsSuccessful() {
+			err = callbackTask.OnSuccess(ctx, cbCtx, taskModel.ID)
+		} else if result.TimedOut {
+			err = callbackTask.OnExpired(ctx, cbCtx, taskModel.ID)
+		} else {
+			err = callbackTask.OnFailure(ctx, cbCtx, taskModel.ID, result.ExitCode)
+		}
+	} else if execErr != nil {
+		err = callbackTask.OnFailure(ctx, cbCtx, taskModel.ID, 1)
+	}
+
+	if err != nil && r.logger != nil {
+		r.logger.Error().Err(err).
+			Str("task_id", taskModel.ID).
+			Str("task_name", taskModel.Name).
+			Msg("Task callback handler failed")
+	}
 }
 
 func (r *TaskRunner) dispatchCompletionJobs(result *taskrunner.TaskResult, execErr error) {
@@ -663,36 +718,6 @@ func (r *TaskRunner) broadcastTaskRunning(taskModel *models.Task) {
 		"name":      taskModel.Name,
 		"status":    string(TaskStatusRunning),
 	})
-}
-
-func (r *TaskRunner) sendCallbacks(taskModel *models.Task, result *taskrunner.TaskResult, err error) {
-	if r.callbackURLs == nil {
-		return
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
-	defer cancel()
-
-	var url string
-	if result != nil {
-		if result.TimedOut {
-			url = r.callbackURLs.TimeoutURL
-		} else if result.IsSuccessful() {
-			url = r.callbackURLs.FinishedURL
-		} else {
-			url = r.callbackURLs.FailedURL
-		}
-	} else if err != nil {
-		url = r.callbackURLs.FailedURL
-	}
-
-	if url == "" {
-		return
-	}
-
-	req, _ := http.NewRequestWithContext(ctx, "POST", url, nil)
-	client := &http.Client{Timeout: 15 * time.Second}
-	client.Do(req)
 }
 
 func (r *TaskRunner) wrapTaskForBackground(taskModel *models.Task) string {

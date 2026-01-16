@@ -42,6 +42,7 @@ type DeployOptions struct {
 // callbackData holds data needed for callback handling (serialized to instance field)
 type callbackData struct {
 	SiteID           string `json:"site_id"`
+	ServerID         string `json:"server_id"`
 	DeploymentID     string `json:"deployment_id"`
 	SiteType         string `json:"site_type"`
 	IsFirstDeploy    bool   `json:"is_first_deploy"`
@@ -77,6 +78,7 @@ func DeploySiteTask(opts DeployOptions) *deploySiteTask {
 		opts: opts,
 		callback: callbackData{
 			SiteID:           opts.Site.ID,
+			ServerID:         opts.Site.ServerID,
 			DeploymentID:     opts.Deployment.ID,
 			SiteType:         string(opts.Site.Type),
 			IsFirstDeploy:    opts.Site.InstalledAt == nil,
@@ -115,16 +117,12 @@ func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.Callba
 
 	// If first deployment, dispatch InstallCaddyfile job
 	if t.callback.IsFirstDeploy {
-		t.dispatchJob(cbCtx, "site:install_caddyfile", map[string]string{
-			"site_id": t.callback.SiteID,
-		})
+		t.dispatchInstallCaddyfile(cbCtx)
 	}
 
 	// Analyze Laravel features for Laravel sites
 	if t.callback.SiteType == string(enums.SiteTypeLaravel) {
-		t.dispatchJob(cbCtx, "site:analyze_laravel_features", map[string]string{
-			"site_id": t.callback.SiteID,
-		})
+		t.dispatchAnalyzeLaravelFeatures(cbCtx)
 	}
 
 	// Process next queued deployment if enabled
@@ -199,7 +197,7 @@ func (t *deploySiteTask) OnExpired(ctx context.Context, cbCtx *taskrunner.Callba
 }
 
 // dispatchJob is a helper to dispatch an asynq job
-func (t *deploySiteTask) dispatchJob(cbCtx *taskrunner.CallbackContext, jobType string, payload map[string]string) {
+func (t *deploySiteTask) dispatchJob(cbCtx *taskrunner.CallbackContext, jobType string, payload any) {
 	if cbCtx.Queue == nil {
 		return
 	}
@@ -208,6 +206,35 @@ func (t *deploySiteTask) dispatchJob(cbCtx *taskrunner.CallbackContext, jobType 
 	if _, err := cbCtx.Queue.Enqueue(task); err != nil && cbCtx.Logger != nil {
 		cbCtx.Logger.Error().Err(err).Str("job_type", jobType).Msg("Failed to dispatch job")
 	}
+}
+
+// Typed job payload structs - mirror the job payload types for compile-time safety.
+// These match the payload structs in internal/modules/site/jobs/*.go
+
+type caddyfilePayload struct {
+	SiteID string  `json:"site_id"`
+	UserID *string `json:"user_id,omitempty"`
+}
+
+type analyzeLaravelFeaturesPayload struct {
+	SiteID   string  `json:"site_id"`
+	ServerID string  `json:"server_id"`
+	UserID   *string `json:"user_id,omitempty"`
+}
+
+// dispatchInstallCaddyfile dispatches the install caddyfile job with type-safe payload.
+func (t *deploySiteTask) dispatchInstallCaddyfile(cbCtx *taskrunner.CallbackContext) {
+	t.dispatchJob(cbCtx, "site:install_caddyfile", caddyfilePayload{
+		SiteID: t.callback.SiteID,
+	})
+}
+
+// dispatchAnalyzeLaravelFeatures dispatches the analyze Laravel features job with type-safe payload.
+func (t *deploySiteTask) dispatchAnalyzeLaravelFeatures(cbCtx *taskrunner.CallbackContext) {
+	t.dispatchJob(cbCtx, "site:analyze_laravel_features", analyzeLaravelFeaturesPayload{
+		SiteID:   t.callback.SiteID,
+		ServerID: t.callback.ServerID,
+	})
 }
 
 // processNextQueuedDeployment finds and dispatches the next queued deployment
@@ -254,22 +281,13 @@ func (t *deploySiteTask) restartQueueWorkers(ctx context.Context, cbCtx *taskrun
 	}
 }
 
-// deploySiteTaskFactory creates a deploySiteTask from stored payload for callback handling
-func deploySiteTaskFactory(payload []byte) (taskrunner.CallbackHandler, error) {
-	var data callbackData
-	if err := json.Unmarshal(payload, &data); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal payload: %w", err)
-	}
-
+// NewTask implements taskrunner.CallbackStateFactory.
+// Creates a deploySiteTask from the serialized state for callback handling.
+func (s callbackData) NewTask() taskrunner.CallbackHandler {
 	return &deploySiteTask{
 		BaseTask: taskrunner.NewBaseTask(),
-		callback: data,
-	}, nil
-}
-
-// Register the task type with the default registry
-func init() {
-	taskrunner.Register(DeploySiteTaskType, deploySiteTaskFactory)
+		callback: s,
+	}
 }
 
 // buildStandardScript generates the deployment script for standard deployment

@@ -56,6 +56,15 @@ type JobRegistrar interface {
 	RegisterJobs(mux *asynq.ServeMux)
 }
 
+// TaskCallbackRegistrar is implemented by modules that have task callbacks
+// Task callbacks handle completion events (finished/failed/timeout) for
+// long-running server tasks executed via SSH.
+type TaskCallbackRegistrar interface {
+	Module
+	// RegisterTaskCallbacks registers the module's task callback handlers
+	RegisterTaskCallbacks()
+}
+
 // Bootable is implemented by modules that need initialization after registration
 type Bootable interface {
 	Module
