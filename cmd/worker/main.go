@@ -17,6 +17,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
+	"github.com/kkz6/launch-go/internal/pkg/module"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/websocket"
 )
@@ -84,12 +85,13 @@ func main() {
 
 	// Create application kernel for module registration
 	kernel := app.NewKernel(appLogger)
+	builder := module.NewBuilderFromContext(ctx)
 
 	// Register all modules with the kernel
 	kernel.
-		Register(server.NewModuleFromContext(ctx)).
-		Register(databasemodule.NewModuleFromContext(ctx)).
-		Register(site.NewModuleFromContext(ctx))
+		Register(server.NewModule(builder)).
+		Register(databasemodule.NewModule(builder)).
+		Register(site.NewModule(builder))
 
 	// Boot all jobs through the kernel
 	mux := asynq.NewServeMux()

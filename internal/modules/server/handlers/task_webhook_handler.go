@@ -49,14 +49,6 @@ func (h *TaskWebhookHandler) WithRegistry(registry *taskrunner.TaskTypeRegistry)
 	return h
 }
 
-// RegisterTaskWebhookRoutes registers webhook routes
-func (h *TaskWebhookHandler) RegisterRoutes(router fiber.Router) {
-	webhooks := router.Group("/webhooks/tasks")
-	webhooks.Post("/:id/finished", h.MarkAsFinished)
-	webhooks.Post("/:id/failed", h.MarkAsFailed)
-	webhooks.Post("/:id/timeout", h.MarkAsTimeout)
-}
-
 // MarkAsFinished handles successful task completion
 func (h *TaskWebhookHandler) MarkAsFinished(c *fiber.Ctx) error {
 	taskID := c.Params("id")

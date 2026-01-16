@@ -7,7 +7,6 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 // ProvisionScriptRepository interface for provision script handler
@@ -32,15 +31,6 @@ func NewProvisionScriptHandler(repo ProvisionScriptRepository, service Provision
 		repo:    repo,
 		service: service,
 	}
-}
-
-// RegisterRoutes registers provision script routes (with signed URL middleware)
-func (h *ProvisionScriptHandler) RegisterRoutes(router fiber.Router) {
-	// This route requires a valid signed URL
-	router.Get("/servers/:id/provision-script",
-		signedurl.RequireSignedURL(nil),
-		h.GetProvisionScript,
-	)
 }
 
 // GetProvisionScript returns the provision script for a server

@@ -25,16 +25,12 @@ type Handler struct {
 }
 
 // NewHandler creates a new server handler
-func NewHandler(service *services.Service, taskRunner *tasks.TaskRunnerDeps) *Handler {
+func NewHandler(service *services.Service, taskRunner *tasks.TaskRunnerDeps, siteCounter SiteCounter) *Handler {
 	return &Handler{
-		service:    service,
-		taskRunner: taskRunner,
+		service:     service,
+		taskRunner:  taskRunner,
+		siteCounter: siteCounter,
 	}
-}
-
-// SetSiteCounter sets the site counter for cross-module queries
-func (h *Handler) SetSiteCounter(counter SiteCounter) {
-	h.siteCounter = counter
 }
 
 // List returns all servers for the team

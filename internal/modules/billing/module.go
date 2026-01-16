@@ -2,8 +2,6 @@ package billing
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/handlers"
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
@@ -11,108 +9,86 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
 	"github.com/kkz6/launch-go/internal/modules/billing/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/module"
 )
+
+const ModuleName = "billing"
 
 // Ensure Module implements required interfaces
 var (
-	_ app.Module            = (*Module)(nil)
-	_ app.RouteRegistrar    = (*Module)(nil)
-	_ app.WebhookRegistrar  = (*Module)(nil)
+	_ app.Module           = (*Module)(nil)
+	_ app.RouteRegistrar   = (*Module)(nil)
+	_ app.WebhookRegistrar = (*Module)(nil)
 )
 
 // Module represents the billing module
 type Module struct {
-	handler        *handlers.BillingHandler
-	webhookHandler *handlers.WebhookHandler
-	service        *services.BillingService
-	repo           *repositories.BillingRepository
-	config         *ModuleConfig
-}
-
-// ModuleConfig holds configuration for the billing module
-type ModuleConfig struct {
-	DB                   *gorm.DB
-	Logger               *zerolog.Logger
-	SubscriptionsEnabled bool
-	Plans                []models.Plan
-	LemonSqueezy         *providers.LemonSqueezyConfig
-	WebhookSecret        string
-	ServerCountFn        func(teamID string) (int, error)
+	module.Base
+	service       *services.BillingService
+	repo          *repositories.BillingRepository
+	serverCountFn func(teamID string) (int, error)
 }
 
 // NewModule creates a new billing module
-func NewModule(config *ModuleConfig) *Module {
-	repo := repositories.NewBillingRepository(config.DB)
+func NewModule(b *module.Builder) *Module {
+	deps := b.Deps()
+	cfg := deps.Config.Billing
+
+	repo := repositories.NewBillingRepository(deps.DB)
 
 	var lsClient *providers.LemonSqueezyClient
-	if config.LemonSqueezy != nil && config.LemonSqueezy.APIKey != "" {
-		lsClient = providers.NewLemonSqueezyClient(config.LemonSqueezy, config.Logger)
+	if cfg.LemonSqueezy.APIKey != "" {
+		lsConfig := &providers.LemonSqueezyConfig{
+			APIKey:  cfg.LemonSqueezy.APIKey,
+			StoreID: cfg.LemonSqueezy.StoreID,
+		}
+		lsClient = providers.NewLemonSqueezyClient(lsConfig, deps.Logger)
 	}
 
 	billingConfig := &services.Config{
-		SubscriptionsEnabled: config.SubscriptionsEnabled,
-		Plans:                config.Plans,
+		SubscriptionsEnabled: cfg.SubscriptionsEnabled,
+		Plans:                models.DefaultPlans(),
 	}
 
-	service := services.NewBillingService(repo, lsClient, billingConfig, config.Logger)
-	handler := handlers.NewBillingHandler(service, config.ServerCountFn)
-	webhookHandler := handlers.NewWebhookHandler(repo, service, config.WebhookSecret, config.Logger)
+	service := services.NewBillingService(repo, lsClient, billingConfig, deps.Logger)
 
 	return &Module{
-		handler:        handler,
-		webhookHandler: webhookHandler,
-		service:        service,
-		repo:           repo,
-		config:         config,
+		Base:    module.NewBase(ModuleName, b),
+		service: service,
+		repo:    repo,
 	}
 }
 
-// NewModuleFromContext creates a billing module from app context
-func NewModuleFromContext(ctx *app.Context) *Module {
-	config := &ModuleConfig{
-		DB:                   ctx.DB,
-		Logger:               ctx.Logger,
-		SubscriptionsEnabled: ctx.Config.Billing.SubscriptionsEnabled,
-		Plans:                DefaultPlans(),
-		WebhookSecret:        ctx.Config.Billing.WebhookSecret,
-	}
-
-	if ctx.Config.Billing.LemonSqueezy.APIKey != "" {
-		config.LemonSqueezy = &providers.LemonSqueezyConfig{
-			APIKey:  ctx.Config.Billing.LemonSqueezy.APIKey,
-			StoreID: ctx.Config.Billing.LemonSqueezy.StoreID,
-		}
-	}
-
-	return NewModule(config)
-}
-
-// Name returns the module name (implements app.Module)
-func (m *Module) Name() string {
-	return "billing"
+// SetServerCountFn sets the function to count servers for a team
+func (m *Module) SetServerCountFn(fn func(teamID string) (int, error)) {
+	m.serverCountFn = fn
 }
 
 // RegisterRoutes registers the module routes (implements app.RouteRegistrar)
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
+	handler := handlers.NewBillingHandler(m.service, m.serverCountFn)
+
 	billing := router.Group("/billing", authMiddleware)
 
-	billing.Get("/", m.handler.Index)
-	billing.Get("/plans", m.handler.GetPlans)
-	billing.Post("/checkout-url", m.handler.GenerateCheckoutURL)
-	billing.Post("/cancel-subscription", m.handler.CancelSubscription)
-	billing.Post("/resume-subscription", m.handler.ResumeSubscription)
+	billing.Get("/", handler.Index)
+	billing.Get("/plans", handler.GetPlans)
+	billing.Post("/checkout-url", handler.GenerateCheckoutURL)
+	billing.Post("/cancel-subscription", handler.CancelSubscription)
+	billing.Post("/resume-subscription", handler.ResumeSubscription)
 
-	billing.Get("/subscriptions", m.handler.GetSubscriptions)
-	billing.Get("/subscriptions/:id", m.handler.GetSubscription)
-	billing.Get("/orders", m.handler.GetOrders)
-	billing.Get("/options", m.handler.GetSubscriptionOptions)
+	billing.Get("/subscriptions", handler.GetSubscriptions)
+	billing.Get("/subscriptions/:id", handler.GetSubscription)
+	billing.Get("/orders", handler.GetOrders)
+	billing.Get("/options", handler.GetSubscriptionOptions)
 
-	router.Get("/register/subscription", authMiddleware, m.handler.RegisterSubscription)
+	router.Get("/register/subscription", authMiddleware, handler.RegisterSubscription)
 }
 
 // RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
 func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
-	router.Post("/webhooks/lemon-squeezy", m.webhookHandler.HandleWebhook)
+	deps := m.Deps()
+	webhookHandler := handlers.NewWebhookHandler(m.repo, m.service, deps.Config.Billing.WebhookSecret, deps.Logger)
+	router.Post("/webhooks/lemon-squeezy", webhookHandler.HandleWebhook)
 }
 
 // GetService returns the billing service
@@ -123,20 +99,6 @@ func (m *Module) GetService() *services.BillingService {
 // GetRepository returns the billing repository
 func (m *Module) GetRepository() *repositories.BillingRepository {
 	return m.repo
-}
-
-// GetWebhookHandler returns the webhook handler
-func (m *Module) GetWebhookHandler() *handlers.WebhookHandler {
-	return m.webhookHandler
-}
-
-// Migrate runs database migrations for the billing module
-func (m *Module) Migrate(db *gorm.DB) error {
-	return db.AutoMigrate(
-		&models.Subscription{},
-		&models.Order{},
-		&models.WebhookEvent{},
-	)
 }
 
 // DefaultPlans returns default plan configurations

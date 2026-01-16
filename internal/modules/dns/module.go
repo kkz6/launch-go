@@ -2,15 +2,15 @@ package dns
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/handlers"
-	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/repositories"
 	"github.com/kkz6/launch-go/internal/modules/dns/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/module"
 )
+
+const ModuleName = "dns"
 
 // Ensure Module implements required interfaces
 var (
@@ -20,6 +20,7 @@ var (
 
 // Module represents the DNS module
 type Module struct {
+	module.Base
 	providerHandler *handlers.DomainProviderHandler
 	domainHandler   *handlers.DomainHandler
 	recordHandler   *handlers.DnsRecordHandler
@@ -33,27 +34,19 @@ type Module struct {
 	dnsRecordRepo *repositories.DnsRecordRepository
 }
 
-// NewModuleFromContext creates a new DNS module from app context
-func NewModuleFromContext(ctx *app.Context) *Module {
-	return NewModule(ctx.DB, ctx.Logger)
-}
-
-// Name returns the module name (implements app.Module)
-func (m *Module) Name() string {
-	return "dns"
-}
-
 // NewModule creates a new DNS module instance
-func NewModule(db *gorm.DB, logger *zerolog.Logger) *Module {
+func NewModule(b *module.Builder) *Module {
+	deps := b.Deps()
+
 	// Initialize repositories
-	providerRepo := repositories.NewDomainProviderRepository(db)
-	domainRepo := repositories.NewDomainRepository(db)
-	dnsRecordRepo := repositories.NewDnsRecordRepository(db)
+	providerRepo := repositories.NewDomainProviderRepository(deps.DB)
+	domainRepo := repositories.NewDomainRepository(deps.DB)
+	dnsRecordRepo := repositories.NewDnsRecordRepository(deps.DB)
 
 	// Initialize services
-	providerService := services.NewDomainProviderService(providerRepo, domainRepo, dnsRecordRepo, logger)
-	domainService := services.NewDomainService(providerRepo, domainRepo, dnsRecordRepo, logger)
-	recordService := services.NewDnsRecordService(domainRepo, dnsRecordRepo, logger)
+	providerService := services.NewDomainProviderService(providerRepo, domainRepo, dnsRecordRepo, deps.Logger)
+	domainService := services.NewDomainService(providerRepo, domainRepo, dnsRecordRepo, deps.Logger)
+	recordService := services.NewDnsRecordService(domainRepo, dnsRecordRepo, deps.Logger)
 
 	// Initialize handlers
 	providerHandler := handlers.NewDomainProviderHandler(providerService)
@@ -61,6 +54,7 @@ func NewModule(db *gorm.DB, logger *zerolog.Logger) *Module {
 	recordHandler := handlers.NewDnsRecordHandler(recordService, domainService)
 
 	return &Module{
+		Base:            module.NewBase(ModuleName, b),
 		providerHandler: providerHandler,
 		domainHandler:   domainHandler,
 		recordHandler:   recordHandler,
@@ -108,13 +102,4 @@ func (m *Module) GetDomainRepository() *repositories.DomainRepository {
 // GetRecordRepository returns the DNS record repository
 func (m *Module) GetRecordRepository() *repositories.DnsRecordRepository {
 	return m.dnsRecordRepo
-}
-
-// AutoMigrate runs database migrations for the DNS module
-func (m *Module) AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(
-		&models.DomainProvider{},
-		&models.Domain{},
-		&models.DnsRecord{},
-	)
 }
