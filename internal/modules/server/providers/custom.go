@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/sshkey"
 )
 
 // CustomProvider implements the Provider interface for custom/self-managed servers
@@ -14,7 +15,7 @@ type CustomProvider struct {
 }
 
 // NewCustomProvider creates a new Custom provider
-func NewCustomProvider(keyGenerator KeyPairGenerator) *CustomProvider {
+func NewCustomProvider(keyGenerator sshkey.Generator) *CustomProvider {
 	return &CustomProvider{
 		BaseProvider: BaseProvider{
 			keyGenerator: keyGenerator,

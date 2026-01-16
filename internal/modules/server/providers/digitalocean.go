@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/sshkey"
 )
 
 const digitalOceanAPIURL = "https://api.digitalocean.com/v2"
@@ -24,7 +25,7 @@ type DigitalOceanProvider struct {
 }
 
 // NewDigitalOceanProvider creates a new DigitalOcean provider
-func NewDigitalOceanProvider(keyGenerator KeyPairGenerator) *DigitalOceanProvider {
+func NewDigitalOceanProvider(keyGenerator sshkey.Generator) *DigitalOceanProvider {
 	configs := config.GetProviderConfigs()
 	return &DigitalOceanProvider{
 		BaseProvider: BaseProvider{

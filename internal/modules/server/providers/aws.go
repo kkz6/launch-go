@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/sshkey"
 )
 
 // AWSProvider implements the Provider interface for AWS
@@ -15,7 +16,7 @@ type AWSProvider struct {
 }
 
 // NewAWSProvider creates a new AWS provider
-func NewAWSProvider(keyGenerator KeyPairGenerator) *AWSProvider {
+func NewAWSProvider(keyGenerator sshkey.Generator) *AWSProvider {
 	configs := config.GetProviderConfigs()
 	return &AWSProvider{
 		BaseProvider: BaseProvider{
