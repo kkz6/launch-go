@@ -34,12 +34,16 @@ type SiteResponse struct {
 	HookBeforeMakingCurrent      *string             `json:"hook_before_making_current,omitempty"`
 	HookAfterMakingCurrent       *string             `json:"hook_after_making_current,omitempty"`
 	DeployToken                  *string             `json:"deploy_token,omitempty"`
-	DeployWebhookURL             string              `json:"deploy_webhook_url,omitempty"`
-	URL                          string              `json:"url"`
-	ApplicationDirectory         string              `json:"app_directory"`
-	RepositoryURL                *string             `json:"repository_url,omitempty"`
-	InstalledAt                  *string             `json:"installed_at,omitempty"`
-	LatestDeployment             *DeploymentResponse              `json:"latest_deployment,omitempty"`
+	DeployWebhookURL              string              `json:"deploy_webhook_url,omitempty"`
+	URL                           string              `json:"url"`
+	ApplicationDirectory          string              `json:"app_directory"`
+	RepositoryURL                 *string             `json:"repository_url,omitempty"`
+	Status                        string              `json:"status"`
+	InstalledAt                   *string             `json:"installed_at,omitempty"`
+	InstallationFailedAt          *string             `json:"installation_failed_at,omitempty"`
+	UninstallationRequestedAt     *string             `json:"uninstallation_requested_at,omitempty"`
+	UninstallationFailedAt        *string             `json:"uninstallation_failed_at,omitempty"`
+	LatestDeployment              *DeploymentResponse              `json:"latest_deployment,omitempty"`
 	SourceControl                *SourceControlResponse           `json:"source_control,omitempty"`
 	Repository                   *SourceControlRepositoryResponse `json:"repository,omitempty"`
 	CreatedAt                    string                           `json:"created_at"`
@@ -247,9 +251,27 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		UpdatedAt:                    updatedAt,
 	}
 
+	// Set installation status
+	resp.Status = string(site.Status())
+
 	if site.InstalledAt != nil {
 		installed := site.InstalledAt.Format(time.RFC3339)
 		resp.InstalledAt = &installed
+	}
+
+	if site.InstallationFailedAt != nil {
+		failed := site.InstallationFailedAt.Format(time.RFC3339)
+		resp.InstallationFailedAt = &failed
+	}
+
+	if site.UninstallationRequestedAt != nil {
+		uninstallReq := site.UninstallationRequestedAt.Format(time.RFC3339)
+		resp.UninstallationRequestedAt = &uninstallReq
+	}
+
+	if site.UninstallationFailedAt != nil {
+		uninstallFailed := site.UninstallationFailedAt.Format(time.RFC3339)
+		resp.UninstallationFailedAt = &uninstallFailed
 	}
 
 	if site.LatestDeployment != nil {
