@@ -39,4 +39,12 @@ func RegisterHandlers(mux *asynq.ServeMux) {
 
 	// Site uninstallation
 	pkgjobs.RegisterHandler(mux, TypeUninstallSite, jobContext, NewUninstallSiteJob)
+
+	// Laravel feature jobs
+	pkgjobs.RegisterHandler(mux, TypeEnableLaravelScheduler, jobContext, NewEnableLaravelSchedulerJob)
+	pkgjobs.RegisterHandler(mux, TypeDisableLaravelScheduler, jobContext, NewDisableLaravelSchedulerJob)
+	pkgjobs.RegisterHandler(mux, TypeEnableLaravelQueue, jobContext, NewEnableLaravelQueueJob)
+	pkgjobs.RegisterHandler(mux, TypeDisableLaravelQueue, jobContext, NewDisableLaravelQueueJob)
+	pkgjobs.RegisterHandler(mux, TypeEnableLaravelHorizon, jobContext, NewEnableLaravelHorizonJob)
+	pkgjobs.RegisterHandler(mux, TypeDisableLaravelHorizon, jobContext, NewDisableLaravelHorizonJob)
 }
