@@ -146,6 +146,7 @@ fi
 
 	// Step 6: Broadcast event
 	j.ctx.BroadcastServerEvent(server, "site.deleted", map[string]interface{}{
+		"team_id":   server.TeamID,
 		"site_id":   site.ID,
 		"server_id": server.ID,
 		"address":   site.Address,

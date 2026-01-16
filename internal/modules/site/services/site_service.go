@@ -272,9 +272,15 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID string, req *
 		s.handleQueueCreation(ctx, site, serverID, userID)
 	}
 
-	// Create initial deployment with environment variables
+	// Create initial deployment with environment variables and git commit data
 	if s.Services() != nil {
-		commitData := make(map[string]interface{})
+		// Fetch git commit data if source control is configured
+		commitData := s.Services().Deployment().FetchLatestCommitData(ctx, site)
+		if commitData == nil {
+			commitData = make(map[string]interface{})
+		}
+
+		// Add environment variables to commit data
 		if len(envVars) > 0 {
 			commitData["env_variables"] = envVars
 		}
@@ -293,6 +299,12 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID string, req *
 	}
 
 	s.LogInfo("Site created", "site_id", site.ID, "address", site.Address)
+
+	// Broadcast site created event
+	s.BroadcastToTeam(server.TeamID, "site.created", map[string]interface{}{
+		"team_id": server.TeamID,
+		"site":    dto.ToSiteResponse(site),
+	})
 
 	return site, nil
 }
@@ -712,6 +724,16 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 	site.LatestDeployment = deployment
 
 	s.LogInfo("Site updated", "site_id", site.ID)
+
+	// Broadcast site updated event
+	if s.serverRepos != nil {
+		if server, err := s.serverRepos.Server().FindByID(ctx, serverID); err == nil {
+			s.BroadcastToTeam(server.TeamID, "site.updated", map[string]interface{}{
+				"team_id": server.TeamID,
+				"site":    dto.ToSiteResponse(site),
+			})
+		}
+	}
 
 	return site, nil
 }

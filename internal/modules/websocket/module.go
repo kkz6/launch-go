@@ -33,9 +33,12 @@ func NewModule(b *module.Builder) *Module {
 	deps := b.Deps()
 	jwtSecret := deps.Config.JWT.Secret
 
+	// Type assert to get the concrete Hub (only API server uses this module)
+	hub, _ := deps.WebSocket.(*ws.Hub)
+
 	return &Module{
 		Base:                 module.NewBase(ModuleName, b),
-		hub:                  deps.WebSocket,
+		hub:                  hub,
 		terminalHandler:      handlers.NewTerminalHandler(deps.DB, jwtSecret, *deps.Logger),
 		logsHandler:          handlers.NewLogsHandler(deps.DB, jwtSecret, *deps.Logger),
 		serviceStatusHandler: handlers.NewServiceStatusHandler(deps.DB, jwtSecret, *deps.Logger),

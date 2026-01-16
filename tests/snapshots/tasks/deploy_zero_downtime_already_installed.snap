@@ -1,0 +1,217 @@
+#!/bin/bash
+set -eu
+export DEBIAN_FRONTEND=noninteractive
+
+export PHP_BINARY=php8.3
+
+# Create the necessary directories
+mkdir -p /home/launcher/example.com/repository
+mkdir -p /home/launcher/example.com/shared
+mkdir -p /home/launcher/example.com/releases/20240116130000
+mkdir -p /home/launcher/example.com/logs
+
+# Cleanup old releases
+DEPLOYMENT_KEEP="20240116130000"
+
+# Get a list of all deployments, sorted by timestamp in ascending order
+DEPLOYMENT_LIST=($(ls -1 /home/launcher/example.com/releases | sort -n))
+
+# Determine how many deployments to delete
+NUM_TO_DELETE=$((${#DEPLOYMENT_LIST[@]} - 5))
+
+# Loop through the deployments to delete
+for ((i=0; i<$NUM_TO_DELETE; i++)); do
+    DEPLOY=${DEPLOYMENT_LIST[$i]}
+    # Skip the deployment to keep
+    if [[ $DEPLOY == $DEPLOYMENT_KEEP ]]; then
+        continue
+    fi
+
+    # Delete the deployment
+    rm -rf /home/launcher/example.com/releases/$DEPLOY
+done
+
+# Check if the repository exists and if the remote URL is correct, if not, delete it
+if [ -f "/home/launcher/example.com/repository/HEAD" ]; then
+    cd /home/launcher/example.com/repository
+    CURRENT_REMOTE_URL=$(git config --get remote.origin.url || echo '');
+
+    if [ "$CURRENT_REMOTE_URL" != 'https://github.com/user/repo.git' ]; then
+        
+            rm -rf /home/launcher/example.com/repository
+            cd /home/launcher/example.com
+            mkdir -p /home/launcher/example.com/repository
+        
+    fi
+fi
+
+# Set up deployment-specific variables to avoid race conditions
+DEPLOYMENT_ID="deploy456"
+CREDENTIALS_FILE="/tmp/git-credentials-${DEPLOYMENT_ID}"
+USE_APP_AUTH=false
+USE_SSH_AUTH=false
+
+# Cleanup function to ensure credentials are always removed
+cleanup_credentials() {
+    if [ -f "$CREDENTIALS_FILE" ]; then
+        rm -f "$CREDENTIALS_FILE"
+        echo "🧹 Cleaned up deployment credentials"
+    fi
+    # Reset git config to system defaults
+    git config --global --unset credential.helper 2>/dev/null || true
+}
+
+# Set trap to cleanup on script exit
+trap cleanup_credentials EXIT
+
+# Try to configure app-based authentication first
+
+    echo "🔐 Setting up app-based authentication for deployment ${DEPLOYMENT_ID}..."
+
+    # Set up HTTPS authentication with temporary installation token using deployment-specific file
+    git config --global credential.helper "store --file=$CREDENTIALS_FILE"
+    echo "https://x-access-token:ghs_xxxxxxxxxxxx@github.com/user/repo.git" > "$CREDENTIALS_FILE"
+
+    # Set git configuration for this operation
+    git config --global user.email "deploy@github.local"
+    git config --global user.name "github Deployment"
+
+    USE_APP_AUTH=true
+    echo "✅ App-based authentication configured successfully"
+
+
+cd /home/launcher/example.com
+
+echo "📦 Cloning/updating repository..."
+
+# Clone the repository if it doesn't exist
+
+    if [ ! -f "/home/launcher/example.com/repository/HEAD" ]; then
+        if git clone --mirror https://github.com/user/repo.git /home/launcher/example.com/repository; then
+            echo "✅ Repository cloned (mirror mode)"
+        else
+            echo "❌ Failed to clone repository"
+            exit 1
+        fi
+    fi
+
+
+cd /home/launcher/example.com/repository
+
+echo "🔄 Fetching latest changes..."
+
+
+    if git fetch origin main; then
+        echo "✅ Fetched branch: main"
+    else
+        echo "❌ Failed to fetch branch: main"
+        exit 1
+    fi
+
+
+# Success message with authentication method used
+if [ "$USE_APP_AUTH" = true ]; then
+    echo "✅ Repository updated successfully with app-based authentication"
+elif [ "$USE_SSH_AUTH" = true ]; then
+    echo "✅ Repository updated successfully with SSH deploy keys"
+fi
+
+
+    # Clone the repository into the release directory
+    echo "📂 Exporting code to release directory..."
+    cd /home/launcher/example.com/releases/20240116130000
+    if git clone -l /home/launcher/example.com/repository . && git checkout --force main; then
+        echo "✅ Code exported to release directory"
+    else
+        echo "❌ Failed to export code to release directory"
+        exit 1
+    fi
+
+
+# Cleanup is handled by the trap function
+cd /home/launcher/example.com
+
+echo "Running hook after updating repository"
+cd /home/launcher/example.com/releases/20240116130000
+composer install --no-dev
+
+# Link shared directories
+
+if [ ! -d "/home/launcher/example.com/shared/storage" ]; then
+    # Create shared directory if it does not exist.
+    mkdir -p /home/launcher/example.com/shared/storage
+
+    if [ -d "/home/launcher/example.com/releases/20240116130000/storage" ]; then
+        # Copy contents of release directory to shared directory if it exists.
+        cp -r /home/launcher/example.com/releases/20240116130000/storage /home/launcher/example.com/shared/.
+    fi
+fi
+
+#  Remove shared directory from release directory if it exists.
+rm -rf /home/launcher/example.com/releases/20240116130000/storage
+
+# Create parent directory of shared directory in release directory if it does not exist,
+# otherwise symlink will fail.
+mkdir -p $(dirname /home/launcher/example.com/releases/20240116130000/storage)
+
+# Symlink shared directory to release directory.
+ln -nfs --relative /home/launcher/example.com/shared/storage /home/launcher/example.com/releases/20240116130000/storage
+
+
+
+# Link shared files
+
+# Create directories in shared and release directories if they don't exist
+mkdir -p /home/launcher/example.com/releases/20240116130000/.
+mkdir -p /home/launcher/example.com/shared/.
+
+# If the shared file does not exist, but the release file does, copy the release file to shared
+if [ ! -f "/home/launcher/example.com/shared/.env" ] && [ -f "/home/launcher/example.com/releases/20240116130000/.env" ]; then
+    cp /home/launcher/example.com/releases/20240116130000/.env /home/launcher/example.com/shared/.env
+fi
+
+# If the shared file still does not exist, create it
+if [ ! -f "/home/launcher/example.com/shared/.env" ]; then
+    touch /home/launcher/example.com/shared/.env
+fi
+
+# If the release file exists, remove it
+if [ -f "/home/launcher/example.com/releases/20240116130000/.env" ]; then
+    rm -rf /home/launcher/example.com/releases/20240116130000/.env
+fi
+
+# Create symlink
+ln -nfs --relative /home/launcher/example.com/shared/.env /home/launcher/example.com/releases/20240116130000/.env
+
+
+
+# Make directories writable
+
+DIRECTORY_IS_WRITEABLE=$(getfacl -p /home/launcher/example.com/releases/20240116130000/bootstrap/cache | grep "^user:launcher:.*w" | wc -l)
+
+if [ $DIRECTORY_IS_WRITEABLE -eq 0 ]; then
+    # Make the directory writable (without sudo)
+    setfacl -L -m u:launcher:rwX /home/launcher/example.com/releases/20240116130000/bootstrap/cache
+    setfacl -dL -m u:launcher:rwX /home/launcher/example.com/releases/20240116130000/bootstrap/cache
+fi
+
+
+DIRECTORY_IS_WRITEABLE=$(getfacl -p /home/launcher/example.com/releases/20240116130000/storage | grep "^user:launcher:.*w" | wc -l)
+
+if [ $DIRECTORY_IS_WRITEABLE -eq 0 ]; then
+    # Make the directory writable (without sudo)
+    setfacl -L -m u:launcher:rwX /home/launcher/example.com/releases/20240116130000/storage
+    setfacl -dL -m u:launcher:rwX /home/launcher/example.com/releases/20240116130000/storage
+fi
+
+
+
+echo "Running hook before putting the site live"
+cd /home/launcher/example.com/releases/20240116130000
+php artisan migrate --force
+
+# Make deployment current
+cd /home/launcher/example.com
+ln -nfs --relative /home/launcher/example.com/releases/20240116130000 /home/launcher/example.com/current
+
+echo "Done!"

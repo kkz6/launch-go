@@ -70,6 +70,7 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 
 	// Broadcast rollback started
 	j.ctx.BroadcastServerEvent(server, "deployment.rollback.started", map[string]interface{}{
+		"team_id":              server.TeamID,
 		"site_id":              site.ID,
 		"deployment_id":        currentDeployment.ID,
 		"target_deployment_id": targetDeployment.ID,
@@ -145,6 +146,7 @@ func (j *RollbackJob) handleRollbackSuccess(ctx context.Context, deployment *mod
 
 	// Broadcast rollback completed
 	j.ctx.BroadcastServerEvent(server, "deployment.rollback.completed", map[string]interface{}{
+		"team_id":              server.TeamID,
 		"site_id":              siteID,
 		"deployment_id":        deployment.ID,
 		"target_deployment_id": targetDeploymentID,
@@ -190,6 +192,7 @@ func (j *RollbackJob) handleRollbackFailure(ctx context.Context, deployment *mod
 
 	// Broadcast rollback failed
 	j.ctx.BroadcastServerEvent(server, "deployment.rollback.failed", map[string]interface{}{
+		"team_id":              server.TeamID,
 		"site_id":              siteID,
 		"deployment_id":        deployment.ID,
 		"target_deployment_id": targetDeploymentID,
@@ -232,6 +235,7 @@ func (j *RollbackJob) Failed(ctx context.Context, err error) {
 
 	// Broadcast failure
 	j.ctx.BroadcastServerEvent(server, "deployment.rollback.failed", map[string]interface{}{
+		"team_id":              server.TeamID,
 		"site_id":              j.Payload.SiteID,
 		"deployment_id":        j.Payload.DeploymentID,
 		"target_deployment_id": j.Payload.TargetDeploymentID,

@@ -1,0 +1,17 @@
+set -eu
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Rolling back to previous release..."
+
+# Verify the target release directory exists
+if [ ! -d "/home/launcher/example.com/releases/20240115100000" ]; then
+    echo "Error: Target release directory does not exist: /home/launcher/example.com/releases/20240115100000"
+    exit 1
+fi
+
+# Switch the current symlink to the target release
+cd /home/launcher/example.com
+ln -nfs --relative /home/launcher/example.com/releases/20240115100000 /home/launcher/example.com/current
+
+echo "Rollback completed successfully!"
+echo "Current release is now: /home/launcher/example.com/releases/20240115100000"

@@ -518,6 +518,25 @@ func PhpBinaryFromVersion(version string) string {
 	return "php" + version
 }
 
+// PhpSocketFromVersion returns the PHP-FPM socket path from a version string or software name.
+// Accepts both formats:
+//   - Version string: "8.3" returns "/run/php/php8.3-fpm.sock"
+//   - Software name: "php83" returns "/run/php/php8.3-fpm.sock"
+func PhpSocketFromVersion(version string) string {
+	if version == "" {
+		return ""
+	}
+
+	// Check if it's a software enum value like "php83"
+	software := Software(version)
+	if software.IsPhp() {
+		return "/run/php/php" + software.GetVersion() + "-fpm.sock"
+	}
+
+	// Otherwise treat as version string like "8.3"
+	return "/run/php/php" + version + "-fpm.sock"
+}
+
 // SoftwareFromPhpVersion returns the Software enum for a PHP version string.
 // For example, "8.3" returns SoftwarePhp83.
 func SoftwareFromPhpVersion(version string) Software {

@@ -5,11 +5,11 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // Service-specific errors - using centralized error package
@@ -43,7 +43,7 @@ type Service struct {
 }
 
 // NewService creates a new Service instance
-func NewService(repos contracts.RepositoryRegistry, q *queue.Client, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *Service {
+func NewService(repos contracts.RepositoryRegistry, q *queue.Client, ws broadcast.ModelBroadcaster, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *Service {
 	return &Service{
 		Base:       service.NewBase(q, ws, logger),
 		repos:      repos,
