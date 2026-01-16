@@ -78,42 +78,54 @@ func NewJobContext(
 	}
 }
 
-// SiteJobBase provides common functionality for site jobs
-type SiteJobBase struct {
-	jobs.BaseJob
-	Ctx *JobContext
-}
-
-// SetContext implements jobs.ContextSettable for generic factory injection
-func (j *SiteJobBase) SetContext(ctx any) {
-	if c, ok := ctx.(*JobContext); ok {
-		j.Ctx = c
-		j.DB = c.DB
-		j.Logger = c.Logger
-		j.WS = c.WS
-	}
-}
-
-// GetTaskRunnerDeps returns TaskRunnerDeps for running tasks
-func (j *SiteJobBase) GetTaskRunnerDeps() *servertasks.TaskRunnerDeps {
-	return j.Ctx.TaskRunnerDeps
+// ForServer creates a task runner bound to a specific server.
+func (c *JobContext) ForServer(server *servermodels.Server) *servertasks.TaskRunner {
+	return c.TaskRunnerDeps.NewRunner(server, nil)
 }
 
 // RunTaskOnServer creates a TaskRunner for executing a task on a server
-func (j *SiteJobBase) RunTaskOnServer(server *servermodels.Server, task taskrunner.Task) *servertasks.TaskRunner {
-	return j.Ctx.TaskRunnerDeps.NewRunner(server, task)
+func (c *JobContext) RunTaskOnServer(server *servermodels.Server, task taskrunner.Task) *servertasks.TaskRunner {
+	return c.TaskRunnerDeps.NewRunner(server, task)
 }
 
-// BroadcastSiteEvent broadcasts an event for a site
-func (j *SiteJobBase) BroadcastSiteEvent(siteID, event string, data any) {
-	if j.WS != nil {
-		j.WS.BroadcastToSite(siteID, event, data)
+// BroadcastToSite broadcasts an event for a site
+func (c *JobContext) BroadcastToSite(siteID, event string, data any) {
+	if c.WS != nil {
+		c.WS.BroadcastToSite(siteID, event, data)
 	}
 }
 
 // BroadcastToServer broadcasts an event to a server channel
-func (j *SiteJobBase) BroadcastToServer(serverID, event string, data any) {
-	if j.WS != nil {
-		j.WS.BroadcastToServer(serverID, event, data)
+func (c *JobContext) BroadcastToServer(serverID, event string, data any) {
+	if c.WS != nil {
+		c.WS.BroadcastToServer(serverID, event, data)
 	}
+}
+
+// LogInfo logs an info message with optional fields.
+func (c *JobContext) LogInfo(msg string, fields ...any) {
+	if c.Logger == nil {
+		return
+	}
+	event := c.Logger.Info()
+	for i := 0; i < len(fields)-1; i += 2 {
+		if key, ok := fields[i].(string); ok {
+			event = event.Interface(key, fields[i+1])
+		}
+	}
+	event.Msg(msg)
+}
+
+// LogError logs an error message with optional fields.
+func (c *JobContext) LogError(err error, msg string, fields ...any) {
+	if c.Logger == nil {
+		return
+	}
+	event := c.Logger.Error().Err(err)
+	for i := 0; i < len(fields)-1; i += 2 {
+		if key, ok := fields[i].(string); ok {
+			event = event.Interface(key, fields[i+1])
+		}
+	}
+	event.Msg(msg)
 }

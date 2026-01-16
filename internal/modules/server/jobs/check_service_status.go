@@ -7,21 +7,28 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
+
+const TypeCheckServiceStatus = "server:check_service_status"
+
+type CheckServiceStatusPayload struct {
+	ServerID  string  `json:"server_id"`
+	ServiceID string  `json:"service_id"`
+	UserID    *string `json:"user_id,omitempty"`
+}
 
 // CheckServiceStatusJob checks the status of a service and updates the database.
 // Similar to Laravel's Modules\Server\Jobs\CheckServiceStatusOnServer
 type CheckServiceStatusJob struct {
-	ServerJobBase
+	ctx     *JobContext
 	Payload CheckServiceStatusPayload
-}
-
-// Type returns the job type identifier
-func (j *CheckServiceStatusJob) Type() string {
-	return TypeCheckServiceStatus
 }
 
 // Timeout returns the job timeout duration
@@ -31,19 +38,19 @@ func (j *CheckServiceStatusJob) Timeout() time.Duration {
 
 // Handle processes the job
 func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
-	service, err := j.Repo().FindServiceByID(ctx, j.Payload.ServiceID)
+	service, err := j.ctx.Repo.FindServiceByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
-	server, err := j.Repo().FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	task := tasks.GetServiceStatusTask(service.Software, service.Version)
 
-	result, err := j.RunTaskOnServer(server, task).
+	result, err := j.ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -58,13 +65,13 @@ func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
 
 	j.updateServiceStatus(ctx, service.ID, status, output, details, "")
 
-	j.LogInfo("Service status check completed",
+	j.ctx.LogInfo("Service status check completed",
 		"service_id", service.ID,
 		"server_id", server.ID,
 		"status", status,
 	)
 
-	j.BroadcastServerEvent(server.ID, "service.status_checked", map[string]any{
+	j.ctx.BroadcastToServer(server.ID, "service.status_checked", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
 		"status":     status.String(),
@@ -75,7 +82,7 @@ func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *CheckServiceStatusJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Failed to check service status",
+	j.ctx.LogError(err, "Failed to check service status",
 		"service_id", j.Payload.ServiceID,
 		"server_id", j.Payload.ServerID,
 	)
@@ -95,8 +102,8 @@ func (j *CheckServiceStatusJob) updateServiceStatus(ctx context.Context, service
 		typeData["status_error"] = errorMsg
 	}
 
-	if err := j.Repo().UpdateServiceWithTypeData(ctx, serviceID, status, typeData); err != nil {
-		j.LogError(err, "Failed to update service status", "service_id", serviceID)
+	if err := j.ctx.Repo.UpdateServiceWithTypeData(ctx, serviceID, status, typeData); err != nil {
+		j.ctx.LogError(err, "Failed to update service status", "service_id", serviceID)
 	}
 }
 
@@ -225,4 +232,20 @@ func formatBytes(bytesStr string) string {
 	default:
 		return fmt.Sprintf("%d B", bytes)
 	}
+}
+
+func NewCheckServiceStatusJob(ctx *JobContext, payload CheckServiceStatusPayload) *CheckServiceStatusJob {
+	return &CheckServiceStatusJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
+}
+
+// NewCheckServiceStatusTask creates an asynq task for checking service status
+func NewCheckServiceStatusTask(serverID, serviceID string, userID *string) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeCheckServiceStatus, CheckServiceStatusPayload{
+		ServerID:  serverID,
+		ServiceID: serviceID,
+		UserID:    userID,
+	})
 }

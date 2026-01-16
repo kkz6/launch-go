@@ -3,35 +3,40 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"time"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/activity"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
+
+const TypeRemoveService = "server:remove_service"
+
+type RemoveServicePayload struct {
+	ServerID  string  `json:"server_id"`
+	ServiceID string  `json:"service_id"`
+	UserID    *string `json:"user_id,omitempty"`
+}
 
 // RemoveServiceJob removes a service from a server.
 // Similar to Laravel's Modules\Server\Jobs\UninstallService
 type RemoveServiceJob struct {
-	ServerJobBase
-	jobs.UninstallationTracker
+	ctx     *JobContext
 	Payload RemoveServicePayload
-}
-
-// Type returns the job type identifier
-func (j *RemoveServiceJob) Type() string {
-	return TypeRemoveService
 }
 
 // Handle processes the job
 func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 	// Find the service with server
-	service, err := j.Repo().FindServiceByID(ctx, j.Payload.ServiceID)
+	service, err := j.ctx.Repo.FindServiceByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
 	// Find the server
-	server, err := j.Repo().FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -39,7 +44,7 @@ func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 	// Create remove task using the software's remove template
 	task := tasks.RemoveSoftware(service.GetSoftware())
 
-	result, err := j.RunTaskOnServer(server, task).
+	result, err := j.ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -48,22 +53,33 @@ func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 	}
 
 	if !result.IsSuccessful() {
-		j.LogError(nil, "Service removal completed with errors",
+		j.ctx.LogError(nil, "Service removal completed with errors",
 			"output", result.GetOutput())
 	}
 
+	// Log activity before deletion
+	logger := activity.New(j.ctx.DB).
+		WithContext(ctx).
+		UseLog("server").
+		On(service).
+		WithEvent("removed")
+	if j.Payload.UserID != nil {
+		logger.CausedByUser(*j.Payload.UserID)
+	}
+	logger.Log("Service was removed")
+
 	// Delete the service record
-	if err := j.Repo().DeleteService(ctx, service.ID); err != nil {
+	if err := j.ctx.Repo.DeleteService(ctx, service.ID); err != nil {
 		return fmt.Errorf("failed to delete service record: %w", err)
 	}
 
-	j.LogInfo("Service removed successfully",
+	j.ctx.LogInfo("Service removed successfully",
 		"service_id", service.ID,
 		"server_id", server.ID,
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(server.ID, "service.removed", map[string]any{
+	j.ctx.BroadcastToServer(server.ID, "service.removed", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
 	})
@@ -73,11 +89,34 @@ func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *RemoveServiceJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Failed to remove service",
+	j.ctx.LogError(err, "Failed to remove service",
 		"service_id", j.Payload.ServiceID,
 		"server_id", j.Payload.ServerID,
 	)
 
-	// Update service status to failed
-	_ = j.Repo().UpdateServiceStatus(ctx, j.Payload.ServiceID, enums.ServiceStatusFailed)
+	// Mark removal as failed
+	service, findErr := j.ctx.Repo.FindServiceByID(ctx, j.Payload.ServiceID)
+	if findErr == nil && service != nil {
+		now := time.Now()
+		j.ctx.DB.Model(service).Updates(map[string]any{
+			"removal_requested_at": nil,
+			"removal_failed_at":    &now,
+		})
+	}
+}
+
+func NewRemoveServiceJob(ctx *JobContext, payload RemoveServicePayload) *RemoveServiceJob {
+	return &RemoveServiceJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
+}
+
+// NewRemoveServiceTask creates an asynq task for removing a service
+func NewRemoveServiceTask(serverID, serviceID string, userID *string) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeRemoveService, RemoveServicePayload{
+		ServerID:  serverID,
+		ServiceID: serviceID,
+		UserID:    userID,
+	})
 }

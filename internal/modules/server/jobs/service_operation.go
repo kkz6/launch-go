@@ -4,32 +4,39 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
+
+const TypeServiceOperation = "server:service_operation"
+
+type ServiceOperationPayload struct {
+	ServerID  string  `json:"server_id"`
+	ServiceID string  `json:"service_id"`
+	Operation string  `json:"operation"`
+	UserID    *string `json:"user_id,omitempty"`
+}
 
 // ServiceOperationJob performs an operation (start/stop/restart/reload) on a service.
 // Similar to Laravel's Modules\Server\Jobs\ServiceOperation
 type ServiceOperationJob struct {
-	ServerJobBase
+	ctx     *JobContext
 	Payload ServiceOperationPayload
-}
-
-// Type returns the job type identifier
-func (j *ServiceOperationJob) Type() string {
-	return TypeServiceOperation
 }
 
 // Handle processes the job
 func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 	// Find the service
-	service, err := j.Repo().FindServiceByID(ctx, j.Payload.ServiceID)
+	service, err := j.ctx.Repo.FindServiceByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
 	// Find the server
-	server, err := j.Repo().FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -53,7 +60,7 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("unknown operation: %s", j.Payload.Operation)
 	}
 
-	result, err := j.RunTaskOnServer(server, task).
+	result, err := j.ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -65,14 +72,14 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to %s service: %s", j.Payload.Operation, result.GetOutput())
 	}
 
-	j.LogInfo("Service operation completed",
+	j.ctx.LogInfo("Service operation completed",
 		"service_id", service.ID,
 		"server_id", server.ID,
 		"operation", j.Payload.Operation,
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(server.ID, "service.operation", map[string]any{
+	j.ctx.BroadcastToServer(server.ID, "service.operation", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
 		"operation":  j.Payload.Operation,
@@ -83,9 +90,27 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *ServiceOperationJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Failed to perform service operation",
+	j.ctx.LogError(err, "Failed to perform service operation",
 		"service_id", j.Payload.ServiceID,
 		"server_id", j.Payload.ServerID,
 		"operation", j.Payload.Operation,
 	)
+}
+
+// NewServiceOperationJob creates a new ServiceOperationJob with the given context and payload.
+func NewServiceOperationJob(ctx *JobContext, payload ServiceOperationPayload) *ServiceOperationJob {
+	return &ServiceOperationJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
+}
+
+// NewServiceOperationTask creates an asynq task for performing a service operation
+func NewServiceOperationTask(serverID, serviceID, operation string, userID *string) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeServiceOperation, ServiceOperationPayload{
+		ServerID:  serverID,
+		ServiceID: serviceID,
+		Operation: operation,
+		UserID:    userID,
+	})
 }

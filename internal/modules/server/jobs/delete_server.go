@@ -9,25 +9,28 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
-	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
+
+const TypeDeleteServer = "server:delete"
+
+type DeleteServerPayload struct {
+	ServerID string  `json:"server_id"`
+	TeamID   string  `json:"team_id"`
+	UserID   *string `json:"user_id,omitempty"`
+}
 
 // DeleteServerJob deletes a server from the provider and database.
 // Similar to Laravel's Modules\Server\Jobs\DeleteServer
 type DeleteServerJob struct {
-	ServerJobBase
+	ctx     *JobContext
 	Payload DeleteServerPayload
-}
-
-// Type returns the job type identifier
-func (j *DeleteServerJob) Type() string {
-	return TypeDeleteServer
 }
 
 // Handle processes the job
 func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	// Find the server with relations
-	server, err := j.Repo().FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -42,20 +45,20 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 
 	// Delete from cloud provider if not a custom server
 	if server.Provider != enums.ProviderCustom && providerServerID != "" {
-		j.LogInfo("Deleting server from cloud provider",
+		j.ctx.LogInfo("Deleting server from cloud provider",
 			"server_id", server.ID,
 			"provider", server.Provider.String(),
 			"provider_server_id", providerServerID,
 		)
 
-		provider, err := j.ProviderFactory().Create(server.Provider)
+		provider, err := j.ctx.ProviderFactory.Create(server.Provider)
 		if err != nil {
-			j.LogError(err, "Failed to create provider, continuing with database deletion")
+			j.ctx.LogError(err, "Failed to create provider, continuing with database deletion")
 		} else {
 			// Get credentials from server provider
 			var credentials map[string]any
 			if server.ServerProviderID != nil {
-				serverProvider, err := j.Repo().FindServerProviderByID(ctx, *server.ServerProviderID)
+				serverProvider, err := j.ctx.Repo.FindServerProviderByID(ctx, *server.ServerProviderID)
 				if err == nil {
 					credStr := serverProvider.Credentials.String()
 					if credStr != "" {
@@ -66,12 +69,12 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 
 			if credentials != nil && len(credentials) > 0 {
 				if err := provider.Delete(ctx, server, credentials); err != nil {
-					j.LogError(err, "Failed to delete server from provider, continuing with database deletion",
+					j.ctx.LogError(err, "Failed to delete server from provider, continuing with database deletion",
 						"server_id", server.ID,
 						"provider", server.Provider.String(),
 					)
 				} else {
-					j.LogInfo("Server deleted from cloud provider",
+					j.ctx.LogInfo("Server deleted from cloud provider",
 						"server_id", server.ID,
 						"provider", server.Provider.String(),
 					)
@@ -81,12 +84,12 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Delete the server record from database
-	if err := j.Repo().DeleteServer(ctx, server.ID); err != nil {
+	if err := j.ctx.Repo.DeleteServer(ctx, server.ID); err != nil {
 		return fmt.Errorf("failed to delete server: %w", err)
 	}
 
 	// Log activity before deletion
-	logger := activity.New(j.DB).
+	logger := activity.New(j.ctx.DB).
 		WithContext(ctx).
 		UseLog("server").
 		On(server).
@@ -96,31 +99,39 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	}
 	logger.Log("Server was deleted")
 
-	j.LogInfo("Server deleted successfully",
+	j.ctx.LogInfo("Server deleted successfully",
 		"server_id", server.ID,
 		"server_name", server.Name,
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(server.ID, "server.deleted", map[string]any{
+	j.ctx.BroadcastToServer(server.ID, "server.deleted", map[string]any{
 		"server_id": server.ID,
 	})
 
 	return nil
 }
 
+// Failed is called when the job fails after all retries
+func (j *DeleteServerJob) Failed(ctx context.Context, err error) {
+	j.ctx.LogError(err, "Failed to delete server",
+		"server_id", j.Payload.ServerID,
+	)
+}
+
+// NewDeleteServerJob creates a new DeleteServerJob with the given context and payload.
+func NewDeleteServerJob(ctx *JobContext, payload DeleteServerPayload) *DeleteServerJob {
+	return &DeleteServerJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
+}
+
 // NewDeleteServerTask creates an asynq task for deleting a server
 func NewDeleteServerTask(serverID, teamID string, userID *string) (*asynq.Task, error) {
-	return jobs.NewTask(TypeDeleteServer, DeleteServerPayload{
+	return pkgjobs.NewTask(TypeDeleteServer, DeleteServerPayload{
 		ServerID: serverID,
 		TeamID:   teamID,
 		UserID:   userID,
 	})
-}
-
-// Failed is called when the job fails after all retries
-func (j *DeleteServerJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Failed to delete server",
-		"server_id", j.Payload.ServerID,
-	)
 }

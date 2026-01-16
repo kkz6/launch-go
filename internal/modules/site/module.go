@@ -17,7 +17,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
@@ -299,10 +298,8 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 	)
 	jobs.SetJobContext(jobContext)
 
-	// Create kernel and register jobs
-	kernel := pkgjobs.NewKernel(m.db, m.logger, m.ws)
-	kernel.RegisterModule(jobs.Register)
-	kernel.Boot(mux)
+	// Register job handlers
+	jobs.RegisterHandlers(mux)
 }
 
 // SetProviderFactory sets the git provider factory for app-based authentication

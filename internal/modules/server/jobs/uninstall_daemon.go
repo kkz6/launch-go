@@ -3,31 +3,34 @@ package jobs
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
-	"github.com/kkz6/launch-go/internal/pkg/jobs"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
+
+const TypeUninstallDaemon = "server:uninstall_daemon"
+
+type UninstallDaemonPayload struct {
+	ServerID string  `json:"server_id"`
+	DaemonID string  `json:"daemon_id"`
+	UserID   *string `json:"user_id,omitempty"`
+}
 
 // UninstallDaemonJob uninstalls a daemon from a server.
 // Similar to Laravel's Modules\Server\Jobs\UninstallDaemon
 type UninstallDaemonJob struct {
-	ServerJobBase
-	jobs.UninstallationTracker
+	ctx     *JobContext
 	Payload UninstallDaemonPayload
-}
-
-// Type returns the job type identifier
-func (j *UninstallDaemonJob) Type() string {
-	return TypeUninstallDaemon
 }
 
 // Handle processes the job
 func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 	// Find the daemon with server preloaded
-	daemon, err := j.Repo().FindDaemonByIDWithServer(ctx, j.Payload.DaemonID)
+	daemon, err := j.ctx.Repo.FindDaemonByIDWithServer(ctx, j.Payload.DaemonID)
 	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
@@ -38,7 +41,7 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 		ProgramName: daemon.ProgramName(),
 	})
 
-	result, err := j.RunTaskOnServer(daemon.Server, task).
+	result, err := j.ctx.ForServer(daemon.Server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -47,12 +50,12 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 	}
 
 	if !result.IsSuccessful() {
-		j.LogError(nil, "Daemon deletion task completed with errors",
+		j.ctx.LogError(nil, "Daemon deletion task completed with errors",
 			"output", result.GetOutput())
 	}
 
 	// Log activity before deletion
-	logger := activity.New(j.DB).
+	logger := activity.New(j.ctx.DB).
 		WithContext(ctx).
 		UseLog("server").
 		On(daemon).
@@ -63,17 +66,17 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 	logger.Log("Daemon was uninstalled")
 
 	// Delete the daemon record
-	if err := j.Repo().DeleteDaemon(ctx, daemon.ID); err != nil {
+	if err := j.ctx.Repo.DeleteDaemon(ctx, daemon.ID); err != nil {
 		return fmt.Errorf("failed to delete daemon record: %w", err)
 	}
 
-	j.LogInfo("Daemon uninstalled successfully",
+	j.ctx.LogInfo("Daemon uninstalled successfully",
 		"daemon_id", daemon.ID,
 		"server_id", daemon.ServerID,
 	)
 
 	// Broadcast event
-	j.BroadcastServerEvent(daemon.ServerID, "daemon.uninstalled", map[string]any{
+	j.ctx.BroadcastToServer(daemon.ServerID, "daemon.uninstalled", map[string]any{
 		"daemon_id": daemon.ID,
 		"server_id": daemon.ServerID,
 	})
@@ -83,21 +86,32 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *UninstallDaemonJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Failed to uninstall daemon",
+	j.ctx.LogError(err, "Failed to uninstall daemon",
 		"daemon_id", j.Payload.DaemonID,
 		"server_id", j.Payload.ServerID,
 	)
 
 	// Mark uninstallation as failed
-	daemon, findErr := j.Repo().FindDaemonByID(ctx, j.Payload.DaemonID)
+	daemon, findErr := j.ctx.Repo.FindDaemonByID(ctx, j.Payload.DaemonID)
 	if findErr == nil && daemon != nil {
-		j.MarkUninstallationFailed(j.DB, daemon)
+		now := time.Now()
+		j.ctx.DB.Model(daemon).Updates(map[string]any{
+			"uninstallation_requested_at": nil,
+			"uninstallation_failed_at":    &now,
+		})
+	}
+}
+
+func NewUninstallDaemonJob(ctx *JobContext, payload UninstallDaemonPayload) *UninstallDaemonJob {
+	return &UninstallDaemonJob{
+		ctx:     ctx,
+		Payload: payload,
 	}
 }
 
 // NewUninstallDaemonTask creates an asynq task for uninstalling a daemon
 func NewUninstallDaemonTask(serverID, daemonID string, userID *string) (*asynq.Task, error) {
-	return jobs.NewTask(TypeUninstallDaemon, UninstallDaemonPayload{
+	return pkgjobs.NewTask(TypeUninstallDaemon, UninstallDaemonPayload{
 		ServerID: serverID,
 		DaemonID: daemonID,
 		UserID:   userID,

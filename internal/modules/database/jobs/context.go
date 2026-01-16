@@ -20,6 +20,7 @@ import (
 
 var jobContext *JobContext
 
+// JobContext holds dependencies for database job execution.
 type JobContext struct {
 	DB             *gorm.DB
 	Repo           *repositories.Repository
@@ -30,6 +31,7 @@ type JobContext struct {
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
 }
 
+// NewJobContext creates a new database job context.
 func NewJobContext(
 	db *gorm.DB,
 	repo *repositories.Repository,
@@ -54,47 +56,66 @@ func NewJobContext(
 	}
 }
 
+// SetJobContext sets the global job context.
 func SetJobContext(ctx *JobContext) {
 	jobContext = ctx
 }
 
+// GetJobContext returns the global job context.
 func GetJobContext() *JobContext {
 	return jobContext
 }
 
-type DatabaseJobBase struct {
-	jobs.BaseJob
-	Ctx *JobContext
+// RunTaskOnServer creates a TaskRunner for executing a task on a server.
+func (c *JobContext) RunTaskOnServer(server *servermodels.Server, task taskrunner.Task) *servertasks.TaskRunner {
+	return c.TaskRunnerDeps.NewRunner(server, task)
 }
 
-// SetContext implements jobs.ContextSettable for generic factory injection.
-func (j *DatabaseJobBase) SetContext(ctx any) {
-	if c, ok := ctx.(*JobContext); ok {
-		j.Ctx = c
-		j.DB = c.DB
-		j.Logger = c.Logger
-		j.WS = c.WS
-		j.Dispatcher = c.Dispatcher
-		j.Queue = c.Queue
+// BroadcastToTeam broadcasts an event to a team channel.
+func (c *JobContext) BroadcastToTeam(teamID, event string, data any) {
+	if c.WS != nil {
+		c.WS.BroadcastToTeam(teamID, event, data)
 	}
 }
 
-func (j *DatabaseJobBase) Repo() *repositories.Repository {
-	return j.Ctx.Repo
-}
-
-func (j *DatabaseJobBase) RunTaskOnServer(server *servermodels.Server, task taskrunner.Task) *servertasks.TaskRunner {
-	return j.Ctx.TaskRunnerDeps.NewRunner(server, task)
-}
-
-func (j *DatabaseJobBase) BroadcastDatabaseEvent(server *servermodels.Server, event string, data any) {
-	if j.WS != nil && server != nil {
-		j.WS.BroadcastToTeam(server.TeamID, event, data)
+// BroadcastDatabaseEvent broadcasts a database event to a team channel.
+func (c *JobContext) BroadcastDatabaseEvent(server *servermodels.Server, event string, data any) {
+	if c.WS != nil && server != nil {
+		c.WS.BroadcastToTeam(server.TeamID, event, data)
 	}
 }
 
-func (j *DatabaseJobBase) GetDatabaseType(ctx context.Context, serverID string) string {
-	service, err := repository.NewQuery[servermodels.InstalledService](j.DB, ctx).
+// LogInfo logs an info message with optional fields.
+func (c *JobContext) LogInfo(msg string, fields ...any) {
+	if c.Logger == nil {
+		return
+	}
+	event := c.Logger.Info()
+	for i := 0; i < len(fields)-1; i += 2 {
+		if key, ok := fields[i].(string); ok {
+			event = event.Interface(key, fields[i+1])
+		}
+	}
+	event.Msg(msg)
+}
+
+// LogError logs an error message with optional fields.
+func (c *JobContext) LogError(err error, msg string, fields ...any) {
+	if c.Logger == nil {
+		return
+	}
+	event := c.Logger.Error().Err(err)
+	for i := 0; i < len(fields)-1; i += 2 {
+		if key, ok := fields[i].(string); ok {
+			event = event.Interface(key, fields[i+1])
+		}
+	}
+	event.Msg(msg)
+}
+
+// GetDatabaseType returns the database type for a server (mysql or postgresql).
+func (c *JobContext) GetDatabaseType(ctx context.Context, serverID string) string {
+	service, err := repository.NewQuery[servermodels.InstalledService](c.DB, ctx).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
 			string(serverenums.ServiceTypePostgreSql),
@@ -111,8 +132,9 @@ func (j *DatabaseJobBase) GetDatabaseType(ctx context.Context, serverID string) 
 	return "mysql"
 }
 
-func (j *DatabaseJobBase) GetDatabaseServiceType(ctx context.Context, serverID string) serverenums.ServiceType {
-	service, err := repository.NewQuery[servermodels.InstalledService](j.DB, ctx).
+// GetDatabaseServiceType returns the database service type for a server.
+func (c *JobContext) GetDatabaseServiceType(ctx context.Context, serverID string) serverenums.ServiceType {
+	service, err := repository.NewQuery[servermodels.InstalledService](c.DB, ctx).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
 			string(serverenums.ServiceTypePostgreSql),
@@ -126,13 +148,14 @@ func (j *DatabaseJobBase) GetDatabaseServiceType(ctx context.Context, serverID s
 	return service.Type
 }
 
-func (j *DatabaseJobBase) GetTaskFactory(ctx context.Context, serverID string) *tasks.Factory {
-	dbType := j.GetDatabaseServiceType(ctx, serverID)
+// GetTaskFactory returns a task factory for the server's database type.
+func (c *JobContext) GetTaskFactory(ctx context.Context, serverID string) *tasks.Factory {
+	dbType := c.GetDatabaseServiceType(ctx, serverID)
 	return tasks.NewFactory(dbType)
 }
 
 // BroadcastDatabaseProgress broadcasts a standard progress event for database operations.
-func (j *DatabaseJobBase) BroadcastDatabaseProgress(server *servermodels.Server, event, entityID, status, message string) {
+func (c *JobContext) BroadcastDatabaseProgress(server *servermodels.Server, event, entityID, status, message string) {
 	data := map[string]any{
 		"server_id": server.ID,
 		"status":    status,
@@ -142,12 +165,12 @@ func (j *DatabaseJobBase) BroadcastDatabaseProgress(server *servermodels.Server,
 	if entityID != "" {
 		data["database_id"] = entityID
 	}
-	j.BroadcastDatabaseEvent(server, event, data)
+	c.BroadcastDatabaseEvent(server, event, data)
 }
 
 // BroadcastUserProgress broadcasts a standard progress event for database user operations.
-func (j *DatabaseJobBase) BroadcastUserProgress(server *servermodels.Server, event, userID, status, message string) {
-	j.BroadcastDatabaseEvent(server, event, map[string]any{
+func (c *JobContext) BroadcastUserProgress(server *servermodels.Server, event, userID, status, message string) {
+	c.BroadcastDatabaseEvent(server, event, map[string]any{
 		"server_id": server.ID,
 		"user_id":   userID,
 		"status":    status,

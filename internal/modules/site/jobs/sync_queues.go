@@ -8,8 +8,20 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
+
+const TypeSyncQueues = "site:sync_queues"
+
+// SyncQueuesPayload holds data for queue status synchronization
+type SyncQueuesPayload struct {
+	SiteID   string  `json:"site_id"`
+	ServerID string  `json:"server_id"`
+	UserID   *string `json:"user_id,omitempty"`
+}
 
 // DaemonStatusInfo represents the info stored in the queue's info field
 type DaemonStatusInfo struct {
@@ -31,45 +43,48 @@ type daemonStatusResult struct {
 
 // SyncQueuesJob handles synchronizing queue worker status from the server
 type SyncQueuesJob struct {
-	SiteJobBase
+	ctx     *JobContext
 	Payload SyncQueuesPayload
 }
 
-// Type returns the job type
-func (j *SyncQueuesJob) Type() string {
-	return TypeSyncQueues
+// NewSyncQueuesJob creates a new SyncQueuesJob with the given context and payload
+func NewSyncQueuesJob(ctx *JobContext, payload SyncQueuesPayload) *SyncQueuesJob {
+	return &SyncQueuesJob{
+		ctx:     ctx,
+		Payload: payload,
+	}
 }
 
 // Handle executes the sync queues job
 func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
 	// Get server
-	server, err := j.Ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Get all queues for this site
-	queues, err := j.Ctx.QueueRepo.FindBySite(ctx, j.Payload.SiteID)
+	queues, err := j.ctx.QueueRepo.FindBySite(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to get queues: %w", err)
 	}
 
 	if len(queues) == 0 {
-		j.LogInfo("No queues to sync", "site_id", site.ID)
+		j.ctx.LogInfo("No queues to sync", "site_id", site.ID)
 		return nil
 	}
 
 	// Create and run the daemon status check task
 	task := tasks.CheckDaemonStatus()
-	result, err := j.RunTaskOnServer(server, task).AsRoot().Dispatch(ctx)
+	result, err := j.ctx.RunTaskOnServer(server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.LogError(err, "Failed to check daemon status", "site_id", site.ID)
+		j.ctx.LogError(err, "Failed to check daemon status", "site_id", site.ID)
 		return err
 	}
 
@@ -123,15 +138,15 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 		}
 
 		// Update the queue in the database
-		if err := j.Ctx.QueueRepo.Update(ctx, queue); err != nil {
-			j.LogError(err, "Failed to update queue status", "queue_id", queue.ID)
+		if err := j.ctx.QueueRepo.Update(ctx, queue); err != nil {
+			j.ctx.LogError(err, "Failed to update queue status", "queue_id", queue.ID)
 		}
 	}
 
-	j.LogInfo("Queue status sync completed", "site_id", site.ID, "queue_count", len(queues))
+	j.ctx.LogInfo("Queue status sync completed", "site_id", site.ID, "queue_count", len(queues))
 
 	// Broadcast status update
-	j.BroadcastSiteEvent(site.ID, "queues.synced", map[string]interface{}{
+	j.ctx.BroadcastToSite(site.ID, "queues.synced", map[string]interface{}{
 		"site_id":     site.ID,
 		"queue_count": len(queues),
 	})
@@ -141,7 +156,7 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *SyncQueuesJob) Failed(ctx context.Context, err error) {
-	j.LogError(err, "Sync queues job failed", "site_id", j.Payload.SiteID)
+	j.ctx.LogError(err, "Sync queues job failed", "site_id", j.Payload.SiteID)
 }
 
 // parseDaemonStatus parses the output of the daemon status check task
@@ -216,4 +231,13 @@ func formatUptime(seconds int) string {
 	}
 
 	return strings.Join(parts, ", ")
+}
+
+// NewSyncQueuesTask creates a sync queues status job
+func NewSyncQueuesTask(siteID, serverID string, userID *string) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeSyncQueues, SyncQueuesPayload{
+		SiteID:   siteID,
+		ServerID: serverID,
+		UserID:   userID,
+	})
 }

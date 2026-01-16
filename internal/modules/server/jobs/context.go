@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/queue"
 )
 
+// JobContext holds dependencies for server jobs.
 type JobContext struct {
 	DB              *gorm.DB
 	Repo            contracts.Repository
@@ -23,6 +24,7 @@ type JobContext struct {
 	TaskRunnerDeps  *tasks.TaskRunnerDeps
 }
 
+// NewJobContext creates a new job context with all dependencies.
 func NewJobContext(
 	db *gorm.DB,
 	repo contracts.Repository,
@@ -48,11 +50,13 @@ func NewJobContext(
 	}
 }
 
+// ServerTaskRunner provides a fluent interface for running tasks on a server.
 type ServerTaskRunner struct {
 	ctx    *JobContext
 	server *models.Server
 }
 
+// ForServer creates a task runner bound to a specific server.
 func (c *JobContext) ForServer(server *models.Server) *ServerTaskRunner {
 	return &ServerTaskRunner{
 		ctx:    c,
@@ -60,39 +64,42 @@ func (c *JobContext) ForServer(server *models.Server) *ServerTaskRunner {
 	}
 }
 
+// RunTask executes a task on the server.
 func (s *ServerTaskRunner) RunTask(task taskrunner.Task) *tasks.TaskRunner {
 	return s.ctx.TaskRunnerDeps.NewRunner(s.server, task)
 }
 
-type ServerJobBase struct {
-	jobs.BaseJob
-	Ctx *JobContext
-}
-
-// SetContext implements jobs.ContextSettable for generic factory injection.
-func (j *ServerJobBase) SetContext(ctx any) {
-	if c, ok := ctx.(*JobContext); ok {
-		j.Ctx = c
-		j.DB = c.DB
-		j.Logger = c.Logger
-		j.WS = c.WS
+// BroadcastToServer sends a websocket event to a server channel.
+func (c *JobContext) BroadcastToServer(serverID, event string, data any) {
+	if c.WS != nil {
+		c.WS.BroadcastToServer(serverID, event, data)
 	}
 }
 
-func (j *ServerJobBase) RunTaskOnServer(server *models.Server, task taskrunner.Task) *tasks.TaskRunner {
-	return j.Ctx.TaskRunnerDeps.NewRunner(server, task)
-}
-
-func (j *ServerJobBase) Repo() contracts.Repository {
-	return j.Ctx.Repo
-}
-
-func (j *ServerJobBase) ProviderFactory() *providers.Factory {
-	return j.Ctx.ProviderFactory
-}
-
-func (j *ServerJobBase) BroadcastServerEvent(serverID, event string, data any) {
-	if j.WS != nil {
-		j.WS.BroadcastToServer(serverID, event, data)
+// LogInfo logs an info message with optional fields.
+func (c *JobContext) LogInfo(msg string, fields ...any) {
+	if c.Logger == nil {
+		return
 	}
+	event := c.Logger.Info()
+	for i := 0; i < len(fields)-1; i += 2 {
+		if key, ok := fields[i].(string); ok {
+			event = event.Interface(key, fields[i+1])
+		}
+	}
+	event.Msg(msg)
+}
+
+// LogError logs an error message with optional fields.
+func (c *JobContext) LogError(err error, msg string, fields ...any) {
+	if c.Logger == nil {
+		return
+	}
+	event := c.Logger.Error().Err(err)
+	for i := 0; i < len(fields)-1; i += 2 {
+		if key, ok := fields[i].(string); ok {
+			event = event.Interface(key, fields[i+1])
+		}
+	}
+	event.Msg(msg)
 }

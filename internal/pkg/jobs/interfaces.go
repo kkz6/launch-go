@@ -3,11 +3,7 @@ package jobs
 import (
 	"context"
 
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
-
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
 )
 
 // Installable is implemented by models that can track installation status.
@@ -42,25 +38,6 @@ type TaskTrackable interface {
 	TableName() string
 }
 
-// DependencyAware is implemented by jobs that need the standard dependencies.
-// Use this interface to ensure a job has access to required services.
-type DependencyAware interface {
-	GetDB() *gorm.DB
-	GetLogger() *zerolog.Logger
-	GetWS() Broadcaster
-	GetDispatcher() taskrunner.TaskDispatcher
-	GetQueue() *queue.Client
-}
-
-// DependencySetter is implemented by jobs that can receive dependencies.
-type DependencySetter interface {
-	SetDB(db *gorm.DB)
-	SetLogger(logger *zerolog.Logger)
-	SetWS(ws Broadcaster)
-	SetDispatcher(dispatcher taskrunner.TaskDispatcher)
-	SetQueue(q *queue.Client)
-}
-
 // ServerConnectable represents a server that can be connected to via SSH.
 // This abstraction allows jobs to work with server models without
 // importing the server module directly.
@@ -93,19 +70,6 @@ type GenericRepository[T any] interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// HandlerWithPayload is a Handler that also exposes its payload type.
-// This is useful for jobs that need to access their payload generically.
-type HandlerWithPayload[P any] interface {
-	Handler
-	GetPayload() P
-}
-
-// FailableJob is a job that can handle failures.
-// All jobs implementing Handler should also implement this implicitly
-// through the Failed method.
-type FailableJob interface {
-	Failed(ctx context.Context, err error)
-}
 
 // ServerEventBroadcaster can broadcast events to server channels.
 type ServerEventBroadcaster interface {
@@ -129,8 +93,3 @@ type FullBroadcaster interface {
 	SiteEventBroadcaster
 	DeploymentEventBroadcaster
 }
-
-// These ensure BaseJob implements the required interfaces.
-var (
-	_ DependencyAware = (*BaseJob)(nil)
-)

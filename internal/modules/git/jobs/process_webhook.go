@@ -17,6 +17,14 @@ import (
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
+const TypeProcessGitWebhook = "git:process_webhook"
+
+type ProcessGitWebhookPayload struct {
+	Provider  string `json:"provider"`
+	Payload   string `json:"payload"`
+	Signature string `json:"signature"`
+}
+
 // ProcessGitWebhookJob processes git webhooks asynchronously
 type ProcessGitWebhookJob struct {
 	db              *gorm.DB
@@ -309,3 +317,4 @@ func NewProcessGitWebhookJob(ctx *JobContext, payload ProcessGitWebhookPayload) 
 		Payload:         payload,
 	}
 }
+
