@@ -5,16 +5,11 @@ import (
 	"errors"
 	"time"
 
-	"github.com/rs/zerolog"
-
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
-	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // SSLService handles business logic for SSL/TLS
@@ -23,37 +18,15 @@ type SSLService struct {
 }
 
 // NewSSLService creates a new SSL service
-func NewSSLService(
-	siteRepo *repositories.SiteRepository,
-	deploymentRepo *repositories.DeploymentRepository,
-	certificateRepo *repositories.CertificateRepository,
-	queueRepo *repositories.QueueRepository,
-	commandRepo *repositories.CommandRepository,
-	redirectRepo *repositories.RedirectRepository,
-	releaseRepo *repositories.ReleaseRepository,
-	queueClient *queue.Client,
-	ws *websocket.Hub,
-	logger *zerolog.Logger,
-) *SSLService {
+func NewSSLService(deps *ServiceDeps) *SSLService {
 	return &SSLService{
-		BaseService: NewBaseService(
-			siteRepo,
-			deploymentRepo,
-			certificateRepo,
-			queueRepo,
-			commandRepo,
-			redirectRepo,
-			releaseRepo,
-			queueClient,
-			ws,
-			logger,
-		),
+		BaseService: NewBaseService(deps),
 	}
 }
 
 // UpdateSSL updates SSL settings for a site
 func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID string, req *dto.UpdateSSLRequest) error {
-	site, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return err
 	}
@@ -66,7 +39,7 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 	// Handle custom certificate
 	if tlsSetting == enums.TlsSettingCustom && req.PrivateKey != nil && req.Certificate != nil {
 		// Deactivate existing certificates
-		if err := s.certificateRepo.DeactivateAll(ctx, site.ID); err != nil {
+		if err := s.Repos().Certificate().DeactivateAll(ctx, site.ID); err != nil {
 			return err
 		}
 
@@ -88,7 +61,7 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 		now := time.Now()
 		cert.UploadedAt = &now
 
-		if err := s.certificateRepo.Create(ctx, cert); err != nil {
+		if err := s.Repos().Certificate().Create(ctx, cert); err != nil {
 			return err
 		}
 
@@ -104,14 +77,14 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 	site.TlsSetting = tlsSetting
 	site.PendingTlsUpdateSince = &now
 
-	return s.siteRepo.Update(ctx, site)
+	return s.Repos().Site().Update(ctx, site)
 }
 
 // ListCertificates returns all certificates for a site
 func (s *SSLService) ListCertificates(ctx context.Context, siteID, serverID string) ([]models.Certificate, error) {
-	if _, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return nil, err
 	}
 
-	return s.certificateRepo.FindBySite(ctx, siteID)
+	return s.Repos().Certificate().FindBySite(ctx, siteID)
 }

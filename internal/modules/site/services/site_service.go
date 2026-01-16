@@ -6,8 +6,6 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rs/zerolog"
-
 	databasedto "github.com/kkz6/launch-go/internal/modules/database/dto"
 	databaseservices "github.com/kkz6/launch-go/internal/modules/database/services"
 	serverdto "github.com/kkz6/launch-go/internal/modules/server/dto"
@@ -17,56 +15,23 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/utils"
-	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // SiteService handles business logic for sites
 type SiteService struct {
 	*BaseService
-	deploymentService *DeploymentService
-	serverRepo        *serverrepos.Repository
-	serverService     *serverservices.Service
-	databaseService   *databaseservices.Service
+	serverRepo      *serverrepos.Repository
+	serverService   *serverservices.Service
+	databaseService *databaseservices.Service
 }
 
 // NewSiteService creates a new site service
-func NewSiteService(
-	siteRepo *repositories.SiteRepository,
-	deploymentRepo *repositories.DeploymentRepository,
-	certificateRepo *repositories.CertificateRepository,
-	queueRepo *repositories.QueueRepository,
-	commandRepo *repositories.CommandRepository,
-	redirectRepo *repositories.RedirectRepository,
-	releaseRepo *repositories.ReleaseRepository,
-	queueClient *queue.Client,
-	ws *websocket.Hub,
-	logger *zerolog.Logger,
-) *SiteService {
-	baseService := NewBaseService(
-		siteRepo,
-		deploymentRepo,
-		certificateRepo,
-		queueRepo,
-		commandRepo,
-		redirectRepo,
-		releaseRepo,
-		queueClient,
-		ws,
-		logger,
-	)
-
+func NewSiteService(deps *ServiceDeps) *SiteService {
 	return &SiteService{
-		BaseService: baseService,
+		BaseService: NewBaseService(deps),
 	}
-}
-
-// SetDeploymentService sets the deployment service (to avoid circular dependency)
-func (s *SiteService) SetDeploymentService(ds *DeploymentService) {
-	s.deploymentService = ds
 }
 
 // SetServerRepository sets the server repository for cross-module queries
@@ -86,13 +51,13 @@ func (s *SiteService) SetDatabaseService(svc *databaseservices.Service) {
 
 // List returns all sites for a server
 func (s *SiteService) List(ctx context.Context, serverID string) ([]models.Site, error) {
-	return s.siteRepo.FindByServerWithLatestDeployment(ctx, serverID)
+	return s.Repos().Site().FindByServerWithLatestDeployment(ctx, serverID)
 }
 
 // Create creates a new site
 func (s *SiteService) Create(ctx context.Context, serverID, userID, username string, req *dto.CreateSiteRequest) (*models.Site, error) {
 	// Check if site with same address exists
-	existing, _ := s.siteRepo.FindByAddress(ctx, req.Address, serverID)
+	existing, _ := s.Repos().Site().FindByAddress(ctx, req.Address, serverID)
 	if existing != nil {
 		return nil, errors.New("a site with this address already exists on this server")
 	}
@@ -180,11 +145,11 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 		site.HookAfterMakingCurrent = &hook
 	}
 
-	if err := s.siteRepo.Create(ctx, site); err != nil {
+	if err := s.Repos().Site().Create(ctx, site); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.siteRepo.DB).
+	activity.New(s.Repos().Site().DB).
 		WithContext(ctx).
 		UseLog("site").
 		CausedByUser(userID).
@@ -211,7 +176,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 	}
 
 	// Create initial deployment with environment variables
-	if s.deploymentService != nil {
+	if s.Services() != nil {
 		commitData := make(map[string]interface{})
 		if len(envVars) > 0 {
 			commitData["env_variables"] = envVars
@@ -222,7 +187,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID, username str
 			deployCommitData = commitData
 		}
 
-		deployment, err := s.deploymentService.createDeployment(ctx, site, userID, deployCommitData)
+		deployment, err := s.Services().Deployment().createDeployment(ctx, site, userID, deployCommitData)
 		if err != nil {
 			s.LogError(err, "Failed to create initial deployment", "site_id", site.ID)
 		} else {
@@ -397,21 +362,8 @@ func (s *SiteService) handleQueueCreation(ctx context.Context, site *models.Site
 	numProcs := 1
 	queueReq.NumProcs = &numProcs
 
-	// Use shared BaseService to create queue service with proper dependencies
-	queueService := NewQueueService(
-		s.siteRepo,
-		s.deploymentRepo,
-		s.certificateRepo,
-		s.queueRepo,
-		s.commandRepo,
-		s.redirectRepo,
-		s.releaseRepo,
-		s.Queue,
-		s.WS,
-		s.Logger,
-	)
-
-	_, err := queueService.Create(ctx, site.ID, serverID, userID, queueReq)
+	// Use service registry to access queue service
+	_, err := s.Services().Queue().Create(ctx, site.ID, serverID, userID, queueReq)
 	if err != nil {
 		s.LogError(err, "Failed to create queue worker for site", "site_id", site.ID)
 		return
@@ -422,13 +374,13 @@ func (s *SiteService) handleQueueCreation(ctx context.Context, site *models.Site
 
 // FindByID finds a site by ID
 func (s *SiteService) FindByID(ctx context.Context, id, serverID string) (*models.Site, error) {
-	site, err := s.siteRepo.FindByIDAndServer(ctx, id, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Load latest deployment
-	deployment, _ := s.deploymentRepo.FindLatestBySite(ctx, site.ID)
+	deployment, _ := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
 	site.LatestDeployment = deployment
 
 	return site, nil
@@ -436,7 +388,7 @@ func (s *SiteService) FindByID(ctx context.Context, id, serverID string) (*model
 
 // Update updates a site
 func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, req *dto.UpdateSiteRequest) (*models.Site, error) {
-	site, err := s.siteRepo.FindByIDAndServer(ctx, id, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -478,18 +430,18 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 
 	// Apply updates if any
 	if len(updates) > 0 {
-		if err := s.siteRepo.UpdateFields(ctx, site.ID, updates); err != nil {
+		if err := s.Repos().Site().UpdateFields(ctx, site.ID, updates); err != nil {
 			return nil, err
 		}
 	}
 
 	// Reload site to get updated values
-	site, err = s.siteRepo.FindByIDAndServer(ctx, id, serverID)
+	site, err = s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return nil, err
 	}
 
-	activity.New(s.siteRepo.DB).
+	activity.New(s.Repos().Site().DB).
 		WithContext(ctx).
 		UseLog("site").
 		CausedByUser(userID).
@@ -501,12 +453,12 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 	if updateCaddyfile {
 		now := time.Now()
 		site.PendingCaddyfileUpdateSince = &now
-		s.siteRepo.Update(ctx, site)
+		s.Repos().Site().Update(ctx, site)
 		// TODO: Add UpdateCaddyfile job dispatch
 	}
 
 	// Load latest deployment
-	deployment, _ := s.deploymentRepo.FindLatestBySite(ctx, site.ID)
+	deployment, _ := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
 	site.LatestDeployment = deployment
 
 	s.LogInfo("Site updated", "site_id", site.ID)
@@ -516,12 +468,12 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 
 // Delete deletes a site
 func (s *SiteService) Delete(ctx context.Context, id, serverID string) error {
-	site, err := s.siteRepo.FindByIDAndServer(ctx, id, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return err
 	}
 
-	activity.New(s.siteRepo.DB).
+	activity.New(s.Repos().Site().DB).
 		WithContext(ctx).
 		UseLog("site").
 		On(site).
@@ -531,7 +483,7 @@ func (s *SiteService) Delete(ctx context.Context, id, serverID string) error {
 	now := time.Now()
 	site.UninstallationRequestedAt = &now
 
-	if err := s.siteRepo.Update(ctx, site); err != nil {
+	if err := s.Repos().Site().Update(ctx, site); err != nil {
 		return err
 	}
 
@@ -544,12 +496,12 @@ func (s *SiteService) Delete(ctx context.Context, id, serverID string) error {
 
 // GetDeletionSummary returns a summary of resources that will be deleted
 func (s *SiteService) GetDeletionSummary(ctx context.Context, id, serverID string) (*dto.DeletionSummaryResponse, error) {
-	site, err := s.siteRepo.FindByIDAndServer(ctx, id, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return nil, err
 	}
 
-	queueCount, _ := s.queueRepo.CountBySite(ctx, site.ID)
+	queueCount, _ := s.Repos().Queue().CountBySite(ctx, site.ID)
 	// TODO: Add cron count
 
 	return &dto.DeletionSummaryResponse{
@@ -560,7 +512,7 @@ func (s *SiteService) GetDeletionSummary(ctx context.Context, id, serverID strin
 
 // RegenerateDeployToken regenerates the deploy token for a site
 func (s *SiteService) RegenerateDeployToken(ctx context.Context, id, serverID string) (*models.Site, error) {
-	site, err := s.siteRepo.FindByIDAndServer(ctx, id, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -568,7 +520,7 @@ func (s *SiteService) RegenerateDeployToken(ctx context.Context, id, serverID st
 	token := utils.GenerateBase64Token(32)
 	site.DeployToken = &token
 
-	if err := s.siteRepo.Update(ctx, site); err != nil {
+	if err := s.Repos().Site().Update(ctx, site); err != nil {
 		return nil, err
 	}
 
@@ -586,17 +538,17 @@ type SiteSettingsData struct {
 
 // GetSettings returns site settings data including the active certificate, PHP versions, and git info
 func (s *SiteService) GetSettings(ctx context.Context, id, serverID string) (*SiteSettingsData, error) {
-	site, err := s.siteRepo.FindByIDAndServer(ctx, id, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Load latest deployment
-	deployment, _ := s.deploymentRepo.FindLatestBySite(ctx, site.ID)
+	deployment, _ := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
 	site.LatestDeployment = deployment
 
 	// Get active certificate
-	activeCert, _ := s.certificateRepo.FindActiveBySite(ctx, site.ID)
+	activeCert, _ := s.Repos().Certificate().FindActiveBySite(ctx, site.ID)
 
 	// Get PHP versions from server services
 	phpVersions := s.getServerPhpVersions(ctx, serverID)
@@ -651,7 +603,7 @@ func (s *SiteService) getSourceControlInfo(ctx context.Context, sourceControlID 
 		Type     *string `gorm:"column:type"`
 	}
 
-	err := s.siteRepo.DB.WithContext(ctx).
+	err := s.Repos().Site().DB.WithContext(ctx).
 		Table("source_controls").
 		Select("id, provider, login, name, type").
 		Where("id = ?", sourceControlID).
@@ -679,7 +631,7 @@ func (s *SiteService) getSourceControlInfo(ctx context.Context, sourceControlID 
 			HTMLURL       *string `gorm:"column:html_url"`
 		}
 
-		err := s.siteRepo.DB.WithContext(ctx).
+		err := s.Repos().Site().DB.WithContext(ctx).
 			Table("source_control_repositories").
 			Select("id, name, full_name, default_branch, html_url").
 			Where("id = ?", *repoID).

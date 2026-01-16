@@ -4,14 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
-
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
 )
 
@@ -21,34 +17,28 @@ type FileOnServer struct {
 	Description string             `json:"description"`
 	Path        string             `json:"path"`
 	Context     string             `json:"context,omitempty"`
-	Type        string             `json:"type"`         // "default" or "environment"
-	FileType    enums.SiteFileType `json:"file_type"`    // enum value for identification
-	ShowRoute   string             `json:"show_route"`   // encrypted URL parameter for viewing
+	Type        string             `json:"type"`                   // "default" or "environment"
+	FileType    enums.SiteFileType `json:"file_type"`              // enum value for identification
+	ShowRoute   string             `json:"show_route"`             // encrypted URL parameter for viewing
 	UpdateRoute string             `json:"update_route,omitempty"` // encrypted URL parameter for updating (not included for logs)
 }
 
 // FileService handles file operations on sites
 type FileService struct {
-	db         *gorm.DB
-	siteRepo   *repositories.SiteRepository
-	logger     *zerolog.Logger
-	taskRunner *tasks.TaskRunnerDeps
+	*BaseService
 }
 
 // NewFileService creates a new FileService instance
-func NewFileService(db *gorm.DB, siteRepo *repositories.SiteRepository, logger *zerolog.Logger, taskRunner *tasks.TaskRunnerDeps) *FileService {
+func NewFileService(deps *ServiceDeps) *FileService {
 	return &FileService{
-		db:         db,
-		siteRepo:   siteRepo,
-		logger:     logger,
-		taskRunner: taskRunner,
+		BaseService: NewBaseService(deps),
 	}
 }
 
 // ListFiles returns the list of editable files for a site
 func (s *FileService) ListFiles(ctx context.Context, serverID, siteID string) ([]FileOnServer, error) {
 	// Get site
-	site, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("site not found: %w", err)
 	}
@@ -59,7 +49,7 @@ func (s *FileService) ListFiles(ctx context.Context, serverID, siteID string) ([
 // ListLogFiles returns the list of log files for a site
 func (s *FileService) ListLogFiles(ctx context.Context, serverID, siteID string) ([]FileOnServer, error) {
 	// Get site
-	site, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("site not found: %w", err)
 	}
@@ -115,7 +105,7 @@ func (s *FileService) buildFileList(site *models.Site, fileTypes []enums.SiteFil
 // GetFileContent reads the content of a file from the server
 func (s *FileService) GetFileContent(ctx context.Context, serverID, siteID, filePath string) (string, error) {
 	// Get site to verify access
-	site, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return "", fmt.Errorf("site not found: %w", err)
 	}
@@ -127,17 +117,17 @@ func (s *FileService) GetFileContent(ctx context.Context, serverID, siteID, file
 
 	// Get the server for SSH connection
 	var server servermodels.Server
-	if err := s.db.First(&server, "id = ?", serverID).Error; err != nil {
+	if err := s.ServiceDeps().DB.First(&server, "id = ?", serverID).Error; err != nil {
 		return "", fmt.Errorf("server not found: %w", err)
 	}
 
 	// Create task to read file content using the predefined GetFile task
-	task := tasks.GetFile(tasks.GetFileConfig{
+	task := servertasks.GetFile(servertasks.GetFileConfig{
 		Path: filePath,
 	})
 
 	// Run task using task runner
-	result, err := s.taskRunner.NewRunner(&server, task).
+	result, err := s.ServiceDeps().TaskRunnerDeps.NewRunner(&server, task).
 		AsUser().
 		Run(ctx)
 	if err != nil {
@@ -150,7 +140,7 @@ func (s *FileService) GetFileContent(ctx context.Context, serverID, siteID, file
 // UpdateFileContent updates the content of a file on the server
 func (s *FileService) UpdateFileContent(ctx context.Context, serverID, siteID, filePath, content string) error {
 	// Get site to verify access
-	site, err := s.siteRepo.FindByIDAndServer(ctx, siteID, serverID)
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return fmt.Errorf("site not found: %w", err)
 	}
@@ -162,18 +152,18 @@ func (s *FileService) UpdateFileContent(ctx context.Context, serverID, siteID, f
 
 	// Get the server for SSH connection
 	var server servermodels.Server
-	if err := s.db.First(&server, "id = ?", serverID).Error; err != nil {
+	if err := s.ServiceDeps().DB.First(&server, "id = ?", serverID).Error; err != nil {
 		return fmt.Errorf("server not found: %w", err)
 	}
 
 	// Create task to write file content using the predefined UploadFile task
-	task := tasks.UploadFile(tasks.UploadFileConfig{
+	task := servertasks.UploadFile(servertasks.UploadFileConfig{
 		Path:     filePath,
 		Contents: content,
 	})
 
 	// Run task using task runner
-	result, err := s.taskRunner.NewRunner(&server, task).
+	result, err := s.ServiceDeps().TaskRunnerDeps.NewRunner(&server, task).
 		AsUser().
 		Throw().
 		Run(ctx)
