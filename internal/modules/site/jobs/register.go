@@ -54,4 +54,11 @@ func RegisterHandlers(mux *asynq.ServeMux) {
 
 	// WordPress jobs
 	pkgjobs.RegisterHandler(mux, TypeInstallWordpressCron, jobContext, NewInstallWordpressCronJob)
+
+	// Deployment management jobs
+	pkgjobs.RegisterHandler(mux, TypeCreateDeployment, jobContext, NewCreateDeploymentJob)
+	pkgjobs.RegisterHandler(mux, TypeCleanupPendingSiteDeployment, jobContext, NewCleanupPendingSiteDeploymentJob)
+
+	// Site configuration jobs
+	pkgjobs.RegisterHandler(mux, TypeUpdateSiteTlsSetting, jobContext, NewUpdateSiteTlsSettingJob)
 }

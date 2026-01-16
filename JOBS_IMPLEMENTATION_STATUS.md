@@ -6,13 +6,13 @@ This document provides a comprehensive comparison of jobs between the Laravel an
 
 | Module | Laravel Jobs | Go Jobs | Triggers Working | Coverage |
 |--------|-------------|---------|------------------|----------|
-| Server | 37 | 37 | 31/38 | **97%** ✅ |
-| Site | 26 | 24 | 19/25 | 76% |
-| Database | 6 | 6 | 7/7 | **100%** ✅ |
+| Server | 37 | 37 | 37/37 | **100%** ✅ |
+| Site | 26 | 27 | 27/27 | **100%** ✅ |
+| Database | 6 | 6 | 6/6 | **100%** ✅ |
 | Git | 2 | 2 | 2/2 | **100%** ✅ |
-| Backup | 4 | 3 | 3/4 | **75%** ✅ |
+| Backup | 4 | 4 | 4/4 | **100%** ✅ |
 | DNS | 2 | 0 | 2/2 | **Sync** ✅ |
-| **Total** | **77** | **72** | **64/78** | **93%** |
+| **Total** | **77** | **76** | **78/78** | **100%** ✅ |
 
 ---
 
@@ -157,13 +157,22 @@ All server module jobs have been implemented.
 |--------|-------------|------------|
 | InstallWordpressCron | Setup WordPress cron | DeploySite (WordPress sites) / API endpoint |
 
+### Implemented & Triggered ✅ (Deployment Management)
+
+| Go Job | Description | Go Trigger |
+|--------|-------------|------------|
+| CreateDeployment | Create deployment record and dispatch deploy job | DeploymentService / API |
+| CleanupPendingSiteDeployment | Cleanup stuck pending/installing deployments | DeploySite (delayed) / Scheduled |
+
+### Implemented & Triggered ✅ (Site Configuration)
+
+| Go Job | Description | Go Trigger |
+|--------|-------------|------------|
+| UpdateSiteTlsSetting | Update TLS settings and trigger Caddyfile update | SiteService / API |
+
 ### NOT Implemented ❌
 
-| Laravel Job | Description | Laravel Trigger | Priority |
-|-------------|-------------|-----------------|----------|
-| CreateDeployment | Create deployment record | (may be in service) | MEDIUM |
-| UpdateSiteTlsSetting | Update TLS settings | SiteService.updateTlsSetting() | LOW |
-| CleanupPendingSiteDeployment | Cleanup stuck deployments | DeploySite (delayed) | LOW |
+All site module jobs have been implemented.
 
 ---
 
@@ -196,7 +205,7 @@ All server module jobs have been implemented.
 
 ---
 
-## BACKUP MODULE ✅ (75% Complete)
+## BACKUP MODULE ✅ (100% Complete)
 
 ### Implemented & Triggered ✅
 
@@ -205,12 +214,11 @@ All server module jobs have been implemented.
 | InstallBackup | InstallBackup | BackupService.store() | BackupService.CreateBackup() |
 | DeleteBackup | DeleteBackup | BackupService.destroy() | BackupService.DeleteBackup() |
 | RunManualBackup | RunManualBackup | BackupService.runManual() | BackupService.RunBackup() |
+| SyncServerLaunchConfig | SyncServerLaunchConfig | Event listener / Jobs | BackupService / Event handlers |
 
 ### NOT Implemented ❌
 
-| Laravel Job | Description | Laravel Trigger | Priority |
-|-------------|-------------|-----------------|----------|
-| **SyncServerLaunchConfig** | Sync backup config to server | Event listener / Jobs | **MEDIUM** |
+All backup module jobs have been implemented.
 
 ---
 
@@ -232,20 +240,23 @@ The synchronous implementation is appropriate for DNS operations as they are qui
 
 ### Services Missing in Go
 
+All services have been implemented.
+
 | Service | Jobs It Would Trigger | Status |
 |---------|----------------------|--------|
 | ~~**PhpService**~~ | ~~AddPhpVersion, RemovePhpVersion, UpdateDefault, Install/Uninstall Extension~~ | ✅ Implemented in InstalledServiceService |
-| ~~**BackupService**~~ | ~~InstallBackup, DeleteBackup, RunManualBackup~~ | ✅ Implemented |
-| **BackupService** | SyncServerLaunchConfig | Remaining |
+| ~~**BackupService**~~ | ~~InstallBackup, DeleteBackup, RunManualBackup, SyncServerLaunchConfig~~ | ✅ Implemented |
 
 ### Features Missing in Go
 
-| Feature | Purpose | Jobs Affected |
-|---------|---------|---------------|
-| **Event Listeners** | React to state changes | SourceControlDeployment* ✅, RestartAllSiteQueues ✅ |
-| **Job Chaining** | Sequential execution | WaitForServerToConnect → ProvisionServer ✅ |
-| **Failure Handlers** | Cleanup on job failure | CleanupFailed* jobs ✅ |
-| **Scheduled Commands** | Background monitoring | UpdateConnectivity ✅, CheckDaemonStatus ✅ |
+All features have been implemented.
+
+| Feature | Purpose | Jobs Affected | Status |
+|---------|---------|---------------|--------|
+| **Event Listeners** | React to state changes | SourceControlDeployment*, RestartAllSiteQueues | ✅ |
+| **Job Chaining** | Sequential execution | WaitForServerToConnect → ProvisionServer | ✅ |
+| **Failure Handlers** | Cleanup on job failure | CleanupFailed* jobs | ✅ |
+| **Scheduled Commands** | Background monitoring | UpdateConnectivity, CheckDaemonStatus | ✅ |
 
 ---
 
@@ -329,10 +340,10 @@ modules/git/src/Jobs/        - 2 jobs
 ### Go Jobs
 ```
 internal/modules/server/jobs/    - 37 jobs
-internal/modules/site/jobs/      - 24 jobs
+internal/modules/site/jobs/      - 27 jobs
 internal/modules/database/jobs/  - 6 jobs
 internal/modules/git/jobs/       - 2 jobs
-internal/modules/backup/jobs/    - 3 jobs
+internal/modules/backup/jobs/    - 4 jobs
 ```
 
 ### Go Services (where triggers live)

@@ -29,4 +29,5 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterHandler(mux, TypeInstallBackup, jobContext, NewInstallBackupJob)
 	pkgjobs.RegisterHandler(mux, TypeDeleteBackup, jobContext, NewDeleteBackupJob)
 	pkgjobs.RegisterHandler(mux, TypeRunManualBackup, jobContext, NewRunManualBackupJob)
+	pkgjobs.RegisterHandler(mux, TypeSyncServerLaunchConfig, jobContext, NewSyncServerLaunchConfigJob)
 }
