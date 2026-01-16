@@ -50,6 +50,13 @@ func (r *CommandRepository) FindBySite(ctx context.Context, siteID string) ([]mo
 	return cmds, err
 }
 
+// DeleteBySite deletes all commands for a site
+func (r *CommandRepository) DeleteBySite(ctx context.Context, siteID string) error {
+	return r.DB.WithContext(ctx).
+		Where("site_id = ?", siteID).
+		Delete(&models.Command{}).Error
+}
+
 // Note: The following methods are inherited from repository.Base[T]:
 // - Create(ctx, entity) error
 // - Update(ctx, entity) error

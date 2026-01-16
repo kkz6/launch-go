@@ -28,7 +28,6 @@ type JobContext struct {
 	CertificateRepo   *repositories.CertificateRepository
 	QueueRepo         *repositories.QueueRepository
 	RedirectRepo      *repositories.RedirectRepository
-	ReleaseRepo       *repositories.ReleaseRepository
 	ServerRepos       *serverrepos.Registry
 	SourceControlRepo *gitrepos.SourceControlRepository
 	ProviderFactory   *gitproviders.ProviderFactory
@@ -48,7 +47,6 @@ func NewJobContext(
 	certificateRepo *repositories.CertificateRepository,
 	queueRepo *repositories.QueueRepository,
 	redirectRepo *repositories.RedirectRepository,
-	releaseRepo *repositories.ReleaseRepository,
 	serverRepos *serverrepos.Registry,
 	sourceControlRepo *gitrepos.SourceControlRepository,
 	providerFactory *gitproviders.ProviderFactory,
@@ -65,7 +63,6 @@ func NewJobContext(
 		CertificateRepo:   certificateRepo,
 		QueueRepo:         queueRepo,
 		RedirectRepo:      redirectRepo,
-		ReleaseRepo:       releaseRepo,
 		ServerRepos:       serverRepos,
 		SourceControlRepo: sourceControlRepo,
 		ProviderFactory:   providerFactory,

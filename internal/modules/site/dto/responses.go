@@ -135,15 +135,6 @@ type RedirectResponse struct {
 	CreatedAt string `json:"created_at"`
 }
 
-// ReleaseResponse represents a release in API responses
-type ReleaseResponse struct {
-	ID         string  `json:"id"`
-	SiteID     string  `json:"site_id"`
-	Path       string  `json:"path"`
-	CommitHash *string `json:"commit_hash,omitempty"`
-	CreatedAt  string  `json:"created_at"`
-}
-
 // DeletionSummaryResponse represents resources that will be deleted with a site
 type DeletionSummaryResponse struct {
 	Queues int `json:"queues"`
@@ -442,17 +433,6 @@ func ToRedirectResponse(redirect *models.Redirect) RedirectResponse {
 		To:        redirect.To,
 		Status:    redirect.Status,
 		CreatedAt: createdAt,
-	}
-}
-
-// ToReleaseResponse converts a Release model to a response DTO
-func ToReleaseResponse(release *models.Release) ReleaseResponse {
-	return ReleaseResponse{
-		ID:         release.ID,
-		SiteID:     release.SiteID,
-		Path:       release.Path,
-		CommitHash: release.CommitHash,
-		CreatedAt:  release.CreatedAt.Format(time.RFC3339),
 	}
 }
 

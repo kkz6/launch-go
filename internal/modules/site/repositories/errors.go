@@ -10,5 +10,4 @@ var (
 	ErrCertificateNotFound = apperrors.ErrCertificateNotFound
 	ErrRedirectNotFound    = apperrors.ErrRedirectNotFound
 	ErrCommandNotFound     = apperrors.ErrCommandNotFound
-	ErrReleaseNotFound     = apperrors.ErrReleaseNotFound
 )

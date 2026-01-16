@@ -122,30 +122,21 @@ fi
 		j.ctx.LogError(nil, "Site files deletion failed", "exit_code", result.GetExitCode())
 	}
 
-	// Step 4: Delete related database records
-	// Delete deployments
-	if err := j.deleteDeployments(ctx, site.ID); err != nil {
+	// Step 4: Delete related database records using repositories
+	if err := j.ctx.DeploymentRepo.DeleteBySite(ctx, site.ID); err != nil {
 		j.ctx.LogError(err, "Failed to delete deployments")
 	}
 
-	// Delete certificates
-	if err := j.deleteCertificates(ctx, site.ID); err != nil {
+	if err := j.ctx.CertificateRepo.DeleteBySite(ctx, site.ID); err != nil {
 		j.ctx.LogError(err, "Failed to delete certificates")
 	}
 
-	// Delete commands
-	if err := j.deleteCommands(ctx, site.ID); err != nil {
+	if err := j.ctx.CommandRepo.DeleteBySite(ctx, site.ID); err != nil {
 		j.ctx.LogError(err, "Failed to delete commands")
 	}
 
-	// Delete redirects
-	if err := j.deleteRedirects(ctx, site.ID); err != nil {
+	if err := j.ctx.RedirectRepo.DeleteBySite(ctx, site.ID); err != nil {
 		j.ctx.LogError(err, "Failed to delete redirects")
-	}
-
-	// Delete releases
-	if err := j.deleteReleases(ctx, site.ID); err != nil {
-		j.ctx.LogError(err, "Failed to delete releases")
 	}
 
 	// Step 5: Delete site record
@@ -168,42 +159,24 @@ fi
 	return nil
 }
 
-// Failed handles job failure
+// Failed handles job failure and marks the site uninstallation as failed
 func (j *UninstallSiteJob) Failed(ctx context.Context, err error) {
 	j.ctx.LogError(err, "Uninstall site job failed",
 		"site_id", j.Payload.SiteID,
 		"server_id", j.Payload.ServerID,
 	)
-}
 
-func (j *UninstallSiteJob) deleteDeployments(_ context.Context, siteID string) error {
-	return j.ctx.DB.Where("site_id = ?", siteID).Delete(&struct {
-		ID string `gorm:"primaryKey"`
-	}{}).Error
-}
+	// Mark uninstallation as failed
+	site, findErr := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	if findErr != nil {
+		j.ctx.LogError(findErr, "Failed to find site for marking uninstallation failed")
+		return
+	}
 
-func (j *UninstallSiteJob) deleteCertificates(_ context.Context, siteID string) error {
-	return j.ctx.DB.Table("certificates").Where("site_id = ?", siteID).Delete(&struct {
-		ID string `gorm:"primaryKey"`
-	}{}).Error
-}
-
-func (j *UninstallSiteJob) deleteCommands(_ context.Context, siteID string) error {
-	return j.ctx.DB.Table("commands").Where("site_id = ?", siteID).Delete(&struct {
-		ID string `gorm:"primaryKey"`
-	}{}).Error
-}
-
-func (j *UninstallSiteJob) deleteRedirects(_ context.Context, siteID string) error {
-	return j.ctx.DB.Table("redirects").Where("site_id = ?", siteID).Delete(&struct {
-		ID string `gorm:"primaryKey"`
-	}{}).Error
-}
-
-func (j *UninstallSiteJob) deleteReleases(_ context.Context, siteID string) error {
-	return j.ctx.DB.Table("releases").Where("site_id = ?", siteID).Delete(&struct {
-		ID string `gorm:"primaryKey"`
-	}{}).Error
+	site.MarkUninstallationFailed()
+	if updateErr := j.ctx.SiteRepo.Update(ctx, site); updateErr != nil {
+		j.ctx.LogError(updateErr, "Failed to mark site uninstallation as failed")
+	}
 }
 
 // NewUninstallSiteTask creates an uninstall site job

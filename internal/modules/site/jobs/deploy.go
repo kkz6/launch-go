@@ -612,11 +612,6 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("deployment failed with exit code %d", exitCode)
 	}
 
-	// Create release record for rollback capability
-	if err := j.createRelease(ctx, site, deployment); err != nil {
-		j.ctx.LogError(err, "Failed to create release record")
-	}
-
 	// Mark deployment as finished
 	j.handleDeploymentSuccess(ctx, deployment, site, output)
 
@@ -947,16 +942,6 @@ func (j *DeployZeroDowntimeJob) processNextQueuedDeployment(ctx context.Context,
 			}
 		}
 	}
-}
-
-func (j *DeployZeroDowntimeJob) createRelease(ctx context.Context, site *models.Site, deployment *models.Deployment) error {
-	release := &models.Release{
-		SiteID:       site.ID,
-		DeploymentID: deployment.ID,
-		Path:         fmt.Sprintf("%s/releases/%s", site.Path, time.Now().Format("20060102150405")),
-	}
-
-	return j.ctx.ReleaseRepo.Create(ctx, release)
 }
 
 // createProviderDeployment creates a deployment on the git provider

@@ -133,6 +133,13 @@ func (r *DeploymentRepository) CancelQueued(ctx context.Context, siteID string) 
 	return result.RowsAffected, result.Error
 }
 
+// DeleteBySite deletes all deployments for a site
+func (r *DeploymentRepository) DeleteBySite(ctx context.Context, siteID string) error {
+	return r.DB.WithContext(ctx).
+		Where("site_id = ?", siteID).
+		Delete(&models.Deployment{}).Error
+}
+
 // Note: The following methods are inherited from repository.Base[T]:
 // - Create(ctx, entity) error
 // - Update(ctx, entity) error

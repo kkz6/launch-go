@@ -20,6 +20,7 @@ import (
 	serverservices "github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
+	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/utils"
@@ -735,7 +736,17 @@ func (s *SiteService) Delete(ctx context.Context, id, serverID string) error {
 		return err
 	}
 
-	// TODO: Dispatch site deletion job
+	// Dispatch site uninstall job
+	task, err := jobs.NewUninstallSiteTask(site.ID, serverID, nil)
+	if err != nil {
+		s.LogError(err, "Failed to create uninstall site task", "site_id", site.ID)
+		return err
+	}
+
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue uninstall site task", "site_id", site.ID)
+		return err
+	}
 
 	s.LogInfo("Site deletion requested", "site_id", site.ID, "address", site.Address)
 
