@@ -3,6 +3,8 @@ package contracts
 import (
 	"context"
 
+	"gorm.io/gorm"
+
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 )
 
@@ -60,5 +62,29 @@ type PersonalAccessTokenRepository interface {
 	UpdateLastUsed(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
 	GetByUser(ctx context.Context, userID string) ([]models.PersonalAccessToken, error)
+}
+
+// PasskeyRepository defines the interface for passkey repository operations
+type PasskeyRepository interface {
+	Create(ctx context.Context, passkey *models.Passkey) error
+	FindByID(ctx context.Context, id string) (*models.Passkey, error)
+	FindByCredentialID(ctx context.Context, credentialID string) (*models.Passkey, error)
+	FindByUserID(ctx context.Context, userID string) ([]models.Passkey, error)
+	Update(ctx context.Context, passkey *models.Passkey) error
+	Delete(ctx context.Context, id string) error
+	DeleteByUserID(ctx context.Context, id, userID string) error
+	CountByUserID(ctx context.Context, userID string) (int64, error)
+}
+
+// RepositoryRegistry provides access to all auth repositories
+type RepositoryRegistry interface {
+	User() UserRepository
+	Team() TeamRepository
+	TeamMember() TeamMemberRepository
+	TeamInvitation() TeamInvitationRepository
+	PasswordResetToken() PasswordResetTokenRepository
+	PersonalAccessToken() PersonalAccessTokenRepository
+	Passkey() PasskeyRepository
+	DB() *gorm.DB
 }
 

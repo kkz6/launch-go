@@ -28,7 +28,7 @@ type RestartDaemonJob struct {
 // Handle processes the job
 func (j *RestartDaemonJob) Handle(ctx context.Context) error {
 	// Find the daemon with server preloaded
-	daemon, err := j.ctx.Repo.FindDaemonByIDWithServer(ctx, j.Payload.DaemonID)
+	daemon, err := j.ctx.Repos.Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
 	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}

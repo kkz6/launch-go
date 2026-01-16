@@ -11,16 +11,16 @@ import (
 
 // ListSshKeys returns all SSH keys for a team
 func (s *Service) ListSshKeys(ctx context.Context, teamID string) ([]models.SshKey, error) {
-	return s.repo.FindSshKeysByTeam(ctx, teamID)
+	return s.repos.SshKey().FindByTeam(ctx, teamID)
 }
 
 // ListServerSshKeys returns all SSH keys attached to a server
 func (s *Service) ListServerSshKeys(ctx context.Context, serverID, teamID string) ([]models.SshKey, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	return s.repo.FindSshKeysByServer(ctx, serverID)
+	return s.repos.SshKey().FindByServer(ctx, serverID)
 }
 
 // CreateSshKey creates a new SSH key
@@ -34,11 +34,11 @@ func (s *Service) CreateSshKey(ctx context.Context, teamID, userID string, req *
 		IsGlobal:    req.IsGlobal,
 	}
 
-	if err := s.repo.CreateSshKey(ctx, key); err != nil {
+	if err := s.repos.SshKey().Create(ctx, key); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(key).
@@ -50,17 +50,17 @@ func (s *Service) CreateSshKey(ctx context.Context, teamID, userID string, req *
 
 // AttachSshKey attaches an SSH key to a server
 func (s *Service) AttachSshKey(ctx context.Context, serverID, teamID, sshKeyID string) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
 	}
 
-	key, err := s.repo.FindSshKeyByID(ctx, sshKeyID)
+	key, err := s.repos.SshKey().FindByID(ctx, sshKeyID)
 	if err != nil {
 		return err
 	}
 
-	attached, err := s.repo.IsSshKeyAttachedToServer(ctx, serverID, sshKeyID)
+	attached, err := s.repos.SshKey().IsAttachedToServer(ctx, serverID, sshKeyID)
 	if err != nil {
 		return err
 	}
@@ -69,7 +69,7 @@ func (s *Service) AttachSshKey(ctx context.Context, serverID, teamID, sshKeyID s
 		return nil
 	}
 
-	if err := s.repo.AttachSshKeyToServer(ctx, serverID, sshKeyID); err != nil {
+	if err := s.repos.SshKey().AttachToServer(ctx, serverID, sshKeyID); err != nil {
 		return err
 	}
 
@@ -84,17 +84,17 @@ func (s *Service) AttachSshKey(ctx context.Context, serverID, teamID, sshKeyID s
 
 // DetachSshKey detaches an SSH key from a server
 func (s *Service) DetachSshKey(ctx context.Context, serverID, teamID, sshKeyID string) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
 	}
 
-	key, err := s.repo.FindSshKeyByID(ctx, sshKeyID)
+	key, err := s.repos.SshKey().FindByID(ctx, sshKeyID)
 	if err != nil {
 		return err
 	}
 
-	if err := s.repo.DetachSshKeyFromServer(ctx, serverID, sshKeyID); err != nil {
+	if err := s.repos.SshKey().DetachFromServer(ctx, serverID, sshKeyID); err != nil {
 		return err
 	}
 
@@ -109,7 +109,7 @@ func (s *Service) DetachSshKey(ctx context.Context, serverID, teamID, sshKeyID s
 
 // DeleteSshKey deletes an SSH key
 func (s *Service) DeleteSshKey(ctx context.Context, teamID, sshKeyID string) error {
-	key, err := s.repo.FindSshKeyByID(ctx, sshKeyID)
+	key, err := s.repos.SshKey().FindByID(ctx, sshKeyID)
 	if err != nil {
 		return err
 	}
@@ -118,14 +118,14 @@ func (s *Service) DeleteSshKey(ctx context.Context, teamID, sshKeyID string) err
 		return ErrSshKeyNotFound
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(key).
 		WithEvent("deleted").
 		Log("SSH key was deleted")
 
-	return s.repo.DeleteSshKey(ctx, sshKeyID)
+	return s.repos.SshKey().Delete(ctx, sshKeyID)
 }
 
 func (s *Service) dispatchSshKeyAddJob(server *models.Server, key *models.SshKey) error {

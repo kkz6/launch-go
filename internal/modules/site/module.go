@@ -33,7 +33,7 @@ type Module struct {
 	repos *repositories.Registry
 
 	// Cross-module repositories
-	serverRepo        *serverrepos.Repository
+	serverRepos       *serverrepos.Registry
 	sourceControlRepo *gitrepos.SourceControlRepository
 
 	// Git provider factory (set via SetProviderFactory)
@@ -50,7 +50,7 @@ func NewModule(b *module.Builder) *Module {
 	return &Module{
 		Base:              module.NewBase(ModuleName, b),
 		repos:             repositories.NewRegistry(deps.DB),
-		serverRepo:        serverrepos.NewRepository(deps.DB),
+		serverRepos:       serverrepos.NewRegistry(deps.DB),
 		sourceControlRepo: gitrepos.NewSourceControlRepository(deps.DB),
 	}
 }
@@ -78,7 +78,7 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 		m.repos.Queue(),
 		m.repos.Redirect(),
 		m.repos.Release(),
-		m.serverRepo,
+		m.serverRepos,
 		m.sourceControlRepo,
 		m.providerFactory,
 	)
@@ -117,7 +117,7 @@ func (m *Module) createServices(taskRunnerDeps *servertasks.TaskRunnerDeps) *ser
 
 	// Set cross-module dependencies
 	registry.SetCrossModuleDeps(&services.CrossModuleDeps{
-		ServerRepo: m.serverRepo,
+		ServerRepos: m.serverRepos,
 	})
 
 	return registry

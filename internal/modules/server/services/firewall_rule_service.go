@@ -13,16 +13,16 @@ import (
 
 // ListFirewallRules returns all firewall rules for a server
 func (s *Service) ListFirewallRules(ctx context.Context, serverID, teamID string) ([]models.FirewallRule, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	return s.repo.FindFirewallRulesByServer(ctx, serverID)
+	return s.repos.FirewallRule().FindByServer(ctx, serverID)
 }
 
 // CreateFirewallRule creates a new firewall rule
 func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID string, req *dto.CreateFirewallRuleRequest) (*models.FirewallRule, error) {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -42,11 +42,11 @@ func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID strin
 		Note:     req.Note,
 	}
 
-	if err := s.repo.CreateFirewallRule(ctx, rule); err != nil {
+	if err := s.repos.FirewallRule().Create(ctx, rule); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(rule).
@@ -64,11 +64,11 @@ func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID strin
 
 // UpdateFirewallRule updates a firewall rule
 func (s *Service) UpdateFirewallRule(ctx context.Context, serverID, teamID, ruleID string, req *dto.UpdateFirewallRuleRequest) (*models.FirewallRule, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	rule, err := s.repo.FindFirewallRuleByIDAndServer(ctx, ruleID, serverID)
+	rule, err := s.repos.FirewallRule().FindByIDAndServer(ctx, ruleID, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -102,11 +102,11 @@ func (s *Service) UpdateFirewallRule(ctx context.Context, serverID, teamID, rule
 		rule.Note = req.Note
 	}
 
-	if err := s.repo.UpdateFirewallRule(ctx, rule); err != nil {
+	if err := s.repos.FirewallRule().Update(ctx, rule); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(rule).
@@ -118,17 +118,17 @@ func (s *Service) UpdateFirewallRule(ctx context.Context, serverID, teamID, rule
 
 // DeleteFirewallRule deletes a firewall rule
 func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, ruleID string) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
 	}
 
-	rule, err := s.repo.FindFirewallRuleByIDAndServer(ctx, ruleID, serverID)
+	rule, err := s.repos.FirewallRule().FindByIDAndServer(ctx, ruleID, serverID)
 	if err != nil {
 		return err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(rule).
@@ -138,7 +138,7 @@ func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, rule
 	if rule.IsInstalled() && server.IsProvisioned() {
 		now := time.Now()
 		rule.UninstallationRequestedAt = &now
-		if err := s.repo.UpdateFirewallRule(ctx, rule); err != nil {
+		if err := s.repos.FirewallRule().Update(ctx, rule); err != nil {
 			return err
 		}
 
@@ -149,7 +149,7 @@ func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, rule
 		return nil
 	}
 
-	return s.repo.DeleteFirewallRule(ctx, ruleID)
+	return s.repos.FirewallRule().Delete(ctx, ruleID)
 }
 
 func (s *Service) dispatchFirewallRuleInstallJob(server *models.Server, rule *models.FirewallRule) error {

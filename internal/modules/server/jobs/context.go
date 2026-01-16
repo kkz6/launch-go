@@ -16,7 +16,7 @@ import (
 // JobContext holds dependencies for server jobs.
 type JobContext struct {
 	DB              *gorm.DB
-	Repo            contracts.Repository
+	Repos           contracts.RepositoryRegistry
 	Logger          *zerolog.Logger
 	WS              broadcast.TeamBroadcaster
 	Dispatcher      taskrunner.TaskDispatcher
@@ -27,7 +27,7 @@ type JobContext struct {
 // NewJobContext creates a new job context with all dependencies.
 func NewJobContext(
 	db *gorm.DB,
-	repo contracts.Repository,
+	repos contracts.RepositoryRegistry,
 	logger *zerolog.Logger,
 	ws broadcast.TeamBroadcaster,
 	dispatcher *taskrunner.Dispatcher,
@@ -36,7 +36,7 @@ func NewJobContext(
 ) *JobContext {
 	return &JobContext{
 		DB:              db,
-		Repo:            repo,
+		Repos:           repos,
 		Logger:          logger,
 		WS:              ws,
 		Dispatcher:      dispatcher,

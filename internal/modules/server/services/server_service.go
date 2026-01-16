@@ -23,29 +23,29 @@ import (
 
 // ListServers returns all servers for a team
 func (s *Service) ListServers(ctx context.Context, teamID string) ([]models.Server, error) {
-	return s.repo.FindAllServersByTeam(ctx, teamID)
+	return s.repos.Server().FindAllByTeam(ctx, teamID)
 }
 
 // ListArchivedServers returns all archived servers for a team
 func (s *Service) ListArchivedServers(ctx context.Context, teamID string) ([]models.Server, error) {
-	return s.repo.FindArchivedServersByTeam(ctx, teamID)
+	return s.repos.Server().FindArchivedByTeam(ctx, teamID)
 }
 
 // ListServersPaginated returns servers with pagination
 func (s *Service) ListServersPaginated(ctx context.Context, teamID string, page, perPage int) ([]models.Server, int64, error) {
 	offset := (page - 1) * perPage
 
-	return s.repo.FindAllServersByTeamPaginated(ctx, teamID, perPage, offset)
+	return s.repos.Server().FindAllByTeamPaginated(ctx, teamID, perPage, offset)
 }
 
 // GetServer returns a server by ID
 func (s *Service) GetServer(ctx context.Context, id, teamID string) (*models.Server, error) {
-	return s.repo.FindServerByIDAndTeam(ctx, id, teamID)
+	return s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 }
 
 // GetServerWithRelations returns a server with all relations
 func (s *Service) GetServerWithRelations(ctx context.Context, id, teamID string) (*models.Server, error) {
-	return s.repo.FindServerWithRelations(ctx, id, teamID)
+	return s.repos.Server().FindWithRelations(ctx, id, teamID)
 }
 
 // CreateServer creates a new server
@@ -119,11 +119,11 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		}
 	}
 
-	if err := s.repo.CreateServer(ctx, server); err != nil {
+	if err := s.repos.Server().Create(ctx, server); err != nil {
 		return nil, fmt.Errorf("failed to create server: %w", err)
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		CausedByUser(userID).
@@ -142,7 +142,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 
 // UpdateServer updates a server
 func (s *Service) UpdateServer(ctx context.Context, id, teamID string, req *dto.UpdateServerRequest) (*models.Server, error) {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, id, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -163,11 +163,11 @@ func (s *Service) UpdateServer(ctx context.Context, id, teamID string, req *dto.
 		server.AutoUpdate = *req.AutoUpdate
 	}
 
-	if err := s.repo.UpdateServer(ctx, server); err != nil {
+	if err := s.repos.Server().Update(ctx, server); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(server).
@@ -181,19 +181,19 @@ func (s *Service) UpdateServer(ctx context.Context, id, teamID string, req *dto.
 
 // DeleteServer deletes a server
 func (s *Service) DeleteServer(ctx context.Context, id, teamID string) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, id, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(server).
 		WithEvent("deleted").
 		Log("Server deletion requested")
 
-	if err := s.repo.UpdateServerStatus(ctx, id, enums.ServerStatusDeleting); err != nil {
+	if err := s.repos.Server().UpdateStatus(ctx, id, enums.ServerStatusDeleting); err != nil {
 		return err
 	}
 
@@ -204,7 +204,7 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID string) error {
 	}
 
 	if server.Provider == enums.ProviderCustom {
-		return s.repo.DeleteServer(ctx, id)
+		return s.repos.Server().Delete(ctx, id)
 	}
 
 	return nil
@@ -212,22 +212,22 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID string) error {
 
 // ArchiveServer archives a server
 func (s *Service) ArchiveServer(ctx context.Context, id, teamID string) error {
-	_, err := s.repo.FindServerByIDAndTeam(ctx, id, teamID)
+	_, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return err
 	}
 
-	return s.repo.ArchiveServer(ctx, id)
+	return s.repos.Server().Archive(ctx, id)
 }
 
 // UnarchiveServer unarchives a server
 func (s *Service) UnarchiveServer(ctx context.Context, id, teamID string) error {
-	return s.repo.UnarchiveServer(ctx, id)
+	return s.repos.Server().Unarchive(ctx, id)
 }
 
 // RebootServer initiates a server reboot
 func (s *Service) RebootServer(ctx context.Context, id, teamID string) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, id, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return err
 	}
@@ -246,7 +246,7 @@ func (s *Service) RebootServer(ctx context.Context, id, teamID string) error {
 
 // ConnectServer tests the connection to a server
 func (s *Service) ConnectServer(ctx context.Context, id, teamID string) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, id, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return err
 	}
@@ -285,7 +285,7 @@ func (s *Service) ConnectServer(ctx context.Context, id, teamID string) error {
 	}
 
 	now := time.Now()
-	if err := s.repo.UpdateServerFields(ctx, id, map[string]interface{}{
+	if err := s.repos.Server().UpdateFields(ctx, id, map[string]interface{}{
 		"connected":               true,
 		"last_connectivity_check": now,
 	}); err != nil {
@@ -297,19 +297,19 @@ func (s *Service) ConnectServer(ctx context.Context, id, teamID string) error {
 
 // HasLaunchAgent checks if a server has the Launch Agent installed
 func (s *Service) HasLaunchAgent(ctx context.Context, serverID string) (bool, error) {
-	return s.repo.ServerHasLaunchAgent(ctx, serverID)
+	return s.repos.Server().HasLaunchAgent(ctx, serverID)
 }
 
 // GetShowPageData returns all data needed for the server show page
 func (s *Service) GetShowPageData(ctx context.Context, serverID, teamID string) (*dto.ServerShowPageData, error) {
-	server, err := s.repo.FindServerWithRelations(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindWithRelations(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
 
-	latestTask, _ := s.repo.FindLatestTaskByServer(ctx, serverID)
-	latestMetric, _ := s.repo.FindLatestMetricByServer(ctx, serverID)
-	hasLaunchAgent, _ := s.repo.ServerHasLaunchAgent(ctx, serverID)
+	latestTask, _ := s.repos.Task().FindLatestByServer(ctx, serverID)
+	latestMetric, _ := s.repos.Metric().FindLatestByServer(ctx, serverID)
+	hasLaunchAgent, _ := s.repos.Server().HasLaunchAgent(ctx, serverID)
 
 	services := make([]dto.ServiceResponse, len(server.Services))
 	for i, svc := range server.Services {
@@ -429,7 +429,7 @@ func GenerateSSHKeyPair() (string, string, error) {
 // This is used for custom servers that need to run the provision script manually
 func (s *Service) GetProvisionScript(ctx context.Context, serverID string) (string, error) {
 	// Find server (including archived)
-	server, err := s.repo.FindServerByID(ctx, serverID)
+	server, err := s.repos.Server().FindByID(ctx, serverID)
 	if err != nil {
 		return "", err
 	}
@@ -483,7 +483,7 @@ echo "Provisioning script completed."
 
 // RunVulnerabilityAudit runs a security vulnerability audit on a server
 func (s *Service) RunVulnerabilityAudit(ctx context.Context, serverID, teamID, userID string, emailRecipient *string) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
 	}
@@ -501,7 +501,7 @@ func (s *Service) RunVulnerabilityAudit(ctx context.Context, serverID, teamID, u
 		return err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		CausedByUser(userID).

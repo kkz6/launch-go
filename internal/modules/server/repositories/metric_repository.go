@@ -10,15 +10,27 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 )
 
-// CreateMetric creates a new metric
-func (r *Repository) CreateMetric(ctx context.Context, metric *models.Metric) error {
-	return create(r, ctx, metric)
+// MetricRepository handles metric database operations
+type MetricRepository struct {
+	BaseRepository
 }
 
-// FindMetricsByServer finds metrics for a server with optional time range
-func (r *Repository) FindMetricsByServer(ctx context.Context, serverID string, from, to *time.Time, limit int) ([]models.Metric, error) {
+// NewMetricRepository creates a new MetricRepository instance
+func NewMetricRepository(db *gorm.DB) *MetricRepository {
+	return &MetricRepository{
+		BaseRepository: NewBaseRepository(db),
+	}
+}
+
+// Create creates a new metric
+func (r *MetricRepository) Create(ctx context.Context, metric *models.Metric) error {
+	return r.DB().WithContext(ctx).Create(metric).Error
+}
+
+// FindByServer finds metrics for a server with optional time range
+func (r *MetricRepository) FindByServer(ctx context.Context, serverID string, from, to *time.Time, limit int) ([]models.Metric, error) {
 	var metrics []models.Metric
-	query := r.db.WithContext(ctx).
+	query := r.DB().WithContext(ctx).
 		Where("server_id = ?", serverID)
 
 	if from != nil {
@@ -39,10 +51,10 @@ func (r *Repository) FindMetricsByServer(ctx context.Context, serverID string, f
 	return metrics, err
 }
 
-// FindLatestMetricByServer finds the latest metric for a server
-func (r *Repository) FindLatestMetricByServer(ctx context.Context, serverID string) (*models.Metric, error) {
+// FindLatestByServer finds the latest metric for a server
+func (r *MetricRepository) FindLatestByServer(ctx context.Context, serverID string) (*models.Metric, error) {
 	var metric models.Metric
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Where("server_id = ?", serverID).
 		Order("recorded_at DESC").
 		First(&metric).Error
@@ -55,9 +67,9 @@ func (r *Repository) FindLatestMetricByServer(ctx context.Context, serverID stri
 	return &metric, nil
 }
 
-// DeleteOldMetrics deletes metrics older than a certain time
-func (r *Repository) DeleteOldMetrics(ctx context.Context, serverID string, before time.Time) error {
-	return r.db.WithContext(ctx).
+// DeleteOld deletes metrics older than a certain time
+func (r *MetricRepository) DeleteOld(ctx context.Context, serverID string, before time.Time) error {
+	return r.DB().WithContext(ctx).
 		Where("server_id = ? AND recorded_at < ?", serverID, before).
 		Delete(&models.Metric{}).Error
 }

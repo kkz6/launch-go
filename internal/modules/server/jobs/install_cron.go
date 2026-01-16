@@ -26,7 +26,7 @@ type InstallCronJob struct {
 }
 
 func (j *InstallCronJob) Handle(ctx context.Context) error {
-	cron, err := j.ctx.Repo.FindCronByIDWithServer(ctx, j.Payload.CronID)
+	cron, err := j.ctx.Repos.Cron().FindByIDWithServer(ctx, j.Payload.CronID)
 	if err != nil {
 		return fmt.Errorf("failed to find cron: %w", err)
 	}
@@ -52,7 +52,7 @@ func (j *InstallCronJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to upload cron file: %s", result.GetOutput())
 	}
 
-	if err := j.ctx.Repo.MarkCronInstalled(ctx, cron.ID); err != nil {
+	if err := j.ctx.Repos.Cron().MarkInstalled(ctx, cron.ID); err != nil {
 		return fmt.Errorf("failed to mark cron as installed: %w", err)
 	}
 
@@ -87,7 +87,7 @@ func (j *InstallCronJob) Failed(ctx context.Context, err error) {
 		"server_id", j.Payload.ServerID,
 	)
 
-	cron, findErr := j.ctx.Repo.FindCronByID(ctx, j.Payload.CronID)
+	cron, findErr := j.ctx.Repos.Cron().FindByID(ctx, j.Payload.CronID)
 	if findErr == nil && cron != nil {
 		now := time.Now()
 		j.ctx.DB.Model(cron).Updates(map[string]any{

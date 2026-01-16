@@ -38,20 +38,20 @@ var (
 // Service provides business logic for server operations
 type Service struct {
 	service.Base
-	repo       contracts.Repository
+	repos      contracts.RepositoryRegistry
 	dispatcher *taskrunner.Dispatcher
 }
 
 // NewService creates a new Service instance
-func NewService(repo contracts.Repository, q *queue.Client, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *Service {
+func NewService(repos contracts.RepositoryRegistry, q *queue.Client, ws *websocket.Hub, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *Service {
 	return &Service{
 		Base:       service.NewBase(q, ws, logger),
-		repo:       repo,
+		repos:      repos,
 		dispatcher: dispatcher,
 	}
 }
 
-// Repo returns the repository for direct access when needed
-func (s *Service) Repo() contracts.Repository {
-	return s.repo
+// Repos returns the repository registry for direct access when needed
+func (s *Service) Repos() contracts.RepositoryRegistry {
+	return s.repos
 }

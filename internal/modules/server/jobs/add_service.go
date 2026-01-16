@@ -25,17 +25,17 @@ type AddServiceJob struct {
 }
 
 func (j *AddServiceJob) Handle(ctx context.Context) error {
-	service, err := j.ctx.Repo.FindServiceByID(ctx, j.Payload.ServiceID)
+	service, err := j.ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
-	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	if err := j.ctx.Repo.UpdateServiceStatus(ctx, service.ID, enums.ServiceStatusInstalling); err != nil {
+	if err := j.ctx.Repos.Service().UpdateStatus(ctx, service.ID, enums.ServiceStatusInstalling); err != nil {
 		return fmt.Errorf("failed to update service status: %w", err)
 	}
 
@@ -56,7 +56,7 @@ func (j *AddServiceJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to install service: %s", result.GetOutput())
 	}
 
-	if err := j.ctx.Repo.UpdateServiceStatus(ctx, service.ID, enums.ServiceStatusRunning); err != nil {
+	if err := j.ctx.Repos.Service().UpdateStatus(ctx, service.ID, enums.ServiceStatusRunning); err != nil {
 		return fmt.Errorf("failed to update service status: %w", err)
 	}
 
@@ -81,7 +81,7 @@ func (j *AddServiceJob) Failed(ctx context.Context, err error) {
 		"server_id", j.Payload.ServerID,
 	)
 
-	_ = j.ctx.Repo.UpdateServiceStatus(ctx, j.Payload.ServiceID, enums.ServiceStatusFailed)
+	_ = j.ctx.Repos.Service().UpdateStatus(ctx, j.Payload.ServiceID, enums.ServiceStatusFailed)
 }
 
 func NewAddServiceJob(ctx *JobContext, payload AddServicePayload) *AddServiceJob {

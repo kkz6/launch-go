@@ -17,19 +17,19 @@ import (
 
 // TeamMemberService handles team member management operations
 type TeamMemberService struct {
-	repo *repositories.Repository
+	repos *repositories.Registry
 }
 
 // NewTeamMemberService creates a new TeamMemberService instance
-func NewTeamMemberService(repo *repositories.Repository) *TeamMemberService {
-	return &TeamMemberService{repo: repo}
+func NewTeamMemberService(repos *repositories.Registry) *TeamMemberService {
+	return &TeamMemberService{repos: repos}
 }
 
 // InviteTeamMember invites a user to a team
 func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID string, req *dto.InviteTeamMemberRequest) error {
 	req.Normalize()
 
-	team, err := s.repo.FindTeamByID(ctx, teamID)
+	team, err := s.repos.Team().FindByID(ctx, teamID)
 	if err != nil {
 		return err
 	}
@@ -40,7 +40,7 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 
 	// Check if user has permission to invite
 	if team.UserID != userID {
-		member, err := s.repo.GetTeamMember(ctx, teamID, userID)
+		member, err := s.repos.TeamMember().Get(ctx, teamID, userID)
 		if err != nil {
 			return err
 		}
@@ -51,13 +51,13 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 	}
 
 	// Check if user is already a member
-	existingUser, err := s.repo.FindUserByEmail(ctx, req.Email)
+	existingUser, err := s.repos.User().FindByEmail(ctx, req.Email)
 	if err != nil {
 		return err
 	}
 
 	if existingUser != nil {
-		isMember, err := s.repo.IsTeamMember(ctx, teamID, existingUser.ID)
+		isMember, err := s.repos.TeamMember().IsMember(ctx, teamID, existingUser.ID)
 		if err != nil {
 			return err
 		}
@@ -68,7 +68,7 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 	}
 
 	// Check if invitation already exists
-	existingInvitation, err := s.repo.FindTeamInvitationByEmail(ctx, teamID, req.Email)
+	existingInvitation, err := s.repos.TeamInvitation().FindByEmail(ctx, teamID, req.Email)
 	if err != nil {
 		return err
 	}
@@ -84,12 +84,12 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 		Role:   &req.Role,
 	}
 
-	return s.repo.CreateTeamInvitation(ctx, invitation)
+	return s.repos.TeamInvitation().Create(ctx, invitation)
 }
 
 // AcceptTeamInvitation accepts a team invitation
 func (s *TeamMemberService) AcceptTeamInvitation(ctx context.Context, userID, invitationID string) error {
-	invitation, err := s.repo.FindTeamInvitationByID(ctx, invitationID)
+	invitation, err := s.repos.TeamInvitation().FindByID(ctx, invitationID)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func (s *TeamMemberService) AcceptTeamInvitation(ctx context.Context, userID, in
 		return apperrors.ErrNotFound
 	}
 
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -117,17 +117,17 @@ func (s *TeamMemberService) AcceptTeamInvitation(ctx context.Context, userID, in
 	if invitation.Role != nil {
 		role = *invitation.Role
 	}
-	if err := s.repo.AddUserToTeam(ctx, invitation.TeamID, userID, role); err != nil {
+	if err := s.repos.TeamMember().AddUser(ctx, invitation.TeamID, userID, role); err != nil {
 		return err
 	}
 
 	// Delete invitation
-	return s.repo.DeleteTeamInvitation(ctx, invitationID)
+	return s.repos.TeamInvitation().Delete(ctx, invitationID)
 }
 
 // CancelTeamInvitation cancels a team invitation
 func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, teamID, invitationID string) error {
-	team, err := s.repo.FindTeamByID(ctx, teamID)
+	team, err := s.repos.Team().FindByID(ctx, teamID)
 	if err != nil {
 		return err
 	}
@@ -138,7 +138,7 @@ func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, te
 
 	// Check permission
 	if team.UserID != userID {
-		member, err := s.repo.GetTeamMember(ctx, teamID, userID)
+		member, err := s.repos.TeamMember().Get(ctx, teamID, userID)
 		if err != nil {
 			return err
 		}
@@ -148,7 +148,7 @@ func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, te
 		}
 	}
 
-	invitation, err := s.repo.FindTeamInvitationByID(ctx, invitationID)
+	invitation, err := s.repos.TeamInvitation().FindByID(ctx, invitationID)
 	if err != nil {
 		return err
 	}
@@ -157,12 +157,12 @@ func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, te
 		return apperrors.ErrNotFound
 	}
 
-	return s.repo.DeleteTeamInvitation(ctx, invitationID)
+	return s.repos.TeamInvitation().Delete(ctx, invitationID)
 }
 
 // UpdateTeamMemberRole updates a team member's role
 func (s *TeamMemberService) UpdateTeamMemberRole(ctx context.Context, userID, teamID, memberID string, req *dto.UpdateTeamMemberRequest) error {
-	team, err := s.repo.FindTeamByID(ctx, teamID)
+	team, err := s.repos.Team().FindByID(ctx, teamID)
 	if err != nil {
 		return err
 	}
@@ -181,12 +181,12 @@ func (s *TeamMemberService) UpdateTeamMemberRole(ctx context.Context, userID, te
 		return errors.New("cannot update owner's role")
 	}
 
-	return s.repo.UpdateTeamMemberRole(ctx, teamID, memberID, req.Role)
+	return s.repos.TeamMember().UpdateRole(ctx, teamID, memberID, req.Role)
 }
 
 // RemoveTeamMember removes a member from a team
 func (s *TeamMemberService) RemoveTeamMember(ctx context.Context, userID, teamID, memberID string) error {
-	team, err := s.repo.FindTeamByID(ctx, teamID)
+	team, err := s.repos.Team().FindByID(ctx, teamID)
 	if err != nil {
 		return err
 	}
@@ -206,24 +206,24 @@ func (s *TeamMemberService) RemoveTeamMember(ctx context.Context, userID, teamID
 	}
 
 	// Remove from team
-	if err := s.repo.RemoveUserFromTeam(ctx, teamID, memberID); err != nil {
+	if err := s.repos.TeamMember().RemoveUser(ctx, teamID, memberID); err != nil {
 		return err
 	}
 
 	// If this was their current team, switch to another
-	member, err := s.repo.FindUserByID(ctx, memberID)
+	member, err := s.repos.User().FindByID(ctx, memberID)
 	if err != nil {
 		return nil // Member removed successfully, ignore this error
 	}
 
 	if member != nil && member.CurrentTeamID != nil && *member.CurrentTeamID == teamID {
-		teams, err := s.repo.GetUserTeams(ctx, memberID)
+		teams, err := s.repos.Team().GetUserTeams(ctx, memberID)
 		if err != nil {
 			return nil
 		}
 
 		if len(teams) > 0 {
-			s.repo.SetCurrentTeam(ctx, memberID, teams[0].ID)
+			s.repos.User().SetCurrentTeam(ctx, memberID, teams[0].ID)
 		}
 	}
 
@@ -232,14 +232,14 @@ func (s *TeamMemberService) RemoveTeamMember(ctx context.Context, userID, teamID
 
 // GetTeamMembers gets all members of a team (excluding owner)
 func (s *TeamMemberService) GetTeamMembers(ctx context.Context, teamID string) ([]models.TeamMember, error) {
-	return s.repo.GetTeamMembers(ctx, teamID)
+	return s.repos.Team().GetMembers(ctx, teamID)
 }
 
 // GetAllTeamMembers gets all members of a team including the owner
 // This matches Laravel's allUsers() behavior
 func (s *TeamMemberService) GetAllTeamMembers(ctx context.Context, teamID string) ([]dto.TeamMemberResponse, error) {
 	// Get team with owner
-	team, err := s.repo.FindTeamByID(ctx, teamID)
+	team, err := s.repos.Team().FindByID(ctx, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -248,7 +248,7 @@ func (s *TeamMemberService) GetAllTeamMembers(ctx context.Context, teamID string
 	}
 
 	// Get members from pivot table
-	members, err := s.repo.GetTeamMembers(ctx, teamID)
+	members, err := s.repos.Team().GetMembers(ctx, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -288,7 +288,7 @@ func (s *TeamMemberService) GetAllTeamMembers(ctx context.Context, teamID string
 
 // GetTeamInvitations gets all invitations for a team
 func (s *TeamMemberService) GetTeamInvitations(ctx context.Context, teamID string) ([]models.TeamInvitation, error) {
-	return s.repo.GetTeamInvitations(ctx, teamID)
+	return s.repos.TeamInvitation().GetByTeam(ctx, teamID)
 }
 
 // GenerateInvitationURL generates a permanent signed URL for accepting a team invitation

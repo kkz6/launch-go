@@ -20,7 +20,7 @@ func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 
 	// Create handlers
 	handler := handlers.NewHandler(m.service)
-	passkeyHandler := handlers.NewPasskeyHandler(m.passkeyRepo)
+	passkeyHandler := handlers.NewPasskeyHandler(m.repos)
 
 	authMiddleware := middleware.Auth(deps.Config.JWT.Secret)
 	adapter := NewMiddlewareAdapter(m.service)

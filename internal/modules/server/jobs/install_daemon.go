@@ -27,7 +27,7 @@ type InstallDaemonJob struct {
 }
 
 func (j *InstallDaemonJob) Handle(ctx context.Context) error {
-	daemon, err := j.ctx.Repo.FindDaemonByIDWithServer(ctx, j.Payload.DaemonID)
+	daemon, err := j.ctx.Repos.Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
 	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
@@ -63,7 +63,7 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 		j.ctx.LogError(err, "Failed to reload supervisor, daemon may not start")
 	}
 
-	if err := j.ctx.Repo.MarkDaemonInstalled(ctx, daemon.ID); err != nil {
+	if err := j.ctx.Repos.Daemon().MarkInstalled(ctx, daemon.ID); err != nil {
 		return fmt.Errorf("failed to mark daemon as installed: %w", err)
 	}
 
@@ -98,7 +98,7 @@ func (j *InstallDaemonJob) Failed(ctx context.Context, err error) {
 		"server_id", j.Payload.ServerID,
 	)
 
-	daemon, findErr := j.ctx.Repo.FindDaemonByID(ctx, j.Payload.DaemonID)
+	daemon, findErr := j.ctx.Repos.Daemon().FindByID(ctx, j.Payload.DaemonID)
 	if findErr == nil && daemon != nil {
 		now := time.Now()
 		j.ctx.DB.Model(daemon).Updates(map[string]any{

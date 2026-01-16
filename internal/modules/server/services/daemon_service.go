@@ -12,16 +12,16 @@ import (
 
 // ListDaemons returns all daemons for a server
 func (s *Service) ListDaemons(ctx context.Context, serverID, teamID string) ([]models.Daemon, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	return s.repo.FindDaemonsByServer(ctx, serverID)
+	return s.repos.Daemon().FindByServer(ctx, serverID)
 }
 
 // CreateDaemon creates a new daemon
 func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req *dto.CreateDaemonRequest) (*models.Daemon, error) {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -56,11 +56,11 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 		StopSignal:      stopSignal,
 	}
 
-	if err := s.repo.CreateDaemon(ctx, daemon); err != nil {
+	if err := s.repos.Daemon().Create(ctx, daemon); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(daemon).
@@ -78,11 +78,11 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 
 // UpdateDaemon updates a daemon
 func (s *Service) UpdateDaemon(ctx context.Context, serverID, teamID, daemonID string, req *dto.UpdateDaemonRequest) (*models.Daemon, error) {
-	if _, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID); err != nil {
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
 
-	daemon, err := s.repo.FindDaemonByIDAndServer(ctx, daemonID, serverID)
+	daemon, err := s.repos.Daemon().FindByIDAndServer(ctx, daemonID, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -111,11 +111,11 @@ func (s *Service) UpdateDaemon(ctx context.Context, serverID, teamID, daemonID s
 		daemon.StopSignal = *req.StopSignal
 	}
 
-	if err := s.repo.UpdateDaemon(ctx, daemon); err != nil {
+	if err := s.repos.Daemon().Update(ctx, daemon); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(daemon).
@@ -127,17 +127,17 @@ func (s *Service) UpdateDaemon(ctx context.Context, serverID, teamID, daemonID s
 
 // DeleteDaemon deletes a daemon
 func (s *Service) DeleteDaemon(ctx context.Context, serverID, teamID, daemonID string) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
 	}
 
-	daemon, err := s.repo.FindDaemonByIDAndServer(ctx, daemonID, serverID)
+	daemon, err := s.repos.Daemon().FindByIDAndServer(ctx, daemonID, serverID)
 	if err != nil {
 		return err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("server").
 		On(daemon).
@@ -147,7 +147,7 @@ func (s *Service) DeleteDaemon(ctx context.Context, serverID, teamID, daemonID s
 	if daemon.IsInstalled() && server.IsProvisioned() {
 		now := time.Now()
 		daemon.UninstallationRequestedAt = &now
-		if err := s.repo.UpdateDaemon(ctx, daemon); err != nil {
+		if err := s.repos.Daemon().Update(ctx, daemon); err != nil {
 			return err
 		}
 
@@ -158,7 +158,7 @@ func (s *Service) DeleteDaemon(ctx context.Context, serverID, teamID, daemonID s
 		return nil
 	}
 
-	return s.repo.DeleteDaemon(ctx, daemonID)
+	return s.repos.Daemon().Delete(ctx, daemonID)
 }
 
 func (s *Service) dispatchDaemonInstallJob(server *models.Server, daemon *models.Daemon) error {
@@ -189,12 +189,12 @@ func (s *Service) dispatchDaemonUninstallJob(server *models.Server, daemon *mode
 
 // SyncDaemonsStatus triggers a status synchronization for all daemons on a server
 func (s *Service) SyncDaemonsStatus(ctx context.Context, serverID, teamID string, userID *string) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
 	}
 
-	daemons, err := s.repo.FindDaemonsByServer(ctx, serverID)
+	daemons, err := s.repos.Daemon().FindByServer(ctx, serverID)
 	if err != nil {
 		return err
 	}
@@ -208,7 +208,7 @@ func (s *Service) SyncDaemonsStatus(ctx context.Context, serverID, teamID string
 	now := time.Now()
 	for i := range daemons {
 		daemons[i].LastStatusCheck = &now
-		if err := s.repo.UpdateDaemon(ctx, &daemons[i]); err != nil {
+		if err := s.repos.Daemon().Update(ctx, &daemons[i]); err != nil {
 			s.LogError(err, "Failed to update daemon last status check", "daemon_id", daemons[i].ID)
 		}
 	}

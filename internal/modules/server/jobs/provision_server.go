@@ -27,19 +27,19 @@ type ProvisionServerJob struct {
 }
 
 func (j *ProvisionServerJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	if err := j.ctx.Repo.UpdateServerStatus(ctx, server.ID, enums.ServerStatusProvisioning); err != nil {
+	if err := j.ctx.Repos.Server().UpdateStatus(ctx, server.ID, enums.ServerStatusProvisioning); err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
 	var sshKeyContents []string
 	if len(j.Payload.SSHKeyIDs) > 0 {
 		for _, keyID := range j.Payload.SSHKeyIDs {
-			key, err := j.ctx.Repo.FindSshKeyByID(ctx, keyID)
+			key, err := j.ctx.Repos.SshKey().FindByID(ctx, keyID)
 			if err != nil {
 				j.ctx.LogError(err, "Failed to find SSH key", "key_id", keyID)
 				continue
@@ -93,11 +93,11 @@ func (j *ProvisionServerJob) Failed(ctx context.Context, err error) {
 		"server_id", j.Payload.ServerID,
 	)
 
-	if updateErr := j.ctx.Repo.UpdateServerStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
+	if updateErr := j.ctx.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
 		j.ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 
-	server, findErr := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
+	server, findErr := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {
 		j.ctx.BroadcastServerEvent(server, "server.provision_failed", map[string]any{
 			"server_id": j.Payload.ServerID,

@@ -16,29 +16,29 @@ import (
 
 // UserService handles user management operations
 type UserService struct {
-	repo *repositories.Repository
+	repos *repositories.Registry
 }
 
 // NewUserService creates a new UserService instance
-func NewUserService(repo *repositories.Repository) *UserService {
-	return &UserService{repo: repo}
+func NewUserService(repos *repositories.Registry) *UserService {
+	return &UserService{repos: repos}
 }
 
 // GetUser retrieves a user by ID
 func (s *UserService) GetUser(ctx context.Context, userID string) (*models.User, error) {
-	return s.repo.FindUserByID(ctx, userID)
+	return s.repos.User().FindByID(ctx, userID)
 }
 
 // GetUserByEmail retrieves a user by email
 func (s *UserService) GetUserByEmail(ctx context.Context, email string) (*models.User, error) {
-	return s.repo.FindUserByEmail(ctx, strings.ToLower(strings.TrimSpace(email)))
+	return s.repos.User().FindByEmail(ctx, strings.ToLower(strings.TrimSpace(email)))
 }
 
 // UpdateProfile updates a user's profile
 func (s *UserService) UpdateProfile(ctx context.Context, userID string, req *dto.UpdateProfileRequest) (*models.User, error) {
 	req.Normalize()
 
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -49,7 +49,7 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID string, req *dto
 
 	// Check if email is changing and already exists
 	if user.Email != req.Email {
-		exists, err := s.repo.UserExistsByEmail(ctx, req.Email)
+		exists, err := s.repos.User().ExistsByEmail(ctx, req.Email)
 		if err != nil {
 			return nil, err
 		}
@@ -69,11 +69,11 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID string, req *dto
 		user.Timezone = &req.Timezone
 	}
 
-	if err := s.repo.UpdateUser(ctx, user); err != nil {
+	if err := s.repos.User().Update(ctx, user); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("auth").
 		CausedByUser(userID).
@@ -86,7 +86,7 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID string, req *dto
 
 // ChangePassword changes a user's password
 func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dto.ChangePasswordRequest) error {
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -106,11 +106,11 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dt
 
 	user.Password = string(hashedPassword)
 
-	if err := s.repo.UpdateUser(ctx, user); err != nil {
+	if err := s.repos.User().Update(ctx, user); err != nil {
 		return err
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("auth").
 		CausedByUser(userID).
@@ -123,7 +123,7 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dt
 
 // DeleteAccount deletes a user's account
 func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
-	user, err := s.repo.FindUserByID(ctx, userID)
+	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return err
 	}
@@ -132,7 +132,7 @@ func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
 		return apperrors.ErrNotFound
 	}
 
-	activity.New(s.repo.DB()).
+	activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("auth").
 		CausedByUser(userID).
@@ -141,25 +141,25 @@ func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
 		Log("User account was deleted")
 
 	// Delete owned teams
-	ownedTeams, err := s.repo.GetUserTeams(ctx, userID)
+	ownedTeams, err := s.repos.Team().GetUserTeams(ctx, userID)
 	if err != nil {
 		return err
 	}
 
 	for _, team := range ownedTeams {
 		if team.UserID == userID {
-			s.repo.DeleteTeam(ctx, team.ID)
+			s.repos.Team().Delete(ctx, team.ID)
 		}
 	}
 
-	return s.repo.DeleteUser(ctx, userID)
+	return s.repos.User().Delete(ctx, userID)
 }
 
 // CheckUserStatus checks a user's status by email
 func (s *UserService) CheckUserStatus(ctx context.Context, email string) (*dto.UserStatusResponse, error) {
 	email = strings.ToLower(strings.TrimSpace(email))
 
-	user, err := s.repo.FindUserByEmail(ctx, email)
+	user, err := s.repos.User().FindByEmail(ctx, email)
 	if err != nil {
 		return nil, err
 	}

@@ -18,23 +18,20 @@ var (
 // Module represents the auth module with all its dependencies
 type Module struct {
 	module.Base
-	service     *services.Service
-	repository  *repositories.Repository
-	passkeyRepo *repositories.PasskeyRepository
+	service *services.Service
+	repos   *repositories.Registry
 }
 
 // NewModule creates a new auth Module instance
 func NewModule(b *module.Builder) *Module {
 	deps := b.Deps()
-	repo := repositories.NewRepository(deps.DB)
-	passkeyRepo := repositories.NewPasskeyRepository(deps.DB)
-	service := services.NewService(repo, deps.Config, deps.Logger)
+	repos := repositories.NewRegistry(deps.DB)
+	service := services.NewService(repos, deps.Config, deps.Logger)
 
 	return &Module{
-		Base:        module.NewBase(ModuleName, b),
-		service:     service,
-		repository:  repo,
-		passkeyRepo: passkeyRepo,
+		Base:    module.NewBase(ModuleName, b),
+		service: service,
+		repos:   repos,
 	}
 }
 
@@ -43,7 +40,7 @@ func (m *Module) Service() *services.Service {
 	return m.service
 }
 
-// Repository returns the auth repository
-func (m *Module) Repository() *repositories.Repository {
-	return m.repository
+// Repos returns the auth repository registry
+func (m *Module) Repos() *repositories.Registry {
+	return m.repos
 }

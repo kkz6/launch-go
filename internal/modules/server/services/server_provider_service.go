@@ -8,5 +8,5 @@ import (
 
 // ListServerProviders returns all server providers for a team
 func (s *Service) ListServerProviders(ctx context.Context, teamID string) ([]models.ServerProvider, error) {
-	return s.repo.FindServerProvidersByTeam(ctx, teamID)
+	return s.repos.ServerProvider().FindByTeam(ctx, teamID)
 }

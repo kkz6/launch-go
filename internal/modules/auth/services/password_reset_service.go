@@ -17,19 +17,19 @@ import (
 
 // PasswordResetService handles password reset operations
 type PasswordResetService struct {
-	repo *repositories.Repository
+	repos *repositories.Registry
 }
 
 // NewPasswordResetService creates a new PasswordResetService instance
-func NewPasswordResetService(repo *repositories.Repository) *PasswordResetService {
-	return &PasswordResetService{repo: repo}
+func NewPasswordResetService(repos *repositories.Registry) *PasswordResetService {
+	return &PasswordResetService{repos: repos}
 }
 
 // SendPasswordResetLink sends a password reset email
 func (s *PasswordResetService) SendPasswordResetLink(ctx context.Context, email string) error {
 	email = strings.ToLower(strings.TrimSpace(email))
 
-	user, err := s.repo.FindUserByEmail(ctx, email)
+	user, err := s.repos.User().FindByEmail(ctx, email)
 	if err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func (s *PasswordResetService) SendPasswordResetLink(ctx context.Context, email 
 		CreatedAt: &now,
 	}
 
-	if err := s.repo.CreatePasswordResetToken(ctx, resetToken); err != nil {
+	if err := s.repos.PasswordResetToken().Create(ctx, resetToken); err != nil {
 		return err
 	}
 
@@ -68,7 +68,7 @@ func (s *PasswordResetService) SendPasswordResetLink(ctx context.Context, email 
 func (s *PasswordResetService) ResetPassword(ctx context.Context, req *dto.ResetPasswordRequest) error {
 	req.Normalize()
 
-	resetToken, err := s.repo.FindPasswordResetToken(ctx, req.Email)
+	resetToken, err := s.repos.PasswordResetToken().FindByEmail(ctx, req.Email)
 	if err != nil {
 		return err
 	}
@@ -79,7 +79,7 @@ func (s *PasswordResetService) ResetPassword(ctx context.Context, req *dto.Reset
 
 	// Check if token expired
 	if resetToken.IsExpired() {
-		s.repo.DeletePasswordResetToken(ctx, req.Email)
+		s.repos.PasswordResetToken().Delete(ctx, req.Email)
 
 		return errors.New("invalid or expired reset token")
 	}
@@ -91,7 +91,7 @@ func (s *PasswordResetService) ResetPassword(ctx context.Context, req *dto.Reset
 	}
 
 	// Find user
-	user, err := s.repo.FindUserByEmail(ctx, req.Email)
+	user, err := s.repos.User().FindByEmail(ctx, req.Email)
 	if err != nil {
 		return err
 	}
@@ -108,12 +108,12 @@ func (s *PasswordResetService) ResetPassword(ctx context.Context, req *dto.Reset
 
 	user.Password = string(hashedPassword)
 
-	if err := s.repo.UpdateUser(ctx, user); err != nil {
+	if err := s.repos.User().Update(ctx, user); err != nil {
 		return err
 	}
 
 	// Delete the reset token
-	return s.repo.DeletePasswordResetToken(ctx, req.Email)
+	return s.repos.PasswordResetToken().Delete(ctx, req.Email)
 }
 
 // hashToken hashes a token for secure storage

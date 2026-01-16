@@ -28,7 +28,7 @@ type RebootServerJob struct {
 // Handle processes the job
 func (j *RebootServerJob) Handle(ctx context.Context) error {
 	// Find the server
-	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}

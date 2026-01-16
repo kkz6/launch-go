@@ -15,13 +15,13 @@ import (
 
 // GetOpcacheStatus returns the OPcache status for a PHP version
 func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID string) (*dto.OpcacheStatusResponse, error) {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
 
 	// Find the PHP service
-	service, err := s.repo.FindServiceByID(ctx, phpID)
+	service, err := s.repos.Service().FindByID(ctx, phpID)
 	if err != nil {
 		return nil, err
 	}
@@ -144,13 +144,13 @@ func extractJSON(s string) string {
 
 // ResetOpcache resets the OPcache for a PHP version
 func (s *Service) ResetOpcache(ctx context.Context, serverID, teamID, phpID string) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
 	}
 
 	// Find the PHP service
-	service, err := s.repo.FindServiceByID(ctx, phpID)
+	service, err := s.repos.Service().FindByID(ctx, phpID)
 	if err != nil {
 		return err
 	}
@@ -181,13 +181,13 @@ func (s *Service) ResetOpcache(ctx context.Context, serverID, teamID, phpID stri
 
 // ConfigureOpcache configures OPcache settings for a PHP version
 func (s *Service) ConfigureOpcache(ctx context.Context, serverID, teamID, phpID string, req *dto.ConfigureOpcacheRequest) error {
-	server, err := s.repo.FindServerByIDAndTeam(ctx, serverID, teamID)
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
 	}
 
 	// Find the PHP service
-	service, err := s.repo.FindServiceByID(ctx, phpID)
+	service, err := s.repos.Service().FindByID(ctx, phpID)
 	if err != nil {
 		return err
 	}

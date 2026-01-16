@@ -49,7 +49,7 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -281,7 +281,7 @@ func (j *DeployJob) broadcastDeploymentProgress(ctx context.Context, siteID, dep
 		return
 	}
 
-	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return
 	}
@@ -439,7 +439,7 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -671,7 +671,7 @@ func (j *DeployZeroDowntimeJob) broadcastDeploymentProgress(ctx context.Context,
 		return
 	}
 
-	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return
 	}

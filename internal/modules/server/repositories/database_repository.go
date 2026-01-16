@@ -9,45 +9,78 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 )
 
-// FindDatabasesByServer returns all databases for a server
-func (r *Repository) FindDatabasesByServer(ctx context.Context, serverID string) ([]models.Database, error) {
-	return findByServer[models.Database](r, ctx, serverID)
+// DatabaseRepository handles database-related database operations for the server module
+type DatabaseRepository struct {
+	BaseRepository
 }
 
-// FindDatabaseByID returns a database by ID
-func (r *Repository) FindDatabaseByID(ctx context.Context, id string) (*models.Database, error) {
-	return findByID[models.Database](r, ctx, id, ErrDatabaseNotFound)
+// NewDatabaseRepository creates a new DatabaseRepository instance
+func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository {
+	return &DatabaseRepository{
+		BaseRepository: NewBaseRepository(db),
+	}
 }
 
-// FindDatabaseByIDWithServer returns a database by ID with the Server relation preloaded
-func (r *Repository) FindDatabaseByIDWithServer(ctx context.Context, id string) (*models.Database, error) {
-	return findByIDWithPreload[models.Database](r, ctx, id, "Server", ErrDatabaseNotFound)
+// FindByServer returns all databases for a server
+func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) ([]models.Database, error) {
+	var databases []models.Database
+	err := r.DB().WithContext(ctx).
+		Where("server_id = ?", serverID).
+		Order("created_at DESC").
+		Find(&databases).Error
+	return databases, err
 }
 
-// CreateDatabase creates a new database
-func (r *Repository) CreateDatabase(ctx context.Context, db *models.Database) error {
-	return create(r, ctx, db)
+// FindByID returns a database by ID
+func (r *DatabaseRepository) FindByID(ctx context.Context, id string) (*models.Database, error) {
+	var database models.Database
+	err := r.DB().WithContext(ctx).First(&database, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrDatabaseNotFound
+		}
+		return nil, err
+	}
+	return &database, nil
 }
 
-// DeleteDatabase deletes a database
-func (r *Repository) DeleteDatabase(ctx context.Context, id string) error {
-	return deleteByID[models.Database](r, ctx, id)
+// FindByIDWithServer returns a database by ID with the Server relation preloaded
+func (r *DatabaseRepository) FindByIDWithServer(ctx context.Context, id string) (*models.Database, error) {
+	var database models.Database
+	err := r.DB().WithContext(ctx).Preload("Server").First(&database, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrDatabaseNotFound
+		}
+		return nil, err
+	}
+	return &database, nil
 }
 
-// FindDatabaseUsersByServer returns all database users for a server
-func (r *Repository) FindDatabaseUsersByServer(ctx context.Context, serverID string) ([]models.DatabaseUser, error) {
-	return findByServer[models.DatabaseUser](r, ctx, serverID)
+// Create creates a new database
+func (r *DatabaseRepository) Create(ctx context.Context, db *models.Database) error {
+	return r.DB().WithContext(ctx).Create(db).Error
 }
 
-// FindDatabaseUserByID returns a database user by ID
-func (r *Repository) FindDatabaseUserByID(ctx context.Context, id string) (*models.DatabaseUser, error) {
-	return findByID[models.DatabaseUser](r, ctx, id, ErrDatabaseUserNotFound)
+// Delete deletes a database
+func (r *DatabaseRepository) Delete(ctx context.Context, id string) error {
+	return r.DB().WithContext(ctx).Delete(&models.Database{}, "id = ?", id).Error
 }
 
-// FindDatabaseUserByIDWithServer returns a database user by ID with the Server relation preloaded
-func (r *Repository) FindDatabaseUserByIDWithServer(ctx context.Context, id string) (*models.DatabaseUser, error) {
+// FindUsersByServer returns all database users for a server
+func (r *DatabaseRepository) FindUsersByServer(ctx context.Context, serverID string) ([]models.DatabaseUser, error) {
+	var users []models.DatabaseUser
+	err := r.DB().WithContext(ctx).
+		Where("server_id = ?", serverID).
+		Order("created_at DESC").
+		Find(&users).Error
+	return users, err
+}
+
+// FindUserByID returns a database user by ID
+func (r *DatabaseRepository) FindUserByID(ctx context.Context, id string) (*models.DatabaseUser, error) {
 	var user models.DatabaseUser
-	err := r.db.WithContext(ctx).Preload("Server").Preload("Databases").Where("id = ?", id).First(&user).Error
+	err := r.DB().WithContext(ctx).First(&user, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrDatabaseUserNotFound
@@ -57,12 +90,25 @@ func (r *Repository) FindDatabaseUserByIDWithServer(ctx context.Context, id stri
 	return &user, nil
 }
 
-// CreateDatabaseUser creates a new database user
-func (r *Repository) CreateDatabaseUser(ctx context.Context, user *models.DatabaseUser) error {
-	return create(r, ctx, user)
+// FindUserByIDWithServer returns a database user by ID with the Server relation preloaded
+func (r *DatabaseRepository) FindUserByIDWithServer(ctx context.Context, id string) (*models.DatabaseUser, error) {
+	var user models.DatabaseUser
+	err := r.DB().WithContext(ctx).Preload("Server").Preload("Databases").Where("id = ?", id).First(&user).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrDatabaseUserNotFound
+		}
+		return nil, err
+	}
+	return &user, nil
 }
 
-// DeleteDatabaseUser deletes a database user
-func (r *Repository) DeleteDatabaseUser(ctx context.Context, id string) error {
-	return deleteByID[models.DatabaseUser](r, ctx, id)
+// CreateUser creates a new database user
+func (r *DatabaseRepository) CreateUser(ctx context.Context, user *models.DatabaseUser) error {
+	return r.DB().WithContext(ctx).Create(user).Error
+}
+
+// DeleteUser deletes a database user
+func (r *DatabaseRepository) DeleteUser(ctx context.Context, id string) error {
+	return r.DB().WithContext(ctx).Delete(&models.DatabaseUser{}, "id = ?", id).Error
 }

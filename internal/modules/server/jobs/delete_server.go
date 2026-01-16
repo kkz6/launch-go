@@ -30,7 +30,7 @@ type DeleteServerJob struct {
 // Handle processes the job
 func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	// Find the server with relations
-	server, err := j.ctx.Repo.FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -58,7 +58,7 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 			// Get credentials from server provider
 			var credentials map[string]any
 			if server.ServerProviderID != nil {
-				serverProvider, err := j.ctx.Repo.FindServerProviderByID(ctx, *server.ServerProviderID)
+				serverProvider, err := j.ctx.Repos.ServerProvider().FindByID(ctx, *server.ServerProviderID)
 				if err == nil {
 					credStr := serverProvider.Credentials.String()
 					if credStr != "" {
@@ -84,7 +84,7 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Delete the server record from database
-	if err := j.ctx.Repo.DeleteServer(ctx, server.ID); err != nil {
+	if err := j.ctx.Repos.Server().Delete(ctx, server.ID); err != nil {
 		return fmt.Errorf("failed to delete server: %w", err)
 	}
 

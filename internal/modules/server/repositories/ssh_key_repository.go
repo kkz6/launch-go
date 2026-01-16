@@ -2,79 +2,102 @@ package repositories
 
 import (
 	"context"
+	"errors"
+
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 )
 
-// CreateSshKey creates a new SSH key
-func (r *Repository) CreateSshKey(ctx context.Context, key *models.SshKey) error {
-	return create(r, ctx, key)
+// SshKeyRepository handles SSH key database operations
+type SshKeyRepository struct {
+	BaseRepository
 }
 
-// FindSshKeyByID finds an SSH key by ID
-func (r *Repository) FindSshKeyByID(ctx context.Context, id string) (*models.SshKey, error) {
-	return findByID[models.SshKey](r, ctx, id, ErrSshKeyNotFound)
+// NewSshKeyRepository creates a new SshKeyRepository instance
+func NewSshKeyRepository(db *gorm.DB) *SshKeyRepository {
+	return &SshKeyRepository{
+		BaseRepository: NewBaseRepository(db),
+	}
 }
 
-// FindSshKeysByTeam finds all SSH keys for a team
-func (r *Repository) FindSshKeysByTeam(ctx context.Context, teamID string) ([]models.SshKey, error) {
+// Create creates a new SSH key
+func (r *SshKeyRepository) Create(ctx context.Context, key *models.SshKey) error {
+	return r.DB().WithContext(ctx).Create(key).Error
+}
+
+// FindByID finds an SSH key by ID
+func (r *SshKeyRepository) FindByID(ctx context.Context, id string) (*models.SshKey, error) {
+	var key models.SshKey
+	err := r.DB().WithContext(ctx).First(&key, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrSshKeyNotFound
+		}
+		return nil, err
+	}
+	return &key, nil
+}
+
+// FindByTeam finds all SSH keys for a team
+func (r *SshKeyRepository) FindByTeam(ctx context.Context, teamID string) ([]models.SshKey, error) {
 	var keys []models.SshKey
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Where("team_id = ?", teamID).
 		Order("created_at DESC").
 		Find(&keys).Error
 	return keys, err
 }
 
-// FindSshKeysByServer finds all SSH keys attached to a server
-func (r *Repository) FindSshKeysByServer(ctx context.Context, serverID string) ([]models.SshKey, error) {
+// FindByServer finds all SSH keys attached to a server
+func (r *SshKeyRepository) FindByServer(ctx context.Context, serverID string) ([]models.SshKey, error) {
 	var keys []models.SshKey
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Joins("JOIN server_ssh_keys ON server_ssh_keys.ssh_key_id = ssh_keys.id").
 		Where("server_ssh_keys.server_id = ?", serverID).
 		Find(&keys).Error
 	return keys, err
 }
 
-// FindGlobalSshKeys finds all global SSH keys
-func (r *Repository) FindGlobalSshKeys(ctx context.Context) ([]models.SshKey, error) {
+// FindGlobal finds all global SSH keys
+func (r *SshKeyRepository) FindGlobal(ctx context.Context) ([]models.SshKey, error) {
 	var keys []models.SshKey
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Where("is_global = ?", true).
 		Order("created_at DESC").
 		Find(&keys).Error
 	return keys, err
 }
 
-// UpdateSshKey updates an SSH key
-func (r *Repository) UpdateSshKey(ctx context.Context, key *models.SshKey) error {
-	return update(r, ctx, key)
+// Update updates an SSH key
+func (r *SshKeyRepository) Update(ctx context.Context, key *models.SshKey) error {
+	return r.DB().WithContext(ctx).Save(key).Error
 }
 
-// DeleteSshKey deletes an SSH key
-func (r *Repository) DeleteSshKey(ctx context.Context, id string) error {
-	return deleteByID[models.SshKey](r, ctx, id)
+// Delete deletes an SSH key
+func (r *SshKeyRepository) Delete(ctx context.Context, id string) error {
+	return r.DB().WithContext(ctx).Delete(&models.SshKey{}, "id = ?", id).Error
 }
 
-// AttachSshKeyToServer attaches an SSH key to a server
-func (r *Repository) AttachSshKeyToServer(ctx context.Context, serverID, sshKeyID string) error {
-	return r.db.WithContext(ctx).Create(&models.ServerSshKey{
+// AttachToServer attaches an SSH key to a server
+func (r *SshKeyRepository) AttachToServer(ctx context.Context, serverID, sshKeyID string) error {
+	return r.DB().WithContext(ctx).Create(&models.ServerSshKey{
 		ServerID: serverID,
 		SshKeyID: sshKeyID,
 	}).Error
 }
 
-// DetachSshKeyFromServer detaches an SSH key from a server
-func (r *Repository) DetachSshKeyFromServer(ctx context.Context, serverID, sshKeyID string) error {
-	return r.db.WithContext(ctx).
+// DetachFromServer detaches an SSH key from a server
+func (r *SshKeyRepository) DetachFromServer(ctx context.Context, serverID, sshKeyID string) error {
+	return r.DB().WithContext(ctx).
 		Where("server_id = ? AND ssh_key_id = ?", serverID, sshKeyID).
 		Delete(&models.ServerSshKey{}).Error
 }
 
-// IsSshKeyAttachedToServer checks if an SSH key is attached to a server
-func (r *Repository) IsSshKeyAttachedToServer(ctx context.Context, serverID, sshKeyID string) (bool, error) {
+// IsAttachedToServer checks if an SSH key is attached to a server
+func (r *SshKeyRepository) IsAttachedToServer(ctx context.Context, serverID, sshKeyID string) (bool, error) {
 	var count int64
-	err := r.db.WithContext(ctx).
+	err := r.DB().WithContext(ctx).
 		Model(&models.ServerSshKey{}).
 		Where("server_id = ? AND ssh_key_id = ?", serverID, sshKeyID).
 		Count(&count).Error

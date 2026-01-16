@@ -7,7 +7,6 @@ import (
 	"gorm.io/gorm"
 
 	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
-	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 )
@@ -898,15 +897,6 @@ func (m *MockRepository) DeleteDatabaseUser(ctx context.Context, id string) erro
 	return nil
 }
 
-// ---- Transaction ----
-
-func (m *MockRepository) Transaction(ctx context.Context, fn func(tx contracts.Repository) error) error {
-	return fn(m)
-}
-
 func (m *MockRepository) DB() *gorm.DB {
 	return nil
 }
-
-// Ensure MockRepository implements Repository interface
-var _ contracts.Repository = (*MockRepository)(nil)

@@ -58,7 +58,7 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -138,7 +138,7 @@ func (j *RollbackJob) handleRollbackSuccess(ctx context.Context, deployment *mod
 		return
 	}
 
-	server, err := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		j.ctx.LogError(err, "Failed to find server for broadcast")
 		return
@@ -180,7 +180,7 @@ func (j *RollbackJob) handleRollbackFailure(ctx context.Context, deployment *mod
 		return
 	}
 
-	server, serverErr := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, serverErr := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if serverErr != nil {
 		j.ctx.LogError(serverErr, "Failed to find server for broadcast")
 		j.ctx.LogError(err, "Rollback failed",
@@ -230,7 +230,7 @@ func (j *RollbackJob) Failed(ctx context.Context, err error) {
 		return
 	}
 
-	server, serverErr := j.ctx.ServerRepo.FindServerByID(ctx, site.ServerID)
+	server, serverErr := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if serverErr != nil {
 		return
 	}

@@ -43,7 +43,7 @@ func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepo.FindServerByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
