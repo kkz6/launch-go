@@ -3,9 +3,13 @@ package services
 import (
 	"context"
 	"errors"
+	"strconv"
 
 	"github.com/hibiken/asynq"
 
+	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
+	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
+	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
@@ -14,6 +18,8 @@ import (
 // DeploymentService handles business logic for deployments
 type DeploymentService struct {
 	*BaseService
+	gitRepos        *gitrepos.Registry
+	providerFactory *gitproviders.ProviderFactory
 }
 
 // NewDeploymentService creates a new deployment service
@@ -23,6 +29,16 @@ func NewDeploymentService(deps *ServiceDeps) *DeploymentService {
 	}
 }
 
+// SetGitRepos sets the git repositories registry
+func (s *DeploymentService) SetGitRepos(repos *gitrepos.Registry) {
+	s.gitRepos = repos
+}
+
+// SetProviderFactory sets the git provider factory
+func (s *DeploymentService) SetProviderFactory(factory *gitproviders.ProviderFactory) {
+	s.providerFactory = factory
+}
+
 // Deploy triggers a new deployment for a site
 func (s *DeploymentService) Deploy(ctx context.Context, siteID, serverID, userID string) (*models.Deployment, error) {
 	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
@@ -30,7 +46,88 @@ func (s *DeploymentService) Deploy(ctx context.Context, siteID, serverID, userID
 		return nil, err
 	}
 
-	return s.createDeployment(ctx, site, userID, nil)
+	// Fetch the latest commit data from the git provider
+	commitData := s.fetchLatestCommitData(ctx, site)
+
+	return s.createDeployment(ctx, site, userID, commitData)
+}
+
+// fetchLatestCommitData fetches the latest commit data from the git provider
+func (s *DeploymentService) fetchLatestCommitData(ctx context.Context, site *models.Site) map[string]interface{} {
+	if site.SourceControlID == nil || site.SourceControlRepositoriesID == nil {
+		return nil
+	}
+
+	if s.gitRepos == nil || s.providerFactory == nil {
+		return nil
+	}
+
+	// Get source control
+	sourceControl, err := s.gitRepos.SourceControl().FindByID(ctx, *site.SourceControlID)
+	if err != nil {
+		s.LogError(err, "Failed to find source control for commit data", "site_id", site.ID)
+		return nil
+	}
+
+	// Get repository
+	repoID := strconv.FormatUint(*site.SourceControlRepositoriesID, 10)
+	repo, err := s.gitRepos.SourceControlRepo().FindRepositoryByID(ctx, repoID)
+	if err != nil {
+		s.LogError(err, "Failed to find repository for commit data", "site_id", site.ID)
+		return nil
+	}
+
+	// Get provider
+	provider, err := s.providerFactory.GetProviderWithInstallation(
+		gitproviders.GitProviderType(sourceControl.Provider),
+		s.buildSourceControlData(sourceControl),
+	)
+	if err != nil {
+		s.LogError(err, "Failed to get provider for commit data", "site_id", site.ID)
+		return nil
+	}
+
+	// Get last commit
+	branch := site.GetRepositoryBranch()
+	commitData, err := provider.GetLastCommit(ctx, sourceControl.ID, repo.FullName, branch)
+	if err != nil {
+		s.LogError(err, "Failed to get last commit", "site_id", site.ID, "repo", repo.FullName, "branch", branch)
+		return nil
+	}
+
+	if commitData == nil {
+		return nil
+	}
+
+	return commitData.ToMap()
+}
+
+// buildSourceControlData builds SourceControlData from a SourceControl model
+func (s *DeploymentService) buildSourceControlData(sc *gitmodels.SourceControl) *gitproviders.SourceControlData {
+	scData := &gitproviders.SourceControlData{
+		ID:             sc.ID,
+		UserID:         sc.UserID,
+		Provider:       gitproviders.GitProviderType(sc.Provider),
+		InstallationID: sc.InstallationID,
+	}
+
+	if sc.TeamID != nil {
+		scData.TeamID = *sc.TeamID
+	}
+	if sc.URL != nil {
+		scData.URL = sc.URL
+	}
+	if sc.Login != nil {
+		scData.Login = sc.Login
+	}
+	if sc.Name != nil {
+		scData.Name = sc.Name
+	}
+	if sc.Type != nil {
+		scData.Type = sc.Type
+	}
+
+	return scData
 }
 
 // Rollback rolls back to a previous deployment
@@ -119,6 +216,9 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 		userIDPtr = &userID
 	}
 
+	// Extract git hash from commit data
+	gitHash := extractGitHash(commitData)
+
 	// Check for active deployment
 	activeDeployment, _ := s.Repos().Deployment().FindActiveBySite(ctx, site.ID)
 	if activeDeployment != nil {
@@ -128,6 +228,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 				SiteID:     site.ID,
 				UserID:     userIDPtr,
 				Status:     enums.DeploymentStatusQueued,
+				GitHash:    gitHash,
 				CommitData: commitData,
 			}
 
@@ -147,6 +248,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 		SiteID:     site.ID,
 		UserID:     userIDPtr,
 		Status:     enums.DeploymentStatusPending,
+		GitHash:    gitHash,
 		CommitData: commitData,
 	}
 
@@ -498,4 +600,18 @@ func (s *DeploymentService) parseBitbucketPayload(push map[string]any) map[strin
 	}
 
 	return result
+}
+
+// extractGitHash extracts the git hash from commit data
+func extractGitHash(commitData map[string]interface{}) *string {
+	if commitData == nil {
+		return nil
+	}
+
+	// Get sha from commit data
+	if sha, ok := commitData["sha"].(string); ok && sha != "" {
+		return &sha
+	}
+
+	return nil
 }

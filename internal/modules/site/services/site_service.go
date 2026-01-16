@@ -437,10 +437,11 @@ func (s *SiteService) handleSchedulerCreation(ctx context.Context, site *models.
 	}
 
 	// Build the scheduler command based on site type
-	phpBinary := "php"
+	phpVersion := ""
 	if site.PhpVersion != nil {
-		phpBinary = fmt.Sprintf("php%s", *site.PhpVersion)
+		phpVersion = *site.PhpVersion
 	}
+	phpBinary := serverenums.PhpBinaryFromVersion(phpVersion)
 
 	var command string
 	switch site.Type {

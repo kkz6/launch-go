@@ -69,7 +69,7 @@ func (s *InstalledService) GetServiceName() string {
 	case enums.ServiceTypeSupervisor:
 		return "supervisor"
 	case enums.ServiceTypePhp:
-		return "php" + s.Version + "-fpm"
+		return enums.PhpFpmServiceFromVersion(s.Version)
 	case enums.ServiceTypeLaunchAgent:
 		return "launch-agent"
 	default:
