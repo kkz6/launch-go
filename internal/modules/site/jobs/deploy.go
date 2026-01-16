@@ -346,6 +346,14 @@ func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *mod
 		j.ctx.LogError(err, "Failed to update deployment status to failed")
 	}
 
+	// If first deployment failed, mark site installation as failed
+	if site != nil && site.InstalledAt == nil {
+		site.MarkAsFailed()
+		if err := j.ctx.SiteRepo.Update(ctx, site); err != nil {
+			j.ctx.LogError(err, "Failed to update site installation_failed_at")
+		}
+	}
+
 	// Update deployment status on git provider
 	j.updateProviderDeploymentStatus(ctx, site, deployment, gitproviders.DeploymentStatusFailure)
 
@@ -852,6 +860,14 @@ func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, dep
 
 	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		j.ctx.LogError(err, "Failed to update deployment status to failed")
+	}
+
+	// If first deployment failed, mark site installation as failed
+	if site != nil && site.InstalledAt == nil {
+		site.MarkAsFailed()
+		if err := j.ctx.SiteRepo.Update(ctx, site); err != nil {
+			j.ctx.LogError(err, "Failed to update site installation_failed_at")
+		}
 	}
 
 	// Update deployment status on git provider
