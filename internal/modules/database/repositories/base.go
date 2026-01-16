@@ -1,10 +1,9 @@
 package repositories
 
 import (
-	"context"
-
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/modules/database/contracts"
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
@@ -18,40 +17,64 @@ var (
 	ErrDuplicateUserName    = apperrors.Conflict("A database user with this name already exists on this server")
 )
 
-// Repository provides database operations for database module
-type Repository struct {
+// Ensure Registry implements contracts.RepositoryRegistry
+var _ contracts.RepositoryRegistry = (*Registry)(nil)
+
+// Registry provides access to all database module repositories
+type Registry struct {
 	db       *gorm.DB
-	database repository.Installable[models.Database]
-	user     repository.Installable[models.DatabaseUser]
+	database *DatabaseRepository
+	user     *DatabaseUserRepository
 }
 
-// NewRepository creates a new Repository instance
-func NewRepository(db *gorm.DB) *Repository {
-	return &Repository{
+// NewRegistry creates a new Registry instance
+func NewRegistry(db *gorm.DB) *Registry {
+	return &Registry{
 		db:       db,
-		database: repository.NewInstallable[models.Database](db),
-		user:     repository.NewInstallable[models.DatabaseUser](db),
+		database: NewDatabaseRepository(db),
+		user:     NewDatabaseUserRepository(db),
 	}
 }
 
-// Transaction executes a function within a database transaction
-func (r *Repository) Transaction(ctx context.Context, fn func(tx *Repository) error) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		return fn(NewRepository(tx))
-	})
+// Database returns the database repository
+func (r *Registry) Database() contracts.DatabaseRepository {
+	return r.database
+}
+
+// User returns the database user repository
+func (r *Registry) User() contracts.DatabaseUserRepository {
+	return r.user
 }
 
 // DB returns the underlying database connection
-func (r *Repository) DB() *gorm.DB {
+func (r *Registry) DB() *gorm.DB {
 	return r.db
 }
 
-// DatabaseRepo returns the database repository with generic CRUD operations
-func (r *Repository) DatabaseRepo() *repository.Installable[models.Database] {
-	return &r.database
+// DatabaseRepository provides database operations
+type DatabaseRepository struct {
+	db          *gorm.DB
+	installable repository.Installable[models.Database]
 }
 
-// UserRepo returns the database user repository with generic CRUD operations
-func (r *Repository) UserRepo() *repository.Installable[models.DatabaseUser] {
-	return &r.user
+// NewDatabaseRepository creates a new DatabaseRepository instance
+func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository {
+	return &DatabaseRepository{
+		db:          db,
+		installable: repository.NewInstallable[models.Database](db),
+	}
+}
+
+// DatabaseUserRepository provides database user operations
+type DatabaseUserRepository struct {
+	db          *gorm.DB
+	installable repository.Installable[models.DatabaseUser]
+}
+
+// NewDatabaseUserRepository creates a new DatabaseUserRepository instance
+func NewDatabaseUserRepository(db *gorm.DB) *DatabaseUserRepository {
+	return &DatabaseUserRepository{
+		db:          db,
+		installable: repository.NewInstallable[models.DatabaseUser](db),
+	}
 }

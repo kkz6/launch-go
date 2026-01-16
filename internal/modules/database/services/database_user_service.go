@@ -12,7 +12,7 @@ import (
 // CreateDatabaseUser creates a new database user
 func (s *Service) CreateDatabaseUser(ctx context.Context, serverID string, req *dto.CreateDatabaseUserRequest, userID *string) (*models.DatabaseUser, error) {
 	// Check if user name already exists
-	exists, err := s.repo.UserExistsByNameAndServer(ctx, req.Name, serverID)
+	exists, err := s.repos.User().ExistsByNameAndServer(ctx, req.Name, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing user: %w", err)
 	}
@@ -24,7 +24,7 @@ func (s *Service) CreateDatabaseUser(ctx context.Context, serverID string, req *
 	// Validate database IDs belong to server
 	if len(req.Databases) > 0 {
 		for _, dbID := range req.Databases {
-			_, err := s.repo.FindByIDAndServer(ctx, dbID, serverID)
+			_, err := s.repos.Database().FindByIDAndServer(ctx, dbID, serverID)
 			if err != nil {
 				return nil, fmt.Errorf("database %s not found on server: %w", dbID, err)
 			}
@@ -38,13 +38,13 @@ func (s *Service) CreateDatabaseUser(ctx context.Context, serverID string, req *
 		Password: &req.Password,
 	}
 
-	if err := s.repo.CreateUser(ctx, dbUser); err != nil {
+	if err := s.repos.User().Create(ctx, dbUser); err != nil {
 		return nil, fmt.Errorf("failed to create database user: %w", err)
 	}
 
 	// Attach databases
 	for _, dbID := range req.Databases {
-		if err := s.repo.AttachUser(ctx, dbID, dbUser.ID); err != nil {
+		if err := s.repos.Database().AttachUser(ctx, dbID, dbUser.ID); err != nil {
 			s.LogError(err, "Failed to attach database to user", "database_id", dbID, "user_id", dbUser.ID)
 		}
 	}
@@ -57,17 +57,17 @@ func (s *Service) CreateDatabaseUser(ctx context.Context, serverID string, req *
 
 // GetDatabaseUser retrieves a database user by ID
 func (s *Service) GetDatabaseUser(ctx context.Context, id, serverID string) (*models.DatabaseUser, error) {
-	return s.repo.FindUserByIDAndServer(ctx, id, serverID)
+	return s.repos.User().FindByIDAndServer(ctx, id, serverID)
 }
 
 // ListDatabaseUsers lists all database users for a server
 func (s *Service) ListDatabaseUsers(ctx context.Context, serverID string) ([]models.DatabaseUser, error) {
-	return s.repo.FindUsersByServer(ctx, serverID)
+	return s.repos.User().FindByServer(ctx, serverID)
 }
 
 // UpdateDatabaseUser updates a database user
 func (s *Service) UpdateDatabaseUser(ctx context.Context, id, serverID string, req *dto.UpdateDatabaseUserRequest, userID *string) (*models.DatabaseUser, error) {
-	dbUser, err := s.repo.FindUserByIDAndServer(ctx, id, serverID)
+	dbUser, err := s.repos.User().FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return nil, err
 	}
@@ -79,7 +79,7 @@ func (s *Service) UpdateDatabaseUser(ctx context.Context, id, serverID string, r
 	// Validate database IDs belong to server
 	if len(req.Databases) > 0 {
 		for _, dbID := range req.Databases {
-			_, err := s.repo.FindByIDAndServer(ctx, dbID, serverID)
+			_, err := s.repos.Database().FindByIDAndServer(ctx, dbID, serverID)
 			if err != nil {
 				return nil, fmt.Errorf("database %s not found on server: %w", dbID, err)
 			}
@@ -88,12 +88,12 @@ func (s *Service) UpdateDatabaseUser(ctx context.Context, id, serverID string, r
 
 	// Update password
 	dbUser.Password = &req.Password
-	if err := s.repo.UpdateUser(ctx, dbUser); err != nil {
+	if err := s.repos.User().Update(ctx, dbUser); err != nil {
 		return nil, fmt.Errorf("failed to update database user: %w", err)
 	}
 
 	// Sync databases
-	if err := s.repo.SyncUserDatabases(ctx, dbUser.ID, req.Databases); err != nil {
+	if err := s.repos.User().SyncDatabases(ctx, dbUser.ID, req.Databases); err != nil {
 		return nil, fmt.Errorf("failed to sync user databases: %w", err)
 	}
 
@@ -101,14 +101,14 @@ func (s *Service) UpdateDatabaseUser(ctx context.Context, id, serverID string, r
 	s.dispatchUpdateDatabaseUser(ctx, dbUser, &req.Password, userID)
 
 	// Reload user with databases
-	dbUser, _ = s.repo.FindUserByID(ctx, dbUser.ID)
+	dbUser, _ = s.repos.User().FindByID(ctx, dbUser.ID)
 
 	return dbUser, nil
 }
 
 // DeleteDatabaseUser deletes a database user from a server
 func (s *Service) DeleteDatabaseUser(ctx context.Context, id, serverID string, userID *string) error {
-	dbUser, err := s.repo.FindUserByIDAndServer(ctx, id, serverID)
+	dbUser, err := s.repos.User().FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return err
 	}
@@ -119,7 +119,7 @@ func (s *Service) DeleteDatabaseUser(ctx context.Context, id, serverID string, u
 
 	// Mark as uninstalling
 	dbUser.MarkAsUninstalling()
-	if err := s.repo.UpdateUser(ctx, dbUser); err != nil {
+	if err := s.repos.User().Update(ctx, dbUser); err != nil {
 		return fmt.Errorf("failed to update user status: %w", err)
 	}
 

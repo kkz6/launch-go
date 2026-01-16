@@ -34,16 +34,16 @@ type Config struct {
 
 // BillingService handles billing operations
 type BillingService struct {
-	repo         *repositories.BillingRepository
+	repos        *repositories.Registry
 	lemonSqueezy *providers.LemonSqueezyClient
 	config       *Config
 	logger       *zerolog.Logger
 }
 
 // NewBillingService creates a new billing service
-func NewBillingService(repo *repositories.BillingRepository, lemonSqueezy *providers.LemonSqueezyClient, config *Config, logger *zerolog.Logger) *BillingService {
+func NewBillingService(repos *repositories.Registry, lemonSqueezy *providers.LemonSqueezyClient, config *Config, logger *zerolog.Logger) *BillingService {
 	return &BillingService{
-		repo:         repo,
+		repos:        repos,
 		lemonSqueezy: lemonSqueezy,
 		config:       config,
 		logger:       logger,
@@ -111,22 +111,22 @@ func (s *BillingService) GenerateCheckoutURL(ctx context.Context, teamID string,
 
 // GetSubscriptions returns all subscriptions for a team
 func (s *BillingService) GetSubscriptions(ctx context.Context, teamID string) ([]models.Subscription, error) {
-	return s.repo.FindSubscriptionsByTeam(ctx, teamID)
+	return s.repos.Subscription().FindByTeam(ctx, teamID)
 }
 
 // GetActiveSubscription returns the active subscription for a team
 func (s *BillingService) GetActiveSubscription(ctx context.Context, teamID string) (*models.Subscription, error) {
-	return s.repo.FindActiveSubscriptionByTeam(ctx, teamID)
+	return s.repos.Subscription().FindActiveByTeam(ctx, teamID)
 }
 
 // GetSubscriptionByID returns a subscription by ID
 func (s *BillingService) GetSubscriptionByID(ctx context.Context, id string) (*models.Subscription, error) {
-	return s.repo.FindSubscriptionByID(ctx, id)
+	return s.repos.Subscription().FindByID(ctx, id)
 }
 
 // CancelSubscription cancels a subscription
 func (s *BillingService) CancelSubscription(ctx context.Context, subscriptionID string) error {
-	subscription, err := s.repo.FindSubscriptionByID(ctx, subscriptionID)
+	subscription, err := s.repos.Subscription().FindByID(ctx, subscriptionID)
 	if err != nil {
 		return ErrSubscriptionNotFound
 	}
@@ -142,12 +142,12 @@ func (s *BillingService) CancelSubscription(ctx context.Context, subscriptionID 
 	}
 
 	subscription.Status = enums.SubscriptionStatusCancelled
-	return s.repo.UpdateSubscription(ctx, subscription)
+	return s.repos.Subscription().Update(ctx, subscription)
 }
 
 // ResumeSubscription resumes a cancelled subscription
 func (s *BillingService) ResumeSubscription(ctx context.Context, subscriptionID string) error {
-	subscription, err := s.repo.FindSubscriptionByID(ctx, subscriptionID)
+	subscription, err := s.repos.Subscription().FindByID(ctx, subscriptionID)
 	if err != nil {
 		return ErrSubscriptionNotFound
 	}
@@ -168,27 +168,27 @@ func (s *BillingService) ResumeSubscription(ctx context.Context, subscriptionID 
 
 	subscription.Status = enums.SubscriptionStatusActive
 	subscription.EndsAt = nil
-	return s.repo.UpdateSubscription(ctx, subscription)
+	return s.repos.Subscription().Update(ctx, subscription)
 }
 
 // GetOrders returns all orders for a team
 func (s *BillingService) GetOrders(ctx context.Context, teamID string) ([]models.Order, error) {
-	return s.repo.FindOrdersByTeam(ctx, teamID)
+	return s.repos.Order().FindByTeam(ctx, teamID)
 }
 
 // IsSubscribed checks if a team is subscribed
 func (s *BillingService) IsSubscribed(ctx context.Context, teamID string) (bool, error) {
-	return s.repo.IsTeamSubscribed(ctx, teamID)
+	return s.repos.Subscription().IsTeamSubscribed(ctx, teamID)
 }
 
 // GetBillingData returns complete billing data for a team
 func (s *BillingService) GetBillingData(ctx context.Context, teamID string, serverCount int) (*dto.BillingIndexResponse, error) {
-	subscriptions, err := s.repo.FindSubscriptionsByTeam(ctx, teamID)
+	subscriptions, err := s.repos.Subscription().FindByTeam(ctx, teamID)
 	if err != nil {
 		return nil, err
 	}
 
-	orders, err := s.repo.FindOrdersByTeam(ctx, teamID)
+	orders, err := s.repos.Order().FindByTeam(ctx, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -216,9 +216,9 @@ func (s *BillingService) GetBillingData(ctx context.Context, teamID string, serv
 	}, nil
 }
 
-// GetRepository returns the billing repository
-func (s *BillingService) GetRepository() *repositories.BillingRepository {
-	return s.repo
+// Repos returns the billing repository registry
+func (s *BillingService) Repos() *repositories.Registry {
+	return s.repos
 }
 
 // GetConfig returns the billing configuration

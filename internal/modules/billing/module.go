@@ -25,7 +25,7 @@ var (
 type Module struct {
 	module.Base
 	service       *services.BillingService
-	repo          *repositories.BillingRepository
+	repos         *repositories.Registry
 	serverCountFn func(teamID string) (int, error)
 }
 
@@ -34,7 +34,7 @@ func NewModule(b *module.Builder) *Module {
 	deps := b.Deps()
 	cfg := deps.Config.Billing
 
-	repo := repositories.NewBillingRepository(deps.DB)
+	repos := repositories.NewRegistry(deps.DB)
 
 	var lsClient *providers.LemonSqueezyClient
 	if cfg.LemonSqueezy.APIKey != "" {
@@ -50,12 +50,12 @@ func NewModule(b *module.Builder) *Module {
 		Plans:                models.DefaultPlans(),
 	}
 
-	service := services.NewBillingService(repo, lsClient, billingConfig, deps.Logger)
+	service := services.NewBillingService(repos, lsClient, billingConfig, deps.Logger)
 
 	return &Module{
 		Base:    module.NewBase(ModuleName, b),
 		service: service,
-		repo:    repo,
+		repos:   repos,
 	}
 }
 
@@ -87,7 +87,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 // RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
 func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 	deps := m.Deps()
-	webhookHandler := handlers.NewWebhookHandler(m.repo, m.service, deps.Config.Billing.WebhookSecret, deps.Logger)
+	webhookHandler := handlers.NewWebhookHandler(m.repos, m.service, deps.Config.Billing.WebhookSecret, deps.Logger)
 	router.Post("/webhooks/lemon-squeezy", webhookHandler.HandleWebhook)
 }
 
@@ -96,9 +96,9 @@ func (m *Module) GetService() *services.BillingService {
 	return m.service
 }
 
-// GetRepository returns the billing repository
-func (m *Module) GetRepository() *repositories.BillingRepository {
-	return m.repo
+// Repos returns the billing repository registry
+func (m *Module) Repos() *repositories.Registry {
+	return m.repos
 }
 
 // DefaultPlans returns default plan configurations

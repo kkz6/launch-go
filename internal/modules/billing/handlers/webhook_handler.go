@@ -32,7 +32,7 @@ var (
 
 // WebhookHandler handles incoming webhooks from LemonSqueezy
 type WebhookHandler struct {
-	repo          *repositories.BillingRepository
+	repos         *repositories.Registry
 	service       *services.BillingService
 	webhookSecret string
 	logger        *zerolog.Logger
@@ -40,9 +40,9 @@ type WebhookHandler struct {
 }
 
 // NewWebhookHandler creates a new webhook handler
-func NewWebhookHandler(repo *repositories.BillingRepository, service *services.BillingService, webhookSecret string, logger *zerolog.Logger) *WebhookHandler {
+func NewWebhookHandler(repos *repositories.Registry, service *services.BillingService, webhookSecret string, logger *zerolog.Logger) *WebhookHandler {
 	return &WebhookHandler{
-		repo:          repo,
+		repos:         repos,
 		service:       service,
 		webhookSecret: webhookSecret,
 		logger:        logger,
@@ -84,7 +84,7 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 		Processed: false,
 	}
 
-	if err := h.repo.CreateWebhookEvent(c.Context(), event); err != nil {
+	if err := h.repos.WebhookEvent().Create(c.Context(), event); err != nil {
 		h.logger.Error().Err(err).Msg("Failed to store webhook event")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to store event",
@@ -93,14 +93,14 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 
 	if err := h.processWebhook(c.Context(), event, &payload); err != nil {
 		h.logger.Error().Err(err).Str("event_id", event.ID).Msg("Failed to process webhook")
-		h.repo.MarkWebhookEventFailed(c.Context(), event.ID, err.Error())
+		h.repos.WebhookEvent().MarkFailed(c.Context(), event.ID, err.Error())
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
 			"message": "Webhook received but processing failed",
 			"error":   err.Error(),
 		})
 	}
 
-	h.repo.MarkWebhookEventProcessed(c.Context(), event.ID)
+	h.repos.WebhookEvent().MarkProcessed(c.Context(), event.ID)
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{
 		"message": "Webhook processed successfully",
@@ -205,12 +205,12 @@ func (h *WebhookHandler) handleSubscriptionCreated(ctx context.Context, teamID, 
 		EndsAt:         ParseTime(attrs.EndsAt),
 	}
 
-	return h.repo.CreateSubscription(ctx, subscription)
+	return h.repos.Subscription().Create(ctx, subscription)
 }
 
 // handleSubscriptionUpdated handles subscription_updated event
 func (h *WebhookHandler) handleSubscriptionUpdated(ctx context.Context, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	subscription, err := h.repo.FindSubscriptionByLemonSqueezyID(ctx, lemonSqueezyID)
+	subscription, err := h.repos.Subscription().FindByLemonSqueezyID(ctx, lemonSqueezyID)
 	if err != nil {
 		return err
 	}
@@ -224,12 +224,12 @@ func (h *WebhookHandler) handleSubscriptionUpdated(ctx context.Context, lemonSqu
 	subscription.RenewsAt = ParseTime(attrs.RenewsAt)
 	subscription.EndsAt = ParseTime(attrs.EndsAt)
 
-	return h.repo.UpdateSubscription(ctx, subscription)
+	return h.repos.Subscription().Update(ctx, subscription)
 }
 
 // handleSubscriptionCancelled handles subscription_cancelled event
 func (h *WebhookHandler) handleSubscriptionCancelled(ctx context.Context, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	subscription, err := h.repo.FindSubscriptionByLemonSqueezyID(ctx, lemonSqueezyID)
+	subscription, err := h.repos.Subscription().FindByLemonSqueezyID(ctx, lemonSqueezyID)
 	if err != nil {
 		return err
 	}
@@ -237,12 +237,12 @@ func (h *WebhookHandler) handleSubscriptionCancelled(ctx context.Context, lemonS
 	subscription.Status = enums.SubscriptionStatusCancelled
 	subscription.EndsAt = ParseTime(attrs.EndsAt)
 
-	return h.repo.UpdateSubscription(ctx, subscription)
+	return h.repos.Subscription().Update(ctx, subscription)
 }
 
 // handleSubscriptionResumed handles subscription_resumed event
 func (h *WebhookHandler) handleSubscriptionResumed(ctx context.Context, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	subscription, err := h.repo.FindSubscriptionByLemonSqueezyID(ctx, lemonSqueezyID)
+	subscription, err := h.repos.Subscription().FindByLemonSqueezyID(ctx, lemonSqueezyID)
 	if err != nil {
 		return err
 	}
@@ -251,19 +251,19 @@ func (h *WebhookHandler) handleSubscriptionResumed(ctx context.Context, lemonSqu
 	subscription.EndsAt = nil
 	subscription.RenewsAt = ParseTime(attrs.RenewsAt)
 
-	return h.repo.UpdateSubscription(ctx, subscription)
+	return h.repos.Subscription().Update(ctx, subscription)
 }
 
 // handleSubscriptionExpired handles subscription_expired event
 func (h *WebhookHandler) handleSubscriptionExpired(ctx context.Context, lemonSqueezyID string) error {
-	return h.repo.UpdateSubscriptionFields(ctx, lemonSqueezyID, map[string]interface{}{
+	return h.repos.Subscription().UpdateFields(ctx, lemonSqueezyID, map[string]interface{}{
 		"status": enums.SubscriptionStatusExpired,
 	})
 }
 
 // handleSubscriptionPaused handles subscription_paused event
 func (h *WebhookHandler) handleSubscriptionPaused(ctx context.Context, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	subscription, err := h.repo.FindSubscriptionByLemonSqueezyID(ctx, lemonSqueezyID)
+	subscription, err := h.repos.Subscription().FindByLemonSqueezyID(ctx, lemonSqueezyID)
 	if err != nil {
 		return err
 	}
@@ -273,12 +273,12 @@ func (h *WebhookHandler) handleSubscriptionPaused(ctx context.Context, lemonSque
 	subscription.PauseMode = &pauseMode
 	subscription.PauseResumesAt = ParseTime(attrs.ResumesAt)
 
-	return h.repo.UpdateSubscription(ctx, subscription)
+	return h.repos.Subscription().Update(ctx, subscription)
 }
 
 // handleSubscriptionUnpaused handles subscription_unpaused event
 func (h *WebhookHandler) handleSubscriptionUnpaused(ctx context.Context, lemonSqueezyID string) error {
-	subscription, err := h.repo.FindSubscriptionByLemonSqueezyID(ctx, lemonSqueezyID)
+	subscription, err := h.repos.Subscription().FindByLemonSqueezyID(ctx, lemonSqueezyID)
 	if err != nil {
 		return err
 	}
@@ -287,12 +287,12 @@ func (h *WebhookHandler) handleSubscriptionUnpaused(ctx context.Context, lemonSq
 	subscription.PauseMode = nil
 	subscription.PauseResumesAt = nil
 
-	return h.repo.UpdateSubscription(ctx, subscription)
+	return h.repos.Subscription().Update(ctx, subscription)
 }
 
 // handleSubscriptionPaymentSuccess handles subscription_payment_success event
 func (h *WebhookHandler) handleSubscriptionPaymentSuccess(ctx context.Context, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	subscription, err := h.repo.FindSubscriptionByLemonSqueezyID(ctx, lemonSqueezyID)
+	subscription, err := h.repos.Subscription().FindByLemonSqueezyID(ctx, lemonSqueezyID)
 	if err != nil {
 		return err
 	}
@@ -303,17 +303,17 @@ func (h *WebhookHandler) handleSubscriptionPaymentSuccess(ctx context.Context, l
 
 	subscription.RenewsAt = ParseTime(attrs.RenewsAt)
 
-	return h.repo.UpdateSubscription(ctx, subscription)
+	return h.repos.Subscription().Update(ctx, subscription)
 }
 
 // handleSubscriptionPaymentFailed handles subscription_payment_failed event
 func (h *WebhookHandler) handleSubscriptionPaymentFailed(ctx context.Context, lemonSqueezyID string) error {
-	return h.repo.UpdateSubscriptionStatus(ctx, lemonSqueezyID, enums.SubscriptionStatusPastDue)
+	return h.repos.Subscription().UpdateStatus(ctx, lemonSqueezyID, enums.SubscriptionStatusPastDue)
 }
 
 // handleSubscriptionPaymentRecovered handles subscription_payment_recovered event
 func (h *WebhookHandler) handleSubscriptionPaymentRecovered(ctx context.Context, lemonSqueezyID string) error {
-	return h.repo.UpdateSubscriptionStatus(ctx, lemonSqueezyID, enums.SubscriptionStatusActive)
+	return h.repos.Subscription().UpdateStatus(ctx, lemonSqueezyID, enums.SubscriptionStatusActive)
 }
 
 // handleOrderEvent handles order-related webhook events
@@ -394,12 +394,12 @@ func (h *WebhookHandler) handleOrderCreated(ctx context.Context, teamID, lemonSq
 		OrderedAt:      time.Now(),
 	}
 
-	return h.repo.CreateOrder(ctx, order)
+	return h.repos.Order().Create(ctx, order)
 }
 
 // handleOrderRefunded handles order_refunded event
 func (h *WebhookHandler) handleOrderRefunded(ctx context.Context, lemonSqueezyID string) error {
-	order, err := h.repo.FindOrderByLemonSqueezyID(ctx, lemonSqueezyID)
+	order, err := h.repos.Order().FindByLemonSqueezyID(ctx, lemonSqueezyID)
 	if err != nil {
 		return err
 	}
@@ -409,12 +409,12 @@ func (h *WebhookHandler) handleOrderRefunded(ctx context.Context, lemonSqueezyID
 	order.Refunded = true
 	order.RefundedAt = &now
 
-	return h.repo.UpdateOrder(ctx, order)
+	return h.repos.Order().Update(ctx, order)
 }
 
 // ProcessPendingWebhooks processes any unprocessed webhook events
 func (h *WebhookHandler) ProcessPendingWebhooks(ctx context.Context) error {
-	events, err := h.repo.FindUnprocessedWebhookEvents(ctx, h.maxRetries)
+	events, err := h.repos.WebhookEvent().FindUnprocessed(ctx, h.maxRetries)
 	if err != nil {
 		return err
 	}
@@ -422,16 +422,16 @@ func (h *WebhookHandler) ProcessPendingWebhooks(ctx context.Context) error {
 	for _, event := range events {
 		var payload dto.WebhookPayload
 		if err := json.Unmarshal([]byte(event.Payload), &payload); err != nil {
-			h.repo.MarkWebhookEventFailed(ctx, event.ID, err.Error())
+			h.repos.WebhookEvent().MarkFailed(ctx, event.ID, err.Error())
 			continue
 		}
 
 		if err := h.processWebhook(ctx, &event, &payload); err != nil {
-			h.repo.MarkWebhookEventFailed(ctx, event.ID, err.Error())
+			h.repos.WebhookEvent().MarkFailed(ctx, event.ID, err.Error())
 			continue
 		}
 
-		h.repo.MarkWebhookEventProcessed(ctx, event.ID)
+		h.repos.WebhookEvent().MarkProcessed(ctx, event.ID)
 	}
 
 	return nil
@@ -439,7 +439,7 @@ func (h *WebhookHandler) ProcessPendingWebhooks(ctx context.Context) error {
 
 // CleanupOldWebhookEvents removes old processed webhook events
 func (h *WebhookHandler) CleanupOldWebhookEvents(ctx context.Context, olderThan time.Duration) error {
-	return h.repo.DeleteOldProcessedWebhookEvents(ctx, olderThan)
+	return h.repos.WebhookEvent().DeleteOldProcessed(ctx, olderThan)
 }
 
 // MapLemonSqueezyStatus maps LemonSqueezy status to internal status

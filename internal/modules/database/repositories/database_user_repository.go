@@ -9,13 +9,13 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 )
 
-// CreateUser creates a new database user
-func (r *Repository) CreateUser(ctx context.Context, user *models.DatabaseUser) error {
-	return r.user.Create(ctx, user)
+// Create creates a new database user
+func (r *DatabaseUserRepository) Create(ctx context.Context, user *models.DatabaseUser) error {
+	return r.installable.Create(ctx, user)
 }
 
-// FindUserByID finds a database user by ID
-func (r *Repository) FindUserByID(ctx context.Context, id string) (*models.DatabaseUser, error) {
+// FindByID finds a database user by ID
+func (r *DatabaseUserRepository) FindByID(ctx context.Context, id string) (*models.DatabaseUser, error) {
 	var user models.DatabaseUser
 
 	err := r.db.WithContext(ctx).
@@ -32,8 +32,8 @@ func (r *Repository) FindUserByID(ctx context.Context, id string) (*models.Datab
 	return &user, nil
 }
 
-// FindUserByIDAndServer finds a database user by ID and server ID
-func (r *Repository) FindUserByIDAndServer(ctx context.Context, id, serverID string) (*models.DatabaseUser, error) {
+// FindByIDAndServer finds a database user by ID and server ID
+func (r *DatabaseUserRepository) FindByIDAndServer(ctx context.Context, id, serverID string) (*models.DatabaseUser, error) {
 	var user models.DatabaseUser
 
 	err := r.db.WithContext(ctx).
@@ -50,8 +50,8 @@ func (r *Repository) FindUserByIDAndServer(ctx context.Context, id, serverID str
 	return &user, nil
 }
 
-// FindUsersByServer finds all database users for a server
-func (r *Repository) FindUsersByServer(ctx context.Context, serverID string) ([]models.DatabaseUser, error) {
+// FindByServer finds all database users for a server
+func (r *DatabaseUserRepository) FindByServer(ctx context.Context, serverID string) ([]models.DatabaseUser, error) {
 	var users []models.DatabaseUser
 
 	err := r.db.WithContext(ctx).
@@ -63,8 +63,8 @@ func (r *Repository) FindUsersByServer(ctx context.Context, serverID string) ([]
 	return users, err
 }
 
-// FindUserByNameAndServer finds a database user by name and server ID
-func (r *Repository) FindUserByNameAndServer(ctx context.Context, name, serverID string) (*models.DatabaseUser, error) {
+// FindByNameAndServer finds a database user by name and server ID
+func (r *DatabaseUserRepository) FindByNameAndServer(ctx context.Context, name, serverID string) (*models.DatabaseUser, error) {
 	var user models.DatabaseUser
 
 	err := r.db.WithContext(ctx).
@@ -81,8 +81,8 @@ func (r *Repository) FindUserByNameAndServer(ctx context.Context, name, serverID
 	return &user, nil
 }
 
-// FindUsersByDatabase finds all database users for a database
-func (r *Repository) FindUsersByDatabase(ctx context.Context, databaseID string) ([]models.DatabaseUser, error) {
+// FindByDatabase finds all database users for a database
+func (r *DatabaseUserRepository) FindByDatabase(ctx context.Context, databaseID string) ([]models.DatabaseUser, error) {
 	var users []models.DatabaseUser
 
 	err := r.db.WithContext(ctx).
@@ -93,43 +93,43 @@ func (r *Repository) FindUsersByDatabase(ctx context.Context, databaseID string)
 	return users, err
 }
 
-// UpdateUser updates a database user
-func (r *Repository) UpdateUser(ctx context.Context, user *models.DatabaseUser) error {
-	return r.user.Update(ctx, user)
+// Update updates a database user
+func (r *DatabaseUserRepository) Update(ctx context.Context, user *models.DatabaseUser) error {
+	return r.installable.Update(ctx, user)
 }
 
-// UpdateUserFields updates specific fields of a database user
-func (r *Repository) UpdateUserFields(ctx context.Context, id string, fields map[string]interface{}) error {
-	return r.user.UpdateFields(ctx, id, fields)
+// UpdateFields updates specific fields of a database user
+func (r *DatabaseUserRepository) UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error {
+	return r.installable.UpdateFields(ctx, id, fields)
 }
 
-// DeleteUser deletes a database user
-func (r *Repository) DeleteUser(ctx context.Context, id string) error {
-	return r.user.Delete(ctx, id)
+// Delete deletes a database user
+func (r *DatabaseUserRepository) Delete(ctx context.Context, id string) error {
+	return r.installable.Delete(ctx, id)
 }
 
-// UserExistsByNameAndServer checks if a database user exists with the given name on the server
-func (r *Repository) UserExistsByNameAndServer(ctx context.Context, name, serverID string) (bool, error) {
-	return r.user.ExistsByNameAndServer(ctx, name, serverID)
+// ExistsByNameAndServer checks if a database user exists with the given name on the server
+func (r *DatabaseUserRepository) ExistsByNameAndServer(ctx context.Context, name, serverID string) (bool, error) {
+	return r.installable.ExistsByNameAndServer(ctx, name, serverID)
 }
 
-// MarkUserAsInstalled marks a database user as installed
-func (r *Repository) MarkUserAsInstalled(ctx context.Context, id string) error {
-	return r.user.MarkAsInstalled(ctx, id)
+// MarkAsInstalled marks a database user as installed
+func (r *DatabaseUserRepository) MarkAsInstalled(ctx context.Context, id string) error {
+	return r.installable.MarkAsInstalled(ctx, id)
 }
 
-// MarkUserAsFailed marks a database user installation as failed
-func (r *Repository) MarkUserAsFailed(ctx context.Context, id string) error {
-	return r.user.MarkAsFailed(ctx, id)
+// MarkAsFailed marks a database user installation as failed
+func (r *DatabaseUserRepository) MarkAsFailed(ctx context.Context, id string) error {
+	return r.installable.MarkAsFailed(ctx, id)
 }
 
-// MarkUserAsUninstalling marks a database user as being uninstalled
-func (r *Repository) MarkUserAsUninstalling(ctx context.Context, id string) error {
-	return r.user.MarkAsUninstalling(ctx, id)
+// MarkAsUninstalling marks a database user as being uninstalled
+func (r *DatabaseUserRepository) MarkAsUninstalling(ctx context.Context, id string) error {
+	return r.installable.MarkAsUninstalling(ctx, id)
 }
 
-// SyncUserDatabases syncs the databases attached to a user
-func (r *Repository) SyncUserDatabases(ctx context.Context, userID string, databaseIDs []string) error {
+// SyncDatabases syncs the databases attached to a user
+func (r *DatabaseUserRepository) SyncDatabases(ctx context.Context, userID string, databaseIDs []string) error {
 	// Delete existing associations
 	if err := r.db.WithContext(ctx).
 		Where("database_user_id = ?", userID).
@@ -152,6 +152,6 @@ func (r *Repository) SyncUserDatabases(ctx context.Context, userID string, datab
 }
 
 // FindRootUser finds the root user for a server
-func (r *Repository) FindRootUser(ctx context.Context, serverID string) (*models.DatabaseUser, error) {
-	return r.FindUserByNameAndServer(ctx, "root", serverID)
+func (r *DatabaseUserRepository) FindRootUser(ctx context.Context, serverID string) (*models.DatabaseUser, error) {
+	return r.FindByNameAndServer(ctx, "root", serverID)
 }
