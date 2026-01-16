@@ -1,18 +1,31 @@
 package tasks
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks/templates"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+)
+
+const (
+	// ProvisionFreshServerTaskType is the registered type name for callback reconstruction
+	ProvisionFreshServerTaskType = "server:provision_fresh"
 )
 
 // ProvisionFreshServerConfig holds all configuration needed to provision a fresh server
 type ProvisionFreshServerConfig struct {
 	// Callback URL for progress reporting
 	CallbackURL string
+
+	// Server and team info for callbacks
+	ServerID string
+	TeamID   string
 
 	// Server info
 	MemoryInMB int
@@ -45,10 +58,22 @@ type ProvisionFreshServerConfig struct {
 	AgentURL        string
 }
 
+// provisionCallbackData holds data needed for callback handling
+type provisionCallbackData struct {
+	ServerID string `json:"server_id"`
+	TeamID   string `json:"team_id"`
+}
+
+// provisionFreshServerTask implements Task and CallbackPayload interfaces
+type provisionFreshServerTask struct {
+	*taskrunner.BaseTask
+	callback provisionCallbackData
+}
+
 // ProvisionFreshServer creates a task that provisions a fresh server with all
 // provision steps and software installations combined into a single script.
 // This matches the Laravel approach where all components are included in one task.
-func ProvisionFreshServer(config ProvisionFreshServerConfig) *taskrunner.BaseTask {
+func ProvisionFreshServer(config ProvisionFreshServerConfig) *provisionFreshServerTask {
 	var scriptBuilder strings.Builder
 
 	// 1. Shell defaults and common functions (like Laravel's @include)
@@ -103,11 +128,134 @@ func ProvisionFreshServer(config ProvisionFreshServerConfig) *taskrunner.BaseTas
 	scriptBuilder.WriteString("waitForAptUnlock\n")
 	scriptBuilder.WriteString("sudo apt-mark unhold cloud-init\n")
 
-	return taskrunner.NewBaseTask(
-		taskrunner.WithName("Provision Fresh Server"),
-		taskrunner.WithScript(scriptBuilder.String()),
-		taskrunner.WithTimeoutSeconds(15*60),
-	)
+	return &provisionFreshServerTask{
+		BaseTask: taskrunner.NewBaseTask(
+			taskrunner.WithName("Provision Fresh Server"),
+			taskrunner.WithScript(scriptBuilder.String()),
+			taskrunner.WithTimeoutSeconds(15*60),
+		),
+		callback: provisionCallbackData{
+			ServerID: config.ServerID,
+			TeamID:   config.TeamID,
+		},
+	}
+}
+
+// TypeName returns the registered type name for reconstruction
+func (t *provisionFreshServerTask) TypeName() string {
+	return ProvisionFreshServerTaskType
+}
+
+// MarshalPayload returns JSON representation of the task state needed for callbacks
+func (t *provisionFreshServerTask) MarshalPayload() ([]byte, error) {
+	return json.Marshal(t.callback)
+}
+
+// OnSuccess is called when the task completes successfully
+func (t *provisionFreshServerTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+	if cbCtx.Logger != nil {
+		cbCtx.Logger.Info().
+			Str("task_id", taskID).
+			Str("server_id", t.callback.ServerID).
+			Msg("ProvisionFreshServer: onFinished callback triggered")
+	}
+
+	// Update server status to running
+	now := time.Now()
+	if err := cbCtx.DB.Model(&models.Server{}).
+		Where("id = ?", t.callback.ServerID).
+		Updates(map[string]interface{}{
+			"status":       enums.ServerStatusRunning,
+			"installed_at": now,
+		}).Error; err != nil {
+		return fmt.Errorf("failed to update server status: %w", err)
+	}
+
+	// Broadcast server provisioned event
+	cbCtx.BroadcastToTeam(t.callback.TeamID, "server.provisioned", map[string]interface{}{
+		"server_id": t.callback.ServerID,
+		"status":    "running",
+	})
+
+	return nil
+}
+
+// OnFailure is called when the task fails with an exit code
+func (t *provisionFreshServerTask) OnFailure(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string, exitCode int) error {
+	if cbCtx.Logger != nil {
+		cbCtx.Logger.Error().
+			Str("task_id", taskID).
+			Str("server_id", t.callback.ServerID).
+			Int("exit_code", exitCode).
+			Msg("ProvisionFreshServer: onFailed callback triggered")
+	}
+
+	// Update server status to failed
+	if err := cbCtx.DB.Model(&models.Server{}).
+		Where("id = ?", t.callback.ServerID).
+		Update("status", enums.ServerStatusFailed).Error; err != nil {
+		return fmt.Errorf("failed to update server status: %w", err)
+	}
+
+	// Broadcast server provision failed event
+	cbCtx.BroadcastToTeam(t.callback.TeamID, "server.provision_failed", map[string]interface{}{
+		"server_id": t.callback.ServerID,
+		"status":    "failed",
+		"exit_code": exitCode,
+	})
+
+	// Dispatch cleanup job
+	t.dispatchCleanupJob(cbCtx)
+
+	return nil
+}
+
+// OnExpired is called when the task times out
+func (t *provisionFreshServerTask) OnExpired(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+	if cbCtx.Logger != nil {
+		cbCtx.Logger.Error().
+			Str("task_id", taskID).
+			Str("server_id", t.callback.ServerID).
+			Msg("ProvisionFreshServer: onTimeout callback triggered")
+	}
+
+	// Update server status to failed
+	if err := cbCtx.DB.Model(&models.Server{}).
+		Where("id = ?", t.callback.ServerID).
+		Update("status", enums.ServerStatusFailed).Error; err != nil {
+		return fmt.Errorf("failed to update server status: %w", err)
+	}
+
+	// Broadcast server provision timeout event
+	cbCtx.BroadcastToTeam(t.callback.TeamID, "server.provision_timeout", map[string]interface{}{
+		"server_id": t.callback.ServerID,
+		"status":    "failed",
+	})
+
+	// Dispatch cleanup job
+	t.dispatchCleanupJob(cbCtx)
+
+	return nil
+}
+
+// dispatchCleanupJob dispatches the cleanup job for failed provisioning
+func (t *provisionFreshServerTask) dispatchCleanupJob(cbCtx *taskrunner.CallbackContext) {
+	// Dispatch cleanup job via queue
+	if err := cbCtx.DispatchJob("server:cleanup_failed_provisioning", map[string]interface{}{
+		"server_id": t.callback.ServerID,
+		"team_id":   t.callback.TeamID,
+		"reason":    "Provisioning task failed or timed out",
+	}); err != nil && cbCtx.Logger != nil {
+		cbCtx.Logger.Error().Err(err).Msg("Failed to dispatch cleanup job")
+	}
+}
+
+// NewTask implements taskrunner.CallbackStateFactory
+func (s provisionCallbackData) NewTask() taskrunner.CallbackHandler {
+	return &provisionFreshServerTask{
+		BaseTask: taskrunner.NewBaseTask(),
+		callback: s,
+	}
 }
 
 // renderProvisionStep renders the appropriate template for a provision step
