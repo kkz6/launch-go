@@ -4,39 +4,29 @@ import (
 	"context"
 	"errors"
 
-	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
 	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
-	"github.com/kkz6/launch-go/internal/modules/dns/repositories"
 )
 
 // DnsRecordService handles business logic for DNS records
 type DnsRecordService struct {
-	domainRepo    *repositories.DomainRepository
-	dnsRecordRepo *repositories.DnsRecordRepository
-	logger        *zerolog.Logger
+	*BaseService
 }
 
 // NewDnsRecordService creates a new DnsRecordService instance
-func NewDnsRecordService(
-	domainRepo *repositories.DomainRepository,
-	dnsRecordRepo *repositories.DnsRecordRepository,
-	logger *zerolog.Logger,
-) *DnsRecordService {
+func NewDnsRecordService(deps *ServiceDeps) *DnsRecordService {
 	return &DnsRecordService{
-		domainRepo:    domainRepo,
-		dnsRecordRepo: dnsRecordRepo,
-		logger:        logger,
+		BaseService: NewBaseService(deps),
 	}
 }
 
 // CreateRecord creates a new DNS record
 func (s *DnsRecordService) CreateRecord(ctx context.Context, domainID, teamID string, req *dto.CreateDnsRecordRequest) (*models.DnsRecord, error) {
-	domain, err := s.domainRepo.FindByIDAndTeam(ctx, domainID, teamID)
+	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrDomainNotFound
@@ -54,7 +44,7 @@ func (s *DnsRecordService) CreateRecord(ctx context.Context, domainID, teamID st
 
 	dnsProvider.SetDomain(domain.Address)
 
-	err = s.dnsRecordRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.Repos().DnsRecord().WithTransaction(ctx, func(tx *gorm.DB) error {
 		// Add record to provider
 		providerID, err := dnsProvider.AddRecord(ctx, toProviderDnsRecord(record))
 		if err != nil {
@@ -63,7 +53,7 @@ func (s *DnsRecordService) CreateRecord(ctx context.Context, domainID, teamID st
 
 		record.ProviderID = providerID
 
-		return s.dnsRecordRepo.Create(ctx, record)
+		return s.Repos().DnsRecord().Create(ctx, record)
 	})
 
 	if err != nil {
@@ -75,7 +65,7 @@ func (s *DnsRecordService) CreateRecord(ctx context.Context, domainID, teamID st
 
 // UpdateRecord updates a DNS record
 func (s *DnsRecordService) UpdateRecord(ctx context.Context, recordID, domainID, teamID string, req *dto.UpdateDnsRecordRequest) (*models.DnsRecord, error) {
-	domain, err := s.domainRepo.FindByIDAndTeam(ctx, domainID, teamID)
+	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrDomainNotFound
@@ -83,7 +73,7 @@ func (s *DnsRecordService) UpdateRecord(ctx context.Context, recordID, domainID,
 		return nil, err
 	}
 
-	record, err := s.dnsRecordRepo.FindByIDAndDomain(ctx, recordID, domainID)
+	record, err := s.Repos().DnsRecord().FindByIDAndDomain(ctx, recordID, domainID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrRecordNotFound
@@ -106,13 +96,13 @@ func (s *DnsRecordService) UpdateRecord(ctx context.Context, recordID, domainID,
 	// Apply updates
 	req.ApplyToModel(record)
 
-	err = s.dnsRecordRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.Repos().DnsRecord().WithTransaction(ctx, func(tx *gorm.DB) error {
 		// Update record at provider
 		if err := dnsProvider.UpdateRecord(ctx, toProviderDnsRecord(record)); err != nil {
 			return err
 		}
 
-		return s.dnsRecordRepo.Update(ctx, record)
+		return s.Repos().DnsRecord().Update(ctx, record)
 	})
 
 	if err != nil {
@@ -124,7 +114,7 @@ func (s *DnsRecordService) UpdateRecord(ctx context.Context, recordID, domainID,
 
 // DeleteRecord deletes a DNS record
 func (s *DnsRecordService) DeleteRecord(ctx context.Context, recordID, domainID, teamID string) error {
-	domain, err := s.domainRepo.FindByIDAndTeam(ctx, domainID, teamID)
+	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrDomainNotFound
@@ -132,7 +122,7 @@ func (s *DnsRecordService) DeleteRecord(ctx context.Context, recordID, domainID,
 		return err
 	}
 
-	record, err := s.dnsRecordRepo.FindByIDAndDomain(ctx, recordID, domainID)
+	record, err := s.Repos().DnsRecord().FindByIDAndDomain(ctx, recordID, domainID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return ErrRecordNotFound
@@ -152,18 +142,23 @@ func (s *DnsRecordService) DeleteRecord(ctx context.Context, recordID, domainID,
 
 	dnsProvider.SetDomain(domain.Address)
 
-	return s.dnsRecordRepo.WithTransaction(ctx, func(tx *gorm.DB) error {
+	return s.Repos().DnsRecord().WithTransaction(ctx, func(tx *gorm.DB) error {
 		// Delete record from provider
 		if err := dnsProvider.DeleteRecord(ctx, toProviderDnsRecord(record)); err != nil {
 			return err
 		}
 
-		return s.dnsRecordRepo.Delete(ctx, record.ID)
+		return s.Repos().DnsRecord().Delete(ctx, record.ID)
 	})
 }
 
 // GetRecordTypes returns all available record types
 func (s *DnsRecordService) GetRecordTypes() []string {
+	return GetRecordTypes()
+}
+
+// GetRecordTypes returns all available record types (package-level function)
+func GetRecordTypes() []string {
 	types := enums.AllRecordTypes()
 	result := make([]string, len(types))
 	for i, t := range types {

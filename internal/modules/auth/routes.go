@@ -29,23 +29,23 @@ func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 	auth := router.Group("/auth")
 
 	// Public routes (no authentication required)
-	registerPublicRoutes(auth, handler)
+	m.registerPublicRoutes(auth, handler)
 
 	// Protected routes (authentication required)
 	protected := auth.Group("", authMiddleware)
-	registerProtectedRoutes(protected, handler)
+	m.registerProtectedRoutes(protected, handler)
 
 	// Team routes (require authentication)
 	teams := router.Group("/teams", authMiddleware)
-	registerTeamRoutes(teams, handler, adapter)
+	m.registerTeamRoutes(teams, handler, adapter)
 
 	// User routes (require authentication)
 	user := router.Group("/user", authMiddleware)
-	registerUserRoutes(user, passkeyHandler)
+	m.registerUserRoutes(user, passkeyHandler)
 }
 
 // registerPublicRoutes registers routes that don't require authentication
-func registerPublicRoutes(router fiber.Router, handler *handlers.Handler) {
+func (m *Module) registerPublicRoutes(router fiber.Router, handler *handlers.Handler) {
 	// Registration and Login
 	router.Post("/register", handler.Auth.Register)
 	router.Post("/login", handler.Auth.Login)
@@ -63,7 +63,7 @@ func registerPublicRoutes(router fiber.Router, handler *handlers.Handler) {
 }
 
 // registerProtectedRoutes registers routes that require authentication
-func registerProtectedRoutes(router fiber.Router, handler *handlers.Handler) {
+func (m *Module) registerProtectedRoutes(router fiber.Router, handler *handlers.Handler) {
 	// User Management
 	router.Get("/user", handler.User.User)
 	router.Put("/profile", handler.User.UpdateProfile)
@@ -92,7 +92,7 @@ func registerProtectedRoutes(router fiber.Router, handler *handlers.Handler) {
 }
 
 // registerTeamRoutes registers team management routes
-func registerTeamRoutes(router fiber.Router, handler *handlers.Handler, adapter *MiddlewareAdapter) {
+func (m *Module) registerTeamRoutes(router fiber.Router, handler *handlers.Handler, adapter *MiddlewareAdapter) {
 	// List all teams for current user
 	router.Get("/", handler.Team.GetUserTeams)
 
@@ -117,7 +117,7 @@ func registerTeamRoutes(router fiber.Router, handler *handlers.Handler, adapter 
 }
 
 // registerUserRoutes registers user-related routes under /user
-func registerUserRoutes(router fiber.Router, passkeyHandler *handlers.PasskeyHandler) {
+func (m *Module) registerUserRoutes(router fiber.Router, passkeyHandler *handlers.PasskeyHandler) {
 	// Passkeys
 	passkeys := router.Group("/passkeys")
 	passkeys.Get("/", passkeyHandler.Index)

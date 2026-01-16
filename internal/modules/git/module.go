@@ -25,9 +25,11 @@ var (
 // Module represents the git module
 type Module struct {
 	module.Base
-	scRepo          *repositories.SourceControlRepository
-	repoRepo        *repositories.SourceControlRepoRepository
-	service         *services.SourceControlService
+
+	// Repository registry
+	repos *repositories.Registry
+
+	// Provider factory (needed by other modules)
 	providerFactory *providers.ProviderFactory
 }
 
@@ -35,18 +37,33 @@ type Module struct {
 func NewModule(b *module.Builder) *Module {
 	deps := b.Deps()
 
-	scRepo := repositories.NewSourceControlRepository(deps.DB)
-	repoRepo := repositories.NewSourceControlRepoRepository(deps.DB)
-	providerFactory := createProviderFactory(deps.Config.Git)
-	service := services.NewSourceControlService(scRepo, repoRepo, providerFactory, deps.Queue, deps.Logger)
-
 	return &Module{
 		Base:            module.NewBase(ModuleName, b),
-		scRepo:          scRepo,
-		repoRepo:        repoRepo,
-		service:         service,
-		providerFactory: providerFactory,
+		repos:           repositories.NewRegistry(deps.DB),
+		providerFactory: createProviderFactory(deps.Config.Git),
 	}
+}
+
+// createServices creates all services needed for route handlers
+func (m *Module) createServices() *services.ServiceRegistry {
+	deps := m.Deps()
+
+	// Create shared service dependencies
+	svcDeps := &services.ServiceDeps{
+		DB:              deps.DB,
+		Logger:          deps.Logger,
+		Queue:           deps.Queue,
+		Repos:           m.repos,
+		ProviderFactory: m.providerFactory,
+	}
+
+	// Create service registry - handles all service creation and wiring
+	return services.NewServiceRegistry(svcDeps)
+}
+
+// Repos returns the repository registry
+func (m *Module) Repos() *repositories.Registry {
+	return m.repos
 }
 
 // createProviderFactory creates and configures the provider factory
@@ -86,11 +103,6 @@ func createProviderFactory(cfg config.GitConfig) *providers.ProviderFactory {
 	return factory
 }
 
-// Service returns the git service for use by other modules
-func (m *Module) Service() *services.SourceControlService {
-	return m.service
-}
-
 // ProviderFactory returns the provider factory
 func (m *Module) ProviderFactory() *providers.ProviderFactory {
 	return m.providerFactory
@@ -100,13 +112,16 @@ func (m *Module) ProviderFactory() *providers.ProviderFactory {
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 	deps := m.Deps()
 
+	// Create services for job handlers
+	svc := m.createServices()
+
 	// Set up job context
 	jobContext := jobs.NewJobContext(
 		deps.DB,
 		deps.Logger,
-		m.service,
+		svc.SourceControl(),
 		m.providerFactory,
-		m.scRepo,
+		m.repos.SourceControl(),
 		deps.Queue,
 	)
 	jobs.SetJobContext(jobContext)

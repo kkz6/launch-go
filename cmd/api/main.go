@@ -145,7 +145,7 @@ func (a *Application) registerModules() {
 	wsModule := wsmodule.NewModule(builder)
 
 	// Wire cross-module dependencies
-	siteModule.SetDomainRepository(dnsModule.GetDomainRepository())
+	siteModule.SetDomainRepository(dnsModule.Repos().Domain())
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
 
 	// Register all modules with the kernel

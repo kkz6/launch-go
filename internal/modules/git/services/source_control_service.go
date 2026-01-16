@@ -6,56 +6,39 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/rs/zerolog"
-
 	"github.com/kkz6/launch-go/internal/modules/git/contracts"
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
 	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/repositories"
-	"github.com/kkz6/launch-go/internal/queue"
 )
 
 // SourceControlService handles git-related business logic
 type SourceControlService struct {
-	scRepo          *repositories.SourceControlRepository
-	repoRepo        *repositories.SourceControlRepoRepository
-	providerFactory *providers.ProviderFactory
-	queue           *queue.Client
-	logger          *zerolog.Logger
+	*BaseService
 }
 
 // NewSourceControlService creates a new source control service
-func NewSourceControlService(
-	scRepo *repositories.SourceControlRepository,
-	repoRepo *repositories.SourceControlRepoRepository,
-	providerFactory *providers.ProviderFactory,
-	queue *queue.Client,
-	logger *zerolog.Logger,
-) *SourceControlService {
+func NewSourceControlService(deps *ServiceDeps) *SourceControlService {
 	return &SourceControlService{
-		scRepo:          scRepo,
-		repoRepo:        repoRepo,
-		providerFactory: providerFactory,
-		queue:           queue,
-		logger:          logger,
+		BaseService: NewBaseService(deps),
 	}
 }
 
 // ListSourceControls lists all source controls for a team
 func (s *SourceControlService) ListSourceControls(ctx context.Context, teamID string) ([]models.SourceControl, error) {
-	return s.scRepo.FindAllByTeam(ctx, teamID)
+	return s.Repos().SourceControl().FindAllByTeam(ctx, teamID)
 }
 
 // GetSourceControl gets a source control by ID
 func (s *SourceControlService) GetSourceControl(ctx context.Context, id, teamID string) (*models.SourceControl, error) {
-	return s.scRepo.FindByIDAndTeam(ctx, id, teamID)
+	return s.Repos().SourceControl().FindByIDAndTeam(ctx, id, teamID)
 }
 
 // Connect connects a git provider using an installation ID
 func (s *SourceControlService) Connect(ctx context.Context, userID, teamID string, providerType enums.GitProviderType, installationID string) (*models.SourceControl, error) {
-	provider, err := s.providerFactory.GetProvider(providers.GitProviderType(providerType))
+	provider, err := s.ProviderFactory().GetProvider(providers.GitProviderType(providerType))
 	if err != nil {
 		return nil, err
 	}
@@ -101,7 +84,7 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 	}
 
 	// Check if already exists and update, or create new
-	existing, err := s.scRepo.FindByProviderAndInstallationAndTeam(ctx, providerType, installationID, teamID)
+	existing, err := s.Repos().SourceControl().FindByProviderAndInstallationAndTeam(ctx, providerType, installationID, teamID)
 	if err == nil {
 		// Update existing
 		existing.UserID = userID
@@ -118,14 +101,14 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 		nowTime := time.Now()
 		existing.LastSyncedAt = &nowTime
 
-		if err := s.scRepo.Update(ctx, existing); err != nil {
+		if err := s.Repos().SourceControl().Update(ctx, existing); err != nil {
 			return nil, err
 		}
 
 		sc = existing
 	} else if err == repositories.ErrSourceControlNotFound {
 		// Create new
-		if err := s.scRepo.Create(ctx, sc); err != nil {
+		if err := s.Repos().SourceControl().Create(ctx, sc); err != nil {
 			return nil, err
 		}
 	} else {
@@ -136,7 +119,7 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 	go func() {
 		bgCtx := context.Background()
 		if err := s.SyncRepositories(bgCtx, sc); err != nil {
-			s.logger.Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories during connection")
+			s.Logger().Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories during connection")
 		}
 	}()
 
@@ -145,7 +128,7 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 
 // Disconnect disconnects a source control
 func (s *SourceControlService) Disconnect(ctx context.Context, id, teamID string) error {
-	sc, err := s.scRepo.FindByIDAndTeam(ctx, id, teamID)
+	sc, err := s.Repos().SourceControl().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return err
 	}
@@ -156,16 +139,16 @@ func (s *SourceControlService) Disconnect(ctx context.Context, id, teamID string
 	// }
 
 	// Delete repositories first
-	if err := s.repoRepo.DeleteRepositoriesBySourceControlID(ctx, sc.ID); err != nil {
+	if err := s.Repos().SourceControlRepo().DeleteRepositoriesBySourceControlID(ctx, sc.ID); err != nil {
 		return err
 	}
 
-	return s.scRepo.Delete(ctx, sc.ID)
+	return s.Repos().SourceControl().Delete(ctx, sc.ID)
 }
 
 // GetInstallationURL gets the installation URL for a provider
 func (s *SourceControlService) GetInstallationURL(providerType enums.GitProviderType) (string, error) {
-	provider, err := s.providerFactory.GetProvider(providers.GitProviderType(providerType))
+	provider, err := s.ProviderFactory().GetProvider(providers.GitProviderType(providerType))
 	if err != nil {
 		return "", err
 	}
@@ -175,7 +158,7 @@ func (s *SourceControlService) GetInstallationURL(providerType enums.GitProvider
 
 // GetInstallations gets all installations for a provider
 func (s *SourceControlService) GetInstallations(ctx context.Context, providerType enums.GitProviderType) ([]dto.AppInstallationData, error) {
-	provider, err := s.providerFactory.GetProvider(providers.GitProviderType(providerType))
+	provider, err := s.ProviderFactory().GetProvider(providers.GitProviderType(providerType))
 	if err != nil {
 		return nil, err
 	}
@@ -196,7 +179,7 @@ func (s *SourceControlService) GetInstallations(ctx context.Context, providerTyp
 
 // GetInstallationRepositoriesFromAPI gets repositories from the provider API
 func (s *SourceControlService) GetInstallationRepositoriesFromAPI(ctx context.Context, providerType enums.GitProviderType, installationID string) ([]map[string]interface{}, error) {
-	provider, err := s.providerFactory.GetProvider(providers.GitProviderType(providerType))
+	provider, err := s.ProviderFactory().GetProvider(providers.GitProviderType(providerType))
 	if err != nil {
 		return nil, err
 	}
@@ -206,7 +189,7 @@ func (s *SourceControlService) GetInstallationRepositoriesFromAPI(ctx context.Co
 
 // GetCachedRepositories gets repositories from the database cache
 func (s *SourceControlService) GetCachedRepositories(ctx context.Context, providerType enums.GitProviderType, installationID, teamID string) ([]models.SourceControlRepository, error) {
-	return s.repoRepo.GetInstallationRepositories(ctx, providerType, installationID, teamID)
+	return s.Repos().SourceControlRepo().GetInstallationRepositories(ctx, providerType, installationID, teamID)
 }
 
 // SyncRepositories syncs repositories for a source control
@@ -215,7 +198,7 @@ func (s *SourceControlService) SyncRepositories(ctx context.Context, sc *models.
 		return ErrNoInstallationID
 	}
 
-	provider, err := s.providerFactory.GetProvider(providers.GitProviderType(sc.Provider))
+	provider, err := s.ProviderFactory().GetProvider(providers.GitProviderType(sc.Provider))
 	if err != nil {
 		return err
 	}
@@ -231,7 +214,7 @@ func (s *SourceControlService) SyncRepositories(ctx context.Context, sc *models.
 // SyncInstallationRepositories syncs repositories for an installation
 func (s *SourceControlService) SyncInstallationRepositories(ctx context.Context, sc *models.SourceControl, repositories []map[string]interface{}) error {
 	// Get existing repositories
-	existingRepos, err := s.repoRepo.FindRepositoriesBySourceControlID(ctx, sc.ID)
+	existingRepos, err := s.Repos().SourceControlRepo().FindRepositoriesBySourceControlID(ctx, sc.ID)
 	if err != nil {
 		return err
 	}
@@ -278,7 +261,7 @@ func (s *SourceControlService) SyncInstallationRepositories(ctx context.Context,
 
 	// Delete repositories not in API response
 	if len(reposToDelete) > 0 {
-		if err := s.repoRepo.DeleteRepositoriesByIDs(ctx, reposToDelete); err != nil {
+		if err := s.Repos().SourceControlRepo().DeleteRepositoriesByIDs(ctx, reposToDelete); err != nil {
 			return err
 		}
 	}
@@ -298,15 +281,15 @@ func (s *SourceControlService) SyncInstallationRepositories(ctx context.Context,
 		}
 
 		data := dto.RepositoryDataFromAPIResponse(repoData)
-		if _, err := s.repoRepo.UpsertRepository(ctx, sc.ID, data); err != nil {
-			s.logger.Warn().Err(err).Str("repo", data.FullName).Msg("Failed to upsert repository")
+		if _, err := s.Repos().SourceControlRepo().UpsertRepository(ctx, sc.ID, data); err != nil {
+			s.Logger().Warn().Err(err).Str("repo", data.FullName).Msg("Failed to upsert repository")
 			continue
 		}
 	}
 
 	// Update repository count
 	now := time.Now()
-	if err := s.scRepo.UpdateFields(ctx, sc.ID, map[string]interface{}{
+	if err := s.Repos().SourceControl().UpdateFields(ctx, sc.ID, map[string]interface{}{
 		"repository_count": len(repositories),
 		"last_synced_at":   now,
 	}); err != nil {
@@ -323,7 +306,7 @@ func (s *SourceControlService) RefreshInstallationRepositories(ctx context.Conte
 
 // SyncUserInstallation syncs a user's installation
 func (s *SourceControlService) SyncUserInstallation(ctx context.Context, providerType enums.GitProviderType, installationID, teamID, userID string) error {
-	provider, err := s.providerFactory.GetProvider(providers.GitProviderType(providerType))
+	provider, err := s.ProviderFactory().GetProvider(providers.GitProviderType(providerType))
 	if err != nil {
 		return err
 	}
@@ -385,7 +368,7 @@ func (s *SourceControlService) SyncUserInstallation(ctx context.Context, provide
 		LastSyncedAt:            &now,
 	}
 
-	if err := s.scRepo.Create(ctx, sc); err != nil {
+	if err := s.Repos().SourceControl().Create(ctx, sc); err != nil {
 		return err
 	}
 
@@ -393,7 +376,7 @@ func (s *SourceControlService) SyncUserInstallation(ctx context.Context, provide
 	go func() {
 		bgCtx := context.Background()
 		if err := s.SyncRepositories(bgCtx, sc); err != nil {
-			s.logger.Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories during installation sync")
+			s.Logger().Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories during installation sync")
 		}
 	}()
 
@@ -402,14 +385,14 @@ func (s *SourceControlService) SyncUserInstallation(ctx context.Context, provide
 
 // SyncRepositoriesForInstallation syncs repositories for all teams with the installation (webhook handler)
 func (s *SourceControlService) SyncRepositoriesForInstallation(ctx context.Context, installationID string) error {
-	sourceControls, err := s.scRepo.FindByInstallationID(ctx, installationID)
+	sourceControls, err := s.Repos().SourceControl().FindByInstallationID(ctx, installationID)
 	if err != nil {
 		return err
 	}
 
 	for _, sc := range sourceControls {
 		if err := s.SyncRepositories(ctx, &sc); err != nil {
-			s.logger.Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories for installation")
+			s.Logger().Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories for installation")
 		}
 	}
 
@@ -421,7 +404,7 @@ func (s *SourceControlService) GetInstallationsWithRepositoryCounts(ctx context.
 	result := make(map[string][]dto.InstallationSummaryData)
 
 	for _, providerType := range enums.AllGitProviders() {
-		sourceControls, err := s.scRepo.GetInstallations(ctx, providerType, contracts.WithUserID(userID), contracts.RequireInstallationID())
+		sourceControls, err := s.Repos().SourceControl().GetInstallations(ctx, providerType, contracts.WithUserID(userID), contracts.RequireInstallationID())
 		if err != nil {
 			continue
 		}
@@ -439,19 +422,19 @@ func (s *SourceControlService) GetInstallationsWithRepositoryCounts(ctx context.
 
 // DeleteByInstallationID deletes all source controls by installation ID (webhook handler)
 func (s *SourceControlService) DeleteByInstallationID(ctx context.Context, installationID string) error {
-	_, err := s.scRepo.DeleteByInstallationID(ctx, installationID)
+	_, err := s.Repos().SourceControl().DeleteByInstallationID(ctx, installationID)
 	return err
 }
 
 // GetSourceControlByInstallation finds a source control by provider and installation
 func (s *SourceControlService) GetSourceControlByInstallation(ctx context.Context, providerType enums.GitProviderType, installationID string, opts ...contracts.InstallationQueryOption) (*models.SourceControl, error) {
 	opts = append(opts, contracts.WithProviderID(installationID))
-	return s.scRepo.GetFirstInstallation(ctx, providerType, opts...)
+	return s.Repos().SourceControl().GetFirstInstallation(ctx, providerType, opts...)
 }
 
 // TestConnection tests the connection to a provider
 func (s *SourceControlService) TestConnection(ctx context.Context, providerType enums.GitProviderType) error {
-	provider, err := s.providerFactory.GetProvider(providers.GitProviderType(providerType))
+	provider, err := s.ProviderFactory().GetProvider(providers.GitProviderType(providerType))
 	if err != nil {
 		return err
 	}
@@ -461,7 +444,7 @@ func (s *SourceControlService) TestConnection(ctx context.Context, providerType 
 
 // GetSourceControlRepo returns the source control repository for webhook handlers
 func (s *SourceControlService) GetSourceControlRepo() *repositories.SourceControlRepository {
-	return s.scRepo
+	return s.Repos().SourceControl()
 }
 
 // fromProviderAppInstallationData converts providers.AppInstallationData to dto.AppInstallationData

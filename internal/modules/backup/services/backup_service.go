@@ -6,36 +6,20 @@ import (
 	"fmt"
 	"strconv"
 
-	"github.com/rs/zerolog"
-
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
-	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
-	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
 )
 
 // BackupService handles business logic for backups
 type BackupService struct {
-	backupRepo *repositories.BackupRepository
-	queue      *queue.Client
-	ws         *websocket.Hub
-	logger     *zerolog.Logger
+	*BaseService
 }
 
 // NewBackupService creates a new backup service
-func NewBackupService(
-	backupRepo *repositories.BackupRepository,
-	queue *queue.Client,
-	ws *websocket.Hub,
-	logger *zerolog.Logger,
-) *BackupService {
+func NewBackupService(deps *ServiceDeps) *BackupService {
 	return &BackupService{
-		backupRepo: backupRepo,
-		queue:      queue,
-		ws:         ws,
-		logger:     logger,
+		BaseService: NewBaseService(deps),
 	}
 }
 
@@ -79,11 +63,11 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID strin
 
 	databaseIDs := []string{req.DatabaseID}
 
-	if err := s.backupRepo.CreateBackupWithDatabases(ctx, backup, databaseIDs); err != nil {
+	if err := s.Repos().Backup().CreateBackupWithDatabases(ctx, backup, databaseIDs); err != nil {
 		return nil, fmt.Errorf("failed to create backup: %w", err)
 	}
 
-	activity.New(s.backupRepo.DB()).
+	activity.New(s.DB()).
 		WithContext(ctx).
 		UseLog("backup").
 		On(backup).
@@ -93,7 +77,7 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID strin
 	// Dispatch installation job
 	s.dispatchInstallBackup(serverID, backup.ID)
 
-	s.logger.Info().
+	s.Logger.Info().
 		Str("backup_id", backup.ID).
 		Str("server_id", serverID).
 		Msg("Backup created successfully")
@@ -103,7 +87,7 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID strin
 
 // UpdateBackup updates an existing backup configuration
 func (s *BackupService) UpdateBackup(ctx context.Context, id string, req *dto.UpdateBackupRequest) (*models.Backup, error) {
-	backup, err := s.backupRepo.FindBackupByID(ctx, id)
+	backup, err := s.Repos().Backup().FindBackupByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
@@ -139,18 +123,18 @@ func (s *BackupService) UpdateBackup(ctx context.Context, id string, req *dto.Up
 
 	databaseIDs := []string{req.DatabaseID}
 
-	if err := s.backupRepo.UpdateBackupWithDatabases(ctx, backup, databaseIDs); err != nil {
+	if err := s.Repos().Backup().UpdateBackupWithDatabases(ctx, backup, databaseIDs); err != nil {
 		return nil, fmt.Errorf("failed to update backup: %w", err)
 	}
 
-	activity.New(s.backupRepo.DB()).
+	activity.New(s.DB()).
 		WithContext(ctx).
 		UseLog("backup").
 		On(backup).
 		WithEvent("updated").
 		Log("Backup was updated")
 
-	s.logger.Info().
+	s.Logger.Info().
 		Str("backup_id", backup.ID).
 		Msg("Backup updated successfully")
 
@@ -159,12 +143,12 @@ func (s *BackupService) UpdateBackup(ctx context.Context, id string, req *dto.Up
 
 // DeleteBackup deletes a backup configuration
 func (s *BackupService) DeleteBackup(ctx context.Context, id, serverID string) error {
-	backup, err := s.backupRepo.FindBackupByIDAndServer(ctx, id, serverID)
+	backup, err := s.Repos().Backup().FindBackupByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return err
 	}
 
-	activity.New(s.backupRepo.DB()).
+	activity.New(s.DB()).
 		WithContext(ctx).
 		UseLog("backup").
 		On(backup).
@@ -174,11 +158,11 @@ func (s *BackupService) DeleteBackup(ctx context.Context, id, serverID string) e
 	// Dispatch deletion job
 	s.dispatchDeleteBackup(serverID, backup.ID)
 
-	if err := s.backupRepo.DeleteBackup(ctx, id); err != nil {
+	if err := s.Repos().Backup().DeleteBackup(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete backup: %w", err)
 	}
 
-	s.logger.Info().
+	s.Logger.Info().
 		Str("backup_id", id).
 		Str("server_id", serverID).
 		Msg("Backup deleted successfully")
@@ -188,29 +172,29 @@ func (s *BackupService) DeleteBackup(ctx context.Context, id, serverID string) e
 
 // GetBackup retrieves a backup by ID
 func (s *BackupService) GetBackup(ctx context.Context, id string) (*models.Backup, error) {
-	return s.backupRepo.FindBackupByID(ctx, id)
+	return s.Repos().Backup().FindBackupByID(ctx, id)
 }
 
 // GetBackupByIDAndServer retrieves a backup by ID and server ID
 func (s *BackupService) GetBackupByIDAndServer(ctx context.Context, id, serverID string) (*models.Backup, error) {
-	return s.backupRepo.FindBackupByIDAndServer(ctx, id, serverID)
+	return s.Repos().Backup().FindBackupByIDAndServer(ctx, id, serverID)
 }
 
 // ListBackupsByServer lists all backups for a server
 func (s *BackupService) ListBackupsByServer(ctx context.Context, serverID string) ([]models.Backup, error) {
-	return s.backupRepo.FindBackupsByServerID(ctx, serverID)
+	return s.Repos().Backup().FindBackupsByServerID(ctx, serverID)
 }
 
 // RunBackup triggers a manual backup run
 func (s *BackupService) RunBackup(ctx context.Context, id, serverID string) error {
-	backup, err := s.backupRepo.FindBackupByIDAndServer(ctx, id, serverID)
+	backup, err := s.Repos().Backup().FindBackupByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return err
 	}
 
 	s.dispatchRunManualBackup(serverID, backup.ID)
 
-	s.logger.Info().
+	s.Logger.Info().
 		Str("backup_id", id).
 		Str("server_id", serverID).
 		Msg("Manual backup queued for execution")
@@ -220,7 +204,7 @@ func (s *BackupService) RunBackup(ctx context.Context, id, serverID string) erro
 
 // MarkBackupInstalled marks a backup as installed
 func (s *BackupService) MarkBackupInstalled(ctx context.Context, id string) error {
-	return s.backupRepo.UpdateBackupFields(ctx, id, map[string]interface{}{
+	return s.Repos().Backup().UpdateBackupFields(ctx, id, map[string]interface{}{
 		"installed_at":           "NOW()",
 		"installation_failed_at": nil,
 	})
@@ -228,7 +212,7 @@ func (s *BackupService) MarkBackupInstalled(ctx context.Context, id string) erro
 
 // MarkBackupInstallationFailed marks a backup installation as failed
 func (s *BackupService) MarkBackupInstallationFailed(ctx context.Context, id string) error {
-	return s.backupRepo.UpdateBackupFields(ctx, id, map[string]interface{}{
+	return s.Repos().Backup().UpdateBackupFields(ctx, id, map[string]interface{}{
 		"installation_failed_at": "NOW()",
 	})
 }
@@ -236,33 +220,33 @@ func (s *BackupService) MarkBackupInstallationFailed(ctx context.Context, id str
 // Job dispatch helpers
 
 func (s *BackupService) dispatchInstallBackup(serverID, backupID string) {
-	if s.queue == nil {
+	if s.Queue == nil {
 		return
 	}
 	// In production, this would enqueue an InstallBackup job
-	s.logger.Debug().
+	s.Logger.Debug().
 		Str("server_id", serverID).
 		Str("backup_id", backupID).
 		Msg("Dispatching InstallBackup job")
 }
 
 func (s *BackupService) dispatchDeleteBackup(serverID, backupID string) {
-	if s.queue == nil {
+	if s.Queue == nil {
 		return
 	}
 	// In production, this would enqueue a DeleteBackup job
-	s.logger.Debug().
+	s.Logger.Debug().
 		Str("server_id", serverID).
 		Str("backup_id", backupID).
 		Msg("Dispatching DeleteBackup job")
 }
 
 func (s *BackupService) dispatchRunManualBackup(serverID, backupID string) {
-	if s.queue == nil {
+	if s.Queue == nil {
 		return
 	}
 	// In production, this would enqueue a RunManualBackup job
-	s.logger.Debug().
+	s.Logger.Debug().
 		Str("server_id", serverID).
 		Str("backup_id", backupID).
 		Msg("Dispatching RunManualBackup job")
