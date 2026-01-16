@@ -74,3 +74,10 @@ func (r *TaskRepository) FindLatestByServer(ctx context.Context, serverID string
 func (r *TaskRepository) Update(ctx context.Context, task *models.Task) error {
 	return r.DB().WithContext(ctx).Save(task).Error
 }
+
+// UpdateOutput updates the output field of a task
+func (r *TaskRepository) UpdateOutput(ctx context.Context, taskID string, output string) error {
+	return r.DB().WithContext(ctx).Model(&models.Task{}).
+		Where("id = ?", taskID).
+		Update("output", output).Error
+}

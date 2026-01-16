@@ -204,6 +204,24 @@ fi`, version, version, version)
 	)
 }
 
+// ClearOpcache creates a task to clear OPcache by reloading all PHP-FPM services
+func ClearOpcache() *taskrunner.BaseTask {
+	script := `echo "Clearing OPcache for all PHP versions..."
+
+for service in $(systemctl list-units --type=service --state=running | grep 'php.*-fpm' | awk '{print $1}'); do
+    echo "Reloading $service..."
+    sudo systemctl reload "$service" 2>/dev/null || true
+done
+
+echo "OPcache cleared for all running PHP-FPM services"`
+
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Clear OPcache"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(60),
+	)
+}
+
 // ConfigureOpcache creates a task to configure OPcache settings
 func ConfigureOpcache(version string, settings map[string]string) *taskrunner.BaseTask {
 	var lines []string

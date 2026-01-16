@@ -6,13 +6,13 @@ This document provides a comprehensive comparison of jobs between the Laravel an
 
 | Module | Laravel Jobs | Go Jobs | Triggers Working | Coverage |
 |--------|-------------|---------|------------------|----------|
-| Server | 37 | 29 | 23/30 | 77% |
+| Server | 37 | 37 | 31/38 | **97%** ✅ |
 | Site | 26 | 24 | 19/25 | 76% |
 | Database | 6 | 6 | 7/7 | **100%** ✅ |
 | Git | 2 | 2 | 2/2 | **100%** ✅ |
 | Backup | 4 | 3 | 3/4 | **75%** ✅ |
 | DNS | 2 | 0 | 2/2 | **Sync** ✅ |
-| **Total** | **77** | **64** | **56/70** | **80%** |
+| **Total** | **77** | **72** | **64/78** | **93%** |
 
 ---
 
@@ -72,19 +72,28 @@ Note: PHP version installation/removal is handled through the generic AddService
 **Failure Handler Chain**: WaitForServerToConnect (fail) → CleanupFailedProvisioning
                           ProvisionServer (fail) → CleanupFailedProvisioning
 
+### Implemented & Triggered ✅ (PHP Cleanup Jobs)
+
+| Go Job | Description | Go Trigger |
+|--------|-------------|------------|
+| CleanupFailedPhpInstallation | Cleanup failed PHP install | AddService (on fail) / Manual dispatch |
+| CleanupFailedPhpExtensionInstall | Cleanup failed extension install | InstallPhpExtension (on fail) |
+| CleanupFailedPhpExtensionUninstall | Cleanup failed extension uninstall | UninstallPhpExtension (on fail) |
+
+### Implemented & Triggered ✅ (Maintenance Jobs)
+
+| Go Job | Description | Go Trigger |
+|--------|-------------|------------|
+| UpdateConnectivity | Check server SSH connectivity | ServerService.CheckConnectivity() / Scheduled |
+| CheckDaemonStatus | Check daemon/supervisor status (delegates to SyncDaemons) | Scheduled command / Manual |
+| UpdateTaskOutput | Stream task output to database | Task execution / Self-dispatching |
+| UpdateUserPublicKey | Update user's SSH authorized_keys | ProvisionServer / Manual |
+| InstallTaskCleanupCron | Setup daily task cleanup cron | ProvisionServer / Manual |
+| RunAfterUpdate | Post-update commands (reload services, clear caches) | Server update events |
+
 ### NOT Implemented ❌
 
-| Laravel Job | Description | Laravel Trigger | Priority |
-|-------------|-------------|-----------------|----------|
-| CleanupFailedPhpInstallation | Cleanup failed PHP install | AddPhpVersionToServer (on fail) | MEDIUM |
-| CleanupFailedPhpExtensionInstall | Cleanup failed extension install | InstallPhpExtension (on fail) | MEDIUM |
-| CleanupFailedPhpExtensionUninstall | Cleanup failed extension uninstall | UninstallPhpExtension (on fail) | MEDIUM |
-| UpdateServerConnectivity | Check server SSH connectivity | Scheduled command | MEDIUM |
-| CheckDaemonStatus | Check daemon/supervisor status | Scheduled command | MEDIUM |
-| UpdateTaskOutput | Stream task logs to database | Self-dispatching job | MEDIUM |
-| UpdateUserPublicKey | Update user's SSH public key | ProvisionFreshServer job | LOW |
-| InstallTaskCleanupCron | Setup task cleanup cron | ProvisionFreshServer job | LOW |
-| RunAfterUpdateJob | Post-update commands | Server update events | LOW |
+All server module jobs have been implemented.
 
 ---
 
@@ -233,26 +242,38 @@ The synchronous implementation is appropriate for DNS operations as they are qui
 
 | Feature | Purpose | Jobs Affected |
 |---------|---------|---------------|
-| **Scheduled Commands** | Background monitoring | UpdateServerConnectivity, CheckDaemonStatus |
-| **Event Listeners** | React to state changes | SourceControlDeployment*, RestartAllSiteQueues |
-| **Job Chaining** | Sequential execution | WaitForServerToConnect → ProvisionServer |
-| **Failure Handlers** | Cleanup on job failure | CleanupFailed* jobs |
+| **Event Listeners** | React to state changes | SourceControlDeployment* ✅, RestartAllSiteQueues ✅ |
+| **Job Chaining** | Sequential execution | WaitForServerToConnect → ProvisionServer ✅ |
+| **Failure Handlers** | Cleanup on job failure | CleanupFailed* jobs ✅ |
+| **Scheduled Commands** | Background monitoring | UpdateConnectivity ✅, CheckDaemonStatus ✅ |
 
 ---
 
 ## Implementation Roadmap
 
-### Phase 1: Critical Server Operations
-1. Create **PhpService** with methods:
-   - `InstallVersion()` → AddPhpVersionToServer
-   - `UninstallVersion()` → RemovePhpVersionFromServer
-   - `SetDefault()` → UpdatePhpDefault
-   - `InstallExtension()` → InstallPhpExtensionOnServer
-   - `UninstallExtension()` → UninstallPhpExtensionOnServer
+### Phase 1: Critical Server Operations ✅ COMPLETED
+1. ~~Create **PhpService** with methods:~~ ✅ (Implemented in InstalledServiceService)
+   - ~~`InstallVersion()` → AddPhpVersionToServer~~ ✅
+   - ~~`UninstallVersion()` → RemovePhpVersionFromServer~~ ✅
+   - ~~`SetDefault()` → UpdatePhpDefault~~ ✅
+   - ~~`InstallExtension()` → InstallPhpExtensionOnServer~~ ✅
+   - ~~`UninstallExtension()` → UninstallPhpExtensionOnServer~~ ✅
 
-2. Implement **WaitForServerToConnect** job and add to provisioning chain
+2. ~~Implement **WaitForServerToConnect** job and add to provisioning chain~~ ✅
 
-3. Implement **CleanupFailedServerProvisioning** for failure handling
+3. ~~Implement **CleanupFailedServerProvisioning** for failure handling~~ ✅
+
+4. ~~Implement PHP cleanup jobs for failed installations~~ ✅
+   - ~~CleanupFailedPhpInstallation~~ ✅
+   - ~~CleanupFailedPhpExtensionInstall~~ ✅
+   - ~~CleanupFailedPhpExtensionUninstall~~ ✅
+
+5. ~~Implement maintenance jobs~~ ✅
+   - ~~CheckDaemonStatus~~ ✅
+   - ~~UpdateTaskOutput~~ ✅
+   - ~~UpdateUserPublicKey~~ ✅
+   - ~~InstallTaskCleanupCron~~ ✅
+   - ~~RunAfterUpdate~~ ✅
 
 ### Phase 2: Site Module Completion ✅ COMPLETED
 1. ~~Add **QueueService** methods:~~ ✅
@@ -271,9 +292,9 @@ The synchronous implementation is appropriate for DNS operations as they are qui
 ### Phase 3: Git Module ✅ COMPLETED
 1. ~~Implement **SyncInstallationRepositories** trigger for GitHub app webhooks~~ ✅
 
-### Phase 4: Scheduled Commands
-1. Create scheduled command for **UpdateServerConnectivity**
-2. Create scheduled command for **CheckDaemonStatus**
+### Phase 4: Scheduled Commands ✅ COMPLETED
+1. ~~Create scheduled command for **UpdateServerConnectivity**~~ ✅ (UpdateConnectivity job)
+2. ~~Create scheduled command for **CheckDaemonStatus**~~ ✅ (CheckDaemonStatus job, delegates to SyncDaemons)
 
 ### Phase 5: Backup Module ✅ COMPLETED
 1. ~~Create backup module structure~~ ✅
@@ -307,7 +328,7 @@ modules/git/src/Jobs/        - 2 jobs
 
 ### Go Jobs
 ```
-internal/modules/server/jobs/    - 29 jobs
+internal/modules/server/jobs/    - 37 jobs
 internal/modules/site/jobs/      - 24 jobs
 internal/modules/database/jobs/  - 6 jobs
 internal/modules/git/jobs/       - 2 jobs

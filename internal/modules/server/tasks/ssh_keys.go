@@ -93,3 +93,25 @@ func GetAuthorizedKeys(user string) *taskrunner.BaseTask {
 		taskrunner.WithTimeoutSeconds(15),
 	)
 }
+
+// UpdateAuthorizedKeys creates a task to replace the authorized_keys file with new content
+func UpdateAuthorizedKeys(user string, publicKey string) *taskrunner.BaseTask {
+	homeDir := fmt.Sprintf("/home/%s", user)
+	if user == "root" {
+		homeDir = "/root"
+	}
+
+	script := fmt.Sprintf(`mkdir -p %s/.ssh
+chmod 700 %s/.ssh
+cat > %s/.ssh/authorized_keys << 'LAUNCH_EOF'
+%s
+LAUNCH_EOF
+chmod 600 %s/.ssh/authorized_keys
+chown -R %s:%s %s/.ssh`, homeDir, homeDir, homeDir, publicKey, homeDir, user, user, homeDir)
+
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Update Authorized Keys"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(30),
+	)
+}
