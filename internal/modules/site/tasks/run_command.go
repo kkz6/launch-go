@@ -7,6 +7,11 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for run command
+const (
+	RunCommandTaskType = "site:run_command"
+)
+
 // RunCommandConfig holds configuration for running a command on a site
 type RunCommandConfig struct {
 	Command string

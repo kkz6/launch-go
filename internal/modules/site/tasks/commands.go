@@ -5,6 +5,12 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for command operations
+const (
+	RunCommandForSiteTaskType      = "site:run_command_for_site"
+	RestartAllSiteQueuesTaskType   = "site:restart_all_site_queues"
+)
+
 // RunCommandForSiteConfig holds configuration for running a command in a site's directory
 type RunCommandForSiteConfig struct {
 	ApplicationDirectory string

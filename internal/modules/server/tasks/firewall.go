@@ -6,6 +6,12 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for firewall operations
+const (
+	AddFirewallRuleTaskType    = "server:add_firewall_rule"
+	DeleteFirewallRuleTaskType = "server:delete_firewall_rule"
+)
+
 // FirewallAction represents the action for a firewall rule.
 type FirewallAction string
 

@@ -6,6 +6,19 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for service status operations
+const (
+	CheckPhpStatusTaskType        = "server:check_php_status"
+	CheckMySqlStatusTaskType      = "server:check_mysql_status"
+	CheckPostgreSqlStatusTaskType = "server:check_postgresql_status"
+	CheckRedisStatusTaskType      = "server:check_redis_status"
+	CheckCaddyStatusTaskType      = "server:check_caddy_status"
+	CheckSupervisorStatusTaskType = "server:check_supervisor_status"
+	CheckBunStatusTaskType        = "server:check_bun_status"
+	CheckNodeStatusTaskType       = "server:check_node_status"
+	GetServiceStatusTaskType      = "server:get_service_status"
+)
+
 // CheckPhpStatus creates a task to check PHP-FPM status with detailed diagnostics.
 func CheckPhpStatus(version string) *taskrunner.BaseTask {
 	script := fmt.Sprintf(`sudo systemctl status php%s-fpm --no-pager --full

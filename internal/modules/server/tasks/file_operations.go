@@ -6,6 +6,13 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for file operations
+const (
+	UploadFileTaskType = "server:upload_file"
+	DeleteFileTaskType = "server:delete_file"
+	GetFileTaskType    = "server:get_file"
+)
+
 // UploadFileConfig holds configuration for uploading a file
 type UploadFileConfig struct {
 	Path     string

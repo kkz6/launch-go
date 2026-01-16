@@ -7,6 +7,14 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for queue operations
+const (
+	UploadQueueConfigTaskType  = "site:upload_queue_config"
+	DeleteQueueConfigTaskType  = "site:delete_queue_config"
+	RestartQueueTaskType       = "site:restart_queue"
+	RestartAllQueuesTaskType   = "site:restart_all_queues"
+)
+
 // BuildQueueSupervisorConfig generates the supervisor config for a queue worker
 func BuildQueueSupervisorConfig(queue *models.Queue, serverUsername string) string {
 	directory := ""

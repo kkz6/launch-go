@@ -15,9 +15,11 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// Task type constants for deployment operations
 const (
 	// DeploySiteTaskType is the registered type name for callback reconstruction
-	DeploySiteTaskType = "site:deploy"
+	DeploySiteTaskType         = "site:deploy"
+	RollbackDeploymentTaskType = "site:rollback_deployment"
 )
 
 // DeployOptions holds options for deploying a site
