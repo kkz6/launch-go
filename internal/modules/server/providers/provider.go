@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/response"
+	"github.com/kkz6/launch-go/internal/pkg/sshkey"
 )
 
 // Provider errors with HTTP status codes
@@ -19,11 +20,8 @@ var (
 	ErrUnsupportedProvider = response.ErrBadRequest("Unsupported provider")
 )
 
-// KeyPair represents an SSH key pair
-type KeyPair struct {
-	PublicKey  string
-	PrivateKey string
-}
+// KeyPair is an alias for sshkey.KeyPair for backwards compatibility.
+type KeyPair = sshkey.KeyPair
 
 // CreateResult contains the result of server creation
 type CreateResult struct {
@@ -79,17 +77,11 @@ type Provider interface {
 
 // Factory creates server provider instances
 type Factory struct {
-	keyGenerator KeyPairGenerator
-}
-
-// KeyPairGenerator generates SSH key pairs
-type KeyPairGenerator interface {
-	Generate() (*KeyPair, error)
-	GetPublicKey(privateKey string) (*KeyPair, error)
+	keyGenerator sshkey.Generator
 }
 
 // NewFactory creates a new provider factory
-func NewFactory(keyGenerator KeyPairGenerator) *Factory {
+func NewFactory(keyGenerator sshkey.Generator) *Factory {
 	return &Factory{
 		keyGenerator: keyGenerator,
 	}
@@ -122,7 +114,7 @@ func (f *Factory) CreateFromServer(server *models.Server) (Provider, error) {
 
 // BaseProvider provides common functionality for all providers
 type BaseProvider struct {
-	keyGenerator KeyPairGenerator
+	keyGenerator sshkey.Generator
 	config       config.ProviderConfig
 }
 

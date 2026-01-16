@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/sshkey"
 )
 
 const linodeAPIURL = "https://api.linode.com/v4"
@@ -24,7 +25,7 @@ type LinodeProvider struct {
 }
 
 // NewLinodeProvider creates a new Linode provider
-func NewLinodeProvider(keyGenerator KeyPairGenerator) *LinodeProvider {
+func NewLinodeProvider(keyGenerator sshkey.Generator) *LinodeProvider {
 	configs := config.GetProviderConfigs()
 	return &LinodeProvider{
 		BaseProvider: BaseProvider{

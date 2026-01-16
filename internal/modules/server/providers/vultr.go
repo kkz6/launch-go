@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/sshkey"
 )
 
 const vultrAPIURL = "https://api.vultr.com/v2"
@@ -24,7 +25,7 @@ type VultrProvider struct {
 }
 
 // NewVultrProvider creates a new Vultr provider
-func NewVultrProvider(keyGenerator KeyPairGenerator) *VultrProvider {
+func NewVultrProvider(keyGenerator sshkey.Generator) *VultrProvider {
 	configs := config.GetProviderConfigs()
 	return &VultrProvider{
 		BaseProvider: BaseProvider{

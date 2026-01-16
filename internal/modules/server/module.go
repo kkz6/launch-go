@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/sshkey"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
@@ -96,37 +97,12 @@ func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
-	// Create provider factory with key generator
-	keyGen := &sshKeyGenerator{}
-	providerFactory := providers.NewFactory(keyGen)
+	providerFactory := providers.NewFactory(sshkey.NewGenerator())
 
-	// Set up job context
 	jobContext := jobs.NewJobContext(m.db, m.repo, m.logger, m.ws, m.dispatcher, providerFactory, m.queueClient)
 	jobs.SetJobContext(jobContext)
 
-	// Register job handlers
 	jobs.RegisterHandlers(mux)
-}
-
-// sshKeyGenerator implements providers.KeyPairGenerator
-type sshKeyGenerator struct{}
-
-func (g *sshKeyGenerator) Generate() (*providers.KeyPair, error) {
-	privateKey, publicKey, err := services.GenerateSSHKeyPair()
-	if err != nil {
-		return nil, err
-	}
-	return &providers.KeyPair{
-		PublicKey:  publicKey,
-		PrivateKey: privateKey,
-	}, nil
-}
-
-func (g *sshKeyGenerator) GetPublicKey(privateKey string) (*providers.KeyPair, error) {
-	// For now, just return the private key - public key extraction can be added later
-	return &providers.KeyPair{
-		PrivateKey: privateKey,
-	}, nil
 }
 
 // GetWebhookHandler returns the webhook handler for generating callback URLs

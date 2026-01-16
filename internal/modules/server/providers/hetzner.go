@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/sshkey"
 )
 
 const hetznerAPIURL = "https://api.hetzner.cloud/v1"
@@ -24,7 +25,7 @@ type HetznerProvider struct {
 }
 
 // NewHetznerProvider creates a new Hetzner provider
-func NewHetznerProvider(keyGenerator KeyPairGenerator) *HetznerProvider {
+func NewHetznerProvider(keyGenerator sshkey.Generator) *HetznerProvider {
 	configs := config.GetProviderConfigs()
 	return &HetznerProvider{
 		BaseProvider: BaseProvider{
