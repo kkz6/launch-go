@@ -3,18 +3,34 @@ package jobs
 import (
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/contracts"
+	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/sshkey"
 )
 
 var jobContext *JobContext
 
-// SetJobContext sets the global job context.
-func SetJobContext(ctx *JobContext) {
-	jobContext = ctx
+// Register initializes and registers all server job handlers.
+func Register(mux *asynq.ServeMux, deps module.Deps, repo contracts.Repository) {
+	providerFactory := providers.NewFactory(sshkey.NewGenerator())
+
+	jobContext = NewJobContext(
+		deps.DB,
+		repo,
+		deps.Logger,
+		deps.WebSocket,
+		deps.Dispatcher,
+		providerFactory,
+		deps.Queue,
+	)
+
+	registerHandlers(mux)
 }
 
-// RegisterHandlers registers all server job handlers with the asynq mux.
-func RegisterHandlers(mux *asynq.ServeMux) {
+// registerHandlers registers all server job handlers with the asynq mux.
+func registerHandlers(mux *asynq.ServeMux) {
 	// Server lifecycle jobs
 	pkgjobs.RegisterHandler(mux, TypeCreateOnProvider, jobContext, NewCreateOnProviderJob)
 	pkgjobs.RegisterHandler(mux, TypeProvisionServer, jobContext, NewProvisionServerJob)

@@ -1,42 +1,32 @@
 package site
 
 import (
-	"github.com/gofiber/fiber/v2"
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
-	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/modules/site/handlers"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
-	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/module"
 )
+
+const ModuleName = "site"
 
 // Ensure Module implements required interfaces
 var (
-	_ app.Module            = (*Module)(nil)
-	_ app.RouteRegistrar    = (*Module)(nil)
-	_ app.WebhookRegistrar  = (*Module)(nil)
-	_ app.JobRegistrar      = (*Module)(nil)
+	_ app.Module           = (*Module)(nil)
+	_ app.RouteRegistrar   = (*Module)(nil)
+	_ app.WebhookRegistrar = (*Module)(nil)
+	_ app.JobRegistrar     = (*Module)(nil)
 )
 
 // Module represents the site module
 type Module struct {
-	db         *gorm.DB
-	queue      *queue.Client
-	ws         *websocket.Hub
-	logger     *zerolog.Logger
-	dispatcher *taskrunner.Dispatcher
+	module.Base
 
 	// Repositories
 	siteRepo          *repositories.SiteRepository
@@ -59,39 +49,28 @@ type Module struct {
 	queueService      *services.QueueService
 	commandService    *services.CommandService
 	redirectService   *services.RedirectService
+	fileService       *services.FileService
 
-	// Handlers
-	siteHandler       *handlers.SiteHandler
-	deploymentHandler *handlers.DeploymentHandler
-	sslHandler        *handlers.SSLHandler
-	queueHandler      *handlers.QueueHandler
-	commandHandler    *handlers.CommandHandler
-	redirectHandler   *handlers.RedirectHandler
-	fileHandler       *handlers.FileHandler
-	webhookHandler    *handlers.WebhookHandler
-
-	// Additional services
-	fileService *services.FileService
+	// Domain repository for cross-module verification
+	domainRepo dnscontracts.DomainRepository
 }
 
 // NewModule creates a new site module
-func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger *zerolog.Logger, dispatcher *taskrunner.Dispatcher) *Module {
+func NewModule(b *module.Builder) *Module {
+	deps := b.Deps()
+
 	m := &Module{
-		db:         db,
-		queue:      queueClient,
-		ws:         ws,
-		logger:     logger,
-		dispatcher: dispatcher,
+		Base: module.NewBase(ModuleName, b),
 	}
 
 	// Initialize repositories
-	m.siteRepo = repositories.NewSiteRepository(db)
-	m.deploymentRepo = repositories.NewDeploymentRepository(db)
-	m.certificateRepo = repositories.NewCertificateRepository(db)
-	m.queueRepo = repositories.NewQueueRepository(db)
-	m.commandRepo = repositories.NewCommandRepository(db)
-	m.redirectRepo = repositories.NewRedirectRepository(db)
-	m.releaseRepo = repositories.NewReleaseRepository(db)
+	m.siteRepo = repositories.NewSiteRepository(deps.DB)
+	m.deploymentRepo = repositories.NewDeploymentRepository(deps.DB)
+	m.certificateRepo = repositories.NewCertificateRepository(deps.DB)
+	m.queueRepo = repositories.NewQueueRepository(deps.DB)
+	m.commandRepo = repositories.NewCommandRepository(deps.DB)
+	m.redirectRepo = repositories.NewRedirectRepository(deps.DB)
+	m.releaseRepo = repositories.NewReleaseRepository(deps.DB)
 
 	// Initialize services
 	m.siteService = services.NewSiteService(
@@ -102,9 +81,9 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 		m.commandRepo,
 		m.redirectRepo,
 		m.releaseRepo,
-		queueClient,
-		ws,
-		logger,
+		deps.Queue,
+		deps.WebSocket,
+		deps.Logger,
 	)
 
 	m.deploymentService = services.NewDeploymentService(
@@ -115,20 +94,20 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 		m.commandRepo,
 		m.redirectRepo,
 		m.releaseRepo,
-		queueClient,
-		ws,
-		logger,
+		deps.Queue,
+		deps.WebSocket,
+		deps.Logger,
 	)
 
 	// Wire circular dependency
 	m.siteService.SetDeploymentService(m.deploymentService)
 
 	// Wire server repository for cross-module queries (PHP versions via relationship)
-	m.serverRepo = serverrepos.NewRepository(db)
+	m.serverRepo = serverrepos.NewRepository(deps.DB)
 	m.siteService.SetServerRepository(m.serverRepo)
 
 	// Initialize git source control repo
-	m.sourceControlRepo = gitrepos.NewSourceControlRepository(db)
+	m.sourceControlRepo = gitrepos.NewSourceControlRepository(deps.DB)
 
 	m.sslService = services.NewSSLService(
 		m.siteRepo,
@@ -138,9 +117,9 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 		m.commandRepo,
 		m.redirectRepo,
 		m.releaseRepo,
-		queueClient,
-		ws,
-		logger,
+		deps.Queue,
+		deps.WebSocket,
+		deps.Logger,
 	)
 
 	m.queueService = services.NewQueueService(
@@ -151,9 +130,9 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 		m.commandRepo,
 		m.redirectRepo,
 		m.releaseRepo,
-		queueClient,
-		ws,
-		logger,
+		deps.Queue,
+		deps.WebSocket,
+		deps.Logger,
 	)
 
 	m.commandService = services.NewCommandService(
@@ -164,9 +143,9 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 		m.commandRepo,
 		m.redirectRepo,
 		m.releaseRepo,
-		queueClient,
-		ws,
-		logger,
+		deps.Queue,
+		deps.WebSocket,
+		deps.Logger,
 	)
 
 	m.redirectService = services.NewRedirectService(
@@ -177,44 +156,15 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 		m.commandRepo,
 		m.redirectRepo,
 		m.releaseRepo,
-		queueClient,
-		ws,
-		logger,
+		deps.Queue,
+		deps.WebSocket,
+		deps.Logger,
 	)
 
 	// Initialize file service (needs db for server access)
-	taskRunnerDeps := &servertasks.TaskRunnerDeps{
-		DB:         db,
-		Queue:      queueClient,
-		Dispatcher: dispatcher,
-		Logger:     logger,
-	}
-	m.fileService = services.NewFileService(db, m.siteRepo, logger, taskRunnerDeps)
-
-	// Initialize handlers
-	m.siteHandler = handlers.NewSiteHandler(m.siteService)
-	m.deploymentHandler = handlers.NewDeploymentHandler(m.deploymentService)
-	m.sslHandler = handlers.NewSSLHandler(m.sslService)
-	m.queueHandler = handlers.NewQueueHandler(m.queueService)
-	m.commandHandler = handlers.NewCommandHandler(m.commandService)
-	m.redirectHandler = handlers.NewRedirectHandler(m.redirectService)
-	m.fileHandler = handlers.NewFileHandler(m.fileService)
-	m.webhookHandler = handlers.NewWebhookHandler(m.deploymentService)
+	m.fileService = services.NewFileService(deps.DB, m.siteRepo, deps.Logger, nil)
 
 	return m
-}
-
-// AutoMigrate runs database migrations for site models
-func (m *Module) AutoMigrate() error {
-	return m.db.AutoMigrate(
-		&models.Site{},
-		&models.Deployment{},
-		&models.Certificate{},
-		&models.Queue{},
-		&models.Command{},
-		&models.Redirect{},
-		&models.Release{},
-	)
 }
 
 // SiteRepository returns the site repository instance
@@ -257,34 +207,17 @@ func (m *Module) RedirectService() *services.RedirectService {
 	return m.redirectService
 }
 
-// Name returns the module name (implements app.Module)
-func (m *Module) Name() string {
-	return "site"
-}
-
-// NewModuleFromContext creates a new site module from app context
-func NewModuleFromContext(ctx *app.Context) *Module {
-	return NewModule(ctx.DB, ctx.Queue, ctx.WebSocket, ctx.Logger, ctx.Dispatcher)
-}
-
-// RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
-// These routes don't require authentication - they use deploy tokens for auth
-func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
-	// Deployment webhook - triggered by git providers (GitHub, GitLab, Bitbucket)
-	// URL: /deploy/:siteId/:token
-	router.Post("/deploy/:siteId/:token", m.webhookHandler.DeployWebhook)
-	router.Get("/deploy/:siteId/:token", m.webhookHandler.DeployWebhook) // Some providers use GET
-}
-
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
+	deps := m.Deps()
+
 	// Set up job context with all dependencies
 	jobContext := jobs.NewJobContext(
-		m.db,
-		m.logger,
-		m.ws,
-		m.dispatcher,
-		m.queue,
+		deps.DB,
+		deps.Logger,
+		deps.WebSocket,
+		deps.Dispatcher,
+		deps.Queue,
 		m.siteRepo,
 		m.commandRepo,
 		m.deploymentRepo,
@@ -309,5 +242,10 @@ func (m *Module) SetProviderFactory(factory *gitproviders.ProviderFactory) {
 
 // SetDomainRepository sets the domain repository for domain verification
 func (m *Module) SetDomainRepository(repo dnscontracts.DomainRepository) {
-	m.siteHandler.SetDomainRepository(repo)
+	m.domainRepo = repo
+}
+
+// GetDomainRepository returns the domain repository for handlers
+func (m *Module) GetDomainRepository() dnscontracts.DomainRepository {
+	return m.domainRepo
 }

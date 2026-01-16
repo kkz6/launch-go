@@ -2,18 +2,17 @@ package auth
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
-	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/module"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
+
+const ModuleName = "auth"
 
 // Ensure Module implements required interfaces
 var (
@@ -23,42 +22,31 @@ var (
 
 // Module represents the auth module with all its dependencies
 type Module struct {
+	module.Base
 	handler        *handlers.Handler
 	passkeyHandler *handlers.PasskeyHandler
 	service        *services.Service
 	repository     *repositories.Repository
 	passkeyRepo    *repositories.PasskeyRepository
-	config         *config.Config
-	logger         *zerolog.Logger
 }
 
 // NewModule creates a new auth Module instance
-func NewModule(db *gorm.DB, cfg *config.Config, logger *zerolog.Logger) *Module {
-	repo := repositories.NewRepository(db)
-	passkeyRepo := repositories.NewPasskeyRepository(db)
-	service := services.NewService(repo, cfg, logger)
+func NewModule(b *module.Builder) *Module {
+	deps := b.Deps()
+	repo := repositories.NewRepository(deps.DB)
+	passkeyRepo := repositories.NewPasskeyRepository(deps.DB)
+	service := services.NewService(repo, deps.Config, deps.Logger)
 	handler := handlers.NewHandler(service)
 	passkeyHandler := handlers.NewPasskeyHandler(passkeyRepo)
 
 	return &Module{
+		Base:           module.NewBase(ModuleName, b),
 		handler:        handler,
 		passkeyHandler: passkeyHandler,
 		service:        service,
 		repository:     repo,
 		passkeyRepo:    passkeyRepo,
-		config:         cfg,
-		logger:         logger,
 	}
-}
-
-// NewModuleFromContext creates a new auth module from app context
-func NewModuleFromContext(ctx *app.Context) *Module {
-	return NewModule(ctx.DB, ctx.Config, ctx.Logger)
-}
-
-// Name returns the module name (implements app.Module)
-func (m *Module) Name() string {
-	return "auth"
 }
 
 // RegisterRoutes registers all auth-related routes (legacy method)
@@ -70,7 +58,8 @@ func (m *Module) RegisterRoutes(router fiber.Router) {
 // Auth module is special because it handles its own auth middleware internally.
 func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 	auth := router.Group("/auth")
-	authMiddleware := middleware.Auth(m.config.JWT.Secret)
+	deps := m.Deps()
+	authMiddleware := middleware.Auth(deps.Config.JWT.Secret)
 	adapter := NewMiddlewareAdapter(m.service)
 
 	// Public routes (no authentication required)
@@ -183,28 +172,4 @@ func (m *Module) Repository() *repositories.Repository {
 // Handler returns the auth handler
 func (m *Module) Handler() *handlers.Handler {
 	return m.handler
-}
-
-// AutoMigrate runs database migrations for auth models
-func (m *Module) AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(
-		&models.User{},
-		&models.Team{},
-		&models.TeamMember{},
-		&models.TeamInvitation{},
-		&models.PersonalAccessToken{},
-		&models.PasswordResetToken{},
-	)
-}
-
-// GetModels returns all models for the auth module
-func (m *Module) GetModels() []interface{} {
-	return []interface{}{
-		&models.User{},
-		&models.Team{},
-		&models.TeamMember{},
-		&models.TeamInvitation{},
-		&models.PersonalAccessToken{},
-		&models.PasswordResetToken{},
-	}
 }

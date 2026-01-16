@@ -2,16 +2,25 @@ package websocket
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/websocket/handlers"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/module"
 	ws "github.com/kkz6/launch-go/internal/websocket"
+)
+
+const ModuleName = "websocket"
+
+// Ensure Module implements required interfaces
+var (
+	_ app.Module            = (*Module)(nil)
+	_ app.WebSocketRegistrar = (*Module)(nil)
+	_ app.Shutdownable      = (*Module)(nil)
 )
 
 // Module is the WebSocket module that manages all WebSocket routes
 type Module struct {
+	module.Base
 	hub                  *ws.Hub
 	terminalHandler      *handlers.TerminalHandler
 	logsHandler          *handlers.LogsHandler
@@ -19,30 +28,19 @@ type Module struct {
 	jwtSecret            string
 }
 
-// Ensure Module implements required interfaces
-var _ app.Module = (*Module)(nil)
-var _ app.WebSocketRegistrar = (*Module)(nil)
-var _ app.Shutdownable = (*Module)(nil)
-
 // NewModule creates a new WebSocket module
-func NewModule(hub *ws.Hub, db *gorm.DB, jwtSecret string, logger *zerolog.Logger) *Module {
+func NewModule(b *module.Builder) *Module {
+	deps := b.Deps()
+	jwtSecret := deps.Config.JWT.Secret
+
 	return &Module{
-		hub:                  hub,
-		terminalHandler:      handlers.NewTerminalHandler(db, jwtSecret, *logger),
-		logsHandler:          handlers.NewLogsHandler(db, jwtSecret, *logger),
-		serviceStatusHandler: handlers.NewServiceStatusHandler(db, jwtSecret, *logger),
+		Base:                 module.NewBase(ModuleName, b),
+		hub:                  deps.WebSocket,
+		terminalHandler:      handlers.NewTerminalHandler(deps.DB, jwtSecret, *deps.Logger),
+		logsHandler:          handlers.NewLogsHandler(deps.DB, jwtSecret, *deps.Logger),
+		serviceStatusHandler: handlers.NewServiceStatusHandler(deps.DB, jwtSecret, *deps.Logger),
 		jwtSecret:            jwtSecret,
 	}
-}
-
-// NewModuleFromContext creates a WebSocket module from app context
-func NewModuleFromContext(ctx *app.Context) *Module {
-	return NewModule(ctx.WebSocket, ctx.DB, ctx.Config.JWT.Secret, ctx.Logger)
-}
-
-// Name returns the module name
-func (m *Module) Name() string {
-	return "websocket"
 }
 
 // RegisterWebSocketRoutes registers all WebSocket routes

@@ -22,6 +22,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site"
 	wsmodule "github.com/kkz6/launch-go/internal/modules/websocket"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/module"
 )
 
 var (
@@ -105,16 +106,17 @@ func collectRoutes() []RouteInfo {
 
 	// Create kernel and register modules
 	kernel := app.NewKernel(&logger)
+	builder := module.NewBuilderFromContext(ctx)
 
 	// Register all modules that have routes
 	kernel.
-		Register(auth.NewModuleFromContext(ctx)).
-		Register(server.NewModuleFromContext(ctx)).
-		Register(databasemodule.NewModuleFromContext(ctx)).
-		Register(site.NewModuleFromContext(ctx)).
-		Register(dns.NewModuleFromContext(ctx)).
-		Register(backup.NewModuleFromContext(ctx)).
-		Register(wsmodule.NewModuleFromContext(ctx))
+		Register(auth.NewModule(builder)).
+		Register(server.NewModule(builder)).
+		Register(databasemodule.NewModule(builder)).
+		Register(site.NewModule(builder)).
+		Register(dns.NewModule(builder)).
+		Register(backup.NewModule(builder)).
+		Register(wsmodule.NewModule(builder))
 
 	// Setup routes
 	api := fiberApp.Group("/api")

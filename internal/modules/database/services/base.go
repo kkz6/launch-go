@@ -54,3 +54,8 @@ func NewService(repo *repositories.Repository, serverRepo ServerRepository, q *q
 func (s *Service) Repo() *repositories.Repository {
 	return s.repo
 }
+
+// SetServerRepository sets the server repository for cross-module queries
+func (s *Service) SetServerRepository(serverRepo ServerRepository) {
+	s.serverRepo = serverRepo
+}

@@ -2,62 +2,42 @@ package notification
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/handlers"
-	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	"github.com/kkz6/launch-go/internal/modules/notification/repositories"
 	"github.com/kkz6/launch-go/internal/modules/notification/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/module"
+)
+
+const ModuleName = "notification"
+
+// Ensure Module implements required interfaces
+var (
+	_ app.Module         = (*Module)(nil)
+	_ app.RouteRegistrar = (*Module)(nil)
 )
 
 // Module represents the notification module
 type Module struct {
+	module.Base
 	handler *handlers.NotificationChannelHandler
-	config  *config.Config
-}
-
-// Name returns the module name
-func (m *Module) Name() string {
-	return "notification"
 }
 
 // NewModule creates a new notification module
-func NewModule(db *gorm.DB, cfg *config.Config, logger *zerolog.Logger) *Module {
-	repo := repositories.NewNotificationChannelRepository(db)
+func NewModule(b *module.Builder) *Module {
+	deps := b.Deps()
+	repo := repositories.NewNotificationChannelRepository(deps.DB)
 	httpClient := channels.NewDefaultHTTPClient()
 	channelFactory := channels.NewFactory(httpClient)
-	service := services.NewNotificationChannelService(repo, channelFactory, logger)
+	service := services.NewNotificationChannelService(repo, channelFactory, deps.Logger)
 	handler := handlers.NewNotificationChannelHandler(service)
 
 	return &Module{
+		Base:    module.NewBase(ModuleName, b),
 		handler: handler,
-		config:  cfg,
-	}
-}
-
-// NewModuleFromContext creates a new notification module from application context
-func NewModuleFromContext(ctx *app.Context) *Module {
-	return NewModule(ctx.DB, ctx.Config, ctx.Logger)
-}
-
-// NewModuleWithDependencies creates a new notification module with custom dependencies (for testing)
-func NewModuleWithDependencies(
-	repo *repositories.NotificationChannelRepository,
-	channelFactory *channels.Factory,
-	cfg *config.Config,
-	logger *zerolog.Logger,
-) *Module {
-	service := services.NewNotificationChannelService(repo, channelFactory, logger)
-	handler := handlers.NewNotificationChannelHandler(service)
-
-	return &Module{
-		handler: handler,
-		config:  cfg,
 	}
 }
 
@@ -87,9 +67,4 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 // GetService returns the notification service (for use by other modules)
 func (m *Module) GetService() *services.NotificationChannelService {
 	return m.handler.GetService()
-}
-
-// AutoMigrate runs the database migrations for the notification module
-func AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(&models.NotificationChannel{})
 }

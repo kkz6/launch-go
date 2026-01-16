@@ -2,18 +2,16 @@ package backup
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/backup/handlers"
-	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/module"
 )
+
+const ModuleName = "backup"
 
 // Ensure Module implements required interfaces
 var (
@@ -23,6 +21,8 @@ var (
 
 // Module represents the backup module
 type Module struct {
+	module.Base
+
 	// Handlers
 	backupHandler          *handlers.BackupHandler
 	backupJobHandler       *handlers.BackupJobHandler
@@ -40,28 +40,20 @@ type Module struct {
 	storageProviderRepo *repositories.StorageProviderRepository
 }
 
-// NewModuleFromContext creates a new backup module from app context
-func NewModuleFromContext(ctx *app.Context) *Module {
-	return NewModule(ctx.DB, ctx.Queue, ctx.WebSocket, ctx.Logger)
-}
-
-// Name returns the module name (implements app.Module)
-func (m *Module) Name() string {
-	return "backup"
-}
-
 // NewModule creates a new backup module
-func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger *zerolog.Logger) *Module {
+func NewModule(b *module.Builder) *Module {
+	deps := b.Deps()
+
 	// Initialize repositories
-	backupRepo := repositories.NewBackupRepository(db)
-	backupJobRepo := repositories.NewBackupJobRepository(db)
-	storageProviderRepo := repositories.NewStorageProviderRepository(db)
+	backupRepo := repositories.NewBackupRepository(deps.DB)
+	backupJobRepo := repositories.NewBackupJobRepository(deps.DB)
+	storageProviderRepo := repositories.NewStorageProviderRepository(deps.DB)
 
 	// Initialize services
-	backupService := services.NewBackupService(backupRepo, queueClient, ws, logger)
-	backupJobService := services.NewBackupJobService(backupJobRepo, backupRepo, ws, logger)
-	storageProviderService := services.NewStorageProviderService(storageProviderRepo, queueClient, logger)
-	agentConfigService := services.NewAgentConfigService(backupRepo, storageProviderService, logger)
+	backupService := services.NewBackupService(backupRepo, deps.Queue, deps.WebSocket, deps.Logger)
+	backupJobService := services.NewBackupJobService(backupJobRepo, backupRepo, deps.WebSocket, deps.Logger)
+	storageProviderService := services.NewStorageProviderService(storageProviderRepo, deps.Queue, deps.Logger)
+	agentConfigService := services.NewAgentConfigService(backupRepo, storageProviderService, deps.Logger)
 
 	// Initialize handlers
 	backupHandler := handlers.NewBackupHandler(backupService)
@@ -69,6 +61,8 @@ func NewModule(db *gorm.DB, queueClient *queue.Client, ws *websocket.Hub, logger
 	storageProviderHandler := handlers.NewStorageProviderHandler(storageProviderService)
 
 	return &Module{
+		Base: module.NewBase(ModuleName, b),
+
 		// Handlers
 		backupHandler:          backupHandler,
 		backupJobHandler:       backupJobHandler,
@@ -151,14 +145,4 @@ func (m *Module) GetBackupJobRepository() *repositories.BackupJobRepository {
 // GetStorageProviderRepository returns the storage provider repository
 func (m *Module) GetStorageProviderRepository() *repositories.StorageProviderRepository {
 	return m.storageProviderRepo
-}
-
-// AutoMigrate runs database migrations for the backup module
-func (m *Module) AutoMigrate(db *gorm.DB) error {
-	return db.AutoMigrate(
-		&models.Backup{},
-		&models.BackupJob{},
-		&models.StorageProvider{},
-		&models.BackupDatabase{},
-	)
 }

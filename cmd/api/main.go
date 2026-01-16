@@ -29,6 +29,7 @@ import (
 	wsmodule "github.com/kkz6/launch-go/internal/modules/websocket"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
+	"github.com/kkz6/launch-go/internal/pkg/module"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
@@ -128,27 +129,37 @@ func (a *Application) registerModules() {
 	// Create application kernel
 	a.kernel = app.NewKernel(a.logger)
 
-	// Create modules
-	serverModule := server.NewModuleFromContext(ctx)
-	siteModule := site.NewModuleFromContext(ctx)
-	dnsModule := dns.NewModuleFromContext(ctx)
+	// Create module builder
+	builder := module.NewBuilderFromContext(ctx)
 
-	// Register all modules with the kernel
-	a.kernel.
-		Register(auth.NewModuleFromContext(ctx)).
-		Register(serverModule).
-		Register(databasemodule.NewModuleFromContext(ctx)).
-		Register(siteModule).
-		Register(dnsModule).
-		Register(backup.NewModuleFromContext(ctx)).
-		Register(billing.NewModuleFromContext(ctx)).
-		Register(git.NewModuleFromContext(ctx)).
-		Register(notification.NewModuleFromContext(ctx)).
-		Register(wsmodule.NewModuleFromContext(ctx))
+	// Create modules using builder pattern
+	authModule := auth.NewModule(builder)
+	serverModule := server.NewModule(builder)
+	databaseModule := databasemodule.NewModule(builder)
+	siteModule := site.NewModule(builder)
+	dnsModule := dns.NewModule(builder)
+	backupModule := backup.NewModule(builder)
+	billingModule := billing.NewModule(builder)
+	gitModule := git.NewModule(builder)
+	notificationModule := notification.NewModule(builder)
+	wsModule := wsmodule.NewModule(builder)
 
 	// Wire cross-module dependencies
 	siteModule.SetDomainRepository(dnsModule.GetDomainRepository())
-	serverModule.SetSiteCounter(siteModule.SiteRepository())
+	siteModule.SetProviderFactory(gitModule.ProviderFactory())
+
+	// Register all modules with the kernel
+	a.kernel.
+		Register(authModule).
+		Register(serverModule).
+		Register(databaseModule).
+		Register(siteModule).
+		Register(dnsModule).
+		Register(backupModule).
+		Register(billingModule).
+		Register(gitModule).
+		Register(notificationModule).
+		Register(wsModule)
 
 	api := a.fiber.Group("/api")
 	api.Get("/health", a.healthCheck)
@@ -157,6 +168,9 @@ func (a *Application) registerModules() {
 
 	// Boot all HTTP routes through the kernel
 	a.kernel.BootHTTP(api, authMiddleware)
+
+	// Register server routes with cross-module dependencies
+	serverModule.RegisterRoutes(api, authMiddleware, siteModule.SiteRepository())
 
 	// Boot webhook routes (at root level, no /api prefix)
 	a.kernel.BootWebhooks(a.fiber)

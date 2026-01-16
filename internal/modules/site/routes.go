@@ -2,106 +2,143 @@ package site
 
 import (
 	"github.com/gofiber/fiber/v2"
+
+	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/site/handlers"
+	"github.com/kkz6/launch-go/internal/modules/site/services"
 )
 
 // RegisterRoutes registers all site module routes
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
+	deps := m.Deps()
+
+	// Create task runner deps for file service
+	taskRunnerDeps := &servertasks.TaskRunnerDeps{
+		DB:         deps.DB,
+		Queue:      deps.Queue,
+		Dispatcher: deps.Dispatcher,
+		Logger:     deps.Logger,
+	}
+
+	// Update file service with task runner deps
+	m.fileService = services.NewFileService(deps.DB, m.siteRepo, deps.Logger, taskRunnerDeps)
+
+	// Create handlers
+	siteHandler := handlers.NewSiteHandler(m.siteService)
+	siteHandler.SetDomainRepository(m.domainRepo)
+	deploymentHandler := handlers.NewDeploymentHandler(m.deploymentService)
+	sslHandler := handlers.NewSSLHandler(m.sslService)
+	queueHandler := handlers.NewQueueHandler(m.queueService)
+	commandHandler := handlers.NewCommandHandler(m.commandService)
+	redirectHandler := handlers.NewRedirectHandler(m.redirectService)
+	fileHandler := handlers.NewFileHandler(m.fileService)
+
 	// Top-level site routes (not nested under servers)
 	sitesGlobal := router.Group("/sites", authMiddleware)
-	m.registerGlobalSiteRoutes(sitesGlobal)
+	m.registerGlobalSiteRoutes(sitesGlobal, siteHandler)
 
 	// Sites are nested under servers
 	servers := router.Group("/servers/:serverId", authMiddleware)
 	sites := servers.Group("/sites")
 
-	m.registerSiteRoutes(sites)
-	m.registerDeploymentRoutes(sites)
-	m.registerSSLRoutes(sites)
-	m.registerQueueRoutes(sites)
-	m.registerCommandRoutes(sites)
-	m.registerRedirectRoutes(sites)
-	m.registerFileRoutes(sites)
+	m.registerSiteRoutes(sites, siteHandler)
+	m.registerDeploymentRoutes(sites, deploymentHandler)
+	m.registerSSLRoutes(sites, sslHandler)
+	m.registerQueueRoutes(sites, queueHandler)
+	m.registerCommandRoutes(sites, commandHandler)
+	m.registerRedirectRoutes(sites, redirectHandler)
+	m.registerFileRoutes(sites, fileHandler)
 }
 
 // registerGlobalSiteRoutes registers site routes not nested under servers
-func (m *Module) registerGlobalSiteRoutes(router fiber.Router) {
+func (m *Module) registerGlobalSiteRoutes(router fiber.Router, handler *handlers.SiteHandler) {
 	// Domain verification
-	router.Get("/verify-domain", m.siteHandler.VerifyDomain)
+	router.Get("/verify-domain", handler.VerifyDomain)
 }
 
 // registerSiteRoutes registers site CRUD and settings routes
-func (m *Module) registerSiteRoutes(router fiber.Router) {
+func (m *Module) registerSiteRoutes(router fiber.Router, handler *handlers.SiteHandler) {
 	// CRUD
-	router.Get("/", m.siteHandler.List)
-	router.Post("/", m.siteHandler.Create)
-	router.Get("/:id", m.siteHandler.Show)
-	router.Put("/:id", m.siteHandler.Update)
-	router.Delete("/:id", m.siteHandler.Delete)
+	router.Get("/", handler.List)
+	router.Post("/", handler.Create)
+	router.Get("/:id", handler.Show)
+	router.Put("/:id", handler.Update)
+	router.Delete("/:id", handler.Delete)
 
 	// Site deletion summary
-	router.Get("/:id/deletion-summary", m.siteHandler.GetDeletionSummary)
+	router.Get("/:id/deletion-summary", handler.GetDeletionSummary)
 
 	// Deploy token
-	router.Post("/:id/deploy-token/regenerate", m.siteHandler.RegenerateDeployToken)
+	router.Post("/:id/deploy-token/regenerate", handler.RegenerateDeployToken)
 
 	// Deployment settings
-	router.Put("/:id/deployment-settings", m.siteHandler.UpdateDeploymentSettings)
+	router.Put("/:id/deployment-settings", handler.UpdateDeploymentSettings)
 
 	// Site settings page
-	router.Get("/:id/settings", m.siteHandler.GetSettings)
+	router.Get("/:id/settings", handler.GetSettings)
 }
 
 // registerDeploymentRoutes registers deployment-related routes
-func (m *Module) registerDeploymentRoutes(router fiber.Router) {
+func (m *Module) registerDeploymentRoutes(router fiber.Router, handler *handlers.DeploymentHandler) {
 	// Deployments
-	router.Post("/:id/deploy", m.deploymentHandler.Deploy)
-	router.Get("/:id/deployments", m.deploymentHandler.ListDeployments)
-	router.Get("/:id/deployments/:deploymentId", m.deploymentHandler.ShowDeployment)
-	router.Post("/:id/rollback/:deploymentId", m.deploymentHandler.Rollback)
-	router.Delete("/:id/deployments/queued", m.deploymentHandler.CancelQueuedDeployments)
+	router.Post("/:id/deploy", handler.Deploy)
+	router.Get("/:id/deployments", handler.ListDeployments)
+	router.Get("/:id/deployments/:deploymentId", handler.ShowDeployment)
+	router.Post("/:id/rollback/:deploymentId", handler.Rollback)
+	router.Delete("/:id/deployments/queued", handler.CancelQueuedDeployments)
 
 	// Auto-deployment
-	router.Post("/:id/auto-deployment/enable", m.deploymentHandler.EnableAutoDeployment)
-	router.Post("/:id/auto-deployment/disable", m.deploymentHandler.DisableAutoDeployment)
+	router.Post("/:id/auto-deployment/enable", handler.EnableAutoDeployment)
+	router.Post("/:id/auto-deployment/disable", handler.DisableAutoDeployment)
 }
 
 // registerSSLRoutes registers SSL/TLS routes
-func (m *Module) registerSSLRoutes(router fiber.Router) {
-	router.Put("/:id/ssl", m.sslHandler.UpdateSSL)
-	router.Get("/:id/certificates", m.sslHandler.ListCertificates)
+func (m *Module) registerSSLRoutes(router fiber.Router, handler *handlers.SSLHandler) {
+	router.Put("/:id/ssl", handler.UpdateSSL)
+	router.Get("/:id/certificates", handler.ListCertificates)
 }
 
 // registerQueueRoutes registers queue routes
-func (m *Module) registerQueueRoutes(router fiber.Router) {
-	router.Get("/:id/queues", m.queueHandler.ListQueues)
-	router.Post("/:id/queues", m.queueHandler.CreateQueue)
-	router.Post("/:id/queues/sync", m.queueHandler.SyncQueues)
-	router.Delete("/:id/queues/:queueId", m.queueHandler.DeleteQueue)
+func (m *Module) registerQueueRoutes(router fiber.Router, handler *handlers.QueueHandler) {
+	router.Get("/:id/queues", handler.ListQueues)
+	router.Post("/:id/queues", handler.CreateQueue)
+	router.Post("/:id/queues/sync", handler.SyncQueues)
+	router.Delete("/:id/queues/:queueId", handler.DeleteQueue)
 
 	// Auto-restart queue
-	router.Post("/:id/auto-restart-queue/enable", m.queueHandler.EnableAutoRestartQueue)
-	router.Post("/:id/auto-restart-queue/disable", m.queueHandler.DisableAutoRestartQueue)
+	router.Post("/:id/auto-restart-queue/enable", handler.EnableAutoRestartQueue)
+	router.Post("/:id/auto-restart-queue/disable", handler.DisableAutoRestartQueue)
 }
 
 // registerCommandRoutes registers command routes
-func (m *Module) registerCommandRoutes(router fiber.Router) {
-	router.Get("/:id/commands", m.commandHandler.ListCommands)
-	router.Post("/:id/commands", m.commandHandler.CreateCommand)
-	router.Delete("/:id/commands/:commandId", m.commandHandler.DeleteCommand)
+func (m *Module) registerCommandRoutes(router fiber.Router, handler *handlers.CommandHandler) {
+	router.Get("/:id/commands", handler.ListCommands)
+	router.Post("/:id/commands", handler.CreateCommand)
+	router.Delete("/:id/commands/:commandId", handler.DeleteCommand)
 }
 
 // registerRedirectRoutes registers redirect routes
-func (m *Module) registerRedirectRoutes(router fiber.Router) {
-	router.Get("/:id/redirects", m.redirectHandler.ListRedirects)
-	router.Post("/:id/redirects", m.redirectHandler.CreateRedirect)
-	router.Delete("/:id/redirects/:redirectId", m.redirectHandler.DeleteRedirect)
+func (m *Module) registerRedirectRoutes(router fiber.Router, handler *handlers.RedirectHandler) {
+	router.Get("/:id/redirects", handler.ListRedirects)
+	router.Post("/:id/redirects", handler.CreateRedirect)
+	router.Delete("/:id/redirects/:redirectId", handler.DeleteRedirect)
 }
 
 // registerFileRoutes registers file management routes
-func (m *Module) registerFileRoutes(router fiber.Router) {
-	router.Get("/:id/files", m.fileHandler.ListFiles)
-	router.Get("/:id/files/:file", m.fileHandler.ShowFile)        // Get file content by encoded param
-	router.Put("/:id/files/:file", m.fileHandler.UpdateFile)      // Update file content by encoded param
-	router.Patch("/:id/files/:file", m.fileHandler.UpdateFile)    // Update file content by encoded param (PATCH)
-	router.Get("/:id/logs", m.fileHandler.ListLogs)
+func (m *Module) registerFileRoutes(router fiber.Router, handler *handlers.FileHandler) {
+	router.Get("/:id/files", handler.ListFiles)
+	router.Get("/:id/files/:file", handler.ShowFile)     // Get file content by encoded param
+	router.Put("/:id/files/:file", handler.UpdateFile)   // Update file content by encoded param
+	router.Patch("/:id/files/:file", handler.UpdateFile) // Update file content by encoded param (PATCH)
+	router.Get("/:id/logs", handler.ListLogs)
+}
+
+// RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
+// These routes don't require authentication - they use deploy tokens for auth
+func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
+	webhookHandler := handlers.NewWebhookHandler(m.deploymentService)
+	// Deployment webhook - triggered by git providers (GitHub, GitLab, Bitbucket)
+	// URL: /deploy/:siteId/:token
+	router.Post("/deploy/:siteId/:token", webhookHandler.DeployWebhook)
+	router.Get("/deploy/:siteId/:token", webhookHandler.DeployWebhook) // Some providers use GET
 }
