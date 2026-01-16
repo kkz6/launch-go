@@ -7,12 +7,12 @@ This document provides a comprehensive comparison of jobs between the Laravel an
 | Module | Laravel Jobs | Go Jobs | Triggers Working | Coverage |
 |--------|-------------|---------|------------------|----------|
 | Server | 37 | 29 | 23/30 | 77% |
-| Site | 26 | 19 | 14/25 | 56% |
+| Site | 26 | 24 | 19/25 | 76% |
 | Database | 6 | 6 | 7/7 | **100%** ✅ |
 | Git | 2 | 2 | 2/2 | **100%** ✅ |
 | Backup | 4 | 3 | 3/4 | **75%** ✅ |
 | DNS | 2 | 0 | 2/2 | **Sync** ✅ |
-| **Total** | **77** | **59** | **51/70** | **73%** |
+| **Total** | **77** | **64** | **56/70** | **80%** |
 
 ---
 
@@ -137,19 +137,24 @@ Note: PHP version installation/removal is handled through the generic AddService
 | DisableLaravelQueue | Disable queue workers | SiteService / API endpoint |
 | EnableLaravelHorizon | Enable Horizon | SiteService / API endpoint |
 | DisableLaravelHorizon | Disable Horizon | SiteService / API endpoint |
+| EnableLaravelInertia | Enable Inertia SSR | SiteService / API endpoint |
+| DisableLaravelInertia | Disable Inertia SSR | SiteService / API endpoint |
+| AnalyzeLaravelFeatures | Detect Laravel features | DeploySite job / API endpoint |
+| RestartAllSiteQueues | Restart all site queues | DeploySite (autoRestart) / API endpoint |
+
+### Implemented & Triggered ✅ (WordPress Jobs)
+
+| Go Job | Description | Go Trigger |
+|--------|-------------|------------|
+| InstallWordpressCron | Setup WordPress cron | DeploySite (WordPress sites) / API endpoint |
 
 ### NOT Implemented ❌
 
 | Laravel Job | Description | Laravel Trigger | Priority |
 |-------------|-------------|-----------------|----------|
-| RestartAllSiteQueues | Restart all queues | AutoRestartQueues listener | MEDIUM |
-| AnalyzeLaravelFeatures | Detect Laravel features | DeploySite job / Command | MEDIUM |
 | CreateDeployment | Create deployment record | (may be in service) | MEDIUM |
-| InstallWordpressCron | Setup WordPress cron | DeploySite (WordPress sites) | LOW |
 | UpdateSiteTlsSetting | Update TLS settings | SiteService.updateTlsSetting() | LOW |
 | CleanupPendingSiteDeployment | Cleanup stuck deployments | DeploySite (delayed) | LOW |
-| EnableLaravelInertia | Enable Inertia SSR | LaravelFeature dispatch | LOW |
-| DisableLaravelInertia | Disable Inertia SSR | LaravelFeature dispatch | LOW |
 
 ---
 
@@ -279,12 +284,13 @@ The synchronous implementation is appropriate for DNS operations as they are qui
 1. ~~Implement DNS record management~~ ✅ (Synchronous implementation in DnsRecordService)
 2. ~~Implement domain syncing~~ ✅ (Synchronous implementation in DomainService)
 
-### Phase 7: Laravel Features & Cleanup
-1. Implement Laravel feature detection (AnalyzeLaravelFeatures)
+### Phase 7: Laravel Features & Cleanup ✅ COMPLETED
+1. ~~Implement Laravel feature detection (AnalyzeLaravelFeatures)~~ ✅ COMPLETED
 2. ~~Add Enable/Disable jobs for Queue, Scheduler, Horizon~~ ✅ COMPLETED
 3. Implement cleanup jobs for failed operations
-4. Add RestartAllSiteQueues listener
-5. Add Enable/Disable jobs for Inertia (LOW priority)
+4. ~~Add RestartAllSiteQueues job~~ ✅ COMPLETED
+5. ~~Add Enable/Disable jobs for Inertia~~ ✅ COMPLETED
+6. ~~Add InstallWordpressCron job~~ ✅ COMPLETED
 
 ---
 
@@ -302,7 +308,7 @@ modules/git/src/Jobs/        - 2 jobs
 ### Go Jobs
 ```
 internal/modules/server/jobs/    - 29 jobs
-internal/modules/site/jobs/      - 19 jobs
+internal/modules/site/jobs/      - 24 jobs
 internal/modules/database/jobs/  - 6 jobs
 internal/modules/git/jobs/       - 2 jobs
 internal/modules/backup/jobs/    - 3 jobs

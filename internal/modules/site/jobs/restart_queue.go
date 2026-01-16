@@ -11,6 +11,7 @@ import (
 )
 
 const TypeRestartQueue = "site:restart_queue"
+const TypeRestartAllSiteQueues = "site:restart_all_queues"
 
 // RestartQueuePayload holds data for queue worker restart
 type RestartQueuePayload struct {
@@ -182,5 +183,13 @@ func NewRestartQueueTask(siteID, queueID string, userID *string) (*asynq.Task, e
 		SiteID:  siteID,
 		QueueID: queueID,
 		UserID:  userID,
+	})
+}
+
+// NewRestartAllSiteQueuesTask creates a restart all site queues job
+func NewRestartAllSiteQueuesTask(siteID string, userID *string) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeRestartAllSiteQueues, RestartAllSiteQueuesPayload{
+		SiteID: siteID,
+		UserID: userID,
 	})
 }
