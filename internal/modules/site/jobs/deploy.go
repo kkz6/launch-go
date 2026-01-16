@@ -72,11 +72,19 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	// Create deploy task
 	task := tasks.DeploySite(config)
 
-	// Execute the deploy task on the server
-	result, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).Dispatch(ctx)
+	// Execute the deploy task on the server (with DB tracking)
+	result, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().Dispatch(ctx)
 	if err != nil {
 		j.handleDeploymentFailure(ctx, deployment, site, fmt.Sprintf("Deployment failed: %v", err))
 		return err
+	}
+
+	// Update deployment with task ID
+	if result.TaskModel != nil {
+		deployment.TaskID = &result.TaskModel.ID
+		if updateErr := j.ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
+			j.ctx.LogError(updateErr, "Failed to update deployment with task ID")
+		}
 	}
 
 	output := result.GetOutput()
@@ -572,11 +580,19 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 	// Create zero-downtime deploy task
 	task := tasks.DeploySiteWithoutDowntime(config)
 
-	// Execute the deploy task on the server
-	result, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).Dispatch(ctx)
+	// Execute the deploy task on the server (with DB tracking)
+	result, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().Dispatch(ctx)
 	if err != nil {
 		j.handleDeploymentFailure(ctx, deployment, site, fmt.Sprintf("Deployment failed: %v", err))
 		return err
+	}
+
+	// Update deployment with task ID
+	if result.TaskModel != nil {
+		deployment.TaskID = &result.TaskModel.ID
+		if updateErr := j.ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
+			j.ctx.LogError(updateErr, "Failed to update deployment with task ID")
+		}
 	}
 
 	output := result.GetOutput()

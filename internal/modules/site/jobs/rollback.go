@@ -93,11 +93,19 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 		"release_directory", releaseDirectory,
 	)
 
-	// Execute the task on the server as site user
-	result, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).Dispatch(ctx)
+	// Execute the task on the server as site user (with DB tracking)
+	result, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().Dispatch(ctx)
 	if err != nil {
 		j.handleRollbackFailure(ctx, currentDeployment, site.ID, targetDeployment.ID, err)
 		return err
+	}
+
+	// Update deployment with task ID
+	if result.TaskModel != nil {
+		currentDeployment.TaskID = &result.TaskModel.ID
+		if updateErr := j.ctx.DeploymentRepo.Update(ctx, currentDeployment); updateErr != nil {
+			j.ctx.LogError(updateErr, "Failed to update deployment with task ID")
+		}
 	}
 
 	exitCode := result.GetExitCode()
