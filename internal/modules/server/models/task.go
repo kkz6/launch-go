@@ -15,8 +15,8 @@ type Task struct {
 	Name     string                     `gorm:"type:varchar(255);not null" json:"name"`
 	User     string                     `gorm:"type:varchar(255);not null" json:"user"`
 	Type     string                     `gorm:"type:varchar(255);not null" json:"type"`
-	Instance *string                    `gorm:"type:longtext" json:"instance,omitempty"`
-	Script   string                     `gorm:"type:longtext;not null" json:"-"`
+	Instance basemodels.EncryptedString `gorm:"type:longtext" json:"instance,omitempty"`
+	Script   basemodels.EncryptedString `gorm:"type:longtext" json:"-"`
 	Timeout  int                        `gorm:"type:int;not null" json:"timeout"`
 	Status   string                     `gorm:"type:varchar(255);not null" json:"status"`
 	Output   basemodels.EncryptedString `gorm:"type:longtext" json:"-"`
