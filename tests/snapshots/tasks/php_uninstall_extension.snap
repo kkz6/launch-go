@@ -1,0 +1,2 @@
+sudo apt-get purge -y php8.2-imagick
+sudo service php8.2-fpm restart
