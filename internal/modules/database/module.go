@@ -22,19 +22,19 @@ var (
 // Module represents the database module
 type Module struct {
 	module.Base
-	repo    *repositories.Repository
+	repos   *repositories.Registry
 	service *services.Service
 }
 
 // NewModule creates a new database module
 func NewModule(b *module.Builder) *Module {
 	deps := b.Deps()
-	repo := repositories.NewRepository(deps.DB)
-	service := services.NewService(repo, nil, deps.Queue, deps.WebSocket, deps.Logger)
+	repos := repositories.NewRegistry(deps.DB)
+	service := services.NewService(repos, nil, deps.Queue, deps.WebSocket, deps.Logger)
 
 	return &Module{
 		Base:    module.NewBase(ModuleName, b),
-		repo:    repo,
+		repos:   repos,
 		service: service,
 	}
 }
@@ -47,14 +47,14 @@ func (m *Module) SetServerRepository(serverRepo services.ServerRepository) {
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 	deps := m.Deps()
-	jobContext := jobs.NewJobContext(deps.DB, m.repo, deps.Logger, deps.WebSocket, deps.Dispatcher, deps.Queue)
+	jobContext := jobs.NewJobContext(deps.DB, m.repos, deps.Logger, deps.WebSocket, deps.Dispatcher, deps.Queue)
 	jobs.SetJobContext(jobContext)
 	jobs.RegisterHandlers(mux)
 }
 
-// Repository returns the database repository
-func (m *Module) Repository() *repositories.Repository {
-	return m.repo
+// Repos returns the repository registry
+func (m *Module) Repos() *repositories.Registry {
+	return m.repos
 }
 
 // Service returns the database service

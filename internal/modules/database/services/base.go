@@ -37,22 +37,22 @@ type ServerRepository interface {
 // Service provides business logic for database operations
 type Service struct {
 	service.Base
-	repo       *repositories.Repository
+	repos      *repositories.Registry
 	serverRepo ServerRepository
 }
 
 // NewService creates a new Service instance
-func NewService(repo *repositories.Repository, serverRepo ServerRepository, q *queue.Client, ws *websocket.Hub, logger *zerolog.Logger) *Service {
+func NewService(repos *repositories.Registry, serverRepo ServerRepository, q *queue.Client, ws *websocket.Hub, logger *zerolog.Logger) *Service {
 	return &Service{
 		Base:       service.NewBase(q, ws, logger),
-		repo:       repo,
+		repos:      repos,
 		serverRepo: serverRepo,
 	}
 }
 
-// Repo returns the repository for direct access when needed
-func (s *Service) Repo() *repositories.Repository {
-	return s.repo
+// Repos returns the repository registry for direct access when needed
+func (s *Service) Repos() *repositories.Registry {
+	return s.repos
 }
 
 // SetServerRepository sets the server repository for cross-module queries

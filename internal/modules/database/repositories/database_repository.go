@@ -10,12 +10,12 @@ import (
 )
 
 // Create creates a new database
-func (r *Repository) Create(ctx context.Context, database *models.Database) error {
-	return r.database.Create(ctx, database)
+func (r *DatabaseRepository) Create(ctx context.Context, database *models.Database) error {
+	return r.installable.Create(ctx, database)
 }
 
 // FindByID finds a database by ID
-func (r *Repository) FindByID(ctx context.Context, id string) (*models.Database, error) {
+func (r *DatabaseRepository) FindByID(ctx context.Context, id string) (*models.Database, error) {
 	var database models.Database
 
 	err := r.db.WithContext(ctx).
@@ -33,7 +33,7 @@ func (r *Repository) FindByID(ctx context.Context, id string) (*models.Database,
 }
 
 // FindByIDAndServer finds a database by ID and server ID
-func (r *Repository) FindByIDAndServer(ctx context.Context, id, serverID string) (*models.Database, error) {
+func (r *DatabaseRepository) FindByIDAndServer(ctx context.Context, id, serverID string) (*models.Database, error) {
 	var database models.Database
 
 	err := r.db.WithContext(ctx).
@@ -51,7 +51,7 @@ func (r *Repository) FindByIDAndServer(ctx context.Context, id, serverID string)
 }
 
 // FindByServer finds all databases for a server
-func (r *Repository) FindByServer(ctx context.Context, serverID string) ([]models.Database, error) {
+func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) ([]models.Database, error) {
 	var databases []models.Database
 
 	err := r.db.WithContext(ctx).
@@ -64,7 +64,7 @@ func (r *Repository) FindByServer(ctx context.Context, serverID string) ([]model
 }
 
 // FindByNameAndServer finds a database by name and server ID
-func (r *Repository) FindByNameAndServer(ctx context.Context, name, serverID string) (*models.Database, error) {
+func (r *DatabaseRepository) FindByNameAndServer(ctx context.Context, name, serverID string) (*models.Database, error) {
 	var database models.Database
 
 	err := r.db.WithContext(ctx).
@@ -82,7 +82,7 @@ func (r *Repository) FindByNameAndServer(ctx context.Context, name, serverID str
 }
 
 // FindByUser finds all databases for a database user
-func (r *Repository) FindByUser(ctx context.Context, userID string) ([]models.Database, error) {
+func (r *DatabaseRepository) FindByUser(ctx context.Context, userID string) ([]models.Database, error) {
 	var databases []models.Database
 
 	err := r.db.WithContext(ctx).
@@ -94,42 +94,42 @@ func (r *Repository) FindByUser(ctx context.Context, userID string) ([]models.Da
 }
 
 // Update updates a database
-func (r *Repository) Update(ctx context.Context, database *models.Database) error {
-	return r.database.Update(ctx, database)
+func (r *DatabaseRepository) Update(ctx context.Context, database *models.Database) error {
+	return r.installable.Update(ctx, database)
 }
 
 // UpdateFields updates specific fields of a database
-func (r *Repository) UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error {
-	return r.database.UpdateFields(ctx, id, fields)
+func (r *DatabaseRepository) UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error {
+	return r.installable.UpdateFields(ctx, id, fields)
 }
 
 // Delete deletes a database
-func (r *Repository) Delete(ctx context.Context, id string) error {
-	return r.database.Delete(ctx, id)
+func (r *DatabaseRepository) Delete(ctx context.Context, id string) error {
+	return r.installable.Delete(ctx, id)
 }
 
 // ExistsByNameAndServer checks if a database exists with the given name on the server
-func (r *Repository) ExistsByNameAndServer(ctx context.Context, name, serverID string) (bool, error) {
-	return r.database.ExistsByNameAndServer(ctx, name, serverID)
+func (r *DatabaseRepository) ExistsByNameAndServer(ctx context.Context, name, serverID string) (bool, error) {
+	return r.installable.ExistsByNameAndServer(ctx, name, serverID)
 }
 
 // MarkAsInstalled marks a database as installed
-func (r *Repository) MarkAsInstalled(ctx context.Context, id string) error {
-	return r.database.MarkAsInstalled(ctx, id)
+func (r *DatabaseRepository) MarkAsInstalled(ctx context.Context, id string) error {
+	return r.installable.MarkAsInstalled(ctx, id)
 }
 
 // MarkAsFailed marks a database installation as failed
-func (r *Repository) MarkAsFailed(ctx context.Context, id string) error {
-	return r.database.MarkAsFailed(ctx, id)
+func (r *DatabaseRepository) MarkAsFailed(ctx context.Context, id string) error {
+	return r.installable.MarkAsFailed(ctx, id)
 }
 
 // MarkAsUninstalling marks a database as being uninstalled
-func (r *Repository) MarkAsUninstalling(ctx context.Context, id string) error {
-	return r.database.MarkAsUninstalling(ctx, id)
+func (r *DatabaseRepository) MarkAsUninstalling(ctx context.Context, id string) error {
+	return r.installable.MarkAsUninstalling(ctx, id)
 }
 
 // AttachUser attaches a database user to a database
-func (r *Repository) AttachUser(ctx context.Context, databaseID, userID string) error {
+func (r *DatabaseRepository) AttachUser(ctx context.Context, databaseID, userID string) error {
 	return r.db.WithContext(ctx).
 		Create(&models.DatabaseDatabaseUser{
 			DatabaseID:     databaseID,
@@ -138,14 +138,14 @@ func (r *Repository) AttachUser(ctx context.Context, databaseID, userID string) 
 }
 
 // DetachUser detaches a database user from a database
-func (r *Repository) DetachUser(ctx context.Context, databaseID, userID string) error {
+func (r *DatabaseRepository) DetachUser(ctx context.Context, databaseID, userID string) error {
 	return r.db.WithContext(ctx).
 		Where("database_id = ? AND database_user_id = ?", databaseID, userID).
 		Delete(&models.DatabaseDatabaseUser{}).Error
 }
 
 // DetachAllUsers detaches all users from a database
-func (r *Repository) DetachAllUsers(ctx context.Context, databaseID string) error {
+func (r *DatabaseRepository) DetachAllUsers(ctx context.Context, databaseID string) error {
 	return r.db.WithContext(ctx).
 		Where("database_id = ?", databaseID).
 		Delete(&models.DatabaseDatabaseUser{}).Error

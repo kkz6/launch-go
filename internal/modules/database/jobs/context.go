@@ -23,7 +23,7 @@ var jobContext *JobContext
 // JobContext holds dependencies for database job execution.
 type JobContext struct {
 	DB             *gorm.DB
-	Repo           *repositories.Repository
+	Repos          *repositories.Registry
 	Logger         *zerolog.Logger
 	WS             broadcast.TeamBroadcaster
 	Dispatcher     taskrunner.TaskDispatcher
@@ -34,7 +34,7 @@ type JobContext struct {
 // NewJobContext creates a new database job context.
 func NewJobContext(
 	db *gorm.DB,
-	repo *repositories.Repository,
+	repos *repositories.Registry,
 	logger *zerolog.Logger,
 	ws broadcast.TeamBroadcaster,
 	dispatcher taskrunner.TaskDispatcher,
@@ -42,7 +42,7 @@ func NewJobContext(
 ) *JobContext {
 	return &JobContext{
 		DB:         db,
-		Repo:       repo,
+		Repos:      repos,
 		Logger:     logger,
 		WS:         ws,
 		Dispatcher: dispatcher,

@@ -13,7 +13,7 @@ import (
 // CreateDatabase creates a new database on a server
 func (s *Service) CreateDatabase(ctx context.Context, serverID string, req *dto.CreateDatabaseRequest, userID *string) (*models.Database, error) {
 	// Check if database name already exists
-	exists, err := s.repo.ExistsByNameAndServer(ctx, req.Name, serverID)
+	exists, err := s.repos.Database().ExistsByNameAndServer(ctx, req.Name, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing database: %w", err)
 	}
@@ -28,11 +28,11 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID string, req *dto.
 		Name:     req.Name,
 	}
 
-	if err := s.repo.Create(ctx, database); err != nil {
+	if err := s.repos.Database().Create(ctx, database); err != nil {
 		return nil, fmt.Errorf("failed to create database: %w", err)
 	}
 
-	logger := activity.New(s.repo.DB()).
+	logger := activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("database").
 		On(database).
@@ -47,11 +47,11 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID string, req *dto.
 
 	// Handle existing user attachment
 	if !req.CreateUser && req.ExistingUserID != nil && *req.ExistingUserID != "" {
-		existingUser, err := s.repo.FindUserByIDAndServer(ctx, *req.ExistingUserID, serverID)
+		existingUser, err := s.repos.User().FindByIDAndServer(ctx, *req.ExistingUserID, serverID)
 		if err != nil {
 			s.LogWarn("Failed to find existing user", "user_id", *req.ExistingUserID, "error", err)
 		} else {
-			if err := s.repo.AttachUser(ctx, database.ID, existingUser.ID); err != nil {
+			if err := s.repos.Database().AttachUser(ctx, database.ID, existingUser.ID); err != nil {
 				s.LogError(err, "Failed to attach existing user to database")
 			}
 
@@ -70,7 +70,7 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID string, req *dto.
 	}
 
 	// Check if user name already exists
-	userExists, err := s.repo.UserExistsByNameAndServer(ctx, req.UserName, serverID)
+	userExists, err := s.repos.User().ExistsByNameAndServer(ctx, req.UserName, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to check existing user: %w", err)
 	}
@@ -86,12 +86,12 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID string, req *dto.
 		Password: &req.UserPassword,
 	}
 
-	if err := s.repo.CreateUser(ctx, dbUser); err != nil {
+	if err := s.repos.User().Create(ctx, dbUser); err != nil {
 		return nil, fmt.Errorf("failed to create database user: %w", err)
 	}
 
 	// Attach user to database
-	if err := s.repo.AttachUser(ctx, database.ID, dbUser.ID); err != nil {
+	if err := s.repos.Database().AttachUser(ctx, database.ID, dbUser.ID); err != nil {
 		return nil, fmt.Errorf("failed to attach user to database: %w", err)
 	}
 
@@ -103,17 +103,17 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID string, req *dto.
 
 // GetDatabase retrieves a database by ID
 func (s *Service) GetDatabase(ctx context.Context, id, serverID string) (*models.Database, error) {
-	return s.repo.FindByIDAndServer(ctx, id, serverID)
+	return s.repos.Database().FindByIDAndServer(ctx, id, serverID)
 }
 
 // ListDatabases lists all databases for a server
 func (s *Service) ListDatabases(ctx context.Context, serverID string) ([]models.Database, error) {
-	return s.repo.FindByServer(ctx, serverID)
+	return s.repos.Database().FindByServer(ctx, serverID)
 }
 
 // DeleteDatabase deletes a database from a server
 func (s *Service) DeleteDatabase(ctx context.Context, id, serverID string, userID *string) error {
-	database, err := s.repo.FindByIDAndServer(ctx, id, serverID)
+	database, err := s.repos.Database().FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func (s *Service) DeleteDatabase(ctx context.Context, id, serverID string, userI
 		return ErrDatabaseBeingUninstalled
 	}
 
-	logger := activity.New(s.repo.DB()).
+	logger := activity.New(s.repos.DB()).
 		WithContext(ctx).
 		UseLog("database").
 		On(database).
@@ -134,7 +134,7 @@ func (s *Service) DeleteDatabase(ctx context.Context, id, serverID string, userI
 
 	// Mark as uninstalling
 	database.MarkAsUninstalling()
-	if err := s.repo.Update(ctx, database); err != nil {
+	if err := s.repos.Database().Update(ctx, database); err != nil {
 		return fmt.Errorf("failed to update database status: %w", err)
 	}
 
@@ -177,12 +177,12 @@ func (s *Service) BroadcastDatabaseStatus(serverID, databaseID, status, message 
 // Helper methods
 
 func (s *Service) attachRootUser(ctx context.Context, serverID, databaseID string) {
-	rootUser, err := s.repo.FindRootUser(ctx, serverID)
+	rootUser, err := s.repos.User().FindRootUser(ctx, serverID)
 	if err != nil {
 		return
 	}
 
-	if err := s.repo.AttachUser(ctx, databaseID, rootUser.ID); err != nil {
+	if err := s.repos.Database().AttachUser(ctx, databaseID, rootUser.ID); err != nil {
 		s.LogError(err, "Failed to attach root user to database", "database_id", databaseID)
 	}
 }
