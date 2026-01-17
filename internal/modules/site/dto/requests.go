@@ -102,3 +102,8 @@ type CreateRedirectRequest struct {
 type RollbackRequest struct {
 	DeploymentID string `json:"deployment_id" validate:"required,ulid"`
 }
+
+// UpdateAutoRestartQueueRequest represents the request to update auto-restart queue setting
+type UpdateAutoRestartQueueRequest struct {
+	Enabled bool `json:"enabled"`
+}

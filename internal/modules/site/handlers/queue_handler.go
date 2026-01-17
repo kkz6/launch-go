@@ -92,12 +92,17 @@ func (h *QueueHandler) DeleteQueue(c *fiber.Ctx) error {
 	return response.OK(c, "Queue deletion initiated", nil)
 }
 
-// EnableAutoRestartQueue enables auto-restart for queue workers
-func (h *QueueHandler) EnableAutoRestartQueue(c *fiber.Ctx) error {
+// UpdateAutoRestartQueue updates the auto-restart queue setting
+func (h *QueueHandler) UpdateAutoRestartQueue(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
 
-	if err := h.queueService.EnableAutoRestart(c.Context(), siteID, serverID); err != nil {
+	var req dto.UpdateAutoRestartQueueRequest
+	if err := c.BodyParser(&req); err != nil {
+		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	}
+
+	if err := h.queueService.UpdateAutoRestart(c.Context(), siteID, serverID, req.Enabled); err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
 			return response.NotFound(c, "Site not found")
 		}
@@ -105,23 +110,12 @@ func (h *QueueHandler) EnableAutoRestartQueue(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	return response.OK(c, "Auto-restart queue enabled", nil)
-}
-
-// DisableAutoRestartQueue disables auto-restart for queue workers
-func (h *QueueHandler) DisableAutoRestartQueue(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
-
-	if err := h.queueService.DisableAutoRestart(c.Context(), siteID, serverID); err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
-		}
-
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+	message := "Auto-restart queue disabled"
+	if req.Enabled {
+		message = "Auto-restart queue enabled"
 	}
 
-	return response.OK(c, "Auto-restart queue disabled", nil)
+	return response.OK(c, message, nil)
 }
 
 // SyncQueues triggers a status synchronization for all queue workers

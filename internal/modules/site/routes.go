@@ -133,8 +133,7 @@ func (m *Module) registerQueueRoutes(router fiber.Router, handler *handlers.Queu
 	router.Delete("/:id/queues/:queueId", handler.DeleteQueue)
 
 	// Auto-restart queue
-	router.Post("/:id/auto-restart-queue/enable", handler.EnableAutoRestartQueue)
-	router.Post("/:id/auto-restart-queue/disable", handler.DisableAutoRestartQueue)
+	router.Put("/:id/auto-restart-queue", handler.UpdateAutoRestartQueue)
 }
 
 // registerCommandRoutes registers command routes
