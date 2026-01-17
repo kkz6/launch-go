@@ -7,8 +7,10 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// DatabaseTaskType represents the type of database task operation
 type DatabaseTaskType string
 
+// Task operation constants (database-agnostic)
 const (
 	TaskCreateDatabase   DatabaseTaskType = "create_database"
 	TaskDropDatabase     DatabaseTaskType = "drop_database"
@@ -20,6 +22,33 @@ const (
 	TaskGetDatabases     DatabaseTaskType = "get_databases"
 	TaskGetUsers         DatabaseTaskType = "get_users"
 	TaskGetTables        DatabaseTaskType = "get_tables"
+)
+
+// Task type string constants for task identification (format: "database:{db_type}_{operation}")
+const (
+	// MySQL task types
+	MySQLCreateDatabaseTaskType   = "database:mysql_create_database"
+	MySQLDropDatabaseTaskType     = "database:mysql_drop_database"
+	MySQLCreateUserTaskType       = "database:mysql_create_user"
+	MySQLDropUserTaskType         = "database:mysql_drop_user"
+	MySQLGrantPrivilegesTaskType  = "database:mysql_grant_privileges"
+	MySQLRevokePrivilegesTaskType = "database:mysql_revoke_privileges"
+	MySQLUpdatePasswordTaskType   = "database:mysql_update_password"
+	MySQLGetDatabasesTaskType     = "database:mysql_get_databases"
+	MySQLGetUsersTaskType         = "database:mysql_get_users"
+	MySQLGetTablesTaskType        = "database:mysql_get_tables"
+
+	// PostgreSQL task types
+	PostgreSQLCreateDatabaseTaskType   = "database:postgresql_create_database"
+	PostgreSQLDropDatabaseTaskType     = "database:postgresql_drop_database"
+	PostgreSQLCreateUserTaskType       = "database:postgresql_create_user"
+	PostgreSQLDropUserTaskType         = "database:postgresql_drop_user"
+	PostgreSQLGrantPrivilegesTaskType  = "database:postgresql_grant_privileges"
+	PostgreSQLRevokePrivilegesTaskType = "database:postgresql_revoke_privileges"
+	PostgreSQLUpdatePasswordTaskType   = "database:postgresql_update_password"
+	PostgreSQLGetDatabasesTaskType     = "database:postgresql_get_databases"
+	PostgreSQLGetUsersTaskType         = "database:postgresql_get_users"
+	PostgreSQLGetTablesTaskType        = "database:postgresql_get_tables"
 )
 
 type CreateDatabaseConfig struct {
@@ -106,6 +135,15 @@ func (f *Factory) IsMySQL() bool {
 
 func (f *Factory) IsPostgreSQL() bool {
 	return f.dbType == serverenums.ServiceTypePostgreSql
+}
+
+// TaskType returns the full task type string for a given operation based on the database type
+func (f *Factory) TaskType(taskType DatabaseTaskType) string {
+	prefix := "database:"
+	if f.IsMySQL() {
+		return prefix + "mysql_" + string(taskType)
+	}
+	return prefix + "postgresql_" + string(taskType)
 }
 
 func (f *Factory) CreateDatabase(config CreateDatabaseConfig) taskrunner.Task {
