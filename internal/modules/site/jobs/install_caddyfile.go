@@ -12,7 +12,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 const (
@@ -396,20 +395,9 @@ func (j *UninstallCaddyfileJob) Handle(ctx context.Context) error {
 	caddyfilePath := fmt.Sprintf("%s/Caddyfile", site.Path)
 
 	// Create task to remove Caddyfile
-	script := fmt.Sprintf(`#!/bin/bash
-set -euo pipefail
-
-# Remove the Caddyfile
-rm -f %s
-
-echo "Caddyfile removed"
-`, caddyfilePath)
-
-	task := taskrunner.NewBaseTask(
-		taskrunner.WithName("Remove Caddyfile"),
-		taskrunner.WithScript(script),
-		taskrunner.WithTimeoutSeconds(30),
-	)
+	task := tasks.RemoveCaddyfile(tasks.RemoveCaddyfileConfig{
+		CaddyfilePath: caddyfilePath,
+	})
 
 	// Execute the task on the server
 	result, err := j.ctx.RunTaskOnServer(server, task).AsRoot().Dispatch(ctx)

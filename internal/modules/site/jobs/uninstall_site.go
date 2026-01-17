@@ -8,7 +8,6 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 const TypeUninstallSite = "site:uninstall"
@@ -97,23 +96,9 @@ func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 	}
 
 	// Step 3: Delete site files from server
-	deleteFilesScript := fmt.Sprintf(`#!/bin/bash
-set -euo pipefail
-
-# Remove the site directory
-if [ -d "%s" ]; then
-    rm -rf "%s"
-    echo "Site directory deleted"
-else
-    echo "Site directory not found, skipping"
-fi
-`, site.Path, site.Path)
-
-	deleteFilesTask := taskrunner.NewBaseTask(
-		taskrunner.WithName("Delete Site Files"),
-		taskrunner.WithScript(deleteFilesScript),
-		taskrunner.WithTimeoutSeconds(60),
-	)
+	deleteFilesTask := tasks.DeleteSiteFiles(tasks.DeleteSiteFilesConfig{
+		SitePath: site.Path,
+	})
 
 	result, err := j.ctx.RunTaskOnServer(server, deleteFilesTask).AsRoot().Dispatch(ctx)
 	if err != nil {

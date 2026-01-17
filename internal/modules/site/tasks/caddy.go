@@ -10,6 +10,7 @@ const (
 	UpdateCaddyfileTaskType        = "site:update_caddyfile"
 	UpdateCaddySiteImportsTaskType = "site:update_caddy_site_imports"
 	PrettifyCaddyfileTaskType      = "site:prettify_caddyfile"
+	RemoveCaddyfileTaskType        = "site:remove_caddyfile"
 )
 
 // UpdateCaddyfileConfig holds configuration for updating a site's Caddyfile
@@ -77,6 +78,29 @@ echo "Caddyfile formatted successfully"
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Prettify Caddyfile"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(30),
+	)
+}
+
+// RemoveCaddyfileConfig holds configuration for removing a Caddyfile
+type RemoveCaddyfileConfig struct {
+	CaddyfilePath string
+}
+
+// RemoveCaddyfile creates a task to remove a site's Caddyfile
+func RemoveCaddyfile(config RemoveCaddyfileConfig) *taskrunner.BaseTask {
+	script := `#!/bin/bash
+set -euo pipefail
+
+# Remove the Caddyfile
+rm -f ` + config.CaddyfilePath + `
+
+echo "Caddyfile removed"
+`
+
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Remove Caddyfile"),
 		taskrunner.WithScript(script),
 		taskrunner.WithTimeoutSeconds(30),
 	)
