@@ -16,6 +16,7 @@ type Config struct {
 	Queue    QueueConfig
 	Billing  BillingConfig
 	Git      GitConfig
+	Slack    SlackConfig
 }
 
 // Load loads all configuration from environment variables and .env file
@@ -45,6 +46,7 @@ func Load() (*Config, error) {
 		Queue:    loadQueueConfig(),
 		Billing:  loadBillingConfig(),
 		Git:      loadGitConfig(),
+		Slack:    loadSlackConfig(),
 	}, nil
 }
 
@@ -58,4 +60,5 @@ func setDefaults() {
 	setQueueDefaults()
 	setBillingDefaults()
 	setGitDefaults()
+	setSlackDefaults()
 }

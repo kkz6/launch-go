@@ -87,6 +87,7 @@ type TaskRunner struct {
 	dispatcher       taskrunner.TaskDispatcher
 	logger           *zerolog.Logger
 	broadcaster      broadcast.TeamBroadcaster
+	notifier         taskrunner.NotifierService
 	asRoot           bool
 	username         string
 	trackInDB        bool
@@ -130,6 +131,12 @@ func (r *TaskRunner) WithLogger(logger *zerolog.Logger) *TaskRunner {
 // WithBroadcaster sets the broadcaster for task events.
 func (r *TaskRunner) WithBroadcaster(b broadcast.TeamBroadcaster) *TaskRunner {
 	r.broadcaster = b
+	return r
+}
+
+// WithNotifier sets the notifier service for sending notifications.
+func (r *TaskRunner) WithNotifier(n taskrunner.NotifierService) *TaskRunner {
+	r.notifier = n
 	return r
 }
 
@@ -515,6 +522,7 @@ func (r *TaskRunner) invokeTaskCallbacks(ctx context.Context, taskModel *models.
 		Queue:       r.queue,
 		Logger:      r.logger,
 		Broadcaster: r.broadcaster,
+		Notifier:    r.notifier,
 	}
 
 	var err error
@@ -784,6 +792,7 @@ type TaskRunnerDeps struct {
 	Dispatcher  taskrunner.TaskDispatcher
 	Logger      *zerolog.Logger
 	Broadcaster broadcast.TeamBroadcaster
+	Notifier    taskrunner.NotifierService
 	LocalMode   bool // When true, tasks run synchronously via SSH instead of background with callbacks
 }
 
@@ -799,7 +808,8 @@ func (d *TaskRunnerDeps) NewRunner(server *models.Server, task taskrunner.Task) 
 		WithQueue(d.Queue).
 		WithDispatcher(d.Dispatcher).
 		WithLogger(d.Logger).
-		WithBroadcaster(d.Broadcaster)
+		WithBroadcaster(d.Broadcaster).
+		WithNotifier(d.Notifier)
 }
 
 // RunTask is a convenience function to run a task on a server synchronously.

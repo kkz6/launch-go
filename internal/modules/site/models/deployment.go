@@ -47,3 +47,23 @@ func (d *Deployment) IsRollback() bool {
 
 	return hasRollbackFrom && hasRollbackTo
 }
+
+// CommitMessage returns the commit message from commit data
+func (d *Deployment) CommitMessage() string {
+	if msg, ok := d.CommitData["message"]; ok {
+		if msgStr, ok := msg.(string); ok {
+			return msgStr
+		}
+	}
+	return ""
+}
+
+// CommitAuthor returns the commit author name from commit data
+func (d *Deployment) CommitAuthor() string {
+	if author, ok := d.CommitData["author_name"]; ok {
+		if authorStr, ok := author.(string); ok {
+			return authorStr
+		}
+	}
+	return ""
+}
