@@ -77,9 +77,10 @@ func NewUnarchiveServerJob(ctx *JobContext, payload UnarchiveServerPayload) *Una
 }
 
 // NewUnarchiveServerTask creates an asynq task for unarchiving a server
+// Uses TaskID for deduplication to prevent duplicate unarchive operations
 func NewUnarchiveServerTask(serverID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUnarchiveServer, UnarchiveServerPayload{
 		ServerID: serverID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("unarchive_server:%s", serverID)))
 }

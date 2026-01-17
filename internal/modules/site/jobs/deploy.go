@@ -928,6 +928,7 @@ func NewDeployZeroDowntimeJob(ctx *JobContext, payload DeployPayload) *DeployZer
 }
 
 // NewDeployTask creates a deploy job
+// Uses TaskID for deduplication to prevent the same deployment from running multiple times
 func NewDeployTask(siteID, deploymentID string, userID string) (*asynq.Task, error) {
 	var userIDPtr *string
 	if userID != "" {
@@ -937,10 +938,11 @@ func NewDeployTask(siteID, deploymentID string, userID string) (*asynq.Task, err
 		SiteID:       siteID,
 		DeploymentID: deploymentID,
 		UserID:       userIDPtr,
-	})
+	}, asynq.TaskID(fmt.Sprintf("deploy:%s", deploymentID)))
 }
 
 // NewDeployZeroDowntimeTask creates a zero-downtime deploy job
+// Uses TaskID for deduplication to prevent the same deployment from running multiple times
 func NewDeployZeroDowntimeTask(siteID, deploymentID string, userID string) (*asynq.Task, error) {
 	var userIDPtr *string
 	if userID != "" {
@@ -950,5 +952,5 @@ func NewDeployZeroDowntimeTask(siteID, deploymentID string, userID string) (*asy
 		SiteID:       siteID,
 		DeploymentID: deploymentID,
 		UserID:       userIDPtr,
-	})
+	}, asynq.TaskID(fmt.Sprintf("deploy_zd:%s", deploymentID)))
 }

@@ -304,6 +304,7 @@ func NewWaitForServerToConnectJob(ctx *JobContext, payload WaitForServerToConnec
 }
 
 // NewWaitForServerToConnectTask creates an asynq task for waiting for server connection
+// Uses TaskID for deduplication to prevent duplicate wait jobs
 func NewWaitForServerToConnectTask(serverID, teamID string, serverProviderID string, userID *string, sshKeyIDs []string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeWaitForServerToConnect, WaitForServerToConnectPayload{
 		ServerID:         serverID,
@@ -311,5 +312,5 @@ func NewWaitForServerToConnectTask(serverID, teamID string, serverProviderID str
 		ServerProviderID: serverProviderID,
 		UserID:           userID,
 		SSHKeyIDs:        sshKeyIDs,
-	})
+	}, asynq.TaskID(fmt.Sprintf("wait_connect:%s", serverID)))
 }

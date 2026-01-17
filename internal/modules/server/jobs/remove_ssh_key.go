@@ -99,10 +99,11 @@ func NewRemoveSshKeyJob(ctx *JobContext, payload RemoveSshKeyPayload) *RemoveSsh
 }
 
 // NewRemoveSshKeyTask creates an asynq task for removing an SSH key
+// Uses TaskID for deduplication to prevent duplicate key removals
 func NewRemoveSshKeyTask(serverID, keyID string, force bool) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeRemoveSshKey, RemoveSshKeyPayload{
 		ServerID: serverID,
 		KeyID:    keyID,
 		Force:    force,
-	})
+	}, asynq.TaskID(fmt.Sprintf("remove_ssh_key:%s:%s", serverID, keyID)))
 }

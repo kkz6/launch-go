@@ -249,6 +249,7 @@ func (j *CreateOnProviderJob) Failed(ctx context.Context, err error) {
 }
 
 // NewCreateOnProviderTask creates an asynq task for creating a server on the provider
+// Uses TaskID for deduplication to prevent duplicate server creation
 func NewCreateOnProviderTask(serverID, teamID string, serverProviderID string, userID *string, sshKeyIDs []string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeCreateOnProvider, CreateOnProviderPayload{
 		ServerID:         serverID,
@@ -256,5 +257,5 @@ func NewCreateOnProviderTask(serverID, teamID string, serverProviderID string, u
 		ServerProviderID: serverProviderID,
 		UserID:           userID,
 		SSHKeyIDs:        sshKeyIDs,
-	})
+	}, asynq.TaskID(fmt.Sprintf("create_on_provider:%s", serverID)))
 }

@@ -113,10 +113,11 @@ func NewRemoveServiceJob(ctx *JobContext, payload RemoveServicePayload) *RemoveS
 }
 
 // NewRemoveServiceTask creates an asynq task for removing a service
+// Uses TaskID for deduplication to prevent duplicate service removals
 func NewRemoveServiceTask(serverID, serviceID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeRemoveService, RemoveServicePayload{
 		ServerID:  serverID,
 		ServiceID: serviceID,
 		UserID:    userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("remove_service:%s:%s", serverID, serviceID)))
 }

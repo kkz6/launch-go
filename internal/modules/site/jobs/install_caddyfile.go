@@ -462,25 +462,28 @@ func (j *UninstallCaddyfileJob) updateSiteImportsAfterRemoval(ctx context.Contex
 }
 
 // NewInstallCaddyfileTask creates an install Caddyfile job
+// Uses TaskID for deduplication to prevent duplicate installs
 func NewInstallCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeInstallCaddyfile, CaddyfilePayload{
 		SiteID: siteID,
 		UserID: userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("install_caddyfile:%s", siteID)))
 }
 
 // NewUpdateCaddyfileTask creates an update Caddyfile job
+// Uses TaskID for deduplication to prevent duplicate updates
 func NewUpdateCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUpdateCaddyfile, CaddyfilePayload{
 		SiteID: siteID,
 		UserID: userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("update_caddyfile:%s", siteID)))
 }
 
 // NewUninstallCaddyfileTask creates an uninstall Caddyfile job
+// Uses TaskID for deduplication to prevent duplicate uninstalls
 func NewUninstallCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUninstallCaddyfile, CaddyfilePayload{
 		SiteID: siteID,
 		UserID: userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("uninstall_caddyfile:%s", siteID)))
 }

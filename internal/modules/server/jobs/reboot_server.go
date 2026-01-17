@@ -86,9 +86,11 @@ func NewRebootServerJob(ctx *JobContext, payload RebootServerPayload) *RebootSer
 	}
 }
 
+// NewRebootServerTask creates an asynq task for rebooting a server
+// Uses TaskID for deduplication to prevent duplicate reboots
 func NewRebootServerTask(serverID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeRebootServer, RebootServerPayload{
 		ServerID: serverID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("reboot:%s", serverID)))
 }

@@ -110,10 +110,11 @@ func NewUninstallDaemonJob(ctx *JobContext, payload UninstallDaemonPayload) *Uni
 }
 
 // NewUninstallDaemonTask creates an asynq task for uninstalling a daemon
+// Uses TaskID for deduplication to prevent duplicate daemon uninstallations
 func NewUninstallDaemonTask(serverID, daemonID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUninstallDaemon, UninstallDaemonPayload{
 		ServerID: serverID,
 		DaemonID: daemonID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("uninstall_daemon:%s:%s", serverID, daemonID)))
 }

@@ -110,10 +110,11 @@ func NewInstallFirewallRuleJob(ctx *JobContext, payload InstallFirewallRulePaylo
 }
 
 // NewInstallFirewallRuleTask creates an asynq task for installing a firewall rule
+// Uses TaskID for deduplication to prevent duplicate firewall rule installations
 func NewInstallFirewallRuleTask(serverID, ruleID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeInstallFirewallRule, InstallFirewallRulePayload{
 		ServerID: serverID,
 		RuleID:   ruleID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("install_firewall:%s:%s", serverID, ruleID)))
 }

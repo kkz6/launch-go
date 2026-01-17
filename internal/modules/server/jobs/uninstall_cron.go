@@ -108,10 +108,11 @@ func NewUninstallCronJob(ctx *JobContext, payload UninstallCronPayload) *Uninsta
 }
 
 // NewUninstallCronTask creates an asynq task for uninstalling a cron
+// Uses TaskID for deduplication to prevent duplicate cron uninstallations
 func NewUninstallCronTask(serverID, cronID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUninstallCron, UninstallCronPayload{
 		ServerID: serverID,
 		CronID:   cronID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("uninstall_cron:%s:%s", serverID, cronID)))
 }

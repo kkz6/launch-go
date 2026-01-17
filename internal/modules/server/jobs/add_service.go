@@ -91,10 +91,12 @@ func NewAddServiceJob(ctx *JobContext, payload AddServicePayload) *AddServiceJob
 	}
 }
 
+// NewAddServiceTask creates an asynq task for adding a service
+// Uses TaskID for deduplication to prevent duplicate service installations
 func NewAddServiceTask(serverID, serviceID, software string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeAddService, AddServicePayload{
 		ServerID:  serverID,
 		ServiceID: serviceID,
 		Software:  software,
-	})
+	}, asynq.TaskID(fmt.Sprintf("add_service:%s:%s", serverID, serviceID)))
 }

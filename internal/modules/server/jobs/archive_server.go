@@ -77,9 +77,10 @@ func NewArchiveServerJob(ctx *JobContext, payload ArchiveServerPayload) *Archive
 }
 
 // NewArchiveServerTask creates an asynq task for archiving a server
+// Uses TaskID for deduplication to prevent duplicate archive operations
 func NewArchiveServerTask(serverID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeArchiveServer, ArchiveServerPayload{
 		ServerID: serverID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("archive_server:%s", serverID)))
 }

@@ -98,9 +98,10 @@ func NewAddSshKeyJob(ctx *JobContext, payload AddSshKeyPayload) *AddSshKeyJob {
 }
 
 // NewAddSshKeyTask creates an asynq task for adding an SSH key
+// Uses TaskID for deduplication to prevent duplicate key installations
 func NewAddSshKeyTask(serverID, keyID string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeAddSshKey, AddSshKeyPayload{
 		ServerID: serverID,
 		KeyID:    keyID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("add_ssh_key:%s:%s", serverID, keyID)))
 }
