@@ -53,6 +53,9 @@ func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 		"address", site.Address,
 	)
 
+	// Create site task factory for convenient task creation
+	siteFactory := tasks.NewFactory(site)
+
 	// Step 1: Uninstall all queue workers for this site
 	queues, err := j.ctx.QueueRepo.FindBySite(ctx, site.ID)
 	if err != nil {
@@ -60,7 +63,7 @@ func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 	} else {
 		for _, q := range queues {
 			// Delete queue config and stop process
-			deleteTask := tasks.DeleteQueueConfig(q.GetPath(), q.ID)
+			deleteTask := siteFactory.DeleteQueueConfig(q.GetPath(), q.ID)
 			if _, err := j.ctx.RunTaskOnServer(server, deleteTask).AsRoot().Dispatch(ctx); err != nil {
 				j.ctx.LogError(err, "Failed to uninstall queue", "queue_id", q.ID)
 			}
@@ -95,10 +98,8 @@ func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 		}
 	}
 
-	// Step 3: Delete site files from server
-	deleteFilesTask := tasks.DeleteSiteFiles(tasks.DeleteSiteFilesConfig{
-		SitePath: site.Path,
-	})
+	// Step 3: Delete site files from server using factory
+	deleteFilesTask := siteFactory.DeleteFiles()
 
 	result, err := j.ctx.RunTaskOnServer(server, deleteFilesTask).AsRoot().Dispatch(ctx)
 	if err != nil {
