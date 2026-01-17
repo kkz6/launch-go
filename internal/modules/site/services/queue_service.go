@@ -159,17 +159,15 @@ func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID str
 	return nil
 }
 
-// EnableAutoRestart enables auto-restart for queue workers
-func (s *QueueService) EnableAutoRestart(ctx context.Context, siteID, serverID string) error {
-	return s.Repos().Site().UpdateFields(ctx, siteID, map[string]interface{}{
-		"auto_restart_queue": true,
-	})
-}
+// UpdateAutoRestart updates the auto-restart queue setting
+func (s *QueueService) UpdateAutoRestart(ctx context.Context, siteID, serverID string, enabled bool) error {
+	// Verify site exists and belongs to server
+	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+		return err
+	}
 
-// DisableAutoRestart disables auto-restart for queue workers
-func (s *QueueService) DisableAutoRestart(ctx context.Context, siteID, serverID string) error {
 	return s.Repos().Site().UpdateFields(ctx, siteID, map[string]interface{}{
-		"auto_restart_queue": false,
+		"auto_restart_queue": enabled,
 	})
 }
 

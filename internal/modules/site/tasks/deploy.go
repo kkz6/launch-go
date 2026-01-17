@@ -46,14 +46,16 @@ type DeployOptions struct {
 
 // callbackData holds data needed for callback handling (serialized to instance field)
 type callbackData struct {
-	SiteID           string `json:"site_id"`
-	ServerID         string `json:"server_id"`
-	TeamID           string `json:"team_id"`
-	DeploymentID     string `json:"deployment_id"`
-	SiteType         string `json:"site_type"`
-	IsFirstDeploy    bool   `json:"is_first_deploy"`
-	QueueDeployments bool   `json:"queue_deployments"`
-	AutoRestartQueue bool   `json:"auto_restart_queue"`
+	SiteID                       string `json:"site_id"`
+	ServerID                     string `json:"server_id"`
+	TeamID                       string `json:"team_id"`
+	DeploymentID                 string `json:"deployment_id"`
+	SiteType                     string `json:"site_type"`
+	IsFirstDeploy                bool   `json:"is_first_deploy"`
+	QueueDeployments             bool   `json:"queue_deployments"`
+	AutoRestartQueue             bool   `json:"auto_restart_queue"`
+	ZeroDowntimeDeployment       bool   `json:"zero_downtime_deployment"`
+	DeploymentReleasesRetention  int    `json:"deployment_releases_retention"`
 }
 
 // deploySiteTask implements Task and CallbackPayload interfaces.
@@ -83,14 +85,16 @@ func DeploySiteTask(opts DeployOptions) *deploySiteTask {
 		),
 		opts: opts,
 		callback: callbackData{
-			SiteID:           opts.Site.ID,
-			ServerID:         opts.Site.ServerID,
-			TeamID:           opts.TeamID,
-			DeploymentID:     opts.Deployment.ID,
-			SiteType:         string(opts.Site.Type),
-			IsFirstDeploy:    opts.Site.InstalledAt == nil,
-			QueueDeployments: opts.Site.QueueDeployments,
-			AutoRestartQueue: opts.Site.AutoRestartQueue,
+			SiteID:                      opts.Site.ID,
+			ServerID:                    opts.Site.ServerID,
+			TeamID:                      opts.TeamID,
+			DeploymentID:                opts.Deployment.ID,
+			SiteType:                    string(opts.Site.Type),
+			IsFirstDeploy:               opts.Site.InstalledAt == nil,
+			QueueDeployments:            opts.Site.QueueDeployments,
+			AutoRestartQueue:            opts.Site.AutoRestartQueue,
+			ZeroDowntimeDeployment:      opts.Site.ZeroDowntimeDeployment,
+			DeploymentReleasesRetention: opts.Site.DeploymentReleasesRetention,
 		},
 	}
 }
@@ -149,6 +153,9 @@ func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.Callba
 	if t.callback.AutoRestartQueue {
 		t.restartQueueWorkers(ctx, cbCtx)
 	}
+
+	// Cleanup old deployment records
+	t.cleanupOldDeployments(ctx, cbCtx)
 
 	return nil
 }
@@ -316,6 +323,63 @@ func (t *deploySiteTask) restartQueueWorkers(ctx context.Context, cbCtx *taskrun
 			"site_id":  t.callback.SiteID,
 			"queue_id": q.ID,
 		}, fmt.Sprintf("restart_queue:%s:%s", t.callback.SiteID, q.ID))
+	}
+}
+
+// cleanupOldDeployments removes old deployment records beyond the retention limit.
+// For zero-downtime deployments, it uses the site's DeploymentReleasesRetention setting.
+// For normal deployments, it keeps only the most recent 5 deployments.
+func (t *deploySiteTask) cleanupOldDeployments(ctx context.Context, cbCtx *taskrunner.CallbackContext) {
+	// Determine retention count based on deployment type
+	retentionCount := 5 // default for normal deployments
+	if t.callback.ZeroDowntimeDeployment {
+		retentionCount = t.callback.DeploymentReleasesRetention
+		if retentionCount <= 0 {
+			retentionCount = 10 // default if not set
+		}
+	}
+
+	// Get IDs of deployments to keep (most recent N)
+	var deploymentsToKeep []string
+	err := cbCtx.DB.Model(&models.Deployment{}).
+		Select("id").
+		Where("site_id = ?", t.callback.SiteID).
+		Order("created_at DESC").
+		Limit(retentionCount).
+		Pluck("id", &deploymentsToKeep).Error
+	if err != nil {
+		if cbCtx.Logger != nil {
+			cbCtx.Logger.Error().Err(err).
+				Str("site_id", t.callback.SiteID).
+				Msg("Failed to get deployments to keep for cleanup")
+		}
+		return
+	}
+
+	// If we have fewer deployments than retention, nothing to delete
+	if len(deploymentsToKeep) < retentionCount {
+		return
+	}
+
+	// Delete deployments not in the keep list
+	result := cbCtx.DB.Where("site_id = ? AND id NOT IN ?", t.callback.SiteID, deploymentsToKeep).
+		Delete(&models.Deployment{})
+	if result.Error != nil {
+		if cbCtx.Logger != nil {
+			cbCtx.Logger.Error().Err(result.Error).
+				Str("site_id", t.callback.SiteID).
+				Msg("Failed to cleanup old deployments")
+		}
+		return
+	}
+
+	if result.RowsAffected > 0 && cbCtx.Logger != nil {
+		cbCtx.Logger.Info().
+			Int64("deleted_count", result.RowsAffected).
+			Int("retention_count", retentionCount).
+			Bool("zero_downtime", t.callback.ZeroDowntimeDeployment).
+			Str("site_id", t.callback.SiteID).
+			Msg("Cleaned up old deployment records")
 	}
 }
 

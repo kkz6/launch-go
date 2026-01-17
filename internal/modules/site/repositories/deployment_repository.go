@@ -140,6 +140,37 @@ func (r *DeploymentRepository) DeleteBySite(ctx context.Context, siteID string) 
 		Delete(&models.Deployment{}).Error
 }
 
+// CleanupOldDeployments removes old deployment records beyond the retention limit.
+// For zero-downtime deployments, it uses the site's DeploymentReleasesRetention setting.
+// For normal deployments, it keeps only the most recent 5 deployments.
+// Returns the number of deleted deployments and any error.
+func (r *DeploymentRepository) CleanupOldDeployments(ctx context.Context, siteID string, retentionCount int) (int64, error) {
+	// Get IDs of deployments to keep (most recent N)
+	var deploymentsToKeep []string
+	err := r.DB.WithContext(ctx).
+		Model(&models.Deployment{}).
+		Select("id").
+		Where("site_id = ?", siteID).
+		Order("created_at DESC").
+		Limit(retentionCount).
+		Pluck("id", &deploymentsToKeep).Error
+	if err != nil {
+		return 0, err
+	}
+
+	// If we have fewer deployments than retention, nothing to delete
+	if len(deploymentsToKeep) < retentionCount {
+		return 0, nil
+	}
+
+	// Delete deployments not in the keep list
+	result := r.DB.WithContext(ctx).
+		Where("site_id = ? AND id NOT IN ?", siteID, deploymentsToKeep).
+		Delete(&models.Deployment{})
+
+	return result.RowsAffected, result.Error
+}
+
 // Note: The following methods are inherited from repository.Base[T]:
 // - Create(ctx, entity) error
 // - Update(ctx, entity) error
