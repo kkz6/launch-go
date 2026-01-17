@@ -109,10 +109,11 @@ func NewUninstallFirewallRuleJob(ctx *JobContext, payload UninstallFirewallRuleP
 }
 
 // NewUninstallFirewallRuleTask creates an asynq task for uninstalling a firewall rule
+// Uses TaskID for deduplication to prevent duplicate firewall rule removals
 func NewUninstallFirewallRuleTask(serverID, ruleID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUninstallFirewall, UninstallFirewallRulePayload{
 		ServerID: serverID,
 		RuleID:   ruleID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("uninstall_firewall:%s:%s", serverID, ruleID)))
 }

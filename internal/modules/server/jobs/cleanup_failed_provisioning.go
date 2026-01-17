@@ -270,6 +270,7 @@ func NewCleanupFailedProvisioningJob(ctx *JobContext, payload CleanupFailedProvi
 }
 
 // NewCleanupFailedProvisioningTask creates an asynq task for cleanup
+// Uses TaskID for deduplication to prevent duplicate cleanup runs
 func NewCleanupFailedProvisioningTask(serverID, teamID string, serverProviderID string, userID *string, reason string, deleteRecord bool) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeCleanupFailedProvisioning, CleanupFailedProvisioningPayload{
 		ServerID:         serverID,
@@ -278,5 +279,5 @@ func NewCleanupFailedProvisioningTask(serverID, teamID string, serverProviderID 
 		UserID:           userID,
 		Reason:           reason,
 		DeleteRecord:     deleteRecord,
-	})
+	}, asynq.TaskID(fmt.Sprintf("cleanup_provisioning:%s", serverID)))
 }

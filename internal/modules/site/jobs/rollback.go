@@ -244,6 +244,7 @@ func (j *RollbackJob) Failed(ctx context.Context, err error) {
 }
 
 // NewRollbackTask creates a rollback job
+// Uses TaskID for deduplication to prevent duplicate rollbacks
 func NewRollbackTask(siteID, deploymentID, targetDeploymentID, userID string) (*asynq.Task, error) {
 	var userIDPtr *string
 	if userID != "" {
@@ -254,5 +255,5 @@ func NewRollbackTask(siteID, deploymentID, targetDeploymentID, userID string) (*
 		DeploymentID:       deploymentID,
 		TargetDeploymentID: targetDeploymentID,
 		UserID:             userIDPtr,
-	})
+	}, asynq.TaskID(fmt.Sprintf("rollback:%s", deploymentID)))
 }

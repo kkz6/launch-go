@@ -210,9 +210,10 @@ func parseLines(output string) []string {
 }
 
 // NewSyncDatabasesTask creates a database sync job
+// Uses TaskID for deduplication to prevent duplicate sync operations
 func NewSyncDatabasesTask(serverID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeSyncDatabases, SyncDatabasesPayload{
 		ServerID: serverID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("sync_databases:%s", serverID)))
 }

@@ -115,10 +115,12 @@ func NewInstallDaemonJob(ctx *JobContext, payload InstallDaemonPayload) *Install
 	}
 }
 
+// NewInstallDaemonTask creates an asynq task for installing a daemon
+// Uses TaskID for deduplication to prevent duplicate daemon installations
 func NewInstallDaemonTask(serverID, daemonID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeInstallDaemon, InstallDaemonPayload{
 		ServerID: serverID,
 		DaemonID: daemonID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("install_daemon:%s:%s", serverID, daemonID)))
 }

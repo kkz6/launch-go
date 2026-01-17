@@ -167,10 +167,11 @@ func (j *UninstallSiteJob) Failed(ctx context.Context, err error) {
 }
 
 // NewUninstallSiteTask creates an uninstall site job
+// Uses TaskID for deduplication to prevent duplicate uninstalls
 func NewUninstallSiteTask(siteID, serverID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUninstallSite, UninstallSitePayload{
 		SiteID:   siteID,
 		ServerID: serverID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("uninstall_site:%s", siteID)))
 }

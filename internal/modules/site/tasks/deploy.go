@@ -228,13 +228,17 @@ func (t *deploySiteTask) OnExpired(ctx context.Context, cbCtx *taskrunner.Callba
 	return nil
 }
 
-// dispatchJob is a helper to dispatch an asynq job
-func (t *deploySiteTask) dispatchJob(cbCtx *taskrunner.CallbackContext, jobType string, payload any) {
+// dispatchJob is a helper to dispatch an asynq job with MaxRetry(0) to prevent retries
+func (t *deploySiteTask) dispatchJob(cbCtx *taskrunner.CallbackContext, jobType string, payload any, taskID string) {
 	if cbCtx.Queue == nil {
 		return
 	}
 	data, _ := json.Marshal(payload)
-	task := asynq.NewTask(jobType, data)
+	opts := []asynq.Option{asynq.MaxRetry(0)}
+	if taskID != "" {
+		opts = append(opts, asynq.TaskID(taskID))
+	}
+	task := asynq.NewTask(jobType, data, opts...)
 	if _, err := cbCtx.Queue.Enqueue(task); err != nil && cbCtx.Logger != nil {
 		cbCtx.Logger.Error().Err(err).Str("job_type", jobType).Msg("Failed to dispatch job")
 	}
@@ -258,7 +262,7 @@ type analyzeLaravelFeaturesPayload struct {
 func (t *deploySiteTask) dispatchInstallCaddyfile(cbCtx *taskrunner.CallbackContext) {
 	t.dispatchJob(cbCtx, "site:install_caddyfile", caddyfilePayload{
 		SiteID: t.callback.SiteID,
-	})
+	}, fmt.Sprintf("install_caddyfile:%s", t.callback.SiteID))
 }
 
 // dispatchAnalyzeLaravelFeatures dispatches the analyze Laravel features job with type-safe payload.
@@ -266,7 +270,7 @@ func (t *deploySiteTask) dispatchAnalyzeLaravelFeatures(cbCtx *taskrunner.Callba
 	t.dispatchJob(cbCtx, "site:analyze_laravel_features", analyzeLaravelFeaturesPayload{
 		SiteID:   t.callback.SiteID,
 		ServerID: t.callback.ServerID,
-	})
+	}, fmt.Sprintf("analyze_features:%s", t.callback.SiteID))
 }
 
 // processNextQueuedDeployment finds and dispatches the next queued deployment
@@ -290,14 +294,16 @@ func (t *deploySiteTask) processNextQueuedDeployment(ctx context.Context, cbCtx 
 	}
 
 	jobType := "site:deploy"
+	taskID := fmt.Sprintf("deploy:%s", nextDeployment.ID)
 	if site.ZeroDowntimeDeployment {
 		jobType = "site:deploy_zero_downtime"
+		taskID = fmt.Sprintf("deploy_zd:%s", nextDeployment.ID)
 	}
 
 	t.dispatchJob(cbCtx, jobType, map[string]string{
 		"site_id":       t.callback.SiteID,
 		"deployment_id": nextDeployment.ID,
-	})
+	}, taskID)
 }
 
 // restartQueueWorkers restarts queue workers after deployment
@@ -309,7 +315,7 @@ func (t *deploySiteTask) restartQueueWorkers(ctx context.Context, cbCtx *taskrun
 		t.dispatchJob(cbCtx, "site:restart_queue", map[string]string{
 			"site_id":  t.callback.SiteID,
 			"queue_id": q.ID,
-		})
+		}, fmt.Sprintf("restart_queue:%s:%s", t.callback.SiteID, q.ID))
 	}
 }
 

@@ -103,10 +103,11 @@ func (j *UpdateDatabaseUserJob) Failed(ctx context.Context, err error) {
 }
 
 // NewUpdateDatabaseUserTask creates a database user update job
+// Uses TaskID for deduplication to prevent duplicate database user updates
 func NewUpdateDatabaseUserTask(databaseUserID string, password, callerID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUpdateDatabaseUser, UpdateDatabaseUserPayload{
 		DatabaseUserID: databaseUserID,
 		Password:       password,
 		CallerID:       callerID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("update_db_user:%s", databaseUserID)))
 }

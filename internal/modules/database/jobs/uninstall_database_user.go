@@ -106,9 +106,10 @@ func (j *UninstallDatabaseUserJob) Failed(ctx context.Context, err error) {
 }
 
 // NewUninstallDatabaseUserTask creates a database user uninstallation job
+// Uses TaskID for deduplication to prevent duplicate database user uninstallations
 func NewUninstallDatabaseUserTask(databaseUserID string, callerID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUninstallDatabaseUser, UninstallDatabaseUserPayload{
 		DatabaseUserID: databaseUserID,
 		CallerID:       callerID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("uninstall_db_user:%s", databaseUserID)))
 }

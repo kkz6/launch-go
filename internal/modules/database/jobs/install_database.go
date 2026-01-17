@@ -110,9 +110,10 @@ func (j *InstallDatabaseJob) Failed(ctx context.Context, err error) {
 }
 
 // NewInstallDatabaseTask creates a database installation job
+// Uses TaskID for deduplication to prevent duplicate database installations
 func NewInstallDatabaseTask(databaseID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeInstallDatabase, InstallDatabasePayload{
 		DatabaseID: databaseID,
 		UserID:     userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("install_database:%s", databaseID)))
 }

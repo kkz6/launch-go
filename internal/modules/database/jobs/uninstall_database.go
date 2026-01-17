@@ -105,9 +105,10 @@ func (j *UninstallDatabaseJob) Failed(ctx context.Context, err error) {
 }
 
 // NewUninstallDatabaseTask creates a database uninstallation job
+// Uses TaskID for deduplication to prevent duplicate database uninstallations
 func NewUninstallDatabaseTask(databaseID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUninstallDatabase, UninstallDatabasePayload{
 		DatabaseID: databaseID,
 		UserID:     userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("uninstall_database:%s", databaseID)))
 }

@@ -139,10 +139,11 @@ func (j *InstallDatabaseUserJob) Failed(ctx context.Context, err error) {
 }
 
 // NewInstallDatabaseUserTask creates a database user installation job
+// Uses TaskID for deduplication to prevent duplicate database user installations
 func NewInstallDatabaseUserTask(databaseUserID, password string, callerID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeInstallDatabaseUser, InstallDatabaseUserPayload{
 		DatabaseUserID: databaseUserID,
 		Password:       password,
 		CallerID:       callerID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("install_db_user:%s", databaseUserID)))
 }

@@ -187,11 +187,12 @@ func getDefaultSoftwareStack() []enums.Software {
 }
 
 // NewProvisionServerTask creates an asynq task for provisioning a server.
+// Uses TaskID for deduplication to prevent duplicate provisioning
 func NewProvisionServerTask(serverID, teamID string, userID *string, sshKeyIDs []string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeProvisionServer, ProvisionServerPayload{
 		ServerID:  serverID,
 		TeamID:    teamID,
 		UserID:    userID,
 		SSHKeyIDs: sshKeyIDs,
-	})
+	}, asynq.TaskID(fmt.Sprintf("provision:%s", serverID)))
 }

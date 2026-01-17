@@ -80,10 +80,11 @@ func NewRestartDaemonJob(ctx *JobContext, payload RestartDaemonPayload) *Restart
 }
 
 // NewRestartDaemonTask creates an asynq task for restarting a daemon
+// Uses TaskID for deduplication to prevent duplicate daemon restarts
 func NewRestartDaemonTask(serverID, daemonID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeRestartDaemon, RestartDaemonPayload{
 		ServerID: serverID,
 		DaemonID: daemonID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("restart_daemon:%s:%s", serverID, daemonID)))
 }

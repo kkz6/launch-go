@@ -178,10 +178,11 @@ func (j *AnalyzeLaravelFeaturesJob) Failed(ctx context.Context, err error) {
 }
 
 // NewAnalyzeLaravelFeaturesTask creates an analyze Laravel features task
+// Uses TaskID for deduplication to prevent the same site from being analyzed multiple times
 func NewAnalyzeLaravelFeaturesTask(siteID, serverID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeAnalyzeLaravelFeatures, AnalyzeLaravelFeaturesPayload{
 		SiteID:   siteID,
 		ServerID: serverID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("analyze_features:%s", siteID)))
 }

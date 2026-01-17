@@ -128,10 +128,11 @@ func NewDeleteServerJob(ctx *JobContext, payload DeleteServerPayload) *DeleteSer
 }
 
 // NewDeleteServerTask creates an asynq task for deleting a server
+// Uses TaskID for deduplication to prevent duplicate deletes
 func NewDeleteServerTask(serverID, teamID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeDeleteServer, DeleteServerPayload{
 		ServerID: serverID,
 		TeamID:   teamID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("delete_server:%s", serverID)))
 }

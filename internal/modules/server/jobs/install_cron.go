@@ -104,10 +104,12 @@ func NewInstallCronJob(ctx *JobContext, payload InstallCronPayload) *InstallCron
 	}
 }
 
+// NewInstallCronTask creates an asynq task for installing a cron job
+// Uses TaskID for deduplication to prevent duplicate cron installations
 func NewInstallCronTask(serverID, cronID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeInstallCron, InstallCronPayload{
 		ServerID: serverID,
 		CronID:   cronID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(fmt.Sprintf("install_cron:%s:%s", serverID, cronID)))
 }
