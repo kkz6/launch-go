@@ -15,6 +15,9 @@ type ServiceDeps struct {
 	Repos          *repositories.Registry
 	ChannelFactory *channels.Factory
 
+	// Admin webhook URL for Slack admin alerts
+	AdminWebhookURL string
+
 	// Service registry - allows services to access other services
 	registry *ServiceRegistry
 }
@@ -22,11 +25,17 @@ type ServiceDeps struct {
 // ServiceRegistry holds all services for cross-service access
 type ServiceRegistry struct {
 	notificationChannel *NotificationChannelService
+	notifier            *Notifier
 }
 
 // NotificationChannel returns the notification channel service
 func (r *ServiceRegistry) NotificationChannel() *NotificationChannelService {
 	return r.notificationChannel
+}
+
+// Notifier returns the notifier service
+func (r *ServiceRegistry) Notifier() *Notifier {
+	return r.notifier
 }
 
 // NewServiceRegistry creates all services and wires them together
@@ -36,6 +45,7 @@ func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
 
 	// Create all services
 	registry.notificationChannel = NewNotificationChannelService(deps)
+	registry.notifier = NewNotifier(registry.notificationChannel, deps.AdminWebhookURL)
 
 	return registry
 }

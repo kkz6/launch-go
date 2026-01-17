@@ -44,12 +44,19 @@ func NewModule(b *module.Builder) *Module {
 func (m *Module) createServices() *services.ServiceRegistry {
 	deps := m.Deps()
 
+	// Get admin webhook URL from config
+	adminWebhookURL := ""
+	if deps.Config != nil {
+		adminWebhookURL = deps.Config.Slack.AdminWebhookURL
+	}
+
 	// Create shared service dependencies
 	svcDeps := &services.ServiceDeps{
-		DB:             deps.DB,
-		Logger:         deps.Logger,
-		Repos:          m.repos,
-		ChannelFactory: m.channelFactory,
+		DB:              deps.DB,
+		Logger:          deps.Logger,
+		Repos:           m.repos,
+		ChannelFactory:  m.channelFactory,
+		AdminWebhookURL: adminWebhookURL,
 	}
 
 	// Create service registry - handles all service creation and wiring

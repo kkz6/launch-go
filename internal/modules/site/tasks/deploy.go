@@ -9,10 +9,12 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks/templates"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 )
 
 // Task type constants for deployment operations
@@ -30,6 +32,9 @@ type DeployOptions struct {
 	// TeamID for broadcasting events (from server.TeamID)
 	TeamID string
 
+	// Server name for notifications
+	ServerName string
+
 	// Git authentication (set by job after checking source control)
 	RepositoryURL string
 	HasAppAuth    bool
@@ -46,16 +51,20 @@ type DeployOptions struct {
 
 // callbackData holds data needed for callback handling (serialized to instance field)
 type callbackData struct {
-	SiteID                       string `json:"site_id"`
-	ServerID                     string `json:"server_id"`
-	TeamID                       string `json:"team_id"`
-	DeploymentID                 string `json:"deployment_id"`
-	SiteType                     string `json:"site_type"`
-	IsFirstDeploy                bool   `json:"is_first_deploy"`
-	QueueDeployments             bool   `json:"queue_deployments"`
-	AutoRestartQueue             bool   `json:"auto_restart_queue"`
-	ZeroDowntimeDeployment       bool   `json:"zero_downtime_deployment"`
-	DeploymentReleasesRetention  int    `json:"deployment_releases_retention"`
+	SiteID                      string `json:"site_id"`
+	ServerID                    string `json:"server_id"`
+	TeamID                      string `json:"team_id"`
+	DeploymentID                string `json:"deployment_id"`
+	SiteType                    string `json:"site_type"`
+	IsFirstDeploy               bool   `json:"is_first_deploy"`
+	QueueDeployments            bool   `json:"queue_deployments"`
+	AutoRestartQueue            bool   `json:"auto_restart_queue"`
+	ZeroDowntimeDeployment      bool   `json:"zero_downtime_deployment"`
+	DeploymentReleasesRetention int    `json:"deployment_releases_retention"`
+
+	// For notifications
+	SiteAddress string `json:"site_address"`
+	ServerName  string `json:"server_name"`
 }
 
 // deploySiteTask implements Task and CallbackPayload interfaces.
@@ -95,6 +104,8 @@ func DeploySiteTask(opts DeployOptions) *deploySiteTask {
 			AutoRestartQueue:            opts.Site.AutoRestartQueue,
 			ZeroDowntimeDeployment:      opts.Site.ZeroDowntimeDeployment,
 			DeploymentReleasesRetention: opts.Site.DeploymentReleasesRetention,
+			SiteAddress:                 opts.Site.Address,
+			ServerName:                  opts.ServerName,
 		},
 	}
 }
@@ -194,6 +205,9 @@ func (t *deploySiteTask) OnFailure(ctx context.Context, cbCtx *taskrunner.Callba
 			Update("installation_failed_at", time.Now())
 	}
 
+	// Send notification based on whether this is first deployment or not
+	t.sendDeploymentNotification(ctx, cbCtx, taskID, notifications.DeploymentStatusFailed)
+
 	// Process next queued deployment if enabled
 	if t.callback.QueueDeployments {
 		t.processNextQueuedDeployment(ctx, cbCtx)
@@ -227,12 +241,80 @@ func (t *deploySiteTask) OnExpired(ctx context.Context, cbCtx *taskrunner.Callba
 		"status":        "timeout",
 	})
 
+	// Send notification
+	t.sendDeploymentNotification(ctx, cbCtx, taskID, notifications.DeploymentStatusTimeout)
+
 	// Process next queued deployment if enabled
 	if t.callback.QueueDeployments {
 		t.processNextQueuedDeployment(ctx, cbCtx)
 	}
 
 	return nil
+}
+
+// sendDeploymentNotification sends the appropriate notification for deployment failure
+func (t *deploySiteTask) sendDeploymentNotification(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string, status notifications.DeploymentStatus) {
+	// Get task output
+	output := t.getTaskOutput(cbCtx, taskID)
+
+	// Get deployment for git info
+	var deployment models.Deployment
+	cbCtx.DB.First(&deployment, "id = ?", t.callback.DeploymentID)
+
+	if t.callback.IsFirstDeploy {
+		// Site installation failed
+		notif := notifications.NewSiteInstallationFailedNotification(t.callback.SiteAddress, t.callback.ServerName)
+		if deployment.GitHash != nil && *deployment.GitHash != "" {
+			notif.WithGitInfo(*deployment.GitHash, deployment.CommitMessage())
+		}
+		notif.WithOutput(output)
+
+		if err := cbCtx.NotifyTeam(ctx, t.callback.TeamID, notif); err != nil {
+			if cbCtx.Logger != nil {
+				cbCtx.Logger.Warn().Err(err).Msg("Failed to send site installation failed notification")
+			}
+		}
+	} else {
+		// Deployment failed
+		notif := notifications.NewDeploymentFailedNotification(t.callback.SiteAddress, t.callback.ServerName, status)
+		if deployment.GitHash != nil && *deployment.GitHash != "" {
+			notif.WithGitInfo(*deployment.GitHash, deployment.CommitMessage(), deployment.CommitAuthor())
+		}
+		notif.WithOutput(output)
+		if deployment.CreatedAt != nil {
+			notif.WithDeploymentTime(*deployment.CreatedAt)
+		}
+
+		if err := cbCtx.NotifyTeam(ctx, t.callback.TeamID, notif); err != nil {
+			if cbCtx.Logger != nil {
+				cbCtx.Logger.Warn().Err(err).Msg("Failed to send deployment failed notification")
+			}
+		}
+	}
+}
+
+// getTaskOutput retrieves the last 30 lines of task output from the database
+func (t *deploySiteTask) getTaskOutput(cbCtx *taskrunner.CallbackContext, taskID string) string {
+	if cbCtx.DB == nil {
+		return ""
+	}
+
+	var task serverModels.Task
+	if err := cbCtx.DB.Select("output").First(&task, "id = ?", taskID).Error; err != nil {
+		return ""
+	}
+
+	output := task.Output.String()
+	if output == "" {
+		return ""
+	}
+
+	// Return last 30 lines
+	lines := strings.Split(output, "\n")
+	if len(lines) > 30 {
+		lines = lines[len(lines)-30:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // dispatchJob is a helper to dispatch an asynq job with MaxRetry(0) to prevent retries

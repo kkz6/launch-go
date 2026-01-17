@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks/templates"
@@ -24,8 +25,9 @@ type ProvisionFreshServerConfig struct {
 	CallbackURL string
 
 	// Server and team info for callbacks
-	ServerID string
-	TeamID   string
+	ServerID   string
+	TeamID     string
+	ServerName string // For notifications
 
 	// Server info
 	MemoryInMB int
@@ -60,8 +62,10 @@ type ProvisionFreshServerConfig struct {
 
 // provisionCallbackData holds data needed for callback handling
 type provisionCallbackData struct {
-	ServerID string `json:"server_id"`
-	TeamID   string `json:"team_id"`
+	ServerID   string `json:"server_id"`
+	TeamID     string `json:"team_id"`
+	ServerName string `json:"server_name"`
+	ServerIP   string `json:"server_ip"`
 }
 
 // provisionFreshServerTask implements Task and CallbackPayload interfaces
@@ -135,8 +139,10 @@ func ProvisionFreshServer(config ProvisionFreshServerConfig) *provisionFreshServ
 			taskrunner.WithTimeoutSeconds(15*60),
 		),
 		callback: provisionCallbackData{
-			ServerID: config.ServerID,
-			TeamID:   config.TeamID,
+			ServerID:   config.ServerID,
+			TeamID:     config.TeamID,
+			ServerName: config.ServerName,
+			ServerIP:   config.PublicIPv4,
 		},
 	}
 }
@@ -177,6 +183,14 @@ func (t *provisionFreshServerTask) OnSuccess(ctx context.Context, cbCtx *taskrun
 		"status":    "running",
 	})
 
+	// Send notification to team
+	notif := notifications.NewServerProvisionedNotification(t.callback.ServerName, t.callback.ServerIP)
+	if err := cbCtx.NotifyTeam(ctx, t.callback.TeamID, notif); err != nil {
+		if cbCtx.Logger != nil {
+			cbCtx.Logger.Warn().Err(err).Msg("Failed to send server provisioned notification")
+		}
+	}
+
 	return nil
 }
 
@@ -203,6 +217,18 @@ func (t *provisionFreshServerTask) OnFailure(ctx context.Context, cbCtx *taskrun
 		"status":    "failed",
 		"exit_code": exitCode,
 	})
+
+	// Get task output for notification
+	output := t.getTaskOutput(cbCtx, taskID)
+	errorMessage := fmt.Sprintf("Task failed with exit code %d", exitCode)
+
+	// Send notification to team
+	notif := notifications.NewServerProvisioningFailedNotification(t.callback.ServerName, output, errorMessage)
+	if err := cbCtx.NotifyTeam(ctx, t.callback.TeamID, notif); err != nil {
+		if cbCtx.Logger != nil {
+			cbCtx.Logger.Warn().Err(err).Msg("Failed to send server provisioning failed notification")
+		}
+	}
 
 	// Dispatch cleanup job
 	t.dispatchCleanupJob(cbCtx)
@@ -232,10 +258,46 @@ func (t *provisionFreshServerTask) OnExpired(ctx context.Context, cbCtx *taskrun
 		"status":    "failed",
 	})
 
+	// Get task output for notification
+	output := t.getTaskOutput(cbCtx, taskID)
+	errorMessage := "Task timed out"
+
+	// Send notification to team
+	notif := notifications.NewServerProvisioningFailedNotification(t.callback.ServerName, output, errorMessage)
+	if err := cbCtx.NotifyTeam(ctx, t.callback.TeamID, notif); err != nil {
+		if cbCtx.Logger != nil {
+			cbCtx.Logger.Warn().Err(err).Msg("Failed to send server provisioning failed notification")
+		}
+	}
+
 	// Dispatch cleanup job
 	t.dispatchCleanupJob(cbCtx)
 
 	return nil
+}
+
+// getTaskOutput retrieves the last 30 lines of task output from the database
+func (t *provisionFreshServerTask) getTaskOutput(cbCtx *taskrunner.CallbackContext, taskID string) string {
+	if cbCtx.DB == nil {
+		return ""
+	}
+
+	var task models.Task
+	if err := cbCtx.DB.Select("output").First(&task, "id = ?", taskID).Error; err != nil {
+		return ""
+	}
+
+	output := task.Output.String()
+	if output == "" {
+		return ""
+	}
+
+	// Return last 30 lines
+	lines := strings.Split(output, "\n")
+	if len(lines) > 30 {
+		lines = lines[len(lines)-30:]
+	}
+	return strings.Join(lines, "\n")
 }
 
 // dispatchCleanupJob dispatches the cleanup job for failed provisioning

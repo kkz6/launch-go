@@ -28,6 +28,25 @@ type QueueClient interface {
 	Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
 }
 
+// Notification represents a notification that can be sent through channels
+type Notification interface {
+	RawText() string
+}
+
+// NotifierService interface for sending notifications
+type NotifierService interface {
+	// SendToTeam sends a notification to all connected channels for a team
+	SendToTeam(ctx context.Context, teamID string, notification Notification) error
+	// SendToChannel sends a notification to a specific channel
+	SendToChannel(ctx context.Context, channelID string, notification Notification) error
+}
+
+// AdminAlerterService interface for sending admin Slack alerts
+type AdminAlerterService interface {
+	// IsConfigured returns true if admin alerting is configured
+	IsConfigured() bool
+}
+
 // CallbackContext provides dependencies to callback handlers.
 // This is similar to Laravel's service container - it allows reconstructed
 // handlers to access DB, queue, and other services.
@@ -36,6 +55,7 @@ type CallbackContext struct {
 	Queue       QueueClient
 	Logger      *zerolog.Logger
 	Broadcaster broadcast.TeamBroadcaster
+	Notifier    NotifierService
 }
 
 // BroadcastToTeam sends a websocket event to a team channel.
@@ -64,6 +84,28 @@ func (c *CallbackContext) BroadcastToDeployment(deploymentID, event string, data
 	if c.Broadcaster != nil {
 		c.Broadcaster.BroadcastToDeployment(deploymentID, event, data)
 	}
+}
+
+// NotifyTeam sends a notification to all connected channels for a team.
+func (c *CallbackContext) NotifyTeam(ctx context.Context, teamID string, notification Notification) error {
+	if c.Notifier == nil {
+		if c.Logger != nil {
+			c.Logger.Warn().Str("team_id", teamID).Msg("Notifier not available, cannot send notification")
+		}
+		return nil // Silent skip if not available
+	}
+	return c.Notifier.SendToTeam(ctx, teamID, notification)
+}
+
+// NotifyChannel sends a notification to a specific channel.
+func (c *CallbackContext) NotifyChannel(ctx context.Context, channelID string, notification Notification) error {
+	if c.Notifier == nil {
+		if c.Logger != nil {
+			c.Logger.Warn().Str("channel_id", channelID).Msg("Notifier not available, cannot send notification")
+		}
+		return nil // Silent skip if not available
+	}
+	return c.Notifier.SendToChannel(ctx, channelID, notification)
 }
 
 // DispatchJob is a helper to dispatch an asynq job from a callback handler
