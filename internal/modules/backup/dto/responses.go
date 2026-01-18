@@ -178,11 +178,6 @@ type StorageProviderResponse struct {
 
 // ToStorageProviderResponse converts a StorageProvider model to StorageProviderResponse
 func ToStorageProviderResponse(provider *models.StorageProvider) StorageProviderResponse {
-	teamID := ""
-	if provider.TeamID != nil {
-		teamID = *provider.TeamID
-	}
-
 	label := ""
 	if provider.Label != nil {
 		label = *provider.Label
@@ -201,7 +196,7 @@ func ToStorageProviderResponse(provider *models.StorageProvider) StorageProvider
 	resp := StorageProviderResponse{
 		ID:            provider.ID,
 		UserID:        provider.UserID,
-		TeamID:        teamID,
+		TeamID:        provider.TeamID,
 		Provider:      string(provider.Provider),
 		ProviderLabel: provider.Provider.Label(),
 		Label:         label,

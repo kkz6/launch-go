@@ -11,7 +11,7 @@ import (
 )
 
 // CreateDatabase creates a new database on a server
-func (s *Service) CreateDatabase(ctx context.Context, serverID string, req *dto.CreateDatabaseRequest, userID *string) (*models.Database, error) {
+func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, req *dto.CreateDatabaseRequest, userID *string) (*models.Database, error) {
 	// Check if database name already exists
 	exists, err := s.repos.Database().ExistsByNameAndServer(ctx, req.Name, serverID)
 	if err != nil {
@@ -25,6 +25,7 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID string, req *dto.
 	// Create database record
 	database := &models.Database{
 		ServerID: serverID,
+		TeamID:   teamID,
 		Name:     req.Name,
 	}
 
@@ -82,6 +83,7 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID string, req *dto.
 	// Create database user
 	dbUser := &models.DatabaseUser{
 		ServerID: serverID,
+		TeamID:   teamID,
 		Name:     req.UserName,
 		Password: &req.UserPassword,
 	}
@@ -102,18 +104,18 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID string, req *dto.
 }
 
 // GetDatabase retrieves a database by ID
-func (s *Service) GetDatabase(ctx context.Context, id, serverID string) (*models.Database, error) {
-	return s.repos.Database().FindByIDAndServer(ctx, id, serverID)
+func (s *Service) GetDatabase(ctx context.Context, id, serverID, teamID string) (*models.Database, error) {
+	return s.repos.Database().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 }
 
 // ListDatabases lists all databases for a server
-func (s *Service) ListDatabases(ctx context.Context, serverID string) ([]models.Database, error) {
-	return s.repos.Database().FindByServer(ctx, serverID)
+func (s *Service) ListDatabases(ctx context.Context, serverID, teamID string) ([]models.Database, error) {
+	return s.repos.Database().FindByServerAndTeam(ctx, serverID, teamID)
 }
 
 // DeleteDatabase deletes a database from a server
-func (s *Service) DeleteDatabase(ctx context.Context, id, serverID string, userID *string) error {
-	database, err := s.repos.Database().FindByIDAndServer(ctx, id, serverID)
+func (s *Service) DeleteDatabase(ctx context.Context, id, serverID, teamID string, userID *string) error {
+	database, err := s.repos.Database().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return err
 	}

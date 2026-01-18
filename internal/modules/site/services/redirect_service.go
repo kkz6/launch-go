@@ -22,12 +22,14 @@ func NewRedirectService(deps *ServiceDeps) *RedirectService {
 
 // Create creates a new redirect
 func (s *RedirectService) Create(ctx context.Context, siteID, serverID, userID string, req *dto.CreateRedirectRequest) (*models.Redirect, error) {
-	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+	if err != nil {
 		return nil, err
 	}
 
 	redirect := &models.Redirect{
-		SiteID: siteID,
+		SiteID: site.ID,
+		TeamID: site.TeamID,
 		UserID: userID,
 		Mode:   req.Mode,
 		From:   req.From,

@@ -28,6 +28,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site"
 	wsmodule "github.com/kkz6/launch-go/internal/modules/websocket"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/cache"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/module"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
@@ -38,15 +39,17 @@ import (
 
 // Application holds all application dependencies
 type Application struct {
-	config         *config.Config
-	logger         *zerolog.Logger
-	db             *gorm.DB
-	queueClient    *queue.Client
-	wsHub          *websocket.Hub
-	wsSubscriber   *websocket.RedisSubscriber
-	dispatcher     *taskrunner.Dispatcher
-	fiber          *fiber.App
-	kernel         *app.Kernel
+	config          *config.Config
+	logger          *zerolog.Logger
+	db              *gorm.DB
+	queueClient     *queue.Client
+	wsHub           *websocket.Hub
+	wsSubscriber    *websocket.RedisSubscriber
+	dispatcher      *taskrunner.Dispatcher
+	fiber           *fiber.App
+	kernel          *app.Kernel
+	redisCache      *cache.RedisCache
+	membershipCache *cache.TeamMembershipCache
 }
 
 func main() {
@@ -89,6 +92,10 @@ func bootstrap() *Application {
 
 	dispatcher := taskrunner.NewDispatcher(appLogger, wsHub)
 
+	// Initialize Redis cache for team membership
+	redisCache := cache.NewRedisCache(cfg.Redis)
+	membershipCache := cache.NewTeamMembershipCache(redisCache, db)
+
 	fiberApp := fiber.New(fiber.Config{
 		AppName:      "Launch API",
 		ReadTimeout:  30 * time.Second,
@@ -97,14 +104,16 @@ func bootstrap() *Application {
 	})
 
 	return &Application{
-		config:       cfg,
-		logger:       appLogger,
-		db:           db,
-		queueClient:  queueClient,
-		wsHub:        wsHub,
-		wsSubscriber: wsSubscriber,
-		dispatcher:   dispatcher,
-		fiber:        fiberApp,
+		config:          cfg,
+		logger:          appLogger,
+		db:              db,
+		queueClient:     queueClient,
+		wsHub:           wsHub,
+		wsSubscriber:    wsSubscriber,
+		dispatcher:      dispatcher,
+		fiber:           fiberApp,
+		redisCache:      redisCache,
+		membershipCache: membershipCache,
 	}
 }
 
@@ -114,7 +123,7 @@ func (a *Application) registerMiddleware() {
 	a.fiber.Use(cors.New(cors.Config{
 		AllowOrigins:     a.config.Cors.AllowedOrigins,
 		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-		AllowHeaders:     "Origin,Content-Type,Accept,Authorization",
+		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-Team-ID",
 		AllowCredentials: true,
 	}))
 	a.fiber.Use(middleware.RequestLogger(a.logger))
@@ -130,6 +139,7 @@ func (a *Application) registerModules() {
 		a.queueClient,
 		a.wsHub,
 		a.dispatcher,
+		a.membershipCache,
 	)
 
 	// Create application kernel
@@ -174,9 +184,11 @@ func (a *Application) registerModules() {
 	api.Get("/health", a.healthCheck)
 
 	authMiddleware := middleware.Auth(a.config.JWT.Secret)
+	teamContextMiddleware := middleware.TeamContext(a.membershipCache)
 
 	// Boot all HTTP routes through the kernel
-	a.kernel.BootHTTP(api, authMiddleware)
+	// Note: TeamContext middleware is applied at the route level where team scope is required
+	a.kernel.BootHTTP(api, authMiddleware, teamContextMiddleware)
 
 	// Register server routes with cross-module dependencies
 	serverModule.RegisterRoutes(api, authMiddleware, siteModule.SiteRepository())
@@ -229,6 +241,11 @@ func (a *Application) shutdown() {
 
 	// Stop Redis subscriber
 	a.wsSubscriber.Stop()
+
+	// Close Redis cache
+	if err := a.redisCache.Close(); err != nil {
+		a.logger.Error().Err(err).Msg("Failed to close Redis cache")
+	}
 
 	a.queueClient.Close()
 

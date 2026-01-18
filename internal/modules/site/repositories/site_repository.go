@@ -64,6 +64,64 @@ func (r *SiteRepository) FindByIDAndServer(ctx context.Context, id, serverID str
 	return site, nil
 }
 
+// FindByIDAndTeam finds a site by ID and team ID with custom error.
+func (r *SiteRepository) FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Site, error) {
+	var site models.Site
+	err := r.DB.WithContext(ctx).
+		First(&site, "id = ? AND team_id = ?", id, teamID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrSiteNotFound
+		}
+		return nil, err
+	}
+	return &site, nil
+}
+
+// FindByIDAndServerAndTeam finds a site by ID, server ID, and team ID.
+func (r *SiteRepository) FindByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.Site, error) {
+	var site models.Site
+	err := r.DB.WithContext(ctx).
+		First(&site, "id = ? AND server_id = ? AND team_id = ?", id, serverID, teamID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrSiteNotFound
+		}
+		return nil, err
+	}
+	return &site, nil
+}
+
+// FindAllByTeam finds all sites for a team
+func (r *SiteRepository) FindAllByTeam(ctx context.Context, teamID string) ([]models.Site, error) {
+	var sites []models.Site
+	err := r.DB.WithContext(ctx).
+		Where("team_id = ?", teamID).
+		Order("created_at DESC").
+		Find(&sites).Error
+	return sites, err
+}
+
+// FindByServerAndTeam finds sites by server ID and team ID
+func (r *SiteRepository) FindByServerAndTeam(ctx context.Context, serverID, teamID string) ([]models.Site, error) {
+	var sites []models.Site
+	err := r.DB.WithContext(ctx).
+		Where("server_id = ? AND team_id = ?", serverID, teamID).
+		Order("created_at DESC").
+		Find(&sites).Error
+	return sites, err
+}
+
+// CountByTeam counts all sites for a team
+func (r *SiteRepository) CountByTeam(ctx context.Context, teamID string) (int64, error) {
+	var count int64
+	err := r.DB.WithContext(ctx).
+		Model(&models.Site{}).
+		Where("team_id = ?", teamID).
+		Count(&count).Error
+	return count, err
+}
+
 // FindByServerWithLatestDeployment finds sites with their latest deployment
 func (r *SiteRepository) FindByServerWithLatestDeployment(ctx context.Context, serverID string) ([]models.Site, error) {
 	var sites []models.Site

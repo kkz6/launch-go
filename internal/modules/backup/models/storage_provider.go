@@ -11,7 +11,7 @@ import (
 type StorageProvider struct {
 	ID             uint64              `gorm:"primaryKey;autoIncrement" json:"id"`
 	UserID         string              `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	TeamID         *string             `gorm:"column:team_id;type:char(26);index" json:"team_id,omitempty"`
+	TeamID         string              `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
 	Provider       enums.StorageDriver `gorm:"type:varchar(255);not null" json:"provider"`
 	Label          *string             `gorm:"type:varchar(255)" json:"label,omitempty"`
 	Token          *string             `gorm:"type:varchar(1000)" json:"-"`

@@ -74,13 +74,24 @@ func (s *SiteService) SetSourceControlService(svc gitcontracts.SourceControlServ
 	s.sourceControlService = svc
 }
 
-// List returns all sites for a server
-func (s *SiteService) List(ctx context.Context, serverID string) ([]models.Site, error) {
-	return s.Repos().Site().FindByServerWithLatestDeployment(ctx, serverID)
+// List returns all sites for a server filtered by team
+func (s *SiteService) List(ctx context.Context, serverID, teamID string) ([]models.Site, error) {
+	sites, err := s.Repos().Site().FindByServerAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return nil, err
+	}
+
+	// Load latest deployment for each site
+	for i := range sites {
+		deployment, _ := s.Repos().Deployment().FindLatestBySite(ctx, sites[i].ID)
+		sites[i].LatestDeployment = deployment
+	}
+
+	return sites, nil
 }
 
 // Create creates a new site
-func (s *SiteService) Create(ctx context.Context, serverID, userID string, req *dto.CreateSiteRequest) (*models.Site, error) {
+func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID string, req *dto.CreateSiteRequest) (*models.Site, error) {
 	// Get server to determine username and validate PHP version
 	if s.serverRepos == nil {
 		return nil, errors.New("server repository not configured")
@@ -169,6 +180,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID string, req *
 
 	site := &models.Site{
 		ServerID:                    serverID,
+		TeamID:                      teamID,
 		UserID:                      userID,
 		Address:                     req.Address,
 		Type:                        req.Type,
@@ -249,7 +261,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID string, req *
 
 	// Handle database creation if requested (outside main transaction)
 	if req.CreateDatabase && s.databaseService != nil {
-		envVars = s.handleDatabaseCreation(ctx, site, serverID, userID, req)
+		envVars = s.handleDatabaseCreation(ctx, site, serverID, teamID, userID, req)
 	}
 
 	// Handle DNS record creation (outside transaction - non-critical)
@@ -311,14 +323,14 @@ func (s *SiteService) Create(ctx context.Context, serverID, userID string, req *
 }
 
 // handleDatabaseCreation creates a database during site creation
-func (s *SiteService) handleDatabaseCreation(ctx context.Context, site *models.Site, serverID, userID string, req *dto.CreateSiteRequest) map[string]string {
+func (s *SiteService) handleDatabaseCreation(ctx context.Context, site *models.Site, serverID, teamID, userID string, req *dto.CreateSiteRequest) map[string]string {
 	envVars := make(map[string]string)
 	envVarNames := site.Type.GetDatabaseEnvVarNames()
 
 	// Use existing database
 	if req.DatabaseOption == "existing" && req.DatabaseID != nil {
 		// Fetch existing database details and build env vars
-		dbInfo := s.getExistingDatabaseInfo(ctx, *req.DatabaseID, serverID)
+		dbInfo := s.getExistingDatabaseInfo(ctx, *req.DatabaseID, serverID, teamID)
 		if dbInfo != nil {
 			if envVarNames["database"] != "" {
 				envVars[envVarNames["database"]] = dbInfo.Name
@@ -354,7 +366,7 @@ func (s *SiteService) handleDatabaseCreation(ctx context.Context, site *models.S
 		dbReq.ExistingUserID = req.DatabaseUserID
 	}
 
-	database, err := s.databaseService.CreateDatabase(ctx, serverID, dbReq, &userID)
+	database, err := s.databaseService.CreateDatabase(ctx, serverID, teamID, dbReq, &userID)
 	if err != nil {
 		s.LogError(err, "Failed to create database during site creation", "site_id", site.ID)
 		return envVars
@@ -400,12 +412,12 @@ type DatabaseInfo struct {
 }
 
 // getExistingDatabaseInfo fetches database info for existing database
-func (s *SiteService) getExistingDatabaseInfo(ctx context.Context, databaseID, serverID string) *DatabaseInfo {
+func (s *SiteService) getExistingDatabaseInfo(ctx context.Context, databaseID, serverID, teamID string) *DatabaseInfo {
 	if s.databaseService == nil {
 		return nil
 	}
 
-	database, err := s.databaseService.GetDatabase(ctx, databaseID, serverID)
+	database, err := s.databaseService.GetDatabase(ctx, databaseID, serverID, teamID)
 	if err != nil {
 		return nil
 	}
@@ -631,9 +643,9 @@ func (s *SiteService) handleSourceControlRepository(ctx context.Context, sourceC
 	s.LogInfo("Repository saved to source control", "source_control_id", sourceControlID, "full_name", repo.FullName)
 }
 
-// FindByID finds a site by ID
-func (s *SiteService) FindByID(ctx context.Context, id, serverID string) (*models.Site, error) {
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
+// FindByID finds a site by ID with team validation
+func (s *SiteService) FindByID(ctx context.Context, id, serverID, teamID string) (*models.Site, error) {
+	site, err := s.Repos().Site().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -646,8 +658,8 @@ func (s *SiteService) FindByID(ctx context.Context, id, serverID string) (*model
 }
 
 // Update updates a site
-func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, req *dto.UpdateSiteRequest) (*models.Site, error) {
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
+func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID string, req *dto.UpdateSiteRequest) (*models.Site, error) {
+	site, err := s.Repos().Site().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -695,7 +707,7 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 	}
 
 	// Reload site to get updated values
-	site, err = s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
+	site, err = s.Repos().Site().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -736,8 +748,8 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, userID string, r
 }
 
 // Delete deletes a site
-func (s *SiteService) Delete(ctx context.Context, id, serverID string) error {
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
+func (s *SiteService) Delete(ctx context.Context, id, serverID, teamID string) error {
+	site, err := s.Repos().Site().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return err
 	}
@@ -774,8 +786,8 @@ func (s *SiteService) Delete(ctx context.Context, id, serverID string) error {
 }
 
 // GetDeletionSummary returns a summary of resources that will be deleted
-func (s *SiteService) GetDeletionSummary(ctx context.Context, id, serverID string) (*dto.DeletionSummaryResponse, error) {
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
+func (s *SiteService) GetDeletionSummary(ctx context.Context, id, serverID, teamID string) (*dto.DeletionSummaryResponse, error) {
+	site, err := s.Repos().Site().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -790,8 +802,8 @@ func (s *SiteService) GetDeletionSummary(ctx context.Context, id, serverID strin
 }
 
 // RegenerateDeployToken regenerates the deploy token for a site
-func (s *SiteService) RegenerateDeployToken(ctx context.Context, id, serverID string) (*models.Site, error) {
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
+func (s *SiteService) RegenerateDeployToken(ctx context.Context, id, serverID, teamID string) (*models.Site, error) {
+	site, err := s.Repos().Site().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -816,8 +828,8 @@ type SiteSettingsData struct {
 }
 
 // GetSettings returns site settings data including the active certificate, PHP versions, and git info
-func (s *SiteService) GetSettings(ctx context.Context, id, serverID string) (*SiteSettingsData, error) {
-	site, err := s.Repos().Site().FindByIDAndServer(ctx, id, serverID)
+func (s *SiteService) GetSettings(ctx context.Context, id, serverID, teamID string) (*SiteSettingsData, error) {
+	site, err := s.Repos().Site().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}

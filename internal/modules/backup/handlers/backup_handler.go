@@ -41,6 +41,7 @@ func (h *BackupHandler) ListBackups(c *fiber.Ctx) error {
 func (h *BackupHandler) CreateBackup(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	userID := c.Locals("userID").(string)
+	teamID := c.Locals("teamID").(string)
 
 	var req dto.CreateBackupRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -51,7 +52,7 @@ func (h *BackupHandler) CreateBackup(c *fiber.Ctx) error {
 		return response.ValidationError(c, errors)
 	}
 
-	backup, err := h.backupService.CreateBackup(c.Context(), serverID, userID, &req)
+	backup, err := h.backupService.CreateBackup(c.Context(), serverID, userID, teamID, &req)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}

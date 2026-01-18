@@ -164,7 +164,7 @@ func (r *SourceControlRepository) FirstOrCreateByProviderAndInstallationAndTeam(
 	sc = models.SourceControl{
 		Provider:   provider,
 		ProviderID: installationID,
-		TeamID:     &teamID,
+		TeamID:     teamID,
 	}
 
 	// Apply defaults

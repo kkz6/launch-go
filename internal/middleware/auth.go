@@ -45,9 +45,8 @@ func Auth(jwtSecret string) fiber.Handler {
 		c.Locals("userID", claims["sub"])
 		c.Locals("email", claims["email"])
 
-		if teamID, ok := claims["team_id"].(string); ok {
-			c.Locals("teamID", teamID)
-		}
+		// Note: team context is now handled by TeamContext middleware
+		// which reads from X-Team-ID header and validates membership
 
 		return c.Next()
 	}
@@ -89,9 +88,7 @@ func OptionalAuth(jwtSecret string) fiber.Handler {
 		c.Locals("userID", claims["sub"])
 		c.Locals("email", claims["email"])
 
-		if teamID, ok := claims["team_id"].(string); ok {
-			c.Locals("teamID", teamID)
-		}
+		// Note: team context is now handled by TeamContext middleware
 
 		return c.Next()
 	}

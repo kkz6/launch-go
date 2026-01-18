@@ -10,7 +10,7 @@ import (
 )
 
 // CreateDatabaseUser creates a new database user
-func (s *Service) CreateDatabaseUser(ctx context.Context, serverID string, req *dto.CreateDatabaseUserRequest, userID *string) (*models.DatabaseUser, error) {
+func (s *Service) CreateDatabaseUser(ctx context.Context, serverID, teamID string, req *dto.CreateDatabaseUserRequest, userID *string) (*models.DatabaseUser, error) {
 	// Check if user name already exists
 	exists, err := s.repos.User().ExistsByNameAndServer(ctx, req.Name, serverID)
 	if err != nil {
@@ -34,6 +34,7 @@ func (s *Service) CreateDatabaseUser(ctx context.Context, serverID string, req *
 	// Create database user
 	dbUser := &models.DatabaseUser{
 		ServerID: serverID,
+		TeamID:   teamID,
 		Name:     req.Name,
 		Password: &req.Password,
 	}

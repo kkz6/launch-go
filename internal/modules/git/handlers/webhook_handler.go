@@ -271,14 +271,10 @@ func (h *WebhookHandler) handleRepositoriesChanged(ctx context.Context, installa
 			return
 		}
 
-		teamID := ""
-		if sc.TeamID != nil {
-			teamID = *sc.TeamID
-		}
 		task, err := jobs.NewSyncInstallationReposTask(
 			string(enums.GitProviderGitHub),
 			installationID,
-			teamID,
+			sc.TeamID,
 			sc.UserID,
 		)
 		if err != nil {

@@ -52,7 +52,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 		// Create domain record
 		domain = &models.Domain{
 			UserID:           userID,
-			TeamID:           &teamID,
+			TeamID:           teamID,
 			DomainProviderID: provider.ID,
 			ProviderID:       providerID,
 			Label:            req.Label,
@@ -74,6 +74,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 		for i, ns := range nameservers {
 			nsRecord := &models.DnsRecord{
 				DomainID:   domain.ID,
+				TeamID:     teamID,
 				ProviderID: fmt.Sprintf("ns-%d", i),
 				Type:       enums.RecordTypeNS,
 				Name:       "@",
@@ -255,6 +256,7 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 		for _, pr := range providerRecords {
 			record := &models.DnsRecord{
 				DomainID:   domainID,
+				TeamID:     domain.TeamID,
 				ProviderID: pr.ID,
 				Type:       enums.RecordType(pr.Type),
 				Name:       pr.Name,

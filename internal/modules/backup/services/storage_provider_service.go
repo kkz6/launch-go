@@ -48,7 +48,7 @@ func (s *StorageProviderService) ConnectStorageProvider(ctx context.Context, use
 	// Create the storage provider record
 	provider := &models.StorageProvider{
 		UserID:    userID,
-		TeamID:    &teamID,
+		TeamID:    teamID,
 		Provider:  driver,
 		Label:     &req.Label,
 		Connected: true,

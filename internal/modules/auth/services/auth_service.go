@@ -257,14 +257,15 @@ func (s *AuthService) createPersonalTeam(ctx context.Context, user *models.User)
 }
 
 // generateAccessToken generates a JWT access token
+// Note: team_id is NOT included in the token. Team context is passed via X-Team-ID header
+// and validated by the TeamContext middleware with cached membership checks.
 func (s *AuthService) generateAccessToken(user *models.User) (string, error) {
 	claims := jwt.MapClaims{
-		"sub":     user.ID,
-		"email":   user.Email,
-		"team_id": user.CurrentTeamID,
-		"type":    "access",
-		"exp":     time.Now().Add(time.Hour * time.Duration(s.config.JWT.Expiration)).Unix(),
-		"iat":     time.Now().Unix(),
+		"sub":   user.ID,
+		"email": user.Email,
+		"type":  "access",
+		"exp":   time.Now().Add(time.Hour * time.Duration(s.config.JWT.Expiration)).Unix(),
+		"iat":   time.Now().Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

@@ -65,7 +65,7 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 
 	sc := &models.SourceControl{
 		UserID:                  userID,
-		TeamID:                  &teamID,
+		TeamID:                  teamID,
 		Provider:                providerType,
 		ProviderID:              installationID,
 		ProviderData:            &providerDataStr,
@@ -350,7 +350,7 @@ func (s *SourceControlService) SyncUserInstallation(ctx context.Context, provide
 	permissionsStr := string(permissionsJSON)
 
 	sc := &models.SourceControl{
-		TeamID:                  &teamID,
+		TeamID:                  teamID,
 		UserID:                  userID,
 		Provider:                providerType,
 		ProviderID:              installation.ID,

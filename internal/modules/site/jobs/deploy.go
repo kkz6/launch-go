@@ -227,13 +227,11 @@ func (j *DeployJob) buildSourceControlData(sc *gitmodels.SourceControl) *gitprov
 	scData := &gitproviders.SourceControlData{
 		ID:             sc.ID,
 		UserID:         sc.UserID,
+		TeamID:         sc.TeamID,
 		Provider:       gitproviders.GitProviderType(sc.Provider),
 		InstallationID: sc.InstallationID,
 	}
 
-	if sc.TeamID != nil {
-		scData.TeamID = *sc.TeamID
-	}
 	if sc.URL != nil {
 		scData.URL = sc.URL
 	}
@@ -664,13 +662,11 @@ func (j *DeployZeroDowntimeJob) buildSourceControlData(sc *gitmodels.SourceContr
 	scData := &gitproviders.SourceControlData{
 		ID:             sc.ID,
 		UserID:         sc.UserID,
+		TeamID:         sc.TeamID,
 		Provider:       gitproviders.GitProviderType(sc.Provider),
 		InstallationID: sc.InstallationID,
 	}
 
-	if sc.TeamID != nil {
-		scData.TeamID = *sc.TeamID
-	}
 	if sc.URL != nil {
 		scData.URL = sc.URL
 	}
