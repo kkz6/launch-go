@@ -466,8 +466,225 @@ export function TeamSwitcher() {
 
 ---
 
+## WebSocket Connections
+
+WebSocket connections also require team context. Pass `team_id` as a **query parameter** instead of in headers (WebSocket doesn't support custom headers in browser APIs).
+
+### Connection URL Format
+
+All WebSocket endpoints use this format:
+
+```
+wss://api.example.com/endpoint?token=JWT_TOKEN&team_id=TEAM_ID&...other_params
+```
+
+### Available WebSocket Endpoints
+
+| Endpoint | Description | Additional Parameters |
+|----------|-------------|----------------------|
+| `/ws` | Main pub/sub events | None |
+| `/terminal/ws` | SSH terminal | `serverId`, `siteId?`, `username?` |
+| `/terminal/logs` | Log streaming | `serverId`, `entity`, `entityId?`, `software?`, `route?`, `tail?`, `search?`, `type?` |
+| `/services/status` | Service status monitoring | `serverId`, `serviceId?`, `interval?` |
+| `/metrics/stream` | Real-time server metrics | `serverId`, `interval?` |
+
+### Example: Connecting to Terminal WebSocket
+
+```typescript
+function connectToTerminal(serverId: string, siteId?: string) {
+  const token = getAccessToken();
+  const teamId = getCurrentTeamId();
+
+  const params = new URLSearchParams({
+    token,
+    team_id: teamId,
+    serverId,
+  });
+
+  if (siteId) {
+    params.append('siteId', siteId);
+  }
+
+  const ws = new WebSocket(`wss://api.example.com/terminal/ws?${params}`);
+
+  ws.onopen = () => console.log('Terminal connected');
+  ws.onmessage = (event) => handleTerminalOutput(event.data);
+  ws.onerror = (error) => console.error('WebSocket error:', error);
+  ws.onclose = (event) => {
+    if (event.code === 1008) {
+      // Policy violation - likely auth or team membership failure
+      console.error('Authentication or team access denied');
+    }
+  };
+
+  return ws;
+}
+```
+
+### Example: Connecting to Metrics Stream
+
+```typescript
+function connectToMetricsStream(serverId: string, interval: number = 2) {
+  const token = getAccessToken();
+  const teamId = getCurrentTeamId();
+
+  const params = new URLSearchParams({
+    token,
+    team_id: teamId,
+    serverId,
+    interval: interval.toString(),
+  });
+
+  const ws = new WebSocket(`wss://api.example.com/metrics/stream?${params}`);
+
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+
+    switch (data.event) {
+      case 'connected':
+        console.log('Metrics stream connected');
+        break;
+      case 'system_info':
+        handleSystemInfo(data);
+        break;
+      case 'metrics':
+        handleMetricsUpdate(data);
+        break;
+      case 'error':
+        console.error('Stream error:', data.message);
+        break;
+    }
+  };
+
+  return ws;
+}
+```
+
+### Example: Subscribing to Real-time Events
+
+```typescript
+function connectToEventStream() {
+  const token = getAccessToken();
+  const teamId = getCurrentTeamId();
+
+  const ws = new WebSocket(`wss://api.example.com/ws?token=${token}&team_id=${teamId}`);
+
+  ws.onmessage = (event) => {
+    const message = JSON.parse(event.data);
+
+    // Handle team events
+    if (message.channel === `team.${teamId}`) {
+      switch (message.event) {
+        case 'server.created':
+        case 'server.updated':
+        case 'server.deleted':
+          refreshServerList();
+          break;
+        case 'site.created':
+        case 'site.updated':
+        case 'site.deleted':
+          refreshSiteList();
+          break;
+        case 'deployment.started':
+        case 'deployment.progress':
+        case 'deployment.finished':
+        case 'deployment.failed':
+          updateDeploymentStatus(message.data);
+          break;
+      }
+    }
+  };
+
+  return ws;
+}
+```
+
+### WebSocket Authentication Errors
+
+The WebSocket will close with specific messages for auth failures:
+
+| Error | Meaning |
+|-------|---------|
+| `Authentication failed` | Invalid or expired JWT token |
+| `Missing team_id parameter` | team_id query param not provided |
+| `Not a member of this team` | User is not a member of the specified team |
+| `Server not found` | Server doesn't exist or doesn't belong to the team |
+
+### React Hook Example
+
+```typescript
+// hooks/useWebSocket.ts
+import { useEffect, useRef, useState } from 'react';
+import { useTeam } from '../contexts/TeamContext';
+
+interface UseWebSocketOptions {
+  endpoint: string;
+  params?: Record<string, string>;
+  onMessage?: (data: any) => void;
+  onError?: (error: Event) => void;
+  autoReconnect?: boolean;
+}
+
+export function useWebSocket({
+  endpoint,
+  params = {},
+  onMessage,
+  onError,
+  autoReconnect = true,
+}: UseWebSocketOptions) {
+  const { currentTeamId } = useTeam();
+  const wsRef = useRef<WebSocket | null>(null);
+  const [connected, setConnected] = useState(false);
+
+  useEffect(() => {
+    if (!currentTeamId) return;
+
+    const token = getAccessToken();
+    const queryParams = new URLSearchParams({
+      token,
+      team_id: currentTeamId,
+      ...params,
+    });
+
+    const ws = new WebSocket(`wss://api.example.com${endpoint}?${queryParams}`);
+    wsRef.current = ws;
+
+    ws.onopen = () => setConnected(true);
+    ws.onclose = () => {
+      setConnected(false);
+      if (autoReconnect) {
+        // Reconnect after 3 seconds
+        setTimeout(() => {
+          // Re-run effect
+        }, 3000);
+      }
+    };
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      onMessage?.(data);
+    };
+    ws.onerror = (error) => onError?.(error);
+
+    return () => {
+      ws.close();
+    };
+  }, [currentTeamId, endpoint, JSON.stringify(params)]);
+
+  const send = (data: any) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(data));
+    }
+  };
+
+  return { connected, send };
+}
+```
+
+---
+
 ## Migration Checklist
 
+### HTTP Requests
 - [ ] Update auth state to store `currentTeamId` separately
 - [ ] Configure HTTP client to include `X-Team-ID` header
 - [ ] Update login flow to extract `current_team_id` from user response
@@ -476,6 +693,15 @@ export function TeamSwitcher() {
 - [ ] Test switching between teams
 - [ ] Test that removed team members are immediately blocked
 - [ ] Remove any code that extracts `team_id` from JWT token
+
+### WebSocket Connections
+- [ ] Update all WebSocket connections to include `team_id` query parameter
+- [ ] Update terminal connection to use new format
+- [ ] Update log streaming to use new format
+- [ ] Update metrics streaming to use new format
+- [ ] Update real-time event subscriptions to use new format
+- [ ] Handle WebSocket authentication errors appropriately
+- [ ] Reconnect WebSockets when team is switched
 
 ---
 

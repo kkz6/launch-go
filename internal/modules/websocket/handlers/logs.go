@@ -15,22 +15,25 @@ import (
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
+	"github.com/kkz6/launch-go/internal/pkg/cache"
 	ws "github.com/kkz6/launch-go/internal/websocket"
 )
 
 // LogsHandler handles WebSocket log streaming connections
 type LogsHandler struct {
-	db        *gorm.DB
-	jwtSecret string
-	logger    zerolog.Logger
+	db              *gorm.DB
+	jwtSecret       string
+	logger          zerolog.Logger
+	membershipCache *cache.TeamMembershipCache
 }
 
 // NewLogsHandler creates a new logs handler
-func NewLogsHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger) *LogsHandler {
+func NewLogsHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *LogsHandler {
 	return &LogsHandler{
-		db:        db,
-		jwtSecret: jwtSecret,
-		logger:    logger.With().Str("component", "logs").Logger(),
+		db:              db,
+		jwtSecret:       jwtSecret,
+		logger:          logger.With().Str("component", "logs").Logger(),
+		membershipCache: membershipCache,
 	}
 }
 
@@ -59,8 +62,8 @@ func (h *LogsHandler) Handler() fiber.Handler {
 			return
 		}
 
-		// Authenticate using centralized auth
-		claims, err := ws.AuthenticateWebSocket(c, h.jwtSecret)
+		// Authenticate using centralized auth (validates team membership)
+		claims, err := ws.AuthenticateWebSocket(c, h.jwtSecret, h.membershipCache)
 		if err != nil {
 			h.logger.Warn().Err(err).Msg("Authentication failed")
 			c.WriteMessage(websocket.TextMessage, []byte("Authentication failed"))

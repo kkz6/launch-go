@@ -15,6 +15,7 @@ import (
 	"gorm.io/gorm"
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/cache"
 	ws "github.com/kkz6/launch-go/internal/websocket"
 )
 
@@ -39,17 +40,19 @@ type ServiceStatusMessage struct {
 
 // ServiceStatusHandler handles WebSocket service status streaming connections
 type ServiceStatusHandler struct {
-	db        *gorm.DB
-	jwtSecret string
-	logger    zerolog.Logger
+	db              *gorm.DB
+	jwtSecret       string
+	logger          zerolog.Logger
+	membershipCache *cache.TeamMembershipCache
 }
 
 // NewServiceStatusHandler creates a new service status handler
-func NewServiceStatusHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger) *ServiceStatusHandler {
+func NewServiceStatusHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *ServiceStatusHandler {
 	return &ServiceStatusHandler{
-		db:        db,
-		jwtSecret: jwtSecret,
-		logger:    logger.With().Str("component", "service_status").Logger(),
+		db:              db,
+		jwtSecret:       jwtSecret,
+		logger:          logger.With().Str("component", "service_status").Logger(),
+		membershipCache: membershipCache,
 	}
 }
 
@@ -74,8 +77,8 @@ func (h *ServiceStatusHandler) Handler() fiber.Handler {
 			return
 		}
 
-		// Authenticate using centralized auth
-		claims, err := ws.AuthenticateWebSocket(c, h.jwtSecret)
+		// Authenticate using centralized auth (validates team membership)
+		claims, err := ws.AuthenticateWebSocket(c, h.jwtSecret, h.membershipCache)
 		if err != nil {
 			h.logger.Warn().Err(err).Msg("Authentication failed")
 			h.sendError(c, "Authentication failed")

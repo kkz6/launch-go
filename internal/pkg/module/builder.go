@@ -7,18 +7,20 @@ import (
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	"github.com/kkz6/launch-go/internal/pkg/cache"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 )
 
 // Deps holds common dependencies for all modules
 type Deps struct {
-	DB         *gorm.DB
-	Queue      *queue.Client
-	WebSocket  broadcast.ModelBroadcaster
-	Dispatcher *taskrunner.Dispatcher
-	Logger     *zerolog.Logger
-	Config     *config.Config
+	DB              *gorm.DB
+	Queue           *queue.Client
+	WebSocket       broadcast.ModelBroadcaster
+	Dispatcher      *taskrunner.Dispatcher
+	Logger          *zerolog.Logger
+	Config          *config.Config
+	MembershipCache *cache.TeamMembershipCache
 }
 
 // Builder helps construct modules with common dependencies
@@ -35,12 +37,13 @@ func NewBuilder(deps Deps) *Builder {
 func NewBuilderFromContext(ctx *app.Context) *Builder {
 	return &Builder{
 		deps: Deps{
-			DB:         ctx.DB,
-			Queue:      ctx.Queue,
-			WebSocket:  ctx.WebSocket,
-			Dispatcher: ctx.Dispatcher,
-			Logger:     ctx.Logger,
-			Config:     ctx.Config,
+			DB:              ctx.DB,
+			Queue:           ctx.Queue,
+			WebSocket:       ctx.WebSocket,
+			Dispatcher:      ctx.Dispatcher,
+			Logger:          ctx.Logger,
+			Config:          ctx.Config,
+			MembershipCache: ctx.MembershipCache,
 		},
 	}
 }
