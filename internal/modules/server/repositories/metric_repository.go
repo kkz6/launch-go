@@ -67,9 +67,18 @@ func (r *MetricRepository) FindLatestByServer(ctx context.Context, serverID stri
 	return &metric, nil
 }
 
-// DeleteOld deletes metrics older than a certain time
+// DeleteOld deletes metrics older than a certain time for a specific server
 func (r *MetricRepository) DeleteOld(ctx context.Context, serverID string, before time.Time) error {
 	return r.DB().WithContext(ctx).
 		Where("server_id = ? AND recorded_at < ?", serverID, before).
 		Delete(&models.Metric{}).Error
+}
+
+// DeleteOlderThan deletes all metrics older than a certain time across all servers
+// Returns the number of deleted records
+func (r *MetricRepository) DeleteOlderThan(ctx context.Context, before time.Time) (int64, error) {
+	result := r.DB().WithContext(ctx).
+		Where("created_at < ?", before).
+		Delete(&models.Metric{})
+	return result.RowsAffected, result.Error
 }

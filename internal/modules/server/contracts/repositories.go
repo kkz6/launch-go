@@ -116,6 +116,7 @@ type MetricRepository interface {
 	FindByServer(ctx context.Context, serverID string, from, to *time.Time, limit int) ([]models.Metric, error)
 	FindLatestByServer(ctx context.Context, serverID string) (*models.Metric, error)
 	DeleteOld(ctx context.Context, serverID string, before time.Time) error
+	DeleteOlderThan(ctx context.Context, before time.Time) (int64, error)
 }
 
 // ServerProviderRepository defines the interface for server provider database operations

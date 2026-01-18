@@ -8,6 +8,7 @@ import (
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/module"
 	"github.com/kkz6/launch-go/internal/pkg/sshkey"
+	"github.com/kkz6/launch-go/internal/queue"
 )
 
 var jobContext *JobContext
@@ -84,4 +85,20 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterHandler(mux, TypeUpdateUserPublicKey, jobContext, NewUpdateUserPublicKeyJob)
 	pkgjobs.RegisterHandler(mux, TypeInstallTaskCleanupCron, jobContext, NewInstallTaskCleanupCronJob)
 	pkgjobs.RegisterHandler(mux, TypeRunAfterUpdate, jobContext, NewRunAfterUpdateJob)
+
+	// Scheduled maintenance jobs
+	pkgjobs.RegisterHandler(mux, TypeCleanupOldMetrics, jobContext, NewCleanupOldMetricsJob)
+}
+
+// GetScheduledTasks returns the scheduled tasks for the server module
+func GetScheduledTasks() []queue.ScheduledTask {
+	cleanupTask, _ := NewCleanupOldMetricsTask()
+
+	return []queue.ScheduledTask{
+		{
+			CronSpec: CleanupOldMetricsCronSpec(),
+			Task:     cleanupTask,
+			Opts:     []asynq.Option{asynq.Queue("low")},
+		},
+	}
 }
