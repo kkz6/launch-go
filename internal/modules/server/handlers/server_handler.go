@@ -43,8 +43,8 @@ func (h *Handler) List(c *fiber.Ctx) error {
 	}
 
 	result := make([]dto.ServerResponse, len(servers))
-	for i, server := range servers {
-		result[i] = dto.ToServerResponse(&server)
+	for i := range servers {
+		result[i] = dto.ToServerResponse(&servers[i])
 	}
 
 	return response.OK(c, "Servers retrieved", result)
@@ -60,8 +60,8 @@ func (h *Handler) ListArchived(c *fiber.Ctx) error {
 	}
 
 	result := make([]dto.ServerResponse, len(servers))
-	for i, server := range servers {
-		result[i] = dto.ToServerResponse(&server)
+	for i := range servers {
+		result[i] = dto.ToServerResponse(&servers[i])
 	}
 
 	return response.OK(c, "Archived servers retrieved", result)
