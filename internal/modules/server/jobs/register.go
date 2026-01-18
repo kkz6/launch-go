@@ -84,4 +84,7 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterHandler(mux, TypeUpdateUserPublicKey, jobContext, NewUpdateUserPublicKeyJob)
 	pkgjobs.RegisterHandler(mux, TypeInstallTaskCleanupCron, jobContext, NewInstallTaskCleanupCronJob)
 	pkgjobs.RegisterHandler(mux, TypeRunAfterUpdate, jobContext, NewRunAfterUpdateJob)
+
+	// User management jobs
+	pkgjobs.RegisterHandler(mux, TypeRenameLocalUser, jobContext, NewRenameLocalUserJob)
 }

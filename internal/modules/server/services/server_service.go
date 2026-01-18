@@ -12,6 +12,7 @@ import (
 
 	"golang.org/x/crypto/ssh"
 
+	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
@@ -76,7 +77,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 	serverTypeStr := serverType.String()
 	osStr := os.String()
 	defaultSSHPort := 22
-	defaultUsername := "launch"
+	defaultUsername := config.DefaultUsername
 
 	server := &models.Server{
 		TeamID:          teamID,

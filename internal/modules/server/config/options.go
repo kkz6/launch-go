@@ -2,6 +2,9 @@ package config
 
 import "github.com/kkz6/launch-go/internal/modules/server/enums"
 
+// DefaultUsername is the default non-root user created on provisioned servers
+const DefaultUsername = "captain"
+
 // PlanOption represents a plan option for cloud providers
 type PlanOption struct {
 	Value string `json:"value"`
