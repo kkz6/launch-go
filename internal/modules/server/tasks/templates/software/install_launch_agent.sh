@@ -7,7 +7,7 @@ sudo mkdir -p /etc/launch-agent
 
 sudo bash -c "cat > {{ .AgentConfigPath }} <<'EOF'
 pulse:
-    enabled: false
+    enabled: true
     webhook:
         url: {{ .AgentURL }}
         method: POST

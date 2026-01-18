@@ -130,9 +130,11 @@ func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 	deps := m.Deps()
 	webhookHandler := handlers.NewTaskWebhookHandler(m.repos, deps.Config.App.Key, deps.Queue, deps.Logger)
 	provisionScriptHandler := handlers.NewProvisionScriptHandler(m.repos, m.service)
+	metricsWebhookHandler := handlers.NewMetricsWebhookHandler(deps.DB, deps.Config.App.Key, deps.WebSocket, deps.Logger)
 
 	m.registerTaskWebhookRoutes(router, webhookHandler)
 	m.registerProvisionScriptRoutes(router, provisionScriptHandler)
+	m.registerMetricsWebhookRoutes(router, metricsWebhookHandler)
 }
 
 // registerTaskWebhookRoutes registers task completion webhook routes
@@ -148,5 +150,13 @@ func (m *Module) registerProvisionScriptRoutes(router fiber.Router, handler *han
 	router.Get("/servers/:id/provision-script",
 		signedurl.RequireSignedURL(nil),
 		handler.GetProvisionScript,
+	)
+}
+
+// registerMetricsWebhookRoutes registers metrics/pulse webhook routes (signed URL protected)
+func (m *Module) registerMetricsWebhookRoutes(router fiber.Router, handler *handlers.MetricsWebhookHandler) {
+	router.Post("/webhooks/servers/:id/pulse",
+		signedurl.RequireSignedURL(nil),
+		handler.ReceivePulse,
 	)
 }
