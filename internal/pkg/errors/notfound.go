@@ -135,3 +135,9 @@ var (
 	ErrUserNotFound = NotFound("User not found")
 	ErrTeamNotFound = NotFound("Team not found")
 )
+
+// Script module errors
+var (
+	ErrScriptNotFound    = NotFound("Script not found")
+	ErrExecutionNotFound = NotFound("Script execution not found")
+)
