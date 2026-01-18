@@ -20,17 +20,17 @@ type LemonSqueezyConfig struct {
 func loadBillingConfig() BillingConfig {
 	return BillingConfig{
 		SubscriptionsEnabled: viper.GetBool("BILLING_SUBSCRIPTIONS_ENABLED"),
-		WebhookSecret:        viper.GetString("BILLING_WEBHOOK_SECRET"),
+		WebhookSecret:        viper.GetString("LEMON_SQUEEZY_SIGNING_SECRET"),
 		LemonSqueezy: LemonSqueezyConfig{
 			APIKey:  viper.GetString("LEMON_SQUEEZY_API_KEY"),
-			StoreID: viper.GetInt("LEMON_SQUEEZY_STORE_ID"),
+			StoreID: viper.GetInt("LEMON_SQUEEZY_STORE"),
 		},
 	}
 }
 
 func setBillingDefaults() {
 	viper.SetDefault("BILLING_SUBSCRIPTIONS_ENABLED", false)
-	viper.SetDefault("BILLING_WEBHOOK_SECRET", "")
+	viper.SetDefault("LEMON_SQUEEZY_SIGNING_SECRET", "")
 	viper.SetDefault("LEMON_SQUEEZY_API_KEY", "")
-	viper.SetDefault("LEMON_SQUEEZY_STORE_ID", 0)
+	viper.SetDefault("LEMON_SQUEEZY_STORE", 0)
 }
