@@ -15,6 +15,7 @@ import (
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/git"
 	"github.com/kkz6/launch-go/internal/modules/server"
+	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
@@ -118,6 +119,15 @@ func main() {
 	mux := asynq.NewServeMux()
 	kernel.BootJobs(mux)
 
+	// Initialize scheduler for periodic tasks
+	scheduler := queue.NewScheduler(cfg.Redis)
+
+	// Register scheduled tasks from all modules
+	scheduledTasks := serverjobs.GetScheduledTasks()
+	if err := scheduler.RegisterTasks(scheduledTasks); err != nil {
+		appLogger.Fatal().Err(err).Msg("Failed to register scheduled tasks")
+	}
+
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
@@ -129,10 +139,20 @@ func main() {
 		}
 	}()
 
+	go func() {
+		appLogger.Info().
+			Int("scheduled_tasks", len(scheduledTasks)).
+			Msg("Scheduler started")
+		if err := scheduler.Run(); err != nil {
+			appLogger.Error().Err(err).Msg("Scheduler error")
+		}
+	}()
+
 	<-quit
 	appLogger.Info().Msg("Shutting down worker...")
 
 	srv.Shutdown()
+	scheduler.Shutdown()
 	kernel.Shutdown()
 	redisBroadcaster.Close()
 	queueClient.Close()
