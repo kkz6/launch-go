@@ -64,8 +64,8 @@ type Server struct {
 	Tasks         []Task             `gorm:"foreignKey:ServerID;references:ID" json:"tasks,omitempty"`
 	Metrics       []Metric           `gorm:"foreignKey:ServerID;references:ID" json:"metrics,omitempty"`
 
-	// Computed fields (not stored in DB)
-	SitesCount int64 `gorm:"-" json:"sites_count,omitempty"`
+	// Computed fields (read-only, not stored in DB)
+	SitesCount int64 `gorm:"column:sites_count;->" json:"sites_count"`
 }
 
 func (s *Server) BeforeCreate(tx *gorm.DB) error {
