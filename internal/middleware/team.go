@@ -80,13 +80,56 @@ func OptionalTeamContext(membershipCache *cache.TeamMembershipCache) fiber.Handl
 }
 
 // TeamScope middleware ensures team context is present.
-// Use this after TeamContext middleware for routes that require team scope.
+// It reads X-Team-ID from header and validates team membership.
+// This is a convenience middleware that combines TeamContext validation with scope checking.
+//
+// Note: This requires a membershipCache to be set via SetTeamScopeMembershipCache
+// before the middleware is used. If not set, it will only check for existing context.
+var teamScopeMembershipCache *cache.TeamMembershipCache
+
+// SetTeamScopeMembershipCache sets the membership cache used by TeamScope middleware
+func SetTeamScopeMembershipCache(c *cache.TeamMembershipCache) {
+	teamScopeMembershipCache = c
+}
+
+// TeamScope middleware ensures team context is present.
+// If team context is not already set, it reads X-Team-ID header and validates membership.
 func TeamScope() fiber.Handler {
 	return func(c *fiber.Ctx) error {
+		// Check if team context is already set
 		teamID := c.Locals("teamID")
-		if teamID == nil || teamID == "" {
-			return response.Forbidden(c, "Team context required")
+		if teamID != nil && teamID != "" {
+			return c.Next()
 		}
+
+		// Read from header
+		headerTeamID := c.Get("X-Team-ID")
+		if headerTeamID == "" {
+			return response.Error(c, fiber.StatusBadRequest, "X-Team-ID header is required")
+		}
+
+		userID, ok := c.Locals("userID").(string)
+		if !ok || userID == "" {
+			return response.Unauthorized(c, "Authentication required")
+		}
+
+		// Validate membership if cache is available
+		if teamScopeMembershipCache != nil {
+			membership, err := teamScopeMembershipCache.GetMembership(c.Context(), userID, headerTeamID)
+			if err != nil {
+				return response.Error(c, fiber.StatusInternalServerError, "Failed to validate team membership")
+			}
+
+			if !membership.IsMember {
+				return response.Forbidden(c, "You are not a member of this team")
+			}
+
+			c.Locals("teamRole", membership.Role)
+		}
+
+		// Set team context
+		c.Locals("teamID", headerTeamID)
+
 		return c.Next()
 	}
 }
