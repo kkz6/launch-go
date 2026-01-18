@@ -116,6 +116,7 @@ func ToServerResponse(server *models.Server) ServerResponse {
 		ProgressStep:         server.ProgressStep,
 		CreatedAt:            createdAt,
 		UpdatedAt:            updatedAt,
+		SitesCount:           int(server.SitesCount),
 		ServicesCount:        len(server.Services),
 	}
 

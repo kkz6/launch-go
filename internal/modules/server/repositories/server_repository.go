@@ -81,6 +81,7 @@ func (r *ServerRepository) FindWithRelations(ctx context.Context, id, teamID str
 func (r *ServerRepository) FindAllByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
 	var servers []models.Server
 	err := r.DB().WithContext(ctx).
+		Select("servers.*, (SELECT COUNT(*) FROM sites WHERE sites.server_id = servers.id) as sites_count").
 		Preload("Services").
 		Where("team_id = ? AND archived_at IS NULL", teamID).
 		Order("created_at DESC").
@@ -99,8 +100,10 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 		return nil, 0, err
 	}
 
-	err := query.
+	err := r.DB().WithContext(ctx).
+		Select("servers.*, (SELECT COUNT(*) FROM sites WHERE sites.server_id = servers.id) as sites_count").
 		Preload("Services").
+		Where("team_id = ?", teamID).
 		Order("created_at DESC").
 		Limit(limit).
 		Offset(offset).
@@ -113,6 +116,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 func (r *ServerRepository) FindArchivedByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
 	var servers []models.Server
 	err := r.DB().WithContext(ctx).
+		Select("servers.*, (SELECT COUNT(*) FROM sites WHERE sites.server_id = servers.id) as sites_count").
 		Unscoped().
 		Where("team_id = ? AND archived_at IS NOT NULL", teamID).
 		Order("archived_at DESC").

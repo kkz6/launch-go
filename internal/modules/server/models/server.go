@@ -63,6 +63,9 @@ type Server struct {
 	SshKeys       []SshKey           `gorm:"many2many:server_ssh_keys" json:"ssh_keys,omitempty"`
 	Tasks         []Task             `gorm:"foreignKey:ServerID;references:ID" json:"tasks,omitempty"`
 	Metrics       []Metric           `gorm:"foreignKey:ServerID;references:ID" json:"metrics,omitempty"`
+
+	// Computed fields (not stored in DB)
+	SitesCount int64 `gorm:"-" json:"sites_count,omitempty"`
 }
 
 func (s *Server) BeforeCreate(tx *gorm.DB) error {
