@@ -104,6 +104,8 @@ func (h *TeamHandler) GetUserTeams(c *fiber.Ctx) error {
 }
 
 // SwitchTeam switches the user's current team (from request body)
+// After switching, the frontend should use the returned team ID in the X-Team-ID header
+// for all subsequent API requests that require team context.
 func (h *TeamHandler) SwitchTeam(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
 
@@ -121,10 +123,12 @@ func (h *TeamHandler) SwitchTeam(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	return response.OK(c, "Team switched", dto.ToUserResponse(user))
+	return response.OK(c, "Team switched. Use X-Team-ID header for subsequent requests.", dto.ToUserResponse(user))
 }
 
 // SwitchTeamByID switches the user's current team using URL parameter
+// After switching, the frontend should use the returned team ID in the X-Team-ID header
+// for all subsequent API requests that require team context.
 func (h *TeamHandler) SwitchTeamByID(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
 	teamID := c.Params("teamId")
@@ -138,5 +142,5 @@ func (h *TeamHandler) SwitchTeamByID(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	return response.OK(c, "Team switched", dto.ToUserResponse(user))
+	return response.OK(c, "Team switched. Use X-Team-ID header for subsequent requests.", dto.ToUserResponse(user))
 }

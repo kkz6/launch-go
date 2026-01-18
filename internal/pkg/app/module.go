@@ -35,6 +35,14 @@ type PublicRouteRegistrar interface {
 	RegisterPublicRoutes(router fiber.Router)
 }
 
+// TeamScopedRouteRegistrar is implemented by modules with team-scoped routes
+// These routes require both authentication AND a valid X-Team-ID header
+type TeamScopedRouteRegistrar interface {
+	Module
+	// RegisterTeamScopedRoutes registers routes that require team context
+	RegisterTeamScopedRoutes(router fiber.Router, authMiddleware, teamContextMiddleware fiber.Handler)
+}
+
 // WebhookRegistrar is implemented by modules that have webhook endpoints
 type WebhookRegistrar interface {
 	Module

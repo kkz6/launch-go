@@ -39,9 +39,10 @@ func (h *Handler) CreateDatabaseUser(c *fiber.Ctx) error {
 		return response.ValidationError(c, errors)
 	}
 
+	teamID := getTeamIDFromContext(c)
 	userID := getUserIDFromContext(c)
 
-	dbUser, err := h.service.CreateDatabaseUser(c.Context(), serverID, &req, userID)
+	dbUser, err := h.service.CreateDatabaseUser(c.Context(), serverID, teamID, &req, userID)
 	if err != nil {
 		return handleServiceError(c, err)
 	}

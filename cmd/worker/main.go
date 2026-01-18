@@ -92,7 +92,8 @@ func main() {
 	)
 
 	// Create application context with all shared dependencies
-	ctx := app.NewContext(cfg, db, appLogger, queueClient, redisBroadcaster, dispatcher)
+	// Note: membershipCache is nil for worker since it's only needed for HTTP middleware
+	ctx := app.NewContext(cfg, db, appLogger, queueClient, redisBroadcaster, dispatcher, nil)
 
 	// Create application kernel for module registration
 	kernel := app.NewKernel(appLogger)

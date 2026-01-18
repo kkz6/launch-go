@@ -108,13 +108,11 @@ func (s *DeploymentService) buildSourceControlData(sc *gitmodels.SourceControl) 
 	scData := &gitproviders.SourceControlData{
 		ID:             sc.ID,
 		UserID:         sc.UserID,
+		TeamID:         sc.TeamID,
 		Provider:       gitproviders.GitProviderType(sc.Provider),
 		InstallationID: sc.InstallationID,
 	}
 
-	if sc.TeamID != nil {
-		scData.TeamID = *sc.TeamID
-	}
 	if sc.URL != nil {
 		scData.URL = sc.URL
 	}
@@ -184,6 +182,7 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 
 	deployment := &models.Deployment{
 		SiteID:     site.ID,
+		TeamID:     site.TeamID,
 		UserID:     userIDPtr,
 		Status:     enums.DeploymentStatusPending,
 		GitHash:    targetDeployment.GitHash,
@@ -228,6 +227,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 			// Queue the deployment
 			deployment := &models.Deployment{
 				SiteID:     site.ID,
+				TeamID:     site.TeamID,
 				UserID:     userIDPtr,
 				Status:     enums.DeploymentStatusQueued,
 				GitHash:    gitHash,
@@ -248,6 +248,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 
 	deployment := &models.Deployment{
 		SiteID:     site.ID,
+		TeamID:     site.TeamID,
 		UserID:     userIDPtr,
 		Status:     enums.DeploymentStatusPending,
 		GitHash:    gitHash,

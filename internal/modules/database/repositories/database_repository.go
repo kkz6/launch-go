@@ -50,6 +50,42 @@ func (r *DatabaseRepository) FindByIDAndServer(ctx context.Context, id, serverID
 	return &database, nil
 }
 
+// FindByIDAndTeam finds a database by ID and team ID
+func (r *DatabaseRepository) FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Database, error) {
+	var database models.Database
+
+	err := r.db.WithContext(ctx).
+		Preload("Users").
+		First(&database, "id = ? AND team_id = ?", id, teamID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrDatabaseNotFound
+		}
+
+		return nil, err
+	}
+
+	return &database, nil
+}
+
+// FindByIDAndServerAndTeam finds a database by ID, server ID, and team ID
+func (r *DatabaseRepository) FindByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.Database, error) {
+	var database models.Database
+
+	err := r.db.WithContext(ctx).
+		Preload("Users").
+		First(&database, "id = ? AND server_id = ? AND team_id = ?", id, serverID, teamID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrDatabaseNotFound
+		}
+
+		return nil, err
+	}
+
+	return &database, nil
+}
+
 // FindByServer finds all databases for a server
 func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) ([]models.Database, error) {
 	var databases []models.Database
@@ -61,6 +97,30 @@ func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) 
 		Find(&databases).Error
 
 	return databases, err
+}
+
+// FindByServerAndTeam finds all databases for a server and team
+func (r *DatabaseRepository) FindByServerAndTeam(ctx context.Context, serverID, teamID string) ([]models.Database, error) {
+	var databases []models.Database
+
+	err := r.db.WithContext(ctx).
+		Preload("Users").
+		Where("server_id = ? AND team_id = ?", serverID, teamID).
+		Order("created_at DESC").
+		Find(&databases).Error
+
+	return databases, err
+}
+
+// CountByTeam counts all databases for a team
+func (r *DatabaseRepository) CountByTeam(ctx context.Context, teamID string) (int64, error) {
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&models.Database{}).
+		Where("team_id = ?", teamID).
+		Count(&count).Error
+
+	return count, err
 }
 
 // FindByNameAndServer finds a database by name and server ID

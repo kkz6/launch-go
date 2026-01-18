@@ -45,6 +45,7 @@ func (s *BackupJobService) CreateBackupJob(ctx context.Context, backupID, token 
 
 	job := &models.BackupJob{
 		BackupID:          backupID,
+		TeamID:            backup.TeamID,
 		StorageProviderID: backup.StorageProviderID,
 		Status:            req.Status,
 		Size:              size,

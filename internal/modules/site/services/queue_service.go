@@ -46,6 +46,7 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 
 	queueModel := &models.Queue{
 		SiteID:                site.ID,
+		TeamID:                site.TeamID,
 		ServerID:              serverID,
 		UserID:                userID,
 		Directory:             directory,

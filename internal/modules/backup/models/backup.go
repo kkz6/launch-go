@@ -12,6 +12,7 @@ type Backup struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
 	ServerID              string  `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	TeamID                string  `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
 	UserID                *string `gorm:"column:user_id;type:char(26);index" json:"user_id,omitempty"`
 	StorageProviderID     uint64  `gorm:"column:storage_provider_id;not null;index" json:"storage_provider_id"`
 	DispatchToken         string  `gorm:"column:dispatch_token;type:varchar(32);not null" json:"dispatch_token"`

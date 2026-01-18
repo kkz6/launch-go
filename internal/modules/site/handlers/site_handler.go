@@ -34,8 +34,9 @@ func (h *SiteHandler) SetDomainRepository(repo dnscontracts.DomainRepository) {
 // List returns all sites for a server
 func (h *SiteHandler) List(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
+	teamID := c.Locals("teamID").(string)
 
-	sites, err := h.siteService.List(c.Context(), serverID)
+	sites, err := h.siteService.List(c.Context(), serverID, teamID)
 	if err != nil {
 		return response.InternalError(c, "Failed to fetch sites")
 	}
@@ -51,6 +52,7 @@ func (h *SiteHandler) List(c *fiber.Ctx) error {
 // Create creates a new site
 func (h *SiteHandler) Create(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
+	teamID := c.Locals("teamID").(string)
 	userID := c.Locals("userID").(string)
 
 	var req dto.CreateSiteRequest
@@ -72,7 +74,7 @@ func (h *SiteHandler) Create(c *fiber.Ctx) error {
 		return response.ValidationError(c, errs)
 	}
 
-	site, err := h.siteService.Create(c.Context(), serverID, userID, &req)
+	site, err := h.siteService.Create(c.Context(), serverID, teamID, userID, &req)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
@@ -91,8 +93,9 @@ func normalizeEmptyStringPtr(s **string) {
 func (h *SiteHandler) Show(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
+	teamID := c.Locals("teamID").(string)
 
-	site, err := h.siteService.FindByID(c.Context(), siteID, serverID)
+	site, err := h.siteService.FindByID(c.Context(), siteID, serverID, teamID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
 			return response.NotFound(c, "Site not found")
@@ -119,6 +122,7 @@ func (h *SiteHandler) Show(c *fiber.Ctx) error {
 func (h *SiteHandler) Update(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
+	teamID := c.Locals("teamID").(string)
 	userID := c.Locals("userID").(string)
 
 	var req dto.UpdateSiteRequest
@@ -130,7 +134,7 @@ func (h *SiteHandler) Update(c *fiber.Ctx) error {
 		return response.ValidationError(c, errs)
 	}
 
-	site, err := h.siteService.Update(c.Context(), siteID, serverID, userID, &req)
+	site, err := h.siteService.Update(c.Context(), siteID, serverID, teamID, userID, &req)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
 			return response.NotFound(c, "Site not found")
@@ -146,8 +150,9 @@ func (h *SiteHandler) Update(c *fiber.Ctx) error {
 func (h *SiteHandler) Delete(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
+	teamID := c.Locals("teamID").(string)
 
-	if err := h.siteService.Delete(c.Context(), siteID, serverID); err != nil {
+	if err := h.siteService.Delete(c.Context(), siteID, serverID, teamID); err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
 			return response.NotFound(c, "Site not found")
 		}
@@ -162,8 +167,9 @@ func (h *SiteHandler) Delete(c *fiber.Ctx) error {
 func (h *SiteHandler) GetDeletionSummary(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
+	teamID := c.Locals("teamID").(string)
 
-	summary, err := h.siteService.GetDeletionSummary(c.Context(), siteID, serverID)
+	summary, err := h.siteService.GetDeletionSummary(c.Context(), siteID, serverID, teamID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
 			return response.NotFound(c, "Site not found")
@@ -179,8 +185,9 @@ func (h *SiteHandler) GetDeletionSummary(c *fiber.Ctx) error {
 func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
+	teamID := c.Locals("teamID").(string)
 
-	site, err := h.siteService.RegenerateDeployToken(c.Context(), siteID, serverID)
+	site, err := h.siteService.RegenerateDeployToken(c.Context(), siteID, serverID, teamID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
 			return response.NotFound(c, "Site not found")
@@ -196,6 +203,7 @@ func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
 func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
+	teamID := c.Locals("teamID").(string)
 	userID := c.Locals("userID").(string)
 
 	var req dto.UpdateDeploymentSettingsRequest
@@ -221,7 +229,7 @@ func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 		QueueDeployments:             req.QueueDeployments,
 	}
 
-	site, err := h.siteService.Update(c.Context(), siteID, serverID, userID, updateReq)
+	site, err := h.siteService.Update(c.Context(), siteID, serverID, teamID, userID, updateReq)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
 			return response.NotFound(c, "Site not found")
@@ -237,8 +245,9 @@ func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
+	teamID := c.Locals("teamID").(string)
 
-	settingsData, err := h.siteService.GetSettings(c.Context(), siteID, serverID)
+	settingsData, err := h.siteService.GetSettings(c.Context(), siteID, serverID, teamID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
 			return response.NotFound(c, "Site not found")

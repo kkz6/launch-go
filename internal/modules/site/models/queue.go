@@ -12,6 +12,7 @@ type Queue struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
 	SiteID                string     `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
+	TeamID                string     `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
 	ServerID              string     `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
 	UserID                string     `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
 	Directory             *string    `gorm:"type:varchar(255)" json:"directory,omitempty"`

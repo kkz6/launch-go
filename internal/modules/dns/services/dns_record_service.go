@@ -36,6 +36,7 @@ func (s *DnsRecordService) CreateRecord(ctx context.Context, domainID, teamID st
 	}
 
 	record := req.ToModel(domainID)
+	record.TeamID = domain.TeamID
 
 	// Get provider to add record
 	dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)

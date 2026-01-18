@@ -13,9 +13,13 @@ type DatabaseRepository interface {
 	Create(ctx context.Context, database *models.Database) error
 	FindByID(ctx context.Context, id string) (*models.Database, error)
 	FindByIDAndServer(ctx context.Context, id, serverID string) (*models.Database, error)
+	FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Database, error)
+	FindByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.Database, error)
 	FindByServer(ctx context.Context, serverID string) ([]models.Database, error)
+	FindByServerAndTeam(ctx context.Context, serverID, teamID string) ([]models.Database, error)
 	FindByNameAndServer(ctx context.Context, name, serverID string) (*models.Database, error)
 	FindByUser(ctx context.Context, userID string) ([]models.Database, error)
+	CountByTeam(ctx context.Context, teamID string) (int64, error)
 	Update(ctx context.Context, database *models.Database) error
 	UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error
 	Delete(ctx context.Context, id string) error

@@ -14,6 +14,14 @@ func getUserIDFromContext(c *fiber.Ctx) *string {
 	return nil
 }
 
+func getTeamIDFromContext(c *fiber.Ctx) string {
+	if teamID, ok := c.Locals("teamID").(string); ok {
+		return teamID
+	}
+
+	return ""
+}
+
 // handleServiceError handles service errors and returns the appropriate HTTP response.
 // Since repository and service errors now use response.AppError with HTTP status codes,
 // HandleError automatically returns the correct response.

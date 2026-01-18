@@ -11,7 +11,7 @@ import (
 type DomainProvider struct {
 	basemodels.BaseModel
 	UserID           string                   `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	TeamID           *string                  `gorm:"column:team_id;type:char(26);index" json:"team_id,omitempty"`
+	TeamID           string                   `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
 	Profile          *string                  `gorm:"type:varchar(255)" json:"profile,omitempty"`
 	Provider         enums.DnsProvider        `gorm:"type:varchar(255);not null" json:"provider"`
 	Credentials      basemodels.EncryptedJSONStringMap `gorm:"type:longtext;not null" json:"-"`

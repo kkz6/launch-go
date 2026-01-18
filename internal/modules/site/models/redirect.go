@@ -8,6 +8,7 @@ import (
 type Redirect struct {
 	basemodels.BaseModel
 	SiteID string `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
+	TeamID string `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
 	UserID string `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
 	Mode   int    `gorm:"type:int;not null" json:"mode"`
 	From   string `gorm:"type:text;not null" json:"from"`

@@ -26,7 +26,9 @@ func (h *Handler) ListDatabases(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Server ID is required")
 	}
 
-	databases, err := h.service.ListDatabases(c.Context(), serverID)
+	teamID := getTeamIDFromContext(c)
+
+	databases, err := h.service.ListDatabases(c.Context(), serverID, teamID)
 	if err != nil {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
@@ -50,9 +52,10 @@ func (h *Handler) CreateDatabase(c *fiber.Ctx) error {
 		return response.ValidationError(c, errors)
 	}
 
+	teamID := getTeamIDFromContext(c)
 	userID := getUserIDFromContext(c)
 
-	database, err := h.service.CreateDatabase(c.Context(), serverID, &req, userID)
+	database, err := h.service.CreateDatabase(c.Context(), serverID, teamID, &req, userID)
 	if err != nil {
 		return handleServiceError(c, err)
 	}
@@ -69,7 +72,9 @@ func (h *Handler) GetDatabase(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Server ID and Database ID are required")
 	}
 
-	database, err := h.service.GetDatabase(c.Context(), id, serverID)
+	teamID := getTeamIDFromContext(c)
+
+	database, err := h.service.GetDatabase(c.Context(), id, serverID, teamID)
 	if err != nil {
 		return handleServiceError(c, err)
 	}
@@ -86,9 +91,10 @@ func (h *Handler) DeleteDatabase(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, "Server ID and Database ID are required")
 	}
 
+	teamID := getTeamIDFromContext(c)
 	userID := getUserIDFromContext(c)
 
-	if err := h.service.DeleteDatabase(c.Context(), id, serverID, userID); err != nil {
+	if err := h.service.DeleteDatabase(c.Context(), id, serverID, teamID, userID); err != nil {
 		return handleServiceError(c, err)
 	}
 

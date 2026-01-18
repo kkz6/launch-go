@@ -47,7 +47,8 @@ func (k *Kernel) Register(module Module) *Kernel {
 
 // BootHTTP registers all HTTP routes from all modules.
 // Call this once after all modules are registered.
-func (k *Kernel) BootHTTP(router fiber.Router, authMiddleware fiber.Handler) {
+// The teamContextMiddleware is optional and can be used by modules that require team context.
+func (k *Kernel) BootHTTP(router fiber.Router, authMiddleware fiber.Handler, teamContextMiddleware ...fiber.Handler) {
 	// First, register public routes (no auth required)
 	for _, module := range k.modules {
 		if registrar, ok := module.(PublicRouteRegistrar); ok {
@@ -64,6 +65,16 @@ func (k *Kernel) BootHTTP(router fiber.Router, authMiddleware fiber.Handler) {
 			registrar.RegisterRoutes(router, authMiddleware)
 			if k.logger != nil {
 				k.logger.Debug().Str("module", module.Name()).Msg("Routes registered")
+			}
+		}
+
+		// Register team-scoped routes if the module supports it
+		if len(teamContextMiddleware) > 0 {
+			if registrar, ok := module.(TeamScopedRouteRegistrar); ok {
+				registrar.RegisterTeamScopedRoutes(router, authMiddleware, teamContextMiddleware[0])
+				if k.logger != nil {
+					k.logger.Debug().Str("module", module.Name()).Msg("Team-scoped routes registered")
+				}
 			}
 		}
 	}

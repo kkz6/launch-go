@@ -25,7 +25,7 @@ func NewBackupService(deps *ServiceDeps) *BackupService {
 }
 
 // CreateBackup creates a new backup configuration
-func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID string, req *dto.CreateBackupRequest) (*models.Backup, error) {
+func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID, teamID string, req *dto.CreateBackupRequest) (*models.Backup, error) {
 	// Convert include/exclude files to JSON strings
 	includeFilesJSON, err := json.Marshal(req.IncludeFiles)
 	if err != nil {
@@ -50,6 +50,7 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID strin
 
 	backup := &models.Backup{
 		ServerID:              serverID,
+		TeamID:                teamID,
 		UserID:                &userID,
 		StorageProviderID:     storageProviderID,
 		CronExpression:        req.CronExpression,

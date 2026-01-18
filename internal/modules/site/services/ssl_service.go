@@ -50,6 +50,7 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 		}
 		cert := &models.Certificate{
 			SiteID:      site.ID,
+			TeamID:      site.TeamID,
 			Type:        enums.CertificateTypeCustom,
 			PrivateKey:  privateKey,
 			Certificate: req.Certificate,

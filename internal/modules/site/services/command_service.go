@@ -35,6 +35,7 @@ func (s *CommandService) Create(ctx context.Context, siteID, serverID, userID st
 
 	cmd := &models.Command{
 		SiteID:  site.ID,
+		TeamID:  site.TeamID,
 		UserID:  userID,
 		Command: req.Command,
 		Status:  enums.CommandStatusPending,

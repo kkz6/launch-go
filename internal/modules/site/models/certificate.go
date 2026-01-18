@@ -12,6 +12,7 @@ import (
 type Certificate struct {
 	basemodels.BaseModel
 	SiteID      string                     `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
+	TeamID      string                     `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
 	Type        enums.CertificateType      `gorm:"type:varchar(255);not null;default:letsencrypt" json:"type"`
 	Domains     basemodels.JSONStringSlice `gorm:"type:json" json:"domains,omitempty"`
 	CSR         *string                    `gorm:"column:csr;type:longtext" json:"csr,omitempty"`

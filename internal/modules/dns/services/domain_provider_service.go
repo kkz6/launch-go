@@ -60,7 +60,7 @@ func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, team
 	// Create domain provider record
 	dp := &models.DomainProvider{
 		UserID:         userID,
-		TeamID:         &teamID,
+		TeamID:         teamID,
 		Profile:        &req.Profile,
 		Provider:       providerType,
 		Connected:      true,
