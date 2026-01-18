@@ -3,6 +3,7 @@ package billing
 import (
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/billing/handlers"
 )
 
@@ -17,7 +18,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 // registerBillingRoutes registers billing-related routes
 func (m *Module) registerBillingRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.BillingHandler) {
-	billing := router.Group("/billing", authMiddleware)
+	billing := router.Group("/billing", authMiddleware, middleware.TeamScope())
 	{
 		billing.Get("/", handler.Index)
 		billing.Get("/plans", handler.GetPlans)
@@ -34,7 +35,7 @@ func (m *Module) registerBillingRoutes(router fiber.Router, authMiddleware fiber
 
 // registerSubscriptionRoutes registers subscription registration route
 func (m *Module) registerSubscriptionRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.BillingHandler) {
-	router.Get("/register/subscription", authMiddleware, handler.RegisterSubscription)
+	router.Get("/register/subscription", authMiddleware, middleware.TeamScope(), handler.RegisterSubscription)
 }
 
 // RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
