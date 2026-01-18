@@ -186,6 +186,10 @@ func (a *Application) registerModules() {
 	authMiddleware := middleware.Auth(a.config.JWT.Secret)
 	teamContextMiddleware := middleware.TeamContext(a.membershipCache)
 
+	// Set the membership cache for TeamScope middleware
+	// This allows TeamScope() to validate team membership when used in routes
+	middleware.SetTeamScopeMembershipCache(a.membershipCache)
+
 	// Boot all HTTP routes through the kernel
 	// Note: TeamContext middleware is applied at the route level where team scope is required
 	a.kernel.BootHTTP(api, authMiddleware, teamContextMiddleware)
