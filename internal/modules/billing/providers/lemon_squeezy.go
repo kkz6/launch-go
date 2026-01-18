@@ -121,6 +121,16 @@ func (c *LemonSqueezyClient) CreateCheckout(ctx context.Context, variantID strin
 		return "", fmt.Errorf("invalid variant ID: %w", err)
 	}
 
+	checkoutOptions := map[string]interface{}{
+		"embed":                true,
+		"subscription_preview": false,
+	}
+
+	// Add redirect URL to checkout options if provided
+	if redirectURL != "" {
+		checkoutOptions["redirect_url"] = redirectURL
+	}
+
 	payload := map[string]interface{}{
 		"data": map[string]interface{}{
 			"type": "checkouts",
@@ -128,10 +138,7 @@ func (c *LemonSqueezyClient) CreateCheckout(ctx context.Context, variantID strin
 				"product_options": map[string]interface{}{
 					"name": productName,
 				},
-				"checkout_options": map[string]interface{}{
-					"embed":                true,
-					"subscription_preview": false,
-				},
+				"checkout_options": checkoutOptions,
 				"checkout_data": map[string]interface{}{
 					"custom": map[string]string{
 						"team_id": teamID,
@@ -172,12 +179,7 @@ func (c *LemonSqueezyClient) CreateCheckout(ctx context.Context, variantID strin
 		return "", err
 	}
 
-	checkoutURL := result.Data.Attributes.URL
-	if redirectURL != "" {
-		checkoutURL += "?checkout[success_url]=" + redirectURL
-	}
-
-	return checkoutURL, nil
+	return result.Data.Attributes.URL, nil
 }
 
 // GetSubscription retrieves a subscription by ID

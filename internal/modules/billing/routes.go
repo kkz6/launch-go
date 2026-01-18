@@ -8,7 +8,8 @@ import (
 
 // RegisterRoutes registers the module routes (implements app.RouteRegistrar)
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
-	handler := handlers.NewBillingHandler(m.service, m.serverCountFn)
+	deps := m.Deps()
+	handler := handlers.NewBillingHandler(m.service, m.serverCountFn, deps.Config.App.URL)
 
 	m.registerBillingRoutes(router, authMiddleware, handler)
 	m.registerSubscriptionRoutes(router, authMiddleware, handler)
