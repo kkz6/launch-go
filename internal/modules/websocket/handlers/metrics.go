@@ -136,6 +136,17 @@ func (h *MetricsHandler) streamMetrics(c *websocket.Conn, server *serverModels.S
 	// Uses standard Linux tools: /proc/stat, free, df, /proc/loadavg, ps, /proc/net/dev
 	// Uses stdbuf to disable output buffering for real-time streaming
 	command := fmt.Sprintf(`stdbuf -oL bash -c '
+# Collect and send system info once at start
+HOSTNAME=$(hostname)
+OS_NAME=$(grep "^PRETTY_NAME=" /etc/os-release 2>/dev/null | cut -d"\"" -f2 || echo "Linux")
+KERNEL=$(uname -r)
+CPU_MODEL=$(grep "model name" /proc/cpuinfo 2>/dev/null | head -1 | cut -d":" -f2 | sed "s/^ //" | sed "s/\"/\\\\\"/g" || echo "Unknown")
+CPU_CORES=$(nproc 2>/dev/null || grep -c "^processor" /proc/cpuinfo)
+TOTAL_MEM=$(free -b | awk "/^Mem:/ {print \$2}")
+UPTIME_SECS=$(awk "{print int(\$1)}" /proc/uptime)
+
+echo "{\"event\":\"system_info\",\"hostname\":\"$HOSTNAME\",\"os\":\"$OS_NAME\",\"kernel\":\"$KERNEL\",\"cpu_model\":\"$CPU_MODEL\",\"cpu_cores\":$CPU_CORES,\"total_memory\":$TOTAL_MEM,\"uptime\":$UPTIME_SECS}"
+
 # Initialize previous network counters
 PREV_RX=0
 PREV_TX=0
