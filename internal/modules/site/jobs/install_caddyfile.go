@@ -56,8 +56,13 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
+	// Get redirects for Caddyfile generation (installed + pending)
+	installedRedirects, _ := j.ctx.RedirectRepo.FindBySiteForCaddy(ctx, site.ID)
+	pendingRedirects, _ := j.ctx.RedirectRepo.FindPendingBySite(ctx, site.ID)
+	allRedirects := append(installedRedirects, pendingRedirects...)
+
 	// Generate Caddyfile content
-	caddyfileContent := j.generateCaddyfileContent(site)
+	caddyfileContent := j.generateCaddyfileContent(site, allRedirects)
 	caddyfilePath := fmt.Sprintf("%s/Caddyfile", site.Path)
 
 	// Create update Caddyfile task
@@ -91,6 +96,11 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 	site.PendingCaddyfileUpdateSince = nil
 	if err := j.ctx.SiteRepo.Update(ctx, site); err != nil {
 		j.ctx.LogError(err, "Failed to update site installed status")
+	}
+
+	// Mark pending redirects as installed
+	if err := j.ctx.RedirectRepo.UpdateStatusBySite(ctx, site.ID, "pending", "installed"); err != nil {
+		j.ctx.LogError(err, "Failed to update redirect statuses")
 	}
 
 	// Broadcast site.installed event
@@ -135,12 +145,12 @@ func (j *InstallCaddyfileJob) Failed(ctx context.Context, err error) {
 }
 
 // generateCaddyfileContent generates the Caddyfile content for a site
-func (j *InstallCaddyfileJob) generateCaddyfileContent(site *models.Site) string {
-	return generateCaddyfile(site)
+func (j *InstallCaddyfileJob) generateCaddyfileContent(site *models.Site, redirects []models.Redirect) string {
+	return generateCaddyfile(site, redirects)
 }
 
 // generateCaddyfile generates the Caddyfile content for a site (shared function)
-func generateCaddyfile(site *models.Site) string {
+func generateCaddyfile(site *models.Site, redirects []models.Redirect) string {
 	var builder strings.Builder
 	port := site.GetPort()
 
@@ -199,6 +209,15 @@ func generateCaddyfile(site *models.Site) string {
 		builder.WriteString("rewrite @disallowed '/index.php'\n\n")
 	}
 
+	// Custom redirects
+	if len(redirects) > 0 {
+		builder.WriteString("# Custom redirects\n")
+		for _, r := range redirects {
+			builder.WriteString(generateRedirectDirective(&r))
+		}
+		builder.WriteString("\n")
+	}
+
 	// File server
 	builder.WriteString("file_server\n\n")
 
@@ -212,6 +231,30 @@ func generateCaddyfile(site *models.Site) string {
 	builder.WriteString("}\n")
 
 	builder.WriteString("}\n")
+
+	return builder.String()
+}
+
+// generateRedirectDirective generates a Caddy redirect directive for a redirect rule
+func generateRedirectDirective(r *models.Redirect) string {
+	var builder strings.Builder
+
+	// Determine redirect type
+	redirectType := ""
+	if r.IsPermanent() {
+		redirectType = " permanent"
+	}
+
+	// Check if this is a pattern redirect (contains * or {path})
+	if strings.Contains(r.From, "*") || strings.Contains(r.From, "{") {
+		// Pattern-based redirect with matcher
+		matcherName := fmt.Sprintf("@redirect_%s", r.ID[:8])
+		builder.WriteString(fmt.Sprintf("%s path %s\n", matcherName, r.From))
+		builder.WriteString(fmt.Sprintf("redir %s %s%s\n", matcherName, r.To, redirectType))
+	} else {
+		// Exact path redirect
+		builder.WriteString(fmt.Sprintf("redir %s %s%s\n", r.From, r.To, redirectType))
+	}
 
 	return builder.String()
 }
@@ -320,8 +363,13 @@ func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
+	// Get redirects for Caddyfile generation (installed + pending)
+	installedRedirects, _ := j.ctx.RedirectRepo.FindBySiteForCaddy(ctx, site.ID)
+	pendingRedirects, _ := j.ctx.RedirectRepo.FindPendingBySite(ctx, site.ID)
+	allRedirects := append(installedRedirects, pendingRedirects...)
+
 	// Generate Caddyfile content
-	caddyfileContent := j.generateCaddyfileContent(site)
+	caddyfileContent := j.generateCaddyfileContent(site, allRedirects)
 	caddyfilePath := fmt.Sprintf("%s/Caddyfile", site.Path)
 
 	// Create update Caddyfile task
@@ -349,6 +397,11 @@ func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 		j.ctx.LogError(err, "Failed to clear pending Caddyfile update flag")
 	}
 
+	// Mark pending redirects as installed
+	if err := j.ctx.RedirectRepo.UpdateStatusBySite(ctx, site.ID, "pending", "installed"); err != nil {
+		j.ctx.LogError(err, "Failed to update redirect statuses")
+	}
+
 	j.ctx.LogInfo("Caddyfile updated successfully", "site_id", site.ID)
 
 	return nil
@@ -360,8 +413,8 @@ func (j *UpdateCaddyfileJob) Failed(ctx context.Context, err error) {
 }
 
 // generateCaddyfileContent generates the Caddyfile content for a site
-func (j *UpdateCaddyfileJob) generateCaddyfileContent(site *models.Site) string {
-	return generateCaddyfile(site)
+func (j *UpdateCaddyfileJob) generateCaddyfileContent(site *models.Site, redirects []models.Redirect) string {
+	return generateCaddyfile(site, redirects)
 }
 
 // UninstallCaddyfileJob handles site Caddyfile uninstallation
