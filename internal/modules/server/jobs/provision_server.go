@@ -10,6 +10,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 const TypeProvisionServer = "server:provision"
@@ -48,6 +49,9 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 		}
 	}
 
+	// Generate signed URL for launch-agent pulse webhook
+	agentURL := generateAgentPulseURL(server.ID)
+
 	config := tasks.ProvisionFreshServerConfig{
 		ServerID:         server.ID,
 		TeamID:           server.TeamID,
@@ -62,6 +66,8 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 		SSHPort:          server.GetSSHPort(),
 		SoftwareStack:    getDefaultSoftwareStack(),
 		DatabasePassword: server.DatabasePassword.String(),
+		AgentConfigPath:  "/etc/launch-agent/launch-agent.yaml",
+		AgentURL:         agentURL,
 	}
 
 	task := tasks.ProvisionFreshServer(config)
@@ -195,4 +201,10 @@ func NewProvisionServerTask(serverID, teamID string, userID *string, sshKeyIDs [
 		UserID:    userID,
 		SSHKeyIDs: sshKeyIDs,
 	}, asynq.TaskID(fmt.Sprintf("provision:%s", serverID)))
+}
+
+// generateAgentPulseURL creates a permanent signed URL for the launch-agent pulse webhook
+func generateAgentPulseURL(serverID string) string {
+	path := fmt.Sprintf("/webhooks/servers/%s/pulse", serverID)
+	return signedurl.PermanentSign(path, nil)
 }

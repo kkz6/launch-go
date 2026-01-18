@@ -19,6 +19,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 	"github.com/kkz6/launch-go/internal/websocket"
@@ -38,6 +39,10 @@ func main() {
 	if err := database.InitEncryption(cfg.App.Key); err != nil {
 		appLogger.Fatal().Err(err).Msg("Failed to initialize encryption")
 	}
+
+	// Initialize signed URL signer with app key and base URL
+	signer := signedurl.NewSigner(cfg.App.Key).WithBaseURL(cfg.App.URL)
+	signedurl.SetDefaultSigner(signer)
 
 	// Initialize database
 	db, err := database.Connect(cfg.Database)
