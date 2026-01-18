@@ -90,6 +90,10 @@ func (s *BillingService) GetPlanByVariantID(variantID string) *models.Plan {
 
 // GenerateCheckoutURL generates a checkout URL for a team to subscribe
 func (s *BillingService) GenerateCheckoutURL(ctx context.Context, teamID string, req *dto.GenerateCheckoutURLRequest, redirectURL string) (string, error) {
+	if s.lemonSqueezy == nil {
+		return "", ErrSubscriptionsNotEnabled
+	}
+
 	plan := s.GetPlanByID(req.Plan)
 	if plan == nil {
 		return "", ErrPlanNotFound
