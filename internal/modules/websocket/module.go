@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/websocket/handlers"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/cache"
 	"github.com/kkz6/launch-go/internal/pkg/module"
 	ws "github.com/kkz6/launch-go/internal/websocket"
 )
@@ -13,9 +14,9 @@ const ModuleName = "websocket"
 
 // Ensure Module implements required interfaces
 var (
-	_ app.Module            = (*Module)(nil)
+	_ app.Module             = (*Module)(nil)
 	_ app.WebSocketRegistrar = (*Module)(nil)
-	_ app.Shutdownable      = (*Module)(nil)
+	_ app.Shutdownable       = (*Module)(nil)
 )
 
 // Module is the WebSocket module that manages all WebSocket routes
@@ -27,6 +28,7 @@ type Module struct {
 	serviceStatusHandler *handlers.ServiceStatusHandler
 	metricsHandler       *handlers.MetricsHandler
 	jwtSecret            string
+	membershipCache      *cache.TeamMembershipCache
 }
 
 // NewModule creates a new WebSocket module
@@ -40,18 +42,20 @@ func NewModule(b *module.Builder) *Module {
 	return &Module{
 		Base:                 module.NewBase(ModuleName, b),
 		hub:                  hub,
-		terminalHandler:      handlers.NewTerminalHandler(deps.DB, jwtSecret, *deps.Logger),
-		logsHandler:          handlers.NewLogsHandler(deps.DB, jwtSecret, *deps.Logger),
-		serviceStatusHandler: handlers.NewServiceStatusHandler(deps.DB, jwtSecret, *deps.Logger),
-		metricsHandler:       handlers.NewMetricsHandler(deps.DB, jwtSecret, *deps.Logger),
+		terminalHandler:      handlers.NewTerminalHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
+		logsHandler:          handlers.NewLogsHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
+		serviceStatusHandler: handlers.NewServiceStatusHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
+		metricsHandler:       handlers.NewMetricsHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
 		jwtSecret:            jwtSecret,
+		membershipCache:      deps.MembershipCache,
 	}
 }
 
 // RegisterWebSocketRoutes registers all WebSocket routes
 func (m *Module) RegisterWebSocketRoutes(router fiber.Router) {
 	// Main WebSocket endpoint for pub/sub events
-	router.Get("/ws", ws.Handler(m.hub, m.jwtSecret))
+	// Connection URL: /ws?token=xxx&team_id=xxx
+	router.Get("/ws", ws.Handler(m.hub, m.jwtSecret, m.membershipCache))
 
 	// Terminal WebSocket endpoint
 	router.Get("/terminal/ws", m.terminalHandler.Handler())

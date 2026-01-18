@@ -16,6 +16,7 @@ import (
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/pkg/cache"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	ws "github.com/kkz6/launch-go/internal/websocket"
 )
@@ -29,17 +30,19 @@ type TerminalResizeMessage struct {
 
 // TerminalHandler handles WebSocket SSH terminal connections
 type TerminalHandler struct {
-	db        *gorm.DB
-	jwtSecret string
-	logger    zerolog.Logger
+	db              *gorm.DB
+	jwtSecret       string
+	logger          zerolog.Logger
+	membershipCache *cache.TeamMembershipCache
 }
 
 // NewTerminalHandler creates a new terminal handler
-func NewTerminalHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger) *TerminalHandler {
+func NewTerminalHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *TerminalHandler {
 	return &TerminalHandler{
-		db:        db,
-		jwtSecret: jwtSecret,
-		logger:    logger.With().Str("component", "terminal").Logger(),
+		db:              db,
+		jwtSecret:       jwtSecret,
+		logger:          logger.With().Str("component", "terminal").Logger(),
+		membershipCache: membershipCache,
 	}
 }
 
@@ -58,8 +61,8 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 			return
 		}
 
-		// Authenticate using centralized auth
-		claims, err := ws.AuthenticateWebSocket(c, h.jwtSecret)
+		// Authenticate using centralized auth (validates team membership)
+		claims, err := ws.AuthenticateWebSocket(c, h.jwtSecret, h.membershipCache)
 		if err != nil {
 			h.logger.Warn().Err(err).Msg("Authentication failed")
 			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Authentication failed\x1b[0m\r\n"))
