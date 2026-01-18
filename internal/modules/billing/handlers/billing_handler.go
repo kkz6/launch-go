@@ -16,13 +16,15 @@ import (
 type BillingHandler struct {
 	service       *services.BillingService
 	serverCountFn func(teamID string) (int, error)
+	appURL        string
 }
 
 // NewBillingHandler creates a new billing handler
-func NewBillingHandler(service *services.BillingService, serverCountFn func(teamID string) (int, error)) *BillingHandler {
+func NewBillingHandler(service *services.BillingService, serverCountFn func(teamID string) (int, error), appURL string) *BillingHandler {
 	return &BillingHandler{
 		service:       service,
 		serverCountFn: serverCountFn,
+		appURL:        appURL,
 	}
 }
 
@@ -71,7 +73,7 @@ func (h *BillingHandler) GenerateCheckoutURL(c *fiber.Ctx) error {
 		return response.ValidationError(c, errors)
 	}
 
-	redirectURL := c.BaseURL() + "/settings/billing"
+	redirectURL := h.appURL + "/settings/billing"
 
 	url, err := h.service.GenerateCheckoutURL(c.Context(), teamID, &req, redirectURL)
 	if err != nil {
