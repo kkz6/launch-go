@@ -14,6 +14,7 @@ import (
 	"github.com/kkz6/launch-go/internal/database"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/git"
+	"github.com/kkz6/launch-go/internal/modules/script"
 	"github.com/kkz6/launch-go/internal/modules/server"
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site"
@@ -102,6 +103,7 @@ func main() {
 	// Initialize modules
 	gitModule := git.NewModule(builder)
 	siteModule := site.NewModule(builder)
+	scriptModule := script.NewModule(builder)
 
 	// Set up cross-module dependencies
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
@@ -111,7 +113,8 @@ func main() {
 		Register(server.NewModule(builder)).
 		Register(databasemodule.NewModule(builder)).
 		Register(gitModule).
-		Register(siteModule)
+		Register(siteModule).
+		Register(scriptModule)
 
 	// Boot task callbacks (for local mode SSH streaming callbacks)
 	kernel.BootTaskCallbacks()
