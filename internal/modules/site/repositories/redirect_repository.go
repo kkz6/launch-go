@@ -52,6 +52,35 @@ func (r *RedirectRepository) DeleteBySite(ctx context.Context, siteID string) er
 		Delete(&models.Redirect{}).Error
 }
 
+// FindBySiteForCaddy returns active redirects for Caddyfile generation
+func (r *RedirectRepository) FindBySiteForCaddy(ctx context.Context, siteID string) ([]models.Redirect, error) {
+	var redirects []models.Redirect
+	err := r.DB.WithContext(ctx).
+		Where("site_id = ? AND status = ?", siteID, "installed").
+		Order("created_at ASC").
+		Find(&redirects).Error
+
+	return redirects, err
+}
+
+// FindPendingBySite returns pending redirects for a site
+func (r *RedirectRepository) FindPendingBySite(ctx context.Context, siteID string) ([]models.Redirect, error) {
+	var redirects []models.Redirect
+	err := r.DB.WithContext(ctx).
+		Where("site_id = ? AND status = ?", siteID, "pending").
+		Find(&redirects).Error
+
+	return redirects, err
+}
+
+// UpdateStatusBySite updates status of all redirects for a site matching a current status
+func (r *RedirectRepository) UpdateStatusBySite(ctx context.Context, siteID, fromStatus, toStatus string) error {
+	return r.DB.WithContext(ctx).
+		Model(&models.Redirect{}).
+		Where("site_id = ? AND status = ?", siteID, fromStatus).
+		Update("status", toStatus).Error
+}
+
 // Note: The following methods are inherited from repository.Base[T]:
 // - Create(ctx, entity) error
 // - Update(ctx, entity) error

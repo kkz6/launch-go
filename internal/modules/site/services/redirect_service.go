@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
+	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 )
@@ -48,7 +49,8 @@ func (s *RedirectService) Create(ctx context.Context, siteID, serverID, userID s
 		WithEvent("created").
 		Log("Redirect was created")
 
-	// TODO: Dispatch Caddyfile update job
+	// Dispatch Caddyfile update job
+	s.dispatchCaddyfileUpdate(site.ID, userID)
 
 	return redirect, nil
 }
@@ -80,7 +82,32 @@ func (s *RedirectService) Delete(ctx context.Context, redirectID, siteID, server
 		WithEvent("deleted").
 		Log("Redirect was deleted")
 
-	// TODO: Dispatch Caddyfile update job
+	if err := s.Repos().Redirect().Delete(ctx, redirectID); err != nil {
+		return err
+	}
 
-	return s.Repos().Redirect().Delete(ctx, redirectID)
+	// Dispatch Caddyfile update job after deletion
+	s.dispatchCaddyfileUpdate(redirect.SiteID, "")
+
+	return nil
+}
+
+// dispatchCaddyfileUpdate dispatches a Caddyfile update job for the site
+func (s *RedirectService) dispatchCaddyfileUpdate(siteID, userID string) {
+	var userIDPtr *string
+	if userID != "" {
+		userIDPtr = &userID
+	}
+
+	task, err := jobs.NewUpdateCaddyfileTask(siteID, userIDPtr)
+	if err != nil {
+		s.LogError(err, "Failed to create update Caddyfile task", "site_id", siteID)
+		return
+	}
+
+	if s.Queue != nil {
+		if _, err := s.Queue.Enqueue(task); err != nil {
+			s.LogError(err, "Failed to enqueue update Caddyfile job", "site_id", siteID)
+		}
+	}
 }
