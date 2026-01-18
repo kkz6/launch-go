@@ -133,9 +133,14 @@ func (h *MetricsHandler) streamMetrics(c *websocket.Conn, server *serverModels.S
 	defer session.Close()
 
 	// Bash script that outputs JSON metrics at specified interval
-	// Uses standard Linux tools: /proc/stat, free, df, /proc/loadavg
+	// Uses standard Linux tools: /proc/stat, free, df, /proc/loadavg, ps, /proc/net/dev
 	// Uses stdbuf to disable output buffering for real-time streaming
 	command := fmt.Sprintf(`stdbuf -oL bash -c '
+# Initialize previous network counters
+PREV_RX=0
+PREV_TX=0
+FIRST_RUN=1
+
 while true; do
   # CPU - read two samples to calculate usage
   CPU1=$(head -1 /proc/stat | awk "{print \$2+\$3+\$4+\$5+\$6+\$7+\$8}")
@@ -161,15 +166,46 @@ while true; do
   read load1 load5 load15 rest < /proc/loadavg
   LOAD="$load1,$load5,$load15"
 
+  # Top 5 processes by CPU usage
+  PROCS=""
+  while IFS= read -r line; do
+    pid=$(echo "$line" | awk "{print \$2}")
+    user=$(echo "$line" | awk "{print \$1}")
+    cpu=$(echo "$line" | awk "{print \$3}")
+    mem=$(echo "$line" | awk "{print \$4}")
+    cmd=$(echo "$line" | awk "{print \$11}" | sed "s/\"/\\\\\"/g" | cut -c1-50)
+    if [ -n "$PROCS" ]; then
+      PROCS="$PROCS,"
+    fi
+    PROCS="$PROCS{\"pid\":$pid,\"user\":\"$user\",\"cpu\":$cpu,\"mem\":$mem,\"command\":\"$cmd\"}"
+  done < <(ps aux --sort=-%%cpu 2>/dev/null | head -6 | tail -5)
+
+  # Network I/O - read from /proc/net/dev (sum all interfaces except lo)
+  CURR_RX=$(awk "BEGIN{rx=0} /^[[:space:]]*(eth|ens|enp|wlan|wlp|eno)[^:]*:/{rx+=\$2} END{print rx}" /proc/net/dev)
+  CURR_TX=$(awk "BEGIN{tx=0} /^[[:space:]]*(eth|ens|enp|wlan|wlp|eno)[^:]*:/{tx+=\$10} END{print tx}" /proc/net/dev)
+
+  if [ $FIRST_RUN -eq 1 ]; then
+    RX_RATE=0
+    TX_RATE=0
+    FIRST_RUN=0
+  else
+    RX_RATE=$(( (CURR_RX - PREV_RX) / %d ))
+    TX_RATE=$(( (CURR_TX - PREV_TX) / %d ))
+    [ $RX_RATE -lt 0 ] && RX_RATE=0
+    [ $TX_RATE -lt 0 ] && TX_RATE=0
+  fi
+  PREV_RX=$CURR_RX
+  PREV_TX=$CURR_TX
+
   # Timestamp
   TS=$(date -u +%%Y-%%m-%%dT%%H:%%M:%%SZ)
 
   # Output JSON
-  echo "{\"event\":\"metrics\",\"timestamp\":\"$TS\",\"cpu\":$CPU_PERCENT,\"load\":[$LOAD],\"memory\":{$MEM},\"disk\":{$DISK}}"
+  echo "{\"event\":\"metrics\",\"timestamp\":\"$TS\",\"cpu\":$CPU_PERCENT,\"load\":[$LOAD],\"memory\":{$MEM},\"disk\":{$DISK},\"processes\":[$PROCS],\"network\":{\"rx_bytes\":$CURR_RX,\"tx_bytes\":$CURR_TX,\"rx_rate\":$RX_RATE,\"tx_rate\":$TX_RATE}}"
 
   sleep %d
 done
-'`, interval)
+'`, interval, interval, interval)
 
 	h.logger.Info().Int("interval", interval).Msg("Executing metrics stream command")
 
