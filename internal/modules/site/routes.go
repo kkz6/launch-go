@@ -3,6 +3,7 @@ package site
 import (
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/kkz6/launch-go/internal/middleware"
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/handlers"
@@ -34,11 +35,11 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	fileHandler := handlers.NewFileHandler(svc.File())
 
 	// Top-level site routes (not nested under servers)
-	sitesGlobal := router.Group("/sites", authMiddleware)
+	sitesGlobal := router.Group("/sites", authMiddleware, middleware.TeamScope())
 	m.registerGlobalSiteRoutes(sitesGlobal, siteHandler)
 
 	// Sites are nested under servers
-	servers := router.Group("/servers/:serverId", authMiddleware)
+	servers := router.Group("/servers/:serverId", authMiddleware, middleware.TeamScope())
 	sites := servers.Group("/sites")
 
 	m.registerSiteRoutes(sites, siteHandler)

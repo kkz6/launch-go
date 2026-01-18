@@ -3,6 +3,7 @@ package git
 import (
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/git/handlers"
 )
 
@@ -18,7 +19,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	webhookHandler := handlers.NewWebhookHandler(svc.SourceControl(), m.providerFactory, deps.Logger)
 
 	// Settings routes (authenticated)
-	settings := router.Group("/settings", authMiddleware)
+	settings := router.Group("/settings", authMiddleware, middleware.TeamScope())
 	{
 		// Git providers page
 		settings.Get("/git-providers", handler.GetInstallationsWithCounts)
@@ -43,7 +44,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	}
 
 	// App-based routes (authenticated)
-	integrations := router.Group("/integrations/git-apps", authMiddleware)
+	integrations := router.Group("/integrations/git-apps", authMiddleware, middleware.TeamScope())
 	{
 		// Get installation URL
 		integrations.Get("/:provider/installation-url", handler.GetInstallationURL)
@@ -62,7 +63,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	}
 
 	// Source controls CRUD (authenticated)
-	sourceControls := router.Group("/source-controls", authMiddleware)
+	sourceControls := router.Group("/source-controls", authMiddleware, middleware.TeamScope())
 	{
 		sourceControls.Get("/", handler.ListSourceControls)
 		sourceControls.Get("/:id", handler.GetSourceControl)
@@ -87,7 +88,7 @@ func (m *Module) RegisterAPIRoutes(router fiber.Router, authMiddleware fiber.Han
 	handler := handlers.NewSourceControlHandler(svc.SourceControl())
 
 	// API v1 routes
-	api := router.Group("/git", authMiddleware)
+	api := router.Group("/git", authMiddleware, middleware.TeamScope())
 	{
 		// Source controls
 		api.Get("/source-controls", handler.ListSourceControls)
