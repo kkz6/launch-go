@@ -2,7 +2,7 @@ package dto
 
 // GenerateCheckoutURLRequest represents the request to generate a checkout URL
 type GenerateCheckoutURLRequest struct {
-	PlanID string `json:"plan_id" validate:"required"`
+	Plan   string `json:"plan" validate:"required"`
 	Annual bool   `json:"annual"`
 }
 

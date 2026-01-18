@@ -20,7 +20,7 @@ func (m *Module) registerBillingRoutes(router fiber.Router, authMiddleware fiber
 	{
 		billing.Get("/", handler.Index)
 		billing.Get("/plans", handler.GetPlans)
-		billing.Post("/checkout-url", handler.GenerateCheckoutURL)
+		billing.Post("/generate-checkout-url", handler.GenerateCheckoutURL)
 		billing.Post("/cancel-subscription", handler.CancelSubscription)
 		billing.Post("/resume-subscription", handler.ResumeSubscription)
 

@@ -90,7 +90,7 @@ func (s *BillingService) GetPlanByVariantID(variantID string) *models.Plan {
 
 // GenerateCheckoutURL generates a checkout URL for a team to subscribe
 func (s *BillingService) GenerateCheckoutURL(ctx context.Context, teamID string, req *dto.GenerateCheckoutURLRequest, redirectURL string) (string, error) {
-	plan := s.GetPlanByID(req.PlanID)
+	plan := s.GetPlanByID(req.Plan)
 	if plan == nil {
 		return "", ErrPlanNotFound
 	}
@@ -102,7 +102,7 @@ func (s *BillingService) GenerateCheckoutURL(ctx context.Context, teamID string,
 
 	url, err := s.lemonSqueezy.CreateCheckout(ctx, variantID, plan.Name, teamID, redirectURL)
 	if err != nil {
-		s.logger.Error().Err(err).Str("team_id", teamID).Str("plan_id", req.PlanID).Msg("Failed to create checkout URL")
+		s.logger.Error().Err(err).Str("team_id", teamID).Str("plan_id", req.Plan).Msg("Failed to create checkout URL")
 		return "", err
 	}
 
