@@ -25,6 +25,7 @@ type Module struct {
 	terminalHandler      *handlers.TerminalHandler
 	logsHandler          *handlers.LogsHandler
 	serviceStatusHandler *handlers.ServiceStatusHandler
+	metricsHandler       *handlers.MetricsHandler
 	jwtSecret            string
 }
 
@@ -42,6 +43,7 @@ func NewModule(b *module.Builder) *Module {
 		terminalHandler:      handlers.NewTerminalHandler(deps.DB, jwtSecret, *deps.Logger),
 		logsHandler:          handlers.NewLogsHandler(deps.DB, jwtSecret, *deps.Logger),
 		serviceStatusHandler: handlers.NewServiceStatusHandler(deps.DB, jwtSecret, *deps.Logger),
+		metricsHandler:       handlers.NewMetricsHandler(deps.DB, jwtSecret, *deps.Logger),
 		jwtSecret:            jwtSecret,
 	}
 }
@@ -59,6 +61,9 @@ func (m *Module) RegisterWebSocketRoutes(router fiber.Router) {
 
 	// Service status monitoring WebSocket endpoint
 	router.Get("/services/status", m.serviceStatusHandler.Handler())
+
+	// Metrics streaming WebSocket endpoint
+	router.Get("/metrics/stream", m.metricsHandler.Handler())
 }
 
 // Shutdown gracefully shuts down the WebSocket module
