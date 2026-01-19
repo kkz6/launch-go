@@ -72,3 +72,16 @@ func (r *Registry) IsTeamSubscribed(teamID string) bool {
 
 	return count > 0
 }
+
+// IsUserAdmin checks if a user has admin or manager role (from Spatie Permission tables)
+func (r *Registry) IsUserAdmin(userID string) bool {
+	var count int64
+	r.db.Table("model_has_roles").
+		Joins("JOIN roles ON roles.id = model_has_roles.role_id").
+		Where("model_has_roles.model_id = ?", userID).
+		Where("model_has_roles.model_type IN ?", []string{"Modules\\Auth\\Models\\User", "App\\Models\\User"}).
+		Where("roles.name IN ?", []string{"admin", "manager"}).
+		Count(&count)
+
+	return count > 0
+}

@@ -21,9 +21,10 @@ func InitSubscriptionMiddleware(db *gorm.DB, subscriptionsEnabled bool) {
 }
 
 // VerifySubscription middleware ensures the team has an active subscription.
-// Must be used after TeamScope middleware.
+// Must be used after Auth and TeamScope middleware.
 //
 // If subscriptions are not enabled (config), this middleware does nothing.
+// If the user is an admin/manager, they bypass subscription checks.
 // If the team is on trial or has an active subscription, request proceeds.
 // Otherwise, returns a 402 Payment Required error.
 //
@@ -34,6 +35,16 @@ func VerifySubscription() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		// Skip if subscriptions are not enabled
 		if !subscriptionMiddleware.subscriptionsEnabled {
+			return c.Next()
+		}
+
+		userID, ok := c.Locals("userID").(string)
+		if !ok || userID == "" {
+			return response.Unauthorized(c, "Authentication required")
+		}
+
+		// Admins bypass subscription checks
+		if isUserAdmin(userID) {
 			return c.Next()
 		}
 
@@ -54,7 +65,6 @@ func VerifySubscription() fiber.Handler {
 // isTeamSubscribed checks if a team has an active subscription or is on trial
 func isTeamSubscribed(teamID string) bool {
 	if subscriptionMiddleware.db == nil {
-		// No database configured - allow request (shouldn't happen in production)
 		return true
 	}
 
@@ -63,6 +73,23 @@ func isTeamSubscribed(teamID string) bool {
 		Where("billable_id = ?", teamID).
 		Where("billable_type IN ?", []string{"Modules\\Auth\\Models\\Team", "App\\Models\\Team"}).
 		Where("status IN ?", []string{"active", "on_trial"}).
+		Count(&count)
+
+	return count > 0
+}
+
+// isUserAdmin checks if a user has admin or manager role
+func isUserAdmin(userID string) bool {
+	if subscriptionMiddleware.db == nil {
+		return false
+	}
+
+	var count int64
+	subscriptionMiddleware.db.Table("model_has_roles").
+		Joins("JOIN roles ON roles.id = model_has_roles.role_id").
+		Where("model_has_roles.model_id = ?", userID).
+		Where("model_has_roles.model_type IN ?", []string{"Modules\\Auth\\Models\\User", "App\\Models\\User"}).
+		Where("roles.name IN ?", []string{"admin", "manager"}).
 		Count(&count)
 
 	return count > 0
