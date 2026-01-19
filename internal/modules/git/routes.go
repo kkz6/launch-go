@@ -18,8 +18,8 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	handler := handlers.NewSourceControlHandler(svc.SourceControl())
 	webhookHandler := handlers.NewWebhookHandler(svc.SourceControl(), m.providerFactory, deps.Logger)
 
-	// Settings routes (authenticated)
-	settings := router.Group("/settings", authMiddleware, middleware.TeamScope())
+	// Settings routes (authenticated + subscription required)
+	settings := router.Group("/settings", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		// Git providers page
 		settings.Get("/git-providers", handler.GetInstallationsWithCounts)
@@ -43,8 +43,8 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 		settings.Get("/git-providers/:provider/callback", handler.HandleInstallationCallback)
 	}
 
-	// App-based routes (authenticated)
-	integrations := router.Group("/integrations/git-apps", authMiddleware, middleware.TeamScope())
+	// App-based routes (authenticated + subscription required)
+	integrations := router.Group("/integrations/git-apps", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		// Get installation URL
 		integrations.Get("/:provider/installation-url", handler.GetInstallationURL)
@@ -62,8 +62,8 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 		integrations.Get("/:provider/test-connection", handler.TestConnection)
 	}
 
-	// Source controls CRUD (authenticated)
-	sourceControls := router.Group("/source-controls", authMiddleware, middleware.TeamScope())
+	// Source controls CRUD (authenticated + subscription required)
+	sourceControls := router.Group("/source-controls", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		sourceControls.Get("/", handler.ListSourceControls)
 		sourceControls.Get("/:id", handler.GetSourceControl)
@@ -88,7 +88,7 @@ func (m *Module) RegisterAPIRoutes(router fiber.Router, authMiddleware fiber.Han
 	handler := handlers.NewSourceControlHandler(svc.SourceControl())
 
 	// API v1 routes
-	api := router.Group("/git", authMiddleware, middleware.TeamScope())
+	api := router.Group("/git", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		// Source controls
 		api.Get("/source-controls", handler.ListSourceControls)

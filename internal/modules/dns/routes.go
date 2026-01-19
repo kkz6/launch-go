@@ -24,7 +24,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 // registerProviderRoutes registers DNS provider routes
 func (m *Module) registerProviderRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.DomainProviderHandler) {
-	providers := router.Group("/dns-providers", authMiddleware, middleware.TeamScope())
+	providers := router.Group("/dns-providers", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		providers.Get("/", handler.ListProviders)
 		providers.Post("/", handler.CreateProvider)
@@ -36,7 +36,7 @@ func (m *Module) registerProviderRoutes(router fiber.Router, authMiddleware fibe
 
 // registerDomainRoutes registers domain and DNS record routes
 func (m *Module) registerDomainRoutes(router fiber.Router, authMiddleware fiber.Handler, domainHandler *handlers.DomainHandler, recordHandler *handlers.DnsRecordHandler) {
-	domains := router.Group("/dns/domains", authMiddleware, middleware.TeamScope())
+	domains := router.Group("/dns/domains", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		domains.Get("/", domainHandler.ListDomains)
 		domains.Post("/", domainHandler.CreateDomain)

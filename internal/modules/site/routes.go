@@ -35,11 +35,11 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	fileHandler := handlers.NewFileHandler(svc.File())
 
 	// Top-level site routes (not nested under servers)
-	sitesGlobal := router.Group("/sites", authMiddleware, middleware.TeamScope())
+	sitesGlobal := router.Group("/sites", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	m.registerGlobalSiteRoutes(sitesGlobal, siteHandler)
 
 	// Sites are nested under servers
-	servers := router.Group("/servers/:serverId", authMiddleware, middleware.TeamScope())
+	servers := router.Group("/servers/:serverId", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	sites := servers.Group("/sites")
 
 	m.registerSiteRoutes(sites, siteHandler)

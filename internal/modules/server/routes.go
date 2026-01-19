@@ -27,7 +27,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 // registerServerProviderRoutes registers server provider routes
 func (m *Module) registerServerProviderRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler) {
-	providers := router.Group("/server-providers", authMiddleware, middleware.TeamScope())
+	providers := router.Group("/server-providers", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		providers.Get("/", handler.ListServerProviders)
 	}
@@ -35,7 +35,7 @@ func (m *Module) registerServerProviderRoutes(router fiber.Router, authMiddlewar
 
 // registerServerRoutes registers all server-related routes
 func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler) {
-	servers := router.Group("/servers", authMiddleware, middleware.TeamScope())
+	servers := router.Group("/servers", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		// Options (must be before /:id routes)
 		servers.Get("/create-options", handler.GetCreateOptions)
@@ -117,7 +117,7 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 
 // registerSshKeyRoutes registers global SSH key routes
 func (m *Module) registerSshKeyRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler) {
-	sshKeys := router.Group("/ssh-keys", authMiddleware, middleware.TeamScope())
+	sshKeys := router.Group("/ssh-keys", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		sshKeys.Get("/", handler.ListSshKeys)
 		sshKeys.Post("/", handler.CreateSshKey)
