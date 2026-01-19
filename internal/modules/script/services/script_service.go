@@ -64,7 +64,7 @@ func (s *ScriptService) Create(ctx context.Context, userID string, req *dto.Crea
 		UserID:  userID,
 		TeamID:  req.TeamID,
 		Name:    req.Name,
-		User:    req.User,
+		RunAs:   req.RunAs,
 		Content: req.Content,
 	}
 
@@ -92,8 +92,8 @@ func (s *ScriptService) Update(ctx context.Context, scriptID, userID, teamID str
 		updates["name"] = *req.Name
 	}
 
-	if req.User != nil {
-		updates["user"] = *req.User
+	if req.RunAs != nil {
+		updates["user"] = string(*req.RunAs)
 	}
 
 	if req.Content != nil {
@@ -150,10 +150,10 @@ func (s *ScriptService) Execute(ctx context.Context, scriptID, userID, teamID st
 	// Generate batch ID
 	batchID := ulid.Make().String()
 
-	// Determine user to run as
-	runAsUser := script.User
-	if req.User != nil && *req.User != "" {
-		runAsUser = *req.User
+	// Determine run-as user type (default from script, can be overridden per execution)
+	runAs := script.RunAs
+	if req.RunAs != nil {
+		runAs = *req.RunAs
 	}
 
 	// Create execution records and dispatch jobs
@@ -164,7 +164,7 @@ func (s *ScriptService) Execute(ctx context.Context, scriptID, userID, teamID st
 			ScriptID: scriptID,
 			ServerID: serverID,
 			BatchID:  &batchID,
-			User:     &runAsUser,
+			RunAs:    &runAs,
 			Status:   models.ExecutionStatusPending,
 		}
 

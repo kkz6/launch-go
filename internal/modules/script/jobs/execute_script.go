@@ -7,9 +7,11 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/script/enums"
 	"github.com/kkz6/launch-go/internal/modules/script/models"
 	"github.com/kkz6/launch-go/internal/modules/script/support"
 	"github.com/kkz6/launch-go/internal/modules/script/tasks"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -89,11 +91,8 @@ func (j *ExecuteScriptJob) Handle(ctx context.Context) error {
 		Content: interpolatedContent,
 	})
 
-	// Determine user to run as
-	runAsUser := "root"
-	if execution.User != nil && *execution.User != "" {
-		runAsUser = *execution.User
-	}
+	// Resolve the run-as type to actual username from server
+	runAsUser := resolveRunAsUser(execution.RunAs, server)
 
 	// Execute the task on the server
 	result, err := j.ctx.RunTaskOnServer(server, task).
@@ -190,4 +189,22 @@ func NewExecuteScriptTask(executionID uint64, scriptID, serverID, teamID string)
 		ServerID:    serverID,
 		TeamID:      teamID,
 	}, asynq.TaskID(fmt.Sprintf("script-exec:%d", executionID)))
+}
+
+// resolveRunAsUser resolves the run-as type to the actual username from the server
+// - "root" → server.RootUsername() (e.g., "root" or provider-specific root user)
+// - "local" → server.GetUsername() (e.g., "launch" or custom username)
+func resolveRunAsUser(runAs *enums.RunAsUser, server *servermodels.Server) string {
+	if runAs == nil {
+		return server.RootUsername()
+	}
+
+	switch *runAs {
+	case enums.RunAsUserLocal:
+		return server.GetUsername()
+	case enums.RunAsUserRoot:
+		return server.RootUsername()
+	default:
+		return server.RootUsername()
+	}
 }
