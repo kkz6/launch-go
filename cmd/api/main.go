@@ -195,6 +195,9 @@ func (a *Application) registerModules() {
 	// Initialize team middleware with membership cache
 	middleware.InitTeamMiddleware(a.membershipCache)
 
+	// Initialize subscription middleware
+	middleware.InitSubscriptionMiddleware(a.db, a.config.Billing.SubscriptionsEnabled)
+
 	// Boot all HTTP routes through the kernel
 	// Note: TeamContext middleware is applied at the route level where team scope is required
 	a.kernel.BootHTTP(api, authMiddleware, teamContextMiddleware)
