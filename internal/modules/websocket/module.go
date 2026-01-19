@@ -22,13 +22,14 @@ var (
 // Module is the WebSocket module that manages all WebSocket routes
 type Module struct {
 	module.Base
-	hub                  *ws.Hub
-	terminalHandler      *handlers.TerminalHandler
-	logsHandler          *handlers.LogsHandler
-	serviceStatusHandler *handlers.ServiceStatusHandler
-	metricsHandler       *handlers.MetricsHandler
-	jwtSecret            string
-	membershipCache      *cache.TeamMembershipCache
+	hub                    *ws.Hub
+	terminalHandler        *handlers.TerminalHandler
+	logsHandler            *handlers.LogsHandler
+	serviceStatusHandler   *handlers.ServiceStatusHandler
+	metricsHandler         *handlers.MetricsHandler
+	scriptExecutionHandler *handlers.ScriptExecutionHandler
+	jwtSecret              string
+	membershipCache        *cache.TeamMembershipCache
 }
 
 // NewModule creates a new WebSocket module
@@ -40,14 +41,15 @@ func NewModule(b *module.Builder) *Module {
 	hub, _ := deps.WebSocket.(*ws.Hub)
 
 	return &Module{
-		Base:                 module.NewBase(ModuleName, b),
-		hub:                  hub,
-		terminalHandler:      handlers.NewTerminalHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
-		logsHandler:          handlers.NewLogsHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
-		serviceStatusHandler: handlers.NewServiceStatusHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
-		metricsHandler:       handlers.NewMetricsHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
-		jwtSecret:            jwtSecret,
-		membershipCache:      deps.MembershipCache,
+		Base:                   module.NewBase(ModuleName, b),
+		hub:                    hub,
+		terminalHandler:        handlers.NewTerminalHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
+		logsHandler:            handlers.NewLogsHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
+		serviceStatusHandler:   handlers.NewServiceStatusHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
+		metricsHandler:         handlers.NewMetricsHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
+		scriptExecutionHandler: handlers.NewScriptExecutionHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
+		jwtSecret:              jwtSecret,
+		membershipCache:        deps.MembershipCache,
 	}
 }
 
@@ -68,6 +70,10 @@ func (m *Module) RegisterWebSocketRoutes(router fiber.Router) {
 
 	// Metrics streaming WebSocket endpoint
 	router.Get("/metrics/stream", m.metricsHandler.Handler())
+
+	// Script execution streaming WebSocket endpoint
+	// Connection URL: /scripts/execute?executionId=xxx&token=xxx&team_id=xxx
+	router.Get("/scripts/execute", m.scriptExecutionHandler.Handler())
 }
 
 // Shutdown gracefully shuts down the WebSocket module
