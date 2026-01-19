@@ -32,7 +32,13 @@ func (h *UserHandler) User(c *fiber.Ctx) error {
 		return response.NotFound(c, "User not found")
 	}
 
-	return response.OK(c, "User retrieved", dto.ToUserResponse(user))
+	// Check if current team is subscribed
+	isSubscribed := false
+	if user.CurrentTeamID != nil {
+		isSubscribed = h.service.IsTeamSubscribed(*user.CurrentTeamID)
+	}
+
+	return response.OK(c, "User retrieved", dto.ToUserResponseWithSubscription(user, isSubscribed))
 }
 
 // UpdateProfile updates the user's profile

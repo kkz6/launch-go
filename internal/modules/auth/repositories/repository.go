@@ -59,3 +59,16 @@ func (r *Registry) Passkey() contracts.PasskeyRepository { return r.passkey }
 
 // DB returns the underlying database connection
 func (r *Registry) DB() *gorm.DB { return r.db }
+
+// IsTeamSubscribed checks if a team has an active subscription
+// This queries the lemon_squeezy_subscriptions table directly to avoid circular dependencies
+func (r *Registry) IsTeamSubscribed(teamID string) bool {
+	var count int64
+	r.db.Table("lemon_squeezy_subscriptions").
+		Where("billable_id = ?", teamID).
+		Where("billable_type IN ?", []string{"Modules\\Auth\\Models\\Team", "App\\Models\\Team"}).
+		Where("status IN ?", []string{"active", "on_trial"}).
+		Count(&count)
+
+	return count > 0
+}

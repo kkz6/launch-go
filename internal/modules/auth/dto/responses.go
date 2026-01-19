@@ -37,6 +37,7 @@ type TeamResponse struct {
 	UserID       string `json:"user_id"`
 	PersonalTeam bool   `json:"personal_team"`
 	ImageURL     string `json:"image_url"`
+	IsSubscribed bool   `json:"is_subscribed"`
 	CreatedAt    string `json:"created_at"`
 }
 
@@ -106,6 +107,11 @@ type PasswordResetResponse struct {
 
 // ToUserResponse converts a User model to a UserResponse DTO
 func ToUserResponse(user *models.User) UserResponse {
+	return ToUserResponseWithSubscription(user, false)
+}
+
+// ToUserResponseWithSubscription converts a User model to a UserResponse DTO with subscription status
+func ToUserResponseWithSubscription(user *models.User, isSubscribed bool) UserResponse {
 	timezone := ""
 	if user.Timezone != nil {
 		timezone = *user.Timezone
@@ -134,7 +140,7 @@ func ToUserResponse(user *models.User) UserResponse {
 	}
 
 	if user.CurrentTeam != nil {
-		resp.CurrentTeam = ToTeamResponsePtr(user.CurrentTeam)
+		resp.CurrentTeam = ToTeamResponsePtrWithSubscription(user.CurrentTeam, isSubscribed)
 	}
 
 	return resp
@@ -145,11 +151,19 @@ func ToTeamResponse(team models.Team) TeamResponse {
 	return TeamResponse{
 		ID:           team.ID,
 		Name:         team.Name,
-		UserID:      team.UserID,
+		UserID:       team.UserID,
 		PersonalTeam: team.PersonalTeam,
 		ImageURL:     team.ImageURL(),
+		IsSubscribed: false,
 		CreatedAt:    team.CreatedAt.Format(time.RFC3339),
 	}
+}
+
+// ToTeamResponseWithSubscription converts a Team model to a TeamResponse DTO with subscription status
+func ToTeamResponseWithSubscription(team models.Team, isSubscribed bool) TeamResponse {
+	resp := ToTeamResponse(team)
+	resp.IsSubscribed = isSubscribed
+	return resp
 }
 
 // ToTeamResponsePtr converts a Team model pointer to a TeamResponse DTO pointer
@@ -159,6 +173,17 @@ func ToTeamResponsePtr(team *models.Team) *TeamResponse {
 	}
 
 	resp := ToTeamResponse(*team)
+
+	return &resp
+}
+
+// ToTeamResponsePtrWithSubscription converts a Team model pointer to a TeamResponse DTO pointer with subscription status
+func ToTeamResponsePtrWithSubscription(team *models.Team, isSubscribed bool) *TeamResponse {
+	if team == nil {
+		return nil
+	}
+
+	resp := ToTeamResponseWithSubscription(*team, isSubscribed)
 
 	return &resp
 }

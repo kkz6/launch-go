@@ -215,3 +215,8 @@ func (s *Service) GetTeamInvitations(ctx context.Context, teamID string) ([]mode
 func (s *Service) Repos() *repositories.Registry {
 	return s.repos
 }
+
+// IsTeamSubscribed checks if a team has an active subscription
+func (s *Service) IsTeamSubscribed(teamID string) bool {
+	return s.repos.IsTeamSubscribed(teamID)
+}
