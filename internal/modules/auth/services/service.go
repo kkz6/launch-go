@@ -220,3 +220,17 @@ func (s *Service) Repos() *repositories.Registry {
 func (s *Service) IsTeamSubscribed(teamID string) bool {
 	return s.repos.IsTeamSubscribed(teamID)
 }
+
+// IsUserAdmin checks if a user has admin or manager role
+func (s *Service) IsUserAdmin(userID string) bool {
+	return s.repos.IsUserAdmin(userID)
+}
+
+// IsTeamSubscribedOrUserAdmin checks if a team is subscribed or the user is an admin
+// Admins bypass subscription requirements
+func (s *Service) IsTeamSubscribedOrUserAdmin(teamID, userID string) bool {
+	if s.repos.IsUserAdmin(userID) {
+		return true
+	}
+	return s.repos.IsTeamSubscribed(teamID)
+}

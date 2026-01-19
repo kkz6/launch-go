@@ -32,10 +32,10 @@ func (h *UserHandler) User(c *fiber.Ctx) error {
 		return response.NotFound(c, "User not found")
 	}
 
-	// Check if current team is subscribed
+	// Check if current team is subscribed or user is admin (admins bypass subscription)
 	isSubscribed := false
 	if user.CurrentTeamID != nil {
-		isSubscribed = h.service.IsTeamSubscribed(*user.CurrentTeamID)
+		isSubscribed = h.service.IsTeamSubscribedOrUserAdmin(*user.CurrentTeamID, userID)
 	}
 
 	return response.OK(c, "User retrieved", dto.ToUserResponseWithSubscription(user, isSubscribed))
