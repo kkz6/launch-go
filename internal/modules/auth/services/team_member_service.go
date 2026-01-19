@@ -266,9 +266,9 @@ func (s *TeamMemberService) GetAllTeamMembers(ctx context.Context, teamID string
 		allMembers = append(allMembers, dto.ToTeamMemberResponse(team.Owner, "owner", *ownerJoinedAt))
 	}
 
-	// Add other members from pivot table
+	// Add other members from pivot table (skip owner since already added)
 	for _, member := range members {
-		if member.User != nil {
+		if member.User != nil && member.UserID != team.UserID {
 			role := ""
 			if member.Role != nil {
 				role = *member.Role
