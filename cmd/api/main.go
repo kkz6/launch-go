@@ -20,6 +20,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth"
 	"github.com/kkz6/launch-go/internal/modules/backup"
 	"github.com/kkz6/launch-go/internal/modules/billing"
+	"github.com/kkz6/launch-go/internal/modules/dashboard"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/dns"
 	"github.com/kkz6/launch-go/internal/modules/git"
@@ -160,6 +161,7 @@ func (a *Application) registerModules() {
 	gitModule := git.NewModule(builder)
 	notificationModule := notification.NewModule(builder)
 	scriptModule := script.NewModule(builder)
+	dashboardModule := dashboard.NewModule(builder)
 	wsModule := wsmodule.NewModule(builder)
 
 	// Wire cross-module dependencies
@@ -178,6 +180,7 @@ func (a *Application) registerModules() {
 		Register(gitModule).
 		Register(notificationModule).
 		Register(scriptModule).
+		Register(dashboardModule).
 		Register(wsModule)
 
 	// Boot task callbacks (needed for webhook handlers in production mode)
