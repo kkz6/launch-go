@@ -3,19 +3,20 @@ package dto
 import (
 	"time"
 
+	"github.com/kkz6/launch-go/internal/modules/script/enums"
 	"github.com/kkz6/launch-go/internal/modules/script/models"
 )
 
 // ScriptResponse represents a script in API responses
 type ScriptResponse struct {
-	ID        string     `json:"id"`
-	UserID    string     `json:"user_id"`
-	TeamID    *string    `json:"team_id,omitempty"`
-	Name      string     `json:"name"`
-	User      string     `json:"user"`
-	Content   string     `json:"content"`
-	CreatedAt *time.Time `json:"created_at,omitempty"`
-	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+	ID        string          `json:"id"`
+	UserID    string          `json:"user_id"`
+	TeamID    *string         `json:"team_id,omitempty"`
+	Name      string          `json:"name"`
+	RunAs     enums.RunAsUser `json:"run_as"`
+	Content   string          `json:"content"`
+	CreatedAt *time.Time      `json:"created_at,omitempty"`
+	UpdatedAt *time.Time      `json:"updated_at,omitempty"`
 }
 
 // ToScriptResponse converts a Script model to ScriptResponse
@@ -25,7 +26,7 @@ func ToScriptResponse(s *models.Script) *ScriptResponse {
 		UserID:    s.UserID,
 		TeamID:    s.TeamID,
 		Name:      s.Name,
-		User:      s.User,
+		RunAs:     s.RunAs,
 		Content:   s.Content,
 		CreatedAt: s.CreatedAt,
 		UpdatedAt: s.UpdatedAt,
@@ -34,17 +35,17 @@ func ToScriptResponse(s *models.Script) *ScriptResponse {
 
 // ScriptExecutionResponse represents an execution in API responses
 type ScriptExecutionResponse struct {
-	ID         uint64     `json:"id"`
-	ScriptID   string     `json:"script_id"`
-	ServerID   string     `json:"server_id"`
-	BatchID    *string    `json:"batch_id,omitempty"`
-	User       *string    `json:"user,omitempty"`
-	Status     string     `json:"status"`
-	ExitCode   *int       `json:"exit_code,omitempty"`
-	Output     *string    `json:"output,omitempty"`
-	StartedAt  *time.Time `json:"started_at,omitempty"`
-	FinishedAt *time.Time `json:"finished_at,omitempty"`
-	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	ID         uint64           `json:"id"`
+	ScriptID   string           `json:"script_id"`
+	ServerID   string           `json:"server_id"`
+	BatchID    *string          `json:"batch_id,omitempty"`
+	RunAs      *enums.RunAsUser `json:"run_as,omitempty"`
+	Status     string           `json:"status"`
+	ExitCode   *int             `json:"exit_code,omitempty"`
+	Output     *string          `json:"output,omitempty"`
+	StartedAt  *time.Time       `json:"started_at,omitempty"`
+	FinishedAt *time.Time       `json:"finished_at,omitempty"`
+	CreatedAt  *time.Time       `json:"created_at,omitempty"`
 }
 
 // ToExecutionResponse converts a ScriptExecution to response
@@ -54,7 +55,7 @@ func ToExecutionResponse(e *models.ScriptExecution) *ScriptExecutionResponse {
 		ScriptID:   e.ScriptID,
 		ServerID:   e.ServerID,
 		BatchID:    e.BatchID,
-		User:       e.User,
+		RunAs:      e.RunAs,
 		Status:     string(e.Status),
 		ExitCode:   e.ExitCode,
 		Output:     e.Output,

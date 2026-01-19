@@ -3,6 +3,7 @@ package models
 import (
 	"time"
 
+	"github.com/kkz6/launch-go/internal/modules/script/enums"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 )
 
@@ -18,12 +19,12 @@ const (
 
 // ScriptExecution represents a single execution of a script on a server
 type ScriptExecution struct {
-	ID         uint64          `gorm:"primaryKey;autoIncrement" json:"id"`
-	ScriptID   string          `gorm:"column:script_id;type:char(26);not null;index" json:"script_id"`
-	ServerID   string          `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
-	BatchID    *string         `gorm:"column:batch_id;type:char(26);index" json:"batch_id,omitempty"`
-	User       *string         `gorm:"type:varchar(255)" json:"user,omitempty"`
-	Status     ExecutionStatus `gorm:"type:varchar(50);not null;default:pending" json:"status"`
+	ID         uint64           `gorm:"primaryKey;autoIncrement" json:"id"`
+	ScriptID   string           `gorm:"column:script_id;type:char(26);not null;index" json:"script_id"`
+	ServerID   string           `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	BatchID    *string          `gorm:"column:batch_id;type:char(26);index" json:"batch_id,omitempty"`
+	RunAs      *enums.RunAsUser `gorm:"column:user;type:varchar(255)" json:"run_as,omitempty"`
+	Status     ExecutionStatus  `gorm:"type:varchar(50);not null;default:pending" json:"status"`
 	ExitCode   *int            `gorm:"column:exit_code" json:"exit_code,omitempty"`
 	Output     *string         `gorm:"type:longtext" json:"output,omitempty"`
 	StartedAt  *time.Time      `gorm:"column:started_at;type:timestamp null" json:"started_at,omitempty"`
