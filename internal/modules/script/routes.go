@@ -12,8 +12,8 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	service := m.createService()
 	handler := handlers.NewScriptHandler(service)
 
-	// Script routes (authenticated + team scoped)
-	scripts := router.Group("/scripts", authMiddleware, middleware.TeamScope())
+	// Script routes (authenticated + team scoped + subscription required)
+	scripts := router.Group("/scripts", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		scripts.Get("/", handler.List)
 		scripts.Post("/", handler.Create)
@@ -27,7 +27,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	}
 
 	// Execution routes (for fetching individual executions)
-	executions := router.Group("/script-executions", authMiddleware, middleware.TeamScope())
+	executions := router.Group("/script-executions", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		executions.Get("/:id", handler.GetExecution)
 	}

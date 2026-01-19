@@ -22,7 +22,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 // registerBackupRoutes registers server backup routes
 func (m *Module) registerBackupRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.BackupHandler) {
-	serverBackups := router.Group("/servers/:serverId/backups", authMiddleware, middleware.TeamScope())
+	serverBackups := router.Group("/servers/:serverId/backups", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		serverBackups.Get("/", handler.ListBackups)
 		serverBackups.Post("/", handler.CreateBackup)
@@ -35,7 +35,7 @@ func (m *Module) registerBackupRoutes(router fiber.Router, authMiddleware fiber.
 
 // registerStorageProviderRoutes registers storage provider routes
 func (m *Module) registerStorageProviderRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.StorageProviderHandler) {
-	storageProviders := router.Group("/storage-providers", authMiddleware, middleware.TeamScope())
+	storageProviders := router.Group("/storage-providers", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		storageProviders.Get("/", handler.ListStorageProviders)
 		storageProviders.Get("/dropdown", handler.ListStorageProvidersForDropdown)

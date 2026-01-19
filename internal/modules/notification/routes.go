@@ -21,7 +21,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 // registerNotificationRoutes registers notification channel CRUD routes
 func (m *Module) registerNotificationRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.NotificationChannelHandler) {
-	notifications := router.Group("/settings/notifications", authMiddleware, middleware.TeamScope())
+	notifications := router.Group("/settings/notifications", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		// CRUD routes
 		notifications.Get("/", handler.Index)
@@ -40,7 +40,7 @@ func (m *Module) registerNotificationRoutes(router fiber.Router, authMiddleware 
 
 // registerChannelTypesRoutes registers notification channel types routes
 func (m *Module) registerChannelTypesRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.NotificationChannelHandler) {
-	channelsGroup := router.Group("/notification-channels", authMiddleware, middleware.TeamScope())
+	channelsGroup := router.Group("/notification-channels", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		channelsGroup.Get("/", handler.ListChannelTypes)
 	}
