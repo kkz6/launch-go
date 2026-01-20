@@ -17,6 +17,8 @@ func main() {
 	rollbackCmd := flag.NewFlagSet("rollback", flag.ExitOnError)
 	freshCmd := flag.NewFlagSet("fresh", flag.ExitOnError)
 	statusCmd := flag.NewFlagSet("status", flag.ExitOnError)
+	syncCmd := flag.NewFlagSet("sync", flag.ExitOnError)
+	syncUntil := syncCmd.String("until", "", "Sync only up to this migration ID")
 
 	if len(os.Args) < 2 {
 		printUsage()
@@ -82,6 +84,19 @@ func main() {
 		}
 		fmt.Println()
 
+	case "sync":
+		_ = syncCmd.Parse(os.Args[2:])
+		if *syncUntil != "" {
+			if err := migrator.SyncUntil(*syncUntil); err != nil {
+				appLogger.Fatal().Err(err).Msg("Sync failed")
+			}
+		} else {
+			if err := migrator.Sync(); err != nil {
+				appLogger.Fatal().Err(err).Msg("Sync failed")
+			}
+		}
+		appLogger.Info().Msg("Sync completed successfully")
+
 	default:
 		printUsage()
 		os.Exit(1)
@@ -99,5 +114,7 @@ func printUsage() {
 	fmt.Println("  rollback, down Rollback the last batch of migrations")
 	fmt.Println("  fresh          Drop all tables and re-run all migrations")
 	fmt.Println("  status         Show the status of all migrations")
+	fmt.Println("  sync           Mark all pending migrations as ran (without running them)")
+	fmt.Println("                 Use --until=<migration_id> to sync up to a specific migration")
 	fmt.Println()
 }

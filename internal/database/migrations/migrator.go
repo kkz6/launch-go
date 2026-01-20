@@ -257,3 +257,80 @@ type MigrationStatus struct {
 	Name string
 	Ran  bool
 }
+
+// Sync marks all migrations as ran without actually running them.
+// This is useful when the database tables already exist (e.g., from Laravel)
+// but the Go migrations table doesn't reflect that state.
+func (m *Migrator) Sync() error {
+	if err := m.CreateMigrationsTable(); err != nil {
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+
+	pending, err := m.GetPendingMigrations()
+	if err != nil {
+		return fmt.Errorf("failed to get pending migrations: %w", err)
+	}
+
+	if len(pending) == 0 {
+		m.logger.Info().Msg("All migrations are already synced")
+		return nil
+	}
+
+	batch, err := m.GetNextBatch()
+	if err != nil {
+		return fmt.Errorf("failed to get next batch: %w", err)
+	}
+
+	for _, migration := range pending {
+		record := MigrationRecord{
+			Migration: migration.ID,
+			Batch:     batch,
+		}
+		if err := m.db.Create(&record).Error; err != nil {
+			return fmt.Errorf("failed to record migration %s: %w", migration.ID, err)
+		}
+
+		m.logger.Info().Str("migration", migration.ID).Msg("Marked as ran")
+	}
+
+	m.logger.Info().Int("count", len(pending)).Msg("Migrations synced")
+	return nil
+}
+
+// SyncUntil marks all migrations up to and including the specified migration ID as ran.
+func (m *Migrator) SyncUntil(untilID string) error {
+	if err := m.CreateMigrationsTable(); err != nil {
+		return fmt.Errorf("failed to create migrations table: %w", err)
+	}
+
+	pending, err := m.GetPendingMigrations()
+	if err != nil {
+		return fmt.Errorf("failed to get pending migrations: %w", err)
+	}
+
+	batch, err := m.GetNextBatch()
+	if err != nil {
+		return fmt.Errorf("failed to get next batch: %w", err)
+	}
+
+	count := 0
+	for _, migration := range pending {
+		record := MigrationRecord{
+			Migration: migration.ID,
+			Batch:     batch,
+		}
+		if err := m.db.Create(&record).Error; err != nil {
+			return fmt.Errorf("failed to record migration %s: %w", migration.ID, err)
+		}
+
+		m.logger.Info().Str("migration", migration.ID).Msg("Marked as ran")
+		count++
+
+		if migration.ID == untilID {
+			break
+		}
+	}
+
+	m.logger.Info().Int("count", count).Msg("Migrations synced")
+	return nil
+}

@@ -100,7 +100,7 @@ func (h *TeamHandler) GetUserTeams(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	return response.OK(c, "Teams retrieved", dto.ToTeamsResponse(teams))
+	return response.OK(c, "Teams retrieved", dto.ToTeamsResponseForUser(teams, userID))
 }
 
 // SwitchTeam switches the user's current team (from request body)

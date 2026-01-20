@@ -108,7 +108,7 @@ func (s *DashboardService) getRecentActivity(ctx context.Context, teamID string)
 		Joins("JOIN sites ON deployments.site_id = sites.id").
 		Joins("JOIN servers ON sites.server_id = servers.id").
 		Joins("LEFT JOIN users ON deployments.user_id = users.id").
-		Where("deployments.team_id = ?", teamID).
+		Where("sites.team_id = ?", teamID).
 		Order("deployments.created_at DESC").
 		Limit(maxRecentActivity).
 		Scan(&results).Error
@@ -130,15 +130,16 @@ func (s *DashboardService) getRecentActivity(ctx context.Context, teamID string)
 		status := mapDeploymentStatus(string(r.Status))
 
 		activity[i] = &dto.DashboardActivityResponse{
-			ID:         r.ID,
-			SiteName:   r.SiteName,
-			SiteID:     r.SiteID,
-			ServerID:   r.ServerID,
-			ServerName: r.ServerName,
-			Status:     status,
-			CreatedAt:  r.CreatedAt,
-			CommitSha:  r.GetShortGitHash(),
-			User:       user,
+			ID:            r.ID,
+			SiteName:      r.SiteName,
+			SiteID:        r.SiteID,
+			ServerID:      r.ServerID,
+			ServerName:    r.ServerName,
+			Status:        status,
+			CreatedAt:     r.CreatedAt,
+			CommitSha:     r.GetShortGitHash(),
+			CommitMessage: r.CommitMessage(),
+			User:          user,
 		}
 	}
 
