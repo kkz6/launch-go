@@ -1,4 +1,4 @@
-.PHONY: build run worker test lint migrate migrate-rollback migrate-fresh migrate-status shellcheck help
+.PHONY: build run worker test lint migrate migrate-rollback migrate-fresh migrate-status shellcheck help client-install client-dev dev-all
 
 # Build variables
 BINARY_API=bin/api
@@ -31,6 +31,22 @@ worker:
 ## dev: Run API with hot reload (requires air)
 dev:
 	@$(shell go env GOPATH)/bin/air -c .air.toml
+
+## client-install: Install client dependencies
+client-install:
+	@cd client && npm install
+
+## client-dev: Run Nuxt dev server
+client-dev:
+	@cd client && npm run dev
+
+## dev-all: Run API, worker, and client dev servers concurrently
+dev-all:
+	@trap 'kill 0' EXIT; \
+	$(shell go env GOPATH)/bin/air -c .air.toml & \
+	go run ./cmd/worker & \
+	cd client && npm run dev & \
+	wait
 
 ## test: Run tests
 test:
