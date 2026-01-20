@@ -38,6 +38,7 @@ type TeamResponse struct {
 	PersonalTeam bool   `json:"personal_team"`
 	ImageURL     string `json:"image_url"`
 	IsSubscribed bool   `json:"is_subscribed"`
+	IsOwner      bool   `json:"is_owner"`
 	CreatedAt    string `json:"created_at"`
 }
 
@@ -148,6 +149,11 @@ func ToUserResponseWithSubscription(user *models.User, isSubscribed bool) UserRe
 
 // ToTeamResponse converts a Team model to a TeamResponse DTO
 func ToTeamResponse(team models.Team) TeamResponse {
+	return ToTeamResponseForUser(team, "")
+}
+
+// ToTeamResponseForUser converts a Team model to a TeamResponse DTO with ownership info
+func ToTeamResponseForUser(team models.Team, userID string) TeamResponse {
 	return TeamResponse{
 		ID:           team.ID,
 		Name:         team.Name,
@@ -155,6 +161,7 @@ func ToTeamResponse(team models.Team) TeamResponse {
 		PersonalTeam: team.PersonalTeam,
 		ImageURL:     team.ImageURL(),
 		IsSubscribed: false,
+		IsOwner:      userID != "" && team.UserID == userID,
 		CreatedAt:    team.CreatedAt.Format(time.RFC3339),
 	}
 }
@@ -228,9 +235,14 @@ func ToTeamInvitationResponse(invitation *models.TeamInvitation) TeamInvitationR
 
 // ToTeamsResponse converts a slice of Team models to TeamResponse DTOs
 func ToTeamsResponse(teams []models.Team) []TeamResponse {
+	return ToTeamsResponseForUser(teams, "")
+}
+
+// ToTeamsResponseForUser converts a slice of Team models to TeamResponse DTOs with ownership info
+func ToTeamsResponseForUser(teams []models.Team, userID string) []TeamResponse {
 	responses := make([]TeamResponse, len(teams))
 	for i, team := range teams {
-		responses[i] = ToTeamResponse(team)
+		responses[i] = ToTeamResponseForUser(team, userID)
 	}
 
 	return responses

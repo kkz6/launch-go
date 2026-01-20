@@ -26,16 +26,23 @@ type tableConfig struct {
 }
 
 // Tables that need team_id added (in dependency order)
-// Note: sites and deployments already have team_id from initial schema
+// sites gets team_id from servers (via server_id)
+// Deployments get team context through site relationship (site.team_id)
 var tablesToUpdate = []tableConfig{
+	// Sites first (depends on servers which already has team_id)
+	{"sites", "server_id", "servers", "server_id"},
+	// Then tables that depend on servers
 	{"databases", "server_id", "servers", "server_id"},
 	{"backups", "server_id", "servers", "server_id"},
 	{"database_users", "server_id", "servers", "server_id"},
+	// Then tables that depend on sites
 	{"certificates", "site_id", "sites", "site_id"},
 	{"commands", "site_id", "sites", "site_id"},
 	{"queues", "site_id", "sites", "site_id"},
 	{"redirects", "site_id", "sites", "site_id"},
+	// Then tables that depend on backups
 	{"backup_jobs", "backup_id", "backups", "backup_id"},
+	// Then tables that depend on domains
 	{"dns_records", "domain_id", "domains", "domain_id"},
 }
 

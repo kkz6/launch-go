@@ -110,11 +110,45 @@ func (c *TeamMembershipCache) buildKey(userID, teamID string) string {
 
 // queryMembership queries the database for team membership
 func (c *TeamMembershipCache) queryMembership(ctx context.Context, userID, teamID string) (*TeamMembership, error) {
+	// First check if user is the team owner
+	var team struct {
+		UserID string
+	}
+
+	err := c.db.WithContext(ctx).
+		Table("teams").
+		Select("user_id").
+		Where("id = ?", teamID).
+		First(&team).Error
+
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return &TeamMembership{
+			TeamID:   teamID,
+			UserID:   userID,
+			IsMember: false,
+		}, nil
+	}
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to query team: %w", err)
+	}
+
+	// If user is the team owner, they are a member with "owner" role
+	if team.UserID == userID {
+		return &TeamMembership{
+			TeamID:   teamID,
+			UserID:   userID,
+			Role:     "owner",
+			IsMember: true,
+		}, nil
+	}
+
+	// Check if user is a member via the pivot table
 	var result struct {
 		Role string
 	}
 
-	err := c.db.WithContext(ctx).
+	err = c.db.WithContext(ctx).
 		Table("team_user").
 		Select("role").
 		Where("user_id = ? AND team_id = ?", userID, teamID).
