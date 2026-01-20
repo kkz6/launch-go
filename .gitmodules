@@ -1,0 +1,3 @@
+[submodule "client/launch-nuxt"]
+	path = client/launch-nuxt
+	url = https://github.com/kkz6/launch-nuxt.git
