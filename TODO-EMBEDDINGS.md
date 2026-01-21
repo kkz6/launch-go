@@ -49,36 +49,6 @@ The following foundational infrastructure has been implemented:
 
 ---
 
-## 1. DTO Timestamp Embedding (P3) ✅ COMPLETED
-
-**Status:** Already implemented - helper functions exist and are widely used.
-
-**Existing Implementation in `internal/pkg/dto/time.go`:**
-- `FormatTime(t *time.Time) *string` - Convert pointer to RFC3339 string pointer
-- `FormatTimeValue(t time.Time) string` - Convert value to RFC3339 string
-- `FormatTimeOrEmpty(t *time.Time) string` - Return RFC3339 or empty string
-- `ParseTime(s string)` - Parse RFC3339 string to time
-- `ParseTimePtr(s *string)` - Parse string pointer to time pointer
-- `TimeAgo(t time.Time)` - Human-readable elapsed time
-
-**Usage (69+ occurrences across 8 modules):**
-```go
-// Current clean pattern (already refactored)
-InstalledAt:               pkgdto.FormatTime(db.InstalledAt),
-InstalledAt:               pkgdto.FormatTime(db.InstalledAt),
-InstallationFailedAt:      pkgdto.FormatTime(db.InstallationFailedAt),
-CreatedAt:                 pkgdto.FormatTimeOrEmpty(db.CreatedAt),
-```
-
-**Decision:** Embeddable timestamp structs were considered but provide diminishing returns:
-- Current pattern is already clean (single function call per field)
-- DTOs maintain explicit field definitions for clarity
-- JSON serialization remains straightforward
-
-**Impact:** Helper functions already eliminated verbose 3-line patterns across all DTOs
-
----
-
 ## Implementation Phases
 
 ### Phase 1: High Priority (Week 1-2)
