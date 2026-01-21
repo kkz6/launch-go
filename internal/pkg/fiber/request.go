@@ -5,7 +5,6 @@ import (
 
 	"github.com/kkz6/launch-go/internal/pkg/dto"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // ParseAndValidate parses request body into the provided struct and validates it.
@@ -21,7 +20,7 @@ func ParseAndValidate[T any](c *fiber.Ctx, req *T) error {
 		normalizable.Normalize()
 	}
 
-	if errs := validator.Validate(req); errs != nil {
+	if errs := Validate(req); errs != nil {
 		return response.ValidationError(c, errs)
 	}
 	return nil
@@ -54,7 +53,7 @@ func ParseQueryWithValidation[T any](c *fiber.Ctx) (*T, error) {
 	if err := c.QueryParser(&req); err != nil {
 		return nil, response.BadRequest(c, response.MsgInvalidQueryParams)
 	}
-	if errs := validator.Validate(&req); errs != nil {
+	if errs := Validate(&req); errs != nil {
 		return nil, response.ValidationError(c, errs)
 	}
 	return &req, nil

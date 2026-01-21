@@ -1,4 +1,4 @@
-package validator
+package fiber
 
 import (
 	"reflect"
@@ -34,13 +34,13 @@ func Validate(s interface{}) response.ValidationErrors {
 
 	for _, err := range err.(validator.ValidationErrors) {
 		field := err.Field()
-		errors[field] = append(errors[field], getErrorMessage(err))
+		errors[field] = append(errors[field], getValidationErrorMessage(err))
 	}
 
 	return errors
 }
 
-func getErrorMessage(err validator.FieldError) string {
+func getValidationErrorMessage(err validator.FieldError) string {
 	switch err.Tag() {
 	case "required":
 		return "This field is required"

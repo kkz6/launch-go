@@ -1,8 +1,8 @@
 package tasks
 
 import (
-	"github.com/kkz6/launch-go/internal/pkg/script"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
 // Task type constants for daemon operations
@@ -24,7 +24,7 @@ type UploadDaemonConfig struct {
 
 // UploadDaemon creates a task to upload a daemon config file to the server
 func UploadDaemon(config UploadDaemonConfig) *taskrunner.BaseTask {
-	configScript := script.WriteConfig(script.WriteConfigParams{
+	configScript := util.WriteConfig(util.WriteConfigParams{
 		FilePath:     config.Path,
 		Content:      config.Contents,
 		User:         config.User,

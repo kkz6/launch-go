@@ -1,6 +1,4 @@
-// Package script provides utilities for generating bash scripts
-// used in server provisioning and configuration tasks.
-package script
+package util
 
 import (
 	"strings"
