@@ -9,6 +9,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // ServerRepository handles server database operations
@@ -83,7 +84,7 @@ func (r *ServerRepository) FindAllByTeam(ctx context.Context, teamID string) ([]
 	err := r.DB().WithContext(ctx).
 		Select("servers.*, (SELECT COUNT(*) FROM sites WHERE sites.server_id = servers.id) as sites_count").
 		Preload("Services").
-		Where("team_id = ? AND archived_at IS NULL", teamID).
+		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
 		Order("created_at DESC").
 		Find(&servers).Error
 	return servers, err

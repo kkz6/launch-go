@@ -13471,11 +13471,15 @@ func NewRegistry[R any](db *gorm.DB, factory func(*gorm.DB) R) *Registry[R]
 ```
 
 ### Files to Modify/Create:
-- [ ] Enhance `internal/pkg/repository/base.go`
-- [ ] Enhance `internal/pkg/repository/scopes.go`
-- [ ] Create `internal/pkg/repository/query.go`
-- [ ] Create `internal/pkg/repository/auth.go`
-- [ ] Create `internal/pkg/repository/status.go`
+- [x] Enhance `internal/pkg/repository/base.go` - Added FindByIDAndTeam, FindByIDAndTeamOrFail, UpdateStatus, UpdateStatusByServer
+- [x] Enhance `internal/pkg/repository/scopes.go` - Added PreloadOrdered, PreloadWithScope, WithActive, WithArchived, OrderByLatest, OrderByOldest
+- [x] Existing `internal/pkg/repository/query.go` - Already has fluent Query builder
+- [x] `FindByIDAndTeam` added to base.go (no separate auth.go needed)
+- [x] `UpdateStatus` added to base.go (no separate status.go needed)
+
+### Refactored Files:
+- [x] `internal/modules/server/repositories/server_repository.go` - Uses WithActive(), WithTeamID() scopes
+- [x] `internal/modules/dashboard/services/dashboard_service.go` - Uses WithActive(), WithTeamID() scopes
 
 ### Estimated Effort: 2-3 days
 
