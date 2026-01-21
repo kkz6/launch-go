@@ -105,9 +105,7 @@ func (s *RedirectService) dispatchCaddyfileUpdate(siteID, userID string) {
 		return
 	}
 
-	if s.Queue != nil {
-		if _, err := s.Queue.Enqueue(task); err != nil {
-			s.LogError(err, "Failed to enqueue update Caddyfile job", "site_id", siteID)
-		}
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue update Caddyfile job", "site_id", siteID)
 	}
 }
