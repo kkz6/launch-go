@@ -13,7 +13,7 @@ import (
 // Returns nil on success, or sends an error response and returns the error.
 func ParseAndValidate[T any](c *fiber.Ctx, req *T) error {
 	if err := c.BodyParser(req); err != nil {
-		return response.BadRequest(c, "Invalid request body")
+		return response.BadRequest(c, response.MsgInvalidRequestBody)
 	}
 
 	// Call Normalize() if the request implements Normalizable
@@ -42,7 +42,7 @@ func MustParseAndValidate[T any](c *fiber.Ctx) (*T, error) {
 func ParseQuery[T any](c *fiber.Ctx) (*T, error) {
 	var req T
 	if err := c.QueryParser(&req); err != nil {
-		return nil, response.BadRequest(c, "Invalid query parameters")
+		return nil, response.BadRequest(c, response.MsgInvalidQueryParams)
 	}
 	return &req, nil
 }
@@ -52,7 +52,7 @@ func ParseQuery[T any](c *fiber.Ctx) (*T, error) {
 func ParseQueryWithValidation[T any](c *fiber.Ctx) (*T, error) {
 	var req T
 	if err := c.QueryParser(&req); err != nil {
-		return nil, response.BadRequest(c, "Invalid query parameters")
+		return nil, response.BadRequest(c, response.MsgInvalidQueryParams)
 	}
 	if errs := validator.Validate(&req); errs != nil {
 		return nil, response.ValidationError(c, errs)

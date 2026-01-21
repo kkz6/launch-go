@@ -1310,8 +1310,10 @@ const (
 ```
 
 **Refactoring Steps:**
-- [ ] Create messages constants file
-- [ ] Replace all hardcoded message strings
+- [x] Create messages constants file (`internal/pkg/response/messages.go`)
+- [x] Update pkg/fiber/request.go to use message constants
+- [x] Update pkg/response/response.go to use MsgValidationFailed
+- [ ] Replace hardcoded message strings in handlers (gradual adoption)
 - [ ] Consider i18n support for future
 
 ---
