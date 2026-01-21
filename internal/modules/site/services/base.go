@@ -3,12 +3,9 @@ package services
 import (
 	"strings"
 
-	databaseservices "github.com/kkz6/launch-go/internal/modules/database/services"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
-	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
-	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
-	serverservices "github.com/kkz6/launch-go/internal/modules/server/services"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/site/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
@@ -56,12 +53,12 @@ func (r *ServiceRegistry) Redirect() *RedirectService { return r.redirect }
 // File returns the file service
 func (r *ServiceRegistry) File() *FileService { return r.file }
 
-// CrossModuleDeps holds dependencies from other modules
+// CrossModuleDeps holds dependencies from other modules using interfaces
 type CrossModuleDeps struct {
-	ServerRepos     *serverrepos.Registry
-	GitRepos        *gitrepos.Registry
-	ServerService   *serverservices.Service
-	DatabaseService *databaseservices.Service
+	ServerReader    contracts.ServerReader
+	GitReader       contracts.GitReader
+	CronCreator     contracts.CronCreator
+	DatabaseManager contracts.DatabaseManager
 	ProviderFactory *gitproviders.ProviderFactory
 }
 
@@ -82,20 +79,20 @@ func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
 	return registry
 }
 
-// SetCrossModuleDeps wires dependencies from other modules
+// SetCrossModuleDeps wires dependencies from other modules using interfaces
 func (r *ServiceRegistry) SetCrossModuleDeps(deps *CrossModuleDeps) {
-	if deps.ServerRepos != nil {
-		r.site.SetServerRepos(deps.ServerRepos)
+	if deps.ServerReader != nil {
+		r.site.SetServerReader(deps.ServerReader)
 	}
-	if deps.GitRepos != nil {
-		r.site.SetGitRepos(deps.GitRepos)
-		r.deployment.SetGitRepos(deps.GitRepos)
+	if deps.GitReader != nil {
+		r.site.SetGitReader(deps.GitReader)
+		r.deployment.SetGitReader(deps.GitReader)
 	}
-	if deps.ServerService != nil {
-		r.site.SetServerService(deps.ServerService)
+	if deps.CronCreator != nil {
+		r.site.SetCronCreator(deps.CronCreator)
 	}
-	if deps.DatabaseService != nil {
-		r.site.SetDatabaseService(deps.DatabaseService)
+	if deps.DatabaseManager != nil {
+		r.site.SetDatabaseManager(deps.DatabaseManager)
 	}
 	if deps.ProviderFactory != nil {
 		r.deployment.SetProviderFactory(deps.ProviderFactory)

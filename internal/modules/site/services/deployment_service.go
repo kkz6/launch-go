@@ -10,7 +10,7 @@ import (
 
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
-	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
+	"github.com/kkz6/launch-go/internal/modules/site/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
@@ -19,7 +19,7 @@ import (
 // DeploymentService handles business logic for deployments
 type DeploymentService struct {
 	*BaseService
-	gitRepos        *gitrepos.Registry
+	gitReader       contracts.GitReader
 	providerFactory *gitproviders.ProviderFactory
 }
 
@@ -30,9 +30,9 @@ func NewDeploymentService(deps *ServiceDeps) *DeploymentService {
 	}
 }
 
-// SetGitRepos sets the git repositories registry
-func (s *DeploymentService) SetGitRepos(repos *gitrepos.Registry) {
-	s.gitRepos = repos
+// SetGitReader sets the git reader for cross-module queries
+func (s *DeploymentService) SetGitReader(reader contracts.GitReader) {
+	s.gitReader = reader
 }
 
 // SetProviderFactory sets the git provider factory
@@ -59,12 +59,12 @@ func (s *DeploymentService) FetchLatestCommitData(ctx context.Context, site *mod
 		return nil
 	}
 
-	if s.gitRepos == nil || s.providerFactory == nil {
+	if s.gitReader == nil || s.providerFactory == nil {
 		return nil
 	}
 
 	// Get source control
-	sourceControl, err := s.gitRepos.SourceControl().FindByID(ctx, *site.SourceControlID)
+	sourceControl, err := s.gitReader.FindSourceControlByID(ctx, *site.SourceControlID)
 	if err != nil {
 		s.LogError(err, "Failed to find source control for commit data", "site_id", site.ID)
 		return nil
@@ -72,7 +72,7 @@ func (s *DeploymentService) FetchLatestCommitData(ctx context.Context, site *mod
 
 	// Get repository
 	repoID := strconv.FormatUint(*site.SourceControlRepositoriesID, 10)
-	repo, err := s.gitRepos.SourceControlRepo().FindRepositoryByID(ctx, repoID)
+	repo, err := s.gitReader.FindRepositoryByID(ctx, repoID)
 	if err != nil {
 		s.LogError(err, "Failed to find repository for commit data", "site_id", site.ID)
 		return nil

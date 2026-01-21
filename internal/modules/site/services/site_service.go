@@ -10,14 +10,11 @@ import (
 	"gorm.io/gorm"
 
 	databasedto "github.com/kkz6/launch-go/internal/modules/database/dto"
-	databaseservices "github.com/kkz6/launch-go/internal/modules/database/services"
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	gitcontracts "github.com/kkz6/launch-go/internal/modules/git/contracts"
-	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
 	serverdto "github.com/kkz6/launch-go/internal/modules/server/dto"
 	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
-	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
-	serverservices "github.com/kkz6/launch-go/internal/modules/server/services"
+	"github.com/kkz6/launch-go/internal/modules/site/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
@@ -30,10 +27,10 @@ import (
 // SiteService handles business logic for sites
 type SiteService struct {
 	*BaseService
-	serverRepos          *serverrepos.Registry
-	gitRepos             *gitrepos.Registry
-	serverService        *serverservices.Service
-	databaseService      *databaseservices.Service
+	serverReader         contracts.ServerReader
+	gitReader            contracts.GitReader
+	cronCreator          contracts.CronCreator
+	databaseManager      contracts.DatabaseManager
 	dnsRecordService     dnscontracts.DnsRecordService
 	sourceControlService gitcontracts.SourceControlService
 }
@@ -45,24 +42,24 @@ func NewSiteService(deps *ServiceDeps) *SiteService {
 	}
 }
 
-// SetServerRepos sets the server repository registry for cross-module queries
-func (s *SiteService) SetServerRepos(repos *serverrepos.Registry) {
-	s.serverRepos = repos
+// SetServerReader sets the server reader for cross-module queries
+func (s *SiteService) SetServerReader(reader contracts.ServerReader) {
+	s.serverReader = reader
 }
 
-// SetGitRepos sets the git repository registry for cross-module queries
-func (s *SiteService) SetGitRepos(repos *gitrepos.Registry) {
-	s.gitRepos = repos
+// SetGitReader sets the git reader for cross-module queries
+func (s *SiteService) SetGitReader(reader contracts.GitReader) {
+	s.gitReader = reader
 }
 
-// SetServerService sets the server service for cross-module operations
-func (s *SiteService) SetServerService(svc *serverservices.Service) {
-	s.serverService = svc
+// SetCronCreator sets the cron creator for cross-module operations
+func (s *SiteService) SetCronCreator(creator contracts.CronCreator) {
+	s.cronCreator = creator
 }
 
-// SetDatabaseService sets the database service for cross-module operations
-func (s *SiteService) SetDatabaseService(svc *databaseservices.Service) {
-	s.databaseService = svc
+// SetDatabaseManager sets the database manager for cross-module operations
+func (s *SiteService) SetDatabaseManager(manager contracts.DatabaseManager) {
+	s.databaseManager = manager
 }
 
 // SetDNSRecordService sets the DNS record service for cross-module operations
@@ -97,11 +94,11 @@ func (s *SiteService) List(ctx context.Context, serverID, teamID string) ([]mode
 // Create creates a new site
 func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID string, req *dto.CreateSiteRequest) (*models.Site, error) {
 	// Get server to determine username and validate PHP version
-	if s.serverRepos == nil {
-		return nil, errors.New("server repository not configured")
+	if s.serverReader == nil {
+		return nil, errors.New("server reader not configured")
 	}
 
-	server, err := s.serverRepos.Server().FindByID(ctx, serverID)
+	server, err := s.serverReader.FindServerByID(ctx, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch server: %w", err)
 	}
@@ -267,7 +264,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	}
 
 	// Handle database creation if requested (outside main transaction)
-	if req.CreateDatabase && s.databaseService != nil {
+	if req.CreateDatabase && s.databaseManager != nil {
 		envVars = s.handleDatabaseCreation(ctx, site, serverID, teamID, userID, req)
 	}
 
@@ -281,7 +278,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	}
 
 	// Handle scheduler creation for Laravel and WordPress sites
-	if req.CreateScheduler && s.serverService != nil {
+	if req.CreateScheduler && s.cronCreator != nil {
 		if req.Type == enums.SiteTypeLaravel || req.Type == enums.SiteTypeWordpress {
 			s.handleSchedulerCreation(ctx, site, serverID, userID)
 		}
@@ -373,7 +370,7 @@ func (s *SiteService) handleDatabaseCreation(ctx context.Context, site *models.S
 		dbReq.ExistingUserID = req.DatabaseUserID
 	}
 
-	database, err := s.databaseService.CreateDatabase(ctx, serverID, teamID, dbReq, &userID)
+	database, err := s.databaseManager.CreateDatabase(ctx, serverID, teamID, dbReq, &userID)
 	if err != nil {
 		s.LogError(err, "Failed to create database during site creation", "site_id", site.ID)
 		return envVars
@@ -420,11 +417,11 @@ type DatabaseInfo struct {
 
 // getExistingDatabaseInfo fetches database info for existing database
 func (s *SiteService) getExistingDatabaseInfo(ctx context.Context, databaseID, serverID, teamID string) *DatabaseInfo {
-	if s.databaseService == nil {
+	if s.databaseManager == nil {
 		return nil
 	}
 
-	database, err := s.databaseService.GetDatabase(ctx, databaseID, serverID, teamID)
+	database, err := s.databaseManager.GetDatabase(ctx, databaseID, serverID, teamID)
 	if err != nil {
 		return nil
 	}
@@ -442,7 +439,11 @@ func (s *SiteService) getExistingDatabaseInfo(ctx context.Context, databaseID, s
 // getDatabaseTypeForServer returns the database software type installed on the server
 func (s *SiteService) getDatabaseTypeForServer(ctx context.Context, serverID string) serverenums.Software {
 	// Query installed services to find the database type
-	services, err := s.serverRepos.Service().FindByServer(ctx, serverID)
+	if s.serverReader == nil {
+		return serverenums.SoftwareMySql80 // Default to MySQL if we can't determine
+	}
+
+	services, err := s.serverReader.FindServicesByServer(ctx, serverID)
 	if err != nil {
 		return serverenums.SoftwareMySql80 // Default to MySQL if we can't determine
 	}
@@ -462,7 +463,7 @@ func (s *SiteService) getDatabaseTypeForServer(ctx context.Context, serverID str
 // handleSchedulerCreation creates a cron job for Laravel/WordPress scheduler
 func (s *SiteService) handleSchedulerCreation(ctx context.Context, site *models.Site, serverID, userID string) {
 	// Get team ID from server
-	server, err := s.serverRepos.Server().FindByID(ctx, serverID)
+	server, err := s.serverReader.FindServerByID(ctx, serverID)
 	if err != nil {
 		s.LogError(err, "Failed to get server for scheduler creation", "site_id", site.ID)
 		return
@@ -494,7 +495,7 @@ func (s *SiteService) handleSchedulerCreation(ctx context.Context, site *models.
 		SiteID:     &site.ID,
 	}
 
-	cron, err := s.serverService.CreateCron(ctx, serverID, server.TeamID, cronReq)
+	cron, err := s.cronCreator.CreateCron(ctx, serverID, server.TeamID, cronReq)
 	if err != nil {
 		s.LogError(err, "Failed to create scheduler cron for site", "site_id", site.ID)
 		return
@@ -628,13 +629,13 @@ func (s *SiteService) handleSourceControlRepository(ctx context.Context, sourceC
 		return
 	}
 
-	if s.gitRepos == nil {
-		s.LogError(nil, "Git repositories not configured, skipping repository save")
+	if s.gitReader == nil {
+		s.LogError(nil, "Git reader not configured, skipping repository save")
 		return
 	}
 
 	// Get repository from database using the ID
-	repo, err := s.gitRepos.SourceControlRepo().FindRepositoryByID(ctx, strconv.FormatUint(repoID, 10))
+	repo, err := s.gitReader.FindRepositoryByID(ctx, strconv.FormatUint(repoID, 10))
 	if err != nil {
 		s.LogError(err, "Failed to get repository", "repo_id", repoID)
 		return
@@ -748,8 +749,8 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID s
 	s.LogInfo("Site updated", "site_id", site.ID)
 
 	// Broadcast site updated event
-	if s.serverRepos != nil {
-		if server, err := s.serverRepos.Server().FindByID(ctx, serverID); err == nil {
+	if s.serverReader != nil {
+		if server, err := s.serverReader.FindServerByID(ctx, serverID); err == nil {
 			s.BroadcastToTeam(server.TeamID, "site.updated", map[string]interface{}{
 				"team_id": server.TeamID,
 				"site":    dto.ToSiteResponse(site),
@@ -885,11 +886,11 @@ func (s *SiteService) GetSettings(ctx context.Context, id, serverID, teamID stri
 
 // getServerPhpVersions returns installed PHP versions for a server using relationship
 func (s *SiteService) getServerPhpVersions(ctx context.Context, serverID string) []dto.PhpVersionResponse {
-	if s.serverRepos == nil {
+	if s.serverReader == nil {
 		return nil
 	}
 
-	server, err := s.serverRepos.Server().FindByID(ctx, serverID)
+	server, err := s.serverReader.FindServerByID(ctx, serverID)
 	if err != nil || server == nil {
 		return nil
 	}
@@ -909,11 +910,11 @@ func (s *SiteService) getServerPhpVersions(ctx context.Context, serverID string)
 
 // GetSourceControlInfo returns source control and repository info
 func (s *SiteService) GetSourceControlInfo(ctx context.Context, sourceControlID string, repoID *uint64) (*dto.SourceControlResponse, *dto.SourceControlRepositoryResponse) {
-	if s.gitRepos == nil {
+	if s.gitReader == nil {
 		return nil, nil
 	}
 
-	sc, err := s.gitRepos.SourceControl().FindByID(ctx, sourceControlID)
+	sc, err := s.gitReader.FindSourceControlByID(ctx, sourceControlID)
 	if err != nil {
 		return nil, nil
 	}
@@ -928,7 +929,7 @@ func (s *SiteService) GetSourceControlInfo(ctx context.Context, sourceControlID 
 
 	var repository *dto.SourceControlRepositoryResponse
 	if repoID != nil {
-		repo, err := s.gitRepos.SourceControlRepo().FindRepositoryByID(ctx, strconv.FormatUint(*repoID, 10))
+		repo, err := s.gitReader.FindRepositoryByID(ctx, strconv.FormatUint(*repoID, 10))
 		if err == nil {
 			repository = &dto.SourceControlRepositoryResponse{
 				ID:            repo.ID,
