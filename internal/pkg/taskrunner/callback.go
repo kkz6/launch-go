@@ -86,6 +86,13 @@ func (c *CallbackContext) BroadcastToDeployment(deploymentID, event string, data
 	}
 }
 
+// BroadcastToUser sends a websocket event to a user channel.
+func (c *CallbackContext) BroadcastToUser(userID, event string, data any) {
+	if c.Broadcaster != nil {
+		c.Broadcaster.BroadcastToUser(userID, event, data)
+	}
+}
+
 // NotifyTeam sends a notification to all connected channels for a team.
 func (c *CallbackContext) NotifyTeam(ctx context.Context, teamID string, notification Notification) error {
 	if c.Notifier == nil {

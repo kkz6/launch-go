@@ -120,6 +120,7 @@ func TestBase_BroadcastMethods_NilWS(t *testing.T) {
 	base.BroadcastToServer("server-123", "event", nil)
 	base.BroadcastToSite("site-123", "event", nil)
 	base.BroadcastToDeployment("deployment-123", "event", nil)
+	base.BroadcastToUser("user-123", "event", nil)
 	base.Broadcast("channel", "event", nil)
 }
 
