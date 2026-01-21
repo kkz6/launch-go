@@ -1,7 +1,5 @@
 package config
 
-import "github.com/spf13/viper"
-
 // AppConfig holds application configuration
 type AppConfig struct {
 	Name        string
@@ -19,22 +17,21 @@ func (c AppConfig) IsLocal() bool {
 }
 
 func loadAppConfig() AppConfig {
+	b := NewBuilder()
+
 	return AppConfig{
-		Name:        viper.GetString("APP_NAME"),
-		Environment: viper.GetString("APP_ENV"),
-		Port:        viper.GetString("APP_PORT"),
-		Debug:       viper.GetBool("APP_DEBUG"),
-		URL:         viper.GetString("APP_URL"),
-		Key:         viper.GetString("APP_KEY"),
-		LocalMode:   viper.GetBool("APP_LOCAL_MODE"),
+		Name:        b.String("APP_NAME", "Launch"),
+		Environment: b.String("APP_ENV", "development"),
+		Port:        b.String("APP_PORT", "8080"),
+		Debug:       b.Bool("APP_DEBUG", true),
+		URL:         b.String("APP_URL", "http://localhost:8080"),
+		Key:         b.String("APP_KEY", ""),
+		LocalMode:   b.Bool("APP_LOCAL_MODE", false),
 	}
 }
 
+// setAppDefaults is kept for backward compatibility but is now a no-op
+// since defaults are set inline via the Builder pattern.
 func setAppDefaults() {
-	viper.SetDefault("APP_NAME", "Launch")
-	viper.SetDefault("APP_ENV", "development")
-	viper.SetDefault("APP_PORT", "8080")
-	viper.SetDefault("APP_DEBUG", true)
-	viper.SetDefault("APP_URL", "http://localhost:8080")
-	viper.SetDefault("APP_LOCAL_MODE", false)
+	// Defaults are now set via Builder in loadAppConfig()
 }
