@@ -2,14 +2,13 @@ package providers
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 )
 
 const (
@@ -90,7 +89,8 @@ func (p *GitLabProvider) ValidateWebhook(payload []byte, signature string) bool 
 	}
 
 	// GitLab uses X-Gitlab-Token header for validation
-	return signature == p.config.WebhookSecret
+	// Use constant-time comparison to prevent timing attacks
+	return cryptoutil.SecureCompare(signature, p.config.WebhookSecret)
 }
 
 // GetCommitData extracts commit data from a webhook payload
@@ -152,33 +152,6 @@ func (p *GitLabProvider) GetInstallationToken(ctx context.Context, installationI
 	}
 
 	return token, nil
-}
-
-// generateSignature generates a webhook signature for testing
-func (p *GitLabProvider) generateSignature(payload []byte) string {
-	mac := hmac.New(sha256.New, []byte(p.config.WebhookSecret))
-	mac.Write(payload)
-	return hex.EncodeToString(mac.Sum(nil))
-}
-
-// makeAuthenticatedRequest makes an authenticated request to the GitLab API
-func (p *GitLabProvider) makeAuthenticatedRequest(ctx context.Context, method, url string, body io.Reader) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add authentication headers based on available credentials
-	if p.sourceControl != nil && p.sourceControl.ProviderData != nil {
-		if token, ok := p.sourceControl.ProviderData["access_token"].(string); ok {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-	}
-
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-
-	return p.httpClient.Do(req)
 }
 
 // parseGitLabRepository parses a GitLab project response into a standard format
@@ -288,12 +261,11 @@ func (p *GitLabProvider) UpdateDeploymentStatus(ctx context.Context, info *Deplo
 	deploymentID, ok := vcsData["id"].(float64)
 	if !ok {
 		// Try string
-		if idStr, ok := vcsData["id"].(string); ok {
-			_, err := fmt.Sscanf(idStr, "%f", &deploymentID)
-			if err != nil {
-				return nil
-			}
-		} else {
+		idStr, strOK := vcsData["id"].(string)
+		if !strOK {
+			return nil
+		}
+		if _, err := fmt.Sscanf(idStr, "%f", &deploymentID); err != nil {
 			return nil
 		}
 	}
@@ -353,53 +325,4 @@ func (r *byteReader) Read(p []byte) (n int, err error) {
 	n = copy(p, r.data[r.pos:])
 	r.pos += n
 	return n, nil
-}
-
-// fetchProjects fetches projects from GitLab API with pagination
-func (p *GitLabProvider) fetchProjects(ctx context.Context, accessToken string) ([]map[string]interface{}, error) {
-	var allProjects []map[string]interface{}
-	page := 1
-	perPage := 100
-
-	for {
-		url := fmt.Sprintf("%s/projects?membership=true&per_page=%d&page=%d", gitlabAPIURL, perPage, page)
-
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		req.Header.Set("Authorization", "Bearer "+accessToken)
-		req.Header.Set("Accept", "application/json")
-
-		resp, err := p.httpClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return nil, fmt.Errorf("failed to fetch projects: %s", string(body))
-		}
-
-		var projects []map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
-			resp.Body.Close()
-			return nil, err
-		}
-		resp.Body.Close()
-
-		if len(projects) == 0 {
-			break
-		}
-
-		for _, project := range projects {
-			allProjects = append(allProjects, parseGitLabRepository(project))
-		}
-
-		page++
-	}
-
-	return allProjects, nil
 }
