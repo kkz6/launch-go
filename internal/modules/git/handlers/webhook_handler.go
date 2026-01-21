@@ -10,6 +10,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/git/enums"
+	"github.com/kkz6/launch-go/internal/modules/git/gitref"
 	"github.com/kkz6/launch-go/internal/modules/git/jobs"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
@@ -164,7 +165,7 @@ func (h *WebhookHandler) processGitHubWebhook(ctx context.Context, data map[stri
 			if !ok {
 				h.LogDebug("GitHub webhook: unexpected ref type", "ref", data["ref"])
 			}
-			branch := strings.TrimPrefix(ref, "refs/heads/")
+			branch := gitref.ExtractBranchName(ref)
 
 			if fullName != "" && branch != "" {
 				h.triggerDeployments(ctx, fullName, branch, data, enums.GitProviderGitHub)
@@ -190,7 +191,7 @@ func (h *WebhookHandler) processGitLabWebhook(ctx context.Context, data map[stri
 			if !ok {
 				h.LogDebug("GitLab webhook: unexpected ref type", "ref", data["ref"])
 			}
-			branch := strings.TrimPrefix(ref, "refs/heads/")
+			branch := gitref.ExtractBranchName(ref)
 
 			if fullName != "" && branch != "" {
 				h.triggerDeployments(ctx, fullName, branch, data, enums.GitProviderGitLab)

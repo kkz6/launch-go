@@ -22,12 +22,11 @@ import (
 var jobContext *JobContext
 
 // JobContext holds dependencies for database job execution.
-// It embeds pkgjobs.Base for common logging functionality.
+// It embeds pkgjobs.ModuleContext for common functionality and typed repository access.
 type JobContext struct {
-	pkgjobs.Base
+	*pkgjobs.ModuleContext[*repositories.Registry]
 	// Public fields for backward compatibility with existing jobs
 	DB             *gorm.DB
-	Repos          *repositories.Registry
 	Logger         *zerolog.Logger
 	WS             broadcast.TeamBroadcaster
 	Queue          *queue.Client
@@ -43,27 +42,28 @@ func NewJobContext(
 	dispatcher taskrunner.TaskDispatcher,
 	queueClient *queue.Client,
 ) *JobContext {
+	taskRunnerDeps := &servertasks.TaskRunnerDeps{
+		DB:          db,
+		Queue:       queueClient,
+		Dispatcher:  dispatcher,
+		Logger:      logger,
+		Broadcaster: ws,
+	}
+
 	return &JobContext{
-		Base: pkgjobs.NewBase(pkgjobs.BaseDeps{
+		ModuleContext: pkgjobs.NewModuleContext(pkgjobs.BaseDeps{
 			DB:         db,
 			Logger:     logger,
 			WS:         ws,
 			Dispatcher: dispatcher,
 			Queue:      queueClient,
-		}),
+		}, repos),
 		// Public fields for backward compatibility
-		DB:     db,
-		Repos:  repos,
-		Logger: logger,
-		WS:     ws,
-		Queue:  queueClient,
-		TaskRunnerDeps: &servertasks.TaskRunnerDeps{
-			DB:          db,
-			Queue:       queueClient,
-			Dispatcher:  dispatcher,
-			Logger:      logger,
-			Broadcaster: ws,
-		},
+		DB:             db,
+		Logger:         logger,
+		WS:             ws,
+		Queue:          queueClient,
+		TaskRunnerDeps: taskRunnerDeps,
 	}
 }
 

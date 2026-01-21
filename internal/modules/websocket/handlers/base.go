@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"encoding/json"
+
 	"github.com/gofiber/contrib/websocket"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
@@ -8,6 +10,13 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/cache"
 	ws "github.com/kkz6/launch-go/internal/websocket"
 )
+
+// WSMessage is a standard WebSocket message format for consistent JSON structure.
+type WSMessage struct {
+	Event   string `json:"event"`
+	Data    any    `json:"data,omitempty"`
+	Message string `json:"message,omitempty"`
+}
 
 // Base provides common dependencies and functionality for all WebSocket handlers.
 // Embed this struct in specific handlers to get access to shared resources.
@@ -44,16 +53,45 @@ func (b *Base) Authenticate(c *websocket.Conn) (*ws.Claims, error) {
 	return ws.AuthenticateWebSocket(c, b.JWTSecret, b.MembershipCache)
 }
 
-// SendError sends an error message to the WebSocket client and logs it.
+// SendError sends a structured JSON error message to the WebSocket client and logs it.
+// The message is formatted as {"event":"error","message":"..."}.
 func (b *Base) SendError(c *websocket.Conn, msg string) {
 	b.Logger.Warn().Msg(msg)
-	_ = c.WriteMessage(websocket.TextMessage, []byte(msg))
+	_ = SendEvent(c, "error", map[string]string{"message": msg})
 }
 
 // SendJSON sends a JSON message to the WebSocket client.
 // Returns an error if marshaling or sending fails.
 func (b *Base) SendJSON(c *websocket.Conn, v any) error {
 	return c.WriteJSON(v)
+}
+
+// SendEvent sends a structured WebSocket message with an event name and data.
+// This ensures consistent JSON formatting across all handlers.
+func SendEvent(c *websocket.Conn, event string, data any) error {
+	msg := WSMessage{Event: event, Data: data}
+	bytes, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return c.WriteMessage(websocket.TextMessage, bytes)
+}
+
+// SendEventWithMessage sends a structured WebSocket message with an event and a message string.
+// Use this for simple event notifications without complex data structures.
+func SendEventWithMessage(c *websocket.Conn, event, message string) error {
+	msg := WSMessage{Event: event, Message: message}
+	bytes, err := json.Marshal(msg)
+	if err != nil {
+		return err
+	}
+	return c.WriteMessage(websocket.TextMessage, bytes)
+}
+
+// SendErrorEvent sends a structured error event to the WebSocket client.
+// This is a standalone function for use without a Base handler instance.
+func SendErrorEvent(c *websocket.Conn, message string) error {
+	return SendEvent(c, "error", map[string]string{"message": message})
 }
 
 // LogInfo logs an info message with connection context.

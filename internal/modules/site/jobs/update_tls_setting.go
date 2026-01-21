@@ -16,7 +16,7 @@ const TypeUpdateSiteTLSSetting = "site:update_tls_setting"
 // UpdateSiteTLSSettingPayload holds data for updating TLS settings
 type UpdateSiteTLSSettingPayload struct {
 	SiteID     string           `json:"site_id"`
-	TLSSetting enums.TlsSetting `json:"tls_setting"`
+	TLSSetting enums.TLSSetting `json:"tls_setting"`
 	UserID     *string          `json:"user_id,omitempty"`
 }
 
@@ -39,7 +39,7 @@ func (j *UpdateSiteTLSSettingJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
-	oldTLSSetting := site.TlsSetting
+	oldTLSSetting := site.TLSSetting
 
 	j.Ctx.LogInfo("Updating TLS setting",
 		"site_id", site.ID,
@@ -48,9 +48,9 @@ func (j *UpdateSiteTLSSettingJob) Handle(ctx context.Context) error {
 	)
 
 	// Update the TLS setting
-	site.TlsSetting = j.Payload.TLSSetting
+	site.TLSSetting = j.Payload.TLSSetting
 	now := time.Now()
-	site.PendingTlsUpdateSince = &now
+	site.PendingTLSUpdateSince = &now
 
 	if err := j.Ctx.SiteRepo.Update(ctx, site); err != nil {
 		return fmt.Errorf("failed to update site TLS setting: %w", err)
@@ -93,13 +93,13 @@ func (j *UpdateSiteTLSSettingJob) Failed(ctx context.Context, err error) {
 	// Clear pending TLS update flag on failure
 	site, findErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if findErr == nil && site != nil {
-		site.PendingTlsUpdateSince = nil
+		site.PendingTLSUpdateSince = nil
 		_ = j.Ctx.SiteRepo.Update(ctx, site)
 	}
 }
 
 // NewUpdateSiteTLSSettingTask creates an update TLS setting task
-func NewUpdateSiteTLSSettingTask(siteID string, tlsSetting enums.TlsSetting, userID *string) (*asynq.Task, error) {
+func NewUpdateSiteTLSSettingTask(siteID string, tlsSetting enums.TLSSetting, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUpdateSiteTLSSetting, UpdateSiteTLSSettingPayload{
 		SiteID:     siteID,
 		TLSSetting: tlsSetting,

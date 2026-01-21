@@ -108,12 +108,10 @@ func (t *TelegramChannel) Connect(ctx context.Context) error {
 
 // GetCreateRules returns the validation rules for creating a Telegram channel
 func (t *TelegramChannel) GetCreateRules() map[string]string {
-	return map[string]string{
-		"bot_token":      "required",
-		"chat_id":        "required",
-		"appDeploy":      "boolean",
-		"databaseBackup": "boolean",
-	}
+	return MergeValidationRules(map[string]string{
+		"bot_token": "required",
+		"chat_id":   "required",
+	})
 }
 
 // GetData returns the Telegram channel data

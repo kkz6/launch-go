@@ -31,13 +31,13 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 		return err
 	}
 
-	tlsSetting := enums.TlsSetting(req.TlsSetting)
+	tlsSetting := enums.TLSSetting(req.TLSSetting)
 	if !tlsSetting.IsValid() {
 		return errors.New("invalid TLS setting")
 	}
 
 	// Handle custom certificate
-	if tlsSetting == enums.TlsSettingCustom && req.PrivateKey != nil && req.Certificate != nil {
+	if tlsSetting == enums.TLSSettingCustom && req.PrivateKey != nil && req.Certificate != nil {
 		// Deactivate existing certificates
 		if err := s.Repos().Certificate().DeactivateAll(ctx, site.ID); err != nil {
 			return err
@@ -75,8 +75,8 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 
 	// Update TLS setting
 	now := time.Now()
-	site.TlsSetting = tlsSetting
-	site.PendingTlsUpdateSince = &now
+	site.TLSSetting = tlsSetting
+	site.PendingTLSUpdateSince = &now
 
 	return s.Repos().Site().Update(ctx, site)
 }

@@ -97,13 +97,13 @@ func (h *LogsHandler) Handler() fiber.Handler {
 				// Fallback to old behavior using software parameter
 				sw := enums.Software(software)
 				if !sw.HasLogPath() {
-					c.WriteMessage(websocket.TextMessage, []byte("Unknown software type"))
+					_ = SendErrorEvent(c, "Unknown software type")
 					c.Close()
 					return
 				}
 				logFilePath = sw.LogPath()
 			} else {
-				c.WriteMessage(websocket.TextMessage, []byte("Missing route or software parameter"))
+				_ = SendErrorEvent(c, "Missing route or software parameter")
 				c.Close()
 				return
 			}
@@ -135,7 +135,7 @@ func (h *LogsHandler) Handler() fiber.Handler {
 			// These entities have their own log paths stored in the database
 			logFilePath, err = h.getEntityLogPath(entity, entityID, serverID, logType)
 			if err != nil {
-				c.WriteMessage(websocket.TextMessage, []byte("Entity not found"))
+				_ = SendErrorEvent(c, "Entity not found")
 				c.Close()
 				return
 			}
@@ -146,7 +146,7 @@ func (h *LogsHandler) Handler() fiber.Handler {
 			return
 
 		default:
-			c.WriteMessage(websocket.TextMessage, []byte("Unknown entity type"))
+			_ = SendErrorEvent(c, "Unknown entity type")
 			c.Close()
 			return
 		}
@@ -223,7 +223,7 @@ func (h *LogsHandler) getEntityLogPath(entity, entityID, serverID, logType strin
 func (h *LogsHandler) streamTaskOutput(c *websocket.Conn, taskID, serverID string, tail int) {
 	var task serverModels.Task
 	if err := h.DB.Where("id = ? AND server_id = ?", taskID, serverID).First(&task).Error; err != nil {
-		c.WriteMessage(websocket.TextMessage, []byte("Task not found"))
+		_ = SendErrorEvent(c, "Task not found")
 		c.Close()
 		return
 	}
@@ -249,12 +249,12 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 	// Get SSH connection config using the server's connection method
 	conn := server.ConnectionAsRoot()
 	if conn.Host == "" {
-		c.WriteMessage(websocket.TextMessage, []byte("Server has no public IP"))
+		_ = SendErrorEvent(c, "Server has no public IP")
 		return
 	}
 
 	if conn.PrivateKey == "" {
-		c.WriteMessage(websocket.TextMessage, []byte("No SSH key configured"))
+		_ = SendErrorEvent(c, "No SSH key configured")
 		return
 	}
 

@@ -34,17 +34,15 @@ func (r *BackupRepository) CreateBackupWithDatabases(ctx context.Context, backup
 			return err
 		}
 
-		for _, dbID := range databaseIDs {
-			backupDB := &models.BackupDatabase{
+		associations := make([]models.BackupDatabase, len(databaseIDs))
+		for i, dbID := range databaseIDs {
+			associations[i] = models.BackupDatabase{
 				BackupID:   backup.ID,
 				DatabaseID: dbID,
 			}
-			if err := tx.Create(backupDB).Error; err != nil {
-				return err
-			}
 		}
 
-		return nil
+		return repository.SyncAssociationsWithTx(tx, "backup_id", backup.ID, associations)
 	})
 }
 
@@ -120,23 +118,15 @@ func (r *BackupRepository) UpdateBackupWithDatabases(ctx context.Context, backup
 			return err
 		}
 
-		// Delete existing associations
-		if err := tx.Where("backup_id = ?", backup.ID).Delete(&models.BackupDatabase{}).Error; err != nil {
-			return err
-		}
-
-		// Create new associations
-		for _, dbID := range databaseIDs {
-			backupDB := &models.BackupDatabase{
+		associations := make([]models.BackupDatabase, len(databaseIDs))
+		for i, dbID := range databaseIDs {
+			associations[i] = models.BackupDatabase{
 				BackupID:   backup.ID,
 				DatabaseID: dbID,
 			}
-			if err := tx.Create(backupDB).Error; err != nil {
-				return err
-			}
 		}
 
-		return nil
+		return repository.SyncAssociationsWithTx(tx, "backup_id", backup.ID, associations)
 	})
 }
 
@@ -185,25 +175,15 @@ func (r *BackupRepository) BackupExists(ctx context.Context, id string) (bool, e
 
 // SyncBackupDatabases syncs the databases for a backup
 func (r *BackupRepository) SyncBackupDatabases(ctx context.Context, backupID string, databaseIDs []string) error {
-	return r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		// Delete existing associations
-		if err := tx.Where("backup_id = ?", backupID).Delete(&models.BackupDatabase{}).Error; err != nil {
-			return err
+	associations := make([]models.BackupDatabase, len(databaseIDs))
+	for i, dbID := range databaseIDs {
+		associations[i] = models.BackupDatabase{
+			BackupID:   backupID,
+			DatabaseID: dbID,
 		}
+	}
 
-		// Create new associations
-		for _, dbID := range databaseIDs {
-			backupDB := &models.BackupDatabase{
-				BackupID:   backupID,
-				DatabaseID: dbID,
-			}
-			if err := tx.Create(backupDB).Error; err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
+	return repository.SyncAssociations(ctx, r.DB, "backup_id", backupID, associations)
 }
 
 // GetBackupDatabaseIDs gets the database IDs associated with a backup

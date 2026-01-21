@@ -185,7 +185,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	site := &models.Site{
 		Address:                     req.Address,
 		Type:                        req.Type,
-		TlsSetting:                  enums.TlsSettingAuto,
+		TLSSetting:                  enums.TLSSettingAuto,
 		ZeroDowntimeDeployment:      zeroDowntime,
 		DeploymentReleasesRetention: 5,
 		RepositoryBranch:            repoBranch,
