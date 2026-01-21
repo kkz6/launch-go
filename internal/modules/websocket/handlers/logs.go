@@ -16,25 +16,24 @@ import (
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
-	ws "github.com/kkz6/launch-go/internal/websocket"
 )
 
 // LogsHandler handles WebSocket log streaming connections
 type LogsHandler struct {
-	db              *gorm.DB
-	jwtSecret       string
-	logger          zerolog.Logger
-	membershipCache *cache.TeamMembershipCache
+	Base
 }
 
 // NewLogsHandler creates a new logs handler
-func NewLogsHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *LogsHandler {
+func NewLogsHandler(base Base) *LogsHandler {
 	return &LogsHandler{
-		db:              db,
-		jwtSecret:       jwtSecret,
-		logger:          logger.With().Str("component", "logs").Logger(),
-		membershipCache: membershipCache,
+		Base: base.WithComponent("logs"),
 	}
+}
+
+// NewLogsHandlerWithDeps creates a new logs handler with individual dependencies (legacy).
+// Deprecated: Use NewLogsHandler with Base instead.
+func NewLogsHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *LogsHandler {
+	return NewLogsHandler(NewBase(db, jwtSecret, logger, membershipCache))
 }
 
 // Handler returns a Fiber handler for log streaming WebSocket connections
@@ -56,26 +55,25 @@ func (h *LogsHandler) Handler() fiber.Handler {
 		}
 
 		if serverID == "" {
-			h.logger.Warn().Msg("Missing serverId")
-			c.WriteMessage(websocket.TextMessage, []byte("Missing server ID"))
+			h.SendError(c, "Missing server ID")
 			c.Close()
 			return
 		}
 
 		// Authenticate using centralized auth (validates team membership)
-		claims, err := ws.AuthenticateWebSocket(c, h.jwtSecret, h.membershipCache)
+		claims, err := h.Authenticate(c)
 		if err != nil {
-			h.logger.Warn().Err(err).Msg("Authentication failed")
-			c.WriteMessage(websocket.TextMessage, []byte("Authentication failed"))
+			h.LogError(err, "Authentication failed")
+			h.SendError(c, "Authentication failed")
 			c.Close()
 			return
 		}
 
 		// Fetch server from database
 		var server serverModels.Server
-		if err := h.db.Where("id = ? AND team_id = ?", serverID, claims.TeamID).First(&server).Error; err != nil {
-			h.logger.Error().Err(err).Str("server_id", serverID).Msg("Server not found")
-			c.WriteMessage(websocket.TextMessage, []byte("Server not found"))
+		if err := h.DB.Where("id = ? AND team_id = ?", serverID, claims.TeamID).First(&server).Error; err != nil {
+			h.LogError(err, "Server not found", "server_id", serverID)
+			h.SendError(c, "Server not found")
 			c.Close()
 			return
 		}
@@ -90,8 +88,8 @@ func (h *LogsHandler) Handler() fiber.Handler {
 				// Decode the encrypted route parameter to get the file path
 				routeData, err := support.DecodeFileRouteParam(route)
 				if err != nil {
-					h.logger.Error().Err(err).Msg("Failed to decode route parameter")
-					c.WriteMessage(websocket.TextMessage, []byte("Invalid route parameter"))
+					h.LogError(err, "Failed to decode route parameter")
+					h.SendError(c, "Invalid route parameter")
 					c.Close()
 					return
 				}
@@ -99,13 +97,12 @@ func (h *LogsHandler) Handler() fiber.Handler {
 			} else if software != "" {
 				// Fallback to old behavior using software parameter
 				sw := enums.Software(software)
-				if sw.HasLogPath() {
-					logFilePath = sw.LogPath()
-				} else {
+				if !sw.HasLogPath() {
 					c.WriteMessage(websocket.TextMessage, []byte("Unknown software type"))
 					c.Close()
 					return
 				}
+				logFilePath = sw.LogPath()
 			} else {
 				c.WriteMessage(websocket.TextMessage, []byte("Missing route or software parameter"))
 				c.Close()
@@ -118,8 +115,8 @@ func (h *LogsHandler) Handler() fiber.Handler {
 				// Decode the encrypted route parameter to get the file path
 				routeData, err := support.DecodeFileRouteParam(route)
 				if err != nil {
-					h.logger.Error().Err(err).Msg("Failed to decode route parameter")
-					c.WriteMessage(websocket.TextMessage, []byte("Invalid route parameter"))
+					h.LogError(err, "Failed to decode route parameter")
+					h.SendError(c, "Invalid route parameter")
 					c.Close()
 					return
 				}
@@ -127,8 +124,8 @@ func (h *LogsHandler) Handler() fiber.Handler {
 			} else {
 				// Fallback to old behavior using software parameter
 				var site siteModels.Site
-				if err := h.db.Where("id = ? AND server_id = ?", entityID, serverID).First(&site).Error; err != nil {
-					c.WriteMessage(websocket.TextMessage, []byte("Site not found"))
+				if err := h.DB.Where("id = ? AND server_id = ?", entityID, serverID).First(&site).Error; err != nil {
+					h.SendError(c, "Site not found")
 					c.Close()
 					return
 				}
@@ -156,17 +153,17 @@ func (h *LogsHandler) Handler() fiber.Handler {
 		}
 
 		if logFilePath == "" {
-			c.WriteMessage(websocket.TextMessage, []byte("Log file path not found"))
+			h.SendError(c, "Log file path not found")
 			c.Close()
 			return
 		}
 
-		h.logger.Info().
-			Str("server_id", serverID).
-			Str("entity", entity).
-			Str("software", software).
-			Str("log_path", logFilePath).
-			Msg("Log streaming requested")
+		h.LogInfo("Log streaming requested",
+			"server_id", serverID,
+			"entity", entity,
+			"software", software,
+			"log_path", logFilePath,
+		)
 
 		// Stream logs via SSH
 		h.streamLogs(c, &server, logFilePath, tail, search)
@@ -195,7 +192,7 @@ func (h *LogsHandler) getEntityLogPath(entity, entityID, serverID, logType strin
 	switch entity {
 	case "queue":
 		var queue siteModels.Queue
-		if err := h.db.Where("id = ? AND server_id = ?", entityID, serverID).First(&queue).Error; err != nil {
+		if err := h.DB.Where("id = ? AND server_id = ?", entityID, serverID).First(&queue).Error; err != nil {
 			return "", err
 		}
 		if logType == "error" {
@@ -205,7 +202,7 @@ func (h *LogsHandler) getEntityLogPath(entity, entityID, serverID, logType strin
 
 	case "daemon":
 		var daemon serverModels.Daemon
-		if err := h.db.Where("id = ? AND server_id = ?", entityID, serverID).First(&daemon).Error; err != nil {
+		if err := h.DB.Where("id = ? AND server_id = ?", entityID, serverID).First(&daemon).Error; err != nil {
 			return "", err
 		}
 		if logType == "error" {
@@ -215,7 +212,7 @@ func (h *LogsHandler) getEntityLogPath(entity, entityID, serverID, logType strin
 
 	case "cron":
 		var cron serverModels.Cron
-		if err := h.db.Where("id = ? AND server_id = ?", entityID, serverID).First(&cron).Error; err != nil {
+		if err := h.DB.Where("id = ? AND server_id = ?", entityID, serverID).First(&cron).Error; err != nil {
 			return "", err
 		}
 		return cron.GetLogPath(), nil
@@ -226,7 +223,7 @@ func (h *LogsHandler) getEntityLogPath(entity, entityID, serverID, logType strin
 
 func (h *LogsHandler) streamTaskOutput(c *websocket.Conn, taskID, serverID string, tail int) {
 	var task serverModels.Task
-	if err := h.db.Where("id = ? AND server_id = ?", taskID, serverID).First(&task).Error; err != nil {
+	if err := h.DB.Where("id = ? AND server_id = ?", taskID, serverID).First(&task).Error; err != nil {
 		c.WriteMessage(websocket.TextMessage, []byte("Task not found"))
 		c.Close()
 		return
@@ -265,8 +262,8 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 	// Parse private key
 	signer, err := ssh.ParsePrivateKey([]byte(sshConfig.PrivateKey))
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to parse private key")
-		c.WriteMessage(websocket.TextMessage, []byte("Invalid SSH key"))
+		h.LogError(err, "Failed to parse private key")
+		h.SendError(c, "Invalid SSH key")
 		return
 	}
 
@@ -284,8 +281,8 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 	addr := fmt.Sprintf("%s:%d", sshConfig.Host, sshConfig.Port)
 	conn, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
-		h.logger.Error().Err(err).Str("addr", addr).Msg("Failed to connect to SSH")
-		c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("SSH connection failed: %s", err.Error())))
+		h.LogError(err, "Failed to connect to SSH", "addr", addr)
+		h.SendError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
 		return
 	}
 	defer conn.Close()
@@ -293,8 +290,8 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 	// Create SSH session
 	session, err := conn.NewSession()
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to create SSH session")
-		c.WriteMessage(websocket.TextMessage, []byte("Failed to create session"))
+		h.LogError(err, "Failed to create SSH session")
+		h.SendError(c, "Failed to create session")
 		return
 	}
 	defer session.Close()
@@ -316,19 +313,19 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 		command = fmt.Sprintf("%s | grep --line-buffered -iF '%s'", command, escapedSearch)
 	}
 
-	h.logger.Info().Str("command", command).Msg("Executing log tail command")
+	h.LogInfo("Executing log tail command", "command", command)
 
 	// Get stdout pipe
 	stdout, err := session.StdoutPipe()
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to get stdout pipe")
+		h.LogError(err, "Failed to get stdout pipe")
 		return
 	}
 
 	// Start command
 	if err := session.Start(command); err != nil {
-		h.logger.Error().Err(err).Msg("Failed to start command")
-		c.WriteMessage(websocket.TextMessage, []byte("Failed to start log streaming"))
+		h.LogError(err, "Failed to start command")
+		h.SendError(c, "Failed to start log streaming")
 		return
 	}
 
@@ -364,5 +361,5 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 
 	close(done)
 	session.Close()
-	h.logger.Info().Msg("Log streaming ended")
+	h.LogInfo("Log streaming ended")
 }

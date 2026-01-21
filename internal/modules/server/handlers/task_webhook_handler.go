@@ -13,8 +13,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/webhook"
 	"github.com/kkz6/launch-go/internal/queue"
 )
 
@@ -26,22 +26,20 @@ type TaskWebhookRepository interface {
 
 // TaskWebhookHandler handles task completion callbacks
 type TaskWebhookHandler struct {
+	webhook.Base
 	repo     TaskWebhookRepository
-	signer   *signedurl.Signer
 	registry *taskrunner.TaskTypeRegistry
 	queue    *queue.Client
-	logger   *zerolog.Logger
 	db       *gorm.DB
 }
 
 // NewTaskWebhookHandler creates a new webhook handler
 func NewTaskWebhookHandler(repo TaskWebhookRepository, secretKey string, queueClient *queue.Client, logger *zerolog.Logger) *TaskWebhookHandler {
 	return &TaskWebhookHandler{
+		Base:     webhook.NewBase(secretKey, logger),
 		repo:     repo,
-		signer:   signedurl.NewSigner(secretKey),
 		registry: taskrunner.DefaultRegistry,
 		queue:    queueClient,
-		logger:   logger,
 	}
 }
 
@@ -62,7 +60,7 @@ func (h *TaskWebhookHandler) MarkAsFinished(c *fiber.Ctx) error {
 	taskID := c.Params("id")
 	ctx := c.Context()
 
-	if !h.verifySignature(c) {
+	if !h.VerifySignature(c) {
 		return response.Unauthorized(c, "Invalid signature")
 	}
 
@@ -94,7 +92,7 @@ func (h *TaskWebhookHandler) MarkAsFailed(c *fiber.Ctx) error {
 	taskID := c.Params("id")
 	ctx := c.Context()
 
-	if !h.verifySignature(c) {
+	if !h.VerifySignature(c) {
 		return response.Unauthorized(c, "Invalid signature")
 	}
 
@@ -139,7 +137,7 @@ func (h *TaskWebhookHandler) MarkAsTimeout(c *fiber.Ctx) error {
 	taskID := c.Params("id")
 	ctx := c.Context()
 
-	if !h.verifySignature(c) {
+	if !h.VerifySignature(c) {
 		return response.Unauthorized(c, "Invalid signature")
 	}
 
@@ -207,29 +205,29 @@ func (h *TaskWebhookHandler) handleCompletionConfig(task *models.Task, callbackT
 
 	// Dispatch the asynq job
 	if h.queue == nil {
-		if h.logger != nil {
-			h.logger.Warn().
-				Str("task_id", task.ID).
-				Str("job_type", jobRef.Type).
-				Msg("Queue client not available, cannot dispatch completion job")
+		if h.Logger != nil {
+			h.LogWarn("Queue client not available, cannot dispatch completion job",
+				"task_id", task.ID,
+				"job_type", jobRef.Type,
+			)
 		}
 		return true
 	}
 
 	asynqTask := asynq.NewTask(jobRef.Type, jobRef.Payload)
 	if _, err := h.queue.Enqueue(asynqTask); err != nil {
-		if h.logger != nil {
-			h.logger.Error().Err(err).
-				Str("task_id", task.ID).
-				Str("job_type", jobRef.Type).
-				Msg("Failed to dispatch completion job")
+		if h.Logger != nil {
+			h.LogError(err, "Failed to dispatch completion job",
+				"task_id", task.ID,
+				"job_type", jobRef.Type,
+			)
 		}
-	} else if h.logger != nil {
-		h.logger.Info().
-			Str("task_id", task.ID).
-			Str("job_type", jobRef.Type).
-			Str("callback_type", string(callbackType)).
-			Msg("Dispatched completion job")
+	} else if h.Logger != nil {
+		h.LogInfo("Dispatched completion job",
+			"task_id", task.ID,
+			"job_type", jobRef.Type,
+			"callback_type", string(callbackType),
+		)
 	}
 
 	return true
@@ -239,11 +237,11 @@ func (h *TaskWebhookHandler) handleCompletionConfig(task *models.Task, callbackT
 func (h *TaskWebhookHandler) handleLegacyCallback(ctx context.Context, task *models.Task, callbackType taskrunner.CallbackType, exitCode int) {
 	handler, err := taskrunner.ReconstructFromInstance(task.Instance.String())
 	if err != nil {
-		if h.logger != nil {
-			h.logger.Error().Err(err).
-				Str("task_id", task.ID).
-				Str("task_type", task.Type).
-				Msg("Failed to reconstruct task callback handler")
+		if h.Logger != nil {
+			h.LogError(err, "Failed to reconstruct task callback handler",
+				"task_id", task.ID,
+				"task_type", task.Type,
+			)
 		}
 		return
 	}
@@ -256,7 +254,7 @@ func (h *TaskWebhookHandler) handleLegacyCallback(ctx context.Context, task *mod
 	cbCtx := &taskrunner.CallbackContext{
 		DB:     h.db,
 		Queue:  h.queue,
-		Logger: h.logger,
+		Logger: h.Logger,
 	}
 
 	// Execute callback based on type
@@ -270,17 +268,12 @@ func (h *TaskWebhookHandler) handleLegacyCallback(ctx context.Context, task *mod
 		callbackErr = handler.OnExpired(ctx, cbCtx, task.ID)
 	}
 
-	if callbackErr != nil && h.logger != nil {
-		h.logger.Error().Err(callbackErr).
-			Str("task_id", task.ID).
-			Str("callback_type", string(callbackType)).
-			Msg("Task callback handler failed")
+	if callbackErr != nil && h.Logger != nil {
+		h.LogError(callbackErr, "Task callback handler failed",
+			"task_id", task.ID,
+			"callback_type", string(callbackType),
+		)
 	}
-}
-
-// verifySignature validates the webhook signature using signedurl package
-func (h *TaskWebhookHandler) verifySignature(c *fiber.Ctx) bool {
-	return signedurl.ValidateSignedURL(c, h.signer)
 }
 
 // GenerateCallbackURLs creates signed URLs for task callbacks
@@ -292,7 +285,7 @@ func (h *TaskWebhookHandler) GenerateCallbackURLs(baseURL, taskID string, expire
 	timeoutPath := fmt.Sprintf("/webhooks/tasks/%s/timeout", taskID)
 
 	// Use the signer with the base URL for generating absolute URLs
-	signerWithBase := h.signer.WithBaseURL(baseURL)
+	signerWithBase := h.Signer.WithBaseURL(baseURL)
 
 	return CallbackURLs{
 		Finished: signerWithBase.SignedURL(finishedPath, nil, expireDuration),
