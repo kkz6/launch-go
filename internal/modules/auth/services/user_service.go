@@ -5,12 +5,11 @@ import (
 	"errors"
 	"strings"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 
@@ -89,16 +88,16 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dt
 		return apperrors.ErrNotFound
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.CurrentPassword)); err != nil {
+	if !cryptoutil.VerifyPassword(user.Password, req.CurrentPassword) {
 		return errors.New("current password is incorrect")
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hashedPassword, err := cryptoutil.HashPassword(req.Password)
 	if err != nil {
 		return err
 	}
 
-	user.Password = string(hashedPassword)
+	user.Password = hashedPassword
 
 	if err := s.repos.User().Update(ctx, user); err != nil {
 		return err

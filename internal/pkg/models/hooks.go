@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 )
 
 // StatusInitializer is implemented by models that have a default status value.
@@ -63,10 +63,11 @@ type TokenInitializer interface {
 
 // InitializeToken generates a secure hex token if the model's token field is empty.
 // The length parameter specifies the length of the hex string (must be even).
+// Note: length is the desired hex string length, so we generate length/2 bytes.
 func InitializeToken(model TokenInitializer, length int) {
 	field := model.TokenField()
 	if field != nil && *field == "" {
-		*field = utils.GenerateHexToken(length)
+		*field = cryptoutil.MustGenerateHexToken(length / 2)
 	}
 }
 

@@ -8,11 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 )
 
 // PasswordResetService handles password reset operations
@@ -40,10 +39,7 @@ func (s *PasswordResetService) SendPasswordResetLink(ctx context.Context, email 
 	}
 
 	// Generate token
-	token, err := models.GenerateToken(32)
-	if err != nil {
-		return err
-	}
+	token := cryptoutil.GenerateToken(32)
 
 	// Hash the token for storage
 	hashedToken := s.hashToken(token)
@@ -101,12 +97,12 @@ func (s *PasswordResetService) ResetPassword(ctx context.Context, req *dto.Reset
 	}
 
 	// Hash new password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hashedPassword, err := cryptoutil.HashPassword(req.Password)
 	if err != nil {
 		return err
 	}
 
-	user.Password = string(hashedPassword)
+	user.Password = hashedPassword
 
 	if err := s.repos.User().Update(ctx, user); err != nil {
 		return err
