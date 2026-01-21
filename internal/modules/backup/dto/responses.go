@@ -3,9 +3,9 @@ package dto
 import (
 	"encoding/json"
 	"strconv"
-	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
 // BackupResponse represents the response for a backup
@@ -39,16 +39,6 @@ func ToBackupResponse(backup *models.Backup) BackupResponse {
 		userID = *backup.UserID
 	}
 
-	createdAt := ""
-	if backup.CreatedAt != nil {
-		createdAt = backup.CreatedAt.Format(time.RFC3339)
-	}
-
-	updatedAt := ""
-	if backup.UpdatedAt != nil {
-		updatedAt = backup.UpdatedAt.Format(time.RFC3339)
-	}
-
 	resp := BackupResponse{
 		ID:                    backup.ID,
 		ServerID:              backup.ServerID,
@@ -61,8 +51,10 @@ func ToBackupResponse(backup *models.Backup) BackupResponse {
 		Enabled:               backup.Enabled,
 		Path:                  backup.Path,
 		SizeInMB:              backup.GetSizeInMB(),
-		CreatedAt:             createdAt,
-		UpdatedAt:             updatedAt,
+		InstalledAt:           pkgdto.FormatTime(backup.InstalledAt),
+		InstallationFailedAt:  pkgdto.FormatTime(backup.InstallationFailedAt),
+		CreatedAt:             pkgdto.FormatTimeOrEmpty(backup.CreatedAt),
+		UpdatedAt:             pkgdto.FormatTimeOrEmpty(backup.UpdatedAt),
 	}
 
 	// Handle include/exclude files (JSON strings)
@@ -78,16 +70,6 @@ func ToBackupResponse(backup *models.Backup) BackupResponse {
 		resp.ExcludeFiles = excludeFiles
 	} else {
 		resp.ExcludeFiles = []string{}
-	}
-
-	if backup.InstalledAt != nil {
-		installedAt := backup.InstalledAt.Format(time.RFC3339)
-		resp.InstalledAt = &installedAt
-	}
-
-	if backup.InstallationFailedAt != nil {
-		failedAt := backup.InstallationFailedAt.Format(time.RFC3339)
-		resp.InstallationFailedAt = &failedAt
 	}
 
 	// Convert jobs
@@ -134,16 +116,6 @@ func ToBackupJobResponse(job *models.BackupJob) BackupJobResponse {
 		size = int64(*job.Size)
 	}
 
-	createdAt := ""
-	if job.CreatedAt != nil {
-		createdAt = job.CreatedAt.Format(time.RFC3339)
-	}
-
-	updatedAt := ""
-	if job.UpdatedAt != nil {
-		updatedAt = job.UpdatedAt.Format(time.RFC3339)
-	}
-
 	resp := BackupJobResponse{
 		ID:                job.ID,
 		BackupID:          job.BackupID,
@@ -151,8 +123,8 @@ func ToBackupJobResponse(job *models.BackupJob) BackupJobResponse {
 		Status:            string(job.Status),
 		Size:              size,
 		SizeInMB:          job.GetSizeInMB(),
-		CreatedAt:         createdAt,
-		UpdatedAt:         updatedAt,
+		CreatedAt:         pkgdto.FormatTimeOrEmpty(job.CreatedAt),
+		UpdatedAt:         pkgdto.FormatTimeOrEmpty(job.UpdatedAt),
 	}
 
 	if job.Error != nil {
@@ -183,34 +155,18 @@ func ToStorageProviderResponse(provider *models.StorageProvider) StorageProvider
 		label = *provider.Label
 	}
 
-	createdAt := ""
-	if provider.CreatedAt != nil {
-		createdAt = provider.CreatedAt.Format(time.RFC3339)
+	return StorageProviderResponse{
+		ID:             provider.ID,
+		UserID:         provider.UserID,
+		TeamID:         provider.TeamID,
+		Provider:       string(provider.Provider),
+		ProviderLabel:  provider.Provider.Label(),
+		Label:          label,
+		Connected:      provider.Connected,
+		TokenExpiresAt: pkgdto.FormatTime(provider.TokenExpiresAt),
+		CreatedAt:      pkgdto.FormatTimeOrEmpty(provider.CreatedAt),
+		UpdatedAt:      pkgdto.FormatTimeOrEmpty(provider.UpdatedAt),
 	}
-
-	updatedAt := ""
-	if provider.UpdatedAt != nil {
-		updatedAt = provider.UpdatedAt.Format(time.RFC3339)
-	}
-
-	resp := StorageProviderResponse{
-		ID:            provider.ID,
-		UserID:        provider.UserID,
-		TeamID:        provider.TeamID,
-		Provider:      string(provider.Provider),
-		ProviderLabel: provider.Provider.Label(),
-		Label:         label,
-		Connected:     provider.Connected,
-		CreatedAt:     createdAt,
-		UpdatedAt:     updatedAt,
-	}
-
-	if provider.TokenExpiresAt != nil {
-		expiresAt := provider.TokenExpiresAt.Format(time.RFC3339)
-		resp.TokenExpiresAt = &expiresAt
-	}
-
-	return resp
 }
 
 // StorageProviderListItem represents a simplified storage provider for list/dropdown

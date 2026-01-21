@@ -3,9 +3,9 @@ package dto
 import (
 	"encoding/json"
 	"strconv"
-	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/git/models"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
 // SourceControlResponse is the response for a source control
@@ -35,18 +35,15 @@ func ToSourceControlResponse(sc *models.SourceControl) SourceControlResponse {
 		repositoryCount = *sc.RepositoryCount
 	}
 
-	createdAt := ""
-	if sc.CreatedAt != nil {
-		createdAt = sc.CreatedAt.Format(time.RFC3339)
-	}
-
 	resp := SourceControlResponse{
 		ID:                      sc.ID,
 		Provider:                sc.Provider.String(),
 		ProviderLabel:           sc.Provider.Label(),
 		HasMultipleRepositories: sc.HasMultipleRepositories,
 		RepositoryCount:         repositoryCount,
-		CreatedAt:               createdAt,
+		ConnectedAt:             pkgdto.FormatTime(sc.ConnectedAt),
+		LastSyncedAt:            pkgdto.FormatTime(sc.LastSyncedAt),
+		CreatedAt:               pkgdto.FormatTimeOrEmpty(sc.CreatedAt),
 	}
 
 	if sc.Login != nil {
@@ -75,16 +72,6 @@ func ToSourceControlResponse(sc *models.SourceControl) SourceControlResponse {
 
 	if sc.RepositorySelection != nil {
 		resp.RepositorySelection = *sc.RepositorySelection
-	}
-
-	if sc.ConnectedAt != nil {
-		t := sc.ConnectedAt.Format(time.RFC3339)
-		resp.ConnectedAt = &t
-	}
-
-	if sc.LastSyncedAt != nil {
-		t := sc.LastSyncedAt.Format(time.RFC3339)
-		resp.LastSyncedAt = &t
 	}
 
 	if len(sc.Repositories) > 0 {
@@ -195,10 +182,7 @@ func InstallationSummaryFromSourceControl(sc *models.SourceControl) Installation
 		summary.HTMLURL = sc.HTMLURL
 	}
 
-	if sc.ConnectedAt != nil {
-		t := sc.ConnectedAt.Format(time.RFC3339)
-		summary.CreatedAt = &t
-	}
+	summary.CreatedAt = pkgdto.FormatTime(sc.ConnectedAt)
 
 	if sc.RepositorySelection != nil {
 		summary.RepositorySelection = sc.RepositorySelection

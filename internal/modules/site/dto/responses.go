@@ -2,48 +2,48 @@ package dto
 
 import (
 	"encoding/json"
-	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
 // SiteResponse represents a site in API responses
 type SiteResponse struct {
-	ID                           string              `json:"id"`
-	ServerID                     string              `json:"server_id"`
-	UserID                       string              `json:"user_id"`
-	Address                      string              `json:"address"`
-	Type                         string              `json:"type"`
-	Aliases                      []string            `json:"aliases,omitempty"`
-	TlsSetting                   string              `json:"tls_setting"`
-	ZeroDowntimeDeployment       bool                `json:"zero_downtime_deployment"`
-	DeploymentReleasesRetention  int                 `json:"deployment_releases_retention"`
-	RepositoryBranch             string              `json:"repository_branch"`
-	DeployNotificationEmail      *string             `json:"deploy_notification_email,omitempty"`
-	Path                         string              `json:"path"`
-	WebFolder                    string              `json:"web_folder"`
-	PhpVersion                   string              `json:"php_version"`
-	AutoDeployment               bool                `json:"auto_deployment"`
-	QueueDeployments             bool                `json:"queue_deployments"`
-	AutoRestartQueue             bool                `json:"auto_restart_queue"`
-	SharedDirectories            []string            `json:"shared_directories,omitempty"`
-	WriteableDirectories         []string            `json:"writeable_directories,omitempty"`
-	SharedFiles                  []string            `json:"shared_files,omitempty"`
-	HookBeforeUpdatingRepository *string             `json:"hook_before_updating_repository,omitempty"`
-	HookAfterUpdatingRepository  *string             `json:"hook_after_updating_repository,omitempty"`
-	HookBeforeMakingCurrent      *string             `json:"hook_before_making_current,omitempty"`
-	HookAfterMakingCurrent       *string             `json:"hook_after_making_current,omitempty"`
-	DeployToken                  *string             `json:"deploy_token,omitempty"`
-	DeployWebhookURL              string              `json:"deploy_webhook_url,omitempty"`
-	URL                           string              `json:"url"`
-	ApplicationDirectory          string              `json:"app_directory"`
-	RepositoryURL                 *string             `json:"repository_url,omitempty"`
-	Status                        string              `json:"status"`
-	InstalledAt                   *string             `json:"installed_at"`
-	InstallationFailedAt          *string             `json:"installation_failed_at"`
-	UninstallationRequestedAt     *string             `json:"uninstallation_requested_at"`
-	UninstallationFailedAt        *string             `json:"uninstallation_failed_at"`
-	LatestDeployment              *DeploymentResponse              `json:"latest_deployment,omitempty"`
+	ID                           string                           `json:"id"`
+	ServerID                     string                           `json:"server_id"`
+	UserID                       string                           `json:"user_id"`
+	Address                      string                           `json:"address"`
+	Type                         string                           `json:"type"`
+	Aliases                      []string                         `json:"aliases,omitempty"`
+	TlsSetting                   string                           `json:"tls_setting"`
+	ZeroDowntimeDeployment       bool                             `json:"zero_downtime_deployment"`
+	DeploymentReleasesRetention  int                              `json:"deployment_releases_retention"`
+	RepositoryBranch             string                           `json:"repository_branch"`
+	DeployNotificationEmail      *string                          `json:"deploy_notification_email,omitempty"`
+	Path                         string                           `json:"path"`
+	WebFolder                    string                           `json:"web_folder"`
+	PhpVersion                   string                           `json:"php_version"`
+	AutoDeployment               bool                             `json:"auto_deployment"`
+	QueueDeployments             bool                             `json:"queue_deployments"`
+	AutoRestartQueue             bool                             `json:"auto_restart_queue"`
+	SharedDirectories            []string                         `json:"shared_directories,omitempty"`
+	WriteableDirectories         []string                         `json:"writeable_directories,omitempty"`
+	SharedFiles                  []string                         `json:"shared_files,omitempty"`
+	HookBeforeUpdatingRepository *string                          `json:"hook_before_updating_repository,omitempty"`
+	HookAfterUpdatingRepository  *string                          `json:"hook_after_updating_repository,omitempty"`
+	HookBeforeMakingCurrent      *string                          `json:"hook_before_making_current,omitempty"`
+	HookAfterMakingCurrent       *string                          `json:"hook_after_making_current,omitempty"`
+	DeployToken                  *string                          `json:"deploy_token,omitempty"`
+	DeployWebhookURL             string                           `json:"deploy_webhook_url,omitempty"`
+	URL                          string                           `json:"url"`
+	ApplicationDirectory         string                           `json:"app_directory"`
+	RepositoryURL                *string                          `json:"repository_url,omitempty"`
+	Status                       string                           `json:"status"`
+	InstalledAt                  *string                          `json:"installed_at"`
+	InstallationFailedAt         *string                          `json:"installation_failed_at"`
+	UninstallationRequestedAt    *string                          `json:"uninstallation_requested_at"`
+	UninstallationFailedAt       *string                          `json:"uninstallation_failed_at"`
+	LatestDeployment             *DeploymentResponse              `json:"latest_deployment,omitempty"`
 	SourceControl                *SourceControlResponse           `json:"source_control,omitempty"`
 	Repository                   *SourceControlRepositoryResponse `json:"repository,omitempty"`
 	CreatedAt                    string                           `json:"created_at"`
@@ -193,16 +193,6 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		phpVersion = site.PhpVersion.String()
 	}
 
-	createdAt := ""
-	if site.CreatedAt != nil {
-		createdAt = site.CreatedAt.Format(time.RFC3339)
-	}
-
-	updatedAt := ""
-	if site.UpdatedAt != nil {
-		updatedAt = site.UpdatedAt.Format(time.RFC3339)
-	}
-
 	// Build deploy webhook URL if token exists
 	var deployWebhookURL string
 	if site.DeployToken != nil && *site.DeployToken != "" {
@@ -238,31 +228,13 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		DeployWebhookURL:             deployWebhookURL,
 		URL:                          site.GetURL(),
 		ApplicationDirectory:         site.GetApplicationDirectory(),
-		CreatedAt:                    createdAt,
-		UpdatedAt:                    updatedAt,
-	}
-
-	// Set installation status
-	resp.Status = string(site.Status())
-
-	if site.InstalledAt != nil {
-		installed := site.InstalledAt.Format(time.RFC3339)
-		resp.InstalledAt = &installed
-	}
-
-	if site.InstallationFailedAt != nil {
-		failed := site.InstallationFailedAt.Format(time.RFC3339)
-		resp.InstallationFailedAt = &failed
-	}
-
-	if site.UninstallationRequestedAt != nil {
-		uninstallReq := site.UninstallationRequestedAt.Format(time.RFC3339)
-		resp.UninstallationRequestedAt = &uninstallReq
-	}
-
-	if site.UninstallationFailedAt != nil {
-		uninstallFailed := site.UninstallationFailedAt.Format(time.RFC3339)
-		resp.UninstallationFailedAt = &uninstallFailed
+		Status:                       string(site.Status()),
+		InstalledAt:                  pkgdto.FormatTime(site.InstalledAt),
+		InstallationFailedAt:         pkgdto.FormatTime(site.InstallationFailedAt),
+		UninstallationRequestedAt:    pkgdto.FormatTime(site.UninstallationRequestedAt),
+		UninstallationFailedAt:       pkgdto.FormatTime(site.UninstallationFailedAt),
+		CreatedAt:                    pkgdto.FormatTimeOrEmpty(site.CreatedAt),
+		UpdatedAt:                    pkgdto.FormatTimeOrEmpty(site.UpdatedAt),
 	}
 
 	if site.LatestDeployment != nil {
@@ -285,28 +257,22 @@ func ToDeploymentResponse(deployment *models.Deployment) DeploymentResponse {
 		ShortGitHash: deployment.GetShortGitHash(),
 		CommitData:   deployment.CommitData,
 		IsRollback:   deployment.IsRollback(),
-		CreatedAt:    deployment.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:    deployment.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:    pkgdto.FormatTimeOrEmpty(deployment.CreatedAt),
+		UpdatedAt:    pkgdto.FormatTimeOrEmpty(deployment.UpdatedAt),
 	}
 }
 
 // ToCertificateResponse converts a Certificate model to a response DTO
 func ToCertificateResponse(cert *models.Certificate) CertificateResponse {
-	resp := CertificateResponse{
-		ID:        cert.ID,
-		SiteID:    cert.SiteID,
-		Type:      string(cert.Type),
-		Domains:   cert.Domains,
-		IsActive:  cert.IsActive,
-		CreatedAt: cert.CreatedAt.Format(time.RFC3339),
+	return CertificateResponse{
+		ID:         cert.ID,
+		SiteID:     cert.SiteID,
+		Type:       string(cert.Type),
+		Domains:    cert.Domains,
+		IsActive:   cert.IsActive,
+		UploadedAt: pkgdto.FormatTime(cert.UploadedAt),
+		CreatedAt:  pkgdto.FormatTimeOrEmpty(cert.CreatedAt),
 	}
-
-	if cert.UploadedAt != nil {
-		uploaded := cert.UploadedAt.Format(time.RFC3339)
-		resp.UploadedAt = &uploaded
-	}
-
-	return resp
 }
 
 // ToQueueResponse converts a Queue model to a response DTO
@@ -333,11 +299,6 @@ func ToQueueResponse(queue *models.Queue) QueueResponse {
 		maxMemory = *queue.MaxMemory
 	}
 
-	createdAt := ""
-	if queue.CreatedAt != nil {
-		createdAt = queue.CreatedAt.Format(time.RFC3339)
-	}
-
 	resp := QueueResponse{
 		ID:                    queue.ID,
 		SiteID:                queue.SiteID,
@@ -357,7 +318,9 @@ func ToQueueResponse(queue *models.Queue) QueueResponse {
 		RunOnMaintenance:      queue.RunOnMaintenance,
 		RunWithListen:         queue.RunWithListen,
 		Running:               queue.Running,
-		CreatedAt:             createdAt,
+		LastStatusCheck:       pkgdto.FormatTime(queue.LastStatusCheck),
+		InstalledAt:           pkgdto.FormatTime(queue.InstalledAt),
+		CreatedAt:             pkgdto.FormatTimeOrEmpty(queue.CreatedAt),
 	}
 
 	// Parse info JSON if present
@@ -368,26 +331,11 @@ func ToQueueResponse(queue *models.Queue) QueueResponse {
 		}
 	}
 
-	if queue.LastStatusCheck != nil {
-		lastCheck := queue.LastStatusCheck.Format(time.RFC3339)
-		resp.LastStatusCheck = &lastCheck
-	}
-
-	if queue.InstalledAt != nil {
-		installed := queue.InstalledAt.Format(time.RFC3339)
-		resp.InstalledAt = &installed
-	}
-
 	return resp
 }
 
 // ToCommandResponse converts a Command model to a response DTO
 func ToCommandResponse(cmd *models.Command) CommandResponse {
-	createdAt := ""
-	if cmd.CreatedAt != nil {
-		createdAt = cmd.CreatedAt.Format(time.RFC3339)
-	}
-
 	resp := CommandResponse{
 		ID:        cmd.ID,
 		SiteID:    cmd.SiteID,
@@ -396,7 +344,7 @@ func ToCommandResponse(cmd *models.Command) CommandResponse {
 		Status:    string(cmd.Status),
 		Output:    cmd.Output,
 		ExitCode:  cmd.ExitCode,
-		CreatedAt: createdAt,
+		CreatedAt: pkgdto.FormatTimeOrEmpty(cmd.CreatedAt),
 	}
 
 	// Include user details if loaded
@@ -419,11 +367,6 @@ func ToRedirectResponse(redirect *models.Redirect) RedirectResponse {
 		modeLabel = "Permanent (301)"
 	}
 
-	createdAt := ""
-	if redirect.CreatedAt != nil {
-		createdAt = redirect.CreatedAt.Format(time.RFC3339)
-	}
-
 	return RedirectResponse{
 		ID:        redirect.ID,
 		SiteID:    redirect.SiteID,
@@ -432,7 +375,7 @@ func ToRedirectResponse(redirect *models.Redirect) RedirectResponse {
 		From:      redirect.From,
 		To:        redirect.To,
 		Status:    redirect.Status,
-		CreatedAt: createdAt,
+		CreatedAt: pkgdto.FormatTimeOrEmpty(redirect.CreatedAt),
 	}
 }
 
