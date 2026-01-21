@@ -1,0 +1,90 @@
+# Revive configuration
+# https://github.com/mgechev/revive
+
+# Sets the default severity to "warning"
+severity = "warning"
+
+# Sets the default failure confidence
+confidence = 0.8
+
+# Sets the error code for failures with severity "error"
+errorCode = 1
+
+# Sets the error code for failures with severity "warning"
+warningCode = 0
+
+# Enable all available rules by default
+enableAllRules = false
+
+# Rule configurations
+[rule.blank-imports]
+[rule.context-as-argument]
+[rule.context-keys-type]
+[rule.dot-imports]
+[rule.empty-block]
+[rule.error-naming]
+[rule.error-return]
+[rule.error-strings]
+[rule.errorf]
+# [rule.exported]  # Disabled - too strict for existing codebase without comments
+#   arguments = ["checkPrivateReceivers", "disableStutteringCheck"]
+[rule.increment-decrement]
+[rule.indent-error-flow]
+# [rule.package-comments]  # Disabled - too strict for existing codebase
+[rule.range]
+[rule.receiver-naming]
+[rule.redefines-builtin-id]
+[rule.superfluous-else]
+[rule.time-naming]
+[rule.unexported-return]
+[rule.unreachable-code]
+[rule.unused-parameter]
+[rule.var-declaration]
+[rule.var-naming]
+
+# Additional useful rules
+[rule.atomic]
+[rule.bare-return]
+[rule.bool-literal-in-expr]
+[rule.confusing-naming]
+[rule.confusing-results]
+[rule.constant-logical-expr]
+[rule.deep-exit]
+[rule.defer]
+[rule.duplicated-imports]
+[rule.early-return]
+[rule.empty-lines]
+[rule.get-return]
+[rule.identical-branches]
+[rule.if-return]
+[rule.import-shadowing]
+[rule.modifies-parameter]
+[rule.modifies-value-receiver]
+[rule.nested-structs]
+[rule.optimize-operands-order]
+[rule.range-val-address]
+[rule.range-val-in-closure]
+[rule.redundant-import-alias]
+[rule.string-of-int]
+[rule.struct-tag]
+[rule.time-equal]
+[rule.unconditional-recursion]
+[rule.unexported-naming]
+[rule.unhandled-error]
+  arguments = ["fmt.Printf", "fmt.Println", "fmt.Print"]
+[rule.unnecessary-stmt]
+[rule.useless-break]
+[rule.waitgroup-by-value]
+
+# Rules that are intentionally disabled
+# [rule.add-constant]  # Too strict for our use case
+# [rule.cognitive-complexity]  # Can be enabled later with specific threshold
+# [rule.cyclomatic]  # Can be enabled later with specific threshold
+# [rule.file-header]  # Not using file headers
+# [rule.function-length]  # Can be enabled later with specific threshold
+# [rule.line-length-limit]  # Handled by gofmt
+# [rule.max-public-structs]  # Not applicable
+
+# Exclude generated files and vendor directory
+# Note: Use -exclude flag on command line for path exclusions
+# revive -exclude vendor/... -exclude *.pb.go ./...

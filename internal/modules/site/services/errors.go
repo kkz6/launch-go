@@ -1,14 +1,23 @@
 package services
 
-import "errors"
+import (
+	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+)
 
+// Service-level errors with HTTP status codes
+// These errors automatically map to the correct HTTP responses when using response.Abort()
 var (
-	ErrPendingDeployment         = errors.New("a deployment is already in progress")
-	ErrRollbackNotSupported      = errors.New("rollback is only available for sites with zero downtime deployment enabled")
-	ErrInvalidRollbackTarget     = errors.New("can only rollback to a finished deployment")
-	ErrDeploymentNotBelongToSite = errors.New("target deployment does not belong to this site")
-	ErrSourceControlNotConnected = errors.New("source control is not connected")
-	ErrSiteNotInstalled          = errors.New("site is not installed")
-	ErrInvalidDeployToken        = errors.New("invalid deploy token")
-	ErrBranchMismatch            = errors.New("branch mismatch")
+	// 409 Conflict - resource state conflicts
+	ErrPendingDeployment = apperrors.Conflict("A deployment is already in progress")
+
+	// 400 Bad Request - invalid operations
+	ErrRollbackNotSupported      = apperrors.BadRequest("Rollback is only available for sites with zero downtime deployment enabled")
+	ErrInvalidRollbackTarget     = apperrors.BadRequest("Can only rollback to a finished deployment")
+	ErrDeploymentNotBelongToSite = apperrors.BadRequest("Target deployment does not belong to this site")
+	ErrSourceControlNotConnected = apperrors.BadRequest("Source control is not connected")
+	ErrSiteNotInstalled          = apperrors.BadRequest("Site is not installed")
+	ErrBranchMismatch            = apperrors.BadRequest("Branch mismatch")
+
+	// 401 Unauthorized - authentication issues
+	ErrInvalidDeployToken = apperrors.Unauthorized("Invalid deploy token")
 )

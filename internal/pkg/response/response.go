@@ -79,3 +79,11 @@ func OK(c *fiber.Ctx, message string, data interface{}) error {
 func NoContent(c *fiber.Ctx) error {
 	return c.SendStatus(fiber.StatusNoContent)
 }
+
+func BadRequest(c *fiber.Ctx, message string) error {
+	return Error(c, fiber.StatusBadRequest, message)
+}
+
+func Conflict(c *fiber.Ctx, message string) error {
+	return Error(c, fiber.StatusConflict, message)
+}
