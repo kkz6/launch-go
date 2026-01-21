@@ -100,13 +100,11 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to create deploy task: %w", taskErr)
 	}
 
-	if j.Ctx.Queue != nil {
-		// Add a small delay to ensure DB transaction is committed
-		if _, err := j.Ctx.Queue.Enqueue(task, asynq.ProcessIn(time.Second)); err != nil {
-			// Cleanup: mark deployment as failed if we can't dispatch the job
-			_ = j.Ctx.DeploymentRepo.UpdateStatus(ctx, deployment.ID, enums.DeploymentStatusFailed)
-			return fmt.Errorf("failed to enqueue deploy job: %w", err)
-		}
+	// Add a small delay to ensure DB transaction is committed
+	if err := j.Ctx.DispatchTaskIn(task, time.Second); err != nil {
+		// Cleanup: mark deployment as failed if we can't dispatch the job
+		_ = j.Ctx.DeploymentRepo.UpdateStatus(ctx, deployment.ID, enums.DeploymentStatusFailed)
+		return fmt.Errorf("failed to enqueue deploy job: %w", err)
 	}
 
 	j.Ctx.LogInfo("Deploy job dispatched",

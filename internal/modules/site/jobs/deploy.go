@@ -330,10 +330,8 @@ func (j *DeployJob) processNextQueuedDeployment(ctx context.Context, siteID stri
 			j.Ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
 			return
 		}
-		if j.Ctx.Queue != nil {
-			if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
-				j.Ctx.LogError(err, "Failed to enqueue next deployment")
-			}
+		if err := j.Ctx.DispatchTask(task); err != nil {
+			j.Ctx.LogError(err, "Failed to enqueue next deployment")
 		}
 	} else {
 		task, taskErr := NewDeployTask(siteID, nextDeployment.ID, "")
@@ -341,10 +339,8 @@ func (j *DeployJob) processNextQueuedDeployment(ctx context.Context, siteID stri
 			j.Ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
 			return
 		}
-		if j.Ctx.Queue != nil {
-			if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
-				j.Ctx.LogError(err, "Failed to enqueue next deployment")
-			}
+		if err := j.Ctx.DispatchTask(task); err != nil {
+			j.Ctx.LogError(err, "Failed to enqueue next deployment")
 		}
 	}
 }
@@ -760,10 +756,8 @@ func (j *DeployZeroDowntimeJob) processNextQueuedDeployment(ctx context.Context,
 			j.Ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
 			return
 		}
-		if j.Ctx.Queue != nil {
-			if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
-				j.Ctx.LogError(err, "Failed to enqueue next deployment")
-			}
+		if err := j.Ctx.DispatchTask(task); err != nil {
+			j.Ctx.LogError(err, "Failed to enqueue next deployment")
 		}
 	} else {
 		task, taskErr := NewDeployTask(siteID, nextDeployment.ID, "")
@@ -771,10 +765,8 @@ func (j *DeployZeroDowntimeJob) processNextQueuedDeployment(ctx context.Context,
 			j.Ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
 			return
 		}
-		if j.Ctx.Queue != nil {
-			if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
-				j.Ctx.LogError(err, "Failed to enqueue next deployment")
-			}
+		if err := j.Ctx.DispatchTask(task); err != nil {
+			j.Ctx.LogError(err, "Failed to enqueue next deployment")
 		}
 	}
 }
