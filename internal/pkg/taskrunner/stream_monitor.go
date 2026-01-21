@@ -29,7 +29,7 @@ var ErrTaskCompleted = errors.New("task completed")
 // StreamMonitor monitors task output via persistent SSH connection
 type StreamMonitor struct {
 	logger            *zerolog.Logger
-	wsHub             Broadcaster
+	wsHub             SimpleBroadcaster
 	broadcastInterval time.Duration
 	activeStreams     map[string]context.CancelFunc
 	mu                sync.RWMutex
@@ -41,7 +41,7 @@ type StreamMonitorConfig struct {
 }
 
 // NewStreamMonitor creates a new stream monitor
-func NewStreamMonitor(logger *zerolog.Logger, wsHub Broadcaster, cfg *StreamMonitorConfig) *StreamMonitor {
+func NewStreamMonitor(logger *zerolog.Logger, wsHub SimpleBroadcaster, cfg *StreamMonitorConfig) *StreamMonitor {
 	interval := 2 * time.Second
 	if cfg != nil && cfg.BroadcastInterval > 0 {
 		interval = cfg.BroadcastInterval
@@ -94,21 +94,11 @@ func (m *StreamMonitor) StreamTaskOutput(
 	}()
 
 	// Create SSH client
-	sshClient, err := NewSSHClient(SSHConfig{
-		Host:       conn.Host,
-		Port:       conn.Port,
-		User:       conn.User,
-		PrivateKey: conn.PrivateKey,
-		Timeout:    30 * time.Second,
-	})
+	sshClient, err := conn.Dial()
 	if err != nil {
-		return fmt.Errorf("failed to create SSH client: %w", err)
-	}
-	defer sshClient.Close()
-
-	if err := sshClient.Connect(); err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
+	defer sshClient.Close()
 
 	m.logger.Info().
 		Str("task_id", taskID).
@@ -302,21 +292,11 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 	}()
 
 	// Create SSH client - this single connection will be used throughout
-	sshClient, err := NewSSHClient(SSHConfig{
-		Host:       conn.Host,
-		Port:       conn.Port,
-		User:       conn.User,
-		PrivateKey: conn.PrivateKey,
-		Timeout:    30 * time.Second,
-	})
+	sshClient, err := conn.Dial()
 	if err != nil {
-		return fmt.Errorf("failed to create SSH client: %w", err)
-	}
-	defer sshClient.Close()
-
-	if err := sshClient.Connect(); err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
+	defer sshClient.Close()
 
 	m.logger.Info().
 		Str("task_id", taskID).

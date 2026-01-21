@@ -111,24 +111,3 @@ func (f *Factory) Create(providerType enums.ServerProvider) (Provider, error) {
 func (f *Factory) CreateFromServer(server *models.Server) (Provider, error) {
 	return f.Create(server.Provider)
 }
-
-// BaseProvider provides common functionality for all providers
-type BaseProvider struct {
-	keyGenerator sshkey.Generator
-	config       config.ProviderConfig
-}
-
-// GenerateKeyPair generates a new SSH key pair
-func (p *BaseProvider) GenerateKeyPair() (*KeyPair, error) {
-	return p.keyGenerator.Generate()
-}
-
-// Plans returns the plans from config
-func (p *BaseProvider) Plans() []config.PlanOption {
-	return p.config.Plans
-}
-
-// Regions returns the regions from config
-func (p *BaseProvider) Regions() []config.RegionOption {
-	return p.config.Regions
-}

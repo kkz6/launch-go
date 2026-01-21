@@ -2,6 +2,7 @@ package providers
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
@@ -11,16 +12,17 @@ import (
 
 // CustomProvider implements the Provider interface for custom/self-managed servers
 type CustomProvider struct {
-	BaseProvider
+	BaseCloudProvider
 }
 
 // NewCustomProvider creates a new Custom provider
 func NewCustomProvider(keyGenerator sshkey.Generator) *CustomProvider {
 	return &CustomProvider{
-		BaseProvider: BaseProvider{
-			keyGenerator: keyGenerator,
-			config:       config.ProviderConfig{}, // No plans/regions for custom
-		},
+		BaseCloudProvider: NewBaseCloudProvider(
+			keyGenerator,
+			config.ProviderConfig{}, // No plans/regions for custom
+			"",                      // No API URL for custom
+		),
 	}
 }
 
@@ -38,7 +40,7 @@ func (p *CustomProvider) Connect(ctx context.Context, credentials map[string]int
 func (p *CustomProvider) Create(ctx context.Context, server *models.Server, credentials map[string]interface{}) (*CreateResult, error) {
 	keyPair, err := p.GenerateKeyPair()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to generate key pair: %w", err)
 	}
 
 	return &CreateResult{

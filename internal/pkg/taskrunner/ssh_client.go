@@ -386,3 +386,72 @@ func expandPath(path string) string {
 	}
 	return path
 }
+
+// SSHClientOption is a functional option for configuring SSHClient
+type SSHClientOption func(*SSHConfig)
+
+// WithSSHTimeout sets the connection timeout for SSH clients
+func WithSSHTimeout(timeout time.Duration) SSHClientOption {
+	return func(cfg *SSHConfig) {
+		cfg.Timeout = timeout
+	}
+}
+
+// WithSSHPort sets the SSH port
+func WithSSHPort(port int) SSHClientOption {
+	return func(cfg *SSHConfig) {
+		cfg.Port = port
+	}
+}
+
+// NewSSHClientFromConnection creates an SSH client from a Connection struct.
+// This is the preferred way to create SSH clients when you have a Connection.
+func NewSSHClientFromConnection(conn *Connection, opts ...SSHClientOption) (*SSHClient, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("connection cannot be nil")
+	}
+
+	cfg := SSHConfig{
+		Host:       conn.Host,
+		Port:       conn.Port,
+		User:       conn.User,
+		PrivateKey: conn.PrivateKey,
+		Timeout:    30 * time.Second,
+	}
+
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	return NewSSHClient(cfg)
+}
+
+// NewSSHClientFromServer creates an SSH client from a ServerConnection.
+// By default, connects as the server's default user.
+func NewSSHClientFromServer(server ServerConnection, opts ...SSHClientOption) (*SSHClient, error) {
+	if server == nil {
+		return nil, fmt.Errorf("server cannot be nil")
+	}
+
+	return NewSSHClientFromConnection(server.ConnectionAsUser(), opts...)
+}
+
+// NewSSHClientFromServerAsRoot creates an SSH client from a ServerConnection,
+// configured to connect as the root user.
+func NewSSHClientFromServerAsRoot(server ServerConnection, opts ...SSHClientOption) (*SSHClient, error) {
+	if server == nil {
+		return nil, fmt.Errorf("server cannot be nil")
+	}
+
+	return NewSSHClientFromConnection(server.ConnectionAsRoot(), opts...)
+}
+
+// NewSSHClientFromServerAsUser creates an SSH client from a ServerConnection,
+// configured to connect as the specified user.
+func NewSSHClientFromServerAsUser(server ServerConnection, username string, opts ...SSHClientOption) (*SSHClient, error) {
+	if server == nil {
+		return nil, fmt.Errorf("server cannot be nil")
+	}
+
+	return NewSSHClientFromConnection(server.ConnectionAsUser(username), opts...)
+}

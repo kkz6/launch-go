@@ -12,10 +12,13 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Broadcaster interface for WebSocket broadcasting
-// This allows the dispatcher to work without importing the websocket package directly
-type Broadcaster interface {
-	Broadcast(channel string, event string, data interface{})
+// SimpleBroadcaster is a minimal interface for broadcasting.
+// This is satisfied by broadcast.Broadcaster, broadcast.NopBroadcaster, and any
+// other type that implements the Broadcast method.
+// This minimal interface allows the taskrunner package to work independently
+// while accepting any broadcaster from the broadcast package.
+type SimpleBroadcaster interface {
+	Broadcast(channel string, event string, data any)
 }
 
 // TaskDispatcher interface defines the contract for task dispatchers.
@@ -27,7 +30,7 @@ type TaskDispatcher interface {
 // Dispatcher handles task execution
 type Dispatcher struct {
 	logger        *zerolog.Logger
-	ws            Broadcaster
+	ws            SimpleBroadcaster
 	streamMonitor *StreamMonitor
 	localMode     bool
 }
@@ -39,7 +42,7 @@ type DispatcherConfig struct {
 }
 
 // NewDispatcher creates a new task dispatcher
-func NewDispatcher(logger *zerolog.Logger, ws Broadcaster) *Dispatcher {
+func NewDispatcher(logger *zerolog.Logger, ws SimpleBroadcaster) *Dispatcher {
 	return &Dispatcher{
 		logger:    logger,
 		ws:        ws,
@@ -48,7 +51,7 @@ func NewDispatcher(logger *zerolog.Logger, ws Broadcaster) *Dispatcher {
 }
 
 // NewDispatcherWithConfig creates a new dispatcher with configuration
-func NewDispatcherWithConfig(logger *zerolog.Logger, ws Broadcaster, cfg *DispatcherConfig) *Dispatcher {
+func NewDispatcherWithConfig(logger *zerolog.Logger, ws SimpleBroadcaster, cfg *DispatcherConfig) *Dispatcher {
 	d := &Dispatcher{
 		logger:    logger,
 		ws:        ws,
@@ -145,21 +148,11 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 	conn := pt.Connection
 
 	// Create SSH client
-	sshClient, err := NewSSHClient(SSHConfig{
-		Host:       conn.Host,
-		Port:       conn.Port,
-		User:       conn.User,
-		PrivateKey: conn.PrivateKey,
-		Timeout:    30 * time.Second,
-	})
+	sshClient, err := conn.Dial()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create SSH client: %w", err)
-	}
-	defer sshClient.Close()
-
-	if err := sshClient.Connect(); err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
+	defer sshClient.Close()
 
 	scriptPath := conn.GetScriptPath()
 	taskID := pt.TaskID
@@ -333,21 +326,11 @@ func (d *Dispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*Ta
 	conn := pt.Connection
 
 	// Create SSH client
-	sshClient, err := NewSSHClient(SSHConfig{
-		Host:       conn.Host,
-		Port:       conn.Port,
-		User:       conn.User,
-		PrivateKey: conn.PrivateKey,
-		Timeout:    30 * time.Second,
-	})
+	sshClient, err := conn.Dial()
 	if err != nil {
-		return nil, fmt.Errorf("failed to create SSH client: %w", err)
-	}
-	defer sshClient.Close()
-
-	if err := sshClient.Connect(); err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
+	defer sshClient.Close()
 
 	scriptPath := conn.GetScriptPath()
 	taskID := pt.TaskID
@@ -426,20 +409,11 @@ func (d *Dispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*Ta
 
 // GetTaskOutput fetches output from a remote task
 func (d *Dispatcher) GetTaskOutput(ctx context.Context, conn *Connection, taskID string) (string, error) {
-	sshClient, err := NewSSHClient(SSHConfig{
-		Host:       conn.Host,
-		Port:       conn.Port,
-		User:       conn.User,
-		PrivateKey: conn.PrivateKey,
-	})
+	sshClient, err := conn.Dial()
 	if err != nil {
 		return "", err
 	}
 	defer sshClient.Close()
-
-	if err := sshClient.Connect(); err != nil {
-		return "", err
-	}
 
 	outputFile := filepath.Join(conn.GetScriptPath(), fmt.Sprintf("task-%s.log", taskID))
 	output, err := sshClient.Download(ctx, outputFile)
@@ -452,20 +426,11 @@ func (d *Dispatcher) GetTaskOutput(ctx context.Context, conn *Connection, taskID
 
 // CheckTaskStatus checks if a background task is still running
 func (d *Dispatcher) CheckTaskStatus(ctx context.Context, conn *Connection, pid string) (bool, int, error) {
-	sshClient, err := NewSSHClient(SSHConfig{
-		Host:       conn.Host,
-		Port:       conn.Port,
-		User:       conn.User,
-		PrivateKey: conn.PrivateKey,
-	})
+	sshClient, err := conn.Dial()
 	if err != nil {
 		return false, 0, err
 	}
 	defer sshClient.Close()
-
-	if err := sshClient.Connect(); err != nil {
-		return false, 0, err
-	}
 
 	// Check if process is running
 	result, _ := sshClient.Run(ctx, fmt.Sprintf("ps -p %s -o pid= 2>/dev/null", pid))

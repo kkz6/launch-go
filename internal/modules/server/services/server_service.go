@@ -18,7 +18,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // ListServers returns all servers for a team
@@ -123,13 +122,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		return nil, fmt.Errorf("failed to create server: %w", err)
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		CausedByUser(userID).
-		On(server).
-		WithEvent("created").
-		Log("Server was created")
+	activity.LogCreated(ctx, s.repos.DB(), userID, server, "Server was created")
 
 	if provider != enums.ProviderCustom {
 		if err := s.dispatchCreateOnProviderJob(server, req.CredentialID, req.SSHKeyIDs); err != nil {
@@ -167,12 +160,7 @@ func (s *Service) UpdateServer(ctx context.Context, id, teamID string, req *dto.
 		return nil, err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		On(server).
-		WithEvent("updated").
-		Log("Server was updated")
+	activity.LogEvent(ctx, s.repos.DB(), "updated", "", server, "Server was updated")
 
 	s.broadcastServerUpdate(server)
 
@@ -186,12 +174,7 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID string) error {
 		return err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		On(server).
-		WithEvent("deleted").
-		Log("Server deletion requested")
+	activity.LogEvent(ctx, s.repos.DB(), "deleted", "", server, "Server deletion requested")
 
 	if err := s.repos.Server().UpdateStatus(ctx, id, enums.ServerStatusDeleting); err != nil {
 		return err
@@ -259,18 +242,8 @@ func (s *Service) ConnectServer(ctx context.Context, id, teamID string) error {
 		return errors.New("server has no private key")
 	}
 
-	client, err := taskrunner.NewSSHClient(taskrunner.SSHConfig{
-		Host:       *server.PublicIPv4,
-		Port:       server.GetSSHPort(),
-		User:       server.RootUsername(),
-		PrivateKey: server.PrivateKey.String(),
-		Timeout:    30 * time.Second,
-	})
+	client, err := server.ConnectionAsRoot().Dial()
 	if err != nil {
-		return fmt.Errorf("failed to create SSH client: %w", err)
-	}
-
-	if err := client.Connect(); err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 	defer client.Close()
@@ -493,13 +466,7 @@ func (s *Service) RunVulnerabilityAudit(ctx context.Context, serverID, teamID, u
 		return err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		CausedByUser(userID).
-		On(server).
-		WithEvent("vulnerability_audit_started").
-		Log("Vulnerability audit was initiated")
+	activity.LogEvent(ctx, s.repos.DB(), "vulnerability_audit_started", userID, server, "Vulnerability audit was initiated")
 
 	return s.EnqueueTask(task)
 }
