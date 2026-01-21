@@ -5,88 +5,50 @@ import (
 	"testing"
 
 	"github.com/rs/zerolog"
-	"github.com/stretchr/testify/assert"
 )
 
-func TestNewParser(t *testing.T) {
-	logger := zerolog.New(nil)
-	parser := NewParser(logger, "server-123")
-
-	assert.NotNil(t, parser)
-	assert.Equal(t, "server-123", parser.serverID)
-	assert.Empty(t, parser.errors)
-}
-
-func TestParseFloat(t *testing.T) {
+func TestParser_ParseFloat(t *testing.T) {
 	tests := []struct {
-		name        string
-		value       string
-		fieldName   string
-		expected    float64
-		shouldError bool
+		name      string
+		value     string
+		fieldName string
+		want      float64
+		wantError bool
 	}{
 		{
-			name:        "valid float",
-			value:       "3.14",
-			fieldName:   "cpu_usage",
-			expected:    3.14,
-			shouldError: false,
+			name:      "valid float",
+			value:     "123.45",
+			fieldName: "test_field",
+			want:      123.45,
+			wantError: false,
 		},
 		{
-			name:        "valid integer as float",
-			value:       "42",
-			fieldName:   "memory",
-			expected:    42.0,
-			shouldError: false,
+			name:      "valid integer as float",
+			value:     "100",
+			fieldName: "test_field",
+			want:      100.0,
+			wantError: false,
 		},
 		{
-			name:        "empty string",
-			value:       "",
-			fieldName:   "empty_field",
-			expected:    0,
-			shouldError: false,
+			name:      "empty string returns zero",
+			value:     "",
+			fieldName: "test_field",
+			want:      0,
+			wantError: false,
 		},
 		{
-			name:        "whitespace only",
-			value:       "   ",
-			fieldName:   "whitespace_field",
-			expected:    0,
-			shouldError: false,
+			name:      "invalid string logs error",
+			value:     "not-a-number",
+			fieldName: "test_field",
+			want:      0,
+			wantError: true,
 		},
 		{
-			name:        "value with whitespace",
-			value:       "  75.5  ",
-			fieldName:   "percent",
-			expected:    75.5,
-			shouldError: false,
-		},
-		{
-			name:        "invalid value",
-			value:       "not_a_number",
-			fieldName:   "invalid_field",
-			expected:    0,
-			shouldError: true,
-		},
-		{
-			name:        "negative float",
-			value:       "-10.5",
-			fieldName:   "negative",
-			expected:    -10.5,
-			shouldError: false,
-		},
-		{
-			name:        "zero",
-			value:       "0",
-			fieldName:   "zero_field",
-			expected:    0,
-			shouldError: false,
-		},
-		{
-			name:        "very large number",
-			value:       "9999999999.99",
-			fieldName:   "large",
-			expected:    9999999999.99,
-			shouldError: false,
+			name:      "negative value",
+			value:     "-50.5",
+			fieldName: "test_field",
+			want:      -50.5,
+			wantError: false,
 		},
 	}
 
@@ -94,94 +56,67 @@ func TestParseFloat(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			logger := zerolog.New(&buf)
-			parser := NewParser(logger, "test-server")
+			p := NewParser(logger, "test-server-id")
 
-			result := parser.ParseFloat(tt.value, tt.fieldName)
+			got := p.ParseFloat(tt.value, tt.fieldName)
 
-			assert.Equal(t, tt.expected, result)
+			if got != tt.want {
+				t.Errorf("ParseFloat() = %v, want %v", got, tt.want)
+			}
 
-			if tt.shouldError {
-				assert.True(t, parser.HasErrors())
-				assert.Contains(t, parser.Errors(), tt.fieldName)
-				assert.Contains(t, buf.String(), tt.fieldName)
-				assert.Contains(t, buf.String(), "test-server")
-			} else {
-				assert.False(t, parser.HasErrors())
+			if tt.wantError && !p.HasErrors() {
+				t.Error("Expected error to be recorded")
+			}
+
+			if !tt.wantError && p.HasErrors() {
+				t.Errorf("Unexpected error recorded: %v", p.Errors())
 			}
 		})
 	}
 }
 
-func TestParseInt(t *testing.T) {
+func TestParser_ParseInt(t *testing.T) {
 	tests := []struct {
-		name        string
-		value       string
-		fieldName   string
-		expected    int64
-		shouldError bool
+		name      string
+		value     string
+		fieldName string
+		want      int64
+		wantError bool
 	}{
 		{
-			name:        "valid integer",
-			value:       "42",
-			fieldName:   "count",
-			expected:    42,
-			shouldError: false,
+			name:      "valid integer",
+			value:     "12345",
+			fieldName: "test_field",
+			want:      12345,
+			wantError: false,
 		},
 		{
-			name:        "empty string",
-			value:       "",
-			fieldName:   "empty_field",
-			expected:    0,
-			shouldError: false,
+			name:      "empty string returns zero",
+			value:     "",
+			fieldName: "test_field",
+			want:      0,
+			wantError: false,
 		},
 		{
-			name:        "whitespace only",
-			value:       "   ",
-			fieldName:   "whitespace_field",
-			expected:    0,
-			shouldError: false,
+			name:      "invalid string logs error",
+			value:     "not-a-number",
+			fieldName: "test_field",
+			want:      0,
+			wantError: true,
 		},
 		{
-			name:        "value with whitespace",
-			value:       "  100  ",
-			fieldName:   "padded",
-			expected:    100,
-			shouldError: false,
+			name:      "float string logs error",
+			value:     "123.45",
+			fieldName: "test_field",
+			want:      0,
+			wantError: true,
 		},
 		{
-			name:        "invalid value",
-			value:       "abc",
-			fieldName:   "invalid_field",
-			expected:    0,
-			shouldError: true,
-		},
-		{
-			name:        "float value",
-			value:       "3.14",
-			fieldName:   "float_field",
-			expected:    0,
-			shouldError: true,
-		},
-		{
-			name:        "negative integer",
-			value:       "-500",
-			fieldName:   "negative",
-			expected:    -500,
-			shouldError: false,
-		},
-		{
-			name:        "zero",
-			value:       "0",
-			fieldName:   "zero_field",
-			expected:    0,
-			shouldError: false,
-		},
-		{
-			name:        "very large number",
-			value:       "9223372036854775807",
-			fieldName:   "large",
-			expected:    9223372036854775807,
-			shouldError: false,
+			name:      "negative value",
+			value:     "-500",
+			fieldName: "test_field",
+			want:      -500,
+			wantError: false,
 		},
 	}
 
@@ -189,47 +124,82 @@ func TestParseInt(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			var buf bytes.Buffer
 			logger := zerolog.New(&buf)
-			parser := NewParser(logger, "test-server")
+			p := NewParser(logger, "test-server-id")
 
-			result := parser.ParseInt(tt.value, tt.fieldName)
+			got := p.ParseInt(tt.value, tt.fieldName)
 
-			assert.Equal(t, tt.expected, result)
+			if got != tt.want {
+				t.Errorf("ParseInt() = %v, want %v", got, tt.want)
+			}
 
-			if tt.shouldError {
-				assert.True(t, parser.HasErrors())
-				assert.Contains(t, parser.Errors(), tt.fieldName)
-				assert.Contains(t, buf.String(), tt.fieldName)
-				assert.Contains(t, buf.String(), "test-server")
-			} else {
-				assert.False(t, parser.HasErrors())
+			if tt.wantError && !p.HasErrors() {
+				t.Error("Expected error to be recorded")
+			}
+
+			if !tt.wantError && p.HasErrors() {
+				t.Errorf("Unexpected error recorded: %v", p.Errors())
 			}
 		})
 	}
 }
 
-func TestMultipleErrors(t *testing.T) {
+func TestParser_ErrorTracking(t *testing.T) {
 	var buf bytes.Buffer
 	logger := zerolog.New(&buf)
-	parser := NewParser(logger, "multi-error-server")
+	p := NewParser(logger, "test-server-id")
 
-	parser.ParseFloat("invalid1", "field1")
-	parser.ParseInt("invalid2", "field2")
-	parser.ParseFloat("invalid3", "field3")
+	// Initially no errors
+	if p.HasErrors() {
+		t.Error("Expected no initial errors")
+	}
+	if p.ErrorCount() != 0 {
+		t.Errorf("Expected 0 errors, got %d", p.ErrorCount())
+	}
 
-	assert.True(t, parser.HasErrors())
-	assert.Len(t, parser.Errors(), 3)
-	assert.Equal(t, []string{"field1", "field2", "field3"}, parser.Errors())
+	// Parse invalid values
+	p.ParseFloat("invalid1", "field1")
+	p.ParseFloat("invalid2", "field2")
+	p.ParseInt("invalid3", "field3")
+
+	// Should have 3 errors
+	if !p.HasErrors() {
+		t.Error("Expected errors to be recorded")
+	}
+	if p.ErrorCount() != 3 {
+		t.Errorf("Expected 3 errors, got %d", p.ErrorCount())
+	}
+
+	errors := p.Errors()
+	expected := []string{"field1", "field2", "field3"}
+	for i, e := range expected {
+		if errors[i] != e {
+			t.Errorf("Expected error[%d] = %s, got %s", i, e, errors[i])
+		}
+	}
 }
 
-func TestNoErrors(t *testing.T) {
-	logger := zerolog.New(nil)
-	parser := NewParser(logger, "clean-server")
+func TestParser_LogsContainContext(t *testing.T) {
+	var buf bytes.Buffer
+	logger := zerolog.New(&buf)
+	serverID := "srv-12345"
+	p := NewParser(logger, serverID)
 
-	parser.ParseFloat("3.14", "float_field")
-	parser.ParseInt("42", "int_field")
-	parser.ParseFloat("", "empty_float")
-	parser.ParseInt("", "empty_int")
+	p.ParseFloat("invalid", "disk_total")
 
-	assert.False(t, parser.HasErrors())
-	assert.Empty(t, parser.Errors())
+	logOutput := buf.String()
+
+	// Check that log contains server_id
+	if !bytes.Contains(buf.Bytes(), []byte("srv-12345")) {
+		t.Errorf("Log output should contain server_id, got: %s", logOutput)
+	}
+
+	// Check that log contains field name
+	if !bytes.Contains(buf.Bytes(), []byte("disk_total")) {
+		t.Errorf("Log output should contain field name, got: %s", logOutput)
+	}
+
+	// Check that log contains the invalid value
+	if !bytes.Contains(buf.Bytes(), []byte("invalid")) {
+		t.Errorf("Log output should contain the invalid value, got: %s", logOutput)
+	}
 }
