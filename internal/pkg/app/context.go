@@ -6,9 +6,9 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
-	"github.com/kkz6/launch-go/internal/pkg/cache"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // Context holds all shared application dependencies.
@@ -21,7 +21,7 @@ type Context struct {
 	Queue           *queue.Client
 	WebSocket       broadcast.ModelBroadcaster
 	Dispatcher      *taskrunner.Dispatcher
-	MembershipCache *cache.TeamMembershipCache
+	MembershipCache *launchcache.TeamMembershipCache
 }
 
 // NewContext creates a new application context with all dependencies
@@ -32,7 +32,7 @@ func NewContext(
 	queueClient *queue.Client,
 	wsBroadcaster broadcast.ModelBroadcaster,
 	dispatcher *taskrunner.Dispatcher,
-	membershipCache *cache.TeamMembershipCache,
+	membershipCache *launchcache.TeamMembershipCache,
 ) *Context {
 	return &Context{
 		Config:          cfg,

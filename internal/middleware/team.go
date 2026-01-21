@@ -3,8 +3,8 @@ package middleware
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/kkz6/launch-go/internal/pkg/cache"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -18,12 +18,12 @@ var roleHierarchy = map[string]int{
 
 // teamMiddleware holds the shared state for team middleware
 var teamMiddleware struct {
-	cache *cache.TeamMembershipCache
+	cache *launchcache.TeamMembershipCache
 }
 
 // InitTeamMiddleware initializes the team middleware with required dependencies.
 // Call this during application bootstrap before routes are registered.
-func InitTeamMiddleware(membershipCache *cache.TeamMembershipCache) {
+func InitTeamMiddleware(membershipCache *launchcache.TeamMembershipCache) {
 	teamMiddleware.cache = membershipCache
 }
 
@@ -158,12 +158,12 @@ func RequireRole(minRole string) fiber.Handler {
 }
 
 // Deprecated: Use InitTeamMiddleware instead
-func SetTeamScopeMembershipCache(c *cache.TeamMembershipCache) {
+func SetTeamScopeMembershipCache(c *launchcache.TeamMembershipCache) {
 	InitTeamMiddleware(c)
 }
 
 // Deprecated: Use TeamScope instead
-func TeamContext(membershipCache *cache.TeamMembershipCache) fiber.Handler {
+func TeamContext(membershipCache *launchcache.TeamMembershipCache) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		teamID := c.Get("X-Team-ID")
 		if teamID == "" {

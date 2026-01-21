@@ -8,7 +8,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
-	"github.com/kkz6/launch-go/internal/pkg/cache"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
 
 // Message represents a WebSocket message
@@ -221,7 +221,7 @@ func (h *Hub) Register(client *Client) {
 
 // Handler returns a Fiber handler for the main WebSocket endpoint
 // Connection URL: /ws?token=xxx&team_id=xxx
-func Handler(hub *Hub, jwtSecret string, membershipCache *cache.TeamMembershipCache) fiber.Handler {
+func Handler(hub *Hub, jwtSecret string, membershipCache *launchcache.TeamMembershipCache) fiber.Handler {
 	return websocket.New(func(c *websocket.Conn) {
 		// Authenticate and validate team membership
 		claims, err := AuthenticateWebSocket(c, jwtSecret, membershipCache)

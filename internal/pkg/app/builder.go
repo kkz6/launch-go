@@ -6,10 +6,10 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
-	"github.com/kkz6/launch-go/internal/pkg/cache"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 // Deps holds common dependencies for all modules
@@ -20,7 +20,7 @@ type Deps struct {
 	Dispatcher      *taskrunner.Dispatcher
 	Logger          *zerolog.Logger
 	Config          *config.Config
-	MembershipCache *cache.TeamMembershipCache
+	MembershipCache *launchcache.TeamMembershipCache
 }
 
 // ServiceDeps returns the common dependencies as a service.Dependencies struct.

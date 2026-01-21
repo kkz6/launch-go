@@ -13,8 +13,8 @@ import (
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
-	"github.com/kkz6/launch-go/internal/pkg/cache"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
 
 // LogsHandler handles WebSocket log streaming connections
@@ -31,7 +31,7 @@ func NewLogsHandler(base Base) *LogsHandler {
 
 // NewLogsHandlerWithDeps creates a new logs handler with individual dependencies (legacy).
 // Deprecated: Use NewLogsHandler with Base instead.
-func NewLogsHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *LogsHandler {
+func NewLogsHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *launchcache.TeamMembershipCache) *LogsHandler {
 	return NewLogsHandler(NewBase(db, jwtSecret, logger, membershipCache))
 }
 

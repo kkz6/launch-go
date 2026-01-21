@@ -15,7 +15,7 @@ import (
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/pkg/cache"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
@@ -40,7 +40,7 @@ func NewTerminalHandler(base Base) *TerminalHandler {
 
 // NewTerminalHandlerWithDeps creates a new terminal handler with individual dependencies (legacy).
 // Deprecated: Use NewTerminalHandler with Base instead.
-func NewTerminalHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *TerminalHandler {
+func NewTerminalHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *launchcache.TeamMembershipCache) *TerminalHandler {
 	return NewTerminalHandler(NewBase(db, jwtSecret, logger, membershipCache))
 }
 

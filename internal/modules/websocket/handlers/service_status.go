@@ -14,8 +14,8 @@ import (
 	"gorm.io/gorm"
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/cache"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/launch/status"
 )
 
@@ -39,7 +39,7 @@ func NewServiceStatusHandler(base Base) *ServiceStatusHandler {
 
 // NewServiceStatusHandlerWithDeps creates a new service status handler with individual dependencies (legacy).
 // Deprecated: Use NewServiceStatusHandler with Base instead.
-func NewServiceStatusHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *ServiceStatusHandler {
+func NewServiceStatusHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *launchcache.TeamMembershipCache) *ServiceStatusHandler {
 	return NewServiceStatusHandler(NewBase(db, jwtSecret, logger, membershipCache))
 }
 
