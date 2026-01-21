@@ -3,11 +3,10 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
@@ -23,79 +22,66 @@ type EnableLaravelQueuePayload struct {
 
 // EnableLaravelQueueJob enables a Laravel queue worker for a site
 type EnableLaravelQueueJob struct {
-	ctx     *JobContext
-	Payload EnableLaravelQueuePayload
+	pkgjobs.BaseJob[*JobContext, EnableLaravelQueuePayload]
+	FeatureJobHelpers
 }
 
 // NewEnableLaravelQueueJob creates a new EnableLaravelQueueJob
 func NewEnableLaravelQueueJob(ctx *JobContext, payload EnableLaravelQueuePayload) *EnableLaravelQueueJob {
 	return &EnableLaravelQueueJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob:           pkgjobs.NewBaseJob(ctx, payload),
+		FeatureJobHelpers: FeatureJobHelpers{Ctx: ctx},
 	}
 }
 
 // Handle executes the enable queue job
 func (j *EnableLaravelQueueJob) Handle(ctx context.Context) error {
-	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	result, err := j.LoadAndValidate(ctx, j.Payload.SiteID, j.Payload.ServerID, FeatureQueue)
 	if err != nil {
-		return fmt.Errorf("failed to find site: %w", err)
+		return err
 	}
-
-	// Check if site is Laravel type
-	if site.Type != enums.SiteTypeLaravel {
-		return fmt.Errorf("queue workers can only be enabled for Laravel sites")
-	}
-
-	// Check if queue is already enabled
-	if site.HasEnabledFeature("queue") {
-		j.ctx.LogInfo("Queue already enabled", "site_id", site.ID)
+	if result.AlreadyEnabled {
 		return nil
 	}
 
-	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	site, server := result.Site, result.Server
+	j.BaseJob.Ctx.LogInfo("Enabling Laravel queue worker", "site_id", site.ID, "server_id", server.ID)
+
+	userID := j.GetUserID(j.Payload.UserID, site)
+	queue, err := j.createQueueWithConfig(ctx, site, server, userID)
 	if err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+		return err
 	}
 
-	j.ctx.LogInfo("Enabling Laravel queue worker",
-		"site_id", site.ID,
-		"server_id", server.ID,
-	)
-
-	// Get user ID
-	userID := ""
-	if j.Payload.UserID != nil {
-		userID = *j.Payload.UserID
-	} else {
-		userID = site.UserID
+	if err := j.DispatchInstallQueue(ctx, queue.ID, site.ID, j.Payload.UserID); err != nil {
+		return err
 	}
 
-	// Build queue command
-	command := j.buildQueueCommand(site)
+	j.EnableFeature(ctx, site, FeatureQueue, &queue.ID, nil)
+	j.BroadcastFeatureEnabled(server, FeatureQueue, site.ID, queue.ID)
+	j.BaseJob.Ctx.LogInfo("Laravel queue worker enabled successfully", "site_id", site.ID, "queue_id", queue.ID)
 
-	// Default queue configuration
-	numProcs := 1
+	return nil
+}
+
+// createQueueWithConfig creates a queue record with full queue worker configuration
+func (j *EnableLaravelQueueJob) createQueueWithConfig(ctx context.Context, site *models.Site, server *servermodels.Server, userID string) (*models.Queue, error) {
+	command := fmt.Sprintf("%s %s/artisan queue:work", site.GetPhpBinary(), site.GetApplicationDirectory())
+
 	maxTries := 3
 	maxMemory := 128
 	maxSecondsPerJob := 60
 	restSecondsOnEmpty := 3
 	failedJobDelaySeconds := 3
 
-	// Create queue record
 	queue := &models.Queue{
-		SiteID:                site.ID,
-		ServerID:              server.ID,
-		UserID:                userID,
 		Command:               command,
 		User:                  site.User,
 		QueueConnection:       "database",
 		QueueName:             "default",
 		AutoStart:             true,
 		AutoRestart:           true,
-		NumProcs:              numProcs,
+		NumProcs:              1,
 		RedirectStderr:        true,
 		StopWaitSeconds:       10,
 		StopSignal:            "SIGTERM",
@@ -107,84 +93,20 @@ func (j *EnableLaravelQueueJob) Handle(ctx context.Context) error {
 		RunOnMaintenance:      false,
 		RunWithListen:         false,
 	}
+	queue.SiteID = site.ID
+	queue.ServerID = server.ID
+	queue.UserID = userID
 
-	if err := j.ctx.QueueRepo.Create(ctx, queue); err != nil {
-		return fmt.Errorf("failed to create queue: %w", err)
+	if err := j.BaseJob.Ctx.QueueRepo.Create(ctx, queue); err != nil {
+		return nil, fmt.Errorf("failed to create queue: %w", err)
 	}
 
-	// Dispatch InstallQueue job
-	if err := j.dispatchInstallQueue(queue.ID, site.ID); err != nil {
-		// Cleanup the queue record if dispatch fails
-		_ = j.ctx.QueueRepo.Delete(ctx, queue.ID)
-		return fmt.Errorf("failed to dispatch install queue job: %w", err)
-	}
-
-	// Update site's enabled_features
-	now := time.Now()
-	feature := models.EnabledFeature{
-		Name:      "queue",
-		QueueID:   &queue.ID,
-		EnabledAt: &now,
-	}
-	site.AddEnabledFeature(feature)
-	site.RemovePendingFeature("queue")
-
-	if err := j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
-		"enabled_features": site.EnabledFeatures,
-		"pending_features": site.PendingFeatures,
-	}); err != nil {
-		j.ctx.LogError(err, "Failed to update site enabled_features")
-	}
-
-	// Broadcast success
-	j.ctx.BroadcastServerEvent(server, "site.queue_enabled", map[string]interface{}{
-		"site_id":  site.ID,
-		"queue_id": queue.ID,
-	})
-
-	j.ctx.LogInfo("Laravel queue worker enabled successfully",
-		"site_id", site.ID,
-		"queue_id", queue.ID,
-	)
-
-	return nil
-}
-
-// buildQueueCommand builds the artisan queue:work command
-func (j *EnableLaravelQueueJob) buildQueueCommand(site *models.Site) string {
-	return fmt.Sprintf("%s %s/artisan queue:work",
-		site.GetPhpBinary(), site.GetApplicationDirectory())
-}
-
-// dispatchInstallQueue dispatches the InstallQueue job
-func (j *EnableLaravelQueueJob) dispatchInstallQueue(queueID, siteID string) error {
-	if j.ctx.Queue == nil {
-		return fmt.Errorf("queue client not available")
-	}
-
-	task, err := NewInstallQueueTask(siteID, queueID, j.Payload.UserID)
-	if err != nil {
-		return err
-	}
-
-	_, err = j.ctx.Queue.Enqueue(task)
-	return err
+	return queue, nil
 }
 
 // Failed handles job failure
 func (j *EnableLaravelQueueJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to enable Laravel queue worker",
-		"site_id", j.Payload.SiteID,
-	)
-
-	// Remove from pending features
-	site, findErr := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
-	if findErr == nil {
-		site.RemovePendingFeature("queue")
-		_ = j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
-			"pending_features": site.PendingFeatures,
-		})
-	}
+	j.HandleFailure(ctx, err, j.Payload.SiteID, FeatureQueue, "Failed to enable Laravel queue worker")
 }
 
 // NewEnableLaravelQueueTask creates an enable queue task

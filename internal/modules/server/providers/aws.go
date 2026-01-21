@@ -7,22 +7,23 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/sshkey"
+	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
 
 // AWSProvider implements the Provider interface for AWS
 type AWSProvider struct {
-	BaseProvider
+	BaseCloudProvider
 }
 
 // NewAWSProvider creates a new AWS provider
 func NewAWSProvider(keyGenerator sshkey.Generator) *AWSProvider {
 	configs := config.GetProviderConfigs()
 	return &AWSProvider{
-		BaseProvider: BaseProvider{
-			keyGenerator: keyGenerator,
-			config:       configs["aws"],
-		},
+		BaseCloudProvider: NewBaseCloudProvider(
+			keyGenerator,
+			configs["aws"],
+			"", // AWS uses SDK, not direct HTTP API
+		),
 	}
 }
 
@@ -33,8 +34,8 @@ func (p *AWSProvider) Type() enums.ServerProvider {
 
 // Connect tests the connection to AWS
 func (p *AWSProvider) Connect(ctx context.Context, credentials map[string]interface{}) error {
-	accessKey, _ := credentials["access_key"].(string)
-	secretKey, _ := credentials["secret_key"].(string)
+	accessKey := GetStringField(credentials, "access_key", "")
+	secretKey := GetStringField(credentials, "secret_key", "")
 
 	if accessKey == "" || secretKey == "" {
 		return ErrInvalidCredentials
@@ -52,12 +53,8 @@ func (p *AWSProvider) Create(ctx context.Context, server *models.Server, credent
 		return nil, fmt.Errorf("failed to generate key pair: %w", err)
 	}
 
-	providerData := server.ProviderData
-	if providerData == nil {
-		providerData = make(map[string]interface{})
-	}
-
-	region, _ := providerData["region"].(string)
+	providerData := GetProviderData(server.ProviderData)
+	region := GetStringField(providerData, "region", "")
 
 	// AWS EC2 creation would use AWS SDK
 	// This is a placeholder implementation
@@ -104,10 +101,7 @@ func (p *AWSProvider) CredentialRules() map[string]string {
 
 // CreateRules returns validation rules
 func (p *AWSProvider) CreateRules() map[string]string {
-	return map[string]string{
-		"plan":   "required",
-		"region": "required",
-	}
+	return CommonCreateRules()
 }
 
 // CredentialData extracts credential data
@@ -120,8 +114,5 @@ func (p *AWSProvider) CredentialData(input map[string]interface{}) map[string]in
 
 // ProviderData extracts provider-specific data
 func (p *AWSProvider) ProviderData(input map[string]interface{}) map[string]interface{} {
-	return map[string]interface{}{
-		"plan":   input["plan"],
-		"region": input["region"],
-	}
+	return CommonProviderData(input)
 }

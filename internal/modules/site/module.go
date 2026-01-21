@@ -15,7 +15,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	sitetasks "github.com/kkz6/launch-go/internal/modules/site/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 const ModuleName = "site"
@@ -31,7 +31,7 @@ var (
 
 // Module represents the site module
 type Module struct {
-	module.Base
+	app.Base
 
 	// Repository registry for site module repositories
 	repos *repositories.Registry
@@ -54,7 +54,7 @@ type Module struct {
 }
 
 // NewModule creates a new site module
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 
 	// Create concrete repositories (still needed for jobs)
@@ -66,7 +66,7 @@ func NewModule(b *module.Builder) *Module {
 	gitReader := adapters.NewGitReaderAdapter(gitRepos.SourceControl(), gitRepos.SourceControlRepo())
 
 	return &Module{
-		Base:         module.NewBase(ModuleName, b),
+		Base:         app.NewBase(ModuleName, b),
 		repos:        repositories.NewRegistry(deps.DB),
 		serverRepos:  serverRepos,
 		gitRepos:     gitRepos,
@@ -136,11 +136,13 @@ func (m *Module) SetDatabaseManager(manager contracts.DatabaseManager) {
 func (m *Module) createServices(taskRunnerDeps *servertasks.TaskRunnerDeps) *services.ServiceRegistry {
 	deps := m.Deps()
 
-	// Create shared service dependencies using standardized Dependencies
+	// Create shared service dependencies using standardized ModuleDeps
 	svcDeps := &services.ServiceDeps{
-		Dependencies:   deps.ServiceDeps(),
+		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
+			Dependencies: deps.ServiceDeps(),
+			Repos:        m.repos,
+		},
 		TaskRunnerDeps: taskRunnerDeps,
-		Repos:          m.repos,
 	}
 
 	// Create service registry - handles all service creation and wiring

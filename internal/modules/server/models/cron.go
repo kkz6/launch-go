@@ -5,6 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -12,7 +13,7 @@ import (
 type Cron struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	ServerID   string                     `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	basemodels.ServerScopedModel
 	SiteID     *string                    `gorm:"column:site_id;type:char(26);index" json:"site_id,omitempty"`
 	User       string                     `gorm:"type:varchar(255);not null" json:"user"`
 	Expression string                     `gorm:"type:varchar(255);not null" json:"expression"`
@@ -90,4 +91,10 @@ func (c *Cron) BroadcastPayload() map[string]interface{} {
 		"id":        c.ID,
 		"server_id": c.ServerID,
 	}
+}
+
+// GetFrequency derives the frequency name from the cron expression.
+// This provides a single source of truth - the expression determines the frequency.
+func (c *Cron) GetFrequency() string {
+	return enums.CronSchedule(c.Expression).FrequencyName()
 }

@@ -2,14 +2,12 @@ package channels
 
 import (
 	"context"
-	"fmt"
-	"net/http"
 )
 
 // DiscordChannel handles Discord webhook notifications
 type DiscordChannel struct {
-	channel    *NotificationChannel
-	httpClient HTTPClient
+	WebhookChannel
+	channel *NotificationChannel
 }
 
 // discordMessage represents a Discord message payload
@@ -20,72 +18,28 @@ type discordMessage struct {
 // NewDiscordChannel creates a new Discord channel
 func NewDiscordChannel(channel *NotificationChannel, httpClient HTTPClient) *DiscordChannel {
 	return &DiscordChannel{
-		channel:    channel,
-		httpClient: httpClient,
+		WebhookChannel: NewWebhookChannel(httpClient, channel.GetWebhookURL()),
+		channel:        channel,
 	}
 }
 
 // Send sends a notification via Discord webhook
 func (d *DiscordChannel) Send(ctx context.Context, notif Notification) error {
-	webhookURL := d.channel.GetWebhookURL()
-	if webhookURL == "" {
-		return ErrInvalidConfiguration
-	}
-
-	if d.httpClient == nil {
-		return ErrSendFailed
-	}
-
-	payload := discordMessage{
-		Content: notif.ToDiscord(),
-	}
-
-	_, statusCode, err := d.httpClient.Post(ctx, webhookURL, payload)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrSendFailed, err)
-	}
-
-	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("%w: received status code %d", ErrSendFailed, statusCode)
-	}
-
-	return nil
+	return d.Post(ctx, discordMessage{Content: notif.ToDiscord()})
 }
 
 // Connect tests the Discord webhook connection
 func (d *DiscordChannel) Connect(ctx context.Context) error {
-	webhookURL := d.channel.GetWebhookURL()
-	if webhookURL == "" {
-		return ErrInvalidConfiguration
-	}
-
-	if d.httpClient == nil {
-		return ErrConnectionFailed
-	}
-
-	payload := discordMessage{
+	return d.PostConnect(ctx, discordMessage{
 		Content: "*Connected to Launch*\nThis webhook confirms that you have connected your Discord to Launch.",
-	}
-
-	_, statusCode, err := d.httpClient.Post(ctx, webhookURL, payload)
-	if err != nil {
-		return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
-	}
-
-	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
-		return fmt.Errorf("%w: received status code %d", ErrConnectionFailed, statusCode)
-	}
-
-	return nil
+	})
 }
 
 // GetCreateRules returns the validation rules for creating a Discord channel
 func (d *DiscordChannel) GetCreateRules() map[string]string {
-	return map[string]string{
-		"webhook_url":    "required,url",
-		"appDeploy":      "boolean",
-		"databaseBackup": "boolean",
-	}
+	return MergeValidationRules(map[string]string{
+		"webhook_url": "required,url",
+	})
 }
 
 // GetData returns the Discord channel data

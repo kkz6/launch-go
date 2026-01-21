@@ -11,7 +11,6 @@ import (
 )
 
 // CertificateRepository handles database operations for certificates.
-// Embeds repository.Base[T] for common CRUD operations.
 type CertificateRepository struct {
 	repository.Base[models.Certificate]
 }
@@ -78,14 +77,3 @@ func (r *CertificateRepository) DeleteBySite(ctx context.Context, siteID string)
 		Where("site_id = ?", siteID).
 		Delete(&models.Certificate{}).Error
 }
-
-// Note: The following methods are inherited from repository.Base[T]:
-// - Create(ctx, entity) error
-// - Update(ctx, entity) error
-// - Delete(ctx, id) error
-// - UpdateFields(ctx, id, fields) error
-// - Exists(ctx, id) (bool, error)
-// - Count(ctx) (int64, error)
-// - Transaction(ctx, fn) error
-// - Query(ctx) *gorm.DB
-// - WithPreload(ctx, relations...) *gorm.DB

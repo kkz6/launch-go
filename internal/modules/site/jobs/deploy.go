@@ -14,6 +14,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/retry"
 )
 
 const (
@@ -30,43 +31,34 @@ type DeployPayload struct {
 
 // DeployJob handles standard site deployment
 type DeployJob struct {
-	ctx     *JobContext
-	Payload DeployPayload
+	pkgjobs.BaseJob[*JobContext, DeployPayload]
 }
 
 // Handle executes the deploy job
 func (j *DeployJob) Handle(ctx context.Context) error {
 	// Get deployment with retry (handles race condition where job runs before DB commit is visible)
-	var deployment *models.Deployment
-	var err error
-	for i := 0; i < 3; i++ {
-		deployment, err = j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
-		if err == nil {
-			break
-		}
-		if i < 2 {
-			time.Sleep(500 * time.Millisecond)
-		}
-	}
+	deployment, err := retry.WithBackoff(ctx, retry.DBRetry, func() (*models.Deployment, error) {
+		return j.Ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to find deployment: %w", err)
 	}
 
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Update deployment status to installing
 	deployment.Status = enums.DeploymentStatusInstalling
-	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
+	if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
@@ -86,7 +78,7 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	// The task's callback methods (OnSuccess, OnFailure, OnExpired) will handle completion
 	// - In production mode: via HTTP webhook callbacks
 	// - In local mode: via SSH streaming with direct callback invocation
-	taskModel, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().RunInBackground(ctx)
+	taskModel, err := j.Ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().RunInBackground(ctx)
 	if err != nil {
 		j.handleDeploymentFailure(ctx, deployment, site, fmt.Sprintf("Failed to start deployment: %v", err))
 		return err
@@ -94,11 +86,11 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 
 	// Update deployment with task ID
 	deployment.TaskID = &taskModel.ID
-	if updateErr := j.ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
-		j.ctx.LogError(updateErr, "Failed to update deployment with task ID")
+	if updateErr := j.Ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
+		j.Ctx.LogError(updateErr, "Failed to update deployment with task ID")
 	}
 
-	j.ctx.LogInfo("Deployment task started in background",
+	j.Ctx.LogInfo("Deployment task started in background",
 		"deployment_id", deployment.ID,
 		"task_id", taskModel.ID,
 	)
@@ -109,15 +101,15 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *DeployJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Deploy job failed",
+	j.Ctx.LogError(err, "Deploy job failed",
 		"site_id", j.Payload.SiteID,
 		"deployment_id", j.Payload.DeploymentID,
 	)
 
 	// Update deployment status
-	deployment, findErr := j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+	deployment, findErr := j.Ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
 	if findErr == nil {
-		site, _ := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+		site, _ := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 		j.handleDeploymentFailure(ctx, deployment, site, err.Error())
 	}
 }
@@ -134,7 +126,7 @@ func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Depl
 			repositoryURL = repo.SSHURL
 
 			// Try to get app-based auth token
-			if sourceControl != nil && j.ctx.ProviderFactory != nil {
+			if sourceControl != nil && j.Ctx.ProviderFactory != nil {
 				token, url, name := j.getAppAuthToken(context.Background(), sourceControl, repo)
 				if token != "" {
 					hasAppAuth = true
@@ -175,14 +167,14 @@ func (j *DeployJob) getRepositoryAndSourceControl(site *models.Site) (*gitmodels
 
 	// Query repository from source_control_repositories table
 	var repo gitmodels.SourceControlRepository
-	if err := j.ctx.DB.First(&repo, "id = ?", *site.SourceControlRepositoriesID).Error; err != nil {
+	if err := j.Ctx.DB().First(&repo, "id = ?", *site.SourceControlRepositoriesID).Error; err != nil {
 		return nil, nil
 	}
 
 	// Get source control
 	var sourceControl *gitmodels.SourceControl
-	if j.ctx.SourceControlRepo != nil {
-		sc, err := j.ctx.SourceControlRepo.FindByID(context.Background(), *site.SourceControlID)
+	if j.Ctx.SourceControlRepo != nil {
+		sc, err := j.Ctx.SourceControlRepo.FindByID(context.Background(), *site.SourceControlID)
 		if err == nil {
 			sourceControl = sc
 		}
@@ -200,19 +192,19 @@ func (j *DeployJob) getAppAuthToken(ctx context.Context, sc *gitmodels.SourceCon
 	scData := j.buildSourceControlData(sc)
 
 	// Get provider with source control context
-	provider, err := j.ctx.ProviderFactory.GetProviderWithInstallation(
+	provider, err := j.Ctx.ProviderFactory.GetProviderWithInstallation(
 		gitproviders.GitProviderType(sc.Provider),
 		scData,
 	)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to get provider for app auth")
+		j.Ctx.LogError(err, "Failed to get provider for app auth")
 		return "", "", ""
 	}
 
 	// Get installation token
 	installToken, err := provider.GetInstallationToken(ctx, *sc.InstallationID)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to get installation token")
+		j.Ctx.LogError(err, "Failed to get installation token")
 		return "", "", ""
 	}
 
@@ -257,17 +249,17 @@ func (j *DeployJob) buildSourceControlData(sc *gitmodels.SourceControl) *gitprov
 }
 
 func (j *DeployJob) broadcastDeploymentProgress(ctx context.Context, siteID, deploymentID, status, message string) {
-	site, err := j.ctx.SiteRepo.FindByID(ctx, siteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, siteID)
 	if err != nil {
 		return
 	}
 
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return
 	}
 
-	j.ctx.BroadcastServerEvent(server, "deployment.progress", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "deployment.progress", map[string]interface{}{
 		"team_id":       server.TeamID,
 		"site_id":       siteID,
 		"deployment_id": deploymentID,
@@ -279,15 +271,15 @@ func (j *DeployJob) broadcastDeploymentProgress(ctx context.Context, siteID, dep
 func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
 	deployment.Status = enums.DeploymentStatusFailed
 
-	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
-		j.ctx.LogError(err, "Failed to update deployment status to failed")
+	if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
+		j.Ctx.LogError(err, "Failed to update deployment status to failed")
 	}
 
 	// If first deployment failed, mark site installation as failed
 	if site != nil && site.InstalledAt == nil {
 		site.MarkAsFailed()
-		if err := j.ctx.SiteRepo.Update(ctx, site); err != nil {
-			j.ctx.LogError(err, "Failed to update site installation_failed_at")
+		if err := j.Ctx.SiteRepo.Update(ctx, site); err != nil {
+			j.Ctx.LogError(err, "Failed to update site installation_failed_at")
 		}
 	}
 
@@ -295,7 +287,7 @@ func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *mod
 	j.updateProviderDeploymentStatus(ctx, site, deployment, gitproviders.DeploymentStatusFailure)
 
 	j.broadcastDeploymentProgress(ctx, deployment.SiteID, deployment.ID, "failed", message)
-	j.ctx.LogError(nil, "Deployment failed", "deployment_id", deployment.ID, "message", message)
+	j.Ctx.LogError(nil, "Deployment failed", "deployment_id", deployment.ID, "message", message)
 
 	// Process next queued deployment if any
 	j.processNextQueuedDeployment(ctx, deployment.SiteID)
@@ -303,7 +295,7 @@ func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *mod
 
 func (j *DeployJob) processNextQueuedDeployment(ctx context.Context, siteID string) {
 	// Find next queued deployment
-	queuedDeployments, err := j.ctx.DeploymentRepo.FindQueuedBySite(ctx, siteID)
+	queuedDeployments, err := j.Ctx.DeploymentRepo.FindQueuedBySite(ctx, siteID)
 	if err != nil || len(queuedDeployments) == 0 {
 		return
 	}
@@ -312,15 +304,15 @@ func (j *DeployJob) processNextQueuedDeployment(ctx context.Context, siteID stri
 	nextDeployment := &queuedDeployments[0]
 	nextDeployment.Status = enums.DeploymentStatusPending
 
-	if err := j.ctx.DeploymentRepo.Update(ctx, nextDeployment); err != nil {
-		j.ctx.LogError(err, "Failed to update queued deployment status")
+	if err := j.Ctx.DeploymentRepo.Update(ctx, nextDeployment); err != nil {
+		j.Ctx.LogError(err, "Failed to update queued deployment status")
 		return
 	}
 
 	// Get site for zero downtime check
-	site, err := j.ctx.SiteRepo.FindByID(ctx, siteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, siteID)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to find site for queued deployment")
+		j.Ctx.LogError(err, "Failed to find site for queued deployment")
 		return
 	}
 
@@ -328,24 +320,20 @@ func (j *DeployJob) processNextQueuedDeployment(ctx context.Context, siteID stri
 	if site.ZeroDowntimeDeployment {
 		task, taskErr := NewDeployZeroDowntimeTask(siteID, nextDeployment.ID, "")
 		if taskErr != nil {
-			j.ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
+			j.Ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
 			return
 		}
-		if j.ctx.Queue != nil {
-			if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-				j.ctx.LogError(err, "Failed to enqueue next deployment")
-			}
+		if err := j.Ctx.DispatchTask(task); err != nil {
+			j.Ctx.LogError(err, "Failed to enqueue next deployment")
 		}
 	} else {
 		task, taskErr := NewDeployTask(siteID, nextDeployment.ID, "")
 		if taskErr != nil {
-			j.ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
+			j.Ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
 			return
 		}
-		if j.ctx.Queue != nil {
-			if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-				j.ctx.LogError(err, "Failed to enqueue next deployment")
-			}
+		if err := j.Ctx.DispatchTask(task); err != nil {
+			j.Ctx.LogError(err, "Failed to enqueue next deployment")
 		}
 	}
 }
@@ -361,17 +349,17 @@ func (j *DeployJob) createProviderDeployment(ctx context.Context, site *models.S
 		return
 	}
 
-	if j.ctx.ProviderFactory == nil {
+	if j.Ctx.ProviderFactory == nil {
 		return
 	}
 
 	scData := j.buildSourceControlData(sourceControl)
-	provider, err := j.ctx.ProviderFactory.GetProviderWithInstallation(
+	provider, err := j.Ctx.ProviderFactory.GetProviderWithInstallation(
 		gitproviders.GitProviderType(sourceControl.Provider),
 		scData,
 	)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to get provider for deployment status")
+		j.Ctx.LogError(err, "Failed to get provider for deployment status")
 		return
 	}
 
@@ -398,15 +386,15 @@ func (j *DeployJob) createProviderDeployment(ctx context.Context, site *models.S
 
 	result, err := provider.CreateDeployment(ctx, info)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to create deployment on provider")
+		j.Ctx.LogError(err, "Failed to create deployment on provider")
 		return
 	}
 
 	if result != nil && result.Data != nil {
 		// Update deployment with VCS data
 		deployment.VcsData = result.Data
-		if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
-			j.ctx.LogError(err, "Failed to update deployment with VCS data")
+		if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
+			j.Ctx.LogError(err, "Failed to update deployment with VCS data")
 		}
 	}
 }
@@ -421,7 +409,7 @@ func (j *DeployJob) updateProviderDeploymentStatus(ctx context.Context, site *mo
 		return
 	}
 
-	if deployment.VcsData == nil || len(deployment.VcsData) == 0 {
+	if len(deployment.VcsData) == 0 {
 		return
 	}
 
@@ -430,17 +418,17 @@ func (j *DeployJob) updateProviderDeploymentStatus(ctx context.Context, site *mo
 		return
 	}
 
-	if j.ctx.ProviderFactory == nil {
+	if j.Ctx.ProviderFactory == nil {
 		return
 	}
 
 	scData := j.buildSourceControlData(sourceControl)
-	provider, err := j.ctx.ProviderFactory.GetProviderWithInstallation(
+	provider, err := j.Ctx.ProviderFactory.GetProviderWithInstallation(
 		gitproviders.GitProviderType(sourceControl.Provider),
 		scData,
 	)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to get provider for deployment status update")
+		j.Ctx.LogError(err, "Failed to get provider for deployment status update")
 		return
 	}
 
@@ -455,49 +443,40 @@ func (j *DeployJob) updateProviderDeploymentStatus(ctx context.Context, site *mo
 	}
 
 	if err := provider.UpdateDeploymentStatus(ctx, info, deployment.VcsData, status); err != nil {
-		j.ctx.LogError(err, "Failed to update deployment status on provider")
+		j.Ctx.LogError(err, "Failed to update deployment status on provider")
 	}
 }
 
 // DeployZeroDowntimeJob handles zero-downtime site deployment
 type DeployZeroDowntimeJob struct {
-	ctx     *JobContext
-	Payload DeployPayload
+	pkgjobs.BaseJob[*JobContext, DeployPayload]
 }
 
 // Handle executes the zero-downtime deploy job
 func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 	// Get deployment with retry (handles race condition where job runs before DB commit is visible)
-	var deployment *models.Deployment
-	var err error
-	for i := 0; i < 3; i++ {
-		deployment, err = j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
-		if err == nil {
-			break
-		}
-		if i < 2 {
-			time.Sleep(500 * time.Millisecond)
-		}
-	}
+	deployment, err := retry.WithBackoff(ctx, retry.DBRetry, func() (*models.Deployment, error) {
+		return j.Ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to find deployment: %w", err)
 	}
 
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Update deployment status to installing
 	deployment.Status = enums.DeploymentStatusInstalling
-	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
+	if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
@@ -517,7 +496,7 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 	// The task's callback methods (OnSuccess, OnFailure, OnExpired) will handle completion
 	// - In production mode: via HTTP webhook callbacks
 	// - In local mode: via SSH streaming with direct callback invocation
-	taskModel, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().RunInBackground(ctx)
+	taskModel, err := j.Ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().RunInBackground(ctx)
 	if err != nil {
 		j.handleDeploymentFailure(ctx, deployment, site, fmt.Sprintf("Failed to start deployment: %v", err))
 		return err
@@ -525,11 +504,11 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 
 	// Update deployment with task ID
 	deployment.TaskID = &taskModel.ID
-	if updateErr := j.ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
-		j.ctx.LogError(updateErr, "Failed to update deployment with task ID")
+	if updateErr := j.Ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
+		j.Ctx.LogError(updateErr, "Failed to update deployment with task ID")
 	}
 
-	j.ctx.LogInfo("Zero-downtime deployment task started in background",
+	j.Ctx.LogInfo("Zero-downtime deployment task started in background",
 		"deployment_id", deployment.ID,
 		"task_id", taskModel.ID,
 	)
@@ -540,15 +519,15 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *DeployZeroDowntimeJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Zero-downtime deploy job failed",
+	j.Ctx.LogError(err, "Zero-downtime deploy job failed",
 		"site_id", j.Payload.SiteID,
 		"deployment_id", j.Payload.DeploymentID,
 	)
 
 	// Update deployment status
-	deployment, findErr := j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+	deployment, findErr := j.Ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
 	if findErr == nil {
-		site, _ := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+		site, _ := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 		j.handleDeploymentFailure(ctx, deployment, site, err.Error())
 	}
 }
@@ -565,7 +544,7 @@ func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment 
 			repositoryURL = repo.SSHURL
 
 			// Try to get app-based auth token
-			if sourceControl != nil && j.ctx.ProviderFactory != nil {
+			if sourceControl != nil && j.Ctx.ProviderFactory != nil {
 				token, url, name := j.getAppAuthToken(context.Background(), sourceControl, repo)
 				if token != "" {
 					hasAppAuth = true
@@ -610,14 +589,14 @@ func (j *DeployZeroDowntimeJob) getRepositoryAndSourceControl(site *models.Site)
 
 	// Query repository from source_control_repositories table
 	var repo gitmodels.SourceControlRepository
-	if err := j.ctx.DB.First(&repo, "id = ?", *site.SourceControlRepositoriesID).Error; err != nil {
+	if err := j.Ctx.DB().First(&repo, "id = ?", *site.SourceControlRepositoriesID).Error; err != nil {
 		return nil, nil
 	}
 
 	// Get source control
 	var sourceControl *gitmodels.SourceControl
-	if j.ctx.SourceControlRepo != nil {
-		sc, err := j.ctx.SourceControlRepo.FindByID(context.Background(), *site.SourceControlID)
+	if j.Ctx.SourceControlRepo != nil {
+		sc, err := j.Ctx.SourceControlRepo.FindByID(context.Background(), *site.SourceControlID)
 		if err == nil {
 			sourceControl = sc
 		}
@@ -635,19 +614,19 @@ func (j *DeployZeroDowntimeJob) getAppAuthToken(ctx context.Context, sc *gitmode
 	scData := j.buildSourceControlData(sc)
 
 	// Get provider with source control context
-	provider, err := j.ctx.ProviderFactory.GetProviderWithInstallation(
+	provider, err := j.Ctx.ProviderFactory.GetProviderWithInstallation(
 		gitproviders.GitProviderType(sc.Provider),
 		scData,
 	)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to get provider for app auth")
+		j.Ctx.LogError(err, "Failed to get provider for app auth")
 		return "", "", ""
 	}
 
 	// Get installation token
 	installToken, err := provider.GetInstallationToken(ctx, *sc.InstallationID)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to get installation token")
+		j.Ctx.LogError(err, "Failed to get installation token")
 		return "", "", ""
 	}
 
@@ -692,17 +671,17 @@ func (j *DeployZeroDowntimeJob) buildSourceControlData(sc *gitmodels.SourceContr
 }
 
 func (j *DeployZeroDowntimeJob) broadcastDeploymentProgress(ctx context.Context, siteID, deploymentID, status, message string) {
-	site, err := j.ctx.SiteRepo.FindByID(ctx, siteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, siteID)
 	if err != nil {
 		return
 	}
 
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return
 	}
 
-	j.ctx.BroadcastServerEvent(server, "deployment.progress", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "deployment.progress", map[string]interface{}{
 		"team_id":       server.TeamID,
 		"site_id":       siteID,
 		"deployment_id": deploymentID,
@@ -714,15 +693,15 @@ func (j *DeployZeroDowntimeJob) broadcastDeploymentProgress(ctx context.Context,
 func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
 	deployment.Status = enums.DeploymentStatusFailed
 
-	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
-		j.ctx.LogError(err, "Failed to update deployment status to failed")
+	if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
+		j.Ctx.LogError(err, "Failed to update deployment status to failed")
 	}
 
 	// If first deployment failed, mark site installation as failed
 	if site != nil && site.InstalledAt == nil {
 		site.MarkAsFailed()
-		if err := j.ctx.SiteRepo.Update(ctx, site); err != nil {
-			j.ctx.LogError(err, "Failed to update site installation_failed_at")
+		if err := j.Ctx.SiteRepo.Update(ctx, site); err != nil {
+			j.Ctx.LogError(err, "Failed to update site installation_failed_at")
 		}
 	}
 
@@ -730,14 +709,14 @@ func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, dep
 	j.updateProviderDeploymentStatus(ctx, site, deployment, gitproviders.DeploymentStatusFailure)
 
 	j.broadcastDeploymentProgress(ctx, deployment.SiteID, deployment.ID, "failed", message)
-	j.ctx.LogError(nil, "Zero-downtime deployment failed", "deployment_id", deployment.ID, "message", message)
+	j.Ctx.LogError(nil, "Zero-downtime deployment failed", "deployment_id", deployment.ID, "message", message)
 
 	// Process next queued deployment if any
 	j.processNextQueuedDeployment(ctx, deployment.SiteID)
 }
 
 func (j *DeployZeroDowntimeJob) processNextQueuedDeployment(ctx context.Context, siteID string) {
-	queuedDeployments, err := j.ctx.DeploymentRepo.FindQueuedBySite(ctx, siteID)
+	queuedDeployments, err := j.Ctx.DeploymentRepo.FindQueuedBySite(ctx, siteID)
 	if err != nil || len(queuedDeployments) == 0 {
 		return
 	}
@@ -745,38 +724,34 @@ func (j *DeployZeroDowntimeJob) processNextQueuedDeployment(ctx context.Context,
 	nextDeployment := &queuedDeployments[0]
 	nextDeployment.Status = enums.DeploymentStatusPending
 
-	if err := j.ctx.DeploymentRepo.Update(ctx, nextDeployment); err != nil {
-		j.ctx.LogError(err, "Failed to update queued deployment status")
+	if err := j.Ctx.DeploymentRepo.Update(ctx, nextDeployment); err != nil {
+		j.Ctx.LogError(err, "Failed to update queued deployment status")
 		return
 	}
 
-	site, err := j.ctx.SiteRepo.FindByID(ctx, siteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, siteID)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to find site for queued deployment")
+		j.Ctx.LogError(err, "Failed to find site for queued deployment")
 		return
 	}
 
 	if site.ZeroDowntimeDeployment {
 		task, taskErr := NewDeployZeroDowntimeTask(siteID, nextDeployment.ID, "")
 		if taskErr != nil {
-			j.ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
+			j.Ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
 			return
 		}
-		if j.ctx.Queue != nil {
-			if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-				j.ctx.LogError(err, "Failed to enqueue next deployment")
-			}
+		if err := j.Ctx.DispatchTask(task); err != nil {
+			j.Ctx.LogError(err, "Failed to enqueue next deployment")
 		}
 	} else {
 		task, taskErr := NewDeployTask(siteID, nextDeployment.ID, "")
 		if taskErr != nil {
-			j.ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
+			j.Ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
 			return
 		}
-		if j.ctx.Queue != nil {
-			if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-				j.ctx.LogError(err, "Failed to enqueue next deployment")
-			}
+		if err := j.Ctx.DispatchTask(task); err != nil {
+			j.Ctx.LogError(err, "Failed to enqueue next deployment")
 		}
 	}
 }
@@ -792,17 +767,17 @@ func (j *DeployZeroDowntimeJob) createProviderDeployment(ctx context.Context, si
 		return
 	}
 
-	if j.ctx.ProviderFactory == nil {
+	if j.Ctx.ProviderFactory == nil {
 		return
 	}
 
 	scData := j.buildSourceControlData(sourceControl)
-	provider, err := j.ctx.ProviderFactory.GetProviderWithInstallation(
+	provider, err := j.Ctx.ProviderFactory.GetProviderWithInstallation(
 		gitproviders.GitProviderType(sourceControl.Provider),
 		scData,
 	)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to get provider for deployment status")
+		j.Ctx.LogError(err, "Failed to get provider for deployment status")
 		return
 	}
 
@@ -828,14 +803,14 @@ func (j *DeployZeroDowntimeJob) createProviderDeployment(ctx context.Context, si
 
 	result, err := provider.CreateDeployment(ctx, info)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to create deployment on provider")
+		j.Ctx.LogError(err, "Failed to create deployment on provider")
 		return
 	}
 
 	if result != nil && result.Data != nil {
 		deployment.VcsData = result.Data
-		if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
-			j.ctx.LogError(err, "Failed to update deployment with VCS data")
+		if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
+			j.Ctx.LogError(err, "Failed to update deployment with VCS data")
 		}
 	}
 }
@@ -850,7 +825,7 @@ func (j *DeployZeroDowntimeJob) updateProviderDeploymentStatus(ctx context.Conte
 		return
 	}
 
-	if deployment.VcsData == nil || len(deployment.VcsData) == 0 {
+	if len(deployment.VcsData) == 0 {
 		return
 	}
 
@@ -859,17 +834,17 @@ func (j *DeployZeroDowntimeJob) updateProviderDeploymentStatus(ctx context.Conte
 		return
 	}
 
-	if j.ctx.ProviderFactory == nil {
+	if j.Ctx.ProviderFactory == nil {
 		return
 	}
 
 	scData := j.buildSourceControlData(sourceControl)
-	provider, err := j.ctx.ProviderFactory.GetProviderWithInstallation(
+	provider, err := j.Ctx.ProviderFactory.GetProviderWithInstallation(
 		gitproviders.GitProviderType(sourceControl.Provider),
 		scData,
 	)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to get provider for deployment status update")
+		j.Ctx.LogError(err, "Failed to get provider for deployment status update")
 		return
 	}
 
@@ -884,7 +859,7 @@ func (j *DeployZeroDowntimeJob) updateProviderDeploymentStatus(ctx context.Conte
 	}
 
 	if err := provider.UpdateDeploymentStatus(ctx, info, deployment.VcsData, status); err != nil {
-		j.ctx.LogError(err, "Failed to update deployment status on provider")
+		j.Ctx.LogError(err, "Failed to update deployment status on provider")
 	}
 }
 
@@ -910,16 +885,14 @@ func getProjectIDFromRepo(repo *gitmodels.SourceControlRepository) string {
 // NewDeployJob creates a new DeployJob with the given context and payload
 func NewDeployJob(ctx *JobContext, payload DeployPayload) *DeployJob {
 	return &DeployJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // NewDeployZeroDowntimeJob creates a new DeployZeroDowntimeJob with the given context and payload
 func NewDeployZeroDowntimeJob(ctx *JobContext, payload DeployPayload) *DeployZeroDowntimeJob {
 	return &DeployZeroDowntimeJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

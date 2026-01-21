@@ -4,6 +4,8 @@ import (
 	"net/url"
 
 	"github.com/gofiber/fiber/v2"
+
+	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // Config holds the configuration for the signed URL middleware
@@ -73,10 +75,7 @@ func New(config ...Config) fiber.Handler {
 			if cfg.ExpiredHandler != nil {
 				return cfg.ExpiredHandler(c, fiber.NewError(fiber.StatusForbidden, "URL has expired"))
 			}
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error":   true,
-				"message": "URL has expired",
-			})
+			return response.Forbidden(c, "URL has expired")
 		}
 
 		// Verify signature
@@ -91,10 +90,7 @@ func New(config ...Config) fiber.Handler {
 			if cfg.ErrorHandler != nil {
 				return cfg.ErrorHandler(c, fiber.NewError(fiber.StatusForbidden, "Invalid signature"))
 			}
-			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{
-				"error":   true,
-				"message": "Invalid signature",
-			})
+			return response.Forbidden(c, "Invalid signature")
 		}
 
 		// Store verification result in context

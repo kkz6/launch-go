@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"testing"
+	"time"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -19,6 +20,13 @@ type testModel struct {
 	Status   string
 	Type     string
 	Address  string
+}
+
+// archivableTestModel is a model with archived_at for testing archive scopes
+type archivableTestModel struct {
+	ID         string `gorm:"primaryKey"`
+	Name       string
+	ArchivedAt *time.Time `gorm:"type:timestamp null"`
 }
 
 func setupTestDB(t *testing.T) *gorm.DB {
@@ -324,5 +332,113 @@ func TestDeleteAll(t *testing.T) {
 	count, _ := Count[testModel](ctx, db)
 	if count != 1 {
 		t.Errorf("expected 1 remaining record, got %d", count)
+	}
+}
+
+func setupArchivableTestDB(t *testing.T) *gorm.DB {
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	if err != nil {
+		t.Fatalf("failed to connect database: %v", err)
+	}
+	if err := db.AutoMigrate(&archivableTestModel{}); err != nil {
+		t.Fatalf("failed to migrate: %v", err)
+	}
+	return db
+}
+
+func seedArchivableTestData(t *testing.T, db *gorm.DB) {
+	now := time.Now()
+	models := []archivableTestModel{
+		{ID: "1", Name: "active1", ArchivedAt: nil},
+		{ID: "2", Name: "active2", ArchivedAt: nil},
+		{ID: "3", Name: "archived1", ArchivedAt: &now},
+		{ID: "4", Name: "archived2", ArchivedAt: &now},
+	}
+	for _, m := range models {
+		if err := db.Create(&m).Error; err != nil {
+			t.Fatalf("failed to seed data: %v", err)
+		}
+	}
+}
+
+func TestWithActive(t *testing.T) {
+	db := setupArchivableTestDB(t)
+	seedArchivableTestData(t, db)
+	ctx := context.Background()
+
+	results, err := FindAll[archivableTestModel](ctx, db, WithActive())
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("expected 2 active results, got %d", len(results))
+	}
+
+	// Verify all results have nil ArchivedAt
+	for _, r := range results {
+		if r.ArchivedAt != nil {
+			t.Errorf("expected ArchivedAt to be nil for active record %s", r.ID)
+		}
+	}
+}
+
+func TestWithArchivedScope(t *testing.T) {
+	db := setupArchivableTestDB(t)
+	seedArchivableTestData(t, db)
+	ctx := context.Background()
+
+	results, err := FindAll[archivableTestModel](ctx, db, WithArchived())
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(results) != 2 {
+		t.Errorf("expected 2 archived results, got %d", len(results))
+	}
+
+	// Verify all results have non-nil ArchivedAt
+	for _, r := range results {
+		if r.ArchivedAt == nil {
+			t.Errorf("expected ArchivedAt to be set for archived record %s", r.ID)
+		}
+	}
+}
+
+func TestWithArchiveFilter(t *testing.T) {
+	db := setupArchivableTestDB(t)
+	seedArchivableTestData(t, db)
+	ctx := context.Background()
+
+	t.Run("archived=true returns only archived", func(t *testing.T) {
+		results, err := FindAll[archivableTestModel](ctx, db, WithArchiveFilter(true))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(results) != 2 {
+			t.Errorf("expected 2 archived results, got %d", len(results))
+		}
+	})
+
+	t.Run("archived=false returns only active", func(t *testing.T) {
+		results, err := FindAll[archivableTestModel](ctx, db, WithArchiveFilter(false))
+		if err != nil {
+			t.Fatalf("expected no error, got %v", err)
+		}
+		if len(results) != 2 {
+			t.Errorf("expected 2 active results, got %d", len(results))
+		}
+	})
+}
+
+func TestIncludingArchived(t *testing.T) {
+	db := setupArchivableTestDB(t)
+	seedArchivableTestData(t, db)
+	ctx := context.Background()
+
+	results, err := FindAll[archivableTestModel](ctx, db, IncludingArchived())
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if len(results) != 4 {
+		t.Errorf("expected 4 total results, got %d", len(results))
 	}
 }

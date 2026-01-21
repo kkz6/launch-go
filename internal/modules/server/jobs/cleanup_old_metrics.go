@@ -7,6 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -20,15 +21,13 @@ type CleanupOldMetricsPayload struct{}
 
 // CleanupOldMetricsJob cleans up metrics older than the retention period
 type CleanupOldMetricsJob struct {
-	ctx     *JobContext
-	Payload CleanupOldMetricsPayload
+	pkgjobs.BaseJob[*JobContext, CleanupOldMetricsPayload]
 }
 
 // NewCleanupOldMetricsJob creates a new CleanupOldMetricsJob
 func NewCleanupOldMetricsJob(ctx *JobContext, payload CleanupOldMetricsPayload) *CleanupOldMetricsJob {
 	return &CleanupOldMetricsJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
@@ -36,17 +35,17 @@ func NewCleanupOldMetricsJob(ctx *JobContext, payload CleanupOldMetricsPayload) 
 func (j *CleanupOldMetricsJob) Handle(ctx context.Context) error {
 	cutoff := time.Now().AddDate(0, 0, -MetricsRetentionDays)
 
-	j.ctx.LogInfo("Starting metrics cleanup",
+	j.Ctx.LogInfo("Starting metrics cleanup",
 		"retention_days", MetricsRetentionDays,
 		"cutoff_time", cutoff.Format(time.RFC3339),
 	)
 
-	deleted, err := j.ctx.Repos.Metric().DeleteOlderThan(ctx, cutoff)
+	deleted, err := j.Ctx.Repos().Metric().DeleteOlderThan(ctx, cutoff)
 	if err != nil {
 		return fmt.Errorf("failed to delete old metrics: %w", err)
 	}
 
-	j.ctx.LogInfo("Metrics cleanup completed",
+	j.Ctx.LogInfo("Metrics cleanup completed",
 		"deleted_count", deleted,
 		"cutoff_time", cutoff.Format(time.RFC3339),
 	)
@@ -56,7 +55,7 @@ func (j *CleanupOldMetricsJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *CleanupOldMetricsJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to cleanup old metrics")
+	j.Ctx.LogError(err, "Failed to cleanup old metrics")
 }
 
 // NewCleanupOldMetricsTask creates an asynq task for cleaning up old metrics
@@ -67,5 +66,5 @@ func NewCleanupOldMetricsTask() (*asynq.Task, error) {
 // CleanupOldMetricsCronSpec returns the cron spec for the cleanup job
 // Runs daily at 2:00 AM
 func CleanupOldMetricsCronSpec() string {
-	return "0 2 * * *"
+	return enums.CronDaily2AM.Expression()
 }

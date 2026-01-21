@@ -5,48 +5,34 @@ import (
 	"fmt"
 
 	"github.com/oklog/ulid/v2"
-	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/script/dto"
 	"github.com/kkz6/launch-go/internal/modules/script/jobs"
 	"github.com/kkz6/launch-go/internal/modules/script/models"
 	"github.com/kkz6/launch-go/internal/modules/script/repositories"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
-	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
-	"github.com/kkz6/launch-go/internal/queue"
 )
 
 // ScriptService handles business logic for scripts
 type ScriptService struct {
-	repos       *repositories.Registry
-	serverRepos *serverrepos.Registry
-	queue       *queue.Client
-	logger      *zerolog.Logger
+	*BaseService
 }
 
 // NewScriptService creates a new script service
-func NewScriptService(
-	repos *repositories.Registry,
-	serverRepos *serverrepos.Registry,
-	queue *queue.Client,
-	logger *zerolog.Logger,
-) *ScriptService {
+func NewScriptService(deps *ServiceDeps) *ScriptService {
 	return &ScriptService{
-		repos:       repos,
-		serverRepos: serverRepos,
-		queue:       queue,
-		logger:      logger,
+		BaseService: NewBaseService(deps),
 	}
 }
 
 // List returns all scripts accessible to the user
 func (s *ScriptService) List(ctx context.Context, userID, teamID string) ([]models.Script, error) {
-	return s.repos.Script().FindByUserOrTeam(ctx, userID, teamID)
+	return s.Repos().Script().FindByUserOrTeam(ctx, userID, teamID)
 }
 
 // Get returns a script by ID if user has access
 func (s *ScriptService) Get(ctx context.Context, scriptID, userID, teamID string) (*models.Script, error) {
-	script, err := s.repos.Script().FindByID(ctx, scriptID)
+	script, err := s.Repos().Script().FindByID(ctx, scriptID)
 	if err != nil {
 		return nil, err
 	}
@@ -69,7 +55,7 @@ func (s *ScriptService) Create(ctx context.Context, userID string, req *dto.Crea
 		Content: req.Content,
 	}
 
-	if err := s.repos.Script().Create(ctx, script); err != nil {
+	if err := s.Repos().Script().Create(ctx, script); err != nil {
 		return nil, err
 	}
 
@@ -106,12 +92,12 @@ func (s *ScriptService) Update(ctx context.Context, scriptID, userID, teamID str
 	}
 
 	if len(updates) > 0 {
-		if err := s.repos.Script().UpdateFields(ctx, scriptID, updates); err != nil {
+		if err := s.Repos().Script().UpdateFields(ctx, scriptID, updates); err != nil {
 			return nil, err
 		}
 	}
 
-	return s.repos.Script().FindByID(ctx, scriptID)
+	return s.Repos().Script().FindByID(ctx, scriptID)
 }
 
 // Delete deletes a script
@@ -126,7 +112,7 @@ func (s *ScriptService) Delete(ctx context.Context, scriptID, userID, teamID str
 		return fmt.Errorf("only the script owner can delete it")
 	}
 
-	return s.repos.Script().Delete(ctx, scriptID)
+	return s.Repos().Script().Delete(ctx, scriptID)
 }
 
 // Execute executes a script on multiple servers
@@ -139,7 +125,7 @@ func (s *ScriptService) Execute(ctx context.Context, scriptID, userID, teamID st
 	// Validate servers exist and user has access, store them for later use
 	servers := make(map[string]*servermodels.Server)
 	for _, serverID := range req.ServerIDs {
-		server, err := s.serverRepos.Server().FindByID(ctx, serverID)
+		server, err := s.ServerRepos().Server().FindByID(ctx, serverID)
 		if err != nil {
 			return nil, fmt.Errorf("server %s not found", serverID)
 		}
@@ -173,21 +159,19 @@ func (s *ScriptService) Execute(ctx context.Context, scriptID, userID, teamID st
 			Server:   servers[serverID],
 		}
 
-		if err := s.repos.Execution().Create(ctx, execution); err != nil {
+		if err := s.Repos().Execution().Create(ctx, execution); err != nil {
 			return nil, fmt.Errorf("failed to create execution record: %w", err)
 		}
 
 		// Dispatch job
 		task, err := jobs.NewExecuteScriptTask(execution.ID, scriptID, serverID, teamID)
 		if err != nil {
-			s.logger.Error().Err(err).Msg("Failed to create execute script task")
+			s.LogError(err, "Failed to create execute script task")
 			continue
 		}
 
-		if s.queue != nil {
-			if _, err := s.queue.Enqueue(task); err != nil {
-				s.logger.Error().Err(err).Msg("Failed to enqueue execute script job")
-			}
+		if err := s.EnqueueTask(task); err != nil {
+			s.LogError(err, "Failed to enqueue execute script job")
 		}
 
 		executions = append(executions, dto.ToExecutionResponse(execution))
@@ -201,7 +185,7 @@ func (s *ScriptService) Execute(ctx context.Context, scriptID, userID, teamID st
 
 // GetExecution returns a single execution
 func (s *ScriptService) GetExecution(ctx context.Context, executionID uint64) (*models.ScriptExecution, error) {
-	return s.repos.Execution().FindByID(ctx, executionID)
+	return s.Repos().Execution().FindByID(ctx, executionID)
 }
 
 // ListExecutions returns all executions for a script
@@ -211,10 +195,10 @@ func (s *ScriptService) ListExecutions(ctx context.Context, scriptID, userID, te
 		return nil, err
 	}
 
-	return s.repos.Execution().FindByScript(ctx, scriptID)
+	return s.Repos().Execution().FindByScript(ctx, scriptID)
 }
 
 // GetBatchExecutions returns all executions in a batch
 func (s *ScriptService) GetBatchExecutions(ctx context.Context, batchID string) ([]models.ScriptExecution, error) {
-	return s.repos.Execution().FindByBatch(ctx, batchID)
+	return s.Repos().Execution().FindByBatch(ctx, batchID)
 }

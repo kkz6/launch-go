@@ -10,7 +10,7 @@ import (
 // InstalledService represents an installed service on a server
 type InstalledService struct {
 	basemodels.BaseModel
-	ServerID  string              `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	basemodels.ServerScopedModel
 	Type      enums.ServiceType   `gorm:"type:varchar(255);not null" json:"type"`
 	TypeData  basemodels.JSONMap  `gorm:"type:json" json:"-"`
 	Name      string              `gorm:"type:varchar(255);not null" json:"name"`
@@ -31,9 +31,7 @@ func (s *InstalledService) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 
-	if s.Status == "" {
-		s.Status = enums.ServiceStatusPending
-	}
+	basemodels.SetDefaultStatus(&s.Status, enums.ServiceStatusPending)
 
 	return nil
 }

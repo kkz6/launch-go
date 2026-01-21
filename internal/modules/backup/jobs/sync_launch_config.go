@@ -33,7 +33,7 @@ func NewSyncServerLaunchConfigJob(ctx *JobContext, payload SyncServerLaunchConfi
 
 // Handle executes the sync launch config job
 func (j *SyncServerLaunchConfigJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos().Server().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -43,7 +43,7 @@ func (j *SyncServerLaunchConfigJob) Handle(ctx context.Context) error {
 	)
 
 	// Get all backups for this server
-	backups, err := j.ctx.Repos.Backup().FindBackupsByServerID(ctx, server.ID)
+	backups, err := j.ctx.Repos().Backup().FindBackupsByServerID(ctx, server.ID)
 	if err != nil {
 		return fmt.Errorf("failed to get backups for server: %w", err)
 	}
@@ -51,7 +51,7 @@ func (j *SyncServerLaunchConfigJob) Handle(ctx context.Context) error {
 	// Count total backup jobs across all backups
 	var totalBackupJobs int
 	for _, backup := range backups {
-		jobs, err := j.ctx.Repos.BackupJob().FindBackupJobsByBackupID(ctx, backup.ID)
+		jobs, err := j.ctx.Repos().BackupJob().FindBackupJobsByBackupID(ctx, backup.ID)
 		if err != nil {
 			j.ctx.LogError(err, "Failed to get backup jobs", "backup_id", backup.ID)
 			continue

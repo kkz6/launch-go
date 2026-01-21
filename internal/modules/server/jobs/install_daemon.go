@@ -8,7 +8,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -22,12 +22,11 @@ type InstallDaemonPayload struct {
 
 // InstallDaemonJob installs a daemon (supervisor program) on a server.
 type InstallDaemonJob struct {
-	ctx     *JobContext
-	Payload InstallDaemonPayload
+	pkgjobs.BaseJob[*JobContext, InstallDaemonPayload]
 }
 
 func (j *InstallDaemonJob) Handle(ctx context.Context) error {
-	daemon, err := j.ctx.Repos.Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
+	daemon, err := j.Ctx.Repos().Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
 	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
@@ -42,7 +41,7 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 		User:         daemon.User,
 	})
 
-	result, err := j.ctx.ForServer(daemon.Server).RunTask(uploadTask).
+	result, err := j.Ctx.ForServer(daemon.Server).RunTask(uploadTask).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -55,36 +54,28 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 	}
 
 	reloadTask := tasks.ReloadSupervisor()
-	_, err = j.ctx.ForServer(daemon.Server).RunTask(reloadTask).
+	_, err = j.Ctx.ForServer(daemon.Server).RunTask(reloadTask).
 		AsRoot().
 		Dispatch(ctx)
 
 	if err != nil {
-		j.ctx.LogError(err, "Failed to reload supervisor, daemon may not start")
+		j.Ctx.LogError(err, "Failed to reload supervisor, daemon may not start")
 	}
 
-	if err := j.ctx.Repos.Daemon().MarkInstalled(ctx, daemon.ID); err != nil {
+	if err := j.Ctx.Repos().Daemon().MarkInstalled(ctx, daemon.ID); err != nil {
 		return fmt.Errorf("failed to mark daemon as installed: %w", err)
 	}
 
 	// Log activity
-	logger := activity.New(j.ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(daemon).
-		WithEvent("installed")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Daemon was installed")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "installed", j.Payload.UserID, daemon, "Daemon was installed")
 
-	j.ctx.LogInfo("Daemon installed successfully",
+	j.Ctx.LogInfo("Daemon installed successfully",
 		"daemon_id", daemon.ID,
 		"server_id", daemon.ServerID,
 		"command", daemon.Command,
 	)
 
-	j.ctx.BroadcastServerEvent(daemon.Server, "daemon.installed", map[string]any{
+	j.Ctx.BroadcastServerEvent(daemon.Server, "daemon.installed", map[string]any{
 		"daemon_id": daemon.ID,
 		"server_id": daemon.ServerID,
 	})
@@ -93,15 +84,15 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 }
 
 func (j *InstallDaemonJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to install daemon",
+	j.Ctx.LogError(err, "Failed to install daemon",
 		"daemon_id", j.Payload.DaemonID,
 		"server_id", j.Payload.ServerID,
 	)
 
-	daemon, findErr := j.ctx.Repos.Daemon().FindByID(ctx, j.Payload.DaemonID)
+	daemon, findErr := j.Ctx.Repos().Daemon().FindByID(ctx, j.Payload.DaemonID)
 	if findErr == nil && daemon != nil {
 		now := time.Now()
-		j.ctx.DB.Model(daemon).Updates(map[string]any{
+		j.Ctx.DB().Model(daemon).Updates(map[string]any{
 			"installed_at":           nil,
 			"installation_failed_at": &now,
 		})
@@ -110,8 +101,7 @@ func (j *InstallDaemonJob) Failed(ctx context.Context, err error) {
 
 func NewInstallDaemonJob(ctx *JobContext, payload InstallDaemonPayload) *InstallDaemonJob {
 	return &InstallDaemonJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

@@ -9,7 +9,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 	"github.com/kkz6/launch-go/internal/pkg/service"
-	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 // Service-specific errors - using centralized error package

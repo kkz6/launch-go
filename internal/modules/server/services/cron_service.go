@@ -7,7 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -38,7 +38,6 @@ func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *
 	}
 
 	cron := &models.Cron{
-		ServerID:   serverID,
 		SiteID:     req.SiteID,
 		User:       user,
 		Expression: req.Expression,
@@ -46,17 +45,13 @@ func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *
 		Frequency:  frequency,
 		Hidden:     false,
 	}
+	cron.ServerID = serverID
 
 	if err := s.repos.Cron().Create(ctx, cron); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		On(cron).
-		WithEvent("created").
-		Log("Cron job was created")
+	activity.LogWithLog(ctx, s.repos.DB(), "server", "created", "", cron, "Cron job was created")
 
 	// Broadcast cron created event
 	s.BroadcastToTeam(server.TeamID, "cron.created", map[string]interface{}{
@@ -104,12 +99,7 @@ func (s *Service) UpdateCron(ctx context.Context, serverID, teamID, cronID strin
 		return nil, err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		On(cron).
-		WithEvent("updated").
-		Log("Cron job was updated")
+	activity.LogWithLog(ctx, s.repos.DB(), "server", "updated", "", cron, "Cron job was updated")
 
 	// Broadcast cron updated event
 	s.BroadcastToTeam(teamID, "cron.updated", map[string]interface{}{
@@ -132,12 +122,7 @@ func (s *Service) DeleteCron(ctx context.Context, serverID, teamID, cronID strin
 		return err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		On(cron).
-		WithEvent("deleted").
-		Log("Cron job deletion requested")
+	activity.LogWithLog(ctx, s.repos.DB(), "server", "deleted", "", cron, "Cron job deletion requested")
 
 	if cron.IsInstalled() && server.IsProvisioned() {
 		now := time.Now()

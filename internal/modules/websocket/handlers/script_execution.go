@@ -15,26 +15,25 @@ import (
 	scriptModels "github.com/kkz6/launch-go/internal/modules/script/models"
 	"github.com/kkz6/launch-go/internal/modules/script/support"
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/cache"
-	ws "github.com/kkz6/launch-go/internal/websocket"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
 
 // ScriptExecutionHandler handles WebSocket connections for script execution streaming
 type ScriptExecutionHandler struct {
-	db              *gorm.DB
-	jwtSecret       string
-	logger          zerolog.Logger
-	membershipCache *cache.TeamMembershipCache
+	Base
 }
 
 // NewScriptExecutionHandler creates a new script execution handler
-func NewScriptExecutionHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *ScriptExecutionHandler {
+func NewScriptExecutionHandler(base Base) *ScriptExecutionHandler {
 	return &ScriptExecutionHandler{
-		db:              db,
-		jwtSecret:       jwtSecret,
-		logger:          logger.With().Str("component", "script-execution").Logger(),
-		membershipCache: membershipCache,
+		Base: base.WithComponent("script-execution"),
 	}
+}
+
+// NewScriptExecutionHandlerWithDeps creates a new script execution handler with individual dependencies (legacy).
+// Deprecated: Use NewScriptExecutionHandler with Base instead.
+func NewScriptExecutionHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *launchcache.TeamMembershipCache) *ScriptExecutionHandler {
+	return NewScriptExecutionHandler(NewBase(db, jwtSecret, logger, membershipCache))
 }
 
 // Handler returns a Fiber handler for script execution WebSocket connections
@@ -53,7 +52,7 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 		}
 
 		// Authenticate
-		claims, err := ws.AuthenticateWebSocket(c, h.jwtSecret, h.membershipCache)
+		claims, err := h.Authenticate(c)
 		if err != nil {
 			h.sendError(c, "Authentication failed")
 			return
@@ -61,14 +60,14 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 
 		// Fetch execution record
 		var execution scriptModels.ScriptExecution
-		if err := h.db.Where("id = ?", executionID).First(&execution).Error; err != nil {
+		if err := h.DB.Where("id = ?", executionID).First(&execution).Error; err != nil {
 			h.sendError(c, "Execution not found")
 			return
 		}
 
 		// Fetch script
 		var script scriptModels.Script
-		if err := h.db.Where("id = ?", execution.ScriptID).First(&script).Error; err != nil {
+		if err := h.DB.Where("id = ?", execution.ScriptID).First(&script).Error; err != nil {
 			h.sendError(c, "Script not found")
 			return
 		}
@@ -81,7 +80,7 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 
 		// Fetch server
 		var server serverModels.Server
-		if err := h.db.Where("id = ? AND team_id = ?", execution.ServerID, claims.TeamID).First(&server).Error; err != nil {
+		if err := h.DB.Where("id = ? AND team_id = ?", execution.ServerID, claims.TeamID).First(&server).Error; err != nil {
 			h.sendError(c, "Server not found")
 			return
 		}
@@ -91,7 +90,7 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 			if execution.Output != nil {
 				c.WriteMessage(websocket.TextMessage, []byte(*execution.Output))
 			}
-			h.sendJSON(c, map[string]interface{}{
+			h.sendJSON(c, map[string]any{
 				"type":      "completed",
 				"status":    string(execution.Status),
 				"exit_code": execution.ExitCode,
@@ -105,7 +104,7 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 			h.executeScript(c, &execution, &script, &server)
 		} else if execution.Status == scriptModels.ExecutionStatusRunning {
 			// Already running elsewhere - just notify and close
-			h.sendJSON(c, map[string]interface{}{
+			h.sendJSON(c, map[string]any{
 				"type":    "error",
 				"message": "Execution is already running",
 			})
@@ -117,12 +116,12 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scriptModels.ScriptExecution, script *scriptModels.Script, server *serverModels.Server) {
 	// Update status to running
 	now := time.Now()
-	h.db.Model(execution).Updates(map[string]interface{}{
+	h.DB.Model(execution).Updates(map[string]any{
 		"status":     scriptModels.ExecutionStatusRunning,
 		"started_at": now,
 	})
 
-	h.sendJSON(c, map[string]interface{}{
+	h.sendJSON(c, map[string]any{
 		"type":   "started",
 		"status": "running",
 	})
@@ -182,11 +181,11 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 	// Build command - wrap script content in bash
 	command := fmt.Sprintf("bash -c %q", interpolatedContent)
 
-	h.logger.Info().
-		Uint64("execution_id", execution.ID).
-		Str("server_id", server.ID).
-		Str("user", runAsUser).
-		Msg("Executing script")
+	h.LogInfo("Executing script",
+		"execution_id", execution.ID,
+		"server_id", server.ID,
+		"user", runAsUser,
+	)
 
 	// Get stdout and stderr pipes
 	stdout, err := session.StdoutPipe()
@@ -274,7 +273,7 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 	// Update execution record
 	finishedAt := time.Now()
 	output := string(outputBuffer)
-	h.db.Model(execution).Updates(map[string]interface{}{
+	h.DB.Model(execution).Updates(map[string]any{
 		"status":      finalStatus,
 		"exit_code":   exitCode,
 		"output":      output,
@@ -282,36 +281,36 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 	})
 
 	// Send completion message
-	h.sendJSON(c, map[string]interface{}{
+	h.sendJSON(c, map[string]any{
 		"type":      "completed",
 		"status":    string(finalStatus),
 		"exit_code": exitCode,
 	})
 
-	h.logger.Info().
-		Uint64("execution_id", execution.ID).
-		Str("status", string(finalStatus)).
-		Int("exit_code", exitCode).
-		Msg("Script execution completed")
+	h.LogInfo("Script execution completed",
+		"execution_id", execution.ID,
+		"status", string(finalStatus),
+		"exit_code", exitCode,
+	)
 
 	c.Close()
 }
 
 func (h *ScriptExecutionHandler) finishWithError(c *websocket.Conn, execution *scriptModels.ScriptExecution, errMsg string) {
-	h.logger.Error().
-		Uint64("execution_id", execution.ID).
-		Str("error", errMsg).
-		Msg("Script execution failed")
+	h.LogError(nil, "Script execution failed",
+		"execution_id", execution.ID,
+		"error", errMsg,
+	)
 
 	// Update execution record
 	finishedAt := time.Now()
-	h.db.Model(execution).Updates(map[string]interface{}{
+	h.DB.Model(execution).Updates(map[string]any{
 		"status":      scriptModels.ExecutionStatusFailed,
 		"output":      errMsg,
 		"finished_at": finishedAt,
 	})
 
-	h.sendJSON(c, map[string]interface{}{
+	h.sendJSON(c, map[string]any{
 		"type":    "error",
 		"message": errMsg,
 		"status":  "failed",
@@ -320,41 +319,16 @@ func (h *ScriptExecutionHandler) finishWithError(c *websocket.Conn, execution *s
 }
 
 func (h *ScriptExecutionHandler) sendError(c *websocket.Conn, msg string) {
-	h.logger.Warn().Msg(msg)
-	h.sendJSON(c, map[string]interface{}{
+	h.LogWarn(msg)
+	_ = h.Base.SendJSON(c, map[string]any{
 		"type":    "error",
 		"message": msg,
 	})
 	c.Close()
 }
 
-func (h *ScriptExecutionHandler) sendJSON(c *websocket.Conn, data map[string]interface{}) {
-	// Simple JSON encoding
-	msg := "{"
-	first := true
-	for k, v := range data {
-		if !first {
-			msg += ","
-		}
-		first = false
-		msg += fmt.Sprintf(`"%s":`, k)
-		switch val := v.(type) {
-		case string:
-			msg += fmt.Sprintf(`"%s"`, val)
-		case int:
-			msg += fmt.Sprintf("%d", val)
-		case *int:
-			if val != nil {
-				msg += fmt.Sprintf("%d", *val)
-			} else {
-				msg += "null"
-			}
-		default:
-			msg += fmt.Sprintf(`"%v"`, val)
-		}
-	}
-	msg += "}"
-	c.WriteMessage(websocket.TextMessage, []byte(msg))
+func (h *ScriptExecutionHandler) sendJSON(c *websocket.Conn, data map[string]any) {
+	_ = h.Base.SendJSON(c, data)
 }
 
 // resolveRunAsUser resolves the run-as type to the actual username from the server

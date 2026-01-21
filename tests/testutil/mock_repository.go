@@ -18,7 +18,7 @@ type MockRepository struct {
 	Crons         map[string]*models.Cron
 	Daemons       map[string]*models.Daemon
 	FirewallRules map[string]*models.FirewallRule
-	SshKeys       map[string]*models.SshKey
+	SSHKeys       map[string]*models.SSHKey
 	Services      map[string]*models.InstalledService
 	Tasks         map[string]*models.Task
 	Metrics       map[uint64]*models.Metric
@@ -36,7 +36,7 @@ func NewMockRepository() *MockRepository {
 		Crons:         make(map[string]*models.Cron),
 		Daemons:       make(map[string]*models.Daemon),
 		FirewallRules: make(map[string]*models.FirewallRule),
-		SshKeys:       make(map[string]*models.SshKey),
+		SSHKeys:       make(map[string]*models.SSHKey),
 		Services:      make(map[string]*models.InstalledService),
 		Tasks:         make(map[string]*models.Task),
 		Metrics:       make(map[uint64]*models.Metric),
@@ -494,88 +494,88 @@ func (m *MockRepository) DeleteFirewallRule(ctx context.Context, id string) erro
 	return nil
 }
 
-// ---- SshKeyRepository ----
+// ---- SSHKeyRepository ----
 
-func (m *MockRepository) CreateSshKey(ctx context.Context, key *models.SshKey) error {
-	if err := m.getError("CreateSshKey"); err != nil {
+func (m *MockRepository) CreateSSHKey(ctx context.Context, key *models.SSHKey) error {
+	if err := m.getError("CreateSSHKey"); err != nil {
 		return err
 	}
-	m.SshKeys[key.ID] = key
+	m.SSHKeys[key.ID] = key
 	return nil
 }
 
-func (m *MockRepository) FindSshKeyByID(ctx context.Context, id string) (*models.SshKey, error) {
-	if err := m.getError("FindSshKeyByID"); err != nil {
+func (m *MockRepository) FindSSHKeyByID(ctx context.Context, id string) (*models.SSHKey, error) {
+	if err := m.getError("FindSSHKeyByID"); err != nil {
 		return nil, err
 	}
-	key, ok := m.SshKeys[id]
+	key, ok := m.SSHKeys[id]
 	if !ok {
 		return nil, gorm.ErrRecordNotFound
 	}
 	return key, nil
 }
 
-func (m *MockRepository) FindSshKeysByTeam(ctx context.Context, teamID string) ([]models.SshKey, error) {
-	if err := m.getError("FindSshKeysByTeam"); err != nil {
+func (m *MockRepository) FindSSHKeysByTeam(ctx context.Context, teamID string) ([]models.SSHKey, error) {
+	if err := m.getError("FindSSHKeysByTeam"); err != nil {
 		return nil, err
 	}
-	var keys []models.SshKey
-	for _, k := range m.SshKeys {
+	var keys []models.SSHKey
+	for _, k := range m.SSHKeys {
 		keys = append(keys, *k)
 	}
 	return keys, nil
 }
 
-func (m *MockRepository) FindSshKeysByServer(ctx context.Context, serverID string) ([]models.SshKey, error) {
-	if err := m.getError("FindSshKeysByServer"); err != nil {
+func (m *MockRepository) FindSSHKeysByServer(ctx context.Context, serverID string) ([]models.SSHKey, error) {
+	if err := m.getError("FindSSHKeysByServer"); err != nil {
 		return nil, err
 	}
-	var keys []models.SshKey
-	for _, k := range m.SshKeys {
+	var keys []models.SSHKey
+	for _, k := range m.SSHKeys {
 		keys = append(keys, *k)
 	}
 	return keys, nil
 }
 
-func (m *MockRepository) FindGlobalSshKeys(ctx context.Context) ([]models.SshKey, error) {
-	if err := m.getError("FindGlobalSshKeys"); err != nil {
+func (m *MockRepository) FindGlobalSSHKeys(ctx context.Context) ([]models.SSHKey, error) {
+	if err := m.getError("FindGlobalSSHKeys"); err != nil {
 		return nil, err
 	}
-	return []models.SshKey{}, nil
+	return []models.SSHKey{}, nil
 }
 
-func (m *MockRepository) UpdateSshKey(ctx context.Context, key *models.SshKey) error {
-	if err := m.getError("UpdateSshKey"); err != nil {
+func (m *MockRepository) UpdateSSHKey(ctx context.Context, key *models.SSHKey) error {
+	if err := m.getError("UpdateSSHKey"); err != nil {
 		return err
 	}
-	m.SshKeys[key.ID] = key
+	m.SSHKeys[key.ID] = key
 	return nil
 }
 
-func (m *MockRepository) DeleteSshKey(ctx context.Context, id string) error {
-	if err := m.getError("DeleteSshKey"); err != nil {
+func (m *MockRepository) DeleteSSHKey(ctx context.Context, id string) error {
+	if err := m.getError("DeleteSSHKey"); err != nil {
 		return err
 	}
-	delete(m.SshKeys, id)
+	delete(m.SSHKeys, id)
 	return nil
 }
 
-func (m *MockRepository) AttachSshKeyToServer(ctx context.Context, serverID, sshKeyID string) error {
-	if err := m.getError("AttachSshKeyToServer"); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (m *MockRepository) DetachSshKeyFromServer(ctx context.Context, serverID, sshKeyID string) error {
-	if err := m.getError("DetachSshKeyFromServer"); err != nil {
+func (m *MockRepository) AttachSSHKeyToServer(ctx context.Context, serverID, sshKeyID string) error {
+	if err := m.getError("AttachSSHKeyToServer"); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (m *MockRepository) IsSshKeyAttachedToServer(ctx context.Context, serverID, sshKeyID string) (bool, error) {
-	if err := m.getError("IsSshKeyAttachedToServer"); err != nil {
+func (m *MockRepository) DetachSSHKeyFromServer(ctx context.Context, serverID, sshKeyID string) error {
+	if err := m.getError("DetachSSHKeyFromServer"); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (m *MockRepository) IsSSHKeyAttachedToServer(ctx context.Context, serverID, sshKeyID string) (bool, error) {
+	if err := m.getError("IsSSHKeyAttachedToServer"); err != nil {
 		return false, err
 	}
 	return false, nil

@@ -2,12 +2,8 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
-	"time"
 )
 
 const (
@@ -16,22 +12,26 @@ const (
 
 // CloudflareProvider implements the Provider interface for Cloudflare
 type CloudflareProvider struct {
-	BaseProvider
-	accountID  string
-	zoneID     string
-	httpClient *http.Client
+	*HTTPBaseProvider
+	accountID string
+	zoneID    string
 }
 
 // NewCloudflareProvider creates a new CloudflareProvider
 func NewCloudflareProvider(credentials map[string]string, accountID string) *CloudflareProvider {
-	p := &CloudflareProvider{
-		accountID: accountID,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+	token := ""
+	if credentials != nil {
+		token = credentials["token"]
 	}
-	p.SetCredentials(credentials)
-	return p
+
+	return &CloudflareProvider{
+		HTTPBaseProvider: NewHTTPBaseProvider(HTTPBaseConfig{
+			BaseURL:      cloudflareAPIBaseURL,
+			ProviderName: "Cloudflare",
+			Token:        token,
+		}),
+		accountID: accountID,
+	}
 }
 
 // Name returns the provider name
@@ -41,40 +41,29 @@ func (p *CloudflareProvider) Name() string {
 
 // SetDomain sets the domain to operate on and clears cached zone ID
 func (p *CloudflareProvider) SetDomain(domain string) Provider {
-	p.BaseProvider.SetDomain(domain)
+	p.HTTPBaseProvider.SetDomain(domain)
 	p.zoneID = "" // Clear cached zone ID when domain changes
 	return p
 }
 
 // GetDomain returns the current domain
 func (p *CloudflareProvider) GetDomain() string {
-	return p.BaseProvider.GetDomain()
+	return p.HTTPBaseProvider.GetDomain()
 }
 
 // SetCredentials sets the provider credentials
 func (p *CloudflareProvider) SetCredentials(credentials map[string]string) Provider {
-	p.BaseProvider.SetCredentials(credentials)
+	p.HTTPBaseProvider.SetCredentials(credentials)
+	if token := credentials["token"]; token != "" {
+		p.SetToken(token)
+	}
 	return p
 }
 
 // ValidateCredentials validates the Cloudflare API token
 func (p *CloudflareProvider) ValidateCredentials(ctx context.Context) error {
-	req, err := p.newRequest(ctx, http.MethodGet, "/user/tokens/verify", nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return NewProviderError("Cloudflare", 0, "failed to validate credentials", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return p.parseErrorResponse(resp)
-	}
-
-	return nil
+	var result cloudflareResponse
+	return p.Get(ctx, "/user/tokens/verify", &result)
 }
 
 // AddDomain adds a new domain (zone) to Cloudflare
@@ -95,32 +84,12 @@ func (p *CloudflareProvider) AddDomain(ctx context.Context, domainName string) (
 		},
 	}
 
-	body, err := json.Marshal(payload)
-	if err != nil {
-		return "", err
-	}
-
-	req, err := p.newRequest(ctx, http.MethodPost, "/zones", strings.NewReader(string(body)))
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return "", NewProviderError("Cloudflare", 0, "failed to add domain", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusForbidden {
-		return "", NewProviderError("Cloudflare", 403, "API key does not have permission to create a zone. Please ensure the API key has the 'Zone:Zone:Edit' permission.", nil)
-	}
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return "", p.parseErrorResponse(resp)
-	}
-
 	var result cloudflareResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := p.Post(ctx, "/zones", payload, &result); err != nil {
+		// Check for forbidden error
+		if providerErr, ok := err.(*ProviderError); ok && providerErr.Code == 403 {
+			return "", NewProviderError("Cloudflare", 403, "API key does not have permission to create a zone. Please ensure the API key has the 'Zone:Zone:Edit' permission.", nil)
+		}
 		return "", err
 	}
 
@@ -147,43 +116,14 @@ func (p *CloudflareProvider) DeleteDomain(ctx context.Context, domainName string
 	}
 
 	zoneID := zone["id"].(string)
-	req, err := p.newRequest(ctx, http.MethodDelete, fmt.Sprintf("/zones/%s", zoneID), nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return NewProviderError("Cloudflare", 0, "failed to delete domain", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return p.parseErrorResponse(resp)
-	}
-
-	return nil
+	var result interface{}
+	return p.Delete(ctx, fmt.Sprintf("/zones/%s", zoneID), &result)
 }
 
 // ListDomains lists all domains (zones) in Cloudflare
 func (p *CloudflareProvider) ListDomains(ctx context.Context) (map[string]string, error) {
-	req, err := p.newRequest(ctx, http.MethodGet, "/zones?per_page=200", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return nil, NewProviderError("Cloudflare", 0, "failed to list domains", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, p.parseErrorResponse(resp)
-	}
-
 	var result cloudflareResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := p.GetWithQuery(ctx, "/zones", map[string]string{"per_page": "200"}, &result); err != nil {
 		return nil, err
 	}
 
@@ -209,7 +149,7 @@ func (p *CloudflareProvider) GetNameservers(ctx context.Context) ([]string, erro
 	}
 
 	if zone == nil {
-		return nil, NewProviderError("Cloudflare", 404, fmt.Sprintf("zone not found for %s", p.domain), nil)
+		return nil, NewProviderError("Cloudflare", 404, fmt.Sprintf("zone not found for %s", p.GetDomain()), nil)
 	}
 
 	if ns, ok := zone["name_servers"].([]interface{}); ok {
@@ -230,23 +170,9 @@ func (p *CloudflareProvider) ListRecords(ctx context.Context) ([]ProviderRecord,
 		return nil, err
 	}
 
-	req, err := p.newRequest(ctx, http.MethodGet, fmt.Sprintf("/zones/%s/dns_records?per_page=1000", zoneID), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return nil, NewProviderError("Cloudflare", 0, "failed to list records", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, p.parseErrorResponse(resp)
-	}
-
+	path := fmt.Sprintf("/zones/%s/dns_records", zoneID)
 	var result cloudflareResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := p.GetWithQuery(ctx, path, map[string]string{"per_page": "1000"}, &result); err != nil {
 		return nil, err
 	}
 
@@ -271,8 +197,8 @@ func (p *CloudflareProvider) ListRecords(ctx context.Context) ([]ProviderRecord,
 			}
 
 			if priority, ok := record["priority"].(float64); ok {
-				p := int(priority)
-				pr.Priority = &p
+				pri := int(priority)
+				pr.Priority = &pri
 			}
 
 			if comment, ok := record["comment"].(string); ok && comment != "" {
@@ -294,10 +220,10 @@ func (p *CloudflareProvider) ListRecords(ctx context.Context) ([]ProviderRecord,
 			records = append(records, ProviderRecord{
 				ID:      fmt.Sprintf("ns-%d", i),
 				Type:    RecordTypeNS,
-				Name:    p.domain,
+				Name:    p.GetDomain(),
 				Value:   ns,
 				TTL:     86400,
-				Proxied: boolPtr(false),
+				Proxied: BoolPtr(false),
 			})
 		}
 	}
@@ -306,64 +232,17 @@ func (p *CloudflareProvider) ListRecords(ctx context.Context) ([]ProviderRecord,
 }
 
 // AddRecord adds a DNS record to Cloudflare
-func (p *CloudflareProvider) AddRecord(ctx context.Context, record *DnsRecord) (string, error) {
+func (p *CloudflareProvider) AddRecord(ctx context.Context, record *DNSRecord) (string, error) {
 	zoneID, err := p.getZoneID(ctx)
 	if err != nil {
 		return "", err
 	}
 
-	data := map[string]interface{}{
-		"type":    record.Type.String(),
-		"name":    record.Name,
-		"content": record.Value,
-	}
-
-	// Handle TTL for proxied records
-	if record.Type.SupportsProxy() && record.Proxied != nil && *record.Proxied {
-		data["ttl"] = 1 // Auto TTL for proxied records
-	} else {
-		if record.TTL > 0 {
-			data["ttl"] = record.TTL
-		} else {
-			data["ttl"] = 3600
-		}
-	}
-
-	// Add proxied flag for supported record types
-	if record.Type.SupportsProxy() && record.Proxied != nil {
-		data["proxied"] = *record.Proxied
-	}
-
-	if record.Priority != nil {
-		data["priority"] = *record.Priority
-	}
-
-	if record.Comment != nil && *record.Comment != "" {
-		data["comment"] = *record.Comment
-	}
-
-	body, err := json.Marshal(data)
-	if err != nil {
-		return "", err
-	}
-
-	req, err := p.newRequest(ctx, http.MethodPost, fmt.Sprintf("/zones/%s/dns_records", zoneID), strings.NewReader(string(body)))
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return "", NewProviderError("Cloudflare", 0, "failed to add record", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return "", p.parseErrorResponse(resp)
-	}
+	data := p.buildRecordData(record)
+	path := fmt.Sprintf("/zones/%s/dns_records", zoneID)
 
 	var result cloudflareResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := p.Post(ctx, path, data, &result); err != nil {
 		return "", err
 	}
 
@@ -377,88 +256,29 @@ func (p *CloudflareProvider) AddRecord(ctx context.Context, record *DnsRecord) (
 }
 
 // UpdateRecord updates a DNS record in Cloudflare
-func (p *CloudflareProvider) UpdateRecord(ctx context.Context, record *DnsRecord) error {
+func (p *CloudflareProvider) UpdateRecord(ctx context.Context, record *DNSRecord) error {
 	zoneID, err := p.getZoneID(ctx)
 	if err != nil {
 		return err
 	}
 
-	data := map[string]interface{}{
-		"type":    record.Type.String(),
-		"name":    record.Name,
-		"content": record.Value,
-	}
+	data := p.buildRecordData(record)
+	path := fmt.Sprintf("/zones/%s/dns_records/%s", zoneID, record.ProviderID)
 
-	// Handle TTL for proxied records
-	if record.Type.SupportsProxy() && record.Proxied != nil && *record.Proxied {
-		data["ttl"] = 1 // Auto TTL for proxied records
-	} else {
-		if record.TTL > 0 {
-			data["ttl"] = record.TTL
-		} else {
-			data["ttl"] = 3600
-		}
-	}
-
-	// Add proxied flag for supported record types
-	if record.Type.SupportsProxy() && record.Proxied != nil {
-		data["proxied"] = *record.Proxied
-	}
-
-	if record.Priority != nil {
-		data["priority"] = *record.Priority
-	}
-
-	if record.Comment != nil && *record.Comment != "" {
-		data["comment"] = *record.Comment
-	}
-
-	body, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-
-	req, err := p.newRequest(ctx, http.MethodPut, fmt.Sprintf("/zones/%s/dns_records/%s", zoneID, record.ProviderID), strings.NewReader(string(body)))
-	if err != nil {
-		return err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return NewProviderError("Cloudflare", 0, "failed to update record", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return p.parseErrorResponse(resp)
-	}
-
-	return nil
+	var result interface{}
+	return p.Put(ctx, path, data, &result)
 }
 
 // DeleteRecord deletes a DNS record from Cloudflare
-func (p *CloudflareProvider) DeleteRecord(ctx context.Context, record *DnsRecord) error {
+func (p *CloudflareProvider) DeleteRecord(ctx context.Context, record *DNSRecord) error {
 	zoneID, err := p.getZoneID(ctx)
 	if err != nil {
 		return err
 	}
 
-	req, err := p.newRequest(ctx, http.MethodDelete, fmt.Sprintf("/zones/%s/dns_records/%s", zoneID, record.ProviderID), nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return NewProviderError("Cloudflare", 0, "failed to delete record", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return p.parseErrorResponse(resp)
-	}
-
-	return nil
+	path := fmt.Sprintf("/zones/%s/dns_records/%s", zoneID, record.ProviderID)
+	var result interface{}
+	return p.Delete(ctx, path, &result)
 }
 
 // getZoneID returns the zone ID for the current domain
@@ -473,7 +293,7 @@ func (p *CloudflareProvider) getZoneID(ctx context.Context) (string, error) {
 	}
 
 	if zone == nil {
-		return "", NewProviderError("Cloudflare", 404, fmt.Sprintf("zone not found for %s", p.domain), nil)
+		return "", NewProviderError("Cloudflare", 404, fmt.Sprintf("zone not found for %s", p.GetDomain()), nil)
 	}
 
 	p.zoneID = zone["id"].(string)
@@ -482,23 +302,8 @@ func (p *CloudflareProvider) getZoneID(ctx context.Context) (string, error) {
 
 // getZoneByDomain finds a zone by domain name
 func (p *CloudflareProvider) getZoneByDomain(ctx context.Context) (map[string]interface{}, error) {
-	req, err := p.newRequest(ctx, http.MethodGet, fmt.Sprintf("/zones?name=%s", p.domain), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return nil, NewProviderError("Cloudflare", 0, "failed to get zone", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, p.parseErrorResponse(resp)
-	}
-
 	var result cloudflareResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := p.GetWithQuery(ctx, "/zones", map[string]string{"name": p.GetDomain()}, &result); err != nil {
 		return nil, err
 	}
 
@@ -509,34 +314,39 @@ func (p *CloudflareProvider) getZoneByDomain(ctx context.Context) (map[string]in
 	return nil, nil
 }
 
-// newRequest creates a new HTTP request with Cloudflare authentication
-func (p *CloudflareProvider) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
-	url := cloudflareAPIBaseURL + path
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
-	if err != nil {
-		return nil, err
+// buildRecordData builds the request data for Cloudflare DNS records
+func (p *CloudflareProvider) buildRecordData(record *DNSRecord) map[string]interface{} {
+	data := map[string]interface{}{
+		"type":    record.Type.String(),
+		"name":    record.Name,
+		"content": record.Value,
 	}
 
-	req.Header.Set("Authorization", "Bearer "+p.GetToken())
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	return req, nil
-}
-
-// parseErrorResponse parses an error response from Cloudflare
-func (p *CloudflareProvider) parseErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return NewProviderError("Cloudflare", resp.StatusCode, "failed to read error response", err)
+	// Handle TTL for proxied records
+	if record.Type.SupportsProxy() && record.Proxied != nil && *record.Proxied {
+		data["ttl"] = 1 // Auto TTL for proxied records
+	} else {
+		if record.TTL > 0 {
+			data["ttl"] = record.TTL
+		} else {
+			data["ttl"] = 3600
+		}
 	}
 
-	var result cloudflareResponse
-	if err := json.Unmarshal(body, &result); err == nil && len(result.Errors) > 0 {
-		return NewProviderError("Cloudflare", resp.StatusCode, result.Errors[0].Message, nil)
+	// Add proxied flag for supported record types
+	if record.Type.SupportsProxy() && record.Proxied != nil {
+		data["proxied"] = *record.Proxied
 	}
 
-	return NewProviderError("Cloudflare", resp.StatusCode, string(body), nil)
+	if record.Priority != nil {
+		data["priority"] = *record.Priority
+	}
+
+	if record.Comment != nil && *record.Comment != "" {
+		data["comment"] = *record.Comment
+	}
+
+	return data
 }
 
 // cloudflareResponse represents a response from the Cloudflare API
@@ -550,9 +360,4 @@ type cloudflareResponse struct {
 type cloudflareError struct {
 	Code    int    `json:"code"`
 	Message string `json:"message"`
-}
-
-// Helper function to create a pointer to a bool
-func boolPtr(b bool) *bool {
-	return &b
 }

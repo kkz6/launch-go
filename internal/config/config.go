@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 
+	"github.com/kkz6/launch-go/internal/pkg/config"
 	"github.com/spf13/viper"
 )
 
@@ -34,34 +35,17 @@ func Load() (*Config, error) {
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	// Set defaults from all config files
-	setDefaults()
-
-	// Load all configurations
+	// Load all configurations using declarative struct tags
 	return &Config{
-		App:      loadAppConfig(),
-		Database: loadDatabaseConfig(),
-		Redis:    loadRedisConfig(),
-		JWT:      loadJWTConfig(),
-		Cors:     loadCorsConfig(),
-		Queue:    loadQueueConfig(),
-		Billing:  loadBillingConfig(),
-		Git:      loadGitConfig(),
-		Slack:    loadSlackConfig(),
-		Sentry:   loadSentryConfig(),
+		App:      config.Load[AppConfig](),
+		Database: config.Load[DatabaseConfig](),
+		Redis:    config.Load[RedisConfig](),
+		JWT:      config.Load[JWTConfig](),
+		Cors:     config.Load[CorsConfig](),
+		Queue:    config.Load[QueueConfig](),
+		Billing:  config.Load[BillingConfig](),
+		Git:      config.Load[GitConfig](),
+		Slack:    config.Load[SlackConfig](),
+		Sentry:   config.Load[SentryConfig](),
 	}, nil
-}
-
-// setDefaults sets all default values
-func setDefaults() {
-	setAppDefaults()
-	setDatabaseDefaults()
-	setRedisDefaults()
-	setJWTDefaults()
-	setCorsDefaults()
-	setQueueDefaults()
-	setBillingDefaults()
-	setGitDefaults()
-	setSlackDefaults()
-	setSentryDefaults()
 }

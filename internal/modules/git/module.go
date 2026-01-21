@@ -10,7 +10,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git/repositories"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 const ModuleName = "git"
@@ -24,7 +24,7 @@ var (
 
 // Module represents the git module
 type Module struct {
-	module.Base
+	app.Base
 
 	// Repository registry
 	repos *repositories.Registry
@@ -34,11 +34,11 @@ type Module struct {
 }
 
 // NewModule creates a new git module
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 
 	return &Module{
-		Base:            module.NewBase(ModuleName, b),
+		Base:            app.NewBase(ModuleName, b),
 		repos:           repositories.NewRegistry(deps.DB),
 		providerFactory: createProviderFactory(deps.Config.Git),
 	}
@@ -48,12 +48,12 @@ func NewModule(b *module.Builder) *Module {
 func (m *Module) createServices() *services.ServiceRegistry {
 	deps := m.Deps()
 
-	// Create shared service dependencies
+	// Create shared service dependencies using standardized ModuleDeps
 	svcDeps := &services.ServiceDeps{
-		DB:              deps.DB,
-		Logger:          deps.Logger,
-		Queue:           deps.Queue,
-		Repos:           m.repos,
+		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
+			Dependencies: deps.ServiceDeps(),
+			Repos:        m.repos,
+		},
 		ProviderFactory: m.providerFactory,
 	}
 

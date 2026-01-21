@@ -9,11 +9,11 @@ import (
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
-// SshKey represents an SSH public key
-type SshKey struct {
+// SSHKey represents an SSH public key
+type SSHKey struct {
 	basemodels.BaseModel
-	UserID      string  `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	TeamID      string  `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
+	basemodels.UserScopedModel
+	basemodels.TeamScopedModel
 	IsGlobal    bool    `gorm:"column:is_global;type:tinyint(1);not null;default:0" json:"is_global"`
 	Description *string `gorm:"type:varchar(255)" json:"description,omitempty"`
 	PublicKey   string  `gorm:"type:longtext;not null" json:"-"`
@@ -24,11 +24,11 @@ type SshKey struct {
 	Servers []Server `gorm:"many2many:server_ssh_keys" json:"servers,omitempty"`
 }
 
-func (SshKey) TableName() string {
+func (SSHKey) TableName() string {
 	return "ssh_keys"
 }
 
-func (k *SshKey) GetFingerprint() string {
+func (k *SSHKey) GetFingerprint() string {
 	if k.Fingerprint != nil && *k.Fingerprint != "" {
 		return *k.Fingerprint
 	}
@@ -36,14 +36,14 @@ func (k *SshKey) GetFingerprint() string {
 	return GenerateSSHFingerprint(k.PublicKey, FingerprintAlgorithmMD5)
 }
 
-// ServerSshKey represents the many-to-many relationship between servers and SSH keys
-type ServerSshKey struct {
+// ServerSSHKey represents the many-to-many relationship between servers and SSH keys
+type ServerSSHKey struct {
 	basemodels.BaseModel
 	ServerID string `gorm:"column:server_id;type:char(26);primaryKey" json:"server_id"`
-	SshKeyID string `gorm:"column:ssh_key_id;type:char(26);primaryKey" json:"ssh_key_id"`
+	SSHKeyID string `gorm:"column:ssh_key_id;type:char(26);primaryKey" json:"ssh_key_id"`
 }
 
-func (ServerSshKey) TableName() string {
+func (ServerSSHKey) TableName() string {
 	return "server_ssh_keys"
 }
 

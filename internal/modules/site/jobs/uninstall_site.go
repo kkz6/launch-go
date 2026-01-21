@@ -21,33 +21,31 @@ type UninstallSitePayload struct {
 
 // UninstallSiteJob handles complete site uninstallation
 type UninstallSiteJob struct {
-	ctx     *JobContext
-	Payload UninstallSitePayload
+	pkgjobs.BaseJob[*JobContext, UninstallSitePayload]
 }
 
 // NewUninstallSiteJob creates a new UninstallSiteJob with the given context and payload
 func NewUninstallSiteJob(ctx *JobContext, payload UninstallSitePayload) *UninstallSiteJob {
 	return &UninstallSiteJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the uninstall site job
 func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Starting site uninstallation",
+	j.Ctx.LogInfo("Starting site uninstallation",
 		"site_id", site.ID,
 		"server_id", server.ID,
 		"address", site.Address,
@@ -57,27 +55,27 @@ func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 	siteFactory := tasks.NewFactory(site)
 
 	// Step 1: Uninstall all queue workers for this site
-	queues, err := j.ctx.QueueRepo.FindBySite(ctx, site.ID)
+	queues, err := j.Ctx.QueueRepo.FindBySite(ctx, site.ID)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to get site queues")
+		j.Ctx.LogError(err, "Failed to get site queues")
 	} else {
 		for _, q := range queues {
 			// Delete queue config and stop process
 			deleteTask := siteFactory.DeleteQueueConfig(q.GetPath(), q.ID)
-			if _, err := j.ctx.RunTaskOnServer(server, deleteTask).AsRoot().Dispatch(ctx); err != nil {
-				j.ctx.LogError(err, "Failed to uninstall queue", "queue_id", q.ID)
+			if _, err := j.Ctx.RunTaskOnServer(server, deleteTask).AsRoot().Dispatch(ctx); err != nil {
+				j.Ctx.LogError(err, "Failed to uninstall queue", "queue_id", q.ID)
 			}
 			// Delete queue record
-			if err := j.ctx.QueueRepo.Delete(ctx, q.ID); err != nil {
-				j.ctx.LogError(err, "Failed to delete queue record", "queue_id", q.ID)
+			if err := j.Ctx.QueueRepo.Delete(ctx, q.ID); err != nil {
+				j.Ctx.LogError(err, "Failed to delete queue record", "queue_id", q.ID)
 			}
 		}
 	}
 
 	// Step 2: Update Caddyfile to remove site imports
-	allSites, err := j.ctx.SiteRepo.FindByServer(ctx, server.ID)
+	allSites, err := j.Ctx.SiteRepo.FindByServer(ctx, server.ID)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to get server sites for Caddyfile update")
+		j.Ctx.LogError(err, "Failed to get server sites for Caddyfile update")
 	} else {
 		// Build imports list excluding the site being deleted
 		imports := make([]tasks.SiteImport, 0, len(allSites))
@@ -93,52 +91,52 @@ func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 		updateTask := tasks.UpdateCaddySiteImports(tasks.UpdateCaddySiteImportsConfig{
 			Sites: imports,
 		})
-		if _, err := j.ctx.RunTaskOnServer(server, updateTask).AsRoot().Dispatch(ctx); err != nil {
-			j.ctx.LogError(err, "Failed to update Caddyfile site imports")
+		if _, err := j.Ctx.RunTaskOnServer(server, updateTask).AsRoot().Dispatch(ctx); err != nil {
+			j.Ctx.LogError(err, "Failed to update Caddyfile site imports")
 		}
 	}
 
 	// Step 3: Delete site files from server using factory
 	deleteFilesTask := siteFactory.DeleteFiles()
 
-	result, err := j.ctx.RunTaskOnServer(server, deleteFilesTask).AsRoot().Dispatch(ctx)
+	result, err := j.Ctx.RunTaskOnServer(server, deleteFilesTask).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to delete site files")
+		j.Ctx.LogError(err, "Failed to delete site files")
 	} else if result.GetExitCode() != 0 {
-		j.ctx.LogError(nil, "Site files deletion failed", "exit_code", result.GetExitCode())
+		j.Ctx.LogError(nil, "Site files deletion failed", "exit_code", result.GetExitCode())
 	}
 
 	// Step 4: Delete related database records using repositories
-	if err := j.ctx.DeploymentRepo.DeleteBySite(ctx, site.ID); err != nil {
-		j.ctx.LogError(err, "Failed to delete deployments")
+	if err := j.Ctx.DeploymentRepo.DeleteBySite(ctx, site.ID); err != nil {
+		j.Ctx.LogError(err, "Failed to delete deployments")
 	}
 
-	if err := j.ctx.CertificateRepo.DeleteBySite(ctx, site.ID); err != nil {
-		j.ctx.LogError(err, "Failed to delete certificates")
+	if err := j.Ctx.CertificateRepo.DeleteBySite(ctx, site.ID); err != nil {
+		j.Ctx.LogError(err, "Failed to delete certificates")
 	}
 
-	if err := j.ctx.CommandRepo.DeleteBySite(ctx, site.ID); err != nil {
-		j.ctx.LogError(err, "Failed to delete commands")
+	if err := j.Ctx.CommandRepo.DeleteBySite(ctx, site.ID); err != nil {
+		j.Ctx.LogError(err, "Failed to delete commands")
 	}
 
-	if err := j.ctx.RedirectRepo.DeleteBySite(ctx, site.ID); err != nil {
-		j.ctx.LogError(err, "Failed to delete redirects")
+	if err := j.Ctx.RedirectRepo.DeleteBySite(ctx, site.ID); err != nil {
+		j.Ctx.LogError(err, "Failed to delete redirects")
 	}
 
 	// Step 5: Delete site record
-	if err := j.ctx.SiteRepo.Delete(ctx, site.ID); err != nil {
+	if err := j.Ctx.SiteRepo.Delete(ctx, site.ID); err != nil {
 		return fmt.Errorf("failed to delete site: %w", err)
 	}
 
 	// Step 6: Broadcast event
-	j.ctx.BroadcastServerEvent(server, "site.deleted", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "site.deleted", map[string]interface{}{
 		"team_id":   server.TeamID,
 		"site_id":   site.ID,
 		"server_id": server.ID,
 		"address":   site.Address,
 	})
 
-	j.ctx.LogInfo("Site uninstalled successfully",
+	j.Ctx.LogInfo("Site uninstalled successfully",
 		"site_id", site.ID,
 		"address", site.Address,
 	)
@@ -148,21 +146,21 @@ func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure and marks the site uninstallation as failed
 func (j *UninstallSiteJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Uninstall site job failed",
+	j.Ctx.LogError(err, "Uninstall site job failed",
 		"site_id", j.Payload.SiteID,
 		"server_id", j.Payload.ServerID,
 	)
 
 	// Mark uninstallation as failed
-	site, findErr := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, findErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if findErr != nil {
-		j.ctx.LogError(findErr, "Failed to find site for marking uninstallation failed")
+		j.Ctx.LogError(findErr, "Failed to find site for marking uninstallation failed")
 		return
 	}
 
 	site.MarkUninstallationFailed()
-	if updateErr := j.ctx.SiteRepo.Update(ctx, site); updateErr != nil {
-		j.ctx.LogError(updateErr, "Failed to mark site uninstallation as failed")
+	if updateErr := j.Ctx.SiteRepo.Update(ctx, site); updateErr != nil {
+		j.Ctx.LogError(updateErr, "Failed to mark site uninstallation as failed")
 	}
 }
 

@@ -1,10 +1,10 @@
 package services
 
 import (
-	"golang.org/x/crypto/bcrypt"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // verifyPassword verifies a password against a hash
-func verifyPassword(hashedPassword, password string) error {
-	return bcrypt.CompareHashAndPassword([]byte(hashedPassword), []byte(password))
+func verifyPassword(hashedPassword, password string) bool {
+	return security.VerifyPassword(hashedPassword, password)
 }

@@ -8,7 +8,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -27,17 +27,16 @@ type CleanupFailedProvisioningPayload struct {
 // This job is triggered when WaitForServerToConnect or ProvisionServer fails.
 // It removes the server from the cloud provider and optionally deletes the database record.
 type CleanupFailedProvisioningJob struct {
-	ctx     *JobContext
-	Payload CleanupFailedProvisioningPayload
+	pkgjobs.BaseJob[*JobContext, CleanupFailedProvisioningPayload]
 }
 
 func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Starting cleanup of failed provisioning",
+	j.Ctx.LogInfo("Starting cleanup of failed provisioning",
 		"server_id", server.ID,
 		"server_name", server.Name,
 		"reason", j.Payload.Reason,
@@ -45,8 +44,8 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 
 	// Update server status to failed if not already
 	if server.Status != enums.ServerStatusFailed {
-		if err := j.ctx.Repos.Server().UpdateStatus(ctx, server.ID, enums.ServerStatusFailed); err != nil {
-			j.ctx.LogError(err, "Failed to update server status to failed")
+		if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, enums.ServerStatusFailed); err != nil {
+			j.Ctx.LogError(err, "Failed to update server status to failed")
 		}
 	}
 
@@ -61,7 +60,7 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 	// Clean up resources on cloud provider
 	if server.Provider != enums.ProviderCustom && providerServerID != "" {
 		if err := j.cleanupProviderResources(ctx, server, providerServerID); err != nil {
-			j.ctx.LogError(err, "Failed to cleanup provider resources",
+			j.Ctx.LogError(err, "Failed to cleanup provider resources",
 				"server_id", server.ID,
 				"provider", server.Provider.String(),
 			)
@@ -73,7 +72,7 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 	if server.ProviderData != nil {
 		if sshKeyID, ok := server.ProviderData["ssh_key_id"].(string); ok && sshKeyID != "" {
 			if err := j.cleanupProviderSSHKey(ctx, server, sshKeyID); err != nil {
-				j.ctx.LogError(err, "Failed to cleanup provider SSH key",
+				j.Ctx.LogError(err, "Failed to cleanup provider SSH key",
 					"server_id", server.ID,
 					"ssh_key_id", sshKeyID,
 				)
@@ -82,19 +81,12 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	logger := activity.New(j.ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(server).
-		WithEvent("provisioning_failed").
-		WithProperty("reason", j.Payload.Reason)
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Server provisioning failed and resources were cleaned up")
+	activity.LogWithLogAndPropsPtr(ctx, j.Ctx.DB(), "server", "provisioning_failed", j.Payload.UserID, server, "Server provisioning failed and resources were cleaned up", map[string]any{
+		"reason": j.Payload.Reason,
+	})
 
 	// Broadcast failure event
-	j.ctx.BroadcastServerEvent(server, "server.provisioning_cleanup_complete", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "server.provisioning_cleanup_complete", map[string]any{
 		"server_id": server.ID,
 		"reason":    j.Payload.Reason,
 		"deleted":   j.Payload.DeleteRecord,
@@ -102,27 +94,27 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 
 	// Optionally delete the server record
 	if j.Payload.DeleteRecord {
-		if err := j.ctx.Repos.Server().Delete(ctx, server.ID); err != nil {
+		if err := j.Ctx.Repos().Server().Delete(ctx, server.ID); err != nil {
 			return fmt.Errorf("failed to delete server record: %w", err)
 		}
 
-		j.ctx.LogInfo("Server record deleted after failed provisioning",
+		j.Ctx.LogInfo("Server record deleted after failed provisioning",
 			"server_id", server.ID,
 		)
 
-		j.ctx.BroadcastServerEvent(server, "server.deleted", map[string]any{
+		j.Ctx.BroadcastServerEvent(server, "server.deleted", map[string]any{
 			"server_id": server.ID,
 			"reason":    "provisioning_failed",
 		})
 	} else {
 		// Update server with failure information
-		if err := j.ctx.Repos.Server().UpdateFields(ctx, server.ID, map[string]any{
+		if err := j.Ctx.Repos().Server().UpdateFields(ctx, server.ID, map[string]any{
 			"is_connected": false,
 		}); err != nil {
-			j.ctx.LogError(err, "Failed to update server fields")
+			j.Ctx.LogError(err, "Failed to update server fields")
 		}
 
-		j.ctx.LogInfo("Server marked as failed, record preserved for debugging",
+		j.Ctx.LogInfo("Server marked as failed, record preserved for debugging",
 			"server_id", server.ID,
 		)
 	}
@@ -132,12 +124,12 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 
 // cleanupProviderResources deletes the server instance from the cloud provider
 func (j *CleanupFailedProvisioningJob) cleanupProviderResources(ctx context.Context, server any, providerServerID string) error {
-	srv, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	srv, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return err
 	}
 
-	provider, err := j.ctx.ProviderFactory.Create(srv.Provider)
+	provider, err := j.Ctx.ProviderFactory.Create(srv.Provider)
 	if err != nil {
 		return fmt.Errorf("failed to create provider: %w", err)
 	}
@@ -148,11 +140,11 @@ func (j *CleanupFailedProvisioningJob) cleanupProviderResources(ctx context.Cont
 		return fmt.Errorf("failed to get credentials: %w", err)
 	}
 
-	if credentials == nil || len(credentials) == 0 {
+	if len(credentials) == 0 {
 		return fmt.Errorf("no credentials found for server provider")
 	}
 
-	j.ctx.LogInfo("Deleting server from cloud provider",
+	j.Ctx.LogInfo("Deleting server from cloud provider",
 		"server_id", srv.ID,
 		"provider", srv.Provider.String(),
 		"provider_server_id", providerServerID,
@@ -162,7 +154,7 @@ func (j *CleanupFailedProvisioningJob) cleanupProviderResources(ctx context.Cont
 		return fmt.Errorf("failed to delete server from provider: %w", err)
 	}
 
-	j.ctx.LogInfo("Server deleted from cloud provider",
+	j.Ctx.LogInfo("Server deleted from cloud provider",
 		"server_id", srv.ID,
 		"provider", srv.Provider.String(),
 	)
@@ -172,12 +164,12 @@ func (j *CleanupFailedProvisioningJob) cleanupProviderResources(ctx context.Cont
 
 // cleanupProviderSSHKey removes the SSH key that was created on the provider
 func (j *CleanupFailedProvisioningJob) cleanupProviderSSHKey(ctx context.Context, server any, sshKeyID string) error {
-	srv, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	srv, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return err
 	}
 
-	provider, err := j.ctx.ProviderFactory.Create(srv.Provider)
+	provider, err := j.Ctx.ProviderFactory.Create(srv.Provider)
 	if err != nil {
 		return fmt.Errorf("failed to create provider: %w", err)
 	}
@@ -187,11 +179,11 @@ func (j *CleanupFailedProvisioningJob) cleanupProviderSSHKey(ctx context.Context
 		return fmt.Errorf("failed to get credentials: %w", err)
 	}
 
-	if credentials == nil || len(credentials) == 0 {
+	if len(credentials) == 0 {
 		return fmt.Errorf("no credentials found for server provider")
 	}
 
-	j.ctx.LogInfo("Deleting SSH key from cloud provider",
+	j.Ctx.LogInfo("Deleting SSH key from cloud provider",
 		"server_id", srv.ID,
 		"ssh_key_id", sshKeyID,
 	)
@@ -203,7 +195,7 @@ func (j *CleanupFailedProvisioningJob) cleanupProviderSSHKey(ctx context.Context
 		if err := deleter.DeleteSSHKey(ctx, sshKeyID, credentials); err != nil {
 			return fmt.Errorf("failed to delete SSH key: %w", err)
 		}
-		j.ctx.LogInfo("SSH key deleted from cloud provider",
+		j.Ctx.LogInfo("SSH key deleted from cloud provider",
 			"ssh_key_id", sshKeyID,
 		)
 	}
@@ -213,7 +205,7 @@ func (j *CleanupFailedProvisioningJob) cleanupProviderSSHKey(ctx context.Context
 
 // getProviderCredentials retrieves the credentials for the server provider
 func (j *CleanupFailedProvisioningJob) getProviderCredentials(ctx context.Context, server any) (map[string]any, error) {
-	srv, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	srv, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return nil, err
 	}
@@ -227,7 +219,7 @@ func (j *CleanupFailedProvisioningJob) getProviderCredentials(ctx context.Contex
 		return nil, fmt.Errorf("no server provider ID")
 	}
 
-	serverProvider, err := j.ctx.Repos.ServerProvider().FindByID(ctx, serverProviderID)
+	serverProvider, err := j.Ctx.Repos().ServerProvider().FindByID(ctx, serverProviderID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find server provider: %w", err)
 	}
@@ -244,17 +236,17 @@ func (j *CleanupFailedProvisioningJob) getProviderCredentials(ctx context.Contex
 }
 
 func (j *CleanupFailedProvisioningJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to cleanup failed provisioning",
+	j.Ctx.LogError(err, "Failed to cleanup failed provisioning",
 		"server_id", j.Payload.ServerID,
 		"reason", j.Payload.Reason,
 	)
 
 	// Even if cleanup fails, ensure server is marked as failed
-	_ = j.ctx.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed)
+	_ = j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed)
 
-	server, findErr := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, findErr := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {
-		j.ctx.BroadcastServerEvent(server, "server.cleanup_failed", map[string]any{
+		j.Ctx.BroadcastServerEvent(server, "server.cleanup_failed", map[string]any{
 			"server_id": j.Payload.ServerID,
 			"error":     err.Error(),
 		})
@@ -264,8 +256,7 @@ func (j *CleanupFailedProvisioningJob) Failed(ctx context.Context, err error) {
 // NewCleanupFailedProvisioningJob creates a new CleanupFailedProvisioningJob
 func NewCleanupFailedProvisioningJob(ctx *JobContext, payload CleanupFailedProvisioningPayload) *CleanupFailedProvisioningJob {
 	return &CleanupFailedProvisioningJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

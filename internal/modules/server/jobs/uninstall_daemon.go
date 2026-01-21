@@ -8,7 +8,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -23,14 +23,13 @@ type UninstallDaemonPayload struct {
 // UninstallDaemonJob uninstalls a daemon from a server.
 // Similar to Laravel's Modules\Server\Jobs\UninstallDaemon
 type UninstallDaemonJob struct {
-	ctx     *JobContext
-	Payload UninstallDaemonPayload
+	pkgjobs.BaseJob[*JobContext, UninstallDaemonPayload]
 }
 
 // Handle processes the job
 func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 	// Find the daemon with server preloaded
-	daemon, err := j.ctx.Repos.Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
+	daemon, err := j.Ctx.Repos().Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
 	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
@@ -41,7 +40,7 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 		ProgramName: daemon.ProgramName(),
 	})
 
-	result, err := j.ctx.ForServer(daemon.Server).RunTask(task).
+	result, err := j.Ctx.ForServer(daemon.Server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -50,33 +49,25 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 	}
 
 	if !result.IsSuccessful() {
-		j.ctx.LogError(nil, "Daemon deletion task completed with errors",
+		j.Ctx.LogError(nil, "Daemon deletion task completed with errors",
 			"output", result.GetOutput())
 	}
 
 	// Log activity before deletion
-	logger := activity.New(j.ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(daemon).
-		WithEvent("uninstalled")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Daemon was uninstalled")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "uninstalled", j.Payload.UserID, daemon, "Daemon was uninstalled")
 
 	// Delete the daemon record
-	if err := j.ctx.Repos.Daemon().Delete(ctx, daemon.ID); err != nil {
+	if err := j.Ctx.Repos().Daemon().Delete(ctx, daemon.ID); err != nil {
 		return fmt.Errorf("failed to delete daemon record: %w", err)
 	}
 
-	j.ctx.LogInfo("Daemon uninstalled successfully",
+	j.Ctx.LogInfo("Daemon uninstalled successfully",
 		"daemon_id", daemon.ID,
 		"server_id", daemon.ServerID,
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastServerEvent(daemon.Server, "daemon.uninstalled", map[string]any{
+	j.Ctx.BroadcastServerEvent(daemon.Server, "daemon.uninstalled", map[string]any{
 		"daemon_id": daemon.ID,
 		"server_id": daemon.ServerID,
 	})
@@ -86,16 +77,16 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *UninstallDaemonJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to uninstall daemon",
+	j.Ctx.LogError(err, "Failed to uninstall daemon",
 		"daemon_id", j.Payload.DaemonID,
 		"server_id", j.Payload.ServerID,
 	)
 
 	// Mark uninstallation as failed
-	daemon, findErr := j.ctx.Repos.Daemon().FindByID(ctx, j.Payload.DaemonID)
+	daemon, findErr := j.Ctx.Repos().Daemon().FindByID(ctx, j.Payload.DaemonID)
 	if findErr == nil && daemon != nil {
 		now := time.Now()
-		j.ctx.DB.Model(daemon).Updates(map[string]any{
+		j.Ctx.DB().Model(daemon).Updates(map[string]any{
 			"uninstallation_requested_at": nil,
 			"uninstallation_failed_at":    &now,
 		})
@@ -104,8 +95,7 @@ func (j *UninstallDaemonJob) Failed(ctx context.Context, err error) {
 
 func NewUninstallDaemonJob(ctx *JobContext, payload UninstallDaemonPayload) *UninstallDaemonJob {
 	return &UninstallDaemonJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

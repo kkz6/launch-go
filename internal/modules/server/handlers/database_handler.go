@@ -15,7 +15,10 @@ func (h *Handler) ListDatabases(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	databases, err := h.service.ListDatabases(c.Context(), serverID, teamID)
 	if err != nil {
@@ -32,7 +35,10 @@ func (h *Handler) ListDatabaseUsers(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	users, err := h.service.ListDatabaseUsers(c.Context(), serverID, teamID)
 	if err != nil {
@@ -49,7 +55,10 @@ func (h *Handler) CreateDatabase(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.CreateDatabaseRequest](c)
 	if err != nil {
@@ -71,7 +80,10 @@ func (h *Handler) SyncDatabases(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	var userID *string
 	if uid, uidErr := fiberctx.GetUserID(c); uidErr == nil && uid != "" {

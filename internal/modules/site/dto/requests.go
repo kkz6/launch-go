@@ -48,7 +48,7 @@ type UpdateSiteRequest struct {
 	PhpVersion                   *string `json:"php_version" validate:"omitempty,oneof=php80 php81 php82 php83 php84"`
 	WebFolder                    *string `json:"web_folder" validate:"omitempty,max=255"`
 	RepositoryBranch             *string `json:"repository_branch" validate:"omitempty,max=255"`
-	TlsSetting                   *string `json:"tls_setting" validate:"omitempty,oneof=auto custom internal off"`
+	TLSSetting                   *string `json:"tls_setting" validate:"omitempty,oneof=auto custom internal off"`
 	PrivateKey                   *string `json:"private_key" validate:"omitempty"`
 	Certificate                  *string `json:"certificate" validate:"omitempty"`
 	DeployNotificationEmail      *string `json:"deploy_notification_email" validate:"omitempty,email"`
@@ -65,7 +65,7 @@ type UpdateSiteRequest struct {
 
 // UpdateSSLRequest represents the request to update SSL settings
 type UpdateSSLRequest struct {
-	TlsSetting  string  `json:"tls_setting" validate:"required,oneof=auto custom internal off"`
+	TLSSetting  string  `json:"tls_setting" validate:"required,oneof=auto custom internal off"`
 	PrivateKey  *string `json:"private_key" validate:"omitempty"`
 	Certificate *string `json:"certificate" validate:"omitempty"`
 }

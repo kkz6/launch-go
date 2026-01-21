@@ -57,7 +57,7 @@ func (s *NotificationChannelService) CreateChannel(ctx context.Context, userID, 
 
 	// Test connection
 	if err := driver.Connect(ctx); err != nil {
-		s.Logger().Warn().Err(err).Str("provider", req.Provider).Msg("failed to connect to notification channel")
+		s.Logger.Warn().Err(err).Str("provider", req.Provider).Msg("failed to connect to notification channel")
 		return nil, fmt.Errorf("%w: %v", ErrConnectionFailed, err)
 	}
 
@@ -113,7 +113,7 @@ func (s *NotificationChannelService) UpdateChannel(ctx context.Context, id, user
 
 	// Test connection
 	if err := driver.Connect(ctx); err != nil {
-		s.Logger().Warn().Err(err).Str("id", id).Msg("failed to reconnect notification channel")
+		s.Logger.Warn().Err(err).Str("id", id).Msg("failed to reconnect notification channel")
 		return nil, fmt.Errorf("%w: %v", ErrConnectionFailed, err)
 	}
 
@@ -199,7 +199,7 @@ func (s *NotificationChannelService) TestChannel(ctx context.Context, id, teamID
 
 	// Send the test notification
 	if err := driver.Send(ctx, &notificationAdapter{notification: testNotif}); err != nil {
-		s.Logger().Warn().Err(err).Str("id", id).Msg("failed to send test notification")
+		s.Logger.Warn().Err(err).Str("id", id).Msg("failed to send test notification")
 		return fmt.Errorf("%w: %v", ErrNotificationFailed, err)
 	}
 
@@ -219,18 +219,18 @@ func (s *NotificationChannelService) SendToTeam(ctx context.Context, teamID stri
 	for _, ch := range chans {
 		driver, err := s.ChannelFactory().CreateChannel(ch.ToChannelsNotificationChannel())
 		if err != nil {
-			s.Logger().Warn().Err(err).Uint64("channel_id", ch.ID).Msg("failed to create channel driver")
+			s.Logger.Warn().Err(err).Uint64("channel_id", ch.ID).Msg("failed to create channel driver")
 			sendErrors = append(sendErrors, err)
 			continue
 		}
 
 		if err := driver.Send(ctx, &notificationAdapter{notification: notif}); err != nil {
-			s.Logger().Warn().Err(err).Uint64("channel_id", ch.ID).Msg("failed to send notification")
+			s.Logger.Warn().Err(err).Uint64("channel_id", ch.ID).Msg("failed to send notification")
 			sendErrors = append(sendErrors, err)
 			continue
 		}
 
-		s.Logger().Info().
+		s.Logger.Info().
 			Uint64("channel_id", ch.ID).
 			Str("provider", ch.Provider.String()).
 			Str("notification_type", notif.Type().String()).
@@ -261,11 +261,11 @@ func (s *NotificationChannelService) SendToChannel(ctx context.Context, channelI
 	}
 
 	if err := driver.Send(ctx, &notificationAdapter{notification: notif}); err != nil {
-		s.Logger().Warn().Err(err).Str("channel_id", channelID).Msg("failed to send notification")
+		s.Logger.Warn().Err(err).Str("channel_id", channelID).Msg("failed to send notification")
 		return fmt.Errorf("%w: %v", ErrNotificationFailed, err)
 	}
 
-	s.Logger().Info().
+	s.Logger.Info().
 		Str("channel_id", channelID).
 		Str("provider", channel.Provider.String()).
 		Str("notification_type", notif.Type().String()).
@@ -308,7 +308,7 @@ func (s *NotificationChannelService) ReconnectChannel(ctx context.Context, id, t
 	}
 
 	if err := driver.Connect(ctx); err != nil {
-		s.Logger().Warn().Err(err).Str("id", id).Msg("failed to reconnect notification channel")
+		s.Logger.Warn().Err(err).Str("id", id).Msg("failed to reconnect notification channel")
 		return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
 	}
 

@@ -50,9 +50,7 @@ func (h *WebhookHandler) DeployWebhook(c *fiber.Ctx) error {
 		// For HTTPStatusError types, use their built-in status code
 		var httpErr response.HTTPStatusError
 		if errors.As(err, &httpErr) {
-			return c.Status(httpErr.HTTPStatus()).JSON(fiber.Map{
-				"error": err.Error(),
-			})
+			return response.Error(c, httpErr.HTTPStatus(), err.Error())
 		}
 
 		// Check for site not found
@@ -61,9 +59,7 @@ func (h *WebhookHandler) DeployWebhook(c *fiber.Ctx) error {
 		}
 
 		// Default to internal server error
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": err.Error(),
-		})
+		return response.InternalError(c, err.Error())
 	}
 
 	// Return 204 No Content on success (standard for webhooks)

@@ -9,10 +9,10 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	pkgmodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
-	"github.com/kkz6/launch-go/internal/pkg/traits"
 )
 
 const TypeInstallDatabase = "database:install"
@@ -24,34 +24,32 @@ type InstallDatabasePayload struct {
 }
 
 type InstallDatabaseJob struct {
-	ctx *JobContext
-	traits.InstallationTracker
-	Payload InstallDatabasePayload
+	pkgjobs.BaseJob[*JobContext, InstallDatabasePayload]
+	pkgmodels.InstallationTracker
 }
 
 func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *InstallDatabaseJob {
 	return &InstallDatabaseJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 func (j *InstallDatabaseJob) Handle(ctx context.Context) error {
-	j.ctx.LogInfo("Installing database", "database_id", j.Payload.DatabaseID)
+	j.Ctx.LogInfo("Installing database", "database_id", j.Payload.DatabaseID)
 
-	database, err := repository.Find[models.Database](ctx, j.ctx.DB, j.Payload.DatabaseID)
+	database, err := repository.Find[models.Database](ctx, j.Ctx.DB(), j.Payload.DatabaseID)
 	if err != nil {
 		return fmt.Errorf("failed to find database: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](ctx, j.ctx.DB, database.ServerID)
+	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), database.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "installing", fmt.Sprintf("Creating database: %s", database.Name))
+	j.Ctx.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "installing", fmt.Sprintf("Creating database: %s", database.Name))
 
-	factory := j.ctx.GetTaskFactory(ctx, database.ServerID)
+	factory := j.Ctx.GetTaskFactory(ctx, database.ServerID)
 	task := factory.CreateDatabase(tasks.CreateDatabaseConfig{
 		DatabaseName:  database.Name,
 		Owner:         "postgres",
@@ -61,7 +59,7 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context) error {
 		Collation:     "utf8mb4_unicode_ci",
 	})
 
-	result, err := j.ctx.RunTaskOnServer(server, task).
+	result, err := j.Ctx.RunTaskOnServer(server, task).
 		AsRoot().
 		Dispatch(ctx)
 	if err != nil {
@@ -72,41 +70,33 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to create database: %s", result.GetOutput())
 	}
 
-	if err := j.MarkAsInstalled(j.ctx.DB, database); err != nil {
+	if err := j.MarkAsInstalled(j.Ctx.DB(), database); err != nil {
 		return fmt.Errorf("failed to update database status: %w", err)
 	}
 
-	logger := activity.New(j.ctx.DB).
-		WithContext(ctx).
-		UseLog("database").
-		On(database).
-		WithEvent("installed")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Database was installed")
+	activity.LogEventPtr(ctx, j.Ctx.DB(), "installed", j.Payload.UserID, database, "Database was installed")
 
-	j.ctx.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "installed", fmt.Sprintf("Database %s created successfully", database.Name))
+	j.Ctx.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "installed", fmt.Sprintf("Database %s created successfully", database.Name))
 
 	return nil
 }
 
 func (j *InstallDatabaseJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to install database", "database_id", j.Payload.DatabaseID)
+	j.Ctx.LogError(err, "Failed to install database", "database_id", j.Payload.DatabaseID)
 
-	database, findErr := repository.Find[models.Database](ctx, j.ctx.DB, j.Payload.DatabaseID)
+	database, findErr := repository.Find[models.Database](ctx, j.Ctx.DB(), j.Payload.DatabaseID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](ctx, j.ctx.DB, database.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), database.ServerID)
 	if findErr != nil {
 		return
 	}
 
-	j.MarkInstallationFailed(j.ctx.DB, database)
+	j.MarkInstallationFailed(j.Ctx.DB(), database)
 
-	j.ctx.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "failed", fmt.Sprintf("Failed to create database: %s", database.Name))
+	j.Ctx.BroadcastDatabaseProgress(server, "database.progress", j.Payload.DatabaseID, "failed", fmt.Sprintf("Failed to create database: %s", database.Name))
 }
 
 // NewInstallDatabaseTask creates a database installation job

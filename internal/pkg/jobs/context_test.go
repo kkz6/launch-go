@@ -207,4 +207,5 @@ func (m *mockBroadcaster) BroadcastToServer(serverID, event string, data any) {}
 func (m *mockBroadcaster) BroadcastToSite(siteID, event string, data any)     {}
 func (m *mockBroadcaster) BroadcastToDeployment(deploymentID, event string, data any) {
 }
-func (m *mockBroadcaster) Broadcast(channel, event string, data any) {}
+func (m *mockBroadcaster) BroadcastToUser(userID, event string, data any) {}
+func (m *mockBroadcaster) Broadcast(channel, event string, data any)      {}

@@ -2,14 +2,9 @@ package providers
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"time"
 )
 
 const (
@@ -19,39 +14,31 @@ const (
 
 // BitbucketProvider implements the Provider interface for Bitbucket
 type BitbucketProvider struct {
-	config        *ProviderConfig
-	sourceControl *SourceControlData
-	httpClient    *http.Client
+	*BaseGitProvider
 }
 
 // NewBitbucketProvider creates a new Bitbucket provider
 func NewBitbucketProvider(config *ProviderConfig) *BitbucketProvider {
+	base := NewBaseGitProvider(
+		config,
+		WithProviderType(GitProviderBitbucket),
+		WithBaseURL(bitbucketBaseURL),
+		WithAPIURL(bitbucketAPIURL),
+	)
+
 	return &BitbucketProvider{
-		config: config,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		BaseGitProvider: base,
 	}
-}
-
-// SetSourceControl sets the source control context
-func (p *BitbucketProvider) SetSourceControl(sc *SourceControlData) {
-	p.sourceControl = sc
-}
-
-// GetType returns the provider type
-func (p *BitbucketProvider) GetType() GitProviderType {
-	return GitProviderBitbucket
 }
 
 // GetInstallationURL returns the URL to install the Bitbucket integration
 func (p *BitbucketProvider) GetInstallationURL() (string, error) {
-	if p.config.ClientID == "" {
+	if p.Config().ClientID == "" {
 		return "", ErrProviderNotConfigured
 	}
 	// Bitbucket uses OAuth for integration
 	return fmt.Sprintf("%s/site/oauth2/authorize?client_id=%s&response_type=code",
-		bitbucketBaseURL, p.config.ClientID), nil
+		p.BaseURL(), p.Config().ClientID), nil
 }
 
 // GetInstallation gets an installation by ID
@@ -82,16 +69,8 @@ func (p *BitbucketProvider) GetRepository(ctx context.Context, installationID, o
 
 // ValidateWebhook validates a webhook signature
 func (p *BitbucketProvider) ValidateWebhook(payload []byte, signature string) bool {
-	if p.config.WebhookSecret == "" {
-		return false
-	}
-
 	// Bitbucket uses X-Hook-UUID for identification, but we can use HMAC for validation
-	mac := hmac.New(sha256.New, []byte(p.config.WebhookSecret))
-	mac.Write(payload)
-	expectedSignature := hex.EncodeToString(mac.Sum(nil))
-
-	return hmac.Equal([]byte(expectedSignature), []byte(signature))
+	return p.VerifyHMACSHA256Signature(payload, signature, "")
 }
 
 // GetCommitData extracts commit data from a webhook payload
@@ -101,12 +80,23 @@ func (p *BitbucketProvider) GetCommitData(payload map[string]interface{}) *Commi
 
 // TestConnection tests the connection to Bitbucket
 func (p *BitbucketProvider) TestConnection(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", bitbucketAPIURL+"/user", nil)
+	token, err := p.GetOAuthToken()
 	if err != nil {
-		return err
+		// If no token, just test that the API is reachable
+		resp, reqErr := p.DoRaw(ctx, http.MethodGet, "/user", "", nil)
+		if reqErr != nil {
+			return reqErr
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("connection test failed: %s", string(body))
+		}
+		return nil
 	}
 
-	resp, err := p.httpClient.Do(req)
+	resp, err := p.DoRaw(ctx, http.MethodGet, "/user", token, nil)
 	if err != nil {
 		return err
 	}
@@ -118,16 +108,6 @@ func (p *BitbucketProvider) TestConnection(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// GetSSHURL returns the SSH URL for a repository
-func (p *BitbucketProvider) GetSSHURL(repo string) string {
-	return fmt.Sprintf("git@bitbucket.org:%s.git", repo)
-}
-
-// GetHTTPSURL returns the HTTPS URL for a repository
-func (p *BitbucketProvider) GetHTTPSURL(repo string) string {
-	return fmt.Sprintf("https://bitbucket.org/%s.git", repo)
 }
 
 // DeployKey deploys an SSH key to a repository
@@ -143,36 +123,7 @@ func (p *BitbucketProvider) GetLastCommit(ctx context.Context, sourceControlID, 
 // GetInstallationToken returns the OAuth access token for Bitbucket
 // Bitbucket uses OAuth tokens stored in source control data, not app installation tokens
 func (p *BitbucketProvider) GetInstallationToken(ctx context.Context, installationID string) (string, error) {
-	if p.sourceControl == nil || p.sourceControl.ProviderData == nil {
-		return "", ErrAuthenticationFailed
-	}
-
-	token, ok := p.sourceControl.ProviderData["access_token"].(string)
-	if !ok || token == "" {
-		return "", ErrAuthenticationFailed
-	}
-
-	return token, nil
-}
-
-// makeAuthenticatedRequest makes an authenticated request to the Bitbucket API
-func (p *BitbucketProvider) makeAuthenticatedRequest(ctx context.Context, method, url string, body io.Reader) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add authentication headers based on available credentials
-	if p.sourceControl != nil && p.sourceControl.ProviderData != nil {
-		if token, ok := p.sourceControl.ProviderData["access_token"].(string); ok {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-	}
-
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-
-	return p.httpClient.Do(req)
+	return p.GetOAuthToken()
 }
 
 // CreateDeployment creates a deployment on Bitbucket
@@ -202,7 +153,7 @@ func parseBitbucketRepository(repo map[string]interface{}) map[string]interface{
 		if cloneLinks, ok := links["clone"].([]interface{}); ok {
 			for _, link := range cloneLinks {
 				if linkMap, ok := link.(map[string]interface{}); ok {
-					if name, ok := linkMap["name"].(string); ok && name == "ssh" {
+					if linkName, ok := linkMap["name"].(string); ok && linkName == "ssh" {
 						sshURL, _ = linkMap["href"].(string)
 					}
 				}
@@ -230,48 +181,52 @@ func parseBitbucketRepository(repo map[string]interface{}) map[string]interface{
 	}
 }
 
-// fetchRepositories fetches repositories from Bitbucket API with pagination
-func (p *BitbucketProvider) fetchRepositories(ctx context.Context, accessToken string, workspace string) ([]map[string]interface{}, error) {
-	var allRepos []map[string]interface{}
-	url := fmt.Sprintf("%s/repositories/%s", bitbucketAPIURL, workspace)
-
-	for url != "" {
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		req.Header.Set("Authorization", "Bearer "+accessToken)
-		req.Header.Set("Accept", "application/json")
-
-		resp, err := p.httpClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return nil, fmt.Errorf("failed to fetch repositories: %s", string(body))
-		}
-
-		var result struct {
-			Values []map[string]interface{} `json:"values"`
-			Next   string                   `json:"next"`
-		}
-
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			resp.Body.Close()
-			return nil, err
-		}
-		resp.Body.Close()
-
-		for _, repo := range result.Values {
-			allRepos = append(allRepos, parseBitbucketRepository(repo))
-		}
-
-		url = result.Next
+// FetchRepositories fetches repositories from Bitbucket API with pagination
+func (p *BitbucketProvider) FetchRepositories(ctx context.Context, workspace string) ([]map[string]interface{}, error) {
+	token, err := p.GetOAuthToken()
+	if err != nil {
+		return nil, err
 	}
 
-	return allRepos, nil
+	items, err := p.FetchAllPages(
+		ctx,
+		fmt.Sprintf("/repositories/%s", workspace),
+		token,
+		func(response map[string]interface{}) ([]map[string]interface{}, error) {
+			// Bitbucket returns items in "values" array
+			values, ok := response["values"].([]interface{})
+			if !ok {
+				return nil, nil
+			}
+			var items []map[string]interface{}
+			for _, v := range values {
+				if item, ok := v.(map[string]interface{}); ok {
+					items = append(items, item)
+				}
+			}
+			return items, nil
+		},
+		func(resp *http.Response, body map[string]interface{}) string {
+			// Bitbucket uses "next" field for pagination
+			if next, ok := body["next"].(string); ok {
+				// Extract path from full URL
+				if len(next) > len(bitbucketAPIURL) {
+					return next[len(bitbucketAPIURL):]
+				}
+				return next
+			}
+			return ""
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse each repository
+	var repos []map[string]interface{}
+	for _, item := range items {
+		repos = append(repos, parseBitbucketRepository(item))
+	}
+
+	return repos, nil
 }

@@ -24,7 +24,7 @@ type DeleteBackupJob struct {
 }
 
 func (j *DeleteBackupJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos().Server().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}

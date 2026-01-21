@@ -25,10 +25,10 @@ func HandleServiceError(c *fiber.Ctx, err error) error {
 		return response.Error(c, resourceErr.HTTPStatus(), resourceErr.Message)
 	}
 
-	// Check for AppError (legacy error type)
+	// Check for AppError (HTTP-aware error with status code and error code)
 	var appErr *apperrors.AppError
 	if errors.As(err, &appErr) {
-		return response.Error(c, appErr.Code, appErr.Message)
+		return response.Error(c, appErr.HTTPStatus(), appErr.Message)
 	}
 
 	// Check for common error patterns
@@ -69,10 +69,10 @@ func HandleServiceErrorWithMessage(c *fiber.Ctx, err error, internalMsg string) 
 		return response.Error(c, resourceErr.HTTPStatus(), resourceErr.Message)
 	}
 
-	// Check for AppError (legacy error type)
+	// Check for AppError (HTTP-aware error with status code and error code)
 	var appErr *apperrors.AppError
 	if errors.As(err, &appErr) {
-		return response.Error(c, appErr.Code, appErr.Message)
+		return response.Error(c, appErr.HTTPStatus(), appErr.Message)
 	}
 
 	// Check for common error patterns

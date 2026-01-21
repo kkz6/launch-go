@@ -1,16 +1,15 @@
 package providers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 	"github.com/rs/zerolog"
 )
 
@@ -21,6 +20,26 @@ var (
 	ErrLemonSqueezyNotFound     = errors.New("lemon squeezy resource not found")
 	ErrLemonSqueezyRateLimited  = errors.New("lemon squeezy rate limited")
 )
+
+// checkoutResponseAttrs represents checkout attributes in the response
+type checkoutResponseAttrs struct {
+	URL string `json:"url"`
+}
+
+// checkoutResponseData represents the checkout data wrapper
+type checkoutResponseData struct {
+	Attributes checkoutResponseAttrs `json:"attributes"`
+}
+
+// checkoutResponse represents the full checkout API response
+type checkoutResponse struct {
+	Data checkoutResponseData `json:"data"`
+}
+
+// OrderURLs represents URLs associated with an order
+type OrderURLs struct {
+	Receipt string `json:"receipt"`
+}
 
 // LemonSqueezyConfig holds configuration for LemonSqueezy client
 type LemonSqueezyConfig struct {
@@ -54,64 +73,70 @@ func NewLemonSqueezyClient(config *LemonSqueezyConfig, logger *zerolog.Logger) *
 		config.Timeout = 30 * time.Second
 	}
 
+	var httpClient *http.Client
+	if config.Timeout == httpclient.DefaultTimeout {
+		httpClient = httpclient.Default()
+	} else {
+		httpClient = httpclient.WithCustomTimeout(config.Timeout)
+	}
+
 	return &LemonSqueezyClient{
-		config: config,
-		httpClient: &http.Client{
-			Timeout: config.Timeout,
-		},
-		logger: logger,
+		config:     config,
+		httpClient: httpClient,
+		logger:     logger,
 	}
 }
 
 // lsRequest makes a request to the LemonSqueezy API
 func (c *LemonSqueezyClient) lsRequest(ctx context.Context, method, path string, body interface{}) ([]byte, error) {
-	url := c.config.BaseURL + path
+	reqURL := c.config.BaseURL + path
 
-	var reqBody io.Reader
+	builder := httpclient.NewRequest(ctx, method, reqURL).
+		BearerAuth(c.config.APIKey).
+		WithHeader("Accept", "application/vnd.api+json").
+		WithHeader("Content-Type", "application/vnd.api+json")
+
 	if body != nil {
-		jsonBody, err := json.Marshal(body)
-		if err != nil {
-			return nil, err
-		}
-		reqBody = bytes.NewBuffer(jsonBody)
+		builder.JSONBody(body)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+	req, err := builder.Build()
 	if err != nil {
 		return nil, err
 	}
-
-	req.Header.Set("Authorization", "Bearer "+c.config.APIKey)
-	req.Header.Set("Accept", "application/vnd.api+json")
-	req.Header.Set("Content-Type", "application/vnd.api+json")
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	r, err := httpclient.HandleResponse(resp)
 	if err != nil {
 		return nil, err
 	}
 
-	switch resp.StatusCode {
-	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
-		return respBody, nil
-	case http.StatusUnauthorized:
-		return nil, ErrLemonSqueezyUnauthorized
-	case http.StatusNotFound:
-		return nil, ErrLemonSqueezyNotFound
-	case http.StatusTooManyRequests:
-		return nil, ErrLemonSqueezyRateLimited
-	default:
+	statusHandler := httpclient.NewStatusHandler().
+		On(http.StatusUnauthorized, ErrLemonSqueezyUnauthorized).
+		On(http.StatusNotFound, ErrLemonSqueezyNotFound).
+		On(http.StatusTooManyRequests, ErrLemonSqueezyRateLimited)
+
+	if err = statusHandler.Check(r); err != nil {
+		// Log all API errors
 		c.logger.Error().
-			Int("status", resp.StatusCode).
-			Str("body", string(respBody)).
+			Int("status", r.StatusCode).
+			Str("body", r.String()).
 			Msg("LemonSqueezy API error")
-		return nil, fmt.Errorf("%w: status %d", ErrLemonSqueezyAPIError, resp.StatusCode)
+
+		// For unmapped errors, wrap with our API error
+		if errors.Is(err, ErrLemonSqueezyUnauthorized) ||
+			errors.Is(err, ErrLemonSqueezyNotFound) ||
+			errors.Is(err, ErrLemonSqueezyRateLimited) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: status %d", ErrLemonSqueezyAPIError, r.StatusCode)
 	}
+
+	return r.Body, nil
 }
 
 // CreateCheckout creates a new checkout session
@@ -167,14 +192,7 @@ func (c *LemonSqueezyClient) CreateCheckout(ctx context.Context, variantID strin
 		return "", err
 	}
 
-	var result struct {
-		Data struct {
-			Attributes struct {
-				URL string `json:"url"`
-			} `json:"attributes"`
-		} `json:"data"`
-	}
-
+	var result checkoutResponse
 	if err := json.Unmarshal(respBody, &result); err != nil {
 		return "", err
 	}
@@ -375,27 +393,25 @@ type LemonSqueezyOrder struct {
 
 // LemonSqueezyOrderAttrs represents order attributes
 type LemonSqueezyOrderAttrs struct {
-	StoreID         int     `json:"store_id"`
-	CustomerID      int     `json:"customer_id"`
-	Identifier      string  `json:"identifier"`
-	OrderNumber     int     `json:"order_number"`
-	UserName        string  `json:"user_name"`
-	UserEmail       string  `json:"user_email"`
-	Currency        string  `json:"currency"`
-	CurrencyRate    string  `json:"currency_rate"`
-	Subtotal        int64   `json:"subtotal"`
-	DiscountTotal   int64   `json:"discount_total"`
-	Tax             int64   `json:"tax"`
-	Total           int64   `json:"total"`
-	TaxName         *string `json:"tax_name"`
-	Status          string  `json:"status"`
-	StatusFormatted string  `json:"status_formatted"`
-	Refunded        bool    `json:"refunded"`
-	RefundedAt      *string `json:"refunded_at"`
-	URLs            struct {
-		Receipt string `json:"receipt"`
-	} `json:"urls"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
-	TestMode  bool   `json:"test_mode"`
+	StoreID         int       `json:"store_id"`
+	CustomerID      int       `json:"customer_id"`
+	Identifier      string    `json:"identifier"`
+	OrderNumber     int       `json:"order_number"`
+	UserName        string    `json:"user_name"`
+	UserEmail       string    `json:"user_email"`
+	Currency        string    `json:"currency"`
+	CurrencyRate    string    `json:"currency_rate"`
+	Subtotal        int64     `json:"subtotal"`
+	DiscountTotal   int64     `json:"discount_total"`
+	Tax             int64     `json:"tax"`
+	Total           int64     `json:"total"`
+	TaxName         *string   `json:"tax_name"`
+	Status          string    `json:"status"`
+	StatusFormatted string    `json:"status_formatted"`
+	Refunded        bool      `json:"refunded"`
+	RefundedAt      *string   `json:"refunded_at"`
+	URLs            OrderURLs `json:"urls"`
+	CreatedAt       string    `json:"created_at"`
+	UpdatedAt       string    `json:"updated_at"`
+	TestMode        bool      `json:"test_mode"`
 }

@@ -21,22 +21,20 @@ type DisableLaravelSchedulerPayload struct {
 
 // DisableLaravelSchedulerJob disables the Laravel scheduler cron for a site
 type DisableLaravelSchedulerJob struct {
-	ctx     *JobContext
-	Payload DisableLaravelSchedulerPayload
+	pkgjobs.BaseJob[*JobContext, DisableLaravelSchedulerPayload]
 }
 
 // NewDisableLaravelSchedulerJob creates a new DisableLaravelSchedulerJob
 func NewDisableLaravelSchedulerJob(ctx *JobContext, payload DisableLaravelSchedulerPayload) *DisableLaravelSchedulerJob {
 	return &DisableLaravelSchedulerJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the disable scheduler job
 func (j *DisableLaravelSchedulerJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
@@ -44,19 +42,19 @@ func (j *DisableLaravelSchedulerJob) Handle(ctx context.Context) error {
 	// Check if scheduler is enabled
 	feature := site.GetEnabledFeature("scheduler")
 	if feature == nil || feature.CronID == nil {
-		j.ctx.LogInfo("Scheduler not enabled, nothing to disable", "site_id", site.ID)
+		j.Ctx.LogInfo("Scheduler not enabled, nothing to disable", "site_id", site.ID)
 		return nil
 	}
 
 	cronID := *feature.CronID
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Disabling Laravel scheduler",
+	j.Ctx.LogInfo("Disabling Laravel scheduler",
 		"site_id", site.ID,
 		"server_id", server.ID,
 		"cron_id", cronID,
@@ -64,32 +62,32 @@ func (j *DisableLaravelSchedulerJob) Handle(ctx context.Context) error {
 
 	// Dispatch UninstallCron job
 	if err := j.dispatchUninstallCron(cronID, server.ID); err != nil {
-		j.ctx.LogError(err, "Failed to dispatch uninstall cron job")
+		j.Ctx.LogError(err, "Failed to dispatch uninstall cron job")
 		// Continue to update the site's features even if dispatch fails
 	}
 
 	// Delete the cron record
-	if err := j.ctx.ServerRepos.Cron().Delete(ctx, cronID); err != nil {
-		j.ctx.LogError(err, "Failed to delete cron record", "cron_id", cronID)
+	if err := j.Ctx.ServerRepos.Cron().Delete(ctx, cronID); err != nil {
+		j.Ctx.LogError(err, "Failed to delete cron record", "cron_id", cronID)
 	}
 
 	// Update site's enabled_features
 	site.RemoveEnabledFeature("scheduler")
 	site.RemovePendingFeature("scheduler")
 
-	if err := j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+	if err := j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
 		"enabled_features": site.EnabledFeatures,
 		"pending_features": site.PendingFeatures,
 	}); err != nil {
-		j.ctx.LogError(err, "Failed to update site enabled_features")
+		j.Ctx.LogError(err, "Failed to update site enabled_features")
 	}
 
 	// Broadcast success
-	j.ctx.BroadcastServerEvent(server, "site.scheduler_disabled", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "site.scheduler_disabled", map[string]interface{}{
 		"site_id": site.ID,
 	})
 
-	j.ctx.LogInfo("Laravel scheduler disabled successfully",
+	j.Ctx.LogInfo("Laravel scheduler disabled successfully",
 		"site_id", site.ID,
 	)
 
@@ -98,30 +96,24 @@ func (j *DisableLaravelSchedulerJob) Handle(ctx context.Context) error {
 
 // dispatchUninstallCron dispatches the server UninstallCron job
 func (j *DisableLaravelSchedulerJob) dispatchUninstallCron(cronID, serverID string) error {
-	if j.ctx.Queue == nil {
-		return fmt.Errorf("queue client not available")
-	}
-
 	task, err := serverjobs.NewUninstallCronTask(serverID, cronID, j.Payload.UserID)
 	if err != nil {
 		return err
 	}
-
-	_, err = j.ctx.Queue.Enqueue(task)
-	return err
+	return j.Ctx.DispatchTask(task)
 }
 
 // Failed handles job failure
 func (j *DisableLaravelSchedulerJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to disable Laravel scheduler",
+	j.Ctx.LogError(err, "Failed to disable Laravel scheduler",
 		"site_id", j.Payload.SiteID,
 	)
 
 	// Remove from pending features
-	site, findErr := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, findErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if findErr == nil {
 		site.RemovePendingFeature("scheduler")
-		_ = j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+		_ = j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
 			"pending_features": site.PendingFeatures,
 		})
 	}

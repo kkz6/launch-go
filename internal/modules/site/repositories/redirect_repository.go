@@ -10,7 +10,6 @@ import (
 )
 
 // RedirectRepository handles database operations for redirects.
-// Embeds repository.Base[T] for common CRUD operations.
 type RedirectRepository struct {
 	repository.Base[models.Redirect]
 }
@@ -80,10 +79,3 @@ func (r *RedirectRepository) UpdateStatusBySite(ctx context.Context, siteID, fro
 		Where("site_id = ? AND status = ?", siteID, fromStatus).
 		Update("status", toStatus).Error
 }
-
-// Note: The following methods are inherited from repository.Base[T]:
-// - Create(ctx, entity) error
-// - Update(ctx, entity) error
-// - Delete(ctx, id) error
-// - UpdateFields(ctx, id, fields) error
-// - Transaction(ctx, fn) error

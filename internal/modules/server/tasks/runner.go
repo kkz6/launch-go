@@ -14,9 +14,10 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
 )
 
 // TaskStatus represents the status of a task execution.
@@ -518,12 +519,12 @@ func (r *TaskRunner) invokeTaskCallbacks(ctx context.Context, taskModel *models.
 
 	// Create callback context with dependencies
 	cbCtx := &taskrunner.CallbackContext{
-		DB:          r.db,
-		Queue:       r.queue,
-		Logger:      r.logger,
-		Broadcaster: r.broadcaster,
-		Notifier:    r.notifier,
+		DB:       r.db,
+		Queue:    r.queue,
+		Logger:   r.logger,
+		Notifier: r.notifier,
 	}
+	cbCtx.SetBroadcaster(r.broadcaster)
 
 	var err error
 	if result != nil {
@@ -628,13 +629,13 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 	}
 
 	taskModel := &models.Task{
-		ServerID: r.server.ID,
-		Name:     r.task.Name(),
-		User:     user,
-		Type:     taskType,
-		Script:   basemodels.EncryptedString(script),
-		Timeout:  int(r.task.Timeout().Seconds()),
-		Status:   string(TaskStatusPending),
+		ServerScopedModel: basemodels.ServerScopedModel{ServerID: r.server.ID},
+		Name:              r.task.Name(),
+		User:              user,
+		Type:              taskType,
+		Script:            basemodels.EncryptedString(script),
+		Timeout:           int(r.task.Timeout().Seconds()),
+		Status:            string(TaskStatusPending),
 	}
 
 	completionConfig := r.completionConfig
@@ -786,14 +787,9 @@ func getTaskTypeName(task taskrunner.Task) string {
 }
 
 // TaskRunnerDeps holds dependencies for creating TaskRunners.
+// It embeds pkgjobs.ServerTaskDeps to avoid field duplication.
 type TaskRunnerDeps struct {
-	DB          *gorm.DB
-	Queue       *queue.Client
-	Dispatcher  taskrunner.TaskDispatcher
-	Logger      *zerolog.Logger
-	Broadcaster broadcast.TeamBroadcaster
-	Notifier    taskrunner.NotifierService
-	LocalMode   bool // When true, tasks run synchronously via SSH instead of background with callbacks
+	pkgjobs.ServerTaskDeps
 }
 
 // IsLocalMode returns true if running in local development mode

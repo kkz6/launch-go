@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
@@ -33,7 +34,11 @@ func (h *SiteHandler) SetDomainRepository(repo dnscontracts.DomainRepository) {
 
 // List returns all sites for a server
 func (h *SiteHandler) List(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
@@ -44,21 +49,21 @@ func (h *SiteHandler) List(c *fiber.Ctx) error {
 		return response.InternalError(c, response.MsgInternalError)
 	}
 
-	result := make([]dto.SiteResponse, len(sites))
-	for i, site := range sites {
-		result[i] = dto.ToSiteResponse(&site)
-	}
-
-	return response.OK(c, "Sites retrieved", result)
+	return response.OK(c, "Sites retrieved", pkgdto.TransformSlice(sites, dto.ToSiteResponse))
 }
 
 // Create creates a new site
 func (h *SiteHandler) Create(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
+
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
@@ -79,8 +84,16 @@ func (h *SiteHandler) Create(c *fiber.Ctx) error {
 
 // Show returns a single site
 func (h *SiteHandler) Show(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
@@ -111,12 +124,21 @@ func (h *SiteHandler) Show(c *fiber.Ctx) error {
 
 // Update updates a site
 func (h *SiteHandler) Update(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
+
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
@@ -141,8 +163,16 @@ func (h *SiteHandler) Update(c *fiber.Ctx) error {
 
 // Delete deletes a site
 func (h *SiteHandler) Delete(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
@@ -161,8 +191,16 @@ func (h *SiteHandler) Delete(c *fiber.Ctx) error {
 
 // GetDeletionSummary returns a summary of resources to be deleted
 func (h *SiteHandler) GetDeletionSummary(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
@@ -182,8 +220,16 @@ func (h *SiteHandler) GetDeletionSummary(c *fiber.Ctx) error {
 
 // RegenerateDeployToken regenerates the deploy token
 func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
@@ -203,12 +249,21 @@ func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
 
 // UpdateDeploymentSettings updates deployment settings
 func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
+
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
@@ -247,8 +302,16 @@ func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 
 // GetSettings returns the site settings page data
 func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
@@ -264,9 +327,9 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 	}
 
 	// Build TLS options
-	tlsOptions := make([]dto.TlsOptionResponse, 0)
-	for _, tls := range enums.AllTlsSettings() {
-		tlsOptions = append(tlsOptions, dto.TlsOptionResponse{
+	tlsOptions := make([]dto.TLSOptionResponse, 0)
+	for _, tls := range enums.AllTLSSettings() {
+		tlsOptions = append(tlsOptions, dto.TLSOptionResponse{
 			Value: string(tls),
 			Label: tls.Label(),
 		})
@@ -274,7 +337,7 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 
 	resp := dto.SiteSettingsResponse{
 		Site:          dto.ToSiteResponse(settingsData.Site),
-		TlsOptions:    tlsOptions,
+		TLSOptions:    tlsOptions,
 		PhpVersions:   settingsData.PhpVersions,
 		SourceControl: settingsData.SourceControl,
 		Repository:    settingsData.Repository,

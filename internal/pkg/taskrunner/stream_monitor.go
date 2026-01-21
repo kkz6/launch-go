@@ -10,6 +10,9 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	"github.com/kkz6/launch-go/internal/pkg/launch/paths"
+
 	"github.com/rs/zerolog"
 )
 
@@ -29,7 +32,7 @@ var ErrTaskCompleted = errors.New("task completed")
 // StreamMonitor monitors task output via persistent SSH connection
 type StreamMonitor struct {
 	logger            *zerolog.Logger
-	wsHub             Broadcaster
+	wsHub             SimpleBroadcaster
 	broadcastInterval time.Duration
 	activeStreams     map[string]context.CancelFunc
 	mu                sync.RWMutex
@@ -41,7 +44,7 @@ type StreamMonitorConfig struct {
 }
 
 // NewStreamMonitor creates a new stream monitor
-func NewStreamMonitor(logger *zerolog.Logger, wsHub Broadcaster, cfg *StreamMonitorConfig) *StreamMonitor {
+func NewStreamMonitor(logger *zerolog.Logger, wsHub SimpleBroadcaster, cfg *StreamMonitorConfig) *StreamMonitor {
 	interval := 2 * time.Second
 	if cfg != nil && cfg.BroadcastInterval > 0 {
 		interval = cfg.BroadcastInterval
@@ -94,21 +97,11 @@ func (m *StreamMonitor) StreamTaskOutput(
 	}()
 
 	// Create SSH client
-	sshClient, err := NewSSHClient(SSHConfig{
-		Host:       conn.Host,
-		Port:       conn.Port,
-		User:       conn.User,
-		PrivateKey: conn.PrivateKey,
-		Timeout:    30 * time.Second,
-	})
+	sshClient, err := conn.Dial()
 	if err != nil {
-		return fmt.Errorf("failed to create SSH client: %w", err)
-	}
-	defer sshClient.Close()
-
-	if err := sshClient.Connect(); err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
+	defer sshClient.Close()
 
 	m.logger.Info().
 		Str("task_id", taskID).
@@ -116,10 +109,10 @@ func (m *StreamMonitor) StreamTaskOutput(
 		Msg("Started streaming task output")
 
 	// Build the log file path
-	logFile := fmt.Sprintf("%s/task-%s.log", conn.GetScriptPath(), taskID)
+	taskPaths := paths.GetTaskPaths(conn.GetScriptPath(), taskID)
 
 	// Wait for log file to exist (task may not have started writing yet)
-	waitCmd := fmt.Sprintf("while [ ! -f %s ]; do sleep 0.5; done; echo 'ready'", logFile)
+	waitCmd := fmt.Sprintf("while [ ! -f %s ]; do sleep 0.5; done; echo 'ready'", taskPaths.Output)
 	if _, err := sshClient.Run(streamCtx, waitCmd); err != nil {
 		if streamCtx.Err() != nil {
 			return streamCtx.Err()
@@ -129,7 +122,7 @@ func (m *StreamMonitor) StreamTaskOutput(
 
 	// Use tail -f to stream the log file
 	// -n +1 starts from the beginning of the file
-	tailCmd := fmt.Sprintf("tail -n +1 -f %s 2>/dev/null", logFile)
+	tailCmd := fmt.Sprintf("tail -n +1 -f %s 2>/dev/null", taskPaths.Output)
 
 	var outputBuffer strings.Builder
 	var lastBroadcast time.Time
@@ -256,7 +249,7 @@ func (m *StreamMonitor) broadcastOutput(taskID, output, status string) {
 		return
 	}
 
-	m.wsHub.Broadcast("task."+taskID, "task.output", map[string]interface{}{
+	m.wsHub.Broadcast(broadcast.TaskChannel(taskID), "task.output", map[string]interface{}{
 		"task_id": taskID,
 		"output":  output,
 		"status":  status,
@@ -268,7 +261,7 @@ func (m *StreamMonitor) broadcastProgress(taskID string, progress int) {
 		return
 	}
 
-	m.wsHub.Broadcast("task."+taskID, "task.progress", map[string]interface{}{
+	m.wsHub.Broadcast(broadcast.TaskChannel(taskID), "task.progress", map[string]interface{}{
 		"task_id":  taskID,
 		"progress": progress,
 	})
@@ -302,21 +295,11 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 	}()
 
 	// Create SSH client - this single connection will be used throughout
-	sshClient, err := NewSSHClient(SSHConfig{
-		Host:       conn.Host,
-		Port:       conn.Port,
-		User:       conn.User,
-		PrivateKey: conn.PrivateKey,
-		Timeout:    30 * time.Second,
-	})
+	sshClient, err := conn.Dial()
 	if err != nil {
-		return fmt.Errorf("failed to create SSH client: %w", err)
-	}
-	defer sshClient.Close()
-
-	if err := sshClient.Connect(); err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
+	defer sshClient.Close()
 
 	m.logger.Info().
 		Str("task_id", taskID).
@@ -324,8 +307,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 		Str("host", conn.Host).
 		Msg("Started monitoring background task")
 
-	logFile := fmt.Sprintf("%s/task-%s.log", conn.GetScriptPath(), taskID)
-	exitCodeFile := fmt.Sprintf("%s/task-%s.exit", conn.GetScriptPath(), taskID)
+	taskPaths := paths.GetTaskPaths(conn.GetScriptPath(), taskID)
 
 	var lastOutput string
 	checkInterval := 2 * time.Second
@@ -343,7 +325,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 			isRunning := strings.TrimSpace(psResult.Stdout) != ""
 
 			// Get current output
-			output, err := sshClient.Download(streamCtx, logFile)
+			output, err := sshClient.Download(streamCtx, taskPaths.Output)
 			if err == nil {
 				currentOutput := string(output)
 				if currentOutput != lastOutput {
@@ -361,7 +343,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 				var status string
 
 				// Try to read exit code from file (if script wrote it)
-				exitResult, err := sshClient.Run(streamCtx, fmt.Sprintf("cat %s 2>/dev/null", exitCodeFile))
+				exitResult, err := sshClient.Run(streamCtx, fmt.Sprintf("cat %s 2>/dev/null", taskPaths.ExitCode))
 				if err == nil && exitResult.Stdout != "" {
 					exitCode, _ = strconv.Atoi(strings.TrimSpace(exitResult.Stdout))
 				}

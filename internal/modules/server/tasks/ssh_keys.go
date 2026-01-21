@@ -3,6 +3,7 @@ package tasks
 import (
 	"fmt"
 
+	"github.com/kkz6/launch-go/internal/pkg/launch/paths"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
@@ -56,16 +57,14 @@ func GeneratePublicKey(privateKeyPath string) *taskrunner.BaseTask {
 
 // AuthorizePublicKey creates a task to add a public key to authorized_keys
 func AuthorizePublicKey(publicKey string, user string) *taskrunner.BaseTask {
-	homeDir := fmt.Sprintf("/home/%s", user)
-	if user == "root" {
-		homeDir = "/root"
-	}
+	sshDir := paths.SSHDir(user)
+	authorizedKeys := paths.AuthorizedKeysPath(user)
 
-	script := fmt.Sprintf(`mkdir -p %s/.ssh
-chmod 700 %s/.ssh
-echo '%s' >> %s/.ssh/authorized_keys
-chmod 600 %s/.ssh/authorized_keys
-chown -R %s:%s %s/.ssh`, homeDir, homeDir, publicKey, homeDir, homeDir, user, user, homeDir)
+	script := fmt.Sprintf(`mkdir -p %s
+chmod 700 %s
+echo '%s' >> %s
+chmod 600 %s
+chown -R %s:%s %s`, sshDir, sshDir, publicKey, authorizedKeys, authorizedKeys, user, user, sshDir)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Authorize Public Key"),
@@ -76,13 +75,10 @@ chown -R %s:%s %s/.ssh`, homeDir, homeDir, publicKey, homeDir, homeDir, user, us
 
 // DeauthorizePublicKey creates a task to remove a public key from authorized_keys
 func DeauthorizePublicKey(publicKey string, user string) *taskrunner.BaseTask {
-	homeDir := fmt.Sprintf("/home/%s", user)
-	if user == "root" {
-		homeDir = "/root"
-	}
+	authorizedKeys := paths.AuthorizedKeysPath(user)
 
 	// Escape special characters in the public key for sed
-	script := fmt.Sprintf(`sed -i '\|%s|d' %s/.ssh/authorized_keys`, publicKey, homeDir)
+	script := fmt.Sprintf(`sed -i '\|%s|d' %s`, publicKey, authorizedKeys)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Deauthorize Public Key"),
@@ -93,32 +89,27 @@ func DeauthorizePublicKey(publicKey string, user string) *taskrunner.BaseTask {
 
 // GetAuthorizedKeys creates a task to get all authorized keys for a user
 func GetAuthorizedKeys(user string) *taskrunner.BaseTask {
-	homeDir := fmt.Sprintf("/home/%s", user)
-	if user == "root" {
-		homeDir = "/root"
-	}
+	authorizedKeys := paths.AuthorizedKeysPath(user)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get Authorized Keys"),
-		taskrunner.WithScript(fmt.Sprintf("cat %s/.ssh/authorized_keys 2>/dev/null || echo ''", homeDir)),
+		taskrunner.WithScript(fmt.Sprintf("cat %s 2>/dev/null || echo ''", authorizedKeys)),
 		taskrunner.WithTimeoutSeconds(15),
 	)
 }
 
 // UpdateAuthorizedKeys creates a task to replace the authorized_keys file with new content
 func UpdateAuthorizedKeys(user string, publicKey string) *taskrunner.BaseTask {
-	homeDir := fmt.Sprintf("/home/%s", user)
-	if user == "root" {
-		homeDir = "/root"
-	}
+	sshDir := paths.SSHDir(user)
+	authorizedKeys := paths.AuthorizedKeysPath(user)
 
-	script := fmt.Sprintf(`mkdir -p %s/.ssh
-chmod 700 %s/.ssh
-cat > %s/.ssh/authorized_keys << 'LAUNCH_EOF'
+	script := fmt.Sprintf(`mkdir -p %s
+chmod 700 %s
+cat > %s << 'LAUNCH_EOF'
 %s
 LAUNCH_EOF
-chmod 600 %s/.ssh/authorized_keys
-chown -R %s:%s %s/.ssh`, homeDir, homeDir, homeDir, publicKey, homeDir, user, user, homeDir)
+chmod 600 %s
+chown -R %s:%s %s`, sshDir, sshDir, authorizedKeys, publicKey, authorizedKeys, user, user, sshDir)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Update Authorized Keys"),

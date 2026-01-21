@@ -3,7 +3,8 @@ package middleware
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/kkz6/launch-go/internal/pkg/cache"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -17,13 +18,49 @@ var roleHierarchy = map[string]int{
 
 // teamMiddleware holds the shared state for team middleware
 var teamMiddleware struct {
-	cache *cache.TeamMembershipCache
+	cache *launchcache.TeamMembershipCache
 }
 
 // InitTeamMiddleware initializes the team middleware with required dependencies.
 // Call this during application bootstrap before routes are registered.
-func InitTeamMiddleware(membershipCache *cache.TeamMembershipCache) {
+func InitTeamMiddleware(membershipCache *launchcache.TeamMembershipCache) {
 	teamMiddleware.cache = membershipCache
+}
+
+// teamScopeResult holds the result of team scope validation.
+type teamScopeResult struct {
+	teamID string
+	role   string
+	err    error
+}
+
+// validateTeamScope validates team membership for the current request.
+// Returns the validated team context or an error if validation fails.
+func validateTeamScope(c *fiber.Ctx) teamScopeResult {
+	teamID := c.Get("X-Team-ID")
+	if teamID == "" {
+		return teamScopeResult{err: fiber.NewError(fiber.StatusBadRequest, "X-Team-ID header is required")}
+	}
+
+	userID, ok := c.Locals(fiberctx.KeyUserID).(string)
+	if !ok || userID == "" {
+		return teamScopeResult{err: fiber.NewError(fiber.StatusUnauthorized, "Authentication required")}
+	}
+
+	if teamMiddleware.cache == nil {
+		return teamScopeResult{teamID: teamID, role: ""}
+	}
+
+	membership, err := teamMiddleware.cache.GetMembership(c.Context(), userID, teamID)
+	if err != nil {
+		return teamScopeResult{err: fiber.NewError(fiber.StatusInternalServerError, "Failed to validate team membership")}
+	}
+
+	if !membership.IsMember {
+		return teamScopeResult{err: fiber.NewError(fiber.StatusForbidden, "You are not a member of this team")}
+	}
+
+	return teamScopeResult{teamID: teamID, role: membership.Role}
 }
 
 // TeamScope middleware reads X-Team-ID header and validates team membership.
@@ -36,40 +73,30 @@ func InitTeamMiddleware(membershipCache *cache.TeamMembershipCache) {
 //	router.Group("/servers", middleware.Auth(secret), middleware.TeamScope())
 func TeamScope() fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Skip if team context already set (allows chaining with other team middleware)
-		if existingID, ok := c.Locals("teamID").(string); ok && existingID != "" {
+		if existingID, ok := c.Locals(fiberctx.KeyTeamID).(string); ok && existingID != "" {
 			return c.Next()
 		}
 
-		teamID := c.Get("X-Team-ID")
-		if teamID == "" {
-			return response.Error(c, fiber.StatusBadRequest, "X-Team-ID header is required")
+		result := validateTeamScope(c)
+		if result.err != nil {
+			fiberErr, ok := result.err.(*fiber.Error)
+			if !ok {
+				return response.Error(c, fiber.StatusInternalServerError, result.err.Error())
+			}
+
+			switch fiberErr.Code {
+			case fiber.StatusBadRequest:
+				return response.Error(c, fiber.StatusBadRequest, fiberErr.Message)
+			case fiber.StatusUnauthorized:
+				return response.Unauthorized(c, fiberErr.Message)
+			case fiber.StatusForbidden:
+				return response.Forbidden(c, fiberErr.Message)
+			default:
+				return response.Error(c, fiberErr.Code, fiberErr.Message)
+			}
 		}
 
-		userID, ok := c.Locals("userID").(string)
-		if !ok || userID == "" {
-			return response.Unauthorized(c, "Authentication required")
-		}
-
-		// Validate membership
-		if teamMiddleware.cache == nil {
-			// No cache configured - just set the team ID without validation
-			// This should only happen in tests or misconfigured environments
-			c.Locals("teamID", teamID)
-			return c.Next()
-		}
-
-		membership, err := teamMiddleware.cache.GetMembership(c.Context(), userID, teamID)
-		if err != nil {
-			return response.Error(c, fiber.StatusInternalServerError, "Failed to validate team membership")
-		}
-
-		if !membership.IsMember {
-			return response.Forbidden(c, "You are not a member of this team")
-		}
-
-		c.Locals("teamID", teamID)
-		c.Locals("teamRole", membership.Role)
+		fiberctx.SetTeamContext(c, result.teamID, result.role)
 
 		return c.Next()
 	}
@@ -87,23 +114,12 @@ func OptionalTeamScope() fiber.Handler {
 			return c.Next()
 		}
 
-		userID, ok := c.Locals("userID").(string)
-		if !ok || userID == "" {
+		result := validateTeamScope(c)
+		if result.err != nil {
 			return c.Next()
 		}
 
-		if teamMiddleware.cache == nil {
-			c.Locals("teamID", teamID)
-			return c.Next()
-		}
-
-		membership, err := teamMiddleware.cache.GetMembership(c.Context(), userID, teamID)
-		if err != nil || !membership.IsMember {
-			return c.Next()
-		}
-
-		c.Locals("teamID", teamID)
-		c.Locals("teamRole", membership.Role)
+		fiberctx.SetTeamContext(c, result.teamID, result.role)
 
 		return c.Next()
 	}
@@ -127,7 +143,7 @@ func RequireRole(minRole string) fiber.Handler {
 	}
 
 	return func(c *fiber.Ctx) error {
-		teamRole, ok := c.Locals("teamRole").(string)
+		teamRole, ok := c.Locals(fiberctx.KeyTeamRole).(string)
 		if !ok || teamRole == "" {
 			return response.Forbidden(c, "Team context required")
 		}
@@ -142,19 +158,19 @@ func RequireRole(minRole string) fiber.Handler {
 }
 
 // Deprecated: Use InitTeamMiddleware instead
-func SetTeamScopeMembershipCache(c *cache.TeamMembershipCache) {
+func SetTeamScopeMembershipCache(c *launchcache.TeamMembershipCache) {
 	InitTeamMiddleware(c)
 }
 
 // Deprecated: Use TeamScope instead
-func TeamContext(membershipCache *cache.TeamMembershipCache) fiber.Handler {
+func TeamContext(membershipCache *launchcache.TeamMembershipCache) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		teamID := c.Get("X-Team-ID")
 		if teamID == "" {
 			return response.Error(c, fiber.StatusBadRequest, "X-Team-ID header is required")
 		}
 
-		userID, ok := c.Locals("userID").(string)
+		userID, ok := c.Locals(fiberctx.KeyUserID).(string)
 		if !ok || userID == "" {
 			return response.Unauthorized(c, "Authentication required")
 		}
@@ -168,8 +184,7 @@ func TeamContext(membershipCache *cache.TeamMembershipCache) fiber.Handler {
 			return response.Forbidden(c, "You are not a member of this team")
 		}
 
-		c.Locals("teamID", teamID)
-		c.Locals("teamRole", membership.Role)
+		fiberctx.SetTeamContext(c, teamID, membership.Role)
 
 		return c.Next()
 	}

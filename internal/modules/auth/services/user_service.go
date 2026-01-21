@@ -5,13 +5,12 @@ import (
 	"errors"
 	"strings"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // UserService handles user management operations
@@ -73,13 +72,7 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID string, req *dto
 		return nil, err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("auth").
-		CausedByUser(userID).
-		On(user).
-		WithEvent("updated").
-		Log("User profile was updated")
+	activity.LogWithLog(ctx, s.repos.DB(), "auth", "updated", userID, user, "User profile was updated")
 
 	return user, nil
 }
@@ -95,28 +88,22 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dt
 		return apperrors.ErrNotFound
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.CurrentPassword)); err != nil {
+	if !security.VerifyPassword(user.Password, req.CurrentPassword) {
 		return errors.New("current password is incorrect")
 	}
 
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hashedPassword, err := security.HashPassword(req.Password)
 	if err != nil {
 		return err
 	}
 
-	user.Password = string(hashedPassword)
+	user.Password = hashedPassword
 
 	if err := s.repos.User().Update(ctx, user); err != nil {
 		return err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("auth").
-		CausedByUser(userID).
-		On(user).
-		WithEvent("password_changed").
-		Log("User password was changed")
+	activity.LogWithLog(ctx, s.repos.DB(), "auth", "password_changed", userID, user, "User password was changed")
 
 	return nil
 }
@@ -132,13 +119,7 @@ func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
 		return apperrors.ErrNotFound
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("auth").
-		CausedByUser(userID).
-		On(user).
-		WithEvent("deleted").
-		Log("User account was deleted")
+	activity.LogWithLog(ctx, s.repos.DB(), "auth", "deleted", userID, user, "User account was deleted")
 
 	// Delete owned teams
 	ownedTeams, err := s.repos.Team().GetUserTeams(ctx, userID)

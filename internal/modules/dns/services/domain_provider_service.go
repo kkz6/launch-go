@@ -10,7 +10,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
 // DomainProviderService handles business logic for domain providers
@@ -53,20 +53,20 @@ func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, team
 
 	// Validate credentials
 	if err := provider.ValidateCredentials(ctx); err != nil {
-		s.Logger().Error().Err(err).Str("provider", req.Provider).Msg("Failed to validate credentials")
+		s.Logger.Error().Err(err).Str("provider", req.Provider).Msg("Failed to validate credentials")
 		return nil, ErrInvalidCredentials
 	}
 
 	// Create domain provider record
 	dp := &models.DomainProvider{
-		UserID:         userID,
-		TeamID:         teamID,
 		Profile:        &req.Profile,
 		Provider:       providerType,
 		Connected:      true,
 		Credentials:    credentials,
 		AdditionalData: additionalData,
 	}
+	dp.UserID = userID
+	dp.TeamID = teamID
 
 	if err := s.Repos().Provider().Create(ctx, dp); err != nil {
 		return nil, err
@@ -185,7 +185,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 	}
 
 	// Sync domains within a transaction
-	err = s.Repos().Provider().WithTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.Repos().Provider().Transaction(ctx, func(tx *gorm.DB) error {
 		for providerID, domainName := range domainsList {
 			// Create or update domain
 			domain, err := s.Repos().Domain().UpdateOrCreate(ctx, map[string]interface{}{
@@ -205,13 +205,13 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 			provider.SetDomain(domainName)
 			records, err := provider.ListRecords(ctx)
 			if err != nil {
-				s.Logger().Warn().Err(err).Str("domain", domainName).Msg("Failed to list records for domain")
+				s.Logger.Warn().Err(err).Str("domain", domainName).Msg("Failed to list records for domain")
 				continue
 			}
 
 			for _, r := range records {
 				pr := fromProviderRecord(r)
-				_, err := s.Repos().DnsRecord().UpdateOrCreate(ctx, map[string]interface{}{
+				_, err := s.Repos().DNSRecord().UpdateOrCreate(ctx, map[string]interface{}{
 					"domain_id":   domain.ID,
 					"type":        pr.Type,
 					"name":        pr.Name,
@@ -227,7 +227,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 					"proxied":  pr.Proxied,
 				})
 				if err != nil {
-					s.Logger().Warn().Err(err).Str("domain", domainName).Str("record", r.Name).Msg("Failed to sync record")
+					s.Logger.Warn().Err(err).Str("domain", domainName).Str("record", r.Name).Msg("Failed to sync record")
 				}
 			}
 		}
@@ -241,7 +241,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 	}
 
 	// Update sync status to completed
-	now := utils.NewULID() // Using ULID for timestamp as a workaround
+	now := util.NewULID() // Using ULID for timestamp as a workaround
 	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"sync_status":        enums.SyncStatusCompleted,
 		"last_synced_at":     now,

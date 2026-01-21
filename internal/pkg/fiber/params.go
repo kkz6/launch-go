@@ -98,3 +98,61 @@ func MustGetULIDParam(c *fiber.Ctx, name string) string {
 	}
 	return id
 }
+
+// GetSiteID extracts and validates the "id" path parameter as a ULID for site routes.
+// This is an alias for GetID, provided for semantic clarity in nested routes
+// like /servers/:serverId/sites/:id
+func GetSiteID(c *fiber.Ctx) (string, error) {
+	return GetULIDParam(c, "id")
+}
+
+// GetDeploymentID extracts and validates the "deploymentId" path parameter as a ULID.
+func GetDeploymentID(c *fiber.Ctx) (string, error) {
+	return GetULIDParam(c, "deploymentId")
+}
+
+// GetCronID extracts and validates the "cronId" path parameter as a ULID.
+func GetCronID(c *fiber.Ctx) (string, error) {
+	return GetULIDParam(c, "cronId")
+}
+
+// GetDaemonID extracts and validates the "daemonId" path parameter as a ULID.
+func GetDaemonID(c *fiber.Ctx) (string, error) {
+	return GetULIDParam(c, "daemonId")
+}
+
+// GetKeyID extracts and validates the "keyId" path parameter as a ULID.
+func GetKeyID(c *fiber.Ctx) (string, error) {
+	return GetULIDParam(c, "keyId")
+}
+
+// GetRuleID extracts and validates the "ruleId" path parameter as a ULID.
+func GetRuleID(c *fiber.Ctx) (string, error) {
+	return GetULIDParam(c, "ruleId")
+}
+
+// GetRedirectID extracts and validates the "redirectId" path parameter as a ULID.
+func GetRedirectID(c *fiber.Ctx) (string, error) {
+	return GetULIDParam(c, "redirectId")
+}
+
+// GetRecordID extracts and validates the "recordId" path parameter as a ULID.
+func GetRecordID(c *fiber.Ctx) (string, error) {
+	return GetULIDParam(c, "recordId")
+}
+
+// GetTeamIDParam extracts and validates the "teamId" path parameter as a ULID.
+// Note: This is different from GetTeamID in context.go which extracts from Locals.
+func GetTeamIDParam(c *fiber.Ctx) (string, error) {
+	return GetULIDParam(c, "teamId")
+}
+
+// GetDomainID extracts and validates the "domainId" path parameter as a ULID.
+func GetDomainID(c *fiber.Ctx) (string, error) {
+	return GetULIDParam(c, "domainId")
+}
+
+// GetJobID extracts and validates the "jobId" path parameter as a ULID.
+func GetJobID(c *fiber.Ctx) (string, error) {
+	return GetULIDParam(c, "jobId")
+}

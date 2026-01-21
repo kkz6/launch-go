@@ -28,83 +28,77 @@ type UserInfo struct {
 
 // ServerProvisioningFailedAdminAlert sends an admin alert when server provisioning fails
 type ServerProvisioningFailedAdminAlert struct {
-	alerter              *AdminAlerter
-	server               ServerInfo
-	user                 *UserInfo
-	output               string
-	errorMessage         string
-	outputRetrievalError string
+	BaseAlert
 }
 
 // NewServerProvisioningFailedAdminAlert creates a new admin alert
 func NewServerProvisioningFailedAdminAlert(alerter *AdminAlerter, server ServerInfo) *ServerProvisioningFailedAdminAlert {
 	return &ServerProvisioningFailedAdminAlert{
-		alerter: alerter,
-		server:  server,
+		BaseAlert: NewBaseAlert(alerter, server),
 	}
 }
 
 // WithUser sets the user who provisioned the server
 func (a *ServerProvisioningFailedAdminAlert) WithUser(user *UserInfo) *ServerProvisioningFailedAdminAlert {
-	a.user = user
+	a.SetUser(user)
 	return a
 }
 
 // WithOutput sets the task output
 func (a *ServerProvisioningFailedAdminAlert) WithOutput(output string) *ServerProvisioningFailedAdminAlert {
-	a.output = output
+	a.SetOutput(output)
 	return a
 }
 
 // WithErrorMessage sets the error message
 func (a *ServerProvisioningFailedAdminAlert) WithErrorMessage(errorMessage string) *ServerProvisioningFailedAdminAlert {
-	a.errorMessage = errorMessage
+	a.SetErrorMessage(errorMessage)
 	return a
 }
 
 // WithOutputRetrievalError sets an error that occurred while retrieving output
 func (a *ServerProvisioningFailedAdminAlert) WithOutputRetrievalError(err string) *ServerProvisioningFailedAdminAlert {
-	a.outputRetrievalError = err
+	a.SetOutputRetrievalError(err)
 	return a
 }
 
 // Send sends the alert
 func (a *ServerProvisioningFailedAdminAlert) Send(ctx context.Context) error {
-	if !a.alerter.IsConfigured() {
+	if !a.Alerter.IsConfigured() {
 		return nil
 	}
 
 	message := a.buildMessage()
-	return a.alerter.Send(ctx, message)
+	return a.Alerter.Send(ctx, message)
 }
 
 func (a *ServerProvisioningFailedAdminAlert) buildMessage() *BlockKitMessage {
-	message := NewBlockKitMessage(fmt.Sprintf("Server '%s' failed to provision", a.server.Name))
+	message := NewBlockKitMessage(fmt.Sprintf("Server '%s' failed to provision", a.Server.Name))
 
-	message.AddHeader("🚨 Server Provisioning Failed")
+	message.AddHeader("Server Provisioning Failed")
 	message.AddSection("A server failed to provision and requires attention.")
 	message.AddDivider()
 
 	// Server details
 	message.AddFieldsSection(
-		fmt.Sprintf("*Server Name:*\n%s", a.server.Name),
-		fmt.Sprintf("*Team:*\n%s", a.server.TeamName),
+		fmt.Sprintf("*Server Name:*\n%s", a.Server.Name),
+		fmt.Sprintf("*Team:*\n%s", a.Server.TeamName),
 	)
 
-	ipAddress := a.server.PublicIPv4
+	ipAddress := a.Server.PublicIPv4
 	if ipAddress == "" {
 		ipAddress = "Not assigned"
 	}
 	message.AddFieldsSection(
-		fmt.Sprintf("*Provider:*\n%s", a.server.Provider),
+		fmt.Sprintf("*Provider:*\n%s", a.Server.Provider),
 		fmt.Sprintf("*IP Address:*\n%s", ipAddress),
 	)
 
-	serverType := a.server.ServerType
+	serverType := a.Server.ServerType
 	if serverType == "" {
 		serverType = "N/A"
 	}
-	os := a.server.OperatingSystem
+	os := a.Server.OperatingSystem
 	if os == "" {
 		os = "N/A"
 	}
@@ -114,12 +108,12 @@ func (a *ServerProvisioningFailedAdminAlert) buildMessage() *BlockKitMessage {
 	)
 
 	memory := "N/A"
-	if a.server.MemoryInMB > 0 {
-		memory = fmt.Sprintf("%d MB", a.server.MemoryInMB)
+	if a.Server.MemoryInMB > 0 {
+		memory = fmt.Sprintf("%d MB", a.Server.MemoryInMB)
 	}
 	cpuCores := "N/A"
-	if a.server.CPUCores > 0 {
-		cpuCores = fmt.Sprintf("%d", a.server.CPUCores)
+	if a.Server.CPUCores > 0 {
+		cpuCores = fmt.Sprintf("%d", a.Server.CPUCores)
 	}
 	message.AddFieldsSection(
 		fmt.Sprintf("*Memory:*\n%s", memory),
@@ -129,45 +123,17 @@ func (a *ServerProvisioningFailedAdminAlert) buildMessage() *BlockKitMessage {
 	message.AddDivider()
 
 	// User details
-	userName := "Unknown"
-	userEmail := "N/A"
-	if a.user != nil {
-		if a.user.Name != "" {
-			userName = a.user.Name
-		}
-		if a.user.Email != "" {
-			userEmail = a.user.Email
-		}
-	}
+	userName, userEmail := a.BuildUserSection()
 	message.AddFieldsSection(
 		fmt.Sprintf("*Provisioned By:*\n%s", userName),
 		fmt.Sprintf("*User Email:*\n%s", userEmail),
 	)
 
-	// Output retrieval error
-	if a.outputRetrievalError != "" {
-		message.AddDivider()
-		message.AddSection(fmt.Sprintf("⚠️ *Could not retrieve full logs:* %s", a.outputRetrievalError))
-	}
-
-	// Output
-	if a.output != "" {
-		message.AddDivider()
-		message.AddSection("*Last 30 Lines of Output:*")
-		message.AddSection(fmt.Sprintf("```\n%s\n```", TruncateOutput(a.output, 2900)))
-	}
-
-	// Error message
-	if a.errorMessage != "" {
-		message.AddDivider()
-		message.AddSection("*Error Message:*")
-		message.AddSection(fmt.Sprintf("```\n%s\n```", a.errorMessage))
-	}
+	// Output sections (output retrieval error, output, error message)
+	a.BuildOutputSection(message)
 
 	// Context footer
-	message.AddDivider()
-	message.AddContext(fmt.Sprintf("Server ID: %s | Team ID: %s | %s",
-		a.server.ID, a.server.TeamID, time.Now().Format("2006-01-02 15:04:05 MST")))
+	a.BuildContextFooter(message, time.Now().Format("2006-01-02 15:04:05 MST"))
 
 	return message
 }

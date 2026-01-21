@@ -67,12 +67,7 @@ func ToChannelResponse(channel *models.NotificationChannel) ChannelResponse {
 
 // ToChannelResponses converts a slice of NotificationChannels to ChannelResponses
 func ToChannelResponses(channels []models.NotificationChannel) []ChannelResponse {
-	responses := make([]ChannelResponse, len(channels))
-	for i, channel := range channels {
-		responses[i] = ToChannelResponse(&channel)
-	}
-
-	return responses
+	return pkgdto.TransformSlice(channels, ToChannelResponse)
 }
 
 // maskToken masks sensitive tokens for display

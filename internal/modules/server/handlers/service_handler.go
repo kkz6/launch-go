@@ -16,7 +16,10 @@ func (h *Handler) ListServices(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	svcs, err := h.service.ListServices(c.Context(), serverID, teamID)
 	if err != nil {
@@ -38,7 +41,10 @@ func (h *Handler) InstallService(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.CreateServiceRequest](c)
 	if err != nil {
@@ -60,8 +66,15 @@ func (h *Handler) ServiceOperation(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
-	serviceID := c.Params("serviceId")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	serviceID, err := fiberctx.GetULIDParam(c, "serviceId")
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.ServiceOperationRequest](c)
 	if err != nil {
@@ -87,7 +100,10 @@ func (h *Handler) ListPhpVersions(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	phpVersions, err := h.service.GetPhpVersions(c.Context(), serverID, teamID)
 	if err != nil {
@@ -104,7 +120,10 @@ func (h *Handler) ListInstalledPhpVersions(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	phpVersions, err := h.service.GetInstalledPhpVersions(c.Context(), serverID, teamID)
 	if err != nil {
@@ -121,7 +140,10 @@ func (h *Handler) GetAvailableServices(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	services, err := h.service.GetAvailableServices(c.Context(), serverID, teamID)
 	if err != nil {

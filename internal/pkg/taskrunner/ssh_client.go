@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/pkg/config"
+
 	"golang.org/x/crypto/ssh"
 )
 
@@ -74,16 +76,16 @@ func NewSSHClient(cfg SSHConfig) (*SSHClient, error) {
 		return nil, fmt.Errorf("no authentication method provided")
 	}
 
-	timeout := cfg.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second
+	t := cfg.Timeout
+	if t == 0 {
+		t = config.SSH
 	}
 
 	sshConfig := &ssh.ClientConfig{
 		User:            cfg.User,
 		Auth:            authMethods,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: Implement proper host key verification
-		Timeout:         timeout,
+		Timeout:         t,
 	}
 
 	port := cfg.Port
@@ -95,7 +97,7 @@ func NewSSHClient(cfg SSHConfig) (*SSHClient, error) {
 		config:  sshConfig,
 		host:    cfg.Host,
 		port:    port,
-		timeout: timeout,
+		timeout: t,
 	}, nil
 }
 
@@ -118,6 +120,16 @@ func (c *SSHClient) Close() error {
 		return c.conn.Close()
 	}
 	return nil
+}
+
+// NewSession creates a new SSH session for interactive use (PTY, shell, etc.)
+func (c *SSHClient) NewSession() (*ssh.Session, error) {
+	if c.conn == nil {
+		if err := c.Connect(); err != nil {
+			return nil, err
+		}
+	}
+	return c.conn.NewSession()
 }
 
 // Run executes a command on the remote server
@@ -155,11 +167,11 @@ func (c *SSHClient) Run(ctx context.Context, command string) (*SSHCommandResult,
 		}
 
 		if err != nil {
-			if exitErr, ok := err.(*ssh.ExitError); ok {
-				result.ExitCode = exitErr.ExitStatus()
-			} else {
+			exitErr, ok := err.(*ssh.ExitError)
+			if !ok {
 				return result, err
 			}
+			result.ExitCode = exitErr.ExitStatus()
 		}
 
 		return result, nil
@@ -222,9 +234,9 @@ func (c *SSHClient) Upload(ctx context.Context, content []byte, remotePath strin
 		w, _ := session.StdinPipe()
 		defer w.Close()
 
-		fmt.Fprintf(w, "C%04o %d %s\n", mode, len(content), filepath.Base(remotePath))
-		w.Write(content)
-		fmt.Fprint(w, "\x00")
+		_, _ = fmt.Fprintf(w, "C%04o %d %s\n", mode, len(content), filepath.Base(remotePath))
+		_, _ = w.Write(content)
+		_, _ = fmt.Fprint(w, "\x00")
 	}()
 
 	dir := filepath.Dir(remotePath)
@@ -347,14 +359,14 @@ func (c *SSHClient) WaitForConnection(ctx context.Context, maxRetries int) error
 		default:
 		}
 
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", c.host, c.port), 5*time.Second)
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", c.host, c.port), config.NetworkDial)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return c.Connect()
 		}
 
 		lastErr = err
-		time.Sleep(10 * time.Second)
+		time.Sleep(config.RetryDelay)
 	}
 
 	return fmt.Errorf("failed to connect after %d retries: %w", maxRetries, lastErr)
@@ -385,4 +397,73 @@ func expandPath(path string) string {
 		return filepath.Join(home, path[2:])
 	}
 	return path
+}
+
+// SSHClientOption is a functional option for configuring SSHClient
+type SSHClientOption func(*SSHConfig)
+
+// WithSSHTimeout sets the connection timeout for SSH clients
+func WithSSHTimeout(t time.Duration) SSHClientOption {
+	return func(cfg *SSHConfig) {
+		cfg.Timeout = t
+	}
+}
+
+// WithSSHPort sets the SSH port
+func WithSSHPort(port int) SSHClientOption {
+	return func(cfg *SSHConfig) {
+		cfg.Port = port
+	}
+}
+
+// NewSSHClientFromConnection creates an SSH client from a Connection struct.
+// This is the preferred way to create SSH clients when you have a Connection.
+func NewSSHClientFromConnection(conn *Connection, opts ...SSHClientOption) (*SSHClient, error) {
+	if conn == nil {
+		return nil, fmt.Errorf("connection cannot be nil")
+	}
+
+	cfg := SSHConfig{
+		Host:       conn.Host,
+		Port:       conn.Port,
+		User:       conn.User,
+		PrivateKey: conn.PrivateKey,
+		Timeout:    config.SSH,
+	}
+
+	for _, opt := range opts {
+		opt(&cfg)
+	}
+
+	return NewSSHClient(cfg)
+}
+
+// NewSSHClientFromServer creates an SSH client from a ServerConnection.
+// By default, connects as the server's default user.
+func NewSSHClientFromServer(server ServerConnection, opts ...SSHClientOption) (*SSHClient, error) {
+	if server == nil {
+		return nil, fmt.Errorf("server cannot be nil")
+	}
+
+	return NewSSHClientFromConnection(server.ConnectionAsUser(), opts...)
+}
+
+// NewSSHClientFromServerAsRoot creates an SSH client from a ServerConnection,
+// configured to connect as the root user.
+func NewSSHClientFromServerAsRoot(server ServerConnection, opts ...SSHClientOption) (*SSHClient, error) {
+	if server == nil {
+		return nil, fmt.Errorf("server cannot be nil")
+	}
+
+	return NewSSHClientFromConnection(server.ConnectionAsRoot(), opts...)
+}
+
+// NewSSHClientFromServerAsUser creates an SSH client from a ServerConnection,
+// configured to connect as the specified user.
+func NewSSHClientFromServerAsUser(server ServerConnection, username string, opts ...SSHClientOption) (*SSHClient, error) {
+	if server == nil {
+		return nil, fmt.Errorf("server cannot be nil")
+	}
+
+	return NewSSHClientFromConnection(server.ConnectionAsUser(username), opts...)
 }

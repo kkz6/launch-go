@@ -20,26 +20,24 @@ type RunAfterUpdatePayload struct {
 
 // RunAfterUpdateJob runs commands after a server update event
 type RunAfterUpdateJob struct {
-	ctx     *JobContext
-	Payload RunAfterUpdatePayload
+	pkgjobs.BaseJob[*JobContext, RunAfterUpdatePayload]
 }
 
 // NewRunAfterUpdateJob creates a new RunAfterUpdateJob
 func NewRunAfterUpdateJob(ctx *JobContext, payload RunAfterUpdatePayload) *RunAfterUpdateJob {
 	return &RunAfterUpdateJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the post-update job
 func (j *RunAfterUpdateJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Running post-update commands",
+	j.Ctx.LogInfo("Running post-update commands",
 		"server_id", server.ID,
 	)
 
@@ -50,32 +48,32 @@ func (j *RunAfterUpdateJob) Handle(ctx context.Context) error {
 
 	// Reload supervisor to pick up any config changes
 	reloadTask := tasks.ReloadSupervisor()
-	if result, err := j.ctx.ForServer(server).RunTask(reloadTask).AsRoot().Dispatch(ctx); err != nil {
-		j.ctx.LogError(err, "Failed to reload supervisor")
+	if result, err := j.Ctx.ForServer(server).RunTask(reloadTask).AsRoot().Dispatch(ctx); err != nil {
+		j.Ctx.LogError(err, "Failed to reload supervisor")
 	} else if !result.IsSuccessful() {
-		j.ctx.LogError(nil, "Supervisor reload returned non-zero exit code", "exit_code", result.GetExitCode())
+		j.Ctx.LogError(nil, "Supervisor reload returned non-zero exit code", "exit_code", result.GetExitCode())
 	}
 
 	// Reload Caddy configuration
 	caddyTask := tasks.ReloadCaddy()
-	if result, err := j.ctx.ForServer(server).RunTask(caddyTask).AsRoot().Dispatch(ctx); err != nil {
-		j.ctx.LogError(err, "Failed to reload Caddy")
+	if result, err := j.Ctx.ForServer(server).RunTask(caddyTask).AsRoot().Dispatch(ctx); err != nil {
+		j.Ctx.LogError(err, "Failed to reload Caddy")
 	} else if !result.IsSuccessful() {
-		j.ctx.LogError(nil, "Caddy reload returned non-zero exit code", "exit_code", result.GetExitCode())
+		j.Ctx.LogError(nil, "Caddy reload returned non-zero exit code", "exit_code", result.GetExitCode())
 	}
 
 	// Clear OPcache if PHP is installed
 	clearOpcacheTask := tasks.ClearOpcache()
-	if _, err := j.ctx.ForServer(server).RunTask(clearOpcacheTask).AsRoot().Dispatch(ctx); err != nil {
+	if _, err := j.Ctx.ForServer(server).RunTask(clearOpcacheTask).AsRoot().Dispatch(ctx); err != nil {
 		// OPcache clear failure is not critical, just log it
-		j.ctx.LogInfo("OPcache clear skipped or failed (may not be installed)")
+		j.Ctx.LogInfo("OPcache clear skipped or failed (may not be installed)")
 	}
 
-	j.ctx.LogInfo("Post-update commands completed",
+	j.Ctx.LogInfo("Post-update commands completed",
 		"server_id", server.ID,
 	)
 
-	j.ctx.BroadcastServerEvent(server, "server.post_update_completed", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "server.post_update_completed", map[string]any{
 		"server_id": server.ID,
 	})
 
@@ -84,7 +82,7 @@ func (j *RunAfterUpdateJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *RunAfterUpdateJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Post-update commands failed",
+	j.Ctx.LogError(err, "Post-update commands failed",
 		"server_id", j.Payload.ServerID,
 	)
 }

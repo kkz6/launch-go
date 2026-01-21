@@ -11,10 +11,10 @@ import (
 type Queue struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	SiteID                string     `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
-	TeamID                string     `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-	ServerID              string     `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
-	UserID                string     `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	basemodels.SiteScopedModel
+	basemodels.TeamScopedModel
+	basemodels.ServerScopedModel
+	basemodels.UserScopedModel
 	Directory             *string    `gorm:"type:varchar(255)" json:"directory,omitempty"`
 	Command               string     `gorm:"type:text;not null" json:"command"`
 	User                  string     `gorm:"type:varchar(255);not null" json:"user"`

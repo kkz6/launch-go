@@ -382,8 +382,8 @@ func ToDaemonResponse(daemon *models.Daemon) DaemonResponse {
 	}
 }
 
-// SshKeyResponse represents the response for an SSH key
-type SshKeyResponse struct {
+// SSHKeyResponse represents the response for an SSH key
+type SSHKeyResponse struct {
 	ID          string  `json:"id"`
 	Name        string  `json:"name"`
 	Fingerprint string  `json:"fingerprint"`
@@ -393,9 +393,9 @@ type SshKeyResponse struct {
 	UpdatedAt   string  `json:"updated_at"`
 }
 
-// ToSshKeyResponse converts an SshKey model to an SshKeyResponse DTO
-func ToSshKeyResponse(key *models.SshKey) SshKeyResponse {
-	return SshKeyResponse{
+// ToSSHKeyResponse converts an SSHKey model to an SSHKeyResponse DTO
+func ToSSHKeyResponse(key *models.SSHKey) SSHKeyResponse {
+	return SSHKeyResponse{
 		ID:          key.ID,
 		Name:        key.Name,
 		Fingerprint: key.GetFingerprint(),
@@ -570,7 +570,7 @@ type ServerShowPageData struct {
 	FirewallRules  []FirewallRuleResponse `json:"firewall_rules"`
 	Crons          []CronResponse         `json:"crons"`
 	Daemons        []DaemonResponse       `json:"daemons"`
-	SshKeys        []SshKeyResponse       `json:"ssh_keys"`
+	SSHKeys        []SSHKeyResponse       `json:"ssh_keys"`
 	LatestTask     *TaskResponse          `json:"latest_task,omitempty"`
 	LatestMetric   *MetricResponse        `json:"latest_metric,omitempty"`
 	RuleActions    []ProviderResponse     `json:"rule_actions"`

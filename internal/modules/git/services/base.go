@@ -1,20 +1,15 @@
 package services
 
 import (
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
-
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/repositories"
-	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
-// ServiceDeps holds all dependencies needed for git services
+// ServiceDeps holds all dependencies needed for git services.
+// Embedding service.ModuleDeps provides common dependencies and repository access.
 type ServiceDeps struct {
-	DB              *gorm.DB
-	Logger          *zerolog.Logger
-	Queue           *queue.Client
-	Repos           *repositories.Registry
+	service.ModuleDeps[*repositories.Registry]
 	ProviderFactory *providers.ProviderFactory
 
 	// Service registry - allows services to access other services
@@ -40,48 +35,32 @@ func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
 	return registry
 }
 
-// BaseService provides common service dependencies
+// BaseService provides common service dependencies for the git module.
+// It wraps service.ModuleBase and adds git-specific functionality.
 type BaseService struct {
-	deps   *ServiceDeps
-	repos  *repositories.Registry
-	logger *zerolog.Logger
+	*service.ModuleBase[*repositories.Registry]
+	serviceDeps *ServiceDeps
 }
 
 // NewBaseService creates a new base service from ServiceDeps
 func NewBaseService(deps *ServiceDeps) *BaseService {
 	return &BaseService{
-		deps:   deps,
-		repos:  deps.Repos,
-		logger: deps.Logger,
+		ModuleBase:  service.NewModuleBase(&deps.ModuleDeps),
+		serviceDeps: deps,
 	}
 }
 
-// Repos returns the repository registry
-func (s *BaseService) Repos() *repositories.Registry {
-	return s.repos
-}
-
-// DB returns the database connection
-func (s *BaseService) DB() *gorm.DB {
-	return s.deps.DB
-}
-
-// Logger returns the logger
-func (s *BaseService) Logger() *zerolog.Logger {
-	return s.logger
-}
-
-// Queue returns the queue client
-func (s *BaseService) Queue() *queue.Client {
-	return s.deps.Queue
+// ServiceDeps returns the service dependencies
+func (s *BaseService) ServiceDeps() *ServiceDeps {
+	return s.serviceDeps
 }
 
 // ProviderFactory returns the provider factory
 func (s *BaseService) ProviderFactory() *providers.ProviderFactory {
-	return s.deps.ProviderFactory
+	return s.serviceDeps.ProviderFactory
 }
 
 // Services returns the service registry for accessing other services
 func (s *BaseService) Services() *ServiceRegistry {
-	return s.deps.registry
+	return s.serviceDeps.registry
 }

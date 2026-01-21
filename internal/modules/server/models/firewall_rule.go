@@ -14,7 +14,7 @@ import (
 type FirewallRule struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	ServerID string           `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	basemodels.ServerScopedModel
 	Name     string           `gorm:"type:varchar(255);not null" json:"name"`
 	Action   enums.RuleAction `gorm:"type:varchar(255);not null" json:"action"`
 	Port     string           `gorm:"type:varchar(255);not null" json:"port"`

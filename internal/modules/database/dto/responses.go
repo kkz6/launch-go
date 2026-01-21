@@ -99,20 +99,10 @@ func ToDatabaseUserResponse(user *models.DatabaseUser) DatabaseUserResponse {
 
 // ToDatabaseResponseList converts a slice of Database models to a slice of DatabaseResponse
 func ToDatabaseResponseList(databases []models.Database) []DatabaseResponse {
-	result := make([]DatabaseResponse, len(databases))
-	for i, db := range databases {
-		result[i] = ToDatabaseResponse(&db)
-	}
-
-	return result
+	return pkgdto.TransformSlice(databases, ToDatabaseResponse)
 }
 
 // ToDatabaseUserResponseList converts a slice of DatabaseUser models to a slice of DatabaseUserResponse
 func ToDatabaseUserResponseList(users []models.DatabaseUser) []DatabaseUserResponse {
-	result := make([]DatabaseUserResponse, len(users))
-	for i, user := range users {
-		result[i] = ToDatabaseUserResponse(&user)
-	}
-
-	return result
+	return pkgdto.TransformSlice(users, ToDatabaseUserResponse)
 }

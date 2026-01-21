@@ -3,6 +3,8 @@ package enums
 import (
 	"database/sql/driver"
 	"fmt"
+
+	baseenums "github.com/kkz6/launch-go/internal/pkg/enums"
 )
 
 // ServerStatus represents the current state of a server
@@ -65,25 +67,11 @@ func (s ServerStatus) IsTerminal() bool {
 }
 
 func (s *ServerStatus) Scan(value interface{}) error {
-	if value == nil {
-		*s = ServerStatusUnknown
-		return nil
-	}
-
-	switch v := value.(type) {
-	case []byte:
-		*s = ServerStatus(v)
-	case string:
-		*s = ServerStatus(v)
-	default:
-		return fmt.Errorf("cannot scan type %T into ServerStatus", value)
-	}
-
-	return nil
+	return baseenums.ScanString(s, value)
 }
 
 func (s ServerStatus) Value() (driver.Value, error) {
-	return string(s), nil
+	return baseenums.ValueString(s)
 }
 
 func ParseServerStatus(s string) (ServerStatus, error) {

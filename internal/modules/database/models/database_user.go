@@ -10,9 +10,9 @@ import (
 type DatabaseUser struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	ServerID string `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
-	TeamID   string `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-	Name     string `gorm:"type:varchar(255);not null" json:"name"`
+	basemodels.ServerScopedModel
+	basemodels.TeamScopedModel
+	Name     string  `gorm:"type:varchar(255);not null" json:"name"`
 	Password *string `gorm:"type:longtext" json:"-"`
 	Host     string  `gorm:"type:varchar(255);not null;default:localhost" json:"host"`
 

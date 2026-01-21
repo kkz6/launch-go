@@ -3,11 +3,12 @@ package services
 import (
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 // Service-specific errors - using centralized error package
@@ -44,6 +45,7 @@ type ServiceDeps struct {
 // Service provides business logic for server operations
 type Service struct {
 	service.Base
+	activity.ActivityMixin
 	repos      contracts.RepositoryRegistry
 	dispatcher *taskrunner.Dispatcher
 }
@@ -51,9 +53,10 @@ type Service struct {
 // NewService creates a new Service instance from ServiceDeps
 func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		Base:       service.NewBaseFromDeps(deps.Dependencies),
-		repos:      deps.Repos,
-		dispatcher: deps.Dispatcher,
+		Base:          service.NewBaseFromDeps(deps.Dependencies),
+		ActivityMixin: activity.NewActivityMixin(deps.DB, "server"),
+		repos:         deps.Repos,
+		dispatcher:    deps.Dispatcher,
 	}
 }
 
@@ -61,9 +64,10 @@ func NewService(deps ServiceDeps) *Service {
 // Deprecated: Use NewService with ServiceDeps instead for consistency.
 func NewServiceWithParams(repos contracts.RepositoryRegistry, q *queue.Client, ws broadcast.ModelBroadcaster, dispatcher *taskrunner.Dispatcher) *Service {
 	return &Service{
-		Base:       service.NewBase(q, ws, nil),
-		repos:      repos,
-		dispatcher: dispatcher,
+		Base:          service.NewBase(q, ws, nil),
+		ActivityMixin: activity.NewActivityMixin(repos.DB(), "server"),
+		repos:         repos,
+		dispatcher:    dispatcher,
 	}
 }
 

@@ -10,9 +10,9 @@ import (
 // Deployment represents a site deployment
 type Deployment struct {
 	basemodels.BaseModel
-	SiteID string  `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
-	UserID *string `gorm:"column:user_id;type:char(26);index" json:"user_id,omitempty"`
-	TaskID     *string                `gorm:"column:task_id;type:char(26);index" json:"task_id,omitempty"`
+	basemodels.SiteScopedModel
+	UserID         *string                `gorm:"column:user_id;type:char(26);index" json:"user_id,omitempty"`
+	TaskID         *string                `gorm:"column:task_id;type:char(26);index" json:"task_id,omitempty"`
 	Status         enums.DeploymentStatus `gorm:"type:varchar(255);not null" json:"status"`
 	GitHash        *string                `gorm:"column:git_hash;type:varchar(255)" json:"git_hash,omitempty"`
 	CommitData     basemodels.JSONMap     `gorm:"column:commit_data;type:json" json:"commit_data,omitempty"`

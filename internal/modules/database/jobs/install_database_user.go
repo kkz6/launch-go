@@ -9,11 +9,11 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	pkgmodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/traits"
 )
 
 const TypeInstallDatabaseUser = "database:user:install"
@@ -26,22 +26,20 @@ type InstallDatabaseUserPayload struct {
 }
 
 type InstallDatabaseUserJob struct {
-	ctx *JobContext
-	traits.InstallationTracker
-	Payload InstallDatabaseUserPayload
+	pkgjobs.BaseJob[*JobContext, InstallDatabaseUserPayload]
+	pkgmodels.InstallationTracker
 }
 
 func NewInstallDatabaseUserJob(ctx *JobContext, payload InstallDatabaseUserPayload) *InstallDatabaseUserJob {
 	return &InstallDatabaseUserJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
-	j.ctx.LogInfo("Installing database user", "database_user_id", j.Payload.DatabaseUserID)
+	j.Ctx.LogInfo("Installing database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, err := repository.NewQuery[models.DatabaseUser](ctx, j.ctx.DB).
+	dbUser, err := repository.NewQuery[models.DatabaseUser](ctx, j.Ctx.DB()).
 		WithModel("DatabaseUser").
 		Preload("Databases").
 		FindByID(j.Payload.DatabaseUserID).
@@ -50,14 +48,14 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find database user: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](ctx, j.ctx.DB, dbUser.ServerID)
+	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), dbUser.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "installing", fmt.Sprintf("Creating database user: %s", dbUser.Name))
+	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "installing", fmt.Sprintf("Creating database user: %s", dbUser.Name))
 
-	factory := j.ctx.GetTaskFactory(ctx, dbUser.ServerID)
+	factory := j.Ctx.GetTaskFactory(ctx, dbUser.ServerID)
 
 	createUserTask := factory.CreateUser(tasks.CreateUserConfig{
 		Username:      dbUser.Name,
@@ -67,7 +65,7 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 		Hosts:         []string{"%"},
 	})
 
-	result, err := j.ctx.RunTaskOnServer(server, createUserTask).AsRoot().Dispatch(ctx)
+	result, err := j.Ctx.RunTaskOnServer(server, createUserTask).AsRoot().Dispatch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to create database user: %w", err)
 	}
@@ -86,56 +84,48 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 		})
 
 		if err := j.runTask(ctx, server, grantTask); err != nil {
-			j.ctx.LogError(err, "Failed to grant privileges", "database", db.Name)
+			j.Ctx.LogError(err, "Failed to grant privileges", "database", db.Name)
 		}
 	}
 
-	if err := j.MarkAsInstalled(j.ctx.DB, dbUser); err != nil {
+	if err := j.MarkAsInstalled(j.Ctx.DB(), dbUser); err != nil {
 		return fmt.Errorf("failed to update database user status: %w", err)
 	}
 
-	logger := activity.New(j.ctx.DB).
-		WithContext(ctx).
-		UseLog("database").
-		On(dbUser).
-		WithEvent("installed")
-	if j.Payload.CallerID != nil {
-		logger.CausedByUser(*j.Payload.CallerID)
-	}
-	logger.Log("Database user was installed")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "database", "installed", j.Payload.CallerID, dbUser, "Database user was installed")
 
-	j.ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "installed", fmt.Sprintf("Database user %s created successfully", dbUser.Name))
+	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "installed", fmt.Sprintf("Database user %s created successfully", dbUser.Name))
 
 	return nil
 }
 
 func (j *InstallDatabaseUserJob) runTask(ctx context.Context, server *servermodels.Server, task taskrunner.Task) error {
-	result, err := j.ctx.RunTaskOnServer(server, task).AsRoot().Dispatch(ctx)
+	result, err := j.Ctx.RunTaskOnServer(server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
 		return err
 	}
 	if !result.IsSuccessful() {
-		j.ctx.LogInfo("Task completed with errors", "output", result.GetOutput())
+		j.Ctx.LogInfo("Task completed with errors", "output", result.GetOutput())
 	}
 	return nil
 }
 
 func (j *InstallDatabaseUserJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to install database user", "database_user_id", j.Payload.DatabaseUserID)
+	j.Ctx.LogError(err, "Failed to install database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.ctx.DB, j.Payload.DatabaseUserID)
+	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB(), j.Payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](ctx, j.ctx.DB, dbUser.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), dbUser.ServerID)
 	if findErr != nil {
 		return
 	}
 
-	j.MarkInstallationFailed(j.ctx.DB, dbUser)
+	j.MarkInstallationFailed(j.Ctx.DB(), dbUser)
 
-	j.ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "failed", fmt.Sprintf("Failed to create database user: %s", dbUser.Name))
+	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "failed", fmt.Sprintf("Failed to create database user: %s", dbUser.Name))
 }
 
 // NewInstallDatabaseUserTask creates a database user installation job

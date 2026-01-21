@@ -35,9 +35,9 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 	}
 
 	db := &dbmodels.Database{
-		ServerID: serverID,
-		Name:     req.Name,
+		Name: req.Name,
 	}
+	db.ServerID = serverID
 
 	if err := s.repos.Database().Create(ctx, db); err != nil {
 		return nil, err

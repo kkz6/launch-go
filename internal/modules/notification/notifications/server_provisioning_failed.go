@@ -46,32 +46,32 @@ func (n *ServerProvisioningFailedNotification) ToEmail() *channels.EmailMessage 
 	}
 }
 
+// GetOutput returns the task output for the FailureNotification interface
+func (n *ServerProvisioningFailedNotification) GetOutput() string {
+	return n.Output
+}
+
+// GetErrorMessage returns the error message for the FailureNotification interface
+func (n *ServerProvisioningFailedNotification) GetErrorMessage() string {
+	return n.ErrorMessage
+}
+
 // ToSlack returns the Slack message content
 func (n *ServerProvisioningFailedNotification) ToSlack() string {
-	return n.formatWithLogs()
+	return FormatFailureMessage(
+		"*🚨 Server Provisioning Failed*",
+		fmt.Sprintf("The server '%s' failed to provision. You might need to manually remove it from Launch and from your provider for safety reasons.", n.ServerName),
+		n.Output,
+		n.ErrorMessage,
+	)
 }
 
 // ToDiscord returns the Discord message content
 func (n *ServerProvisioningFailedNotification) ToDiscord() string {
-	return n.formatWithLogs()
+	return n.ToSlack()
 }
 
 // ToTelegram returns the Telegram message content
 func (n *ServerProvisioningFailedNotification) ToTelegram() string {
-	return n.formatWithLogs()
-}
-
-func (n *ServerProvisioningFailedNotification) formatWithLogs() string {
-	message := "*🚨 Server Provisioning Failed*\n\n"
-	message += fmt.Sprintf("The server '%s' failed to provision. You might need to manually remove it from Launch and from your provider for safety reasons.", n.ServerName)
-
-	if n.Output != "" {
-		message += fmt.Sprintf("\n\n*Last lines of output:*\n```\n%s\n```", n.Output)
-	}
-
-	if n.ErrorMessage != "" {
-		message += fmt.Sprintf("\n\n*Error message:*\n```\n%s\n```", n.ErrorMessage)
-	}
-
-	return message
+	return n.ToSlack()
 }

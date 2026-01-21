@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/jobs"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 // BackupService handles business logic for backups
@@ -49,8 +51,6 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID, team
 	}
 
 	backup := &models.Backup{
-		ServerID:              serverID,
-		TeamID:                teamID,
 		UserID:                &userID,
 		StorageProviderID:     storageProviderID,
 		CronExpression:        req.CronExpression,
@@ -62,6 +62,8 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID, team
 		Enabled:               req.Enabled,
 		Path:                  req.Path,
 	}
+	backup.ServerID = serverID
+	backup.TeamID = teamID
 
 	databaseIDs := []string{req.DatabaseID}
 
@@ -69,12 +71,7 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID, team
 		return nil, fmt.Errorf("failed to create backup: %w", err)
 	}
 
-	activity.New(s.DB()).
-		WithContext(ctx).
-		UseLog("backup").
-		On(backup).
-		WithEvent("created").
-		Log("Backup was created")
+	activity.LogEvent(ctx, s.DB(), "created", "", backup, "Backup was created")
 
 	// Dispatch installation job
 	s.dispatchInstallBackup(serverID, backup.ID)
@@ -129,12 +126,7 @@ func (s *BackupService) UpdateBackup(ctx context.Context, id string, req *dto.Up
 		return nil, fmt.Errorf("failed to update backup: %w", err)
 	}
 
-	activity.New(s.DB()).
-		WithContext(ctx).
-		UseLog("backup").
-		On(backup).
-		WithEvent("updated").
-		Log("Backup was updated")
+	activity.LogEvent(ctx, s.DB(), "updated", "", backup, "Backup was updated")
 
 	s.Logger.Info().
 		Str("backup_id", backup.ID).
@@ -150,12 +142,7 @@ func (s *BackupService) DeleteBackup(ctx context.Context, id, serverID string) e
 		return err
 	}
 
-	activity.New(s.DB()).
-		WithContext(ctx).
-		UseLog("backup").
-		On(backup).
-		WithEvent("deleted").
-		Log("Backup was deleted")
+	activity.LogEvent(ctx, s.DB(), "deleted", "", backup, "Backup was deleted")
 
 	// Dispatch deletion job
 	s.dispatchDeleteBackup(serverID, backup.ID)
@@ -222,70 +209,19 @@ func (s *BackupService) MarkBackupInstallationFailed(ctx context.Context, id str
 // Job dispatch helpers
 
 func (s *BackupService) dispatchInstallBackup(serverID, backupID string) {
-	if s.Queue == nil {
-		s.Logger.Warn().Msg("Queue not configured, skipping InstallBackup job")
-		return
-	}
-
-	task, err := jobs.NewInstallBackupTask(serverID, backupID, nil)
-	if err != nil {
-		s.Logger.Error().Err(err).Msg("Failed to create InstallBackup task")
-		return
-	}
-
-	if _, err := s.Queue.Enqueue(task); err != nil {
-		s.Logger.Error().Err(err).Msg("Failed to enqueue InstallBackup job")
-		return
-	}
-
-	s.Logger.Info().
-		Str("server_id", serverID).
-		Str("backup_id", backupID).
-		Msg("InstallBackup job enqueued")
+	s.DispatchTask("InstallBackup", func() (*asynq.Task, error) {
+		return jobs.NewInstallBackupTask(serverID, backupID, nil)
+	}, "server_id", serverID, "backup_id", backupID)
 }
 
 func (s *BackupService) dispatchDeleteBackup(serverID, backupID string) {
-	if s.Queue == nil {
-		s.Logger.Warn().Msg("Queue not configured, skipping DeleteBackup job")
-		return
-	}
-
-	task, err := jobs.NewDeleteBackupTask(serverID, backupID, nil)
-	if err != nil {
-		s.Logger.Error().Err(err).Msg("Failed to create DeleteBackup task")
-		return
-	}
-
-	if _, err := s.Queue.Enqueue(task); err != nil {
-		s.Logger.Error().Err(err).Msg("Failed to enqueue DeleteBackup job")
-		return
-	}
-
-	s.Logger.Info().
-		Str("server_id", serverID).
-		Str("backup_id", backupID).
-		Msg("DeleteBackup job enqueued")
+	s.DispatchTask("DeleteBackup", func() (*asynq.Task, error) {
+		return jobs.NewDeleteBackupTask(serverID, backupID, nil)
+	}, "server_id", serverID, "backup_id", backupID)
 }
 
 func (s *BackupService) dispatchRunManualBackup(serverID, backupID string) {
-	if s.Queue == nil {
-		s.Logger.Warn().Msg("Queue not configured, skipping RunManualBackup job")
-		return
-	}
-
-	task, err := jobs.NewRunManualBackupTask(serverID, backupID, nil)
-	if err != nil {
-		s.Logger.Error().Err(err).Msg("Failed to create RunManualBackup task")
-		return
-	}
-
-	if _, err := s.Queue.Enqueue(task); err != nil {
-		s.Logger.Error().Err(err).Msg("Failed to enqueue RunManualBackup job")
-		return
-	}
-
-	s.Logger.Info().
-		Str("server_id", serverID).
-		Str("backup_id", backupID).
-		Msg("RunManualBackup job enqueued")
+	s.DispatchTask("RunManualBackup", func() (*asynq.Task, error) {
+		return jobs.NewRunManualBackupTask(serverID, backupID, nil)
+	}, "server_id", serverID, "backup_id", backupID)
 }

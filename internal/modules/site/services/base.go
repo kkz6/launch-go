@@ -11,11 +11,10 @@ import (
 )
 
 // ServiceDeps holds all dependencies needed for site services.
-// Embedding service.Dependencies provides common dependencies.
+// Embedding service.ModuleDeps provides common dependencies and repository access.
 type ServiceDeps struct {
-	service.Dependencies
+	service.ModuleDeps[*repositories.Registry]
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
-	Repos          *repositories.Registry
 
 	// Service registry - allows services to access other services
 	registry *ServiceRegistry
@@ -99,35 +98,29 @@ func (r *ServiceRegistry) SetCrossModuleDeps(deps *CrossModuleDeps) {
 	}
 }
 
-// BaseService provides common service dependencies
+// BaseService provides common service dependencies for the site module.
+// It wraps service.ModuleBase and adds site-specific functionality.
 type BaseService struct {
-	service.Base
-	deps  *ServiceDeps
-	repos *repositories.Registry
+	*service.ModuleBase[*repositories.Registry]
+	serviceDeps *ServiceDeps
 }
 
 // NewBaseService creates a new base service from ServiceDeps
 func NewBaseService(deps *ServiceDeps) *BaseService {
 	return &BaseService{
-		Base:  service.NewBaseFromDeps(deps.Dependencies),
-		deps:  deps,
-		repos: deps.Repos,
+		ModuleBase:  service.NewModuleBase(&deps.ModuleDeps),
+		serviceDeps: deps,
 	}
-}
-
-// Repos returns the repository registry
-func (s *BaseService) Repos() *repositories.Registry {
-	return s.repos
 }
 
 // ServiceDeps returns the service dependencies
 func (s *BaseService) ServiceDeps() *ServiceDeps {
-	return s.deps
+	return s.serviceDeps
 }
 
 // Services returns the service registry for accessing other services
 func (s *BaseService) Services() *ServiceRegistry {
-	return s.deps.registry
+	return s.serviceDeps.registry
 }
 
 // Helper functions

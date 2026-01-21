@@ -6,7 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -20,41 +20,32 @@ type UnarchiveServerPayload struct {
 // UnarchiveServerJob unarchives a server (restore from soft delete).
 // Similar to Laravel's Modules\Server\Jobs\UnarchiveServer
 type UnarchiveServerJob struct {
-	ctx     *JobContext
-	Payload UnarchiveServerPayload
+	pkgjobs.BaseJob[*JobContext, UnarchiveServerPayload]
 }
 
 // Handle processes the job
 func (j *UnarchiveServerJob) Handle(ctx context.Context) error {
 	// Find the server (including archived)
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Unarchive the server
-	if err := j.ctx.Repos.Server().Unarchive(ctx, server.ID); err != nil {
+	if err := j.Ctx.Repos().Server().Unarchive(ctx, server.ID); err != nil {
 		return fmt.Errorf("failed to unarchive server: %w", err)
 	}
 
 	// Log activity
-	logger := activity.New(j.ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(server).
-		WithEvent("unarchived")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Server was unarchived")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "unarchived", j.Payload.UserID, server, "Server was unarchived")
 
-	j.ctx.LogInfo("Server unarchived successfully",
+	j.Ctx.LogInfo("Server unarchived successfully",
 		"server_id", server.ID,
 		"server_name", server.Name,
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastServerEvent(server, "server.unarchived", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "server.unarchived", map[string]any{
 		"server_id": server.ID,
 	})
 
@@ -63,7 +54,7 @@ func (j *UnarchiveServerJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *UnarchiveServerJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to unarchive server",
+	j.Ctx.LogError(err, "Failed to unarchive server",
 		"server_id", j.Payload.ServerID,
 	)
 }
@@ -71,8 +62,7 @@ func (j *UnarchiveServerJob) Failed(ctx context.Context, err error) {
 // NewUnarchiveServerJob creates a new UnarchiveServerJob with the given context and payload.
 func NewUnarchiveServerJob(ctx *JobContext, payload UnarchiveServerPayload) *UnarchiveServerJob {
 	return &UnarchiveServerJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

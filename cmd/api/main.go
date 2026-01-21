@@ -31,12 +31,13 @@ import (
 	wsmodule "github.com/kkz6/launch-go/internal/modules/websocket"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
+	"github.com/kkz6/launch-go/internal/pkg/health"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
-	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/websocket"
 )
 
 // Application holds all application dependencies
@@ -51,7 +52,8 @@ type Application struct {
 	fiber           *fiber.App
 	kernel          *app.Kernel
 	redisCache      *cache.RedisCache
-	membershipCache *cache.TeamMembershipCache
+	membershipCache *launchcache.TeamMembershipCache
+	healthChecker   *health.Aggregator
 	sentryEnabled   bool
 }
 
@@ -103,7 +105,12 @@ func bootstrap() *Application {
 
 	// Initialize Redis cache for team membership
 	redisCache := cache.NewRedisCache(cfg.Redis)
-	membershipCache := cache.NewTeamMembershipCache(redisCache, db)
+	membershipCache := launchcache.NewTeamMembershipCache(redisCache, db)
+
+	// Initialize health check aggregator
+	healthChecker := health.NewAggregator().
+		Add(&health.DatabaseChecker{DB: db}).
+		Add(&health.RedisChecker{Client: redisCache.Client()})
 
 	fiberApp := fiber.New(fiber.Config{
 		AppName:      "Launch API",
@@ -123,6 +130,7 @@ func bootstrap() *Application {
 		fiber:           fiberApp,
 		redisCache:      redisCache,
 		membershipCache: membershipCache,
+		healthChecker:   healthChecker,
 		sentryEnabled:   sentryEnabled,
 	}
 }
@@ -162,7 +170,7 @@ func (a *Application) registerModules() {
 	a.kernel = app.NewKernel(a.logger)
 
 	// Create module builder
-	builder := module.NewBuilderFromContext(ctx)
+	builder := app.NewBuilderFromContext(ctx)
 
 	// Create modules using builder pattern
 	authModule := auth.NewModule(builder)
@@ -228,10 +236,14 @@ func (a *Application) registerModules() {
 
 // healthCheck handles the health check endpoint
 func (a *Application) healthCheck(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{
-		"status": "ok",
-		"time":   time.Now().UTC(),
-	})
+	result := a.healthChecker.Check(c.Context())
+
+	status := fiber.StatusOK
+	if result.Status != health.StatusHealthy {
+		status = fiber.StatusServiceUnavailable
+	}
+
+	return c.Status(status).JSON(result)
 }
 
 // run starts the server and handles graceful shutdown

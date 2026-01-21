@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -35,7 +36,11 @@ func NewProvisionScriptHandler(repo ProvisionScriptRepository, service Provision
 
 // GetProvisionScript returns the provision script for a server
 func (h *ProvisionScriptHandler) GetProvisionScript(c *fiber.Ctx) error {
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
 	ctx := c.Context()
 
 	// Find the server (including archived)

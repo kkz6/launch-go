@@ -2,16 +2,17 @@ package handlers
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/launch/metrics"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/signedurl"
-	ws "github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/webhook"
 )
 
 // MetricsWebhookRepository interface for metrics webhook handler
@@ -37,19 +38,17 @@ func (r *metricsWebhookRepo) CreateMetric(ctx context.Context, metric *models.Me
 
 // MetricsWebhookHandler handles incoming metrics from launch-agent
 type MetricsWebhookHandler struct {
-	repo   MetricsWebhookRepository
-	signer *signedurl.Signer
-	hub    ws.Broadcaster
-	logger *zerolog.Logger
+	webhook.Base
+	repo MetricsWebhookRepository
+	hub  broadcast.Broadcaster
 }
 
 // NewMetricsWebhookHandler creates a new metrics webhook handler
-func NewMetricsWebhookHandler(db *gorm.DB, secretKey string, hub ws.Broadcaster, logger *zerolog.Logger) *MetricsWebhookHandler {
+func NewMetricsWebhookHandler(db *gorm.DB, secretKey string, hub broadcast.Broadcaster, logger *zerolog.Logger) *MetricsWebhookHandler {
 	return &MetricsWebhookHandler{
-		repo:   &metricsWebhookRepo{db: db},
-		signer: signedurl.NewSigner(secretKey),
-		hub:    hub,
-		logger: logger,
+		Base: webhook.NewBase(secretKey, logger),
+		repo: &metricsWebhookRepo{db: db},
+		hub:  hub,
 	}
 }
 
@@ -76,107 +75,69 @@ func (h *MetricsWebhookHandler) ReceivePulse(c *fiber.Ctx) error {
 	ctx := c.Context()
 
 	// Verify signed URL
-	if !h.verifySignature(c) {
+	if !h.VerifySignature(c) {
 		return response.Unauthorized(c, "Invalid signature")
 	}
 
 	// Parse request body
-	var req PulseRequest
-	if err := c.BodyParser(&req); err != nil {
-		h.logger.Warn().Err(err).Str("server_id", serverID).Msg("Failed to parse pulse request")
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[PulseRequest](c)
+	if err != nil {
+		h.LogWarn("Failed to parse pulse request", "server_id", serverID)
+		return err
 	}
 
 	// Validate event type
 	if req.Event != "pulse" {
-		h.logger.Warn().Str("event", req.Event).Str("server_id", serverID).Msg("Unknown event type")
+		h.LogWarn("Unknown event type", "event", req.Event, "server_id", serverID)
 		return response.Error(c, fiber.StatusBadRequest, "Unknown event type")
 	}
 
 	// Find server to get team ID for broadcasting
 	server, err := h.repo.FindServerByID(ctx, serverID)
 	if err != nil {
-		h.logger.Warn().Err(err).Str("server_id", serverID).Msg("Server not found for pulse")
+		h.LogWarn("Server not found for pulse", "server_id", serverID, "error", err.Error())
 		return response.NotFound(c, "Server not found")
 	}
 
-	// Parse string values to float64
-	diskTotal, err := strconv.ParseFloat(req.Data.DiskTotal, 64)
-	if err != nil {
-		h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.DiskTotal).Msg("Failed to parse disk_total")
-	}
-	diskFree, err := strconv.ParseFloat(req.Data.DiskFree, 64)
-	if err != nil {
-		h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.DiskFree).Msg("Failed to parse disk_free")
-	}
-	diskUsed, err := strconv.ParseFloat(req.Data.DiskUsed, 64)
-	if err != nil {
-		h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.DiskUsed).Msg("Failed to parse disk_used")
-	}
-	memoryTotal, err := strconv.ParseFloat(req.Data.MemoryTotal, 64)
-	if err != nil {
-		h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.MemoryTotal).Msg("Failed to parse memory_total")
-	}
-	memoryFree, err := strconv.ParseFloat(req.Data.MemoryFree, 64)
-	if err != nil {
-		h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.MemoryFree).Msg("Failed to parse memory_free")
-	}
-	memoryUsed, err := strconv.ParseFloat(req.Data.MemoryUsed, 64)
-	if err != nil {
-		h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.MemoryUsed).Msg("Failed to parse memory_used")
-	}
+	// Parse string values to float64 using metrics parser
+	parser := metrics.NewParser(*h.Logger, serverID)
 
 	// Create metric record
 	metric := &models.Metric{
 		ServerID:    serverID,
 		Load:        req.Data.Load,
-		DiskTotal:   diskTotal,
-		DiskFree:    diskFree,
-		DiskUsed:    diskUsed,
-		MemoryTotal: memoryTotal,
-		MemoryFree:  memoryFree,
-		MemoryUsed:  memoryUsed,
+		DiskTotal:   parser.ParseFloat(req.Data.DiskTotal, "disk_total"),
+		DiskFree:    parser.ParseFloat(req.Data.DiskFree, "disk_free"),
+		DiskUsed:    parser.ParseFloat(req.Data.DiskUsed, "disk_used"),
+		MemoryTotal: parser.ParseFloat(req.Data.MemoryTotal, "memory_total"),
+		MemoryFree:  parser.ParseFloat(req.Data.MemoryFree, "memory_free"),
+		MemoryUsed:  parser.ParseFloat(req.Data.MemoryUsed, "memory_used"),
 	}
 
 	if err := h.repo.CreateMetric(ctx, metric); err != nil {
-		h.logger.Error().Err(err).Str("server_id", serverID).Msg("Failed to save metric")
+		h.LogError(err, "Failed to save metric", "server_id", serverID)
 		return response.InternalError(c, "Failed to save metric")
 	}
 
-	h.logger.Debug().
-		Str("server_id", serverID).
-		Float64("load", req.Data.Load).
-		Msg("Pulse received and saved")
+	h.LogDebug("Pulse received and saved", "server_id", serverID, "load", req.Data.Load)
 
 	// Broadcast to team via WebSocket
 	if h.hub != nil {
-		h.hub.BroadcastToTeam(server.TeamID, "server.metrics", map[string]interface{}{
-			"server_id": serverID,
-			"load":      req.Data.Load,
-			"memory": map[string]interface{}{
-				"total": memoryTotal,
-				"used":  memoryUsed,
-				"free":  memoryFree,
-			},
-			"disk": map[string]interface{}{
-				"total": diskTotal,
-				"used":  diskUsed,
-				"free":  diskFree,
-			},
-		})
+		payload := broadcast.ServerMetricsPayload{
+			ServerID: serverID,
+			Load:     req.Data.Load,
+			Memory:   broadcast.ResourceMetrics{Total: metric.MemoryTotal, Used: metric.MemoryUsed, Free: metric.MemoryFree},
+			Disk:     broadcast.ResourceMetrics{Total: metric.DiskTotal, Used: metric.DiskUsed, Free: metric.DiskFree},
+		}
+		h.hub.BroadcastToTeam(server.TeamID, broadcast.ServerMetrics, payload.ToMap())
 	}
 
 	return response.OK(c, "Pulse received", nil)
-}
-
-// verifySignature validates the webhook signature using signedurl package
-func (h *MetricsWebhookHandler) verifySignature(c *fiber.Ctx) bool {
-	return signedurl.ValidateSignedURL(c, h.signer)
 }
 
 // GeneratePulseWebhookURL creates a signed URL for the pulse webhook
 // This URL is permanent (no expiration) since the agent needs to send metrics indefinitely
 func (h *MetricsWebhookHandler) GeneratePulseWebhookURL(baseURL, serverID string) string {
 	path := "/webhooks/servers/" + serverID + "/pulse"
-	return h.signer.WithBaseURL(baseURL).PermanentSignedURL(path, nil)
+	return h.Signer.WithBaseURL(baseURL).PermanentSignedURL(path, nil)
 }

@@ -45,10 +45,6 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 	failedJobDelaySeconds := req.FailedJobDelaySeconds
 
 	queueModel := &models.Queue{
-		SiteID:                site.ID,
-		TeamID:                site.TeamID,
-		ServerID:              serverID,
-		UserID:                userID,
 		Directory:             directory,
 		User:                  *user,
 		QueueConnection:       req.QueueConnection,
@@ -64,6 +60,10 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 		StopWaitSeconds:       10,
 		StopSignal:            "TERM",
 	}
+	queueModel.SiteID = site.ID
+	queueModel.TeamID = site.TeamID
+	queueModel.ServerID = serverID
+	queueModel.UserID = userID
 
 	if req.MaxTries != nil {
 		queueModel.MaxTries = req.MaxTries
@@ -106,11 +106,9 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 		return nil, err
 	}
 
-	if s.Queue != nil {
-		if _, err := s.Queue.Enqueue(task); err != nil {
-			s.LogError(err, "Failed to enqueue install queue job")
-			return nil, err
-		}
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue install queue job")
+		return nil, err
 	}
 
 	s.LogInfo("Queue created", "site_id", site.ID, "queue_id", queueModel.ID)
@@ -148,11 +146,9 @@ func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID str
 		return err
 	}
 
-	if s.Queue != nil {
-		if _, err := s.Queue.Enqueue(task); err != nil {
-			s.LogError(err, "Failed to enqueue uninstall queue job")
-			return err
-		}
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue uninstall queue job")
+		return err
 	}
 
 	s.LogInfo("Queue deletion requested", "queue_id", queueID)
@@ -210,11 +206,9 @@ func (s *QueueService) SyncStatus(ctx context.Context, siteID, serverID, userID 
 		return err
 	}
 
-	if s.Queue != nil {
-		if _, err := s.Queue.Enqueue(task); err != nil {
-			s.LogError(err, "Failed to enqueue sync queues job")
-			return err
-		}
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue sync queues job")
+		return err
 	}
 
 	s.LogInfo("Queue sync initiated", "site_id", siteID, "queue_count", len(queues))
