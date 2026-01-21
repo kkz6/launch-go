@@ -9,11 +9,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 )
 
-// Create creates a new database user
-func (r *DatabaseUserRepository) Create(ctx context.Context, user *models.DatabaseUser) error {
-	return r.Installable.Create(ctx, user)
-}
-
 // FindByID finds a database user by ID
 func (r *DatabaseUserRepository) FindByID(ctx context.Context, id string) (*models.DatabaseUser, error) {
 	var user models.DatabaseUser
@@ -91,41 +86,6 @@ func (r *DatabaseUserRepository) FindByDatabase(ctx context.Context, databaseID 
 		Find(&users).Error
 
 	return users, err
-}
-
-// Update updates a database user
-func (r *DatabaseUserRepository) Update(ctx context.Context, user *models.DatabaseUser) error {
-	return r.Installable.Update(ctx, user)
-}
-
-// UpdateFields updates specific fields of a database user
-func (r *DatabaseUserRepository) UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error {
-	return r.Installable.UpdateFields(ctx, id, fields)
-}
-
-// Delete deletes a database user
-func (r *DatabaseUserRepository) Delete(ctx context.Context, id string) error {
-	return r.Installable.Delete(ctx, id)
-}
-
-// ExistsByNameAndServer checks if a database user exists with the given name on the server
-func (r *DatabaseUserRepository) ExistsByNameAndServer(ctx context.Context, name, serverID string) (bool, error) {
-	return r.Installable.ExistsByNameAndServer(ctx, name, serverID)
-}
-
-// MarkAsInstalled marks a database user as installed
-func (r *DatabaseUserRepository) MarkAsInstalled(ctx context.Context, id string) error {
-	return r.Installable.MarkAsInstalled(ctx, id)
-}
-
-// MarkAsFailed marks a database user installation as failed
-func (r *DatabaseUserRepository) MarkAsFailed(ctx context.Context, id string) error {
-	return r.Installable.MarkAsFailed(ctx, id)
-}
-
-// MarkAsUninstalling marks a database user as being uninstalled
-func (r *DatabaseUserRepository) MarkAsUninstalling(ctx context.Context, id string) error {
-	return r.Installable.MarkAsUninstalling(ctx, id)
 }
 
 // SyncDatabases syncs the databases attached to a user

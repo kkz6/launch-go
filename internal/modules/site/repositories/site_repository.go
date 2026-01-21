@@ -195,26 +195,3 @@ func (r *SiteRepository) FindByRepositoryAndBranch(ctx context.Context, repoName
 
 	return sites, err
 }
-
-// Note: The following methods are inherited from repository.Installable[T]:
-// From Base[T]:
-// - Create(ctx, entity) error
-// - FindByServer(ctx, serverID) ([]T, error)
-// - Update(ctx, entity) error
-// - UpdateFields(ctx, id, fields) error
-// - Delete(ctx, id) error
-// - Exists(ctx, id) (bool, error)
-// - Count(ctx) (int64, error)
-// - CountByServer(ctx, serverID) (int64, error)
-// - Transaction(ctx, fn) error
-// - Query(ctx) *gorm.DB
-// - WithPreload(ctx, relations...) *gorm.DB
-// From Installable[T]:
-// - MarkAsInstalled(ctx, id) error
-// - MarkAsFailed(ctx, id) error
-// - MarkAsUninstalling(ctx, id) error
-// - MarkUninstallationFailed(ctx, id) error
-// - FindInstalled(ctx, serverID) ([]T, error)
-// - FindPending(ctx, serverID) ([]T, error)
-// - FindFailed(ctx, serverID) ([]T, error)
-// - FindUninstalling(ctx, serverID) ([]T, error)
