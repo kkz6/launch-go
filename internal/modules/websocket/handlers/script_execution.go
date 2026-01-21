@@ -15,7 +15,7 @@ import (
 	scriptModels "github.com/kkz6/launch-go/internal/modules/script/models"
 	"github.com/kkz6/launch-go/internal/modules/script/support"
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/cache"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
 
 // ScriptExecutionHandler handles WebSocket connections for script execution streaming
@@ -32,7 +32,7 @@ func NewScriptExecutionHandler(base Base) *ScriptExecutionHandler {
 
 // NewScriptExecutionHandlerWithDeps creates a new script execution handler with individual dependencies (legacy).
 // Deprecated: Use NewScriptExecutionHandler with Base instead.
-func NewScriptExecutionHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *ScriptExecutionHandler {
+func NewScriptExecutionHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *launchcache.TeamMembershipCache) *ScriptExecutionHandler {
 	return NewScriptExecutionHandler(NewBase(db, jwtSecret, logger, membershipCache))
 }
 

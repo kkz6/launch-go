@@ -6,7 +6,7 @@ import (
 
 	"github.com/gofiber/contrib/websocket"
 
-	"github.com/kkz6/launch-go/internal/pkg/cache"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
@@ -44,7 +44,7 @@ func ValidateToken(tokenString, jwtSecret string) (string, error) {
 
 // AuthenticateWebSocket validates the token and team_id from WebSocket query params
 // Connection URL: /ws?token=xxx&team_id=xxx
-func AuthenticateWebSocket(c *websocket.Conn, jwtSecret string, membershipCache *cache.TeamMembershipCache) (*Claims, error) {
+func AuthenticateWebSocket(c *websocket.Conn, jwtSecret string, membershipCache *launchcache.TeamMembershipCache) (*Claims, error) {
 	token := c.Query("token")
 	teamID := c.Query("team_id")
 

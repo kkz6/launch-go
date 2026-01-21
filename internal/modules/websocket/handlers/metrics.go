@@ -11,8 +11,8 @@ import (
 	"gorm.io/gorm"
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/cache"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
 
 // MetricsHandler handles WebSocket metrics streaming connections
@@ -29,7 +29,7 @@ func NewMetricsHandler(base Base) *MetricsHandler {
 
 // NewMetricsHandlerWithDeps creates a new metrics handler with individual dependencies (legacy).
 // Deprecated: Use NewMetricsHandler with Base instead.
-func NewMetricsHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *MetricsHandler {
+func NewMetricsHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *launchcache.TeamMembershipCache) *MetricsHandler {
 	return NewMetricsHandler(NewBase(db, jwtSecret, logger, membershipCache))
 }
 

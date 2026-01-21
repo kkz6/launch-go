@@ -32,10 +32,11 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
 	"github.com/kkz6/launch-go/internal/pkg/health"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/websocket"
 )
 
@@ -51,7 +52,7 @@ type Application struct {
 	fiber           *fiber.App
 	kernel          *app.Kernel
 	redisCache      *cache.RedisCache
-	membershipCache *cache.TeamMembershipCache
+	membershipCache *launchcache.TeamMembershipCache
 	healthChecker   *health.Aggregator
 	sentryEnabled   bool
 }
@@ -104,7 +105,7 @@ func bootstrap() *Application {
 
 	// Initialize Redis cache for team membership
 	redisCache := cache.NewRedisCache(cfg.Redis)
-	membershipCache := cache.NewTeamMembershipCache(redisCache, db)
+	membershipCache := launchcache.NewTeamMembershipCache(redisCache, db)
 
 	// Initialize health check aggregator
 	healthChecker := health.NewAggregator().

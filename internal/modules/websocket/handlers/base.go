@@ -7,7 +7,7 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/pkg/cache"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	ws "github.com/kkz6/launch-go/internal/pkg/websocket"
 )
 
@@ -24,11 +24,11 @@ type Base struct {
 	DB              *gorm.DB
 	JWTSecret       string
 	Logger          zerolog.Logger
-	MembershipCache *cache.TeamMembershipCache
+	MembershipCache *launchcache.TeamMembershipCache
 }
 
 // NewBase creates a new Base handler with all dependencies.
-func NewBase(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) Base {
+func NewBase(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *launchcache.TeamMembershipCache) Base {
 	return Base{
 		DB:              db,
 		JWTSecret:       jwtSecret,

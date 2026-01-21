@@ -5,7 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/websocket/handlers"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/cache"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	ws "github.com/kkz6/launch-go/internal/pkg/websocket"
 )
 
@@ -28,7 +28,7 @@ type Module struct {
 	metricsHandler         *handlers.MetricsHandler
 	scriptExecutionHandler *handlers.ScriptExecutionHandler
 	jwtSecret              string
-	membershipCache        *cache.TeamMembershipCache
+	membershipCache        *launchcache.TeamMembershipCache
 }
 
 // NewModule creates a new WebSocket module
