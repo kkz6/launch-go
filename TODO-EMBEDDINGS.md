@@ -35,58 +35,24 @@ The following foundational infrastructure has been implemented:
 | 154 | Preload Scope Helpers | ✅ DONE | `ed049ad` - repository/scopes.go |
 | - | Model Mixins (Named, Described, etc.) | ✅ DONE | `44808a1` - models/mixins.go |
 | - | Constants/Limits | ✅ DONE | `1cf762a` - constants/limits.go |
+| 1 | Job Base Payload Generic | ✅ DONE | `13ebce5` - jobs/context.go BaseJob[C,P] |
 
 ---
 
 ## Table of Contents
 
-1. [Job Base Payload Generic (P2)](#1-job-base-payload-generic-p2)
-2. [Installable Repository Mixin (P2)](#2-installable-repository-mixin-p2)
-3. [Queue Dispatch Unification (P2)](#3-queue-dispatch-unification-p2)
-4. [Pagination Embedding (P2)](#4-pagination-embedding-p2)
-5. [Task Builder Pattern (P2)](#5-task-builder-pattern-p2)
-6. [Model Scoped Fields Adoption (P2)](#6-model-scoped-fields-adoption-p2)
-7. [Activity Logging Builder (P2)](#7-activity-logging-builder-p2)
-8. [Broadcast Payload Builder (P3)](#8-broadcast-payload-builder-p3)
-9. [DTO Timestamp Embedding (P3)](#9-dto-timestamp-embedding-p3)
+1. [Installable Repository Mixin (P2)](#1-installable-repository-mixin-p2)
+2. [Queue Dispatch Unification (P2)](#2-queue-dispatch-unification-p2)
+3. [Pagination Embedding (P2)](#3-pagination-embedding-p2)
+4. [Task Builder Pattern (P2)](#4-task-builder-pattern-p2)
+5. [Model Scoped Fields Adoption (P2)](#5-model-scoped-fields-adoption-p2)
+6. [Activity Logging Builder (P2)](#6-activity-logging-builder-p2)
+7. [Broadcast Payload Builder (P3)](#7-broadcast-payload-builder-p3)
+8. [DTO Timestamp Embedding (P3)](#8-dto-timestamp-embedding-p3)
 
 ---
 
-## 1. Job Base Payload Generic (P2) ✅ COMPLETED
-
-**Status:** Implemented in `internal/pkg/jobs/context.go`
-
-**Implementation:**
-- Added `BaseJob[C any, P any]` generic with two type parameters (context type and payload type)
-- Refactored all database module jobs (6 files)
-- Refactored all site module jobs (19+ files)
-- Refactored all server module jobs (35 files)
-- Cleaned up unused code: removed `payload.go`, `builder.go`, `interfaces.go`
-
-**Final Pattern:**
-```go
-type InstallDatabaseJob struct {
-    pkgjobs.BaseJob[*JobContext, InstallDatabasePayload]
-    traits.InstallationTracker
-}
-
-func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *InstallDatabaseJob {
-    return &InstallDatabaseJob{
-        BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-    }
-}
-
-func (j *InstallDatabaseJob) Handle(ctx context.Context) error {
-    // Access context via j.Ctx, payload via j.Payload
-    j.Ctx.LogInfo("Installing database", "id", j.Payload.DatabaseID)
-}
-```
-
-**Impact:** ~1275 lines eliminated across 60+ job files, consistent pattern across all modules
-
----
-
-## 2. Installable Repository Mixin (P2)
+## 1. Installable Repository Mixin (P2)
 
 **Issue:** Repositories with installable models repeat delegation to `Installable` trait.
 
@@ -194,7 +160,7 @@ func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) 
 
 ---
 
-## 3. Queue Dispatch Unification (P2)
+## 2. Queue Dispatch Unification (P2)
 
 **Issue:** Job dispatching uses 3+ different patterns across codebase.
 
@@ -303,7 +269,7 @@ dispatcher.Dispatch(jobType, payload)
 
 ---
 
-## 4. Pagination Embedding (P2)
+## 3. Pagination Embedding (P2)
 
 **Issue:** Pagination logic is ad-hoc and not reusable across repositories.
 
@@ -392,7 +358,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 
 ---
 
-## 5. Task Builder Pattern (P2)
+## 4. Task Builder Pattern (P2)
 
 **Issue:** Each task file repeats callback data struct and task creation boilerplate.
 
@@ -543,7 +509,7 @@ func DeploySiteTask(opts DeployOptions) *taskrunner.BuiltTask[callbackData] {
 
 ---
 
-## 6. Model Scoped Fields Adoption (P2)
+## 5. Model Scoped Fields Adoption (P2)
 
 **Issue:** Models define scope fields manually instead of using existing mixins.
 
@@ -602,7 +568,7 @@ type Database struct {
 
 ---
 
-## 7. Activity Logging Builder (P2)
+## 6. Activity Logging Builder (P2)
 
 **Issue:** Activity logging pattern repeated with builder chain across 40+ locations.
 
@@ -699,7 +665,7 @@ activity.LogCreation(s.repos.DB(), ctx, database, "database", userID, "Database 
 
 ---
 
-## 8. Broadcast Payload Builder (P3)
+## 7. Broadcast Payload Builder (P3)
 
 **Issue:** Broadcast payloads created inline with inconsistent structure.
 
@@ -774,7 +740,7 @@ func (p ServerMetricsPayload) ToMap() map[string]interface{} {
 
 ---
 
-## 9. DTO Timestamp Embedding (P3)
+## 8. DTO Timestamp Embedding (P3)
 
 **Issue:** Timestamp formatting repeated 81+ times in DTO converters.
 
