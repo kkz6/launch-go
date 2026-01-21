@@ -81,16 +81,9 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(server).
-		WithEvent("provisioning_failed").
-		WithProperty("reason", j.Payload.Reason)
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Server provisioning failed and resources were cleaned up")
+	activity.LogWithLogAndPropsPtr(ctx, j.Ctx.DB, "server", "provisioning_failed", j.Payload.UserID, server, "Server provisioning failed and resources were cleaned up", map[string]any{
+		"reason": j.Payload.Reason,
+	})
 
 	// Broadcast failure event
 	j.Ctx.BroadcastServerEvent(server, "server.provisioning_cleanup_complete", map[string]any{

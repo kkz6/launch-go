@@ -150,3 +150,51 @@ func LogWithLog(ctx context.Context, db *gorm.DB, logName, event, userID string,
 
 	return logger.Log(description)
 }
+
+// -------------------------------------------------------------------------
+// Pointer-friendly variants for job contexts where userID is *string
+// -------------------------------------------------------------------------
+
+// LogEventPtr is like LogEvent but accepts *string for userID.
+// Useful in job handlers where Payload.UserID is typically *string.
+// Example: LogEventPtr(ctx, db, "installed", payload.UserID, database, "Database was installed")
+func LogEventPtr(ctx context.Context, db *gorm.DB, event string, userID *string, subject Subject, description string) (*ActivityLog, error) {
+	uid := ""
+	if userID != nil {
+		uid = *userID
+	}
+	return LogEvent(ctx, db, event, uid, subject, description)
+}
+
+// LogWithLogPtr is like LogWithLog but accepts *string for userID.
+// Example: LogWithLogPtr(ctx, db, "server", "installed", payload.UserID, cron, "Cron was installed")
+func LogWithLogPtr(ctx context.Context, db *gorm.DB, logName, event string, userID *string, subject Subject, description string) (*ActivityLog, error) {
+	uid := ""
+	if userID != nil {
+		uid = *userID
+	}
+	return LogWithLog(ctx, db, logName, event, uid, subject, description)
+}
+
+// LogWithLogAndPropsPtr logs an activity with a custom log name and properties.
+// Accepts *string for userID (common in job payloads).
+// Example: LogWithLogAndPropsPtr(ctx, db, "server", "audit_completed", payload.UserID, server, "Audit done", props)
+func LogWithLogAndPropsPtr(ctx context.Context, db *gorm.DB, logName, event string, userID *string, subject Subject, description string, props map[string]any) (*ActivityLog, error) {
+	uid := ""
+	if userID != nil {
+		uid = *userID
+	}
+
+	logger := New(db).
+		WithContext(ctx).
+		UseLog(logName).
+		On(subject).
+		WithEvent(event).
+		WithProperties(props)
+
+	if uid != "" {
+		logger.CausedByUser(uid)
+	}
+
+	return logger.Log(description)
+}

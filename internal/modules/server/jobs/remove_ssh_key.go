@@ -56,12 +56,7 @@ func (j *RemoveSSHKeyJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before detaching
-	activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(sshKey).
-		WithEvent("removed").
-		Log("SSH key was removed from server")
+	activity.LogWithLog(ctx, j.Ctx.DB, "server", "removed", "", sshKey, "SSH key was removed from server")
 
 	// Detach the key from server in the database
 	if err := j.Ctx.Repos.SSHKey().DetachFromServer(ctx, server.ID, sshKey.ID); err != nil {

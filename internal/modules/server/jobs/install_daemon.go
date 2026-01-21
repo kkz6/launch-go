@@ -67,15 +67,7 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(daemon).
-		WithEvent("installed")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Daemon was installed")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "installed", j.Payload.UserID, daemon, "Daemon was installed")
 
 	j.Ctx.LogInfo("Daemon installed successfully",
 		"daemon_id", daemon.ID,

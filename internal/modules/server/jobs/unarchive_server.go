@@ -37,15 +37,7 @@ func (j *UnarchiveServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(server).
-		WithEvent("unarchived")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Server was unarchived")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "unarchived", j.Payload.UserID, server, "Server was unarchived")
 
 	j.Ctx.LogInfo("Server unarchived successfully",
 		"server_id", server.ID,

@@ -52,15 +52,7 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(cron).
-		WithEvent("uninstalled")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Cron job was uninstalled")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "uninstalled", j.Payload.UserID, cron, "Cron job was uninstalled")
 
 	// Delete the cron record
 	if err := j.Ctx.Repos.Cron().Delete(ctx, cron.ID); err != nil {

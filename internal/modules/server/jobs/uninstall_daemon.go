@@ -54,15 +54,7 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(daemon).
-		WithEvent("uninstalled")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Daemon was uninstalled")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "uninstalled", j.Payload.UserID, daemon, "Daemon was uninstalled")
 
 	// Delete the daemon record
 	if err := j.Ctx.Repos.Daemon().Delete(ctx, daemon.ID); err != nil {

@@ -56,15 +56,7 @@ func (j *InstallCronJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(cron).
-		WithEvent("installed")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Cron job was installed")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "installed", j.Payload.UserID, cron, "Cron job was installed")
 
 	j.Ctx.LogInfo("Cron installed successfully",
 		"cron_id", cron.ID,
