@@ -12261,3 +12261,1023 @@ func HexToken(length int) string       { s, _ := Generate(length, Hex); return s
 | HTTP Client & Config (Round 9) | 12 patterns | ~2480 lines |
 | Notification & Jobs (Round 10) | 12 patterns | ~2020 lines |
 | **Grand Total** | **146 patterns** | **~24,811 lines** |
+
+---
+
+## Round 11: Model Hooks, DTO Mapping, Status Patterns
+
+---
+
+## 147. BeforeCreate Hook Consolidation (P1)
+
+**Problem:** 10+ models have BeforeCreate hooks with identical token/status initialization patterns.
+
+**Files affected:**
+- `internal/modules/server/models/server.go:74-88`
+- `internal/modules/backup/models/backup_job.go:26-36`
+- `internal/modules/site/models/site.go` (status init)
+- `internal/modules/site/models/deployment.go` (status init)
+- `internal/modules/database/models/database.go` (status init)
+- `internal/modules/auth/models/user.go` (token init)
+- `internal/modules/notification/models/notification_channel.go` (status init)
+- `internal/modules/git/models/source_control.go` (status init)
+
+**Current (repeated in 10+ models):**
+```go
+func (s *Server) BeforeCreate(tx *gorm.DB) error {
+    if err := s.BaseModel.BeforeCreate(tx); err != nil {
+        return err
+    }
+    if s.Status == "" {
+        s.Status = enums.ServerStatusNew
+    }
+    if s.ConnectionToken == "" {
+        s.ConnectionToken, _ = token.SecureToken()
+    }
+    return nil
+}
+```
+
+**Solution - Embeddable Init Mixins:**
+```go
+// internal/pkg/models/init_mixins.go
+package models
+
+// StatusInitMixin for models with status field
+type StatusInitMixin[T ~string] struct {
+    defaultStatus T
+}
+
+func (m *StatusInitMixin[T]) InitStatus(current *T) {
+    if *current == "" {
+        *current = m.defaultStatus
+    }
+}
+
+// TokenInitMixin for models needing secure tokens
+type TokenInitMixin struct{}
+
+func (m *TokenInitMixin) InitToken(field *string) {
+    if *field == "" {
+        *field, _ = token.SecureToken()
+    }
+}
+
+// Combined mixin for common case
+type StatusTokenMixin[T ~string] struct {
+    StatusInitMixin[T]
+    TokenInitMixin
+}
+
+// Model usage becomes:
+type Server struct {
+    BaseModel
+    StatusTokenMixin[enums.ServerStatus]
+    // ...
+}
+
+func (s *Server) BeforeCreate(tx *gorm.DB) error {
+    if err := s.BaseModel.BeforeCreate(tx); err != nil {
+        return err
+    }
+    s.InitStatus(&s.Status)
+    s.InitToken(&s.ConnectionToken)
+    return nil
+}
+```
+
+**Impact:** ~80 lines saved, consistent initialization
+
+---
+
+## 148. Generic Slice Mapper (P1)
+
+**Problem:** Identical slice transformation pattern repeated in 8+ DTO files.
+
+**Files affected:**
+- `internal/modules/auth/dto/team.go:45-52`
+- `internal/modules/auth/dto/user.go:38-45`
+- `internal/modules/database/dto/database.go:35-42`
+- `internal/modules/database/dto/database_user.go:28-35`
+- `internal/modules/backup/dto/backup.go:40-47`
+- `internal/modules/notification/dto/channel.go:30-37`
+- `internal/modules/git/dto/source_control.go:25-32`
+- `internal/modules/site/dto/site.go:55-62`
+
+**Current (repeated 8+ times):**
+```go
+func ToTeamsResponse(teams []models.Team) []TeamResponse {
+    responses := make([]TeamResponse, len(teams))
+    for i, team := range teams {
+        responses[i] = ToTeamResponse(team)
+    }
+    return responses
+}
+
+func ToDatabasesResponse(dbs []models.Database) []DatabaseResponse {
+    responses := make([]DatabaseResponse, len(dbs))
+    for i, db := range dbs {
+        responses[i] = ToDatabaseResponse(db)
+    }
+    return responses
+}
+```
+
+**Solution - Generic Mapper:**
+```go
+// internal/pkg/dto/mapper.go
+package dto
+
+// MapSlice transforms a slice using a mapping function
+func MapSlice[T, R any](items []T, mapper func(T) R) []R {
+    if items == nil {
+        return nil
+    }
+    result := make([]R, len(items))
+    for i, item := range items {
+        result[i] = mapper(item)
+    }
+    return result
+}
+
+// Usage becomes one-liner:
+func ToTeamsResponse(teams []models.Team) []TeamResponse {
+    return dto.MapSlice(teams, ToTeamResponse)
+}
+
+// Or inline:
+responses := dto.MapSlice(servers, dto.ToServerResponse)
+```
+
+**Impact:** ~120 lines saved, type-safe generic mapper
+
+---
+
+## 149. Enum Response Helper (P2)
+
+**Problem:** Status enums all have identical String() and Label() boilerplate.
+
+**Files affected:**
+- `internal/modules/server/enums/server_status.go:18-45`
+- `internal/modules/site/enums/site_status.go:15-42`
+- `internal/modules/site/enums/deployment_status.go:12-38`
+- `internal/modules/database/enums/database_status.go:10-35`
+- `internal/modules/backup/enums/backup_status.go:8-32`
+- `internal/modules/billing/enums/subscription_status.go:10-36`
+
+**Current (repeated per enum):**
+```go
+func (s ServerStatus) String() string {
+    return string(s)
+}
+
+func (s ServerStatus) Label() string {
+    labels := map[ServerStatus]string{
+        ServerStatusNew:          "New",
+        ServerStatusProvisioning: "Provisioning",
+        ServerStatusRunning:      "Running",
+        ServerStatusFailed:       "Failed",
+    }
+    return labels[s]
+}
+
+func (s ServerStatus) IsTerminal() bool {
+    return s == ServerStatusRunning || s == ServerStatusFailed
+}
+```
+
+**Solution - Enum Helper Generator:**
+```go
+// internal/pkg/enums/helper.go
+package enums
+
+// StringEnum provides common enum methods
+type StringEnum interface {
+    ~string
+}
+
+// Labels returns human-readable labels for enums
+type Labels[T StringEnum] map[T]string
+
+func (l Labels[T]) Label(e T) string {
+    if label, ok := l[e]; ok {
+        return label
+    }
+    return string(e)
+}
+
+// Usage in enum file:
+var serverStatusLabels = enums.Labels[ServerStatus]{
+    ServerStatusNew:          "New",
+    ServerStatusProvisioning: "Provisioning",
+    ServerStatusRunning:      "Running",
+    ServerStatusFailed:       "Failed",
+}
+
+func (s ServerStatus) Label() string {
+    return serverStatusLabels.Label(s)
+}
+
+// String() is trivial - just use string(s) inline
+```
+
+**Impact:** ~90 lines saved, consistent enum handling
+
+---
+
+## 150. Pointer Dereference Utilities (P2)
+
+**Problem:** Scattered nil-check pointer dereference patterns throughout handlers and DTOs.
+
+**Files affected:**
+- `internal/modules/server/handlers/server_handler.go` (multiple nil checks)
+- `internal/modules/site/handlers/site_handler.go` (multiple nil checks)
+- `internal/modules/auth/dto/user.go:25-30` (pointer fields)
+- `internal/modules/backup/dto/backup.go:20-25` (pointer fields)
+- Various job files with nullable payload fields
+
+**Current (scattered):**
+```go
+// Pattern 1: Inline nil check
+var name string
+if req.Name != nil {
+    name = *req.Name
+}
+
+// Pattern 2: Conditional assignment
+if user.AvatarURL != nil {
+    response.AvatarURL = *user.AvatarURL
+}
+
+// Pattern 3: Default value
+timezone := "UTC"
+if server.Timezone != nil {
+    timezone = *server.Timezone
+}
+```
+
+**Solution - Pointer Helpers:**
+```go
+// internal/pkg/ptr/deref.go
+package ptr
+
+// Deref returns the dereferenced value or zero value
+func Deref[T any](p *T) T {
+    if p == nil {
+        var zero T
+        return zero
+    }
+    return *p
+}
+
+// DerefOr returns the dereferenced value or default
+func DerefOr[T any](p *T, defaultVal T) T {
+    if p == nil {
+        return defaultVal
+    }
+    return *p
+}
+
+// Ptr returns a pointer to the value
+func Ptr[T any](v T) *T {
+    return &v
+}
+
+// Usage:
+name := ptr.Deref(req.Name)
+timezone := ptr.DerefOr(server.Timezone, "UTC")
+response.AvatarURL = ptr.Deref(user.AvatarURL)
+```
+
+**Impact:** ~60 lines saved, cleaner pointer handling
+
+---
+
+## 151. URL Builder Package (P1)
+
+**Problem:** API endpoint and webhook URL construction scattered with fmt.Sprintf.
+
+**Files affected:**
+- `internal/modules/git/services/webhook_service.go:45-52` (webhook URLs)
+- `internal/modules/git/providers/github/client.go:30-45` (API URLs)
+- `internal/modules/git/providers/gitlab/client.go:28-42` (API URLs)
+- `internal/modules/git/providers/bitbucket/client.go:32-48` (API URLs)
+- `internal/modules/server/providers/digitalocean/client.go:25-40` (API URLs)
+- `internal/modules/server/providers/hetzner/client.go:22-38` (API URLs)
+- `internal/modules/site/services/deployment_service.go:80-95` (callback URLs)
+
+**Current (scattered):**
+```go
+// In webhook service
+url := fmt.Sprintf("%s/api/webhooks/github/%s", config.AppURL, site.ID)
+
+// In GitHub provider
+url := fmt.Sprintf("https://api.github.com/repos/%s/hooks", repo)
+
+// In deployment service  
+callbackURL := fmt.Sprintf("%s/api/tasks/%s/callback", config.AppURL, taskID)
+```
+
+**Solution - URL Builder:**
+```go
+// internal/pkg/urlbuilder/builder.go
+package urlbuilder
+
+import (
+    "fmt"
+    "net/url"
+    "path"
+)
+
+type Builder struct {
+    base string
+}
+
+func New(baseURL string) *Builder {
+    return &Builder{base: baseURL}
+}
+
+func (b *Builder) Path(segments ...string) string {
+    u, _ := url.Parse(b.base)
+    u.Path = path.Join(append([]string{u.Path}, segments...)...)
+    return u.String()
+}
+
+func (b *Builder) Pathf(format string, args ...any) string {
+    return b.Path(fmt.Sprintf(format, args...))
+}
+
+// API-specific builders
+var (
+    GitHub    = New("https://api.github.com")
+    GitLab    = New("https://gitlab.com/api/v4")
+    Bitbucket = New("https://api.bitbucket.org/2.0")
+)
+
+// App URL builder (from config)
+func App() *Builder {
+    return New(config.Get().AppURL)
+}
+
+// Usage:
+url := urlbuilder.GitHub.Path("repos", repo, "hooks")
+callbackURL := urlbuilder.App().Path("api", "tasks", taskID, "callback")
+webhookURL := urlbuilder.App().Path("api", "webhooks", "github", site.ID)
+```
+
+**Impact:** ~100 lines saved, consistent URL construction
+
+---
+
+## 152. Generic UpdateStatus Repository Method (P1)
+
+**Problem:** Identical UpdateStatus methods in 5+ repositories.
+
+**Files affected:**
+- `internal/modules/server/repositories/server_repository.go:85-92`
+- `internal/modules/site/repositories/site_repository.go:78-85`
+- `internal/modules/site/repositories/deployment_repository.go:65-72`
+- `internal/modules/database/repositories/database_repository.go:55-62`
+- `internal/modules/backup/repositories/backup_repository.go:48-55`
+
+**Current (repeated 5+ times):**
+```go
+func (r *ServerRepository) UpdateStatus(ctx context.Context, id string, status enums.ServerStatus) error {
+    return r.DB().WithContext(ctx).
+        Model(&models.Server{}).
+        Where("id = ?", id).
+        Update("status", status).Error
+}
+
+func (r *SiteRepository) UpdateStatus(ctx context.Context, id string, status enums.SiteStatus) error {
+    return r.DB().WithContext(ctx).
+        Model(&models.Site{}).
+        Where("id = ?", id).
+        Update("status", status).Error
+}
+```
+
+**Solution - Generic Repository Method:**
+```go
+// internal/pkg/repository/status.go
+package repository
+
+import (
+    "context"
+    "gorm.io/gorm"
+)
+
+// StatusUpdater provides generic status update
+type StatusUpdater[M any, S ~string] struct {
+    db func() *gorm.DB
+}
+
+func NewStatusUpdater[M any, S ~string](dbFn func() *gorm.DB) *StatusUpdater[M, S] {
+    return &StatusUpdater[M, S]{db: dbFn}
+}
+
+func (u *StatusUpdater[M, S]) UpdateStatus(ctx context.Context, id string, status S) error {
+    var model M
+    return u.db().WithContext(ctx).
+        Model(&model).
+        Where("id = ?", id).
+        Update("status", status).Error
+}
+
+// Embed in repository:
+type ServerRepository struct {
+    BaseRepository[models.Server]
+    *repository.StatusUpdater[models.Server, enums.ServerStatus]
+}
+
+func NewServerRepository(db *gorm.DB) *ServerRepository {
+    base := NewBaseRepository[models.Server](db)
+    return &ServerRepository{
+        BaseRepository:  base,
+        StatusUpdater:   repository.NewStatusUpdater[models.Server, enums.ServerStatus](base.DB),
+    }
+}
+```
+
+**Impact:** ~80 lines saved, type-safe status updates
+
+---
+
+## 153. Status Enum Base Generator (P2)
+
+**Problem:** All status enums have identical structure with Values(), IsValid(), terminal states.
+
+**Files affected:**
+- `internal/modules/server/enums/server_status.go:50-75`
+- `internal/modules/site/enums/site_status.go:45-70`
+- `internal/modules/site/enums/deployment_status.go:40-65`
+- `internal/modules/database/enums/database_status.go:35-58`
+- `internal/modules/backup/enums/backup_status.go:30-52`
+- `internal/modules/billing/enums/subscription_status.go:38-60`
+
+**Current (repeated per enum):**
+```go
+func (s ServerStatus) Values() []ServerStatus {
+    return []ServerStatus{
+        ServerStatusNew,
+        ServerStatusProvisioning,
+        ServerStatusRunning,
+        ServerStatusFailed,
+    }
+}
+
+func (s ServerStatus) IsValid() bool {
+    for _, v := range s.Values() {
+        if s == v {
+            return true
+        }
+    }
+    return false
+}
+
+func (s ServerStatus) IsTerminal() bool {
+    return s == ServerStatusRunning || s == ServerStatusFailed
+}
+```
+
+**Solution - Enum Set Helper:**
+```go
+// internal/pkg/enums/set.go
+package enums
+
+// Set provides common enum operations
+type Set[T comparable] struct {
+    values   []T
+    terminal map[T]bool
+}
+
+func NewSet[T comparable](values []T, terminal ...T) *Set[T] {
+    s := &Set[T]{
+        values:   values,
+        terminal: make(map[T]bool),
+    }
+    for _, t := range terminal {
+        s.terminal[t] = true
+    }
+    return s
+}
+
+func (s *Set[T]) Values() []T        { return s.values }
+func (s *Set[T]) IsValid(v T) bool   { 
+    for _, val := range s.values {
+        if v == val { return true }
+    }
+    return false
+}
+func (s *Set[T]) IsTerminal(v T) bool { return s.terminal[v] }
+
+// Usage:
+var serverStatusSet = enums.NewSet(
+    []ServerStatus{ServerStatusNew, ServerStatusProvisioning, ServerStatusRunning, ServerStatusFailed},
+    ServerStatusRunning, ServerStatusFailed, // terminal states
+)
+
+func (s ServerStatus) IsValid() bool    { return serverStatusSet.IsValid(s) }
+func (s ServerStatus) IsTerminal() bool { return serverStatusSet.IsTerminal(s) }
+```
+
+**Impact:** ~120 lines saved, declarative enum definitions
+
+---
+
+## 154. Preload Scope Helpers (P1)
+
+**Problem:** Identical preload chains repeated across repository methods.
+
+**Files affected:**
+- `internal/modules/backup/repositories/backup_repository.go:57-61,79-83,101-105` (3 identical)
+- `internal/modules/site/repositories/site_repository.go:40-48,65-73` (2 identical)
+- `internal/modules/server/repositories/server_repository.go:35-42,58-65` (2 identical)
+- `internal/modules/git/repositories/source_control_repository.go:30-38,52-60` (2 identical)
+
+**Current (backup repo - 3 EXACT duplicates):**
+```go
+// Lines 57-61, 79-83, 101-105 - IDENTICAL
+.Preload("Jobs", func(db *gorm.DB) *gorm.DB {
+    return db.Order("created_at DESC").Limit(50)
+}).
+.Preload("StorageProvider").
+.Preload("Databases")
+```
+
+**Solution - Preload Scopes:**
+```go
+// internal/pkg/repository/preload.go
+package repository
+
+import "gorm.io/gorm"
+
+// PreloadScope is a reusable preload configuration
+type PreloadScope func(*gorm.DB) *gorm.DB
+
+// Common preload scopes
+func PreloadAll(scopes ...PreloadScope) func(*gorm.DB) *gorm.DB {
+    return func(db *gorm.DB) *gorm.DB {
+        for _, scope := range scopes {
+            db = scope(db)
+        }
+        return db
+    }
+}
+
+func PreloadOrdered(relation, orderBy string, limit int) PreloadScope {
+    return func(db *gorm.DB) *gorm.DB {
+        return db.Preload(relation, func(tx *gorm.DB) *gorm.DB {
+            return tx.Order(orderBy).Limit(limit)
+        })
+    }
+}
+
+func Preload(relations ...string) PreloadScope {
+    return func(db *gorm.DB) *gorm.DB {
+        for _, rel := range relations {
+            db = db.Preload(rel)
+        }
+        return db
+    }
+}
+
+// Usage in backup repository:
+var backupPreloads = repository.PreloadAll(
+    repository.PreloadOrdered("Jobs", "created_at DESC", 50),
+    repository.Preload("StorageProvider", "Databases"),
+)
+
+func (r *BackupRepository) FindByID(ctx context.Context, id string) (*models.Backup, error) {
+    var backup models.Backup
+    err := r.DB().WithContext(ctx).
+        Scopes(backupPreloads).
+        First(&backup, "id = ?", id).Error
+    return &backup, err
+}
+```
+
+**Impact:** ~90 lines saved, DRY preload configurations
+
+---
+
+## 155. Soft Delete Scope Unification (P2)
+
+**Problem:** Mixed ArchivedAt and DeletedAt approaches with inconsistent filtering.
+
+**Files affected:**
+- `internal/modules/server/models/server.go:45` (ArchivedAt)
+- `internal/modules/site/models/site.go:38` (ArchivedAt)
+- `internal/modules/auth/models/team.go:28` (DeletedAt - GORM default)
+- `internal/modules/backup/models/backup.go:22` (no soft delete)
+- `internal/modules/server/repositories/server_repository.go:95-98` (manual WHERE)
+- `internal/modules/site/repositories/site_repository.go:88-91` (manual WHERE)
+
+**Current (inconsistent):**
+```go
+// Some models use ArchivedAt
+type Server struct {
+    ArchivedAt *time.Time `json:"archived_at,omitempty"`
+}
+
+// Manual filtering required
+func (r *ServerRepository) FindActive(ctx context.Context) ([]models.Server, error) {
+    var servers []models.Server
+    err := r.DB().WithContext(ctx).
+        Where("archived_at IS NULL").  // Manual!
+        Find(&servers).Error
+    return servers, err
+}
+
+// Other models use GORM's DeletedAt
+type Team struct {
+    gorm.DeletedAt
+}
+// GORM auto-filters
+```
+
+**Solution - Unified Archive Mixin:**
+```go
+// internal/pkg/models/archive.go
+package models
+
+import (
+    "time"
+    "gorm.io/gorm"
+)
+
+// ArchiveMixin provides consistent soft-delete via archiving
+type ArchiveMixin struct {
+    ArchivedAt *time.Time `gorm:"index" json:"archived_at,omitempty"`
+}
+
+func (m *ArchiveMixin) IsArchived() bool {
+    return m.ArchivedAt != nil
+}
+
+func (m *ArchiveMixin) Archive() {
+    now := time.Now()
+    m.ArchivedAt = &now
+}
+
+func (m *ArchiveMixin) Restore() {
+    m.ArchivedAt = nil
+}
+
+// Scope for active records
+func ActiveScope(db *gorm.DB) *gorm.DB {
+    return db.Where("archived_at IS NULL")
+}
+
+// Scope for archived records
+func ArchivedScope(db *gorm.DB) *gorm.DB {
+    return db.Where("archived_at IS NOT NULL")
+}
+
+// Usage in repository:
+func (r *ServerRepository) FindActive(ctx context.Context) ([]models.Server, error) {
+    var servers []models.Server
+    err := r.DB().WithContext(ctx).
+        Scopes(models.ActiveScope).
+        Find(&servers).Error
+    return servers, err
+}
+```
+
+**Impact:** ~50 lines saved, consistent archiving
+
+---
+
+## 156. Site Type Helper Methods (P2)
+
+**Problem:** Scattered site type checks throughout the codebase.
+
+**Files affected:**
+- `internal/modules/site/jobs/deploy_site.go:45-52` (IsLaravel check)
+- `internal/modules/site/jobs/enable_laravel_queue.go:30-35` (IsLaravel check)
+- `internal/modules/site/services/deployment_service.go:88-95` (multiple type checks)
+- `internal/modules/site/handlers/site_handler.go:120-128` (type validation)
+- `internal/modules/site/tasks/deploy.go:60-75` (feature-by-type logic)
+
+**Current (scattered):**
+```go
+// Repeated pattern
+if site.Type == enums.SiteTypeLaravel {
+    // Laravel-specific logic
+}
+
+// Or with multiple checks
+if site.Type == enums.SiteTypeLaravel || site.Type == enums.SiteTypeLaravelZeroDowntime {
+    // Laravel-like logic
+}
+
+// Feature checks
+supportsQueue := site.Type == enums.SiteTypeLaravel
+supportsScheduler := site.Type == enums.SiteTypeLaravel
+supportsHorizon := site.Type == enums.SiteTypeLaravel
+```
+
+**Solution - Site Type Helpers:**
+```go
+// internal/modules/site/enums/site_type_helpers.go
+package enums
+
+// Helper methods on SiteType
+func (t SiteType) IsLaravel() bool {
+    return t == SiteTypeLaravel || t == SiteTypeLaravelZeroDowntime
+}
+
+func (t SiteType) IsPHP() bool {
+    return t.IsLaravel() || t == SiteTypeWordPress || t == SiteTypePHP
+}
+
+func (t SiteType) IsStatic() bool {
+    return t == SiteTypeStatic || t == SiteTypeNextJS || t == SiteTypeNuxt
+}
+
+func (t SiteType) SupportsZeroDowntime() bool {
+    return t == SiteTypeLaravelZeroDowntime
+}
+
+// Feature support helpers
+func (t SiteType) SupportsQueue() bool      { return t.IsLaravel() }
+func (t SiteType) SupportsScheduler() bool  { return t.IsLaravel() }
+func (t SiteType) SupportsHorizon() bool    { return t.IsLaravel() }
+func (t SiteType) SupportsMigrations() bool { return t.IsLaravel() }
+
+// Usage becomes:
+if site.Type.IsLaravel() {
+    // Laravel-specific logic
+}
+
+if site.Type.SupportsQueue() {
+    // Enable queue features
+}
+```
+
+**Impact:** ~80 lines saved, centralized type logic
+
+---
+
+## 157. Feature Enable Base Job (P1)
+
+**Problem:** 4 Laravel feature enable jobs have 90% identical structure.
+
+**Files affected:**
+- `internal/modules/site/jobs/enable_laravel_queue.go` (~150 lines)
+- `internal/modules/site/jobs/enable_laravel_scheduler.go` (~150 lines)
+- `internal/modules/site/jobs/enable_laravel_horizon.go` (~150 lines)
+- `internal/modules/site/jobs/enable_laravel_inertia.go` (~140 lines)
+
+**Current (near-identical jobs):**
+```go
+// enable_laravel_queue.go
+type EnableLaravelQueueJob struct {
+    ctx     *jobs.Context
+    Payload EnableQueuePayload
+}
+
+func (j *EnableLaravelQueueJob) Handle() error {
+    site, err := j.loadSite()
+    if err != nil {
+        return err
+    }
+    
+    server, err := j.loadServer(site.ServerID)
+    if err != nil {
+        return err
+    }
+    
+    j.broadcastStart(site)
+    
+    task := tasks.EnableLaravelQueue(site, server)
+    result := j.ctx.TaskRunner.Execute(task, server)
+    
+    if result.Error != nil {
+        j.broadcastFailed(site, result.Error)
+        return result.Error
+    }
+    
+    j.updateSiteFeature(site, "queue_enabled", true)
+    j.broadcastSuccess(site)
+    
+    return nil
+}
+```
+
+**Solution - Base Feature Enable Job:**
+```go
+// internal/modules/site/jobs/base_feature_job.go
+package jobs
+
+import (
+    "context"
+)
+
+// FeatureConfig defines a feature to enable
+type FeatureConfig struct {
+    Name        string  // "queue", "scheduler", "horizon"
+    DBField     string  // "queue_enabled", "scheduler_enabled"
+    TaskBuilder func(site *models.Site, server *models.Server) taskrunner.Task
+}
+
+// BaseFeatureJob handles common feature enable logic
+type BaseFeatureJob struct {
+    ctx     *Context
+    config  FeatureConfig
+    payload BaseFeaturePayload
+}
+
+type BaseFeaturePayload struct {
+    SiteID string `json:"site_id"`
+}
+
+func (j *BaseFeatureJob) Handle() error {
+    site, err := j.loadSite()
+    if err != nil {
+        return err
+    }
+    
+    server, err := j.loadServer(site.ServerID)
+    if err != nil {
+        return err
+    }
+    
+    j.broadcastStart(site)
+    
+    task := j.config.TaskBuilder(site, server)
+    result := j.ctx.TaskRunner.Execute(task, server)
+    
+    if result.Error != nil {
+        j.broadcastFailed(site, result.Error)
+        return result.Error
+    }
+    
+    j.updateFeature(site, j.config.DBField, true)
+    j.broadcastSuccess(site)
+    
+    return nil
+}
+
+// Specific jobs become minimal:
+func NewEnableLaravelQueueJob(ctx *Context, payload EnableQueuePayload) *BaseFeatureJob {
+    return &BaseFeatureJob{
+        ctx: ctx,
+        config: FeatureConfig{
+            Name:        "queue",
+            DBField:     "queue_enabled",
+            TaskBuilder: tasks.EnableLaravelQueue,
+        },
+        payload: BaseFeaturePayload{SiteID: payload.SiteID},
+    }
+}
+```
+
+**Impact:** ~400 lines saved, feature jobs become config
+
+---
+
+## 158. Broadcast Event Builder (P2)
+
+**Problem:** Identical nil-check wrapper methods in 3+ files for WebSocket broadcasting.
+
+**Files affected:**
+- `internal/modules/site/services/base.go:45-55` (3 wrapper methods)
+- `internal/modules/site/jobs/context.go:60-72` (3 wrapper methods)
+- `internal/pkg/taskrunner/callback.go:80-92` (3 wrapper methods)
+
+**Current (repeated in 3 files):**
+```go
+func (s *Base) BroadcastToTeam(teamID, event string, data interface{}) {
+    if s.WS == nil {
+        return
+    }
+    s.WS.BroadcastToTeam(teamID, event, data)
+}
+
+func (s *Base) BroadcastToUser(userID, event string, data interface{}) {
+    if s.WS == nil {
+        return
+    }
+    s.WS.BroadcastToUser(userID, event, data)
+}
+
+func (s *Base) BroadcastToChannel(channel, event string, data interface{}) {
+    if s.WS == nil {
+        return
+    }
+    s.WS.BroadcastToChannel(channel, event, data)
+}
+```
+
+**Solution - Broadcast Mixin:**
+```go
+// internal/pkg/broadcast/mixin.go
+package broadcast
+
+import "launch/internal/pkg/websocket"
+
+// Mixin provides nil-safe broadcasting methods
+type Mixin struct {
+    WS *websocket.Hub
+}
+
+func (m *Mixin) BroadcastToTeam(teamID, event string, data interface{}) {
+    if m.WS == nil {
+        return
+    }
+    m.WS.BroadcastToTeam(teamID, event, data)
+}
+
+func (m *Mixin) BroadcastToUser(userID, event string, data interface{}) {
+    if m.WS == nil {
+        return
+    }
+    m.WS.BroadcastToUser(userID, event, data)
+}
+
+func (m *Mixin) BroadcastToChannel(channel, event string, data interface{}) {
+    if m.WS == nil {
+        return
+    }
+    m.WS.BroadcastToChannel(channel, event, data)
+}
+
+// Event builder for common patterns
+type Event struct {
+    Channel string
+    Name    string
+    Data    interface{}
+}
+
+func (m *Mixin) Broadcast(e Event) {
+    m.BroadcastToChannel(e.Channel, e.Name, e.Data)
+}
+
+// Usage - embed in services/jobs:
+type DeploymentService struct {
+    broadcast.Mixin
+    // ...
+}
+
+// Or with event builder:
+s.Broadcast(broadcast.Event{
+    Channel: fmt.Sprintf("team.%s", teamID),
+    Name:    "deployment.started",
+    Data:    map[string]any{"deployment_id": id},
+})
+```
+
+**Impact:** ~60 lines saved, consistent broadcasting
+
+---
+
+## Extended Summary (Items 147-158)
+
+| Category | Items | Est. LOC Saved |
+|----------|-------|----------------|
+| BeforeCreate Hook Consolidation | Item 147 | ~80 lines |
+| Generic Slice Mapper | Item 148 | ~120 lines |
+| Enum Response Helper | Item 149 | ~90 lines |
+| Pointer Dereference Utilities | Item 150 | ~60 lines |
+| URL Builder Package | Item 151 | ~100 lines |
+| Generic UpdateStatus Repository | Item 152 | ~80 lines |
+| Status Enum Base Generator | Item 153 | ~120 lines |
+| Preload Scope Helpers | Item 154 | ~90 lines |
+| Soft Delete Scope Unification | Item 155 | ~50 lines |
+| Site Type Helper Methods | Item 156 | ~80 lines |
+| Feature Enable Base Job | Item 157 | ~400 lines |
+| Broadcast Event Builder | Item 158 | ~60 lines |
+| **Round 11 Total** | **12 patterns** | **~1330 lines** |
+
+---
+
+## Updated Final Summary
+
+| Category | Items | Total LOC Saved |
+|----------|-------|-----------------|
+| Handler Bases | 5 patterns | ~400 lines |
+| Repository Patterns | 5 patterns | ~1200 lines |
+| Service Patterns | 3 patterns | ~450 lines |
+| Job/Task Patterns | 3 patterns | ~800 lines |
+| Model Mixins | 5 patterns | ~270 lines |
+| Provider API Clients | 3 patterns | ~450 lines |
+| Middleware Patterns | 1 pattern | ~30 lines |
+| Config Patterns | 1 pattern | ~86 lines |
+| DTO/Request Patterns | 2 patterns | ~550 lines |
+| Testing Patterns | 2 patterns | ~250 lines |
+| Infrastructure Patterns | 6 patterns | ~1075 lines |
+| Validation & Response | 5 patterns | ~610 lines |
+| Template & Script | 3 patterns | ~160 lines |
+| Interface & Query | 4 patterns | ~500 lines |
+| Security & Events | 3 patterns | ~100 lines |
+| HTTP & Helpers (Round 3) | 12 patterns | ~1790 lines |
+| Error & DI (Round 4) | 12 patterns | ~1320 lines |
+| GORM & Jobs (Round 5) | 12 patterns | ~2290 lines |
+| Context & Auth (Round 6) | 12 patterns | ~2560 lines |
+| Validation & Enums (Round 7) | 12 patterns | ~1805 lines |
+| Routes & Crypto (Round 8) | 12 patterns | ~3615 lines |
+| HTTP Client & Config (Round 9) | 12 patterns | ~2480 lines |
+| Notification & Jobs (Round 10) | 12 patterns | ~2020 lines |
+| Model Hooks & DTO (Round 11) | 12 patterns | ~1330 lines |
+| **Grand Total** | **158 patterns** | **~26,141 lines** |
