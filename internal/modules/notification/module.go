@@ -50,10 +50,9 @@ func (m *Module) createServices() *services.ServiceRegistry {
 		adminWebhookURL = deps.Config.Slack.AdminWebhookURL
 	}
 
-	// Create shared service dependencies
+	// Create shared service dependencies using embedded service.Dependencies
 	svcDeps := &services.ServiceDeps{
-		DB:              deps.DB,
-		Logger:          deps.Logger,
+		Dependencies:    deps.ServiceDeps(),
 		Repos:           m.repos,
 		ChannelFactory:  m.channelFactory,
 		AdminWebhookURL: adminWebhookURL,
