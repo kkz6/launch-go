@@ -52,96 +52,37 @@ The following foundational infrastructure has been implemented:
 
 ---
 
-## 1. Job Base Payload Generic (P2)
+## 1. Job Base Payload Generic (P2) ✅ COMPLETED
 
-**Issue:** All jobs repeat context field and handler setup pattern.
+**Status:** Implemented in `internal/pkg/jobs/context.go`
 
-**Files Affected:**
-- `internal/modules/database/jobs/install_database.go:26-36`
-- `internal/modules/database/jobs/uninstall_database.go:26-36`
-- `internal/modules/database/jobs/update_database_user.go:26-36`
-- `internal/modules/site/jobs/*.go` (10+ files)
-- `internal/modules/server/jobs/*.go` (5+ files)
+**Implementation:**
+- Added `BaseJob[C any, P any]` generic with two type parameters (context type and payload type)
+- Refactored all database module jobs (6 files)
+- Refactored all site module jobs (19+ files)
+- Refactored all server module jobs (35 files)
+- Cleaned up unused code: removed `payload.go`, `builder.go`, `interfaces.go`
 
-**Current Pattern:**
+**Final Pattern:**
 ```go
 type InstallDatabaseJob struct {
-    ctx     *JobContext
-    traits.InstallationTracker
-    Payload InstallDatabasePayload
-}
-
-func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *InstallDatabaseJob {
-    return &InstallDatabaseJob{
-        ctx:     ctx,
-        Payload: payload,
-    }
-}
-```
-
-**Solution:** Create generic job base `internal/pkg/jobs/base_job.go`
-```go
-package jobs
-
-import "context"
-
-// BaseJob provides common job structure with typed payload
-type BaseJob[P any] struct {
-    ctx     *JobContext
-    Payload P
-}
-
-// NewBaseJob creates a new base job
-func NewBaseJob[P any](ctx *JobContext, payload P) BaseJob[P] {
-    return BaseJob[P]{
-        ctx:     ctx,
-        Payload: payload,
-    }
-}
-
-// Context returns the job context
-func (j *BaseJob[P]) Context() *JobContext {
-    return j.ctx
-}
-
-// DB returns database connection
-func (j *BaseJob[P]) DB() *gorm.DB {
-    return j.ctx.DB()
-}
-
-// Queue returns the queue client
-func (j *BaseJob[P]) Queue() *queue.Client {
-    return j.ctx.Queue
-}
-
-// Logger returns the logger
-func (j *BaseJob[P]) Logger() *zerolog.Logger {
-    return j.ctx.Logger
-}
-```
-
-**Refactored Job:**
-```go
-type InstallDatabaseJob struct {
-    jobs.BaseJob[InstallDatabasePayload]
+    pkgjobs.BaseJob[*JobContext, InstallDatabasePayload]
     traits.InstallationTracker
 }
 
 func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *InstallDatabaseJob {
     return &InstallDatabaseJob{
-        BaseJob: jobs.NewBaseJob(ctx, payload),
+        BaseJob: pkgjobs.NewBaseJob(ctx, payload),
     }
+}
+
+func (j *InstallDatabaseJob) Handle(ctx context.Context) error {
+    // Access context via j.Ctx, payload via j.Payload
+    j.Ctx.LogInfo("Installing database", "id", j.Payload.DatabaseID)
 }
 ```
 
-**Refactoring Steps:**
-- [ ] Create `internal/pkg/jobs/base_job.go` with generics
-- [ ] Refactor database module jobs (5 files)
-- [ ] Refactor site module jobs (10+ files)
-- [ ] Refactor server module jobs
-- [ ] Update job registration
-
-**Impact:** ~100 lines eliminated across 20+ job files
+**Impact:** ~1275 lines eliminated across 60+ job files, consistent pattern across all modules
 
 ---
 
