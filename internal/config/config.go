@@ -3,6 +3,7 @@ package config
 import (
 	"strings"
 
+	"github.com/kkz6/launch-go/internal/pkg/configutil"
 	"github.com/spf13/viper"
 )
 
@@ -41,7 +42,7 @@ func Load() (*Config, error) {
 	return &Config{
 		App:      loadAppConfig(),
 		Database: loadDatabaseConfig(),
-		Redis:    loadRedisConfig(),
+		Redis:    configutil.Load[RedisConfig](),
 		JWT:      loadJWTConfig(),
 		Cors:     loadCorsConfig(),
 		Queue:    loadQueueConfig(),
@@ -56,7 +57,7 @@ func Load() (*Config, error) {
 func setDefaults() {
 	setAppDefaults()
 	setDatabaseDefaults()
-	setRedisDefaults()
+	// RedisConfig defaults are set via struct tags
 	setJWTDefaults()
 	setCorsDefaults()
 	setQueueDefaults()

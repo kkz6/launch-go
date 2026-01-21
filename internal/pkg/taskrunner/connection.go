@@ -1,6 +1,10 @@
 package taskrunner
 
-import "time"
+import (
+	"time"
+
+	"github.com/kkz6/launch-go/internal/pkg/pathutil"
+)
 
 // DefaultSSHTimeout is the default timeout for SSH connections
 const DefaultSSHTimeout = 30 * time.Second
@@ -17,10 +21,7 @@ type Connection struct {
 // GetScriptPath returns the script storage path on the remote server
 func (c *Connection) GetScriptPath() string {
 	if c.ScriptPath == "" {
-		if c.User == "root" {
-			return "/root/.launch-tasks"
-		}
-		return "/home/" + c.User + "/.launch-tasks"
+		return pathutil.GetTaskDir(c.User)
 	}
 	return c.ScriptPath
 }

@@ -1,94 +1,80 @@
 package middleware
 
 import (
+	"errors"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/golang-jwt/jwt/v5"
 
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/jwtutil"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
+// parseAuthToken extracts and validates the JWT token from the Authorization header.
+// Returns the validated claims or an error if the token is missing/invalid.
+func parseAuthToken(c *fiber.Ctx, jwtSecret string) (jwt.MapClaims, error) {
+	authHeader := c.Get("Authorization")
+	if authHeader == "" {
+		return nil, errors.New("missing authorization header")
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		return nil, errors.New("invalid authorization header format")
+	}
+
+	claims, err := jwtutil.ParseToken(parts[1], jwtSecret)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := jwtutil.ValidateTokenType(claims, "access"); err != nil {
+		return nil, err
+	}
+
+	return claims, nil
+}
+
+// setAuthContext sets the user context from validated JWT claims.
+func setAuthContext(c *fiber.Ctx, claims jwt.MapClaims) {
+	userID, _ := jwtutil.ExtractClaim(claims, "sub")
+	fiberctx.SetUserContext(c, userID, nil)
+	c.Locals("email", claims["email"])
+}
+
+// Auth middleware requires a valid JWT token in the Authorization header.
+// It sets userID and email in request context (c.Locals).
+//
+// Note: team context is handled by TeamScope middleware which reads
+// from X-Team-ID header and validates membership.
 func Auth(jwtSecret string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		authHeader := c.Get("Authorization")
-		if authHeader == "" {
-			return response.Unauthorized(c, "Missing authorization header")
+		claims, err := parseAuthToken(c, jwtSecret)
+		if err != nil {
+			return response.Unauthorized(c, "Unauthorized")
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
-			return response.Unauthorized(c, "Invalid authorization format")
-		}
-
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fiber.ErrUnauthorized
-			}
-			return []byte(jwtSecret), nil
-		})
-
-		if err != nil || !token.Valid {
-			return response.Unauthorized(c, "Invalid token")
-		}
-
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			return response.Unauthorized(c, "Invalid token claims")
-		}
-
-		tokenType, ok := claims["type"].(string)
-		if !ok || tokenType != "access" {
-			return response.Unauthorized(c, "Invalid token type")
-		}
-
-		c.Locals("userID", claims["sub"])
-		c.Locals("email", claims["email"])
-
-		// Note: team context is now handled by TeamContext middleware
-		// which reads from X-Team-ID header and validates membership
+		setAuthContext(c, claims)
 
 		return c.Next()
 	}
 }
 
+// OptionalAuth is like Auth but doesn't require authentication.
+// If a valid token is provided, it sets the user context.
+// If no token or invalid token, it continues without user context.
+//
+// Useful for endpoints that work with or without authentication.
 func OptionalAuth(jwtSecret string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		authHeader := c.Get("Authorization")
-		if authHeader == "" {
+		claims, err := parseAuthToken(c, jwtSecret)
+		if err != nil {
 			return c.Next()
 		}
 
-		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
-		if tokenString == authHeader {
-			return c.Next()
-		}
-
-		token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fiber.ErrUnauthorized
-			}
-			return []byte(jwtSecret), nil
-		})
-
-		if err != nil || !token.Valid {
-			return c.Next()
-		}
-
-		claims, ok := token.Claims.(jwt.MapClaims)
-		if !ok {
-			return c.Next()
-		}
-
-		tokenType, ok := claims["type"].(string)
-		if !ok || tokenType != "access" {
-			return c.Next()
-		}
-
-		c.Locals("userID", claims["sub"])
-		c.Locals("email", claims["email"])
-
-		// Note: team context is now handled by TeamContext middleware
+		setAuthContext(c, claims)
 
 		return c.Next()
 	}
