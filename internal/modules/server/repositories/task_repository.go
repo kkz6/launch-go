@@ -41,9 +41,7 @@ func (r *TaskRepository) FindByServer(ctx context.Context, serverID string, limi
 		Where("server_id = ?", serverID).
 		Order("created_at DESC")
 
-	if limit > 0 {
-		query = query.Limit(limit)
-	}
+	query = repository.ApplyFilters(query, repository.WithOptionalLimit(limit))
 
 	err := query.Find(&tasks).Error
 	return tasks, err

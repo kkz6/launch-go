@@ -71,3 +71,26 @@ func (w *WebhookChannel) GetHTTPClient() HTTPClient {
 func (w *WebhookChannel) SetHTTPClient(client HTTPClient) {
 	w.httpClient = client
 }
+
+// PostConnect sends a payload to test the webhook connection.
+// Returns ErrConnectionFailed instead of ErrSendFailed for failed requests.
+func (w *WebhookChannel) PostConnect(ctx context.Context, payload any) error {
+	if w.webhookURL == "" {
+		return ErrInvalidConfiguration
+	}
+
+	if w.httpClient == nil {
+		return ErrConnectionFailed
+	}
+
+	_, statusCode, err := w.httpClient.Post(ctx, w.webhookURL, payload)
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
+	}
+
+	if statusCode < http.StatusOK || statusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("%w: received status code %d", ErrConnectionFailed, statusCode)
+	}
+
+	return nil
+}

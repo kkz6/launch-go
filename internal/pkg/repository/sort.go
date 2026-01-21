@@ -137,3 +137,91 @@ func NewSortConfig(allowedFields map[string]string, defaultField, defaultDir str
 		DefaultDir:    defaultDir,
 	}
 }
+
+// Pre-built sort configs for common entities.
+// These provide secure, validated sorting with sensible defaults.
+
+// ServerSortConfig defines allowed sort fields for servers.
+var ServerSortConfig = SortConfig{
+	AllowedFields: map[string]string{
+		"createdAt": "created_at",
+		"name":      "name",
+		"status":    "status",
+		"ip":        "ip_address",
+	},
+	DefaultField: "createdAt",
+	DefaultDir:   "desc",
+}
+
+// SiteSortConfig defines allowed sort fields for sites.
+var SiteSortConfig = SortConfig{
+	AllowedFields: map[string]string{
+		"createdAt": "created_at",
+		"name":      "name",
+		"domain":    "domain",
+	},
+	DefaultField: "createdAt",
+	DefaultDir:   "desc",
+}
+
+// DeploymentSortConfig defines allowed sort fields for deployments.
+var DeploymentSortConfig = SortConfig{
+	AllowedFields: map[string]string{
+		"createdAt": "created_at",
+		"status":    "status",
+	},
+	DefaultField: "createdAt",
+	DefaultDir:   "desc",
+}
+
+// BackupSortConfig defines allowed sort fields for backups.
+var BackupSortConfig = SortConfig{
+	AllowedFields: map[string]string{
+		"createdAt": "created_at",
+		"size":      "size",
+		"status":    "status",
+	},
+	DefaultField: "createdAt",
+	DefaultDir:   "desc",
+}
+
+// TaskSortConfig defines allowed sort fields for tasks.
+var TaskSortConfig = SortConfig{
+	AllowedFields: map[string]string{
+		"createdAt": "created_at",
+		"status":    "status",
+		"type":      "type",
+	},
+	DefaultField: "createdAt",
+	DefaultDir:   "desc",
+}
+
+// MetricSortConfig defines allowed sort fields for metrics.
+var MetricSortConfig = SortConfig{
+	AllowedFields: map[string]string{
+		"recordedAt": "recorded_at",
+		"createdAt":  "created_at",
+	},
+	DefaultField: "recordedAt",
+	DefaultDir:   "desc",
+}
+
+// DomainSortConfig defines allowed sort fields for DNS domains.
+var DomainSortConfig = SortConfig{
+	AllowedFields: map[string]string{
+		"createdAt": "created_at",
+		"name":      "name",
+		"type":      "type",
+	},
+	DefaultField: "createdAt",
+	DefaultDir:   "desc",
+}
+
+// ActivitySortConfig defines allowed sort fields for activity logs.
+var ActivitySortConfig = SortConfig{
+	AllowedFields: map[string]string{
+		"createdAt": "created_at",
+	},
+	DefaultField: "createdAt",
+	DefaultDir:   "desc",
+}
