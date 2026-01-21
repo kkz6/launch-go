@@ -354,7 +354,7 @@ func (f *ServiceFactory) CreateBase() *Base {
 
 ---
 
-### 2.3 Repository Registry Generator
+### 2.3 Repository Registry Generator ✅
 **Issue:** Registry pattern copy-pasted across all modules
 **Files Affected:**
 - `internal/modules/auth/repositories/repository.go`
@@ -362,38 +362,18 @@ func (f *ServiceFactory) CreateBase() *Base {
 - `internal/modules/server/repositories/`
 - All other modules
 
-**Create:** `internal/pkg/repository/registry.go`
-```go
-package repository
+**Created:** `internal/pkg/repository/registry.go`
 
-import "gorm.io/gorm"
-
-// RegistryBase provides common registry functionality
-type RegistryBase struct {
-    db *gorm.DB
-}
-
-func NewRegistryBase(db *gorm.DB) RegistryBase {
-    return RegistryBase{db: db}
-}
-
-func (r RegistryBase) DB() *gorm.DB {
-    return r.db
-}
-
-// Example module registry using composition
-// type Registry struct {
-//     RegistryBase
-//     user   *UserRepository
-//     team   *TeamRepository
-// }
-```
+Provides:
+- `RegistryBase` - Common registry base with DB accessor and transaction support
+- `RepositoryBase` - Common repository base for embedding
+- `NewRegistryBase(db)` / `NewRepositoryBase(db)` constructors
 
 **Refactoring Steps:**
-- [ ] Create `internal/pkg/repository/registry.go`
-- [ ] Add `RegistryBase` with common DB accessor
-- [ ] Refactor all module registries to use composition
-- [ ] Add interface enforcement via compile-time checks
+- [x] Create `internal/pkg/repository/registry.go`
+- [x] Add `RegistryBase` with common DB accessor and `WithTransaction`
+- [x] Add `RepositoryBase` for individual repositories
+- [ ] Refactor all module registries to use composition (gradual adoption)
 
 ---
 
@@ -912,7 +892,7 @@ db, err := repository.FindOne[models.Database](ctx, r.db,
 
 ---
 
-### 6.2 Callback Registration Consolidation
+### 6.2 Callback Registration Consolidation ✅
 **Issue:** Each module has its own `register.go` for callbacks
 
 **Files:**
@@ -920,29 +900,23 @@ db, err := repository.FindOne[models.Database](ctx, r.db,
 - `internal/modules/site/tasks/register.go`
 - `internal/modules/database/tasks/register.go`
 
-**Create:** Centralized registration in `internal/pkg/taskrunner/registry.go`
-```go
-package taskrunner
+**Created:** Enhanced registry in `internal/pkg/taskrunner/registry.go`
 
-var callbackRegistry = make(map[string]CallbackStateFactory)
-
-// RegisterCallback registers a callback factory for a task type
-func RegisterCallback(taskType string, factory CallbackStateFactory) {
-    callbackRegistry[taskType] = factory
-}
-
-// GetCallbackFactory returns the factory for a task type
-func GetCallbackFactory(taskType string) (CallbackStateFactory, bool) {
-    f, ok := callbackRegistry[taskType]
-    return f, ok
-}
-```
+Provides:
+- `ListRegisteredTypes()` - List all registered task types
+- `IsRegistered(typeName)` - Check if a task type is registered
+- `RegisteredCount()` - Get count of registered types
+- `MustRegister(typeName, factory)` - Register with duplicate check (panics on duplicate)
+- `MustRegisterCallbackState[S](typeName)` - Type-safe registration with duplicate check
+- `GetRegistryInfo()` - Get full registry information
+- `ValidateRegistry(expectedTypes)` - Validate expected types are registered
+- `ClearRegistry()` - Clear registry (for tests)
 
 **Refactoring Steps:**
-- [ ] Create centralized callback registry
-- [ ] Keep registration calls in modules but use central registry
-- [ ] Add validation for duplicate registrations
-- [ ] Add discovery/listing of registered callbacks
+- [x] Create centralized callback registry helpers
+- [x] Keep registration calls in modules but use central registry
+- [x] Add validation for duplicate registrations (`MustRegister`)
+- [x] Add discovery/listing of registered callbacks (`ListRegisteredTypes`, `GetRegistryInfo`)
 
 ---
 
@@ -1043,115 +1017,81 @@ func ParseTime(s string) (*time.Time, error) {
 
 ---
 
-### 7.2 Response Builder Pattern
+### 7.2 Response Builder Pattern ✅
 **Issue:** DTO conversion code duplicated
 
-**Current Pattern (auth/dto/responses.go has good examples):**
-```go
-func ToUserResponse(u *models.User) *UserResponse { ... }
-func ToUserResponsePtr(u *models.User) *UserResponse { ... }
-func ToUserResponses(users []models.User) []UserResponse { ... }
-```
+**Created:** `internal/pkg/dto/converter.go`
 
-**Standardize with generics:**
-```go
-// internal/pkg/dto/converter.go
-package dto
-
-// ToResponse converts single model to response
-type ToResponse[M, R any] func(*M) *R
-
-// ConvertSlice converts slice of models to responses
-func ConvertSlice[M, R any](models []M, convert func(*M) *R) []R {
-    if models == nil {
-        return nil
-    }
-    results := make([]R, len(models))
-    for i := range models {
-        results[i] = *convert(&models[i])
-    }
-    return results
-}
-
-// ConvertPtr safely converts pointer, returning nil for nil input
-func ConvertPtr[M, R any](model *M, convert func(*M) *R) *R {
-    if model == nil {
-        return nil
-    }
-    return convert(model)
-}
-```
+Provides:
+- `ConvertSlice[M, R](models, convert)` - Convert slice of models to response slice
+- `ConvertSlicePtr[M, R](models, convert)` - Convert to slice of pointers
+- `ConvertPtr[M, R](model, convert)` - Safe pointer conversion (nil-safe)
+- `ConvertPtrValue[M, R](model, convert)` - Pointer to value conversion
+- `MapSlice[M, R](models, fn)` - Generic slice mapping
+- `FilterSlice[M](models, predicate)` - Slice filtering
+- `FirstOrNil[T](slice)` - Get first element or nil
+- `SafeDeref[T](ptr)` - Safe pointer dereference
+- `Ptr[T](v)` - Create pointer from value
 
 **Refactoring Steps:**
-- [ ] Create generic conversion helpers
-- [ ] Refactor DTO converters to use helpers
-- [ ] Reduce boilerplate in response builders
+- [x] Create generic conversion helpers
+- [ ] Refactor DTO converters to use helpers (gradual adoption)
+- [ ] Reduce boilerplate in response builders (gradual adoption)
 
 ---
 
-### 7.3 Model Broadcast Helpers
+### 7.3 Model Broadcast Helpers ✅
 **Issue:** Broadcast payload creation duplicated
 
-**Create:** `internal/pkg/models/broadcast_helpers.go`
-```go
-package models
+**Created:** `internal/pkg/broadcast/helpers.go`
 
-// BroadcastAction represents the type of change
-type BroadcastAction string
-
-const (
-    BroadcastCreated BroadcastAction = "created"
-    BroadcastUpdated BroadcastAction = "updated"
-    BroadcastDeleted BroadcastAction = "deleted"
-)
-
-// BroadcastPayload creates standard broadcast payload
-func BroadcastPayload[T Broadcastable](model T, action BroadcastAction) map[string]interface{} {
-    return map[string]interface{}{
-        "action": action,
-        "model":  model.BroadcastName(),
-        "data":   model.BroadcastPayload(),
-    }
-}
-```
+Provides:
+- `Action` type with constants: `ActionCreated`, `ActionUpdated`, `ActionDeleted`
+- `Broadcastable` interface for models
+- `Payload[T](model, action)` - Create standard broadcast payload
+- `PayloadWithExtra[T](model, action, extra)` - Payload with additional fields
+- `SimplePayload(modelName, action, data)` - Simple payload without model interface
+- `StatusPayload(modelName, id, status)` - Status update payload
+- `ProgressPayload(modelName, id, progress, message)` - Progress update payload
+- `ErrorPayload(modelName, id, errorMsg)` - Error notification payload
+- `EventName(modelName, action)` - Generate standard event name
 
 **Refactoring Steps:**
-- [ ] Create broadcast payload helpers
-- [ ] Standardize action types
-- [ ] Refactor service broadcast calls
+- [x] Create broadcast payload helpers
+- [x] Standardize action types
+- [ ] Refactor service broadcast calls (gradual adoption)
 
 ---
 
 ## 8. Error Handling Standardization (P2)
 
-### 8.1 Module Error Types
+### 8.1 Module Error Types ✅
 **Issue:** Inconsistent error definitions across modules
 
-**Create standard pattern for each module:**
-```go
-// internal/modules/site/errors/errors.go
-package errors
+**Already Implemented:** `internal/pkg/errors/notfound.go`
 
-import apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+The centralized error package provides:
+- `ResourceError` type with HTTP status support
+- Helper functions: `NotFound()`, `BadRequest()`, `Conflict()`, `Internal()`, `Forbidden()`, `Unauthorized()`
+- Pre-defined errors for all modules:
+  - Server: `ErrServerNotFound`, `ErrServiceNotFound`, `ErrFirewallRuleNotFound`, etc.
+  - Site: `ErrSiteNotFound`, `ErrDeploymentNotFound`, `ErrQueueNotFound`, etc.
+  - Database: `ErrDatabaseNotFound`, `ErrDatabaseUserNotFound`
+  - Git: `ErrSourceControlNotFound`, `ErrRepositoryNotFound`
+  - Backup: `ErrBackupNotFound`, `ErrStorageProviderNotFound`, `ErrBackupJobNotFound`
+  - DNS: `ErrDNSProviderNotFound`, `ErrDomainNotFound`, `ErrDNSRecordNotFound`
+  - Notification: `ErrNotificationChannelNotFound`
+  - Billing: `ErrSubscriptionNotFound`, `ErrPlanNotFound`
+  - Auth: `ErrUserNotFound`, `ErrTeamNotFound`
+  - Script: `ErrScriptNotFound`, `ErrExecutionNotFound`
 
-var (
-    ErrSiteNotFound      = apperrors.NotFound("Site not found")
-    ErrSiteNotDeployed   = apperrors.BadRequest("Site has not been deployed")
-    ErrDeploymentFailed  = apperrors.InternalError("Deployment failed")
-    ErrInvalidRepository = apperrors.BadRequest("Invalid repository URL")
-)
-
-// Repository errors (re-exported for handler convenience)
-var (
-    ErrDeploymentNotFound = repositories.ErrDeploymentNotFound
-)
-```
+Module repositories import and re-export from central package for convenience.
 
 **Refactoring Steps:**
-- [ ] Create `errors/errors.go` in each module
-- [ ] Define all module-specific errors
-- [ ] Use consistent error types (NotFound, BadRequest, etc.)
-- [ ] Add error codes for client handling
+- [x] Centralized errors in `internal/pkg/errors/notfound.go`
+- [x] Define all module-specific errors
+- [x] Use consistent error types (NotFound, BadRequest, etc.)
+- [ ] Add error codes for client handling (optional enhancement)
 
 ---
 
@@ -1284,50 +1224,28 @@ const (
 
 ---
 
-### 9.3 Configuration Loader Generic Pattern
+### 9.3 Configuration Loader Generic Pattern ✅
 **Issue:** Each config file repeats load/setDefaults pattern
 
-**Create:** `internal/pkg/config/loader.go`
-```go
-package config
+**Created:** `internal/pkg/config/loader.go`
 
-import "github.com/spf13/viper"
-
-// Loadable interface for configs that can be loaded
-type Loadable interface {
-    SetDefaults()
-    Load()
-}
-
-// LoadAll loads multiple configs in order
-func LoadAll(configs ...Loadable) {
-    for _, c := range configs {
-        c.SetDefaults()
-        c.Load()
-    }
-}
-
-// GetEnvOrDefault gets environment variable with default
-func GetEnvOrDefault(key, defaultValue string) string {
-    if v := viper.GetString(key); v != "" {
-        return v
-    }
-    return defaultValue
-}
-
-// GetIntOrDefault gets int env var with default
-func GetIntOrDefault(key string, defaultValue int) int {
-    if viper.IsSet(key) {
-        return viper.GetInt(key)
-    }
-    return defaultValue
-}
-```
+Provides:
+- `Loadable` interface with `SetDefaults()` and `Load()` methods
+- `LoadAll(configs...)` - Load multiple configs in order
+- Getter helpers with defaults:
+  - `GetEnv`, `GetEnvOrDefault`, `GetEnvOrDefaultDirect`
+  - `GetInt`, `GetIntOrDefault`, `GetIntOrDefaultDirect`
+  - `GetBool`, `GetBoolOrDefault`, `GetBoolOrDefaultDirect`
+  - `GetDuration`, `GetDurationOrDefault`, `GetDurationOrDefaultDirect`
+  - `GetFloat64`, `GetFloat64OrDefault`
+- `MustGetEnv(key)` - Get env or panic if not set
+- `IsSet(key)` - Check if config key is set
+- `SetDefault(key, value)` - Set default value
 
 **Refactoring Steps:**
-- [ ] Create generic config loader helpers
-- [ ] Refactor all config files to use helpers
-- [ ] Add config validation
+- [x] Create generic config loader helpers
+- [ ] Refactor all config files to use helpers (gradual adoption)
+- [ ] Add config validation (optional enhancement)
 
 ---
 
@@ -1362,92 +1280,54 @@ h.Logger().Error().
 
 ---
 
-### 10.2 Request Tracing
+### 10.2 Request Tracing ✅
 **Issue:** No request tracing across services
 
-**Create:** `internal/middleware/trace.go`
-```go
-package middleware
+**Created:** `internal/middleware/trace.go`
 
-import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/oklog/ulid/v2"
-)
+Provides:
+- `Trace()` middleware - Adds trace ID to request context
+- `GetTraceID(c)` - Extract trace ID from context (returns empty string if not set)
+- `MustGetTraceID(c)` - Extract trace ID or panic
+- `TraceIDFromContext(c)` - Get trace ID as map for logging
 
-const TraceIDKey = "traceID"
-
-// Trace adds trace ID to request context
-func Trace() fiber.Handler {
-    return func(c *fiber.Ctx) error {
-        traceID := c.Get("X-Trace-ID")
-        if traceID == "" {
-            traceID = ulid.Make().String()
-        }
-        c.Locals(TraceIDKey, traceID)
-        c.Set("X-Trace-ID", traceID)
-        return c.Next()
-    }
-}
-```
+Features:
+- Accepts trace ID from `X-Trace-ID` or `X-Request-ID` headers
+- Generates new ULID if not provided
+- Stores in context locals and adds to response headers
 
 **Refactoring Steps:**
-- [ ] Add trace middleware
-- [ ] Include trace ID in all logs
-- [ ] Pass trace ID to service layer
-- [ ] Include in job payloads
+- [x] Add trace middleware
+- [ ] Include trace ID in all logs (gradual adoption via handler base GetTraceID)
+- [ ] Pass trace ID to service layer (gradual adoption)
+- [ ] Include in job payloads (gradual adoption)
 
 ---
 
-### 10.3 Middleware Formatting Helpers
+### 10.3 Middleware Formatting Helpers ✅
 **Issue:** Formatting functions in middleware should be in pkg
 
-**Move from:** `internal/middleware/logger.go`
-**Move to:** `internal/pkg/logger/formatters.go`
+**Created:** `internal/pkg/logger/formatters.go`
 
-```go
-package logger
+Provides:
+- ANSI color constants: `ColorReset`, `ColorRed`, `ColorGreen`, `ColorYellow`, etc.
+- `MethodIcons` map - HTTP method to icon mapping
+- `GetMethodIcon(method)` - Get icon for HTTP method
+- `GetStatusColor(status)` - Get ANSI color for status code
+- `GetStatusIcon(status)` - Get icon for status code
+- `FormatDurationCompact(d)` - Format duration compactly
+- `Colorize(text, color)` - Wrap text in color codes
+- `ColorizeStatus(status)` - Get colorized status string
+- `LogLevel` type with color support
+- `GetLevelColor(level)` / `ColorizeLevel(level)` - Log level formatting
+- `TruncateString(s, maxLen)` - Truncate with ellipsis
 
-import "github.com/charmbracelet/lipgloss"
-
-// HTTP method icons
-var MethodIcons = map[string]string{
-    "GET":    "→",
-    "POST":   "●",
-    "PUT":    "◆",
-    "PATCH":  "◇",
-    "DELETE": "✕",
-}
-
-// Status code colors
-func StatusColor(code int) lipgloss.Style {
-    switch {
-    case code >= 500:
-        return lipgloss.NewStyle().Foreground(lipgloss.Color("red"))
-    case code >= 400:
-        return lipgloss.NewStyle().Foreground(lipgloss.Color("yellow"))
-    case code >= 300:
-        return lipgloss.NewStyle().Foreground(lipgloss.Color("cyan"))
-    default:
-        return lipgloss.NewStyle().Foreground(lipgloss.Color("green"))
-    }
-}
-
-// FormatDuration formats duration for logging
-func FormatDuration(d time.Duration) string {
-    if d < time.Millisecond {
-        return fmt.Sprintf("%dµs", d.Microseconds())
-    }
-    if d < time.Second {
-        return fmt.Sprintf("%dms", d.Milliseconds())
-    }
-    return fmt.Sprintf("%.2fs", d.Seconds())
-}
-```
+Note: `FormatDuration` and `FormatBytes` already exist in `logger.go`
 
 **Refactoring Steps:**
-- [ ] Extract formatting to pkg/logger
-- [ ] Use in middleware
-- [ ] Make available for CLI output
+- [x] Extract formatting to pkg/logger
+- [ ] Update middleware to use shared formatters (optional - keep working as-is)
+- [ ] Make available for CLI output (available for use)
 
 ---
 
@@ -1562,11 +1442,20 @@ Each module needs similar audit for:
 12. [x] Task runner to pkg (P2 - 6.1) - Already correctly architected in `pkg/taskrunner/`
 13. [x] Task templates consolidation (P1 - 2.4) - Modules now use shared `CommonFuncMap` from `pkg/taskrunner/templates`
 
-### Phase 5: Polish (Week 9-10)
+### Phase 5: Polish (Week 9-10) ✅
 14. [x] Time format helpers (P2 - 7.1) - Complete (pkg/dto/time.go with FormatTime, FormatTimeValue, FormatTimeOrEmpty, ParseTime, TimeAgo, etc.)
 15. [x] Error handling standardization (P2 - 8.1) - Complete (pkg/fiber/errors.go with HandleServiceError, HandleServiceErrorWithMessage, MustSucceed)
 16. [x] Constants extraction (P3 - 9.1) - Complete (pkg/response/messages.go with standard error/success message constants)
 17. [x] Logging additions (P3 - 10.1) - Complete (handler base has LogRequest, LogError, LogWarn, LogInfo, LogDebug, GetTraceID; gradual handler adoption)
+
+### Phase 6: Infrastructure Completion ✅
+18. [x] Repository registry base (P2 - 2.3) - Complete (pkg/repository/registry.go with RegistryBase, RepositoryBase)
+19. [x] Callback registration consolidation (P2 - 6.2) - Complete (pkg/taskrunner/registry.go with ListRegisteredTypes, MustRegister, ValidateRegistry)
+20. [x] Response builder pattern (P2 - 7.2) - Complete (pkg/dto/converter.go with ConvertSlice, ConvertPtr, MapSlice, FilterSlice)
+21. [x] Broadcast helpers (P2 - 7.3) - Complete (pkg/broadcast/helpers.go with Payload, StatusPayload, ProgressPayload)
+22. [x] Config loader pattern (P3 - 9.3) - Complete (pkg/config/loader.go with Loadable interface, GetEnvOrDefault, etc.)
+23. [x] Request tracing middleware (P3 - 10.2) - Complete (middleware/trace.go with Trace middleware, GetTraceID)
+24. [x] Middleware formatting helpers (P3 - 10.3) - Complete (pkg/logger/formatters.go with color codes, icons, formatting)
 
 ---
 
