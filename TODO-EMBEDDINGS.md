@@ -2502,3 +2502,906 @@ After implementing ALL embeddings:
 ---
 
 *This document complements TODO-REFACTORING.md with embedding-specific patterns.*
+
+---
+
+## 27. SSH Client Connection Factory (P1)
+
+**Issue:** SSH client creation repeated 7+ times with identical configuration patterns.
+
+**Files Affected:**
+- `internal/modules/taskrunner/dispatcher.go` - Multiple SSH client creations
+- `internal/modules/taskrunner/stream_monitor.go` - SSH connection handling
+- `internal/modules/server/services/server_service.go` - Server connectivity
+- `internal/modules/websocket/handlers/terminal.go` - Terminal connections
+
+**Current Pattern (repeated 7+ times):**
+```go
+client, err := ssh.NewClient(
+    ssh.WithHost(server.IP),
+    ssh.WithPort(server.SSHPort),
+    ssh.WithUser("launch"),
+    ssh.WithPrivateKey(privateKey),
+    ssh.WithTimeout(30 * time.Second),
+)
+if err != nil {
+    logger.Error().Err(err).Str("server_id", serverID).Msg("Failed to create SSH client")
+    return nil, err
+}
+defer client.Close()
+```
+
+**Solution:** Create `internal/pkg/ssh/factory.go`
+```go
+package ssh
+
+import (
+    "context"
+    "time"
+    "github.com/rs/zerolog"
+)
+
+// ConnectionFactory creates SSH connections with consistent configuration
+type ConnectionFactory struct {
+    defaultUser    string
+    defaultTimeout time.Duration
+    keyProvider    PrivateKeyProvider
+    logger         *zerolog.Logger
+}
+
+// PrivateKeyProvider retrieves private keys for servers
+type PrivateKeyProvider interface {
+    GetPrivateKey(ctx context.Context, serverID string) (string, error)
+}
+
+// NewConnectionFactory creates a new SSH connection factory
+func NewConnectionFactory(keyProvider PrivateKeyProvider, logger *zerolog.Logger) *ConnectionFactory {
+    return &ConnectionFactory{
+        defaultUser:    "launch",
+        defaultTimeout: 30 * time.Second,
+        keyProvider:    keyProvider,
+        logger:         logger,
+    }
+}
+
+// ServerConnectable interface for models that can be SSH connected
+type ServerConnectable interface {
+    GetIP() string
+    GetSSHPort() int
+    GetID() string
+}
+
+// Connect creates an SSH connection to a server
+func (f *ConnectionFactory) Connect(ctx context.Context, server ServerConnectable) (*Client, error) {
+    privateKey, err := f.keyProvider.GetPrivateKey(ctx, server.GetID())
+    if err != nil {
+        f.logger.Error().Err(err).Str("server_id", server.GetID()).Msg("Failed to get private key")
+        return nil, err
+    }
+
+    client, err := NewClient(
+        WithHost(server.GetIP()),
+        WithPort(server.GetSSHPort()),
+        WithUser(f.defaultUser),
+        WithPrivateKey(privateKey),
+        WithTimeout(f.defaultTimeout),
+    )
+    if err != nil {
+        f.logger.Error().Err(err).Str("server_id", server.GetID()).Msg("Failed to create SSH client")
+        return nil, err
+    }
+
+    return client, nil
+}
+
+// ConnectWithOptions creates an SSH connection with custom options
+func (f *ConnectionFactory) ConnectWithOptions(ctx context.Context, server ServerConnectable, opts ...ClientOption) (*Client, error) {
+    privateKey, err := f.keyProvider.GetPrivateKey(ctx, server.GetID())
+    if err != nil {
+        return nil, err
+    }
+
+    defaultOpts := []ClientOption{
+        WithHost(server.GetIP()),
+        WithPort(server.GetSSHPort()),
+        WithUser(f.defaultUser),
+        WithPrivateKey(privateKey),
+        WithTimeout(f.defaultTimeout),
+    }
+
+    allOpts := append(defaultOpts, opts...)
+    return NewClient(allOpts...)
+}
+```
+
+**Refactored Usage:**
+```go
+// Before
+client, err := ssh.NewClient(
+    ssh.WithHost(server.IP),
+    ssh.WithPort(server.SSHPort),
+    ssh.WithUser("launch"),
+    ssh.WithPrivateKey(privateKey),
+    ssh.WithTimeout(30 * time.Second),
+)
+
+// After
+client, err := sshFactory.Connect(ctx, server)
+```
+
+**Refactoring Steps:**
+- [ ] Create `internal/pkg/ssh/factory.go`
+- [ ] Define `ServerConnectable` interface
+- [ ] Implement `PrivateKeyProvider` interface
+- [ ] Refactor `taskrunner/dispatcher.go` to use factory
+- [ ] Refactor `stream_monitor.go` to use factory
+- [ ] Refactor terminal handler to use factory
+- [ ] Add connection pooling option for future optimization
+
+**Impact:** ~100 lines eliminated, centralized connection management, easier to add connection pooling
+
+---
+
+## 28. Enum Scan/Value Boilerplate (P1)
+
+**Issue:** 31 enum types repeat ~10 lines of Scan/Value methods (315+ lines total).
+
+**Files Affected:**
+- `internal/modules/site/enums/enums.go` - 10 enums (860+ lines, ~100 lines Scan/Value)
+- `internal/modules/server/enums/enums.go` - 8 enums (~80 lines Scan/Value)
+- `internal/modules/git/enums/enums.go` - 5 enums (~50 lines Scan/Value)
+- `internal/modules/database/enums/enums.go` - 3 enums (~30 lines Scan/Value)
+- `internal/modules/billing/enums/enums.go` - 2 enums (~20 lines Scan/Value)
+- `internal/modules/backup/enums/enums.go` - 2 enums (~20 lines Scan/Value)
+- `internal/modules/notification/enums/enums.go` - 1 enum (~10 lines Scan/Value)
+
+**Current Pattern (repeated 31 times):**
+```go
+type SiteType string
+
+const (
+    SiteTypeLaravel SiteType = "laravel"
+    SiteTypeWordPress SiteType = "wordpress"
+    // ...
+)
+
+// Repeated for every enum type
+func (s *SiteType) Scan(value interface{}) error {
+    if value == nil {
+        return nil
+    }
+    str, ok := value.(string)
+    if !ok {
+        bytes, ok := value.([]byte)
+        if !ok {
+            return fmt.Errorf("failed to scan SiteType: %v", value)
+        }
+        str = string(bytes)
+    }
+    *s = SiteType(str)
+    return nil
+}
+
+func (s SiteType) Value() (driver.Value, error) {
+    return string(s), nil
+}
+```
+
+**Solution:** Create `internal/pkg/enum/scannable.go` with generics
+```go
+package enum
+
+import (
+    "database/sql/driver"
+    "fmt"
+)
+
+// Scannable is an interface for enum types that can be scanned from DB
+type Scannable interface {
+    ~string
+}
+
+// ScanString scans a database value into a string-based enum
+func ScanString[T Scannable](target *T, value interface{}) error {
+    if value == nil {
+        return nil
+    }
+    switch v := value.(type) {
+    case string:
+        *target = T(v)
+    case []byte:
+        *target = T(string(v))
+    default:
+        return fmt.Errorf("failed to scan %T: %v", *target, value)
+    }
+    return nil
+}
+
+// ValueString returns the driver value for a string-based enum
+func ValueString[T Scannable](e T) (driver.Value, error) {
+    return string(e), nil
+}
+```
+
+**Alternative: Code Generation with `//go:generate`**
+```go
+// internal/pkg/enum/generate.go
+//go:generate go run ./generate_enum.go
+
+// generate_enum.go - generates Scan/Value methods
+package main
+
+func main() {
+    enums := []string{"SiteType", "ServerStatus", "DeploymentStatus", ...}
+    for _, e := range enums {
+        generateScanValue(e)
+    }
+}
+```
+
+**Using embed tag approach (preferred):**
+```go
+// internal/pkg/enum/string_enum.go
+package enum
+
+// StringEnum provides Scan/Value for string-based enums
+type StringEnum string
+
+func (e *StringEnum) Scan(value interface{}) error {
+    return ScanString(e, value)
+}
+
+func (e StringEnum) Value() (driver.Value, error) {
+    return ValueString(e)
+}
+```
+
+**Refactored Enum:**
+```go
+// Before - 10 lines per enum
+type SiteType string
+
+func (s *SiteType) Scan(value interface{}) error { ... } // 10 lines
+func (s SiteType) Value() (driver.Value, error) { ... }  // 3 lines
+
+// After - Type alias approach
+type SiteType = enum.StringEnum  // Uses embedded Scan/Value
+
+// Or with constants still working:
+type SiteType string
+func (s *SiteType) Scan(v interface{}) error { return enum.ScanString(s, v) }
+func (s SiteType) Value() (driver.Value, error) { return enum.ValueString(s) }
+```
+
+**Refactoring Steps:**
+- [ ] Create `internal/pkg/enum/scannable.go`
+- [ ] Create generic `ScanString` and `ValueString` functions
+- [ ] Refactor site enums (10 types)
+- [ ] Refactor server enums (8 types)
+- [ ] Refactor git enums (5 types)
+- [ ] Refactor remaining module enums (8 types)
+- [ ] Consider `go:generate` for full automation
+
+**Impact:** ~315 lines eliminated (10 lines × 31 enums), consistent scanning logic
+
+---
+
+## 29. Cache Infrastructure Base (P2)
+
+**Issue:** Cache implementations repeat key generation, TTL management, and eviction patterns.
+
+**Files Affected:**
+- `internal/modules/websocket/cache/team_membership_cache.go`
+- `internal/pkg/cache/server_cache.go` (implied usage)
+- `internal/pkg/cache/site_address_cache.go` (implied usage)
+- Multiple services with inline Redis caching
+
+**Current Pattern:**
+```go
+// Repeated in each cache implementation
+type TeamMembershipCache struct {
+    redis  *redis.Client
+    ttl    time.Duration
+    prefix string
+}
+
+func (c *TeamMembershipCache) key(teamID string) string {
+    return fmt.Sprintf("%s:%s", c.prefix, teamID)
+}
+
+func (c *TeamMembershipCache) Get(ctx context.Context, teamID string) (*TeamMembership, error) {
+    data, err := c.redis.Get(ctx, c.key(teamID)).Bytes()
+    if err == redis.Nil {
+        return nil, ErrCacheMiss
+    }
+    // unmarshal...
+}
+
+func (c *TeamMembershipCache) Set(ctx context.Context, teamID string, value *TeamMembership) error {
+    data, _ := json.Marshal(value)
+    return c.redis.Set(ctx, c.key(teamID), data, c.ttl).Err()
+}
+
+func (c *TeamMembershipCache) Delete(ctx context.Context, teamID string) error {
+    return c.redis.Del(ctx, c.key(teamID)).Err()
+}
+```
+
+**Solution:** Create `internal/pkg/cache/base_cache.go`
+```go
+package cache
+
+import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "time"
+
+    "github.com/redis/go-redis/v9"
+)
+
+// BaseCache provides common caching operations
+type BaseCache[T any] struct {
+    redis  *redis.Client
+    prefix string
+    ttl    time.Duration
+}
+
+// NewBaseCache creates a new base cache
+func NewBaseCache[T any](redis *redis.Client, prefix string, ttl time.Duration) *BaseCache[T] {
+    return &BaseCache[T]{
+        redis:  redis,
+        prefix: prefix,
+        ttl:    ttl,
+    }
+}
+
+// Key generates a cache key
+func (c *BaseCache[T]) Key(parts ...string) string {
+    key := c.prefix
+    for _, part := range parts {
+        key = fmt.Sprintf("%s:%s", key, part)
+    }
+    return key
+}
+
+// Get retrieves a value from cache
+func (c *BaseCache[T]) Get(ctx context.Context, key string) (*T, error) {
+    data, err := c.redis.Get(ctx, key).Bytes()
+    if err == redis.Nil {
+        return nil, ErrCacheMiss
+    }
+    if err != nil {
+        return nil, err
+    }
+
+    var value T
+    if err := json.Unmarshal(data, &value); err != nil {
+        return nil, err
+    }
+    return &value, nil
+}
+
+// Set stores a value in cache
+func (c *BaseCache[T]) Set(ctx context.Context, key string, value *T) error {
+    data, err := json.Marshal(value)
+    if err != nil {
+        return err
+    }
+    return c.redis.Set(ctx, key, data, c.ttl).Err()
+}
+
+// Delete removes a value from cache
+func (c *BaseCache[T]) Delete(ctx context.Context, key string) error {
+    return c.redis.Del(ctx, key).Err()
+}
+
+// GetOrSet gets from cache or calls loader function
+func (c *BaseCache[T]) GetOrSet(ctx context.Context, key string, loader func() (*T, error)) (*T, error) {
+    value, err := c.Get(ctx, key)
+    if err == nil {
+        return value, nil
+    }
+    if err != ErrCacheMiss {
+        return nil, err
+    }
+
+    value, err = loader()
+    if err != nil {
+        return nil, err
+    }
+
+    _ = c.Set(ctx, key, value) // Ignore cache set errors
+    return value, nil
+}
+
+// DeletePattern deletes all keys matching pattern
+func (c *BaseCache[T]) DeletePattern(ctx context.Context, pattern string) error {
+    keys, err := c.redis.Keys(ctx, c.Key(pattern)).Result()
+    if err != nil {
+        return err
+    }
+    if len(keys) > 0 {
+        return c.redis.Del(ctx, keys...).Err()
+    }
+    return nil
+}
+```
+
+**Refactored Cache:**
+```go
+type TeamMembershipCache struct {
+    *cache.BaseCache[TeamMembership]
+}
+
+func NewTeamMembershipCache(redis *redis.Client) *TeamMembershipCache {
+    return &TeamMembershipCache{
+        BaseCache: cache.NewBaseCache[TeamMembership](redis, "team_membership", 5*time.Minute),
+    }
+}
+
+func (c *TeamMembershipCache) GetByTeam(ctx context.Context, teamID string) (*TeamMembership, error) {
+    return c.Get(ctx, c.Key(teamID))
+}
+```
+
+**Refactoring Steps:**
+- [ ] Create `internal/pkg/cache/base_cache.go`
+- [ ] Add generic `Get`, `Set`, `Delete`, `GetOrSet` methods
+- [ ] Add `DeletePattern` for bulk invalidation
+- [ ] Refactor `TeamMembershipCache` to embed
+- [ ] Create `ServerCache` using base
+- [ ] Create `SiteAddressCache` using base
+
+**Impact:** ~80 lines eliminated, consistent cache behavior, built-in GetOrSet pattern
+
+---
+
+## 30. Script Builder Interface (P2)
+
+**Issue:** Complex bash scripts are built with string concatenation and inconsistent patterns.
+
+**Files Affected:**
+- `internal/modules/site/tasks/templates/*.go` - All deployment templates
+- `internal/modules/server/tasks/templates/*.go` - Provisioning templates
+- `internal/modules/database/tasks/templates/*.go` - Database scripts
+- Multiple inline script builders across modules
+
+**Current Pattern:**
+```go
+// Repeated string building pattern
+func buildDeployScript(opts DeployOptions) string {
+    var script strings.Builder
+    script.WriteString("#!/bin/bash\n")
+    script.WriteString("set -e\n\n")
+    script.WriteString(fmt.Sprintf("SITE_DIR=%s\n", opts.SiteDir))
+    script.WriteString(fmt.Sprintf("RELEASE_DIR=%s\n", opts.ReleaseDir))
+
+    if opts.CloneRepository {
+        script.WriteString(fmt.Sprintf("git clone %s $RELEASE_DIR\n", opts.RepoURL))
+    }
+
+    if opts.RunMigrations {
+        script.WriteString("cd $RELEASE_DIR && php artisan migrate --force\n")
+    }
+    // ... 100+ lines of conditionals
+    return script.String()
+}
+```
+
+**Solution:** Create `internal/pkg/script/builder.go`
+```go
+package script
+
+import (
+    "fmt"
+    "strings"
+)
+
+// Builder provides fluent interface for building bash scripts
+type Builder struct {
+    lines   []string
+    vars    map[string]string
+    shell   string
+    options ScriptOptions
+}
+
+// ScriptOptions configures script behavior
+type ScriptOptions struct {
+    ExitOnError  bool
+    PipeFail     bool
+    NoUnset      bool
+    Debug        bool
+    ShellDefault string
+}
+
+// DefaultOptions returns standard script options
+func DefaultOptions() ScriptOptions {
+    return ScriptOptions{
+        ExitOnError:  true,
+        PipeFail:     true,
+        NoUnset:      false,
+        ShellDefault: "/bin/bash",
+    }
+}
+
+// NewBuilder creates a new script builder
+func NewBuilder(opts ...ScriptOptions) *Builder {
+    options := DefaultOptions()
+    if len(opts) > 0 {
+        options = opts[0]
+    }
+    return &Builder{
+        lines:   []string{},
+        vars:    make(map[string]string),
+        shell:   options.ShellDefault,
+        options: options,
+    }
+}
+
+// Shebang adds the shebang line
+func (b *Builder) Shebang() *Builder {
+    b.lines = append(b.lines, fmt.Sprintf("#!%s", b.shell))
+    return b
+}
+
+// SetOptions adds set options (set -e, set -o pipefail, etc.)
+func (b *Builder) SetOptions() *Builder {
+    var opts []string
+    if b.options.ExitOnError {
+        opts = append(opts, "e")
+    }
+    if b.options.NoUnset {
+        opts = append(opts, "u")
+    }
+    if b.options.Debug {
+        opts = append(opts, "x")
+    }
+
+    if len(opts) > 0 {
+        b.lines = append(b.lines, fmt.Sprintf("set -%s", strings.Join(opts, "")))
+    }
+    if b.options.PipeFail {
+        b.lines = append(b.lines, "set -o pipefail")
+    }
+    return b
+}
+
+// Var adds a variable definition
+func (b *Builder) Var(name, value string) *Builder {
+    b.vars[name] = value
+    b.lines = append(b.lines, fmt.Sprintf("%s=%q", name, value))
+    return b
+}
+
+// VarRaw adds a variable without quoting
+func (b *Builder) VarRaw(name, value string) *Builder {
+    b.vars[name] = value
+    b.lines = append(b.lines, fmt.Sprintf("%s=%s", name, value))
+    return b
+}
+
+// Line adds a command line
+func (b *Builder) Line(line string) *Builder {
+    b.lines = append(b.lines, line)
+    return b
+}
+
+// Linef adds a formatted command line
+func (b *Builder) Linef(format string, args ...interface{}) *Builder {
+    b.lines = append(b.lines, fmt.Sprintf(format, args...))
+    return b
+}
+
+// Comment adds a comment
+func (b *Builder) Comment(text string) *Builder {
+    b.lines = append(b.lines, fmt.Sprintf("# %s", text))
+    return b
+}
+
+// Blank adds a blank line
+func (b *Builder) Blank() *Builder {
+    b.lines = append(b.lines, "")
+    return b
+}
+
+// If adds conditional block
+func (b *Builder) If(condition string) *Builder {
+    b.lines = append(b.lines, fmt.Sprintf("if %s; then", condition))
+    return b
+}
+
+// ElseIf adds else-if block
+func (b *Builder) ElseIf(condition string) *Builder {
+    b.lines = append(b.lines, fmt.Sprintf("elif %s; then", condition))
+    return b
+}
+
+// Else adds else block
+func (b *Builder) Else() *Builder {
+    b.lines = append(b.lines, "else")
+    return b
+}
+
+// Fi closes if block
+func (b *Builder) Fi() *Builder {
+    b.lines = append(b.lines, "fi")
+    return b
+}
+
+// When conditionally adds lines
+func (b *Builder) When(condition bool, fn func(*Builder)) *Builder {
+    if condition {
+        fn(b)
+    }
+    return b
+}
+
+// CD changes directory
+func (b *Builder) CD(dir string) *Builder {
+    b.lines = append(b.lines, fmt.Sprintf("cd %s", dir))
+    return b
+}
+
+// Exec runs a command
+func (b *Builder) Exec(cmd string, args ...string) *Builder {
+    if len(args) > 0 {
+        b.lines = append(b.lines, fmt.Sprintf("%s %s", cmd, strings.Join(args, " ")))
+    } else {
+        b.lines = append(b.lines, cmd)
+    }
+    return b
+}
+
+// String returns the built script
+func (b *Builder) String() string {
+    return strings.Join(b.lines, "\n") + "\n"
+}
+```
+
+**Refactored Script:**
+```go
+// Before
+func buildDeployScript(opts DeployOptions) string {
+    var script strings.Builder
+    script.WriteString("#!/bin/bash\n")
+    script.WriteString("set -e\n\n")
+    script.WriteString(fmt.Sprintf("SITE_DIR=%s\n", opts.SiteDir))
+    if opts.CloneRepository {
+        script.WriteString(fmt.Sprintf("git clone %s $RELEASE_DIR\n", opts.RepoURL))
+    }
+    return script.String()
+}
+
+// After
+func buildDeployScript(opts DeployOptions) string {
+    return script.NewBuilder().
+        Shebang().
+        SetOptions().
+        Blank().
+        Var("SITE_DIR", opts.SiteDir).
+        Var("RELEASE_DIR", opts.ReleaseDir).
+        Blank().
+        When(opts.CloneRepository, func(b *script.Builder) {
+            b.Linef("git clone %s $RELEASE_DIR", opts.RepoURL)
+        }).
+        When(opts.RunMigrations, func(b *script.Builder) {
+            b.CD("$RELEASE_DIR").
+              Exec("php", "artisan", "migrate", "--force")
+        }).
+        String()
+}
+```
+
+**Refactoring Steps:**
+- [ ] Create `internal/pkg/script/builder.go`
+- [ ] Add fluent methods for common bash constructs
+- [ ] Add `When()` for conditional sections
+- [ ] Refactor site deployment templates
+- [ ] Refactor server provisioning templates
+- [ ] Refactor database scripts
+
+**Impact:** ~500 lines of cleaner script building, consistent formatting, testable structure
+
+---
+
+## 31. Shell Defaults Registry (P2)
+
+**Issue:** Shell/binary paths and defaults scattered across modules with inconsistency.
+
+**Files Affected:**
+- Multiple task templates with hardcoded paths
+- Service files with different shell defaults
+- Inconsistent use of `/bin/bash` vs `/usr/bin/bash`
+
+**Current Pattern:**
+```go
+// Inconsistent across modules
+script.WriteString("#!/bin/bash\n")           // Some files
+script.WriteString("#!/usr/bin/bash\n")       // Other files
+script.WriteString("/usr/bin/php artisan\n")  // Hardcoded paths
+script.WriteString("systemctl restart\n")     // Missing full path
+```
+
+**Solution:** Create `internal/pkg/shell/defaults.go`
+```go
+package shell
+
+// Paths contains standard binary paths
+var Paths = struct {
+    Bash       string
+    PHP        string
+    Composer   string
+    NPM        string
+    Node       string
+    Git        string
+    Systemctl  string
+    Service    string
+    Caddy      string
+    MySQL      string
+    PostgreSQL string
+}{
+    Bash:       "/bin/bash",
+    PHP:        "/usr/bin/php",
+    Composer:   "/usr/local/bin/composer",
+    NPM:        "/usr/bin/npm",
+    Node:       "/usr/bin/node",
+    Git:        "/usr/bin/git",
+    Systemctl:  "/usr/bin/systemctl",
+    Service:    "/usr/sbin/service",
+    Caddy:      "/usr/bin/caddy",
+    MySQL:      "/usr/bin/mysql",
+    PostgreSQL: "/usr/bin/psql",
+}
+
+// Commands contains common command patterns
+var Commands = struct {
+    PHPArtisan     func(args ...string) string
+    ComposerInstall func() string
+    NPMInstall      func() string
+    SystemctlRestart func(service string) string
+    CaddyReload     func() string
+}{
+    PHPArtisan: func(args ...string) string {
+        return fmt.Sprintf("%s artisan %s", Paths.PHP, strings.Join(args, " "))
+    },
+    ComposerInstall: func() string {
+        return fmt.Sprintf("%s install --no-interaction --prefer-dist --optimize-autoloader", Paths.Composer)
+    },
+    NPMInstall: func() string {
+        return fmt.Sprintf("%s install", Paths.NPM)
+    },
+    SystemctlRestart: func(service string) string {
+        return fmt.Sprintf("%s restart %s", Paths.Systemctl, service)
+    },
+    CaddyReload: func() string {
+        return fmt.Sprintf("%s reload", Paths.Caddy)
+    },
+}
+```
+
+**Refactored Usage:**
+```go
+// Before
+script.WriteString("/usr/bin/php artisan migrate --force\n")
+
+// After
+script.Line(shell.Commands.PHPArtisan("migrate", "--force"))
+```
+
+**Impact:** Consistent paths, easy to update for different distributions
+
+---
+
+## 32. Encrypted Field Types (P2)
+
+**Issue:** Some sensitive fields missing encryption, and encrypted types not consistently applied.
+
+**Files Affected:**
+- `internal/modules/database/models/database_user.go:15` - Password should be encrypted
+- `internal/modules/auth/models/user.go` - TwoFactorSecret should be encrypted
+- `internal/database/serializers/encrypted.go` - EncryptedString type exists
+- `internal/pkg/models/encrypted_types.go` - Has EncryptedString definition
+
+**Current Pattern:**
+```go
+// database_user.go - Password stored as plain varchar!
+type DatabaseUser struct {
+    Password string `gorm:"type:varchar(255)" json:"-"` // Security risk!
+}
+
+// Existing encrypted type (not widely used)
+type EncryptedString struct {
+    value     string
+    encrypted string
+}
+```
+
+**Issue Details:**
+- `DatabaseUser.Password` - Stored as plain text varchar
+- `User.TwoFactorSecret` - May not be using encrypted type
+- Inconsistent application of encryption across models
+
+**Solution:** Audit and apply `EncryptedString` type consistently
+```go
+// Refactored database_user.go
+type DatabaseUser struct {
+    basemodels.BaseModel
+    basemodels.InstallableModel
+    basemodels.ServerScopedModel
+    DatabaseID string                      `gorm:"column:database_id;type:char(26);not null" json:"database_id"`
+    Username   string                      `gorm:"type:varchar(255);not null" json:"username"`
+    Password   models.EncryptedString      `gorm:"type:text" json:"-"` // Now encrypted!
+    Privileges []DatabaseUserPrivilege     `gorm:"foreignKey:DatabaseUserID" json:"privileges,omitempty"`
+}
+```
+
+**Encryption Mixin for Models:**
+```go
+// internal/pkg/models/secure_credentials.go
+package models
+
+// SecureCredentials provides encrypted credential fields
+type SecureCredentials struct {
+    EncryptedPassword EncryptedString `gorm:"column:password;type:text" json:"-"`
+}
+
+// SetPassword encrypts and sets the password
+func (s *SecureCredentials) SetPassword(password string) error {
+    s.EncryptedPassword.Set(password)
+    return nil
+}
+
+// GetPassword decrypts and returns the password
+func (s *SecureCredentials) GetPassword() (string, error) {
+    return s.EncryptedPassword.Get()
+}
+
+// SecureTwoFactor provides encrypted 2FA fields
+type SecureTwoFactor struct {
+    TwoFactorSecret EncryptedString `gorm:"column:two_factor_secret;type:text" json:"-"`
+}
+```
+
+**Refactoring Steps:**
+- [ ] Audit all models for sensitive fields
+- [ ] Create migration for DatabaseUser.Password to TEXT type
+- [ ] Update DatabaseUser to use EncryptedString
+- [ ] Verify User.TwoFactorSecret uses encrypted type
+- [ ] Create SecureCredentials mixin
+- [ ] Document encryption requirements in CLAUDE.md
+
+**Impact:** Security improvement, ~30 lines of mixin code, consistent encryption
+
+---
+
+## Extended Summary (Items 27-32)
+
+| Category | Items | Est. LOC Saved |
+|----------|-------|----------------|
+| SSH Connection Factory | Item 27 | ~100 lines |
+| Enum Scan/Value | Item 28 | ~315 lines |
+| Cache Infrastructure | Item 29 | ~80 lines |
+| Script Builder | Item 30 | ~500 lines |
+| Shell Defaults | Item 31 | ~50 lines |
+| Encrypted Fields | Item 32 | ~30 lines |
+| **Additional Total** | **6 patterns** | **~1075 lines** |
+
+---
+
+## Final Summary
+
+| Category | Items | Total LOC Saved |
+|----------|-------|-----------------|
+| Handler Bases | 5 patterns | ~400 lines |
+| Repository Patterns | 3 patterns | ~850 lines |
+| Service Patterns | 2 patterns | ~300 lines |
+| Job/Task Patterns | 3 patterns | ~800 lines |
+| Model Mixins | 5 patterns | ~270 lines |
+| Provider API Clients | 3 patterns | ~450 lines |
+| Middleware Patterns | 1 pattern | ~30 lines |
+| Config Patterns | 1 pattern | ~86 lines |
+| DTO/Request Patterns | 2 patterns | ~550 lines |
+| Testing Patterns | 2 patterns | ~250 lines |
+| Infrastructure Patterns | 6 patterns | ~1075 lines |
+| **Grand Total** | **33 patterns** | **~5061 lines** |
