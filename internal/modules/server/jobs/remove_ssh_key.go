@@ -11,25 +11,25 @@ import (
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
-const TypeRemoveSshKey = "server:remove_ssh_key"
+const TypeRemoveSSHKey = "server:remove_ssh_key"
 
-type RemoveSshKeyPayload struct {
+type RemoveSSHKeyPayload struct {
 	ServerID string `json:"server_id"`
 	KeyID    string `json:"key_id"`
 	Force    bool   `json:"force"`
 }
 
-// RemoveSshKeyJob removes an SSH key from a server.
-// Similar to Laravel's Modules\Server\Jobs\RemoveSshKeyFromServer
-type RemoveSshKeyJob struct {
+// RemoveSSHKeyJob removes an SSH key from a server.
+// Similar to Laravel's Modules\Server\Jobs\RemoveSSHKeyFromServer
+type RemoveSSHKeyJob struct {
 	ctx     *JobContext
-	Payload RemoveSshKeyPayload
+	Payload RemoveSSHKeyPayload
 }
 
 // Handle processes the job
-func (j *RemoveSshKeyJob) Handle(ctx context.Context) error {
+func (j *RemoveSSHKeyJob) Handle(ctx context.Context) error {
 	// Find the SSH key
-	sshKey, err := j.ctx.Repos.SshKey().FindByID(ctx, j.Payload.KeyID)
+	sshKey, err := j.ctx.Repos.SSHKey().FindByID(ctx, j.Payload.KeyID)
 	if err != nil {
 		return fmt.Errorf("failed to find SSH key: %w", err)
 	}
@@ -65,7 +65,7 @@ func (j *RemoveSshKeyJob) Handle(ctx context.Context) error {
 		Log("SSH key was removed from server")
 
 	// Detach the key from server in the database
-	if err := j.ctx.Repos.SshKey().DetachFromServer(ctx, server.ID, sshKey.ID); err != nil {
+	if err := j.ctx.Repos.SSHKey().DetachFromServer(ctx, server.ID, sshKey.ID); err != nil {
 		return fmt.Errorf("failed to detach SSH key from server: %w", err)
 	}
 
@@ -84,24 +84,24 @@ func (j *RemoveSshKeyJob) Handle(ctx context.Context) error {
 }
 
 // Failed is called when the job fails after all retries
-func (j *RemoveSshKeyJob) Failed(ctx context.Context, err error) {
+func (j *RemoveSSHKeyJob) Failed(ctx context.Context, err error) {
 	j.ctx.LogError(err, "Failed to remove SSH key",
 		"key_id", j.Payload.KeyID,
 		"server_id", j.Payload.ServerID,
 	)
 }
 
-func NewRemoveSshKeyJob(ctx *JobContext, payload RemoveSshKeyPayload) *RemoveSshKeyJob {
-	return &RemoveSshKeyJob{
+func NewRemoveSSHKeyJob(ctx *JobContext, payload RemoveSSHKeyPayload) *RemoveSSHKeyJob {
+	return &RemoveSSHKeyJob{
 		ctx:     ctx,
 		Payload: payload,
 	}
 }
 
-// NewRemoveSshKeyTask creates an asynq task for removing an SSH key
+// NewRemoveSSHKeyTask creates an asynq task for removing an SSH key
 // Uses TaskID for deduplication to prevent duplicate key removals
-func NewRemoveSshKeyTask(serverID, keyID string, force bool) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeRemoveSshKey, RemoveSshKeyPayload{
+func NewRemoveSSHKeyTask(serverID, keyID string, force bool) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeRemoveSSHKey, RemoveSSHKeyPayload{
 		ServerID: serverID,
 		KeyID:    keyID,
 		Force:    force,

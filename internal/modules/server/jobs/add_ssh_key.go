@@ -11,24 +11,24 @@ import (
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
-const TypeAddSshKey = "server:add_ssh_key"
+const TypeAddSSHKey = "server:add_ssh_key"
 
-type AddSshKeyPayload struct {
+type AddSSHKeyPayload struct {
 	ServerID string `json:"server_id"`
 	KeyID    string `json:"key_id"`
 }
 
-// AddSshKeyJob adds an SSH key to a server.
-// Similar to Laravel's Modules\Server\Jobs\AddSshKeyToServer
-type AddSshKeyJob struct {
+// AddSSHKeyJob adds an SSH key to a server.
+// Similar to Laravel's Modules\Server\Jobs\AddSSHKeyToServer
+type AddSSHKeyJob struct {
 	ctx     *JobContext
-	Payload AddSshKeyPayload
+	Payload AddSSHKeyPayload
 }
 
 // Handle processes the job
-func (j *AddSshKeyJob) Handle(ctx context.Context) error {
+func (j *AddSSHKeyJob) Handle(ctx context.Context) error {
 	// Find the SSH key
-	sshKey, err := j.ctx.Repos.SshKey().FindByID(ctx, j.Payload.KeyID)
+	sshKey, err := j.ctx.Repos.SSHKey().FindByID(ctx, j.Payload.KeyID)
 	if err != nil {
 		return fmt.Errorf("failed to find SSH key: %w", err)
 	}
@@ -55,7 +55,7 @@ func (j *AddSshKeyJob) Handle(ctx context.Context) error {
 	}
 
 	// Attach the key to server in the database
-	if err := j.ctx.Repos.SshKey().AttachToServer(ctx, server.ID, sshKey.ID); err != nil {
+	if err := j.ctx.Repos.SSHKey().AttachToServer(ctx, server.ID, sshKey.ID); err != nil {
 		return fmt.Errorf("failed to attach SSH key to server: %w", err)
 	}
 
@@ -82,25 +82,25 @@ func (j *AddSshKeyJob) Handle(ctx context.Context) error {
 }
 
 // Failed is called when the job fails after all retries
-func (j *AddSshKeyJob) Failed(ctx context.Context, err error) {
+func (j *AddSSHKeyJob) Failed(ctx context.Context, err error) {
 	j.ctx.LogError(err, "Failed to add SSH key",
 		"key_id", j.Payload.KeyID,
 		"server_id", j.Payload.ServerID,
 	)
 }
 
-// NewAddSshKeyJob creates a new AddSshKeyJob with the given context and payload.
-func NewAddSshKeyJob(ctx *JobContext, payload AddSshKeyPayload) *AddSshKeyJob {
-	return &AddSshKeyJob{
+// NewAddSSHKeyJob creates a new AddSSHKeyJob with the given context and payload.
+func NewAddSSHKeyJob(ctx *JobContext, payload AddSSHKeyPayload) *AddSSHKeyJob {
+	return &AddSSHKeyJob{
 		ctx:     ctx,
 		Payload: payload,
 	}
 }
 
-// NewAddSshKeyTask creates an asynq task for adding an SSH key
+// NewAddSSHKeyTask creates an asynq task for adding an SSH key
 // Uses TaskID for deduplication to prevent duplicate key installations
-func NewAddSshKeyTask(serverID, keyID string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeAddSshKey, AddSshKeyPayload{
+func NewAddSSHKeyTask(serverID, keyID string) (*asynq.Task, error) {
+	return pkgjobs.NewTask(TypeAddSSHKey, AddSSHKeyPayload{
 		ServerID: serverID,
 		KeyID:    keyID,
 	}, asynq.TaskID(fmt.Sprintf("add_ssh_key:%s:%s", serverID, keyID)))
