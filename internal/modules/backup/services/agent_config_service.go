@@ -3,10 +3,10 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strconv"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
+	"github.com/kkz6/launch-go/internal/pkg/urlbuilder"
 )
 
 // AgentConfigService handles agent configuration logic
@@ -58,7 +58,7 @@ func (s *AgentConfigService) GetAgentBackupConfig(ctx context.Context, backupID,
 		CronExpression: backup.CronExpression,
 		Path:           backup.Path,
 		Retention:      backup.Retention,
-		WebhookURL:     fmt.Sprintf("%s/backup/%s/%s", webhookBaseURL, backup.ID, backup.DispatchToken),
+		WebhookURL:     urlbuilder.New(webhookBaseURL).Path("backup", backup.ID, backup.DispatchToken).String(),
 		IncludeFiles:   includeFiles,
 		ExcludeFiles:   excludeFiles,
 		Databases:      databaseIDs,
