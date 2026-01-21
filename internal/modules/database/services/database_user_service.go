@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/database/dto"
 	"github.com/kkz6/launch-go/internal/modules/database/jobs"
 	"github.com/kkz6/launch-go/internal/modules/database/models"
@@ -143,49 +145,19 @@ func (s *Service) BroadcastDatabaseUserStatus(serverID, userID, status, message 
 // Helper methods
 
 func (s *Service) dispatchCreateDatabaseUser(ctx context.Context, user *models.DatabaseUser, password string, userID *string) {
-	if !s.HasQueue() {
-		return
-	}
-
-	task, err := jobs.NewInstallDatabaseUserTask(user.ID, password, userID)
-	if err != nil {
-		s.LogError(err, "Failed to create install user task", "user_id", user.ID)
-		return
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue install user job", "user_id", user.ID)
-	}
+	s.DispatchTask("InstallDatabaseUser", func() (*asynq.Task, error) {
+		return jobs.NewInstallDatabaseUserTask(user.ID, password, userID)
+	}, "user_id", user.ID)
 }
 
 func (s *Service) dispatchUpdateDatabaseUser(ctx context.Context, user *models.DatabaseUser, password *string, userID *string) {
-	if !s.HasQueue() {
-		return
-	}
-
-	task, err := jobs.NewUpdateDatabaseUserTask(user.ID, password, userID)
-	if err != nil {
-		s.LogError(err, "Failed to create update user task", "user_id", user.ID)
-		return
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue update user job", "user_id", user.ID)
-	}
+	s.DispatchTask("UpdateDatabaseUser", func() (*asynq.Task, error) {
+		return jobs.NewUpdateDatabaseUserTask(user.ID, password, userID)
+	}, "user_id", user.ID)
 }
 
 func (s *Service) dispatchDeleteDatabaseUser(ctx context.Context, user *models.DatabaseUser, userID *string) {
-	if !s.HasQueue() {
-		return
-	}
-
-	task, err := jobs.NewUninstallDatabaseUserTask(user.ID, userID)
-	if err != nil {
-		s.LogError(err, "Failed to create uninstall user task", "user_id", user.ID)
-		return
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue uninstall user job", "user_id", user.ID)
-	}
+	s.DispatchTask("UninstallDatabaseUser", func() (*asynq.Task, error) {
+		return jobs.NewUninstallDatabaseUserTask(user.ID, userID)
+	}, "user_id", user.ID)
 }

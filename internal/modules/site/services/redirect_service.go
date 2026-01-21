@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
@@ -89,13 +91,7 @@ func (s *RedirectService) dispatchCaddyfileUpdate(siteID, userID string) {
 		userIDPtr = &userID
 	}
 
-	task, err := jobs.NewUpdateCaddyfileTask(siteID, userIDPtr)
-	if err != nil {
-		s.LogError(err, "Failed to create update Caddyfile task", "site_id", siteID)
-		return
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue update Caddyfile job", "site_id", siteID)
-	}
+	s.DispatchTask("UpdateCaddyfile", func() (*asynq.Task, error) {
+		return jobs.NewUpdateCaddyfileTask(siteID, userIDPtr)
+	}, "site_id", siteID)
 }
