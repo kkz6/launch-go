@@ -3,7 +3,6 @@ package token
 import (
 	"encoding/base64"
 	"encoding/hex"
-	"regexp"
 	"strings"
 	"testing"
 )
@@ -166,97 +165,58 @@ func TestMustGenerate(t *testing.T) {
 	}
 }
 
-func TestAPIToken(t *testing.T) {
-	token := APIToken()
+func TestSecureBytes(t *testing.T) {
+	t.Run("generates correct length", func(t *testing.T) {
+		bytes, err := SecureBytes(32)
+		if err != nil {
+			t.Fatalf("SecureBytes() error: %v", err)
+		}
 
-	if !strings.HasPrefix(token, "lnch_") {
-		t.Errorf("API token should have 'lnch_' prefix, got %q", token)
-	}
+		if len(bytes) != 32 {
+			t.Errorf("expected length 32, got %d", len(bytes))
+		}
+	})
 
-	withoutPrefix := strings.TrimPrefix(token, "lnch_")
-	expectedLen := base64.RawURLEncoding.EncodedLen(24)
-	if len(withoutPrefix) != expectedLen {
-		t.Errorf("expected encoded part length %d, got %d", expectedLen, len(withoutPrefix))
-	}
+	t.Run("returns error for zero length", func(t *testing.T) {
+		_, err := SecureBytes(0)
+		if err == nil {
+			t.Error("expected error for zero length")
+		}
+	})
 
-	_, err := base64.RawURLEncoding.DecodeString(withoutPrefix)
-	if err != nil {
-		t.Errorf("token is not valid base64url-raw: %v", err)
+	t.Run("returns error for negative length", func(t *testing.T) {
+		_, err := SecureBytes(-1)
+		if err == nil {
+			t.Error("expected error for negative length")
+		}
+	})
+
+	t.Run("generates unique bytes", func(t *testing.T) {
+		bytes1, _ := SecureBytes(32)
+		bytes2, _ := SecureBytes(32)
+
+		if string(bytes1) == string(bytes2) {
+			t.Error("expected unique bytes")
+		}
+	})
+}
+
+func TestMustSecureBytes(t *testing.T) {
+	bytes := MustSecureBytes(32)
+
+	if len(bytes) != 32 {
+		t.Errorf("expected length 32, got %d", len(bytes))
 	}
 }
 
-func TestWebhookSecret(t *testing.T) {
-	secret := WebhookSecret()
+func TestMustSecureBytesPanics(t *testing.T) {
+	defer func() {
+		if r := recover(); r == nil {
+			t.Error("expected panic for zero length")
+		}
+	}()
 
-	expectedLen := 64
-	if len(secret) != expectedLen {
-		t.Errorf("expected webhook secret length %d, got %d", expectedLen, len(secret))
-	}
-
-	_, err := hex.DecodeString(secret)
-	if err != nil {
-		t.Errorf("webhook secret is not valid hex: %v", err)
-	}
-}
-
-func TestCallbackToken(t *testing.T) {
-	token := CallbackToken()
-
-	expectedLen := base64.RawURLEncoding.EncodedLen(16)
-	if len(token) != expectedLen {
-		t.Errorf("expected callback token length %d, got %d", expectedLen, len(token))
-	}
-
-	_, err := base64.RawURLEncoding.DecodeString(token)
-	if err != nil {
-		t.Errorf("callback token is not valid base64url-raw: %v", err)
-	}
-}
-
-func TestVerificationCode(t *testing.T) {
-	tests := []struct {
-		name   string
-		digits int
-		want   int
-	}{
-		{"6 digits", 6, 6},
-		{"4 digits", 4, 4},
-		{"8 digits", 8, 8},
-		{"10 digits", 10, 10},
-		{"zero defaults to 6", 0, 6},
-		{"negative defaults to 6", -1, 6},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			code := VerificationCode(tt.digits)
-
-			if len(code) != tt.want {
-				t.Errorf("expected code length %d, got %d", tt.want, len(code))
-			}
-
-			matched, err := regexp.MatchString(`^\d+$`, code)
-			if err != nil {
-				t.Fatalf("regex error: %v", err)
-			}
-			if !matched {
-				t.Errorf("verification code should only contain digits, got %q", code)
-			}
-		})
-	}
-}
-
-func TestEncryptionKey(t *testing.T) {
-	key := EncryptionKey()
-
-	if len(key) != 32 {
-		t.Errorf("expected encryption key length 32, got %d", len(key))
-	}
-
-	key2 := EncryptionKey()
-	if string(key) == string(key2) {
-		t.Error("encryption keys should be unique")
-	}
+	MustSecureBytes(0)
 }
 
 func TestTokenUniqueness(t *testing.T) {

@@ -5,8 +5,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"math/big"
-	"strings"
 )
 
 // Encoding represents the output encoding for generated tokens.
@@ -86,52 +84,28 @@ func (g *Generator) MustGenerate() string {
 	return token
 }
 
-// APIToken generates a token suitable for API authentication.
-// Returns a 24-byte token with Base64URLRaw encoding and "lnch_" prefix.
-func APIToken() string {
-	return New(24).WithEncoding(Base64URLRaw).WithPrefix("lnch_").MustGenerate()
-}
-
-// WebhookSecret generates a secret suitable for webhook signature verification.
-// Returns a 32-byte token with Hex encoding.
-func WebhookSecret() string {
-	return New(32).WithEncoding(Hex).MustGenerate()
-}
-
-// CallbackToken generates a token suitable for callback verification.
-// Returns a 16-byte token with Base64URLRaw encoding.
-func CallbackToken() string {
-	return New(16).WithEncoding(Base64URLRaw).MustGenerate()
-}
-
-// VerificationCode generates a numeric verification code with the specified number of digits.
-func VerificationCode(digits int) string {
-	if digits <= 0 {
-		digits = 6
+// SecureBytes generates cryptographically secure random bytes.
+func SecureBytes(length int) ([]byte, error) {
+	if length <= 0 {
+		return nil, fmt.Errorf("length must be positive")
 	}
 
-	var sb strings.Builder
-	sb.Grow(digits)
+	bytes := make([]byte, length)
 
-	for i := 0; i < digits; i++ {
-		n, err := rand.Int(rand.Reader, big.NewInt(10))
-		if err != nil {
-			panic(fmt.Errorf("failed to generate random digit: %w", err))
-		}
-		_ = sb.WriteByte('0' + byte(n.Int64()))
-	}
-
-	return sb.String()
-}
-
-// EncryptionKey generates 32 random bytes suitable for use as an encryption key.
-func EncryptionKey() []byte {
-	key := make([]byte, 32)
-
-	_, err := rand.Read(key)
+	_, err := rand.Read(bytes)
 	if err != nil {
-		panic(fmt.Errorf("failed to generate encryption key: %w", err))
+		return nil, fmt.Errorf("failed to generate random bytes: %w", err)
 	}
 
-	return key
+	return bytes, nil
+}
+
+// MustSecureBytes generates cryptographically secure random bytes or panics.
+func MustSecureBytes(length int) []byte {
+	bytes, err := SecureBytes(length)
+	if err != nil {
+		panic(err)
+	}
+
+	return bytes
 }
