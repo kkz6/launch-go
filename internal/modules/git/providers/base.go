@@ -2,9 +2,6 @@ package providers
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -13,6 +10,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
+	"github.com/kkz6/launch-go/internal/pkg/signature"
 )
 
 // BaseGitProvider provides common functionality for all Git providers.
@@ -162,16 +160,18 @@ func (b *BaseGitProvider) DoRaw(ctx context.Context, method, path string, token 
 // VerifyHMACSHA256Signature verifies a webhook signature using HMAC-SHA256.
 // This is used by GitHub and Bitbucket.
 // The prefix parameter allows for provider-specific prefixes (e.g., "sha256=" for GitHub).
-func (b *BaseGitProvider) VerifyHMACSHA256Signature(payload []byte, signature, prefix string) bool {
+func (b *BaseGitProvider) VerifyHMACSHA256Signature(payload []byte, sig, prefix string) bool {
 	if b.config.WebhookSecret == "" {
 		return false
 	}
 
-	mac := hmac.New(sha256.New, []byte(b.config.WebhookSecret))
-	_, _ = mac.Write(payload)
-	expectedSignature := prefix + hex.EncodeToString(mac.Sum(nil))
+	if prefix != "" {
+		// Prefixed format (e.g., "sha256=...")
+		return signature.GitHub.Verify(payload, sig, b.config.WebhookSecret)
+	}
 
-	return hmac.Equal([]byte(expectedSignature), []byte(signature))
+	// Raw format (no prefix)
+	return signature.GitLab.Verify(payload, sig, b.config.WebhookSecret)
 }
 
 // VerifyTokenSignature verifies a webhook signature using constant-time comparison.
