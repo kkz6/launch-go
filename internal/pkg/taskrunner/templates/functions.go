@@ -14,17 +14,19 @@ import (
 
 // CommonFuncMap provides template functions available to all modules
 var CommonFuncMap = template.FuncMap{
-	"shellDefaults":   ShellDefaults,
-	"aptFunctions":    AptFunctions,
-	"commonFuncs":     CommonFunctions,
-	"phpPpaFunctions": PhpPpaFunctions,
-	"dirName":         filepath.Dir,
-	"join":            strings.Join,
-	"contains":        strings.Contains,
-	"lower":           strings.ToLower,
-	"upper":           strings.ToUpper,
-	"trim":            strings.TrimSpace,
-	"replace":         strings.ReplaceAll,
+	"shellDefaults":        ShellDefaults,
+	"shellDefaultsLenient": ShellDefaultsLenient,
+	"aptFunctions":         AptFunctions,
+	"commonFuncs":          CommonFunctions,
+	"phpPpaFunctions":      PhpPpaFunctions,
+	"taskMarkerFuncs":      TaskMarkerFunctions,
+	"dirName":              filepath.Dir,
+	"join":                 strings.Join,
+	"contains":             strings.Contains,
+	"lower":                strings.ToLower,
+	"upper":                strings.ToUpper,
+	"trim":                 strings.TrimSpace,
+	"replace":              strings.ReplaceAll,
 	"quote": func(s string) string {
 		return fmt.Sprintf("%q", s)
 	},

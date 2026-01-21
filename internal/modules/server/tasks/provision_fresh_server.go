@@ -12,6 +12,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks/templates"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	pkgtemplates "github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
 
 const (
@@ -82,11 +83,11 @@ func ProvisionFreshServer(config ProvisionFreshServerConfig) *provisionFreshServ
 
 	// 1. Shell defaults and common functions (like Laravel's @include)
 	scriptBuilder.WriteString("#!/bin/bash\n")
-	scriptBuilder.WriteString(templates.ShellDefaults())
+	scriptBuilder.WriteString(pkgtemplates.ShellDefaults())
 	scriptBuilder.WriteString("\n\n")
-	scriptBuilder.WriteString(templates.CommonFunctions())
+	scriptBuilder.WriteString(pkgtemplates.CommonFunctions())
 	scriptBuilder.WriteString("\n\n")
-	scriptBuilder.WriteString(templates.AptFunctions())
+	scriptBuilder.WriteString(pkgtemplates.AptFunctions())
 	scriptBuilder.WriteString("\n\n")
 
 	// Calculate swap settings (system-level)
@@ -450,4 +451,3 @@ func calculateSwappiness(memoryInMB int) int {
 		return 60
 	}
 }
-
