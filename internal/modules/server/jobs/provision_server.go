@@ -40,7 +40,7 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 	var sshKeyContents []string
 	if len(j.Payload.SSHKeyIDs) > 0 {
 		for _, keyID := range j.Payload.SSHKeyIDs {
-			key, err := j.ctx.Repos.SshKey().FindByID(ctx, keyID)
+			key, err := j.ctx.Repos.SSHKey().FindByID(ctx, keyID)
 			if err != nil {
 				j.ctx.LogError(err, "Failed to find SSH key", "key_id", keyID)
 				continue

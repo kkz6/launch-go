@@ -336,9 +336,9 @@ func (s *Service) GetShowPageData(ctx context.Context, serverID, teamID string) 
 		daemons[i] = dto.ToDaemonResponse(&daemon)
 	}
 
-	sshKeys := make([]dto.SshKeyResponse, len(server.SshKeys))
+	sshKeys := make([]dto.SSHKeyResponse, len(server.SshKeys))
 	for i, key := range server.SshKeys {
-		sshKeys[i] = dto.ToSshKeyResponse(&key)
+		sshKeys[i] = dto.ToSSHKeyResponse(&key)
 	}
 
 	data := &dto.ServerShowPageData{
@@ -347,7 +347,7 @@ func (s *Service) GetShowPageData(ctx context.Context, serverID, teamID string) 
 		FirewallRules:  firewallRules,
 		Crons:          crons,
 		Daemons:        daemons,
-		SshKeys:        sshKeys,
+		SSHKeys:        sshKeys,
 		RuleActions:    dto.GetAllRuleActions(),
 		HasLaunchAgent: hasLaunchAgent,
 	}

@@ -57,14 +57,14 @@ type DaemonService interface {
 	DeleteDaemon(ctx context.Context, serverID, teamID, daemonID string) error
 }
 
-// SshKeyService defines the interface for SSH key business logic
-type SshKeyService interface {
-	ListSshKeys(ctx context.Context, teamID string) ([]models.SshKey, error)
-	ListServerSshKeys(ctx context.Context, serverID, teamID string) ([]models.SshKey, error)
-	CreateSshKey(ctx context.Context, teamID, userID string, req *dto.CreateSshKeyRequest) (*models.SshKey, error)
-	AttachSshKey(ctx context.Context, serverID, teamID, sshKeyID string) error
-	DetachSshKey(ctx context.Context, serverID, teamID, sshKeyID string) error
-	DeleteSshKey(ctx context.Context, teamID, sshKeyID string) error
+// SSHKeyService defines the interface for SSH key business logic
+type SSHKeyService interface {
+	ListSSHKeys(ctx context.Context, teamID string) ([]models.SshKey, error)
+	ListServerSSHKeys(ctx context.Context, serverID, teamID string) ([]models.SshKey, error)
+	CreateSSHKey(ctx context.Context, teamID, userID string, req *dto.CreateSSHKeyRequest) (*models.SshKey, error)
+	AttachSSHKey(ctx context.Context, serverID, teamID, sshKeyID string) error
+	DetachSSHKey(ctx context.Context, serverID, teamID, sshKeyID string) error
+	DeleteSSHKey(ctx context.Context, teamID, sshKeyID string) error
 }
 
 // TaskService defines the interface for task business logic
@@ -92,7 +92,7 @@ type Service interface {
 	FirewallRuleService
 	CronService
 	DaemonService
-	SshKeyService
+	SSHKeyService
 	TaskService
 	MetricService
 	DatabaseService

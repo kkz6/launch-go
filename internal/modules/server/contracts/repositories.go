@@ -86,8 +86,8 @@ type DaemonRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// SshKeyRepository defines the interface for SSH key database operations
-type SshKeyRepository interface {
+// SSHKeyRepository defines the interface for SSH key database operations
+type SSHKeyRepository interface {
 	Create(ctx context.Context, key *models.SshKey) error
 	FindByID(ctx context.Context, id string) (*models.SshKey, error)
 	FindByTeam(ctx context.Context, teamID string) ([]models.SshKey, error)
@@ -148,7 +148,7 @@ type RepositoryRegistry interface {
 	FirewallRule() FirewallRuleRepository
 	Cron() CronRepository
 	Daemon() DaemonRepository
-	SshKey() SshKeyRepository
+	SSHKey() SSHKeyRepository
 	Task() TaskRepository
 	Metric() MetricRepository
 	ServerProvider() ServerProviderRepository

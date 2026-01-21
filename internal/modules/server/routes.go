@@ -22,7 +22,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 	m.registerServerProviderRoutes(router, authMiddleware, handler)
 	m.registerServerRoutes(router, authMiddleware, handler)
-	m.registerSshKeyRoutes(router, authMiddleware, handler)
+	m.registerSSHKeyRoutes(router, authMiddleware, handler)
 }
 
 // registerServerProviderRoutes registers server provider routes
@@ -97,9 +97,9 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Delete("/:id/daemons/:daemonId", handler.DeleteDaemon)
 
 		// SSH Keys (server-specific)
-		servers.Get("/:id/ssh-keys", handler.ListServerSshKeys)
-		servers.Post("/:id/ssh-keys", handler.AttachSshKey)
-		servers.Delete("/:id/ssh-keys/:sshKeyId", handler.DetachSshKey)
+		servers.Get("/:id/ssh-keys", handler.ListServerSSHKeys)
+		servers.Post("/:id/ssh-keys", handler.AttachSSHKey)
+		servers.Delete("/:id/ssh-keys/:sshKeyId", handler.DetachSSHKey)
 
 		// Tasks
 		servers.Get("/:id/tasks", handler.ListTasks)
@@ -115,13 +115,13 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 	}
 }
 
-// registerSshKeyRoutes registers global SSH key routes
-func (m *Module) registerSshKeyRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler) {
+// registerSSHKeyRoutes registers global SSH key routes
+func (m *Module) registerSSHKeyRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler) {
 	sshKeys := router.Group("/ssh-keys", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
-		sshKeys.Get("/", handler.ListSshKeys)
-		sshKeys.Post("/", handler.CreateSshKey)
-		sshKeys.Delete("/:sshKeyId", handler.DeleteSshKey)
+		sshKeys.Get("/", handler.ListSSHKeys)
+		sshKeys.Post("/", handler.CreateSSHKey)
+		sshKeys.Delete("/:sshKeyId", handler.DeleteSSHKey)
 	}
 }
 

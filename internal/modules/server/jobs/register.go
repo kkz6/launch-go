@@ -58,8 +58,8 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterHandler(mux, TypeUninstallFirewall, jobContext, NewUninstallFirewallRuleJob)
 
 	// SSH key jobs
-	pkgjobs.RegisterHandler(mux, TypeAddSshKey, jobContext, NewAddSshKeyJob)
-	pkgjobs.RegisterHandler(mux, TypeRemoveSshKey, jobContext, NewRemoveSshKeyJob)
+	pkgjobs.RegisterHandler(mux, TypeAddSSHKey, jobContext, NewAddSSHKeyJob)
+	pkgjobs.RegisterHandler(mux, TypeRemoveSSHKey, jobContext, NewRemoveSSHKeyJob)
 
 	// Service jobs
 	pkgjobs.RegisterHandler(mux, TypeAddService, jobContext, NewAddServiceJob)
