@@ -40,105 +40,19 @@ The following foundational infrastructure has been implemented:
 
 ## Table of Contents
 
-1. [Module Handler Field Consolidation (P1)](#1-module-handler-field-consolidation-p1)
-2. [Job Base Payload Generic (P2)](#2-job-base-payload-generic-p2)
-3. [Installable Repository Mixin (P2)](#3-installable-repository-mixin-p2)
-4. [Queue Dispatch Unification (P2)](#4-queue-dispatch-unification-p2)
-5. [Pagination Embedding (P2)](#5-pagination-embedding-p2)
-6. [Task Builder Pattern (P2)](#6-task-builder-pattern-p2)
-7. [Model Scoped Fields Adoption (P2)](#7-model-scoped-fields-adoption-p2)
-8. [Activity Logging Builder (P2)](#8-activity-logging-builder-p2)
-9. [Broadcast Payload Builder (P3)](#9-broadcast-payload-builder-p3)
-10. [DTO Timestamp Embedding (P3)](#10-dto-timestamp-embedding-p3)
+1. [Job Base Payload Generic (P2)](#1-job-base-payload-generic-p2)
+2. [Installable Repository Mixin (P2)](#2-installable-repository-mixin-p2)
+3. [Queue Dispatch Unification (P2)](#3-queue-dispatch-unification-p2)
+4. [Pagination Embedding (P2)](#4-pagination-embedding-p2)
+5. [Task Builder Pattern (P2)](#5-task-builder-pattern-p2)
+6. [Model Scoped Fields Adoption (P2)](#6-model-scoped-fields-adoption-p2)
+7. [Activity Logging Builder (P2)](#7-activity-logging-builder-p2)
+8. [Broadcast Payload Builder (P3)](#8-broadcast-payload-builder-p3)
+9. [DTO Timestamp Embedding (P3)](#9-dto-timestamp-embedding-p3)
 
 ---
 
-## 1. Module Handler Field Consolidation (P1)
-
-**Issue:** Individual handlers within a module repeat the same service injection field.
-
-**Files Affected (Auth Module - 9 handlers):**
-- `internal/modules/auth/handlers/auth_handler.go:13-14`
-- `internal/modules/auth/handlers/user_handler.go:13-14`
-- `internal/modules/auth/handlers/email_handler.go:11-12`
-- `internal/modules/auth/handlers/profile_handler.go`
-- `internal/modules/auth/handlers/token_handler.go`
-- `internal/modules/auth/handlers/password_handler.go`
-- `internal/modules/auth/handlers/team_handler.go`
-- `internal/modules/auth/handlers/two_factor_handler.go`
-- `internal/modules/auth/handlers/invitation_handler.go`
-
-**Current Pattern:**
-```go
-// auth_handler.go
-type AuthHandler struct {
-    service *services.Service
-}
-
-// user_handler.go
-type UserHandler struct {
-    service *services.Service
-}
-
-// email_handler.go (9+ files repeat this)
-type EmailHandler struct {
-    service *services.Service
-}
-```
-
-**Solution:** Create per-module handler base
-```go
-// internal/modules/auth/handlers/base.go
-package handlers
-
-import "github.com/kkz6/launch-go/internal/modules/auth/services"
-
-// BaseHandler provides common dependencies for auth handlers
-type BaseHandler struct {
-    service *services.Service
-}
-
-// Service returns the auth service
-func (h *BaseHandler) Service() *services.Service {
-    return h.service
-}
-
-// NewBaseHandler creates a base handler
-func NewBaseHandler(service *services.Service) BaseHandler {
-    return BaseHandler{service: service}
-}
-```
-
-**Refactored Handlers:**
-```go
-// auth_handler.go
-type AuthHandler struct {
-    BaseHandler
-}
-
-func NewAuthHandler(service *services.Service) *AuthHandler {
-    return &AuthHandler{BaseHandler: NewBaseHandler(service)}
-}
-
-// user_handler.go
-type UserHandler struct {
-    BaseHandler
-}
-
-// All other handlers follow same pattern
-```
-
-**Refactoring Steps:**
-- [ ] Create `internal/modules/auth/handlers/base.go`
-- [ ] Refactor all 9 auth handlers to embed base
-- [ ] Create similar bases for other modules with multiple handlers
-- [ ] Update builder registration
-
-**Impact:** ~50 lines per module eliminated, easier dependency injection
-
----
-
-## 2. Job Base Payload Generic (P2)
+## 1. Job Base Payload Generic (P2)
 
 **Issue:** All jobs repeat context field and handler setup pattern.
 
@@ -231,7 +145,7 @@ func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *Ins
 
 ---
 
-## 3. Installable Repository Mixin (P2)
+## 2. Installable Repository Mixin (P2)
 
 **Issue:** Repositories with installable models repeat delegation to `Installable` trait.
 
@@ -339,7 +253,7 @@ func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) 
 
 ---
 
-## 4. Queue Dispatch Unification (P2)
+## 3. Queue Dispatch Unification (P2)
 
 **Issue:** Job dispatching uses 3+ different patterns across codebase.
 
@@ -448,7 +362,7 @@ dispatcher.Dispatch(jobType, payload)
 
 ---
 
-## 5. Pagination Embedding (P2)
+## 4. Pagination Embedding (P2)
 
 **Issue:** Pagination logic is ad-hoc and not reusable across repositories.
 
@@ -537,7 +451,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 
 ---
 
-## 6. Task Builder Pattern (P2)
+## 5. Task Builder Pattern (P2)
 
 **Issue:** Each task file repeats callback data struct and task creation boilerplate.
 
@@ -688,7 +602,7 @@ func DeploySiteTask(opts DeployOptions) *taskrunner.BuiltTask[callbackData] {
 
 ---
 
-## 7. Model Scoped Fields Adoption (P2)
+## 6. Model Scoped Fields Adoption (P2)
 
 **Issue:** Models define scope fields manually instead of using existing mixins.
 
@@ -747,7 +661,7 @@ type Database struct {
 
 ---
 
-## 8. Activity Logging Builder (P2)
+## 7. Activity Logging Builder (P2)
 
 **Issue:** Activity logging pattern repeated with builder chain across 40+ locations.
 
@@ -844,7 +758,7 @@ activity.LogCreation(s.repos.DB(), ctx, database, "database", userID, "Database 
 
 ---
 
-## 9. Broadcast Payload Builder (P3)
+## 8. Broadcast Payload Builder (P3)
 
 **Issue:** Broadcast payloads created inline with inconsistent structure.
 
@@ -919,7 +833,7 @@ func (p ServerMetricsPayload) ToMap() map[string]interface{} {
 
 ---
 
-## 10. DTO Timestamp Embedding (P3)
+## 9. DTO Timestamp Embedding (P3)
 
 **Issue:** Timestamp formatting repeated 81+ times in DTO converters.
 
@@ -13003,7 +12917,7 @@ This section analyzes the 158 patterns above and groups them into **15 actionabl
 |------|--------------|-----------|
 | 1 | WebSocket Handler Base Embedding | ~60 lines |
 | 2 | Webhook Handler Base Embedding | ~35 lines |
-| 5 | Module Handler Field Consolidation | ~200 lines |
+| ~~5~~ | ~~Module Handler Field Consolidation~~ | ~~✅ COMPLETED~~ |
 | 33 | ParseAndValidate Adoption | ~300 lines |
 | 34 | Global Context Extraction Helpers | ~200 lines |
 | 52 | Context Extraction Helpers | ~100 lines |
