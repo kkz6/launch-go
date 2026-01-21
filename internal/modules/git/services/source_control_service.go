@@ -120,7 +120,7 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 	go func() {
 		bgCtx := context.Background()
 		if err := s.SyncRepositories(bgCtx, sc); err != nil {
-			s.Logger().Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories during connection")
+			s.Logger.Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories during connection")
 		}
 	}()
 
@@ -213,7 +213,7 @@ func (s *SourceControlService) SyncRepositories(ctx context.Context, sc *models.
 }
 
 // SyncInstallationRepositories syncs repositories for an installation
-func (s *SourceControlService) SyncInstallationRepositories(ctx context.Context, sc *models.SourceControl, repositories []map[string]interface{}) error {
+func (s *SourceControlService) SyncInstallationRepositories(ctx context.Context, sc *models.SourceControl, repos []map[string]interface{}) error {
 	// Get existing repositories
 	existingRepos, err := s.Repos().SourceControlRepo().FindRepositoriesBySourceControlID(ctx, sc.ID)
 	if err != nil {
@@ -222,7 +222,7 @@ func (s *SourceControlService) SyncInstallationRepositories(ctx context.Context,
 
 	// Build map of API repository IDs
 	apiRepoIDs := make(map[string]bool)
-	for _, repo := range repositories {
+	for _, repo := range repos {
 		var id string
 		if idFloat, ok := repo["id"].(float64); ok {
 			id = fmt.Sprintf("%.0f", idFloat)
@@ -268,7 +268,7 @@ func (s *SourceControlService) SyncInstallationRepositories(ctx context.Context,
 	}
 
 	// Create or update repositories from API response
-	for _, repoData := range repositories {
+	for _, repoData := range repos {
 		var id string
 		if idFloat, ok := repoData["id"].(float64); ok {
 			id = fmt.Sprintf("%.0f", idFloat)
@@ -283,21 +283,17 @@ func (s *SourceControlService) SyncInstallationRepositories(ctx context.Context,
 
 		data := dto.RepositoryDataFromAPIResponse(repoData)
 		if _, err := s.Repos().SourceControlRepo().UpsertRepository(ctx, sc.ID, data); err != nil {
-			s.Logger().Warn().Err(err).Str("repo", data.FullName).Msg("Failed to upsert repository")
+			s.Logger.Warn().Err(err).Str("repo", data.FullName).Msg("Failed to upsert repository")
 			continue
 		}
 	}
 
 	// Update repository count
 	now := time.Now()
-	if err := s.Repos().SourceControl().UpdateFields(ctx, sc.ID, map[string]interface{}{
-		"repository_count": len(repositories),
+	return s.Repos().SourceControl().UpdateFields(ctx, sc.ID, map[string]interface{}{
+		"repository_count": len(repos),
 		"last_synced_at":   now,
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
 // RefreshInstallationRepositories refreshes repositories for an installation
@@ -377,7 +373,7 @@ func (s *SourceControlService) SyncUserInstallation(ctx context.Context, provide
 	go func() {
 		bgCtx := context.Background()
 		if err := s.SyncRepositories(bgCtx, sc); err != nil {
-			s.Logger().Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories during installation sync")
+			s.Logger.Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories during installation sync")
 		}
 	}()
 
@@ -393,7 +389,7 @@ func (s *SourceControlService) SyncRepositoriesForInstallation(ctx context.Conte
 
 	for _, sc := range sourceControls {
 		if err := s.SyncRepositories(ctx, &sc); err != nil {
-			s.Logger().Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories for installation")
+			s.Logger.Warn().Err(err).Str("source_control_id", sc.ID).Msg("Failed to sync repositories for installation")
 		}
 	}
 

@@ -6,7 +6,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
+
+	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 )
 
 const dropboxAPIURL = "https://api.dropboxapi.com/2"
@@ -20,9 +21,7 @@ type DropboxProvider struct {
 // NewDropboxProvider creates a new Dropbox storage provider
 func NewDropboxProvider(credentials map[string]interface{}) *DropboxProvider {
 	p := &DropboxProvider{
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		httpClient: httpclient.Default(),
 	}
 
 	if token, ok := credentials["token"].(string); ok {
@@ -35,7 +34,7 @@ func NewDropboxProvider(credentials map[string]interface{}) *DropboxProvider {
 // Connect tests the connection to Dropbox
 func (p *DropboxProvider) Connect(ctx context.Context) error {
 	if p.token == "" {
-		return fmt.Errorf("Dropbox token is required")
+		return fmt.Errorf("dropbox token is required")
 	}
 
 	reqBody := map[string]string{"query": ""}

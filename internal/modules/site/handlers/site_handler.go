@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
@@ -48,12 +49,7 @@ func (h *SiteHandler) List(c *fiber.Ctx) error {
 		return response.InternalError(c, response.MsgInternalError)
 	}
 
-	result := make([]dto.SiteResponse, len(sites))
-	for i, site := range sites {
-		result[i] = dto.ToSiteResponse(&site)
-	}
-
-	return response.OK(c, "Sites retrieved", result)
+	return response.OK(c, "Sites retrieved", pkgdto.TransformSlice(sites, dto.ToSiteResponse))
 }
 
 // Create creates a new site

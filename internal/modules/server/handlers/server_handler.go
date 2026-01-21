@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
@@ -45,12 +46,7 @@ func (h *Handler) List(c *fiber.Ctx) error {
 		return response.InternalError(c, "Failed to fetch servers")
 	}
 
-	result := make([]dto.ServerResponse, len(servers))
-	for i := range servers {
-		result[i] = dto.ToServerResponse(&servers[i])
-	}
-
-	return response.OK(c, "Servers retrieved", result)
+	return response.OK(c, "Servers retrieved", pkgdto.TransformSlice(servers, dto.ToServerResponse))
 }
 
 // ListArchived returns all archived servers for the team
@@ -65,12 +61,7 @@ func (h *Handler) ListArchived(c *fiber.Ctx) error {
 		return response.InternalError(c, "Failed to fetch archived servers")
 	}
 
-	result := make([]dto.ServerResponse, len(servers))
-	for i := range servers {
-		result[i] = dto.ToServerResponse(&servers[i])
-	}
-
-	return response.OK(c, "Archived servers retrieved", result)
+	return response.OK(c, "Archived servers retrieved", pkgdto.TransformSlice(servers, dto.ToServerResponse))
 }
 
 // Create creates a new server

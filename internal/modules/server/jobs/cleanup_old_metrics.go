@@ -39,7 +39,7 @@ func (j *CleanupOldMetricsJob) Handle(ctx context.Context) error {
 		"cutoff_time", cutoff.Format(time.RFC3339),
 	)
 
-	deleted, err := j.Ctx.Repos.Metric().DeleteOlderThan(ctx, cutoff)
+	deleted, err := j.Ctx.Repos().Metric().DeleteOlderThan(ctx, cutoff)
 	if err != nil {
 		return fmt.Errorf("failed to delete old metrics: %w", err)
 	}

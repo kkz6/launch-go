@@ -33,7 +33,7 @@ func NewCheckDaemonStatusJob(ctx *JobContext, payload CheckDaemonStatusPayload) 
 // Handle executes the daemon status check job
 // This job delegates to SyncDaemons for the actual work
 func (j *CheckDaemonStatusJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}

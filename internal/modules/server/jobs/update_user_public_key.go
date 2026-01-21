@@ -33,7 +33,7 @@ func NewUpdateUserPublicKeyJob(ctx *JobContext, payload UpdateUserPublicKeyPaylo
 
 // Handle executes the update user public key job
 func (j *UpdateUserPublicKeyJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}

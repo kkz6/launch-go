@@ -37,12 +37,12 @@ func (j *CheckServiceStatusJob) Timeout() time.Duration {
 
 // Handle processes the job
 func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
-	service, err := j.Ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
+	service, err := j.Ctx.Repos().Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -101,7 +101,7 @@ func (j *CheckServiceStatusJob) updateServiceStatus(ctx context.Context, service
 		typeData["status_error"] = errorMsg
 	}
 
-	if err := j.Ctx.Repos.Service().UpdateWithTypeData(ctx, serviceID, status, typeData); err != nil {
+	if err := j.Ctx.Repos().Service().UpdateWithTypeData(ctx, serviceID, status, typeData); err != nil {
 		j.Ctx.LogError(err, "Failed to update service status", "service_id", serviceID)
 	}
 }

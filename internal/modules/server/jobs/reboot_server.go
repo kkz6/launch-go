@@ -27,7 +27,7 @@ type RebootServerJob struct {
 // Handle processes the job
 func (j *RebootServerJob) Handle(ctx context.Context) error {
 	// Find the server
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -48,7 +48,7 @@ func (j *RebootServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "rebooted", j.Payload.UserID, server, "Server reboot was initiated")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "rebooted", j.Payload.UserID, server, "Server reboot was initiated")
 
 	j.Ctx.LogInfo("Server reboot initiated",
 		"server_id", server.ID,

@@ -47,13 +47,13 @@ type SyncDaemonsJob struct {
 // Handle executes the sync daemons job
 func (j *SyncDaemonsJob) Handle(ctx context.Context) error {
 	// Get server
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Get all daemons for this server
-	daemons, err := j.Ctx.Repos.Daemon().FindByServer(ctx, j.Payload.ServerID)
+	daemons, err := j.Ctx.Repos().Daemon().FindByServer(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to get daemons: %w", err)
 	}
@@ -115,7 +115,7 @@ func (j *SyncDaemonsJob) Handle(ctx context.Context) error {
 		}
 
 		// Update the daemon in the database
-		if err := j.Ctx.Repos.Daemon().Update(ctx, daemon); err != nil {
+		if err := j.Ctx.Repos().Daemon().Update(ctx, daemon); err != nil {
 			j.Ctx.LogError(err, "Failed to update daemon status", "daemon_id", daemon.ID)
 		}
 	}

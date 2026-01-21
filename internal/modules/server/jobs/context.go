@@ -14,16 +14,30 @@ import (
 	"github.com/kkz6/launch-go/internal/queue"
 )
 
+// These type aliases ensure the imports are used and provide documentation
+// about the inherited types from ModuleContext.
+var (
+	_ *gorm.DB                  // Used via c.DB()
+	_ *zerolog.Logger           // Used via c.Logger()
+	_ broadcast.TeamBroadcaster // Used via c.WS()
+	_ *queue.Client             // Used via c.Queue()
+)
+
 // JobContext holds dependencies for server jobs.
 // It embeds pkgjobs.ModuleContext for common functionality and typed repository access.
+//
+// Access common dependencies via inherited methods:
+//   - j.Ctx.DB() - database connection
+//   - j.Ctx.Logger() - zerolog logger
+//   - j.Ctx.WS() - websocket broadcaster
+//   - j.Ctx.Queue() - queue client
+//   - j.Ctx.Repos() - repository registry (contracts.RepositoryRegistry)
+//
+// Module-specific fields:
+//   - j.Ctx.ProviderFactory - cloud provider factory
+//   - j.Ctx.TaskRunnerDeps - task runner dependencies
 type JobContext struct {
 	*pkgjobs.ModuleContext[contracts.RepositoryRegistry]
-	// Public fields for backward compatibility with existing jobs
-	DB              *gorm.DB
-	Repos           contracts.RepositoryRegistry
-	Logger          *zerolog.Logger
-	WS              broadcast.TeamBroadcaster
-	Queue           *queue.Client
 	ProviderFactory *providers.Factory
 	TaskRunnerDeps  *tasks.TaskRunnerDeps
 }
@@ -54,12 +68,6 @@ func NewJobContext(
 			Dispatcher: dispatcher,
 			Queue:      queueClient,
 		}, repos),
-		// Public fields for backward compatibility
-		DB:              db,
-		Repos:           repos,
-		Logger:          logger,
-		WS:              ws,
-		Queue:           queueClient,
 		ProviderFactory: providerFactory,
 		TaskRunnerDeps:  taskRunnerDeps,
 	}
@@ -86,7 +94,7 @@ func (s *ServerTaskRunner) RunTask(task taskrunner.Task) *tasks.TaskRunner {
 
 // BroadcastServerEvent broadcasts an event for a server to its team channel.
 func (c *JobContext) BroadcastServerEvent(server *models.Server, event string, data any) {
-	if c.WS != nil && server != nil {
-		c.WS.BroadcastToTeam(server.TeamID, event, data)
+	if c.WS() != nil && server != nil {
+		c.WS().BroadcastToTeam(server.TeamID, event, data)
 	}
 }

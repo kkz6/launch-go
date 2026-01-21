@@ -9,72 +9,47 @@ import (
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 
-// AppError represents an application error with HTTP status and message.
-// Implements HTTPStatusError from internal/pkg/errors.
-type AppError struct {
-	Err     error
-	Status  int
-	Message string
+// AppError is an alias to the canonical AppError type in pkg/errors.
+// Use apperrors.AppError directly for new code.
+type AppError = apperrors.AppError
+
+// ResourceError is an alias to the canonical ResourceError type in pkg/errors.
+type ResourceError = apperrors.ResourceError
+
+// NewAppError creates a new ResourceError for backwards compatibility.
+// For new code, use apperrors.NewAppError which supports error codes.
+func NewAppError(status int, message string) *ResourceError {
+	return apperrors.WithStatus(status, message)
 }
 
-// Compile-time check that AppError implements HTTPStatusError
-var _ apperrors.HTTPStatusError = (*AppError)(nil)
-
-// Error implements the error interface
-func (e *AppError) Error() string {
-	if e.Err != nil {
-		return e.Err.Error()
-	}
-	return e.Message
+// Common error constructors - delegate to apperrors package
+func ErrNotFound(message string) *ResourceError {
+	return apperrors.NotFound(message)
 }
 
-// Unwrap allows errors.Is and errors.As to work
-func (e *AppError) Unwrap() error {
-	return e.Err
+func ErrBadRequest(message string) *ResourceError {
+	return apperrors.BadRequest(message)
 }
 
-// HTTPStatus implements HTTPStatusError interface
-func (e *AppError) HTTPStatus() int {
-	return e.Status
+func ErrConflict(message string) *ResourceError {
+	return apperrors.Conflict(message)
 }
 
-// NewAppError creates a new AppError
-func NewAppError(status int, message string) *AppError {
-	return &AppError{
-		Err:     errors.New(message),
-		Status:  status,
-		Message: message,
-	}
+func ErrForbidden(message string) *ResourceError {
+	return apperrors.Forbidden(message)
 }
 
-// Common error constructors
-func ErrNotFound(message string) *AppError {
-	return NewAppError(http.StatusNotFound, message)
+func ErrUnauthorized(message string) *ResourceError {
+	return apperrors.Unauthorized(message)
 }
 
-func ErrBadRequest(message string) *AppError {
-	return NewAppError(http.StatusBadRequest, message)
-}
-
-func ErrConflict(message string) *AppError {
-	return NewAppError(http.StatusConflict, message)
-}
-
-func ErrForbidden(message string) *AppError {
-	return NewAppError(http.StatusForbidden, message)
-}
-
-func ErrUnauthorized(message string) *AppError {
-	return NewAppError(http.StatusUnauthorized, message)
-}
-
-func ErrInternal(message string) *AppError {
-	return NewAppError(http.StatusInternalServerError, message)
+func ErrInternal(message string) *ResourceError {
+	return apperrors.Internal(message)
 }
 
 // HTTPStatusError is an alias to the canonical interface in pkg/errors.
 // This is implemented by:
-// - AppError (this package)
+// - AppError (pkg/errors)
 // - ResourceError (pkg/errors)
 // - ModelError (pkg/repository)
 type HTTPStatusError = apperrors.HTTPStatusError

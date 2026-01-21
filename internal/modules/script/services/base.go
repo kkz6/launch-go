@@ -7,42 +7,33 @@ import (
 )
 
 // ServiceDeps holds all dependencies needed for script services.
-// Embedding service.Dependencies provides common dependencies.
+// Embedding service.ModuleDeps provides common dependencies and repository access.
 type ServiceDeps struct {
-	service.Dependencies
-	Repos       *repositories.Registry
+	service.ModuleDeps[*repositories.Registry]
 	ServerRepos *serverrepos.Registry
 }
 
-// BaseService provides common service dependencies
+// BaseService provides common service dependencies for the script module.
+// It wraps service.ModuleBase and adds script-specific functionality.
 type BaseService struct {
-	service.Base
-	deps        *ServiceDeps
-	repos       *repositories.Registry
-	serverRepos *serverrepos.Registry
+	*service.ModuleBase[*repositories.Registry]
+	serviceDeps *ServiceDeps
 }
 
 // NewBaseService creates a new base service from ServiceDeps
 func NewBaseService(deps *ServiceDeps) *BaseService {
 	return &BaseService{
-		Base:        service.NewBaseFromDeps(deps.Dependencies),
-		deps:        deps,
-		repos:       deps.Repos,
-		serverRepos: deps.ServerRepos,
+		ModuleBase:  service.NewModuleBase(&deps.ModuleDeps),
+		serviceDeps: deps,
 	}
-}
-
-// Repos returns the script repository registry
-func (s *BaseService) Repos() *repositories.Registry {
-	return s.repos
-}
-
-// ServerRepos returns the server repository registry
-func (s *BaseService) ServerRepos() *serverrepos.Registry {
-	return s.serverRepos
 }
 
 // ServiceDeps returns the service dependencies
 func (s *BaseService) ServiceDeps() *ServiceDeps {
-	return s.deps
+	return s.serviceDeps
+}
+
+// ServerRepos returns the server repository registry
+func (s *BaseService) ServerRepos() *serverrepos.Registry {
+	return s.serviceDeps.ServerRepos
 }

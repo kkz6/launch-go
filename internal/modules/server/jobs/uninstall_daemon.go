@@ -29,7 +29,7 @@ type UninstallDaemonJob struct {
 // Handle processes the job
 func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 	// Find the daemon with server preloaded
-	daemon, err := j.Ctx.Repos.Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
+	daemon, err := j.Ctx.Repos().Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
 	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
@@ -54,10 +54,10 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "uninstalled", j.Payload.UserID, daemon, "Daemon was uninstalled")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "uninstalled", j.Payload.UserID, daemon, "Daemon was uninstalled")
 
 	// Delete the daemon record
-	if err := j.Ctx.Repos.Daemon().Delete(ctx, daemon.ID); err != nil {
+	if err := j.Ctx.Repos().Daemon().Delete(ctx, daemon.ID); err != nil {
 		return fmt.Errorf("failed to delete daemon record: %w", err)
 	}
 
@@ -83,10 +83,10 @@ func (j *UninstallDaemonJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Mark uninstallation as failed
-	daemon, findErr := j.Ctx.Repos.Daemon().FindByID(ctx, j.Payload.DaemonID)
+	daemon, findErr := j.Ctx.Repos().Daemon().FindByID(ctx, j.Payload.DaemonID)
 	if findErr == nil && daemon != nil {
 		now := time.Now()
-		j.Ctx.DB.Model(daemon).Updates(map[string]any{
+		j.Ctx.DB().Model(daemon).Updates(map[string]any{
 			"uninstallation_requested_at": nil,
 			"uninstallation_failed_at":    &now,
 		})

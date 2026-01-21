@@ -29,13 +29,13 @@ type ServiceOperationJob struct {
 // Handle processes the job
 func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 	// Find the service
-	service, err := j.Ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
+	service, err := j.Ctx.Repos().Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
 	// Find the server
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}

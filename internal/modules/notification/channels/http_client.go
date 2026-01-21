@@ -7,7 +7,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"time"
+
+	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 )
 
 // DefaultHTTPClient is the default HTTP client implementation
@@ -18,9 +19,7 @@ type DefaultHTTPClient struct {
 // NewDefaultHTTPClient creates a new default HTTP client
 func NewDefaultHTTPClient() *DefaultHTTPClient {
 	return &DefaultHTTPClient{
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		client: httpclient.Default(),
 	}
 }
 

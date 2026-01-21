@@ -25,12 +25,12 @@ type SetDefaultPhpJob struct {
 }
 
 func (j *SetDefaultPhpJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	service, err := j.Ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
+	service, err := j.Ctx.Repos().Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
@@ -57,12 +57,12 @@ func (j *SetDefaultPhpJob) Handle(ctx context.Context) error {
 
 	// Update the service record to mark it as default
 	// First, unset any existing default
-	if err := j.Ctx.Repos.Service().UnsetDefaultPhp(ctx, j.Payload.ServerID); err != nil {
+	if err := j.Ctx.Repos().Service().UnsetDefaultPhp(ctx, j.Payload.ServerID); err != nil {
 		j.Ctx.LogError(err, "Failed to unset existing default PHP")
 	}
 
 	// Set the new default
-	if err := j.Ctx.Repos.Service().SetDefault(ctx, j.Payload.ServiceID, true); err != nil {
+	if err := j.Ctx.Repos().Service().SetDefault(ctx, j.Payload.ServiceID, true); err != nil {
 		return fmt.Errorf("failed to update service default status: %w", err)
 	}
 

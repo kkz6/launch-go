@@ -1,18 +1,15 @@
 package services
 
 import (
-	"github.com/rs/zerolog"
-
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 // ServiceDeps holds all dependencies needed for notification services.
-// Embedding service.Dependencies provides common dependencies (DB, Logger, Queue, Broadcaster).
+// Embedding service.ModuleDeps provides common dependencies and repository access.
 type ServiceDeps struct {
-	service.Dependencies
-	Repos          *repositories.Registry
+	service.ModuleDeps[*repositories.Registry]
 	ChannelFactory *channels.Factory
 
 	// Admin webhook URL for Slack admin alerts
@@ -50,40 +47,32 @@ func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
 	return registry
 }
 
-// BaseService provides common service dependencies for notification services.
-// It embeds service.Base to get common functionality (queue, broadcast, logging)
-// and adds module-specific accessors.
+// BaseService provides common service dependencies for the notification module.
+// It wraps service.ModuleBase and adds notification-specific functionality.
 type BaseService struct {
-	service.Base
-	deps  *ServiceDeps
-	repos *repositories.Registry
+	*service.ModuleBase[*repositories.Registry]
+	serviceDeps *ServiceDeps
 }
 
 // NewBaseService creates a new base service from ServiceDeps
 func NewBaseService(deps *ServiceDeps) *BaseService {
 	return &BaseService{
-		Base:  service.NewBaseFromDeps(deps.Dependencies),
-		deps:  deps,
-		repos: deps.Repos,
+		ModuleBase:  service.NewModuleBase(&deps.ModuleDeps),
+		serviceDeps: deps,
 	}
 }
 
-// Repos returns the repository registry
-func (s *BaseService) Repos() *repositories.Registry {
-	return s.repos
-}
-
-// Logger returns the logger (overrides Base.Logger for pointer return)
-func (s *BaseService) Logger() *zerolog.Logger {
-	return s.deps.Logger
+// ServiceDeps returns the service dependencies
+func (s *BaseService) ServiceDeps() *ServiceDeps {
+	return s.serviceDeps
 }
 
 // ChannelFactory returns the channel factory
 func (s *BaseService) ChannelFactory() *channels.Factory {
-	return s.deps.ChannelFactory
+	return s.serviceDeps.ChannelFactory
 }
 
 // Services returns the service registry for accessing other services
 func (s *BaseService) Services() *ServiceRegistry {
-	return s.deps.registry
+	return s.serviceDeps.registry
 }

@@ -40,7 +40,7 @@ func NewCleanupFailedPhpInstallationJob(ctx *JobContext, payload CleanupFailedPh
 
 // Handle executes the cleanup job
 func (j *CleanupFailedPhpInstallationJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -65,7 +65,7 @@ func (j *CleanupFailedPhpInstallationJob) Handle(ctx context.Context) error {
 
 	// Update service status to failed if service exists
 	if j.Payload.ServiceID != "" {
-		if err := j.Ctx.Repos.Service().UpdateStatus(ctx, j.Payload.ServiceID, enums.ServiceStatusFailed); err != nil {
+		if err := j.Ctx.Repos().Service().UpdateStatus(ctx, j.Payload.ServiceID, enums.ServiceStatusFailed); err != nil {
 			j.Ctx.LogError(err, "Failed to update service status", "service_id", j.Payload.ServiceID)
 		}
 	}
@@ -123,7 +123,7 @@ func NewCleanupFailedPhpExtensionInstallJob(ctx *JobContext, payload CleanupFail
 
 // Handle executes the cleanup job
 func (j *CleanupFailedPhpExtensionInstallJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -212,7 +212,7 @@ func NewCleanupFailedPhpExtensionUninstallJob(ctx *JobContext, payload CleanupFa
 
 // Handle executes the cleanup job
 func (j *CleanupFailedPhpExtensionUninstallJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}

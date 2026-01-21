@@ -148,6 +148,9 @@ func (p *ProgressTracking) IsComplete() bool {
 // but should be hidden from normal queries. Unlike soft delete, archived records
 // are not automatically filtered by GORM.
 //
+// Deprecated: Use ArchivableModel instead for new code. This type is kept for
+// backwards compatibility.
+//
 // Usage:
 //
 //	type MyModel struct {
@@ -157,6 +160,9 @@ func (p *ProgressTracking) IsComplete() bool {
 type Archivable struct {
 	ArchivedAt *time.Time `gorm:"type:timestamp null;index" json:"archived_at,omitempty"`
 }
+
+// Compile-time check that Archivable implements ArchivableEntity
+var _ ArchivableEntity = (*Archivable)(nil)
 
 // IsArchived returns true if the model has been archived
 func (a *Archivable) IsArchived() bool {
@@ -169,9 +175,20 @@ func (a *Archivable) Archive() {
 	a.ArchivedAt = &now
 }
 
-// Restore removes the archived status by clearing ArchivedAt
-func (a *Archivable) Restore() {
+// Unarchive removes the archived status by clearing ArchivedAt
+func (a *Archivable) Unarchive() {
 	a.ArchivedAt = nil
+}
+
+// Restore removes the archived status by clearing ArchivedAt
+// Deprecated: Use Unarchive() instead for interface compliance
+func (a *Archivable) Restore() {
+	a.Unarchive()
+}
+
+// GetArchivedAt returns the archived timestamp
+func (a *Archivable) GetArchivedAt() *time.Time {
+	return a.ArchivedAt
 }
 
 // Tokenized provides a secure token field for models that need authentication tokens.

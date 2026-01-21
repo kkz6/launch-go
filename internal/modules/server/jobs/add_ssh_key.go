@@ -27,13 +27,13 @@ type AddSSHKeyJob struct {
 // Handle processes the job
 func (j *AddSSHKeyJob) Handle(ctx context.Context) error {
 	// Find the SSH key
-	sshKey, err := j.Ctx.Repos.SSHKey().FindByID(ctx, j.Payload.KeyID)
+	sshKey, err := j.Ctx.Repos().SSHKey().FindByID(ctx, j.Payload.KeyID)
 	if err != nil {
 		return fmt.Errorf("failed to find SSH key: %w", err)
 	}
 
 	// Find the server
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -54,12 +54,12 @@ func (j *AddSSHKeyJob) Handle(ctx context.Context) error {
 	}
 
 	// Attach the key to server in the database
-	if err := j.Ctx.Repos.SSHKey().AttachToServer(ctx, server.ID, sshKey.ID); err != nil {
+	if err := j.Ctx.Repos().SSHKey().AttachToServer(ctx, server.ID, sshKey.ID); err != nil {
 		return fmt.Errorf("failed to attach SSH key to server: %w", err)
 	}
 
 	// Log activity
-	activity.LogWithLog(ctx, j.Ctx.DB, "server", "added", "", sshKey, "SSH key was added to server")
+	activity.LogWithLog(ctx, j.Ctx.DB(), "server", "added", "", sshKey, "SSH key was added to server")
 
 	j.Ctx.LogInfo("SSH key added successfully",
 		"key_id", sshKey.ID,

@@ -37,7 +37,7 @@ func NewCreateOnProviderJob(ctx *JobContext, payload CreateOnProviderPayload) *C
 }
 
 func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -54,7 +54,7 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 
 	var credentials map[string]any
 	if j.Payload.ServerProviderID != "" {
-		serverProvider, err := j.Ctx.Repos.ServerProvider().FindByID(ctx, j.Payload.ServerProviderID)
+		serverProvider, err := j.Ctx.Repos().ServerProvider().FindByID(ctx, j.Payload.ServerProviderID)
 		if err != nil {
 			return fmt.Errorf("failed to find server provider: %w", err)
 		}
@@ -70,7 +70,7 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("no credentials found for server provider")
 	}
 
-	if err := j.Ctx.Repos.Server().UpdateStatus(ctx, server.ID, enums.ServerStatusStarting); err != nil {
+	if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, enums.ServerStatusStarting); err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
@@ -121,7 +121,7 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 		updates["storage_in_gb"] = result.DiskGB
 	}
 
-	if err := j.Ctx.Repos.Server().UpdateFields(ctx, server.ID, updates); err != nil {
+	if err := j.Ctx.Repos().Server().UpdateFields(ctx, server.ID, updates); err != nil {
 		return fmt.Errorf("failed to update server with provider data: %w", err)
 	}
 
@@ -135,7 +135,7 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 	}
 
 	if result.PublicIPv4 != "" {
-		if err := j.Ctx.Repos.Server().UpdateFields(ctx, server.ID, map[string]any{
+		if err := j.Ctx.Repos().Server().UpdateFields(ctx, server.ID, map[string]any{
 			"public_ipv4": result.PublicIPv4,
 		}); err != nil {
 			return fmt.Errorf("failed to update server IP: %w", err)
@@ -163,7 +163,7 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 
 // dispatchWaitForConnection dispatches the WaitForServerToConnect job
 func (j *CreateOnProviderJob) dispatchWaitForConnection() error {
-	if j.Ctx.Queue == nil {
+	if j.Ctx.Queue() == nil {
 		return fmt.Errorf("queue client not available")
 	}
 
@@ -195,7 +195,7 @@ func (j *CreateOnProviderJob) waitForPublicIP(
 	provider any,
 	credentials map[string]any,
 ) (string, error) {
-	srv, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	srv, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return "", err
 	}
@@ -221,7 +221,7 @@ func (j *CreateOnProviderJob) waitForPublicIP(
 		case <-ctx.Done():
 			return "", ctx.Err()
 		case <-time.After(10 * time.Second):
-			srv, _ = j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+			srv, _ = j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 		}
 	}
 
@@ -233,11 +233,11 @@ func (j *CreateOnProviderJob) Failed(ctx context.Context, err error) {
 		"server_id", j.Payload.ServerID,
 	)
 
-	if updateErr := j.Ctx.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
+	if updateErr := j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
 		j.Ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 
-	server, findErr := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, findErr := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {
 		j.Ctx.BroadcastServerEvent(server, "server.create_failed", map[string]any{
 			"server_id": j.Payload.ServerID,

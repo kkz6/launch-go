@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 const ModuleName = "notification"
@@ -50,10 +51,12 @@ func (m *Module) createServices() *services.ServiceRegistry {
 		adminWebhookURL = deps.Config.Slack.AdminWebhookURL
 	}
 
-	// Create shared service dependencies using embedded service.Dependencies
+	// Create shared service dependencies using embedded service.ModuleDeps
 	svcDeps := &services.ServiceDeps{
-		Dependencies:    deps.ServiceDeps(),
-		Repos:           m.repos,
+		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
+			Dependencies: deps.ServiceDeps(),
+			Repos:        m.repos,
+		},
 		ChannelFactory:  m.channelFactory,
 		AdminWebhookURL: adminWebhookURL,
 	}

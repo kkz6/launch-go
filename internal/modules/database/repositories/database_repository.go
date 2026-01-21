@@ -13,8 +13,7 @@ import (
 func (r *DatabaseRepository) FindByID(ctx context.Context, id string) (*models.Database, error) {
 	var database models.Database
 
-	err := r.DB.WithContext(ctx).
-		Preload("Users").
+	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
 		First(&database, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -31,8 +30,7 @@ func (r *DatabaseRepository) FindByID(ctx context.Context, id string) (*models.D
 func (r *DatabaseRepository) FindByIDAndServer(ctx context.Context, id, serverID string) (*models.Database, error) {
 	var database models.Database
 
-	err := r.DB.WithContext(ctx).
-		Preload("Users").
+	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
 		First(&database, "id = ? AND server_id = ?", id, serverID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -49,8 +47,7 @@ func (r *DatabaseRepository) FindByIDAndServer(ctx context.Context, id, serverID
 func (r *DatabaseRepository) FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Database, error) {
 	var database models.Database
 
-	err := r.DB.WithContext(ctx).
-		Preload("Users").
+	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
 		First(&database, "id = ? AND team_id = ?", id, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -67,8 +64,7 @@ func (r *DatabaseRepository) FindByIDAndTeam(ctx context.Context, id, teamID str
 func (r *DatabaseRepository) FindByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.Database, error) {
 	var database models.Database
 
-	err := r.DB.WithContext(ctx).
-		Preload("Users").
+	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
 		First(&database, "id = ? AND server_id = ? AND team_id = ?", id, serverID, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -85,8 +81,7 @@ func (r *DatabaseRepository) FindByIDAndServerAndTeam(ctx context.Context, id, s
 func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) ([]models.Database, error) {
 	var databases []models.Database
 
-	err := r.DB.WithContext(ctx).
-		Preload("Users").
+	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
 		Where("server_id = ?", serverID).
 		Order("created_at DESC").
 		Find(&databases).Error
@@ -98,8 +93,7 @@ func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) 
 func (r *DatabaseRepository) FindByServerAndTeam(ctx context.Context, serverID, teamID string) ([]models.Database, error) {
 	var databases []models.Database
 
-	err := r.DB.WithContext(ctx).
-		Preload("Users").
+	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
 		Where("server_id = ? AND team_id = ?", serverID, teamID).
 		Order("created_at DESC").
 		Find(&databases).Error
@@ -122,8 +116,7 @@ func (r *DatabaseRepository) CountByTeam(ctx context.Context, teamID string) (in
 func (r *DatabaseRepository) FindByNameAndServer(ctx context.Context, name, serverID string) (*models.Database, error) {
 	var database models.Database
 
-	err := r.DB.WithContext(ctx).
-		Preload("Users").
+	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
 		First(&database, "name = ? AND server_id = ?", name, serverID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

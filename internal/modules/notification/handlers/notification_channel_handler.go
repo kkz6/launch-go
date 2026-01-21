@@ -165,17 +165,14 @@ func (h *NotificationChannelHandler) Test(c *fiber.Ctx) error {
 		return err
 	}
 
-	var req dto.TestChannelRequest
-	if err := c.BodyParser(&req); err != nil {
-		// If body parsing fails, use default message
-		req.Message = "This is a test notification from Launch."
+	// Parse optional request body - use default message if not provided or empty
+	req, _ := fiberctx.MustParseAndValidate[dto.TestChannelRequest](c)
+	message := "This is a test notification from Launch."
+	if req != nil && req.Message != "" {
+		message = req.Message
 	}
 
-	if req.Message == "" {
-		req.Message = "This is a test notification from Launch."
-	}
-
-	err = h.service.TestChannel(c.Context(), channelID, teamID, req.Message)
+	err = h.service.TestChannel(c.Context(), channelID, teamID, message)
 	if err != nil {
 		if errors.Is(err, repositories.ErrChannelNotFound) {
 			return response.NotFound(c, "Notification channel not found")
