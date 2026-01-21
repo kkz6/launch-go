@@ -347,3 +347,49 @@ func ContainsAll[T comparable](items []T, elements ...T) bool {
 	}
 	return true
 }
+
+// FilterTransform filters a slice and transforms matching elements in a single pass.
+// The predicate and transform functions receive pointers to avoid copying large structs.
+// Pre-allocates with an estimate of half the elements matching.
+//
+// Example:
+//
+//	type User struct { Name string; Age int; Active bool }
+//	users := []User{{Name: "Alice", Age: 30, Active: true}, {Name: "Bob", Age: 25, Active: false}}
+//	names := FilterTransform(users, func(u *User) bool { return u.Active }, func(u *User) string { return u.Name })
+//	// Returns []string{"Alice"}
+func FilterTransform[T, U any](slice []T, predicate func(*T) bool, transform func(*T) U) []U {
+	if slice == nil {
+		return nil
+	}
+	result := make([]U, 0, len(slice)/2+1)
+	for i := range slice {
+		if predicate(&slice[i]) {
+			result = append(result, transform(&slice[i]))
+		}
+	}
+	return result
+}
+
+// FilterPtr returns elements that match the predicate.
+// The predicate receives a pointer to each element to avoid copying large structs.
+// Pre-allocates with an estimate of half the elements matching.
+//
+// Example:
+//
+//	type User struct { Name string; Active bool }
+//	users := []User{{Name: "Alice", Active: true}, {Name: "Bob", Active: false}}
+//	active := FilterPtr(users, func(u *User) bool { return u.Active })
+//	// Returns []User{{Name: "Alice", Active: true}}
+func FilterPtr[T any](slice []T, predicate func(*T) bool) []T {
+	if slice == nil {
+		return nil
+	}
+	result := make([]T, 0, len(slice)/2+1)
+	for i := range slice {
+		if predicate(&slice[i]) {
+			result = append(result, slice[i])
+		}
+	}
+	return result
+}

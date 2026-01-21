@@ -9,6 +9,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
@@ -33,10 +34,10 @@ type Dependencies struct {
 }
 
 // NewDependencies creates a new Dependencies instance with all common dependencies.
-func NewDependencies(db *gorm.DB, logger *zerolog.Logger, q *queue.Client, ws broadcast.ModelBroadcaster, dispatcher *taskrunner.Dispatcher) Dependencies {
+func NewDependencies(db *gorm.DB, log *zerolog.Logger, q *queue.Client, ws broadcast.ModelBroadcaster, dispatcher *taskrunner.Dispatcher) Dependencies {
 	return Dependencies{
 		DB:          db,
-		Logger:      logger,
+		Logger:      log,
 		Queue:       q,
 		Broadcaster: ws,
 		Dispatcher:  dispatcher,
@@ -60,21 +61,21 @@ type Base struct {
 }
 
 // NewBase creates a new Base service
-func NewBase(q *queue.Client, ws broadcast.ModelBroadcaster, logger *zerolog.Logger) Base {
+func NewBase(q *queue.Client, ws broadcast.ModelBroadcaster, log *zerolog.Logger) Base {
 	return Base{
 		Queue:  q,
 		WS:     ws,
-		Logger: logger,
+		Logger: log,
 	}
 }
 
 // NewBaseWithDB creates a new Base service with database access
-func NewBaseWithDB(db *gorm.DB, q *queue.Client, ws broadcast.ModelBroadcaster, logger *zerolog.Logger) Base {
+func NewBaseWithDB(db *gorm.DB, q *queue.Client, ws broadcast.ModelBroadcaster, log *zerolog.Logger) Base {
 	return Base{
 		db:     db,
 		Queue:  q,
 		WS:     ws,
-		Logger: logger,
+		Logger: log,
 	}
 }
 
@@ -158,44 +159,17 @@ func (s *Base) Broadcast(channel, event string, data interface{}) {
 
 // LogError logs an error with context
 func (s *Base) LogError(err error, msg string, fields ...interface{}) {
-	if s.Logger == nil {
-		return
-	}
-	event := s.Logger.Error().Err(err)
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			event = event.Interface(key, fields[i+1])
-		}
-	}
-	event.Msg(msg)
+	logger.Error(s.Logger, err, msg, fields...)
 }
 
 // LogWarn logs a warning with context
 func (s *Base) LogWarn(msg string, fields ...interface{}) {
-	if s.Logger == nil {
-		return
-	}
-	event := s.Logger.Warn()
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			event = event.Interface(key, fields[i+1])
-		}
-	}
-	event.Msg(msg)
+	logger.Warn(s.Logger, msg, fields...)
 }
 
 // LogInfo logs an info message with context
 func (s *Base) LogInfo(msg string, fields ...interface{}) {
-	if s.Logger == nil {
-		return
-	}
-	event := s.Logger.Info()
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			event = event.Interface(key, fields[i+1])
-		}
-	}
-	event.Msg(msg)
+	logger.Info(s.Logger, msg, fields...)
 }
 
 // HasQueue returns true if a queue client is configured

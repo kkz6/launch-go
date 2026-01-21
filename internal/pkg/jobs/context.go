@@ -9,6 +9,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 )
@@ -187,11 +188,7 @@ func (b *Base) DispatchTaskIn(task *asynq.Task, delay time.Duration, opts ...asy
 //
 //	ctx.LogInfo("Processing job", "jobID", job.ID, "userID", userID)
 func (b *Base) LogInfo(msg string, fields ...any) {
-	if b.logger == nil {
-		return
-	}
-	event := b.logger.Info()
-	logWithFields(event, msg, fields...)
+	logger.Info(b.logger, msg, fields...)
 }
 
 // LogError logs an error message with optional key-value pairs.
@@ -201,14 +198,7 @@ func (b *Base) LogInfo(msg string, fields ...any) {
 //
 //	ctx.LogError(err, "Failed to process job", "jobID", job.ID)
 func (b *Base) LogError(err error, msg string, fields ...any) {
-	if b.logger == nil {
-		return
-	}
-	event := b.logger.Error()
-	if err != nil {
-		event = event.Err(err)
-	}
-	logWithFields(event, msg, fields...)
+	logger.Error(b.logger, err, msg, fields...)
 }
 
 // LogWarn logs a warning message with optional key-value pairs.
@@ -218,11 +208,7 @@ func (b *Base) LogError(err error, msg string, fields ...any) {
 //
 //	ctx.LogWarn("Retry limit approaching", "attempts", attempts)
 func (b *Base) LogWarn(msg string, fields ...any) {
-	if b.logger == nil {
-		return
-	}
-	event := b.logger.Warn()
-	logWithFields(event, msg, fields...)
+	logger.Warn(b.logger, msg, fields...)
 }
 
 // LogDebug logs a debug message with optional key-value pairs.
@@ -232,11 +218,7 @@ func (b *Base) LogWarn(msg string, fields ...any) {
 //
 //	ctx.LogDebug("Job payload", "payload", payload)
 func (b *Base) LogDebug(msg string, fields ...any) {
-	if b.logger == nil {
-		return
-	}
-	event := b.logger.Debug()
-	logWithFields(event, msg, fields...)
+	logger.Debug(b.logger, msg, fields...)
 }
 
 // BroadcastToTeam sends a websocket event to a team channel.
@@ -249,16 +231,6 @@ func (b *Base) BroadcastToTeam(teamID, event string, data any) {
 	if b.ws != nil {
 		b.ws.BroadcastToTeam(teamID, event, data)
 	}
-}
-
-// logWithFields applies key-value pairs to a zerolog event and sends the message.
-func logWithFields(event *zerolog.Event, msg string, fields ...any) {
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			event = event.Interface(key, fields[i+1])
-		}
-	}
-	event.Msg(msg)
 }
 
 // BaseJob provides common job structure with typed context and payload.
