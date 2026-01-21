@@ -3,8 +3,16 @@ package jobs
 import (
 	"context"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
+
+// QueueClient is the interface for enqueueing async jobs.
+// This interface is satisfied by *asynq.Client.
+type QueueClient interface {
+	Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
+}
 
 // ServerConnectable represents a server that can be connected to via SSH.
 // This abstraction allows jobs to work with server models without

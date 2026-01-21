@@ -9,7 +9,10 @@ const (
 	ActionDeleted Action = "deleted"
 )
 
-// Broadcastable defines the interface for models that can be broadcast
+// Broadcastable defines a minimal interface for payload generation.
+// This is a subset of models.Broadcastable which adds GetTeamID().
+// Use this interface for generic payload helper functions.
+// For full model broadcasting with team context, see pkg/models.Broadcastable.
 type Broadcastable interface {
 	BroadcastName() string
 	BroadcastPayload() map[string]interface{}
