@@ -24,14 +24,19 @@ type SiteRepos struct {
 }
 
 // JobContext holds dependencies for site job execution.
-// It embeds pkgjobs.ModuleContext for common functionality and typed repository access.
+// It embeds pkgjobs.ServerContext for common functionality, typed repository access,
+// and server task execution capabilities.
+//
+// Access common dependencies via inherited methods:
+//   - ctx.DB() - database connection
+//   - ctx.Logger() - zerolog logger
+//   - ctx.WS() - websocket broadcaster
+//   - ctx.Queue() - queue client
+//   - ctx.Repos() - repository registry (*SiteRepos)
+//
+// Module-specific fields provide direct access to repositories and services.
 type JobContext struct {
-	*pkgjobs.ModuleContext[*SiteRepos]
-	// Public fields for backward compatibility with existing jobs
-	DB                *gorm.DB
-	Logger            *zerolog.Logger
-	WS                broadcast.TeamBroadcaster
-	Queue             *queue.Client
+	*pkgjobs.ServerContext[*SiteRepos]
 	SiteRepo          *repositories.SiteRepository
 	CommandRepo       *repositories.CommandRepository
 	DeploymentRepo    *repositories.DeploymentRepository
@@ -61,34 +66,36 @@ func NewJobContext(
 	sourceControlRepo *gitrepos.SourceControlRepository,
 	providerFactory *gitproviders.ProviderFactory,
 ) *JobContext {
-	taskRunnerDeps := &servertasks.TaskRunnerDeps{
-		DB:          db,
-		Queue:       queueClient,
-		Dispatcher:  dispatcher,
-		Logger:      logger,
-		Broadcaster: ws,
-	}
-
 	// Build a site registry from the individual repos for the new interface
 	siteRegistry := &repositories.Registry{}
 
-	return &JobContext{
-		ModuleContext: pkgjobs.NewModuleContext(pkgjobs.BaseDeps{
+	deps := pkgjobs.ServerContextDeps{
+		BaseDeps: pkgjobs.BaseDeps{
 			DB:         db,
 			Logger:     logger,
 			WS:         ws,
 			Dispatcher: dispatcher,
 			Queue:      queueClient,
-		}, &SiteRepos{
-			Site:          siteRegistry,
-			Server:        serverRepos,
-			SourceControl: sourceControlRepo,
-		}),
-		// Public fields for backward compatibility
-		DB:                db,
-		Logger:            logger,
-		WS:                ws,
-		Queue:             queueClient,
+		},
+	}
+
+	serverCtx := pkgjobs.NewServerContext(deps, &SiteRepos{
+		Site:          siteRegistry,
+		Server:        serverRepos,
+		SourceControl: sourceControlRepo,
+	})
+
+	taskDeps := serverCtx.TaskDeps()
+	taskRunnerDeps := &servertasks.TaskRunnerDeps{
+		DB:          taskDeps.DB,
+		Queue:       taskDeps.Queue,
+		Dispatcher:  taskDeps.Dispatcher,
+		Logger:      taskDeps.Logger,
+		Broadcaster: taskDeps.Broadcaster,
+	}
+
+	return &JobContext{
+		ServerContext:     serverCtx,
 		SiteRepo:          siteRepo,
 		CommandRepo:       commandRepo,
 		DeploymentRepo:    deploymentRepo,
@@ -114,7 +121,7 @@ func (c *JobContext) RunTaskOnServer(server *servermodels.Server, task taskrunne
 
 // BroadcastServerEvent broadcasts an event for a server to its team channel.
 func (c *JobContext) BroadcastServerEvent(server *servermodels.Server, event string, data any) {
-	if c.WS != nil && server != nil {
-		c.WS.BroadcastToTeam(server.TeamID, event, data)
+	if server != nil {
+		c.ServerContext.BroadcastServerEvent(server.TeamID, event, data)
 	}
 }

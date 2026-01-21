@@ -36,16 +36,17 @@ func (r *ScriptRepos) Server() *serverrepos.Registry {
 }
 
 // JobContext holds dependencies for script job execution.
-// It embeds pkgjobs.ModuleContext for common functionality and typed repository access.
+// It embeds pkgjobs.ServerContext for common functionality, typed repository access,
+// and server task execution capabilities.
+//
+// Access common dependencies via inherited methods:
+//   - ctx.DB() - database connection
+//   - ctx.Logger() - zerolog logger
+//   - ctx.WS() - websocket broadcaster
+//   - ctx.Queue() - queue client
+//   - ctx.Repos() - repository registry (*ScriptRepos)
 type JobContext struct {
-	*pkgjobs.ModuleContext[*ScriptRepos]
-	// Public fields for backward compatibility with existing jobs
-	DB             *gorm.DB
-	Repos          *ScriptRepos
-	Logger         *zerolog.Logger
-	WS             broadcast.TeamBroadcaster
-	Queue          *queue.Client
-	ServerRepos    *serverrepos.Registry
+	*pkgjobs.ServerContext[*ScriptRepos]
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
 }
 
@@ -59,34 +60,34 @@ func NewJobContext(
 	repos *repositories.Registry,
 	serverRepos *serverrepos.Registry,
 ) *JobContext {
-	taskRunnerDeps := &servertasks.TaskRunnerDeps{
-		DB:          db,
-		Queue:       queueClient,
-		Dispatcher:  dispatcher,
-		Logger:      logger,
-		Broadcaster: ws,
-	}
-
 	scriptRepos := &ScriptRepos{
 		script: repos,
 		server: serverRepos,
 	}
 
-	return &JobContext{
-		ModuleContext: pkgjobs.NewModuleContext(pkgjobs.BaseDeps{
+	deps := pkgjobs.ServerContextDeps{
+		BaseDeps: pkgjobs.BaseDeps{
 			DB:         db,
 			Logger:     logger,
 			WS:         ws,
 			Dispatcher: dispatcher,
 			Queue:      queueClient,
-		}, scriptRepos),
-		// Public fields for backward compatibility
-		DB:             db,
-		Repos:          scriptRepos,
-		Logger:         logger,
-		WS:             ws,
-		Queue:          queueClient,
-		ServerRepos:    serverRepos,
+		},
+	}
+
+	serverCtx := pkgjobs.NewServerContext(deps, scriptRepos)
+	taskDeps := serverCtx.TaskDeps()
+
+	taskRunnerDeps := &servertasks.TaskRunnerDeps{
+		DB:          taskDeps.DB,
+		Queue:       taskDeps.Queue,
+		Dispatcher:  taskDeps.Dispatcher,
+		Logger:      taskDeps.Logger,
+		Broadcaster: taskDeps.Broadcaster,
+	}
+
+	return &JobContext{
+		ServerContext:  serverCtx,
 		TaskRunnerDeps: taskRunnerDeps,
 	}
 }

@@ -24,14 +24,16 @@ var jobContext *JobContext
 // JobContext holds dependencies for database job execution.
 // It embeds pkgjobs.ServerContext for common functionality, task execution,
 // and typed repository access.
+//
+// Access common dependencies via inherited methods:
+//   - ctx.DB() - database connection
+//   - ctx.Logger() - zerolog logger
+//   - ctx.WS() - websocket broadcaster
+//   - ctx.Queue() - queue client
+//   - ctx.Repos() - repository registry
 type JobContext struct {
 	*pkgjobs.ServerContext[*repositories.Registry]
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
-	// Public fields for backward compatibility with existing jobs
-	DB     *gorm.DB
-	Logger *zerolog.Logger
-	WS     broadcast.TeamBroadcaster
-	Queue  *queue.Client
 }
 
 // NewJobContext creates a new database job context.
@@ -69,11 +71,6 @@ func NewJobContext(
 	return &JobContext{
 		ServerContext:  serverCtx,
 		TaskRunnerDeps: taskRunnerDeps,
-		// Public fields for backward compatibility
-		DB:     db,
-		Logger: logger,
-		WS:     ws,
-		Queue:  queueClient,
 	}
 }
 
@@ -101,7 +98,7 @@ func (c *JobContext) BroadcastDatabaseEvent(server *servermodels.Server, event s
 
 // GetDatabaseType returns the database type for a server (mysql or postgresql).
 func (c *JobContext) GetDatabaseType(ctx context.Context, serverID string) string {
-	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB).
+	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB()).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
 			string(serverenums.ServiceTypePostgreSql),
@@ -120,7 +117,7 @@ func (c *JobContext) GetDatabaseType(ctx context.Context, serverID string) strin
 
 // GetDatabaseServiceType returns the database service type for a server.
 func (c *JobContext) GetDatabaseServiceType(ctx context.Context, serverID string) serverenums.ServiceType {
-	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB).
+	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB()).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
 			string(serverenums.ServiceTypePostgreSql),

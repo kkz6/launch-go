@@ -39,7 +39,7 @@ func NewInstallDatabaseUserJob(ctx *JobContext, payload InstallDatabaseUserPaylo
 func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 	j.Ctx.LogInfo("Installing database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, err := repository.NewQuery[models.DatabaseUser](ctx, j.Ctx.DB).
+	dbUser, err := repository.NewQuery[models.DatabaseUser](ctx, j.Ctx.DB()).
 		WithModel("DatabaseUser").
 		Preload("Databases").
 		FindByID(j.Payload.DatabaseUserID).
@@ -48,7 +48,7 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find database user: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB, dbUser.ServerID)
+	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), dbUser.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -88,11 +88,11 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 		}
 	}
 
-	if err := j.MarkAsInstalled(j.Ctx.DB, dbUser); err != nil {
+	if err := j.MarkAsInstalled(j.Ctx.DB(), dbUser); err != nil {
 		return fmt.Errorf("failed to update database user status: %w", err)
 	}
 
-	activity.LogWithLogPtr(ctx, j.Ctx.DB, "database", "installed", j.Payload.CallerID, dbUser, "Database user was installed")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "database", "installed", j.Payload.CallerID, dbUser, "Database user was installed")
 
 	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "installed", fmt.Sprintf("Database user %s created successfully", dbUser.Name))
 
@@ -113,17 +113,17 @@ func (j *InstallDatabaseUserJob) runTask(ctx context.Context, server *servermode
 func (j *InstallDatabaseUserJob) Failed(ctx context.Context, err error) {
 	j.Ctx.LogError(err, "Failed to install database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB, j.Payload.DatabaseUserID)
+	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB(), j.Payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB, dbUser.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), dbUser.ServerID)
 	if findErr != nil {
 		return
 	}
 
-	j.MarkInstallationFailed(j.Ctx.DB, dbUser)
+	j.MarkInstallationFailed(j.Ctx.DB(), dbUser)
 
 	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "failed", fmt.Sprintf("Failed to create database user: %s", dbUser.Name))
 }
