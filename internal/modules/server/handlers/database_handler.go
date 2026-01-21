@@ -4,13 +4,17 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // ListDatabases returns all databases for a server
 func (h *Handler) ListDatabases(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	databases, err := h.service.ListDatabases(c.Context(), serverID, teamID)
@@ -23,7 +27,11 @@ func (h *Handler) ListDatabases(c *fiber.Ctx) error {
 
 // ListDatabaseUsers returns all database users for a server
 func (h *Handler) ListDatabaseUsers(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	users, err := h.service.ListDatabaseUsers(c.Context(), serverID, teamID)
@@ -36,19 +44,19 @@ func (h *Handler) ListDatabaseUsers(c *fiber.Ctx) error {
 
 // CreateDatabase creates a new database
 func (h *Handler) CreateDatabase(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
-	var req dto.CreateDatabaseRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.CreateDatabaseRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	db, err := h.service.CreateDatabase(c.Context(), serverID, teamID, &req)
+	db, err := h.service.CreateDatabase(c.Context(), serverID, teamID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -58,11 +66,15 @@ func (h *Handler) CreateDatabase(c *fiber.Ctx) error {
 
 // SyncDatabases syncs databases from the server
 func (h *Handler) SyncDatabases(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	var userID *string
-	if uid, ok := c.Locals("userID").(string); ok && uid != "" {
+	if uid, uidErr := fiberctx.GetUserID(c); uidErr == nil && uid != "" {
 		userID = &uid
 	}
 

@@ -5,8 +5,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // UserHandler handles user management HTTP requests
@@ -21,15 +21,18 @@ func NewUserHandler(service *services.Service) *UserHandler {
 
 // User returns the current authenticated user
 func (h *UserHandler) User(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
 	user, err := h.service.GetUser(c.Context(), userID)
 	if err != nil {
-		return response.NotFound(c, "User not found")
+		return response.NotFound(c, response.MsgUserNotFound)
 	}
 
 	if user == nil {
-		return response.NotFound(c, "User not found")
+		return response.NotFound(c, response.MsgUserNotFound)
 	}
 
 	// Check if current team is subscribed or user is admin (admins bypass subscription)
@@ -43,20 +46,19 @@ func (h *UserHandler) User(c *fiber.Ctx) error {
 
 // UpdateProfile updates the user's profile
 func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
-
-	var req dto.UpdateProfileRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
-	}
-
-	user, err := h.service.UpdateProfile(c.Context(), userID, &req)
+	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return err
+	}
+
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateProfileRequest](c)
+	if err != nil {
+		return err
+	}
+
+	user, err := h.service.UpdateProfile(c.Context(), userID, req)
+	if err != nil {
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Profile updated", dto.ToUserResponse(user))
@@ -64,19 +66,18 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 
 // ChangePassword changes the user's password
 func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
-
-	var req dto.ChangePasswordRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	req, err := fiberctx.MustParseAndValidate[dto.ChangePasswordRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if err := h.service.ChangePassword(c.Context(), userID, &req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+	if err := h.service.ChangePassword(c.Context(), userID, req); err != nil {
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Password changed successfully", nil)
@@ -84,10 +85,13 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 
 // DeleteAccount deletes the user's account
 func (h *UserHandler) DeleteAccount(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.DeleteAccount(c.Context(), userID); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Account deleted successfully", nil)
@@ -95,18 +99,14 @@ func (h *UserHandler) DeleteAccount(c *fiber.Ctx) error {
 
 // CheckUserStatus checks a user's status by email
 func (h *UserHandler) CheckUserStatus(c *fiber.Ctx) error {
-	var req dto.CheckUserStatusRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	req, err := fiberctx.MustParseAndValidate[dto.CheckUserStatusRequest](c)
+	if err != nil {
+		return err
 	}
 
 	status, err := h.service.CheckUserStatus(c.Context(), req.Email)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "User status retrieved", status)

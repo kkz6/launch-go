@@ -6,12 +6,17 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // ListTasks returns all tasks for a server
 func (h *Handler) ListTasks(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 	limit, _ := strconv.Atoi(c.Query("limit", "50"))
 
@@ -34,7 +39,11 @@ func (h *Handler) ListTasks(c *fiber.Ctx) error {
 
 // GetLatestTask returns the latest task for a server
 func (h *Handler) GetLatestTask(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	task, err := h.service.GetLatestTask(c.Context(), serverID, teamID)

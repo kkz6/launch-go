@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -25,7 +26,7 @@ func (h *FileHandler) ListFiles(c *fiber.Ctx) error {
 
 	files, err := h.service.ListFiles(c.Context(), serverID, siteID)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Files retrieved", files)
@@ -38,7 +39,7 @@ func (h *FileHandler) ListLogs(c *fiber.Ctx) error {
 
 	logs, err := h.service.ListLogFiles(c.Context(), serverID, siteID)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Logs retrieved", logs)
@@ -52,18 +53,18 @@ func (h *FileHandler) ShowFile(c *fiber.Ctx) error {
 	fileParam := c.Params("file")
 
 	if fileParam == "" {
-		return response.Error(c, fiber.StatusBadRequest, "File parameter is required")
+		return response.BadRequest(c, response.MsgMissingRequiredParams)
 	}
 
 	// Decode the encrypted file parameter
 	data, err := support.DecodeFileRouteParam(fileParam)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid file parameter")
+		return response.BadRequest(c, response.MsgInvalidRequestBody)
 	}
 
 	content, err := h.service.GetFileContent(c.Context(), serverID, siteID, data.Path)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "File content retrieved", map[string]string{
@@ -80,25 +81,24 @@ func (h *FileHandler) UpdateFile(c *fiber.Ctx) error {
 	fileParam := c.Params("file")
 
 	if fileParam == "" {
-		return response.Error(c, fiber.StatusBadRequest, "File parameter is required")
+		return response.BadRequest(c, response.MsgMissingRequiredParams)
 	}
 
 	// Decode the encrypted file parameter
 	data, err := support.DecodeFileRouteParam(fileParam)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid file parameter")
+		return response.BadRequest(c, response.MsgInvalidRequestBody)
 	}
 
-	var req struct {
+	req, err := fiberctx.MustParseAndValidate[struct {
 		Content string `json:"content"`
-	}
-
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	}](c)
+	if err != nil {
+		return err
 	}
 
 	if err := h.service.UpdateFileContent(c.Context(), serverID, siteID, data.Path, req.Content); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "File updated successfully", nil)

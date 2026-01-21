@@ -4,20 +4,20 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/database/dto"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // ListDatabaseUsers lists all database users for a server
 func (h *Handler) ListDatabaseUsers(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	if serverID == "" {
-		return response.Error(c, fiber.StatusBadRequest, "Server ID is required")
+		return response.BadRequest(c, response.MsgMissingRequiredParams)
 	}
 
 	users, err := h.service.ListDatabaseUsers(c.Context(), serverID)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Database users retrieved", dto.ToDatabaseUserResponseList(users))
@@ -27,24 +27,23 @@ func (h *Handler) ListDatabaseUsers(c *fiber.Ctx) error {
 func (h *Handler) CreateDatabaseUser(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	if serverID == "" {
-		return response.Error(c, fiber.StatusBadRequest, "Server ID is required")
+		return response.BadRequest(c, response.MsgMissingRequiredParams)
 	}
 
-	var req dto.CreateDatabaseUserRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.CreateDatabaseUserRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
 	}
-
-	teamID := getTeamIDFromContext(c)
 	userID := getUserIDFromContext(c)
 
-	dbUser, err := h.service.CreateDatabaseUser(c.Context(), serverID, teamID, &req, userID)
+	dbUser, err := h.service.CreateDatabaseUser(c.Context(), serverID, teamID, req, userID)
 	if err != nil {
-		return handleServiceError(c, err)
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Database user will be created shortly", dto.ToDatabaseUserResponse(dbUser))
@@ -56,12 +55,12 @@ func (h *Handler) GetDatabaseUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if serverID == "" || id == "" {
-		return response.Error(c, fiber.StatusBadRequest, "Server ID and User ID are required")
+		return response.BadRequest(c, response.MsgMissingRequiredParams)
 	}
 
 	user, err := h.service.GetDatabaseUser(c.Context(), id, serverID)
 	if err != nil {
-		return handleServiceError(c, err)
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Database user retrieved", dto.ToDatabaseUserResponse(user))
@@ -73,23 +72,19 @@ func (h *Handler) UpdateDatabaseUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if serverID == "" || id == "" {
-		return response.Error(c, fiber.StatusBadRequest, "Server ID and User ID are required")
+		return response.BadRequest(c, response.MsgMissingRequiredParams)
 	}
 
-	var req dto.UpdateDatabaseUserRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateDatabaseUserRequest](c)
+	if err != nil {
+		return err
 	}
 
 	userID := getUserIDFromContext(c)
 
-	dbUser, err := h.service.UpdateDatabaseUser(c.Context(), id, serverID, &req, userID)
+	dbUser, err := h.service.UpdateDatabaseUser(c.Context(), id, serverID, req, userID)
 	if err != nil {
-		return handleServiceError(c, err)
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Database user will be updated shortly", dto.ToDatabaseUserResponse(dbUser))
@@ -101,13 +96,13 @@ func (h *Handler) DeleteDatabaseUser(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if serverID == "" || id == "" {
-		return response.Error(c, fiber.StatusBadRequest, "Server ID and User ID are required")
+		return response.BadRequest(c, response.MsgMissingRequiredParams)
 	}
 
 	userID := getUserIDFromContext(c)
 
 	if err := h.service.DeleteDatabaseUser(c.Context(), id, serverID, userID); err != nil {
-		return handleServiceError(c, err)
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Database user will be deleted shortly", nil)

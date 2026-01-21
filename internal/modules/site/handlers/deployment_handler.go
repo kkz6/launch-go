@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -22,7 +23,10 @@ func NewDeploymentHandler(deploymentService *services.DeploymentService) *Deploy
 func (h *DeploymentHandler) Deploy(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
 	deployment, err := h.deploymentService.Deploy(c.Context(), siteID, serverID, userID)
 	if err != nil {
@@ -37,7 +41,10 @@ func (h *DeploymentHandler) Rollback(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
 	targetDeploymentID := c.Params("deploymentId")
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
 	deployment, err := h.deploymentService.Rollback(c.Context(), siteID, serverID, targetDeploymentID, userID)
 	if err != nil {

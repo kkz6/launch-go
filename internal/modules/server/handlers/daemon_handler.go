@@ -10,7 +10,11 @@ import (
 
 // ListDaemons returns all daemons for a server
 func (h *Handler) ListDaemons(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	daemons, err := h.service.ListDaemons(c.Context(), serverID, teamID)
@@ -28,7 +32,11 @@ func (h *Handler) ListDaemons(c *fiber.Ctx) error {
 
 // CreateDaemon creates a new daemon
 func (h *Handler) CreateDaemon(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	req, err := fiberctx.MustParseAndValidate[dto.CreateDaemonRequest](c)
@@ -46,7 +54,11 @@ func (h *Handler) CreateDaemon(c *fiber.Ctx) error {
 
 // UpdateDaemon updates a daemon
 func (h *Handler) UpdateDaemon(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 	daemonID := c.Params("daemonId")
 
@@ -65,7 +77,11 @@ func (h *Handler) UpdateDaemon(c *fiber.Ctx) error {
 
 // DeleteDaemon deletes a daemon
 func (h *Handler) DeleteDaemon(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 	daemonID := c.Params("daemonId")
 
@@ -78,10 +94,13 @@ func (h *Handler) DeleteDaemon(c *fiber.Ctx) error {
 
 // RestartDaemon restarts a daemon
 func (h *Handler) RestartDaemon(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 	daemonID := c.Params("daemonId")
-	userID := c.Locals("userID").(string)
 
 	if err := h.service.RestartDaemon(c.Context(), serverID, teamID, daemonID, &userID); err != nil {
 		return response.HandleError(c, err)
@@ -92,9 +111,12 @@ func (h *Handler) RestartDaemon(c *fiber.Ctx) error {
 
 // SyncDaemons triggers a status synchronization for all daemons
 func (h *Handler) SyncDaemons(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
-	userID := c.Locals("userID").(string)
 
 	if err := h.service.SyncDaemonsStatus(c.Context(), serverID, teamID, &userID); err != nil {
 		return response.HandleError(c, err)

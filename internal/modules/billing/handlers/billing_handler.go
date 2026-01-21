@@ -8,8 +8,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/billing/dto"
 	"github.com/kkz6/launch-go/internal/modules/billing/enums"
 	"github.com/kkz6/launch-go/internal/modules/billing/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // BillingHandler handles HTTP requests for billing
@@ -30,7 +30,10 @@ func NewBillingHandler(service *services.BillingService, serverCountFn func(team
 
 // Index returns billing information for the current team
 func (h *BillingHandler) Index(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	serverCount := 0
 	if h.serverCountFn != nil {
@@ -62,20 +65,19 @@ func (h *BillingHandler) GetPlans(c *fiber.Ctx) error {
 
 // GenerateCheckoutURL generates a checkout URL for subscribing
 func (h *BillingHandler) GenerateCheckoutURL(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
-
-	var req dto.GenerateCheckoutURLRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	req, err := fiberctx.MustParseAndValidate[dto.GenerateCheckoutURLRequest](c)
+	if err != nil {
+		return err
 	}
 
 	redirectURL := h.appURL + "/settings/billing"
 
-	url, err := h.service.GenerateCheckoutURL(c.Context(), teamID, &req, redirectURL)
+	url, err := h.service.GenerateCheckoutURL(c.Context(), teamID, req, redirectURL)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -85,13 +87,9 @@ func (h *BillingHandler) GenerateCheckoutURL(c *fiber.Ctx) error {
 
 // CancelSubscription cancels a subscription
 func (h *BillingHandler) CancelSubscription(c *fiber.Ctx) error {
-	var req dto.CancelSubscriptionRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	req, err := fiberctx.MustParseAndValidate[dto.CancelSubscriptionRequest](c)
+	if err != nil {
+		return err
 	}
 
 	if err := h.service.CancelSubscription(c.Context(), req.SubscriptionID); err != nil {
@@ -103,13 +101,9 @@ func (h *BillingHandler) CancelSubscription(c *fiber.Ctx) error {
 
 // ResumeSubscription resumes a cancelled subscription
 func (h *BillingHandler) ResumeSubscription(c *fiber.Ctx) error {
-	var req dto.ResumeSubscriptionRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	req, err := fiberctx.MustParseAndValidate[dto.ResumeSubscriptionRequest](c)
+	if err != nil {
+		return err
 	}
 
 	if err := h.service.ResumeSubscription(c.Context(), req.SubscriptionID); err != nil {
@@ -121,7 +115,10 @@ func (h *BillingHandler) ResumeSubscription(c *fiber.Ctx) error {
 
 // GetSubscriptions returns all subscriptions for the current team
 func (h *BillingHandler) GetSubscriptions(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	subscriptions, err := h.service.GetSubscriptions(c.Context(), teamID)
 	if err != nil {
@@ -152,7 +149,10 @@ func (h *BillingHandler) GetSubscription(c *fiber.Ctx) error {
 
 // GetOrders returns all orders for the current team
 func (h *BillingHandler) GetOrders(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	orders, err := h.service.GetOrders(c.Context(), teamID)
 	if err != nil {
@@ -169,7 +169,10 @@ func (h *BillingHandler) GetOrders(c *fiber.Ctx) error {
 
 // GetSubscriptionOptions returns the subscription limits/options for the current team
 func (h *BillingHandler) GetSubscriptionOptions(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 	userRole := enums.UserRoleCustomer
 
 	if role, ok := c.Locals("userRole").(string); ok {
@@ -200,7 +203,10 @@ func (h *BillingHandler) GetSubscriptionOptions(c *fiber.Ctx) error {
 
 // RegisterSubscription shows the subscription selection page
 func (h *BillingHandler) RegisterSubscription(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	subscribed, err := h.service.IsSubscribed(c.Context(), teamID)
 	if err != nil {

@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -31,7 +32,10 @@ type PasskeyResponse struct {
 
 // Index returns all passkeys for the authenticated user
 func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
 	passkeys, err := h.repos.Passkey().FindByUserID(c.Context(), userID)
 	if err != nil {
@@ -68,10 +72,13 @@ func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
 
 // Delete removes a passkey
 func (h *PasskeyHandler) Delete(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 	passkeyID := c.Params("id")
 
-	err := h.repos.Passkey().DeleteByUserID(c.Context(), passkeyID, userID)
+	err = h.repos.Passkey().DeleteByUserID(c.Context(), passkeyID, userID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -86,12 +93,15 @@ type UpdateRequest struct {
 
 // Update updates a passkey's name
 func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 	passkeyID := c.Params("id")
 
-	var req UpdateRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[UpdateRequest](c)
+	if err != nil {
+		return err
 	}
 
 	passkey, err := h.repos.Passkey().FindByID(c.Context(), passkeyID)
@@ -100,7 +110,7 @@ func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
 	}
 
 	if passkey.UserID != userID {
-		return response.Error(c, fiber.StatusNotFound, "Passkey not found")
+		return response.NotFound(c, response.MsgResourceNotFound)
 	}
 
 	passkey.Name = &req.Name

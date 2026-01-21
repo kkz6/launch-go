@@ -4,13 +4,17 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // ListFirewallRules returns all firewall rules for a server
 func (h *Handler) ListFirewallRules(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	rules, err := h.service.ListFirewallRules(c.Context(), serverID, teamID)
@@ -28,19 +32,19 @@ func (h *Handler) ListFirewallRules(c *fiber.Ctx) error {
 
 // CreateFirewallRule creates a new firewall rule
 func (h *Handler) CreateFirewallRule(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
-	var req dto.CreateFirewallRuleRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.CreateFirewallRuleRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	rule, err := h.service.CreateFirewallRule(c.Context(), serverID, teamID, &req)
+	rule, err := h.service.CreateFirewallRule(c.Context(), serverID, teamID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -50,20 +54,20 @@ func (h *Handler) CreateFirewallRule(c *fiber.Ctx) error {
 
 // UpdateFirewallRule updates a firewall rule
 func (h *Handler) UpdateFirewallRule(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 	ruleID := c.Params("ruleId")
 
-	var req dto.UpdateFirewallRuleRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateFirewallRuleRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	rule, err := h.service.UpdateFirewallRule(c.Context(), serverID, teamID, ruleID, &req)
+	rule, err := h.service.UpdateFirewallRule(c.Context(), serverID, teamID, ruleID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -73,7 +77,11 @@ func (h *Handler) UpdateFirewallRule(c *fiber.Ctx) error {
 
 // DeleteFirewallRule deletes a firewall rule
 func (h *Handler) DeleteFirewallRule(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 	ruleID := c.Params("ruleId")
 

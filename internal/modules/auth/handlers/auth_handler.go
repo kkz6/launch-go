@@ -5,8 +5,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // AuthHandler handles authentication-related HTTP requests
@@ -21,18 +21,14 @@ func NewAuthHandler(service *services.Service) *AuthHandler {
 
 // Register handles user registration
 func (h *AuthHandler) Register(c *fiber.Ctx) error {
-	var req dto.RegisterRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
-	}
-
-	result, err := h.service.Register(c.Context(), &req)
+	req, err := fiberctx.MustParseAndValidate[dto.RegisterRequest](c)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return err
+	}
+
+	result, err := h.service.Register(c.Context(), req)
+	if err != nil {
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Registration successful", result)
@@ -40,18 +36,14 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 
 // Login handles user authentication
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
-	var req dto.LoginRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
-	}
-
-	result, err := h.service.Login(c.Context(), &req)
+	req, err := fiberctx.MustParseAndValidate[dto.LoginRequest](c)
 	if err != nil {
-		return response.Unauthorized(c, "Invalid credentials")
+		return err
+	}
+
+	result, err := h.service.Login(c.Context(), req)
+	if err != nil {
+		return response.Unauthorized(c, response.MsgInvalidCredentials)
 	}
 
 	return response.OK(c, "Login successful", result)
@@ -59,10 +51,13 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 
 // Logout handles user logout
 func (h *AuthHandler) Logout(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.Logout(c.Context(), userID); err != nil {
-		return response.Error(c, fiber.StatusInternalServerError, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Logged out successfully", nil)
@@ -70,18 +65,14 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 
 // RefreshToken handles token refresh
 func (h *AuthHandler) RefreshToken(c *fiber.Ctx) error {
-	var req dto.RefreshTokenRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	req, err := fiberctx.MustParseAndValidate[dto.RefreshTokenRequest](c)
+	if err != nil {
+		return err
 	}
 
 	result, err := h.service.RefreshToken(c.Context(), req.RefreshToken)
 	if err != nil {
-		return response.Unauthorized(c, "Invalid refresh token")
+		return response.Unauthorized(c, response.MsgInvalidToken)
 	}
 
 	return response.OK(c, "Token refreshed successfully", result)

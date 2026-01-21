@@ -9,8 +9,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/script/dto"
 	"github.com/kkz6/launch-go/internal/modules/script/repositories"
 	"github.com/kkz6/launch-go/internal/modules/script/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // ScriptHandler handles HTTP requests for scripts
@@ -25,12 +25,14 @@ func NewScriptHandler(service *services.ScriptService) *ScriptHandler {
 
 // List returns all scripts accessible to the user
 func (h *ScriptHandler) List(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
-	teamID := c.Locals("teamID").(string)
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
+	}
 
 	scripts, err := h.service.List(c.Context(), userID, teamID)
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch scripts")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	results := make([]*dto.ScriptResponse, len(scripts))
@@ -43,8 +45,10 @@ func (h *ScriptHandler) List(c *fiber.Ctx) error {
 
 // Show returns a single script
 func (h *ScriptHandler) Show(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
-	teamID := c.Locals("teamID").(string)
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
+	}
 	scriptID := c.Params("id")
 
 	script, err := h.service.Get(c.Context(), scriptID, userID, teamID)
@@ -53,7 +57,7 @@ func (h *ScriptHandler) Show(c *fiber.Ctx) error {
 			return response.NotFound(c, "Script not found")
 		}
 
-		return response.InternalError(c, "Failed to fetch script")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	return response.OK(c, "Script retrieved", dto.ToScriptResponse(script))
@@ -61,20 +65,19 @@ func (h *ScriptHandler) Show(c *fiber.Ctx) error {
 
 // Create creates a new script
 func (h *ScriptHandler) Create(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
-
-	var req dto.CreateScriptRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	script, err := h.service.Create(c.Context(), userID, &req)
+	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return err
+	}
+
+	req, err := fiberctx.MustParseAndValidate[dto.CreateScriptRequest](c)
+	if err != nil {
+		return err
+	}
+
+	script, err := h.service.Create(c.Context(), userID, req)
+	if err != nil {
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Script created", dto.ToScriptResponse(script))
@@ -82,26 +85,24 @@ func (h *ScriptHandler) Create(c *fiber.Ctx) error {
 
 // Update updates a script
 func (h *ScriptHandler) Update(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
-	teamID := c.Locals("teamID").(string)
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
+	}
 	scriptID := c.Params("id")
 
-	var req dto.UpdateScriptRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateScriptRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	script, err := h.service.Update(c.Context(), scriptID, userID, teamID, &req)
+	script, err := h.service.Update(c.Context(), scriptID, userID, teamID, req)
 	if err != nil {
 		if errors.Is(err, repositories.ErrScriptNotFound) {
 			return response.NotFound(c, "Script not found")
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Script updated", dto.ToScriptResponse(script))
@@ -109,8 +110,10 @@ func (h *ScriptHandler) Update(c *fiber.Ctx) error {
 
 // Delete deletes a script
 func (h *ScriptHandler) Delete(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
-	teamID := c.Locals("teamID").(string)
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
+	}
 	scriptID := c.Params("id")
 
 	if err := h.service.Delete(c.Context(), scriptID, userID, teamID); err != nil {
@@ -118,7 +121,7 @@ func (h *ScriptHandler) Delete(c *fiber.Ctx) error {
 			return response.NotFound(c, "Script not found")
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.NoContent(c)
@@ -126,26 +129,24 @@ func (h *ScriptHandler) Delete(c *fiber.Ctx) error {
 
 // Execute executes a script on servers
 func (h *ScriptHandler) Execute(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
-	teamID := c.Locals("teamID").(string)
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
+	}
 	scriptID := c.Params("id")
 
-	var req dto.ExecuteScriptRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.ExecuteScriptRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	result, err := h.service.Execute(c.Context(), scriptID, userID, teamID, &req)
+	result, err := h.service.Execute(c.Context(), scriptID, userID, teamID, req)
 	if err != nil {
 		if errors.Is(err, repositories.ErrScriptNotFound) {
 			return response.NotFound(c, "Script not found")
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Script execution started", result)
@@ -153,8 +154,10 @@ func (h *ScriptHandler) Execute(c *fiber.Ctx) error {
 
 // ListExecutions returns executions for a script
 func (h *ScriptHandler) ListExecutions(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
-	teamID := c.Locals("teamID").(string)
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
+	}
 	scriptID := c.Params("id")
 
 	executions, err := h.service.ListExecutions(c.Context(), scriptID, userID, teamID)
@@ -163,7 +166,7 @@ func (h *ScriptHandler) ListExecutions(c *fiber.Ctx) error {
 			return response.NotFound(c, "Script not found")
 		}
 
-		return response.InternalError(c, "Failed to fetch executions")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	results := make([]*dto.ScriptExecutionResponse, len(executions))
@@ -180,7 +183,7 @@ func (h *ScriptHandler) GetExecution(c *fiber.Ctx) error {
 
 	executionID, err := strconv.ParseUint(executionIDStr, 10, 64)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid execution ID")
+		return response.BadRequest(c, "Invalid execution ID")
 	}
 
 	execution, err := h.service.GetExecution(c.Context(), executionID)
@@ -189,7 +192,7 @@ func (h *ScriptHandler) GetExecution(c *fiber.Ctx) error {
 			return response.NotFound(c, "Execution not found")
 		}
 
-		return response.InternalError(c, "Failed to fetch execution")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	return response.OK(c, "Execution retrieved", dto.ToExecutionResponse(execution))

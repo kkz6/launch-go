@@ -8,8 +8,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // RedirectHandler handles HTTP requests for redirects
@@ -26,24 +26,23 @@ func NewRedirectHandler(redirectService *services.RedirectService) *RedirectHand
 func (h *RedirectHandler) CreateRedirect(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	userID := c.Locals("userID").(string)
-
-	var req dto.CreateRedirectRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	req, err := fiberctx.MustParseAndValidate[dto.CreateRedirectRequest](c)
+	if err != nil {
+		return err
 	}
 
-	redirect, err := h.redirectService.Create(c.Context(), siteID, serverID, userID, &req)
+	redirect, err := h.redirectService.Create(c.Context(), siteID, serverID, userID, req)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Redirect created", dto.ToRedirectResponse(redirect))
@@ -57,10 +56,10 @@ func (h *RedirectHandler) ListRedirects(c *fiber.Ctx) error {
 	redirects, err := h.redirectService.List(c.Context(), siteID, serverID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.InternalError(c, "Failed to fetch redirects")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	result := make([]dto.RedirectResponse, len(redirects))
@@ -79,14 +78,14 @@ func (h *RedirectHandler) DeleteRedirect(c *fiber.Ctx) error {
 
 	if err := h.redirectService.Delete(c.Context(), redirectID, siteID, serverID); err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
 		if errors.Is(err, repositories.ErrRedirectNotFound) {
-			return response.NotFound(c, "Redirect not found")
+			return response.NotFound(c, response.MsgRedirectNotFound)
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Redirect deleted", nil)

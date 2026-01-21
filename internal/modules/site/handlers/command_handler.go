@@ -8,8 +8,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // CommandHandler handles HTTP requests for command execution
@@ -26,28 +26,27 @@ func NewCommandHandler(commandService *services.CommandService) *CommandHandler 
 func (h *CommandHandler) CreateCommand(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	userID := c.Locals("userID").(string)
-
-	var req dto.CreateCommandRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	req, err := fiberctx.MustParseAndValidate[dto.CreateCommandRequest](c)
+	if err != nil {
+		return err
 	}
 
-	cmd, err := h.commandService.Create(c.Context(), siteID, serverID, userID, &req)
+	cmd, err := h.commandService.Create(c.Context(), siteID, serverID, userID, req)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
 		if errors.Is(err, services.ErrSiteNotInstalled) {
-			return response.Error(c, fiber.StatusBadRequest, "Site is not installed")
+			return response.BadRequest(c, response.MsgSiteNotInstalled)
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Command created", dto.ToCommandResponse(cmd))
@@ -61,10 +60,10 @@ func (h *CommandHandler) ListCommands(c *fiber.Ctx) error {
 	commands, err := h.commandService.List(c.Context(), siteID, serverID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.InternalError(c, "Failed to fetch commands")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	result := make([]dto.CommandResponse, len(commands))
@@ -84,14 +83,14 @@ func (h *CommandHandler) DeleteCommand(c *fiber.Ctx) error {
 	err := h.commandService.Delete(c.Context(), siteID, serverID, commandID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
 		if errors.Is(err, repositories.ErrCommandNotFound) {
-			return response.NotFound(c, "Command not found")
+			return response.NotFound(c, response.MsgResourceNotFound)
 		}
 
-		return response.InternalError(c, "Failed to delete command")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	return response.OK(c, "Command deleted", nil)

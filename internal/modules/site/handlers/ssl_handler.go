@@ -8,8 +8,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // SSLHandler handles HTTP requests for SSL/TLS
@@ -26,23 +26,22 @@ func NewSSLHandler(sslService *services.SSLService) *SSLHandler {
 func (h *SSLHandler) UpdateSSL(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	userID := c.Locals("userID").(string)
-
-	var req dto.UpdateSSLRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateSSLRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if err := h.sslService.UpdateSSL(c.Context(), siteID, serverID, userID, &req); err != nil {
+	if err := h.sslService.UpdateSSL(c.Context(), siteID, serverID, userID, req); err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "SSL settings updated", nil)
@@ -56,10 +55,10 @@ func (h *SSLHandler) ListCertificates(c *fiber.Ctx) error {
 	certs, err := h.sslService.ListCertificates(c.Context(), siteID, serverID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.InternalError(c, "Failed to fetch certificates")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	result := make([]dto.CertificateResponse, len(certs))

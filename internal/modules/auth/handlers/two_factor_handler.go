@@ -5,8 +5,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // TwoFactorHandler handles two-factor authentication HTTP requests
@@ -21,11 +21,14 @@ func NewTwoFactorHandler(service *services.Service) *TwoFactorHandler {
 
 // EnableTwoFactor initiates 2FA setup
 func (h *TwoFactorHandler) EnableTwoFactor(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
 	result, err := h.service.EnableTwoFactor(c.Context(), userID)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Two-factor authentication initiated", result)
@@ -33,19 +36,18 @@ func (h *TwoFactorHandler) EnableTwoFactor(c *fiber.Ctx) error {
 
 // ConfirmTwoFactor confirms 2FA setup
 func (h *TwoFactorHandler) ConfirmTwoFactor(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
-
-	var req dto.ConfirmTwoFactorRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	req, err := fiberctx.MustParseAndValidate[dto.ConfirmTwoFactorRequest](c)
+	if err != nil {
+		return err
 	}
 
 	if err := h.service.ConfirmTwoFactor(c.Context(), userID, req.Code); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Two-factor authentication enabled", nil)
@@ -53,15 +55,18 @@ func (h *TwoFactorHandler) ConfirmTwoFactor(c *fiber.Ctx) error {
 
 // DisableTwoFactor disables 2FA
 func (h *TwoFactorHandler) DisableTwoFactor(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
-	var req dto.EnableTwoFactorRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.EnableTwoFactorRequest](c)
+	if err != nil {
+		return err
 	}
 
 	if err := h.service.DisableTwoFactor(c.Context(), userID, req.Password); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Two-factor authentication disabled", nil)
@@ -69,11 +74,14 @@ func (h *TwoFactorHandler) DisableTwoFactor(c *fiber.Ctx) error {
 
 // TwoFactorChallenge verifies 2FA code during login
 func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
-	var req dto.TwoFactorChallengeRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.TwoFactorChallengeRequest](c)
+	if err != nil {
+		return err
 	}
 
 	code := req.Code
@@ -83,7 +91,7 @@ func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx) error {
 
 	valid, err := h.service.VerifyTwoFactor(c.Context(), userID, code)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	if !valid {
@@ -95,11 +103,14 @@ func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx) error {
 
 // GetRecoveryCodes returns the user's recovery codes
 func (h *TwoFactorHandler) GetRecoveryCodes(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
 	codes, err := h.service.GetRecoveryCodes(c.Context(), userID)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Recovery codes retrieved", fiber.Map{"recovery_codes": codes})
@@ -107,11 +118,14 @@ func (h *TwoFactorHandler) GetRecoveryCodes(c *fiber.Ctx) error {
 
 // RegenerateRecoveryCodes generates new recovery codes
 func (h *TwoFactorHandler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
 	codes, err := h.service.RegenerateRecoveryCodes(c.Context(), userID)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Recovery codes regenerated", fiber.Map{"recovery_codes": codes})
