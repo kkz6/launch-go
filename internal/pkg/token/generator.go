@@ -109,3 +109,36 @@ func MustSecureBytes(length int) []byte {
 
 	return bytes
 }
+
+// Convenience functions for common token generation patterns.
+
+// SecureToken generates a 32-byte base64url-encoded token.
+func SecureToken() (string, error) {
+	return New(32).WithEncoding(Base64URL).Generate()
+}
+
+// MustSecureToken generates a 32-byte base64url-encoded token or panics.
+func MustSecureToken() string {
+	return New(32).WithEncoding(Base64URL).MustGenerate()
+}
+
+// HexToken generates a hex-encoded token of the specified byte length.
+func HexToken(byteLength int) (string, error) {
+	return New(byteLength).WithEncoding(Hex).Generate()
+}
+
+// MustHexToken generates a hex-encoded token or panics.
+func MustHexToken(byteLength int) string {
+	return New(byteLength).WithEncoding(Hex).MustGenerate()
+}
+
+// AppKey generates a Laravel-compatible application key (base64:...).
+func AppKey() string {
+	encoded := New(32).WithEncoding(Base64).MustGenerate()
+	return "base64:" + encoded
+}
+
+// WebhookSecret generates a 32-byte hex-encoded webhook secret.
+func WebhookSecret() (string, error) {
+	return HexToken(32)
+}
