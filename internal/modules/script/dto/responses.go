@@ -38,6 +38,7 @@ type ScriptExecutionResponse struct {
 	ID         uint64           `json:"id"`
 	ScriptID   string           `json:"script_id"`
 	ServerID   string           `json:"server_id"`
+	ServerName string           `json:"server_name"`
 	BatchID    *string          `json:"batch_id,omitempty"`
 	RunAs      *enums.RunAsUser `json:"run_as,omitempty"`
 	Status     string           `json:"status"`
@@ -50,10 +51,16 @@ type ScriptExecutionResponse struct {
 
 // ToExecutionResponse converts a ScriptExecution to response
 func ToExecutionResponse(e *models.ScriptExecution) *ScriptExecutionResponse {
+	serverName := ""
+	if e.Server != nil {
+		serverName = e.Server.Name
+	}
+
 	return &ScriptExecutionResponse{
 		ID:         e.ID,
 		ScriptID:   e.ScriptID,
 		ServerID:   e.ServerID,
+		ServerName: serverName,
 		BatchID:    e.BatchID,
 		RunAs:      e.RunAs,
 		Status:     string(e.Status),
