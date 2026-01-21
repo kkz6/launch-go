@@ -194,7 +194,7 @@ func TestGetUserRole(t *testing.T) {
 		{
 			name: "valid user role",
 			setup: func(c *fiber.Ctx) {
-				c.Locals("userRole", "admin")
+				c.Locals(KeyTeamRole, "admin")
 			},
 			want: "admin",
 		},
@@ -206,7 +206,7 @@ func TestGetUserRole(t *testing.T) {
 		{
 			name: "wrong type returns empty",
 			setup: func(c *fiber.Ctx) {
-				c.Locals("userRole", 123)
+				c.Locals(KeyTeamRole, 123)
 			},
 			want: "",
 		},

@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -9,15 +10,15 @@ import (
 
 // Task type constants for PHP operations
 const (
-	AddPhpVersionTaskType        = "server:add_php_version"
-	RemovePhpVersionTaskType     = "server:remove_php_version"
-	InstallPhpExtensionTaskType  = "server:install_php_extension"
+	AddPhpVersionTaskType         = "server:add_php_version"
+	RemovePhpVersionTaskType      = "server:remove_php_version"
+	InstallPhpExtensionTaskType   = "server:install_php_extension"
 	UninstallPhpExtensionTaskType = "server:uninstall_php_extension"
-	UpdateAlternativesTaskType   = "server:update_alternatives"
-	GetOpcacheStatusTaskType     = "server:get_opcache_status"
-	ResetOpcacheTaskType         = "server:reset_opcache"
-	ClearOpcacheTaskType         = "server:clear_opcache"
-	ConfigureOpcacheTaskType     = "server:configure_opcache"
+	UpdateAlternativesTaskType    = "server:update_alternatives"
+	GetOpcacheStatusTaskType      = "server:get_opcache_status"
+	ResetOpcacheTaskType          = "server:reset_opcache"
+	ClearOpcacheTaskType          = "server:clear_opcache"
+	ConfigureOpcacheTaskType      = "server:configure_opcache"
 )
 
 // AddPhpVersion creates a task to install a PHP version
@@ -237,9 +238,16 @@ echo "OPcache cleared for all running PHP-FPM services"`
 
 // ConfigureOpcache creates a task to configure OPcache settings
 func ConfigureOpcache(version string, settings map[string]string) *taskrunner.BaseTask {
+	// Sort keys for deterministic output
+	keys := make([]string, 0, len(settings))
+	for key := range settings {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
 	var lines []string
-	for key, value := range settings {
-		lines = append(lines, fmt.Sprintf("opcache.%s=%s", key, value))
+	for _, key := range keys {
+		lines = append(lines, fmt.Sprintf("opcache.%s=%s", key, settings[key]))
 	}
 
 	iniPath := fmt.Sprintf("/etc/php/%s/mods-available/opcache-custom.ini", version)
