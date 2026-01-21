@@ -15,7 +15,10 @@ func (h *Handler) ListFirewallRules(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	rules, err := h.service.ListFirewallRules(c.Context(), serverID, teamID)
 	if err != nil {
@@ -37,7 +40,10 @@ func (h *Handler) CreateFirewallRule(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.CreateFirewallRuleRequest](c)
 	if err != nil {
@@ -59,8 +65,15 @@ func (h *Handler) UpdateFirewallRule(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
-	ruleID := c.Params("ruleId")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	ruleID, err := fiberctx.GetRuleID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.UpdateFirewallRuleRequest](c)
 	if err != nil {
@@ -82,8 +95,15 @@ func (h *Handler) DeleteFirewallRule(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
-	ruleID := c.Params("ruleId")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	ruleID, err := fiberctx.GetRuleID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.DeleteFirewallRule(c.Context(), serverID, teamID, ruleID); err != nil {
 		return response.HandleError(c, err)

@@ -46,7 +46,11 @@ func (h *NotificationChannelHandler) Show(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	channel, err := h.service.GetChannel(c.Context(), channelID, teamID)
 	if err != nil {
@@ -94,7 +98,11 @@ func (h *NotificationChannelHandler) Update(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.UpdateChannelRequest](c)
 	if err != nil {
@@ -123,7 +131,11 @@ func (h *NotificationChannelHandler) Destroy(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	err = h.service.DeleteChannel(c.Context(), channelID, teamID)
 	if err != nil {
@@ -147,7 +159,11 @@ func (h *NotificationChannelHandler) Test(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	var req dto.TestChannelRequest
 	if err := c.BodyParser(&req); err != nil {
@@ -181,7 +197,11 @@ func (h *NotificationChannelHandler) SetDefault(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	err = h.service.SetChannelDefault(c.Context(), channelID, teamID)
 	if err != nil {
@@ -201,7 +221,11 @@ func (h *NotificationChannelHandler) Disconnect(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	err = h.service.DisconnectChannel(c.Context(), channelID, teamID)
 	if err != nil {
@@ -221,7 +245,11 @@ func (h *NotificationChannelHandler) Reconnect(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	err = h.service.ReconnectChannel(c.Context(), channelID, teamID)
 	if err != nil {

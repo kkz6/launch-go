@@ -15,7 +15,10 @@ func (h *Handler) ListCrons(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	crons, err := h.service.ListCrons(c.Context(), serverID, teamID)
 	if err != nil {
@@ -37,7 +40,10 @@ func (h *Handler) CreateCron(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.CreateCronRequest](c)
 	if err != nil {
@@ -59,8 +65,15 @@ func (h *Handler) UpdateCron(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
-	cronID := c.Params("cronId")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	cronID, err := fiberctx.GetCronID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.UpdateCronRequest](c)
 	if err != nil {
@@ -82,8 +95,15 @@ func (h *Handler) DeleteCron(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
-	cronID := c.Params("cronId")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	cronID, err := fiberctx.GetCronID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.DeleteCron(c.Context(), serverID, teamID, cronID); err != nil {
 		return response.HandleError(c, err)

@@ -15,7 +15,10 @@ func (h *Handler) ListDaemons(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	daemons, err := h.service.ListDaemons(c.Context(), serverID, teamID)
 	if err != nil {
@@ -37,7 +40,10 @@ func (h *Handler) CreateDaemon(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.CreateDaemonRequest](c)
 	if err != nil {
@@ -59,8 +65,15 @@ func (h *Handler) UpdateDaemon(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
-	daemonID := c.Params("daemonId")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	daemonID, err := fiberctx.GetDaemonID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.UpdateDaemonRequest](c)
 	if err != nil {
@@ -82,8 +95,15 @@ func (h *Handler) DeleteDaemon(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
-	daemonID := c.Params("daemonId")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	daemonID, err := fiberctx.GetDaemonID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.DeleteDaemon(c.Context(), serverID, teamID, daemonID); err != nil {
 		return response.HandleError(c, err)
@@ -99,8 +119,15 @@ func (h *Handler) RestartDaemon(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
-	daemonID := c.Params("daemonId")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	daemonID, err := fiberctx.GetDaemonID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.RestartDaemon(c.Context(), serverID, teamID, daemonID, &userID); err != nil {
 		return response.HandleError(c, err)
@@ -116,7 +143,10 @@ func (h *Handler) SyncDaemons(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.SyncDaemonsStatus(c.Context(), serverID, teamID, &userID); err != nil {
 		return response.HandleError(c, err)

@@ -27,7 +27,10 @@ func (h *Handler) ListLogs(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	// Get server with services
 	server, err := h.service.GetServerWithRelations(c.Context(), serverID, teamID)
@@ -70,7 +73,11 @@ func (h *Handler) GetLogContent(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
 	logParam := c.Params("log")
 
 	if logParam == "" {

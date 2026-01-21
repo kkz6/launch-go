@@ -145,7 +145,10 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.DeleteServer(c.Context(), id, teamID); err != nil {
 		return response.HandleError(c, err)
@@ -161,7 +164,10 @@ func (h *Handler) Reboot(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.RebootServer(c.Context(), id, teamID); err != nil {
 		return response.HandleError(c, err)
@@ -177,7 +183,10 @@ func (h *Handler) Connect(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.ConnectServer(c.Context(), id, teamID); err != nil {
 		return response.HandleError(c, err)
@@ -193,7 +202,10 @@ func (h *Handler) Archive(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.ArchiveServer(c.Context(), id, teamID); err != nil {
 		return response.HandleError(c, err)
@@ -209,7 +221,10 @@ func (h *Handler) Unarchive(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.UnarchiveServer(c.Context(), id, teamID); err != nil {
 		return response.HandleError(c, err)
@@ -225,7 +240,10 @@ func (h *Handler) ShowPage(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	data, err := h.service.GetShowPageData(c.Context(), id, teamID)
 	if err != nil {
@@ -242,7 +260,10 @@ func (h *Handler) RunVulnerabilityAudit(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.VulnerabilityAuditRequest](c)
 	if err != nil {
@@ -263,7 +284,10 @@ func (h *Handler) GetSiteCount(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	// Verify server exists and belongs to team
 	if _, err := h.service.GetServer(c.Context(), serverID, teamID); err != nil {

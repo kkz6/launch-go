@@ -35,7 +35,10 @@ func (h *Handler) ListServerSSHKeys(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	keys, err := h.service.ListServerSSHKeys(c.Context(), serverID, teamID)
 	if err != nil {
@@ -77,7 +80,10 @@ func (h *Handler) AttachSSHKey(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.AttachSSHKeyRequest](c)
 	if err != nil {
@@ -98,8 +104,15 @@ func (h *Handler) DetachSSHKey(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
-	sshKeyID := c.Params("sshKeyId")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	sshKeyID, err := fiberctx.GetULIDParam(c, "sshKeyId")
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.DetachSSHKey(c.Context(), serverID, teamID, sshKeyID); err != nil {
 		return response.HandleError(c, err)
@@ -115,7 +128,10 @@ func (h *Handler) DeleteSSHKey(c *fiber.Ctx) error {
 		return err
 	}
 
-	sshKeyID := c.Params("sshKeyId")
+	sshKeyID, err := fiberctx.GetULIDParam(c, "sshKeyId")
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.DeleteSSHKey(c.Context(), teamID, sshKeyID); err != nil {
 		return response.HandleError(c, err)

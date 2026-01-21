@@ -24,8 +24,16 @@ func NewQueueHandler(queueService *services.QueueService) *QueueHandler {
 
 // CreateQueue creates a new queue worker
 func (h *QueueHandler) CreateQueue(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
@@ -50,8 +58,15 @@ func (h *QueueHandler) CreateQueue(c *fiber.Ctx) error {
 
 // ListQueues returns all queues for a site
 func (h *QueueHandler) ListQueues(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
 
 	queues, err := h.queueService.List(c.Context(), siteID, serverID)
 	if err != nil {
@@ -72,9 +87,20 @@ func (h *QueueHandler) ListQueues(c *fiber.Ctx) error {
 
 // DeleteQueue deletes a queue
 func (h *QueueHandler) DeleteQueue(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
-	queueID := c.Params("queueId")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
+	queueID, err := fiberctx.GetULIDParam(c, "queueId")
+	if err != nil {
+		return err
+	}
 
 	if err := h.queueService.Delete(c.Context(), queueID, siteID, serverID); err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
@@ -93,8 +119,15 @@ func (h *QueueHandler) DeleteQueue(c *fiber.Ctx) error {
 
 // UpdateAutoRestartQueue updates the auto-restart queue setting
 func (h *QueueHandler) UpdateAutoRestartQueue(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.UpdateAutoRestartQueueRequest](c)
 	if err != nil {
@@ -119,8 +152,16 @@ func (h *QueueHandler) UpdateAutoRestartQueue(c *fiber.Ctx) error {
 
 // SyncQueues triggers a status synchronization for all queue workers
 func (h *QueueHandler) SyncQueues(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
