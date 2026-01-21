@@ -120,7 +120,6 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 		svc.SourceControl(),
 		m.providerFactory,
 		m.repos.SourceControl(),
-		deps.Queue,
 	)
 	jobs.SetJobContext(jobContext)
 

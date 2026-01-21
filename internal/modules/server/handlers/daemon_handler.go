@@ -4,8 +4,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // ListDaemons returns all daemons for a server
@@ -31,16 +31,12 @@ func (h *Handler) CreateDaemon(c *fiber.Ctx) error {
 	teamID := c.Locals("teamID").(string)
 	serverID := c.Params("id")
 
-	var req dto.CreateDaemonRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.CreateDaemonRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	daemon, err := h.service.CreateDaemon(c.Context(), serverID, teamID, &req)
+	daemon, err := h.service.CreateDaemon(c.Context(), serverID, teamID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -54,16 +50,12 @@ func (h *Handler) UpdateDaemon(c *fiber.Ctx) error {
 	serverID := c.Params("id")
 	daemonID := c.Params("daemonId")
 
-	var req dto.UpdateDaemonRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateDaemonRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	daemon, err := h.service.UpdateDaemon(c.Context(), serverID, teamID, daemonID, &req)
+	daemon, err := h.service.UpdateDaemon(c.Context(), serverID, teamID, daemonID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
