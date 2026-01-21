@@ -11,9 +11,9 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
-
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/status"
 )
 
 const TypeCheckServiceStatus = "server:check_service_status"
@@ -59,21 +59,21 @@ func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
 	}
 
 	output := result.GetOutput()
-	status := j.parseServiceStatus(output)
+	svcStatus := j.parseServiceStatus(output)
 	details := j.parseStatusDetails(output)
 
-	j.updateServiceStatus(ctx, service.ID, status, output, details, "")
+	j.updateServiceStatus(ctx, service.ID, svcStatus, output, details, "")
 
 	j.Ctx.LogInfo("Service status check completed",
 		"service_id", service.ID,
 		"server_id", server.ID,
-		"status", status,
+		"status", svcStatus,
 	)
 
 	j.Ctx.BroadcastServerEvent(server, "service.status_checked", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
-		"status":     status.String(),
+		"status":     svcStatus.String(),
 	})
 
 	return nil
@@ -87,7 +87,7 @@ func (j *CheckServiceStatusJob) Failed(ctx context.Context, err error) {
 	)
 }
 
-func (j *CheckServiceStatusJob) updateServiceStatus(ctx context.Context, serviceID string, status enums.ServiceStatus, output string, details map[string]any, errorMsg string) {
+func (j *CheckServiceStatusJob) updateServiceStatus(ctx context.Context, serviceID string, svcStatus enums.ServiceStatus, output string, details map[string]any, errorMsg string) {
 	typeData := basemodels.JSONMap{
 		"last_status_check": time.Now().Format(time.RFC3339),
 		"status_output":     output,
@@ -101,7 +101,7 @@ func (j *CheckServiceStatusJob) updateServiceStatus(ctx context.Context, service
 		typeData["status_error"] = errorMsg
 	}
 
-	if err := j.Ctx.Repos().Service().UpdateWithTypeData(ctx, serviceID, status, typeData); err != nil {
+	if err := j.Ctx.Repos().Service().UpdateWithTypeData(ctx, serviceID, svcStatus, typeData); err != nil {
 		j.Ctx.LogError(err, "Failed to update service status", "service_id", serviceID)
 	}
 }
@@ -155,7 +155,7 @@ func (j *CheckServiceStatusJob) parseStatusDetails(output string) map[string]any
 
 	memoryRegex := regexp.MustCompile(`MemoryCurrent=(\d+)`)
 	if matches := memoryRegex.FindStringSubmatch(output); len(matches) > 1 {
-		details["memory_usage"] = formatBytes(matches[1])
+		details["memory_usage"] = status.ParseBytesString(matches[1])
 	}
 
 	sections := strings.Split(output, "===")
@@ -209,28 +209,6 @@ func (j *CheckServiceStatusJob) parseStatusDetails(output string) map[string]any
 	}
 
 	return details
-}
-
-func formatBytes(bytesStr string) string {
-	var bytes int64
-	_, _ = fmt.Sscanf(bytesStr, "%d", &bytes)
-
-	const (
-		kb = 1024
-		mb = kb * 1024
-		gb = mb * 1024
-	)
-
-	switch {
-	case bytes >= gb:
-		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(gb))
-	case bytes >= mb:
-		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(mb))
-	case bytes >= kb:
-		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(kb))
-	default:
-		return fmt.Sprintf("%d B", bytes)
-	}
 }
 
 func NewCheckServiceStatusJob(ctx *JobContext, payload CheckServiceStatusPayload) *CheckServiceStatusJob {

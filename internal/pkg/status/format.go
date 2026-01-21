@@ -94,3 +94,15 @@ func FormatPercentage(used, total float64) string {
 
 	return fmt.Sprintf("%.1f%%", percentage)
 }
+
+// ParseBytesString parses a string containing a byte count and formats it.
+// Useful for parsing systemctl output like "MemoryCurrent=123456".
+// Returns the original string if parsing fails.
+func ParseBytesString(byteStr string) string {
+	var bytes int64
+	_, err := fmt.Sscanf(byteStr, "%d", &bytes)
+	if err != nil {
+		return byteStr
+	}
+	return FormatBytes(bytes)
+}
