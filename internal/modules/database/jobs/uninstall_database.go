@@ -37,12 +37,12 @@ func NewUninstallDatabaseJob(ctx *JobContext, payload UninstallDatabasePayload) 
 func (j *UninstallDatabaseJob) Handle(ctx context.Context) error {
 	j.Ctx.LogInfo("Uninstalling database", "database_id", j.Payload.DatabaseID)
 
-	database, err := repository.Find[models.Database](ctx, j.Ctx.DB, j.Payload.DatabaseID)
+	database, err := repository.Find[models.Database](ctx, j.Ctx.DB(), j.Payload.DatabaseID)
 	if err != nil {
 		return fmt.Errorf("failed to find database: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB, database.ServerID)
+	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), database.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -67,9 +67,9 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context) error {
 		j.Ctx.LogInfo("Database drop completed with errors", "output", result.GetOutput())
 	}
 
-	activity.LogEventPtr(ctx, j.Ctx.DB, "uninstalled", j.Payload.UserID, database, "Database was uninstalled")
+	activity.LogEventPtr(ctx, j.Ctx.DB(), "uninstalled", j.Payload.UserID, database, "Database was uninstalled")
 
-	if err := j.MarkAsUninstalled(j.Ctx.DB, database); err != nil {
+	if err := j.MarkAsUninstalled(j.Ctx.DB(), database); err != nil {
 		return fmt.Errorf("failed to delete database record: %w", err)
 	}
 
@@ -81,12 +81,12 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context) error {
 func (j *UninstallDatabaseJob) Failed(ctx context.Context, err error) {
 	j.Ctx.LogError(err, "Failed to uninstall database", "database_id", j.Payload.DatabaseID)
 
-	database, findErr := repository.Find[models.Database](ctx, j.Ctx.DB, j.Payload.DatabaseID)
+	database, findErr := repository.Find[models.Database](ctx, j.Ctx.DB(), j.Payload.DatabaseID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB, database.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), database.ServerID)
 	if findErr != nil {
 		return
 	}

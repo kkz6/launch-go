@@ -37,12 +37,12 @@ func NewUninstallDatabaseUserJob(ctx *JobContext, payload UninstallDatabaseUserP
 func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 	j.Ctx.LogInfo("Uninstalling database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, err := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB, j.Payload.DatabaseUserID)
+	dbUser, err := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB(), j.Payload.DatabaseUserID)
 	if err != nil {
 		return fmt.Errorf("failed to find database user: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB, dbUser.ServerID)
+	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), dbUser.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -68,9 +68,9 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 		j.Ctx.LogInfo("Database user drop completed with errors", "output", result.GetOutput())
 	}
 
-	activity.LogWithLogPtr(ctx, j.Ctx.DB, "database", "uninstalled", j.Payload.CallerID, dbUser, "Database user was uninstalled")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "database", "uninstalled", j.Payload.CallerID, dbUser, "Database user was uninstalled")
 
-	if err := j.MarkAsUninstalled(j.Ctx.DB, dbUser); err != nil {
+	if err := j.MarkAsUninstalled(j.Ctx.DB(), dbUser); err != nil {
 		return fmt.Errorf("failed to delete database user record: %w", err)
 	}
 
@@ -82,12 +82,12 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 func (j *UninstallDatabaseUserJob) Failed(ctx context.Context, err error) {
 	j.Ctx.LogError(err, "Failed to uninstall database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB, j.Payload.DatabaseUserID)
+	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB(), j.Payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB, dbUser.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), dbUser.ServerID)
 	if findErr != nil {
 		return
 	}

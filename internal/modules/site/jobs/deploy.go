@@ -167,7 +167,7 @@ func (j *DeployJob) getRepositoryAndSourceControl(site *models.Site) (*gitmodels
 
 	// Query repository from source_control_repositories table
 	var repo gitmodels.SourceControlRepository
-	if err := j.Ctx.DB.First(&repo, "id = ?", *site.SourceControlRepositoriesID).Error; err != nil {
+	if err := j.Ctx.DB().First(&repo, "id = ?", *site.SourceControlRepositoriesID).Error; err != nil {
 		return nil, nil
 	}
 
@@ -589,7 +589,7 @@ func (j *DeployZeroDowntimeJob) getRepositoryAndSourceControl(site *models.Site)
 
 	// Query repository from source_control_repositories table
 	var repo gitmodels.SourceControlRepository
-	if err := j.Ctx.DB.First(&repo, "id = ?", *site.SourceControlRepositoriesID).Error; err != nil {
+	if err := j.Ctx.DB().First(&repo, "id = ?", *site.SourceControlRepositoriesID).Error; err != nil {
 		return nil, nil
 	}
 

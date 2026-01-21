@@ -38,14 +38,14 @@ func (r *BackupRepos) Server() servercontracts.RepositoryRegistry {
 
 // JobContext provides shared dependencies for all backup jobs.
 // It embeds pkgjobs.ModuleContext for common functionality and typed repository access.
+//
+// Access common dependencies via inherited methods:
+//   - ctx.DB() - database connection
+//   - ctx.Logger() - zerolog logger
+//   - ctx.Queue() - queue client
+//   - ctx.Repos() - repository registry (*BackupRepos)
 type JobContext struct {
 	*pkgjobs.ModuleContext[*BackupRepos]
-	// Public fields for backward compatibility with existing jobs
-	DB          *gorm.DB
-	Repos       *BackupRepos
-	Logger      *zerolog.Logger
-	Queue       *queue.Client
-	ServerRepos servercontracts.RepositoryRegistry
 }
 
 // NewJobContext creates a new job context.
@@ -67,11 +67,5 @@ func NewJobContext(
 			Logger: logger,
 			Queue:  queueClient,
 		}, backupRepos),
-		// Public fields for backward compatibility
-		DB:          db,
-		Repos:       backupRepos,
-		Logger:      logger,
-		Queue:       queueClient,
-		ServerRepos: serverRepos,
 	}
 }
