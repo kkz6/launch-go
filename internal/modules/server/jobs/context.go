@@ -14,17 +14,9 @@ import (
 	"github.com/kkz6/launch-go/internal/queue"
 )
 
-// These type aliases ensure the imports are used and provide documentation
-// about the inherited types from ModuleContext.
-var (
-	_ *gorm.DB                  // Used via c.DB()
-	_ *zerolog.Logger           // Used via c.Logger()
-	_ broadcast.TeamBroadcaster // Used via c.WS()
-	_ *queue.Client             // Used via c.Queue()
-)
-
 // JobContext holds dependencies for server jobs.
-// It embeds pkgjobs.ModuleContext for common functionality and typed repository access.
+// It embeds pkgjobs.ServerContext for common functionality, task execution,
+// and typed repository access.
 //
 // Access common dependencies via inherited methods:
 //   - j.Ctx.DB() - database connection
@@ -37,7 +29,7 @@ var (
 //   - j.Ctx.ProviderFactory - cloud provider factory
 //   - j.Ctx.TaskRunnerDeps - task runner dependencies
 type JobContext struct {
-	*pkgjobs.ModuleContext[contracts.RepositoryRegistry]
+	*pkgjobs.ServerContext[contracts.RepositoryRegistry]
 	ProviderFactory *providers.Factory
 	TaskRunnerDeps  *tasks.TaskRunnerDeps
 }
@@ -52,22 +44,31 @@ func NewJobContext(
 	providerFactory *providers.Factory,
 	queueClient *queue.Client,
 ) *JobContext {
-	taskRunnerDeps := &tasks.TaskRunnerDeps{
-		DB:          db,
-		Queue:       queueClient,
-		Dispatcher:  dispatcher,
-		Logger:      logger,
-		Broadcaster: ws,
-	}
-
-	return &JobContext{
-		ModuleContext: pkgjobs.NewModuleContext(pkgjobs.BaseDeps{
+	deps := pkgjobs.ServerContextDeps{
+		BaseDeps: pkgjobs.BaseDeps{
 			DB:         db,
 			Logger:     logger,
 			WS:         ws,
 			Dispatcher: dispatcher,
 			Queue:      queueClient,
-		}, repos),
+		},
+	}
+
+	serverCtx := pkgjobs.NewServerContext(deps, repos)
+
+	// Create TaskRunnerDeps from the shared task deps
+	taskDeps := serverCtx.TaskDeps()
+	taskRunnerDeps := &tasks.TaskRunnerDeps{
+		DB:          taskDeps.DB,
+		Queue:       taskDeps.Queue,
+		Dispatcher:  taskDeps.Dispatcher,
+		Logger:      taskDeps.Logger,
+		Broadcaster: taskDeps.Broadcaster,
+		LocalMode:   taskDeps.LocalMode,
+	}
+
+	return &JobContext{
+		ServerContext:   serverCtx,
 		ProviderFactory: providerFactory,
 		TaskRunnerDeps:  taskRunnerDeps,
 	}
@@ -94,7 +95,7 @@ func (s *ServerTaskRunner) RunTask(task taskrunner.Task) *tasks.TaskRunner {
 
 // BroadcastServerEvent broadcasts an event for a server to its team channel.
 func (c *JobContext) BroadcastServerEvent(server *models.Server, event string, data any) {
-	if c.WS() != nil && server != nil {
-		c.WS().BroadcastToTeam(server.TeamID, event, data)
+	if server != nil {
+		c.ServerContext.BroadcastServerEvent(server.TeamID, event, data)
 	}
 }

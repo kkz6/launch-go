@@ -3,6 +3,7 @@ package activity
 import (
 	"context"
 
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"gorm.io/gorm"
 )
 
@@ -46,9 +47,7 @@ func (r *Repository) FindByLogName(ctx context.Context, logName string, limit in
 		Where("log_name = ?", logName).
 		Order("created_at DESC")
 
-	if limit > 0 {
-		query = query.Limit(limit)
-	}
+	query = repository.ApplyFilters(query, repository.WithOptionalLimit(limit))
 
 	err := query.Find(&activities).Error
 	return activities, err

@@ -26,24 +26,14 @@ func NewMetricRepository(db *gorm.DB) *MetricRepository {
 // FindByServer finds metrics for a server with optional time range
 func (r *MetricRepository) FindByServer(ctx context.Context, serverID string, from, to *time.Time, limit int) ([]models.Metric, error) {
 	var metrics []models.Metric
-	query := r.DB.WithContext(ctx).
-		Where("server_id = ?", serverID)
+	query := r.DB.WithContext(ctx).Where("server_id = ?", serverID)
 
-	if from != nil {
-		query = query.Where("recorded_at >= ?", from)
-	}
+	query = repository.ApplyFilters(query,
+		repository.WithDateRange("recorded_at", from, to),
+		repository.WithOptionalLimit(limit),
+	)
 
-	if to != nil {
-		query = query.Where("recorded_at <= ?", to)
-	}
-
-	query = query.Order("recorded_at DESC")
-
-	if limit > 0 {
-		query = query.Limit(limit)
-	}
-
-	err := query.Find(&metrics).Error
+	err := query.Order("recorded_at DESC").Find(&metrics).Error
 	return metrics, err
 }
 

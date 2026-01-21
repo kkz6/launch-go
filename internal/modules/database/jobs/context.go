@@ -22,15 +22,16 @@ import (
 var jobContext *JobContext
 
 // JobContext holds dependencies for database job execution.
-// It embeds pkgjobs.ModuleContext for common functionality and typed repository access.
+// It embeds pkgjobs.ServerContext for common functionality, task execution,
+// and typed repository access.
 type JobContext struct {
-	*pkgjobs.ModuleContext[*repositories.Registry]
-	// Public fields for backward compatibility with existing jobs
-	DB             *gorm.DB
-	Logger         *zerolog.Logger
-	WS             broadcast.TeamBroadcaster
-	Queue          *queue.Client
+	*pkgjobs.ServerContext[*repositories.Registry]
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
+	// Public fields for backward compatibility with existing jobs
+	DB     *gorm.DB
+	Logger *zerolog.Logger
+	WS     broadcast.TeamBroadcaster
+	Queue  *queue.Client
 }
 
 // NewJobContext creates a new database job context.
@@ -42,28 +43,37 @@ func NewJobContext(
 	dispatcher taskrunner.TaskDispatcher,
 	queueClient *queue.Client,
 ) *JobContext {
-	taskRunnerDeps := &servertasks.TaskRunnerDeps{
-		DB:          db,
-		Queue:       queueClient,
-		Dispatcher:  dispatcher,
-		Logger:      logger,
-		Broadcaster: ws,
-	}
-
-	return &JobContext{
-		ModuleContext: pkgjobs.NewModuleContext(pkgjobs.BaseDeps{
+	deps := pkgjobs.ServerContextDeps{
+		BaseDeps: pkgjobs.BaseDeps{
 			DB:         db,
 			Logger:     logger,
 			WS:         ws,
 			Dispatcher: dispatcher,
 			Queue:      queueClient,
-		}, repos),
-		// Public fields for backward compatibility
-		DB:             db,
-		Logger:         logger,
-		WS:             ws,
-		Queue:          queueClient,
+		},
+	}
+
+	serverCtx := pkgjobs.NewServerContext(deps, repos)
+
+	// Create TaskRunnerDeps from the shared task deps
+	taskDeps := serverCtx.TaskDeps()
+	taskRunnerDeps := &servertasks.TaskRunnerDeps{
+		DB:          taskDeps.DB,
+		Queue:       taskDeps.Queue,
+		Dispatcher:  taskDeps.Dispatcher,
+		Logger:      taskDeps.Logger,
+		Broadcaster: taskDeps.Broadcaster,
+		LocalMode:   taskDeps.LocalMode,
+	}
+
+	return &JobContext{
+		ServerContext:  serverCtx,
 		TaskRunnerDeps: taskRunnerDeps,
+		// Public fields for backward compatibility
+		DB:     db,
+		Logger: logger,
+		WS:     ws,
+		Queue:  queueClient,
 	}
 }
 
@@ -84,8 +94,8 @@ func (c *JobContext) RunTaskOnServer(server *servermodels.Server, task taskrunne
 
 // BroadcastDatabaseEvent broadcasts a database event to a team channel.
 func (c *JobContext) BroadcastDatabaseEvent(server *servermodels.Server, event string, data any) {
-	if c.WS != nil && server != nil {
-		c.WS.BroadcastToTeam(server.TeamID, event, data)
+	if server != nil {
+		c.ServerContext.BroadcastServerEvent(server.TeamID, event, data)
 	}
 }
 
