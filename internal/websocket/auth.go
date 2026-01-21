@@ -5,9 +5,9 @@ import (
 	"errors"
 
 	"github.com/gofiber/contrib/websocket"
-	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/kkz6/launch-go/internal/pkg/cache"
+	"github.com/kkz6/launch-go/internal/pkg/jwtutil"
 )
 
 // Claims represents the JWT claims for WebSocket authentication
@@ -17,11 +17,9 @@ type Claims struct {
 }
 
 var (
-	ErrMissingToken      = errors.New("missing authentication token")
-	ErrInvalidToken      = errors.New("invalid authentication token")
-	ErrMissingClaims     = errors.New("missing required claims")
-	ErrMissingTeamID     = errors.New("missing team_id parameter")
-	ErrNotTeamMember     = errors.New("not a member of this team")
+	ErrMissingToken  = errors.New("missing authentication token")
+	ErrMissingTeamID = errors.New("missing team_id parameter")
+	ErrNotTeamMember = errors.New("not a member of this team")
 )
 
 // ValidateToken validates a JWT token and extracts user claims
@@ -31,22 +29,14 @@ func ValidateToken(tokenString, jwtSecret string) (string, error) {
 		return "", ErrMissingToken
 	}
 
-	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
-		return []byte(jwtSecret), nil
-	})
-
-	if err != nil || !token.Valid {
-		return "", ErrInvalidToken
+	claims, err := jwtutil.ParseToken(tokenString, jwtSecret)
+	if err != nil {
+		return "", jwtutil.ErrInvalidToken
 	}
 
-	mapClaims, ok := token.Claims.(jwt.MapClaims)
-	if !ok {
-		return "", ErrInvalidToken
-	}
-
-	userID, ok := mapClaims["sub"].(string)
-	if !ok || userID == "" {
-		return "", ErrMissingClaims
+	userID, err := jwtutil.ExtractClaim(claims, "sub")
+	if err != nil {
+		return "", jwtutil.ErrMissingClaim
 	}
 
 	return userID, nil
@@ -95,22 +85,14 @@ func AuthenticateWebSocketLegacy(c *websocket.Conn, jwtSecret string) (*Claims, 
 		return nil, ErrMissingToken
 	}
 
-	parsedToken, err := jwt.Parse(token, func(token *jwt.Token) (interface{}, error) {
-		return []byte(jwtSecret), nil
-	})
-
-	if err != nil || !parsedToken.Valid {
-		return nil, ErrInvalidToken
+	claims, err := jwtutil.ParseToken(token, jwtSecret)
+	if err != nil {
+		return nil, jwtutil.ErrInvalidToken
 	}
 
-	mapClaims, ok := parsedToken.Claims.(jwt.MapClaims)
-	if !ok {
-		return nil, ErrInvalidToken
-	}
-
-	userID, ok := mapClaims["sub"].(string)
-	if !ok || userID == "" {
-		return nil, ErrMissingClaims
+	userID, err := jwtutil.ExtractClaim(claims, "sub")
+	if err != nil {
+		return nil, jwtutil.ErrMissingClaim
 	}
 
 	// Try to get team_id from query param first (new approach)
@@ -118,7 +100,7 @@ func AuthenticateWebSocketLegacy(c *websocket.Conn, jwtSecret string) (*Claims, 
 
 	// Fall back to JWT claim (legacy support)
 	if teamID == "" {
-		teamID, _ = mapClaims["team_id"].(string)
+		teamID, _ = claims["team_id"].(string)
 	}
 
 	if teamID == "" {

@@ -10,6 +10,8 @@ import (
 	"sync"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/pkg/pathutil"
+
 	"github.com/rs/zerolog"
 )
 
@@ -106,10 +108,10 @@ func (m *StreamMonitor) StreamTaskOutput(
 		Msg("Started streaming task output")
 
 	// Build the log file path
-	logFile := fmt.Sprintf("%s/task-%s.log", conn.GetScriptPath(), taskID)
+	paths := pathutil.GetTaskPaths(conn.GetScriptPath(), taskID)
 
 	// Wait for log file to exist (task may not have started writing yet)
-	waitCmd := fmt.Sprintf("while [ ! -f %s ]; do sleep 0.5; done; echo 'ready'", logFile)
+	waitCmd := fmt.Sprintf("while [ ! -f %s ]; do sleep 0.5; done; echo 'ready'", paths.Output)
 	if _, err := sshClient.Run(streamCtx, waitCmd); err != nil {
 		if streamCtx.Err() != nil {
 			return streamCtx.Err()
@@ -119,7 +121,7 @@ func (m *StreamMonitor) StreamTaskOutput(
 
 	// Use tail -f to stream the log file
 	// -n +1 starts from the beginning of the file
-	tailCmd := fmt.Sprintf("tail -n +1 -f %s 2>/dev/null", logFile)
+	tailCmd := fmt.Sprintf("tail -n +1 -f %s 2>/dev/null", paths.Output)
 
 	var outputBuffer strings.Builder
 	var lastBroadcast time.Time
@@ -304,8 +306,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 		Str("host", conn.Host).
 		Msg("Started monitoring background task")
 
-	logFile := fmt.Sprintf("%s/task-%s.log", conn.GetScriptPath(), taskID)
-	exitCodeFile := fmt.Sprintf("%s/task-%s.exit", conn.GetScriptPath(), taskID)
+	paths := pathutil.GetTaskPaths(conn.GetScriptPath(), taskID)
 
 	var lastOutput string
 	checkInterval := 2 * time.Second
@@ -323,7 +324,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 			isRunning := strings.TrimSpace(psResult.Stdout) != ""
 
 			// Get current output
-			output, err := sshClient.Download(streamCtx, logFile)
+			output, err := sshClient.Download(streamCtx, paths.Output)
 			if err == nil {
 				currentOutput := string(output)
 				if currentOutput != lastOutput {
@@ -341,7 +342,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 				var status string
 
 				// Try to read exit code from file (if script wrote it)
-				exitResult, err := sshClient.Run(streamCtx, fmt.Sprintf("cat %s 2>/dev/null", exitCodeFile))
+				exitResult, err := sshClient.Run(streamCtx, fmt.Sprintf("cat %s 2>/dev/null", paths.ExitCode))
 				if err == nil && exitResult.Stdout != "" {
 					exitCode, _ = strconv.Atoi(strings.TrimSpace(exitResult.Stdout))
 				}
