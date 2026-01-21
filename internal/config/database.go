@@ -1,21 +1,17 @@
 package config
 
-import (
-	"fmt"
-
-	"github.com/spf13/viper"
-)
+import "fmt"
 
 // DatabaseConfig holds database configuration
 type DatabaseConfig struct {
-	Driver     string
-	Host       string
-	Port       string
-	Database   string
-	Username   string
-	Password   string
-	SSLMode    string
-	LogQueries bool
+	Driver     string `env:"DB_DRIVER" default:"mysql"`
+	Host       string `env:"DB_HOST" default:"localhost"`
+	Port       string `env:"DB_PORT" default:"3306"`
+	Database   string `env:"DB_DATABASE" default:"launch"`
+	Username   string `env:"DB_USERNAME" default:"root"`
+	Password   string `env:"DB_PASSWORD" default:""`
+	SSLMode    string `env:"DB_SSLMODE" default:"disable"`
+	LogQueries bool   `env:"DB_LOG_QUERIES" default:"false"`
 }
 
 // DSN returns the database connection string
@@ -30,28 +26,4 @@ func (d DatabaseConfig) DSN() string {
 	default:
 		return ""
 	}
-}
-
-func loadDatabaseConfig() DatabaseConfig {
-	return DatabaseConfig{
-		Driver:     viper.GetString("DB_DRIVER"),
-		Host:       viper.GetString("DB_HOST"),
-		Port:       viper.GetString("DB_PORT"),
-		Database:   viper.GetString("DB_DATABASE"),
-		Username:   viper.GetString("DB_USERNAME"),
-		Password:   viper.GetString("DB_PASSWORD"),
-		SSLMode:    viper.GetString("DB_SSLMODE"),
-		LogQueries: viper.GetBool("DB_LOG_QUERIES"),
-	}
-}
-
-func setDatabaseDefaults() {
-	viper.SetDefault("DB_DRIVER", "mysql")
-	viper.SetDefault("DB_HOST", "localhost")
-	viper.SetDefault("DB_PORT", "3306")
-	viper.SetDefault("DB_DATABASE", "launch")
-	viper.SetDefault("DB_USERNAME", "root")
-	viper.SetDefault("DB_PASSWORD", "")
-	viper.SetDefault("DB_SSLMODE", "disable")
-	viper.SetDefault("DB_LOG_QUERIES", false)
 }
