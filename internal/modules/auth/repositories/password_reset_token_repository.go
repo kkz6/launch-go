@@ -7,30 +7,33 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // PasswordResetTokenRepository handles password reset token database operations
 type PasswordResetTokenRepository struct {
-	db *gorm.DB
+	repository.Base[models.PasswordResetToken]
 }
 
 // NewPasswordResetTokenRepository creates a new PasswordResetTokenRepository instance
 func NewPasswordResetTokenRepository(db *gorm.DB) *PasswordResetTokenRepository {
-	return &PasswordResetTokenRepository{db: db}
+	return &PasswordResetTokenRepository{
+		Base: repository.NewBase[models.PasswordResetToken](db),
+	}
 }
 
 // Create creates a new password reset token
 func (r *PasswordResetTokenRepository) Create(ctx context.Context, token *models.PasswordResetToken) error {
 	// Delete any existing token for this email first
-	r.db.WithContext(ctx).Delete(&models.PasswordResetToken{}, "email = ?", token.Email)
+	r.DB.WithContext(ctx).Delete(&models.PasswordResetToken{}, "email = ?", token.Email)
 
-	return r.db.WithContext(ctx).Create(token).Error
+	return r.Base.Create(ctx, token)
 }
 
 // FindByEmail finds a password reset token by email
 func (r *PasswordResetTokenRepository) FindByEmail(ctx context.Context, email string) (*models.PasswordResetToken, error) {
 	var token models.PasswordResetToken
-	err := r.db.WithContext(ctx).First(&token, "email = ?", email).Error
+	err := r.DB.WithContext(ctx).First(&token, "email = ?", email).Error
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -43,7 +46,7 @@ func (r *PasswordResetTokenRepository) FindByEmail(ctx context.Context, email st
 	return &token, nil
 }
 
-// Delete deletes a password reset token
+// Delete deletes a password reset token by email
 func (r *PasswordResetTokenRepository) Delete(ctx context.Context, email string) error {
-	return r.db.WithContext(ctx).Delete(&models.PasswordResetToken{}, "email = ?", email).Error
+	return r.DB.WithContext(ctx).Delete(&models.PasswordResetToken{}, "email = ?", email).Error
 }

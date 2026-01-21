@@ -51,30 +51,28 @@ func (r *Registry) DB() *gorm.DB {
 	return r.db
 }
 
-// DatabaseRepository provides database operations
+// DatabaseRepository provides database operations.
+// Embeds repository.Installable[T] for CRUD + installation status operations.
 type DatabaseRepository struct {
-	db          *gorm.DB
-	installable repository.Installable[models.Database]
+	repository.Installable[models.Database]
 }
 
 // NewDatabaseRepository creates a new DatabaseRepository instance
 func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository {
 	return &DatabaseRepository{
-		db:          db,
-		installable: repository.NewInstallable[models.Database](db),
+		Installable: repository.NewInstallable[models.Database](db),
 	}
 }
 
-// DatabaseUserRepository provides database user operations
+// DatabaseUserRepository provides database user operations.
+// Embeds repository.Installable[T] for CRUD + installation status operations.
 type DatabaseUserRepository struct {
-	db          *gorm.DB
-	installable repository.Installable[models.DatabaseUser]
+	repository.Installable[models.DatabaseUser]
 }
 
 // NewDatabaseUserRepository creates a new DatabaseUserRepository instance
 func NewDatabaseUserRepository(db *gorm.DB) *DatabaseUserRepository {
 	return &DatabaseUserRepository{
-		db:          db,
-		installable: repository.NewInstallable[models.DatabaseUser](db),
+		Installable: repository.NewInstallable[models.DatabaseUser](db),
 	}
 }

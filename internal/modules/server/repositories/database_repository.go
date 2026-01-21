@@ -7,47 +7,42 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/database/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // DatabaseRepository handles database-related database operations for the server module
 type DatabaseRepository struct {
-	BaseRepository
+	repository.Base[models.Database]
 }
 
 // NewDatabaseRepository creates a new DatabaseRepository instance
 func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository {
 	return &DatabaseRepository{
-		BaseRepository: NewBaseRepository(db),
+		Base: repository.NewBase[models.Database](db),
 	}
 }
 
 // FindByServer returns all databases for a server
 func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) ([]models.Database, error) {
-	var databases []models.Database
-	err := r.DB().WithContext(ctx).
-		Where("server_id = ?", serverID).
-		Order("created_at DESC").
-		Find(&databases).Error
-	return databases, err
+	return r.Base.FindByServer(ctx, serverID)
 }
 
 // FindByID returns a database by ID
 func (r *DatabaseRepository) FindByID(ctx context.Context, id string) (*models.Database, error) {
-	var database models.Database
-	err := r.DB().WithContext(ctx).First(&database, "id = ?", id).Error
+	database, err := r.Base.FindByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if repository.IsNotFound(err) {
 			return nil, ErrDatabaseNotFound
 		}
 		return nil, err
 	}
-	return &database, nil
+	return database, nil
 }
 
 // FindByIDWithServer returns a database by ID with the Server relation preloaded
 func (r *DatabaseRepository) FindByIDWithServer(ctx context.Context, id string) (*models.Database, error) {
 	var database models.Database
-	err := r.DB().WithContext(ctx).Preload("Server").First(&database, "id = ?", id).Error
+	err := r.DB.WithContext(ctx).Preload("Server").First(&database, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrDatabaseNotFound
@@ -59,18 +54,18 @@ func (r *DatabaseRepository) FindByIDWithServer(ctx context.Context, id string) 
 
 // Create creates a new database
 func (r *DatabaseRepository) Create(ctx context.Context, db *models.Database) error {
-	return r.DB().WithContext(ctx).Create(db).Error
+	return r.Base.Create(ctx, db)
 }
 
 // Delete deletes a database
 func (r *DatabaseRepository) Delete(ctx context.Context, id string) error {
-	return r.DB().WithContext(ctx).Delete(&models.Database{}, "id = ?", id).Error
+	return r.Base.Delete(ctx, id)
 }
 
 // FindUsersByServer returns all database users for a server
 func (r *DatabaseRepository) FindUsersByServer(ctx context.Context, serverID string) ([]models.DatabaseUser, error) {
 	var users []models.DatabaseUser
-	err := r.DB().WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("server_id = ?", serverID).
 		Order("created_at DESC").
 		Find(&users).Error
@@ -80,7 +75,7 @@ func (r *DatabaseRepository) FindUsersByServer(ctx context.Context, serverID str
 // FindUserByID returns a database user by ID
 func (r *DatabaseRepository) FindUserByID(ctx context.Context, id string) (*models.DatabaseUser, error) {
 	var user models.DatabaseUser
-	err := r.DB().WithContext(ctx).First(&user, "id = ?", id).Error
+	err := r.DB.WithContext(ctx).First(&user, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrDatabaseUserNotFound
@@ -93,7 +88,7 @@ func (r *DatabaseRepository) FindUserByID(ctx context.Context, id string) (*mode
 // FindUserByIDWithServer returns a database user by ID with the Server relation preloaded
 func (r *DatabaseRepository) FindUserByIDWithServer(ctx context.Context, id string) (*models.DatabaseUser, error) {
 	var user models.DatabaseUser
-	err := r.DB().WithContext(ctx).Preload("Server").Preload("Databases").Where("id = ?", id).First(&user).Error
+	err := r.DB.WithContext(ctx).Preload("Server").Preload("Databases").Where("id = ?", id).First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrDatabaseUserNotFound
@@ -105,10 +100,10 @@ func (r *DatabaseRepository) FindUserByIDWithServer(ctx context.Context, id stri
 
 // CreateUser creates a new database user
 func (r *DatabaseRepository) CreateUser(ctx context.Context, user *models.DatabaseUser) error {
-	return r.DB().WithContext(ctx).Create(user).Error
+	return r.DB.WithContext(ctx).Create(user).Error
 }
 
 // DeleteUser deletes a database user
 func (r *DatabaseRepository) DeleteUser(ctx context.Context, id string) error {
-	return r.DB().WithContext(ctx).Delete(&models.DatabaseUser{}, "id = ?", id).Error
+	return r.DB.WithContext(ctx).Delete(&models.DatabaseUser{}, "id = ?", id).Error
 }

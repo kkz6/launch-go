@@ -7,27 +7,30 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // TeamRepository handles team database operations
 type TeamRepository struct {
-	db *gorm.DB
+	repository.Base[models.Team]
 }
 
 // NewTeamRepository creates a new TeamRepository instance
 func NewTeamRepository(db *gorm.DB) *TeamRepository {
-	return &TeamRepository{db: db}
+	return &TeamRepository{
+		Base: repository.NewBase[models.Team](db),
+	}
 }
 
 // Create creates a new team
 func (r *TeamRepository) Create(ctx context.Context, team *models.Team) error {
-	return r.db.WithContext(ctx).Create(team).Error
+	return r.Base.Create(ctx, team)
 }
 
-// FindByID finds a team by its ID
+// FindByID finds a team by its ID with preloaded relations
 func (r *TeamRepository) FindByID(ctx context.Context, id string) (*models.Team, error) {
 	var team models.Team
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Preload("Owner").
 		Preload("Members").
 		First(&team, "id = ?", id).Error
@@ -45,12 +48,12 @@ func (r *TeamRepository) FindByID(ctx context.Context, id string) (*models.Team,
 
 // Update updates an existing team
 func (r *TeamRepository) Update(ctx context.Context, team *models.Team) error {
-	return r.db.WithContext(ctx).Save(team).Error
+	return r.Base.Update(ctx, team)
 }
 
 // Delete deletes a team by its ID
 func (r *TeamRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return r.Base.Transaction(ctx, func(tx *gorm.DB) error {
 		// Delete team members first
 		if err := tx.Where("team_id = ?", id).Delete(&models.TeamMember{}).Error; err != nil {
 			return err
@@ -79,7 +82,7 @@ func (r *TeamRepository) GetUserTeams(ctx context.Context, userID string) ([]mod
 
 	// Get teams where user is owner
 	var ownedTeams []models.Team
-	if err := r.db.WithContext(ctx).
+	if err := r.DB.WithContext(ctx).
 		Where("user_id = ?", userID).
 		Find(&ownedTeams).Error; err != nil {
 		return nil, err
@@ -87,7 +90,7 @@ func (r *TeamRepository) GetUserTeams(ctx context.Context, userID string) ([]mod
 
 	// Get teams where user is a member
 	var memberTeams []models.Team
-	if err := r.db.WithContext(ctx).
+	if err := r.DB.WithContext(ctx).
 		Joins("JOIN team_user ON team_user.team_id = teams.id").
 		Where("team_user.user_id = ?", userID).
 		Find(&memberTeams).Error; err != nil {
@@ -116,7 +119,7 @@ func (r *TeamRepository) GetUserTeams(ctx context.Context, userID string) ([]mod
 // GetMembers gets all members of a team
 func (r *TeamRepository) GetMembers(ctx context.Context, teamID string) ([]models.TeamMember, error) {
 	var members []models.TeamMember
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Preload("User").
 		Where("team_id = ?", teamID).
 		Find(&members).Error
