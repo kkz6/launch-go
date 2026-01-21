@@ -81,11 +81,7 @@ func (s *BackupJobService) ListBackupJobs(ctx context.Context, backupID string) 
 // Broadcast helpers
 
 func (s *BackupJobService) broadcastBackupJobStatus(serverID string, job *models.BackupJob) {
-	if s.WS == nil {
-		return
-	}
-
-	s.WS.BroadcastToServer(serverID, "backup.job.status", map[string]interface{}{
+	s.BroadcastToServer(serverID, "backup.job.status", map[string]interface{}{
 		"job_id":    job.ID,
 		"backup_id": job.BackupID,
 		"status":    string(job.Status),

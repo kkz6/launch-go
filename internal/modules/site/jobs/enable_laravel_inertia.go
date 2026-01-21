@@ -3,12 +3,9 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
-	"github.com/kkz6/launch-go/internal/modules/site/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -24,145 +21,52 @@ type EnableLaravelInertiaPayload struct {
 // EnableLaravelInertiaJob enables Inertia SSR for a Laravel site
 type EnableLaravelInertiaJob struct {
 	pkgjobs.BaseJob[*JobContext, EnableLaravelInertiaPayload]
+	FeatureJobHelpers
 }
 
 // NewEnableLaravelInertiaJob creates a new EnableLaravelInertiaJob
 func NewEnableLaravelInertiaJob(ctx *JobContext, payload EnableLaravelInertiaPayload) *EnableLaravelInertiaJob {
 	return &EnableLaravelInertiaJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
+		BaseJob:           pkgjobs.NewBaseJob(ctx, payload),
+		FeatureJobHelpers: FeatureJobHelpers{Ctx: ctx},
 	}
 }
 
 // Handle executes the enable Inertia job
 func (j *EnableLaravelInertiaJob) Handle(ctx context.Context) error {
-	// Get site
-	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	result, err := j.LoadAndValidate(ctx, j.Payload.SiteID, j.Payload.ServerID, FeatureInertia)
 	if err != nil {
-		return fmt.Errorf("failed to find site: %w", err)
+		return err
 	}
-
-	// Check if site is Laravel type
-	if site.Type != enums.SiteTypeLaravel {
-		return fmt.Errorf("inertia SSR can only be enabled for Laravel sites")
-	}
-
-	// Check if Inertia is already enabled
-	if site.HasEnabledFeature("inertia") {
-		j.Ctx.LogInfo("Inertia SSR already enabled", "site_id", site.ID)
+	if result.AlreadyEnabled {
 		return nil
 	}
 
-	// Get server
-	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	site, server := result.Site, result.Server
+	j.BaseJob.Ctx.LogInfo("Enabling Laravel Inertia SSR", "site_id", site.ID, "server_id", server.ID)
+
+	userID := j.GetUserID(j.Payload.UserID, site)
+	command := fmt.Sprintf("node %s/bootstrap/ssr/ssr.js", site.GetApplicationDirectory())
+
+	queue, err := j.CreateQueueRecord(ctx, site, server, command, userID)
 	if err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+		return err
 	}
 
-	j.Ctx.LogInfo("Enabling Laravel Inertia SSR",
-		"site_id", site.ID,
-		"server_id", server.ID,
-	)
-
-	// Get user ID
-	userID := ""
-	if j.Payload.UserID != nil {
-		userID = *j.Payload.UserID
-	} else {
-		userID = site.UserID
+	if err := j.DispatchInstallQueue(ctx, queue.ID, site.ID, j.Payload.UserID); err != nil {
+		return err
 	}
 
-	// Build Inertia SSR command
-	// Inertia SSR runs a Node.js server
-	command := j.buildInertiaCommand(site)
-
-	// Inertia SSR uses the daemon system (similar to queues but for Node processes)
-	// Create queue record for Inertia SSR daemon
-	queue := &models.Queue{
-		Command:         command,
-		User:            site.User,
-		AutoStart:       true,
-		AutoRestart:     true,
-		NumProcs:        1,
-		RedirectStderr:  true,
-		StopWaitSeconds: 10,
-		StopSignal:      "SIGTERM",
-	}
-	queue.SiteID = site.ID
-	queue.ServerID = server.ID
-	queue.UserID = userID
-
-	if err := j.Ctx.QueueRepo.Create(ctx, queue); err != nil {
-		return fmt.Errorf("failed to create queue: %w", err)
-	}
-
-	// Dispatch InstallQueue job
-	if err := j.dispatchInstallQueue(queue.ID, site.ID); err != nil {
-		// Cleanup the queue record if dispatch fails
-		_ = j.Ctx.QueueRepo.Delete(ctx, queue.ID)
-		return fmt.Errorf("failed to dispatch install queue job: %w", err)
-	}
-
-	// Update site's enabled_features
-	now := time.Now()
-	feature := models.EnabledFeature{
-		Name:      "inertia",
-		QueueID:   &queue.ID,
-		EnabledAt: &now,
-	}
-	site.AddEnabledFeature(feature)
-	site.RemovePendingFeature("inertia")
-
-	if err := j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
-		"enabled_features": site.EnabledFeatures,
-		"pending_features": site.PendingFeatures,
-	}); err != nil {
-		j.Ctx.LogError(err, "Failed to update site enabled_features")
-	}
-
-	// Broadcast success
-	j.Ctx.BroadcastServerEvent(server, "site.inertia_enabled", map[string]interface{}{
-		"site_id":  site.ID,
-		"queue_id": queue.ID,
-	})
-
-	j.Ctx.LogInfo("Laravel Inertia SSR enabled successfully",
-		"site_id", site.ID,
-		"queue_id", queue.ID,
-	)
+	j.EnableFeature(ctx, site, FeatureInertia, &queue.ID, nil)
+	j.BroadcastFeatureEnabled(server, FeatureInertia, site.ID, queue.ID)
+	j.BaseJob.Ctx.LogInfo("Laravel Inertia SSR enabled successfully", "site_id", site.ID, "queue_id", queue.ID)
 
 	return nil
 }
 
-// buildInertiaCommand builds the Inertia SSR command
-func (j *EnableLaravelInertiaJob) buildInertiaCommand(site *models.Site) string {
-	// Inertia SSR runs via Node.js
-	return fmt.Sprintf("node %s/bootstrap/ssr/ssr.js",
-		site.GetApplicationDirectory())
-}
-
-// dispatchInstallQueue dispatches the InstallQueue job
-func (j *EnableLaravelInertiaJob) dispatchInstallQueue(queueID, siteID string) error {
-	task, err := NewInstallQueueTask(siteID, queueID, j.Payload.UserID)
-	if err != nil {
-		return err
-	}
-	return j.Ctx.DispatchTask(task)
-}
-
 // Failed handles job failure
 func (j *EnableLaravelInertiaJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to enable Laravel Inertia SSR",
-		"site_id", j.Payload.SiteID,
-	)
-
-	// Remove from pending features
-	site, findErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
-	if findErr == nil {
-		site.RemovePendingFeature("inertia")
-		_ = j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
-			"pending_features": site.PendingFeatures,
-		})
-	}
+	j.HandleFailure(ctx, err, j.Payload.SiteID, FeatureInertia, "Failed to enable Laravel Inertia SSR")
 }
 
 // NewEnableLaravelInertiaTask creates an enable Inertia task

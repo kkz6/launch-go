@@ -518,12 +518,12 @@ func (r *TaskRunner) invokeTaskCallbacks(ctx context.Context, taskModel *models.
 
 	// Create callback context with dependencies
 	cbCtx := &taskrunner.CallbackContext{
-		DB:          r.db,
-		Queue:       r.queue,
-		Logger:      r.logger,
-		Broadcaster: r.broadcaster,
-		Notifier:    r.notifier,
+		DB:       r.db,
+		Queue:    r.queue,
+		Logger:   r.logger,
+		Notifier: r.notifier,
 	}
+	cbCtx.SetBroadcaster(r.broadcaster)
 
 	var err error
 	if result != nil {
