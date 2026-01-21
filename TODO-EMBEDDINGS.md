@@ -8222,6 +8222,1657 @@ logs := collection.FilterMap(server.Services,
 
 ---
 
+## 111. Route Middleware Chain Consolidation (P1)
+
+**Problem:** 17+ repeated middleware chain declarations across route registrations.
+
+**Files affected:**
+- `internal/modules/server/routes.go:20-45`
+- `internal/modules/site/routes.go:18-42`
+- `internal/modules/auth/routes.go:15-38`
+- `internal/modules/git/routes.go:12-35`
+- `internal/modules/database/routes.go:10-28`
+- `internal/modules/backup/routes.go:8-25`
+- `internal/modules/dns/routes.go:10-30`
+
+**Current (repeated 17+ times):**
+```go
+func RegisterRoutes(app *fiber.App, h *handlers.ServerHandler, auth *middleware.AuthMiddleware) {
+    api := app.Group("/api")
+
+    servers := api.Group("/servers",
+        auth.RequireAuth(),
+        auth.RequireTeam(),
+    )
+
+    servers.Get("/", h.List)
+    servers.Post("/", h.Create)
+    servers.Get("/:serverId", auth.RequireServerAccess(), h.Get)
+    servers.Put("/:serverId", auth.RequireServerAccess(), h.Update)
+    servers.Delete("/:serverId", auth.RequireServerAccess(), h.Delete)
+}
+```
+
+**Solution - Fluent Route Builder:**
+```go
+// internal/pkg/router/builder.go
+package router
+
+type RouteBuilder struct {
+    app        *fiber.App
+    auth       AuthMiddleware
+    basePath   string
+    middleware []fiber.Handler
+}
+
+type AuthMiddleware interface {
+    RequireAuth() fiber.Handler
+    RequireTeam() fiber.Handler
+    RequireServerAccess() fiber.Handler
+    RequireSiteAccess() fiber.Handler
+}
+
+func New(app *fiber.App, auth AuthMiddleware) *RouteBuilder {
+    return &RouteBuilder{app: app, auth: auth, basePath: "/api"}
+}
+
+func (b *RouteBuilder) Resource(name string) *ResourceBuilder {
+    return &ResourceBuilder{
+        builder: b,
+        name:    name,
+        group:   b.app.Group(b.basePath + "/" + name, b.auth.RequireAuth(), b.auth.RequireTeam()),
+    }
+}
+
+type ResourceBuilder struct {
+    builder     *RouteBuilder
+    name        string
+    group       fiber.Router
+    paramName   string
+    accessCheck fiber.Handler
+}
+
+func (r *ResourceBuilder) WithParam(param string, accessCheck fiber.Handler) *ResourceBuilder {
+    r.paramName = param
+    r.accessCheck = accessCheck
+    return r
+}
+
+func (r *ResourceBuilder) CRUD(h CRUDHandler) *ResourceBuilder {
+    r.group.Get("/", h.List)
+    r.group.Post("/", h.Create)
+
+    if r.accessCheck != nil {
+        r.group.Get("/:"+r.paramName, r.accessCheck, h.Get)
+        r.group.Put("/:"+r.paramName, r.accessCheck, h.Update)
+        r.group.Delete("/:"+r.paramName, r.accessCheck, h.Delete)
+    }
+    return r
+}
+
+// CRUDHandler interface for standard handlers
+type CRUDHandler interface {
+    List(c *fiber.Ctx) error
+    Create(c *fiber.Ctx) error
+    Get(c *fiber.Ctx) error
+    Update(c *fiber.Ctx) error
+    Delete(c *fiber.Ctx) error
+}
+```
+
+**Refactored Usage:**
+```go
+func RegisterRoutes(app *fiber.App, h *handlers.ServerHandler, auth *middleware.AuthMiddleware) {
+    router.New(app, auth).
+        Resource("servers").
+        WithParam("serverId", auth.RequireServerAccess()).
+        CRUD(h)
+}
+```
+
+**Impact:** ~340 lines saved across all route files
+
+---
+
+## 112. Handler Module Aggregation (P2)
+
+**Problem:** Each module repeats handler creation with identical dependency injection patterns.
+
+**Files affected:**
+- `internal/modules/server/module.go:45-78`
+- `internal/modules/site/module.go:42-75`
+- `internal/modules/auth/module.go:38-65`
+- `internal/modules/database/module.go:35-58`
+- `internal/modules/backup/module.go:32-52`
+
+**Current (repeated 8+ times):**
+```go
+type Module struct {
+    db     *gorm.DB
+    redis  *redis.Client
+    config *config.Config
+    logger zerolog.Logger
+    queue  *asynq.Client
+}
+
+func NewModule(db *gorm.DB, redis *redis.Client, cfg *config.Config, logger zerolog.Logger, queue *asynq.Client) *Module {
+    return &Module{
+        db:     db,
+        redis:  redis,
+        config: cfg,
+        logger: logger,
+        queue:  queue,
+    }
+}
+
+func (m *Module) Handlers() *Handlers {
+    repo := repositories.NewServerRepository(m.db)
+    service := services.NewServerService(repo, m.queue, m.logger)
+    return &Handlers{
+        Server: handlers.NewServerHandler(service, m.logger),
+    }
+}
+```
+
+**Solution - Base Module with Factory:**
+```go
+// internal/pkg/module/base.go
+package module
+
+type Dependencies struct {
+    DB     *gorm.DB
+    Redis  *redis.Client
+    Config *config.Config
+    Logger zerolog.Logger
+    Queue  *asynq.Client
+}
+
+type BaseModule struct {
+    deps Dependencies
+}
+
+func NewBaseModule(deps Dependencies) BaseModule {
+    return BaseModule{deps: deps}
+}
+
+func (m *BaseModule) DB() *gorm.DB           { return m.deps.DB }
+func (m *BaseModule) Redis() *redis.Client   { return m.deps.Redis }
+func (m *BaseModule) Config() *config.Config { return m.deps.Config }
+func (m *BaseModule) Logger() zerolog.Logger { return m.deps.Logger }
+func (m *BaseModule) Queue() *asynq.Client   { return m.deps.Queue }
+
+func (m *BaseModule) ChildLogger(name string) zerolog.Logger {
+    return m.deps.Logger.With().Str("module", name).Logger()
+}
+```
+
+**Refactored Module:**
+```go
+type Module struct {
+    module.BaseModule
+}
+
+func NewModule(deps module.Dependencies) *Module {
+    return &Module{BaseModule: module.NewBaseModule(deps)}
+}
+
+func (m *Module) Handlers() *Handlers {
+    repo := repositories.NewServerRepository(m.DB())
+    service := services.NewServerService(repo, m.Queue(), m.ChildLogger("server"))
+    return &Handlers{Server: handlers.NewServerHandler(service, m.ChildLogger("handler"))}
+}
+```
+
+**Impact:** ~200 lines saved, consistent module initialization
+
+---
+
+## 113. Webhook Route Standardization (P2)
+
+**Problem:** Webhook routes have inconsistent patterns for signature verification and payload parsing.
+
+**Files affected:**
+- `internal/modules/git/routes.go:45-68` - GitHub/GitLab/Bitbucket webhooks
+- `internal/modules/billing/routes.go:35-52` - Stripe/Paddle webhooks
+- `internal/modules/server/routes.go:78-92` - Provider callback webhooks
+
+**Current (repeated 5+ times):**
+```go
+webhooks := api.Group("/webhooks")
+webhooks.Post("/github", h.GitHubWebhook)
+webhooks.Post("/gitlab", h.GitLabWebhook)
+webhooks.Post("/bitbucket", h.BitbucketWebhook)
+
+// Each handler repeats:
+func (h *WebhookHandler) GitHubWebhook(c *fiber.Ctx) error {
+    signature := c.Get("X-Hub-Signature-256")
+    if !verifyGitHubSignature(c.Body(), signature, h.secret) {
+        return fiber.ErrUnauthorized
+    }
+
+    eventType := c.Get("X-GitHub-Event")
+    // parse and dispatch...
+}
+```
+
+**Solution - Webhook Middleware Factory:**
+```go
+// internal/pkg/webhook/middleware.go
+package webhook
+
+type Provider string
+const (
+    GitHub    Provider = "github"
+    GitLab    Provider = "gitlab"
+    Bitbucket Provider = "bitbucket"
+    Stripe    Provider = "stripe"
+)
+
+type Config struct {
+    Provider       Provider
+    Secret         string
+    SignatureHeader string
+    EventHeader    string
+    Verifier       func(body []byte, signature, secret string) bool
+}
+
+var providerConfigs = map[Provider]Config{
+    GitHub: {
+        SignatureHeader: "X-Hub-Signature-256",
+        EventHeader:     "X-GitHub-Event",
+        Verifier:        verifyHMACSHA256,
+    },
+    GitLab: {
+        SignatureHeader: "X-Gitlab-Token",
+        EventHeader:     "X-Gitlab-Event",
+        Verifier:        verifyTokenMatch,
+    },
+    // ... other providers
+}
+
+func Verify(provider Provider, secret string) fiber.Handler {
+    cfg := providerConfigs[provider]
+    return func(c *fiber.Ctx) error {
+        sig := c.Get(cfg.SignatureHeader)
+        if !cfg.Verifier(c.Body(), sig, secret) {
+            return fiber.ErrUnauthorized
+        }
+        c.Locals("webhook_event", c.Get(cfg.EventHeader))
+        return c.Next()
+    }
+}
+```
+
+**Refactored Routes:**
+```go
+webhooks := api.Group("/webhooks")
+webhooks.Post("/github", webhook.Verify(webhook.GitHub, h.githubSecret), h.HandleGitWebhook)
+webhooks.Post("/gitlab", webhook.Verify(webhook.GitLab, h.gitlabSecret), h.HandleGitWebhook)
+```
+
+**Impact:** ~180 lines saved, consistent signature verification
+
+---
+
+## 114. Template Engine Consolidation (P1)
+
+**Problem:** 3 duplicate template engine implementations across modules for shell script generation.
+
+**Files affected:**
+- `internal/modules/site/tasks/templates/engine.go:1-180`
+- `internal/modules/server/tasks/templates/engine.go:1-165`
+- `internal/modules/database/tasks/templates/engine.go:1-120`
+
+**Current (duplicated 3 times):**
+```go
+type TemplateEngine struct {
+    templates map[string]*template.Template
+    funcMap   template.FuncMap
+}
+
+func NewTemplateEngine() *TemplateEngine {
+    return &TemplateEngine{
+        templates: make(map[string]*template.Template),
+        funcMap: template.FuncMap{
+            "quote":   shellQuote,
+            "join":    strings.Join,
+            "indent":  indentLines,
+            "default": defaultValue,
+        },
+    }
+}
+
+func (e *TemplateEngine) Load(name, content string) error {
+    tmpl, err := template.New(name).Funcs(e.funcMap).Parse(content)
+    if err != nil {
+        return err
+    }
+    e.templates[name] = tmpl
+    return nil
+}
+
+func (e *TemplateEngine) Execute(name string, data any) (string, error) {
+    tmpl, ok := e.templates[name]
+    if !ok {
+        return "", fmt.Errorf("template %s not found", name)
+    }
+    var buf bytes.Buffer
+    if err := tmpl.Execute(&buf, data); err != nil {
+        return "", err
+    }
+    return buf.String(), nil
+}
+
+// Shell-specific helpers (duplicated)
+func shellQuote(s string) string {
+    return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+func indentLines(indent int, s string) string {
+    prefix := strings.Repeat(" ", indent)
+    lines := strings.Split(s, "\n")
+    for i := range lines {
+        lines[i] = prefix + lines[i]
+    }
+    return strings.Join(lines, "\n")
+}
+```
+
+**Solution - Unified Script Template Engine:**
+```go
+// internal/pkg/script/template.go
+package script
+
+import (
+    "bytes"
+    "embed"
+    "strings"
+    "text/template"
+)
+
+type TemplateEngine struct {
+    templates *template.Template
+}
+
+// DefaultFuncs provides shell-aware template functions
+var DefaultFuncs = template.FuncMap{
+    "quote":     ShellQuote,
+    "join":      strings.Join,
+    "indent":    IndentLines,
+    "default":   DefaultValue,
+    "env":       EnvVar,
+    "condition": Conditional,
+    "loop":      LoopRange,
+}
+
+func NewTemplateEngine() *TemplateEngine {
+    return &TemplateEngine{
+        templates: template.New("").Funcs(DefaultFuncs),
+    }
+}
+
+func (e *TemplateEngine) LoadFS(fs embed.FS, pattern string) error {
+    var err error
+    e.templates, err = e.templates.ParseFS(fs, pattern)
+    return err
+}
+
+func (e *TemplateEngine) LoadString(name, content string) error {
+    _, err := e.templates.New(name).Parse(content)
+    return err
+}
+
+func (e *TemplateEngine) Execute(name string, data any) (string, error) {
+    var buf bytes.Buffer
+    if err := e.templates.ExecuteTemplate(&buf, name, data); err != nil {
+        return "", err
+    }
+    return buf.String(), nil
+}
+
+// Shell helper functions
+func ShellQuote(s string) string {
+    return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'"
+}
+
+func IndentLines(indent int, s string) string {
+    prefix := strings.Repeat(" ", indent)
+    lines := strings.Split(s, "\n")
+    for i := range lines {
+        if lines[i] != "" {
+            lines[i] = prefix + lines[i]
+        }
+    }
+    return strings.Join(lines, "\n")
+}
+
+func DefaultValue(def, val any) any {
+    if val == nil || val == "" {
+        return def
+    }
+    return val
+}
+
+func EnvVar(name string) string {
+    return fmt.Sprintf("${%s}", name)
+}
+
+func Conditional(cond bool, trueVal, falseVal string) string {
+    if cond {
+        return trueVal
+    }
+    return falseVal
+}
+```
+
+**Impact:** ~465 lines saved (3x 155 line duplicates), single source of truth
+
+---
+
+## 115. Nil-Safe Dereference Helpers (P1)
+
+**Problem:** 150+ pointer nil check + dereference patterns across codebase.
+
+**Files affected:**
+- `internal/modules/server/dto/responses.go:45-180` (30+ instances)
+- `internal/modules/site/dto/responses.go:38-165` (25+ instances)
+- `internal/modules/auth/dto/responses.go:52-142` (20+ instances)
+- `internal/modules/site/services/deployment_service.go:280-450` (35+ instances)
+- `internal/modules/server/services/server_service.go:120-280` (25+ instances)
+
+**Current (repeated 150+ times):**
+```go
+// Pattern 1: Simple dereference with default
+var installedAt string
+if site.InstalledAt != nil {
+    installedAt = site.InstalledAt.Format(time.RFC3339)
+}
+
+// Pattern 2: Conditional field assignment
+response := SiteResponse{
+    Name: site.Name,
+}
+if site.Repository != nil {
+    response.Repository = *site.Repository
+}
+
+// Pattern 3: Nested pointer access
+var branchName string
+if site.DeploymentConfig != nil && site.DeploymentConfig.Branch != nil {
+    branchName = *site.DeploymentConfig.Branch
+}
+```
+
+**Solution - Generic Nil-Safe Helpers:**
+```go
+// internal/pkg/ptr/safe.go
+package ptr
+
+// Deref safely dereferences a pointer, returning zero value if nil
+func Deref[T any](p *T) T {
+    if p == nil {
+        var zero T
+        return zero
+    }
+    return *p
+}
+
+// DerefOr safely dereferences a pointer with a default value
+func DerefOr[T any](p *T, def T) T {
+    if p == nil {
+        return def
+    }
+    return *p
+}
+
+// DerefMap applies a transformation to a non-nil pointer value
+func DerefMap[T, U any](p *T, fn func(T) U) *U {
+    if p == nil {
+        return nil
+    }
+    result := fn(*p)
+    return &result
+}
+
+// DerefFormat formats a time pointer with default empty string
+func DerefFormat(t *time.Time, layout string) string {
+    if t == nil {
+        return ""
+    }
+    return t.Format(layout)
+}
+
+// Of creates a pointer to the given value
+func Of[T any](v T) *T {
+    return &v
+}
+
+// Coalesce returns the first non-nil pointer value
+func Coalesce[T any](ptrs ...*T) *T {
+    for _, p := range ptrs {
+        if p != nil {
+            return p
+        }
+    }
+    return nil
+}
+
+// CoalesceValue returns the first non-nil pointer's value or default
+func CoalesceValue[T any](def T, ptrs ...*T) T {
+    for _, p := range ptrs {
+        if p != nil {
+            return *p
+        }
+    }
+    return def
+}
+```
+
+**Refactored Usage:**
+```go
+response := SiteResponse{
+    Name:        site.Name,
+    InstalledAt: ptr.DerefFormat(site.InstalledAt, time.RFC3339),
+    Repository:  ptr.Deref(site.Repository),
+    Branch:      ptr.DerefOr(site.DeploymentConfig.Branch, "main"),
+}
+```
+
+**Impact:** ~450 lines saved, cleaner DTO conversions
+
+---
+
+## 116. JSONMap Type Deduplication (P2)
+
+**Problem:** 3 duplicate JSONMap type implementations for JSON column handling.
+
+**Files affected:**
+- `internal/modules/server/models/server.go:185-220`
+- `internal/modules/site/models/site.go:165-200`
+- `internal/modules/billing/models/subscription.go:142-175`
+
+**Current (duplicated 3 times):**
+```go
+type JSONMap map[string]interface{}
+
+func (j *JSONMap) Scan(value interface{}) error {
+    if value == nil {
+        *j = nil
+        return nil
+    }
+    bytes, ok := value.([]byte)
+    if !ok {
+        return errors.New("type assertion to []byte failed")
+    }
+    return json.Unmarshal(bytes, j)
+}
+
+func (j JSONMap) Value() (driver.Value, error) {
+    if j == nil {
+        return nil, nil
+    }
+    return json.Marshal(j)
+}
+
+func (j JSONMap) GetString(key string) string {
+    if v, ok := j[key].(string); ok {
+        return v
+    }
+    return ""
+}
+
+func (j JSONMap) GetInt(key string) int {
+    if v, ok := j[key].(float64); ok {
+        return int(v)
+    }
+    return 0
+}
+
+func (j JSONMap) GetBool(key string) bool {
+    if v, ok := j[key].(bool); ok {
+        return v
+    }
+    return false
+}
+```
+
+**Solution - Centralized JSON Types:**
+```go
+// internal/pkg/dbtype/json.go
+package dbtype
+
+import (
+    "database/sql/driver"
+    "encoding/json"
+    "errors"
+)
+
+// JSONMap is a map that can be stored in a JSON column
+type JSONMap map[string]any
+
+func (j *JSONMap) Scan(value any) error {
+    if value == nil {
+        *j = nil
+        return nil
+    }
+    bytes, ok := value.([]byte)
+    if !ok {
+        return errors.New("type assertion to []byte failed")
+    }
+    return json.Unmarshal(bytes, j)
+}
+
+func (j JSONMap) Value() (driver.Value, error) {
+    if j == nil {
+        return nil, nil
+    }
+    return json.Marshal(j)
+}
+
+// Typed accessors with generics
+func Get[T any](j JSONMap, key string) (T, bool) {
+    val, ok := j[key]
+    if !ok {
+        var zero T
+        return zero, false
+    }
+    typed, ok := val.(T)
+    return typed, ok
+}
+
+func GetOr[T any](j JSONMap, key string, def T) T {
+    if val, ok := Get[T](j, key); ok {
+        return val
+    }
+    return def
+}
+
+// JSONSlice is a slice that can be stored in a JSON column
+type JSONSlice[T any] []T
+
+func (j *JSONSlice[T]) Scan(value any) error {
+    if value == nil {
+        *j = nil
+        return nil
+    }
+    bytes, ok := value.([]byte)
+    if !ok {
+        return errors.New("type assertion to []byte failed")
+    }
+    return json.Unmarshal(bytes, j)
+}
+
+func (j JSONSlice[T]) Value() (driver.Value, error) {
+    if j == nil {
+        return nil, nil
+    }
+    return json.Marshal(j)
+}
+```
+
+**Impact:** ~110 lines saved, type-safe accessors
+
+---
+
+## 117. Enum SQL Scanner Generator (P2)
+
+**Problem:** 40+ enum types repeat identical Scan/Value implementations.
+
+**Files affected:**
+- `internal/modules/server/enums/status.go:25-48`
+- `internal/modules/site/enums/deployment_status.go:28-52`
+- `internal/modules/site/enums/site_type.go:22-45`
+- `internal/modules/database/enums/database_type.go:20-42`
+- `internal/modules/backup/enums/backup_status.go:18-40`
+- Plus 35+ more enum files
+
+**Current (repeated 40+ times):**
+```go
+type ServerStatus string
+
+const (
+    ServerStatusPending   ServerStatus = "pending"
+    ServerStatusActive    ServerStatus = "active"
+    ServerStatusFailed    ServerStatus = "failed"
+    ServerStatusDeleting  ServerStatus = "deleting"
+)
+
+func (s *ServerStatus) Scan(value interface{}) error {
+    if value == nil {
+        *s = ""
+        return nil
+    }
+    sv, ok := value.(string)
+    if !ok {
+        bs, ok := value.([]byte)
+        if !ok {
+            return errors.New("invalid type for ServerStatus")
+        }
+        sv = string(bs)
+    }
+    *s = ServerStatus(sv)
+    return nil
+}
+
+func (s ServerStatus) Value() (driver.Value, error) {
+    return string(s), nil
+}
+
+func (s ServerStatus) String() string {
+    return string(s)
+}
+
+func (s ServerStatus) IsValid() bool {
+    switch s {
+    case ServerStatusPending, ServerStatusActive, ServerStatusFailed, ServerStatusDeleting:
+        return true
+    }
+    return false
+}
+```
+
+**Solution - Enum Base Type with Generics:**
+```go
+// internal/pkg/enum/base.go
+package enum
+
+import (
+    "database/sql/driver"
+    "errors"
+)
+
+// StringEnum is a constraint for string-based enum types
+type StringEnum interface {
+    ~string
+    IsValid() bool
+}
+
+// Scan provides a generic Scan implementation for string enums
+func Scan[E StringEnum](e *E, value any) error {
+    if value == nil {
+        *e = E("")
+        return nil
+    }
+    switch v := value.(type) {
+    case string:
+        *e = E(v)
+    case []byte:
+        *e = E(string(v))
+    default:
+        return errors.New("invalid type for enum")
+    }
+    return nil
+}
+
+// Value provides a generic Value implementation for string enums
+func Value[E StringEnum](e E) (driver.Value, error) {
+    return string(e), nil
+}
+
+// internal/pkg/enum/generator.go (for code generation)
+// go:generate enumgen -type=ServerStatus -values=pending,active,failed,deleting
+```
+
+**Refactored Enum:**
+```go
+type ServerStatus string
+
+const (
+    ServerStatusPending  ServerStatus = "pending"
+    ServerStatusActive   ServerStatus = "active"
+    ServerStatusFailed   ServerStatus = "failed"
+    ServerStatusDeleting ServerStatus = "deleting"
+)
+
+var validServerStatuses = map[ServerStatus]bool{
+    ServerStatusPending: true, ServerStatusActive: true,
+    ServerStatusFailed: true, ServerStatusDeleting: true,
+}
+
+func (s ServerStatus) IsValid() bool { return validServerStatuses[s] }
+func (s *ServerStatus) Scan(v any) error { return enum.Scan(s, v) }
+func (s ServerStatus) Value() (driver.Value, error) { return enum.Value(s) }
+```
+
+**Impact:** ~800 lines saved across 40+ enum files (~20 lines each)
+
+---
+
+## 118. SSH Stream Reader Pattern (P2)
+
+**Problem:** SSH output streaming logic repeated across WebSocket handlers and task execution.
+
+**Files affected:**
+- `internal/modules/websocket/handlers/logs.go:85-145`
+- `internal/modules/websocket/handlers/terminal.go:92-158`
+- `internal/modules/websocket/handlers/script_execution.go:78-135`
+- `internal/pkg/ssh/client.go:180-240`
+- `internal/modules/server/services/command_service.go:95-155`
+
+**Current (repeated 5+ times):**
+```go
+func streamOutput(session *ssh.Session, ws *websocket.Conn, done chan struct{}) {
+    stdout, _ := session.StdoutPipe()
+    stderr, _ := session.StderrPipe()
+
+    var wg sync.WaitGroup
+    wg.Add(2)
+
+    go func() {
+        defer wg.Done()
+        reader := bufio.NewReader(stdout)
+        for {
+            line, err := reader.ReadString('\n')
+            if err != nil {
+                return
+            }
+            ws.WriteMessage(websocket.TextMessage, []byte(line))
+        }
+    }()
+
+    go func() {
+        defer wg.Done()
+        reader := bufio.NewReader(stderr)
+        for {
+            line, err := reader.ReadString('\n')
+            if err != nil {
+                return
+            }
+            ws.WriteMessage(websocket.TextMessage, []byte("[stderr] " + line))
+        }
+    }()
+
+    wg.Wait()
+    close(done)
+}
+```
+
+**Solution - Unified Stream Handler:**
+```go
+// internal/pkg/ssh/stream.go
+package ssh
+
+import (
+    "bufio"
+    "context"
+    "io"
+    "sync"
+)
+
+type StreamHandler interface {
+    OnStdout(line string) error
+    OnStderr(line string) error
+    OnComplete(exitCode int) error
+}
+
+type StreamOptions struct {
+    BufferSize   int
+    LineMode     bool  // true for line-by-line, false for chunk-based
+    MergeStderr  bool  // merge stderr into stdout
+}
+
+func DefaultStreamOptions() StreamOptions {
+    return StreamOptions{
+        BufferSize: 4096,
+        LineMode:   true,
+    }
+}
+
+func StreamSession(ctx context.Context, session *Session, handler StreamHandler, opts StreamOptions) error {
+    stdout, _ := session.StdoutPipe()
+    stderr, _ := session.StderrPipe()
+
+    var wg sync.WaitGroup
+    errCh := make(chan error, 2)
+
+    streamReader := func(r io.Reader, isStderr bool) {
+        defer wg.Done()
+        reader := bufio.NewReaderSize(r, opts.BufferSize)
+
+        for {
+            select {
+            case <-ctx.Done():
+                return
+            default:
+            }
+
+            line, err := reader.ReadString('\n')
+            if line != "" {
+                var sendErr error
+                if isStderr && !opts.MergeStderr {
+                    sendErr = handler.OnStderr(line)
+                } else {
+                    sendErr = handler.OnStdout(line)
+                }
+                if sendErr != nil {
+                    errCh <- sendErr
+                    return
+                }
+            }
+            if err != nil {
+                return
+            }
+        }
+    }
+
+    wg.Add(2)
+    go streamReader(stdout, false)
+    go streamReader(stderr, true)
+
+    wg.Wait()
+
+    exitCode := 0
+    if err := session.Wait(); err != nil {
+        if exitErr, ok := err.(*ssh.ExitError); ok {
+            exitCode = exitErr.ExitStatus()
+        }
+    }
+
+    return handler.OnComplete(exitCode)
+}
+
+// WebSocketStreamHandler implements StreamHandler for WebSocket connections
+type WebSocketStreamHandler struct {
+    conn *websocket.Conn
+    mu   sync.Mutex
+}
+
+func NewWebSocketStreamHandler(conn *websocket.Conn) *WebSocketStreamHandler {
+    return &WebSocketStreamHandler{conn: conn}
+}
+
+func (h *WebSocketStreamHandler) OnStdout(line string) error {
+    h.mu.Lock()
+    defer h.mu.Unlock()
+    return h.conn.WriteMessage(websocket.TextMessage, []byte(line))
+}
+
+func (h *WebSocketStreamHandler) OnStderr(line string) error {
+    h.mu.Lock()
+    defer h.mu.Unlock()
+    return h.conn.WriteMessage(websocket.TextMessage, []byte("[stderr] " + line))
+}
+
+func (h *WebSocketStreamHandler) OnComplete(exitCode int) error {
+    h.mu.Lock()
+    defer h.mu.Unlock()
+    msg := fmt.Sprintf("[exit] %d", exitCode)
+    return h.conn.WriteMessage(websocket.TextMessage, []byte(msg))
+}
+```
+
+**Impact:** ~300 lines saved, consistent streaming behavior
+
+---
+
+## 119. Home Directory Helper (P2)
+
+**Problem:** 6+ duplications of home directory path construction logic.
+
+**Files affected:**
+- `internal/modules/site/services/site_service.go:145-165`
+- `internal/modules/site/tasks/templates/deploy.go:42-58`
+- `internal/modules/server/services/ssh_key_service.go:78-92`
+- `internal/modules/backup/services/backup_service.go:55-68`
+- `internal/pkg/ssh/client.go:112-125`
+- `internal/modules/database/services/database_service.go:88-102`
+
+**Current (repeated 6+ times):**
+```go
+// Pattern 1: Get user home directory
+func getHomeDir(username string) string {
+    if username == "root" {
+        return "/root"
+    }
+    return fmt.Sprintf("/home/%s", username)
+}
+
+// Pattern 2: Get SSH authorized keys path
+func getAuthorizedKeysPath(username string) string {
+    home := getHomeDir(username)
+    return filepath.Join(home, ".ssh", "authorized_keys")
+}
+
+// Pattern 3: Get site directory
+func getSiteDir(username, siteName string) string {
+    home := getHomeDir(username)
+    return filepath.Join(home, siteName)
+}
+
+// Pattern 4: Get release directory
+func getReleaseDir(username, siteName string) string {
+    return filepath.Join(getSiteDir(username, siteName), "releases")
+}
+```
+
+**Solution - Unified Path Builder:**
+```go
+// internal/pkg/serverpath/path.go
+package serverpath
+
+import (
+    "fmt"
+    "path/filepath"
+    "time"
+)
+
+// User represents a server user for path construction
+type User struct {
+    Name string
+}
+
+func ForUser(username string) User {
+    return User{Name: username}
+}
+
+func (u User) Home() string {
+    if u.Name == "root" {
+        return "/root"
+    }
+    return fmt.Sprintf("/home/%s", u.Name)
+}
+
+func (u User) SSH() string {
+    return filepath.Join(u.Home(), ".ssh")
+}
+
+func (u User) AuthorizedKeys() string {
+    return filepath.Join(u.SSH(), "authorized_keys")
+}
+
+func (u User) KnownHosts() string {
+    return filepath.Join(u.SSH(), "known_hosts")
+}
+
+// Site represents a site for path construction
+type Site struct {
+    User     User
+    Name     string
+    Domain   string
+}
+
+func ForSite(username, siteName string) Site {
+    return Site{User: ForUser(username), Name: siteName}
+}
+
+func (s Site) Root() string {
+    return filepath.Join(s.User.Home(), s.Name)
+}
+
+func (s Site) Current() string {
+    return filepath.Join(s.Root(), "current")
+}
+
+func (s Site) Releases() string {
+    return filepath.Join(s.Root(), "releases")
+}
+
+func (s Site) Release(timestamp time.Time) string {
+    return filepath.Join(s.Releases(), timestamp.Format("20060102150405"))
+}
+
+func (s Site) Shared() string {
+    return filepath.Join(s.Root(), "shared")
+}
+
+func (s Site) Storage() string {
+    return filepath.Join(s.Shared(), "storage")
+}
+
+func (s Site) Env() string {
+    return filepath.Join(s.Shared(), ".env")
+}
+
+func (s Site) Logs() string {
+    return filepath.Join(s.Root(), "logs")
+}
+
+// System paths
+func CaddyConfig() string {
+    return "/etc/caddy/Caddyfile"
+}
+
+func CaddySites() string {
+    return "/etc/caddy/sites"
+}
+
+func PHPFPMPool(version string) string {
+    return fmt.Sprintf("/etc/php/%s/fpm/pool.d", version)
+}
+```
+
+**Refactored Usage:**
+```go
+site := serverpath.ForSite(server.Username, site.Name)
+
+releaseDir := site.Release(time.Now())
+envPath := site.Env()
+authKeys := site.User.AuthorizedKeys()
+```
+
+**Impact:** ~180 lines saved, consistent path handling
+
+---
+
+## 120. HMAC Signature Validator (P1)
+
+**Problem:** 5+ implementations of HMAC signature verification for webhooks.
+
+**Files affected:**
+- `internal/modules/git/handlers/webhook_handler.go:85-118`
+- `internal/modules/billing/handlers/stripe_handler.go:52-78`
+- `internal/modules/billing/handlers/paddle_handler.go:48-72`
+- `internal/modules/server/handlers/callback_handler.go:65-88`
+- `internal/modules/auth/handlers/oauth_handler.go:92-115`
+
+**Current (repeated 5+ times):**
+```go
+// GitHub webhook verification
+func verifyGitHubSignature(payload []byte, signature string, secret string) bool {
+    if signature == "" {
+        return false
+    }
+
+    parts := strings.SplitN(signature, "=", 2)
+    if len(parts) != 2 || parts[0] != "sha256" {
+        return false
+    }
+
+    mac := hmac.New(sha256.New, []byte(secret))
+    mac.Write(payload)
+    expected := hex.EncodeToString(mac.Sum(nil))
+
+    return hmac.Equal([]byte(parts[1]), []byte(expected))
+}
+
+// Stripe webhook verification (similar but different format)
+func verifyStripeSignature(payload []byte, header string, secret string) bool {
+    parts := strings.Split(header, ",")
+    var timestamp, signature string
+    for _, part := range parts {
+        kv := strings.SplitN(part, "=", 2)
+        if len(kv) == 2 {
+            switch kv[0] {
+            case "t":
+                timestamp = kv[1]
+            case "v1":
+                signature = kv[1]
+            }
+        }
+    }
+    // verify...
+}
+```
+
+**Solution - Unified Signature Verifier:**
+```go
+// internal/pkg/signature/hmac.go
+package signature
+
+import (
+    "crypto/hmac"
+    "crypto/sha256"
+    "crypto/sha512"
+    "encoding/hex"
+    "hash"
+    "strings"
+    "time"
+)
+
+type Algorithm string
+
+const (
+    SHA256 Algorithm = "sha256"
+    SHA512 Algorithm = "sha512"
+)
+
+type SignatureFormat string
+
+const (
+    // FormatPrefixed: "sha256=abc123..."
+    FormatPrefixed SignatureFormat = "prefixed"
+    // FormatRaw: "abc123..."
+    FormatRaw SignatureFormat = "raw"
+    // FormatStripe: "t=timestamp,v1=signature"
+    FormatStripe SignatureFormat = "stripe"
+)
+
+type Verifier struct {
+    algorithm Algorithm
+    format    SignatureFormat
+    maxAge    time.Duration  // For timestamp-based signatures
+}
+
+func NewVerifier(algo Algorithm, format SignatureFormat) *Verifier {
+    return &Verifier{
+        algorithm: algo,
+        format:    format,
+    }
+}
+
+func (v *Verifier) WithMaxAge(d time.Duration) *Verifier {
+    v.maxAge = d
+    return v
+}
+
+func (v *Verifier) Verify(payload []byte, signatureHeader, secret string) bool {
+    switch v.format {
+    case FormatPrefixed:
+        return v.verifyPrefixed(payload, signatureHeader, secret)
+    case FormatRaw:
+        return v.verifyRaw(payload, signatureHeader, secret)
+    case FormatStripe:
+        return v.verifyStripe(payload, signatureHeader, secret)
+    }
+    return false
+}
+
+func (v *Verifier) verifyPrefixed(payload []byte, header, secret string) bool {
+    parts := strings.SplitN(header, "=", 2)
+    if len(parts) != 2 {
+        return false
+    }
+    expected := v.compute(payload, secret)
+    return hmac.Equal([]byte(parts[1]), []byte(expected))
+}
+
+func (v *Verifier) compute(payload []byte, secret string) string {
+    var h func() hash.Hash
+    switch v.algorithm {
+    case SHA256:
+        h = sha256.New
+    case SHA512:
+        h = sha512.New
+    default:
+        h = sha256.New
+    }
+    mac := hmac.New(h, []byte(secret))
+    mac.Write(payload)
+    return hex.EncodeToString(mac.Sum(nil))
+}
+
+func (v *Verifier) Sign(payload []byte, secret string) string {
+    return v.compute(payload, secret)
+}
+
+// Pre-configured verifiers for common providers
+var (
+    GitHub    = NewVerifier(SHA256, FormatPrefixed)
+    GitLab    = NewVerifier(SHA256, FormatRaw) // GitLab uses token match, but we can adapt
+    Stripe    = NewVerifier(SHA256, FormatStripe).WithMaxAge(5 * time.Minute)
+    Paddle    = NewVerifier(SHA256, FormatPrefixed)
+)
+```
+
+**Impact:** ~200 lines saved, secure signature verification
+
+---
+
+## 121. Token Generator Consolidation (P2)
+
+**Problem:** Multiple token generation patterns with inconsistent entropy and formatting.
+
+**Files affected:**
+- `internal/modules/auth/services/auth_service.go:125-152` - API tokens
+- `internal/modules/server/services/provision_service.go:88-108` - Callback tokens
+- `internal/modules/site/services/deployment_service.go:165-182` - Deploy keys
+- `internal/modules/git/services/webhook_service.go:72-88` - Webhook secrets
+- `internal/modules/backup/services/backup_service.go:95-110` - Encryption keys
+
+**Current (repeated 5+ times):**
+```go
+// Pattern 1: Random hex token
+func generateToken() string {
+    b := make([]byte, 32)
+    rand.Read(b)
+    return hex.EncodeToString(b)
+}
+
+// Pattern 2: URL-safe base64
+func generateURLSafeToken() string {
+    b := make([]byte, 32)
+    rand.Read(b)
+    return base64.URLEncoding.EncodeToString(b)
+}
+
+// Pattern 3: Prefixed token (like Stripe)
+func generateAPIToken() string {
+    b := make([]byte, 24)
+    rand.Read(b)
+    return "lnch_" + base64.RawURLEncoding.EncodeToString(b)
+}
+
+// Pattern 4: Short numeric code
+func generateVerificationCode() string {
+    n, _ := rand.Int(rand.Reader, big.NewInt(1000000))
+    return fmt.Sprintf("%06d", n.Int64())
+}
+```
+
+**Solution - Unified Token Generator:**
+```go
+// internal/pkg/token/generator.go
+package token
+
+import (
+    "crypto/rand"
+    "encoding/base64"
+    "encoding/hex"
+    "fmt"
+    "math/big"
+    "strings"
+)
+
+type Encoding int
+
+const (
+    Hex Encoding = iota
+    Base64
+    Base64URL
+    Base64URLRaw
+)
+
+type Generator struct {
+    length   int
+    encoding Encoding
+    prefix   string
+}
+
+func New(byteLength int) *Generator {
+    return &Generator{
+        length:   byteLength,
+        encoding: Hex,
+    }
+}
+
+func (g *Generator) WithEncoding(e Encoding) *Generator {
+    g.encoding = e
+    return g
+}
+
+func (g *Generator) WithPrefix(prefix string) *Generator {
+    g.prefix = prefix
+    return g
+}
+
+func (g *Generator) Generate() (string, error) {
+    b := make([]byte, g.length)
+    if _, err := rand.Read(b); err != nil {
+        return "", err
+    }
+
+    var encoded string
+    switch g.encoding {
+    case Hex:
+        encoded = hex.EncodeToString(b)
+    case Base64:
+        encoded = base64.StdEncoding.EncodeToString(b)
+    case Base64URL:
+        encoded = base64.URLEncoding.EncodeToString(b)
+    case Base64URLRaw:
+        encoded = base64.RawURLEncoding.EncodeToString(b)
+    }
+
+    if g.prefix != "" {
+        return g.prefix + encoded, nil
+    }
+    return encoded, nil
+}
+
+func (g *Generator) MustGenerate() string {
+    t, err := g.Generate()
+    if err != nil {
+        panic(err)
+    }
+    return t
+}
+
+// Convenience functions for common token types
+func APIToken() string {
+    return New(24).WithEncoding(Base64URLRaw).WithPrefix("lnch_").MustGenerate()
+}
+
+func WebhookSecret() string {
+    return New(32).WithEncoding(Hex).MustGenerate()
+}
+
+func CallbackToken() string {
+    return New(16).WithEncoding(Base64URLRaw).MustGenerate()
+}
+
+func VerificationCode(digits int) string {
+    max := int64(1)
+    for i := 0; i < digits; i++ {
+        max *= 10
+    }
+    n, _ := rand.Int(rand.Reader, big.NewInt(max))
+    return fmt.Sprintf("%0*d", digits, n.Int64())
+}
+
+func EncryptionKey() []byte {
+    key := make([]byte, 32)
+    rand.Read(key)
+    return key
+}
+```
+
+**Impact:** ~150 lines saved, consistent token generation
+
+---
+
+## 122. Time Expiration Checker (P2)
+
+**Problem:** 8+ expiration check patterns repeated across auth, billing, and cache logic.
+
+**Files affected:**
+- `internal/modules/auth/services/token_service.go:85-112` - Token expiration
+- `internal/modules/auth/services/password_reset_service.go:62-78` - Reset link expiration
+- `internal/modules/billing/services/subscription_service.go:145-175` - Subscription status
+- `internal/modules/server/services/provision_service.go:182-198` - Callback expiration
+- `internal/modules/site/services/ssl_service.go:125-142` - Certificate expiration
+- `internal/modules/backup/services/backup_service.go:188-205` - Retention policy
+- `internal/pkg/cache/cache.go:75-92` - Cache TTL checks
+- `internal/modules/auth/services/session_service.go:55-72` - Session expiration
+
+**Current (repeated 8+ times):**
+```go
+// Pattern 1: Simple expiration check
+func isExpired(expiresAt time.Time) bool {
+    return time.Now().After(expiresAt)
+}
+
+// Pattern 2: With grace period
+func isExpiredWithGrace(expiresAt time.Time, grace time.Duration) bool {
+    return time.Now().After(expiresAt.Add(grace))
+}
+
+// Pattern 3: Check if expiring soon
+func isExpiringSoon(expiresAt time.Time, threshold time.Duration) bool {
+    return time.Now().Add(threshold).After(expiresAt)
+}
+
+// Pattern 4: Subscription status with trial
+func getSubscriptionStatus(sub *Subscription) string {
+    now := time.Now()
+    if sub.TrialEndsAt != nil && now.Before(*sub.TrialEndsAt) {
+        return "trialing"
+    }
+    if sub.EndsAt != nil && now.After(*sub.EndsAt) {
+        return "expired"
+    }
+    if sub.EndsAt != nil && now.Add(7*24*time.Hour).After(*sub.EndsAt) {
+        return "expiring_soon"
+    }
+    return "active"
+}
+
+// Pattern 5: Certificate expiration status
+func getCertStatus(cert *Certificate) string {
+    daysUntilExpiry := time.Until(cert.ExpiresAt).Hours() / 24
+    if daysUntilExpiry < 0 {
+        return "expired"
+    } else if daysUntilExpiry < 7 {
+        return "critical"
+    } else if daysUntilExpiry < 30 {
+        return "warning"
+    }
+    return "valid"
+}
+```
+
+**Solution - Unified Expiration Helper:**
+```go
+// internal/pkg/timeutil/expiration.go
+package timeutil
+
+import "time"
+
+// Expiration provides expiration checking utilities
+type Expiration struct {
+    at   time.Time
+    now  func() time.Time // Allow mocking for tests
+}
+
+func ExpiresAt(t time.Time) Expiration {
+    return Expiration{at: t, now: time.Now}
+}
+
+func ExpiresAtPtr(t *time.Time) *Expiration {
+    if t == nil {
+        return nil
+    }
+    e := ExpiresAt(*t)
+    return &e
+}
+
+func (e Expiration) IsExpired() bool {
+    return e.now().After(e.at)
+}
+
+func (e Expiration) IsExpiredWithGrace(grace time.Duration) bool {
+    return e.now().After(e.at.Add(grace))
+}
+
+func (e Expiration) ExpiresWithin(d time.Duration) bool {
+    return e.now().Add(d).After(e.at)
+}
+
+func (e Expiration) TimeRemaining() time.Duration {
+    remaining := e.at.Sub(e.now())
+    if remaining < 0 {
+        return 0
+    }
+    return remaining
+}
+
+func (e Expiration) DaysRemaining() int {
+    return int(e.TimeRemaining().Hours() / 24)
+}
+
+// Status returns a status string based on thresholds
+type StatusThresholds struct {
+    Critical time.Duration
+    Warning  time.Duration
+}
+
+func DefaultThresholds() StatusThresholds {
+    return StatusThresholds{
+        Critical: 7 * 24 * time.Hour,
+        Warning:  30 * 24 * time.Hour,
+    }
+}
+
+func (e Expiration) Status(t StatusThresholds) string {
+    if e.IsExpired() {
+        return "expired"
+    }
+    if e.ExpiresWithin(t.Critical) {
+        return "critical"
+    }
+    if e.ExpiresWithin(t.Warning) {
+        return "warning"
+    }
+    return "valid"
+}
+
+// SubscriptionStatus handles complex subscription state
+type SubscriptionStatus struct {
+    TrialEndsAt *time.Time
+    EndsAt      *time.Time
+    GracePeriod time.Duration
+}
+
+func (s SubscriptionStatus) Status() string {
+    now := time.Now()
+
+    // Check trial
+    if s.TrialEndsAt != nil && now.Before(*s.TrialEndsAt) {
+        return "trialing"
+    }
+
+    // Check main subscription
+    if s.EndsAt == nil {
+        return "active"
+    }
+
+    exp := ExpiresAt(*s.EndsAt)
+    if exp.IsExpired() {
+        if exp.IsExpiredWithGrace(s.GracePeriod) {
+            return "expired"
+        }
+        return "grace_period"
+    }
+    if exp.ExpiresWithin(7 * 24 * time.Hour) {
+        return "expiring_soon"
+    }
+    return "active"
+}
+```
+
+**Refactored Usage:**
+```go
+// Simple expiration
+exp := timeutil.ExpiresAt(token.ExpiresAt)
+if exp.IsExpired() {
+    return errors.New("token expired")
+}
+
+// Certificate status
+certExp := timeutil.ExpiresAt(cert.ExpiresAt)
+status := certExp.Status(timeutil.DefaultThresholds())
+
+// Subscription status
+subStatus := timeutil.SubscriptionStatus{
+    TrialEndsAt: sub.TrialEndsAt,
+    EndsAt:      sub.EndsAt,
+    GracePeriod: 7 * 24 * time.Hour,
+}.Status()
+```
+
+**Impact:** ~240 lines saved, consistent time handling
+
+---
+
+## Extended Summary (Items 111-122)
+
+| Category | Items | Est. LOC Saved |
+|----------|-------|----------------|
+| Route Middleware Chain | Item 111 | ~340 lines |
+| Handler Module Aggregation | Item 112 | ~200 lines |
+| Webhook Route Standardization | Item 113 | ~180 lines |
+| Template Engine Consolidation | Item 114 | ~465 lines |
+| Nil-Safe Dereference Helpers | Item 115 | ~450 lines |
+| JSONMap Type Deduplication | Item 116 | ~110 lines |
+| Enum SQL Scanner Generator | Item 117 | ~800 lines |
+| SSH Stream Reader Pattern | Item 118 | ~300 lines |
+| Home Directory Helper | Item 119 | ~180 lines |
+| HMAC Signature Validator | Item 120 | ~200 lines |
+| Token Generator Consolidation | Item 121 | ~150 lines |
+| Time Expiration Checker | Item 122 | ~240 lines |
+| **Round 8 Total** | **12 patterns** | **~3615 lines** |
+
+---
+
 ## Updated Final Summary
 
 | Category | Items | Total LOC Saved |
@@ -8246,4 +9897,5 @@ logs := collection.FilterMap(server.Services,
 | GORM & Jobs (Round 5) | 12 patterns | ~2290 lines |
 | Context & Auth (Round 6) | 12 patterns | ~2560 lines |
 | Validation & Enums (Round 7) | 12 patterns | ~1805 lines |
-| **Grand Total** | **110 patterns** | **~16,696 lines** |
+| Routes & Crypto (Round 8) | 12 patterns | ~3615 lines |
+| **Grand Total** | **122 patterns** | **~20,311 lines** |
