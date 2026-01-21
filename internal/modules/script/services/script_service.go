@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/script/jobs"
 	"github.com/kkz6/launch-go/internal/modules/script/models"
 	"github.com/kkz6/launch-go/internal/modules/script/repositories"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/queue"
 )
@@ -135,7 +136,8 @@ func (s *ScriptService) Execute(ctx context.Context, scriptID, userID, teamID st
 		return nil, err
 	}
 
-	// Validate servers exist and user has access
+	// Validate servers exist and user has access, store them for later use
+	servers := make(map[string]*servermodels.Server)
 	for _, serverID := range req.ServerIDs {
 		server, err := s.serverRepos.Server().FindByID(ctx, serverID)
 		if err != nil {
@@ -145,6 +147,8 @@ func (s *ScriptService) Execute(ctx context.Context, scriptID, userID, teamID st
 		if server.TeamID != teamID {
 			return nil, fmt.Errorf("server %s not accessible", serverID)
 		}
+
+		servers[serverID] = server
 	}
 
 	// Generate batch ID
@@ -166,6 +170,7 @@ func (s *ScriptService) Execute(ctx context.Context, scriptID, userID, teamID st
 			BatchID:  &batchID,
 			RunAs:    &runAs,
 			Status:   models.ExecutionStatusPending,
+			Server:   servers[serverID],
 		}
 
 		if err := s.repos.Execution().Create(ctx, execution); err != nil {
