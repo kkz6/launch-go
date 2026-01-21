@@ -21,17 +21,16 @@ type InstallPhpExtensionPayload struct {
 
 // InstallPhpExtensionJob installs a PHP extension on a server
 type InstallPhpExtensionJob struct {
-	ctx     *JobContext
-	Payload InstallPhpExtensionPayload
+	pkgjobs.BaseJob[*JobContext, InstallPhpExtensionPayload]
 }
 
 func (j *InstallPhpExtensionJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Installing PHP extension",
+	j.Ctx.LogInfo("Installing PHP extension",
 		"server_id", server.ID,
 		"version", j.Payload.Version,
 		"extension", j.Payload.Extension,
@@ -39,7 +38,7 @@ func (j *InstallPhpExtensionJob) Handle(ctx context.Context) error {
 
 	task := tasks.InstallPhpExtension(j.Payload.Version, j.Payload.Extension)
 
-	result, err := j.ctx.ForServer(server).RunTask(task).
+	result, err := j.Ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		TrackInDB().
 		Dispatch(ctx)
@@ -52,13 +51,13 @@ func (j *InstallPhpExtensionJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to install PHP extension: %s", result.GetOutput())
 	}
 
-	j.ctx.LogInfo("PHP extension installed successfully",
+	j.Ctx.LogInfo("PHP extension installed successfully",
 		"server_id", server.ID,
 		"version", j.Payload.Version,
 		"extension", j.Payload.Extension,
 	)
 
-	j.ctx.BroadcastServerEvent(server, "php.extension_installed", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "php.extension_installed", map[string]any{
 		"server_id": server.ID,
 		"version":   j.Payload.Version,
 		"extension": j.Payload.Extension,
@@ -68,7 +67,7 @@ func (j *InstallPhpExtensionJob) Handle(ctx context.Context) error {
 }
 
 func (j *InstallPhpExtensionJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to install PHP extension",
+	j.Ctx.LogError(err, "Failed to install PHP extension",
 		"server_id", j.Payload.ServerID,
 		"version", j.Payload.Version,
 		"extension", j.Payload.Extension,
@@ -77,8 +76,7 @@ func (j *InstallPhpExtensionJob) Failed(ctx context.Context, err error) {
 
 func NewInstallPhpExtensionJob(ctx *JobContext, payload InstallPhpExtensionPayload) *InstallPhpExtensionJob {
 	return &InstallPhpExtensionJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

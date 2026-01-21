@@ -21,14 +21,13 @@ type RestartDaemonPayload struct {
 // RestartDaemonJob restarts a daemon on a server.
 // Similar to Laravel's Modules\Server\Jobs\RestartDaemon
 type RestartDaemonJob struct {
-	ctx     *JobContext
-	Payload RestartDaemonPayload
+	pkgjobs.BaseJob[*JobContext, RestartDaemonPayload]
 }
 
 // Handle processes the job
 func (j *RestartDaemonJob) Handle(ctx context.Context) error {
 	// Find the daemon with server preloaded
-	daemon, err := j.ctx.Repos.Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
+	daemon, err := j.Ctx.Repos.Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
 	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
@@ -38,7 +37,7 @@ func (j *RestartDaemonJob) Handle(ctx context.Context) error {
 		ProgramName: daemon.ProgramName(),
 	})
 
-	result, err := j.ctx.ForServer(daemon.Server).RunTask(task).
+	result, err := j.Ctx.ForServer(daemon.Server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -50,13 +49,13 @@ func (j *RestartDaemonJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to restart daemon: %s", result.GetOutput())
 	}
 
-	j.ctx.LogInfo("Daemon restarted successfully",
+	j.Ctx.LogInfo("Daemon restarted successfully",
 		"daemon_id", daemon.ID,
 		"server_id", daemon.ServerID,
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastServerEvent(daemon.Server, "daemon.restarted", map[string]any{
+	j.Ctx.BroadcastServerEvent(daemon.Server, "daemon.restarted", map[string]any{
 		"daemon_id": daemon.ID,
 		"server_id": daemon.ServerID,
 	})
@@ -66,7 +65,7 @@ func (j *RestartDaemonJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *RestartDaemonJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to restart daemon",
+	j.Ctx.LogError(err, "Failed to restart daemon",
 		"daemon_id", j.Payload.DaemonID,
 		"server_id", j.Payload.ServerID,
 	)
@@ -74,8 +73,7 @@ func (j *RestartDaemonJob) Failed(ctx context.Context, err error) {
 
 func NewRestartDaemonJob(ctx *JobContext, payload RestartDaemonPayload) *RestartDaemonJob {
 	return &RestartDaemonJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

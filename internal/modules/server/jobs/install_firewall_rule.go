@@ -22,14 +22,13 @@ type InstallFirewallRulePayload struct {
 // InstallFirewallRuleJob installs a firewall rule on a server.
 // Similar to Laravel's Modules\Server\Jobs\InstallFirewallRule
 type InstallFirewallRuleJob struct {
-	ctx     *JobContext
-	Payload InstallFirewallRulePayload
+	pkgjobs.BaseJob[*JobContext, InstallFirewallRulePayload]
 }
 
 // Handle processes the job
 func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 	// Find the firewall rule with server preloaded
-	rule, err := j.ctx.Repos.FirewallRule().FindByIDWithServer(ctx, j.Payload.RuleID)
+	rule, err := j.Ctx.Repos.FirewallRule().FindByIDWithServer(ctx, j.Payload.RuleID)
 	if err != nil {
 		return fmt.Errorf("failed to find firewall rule: %w", err)
 	}
@@ -46,7 +45,7 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 		fromIP,
 	)
 
-	result, err := j.ctx.ForServer(rule.Server).RunTask(task).
+	result, err := j.Ctx.ForServer(rule.Server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -59,12 +58,12 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 	}
 
 	// Mark as installed
-	if err := j.ctx.Repos.FirewallRule().MarkInstalled(ctx, rule.ID); err != nil {
+	if err := j.Ctx.Repos.FirewallRule().MarkInstalled(ctx, rule.ID); err != nil {
 		return fmt.Errorf("failed to mark rule as installed: %w", err)
 	}
 
 	// Log activity
-	logger := activity.New(j.ctx.DB).
+	logger := activity.New(j.Ctx.DB).
 		WithContext(ctx).
 		UseLog("server").
 		On(rule).
@@ -74,14 +73,14 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 	}
 	logger.Log("Firewall rule was installed")
 
-	j.ctx.LogInfo("Firewall rule installed successfully",
+	j.Ctx.LogInfo("Firewall rule installed successfully",
 		"rule_id", rule.ID,
 		"server_id", rule.ServerID,
 		"port", rule.Port,
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastServerEvent(rule.Server, "firewall_rule.installed", map[string]any{
+	j.Ctx.BroadcastServerEvent(rule.Server, "firewall_rule.installed", map[string]any{
 		"rule_id":   rule.ID,
 		"server_id": rule.ServerID,
 	})
@@ -91,21 +90,20 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *InstallFirewallRuleJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to install firewall rule",
+	j.Ctx.LogError(err, "Failed to install firewall rule",
 		"rule_id", j.Payload.RuleID,
 		"server_id", j.Payload.ServerID,
 	)
 
 	// Mark installation as failed
-	if markErr := j.ctx.Repos.FirewallRule().MarkFailed(ctx, j.Payload.RuleID); markErr != nil {
-		j.ctx.LogError(markErr, "Failed to mark firewall rule as failed")
+	if markErr := j.Ctx.Repos.FirewallRule().MarkFailed(ctx, j.Payload.RuleID); markErr != nil {
+		j.Ctx.LogError(markErr, "Failed to mark firewall rule as failed")
 	}
 }
 
 func NewInstallFirewallRuleJob(ctx *JobContext, payload InstallFirewallRulePayload) *InstallFirewallRuleJob {
 	return &InstallFirewallRuleJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

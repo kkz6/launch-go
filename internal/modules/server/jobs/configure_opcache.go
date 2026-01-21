@@ -21,20 +21,19 @@ type ConfigureOpcachePayload struct {
 
 // ConfigureOpcacheJob configures OPcache settings for a PHP version.
 type ConfigureOpcacheJob struct {
-	ctx     *JobContext
-	Payload ConfigureOpcachePayload
+	pkgjobs.BaseJob[*JobContext, ConfigureOpcachePayload]
 }
 
 // Handle processes the job
 func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 	// Find the service
-	service, err := j.ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
+	service, err := j.Ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
 	// Find the server
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -54,13 +53,13 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 			"status": "configuring",
 		},
 	}
-	if err := j.ctx.Repos.Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData); err != nil {
-		j.ctx.LogError(err, "Failed to update service status")
+	if err := j.Ctx.Repos.Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData); err != nil {
+		j.Ctx.LogError(err, "Failed to update service status")
 	}
 
 	// Create and run the configure opcache task
 	task := tasks.ConfigureOpcache(version, j.Payload.Settings)
-	result, err := j.ctx.ForServer(server).RunTask(task).
+	result, err := j.Ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		TrackInDB().
 		Dispatch(ctx)
@@ -69,7 +68,7 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 		// Mark as failed
 		typeData["opcache"].(map[string]any)["status"] = "failed"
 		typeData["opcache"].(map[string]any)["error"] = err.Error()
-		_ = j.ctx.Repos.Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData)
+		_ = j.Ctx.Repos.Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData)
 		return fmt.Errorf("failed to configure OPcache: %w", err)
 	}
 
@@ -77,7 +76,7 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 		// Mark as failed
 		typeData["opcache"].(map[string]any)["status"] = "failed"
 		typeData["opcache"].(map[string]any)["error"] = result.GetOutput()
-		_ = j.ctx.Repos.Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData)
+		_ = j.Ctx.Repos.Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData)
 		return fmt.Errorf("failed to configure OPcache: %s", result.GetOutput())
 	}
 
@@ -107,17 +106,17 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 	}
 
 	typeData["opcache"] = opcacheSettings
-	if err := j.ctx.Repos.Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData); err != nil {
-		j.ctx.LogError(err, "Failed to save OPcache settings")
+	if err := j.Ctx.Repos.Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData); err != nil {
+		j.Ctx.LogError(err, "Failed to save OPcache settings")
 	}
 
-	j.ctx.LogInfo("OPcache configuration completed",
+	j.Ctx.LogInfo("OPcache configuration completed",
 		"service_id", service.ID,
 		"server_id", server.ID,
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastServerEvent(server, "opcache.configured", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "opcache.configured", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
 	})
@@ -127,7 +126,7 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *ConfigureOpcacheJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to configure OPcache",
+	j.Ctx.LogError(err, "Failed to configure OPcache",
 		"service_id", j.Payload.ServiceID,
 		"server_id", j.Payload.ServerID,
 	)
@@ -136,8 +135,7 @@ func (j *ConfigureOpcacheJob) Failed(ctx context.Context, err error) {
 // NewConfigureOpcacheJob creates a new ConfigureOpcacheJob with the given context and payload.
 func NewConfigureOpcacheJob(ctx *JobContext, payload ConfigureOpcachePayload) *ConfigureOpcacheJob {
 	return &ConfigureOpcacheJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

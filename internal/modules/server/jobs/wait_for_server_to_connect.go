@@ -16,7 +16,7 @@ const TypeWaitForServerToConnect = "server:wait_for_connect"
 
 // Connection retry configuration
 const (
-	maxConnectionAttempts = 30          // Maximum number of connection attempts
+	maxConnectionAttempts = 30 // Maximum number of connection attempts
 	initialRetryDelay     = 10 * time.Second
 	maxRetryDelay         = 30 * time.Second
 	connectionTimeout     = 15 * time.Second
@@ -33,27 +33,26 @@ type WaitForServerToConnectPayload struct {
 // WaitForServerToConnectJob waits for a server to become accessible via SSH.
 // Once connected, it dispatches the ProvisionServer job.
 type WaitForServerToConnectJob struct {
-	ctx     *JobContext
-	Payload WaitForServerToConnectPayload
+	pkgjobs.BaseJob[*JobContext, WaitForServerToConnectPayload]
 }
 
 func (j *WaitForServerToConnectJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Update status to indicate we're waiting for connection
-	if err := j.ctx.Repos.Server().UpdateStatus(ctx, server.ID, enums.ServerStatusStarting); err != nil {
+	if err := j.Ctx.Repos.Server().UpdateStatus(ctx, server.ID, enums.ServerStatusStarting); err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
-	j.ctx.BroadcastServerEvent(server, "server.waiting_for_connection", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "server.waiting_for_connection", map[string]any{
 		"server_id": server.ID,
 		"status":    "waiting_for_connection",
 	})
 
-	j.ctx.LogInfo("Waiting for server to become accessible",
+	j.Ctx.LogInfo("Waiting for server to become accessible",
 		"server_id", server.ID,
 		"server_name", server.Name,
 	)
@@ -64,7 +63,7 @@ func (j *WaitForServerToConnectJob) Handle(ctx context.Context) error {
 	}
 
 	// Reload server with IP
-	server, err = j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err = j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to reload server: %w", err)
 	}
@@ -76,18 +75,18 @@ func (j *WaitForServerToConnectJob) Handle(ctx context.Context) error {
 	}
 
 	// Update connectivity status
-	if err := j.ctx.Repos.Server().UpdateFields(ctx, server.ID, map[string]any{
+	if err := j.Ctx.Repos.Server().UpdateFields(ctx, server.ID, map[string]any{
 		"is_connected": true,
 	}); err != nil {
-		j.ctx.LogError(err, "Failed to update connectivity status")
+		j.Ctx.LogError(err, "Failed to update connectivity status")
 	}
 
-	j.ctx.LogInfo("Server is now accessible, dispatching provisioning job",
+	j.Ctx.LogInfo("Server is now accessible, dispatching provisioning job",
 		"server_id", server.ID,
 		"attempts", attempt,
 	)
 
-	j.ctx.BroadcastServerEvent(server, "server.connected", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "server.connected", map[string]any{
 		"server_id": server.ID,
 		"status":    "connected",
 		"attempts":  attempt,
@@ -105,7 +104,7 @@ func (j *WaitForServerToConnectJob) Handle(ctx context.Context) error {
 func (j *WaitForServerToConnectJob) waitForIP(ctx context.Context) error {
 	maxIPAttempts := 30
 	for attempt := 1; attempt <= maxIPAttempts; attempt++ {
-		server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+		server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 		if err != nil {
 			return err
 		}
@@ -114,7 +113,7 @@ func (j *WaitForServerToConnectJob) waitForIP(ctx context.Context) error {
 			return nil
 		}
 
-		j.ctx.LogInfo("Waiting for server IP address",
+		j.Ctx.LogInfo("Waiting for server IP address",
 			"server_id", server.ID,
 			"attempt", attempt,
 		)
@@ -135,9 +134,9 @@ func (j *WaitForServerToConnectJob) attemptConnection(ctx context.Context) (bool
 
 	for attempt := 1; attempt <= maxConnectionAttempts; attempt++ {
 		// Reload server to get latest data (including keys)
-		server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+		server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 		if err != nil {
-			j.ctx.LogError(err, "Failed to reload server",
+			j.Ctx.LogError(err, "Failed to reload server",
 				"attempt", attempt,
 			)
 			continue
@@ -145,7 +144,7 @@ func (j *WaitForServerToConnectJob) attemptConnection(ctx context.Context) (bool
 
 		// Skip if no private key yet
 		if server.PrivateKey.IsEmpty() {
-			j.ctx.LogInfo("Server has no private key yet, waiting...",
+			j.Ctx.LogInfo("Server has no private key yet, waiting...",
 				"server_id", server.ID,
 				"attempt", attempt,
 			)
@@ -155,7 +154,7 @@ func (j *WaitForServerToConnectJob) attemptConnection(ctx context.Context) (bool
 
 		// Skip if no IP yet
 		if server.PublicIPv4 == nil || *server.PublicIPv4 == "" {
-			j.ctx.LogInfo("Server has no IP address yet, waiting...",
+			j.Ctx.LogInfo("Server has no IP address yet, waiting...",
 				"server_id", server.ID,
 				"attempt", attempt,
 			)
@@ -167,13 +166,13 @@ func (j *WaitForServerToConnectJob) attemptConnection(ctx context.Context) (bool
 		task := tasks.Whoami()
 
 		connCtx, cancel := context.WithTimeout(ctx, connectionTimeout)
-		result, err := j.ctx.ForServer(server).RunTask(task).
+		result, err := j.Ctx.ForServer(server).RunTask(task).
 			AsRoot().
 			Dispatch(connCtx)
 		cancel()
 
 		if err == nil && result != nil && result.IsSuccessful() {
-			j.ctx.LogInfo("SSH connection successful",
+			j.Ctx.LogInfo("SSH connection successful",
 				"server_id", server.ID,
 				"attempt", attempt,
 				"output", result.GetOutput(),
@@ -181,14 +180,14 @@ func (j *WaitForServerToConnectJob) attemptConnection(ctx context.Context) (bool
 			return true, attempt
 		}
 
-		j.ctx.LogInfo("SSH connection attempt failed, retrying...",
+		j.Ctx.LogInfo("SSH connection attempt failed, retrying...",
 			"server_id", server.ID,
 			"attempt", attempt,
 			"max_attempts", maxConnectionAttempts,
 			"next_delay", delay.String(),
 		)
 
-		j.ctx.BroadcastServerEvent(server, "server.connection_attempt", map[string]any{
+		j.Ctx.BroadcastServerEvent(server, "server.connection_attempt", map[string]any{
 			"server_id":    server.ID,
 			"attempt":      attempt,
 			"max_attempts": maxConnectionAttempts,
@@ -213,7 +212,7 @@ func (j *WaitForServerToConnectJob) attemptConnection(ctx context.Context) (bool
 
 // dispatchProvisionJob dispatches the ProvisionServer job
 func (j *WaitForServerToConnectJob) dispatchProvisionJob() error {
-	if j.ctx.Queue == nil {
+	if j.Ctx.Queue == nil {
 		return fmt.Errorf("queue client not available")
 	}
 
@@ -227,11 +226,11 @@ func (j *WaitForServerToConnectJob) dispatchProvisionJob() error {
 		return fmt.Errorf("failed to create provision task: %w", err)
 	}
 
-	if _, err := j.ctx.Queue.Enqueue(task); err != nil {
+	if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
 		return fmt.Errorf("failed to enqueue provision job: %w", err)
 	}
 
-	j.ctx.LogInfo("ProvisionServer job dispatched",
+	j.Ctx.LogInfo("ProvisionServer job dispatched",
 		"server_id", j.Payload.ServerID,
 	)
 
@@ -239,23 +238,23 @@ func (j *WaitForServerToConnectJob) dispatchProvisionJob() error {
 }
 
 func (j *WaitForServerToConnectJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to wait for server connection",
+	j.Ctx.LogError(err, "Failed to wait for server connection",
 		"server_id", j.Payload.ServerID,
 	)
 
 	// Update server status to failed
-	if updateErr := j.ctx.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
-		j.ctx.LogError(updateErr, "Failed to update server status to failed")
+	if updateErr := j.Ctx.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
+		j.Ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 
 	// Update connectivity status
-	_ = j.ctx.Repos.Server().UpdateFields(ctx, j.Payload.ServerID, map[string]any{
+	_ = j.Ctx.Repos.Server().UpdateFields(ctx, j.Payload.ServerID, map[string]any{
 		"is_connected": false,
 	})
 
-	server, findErr := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, findErr := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {
-		j.ctx.BroadcastServerEvent(server, "server.connection_failed", map[string]any{
+		j.Ctx.BroadcastServerEvent(server, "server.connection_failed", map[string]any{
 			"server_id": j.Payload.ServerID,
 			"error":     err.Error(),
 		})
@@ -267,8 +266,8 @@ func (j *WaitForServerToConnectJob) Failed(ctx context.Context, err error) {
 
 // dispatchCleanupJob dispatches the cleanup job for failed provisioning
 func (j *WaitForServerToConnectJob) dispatchCleanupJob(reason string) {
-	if j.ctx.Queue == nil {
-		j.ctx.LogError(nil, "Queue not available, cannot dispatch cleanup job")
+	if j.Ctx.Queue == nil {
+		j.Ctx.LogError(nil, "Queue not available, cannot dispatch cleanup job")
 		return
 	}
 
@@ -281,16 +280,16 @@ func (j *WaitForServerToConnectJob) dispatchCleanupJob(reason string) {
 		false, // Don't delete the record, keep it for debugging
 	)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to create cleanup task")
+		j.Ctx.LogError(err, "Failed to create cleanup task")
 		return
 	}
 
-	if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-		j.ctx.LogError(err, "Failed to enqueue cleanup job")
+	if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
+		j.Ctx.LogError(err, "Failed to enqueue cleanup job")
 		return
 	}
 
-	j.ctx.LogInfo("CleanupFailedProvisioning job dispatched",
+	j.Ctx.LogInfo("CleanupFailedProvisioning job dispatched",
 		"server_id", j.Payload.ServerID,
 	)
 }
@@ -298,8 +297,7 @@ func (j *WaitForServerToConnectJob) dispatchCleanupJob(reason string) {
 // NewWaitForServerToConnectJob creates a new WaitForServerToConnectJob
 func NewWaitForServerToConnectJob(ctx *JobContext, payload WaitForServerToConnectPayload) *WaitForServerToConnectJob {
 	return &WaitForServerToConnectJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
