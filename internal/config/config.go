@@ -35,34 +35,17 @@ func Load() (*Config, error) {
 	viper.AutomaticEnv()
 	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
-	// Set defaults from all config files
-	setDefaults()
-
-	// Load all configurations
+	// Load all configurations using declarative struct tags
 	return &Config{
-		App:      loadAppConfig(),
-		Database: loadDatabaseConfig(),
+		App:      configutil.Load[AppConfig](),
+		Database: configutil.Load[DatabaseConfig](),
 		Redis:    configutil.Load[RedisConfig](),
-		JWT:      loadJWTConfig(),
-		Cors:     loadCorsConfig(),
-		Queue:    loadQueueConfig(),
-		Billing:  loadBillingConfig(),
-		Git:      loadGitConfig(),
-		Slack:    loadSlackConfig(),
-		Sentry:   loadSentryConfig(),
+		JWT:      configutil.Load[JWTConfig](),
+		Cors:     configutil.Load[CorsConfig](),
+		Queue:    configutil.Load[QueueConfig](),
+		Billing:  configutil.Load[BillingConfig](),
+		Git:      configutil.Load[GitConfig](),
+		Slack:    configutil.Load[SlackConfig](),
+		Sentry:   configutil.Load[SentryConfig](),
 	}, nil
-}
-
-// setDefaults sets all default values
-func setDefaults() {
-	setAppDefaults()
-	setDatabaseDefaults()
-	// RedisConfig defaults are set via struct tags
-	setJWTDefaults()
-	setCorsDefaults()
-	setQueueDefaults()
-	setBillingDefaults()
-	setGitDefaults()
-	setSlackDefaults()
-	setSentryDefaults()
 }

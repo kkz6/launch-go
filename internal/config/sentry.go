@@ -1,45 +1,17 @@
 package config
 
-import "github.com/spf13/viper"
-
 // SentryConfig holds Sentry error tracking configuration
 type SentryConfig struct {
-	DSN              string
-	Enabled          bool
-	Environment      string
-	Debug            bool
-	SampleRate       float64
-	TracesSampleRate float64
+	DSN              string  `env:"SENTRY_DSN" default:""`
+	Enabled          bool    `env:"SENTRY_ENABLED" default:"false"`
+	Environment      string  `env:"SENTRY_ENVIRONMENT" default:""`
+	Debug            bool    `env:"SENTRY_DEBUG" default:"false"`
+	SampleRate       float64 `env:"SENTRY_SAMPLE_RATE" default:"1.0"`
+	TracesSampleRate float64 `env:"SENTRY_TRACES_SAMPLE_RATE" default:"0.1"`
 }
 
 // IsEnabled returns true if Sentry should be enabled
-// Sentry is only enabled when DSN is set and environment is production
+// Sentry is only enabled when DSN is set and Enabled flag is true
 func (c SentryConfig) IsEnabled() bool {
 	return c.Enabled && c.DSN != ""
-}
-
-func loadSentryConfig() SentryConfig {
-	env := viper.GetString("APP_ENV")
-
-	// Only enable Sentry in production by default
-	enabled := viper.GetBool("SENTRY_ENABLED")
-	if !viper.IsSet("SENTRY_ENABLED") {
-		enabled = env == "production"
-	}
-
-	return SentryConfig{
-		DSN:              viper.GetString("SENTRY_DSN"),
-		Enabled:          enabled,
-		Environment:      env,
-		Debug:            viper.GetBool("SENTRY_DEBUG"),
-		SampleRate:       viper.GetFloat64("SENTRY_SAMPLE_RATE"),
-		TracesSampleRate: viper.GetFloat64("SENTRY_TRACES_SAMPLE_RATE"),
-	}
-}
-
-func setSentryDefaults() {
-	viper.SetDefault("SENTRY_DSN", "")
-	viper.SetDefault("SENTRY_DEBUG", false)
-	viper.SetDefault("SENTRY_SAMPLE_RATE", 1.0)
-	viper.SetDefault("SENTRY_TRACES_SAMPLE_RATE", 0.1)
 }
