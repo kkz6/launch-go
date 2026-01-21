@@ -9,11 +9,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 )
 
-// Create creates a new database
-func (r *DatabaseRepository) Create(ctx context.Context, database *models.Database) error {
-	return r.Installable.Create(ctx, database)
-}
-
 // FindByID finds a database by ID
 func (r *DatabaseRepository) FindByID(ctx context.Context, id string) (*models.Database, error) {
 	var database models.Database
@@ -151,41 +146,6 @@ func (r *DatabaseRepository) FindByUser(ctx context.Context, userID string) ([]m
 		Find(&databases).Error
 
 	return databases, err
-}
-
-// Update updates a database
-func (r *DatabaseRepository) Update(ctx context.Context, database *models.Database) error {
-	return r.Installable.Update(ctx, database)
-}
-
-// UpdateFields updates specific fields of a database
-func (r *DatabaseRepository) UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error {
-	return r.Installable.UpdateFields(ctx, id, fields)
-}
-
-// Delete deletes a database
-func (r *DatabaseRepository) Delete(ctx context.Context, id string) error {
-	return r.Installable.Delete(ctx, id)
-}
-
-// ExistsByNameAndServer checks if a database exists with the given name on the server
-func (r *DatabaseRepository) ExistsByNameAndServer(ctx context.Context, name, serverID string) (bool, error) {
-	return r.Installable.ExistsByNameAndServer(ctx, name, serverID)
-}
-
-// MarkAsInstalled marks a database as installed
-func (r *DatabaseRepository) MarkAsInstalled(ctx context.Context, id string) error {
-	return r.Installable.MarkAsInstalled(ctx, id)
-}
-
-// MarkAsFailed marks a database installation as failed
-func (r *DatabaseRepository) MarkAsFailed(ctx context.Context, id string) error {
-	return r.Installable.MarkAsFailed(ctx, id)
-}
-
-// MarkAsUninstalling marks a database as being uninstalled
-func (r *DatabaseRepository) MarkAsUninstalling(ctx context.Context, id string) error {
-	return r.Installable.MarkAsUninstalling(ctx, id)
 }
 
 // AttachUser attaches a database user to a database
