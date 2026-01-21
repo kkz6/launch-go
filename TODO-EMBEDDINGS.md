@@ -3375,17 +3375,708 @@ type SecureTwoFactor struct {
 
 ---
 
-## Extended Summary (Items 27-32)
+## 33. ParseAndValidate Adoption (P1)
+
+**Issue:** Helper function `ParseAndValidate` exists but only 2 of 50+ handlers use it.
+
+**Files Affected:**
+- `internal/pkg/fiber/request.go:12-28` - Helper exists
+- `internal/modules/auth/handlers/auth_handler.go:24-30` - Manual pattern
+- `internal/modules/server/handlers/server_handler.go:76-83` - Manual pattern
+- 48+ more handlers with manual BodyParser + Validate pattern
+
+**Current Pattern (repeated 50+ times):**
+```go
+var req dto.SomeRequest
+if err := c.BodyParser(&req); err != nil {
+    return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+}
+if errors := validator.Validate(&req); errors != nil {
+    return response.ValidationError(c, errors)
+}
+```
+
+**Existing Solution (underutilized):**
+```go
+// internal/pkg/fiber/request.go - Already exists!
+func MustParseAndValidate[T any](c *fiber.Ctx) (*T, error) {
+    var req T
+    if err := c.BodyParser(&req); err != nil {
+        return nil, response.BadRequest(c, "Invalid request body")
+    }
+    if errs := validator.Validate(&req); errs != nil {
+        return nil, response.ValidationError(c, errs)
+    }
+    return &req, nil
+}
+```
+
+**Refactoring Steps:**
+- [ ] Audit all handlers for manual BodyParser + Validate pattern
+- [ ] Refactor auth handlers (9 files)
+- [ ] Refactor server handlers (15 files)
+- [ ] Refactor site handlers (10 files)
+- [ ] Refactor remaining module handlers
+- [ ] Add request normalization hook to MustParseAndValidate
+
+**Impact:** ~300 lines eliminated, consistent validation
+
+---
+
+## 34. Global Context Extraction Helpers (P1)
+
+**Issue:** Context extraction helpers exist in one module but not shared globally.
+
+**Files Affected:**
+- `internal/modules/database/handlers/helper.go:9-22` - Local helpers
+- 62 occurrences of `c.Locals("userID").(string)` - Unsafe casting
+- 115 occurrences of `c.Locals("teamID").(string)` - Unsafe casting
+- 230+ `c.Params()` calls bypass existing param helpers
+
+**Current Pattern (unsafe, repeated 177+ times):**
+```go
+userID := c.Locals("userID").(string)  // Panics if nil!
+teamID := c.Locals("teamID").(string)  // Panics if nil!
+serverID := c.Params("id")             // No validation
+```
+
+**Existing Local Helper (database module only):**
+```go
+// internal/modules/database/handlers/helper.go
+func getUserIDFromContext(c *fiber.Ctx) *string {
+    if userID, ok := c.Locals("userID").(string); ok && userID != "" {
+        return &userID
+    }
+    return nil
+}
+```
+
+**Solution:** Create `internal/pkg/fiber/context.go`
+```go
+package fiber
+
+import "github.com/gofiber/fiber/v2"
+
+// GetUserID safely extracts userID from context
+func GetUserID(c *fiber.Ctx) string {
+    if userID, ok := c.Locals("userID").(string); ok {
+        return userID
+    }
+    return ""
+}
+
+// GetUserIDPtr returns pointer (nil if not set)
+func GetUserIDPtr(c *fiber.Ctx) *string {
+    if userID, ok := c.Locals("userID").(string); ok && userID != "" {
+        return &userID
+    }
+    return nil
+}
+
+// GetTeamID safely extracts teamID from context
+func GetTeamID(c *fiber.Ctx) string {
+    if teamID, ok := c.Locals("teamID").(string); ok {
+        return teamID
+    }
+    return ""
+}
+
+// MustGetUserID returns userID or error response
+func MustGetUserID(c *fiber.Ctx) (string, error) {
+    userID := GetUserID(c)
+    if userID == "" {
+        return "", response.Unauthorized(c, "User not authenticated")
+    }
+    return userID, nil
+}
+
+// MustGetTeamID returns teamID or error response
+func MustGetTeamID(c *fiber.Ctx) (string, error) {
+    teamID := GetTeamID(c)
+    if teamID == "" {
+        return "", response.BadRequest(c, "Team context required")
+    }
+    return teamID, nil
+}
+```
+
+**Refactoring Steps:**
+- [ ] Create `internal/pkg/fiber/context.go`
+- [ ] Replace 62 unsafe userID extractions
+- [ ] Replace 115 unsafe teamID extractions
+- [ ] Update 230+ c.Params() to use param helpers
+- [ ] Remove local helper from database module
+
+**Impact:** ~200 lines safer code, prevents nil panics
+
+---
+
+## 35. Template Loading Consolidation (P1)
+
+**Issue:** Template loading with fs.WalkDir repeated identically in 4 files.
+
+**Files Affected:**
+- `internal/modules/site/tasks/templates/templates.go:20-46`
+- `internal/modules/server/tasks/templates/templates.go:19-46`
+- `internal/modules/database/tasks/templates/templates.go:24-51`
+- `internal/pkg/taskrunner/template_engine.go:46-73`
+
+**Current Pattern (repeated 4 times, ~27 lines each):**
+```go
+var templates *template.Template
+
+func init() {
+    templates = template.New("").Funcs(templateFuncs)
+    err := fs.WalkDir(templateFS, ".", func(path string, d fs.DirEntry, err error) error {
+        if err != nil { return err }
+        if d.IsDir() || filepath.Ext(path) != ".sh" { return nil }
+        content, err := templateFS.ReadFile(path)
+        if err != nil { return fmt.Errorf("reading %s: %w", path, err) }
+        _, err = templates.New(path).Parse(string(content))
+        if err != nil { return fmt.Errorf("parsing %s: %w", path, err) }
+        return nil
+    })
+    if err != nil { panic(err) }
+}
+
+func Render(name string, data interface{}) (string, error) { ... }
+func MustRender(name string, data interface{}) string { ... }
+```
+
+**Solution:** Create `internal/pkg/templates/loader.go`
+```go
+package templates
+
+import (
+    "embed"
+    "fmt"
+    "io/fs"
+    "path/filepath"
+    "text/template"
+)
+
+// TemplateLoader handles loading and rendering embedded templates
+type TemplateLoader struct {
+    templates *template.Template
+    extension string
+}
+
+// NewLoader creates a template loader from embedded FS
+func NewLoader(fsys embed.FS, funcs template.FuncMap, ext string) (*TemplateLoader, error) {
+    tmpl := template.New("").Funcs(funcs)
+
+    err := fs.WalkDir(fsys, ".", func(path string, d fs.DirEntry, err error) error {
+        if err != nil { return err }
+        if d.IsDir() || filepath.Ext(path) != ext { return nil }
+
+        content, err := fs.ReadFile(fsys, path)
+        if err != nil { return fmt.Errorf("reading %s: %w", path, err) }
+
+        _, err = tmpl.New(path).Parse(string(content))
+        if err != nil { return fmt.Errorf("parsing %s: %w", path, err) }
+        return nil
+    })
+    if err != nil { return nil, err }
+
+    return &TemplateLoader{templates: tmpl, extension: ext}, nil
+}
+
+// MustNewLoader panics on error (for init())
+func MustNewLoader(fsys embed.FS, funcs template.FuncMap, ext string) *TemplateLoader {
+    loader, err := NewLoader(fsys, funcs, ext)
+    if err != nil { panic(err) }
+    return loader
+}
+
+// Render renders a template by name
+func (l *TemplateLoader) Render(name string, data interface{}) (string, error) {
+    var buf bytes.Buffer
+    if err := l.templates.ExecuteTemplate(&buf, name, data); err != nil {
+        return "", err
+    }
+    return buf.String(), nil
+}
+
+// MustRender renders or panics
+func (l *TemplateLoader) MustRender(name string, data interface{}) string {
+    result, err := l.Render(name, data)
+    if err != nil { panic(err) }
+    return result
+}
+```
+
+**Refactored Usage:**
+```go
+// internal/modules/site/tasks/templates/templates.go
+var loader = templates.MustNewLoader(templateFS, templateFuncs, ".sh")
+
+func Render(name string, data interface{}) (string, error) {
+    return loader.Render(name, data)
+}
+```
+
+**Refactoring Steps:**
+- [ ] Create `internal/pkg/templates/loader.go`
+- [ ] Refactor site templates to use loader
+- [ ] Refactor server templates to use loader
+- [ ] Refactor database templates to use loader
+- [ ] Refactor taskrunner template_engine to use loader
+
+**Impact:** ~80 lines eliminated, consistent template loading
+
+---
+
+## 36. Systemd Config Script Consolidation (P1)
+
+**Issue:** Identical chmod/chown script blocks repeated in 3 task files.
+
+**Files Affected:**
+- `internal/modules/server/tasks/daemon.go:26-55` - 30 lines
+- `internal/modules/server/tasks/cron.go:23-45` - 23 lines
+- `internal/modules/site/tasks/queue.go:54-82` - 29 lines
+
+**Current Pattern (repeated 3 times):**
+```go
+script := `#!/bin/bash
+set -euo pipefail
+
+cat > "` + config.Path + `" << 'EOF'
+` + config.Contents + `
+EOF
+
+chmod 644 "` + config.Path + `"
+
+LOG_DIR=$(dirname "` + config.LogPath + `")
+mkdir -p "$LOG_DIR"
+
+if [ ! -f "` + config.LogPath + `" ]; then
+    touch "` + config.LogPath + `"
+    chown ` + config.User + `:` + config.User + ` "` + config.LogPath + `"
+    chmod 644 "` + config.LogPath + `"
+fi
+// ... error log setup identical
+`
+```
+
+**Solution:** Create `internal/pkg/script/systemd.go`
+```go
+package script
+
+// SystemdConfigParams holds parameters for systemd config scripts
+type SystemdConfigParams struct {
+    ConfigPath   string
+    Contents     string
+    User         string
+    LogPath      string
+    ErrorLogPath string // Optional
+    Heredoc      string // EOF marker name
+}
+
+// WriteSystemdConfig generates script to write systemd config with logging setup
+func WriteSystemdConfig(params SystemdConfigParams) string {
+    if params.Heredoc == "" {
+        params.Heredoc = "CONFIGEOF"
+    }
+
+    return NewBuilder().
+        Shebang().
+        SetOptions().
+        Blank().
+        Comment("Write config file").
+        Linef("cat > %q << '%s'", params.ConfigPath, params.Heredoc).
+        Line(params.Contents).
+        Line(params.Heredoc).
+        Blank().
+        Linef("chmod 644 %q", params.ConfigPath).
+        Blank().
+        Comment("Setup log directory").
+        Linef("LOG_DIR=$(dirname %q)", params.LogPath).
+        Line("mkdir -p \"$LOG_DIR\"").
+        Blank().
+        When(params.LogPath != "", func(b *Builder) {
+            b.setupLogFile(params.LogPath, params.User)
+        }).
+        When(params.ErrorLogPath != "", func(b *Builder) {
+            b.setupLogFile(params.ErrorLogPath, params.User)
+        }).
+        Linef("chown %s:%s \"$LOG_DIR\"", params.User, params.User).
+        String()
+}
+
+func (b *Builder) setupLogFile(path, user string) *Builder {
+    return b.
+        Linef("if [ ! -f %q ]; then", path).
+        Linef("    touch %q", path).
+        Linef("    chown %s:%s %q", user, user, path).
+        Linef("    chmod 644 %q", path).
+        Line("fi")
+}
+```
+
+**Refactoring Steps:**
+- [ ] Create `internal/pkg/script/systemd.go`
+- [ ] Refactor daemon.go to use WriteSystemdConfig
+- [ ] Refactor cron.go to use WriteSystemdConfig
+- [ ] Refactor queue.go to use WriteSystemdConfig
+
+**Impact:** ~60 lines eliminated, consistent config file handling
+
+---
+
+## 37. Home Directory Helper (P2)
+
+**Issue:** Home directory construction repeated 4 times in same file.
+
+**Files Affected:**
+- `internal/modules/server/tasks/ssh_keys.go:59-68, 79-82, 96-99, 110-113`
+
+**Current Pattern (repeated 4 times):**
+```go
+homeDir := fmt.Sprintf("/home/%s", user)
+if user == "root" {
+    homeDir = "/root"
+}
+```
+
+**Solution:** Add to `internal/pkg/shell/defaults.go`
+```go
+// GetHomeDir returns the home directory for a user
+func GetHomeDir(user string) string {
+    if user == "root" {
+        return "/root"
+    }
+    return fmt.Sprintf("/home/%s", user)
+}
+
+// GetSSHDir returns the .ssh directory for a user
+func GetSSHDir(user string) string {
+    return filepath.Join(GetHomeDir(user), ".ssh")
+}
+
+// GetAuthorizedKeysPath returns the authorized_keys path for a user
+func GetAuthorizedKeysPath(user string) string {
+    return filepath.Join(GetSSHDir(user), "authorized_keys")
+}
+```
+
+**Impact:** ~20 lines eliminated, consistent path handling
+
+---
+
+## 38. Transaction + Activity Logging Helper (P2)
+
+**Issue:** Activity logging with transaction is only combined in 1 place; 50+ activity logs use inconsistent DB access.
+
+**Files Affected:**
+- `internal/modules/site/services/site_service.go:244-255` - Only combined example
+- 50+ activity logging instances across all services
+- 3 different DB access patterns: `s.repos.DB()`, `s.Repos().Site().DB`, `s.DB()`
+
+**Current Patterns:**
+```go
+// Pattern 1: Direct repos
+activity.New(s.repos.DB()).WithContext(ctx).UseLog("database")...
+
+// Pattern 2: Module-specific
+activity.New(s.Repos().Site().DB).WithContext(ctx).UseLog("site")...
+
+// Pattern 3: Service base
+activity.New(s.DB()).WithContext(ctx).UseLog("backup")...
+```
+
+**Solution:** Add to `internal/pkg/service/base.go`
+```go
+// LogActivity provides standardized activity logging
+func (b *Base) LogActivity(ctx context.Context, model interface{}, event, message string, userID *string) error {
+    logger := activity.New(b.DB()).
+        WithContext(ctx).
+        UseLog(b.getLogName(model)).
+        On(model).
+        WithEvent(event)
+
+    if userID != nil {
+        logger.CausedByUser(*userID)
+    }
+
+    return logger.Log(message)
+}
+
+// LogCreation logs a creation event
+func (b *Base) LogCreation(ctx context.Context, model interface{}, userID *string) error {
+    return b.LogActivity(ctx, model, "created", b.getCreationMessage(model), userID)
+}
+
+// LogUpdate logs an update event
+func (b *Base) LogUpdate(ctx context.Context, model interface{}, userID *string) error {
+    return b.LogActivity(ctx, model, "updated", b.getUpdateMessage(model), userID)
+}
+
+// LogDeletion logs a deletion event
+func (b *Base) LogDeletion(ctx context.Context, model interface{}, userID *string) error {
+    return b.LogActivity(ctx, model, "deleted", b.getDeletionMessage(model), userID)
+}
+
+// WithTransaction executes function in transaction with optional activity logging
+func (b *Base) WithTransaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
+    return b.DB().WithContext(ctx).Transaction(fn)
+}
+```
+
+**Impact:** ~150 lines eliminated, consistent activity logging
+
+---
+
+## 39. Backup Repository Many-to-Many Pattern (P2)
+
+**Issue:** Identical transaction pattern for many-to-many sync repeated 3 times.
+
+**Files Affected:**
+- `internal/modules/backup/repositories/backup_repository.go:34-50` - CreateBackupWithDatabases
+- `internal/modules/backup/repositories/backup_repository.go:120-142` - UpdateBackupWithDatabases
+- `internal/modules/backup/repositories/backup_repository.go:190-208` - SyncBackupDatabases
+
+**Current Pattern (repeated 3 times):**
+```go
+return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+    // Delete existing associations
+    if err := tx.Where("backup_id = ?", backupID).Delete(&BackupDatabase{}).Error; err != nil {
+        return err
+    }
+    // Create new associations
+    for _, dbID := range databaseIDs {
+        assoc := BackupDatabase{BackupID: backupID, DatabaseID: dbID}
+        if err := tx.Create(&assoc).Error; err != nil {
+            return err
+        }
+    }
+    return nil
+})
+```
+
+**Solution:** Create `internal/pkg/repository/associations.go`
+```go
+package repository
+
+import (
+    "context"
+    "gorm.io/gorm"
+)
+
+// SyncAssociations replaces all associations for a parent entity
+func SyncAssociations[T any](
+    ctx context.Context,
+    db *gorm.DB,
+    parentColumn string,
+    parentID string,
+    childColumn string,
+    childIDs []string,
+    factory func(parentID, childID string) T,
+) error {
+    return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+        // Delete existing
+        var model T
+        if err := tx.Where(parentColumn+" = ?", parentID).Delete(&model).Error; err != nil {
+            return err
+        }
+
+        // Create new
+        for _, childID := range childIDs {
+            assoc := factory(parentID, childID)
+            if err := tx.Create(&assoc).Error; err != nil {
+                return err
+            }
+        }
+        return nil
+    })
+}
+```
+
+**Refactored Usage:**
+```go
+func (r *BackupRepository) SyncBackupDatabases(ctx context.Context, backupID string, dbIDs []string) error {
+    return repository.SyncAssociations(
+        ctx, r.db,
+        "backup_id", backupID,
+        "database_id", dbIDs,
+        func(bid, did string) BackupDatabase {
+            return BackupDatabase{BackupID: bid, DatabaseID: did}
+        },
+    )
+}
+```
+
+**Impact:** ~50 lines eliminated, reusable many-to-many pattern
+
+---
+
+## 40. Webhook Response Standardization (P1)
+
+**Issue:** Webhook handlers bypass response package, use inconsistent formats.
+
+**Files Affected:**
+- `internal/modules/git/handlers/webhook_handler.go:53-100` - 7 SendString calls
+- `internal/modules/billing/handlers/webhook_handler.go:58-107` - 6 "error" key uses
+- `internal/modules/site/handlers/webhook_handler.go:51-66` - 2 "error" key uses
+- `internal/pkg/signedurl/middleware.go:76-97` - "error": true format
+
+**Current Patterns:**
+```go
+// Git webhook - plain text instead of JSON
+return c.Status(fiber.StatusBadRequest).SendString("Invalid provider")
+
+// Billing webhook - wrong key
+return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Missing signature"})
+
+// SignedURL - wrong format
+return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": true, "message": "..."})
+```
+
+**Solution:** Update all to use response package
+```go
+// Correct pattern
+return response.BadRequest(c, "Invalid provider")
+return response.Unauthorized(c, "Missing signature")
+return response.Forbidden(c, "URL has expired")
+```
+
+**Refactoring Steps:**
+- [ ] Update git webhook handler (7 instances)
+- [ ] Update billing webhook handler (6 instances)
+- [ ] Update site webhook handler (2 instances)
+- [ ] Update signedurl middleware (2 instances)
+
+**Impact:** ~30 lines fixed, consistent API responses
+
+---
+
+## 41. AppError HTTPStatus Interface (P1)
+
+**Issue:** AppError struct missing HTTPStatus() method, not caught by error middleware.
+
+**Files Affected:**
+- `internal/pkg/errors/errors.go:22-45` - AppError definition
+
+**Current Code:**
+```go
+type AppError struct {
+    Err     error
+    Message string
+    Code    int
+}
+
+// Missing: func (e *AppError) HTTPStatus() int { return e.Code }
+```
+
+**Fix Required:**
+```go
+// Add to internal/pkg/errors/errors.go
+func (e *AppError) HTTPStatus() int {
+    return e.Code
+}
+```
+
+**Impact:** Bug fix, enables error middleware to catch AppError
+
+---
+
+## 42. Timestamp Formatting Standardization (P2)
+
+**Issue:** Mixed timestamp formats across modules.
+
+**Files Affected:**
+- 26 instances use `time.RFC3339`
+- 5 instances use `"Jan 2, 2006"` (billing, auth passkey)
+
+**Inconsistent Files:**
+- `internal/modules/billing/dto/responses.go:50,55,76` - Custom format
+- `internal/modules/auth/handlers/passkey_handler.go:47,53` - Custom format
+
+**Solution:** Standardize on RFC3339 for API responses, create display formatter for UI
+```go
+// internal/pkg/dto/time.go
+const (
+    APITimeFormat     = time.RFC3339
+    DisplayTimeFormat = "Jan 2, 2006"
+)
+
+// FormatAPITime formats for API responses
+func FormatAPITime(t time.Time) string {
+    return t.Format(APITimeFormat)
+}
+
+// FormatDisplayTime formats for human-readable display
+func FormatDisplayTime(t time.Time) string {
+    return t.Format(DisplayTimeFormat)
+}
+```
+
+**Impact:** Consistent API contracts
+
+---
+
+## 43. Validation Error Message Expansion (P2)
+
+**Issue:** Validation error messages missing for commonly used tags.
+
+**Files Affected:**
+- `internal/pkg/validator/validator.go:43-62` - Only 7 cases handled
+
+**Missing Tags (used in DTOs):**
+- `len` - Used in auth DTOs
+- `ulid` - Used in 20+ places
+- `dive` - Nested validation
+- `fqdn` - DNS module
+- `ip`, `ip|cidr` - Server module
+- `eqfield` - Password confirmation
+- `required_if`, `required_unless` - Conditional validation
+
+**Solution:** Expand error message handler
+```go
+func getErrorMessage(err validator.FieldError) string {
+    switch err.Tag() {
+    // ... existing cases ...
+    case "len":
+        return "Must be exactly " + err.Param() + " characters"
+    case "ulid":
+        return "Must be a valid ULID"
+    case "fqdn":
+        return "Must be a valid domain name"
+    case "ip":
+        return "Must be a valid IP address"
+    case "cidr":
+        return "Must be a valid CIDR notation"
+    case "eqfield":
+        return "Must match " + err.Param()
+    case "required_if":
+        return "This field is required"
+    case "required_unless":
+        return "This field is required"
+    default:
+        return "Invalid value"
+    }
+}
+```
+
+**Impact:** Better user experience, clearer validation errors
+
+---
+
+## Extended Summary (Items 33-43)
 
 | Category | Items | Est. LOC Saved |
 |----------|-------|----------------|
-| SSH Connection Factory | Item 27 | ~100 lines |
-| Enum Scan/Value | Item 28 | ~315 lines |
-| Cache Infrastructure | Item 29 | ~80 lines |
-| Script Builder | Item 30 | ~500 lines |
-| Shell Defaults | Item 31 | ~50 lines |
-| Encrypted Fields | Item 32 | ~30 lines |
-| **Additional Total** | **6 patterns** | **~1075 lines** |
+| ParseAndValidate Adoption | Item 33 | ~300 lines |
+| Context Extraction Helpers | Item 34 | ~200 lines |
+| Template Loading | Item 35 | ~80 lines |
+| Systemd Config Scripts | Item 36 | ~60 lines |
+| Home Directory Helper | Item 37 | ~20 lines |
+| Transaction + Activity | Item 38 | ~150 lines |
+| Many-to-Many Pattern | Item 39 | ~50 lines |
+| Webhook Response | Item 40 | ~30 lines |
+| AppError Fix | Item 41 | Bug fix |
+| Timestamp Formatting | Item 42 | Consistency |
+| Validation Messages | Item 43 | UX improvement |
+| **Additional Total** | **11 patterns** | **~890 lines** |
 
 ---
 
@@ -3394,8 +4085,8 @@ type SecureTwoFactor struct {
 | Category | Items | Total LOC Saved |
 |----------|-------|-----------------|
 | Handler Bases | 5 patterns | ~400 lines |
-| Repository Patterns | 3 patterns | ~850 lines |
-| Service Patterns | 2 patterns | ~300 lines |
+| Repository Patterns | 4 patterns | ~900 lines |
+| Service Patterns | 3 patterns | ~450 lines |
 | Job/Task Patterns | 3 patterns | ~800 lines |
 | Model Mixins | 5 patterns | ~270 lines |
 | Provider API Clients | 3 patterns | ~450 lines |
@@ -3404,4 +4095,6 @@ type SecureTwoFactor struct {
 | DTO/Request Patterns | 2 patterns | ~550 lines |
 | Testing Patterns | 2 patterns | ~250 lines |
 | Infrastructure Patterns | 6 patterns | ~1075 lines |
-| **Grand Total** | **33 patterns** | **~5061 lines** |
+| Validation & Response | 5 patterns | ~610 lines |
+| Template & Script | 3 patterns | ~160 lines |
+| **Grand Total** | **43 patterns** | **~6031 lines** |
