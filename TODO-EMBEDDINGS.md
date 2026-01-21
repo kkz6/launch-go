@@ -40,107 +40,23 @@ The following foundational infrastructure has been implemented:
 
 ## Table of Contents
 
-1. [WebSocket Handler Base Embedding (P1)](#1-websocket-handler-base-embedding-p1)
-2. [Webhook Handler Base Embedding (P1)](#2-webhook-handler-base-embedding-p1)
-3. [Repository BaseRepository Enforcement (P1)](#3-repository-baserepository-enforcement-p1)
-4. [Service Base Enforcement (P1)](#4-service-base-enforcement-p1)
-5. [Module Handler Field Consolidation (P1)](#5-module-handler-field-consolidation-p1)
-6. [Job Base Payload Generic (P2)](#6-job-base-payload-generic-p2)
-7. [Installable Repository Mixin (P2)](#7-installable-repository-mixin-p2)
-8. [Queue Dispatch Unification (P2)](#8-queue-dispatch-unification-p2)
-9. [Pagination Embedding (P2)](#9-pagination-embedding-p2)
-10. [Task Builder Pattern (P2)](#10-task-builder-pattern-p2)
-11. [Model Scoped Fields Adoption (P2)](#11-model-scoped-fields-adoption-p2)
-12. [Activity Logging Builder (P2)](#12-activity-logging-builder-p2)
-13. [Broadcast Payload Builder (P3)](#13-broadcast-payload-builder-p3)
-14. [DTO Timestamp Embedding (P3)](#14-dto-timestamp-embedding-p3)
+1. [Webhook Handler Base Embedding (P1)](#1-webhook-handler-base-embedding-p1)
+2. [Repository BaseRepository Enforcement (P1)](#2-repository-baserepository-enforcement-p1)
+3. [Service Base Enforcement (P1)](#3-service-base-enforcement-p1)
+4. [Module Handler Field Consolidation (P1)](#4-module-handler-field-consolidation-p1)
+5. [Job Base Payload Generic (P2)](#5-job-base-payload-generic-p2)
+6. [Installable Repository Mixin (P2)](#6-installable-repository-mixin-p2)
+7. [Queue Dispatch Unification (P2)](#7-queue-dispatch-unification-p2)
+8. [Pagination Embedding (P2)](#8-pagination-embedding-p2)
+9. [Task Builder Pattern (P2)](#9-task-builder-pattern-p2)
+10. [Model Scoped Fields Adoption (P2)](#10-model-scoped-fields-adoption-p2)
+11. [Activity Logging Builder (P2)](#11-activity-logging-builder-p2)
+12. [Broadcast Payload Builder (P3)](#12-broadcast-payload-builder-p3)
+13. [DTO Timestamp Embedding (P3)](#13-dto-timestamp-embedding-p3)
 
 ---
 
-## 1. WebSocket Handler Base Embedding (P1)
-
-**Issue:** All 5 WebSocket handlers have IDENTICAL struct field declarations.
-
-**Files Affected:**
-- `internal/modules/websocket/handlers/logs.go:23-38`
-- `internal/modules/websocket/handlers/metrics.go:20-35`
-- `internal/modules/websocket/handlers/service_status.go:42-47`
-- `internal/modules/websocket/handlers/terminal.go:32-37`
-- `internal/modules/websocket/handlers/script_execution.go:23-28`
-
-**Current Pattern (repeated 5 times):**
-```go
-type LogsHandler struct {
-    db              *gorm.DB
-    jwtSecret       string
-    logger          zerolog.Logger
-    membershipCache *cache.TeamMembershipCache
-}
-
-func NewLogsHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *LogsHandler {
-    return &LogsHandler{
-        db:              db,
-        jwtSecret:       jwtSecret,
-        logger:          logger,
-        membershipCache: membershipCache,
-    }
-}
-```
-
-**Solution:** Create `internal/modules/websocket/handlers/base.go`
-```go
-package handlers
-
-import (
-    "github.com/rs/zerolog"
-    "gorm.io/gorm"
-    "github.com/kkz6/launch-go/internal/modules/websocket/cache"
-)
-
-// BaseWebSocketHandler provides common dependencies for all WebSocket handlers
-type BaseWebSocketHandler struct {
-    DB              *gorm.DB
-    JWTSecret       string
-    Logger          zerolog.Logger
-    MembershipCache *cache.TeamMembershipCache
-}
-
-// NewBaseWebSocketHandler creates a new base handler with all dependencies
-func NewBaseWebSocketHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger, cache *cache.TeamMembershipCache) BaseWebSocketHandler {
-    return BaseWebSocketHandler{
-        DB:              db,
-        JWTSecret:       jwtSecret,
-        Logger:          logger,
-        MembershipCache: cache,
-    }
-}
-```
-
-**Refactored Handler:**
-```go
-type LogsHandler struct {
-    BaseWebSocketHandler
-}
-
-func NewLogsHandler(base BaseWebSocketHandler) *LogsHandler {
-    return &LogsHandler{BaseWebSocketHandler: base}
-}
-```
-
-**Refactoring Steps:**
-- [x] Create `internal/modules/websocket/handlers/base.go`
-- [x] Refactor `LogsHandler` to embed base
-- [x] Refactor `MetricsHandler` to embed base
-- [x] Refactor `ServiceStatusHandler` to embed base
-- [x] Refactor `TerminalHandler` to embed base
-- [x] Refactor `ScriptExecutionHandler` to embed base
-- [x] Update `module.go` to construct base once
-
-**Impact:** ~50-75 lines eliminated, single point of change for dependencies
-
----
-
-## 2. Webhook Handler Base Embedding (P1)
+## 1. Webhook Handler Base Embedding (P1)
 
 **Issue:** Webhook handlers repeat signer, logger, and signature verification logic.
 
@@ -245,7 +161,7 @@ func NewMetricsWebhookHandler(secretKey string, logger *zerolog.Logger, repo met
 
 ---
 
-## 3. Repository BaseRepository Enforcement (P1)
+## 2. Repository BaseRepository Enforcement (P1)
 
 **Issue:** Many repositories define `db *gorm.DB` field directly instead of embedding BaseRepository.
 
@@ -333,7 +249,7 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 
 ---
 
-## 4. Service Base Enforcement (P1)
+## 3. Service Base Enforcement (P1)
 
 **Issue:** Service base class usage is inconsistent across modules.
 
@@ -402,7 +318,7 @@ type AuthService struct {
 
 ---
 
-## 5. Module Handler Field Consolidation (P1)
+## 4. Module Handler Field Consolidation (P1)
 
 **Issue:** Individual handlers within a module repeat the same service injection field.
 
@@ -487,7 +403,7 @@ type UserHandler struct {
 
 ---
 
-## 6. Job Base Payload Generic (P2)
+## 5. Job Base Payload Generic (P2)
 
 **Issue:** All jobs repeat context field and handler setup pattern.
 
@@ -580,7 +496,7 @@ func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *Ins
 
 ---
 
-## 7. Installable Repository Mixin (P2)
+## 6. Installable Repository Mixin (P2)
 
 **Issue:** Repositories with installable models repeat delegation to `Installable` trait.
 
@@ -688,7 +604,7 @@ func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) 
 
 ---
 
-## 8. Queue Dispatch Unification (P2)
+## 7. Queue Dispatch Unification (P2)
 
 **Issue:** Job dispatching uses 3+ different patterns across codebase.
 
@@ -797,7 +713,7 @@ dispatcher.Dispatch(jobType, payload)
 
 ---
 
-## 9. Pagination Embedding (P2)
+## 8. Pagination Embedding (P2)
 
 **Issue:** Pagination logic is ad-hoc and not reusable across repositories.
 
@@ -886,7 +802,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 
 ---
 
-## 10. Task Builder Pattern (P2)
+## 9. Task Builder Pattern (P2)
 
 **Issue:** Each task file repeats callback data struct and task creation boilerplate.
 
@@ -1037,7 +953,7 @@ func DeploySiteTask(opts DeployOptions) *taskrunner.BuiltTask[callbackData] {
 
 ---
 
-## 11. Model Scoped Fields Adoption (P2)
+## 10. Model Scoped Fields Adoption (P2)
 
 **Issue:** Models define scope fields manually instead of using existing mixins.
 
@@ -1096,7 +1012,7 @@ type Database struct {
 
 ---
 
-## 12. Activity Logging Builder (P2)
+## 11. Activity Logging Builder (P2)
 
 **Issue:** Activity logging pattern repeated with builder chain across 40+ locations.
 
@@ -1193,7 +1109,7 @@ activity.LogCreation(s.repos.DB(), ctx, database, "database", userID, "Database 
 
 ---
 
-## 13. Broadcast Payload Builder (P3)
+## 12. Broadcast Payload Builder (P3)
 
 **Issue:** Broadcast payloads created inline with inconsistent structure.
 
@@ -1268,7 +1184,7 @@ func (p ServerMetricsPayload) ToMap() map[string]interface{} {
 
 ---
 
-## 14. DTO Timestamp Embedding (P3)
+## 13. DTO Timestamp Embedding (P3)
 
 **Issue:** Timestamp formatting repeated 81+ times in DTO converters.
 
