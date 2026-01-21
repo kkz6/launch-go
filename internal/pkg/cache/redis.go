@@ -66,3 +66,8 @@ func (c *RedisCache) Close() error {
 func (c *RedisCache) Ping(ctx context.Context) error {
 	return c.client.Ping(ctx).Err()
 }
+
+// Client returns the underlying Redis client for use with health checks
+func (c *RedisCache) Client() *redis.Client {
+	return c.client
+}
