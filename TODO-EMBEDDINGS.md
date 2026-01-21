@@ -5482,3 +5482,715 @@ var (
 | Security & Events | 3 patterns | ~100 lines |
 | HTTP & Helpers (Round 3) | 12 patterns | ~1790 lines |
 | **Grand Total** | **62 patterns** | **~8721 lines** |
+
+---
+
+# Deep Analysis Round 4 (Items 63-74)
+
+## 63. Error Type Consolidation (P1 - CRITICAL)
+
+**Problem:** 5 different error types doing similar work across 4 packages.
+
+**Files affected:**
+- `internal/pkg/errors/errors.go` - `AppError` struct (lines 22-45)
+- `internal/pkg/errors/notfound.go` - `ResourceError` struct (lines 7-21)
+- `internal/pkg/response/errors.go` - `AppError` struct (lines 11-15)
+- `internal/pkg/repository/errors.go` - `ModelError` struct (lines 20-26)
+- `internal/middleware/error.go` - `HTTPStatusError` interface (lines 10-16)
+
+**Also duplicated:**
+- `HTTPStatusError` interface defined in BOTH `middleware/error.go` AND `response/errors.go`
+- `ErrConnectionFailed` defined in 3 locations (notification channels, notification services, backup services)
+- `ErrInvalidSignature` defined in both git and billing modules
+
+**Current:**
+```go
+// 5 different error types!
+type ResourceError struct { Message string; Status int }
+type AppError struct { Err error; Status int; Message string }
+type ModelError struct { Err error; Model string; ID string; Message string; Status int }
+// Plus legacy sentinel errors
+```
+
+**Solution - Consolidate to single error package:**
+```go
+// internal/pkg/errors/error.go
+
+// HTTPStatusError is THE interface for HTTP-aware errors
+type HTTPStatusError interface {
+    error
+    HTTPStatus() int
+}
+
+// Error is the unified error type
+type Error struct {
+    Err      error  `json:"-"`
+    Message  string `json:"message"`
+    Status   int    `json:"-"`
+    Resource string `json:"resource,omitempty"` // Optional: for "not found" errors
+    Code     string `json:"code,omitempty"`     // Optional: machine-readable code
+}
+
+func (e *Error) Error() string { return e.Message }
+func (e *Error) HTTPStatus() int { return e.Status }
+func (e *Error) Unwrap() error { return e.Err }
+
+// Factory functions
+func NotFound(resource string) *Error {
+    return &Error{Status: 404, Message: resource + " not found", Resource: resource}
+}
+
+func BadRequest(message string) *Error {
+    return &Error{Status: 400, Message: message}
+}
+
+// ... other factories
+```
+
+**Impact:** ~200 lines saved, single source of truth for errors
+
+---
+
+## 64. WebSocket SSH Client Consolidation (P1)
+
+**Problem:** WebSocket handlers duplicate 140+ lines of SSH client code instead of using existing abstraction.
+
+**Files affected:**
+- `internal/modules/websocket/handlers/terminal.go` (lines 132-175, 192-256)
+- `internal/modules/websocket/handlers/script_execution.go` (lines 142-177, 191-266)
+
+**Current (duplicated in both files):**
+```go
+signer, err := ssh.ParsePrivateKey([]byte(privateKey))
+config := &ssh.ClientConfig{
+    User: username,
+    Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)},
+    HostKeyCallback: ssh.InsecureIgnoreHostKey(),
+    Timeout: 10 * time.Second,
+}
+conn, err := ssh.Dial("tcp", addr, config)
+defer conn.Close()
+session, err := conn.NewSession()
+defer session.Close()
+// ... manual stdout/stderr pipe handling
+```
+
+**Solution - Use existing taskrunner.SSHClient:**
+```go
+// Before (70+ lines per handler)
+func (h *TerminalHandler) handleTerminal(...) {
+    // ... all the SSH boilerplate
+}
+
+// After (10 lines)
+func (h *TerminalHandler) handleTerminal(...) {
+    sshClient, err := taskrunner.NewSSHClient(taskrunner.SSHConfig{
+        Host:       server.GetIPAddress(),
+        Port:       server.GetSSHPort(),
+        User:       username,
+        PrivateKey: privateKey,
+        Timeout:    10 * time.Second,
+    })
+    if err != nil { return err }
+    defer sshClient.Close()
+
+    return sshClient.StreamOutput(ctx, command, func(line string) {
+        wsConn.WriteMessage(websocket.TextMessage, []byte(line))
+    })
+}
+```
+
+**Impact:** ~140 lines saved, consistent SSH handling
+
+---
+
+## 65. Template Engine Consolidation (P1)
+
+**Problem:** 4 separate template engine implementations with duplicate code.
+
+**Files affected:**
+- `internal/pkg/taskrunner/template_engine.go` (central - 176 lines)
+- `internal/modules/site/tasks/templates/templates.go` (duplicate - 79 lines)
+- `internal/modules/server/tasks/templates/templates.go` (duplicate - 138 lines)
+- `internal/modules/database/tasks/templates/templates.go` (duplicate - 76 lines)
+
+**Duplicated patterns:**
+- `ShellDefaults()` defined 3 times with different versions (`set -eu` vs `set -euo pipefail`)
+- `Render()` and `MustRender()` functions duplicated
+- Each module has own embed.FS and template loading
+
+**Solution - Centralize to taskrunner template engine:**
+```go
+// internal/pkg/taskrunner/template_engine.go - Enhanced
+
+// RegisterModuleTemplates allows modules to register their templates
+func (e *TemplateEngine) RegisterModuleTemplates(name string, fs embed.FS, pattern string) error
+
+// ShellDefaults returns standard shell script header
+func ShellDefaults() string {
+    return `#!/bin/bash
+set -euo pipefail
+`
+}
+
+// CommonFunctions returns shared bash helper functions
+func CommonFunctions() string {
+    return `
+function log_info() { echo "[INFO] $1"; }
+function log_error() { echo "[ERROR] $1" >&2; }
+function check_command() { command -v "$1" >/dev/null 2>&1; }
+`
+}
+```
+
+**Usage in modules:**
+```go
+// Instead of defining own template engine
+func init() {
+    taskrunner.DefaultEngine.RegisterModuleTemplates("site", templatesFS, "templates/*.sh")
+}
+```
+
+**Impact:** ~200 lines saved, consistent shell headers
+
+---
+
+## 66. Slack Admin Alert Base (P2)
+
+**Problem:** 4 Slack admin alert implementations with nearly identical builder patterns.
+
+**Files affected:**
+- `internal/modules/notification/slack/server_provisioning_failed_alert.go` (lines 48-79)
+- `internal/modules/notification/slack/php_installation_failed_alert.go` (lines 30-68)
+- `internal/modules/notification/slack/php_extension_install_failed_alert.go` (lines 32-80)
+- `internal/modules/notification/slack/php_extension_uninstall_failed_alert.go` (lines 32-80)
+
+**Duplicated builder methods (4x each):**
+```go
+func (a *Alert) WithUser(user *UserInfo) *Alert { a.user = user; return a }
+func (a *Alert) WithOutput(output string) *Alert { a.output = output; return a }
+func (a *Alert) WithErrorMessage(errorMessage string) *Alert { ... }
+func (a *Alert) WithOutputRetrievalError(err string) *Alert { ... }
+```
+
+**Solution - Create base alert struct:**
+```go
+// internal/modules/notification/slack/base_alert.go
+
+type BaseAlert struct {
+    server               *ServerInfo
+    user                 *UserInfo
+    output               string
+    errorMessage         string
+    outputRetrievalError string
+}
+
+func (a *BaseAlert) WithUser(user *UserInfo) *BaseAlert { a.user = user; return a }
+func (a *BaseAlert) WithOutput(output string) *BaseAlert { a.output = output; return a }
+func (a *BaseAlert) WithErrorMessage(msg string) *BaseAlert { a.errorMessage = msg; return a }
+func (a *BaseAlert) WithOutputRetrievalError(err string) *BaseAlert { a.outputRetrievalError = err; return a }
+
+// BuildServerSection returns common server info section
+func (a *BaseAlert) BuildServerSection() []slack.Block { ... }
+
+// BuildOutputSection returns truncated output section
+func (a *BaseAlert) BuildOutputSection() []slack.Block { ... }
+
+// Concrete alerts only implement title and specific fields
+type ServerProvisioningFailedAlert struct {
+    BaseAlert
+}
+
+func (a *ServerProvisioningFailedAlert) Title() string {
+    return "🚨 Server Provisioning Failed"
+}
+```
+
+**Impact:** ~120 lines saved across 4 alert types
+
+---
+
+## 67. Notification Format Helper (P2)
+
+**Problem:** 6+ notification types duplicate identical `formatWithLogs()` pattern.
+
+**Files affected:**
+- `internal/modules/notification/notifications/server_provisioning_failed.go`
+- `internal/modules/notification/notifications/php_installation_failed.go`
+- `internal/modules/notification/notifications/php_extension_install_failed.go`
+- `internal/modules/notification/notifications/php_extension_uninstall_failed.go`
+- `internal/modules/notification/notifications/deployment_failed.go`
+- `internal/modules/notification/notifications/site_installation_failed.go`
+
+**Duplicated pattern (6+ times):**
+```go
+func (n *Notification) ToSlack() string { return n.formatWithLogs() }
+func (n *Notification) ToDiscord() string { return n.formatWithLogs() }
+func (n *Notification) ToTelegram() string { return n.formatWithLogs() }
+
+func (n *Notification) formatWithLogs() string {
+    message := "*EMOJI Action Type*\n\n"
+    message += fmt.Sprintf("Main message: %s", n.Field)
+    if n.Output != "" {
+        message += fmt.Sprintf("\n\n*Last lines of output:*\n```\n%s\n```", n.Output)
+    }
+    if n.ErrorMessage != "" {
+        message += fmt.Sprintf("\n\n*Error message:*\n```\n%s\n```", n.ErrorMessage)
+    }
+    return message
+}
+```
+
+**Solution - Create notification formatter:**
+```go
+// internal/modules/notification/notifications/formatter.go
+
+type FailureNotification struct {
+    Emoji        string
+    Title        string
+    MainMessage  string
+    Output       string
+    ErrorMessage string
+}
+
+func (f *FailureNotification) FormatMarkdown() string {
+    var b strings.Builder
+    b.WriteString(fmt.Sprintf("*%s %s*\n\n", f.Emoji, f.Title))
+    b.WriteString(f.MainMessage)
+
+    if f.Output != "" {
+        b.WriteString(fmt.Sprintf("\n\n*Last lines of output:*\n```\n%s\n```", f.Output))
+    }
+    if f.ErrorMessage != "" {
+        b.WriteString(fmt.Sprintf("\n\n*Error message:*\n```\n%s\n```", f.ErrorMessage))
+    }
+    return b.String()
+}
+
+// Usage in notifications
+func (n *DeploymentFailedNotification) ToSlack() string {
+    return (&FailureNotification{
+        Emoji:        "🚨",
+        Title:        "Deployment Failed",
+        MainMessage:  fmt.Sprintf("Deployment for site '%s' failed", n.SiteName),
+        Output:       n.Output,
+        ErrorMessage: n.ErrorMessage,
+    }).FormatMarkdown()
+}
+```
+
+**Impact:** ~150 lines saved across notification types
+
+---
+
+## 68. Webhook Signature Verification Consolidation (P2)
+
+**Problem:** 4 different signature verification approaches across webhook handlers.
+
+**Files affected:**
+- `internal/modules/git/handlers/webhook_handler.go` - provider-specific
+- `internal/modules/billing/handlers/webhook_handler.go` - custom HMAC-SHA256
+- `internal/modules/server/handlers/task_webhook_handler.go` - signedurl package
+- `internal/modules/server/handlers/metrics_webhook_handler.go` - signedurl package
+
+**Current inconsistencies:**
+```go
+// Git - provider-specific header extraction
+func (h *WebhookHandler) getSignature(c *fiber.Ctx, providerType) string {
+    switch providerType {
+    case GitHub: return c.Get("X-Hub-Signature-256")
+    case GitLab: return c.Get("X-Gitlab-Token")
+    }
+}
+
+// Billing - custom HMAC
+func (h *WebhookHandler) VerifySignature(payload []byte, signature string) bool {
+    mac := hmac.New(sha256.New, []byte(h.webhookSecret))
+    mac.Write(payload)
+    expected := hex.EncodeToString(mac.Sum(nil))
+    return hmac.Equal([]byte(expected), []byte(signature))
+}
+
+// Task/Metrics - signedurl
+return signedurl.ValidateSignedURL(c, h.signer)
+```
+
+**Solution - Create webhook verification package:**
+```go
+// internal/pkg/webhook/verify.go
+
+type Verifier interface {
+    Verify(payload []byte, signature string) bool
+}
+
+// HMAC-SHA256 verifier
+type HMACVerifier struct {
+    secret []byte
+}
+
+func NewHMACVerifier(secret string) *HMACVerifier {
+    return &HMACVerifier{secret: []byte(secret)}
+}
+
+func (v *HMACVerifier) Verify(payload []byte, signature string) bool {
+    mac := hmac.New(sha256.New, v.secret)
+    mac.Write(payload)
+    expected := hex.EncodeToString(mac.Sum(nil))
+    return hmac.Equal([]byte(expected), []byte(signature))
+}
+
+// Header extractors
+func GetGitHubSignature(c *fiber.Ctx) string { return c.Get("X-Hub-Signature-256") }
+func GetGitLabSignature(c *fiber.Ctx) string { return c.Get("X-Gitlab-Token") }
+func GetLemonSqueezySignature(c *fiber.Ctx) string { return c.Get("X-Signature") }
+```
+
+**Impact:** ~80 lines saved, consistent webhook handling
+
+---
+
+## 69. Route Middleware Chain Helper (P1)
+
+**Problem:** 20 instances of identical middleware chain across all route files.
+
+**Files affected (all routes.go files):**
+- `internal/modules/backup/routes.go` (2 instances)
+- `internal/modules/database/routes.go` (2 instances)
+- `internal/modules/dns/routes.go` (2 instances)
+- `internal/modules/git/routes.go` (4 instances)
+- `internal/modules/notification/routes.go` (2 instances)
+- `internal/modules/script/routes.go` (2 instances)
+- `internal/modules/server/routes.go` (3 instances)
+- `internal/modules/site/routes.go` (2 instances)
+
+**Current (duplicated 20 times):**
+```go
+router.Group("/path", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
+```
+
+**Solution - Create route helper:**
+```go
+// internal/pkg/fiber/group.go
+
+// TeamProtectedGroup creates a route group with standard team authentication
+func TeamProtectedGroup(router fiber.Router, path string, authMiddleware fiber.Handler) fiber.Router {
+    return router.Group(path, authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
+}
+
+// TeamProtectedGroupNoSubscription for routes that skip subscription check
+func TeamProtectedGroupNoSubscription(router fiber.Router, path string, authMiddleware fiber.Handler) fiber.Router {
+    return router.Group(path, authMiddleware, middleware.TeamScope())
+}
+
+// Usage in routes
+providers := fiber.TeamProtectedGroup(router, "/server-providers", authMiddleware)
+```
+
+**Impact:** ~60 lines saved, single source of truth for auth chain
+
+---
+
+## 70. Module ServiceDeps Generic (P1)
+
+**Problem:** 5 modules define nearly identical ServiceDeps struct.
+
+**Files affected:**
+- `internal/modules/git/services/base.go` (lines 13-22)
+- `internal/modules/backup/services/base.go` (lines 13-23)
+- `internal/modules/site/services/base.go` (lines 15-22)
+- `internal/modules/dns/services/base.go` (lines 25-35)
+- `internal/modules/notification/services/base.go` (lines 12-24)
+
+**Current (duplicated 5 times):**
+```go
+type ServiceDeps struct {
+    service.Dependencies
+    Repos *repositories.Registry
+    // Module-specific optional fields
+}
+
+type BaseService struct {
+    service.Base
+    deps  *ServiceDeps
+    repos *repositories.Registry
+}
+
+func NewBaseService(deps *ServiceDeps) *BaseService {
+    return &BaseService{
+        Base:  service.NewBaseFromDeps(deps.Dependencies),
+        deps:  deps,
+        repos: deps.Repos,
+    }
+}
+```
+
+**Solution - Create generic base in service package:**
+```go
+// internal/pkg/service/module_base.go
+
+// ModuleDeps is a generic service dependencies container
+type ModuleDeps[R any] struct {
+    Dependencies
+    Repos R
+}
+
+// ModuleBase is a generic base service for modules
+type ModuleBase[R any] struct {
+    Base
+    deps  *ModuleDeps[R]
+    repos R
+}
+
+func NewModuleBase[R any](deps *ModuleDeps[R]) *ModuleBase[R] {
+    return &ModuleBase[R]{
+        Base:  NewBaseFromDeps(deps.Dependencies),
+        deps:  deps,
+        repos: deps.Repos,
+    }
+}
+
+func (s *ModuleBase[R]) Repos() R { return s.repos }
+
+// Usage in modules
+type SiteService struct {
+    *service.ModuleBase[*repositories.Registry]
+    // site-specific fields
+}
+```
+
+**Impact:** ~150 lines saved across 5 modules
+
+---
+
+## 71. JobContext Generic Base (P2)
+
+**Problem:** 6 modules define nearly identical JobContext struct.
+
+**Files affected:**
+- `internal/modules/site/jobs/context.go` (lines 21-38)
+- `internal/modules/server/jobs/context.go` (lines 19-29)
+- `internal/modules/backup/jobs/context.go` (line 15)
+- `internal/modules/script/jobs/context.go` (line 19)
+- `internal/modules/git/jobs/process_webhook.go` (line 320)
+- `internal/modules/database/jobs/` (implicit)
+
+**Current pattern (duplicated 6 times):**
+```go
+type JobContext struct {
+    pkgjobs.Base
+    repos *repositories.Registry
+    // Module-specific fields
+}
+
+func NewJobContext(deps pkgjobs.Dependencies, repos *repositories.Registry) *JobContext {
+    return &JobContext{
+        Base:  pkgjobs.NewBase(deps),
+        repos: repos,
+    }
+}
+```
+
+**Solution - Create generic in jobs package:**
+```go
+// internal/pkg/jobs/module_context.go
+
+type ModuleContext[R any] struct {
+    Base
+    repos R
+}
+
+func NewModuleContext[R any](deps Dependencies, repos R) *ModuleContext[R] {
+    return &ModuleContext[R]{
+        Base:  NewBase(deps),
+        repos: repos,
+    }
+}
+
+func (c *ModuleContext[R]) Repos() R { return c.repos }
+
+// Usage in modules
+type SiteJobContext = pkgjobs.ModuleContext[*repositories.Registry]
+```
+
+**Impact:** ~100 lines saved across 6 modules
+
+---
+
+## 72. Token Generation Consolidation (P2)
+
+**Problem:** Duplicate token generation implementations.
+
+**Files affected:**
+- `internal/pkg/utils/token.go` - `GenerateBase64Token()` (lines 19-27)
+- `internal/modules/auth/models/password_reset_token.go` - `GenerateToken()` (lines 32-39)
+- `internal/modules/site/models/helpers.go` - deprecated wrappers (lines 7-17)
+- `internal/modules/site/models/site.go` - `generateLaravelAppKey()` duplicate (lines 187-196)
+
+**Current duplicates:**
+```go
+// utils/token.go
+func GenerateBase64Token(length int) string {
+    bytes := make([]byte, length)
+    rand.Read(bytes)
+    return base64.URLEncoding.EncodeToString(bytes)[:length]
+}
+
+// auth/models/password_reset_token.go - DUPLICATE with different error handling
+func GenerateToken(length int) (string, error) {
+    bytes := make([]byte, length)
+    rand.Read(bytes)
+    return base64.URLEncoding.EncodeToString(bytes), nil
+}
+```
+
+**Solution - Remove duplicates, use centralized:**
+```go
+// Delete auth/models/password_reset_token.go:GenerateToken()
+// Delete site/models/helpers.go deprecated wrappers
+// Delete site/models/site.go:generateLaravelAppKey()
+
+// Update call sites to use:
+utils.GenerateBase64Token(length)
+utils.GenerateAppKey()
+```
+
+**Impact:** ~50 lines saved, remove deprecated code
+
+---
+
+## 73. Git Ref Trimming Helper (P2)
+
+**Problem:** Git ref trimming pattern duplicated 6 times.
+
+**Files affected:**
+- `internal/modules/git/handlers/webhook_handler.go` (2 occurrences)
+- `internal/modules/git/jobs/process_webhook.go` (2 occurrences)
+- `internal/modules/git/providers/types.go` (2 occurrences)
+
+**Current (duplicated 6 times):**
+```go
+branch := strings.TrimPrefix(ref, "refs/heads/")
+```
+
+**Solution - Create git helper:**
+```go
+// internal/modules/git/helpers.go
+
+const (
+    RefHeadsPrefix = "refs/heads/"
+    RefTagsPrefix  = "refs/tags/"
+)
+
+// ExtractBranchName extracts branch name from git ref
+func ExtractBranchName(ref string) string {
+    return strings.TrimPrefix(ref, RefHeadsPrefix)
+}
+
+// ExtractTagName extracts tag name from git ref
+func ExtractTagName(ref string) string {
+    return strings.TrimPrefix(ref, RefTagsPrefix)
+}
+
+// IsBranchRef checks if ref is a branch reference
+func IsBranchRef(ref string) bool {
+    return strings.HasPrefix(ref, RefHeadsPrefix)
+}
+```
+
+**Impact:** ~30 lines saved, clearer intent
+
+---
+
+## 74. Channel Validation Rules Consolidation (P2)
+
+**Problem:** Notification channel validation rules duplicated across 4 drivers.
+
+**Files affected:**
+- `internal/modules/notification/channels/email.go` (lines 67-73)
+- `internal/modules/notification/channels/slack.go` (lines 83-89)
+- `internal/modules/notification/channels/discord.go` (lines 83-89)
+- `internal/modules/notification/channels/telegram.go` (lines 110-117)
+
+**Current (repeated validation rules):**
+```go
+// Common rules duplicated in each channel
+"appDeploy":      "boolean"
+"databaseBackup": "boolean"
+```
+
+**Solution - Create shared validation rules:**
+```go
+// internal/modules/notification/channels/validation.go
+
+// CommonNotificationRules are shared across all channels
+var CommonNotificationRules = map[string]string{
+    "appDeploy":      "boolean",
+    "databaseBackup": "boolean",
+}
+
+// MergeValidationRules combines common and channel-specific rules
+func MergeValidationRules(channelRules map[string]string) map[string]string {
+    result := make(map[string]string, len(CommonNotificationRules)+len(channelRules))
+    for k, v := range CommonNotificationRules {
+        result[k] = v
+    }
+    for k, v := range channelRules {
+        result[k] = v
+    }
+    return result
+}
+
+// Usage in channels
+func (c *SlackChannel) GetCreateRules() map[string]string {
+    return MergeValidationRules(map[string]string{
+        "webhook_url": "required,url",
+    })
+}
+```
+
+**Impact:** ~40 lines saved, consistent validation
+
+---
+
+## Extended Summary (Items 63-74)
+
+| Category | Items | Est. LOC Saved |
+|----------|-------|----------------|
+| Error Type Consolidation | Item 63 | ~200 lines |
+| WebSocket SSH Client | Item 64 | ~140 lines |
+| Template Engine Consolidation | Item 65 | ~200 lines |
+| Slack Admin Alert Base | Item 66 | ~120 lines |
+| Notification Format Helper | Item 67 | ~150 lines |
+| Webhook Verification | Item 68 | ~80 lines |
+| Route Middleware Helper | Item 69 | ~60 lines |
+| Module ServiceDeps Generic | Item 70 | ~150 lines |
+| JobContext Generic Base | Item 71 | ~100 lines |
+| Token Generation Cleanup | Item 72 | ~50 lines |
+| Git Ref Helper | Item 73 | ~30 lines |
+| Channel Validation Rules | Item 74 | ~40 lines |
+| **Round 4 Total** | **12 patterns** | **~1320 lines** |
+
+---
+
+## Updated Final Summary
+
+| Category | Items | Total LOC Saved |
+|----------|-------|-----------------|
+| Handler Bases | 5 patterns | ~400 lines |
+| Repository Patterns | 5 patterns | ~1200 lines |
+| Service Patterns | 3 patterns | ~450 lines |
+| Job/Task Patterns | 3 patterns | ~800 lines |
+| Model Mixins | 5 patterns | ~270 lines |
+| Provider API Clients | 3 patterns | ~450 lines |
+| Middleware Patterns | 1 pattern | ~30 lines |
+| Config Patterns | 1 pattern | ~86 lines |
+| DTO/Request Patterns | 2 patterns | ~550 lines |
+| Testing Patterns | 2 patterns | ~250 lines |
+| Infrastructure Patterns | 6 patterns | ~1075 lines |
+| Validation & Response | 5 patterns | ~610 lines |
+| Template & Script | 3 patterns | ~160 lines |
+| Interface & Query | 4 patterns | ~500 lines |
+| Security & Events | 3 patterns | ~100 lines |
+| HTTP & Helpers (Round 3) | 12 patterns | ~1790 lines |
+| Error & DI (Round 4) | 12 patterns | ~1320 lines |
+| **Grand Total** | **74 patterns** | **~10,041 lines** |
