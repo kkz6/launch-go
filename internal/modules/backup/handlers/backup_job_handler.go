@@ -6,8 +6,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // BackupJobHandler handles HTTP requests for backup jobs
@@ -25,24 +25,20 @@ func (h *BackupJobHandler) CreateBackupJob(c *fiber.Ctx) error {
 	backupID := c.Params("backup")
 	token := c.Params("token")
 
-	var req dto.CreateBackupJobRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.CreateBackupJobRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
-	}
-
-	_, err := h.jobService.CreateBackupJob(c.Context(), backupID, token, &req)
+	_, err = h.jobService.CreateBackupJob(c.Context(), backupID, token, req)
 	if err != nil {
 		if err == services.ErrInvalidDispatchToken {
-			return response.Forbidden(c, "Invalid dispatch token")
+			return response.Forbidden(c, response.MsgForbidden)
 		}
 		if err == repositories.ErrBackupNotFound {
-			return response.NotFound(c, "Backup not found")
+			return response.NotFound(c, response.MsgBackupNotFound)
 		}
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)

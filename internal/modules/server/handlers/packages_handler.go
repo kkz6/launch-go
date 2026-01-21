@@ -4,13 +4,17 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // GetComposerAuth returns the Composer auth.json configuration
 func (h *Handler) GetComposerAuth(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	result, err := h.service.GetComposerAuth(c.Context(), serverID, teamID)
@@ -23,19 +27,19 @@ func (h *Handler) GetComposerAuth(c *fiber.Ctx) error {
 
 // UpdateComposerAuth updates the Composer auth.json configuration
 func (h *Handler) UpdateComposerAuth(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
-	var req dto.UpdateComposerAuthRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateComposerAuthRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	if err := h.service.UpdateComposerAuth(c.Context(), serverID, teamID, &req); err != nil {
+	if err := h.service.UpdateComposerAuth(c.Context(), serverID, teamID, req); err != nil {
 		return response.HandleErrorOrInternalErr(c, err, "Failed to update Composer auth")
 	}
 

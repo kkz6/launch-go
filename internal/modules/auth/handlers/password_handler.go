@@ -5,8 +5,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // PasswordHandler handles password-related HTTP requests
@@ -21,13 +21,9 @@ func NewPasswordHandler(service *services.Service) *PasswordHandler {
 
 // ForgotPassword initiates password reset
 func (h *PasswordHandler) ForgotPassword(c *fiber.Ctx) error {
-	var req dto.ForgotPasswordRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
+	req, err := fiberctx.MustParseAndValidate[dto.ForgotPasswordRequest](c)
+	if err != nil {
+		return err
 	}
 
 	// Always return success to prevent email enumeration
@@ -38,17 +34,13 @@ func (h *PasswordHandler) ForgotPassword(c *fiber.Ctx) error {
 
 // ResetPassword resets the user's password
 func (h *PasswordHandler) ResetPassword(c *fiber.Ctx) error {
-	var req dto.ResetPasswordRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.ResetPasswordRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
-	}
-
-	if err := h.service.ResetPassword(c.Context(), &req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+	if err := h.service.ResetPassword(c.Context(), req); err != nil {
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Password reset successfully", nil)

@@ -4,13 +4,16 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // ListSshKeys returns all SSH keys for the team
 func (h *Handler) ListSshKeys(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	keys, err := h.service.ListSshKeys(c.Context(), teamID)
 	if err != nil {
@@ -27,7 +30,11 @@ func (h *Handler) ListSshKeys(c *fiber.Ctx) error {
 
 // ListServerSshKeys returns all SSH keys attached to a server
 func (h *Handler) ListServerSshKeys(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	keys, err := h.service.ListServerSshKeys(c.Context(), serverID, teamID)
@@ -45,19 +52,17 @@ func (h *Handler) ListServerSshKeys(c *fiber.Ctx) error {
 
 // CreateSshKey creates a new SSH key
 func (h *Handler) CreateSshKey(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
-	userID := c.Locals("userID").(string)
-
-	var req dto.CreateSshKeyRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	req, err := fiberctx.MustParseAndValidate[dto.CreateSshKeyRequest](c)
+	if err != nil {
+		return err
 	}
 
-	key, err := h.service.CreateSshKey(c.Context(), teamID, userID, &req)
+	key, err := h.service.CreateSshKey(c.Context(), teamID, userID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -67,16 +72,16 @@ func (h *Handler) CreateSshKey(c *fiber.Ctx) error {
 
 // AttachSshKey attaches an SSH key to a server
 func (h *Handler) AttachSshKey(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
-	serverID := c.Params("id")
-
-	var req dto.AttachSshKeyRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	serverID := c.Params("id")
+
+	req, err := fiberctx.MustParseAndValidate[dto.AttachSshKeyRequest](c)
+	if err != nil {
+		return err
 	}
 
 	if err := h.service.AttachSshKey(c.Context(), serverID, teamID, req.SshKeyID); err != nil {
@@ -88,7 +93,11 @@ func (h *Handler) AttachSshKey(c *fiber.Ctx) error {
 
 // DetachSshKey detaches an SSH key from a server
 func (h *Handler) DetachSshKey(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 	sshKeyID := c.Params("sshKeyId")
 
@@ -101,7 +110,11 @@ func (h *Handler) DetachSshKey(c *fiber.Ctx) error {
 
 // DeleteSshKey deletes an SSH key
 func (h *Handler) DeleteSshKey(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	sshKeyID := c.Params("sshKeyId")
 
 	if err := h.service.DeleteSshKey(c.Context(), teamID, sshKeyID); err != nil {

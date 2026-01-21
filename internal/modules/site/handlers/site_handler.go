@@ -13,7 +13,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // SiteHandler handles HTTP requests for sites
@@ -35,11 +34,14 @@ func (h *SiteHandler) SetDomainRepository(repo dnscontracts.DomainRepository) {
 // List returns all sites for a server
 func (h *SiteHandler) List(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	sites, err := h.siteService.List(c.Context(), serverID, teamID)
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch sites")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	result := make([]dto.SiteResponse, len(sites))
@@ -53,17 +55,23 @@ func (h *SiteHandler) List(c *fiber.Ctx) error {
 // Create creates a new site
 func (h *SiteHandler) Create(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
-	teamID := c.Locals("teamID").(string)
-	userID := c.Locals("userID").(string)
-
-	var req dto.CreateSiteRequest
-	if err := fiberctx.ParseAndValidate(c, &req); err != nil {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
 		return err
 	}
 
-	site, err := h.siteService.Create(c.Context(), serverID, teamID, userID, &req)
+	req, err := fiberctx.MustParseAndValidate[dto.CreateSiteRequest](c)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return err
+	}
+
+	site, err := h.siteService.Create(c.Context(), serverID, teamID, userID, req)
+	if err != nil {
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Site created", dto.ToSiteResponse(site))
@@ -73,15 +81,18 @@ func (h *SiteHandler) Create(c *fiber.Ctx) error {
 func (h *SiteHandler) Show(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	site, err := h.siteService.FindByID(c.Context(), siteID, serverID, teamID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.InternalError(c, "Failed to fetch site")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	resp := dto.ToSiteResponse(site)
@@ -102,25 +113,27 @@ func (h *SiteHandler) Show(c *fiber.Ctx) error {
 func (h *SiteHandler) Update(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	teamID := c.Locals("teamID").(string)
-	userID := c.Locals("userID").(string)
-
-	var req dto.UpdateSiteRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateSiteRequest](c)
+	if err != nil {
+		return err
 	}
 
-	site, err := h.siteService.Update(c.Context(), siteID, serverID, teamID, userID, &req)
+	site, err := h.siteService.Update(c.Context(), siteID, serverID, teamID, userID, req)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Site updated", dto.ToSiteResponse(site))
@@ -130,14 +143,17 @@ func (h *SiteHandler) Update(c *fiber.Ctx) error {
 func (h *SiteHandler) Delete(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.siteService.Delete(c.Context(), siteID, serverID, teamID); err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Site deletion initiated", nil)
@@ -147,15 +163,18 @@ func (h *SiteHandler) Delete(c *fiber.Ctx) error {
 func (h *SiteHandler) GetDeletionSummary(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	summary, err := h.siteService.GetDeletionSummary(c.Context(), siteID, serverID, teamID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.InternalError(c, "Failed to get deletion summary")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	return response.OK(c, "Deletion summary retrieved", summary)
@@ -165,15 +184,18 @@ func (h *SiteHandler) GetDeletionSummary(c *fiber.Ctx) error {
 func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	site, err := h.siteService.RegenerateDeployToken(c.Context(), siteID, serverID, teamID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Deploy token regenerated", dto.ToSiteResponse(site))
@@ -183,16 +205,18 @@ func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
 func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	teamID := c.Locals("teamID").(string)
-	userID := c.Locals("userID").(string)
-
-	var req dto.UpdateDeploymentSettingsRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateDeploymentSettingsRequest](c)
+	if err != nil {
+		return err
 	}
 
 	// Convert to UpdateSiteRequest
@@ -212,10 +236,10 @@ func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 	site, err := h.siteService.Update(c.Context(), siteID, serverID, teamID, userID, updateReq)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Deployment settings updated", dto.ToSiteResponse(site))
@@ -225,15 +249,18 @@ func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	settingsData, err := h.siteService.GetSettings(c.Context(), siteID, serverID, teamID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.InternalError(c, "Failed to fetch site settings")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	// Build TLS options
@@ -265,12 +292,12 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 func (h *SiteHandler) VerifyDomain(c *fiber.Ctx) error {
 	domain := c.Query("domain")
 	if domain == "" {
-		return response.Error(c, fiber.StatusBadRequest, "Domain is required")
+		return response.BadRequest(c, response.MsgMissingRequiredParams)
 	}
 
-	teamID, ok := c.Locals("teamID").(string)
-	if !ok || teamID == "" {
-		return response.Error(c, fiber.StatusBadRequest, "Team ID is required")
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
 	}
 
 	// Extract the base domain (handles subdomains)
@@ -290,7 +317,7 @@ func (h *SiteHandler) VerifyDomain(c *fiber.Ctx) error {
 	// Get user's connected domains
 	userDomains, err := h.domainRepo.FindByTeam(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch domains")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	// Check if the base domain exists in user's connected domains

@@ -7,8 +7,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
 	"github.com/kkz6/launch-go/internal/modules/dns/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // DnsRecordHandler handles HTTP requests for DNS records
@@ -27,15 +27,18 @@ func NewDnsRecordHandler(recordService *services.DnsRecordService, domainService
 
 // ListRecords lists all DNS records for a domain
 func (h *DnsRecordHandler) ListRecords(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 	domainID := c.Params("id")
 
 	records, err := h.domainService.GetDomainRecords(c.Context(), domainID, teamID)
 	if err != nil {
 		if errors.Is(err, services.ErrDomainNotFound) {
-			return response.NotFound(c, "Domain not found")
+			return response.NotFound(c, response.MsgDomainNotFound)
 		}
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Records retrieved", records)
@@ -43,24 +46,23 @@ func (h *DnsRecordHandler) ListRecords(c *fiber.Ctx) error {
 
 // CreateRecord creates a new DNS record
 func (h *DnsRecordHandler) CreateRecord(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 	domainID := c.Params("id")
 
-	var req dto.CreateDnsRecordRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.CreateDnsRecordRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	record, err := h.recordService.CreateRecord(c.Context(), domainID, teamID, &req)
+	record, err := h.recordService.CreateRecord(c.Context(), domainID, teamID, req)
 	if err != nil {
 		if errors.Is(err, services.ErrDomainNotFound) {
-			return response.NotFound(c, "Domain not found")
+			return response.NotFound(c, response.MsgDomainNotFound)
 		}
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Record created", dto.ToDnsRecordResponse(record))
@@ -68,31 +70,30 @@ func (h *DnsRecordHandler) CreateRecord(c *fiber.Ctx) error {
 
 // UpdateRecord updates a DNS record
 func (h *DnsRecordHandler) UpdateRecord(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 	domainID := c.Params("domainId")
 	recordID := c.Params("recordId")
 
-	var req dto.UpdateDnsRecordRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateDnsRecordRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	record, err := h.recordService.UpdateRecord(c.Context(), recordID, domainID, teamID, &req)
+	record, err := h.recordService.UpdateRecord(c.Context(), recordID, domainID, teamID, req)
 	if err != nil {
 		if errors.Is(err, services.ErrDomainNotFound) {
-			return response.NotFound(c, "Domain not found")
+			return response.NotFound(c, response.MsgDomainNotFound)
 		}
 		if errors.Is(err, services.ErrRecordNotFound) {
-			return response.NotFound(c, "Record not found")
+			return response.NotFound(c, response.MsgDNSRecordNotFound)
 		}
 		if errors.Is(err, services.ErrRecordNotEditable) {
-			return response.Error(c, fiber.StatusForbidden, "This record type cannot be edited")
+			return response.Forbidden(c, "This record type cannot be edited")
 		}
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Record updated", dto.ToDnsRecordResponse(record))
@@ -100,22 +101,25 @@ func (h *DnsRecordHandler) UpdateRecord(c *fiber.Ctx) error {
 
 // DeleteRecord deletes a DNS record
 func (h *DnsRecordHandler) DeleteRecord(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 	domainID := c.Params("domainId")
 	recordID := c.Params("recordId")
 
-	err := h.recordService.DeleteRecord(c.Context(), recordID, domainID, teamID)
+	err = h.recordService.DeleteRecord(c.Context(), recordID, domainID, teamID)
 	if err != nil {
 		if errors.Is(err, services.ErrDomainNotFound) {
-			return response.NotFound(c, "Domain not found")
+			return response.NotFound(c, response.MsgDomainNotFound)
 		}
 		if errors.Is(err, services.ErrRecordNotFound) {
-			return response.NotFound(c, "Record not found")
+			return response.NotFound(c, response.MsgDNSRecordNotFound)
 		}
 		if errors.Is(err, services.ErrRecordNotDeletable) {
-			return response.Error(c, fiber.StatusForbidden, "This record type cannot be deleted")
+			return response.Forbidden(c, "This record type cannot be deleted")
 		}
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.NoContent(c)

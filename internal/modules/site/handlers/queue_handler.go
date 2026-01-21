@@ -8,8 +8,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // QueueHandler handles HTTP requests for queue workers
@@ -26,24 +26,23 @@ func NewQueueHandler(queueService *services.QueueService) *QueueHandler {
 func (h *QueueHandler) CreateQueue(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	userID := c.Locals("userID").(string)
-
-	var req dto.CreateQueueRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	req, err := fiberctx.MustParseAndValidate[dto.CreateQueueRequest](c)
+	if err != nil {
+		return err
 	}
 
-	queue, err := h.queueService.Create(c.Context(), siteID, serverID, userID, &req)
+	queue, err := h.queueService.Create(c.Context(), siteID, serverID, userID, req)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Queue created", dto.ToQueueResponse(queue))
@@ -57,10 +56,10 @@ func (h *QueueHandler) ListQueues(c *fiber.Ctx) error {
 	queues, err := h.queueService.List(c.Context(), siteID, serverID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.InternalError(c, "Failed to fetch queues")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	result := make([]dto.QueueResponse, len(queues))
@@ -79,14 +78,14 @@ func (h *QueueHandler) DeleteQueue(c *fiber.Ctx) error {
 
 	if err := h.queueService.Delete(c.Context(), queueID, siteID, serverID); err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
 		if errors.Is(err, repositories.ErrQueueNotFound) {
-			return response.NotFound(c, "Queue not found")
+			return response.NotFound(c, response.MsgQueueNotFound)
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Queue deletion initiated", nil)
@@ -97,17 +96,17 @@ func (h *QueueHandler) UpdateAutoRestartQueue(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
 
-	var req dto.UpdateAutoRestartQueueRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateAutoRestartQueueRequest](c)
+	if err != nil {
+		return err
 	}
 
 	if err := h.queueService.UpdateAutoRestart(c.Context(), siteID, serverID, req.Enabled); err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	message := "Auto-restart queue disabled"
@@ -122,14 +121,17 @@ func (h *QueueHandler) UpdateAutoRestartQueue(c *fiber.Ctx) error {
 func (h *QueueHandler) SyncQueues(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	siteID := c.Params("id")
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.queueService.SyncStatus(c.Context(), siteID, serverID, userID); err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, "Site not found")
+			return response.NotFound(c, response.MsgSiteNotFound)
 		}
 
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Queue sync initiated", nil)

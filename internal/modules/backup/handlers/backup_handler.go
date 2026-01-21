@@ -6,8 +6,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // BackupHandler handles HTTP requests for backups
@@ -40,21 +40,19 @@ func (h *BackupHandler) ListBackups(c *fiber.Ctx) error {
 // CreateBackup creates a new backup configuration
 func (h *BackupHandler) CreateBackup(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
-	userID := c.Locals("userID").(string)
-	teamID := c.Locals("teamID").(string)
-
-	var req dto.CreateBackupRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
-	}
-
-	backup, err := h.backupService.CreateBackup(c.Context(), serverID, userID, teamID, &req)
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return err
+	}
+
+	req, err := fiberctx.MustParseAndValidate[dto.CreateBackupRequest](c)
+	if err != nil {
+		return err
+	}
+
+	backup, err := h.backupService.CreateBackup(c.Context(), serverID, userID, teamID, req)
+	if err != nil {
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Backup created successfully", dto.ToBackupResponse(backup))
@@ -68,9 +66,9 @@ func (h *BackupHandler) ShowBackup(c *fiber.Ctx) error {
 	backup, err := h.backupService.GetBackupByIDAndServer(c.Context(), backupID, serverID)
 	if err != nil {
 		if err == repositories.ErrBackupNotFound {
-			return response.NotFound(c, "Backup not found")
+			return response.NotFound(c, response.MsgBackupNotFound)
 		}
-		return response.InternalError(c, "Failed to fetch backup")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	return response.OK(c, "Backup retrieved", dto.ToBackupResponse(backup))
@@ -85,23 +83,19 @@ func (h *BackupHandler) UpdateBackup(c *fiber.Ctx) error {
 	_, err := h.backupService.GetBackupByIDAndServer(c.Context(), backupID, serverID)
 	if err != nil {
 		if err == repositories.ErrBackupNotFound {
-			return response.NotFound(c, "Backup not found")
+			return response.NotFound(c, response.MsgBackupNotFound)
 		}
-		return response.InternalError(c, "Failed to fetch backup")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
-	var req dto.UpdateBackupRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
-	}
-
-	backup, err := h.backupService.UpdateBackup(c.Context(), backupID, &req)
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateBackupRequest](c)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return err
+	}
+
+	backup, err := h.backupService.UpdateBackup(c.Context(), backupID, req)
+	if err != nil {
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Backup updated successfully", dto.ToBackupResponse(backup))
@@ -114,9 +108,9 @@ func (h *BackupHandler) DeleteBackup(c *fiber.Ctx) error {
 
 	if err := h.backupService.DeleteBackup(c.Context(), backupID, serverID); err != nil {
 		if err == repositories.ErrBackupNotFound {
-			return response.NotFound(c, "Backup not found")
+			return response.NotFound(c, response.MsgBackupNotFound)
 		}
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.NoContent(c)
@@ -129,9 +123,9 @@ func (h *BackupHandler) RunManualBackup(c *fiber.Ctx) error {
 
 	if err := h.backupService.RunBackup(c.Context(), backupID, serverID); err != nil {
 		if err == repositories.ErrBackupNotFound {
-			return response.NotFound(c, "Backup not found")
+			return response.NotFound(c, response.MsgBackupNotFound)
 		}
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Backup queued for execution", nil)

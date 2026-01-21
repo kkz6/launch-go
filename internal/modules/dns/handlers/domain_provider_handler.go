@@ -7,8 +7,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
 	"github.com/kkz6/launch-go/internal/modules/dns/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // DomainProviderHandler handles HTTP requests for domain providers
@@ -23,11 +23,14 @@ func NewDomainProviderHandler(providerService *services.DomainProviderService) *
 
 // ListProviders lists all DNS providers for the current team
 func (h *DomainProviderHandler) ListProviders(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	providers, err := h.providerService.ListProviders(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch providers")
+		return response.InternalError(c, response.MsgInternalError)
 	}
 
 	return response.OK(c, "Providers retrieved", providers)
@@ -35,24 +38,22 @@ func (h *DomainProviderHandler) ListProviders(c *fiber.Ctx) error {
 
 // CreateProvider creates a new DNS provider
 func (h *DomainProviderHandler) CreateProvider(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
-	userID := c.Locals("userID").(string)
-
-	var req dto.CreateDomainProviderRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	req, err := fiberctx.MustParseAndValidate[dto.CreateDomainProviderRequest](c)
+	if err != nil {
+		return err
 	}
 
-	provider, err := h.providerService.CreateProvider(c.Context(), userID, teamID, &req)
+	provider, err := h.providerService.CreateProvider(c.Context(), userID, teamID, req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidCredentials) {
-			return response.Error(c, fiber.StatusBadRequest, "Invalid credentials. Please check your API token and try again.")
+			return response.BadRequest(c, response.MsgInvalidCredentials)
 		}
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	// Count is 0 for newly created provider, but we check anyway
@@ -67,18 +68,21 @@ func (h *DomainProviderHandler) CreateProvider(c *fiber.Ctx) error {
 
 // DeleteProvider deletes a DNS provider
 func (h *DomainProviderHandler) DeleteProvider(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 	id := c.Params("id")
 
-	err := h.providerService.DeleteProvider(c.Context(), id, teamID)
+	err = h.providerService.DeleteProvider(c.Context(), id, teamID)
 	if err != nil {
 		if errors.Is(err, services.ErrProviderNotFound) {
 			return response.NotFound(c, "Provider not found")
 		}
 		if errors.Is(err, services.ErrProviderHasActiveDomains) {
-			return response.Error(c, fiber.StatusBadRequest, "Cannot delete provider with active domains")
+			return response.BadRequest(c, "Cannot delete provider with active domains")
 		}
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.NoContent(c)
@@ -86,15 +90,18 @@ func (h *DomainProviderHandler) DeleteProvider(c *fiber.Ctx) error {
 
 // CheckProviderConnectivity checks if provider credentials are valid
 func (h *DomainProviderHandler) CheckProviderConnectivity(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 	id := c.Params("id")
 
-	err := h.providerService.CheckProviderConnectivity(c.Context(), id, teamID)
+	err = h.providerService.CheckProviderConnectivity(c.Context(), id, teamID)
 	if err != nil {
 		if errors.Is(err, services.ErrProviderNotFound) {
 			return response.NotFound(c, "Provider not found")
 		}
-		return response.Error(c, fiber.StatusBadRequest, "Provider connectivity check failed")
+		return response.BadRequest(c, "Provider connectivity check failed")
 	}
 
 	return response.OK(c, "Provider is connected", nil)
@@ -102,16 +109,18 @@ func (h *DomainProviderHandler) CheckProviderConnectivity(c *fiber.Ctx) error {
 
 // SyncProviderDomains syncs domains from a provider
 func (h *DomainProviderHandler) SyncProviderDomains(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
-	userID := c.Locals("userID").(string)
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
+	}
 	id := c.Params("id")
 
-	err := h.providerService.SyncDomains(c.Context(), id, userID, teamID)
+	err = h.providerService.SyncDomains(c.Context(), id, userID, teamID)
 	if err != nil {
 		if errors.Is(err, services.ErrProviderNotFound) {
 			return response.NotFound(c, "Provider not found")
 		}
-		return response.Error(c, fiber.StatusBadRequest, "Failed to sync domains")
+		return response.BadRequest(c, "Failed to sync domains")
 	}
 
 	return response.OK(c, "Domains synchronized successfully", nil)

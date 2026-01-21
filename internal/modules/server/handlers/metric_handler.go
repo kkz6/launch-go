@@ -6,12 +6,17 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // GetLatestMetric returns the latest metric for a server
 func (h *Handler) GetLatestMetric(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	metric, err := h.service.GetLatestMetric(c.Context(), serverID, teamID)
@@ -28,7 +33,11 @@ func (h *Handler) GetLatestMetric(c *fiber.Ctx) error {
 
 // GetMetrics returns metrics for a server
 func (h *Handler) GetMetrics(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 	limit, _ := strconv.Atoi(c.Query("limit", "100"))
 

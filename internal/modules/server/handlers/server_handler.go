@@ -10,7 +10,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // SiteCounter interface for counting sites by server
@@ -36,7 +35,10 @@ func NewHandler(service *services.Service, taskRunner *tasks.TaskRunnerDeps, sit
 
 // List returns all servers for the team
 func (h *Handler) List(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	servers, err := h.service.ListServers(c.Context(), teamID)
 	if err != nil {
@@ -53,7 +55,10 @@ func (h *Handler) List(c *fiber.Ctx) error {
 
 // ListArchived returns all archived servers for the team
 func (h *Handler) ListArchived(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	servers, err := h.service.ListArchivedServers(c.Context(), teamID)
 	if err != nil {
@@ -70,19 +75,17 @@ func (h *Handler) ListArchived(c *fiber.Ctx) error {
 
 // Create creates a new server
 func (h *Handler) Create(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
-	userID := c.Locals("userID").(string)
-
-	var req dto.CreateServerRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	req, err := fiberctx.MustParseAndValidate[dto.CreateServerRequest](c)
+	if err != nil {
+		return err
 	}
 
-	server, err := h.service.CreateServer(c.Context(), teamID, userID, &req)
+	server, err := h.service.CreateServer(c.Context(), teamID, userID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -92,7 +95,11 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 
 // Show returns a single server
 func (h *Handler) Show(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	id, err := fiberctx.GetID(c)
 	if err != nil {
 		return err
@@ -108,22 +115,22 @@ func (h *Handler) Show(c *fiber.Ctx) error {
 
 // Update updates a server
 func (h *Handler) Update(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	id, err := fiberctx.GetID(c)
 	if err != nil {
 		return err
 	}
 
-	var req dto.UpdateServerRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateServerRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	server, err := h.service.UpdateServer(c.Context(), id, teamID, &req)
+	server, err := h.service.UpdateServer(c.Context(), id, teamID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -133,7 +140,11 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 
 // Delete deletes a server
 func (h *Handler) Delete(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	id := c.Params("id")
 
 	if err := h.service.DeleteServer(c.Context(), id, teamID); err != nil {
@@ -145,7 +156,11 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 
 // Reboot reboots a server
 func (h *Handler) Reboot(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	id := c.Params("id")
 
 	if err := h.service.RebootServer(c.Context(), id, teamID); err != nil {
@@ -157,7 +172,11 @@ func (h *Handler) Reboot(c *fiber.Ctx) error {
 
 // Connect tests the connection to a server
 func (h *Handler) Connect(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	id := c.Params("id")
 
 	if err := h.service.ConnectServer(c.Context(), id, teamID); err != nil {
@@ -169,7 +188,11 @@ func (h *Handler) Connect(c *fiber.Ctx) error {
 
 // Archive archives a server
 func (h *Handler) Archive(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	id := c.Params("id")
 
 	if err := h.service.ArchiveServer(c.Context(), id, teamID); err != nil {
@@ -181,7 +204,11 @@ func (h *Handler) Archive(c *fiber.Ctx) error {
 
 // Unarchive unarchives a server
 func (h *Handler) Unarchive(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	id := c.Params("id")
 
 	if err := h.service.UnarchiveServer(c.Context(), id, teamID); err != nil {
@@ -193,7 +220,11 @@ func (h *Handler) Unarchive(c *fiber.Ctx) error {
 
 // ShowPage returns aggregated data for the server show page
 func (h *Handler) ShowPage(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	id := c.Params("id")
 
 	data, err := h.service.GetShowPageData(c.Context(), id, teamID)
@@ -206,17 +237,16 @@ func (h *Handler) ShowPage(c *fiber.Ctx) error {
 
 // RunVulnerabilityAudit runs a security vulnerability audit on a server
 func (h *Handler) RunVulnerabilityAudit(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
-	userID := c.Locals("userID").(string)
-	id := c.Params("id")
-
-	var req dto.VulnerabilityAuditRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	id := c.Params("id")
+
+	req, err := fiberctx.MustParseAndValidate[dto.VulnerabilityAuditRequest](c)
+	if err != nil {
+		return err
 	}
 
 	if err := h.service.RunVulnerabilityAudit(c.Context(), id, teamID, userID, req.Email); err != nil {
@@ -228,7 +258,11 @@ func (h *Handler) RunVulnerabilityAudit(c *fiber.Ctx) error {
 
 // GetSiteCount returns the number of sites for a server
 func (h *Handler) GetSiteCount(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	// Verify server exists and belongs to team

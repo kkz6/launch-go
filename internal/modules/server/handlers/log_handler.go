@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -21,7 +22,11 @@ type LogInfo struct {
 
 // ListLogs returns available logs for a server based on installed services
 func (h *Handler) ListLogs(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	// Get server with services
@@ -60,23 +65,27 @@ func (h *Handler) ListLogs(c *fiber.Ctx) error {
 // GetLogContent returns the content of a log file
 // Route: GET /servers/:id/logs/:log
 func (h *Handler) GetLogContent(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 	logParam := c.Params("log")
 
 	if logParam == "" {
-		return response.Error(c, fiber.StatusBadRequest, "Log parameter is required")
+		return response.BadRequest(c, "Log parameter is required")
 	}
 
 	// Decode the encrypted log parameter
 	data, err := support.DecodeFileRouteParam(logParam)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid log parameter")
+		return response.BadRequest(c, "Invalid log parameter")
 	}
 
 	// Verify the path is an allowed log path
 	if !isAllowedLogPath(data.Path) {
-		return response.Error(c, fiber.StatusBadRequest, "Log path not allowed")
+		return response.BadRequest(c, "Log path not allowed")
 	}
 
 	// Get server
@@ -95,7 +104,7 @@ func (h *Handler) GetLogContent(c *fiber.Ctx) error {
 		AsRoot().
 		Run(c.Context())
 	if err != nil {
-		return response.Error(c, fiber.StatusInternalServerError, "Failed to read log: "+err.Error())
+		return response.InternalError(c, "Failed to read log: "+err.Error())
 	}
 
 	return response.OK(c, "Log content retrieved", map[string]string{

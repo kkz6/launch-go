@@ -5,8 +5,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // TeamMemberHandler handles team member management HTTP requests
@@ -21,20 +21,19 @@ func NewTeamMemberHandler(service *services.Service) *TeamMemberHandler {
 
 // InviteTeamMember invites a user to a team
 func (h *TeamMemberHandler) InviteTeamMember(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 	teamID := c.Params("teamId")
 
-	var req dto.InviteTeamMemberRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.InviteTeamMemberRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
-	}
-
-	if err := h.service.InviteTeamMember(c.Context(), userID, teamID, &req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+	if err := h.service.InviteTeamMember(c.Context(), userID, teamID, req); err != nil {
+		return response.HandleError(c, err)
 	}
 
 	return response.Created(c, "Invitation sent successfully", nil)
@@ -42,11 +41,14 @@ func (h *TeamMemberHandler) InviteTeamMember(c *fiber.Ctx) error {
 
 // AcceptTeamInvitation accepts a team invitation
 func (h *TeamMemberHandler) AcceptTeamInvitation(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 	invitationID := c.Params("invitationId")
 
 	if err := h.service.AcceptTeamInvitation(c.Context(), userID, invitationID); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Invitation accepted", nil)
@@ -54,12 +56,15 @@ func (h *TeamMemberHandler) AcceptTeamInvitation(c *fiber.Ctx) error {
 
 // CancelTeamInvitation cancels a team invitation
 func (h *TeamMemberHandler) CancelTeamInvitation(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 	teamID := c.Params("teamId")
 	invitationID := c.Params("invitationId")
 
 	if err := h.service.CancelTeamInvitation(c.Context(), userID, teamID, invitationID); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Invitation cancelled", nil)
@@ -67,21 +72,20 @@ func (h *TeamMemberHandler) CancelTeamInvitation(c *fiber.Ctx) error {
 
 // UpdateTeamMemberRole updates a team member's role
 func (h *TeamMemberHandler) UpdateTeamMemberRole(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 	teamID := c.Params("teamId")
 	targetUserID := c.Params("userId")
 
-	var req dto.UpdateTeamMemberRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateTeamMemberRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errors := validator.Validate(&req); errors != nil {
-		return response.ValidationError(c, errors)
-	}
-
-	if err := h.service.UpdateTeamMemberRole(c.Context(), userID, teamID, targetUserID, &req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+	if err := h.service.UpdateTeamMemberRole(c.Context(), userID, teamID, targetUserID, req); err != nil {
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Member role updated", nil)
@@ -89,12 +93,15 @@ func (h *TeamMemberHandler) UpdateTeamMemberRole(c *fiber.Ctx) error {
 
 // RemoveTeamMember removes a member from a team
 func (h *TeamMemberHandler) RemoveTeamMember(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 	teamID := c.Params("teamId")
 	targetUserID := c.Params("userId")
 
 	if err := h.service.RemoveTeamMember(c.Context(), userID, teamID, targetUserID); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Member removed", nil)
@@ -106,7 +113,7 @@ func (h *TeamMemberHandler) GetTeamMembers(c *fiber.Ctx) error {
 
 	allMembers, err := h.service.GetAllTeamMembers(c.Context(), teamID)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Members retrieved", allMembers)
@@ -118,7 +125,7 @@ func (h *TeamMemberHandler) GetTeamInvitations(c *fiber.Ctx) error {
 
 	invitations, err := h.service.GetTeamInvitations(c.Context(), teamID)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Invitations retrieved", dto.ToTeamInvitationsResponse(invitations))

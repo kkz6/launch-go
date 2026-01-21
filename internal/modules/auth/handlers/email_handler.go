@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -23,7 +24,7 @@ func (h *EmailHandler) VerifyEmail(c *fiber.Ctx) error {
 	hash := c.Params("hash")
 
 	if err := h.service.VerifyEmail(c.Context(), userID, hash); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Email verified successfully", nil)
@@ -31,10 +32,13 @@ func (h *EmailHandler) VerifyEmail(c *fiber.Ctx) error {
 
 // ResendVerificationEmail resends the verification email
 func (h *EmailHandler) ResendVerificationEmail(c *fiber.Ctx) error {
-	userID := c.Locals("userID").(string)
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.ResendVerificationEmail(c.Context(), userID); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, err.Error())
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Verification email sent", nil)

@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -15,7 +16,10 @@ func (h *Handler) GetCreateOptions(c *fiber.Ctx) error {
 
 // ListServerProviders returns all connected server providers for the team
 func (h *Handler) ListServerProviders(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 
 	providers, err := h.service.ListServerProviders(c.Context(), teamID)
 	if err != nil {

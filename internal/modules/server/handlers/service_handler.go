@@ -5,13 +5,17 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // ListServices returns all installed services for a server
 func (h *Handler) ListServices(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	svcs, err := h.service.ListServices(c.Context(), serverID, teamID)
@@ -29,19 +33,19 @@ func (h *Handler) ListServices(c *fiber.Ctx) error {
 
 // InstallService installs a new service on a server
 func (h *Handler) InstallService(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
-	var req dto.CreateServiceRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.CreateServiceRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	svc, err := h.service.InstallService(c.Context(), serverID, teamID, &req)
+	svc, err := h.service.InstallService(c.Context(), serverID, teamID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -51,22 +55,22 @@ func (h *Handler) InstallService(c *fiber.Ctx) error {
 
 // ServiceOperation performs an operation on a service (start, stop, restart)
 func (h *Handler) ServiceOperation(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 	serviceID := c.Params("serviceId")
 
-	var req dto.ServiceOperationRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	req, err := fiberctx.MustParseAndValidate[dto.ServiceOperationRequest](c)
+	if err != nil {
+		return err
 	}
 
 	operation, err := enums.ParseServiceOption(req.Operation)
 	if err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid operation")
+		return response.BadRequest(c, "Invalid operation")
 	}
 
 	if err := h.service.HandleServiceOperation(c.Context(), serverID, teamID, serviceID, operation); err != nil {
@@ -78,7 +82,11 @@ func (h *Handler) ServiceOperation(c *fiber.Ctx) error {
 
 // ListPhpVersions returns all PHP versions with their installation status for a server
 func (h *Handler) ListPhpVersions(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	phpVersions, err := h.service.GetPhpVersions(c.Context(), serverID, teamID)
@@ -91,7 +99,11 @@ func (h *Handler) ListPhpVersions(c *fiber.Ctx) error {
 
 // ListInstalledPhpVersions returns only the installed PHP versions for a server
 func (h *Handler) ListInstalledPhpVersions(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	phpVersions, err := h.service.GetInstalledPhpVersions(c.Context(), serverID, teamID)
@@ -104,7 +116,11 @@ func (h *Handler) ListInstalledPhpVersions(c *fiber.Ctx) error {
 
 // GetAvailableServices returns all available services that can be installed on a server
 func (h *Handler) GetAvailableServices(c *fiber.Ctx) error {
-	teamID := c.Locals("teamID").(string)
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
 	serverID := c.Params("id")
 
 	services, err := h.service.GetAvailableServices(c.Context(), serverID, teamID)
@@ -114,5 +130,3 @@ func (h *Handler) GetAvailableServices(c *fiber.Ctx) error {
 
 	return response.OK(c, "Available services retrieved", services)
 }
-
-
