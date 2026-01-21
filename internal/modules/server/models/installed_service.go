@@ -31,9 +31,7 @@ func (s *InstalledService) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 
-	if s.Status == "" {
-		s.Status = enums.ServiceStatusPending
-	}
+	basemodels.SetDefaultStatus(&s.Status, enums.ServiceStatusPending)
 
 	return nil
 }
