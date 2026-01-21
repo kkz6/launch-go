@@ -1,9 +1,7 @@
 package storage
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
 
@@ -38,18 +36,13 @@ func (p *DropboxProvider) Connect(ctx context.Context) error {
 	}
 
 	reqBody := map[string]string{"query": ""}
-	jsonBody, err := json.Marshal(reqBody)
+	req, err := httpclient.NewRequest(ctx, "POST", dropboxAPIURL+"/check/user").
+		BearerAuth(p.token).
+		JSONBody(reqBody).
+		Build()
 	if err != nil {
 		return err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", dropboxAPIURL+"/check/user", bytes.NewReader(jsonBody))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+p.token)
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
@@ -76,18 +69,13 @@ func (p *DropboxProvider) Delete(ctx context.Context, paths []string) error {
 	}
 
 	reqBody := map[string]interface{}{"entries": entries}
-	jsonBody, err := json.Marshal(reqBody)
+	req, err := httpclient.NewRequest(ctx, "POST", dropboxAPIURL+"/files/delete_batch").
+		BearerAuth(p.token).
+		JSONBody(reqBody).
+		Build()
 	if err != nil {
 		return err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", dropboxAPIURL+"/files/delete_batch", bytes.NewReader(jsonBody))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+p.token)
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {

@@ -1,12 +1,11 @@
 package handlers
 
 import (
-	"strconv"
-
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/fiberutil"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -22,11 +21,7 @@ func (h *Handler) ListTasks(c *fiber.Ctx) error {
 		return err
 	}
 
-	limit, _ := strconv.Atoi(c.Query("limit", "50"))
-
-	if limit < 1 || limit > 100 {
-		limit = 50
-	}
+	limit := fiberutil.ParseLimit(c, 50, 100)
 
 	tasks, err := h.service.ListTasks(c.Context(), serverID, teamID, limit)
 	if err != nil {

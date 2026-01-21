@@ -426,15 +426,14 @@ func (p *GitHubProvider) createDeploymentStatus(ctx context.Context, statusesURL
 
 	// Use a relative path if possible, or direct URL
 	// Since statuses_url is a full URL, we need to make a direct request
-	bodyBytes, _ := EncodeJSON(statusBody)
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, statusesURL, strings.NewReader(string(bodyBytes)))
+	req, err := httpclient.NewRequest(ctx, http.MethodPost, statusesURL).
+		BearerAuth(token).
+		WithHeader("Accept", "application/vnd.github.v3+json").
+		JSONBody(statusBody).
+		Build()
 	if err != nil {
 		return
 	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := httpclient.Default().Do(req)
 	if err != nil {

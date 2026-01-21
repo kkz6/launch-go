@@ -153,3 +153,40 @@ func ParseString(c *fiber.Ctx, name, defaultVal string) string {
 	}
 	return str
 }
+
+// ParseIntValue parses an integer from a raw string value with bounds checking.
+// This is useful for non-Fiber contexts (e.g., WebSocket handlers).
+// Returns the default value if the string is empty or invalid.
+// Clamps the value between minVal and maxVal if they are set (non-zero).
+func ParseIntValue(str string, defaultVal, minVal, maxVal int) int {
+	if str == "" {
+		return defaultVal
+	}
+
+	val, err := strconv.Atoi(str)
+	if err != nil {
+		return defaultVal
+	}
+
+	if minVal != 0 && val < minVal {
+		return minVal
+	}
+
+	if maxVal != 0 && val > maxVal {
+		return maxVal
+	}
+
+	return val
+}
+
+// ParseTailValue parses a "tail" string value for log-style endpoints.
+// Default is 100, minimum is 1, maximum is 10000.
+func ParseTailValue(str string) int {
+	return ParseIntValue(str, 100, 1, 10000)
+}
+
+// ParseIntervalValue parses an "interval" string value.
+// Clamps between min (default 1) and max (default 60).
+func ParseIntervalValue(str string, defaultVal int) int {
+	return ParseIntValue(str, defaultVal, 1, 60)
+}
