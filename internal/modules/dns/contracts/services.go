@@ -24,13 +24,13 @@ type DomainService interface {
 	GetDomain(ctx context.Context, id, teamID string) (*models.Domain, error)
 	ListDomains(ctx context.Context, teamID string) ([]dto.DomainResponse, error)
 	DeleteDomain(ctx context.Context, id, teamID string, deleteFromProvider bool) error
-	GetDomainRecords(ctx context.Context, domainID, teamID string) ([]dto.DnsRecordResponse, error)
+	GetDomainRecords(ctx context.Context, domainID, teamID string) ([]dto.DNSRecordResponse, error)
 }
 
-// DnsRecordService defines the interface for DNS record service operations
-type DnsRecordService interface {
-	CreateRecord(ctx context.Context, domainID, teamID string, req *dto.CreateDnsRecordRequest) (*models.DnsRecord, error)
-	UpdateRecord(ctx context.Context, recordID, domainID, teamID string, req *dto.UpdateDnsRecordRequest) (*models.DnsRecord, error)
+// DNSRecordService defines the interface for DNS record service operations
+type DNSRecordService interface {
+	CreateRecord(ctx context.Context, domainID, teamID string, req *dto.CreateDNSRecordRequest) (*models.DNSRecord, error)
+	UpdateRecord(ctx context.Context, recordID, domainID, teamID string, req *dto.UpdateDNSRecordRequest) (*models.DNSRecord, error)
 	DeleteRecord(ctx context.Context, recordID, domainID, teamID string) error
 	GetRecordTypes() []string
 	// CreateRecordForSite creates a DNS A record for a site, handling subdomain calculation internally

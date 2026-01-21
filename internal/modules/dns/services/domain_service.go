@@ -72,7 +72,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 		}
 
 		for i, ns := range nameservers {
-			nsRecord := &models.DnsRecord{
+			nsRecord := &models.DNSRecord{
 				DomainID:   domain.ID,
 				ProviderID: fmt.Sprintf("ns-%d", i),
 				Type:       enums.RecordTypeNS,
@@ -81,7 +81,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 				TTL:        3600,
 			}
 			nsRecord.TeamID = teamID
-			if err := s.Repos().DnsRecord().Create(ctx, nsRecord); err != nil {
+			if err := s.Repos().DNSRecord().Create(ctx, nsRecord); err != nil {
 				s.Logger().Warn().Err(err).Str("ns", ns).Msg("Failed to create NS record")
 			}
 		}
@@ -163,7 +163,7 @@ func (s *DomainService) DeleteDomain(ctx context.Context, id, teamID string, del
 	}
 
 	// Delete records first
-	if err := s.Repos().DnsRecord().DeleteByDomain(ctx, id); err != nil {
+	if err := s.Repos().DNSRecord().DeleteByDomain(ctx, id); err != nil {
 		return err
 	}
 
@@ -171,7 +171,7 @@ func (s *DomainService) DeleteDomain(ctx context.Context, id, teamID string, del
 }
 
 // GetDomainRecords retrieves all DNS records for a domain
-func (s *DomainService) GetDomainRecords(ctx context.Context, domainID, teamID string) ([]dto.DnsRecordResponse, error) {
+func (s *DomainService) GetDomainRecords(ctx context.Context, domainID, teamID string) ([]dto.DNSRecordResponse, error) {
 	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -180,14 +180,14 @@ func (s *DomainService) GetDomainRecords(ctx context.Context, domainID, teamID s
 		return nil, err
 	}
 
-	records, err := s.Repos().DnsRecord().FindByDomain(ctx, domain.ID)
+	records, err := s.Repos().DNSRecord().FindByDomain(ctx, domain.ID)
 	if err != nil {
 		return nil, err
 	}
 
-	responses := make([]dto.DnsRecordResponse, len(records))
+	responses := make([]dto.DNSRecordResponse, len(records))
 	for i, r := range records {
-		responses[i] = dto.ToDnsRecordResponse(&r)
+		responses[i] = dto.ToDNSRecordResponse(&r)
 	}
 
 	return responses, nil
@@ -248,13 +248,13 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 	// Sync records in a transaction
 	return s.Repos().Domain().Transaction(ctx, func(tx *gorm.DB) error {
 		// Delete existing records for this domain
-		if err := s.Repos().DnsRecord().DeleteByDomain(ctx, domainID); err != nil {
+		if err := s.Repos().DNSRecord().DeleteByDomain(ctx, domainID); err != nil {
 			return fmt.Errorf("failed to delete existing records: %w", err)
 		}
 
 		// Insert new records from provider
 		for _, pr := range providerRecords {
-			record := &models.DnsRecord{
+			record := &models.DNSRecord{
 				DomainID:   domainID,
 				ProviderID: pr.ID,
 				Type:       enums.RecordType(pr.Type),
@@ -271,7 +271,7 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 			}
 			record.TeamID = domain.TeamID
 
-			if err := s.Repos().DnsRecord().Create(ctx, record); err != nil {
+			if err := s.Repos().DNSRecord().Create(ctx, record); err != nil {
 				s.Logger().Warn().Err(err).Str("record", pr.Name).Msg("Failed to create record during sync")
 			}
 		}

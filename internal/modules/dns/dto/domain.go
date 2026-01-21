@@ -37,7 +37,7 @@ type DomainResponse struct {
 	DomainProviderID string              `json:"domain_provider_id"`
 	Provider         *ProviderSummary    `json:"provider,omitempty"`
 	RecordsCount     int                 `json:"records_count"`
-	Records          []DnsRecordResponse `json:"records,omitempty"`
+	Records          []DNSRecordResponse `json:"records,omitempty"`
 	CreatedAt        time.Time           `json:"created_at"`
 	UpdatedAt        time.Time           `json:"updated_at"`
 }
@@ -83,9 +83,9 @@ func ToDomainResponse(d *models.Domain) DomainResponse {
 	}
 
 	if len(d.Records) > 0 {
-		resp.Records = make([]DnsRecordResponse, len(d.Records))
+		resp.Records = make([]DNSRecordResponse, len(d.Records))
 		for i, record := range d.Records {
-			resp.Records[i] = ToDnsRecordResponse(&record)
+			resp.Records[i] = ToDNSRecordResponse(&record)
 		}
 	}
 
@@ -101,7 +101,7 @@ type DomainIndexPageData struct {
 // DomainShowPageData represents the data for the domain show page
 type DomainShowPageData struct {
 	Domain      DomainResponse           `json:"domain"`
-	Records     []DnsRecordResponse      `json:"records"`
+	Records     []DNSRecordResponse      `json:"records"`
 	RecordTypes []RecordTypeOption       `json:"recordTypes"`
 	Nameservers []string                 `json:"nameservers"`
 	Provider    *DomainProviderResponse  `json:"provider,omitempty"`

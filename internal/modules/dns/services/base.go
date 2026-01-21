@@ -34,7 +34,7 @@ type ServiceDeps struct {
 type ServiceRegistry struct {
 	provider *DomainProviderService
 	domain   *DomainService
-	record   *DnsRecordService
+	record   *DNSRecordService
 }
 
 // Provider returns the domain provider service
@@ -44,7 +44,7 @@ func (r *ServiceRegistry) Provider() *DomainProviderService { return r.provider 
 func (r *ServiceRegistry) Domain() *DomainService { return r.domain }
 
 // Record returns the DNS record service
-func (r *ServiceRegistry) Record() *DnsRecordService { return r.record }
+func (r *ServiceRegistry) Record() *DNSRecordService { return r.record }
 
 // NewServiceRegistry creates all services and wires them together
 func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
@@ -54,7 +54,7 @@ func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
 	// Create all services
 	registry.provider = NewDomainProviderService(deps)
 	registry.domain = NewDomainService(deps)
-	registry.record = NewDnsRecordService(deps)
+	registry.record = NewDNSRecordService(deps)
 
 	return registry
 }

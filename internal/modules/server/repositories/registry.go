@@ -55,7 +55,7 @@ func (r *Registry) Cron() contracts.CronRepository { return r.cron }
 // Daemon returns the daemon repository
 func (r *Registry) Daemon() contracts.DaemonRepository { return r.daemon }
 
-// SshKey returns the SSH key repository
+// SSHKey returns the SSH key repository
 func (r *Registry) SSHKey() contracts.SSHKeyRepository { return r.sshKey }
 
 // Task returns the task repository

@@ -306,7 +306,7 @@ func (p *CloudflareProvider) ListRecords(ctx context.Context) ([]ProviderRecord,
 }
 
 // AddRecord adds a DNS record to Cloudflare
-func (p *CloudflareProvider) AddRecord(ctx context.Context, record *DnsRecord) (string, error) {
+func (p *CloudflareProvider) AddRecord(ctx context.Context, record *DNSRecord) (string, error) {
 	zoneID, err := p.getZoneID(ctx)
 	if err != nil {
 		return "", err
@@ -377,7 +377,7 @@ func (p *CloudflareProvider) AddRecord(ctx context.Context, record *DnsRecord) (
 }
 
 // UpdateRecord updates a DNS record in Cloudflare
-func (p *CloudflareProvider) UpdateRecord(ctx context.Context, record *DnsRecord) error {
+func (p *CloudflareProvider) UpdateRecord(ctx context.Context, record *DNSRecord) error {
 	zoneID, err := p.getZoneID(ctx)
 	if err != nil {
 		return err
@@ -437,7 +437,7 @@ func (p *CloudflareProvider) UpdateRecord(ctx context.Context, record *DnsRecord
 }
 
 // DeleteRecord deletes a DNS record from Cloudflare
-func (p *CloudflareProvider) DeleteRecord(ctx context.Context, record *DnsRecord) error {
+func (p *CloudflareProvider) DeleteRecord(ctx context.Context, record *DNSRecord) error {
 	zoneID, err := p.getZoneID(ctx)
 	if err != nil {
 		return err

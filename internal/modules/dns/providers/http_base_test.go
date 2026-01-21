@@ -372,12 +372,12 @@ func TestHTTPBaseProvider_UnmarshalResponse(t *testing.T) {
 func TestBuildRecordData(t *testing.T) {
 	tests := []struct {
 		name     string
-		record   *DnsRecord
+		record   *DNSRecord
 		expected map[string]interface{}
 	}{
 		{
 			name: "basic A record",
-			record: &DnsRecord{
+			record: &DNSRecord{
 				Type: RecordTypeA,
 				Name: "@",
 				TTL:  3600,
@@ -390,7 +390,7 @@ func TestBuildRecordData(t *testing.T) {
 		},
 		{
 			name: "MX record with priority",
-			record: &DnsRecord{
+			record: &DNSRecord{
 				Type:     RecordTypeMX,
 				Name:     "@",
 				TTL:      3600,
@@ -405,7 +405,7 @@ func TestBuildRecordData(t *testing.T) {
 		},
 		{
 			name: "SRV record with all fields",
-			record: &DnsRecord{
+			record: &DNSRecord{
 				Type:     RecordTypeSRV,
 				Name:     "_sip._tcp",
 				TTL:      3600,
@@ -424,7 +424,7 @@ func TestBuildRecordData(t *testing.T) {
 		},
 		{
 			name: "CAA record with flags and tag",
-			record: &DnsRecord{
+			record: &DNSRecord{
 				Type:  RecordTypeCAA,
 				Name:  "@",
 				TTL:   3600,
@@ -441,7 +441,7 @@ func TestBuildRecordData(t *testing.T) {
 		},
 		{
 			name: "record with comment",
-			record: &DnsRecord{
+			record: &DNSRecord{
 				Type:    RecordTypeA,
 				Name:    "www",
 				TTL:     3600,
@@ -456,7 +456,7 @@ func TestBuildRecordData(t *testing.T) {
 		},
 		{
 			name: "record with empty comment",
-			record: &DnsRecord{
+			record: &DNSRecord{
 				Type:    RecordTypeA,
 				Name:    "www",
 				TTL:     3600,

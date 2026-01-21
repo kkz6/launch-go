@@ -15,7 +15,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	// Create handlers
 	providerHandler := handlers.NewDomainProviderHandler(svc.Provider())
 	domainHandler := handlers.NewDomainHandler(svc.Domain(), svc.Provider())
-	recordHandler := handlers.NewDnsRecordHandler(svc.Record(), svc.Domain())
+	recordHandler := handlers.NewDNSRecordHandler(svc.Record(), svc.Domain())
 
 	m.registerProviderRoutes(router, authMiddleware, providerHandler)
 	m.registerDomainRoutes(router, authMiddleware, domainHandler, recordHandler)
@@ -35,7 +35,7 @@ func (m *Module) registerProviderRoutes(router fiber.Router, authMiddleware fibe
 }
 
 // registerDomainRoutes registers domain and DNS record routes
-func (m *Module) registerDomainRoutes(router fiber.Router, authMiddleware fiber.Handler, domainHandler *handlers.DomainHandler, recordHandler *handlers.DnsRecordHandler) {
+func (m *Module) registerDomainRoutes(router fiber.Router, authMiddleware fiber.Handler, domainHandler *handlers.DomainHandler, recordHandler *handlers.DNSRecordHandler) {
 	domains := router.Group("/dns/domains", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		domains.Get("/", domainHandler.ListDomains)
@@ -54,6 +54,6 @@ func (m *Module) registerDomainRoutes(router fiber.Router, authMiddleware fiber.
 }
 
 // registerUtilityRoutes registers utility routes
-func (m *Module) registerUtilityRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.DnsRecordHandler) {
+func (m *Module) registerUtilityRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.DNSRecordHandler) {
 	router.Get("/dns/record-types", authMiddleware, handler.GetRecordTypes)
 }

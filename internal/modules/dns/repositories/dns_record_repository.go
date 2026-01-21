@@ -10,26 +10,26 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
-// DnsRecordRepository handles database operations for DNS records
-type DnsRecordRepository struct {
-	repository.Base[models.DnsRecord]
+// DNSRecordRepository handles database operations for DNS records
+type DNSRecordRepository struct {
+	repository.Base[models.DNSRecord]
 }
 
-// NewDnsRecordRepository creates a new DnsRecordRepository instance
-func NewDnsRecordRepository(db *gorm.DB) *DnsRecordRepository {
-	return &DnsRecordRepository{
-		Base: repository.NewBase[models.DnsRecord](db),
+// NewDNSRecordRepository creates a new DNSRecordRepository instance
+func NewDNSRecordRepository(db *gorm.DB) *DNSRecordRepository {
+	return &DNSRecordRepository{
+		Base: repository.NewBase[models.DNSRecord](db),
 	}
 }
 
 // Create creates a new DNS record
-func (r *DnsRecordRepository) Create(ctx context.Context, record *models.DnsRecord) error {
+func (r *DNSRecordRepository) Create(ctx context.Context, record *models.DNSRecord) error {
 	return r.DB.WithContext(ctx).Create(record).Error
 }
 
 // FindByID finds a DNS record by ID
-func (r *DnsRecordRepository) FindByID(ctx context.Context, id string) (*models.DnsRecord, error) {
-	var record models.DnsRecord
+func (r *DNSRecordRepository) FindByID(ctx context.Context, id string) (*models.DNSRecord, error) {
+	var record models.DNSRecord
 	err := r.DB.WithContext(ctx).
 		First(&record, "id = ?", id).Error
 	if err != nil {
@@ -40,8 +40,8 @@ func (r *DnsRecordRepository) FindByID(ctx context.Context, id string) (*models.
 }
 
 // FindByIDAndDomain finds a DNS record by ID and domain
-func (r *DnsRecordRepository) FindByIDAndDomain(ctx context.Context, id, domainID string) (*models.DnsRecord, error) {
-	var record models.DnsRecord
+func (r *DNSRecordRepository) FindByIDAndDomain(ctx context.Context, id, domainID string) (*models.DNSRecord, error) {
+	var record models.DNSRecord
 	err := r.DB.WithContext(ctx).
 		First(&record, "id = ? AND domain_id = ?", id, domainID).Error
 	if err != nil {
@@ -52,8 +52,8 @@ func (r *DnsRecordRepository) FindByIDAndDomain(ctx context.Context, id, domainI
 }
 
 // FindByDomain finds all DNS records for a domain
-func (r *DnsRecordRepository) FindByDomain(ctx context.Context, domainID string) ([]models.DnsRecord, error) {
-	var records []models.DnsRecord
+func (r *DNSRecordRepository) FindByDomain(ctx context.Context, domainID string) ([]models.DNSRecord, error) {
+	var records []models.DNSRecord
 	err := r.DB.WithContext(ctx).
 		Where("domain_id = ?", domainID).
 		Order("type ASC, name ASC").
@@ -63,8 +63,8 @@ func (r *DnsRecordRepository) FindByDomain(ctx context.Context, domainID string)
 }
 
 // FindByType finds all DNS records of a specific type for a domain
-func (r *DnsRecordRepository) FindByType(ctx context.Context, domainID string, recordType enums.RecordType) ([]models.DnsRecord, error) {
-	var records []models.DnsRecord
+func (r *DNSRecordRepository) FindByType(ctx context.Context, domainID string, recordType enums.RecordType) ([]models.DNSRecord, error) {
+	var records []models.DNSRecord
 	err := r.DB.WithContext(ctx).
 		Where("domain_id = ? AND type = ?", domainID, recordType).
 		Order("name ASC").
@@ -74,13 +74,13 @@ func (r *DnsRecordRepository) FindByType(ctx context.Context, domainID string, r
 }
 
 // Update updates a DNS record
-func (r *DnsRecordRepository) Update(ctx context.Context, record *models.DnsRecord) error {
+func (r *DNSRecordRepository) Update(ctx context.Context, record *models.DNSRecord) error {
 	return r.DB.WithContext(ctx).Save(record).Error
 }
 
 // UpdateOrCreate updates or creates a DNS record
-func (r *DnsRecordRepository) UpdateOrCreate(ctx context.Context, where map[string]interface{}, update map[string]interface{}) (*models.DnsRecord, error) {
-	var record models.DnsRecord
+func (r *DNSRecordRepository) UpdateOrCreate(ctx context.Context, where map[string]interface{}, update map[string]interface{}) (*models.DNSRecord, error) {
+	var record models.DNSRecord
 
 	// First try to find existing
 	err := r.DB.WithContext(ctx).Where(where).First(&record).Error
@@ -89,7 +89,7 @@ func (r *DnsRecordRepository) UpdateOrCreate(ctx context.Context, where map[stri
 		for k, v := range where {
 			update[k] = v
 		}
-		record = models.DnsRecord{}
+		record = models.DNSRecord{}
 		if err := r.DB.WithContext(ctx).Model(&record).Create(update).Error; err != nil {
 			return nil, err
 		}
@@ -110,13 +110,13 @@ func (r *DnsRecordRepository) UpdateOrCreate(ctx context.Context, where map[stri
 }
 
 // Delete deletes a DNS record
-func (r *DnsRecordRepository) Delete(ctx context.Context, id string) error {
-	return r.DB.WithContext(ctx).Delete(&models.DnsRecord{}, "id = ?", id).Error
+func (r *DNSRecordRepository) Delete(ctx context.Context, id string) error {
+	return r.DB.WithContext(ctx).Delete(&models.DNSRecord{}, "id = ?", id).Error
 }
 
 // DeleteByDomain deletes all DNS records for a domain
-func (r *DnsRecordRepository) DeleteByDomain(ctx context.Context, domainID string) error {
+func (r *DNSRecordRepository) DeleteByDomain(ctx context.Context, domainID string) error {
 	return r.DB.WithContext(ctx).
 		Where("domain_id = ?", domainID).
-		Delete(&models.DnsRecord{}).Error
+		Delete(&models.DNSRecord{}).Error
 }

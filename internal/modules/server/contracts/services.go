@@ -60,9 +60,9 @@ type DaemonService interface {
 
 // SSHKeyService defines the interface for SSH key business logic
 type SSHKeyService interface {
-	ListSSHKeys(ctx context.Context, teamID string) ([]models.SshKey, error)
-	ListServerSSHKeys(ctx context.Context, serverID, teamID string) ([]models.SshKey, error)
-	CreateSSHKey(ctx context.Context, teamID, userID string, req *dto.CreateSSHKeyRequest) (*models.SshKey, error)
+	ListSSHKeys(ctx context.Context, teamID string) ([]models.SSHKey, error)
+	ListServerSSHKeys(ctx context.Context, serverID, teamID string) ([]models.SSHKey, error)
+	CreateSSHKey(ctx context.Context, teamID, userID string, req *dto.CreateSSHKeyRequest) (*models.SSHKey, error)
 	AttachSSHKey(ctx context.Context, serverID, teamID, sshKeyID string) error
 	DetachSSHKey(ctx context.Context, serverID, teamID, sshKeyID string) error
 	DeleteSSHKey(ctx context.Context, teamID, sshKeyID string) error

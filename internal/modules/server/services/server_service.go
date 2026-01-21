@@ -308,8 +308,8 @@ func (s *Service) GetShowPageData(ctx context.Context, serverID, teamID string) 
 		daemons[i] = dto.ToDaemonResponse(&daemon)
 	}
 
-	sshKeys := make([]dto.SSHKeyResponse, len(server.SshKeys))
-	for i, key := range server.SshKeys {
+	sshKeys := make([]dto.SSHKeyResponse, len(server.SSHKeys))
+	for i, key := range server.SSHKeys {
 		sshKeys[i] = dto.ToSSHKeyResponse(&key)
 	}
 

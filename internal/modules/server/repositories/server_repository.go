@@ -62,7 +62,7 @@ func (r *ServerRepository) FindWithRelations(ctx context.Context, id, teamID str
 		Preload("FirewallRules").
 		Preload("Crons").
 		Preload("Daemons").
-		Preload("SshKeys").
+		Preload("SSHKeys").
 		First(&server, "id = ? AND team_id = ?", id, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {

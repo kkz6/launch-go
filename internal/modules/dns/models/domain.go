@@ -17,7 +17,7 @@ type Domain struct {
 
 	// Relations
 	Provider *DomainProvider `gorm:"foreignKey:DomainProviderID;references:ID" json:"provider,omitempty"`
-	Records  []DnsRecord     `gorm:"foreignKey:DomainID;references:ID" json:"records,omitempty"`
+	Records  []DNSRecord     `gorm:"foreignKey:DomainID;references:ID" json:"records,omitempty"`
 }
 
 // TableName specifies the table name for Domain

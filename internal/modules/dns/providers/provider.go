@@ -39,13 +39,13 @@ type Provider interface {
 	ListRecords(ctx context.Context) ([]ProviderRecord, error)
 
 	// AddRecord adds a DNS record to the current domain
-	AddRecord(ctx context.Context, record *DnsRecord) (string, error)
+	AddRecord(ctx context.Context, record *DNSRecord) (string, error)
 
 	// UpdateRecord updates a DNS record in the current domain
-	UpdateRecord(ctx context.Context, record *DnsRecord) error
+	UpdateRecord(ctx context.Context, record *DNSRecord) error
 
 	// DeleteRecord deletes a DNS record from the current domain
-	DeleteRecord(ctx context.Context, record *DnsRecord) error
+	DeleteRecord(ctx context.Context, record *DNSRecord) error
 }
 
 // BaseProvider provides common functionality for DNS providers
