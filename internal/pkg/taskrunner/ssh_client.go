@@ -120,6 +120,16 @@ func (c *SSHClient) Close() error {
 	return nil
 }
 
+// NewSession creates a new SSH session for interactive use (PTY, shell, etc.)
+func (c *SSHClient) NewSession() (*ssh.Session, error) {
+	if c.conn == nil {
+		if err := c.Connect(); err != nil {
+			return nil, err
+		}
+	}
+	return c.conn.NewSession()
+}
+
 // Run executes a command on the remote server
 func (c *SSHClient) Run(ctx context.Context, command string) (*SSHCommandResult, error) {
 	if c.conn == nil {
@@ -155,11 +165,11 @@ func (c *SSHClient) Run(ctx context.Context, command string) (*SSHCommandResult,
 		}
 
 		if err != nil {
-			if exitErr, ok := err.(*ssh.ExitError); ok {
-				result.ExitCode = exitErr.ExitStatus()
-			} else {
+			exitErr, ok := err.(*ssh.ExitError)
+			if !ok {
 				return result, err
 			}
+			result.ExitCode = exitErr.ExitStatus()
 		}
 
 		return result, nil
@@ -222,9 +232,9 @@ func (c *SSHClient) Upload(ctx context.Context, content []byte, remotePath strin
 		w, _ := session.StdinPipe()
 		defer w.Close()
 
-		fmt.Fprintf(w, "C%04o %d %s\n", mode, len(content), filepath.Base(remotePath))
-		w.Write(content)
-		fmt.Fprint(w, "\x00")
+		_, _ = fmt.Fprintf(w, "C%04o %d %s\n", mode, len(content), filepath.Base(remotePath))
+		_, _ = w.Write(content)
+		_, _ = fmt.Fprint(w, "\x00")
 	}()
 
 	dir := filepath.Dir(remotePath)
@@ -349,7 +359,7 @@ func (c *SSHClient) WaitForConnection(ctx context.Context, maxRetries int) error
 
 		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", c.host, c.port), 5*time.Second)
 		if err == nil {
-			conn.Close()
+			_ = conn.Close()
 			return c.Connect()
 		}
 

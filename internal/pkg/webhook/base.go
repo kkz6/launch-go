@@ -2,11 +2,31 @@
 package webhook
 
 import (
+	"crypto/hmac"
+	"crypto/sha256"
+	"encoding/hex"
+
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
+
+// Common webhook header names
+const (
+	HeaderGitHubSignature       = "X-Hub-Signature-256"
+	HeaderGitLabToken           = "X-Gitlab-Token"
+	HeaderLemonSqueezySignature = "X-Signature"
+)
+
+// VerifyHMACSHA256 verifies an HMAC-SHA256 signature
+func VerifyHMACSHA256(payload []byte, signature string, secret string) bool {
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write(payload) // hash.Hash.Write never returns an error
+	expectedSignature := hex.EncodeToString(mac.Sum(nil))
+
+	return hmac.Equal([]byte(expectedSignature), []byte(signature))
+}
 
 // Base provides common dependencies and functionality for webhook handlers.
 // Embed this struct in specific handlers to get access to shared resources.

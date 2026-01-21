@@ -4,6 +4,8 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+
+	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 
 // Common repository errors
@@ -16,7 +18,8 @@ var (
 	ErrServerError  = errors.New("internal server error")
 )
 
-// ModelError is an error that includes context about which model/resource failed
+// ModelError is an error that includes context about which model/resource failed.
+// Implements HTTPStatusError from internal/pkg/errors.
 type ModelError struct {
 	Err     error
 	Model   string
@@ -24,6 +27,9 @@ type ModelError struct {
 	Message string
 	Status  int
 }
+
+// Compile-time check that ModelError implements HTTPStatusError
+var _ apperrors.HTTPStatusError = (*ModelError)(nil)
 
 // Error implements the error interface
 func (e *ModelError) Error() string {

@@ -9,12 +9,16 @@ import (
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 
-// AppError represents an application error with HTTP status and message
+// AppError represents an application error with HTTP status and message.
+// Implements HTTPStatusError from internal/pkg/errors.
 type AppError struct {
 	Err     error
 	Status  int
 	Message string
 }
+
+// Compile-time check that AppError implements HTTPStatusError
+var _ apperrors.HTTPStatusError = (*AppError)(nil)
 
 // Error implements the error interface
 func (e *AppError) Error() string {

@@ -22,7 +22,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 // registerBackupRoutes registers server backup routes
 func (m *Module) registerBackupRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.BackupHandler) {
-	serverBackups := router.Group("/servers/:serverId/backups", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
+	serverBackups := router.Group("/servers/:serverId/backups", middleware.AuthenticatedChain(authMiddleware)...)
 	{
 		serverBackups.Get("/", handler.ListBackups)
 		serverBackups.Post("/", handler.CreateBackup)
@@ -35,7 +35,7 @@ func (m *Module) registerBackupRoutes(router fiber.Router, authMiddleware fiber.
 
 // registerStorageProviderRoutes registers storage provider routes
 func (m *Module) registerStorageProviderRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.StorageProviderHandler) {
-	storageProviders := router.Group("/storage-providers", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
+	storageProviders := router.Group("/storage-providers", middleware.AuthenticatedChain(authMiddleware)...)
 	{
 		storageProviders.Get("/", handler.ListStorageProviders)
 		storageProviders.Get("/dropdown", handler.ListStorageProvidersForDropdown)
@@ -54,10 +54,5 @@ func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 	// Create handler
 	backupJobHandler := handlers.NewBackupJobHandler(svc.BackupJob())
 
-	m.registerWebhookRoutes(router, backupJobHandler)
-}
-
-// registerWebhookRoutes registers backup job webhook routes
-func (m *Module) registerWebhookRoutes(router fiber.Router, handler *handlers.BackupJobHandler) {
-	router.Post("/backup/:backup/:token", handler.CreateBackupJob)
+	router.Post("/backup/:backup/:token", backupJobHandler.CreateBackupJob)
 }
