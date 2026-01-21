@@ -102,3 +102,13 @@ func MustGetTeamAndUserID(c *fiber.Ctx) (teamID, userID string, err error) {
 	}
 	return teamID, userID, nil
 }
+
+// GetUserRole safely extracts user role from context.
+// Returns empty string if user role is not found.
+func GetUserRole(c *fiber.Ctx) string {
+	v, ok := c.Locals("userRole").(string)
+	if !ok {
+		return ""
+	}
+	return v
+}

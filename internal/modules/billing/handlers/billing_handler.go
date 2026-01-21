@@ -175,7 +175,7 @@ func (h *BillingHandler) GetSubscriptionOptions(c *fiber.Ctx) error {
 	}
 	userRole := enums.UserRoleCustomer
 
-	if role, ok := c.Locals("userRole").(string); ok {
+	if role := fiberctx.GetUserRole(c); role != "" {
 		userRole = enums.UserRole(role)
 	}
 

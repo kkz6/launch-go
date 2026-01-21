@@ -185,6 +185,51 @@ func TestGetTeamAndUserID(t *testing.T) {
 	_, _ = app.Test(req)
 }
 
+func TestGetUserRole(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(*fiber.Ctx)
+		want  string
+	}{
+		{
+			name: "valid user role",
+			setup: func(c *fiber.Ctx) {
+				c.Locals("userRole", "admin")
+			},
+			want: "admin",
+		},
+		{
+			name:  "missing user role returns empty",
+			setup: func(c *fiber.Ctx) {},
+			want:  "",
+		},
+		{
+			name: "wrong type returns empty",
+			setup: func(c *fiber.Ctx) {
+				c.Locals("userRole", 123)
+			},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := fiber.New()
+			app.Get("/test", func(c *fiber.Ctx) error {
+				tt.setup(c)
+				got := GetUserRole(c)
+				if got != tt.want {
+					t.Errorf("GetUserRole() = %v, want %v", got, tt.want)
+				}
+				return nil
+			})
+
+			req := httptest.NewRequest("GET", "/test", nil)
+			_, _ = app.Test(req)
+		})
+	}
+}
+
 type testUser struct {
 	ID   string
 	Name string
