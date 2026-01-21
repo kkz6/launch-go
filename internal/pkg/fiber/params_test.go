@@ -5,7 +5,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	gofiber "github.com/gofiber/fiber/v2"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -34,8 +34,8 @@ func TestGetID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := fiber.New()
-			app.Get("/test/:id", func(c *fiber.Ctx) error {
+			app := gofiber.New()
+			app.Get("/test/:id", func(c *gofiber.Ctx) error {
 				id, err := GetID(c)
 				if err != nil {
 					return err
@@ -66,8 +66,8 @@ func TestGetID(t *testing.T) {
 func TestGetServerID(t *testing.T) {
 	validULID := ulid.Make().String()
 
-	app := fiber.New()
-	app.Get("/servers/:serverId/sites", func(c *fiber.Ctx) error {
+	app := gofiber.New()
+	app.Get("/servers/:serverId/sites", func(c *gofiber.Ctx) error {
 		serverID, err := GetServerID(c)
 		if err != nil {
 			return err
@@ -123,8 +123,8 @@ func TestGetULIDParam(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := fiber.New()
-			app.Get(tt.routePath, func(c *fiber.Ctx) error {
+			app := gofiber.New()
+			app.Get(tt.routePath, func(c *gofiber.Ctx) error {
 				id, err := GetULIDParam(c, tt.paramName)
 				if err != nil {
 					return err
@@ -149,8 +149,8 @@ func TestGetULIDParam(t *testing.T) {
 }
 
 func TestGetRequiredParam(t *testing.T) {
-	app := fiber.New()
-	app.Get("/files/:filename", func(c *fiber.Ctx) error {
+	app := gofiber.New()
+	app.Get("/files/:filename", func(c *gofiber.Ctx) error {
 		filename, err := GetRequiredParam(c, "filename")
 		if err != nil {
 			return err
@@ -177,9 +177,9 @@ func TestGetRequiredParam(t *testing.T) {
 
 func TestMustGetID_Panics(t *testing.T) {
 	// Test that MustGetID panics when given invalid input
-	app := fiber.New()
+	app := gofiber.New()
 
-	app.Get("/test/:id", func(c *fiber.Ctx) error {
+	app.Get("/test/:id", func(c *gofiber.Ctx) error {
 		_ = MustGetID(c)
 		return c.SendString("should not reach")
 	})
@@ -189,7 +189,7 @@ func TestMustGetID_Panics(t *testing.T) {
 
 	// MustGetID panics with the error from GetID
 	// Fiber's default error handler catches this and returns 500
-	// The response.BadRequest was already sent, so we get 400
+	// The fiberctx.BadRequest was already sent, so we get 400
 	if resp.StatusCode == 200 {
 		t.Error("Expected non-200 status for invalid ULID")
 	}
@@ -198,8 +198,8 @@ func TestMustGetID_Panics(t *testing.T) {
 func TestMustGetID_Success(t *testing.T) {
 	validULID := ulid.Make().String()
 
-	app := fiber.New()
-	app.Get("/test/:id", func(c *fiber.Ctx) error {
+	app := gofiber.New()
+	app.Get("/test/:id", func(c *gofiber.Ctx) error {
 		id := MustGetID(c)
 		return c.SendString(id)
 	})

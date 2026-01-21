@@ -13,7 +13,7 @@ import (
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/urlbuilder"
+	"github.com/kkz6/launch-go/internal/pkg/util"
 	"github.com/kkz6/launch-go/internal/pkg/webhook"
 	"github.com/kkz6/launch-go/internal/queue"
 )
@@ -280,8 +280,8 @@ func (h *TaskWebhookHandler) handleLegacyCallback(ctx context.Context, task *mod
 func (h *TaskWebhookHandler) GenerateCallbackURLs(baseURL, taskID string, expireMinutes int) CallbackURLs {
 	expireDuration := time.Duration(expireMinutes) * time.Minute
 
-	// Build paths using urlbuilder for consistent URL construction
-	basePath := urlbuilder.New("").Path("webhooks", "tasks", taskID)
+	// Build paths using util for consistent URL construction
+	basePath := util.New("").Path("webhooks", "tasks", taskID)
 	finishedPath := basePath.Clone().Path("finished").String()
 	failedPath := basePath.Clone().Path("failed").String()
 	timeoutPath := basePath.Clone().Path("timeout").String()

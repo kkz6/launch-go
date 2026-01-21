@@ -15,8 +15,8 @@ import (
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
-	"github.com/kkz6/launch-go/internal/pkg/fiberutil"
-	"github.com/kkz6/launch-go/internal/pkg/status"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/launch/status"
 )
 
 // ServiceStatusMessage is the WebSocket message format

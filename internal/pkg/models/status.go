@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/kkz6/launch-go/internal/pkg/token"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // SetDefaultStatus sets the status to the default value if it's currently empty.
@@ -43,6 +43,6 @@ func SetDefaultStatus[T ~string](status *T, defaultStatus T) {
 // The byteLength parameter specifies the number of random bytes (output will be 2x in hex).
 func SetDefaultToken(tokenField *string, byteLength int) {
 	if *tokenField == "" {
-		*tokenField = token.MustHexToken(byteLength)
+		*tokenField = security.MustHexToken(byteLength)
 	}
 }

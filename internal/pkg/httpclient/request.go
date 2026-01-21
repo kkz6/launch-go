@@ -198,7 +198,7 @@ func (r *Request) Do(ctx context.Context, result interface{}) error {
 	return r.client.DoRequest(req, result)
 }
 
-// DoRaw executes the request and returns the raw response.
+// DoRaw executes the request and returns the raw fiberctx.
 // The caller is responsible for closing the response body.
 func (r *Request) DoRaw(ctx context.Context) (*http.Response, error) {
 	req, err := r.Build(ctx)
@@ -417,6 +417,7 @@ type RequestBuilder struct {
 	url     string
 	headers map[string]string
 	body    io.Reader
+	err     error // stores any error that occurred during building
 }
 
 // NewRequest creates a new standalone request builder.
@@ -478,9 +479,11 @@ func (r *RequestBuilder) WithBody(body io.Reader) *RequestBuilder {
 
 // JSONBody marshals the given value to JSON and sets it as the request body.
 // Also sets Content-Type and Accept headers to application/json.
+// If marshaling fails, the error is stored and returned from Build().
 func (r *RequestBuilder) JSONBody(v interface{}) *RequestBuilder {
 	data, err := json.Marshal(v)
 	if err != nil {
+		r.err = fmt.Errorf("failed to marshal JSON body: %w", err)
 		return r
 	}
 	r.body = bytes.NewReader(data)
@@ -489,6 +492,9 @@ func (r *RequestBuilder) JSONBody(v interface{}) *RequestBuilder {
 
 // Build constructs the http.Request with all configured options.
 func (r *RequestBuilder) Build() (*http.Request, error) {
+	if r.err != nil {
+		return nil, r.err
+	}
 	req, err := http.NewRequestWithContext(r.ctx, r.method, r.url, r.body)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create request: %w", err)

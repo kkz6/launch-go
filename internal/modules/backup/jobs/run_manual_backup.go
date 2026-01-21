@@ -11,12 +11,6 @@ import (
 
 const TypeRunManualBackup = "backup:run_manual"
 
-type RunManualBackupPayload struct {
-	ServerID string  `json:"server_id"`
-	BackupID string  `json:"backup_id"`
-	UserID   *string `json:"user_id,omitempty"`
-}
-
 // RunManualBackupJob triggers a manual backup run on a server
 type RunManualBackupJob struct {
 	ctx     *JobContext

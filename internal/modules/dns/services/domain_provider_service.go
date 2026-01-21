@@ -10,7 +10,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
-	"github.com/kkz6/launch-go/internal/pkg/xutil"
+	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
 // DomainProviderService handles business logic for domain providers
@@ -241,7 +241,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 	}
 
 	// Update sync status to completed
-	now := xutil.NewULID() // Using ULID for timestamp as a workaround
+	now := util.NewULID() // Using ULID for timestamp as a workaround
 	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"sync_status":        enums.SyncStatusCompleted,
 		"last_synced_at":     now,

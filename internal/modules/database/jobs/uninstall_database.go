@@ -11,8 +11,8 @@ import (
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	pkgmodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
-	"github.com/kkz6/launch-go/internal/pkg/traits"
 )
 
 const TypeUninstallDatabase = "database:uninstall"
@@ -25,7 +25,7 @@ type UninstallDatabasePayload struct {
 
 type UninstallDatabaseJob struct {
 	pkgjobs.BaseJob[*JobContext, UninstallDatabasePayload]
-	traits.UninstallationTracker
+	pkgmodels.UninstallationTracker
 }
 
 func NewUninstallDatabaseJob(ctx *JobContext, payload UninstallDatabasePayload) *UninstallDatabaseJob {

@@ -9,8 +9,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
-	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // UserService handles user management operations
@@ -88,11 +88,11 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dt
 		return apperrors.ErrNotFound
 	}
 
-	if !cryptoutil.VerifyPassword(user.Password, req.CurrentPassword) {
+	if !security.VerifyPassword(user.Password, req.CurrentPassword) {
 		return errors.New("current password is incorrect")
 	}
 
-	hashedPassword, err := cryptoutil.HashPassword(req.Password)
+	hashedPassword, err := security.HashPassword(req.Password)
 	if err != nil {
 		return err
 	}

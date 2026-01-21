@@ -4,7 +4,7 @@ import (
 	"gorm.io/gorm"
 
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
-	"github.com/kkz6/launch-go/internal/pkg/token"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // Backup represents a backup configuration for a server
@@ -38,7 +38,7 @@ func (b *Backup) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	if b.DispatchToken == "" {
-		b.DispatchToken = token.New(32).WithEncoding(token.Base64URL).MustGenerate()
+		b.DispatchToken = security.NewTokenGenerator(32).WithEncoding(security.TokenBase64URL).MustGenerate()
 	}
 
 	if b.Retention == 0 {

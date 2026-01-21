@@ -12,7 +12,7 @@ import (
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
-	"github.com/kkz6/launch-go/internal/pkg/fiberutil"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // MetricsHandler handles WebSocket metrics streaming connections

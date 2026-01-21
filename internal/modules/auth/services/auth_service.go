@@ -12,8 +12,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/enums"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
-	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // AuthService handles authentication-related operations
@@ -45,7 +45,7 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 	}
 
 	// Hash password
-	hashedPassword, err := cryptoutil.HashPassword(req.Password)
+	hashedPassword, err := security.HashPassword(req.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -113,7 +113,7 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Au
 		return nil, apperrors.ErrUnauthorized
 	}
 
-	if !cryptoutil.VerifyPassword(user.Password, req.Password) {
+	if !security.VerifyPassword(user.Password, req.Password) {
 		return nil, apperrors.ErrUnauthorized
 	}
 

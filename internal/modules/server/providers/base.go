@@ -8,7 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
-	"github.com/kkz6/launch-go/internal/pkg/sshkey"
+	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
 
 // BaseCloudProvider provides common HTTP client functionality for cloud providers.
@@ -114,7 +114,7 @@ func GetNestedArray(data map[string]interface{}, key string) ([]interface{}, boo
 	return val, ok
 }
 
-// APIError represents a structured API error response.
+// APIError represents a structured API error fiberctx.
 type APIError struct {
 	StatusCode int
 	Message    string

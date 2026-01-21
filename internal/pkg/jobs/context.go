@@ -232,7 +232,7 @@ func (b *Base) LogDebug(msg string, fields ...any) {
 //
 //	type InstallDatabaseJob struct {
 //	    jobs.BaseJob[*JobContext, InstallDatabasePayload]
-//	    traits.InstallationTracker
+//	    models.InstallationTracker
 //	}
 //
 //	func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *InstallDatabaseJob {

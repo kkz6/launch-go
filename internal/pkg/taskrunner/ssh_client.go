@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kkz6/launch-go/internal/pkg/timeout"
+	"github.com/kkz6/launch-go/internal/pkg/config"
 
 	"golang.org/x/crypto/ssh"
 )
@@ -78,7 +78,7 @@ func NewSSHClient(cfg SSHConfig) (*SSHClient, error) {
 
 	t := cfg.Timeout
 	if t == 0 {
-		t = timeout.SSH
+		t = config.SSH
 	}
 
 	sshConfig := &ssh.ClientConfig{
@@ -359,14 +359,14 @@ func (c *SSHClient) WaitForConnection(ctx context.Context, maxRetries int) error
 		default:
 		}
 
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", c.host, c.port), timeout.NetworkDial)
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", c.host, c.port), config.NetworkDial)
 		if err == nil {
 			_ = conn.Close()
 			return c.Connect()
 		}
 
 		lastErr = err
-		time.Sleep(timeout.RetryDelay)
+		time.Sleep(config.RetryDelay)
 	}
 
 	return fmt.Errorf("failed to connect after %d retries: %w", maxRetries, lastErr)
@@ -428,7 +428,7 @@ func NewSSHClientFromConnection(conn *Connection, opts ...SSHClientOption) (*SSH
 		Port:       conn.Port,
 		User:       conn.User,
 		PrivateKey: conn.PrivateKey,
-		Timeout:    timeout.SSH,
+		Timeout:    config.SSH,
 	}
 
 	for _, opt := range opts {

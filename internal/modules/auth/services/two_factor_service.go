@@ -14,7 +14,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
-	"github.com/kkz6/launch-go/internal/pkg/token"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // TwoFactorService handles two-factor authentication operations
@@ -231,7 +231,7 @@ func (s *TwoFactorService) HasTwoFactorEnabled(ctx context.Context, userID strin
 func (s *TwoFactorService) generateRecoveryCodes() ([]string, error) {
 	codes := make([]string, 8)
 	for i := range codes {
-		t, err := token.New(8).WithEncoding(token.Base64URLRaw).Generate()
+		t, err := security.NewTokenGenerator(8).WithEncoding(security.TokenBase64URLRaw).Generate()
 		if err != nil {
 			return nil, errors.New("failed to generate recovery code token")
 		}

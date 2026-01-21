@@ -40,7 +40,7 @@ func Default() *http.Client {
 	return defaultClient
 }
 
-// WithCustomTimeout creates a new HTTP client with the specified timeout.
+// WithCustomTimeout creates a new HTTP client with the specified config.
 // Use this when you need a different timeout than the default 30 seconds.
 // Note: This creates a new client instance, so use sparingly.
 func WithCustomTimeout(timeout time.Duration) *http.Client {
@@ -88,7 +88,7 @@ func NewClient(baseURL string, opts ...Option) *Client {
 	return c
 }
 
-// WithTimeout sets the HTTP client timeout.
+// WithTimeout sets the HTTP client config.
 func WithTimeout(timeout time.Duration) Option {
 	return func(c *Client) {
 		c.httpClient.Timeout = timeout
@@ -221,7 +221,7 @@ func (c *Client) NewRequest(ctx context.Context, method, path string, body inter
 	return req, nil
 }
 
-// DoRequest executes an HTTP request and decodes the response.
+// DoRequest executes an HTTP request and decodes the fiberctx.
 func (c *Client) DoRequest(req *http.Request, result interface{}) error {
 	var resp *http.Response
 	var err error
@@ -259,7 +259,7 @@ func (c *Client) DoRequest(req *http.Request, result interface{}) error {
 	return nil
 }
 
-// DoRaw performs a request and returns the raw response.
+// DoRaw performs a request and returns the raw fiberctx.
 // The caller is responsible for closing the response body.
 func (c *Client) DoRaw(ctx context.Context, method, path string, body interface{}) (*http.Response, error) {
 	req, err := c.NewRequest(ctx, method, path, body)
@@ -281,7 +281,7 @@ func (c *Client) DoRaw(ctx context.Context, method, path string, body interface{
 	return resp, nil
 }
 
-// HTTPError represents an HTTP error response.
+// HTTPError represents an HTTP error fiberctx.
 type HTTPError struct {
 	StatusCode int
 	Status     string

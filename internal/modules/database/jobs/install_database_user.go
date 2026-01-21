@@ -11,9 +11,9 @@ import (
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	pkgmodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/traits"
 )
 
 const TypeInstallDatabaseUser = "database:user:install"
@@ -27,7 +27,7 @@ type InstallDatabaseUserPayload struct {
 
 type InstallDatabaseUserJob struct {
 	pkgjobs.BaseJob[*JobContext, InstallDatabaseUserPayload]
-	traits.InstallationTracker
+	pkgmodels.InstallationTracker
 }
 
 func NewInstallDatabaseUserJob(ctx *JobContext, payload InstallDatabaseUserPayload) *InstallDatabaseUserJob {

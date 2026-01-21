@@ -6,8 +6,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 	"github.com/kkz6/launch-go/internal/pkg/module"
-	"github.com/kkz6/launch-go/internal/pkg/sshkey"
 	"github.com/kkz6/launch-go/internal/queue"
 )
 

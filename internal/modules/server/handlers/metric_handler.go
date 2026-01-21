@@ -5,7 +5,6 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/fiberutil"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -45,7 +44,7 @@ func (h *Handler) GetMetrics(c *fiber.Ctx) error {
 		return err
 	}
 
-	limit := fiberutil.ParseLimit(c, 100, 1000)
+	limit := fiberctx.ParseLimit(c, 100, 1000)
 
 	metrics, err := h.service.GetMetrics(c.Context(), serverID, teamID, nil, nil, limit)
 	if err != nil {

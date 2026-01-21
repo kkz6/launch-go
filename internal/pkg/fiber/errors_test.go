@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	gofiber "github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
@@ -92,9 +92,9 @@ func TestHandleServiceError(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := fiber.New()
+			app := gofiber.New()
 
-			app.Get("/test", func(c *fiber.Ctx) error {
+			app.Get("/test", func(c *gofiber.Ctx) error {
 				return HandleServiceError(c, tt.err)
 			})
 
@@ -119,11 +119,11 @@ func TestHandleServiceError(t *testing.T) {
 }
 
 func TestHandleServiceErrorWithMessage(t *testing.T) {
-	app := fiber.New()
+	app := gofiber.New()
 
 	customMsg := "Custom internal error message"
 
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c *gofiber.Ctx) error {
 		// Use an unknown error type to trigger the default case
 		return HandleServiceErrorWithMessage(c, io.EOF, customMsg)
 	})
@@ -140,16 +140,16 @@ func TestHandleServiceErrorWithMessage(t *testing.T) {
 }
 
 func TestMustSucceed(t *testing.T) {
-	app := fiber.New()
+	app := gofiber.New()
 
-	app.Get("/success", func(c *fiber.Ctx) error {
+	app.Get("/success", func(c *gofiber.Ctx) error {
 		if err := MustSucceed(c, nil); err != nil {
 			return err
 		}
 		return c.SendString("ok")
 	})
 
-	app.Get("/error", func(c *fiber.Ctx) error {
+	app.Get("/error", func(c *gofiber.Ctx) error {
 		if err := MustSucceed(c, apperrors.ErrNotFound); err != nil {
 			return err
 		}

@@ -8,9 +8,8 @@ import (
 	"net/http"
 	"strings"
 
-	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
-	"github.com/kkz6/launch-go/internal/pkg/signature"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // BaseGitProvider provides common functionality for all Git providers.
@@ -145,7 +144,7 @@ func (b *BaseGitProvider) Delete(ctx context.Context, path string, token string,
 	return b.Request(http.MethodDelete, path, token).Do(ctx, result)
 }
 
-// DoRaw performs an authenticated request and returns the raw response.
+// DoRaw performs an authenticated request and returns the raw fiberctx.
 // Caller is responsible for closing the response body.
 func (b *BaseGitProvider) DoRaw(ctx context.Context, method, path string, token string, body interface{}) (*http.Response, error) {
 	req := b.Request(method, path, token)
@@ -167,11 +166,11 @@ func (b *BaseGitProvider) VerifyHMACSHA256Signature(payload []byte, sig, prefix 
 
 	if prefix != "" {
 		// Prefixed format (e.g., "sha256=...")
-		return signature.GitHub.Verify(payload, sig, b.config.WebhookSecret)
+		return security.GitHubSignature.Verify(payload, sig, b.config.WebhookSecret)
 	}
 
 	// Raw format (no prefix)
-	return signature.GitLab.Verify(payload, sig, b.config.WebhookSecret)
+	return security.GitLabSignature.Verify(payload, sig, b.config.WebhookSecret)
 }
 
 // VerifyTokenSignature verifies a webhook signature using constant-time comparison.
@@ -181,12 +180,12 @@ func (b *BaseGitProvider) VerifyTokenSignature(token string) bool {
 		return false
 	}
 
-	return cryptoutil.SecureCompare(token, b.config.WebhookSecret)
+	return security.SecureCompare(token, b.config.WebhookSecret)
 }
 
 // Pagination Helpers
 
-// PaginatedResponse represents a paginated API response.
+// PaginatedResponse represents a paginated API fiberctx.
 type PaginatedResponse struct {
 	Items      []map[string]interface{}
 	NextPage   string // URL for the next page (used by Bitbucket)

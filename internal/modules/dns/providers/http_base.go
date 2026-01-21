@@ -135,7 +135,7 @@ func (p *HTTPBaseProvider) wrapError(err error, method, path string) error {
 	return NewProviderError(p.providerName, 0, message, err)
 }
 
-// ParseErrorResponse extracts error message from a provider-specific error response.
+// ParseErrorResponse extracts error message from a provider-specific error fiberctx.
 // This is a helper for providers that have custom error response formats.
 func (p *HTTPBaseProvider) ParseErrorResponse(body []byte, extractor func([]byte) (string, error)) error {
 	if len(body) == 0 {
