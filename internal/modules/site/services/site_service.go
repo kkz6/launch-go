@@ -243,13 +243,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 			return err
 		}
 
-		activity.New(tx).
-			WithContext(ctx).
-			UseLog("site").
-			CausedByUser(userID).
-			On(site).
-			WithEvent("created").
-			Log("Site was created")
+		activity.LogCreated(ctx, tx, userID, site, "Site was created")
 
 		return nil
 	})
@@ -723,13 +717,7 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID s
 		return nil, err
 	}
 
-	activity.New(s.Repos().Site().DB).
-		WithContext(ctx).
-		UseLog("site").
-		CausedByUser(userID).
-		On(site).
-		WithEvent("updated").
-		Log("Site was updated")
+	activity.LogUpdated(ctx, s.Repos().Site().DB, userID, site, "Site was updated")
 
 	// If PHP version or web folder changed, update Caddyfile and deploy
 	if updateCaddyfile {
@@ -768,12 +756,7 @@ func (s *SiteService) Delete(ctx context.Context, id, serverID, teamID string) e
 		return err
 	}
 
-	activity.New(s.Repos().Site().DB).
-		WithContext(ctx).
-		UseLog("site").
-		On(site).
-		WithEvent("deleted").
-		Log("Site deletion requested")
+	activity.LogEvent(ctx, s.Repos().Site().DB, "deleted", "", site, "Site deletion requested")
 
 	now := time.Now()
 	site.UninstallationRequestedAt = &now
