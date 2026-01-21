@@ -2,9 +2,9 @@ package dto
 
 import (
 	"strconv"
-	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
 // ChannelResponse represents the response for a notification channel
@@ -44,16 +44,6 @@ type ChannelTypeResponse struct {
 
 // ToChannelResponse converts a NotificationChannel to a ChannelResponse
 func ToChannelResponse(channel *models.NotificationChannel) ChannelResponse {
-	createdAt := ""
-	if channel.CreatedAt != nil {
-		createdAt = channel.CreatedAt.Format(time.RFC3339)
-	}
-
-	updatedAt := ""
-	if channel.UpdatedAt != nil {
-		updatedAt = channel.UpdatedAt.Format(time.RFC3339)
-	}
-
 	return ChannelResponse{
 		ID:       strconv.FormatUint(channel.ID, 10),
 		UserID:   channel.UserID,
@@ -70,8 +60,8 @@ func ToChannelResponse(channel *models.NotificationChannel) ChannelResponse {
 		},
 		Connected: channel.Connected,
 		IsDefault: channel.IsDefault,
-		CreatedAt: createdAt,
-		UpdatedAt: updatedAt,
+		CreatedAt: pkgdto.FormatTimeOrEmpty(channel.CreatedAt),
+		UpdatedAt: pkgdto.FormatTimeOrEmpty(channel.UpdatedAt),
 	}
 }
 

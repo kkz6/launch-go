@@ -1,11 +1,10 @@
 package dto
 
 import (
-	"time"
-
 	serverconfig "github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
 // DatabaseResponse represents the response for a database
@@ -74,15 +73,9 @@ func ToServerResponse(server *models.Server) ServerResponse {
 	username := server.GetUsername()
 	sshPort := server.GetSSHPort()
 
-	// Handle timestamps
-	createdAt := ""
-	if server.CreatedAt != nil {
-		createdAt = server.CreatedAt.Format(time.RFC3339)
-	}
-	updatedAt := ""
-	if server.UpdatedAt != nil {
-		updatedAt = server.UpdatedAt.Format(time.RFC3339)
-	}
+	// Handle timestamps using pkg/dto helpers
+	createdAt := pkgdto.FormatTimeOrEmpty(server.CreatedAt)
+	updatedAt := pkgdto.FormatTimeOrEmpty(server.UpdatedAt)
 
 	// Progress is int, needs to be converted to *int for response
 	var progress *int
@@ -120,20 +113,9 @@ func ToServerResponse(server *models.Server) ServerResponse {
 		ServicesCount:        len(server.Services),
 	}
 
-	if server.ProvisionedAt != nil {
-		formatted := server.ProvisionedAt.Format(time.RFC3339)
-		resp.ProvisionedAt = &formatted
-	}
-
-	if server.LastConnectivityCheck != nil {
-		formatted := server.LastConnectivityCheck.Format(time.RFC3339)
-		resp.LastConnectivityCheck = &formatted
-	}
-
-	if server.ArchivedAt != nil {
-		formatted := server.ArchivedAt.Format(time.RFC3339)
-		resp.ArchivedAt = &formatted
-	}
+	resp.ProvisionedAt = pkgdto.FormatTime(server.ProvisionedAt)
+	resp.LastConnectivityCheck = pkgdto.FormatTime(server.LastConnectivityCheck)
+	resp.ArchivedAt = pkgdto.FormatTime(server.ArchivedAt)
 
 	if server.Status == enums.ServerStatusNew {
 		resp.ProvisionCommand = server.GetProvisionCommand()
@@ -156,24 +138,24 @@ type ServerListResponse struct {
 
 // ServiceResponse represents the response for a service
 type ServiceResponse struct {
-	ID              string                 `json:"id"`
-	ServerID        string                 `json:"server_id"`
-	Type            string                 `json:"type"`
-	TypeLabel       string                 `json:"type_label"`
-	Name            string                 `json:"name"`
-	Version         *string                `json:"version,omitempty"`
-	Status          string                 `json:"status"`
-	StatusLabel     string                 `json:"status_label"`
-	IsDefault       bool                   `json:"is_default"`
-	Software        *string                `json:"software,omitempty"`
-	SoftwareLabel   *string                `json:"software_label,omitempty"`
-	LastStatusCheck *string                `json:"last_status_check,omitempty"`
-	StatusDetails   map[string]any         `json:"status_details,omitempty"`
-	StatusOutput    *string                `json:"status_output,omitempty"`
-	Extensions      []ExtensionResponse    `json:"extensions,omitempty"`
-	Opcache         map[string]any         `json:"opcache,omitempty"`
-	CreatedAt       string                 `json:"created_at"`
-	UpdatedAt       string                 `json:"updated_at"`
+	ID              string              `json:"id"`
+	ServerID        string              `json:"server_id"`
+	Type            string              `json:"type"`
+	TypeLabel       string              `json:"type_label"`
+	Name            string              `json:"name"`
+	Version         *string             `json:"version,omitempty"`
+	Status          string              `json:"status"`
+	StatusLabel     string              `json:"status_label"`
+	IsDefault       bool                `json:"is_default"`
+	Software        *string             `json:"software,omitempty"`
+	SoftwareLabel   *string             `json:"software_label,omitempty"`
+	LastStatusCheck *string             `json:"last_status_check,omitempty"`
+	StatusDetails   map[string]any      `json:"status_details,omitempty"`
+	StatusOutput    *string             `json:"status_output,omitempty"`
+	Extensions      []ExtensionResponse `json:"extensions,omitempty"`
+	Opcache         map[string]any      `json:"opcache,omitempty"`
+	CreatedAt       string              `json:"created_at"`
+	UpdatedAt       string              `json:"updated_at"`
 }
 
 // ExtensionResponse represents a PHP extension with status
@@ -187,15 +169,8 @@ type ExtensionResponse struct {
 
 // ToServiceResponse converts an InstalledService model to a ServiceResponse DTO
 func ToServiceResponse(service *models.InstalledService) ServiceResponse {
-	// Handle timestamps
-	createdAt := ""
-	if service.CreatedAt != nil {
-		createdAt = service.CreatedAt.Format(time.RFC3339)
-	}
-	updatedAt := ""
-	if service.UpdatedAt != nil {
-		updatedAt = service.UpdatedAt.Format(time.RFC3339)
-	}
+	createdAt := pkgdto.FormatTimeOrEmpty(service.CreatedAt)
+	updatedAt := pkgdto.FormatTimeOrEmpty(service.UpdatedAt)
 
 	// Handle Version (now string, convert to *string for response)
 	var version *string
@@ -291,22 +266,13 @@ type FirewallRuleResponse struct {
 
 // ToFirewallRuleResponse converts a FirewallRule model to a FirewallRuleResponse DTO
 func ToFirewallRuleResponse(rule *models.FirewallRule) FirewallRuleResponse {
-	createdAt := ""
-	if rule.CreatedAt != nil {
-		createdAt = rule.CreatedAt.Format(time.RFC3339)
-	}
-	updatedAt := ""
-	if rule.UpdatedAt != nil {
-		updatedAt = rule.UpdatedAt.Format(time.RFC3339)
-	}
-
 	// Port is string, convert to *string for response
 	var port *string
 	if rule.Port != "" {
 		port = &rule.Port
 	}
 
-	resp := FirewallRuleResponse{
+	return FirewallRuleResponse{
 		ID:          rule.ID,
 		ServerID:    rule.ServerID,
 		Name:        rule.Name,
@@ -319,17 +285,11 @@ func ToFirewallRuleResponse(rule *models.FirewallRule) FirewallRuleResponse {
 		IsInstalled: rule.IsInstalled(),
 		IsPending:   rule.IsPending(),
 		HasFailed:   rule.HasFailed(),
+		InstalledAt: pkgdto.FormatTime(rule.InstalledAt),
 		UfwRule:     rule.FormatAsUfwRule(),
-		CreatedAt:   createdAt,
-		UpdatedAt:   updatedAt,
+		CreatedAt:   pkgdto.FormatTimeOrEmpty(rule.CreatedAt),
+		UpdatedAt:   pkgdto.FormatTimeOrEmpty(rule.UpdatedAt),
 	}
-
-	if rule.InstalledAt != nil {
-		formatted := rule.InstalledAt.Format(time.RFC3339)
-		resp.InstalledAt = &formatted
-	}
-
-	return resp
 }
 
 // CronResponse represents the response for a cron job
@@ -351,22 +311,13 @@ type CronResponse struct {
 
 // ToCronResponse converts a Cron model to a CronResponse DTO
 func ToCronResponse(cron *models.Cron) CronResponse {
-	createdAt := ""
-	if cron.CreatedAt != nil {
-		createdAt = cron.CreatedAt.Format(time.RFC3339)
-	}
-	updatedAt := ""
-	if cron.UpdatedAt != nil {
-		updatedAt = cron.UpdatedAt.Format(time.RFC3339)
-	}
-
 	// Frequency is string, convert to *string for response
 	var frequency *string
 	if cron.Frequency != "" {
 		frequency = &cron.Frequency
 	}
 
-	resp := CronResponse{
+	return CronResponse{
 		ID:          cron.ID,
 		ServerID:    cron.ServerID,
 		SiteID:      cron.SiteID,
@@ -377,16 +328,10 @@ func ToCronResponse(cron *models.Cron) CronResponse {
 		Hidden:      cron.Hidden,
 		IsInstalled: cron.IsInstalled(),
 		Path:        cron.Path(),
-		CreatedAt:   createdAt,
-		UpdatedAt:   updatedAt,
+		InstalledAt: pkgdto.FormatTime(cron.InstalledAt),
+		CreatedAt:   pkgdto.FormatTimeOrEmpty(cron.CreatedAt),
+		UpdatedAt:   pkgdto.FormatTimeOrEmpty(cron.UpdatedAt),
 	}
-
-	if cron.InstalledAt != nil {
-		formatted := cron.InstalledAt.Format(time.RFC3339)
-		resp.InstalledAt = &formatted
-	}
-
-	return resp
 }
 
 // DaemonResponse represents the response for a daemon
@@ -411,22 +356,13 @@ type DaemonResponse struct {
 
 // ToDaemonResponse converts a Daemon model to a DaemonResponse DTO
 func ToDaemonResponse(daemon *models.Daemon) DaemonResponse {
-	createdAt := ""
-	if daemon.CreatedAt != nil {
-		createdAt = daemon.CreatedAt.Format(time.RFC3339)
-	}
-	updatedAt := ""
-	if daemon.UpdatedAt != nil {
-		updatedAt = daemon.UpdatedAt.Format(time.RFC3339)
-	}
-
 	// StopSignal is string, convert to *string for response
 	var stopSignal *string
 	if daemon.StopSignal != "" {
 		stopSignal = &daemon.StopSignal
 	}
 
-	resp := DaemonResponse{
+	return DaemonResponse{
 		ID:              daemon.ID,
 		ServerID:        daemon.ServerID,
 		User:            daemon.User,
@@ -439,21 +375,11 @@ func ToDaemonResponse(daemon *models.Daemon) DaemonResponse {
 		Running:         daemon.Running,
 		Info:            daemon.GetInfo(),
 		Path:            daemon.Path(),
-		CreatedAt:       createdAt,
-		UpdatedAt:       updatedAt,
+		InstalledAt:     pkgdto.FormatTime(daemon.InstalledAt),
+		LastStatusCheck: pkgdto.FormatTime(daemon.LastStatusCheck),
+		CreatedAt:       pkgdto.FormatTimeOrEmpty(daemon.CreatedAt),
+		UpdatedAt:       pkgdto.FormatTimeOrEmpty(daemon.UpdatedAt),
 	}
-
-	if daemon.InstalledAt != nil {
-		formatted := daemon.InstalledAt.Format(time.RFC3339)
-		resp.InstalledAt = &formatted
-	}
-
-	if daemon.LastStatusCheck != nil {
-		formatted := daemon.LastStatusCheck.Format(time.RFC3339)
-		resp.LastStatusCheck = &formatted
-	}
-
-	return resp
 }
 
 // SshKeyResponse represents the response for an SSH key
@@ -469,23 +395,14 @@ type SshKeyResponse struct {
 
 // ToSshKeyResponse converts an SshKey model to an SshKeyResponse DTO
 func ToSshKeyResponse(key *models.SshKey) SshKeyResponse {
-	createdAt := ""
-	if key.CreatedAt != nil {
-		createdAt = key.CreatedAt.Format(time.RFC3339)
-	}
-	updatedAt := ""
-	if key.UpdatedAt != nil {
-		updatedAt = key.UpdatedAt.Format(time.RFC3339)
-	}
-
 	return SshKeyResponse{
 		ID:          key.ID,
 		Name:        key.Name,
 		Fingerprint: key.GetFingerprint(),
 		Description: key.Description,
 		IsGlobal:    key.IsGlobal,
-		CreatedAt:   createdAt,
-		UpdatedAt:   updatedAt,
+		CreatedAt:   pkgdto.FormatTimeOrEmpty(key.CreatedAt),
+		UpdatedAt:   pkgdto.FormatTimeOrEmpty(key.UpdatedAt),
 	}
 }
 
@@ -510,10 +427,7 @@ func ToTaskResponse(task *models.Task) TaskResponse {
 		output = &s
 	}
 
-	createdAt := ""
-	if task.CreatedAt != nil {
-		createdAt = task.CreatedAt.Format(time.RFC3339)
-	}
+	createdAt := pkgdto.FormatTimeOrEmpty(task.CreatedAt)
 
 	return TaskResponse{
 		ID:        task.ID,
@@ -546,11 +460,6 @@ type MetricResponse struct {
 
 // ToMetricResponse converts a Metric model to a MetricResponse DTO
 func ToMetricResponse(metric *models.Metric) MetricResponse {
-	createdAt := ""
-	if metric.CreatedAt != nil {
-		createdAt = metric.CreatedAt.Format(time.RFC3339)
-	}
-
 	return MetricResponse{
 		ID:                 metric.ID,
 		ServerID:           metric.ServerID,
@@ -563,7 +472,7 @@ func ToMetricResponse(metric *models.Metric) MetricResponse {
 		DiskUsed:           metric.DiskUsed,
 		DiskFree:           metric.DiskFree,
 		DiskUsagePercent:   metric.DiskUsagePercent(),
-		CreatedAt:          createdAt,
+		CreatedAt:          pkgdto.FormatTimeOrEmpty(metric.CreatedAt),
 	}
 }
 
@@ -745,17 +654,17 @@ type InstalledPhpVersionResponse struct {
 
 // OpcacheStatusResponse represents the OPcache status
 type OpcacheStatusResponse struct {
-	Enabled          bool                    `json:"enabled"`
-	CacheFull        bool                    `json:"cache_full"`
-	RestartPending   bool                    `json:"restart_pending"`
-	RestartInProgress bool                   `json:"restart_in_progress"`
-	Memory           *OpcacheMemoryStatus    `json:"memory,omitempty"`
-	Statistics       *OpcacheStatistics      `json:"statistics,omitempty"`
-	InternedStrings  *OpcacheInternedStrings `json:"interned_strings,omitempty"`
-	JIT              *OpcacheJITStatus       `json:"jit,omitempty"`
-	Scripts          []OpcacheScript         `json:"scripts,omitempty"`
-	Directives       map[string]interface{}  `json:"directives,omitempty"`
-	Error            string                  `json:"error,omitempty"`
+	Enabled           bool                    `json:"enabled"`
+	CacheFull         bool                    `json:"cache_full"`
+	RestartPending    bool                    `json:"restart_pending"`
+	RestartInProgress bool                    `json:"restart_in_progress"`
+	Memory            *OpcacheMemoryStatus    `json:"memory,omitempty"`
+	Statistics        *OpcacheStatistics      `json:"statistics,omitempty"`
+	InternedStrings   *OpcacheInternedStrings `json:"interned_strings,omitempty"`
+	JIT               *OpcacheJITStatus       `json:"jit,omitempty"`
+	Scripts           []OpcacheScript         `json:"scripts,omitempty"`
+	Directives        map[string]interface{}  `json:"directives,omitempty"`
+	Error             string                  `json:"error,omitempty"`
 }
 
 // OpcacheMemoryStatus represents OPcache memory usage
@@ -791,19 +700,19 @@ type OpcacheInternedStrings struct {
 
 // OpcacheJITStatus represents JIT status
 type OpcacheJITStatus struct {
-	Enabled    bool   `json:"enabled"`
-	On         bool   `json:"on"`
-	Kind       int    `json:"kind"`
-	OptLevel   int    `json:"opt_level"`
-	OptFlags   int    `json:"opt_flags"`
-	BufferSize int64  `json:"buffer_size"`
-	BufferFree int64  `json:"buffer_free"`
+	Enabled    bool  `json:"enabled"`
+	On         bool  `json:"on"`
+	Kind       int   `json:"kind"`
+	OptLevel   int   `json:"opt_level"`
+	OptFlags   int   `json:"opt_flags"`
+	BufferSize int64 `json:"buffer_size"`
+	BufferFree int64 `json:"buffer_free"`
 }
 
 // OpcacheScript represents a cached script
 type OpcacheScript struct {
-	FullPath         string `json:"full_path"`
-	Hits             int64  `json:"hits"`
+	FullPath          string `json:"full_path"`
+	Hits              int64  `json:"hits"`
 	MemoryConsumption int64  `json:"memory_consumption"`
 	LastUsedTimestamp int64  `json:"last_used_timestamp"`
 }
@@ -848,11 +757,6 @@ type ComposerAuthResponse struct {
 
 // ToServerProviderResponse converts a ServerProvider model to response
 func ToServerProviderResponse(sp *models.ServerProvider) ServerProviderResponse {
-	createdAt := ""
-	if sp.CreatedAt != nil {
-		createdAt = sp.CreatedAt.Format(time.RFC3339)
-	}
-
 	profile := ""
 	if sp.Profile != nil {
 		profile = *sp.Profile
@@ -863,6 +767,6 @@ func ToServerProviderResponse(sp *models.ServerProvider) ServerProviderResponse 
 		Profile:   profile,
 		Provider:  sp.Provider.String(),
 		Connected: sp.Connected,
-		CreatedAt: createdAt,
+		CreatedAt: pkgdto.FormatTimeOrEmpty(sp.CreatedAt),
 	}
 }

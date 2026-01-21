@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
 // AuthResponse represents the authentication response
@@ -45,11 +46,11 @@ type TeamResponse struct {
 // TeamDetailResponse represents a detailed team response with members and permissions
 type TeamDetailResponse struct {
 	TeamResponse
-	Owner           *UserResponse            `json:"owner,omitempty"`
-	Members         []TeamMemberResponse     `json:"members,omitempty"`
-	Invitations     []TeamInvitationResponse `json:"invitations,omitempty"`
-	AvailableRoles  []RoleOption             `json:"available_roles"`
-	Permissions     TeamPermissions          `json:"permissions"`
+	Owner          *UserResponse            `json:"owner,omitempty"`
+	Members        []TeamMemberResponse     `json:"members,omitempty"`
+	Invitations    []TeamInvitationResponse `json:"invitations,omitempty"`
+	AvailableRoles []RoleOption             `json:"available_roles"`
+	Permissions    TeamPermissions          `json:"permissions"`
 }
 
 // RoleOption represents an available role option
@@ -118,11 +119,6 @@ func ToUserResponseWithSubscription(user *models.User, isSubscribed bool) UserRe
 		timezone = *user.Timezone
 	}
 
-	createdAt := ""
-	if user.CreatedAt != nil {
-		createdAt = user.CreatedAt.Format(time.RFC3339)
-	}
-
 	resp := UserResponse{
 		ID:               user.ID,
 		Name:             user.Name,
@@ -132,12 +128,8 @@ func ToUserResponseWithSubscription(user *models.User, isSubscribed bool) UserRe
 		Timezone:         timezone,
 		Onboarded:        user.Onboarded,
 		TwoFactorEnabled: user.TwoFactorEnabled(),
-		CreatedAt:        createdAt,
-	}
-
-	if user.EmailVerifiedAt != nil {
-		verified := user.EmailVerifiedAt.Format(time.RFC3339)
-		resp.EmailVerifiedAt = &verified
+		CreatedAt:        pkgdto.FormatTimeOrEmpty(user.CreatedAt),
+		EmailVerifiedAt:  pkgdto.FormatTime(user.EmailVerifiedAt),
 	}
 
 	if user.CurrentTeam != nil {
@@ -162,7 +154,7 @@ func ToTeamResponseForUser(team models.Team, userID string) TeamResponse {
 		ImageURL:     team.ImageURL(),
 		IsSubscribed: false,
 		IsOwner:      userID != "" && team.UserID == userID,
-		CreatedAt:    team.CreatedAt.Format(time.RFC3339),
+		CreatedAt:    pkgdto.FormatTimeOrEmpty(team.CreatedAt),
 	}
 }
 
@@ -202,7 +194,7 @@ func ToTeamMemberResponse(user *models.User, role string, joinedAt time.Time) Te
 		Name:      user.Name,
 		Email:     user.Email,
 		Role:      role,
-		JoinedAt:  joinedAt.Format(time.RFC3339),
+		JoinedAt:  pkgdto.FormatTimeValue(joinedAt),
 		AvatarURL: user.ProfilePhotoURL(),
 	}
 }
@@ -214,16 +206,11 @@ func ToTeamInvitationResponse(invitation *models.TeamInvitation) TeamInvitationR
 		role = *invitation.Role
 	}
 
-	createdAt := ""
-	if invitation.CreatedAt != nil {
-		createdAt = invitation.CreatedAt.Format(time.RFC3339)
-	}
-
 	resp := TeamInvitationResponse{
 		ID:        invitation.ID,
 		Email:     invitation.Email,
 		Role:      role,
-		CreatedAt: createdAt,
+		CreatedAt: pkgdto.FormatTimeOrEmpty(invitation.CreatedAt),
 	}
 
 	if invitation.Team != nil {

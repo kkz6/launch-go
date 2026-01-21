@@ -1,10 +1,9 @@
 package dto
 
 import (
-	"time"
-
 	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
 // CreateDnsRecordRequest represents a request to create a DNS record
@@ -134,7 +133,7 @@ func ToDnsRecordResponse(r *models.DnsRecord) DnsRecordResponse {
 		Comment:    r.Comment,
 		Proxied:    r.Proxied,
 		IsEditable: r.IsEditable(),
-		CreatedAt:  r.CreatedAt.Format(time.RFC3339),
-		UpdatedAt:  r.UpdatedAt.Format(time.RFC3339),
+		CreatedAt:  pkgdto.FormatTimeOrEmpty(r.CreatedAt),
+		UpdatedAt:  pkgdto.FormatTimeOrEmpty(r.UpdatedAt),
 	}
 }
