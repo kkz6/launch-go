@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/git/enums"
+	"github.com/kkz6/launch-go/internal/modules/git/gitref"
 )
 
 // AppInstallationData represents data from a git provider app installation
@@ -115,7 +116,7 @@ func CommitDataFromGitHubPayload(data map[string]interface{}) *CommitData {
 	url, _ := headCommit["url"].(string)
 
 	ref, _ := data["ref"].(string)
-	branch := strings.TrimPrefix(ref, "refs/heads/")
+	branch := gitref.ExtractBranchName(ref)
 
 	return &CommitData{
 		CommitID: commitID,
@@ -158,7 +159,7 @@ func CommitDataFromGitLabPayload(data map[string]interface{}) *CommitData {
 	url, _ := firstCommit["url"].(string)
 
 	ref, _ := data["ref"].(string)
-	branch := strings.TrimPrefix(ref, "refs/heads/")
+	branch := gitref.ExtractBranchName(ref)
 
 	return &CommitData{
 		CommitID: commitID,

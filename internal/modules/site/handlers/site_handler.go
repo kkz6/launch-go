@@ -331,9 +331,9 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 	}
 
 	// Build TLS options
-	tlsOptions := make([]dto.TlsOptionResponse, 0)
-	for _, tls := range enums.AllTlsSettings() {
-		tlsOptions = append(tlsOptions, dto.TlsOptionResponse{
+	tlsOptions := make([]dto.TLSOptionResponse, 0)
+	for _, tls := range enums.AllTLSSettings() {
+		tlsOptions = append(tlsOptions, dto.TLSOptionResponse{
 			Value: string(tls),
 			Label: tls.Label(),
 		})
@@ -341,7 +341,7 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 
 	resp := dto.SiteSettingsResponse{
 		Site:          dto.ToSiteResponse(settingsData.Site),
-		TlsOptions:    tlsOptions,
+		TLSOptions:    tlsOptions,
 		PhpVersions:   settingsData.PhpVersions,
 		SourceControl: settingsData.SourceControl,
 		Repository:    settingsData.Repository,

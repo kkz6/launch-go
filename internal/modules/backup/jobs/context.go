@@ -10,19 +10,45 @@ import (
 	"github.com/kkz6/launch-go/internal/queue"
 )
 
-// JobContext provides shared dependencies for all backup jobs.
-// It embeds pkgjobs.Base for common logging functionality.
-type JobContext struct {
-	pkgjobs.Base
-	// Public fields for backward compatibility with existing jobs
-	DB          *gorm.DB
-	Repos       *repositories.Registry
-	ServerRepos servercontracts.RepositoryRegistry
-	Logger      *zerolog.Logger
-	Queue       *queue.Client
+// BackupRepos combines backup and server repositories for the backup module.
+type BackupRepos struct {
+	registry *repositories.Registry
+	server   servercontracts.RepositoryRegistry
 }
 
-// NewJobContext creates a new job context
+// Backup returns the backup repository.
+func (r *BackupRepos) Backup() *repositories.BackupRepository {
+	return r.registry.Backup()
+}
+
+// BackupJob returns the backup job repository.
+func (r *BackupRepos) BackupJob() *repositories.BackupJobRepository {
+	return r.registry.BackupJob()
+}
+
+// StorageProvider returns the storage provider repository.
+func (r *BackupRepos) StorageProvider() *repositories.StorageProviderRepository {
+	return r.registry.StorageProvider()
+}
+
+// Server returns the server repository registry.
+func (r *BackupRepos) Server() servercontracts.RepositoryRegistry {
+	return r.server
+}
+
+// JobContext provides shared dependencies for all backup jobs.
+// It embeds pkgjobs.ModuleContext for common functionality and typed repository access.
+type JobContext struct {
+	*pkgjobs.ModuleContext[*BackupRepos]
+	// Public fields for backward compatibility with existing jobs
+	DB          *gorm.DB
+	Repos       *BackupRepos
+	Logger      *zerolog.Logger
+	Queue       *queue.Client
+	ServerRepos servercontracts.RepositoryRegistry
+}
+
+// NewJobContext creates a new job context.
 func NewJobContext(
 	db *gorm.DB,
 	repos *repositories.Registry,
@@ -30,17 +56,22 @@ func NewJobContext(
 	logger *zerolog.Logger,
 	queueClient *queue.Client,
 ) *JobContext {
+	backupRepos := &BackupRepos{
+		registry: repos,
+		server:   serverRepos,
+	}
+
 	return &JobContext{
-		Base: pkgjobs.NewBase(pkgjobs.BaseDeps{
+		ModuleContext: pkgjobs.NewModuleContext(pkgjobs.BaseDeps{
 			DB:     db,
 			Logger: logger,
 			Queue:  queueClient,
-		}),
+		}, backupRepos),
 		// Public fields for backward compatibility
 		DB:          db,
-		Repos:       repos,
-		ServerRepos: serverRepos,
+		Repos:       backupRepos,
 		Logger:      logger,
 		Queue:       queueClient,
+		ServerRepos: serverRepos,
 	}
 }

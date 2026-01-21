@@ -1,9 +1,7 @@
 package models
 
 import (
-	"crypto/rand"
 	"database/sql/driver"
-	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	mrand "math/rand"
@@ -14,7 +12,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
+	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/xutil"
 )
 
 // Site represents a web application deployed on a server
@@ -30,7 +30,7 @@ type Site struct {
 	TypeData                     *string                    `gorm:"column:type_data;type:json" json:"type_data,omitempty"`
 	VcsData                      *string                    `gorm:"column:vcs_data;type:json" json:"vcs_data,omitempty"`
 	Aliases                      basemodels.JSONStringSlice `gorm:"type:json;serializer:json" json:"aliases,omitempty"`
-	TlsSetting                   enums.TlsSetting           `gorm:"column:tls_setting;type:varchar(255);not null;index" json:"tls_setting"`
+	TLSSetting                   enums.TLSSetting           `gorm:"column:tls_setting;type:varchar(255);not null;index" json:"tls_setting"`
 	ZeroDowntimeDeployment       bool                       `gorm:"column:zero_downtime_deployment" json:"zero_downtime_deployment"`
 	DeploymentReleasesRetention  int                        `gorm:"column:deployment_releases_retention;default:10" json:"deployment_releases_retention"`
 	AutoDeployment               bool                       `gorm:"column:auto_deployment;default:false" json:"auto_deployment"`
@@ -49,7 +49,7 @@ type Site struct {
 	Path                         string                     `gorm:"type:varchar(255);not null" json:"path"`
 	WebFolder                    string                     `gorm:"column:web_folder;type:varchar(255);not null" json:"web_folder"`
 	PhpVersion                   *enums.PhpVersion          `gorm:"column:php_version;type:varchar(255);index" json:"php_version,omitempty"`
-	PendingTlsUpdateSince        *time.Time                 `gorm:"column:pending_tls_update_since;type:timestamp null" json:"pending_tls_update_since,omitempty"`
+	PendingTLSUpdateSince        *time.Time                 `gorm:"column:pending_tls_update_since;type:timestamp null" json:"pending_tls_update_since,omitempty"`
 	PendingCaddyfileUpdateSince  *time.Time                 `gorm:"column:pending_caddyfile_update_since;type:timestamp null" json:"pending_caddyfile_update_since,omitempty"`
 	SharedDirectories            basemodels.JSONStringSlice `gorm:"column:shared_directories;type:json;serializer:json" json:"shared_directories"`
 	WriteableDirectories         basemodels.JSONStringSlice `gorm:"column:writeable_directories;type:json;serializer:json" json:"writeable_directories"`
@@ -81,7 +81,7 @@ func (s *Site) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	if s.DeployToken == nil || *s.DeployToken == "" {
-		token := GenerateRandomToken(32)
+		token := cryptoutil.GenerateToken(32)
 		s.DeployToken = &token
 	}
 
@@ -90,7 +90,7 @@ func (s *Site) BeforeCreate(tx *gorm.DB) error {
 
 // GetURL returns the full URL for the site
 func (s *Site) GetURL() string {
-	return fmt.Sprintf("%s://%s", s.TlsSetting.GetProtocol(), s.Address)
+	return fmt.Sprintf("%s://%s", s.TLSSetting.GetProtocol(), s.Address)
 }
 
 // GetPort returns the HTTP port based on TLS setting
@@ -99,7 +99,7 @@ func (s *Site) GetPort() int {
 		return *s.Port
 	}
 
-	return s.TlsSetting.GetPort()
+	return s.TLSSetting.GetPort()
 }
 
 // StartsWithWww checks if the address starts with www.
@@ -168,7 +168,7 @@ func (s *Site) GenerateEnvironmentVariables() map[string]string {
 
 	switch s.Type {
 	case enums.SiteTypeLaravel:
-		variables["APP_KEY"] = generateLaravelAppKey()
+		variables["APP_KEY"] = xutil.GenerateAppKey()
 		variables["APP_URL"] = s.GetURL()
 
 	case enums.SiteTypeWordpress:
@@ -182,18 +182,6 @@ func (s *Site) GenerateEnvironmentVariables() map[string]string {
 	}
 
 	return variables
-}
-
-// generateLaravelAppKey generates a Laravel-style application key
-func generateLaravelAppKey() string {
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		// Fallback to math/rand if crypto/rand fails
-		for i := range key {
-			key[i] = byte(mrand.Intn(256))
-		}
-	}
-	return "base64:" + base64.StdEncoding.EncodeToString(key)
 }
 
 // generateWordpressKey generates a random key for WordPress

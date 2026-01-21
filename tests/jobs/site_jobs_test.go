@@ -68,14 +68,14 @@ func TestUpdateSiteTLSSettingPayload(t *testing.T) {
 	userID := "user123"
 	payload := sitejobs.UpdateSiteTLSSettingPayload{
 		SiteID:     "site123",
-		TLSSetting: enums.TlsSettingAuto,
+		TLSSetting: enums.TLSSettingAuto,
 		UserID:     &userID,
 	}
 
 	if payload.SiteID != "site123" {
 		t.Errorf("Expected SiteID to be 'site123', got '%s'", payload.SiteID)
 	}
-	if payload.TLSSetting != enums.TlsSettingAuto {
+	if payload.TLSSetting != enums.TLSSettingAuto {
 		t.Errorf("Expected TLSSetting to be 'auto', got '%s'", payload.TLSSetting)
 	}
 	if payload.UserID == nil || *payload.UserID != "user123" {
@@ -84,7 +84,7 @@ func TestUpdateSiteTLSSettingPayload(t *testing.T) {
 }
 
 func TestNewUpdateSiteTLSSettingTask(t *testing.T) {
-	task, err := sitejobs.NewUpdateSiteTLSSettingTask("site123", enums.TlsSettingAuto, nil)
+	task, err := sitejobs.NewUpdateSiteTLSSettingTask("site123", enums.TLSSettingAuto, nil)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -97,12 +97,12 @@ func TestNewUpdateSiteTLSSettingTask(t *testing.T) {
 	}
 }
 
-func TestNewUpdateSiteTLSSettingTask_AllTlsSettings(t *testing.T) {
-	testCases := []enums.TlsSetting{
-		enums.TlsSettingAuto,
-		enums.TlsSettingCustom,
-		enums.TlsSettingInternal,
-		enums.TlsSettingOff,
+func TestNewUpdateSiteTLSSettingTask_AllTLSSettings(t *testing.T) {
+	testCases := []enums.TLSSetting{
+		enums.TLSSettingAuto,
+		enums.TLSSettingCustom,
+		enums.TLSSettingInternal,
+		enums.TLSSettingOff,
 	}
 
 	for _, tlsSetting := range testCases {

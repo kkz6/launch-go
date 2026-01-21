@@ -65,11 +65,9 @@ func (e *EmailChannel) Connect(ctx context.Context) error {
 
 // GetCreateRules returns the validation rules for creating an email channel
 func (e *EmailChannel) GetCreateRules() map[string]string {
-	return map[string]string{
-		"email":          "required,email",
-		"appDeploy":      "boolean",
-		"databaseBackup": "boolean",
-	}
+	return MergeValidationRules(map[string]string{
+		"email": "required,email",
+	})
 }
 
 // GetData returns the email channel data

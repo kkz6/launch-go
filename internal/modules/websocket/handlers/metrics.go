@@ -80,7 +80,7 @@ func (h *MetricsHandler) Handler() fiber.Handler {
 }
 
 func (h *MetricsHandler) sendError(c *websocket.Conn, msg string) {
-	c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"event":"error","message":"%s"}`, msg)))
+	_ = SendErrorEvent(c, msg)
 	c.Close()
 }
 
@@ -246,7 +246,7 @@ done
 	}
 
 	// Send connected event
-	c.WriteMessage(websocket.TextMessage, []byte(`{"event":"connected"}`))
+	_ = SendEvent(c, "connected", nil)
 
 	// Stream output to WebSocket
 	done := make(chan struct{})

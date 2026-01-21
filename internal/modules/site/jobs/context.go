@@ -16,10 +16,17 @@ import (
 	"github.com/kkz6/launch-go/internal/queue"
 )
 
+// SiteRepos combines site, server, and git repositories for the site module.
+type SiteRepos struct {
+	Site          *repositories.Registry
+	Server        *serverrepos.Registry
+	SourceControl *gitrepos.SourceControlRepository
+}
+
 // JobContext holds dependencies for site job execution.
-// It embeds pkgjobs.Base for common logging functionality.
+// It embeds pkgjobs.ModuleContext for common functionality and typed repository access.
 type JobContext struct {
-	pkgjobs.Base
+	*pkgjobs.ModuleContext[*SiteRepos]
 	// Public fields for backward compatibility with existing jobs
 	DB                *gorm.DB
 	Logger            *zerolog.Logger
@@ -37,7 +44,7 @@ type JobContext struct {
 	TaskRunnerDeps    *servertasks.TaskRunnerDeps
 }
 
-// NewJobContext creates a new site job context
+// NewJobContext creates a new site job context.
 func NewJobContext(
 	db *gorm.DB,
 	logger *zerolog.Logger,
@@ -54,13 +61,28 @@ func NewJobContext(
 	sourceControlRepo *gitrepos.SourceControlRepository,
 	providerFactory *gitproviders.ProviderFactory,
 ) *JobContext {
+	taskRunnerDeps := &servertasks.TaskRunnerDeps{
+		DB:          db,
+		Queue:       queueClient,
+		Dispatcher:  dispatcher,
+		Logger:      logger,
+		Broadcaster: ws,
+	}
+
+	// Build a site registry from the individual repos for the new interface
+	siteRegistry := &repositories.Registry{}
+
 	return &JobContext{
-		Base: pkgjobs.NewBase(pkgjobs.BaseDeps{
+		ModuleContext: pkgjobs.NewModuleContext(pkgjobs.BaseDeps{
 			DB:         db,
 			Logger:     logger,
 			WS:         ws,
 			Dispatcher: dispatcher,
 			Queue:      queueClient,
+		}, &SiteRepos{
+			Site:          siteRegistry,
+			Server:        serverRepos,
+			SourceControl: sourceControlRepo,
 		}),
 		// Public fields for backward compatibility
 		DB:                db,
@@ -76,13 +98,7 @@ func NewJobContext(
 		ServerRepos:       serverRepos,
 		SourceControlRepo: sourceControlRepo,
 		ProviderFactory:   providerFactory,
-		TaskRunnerDeps: &servertasks.TaskRunnerDeps{
-			DB:          db,
-			Queue:       queueClient,
-			Dispatcher:  dispatcher,
-			Logger:      logger,
-			Broadcaster: ws,
-		},
+		TaskRunnerDeps:    taskRunnerDeps,
 	}
 }
 

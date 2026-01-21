@@ -122,8 +122,7 @@ func (h *ServiceStatusHandler) Handler() fiber.Handler {
 }
 
 func (h *ServiceStatusHandler) sendError(c *websocket.Conn, msg string) {
-	data, _ := json.Marshal(map[string]string{"event": "error", "message": msg})
-	c.WriteMessage(websocket.TextMessage, data)
+	_ = SendErrorEvent(c, msg)
 	c.Close()
 }
 

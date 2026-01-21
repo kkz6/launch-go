@@ -90,7 +90,7 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 			if execution.Output != nil {
 				c.WriteMessage(websocket.TextMessage, []byte(*execution.Output))
 			}
-			h.sendJSON(c, map[string]interface{}{
+			h.sendJSON(c, map[string]any{
 				"type":      "completed",
 				"status":    string(execution.Status),
 				"exit_code": execution.ExitCode,
@@ -104,7 +104,7 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 			h.executeScript(c, &execution, &script, &server)
 		} else if execution.Status == scriptModels.ExecutionStatusRunning {
 			// Already running elsewhere - just notify and close
-			h.sendJSON(c, map[string]interface{}{
+			h.sendJSON(c, map[string]any{
 				"type":    "error",
 				"message": "Execution is already running",
 			})
@@ -116,12 +116,12 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scriptModels.ScriptExecution, script *scriptModels.Script, server *serverModels.Server) {
 	// Update status to running
 	now := time.Now()
-	h.DB.Model(execution).Updates(map[string]interface{}{
+	h.DB.Model(execution).Updates(map[string]any{
 		"status":     scriptModels.ExecutionStatusRunning,
 		"started_at": now,
 	})
 
-	h.sendJSON(c, map[string]interface{}{
+	h.sendJSON(c, map[string]any{
 		"type":   "started",
 		"status": "running",
 	})
@@ -273,7 +273,7 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 	// Update execution record
 	finishedAt := time.Now()
 	output := string(outputBuffer)
-	h.DB.Model(execution).Updates(map[string]interface{}{
+	h.DB.Model(execution).Updates(map[string]any{
 		"status":      finalStatus,
 		"exit_code":   exitCode,
 		"output":      output,
@@ -281,7 +281,7 @@ func (h *ScriptExecutionHandler) executeScript(c *websocket.Conn, execution *scr
 	})
 
 	// Send completion message
-	h.sendJSON(c, map[string]interface{}{
+	h.sendJSON(c, map[string]any{
 		"type":      "completed",
 		"status":    string(finalStatus),
 		"exit_code": exitCode,
@@ -304,13 +304,13 @@ func (h *ScriptExecutionHandler) finishWithError(c *websocket.Conn, execution *s
 
 	// Update execution record
 	finishedAt := time.Now()
-	h.DB.Model(execution).Updates(map[string]interface{}{
+	h.DB.Model(execution).Updates(map[string]any{
 		"status":      scriptModels.ExecutionStatusFailed,
 		"output":      errMsg,
 		"finished_at": finishedAt,
 	})
 
-	h.sendJSON(c, map[string]interface{}{
+	h.sendJSON(c, map[string]any{
 		"type":    "error",
 		"message": errMsg,
 		"status":  "failed",
@@ -320,40 +320,15 @@ func (h *ScriptExecutionHandler) finishWithError(c *websocket.Conn, execution *s
 
 func (h *ScriptExecutionHandler) sendError(c *websocket.Conn, msg string) {
 	h.LogWarn(msg)
-	h.sendJSON(c, map[string]interface{}{
+	_ = h.Base.SendJSON(c, map[string]any{
 		"type":    "error",
 		"message": msg,
 	})
 	c.Close()
 }
 
-func (h *ScriptExecutionHandler) sendJSON(c *websocket.Conn, data map[string]interface{}) {
-	// Simple JSON encoding
-	msg := "{"
-	first := true
-	for k, v := range data {
-		if !first {
-			msg += ","
-		}
-		first = false
-		msg += fmt.Sprintf(`"%s":`, k)
-		switch val := v.(type) {
-		case string:
-			msg += fmt.Sprintf(`"%s"`, val)
-		case int:
-			msg += fmt.Sprintf("%d", val)
-		case *int:
-			if val != nil {
-				msg += fmt.Sprintf("%d", *val)
-			} else {
-				msg += "null"
-			}
-		default:
-			msg += fmt.Sprintf(`"%v"`, val)
-		}
-	}
-	msg += "}"
-	c.WriteMessage(websocket.TextMessage, []byte(msg))
+func (h *ScriptExecutionHandler) sendJSON(c *websocket.Conn, data map[string]any) {
+	_ = h.Base.SendJSON(c, data)
 }
 
 // resolveRunAsUser resolves the run-as type to the actual username from the server

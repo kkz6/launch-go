@@ -81,11 +81,9 @@ func (s *SlackChannel) Connect(ctx context.Context) error {
 
 // GetCreateRules returns the validation rules for creating a Slack channel
 func (s *SlackChannel) GetCreateRules() map[string]string {
-	return map[string]string{
-		"webhook_url":    "required,url",
-		"appDeploy":      "boolean",
-		"databaseBackup": "boolean",
-	}
+	return MergeValidationRules(map[string]string{
+		"webhook_url": "required,url",
+	})
 }
 
 // GetData returns the Slack channel data

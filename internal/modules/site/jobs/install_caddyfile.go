@@ -263,12 +263,12 @@ func generateTLSSnippet(site *models.Site) string {
 
 	builder.WriteString(fmt.Sprintf("(tls-%s) {\n", site.ID))
 
-	switch site.TlsSetting {
-	case enums.TlsSettingCustom:
+	switch site.TLSSetting {
+	case enums.TLSSettingCustom:
 		// TODO: Get active certificate and use its paths
 		// For now, just add a placeholder comment
 		builder.WriteString("\t# Custom TLS certificate\n")
-	case enums.TlsSettingInternal:
+	case enums.TLSSettingInternal:
 		builder.WriteString("\ttls internal\n")
 	default:
 		// Auto TLS or Off - no specific TLS config needed

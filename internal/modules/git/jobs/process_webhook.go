@@ -4,13 +4,13 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/git/enums"
+	"github.com/kkz6/launch-go/internal/modules/git/gitref"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/repositories"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
@@ -113,7 +113,7 @@ func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data ma
 			if !ok {
 				j.logger.Debug().Interface("ref", data["ref"]).Msg("GitHub webhook: unexpected ref type")
 			}
-			branch := strings.TrimPrefix(ref, "refs/heads/")
+			branch := gitref.ExtractBranchName(ref)
 
 			if fullName != "" && branch != "" {
 				return j.triggerDeployments(ctx, fullName, branch, data, enums.GitProviderGitHub)
@@ -140,7 +140,7 @@ func (j *ProcessGitWebhookJob) processGitLabWebhook(ctx context.Context, data ma
 			if !ok {
 				j.logger.Debug().Interface("ref", data["ref"]).Msg("GitLab webhook: unexpected ref type")
 			}
-			branch := strings.TrimPrefix(ref, "refs/heads/")
+			branch := gitref.ExtractBranchName(ref)
 
 			if fullName != "" && branch != "" {
 				return j.triggerDeployments(ctx, fullName, branch, data, enums.GitProviderGitLab)
@@ -316,8 +316,16 @@ func NewProcessGitWebhookTask(provider, payload, signature string) (*asynq.Task,
 	})
 }
 
-// JobContext holds dependencies for git jobs
+// GitRepos holds git module repositories.
+type GitRepos struct {
+	SourceControl *repositories.SourceControlRepository
+}
+
+// JobContext holds dependencies for git jobs.
+// It embeds pkgjobs.ModuleContext for common functionality and typed repository access.
 type JobContext struct {
+	*pkgjobs.ModuleContext[*GitRepos]
+	// Public fields for backward compatibility
 	DB              *gorm.DB
 	Logger          *zerolog.Logger
 	Service         *services.SourceControlService
@@ -325,7 +333,31 @@ type JobContext struct {
 	SCRepo          *repositories.SourceControlRepository
 }
 
-// NewProcessGitWebhookJob creates a new ProcessGitWebhookJob
+// NewJobContext creates a new git job context.
+func NewJobContext(
+	db *gorm.DB,
+	logger *zerolog.Logger,
+	service *services.SourceControlService,
+	providerFactory *providers.ProviderFactory,
+	scRepo *repositories.SourceControlRepository,
+) *JobContext {
+	return &JobContext{
+		ModuleContext: pkgjobs.NewModuleContext(pkgjobs.BaseDeps{
+			DB:     db,
+			Logger: logger,
+		}, &GitRepos{
+			SourceControl: scRepo,
+		}),
+		// Public fields for backward compatibility
+		DB:              db,
+		Logger:          logger,
+		Service:         service,
+		ProviderFactory: providerFactory,
+		SCRepo:          scRepo,
+	}
+}
+
+// NewProcessGitWebhookJob creates a new ProcessGitWebhookJob.
 func NewProcessGitWebhookJob(ctx *JobContext, payload ProcessGitWebhookPayload) *ProcessGitWebhookJob {
 	return &ProcessGitWebhookJob{
 		db:              ctx.DB,
