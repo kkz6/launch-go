@@ -18,6 +18,17 @@ func ConvertSlice[M, R any](models []M, convert func(*M) R) []R {
 	return results
 }
 
+// TransformSlice is an alias for ConvertSlice that transforms a slice of one type to another.
+// This provides a more intuitive name for general slice transformation operations.
+//
+// Example usage:
+//
+//	servers := []models.Server{...}
+//	responses := dto.TransformSlice(servers, dto.ToServerResponse)
+func TransformSlice[T, R any](items []T, transform func(*T) R) []R {
+	return ConvertSlice(items, transform)
+}
+
 // ConvertSlicePtr converts a slice of models to a slice of response DTO pointers.
 //
 // Example usage:

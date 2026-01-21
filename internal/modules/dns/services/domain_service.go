@@ -67,7 +67,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 		dnsProvider.SetDomain(req.Address)
 		nameservers, err := dnsProvider.GetNameservers(ctx)
 		if err != nil {
-			s.Logger().Warn().Err(err).Str("domain", req.Address).Msg("Failed to get nameservers")
+			s.Logger.Warn().Err(err).Str("domain", req.Address).Msg("Failed to get nameservers")
 			return nil // Don't fail the whole operation
 		}
 
@@ -82,7 +82,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 			}
 			nsRecord.TeamID = teamID
 			if err := s.Repos().DNSRecord().Create(ctx, nsRecord); err != nil {
-				s.Logger().Warn().Err(err).Str("ns", ns).Msg("Failed to create NS record")
+				s.Logger.Warn().Err(err).Str("ns", ns).Msg("Failed to create NS record")
 			}
 		}
 
@@ -157,7 +157,7 @@ func (s *DomainService) DeleteDomain(ctx context.Context, id, teamID string, del
 		dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
 		if err == nil {
 			if err := dnsProvider.DeleteDomain(ctx, domain.Address); err != nil {
-				s.Logger().Warn().Err(err).Str("domain", domain.Address).Msg("Failed to delete domain from provider")
+				s.Logger.Warn().Err(err).Str("domain", domain.Address).Msg("Failed to delete domain from provider")
 			}
 		}
 	}
@@ -272,7 +272,7 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 			record.TeamID = domain.TeamID
 
 			if err := s.Repos().DNSRecord().Create(ctx, record); err != nil {
-				s.Logger().Warn().Err(err).Str("record", pr.Name).Msg("Failed to create record during sync")
+				s.Logger.Warn().Err(err).Str("record", pr.Name).Msg("Failed to create record during sync")
 			}
 		}
 

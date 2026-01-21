@@ -28,7 +28,7 @@ type UninstallFirewallRuleJob struct {
 // Handle processes the job
 func (j *UninstallFirewallRuleJob) Handle(ctx context.Context) error {
 	// Find the firewall rule with server preloaded
-	rule, err := j.Ctx.Repos.FirewallRule().FindByIDWithServer(ctx, j.Payload.RuleID)
+	rule, err := j.Ctx.Repos().FirewallRule().FindByIDWithServer(ctx, j.Payload.RuleID)
 	if err != nil {
 		return fmt.Errorf("failed to find firewall rule: %w", err)
 	}
@@ -58,10 +58,10 @@ func (j *UninstallFirewallRuleJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "uninstalled", j.Payload.UserID, rule, "Firewall rule was uninstalled")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "uninstalled", j.Payload.UserID, rule, "Firewall rule was uninstalled")
 
 	// Delete the rule record
-	if err := j.Ctx.Repos.FirewallRule().Delete(ctx, rule.ID); err != nil {
+	if err := j.Ctx.Repos().FirewallRule().Delete(ctx, rule.ID); err != nil {
 		return fmt.Errorf("failed to delete rule: %w", err)
 	}
 
@@ -87,7 +87,7 @@ func (j *UninstallFirewallRuleJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Mark uninstallation as failed
-	if markErr := j.Ctx.Repos.FirewallRule().MarkFailed(ctx, j.Payload.RuleID); markErr != nil {
+	if markErr := j.Ctx.Repos().FirewallRule().MarkFailed(ctx, j.Payload.RuleID); markErr != nil {
 		j.Ctx.LogError(markErr, "Failed to mark firewall rule failure")
 	}
 }

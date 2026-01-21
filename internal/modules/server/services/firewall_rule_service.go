@@ -8,7 +8,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
 )
 
 // ListFirewallRules returns all firewall rules for a server
@@ -46,7 +45,8 @@ func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID strin
 		return nil, err
 	}
 
-	activity.LogWithLog(ctx, s.repos.DB(), "server", "created", "", rule, "Firewall rule was created")
+	// Using embedded ActivityMixin for consistent activity logging
+	s.LogSystemActivity(ctx, rule, "created", "Firewall rule was created")
 
 	if server.IsProvisioned() {
 		if err := s.dispatchFirewallRuleInstallJob(server, rule); err != nil {
@@ -101,7 +101,8 @@ func (s *Service) UpdateFirewallRule(ctx context.Context, serverID, teamID, rule
 		return nil, err
 	}
 
-	activity.LogWithLog(ctx, s.repos.DB(), "server", "updated", "", rule, "Firewall rule was updated")
+	// Using embedded ActivityMixin for consistent activity logging
+	s.LogSystemActivity(ctx, rule, "updated", "Firewall rule was updated")
 
 	return rule, nil
 }
@@ -118,7 +119,8 @@ func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, rule
 		return err
 	}
 
-	activity.LogWithLog(ctx, s.repos.DB(), "server", "deleted", "", rule, "Firewall rule deletion requested")
+	// Using embedded ActivityMixin for consistent activity logging
+	s.LogSystemActivity(ctx, rule, "deleted", "Firewall rule deletion requested")
 
 	if rule.IsInstalled() && server.IsProvisioned() {
 		now := time.Now()

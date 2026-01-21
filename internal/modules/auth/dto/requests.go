@@ -1,7 +1,7 @@
 package dto
 
 import (
-	"strings"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
 // RegisterRequest represents a user registration request
@@ -17,8 +17,8 @@ type RegisterRequest struct {
 
 // Normalize normalizes the email to lowercase
 func (r *RegisterRequest) Normalize() {
-	r.Email = strings.ToLower(strings.TrimSpace(r.Email))
-	r.Name = strings.TrimSpace(r.Name)
+	pkgdto.NormalizeEmail(&r.Email)
+	pkgdto.NormalizeTrim(&r.Name)
 }
 
 // LoginRequest represents a user login request
@@ -30,7 +30,7 @@ type LoginRequest struct {
 
 // Normalize normalizes the email to lowercase
 func (r *LoginRequest) Normalize() {
-	r.Email = strings.ToLower(strings.TrimSpace(r.Email))
+	pkgdto.NormalizeEmail(&r.Email)
 }
 
 // RefreshTokenRequest represents a token refresh request
@@ -47,8 +47,8 @@ type UpdateProfileRequest struct {
 
 // Normalize normalizes the email to lowercase
 func (r *UpdateProfileRequest) Normalize() {
-	r.Email = strings.ToLower(strings.TrimSpace(r.Email))
-	r.Name = strings.TrimSpace(r.Name)
+	pkgdto.NormalizeEmail(&r.Email)
+	pkgdto.NormalizeTrim(&r.Name)
 }
 
 // ChangePasswordRequest represents a password change request
@@ -65,7 +65,7 @@ type ForgotPasswordRequest struct {
 
 // Normalize normalizes the email to lowercase
 func (r *ForgotPasswordRequest) Normalize() {
-	r.Email = strings.ToLower(strings.TrimSpace(r.Email))
+	pkgdto.NormalizeEmail(&r.Email)
 }
 
 // ResetPasswordRequest represents a password reset request
@@ -78,7 +78,7 @@ type ResetPasswordRequest struct {
 
 // Normalize normalizes the email to lowercase
 func (r *ResetPasswordRequest) Normalize() {
-	r.Email = strings.ToLower(strings.TrimSpace(r.Email))
+	pkgdto.NormalizeEmail(&r.Email)
 }
 
 // VerifyEmailRequest represents an email verification request
@@ -122,7 +122,7 @@ type InviteTeamMemberRequest struct {
 
 // Normalize normalizes the email to lowercase
 func (r *InviteTeamMemberRequest) Normalize() {
-	r.Email = strings.ToLower(strings.TrimSpace(r.Email))
+	pkgdto.NormalizeEmail(&r.Email)
 }
 
 // UpdateTeamMemberRequest represents a team member role update request
@@ -142,5 +142,5 @@ type CheckUserStatusRequest struct {
 
 // Normalize normalizes the email to lowercase
 func (r *CheckUserStatusRequest) Normalize() {
-	r.Email = strings.ToLower(strings.TrimSpace(r.Email))
+	pkgdto.NormalizeEmail(&r.Email)
 }

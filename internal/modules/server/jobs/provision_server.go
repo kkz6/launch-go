@@ -27,19 +27,19 @@ type ProvisionServerJob struct {
 }
 
 func (j *ProvisionServerJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	if err := j.Ctx.Repos.Server().UpdateStatus(ctx, server.ID, enums.ServerStatusProvisioning); err != nil {
+	if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, enums.ServerStatusProvisioning); err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
 	var sshKeyContents []string
 	if len(j.Payload.SSHKeyIDs) > 0 {
 		for _, keyID := range j.Payload.SSHKeyIDs {
-			key, err := j.Ctx.Repos.SSHKey().FindByID(ctx, keyID)
+			key, err := j.Ctx.Repos().SSHKey().FindByID(ctx, keyID)
 			if err != nil {
 				j.Ctx.LogError(err, "Failed to find SSH key", "key_id", keyID)
 				continue
@@ -100,11 +100,11 @@ func (j *ProvisionServerJob) Failed(ctx context.Context, err error) {
 		"server_id", j.Payload.ServerID,
 	)
 
-	if updateErr := j.Ctx.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
+	if updateErr := j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
 		j.Ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 
-	server, findErr := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, findErr := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {
 		j.Ctx.BroadcastServerEvent(server, "server.provision_failed", map[string]any{
 			"server_id": j.Payload.ServerID,
@@ -118,7 +118,7 @@ func (j *ProvisionServerJob) Failed(ctx context.Context, err error) {
 
 // dispatchCleanupJob dispatches the cleanup job for failed provisioning
 func (j *ProvisionServerJob) dispatchCleanupJob(server *models.Server, reason string) {
-	if j.Ctx.Queue == nil {
+	if j.Ctx.Queue() == nil {
 		j.Ctx.LogError(nil, "Queue not available, cannot dispatch cleanup job")
 		return
 	}

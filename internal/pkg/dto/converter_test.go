@@ -53,6 +53,43 @@ func TestConvertSlice(t *testing.T) {
 	})
 }
 
+func TestTransformSlice(t *testing.T) {
+	t.Run("transforms slice using provided function", func(t *testing.T) {
+		models := []testModel{
+			{ID: "1", Name: "Alice"},
+			{ID: "2", Name: "Bob"},
+			{ID: "3", Name: "Charlie"},
+		}
+		results := TransformSlice(models, toResponse)
+		assert.Len(t, results, 3)
+		assert.Equal(t, "1", results[0].ID)
+		assert.Equal(t, "Alice", results[0].Name)
+		assert.Equal(t, "2", results[1].ID)
+		assert.Equal(t, "Bob", results[1].Name)
+		assert.Equal(t, "3", results[2].ID)
+		assert.Equal(t, "Charlie", results[2].Name)
+	})
+
+	t.Run("returns nil for nil input", func(t *testing.T) {
+		var models []testModel
+		results := TransformSlice(models, toResponse)
+		assert.Nil(t, results)
+	})
+
+	t.Run("returns empty slice for empty input", func(t *testing.T) {
+		models := []testModel{}
+		results := TransformSlice(models, toResponse)
+		assert.NotNil(t, results)
+		assert.Len(t, results, 0)
+	})
+
+	t.Run("works with inline transform functions", func(t *testing.T) {
+		models := []testModel{{ID: "1"}, {ID: "2"}}
+		ids := TransformSlice(models, func(m *testModel) string { return m.ID })
+		assert.Equal(t, []string{"1", "2"}, ids)
+	})
+}
+
 func TestConvertSlicePtr(t *testing.T) {
 	t.Run("converts to pointer slice", func(t *testing.T) {
 		models := []testModel{{ID: "1", Name: "Alice"}}

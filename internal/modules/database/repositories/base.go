@@ -54,12 +54,14 @@ func (r *Registry) DB() *gorm.DB {
 // DatabaseRepository provides database operations.
 type DatabaseRepository struct {
 	repository.Installable[models.Database]
+	repository.PreloadConfig
 }
 
 // NewDatabaseRepository creates a new DatabaseRepository instance
 func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository {
 	return &DatabaseRepository{
-		Installable: repository.NewInstallable[models.Database](db),
+		Installable:   repository.NewInstallable[models.Database](db),
+		PreloadConfig: repository.NewPreloadConfig("Users"),
 	}
 }
 

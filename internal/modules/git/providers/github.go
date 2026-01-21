@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/pkg/httpclient"
+
 	"github.com/golang-jwt/jwt/v5"
 )
 
@@ -434,8 +436,7 @@ func (p *GitHubProvider) createDeploymentStatus(ctx context.Context, statusesURL
 	req.Header.Set("Accept", "application/vnd.github.v3+json")
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
-	resp, err := client.Do(req)
+	resp, err := httpclient.Default().Do(req)
 	if err != nil {
 		return
 	}

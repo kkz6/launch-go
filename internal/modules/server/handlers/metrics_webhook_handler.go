@@ -10,6 +10,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/webhook"
 )
@@ -79,10 +80,10 @@ func (h *MetricsWebhookHandler) ReceivePulse(c *fiber.Ctx) error {
 	}
 
 	// Parse request body
-	var req PulseRequest
-	if err := c.BodyParser(&req); err != nil {
-		h.LogWarn("Failed to parse pulse request", "server_id", serverID, "error", err.Error())
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[PulseRequest](c)
+	if err != nil {
+		h.LogWarn("Failed to parse pulse request", "server_id", serverID)
+		return err
 	}
 
 	// Validate event type

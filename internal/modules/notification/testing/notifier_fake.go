@@ -9,6 +9,15 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/slack"
 )
 
+// withLockReturn is a generic helper that executes a function while holding a lock
+// and returns the result. This reduces boilerplate in test fakes that need thread-safe
+// access to internal state.
+func withLockReturn[T any](mu *sync.Mutex, fn func() T) T {
+	mu.Lock()
+	defer mu.Unlock()
+	return fn()
+}
+
 // SentNotification represents a notification that was sent
 type SentNotification struct {
 	TeamID       string
@@ -28,11 +37,10 @@ type SentAdminAlert struct {
 
 // NotifierFake is a fake notifier for testing
 type NotifierFake struct {
-	mu                 sync.Mutex
-	sentNotifications  []SentNotification
-	sentAdminAlerts    []SentAdminAlert
-	shouldFail         bool
-	sendToTeamCalled   int
+	mu                  sync.Mutex
+	sentNotifications   []SentNotification
+	sentAdminAlerts     []SentAdminAlert
+	sendToTeamCalled    int
 	sendToChannelCalled int
 }
 
@@ -44,28 +52,34 @@ func NewNotifierFake() *NotifierFake {
 	}
 }
 
-// SendToTeam records a notification sent to a team
-func (n *NotifierFake) SendToTeam(ctx context.Context, teamID string, notification models.Notification) error {
+// withLock executes a function while holding the mutex lock.
+// This reduces lock/unlock boilerplate in methods that don't return values.
+func (n *NotifierFake) withLock(fn func()) {
 	n.mu.Lock()
 	defer n.mu.Unlock()
+	fn()
+}
 
-	n.sendToTeamCalled++
-	n.sentNotifications = append(n.sentNotifications, SentNotification{
-		TeamID:       teamID,
-		Notification: notification,
+// SendToTeam records a notification sent to a team
+func (n *NotifierFake) SendToTeam(ctx context.Context, teamID string, notification models.Notification) error {
+	n.withLock(func() {
+		n.sendToTeamCalled++
+		n.sentNotifications = append(n.sentNotifications, SentNotification{
+			TeamID:       teamID,
+			Notification: notification,
+		})
 	})
 	return nil
 }
 
 // SendToChannel records a notification sent to a channel
 func (n *NotifierFake) SendToChannel(ctx context.Context, channelID string, notification models.Notification) error {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	n.sendToChannelCalled++
-	n.sentNotifications = append(n.sentNotifications, SentNotification{
-		ChannelID:    channelID,
-		Notification: notification,
+	n.withLock(func() {
+		n.sendToChannelCalled++
+		n.sentNotifications = append(n.sentNotifications, SentNotification{
+			ChannelID:    channelID,
+			Notification: notification,
+		})
 	})
 	return nil
 }
@@ -166,10 +180,9 @@ func (n *NotifierFake) AssertNotSent(notificationType enums.NotificationType) bo
 
 // AssertNothingSent asserts that no notifications were sent
 func (n *NotifierFake) AssertNothingSent() bool {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	return len(n.sentNotifications) == 0
+	return withLockReturn(&n.mu, func() bool {
+		return len(n.sentNotifications) == 0
+	})
 }
 
 // AssertSentTimes asserts that a notification of the given type was sent a specific number of times
@@ -221,27 +234,24 @@ func (n *NotifierFake) GetSentAdminAlerts() []SentAdminAlert {
 
 // Reset clears all sent notifications and alerts
 func (n *NotifierFake) Reset() {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	n.sentNotifications = []SentNotification{}
-	n.sentAdminAlerts = []SentAdminAlert{}
-	n.sendToTeamCalled = 0
-	n.sendToChannelCalled = 0
+	n.withLock(func() {
+		n.sentNotifications = []SentNotification{}
+		n.sentAdminAlerts = []SentAdminAlert{}
+		n.sendToTeamCalled = 0
+		n.sendToChannelCalled = 0
+	})
 }
 
 // SendToTeamCalledTimes returns how many times SendToTeam was called
 func (n *NotifierFake) SendToTeamCalledTimes() int {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	return n.sendToTeamCalled
+	return withLockReturn(&n.mu, func() int {
+		return n.sendToTeamCalled
+	})
 }
 
 // SendToChannelCalledTimes returns how many times SendToChannel was called
 func (n *NotifierFake) SendToChannelCalledTimes() int {
-	n.mu.Lock()
-	defer n.mu.Unlock()
-
-	return n.sendToChannelCalled
+	return withLockReturn(&n.mu, func() int {
+		return n.sendToChannelCalled
+	})
 }

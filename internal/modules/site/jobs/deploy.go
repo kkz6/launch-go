@@ -14,6 +14,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/retry"
 )
 
 const (
@@ -36,17 +37,9 @@ type DeployJob struct {
 // Handle executes the deploy job
 func (j *DeployJob) Handle(ctx context.Context) error {
 	// Get deployment with retry (handles race condition where job runs before DB commit is visible)
-	var deployment *models.Deployment
-	var err error
-	for i := 0; i < 3; i++ {
-		deployment, err = j.Ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
-		if err == nil {
-			break
-		}
-		if i < 2 {
-			time.Sleep(500 * time.Millisecond)
-		}
-	}
+	deployment, err := retry.WithBackoff(ctx, retry.DBRetry, func() (*models.Deployment, error) {
+		return j.Ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to find deployment: %w", err)
 	}
@@ -462,17 +455,9 @@ type DeployZeroDowntimeJob struct {
 // Handle executes the zero-downtime deploy job
 func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 	// Get deployment with retry (handles race condition where job runs before DB commit is visible)
-	var deployment *models.Deployment
-	var err error
-	for i := 0; i < 3; i++ {
-		deployment, err = j.Ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
-		if err == nil {
-			break
-		}
-		if i < 2 {
-			time.Sleep(500 * time.Millisecond)
-		}
-	}
+	deployment, err := retry.WithBackoff(ctx, retry.DBRetry, func() (*models.Deployment, error) {
+		return j.Ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+	})
 	if err != nil {
 		return fmt.Errorf("failed to find deployment: %w", err)
 	}

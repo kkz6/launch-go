@@ -26,7 +26,7 @@ type InstallDaemonJob struct {
 }
 
 func (j *InstallDaemonJob) Handle(ctx context.Context) error {
-	daemon, err := j.Ctx.Repos.Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
+	daemon, err := j.Ctx.Repos().Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
 	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
@@ -62,12 +62,12 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 		j.Ctx.LogError(err, "Failed to reload supervisor, daemon may not start")
 	}
 
-	if err := j.Ctx.Repos.Daemon().MarkInstalled(ctx, daemon.ID); err != nil {
+	if err := j.Ctx.Repos().Daemon().MarkInstalled(ctx, daemon.ID); err != nil {
 		return fmt.Errorf("failed to mark daemon as installed: %w", err)
 	}
 
 	// Log activity
-	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "installed", j.Payload.UserID, daemon, "Daemon was installed")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "installed", j.Payload.UserID, daemon, "Daemon was installed")
 
 	j.Ctx.LogInfo("Daemon installed successfully",
 		"daemon_id", daemon.ID,
@@ -89,10 +89,10 @@ func (j *InstallDaemonJob) Failed(ctx context.Context, err error) {
 		"server_id", j.Payload.ServerID,
 	)
 
-	daemon, findErr := j.Ctx.Repos.Daemon().FindByID(ctx, j.Payload.DaemonID)
+	daemon, findErr := j.Ctx.Repos().Daemon().FindByID(ctx, j.Payload.DaemonID)
 	if findErr == nil && daemon != nil {
 		now := time.Now()
-		j.Ctx.DB.Model(daemon).Updates(map[string]any{
+		j.Ctx.DB().Model(daemon).Updates(map[string]any{
 			"installed_at":           nil,
 			"installation_failed_at": &now,
 		})

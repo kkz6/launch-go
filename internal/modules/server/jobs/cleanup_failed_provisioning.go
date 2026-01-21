@@ -31,7 +31,7 @@ type CleanupFailedProvisioningJob struct {
 }
 
 func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -44,7 +44,7 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 
 	// Update server status to failed if not already
 	if server.Status != enums.ServerStatusFailed {
-		if err := j.Ctx.Repos.Server().UpdateStatus(ctx, server.ID, enums.ServerStatusFailed); err != nil {
+		if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, enums.ServerStatusFailed); err != nil {
 			j.Ctx.LogError(err, "Failed to update server status to failed")
 		}
 	}
@@ -81,7 +81,7 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	activity.LogWithLogAndPropsPtr(ctx, j.Ctx.DB, "server", "provisioning_failed", j.Payload.UserID, server, "Server provisioning failed and resources were cleaned up", map[string]any{
+	activity.LogWithLogAndPropsPtr(ctx, j.Ctx.DB(), "server", "provisioning_failed", j.Payload.UserID, server, "Server provisioning failed and resources were cleaned up", map[string]any{
 		"reason": j.Payload.Reason,
 	})
 
@@ -94,7 +94,7 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 
 	// Optionally delete the server record
 	if j.Payload.DeleteRecord {
-		if err := j.Ctx.Repos.Server().Delete(ctx, server.ID); err != nil {
+		if err := j.Ctx.Repos().Server().Delete(ctx, server.ID); err != nil {
 			return fmt.Errorf("failed to delete server record: %w", err)
 		}
 
@@ -108,7 +108,7 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 		})
 	} else {
 		// Update server with failure information
-		if err := j.Ctx.Repos.Server().UpdateFields(ctx, server.ID, map[string]any{
+		if err := j.Ctx.Repos().Server().UpdateFields(ctx, server.ID, map[string]any{
 			"is_connected": false,
 		}); err != nil {
 			j.Ctx.LogError(err, "Failed to update server fields")
@@ -124,7 +124,7 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 
 // cleanupProviderResources deletes the server instance from the cloud provider
 func (j *CleanupFailedProvisioningJob) cleanupProviderResources(ctx context.Context, server any, providerServerID string) error {
-	srv, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	srv, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return err
 	}
@@ -164,7 +164,7 @@ func (j *CleanupFailedProvisioningJob) cleanupProviderResources(ctx context.Cont
 
 // cleanupProviderSSHKey removes the SSH key that was created on the provider
 func (j *CleanupFailedProvisioningJob) cleanupProviderSSHKey(ctx context.Context, server any, sshKeyID string) error {
-	srv, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	srv, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return err
 	}
@@ -205,7 +205,7 @@ func (j *CleanupFailedProvisioningJob) cleanupProviderSSHKey(ctx context.Context
 
 // getProviderCredentials retrieves the credentials for the server provider
 func (j *CleanupFailedProvisioningJob) getProviderCredentials(ctx context.Context, server any) (map[string]any, error) {
-	srv, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	srv, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return nil, err
 	}
@@ -219,7 +219,7 @@ func (j *CleanupFailedProvisioningJob) getProviderCredentials(ctx context.Contex
 		return nil, fmt.Errorf("no server provider ID")
 	}
 
-	serverProvider, err := j.Ctx.Repos.ServerProvider().FindByID(ctx, serverProviderID)
+	serverProvider, err := j.Ctx.Repos().ServerProvider().FindByID(ctx, serverProviderID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find server provider: %w", err)
 	}
@@ -242,9 +242,9 @@ func (j *CleanupFailedProvisioningJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Even if cleanup fails, ensure server is marked as failed
-	_ = j.Ctx.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed)
+	_ = j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed)
 
-	server, findErr := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, findErr := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {
 		j.Ctx.BroadcastServerEvent(server, "server.cleanup_failed", map[string]any{
 			"server_id": j.Payload.ServerID,

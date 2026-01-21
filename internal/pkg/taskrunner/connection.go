@@ -4,10 +4,8 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/pkg/pathutil"
+	"github.com/kkz6/launch-go/internal/pkg/timeout"
 )
-
-// DefaultSSHTimeout is the default timeout for SSH connections
-const DefaultSSHTimeout = 30 * time.Second
 
 // Connection represents SSH connection details
 type Connection struct {
@@ -37,11 +35,11 @@ func (c *Connection) Is(other *Connection) bool {
 }
 
 // NewSSHClient creates an SSH client from this connection configuration.
-// If timeout is not provided, DefaultSSHTimeout (30 seconds) is used.
-func (c *Connection) NewSSHClient(timeout ...time.Duration) (*SSHClient, error) {
-	t := DefaultSSHTimeout
-	if len(timeout) > 0 && timeout[0] > 0 {
-		t = timeout[0]
+// If t is not provided, timeout.SSH (30 seconds) is used.
+func (c *Connection) NewSSHClient(t ...time.Duration) (*SSHClient, error) {
+	sshTimeout := timeout.SSH
+	if len(t) > 0 && t[0] > 0 {
+		sshTimeout = t[0]
 	}
 
 	port := c.Port
@@ -54,15 +52,15 @@ func (c *Connection) NewSSHClient(timeout ...time.Duration) (*SSHClient, error) 
 		Port:       port,
 		User:       c.User,
 		PrivateKey: c.PrivateKey,
-		Timeout:    t,
+		Timeout:    sshTimeout,
 	})
 }
 
 // Dial creates an SSH client and establishes the connection.
 // This is a convenience method that combines NewSSHClient and Connect.
-// If timeout is not provided, DefaultSSHTimeout (30 seconds) is used.
-func (c *Connection) Dial(timeout ...time.Duration) (*SSHClient, error) {
-	client, err := c.NewSSHClient(timeout...)
+// If t is not provided, timeout.SSH (30 seconds) is used.
+func (c *Connection) Dial(t ...time.Duration) (*SSHClient, error) {
+	client, err := c.NewSSHClient(t...)
 	if err != nil {
 		return nil, err
 	}

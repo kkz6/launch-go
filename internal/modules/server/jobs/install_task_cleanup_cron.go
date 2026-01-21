@@ -33,7 +33,7 @@ func NewInstallTaskCleanupCronJob(ctx *JobContext, payload InstallTaskCleanupCro
 
 // Handle executes the install task cleanup cron job
 func (j *InstallTaskCleanupCronJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -56,14 +56,14 @@ func (j *InstallTaskCleanupCronJob) Handle(ctx context.Context) error {
 	}
 	cron.ServerID = server.ID
 
-	if err := j.Ctx.Repos.Cron().Create(ctx, cron); err != nil {
+	if err := j.Ctx.Repos().Cron().Create(ctx, cron); err != nil {
 		return fmt.Errorf("failed to create cron: %w", err)
 	}
 
 	// Dispatch InstallCron job to install it on the server
 	if err := j.dispatchInstallCron(cron.ID, server.ID); err != nil {
 		// Cleanup the cron record if dispatch fails
-		_ = j.Ctx.Repos.Cron().Delete(ctx, cron.ID)
+		_ = j.Ctx.Repos().Cron().Delete(ctx, cron.ID)
 		return fmt.Errorf("failed to dispatch install cron job: %w", err)
 	}
 

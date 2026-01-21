@@ -29,7 +29,7 @@ type DeleteServerJob struct {
 // Handle processes the job
 func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	// Find the server with relations
-	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -57,7 +57,7 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 			// Get credentials from server provider
 			var credentials map[string]any
 			if server.ServerProviderID != nil {
-				serverProvider, err := j.Ctx.Repos.ServerProvider().FindByID(ctx, *server.ServerProviderID)
+				serverProvider, err := j.Ctx.Repos().ServerProvider().FindByID(ctx, *server.ServerProviderID)
 				if err == nil {
 					credStr := serverProvider.Credentials.String()
 					if credStr != "" {
@@ -83,12 +83,12 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Delete the server record from database
-	if err := j.Ctx.Repos.Server().Delete(ctx, server.ID); err != nil {
+	if err := j.Ctx.Repos().Server().Delete(ctx, server.ID); err != nil {
 		return fmt.Errorf("failed to delete server: %w", err)
 	}
 
 	// Log activity before deletion
-	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "deleted", j.Payload.UserID, server, "Server was deleted")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "deleted", j.Payload.UserID, server, "Server was deleted")
 
 	j.Ctx.LogInfo("Server deleted successfully",
 		"server_id", server.ID,

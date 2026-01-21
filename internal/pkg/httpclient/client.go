@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"sync"
 	"time"
 )
 
@@ -16,6 +17,42 @@ import (
 const (
 	DefaultTimeout = 30 * time.Second
 )
+
+var (
+	defaultClient     *http.Client
+	defaultClientOnce sync.Once
+)
+
+// Default returns a shared HTTP client with sensible defaults.
+// This client is safe for concurrent use and should be reused across
+// the application to take advantage of connection pooling.
+func Default() *http.Client {
+	defaultClientOnce.Do(func() {
+		defaultClient = &http.Client{
+			Timeout: DefaultTimeout,
+			Transport: &http.Transport{
+				MaxIdleConns:        100,
+				MaxIdleConnsPerHost: 10,
+				IdleConnTimeout:     90 * time.Second,
+			},
+		}
+	})
+	return defaultClient
+}
+
+// WithCustomTimeout creates a new HTTP client with the specified timeout.
+// Use this when you need a different timeout than the default 30 seconds.
+// Note: This creates a new client instance, so use sparingly.
+func WithCustomTimeout(timeout time.Duration) *http.Client {
+	return &http.Client{
+		Timeout: timeout,
+		Transport: &http.Transport{
+			MaxIdleConns:        100,
+			MaxIdleConnsPerHost: 10,
+			IdleConnTimeout:     90 * time.Second,
+		},
+	}
+}
 
 // Client is a configurable HTTP client for making API requests.
 type Client struct {

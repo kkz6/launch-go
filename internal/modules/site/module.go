@@ -16,6 +16,7 @@ import (
 	sitetasks "github.com/kkz6/launch-go/internal/modules/site/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 const ModuleName = "site"
@@ -136,11 +137,13 @@ func (m *Module) SetDatabaseManager(manager contracts.DatabaseManager) {
 func (m *Module) createServices(taskRunnerDeps *servertasks.TaskRunnerDeps) *services.ServiceRegistry {
 	deps := m.Deps()
 
-	// Create shared service dependencies using standardized Dependencies
+	// Create shared service dependencies using standardized ModuleDeps
 	svcDeps := &services.ServiceDeps{
-		Dependencies:   deps.ServiceDeps(),
+		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
+			Dependencies: deps.ServiceDeps(),
+			Repos:        m.repos,
+		},
 		TaskRunnerDeps: taskRunnerDeps,
-		Repos:          m.repos,
 	}
 
 	// Create service registry - handles all service creation and wiring

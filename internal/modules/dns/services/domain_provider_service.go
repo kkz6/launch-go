@@ -53,7 +53,7 @@ func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, team
 
 	// Validate credentials
 	if err := provider.ValidateCredentials(ctx); err != nil {
-		s.Logger().Error().Err(err).Str("provider", req.Provider).Msg("Failed to validate credentials")
+		s.Logger.Error().Err(err).Str("provider", req.Provider).Msg("Failed to validate credentials")
 		return nil, ErrInvalidCredentials
 	}
 
@@ -205,7 +205,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 			provider.SetDomain(domainName)
 			records, err := provider.ListRecords(ctx)
 			if err != nil {
-				s.Logger().Warn().Err(err).Str("domain", domainName).Msg("Failed to list records for domain")
+				s.Logger.Warn().Err(err).Str("domain", domainName).Msg("Failed to list records for domain")
 				continue
 			}
 
@@ -227,7 +227,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 					"proxied":  pr.Proxied,
 				})
 				if err != nil {
-					s.Logger().Warn().Err(err).Str("domain", domainName).Str("record", r.Name).Msg("Failed to sync record")
+					s.Logger.Warn().Err(err).Str("domain", domainName).Str("record", r.Name).Msg("Failed to sync record")
 				}
 			}
 		}

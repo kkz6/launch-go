@@ -232,10 +232,14 @@ func (r *Base[T]) MustFind(ctx context.Context, id string) (*T, error) {
 	return r.FindByIDOrFail(ctx, id)
 }
 
-// FindByIDAndTeam finds a record by ID and team ID
-func (r *Base[T]) FindByIDAndTeam(ctx context.Context, id, teamID string) (*T, error) {
+// FindByIDAndTeam finds a record by ID and team ID with optional preloads
+func (r *Base[T]) FindByIDAndTeam(ctx context.Context, id, teamID string, preloads ...string) (*T, error) {
 	var entity T
-	err := r.DB.WithContext(ctx).First(&entity, "id = ? AND team_id = ?", id, teamID).Error
+	query := r.DB.WithContext(ctx)
+	for _, p := range preloads {
+		query = query.Preload(p)
+	}
+	err := query.First(&entity, "id = ? AND team_id = ?", id, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, ErrNotFound
@@ -246,8 +250,8 @@ func (r *Base[T]) FindByIDAndTeam(ctx context.Context, id, teamID string) (*T, e
 }
 
 // FindByIDAndTeamOrFail finds a record by ID and team ID or returns a typed error
-func (r *Base[T]) FindByIDAndTeamOrFail(ctx context.Context, id, teamID string) (*T, error) {
-	entity, err := r.FindByIDAndTeam(ctx, id, teamID)
+func (r *Base[T]) FindByIDAndTeamOrFail(ctx context.Context, id, teamID string, preloads ...string) (*T, error) {
+	entity, err := r.FindByIDAndTeam(ctx, id, teamID, preloads...)
 	if err != nil {
 		if errors.Is(err, ErrNotFound) {
 			return nil, NotFoundError(r.getModelName(), id)
@@ -255,6 +259,17 @@ func (r *Base[T]) FindByIDAndTeamOrFail(ctx context.Context, id, teamID string) 
 		return nil, WrapError(err, r.getModelName(), "failed to find "+r.getModelName())
 	}
 	return entity, nil
+}
+
+// FindByServerAndTeam finds all records for a server that belong to a specific team.
+// This is useful for entities that have both server_id and team_id columns.
+func (r *Base[T]) FindByServerAndTeam(ctx context.Context, serverID, teamID string) ([]T, error) {
+	var entities []T
+	err := r.DB.WithContext(ctx).
+		Where("server_id = ? AND team_id = ?", serverID, teamID).
+		Order("created_at DESC").
+		Find(&entities).Error
+	return entities, err
 }
 
 // UpdateStatus updates the status field of a record by ID

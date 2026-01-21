@@ -28,7 +28,7 @@ type InstallFirewallRuleJob struct {
 // Handle processes the job
 func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 	// Find the firewall rule with server preloaded
-	rule, err := j.Ctx.Repos.FirewallRule().FindByIDWithServer(ctx, j.Payload.RuleID)
+	rule, err := j.Ctx.Repos().FirewallRule().FindByIDWithServer(ctx, j.Payload.RuleID)
 	if err != nil {
 		return fmt.Errorf("failed to find firewall rule: %w", err)
 	}
@@ -58,12 +58,12 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 	}
 
 	// Mark as installed
-	if err := j.Ctx.Repos.FirewallRule().MarkInstalled(ctx, rule.ID); err != nil {
+	if err := j.Ctx.Repos().FirewallRule().MarkInstalled(ctx, rule.ID); err != nil {
 		return fmt.Errorf("failed to mark rule as installed: %w", err)
 	}
 
 	// Log activity
-	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "installed", j.Payload.UserID, rule, "Firewall rule was installed")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "installed", j.Payload.UserID, rule, "Firewall rule was installed")
 
 	j.Ctx.LogInfo("Firewall rule installed successfully",
 		"rule_id", rule.ID,
@@ -88,7 +88,7 @@ func (j *InstallFirewallRuleJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Mark installation as failed
-	if markErr := j.Ctx.Repos.FirewallRule().MarkFailed(ctx, j.Payload.RuleID); markErr != nil {
+	if markErr := j.Ctx.Repos().FirewallRule().MarkFailed(ctx, j.Payload.RuleID); markErr != nil {
 		j.Ctx.LogError(markErr, "Failed to mark firewall rule as failed")
 	}
 }

@@ -34,7 +34,7 @@ func NewUpdateTaskOutputJob(ctx *JobContext, payload UpdateTaskOutputPayload) *U
 
 // Handle executes the update task output job
 func (j *UpdateTaskOutputJob) Handle(ctx context.Context) error {
-	task, err := j.Ctx.Repos.Task().FindByID(ctx, j.Payload.TaskID)
+	task, err := j.Ctx.Repos().Task().FindByID(ctx, j.Payload.TaskID)
 	if err != nil {
 		return fmt.Errorf("failed to find task: %w", err)
 	}
@@ -54,7 +54,7 @@ func (j *UpdateTaskOutputJob) Handle(ctx context.Context) error {
 	}
 
 	// Update the task output
-	if err := j.Ctx.Repos.Task().UpdateOutput(ctx, task.ID, newOutput); err != nil {
+	if err := j.Ctx.Repos().Task().UpdateOutput(ctx, task.ID, newOutput); err != nil {
 		return fmt.Errorf("failed to update task output: %w", err)
 	}
 

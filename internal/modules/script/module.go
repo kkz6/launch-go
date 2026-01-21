@@ -9,6 +9,7 @@ import (
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 const ModuleName = "script"
@@ -61,9 +62,11 @@ func (m *Module) createService() *services.ScriptService {
 	deps := m.Deps()
 
 	serviceDeps := &services.ServiceDeps{
-		Dependencies: deps.ServiceDeps(),
-		Repos:        m.repos,
-		ServerRepos:  m.serverRepos,
+		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
+			Dependencies: deps.ServiceDeps(),
+			Repos:        m.repos,
+		},
+		ServerRepos: m.serverRepos,
 	}
 
 	return services.NewScriptService(serviceDeps)

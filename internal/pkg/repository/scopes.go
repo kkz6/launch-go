@@ -172,17 +172,58 @@ func Active() Scope {
 	}
 }
 
-// WithActive returns a scope for non-archived records (archived_at IS NULL)
+// Archivable Model Scopes
+//
+// These scopes work with models that embed ArchivableModel or have an archived_at field.
+// See internal/pkg/models/archivable.go for the model mixin.
+
+// WithActive returns a scope for non-archived records (archived_at IS NULL).
+// Use this for most queries where you want only active records.
+//
+// Example:
+//
+//	servers, _ := FindAll[Server](ctx, db, WithActive(), WithTeamID(teamID))
 func WithActive() Scope {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Where("archived_at IS NULL")
 	}
 }
 
-// WithArchived returns a scope for archived records (archived_at IS NOT NULL)
+// WithArchived returns a scope for archived records (archived_at IS NOT NULL).
+// Use this for "trash" or "archive" views.
+//
+// Example:
+//
+//	archived, _ := FindAll[Server](ctx, db, WithArchived(), WithTeamID(teamID))
 func WithArchived() Scope {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Where("archived_at IS NOT NULL")
+	}
+}
+
+// WithArchiveFilter returns a scope that filters by archive status.
+// Pass true to get only archived records, false for only active records.
+//
+// Example:
+//
+//	showArchived := c.QueryBool("archived")
+//	results, _ := FindAll[Server](ctx, db, WithArchiveFilter(showArchived))
+func WithArchiveFilter(archived bool) Scope {
+	if archived {
+		return WithArchived()
+	}
+	return WithActive()
+}
+
+// IncludingArchived returns an empty scope that explicitly documents the intent
+// to include all records regardless of archive status.
+//
+// Example:
+//
+//	allRecords, _ := FindAll[Server](ctx, db, IncludingArchived())
+func IncludingArchived() Scope {
+	return func(db *gorm.DB) *gorm.DB {
+		return db
 	}
 }
 

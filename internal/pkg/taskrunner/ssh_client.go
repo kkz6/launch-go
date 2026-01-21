@@ -12,6 +12,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/pkg/timeout"
+
 	"golang.org/x/crypto/ssh"
 )
 
@@ -74,16 +76,16 @@ func NewSSHClient(cfg SSHConfig) (*SSHClient, error) {
 		return nil, fmt.Errorf("no authentication method provided")
 	}
 
-	timeout := cfg.Timeout
-	if timeout == 0 {
-		timeout = 30 * time.Second
+	t := cfg.Timeout
+	if t == 0 {
+		t = timeout.SSH
 	}
 
 	sshConfig := &ssh.ClientConfig{
 		User:            cfg.User,
 		Auth:            authMethods,
 		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: Implement proper host key verification
-		Timeout:         timeout,
+		Timeout:         t,
 	}
 
 	port := cfg.Port
@@ -95,7 +97,7 @@ func NewSSHClient(cfg SSHConfig) (*SSHClient, error) {
 		config:  sshConfig,
 		host:    cfg.Host,
 		port:    port,
-		timeout: timeout,
+		timeout: t,
 	}, nil
 }
 
@@ -357,14 +359,14 @@ func (c *SSHClient) WaitForConnection(ctx context.Context, maxRetries int) error
 		default:
 		}
 
-		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", c.host, c.port), 5*time.Second)
+		conn, err := net.DialTimeout("tcp", fmt.Sprintf("%s:%d", c.host, c.port), timeout.NetworkDial)
 		if err == nil {
 			_ = conn.Close()
 			return c.Connect()
 		}
 
 		lastErr = err
-		time.Sleep(10 * time.Second)
+		time.Sleep(timeout.RetryDelay)
 	}
 
 	return fmt.Errorf("failed to connect after %d retries: %w", maxRetries, lastErr)
@@ -401,9 +403,9 @@ func expandPath(path string) string {
 type SSHClientOption func(*SSHConfig)
 
 // WithSSHTimeout sets the connection timeout for SSH clients
-func WithSSHTimeout(timeout time.Duration) SSHClientOption {
+func WithSSHTimeout(t time.Duration) SSHClientOption {
 	return func(cfg *SSHConfig) {
-		cfg.Timeout = timeout
+		cfg.Timeout = t
 	}
 }
 
@@ -426,7 +428,7 @@ func NewSSHClientFromConnection(conn *Connection, opts ...SSHClientOption) (*SSH
 		Port:       conn.Port,
 		User:       conn.User,
 		PrivateKey: conn.PrivateKey,
-		Timeout:    30 * time.Second,
+		Timeout:    timeout.SSH,
 	}
 
 	for _, opt := range opts {

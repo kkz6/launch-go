@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 const ModuleName = "git"
@@ -48,12 +49,12 @@ func NewModule(b *module.Builder) *Module {
 func (m *Module) createServices() *services.ServiceRegistry {
 	deps := m.Deps()
 
-	// Create shared service dependencies
+	// Create shared service dependencies using standardized ModuleDeps
 	svcDeps := &services.ServiceDeps{
-		DB:              deps.DB,
-		Logger:          deps.Logger,
-		Queue:           deps.Queue,
-		Repos:           m.repos,
+		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
+			Dependencies: deps.ServiceDeps(),
+			Repos:        m.repos,
+		},
 		ProviderFactory: m.providerFactory,
 	}
 
