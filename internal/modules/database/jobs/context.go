@@ -14,9 +14,9 @@ import (
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 var jobContext *JobContext
@@ -57,20 +57,9 @@ func NewJobContext(
 
 	serverCtx := pkgjobs.NewServerContext(deps, repos)
 
-	// Create TaskRunnerDeps from the shared task deps
-	taskDeps := serverCtx.TaskDeps()
-	taskRunnerDeps := &servertasks.TaskRunnerDeps{
-		DB:          taskDeps.DB,
-		Queue:       taskDeps.Queue,
-		Dispatcher:  taskDeps.Dispatcher,
-		Logger:      taskDeps.Logger,
-		Broadcaster: taskDeps.Broadcaster,
-		LocalMode:   taskDeps.LocalMode,
-	}
-
 	return &JobContext{
 		ServerContext:  serverCtx,
-		TaskRunnerDeps: taskRunnerDeps,
+		TaskRunnerDeps: &servertasks.TaskRunnerDeps{ServerTaskDeps: serverCtx.TaskDeps()},
 	}
 }
 

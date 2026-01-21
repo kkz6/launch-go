@@ -5,19 +5,26 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // ServerTaskDeps holds dependencies needed to run tasks on servers.
-// This is the common set of dependencies required by TaskRunnerDeps
-// in the server module.
+// This struct is designed to be embedded by module-specific TaskRunnerDeps
+// to avoid field duplication.
+//
+// Example embedding:
+//
+//	type TaskRunnerDeps struct {
+//	    jobs.ServerTaskDeps
+//	}
 type ServerTaskDeps struct {
 	DB          *gorm.DB
 	Queue       *queue.Client
 	Dispatcher  taskrunner.TaskDispatcher
 	Logger      *zerolog.Logger
 	Broadcaster broadcast.TeamBroadcaster
+	Notifier    taskrunner.NotifierService
 	LocalMode   bool
 }
 
@@ -75,16 +82,7 @@ func NewServerContext[R any](deps ServerContextDeps, repos R) *ServerContext[R] 
 }
 
 // TaskDeps returns the server task dependencies.
-// Use this to create TaskRunnerDeps in modules:
-//
-//	taskRunnerDeps := &servertasks.TaskRunnerDeps{
-//	    DB:          ctx.TaskDeps().DB,
-//	    Queue:       ctx.TaskDeps().Queue,
-//	    Dispatcher:  ctx.TaskDeps().Dispatcher,
-//	    Logger:      ctx.TaskDeps().Logger,
-//	    Broadcaster: ctx.TaskDeps().Broadcaster,
-//	    LocalMode:   ctx.TaskDeps().LocalMode,
-//	}
+// These can be embedded directly into module-specific TaskRunnerDeps.
 func (c *ServerContext[R]) TaskDeps() ServerTaskDeps {
 	return c.taskDeps
 }

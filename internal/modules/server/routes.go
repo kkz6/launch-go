@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/server/handlers"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
@@ -13,10 +14,12 @@ import (
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler, siteCounter handlers.SiteCounter) {
 	deps := m.Deps()
 	taskRunnerDeps := &tasks.TaskRunnerDeps{
-		DB:         deps.DB,
-		Queue:      deps.Queue,
-		Dispatcher: deps.Dispatcher,
-		Logger:     deps.Logger,
+		ServerTaskDeps: pkgjobs.ServerTaskDeps{
+			DB:         deps.DB,
+			Queue:      deps.Queue,
+			Dispatcher: deps.Dispatcher,
+			Logger:     deps.Logger,
+		},
 	}
 	handler := handlers.NewHandler(m.service, taskRunnerDeps, siteCounter)
 

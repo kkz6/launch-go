@@ -10,8 +10,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // JobContext holds dependencies for server jobs.
@@ -56,21 +56,10 @@ func NewJobContext(
 
 	serverCtx := pkgjobs.NewServerContext(deps, repos)
 
-	// Create TaskRunnerDeps from the shared task deps
-	taskDeps := serverCtx.TaskDeps()
-	taskRunnerDeps := &tasks.TaskRunnerDeps{
-		DB:          taskDeps.DB,
-		Queue:       taskDeps.Queue,
-		Dispatcher:  taskDeps.Dispatcher,
-		Logger:      taskDeps.Logger,
-		Broadcaster: taskDeps.Broadcaster,
-		LocalMode:   taskDeps.LocalMode,
-	}
-
 	return &JobContext{
 		ServerContext:   serverCtx,
 		ProviderFactory: providerFactory,
-		TaskRunnerDeps:  taskRunnerDeps,
+		TaskRunnerDeps:  &tasks.TaskRunnerDeps{ServerTaskDeps: serverCtx.TaskDeps()},
 	}
 }
 

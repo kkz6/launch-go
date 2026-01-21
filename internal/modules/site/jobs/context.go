@@ -12,8 +12,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // SiteRepos combines site, server, and git repositories for the site module.
@@ -85,15 +85,6 @@ func NewJobContext(
 		SourceControl: sourceControlRepo,
 	})
 
-	taskDeps := serverCtx.TaskDeps()
-	taskRunnerDeps := &servertasks.TaskRunnerDeps{
-		DB:          taskDeps.DB,
-		Queue:       taskDeps.Queue,
-		Dispatcher:  taskDeps.Dispatcher,
-		Logger:      taskDeps.Logger,
-		Broadcaster: taskDeps.Broadcaster,
-	}
-
 	return &JobContext{
 		ServerContext:     serverCtx,
 		SiteRepo:          siteRepo,
@@ -105,7 +96,7 @@ func NewJobContext(
 		ServerRepos:       serverRepos,
 		SourceControlRepo: sourceControlRepo,
 		ProviderFactory:   providerFactory,
-		TaskRunnerDeps:    taskRunnerDeps,
+		TaskRunnerDeps:    &servertasks.TaskRunnerDeps{ServerTaskDeps: serverCtx.TaskDeps()},
 	}
 }
 

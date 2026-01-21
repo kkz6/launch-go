@@ -14,9 +14,10 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // TaskStatus represents the status of a task execution.
@@ -786,14 +787,9 @@ func getTaskTypeName(task taskrunner.Task) string {
 }
 
 // TaskRunnerDeps holds dependencies for creating TaskRunners.
+// It embeds pkgjobs.ServerTaskDeps to avoid field duplication.
 type TaskRunnerDeps struct {
-	DB          *gorm.DB
-	Queue       *queue.Client
-	Dispatcher  taskrunner.TaskDispatcher
-	Logger      *zerolog.Logger
-	Broadcaster broadcast.TeamBroadcaster
-	Notifier    taskrunner.NotifierService
-	LocalMode   bool // When true, tasks run synchronously via SSH instead of background with callbacks
+	pkgjobs.ServerTaskDeps
 }
 
 // IsLocalMode returns true if running in local development mode
