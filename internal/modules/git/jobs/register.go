@@ -23,7 +23,6 @@ func NewJobContext(
 	service *services.SourceControlService,
 	providerFactory *providers.ProviderFactory,
 	scRepo *repositories.SourceControlRepository,
-	queueClient QueueClient,
 ) *JobContext {
 	return &JobContext{
 		DB:              db,
@@ -31,7 +30,6 @@ func NewJobContext(
 		Service:         service,
 		ProviderFactory: providerFactory,
 		SCRepo:          scRepo,
-		QueueClient:     queueClient,
 	}
 }
 

@@ -262,13 +262,10 @@ func (h *Handler) Create(c *fiber.Ctx) error {
     teamID := c.Locals("teamID").(string)
     userID := c.Locals("userID").(string)
 
-    // Parse and validate request body
-    var req dto.CreateRequest
-    if err := c.BodyParser(&req); err != nil {
-        return response.BadRequest(c, "Invalid request body")
-    }
-    if errs := validator.Validate(&req); errs != nil {
-        return response.ValidationError(c, errs)
+    // Parse and validate request body (use the generic helper)
+    req, err := fiberctx.MustParseAndValidate[dto.CreateRequest](c)
+    if err != nil {
+        return err
     }
 
     item, err := h.service.Create(c.Context(), teamID, userID, &req)
@@ -290,15 +287,13 @@ func (h *Handler) Update(c *fiber.Ctx) error {
         return err
     }
 
-    var req dto.UpdateRequest
-    if err := c.BodyParser(&req); err != nil {
-        return response.BadRequest(c, "Invalid request body")
-    }
-    if errs := validator.Validate(&req); errs != nil {
-        return response.ValidationError(c, errs)
+    // Parse and validate request body
+    req, err := fiberctx.MustParseAndValidate[dto.UpdateRequest](c)
+    if err != nil {
+        return err
     }
 
-    item, err := h.service.Update(c.Context(), id, teamID, &req)
+    item, err := h.service.Update(c.Context(), id, teamID, req)
     if err != nil {
         return response.HandleError(c, err)
     }
@@ -367,6 +362,47 @@ if err != nil {
 | `GetRequiredParam(c, name)` | Custom | Non-empty |
 | `MustGetID(c)` | `:id` | ULID (panics on error) |
 | `MustGetServerID(c)` | `:serverId` | ULID (panics on error) |
+
+### Request Body Parsing
+
+Use the helpers in `internal/pkg/fiber/request.go` to parse and validate request bodies:
+
+```go
+import fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+
+// Parse and validate in one call (recommended)
+req, err := fiberctx.MustParseAndValidate[dto.CreateRequest](c)
+if err != nil {
+    return err // Returns appropriate error response
+}
+
+// Alternative: Parse into existing variable
+var req dto.CreateRequest
+if err := fiberctx.ParseAndValidate(c, &req); err != nil {
+    return err
+}
+
+// Parse query parameters
+params, err := fiberctx.ParseQuery[dto.ListParams](c)
+if err != nil {
+    return err
+}
+
+// Parse query parameters with validation
+params, err := fiberctx.ParseQueryWithValidation[dto.FilterParams](c)
+if err != nil {
+    return err
+}
+```
+
+**Available Functions:**
+
+| Function | Description |
+|----------|-------------|
+| `MustParseAndValidate[T](c)` | Parse body and validate, returns `(*T, error)` |
+| `ParseAndValidate(c, &req)` | Parse body into existing struct and validate |
+| `ParseQuery[T](c)` | Parse query params, returns `(*T, error)` |
+| `ParseQueryWithValidation[T](c)` | Parse and validate query params |
 
 ---
 

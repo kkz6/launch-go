@@ -4,8 +4,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // ListCrons returns all cron jobs for a server
@@ -31,16 +31,12 @@ func (h *Handler) CreateCron(c *fiber.Ctx) error {
 	teamID := c.Locals("teamID").(string)
 	serverID := c.Params("id")
 
-	var req dto.CreateCronRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.CreateCronRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	cron, err := h.service.CreateCron(c.Context(), serverID, teamID, &req)
+	cron, err := h.service.CreateCron(c.Context(), serverID, teamID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -54,16 +50,12 @@ func (h *Handler) UpdateCron(c *fiber.Ctx) error {
 	serverID := c.Params("id")
 	cronID := c.Params("cronId")
 
-	var req dto.UpdateCronRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateCronRequest](c)
+	if err != nil {
+		return err
 	}
 
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
-	}
-
-	cron, err := h.service.UpdateCron(c.Context(), serverID, teamID, cronID, &req)
+	cron, err := h.service.UpdateCron(c.Context(), serverID, teamID, cronID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
