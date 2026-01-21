@@ -45,7 +45,11 @@ func (h *TeamHandler) GetTeam(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	teamID := c.Params("teamId")
+
+	teamID, err := fiberctx.GetTeamIDParam(c)
+	if err != nil {
+		return err
+	}
 
 	team, members, invitations, err := h.service.GetTeamWithDetails(c.Context(), teamID)
 	if err != nil {
@@ -65,7 +69,11 @@ func (h *TeamHandler) UpdateTeam(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	teamID := c.Params("teamId")
+
+	teamID, err := fiberctx.GetTeamIDParam(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.UpdateTeamRequest](c)
 	if err != nil {
@@ -86,7 +94,11 @@ func (h *TeamHandler) DeleteTeam(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	teamID := c.Params("teamId")
+
+	teamID, err := fiberctx.GetTeamIDParam(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.DeleteTeam(c.Context(), userID, teamID); err != nil {
 		return response.HandleError(c, err)
@@ -140,10 +152,10 @@ func (h *TeamHandler) SwitchTeamByID(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	teamID := c.Params("teamId")
 
-	if teamID == "" {
-		return response.BadRequest(c, response.MsgMissingRequiredParams)
+	teamID, err := fiberctx.GetTeamIDParam(c)
+	if err != nil {
+		return err
 	}
 
 	user, err := h.service.SwitchTeam(c.Context(), userID, teamID)

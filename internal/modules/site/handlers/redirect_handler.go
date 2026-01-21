@@ -24,8 +24,16 @@ func NewRedirectHandler(redirectService *services.RedirectService) *RedirectHand
 
 // CreateRedirect creates a new redirect
 func (h *RedirectHandler) CreateRedirect(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
@@ -50,8 +58,15 @@ func (h *RedirectHandler) CreateRedirect(c *fiber.Ctx) error {
 
 // ListRedirects returns all redirects for a site
 func (h *RedirectHandler) ListRedirects(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
 
 	redirects, err := h.redirectService.List(c.Context(), siteID, serverID)
 	if err != nil {
@@ -72,9 +87,20 @@ func (h *RedirectHandler) ListRedirects(c *fiber.Ctx) error {
 
 // DeleteRedirect deletes a redirect
 func (h *RedirectHandler) DeleteRedirect(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
-	redirectID := c.Params("redirectId")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
+	redirectID, err := fiberctx.GetRedirectID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.redirectService.Delete(c.Context(), redirectID, siteID, serverID); err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {

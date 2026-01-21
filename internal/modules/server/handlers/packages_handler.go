@@ -15,7 +15,10 @@ func (h *Handler) GetComposerAuth(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	result, err := h.service.GetComposerAuth(c.Context(), serverID, teamID)
 	if err != nil {
@@ -32,7 +35,10 @@ func (h *Handler) UpdateComposerAuth(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.UpdateComposerAuthRequest](c)
 	if err != nil {

@@ -17,7 +17,11 @@ func (h *Handler) ListTasks(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
 	limit, _ := strconv.Atoi(c.Query("limit", "50"))
 
 	if limit < 1 || limit > 100 {
@@ -44,7 +48,10 @@ func (h *Handler) GetLatestTask(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	task, err := h.service.GetLatestTask(c.Context(), serverID, teamID)
 	if err != nil {

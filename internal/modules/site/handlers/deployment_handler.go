@@ -21,8 +21,16 @@ func NewDeploymentHandler(deploymentService *services.DeploymentService) *Deploy
 
 // Deploy triggers a new deployment
 func (h *DeploymentHandler) Deploy(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
@@ -38,9 +46,21 @@ func (h *DeploymentHandler) Deploy(c *fiber.Ctx) error {
 
 // Rollback rolls back to a previous deployment
 func (h *DeploymentHandler) Rollback(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
-	targetDeploymentID := c.Params("deploymentId")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
+	targetDeploymentID, err := fiberctx.GetDeploymentID(c)
+	if err != nil {
+		return err
+	}
+
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
@@ -56,8 +76,15 @@ func (h *DeploymentHandler) Rollback(c *fiber.Ctx) error {
 
 // ListDeployments returns all deployments for a site
 func (h *DeploymentHandler) ListDeployments(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
 
 	deployments, err := h.deploymentService.List(c.Context(), siteID, serverID)
 	if err != nil {
@@ -74,9 +101,20 @@ func (h *DeploymentHandler) ListDeployments(c *fiber.Ctx) error {
 
 // ShowDeployment returns a single deployment
 func (h *DeploymentHandler) ShowDeployment(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
-	deploymentID := c.Params("deploymentId")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
+	deploymentID, err := fiberctx.GetDeploymentID(c)
+	if err != nil {
+		return err
+	}
 
 	deployment, err := h.deploymentService.FindByID(c.Context(), deploymentID, siteID, serverID)
 	if err != nil {
@@ -88,8 +126,15 @@ func (h *DeploymentHandler) ShowDeployment(c *fiber.Ctx) error {
 
 // CancelQueuedDeployments cancels all queued deployments
 func (h *DeploymentHandler) CancelQueuedDeployments(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
 
 	count, err := h.deploymentService.CancelQueued(c.Context(), siteID, serverID)
 	if err != nil {
@@ -101,8 +146,15 @@ func (h *DeploymentHandler) CancelQueuedDeployments(c *fiber.Ctx) error {
 
 // EnableAutoDeployment enables auto-deployment
 func (h *DeploymentHandler) EnableAutoDeployment(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.deploymentService.EnableAutoDeployment(c.Context(), siteID, serverID); err != nil {
 		return response.Abort(err)
@@ -113,8 +165,15 @@ func (h *DeploymentHandler) EnableAutoDeployment(c *fiber.Ctx) error {
 
 // DisableAutoDeployment disables auto-deployment
 func (h *DeploymentHandler) DisableAutoDeployment(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.deploymentService.DisableAutoDeployment(c.Context(), siteID, serverID); err != nil {
 		return response.Abort(err)

@@ -20,8 +20,15 @@ func (h *Handler) GetOpcacheStatus(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
-	phpID := c.Params("phpId")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	phpID, err := fiberctx.GetULIDParam(c, "phpId")
+	if err != nil {
+		return err
+	}
 
 	status, err := h.service.GetOpcacheStatus(c.Context(), serverID, teamID, phpID)
 	if err != nil {
@@ -38,8 +45,15 @@ func (h *Handler) ResetOpcache(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
-	phpID := c.Params("phpId")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	phpID, err := fiberctx.GetULIDParam(c, "phpId")
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.ResetOpcache(c.Context(), serverID, teamID, phpID); err != nil {
 		return response.HandleErrorOrInternalErr(c, err, "Failed to reset OPcache")
@@ -55,8 +69,15 @@ func (h *Handler) ConfigureOpcache(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
-	phpID := c.Params("phpId")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	phpID, err := fiberctx.GetULIDParam(c, "phpId")
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.ConfigureOpcacheRequest](c)
 	if err != nil {

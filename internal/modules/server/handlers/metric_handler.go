@@ -17,7 +17,10 @@ func (h *Handler) GetLatestMetric(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	metric, err := h.service.GetLatestMetric(c.Context(), serverID, teamID)
 	if err != nil {
@@ -38,7 +41,11 @@ func (h *Handler) GetMetrics(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
 	limit, _ := strconv.Atoi(c.Query("limit", "100"))
 
 	if limit < 1 || limit > 1000 {
