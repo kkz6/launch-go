@@ -21,11 +21,6 @@ func NewServerProviderRepository(db *gorm.DB) *ServerProviderRepository {
 	}
 }
 
-// Create creates a new server provider
-func (r *ServerProviderRepository) Create(ctx context.Context, provider *models.ServerProvider) error {
-	return r.Base.Create(ctx, provider)
-}
-
 // FindByID finds a server provider by ID
 func (r *ServerProviderRepository) FindByID(ctx context.Context, id string) (*models.ServerProvider, error) {
 	provider, err := r.Base.FindByID(ctx, id)
@@ -36,14 +31,4 @@ func (r *ServerProviderRepository) FindByID(ctx context.Context, id string) (*mo
 		return nil, err
 	}
 	return provider, nil
-}
-
-// FindByTeam finds all server providers for a team
-func (r *ServerProviderRepository) FindByTeam(ctx context.Context, teamID string) ([]models.ServerProvider, error) {
-	return r.Base.FindByTeam(ctx, teamID)
-}
-
-// Delete deletes a server provider
-func (r *ServerProviderRepository) Delete(ctx context.Context, id string) error {
-	return r.Base.Delete(ctx, id)
 }

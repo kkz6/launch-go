@@ -23,11 +23,6 @@ func NewMetricRepository(db *gorm.DB) *MetricRepository {
 	}
 }
 
-// Create creates a new metric
-func (r *MetricRepository) Create(ctx context.Context, metric *models.Metric) error {
-	return r.Base.Create(ctx, metric)
-}
-
 // FindByServer finds metrics for a server with optional time range
 func (r *MetricRepository) FindByServer(ctx context.Context, serverID string, from, to *time.Time, limit int) ([]models.Metric, error) {
 	var metrics []models.Metric

@@ -35,11 +35,6 @@ func (r *ServiceRepository) FindByID(ctx context.Context, id string) (*models.In
 	return service, nil
 }
 
-// FindByServer finds all services for a server
-func (r *ServiceRepository) FindByServer(ctx context.Context, serverID string) ([]models.InstalledService, error) {
-	return r.Base.FindByServer(ctx, serverID)
-}
-
 // FindByServerAndType finds all services by server and type
 func (r *ServiceRepository) FindByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) ([]models.InstalledService, error) {
 	var services []models.InstalledService
