@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/database/dto"
 	"github.com/kkz6/launch-go/internal/modules/database/jobs"
 	"github.com/kkz6/launch-go/internal/modules/database/models"
@@ -183,19 +185,9 @@ func (s *Service) attachRootUser(ctx context.Context, serverID, databaseID strin
 }
 
 func (s *Service) dispatchCreateDatabase(ctx context.Context, database *models.Database, userID *string) {
-	if !s.HasQueue() {
-		return
-	}
-
-	task, err := jobs.NewInstallDatabaseTask(database.ID, userID)
-	if err != nil {
-		s.LogError(err, "Failed to create install database task", "database_id", database.ID)
-		return
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue install database job", "database_id", database.ID)
-	}
+	s.DispatchTask("InstallDatabase", func() (*asynq.Task, error) {
+		return jobs.NewInstallDatabaseTask(database.ID, userID)
+	}, "database_id", database.ID)
 }
 
 func (s *Service) dispatchCreateDatabaseWithExistingUser(ctx context.Context, database *models.Database, user *models.DatabaseUser, userID *string) {
@@ -255,17 +247,7 @@ func (s *Service) dispatchCreateDatabaseWithNewUser(ctx context.Context, databas
 }
 
 func (s *Service) dispatchDeleteDatabase(ctx context.Context, database *models.Database, userID *string) {
-	if !s.HasQueue() {
-		return
-	}
-
-	task, err := jobs.NewUninstallDatabaseTask(database.ID, userID)
-	if err != nil {
-		s.LogError(err, "Failed to create uninstall database task", "database_id", database.ID)
-		return
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue uninstall database job", "database_id", database.ID)
-	}
+	s.DispatchTask("UninstallDatabase", func() (*asynq.Task, error) {
+		return jobs.NewUninstallDatabaseTask(database.ID, userID)
+	}, "database_id", database.ID)
 }
