@@ -627,8 +627,9 @@ func HandleServiceError(c *fiber.Ctx, err error) error {
 **Refactoring Steps:**
 - [x] Create centralized error-to-response mapping (`internal/pkg/fiber/errors.go`)
 - [x] Define error types for all common scenarios (ResourceError, AppError, context errors)
+- [x] Add HandleServiceError, HandleServiceErrorWithMessage, MustSucceed helper functions
+- [x] Add tests (`internal/pkg/fiber/errors_test.go`)
 - [ ] Refactor all handlers to use `HandleServiceError` (gradual adoption)
-- [ ] Add logging for unexpected errors
 
 ---
 
@@ -1311,6 +1312,9 @@ const (
 
 **Refactoring Steps:**
 - [x] Create messages constants file (`internal/pkg/response/messages.go`)
+- [x] Define standard error messages (MsgInvalidRequestBody, MsgUnauthorized, etc.)
+- [x] Define standard success messages (MsgCreated, MsgUpdated, etc.)
+- [x] Define module-specific messages (MsgServerNotFound, MsgSiteNotFound, etc.)
 - [x] Update pkg/fiber/request.go to use message constants
 - [x] Update pkg/response/response.go to use MsgValidationFailed
 - [ ] Replace hardcoded message strings in handlers (gradual adoption)
@@ -1388,10 +1392,11 @@ h.Logger().Error().
 ```
 
 **Refactoring Steps:**
-- [ ] Add logger to handler base
-- [ ] Add debug logging before service calls
-- [ ] Add error logging for failures
-- [ ] Add request ID for tracing
+- [x] Add logger to handler base (`internal/pkg/handler/base.go`)
+- [x] Add LogRequest, LogError, LogWarn, LogInfo, LogDebug methods to handler base
+- [x] Add GetTraceID method for request tracing support
+- [ ] Embed Base in all module handlers (gradual adoption)
+- [ ] Add debug logging before service calls in handlers (gradual adoption)
 
 ---
 
@@ -1597,9 +1602,9 @@ Each module needs similar audit for:
 
 ### Phase 5: Polish (Week 9-10)
 14. [x] Time format helpers (P2 - 7.1) - Complete (pkg/dto/time.go with FormatTime, FormatTimeValue, FormatTimeOrEmpty, ParseTime, TimeAgo, etc.)
-15. [ ] Error handling standardization (P2 - 8.1)
-16. [ ] Constants extraction (P3 - 9.1)
-17. [ ] Logging additions (P3 - 10.1)
+15. [x] Error handling standardization (P2 - 8.1) - Complete (pkg/fiber/errors.go with HandleServiceError, HandleServiceErrorWithMessage, MustSucceed)
+16. [x] Constants extraction (P3 - 9.1) - Complete (pkg/response/messages.go with standard error/success message constants)
+17. [x] Logging additions (P3 - 10.1) - Complete (handler base has LogRequest, LogError, LogWarn, LogInfo, LogDebug, GetTraceID; gradual handler adoption)
 
 ---
 
