@@ -1,4 +1,4 @@
-package utils
+package xutil
 
 // SafeGet retrieves a value from a map, returning the value and a boolean
 // indicating whether the key was found. This is a generic wrapper around

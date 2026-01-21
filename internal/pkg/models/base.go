@@ -6,7 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/pkg/enums"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	"github.com/kkz6/launch-go/internal/pkg/xutil"
 )
 
 // BaseModel provides common fields and ULID generation for all models.
@@ -27,7 +27,7 @@ type BaseModel struct {
 // BeforeCreate generates a ULID for the ID if not already set
 func (b *BaseModel) BeforeCreate(tx *gorm.DB) error {
 	if b.ID == "" {
-		b.ID = utils.NewULID()
+		b.ID = xutil.NewULID()
 	}
 	return nil
 }
