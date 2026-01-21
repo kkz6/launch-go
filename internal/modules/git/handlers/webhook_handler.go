@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git/jobs"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
+	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/webhook"
 )
@@ -46,7 +47,7 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 	providerType, err := enums.ParseGitProviderType(providerStr)
 	if err != nil {
 		h.LogError(err, "Invalid provider in webhook", "provider", providerStr)
-		return c.Status(fiber.StatusBadRequest).SendString("Invalid provider")
+		return response.BadRequest(c, "Invalid provider")
 	}
 
 	payload := c.Body()
@@ -54,18 +55,18 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 
 	if signature == "" {
 		h.LogWarn("Webhook received without signature", "provider", providerStr)
-		return c.Status(fiber.StatusBadRequest).SendString("Missing signature")
+		return response.BadRequest(c, "Missing signature")
 	}
 
 	provider, err := h.providerFactory.GetProvider(providers.GitProviderType(providerType))
 	if err != nil {
 		h.LogError(err, "Failed to get provider", "provider", providerStr)
-		return c.Status(fiber.StatusInternalServerError).SendString("Provider not configured")
+		return response.InternalError(c, "Provider not configured")
 	}
 
 	if !provider.ValidateWebhook(payload, signature) {
 		h.LogWarn("Webhook signature validation failed", "provider", providerStr)
-		return c.Status(fiber.StatusUnauthorized).SendString("Invalid signature")
+		return response.Unauthorized(c, "Invalid signature")
 	}
 
 	// Dispatch job for async processing
@@ -77,7 +78,7 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 			h.LogError(err, "Failed to enqueue webhook task")
 		} else {
 			h.LogInfo("Webhook queued for async processing", "provider", providerStr)
-			return c.Status(fiber.StatusOK).SendString("OK")
+			return response.OK(c, "OK", nil)
 		}
 	}
 
@@ -85,7 +86,7 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 	var data map[string]interface{}
 	if err := json.Unmarshal(payload, &data); err != nil {
 		h.LogError(err, "Failed to parse webhook payload", "provider", providerStr)
-		return c.Status(fiber.StatusBadRequest).SendString("Invalid JSON payload")
+		return response.BadRequest(c, "Invalid JSON payload")
 	}
 
 	// Process webhook in goroutine as fallback
@@ -93,7 +94,7 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 
 	h.LogInfo("Webhook received and processing", "provider", providerStr)
 
-	return c.Status(fiber.StatusOK).SendString("OK")
+	return response.OK(c, "OK", nil)
 }
 
 // getSignature extracts the webhook signature based on provider

@@ -364,3 +364,107 @@ func (s *Base) HasDB() bool {
 func (s *Base) DB() *gorm.DB {
 	return s.db
 }
+
+// -----------------------------------------------------------------------------
+// Transaction + Activity Logging Helpers
+// -----------------------------------------------------------------------------
+
+// WithTransaction executes fn within a database transaction.
+// If fn returns an error, the transaction is rolled back.
+//
+// Usage:
+//
+//	err := s.WithTransaction(ctx, func(tx *gorm.DB) error {
+//	    if err := tx.Create(&server).Error; err != nil {
+//	        return err
+//	    }
+//	    if err := tx.Create(&site).Error; err != nil {
+//	        return err
+//	    }
+//	    return nil
+//	})
+func (s *Base) WithTransaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	if s.db == nil {
+		return fn(nil)
+	}
+
+	return s.db.WithContext(ctx).Transaction(fn)
+}
+
+// WithTransactionAndLog executes fn within a transaction and logs activity on success.
+// The activity is logged using the provided parameters.
+//
+// Usage:
+//
+//	err := s.WithTransactionAndLog(
+//	    ctx,
+//	    userID,
+//	    server,
+//	    "created",
+//	    "Server was created",
+//	    func(tx *gorm.DB) error {
+//	        return tx.Create(&server).Error
+//	    },
+//	)
+func (s *Base) WithTransactionAndLog(
+	ctx context.Context,
+	userID string,
+	subject activity.Subject,
+	event string,
+	description string,
+	fn func(tx *gorm.DB) error,
+) error {
+	return s.WithTransactionAndLogProps(ctx, userID, subject, event, description, nil, fn)
+}
+
+// WithTransactionAndLogProps is like WithTransactionAndLog but with additional properties.
+//
+// Usage:
+//
+//	err := s.WithTransactionAndLogProps(
+//	    ctx,
+//	    userID,
+//	    server,
+//	    "updated",
+//	    "Server settings changed",
+//	    map[string]any{"changes": changedFields},
+//	    func(tx *gorm.DB) error {
+//	        return tx.Save(&server).Error
+//	    },
+//	)
+func (s *Base) WithTransactionAndLogProps(
+	ctx context.Context,
+	userID string,
+	subject activity.Subject,
+	event string,
+	description string,
+	props map[string]any,
+	fn func(tx *gorm.DB) error,
+) error {
+	if s.db == nil {
+		return fn(nil)
+	}
+
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := fn(tx); err != nil {
+			return err
+		}
+
+		logger := activity.New(tx).
+			WithContext(ctx).
+			On(subject).
+			WithEvent(event)
+
+		if userID != "" {
+			logger = logger.CausedByUser(userID)
+		}
+
+		if len(props) > 0 {
+			logger = logger.WithProperties(props)
+		}
+
+		_, err := logger.Log(description)
+
+		return err
+	})
+}

@@ -19,6 +19,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
 	"github.com/kkz6/launch-go/internal/modules/billing/services"
+	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/webhook"
 )
 
@@ -54,26 +55,20 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 	signature := c.Get("X-Signature")
 	if signature == "" {
 		h.LogWarn("Webhook received without signature")
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Missing signature",
-		})
+		return response.Unauthorized(c, "Missing signature")
 	}
 
 	body := c.Body()
 
 	if !h.verifyLemonSqueezySignature(body, signature) {
 		h.LogWarn("Invalid webhook signature")
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
-			"error": "Invalid signature",
-		})
+		return response.Unauthorized(c, "Invalid signature")
 	}
 
 	var payload dto.WebhookPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
 		h.LogError(err, "Failed to parse webhook payload")
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
-			"error": "Invalid payload",
-		})
+		return response.BadRequest(c, "Invalid payload")
 	}
 
 	event := &models.WebhookEvent{
@@ -85,25 +80,18 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 
 	if err := h.repos.WebhookEvent().Create(c.Context(), event); err != nil {
 		h.LogError(err, "Failed to store webhook event")
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
-			"error": "Failed to store event",
-		})
+		return response.InternalError(c, "Failed to store event")
 	}
 
 	if err := h.processWebhook(c.Context(), event, &payload); err != nil {
 		h.LogError(err, "Failed to process webhook", "event_id", event.ID)
 		h.repos.WebhookEvent().MarkFailed(c.Context(), event.ID, err.Error())
-		return c.Status(fiber.StatusOK).JSON(fiber.Map{
-			"message": "Webhook received but processing failed",
-			"error":   err.Error(),
-		})
+		return response.OK(c, "Webhook received but processing failed", nil)
 	}
 
 	h.repos.WebhookEvent().MarkProcessed(c.Context(), event.ID)
 
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{
-		"message": "Webhook processed successfully",
-	})
+	return response.OK(c, "Webhook processed successfully", nil)
 }
 
 // verifyLemonSqueezySignature verifies the webhook signature using LemonSqueezy's HMAC format
