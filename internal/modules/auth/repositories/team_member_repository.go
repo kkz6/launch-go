@@ -7,16 +7,19 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // TeamMemberRepository handles team member database operations
 type TeamMemberRepository struct {
-	db *gorm.DB
+	repository.Base[models.TeamMember]
 }
 
 // NewTeamMemberRepository creates a new TeamMemberRepository instance
 func NewTeamMemberRepository(db *gorm.DB) *TeamMemberRepository {
-	return &TeamMemberRepository{db: db}
+	return &TeamMemberRepository{
+		Base: repository.NewBase[models.TeamMember](db),
+	}
 }
 
 // AddUser adds a user to a team with a specified role
@@ -27,19 +30,19 @@ func (r *TeamMemberRepository) AddUser(ctx context.Context, teamID, userID, role
 		Role:   &role,
 	}
 
-	return r.db.WithContext(ctx).Create(&member).Error
+	return r.Base.Create(ctx, &member)
 }
 
 // RemoveUser removes a user from a team
 func (r *TeamMemberRepository) RemoveUser(ctx context.Context, teamID, userID string) error {
-	return r.db.WithContext(ctx).
+	return r.DB.WithContext(ctx).
 		Where("team_id = ? AND user_id = ?", teamID, userID).
 		Delete(&models.TeamMember{}).Error
 }
 
 // UpdateRole updates a team member's role
 func (r *TeamMemberRepository) UpdateRole(ctx context.Context, teamID, userID, role string) error {
-	return r.db.WithContext(ctx).
+	return r.DB.WithContext(ctx).
 		Model(&models.TeamMember{}).
 		Where("team_id = ? AND user_id = ?", teamID, userID).
 		Update("role", role).Error
@@ -48,7 +51,7 @@ func (r *TeamMemberRepository) UpdateRole(ctx context.Context, teamID, userID, r
 // Get gets a specific team member
 func (r *TeamMemberRepository) Get(ctx context.Context, teamID, userID string) (*models.TeamMember, error) {
 	var member models.TeamMember
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Preload("User").
 		Where("team_id = ? AND user_id = ?", teamID, userID).
 		First(&member).Error
@@ -70,7 +73,7 @@ func (r *TeamMemberRepository) IsMember(ctx context.Context, teamID, userID stri
 
 	// Check if user is the owner
 	var team models.Team
-	if err := r.db.WithContext(ctx).First(&team, "id = ?", teamID).Error; err != nil {
+	if err := r.DB.WithContext(ctx).First(&team, "id = ?", teamID).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return false, nil
 		}
@@ -83,7 +86,7 @@ func (r *TeamMemberRepository) IsMember(ctx context.Context, teamID, userID stri
 	}
 
 	// Check if user is a member
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Model(&models.TeamMember{}).
 		Where("team_id = ? AND user_id = ?", teamID, userID).
 		Count(&count).Error

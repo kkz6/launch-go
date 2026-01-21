@@ -53,7 +53,6 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 	}
 
 	service := &models.InstalledService{
-		ServerID:  serverID,
 		Type:      software.GetServiceType(),
 		Name:      software.Label(),
 		Software:  software.String(),
@@ -61,6 +60,7 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 		IsDefault: false,
 		Version:   software.GetVersion(),
 	}
+	service.ServerID = serverID
 
 	if err := s.repos.Service().Create(ctx, service); err != nil {
 		return nil, err

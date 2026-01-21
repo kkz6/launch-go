@@ -7,12 +7,13 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // ServerService defines the interface for server business logic
 type ServerService interface {
 	ListServers(ctx context.Context, teamID string) ([]models.Server, error)
-	ListServersPaginated(ctx context.Context, teamID string, page, perPage int) ([]models.Server, int64, error)
+	ListServersPaginated(ctx context.Context, teamID string, page, perPage int) (*repository.PaginatedResult[models.Server], error)
 	GetServer(ctx context.Context, id, teamID string) (*models.Server, error)
 	GetServerWithRelations(ctx context.Context, id, teamID string) (*models.Server, error)
 	CreateServer(ctx context.Context, teamID, userID string, req *dto.CreateServerRequest) (*models.Server, error)
@@ -57,14 +58,14 @@ type DaemonService interface {
 	DeleteDaemon(ctx context.Context, serverID, teamID, daemonID string) error
 }
 
-// SshKeyService defines the interface for SSH key business logic
-type SshKeyService interface {
-	ListSshKeys(ctx context.Context, teamID string) ([]models.SshKey, error)
-	ListServerSshKeys(ctx context.Context, serverID, teamID string) ([]models.SshKey, error)
-	CreateSshKey(ctx context.Context, teamID, userID string, req *dto.CreateSshKeyRequest) (*models.SshKey, error)
-	AttachSshKey(ctx context.Context, serverID, teamID, sshKeyID string) error
-	DetachSshKey(ctx context.Context, serverID, teamID, sshKeyID string) error
-	DeleteSshKey(ctx context.Context, teamID, sshKeyID string) error
+// SSHKeyService defines the interface for SSH key business logic
+type SSHKeyService interface {
+	ListSSHKeys(ctx context.Context, teamID string) ([]models.SSHKey, error)
+	ListServerSSHKeys(ctx context.Context, serverID, teamID string) ([]models.SSHKey, error)
+	CreateSSHKey(ctx context.Context, teamID, userID string, req *dto.CreateSSHKeyRequest) (*models.SSHKey, error)
+	AttachSSHKey(ctx context.Context, serverID, teamID, sshKeyID string) error
+	DetachSSHKey(ctx context.Context, serverID, teamID, sshKeyID string) error
+	DeleteSSHKey(ctx context.Context, teamID, sshKeyID string) error
 }
 
 // TaskService defines the interface for task business logic
@@ -92,7 +93,7 @@ type Service interface {
 	FirewallRuleService
 	CronService
 	DaemonService
-	SshKeyService
+	SSHKeyService
 	TaskService
 	MetricService
 	DatabaseService

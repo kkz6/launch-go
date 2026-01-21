@@ -21,22 +21,21 @@ type SetDefaultPhpPayload struct {
 
 // SetDefaultPhpJob sets the default PHP version on a server
 type SetDefaultPhpJob struct {
-	ctx     *JobContext
-	Payload SetDefaultPhpPayload
+	pkgjobs.BaseJob[*JobContext, SetDefaultPhpPayload]
 }
 
 func (j *SetDefaultPhpJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	service, err := j.ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
+	service, err := j.Ctx.Repos().Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
-	j.ctx.LogInfo("Setting default PHP version",
+	j.Ctx.LogInfo("Setting default PHP version",
 		"server_id", server.ID,
 		"version", j.Payload.Version,
 	)
@@ -44,7 +43,7 @@ func (j *SetDefaultPhpJob) Handle(ctx context.Context) error {
 	// Run the update alternatives task
 	task := tasks.UpdateAlternatives(j.Payload.Version)
 
-	result, err := j.ctx.ForServer(server).RunTask(task).
+	result, err := j.Ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -58,22 +57,22 @@ func (j *SetDefaultPhpJob) Handle(ctx context.Context) error {
 
 	// Update the service record to mark it as default
 	// First, unset any existing default
-	if err := j.ctx.Repos.Service().UnsetDefaultPhp(ctx, j.Payload.ServerID); err != nil {
-		j.ctx.LogError(err, "Failed to unset existing default PHP")
+	if err := j.Ctx.Repos().Service().UnsetDefaultPhp(ctx, j.Payload.ServerID); err != nil {
+		j.Ctx.LogError(err, "Failed to unset existing default PHP")
 	}
 
 	// Set the new default
-	if err := j.ctx.Repos.Service().SetDefault(ctx, j.Payload.ServiceID, true); err != nil {
+	if err := j.Ctx.Repos().Service().SetDefault(ctx, j.Payload.ServiceID, true); err != nil {
 		return fmt.Errorf("failed to update service default status: %w", err)
 	}
 
-	j.ctx.LogInfo("Default PHP version set successfully",
+	j.Ctx.LogInfo("Default PHP version set successfully",
 		"server_id", server.ID,
 		"service_id", service.ID,
 		"version", j.Payload.Version,
 	)
 
-	j.ctx.BroadcastServerEvent(server, "php.default_changed", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "php.default_changed", map[string]any{
 		"server_id":  server.ID,
 		"service_id": service.ID,
 		"version":    j.Payload.Version,
@@ -83,7 +82,7 @@ func (j *SetDefaultPhpJob) Handle(ctx context.Context) error {
 }
 
 func (j *SetDefaultPhpJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to set default PHP version",
+	j.Ctx.LogError(err, "Failed to set default PHP version",
 		"server_id", j.Payload.ServerID,
 		"version", j.Payload.Version,
 	)
@@ -91,8 +90,7 @@ func (j *SetDefaultPhpJob) Failed(ctx context.Context, err error) {
 
 func NewSetDefaultPhpJob(ctx *JobContext, payload SetDefaultPhpPayload) *SetDefaultPhpJob {
 	return &SetDefaultPhpJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

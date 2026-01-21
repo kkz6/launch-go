@@ -24,8 +24,16 @@ func NewSSLHandler(sslService *services.SSLService) *SSLHandler {
 
 // UpdateSSL updates SSL settings
 func (h *SSLHandler) UpdateSSL(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
@@ -49,8 +57,15 @@ func (h *SSLHandler) UpdateSSL(c *fiber.Ctx) error {
 
 // ListCertificates returns all certificates for a site
 func (h *SSLHandler) ListCertificates(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
 
 	certs, err := h.sslService.ListCertificates(c.Context(), siteID, serverID)
 	if err != nil {

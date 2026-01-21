@@ -71,7 +71,7 @@ enableAllRules = false
 [rule.unconditional-recursion]
 [rule.unexported-naming]
 [rule.unhandled-error]
-  arguments = ["fmt.Printf", "fmt.Println", "fmt.Print"]
+  arguments = ["fmt.Printf", "fmt.Println", "fmt.Print", "strings\\.Builder\\.WriteString"]
 [rule.unnecessary-stmt]
 [rule.useless-break]
 [rule.waitgroup-by-value]

@@ -15,7 +15,7 @@ type SiteResponse struct {
 	Address                      string                           `json:"address"`
 	Type                         string                           `json:"type"`
 	Aliases                      []string                         `json:"aliases,omitempty"`
-	TlsSetting                   string                           `json:"tls_setting"`
+	TLSSetting                   string                           `json:"tls_setting"`
 	ZeroDowntimeDeployment       bool                             `json:"zero_downtime_deployment"`
 	DeploymentReleasesRetention  int                              `json:"deployment_releases_retention"`
 	RepositoryBranch             string                           `json:"repository_branch"`
@@ -141,8 +141,8 @@ type DeletionSummaryResponse struct {
 	Crons  int `json:"crons"`
 }
 
-// TlsOptionResponse represents a TLS option for the settings page
-type TlsOptionResponse struct {
+// TLSOptionResponse represents a TLS option for the settings page
+type TLSOptionResponse struct {
 	Value string `json:"value"`
 	Label string `json:"label"`
 }
@@ -174,7 +174,7 @@ type SourceControlRepositoryResponse struct {
 // SiteSettingsResponse represents the site settings page data
 type SiteSettingsResponse struct {
 	Site              SiteResponse                     `json:"site"`
-	TlsOptions        []TlsOptionResponse              `json:"tls_options"`
+	TLSOptions        []TLSOptionResponse              `json:"tls_options"`
 	PhpVersions       []PhpVersionResponse             `json:"php_versions"`
 	ActiveCertificate *CertificateResponse             `json:"active_certificate,omitempty"`
 	SourceControl     *SourceControlResponse           `json:"source_control,omitempty"`
@@ -206,7 +206,7 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		Address:                      site.Address,
 		Type:                         string(site.Type),
 		Aliases:                      site.Aliases,
-		TlsSetting:                   string(site.TlsSetting),
+		TLSSetting:                   string(site.TLSSetting),
 		ZeroDowntimeDeployment:       site.ZeroDowntimeDeployment,
 		DeploymentReleasesRetention:  site.DeploymentReleasesRetention,
 		RepositoryBranch:             repositoryBranch,

@@ -2,11 +2,11 @@ package services
 
 import (
 	"context"
-	"sync"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/dto"
 	"github.com/kkz6/launch-go/internal/modules/billing/enums"
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
+	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
 // AdminLimits are the limits for admin users
@@ -38,9 +38,8 @@ type TeamSubscriptionOptions struct {
 	siteCountFn       func(ctx context.Context, serverID string) (int, error)
 	userRole          enums.UserRole
 
-	mu            sync.RWMutex
-	cachedOptions *models.PlanOptions
-	cachedIsAdmin *bool
+	cachedOptions util.Cached[models.PlanOptions]
+	cachedIsAdmin util.Cached[bool]
 }
 
 // NewTeamSubscriptionOptions creates a new TeamSubscriptionOptions
@@ -225,62 +224,21 @@ func (t *TeamSubscriptionOptions) CountTeamMembers(ctx context.Context) (int, er
 
 // PlanOptions returns the plan options for the team
 func (t *TeamSubscriptionOptions) PlanOptions(ctx context.Context) models.PlanOptions {
-	t.mu.RLock()
-	if t.cachedOptions != nil {
-		defer t.mu.RUnlock()
-		return *t.cachedOptions
-	}
-	t.mu.RUnlock()
-
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	// Double-check after acquiring write lock
-	if t.cachedOptions != nil {
-		return *t.cachedOptions
-	}
-
-	options := t.resolvePlanOptions(ctx)
-	t.cachedOptions = &options
-	return options
+	return t.cachedOptions.GetOrCompute(func() models.PlanOptions {
+		return t.resolvePlanOptions(ctx)
+	})
 }
 
 // IsAdmin checks if the current user is an admin
 func (t *TeamSubscriptionOptions) IsAdmin() bool {
-	t.mu.RLock()
-	if t.cachedIsAdmin != nil {
-		defer t.mu.RUnlock()
-		return *t.cachedIsAdmin
-	}
-	t.mu.RUnlock()
-
-	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	// Double-check after acquiring write lock
-	if t.cachedIsAdmin != nil {
-		return *t.cachedIsAdmin
-	}
-
-	isAdmin := t.userRole.IsAdmin()
-	t.cachedIsAdmin = &isAdmin
-	return isAdmin
-}
-
-// isAdminUnsafe checks if the current user is an admin without locking (assumes caller holds lock)
-func (t *TeamSubscriptionOptions) isAdminUnsafe() bool {
-	if t.cachedIsAdmin != nil {
-		return *t.cachedIsAdmin
-	}
-	isAdmin := t.userRole.IsAdmin()
-	t.cachedIsAdmin = &isAdmin
-	return isAdmin
+	return t.cachedIsAdmin.GetOrCompute(func() bool {
+		return t.userRole.IsAdmin()
+	})
 }
 
 // resolvePlanOptions resolves the plan options based on subscription status
-// Note: This method assumes the caller holds the write lock
 func (t *TeamSubscriptionOptions) resolvePlanOptions(ctx context.Context) models.PlanOptions {
-	if t.isAdminUnsafe() {
+	if t.IsAdmin() {
 		return AdminLimits
 	}
 

@@ -24,21 +24,19 @@ type UpdateDatabaseUserPayload struct {
 }
 
 type UpdateDatabaseUserJob struct {
-	ctx     *JobContext
-	Payload UpdateDatabaseUserPayload
+	pkgjobs.BaseJob[*JobContext, UpdateDatabaseUserPayload]
 }
 
 func NewUpdateDatabaseUserJob(ctx *JobContext, payload UpdateDatabaseUserPayload) *UpdateDatabaseUserJob {
 	return &UpdateDatabaseUserJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
-	j.ctx.LogInfo("Updating database user", "database_user_id", j.Payload.DatabaseUserID)
+	j.Ctx.LogInfo("Updating database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, err := repository.NewQuery[models.DatabaseUser](ctx, j.ctx.DB).
+	dbUser, err := repository.NewQuery[models.DatabaseUser](ctx, j.Ctx.DB()).
 		WithModel("DatabaseUser").
 		Preload("Databases").
 		FindByID(j.Payload.DatabaseUserID).
@@ -47,15 +45,15 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find database user: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](ctx, j.ctx.DB, dbUser.ServerID)
+	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), dbUser.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "updating", fmt.Sprintf("Updating database user: %s", dbUser.Name))
+	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "updating", fmt.Sprintf("Updating database user: %s", dbUser.Name))
 
 	if j.Payload.Password != nil && *j.Payload.Password != "" {
-		factory := j.ctx.GetTaskFactory(ctx, dbUser.ServerID)
+		factory := j.Ctx.GetTaskFactory(ctx, dbUser.ServerID)
 		task := factory.UpdatePassword(tasks.UpdatePasswordConfig{
 			Username:      dbUser.Name,
 			NewPassword:   *j.Payload.Password,
@@ -64,7 +62,7 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 			Hosts:         []string{"%"},
 		})
 
-		result, err := j.ctx.RunTaskOnServer(server, task).
+		result, err := j.Ctx.RunTaskOnServer(server, task).
 			AsRoot().
 			Dispatch(ctx)
 		if err != nil {
@@ -77,29 +75,29 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 	}
 
 	now := time.Now()
-	if err := j.ctx.DB.WithContext(ctx).Model(dbUser).Update("updated_at", &now).Error; err != nil {
+	if err := j.Ctx.DB().WithContext(ctx).Model(dbUser).Update("updated_at", &now).Error; err != nil {
 		return fmt.Errorf("failed to update database user record: %w", err)
 	}
 
-	j.ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "updated", fmt.Sprintf("Database user %s updated successfully", dbUser.Name))
+	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "updated", fmt.Sprintf("Database user %s updated successfully", dbUser.Name))
 
 	return nil
 }
 
 func (j *UpdateDatabaseUserJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to update database user", "database_user_id", j.Payload.DatabaseUserID)
+	j.Ctx.LogError(err, "Failed to update database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.ctx.DB, j.Payload.DatabaseUserID)
+	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB(), j.Payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](ctx, j.ctx.DB, dbUser.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), dbUser.ServerID)
 	if findErr != nil {
 		return
 	}
 
-	j.ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "failed", fmt.Sprintf("Failed to update database user: %s", dbUser.Name))
+	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "failed", fmt.Sprintf("Failed to update database user: %s", dbUser.Name))
 }
 
 // NewUpdateDatabaseUserTask creates a database user update job

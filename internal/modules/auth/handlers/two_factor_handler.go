@@ -11,12 +11,12 @@ import (
 
 // TwoFactorHandler handles two-factor authentication HTTP requests
 type TwoFactorHandler struct {
-	service *services.Service
+	BaseHandler
 }
 
 // NewTwoFactorHandler creates a new TwoFactorHandler instance
 func NewTwoFactorHandler(service *services.Service) *TwoFactorHandler {
-	return &TwoFactorHandler{service: service}
+	return &TwoFactorHandler{BaseHandler: NewBaseHandler(service)}
 }
 
 // EnableTwoFactor initiates 2FA setup
@@ -26,7 +26,7 @@ func (h *TwoFactorHandler) EnableTwoFactor(c *fiber.Ctx) error {
 		return err
 	}
 
-	result, err := h.service.EnableTwoFactor(c.Context(), userID)
+	result, err := h.Service().EnableTwoFactor(c.Context(), userID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -46,7 +46,7 @@ func (h *TwoFactorHandler) ConfirmTwoFactor(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.service.ConfirmTwoFactor(c.Context(), userID, req.Code); err != nil {
+	if err := h.Service().ConfirmTwoFactor(c.Context(), userID, req.Code); err != nil {
 		return response.HandleError(c, err)
 	}
 
@@ -65,7 +65,7 @@ func (h *TwoFactorHandler) DisableTwoFactor(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.service.DisableTwoFactor(c.Context(), userID, req.Password); err != nil {
+	if err := h.Service().DisableTwoFactor(c.Context(), userID, req.Password); err != nil {
 		return response.HandleError(c, err)
 	}
 
@@ -89,7 +89,7 @@ func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx) error {
 		code = req.RecoveryCode
 	}
 
-	valid, err := h.service.VerifyTwoFactor(c.Context(), userID, code)
+	valid, err := h.Service().VerifyTwoFactor(c.Context(), userID, code)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -108,7 +108,7 @@ func (h *TwoFactorHandler) GetRecoveryCodes(c *fiber.Ctx) error {
 		return err
 	}
 
-	codes, err := h.service.GetRecoveryCodes(c.Context(), userID)
+	codes, err := h.Service().GetRecoveryCodes(c.Context(), userID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -123,7 +123,7 @@ func (h *TwoFactorHandler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
 		return err
 	}
 
-	codes, err := h.service.RegenerateRecoveryCodes(c.Context(), userID)
+	codes, err := h.Service().RegenerateRecoveryCodes(c.Context(), userID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}

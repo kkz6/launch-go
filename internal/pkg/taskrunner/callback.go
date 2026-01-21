@@ -50,40 +50,15 @@ type AdminAlerterService interface {
 // CallbackContext provides dependencies to callback handlers.
 // This is similar to Laravel's service container - it allows reconstructed
 // handlers to access DB, queue, and other services.
+//
+// The embedded broadcast.Mixin provides nil-safe broadcasting methods:
+//   - BroadcastToTeam, BroadcastToServer, BroadcastToSite, etc.
 type CallbackContext struct {
-	DB          *gorm.DB
-	Queue       QueueClient
-	Logger      *zerolog.Logger
-	Broadcaster broadcast.TeamBroadcaster
-	Notifier    NotifierService
-}
-
-// BroadcastToTeam sends a websocket event to a team channel.
-func (c *CallbackContext) BroadcastToTeam(teamID, event string, data any) {
-	if c.Broadcaster != nil {
-		c.Broadcaster.BroadcastToTeam(teamID, event, data)
-	}
-}
-
-// BroadcastToServer sends a websocket event to a server channel.
-func (c *CallbackContext) BroadcastToServer(serverID, event string, data any) {
-	if c.Broadcaster != nil {
-		c.Broadcaster.BroadcastToServer(serverID, event, data)
-	}
-}
-
-// BroadcastToSite sends a websocket event to a site channel.
-func (c *CallbackContext) BroadcastToSite(siteID, event string, data any) {
-	if c.Broadcaster != nil {
-		c.Broadcaster.BroadcastToSite(siteID, event, data)
-	}
-}
-
-// BroadcastToDeployment sends a websocket event to a deployment channel.
-func (c *CallbackContext) BroadcastToDeployment(deploymentID, event string, data any) {
-	if c.Broadcaster != nil {
-		c.Broadcaster.BroadcastToDeployment(deploymentID, event, data)
-	}
+	broadcast.Mixin
+	DB       *gorm.DB
+	Queue    QueueClient
+	Logger   *zerolog.Logger
+	Notifier NotifierService
 }
 
 // NotifyTeam sends a notification to all connected channels for a team.

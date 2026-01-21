@@ -101,17 +101,17 @@ type UpdateDaemonRequest struct {
 	StopSignal      *string `json:"stop_signal" validate:"omitempty,max=20"`
 }
 
-// CreateSshKeyRequest represents the request body for creating an SSH key
-type CreateSshKeyRequest struct {
+// CreateSSHKeyRequest represents the request body for creating an SSH key
+type CreateSSHKeyRequest struct {
 	Name        string  `json:"name" validate:"required,min=1,max=255"`
 	PublicKey   string  `json:"public_key" validate:"required"`
 	Description *string `json:"description" validate:"omitempty,max=500"`
 	IsGlobal    bool    `json:"is_global"`
 }
 
-// AttachSshKeyRequest represents the request body for attaching an SSH key to a server
-type AttachSshKeyRequest struct {
-	SshKeyID string `json:"ssh_key_id" validate:"required,ulid"`
+// AttachSSHKeyRequest represents the request body for attaching an SSH key to a server
+type AttachSSHKeyRequest struct {
+	SSHKeyID string `json:"ssh_key_id" validate:"required,ulid"`
 }
 
 // RunCommandRequest represents the request body for running a command on a server
@@ -127,17 +127,17 @@ type CreateDatabaseRequest struct {
 
 // ConfigureOpcacheRequest represents the request body for configuring OPcache
 type ConfigureOpcacheRequest struct {
-	Enabled                bool   `json:"enabled"`
-	EnableCLI              bool   `json:"enable_cli"`
-	MemoryConsumption      int    `json:"memory_consumption" validate:"omitempty,min=32,max=1024"`
-	InternedStringsBuffer  int    `json:"interned_strings_buffer" validate:"omitempty,min=4,max=128"`
-	MaxAcceleratedFiles    int    `json:"max_accelerated_files" validate:"omitempty,min=200,max=1000000"`
-	ValidateTimestamps     bool   `json:"validate_timestamps"`
-	RevalidateFreq         int    `json:"revalidate_freq" validate:"omitempty,min=0,max=3600"`
-	SaveComments           bool   `json:"save_comments"`
-	JITEnabled             bool   `json:"jit_enabled"`
-	JITBufferSize          string `json:"jit_buffer_size" validate:"omitempty,max=10"`
-	JITMode                string `json:"jit_mode" validate:"omitempty,oneof=disable tracing function"`
+	Enabled               bool   `json:"enabled"`
+	EnableCLI             bool   `json:"enable_cli"`
+	MemoryConsumption     int    `json:"memory_consumption" validate:"omitempty,min=32,max=1024"`
+	InternedStringsBuffer int    `json:"interned_strings_buffer" validate:"omitempty,min=4,max=128"`
+	MaxAcceleratedFiles   int    `json:"max_accelerated_files" validate:"omitempty,min=200,max=1000000"`
+	ValidateTimestamps    bool   `json:"validate_timestamps"`
+	RevalidateFreq        int    `json:"revalidate_freq" validate:"omitempty,min=0,max=3600"`
+	SaveComments          bool   `json:"save_comments"`
+	JITEnabled            bool   `json:"jit_enabled"`
+	JITBufferSize         string `json:"jit_buffer_size" validate:"omitempty,max=10"`
+	JITMode               string `json:"jit_mode" validate:"omitempty,oneof=disable tracing function"`
 }
 
 // UpdateComposerAuthRequest represents the request body for updating Composer auth.json

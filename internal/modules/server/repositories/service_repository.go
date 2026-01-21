@@ -8,52 +8,37 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // ServiceRepository handles installed service database operations
 type ServiceRepository struct {
-	BaseRepository
+	repository.Base[models.InstalledService]
 }
 
 // NewServiceRepository creates a new ServiceRepository instance
 func NewServiceRepository(db *gorm.DB) *ServiceRepository {
 	return &ServiceRepository{
-		BaseRepository: NewBaseRepository(db),
+		Base: repository.NewBase[models.InstalledService](db),
 	}
-}
-
-// Create creates a new service
-func (r *ServiceRepository) Create(ctx context.Context, service *models.InstalledService) error {
-	return r.DB().WithContext(ctx).Create(service).Error
 }
 
 // FindByID finds a service by ID
 func (r *ServiceRepository) FindByID(ctx context.Context, id string) (*models.InstalledService, error) {
-	var service models.InstalledService
-	err := r.DB().WithContext(ctx).First(&service, "id = ?", id).Error
+	service, err := r.Base.FindByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if repository.IsNotFound(err) {
 			return nil, ErrServiceNotFound
 		}
 		return nil, err
 	}
-	return &service, nil
-}
-
-// FindByServer finds all services for a server
-func (r *ServiceRepository) FindByServer(ctx context.Context, serverID string) ([]models.InstalledService, error) {
-	var services []models.InstalledService
-	err := r.DB().WithContext(ctx).
-		Where("server_id = ?", serverID).
-		Order("created_at DESC").
-		Find(&services).Error
-	return services, err
+	return service, nil
 }
 
 // FindByServerAndType finds all services by server and type
 func (r *ServiceRepository) FindByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) ([]models.InstalledService, error) {
 	var services []models.InstalledService
-	err := r.DB().WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("server_id = ? AND type = ?", serverID, serviceType).
 		Find(&services).Error
 	return services, err
@@ -62,7 +47,7 @@ func (r *ServiceRepository) FindByServerAndType(ctx context.Context, serverID st
 // FindOneByServerAndType finds a service by server and type
 func (r *ServiceRepository) FindOneByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) (*models.InstalledService, error) {
 	var service models.InstalledService
-	err := r.DB().WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		First(&service, "server_id = ? AND type = ?", serverID, serviceType).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -76,7 +61,7 @@ func (r *ServiceRepository) FindOneByServerAndType(ctx context.Context, serverID
 // FindByServerAndSoftware finds a service by server and software
 func (r *ServiceRepository) FindByServerAndSoftware(ctx context.Context, serverID string, software enums.Software) (*models.InstalledService, error) {
 	var service models.InstalledService
-	err := r.DB().WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		First(&service, "server_id = ? AND software = ?", serverID, software).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -90,7 +75,7 @@ func (r *ServiceRepository) FindByServerAndSoftware(ctx context.Context, serverI
 // FindDatabaseService finds the database service for a server
 func (r *ServiceRepository) FindDatabaseService(ctx context.Context, serverID string) (*models.InstalledService, error) {
 	var service models.InstalledService
-	err := r.DB().WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		First(&service, "server_id = ? AND (type = ? OR type = ?)", serverID, enums.ServiceTypeMySql, enums.ServiceTypePostgreSql).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -101,17 +86,11 @@ func (r *ServiceRepository) FindDatabaseService(ctx context.Context, serverID st
 	return &service, nil
 }
 
-// Update updates a service
-func (r *ServiceRepository) Update(ctx context.Context, service *models.InstalledService) error {
-	return r.DB().WithContext(ctx).Save(service).Error
-}
-
 // UpdateStatus updates the service status
 func (r *ServiceRepository) UpdateStatus(ctx context.Context, id string, status enums.ServiceStatus) error {
-	return r.DB().WithContext(ctx).
-		Model(&models.InstalledService{}).
-		Where("id = ?", id).
-		Update("status", status).Error
+	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
+		"status": status,
+	})
 }
 
 // UpdateWithTypeData updates the service status and type data
@@ -128,31 +107,22 @@ func (r *ServiceRepository) UpdateWithTypeData(ctx context.Context, id string, s
 		service.TypeData[k] = v
 	}
 
-	return r.DB().WithContext(ctx).
-		Model(&models.InstalledService{}).
-		Where("id = ?", id).
-		Updates(map[string]any{
-			"status":    status,
-			"type_data": service.TypeData,
-		}).Error
-}
-
-// Delete deletes a service
-func (r *ServiceRepository) Delete(ctx context.Context, id string) error {
-	return r.DB().WithContext(ctx).Delete(&models.InstalledService{}, "id = ?", id).Error
+	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
+		"status":    status,
+		"type_data": service.TypeData,
+	})
 }
 
 // SetDefault sets the is_default flag for a service
 func (r *ServiceRepository) SetDefault(ctx context.Context, id string, isDefault bool) error {
-	return r.DB().WithContext(ctx).
-		Model(&models.InstalledService{}).
-		Where("id = ?", id).
-		Update("is_default", isDefault).Error
+	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
+		"is_default": isDefault,
+	})
 }
 
 // UnsetDefaultPhp unsets the is_default flag for all PHP services on a server
 func (r *ServiceRepository) UnsetDefaultPhp(ctx context.Context, serverID string) error {
-	return r.DB().WithContext(ctx).
+	return r.DB.WithContext(ctx).
 		Model(&models.InstalledService{}).
 		Where("server_id = ? AND type = ?", serverID, enums.ServiceTypePhp).
 		Update("is_default", false).Error

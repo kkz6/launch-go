@@ -6,8 +6,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 )
 
-func TestAddSshKeyPayload(t *testing.T) {
-	payload := jobs.AddSshKeyPayload{
+func TestAddSSHKeyPayload(t *testing.T) {
+	payload := jobs.AddSSHKeyPayload{
 		ServerID: "server123",
 		KeyID:    "key456",
 	}
@@ -21,8 +21,8 @@ func TestAddSshKeyPayload(t *testing.T) {
 	}
 }
 
-func TestNewAddSshKeyTask(t *testing.T) {
-	task, err := jobs.NewAddSshKeyTask("server123", "key456")
+func TestNewAddSSHKeyTask(t *testing.T) {
+	task, err := jobs.NewAddSSHKeyTask("server123", "key456")
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -32,13 +32,13 @@ func TestNewAddSshKeyTask(t *testing.T) {
 		t.Fatal("Expected task to be created")
 	}
 
-	if task.Type() != jobs.TypeAddSshKey {
-		t.Errorf("Expected task type to be '%s', got '%s'", jobs.TypeAddSshKey, task.Type())
+	if task.Type() != jobs.TypeAddSSHKey {
+		t.Errorf("Expected task type to be '%s', got '%s'", jobs.TypeAddSSHKey, task.Type())
 	}
 }
 
-func TestRemoveSshKeyPayload(t *testing.T) {
-	payload := jobs.RemoveSshKeyPayload{
+func TestRemoveSSHKeyPayload(t *testing.T) {
+	payload := jobs.RemoveSSHKeyPayload{
 		ServerID: "server123",
 		KeyID:    "key456",
 		Force:    true,
@@ -53,8 +53,8 @@ func TestRemoveSshKeyPayload(t *testing.T) {
 	}
 }
 
-func TestNewRemoveSshKeyTask(t *testing.T) {
-	task, err := jobs.NewRemoveSshKeyTask("server123", "key456", true)
+func TestNewRemoveSSHKeyTask(t *testing.T) {
+	task, err := jobs.NewRemoveSSHKeyTask("server123", "key456", true)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -64,7 +64,7 @@ func TestNewRemoveSshKeyTask(t *testing.T) {
 		t.Fatal("Expected task to be created")
 	}
 
-	if task.Type() != jobs.TypeRemoveSshKey {
-		t.Errorf("Expected task type to be '%s', got '%s'", jobs.TypeRemoveSshKey, task.Type())
+	if task.Type() != jobs.TypeRemoveSSHKey {
+		t.Errorf("Expected task type to be '%s', got '%s'", jobs.TypeRemoveSSHKey, task.Type())
 	}
 }

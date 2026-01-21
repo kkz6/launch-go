@@ -231,3 +231,203 @@ func (r *Base[T]) FirstOrFail(ctx context.Context, query *gorm.DB) (*T, error) {
 func (r *Base[T]) MustFind(ctx context.Context, id string) (*T, error) {
 	return r.FindByIDOrFail(ctx, id)
 }
+
+// FindByIDAndTeam finds a record by ID and team ID with optional preloads
+func (r *Base[T]) FindByIDAndTeam(ctx context.Context, id, teamID string, preloads ...string) (*T, error) {
+	var entity T
+	query := r.DB.WithContext(ctx)
+	for _, p := range preloads {
+		query = query.Preload(p)
+	}
+	err := query.First(&entity, "id = ? AND team_id = ?", id, teamID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &entity, nil
+}
+
+// FindByIDAndTeamOrFail finds a record by ID and team ID or returns a typed error
+func (r *Base[T]) FindByIDAndTeamOrFail(ctx context.Context, id, teamID string, preloads ...string) (*T, error) {
+	entity, err := r.FindByIDAndTeam(ctx, id, teamID, preloads...)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, NotFoundError(r.getModelName(), id)
+		}
+		return nil, WrapError(err, r.getModelName(), "failed to find "+r.getModelName())
+	}
+	return entity, nil
+}
+
+// FindByServerAndTeam finds all records for a server that belong to a specific team.
+// This is useful for entities that have both server_id and team_id columns.
+func (r *Base[T]) FindByServerAndTeam(ctx context.Context, serverID, teamID string) ([]T, error) {
+	var entities []T
+	err := r.DB.WithContext(ctx).
+		Where("server_id = ? AND team_id = ?", serverID, teamID).
+		Order("created_at DESC").
+		Find(&entities).Error
+	return entities, err
+}
+
+// UpdateStatus updates the status field of a record by ID
+func (r *Base[T]) UpdateStatus(ctx context.Context, id string, status string) error {
+	var entity T
+	return r.DB.WithContext(ctx).
+		Model(&entity).
+		Where("id = ?", id).
+		Update("status", status).Error
+}
+
+// UpdateStatusByServer updates the status field of a record by ID and server ID
+func (r *Base[T]) UpdateStatusByServer(ctx context.Context, id, serverID, status string) error {
+	var entity T
+	return r.DB.WithContext(ctx).
+		Model(&entity).
+		Where("id = ? AND server_id = ?", id, serverID).
+		Update("status", status).Error
+}
+
+// PaginatedResult holds paginated query results
+type PaginatedResult[T any] struct {
+	Data       []T   `json:"data"`
+	Total      int64 `json:"total"`
+	Page       int   `json:"page"`
+	PerPage    int   `json:"per_page"`
+	TotalPages int   `json:"total_pages"`
+}
+
+// HasMore returns true if there are more pages after the current one
+func (p *PaginatedResult[T]) HasMore() bool {
+	return p.Page < p.TotalPages
+}
+
+// IsEmpty returns true if there are no results
+func (p *PaginatedResult[T]) IsEmpty() bool {
+	return len(p.Data) == 0
+}
+
+// Paginate executes a paginated query.
+// The query should NOT have Offset/Limit already applied.
+// Page is 1-indexed (first page is 1, not 0).
+//
+// Usage:
+//
+//	query := r.DB.WithContext(ctx).Where("team_id = ?", teamID).Order("created_at DESC")
+//	result, err := repository.Paginate[models.Server](query, 1, 10)
+func Paginate[T any](query *gorm.DB, page, perPage int) (*PaginatedResult[T], error) {
+	// Ensure valid pagination params
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 10
+	}
+	if perPage > 100 {
+		perPage = 100 // Cap at 100 to prevent abuse
+	}
+
+	// Count total using a fresh session to avoid interference with offset/limit
+	var total int64
+	countQuery := query.Session(&gorm.Session{})
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, err
+	}
+
+	// Calculate total pages
+	totalPages := int(total) / perPage
+	if int(total)%perPage > 0 {
+		totalPages++
+	}
+
+	// If no results, return empty result
+	if total == 0 {
+		return &PaginatedResult[T]{
+			Data:       []T{},
+			Total:      0,
+			Page:       page,
+			PerPage:    perPage,
+			TotalPages: 0,
+		}, nil
+	}
+
+	// Fetch data with offset/limit
+	var results []T
+	offset := (page - 1) * perPage
+	if err := query.Offset(offset).Limit(perPage).Find(&results).Error; err != nil {
+		return nil, err
+	}
+
+	return &PaginatedResult[T]{
+		Data:       results,
+		Total:      total,
+		Page:       page,
+		PerPage:    perPage,
+		TotalPages: totalPages,
+	}, nil
+}
+
+// PaginateWithCount is like Paginate but uses a separate count query.
+// Use this when the data query has complex selects/preloads that shouldn't be in the count query.
+//
+// Usage:
+//
+//	countQuery := r.DB.WithContext(ctx).Model(&models.Server{}).Where("team_id = ?", teamID)
+//	dataQuery := r.DB.WithContext(ctx).
+//	    Select("servers.*, (SELECT COUNT(*) FROM sites WHERE sites.server_id = servers.id) as sites_count").
+//	    Preload("Services").
+//	    Where("team_id = ?", teamID).
+//	    Order("created_at DESC")
+//	result, err := repository.PaginateWithCount[models.Server](countQuery, dataQuery, 1, 10)
+func PaginateWithCount[T any](countQuery, dataQuery *gorm.DB, page, perPage int) (*PaginatedResult[T], error) {
+	// Ensure valid pagination params
+	if page < 1 {
+		page = 1
+	}
+	if perPage < 1 {
+		perPage = 10
+	}
+	if perPage > 100 {
+		perPage = 100
+	}
+
+	// Count total
+	var total int64
+	if err := countQuery.Count(&total).Error; err != nil {
+		return nil, err
+	}
+
+	// Calculate total pages
+	totalPages := int(total) / perPage
+	if int(total)%perPage > 0 {
+		totalPages++
+	}
+
+	// If no results, return empty result
+	if total == 0 {
+		return &PaginatedResult[T]{
+			Data:       []T{},
+			Total:      0,
+			Page:       page,
+			PerPage:    perPage,
+			TotalPages: 0,
+		}, nil
+	}
+
+	// Fetch data with offset/limit
+	var results []T
+	offset := (page - 1) * perPage
+	if err := dataQuery.Offset(offset).Limit(perPage).Find(&results).Error; err != nil {
+		return nil, err
+	}
+
+	return &PaginatedResult[T]{
+		Data:       results,
+		Total:      total,
+		Page:       page,
+		PerPage:    perPage,
+		TotalPages: totalPages,
+	}, nil
+}

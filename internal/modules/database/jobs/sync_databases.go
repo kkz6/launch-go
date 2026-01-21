@@ -37,21 +37,19 @@ var protectedPostgreSQLDatabases = []string{
 }
 
 type SyncDatabasesJob struct {
-	ctx     *JobContext
-	Payload SyncDatabasesPayload
+	pkgjobs.BaseJob[*JobContext, SyncDatabasesPayload]
 }
 
 func NewSyncDatabasesJob(ctx *JobContext, payload SyncDatabasesPayload) *SyncDatabasesJob {
 	return &SyncDatabasesJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
-	j.ctx.LogInfo("Syncing databases from server", "server_id", j.Payload.ServerID)
+	j.Ctx.LogInfo("Syncing databases from server", "server_id", j.Payload.ServerID)
 
-	server, err := repository.NewQuery[servermodels.Server](ctx, j.ctx.DB).
+	server, err := repository.NewQuery[servermodels.Server](ctx, j.Ctx.DB()).
 		WithModel("Server").
 		Preload("Services").
 		FindByID(j.Payload.ServerID).
@@ -60,12 +58,12 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.BroadcastDatabaseProgress(server, "database.sync.progress", "", "syncing", "Syncing databases from server...")
+	j.Ctx.BroadcastDatabaseProgress(server, "database.sync.progress", "", "syncing", "Syncing databases from server...")
 
 	dbServiceType := j.getDatabaseServiceType(server)
 	if dbServiceType == "" {
-		j.ctx.LogInfo("No database service found on server, skipping sync", "server_id", j.Payload.ServerID)
-		j.ctx.BroadcastDatabaseProgress(server, "database.sync.progress", "", "synced", "No database service found on server")
+		j.Ctx.LogInfo("No database service found on server, skipping sync", "server_id", j.Payload.ServerID)
+		j.Ctx.BroadcastDatabaseProgress(server, "database.sync.progress", "", "synced", "No database service found on server")
 		return nil
 	}
 
@@ -83,13 +81,13 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 
 	userDatabases := filterProtectedDatabases(serverDatabases, protectedDatabases)
 
-	j.ctx.LogInfo("Found databases on server",
+	j.Ctx.LogInfo("Found databases on server",
 		"server_id", j.Payload.ServerID,
 		"total_databases", len(serverDatabases),
 		"user_databases", len(userDatabases),
 	)
 
-	existingDatabases, err := repository.NewQuery[dbmodels.Database](ctx, j.ctx.DB).
+	existingDatabases, err := repository.NewQuery[dbmodels.Database](ctx, j.Ctx.DB()).
 		Where("server_id = ?", j.Payload.ServerID).
 		All()
 	if err != nil {
@@ -108,13 +106,13 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		}
 
 		database := &dbmodels.Database{
-			ServerID: j.Payload.ServerID,
-			Name:     dbName,
+			Name: dbName,
 		}
+		database.ServerID = j.Payload.ServerID
 		database.MarkAsInstalled()
 
-		if err := j.ctx.DB.WithContext(ctx).Create(database).Error; err != nil {
-			j.ctx.LogError(err, "Failed to create database record",
+		if err := j.Ctx.DB().WithContext(ctx).Create(database).Error; err != nil {
+			j.Ctx.LogError(err, "Failed to create database record",
 				"server_id", j.Payload.ServerID,
 				"database_name", dbName,
 			)
@@ -122,20 +120,20 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		}
 
 		syncedCount++
-		j.ctx.LogInfo("Synced database from server",
+		j.Ctx.LogInfo("Synced database from server",
 			"server_id", j.Payload.ServerID,
 			"database_name", dbName,
 		)
 	}
 
-	j.ctx.LogInfo("Database sync completed",
+	j.Ctx.LogInfo("Database sync completed",
 		"server_id", j.Payload.ServerID,
 		"total_server_databases", len(userDatabases),
 		"existing_in_app", len(existingDatabases),
 		"synced_databases", syncedCount,
 	)
 
-	j.ctx.BroadcastDatabaseProgress(server, "database.sync.progress", "", "synced", fmt.Sprintf("Database sync completed. Found %d databases, synced %d new.", len(userDatabases), syncedCount))
+	j.Ctx.BroadcastDatabaseProgress(server, "database.sync.progress", "", "synced", fmt.Sprintf("Database sync completed. Found %d databases, synced %d new.", len(userDatabases), syncedCount))
 
 	return nil
 }
@@ -156,7 +154,7 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 		AdminPassword: server.DatabasePassword.String(),
 	})
 
-	result, err := j.ctx.RunTaskOnServer(server, task).AsRoot().Run(ctx)
+	result, err := j.Ctx.RunTaskOnServer(server, task).AsRoot().Run(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to run get databases task: %w", err)
 	}
@@ -171,14 +169,14 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 }
 
 func (j *SyncDatabasesJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to sync databases", "server_id", j.Payload.ServerID)
+	j.Ctx.LogError(err, "Failed to sync databases", "server_id", j.Payload.ServerID)
 
-	server, findErr := repository.Find[servermodels.Server](ctx, j.ctx.DB, j.Payload.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), j.Payload.ServerID)
 	if findErr != nil {
 		return
 	}
 
-	j.ctx.BroadcastDatabaseProgress(server, "database.sync.progress", "", "failed", "Failed to sync databases from server")
+	j.Ctx.BroadcastDatabaseProgress(server, "database.sync.progress", "", "failed", "Failed to sync databases from server")
 }
 
 func filterProtectedDatabases(databases, protected []string) []string {

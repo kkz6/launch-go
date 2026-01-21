@@ -6,15 +6,15 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	"github.com/kkz6/launch-go/internal/pkg/module"
-	"github.com/kkz6/launch-go/internal/pkg/sshkey"
-	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
+	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 var jobContext *JobContext
 
 // Register initializes and registers all server job handlers.
-func Register(mux *asynq.ServeMux, deps module.Deps, repos contracts.RepositoryRegistry) {
+func Register(mux *asynq.ServeMux, deps app.Deps, repos contracts.RepositoryRegistry) {
 	providerFactory := providers.NewFactory(sshkey.NewGenerator())
 
 	jobContext = NewJobContext(
@@ -58,8 +58,8 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterHandler(mux, TypeUninstallFirewall, jobContext, NewUninstallFirewallRuleJob)
 
 	// SSH key jobs
-	pkgjobs.RegisterHandler(mux, TypeAddSshKey, jobContext, NewAddSshKeyJob)
-	pkgjobs.RegisterHandler(mux, TypeRemoveSshKey, jobContext, NewRemoveSshKeyJob)
+	pkgjobs.RegisterHandler(mux, TypeAddSSHKey, jobContext, NewAddSSHKeyJob)
+	pkgjobs.RegisterHandler(mux, TypeRemoveSSHKey, jobContext, NewRemoveSSHKeyJob)
 
 	// Service jobs
 	pkgjobs.RegisterHandler(mux, TypeAddService, jobContext, NewAddServiceJob)

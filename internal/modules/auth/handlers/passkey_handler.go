@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
@@ -45,21 +46,22 @@ func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
 	passkeyResponses := make([]PasskeyResponse, len(passkeys))
 	for i, p := range passkeys {
 		name := "Passkey"
+		createdAtStr := dto.FormatDisplayTimeOrEmpty(p.CreatedAt)
+
 		if p.Name != nil && *p.Name != "" {
 			name = *p.Name
-		} else {
-			name = "Passkey created on " + p.CreatedAt.Format("Jan 2, 2006")
+		} else if createdAtStr != "" {
+			name = "Passkey created on " + createdAtStr
 		}
 
 		resp := PasskeyResponse{
 			ID:        p.ID,
 			Name:      name,
-			CreatedAt: p.CreatedAt.Format("Jan 2, 2006"),
+			CreatedAt: createdAtStr,
 		}
 
 		if p.LastUsedAt != nil {
-			lastUsed := p.LastUsedAt.Format("Jan 2, 2006 3:04 PM")
-			resp.LastUsedAt = &lastUsed
+			resp.LastUsedAt = dto.FormatDisplayDateTime(p.LastUsedAt)
 		}
 
 		passkeyResponses[i] = resp

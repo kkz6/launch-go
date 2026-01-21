@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
@@ -45,12 +46,7 @@ func (h *Handler) List(c *fiber.Ctx) error {
 		return response.InternalError(c, "Failed to fetch servers")
 	}
 
-	result := make([]dto.ServerResponse, len(servers))
-	for i := range servers {
-		result[i] = dto.ToServerResponse(&servers[i])
-	}
-
-	return response.OK(c, "Servers retrieved", result)
+	return response.OK(c, "Servers retrieved", pkgdto.TransformSlice(servers, dto.ToServerResponse))
 }
 
 // ListArchived returns all archived servers for the team
@@ -65,12 +61,7 @@ func (h *Handler) ListArchived(c *fiber.Ctx) error {
 		return response.InternalError(c, "Failed to fetch archived servers")
 	}
 
-	result := make([]dto.ServerResponse, len(servers))
-	for i := range servers {
-		result[i] = dto.ToServerResponse(&servers[i])
-	}
-
-	return response.OK(c, "Archived servers retrieved", result)
+	return response.OK(c, "Archived servers retrieved", pkgdto.TransformSlice(servers, dto.ToServerResponse))
 }
 
 // Create creates a new server
@@ -145,7 +136,10 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.DeleteServer(c.Context(), id, teamID); err != nil {
 		return response.HandleError(c, err)
@@ -161,7 +155,10 @@ func (h *Handler) Reboot(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.RebootServer(c.Context(), id, teamID); err != nil {
 		return response.HandleError(c, err)
@@ -177,7 +174,10 @@ func (h *Handler) Connect(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.ConnectServer(c.Context(), id, teamID); err != nil {
 		return response.HandleError(c, err)
@@ -193,7 +193,10 @@ func (h *Handler) Archive(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.ArchiveServer(c.Context(), id, teamID); err != nil {
 		return response.HandleError(c, err)
@@ -209,7 +212,10 @@ func (h *Handler) Unarchive(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	if err := h.service.UnarchiveServer(c.Context(), id, teamID); err != nil {
 		return response.HandleError(c, err)
@@ -225,7 +231,10 @@ func (h *Handler) ShowPage(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	data, err := h.service.GetShowPageData(c.Context(), id, teamID)
 	if err != nil {
@@ -242,7 +251,10 @@ func (h *Handler) RunVulnerabilityAudit(c *fiber.Ctx) error {
 		return err
 	}
 
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.VulnerabilityAuditRequest](c)
 	if err != nil {
@@ -263,7 +275,10 @@ func (h *Handler) GetSiteCount(c *fiber.Ctx) error {
 		return err
 	}
 
-	serverID := c.Params("id")
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	// Verify server exists and belongs to team
 	if _, err := h.service.GetServer(c.Context(), serverID, teamID); err != nil {

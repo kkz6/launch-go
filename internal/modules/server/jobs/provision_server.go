@@ -23,26 +23,25 @@ type ProvisionServerPayload struct {
 }
 
 type ProvisionServerJob struct {
-	ctx     *JobContext
-	Payload ProvisionServerPayload
+	pkgjobs.BaseJob[*JobContext, ProvisionServerPayload]
 }
 
 func (j *ProvisionServerJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	if err := j.ctx.Repos.Server().UpdateStatus(ctx, server.ID, enums.ServerStatusProvisioning); err != nil {
+	if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, enums.ServerStatusProvisioning); err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
 	var sshKeyContents []string
 	if len(j.Payload.SSHKeyIDs) > 0 {
 		for _, keyID := range j.Payload.SSHKeyIDs {
-			key, err := j.ctx.Repos.SshKey().FindByID(ctx, keyID)
+			key, err := j.Ctx.Repos().SSHKey().FindByID(ctx, keyID)
 			if err != nil {
-				j.ctx.LogError(err, "Failed to find SSH key", "key_id", keyID)
+				j.Ctx.LogError(err, "Failed to find SSH key", "key_id", keyID)
 				continue
 			}
 			sshKeyContents = append(sshKeyContents, key.PublicKey)
@@ -72,7 +71,7 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 
 	task := tasks.ProvisionFreshServer(config)
 
-	taskModel, err := j.ctx.ForServer(server).RunTask(task).
+	taskModel, err := j.Ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		TrackInDB().
 		RunInBackground(ctx)
@@ -81,13 +80,13 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to execute provision task: %w", err)
 	}
 
-	j.ctx.LogInfo("Server provisioning started",
+	j.Ctx.LogInfo("Server provisioning started",
 		"server_id", server.ID,
 		"server_name", server.Name,
 		"task_id", taskModel.ID,
 	)
 
-	j.ctx.BroadcastServerEvent(server, "server.provisioning", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "server.provisioning", map[string]any{
 		"server_id": server.ID,
 		"status":    "provisioning",
 		"task_id":   taskModel.ID,
@@ -97,17 +96,17 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 }
 
 func (j *ProvisionServerJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to provision server",
+	j.Ctx.LogError(err, "Failed to provision server",
 		"server_id", j.Payload.ServerID,
 	)
 
-	if updateErr := j.ctx.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
-		j.ctx.LogError(updateErr, "Failed to update server status to failed")
+	if updateErr := j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
+		j.Ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 
-	server, findErr := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, findErr := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {
-		j.ctx.BroadcastServerEvent(server, "server.provision_failed", map[string]any{
+		j.Ctx.BroadcastServerEvent(server, "server.provision_failed", map[string]any{
 			"server_id": j.Payload.ServerID,
 			"error":     err.Error(),
 		})
@@ -119,8 +118,8 @@ func (j *ProvisionServerJob) Failed(ctx context.Context, err error) {
 
 // dispatchCleanupJob dispatches the cleanup job for failed provisioning
 func (j *ProvisionServerJob) dispatchCleanupJob(server *models.Server, reason string) {
-	if j.ctx.Queue == nil {
-		j.ctx.LogError(nil, "Queue not available, cannot dispatch cleanup job")
+	if j.Ctx.Queue() == nil {
+		j.Ctx.LogError(nil, "Queue not available, cannot dispatch cleanup job")
 		return
 	}
 
@@ -138,16 +137,15 @@ func (j *ProvisionServerJob) dispatchCleanupJob(server *models.Server, reason st
 		false, // Don't delete the record, keep it for debugging
 	)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to create cleanup task")
+		j.Ctx.LogError(err, "Failed to create cleanup task")
 		return
 	}
 
-	if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-		j.ctx.LogError(err, "Failed to enqueue cleanup job")
-		return
+	if err := j.Ctx.DispatchTask(task); err != nil {
+		return // Error already logged by DispatchTask
 	}
 
-	j.ctx.LogInfo("CleanupFailedProvisioning job dispatched",
+	j.Ctx.LogInfo("CleanupFailedProvisioning job dispatched",
 		"server_id", j.Payload.ServerID,
 	)
 }
@@ -155,8 +153,7 @@ func (j *ProvisionServerJob) dispatchCleanupJob(server *models.Server, reason st
 // NewProvisionServerJob creates a new ProvisionServerJob with the given context and payload.
 func NewProvisionServerJob(ctx *JobContext, payload ProvisionServerPayload) *ProvisionServerJob {
 	return &ProvisionServerJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

@@ -34,8 +34,8 @@ func TestDropboxProvider_Connect_MissingToken(t *testing.T) {
 	if err == nil {
 		t.Error("expected error for missing token")
 	}
-	if err.Error() != "Dropbox token is required" {
-		t.Errorf("error = %s, want 'Dropbox token is required'", err.Error())
+	if err.Error() != "dropbox token is required" {
+		t.Errorf("error = %s, want 'dropbox token is required'", err.Error())
 	}
 }
 
@@ -48,7 +48,7 @@ func TestDropboxProvider_Connect_Success(t *testing.T) {
 			t.Errorf("expected Authorization header 'Bearer test-token', got %s", r.Header.Get("Authorization"))
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{}`))
+		_, _ = w.Write([]byte(`{}`))
 	}))
 	defer server.Close()
 

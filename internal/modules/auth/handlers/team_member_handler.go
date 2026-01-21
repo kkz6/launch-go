@@ -11,12 +11,12 @@ import (
 
 // TeamMemberHandler handles team member management HTTP requests
 type TeamMemberHandler struct {
-	service *services.Service
+	BaseHandler
 }
 
 // NewTeamMemberHandler creates a new TeamMemberHandler instance
 func NewTeamMemberHandler(service *services.Service) *TeamMemberHandler {
-	return &TeamMemberHandler{service: service}
+	return &TeamMemberHandler{BaseHandler: NewBaseHandler(service)}
 }
 
 // InviteTeamMember invites a user to a team
@@ -32,7 +32,7 @@ func (h *TeamMemberHandler) InviteTeamMember(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.service.InviteTeamMember(c.Context(), userID, teamID, req); err != nil {
+	if err := h.Service().InviteTeamMember(c.Context(), userID, teamID, req); err != nil {
 		return response.HandleError(c, err)
 	}
 
@@ -47,7 +47,7 @@ func (h *TeamMemberHandler) AcceptTeamInvitation(c *fiber.Ctx) error {
 	}
 	invitationID := c.Params("invitationId")
 
-	if err := h.service.AcceptTeamInvitation(c.Context(), userID, invitationID); err != nil {
+	if err := h.Service().AcceptTeamInvitation(c.Context(), userID, invitationID); err != nil {
 		return response.HandleError(c, err)
 	}
 
@@ -63,7 +63,7 @@ func (h *TeamMemberHandler) CancelTeamInvitation(c *fiber.Ctx) error {
 	teamID := c.Params("teamId")
 	invitationID := c.Params("invitationId")
 
-	if err := h.service.CancelTeamInvitation(c.Context(), userID, teamID, invitationID); err != nil {
+	if err := h.Service().CancelTeamInvitation(c.Context(), userID, teamID, invitationID); err != nil {
 		return response.HandleError(c, err)
 	}
 
@@ -84,7 +84,7 @@ func (h *TeamMemberHandler) UpdateTeamMemberRole(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.service.UpdateTeamMemberRole(c.Context(), userID, teamID, targetUserID, req); err != nil {
+	if err := h.Service().UpdateTeamMemberRole(c.Context(), userID, teamID, targetUserID, req); err != nil {
 		return response.HandleError(c, err)
 	}
 
@@ -100,7 +100,7 @@ func (h *TeamMemberHandler) RemoveTeamMember(c *fiber.Ctx) error {
 	teamID := c.Params("teamId")
 	targetUserID := c.Params("userId")
 
-	if err := h.service.RemoveTeamMember(c.Context(), userID, teamID, targetUserID); err != nil {
+	if err := h.Service().RemoveTeamMember(c.Context(), userID, teamID, targetUserID); err != nil {
 		return response.HandleError(c, err)
 	}
 
@@ -111,7 +111,7 @@ func (h *TeamMemberHandler) RemoveTeamMember(c *fiber.Ctx) error {
 func (h *TeamMemberHandler) GetTeamMembers(c *fiber.Ctx) error {
 	teamID := c.Params("teamId")
 
-	allMembers, err := h.service.GetAllTeamMembers(c.Context(), teamID)
+	allMembers, err := h.Service().GetAllTeamMembers(c.Context(), teamID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -123,7 +123,7 @@ func (h *TeamMemberHandler) GetTeamMembers(c *fiber.Ctx) error {
 func (h *TeamMemberHandler) GetTeamInvitations(c *fiber.Ctx) error {
 	teamID := c.Params("teamId")
 
-	invitations, err := h.service.GetTeamInvitations(c.Context(), teamID)
+	invitations, err := h.Service().GetTeamInvitations(c.Context(), teamID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}

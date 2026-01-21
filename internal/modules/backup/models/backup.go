@@ -4,15 +4,15 @@ import (
 	"gorm.io/gorm"
 
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // Backup represents a backup configuration for a server
 type Backup struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	ServerID              string  `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
-	TeamID                string  `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
+	basemodels.ServerScopedModel
+	basemodels.TeamScopedModel
 	UserID                *string `gorm:"column:user_id;type:char(26);index" json:"user_id,omitempty"`
 	StorageProviderID     uint64  `gorm:"column:storage_provider_id;not null;index" json:"storage_provider_id"`
 	DispatchToken         string  `gorm:"column:dispatch_token;type:varchar(32);not null" json:"dispatch_token"`
@@ -38,11 +38,7 @@ func (b *Backup) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	if b.DispatchToken == "" {
-		token, err := utils.GenerateSecureToken(32)
-		if err != nil {
-			return err
-		}
-		b.DispatchToken = token
+		b.DispatchToken = security.NewTokenGenerator(32).WithEncoding(security.TokenBase64URL).MustGenerate()
 	}
 
 	if b.Retention == 0 {
@@ -68,4 +64,3 @@ func (b *Backup) GetSizeInMB() int64 {
 
 	return totalSize / 1024 / 1024
 }
-

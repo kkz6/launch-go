@@ -49,26 +49,26 @@ func (j *ExecuteScriptJob) Handle(ctx context.Context) error {
 	)
 
 	// Get execution record
-	execution, err := j.ctx.Repos.Execution().FindByID(ctx, j.Payload.ExecutionID)
+	execution, err := j.ctx.Repos().Execution().FindByID(ctx, j.Payload.ExecutionID)
 	if err != nil {
 		return fmt.Errorf("failed to find execution: %w", err)
 	}
 
 	// Get script
-	script, err := j.ctx.Repos.Script().FindByID(ctx, j.Payload.ScriptID)
+	script, err := j.ctx.Repos().Script().FindByID(ctx, j.Payload.ScriptID)
 	if err != nil {
 		return fmt.Errorf("failed to find script: %w", err)
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos().Server().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Update status to running
 	now := time.Now()
-	if err := j.ctx.Repos.Execution().UpdateFields(ctx, execution.ID, map[string]any{
+	if err := j.ctx.Repos().Execution().UpdateFields(ctx, execution.ID, map[string]any{
 		"status":     models.ExecutionStatusRunning,
 		"started_at": now,
 	}); err != nil {
@@ -121,7 +121,7 @@ func (j *ExecuteScriptJob) Handle(ctx context.Context) error {
 
 	// Update execution record with result
 	finishedAt := time.Now()
-	if updateErr := j.ctx.Repos.Execution().UpdateFields(ctx, execution.ID, map[string]any{
+	if updateErr := j.ctx.Repos().Execution().UpdateFields(ctx, execution.ID, map[string]any{
 		"status":      finalStatus,
 		"exit_code":   exitCode,
 		"output":      output,
@@ -163,7 +163,7 @@ func (j *ExecuteScriptJob) Failed(ctx context.Context, err error) {
 	errMsg := err.Error()
 
 	// Update execution status to failed
-	if updateErr := j.ctx.Repos.Execution().UpdateFields(ctx, j.Payload.ExecutionID, map[string]any{
+	if updateErr := j.ctx.Repos().Execution().UpdateFields(ctx, j.Payload.ExecutionID, map[string]any{
 		"status":      models.ExecutionStatusFailed,
 		"output":      errMsg,
 		"finished_at": time.Now(),

@@ -46,7 +46,11 @@ func (h *NotificationChannelHandler) Show(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	channel, err := h.service.GetChannel(c.Context(), channelID, teamID)
 	if err != nil {
@@ -94,7 +98,11 @@ func (h *NotificationChannelHandler) Update(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.UpdateChannelRequest](c)
 	if err != nil {
@@ -123,7 +131,11 @@ func (h *NotificationChannelHandler) Destroy(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	err = h.service.DeleteChannel(c.Context(), channelID, teamID)
 	if err != nil {
@@ -147,19 +159,20 @@ func (h *NotificationChannelHandler) Test(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
 
-	var req dto.TestChannelRequest
-	if err := c.BodyParser(&req); err != nil {
-		// If body parsing fails, use default message
-		req.Message = "This is a test notification from Launch."
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
 	}
 
-	if req.Message == "" {
-		req.Message = "This is a test notification from Launch."
+	// Parse optional request body - use default message if not provided or empty
+	req, _ := fiberctx.MustParseAndValidate[dto.TestChannelRequest](c)
+	message := "This is a test notification from Launch."
+	if req != nil && req.Message != "" {
+		message = req.Message
 	}
 
-	err = h.service.TestChannel(c.Context(), channelID, teamID, req.Message)
+	err = h.service.TestChannel(c.Context(), channelID, teamID, message)
 	if err != nil {
 		if errors.Is(err, repositories.ErrChannelNotFound) {
 			return response.NotFound(c, "Notification channel not found")
@@ -181,7 +194,11 @@ func (h *NotificationChannelHandler) SetDefault(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	err = h.service.SetChannelDefault(c.Context(), channelID, teamID)
 	if err != nil {
@@ -201,7 +218,11 @@ func (h *NotificationChannelHandler) Disconnect(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	err = h.service.DisconnectChannel(c.Context(), channelID, teamID)
 	if err != nil {
@@ -221,7 +242,11 @@ func (h *NotificationChannelHandler) Reconnect(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	channelID := c.Params("id")
+
+	channelID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	err = h.service.ReconnectChannel(c.Context(), channelID, teamID)
 	if err != nil {

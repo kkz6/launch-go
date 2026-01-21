@@ -2,14 +2,10 @@ package providers
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"time"
+	"strings"
 )
 
 const (
@@ -19,39 +15,31 @@ const (
 
 // GitLabProvider implements the Provider interface for GitLab
 type GitLabProvider struct {
-	config        *ProviderConfig
-	sourceControl *SourceControlData
-	httpClient    *http.Client
+	*BaseGitProvider
 }
 
 // NewGitLabProvider creates a new GitLab provider
 func NewGitLabProvider(config *ProviderConfig) *GitLabProvider {
+	base := NewBaseGitProvider(
+		config,
+		WithProviderType(GitProviderGitLab),
+		WithBaseURL(gitlabBaseURL),
+		WithAPIURL(gitlabAPIURL),
+	)
+
 	return &GitLabProvider{
-		config: config,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		BaseGitProvider: base,
 	}
-}
-
-// SetSourceControl sets the source control context
-func (p *GitLabProvider) SetSourceControl(sc *SourceControlData) {
-	p.sourceControl = sc
-}
-
-// GetType returns the provider type
-func (p *GitLabProvider) GetType() GitProviderType {
-	return GitProviderGitLab
 }
 
 // GetInstallationURL returns the URL to install the GitLab integration
 func (p *GitLabProvider) GetInstallationURL() (string, error) {
-	if p.config.ClientID == "" {
+	if p.Config().ClientID == "" {
 		return "", ErrProviderNotConfigured
 	}
 	// GitLab uses OAuth for integration
 	return fmt.Sprintf("%s/oauth/authorize?client_id=%s&redirect_uri=%s&response_type=code&scope=api",
-		gitlabBaseURL, p.config.ClientID, ""), nil
+		p.BaseURL(), p.Config().ClientID, ""), nil
 }
 
 // GetInstallation gets an installation by ID (for GitLab, this would be a connected account)
@@ -85,12 +73,9 @@ func (p *GitLabProvider) GetRepository(ctx context.Context, installationID, owne
 
 // ValidateWebhook validates a webhook signature
 func (p *GitLabProvider) ValidateWebhook(payload []byte, signature string) bool {
-	if p.config.WebhookSecret == "" {
-		return false
-	}
-
 	// GitLab uses X-Gitlab-Token header for validation
-	return signature == p.config.WebhookSecret
+	// Use constant-time comparison to prevent timing attacks
+	return p.VerifyTokenSignature(signature)
 }
 
 // GetCommitData extracts commit data from a webhook payload
@@ -100,12 +85,23 @@ func (p *GitLabProvider) GetCommitData(payload map[string]interface{}) *CommitDa
 
 // TestConnection tests the connection to GitLab
 func (p *GitLabProvider) TestConnection(ctx context.Context) error {
-	req, err := http.NewRequestWithContext(ctx, "GET", gitlabAPIURL+"/user", nil)
+	token, err := p.GetOAuthToken()
 	if err != nil {
-		return err
+		// If no token, just test that the API is reachable
+		resp, reqErr := p.DoRaw(ctx, http.MethodGet, "/user", "", nil)
+		if reqErr != nil {
+			return reqErr
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			body, _ := io.ReadAll(resp.Body)
+			return fmt.Errorf("connection test failed: %s", string(body))
+		}
+		return nil
 	}
 
-	resp, err := p.httpClient.Do(req)
+	resp, err := p.DoRaw(ctx, http.MethodGet, "/user", token, nil)
 	if err != nil {
 		return err
 	}
@@ -117,16 +113,6 @@ func (p *GitLabProvider) TestConnection(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// GetSSHURL returns the SSH URL for a repository
-func (p *GitLabProvider) GetSSHURL(repo string) string {
-	return fmt.Sprintf("git@gitlab.com:%s.git", repo)
-}
-
-// GetHTTPSURL returns the HTTPS URL for a repository
-func (p *GitLabProvider) GetHTTPSURL(repo string) string {
-	return fmt.Sprintf("https://gitlab.com/%s.git", repo)
 }
 
 // DeployKey deploys an SSH key to a repository
@@ -142,43 +128,7 @@ func (p *GitLabProvider) GetLastCommit(ctx context.Context, sourceControlID, rep
 // GetInstallationToken returns the OAuth access token for GitLab
 // GitLab uses OAuth tokens stored in source control data, not app installation tokens
 func (p *GitLabProvider) GetInstallationToken(ctx context.Context, installationID string) (string, error) {
-	if p.sourceControl == nil || p.sourceControl.ProviderData == nil {
-		return "", ErrAuthenticationFailed
-	}
-
-	token, ok := p.sourceControl.ProviderData["access_token"].(string)
-	if !ok || token == "" {
-		return "", ErrAuthenticationFailed
-	}
-
-	return token, nil
-}
-
-// generateSignature generates a webhook signature for testing
-func (p *GitLabProvider) generateSignature(payload []byte) string {
-	mac := hmac.New(sha256.New, []byte(p.config.WebhookSecret))
-	mac.Write(payload)
-	return hex.EncodeToString(mac.Sum(nil))
-}
-
-// makeAuthenticatedRequest makes an authenticated request to the GitLab API
-func (p *GitLabProvider) makeAuthenticatedRequest(ctx context.Context, method, url string, body io.Reader) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
-	if err != nil {
-		return nil, err
-	}
-
-	// Add authentication headers based on available credentials
-	if p.sourceControl != nil && p.sourceControl.ProviderData != nil {
-		if token, ok := p.sourceControl.ProviderData["access_token"].(string); ok {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-	}
-
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-
-	return p.httpClient.Do(req)
+	return p.GetOAuthToken()
 }
 
 // parseGitLabRepository parses a GitLab project response into a standard format
@@ -206,7 +156,7 @@ func parseGitLabRepository(project map[string]interface{}) map[string]interface{
 
 // CreateDeployment creates a deployment on GitLab
 func (p *GitLabProvider) CreateDeployment(ctx context.Context, info *DeploymentInfo) (*DeploymentResult, error) {
-	if p.sourceControl == nil {
+	if p.SourceControl() == nil {
 		return nil, nil
 	}
 
@@ -226,7 +176,7 @@ func (p *GitLabProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 	}
 
 	// Create deployment
-	url := fmt.Sprintf("%s/projects/%s/deployments", gitlabAPIURL, projectID)
+	path := fmt.Sprintf("/projects/%s/deployments", projectID)
 	body := map[string]interface{}{
 		"ref":         info.Branch,
 		"environment": environment,
@@ -236,21 +186,7 @@ func (p *GitLabProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 		body["sha"] = info.GitHash
 	}
 
-	bodyBytes, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, jsonReader(bodyBytes))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.httpClient.Do(req)
+	resp, err := p.DoRaw(ctx, http.MethodPost, path, token, body)
 	if err != nil {
 		return nil, err
 	}
@@ -261,14 +197,11 @@ func (p *GitLabProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 	}
 
 	var deploymentResp map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&deploymentResp); err != nil {
+	if err := DecodeJSON(resp, &deploymentResp); err != nil {
 		return nil, err
 	}
 
-	deploymentID := ""
-	if idFloat, ok := deploymentResp["id"].(float64); ok {
-		deploymentID = fmt.Sprintf("%.0f", idFloat)
-	}
+	deploymentID := ExtractFloatID(deploymentResp, "id")
 
 	// Remove user from data
 	delete(deploymentResp, "user")
@@ -281,21 +214,13 @@ func (p *GitLabProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 
 // UpdateDeploymentStatus updates the status of a deployment on GitLab
 func (p *GitLabProvider) UpdateDeploymentStatus(ctx context.Context, info *DeploymentInfo, vcsData map[string]interface{}, status DeploymentStatus) error {
-	if p.sourceControl == nil {
+	if p.SourceControl() == nil {
 		return nil
 	}
 
-	deploymentID, ok := vcsData["id"].(float64)
-	if !ok {
-		// Try string
-		if idStr, ok := vcsData["id"].(string); ok {
-			_, err := fmt.Sscanf(idStr, "%f", &deploymentID)
-			if err != nil {
-				return nil
-			}
-		} else {
-			return nil
-		}
+	deploymentID := ExtractFloatID(vcsData, "id")
+	if deploymentID == "" {
+		return nil
 	}
 
 	projectID := info.ProjectID
@@ -308,26 +233,12 @@ func (p *GitLabProvider) UpdateDeploymentStatus(ctx context.Context, info *Deplo
 		return nil
 	}
 
-	url := fmt.Sprintf("%s/projects/%s/deployments/%.0f", gitlabAPIURL, projectID, deploymentID)
+	path := fmt.Sprintf("/projects/%s/deployments/%s", projectID, deploymentID)
 	body := map[string]interface{}{
 		"status": status.GitLabStatus(),
 	}
 
-	bodyBytes, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "PUT", url, jsonReader(bodyBytes))
-	if err != nil {
-		return nil
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/json")
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.httpClient.Do(req)
+	resp, err := p.DoRaw(ctx, http.MethodPut, path, token, body)
 	if err != nil {
 		return nil
 	}
@@ -336,70 +247,57 @@ func (p *GitLabProvider) UpdateDeploymentStatus(ctx context.Context, info *Deplo
 	return nil
 }
 
-// jsonReader creates an io.Reader from bytes
-func jsonReader(data []byte) io.Reader {
-	return &byteReader{data: data}
-}
-
-type byteReader struct {
-	data []byte
-	pos  int
-}
-
-func (r *byteReader) Read(p []byte) (n int, err error) {
-	if r.pos >= len(r.data) {
-		return 0, io.EOF
-	}
-	n = copy(p, r.data[r.pos:])
-	r.pos += n
-	return n, nil
-}
-
-// fetchProjects fetches projects from GitLab API with pagination
-func (p *GitLabProvider) fetchProjects(ctx context.Context, accessToken string) ([]map[string]interface{}, error) {
-	var allProjects []map[string]interface{}
-	page := 1
-	perPage := 100
-
-	for {
-		url := fmt.Sprintf("%s/projects?membership=true&per_page=%d&page=%d", gitlabAPIURL, perPage, page)
-
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		req.Header.Set("Authorization", "Bearer "+accessToken)
-		req.Header.Set("Accept", "application/json")
-
-		resp, err := p.httpClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return nil, fmt.Errorf("failed to fetch projects: %s", string(body))
-		}
-
-		var projects []map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&projects); err != nil {
-			resp.Body.Close()
-			return nil, err
-		}
-		resp.Body.Close()
-
-		if len(projects) == 0 {
-			break
-		}
-
-		for _, project := range projects {
-			allProjects = append(allProjects, parseGitLabRepository(project))
-		}
-
-		page++
+// FetchProjects fetches all projects accessible to the authenticated user
+func (p *GitLabProvider) FetchProjects(ctx context.Context) ([]map[string]interface{}, error) {
+	token, err := p.GetOAuthToken()
+	if err != nil {
+		return nil, err
 	}
 
-	return allProjects, nil
+	items, err := p.FetchAllPages(
+		ctx,
+		"/projects?membership=true&per_page=100",
+		token,
+		func(response map[string]interface{}) ([]map[string]interface{}, error) {
+			// GitLab returns an array directly
+			return nil, nil
+		},
+		func(resp *http.Response, body map[string]interface{}) string {
+			// GitLab uses Link header for pagination
+			linkHeader := resp.Header.Get("Link")
+			if linkHeader == "" {
+				return ""
+			}
+
+			// Parse GitLab's Link header format
+			links := strings.Split(linkHeader, ",")
+			for _, link := range links {
+				parts := strings.Split(link, ";")
+				if len(parts) != 2 {
+					continue
+				}
+				if strings.TrimSpace(parts[1]) == `rel="next"` {
+					url := strings.TrimSpace(parts[0])
+					// Extract path from full URL
+					url = strings.Trim(url, "<>")
+					if strings.HasPrefix(url, gitlabAPIURL) {
+						return strings.TrimPrefix(url, gitlabAPIURL)
+					}
+					return url
+				}
+			}
+			return ""
+		},
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	// Parse each project
+	var projects []map[string]interface{}
+	for _, item := range items {
+		projects = append(projects, parseGitLabRepository(item))
+	}
+
+	return projects, nil
 }

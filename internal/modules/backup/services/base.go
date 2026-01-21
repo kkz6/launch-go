@@ -1,18 +1,15 @@
 package services
 
 import (
-	"gorm.io/gorm"
-
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/backup/storage"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 // ServiceDeps holds all dependencies needed for backup services.
-// Embedding service.Dependencies provides common dependencies.
+// Embedding service.ModuleDeps provides common dependencies and repository access.
 type ServiceDeps struct {
-	service.Dependencies
-	Repos *repositories.Registry
+	service.ModuleDeps[*repositories.Registry]
 
 	// Service registry - allows services to access other services
 	registry *ServiceRegistry
@@ -55,38 +52,27 @@ func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
 	return registry
 }
 
-// BaseService provides common service dependencies
+// BaseService provides common service dependencies for the backup module.
+// It wraps service.ModuleBase and adds backup-specific functionality.
 type BaseService struct {
-	service.Base
-	deps  *ServiceDeps
-	repos *repositories.Registry
+	*service.ModuleBase[*repositories.Registry]
+	serviceDeps *ServiceDeps
 }
 
 // NewBaseService creates a new base service from ServiceDeps
 func NewBaseService(deps *ServiceDeps) *BaseService {
 	return &BaseService{
-		Base:  service.NewBaseFromDeps(deps.Dependencies),
-		deps:  deps,
-		repos: deps.Repos,
+		ModuleBase:  service.NewModuleBase(&deps.ModuleDeps),
+		serviceDeps: deps,
 	}
-}
-
-// Repos returns the repository registry
-func (s *BaseService) Repos() *repositories.Registry {
-	return s.repos
-}
-
-// DB returns the database connection
-func (s *BaseService) DB() *gorm.DB {
-	return s.deps.DB
 }
 
 // ServiceDeps returns the service dependencies
 func (s *BaseService) ServiceDeps() *ServiceDeps {
-	return s.deps
+	return s.serviceDeps
 }
 
 // Services returns the service registry for accessing other services
 func (s *BaseService) Services() *ServiceRegistry {
-	return s.deps.registry
+	return s.serviceDeps.registry
 }

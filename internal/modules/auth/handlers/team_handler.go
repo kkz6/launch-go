@@ -11,12 +11,12 @@ import (
 
 // TeamHandler handles team management HTTP requests
 type TeamHandler struct {
-	service *services.Service
+	BaseHandler
 }
 
 // NewTeamHandler creates a new TeamHandler instance
 func NewTeamHandler(service *services.Service) *TeamHandler {
-	return &TeamHandler{service: service}
+	return &TeamHandler{BaseHandler: NewBaseHandler(service)}
 }
 
 // CreateTeam creates a new team
@@ -31,7 +31,7 @@ func (h *TeamHandler) CreateTeam(c *fiber.Ctx) error {
 		return err
 	}
 
-	team, err := h.service.CreateTeam(c.Context(), userID, req)
+	team, err := h.Service().CreateTeam(c.Context(), userID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -45,9 +45,13 @@ func (h *TeamHandler) GetTeam(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	teamID := c.Params("teamId")
 
-	team, members, invitations, err := h.service.GetTeamWithDetails(c.Context(), teamID)
+	teamID, err := fiberctx.GetTeamIDParam(c)
+	if err != nil {
+		return err
+	}
+
+	team, members, invitations, err := h.Service().GetTeamWithDetails(c.Context(), teamID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -65,14 +69,18 @@ func (h *TeamHandler) UpdateTeam(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	teamID := c.Params("teamId")
+
+	teamID, err := fiberctx.GetTeamIDParam(c)
+	if err != nil {
+		return err
+	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.UpdateTeamRequest](c)
 	if err != nil {
 		return err
 	}
 
-	team, err := h.service.UpdateTeam(c.Context(), userID, teamID, req)
+	team, err := h.Service().UpdateTeam(c.Context(), userID, teamID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -86,9 +94,13 @@ func (h *TeamHandler) DeleteTeam(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	teamID := c.Params("teamId")
 
-	if err := h.service.DeleteTeam(c.Context(), userID, teamID); err != nil {
+	teamID, err := fiberctx.GetTeamIDParam(c)
+	if err != nil {
+		return err
+	}
+
+	if err := h.Service().DeleteTeam(c.Context(), userID, teamID); err != nil {
 		return response.HandleError(c, err)
 	}
 
@@ -102,7 +114,7 @@ func (h *TeamHandler) GetUserTeams(c *fiber.Ctx) error {
 		return err
 	}
 
-	teams, err := h.service.GetUserTeams(c.Context(), userID)
+	teams, err := h.Service().GetUserTeams(c.Context(), userID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -124,7 +136,7 @@ func (h *TeamHandler) SwitchTeam(c *fiber.Ctx) error {
 		return err
 	}
 
-	user, err := h.service.SwitchTeam(c.Context(), userID, req.TeamID)
+	user, err := h.Service().SwitchTeam(c.Context(), userID, req.TeamID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -140,13 +152,13 @@ func (h *TeamHandler) SwitchTeamByID(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	teamID := c.Params("teamId")
 
-	if teamID == "" {
-		return response.BadRequest(c, response.MsgMissingRequiredParams)
+	teamID, err := fiberctx.GetTeamIDParam(c)
+	if err != nil {
+		return err
 	}
 
-	user, err := h.service.SwitchTeam(c.Context(), userID, teamID)
+	user, err := h.Service().SwitchTeam(c.Context(), userID, teamID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}

@@ -8,16 +8,39 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
+// Context key constants for storing and retrieving values from fiber.Ctx.Locals
+const (
+	KeyUserID   = "userID"
+	KeyTeamID   = "teamID"
+	KeyTeamRole = "teamRole"
+	KeyUser     = "user"
+	KeyTraceID  = "traceID"
+)
+
 var (
 	ErrTeamIDNotFound = errors.New("team ID not found in context")
 	ErrUserIDNotFound = errors.New("user ID not found in context")
 	ErrUserNotFound   = errors.New("user not found in context")
 )
 
+// SetUserContext sets the user ID and optional user object in the request context.
+func SetUserContext(c *fiber.Ctx, userID string, user interface{}) {
+	c.Locals(KeyUserID, userID)
+	if user != nil {
+		c.Locals(KeyUser, user)
+	}
+}
+
+// SetTeamContext sets the team ID and team role in the request context.
+func SetTeamContext(c *fiber.Ctx, teamID, teamRole string) {
+	c.Locals(KeyTeamID, teamID)
+	c.Locals(KeyTeamRole, teamRole)
+}
+
 // GetTeamID safely extracts team ID from context.
 // Returns an error if team ID is not found or empty.
 func GetTeamID(c *fiber.Ctx) (string, error) {
-	v, ok := c.Locals("teamID").(string)
+	v, ok := c.Locals(KeyTeamID).(string)
 	if !ok || v == "" {
 		return "", ErrTeamIDNotFound
 	}
@@ -38,7 +61,7 @@ func MustGetTeamID(c *fiber.Ctx) (string, error) {
 // GetUserID safely extracts user ID from context.
 // Returns an error if user ID is not found or empty.
 func GetUserID(c *fiber.Ctx) (string, error) {
-	v, ok := c.Locals("userID").(string)
+	v, ok := c.Locals(KeyUserID).(string)
 	if !ok || v == "" {
 		return "", ErrUserIDNotFound
 	}
@@ -59,7 +82,7 @@ func MustGetUserID(c *fiber.Ctx) (string, error) {
 // GetUser safely extracts full user object from context.
 // Returns nil and error if user is not found.
 func GetUser[T any](c *fiber.Ctx) (*T, error) {
-	v, ok := c.Locals("user").(*T)
+	v, ok := c.Locals(KeyUser).(*T)
 	if !ok || v == nil {
 		return nil, ErrUserNotFound
 	}
@@ -101,4 +124,24 @@ func MustGetTeamAndUserID(c *fiber.Ctx) (teamID, userID string, err error) {
 		return "", "", err
 	}
 	return teamID, userID, nil
+}
+
+// GetUserRole safely extracts team role from context.
+// Returns empty string if team role is not found.
+func GetUserRole(c *fiber.Ctx) string {
+	v, ok := c.Locals(KeyTeamRole).(string)
+	if !ok {
+		return ""
+	}
+	return v
+}
+
+// MustGetTeamRole extracts team role from context.
+// Returns "member" as default if team role is not found.
+func MustGetTeamRole(c *fiber.Ctx) string {
+	role := GetUserRole(c)
+	if role == "" {
+		return "member"
+	}
+	return role
 }

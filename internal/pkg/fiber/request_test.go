@@ -6,7 +6,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	gofiber "github.com/gofiber/fiber/v2"
 )
 
 type testRequest struct {
@@ -40,28 +40,28 @@ func TestParseAndValidate(t *testing.T) {
 			body:           `{"name":}`,
 			contentType:    "application/json",
 			expectError:    true,
-			expectedStatus: fiber.StatusBadRequest,
+			expectedStatus: gofiber.StatusBadRequest,
 		},
 		{
 			name:           "validation failure - missing required",
 			body:           `{"name":"Test"}`,
 			contentType:    "application/json",
 			expectError:    true,
-			expectedStatus: fiber.StatusUnprocessableEntity,
+			expectedStatus: gofiber.StatusUnprocessableEntity,
 		},
 		{
 			name:           "validation failure - invalid email",
 			body:           `{"name":"Test","email":"invalid"}`,
 			contentType:    "application/json",
 			expectError:    true,
-			expectedStatus: fiber.StatusUnprocessableEntity,
+			expectedStatus: gofiber.StatusUnprocessableEntity,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := fiber.New()
-			app.Post("/test", func(c *fiber.Ctx) error {
+			app := gofiber.New()
+			app.Post("/test", func(c *gofiber.Ctx) error {
 				var req testRequest
 				if err := ParseAndValidate(c, &req); err != nil {
 					return err
@@ -83,7 +83,7 @@ func TestParseAndValidate(t *testing.T) {
 					t.Errorf("Expected status %d, got %d. Body: %s", tt.expectedStatus, resp.StatusCode, body)
 				}
 			} else {
-				if resp.StatusCode != fiber.StatusOK {
+				if resp.StatusCode != gofiber.StatusOK {
 					body, _ := io.ReadAll(resp.Body)
 					t.Errorf("Expected status 200, got %d. Body: %s", resp.StatusCode, body)
 				}
@@ -93,8 +93,8 @@ func TestParseAndValidate(t *testing.T) {
 }
 
 func TestMustParseAndValidate(t *testing.T) {
-	app := fiber.New()
-	app.Post("/test", func(c *fiber.Ctx) error {
+	app := gofiber.New()
+	app.Post("/test", func(c *gofiber.Ctx) error {
 		req, err := MustParseAndValidate[testRequest](c)
 		if err != nil {
 			return err
@@ -111,15 +111,15 @@ func TestMustParseAndValidate(t *testing.T) {
 		t.Fatalf("Failed to make request: %v", err)
 	}
 
-	if resp.StatusCode != fiber.StatusOK {
+	if resp.StatusCode != gofiber.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Errorf("Expected status 200, got %d. Body: %s", resp.StatusCode, body)
 	}
 }
 
 func TestParseQuery(t *testing.T) {
-	app := fiber.New()
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app := gofiber.New()
+	app.Get("/test", func(c *gofiber.Ctx) error {
 		params, err := ParseQuery[testQueryParams](c)
 		if err != nil {
 			return err
@@ -134,7 +134,7 @@ func TestParseQuery(t *testing.T) {
 		t.Fatalf("Failed to make request: %v", err)
 	}
 
-	if resp.StatusCode != fiber.StatusOK {
+	if resp.StatusCode != gofiber.StatusOK {
 		body, _ := io.ReadAll(resp.Body)
 		t.Errorf("Expected status 200, got %d. Body: %s", resp.StatusCode, body)
 	}

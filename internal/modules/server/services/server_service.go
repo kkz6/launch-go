@@ -16,9 +16,9 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // ListServers returns all servers for a team
@@ -32,10 +32,8 @@ func (s *Service) ListArchivedServers(ctx context.Context, teamID string) ([]mod
 }
 
 // ListServersPaginated returns servers with pagination
-func (s *Service) ListServersPaginated(ctx context.Context, teamID string, page, perPage int) ([]models.Server, int64, error) {
-	offset := (page - 1) * perPage
-
-	return s.repos.Server().FindAllByTeamPaginated(ctx, teamID, perPage, offset)
+func (s *Service) ListServersPaginated(ctx context.Context, teamID string, page, perPage int) (*repository.PaginatedResult[models.Server], error) {
+	return s.repos.Server().FindAllByTeamPaginated(ctx, teamID, page, perPage)
 }
 
 // GetServer returns a server by ID
@@ -79,8 +77,6 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 	defaultUsername := "launch"
 
 	server := &models.Server{
-		TeamID:          teamID,
-		UserID:          userID,
 		Name:            req.Name,
 		Description:     req.Description,
 		Provider:        provider,
@@ -92,6 +88,8 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		PrivateKey:      basemodels.EncryptedString(privateKey),
 		PublicKey:       basemodels.EncryptedString(publicKey),
 	}
+	server.TeamID = teamID
+	server.UserID = userID
 
 	if req.SSHPort > 0 {
 		server.SSHPort = &req.SSHPort
@@ -123,13 +121,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		return nil, fmt.Errorf("failed to create server: %w", err)
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		CausedByUser(userID).
-		On(server).
-		WithEvent("created").
-		Log("Server was created")
+	activity.LogCreated(ctx, s.repos.DB(), userID, server, "Server was created")
 
 	if provider != enums.ProviderCustom {
 		if err := s.dispatchCreateOnProviderJob(server, req.CredentialID, req.SSHKeyIDs); err != nil {
@@ -167,12 +159,7 @@ func (s *Service) UpdateServer(ctx context.Context, id, teamID string, req *dto.
 		return nil, err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		On(server).
-		WithEvent("updated").
-		Log("Server was updated")
+	activity.LogEvent(ctx, s.repos.DB(), "updated", "", server, "Server was updated")
 
 	s.broadcastServerUpdate(server)
 
@@ -186,12 +173,7 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID string) error {
 		return err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		On(server).
-		WithEvent("deleted").
-		Log("Server deletion requested")
+	activity.LogEvent(ctx, s.repos.DB(), "deleted", "", server, "Server deletion requested")
 
 	if err := s.repos.Server().UpdateStatus(ctx, id, enums.ServerStatusDeleting); err != nil {
 		return err
@@ -259,18 +241,8 @@ func (s *Service) ConnectServer(ctx context.Context, id, teamID string) error {
 		return errors.New("server has no private key")
 	}
 
-	client, err := taskrunner.NewSSHClient(taskrunner.SSHConfig{
-		Host:       *server.PublicIPv4,
-		Port:       server.GetSSHPort(),
-		User:       server.RootUsername(),
-		PrivateKey: server.PrivateKey.String(),
-		Timeout:    30 * time.Second,
-	})
+	client, err := server.ConnectionAsRoot().Dial()
 	if err != nil {
-		return fmt.Errorf("failed to create SSH client: %w", err)
-	}
-
-	if err := client.Connect(); err != nil {
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 	defer client.Close()
@@ -336,9 +308,9 @@ func (s *Service) GetShowPageData(ctx context.Context, serverID, teamID string) 
 		daemons[i] = dto.ToDaemonResponse(&daemon)
 	}
 
-	sshKeys := make([]dto.SshKeyResponse, len(server.SshKeys))
-	for i, key := range server.SshKeys {
-		sshKeys[i] = dto.ToSshKeyResponse(&key)
+	sshKeys := make([]dto.SSHKeyResponse, len(server.SSHKeys))
+	for i, key := range server.SSHKeys {
+		sshKeys[i] = dto.ToSSHKeyResponse(&key)
 	}
 
 	data := &dto.ServerShowPageData{
@@ -347,7 +319,7 @@ func (s *Service) GetShowPageData(ctx context.Context, serverID, teamID string) 
 		FirewallRules:  firewallRules,
 		Crons:          crons,
 		Daemons:        daemons,
-		SshKeys:        sshKeys,
+		SSHKeys:        sshKeys,
 		RuleActions:    dto.GetAllRuleActions(),
 		HasLaunchAgent: hasLaunchAgent,
 	}
@@ -493,13 +465,7 @@ func (s *Service) RunVulnerabilityAudit(ctx context.Context, serverID, teamID, u
 		return err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		CausedByUser(userID).
-		On(server).
-		WithEvent("vulnerability_audit_started").
-		Log("Vulnerability audit was initiated")
+	activity.LogEvent(ctx, s.repos.DB(), "vulnerability_audit_started", userID, server, "Vulnerability audit was initiated")
 
 	return s.EnqueueTask(task)
 }

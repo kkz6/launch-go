@@ -20,22 +20,20 @@ type DisableLaravelInertiaPayload struct {
 
 // DisableLaravelInertiaJob disables Inertia SSR for a Laravel site
 type DisableLaravelInertiaJob struct {
-	ctx     *JobContext
-	Payload DisableLaravelInertiaPayload
+	pkgjobs.BaseJob[*JobContext, DisableLaravelInertiaPayload]
 }
 
 // NewDisableLaravelInertiaJob creates a new DisableLaravelInertiaJob
 func NewDisableLaravelInertiaJob(ctx *JobContext, payload DisableLaravelInertiaPayload) *DisableLaravelInertiaJob {
 	return &DisableLaravelInertiaJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the disable Inertia job
 func (j *DisableLaravelInertiaJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
@@ -43,19 +41,19 @@ func (j *DisableLaravelInertiaJob) Handle(ctx context.Context) error {
 	// Check if Inertia is enabled
 	feature := site.GetEnabledFeature("inertia")
 	if feature == nil || feature.QueueID == nil {
-		j.ctx.LogInfo("Inertia SSR not enabled, nothing to disable", "site_id", site.ID)
+		j.Ctx.LogInfo("Inertia SSR not enabled, nothing to disable", "site_id", site.ID)
 		return nil
 	}
 
 	queueID := *feature.QueueID
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Disabling Laravel Inertia SSR",
+	j.Ctx.LogInfo("Disabling Laravel Inertia SSR",
 		"site_id", site.ID,
 		"server_id", server.ID,
 		"queue_id", queueID,
@@ -63,32 +61,32 @@ func (j *DisableLaravelInertiaJob) Handle(ctx context.Context) error {
 
 	// Dispatch UninstallQueue job
 	if err := j.dispatchUninstallQueue(queueID, site.ID); err != nil {
-		j.ctx.LogError(err, "Failed to dispatch uninstall queue job")
+		j.Ctx.LogError(err, "Failed to dispatch uninstall queue job")
 		// Continue to update the site's features even if dispatch fails
 	}
 
 	// Delete the queue record
-	if err := j.ctx.QueueRepo.Delete(ctx, queueID); err != nil {
-		j.ctx.LogError(err, "Failed to delete queue record", "queue_id", queueID)
+	if err := j.Ctx.QueueRepo.Delete(ctx, queueID); err != nil {
+		j.Ctx.LogError(err, "Failed to delete queue record", "queue_id", queueID)
 	}
 
 	// Update site's enabled_features
 	site.RemoveEnabledFeature("inertia")
 	site.RemovePendingFeature("inertia")
 
-	if err := j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+	if err := j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
 		"enabled_features": site.EnabledFeatures,
 		"pending_features": site.PendingFeatures,
 	}); err != nil {
-		j.ctx.LogError(err, "Failed to update site enabled_features")
+		j.Ctx.LogError(err, "Failed to update site enabled_features")
 	}
 
 	// Broadcast success
-	j.ctx.BroadcastServerEvent(server, "site.inertia_disabled", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "site.inertia_disabled", map[string]interface{}{
 		"site_id": site.ID,
 	})
 
-	j.ctx.LogInfo("Laravel Inertia SSR disabled successfully",
+	j.Ctx.LogInfo("Laravel Inertia SSR disabled successfully",
 		"site_id", site.ID,
 	)
 
@@ -97,7 +95,7 @@ func (j *DisableLaravelInertiaJob) Handle(ctx context.Context) error {
 
 // dispatchUninstallQueue dispatches the UninstallQueue job
 func (j *DisableLaravelInertiaJob) dispatchUninstallQueue(queueID, siteID string) error {
-	if j.ctx.Queue == nil {
+	if j.Ctx.Queue() == nil {
 		return fmt.Errorf("queue client not available")
 	}
 
@@ -105,22 +103,20 @@ func (j *DisableLaravelInertiaJob) dispatchUninstallQueue(queueID, siteID string
 	if err != nil {
 		return err
 	}
-
-	_, err = j.ctx.Queue.Enqueue(task)
-	return err
+	return j.Ctx.DispatchTask(task)
 }
 
 // Failed handles job failure
 func (j *DisableLaravelInertiaJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to disable Laravel Inertia SSR",
+	j.Ctx.LogError(err, "Failed to disable Laravel Inertia SSR",
 		"site_id", j.Payload.SiteID,
 	)
 
 	// Remove from pending features
-	site, findErr := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, findErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if findErr == nil {
 		site.RemovePendingFeature("inertia")
-		_ = j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+		_ = j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
 			"pending_features": site.PendingFeatures,
 		})
 	}

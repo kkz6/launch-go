@@ -3,6 +3,8 @@ package providers
 import (
 	"regexp"
 	"strings"
+
+	"github.com/kkz6/launch-go/internal/modules/git/gitref"
 )
 
 // GitProviderType represents the type of git provider (for provider operations)
@@ -29,7 +31,12 @@ func (p GitProviderType) Label() string {
 	case GitProviderBitbucket:
 		return "Bitbucket"
 	default:
-		return strings.Title(string(p))
+		// Capitalize first letter for unknown providers
+		s := string(p)
+		if len(s) == 0 {
+			return s
+		}
+		return strings.ToUpper(s[:1]) + s[1:]
 	}
 }
 
@@ -231,7 +238,7 @@ func CommitDataFromGitHubPayload(data map[string]interface{}) *CommitData {
 	url, _ := headCommit["url"].(string)
 
 	ref, _ := data["ref"].(string)
-	branch := strings.TrimPrefix(ref, "refs/heads/")
+	branch := gitref.ExtractBranchName(ref)
 
 	return &CommitData{
 		CommitID: commitID,
@@ -274,7 +281,7 @@ func CommitDataFromGitLabPayload(data map[string]interface{}) *CommitData {
 	url, _ := firstCommit["url"].(string)
 
 	ref, _ := data["ref"].(string)
-	branch := strings.TrimPrefix(ref, "refs/heads/")
+	branch := gitref.ExtractBranchName(ref)
 
 	return &CommitData{
 		CommitID: commitID,
@@ -421,16 +428,16 @@ func (s DeploymentStatus) GitLabStatus() string {
 
 // DeploymentInfo contains information for creating a deployment on the git provider
 type DeploymentInfo struct {
-	ServerID       string
-	SiteID         string
-	DeploymentID   string
-	RepoFullName   string
-	Branch         string
-	GitHash        string
-	SiteURL        string
-	Environment    string
-	Description    string
-	ProjectID      string // For GitLab (numeric project ID from additional_data)
+	ServerID     string
+	SiteID       string
+	DeploymentID string
+	RepoFullName string
+	Branch       string
+	GitHash      string
+	SiteURL      string
+	Environment  string
+	Description  string
+	ProjectID    string // For GitLab (numeric project ID from additional_data)
 }
 
 // DeploymentResult contains the result of creating a deployment on the git provider

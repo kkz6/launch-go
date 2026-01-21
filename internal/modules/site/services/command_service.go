@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
@@ -34,26 +36,21 @@ func (s *CommandService) Create(ctx context.Context, siteID, serverID, userID st
 	}
 
 	cmd := &models.Command{
-		SiteID:  site.ID,
-		TeamID:  site.TeamID,
-		UserID:  userID,
 		Command: req.Command,
 		Status:  enums.CommandStatusPending,
 	}
+	cmd.SiteID = site.ID
+	cmd.TeamID = site.TeamID
+	cmd.UserID = userID
 
 	if err := s.Repos().Command().Create(ctx, cmd); err != nil {
 		return nil, err
 	}
 
 	// Dispatch command execution job
-	task, err := jobs.NewRunCommandTask(site.ID, cmd.ID)
-	if err != nil {
-		s.LogError(err, "Failed to create run command task", "command_id", cmd.ID)
-	} else if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue run command task", "command_id", cmd.ID)
-	}
-
-	s.LogInfo("Command created", "site_id", site.ID, "command_id", cmd.ID)
+	s.DispatchTask("RunCommand", func() (*asynq.Task, error) {
+		return jobs.NewRunCommandTask(site.ID, cmd.ID)
+	}, "site_id", site.ID, "command_id", cmd.ID)
 
 	return cmd, nil
 }

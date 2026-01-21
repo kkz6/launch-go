@@ -2,12 +2,8 @@ package providers
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
-	"time"
 )
 
 const (
@@ -16,19 +12,23 @@ const (
 
 // DigitalOceanProvider implements the Provider interface for DigitalOcean
 type DigitalOceanProvider struct {
-	BaseProvider
-	httpClient *http.Client
+	*HTTPBaseProvider
 }
 
 // NewDigitalOceanProvider creates a new DigitalOceanProvider
 func NewDigitalOceanProvider(credentials map[string]string) *DigitalOceanProvider {
-	p := &DigitalOceanProvider{
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+	token := ""
+	if credentials != nil {
+		token = credentials["token"]
 	}
-	p.SetCredentials(credentials)
-	return p
+
+	return &DigitalOceanProvider{
+		HTTPBaseProvider: NewHTTPBaseProvider(HTTPBaseConfig{
+			BaseURL:      digitalOceanAPIBaseURL,
+			ProviderName: "DigitalOcean",
+			Token:        token,
+		}),
+	}
 }
 
 // Name returns the provider name
@@ -38,39 +38,28 @@ func (p *DigitalOceanProvider) Name() string {
 
 // SetDomain sets the domain to operate on
 func (p *DigitalOceanProvider) SetDomain(domain string) Provider {
-	p.BaseProvider.SetDomain(domain)
+	p.HTTPBaseProvider.SetDomain(domain)
 	return p
 }
 
 // GetDomain returns the current domain
 func (p *DigitalOceanProvider) GetDomain() string {
-	return p.BaseProvider.GetDomain()
+	return p.HTTPBaseProvider.GetDomain()
 }
 
 // SetCredentials sets the provider credentials
 func (p *DigitalOceanProvider) SetCredentials(credentials map[string]string) Provider {
-	p.BaseProvider.SetCredentials(credentials)
+	p.HTTPBaseProvider.SetCredentials(credentials)
+	if token := credentials["token"]; token != "" {
+		p.SetToken(token)
+	}
 	return p
 }
 
 // ValidateCredentials validates the DigitalOcean API token
 func (p *DigitalOceanProvider) ValidateCredentials(ctx context.Context) error {
-	req, err := p.newRequest(ctx, http.MethodGet, "/account", nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return NewProviderError("DigitalOcean", 0, "failed to validate credentials", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return p.parseErrorResponse(resp)
-	}
-
-	return nil
+	var result map[string]interface{}
+	return p.Get(ctx, "/account", &result)
 }
 
 // AddDomain adds a new domain to DigitalOcean
@@ -89,24 +78,9 @@ func (p *DigitalOceanProvider) AddDomain(ctx context.Context, domainName string)
 		"name": domainName,
 	}
 
-	body, err := json.Marshal(payload)
-	if err != nil {
+	var result map[string]interface{}
+	if err := p.Post(ctx, "/domains", payload, &result); err != nil {
 		return "", err
-	}
-
-	req, err := p.newRequest(ctx, http.MethodPost, "/domains", strings.NewReader(string(body)))
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return "", NewProviderError("DigitalOcean", 0, "failed to add domain", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return "", p.parseErrorResponse(resp)
 	}
 
 	return domainName, nil
@@ -126,43 +100,14 @@ func (p *DigitalOceanProvider) DeleteDomain(ctx context.Context, domainName stri
 		return NewProviderError("DigitalOcean", 404, fmt.Sprintf("domain not found for %s", domainName), nil)
 	}
 
-	req, err := p.newRequest(ctx, http.MethodDelete, fmt.Sprintf("/domains/%s", domainName), nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return NewProviderError("DigitalOcean", 0, "failed to delete domain", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		return p.parseErrorResponse(resp)
-	}
-
-	return nil
+	var result interface{}
+	return p.Delete(ctx, fmt.Sprintf("/domains/%s", domainName), &result)
 }
 
 // ListDomains lists all domains in DigitalOcean
 func (p *DigitalOceanProvider) ListDomains(ctx context.Context) (map[string]string, error) {
-	req, err := p.newRequest(ctx, http.MethodGet, "/domains?per_page=200", nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return nil, NewProviderError("DigitalOcean", 0, "failed to list domains", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, p.parseErrorResponse(resp)
-	}
-
 	var result doDomainsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := p.GetWithQuery(ctx, "/domains", map[string]string{"per_page": "200"}, &result); err != nil {
 		return nil, err
 	}
 
@@ -187,23 +132,9 @@ func (p *DigitalOceanProvider) GetNameservers(ctx context.Context) ([]string, er
 
 // ListRecords lists all DNS records for the current domain
 func (p *DigitalOceanProvider) ListRecords(ctx context.Context) ([]ProviderRecord, error) {
-	req, err := p.newRequest(ctx, http.MethodGet, fmt.Sprintf("/domains/%s/records?per_page=200", p.domain), nil)
-	if err != nil {
-		return nil, err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return nil, NewProviderError("DigitalOcean", 0, "failed to list records", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, p.parseErrorResponse(resp)
-	}
-
 	var result doRecordsResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	path := fmt.Sprintf("/domains/%s/records", p.GetDomain())
+	if err := p.GetWithQuery(ctx, path, map[string]string{"per_page": "200"}, &result); err != nil {
 		return nil, err
 	}
 
@@ -256,56 +187,13 @@ func (p *DigitalOceanProvider) ListRecords(ctx context.Context) ([]ProviderRecor
 }
 
 // AddRecord adds a DNS record to DigitalOcean
-func (p *DigitalOceanProvider) AddRecord(ctx context.Context, record *DnsRecord) (string, error) {
-	data := map[string]interface{}{
-		"type": record.Type.String(),
-		"name": record.Name,
-		"data": p.prepValue(record),
-		"ttl":  record.TTL,
-	}
+func (p *DigitalOceanProvider) AddRecord(ctx context.Context, record *DNSRecord) (string, error) {
+	data := BuildRecordData(record)
+	data["data"] = p.prepValue(record)
 
-	if record.Priority != nil {
-		data["priority"] = *record.Priority
-	}
-
-	if record.Weight != nil {
-		data["weight"] = *record.Weight
-	}
-
-	if record.Port != nil {
-		data["port"] = *record.Port
-	}
-
-	if record.Flags != nil {
-		data["flags"] = *record.Flags
-	}
-
-	if record.Tag != nil {
-		data["tag"] = *record.Tag
-	}
-
-	body, err := json.Marshal(data)
-	if err != nil {
-		return "", err
-	}
-
-	req, err := p.newRequest(ctx, http.MethodPost, fmt.Sprintf("/domains/%s/records", p.domain), strings.NewReader(string(body)))
-	if err != nil {
-		return "", err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return "", NewProviderError("DigitalOcean", 0, "failed to add record", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return "", p.parseErrorResponse(resp)
-	}
-
+	path := fmt.Sprintf("/domains/%s/records", p.GetDomain())
 	var result doRecordResponse
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := p.Post(ctx, path, data, &result); err != nil {
 		return "", err
 	}
 
@@ -313,100 +201,43 @@ func (p *DigitalOceanProvider) AddRecord(ctx context.Context, record *DnsRecord)
 }
 
 // UpdateRecord updates a DNS record in DigitalOcean
-func (p *DigitalOceanProvider) UpdateRecord(ctx context.Context, record *DnsRecord) error {
-	data := map[string]interface{}{
-		"type": record.Type.String(),
-		"name": record.Name,
-		"data": p.prepValue(record),
-		"ttl":  record.TTL,
-	}
+func (p *DigitalOceanProvider) UpdateRecord(ctx context.Context, record *DNSRecord) error {
+	data := BuildRecordData(record)
+	data["data"] = p.prepValue(record)
 
-	if record.Priority != nil {
-		data["priority"] = *record.Priority
-	}
-
-	if record.Weight != nil {
-		data["weight"] = *record.Weight
-	}
-
-	if record.Port != nil {
-		data["port"] = *record.Port
-	}
-
-	if record.Flags != nil {
-		data["flags"] = *record.Flags
-	}
-
-	if record.Tag != nil {
-		data["tag"] = *record.Tag
-	}
-
-	body, err := json.Marshal(data)
-	if err != nil {
-		return err
-	}
-
-	req, err := p.newRequest(ctx, http.MethodPut, fmt.Sprintf("/domains/%s/records/%s", p.domain, record.ProviderID), strings.NewReader(string(body)))
-	if err != nil {
-		return err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return NewProviderError("DigitalOcean", 0, "failed to update record", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return p.parseErrorResponse(resp)
-	}
-
-	return nil
+	path := fmt.Sprintf("/domains/%s/records/%s", p.GetDomain(), record.ProviderID)
+	var result interface{}
+	return p.Put(ctx, path, data, &result)
 }
 
 // DeleteRecord deletes a DNS record from DigitalOcean
-func (p *DigitalOceanProvider) DeleteRecord(ctx context.Context, record *DnsRecord) error {
-	req, err := p.newRequest(ctx, http.MethodDelete, fmt.Sprintf("/domains/%s/records/%s", p.domain, record.ProviderID), nil)
-	if err != nil {
-		return err
-	}
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return NewProviderError("DigitalOcean", 0, "failed to delete record", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
-		return p.parseErrorResponse(resp)
-	}
-
-	return nil
+func (p *DigitalOceanProvider) DeleteRecord(ctx context.Context, record *DNSRecord) error {
+	path := fmt.Sprintf("/domains/%s/records/%s", p.GetDomain(), record.ProviderID)
+	var result interface{}
+	return p.Delete(ctx, path, &result)
 }
 
 // getExistingDomain checks if a domain exists
 func (p *DigitalOceanProvider) getExistingDomain(ctx context.Context) (map[string]interface{}, error) {
-	req, err := p.newRequest(ctx, http.MethodGet, fmt.Sprintf("/domains/%s", p.domain), nil)
+	path := fmt.Sprintf("/domains/%s", p.GetDomain())
+	resp, err := p.DoRaw(ctx, "GET", path, nil)
 	if err != nil {
+		// Check for 404 Not Found
+		if providerErr, ok := err.(*ProviderError); ok && providerErr.Code == 404 {
+			return nil, nil
+		}
 		return nil, err
 	}
 
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return nil, NewProviderError("DigitalOcean", 0, "failed to get domain", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode == http.StatusNotFound {
-		return nil, nil
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, p.parseErrorResponse(resp)
+	if !resp.IsSuccess() {
+		if resp.StatusCode == 404 {
+			return nil, nil
+		}
+		return nil, NewProviderError("DigitalOcean", resp.StatusCode, resp.String(), nil)
 	}
 
 	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := resp.JSON(&result); err != nil {
 		return nil, err
 	}
 
@@ -418,41 +249,11 @@ func (p *DigitalOceanProvider) getExistingDomain(ctx context.Context) (map[strin
 }
 
 // prepValue prepares a record value for DigitalOcean
-func (p *DigitalOceanProvider) prepValue(record *DnsRecord) string {
+func (p *DigitalOceanProvider) prepValue(record *DNSRecord) string {
 	if record.Type == RecordTypeCNAME {
 		return WithTrailingDot(record.Value)
 	}
 	return record.Value
-}
-
-// newRequest creates a new HTTP request with DigitalOcean authentication
-func (p *DigitalOceanProvider) newRequest(ctx context.Context, method, path string, body io.Reader) (*http.Request, error) {
-	url := digitalOceanAPIBaseURL + path
-	req, err := http.NewRequestWithContext(ctx, method, url, body)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+p.GetToken())
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-
-	return req, nil
-}
-
-// parseErrorResponse parses an error response from DigitalOcean
-func (p *DigitalOceanProvider) parseErrorResponse(resp *http.Response) error {
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return NewProviderError("DigitalOcean", resp.StatusCode, "failed to read error response", err)
-	}
-
-	var result doErrorResponse
-	if err := json.Unmarshal(body, &result); err == nil && result.Message != "" {
-		return NewProviderError("DigitalOcean", resp.StatusCode, result.Message, nil)
-	}
-
-	return NewProviderError("DigitalOcean", resp.StatusCode, string(body), nil)
 }
 
 // DigitalOcean response types
@@ -485,9 +286,4 @@ type doRecord struct {
 	Weight   int    `json:"weight,omitempty"`
 	Port     int    `json:"port,omitempty"`
 	Flags    int    `json:"flags,omitempty"`
-}
-
-type doErrorResponse struct {
-	ID      string `json:"id"`
-	Message string `json:"message"`
 }

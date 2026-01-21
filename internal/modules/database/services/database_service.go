@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/database/dto"
 	"github.com/kkz6/launch-go/internal/modules/database/jobs"
 	"github.com/kkz6/launch-go/internal/modules/database/models"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 // CreateDatabase creates a new database on a server
@@ -24,24 +26,20 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 
 	// Create database record
 	database := &models.Database{
-		ServerID: serverID,
-		TeamID:   teamID,
-		Name:     req.Name,
+		Name: req.Name,
 	}
+	database.ServerID = serverID
+	database.TeamID = teamID
 
 	if err := s.repos.Database().Create(ctx, database); err != nil {
 		return nil, fmt.Errorf("failed to create database: %w", err)
 	}
 
-	logger := activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("database").
-		On(database).
-		WithEvent("created")
+	uid := ""
 	if userID != nil {
-		logger.CausedByUser(*userID)
+		uid = *userID
 	}
-	logger.Log("Database was created")
+	activity.LogEvent(ctx, s.repos.DB(), "created", uid, database, "Database was created")
 
 	// Attach root user if exists
 	s.attachRootUser(ctx, serverID, database.ID)
@@ -51,7 +49,8 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 		existingUser, err := s.repos.User().FindByIDAndServer(ctx, *req.ExistingUserID, serverID)
 		if err != nil {
 			s.LogWarn("Failed to find existing user", "user_id", *req.ExistingUserID, "error", err)
-		} else {
+		}
+		if err == nil {
 			if err := s.repos.Database().AttachUser(ctx, database.ID, existingUser.ID); err != nil {
 				s.LogError(err, "Failed to attach existing user to database")
 			}
@@ -82,11 +81,11 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 
 	// Create database user
 	dbUser := &models.DatabaseUser{
-		ServerID: serverID,
-		TeamID:   teamID,
 		Name:     req.UserName,
 		Password: &req.UserPassword,
 	}
+	dbUser.ServerID = serverID
+	dbUser.TeamID = teamID
 
 	if err := s.repos.User().Create(ctx, dbUser); err != nil {
 		return nil, fmt.Errorf("failed to create database user: %w", err)
@@ -124,15 +123,11 @@ func (s *Service) DeleteDatabase(ctx context.Context, id, serverID, teamID strin
 		return ErrDatabaseBeingUninstalled
 	}
 
-	logger := activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("database").
-		On(database).
-		WithEvent("deleted")
+	uid := ""
 	if userID != nil {
-		logger.CausedByUser(*userID)
+		uid = *userID
 	}
-	logger.Log("Database deletion requested")
+	activity.LogEvent(ctx, s.repos.DB(), "deleted", uid, database, "Database deletion requested")
 
 	// Mark as uninstalling
 	database.MarkAsUninstalling()
@@ -190,89 +185,35 @@ func (s *Service) attachRootUser(ctx context.Context, serverID, databaseID strin
 }
 
 func (s *Service) dispatchCreateDatabase(ctx context.Context, database *models.Database, userID *string) {
-	if !s.HasQueue() {
-		return
-	}
-
-	task, err := jobs.NewInstallDatabaseTask(database.ID, userID)
-	if err != nil {
-		s.LogError(err, "Failed to create install database task", "database_id", database.ID)
-		return
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue install database job", "database_id", database.ID)
-	}
+	s.DispatchTask("InstallDatabase", func() (*asynq.Task, error) {
+		return jobs.NewInstallDatabaseTask(database.ID, userID)
+	}, "database_id", database.ID)
 }
 
 func (s *Service) dispatchCreateDatabaseWithExistingUser(ctx context.Context, database *models.Database, user *models.DatabaseUser, userID *string) {
-	if !s.HasQueue() {
-		return
-	}
-
 	// Create database first, then update user permissions
-	installTask, err := jobs.NewInstallDatabaseTask(database.ID, userID)
-	if err != nil {
-		s.LogError(err, "Failed to create install database task", "database_id", database.ID)
-		return
-	}
+	s.DispatchTask("InstallDatabase", func() (*asynq.Task, error) {
+		return jobs.NewInstallDatabaseTask(database.ID, userID)
+	}, "database_id", database.ID)
 
-	if err := s.EnqueueTask(installTask); err != nil {
-		s.LogError(err, "Failed to enqueue install database job", "database_id", database.ID)
-	}
-
-	// Update user permissions
-	updateTask, err := jobs.NewUpdateDatabaseUserTask(user.ID, nil, userID)
-	if err != nil {
-		s.LogError(err, "Failed to create update user task", "user_id", user.ID)
-		return
-	}
-
-	if err := s.EnqueueTask(updateTask); err != nil {
-		s.LogError(err, "Failed to enqueue update user job", "user_id", user.ID)
-	}
+	s.DispatchTask("UpdateDatabaseUser", func() (*asynq.Task, error) {
+		return jobs.NewUpdateDatabaseUserTask(user.ID, nil, userID)
+	}, "user_id", user.ID)
 }
 
 func (s *Service) dispatchCreateDatabaseWithNewUser(ctx context.Context, database *models.Database, user *models.DatabaseUser, password string, userID *string) {
-	if !s.HasQueue() {
-		return
-	}
+	// Create database first, then create user
+	s.DispatchTask("InstallDatabase", func() (*asynq.Task, error) {
+		return jobs.NewInstallDatabaseTask(database.ID, userID)
+	}, "database_id", database.ID)
 
-	// Create database first
-	installDbTask, err := jobs.NewInstallDatabaseTask(database.ID, userID)
-	if err != nil {
-		s.LogError(err, "Failed to create install database task", "database_id", database.ID)
-		return
-	}
-
-	if err := s.EnqueueTask(installDbTask); err != nil {
-		s.LogError(err, "Failed to enqueue install database job", "database_id", database.ID)
-	}
-
-	// Then create user
-	installUserTask, err := jobs.NewInstallDatabaseUserTask(user.ID, password, userID)
-	if err != nil {
-		s.LogError(err, "Failed to create install user task", "user_id", user.ID)
-		return
-	}
-
-	if err := s.EnqueueTask(installUserTask); err != nil {
-		s.LogError(err, "Failed to enqueue install user job", "user_id", user.ID)
-	}
+	s.DispatchTask("InstallDatabaseUser", func() (*asynq.Task, error) {
+		return jobs.NewInstallDatabaseUserTask(user.ID, password, userID)
+	}, "user_id", user.ID)
 }
 
 func (s *Service) dispatchDeleteDatabase(ctx context.Context, database *models.Database, userID *string) {
-	if !s.HasQueue() {
-		return
-	}
-
-	task, err := jobs.NewUninstallDatabaseTask(database.ID, userID)
-	if err != nil {
-		s.LogError(err, "Failed to create uninstall database task", "database_id", database.ID)
-		return
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue uninstall database job", "database_id", database.ID)
-	}
+	s.DispatchTask("UninstallDatabase", func() (*asynq.Task, error) {
+		return jobs.NewUninstallDatabaseTask(database.ID, userID)
+	}, "database_id", database.ID)
 }

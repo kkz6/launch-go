@@ -16,7 +16,7 @@ type Registry struct {
 	firewallRule   *FirewallRuleRepository
 	cron           *CronRepository
 	daemon         *DaemonRepository
-	sshKey         *SshKeyRepository
+	sshKey         *SSHKeyRepository
 	task           *TaskRepository
 	metric         *MetricRepository
 	serverProvider *ServerProviderRepository
@@ -32,7 +32,7 @@ func NewRegistry(db *gorm.DB) *Registry {
 		firewallRule:   NewFirewallRuleRepository(db),
 		cron:           NewCronRepository(db),
 		daemon:         NewDaemonRepository(db),
-		sshKey:         NewSshKeyRepository(db),
+		sshKey:         NewSSHKeyRepository(db),
 		task:           NewTaskRepository(db),
 		metric:         NewMetricRepository(db),
 		serverProvider: NewServerProviderRepository(db),
@@ -55,8 +55,8 @@ func (r *Registry) Cron() contracts.CronRepository { return r.cron }
 // Daemon returns the daemon repository
 func (r *Registry) Daemon() contracts.DaemonRepository { return r.daemon }
 
-// SshKey returns the SSH key repository
-func (r *Registry) SshKey() contracts.SshKeyRepository { return r.sshKey }
+// SSHKey returns the SSH key repository
+func (r *Registry) SSHKey() contracts.SSHKeyRepository { return r.sshKey }
 
 // Task returns the task repository
 func (r *Registry) Task() contracts.TaskRepository { return r.task }

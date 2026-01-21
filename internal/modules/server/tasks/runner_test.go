@@ -121,16 +121,17 @@ func createTestServer() *models.Server {
 	ip := "192.168.1.100"
 	privateKey := "-----BEGIN OPENSSH PRIVATE KEY-----\ntest-key\n-----END OPENSSH PRIVATE KEY-----"
 
-	return &models.Server{
+	server := &models.Server{
 		BaseModel: basemodels.BaseModel{
 			ID: "test-server-123",
 		},
-		TeamID:     "test-team-123",
-		UserID:     "test-user-123",
 		Name:       "Test Server",
 		PublicIPv4: &ip,
 		PrivateKey: basemodels.EncryptedString(privateKey),
 	}
+	server.TeamID = "test-team-123"
+	server.UserID = "test-user-123"
+	return server
 }
 
 func createTestTask() *mockTask {

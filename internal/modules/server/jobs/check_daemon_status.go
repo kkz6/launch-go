@@ -20,32 +20,30 @@ type CheckDaemonStatusPayload struct {
 // CheckDaemonStatusJob checks the status of all daemons on a server
 // This is typically triggered by a scheduled command
 type CheckDaemonStatusJob struct {
-	ctx     *JobContext
-	Payload CheckDaemonStatusPayload
+	pkgjobs.BaseJob[*JobContext, CheckDaemonStatusPayload]
 }
 
 // NewCheckDaemonStatusJob creates a new CheckDaemonStatusJob
 func NewCheckDaemonStatusJob(ctx *JobContext, payload CheckDaemonStatusPayload) *CheckDaemonStatusJob {
 	return &CheckDaemonStatusJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the daemon status check job
 // This job delegates to SyncDaemons for the actual work
 func (j *CheckDaemonStatusJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Checking daemon status",
+	j.Ctx.LogInfo("Checking daemon status",
 		"server_id", server.ID,
 	)
 
 	// Create and execute the sync daemons job directly
-	syncJob := NewSyncDaemonsJob(j.ctx, SyncDaemonsPayload{
+	syncJob := NewSyncDaemonsJob(j.Ctx, SyncDaemonsPayload{
 		ServerID: j.Payload.ServerID,
 		UserID:   j.Payload.UserID,
 	})
@@ -54,7 +52,7 @@ func (j *CheckDaemonStatusJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to sync daemon status: %w", err)
 	}
 
-	j.ctx.LogInfo("Daemon status check completed",
+	j.Ctx.LogInfo("Daemon status check completed",
 		"server_id", server.ID,
 	)
 
@@ -63,7 +61,7 @@ func (j *CheckDaemonStatusJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *CheckDaemonStatusJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Daemon status check failed",
+	j.Ctx.LogError(err, "Daemon status check failed",
 		"server_id", j.Payload.ServerID,
 	)
 }

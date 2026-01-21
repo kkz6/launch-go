@@ -11,22 +11,22 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
-// DnsRecordHandler handles HTTP requests for DNS records
-type DnsRecordHandler struct {
-	recordService *services.DnsRecordService
+// DNSRecordHandler handles HTTP requests for DNS records
+type DNSRecordHandler struct {
+	recordService *services.DNSRecordService
 	domainService *services.DomainService
 }
 
-// NewDnsRecordHandler creates a new DnsRecordHandler instance
-func NewDnsRecordHandler(recordService *services.DnsRecordService, domainService *services.DomainService) *DnsRecordHandler {
-	return &DnsRecordHandler{
+// NewDNSRecordHandler creates a new DNSRecordHandler instance
+func NewDNSRecordHandler(recordService *services.DNSRecordService, domainService *services.DomainService) *DNSRecordHandler {
+	return &DNSRecordHandler{
 		recordService: recordService,
 		domainService: domainService,
 	}
 }
 
 // ListRecords lists all DNS records for a domain
-func (h *DnsRecordHandler) ListRecords(c *fiber.Ctx) error {
+func (h *DNSRecordHandler) ListRecords(c *fiber.Ctx) error {
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
@@ -45,14 +45,14 @@ func (h *DnsRecordHandler) ListRecords(c *fiber.Ctx) error {
 }
 
 // CreateRecord creates a new DNS record
-func (h *DnsRecordHandler) CreateRecord(c *fiber.Ctx) error {
+func (h *DNSRecordHandler) CreateRecord(c *fiber.Ctx) error {
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
 	domainID := c.Params("id")
 
-	req, err := fiberctx.MustParseAndValidate[dto.CreateDnsRecordRequest](c)
+	req, err := fiberctx.MustParseAndValidate[dto.CreateDNSRecordRequest](c)
 	if err != nil {
 		return err
 	}
@@ -65,11 +65,11 @@ func (h *DnsRecordHandler) CreateRecord(c *fiber.Ctx) error {
 		return response.HandleError(c, err)
 	}
 
-	return response.Created(c, "Record created", dto.ToDnsRecordResponse(record))
+	return response.Created(c, "Record created", dto.ToDNSRecordResponse(record))
 }
 
 // UpdateRecord updates a DNS record
-func (h *DnsRecordHandler) UpdateRecord(c *fiber.Ctx) error {
+func (h *DNSRecordHandler) UpdateRecord(c *fiber.Ctx) error {
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
@@ -77,7 +77,7 @@ func (h *DnsRecordHandler) UpdateRecord(c *fiber.Ctx) error {
 	domainID := c.Params("domainId")
 	recordID := c.Params("recordId")
 
-	req, err := fiberctx.MustParseAndValidate[dto.UpdateDnsRecordRequest](c)
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateDNSRecordRequest](c)
 	if err != nil {
 		return err
 	}
@@ -96,11 +96,11 @@ func (h *DnsRecordHandler) UpdateRecord(c *fiber.Ctx) error {
 		return response.HandleError(c, err)
 	}
 
-	return response.OK(c, "Record updated", dto.ToDnsRecordResponse(record))
+	return response.OK(c, "Record updated", dto.ToDNSRecordResponse(record))
 }
 
 // DeleteRecord deletes a DNS record
-func (h *DnsRecordHandler) DeleteRecord(c *fiber.Ctx) error {
+func (h *DNSRecordHandler) DeleteRecord(c *fiber.Ctx) error {
 	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
@@ -126,7 +126,7 @@ func (h *DnsRecordHandler) DeleteRecord(c *fiber.Ctx) error {
 }
 
 // GetRecordTypes returns all available record types
-func (h *DnsRecordHandler) GetRecordTypes(c *fiber.Ctx) error {
+func (h *DNSRecordHandler) GetRecordTypes(c *fiber.Ctx) error {
 	types := h.recordService.GetRecordTypes()
 
 	return response.OK(c, "Record types retrieved", types)

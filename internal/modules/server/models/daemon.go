@@ -13,15 +13,15 @@ import (
 type Daemon struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	ServerID        string     `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
-	User            string     `gorm:"type:varchar(255);not null" json:"user"`
-	Directory       *string    `gorm:"type:varchar(255)" json:"directory,omitempty"`
-	Command         string     `gorm:"type:longtext;not null" json:"command"`
-	Processes       int        `gorm:"type:int;not null;default:1" json:"processes"`
-	StopWaitSeconds int        `gorm:"column:stop_wait_seconds;type:int;not null;default:10" json:"stop_wait_seconds"`
-	StopSignal      string     `gorm:"column:stop_signal;type:varchar(255);not null" json:"stop_signal"`
-	LastStatusCheck *time.Time       `gorm:"column:last_status_check;type:timestamp null" json:"last_status_check,omitempty"`
-	Running         bool             `gorm:"type:tinyint(1);not null;default:0" json:"running"`
+	basemodels.ServerScopedModel
+	User            string             `gorm:"type:varchar(255);not null" json:"user"`
+	Directory       *string            `gorm:"type:varchar(255)" json:"directory,omitempty"`
+	Command         string             `gorm:"type:longtext;not null" json:"command"`
+	Processes       int                `gorm:"type:int;not null;default:1" json:"processes"`
+	StopWaitSeconds int                `gorm:"column:stop_wait_seconds;type:int;not null;default:10" json:"stop_wait_seconds"`
+	StopSignal      string             `gorm:"column:stop_signal;type:varchar(255);not null" json:"stop_signal"`
+	LastStatusCheck *time.Time         `gorm:"column:last_status_check;type:timestamp null" json:"last_status_check,omitempty"`
+	Running         bool               `gorm:"type:tinyint(1);not null;default:0" json:"running"`
 	Info            basemodels.JSONMap `gorm:"type:json" json:"-"`
 
 	// Relations

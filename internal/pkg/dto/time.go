@@ -5,6 +5,12 @@ import (
 	"time"
 )
 
+// DisplayTimeFormat is the standard format for displaying dates to users (e.g., "Jan 2, 2006").
+const DisplayTimeFormat = "Jan 2, 2006"
+
+// DisplayDateTimeFormat is the standard format for displaying dates with time to users (e.g., "Jan 2, 2006 3:04 PM").
+const DisplayDateTimeFormat = "Jan 2, 2006 3:04 PM"
+
 // FormatTime converts a time pointer to an RFC3339 string pointer.
 // Returns nil if the input is nil.
 func FormatTime(t *time.Time) *string {
@@ -107,6 +113,39 @@ func TimeAgoPtr(t *time.Time) string {
 		return ""
 	}
 	return TimeAgo(*t)
+}
+
+// FormatDisplayTime converts a time pointer to a display-formatted string pointer (e.g., "Jan 2, 2006").
+// Returns nil if the input is nil.
+func FormatDisplayTime(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := t.Format(DisplayTimeFormat)
+	return &s
+}
+
+// FormatDisplayTimeValue converts a time value to a display-formatted string (e.g., "Jan 2, 2006").
+func FormatDisplayTimeValue(t time.Time) string {
+	return t.Format(DisplayTimeFormat)
+}
+
+// FormatDisplayTimeOrEmpty returns a display-formatted string or empty string if nil.
+func FormatDisplayTimeOrEmpty(t *time.Time) string {
+	if t == nil {
+		return ""
+	}
+	return t.Format(DisplayTimeFormat)
+}
+
+// FormatDisplayDateTime converts a time pointer to a display-formatted string with time (e.g., "Jan 2, 2006 3:04 PM").
+// Returns nil if the input is nil.
+func FormatDisplayDateTime(t *time.Time) *string {
+	if t == nil {
+		return nil
+	}
+	s := t.Format(DisplayDateTimeFormat)
+	return &s
 }
 
 func formatDuration(n int, unit string) string {

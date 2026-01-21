@@ -1,26 +1,11 @@
 package providers
 
 import (
-	"context"
-	"encoding/json"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
-
-func setupCloudflareTestServer(t *testing.T, handler http.HandlerFunc) (*httptest.Server, *CloudflareProvider) {
-	server := httptest.NewServer(handler)
-	t.Cleanup(server.Close)
-
-	provider := NewCloudflareProvider(map[string]string{"token": "test-token"}, "account123")
-	// We can't easily override the base URL, so we'll test the methods that don't make HTTP calls
-	// For integration tests, we would use a mock HTTP client
-
-	return server, provider
-}
 
 func TestCloudflareProvider_Name(t *testing.T) {
 	provider := NewCloudflareProvider(map[string]string{"token": "test"}, "account123")
@@ -69,39 +54,27 @@ func TestNewCloudflareProvider(t *testing.T) {
 	assert.NotNil(t, provider)
 	assert.Equal(t, "account123", provider.accountID)
 	assert.Equal(t, "test-token", provider.GetToken())
-	assert.NotNil(t, provider.httpClient)
+	assert.NotNil(t, provider.HTTPBaseProvider)
 }
 
 func TestCloudflareProvider_BoolPtr(t *testing.T) {
-	b := boolPtr(true)
+	b := BoolPtr(true)
 	assert.True(t, *b)
 
-	b = boolPtr(false)
+	b = BoolPtr(false)
 	assert.False(t, *b)
 }
 
 // Mock HTTP tests for Cloudflare
 
-func TestCloudflareProvider_ValidateCredentials_Success(t *testing.T) {
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "/user/tokens/verify", r.URL.Path)
-		assert.Equal(t, "Bearer test-token", r.Header.Get("Authorization"))
+func TestCloudflareProvider_ValidateCredentials_Setup(t *testing.T) {
+	// This test verifies the provider is correctly configured for credential validation
+	// Full HTTP testing would require overriding the base URL
+	provider := NewCloudflareProvider(map[string]string{"token": "test-token"}, "account123")
 
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": true,
-			"result":  map[string]interface{}{"id": "token123"},
-		})
-	}))
-	defer server.Close()
-
-	provider := &CloudflareProvider{
-		httpClient: server.Client(),
-	}
-	provider.SetCredentials(map[string]string{"token": "test-token"})
-
-	// Note: This test would require overriding the base URL which we can't easily do
-	// In a real scenario, we would use dependency injection or a custom HTTP transport
+	assert.NotNil(t, provider.HTTPBaseProvider)
+	assert.Equal(t, "test-token", provider.GetToken())
+	assert.Equal(t, "Cloudflare", provider.Name())
 }
 
 func TestCloudflareProvider_ListDomains_Response(t *testing.T) {
@@ -155,7 +128,7 @@ func TestCloudflareProvider_ListRecords_Response(t *testing.T) {
 }
 
 func TestCloudflareProvider_AddRecord_RequestData(t *testing.T) {
-	record := &DnsRecord{
+	record := &DNSRecord{
 		Type:       RecordTypeA,
 		Name:       "@",
 		Value:      "1.2.3.4",
@@ -200,7 +173,7 @@ func TestCloudflareProvider_UpdateRecord_RequestData(t *testing.T) {
 	priority := 10
 	comment := "Updated comment"
 
-	record := &DnsRecord{
+	record := &DNSRecord{
 		Type:       RecordTypeMX,
 		Name:       "mail",
 		Value:      "mail.example.com",
@@ -307,14 +280,13 @@ func TestCloudflareProvider_RecordTypeFiltering(t *testing.T) {
 	assert.NotContains(t, validRecords, "DNSKEY")
 }
 
-func TestCloudflareProvider_NewRequest_Headers(t *testing.T) {
+func TestCloudflareProvider_TokenConfiguration(t *testing.T) {
 	provider := NewCloudflareProvider(map[string]string{"token": "test-token"}, "account123")
 
-	ctx := context.Background()
-	req, err := provider.newRequest(ctx, http.MethodGet, "/test", nil)
-	require.NoError(t, err)
+	// Verify token is properly configured through HTTPBaseProvider
+	assert.Equal(t, "test-token", provider.GetToken())
 
-	assert.Equal(t, "Bearer test-token", req.Header.Get("Authorization"))
-	assert.Equal(t, "application/json", req.Header.Get("Content-Type"))
-	assert.Equal(t, "application/json", req.Header.Get("Accept"))
+	// Verify SetCredentials updates the token
+	provider.SetCredentials(map[string]string{"token": "new-token"})
+	assert.Equal(t, "new-token", provider.GetToken())
 }

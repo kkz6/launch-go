@@ -4,7 +4,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns/repositories"
 	"github.com/kkz6/launch-go/internal/modules/dns/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 const ModuleName = "dns"
@@ -17,18 +17,18 @@ var (
 
 // Module represents the DNS module
 type Module struct {
-	module.Base
+	app.Base
 
 	// Repository registry
 	repos *repositories.Registry
 }
 
 // NewModule creates a new DNS module instance
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 
 	return &Module{
-		Base:  module.NewBase(ModuleName, b),
+		Base:  app.NewBase(ModuleName, b),
 		repos: repositories.NewRegistry(deps.DB),
 	}
 }
@@ -37,10 +37,12 @@ func NewModule(b *module.Builder) *Module {
 func (m *Module) createServices() *services.ServiceRegistry {
 	deps := m.Deps()
 
-	// Create shared service dependencies using standardized Dependencies
+	// Create shared service dependencies using standardized ModuleDeps
 	svcDeps := &services.ServiceDeps{
-		Dependencies: deps.ServiceDeps(),
-		Repos:        m.repos,
+		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
+			Dependencies: deps.ServiceDeps(),
+			Repos:        m.repos,
+		},
 	}
 
 	// Create service registry - handles all service creation and wiring

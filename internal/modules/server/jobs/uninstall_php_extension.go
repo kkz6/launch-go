@@ -21,17 +21,16 @@ type UninstallPhpExtensionPayload struct {
 
 // UninstallPhpExtensionJob uninstalls a PHP extension from a server
 type UninstallPhpExtensionJob struct {
-	ctx     *JobContext
-	Payload UninstallPhpExtensionPayload
+	pkgjobs.BaseJob[*JobContext, UninstallPhpExtensionPayload]
 }
 
 func (j *UninstallPhpExtensionJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Uninstalling PHP extension",
+	j.Ctx.LogInfo("Uninstalling PHP extension",
 		"server_id", server.ID,
 		"version", j.Payload.Version,
 		"extension", j.Payload.Extension,
@@ -39,7 +38,7 @@ func (j *UninstallPhpExtensionJob) Handle(ctx context.Context) error {
 
 	task := tasks.UninstallPhpExtension(j.Payload.Version, j.Payload.Extension)
 
-	result, err := j.ctx.ForServer(server).RunTask(task).
+	result, err := j.Ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		TrackInDB().
 		Dispatch(ctx)
@@ -52,13 +51,13 @@ func (j *UninstallPhpExtensionJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to uninstall PHP extension: %s", result.GetOutput())
 	}
 
-	j.ctx.LogInfo("PHP extension uninstalled successfully",
+	j.Ctx.LogInfo("PHP extension uninstalled successfully",
 		"server_id", server.ID,
 		"version", j.Payload.Version,
 		"extension", j.Payload.Extension,
 	)
 
-	j.ctx.BroadcastServerEvent(server, "php.extension_uninstalled", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "php.extension_uninstalled", map[string]any{
 		"server_id": server.ID,
 		"version":   j.Payload.Version,
 		"extension": j.Payload.Extension,
@@ -68,7 +67,7 @@ func (j *UninstallPhpExtensionJob) Handle(ctx context.Context) error {
 }
 
 func (j *UninstallPhpExtensionJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to uninstall PHP extension",
+	j.Ctx.LogError(err, "Failed to uninstall PHP extension",
 		"server_id", j.Payload.ServerID,
 		"version", j.Payload.Version,
 		"extension", j.Payload.Extension,
@@ -77,8 +76,7 @@ func (j *UninstallPhpExtensionJob) Failed(ctx context.Context, err error) {
 
 func NewUninstallPhpExtensionJob(ctx *JobContext, payload UninstallPhpExtensionPayload) *UninstallPhpExtensionJob {
 	return &UninstallPhpExtensionJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

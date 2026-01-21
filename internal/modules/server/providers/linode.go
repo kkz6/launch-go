@@ -1,38 +1,33 @@
 package providers
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
-	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/sshkey"
+	"github.com/kkz6/launch-go/internal/pkg/httpclient"
+	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
 
 const linodeAPIURL = "https://api.linode.com/v4"
 
 // LinodeProvider implements the Provider interface for Linode
 type LinodeProvider struct {
-	BaseProvider
-	client *http.Client
+	BaseCloudProvider
 }
 
 // NewLinodeProvider creates a new Linode provider
 func NewLinodeProvider(keyGenerator sshkey.Generator) *LinodeProvider {
 	configs := config.GetProviderConfigs()
 	return &LinodeProvider{
-		BaseProvider: BaseProvider{
-			keyGenerator: keyGenerator,
-			config:       configs["linode"],
-		},
-		client: &http.Client{Timeout: 30 * time.Second},
+		BaseCloudProvider: NewBaseCloudProvider(
+			keyGenerator,
+			configs["linode"],
+			linodeAPIURL,
+		),
 	}
 }
 
@@ -43,63 +38,160 @@ func (p *LinodeProvider) Type() enums.ServerProvider {
 
 // Connect tests the connection to Linode
 func (p *LinodeProvider) Connect(ctx context.Context, credentials map[string]interface{}) error {
-	token, ok := credentials["token"].(string)
-	if !ok || token == "" {
-		return ErrInvalidCredentials
-	}
-
-	_, err := p.doRequest(ctx, token, "GET", "/account", nil)
+	token, err := ExtractToken(credentials)
 	if err != nil {
-		return ErrConnectionFailed
+		return err
 	}
 
-	return nil
+	client := p.NewClient(token)
+	return ValidateConnection(ctx, client, "/account")
 }
 
 // Create creates a new server on Linode
 func (p *LinodeProvider) Create(ctx context.Context, server *models.Server, credentials map[string]interface{}) (*CreateResult, error) {
-	token, ok := credentials["token"].(string)
-	if !ok || token == "" {
-		return nil, ErrInvalidCredentials
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return nil, err
 	}
 
+	client := p.NewClient(token)
+
+	// Generate SSH key pair
 	keyPair, err := p.GenerateKeyPair()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate key pair: %w", err)
 	}
 
-	providerData := server.ProviderData
-	if providerData == nil {
-		providerData = make(map[string]interface{})
-	}
-
-	region, _ := providerData["region"].(string)
-	plan, _ := providerData["plan"].(string)
-	var os enums.OperatingSystem
-	if server.OperatingSystem != nil {
-		os = enums.OperatingSystem(*server.OperatingSystem)
-	} else {
-		os = enums.OSUbuntu24
-	}
+	// Get provider data
+	providerData := GetProviderData(server.ProviderData)
+	region := GetStringField(providerData, "region", "")
+	plan := GetStringField(providerData, "plan", "")
+	os := p.getOperatingSystem(server)
 	image := p.GetImage(os)
 
+	// Create Linode instance (Linode doesn't require separate SSH key creation)
 	serverName := strings.ReplaceAll(strings.ToLower(server.Name), " ", "-")
-	linodeResp, err := p.doRequest(ctx, token, "POST", "/linode/instances", map[string]interface{}{
-		"label":           serverName,
+	linodeResp, err := p.createLinode(ctx, client, serverName, region, plan, image, keyPair.PublicKey)
+	if err != nil {
+		return nil, err
+	}
+
+	return &CreateResult{
+		ProviderServerID: linodeResp.ID,
+		PublicIPv4:       linodeResp.PublicIP,
+		PublicKey:        keyPair.PublicKey,
+		PrivateKey:       keyPair.PrivateKey,
+		CPUCores:         linodeResp.VCPUs,
+		MemoryMB:         linodeResp.Memory,
+		DiskGB:           linodeResp.Disk / 1024, // Linode returns disk in MB
+		ProviderData: map[string]interface{}{
+			"linode_id": linodeResp.ID,
+		},
+	}, nil
+}
+
+// Delete deletes a server from Linode
+func (p *LinodeProvider) Delete(ctx context.Context, server *models.Server, credentials map[string]interface{}) error {
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return err
+	}
+
+	providerData := server.ProviderData
+	if providerData == nil {
+		return nil
+	}
+
+	linodeID := GetStringField(providerData, "linode_id", "")
+	if linodeID == "" {
+		return nil
+	}
+
+	client := p.NewClient(token)
+	DoDeleteIgnoreErrors(ctx, client, "/linode/instances/"+linodeID)
+	return nil
+}
+
+// GetPublicIPv4 fetches the public IPv4 address
+func (p *LinodeProvider) GetPublicIPv4(ctx context.Context, server *models.Server, credentials map[string]interface{}) (string, error) {
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return "", err
+	}
+
+	providerData := server.ProviderData
+	if providerData == nil {
+		return "", ErrServerNotFound
+	}
+
+	linodeID := GetStringField(providerData, "linode_id", "")
+	if linodeID == "" {
+		return "", ErrServerNotFound
+	}
+
+	client := p.NewClient(token)
+	resp, err := DoGet(ctx, client, "/linode/instances/"+linodeID)
+	if err != nil {
+		return "", WrapHTTPError(err, "get linode")
+	}
+
+	return p.extractPublicIPv4(resp)
+}
+
+// GetImage returns the image ID for an operating system
+func (p *LinodeProvider) GetImage(os enums.OperatingSystem) string {
+	return p.GetImageFromConfig(os, "linode/ubuntu24.04")
+}
+
+// CredentialRules returns validation rules
+func (p *LinodeProvider) CredentialRules() map[string]string {
+	return CommonCredentialRules()
+}
+
+// CreateRules returns validation rules
+func (p *LinodeProvider) CreateRules() map[string]string {
+	return CommonCreateRules()
+}
+
+// CredentialData extracts credential data
+func (p *LinodeProvider) CredentialData(input map[string]interface{}) map[string]interface{} {
+	return CommonCredentialData(input)
+}
+
+// ProviderData extracts provider-specific data
+func (p *LinodeProvider) ProviderData(input map[string]interface{}) map[string]interface{} {
+	return CommonProviderData(input)
+}
+
+// Internal helper methods
+
+type linodeResponse struct {
+	ID       string
+	PublicIP string
+	VCPUs    int
+	Memory   int
+	Disk     int
+}
+
+func (p *LinodeProvider) createLinode(ctx context.Context, client *httpclient.Client, name, region, plan, image, publicKey string) (*linodeResponse, error) {
+	body := map[string]interface{}{
+		"label":           name,
 		"region":          region,
 		"type":            plan,
 		"image":           image,
-		"authorized_keys": []string{keyPair.PublicKey},
+		"authorized_keys": []string{publicKey},
 		"booted":          true,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to create linode: %w", err)
 	}
 
-	linodeID := fmt.Sprintf("%v", linodeResp["id"])
+	resp, err := DoPost(ctx, client, "/linode/instances", body)
+	if err != nil {
+		return nil, WrapHTTPError(err, "create linode")
+	}
+
+	linodeID := ExtractServerID(resp, "id")
 
 	var publicIP string
-	if ipv4, ok := linodeResp["ipv4"].([]interface{}); ok && len(ipv4) > 0 {
+	if ipv4, ok := GetNestedArray(resp, "ipv4"); ok && len(ipv4) > 0 {
 		publicIP, _ = ipv4[0].(string)
 	}
 
@@ -108,138 +200,33 @@ func (p *LinodeProvider) Create(ctx context.Context, server *models.Server, cred
 		memory int
 		disk   int
 	}
-	if specsData, ok := linodeResp["specs"].(map[string]interface{}); ok {
-		specs.vcpus = int(specsData["vcpus"].(float64))
-		specs.memory = int(specsData["memory"].(float64))
-		specs.disk = int(specsData["disk"].(float64))
+	if specsData, ok := GetNestedMap(resp, "specs"); ok {
+		specs.vcpus = GetIntField(specsData, "vcpus", 0)
+		specs.memory = GetIntField(specsData, "memory", 0)
+		specs.disk = GetIntField(specsData, "disk", 0)
 	}
 
-	return &CreateResult{
-		ProviderServerID: linodeID,
-		PublicIPv4:       publicIP,
-		PublicKey:        keyPair.PublicKey,
-		PrivateKey:       keyPair.PrivateKey,
-		CPUCores:         specs.vcpus,
-		MemoryMB:         specs.memory,
-		DiskGB:           specs.disk / 1024,
-		ProviderData: map[string]interface{}{
-			"linode_id": linodeID,
-		},
+	return &linodeResponse{
+		ID:       linodeID,
+		PublicIP: publicIP,
+		VCPUs:    specs.vcpus,
+		Memory:   specs.memory,
+		Disk:     specs.disk,
 	}, nil
 }
 
-// Delete deletes a server from Linode
-func (p *LinodeProvider) Delete(ctx context.Context, server *models.Server, credentials map[string]interface{}) error {
-	token, ok := credentials["token"].(string)
-	if !ok || token == "" {
-		return ErrInvalidCredentials
-	}
-
-	providerData := server.ProviderData
-	if providerData == nil {
-		return nil
-	}
-
-	if linodeID, ok := providerData["linode_id"].(string); ok && linodeID != "" {
-		_, _ = p.doRequest(ctx, token, "DELETE", "/linode/instances/"+linodeID, nil)
-	}
-
-	return nil
-}
-
-// GetPublicIPv4 fetches the public IPv4 address
-func (p *LinodeProvider) GetPublicIPv4(ctx context.Context, server *models.Server, credentials map[string]interface{}) (string, error) {
-	token, ok := credentials["token"].(string)
-	if !ok || token == "" {
-		return "", ErrInvalidCredentials
-	}
-
-	providerData := server.ProviderData
-	if providerData == nil {
-		return "", ErrServerNotFound
-	}
-
-	linodeID, ok := providerData["linode_id"].(string)
-	if !ok || linodeID == "" {
-		return "", ErrServerNotFound
-	}
-
-	resp, err := p.doRequest(ctx, token, "GET", "/linode/instances/"+linodeID, nil)
-	if err != nil {
-		return "", err
-	}
-
-	if ipv4, ok := resp["ipv4"].([]interface{}); ok && len(ipv4) > 0 {
+func (p *LinodeProvider) extractPublicIPv4(resp map[string]interface{}) (string, error) {
+	if ipv4, ok := GetNestedArray(resp, "ipv4"); ok && len(ipv4) > 0 {
 		if ip, ok := ipv4[0].(string); ok {
 			return ip, nil
 		}
 	}
-
 	return "", nil
 }
 
-// GetImage returns the image ID for an operating system
-func (p *LinodeProvider) GetImage(os enums.OperatingSystem) string {
-	if img, ok := p.config.Images[os.String()]; ok {
-		if str, ok := img.(string); ok {
-			return str
-		}
+func (p *LinodeProvider) getOperatingSystem(server *models.Server) enums.OperatingSystem {
+	if server.OperatingSystem != nil {
+		return enums.OperatingSystem(*server.OperatingSystem)
 	}
-	return "linode/ubuntu24.04"
-}
-
-// CredentialRules returns validation rules
-func (p *LinodeProvider) CredentialRules() map[string]string {
-	return map[string]string{"token": "required"}
-}
-
-// CreateRules returns validation rules
-func (p *LinodeProvider) CreateRules() map[string]string {
-	return map[string]string{"plan": "required", "region": "required"}
-}
-
-// CredentialData extracts credential data
-func (p *LinodeProvider) CredentialData(input map[string]interface{}) map[string]interface{} {
-	return map[string]interface{}{"token": input["token"]}
-}
-
-// ProviderData extracts provider-specific data
-func (p *LinodeProvider) ProviderData(input map[string]interface{}) map[string]interface{} {
-	return map[string]interface{}{"plan": input["plan"], "region": input["region"]}
-}
-
-func (p *LinodeProvider) doRequest(ctx context.Context, token, method, path string, body interface{}) (map[string]interface{}, error) {
-	var reqBody io.Reader
-	if body != nil {
-		jsonBody, _ := json.Marshal(body)
-		reqBody = bytes.NewBuffer(jsonBody)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, linodeAPIURL+path, reqBody)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("request failed: %s", string(respBody))
-	}
-
-	if len(respBody) == 0 {
-		return nil, nil
-	}
-
-	var result map[string]interface{}
-	json.Unmarshal(respBody, &result)
-	return result, nil
+	return enums.OSUbuntu24
 }

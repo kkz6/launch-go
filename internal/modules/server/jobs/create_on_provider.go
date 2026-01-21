@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/retry"
 )
 
 const TypeCreateOnProvider = "server:create_on_provider"
@@ -26,37 +27,35 @@ type CreateOnProviderPayload struct {
 // CreateOnProviderJob creates a server on the cloud provider.
 // This job handles the API call to create the server instance.
 type CreateOnProviderJob struct {
-	ctx     *JobContext
-	Payload CreateOnProviderPayload
+	pkgjobs.BaseJob[*JobContext, CreateOnProviderPayload]
 }
 
 // NewCreateOnProviderJob creates a new CreateOnProviderJob with the given context and payload.
 func NewCreateOnProviderJob(ctx *JobContext, payload CreateOnProviderPayload) *CreateOnProviderJob {
 	return &CreateOnProviderJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	if server.Provider == enums.ProviderCustom {
-		j.ctx.LogInfo("Skipping cloud creation for custom server", "server_id", server.ID)
+		j.Ctx.LogInfo("Skipping cloud creation for custom server", "server_id", server.ID)
 		return nil
 	}
 
-	provider, err := j.ctx.ProviderFactory.Create(server.Provider)
+	provider, err := j.Ctx.ProviderFactory.Create(server.Provider)
 	if err != nil {
 		return fmt.Errorf("failed to create provider: %w", err)
 	}
 
 	var credentials map[string]any
 	if j.Payload.ServerProviderID != "" {
-		serverProvider, err := j.ctx.Repos.ServerProvider().FindByID(ctx, j.Payload.ServerProviderID)
+		serverProvider, err := j.Ctx.Repos().ServerProvider().FindByID(ctx, j.Payload.ServerProviderID)
 		if err != nil {
 			return fmt.Errorf("failed to find server provider: %w", err)
 		}
@@ -68,15 +67,15 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 		}
 	}
 
-	if credentials == nil || len(credentials) == 0 {
+	if len(credentials) == 0 {
 		return fmt.Errorf("no credentials found for server provider")
 	}
 
-	if err := j.ctx.Repos.Server().UpdateStatus(ctx, server.ID, enums.ServerStatusStarting); err != nil {
+	if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, enums.ServerStatusStarting); err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
-	j.ctx.LogInfo("Creating server on provider",
+	j.Ctx.LogInfo("Creating server on provider",
 		"server_id", server.ID,
 		"provider", server.Provider.String(),
 	)
@@ -86,7 +85,7 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to create server on provider: %w", err)
 	}
 
-	j.ctx.LogInfo("Server created on provider",
+	j.Ctx.LogInfo("Server created on provider",
 		"server_id", server.ID,
 		"provider_server_id", result.ProviderServerID,
 	)
@@ -123,34 +122,34 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 		updates["storage_in_gb"] = result.DiskGB
 	}
 
-	if err := j.ctx.Repos.Server().UpdateFields(ctx, server.ID, updates); err != nil {
+	if err := j.Ctx.Repos().Server().UpdateFields(ctx, server.ID, updates); err != nil {
 		return fmt.Errorf("failed to update server with provider data: %w", err)
 	}
 
 	if result.PublicIPv4 == "" {
 		ip, err := j.waitForPublicIP(ctx, server, provider, credentials)
 		if err != nil {
-			j.ctx.LogError(err, "Failed to get public IP, will retry during provisioning")
+			j.Ctx.LogError(err, "Failed to get public IP, will retry during provisioning")
 		} else {
 			result.PublicIPv4 = ip
 		}
 	}
 
 	if result.PublicIPv4 != "" {
-		if err := j.ctx.Repos.Server().UpdateFields(ctx, server.ID, map[string]any{
+		if err := j.Ctx.Repos().Server().UpdateFields(ctx, server.ID, map[string]any{
 			"public_ipv4": result.PublicIPv4,
 		}); err != nil {
 			return fmt.Errorf("failed to update server IP: %w", err)
 		}
 	}
 
-	j.ctx.BroadcastServerEvent(server, "server.created_on_provider", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "server.created_on_provider", map[string]any{
 		"server_id":          server.ID,
 		"provider_server_id": result.ProviderServerID,
 		"public_ipv4":        result.PublicIPv4,
 	})
 
-	j.ctx.LogInfo("Server created on provider, dispatching wait for connection job",
+	j.Ctx.LogInfo("Server created on provider, dispatching wait for connection job",
 		"server_id", server.ID,
 		"provider_server_id", result.ProviderServerID,
 	)
@@ -165,7 +164,7 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 
 // dispatchWaitForConnection dispatches the WaitForServerToConnect job
 func (j *CreateOnProviderJob) dispatchWaitForConnection() error {
-	if j.ctx.Queue == nil {
+	if j.Ctx.Queue() == nil {
 		return fmt.Errorf("queue client not available")
 	}
 
@@ -180,11 +179,11 @@ func (j *CreateOnProviderJob) dispatchWaitForConnection() error {
 		return fmt.Errorf("failed to create wait for connection task: %w", err)
 	}
 
-	if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-		return fmt.Errorf("failed to enqueue wait for connection job: %w", err)
+	if err := j.Ctx.DispatchTask(task); err != nil {
+		return fmt.Errorf("failed to dispatch wait for connection job: %w", err)
 	}
 
-	j.ctx.LogInfo("WaitForServerToConnect job dispatched",
+	j.Ctx.LogInfo("WaitForServerToConnect job dispatched",
 		"server_id", j.Payload.ServerID,
 	)
 
@@ -193,55 +192,53 @@ func (j *CreateOnProviderJob) dispatchWaitForConnection() error {
 
 func (j *CreateOnProviderJob) waitForPublicIP(
 	ctx context.Context,
-	server any,
-	provider any,
+	_ any, // server (unused, we reload it)
+	_ any, // provider (unused, we recreate it)
 	credentials map[string]any,
 ) (string, error) {
-	srv, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
-	if err != nil {
-		return "", err
-	}
-
-	prov, err := j.ctx.ProviderFactory.Create(srv.Provider)
-	if err != nil {
-		return "", err
-	}
-
-	maxAttempts := 30
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		ip, err := prov.GetPublicIPv4(ctx, srv, credentials)
-		if err == nil && ip != "" {
-			return ip, nil
-		}
-
-		j.ctx.LogInfo("Waiting for public IP",
-			"server_id", srv.ID,
+	cfg := retry.ServerConnectionRetry
+	cfg.OnRetry = func(attempt int, _ error, _ time.Duration) {
+		j.Ctx.LogInfo("Waiting for public IP",
+			"server_id", j.Payload.ServerID,
 			"attempt", attempt,
 		)
-
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-time.After(10 * time.Second):
-			srv, _ = j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
-		}
 	}
 
-	return "", fmt.Errorf("timeout waiting for public IP")
+	return retry.WithBackoff(ctx, cfg, func() (string, error) {
+		srv, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+		if err != nil {
+			return "", err
+		}
+
+		prov, err := j.Ctx.ProviderFactory.Create(srv.Provider)
+		if err != nil {
+			return "", err
+		}
+
+		ip, err := prov.GetPublicIPv4(ctx, srv, credentials)
+		if err != nil {
+			return "", err
+		}
+		if ip == "" {
+			return "", fmt.Errorf("no public IP available yet")
+		}
+
+		return ip, nil
+	})
 }
 
 func (j *CreateOnProviderJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to create server on provider",
+	j.Ctx.LogError(err, "Failed to create server on provider",
 		"server_id", j.Payload.ServerID,
 	)
 
-	if updateErr := j.ctx.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
-		j.ctx.LogError(updateErr, "Failed to update server status to failed")
+	if updateErr := j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
+		j.Ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 
-	server, findErr := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, findErr := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {
-		j.ctx.BroadcastServerEvent(server, "server.create_failed", map[string]any{
+		j.Ctx.BroadcastServerEvent(server, "server.create_failed", map[string]any{
 			"server_id": j.Payload.ServerID,
 			"error":     err.Error(),
 		})

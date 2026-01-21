@@ -62,29 +62,29 @@ func TestNewCreateDeploymentTask_WithoutOptionalFields(t *testing.T) {
 	}
 }
 
-// Test UpdateSiteTlsSetting job
+// Test UpdateSiteTLSSetting job
 
-func TestUpdateSiteTlsSettingPayload(t *testing.T) {
+func TestUpdateSiteTLSSettingPayload(t *testing.T) {
 	userID := "user123"
-	payload := sitejobs.UpdateSiteTlsSettingPayload{
+	payload := sitejobs.UpdateSiteTLSSettingPayload{
 		SiteID:     "site123",
-		TlsSetting: enums.TlsSettingAuto,
+		TLSSetting: enums.TLSSettingAuto,
 		UserID:     &userID,
 	}
 
 	if payload.SiteID != "site123" {
 		t.Errorf("Expected SiteID to be 'site123', got '%s'", payload.SiteID)
 	}
-	if payload.TlsSetting != enums.TlsSettingAuto {
-		t.Errorf("Expected TlsSetting to be 'auto', got '%s'", payload.TlsSetting)
+	if payload.TLSSetting != enums.TLSSettingAuto {
+		t.Errorf("Expected TLSSetting to be 'auto', got '%s'", payload.TLSSetting)
 	}
 	if payload.UserID == nil || *payload.UserID != "user123" {
 		t.Error("Expected UserID to be 'user123'")
 	}
 }
 
-func TestNewUpdateSiteTlsSettingTask(t *testing.T) {
-	task, err := sitejobs.NewUpdateSiteTlsSettingTask("site123", enums.TlsSettingAuto, nil)
+func TestNewUpdateSiteTLSSettingTask(t *testing.T) {
+	task, err := sitejobs.NewUpdateSiteTLSSettingTask("site123", enums.TLSSettingAuto, nil)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -92,21 +92,21 @@ func TestNewUpdateSiteTlsSettingTask(t *testing.T) {
 	if task == nil {
 		t.Fatal("Expected task to be created")
 	}
-	if task.Type() != sitejobs.TypeUpdateSiteTlsSetting {
-		t.Errorf("Expected task type to be '%s', got '%s'", sitejobs.TypeUpdateSiteTlsSetting, task.Type())
+	if task.Type() != sitejobs.TypeUpdateSiteTLSSetting {
+		t.Errorf("Expected task type to be '%s', got '%s'", sitejobs.TypeUpdateSiteTLSSetting, task.Type())
 	}
 }
 
-func TestNewUpdateSiteTlsSettingTask_AllTlsSettings(t *testing.T) {
-	testCases := []enums.TlsSetting{
-		enums.TlsSettingAuto,
-		enums.TlsSettingCustom,
-		enums.TlsSettingInternal,
-		enums.TlsSettingOff,
+func TestNewUpdateSiteTLSSettingTask_AllTLSSettings(t *testing.T) {
+	testCases := []enums.TLSSetting{
+		enums.TLSSettingAuto,
+		enums.TLSSettingCustom,
+		enums.TLSSettingInternal,
+		enums.TLSSettingOff,
 	}
 
 	for _, tlsSetting := range testCases {
-		task, err := sitejobs.NewUpdateSiteTlsSettingTask("site123", tlsSetting, nil)
+		task, err := sitejobs.NewUpdateSiteTLSSettingTask("site123", tlsSetting, nil)
 		if err != nil {
 			t.Fatalf("Expected no error for TLS setting %s, got %v", tlsSetting, err)
 		}

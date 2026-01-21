@@ -4,19 +4,19 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/gofiber/fiber/v2"
+	gofiber "github.com/gofiber/fiber/v2"
 )
 
 func TestGetTeamID(t *testing.T) {
 	tests := []struct {
 		name    string
-		setup   func(*fiber.Ctx)
+		setup   func(*gofiber.Ctx)
 		want    string
 		wantErr bool
 	}{
 		{
 			name: "valid team ID",
-			setup: func(c *fiber.Ctx) {
+			setup: func(c *gofiber.Ctx) {
 				c.Locals("teamID", "team123")
 			},
 			want:    "team123",
@@ -24,13 +24,13 @@ func TestGetTeamID(t *testing.T) {
 		},
 		{
 			name:    "missing team ID",
-			setup:   func(c *fiber.Ctx) {},
+			setup:   func(c *gofiber.Ctx) {},
 			want:    "",
 			wantErr: true,
 		},
 		{
 			name: "empty team ID",
-			setup: func(c *fiber.Ctx) {
+			setup: func(c *gofiber.Ctx) {
 				c.Locals("teamID", "")
 			},
 			want:    "",
@@ -38,7 +38,7 @@ func TestGetTeamID(t *testing.T) {
 		},
 		{
 			name: "wrong type",
-			setup: func(c *fiber.Ctx) {
+			setup: func(c *gofiber.Ctx) {
 				c.Locals("teamID", 123)
 			},
 			want:    "",
@@ -48,8 +48,8 @@ func TestGetTeamID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := fiber.New()
-			app.Get("/test", func(c *fiber.Ctx) error {
+			app := gofiber.New()
+			app.Get("/test", func(c *gofiber.Ctx) error {
 				tt.setup(c)
 				got, err := GetTeamID(c)
 				if (err != nil) != tt.wantErr {
@@ -71,13 +71,13 @@ func TestGetTeamID(t *testing.T) {
 func TestGetUserID(t *testing.T) {
 	tests := []struct {
 		name    string
-		setup   func(*fiber.Ctx)
+		setup   func(*gofiber.Ctx)
 		want    string
 		wantErr bool
 	}{
 		{
 			name: "valid user ID",
-			setup: func(c *fiber.Ctx) {
+			setup: func(c *gofiber.Ctx) {
 				c.Locals("userID", "user456")
 			},
 			want:    "user456",
@@ -85,13 +85,13 @@ func TestGetUserID(t *testing.T) {
 		},
 		{
 			name:    "missing user ID",
-			setup:   func(c *fiber.Ctx) {},
+			setup:   func(c *gofiber.Ctx) {},
 			want:    "",
 			wantErr: true,
 		},
 		{
 			name: "empty user ID",
-			setup: func(c *fiber.Ctx) {
+			setup: func(c *gofiber.Ctx) {
 				c.Locals("userID", "")
 			},
 			want:    "",
@@ -101,8 +101,8 @@ func TestGetUserID(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := fiber.New()
-			app.Get("/test", func(c *fiber.Ctx) error {
+			app := gofiber.New()
+			app.Get("/test", func(c *gofiber.Ctx) error {
 				tt.setup(c)
 				got, err := GetUserID(c)
 				if (err != nil) != tt.wantErr {
@@ -124,8 +124,8 @@ func TestGetUserID(t *testing.T) {
 func TestMustGetTeamID(t *testing.T) {
 	// Test success case
 	t.Run("success", func(t *testing.T) {
-		app := fiber.New()
-		app.Get("/test", func(c *fiber.Ctx) error {
+		app := gofiber.New()
+		app.Get("/test", func(c *gofiber.Ctx) error {
 			c.Locals("teamID", "team123")
 			got, err := MustGetTeamID(c)
 			if err != nil {
@@ -146,8 +146,8 @@ func TestMustGetTeamID(t *testing.T) {
 
 	// Test error case - MustGetTeamID sends 401 response directly
 	t.Run("missing teamID returns 401", func(t *testing.T) {
-		app := fiber.New()
-		app.Get("/test", func(c *fiber.Ctx) error {
+		app := gofiber.New()
+		app.Get("/test", func(c *gofiber.Ctx) error {
 			_, err := MustGetTeamID(c)
 			return err
 		})
@@ -161,9 +161,9 @@ func TestMustGetTeamID(t *testing.T) {
 }
 
 func TestGetTeamAndUserID(t *testing.T) {
-	app := fiber.New()
+	app := gofiber.New()
 
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c *gofiber.Ctx) error {
 		c.Locals("teamID", "team123")
 		c.Locals("userID", "user456")
 
@@ -185,15 +185,60 @@ func TestGetTeamAndUserID(t *testing.T) {
 	_, _ = app.Test(req)
 }
 
+func TestGetUserRole(t *testing.T) {
+	tests := []struct {
+		name  string
+		setup func(*gofiber.Ctx)
+		want  string
+	}{
+		{
+			name: "valid user role",
+			setup: func(c *gofiber.Ctx) {
+				c.Locals(KeyTeamRole, "admin")
+			},
+			want: "admin",
+		},
+		{
+			name:  "missing user role returns empty",
+			setup: func(c *gofiber.Ctx) {},
+			want:  "",
+		},
+		{
+			name: "wrong type returns empty",
+			setup: func(c *gofiber.Ctx) {
+				c.Locals(KeyTeamRole, 123)
+			},
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			app := gofiber.New()
+			app.Get("/test", func(c *gofiber.Ctx) error {
+				tt.setup(c)
+				got := GetUserRole(c)
+				if got != tt.want {
+					t.Errorf("GetUserRole() = %v, want %v", got, tt.want)
+				}
+				return nil
+			})
+
+			req := httptest.NewRequest("GET", "/test", nil)
+			_, _ = app.Test(req)
+		})
+	}
+}
+
 type testUser struct {
 	ID   string
 	Name string
 }
 
 func TestGetUser(t *testing.T) {
-	app := fiber.New()
+	app := gofiber.New()
 
-	app.Get("/test", func(c *fiber.Ctx) error {
+	app.Get("/test", func(c *gofiber.Ctx) error {
 		user := &testUser{ID: "123", Name: "Test"}
 		c.Locals("user", user)
 

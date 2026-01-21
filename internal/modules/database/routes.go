@@ -17,7 +17,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 // registerDatabaseRoutes registers database routes under /servers/:id/databases
 func (m *Module) registerDatabaseRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler) {
-	databases := router.Group("/servers/:serverId/databases", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
+	databases := router.Group("/servers/:serverId/databases", middleware.AuthenticatedChain(authMiddleware)...)
 	{
 		databases.Get("/", handler.ListDatabases)
 		databases.Post("/", handler.CreateDatabase)
@@ -29,7 +29,7 @@ func (m *Module) registerDatabaseRoutes(router fiber.Router, authMiddleware fibe
 
 // registerDatabaseUserRoutes registers database user routes under /servers/:id/database-users
 func (m *Module) registerDatabaseUserRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler) {
-	users := router.Group("/servers/:serverId/database-users", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
+	users := router.Group("/servers/:serverId/database-users", middleware.AuthenticatedChain(authMiddleware)...)
 	{
 		users.Get("/", handler.ListDatabaseUsers)
 		users.Post("/", handler.CreateDatabaseUser)

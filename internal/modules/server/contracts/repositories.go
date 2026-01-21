@@ -7,6 +7,7 @@ import (
 	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"gorm.io/gorm"
 )
 
@@ -17,7 +18,7 @@ type ServerRepository interface {
 	FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Server, error)
 	FindWithRelations(ctx context.Context, id, teamID string) (*models.Server, error)
 	FindAllByTeam(ctx context.Context, teamID string) ([]models.Server, error)
-	FindAllByTeamPaginated(ctx context.Context, teamID string, limit, offset int) ([]models.Server, int64, error)
+	FindAllByTeamPaginated(ctx context.Context, teamID string, page, perPage int) (*repository.PaginatedResult[models.Server], error)
 	FindArchivedByTeam(ctx context.Context, teamID string) ([]models.Server, error)
 	Update(ctx context.Context, server *models.Server) error
 	UpdateStatus(ctx context.Context, id string, status enums.ServerStatus) error
@@ -86,14 +87,14 @@ type DaemonRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// SshKeyRepository defines the interface for SSH key database operations
-type SshKeyRepository interface {
-	Create(ctx context.Context, key *models.SshKey) error
-	FindByID(ctx context.Context, id string) (*models.SshKey, error)
-	FindByTeam(ctx context.Context, teamID string) ([]models.SshKey, error)
-	FindByServer(ctx context.Context, serverID string) ([]models.SshKey, error)
-	FindGlobal(ctx context.Context) ([]models.SshKey, error)
-	Update(ctx context.Context, key *models.SshKey) error
+// SSHKeyRepository defines the interface for SSH key database operations
+type SSHKeyRepository interface {
+	Create(ctx context.Context, key *models.SSHKey) error
+	FindByID(ctx context.Context, id string) (*models.SSHKey, error)
+	FindByTeam(ctx context.Context, teamID string) ([]models.SSHKey, error)
+	FindByServer(ctx context.Context, serverID string) ([]models.SSHKey, error)
+	FindGlobal(ctx context.Context) ([]models.SSHKey, error)
+	Update(ctx context.Context, key *models.SSHKey) error
 	Delete(ctx context.Context, id string) error
 	AttachToServer(ctx context.Context, serverID, sshKeyID string) error
 	DetachFromServer(ctx context.Context, serverID, sshKeyID string) error
@@ -148,7 +149,7 @@ type RepositoryRegistry interface {
 	FirewallRule() FirewallRuleRepository
 	Cron() CronRepository
 	Daemon() DaemonRepository
-	SshKey() SshKeyRepository
+	SSHKey() SSHKeyRepository
 	Task() TaskRepository
 	Metric() MetricRepository
 	ServerProvider() ServerProviderRepository

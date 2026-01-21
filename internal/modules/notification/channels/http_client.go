@@ -1,13 +1,12 @@
 package channels
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"time"
+
+	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 )
 
 // DefaultHTTPClient is the default HTTP client implementation
@@ -18,30 +17,24 @@ type DefaultHTTPClient struct {
 // NewDefaultHTTPClient creates a new default HTTP client
 func NewDefaultHTTPClient() *DefaultHTTPClient {
 	return &DefaultHTTPClient{
-		client: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		client: httpclient.Default(),
 	}
 }
 
 // Post makes a POST request to the specified URL
 func (c *DefaultHTTPClient) Post(ctx context.Context, url string, body interface{}) ([]byte, int, error) {
-	var bodyReader io.Reader
+	builder := httpclient.NewRequest(ctx, http.MethodPost, url)
 
 	if body != nil {
-		jsonBody, err := json.Marshal(body)
-		if err != nil {
-			return nil, 0, fmt.Errorf("failed to marshal body: %w", err)
-		}
-		bodyReader = bytes.NewReader(jsonBody)
+		builder.JSONBody(body)
+	} else {
+		builder.WithHeader("Content-Type", "application/json")
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bodyReader)
+	req, err := builder.Build()
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
-
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -59,7 +52,7 @@ func (c *DefaultHTTPClient) Post(ctx context.Context, url string, body interface
 
 // Get makes a GET request to the specified URL
 func (c *DefaultHTTPClient) Get(ctx context.Context, url string) ([]byte, int, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	req, err := httpclient.NewRequest(ctx, http.MethodGet, url).Build()
 	if err != nil {
 		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}

@@ -120,6 +120,7 @@ func TestBase_BroadcastMethods_NilWS(t *testing.T) {
 	base.BroadcastToServer("server-123", "event", nil)
 	base.BroadcastToSite("site-123", "event", nil)
 	base.BroadcastToDeployment("deployment-123", "event", nil)
+	base.BroadcastToUser("user-123", "event", nil)
 	base.Broadcast("channel", "event", nil)
 }
 
@@ -132,6 +133,74 @@ func TestBase_EnqueueTask_NilQueue(t *testing.T) {
 	}
 }
 
+func TestBase_HasDB(t *testing.T) {
+	base := NewBase(nil, nil, nil)
+	if base.HasDB() {
+		t.Error("Expected HasDB to return false when db is nil")
+	}
+}
+
+func TestBase_DB(t *testing.T) {
+	base := NewBase(nil, nil, nil)
+	if base.DB() != nil {
+		t.Error("Expected DB to return nil when db is not set")
+	}
+}
+
+func TestNewBaseWithDB(t *testing.T) {
+	logger := zerolog.Nop()
+
+	base := NewBaseWithDB(nil, nil, nil, &logger)
+
+	if base.Logger == nil {
+		t.Error("Expected logger to be set")
+	}
+	if base.HasDB() {
+		t.Error("Expected HasDB to return false when db is nil")
+	}
+}
+
+func TestBase_ActivityLogger_NilDB(t *testing.T) {
+	base := NewBase(nil, nil, nil)
+
+	logger := base.ActivityLogger()
+	if logger != nil {
+		t.Error("Expected ActivityLogger to return nil when db is nil")
+	}
+}
+
+func TestBase_LogActivity_NilDB(t *testing.T) {
+	base := NewBase(nil, nil, nil)
+
+	// This should not panic with nil db
+	base.LogActivity(nil, "server", "created", "Test message", &testSubject{})
+}
+
+func TestBase_LogActivityByUser_NilDB(t *testing.T) {
+	base := NewBase(nil, nil, nil)
+
+	// This should not panic with nil db
+	base.LogActivityByUser(nil, "user-123", "server", "created", "Test message", &testSubject{})
+}
+
+func TestBase_LogActivityWithProps_NilDB(t *testing.T) {
+	base := NewBase(nil, nil, nil)
+
+	// This should not panic with nil db
+	base.LogActivityWithProps(nil, "server", "created", "Test message", &testSubject{}, map[string]any{
+		"key": "value",
+	})
+}
+
+func TestBase_LogActivityByUserWithProps_NilDB(t *testing.T) {
+	base := NewBase(nil, nil, nil)
+
+	// This should not panic with nil db
+	base.LogActivityByUserWithProps(nil, "user-123", "server", "created", "Test message", &testSubject{}, map[string]any{
+		"key": "value",
+	})
+}
+
 // testError is a simple error type for testing
 type testError struct {
 	msg string
@@ -139,4 +208,15 @@ type testError struct {
 
 func (e *testError) Error() string {
 	return e.msg
+}
+
+// testSubject implements activity.Subject for testing
+type testSubject struct{}
+
+func (s *testSubject) GetID() string {
+	return "test-id"
+}
+
+func (s *testSubject) GetTeamID() string {
+	return "test-team-id"
 }

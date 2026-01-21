@@ -8,11 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/bcrypt"
-
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // PasswordResetService handles password reset operations
@@ -40,13 +39,10 @@ func (s *PasswordResetService) SendPasswordResetLink(ctx context.Context, email 
 	}
 
 	// Generate token
-	token, err := models.GenerateToken(32)
-	if err != nil {
-		return err
-	}
+	tokenStr := security.NewTokenGenerator(32).WithEncoding(security.TokenBase64URL).MustGenerate()
 
 	// Hash the token for storage
-	hashedToken := s.hashToken(token)
+	hashedToken := s.hashToken(tokenStr)
 
 	// Store token
 	now := time.Now()
@@ -101,12 +97,12 @@ func (s *PasswordResetService) ResetPassword(ctx context.Context, req *dto.Reset
 	}
 
 	// Hash new password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hashedPassword, err := security.HashPassword(req.Password)
 	if err != nil {
 		return err
 	}
 
-	user.Password = string(hashedPassword)
+	user.Password = hashedPassword
 
 	if err := s.repos.User().Update(ctx, user); err != nil {
 		return err
@@ -117,8 +113,8 @@ func (s *PasswordResetService) ResetPassword(ctx context.Context, req *dto.Reset
 }
 
 // hashToken hashes a token for secure storage
-func (s *PasswordResetService) hashToken(token string) string {
-	hash := sha256.Sum256([]byte(token))
+func (s *PasswordResetService) hashToken(t string) string {
+	hash := sha256.Sum256([]byte(t))
 
 	return hex.EncodeToString(hash[:])
 }

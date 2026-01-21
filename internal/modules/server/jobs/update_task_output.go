@@ -22,26 +22,24 @@ type UpdateTaskOutputPayload struct {
 // UpdateTaskOutputJob updates the output of a running task in the database
 // This allows streaming task output for long-running tasks
 type UpdateTaskOutputJob struct {
-	ctx     *JobContext
-	Payload UpdateTaskOutputPayload
+	pkgjobs.BaseJob[*JobContext, UpdateTaskOutputPayload]
 }
 
 // NewUpdateTaskOutputJob creates a new UpdateTaskOutputJob
 func NewUpdateTaskOutputJob(ctx *JobContext, payload UpdateTaskOutputPayload) *UpdateTaskOutputJob {
 	return &UpdateTaskOutputJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the update task output job
 func (j *UpdateTaskOutputJob) Handle(ctx context.Context) error {
-	task, err := j.ctx.Repos.Task().FindByID(ctx, j.Payload.TaskID)
+	task, err := j.Ctx.Repos().Task().FindByID(ctx, j.Payload.TaskID)
 	if err != nil {
 		return fmt.Errorf("failed to find task: %w", err)
 	}
 
-	j.ctx.LogInfo("Updating task output",
+	j.Ctx.LogInfo("Updating task output",
 		"task_id", task.ID,
 		"server_id", j.Payload.ServerID,
 	)
@@ -56,11 +54,11 @@ func (j *UpdateTaskOutputJob) Handle(ctx context.Context) error {
 	}
 
 	// Update the task output
-	if err := j.ctx.Repos.Task().UpdateOutput(ctx, task.ID, newOutput); err != nil {
+	if err := j.Ctx.Repos().Task().UpdateOutput(ctx, task.ID, newOutput); err != nil {
 		return fmt.Errorf("failed to update task output: %w", err)
 	}
 
-	j.ctx.LogInfo("Task output updated",
+	j.Ctx.LogInfo("Task output updated",
 		"task_id", task.ID,
 	)
 
@@ -69,17 +67,17 @@ func (j *UpdateTaskOutputJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *UpdateTaskOutputJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to update task output",
+	j.Ctx.LogError(err, "Failed to update task output",
 		"task_id", j.Payload.TaskID,
 	)
 }
 
 // NewUpdateTaskOutputTask creates an update task output task
-func NewUpdateTaskOutputTask(taskID, serverID, output string, append bool) (*asynq.Task, error) {
+func NewUpdateTaskOutputTask(taskID, serverID, output string, shouldAppend bool) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUpdateTaskOutput, UpdateTaskOutputPayload{
 		TaskID:   taskID,
 		ServerID: serverID,
 		Output:   output,
-		Append:   append,
+		Append:   shouldAppend,
 	})
 }

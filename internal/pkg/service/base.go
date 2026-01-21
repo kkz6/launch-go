@@ -1,14 +1,17 @@
 package service
 
 import (
+	"context"
+
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
-	"github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 // Dependencies holds common dependencies needed by all services.
@@ -30,10 +33,10 @@ type Dependencies struct {
 }
 
 // NewDependencies creates a new Dependencies instance with all common dependencies.
-func NewDependencies(db *gorm.DB, logger *zerolog.Logger, q *queue.Client, ws broadcast.ModelBroadcaster, dispatcher *taskrunner.Dispatcher) Dependencies {
+func NewDependencies(db *gorm.DB, log *zerolog.Logger, q *queue.Client, ws broadcast.ModelBroadcaster, dispatcher *taskrunner.Dispatcher) Dependencies {
 	return Dependencies{
 		DB:          db,
-		Logger:      logger,
+		Logger:      log,
 		Queue:       q,
 		Broadcaster: ws,
 		Dispatcher:  dispatcher,
@@ -50,27 +53,42 @@ func NewDependencies(db *gorm.DB, logger *zerolog.Logger, q *queue.Client, ws br
 //	    repo *repositories.Repository
 //	}
 type Base struct {
+	broadcast.ModelMixin
+	db     *gorm.DB
 	Queue  *queue.Client
-	WS     broadcast.ModelBroadcaster
 	Logger *zerolog.Logger
 }
 
 // NewBase creates a new Base service
-func NewBase(q *queue.Client, ws broadcast.ModelBroadcaster, logger *zerolog.Logger) Base {
-	return Base{
+func NewBase(q *queue.Client, ws broadcast.ModelBroadcaster, log *zerolog.Logger) Base {
+	b := Base{
 		Queue:  q,
-		WS:     ws,
-		Logger: logger,
+		Logger: log,
 	}
+	b.SetModelBroadcaster(ws)
+	return b
+}
+
+// NewBaseWithDB creates a new Base service with database access
+func NewBaseWithDB(db *gorm.DB, q *queue.Client, ws broadcast.ModelBroadcaster, log *zerolog.Logger) Base {
+	b := Base{
+		db:     db,
+		Queue:  q,
+		Logger: log,
+	}
+	b.SetModelBroadcaster(ws)
+	return b
 }
 
 // NewBaseFromDeps creates a new Base service from Dependencies
 func NewBaseFromDeps(deps Dependencies) Base {
-	return Base{
+	b := Base{
+		db:     deps.DB,
 		Queue:  deps.Queue,
-		WS:     deps.Broadcaster,
 		Logger: deps.Logger,
 	}
+	b.SetModelBroadcaster(deps.Broadcaster)
+	return b
 }
 
 // EnqueueTask enqueues a task to the default queue
@@ -93,86 +111,53 @@ func (s *Base) EnqueueTaskWithOptions(task *asynq.Task, opts ...asynq.Option) er
 	return err
 }
 
-// BroadcastToServer broadcasts a message to all clients subscribed to a server
-func (s *Base) BroadcastToServer(serverID, event string, data interface{}) {
-	if s.WS == nil {
-		return
-	}
-	s.WS.BroadcastToServer(serverID, event, data)
-}
+// TaskFactory is a function that creates an asynq task
+type TaskFactory func() (*asynq.Task, error)
 
-// BroadcastToTeam broadcasts a message to all clients subscribed to a team
-func (s *Base) BroadcastToTeam(teamID, event string, data interface{}) {
-	if s.WS == nil {
+// DispatchTask creates and enqueues a task using the provided factory.
+// It handles all error logging internally and optionally logs success.
+//
+// Usage:
+//
+//	s.DispatchTask("InstallBackup", func() (*asynq.Task, error) {
+//	    return jobs.NewInstallBackupTask(serverID, backupID, nil)
+//	}, "server_id", serverID, "backup_id", backupID)
+func (s *Base) DispatchTask(name string, factory TaskFactory, logFields ...interface{}) {
+	if s.Queue == nil {
+		s.LogWarn("Queue not configured, skipping task", "task", name)
 		return
 	}
-	s.WS.BroadcastToTeam(teamID, event, data)
-}
 
-// BroadcastToSite broadcasts a message to all clients subscribed to a site
-func (s *Base) BroadcastToSite(siteID, event string, data interface{}) {
-	if s.WS == nil {
+	task, err := factory()
+	if err != nil {
+		s.LogError(err, "Failed to create task", "task", name)
 		return
 	}
-	s.WS.BroadcastToSite(siteID, event, data)
-}
 
-// BroadcastToDeployment broadcasts a message to all clients subscribed to a deployment
-func (s *Base) BroadcastToDeployment(deploymentID, event string, data interface{}) {
-	if s.WS == nil {
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue task", "task", name)
 		return
 	}
-	s.WS.BroadcastToDeployment(deploymentID, event, data)
-}
 
-// Broadcast broadcasts a message to a channel
-func (s *Base) Broadcast(channel, event string, data interface{}) {
-	if s.WS == nil {
-		return
+	if len(logFields) > 0 {
+		fields := append([]interface{}{"task", name}, logFields...)
+		s.LogInfo("Task enqueued", fields...)
 	}
-	s.WS.Broadcast(channel, event, data)
 }
 
 // LogError logs an error with context
 func (s *Base) LogError(err error, msg string, fields ...interface{}) {
-	if s.Logger == nil {
-		return
-	}
-	event := s.Logger.Error().Err(err)
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			event = event.Interface(key, fields[i+1])
-		}
-	}
-	event.Msg(msg)
+	logger.Error(s.Logger, err, msg, fields...)
 }
 
 // LogWarn logs a warning with context
 func (s *Base) LogWarn(msg string, fields ...interface{}) {
-	if s.Logger == nil {
-		return
-	}
-	event := s.Logger.Warn()
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			event = event.Interface(key, fields[i+1])
-		}
-	}
-	event.Msg(msg)
+	logger.Warn(s.Logger, msg, fields...)
 }
 
 // LogInfo logs an info message with context
 func (s *Base) LogInfo(msg string, fields ...interface{}) {
-	if s.Logger == nil {
-		return
-	}
-	event := s.Logger.Info()
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			event = event.Interface(key, fields[i+1])
-		}
-	}
-	event.Msg(msg)
+	logger.Info(s.Logger, msg, fields...)
 }
 
 // HasQueue returns true if a queue client is configured
@@ -182,47 +167,224 @@ func (s *Base) HasQueue() bool {
 
 // HasWebsocket returns true if a websocket hub is configured
 func (s *Base) HasWebsocket() bool {
-	return s.WS != nil
+	return s.HasModelBroadcaster()
 }
 
-// BroadcastModelCreated broadcasts a model creation event to the team channel.
-// The model must implement the Broadcastable interface.
-func (s *Base) BroadcastModelCreated(model models.Broadcastable) {
-	if s.WS == nil {
+// -----------------------------------------------------------------------------
+// Activity Logging Helpers
+// -----------------------------------------------------------------------------
+
+// LogActivity logs an activity for a model without a causer.
+// This is a convenience method for common activity logging patterns.
+//
+// Usage:
+//
+//	s.LogActivity(ctx, "server", "created", "Server was created", server)
+func (s *Base) LogActivity(ctx context.Context, logName, event, message string, model activity.Subject) {
+	if s.db == nil {
 		return
 	}
-	s.WS.BroadcastModelCreated(
-		model.GetTeamID(),
-		model.BroadcastName(),
-		model.BroadcastPayload()["id"].(string),
-		model.BroadcastPayload(),
-	)
+	activity.New(s.db).
+		WithContext(ctx).
+		UseLog(logName).
+		On(model).
+		WithEvent(event).
+		Log(message)
 }
 
-// BroadcastModelUpdated broadcasts a model update event to the team channel.
-// The model must implement the Broadcastable interface.
-func (s *Base) BroadcastModelUpdated(model models.Broadcastable) {
-	if s.WS == nil {
+// LogActivityByUser logs an activity for a model caused by a user.
+// This is a convenience method for common activity logging patterns.
+//
+// Usage:
+//
+//	s.LogActivityByUser(ctx, userID, "server", "created", "Server was created", server)
+func (s *Base) LogActivityByUser(ctx context.Context, userID, logName, event, message string, model activity.Subject) {
+	if s.db == nil {
 		return
 	}
-	s.WS.BroadcastModelUpdated(
-		model.GetTeamID(),
-		model.BroadcastName(),
-		model.BroadcastPayload()["id"].(string),
-		model.BroadcastPayload(),
-	)
+	activity.New(s.db).
+		WithContext(ctx).
+		UseLog(logName).
+		CausedByUser(userID).
+		On(model).
+		WithEvent(event).
+		Log(message)
 }
 
-// BroadcastModelDeleted broadcasts a model deletion event to the team channel.
-// The model must implement the Broadcastable interface.
-func (s *Base) BroadcastModelDeleted(model models.Broadcastable) {
-	if s.WS == nil {
+// LogActivityWithProps logs an activity with additional properties.
+// This is useful when you need to add extra context to the activity log.
+//
+// Usage:
+//
+//	s.LogActivityWithProps(ctx, "server", "failed", "Server provisioning failed", server, map[string]any{
+//	    "error": err.Error(),
+//	    "step": "install_php",
+//	})
+func (s *Base) LogActivityWithProps(ctx context.Context, logName, event, message string, model activity.Subject, props map[string]any) {
+	if s.db == nil {
 		return
 	}
-	s.WS.BroadcastModelDeleted(
-		model.GetTeamID(),
-		model.BroadcastName(),
-		model.BroadcastPayload()["id"].(string),
-		model.BroadcastPayload(),
-	)
+	activity.New(s.db).
+		WithContext(ctx).
+		UseLog(logName).
+		On(model).
+		WithEvent(event).
+		WithProperties(props).
+		Log(message)
+}
+
+// LogActivityByUserWithProps logs an activity caused by a user with additional properties.
+//
+// Usage:
+//
+//	s.LogActivityByUserWithProps(ctx, userID, "server", "updated", "Server settings changed", server, map[string]any{
+//	    "changes": changedFields,
+//	})
+func (s *Base) LogActivityByUserWithProps(ctx context.Context, userID, logName, event, message string, model activity.Subject, props map[string]any) {
+	if s.db == nil {
+		return
+	}
+	activity.New(s.db).
+		WithContext(ctx).
+		UseLog(logName).
+		CausedByUser(userID).
+		On(model).
+		WithEvent(event).
+		WithProperties(props).
+		Log(message)
+}
+
+// ActivityLogger returns an activity logger configured with the service's database.
+// Use this for more complex activity logging scenarios that require the full fluent API.
+//
+// Usage:
+//
+//	s.ActivityLogger().
+//	    WithContext(ctx).
+//	    UseLog("server").
+//	    CausedByUser(userID).
+//	    On(server).
+//	    WithEvent("created").
+//	    WithProperty("source", "api").
+//	    Log("Server was created")
+func (s *Base) ActivityLogger() *activity.Logger {
+	if s.db == nil {
+		return nil
+	}
+	return activity.New(s.db)
+}
+
+// HasDB returns true if a database connection is configured
+func (s *Base) HasDB() bool {
+	return s.db != nil
+}
+
+// DB returns the underlying database connection.
+// This is useful for services that need direct database access.
+func (s *Base) DB() *gorm.DB {
+	return s.db
+}
+
+// -----------------------------------------------------------------------------
+// Transaction + Activity Logging Helpers
+// -----------------------------------------------------------------------------
+
+// WithTransaction executes fn within a database transaction.
+// If fn returns an error, the transaction is rolled back.
+//
+// Usage:
+//
+//	err := s.WithTransaction(ctx, func(tx *gorm.DB) error {
+//	    if err := tx.Create(&server).Error; err != nil {
+//	        return err
+//	    }
+//	    if err := tx.Create(&site).Error; err != nil {
+//	        return err
+//	    }
+//	    return nil
+//	})
+func (s *Base) WithTransaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
+	if s.db == nil {
+		return fn(nil)
+	}
+
+	return s.db.WithContext(ctx).Transaction(fn)
+}
+
+// WithTransactionAndLog executes fn within a transaction and logs activity on success.
+// The activity is logged using the provided parameters.
+//
+// Usage:
+//
+//	err := s.WithTransactionAndLog(
+//	    ctx,
+//	    userID,
+//	    server,
+//	    "created",
+//	    "Server was created",
+//	    func(tx *gorm.DB) error {
+//	        return tx.Create(&server).Error
+//	    },
+//	)
+func (s *Base) WithTransactionAndLog(
+	ctx context.Context,
+	userID string,
+	subject activity.Subject,
+	event string,
+	description string,
+	fn func(tx *gorm.DB) error,
+) error {
+	return s.WithTransactionAndLogProps(ctx, userID, subject, event, description, nil, fn)
+}
+
+// WithTransactionAndLogProps is like WithTransactionAndLog but with additional properties.
+//
+// Usage:
+//
+//	err := s.WithTransactionAndLogProps(
+//	    ctx,
+//	    userID,
+//	    server,
+//	    "updated",
+//	    "Server settings changed",
+//	    map[string]any{"changes": changedFields},
+//	    func(tx *gorm.DB) error {
+//	        return tx.Save(&server).Error
+//	    },
+//	)
+func (s *Base) WithTransactionAndLogProps(
+	ctx context.Context,
+	userID string,
+	subject activity.Subject,
+	event string,
+	description string,
+	props map[string]any,
+	fn func(tx *gorm.DB) error,
+) error {
+	if s.db == nil {
+		return fn(nil)
+	}
+
+	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := fn(tx); err != nil {
+			return err
+		}
+
+		logger := activity.New(tx).
+			WithContext(ctx).
+			On(subject).
+			WithEvent(event)
+
+		if userID != "" {
+			logger = logger.CausedByUser(userID)
+		}
+
+		if len(props) > 0 {
+			logger = logger.WithProperties(props)
+		}
+
+		_, err := logger.Log(description)
+
+		return err
+	})
 }

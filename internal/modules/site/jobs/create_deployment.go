@@ -24,31 +24,29 @@ type CreateDeploymentPayload struct {
 
 // CreateDeploymentJob creates a deployment record and dispatches the deploy job
 type CreateDeploymentJob struct {
-	ctx     *JobContext
-	Payload CreateDeploymentPayload
+	pkgjobs.BaseJob[*JobContext, CreateDeploymentPayload]
 }
 
 // NewCreateDeploymentJob creates a new CreateDeploymentJob
 func NewCreateDeploymentJob(ctx *JobContext, payload CreateDeploymentPayload) *CreateDeploymentJob {
 	return &CreateDeploymentJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the create deployment job
 func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
-	j.ctx.LogInfo("Creating deployment",
+	j.Ctx.LogInfo("Creating deployment",
 		"site_id", site.ID,
 	)
 
 	// Check if there's already an active deployment
-	activeDeployment, err := j.ctx.DeploymentRepo.FindActiveBySite(ctx, site.ID)
+	activeDeployment, err := j.Ctx.DeploymentRepo.FindActiveBySite(ctx, site.ID)
 	if err != nil {
 		return fmt.Errorf("failed to check for active deployment: %w", err)
 	}
@@ -65,16 +63,16 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 
 	// Create deployment record
 	deployment := &models.Deployment{
-		SiteID:  site.ID,
 		Status:  status,
 		GitHash: j.Payload.GitHash,
 	}
+	deployment.SiteID = site.ID
 
-	if err := j.ctx.DeploymentRepo.Create(ctx, deployment); err != nil {
+	if err := j.Ctx.DeploymentRepo.Create(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to create deployment: %w", err)
 	}
 
-	j.ctx.LogInfo("Deployment created",
+	j.Ctx.LogInfo("Deployment created",
 		"site_id", site.ID,
 		"deployment_id", deployment.ID,
 		"status", status,
@@ -82,7 +80,7 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 
 	// If queued, we're done - it will be processed when the active deployment finishes
 	if status == enums.DeploymentStatusQueued {
-		j.ctx.LogInfo("Deployment queued behind active deployment",
+		j.Ctx.LogInfo("Deployment queued behind active deployment",
 			"deployment_id", deployment.ID,
 		)
 		return nil
@@ -102,16 +100,14 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to create deploy task: %w", taskErr)
 	}
 
-	if j.ctx.Queue != nil {
-		// Add a small delay to ensure DB transaction is committed
-		if _, err := j.ctx.Queue.Enqueue(task, asynq.ProcessIn(time.Second)); err != nil {
-			// Cleanup: mark deployment as failed if we can't dispatch the job
-			_ = j.ctx.DeploymentRepo.UpdateStatus(ctx, deployment.ID, enums.DeploymentStatusFailed)
-			return fmt.Errorf("failed to enqueue deploy job: %w", err)
-		}
+	// Add a small delay to ensure DB transaction is committed
+	if err := j.Ctx.DispatchTaskIn(task, time.Second); err != nil {
+		// Cleanup: mark deployment as failed if we can't dispatch the job
+		_ = j.Ctx.DeploymentRepo.UpdateStatus(ctx, deployment.ID, enums.DeploymentStatusFailed)
+		return fmt.Errorf("failed to enqueue deploy job: %w", err)
 	}
 
-	j.ctx.LogInfo("Deploy job dispatched",
+	j.Ctx.LogInfo("Deploy job dispatched",
 		"site_id", site.ID,
 		"deployment_id", deployment.ID,
 		"zero_downtime", site.ZeroDowntimeDeployment,
@@ -122,7 +118,7 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *CreateDeploymentJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to create deployment",
+	j.Ctx.LogError(err, "Failed to create deployment",
 		"site_id", j.Payload.SiteID,
 	)
 }

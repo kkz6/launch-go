@@ -1,12 +1,11 @@
 package storage
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
+
+	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 )
 
 const dropboxAPIURL = "https://api.dropboxapi.com/2"
@@ -20,9 +19,7 @@ type DropboxProvider struct {
 // NewDropboxProvider creates a new Dropbox storage provider
 func NewDropboxProvider(credentials map[string]interface{}) *DropboxProvider {
 	p := &DropboxProvider{
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		httpClient: httpclient.Default(),
 	}
 
 	if token, ok := credentials["token"].(string); ok {
@@ -35,22 +32,17 @@ func NewDropboxProvider(credentials map[string]interface{}) *DropboxProvider {
 // Connect tests the connection to Dropbox
 func (p *DropboxProvider) Connect(ctx context.Context) error {
 	if p.token == "" {
-		return fmt.Errorf("Dropbox token is required")
+		return fmt.Errorf("dropbox token is required")
 	}
 
 	reqBody := map[string]string{"query": ""}
-	jsonBody, err := json.Marshal(reqBody)
+	req, err := httpclient.NewRequest(ctx, "POST", dropboxAPIURL+"/check/user").
+		BearerAuth(p.token).
+		JSONBody(reqBody).
+		Build()
 	if err != nil {
 		return err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", dropboxAPIURL+"/check/user", bytes.NewReader(jsonBody))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+p.token)
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {
@@ -77,18 +69,13 @@ func (p *DropboxProvider) Delete(ctx context.Context, paths []string) error {
 	}
 
 	reqBody := map[string]interface{}{"entries": entries}
-	jsonBody, err := json.Marshal(reqBody)
+	req, err := httpclient.NewRequest(ctx, "POST", dropboxAPIURL+"/files/delete_batch").
+		BearerAuth(p.token).
+		JSONBody(reqBody).
+		Build()
 	if err != nil {
 		return err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", dropboxAPIURL+"/files/delete_batch", bytes.NewReader(jsonBody))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+p.token)
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := p.httpClient.Do(req)
 	if err != nil {

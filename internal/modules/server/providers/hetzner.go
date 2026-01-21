@@ -1,38 +1,33 @@
 package providers
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
-	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/sshkey"
+	"github.com/kkz6/launch-go/internal/pkg/httpclient"
+	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
 
 const hetznerAPIURL = "https://api.hetzner.cloud/v1"
 
 // HetznerProvider implements the Provider interface for Hetzner Cloud
 type HetznerProvider struct {
-	BaseProvider
-	client *http.Client
+	BaseCloudProvider
 }
 
 // NewHetznerProvider creates a new Hetzner provider
 func NewHetznerProvider(keyGenerator sshkey.Generator) *HetznerProvider {
 	configs := config.GetProviderConfigs()
 	return &HetznerProvider{
-		BaseProvider: BaseProvider{
-			keyGenerator: keyGenerator,
-			config:       configs["hetzner"],
-		},
-		client: &http.Client{Timeout: 30 * time.Second},
+		BaseCloudProvider: NewBaseCloudProvider(
+			keyGenerator,
+			configs["hetzner"],
+			hetznerAPIURL,
+		),
 	}
 }
 
@@ -43,26 +38,25 @@ func (p *HetznerProvider) Type() enums.ServerProvider {
 
 // Connect tests the connection to Hetzner
 func (p *HetznerProvider) Connect(ctx context.Context, credentials map[string]interface{}) error {
-	token, ok := credentials["token"].(string)
-	if !ok || token == "" {
-		return ErrInvalidCredentials
-	}
-
-	_, err := p.doRequest(ctx, token, "GET", "/servers", nil)
+	token, err := ExtractToken(credentials)
 	if err != nil {
-		return ErrConnectionFailed
+		return err
 	}
 
-	return nil
+	client := p.NewClient(token)
+	return ValidateConnection(ctx, client, "/servers")
 }
 
 // Create creates a new server on Hetzner
 func (p *HetznerProvider) Create(ctx context.Context, server *models.Server, credentials map[string]interface{}) (*CreateResult, error) {
-	token, ok := credentials["token"].(string)
-	if !ok || token == "" {
-		return nil, ErrInvalidCredentials
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return nil, err
 	}
 
+	client := p.NewClient(token)
+
+	// Generate SSH key pair
 	keyPair, err := p.GenerateKeyPair()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate key pair: %w", err)
@@ -70,63 +64,34 @@ func (p *HetznerProvider) Create(ctx context.Context, server *models.Server, cre
 
 	// Create SSH key
 	sshKeyName := "server-" + server.ID + "-key"
-	sshKeyResp, err := p.doRequest(ctx, token, "POST", "/ssh_keys", map[string]interface{}{
-		"name":       sshKeyName,
-		"public_key": keyPair.PublicKey,
-	})
+	sshKeyResp, err := p.createSSHKey(ctx, client, sshKeyName, keyPair.PublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create SSH key: %w", err)
+		return nil, err
 	}
+	sshKeyID := sshKeyResp.ID
 
-	sshKeyData := sshKeyResp["ssh_key"].(map[string]interface{})
-	sshKeyID := fmt.Sprintf("%v", sshKeyData["id"])
-
-	providerData := server.ProviderData
-	if providerData == nil {
-		providerData = make(map[string]interface{})
-	}
-
-	region, _ := providerData["region"].(string)
-	plan, _ := providerData["plan"].(string)
-	var os enums.OperatingSystem
-	if server.OperatingSystem != nil {
-		os = enums.OperatingSystem(*server.OperatingSystem)
-	} else {
-		os = enums.OSUbuntu24
-	}
+	// Get provider data
+	providerData := GetProviderData(server.ProviderData)
+	region := GetStringField(providerData, "region", "")
+	plan := GetStringField(providerData, "plan", "")
+	os := p.getOperatingSystem(server)
 	image := p.GetImage(os)
 
+	// Create server
 	serverName := strings.ReplaceAll(strings.ToLower(server.Name), " ", "-")
-	serverResp, err := p.doRequest(ctx, token, "POST", "/servers", map[string]interface{}{
-		"automount":   false,
-		"image":       image,
-		"ssh_keys":    []interface{}{sshKeyID},
-		"name":        serverName,
-		"location":    region,
-		"server_type": plan,
-	})
+	serverResp, err := p.createServer(ctx, client, serverName, region, plan, image, sshKeyID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create server: %w", err)
-	}
-
-	serverData := serverResp["server"].(map[string]interface{})
-	serverID := fmt.Sprintf("%v", serverData["id"])
-
-	var publicIP string
-	if publicNet, ok := serverData["public_net"].(map[string]interface{}); ok {
-		if ipv4, ok := publicNet["ipv4"].(map[string]interface{}); ok {
-			publicIP, _ = ipv4["ip"].(string)
-		}
+		return nil, err
 	}
 
 	return &CreateResult{
-		ProviderServerID: serverID,
-		PublicIPv4:       publicIP,
+		ProviderServerID: serverResp.ID,
+		PublicIPv4:       serverResp.PublicIP,
 		PublicKey:        keyPair.PublicKey,
 		PrivateKey:       keyPair.PrivateKey,
 		SSHKeyID:         sshKeyID,
 		ProviderData: map[string]interface{}{
-			"hetzner_id": serverID,
+			"hetzner_id": serverResp.ID,
 			"ssh_key_id": sshKeyID,
 		},
 	}, nil
@@ -134,9 +99,9 @@ func (p *HetznerProvider) Create(ctx context.Context, server *models.Server, cre
 
 // Delete deletes a server from Hetzner
 func (p *HetznerProvider) Delete(ctx context.Context, server *models.Server, credentials map[string]interface{}) error {
-	token, ok := credentials["token"].(string)
-	if !ok || token == "" {
-		return ErrInvalidCredentials
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return err
 	}
 
 	providerData := server.ProviderData
@@ -144,12 +109,14 @@ func (p *HetznerProvider) Delete(ctx context.Context, server *models.Server, cre
 		return nil
 	}
 
-	if hetznerID, ok := providerData["hetzner_id"].(string); ok && hetznerID != "" {
-		_, _ = p.doRequest(ctx, token, "DELETE", "/servers/"+hetznerID, nil)
+	client := p.NewClient(token)
+
+	if hetznerID := GetStringField(providerData, "hetzner_id", ""); hetznerID != "" {
+		DoDeleteIgnoreErrors(ctx, client, "/servers/"+hetznerID)
 	}
 
-	if sshKeyID, ok := providerData["ssh_key_id"].(string); ok && sshKeyID != "" {
-		_, _ = p.doRequest(ctx, token, "DELETE", "/ssh_keys/"+sshKeyID, nil)
+	if sshKeyID := GetStringField(providerData, "ssh_key_id", ""); sshKeyID != "" {
+		DoDeleteIgnoreErrors(ctx, client, "/ssh_keys/"+sshKeyID)
 	}
 
 	return nil
@@ -157,9 +124,9 @@ func (p *HetznerProvider) Delete(ctx context.Context, server *models.Server, cre
 
 // GetPublicIPv4 fetches the public IPv4 address
 func (p *HetznerProvider) GetPublicIPv4(ctx context.Context, server *models.Server, credentials map[string]interface{}) (string, error) {
-	token, ok := credentials["token"].(string)
-	if !ok || token == "" {
-		return "", ErrInvalidCredentials
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return "", err
 	}
 
 	providerData := server.ProviderData
@@ -167,90 +134,128 @@ func (p *HetznerProvider) GetPublicIPv4(ctx context.Context, server *models.Serv
 		return "", ErrServerNotFound
 	}
 
-	hetznerID, ok := providerData["hetzner_id"].(string)
-	if !ok || hetznerID == "" {
+	hetznerID := GetStringField(providerData, "hetzner_id", "")
+	if hetznerID == "" {
 		return "", ErrServerNotFound
 	}
 
-	resp, err := p.doRequest(ctx, token, "GET", "/servers/"+hetznerID, nil)
+	client := p.NewClient(token)
+	resp, err := DoGet(ctx, client, "/servers/"+hetznerID)
 	if err != nil {
-		return "", err
+		return "", WrapHTTPError(err, "get server")
 	}
 
-	serverData := resp["server"].(map[string]interface{})
-	if publicNet, ok := serverData["public_net"].(map[string]interface{}); ok {
-		if ipv4, ok := publicNet["ipv4"].(map[string]interface{}); ok {
-			if ip, ok := ipv4["ip"].(string); ok {
-				return ip, nil
-			}
+	return p.extractPublicIPv4(resp)
+}
+
+// GetImage returns the image ID for an operating system
+func (p *HetznerProvider) GetImage(os enums.OperatingSystem) string {
+	return p.GetImageFromConfig(os, "ubuntu-24.04")
+}
+
+// CredentialRules returns validation rules
+func (p *HetznerProvider) CredentialRules() map[string]string {
+	return CommonCredentialRules()
+}
+
+// CreateRules returns validation rules
+func (p *HetznerProvider) CreateRules() map[string]string {
+	return CommonCreateRules()
+}
+
+// CredentialData extracts credential data
+func (p *HetznerProvider) CredentialData(input map[string]interface{}) map[string]interface{} {
+	return CommonCredentialData(input)
+}
+
+// ProviderData extracts provider-specific data
+func (p *HetznerProvider) ProviderData(input map[string]interface{}) map[string]interface{} {
+	return CommonProviderData(input)
+}
+
+// Internal helper methods
+
+type hetznerSSHKeyResponse struct {
+	ID string
+}
+
+func (p *HetznerProvider) createSSHKey(ctx context.Context, client *httpclient.Client, name, publicKey string) (*hetznerSSHKeyResponse, error) {
+	body := map[string]interface{}{
+		"name":       name,
+		"public_key": publicKey,
+	}
+
+	resp, err := DoPost(ctx, client, "/ssh_keys", body)
+	if err != nil {
+		return nil, WrapHTTPError(err, "create SSH key")
+	}
+
+	sshKeyData, ok := GetNestedMap(resp, "ssh_key")
+	if !ok {
+		return nil, fmt.Errorf("invalid SSH key response")
+	}
+
+	return &hetznerSSHKeyResponse{
+		ID: ExtractServerID(sshKeyData, "id"),
+	}, nil
+}
+
+type hetznerServerResponse struct {
+	ID       string
+	PublicIP string
+}
+
+func (p *HetznerProvider) createServer(ctx context.Context, client *httpclient.Client, name, region, plan, image, sshKeyID string) (*hetznerServerResponse, error) {
+	body := map[string]interface{}{
+		"automount":   false,
+		"image":       image,
+		"ssh_keys":    []interface{}{sshKeyID},
+		"name":        name,
+		"location":    region,
+		"server_type": plan,
+	}
+
+	resp, err := DoPost(ctx, client, "/servers", body)
+	if err != nil {
+		return nil, WrapHTTPError(err, "create server")
+	}
+
+	serverData, ok := GetNestedMap(resp, "server")
+	if !ok {
+		return nil, fmt.Errorf("invalid server response")
+	}
+
+	var publicIP string
+	if publicNet, ok := GetNestedMap(serverData, "public_net"); ok {
+		if ipv4, ok := GetNestedMap(publicNet, "ipv4"); ok {
+			publicIP = GetStringField(ipv4, "ip", "")
+		}
+	}
+
+	return &hetznerServerResponse{
+		ID:       ExtractServerID(serverData, "id"),
+		PublicIP: publicIP,
+	}, nil
+}
+
+func (p *HetznerProvider) extractPublicIPv4(resp map[string]interface{}) (string, error) {
+	serverData, ok := GetNestedMap(resp, "server")
+	if !ok {
+		return "", fmt.Errorf("invalid server response")
+	}
+
+	if publicNet, ok := GetNestedMap(serverData, "public_net"); ok {
+		if ipv4, ok := GetNestedMap(publicNet, "ipv4"); ok {
+			return GetStringField(ipv4, "ip", ""), nil
 		}
 	}
 
 	return "", nil
 }
 
-// GetImage returns the image ID for an operating system
-func (p *HetznerProvider) GetImage(os enums.OperatingSystem) string {
-	if img, ok := p.config.Images[os.String()]; ok {
-		if str, ok := img.(string); ok {
-			return str
-		}
+func (p *HetznerProvider) getOperatingSystem(server *models.Server) enums.OperatingSystem {
+	if server.OperatingSystem != nil {
+		return enums.OperatingSystem(*server.OperatingSystem)
 	}
-	return "ubuntu-24.04"
-}
-
-// CredentialRules returns validation rules
-func (p *HetznerProvider) CredentialRules() map[string]string {
-	return map[string]string{"token": "required"}
-}
-
-// CreateRules returns validation rules
-func (p *HetznerProvider) CreateRules() map[string]string {
-	return map[string]string{"plan": "required", "region": "required"}
-}
-
-// CredentialData extracts credential data
-func (p *HetznerProvider) CredentialData(input map[string]interface{}) map[string]interface{} {
-	return map[string]interface{}{"token": input["token"]}
-}
-
-// ProviderData extracts provider-specific data
-func (p *HetznerProvider) ProviderData(input map[string]interface{}) map[string]interface{} {
-	return map[string]interface{}{"plan": input["plan"], "region": input["region"]}
-}
-
-func (p *HetznerProvider) doRequest(ctx context.Context, token, method, path string, body interface{}) (map[string]interface{}, error) {
-	var reqBody io.Reader
-	if body != nil {
-		jsonBody, _ := json.Marshal(body)
-		reqBody = bytes.NewBuffer(jsonBody)
-	}
-
-	req, err := http.NewRequestWithContext(ctx, method, hetznerAPIURL+path, reqBody)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("request failed: %s", string(respBody))
-	}
-
-	if len(respBody) == 0 {
-		return nil, nil
-	}
-
-	var result map[string]interface{}
-	json.Unmarshal(respBody, &result)
-	return result, nil
+	return enums.OSUbuntu24
 }

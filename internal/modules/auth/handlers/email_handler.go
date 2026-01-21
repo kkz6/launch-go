@@ -10,12 +10,12 @@ import (
 
 // EmailHandler handles email verification HTTP requests
 type EmailHandler struct {
-	service *services.Service
+	BaseHandler
 }
 
 // NewEmailHandler creates a new EmailHandler instance
 func NewEmailHandler(service *services.Service) *EmailHandler {
-	return &EmailHandler{service: service}
+	return &EmailHandler{BaseHandler: NewBaseHandler(service)}
 }
 
 // VerifyEmail verifies the user's email
@@ -23,7 +23,7 @@ func (h *EmailHandler) VerifyEmail(c *fiber.Ctx) error {
 	userID := c.Params("id")
 	hash := c.Params("hash")
 
-	if err := h.service.VerifyEmail(c.Context(), userID, hash); err != nil {
+	if err := h.Service().VerifyEmail(c.Context(), userID, hash); err != nil {
 		return response.HandleError(c, err)
 	}
 
@@ -37,7 +37,7 @@ func (h *EmailHandler) ResendVerificationEmail(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.service.ResendVerificationEmail(c.Context(), userID); err != nil {
+	if err := h.Service().ResendVerificationEmail(c.Context(), userID); err != nil {
 		return response.HandleError(c, err)
 	}
 

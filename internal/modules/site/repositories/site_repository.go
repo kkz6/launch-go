@@ -11,7 +11,6 @@ import (
 )
 
 // SiteRepository handles database operations for sites.
-// Embeds repository.Installable[T] for CRUD + installation status operations.
 type SiteRepository struct {
 	repository.Installable[models.Site]
 }
@@ -123,6 +122,8 @@ func (r *SiteRepository) CountByTeam(ctx context.Context, teamID string) (int64,
 }
 
 // FindByServerWithLatestDeployment finds sites with their latest deployment
+// Uses a subquery to efficiently load the latest deployment for each site in a single query,
+// avoiding the N+1 query problem.
 func (r *SiteRepository) FindByServerWithLatestDeployment(ctx context.Context, serverID string) ([]models.Site, error) {
 	var sites []models.Site
 	err := r.DB.WithContext(ctx).
@@ -133,14 +134,37 @@ func (r *SiteRepository) FindByServerWithLatestDeployment(ctx context.Context, s
 		return nil, err
 	}
 
-	// Load latest deployment for each site
+	if len(sites) == 0 {
+		return sites, nil
+	}
+
+	// Extract site IDs for batch query
+	siteIDs := make([]string, len(sites))
+	siteMap := make(map[string]*models.Site, len(sites))
 	for i := range sites {
-		var deployment models.Deployment
-		if err := r.DB.WithContext(ctx).
-			Where("site_id = ?", sites[i].ID).
-			Order("created_at DESC").
-			First(&deployment).Error; err == nil {
-			sites[i].LatestDeployment = &deployment
+		siteIDs[i] = sites[i].ID
+		siteMap[sites[i].ID] = &sites[i]
+	}
+
+	// Subquery to get the max deployment ID for each site
+	// Since we use ULIDs (which are time-sortable), MAX(id) gives us the latest deployment
+	latestDeploymentSubquery := r.DB.Model(&models.Deployment{}).
+		Select("MAX(id)").
+		Where("site_id IN ?", siteIDs).
+		Group("site_id")
+
+	var deployments []models.Deployment
+	err = r.DB.WithContext(ctx).
+		Where("id IN (?)", latestDeploymentSubquery).
+		Find(&deployments).Error
+	if err != nil {
+		return nil, err
+	}
+
+	// Map deployments back to their sites
+	for i := range deployments {
+		if site, ok := siteMap[deployments[i].SiteID]; ok {
+			site.LatestDeployment = &deployments[i]
 		}
 	}
 
@@ -162,7 +186,7 @@ func (r *SiteRepository) FindByAddress(ctx context.Context, address, serverID st
 }
 
 // FindByRepositoryAndBranch finds sites with auto-deployment enabled for a repository and branch
-func (r *SiteRepository) FindByRepositoryAndBranch(ctx context.Context, repository, branch string) ([]models.Site, error) {
+func (r *SiteRepository) FindByRepositoryAndBranch(ctx context.Context, repoName, branch string) ([]models.Site, error) {
 	var sites []models.Site
 	err := r.DB.WithContext(ctx).
 		Where("repository_branch = ? AND auto_deployment = ?", branch, true).
@@ -170,26 +194,3 @@ func (r *SiteRepository) FindByRepositoryAndBranch(ctx context.Context, reposito
 
 	return sites, err
 }
-
-// Note: The following methods are inherited from repository.Installable[T]:
-// From Base[T]:
-// - Create(ctx, entity) error
-// - FindByServer(ctx, serverID) ([]T, error)
-// - Update(ctx, entity) error
-// - UpdateFields(ctx, id, fields) error
-// - Delete(ctx, id) error
-// - Exists(ctx, id) (bool, error)
-// - Count(ctx) (int64, error)
-// - CountByServer(ctx, serverID) (int64, error)
-// - Transaction(ctx, fn) error
-// - Query(ctx) *gorm.DB
-// - WithPreload(ctx, relations...) *gorm.DB
-// From Installable[T]:
-// - MarkAsInstalled(ctx, id) error
-// - MarkAsFailed(ctx, id) error
-// - MarkAsUninstalling(ctx, id) error
-// - MarkUninstallationFailed(ctx, id) error
-// - FindInstalled(ctx, serverID) ([]T, error)
-// - FindPending(ctx, serverID) ([]T, error)
-// - FindFailed(ctx, serverID) ([]T, error)
-// - FindUninstalling(ctx, serverID) ([]T, error)

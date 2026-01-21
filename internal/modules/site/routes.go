@@ -7,6 +7,7 @@ import (
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/handlers"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 // RegisterRoutes registers all site module routes
@@ -15,40 +16,36 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 	// Create task runner deps for file service
 	taskRunnerDeps := &servertasks.TaskRunnerDeps{
-		DB:         deps.DB,
-		Queue:      deps.Queue,
-		Dispatcher: deps.Dispatcher,
-		Logger:     deps.Logger,
+		ServerTaskDeps: pkgjobs.ServerTaskDeps{
+			DB:         deps.DB,
+			Queue:      deps.Queue,
+			Dispatcher: deps.Dispatcher,
+			Logger:     deps.Logger,
+		},
 	}
 
 	// Create service registry
 	svc := m.createServices(taskRunnerDeps)
 
-	// Create handlers
-	siteHandler := handlers.NewSiteHandler(svc.Site())
-	siteHandler.SetDomainRepository(m.domainRepo)
-	deploymentHandler := handlers.NewDeploymentHandler(svc.Deployment())
-	sslHandler := handlers.NewSSLHandler(svc.SSL())
-	queueHandler := handlers.NewQueueHandler(svc.Queue())
-	commandHandler := handlers.NewCommandHandler(svc.Command())
-	redirectHandler := handlers.NewRedirectHandler(svc.Redirect())
-	fileHandler := handlers.NewFileHandler(svc.File())
+	// Create aggregate handler with all sub-handlers
+	h := handlers.NewHandler(svc)
+	h.SetDomainRepository(m.domainRepo)
 
 	// Top-level site routes (not nested under servers)
 	sitesGlobal := router.Group("/sites", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
-	m.registerGlobalSiteRoutes(sitesGlobal, siteHandler)
+	m.registerGlobalSiteRoutes(sitesGlobal, h.Site)
 
 	// Sites are nested under servers
 	servers := router.Group("/servers/:serverId", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	sites := servers.Group("/sites")
 
-	m.registerSiteRoutes(sites, siteHandler)
-	m.registerDeploymentRoutes(sites, deploymentHandler)
-	m.registerSSLRoutes(sites, sslHandler)
-	m.registerQueueRoutes(sites, queueHandler)
-	m.registerCommandRoutes(sites, commandHandler)
-	m.registerRedirectRoutes(sites, redirectHandler)
-	m.registerFileRoutes(sites, fileHandler)
+	m.registerSiteRoutes(sites, h.Site)
+	m.registerDeploymentRoutes(sites, h.Deployment)
+	m.registerSSLRoutes(sites, h.SSL)
+	m.registerQueueRoutes(sites, h.Queue)
+	m.registerCommandRoutes(sites, h.Command)
+	m.registerRedirectRoutes(sites, h.Redirect)
+	m.registerFileRoutes(sites, h.File)
 }
 
 // RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
@@ -58,19 +55,21 @@ func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 
 	// Create minimal task runner deps (webhooks don't need file service features)
 	taskRunnerDeps := &servertasks.TaskRunnerDeps{
-		DB:         deps.DB,
-		Queue:      deps.Queue,
-		Dispatcher: deps.Dispatcher,
-		Logger:     deps.Logger,
+		ServerTaskDeps: pkgjobs.ServerTaskDeps{
+			DB:         deps.DB,
+			Queue:      deps.Queue,
+			Dispatcher: deps.Dispatcher,
+			Logger:     deps.Logger,
+		},
 	}
 
 	svc := m.createServices(taskRunnerDeps)
-	webhookHandler := handlers.NewWebhookHandler(svc.Deployment())
+	h := handlers.NewHandler(svc)
 
 	// Deployment webhook - triggered by git providers (GitHub, GitLab, Bitbucket)
 	// URL: /deploy/:siteId/:token
-	router.Post("/deploy/:siteId/:token", webhookHandler.DeployWebhook)
-	router.Get("/deploy/:siteId/:token", webhookHandler.DeployWebhook) // Some providers use GET
+	router.Post("/deploy/:siteId/:token", h.Webhook.DeployWebhook)
+	router.Get("/deploy/:siteId/:token", h.Webhook.DeployWebhook) // Some providers use GET
 }
 
 // DomainRepository returns the domain repository for cross-module access

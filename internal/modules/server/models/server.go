@@ -10,7 +10,6 @@ import (
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
 )
 
 // Compile-time check that Server implements ServerConnection
@@ -19,9 +18,9 @@ var _ taskrunner.ServerConnection = (*Server)(nil)
 // Server represents a managed server
 type Server struct {
 	basemodels.BaseModel
+	basemodels.TeamScopedModel
+	basemodels.UserScopedModel
 	ServerProviderID          *string                    `gorm:"column:server_provider_id;type:char(26);index" json:"server_provider_id,omitempty"`
-	TeamID                    string                     `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-	UserID                    string                     `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
 	Name                      string                     `gorm:"type:varchar(255);not null;index" json:"name"`
 	Description               *string                    `gorm:"type:varchar(255)" json:"description,omitempty"`
 	Provider                  enums.ServerProvider       `gorm:"type:varchar(255);not null" json:"provider"`
@@ -63,7 +62,7 @@ type Server struct {
 	FirewallRules []FirewallRule     `gorm:"foreignKey:ServerID;references:ID" json:"firewall_rules,omitempty"`
 	Crons         []Cron             `gorm:"foreignKey:ServerID;references:ID" json:"crons,omitempty"`
 	Daemons       []Daemon           `gorm:"foreignKey:ServerID;references:ID" json:"daemons,omitempty"`
-	SshKeys       []SshKey           `gorm:"many2many:server_ssh_keys" json:"ssh_keys,omitempty"`
+	SSHKeys       []SSHKey           `gorm:"many2many:server_ssh_keys" json:"ssh_keys,omitempty"`
 	Tasks         []Task             `gorm:"foreignKey:ServerID;references:ID" json:"tasks,omitempty"`
 	Metrics       []Metric           `gorm:"foreignKey:ServerID;references:ID" json:"metrics,omitempty"`
 
@@ -76,13 +75,8 @@ func (s *Server) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 
-	if s.Status == "" {
-		s.Status = enums.ServerStatusNew
-	}
-
-	if s.LaunchToken == "" {
-		s.LaunchToken = utils.GenerateHexToken(32)
-	}
+	basemodels.SetDefaultStatus(&s.Status, enums.ServerStatusNew)
+	basemodels.SetDefaultToken(&s.LaunchToken, 16)
 
 	return nil
 }

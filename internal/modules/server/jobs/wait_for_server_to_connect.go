@@ -10,17 +10,13 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/retry"
 )
 
 const TypeWaitForServerToConnect = "server:wait_for_connect"
 
-// Connection retry configuration
-const (
-	maxConnectionAttempts = 30          // Maximum number of connection attempts
-	initialRetryDelay     = 10 * time.Second
-	maxRetryDelay         = 30 * time.Second
-	connectionTimeout     = 15 * time.Second
-)
+// connectionTimeout is the timeout for individual SSH connection attempts
+const connectionTimeout = 15 * time.Second
 
 type WaitForServerToConnectPayload struct {
 	ServerID         string   `json:"server_id"`
@@ -33,27 +29,26 @@ type WaitForServerToConnectPayload struct {
 // WaitForServerToConnectJob waits for a server to become accessible via SSH.
 // Once connected, it dispatches the ProvisionServer job.
 type WaitForServerToConnectJob struct {
-	ctx     *JobContext
-	Payload WaitForServerToConnectPayload
+	pkgjobs.BaseJob[*JobContext, WaitForServerToConnectPayload]
 }
 
 func (j *WaitForServerToConnectJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Update status to indicate we're waiting for connection
-	if err := j.ctx.Repos.Server().UpdateStatus(ctx, server.ID, enums.ServerStatusStarting); err != nil {
+	if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, enums.ServerStatusStarting); err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
-	j.ctx.BroadcastServerEvent(server, "server.waiting_for_connection", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "server.waiting_for_connection", map[string]any{
 		"server_id": server.ID,
 		"status":    "waiting_for_connection",
 	})
 
-	j.ctx.LogInfo("Waiting for server to become accessible",
+	j.Ctx.LogInfo("Waiting for server to become accessible",
 		"server_id", server.ID,
 		"server_name", server.Name,
 	)
@@ -64,7 +59,7 @@ func (j *WaitForServerToConnectJob) Handle(ctx context.Context) error {
 	}
 
 	// Reload server with IP
-	server, err = j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err = j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to reload server: %w", err)
 	}
@@ -76,18 +71,18 @@ func (j *WaitForServerToConnectJob) Handle(ctx context.Context) error {
 	}
 
 	// Update connectivity status
-	if err := j.ctx.Repos.Server().UpdateFields(ctx, server.ID, map[string]any{
+	if err := j.Ctx.Repos().Server().UpdateFields(ctx, server.ID, map[string]any{
 		"is_connected": true,
 	}); err != nil {
-		j.ctx.LogError(err, "Failed to update connectivity status")
+		j.Ctx.LogError(err, "Failed to update connectivity status")
 	}
 
-	j.ctx.LogInfo("Server is now accessible, dispatching provisioning job",
+	j.Ctx.LogInfo("Server is now accessible, dispatching provisioning job",
 		"server_id", server.ID,
 		"attempts", attempt,
 	)
 
-	j.ctx.BroadcastServerEvent(server, "server.connected", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "server.connected", map[string]any{
 		"server_id": server.ID,
 		"status":    "connected",
 		"attempts":  attempt,
@@ -103,9 +98,16 @@ func (j *WaitForServerToConnectJob) Handle(ctx context.Context) error {
 
 // waitForIP waits for the server to have a public IP address
 func (j *WaitForServerToConnectJob) waitForIP(ctx context.Context) error {
-	maxIPAttempts := 30
-	for attempt := 1; attempt <= maxIPAttempts; attempt++ {
-		server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	cfg := retry.ServerConnectionRetry
+	cfg.OnRetry = func(attempt int, _ error, _ time.Duration) {
+		j.Ctx.LogInfo("Waiting for server IP address",
+			"server_id", j.Payload.ServerID,
+			"attempt", attempt,
+		)
+	}
+
+	return retry.Do(ctx, cfg, func() error {
+		server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 		if err != nil {
 			return err
 		}
@@ -114,109 +116,83 @@ func (j *WaitForServerToConnectJob) waitForIP(ctx context.Context) error {
 			return nil
 		}
 
-		j.ctx.LogInfo("Waiting for server IP address",
-			"server_id", server.ID,
-			"attempt", attempt,
-		)
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(10 * time.Second):
-		}
-	}
-
-	return fmt.Errorf("timeout waiting for server IP address")
+		return fmt.Errorf("server has no public IP yet")
+	})
 }
 
 // attemptConnection tries to connect to the server with exponential backoff
 func (j *WaitForServerToConnectJob) attemptConnection(ctx context.Context) (bool, int) {
-	delay := initialRetryDelay
-
-	for attempt := 1; attempt <= maxConnectionAttempts; attempt++ {
-		// Reload server to get latest data (including keys)
-		server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	cfg := retry.ServerConnectionRetry
+	cfg.OnRetry = func(attempt int, _ error, delay time.Duration) {
+		// Reload server for event broadcast
+		server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 		if err != nil {
-			j.ctx.LogError(err, "Failed to reload server",
-				"attempt", attempt,
-			)
-			continue
+			return
+		}
+
+		j.Ctx.LogInfo("SSH connection attempt failed, retrying...",
+			"server_id", server.ID,
+			"attempt", attempt,
+			"max_attempts", cfg.MaxAttempts,
+			"next_delay", delay.String(),
+		)
+
+		j.Ctx.BroadcastServerEvent(server, "server.connection_attempt", map[string]any{
+			"server_id":    server.ID,
+			"attempt":      attempt,
+			"max_attempts": cfg.MaxAttempts,
+			"status":       "retrying",
+		})
+	}
+
+	attempts, err := retry.DoWithAttempts(ctx, cfg, func() error {
+		// Reload server to get latest data (including keys)
+		server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+		if err != nil {
+			return fmt.Errorf("failed to reload server: %w", err)
 		}
 
 		// Skip if no private key yet
 		if server.PrivateKey.IsEmpty() {
-			j.ctx.LogInfo("Server has no private key yet, waiting...",
+			j.Ctx.LogInfo("Server has no private key yet, waiting...",
 				"server_id", server.ID,
-				"attempt", attempt,
 			)
-			time.Sleep(delay)
-			continue
+			return fmt.Errorf("server has no private key")
 		}
 
 		// Skip if no IP yet
 		if server.PublicIPv4 == nil || *server.PublicIPv4 == "" {
-			j.ctx.LogInfo("Server has no IP address yet, waiting...",
+			j.Ctx.LogInfo("Server has no IP address yet, waiting...",
 				"server_id", server.ID,
-				"attempt", attempt,
 			)
-			time.Sleep(delay)
-			continue
+			return fmt.Errorf("server has no IP address")
 		}
 
 		// Try to connect using whoami task
 		task := tasks.Whoami()
 
 		connCtx, cancel := context.WithTimeout(ctx, connectionTimeout)
-		result, err := j.ctx.ForServer(server).RunTask(task).
+		result, connErr := j.Ctx.ForServer(server).RunTask(task).
 			AsRoot().
 			Dispatch(connCtx)
 		cancel()
 
-		if err == nil && result != nil && result.IsSuccessful() {
-			j.ctx.LogInfo("SSH connection successful",
-				"server_id", server.ID,
-				"attempt", attempt,
-				"output", result.GetOutput(),
-			)
-			return true, attempt
+		if connErr != nil || result == nil || !result.IsSuccessful() {
+			return fmt.Errorf("SSH connection failed")
 		}
 
-		j.ctx.LogInfo("SSH connection attempt failed, retrying...",
+		j.Ctx.LogInfo("SSH connection successful",
 			"server_id", server.ID,
-			"attempt", attempt,
-			"max_attempts", maxConnectionAttempts,
-			"next_delay", delay.String(),
+			"output", result.GetOutput(),
 		)
+		return nil
+	})
 
-		j.ctx.BroadcastServerEvent(server, "server.connection_attempt", map[string]any{
-			"server_id":    server.ID,
-			"attempt":      attempt,
-			"max_attempts": maxConnectionAttempts,
-			"status":       "retrying",
-		})
-
-		select {
-		case <-ctx.Done():
-			return false, attempt
-		case <-time.After(delay):
-		}
-
-		// Increase delay with exponential backoff, capped at maxRetryDelay
-		delay = time.Duration(float64(delay) * 1.2)
-		if delay > maxRetryDelay {
-			delay = maxRetryDelay
-		}
-	}
-
-	return false, maxConnectionAttempts
+	return err == nil, attempts
 }
 
 // dispatchProvisionJob dispatches the ProvisionServer job
 func (j *WaitForServerToConnectJob) dispatchProvisionJob() error {
-	if j.ctx.Queue == nil {
-		return fmt.Errorf("queue client not available")
-	}
-
 	task, err := NewProvisionServerTask(
 		j.Payload.ServerID,
 		j.Payload.TeamID,
@@ -227,11 +203,11 @@ func (j *WaitForServerToConnectJob) dispatchProvisionJob() error {
 		return fmt.Errorf("failed to create provision task: %w", err)
 	}
 
-	if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-		return fmt.Errorf("failed to enqueue provision job: %w", err)
+	if err := j.Ctx.DispatchTask(task); err != nil {
+		return fmt.Errorf("failed to dispatch provision job: %w", err)
 	}
 
-	j.ctx.LogInfo("ProvisionServer job dispatched",
+	j.Ctx.LogInfo("ProvisionServer job dispatched",
 		"server_id", j.Payload.ServerID,
 	)
 
@@ -239,23 +215,23 @@ func (j *WaitForServerToConnectJob) dispatchProvisionJob() error {
 }
 
 func (j *WaitForServerToConnectJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to wait for server connection",
+	j.Ctx.LogError(err, "Failed to wait for server connection",
 		"server_id", j.Payload.ServerID,
 	)
 
 	// Update server status to failed
-	if updateErr := j.ctx.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
-		j.ctx.LogError(updateErr, "Failed to update server status to failed")
+	if updateErr := j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
+		j.Ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 
 	// Update connectivity status
-	_ = j.ctx.Repos.Server().UpdateFields(ctx, j.Payload.ServerID, map[string]any{
+	_ = j.Ctx.Repos().Server().UpdateFields(ctx, j.Payload.ServerID, map[string]any{
 		"is_connected": false,
 	})
 
-	server, findErr := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, findErr := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {
-		j.ctx.BroadcastServerEvent(server, "server.connection_failed", map[string]any{
+		j.Ctx.BroadcastServerEvent(server, "server.connection_failed", map[string]any{
 			"server_id": j.Payload.ServerID,
 			"error":     err.Error(),
 		})
@@ -267,8 +243,8 @@ func (j *WaitForServerToConnectJob) Failed(ctx context.Context, err error) {
 
 // dispatchCleanupJob dispatches the cleanup job for failed provisioning
 func (j *WaitForServerToConnectJob) dispatchCleanupJob(reason string) {
-	if j.ctx.Queue == nil {
-		j.ctx.LogError(nil, "Queue not available, cannot dispatch cleanup job")
+	if j.Ctx.Queue() == nil {
+		j.Ctx.LogError(nil, "Queue not available, cannot dispatch cleanup job")
 		return
 	}
 
@@ -281,16 +257,15 @@ func (j *WaitForServerToConnectJob) dispatchCleanupJob(reason string) {
 		false, // Don't delete the record, keep it for debugging
 	)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to create cleanup task")
+		j.Ctx.LogError(err, "Failed to create cleanup task")
 		return
 	}
 
-	if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-		j.ctx.LogError(err, "Failed to enqueue cleanup job")
-		return
+	if err := j.Ctx.DispatchTask(task); err != nil {
+		return // Error already logged by DispatchTask
 	}
 
-	j.ctx.LogInfo("CleanupFailedProvisioning job dispatched",
+	j.Ctx.LogInfo("CleanupFailedProvisioning job dispatched",
 		"server_id", j.Payload.ServerID,
 	)
 }
@@ -298,8 +273,7 @@ func (j *WaitForServerToConnectJob) dispatchCleanupJob(reason string) {
 // NewWaitForServerToConnectJob creates a new WaitForServerToConnectJob
 func NewWaitForServerToConnectJob(ctx *JobContext, payload WaitForServerToConnectPayload) *WaitForServerToConnectJob {
 	return &WaitForServerToConnectJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

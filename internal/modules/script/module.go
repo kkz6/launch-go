@@ -3,12 +3,12 @@ package script
 import (
 	"github.com/hibiken/asynq"
 
-	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/script/jobs"
 	"github.com/kkz6/launch-go/internal/modules/script/repositories"
 	"github.com/kkz6/launch-go/internal/modules/script/services"
+	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 const ModuleName = "script"
@@ -22,17 +22,17 @@ var (
 
 // Module represents the script module
 type Module struct {
-	module.Base
+	app.Base
 	repos       *repositories.Registry
 	serverRepos *serverrepos.Registry
 }
 
 // NewModule creates a new script module
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 
 	return &Module{
-		Base:        module.NewBase(ModuleName, b),
+		Base:        app.NewBase(ModuleName, b),
 		repos:       repositories.NewRegistry(deps.DB),
 		serverRepos: serverrepos.NewRegistry(deps.DB),
 	}
@@ -60,10 +60,13 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 func (m *Module) createService() *services.ScriptService {
 	deps := m.Deps()
 
-	return services.NewScriptService(
-		m.repos,
-		m.serverRepos,
-		deps.Queue,
-		deps.Logger,
-	)
+	serviceDeps := &services.ServiceDeps{
+		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
+			Dependencies: deps.ServiceDeps(),
+			Repos:        m.repos,
+		},
+		ServerRepos: m.serverRepos,
+	}
+
+	return services.NewScriptService(serviceDeps)
 }

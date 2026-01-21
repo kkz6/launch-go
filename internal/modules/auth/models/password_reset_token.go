@@ -1,8 +1,6 @@
 package models
 
 import (
-	"crypto/rand"
-	"encoding/base64"
 	"time"
 )
 
@@ -26,14 +24,4 @@ func (p *PasswordResetToken) IsExpired() bool {
 	}
 
 	return time.Since(*p.CreatedAt) > 60*time.Minute
-}
-
-// GenerateToken creates a new random token for password reset
-func GenerateToken(length int) (string, error) {
-	bytes := make([]byte, length)
-	if _, err := rand.Read(bytes); err != nil {
-		return "", err
-	}
-
-	return base64.URLEncoding.EncodeToString(bytes), nil
 }

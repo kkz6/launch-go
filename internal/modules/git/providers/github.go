@@ -2,10 +2,6 @@ package providers
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -14,6 +10,9 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+
+	"github.com/kkz6/launch-go/internal/pkg/httpclient"
+	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
 const (
@@ -23,42 +22,38 @@ const (
 
 // GitHubProvider implements the Provider interface for GitHub
 type GitHubProvider struct {
-	config        *ProviderConfig
-	sourceControl *SourceControlData
-	httpClient    *http.Client
+	*BaseGitProvider
 }
 
 // NewGitHubProvider creates a new GitHub provider
 func NewGitHubProvider(config *ProviderConfig) *GitHubProvider {
+	base := NewBaseGitProvider(
+		config,
+		WithProviderType(GitProviderGitHub),
+		WithBaseURL(githubBaseURL),
+		WithAPIURL(githubAPIURL),
+	)
+
+	// Set GitHub-specific Accept header
+	base.APIClient().SetHeader("Accept", "application/vnd.github.v3+json")
+
 	return &GitHubProvider{
-		config: config,
-		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
-		},
+		BaseGitProvider: base,
 	}
-}
-
-// SetSourceControl sets the source control context
-func (p *GitHubProvider) SetSourceControl(sc *SourceControlData) {
-	p.sourceControl = sc
-}
-
-// GetType returns the provider type
-func (p *GitHubProvider) GetType() GitProviderType {
-	return GitProviderGitHub
 }
 
 // GetInstallationURL returns the URL to install the GitHub App
 func (p *GitHubProvider) GetInstallationURL() (string, error) {
-	if p.config.AppSlug == "" {
+	if p.Config().AppSlug == "" {
 		return "", errors.New("GitHub App slug is not configured")
 	}
-	return fmt.Sprintf("%s/apps/%s/installations/new", githubBaseURL, p.config.AppSlug), nil
+	return util.New(p.BaseURL()).Path("apps", p.Config().AppSlug, "installations", "new").String(), nil
 }
 
 // generateJWT generates a JWT for GitHub App authentication
 func (p *GitHubProvider) generateJWT() (string, error) {
-	if p.config.AppID == "" || p.config.PrivateKey == "" {
+	config := p.Config()
+	if config.AppID == "" || config.PrivateKey == "" {
 		return "", errors.New("GitHub App configuration is missing")
 	}
 
@@ -66,10 +61,10 @@ func (p *GitHubProvider) generateJWT() (string, error) {
 	claims := jwt.MapClaims{
 		"iat": now.Unix(),
 		"exp": now.Add(10 * time.Minute).Unix(),
-		"iss": p.config.AppID,
+		"iss": config.AppID,
 	}
 
-	privateKey := strings.ReplaceAll(p.config.PrivateKey, "\\n", "\n")
+	privateKey := strings.ReplaceAll(config.PrivateKey, "\\n", "\n")
 	key, err := jwt.ParseRSAPrivateKeyFromPEM([]byte(privateKey))
 	if err != nil {
 		return "", fmt.Errorf("failed to parse private key: %w", err)
@@ -80,23 +75,14 @@ func (p *GitHubProvider) generateJWT() (string, error) {
 }
 
 // GetInstallationToken gets an access token for an installation
-// Implements Provider interface
 func (p *GitHubProvider) GetInstallationToken(ctx context.Context, installationID string) (string, error) {
 	jwtToken, err := p.generateJWT()
 	if err != nil {
 		return "", err
 	}
 
-	url := fmt.Sprintf("%s/app/installations/%s/access_tokens", githubAPIURL, installationID)
-	req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
-	if err != nil {
-		return "", err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+jwtToken)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-	resp, err := p.httpClient.Do(req)
+	path := fmt.Sprintf("/app/installations/%s/access_tokens", installationID)
+	resp, err := p.DoRaw(ctx, http.MethodPost, path, jwtToken, nil)
 	if err != nil {
 		return "", err
 	}
@@ -110,8 +96,7 @@ func (p *GitHubProvider) GetInstallationToken(ctx context.Context, installationI
 	var result struct {
 		Token string `json:"token"`
 	}
-
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := DecodeJSON(resp, &result); err != nil {
 		return "", err
 	}
 
@@ -125,16 +110,8 @@ func (p *GitHubProvider) GetInstallation(ctx context.Context, installationID str
 		return nil, err
 	}
 
-	url := fmt.Sprintf("%s/app/installations/%s", githubAPIURL, installationID)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+jwtToken)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-	resp, err := p.httpClient.Do(req)
+	path := fmt.Sprintf("/app/installations/%s", installationID)
+	resp, err := p.DoRaw(ctx, http.MethodGet, path, jwtToken, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -150,7 +127,7 @@ func (p *GitHubProvider) GetInstallation(ctx context.Context, installationID str
 	}
 
 	var data map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+	if err := DecodeJSON(resp, &data); err != nil {
 		return nil, err
 	}
 
@@ -164,52 +141,31 @@ func (p *GitHubProvider) GetAllInstallations(ctx context.Context) ([]AppInstalla
 		return nil, err
 	}
 
-	var allInstallations []AppInstallationData
-	page := 1
-	perPage := 100
-
-	for {
-		url := fmt.Sprintf("%s/app/installations?per_page=%d&page=%d", githubAPIURL, perPage, page)
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		req.Header.Set("Authorization", "Bearer "+jwtToken)
-		req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-		resp, err := p.httpClient.Do(req)
-		if err != nil {
-			return nil, err
-		}
-
-		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
-			return nil, fmt.Errorf("failed to get installations: %s", string(body))
-		}
-
-		var installations []map[string]interface{}
-		if err := json.NewDecoder(resp.Body).Decode(&installations); err != nil {
-			resp.Body.Close()
-			return nil, err
-		}
-		resp.Body.Close()
-
-		for _, inst := range installations {
-			allInstallations = append(allInstallations, *p.mapInstallationData(inst))
-		}
-
-		// Check for more pages
-		linkHeader := resp.Header.Get("Link")
-		if !strings.Contains(linkHeader, `rel="next"`) {
-			break
-		}
-
-		page++
+	items, err := p.FetchAllPages(
+		ctx,
+		"/app/installations?per_page=100",
+		jwtToken,
+		func(response map[string]interface{}) ([]map[string]interface{}, error) {
+			// For this endpoint, the response is an array directly, so this won't be called
+			return nil, nil
+		},
+		func(resp *http.Response, body map[string]interface{}) string {
+			if HasNextPage(resp.Header.Get("Link")) {
+				return ParseLinkHeader(resp.Header.Get("Link"))
+			}
+			return ""
+		},
+	)
+	if err != nil {
+		return nil, err
 	}
 
-	return allInstallations, nil
+	var installations []AppInstallationData
+	for _, item := range items {
+		installations = append(installations, *p.mapInstallationData(item))
+	}
+
+	return installations, nil
 }
 
 // GetInstallationRepositories gets repositories for an installation
@@ -220,20 +176,10 @@ func (p *GitHubProvider) GetInstallationRepositories(ctx context.Context, instal
 	}
 
 	var allRepos []map[string]interface{}
-	page := 1
-	perPage := 100
+	path := "/installation/repositories?per_page=100"
 
-	for {
-		url := fmt.Sprintf("%s/installation/repositories?per_page=%d&page=%d", githubAPIURL, perPage, page)
-		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-		if err != nil {
-			return nil, err
-		}
-
-		req.Header.Set("Authorization", "Bearer "+token)
-		req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-		resp, err := p.httpClient.Do(req)
+	for path != "" {
+		resp, err := p.DoRaw(ctx, http.MethodGet, path, token, nil)
 		if err != nil {
 			return nil, err
 		}
@@ -249,11 +195,9 @@ func (p *GitHubProvider) GetInstallationRepositories(ctx context.Context, instal
 			TotalCount   int                      `json:"total_count"`
 		}
 
-		if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-			resp.Body.Close()
+		if err := DecodeJSON(resp, &result); err != nil {
 			return nil, err
 		}
-		resp.Body.Close()
 
 		allRepos = append(allRepos, result.Repositories...)
 
@@ -261,7 +205,11 @@ func (p *GitHubProvider) GetInstallationRepositories(ctx context.Context, instal
 			break
 		}
 
-		page++
+		if HasNextPage(resp.Header.Get("Link")) {
+			path = ParseLinkHeader(resp.Header.Get("Link"))
+		} else {
+			path = ""
+		}
 	}
 
 	return allRepos, nil
@@ -274,16 +222,8 @@ func (p *GitHubProvider) GetRepository(ctx context.Context, installationID, owne
 		return nil, err
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/%s", githubAPIURL, owner, repo)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-	resp, err := p.httpClient.Do(req)
+	path := fmt.Sprintf("/repos/%s/%s", owner, repo)
+	resp, err := p.DoRaw(ctx, http.MethodGet, path, token, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -303,7 +243,7 @@ func (p *GitHubProvider) GetRepository(ctx context.Context, installationID, owne
 	}
 
 	var result map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+	if err := DecodeJSON(resp, &result); err != nil {
 		return nil, err
 	}
 
@@ -312,15 +252,7 @@ func (p *GitHubProvider) GetRepository(ctx context.Context, installationID, owne
 
 // ValidateWebhook validates a webhook signature
 func (p *GitHubProvider) ValidateWebhook(payload []byte, signature string) bool {
-	if p.config.WebhookSecret == "" {
-		return false
-	}
-
-	mac := hmac.New(sha256.New, []byte(p.config.WebhookSecret))
-	mac.Write(payload)
-	expectedSignature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
-
-	return hmac.Equal([]byte(expectedSignature), []byte(signature))
+	return p.VerifyHMACSHA256Signature(payload, signature, "sha256=")
 }
 
 // GetCommitData extracts commit data from a webhook payload
@@ -334,49 +266,26 @@ func (p *GitHubProvider) TestConnection(ctx context.Context) error {
 	return err
 }
 
-// GetSSHURL returns the SSH URL for a repository
-func (p *GitHubProvider) GetSSHURL(repo string) string {
-	return fmt.Sprintf("git@github.com:%s.git", repo)
-}
-
-// GetHTTPSURL returns the HTTPS URL for a repository
-func (p *GitHubProvider) GetHTTPSURL(repo string) string {
-	return fmt.Sprintf("https://github.com/%s.git", repo)
-}
-
 // DeployKey deploys an SSH key to a repository
 func (p *GitHubProvider) DeployKey(ctx context.Context, sourceControlID, title, repo, key string) error {
-	if p.sourceControl == nil || p.sourceControl.InstallationID == nil {
+	sc := p.SourceControl()
+	if sc == nil || sc.InstallationID == nil {
 		return errors.New("no source control configured")
 	}
 
-	token, err := p.GetInstallationToken(ctx, *p.sourceControl.InstallationID)
+	token, err := p.GetInstallationToken(ctx, *sc.InstallationID)
 	if err != nil {
 		return err
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/keys", githubAPIURL, repo)
+	path := fmt.Sprintf("/repos/%s/keys", repo)
 	body := map[string]interface{}{
 		"title":     title,
 		"key":       key,
 		"read_only": true,
 	}
 
-	bodyBytes, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(bodyBytes)))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.httpClient.Do(req)
+	resp, err := p.DoRaw(ctx, http.MethodPost, path, token, body)
 	if err != nil {
 		return err
 	}
@@ -392,25 +301,18 @@ func (p *GitHubProvider) DeployKey(ctx context.Context, sourceControlID, title, 
 
 // GetLastCommit gets the last commit for a repository and branch
 func (p *GitHubProvider) GetLastCommit(ctx context.Context, sourceControlID, repo, branch string) (*CommitData, error) {
-	if p.sourceControl == nil || p.sourceControl.InstallationID == nil {
+	sc := p.SourceControl()
+	if sc == nil || sc.InstallationID == nil {
 		return nil, errors.New("no source control configured")
 	}
 
-	token, err := p.GetInstallationToken(ctx, *p.sourceControl.InstallationID)
+	token, err := p.GetInstallationToken(ctx, *sc.InstallationID)
 	if err != nil {
 		return nil, err
 	}
 
-	url := fmt.Sprintf("%s/repos/%s/commits?sha=%s&per_page=1", githubAPIURL, repo, branch)
-	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-	resp, err := p.httpClient.Do(req)
+	path := fmt.Sprintf("/repos/%s/commits?sha=%s&per_page=1", repo, branch)
+	resp, err := p.DoRaw(ctx, http.MethodGet, path, token, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -421,7 +323,7 @@ func (p *GitHubProvider) GetLastCommit(ctx context.Context, sourceControlID, rep
 	}
 
 	var commits []map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&commits); err != nil {
+	if err := DecodeJSON(resp, &commits); err != nil {
 		return nil, err
 	}
 
@@ -459,17 +361,18 @@ func (p *GitHubProvider) GetLastCommit(ctx context.Context, sourceControlID, rep
 
 // CreateDeployment creates a deployment on GitHub
 func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentInfo) (*DeploymentResult, error) {
-	if p.sourceControl == nil || p.sourceControl.InstallationID == nil {
+	sc := p.SourceControl()
+	if sc == nil || sc.InstallationID == nil {
 		return nil, errors.New("no source control configured")
 	}
 
-	token, err := p.GetInstallationToken(ctx, *p.sourceControl.InstallationID)
+	token, err := p.GetInstallationToken(ctx, *sc.InstallationID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get installation token: %w", err)
 	}
 
 	// Create deployment
-	url := fmt.Sprintf("%s/repos/%s/deployments", githubAPIURL, info.RepoFullName)
+	path := fmt.Sprintf("/repos/%s/deployments", info.RepoFullName)
 	body := map[string]interface{}{
 		"ref":         info.Branch,
 		"description": info.Description,
@@ -480,21 +383,7 @@ func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 		body["sha"] = info.GitHash
 	}
 
-	bodyBytes, err := json.Marshal(body)
-	if err != nil {
-		return nil, err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, strings.NewReader(string(bodyBytes)))
-	if err != nil {
-		return nil, err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.httpClient.Do(req)
+	resp, err := p.DoRaw(ctx, http.MethodPost, path, token, body)
 	if err != nil {
 		return nil, err
 	}
@@ -506,37 +395,16 @@ func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 	}
 
 	var deploymentResp map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&deploymentResp); err != nil {
+	if err := DecodeJSON(resp, &deploymentResp); err != nil {
 		return nil, err
 	}
 
-	// Extract deployment ID
-	deploymentID := ""
-	if idFloat, ok := deploymentResp["id"].(float64); ok {
-		deploymentID = fmt.Sprintf("%.0f", idFloat)
-	}
-
+	deploymentID := ExtractFloatID(deploymentResp, "id")
 	statusesURL, _ := deploymentResp["statuses_url"].(string)
 
 	// Create initial status (in_progress)
 	if statusesURL != "" {
-		statusBody := map[string]interface{}{
-			"state":           DeploymentStatusInProgress.GitHubStatus(),
-			"description":     "Deployment in progress",
-			"environment_url": info.SiteURL,
-		}
-		statusBodyBytes, _ := json.Marshal(statusBody)
-
-		statusReq, err := http.NewRequestWithContext(ctx, "POST", statusesURL, strings.NewReader(string(statusBodyBytes)))
-		if err == nil {
-			statusReq.Header.Set("Authorization", "Bearer "+token)
-			statusReq.Header.Set("Accept", "application/vnd.github.v3+json")
-			statusReq.Header.Set("Content-Type", "application/json")
-			statusResp, _ := p.httpClient.Do(statusReq)
-			if statusResp != nil {
-				statusResp.Body.Close()
-			}
-		}
+		p.createDeploymentStatus(ctx, statusesURL, token, info.SiteURL, DeploymentStatusInProgress)
 	}
 
 	// Remove creator from data to avoid storing sensitive info
@@ -549,9 +417,36 @@ func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 	}, nil
 }
 
+// createDeploymentStatus creates a deployment status
+func (p *GitHubProvider) createDeploymentStatus(ctx context.Context, statusesURL, token, siteURL string, status DeploymentStatus) {
+	statusBody := map[string]interface{}{
+		"state":           status.GitHubStatus(),
+		"description":     "Deployment " + string(status),
+		"environment_url": siteURL,
+	}
+
+	// Use a relative path if possible, or direct URL
+	// Since statuses_url is a full URL, we need to make a direct request
+	req, err := httpclient.NewRequest(ctx, http.MethodPost, statusesURL).
+		BearerAuth(token).
+		WithHeader("Accept", "application/vnd.github.v3+json").
+		JSONBody(statusBody).
+		Build()
+	if err != nil {
+		return
+	}
+
+	resp, err := httpclient.Default().Do(req)
+	if err != nil {
+		return
+	}
+	_ = resp.Body.Close()
+}
+
 // UpdateDeploymentStatus updates the status of a deployment on GitHub
 func (p *GitHubProvider) UpdateDeploymentStatus(ctx context.Context, info *DeploymentInfo, vcsData map[string]interface{}, status DeploymentStatus) error {
-	if p.sourceControl == nil || p.sourceControl.InstallationID == nil {
+	sc := p.SourceControl()
+	if sc == nil || sc.InstallationID == nil {
 		return nil
 	}
 
@@ -560,58 +455,21 @@ func (p *GitHubProvider) UpdateDeploymentStatus(ctx context.Context, info *Deplo
 		return nil
 	}
 
-	token, err := p.GetInstallationToken(ctx, *p.sourceControl.InstallationID)
+	token, err := p.GetInstallationToken(ctx, *sc.InstallationID)
 	if err != nil {
 		return fmt.Errorf("failed to get installation token: %w", err)
 	}
 
-	description := "Deployment " + string(status)
-	body := map[string]interface{}{
-		"state":           status.GitHubStatus(),
-		"description":     description,
-		"environment_url": info.SiteURL,
-	}
-
-	bodyBytes, err := json.Marshal(body)
-	if err != nil {
-		return err
-	}
-
-	req, err := http.NewRequestWithContext(ctx, "POST", statusesURL, strings.NewReader(string(bodyBytes)))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := p.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusCreated {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to update deployment status: %s", string(respBody))
-	}
-
+	p.createDeploymentStatus(ctx, statusesURL, token, info.SiteURL, status)
 	return nil
 }
 
 // mapInstallationData maps raw installation data to AppInstallationData
 func (p *GitHubProvider) mapInstallationData(data map[string]interface{}) *AppInstallationData {
-	id := ""
-	if idFloat, ok := data["id"].(float64); ok {
-		id = fmt.Sprintf("%.0f", idFloat)
-	}
+	id := ExtractFloatID(data, "id")
 
 	account, _ := data["account"].(map[string]interface{})
-	accountID := ""
-	if accountIDFloat, ok := account["id"].(float64); ok {
-		accountID = fmt.Sprintf("%.0f", accountIDFloat)
-	}
+	accountID := ExtractFloatID(account, "id")
 
 	accountLogin, _ := account["login"].(string)
 	accountType, _ := account["type"].(string)

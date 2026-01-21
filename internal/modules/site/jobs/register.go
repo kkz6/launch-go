@@ -60,5 +60,5 @@ func RegisterHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterHandler(mux, TypeCleanupPendingSiteDeployment, jobContext, NewCleanupPendingSiteDeploymentJob)
 
 	// Site configuration jobs
-	pkgjobs.RegisterHandler(mux, TypeUpdateSiteTlsSetting, jobContext, NewUpdateSiteTlsSettingJob)
+	pkgjobs.RegisterHandler(mux, TypeUpdateSiteTLSSetting, jobContext, NewUpdateSiteTLSSettingJob)
 }

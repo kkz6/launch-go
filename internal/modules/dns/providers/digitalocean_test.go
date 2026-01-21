@@ -2,7 +2,6 @@ package providers
 
 import (
 	"context"
-	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -46,7 +45,7 @@ func TestNewDigitalOceanProvider(t *testing.T) {
 
 	assert.NotNil(t, provider)
 	assert.Equal(t, "test-token", provider.GetToken())
-	assert.NotNil(t, provider.httpClient)
+	assert.NotNil(t, provider.HTTPBaseProvider)
 }
 
 func TestDigitalOceanProvider_GetNameservers(t *testing.T) {
@@ -65,7 +64,7 @@ func TestDigitalOceanProvider_GetNameservers(t *testing.T) {
 func TestDigitalOceanProvider_PrepValue_CNAME(t *testing.T) {
 	provider := NewDigitalOceanProvider(map[string]string{"token": "test"})
 
-	record := &DnsRecord{
+	record := &DNSRecord{
 		Type:  RecordTypeCNAME,
 		Value: "example.com",
 	}
@@ -78,7 +77,7 @@ func TestDigitalOceanProvider_PrepValue_CNAME(t *testing.T) {
 func TestDigitalOceanProvider_PrepValue_CNAME_AlreadyHasDot(t *testing.T) {
 	provider := NewDigitalOceanProvider(map[string]string{"token": "test"})
 
-	record := &DnsRecord{
+	record := &DNSRecord{
 		Type:  RecordTypeCNAME,
 		Value: "example.com.",
 	}
@@ -91,7 +90,7 @@ func TestDigitalOceanProvider_PrepValue_CNAME_AlreadyHasDot(t *testing.T) {
 func TestDigitalOceanProvider_PrepValue_NonCNAME(t *testing.T) {
 	provider := NewDigitalOceanProvider(map[string]string{"token": "test"})
 
-	record := &DnsRecord{
+	record := &DNSRecord{
 		Type:  RecordTypeA,
 		Value: "1.2.3.4",
 	}
@@ -164,14 +163,12 @@ func TestDigitalOceanProvider_RecordResponse(t *testing.T) {
 	assert.Equal(t, "MX", response.DomainRecord.Type)
 }
 
-func TestDigitalOceanProvider_ErrorResponse(t *testing.T) {
-	response := doErrorResponse{
-		ID:      "not_found",
-		Message: "Domain not found",
-	}
-
-	assert.Equal(t, "not_found", response.ID)
-	assert.Equal(t, "Domain not found", response.Message)
+func TestDigitalOceanProvider_ErrorHandling(t *testing.T) {
+	// Error responses are now handled by HTTPBaseProvider
+	// This test verifies the provider is correctly configured
+	provider := NewDigitalOceanProvider(map[string]string{"token": "test-token"})
+	assert.NotNil(t, provider.HTTPBaseProvider)
+	assert.Equal(t, "DigitalOcean", provider.Name())
 }
 
 func TestDigitalOceanProvider_AddRecord_RequestData(t *testing.T) {
@@ -184,7 +181,7 @@ func TestDigitalOceanProvider_AddRecord_RequestData(t *testing.T) {
 	flags := 0
 	tag := "issue"
 
-	record := &DnsRecord{
+	record := &DNSRecord{
 		Type:     RecordTypeSRV,
 		Name:     "_service",
 		Value:    "target.example.com",
@@ -235,16 +232,15 @@ func TestDigitalOceanProvider_AddRecord_RequestData(t *testing.T) {
 	assert.Equal(t, "issue", data["tag"])
 }
 
-func TestDigitalOceanProvider_NewRequest_Headers(t *testing.T) {
+func TestDigitalOceanProvider_TokenConfiguration(t *testing.T) {
 	provider := NewDigitalOceanProvider(map[string]string{"token": "test-token"})
 
-	ctx := context.Background()
-	req, err := provider.newRequest(ctx, http.MethodGet, "/test", nil)
-	require.NoError(t, err)
+	// Verify token is properly configured through HTTPBaseProvider
+	assert.Equal(t, "test-token", provider.GetToken())
 
-	assert.Equal(t, "Bearer test-token", req.Header.Get("Authorization"))
-	assert.Equal(t, "application/json", req.Header.Get("Content-Type"))
-	assert.Equal(t, "application/json", req.Header.Get("Accept"))
+	// Verify SetCredentials updates the token
+	provider.SetCredentials(map[string]string{"token": "new-token"})
+	assert.Equal(t, "new-token", provider.GetToken())
 }
 
 func TestDigitalOceanProvider_ListRecords_TypeFiltering(t *testing.T) {

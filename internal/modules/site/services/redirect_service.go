@@ -3,10 +3,12 @@ package services
 import (
 	"context"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 // RedirectService handles business logic for redirects
@@ -29,25 +31,20 @@ func (s *RedirectService) Create(ctx context.Context, siteID, serverID, userID s
 	}
 
 	redirect := &models.Redirect{
-		SiteID: site.ID,
-		TeamID: site.TeamID,
-		UserID: userID,
 		Mode:   req.Mode,
 		From:   req.From,
 		To:     req.To,
 		Status: "pending",
 	}
+	redirect.SiteID = site.ID
+	redirect.TeamID = site.TeamID
+	redirect.UserID = userID
 
 	if err := s.Repos().Redirect().Create(ctx, redirect); err != nil {
 		return nil, err
 	}
 
-	activity.New(s.Repos().Redirect().DB).
-		WithContext(ctx).
-		UseLog("site").
-		On(redirect).
-		WithEvent("created").
-		Log("Redirect was created")
+	activity.LogWithLog(ctx, s.Repos().Redirect().DB, "site", "created", "", redirect, "Redirect was created")
 
 	// Dispatch Caddyfile update job
 	s.dispatchCaddyfileUpdate(site.ID, userID)
@@ -75,12 +72,7 @@ func (s *RedirectService) Delete(ctx context.Context, redirectID, siteID, server
 		return err
 	}
 
-	activity.New(s.Repos().Redirect().DB).
-		WithContext(ctx).
-		UseLog("site").
-		On(redirect).
-		WithEvent("deleted").
-		Log("Redirect was deleted")
+	activity.LogWithLog(ctx, s.Repos().Redirect().DB, "site", "deleted", "", redirect, "Redirect was deleted")
 
 	if err := s.Repos().Redirect().Delete(ctx, redirectID); err != nil {
 		return err
@@ -99,15 +91,7 @@ func (s *RedirectService) dispatchCaddyfileUpdate(siteID, userID string) {
 		userIDPtr = &userID
 	}
 
-	task, err := jobs.NewUpdateCaddyfileTask(siteID, userIDPtr)
-	if err != nil {
-		s.LogError(err, "Failed to create update Caddyfile task", "site_id", siteID)
-		return
-	}
-
-	if s.Queue != nil {
-		if _, err := s.Queue.Enqueue(task); err != nil {
-			s.LogError(err, "Failed to enqueue update Caddyfile job", "site_id", siteID)
-		}
-	}
+	s.DispatchTask("UpdateCaddyfile", func() (*asynq.Task, error) {
+		return jobs.NewUpdateCaddyfileTask(siteID, userIDPtr)
+	}, "site_id", siteID)
 }

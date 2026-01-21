@@ -14,23 +14,25 @@ import (
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
 )
 
 var jobContext *JobContext
 
 // JobContext holds dependencies for database job execution.
-// It embeds pkgjobs.Base for common logging functionality.
+// It embeds pkgjobs.ServerContext for common functionality, task execution,
+// and typed repository access.
+//
+// Access common dependencies via inherited methods:
+//   - ctx.DB() - database connection
+//   - ctx.Logger() - zerolog logger
+//   - ctx.WS() - websocket broadcaster
+//   - ctx.Queue() - queue client
+//   - ctx.Repos() - repository registry
 type JobContext struct {
-	pkgjobs.Base
-	// Public fields for backward compatibility with existing jobs
-	DB             *gorm.DB
-	Repos          *repositories.Registry
-	Logger         *zerolog.Logger
-	WS             broadcast.TeamBroadcaster
-	Queue          *queue.Client
+	*pkgjobs.ServerContext[*repositories.Registry]
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
 }
 
@@ -43,27 +45,21 @@ func NewJobContext(
 	dispatcher taskrunner.TaskDispatcher,
 	queueClient *queue.Client,
 ) *JobContext {
-	return &JobContext{
-		Base: pkgjobs.NewBase(pkgjobs.BaseDeps{
+	deps := pkgjobs.ServerContextDeps{
+		BaseDeps: pkgjobs.BaseDeps{
 			DB:         db,
 			Logger:     logger,
 			WS:         ws,
 			Dispatcher: dispatcher,
 			Queue:      queueClient,
-		}),
-		// Public fields for backward compatibility
-		DB:     db,
-		Repos:  repos,
-		Logger: logger,
-		WS:     ws,
-		Queue:  queueClient,
-		TaskRunnerDeps: &servertasks.TaskRunnerDeps{
-			DB:          db,
-			Queue:       queueClient,
-			Dispatcher:  dispatcher,
-			Logger:      logger,
-			Broadcaster: ws,
 		},
+	}
+
+	serverCtx := pkgjobs.NewServerContext(deps, repos)
+
+	return &JobContext{
+		ServerContext:  serverCtx,
+		TaskRunnerDeps: &servertasks.TaskRunnerDeps{ServerTaskDeps: serverCtx.TaskDeps()},
 	}
 }
 
@@ -84,14 +80,14 @@ func (c *JobContext) RunTaskOnServer(server *servermodels.Server, task taskrunne
 
 // BroadcastDatabaseEvent broadcasts a database event to a team channel.
 func (c *JobContext) BroadcastDatabaseEvent(server *servermodels.Server, event string, data any) {
-	if c.WS != nil && server != nil {
-		c.WS.BroadcastToTeam(server.TeamID, event, data)
+	if server != nil {
+		c.ServerContext.BroadcastServerEvent(server.TeamID, event, data)
 	}
 }
 
 // GetDatabaseType returns the database type for a server (mysql or postgresql).
 func (c *JobContext) GetDatabaseType(ctx context.Context, serverID string) string {
-	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB).
+	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB()).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
 			string(serverenums.ServiceTypePostgreSql),
@@ -110,7 +106,7 @@ func (c *JobContext) GetDatabaseType(ctx context.Context, serverID string) strin
 
 // GetDatabaseServiceType returns the database service type for a server.
 func (c *JobContext) GetDatabaseServiceType(ctx context.Context, serverID string) serverenums.ServiceType {
-	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB).
+	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB()).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
 			string(serverenums.ServiceTypePostgreSql),

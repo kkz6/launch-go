@@ -10,8 +10,8 @@ import (
 // SourceControl represents a connected git provider account/installation
 type SourceControl struct {
 	basemodels.BaseModel
-	UserID                  string                `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	TeamID                  string                `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
+	basemodels.UserScopedModel
+	basemodels.TeamScopedModel
 	ProviderID              string                `gorm:"column:provider_id;type:varchar(255);not null;index" json:"provider_id"`
 	ProviderAccountID       *string               `gorm:"column:provider_account_id;type:varchar(255)" json:"provider_account_id,omitempty"`
 	Login                   *string               `gorm:"type:varchar(255)" json:"login,omitempty"`

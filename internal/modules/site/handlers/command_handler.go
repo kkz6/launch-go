@@ -24,8 +24,16 @@ func NewCommandHandler(commandService *services.CommandService) *CommandHandler 
 
 // CreateCommand creates and executes a command
 func (h *CommandHandler) CreateCommand(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
@@ -54,8 +62,15 @@ func (h *CommandHandler) CreateCommand(c *fiber.Ctx) error {
 
 // ListCommands returns all commands for a site
 func (h *CommandHandler) ListCommands(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
 
 	commands, err := h.commandService.List(c.Context(), siteID, serverID)
 	if err != nil {
@@ -76,11 +91,22 @@ func (h *CommandHandler) ListCommands(c *fiber.Ctx) error {
 
 // DeleteCommand deletes a command
 func (h *CommandHandler) DeleteCommand(c *fiber.Ctx) error {
-	serverID := c.Params("serverId")
-	siteID := c.Params("id")
-	commandID := c.Params("commandId")
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
 
-	err := h.commandService.Delete(c.Context(), siteID, serverID, commandID)
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
+	commandID, err := fiberctx.GetULIDParam(c, "commandId")
+	if err != nil {
+		return err
+	}
+
+	err = h.commandService.Delete(c.Context(), siteID, serverID, commandID)
 	if err != nil {
 		if errors.Is(err, repositories.ErrSiteNotFound) {
 			return response.NotFound(c, response.MsgSiteNotFound)

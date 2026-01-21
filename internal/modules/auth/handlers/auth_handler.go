@@ -11,12 +11,12 @@ import (
 
 // AuthHandler handles authentication-related HTTP requests
 type AuthHandler struct {
-	service *services.Service
+	BaseHandler
 }
 
 // NewAuthHandler creates a new AuthHandler instance
 func NewAuthHandler(service *services.Service) *AuthHandler {
-	return &AuthHandler{service: service}
+	return &AuthHandler{BaseHandler: NewBaseHandler(service)}
 }
 
 // Register handles user registration
@@ -26,7 +26,7 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		return err
 	}
 
-	result, err := h.service.Register(c.Context(), req)
+	result, err := h.Service().Register(c.Context(), req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -41,7 +41,7 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		return err
 	}
 
-	result, err := h.service.Login(c.Context(), req)
+	result, err := h.Service().Login(c.Context(), req)
 	if err != nil {
 		return response.Unauthorized(c, response.MsgInvalidCredentials)
 	}
@@ -56,7 +56,7 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.service.Logout(c.Context(), userID); err != nil {
+	if err := h.Service().Logout(c.Context(), userID); err != nil {
 		return response.HandleError(c, err)
 	}
 
@@ -70,7 +70,7 @@ func (h *AuthHandler) RefreshToken(c *fiber.Ctx) error {
 		return err
 	}
 
-	result, err := h.service.RefreshToken(c.Context(), req.RefreshToken)
+	result, err := h.Service().RefreshToken(c.Context(), req.RefreshToken)
 	if err != nil {
 		return response.Unauthorized(c, response.MsgInvalidToken)
 	}

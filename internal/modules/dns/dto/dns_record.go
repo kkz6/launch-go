@@ -6,8 +6,8 @@ import (
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
-// CreateDnsRecordRequest represents a request to create a DNS record
-type CreateDnsRecordRequest struct {
+// CreateDNSRecordRequest represents a request to create a DNS record
+type CreateDNSRecordRequest struct {
 	Name     string `json:"name" validate:"required,min=1,max=255"`
 	Value    string `json:"value" validate:"required,min=1"`
 	Type     string `json:"type" validate:"required,oneof=A AAAA CNAME MX TXT SRV CAA NS"`
@@ -21,9 +21,9 @@ type CreateDnsRecordRequest struct {
 	Proxied  *bool  `json:"proxied"`
 }
 
-// ToModel converts the request to a DnsRecord model
-func (r *CreateDnsRecordRequest) ToModel(domainID string) *models.DnsRecord {
-	record := &models.DnsRecord{
+// ToModel converts the request to a DNSRecord model
+func (r *CreateDNSRecordRequest) ToModel(domainID string) *models.DNSRecord {
+	record := &models.DNSRecord{
 		DomainID: domainID,
 		Type:     enums.RecordType(r.Type),
 		Name:     r.Name,
@@ -51,8 +51,8 @@ func (r *CreateDnsRecordRequest) ToModel(domainID string) *models.DnsRecord {
 	return record
 }
 
-// UpdateDnsRecordRequest represents a request to update a DNS record
-type UpdateDnsRecordRequest struct {
+// UpdateDNSRecordRequest represents a request to update a DNS record
+type UpdateDNSRecordRequest struct {
 	Name     string `json:"name" validate:"required,min=1,max=255"`
 	Value    string `json:"value" validate:"required,min=1"`
 	Type     string `json:"type" validate:"required,oneof=A AAAA CNAME MX TXT SRV CAA"`
@@ -66,8 +66,8 @@ type UpdateDnsRecordRequest struct {
 	Proxied  *bool  `json:"proxied"`
 }
 
-// ApplyToModel applies the update request to an existing DnsRecord
-func (r *UpdateDnsRecordRequest) ApplyToModel(record *models.DnsRecord) {
+// ApplyToModel applies the update request to an existing DNSRecord
+func (r *UpdateDNSRecordRequest) ApplyToModel(record *models.DNSRecord) {
 	record.Name = r.Name
 	record.Value = r.Value
 	record.Type = enums.RecordType(r.Type)
@@ -94,8 +94,8 @@ func (r *UpdateDnsRecordRequest) ApplyToModel(record *models.DnsRecord) {
 	}
 }
 
-// DnsRecordResponse represents a DNS record in API responses
-type DnsRecordResponse struct {
+// DNSRecordResponse represents a DNS record in API responses
+type DNSRecordResponse struct {
 	ID         string  `json:"id"`
 	DomainID   string  `json:"domain_id"`
 	ProviderID string  `json:"provider_id"`
@@ -115,9 +115,9 @@ type DnsRecordResponse struct {
 	UpdatedAt  string  `json:"updated_at"`
 }
 
-// ToDnsRecordResponse converts a DnsRecord to DnsRecordResponse
-func ToDnsRecordResponse(r *models.DnsRecord) DnsRecordResponse {
-	return DnsRecordResponse{
+// ToDNSRecordResponse converts a DNSRecord to DNSRecordResponse
+func ToDNSRecordResponse(r *models.DNSRecord) DNSRecordResponse {
+	return DNSRecordResponse{
 		ID:         r.ID,
 		DomainID:   r.DomainID,
 		ProviderID: r.ProviderID,

@@ -1,38 +1,33 @@
 package providers
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"strings"
-	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/sshkey"
+	"github.com/kkz6/launch-go/internal/pkg/httpclient"
+	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
 
 const vultrAPIURL = "https://api.vultr.com/v2"
 
 // VultrProvider implements the Provider interface for Vultr
 type VultrProvider struct {
-	BaseProvider
-	client *http.Client
+	BaseCloudProvider
 }
 
 // NewVultrProvider creates a new Vultr provider
 func NewVultrProvider(keyGenerator sshkey.Generator) *VultrProvider {
 	configs := config.GetProviderConfigs()
 	return &VultrProvider{
-		BaseProvider: BaseProvider{
-			keyGenerator: keyGenerator,
-			config:       configs["vultr"],
-		},
-		client: &http.Client{Timeout: 30 * time.Second},
+		BaseCloudProvider: NewBaseCloudProvider(
+			keyGenerator,
+			configs["vultr"],
+			vultrAPIURL,
+		),
 	}
 }
 
@@ -43,26 +38,25 @@ func (p *VultrProvider) Type() enums.ServerProvider {
 
 // Connect tests the connection to Vultr
 func (p *VultrProvider) Connect(ctx context.Context, credentials map[string]interface{}) error {
-	token, ok := credentials["token"].(string)
-	if !ok || token == "" {
-		return ErrInvalidCredentials
-	}
-
-	_, err := p.doRequest(ctx, token, "GET", "/account", nil)
+	token, err := ExtractToken(credentials)
 	if err != nil {
-		return ErrConnectionFailed
+		return err
 	}
 
-	return nil
+	client := p.NewClient(token)
+	return ValidateConnection(ctx, client, "/account")
 }
 
 // Create creates a new server on Vultr
 func (p *VultrProvider) Create(ctx context.Context, server *models.Server, credentials map[string]interface{}) (*CreateResult, error) {
-	token, ok := credentials["token"].(string)
-	if !ok || token == "" {
-		return nil, ErrInvalidCredentials
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return nil, err
 	}
 
+	client := p.NewClient(token)
+
+	// Generate SSH key pair
 	keyPair, err := p.GenerateKeyPair()
 	if err != nil {
 		return nil, fmt.Errorf("failed to generate key pair: %w", err)
@@ -70,63 +64,37 @@ func (p *VultrProvider) Create(ctx context.Context, server *models.Server, crede
 
 	// Create SSH key
 	sshKeyName := "server-" + server.ID + "-key"
-	sshKeyResp, err := p.doRequest(ctx, token, "POST", "/ssh-keys", map[string]interface{}{
-		"name":    sshKeyName,
-		"ssh_key": keyPair.PublicKey,
-	})
+	sshKeyResp, err := p.createSSHKey(ctx, client, sshKeyName, keyPair.PublicKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create SSH key: %w", err)
+		return nil, err
 	}
+	sshKeyID := sshKeyResp.ID
 
-	sshKeyData := sshKeyResp["ssh_key"].(map[string]interface{})
-	sshKeyID := sshKeyData["id"].(string)
-
-	providerData := server.ProviderData
-	if providerData == nil {
-		providerData = make(map[string]interface{})
-	}
-
-	region, _ := providerData["region"].(string)
-	plan, _ := providerData["plan"].(string)
-	var os enums.OperatingSystem
-	if server.OperatingSystem != nil {
-		os = enums.OperatingSystem(*server.OperatingSystem)
-	} else {
-		os = enums.OSUbuntu24
-	}
+	// Get provider data
+	providerData := GetProviderData(server.ProviderData)
+	region := GetStringField(providerData, "region", "")
+	plan := GetStringField(providerData, "plan", "")
+	os := p.getOperatingSystem(server)
 	osID := p.GetImage(os)
 
+	// Create instance
 	serverName := strings.ReplaceAll(strings.ToLower(server.Name), " ", "-")
-	instanceResp, err := p.doRequest(ctx, token, "POST", "/instances", map[string]interface{}{
-		"label":     serverName,
-		"region":    region,
-		"plan":      plan,
-		"os_id":     osID,
-		"sshkey_id": []string{sshKeyID},
-	})
+	instanceResp, err := p.createInstance(ctx, client, serverName, region, plan, osID, sshKeyID)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create instance: %w", err)
+		return nil, err
 	}
 
-	instance := instanceResp["instance"].(map[string]interface{})
-	instanceID := instance["id"].(string)
-	mainIP, _ := instance["main_ip"].(string)
-
-	vcpuCount := int(instance["vcpu_count"].(float64))
-	ram := int(instance["ram"].(float64))
-	disk := int(instance["disk"].(float64))
-
 	return &CreateResult{
-		ProviderServerID: instanceID,
-		PublicIPv4:       mainIP,
+		ProviderServerID: instanceResp.ID,
+		PublicIPv4:       instanceResp.MainIP,
 		PublicKey:        keyPair.PublicKey,
 		PrivateKey:       keyPair.PrivateKey,
-		CPUCores:         vcpuCount,
-		MemoryMB:         ram,
-		DiskGB:           disk,
+		CPUCores:         instanceResp.VCPUCount,
+		MemoryMB:         instanceResp.RAM,
+		DiskGB:           instanceResp.Disk,
 		SSHKeyID:         sshKeyID,
 		ProviderData: map[string]interface{}{
-			"vultr_id":   instanceID,
+			"vultr_id":   instanceResp.ID,
 			"ssh_key_id": sshKeyID,
 		},
 	}, nil
@@ -134,9 +102,9 @@ func (p *VultrProvider) Create(ctx context.Context, server *models.Server, crede
 
 // Delete deletes a server from Vultr
 func (p *VultrProvider) Delete(ctx context.Context, server *models.Server, credentials map[string]interface{}) error {
-	token, ok := credentials["token"].(string)
-	if !ok || token == "" {
-		return ErrInvalidCredentials
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return err
 	}
 
 	providerData := server.ProviderData
@@ -144,12 +112,14 @@ func (p *VultrProvider) Delete(ctx context.Context, server *models.Server, crede
 		return nil
 	}
 
-	if vultrID, ok := providerData["vultr_id"].(string); ok && vultrID != "" {
-		_, _ = p.doRequest(ctx, token, "DELETE", "/instances/"+vultrID, nil)
+	client := p.NewClient(token)
+
+	if vultrID := GetStringField(providerData, "vultr_id", ""); vultrID != "" {
+		DoDeleteIgnoreErrors(ctx, client, "/instances/"+vultrID)
 	}
 
-	if sshKeyID, ok := providerData["ssh_key_id"].(string); ok && sshKeyID != "" {
-		_, _ = p.doRequest(ctx, token, "DELETE", "/ssh-keys/"+sshKeyID, nil)
+	if sshKeyID := GetStringField(providerData, "ssh_key_id", ""); sshKeyID != "" {
+		DoDeleteIgnoreErrors(ctx, client, "/ssh-keys/"+sshKeyID)
 	}
 
 	return nil
@@ -157,9 +127,9 @@ func (p *VultrProvider) Delete(ctx context.Context, server *models.Server, crede
 
 // GetPublicIPv4 fetches the public IPv4 address
 func (p *VultrProvider) GetPublicIPv4(ctx context.Context, server *models.Server, credentials map[string]interface{}) (string, error) {
-	token, ok := credentials["token"].(string)
-	if !ok || token == "" {
-		return "", ErrInvalidCredentials
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return "", err
 	}
 
 	providerData := server.ProviderData
@@ -167,86 +137,116 @@ func (p *VultrProvider) GetPublicIPv4(ctx context.Context, server *models.Server
 		return "", ErrServerNotFound
 	}
 
-	vultrID, ok := providerData["vultr_id"].(string)
-	if !ok || vultrID == "" {
+	vultrID := GetStringField(providerData, "vultr_id", "")
+	if vultrID == "" {
 		return "", ErrServerNotFound
 	}
 
-	resp, err := p.doRequest(ctx, token, "GET", "/instances/"+vultrID, nil)
+	client := p.NewClient(token)
+	resp, err := DoGet(ctx, client, "/instances/"+vultrID)
 	if err != nil {
-		return "", err
+		return "", WrapHTTPError(err, "get instance")
 	}
 
-	instance := resp["instance"].(map[string]interface{})
-	if mainIP, ok := instance["main_ip"].(string); ok {
-		return mainIP, nil
+	instance, ok := GetNestedMap(resp, "instance")
+	if !ok {
+		return "", fmt.Errorf("invalid instance response")
 	}
 
-	return "", nil
+	return GetStringField(instance, "main_ip", ""), nil
 }
 
 // GetImage returns the image ID for an operating system
 func (p *VultrProvider) GetImage(os enums.OperatingSystem) string {
-	if img, ok := p.config.Images[os.String()]; ok {
-		if str, ok := img.(string); ok {
-			return str
-		}
-	}
-	return "2284" // Ubuntu 24.04
+	return p.GetImageFromConfig(os, "2284") // Ubuntu 24.04
 }
 
 // CredentialRules returns validation rules
 func (p *VultrProvider) CredentialRules() map[string]string {
-	return map[string]string{"token": "required"}
+	return CommonCredentialRules()
 }
 
 // CreateRules returns validation rules
 func (p *VultrProvider) CreateRules() map[string]string {
-	return map[string]string{"plan": "required", "region": "required"}
+	return CommonCreateRules()
 }
 
 // CredentialData extracts credential data
 func (p *VultrProvider) CredentialData(input map[string]interface{}) map[string]interface{} {
-	return map[string]interface{}{"token": input["token"]}
+	return CommonCredentialData(input)
 }
 
 // ProviderData extracts provider-specific data
 func (p *VultrProvider) ProviderData(input map[string]interface{}) map[string]interface{} {
-	return map[string]interface{}{"plan": input["plan"], "region": input["region"]}
+	return CommonProviderData(input)
 }
 
-func (p *VultrProvider) doRequest(ctx context.Context, token, method, path string, body interface{}) (map[string]interface{}, error) {
-	var reqBody io.Reader
-	if body != nil {
-		jsonBody, _ := json.Marshal(body)
-		reqBody = bytes.NewBuffer(jsonBody)
+// Internal helper methods
+
+type vultrSSHKeyResponse struct {
+	ID string
+}
+
+func (p *VultrProvider) createSSHKey(ctx context.Context, client *httpclient.Client, name, publicKey string) (*vultrSSHKeyResponse, error) {
+	body := map[string]interface{}{
+		"name":    name,
+		"ssh_key": publicKey,
 	}
 
-	req, err := http.NewRequestWithContext(ctx, method, vultrAPIURL+path, reqBody)
+	resp, err := DoPost(ctx, client, "/ssh-keys", body)
 	if err != nil {
-		return nil, err
+		return nil, WrapHTTPError(err, "create SSH key")
 	}
 
-	req.Header.Set("Authorization", "Bearer "+token)
-	req.Header.Set("Content-Type", "application/json")
+	sshKeyData, ok := GetNestedMap(resp, "ssh_key")
+	if !ok {
+		return nil, fmt.Errorf("invalid SSH key response")
+	}
 
-	resp, err := p.client.Do(req)
+	return &vultrSSHKeyResponse{
+		ID: GetStringField(sshKeyData, "id", ""),
+	}, nil
+}
+
+type vultrInstanceResponse struct {
+	ID        string
+	MainIP    string
+	VCPUCount int
+	RAM       int
+	Disk      int
+}
+
+func (p *VultrProvider) createInstance(ctx context.Context, client *httpclient.Client, name, region, plan, osID, sshKeyID string) (*vultrInstanceResponse, error) {
+	body := map[string]interface{}{
+		"label":     name,
+		"region":    region,
+		"plan":      plan,
+		"os_id":     osID,
+		"sshkey_id": []string{sshKeyID},
+	}
+
+	resp, err := DoPost(ctx, client, "/instances", body)
 	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	respBody, _ := io.ReadAll(resp.Body)
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, fmt.Errorf("request failed: %s", string(respBody))
+		return nil, WrapHTTPError(err, "create instance")
 	}
 
-	if len(respBody) == 0 {
-		return nil, nil
+	instance, ok := GetNestedMap(resp, "instance")
+	if !ok {
+		return nil, fmt.Errorf("invalid instance response")
 	}
 
-	var result map[string]interface{}
-	json.Unmarshal(respBody, &result)
-	return result, nil
+	return &vultrInstanceResponse{
+		ID:        GetStringField(instance, "id", ""),
+		MainIP:    GetStringField(instance, "main_ip", ""),
+		VCPUCount: GetIntField(instance, "vcpu_count", 0),
+		RAM:       GetIntField(instance, "ram", 0),
+		Disk:      GetIntField(instance, "disk", 0),
+	}, nil
+}
+
+func (p *VultrProvider) getOperatingSystem(server *models.Server) enums.OperatingSystem {
+	if server.OperatingSystem != nil {
+		return enums.OperatingSystem(*server.OperatingSystem)
+	}
+	return enums.OSUbuntu24
 }

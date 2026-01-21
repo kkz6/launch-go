@@ -11,12 +11,6 @@ import (
 
 const TypeRunManualBackup = "backup:run_manual"
 
-type RunManualBackupPayload struct {
-	ServerID string  `json:"server_id"`
-	BackupID string  `json:"backup_id"`
-	UserID   *string `json:"user_id,omitempty"`
-}
-
 // RunManualBackupJob triggers a manual backup run on a server
 type RunManualBackupJob struct {
 	ctx     *JobContext
@@ -24,12 +18,12 @@ type RunManualBackupJob struct {
 }
 
 func (j *RunManualBackupJob) Handle(ctx context.Context) error {
-	backup, err := j.ctx.Repos.Backup().FindBackupByID(ctx, j.Payload.BackupID)
+	backup, err := j.ctx.Repos().Backup().FindBackupByID(ctx, j.Payload.BackupID)
 	if err != nil {
 		return fmt.Errorf("failed to find backup: %w", err)
 	}
 
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.ctx.Repos().Server().Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}

@@ -5,9 +5,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/websocket/handlers"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/cache"
-	"github.com/kkz6/launch-go/internal/pkg/module"
-	ws "github.com/kkz6/launch-go/internal/websocket"
+	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
+	ws "github.com/kkz6/launch-go/internal/pkg/websocket"
 )
 
 const ModuleName = "websocket"
@@ -21,7 +20,7 @@ var (
 
 // Module is the WebSocket module that manages all WebSocket routes
 type Module struct {
-	module.Base
+	app.Base
 	hub                    *ws.Hub
 	terminalHandler        *handlers.TerminalHandler
 	logsHandler            *handlers.LogsHandler
@@ -29,25 +28,28 @@ type Module struct {
 	metricsHandler         *handlers.MetricsHandler
 	scriptExecutionHandler *handlers.ScriptExecutionHandler
 	jwtSecret              string
-	membershipCache        *cache.TeamMembershipCache
+	membershipCache        *launchcache.TeamMembershipCache
 }
 
 // NewModule creates a new WebSocket module
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 	jwtSecret := deps.Config.JWT.Secret
 
 	// Type assert to get the concrete Hub (only API server uses this module)
 	hub, _ := deps.WebSocket.(*ws.Hub)
 
+	// Create shared base for all WebSocket handlers
+	handlerBase := handlers.NewBase(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache)
+
 	return &Module{
-		Base:                   module.NewBase(ModuleName, b),
+		Base:                   app.NewBase(ModuleName, b),
 		hub:                    hub,
-		terminalHandler:        handlers.NewTerminalHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
-		logsHandler:            handlers.NewLogsHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
-		serviceStatusHandler:   handlers.NewServiceStatusHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
-		metricsHandler:         handlers.NewMetricsHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
-		scriptExecutionHandler: handlers.NewScriptExecutionHandler(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache),
+		terminalHandler:        handlers.NewTerminalHandler(handlerBase),
+		logsHandler:            handlers.NewLogsHandler(handlerBase),
+		serviceStatusHandler:   handlers.NewServiceStatusHandler(handlerBase),
+		metricsHandler:         handlers.NewMetricsHandler(handlerBase),
+		scriptExecutionHandler: handlers.NewScriptExecutionHandler(handlerBase),
 		jwtSecret:              jwtSecret,
 		membershipCache:        deps.MembershipCache,
 	}

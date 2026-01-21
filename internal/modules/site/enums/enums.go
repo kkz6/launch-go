@@ -189,7 +189,7 @@ func (s SiteType) staticDefaults(zeroDowntime bool) map[string]interface{} {
 func (s SiteType) wordpressDefaults() map[string]interface{} {
 	return map[string]interface{}{
 		"type":                            SiteTypeWordpress,
-		"tls_setting":                     TlsSettingAuto,
+		"tls_setting":                     TLSSettingAuto,
 		"web_folder":                      "/",
 		"zero_downtime_deployment":        false,
 		"source_control_repositories_id":  nil,
@@ -203,6 +203,46 @@ func (s SiteType) wordpressDefaults() map[string]interface{} {
 		"hook_before_making_current":      "",
 		"hook_after_making_current":       "",
 	}
+}
+
+// IsLaravel returns true if this is a Laravel site type
+func (s SiteType) IsLaravel() bool {
+	return s == SiteTypeLaravel
+}
+
+// IsPHP returns true if this is a PHP-based site type
+func (s SiteType) IsPHP() bool {
+	return s.IsLaravel() || s == SiteTypeWordpress
+}
+
+// IsStatic returns true if this is a static site type
+func (s SiteType) IsStatic() bool {
+	return s == SiteTypeStatic
+}
+
+// SupportsZeroDowntime returns true if this site type supports zero-downtime deployments
+func (s SiteType) SupportsZeroDowntime() bool {
+	return s.IsLaravel() || s == SiteTypeStatic
+}
+
+// SupportsQueue returns true if this site type supports queue workers
+func (s SiteType) SupportsQueue() bool {
+	return s.IsLaravel()
+}
+
+// SupportsScheduler returns true if this site type supports the task scheduler
+func (s SiteType) SupportsScheduler() bool {
+	return s.IsLaravel()
+}
+
+// SupportsHorizon returns true if this site type supports Laravel Horizon
+func (s SiteType) SupportsHorizon() bool {
+	return s.IsLaravel()
+}
+
+// SupportsMigrations returns true if this site type supports database migrations
+func (s SiteType) SupportsMigrations() bool {
+	return s.IsLaravel()
 }
 
 // ParseSiteType parses a string into a SiteType
@@ -360,26 +400,26 @@ func AllDeploymentStatuses() []DeploymentStatus {
 	}
 }
 
-// TlsSetting represents the TLS/SSL configuration for a site
-type TlsSetting string
+// TLSSetting represents the TLS/SSL configuration for a site
+type TLSSetting string
 
 const (
-	TlsSettingAuto     TlsSetting = "auto"
-	TlsSettingCustom   TlsSetting = "custom"
-	TlsSettingInternal TlsSetting = "internal"
-	TlsSettingOff      TlsSetting = "off"
+	TLSSettingAuto     TLSSetting = "auto"
+	TLSSettingCustom   TLSSetting = "custom"
+	TLSSettingInternal TLSSetting = "internal"
+	TLSSettingOff      TLSSetting = "off"
 )
 
-func (t TlsSetting) String() string {
+func (t TLSSetting) String() string {
 	return string(t)
 }
 
-func (t TlsSetting) Label() string {
-	labels := map[TlsSetting]string{
-		TlsSettingAuto:     "Auto",
-		TlsSettingCustom:   "Custom",
-		TlsSettingInternal: "Internal",
-		TlsSettingOff:      "Off",
+func (t TLSSetting) Label() string {
+	labels := map[TLSSetting]string{
+		TLSSettingAuto:     "Auto",
+		TLSSettingCustom:   "Custom",
+		TLSSettingInternal: "Internal",
+		TLSSettingOff:      "Off",
 	}
 
 	if label, ok := labels[t]; ok {
@@ -389,36 +429,36 @@ func (t TlsSetting) Label() string {
 	return string(t)
 }
 
-func (t TlsSetting) IsValid() bool {
+func (t TLSSetting) IsValid() bool {
 	switch t {
-	case TlsSettingAuto, TlsSettingCustom, TlsSettingInternal, TlsSettingOff:
+	case TLSSettingAuto, TLSSettingCustom, TLSSettingInternal, TLSSettingOff:
 		return true
 	}
 
 	return false
 }
 
-func (t TlsSetting) IsEnabled() bool {
-	return t != TlsSettingOff
+func (t TLSSetting) IsEnabled() bool {
+	return t != TLSSettingOff
 }
 
-func (t TlsSetting) GetPort() int {
-	if t == TlsSettingOff {
+func (t TLSSetting) GetPort() int {
+	if t == TLSSettingOff {
 		return 80
 	}
 
 	return 443
 }
 
-func (t TlsSetting) GetProtocol() string {
-	if t == TlsSettingOff {
+func (t TLSSetting) GetProtocol() string {
+	if t == TLSSettingOff {
 		return "http"
 	}
 
 	return "https"
 }
 
-func (t *TlsSetting) Scan(value interface{}) error {
+func (t *TLSSetting) Scan(value interface{}) error {
 	if value == nil {
 		*t = ""
 		return nil
@@ -428,27 +468,27 @@ func (t *TlsSetting) Scan(value interface{}) error {
 	if !ok {
 		bytes, ok := value.([]byte)
 		if !ok {
-			return fmt.Errorf("failed to scan TlsSetting: %v", value)
+			return fmt.Errorf("failed to scan TLSSetting: %v", value)
 		}
 		str = string(bytes)
 	}
 
-	*t = TlsSetting(str)
+	*t = TLSSetting(str)
 
 	return nil
 }
 
-func (t TlsSetting) Value() (driver.Value, error) {
+func (t TLSSetting) Value() (driver.Value, error) {
 	return string(t), nil
 }
 
-// AllTlsSettings returns all valid TLS settings
-func AllTlsSettings() []TlsSetting {
-	return []TlsSetting{
-		TlsSettingAuto,
-		TlsSettingCustom,
-		TlsSettingInternal,
-		TlsSettingOff,
+// AllTLSSettings returns all valid TLS settings
+func AllTLSSettings() []TLSSetting {
+	return []TLSSetting{
+		TLSSettingAuto,
+		TLSSettingCustom,
+		TLSSettingInternal,
+		TLSSettingOff,
 	}
 }
 
