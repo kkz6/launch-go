@@ -31,6 +31,11 @@ func (s *Signer) WithBaseURL(baseURL string) *Signer {
 	return s
 }
 
+// GetSecretKey returns the secret key used for signing
+func (s *Signer) GetSecretKey() string {
+	return s.secretKey
+}
+
 // SignedURL generates a signed URL with an expiration time
 func (s *Signer) SignedURL(path string, params map[string]string, expiresIn time.Duration) string {
 	expires := time.Now().Add(expiresIn).Unix()
@@ -162,7 +167,7 @@ func (s *Signer) IsExpired(params url.Values) bool {
 // generateSignature creates an HMAC-SHA256 signature
 func (s *Signer) generateSignature(data string) string {
 	mac := hmac.New(sha256.New, []byte(s.secretKey))
-	mac.Write([]byte(data))
+	_, _ = mac.Write([]byte(data)) // hash.Hash.Write never returns an error
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
