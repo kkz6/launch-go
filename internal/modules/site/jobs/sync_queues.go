@@ -1,7 +1,6 @@
 package jobs
 
 import (
-	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -29,16 +28,6 @@ type DaemonStatusInfo struct {
 	State  string `json:"state"`
 	Error  string `json:"error,omitempty"`
 	PID    string `json:"pid,omitempty"`
-}
-
-// daemonStatusResult represents a single daemon status from the server
-type daemonStatusResult struct {
-	DaemonID      string `json:"daemon_id"`
-	Status        string `json:"status"`
-	PID           string `json:"pid"`
-	UptimeSeconds int    `json:"uptime_seconds"`
-	Description   string `json:"description"`
-	Error         string `json:"error"`
 }
 
 // SyncQueuesJob handles synchronizing queue worker status from the server
@@ -86,12 +75,12 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 		return err
 	}
 
-	// Parse the output
+	// Parse the output using shared parser
 	output := result.GetOutput()
-	statuses := j.parseDaemonStatus(output)
+	statuses := tasks.ParseDaemonStatusOutput(output)
 
 	// Create a map of daemon ID to status for quick lookup
-	statusMap := make(map[string]*daemonStatusResult)
+	statusMap := make(map[string]*tasks.DaemonStatus)
 	for i := range statuses {
 		statusMap[statuses[i].DaemonID] = &statuses[i]
 	}
@@ -108,7 +97,7 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 
 			// Build info JSON
 			info := DaemonStatusInfo{
-				Uptime: formatUptime(status.UptimeSeconds),
+				Uptime: tasks.FormatUptime(status.UptimeSeconds),
 				State:  status.Status,
 				PID:    status.PID,
 			}
@@ -155,80 +144,6 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 // Failed handles job failure
 func (j *SyncQueuesJob) Failed(ctx context.Context, err error) {
 	j.Ctx.LogError(err, "Sync queues job failed", "site_id", j.Payload.SiteID)
-}
-
-// parseDaemonStatus parses the output of the daemon status check task
-func (j *SyncQueuesJob) parseDaemonStatus(output string) []daemonStatusResult {
-	var results []daemonStatusResult
-
-	scanner := bufio.NewScanner(strings.NewReader(output))
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-
-		// Skip empty lines and the completion marker
-		if line == "" || line == "===STATUS_CHECK_COMPLETE===" {
-			continue
-		}
-
-		// Try to parse as JSON
-		if strings.HasPrefix(line, "{") {
-			var status daemonStatusResult
-			if err := json.Unmarshal([]byte(line), &status); err == nil {
-				results = append(results, status)
-			}
-		}
-	}
-
-	return results
-}
-
-// formatUptime converts seconds to a human-readable uptime string
-func formatUptime(seconds int) string {
-	if seconds <= 0 {
-		return ""
-	}
-
-	days := seconds / 86400
-	hours := (seconds % 86400) / 3600
-	minutes := (seconds % 3600) / 60
-	secs := seconds % 60
-
-	var parts []string
-	if days > 0 {
-		if days == 1 {
-			parts = append(parts, "1 day")
-		} else {
-			parts = append(parts, fmt.Sprintf("%d days", days))
-		}
-	}
-	if hours > 0 {
-		if hours == 1 {
-			parts = append(parts, "1 hour")
-		} else {
-			parts = append(parts, fmt.Sprintf("%d hours", hours))
-		}
-	}
-	if minutes > 0 {
-		if minutes == 1 {
-			parts = append(parts, "1 minute")
-		} else {
-			parts = append(parts, fmt.Sprintf("%d minutes", minutes))
-		}
-	}
-	if secs > 0 && len(parts) < 2 {
-		// Only show seconds if we have less than 2 parts (for brevity)
-		if secs == 1 {
-			parts = append(parts, "1 second")
-		} else {
-			parts = append(parts, fmt.Sprintf("%d seconds", secs))
-		}
-	}
-
-	if len(parts) == 0 {
-		return "0 seconds"
-	}
-
-	return strings.Join(parts, ", ")
 }
 
 // NewSyncQueuesTask creates a sync queues status job
