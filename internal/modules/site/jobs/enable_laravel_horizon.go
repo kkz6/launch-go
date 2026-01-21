@@ -147,17 +147,11 @@ func (j *EnableLaravelHorizonJob) buildHorizonCommand(site *models.Site) string 
 
 // dispatchInstallQueue dispatches the InstallQueue job
 func (j *EnableLaravelHorizonJob) dispatchInstallQueue(queueID, siteID string) error {
-	if j.Ctx.Queue == nil {
-		return fmt.Errorf("queue client not available")
-	}
-
 	task, err := NewInstallQueueTask(siteID, queueID, j.Payload.UserID)
 	if err != nil {
 		return err
 	}
-
-	_, err = j.Ctx.Queue.Enqueue(task)
-	return err
+	return j.Ctx.DispatchTask(task)
 }
 
 // Failed handles job failure

@@ -212,10 +212,6 @@ func (j *WaitForServerToConnectJob) attemptConnection(ctx context.Context) (bool
 
 // dispatchProvisionJob dispatches the ProvisionServer job
 func (j *WaitForServerToConnectJob) dispatchProvisionJob() error {
-	if j.Ctx.Queue == nil {
-		return fmt.Errorf("queue client not available")
-	}
-
 	task, err := NewProvisionServerTask(
 		j.Payload.ServerID,
 		j.Payload.TeamID,
@@ -226,8 +222,8 @@ func (j *WaitForServerToConnectJob) dispatchProvisionJob() error {
 		return fmt.Errorf("failed to create provision task: %w", err)
 	}
 
-	if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
-		return fmt.Errorf("failed to enqueue provision job: %w", err)
+	if err := j.Ctx.DispatchTask(task); err != nil {
+		return fmt.Errorf("failed to dispatch provision job: %w", err)
 	}
 
 	j.Ctx.LogInfo("ProvisionServer job dispatched",
@@ -284,9 +280,8 @@ func (j *WaitForServerToConnectJob) dispatchCleanupJob(reason string) {
 		return
 	}
 
-	if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
-		j.Ctx.LogError(err, "Failed to enqueue cleanup job")
-		return
+	if err := j.Ctx.DispatchTask(task); err != nil {
+		return // Error already logged by DispatchTask
 	}
 
 	j.Ctx.LogInfo("CleanupFailedProvisioning job dispatched",

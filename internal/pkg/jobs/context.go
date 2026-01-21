@@ -2,6 +2,9 @@
 package jobs
 
 import (
+	"time"
+
+	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
@@ -79,6 +82,102 @@ func (b *Base) Dispatcher() taskrunner.TaskDispatcher {
 // Queue returns the queue client.
 func (b *Base) Queue() *queue.Client {
 	return b.queue
+}
+
+// Dispatch creates and enqueues a job with the given type and payload.
+// Returns nil if the queue is nil (allows graceful degradation in tests).
+// Uses DefaultMaxRetry (0) by default - jobs run once without retry.
+//
+// Example:
+//
+//	err := ctx.Dispatch("site:install_caddyfile", CaddyfilePayload{SiteID: siteID})
+func (b *Base) Dispatch(jobType string, payload any, opts ...asynq.Option) error {
+	if b.queue == nil {
+		return nil
+	}
+
+	task, err := NewTask(jobType, payload, opts...)
+	if err != nil {
+		b.LogError(err, "Failed to create job task", "job_type", jobType)
+		return err
+	}
+
+	info, err := b.queue.Enqueue(task)
+	if err != nil {
+		b.LogError(err, "Failed to enqueue job", "job_type", jobType)
+		return err
+	}
+
+	b.LogDebug("Job dispatched", "job_type", jobType, "task_id", info.ID, "queue", info.Queue)
+	return nil
+}
+
+// DispatchWithID creates and enqueues a job with a specific task ID.
+// Useful for idempotent jobs where you want to prevent duplicates.
+//
+// Example:
+//
+//	err := ctx.DispatchWithID("site:install_caddyfile", payload, "caddyfile:"+siteID)
+func (b *Base) DispatchWithID(jobType string, payload any, taskID string, opts ...asynq.Option) error {
+	opts = append(opts, asynq.TaskID(taskID))
+	return b.Dispatch(jobType, payload, opts...)
+}
+
+// DispatchIn creates and enqueues a job to be processed after a delay.
+//
+// Example:
+//
+//	err := ctx.DispatchIn("site:deploy", payload, 5*time.Second)
+func (b *Base) DispatchIn(jobType string, payload any, delay time.Duration, opts ...asynq.Option) error {
+	opts = append(opts, asynq.ProcessIn(delay))
+	return b.Dispatch(jobType, payload, opts...)
+}
+
+// DispatchToQueue creates and enqueues a job to a specific queue.
+//
+// Example:
+//
+//	err := ctx.DispatchToQueue("server:provision", payload, queue.QueueCritical)
+func (b *Base) DispatchToQueue(jobType string, payload any, queueName string, opts ...asynq.Option) error {
+	opts = append(opts, asynq.Queue(queueName))
+	return b.Dispatch(jobType, payload, opts...)
+}
+
+// DispatchTask enqueues a pre-built asynq task.
+// This is useful when using NewXXXTask helper functions.
+// Returns nil if the queue is nil (allows graceful degradation in tests).
+//
+// Example:
+//
+//	task, err := NewInstallQueueTask(siteID, queueID, userID)
+//	if err != nil {
+//	    return err
+//	}
+//	return ctx.DispatchTask(task)
+func (b *Base) DispatchTask(task *asynq.Task, opts ...asynq.Option) error {
+	if b.queue == nil {
+		return nil
+	}
+
+	info, err := b.queue.Enqueue(task, opts...)
+	if err != nil {
+		b.LogError(err, "Failed to enqueue task", "task_type", task.Type())
+		return err
+	}
+
+	b.LogDebug("Task dispatched", "task_type", task.Type(), "task_id", info.ID, "queue", info.Queue)
+	return nil
+}
+
+// DispatchTaskIn enqueues a pre-built task to be processed after a delay.
+//
+// Example:
+//
+//	task, _ := NewDeployTask(payload)
+//	return ctx.DispatchTaskIn(task, 5*time.Second)
+func (b *Base) DispatchTaskIn(task *asynq.Task, delay time.Duration, opts ...asynq.Option) error {
+	opts = append(opts, asynq.ProcessIn(delay))
+	return b.DispatchTask(task, opts...)
 }
 
 // LogInfo logs an info message with optional key-value pairs.

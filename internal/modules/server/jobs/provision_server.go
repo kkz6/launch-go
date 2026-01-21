@@ -141,9 +141,8 @@ func (j *ProvisionServerJob) dispatchCleanupJob(server *models.Server, reason st
 		return
 	}
 
-	if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
-		j.Ctx.LogError(err, "Failed to enqueue cleanup job")
-		return
+	if err := j.Ctx.DispatchTask(task); err != nil {
+		return // Error already logged by DispatchTask
 	}
 
 	j.Ctx.LogInfo("CleanupFailedProvisioning job dispatched",

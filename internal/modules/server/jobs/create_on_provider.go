@@ -178,8 +178,8 @@ func (j *CreateOnProviderJob) dispatchWaitForConnection() error {
 		return fmt.Errorf("failed to create wait for connection task: %w", err)
 	}
 
-	if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
-		return fmt.Errorf("failed to enqueue wait for connection job: %w", err)
+	if err := j.Ctx.DispatchTask(task); err != nil {
+		return fmt.Errorf("failed to dispatch wait for connection job: %w", err)
 	}
 
 	j.Ctx.LogInfo("WaitForServerToConnect job dispatched",
