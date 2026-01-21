@@ -21,7 +21,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
-	"github.com/kkz6/launch-go/internal/pkg/utils"
+	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 )
 
 // SiteService handles business logic for sites
@@ -809,7 +809,7 @@ func (s *SiteService) RegenerateDeployToken(ctx context.Context, id, serverID, t
 		return nil, err
 	}
 
-	token := utils.GenerateBase64Token(32)
+	token := cryptoutil.GenerateToken(32)
 	site.DeployToken = &token
 
 	if err := s.Repos().Site().Update(ctx, site); err != nil {

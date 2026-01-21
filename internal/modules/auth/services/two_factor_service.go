@@ -12,8 +12,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
-	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 
@@ -115,7 +115,7 @@ func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID, passwor
 	}
 
 	// Verify password
-	if err := verifyPassword(user.Password, password); err != nil {
+	if !verifyPassword(user.Password, password) {
 		return errors.New("invalid password")
 	}
 
@@ -231,9 +231,9 @@ func (s *TwoFactorService) HasTwoFactorEnabled(ctx context.Context, userID strin
 func (s *TwoFactorService) generateRecoveryCodes() ([]string, error) {
 	codes := make([]string, 8)
 	for i := range codes {
-		token, err := models.GenerateToken(8)
-		if err != nil {
-			return nil, err
+		token := cryptoutil.GenerateToken(8)
+		if token == "" {
+			return nil, errors.New("failed to generate recovery code token")
 		}
 
 		// Convert to a readable format

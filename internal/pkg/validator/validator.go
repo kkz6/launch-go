@@ -56,6 +56,22 @@ func getErrorMessage(err validator.FieldError) string {
 		return "Must be a valid URL"
 	case "uuid":
 		return "Must be a valid UUID"
+	case "len":
+		return "Must be exactly " + err.Param() + " characters"
+	case "ulid":
+		return "Must be a valid ULID"
+	case "eqfield":
+		return "Must match the " + err.Param() + " field"
+	case "fqdn":
+		return "Must be a valid domain name"
+	case "ip":
+		return "Must be a valid IP address"
+	case "cidr":
+		return "Must be a valid CIDR notation"
+	case "required_if", "required_unless", "required_without", "required_with":
+		return "This field is required"
+	case "eq":
+		return "Must equal " + err.Param()
 	default:
 		return "Invalid value"
 	}

@@ -46,13 +46,11 @@ func ToSubscriptionResponse(s *models.Subscription, plan *models.Plan, updatePay
 	}
 
 	if s.TrialEndsAt != nil {
-		trialEnds := s.TrialEndsAt.Format("Jan 2, 2006")
-		resp.TrialEndsAt = &trialEnds
+		resp.TrialEndsAt = pkgdto.FormatDisplayTime(s.TrialEndsAt)
 	}
 
 	if s.EndsAt != nil {
-		endsAt := s.EndsAt.Format("Jan 2, 2006")
-		resp.EndsAt = &endsAt
+		resp.EndsAt = pkgdto.FormatDisplayTime(s.EndsAt)
 	}
 
 	return resp
@@ -72,7 +70,7 @@ type OrderResponse struct {
 // ToOrderResponse converts an Order model to OrderResponse
 func ToOrderResponse(o *models.Order) OrderResponse {
 	return OrderResponse{
-		OrderedAt:   o.OrderedAt.Format("Jan 2, 2006"),
+		OrderedAt:   pkgdto.FormatDisplayTimeValue(o.OrderedAt),
 		OrderNumber: fmt.Sprintf("%d", o.OrderNumber),
 		Discount:    o.FormattedDiscount(),
 		Subtotal:    o.FormattedSubtotal(),

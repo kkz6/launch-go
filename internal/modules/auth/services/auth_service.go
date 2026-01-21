@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/enums"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 
@@ -45,7 +45,7 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 	}
 
 	// Hash password
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(req.Password), bcrypt.DefaultCost)
+	hashedPassword, err := cryptoutil.HashPassword(req.Password)
 	if err != nil {
 		return nil, err
 	}
@@ -60,7 +60,7 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 	user := &models.User{
 		Name:     req.Name,
 		Email:    req.Email,
-		Password: string(hashedPassword),
+		Password: hashedPassword,
 		Timezone: &timezone,
 	}
 
@@ -113,7 +113,7 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Au
 		return nil, apperrors.ErrUnauthorized
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(req.Password)); err != nil {
+	if !cryptoutil.VerifyPassword(user.Password, req.Password) {
 		return nil, apperrors.ErrUnauthorized
 	}
 
