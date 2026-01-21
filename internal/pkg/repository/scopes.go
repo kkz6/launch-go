@@ -126,6 +126,24 @@ func PreloadMany(relations ...string) Scope {
 	}
 }
 
+// PreloadOrdered returns a scope that preloads a relation with custom ordering
+func PreloadOrdered(relation string, order string) Scope {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Preload(relation, func(db *gorm.DB) *gorm.DB {
+			return db.Order(order)
+		})
+	}
+}
+
+// PreloadWithScope returns a scope that preloads a relation with a custom scope
+func PreloadWithScope(relation string, scope Scope) Scope {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Preload(relation, func(db *gorm.DB) *gorm.DB {
+			return scope(db)
+		})
+	}
+}
+
 // WhereNotNull returns a scope that filters for non-null column values
 func WhereNotNull(column string) Scope {
 	return func(db *gorm.DB) *gorm.DB {
@@ -151,6 +169,34 @@ func WhereIn(column string, values []string) Scope {
 func Active() Scope {
 	return func(db *gorm.DB) *gorm.DB {
 		return db.Where("status = ? OR status IS NULL", "active")
+	}
+}
+
+// WithActive returns a scope for non-archived records (archived_at IS NULL)
+func WithActive() Scope {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("archived_at IS NULL")
+	}
+}
+
+// WithArchived returns a scope for archived records (archived_at IS NOT NULL)
+func WithArchived() Scope {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("archived_at IS NOT NULL")
+	}
+}
+
+// OrderByLatest returns a scope that orders by created_at descending
+func OrderByLatest() Scope {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Order("created_at DESC")
+	}
+}
+
+// OrderByOldest returns a scope that orders by created_at ascending
+func OrderByOldest() Scope {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Order("created_at ASC")
 	}
 }
 

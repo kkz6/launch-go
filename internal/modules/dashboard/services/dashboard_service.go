@@ -10,6 +10,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dashboard/dto"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	sitemodels "github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 const (
@@ -55,7 +56,7 @@ func (s *DashboardService) getServers(ctx context.Context, teamID string) ([]*dt
 
 	err := s.db.WithContext(ctx).
 		Select("servers.*, (SELECT COUNT(*) FROM sites WHERE sites.server_id = servers.id) as sites_count").
-		Where("team_id = ? AND archived_at IS NULL", teamID).
+		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
 		Order("created_at DESC").
 		Limit(maxServers).
 		Find(&servers).Error

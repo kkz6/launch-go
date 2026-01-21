@@ -231,3 +231,46 @@ func (r *Base[T]) FirstOrFail(ctx context.Context, query *gorm.DB) (*T, error) {
 func (r *Base[T]) MustFind(ctx context.Context, id string) (*T, error) {
 	return r.FindByIDOrFail(ctx, id)
 }
+
+// FindByIDAndTeam finds a record by ID and team ID
+func (r *Base[T]) FindByIDAndTeam(ctx context.Context, id, teamID string) (*T, error) {
+	var entity T
+	err := r.DB.WithContext(ctx).First(&entity, "id = ? AND team_id = ?", id, teamID).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, ErrNotFound
+		}
+		return nil, err
+	}
+	return &entity, nil
+}
+
+// FindByIDAndTeamOrFail finds a record by ID and team ID or returns a typed error
+func (r *Base[T]) FindByIDAndTeamOrFail(ctx context.Context, id, teamID string) (*T, error) {
+	entity, err := r.FindByIDAndTeam(ctx, id, teamID)
+	if err != nil {
+		if errors.Is(err, ErrNotFound) {
+			return nil, NotFoundError(r.getModelName(), id)
+		}
+		return nil, WrapError(err, r.getModelName(), "failed to find "+r.getModelName())
+	}
+	return entity, nil
+}
+
+// UpdateStatus updates the status field of a record by ID
+func (r *Base[T]) UpdateStatus(ctx context.Context, id string, status string) error {
+	var entity T
+	return r.DB.WithContext(ctx).
+		Model(&entity).
+		Where("id = ?", id).
+		Update("status", status).Error
+}
+
+// UpdateStatusByServer updates the status field of a record by ID and server ID
+func (r *Base[T]) UpdateStatusByServer(ctx context.Context, id, serverID, status string) error {
+	var entity T
+	return r.DB.WithContext(ctx).
+		Model(&entity).
+		Where("id = ? AND server_id = ?", id, serverID).
+		Update("status", status).Error
+}
