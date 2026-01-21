@@ -78,9 +78,6 @@ func (j *EnableLaravelInertiaJob) Handle(ctx context.Context) error {
 	// Inertia SSR uses the daemon system (similar to queues but for Node processes)
 	// Create queue record for Inertia SSR daemon
 	queue := &models.Queue{
-		SiteID:          site.ID,
-		ServerID:        server.ID,
-		UserID:          userID,
 		Command:         command,
 		User:            site.User,
 		AutoStart:       true,
@@ -90,6 +87,9 @@ func (j *EnableLaravelInertiaJob) Handle(ctx context.Context) error {
 		StopWaitSeconds: 10,
 		StopSignal:      "SIGTERM",
 	}
+	queue.SiteID = site.ID
+	queue.ServerID = server.ID
+	queue.UserID = userID
 
 	if err := j.Ctx.QueueRepo.Create(ctx, queue); err != nil {
 		return fmt.Errorf("failed to create queue: %w", err)

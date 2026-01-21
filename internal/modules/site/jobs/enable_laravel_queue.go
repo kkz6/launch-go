@@ -84,9 +84,6 @@ func (j *EnableLaravelQueueJob) Handle(ctx context.Context) error {
 
 	// Create queue record
 	queue := &models.Queue{
-		SiteID:                site.ID,
-		ServerID:              server.ID,
-		UserID:                userID,
 		Command:               command,
 		User:                  site.User,
 		QueueConnection:       "database",
@@ -105,6 +102,9 @@ func (j *EnableLaravelQueueJob) Handle(ctx context.Context) error {
 		RunOnMaintenance:      false,
 		RunWithListen:         false,
 	}
+	queue.SiteID = site.ID
+	queue.ServerID = server.ID
+	queue.UserID = userID
 
 	if err := j.Ctx.QueueRepo.Create(ctx, queue); err != nil {
 		return fmt.Errorf("failed to create queue: %w", err)

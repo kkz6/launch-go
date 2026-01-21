@@ -65,7 +65,6 @@ func (j *InstallWordpressCronJob) Handle(ctx context.Context) error {
 
 	// Create cron record
 	cron := &servermodels.Cron{
-		ServerID:   server.ID,
 		SiteID:     &site.ID,
 		Expression: "* * * * *",
 		Command:    basemodels.EncryptedString(command),
@@ -73,6 +72,7 @@ func (j *InstallWordpressCronJob) Handle(ctx context.Context) error {
 		Frequency:  "every_minute",
 		Hidden:     true, // WordPress crons are hidden system crons
 	}
+	cron.ServerID = server.ID
 
 	if err := j.Ctx.ServerRepos.Cron().Create(ctx, cron); err != nil {
 		return fmt.Errorf("failed to create cron: %w", err)

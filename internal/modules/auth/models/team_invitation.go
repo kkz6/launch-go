@@ -5,6 +5,7 @@ import (
 )
 
 // TeamInvitation represents a pending team invitation
+// Note: TeamID has a composite unique index so we can't use the standard mixin tag
 type TeamInvitation struct {
 	basemodels.BaseModel
 	TeamID string  `gorm:"column:team_id;type:char(26);not null;uniqueIndex:team_invitations_team_id_email_unique,priority:1" json:"team_id"`

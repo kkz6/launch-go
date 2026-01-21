@@ -26,13 +26,13 @@ func (s *Service) ListServerSSHKeys(ctx context.Context, serverID, teamID string
 // CreateSSHKey creates a new SSH key
 func (s *Service) CreateSSHKey(ctx context.Context, teamID, userID string, req *dto.CreateSSHKeyRequest) (*models.SshKey, error) {
 	key := &models.SshKey{
-		TeamID:      teamID,
-		UserID:      userID,
 		Name:        req.Name,
 		PublicKey:   req.PublicKey,
 		Description: req.Description,
 		IsGlobal:    req.IsGlobal,
 	}
+	key.TeamID = teamID
+	key.UserID = userID
 
 	if err := s.repos.SSHKey().Create(ctx, key); err != nil {
 		return nil, err

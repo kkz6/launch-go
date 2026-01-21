@@ -12,8 +12,8 @@ import (
 // SshKey represents an SSH public key
 type SshKey struct {
 	basemodels.BaseModel
-	UserID      string  `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	TeamID      string  `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
+	basemodels.UserScopedModel
+	basemodels.TeamScopedModel
 	IsGlobal    bool    `gorm:"column:is_global;type:tinyint(1);not null;default:0" json:"is_global"`
 	Description *string `gorm:"type:varchar(255)" json:"description,omitempty"`
 	PublicKey   string  `gorm:"type:longtext;not null" json:"-"`

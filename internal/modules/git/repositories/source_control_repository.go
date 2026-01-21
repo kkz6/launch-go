@@ -167,8 +167,8 @@ func (r *SourceControlRepository) FirstOrCreateByProviderAndInstallationAndTeam(
 	sc = models.SourceControl{
 		Provider:   provider,
 		ProviderID: installationID,
-		TeamID:     teamID,
 	}
+	sc.TeamID = teamID
 
 	// Apply defaults
 	if userID, ok := defaults["user_id"].(string); ok {

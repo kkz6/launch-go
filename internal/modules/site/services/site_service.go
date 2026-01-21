@@ -183,9 +183,6 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	}
 
 	site := &models.Site{
-		ServerID:                    serverID,
-		TeamID:                      teamID,
-		UserID:                      userID,
 		Address:                     req.Address,
 		Type:                        req.Type,
 		TlsSetting:                  enums.TlsSettingAuto,
@@ -200,6 +197,9 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 		SourceControlRepositoriesID: sourceControlRepoID,
 		ConnectedDomainID:           req.ConnectedDomainID,
 	}
+	site.ServerID = serverID
+	site.TeamID = teamID
+	site.UserID = userID
 
 	// Set aliases
 	if len(req.Aliases) > 0 {

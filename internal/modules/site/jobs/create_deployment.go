@@ -63,10 +63,10 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 
 	// Create deployment record
 	deployment := &models.Deployment{
-		SiteID:  site.ID,
 		Status:  status,
 		GitHash: j.Payload.GitHash,
 	}
+	deployment.SiteID = site.ID
 
 	if err := j.Ctx.DeploymentRepo.Create(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to create deployment: %w", err)

@@ -11,16 +11,16 @@ import (
 // Certificate represents an SSL certificate for a site
 type Certificate struct {
 	basemodels.BaseModel
-	SiteID      string                     `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
-	TeamID      string                     `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
+	basemodels.SiteScopedModel
+	basemodels.TeamScopedModel
 	Type        enums.CertificateType      `gorm:"type:varchar(255);not null;default:letsencrypt" json:"type"`
 	Domains     basemodels.JSONStringSlice `gorm:"type:json" json:"domains,omitempty"`
 	CSR         *string                    `gorm:"column:csr;type:longtext" json:"csr,omitempty"`
 	PublicKey   *string                    `gorm:"column:public_key;type:longtext" json:"public_key,omitempty"`
 	PrivateKey  basemodels.EncryptedString `gorm:"column:private_key;type:longtext" json:"-"`
-	Certificate *string               `gorm:"type:longtext" json:"certificate,omitempty"`
-	UploadedAt  *time.Time            `gorm:"column:uploaded_at;type:timestamp null" json:"uploaded_at,omitempty"`
-	IsActive    bool                  `gorm:"column:is_active;default:false" json:"is_active"`
+	Certificate *string                    `gorm:"type:longtext" json:"certificate,omitempty"`
+	UploadedAt  *time.Time                 `gorm:"column:uploaded_at;type:timestamp null" json:"uploaded_at,omitempty"`
+	IsActive    bool                       `gorm:"column:is_active;default:false" json:"is_active"`
 
 	// Relations
 	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
@@ -58,4 +58,3 @@ func (c *Certificate) SetDomains(domains []string) error {
 	c.Domains = domains
 	return nil
 }
-

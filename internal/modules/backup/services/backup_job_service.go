@@ -45,12 +45,12 @@ func (s *BackupJobService) CreateBackupJob(ctx context.Context, backupID, token 
 
 	job := &models.BackupJob{
 		BackupID:          backupID,
-		TeamID:            backup.TeamID,
 		StorageProviderID: backup.StorageProviderID,
 		Status:            req.Status,
 		Size:              size,
 		Error:             errorMsg,
 	}
+	job.TeamID = backup.TeamID
 
 	if err := s.Repos().BackupJob().CreateBackupJob(ctx, job); err != nil {
 		return nil, fmt.Errorf("failed to create backup job: %w", err)

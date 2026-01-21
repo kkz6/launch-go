@@ -47,7 +47,6 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 	}
 
 	daemon := &models.Daemon{
-		ServerID:        serverID,
 		User:            user,
 		Directory:       req.Directory,
 		Command:         req.Command,
@@ -55,6 +54,7 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 		StopWaitSeconds: stopWaitSeconds,
 		StopSignal:      stopSignal,
 	}
+	daemon.ServerID = serverID
 
 	if err := s.repos.Daemon().Create(ctx, daemon); err != nil {
 		return nil, err

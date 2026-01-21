@@ -77,8 +77,6 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 	defaultUsername := "launch"
 
 	server := &models.Server{
-		TeamID:          teamID,
-		UserID:          userID,
 		Name:            req.Name,
 		Description:     req.Description,
 		Provider:        provider,
@@ -90,6 +88,8 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		PrivateKey:      basemodels.EncryptedString(privateKey),
 		PublicKey:       basemodels.EncryptedString(publicKey),
 	}
+	server.TeamID = teamID
+	server.UserID = userID
 
 	if req.SSHPort > 0 {
 		server.SSHPort = &req.SSHPort

@@ -45,10 +45,6 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 	failedJobDelaySeconds := req.FailedJobDelaySeconds
 
 	queueModel := &models.Queue{
-		SiteID:                site.ID,
-		TeamID:                site.TeamID,
-		ServerID:              serverID,
-		UserID:                userID,
 		Directory:             directory,
 		User:                  *user,
 		QueueConnection:       req.QueueConnection,
@@ -64,6 +60,10 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 		StopWaitSeconds:       10,
 		StopSignal:            "TERM",
 	}
+	queueModel.SiteID = site.ID
+	queueModel.TeamID = site.TeamID
+	queueModel.ServerID = serverID
+	queueModel.UserID = userID
 
 	if req.MaxTries != nil {
 		queueModel.MaxTries = req.MaxTries

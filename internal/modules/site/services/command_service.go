@@ -34,12 +34,12 @@ func (s *CommandService) Create(ctx context.Context, siteID, serverID, userID st
 	}
 
 	cmd := &models.Command{
-		SiteID:  site.ID,
-		TeamID:  site.TeamID,
-		UserID:  userID,
 		Command: req.Command,
 		Status:  enums.CommandStatusPending,
 	}
+	cmd.SiteID = site.ID
+	cmd.TeamID = site.TeamID
+	cmd.UserID = userID
 
 	if err := s.Repos().Command().Create(ctx, cmd); err != nil {
 		return nil, err

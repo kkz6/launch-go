@@ -51,13 +51,13 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 
 		// Create domain record
 		domain = &models.Domain{
-			UserID:           userID,
-			TeamID:           teamID,
 			DomainProviderID: provider.ID,
 			ProviderID:       providerID,
 			Label:            req.Label,
 			Address:          req.Address,
 		}
+		domain.UserID = userID
+		domain.TeamID = teamID
 
 		if err := s.Repos().Domain().Create(ctx, domain); err != nil {
 			return err
@@ -74,13 +74,13 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 		for i, ns := range nameservers {
 			nsRecord := &models.DnsRecord{
 				DomainID:   domain.ID,
-				TeamID:     teamID,
 				ProviderID: fmt.Sprintf("ns-%d", i),
 				Type:       enums.RecordTypeNS,
 				Name:       "@",
 				Value:      ns,
 				TTL:        3600,
 			}
+			nsRecord.TeamID = teamID
 			if err := s.Repos().DnsRecord().Create(ctx, nsRecord); err != nil {
 				s.Logger().Warn().Err(err).Str("ns", ns).Msg("Failed to create NS record")
 			}
@@ -256,7 +256,6 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 		for _, pr := range providerRecords {
 			record := &models.DnsRecord{
 				DomainID:   domainID,
-				TeamID:     domain.TeamID,
 				ProviderID: pr.ID,
 				Type:       enums.RecordType(pr.Type),
 				Name:       pr.Name,
@@ -270,6 +269,7 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 				Comment:    pr.Comment,
 				Proxied:    pr.Proxied,
 			}
+			record.TeamID = domain.TeamID
 
 			if err := s.Repos().DnsRecord().Create(ctx, record); err != nil {
 				s.Logger().Warn().Err(err).Str("record", pr.Name).Msg("Failed to create record during sync")
