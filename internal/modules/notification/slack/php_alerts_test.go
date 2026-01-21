@@ -19,7 +19,7 @@ func TestNewPhpInstallationFailedAdminAlert(t *testing.T) {
 	alert := NewPhpInstallationFailedAdminAlert(alerter, server, "8.2")
 
 	require.NotNil(t, alert)
-	assert.Equal(t, server, alert.server)
+	assert.Equal(t, server, alert.Server)
 	assert.Equal(t, "8.2", alert.phpVersion)
 }
 
@@ -32,7 +32,7 @@ func TestPhpInstallationFailedAdminAlert_WithUser(t *testing.T) {
 	result := alert.WithUser(user)
 
 	assert.Same(t, alert, result)
-	assert.Equal(t, user, alert.user)
+	assert.Equal(t, user, alert.User)
 }
 
 func TestPhpInstallationFailedAdminAlert_WithOutput(t *testing.T) {
@@ -43,7 +43,7 @@ func TestPhpInstallationFailedAdminAlert_WithOutput(t *testing.T) {
 	result := alert.WithOutput("apt-get failed")
 
 	assert.Same(t, alert, result)
-	assert.Equal(t, "apt-get failed", alert.output)
+	assert.Equal(t, "apt-get failed", alert.Output)
 }
 
 func TestPhpInstallationFailedAdminAlert_WithErrorMessage(t *testing.T) {
@@ -54,7 +54,7 @@ func TestPhpInstallationFailedAdminAlert_WithErrorMessage(t *testing.T) {
 	result := alert.WithErrorMessage("package not found")
 
 	assert.Same(t, alert, result)
-	assert.Equal(t, "package not found", alert.errorMessage)
+	assert.Equal(t, "package not found", alert.ErrorMessage)
 }
 
 func TestPhpInstallationFailedAdminAlert_Send(t *testing.T) {
@@ -103,7 +103,7 @@ func TestNewPhpExtensionInstallFailedAdminAlert(t *testing.T) {
 	alert := NewPhpExtensionInstallFailedAdminAlert(alerter, server, "redis", "8.2")
 
 	require.NotNil(t, alert)
-	assert.Equal(t, server, alert.server)
+	assert.Equal(t, server, alert.Server)
 	assert.Equal(t, "redis", alert.extensionName)
 	assert.Equal(t, "8.2", alert.phpVersion)
 }
@@ -117,7 +117,7 @@ func TestPhpExtensionInstallFailedAdminAlert_WithUser(t *testing.T) {
 	result := alert.WithUser(user)
 
 	assert.Same(t, alert, result)
-	assert.Equal(t, user, alert.user)
+	assert.Equal(t, user, alert.User)
 }
 
 func TestPhpExtensionInstallFailedAdminAlert_Send(t *testing.T) {
@@ -166,7 +166,7 @@ func TestNewPhpExtensionUninstallFailedAdminAlert(t *testing.T) {
 	alert := NewPhpExtensionUninstallFailedAdminAlert(alerter, server, "redis", "8.2")
 
 	require.NotNil(t, alert)
-	assert.Equal(t, server, alert.server)
+	assert.Equal(t, server, alert.Server)
 	assert.Equal(t, "redis", alert.extensionName)
 	assert.Equal(t, "8.2", alert.phpVersion)
 }
@@ -180,7 +180,7 @@ func TestPhpExtensionUninstallFailedAdminAlert_WithUser(t *testing.T) {
 	result := alert.WithUser(user)
 
 	assert.Same(t, alert, result)
-	assert.Equal(t, user, alert.user)
+	assert.Equal(t, user, alert.User)
 }
 
 func TestPhpExtensionUninstallFailedAdminAlert_Send(t *testing.T) {

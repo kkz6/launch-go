@@ -8,21 +8,15 @@ import (
 
 // PhpExtensionInstallFailedAdminAlert sends an admin alert when PHP extension installation fails
 type PhpExtensionInstallFailedAdminAlert struct {
-	alerter              *AdminAlerter
-	server               ServerInfo
-	extensionName        string
-	phpVersion           string
-	user                 *UserInfo
-	output               string
-	errorMessage         string
-	outputRetrievalError string
+	BaseAlert
+	extensionName string
+	phpVersion    string
 }
 
 // NewPhpExtensionInstallFailedAdminAlert creates a new admin alert
 func NewPhpExtensionInstallFailedAdminAlert(alerter *AdminAlerter, server ServerInfo, extensionName, phpVersion string) *PhpExtensionInstallFailedAdminAlert {
 	return &PhpExtensionInstallFailedAdminAlert{
-		alerter:       alerter,
-		server:        server,
+		BaseAlert:     NewBaseAlert(alerter, server),
 		extensionName: extensionName,
 		phpVersion:    phpVersion,
 	}
@@ -30,40 +24,40 @@ func NewPhpExtensionInstallFailedAdminAlert(alerter *AdminAlerter, server Server
 
 // WithUser sets the user who requested the installation
 func (a *PhpExtensionInstallFailedAdminAlert) WithUser(user *UserInfo) *PhpExtensionInstallFailedAdminAlert {
-	a.user = user
+	a.SetUser(user)
 	return a
 }
 
 // WithOutput sets the task output
 func (a *PhpExtensionInstallFailedAdminAlert) WithOutput(output string) *PhpExtensionInstallFailedAdminAlert {
-	a.output = output
+	a.SetOutput(output)
 	return a
 }
 
 // WithErrorMessage sets the error message
 func (a *PhpExtensionInstallFailedAdminAlert) WithErrorMessage(errorMessage string) *PhpExtensionInstallFailedAdminAlert {
-	a.errorMessage = errorMessage
+	a.SetErrorMessage(errorMessage)
 	return a
 }
 
 // WithOutputRetrievalError sets an error that occurred while retrieving output
 func (a *PhpExtensionInstallFailedAdminAlert) WithOutputRetrievalError(err string) *PhpExtensionInstallFailedAdminAlert {
-	a.outputRetrievalError = err
+	a.SetOutputRetrievalError(err)
 	return a
 }
 
 // Send sends the alert
 func (a *PhpExtensionInstallFailedAdminAlert) Send(ctx context.Context) error {
-	if !a.alerter.IsConfigured() {
+	if !a.Alerter.IsConfigured() {
 		return nil
 	}
 
 	message := a.buildMessage()
-	return a.alerter.Send(ctx, message)
+	return a.Alerter.Send(ctx, message)
 }
 
 func (a *PhpExtensionInstallFailedAdminAlert) buildMessage() *BlockKitMessage {
-	message := NewBlockKitMessage(fmt.Sprintf("PHP extension '%s' installation failed on '%s'", a.extensionName, a.server.Name))
+	message := NewBlockKitMessage(fmt.Sprintf("PHP extension '%s' installation failed on '%s'", a.extensionName, a.Server.Name))
 
 	message.AddHeader("PHP Extension Installation Failed")
 	message.AddSection(fmt.Sprintf("PHP extension '%s' installation failed and requires attention.", a.extensionName))
@@ -71,8 +65,8 @@ func (a *PhpExtensionInstallFailedAdminAlert) buildMessage() *BlockKitMessage {
 
 	// Server details
 	message.AddFieldsSection(
-		fmt.Sprintf("*Server Name:*\n%s", a.server.Name),
-		fmt.Sprintf("*Team:*\n%s", a.server.TeamName),
+		fmt.Sprintf("*Server Name:*\n%s", a.Server.Name),
+		fmt.Sprintf("*Team:*\n%s", a.Server.TeamName),
 	)
 
 	message.AddFieldsSection(
@@ -80,11 +74,11 @@ func (a *PhpExtensionInstallFailedAdminAlert) buildMessage() *BlockKitMessage {
 		fmt.Sprintf("*PHP Version:*\n%s", a.phpVersion),
 	)
 
-	ipAddress := a.server.PublicIPv4
+	ipAddress := a.Server.PublicIPv4
 	if ipAddress == "" {
 		ipAddress = "Not assigned"
 	}
-	os := a.server.OperatingSystem
+	os := a.Server.OperatingSystem
 	if os == "" {
 		os = "N/A"
 	}
@@ -96,45 +90,17 @@ func (a *PhpExtensionInstallFailedAdminAlert) buildMessage() *BlockKitMessage {
 	message.AddDivider()
 
 	// User details
-	userName := "Unknown"
-	userEmail := "N/A"
-	if a.user != nil {
-		if a.user.Name != "" {
-			userName = a.user.Name
-		}
-		if a.user.Email != "" {
-			userEmail = a.user.Email
-		}
-	}
+	userName, userEmail := a.BuildUserSection()
 	message.AddFieldsSection(
 		fmt.Sprintf("*Requested By:*\n%s", userName),
 		fmt.Sprintf("*User Email:*\n%s", userEmail),
 	)
 
-	// Output retrieval error
-	if a.outputRetrievalError != "" {
-		message.AddDivider()
-		message.AddSection(fmt.Sprintf("⚠️ *Could not retrieve full logs:* %s", a.outputRetrievalError))
-	}
-
-	// Output
-	if a.output != "" {
-		message.AddDivider()
-		message.AddSection("*Last 30 Lines of Output:*")
-		message.AddSection(fmt.Sprintf("```\n%s\n```", TruncateOutput(a.output, 2900)))
-	}
-
-	// Error message
-	if a.errorMessage != "" {
-		message.AddDivider()
-		message.AddSection("*Error Message:*")
-		message.AddSection(fmt.Sprintf("```\n%s\n```", a.errorMessage))
-	}
+	// Output/error sections
+	a.BuildOutputSection(message)
 
 	// Context footer
-	message.AddDivider()
-	message.AddContext(fmt.Sprintf("Server ID: %s | Team ID: %s | %s",
-		a.server.ID, a.server.TeamID, time.Now().Format("2006-01-02 15:04:05 MST")))
+	a.BuildContextFooter(message, time.Now().Format("2006-01-02 15:04:05 MST"))
 
 	return message
 }
