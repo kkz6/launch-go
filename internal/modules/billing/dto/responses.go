@@ -2,9 +2,9 @@ package dto
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
 // GenerateCheckoutURLResponse represents the response with the checkout URL
@@ -42,8 +42,7 @@ func ToSubscriptionResponse(s *models.Subscription, plan *models.Plan, updatePay
 	}
 
 	if s.RenewsAt != nil {
-		renewal := s.RenewsAt.Format(time.RFC3339)
-		resp.Renewal = &renewal
+		resp.Renewal = pkgdto.FormatTime(s.RenewsAt)
 	}
 
 	if s.TrialEndsAt != nil {

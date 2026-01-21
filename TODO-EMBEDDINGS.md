@@ -45,144 +45,37 @@ The following foundational infrastructure has been implemented:
 
 ## Table of Contents
 
-1. [Broadcast Payload Builder (P3)](#1-broadcast-payload-builder-p3)
-2. [DTO Timestamp Embedding (P3)](#2-dto-timestamp-embedding-p3)
+*All embedding tasks completed.*
 
 ---
 
-## 1. Broadcast Payload Builder (P3) ✅ COMPLETED
+## 1. DTO Timestamp Embedding (P3) ✅ COMPLETED
 
-**Status:** Partially completed - typed payloads added for complex cases.
+**Status:** Already implemented - helper functions exist and are widely used.
 
-**Analysis:** After reviewing 100+ broadcast calls across the codebase:
-- Most broadcasts are simple ID-based payloads (`map[string]any{"server_id": id}`)
-- Existing helpers (`StatusPayload`, `ProgressPayload`, `ErrorPayload`) handle common patterns
-- Only complex nested payloads (like server metrics) benefit from typed structs
+**Existing Implementation in `internal/pkg/dto/time.go`:**
+- `FormatTime(t *time.Time) *string` - Convert pointer to RFC3339 string pointer
+- `FormatTimeValue(t time.Time) string` - Convert value to RFC3339 string
+- `FormatTimeOrEmpty(t *time.Time) string` - Return RFC3339 or empty string
+- `ParseTime(s string)` - Parse RFC3339 string to time
+- `ParseTimePtr(s *string)` - Parse string pointer to time pointer
+- `TimeAgo(t time.Time)` - Human-readable elapsed time
 
-**Added to `internal/pkg/broadcast/helpers.go`:**
-- `ResourceMetrics` - Typed struct for memory/disk metrics
-- `ServerMetricsPayload` - Typed payload for server.metrics events
-- `DeploymentProgressPayload` - Typed payload for deployment.progress events
-
-**Refactored:**
-- `metrics_webhook_handler.go` - Now uses `ServerMetricsPayload` instead of inline map
-
-**Decision:** Simple ID-based broadcasts (`map[string]any{"server_id": id}`) don't need typed structs - the overhead outweighs the benefit. Typed payloads are reserved for complex nested structures.
-
-**Impact:** Type safety for complex payloads, minimal overhead for simple cases
-
----
-
-## 2. DTO Timestamp Embedding (P3)
-
-**Issue:** Timestamp formatting repeated 81+ times in DTO converters.
-
-**Files Affected:**
-- `internal/modules/database/dto/responses.go:52-85`
-- `internal/modules/server/dto/responses.go:293-330`
-- All other module DTOs
-
-**Current Pattern:**
+**Usage (69+ occurrences across 8 modules):**
 ```go
-if db.InstalledAt != nil {
-    t := db.InstalledAt.Format(time.RFC3339)
-    resp.InstalledAt = &t
-}
-
-if db.InstallationFailedAt != nil {
-    t := db.InstallationFailedAt.Format(time.RFC3339)
-    resp.InstallationFailedAt = &t
-}
-// Repeated 81+ times
+// Current clean pattern (already refactored)
+InstalledAt:               pkgdto.FormatTime(db.InstalledAt),
+InstalledAt:               pkgdto.FormatTime(db.InstalledAt),
+InstallationFailedAt:      pkgdto.FormatTime(db.InstallationFailedAt),
+CreatedAt:                 pkgdto.FormatTimeOrEmpty(db.CreatedAt),
 ```
 
-**Solution:** Create `internal/pkg/dto/time.go` (as mentioned in TODO-REFACTORING.md but extending with embedding)
-```go
-package dto
+**Decision:** Embeddable timestamp structs were considered but provide diminishing returns:
+- Current pattern is already clean (single function call per field)
+- DTOs maintain explicit field definitions for clarity
+- JSON serialization remains straightforward
 
-import "time"
-
-// TimeFormatter handles time-to-string conversion
-type TimeFormatter time.Time
-
-func (t TimeFormatter) RFC3339() string {
-    return time.Time(t).Format(time.RFC3339)
-}
-
-func (t TimeFormatter) RFC3339Ptr() *string {
-    s := time.Time(t).Format(time.RFC3339)
-    return &s
-}
-
-// FormatTimePtr converts *time.Time to *string
-func FormatTimePtr(t *time.Time) *string {
-    if t == nil {
-        return nil
-    }
-    s := t.Format(time.RFC3339)
-    return &s
-}
-
-// TimestampFields provides common timestamp response fields
-// Embed in response DTOs that have these fields
-type TimestampFields struct {
-    CreatedAt string  `json:"created_at"`
-    UpdatedAt string  `json:"updated_at"`
-    DeletedAt *string `json:"deleted_at,omitempty"`
-}
-
-// FromModel populates timestamps from a model
-func (f *TimestampFields) FromModel(createdAt, updatedAt time.Time, deletedAt *time.Time) {
-    f.CreatedAt = createdAt.Format(time.RFC3339)
-    f.UpdatedAt = updatedAt.Format(time.RFC3339)
-    f.DeletedAt = FormatTimePtr(deletedAt)
-}
-
-// InstallableTimestampFields provides installable model timestamp fields
-type InstallableTimestampFields struct {
-    InstalledAt               *string `json:"installed_at,omitempty"`
-    InstallationFailedAt      *string `json:"installation_failed_at,omitempty"`
-    UninstallationRequestedAt *string `json:"uninstallation_requested_at,omitempty"`
-}
-
-// FromInstallable populates from installable model fields
-func (f *InstallableTimestampFields) FromInstallable(installedAt, failedAt, uninstallReqAt *time.Time) {
-    f.InstalledAt = FormatTimePtr(installedAt)
-    f.InstallationFailedAt = FormatTimePtr(failedAt)
-    f.UninstallationRequestedAt = FormatTimePtr(uninstallReqAt)
-}
-```
-
-**Refactored DTO:**
-```go
-type DatabaseResponse struct {
-    ID     string `json:"id"`
-    Name   string `json:"name"`
-
-    dto.TimestampFields
-    dto.InstallableTimestampFields
-}
-
-func ToDatabaseResponse(db *models.Database) DatabaseResponse {
-    resp := DatabaseResponse{
-        ID:   db.ID,
-        Name: db.Name,
-    }
-    resp.TimestampFields.FromModel(db.CreatedAt, db.UpdatedAt, nil)
-    resp.InstallableTimestampFields.FromInstallable(db.InstalledAt, db.InstallationFailedAt, db.UninstallationRequestedAt)
-    return resp
-}
-```
-
-**Refactoring Steps:**
-- [ ] Create `internal/pkg/dto/time.go`
-- [ ] Create `TimestampFields` embeddable struct
-- [ ] Create `InstallableTimestampFields` embeddable struct
-- [ ] Refactor database DTOs
-- [ ] Refactor server DTOs
-- [ ] Refactor all other module DTOs
-
-**Impact:** ~400 lines eliminated, consistent timestamp handling
+**Impact:** Helper functions already eliminated verbose 3-line patterns across all DTOs
 
 ---
 
