@@ -40,128 +40,22 @@ The following foundational infrastructure has been implemented:
 
 ## Table of Contents
 
-1. [Webhook Handler Base Embedding (P1)](#1-webhook-handler-base-embedding-p1)
-2. [Repository BaseRepository Enforcement (P1)](#2-repository-baserepository-enforcement-p1)
-3. [Service Base Enforcement (P1)](#3-service-base-enforcement-p1)
-4. [Module Handler Field Consolidation (P1)](#4-module-handler-field-consolidation-p1)
-5. [Job Base Payload Generic (P2)](#5-job-base-payload-generic-p2)
-6. [Installable Repository Mixin (P2)](#6-installable-repository-mixin-p2)
-7. [Queue Dispatch Unification (P2)](#7-queue-dispatch-unification-p2)
-8. [Pagination Embedding (P2)](#8-pagination-embedding-p2)
-9. [Task Builder Pattern (P2)](#9-task-builder-pattern-p2)
-10. [Model Scoped Fields Adoption (P2)](#10-model-scoped-fields-adoption-p2)
-11. [Activity Logging Builder (P2)](#11-activity-logging-builder-p2)
-12. [Broadcast Payload Builder (P3)](#12-broadcast-payload-builder-p3)
-13. [DTO Timestamp Embedding (P3)](#13-dto-timestamp-embedding-p3)
+1. [Repository BaseRepository Enforcement (P1)](#1-repository-baserepository-enforcement-p1)
+2. [Service Base Enforcement (P1)](#2-service-base-enforcement-p1)
+3. [Module Handler Field Consolidation (P1)](#3-module-handler-field-consolidation-p1)
+4. [Job Base Payload Generic (P2)](#4-job-base-payload-generic-p2)
+5. [Installable Repository Mixin (P2)](#5-installable-repository-mixin-p2)
+6. [Queue Dispatch Unification (P2)](#6-queue-dispatch-unification-p2)
+7. [Pagination Embedding (P2)](#7-pagination-embedding-p2)
+8. [Task Builder Pattern (P2)](#8-task-builder-pattern-p2)
+9. [Model Scoped Fields Adoption (P2)](#9-model-scoped-fields-adoption-p2)
+10. [Activity Logging Builder (P2)](#10-activity-logging-builder-p2)
+11. [Broadcast Payload Builder (P3)](#11-broadcast-payload-builder-p3)
+12. [DTO Timestamp Embedding (P3)](#12-dto-timestamp-embedding-p3)
 
 ---
 
-## 1. Webhook Handler Base Embedding (P1)
-
-**Issue:** Webhook handlers repeat signer, logger, and signature verification logic.
-
-**Files Affected:**
-- `internal/modules/server/handlers/metrics_webhook_handler.go:39-54`
-- `internal/modules/server/handlers/task_webhook_handler.go:28-58`
-- `internal/modules/git/handlers/webhook_handler.go:24-44`
-
-**Current Pattern:**
-```go
-type MetricsWebhookHandler struct {
-    repo   metricsWebhookRepository
-    signer *signedurl.Signer
-    hub    *websocket.Hub
-    logger *zerolog.Logger
-}
-
-// Repeated in task_webhook_handler.go
-type TaskWebhookHandler struct {
-    registry *repositories.Registry
-    queue    *queue.Client
-    signer   *signedurl.Signer
-    db       *gorm.DB
-    // ...
-    logger   *zerolog.Logger
-}
-```
-
-**Solution:** Create `internal/pkg/webhook/base.go`
-```go
-package webhook
-
-import (
-    "github.com/gofiber/fiber/v2"
-    "github.com/rs/zerolog"
-    "github.com/kkz6/launch-go/internal/pkg/signedurl"
-)
-
-// BaseWebhookHandler provides common webhook handling infrastructure
-type BaseWebhookHandler struct {
-    Signer *signedurl.Signer
-    Logger *zerolog.Logger
-}
-
-// NewBaseWebhookHandler creates base with signer from secret key
-func NewBaseWebhookHandler(secretKey string, logger *zerolog.Logger) BaseWebhookHandler {
-    return BaseWebhookHandler{
-        Signer: signedurl.NewSigner(secretKey),
-        Logger: logger,
-    }
-}
-
-// VerifySignature validates the request signature
-func (h *BaseWebhookHandler) VerifySignature(c *fiber.Ctx) bool {
-    return signedurl.ValidateSignedURL(c, h.Signer)
-}
-
-// LogWebhookReceived logs incoming webhook
-func (h *BaseWebhookHandler) LogWebhookReceived(c *fiber.Ctx, webhookType string) {
-    h.Logger.Debug().
-        Str("type", webhookType).
-        Str("path", c.Path()).
-        Str("ip", c.IP()).
-        Msg("Webhook received")
-}
-
-// LogWebhookError logs webhook processing error
-func (h *BaseWebhookHandler) LogWebhookError(c *fiber.Ctx, err error, msg string) {
-    h.Logger.Error().
-        Err(err).
-        Str("path", c.Path()).
-        Msg(msg)
-}
-```
-
-**Refactored Handler:**
-```go
-type MetricsWebhookHandler struct {
-    webhook.BaseWebhookHandler
-    repo metricsWebhookRepository
-    hub  *websocket.Hub
-}
-
-func NewMetricsWebhookHandler(secretKey string, logger *zerolog.Logger, repo metricsWebhookRepository, hub *websocket.Hub) *MetricsWebhookHandler {
-    return &MetricsWebhookHandler{
-        BaseWebhookHandler: webhook.NewBaseWebhookHandler(secretKey, logger),
-        repo:               repo,
-        hub:                hub,
-    }
-}
-```
-
-**Refactoring Steps:**
-- [x] Create `internal/pkg/webhook/base.go`
-- [x] Add `VerifySignature()` helper method
-- [x] Add logging helper methods
-- [x] Refactor `MetricsWebhookHandler` to embed
-- [x] Refactor `TaskWebhookHandler` to embed
-- [ ] Refactor git `WebhookHandler` to embed (N/A - uses provider-specific validation)
-
-**Impact:** ~30-40 lines eliminated, centralized signature verification
-
----
-
-## 2. Repository BaseRepository Enforcement (P1)
+## 1. Repository BaseRepository Enforcement (P1)
 
 **Issue:** Many repositories define `db *gorm.DB` field directly instead of embedding BaseRepository.
 
@@ -249,7 +143,7 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 
 ---
 
-## 3. Service Base Enforcement (P1)
+## 2. Service Base Enforcement (P1)
 
 **Issue:** Service base class usage is inconsistent across modules.
 
@@ -318,7 +212,7 @@ type AuthService struct {
 
 ---
 
-## 4. Module Handler Field Consolidation (P1)
+## 3. Module Handler Field Consolidation (P1)
 
 **Issue:** Individual handlers within a module repeat the same service injection field.
 
@@ -403,7 +297,7 @@ type UserHandler struct {
 
 ---
 
-## 5. Job Base Payload Generic (P2)
+## 4. Job Base Payload Generic (P2)
 
 **Issue:** All jobs repeat context field and handler setup pattern.
 
@@ -496,7 +390,7 @@ func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *Ins
 
 ---
 
-## 6. Installable Repository Mixin (P2)
+## 5. Installable Repository Mixin (P2)
 
 **Issue:** Repositories with installable models repeat delegation to `Installable` trait.
 
@@ -604,7 +498,7 @@ func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) 
 
 ---
 
-## 7. Queue Dispatch Unification (P2)
+## 6. Queue Dispatch Unification (P2)
 
 **Issue:** Job dispatching uses 3+ different patterns across codebase.
 
@@ -713,7 +607,7 @@ dispatcher.Dispatch(jobType, payload)
 
 ---
 
-## 8. Pagination Embedding (P2)
+## 7. Pagination Embedding (P2)
 
 **Issue:** Pagination logic is ad-hoc and not reusable across repositories.
 
@@ -802,7 +696,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 
 ---
 
-## 9. Task Builder Pattern (P2)
+## 8. Task Builder Pattern (P2)
 
 **Issue:** Each task file repeats callback data struct and task creation boilerplate.
 
@@ -953,7 +847,7 @@ func DeploySiteTask(opts DeployOptions) *taskrunner.BuiltTask[callbackData] {
 
 ---
 
-## 10. Model Scoped Fields Adoption (P2)
+## 9. Model Scoped Fields Adoption (P2)
 
 **Issue:** Models define scope fields manually instead of using existing mixins.
 
@@ -1012,7 +906,7 @@ type Database struct {
 
 ---
 
-## 11. Activity Logging Builder (P2)
+## 10. Activity Logging Builder (P2)
 
 **Issue:** Activity logging pattern repeated with builder chain across 40+ locations.
 
@@ -1109,7 +1003,7 @@ activity.LogCreation(s.repos.DB(), ctx, database, "database", userID, "Database 
 
 ---
 
-## 12. Broadcast Payload Builder (P3)
+## 11. Broadcast Payload Builder (P3)
 
 **Issue:** Broadcast payloads created inline with inconsistent structure.
 
@@ -1184,7 +1078,7 @@ func (p ServerMetricsPayload) ToMap() map[string]interface{} {
 
 ---
 
-## 13. DTO Timestamp Embedding (P3)
+## 12. DTO Timestamp Embedding (P3)
 
 **Issue:** Timestamp formatting repeated 81+ times in DTO converters.
 
