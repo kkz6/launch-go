@@ -23,39 +23,37 @@ type InstallQueuePayload struct {
 
 // InstallQueueJob handles queue worker installation
 type InstallQueueJob struct {
-	ctx     *JobContext
-	Payload InstallQueuePayload
+	pkgjobs.BaseJob[*JobContext, InstallQueuePayload]
 }
 
 // NewInstallQueueJob creates a new InstallQueueJob with the given context and payload
 func NewInstallQueueJob(ctx *JobContext, payload InstallQueuePayload) *InstallQueueJob {
 	return &InstallQueueJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the install queue job
 func (j *InstallQueueJob) Handle(ctx context.Context) error {
 	// Get queue
-	queue, err := j.ctx.QueueRepo.FindByID(ctx, j.Payload.QueueID)
+	queue, err := j.Ctx.QueueRepo.FindByID(ctx, j.Payload.QueueID)
 	if err != nil {
 		return fmt.Errorf("failed to find queue: %w", err)
 	}
 
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Installing queue worker",
+	j.Ctx.LogInfo("Installing queue worker",
 		"queue_id", queue.ID,
 		"site_id", site.ID,
 		"command", queue.Command,
@@ -80,9 +78,9 @@ func (j *InstallQueueJob) Handle(ctx context.Context) error {
 		User:         queue.User,
 	})
 
-	result, err := j.ctx.RunTaskOnServer(server, uploadTask).AsRoot().Dispatch(ctx)
+	result, err := j.Ctx.RunTaskOnServer(server, uploadTask).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to upload queue config", "queue_id", queue.ID)
+		j.Ctx.LogError(err, "Failed to upload queue config", "queue_id", queue.ID)
 		return err
 	}
 
@@ -92,44 +90,44 @@ func (j *InstallQueueJob) Handle(ctx context.Context) error {
 
 	// Reload supervisor
 	reloadTask := servertasks.ReloadSupervisor()
-	result, err = j.ctx.RunTaskOnServer(server, reloadTask).AsRoot().Dispatch(ctx)
+	result, err = j.Ctx.RunTaskOnServer(server, reloadTask).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to reload supervisor", "queue_id", queue.ID)
+		j.Ctx.LogError(err, "Failed to reload supervisor", "queue_id", queue.ID)
 		return err
 	}
 
 	if result.GetExitCode() != 0 {
-		j.ctx.LogError(nil, "Supervisor reload failed", "queue_id", queue.ID, "exit_code", result.GetExitCode())
+		j.Ctx.LogError(nil, "Supervisor reload failed", "queue_id", queue.ID, "exit_code", result.GetExitCode())
 	}
 
 	// Mark queue as installed
 	now := time.Now()
 	queue.InstalledAt = &now
 	queue.InstallationFailedAt = nil
-	if err := j.ctx.QueueRepo.Update(ctx, queue); err != nil {
-		j.ctx.LogError(err, "Failed to update queue installed status")
+	if err := j.Ctx.QueueRepo.Update(ctx, queue); err != nil {
+		j.Ctx.LogError(err, "Failed to update queue installed status")
 	}
 
 	// Broadcast success
-	j.ctx.BroadcastServerEvent(server, "queue.installed", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "queue.installed", map[string]interface{}{
 		"site_id":  site.ID,
 		"queue_id": queue.ID,
 	})
 
-	j.ctx.LogInfo("Queue worker installed successfully", "queue_id", queue.ID)
+	j.Ctx.LogInfo("Queue worker installed successfully", "queue_id", queue.ID)
 
 	return nil
 }
 
 // Failed handles job failure
 func (j *InstallQueueJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Install queue job failed",
+	j.Ctx.LogError(err, "Install queue job failed",
 		"site_id", j.Payload.SiteID,
 		"queue_id", j.Payload.QueueID,
 	)
 
 	// Mark installation as failed
-	queue, findErr := j.ctx.QueueRepo.FindByID(ctx, j.Payload.QueueID)
+	queue, findErr := j.Ctx.QueueRepo.FindByID(ctx, j.Payload.QueueID)
 	if findErr != nil {
 		return
 	}
@@ -137,7 +135,7 @@ func (j *InstallQueueJob) Failed(ctx context.Context, err error) {
 	now := time.Now()
 	queue.InstalledAt = nil
 	queue.InstallationFailedAt = &now
-	_ = j.ctx.QueueRepo.Update(ctx, queue)
+	_ = j.Ctx.QueueRepo.Update(ctx, queue)
 }
 
 // NewInstallQueueTask creates an install queue job

@@ -23,34 +23,32 @@ type EnableLaravelHorizonPayload struct {
 
 // EnableLaravelHorizonJob enables Laravel Horizon for a site
 type EnableLaravelHorizonJob struct {
-	ctx     *JobContext
-	Payload EnableLaravelHorizonPayload
+	pkgjobs.BaseJob[*JobContext, EnableLaravelHorizonPayload]
 }
 
 // NewEnableLaravelHorizonJob creates a new EnableLaravelHorizonJob
 func NewEnableLaravelHorizonJob(ctx *JobContext, payload EnableLaravelHorizonPayload) *EnableLaravelHorizonJob {
 	return &EnableLaravelHorizonJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the enable Horizon job
 func (j *EnableLaravelHorizonJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
 	// Check if site is Laravel type
 	if site.Type != enums.SiteTypeLaravel {
-		return fmt.Errorf("Horizon can only be enabled for Laravel sites")
+		return fmt.Errorf("horizon can only be enabled for Laravel sites")
 	}
 
 	// Check if Horizon is already enabled
 	if site.HasEnabledFeature("horizon") {
-		j.ctx.LogInfo("Horizon already enabled", "site_id", site.ID)
+		j.Ctx.LogInfo("Horizon already enabled", "site_id", site.ID)
 		return nil
 	}
 
@@ -60,12 +58,12 @@ func (j *EnableLaravelHorizonJob) Handle(ctx context.Context) error {
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Enabling Laravel Horizon",
+	j.Ctx.LogInfo("Enabling Laravel Horizon",
 		"site_id", site.ID,
 		"server_id", server.ID,
 	)
@@ -86,27 +84,27 @@ func (j *EnableLaravelHorizonJob) Handle(ctx context.Context) error {
 
 	// Create queue record for Horizon daemon
 	queue := &models.Queue{
-		SiteID:         site.ID,
-		ServerID:       server.ID,
-		UserID:         userID,
-		Command:        command,
-		User:           site.User,
-		AutoStart:      true,
-		AutoRestart:    true,
-		NumProcs:       numProcs,
-		RedirectStderr: true,
+		SiteID:          site.ID,
+		ServerID:        server.ID,
+		UserID:          userID,
+		Command:         command,
+		User:            site.User,
+		AutoStart:       true,
+		AutoRestart:     true,
+		NumProcs:        numProcs,
+		RedirectStderr:  true,
 		StopWaitSeconds: 10,
-		StopSignal:     "SIGTERM",
+		StopSignal:      "SIGTERM",
 	}
 
-	if err := j.ctx.QueueRepo.Create(ctx, queue); err != nil {
+	if err := j.Ctx.QueueRepo.Create(ctx, queue); err != nil {
 		return fmt.Errorf("failed to create queue: %w", err)
 	}
 
 	// Dispatch InstallQueue job
 	if err := j.dispatchInstallQueue(queue.ID, site.ID); err != nil {
 		// Cleanup the queue record if dispatch fails
-		_ = j.ctx.QueueRepo.Delete(ctx, queue.ID)
+		_ = j.Ctx.QueueRepo.Delete(ctx, queue.ID)
 		return fmt.Errorf("failed to dispatch install queue job: %w", err)
 	}
 
@@ -120,20 +118,20 @@ func (j *EnableLaravelHorizonJob) Handle(ctx context.Context) error {
 	site.AddEnabledFeature(feature)
 	site.RemovePendingFeature("horizon")
 
-	if err := j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+	if err := j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
 		"enabled_features": site.EnabledFeatures,
 		"pending_features": site.PendingFeatures,
 	}); err != nil {
-		j.ctx.LogError(err, "Failed to update site enabled_features")
+		j.Ctx.LogError(err, "Failed to update site enabled_features")
 	}
 
 	// Broadcast success
-	j.ctx.BroadcastServerEvent(server, "site.horizon_enabled", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "site.horizon_enabled", map[string]interface{}{
 		"site_id":  site.ID,
 		"queue_id": queue.ID,
 	})
 
-	j.ctx.LogInfo("Laravel Horizon enabled successfully",
+	j.Ctx.LogInfo("Laravel Horizon enabled successfully",
 		"site_id", site.ID,
 		"queue_id", queue.ID,
 	)
@@ -149,7 +147,7 @@ func (j *EnableLaravelHorizonJob) buildHorizonCommand(site *models.Site) string 
 
 // dispatchInstallQueue dispatches the InstallQueue job
 func (j *EnableLaravelHorizonJob) dispatchInstallQueue(queueID, siteID string) error {
-	if j.ctx.Queue == nil {
+	if j.Ctx.Queue == nil {
 		return fmt.Errorf("queue client not available")
 	}
 
@@ -158,21 +156,21 @@ func (j *EnableLaravelHorizonJob) dispatchInstallQueue(queueID, siteID string) e
 		return err
 	}
 
-	_, err = j.ctx.Queue.Enqueue(task)
+	_, err = j.Ctx.Queue.Enqueue(task)
 	return err
 }
 
 // Failed handles job failure
 func (j *EnableLaravelHorizonJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to enable Laravel Horizon",
+	j.Ctx.LogError(err, "Failed to enable Laravel Horizon",
 		"site_id", j.Payload.SiteID,
 	)
 
 	// Remove from pending features
-	site, findErr := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, findErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if findErr == nil {
 		site.RemovePendingFeature("horizon")
-		_ = j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+		_ = j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
 			"pending_features": site.PendingFeatures,
 		})
 	}

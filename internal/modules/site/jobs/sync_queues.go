@@ -43,48 +43,46 @@ type daemonStatusResult struct {
 
 // SyncQueuesJob handles synchronizing queue worker status from the server
 type SyncQueuesJob struct {
-	ctx     *JobContext
-	Payload SyncQueuesPayload
+	pkgjobs.BaseJob[*JobContext, SyncQueuesPayload]
 }
 
 // NewSyncQueuesJob creates a new SyncQueuesJob with the given context and payload
 func NewSyncQueuesJob(ctx *JobContext, payload SyncQueuesPayload) *SyncQueuesJob {
 	return &SyncQueuesJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the sync queues job
 func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Get all queues for this site
-	queues, err := j.ctx.QueueRepo.FindBySite(ctx, j.Payload.SiteID)
+	queues, err := j.Ctx.QueueRepo.FindBySite(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to get queues: %w", err)
 	}
 
 	if len(queues) == 0 {
-		j.ctx.LogInfo("No queues to sync", "site_id", site.ID)
+		j.Ctx.LogInfo("No queues to sync", "site_id", site.ID)
 		return nil
 	}
 
 	// Create and run the daemon status check task
 	task := tasks.CheckDaemonStatus()
-	result, err := j.ctx.RunTaskOnServer(server, task).AsRoot().Dispatch(ctx)
+	result, err := j.Ctx.RunTaskOnServer(server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to check daemon status", "site_id", site.ID)
+		j.Ctx.LogError(err, "Failed to check daemon status", "site_id", site.ID)
 		return err
 	}
 
@@ -138,15 +136,15 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 		}
 
 		// Update the queue in the database
-		if err := j.ctx.QueueRepo.Update(ctx, queue); err != nil {
-			j.ctx.LogError(err, "Failed to update queue status", "queue_id", queue.ID)
+		if err := j.Ctx.QueueRepo.Update(ctx, queue); err != nil {
+			j.Ctx.LogError(err, "Failed to update queue status", "queue_id", queue.ID)
 		}
 	}
 
-	j.ctx.LogInfo("Queue status sync completed", "site_id", site.ID, "queue_count", len(queues))
+	j.Ctx.LogInfo("Queue status sync completed", "site_id", site.ID, "queue_count", len(queues))
 
 	// Broadcast status update
-	j.ctx.BroadcastServerEvent(server, "queues.synced", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "queues.synced", map[string]interface{}{
 		"site_id":     site.ID,
 		"queue_count": len(queues),
 	})
@@ -156,7 +154,7 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *SyncQueuesJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Sync queues job failed", "site_id", j.Payload.SiteID)
+	j.Ctx.LogError(err, "Sync queues job failed", "site_id", j.Payload.SiteID)
 }
 
 // parseDaemonStatus parses the output of the daemon status check task
