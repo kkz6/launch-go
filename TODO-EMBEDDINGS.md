@@ -39,171 +39,20 @@ The following foundational infrastructure has been implemented:
 | 2 | Installable Repository Mixin | ✅ DONE | `5a998b7` - Go embedding promotes methods |
 | 3 | Queue Dispatch Unification | ✅ DONE | `81a797c` - jobs.Base.Dispatch* methods |
 | 4 | Pagination Embedding | ✅ DONE | repository.Paginate, PaginatedResult[T] |
+| 5 | Task Builder Pattern | ✅ DONE | taskrunner.TaskBuilder[C], BuiltTask[C] |
 
 ---
 
 ## Table of Contents
 
-1. [Task Builder Pattern (P2)](#1-task-builder-pattern-p2)
-2. [Model Scoped Fields Adoption (P2)](#2-model-scoped-fields-adoption-p2)
-3. [Activity Logging Builder (P2)](#3-activity-logging-builder-p2)
-4. [Broadcast Payload Builder (P3)](#4-broadcast-payload-builder-p3)
-5. [DTO Timestamp Embedding (P3)](#5-dto-timestamp-embedding-p3)
+1. [Model Scoped Fields Adoption (P2)](#1-model-scoped-fields-adoption-p2)
+2. [Activity Logging Builder (P2)](#2-activity-logging-builder-p2)
+3. [Broadcast Payload Builder (P3)](#3-broadcast-payload-builder-p3)
+4. [DTO Timestamp Embedding (P3)](#4-dto-timestamp-embedding-p3)
 
 ---
 
-## 1. Task Builder Pattern (P2)
-
-**Issue:** Each task file repeats callback data struct and task creation boilerplate.
-
-**Files Affected:**
-- `internal/modules/site/tasks/deploy.go:52-120`
-- `internal/modules/site/tasks/run_command.go`
-- `internal/modules/server/tasks/*.go` (20+ files)
-- `internal/modules/database/tasks/*.go`
-
-**Current Pattern:**
-```go
-// callback data struct
-type callbackData struct {
-    SiteID       string `json:"site_id"`
-    ServerID     string `json:"server_id"`
-    DeploymentID string `json:"deployment_id"`
-    // ...
-}
-
-// task struct
-type deploySiteTask struct {
-    *taskrunner.BaseTask
-    opts     DeployOptions
-    callback callbackData
-}
-
-// constructor
-func DeploySiteTask(opts DeployOptions) *deploySiteTask {
-    return &deploySiteTask{
-        BaseTask: taskrunner.NewBaseTask(
-            taskrunner.WithName("Deploy Site"),
-            taskrunner.WithScript(buildScript(opts)),
-            taskrunner.WithTimeoutSeconds(600),
-        ),
-        opts: opts,
-        callback: callbackData{
-            SiteID:       opts.Site.ID,
-            ServerID:     opts.Site.ServerID,
-            // ...
-        },
-    }
-}
-```
-
-**Solution:** Create `internal/pkg/taskrunner/task_builder.go`
-```go
-package taskrunner
-
-// TaskBuilder provides fluent interface for creating tasks
-type TaskBuilder[C any] struct {
-    name     string
-    script   string
-    timeout  int
-    callback C
-    handlers CallbackHandlers
-}
-
-// CallbackHandlers holds callback functions
-type CallbackHandlers struct {
-    OnSuccess func(ctx context.Context, cbCtx *CallbackContext, taskID string) error
-    OnFailure func(ctx context.Context, cbCtx *CallbackContext, taskID string, exitCode int) error
-    OnExpired func(ctx context.Context, cbCtx *CallbackContext, taskID string) error
-}
-
-// NewTaskBuilder creates a new task builder
-func NewTaskBuilder[C any]() *TaskBuilder[C] {
-    return &TaskBuilder[C]{
-        timeout: 300, // default 5 minutes
-    }
-}
-
-func (b *TaskBuilder[C]) WithName(name string) *TaskBuilder[C] {
-    b.name = name
-    return b
-}
-
-func (b *TaskBuilder[C]) WithScript(script string) *TaskBuilder[C] {
-    b.script = script
-    return b
-}
-
-func (b *TaskBuilder[C]) WithTimeout(seconds int) *TaskBuilder[C] {
-    b.timeout = seconds
-    return b
-}
-
-func (b *TaskBuilder[C]) WithCallback(callback C) *TaskBuilder[C] {
-    b.callback = callback
-    return b
-}
-
-func (b *TaskBuilder[C]) OnSuccess(fn func(ctx context.Context, cbCtx *CallbackContext, taskID string) error) *TaskBuilder[C] {
-    b.handlers.OnSuccess = fn
-    return b
-}
-
-func (b *TaskBuilder[C]) OnFailure(fn func(ctx context.Context, cbCtx *CallbackContext, taskID string, exitCode int) error) *TaskBuilder[C] {
-    b.handlers.OnFailure = fn
-    return b
-}
-
-func (b *TaskBuilder[C]) Build() *BuiltTask[C] {
-    return &BuiltTask[C]{
-        BaseTask: NewBaseTask(
-            WithName(b.name),
-            WithScript(b.script),
-            WithTimeoutSeconds(b.timeout),
-        ),
-        callback: b.callback,
-        handlers: b.handlers,
-    }
-}
-```
-
-**Refactored Task:**
-```go
-func DeploySiteTask(opts DeployOptions) *taskrunner.BuiltTask[callbackData] {
-    return taskrunner.NewTaskBuilder[callbackData]().
-        WithName("Deploy Site").
-        WithScript(buildDeployScript(opts)).
-        WithTimeout(600).
-        WithCallback(callbackData{
-            SiteID:       opts.Site.ID,
-            ServerID:     opts.Site.ServerID,
-            DeploymentID: opts.Deployment.ID,
-        }).
-        OnSuccess(func(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
-            // success handling
-            return nil
-        }).
-        OnFailure(func(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string, exitCode int) error {
-            // failure handling
-            return nil
-        }).
-        Build()
-}
-```
-
-**Refactoring Steps:**
-- [ ] Create `internal/pkg/taskrunner/task_builder.go`
-- [ ] Create `BuiltTask` generic type
-- [ ] Refactor deploy task as proof of concept
-- [ ] Refactor remaining site tasks
-- [ ] Refactor server tasks
-- [ ] Update task registration
-
-**Impact:** ~600 lines eliminated across 30+ task files, consistent task creation
-
----
-
-## 2. Model Scoped Fields Adoption (P2)
+## 1. Model Scoped Fields Adoption (P2)
 
 **Issue:** Models define scope fields manually instead of using existing mixins.
 
@@ -262,7 +111,7 @@ type Database struct {
 
 ---
 
-## 3. Activity Logging Builder (P2)
+## 2. Activity Logging Builder (P2)
 
 **Issue:** Activity logging pattern repeated with builder chain across 40+ locations.
 
@@ -359,7 +208,7 @@ activity.LogCreation(s.repos.DB(), ctx, database, "database", userID, "Database 
 
 ---
 
-## 4. Broadcast Payload Builder (P3)
+## 3. Broadcast Payload Builder (P3)
 
 **Issue:** Broadcast payloads created inline with inconsistent structure.
 
@@ -434,7 +283,7 @@ func (p ServerMetricsPayload) ToMap() map[string]interface{} {
 
 ---
 
-## 5. DTO Timestamp Embedding (P3)
+## 4. DTO Timestamp Embedding (P3)
 
 **Issue:** Timestamp formatting repeated 81+ times in DTO converters.
 
