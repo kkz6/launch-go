@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"strconv"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
@@ -11,6 +10,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/metrics"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/webhook"
 )
@@ -99,42 +99,19 @@ func (h *MetricsWebhookHandler) ReceivePulse(c *fiber.Ctx) error {
 		return response.NotFound(c, "Server not found")
 	}
 
-	// Parse string values to float64
-	diskTotal, err := strconv.ParseFloat(req.Data.DiskTotal, 64)
-	if err != nil {
-		h.LogWarn("Failed to parse disk_total", "server_id", serverID, "value", req.Data.DiskTotal)
-	}
-	diskFree, err := strconv.ParseFloat(req.Data.DiskFree, 64)
-	if err != nil {
-		h.LogWarn("Failed to parse disk_free", "server_id", serverID, "value", req.Data.DiskFree)
-	}
-	diskUsed, err := strconv.ParseFloat(req.Data.DiskUsed, 64)
-	if err != nil {
-		h.LogWarn("Failed to parse disk_used", "server_id", serverID, "value", req.Data.DiskUsed)
-	}
-	memoryTotal, err := strconv.ParseFloat(req.Data.MemoryTotal, 64)
-	if err != nil {
-		h.LogWarn("Failed to parse memory_total", "server_id", serverID, "value", req.Data.MemoryTotal)
-	}
-	memoryFree, err := strconv.ParseFloat(req.Data.MemoryFree, 64)
-	if err != nil {
-		h.LogWarn("Failed to parse memory_free", "server_id", serverID, "value", req.Data.MemoryFree)
-	}
-	memoryUsed, err := strconv.ParseFloat(req.Data.MemoryUsed, 64)
-	if err != nil {
-		h.LogWarn("Failed to parse memory_used", "server_id", serverID, "value", req.Data.MemoryUsed)
-	}
+	// Parse string values to float64 using metrics parser
+	parser := metrics.NewParser(*h.Logger, serverID)
 
 	// Create metric record
 	metric := &models.Metric{
 		ServerID:    serverID,
 		Load:        req.Data.Load,
-		DiskTotal:   diskTotal,
-		DiskFree:    diskFree,
-		DiskUsed:    diskUsed,
-		MemoryTotal: memoryTotal,
-		MemoryFree:  memoryFree,
-		MemoryUsed:  memoryUsed,
+		DiskTotal:   parser.ParseFloat(req.Data.DiskTotal, "disk_total"),
+		DiskFree:    parser.ParseFloat(req.Data.DiskFree, "disk_free"),
+		DiskUsed:    parser.ParseFloat(req.Data.DiskUsed, "disk_used"),
+		MemoryTotal: parser.ParseFloat(req.Data.MemoryTotal, "memory_total"),
+		MemoryFree:  parser.ParseFloat(req.Data.MemoryFree, "memory_free"),
+		MemoryUsed:  parser.ParseFloat(req.Data.MemoryUsed, "memory_used"),
 	}
 
 	if err := h.repo.CreateMetric(ctx, metric); err != nil {
@@ -149,8 +126,8 @@ func (h *MetricsWebhookHandler) ReceivePulse(c *fiber.Ctx) error {
 		payload := broadcast.ServerMetricsPayload{
 			ServerID: serverID,
 			Load:     req.Data.Load,
-			Memory:   broadcast.ResourceMetrics{Total: memoryTotal, Used: memoryUsed, Free: memoryFree},
-			Disk:     broadcast.ResourceMetrics{Total: diskTotal, Used: diskUsed, Free: diskFree},
+			Memory:   broadcast.ResourceMetrics{Total: metric.MemoryTotal, Used: metric.MemoryUsed, Free: metric.MemoryFree},
+			Disk:     broadcast.ResourceMetrics{Total: metric.DiskTotal, Used: metric.DiskUsed, Free: metric.DiskFree},
 		}
 		h.hub.BroadcastToTeam(server.TeamID, broadcast.ServerMetrics, payload.ToMap())
 	}
