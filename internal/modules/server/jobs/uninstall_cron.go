@@ -23,14 +23,13 @@ type UninstallCronPayload struct {
 // UninstallCronJob uninstalls a cron job from a server.
 // Similar to Laravel's Modules\Server\Jobs\UninstallCron
 type UninstallCronJob struct {
-	ctx     *JobContext
-	Payload UninstallCronPayload
+	pkgjobs.BaseJob[*JobContext, UninstallCronPayload]
 }
 
 // Handle processes the job
 func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	// Find the cron with server preloaded
-	cron, err := j.ctx.Repos.Cron().FindByIDWithServer(ctx, j.Payload.CronID)
+	cron, err := j.Ctx.Repos.Cron().FindByIDWithServer(ctx, j.Payload.CronID)
 	if err != nil {
 		return fmt.Errorf("failed to find cron: %w", err)
 	}
@@ -40,7 +39,7 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 		Path: cron.Path(),
 	})
 
-	result, err := j.ctx.ForServer(cron.Server).RunTask(task).
+	result, err := j.Ctx.ForServer(cron.Server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -53,7 +52,7 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	logger := activity.New(j.ctx.DB).
+	logger := activity.New(j.Ctx.DB).
 		WithContext(ctx).
 		UseLog("server").
 		On(cron).
@@ -64,17 +63,17 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	logger.Log("Cron job was uninstalled")
 
 	// Delete the cron record
-	if err := j.ctx.Repos.Cron().Delete(ctx, cron.ID); err != nil {
+	if err := j.Ctx.Repos.Cron().Delete(ctx, cron.ID); err != nil {
 		return fmt.Errorf("failed to delete cron: %w", err)
 	}
 
-	j.ctx.LogInfo("Cron uninstalled successfully",
+	j.Ctx.LogInfo("Cron uninstalled successfully",
 		"cron_id", cron.ID,
 		"server_id", cron.ServerID,
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastServerEvent(cron.Server, "cron.uninstalled", map[string]any{
+	j.Ctx.BroadcastServerEvent(cron.Server, "cron.uninstalled", map[string]any{
 		"cron_id":   cron.ID,
 		"server_id": cron.ServerID,
 	})
@@ -84,16 +83,16 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *UninstallCronJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to uninstall cron",
+	j.Ctx.LogError(err, "Failed to uninstall cron",
 		"cron_id", j.Payload.CronID,
 		"server_id", j.Payload.ServerID,
 	)
 
 	// Mark uninstallation as failed
-	cron, findErr := j.ctx.Repos.Cron().FindByID(ctx, j.Payload.CronID)
+	cron, findErr := j.Ctx.Repos.Cron().FindByID(ctx, j.Payload.CronID)
 	if findErr == nil && cron != nil {
 		now := time.Now()
-		j.ctx.DB.Model(cron).Updates(map[string]any{
+		j.Ctx.DB.Model(cron).Updates(map[string]any{
 			"uninstallation_requested_at": nil,
 			"uninstallation_failed_at":    &now,
 		})
@@ -102,8 +101,7 @@ func (j *UninstallCronJob) Failed(ctx context.Context, err error) {
 
 func NewUninstallCronJob(ctx *JobContext, payload UninstallCronPayload) *UninstallCronJob {
 	return &UninstallCronJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

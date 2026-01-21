@@ -23,20 +23,19 @@ type ServiceOperationPayload struct {
 // ServiceOperationJob performs an operation (start/stop/restart/reload) on a service.
 // Similar to Laravel's Modules\Server\Jobs\ServiceOperation
 type ServiceOperationJob struct {
-	ctx     *JobContext
-	Payload ServiceOperationPayload
+	pkgjobs.BaseJob[*JobContext, ServiceOperationPayload]
 }
 
 // Handle processes the job
 func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 	// Find the service
-	service, err := j.ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
+	service, err := j.Ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
 	// Find the server
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -60,7 +59,7 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("unknown operation: %s", j.Payload.Operation)
 	}
 
-	result, err := j.ctx.ForServer(server).RunTask(task).
+	result, err := j.Ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -72,14 +71,14 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to %s service: %s", j.Payload.Operation, result.GetOutput())
 	}
 
-	j.ctx.LogInfo("Service operation completed",
+	j.Ctx.LogInfo("Service operation completed",
 		"service_id", service.ID,
 		"server_id", server.ID,
 		"operation", j.Payload.Operation,
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastServerEvent(server, "service.operation", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "service.operation", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
 		"operation":  j.Payload.Operation,
@@ -90,7 +89,7 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *ServiceOperationJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to perform service operation",
+	j.Ctx.LogError(err, "Failed to perform service operation",
 		"service_id", j.Payload.ServiceID,
 		"server_id", j.Payload.ServerID,
 		"operation", j.Payload.Operation,
@@ -100,8 +99,7 @@ func (j *ServiceOperationJob) Failed(ctx context.Context, err error) {
 // NewServiceOperationJob creates a new ServiceOperationJob with the given context and payload.
 func NewServiceOperationJob(ctx *JobContext, payload ServiceOperationPayload) *ServiceOperationJob {
 	return &ServiceOperationJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

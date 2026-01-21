@@ -27,8 +27,7 @@ type CheckServiceStatusPayload struct {
 // CheckServiceStatusJob checks the status of a service and updates the database.
 // Similar to Laravel's Modules\Server\Jobs\CheckServiceStatusOnServer
 type CheckServiceStatusJob struct {
-	ctx     *JobContext
-	Payload CheckServiceStatusPayload
+	pkgjobs.BaseJob[*JobContext, CheckServiceStatusPayload]
 }
 
 // Timeout returns the job timeout duration
@@ -38,19 +37,19 @@ func (j *CheckServiceStatusJob) Timeout() time.Duration {
 
 // Handle processes the job
 func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
-	service, err := j.ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
+	service, err := j.Ctx.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	task := tasks.GetServiceStatusTask(service.Software, service.Version)
 
-	result, err := j.ctx.ForServer(server).RunTask(task).
+	result, err := j.Ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -65,13 +64,13 @@ func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
 
 	j.updateServiceStatus(ctx, service.ID, status, output, details, "")
 
-	j.ctx.LogInfo("Service status check completed",
+	j.Ctx.LogInfo("Service status check completed",
 		"service_id", service.ID,
 		"server_id", server.ID,
 		"status", status,
 	)
 
-	j.ctx.BroadcastServerEvent(server, "service.status_checked", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "service.status_checked", map[string]any{
 		"service_id": service.ID,
 		"server_id":  server.ID,
 		"status":     status.String(),
@@ -82,7 +81,7 @@ func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *CheckServiceStatusJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to check service status",
+	j.Ctx.LogError(err, "Failed to check service status",
 		"service_id", j.Payload.ServiceID,
 		"server_id", j.Payload.ServerID,
 	)
@@ -102,8 +101,8 @@ func (j *CheckServiceStatusJob) updateServiceStatus(ctx context.Context, service
 		typeData["status_error"] = errorMsg
 	}
 
-	if err := j.ctx.Repos.Service().UpdateWithTypeData(ctx, serviceID, status, typeData); err != nil {
-		j.ctx.LogError(err, "Failed to update service status", "service_id", serviceID)
+	if err := j.Ctx.Repos.Service().UpdateWithTypeData(ctx, serviceID, status, typeData); err != nil {
+		j.Ctx.LogError(err, "Failed to update service status", "service_id", serviceID)
 	}
 }
 
@@ -214,21 +213,21 @@ func (j *CheckServiceStatusJob) parseStatusDetails(output string) map[string]any
 
 func formatBytes(bytesStr string) string {
 	var bytes int64
-	fmt.Sscanf(bytesStr, "%d", &bytes)
+	_, _ = fmt.Sscanf(bytesStr, "%d", &bytes)
 
 	const (
-		KB = 1024
-		MB = KB * 1024
-		GB = MB * 1024
+		kb = 1024
+		mb = kb * 1024
+		gb = mb * 1024
 	)
 
 	switch {
-	case bytes >= GB:
-		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(GB))
-	case bytes >= MB:
-		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(MB))
-	case bytes >= KB:
-		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(KB))
+	case bytes >= gb:
+		return fmt.Sprintf("%.2f GB", float64(bytes)/float64(gb))
+	case bytes >= mb:
+		return fmt.Sprintf("%.2f MB", float64(bytes)/float64(mb))
+	case bytes >= kb:
+		return fmt.Sprintf("%.2f KB", float64(bytes)/float64(kb))
 	default:
 		return fmt.Sprintf("%d B", bytes)
 	}
@@ -236,8 +235,7 @@ func formatBytes(bytesStr string) string {
 
 func NewCheckServiceStatusJob(ctx *JobContext, payload CheckServiceStatusPayload) *CheckServiceStatusJob {
 	return &CheckServiceStatusJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

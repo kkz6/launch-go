@@ -21,14 +21,13 @@ type RebootServerPayload struct {
 // RebootServerJob reboots a server.
 // Similar to Laravel's Modules\Server\Jobs\RebootServer
 type RebootServerJob struct {
-	ctx     *JobContext
-	Payload RebootServerPayload
+	pkgjobs.BaseJob[*JobContext, RebootServerPayload]
 }
 
 // Handle processes the job
 func (j *RebootServerJob) Handle(ctx context.Context) error {
 	// Find the server
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -37,19 +36,19 @@ func (j *RebootServerJob) Handle(ctx context.Context) error {
 	task := tasks.RebootServer()
 
 	// Execute reboot - don't wait for result as server will disconnect
-	_, err = j.ctx.ForServer(server).RunTask(task).
+	_, err = j.Ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
 	// Reboot command may cause connection to drop, which is expected
 	if err != nil {
-		j.ctx.LogInfo("Reboot command sent, connection dropped as expected",
+		j.Ctx.LogInfo("Reboot command sent, connection dropped as expected",
 			"server_id", server.ID,
 		)
 	}
 
 	// Log activity
-	logger := activity.New(j.ctx.DB).
+	logger := activity.New(j.Ctx.DB).
 		WithContext(ctx).
 		UseLog("server").
 		On(server).
@@ -59,13 +58,13 @@ func (j *RebootServerJob) Handle(ctx context.Context) error {
 	}
 	logger.Log("Server reboot was initiated")
 
-	j.ctx.LogInfo("Server reboot initiated",
+	j.Ctx.LogInfo("Server reboot initiated",
 		"server_id", server.ID,
 		"server_name", server.Name,
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastServerEvent(server, "server.rebooting", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "server.rebooting", map[string]any{
 		"server_id": server.ID,
 	})
 
@@ -74,15 +73,14 @@ func (j *RebootServerJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *RebootServerJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to reboot server",
+	j.Ctx.LogError(err, "Failed to reboot server",
 		"server_id", j.Payload.ServerID,
 	)
 }
 
 func NewRebootServerJob(ctx *JobContext, payload RebootServerPayload) *RebootServerJob {
 	return &RebootServerJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 

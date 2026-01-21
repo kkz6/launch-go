@@ -21,20 +21,19 @@ type AddSSHKeyPayload struct {
 // AddSSHKeyJob adds an SSH key to a server.
 // Similar to Laravel's Modules\Server\Jobs\AddSSHKeyToServer
 type AddSSHKeyJob struct {
-	ctx     *JobContext
-	Payload AddSSHKeyPayload
+	pkgjobs.BaseJob[*JobContext, AddSSHKeyPayload]
 }
 
 // Handle processes the job
 func (j *AddSSHKeyJob) Handle(ctx context.Context) error {
 	// Find the SSH key
-	sshKey, err := j.ctx.Repos.SSHKey().FindByID(ctx, j.Payload.KeyID)
+	sshKey, err := j.Ctx.Repos.SSHKey().FindByID(ctx, j.Payload.KeyID)
 	if err != nil {
 		return fmt.Errorf("failed to find SSH key: %w", err)
 	}
 
 	// Find the server
-	server, err := j.ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -42,7 +41,7 @@ func (j *AddSSHKeyJob) Handle(ctx context.Context) error {
 	// Authorize the public key on the server
 	task := tasks.AuthorizePublicKey(sshKey.PublicKey, server.GetUsername())
 
-	result, err := j.ctx.ForServer(server).RunTask(task).
+	result, err := j.Ctx.ForServer(server).RunTask(task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -55,25 +54,25 @@ func (j *AddSSHKeyJob) Handle(ctx context.Context) error {
 	}
 
 	// Attach the key to server in the database
-	if err := j.ctx.Repos.SSHKey().AttachToServer(ctx, server.ID, sshKey.ID); err != nil {
+	if err := j.Ctx.Repos.SSHKey().AttachToServer(ctx, server.ID, sshKey.ID); err != nil {
 		return fmt.Errorf("failed to attach SSH key to server: %w", err)
 	}
 
 	// Log activity
-	activity.New(j.ctx.DB).
+	activity.New(j.Ctx.DB).
 		WithContext(ctx).
 		UseLog("server").
 		On(sshKey).
 		WithEvent("added").
 		Log("SSH key was added to server")
 
-	j.ctx.LogInfo("SSH key added successfully",
+	j.Ctx.LogInfo("SSH key added successfully",
 		"key_id", sshKey.ID,
 		"server_id", server.ID,
 	)
 
 	// Broadcast event
-	j.ctx.BroadcastServerEvent(server, "ssh_key.added", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "ssh_key.added", map[string]any{
 		"key_id":    sshKey.ID,
 		"server_id": server.ID,
 	})
@@ -83,7 +82,7 @@ func (j *AddSSHKeyJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *AddSSHKeyJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to add SSH key",
+	j.Ctx.LogError(err, "Failed to add SSH key",
 		"key_id", j.Payload.KeyID,
 		"server_id", j.Payload.ServerID,
 	)
@@ -92,8 +91,7 @@ func (j *AddSSHKeyJob) Failed(ctx context.Context, err error) {
 // NewAddSSHKeyJob creates a new AddSSHKeyJob with the given context and payload.
 func NewAddSSHKeyJob(ctx *JobContext, payload AddSSHKeyPayload) *AddSSHKeyJob {
 	return &AddSSHKeyJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
