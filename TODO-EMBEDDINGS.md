@@ -13281,3 +13281,1235 @@ s.Broadcast(broadcast.Event{
 | Notification & Jobs (Round 10) | 12 patterns | ~2020 lines |
 | Model Hooks & DTO (Round 11) | 12 patterns | ~1330 lines |
 | **Grand Total** | **158 patterns** | **~26,141 lines** |
+
+---
+
+# CONSOLIDATED IMPLEMENTATION PLAN
+
+This section analyzes the 158 patterns above and groups them into **15 actionable work packages** that can be implemented incrementally. Patterns within each package build upon each other and should be done together.
+
+---
+
+## Work Package Overview
+
+| # | Package Name | Items | Est. LOC Saved | Priority | Effort |
+|---|--------------|-------|----------------|----------|--------|
+| 1 | Handler Infrastructure | 15 patterns | ~1,200 lines | P1 | High |
+| 2 | Repository Infrastructure | 14 patterns | ~1,800 lines | P1 | High |
+| 3 | Job/Task Infrastructure | 12 patterns | ~1,500 lines | P1 | Medium |
+| 4 | Model Mixins | 11 patterns | ~600 lines | P2 | Medium |
+| 5 | DTO/Response Infrastructure | 13 patterns | ~1,100 lines | P1 | Medium |
+| 6 | HTTP Client Infrastructure | 11 patterns | ~900 lines | P1 | Medium |
+| 7 | Template/Script Engine | 9 patterns | ~800 lines | P2 | Medium |
+| 8 | Notification/Webhook | 10 patterns | ~600 lines | P2 | Low |
+| 9 | Enum/Type Infrastructure | 8 patterns | ~500 lines | P2 | Low |
+| 10 | Security/Crypto | 7 patterns | ~350 lines | P1 | Low |
+| 11 | Broadcast/WebSocket | 9 patterns | ~500 lines | P2 | Medium |
+| 12 | Config/Constants | 6 patterns | ~300 lines | P3 | Low |
+| 13 | Error Handling | 5 patterns | ~200 lines | P1 | Low |
+| 14 | Testing Infrastructure | 4 patterns | ~300 lines | P3 | Low |
+| 15 | Utility Helpers | 24 patterns | ~800 lines | P3 | Low |
+| **Total** | | **158 patterns** | **~11,450 lines** | | |
+
+---
+
+## Work Package 1: Handler Infrastructure (P1)
+
+**Goal:** Create a unified handler base with context extraction, validation, and error handling.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 1 | WebSocket Handler Base Embedding | ~60 lines |
+| 2 | Webhook Handler Base Embedding | ~35 lines |
+| 5 | Module Handler Field Consolidation | ~200 lines |
+| 33 | ParseAndValidate Adoption | ~300 lines |
+| 34 | Global Context Extraction Helpers | ~200 lines |
+| 52 | Context Extraction Helpers | ~100 lines |
+| 77 | WebSocket Handler Base Struct | ~60 lines |
+| 84 | ParseAndValidate Adoption (duplicate) | (merged with 33) |
+| 87 | Request Context Extraction | ~80 lines |
+| 101 | Handler Validation Flow | ~80 lines |
+| 111 | Route Middleware Chain | ~40 lines |
+| 112 | Handler Module Aggregation | ~45 lines |
+
+### Implementation Order:
+
+**Step 1: Create Core Handler Base** (`internal/pkg/handler/`)
+```go
+// base.go - Handler base with logging and context
+type Base struct {
+    Logger *zerolog.Logger
+}
+
+// context.go - Safe context extraction
+func GetTeamID(c *fiber.Ctx) (string, error)
+func GetUserID(c *fiber.Ctx) (string, error)
+func MustGetTeamID(c *fiber.Ctx) string
+
+// request.go - Request parsing with validation
+func ParseAndValidate[T any](c *fiber.Ctx) (*T, error)
+func ParseQuery[T any](c *fiber.Ctx) (*T, error)
+
+// errors.go - Service error to HTTP response mapping
+func HandleServiceError(c *fiber.Ctx, err error) error
+```
+
+**Step 2: Create WebSocket Handler Base** (`internal/modules/websocket/handlers/base.go`)
+```go
+type BaseWSHandler struct {
+    handler.Base
+    DB              *gorm.DB
+    JWTSecret       string
+    MembershipCache *cache.TeamMembershipCache
+}
+```
+
+**Step 3: Create Webhook Handler Base** (`internal/pkg/webhook/base.go`)
+```go
+type BaseWebhookHandler struct {
+    handler.Base
+    Signer *signedurl.Signer
+}
+
+func (h *BaseWebhookHandler) VerifySignature(c *fiber.Ctx) bool
+func (h *BaseWebhookHandler) LogWebhookReceived(c *fiber.Ctx, webhookType string)
+```
+
+**Step 4: Refactor All Module Handlers**
+- Embed `handler.Base` in all HTTP handlers
+- Embed `BaseWSHandler` in WebSocket handlers
+- Embed `BaseWebhookHandler` in webhook handlers
+- Replace raw `c.Locals()` with safe extractors
+- Replace BodyParser+Validate with `ParseAndValidate`
+
+### Files to Create:
+- [ ] `internal/pkg/handler/base.go`
+- [ ] `internal/pkg/handler/context.go`
+- [ ] `internal/pkg/handler/request.go`
+- [ ] `internal/pkg/handler/errors.go`
+- [ ] `internal/pkg/webhook/base.go`
+- [ ] `internal/modules/websocket/handlers/base.go`
+
+### Estimated Effort: 2-3 days
+
+---
+
+## Work Package 2: Repository Infrastructure (P2)
+
+**Goal:** Create unified repository base with generic query builders, scopes, and common methods.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 3 | Repository BaseRepository Enforcement | ~450 lines |
+| 7 | Installable Repository Mixin | ~200 lines |
+| 39 | Backup Repository Many-to-Many Pattern | ~50 lines |
+| 45 | GORM Query Helper Methods | ~300 lines |
+| 50 | N+1 Query Fix | ~50 lines |
+| 75 | GORM Query Scope - Order By Latest | ~40 lines |
+| 88 | Repository Authorization Method | ~80 lines |
+| 89 | Preload Chain Consolidation | ~60 lines |
+| 90 | Service BaseService Accessor | ~40 lines |
+| 96 | ServiceRegistry Boilerplate | ~30 lines |
+| 107 | Repository Registry Factory | ~50 lines |
+| 152 | Generic UpdateStatus Repository | ~80 lines |
+| 154 | Preload Scope Helpers | ~90 lines |
+| 155 | Soft Delete Scope Unification | ~50 lines |
+
+### Implementation Order:
+
+**Step 1: Enhance Repository Base** (`internal/pkg/repository/`)
+```go
+// base.go - Repository base with common methods
+type Base[T any] struct {
+    db *gorm.DB
+}
+
+func (r *Base[T]) DB() *gorm.DB
+func (r *Base[T]) FindByID(ctx context.Context, id string) (*T, error)
+func (r *Base[T]) Create(ctx context.Context, entity *T) error
+func (r *Base[T]) Update(ctx context.Context, entity *T) error
+func (r *Base[T]) Delete(ctx context.Context, id string) error
+
+// status.go - Generic status update
+func (r *Base[T]) UpdateStatus(ctx context.Context, id string, status any) error
+
+// query.go - Fluent query builder
+type Query[T any] struct { ... }
+func (q *Query[T]) Where(cond string, args ...any) *Query[T]
+func (q *Query[T]) Preload(rel string) *Query[T]
+func (q *Query[T]) OrderByLatest() *Query[T]
+func (q *Query[T]) First(ctx context.Context) (*T, error)
+func (q *Query[T]) All(ctx context.Context) ([]T, error)
+```
+
+**Step 2: Create Scope Library** (`internal/pkg/repository/scopes.go`)
+```go
+// Already exists - extend with:
+func PreloadOrdered(rel, order string, limit int) Scope
+func WithActive() Scope  // archived_at IS NULL
+func WithArchived() Scope
+func JoinLatest(rel string) Scope
+```
+
+**Step 3: Create Authorization Mixin**
+```go
+// auth.go - Authorization helpers
+type Authorizable[T any] struct {
+    Base[T]
+}
+
+func (r *Authorizable[T]) FindByIDAndTeam(ctx context.Context, id, teamID string) (*T, error)
+func (r *Authorizable[T]) FindByIDAndServer(ctx context.Context, id, serverID string) (*T, error)
+```
+
+**Step 4: Create Registry Factory**
+```go
+// registry.go - Already exists, enhance with:
+func NewRegistry[R any](db *gorm.DB, factory func(*gorm.DB) R) *Registry[R]
+```
+
+### Files to Modify/Create:
+- [ ] Enhance `internal/pkg/repository/base.go`
+- [ ] Enhance `internal/pkg/repository/scopes.go`
+- [ ] Create `internal/pkg/repository/query.go`
+- [ ] Create `internal/pkg/repository/auth.go`
+- [ ] Create `internal/pkg/repository/status.go`
+
+### Estimated Effort: 2-3 days
+
+---
+
+## Work Package 3: Job/Task Infrastructure (P1)
+
+**Goal:** Unified job context, task builders, and callback handling.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 6 | Job Base Payload Generic | ~100 lines |
+| 10 | Task Builder Pattern | ~600 lines |
+| 71 | JobContext Generic Base | ~80 lines |
+| 79 | Job Struct Boilerplate | ~150 lines |
+| 93 | JobContext Field Duplication | ~60 lines |
+| 139 | Job Task Builder Generator | ~400 lines |
+| 140 | Job Context Base Consolidation | ~250 lines |
+| 142 | Backup Job Payload Base | ~30 lines |
+| 143 | Service Dispatch Helper | ~50 lines |
+| 157 | Feature Enable Base Job | ~400 lines |
+
+### Implementation Order:
+
+**Step 1: Create Generic Job Base** (`internal/pkg/jobs/`)
+```go
+// base.go - Job base with context
+type Base struct {
+    ctx *Context
+}
+
+func (j *Base) Context() *Context
+func (j *Base) DB() *gorm.DB
+func (j *Base) Queue() *queue.Client
+func (j *Base) Dispatcher() *taskrunner.Dispatcher
+func (j *Base) LogInfo(msg string, fields ...any)
+func (j *Base) LogError(msg string, fields ...any)
+func (j *Base) Broadcast(channel, event string, data any)
+
+// payload.go - Generic payload handling
+type BasePayload struct {
+    TeamID   string `json:"team_id"`
+    UserID   string `json:"user_id,omitempty"`
+}
+
+// builder.go - Task builder helper
+type TaskBuilder struct { ... }
+func (b *TaskBuilder) WithScript(script string) *TaskBuilder
+func (b *TaskBuilder) WithTimeout(seconds int) *TaskBuilder
+func (b *TaskBuilder) Build() taskrunner.Task
+```
+
+**Step 2: Create Feature Job Template**
+```go
+// feature_job.go - Base for feature enable jobs
+type FeatureJob[P any] struct {
+    Base
+    Payload P
+    Config  FeatureConfig
+}
+
+type FeatureConfig struct {
+    Name        string
+    DBField     string
+    TaskBuilder func(*models.Site, *models.Server) taskrunner.Task
+}
+
+func (j *FeatureJob[P]) Handle() error {
+    // Standard feature enable flow
+}
+```
+
+**Step 3: Refactor Module Jobs**
+- Embed `jobs.Base` in all job structs
+- Use `TaskBuilder` for task creation
+- Convert feature enable jobs to `FeatureJob`
+
+### Files to Create:
+- [ ] Enhance `internal/pkg/jobs/base.go`
+- [ ] Create `internal/pkg/jobs/payload.go`
+- [ ] Create `internal/pkg/jobs/builder.go`
+- [ ] Create `internal/pkg/jobs/feature_job.go`
+
+### Estimated Effort: 2 days
+
+---
+
+## Work Package 4: Model Mixins (P2)
+
+**Goal:** Composable model mixins for common patterns.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 11 | Model Scoped Fields Adoption | ~100 lines |
+| 15 | Model NamedModel Mixin | ~26 lines |
+| 16 | Model StateTrackingModel Mixin | ~30 lines |
+| 17 | Model ProgressTrackingModel Mixin | ~10 lines |
+| 18 | Compound Scoping Mixins | ~100 lines |
+| 57 | BeforeCreate Hook Consolidation | ~60 lines |
+| 97 | Soft Delete Pattern | ~40 lines |
+| 105 | BeforeCreate Hook Status Init | ~50 lines |
+| 147 | BeforeCreate Hook Consolidation (R11) | ~80 lines |
+| 155 | Soft Delete Scope Unification | ~50 lines |
+| 156 | Site Type Helper Methods | ~80 lines |
+
+### Implementation Order:
+
+**Step 1: Create Model Mixins** (`internal/pkg/models/`)
+```go
+// mixins.go - Composable mixins
+type Named struct {
+    Name string `gorm:"size:255;not null" json:"name"`
+}
+
+type Described struct {
+    Description *string `gorm:"type:text" json:"description,omitempty"`
+}
+
+type StatusTracking[S ~string] struct {
+    Status S `gorm:"size:50;not null" json:"status"`
+}
+
+type ProgressTracking struct {
+    Progress   int     `gorm:"default:0" json:"progress"`
+    ProgressMessage *string `json:"progress_message,omitempty"`
+}
+
+type Archivable struct {
+    ArchivedAt *time.Time `gorm:"index" json:"archived_at,omitempty"`
+}
+
+func (a *Archivable) IsArchived() bool
+func (a *Archivable) Archive()
+func (a *Archivable) Restore()
+
+// hooks.go - BeforeCreate helpers
+type StatusInitializer[S ~string] interface {
+    DefaultStatus() S
+}
+
+func InitializeStatus[T StatusInitializer[S], S ~string](model *T) {
+    // Set default status if empty
+}
+
+type TokenInitializer interface {
+    TokenField() *string
+}
+
+func InitializeToken(model TokenInitializer) {
+    // Generate secure token if empty
+}
+```
+
+**Step 2: Create Scope Mixins**
+```go
+// scopes.go - Model-aware scopes
+type TeamScoped struct {
+    TeamID string `gorm:"size:26;not null;index" json:"team_id"`
+}
+
+type ServerScoped struct {
+    ServerID string `gorm:"size:26;not null;index" json:"server_id"`
+}
+
+type SiteScoped struct {
+    SiteID string `gorm:"size:26;not null;index" json:"site_id"`
+}
+
+// Compound scopes
+type TeamServerScoped struct {
+    TeamScoped
+    ServerScoped
+}
+```
+
+### Files to Create:
+- [ ] Create `internal/pkg/models/mixins.go`
+- [ ] Create `internal/pkg/models/hooks.go`
+- [ ] Create `internal/pkg/models/scopes.go`
+
+### Estimated Effort: 1-2 days
+
+---
+
+## Work Package 5: DTO/Response Infrastructure (P1)
+
+**Goal:** Generic DTO helpers for timestamps, mapping, and pointer handling.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 14 | DTO Timestamp Embedding | ~400 lines |
+| 24 | Request DTO Mixins | ~150 lines |
+| 42 | Timestamp Formatting | ~40 lines |
+| 58 | JSON Timestamp Helper | ~50 lines |
+| 81 | DTO Timestamp Formatter | ~60 lines |
+| 82 | DTO List Transformation | ~80 lines |
+| 100 | Validation Field Embedding | ~40 lines |
+| 103 | Model Broadcast Payload | ~50 lines |
+| 108 | Slice Transformation Generic | ~60 lines |
+| 115 | Nil-Safe Dereference Helpers | ~80 lines |
+| 148 | Generic Slice Mapper | ~120 lines |
+| 149 | Enum Response Helper | ~90 lines |
+| 150 | Pointer Dereference Utilities | ~60 lines |
+
+### Implementation Order:
+
+**Step 1: Create DTO Helpers** (`internal/pkg/dto/`)
+```go
+// time.go - Already exists, enhance
+func FormatTime(t *time.Time) *string
+func FormatTimeValue(t time.Time) string
+func ParseTime(s string) (*time.Time, error)
+
+// ptr.go - Pointer utilities
+func Deref[T any](p *T) T
+func DerefOr[T any](p *T, defaultVal T) T
+func Ptr[T any](v T) *T
+func NilIfEmpty(s *string) *string
+
+// mapper.go - Slice mapping
+func MapSlice[T, R any](items []T, fn func(T) R) []R
+func MapSlicePtr[T, R any](items []T, fn func(T) *R) []*R
+func FilterSlice[T any](items []T, fn func(T) bool) []T
+
+// enum.go - Enum response helpers
+type EnumResponse struct {
+    Value string `json:"value"`
+    Label string `json:"label"`
+}
+
+func EnumToResponse[E ~string](e E, labelFn func(E) string) EnumResponse
+func EnumsToResponses[E ~string](values []E, labelFn func(E) string) []EnumResponse
+```
+
+**Step 2: Create Response Mixins**
+```go
+// response.go - Common response fields
+type TimestampResponse struct {
+    CreatedAt string  `json:"created_at"`
+    UpdatedAt string  `json:"updated_at"`
+}
+
+type AuditResponse struct {
+    TimestampResponse
+    CreatedBy *string `json:"created_by,omitempty"`
+    UpdatedBy *string `json:"updated_by,omitempty"`
+}
+
+func NewTimestampResponse(createdAt, updatedAt time.Time) TimestampResponse
+```
+
+**Step 3: Create Request Mixins**
+```go
+// request.go - Common request fields
+type PaginationRequest struct {
+    Page    int `query:"page" validate:"min=1"`
+    PerPage int `query:"per_page" validate:"min=1,max=100"`
+}
+
+func (r *PaginationRequest) Normalize()
+
+type SortRequest struct {
+    SortBy    string `query:"sort_by"`
+    SortOrder string `query:"sort_order" validate:"omitempty,oneof=asc desc"`
+}
+```
+
+### Files to Create/Modify:
+- [ ] Enhance `internal/pkg/dto/time.go`
+- [ ] Create `internal/pkg/dto/ptr.go`
+- [ ] Create `internal/pkg/dto/mapper.go`
+- [ ] Create `internal/pkg/dto/enum.go`
+- [ ] Create `internal/pkg/dto/response.go`
+- [ ] Create `internal/pkg/dto/request.go`
+
+### Estimated Effort: 1-2 days
+
+---
+
+## Work Package 6: HTTP Client Infrastructure (P1)
+
+**Goal:** Unified HTTP client base for all API providers.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 19 | Cloud Provider BaseAPIClient | ~200 lines |
+| 20 | Git Provider BaseGitAPIClient | ~150 lines |
+| 51 | HTTP Client Base with Request Builder | ~200 lines |
+| 80 | Cloud Provider HTTP Client | ~100 lines |
+| 91 | Retry Logic Consolidation | ~100 lines |
+| 92 | HTTP Client Factory | ~50 lines |
+| 123 | HTTP Client Base Pattern | ~100 lines |
+| 124 | API Request Builder | ~80 lines |
+| 125 | Response Handler Consolidation | ~100 lines |
+| 129 | Retry Strategy Consolidation | ~100 lines |
+| 141 | DNS Provider HTTP Base | ~100 lines |
+
+### Implementation Order:
+
+**Step 1: Create HTTP Client Base** (`internal/pkg/httpclient/`)
+```go
+// client.go - Base HTTP client
+type Client struct {
+    baseURL    string
+    httpClient *http.Client
+    headers    map[string]string
+    retryConfig RetryConfig
+    logger     *zerolog.Logger
+}
+
+func New(baseURL string, opts ...Option) *Client
+func (c *Client) Get(ctx context.Context, path string) (*Response, error)
+func (c *Client) Post(ctx context.Context, path string, body any) (*Response, error)
+func (c *Client) Put(ctx context.Context, path string, body any) (*Response, error)
+func (c *Client) Delete(ctx context.Context, path string) (*Response, error)
+
+// options.go - Client options
+type Option func(*Client)
+func WithTimeout(d time.Duration) Option
+func WithHeader(key, value string) Option
+func WithBearerToken(token string) Option
+func WithRetry(config RetryConfig) Option
+func WithLogger(logger *zerolog.Logger) Option
+
+// retry.go - Retry logic
+type RetryConfig struct {
+    MaxRetries int
+    BackoffFunc func(attempt int) time.Duration
+    RetryableStatus []int
+}
+
+func ExponentialBackoff(base time.Duration) func(int) time.Duration
+
+// request.go - Request builder
+type RequestBuilder struct { ... }
+func (b *RequestBuilder) WithQuery(key, value string) *RequestBuilder
+func (b *RequestBuilder) WithHeader(key, value string) *RequestBuilder
+func (b *RequestBuilder) WithBody(body any) *RequestBuilder
+func (b *RequestBuilder) Execute(ctx context.Context) (*Response, error)
+```
+
+**Step 2: Create Provider-Specific Bases**
+```go
+// internal/pkg/providers/cloud/base.go
+type BaseCloudClient struct {
+    *httpclient.Client
+}
+
+func (c *BaseCloudClient) HandleAPIError(resp *httpclient.Response) error
+
+// internal/pkg/providers/git/base.go
+type BaseGitClient struct {
+    *httpclient.Client
+}
+
+func (c *BaseGitClient) Paginate(ctx context.Context, path string, handler func([]byte) bool) error
+```
+
+### Files to Create:
+- [ ] Create `internal/pkg/httpclient/client.go`
+- [ ] Create `internal/pkg/httpclient/options.go`
+- [ ] Create `internal/pkg/httpclient/retry.go`
+- [ ] Create `internal/pkg/httpclient/request.go`
+- [ ] Create `internal/pkg/httpclient/response.go`
+- [ ] Create `internal/pkg/providers/cloud/base.go`
+- [ ] Create `internal/pkg/providers/git/base.go`
+
+### Estimated Effort: 2-3 days
+
+---
+
+## Work Package 7: Template/Script Engine (P2)
+
+**Goal:** Unified template loading and script building.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 10 | Task Builder Pattern | (shared with WP3) |
+| 30 | Script Builder Interface | ~500 lines |
+| 31 | Shell Defaults Registry | ~60 lines |
+| 35 | Template Loading Consolidation | ~80 lines |
+| 36 | Systemd Config Script | ~60 lines |
+| 37 | Home Directory Helper | ~20 lines |
+| 55 | Home Directory Helper (dup) | (merged) |
+| 56 | Task File Path Builder | ~40 lines |
+| 65 | Template Engine Consolidation | ~100 lines |
+| 114 | Template Engine Consolidation (dup) | (merged) |
+| 119 | Home Directory Helper (dup) | (merged) |
+
+### Implementation Order:
+
+**Step 1: Create Script Builder** (`internal/pkg/script/`)
+```go
+// builder.go - Script builder
+type Builder struct {
+    sections []Section
+}
+
+type Section struct {
+    Name    string
+    Content string
+}
+
+func New() *Builder
+func (b *Builder) ShellDefaults(strict bool) *Builder
+func (b *Builder) Section(name, content string) *Builder
+func (b *Builder) Function(name, body string) *Builder
+func (b *Builder) Command(cmd string, args ...string) *Builder
+func (b *Builder) Conditional(condition string, body *Builder) *Builder
+func (b *Builder) Build() string
+
+// paths.go - Path helpers
+func HomeDir(user string) string
+func SiteDir(user, site string) string
+func ReleaseDir(user, site, release string) string
+func SharedDir(user, site string) string
+```
+
+**Step 2: Create Template Engine**
+```go
+// internal/pkg/templates/engine.go
+type Engine struct {
+    templates *template.Template
+    funcMap   template.FuncMap
+}
+
+func NewEngine() *Engine
+func (e *Engine) LoadFromFS(fs embed.FS, pattern string) error
+func (e *Engine) LoadFromGlob(pattern string) error
+func (e *Engine) Render(name string, data any) (string, error)
+func (e *Engine) MustRender(name string, data any) string
+
+// funcs.go - Standard template functions
+func CommonFuncMap() template.FuncMap  // Already exists, enhance
+```
+
+### Files to Create:
+- [ ] Create `internal/pkg/script/builder.go`
+- [ ] Create `internal/pkg/script/paths.go`
+- [ ] Enhance `internal/pkg/taskrunner/templates/engine.go`
+
+### Estimated Effort: 1-2 days
+
+---
+
+## Work Package 8: Notification/Webhook (P2)
+
+**Goal:** Unified notification channel and webhook handling.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 21 | Notification BaseWebhookChannel | ~100 lines |
+| 40 | Webhook Response Standardization | ~30 lines |
+| 66 | Slack Admin Alert Base | ~80 lines |
+| 67 | Notification Format Helper | ~60 lines |
+| 68 | Webhook Signature Verification | ~50 lines |
+| 113 | Webhook Route Standardization | ~40 lines |
+| 135 | Webhook Channel Base Class | ~90 lines |
+| 136 | Admin Alert Base Class | ~100 lines |
+| 144 | Webhook Signature Verifier | ~80 lines |
+
+### Implementation Order:
+
+**Step 1: Create Webhook Channel Base** (`internal/pkg/notification/`)
+```go
+// channel.go - Base webhook channel
+type BaseWebhookChannel struct {
+    Name       string
+    WebhookURL string
+    httpClient *httpclient.Client
+    logger     *zerolog.Logger
+}
+
+func (c *BaseWebhookChannel) Send(ctx context.Context, payload any) error
+func (c *BaseWebhookChannel) FormatMessage(template string, data any) string
+
+// slack.go - Slack-specific
+type SlackChannel struct {
+    BaseWebhookChannel
+}
+
+func (c *SlackChannel) SendAlert(ctx context.Context, level, title, message string) error
+func (c *SlackChannel) SendBlocks(ctx context.Context, blocks []slack.Block) error
+
+// discord.go - Discord-specific
+type DiscordChannel struct {
+    BaseWebhookChannel
+}
+```
+
+**Step 2: Create Admin Alert System**
+```go
+// alert.go - Admin alerting
+type AdminAlerter struct {
+    channels []AlertChannel
+}
+
+type AlertChannel interface {
+    SendAlert(ctx context.Context, alert Alert) error
+}
+
+type Alert struct {
+    Level   AlertLevel
+    Title   string
+    Message string
+    Fields  map[string]string
+}
+
+func (a *AdminAlerter) Alert(ctx context.Context, alert Alert) error
+```
+
+### Files to Create:
+- [ ] Create `internal/pkg/notification/channel.go`
+- [ ] Create `internal/pkg/notification/slack.go`
+- [ ] Create `internal/pkg/notification/discord.go`
+- [ ] Create `internal/pkg/notification/alert.go`
+
+### Estimated Effort: 1 day
+
+---
+
+## Work Package 9: Enum/Type Infrastructure (P2)
+
+**Goal:** Reduce enum boilerplate with generators and type helpers.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 28 | Enum Scan/Value Boilerplate | ~315 lines |
+| 32 | Encrypted Field Types | ~30 lines |
+| 106 | Enum Boilerplate Consolidation | ~80 lines |
+| 116 | JSONMap Type Deduplication | ~50 lines |
+| 117 | Enum SQL Scanner Generator | ~60 lines |
+| 149 | Enum Response Helper | (shared with WP5) |
+| 153 | Status Enum Base Generator | ~120 lines |
+
+### Implementation Order:
+
+**Step 1: Create Enum Helpers** (`internal/pkg/enums/`)
+```go
+// base.go - Enum base types
+type StringEnum interface {
+    ~string
+    String() string
+}
+
+// scanner.go - GORM scanner for enums
+type Scanner[E StringEnum] struct {
+    Value E
+}
+
+func (s *Scanner[E]) Scan(value any) error
+func (s Scanner[E]) Value() (driver.Value, error)
+
+// set.go - Enum set with validation
+type Set[E comparable] struct {
+    values   []E
+    terminal map[E]bool
+    labels   map[E]string
+}
+
+func NewSet[E comparable](values []E) *Set[E]
+func (s *Set[E]) WithTerminal(values ...E) *Set[E]
+func (s *Set[E]) WithLabels(labels map[E]string) *Set[E]
+func (s *Set[E]) IsValid(v E) bool
+func (s *Set[E]) IsTerminal(v E) bool
+func (s *Set[E]) Label(v E) string
+func (s *Set[E]) Values() []E
+```
+
+**Step 2: Create Custom Types**
+```go
+// types.go - Reusable custom types
+type JSONMap map[string]any
+
+func (m *JSONMap) Scan(value any) error
+func (m JSONMap) Value() (driver.Value, error)
+
+type EncryptedString struct {
+    value     string
+    encrypted string
+}
+
+func (e *EncryptedString) Set(value string, key []byte) error
+func (e *EncryptedString) Get(key []byte) (string, error)
+```
+
+### Files to Create:
+- [ ] Create `internal/pkg/enums/base.go`
+- [ ] Create `internal/pkg/enums/scanner.go`
+- [ ] Create `internal/pkg/enums/set.go`
+- [ ] Create `internal/pkg/types/json.go`
+- [ ] Create `internal/pkg/types/encrypted.go`
+
+### Estimated Effort: 1 day
+
+---
+
+## Work Package 10: Security/Crypto (P1)
+
+**Goal:** Consolidated crypto utilities for tokens, signatures, and encryption.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 46 | GitLab Webhook Timing Attack Fix | ~20 lines |
+| 49 | Crypto Package Consolidation | ~50 lines |
+| 72 | Token Generation Consolidation | ~40 lines |
+| 120 | HMAC Signature Validator | ~80 lines |
+| 121 | Token Generator Consolidation | ~40 lines |
+| 122 | Time Expiration Checker | ~50 lines |
+| 146 | Token Generation Consolidation (dup) | (merged) |
+
+### Implementation Order:
+
+**Step 1: Create Crypto Package** (`internal/pkg/crypto/`)
+```go
+// token.go - Token generation
+func SecureToken(byteLength int) (string, error)
+func SecureTokenHex(byteLength int) (string, error)
+func URLSafeToken(byteLength int) (string, error)
+
+// hmac.go - HMAC signatures
+func SignHMAC(message, secret []byte) []byte
+func VerifyHMAC(message, signature, secret []byte) bool
+func VerifyHMACConstantTime(message, signature, secret []byte) bool  // Timing-safe
+
+// expiry.go - Expiration checking
+func IsExpired(expiresAt *time.Time) bool
+func ExpiresIn(duration time.Duration) time.Time
+func TimeRemaining(expiresAt time.Time) time.Duration
+```
+
+### Files to Create:
+- [ ] Create `internal/pkg/crypto/token.go`
+- [ ] Create `internal/pkg/crypto/hmac.go`
+- [ ] Create `internal/pkg/crypto/expiry.go`
+
+### Estimated Effort: 0.5 days
+
+---
+
+## Work Package 11: Broadcast/WebSocket (P2)
+
+**Goal:** Unified broadcasting and WebSocket message building.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 8 | Queue Dispatch Unification | ~100 lines |
+| 12 | Activity Logging Builder | ~150 lines |
+| 13 | Broadcast Payload Builder | ~50 lines |
+| 47 | Broadcast Event Constants | ~60 lines |
+| 61 | Broadcast Channel Builder | ~40 lines |
+| 78 | WebSocket Message Builder | ~50 lines |
+| 102 | Broadcaster Interface Dedup | ~30 lines |
+| 158 | Broadcast Event Builder | ~60 lines |
+
+### Implementation Order:
+
+**Step 1: Create Broadcast Helpers** (`internal/pkg/broadcast/`)
+```go
+// events.go - Event constants
+const (
+    EventCreated = "created"
+    EventUpdated = "updated"
+    EventDeleted = "deleted"
+    EventProgress = "progress"
+    EventStatus = "status"
+)
+
+// channels.go - Channel builders
+func TeamChannel(teamID string) string
+func UserChannel(userID string) string
+func ServerChannel(serverID string) string
+func DeploymentChannel(deploymentID string) string
+
+// payload.go - Already exists, enhance
+type Payload struct {
+    Event string         `json:"event"`
+    Model string         `json:"model"`
+    ID    string         `json:"id"`
+    Data  any            `json:"data"`
+    Meta  map[string]any `json:"meta,omitempty"`
+}
+
+func NewPayload(model, id, event string, data any) Payload
+func (p *Payload) WithMeta(key string, value any) *Payload
+
+// mixin.go - Broadcast mixin for embedding
+type Mixin struct {
+    WS *websocket.Hub
+}
+
+func (m *Mixin) Broadcast(channel string, payload Payload)
+func (m *Mixin) BroadcastToTeam(teamID string, payload Payload)
+```
+
+### Files to Modify/Create:
+- [ ] Create `internal/pkg/broadcast/events.go`
+- [ ] Create `internal/pkg/broadcast/channels.go`
+- [ ] Enhance `internal/pkg/broadcast/payload.go`
+- [ ] Create `internal/pkg/broadcast/mixin.go`
+
+### Estimated Effort: 1 day
+
+---
+
+## Work Package 12: Config/Constants (P3)
+
+**Goal:** Standardized configuration loading and constants.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 23 | Config Builder Pattern | ~86 lines |
+| 60 | Config Loading with Struct Tags | ~80 lines |
+| 98 | Timeout Configuration | ~50 lines |
+| 134 | Config Loader Helper | ~80 lines |
+| 138 | Cron Schedule Constants | ~30 lines |
+
+### Implementation: Already largely complete in `internal/pkg/config/loader.go`
+
+**Enhancements needed:**
+```go
+// internal/pkg/config/loader.go - Add:
+func LoadFromEnvWithPrefix[T any](prefix string) (*T, error)
+func ValidateConfig(cfg any) error
+
+// internal/pkg/constants/timeouts.go
+const (
+    DefaultHTTPTimeout     = 30 * time.Second
+    DefaultSSHTimeout      = 2 * time.Minute
+    DefaultDeployTimeout   = 10 * time.Minute
+    DefaultProvisionTimeout = 30 * time.Minute
+)
+
+// internal/pkg/constants/cron.go
+const (
+    CronEveryMinute     = "* * * * *"
+    CronEvery5Minutes   = "*/5 * * * *"
+    CronEveryHour       = "0 * * * *"
+    CronDaily           = "0 0 * * *"
+    CronWeekly          = "0 0 * * 0"
+)
+```
+
+### Files to Create:
+- [ ] Create `internal/pkg/constants/timeouts.go`
+- [ ] Create `internal/pkg/constants/cron.go`
+- [ ] Enhance `internal/pkg/config/loader.go`
+
+### Estimated Effort: 0.5 days
+
+---
+
+## Work Package 13: Error Handling (P1)
+
+**Goal:** Unified error types with HTTP status mapping.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 41 | AppError HTTPStatus Interface | ~30 lines |
+| 63 | Error Type Consolidation | ~80 lines |
+| 99 | Duplicate AppError Type | ~50 lines |
+| 83 | Activity Logging Helper | (shared with WP11) |
+
+### Implementation: Already largely complete in `internal/pkg/errors/`
+
+**Enhancements needed:**
+```go
+// internal/pkg/errors/app.go - Ensure single AppError
+type AppError struct {
+    Code       string `json:"code"`
+    Message    string `json:"message"`
+    StatusCode int    `json:"-"`
+    Cause      error  `json:"-"`
+}
+
+func (e *AppError) Error() string
+func (e *AppError) Unwrap() error
+func (e *AppError) HTTPStatus() int  // For fiber error handler
+
+// Constructors
+func NewAppError(code, message string, status int) *AppError
+func Wrap(err error, message string) *AppError
+func WrapWithCode(err error, code, message string, status int) *AppError
+```
+
+### Files to Modify:
+- [ ] Consolidate to single `internal/pkg/errors/app.go`
+- [ ] Remove duplicate AppError definitions
+
+### Estimated Effort: 0.5 days
+
+---
+
+## Work Package 14: Testing Infrastructure (P3)
+
+**Goal:** Test base classes and mocking utilities.
+
+### Patterns Consolidated:
+| Item | Pattern Name | LOC Saved |
+|------|--------------|-----------|
+| 25 | Test Base Classes | ~200 lines |
+| 85 | MockRepository Code Generation | ~80 lines |
+| 95 | NotifierFake Lock Wrapper | ~20 lines |
+
+### Implementation Order:
+
+**Step 1: Create Test Helpers** (`internal/pkg/testing/`)
+```go
+// base.go - Test suite base
+type Suite struct {
+    suite.Suite
+    DB     *gorm.DB
+    Ctx    context.Context
+    Cancel context.CancelFunc
+}
+
+func (s *Suite) SetupTest()
+func (s *Suite) TearDownTest()
+func (s *Suite) CreateTestDB() *gorm.DB
+func (s *Suite) TruncateTables(tables ...string)
+
+// mock.go - Mock helpers
+type MockRepository[T any] struct {
+    mock.Mock
+}
+
+func (m *MockRepository[T]) FindByID(ctx context.Context, id string) (*T, error)
+// ... other common methods
+
+// fixtures.go - Test data factories
+type Factory[T any] struct {
+    build func() *T
+}
+
+func NewFactory[T any](build func() *T) *Factory[T]
+func (f *Factory[T]) Create() *T
+func (f *Factory[T]) CreateN(n int) []*T
+```
+
+### Files to Create:
+- [ ] Create `internal/pkg/testing/base.go`
+- [ ] Create `internal/pkg/testing/mock.go`
+- [ ] Create `internal/pkg/testing/fixtures.go`
+
+### Estimated Effort: 1 day
+
+---
+
+## Work Package 15: Utility Helpers (P3)
+
+**Goal:** Misc utility helpers that don't fit other packages.
+
+### Patterns Consolidated:
+| Item | Pattern Name |
+|------|--------------|
+| 37, 55, 119 | Home Directory Helper |
+| 53 | JWT Token Parser Helper |
+| 54 | Redis Client Factory |
+| 73 | Git Ref Trimming Helper |
+| 74 | Channel Validation Rules |
+| 76 | Sync Associations Pattern |
+| 86 | Email Normalization |
+| 94 | Double-Check Lock Pattern |
+| 109 | Safe Map Access Helper |
+| 110 | Collection Filter-Map Pattern |
+| 126 | Pagination Parameter Parser |
+| 127 | Dynamic Sort Handler |
+| 128 | Filter Options Pattern |
+| 130 | Metrics Parsing Helper |
+| 131 | Service Status Checker |
+| 132 | Daemon Status Task Dedup |
+| 133 | Health Check Aggregator |
+| 151 | URL Builder Package |
+
+### Implementation: Create as needed, these are lower priority standalone utilities.
+
+**Key utilities to create:**
+```go
+// internal/pkg/utils/path.go
+func HomeDir(user string) string
+func ExpandPath(path string) string
+
+// internal/pkg/utils/string.go
+func NormalizeEmail(email string) string
+func TrimGitRef(ref string) string
+func Truncate(s string, maxLen int) string
+
+// internal/pkg/utils/map.go
+func SafeGet[K comparable, V any](m map[K]V, key K) (V, bool)
+func SafeGetOr[K comparable, V any](m map[K]V, key K, defaultVal V) V
+func Keys[K comparable, V any](m map[K]V) []K
+func Values[K comparable, V any](m map[K]V) []V
+
+// internal/pkg/urlbuilder/builder.go
+type Builder struct { baseURL string }
+func New(baseURL string) *Builder
+func (b *Builder) Path(segments ...string) string
+func (b *Builder) WithQuery(params map[string]string) string
+```
+
+### Estimated Effort: 1-2 days (as needed)
+
+---
+
+## Implementation Phases
+
+### Phase 1: Core Infrastructure (Week 1-2)
+Focus on high-impact, foundational packages:
+
+1. **Work Package 1: Handler Infrastructure** - Creates foundation for all handlers
+2. **Work Package 5: DTO/Response Infrastructure** - Used by all handlers
+3. **Work Package 10: Security/Crypto** - Critical security fixes
+4. **Work Package 13: Error Handling** - Consolidate error types
+
+**Expected Outcome:** ~3,000 lines reduced, unified handler pattern
+
+### Phase 2: Data Layer (Week 3-4)
+Focus on repository and model patterns:
+
+5. **Work Package 2: Repository Infrastructure** - Unify all repositories
+6. **Work Package 4: Model Mixins** - Reduce model boilerplate
+7. **Work Package 9: Enum/Type Infrastructure** - Reduce enum boilerplate
+
+**Expected Outcome:** ~3,000 lines reduced, consistent data access
+
+### Phase 3: Service Layer (Week 5-6)
+Focus on jobs, tasks, and HTTP clients:
+
+8. **Work Package 3: Job/Task Infrastructure** - Unify all jobs
+9. **Work Package 6: HTTP Client Infrastructure** - Unify API providers
+10. **Work Package 7: Template/Script Engine** - Unify script building
+
+**Expected Outcome:** ~3,200 lines reduced, consistent service patterns
+
+### Phase 4: Polish (Week 7-8)
+Focus on remaining patterns:
+
+11. **Work Package 8: Notification/Webhook** - Unify notifications
+12. **Work Package 11: Broadcast/WebSocket** - Unify broadcasting
+13. **Work Package 12: Config/Constants** - Standardize config
+14. **Work Package 14: Testing Infrastructure** - Improve testability
+15. **Work Package 15: Utility Helpers** - Misc utilities
+
+**Expected Outcome:** ~2,250 lines reduced, complete consolidation
+
+---
+
+## Success Metrics
+
+After completing all work packages:
+
+| Metric | Before | After | Improvement |
+|--------|--------|-------|-------------|
+| Total LOC | ~65,000 | ~53,550 | -17.6% |
+| Handler boilerplate | ~1,200 lines | ~200 lines | -83% |
+| Repository duplication | ~1,800 lines | ~300 lines | -83% |
+| Job boilerplate | ~1,500 lines | ~300 lines | -80% |
+| Enum boilerplate | ~500 lines | ~100 lines | -80% |
+| Type safety issues | 177 unsafe casts | 0 | -100% |
+
+---
+
+## Dependency Graph
+
+```
+Work Package Dependencies:
+
+WP1 (Handler) ─────────────────────────────────────┐
+    │                                               │
+    ├── WP5 (DTO) ←── Used by handlers             │
+    │       │                                       │
+    │       └── WP9 (Enum) ←── Used by DTOs        │
+    │                                               │
+WP2 (Repository) ──────────────────────────────────┤
+    │                                               │
+    ├── WP4 (Model) ←── Used by repositories       │
+    │                                               │
+WP3 (Job/Task) ────────────────────────────────────┤
+    │                                               │
+    ├── WP7 (Template) ←── Used by tasks           │
+    │                                               │
+WP6 (HTTP Client) ─────────────────────────────────┤
+    │                                               │
+    ├── WP8 (Notification) ←── Uses HTTP client    │
+    │                                               │
+WP10 (Crypto) ─────────────────────────────────────┤
+    │                                               │
+WP11 (Broadcast) ──────────────────────────────────┤
+    │                                               │
+WP12 (Config) ─────────────────────────────────────┤
+    │                                               │
+WP13 (Error) ──────────────────────────────────────┘
+    │
+WP14 (Testing) ←── Can be done anytime
+    │
+WP15 (Utility) ←── Can be done anytime
+```
+
+---
+
+## Quick Wins (< 1 hour each)
+
+These can be done immediately without full work package:
+
+1. **Item 46: GitLab Timing Attack Fix** - Security fix, 10 minutes
+2. **Item 151: URL Builder** - Simple utility, 30 minutes
+3. **Item 150: Pointer Helpers** - Simple utility, 20 minutes
+4. **Item 148: Generic Slice Mapper** - Simple utility, 20 minutes
+5. **Item 138: Cron Constants** - Simple constants, 10 minutes
+
+---
+
+## Notes for Implementation
+
+1. **Start with interfaces** - Define interfaces before implementations
+2. **Use generics wisely** - Go 1.18+ generics reduce boilerplate significantly
+3. **Maintain backwards compatibility** - Keep old methods as deprecated wrappers
+4. **Write tests first** - Each new package should have comprehensive tests
+5. **Document patterns** - Update CLAUDE.md with new patterns
+6. **Gradual adoption** - Don't refactor all at once, do module by module
+
+---
+
+*Last Updated: 2026-01-21*
+*Total Patterns: 158*
+*Estimated Total LOC Reduction: ~11,450 lines (17.6% of codebase)*
