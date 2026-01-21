@@ -6194,3 +6194,708 @@ func (c *SlackChannel) GetCreateRules() map[string]string {
 | HTTP & Helpers (Round 3) | 12 patterns | ~1790 lines |
 | Error & DI (Round 4) | 12 patterns | ~1320 lines |
 | **Grand Total** | **74 patterns** | **~10,041 lines** |
+
+---
+
+# Deep Analysis Round 5 (Items 75-86)
+
+## 75. GORM Query Scope - Order By Latest (P1)
+
+**Problem:** `Order("created_at DESC")` appears 40+ times across repositories.
+
+**Files affected:**
+- `internal/pkg/repository/base.go` (lines 64, 74, 84)
+- `internal/pkg/repository/installable.go` (lines 65, 75, 85, 95)
+- `internal/pkg/activity/repository.go` (lines 29, 38, 47, 122)
+- `internal/modules/git/repositories/source_control_repository.go` (lines 82, 94)
+- `internal/modules/backup/repositories/backup_repository.go` (lines 107, 163)
+- `internal/modules/site/repositories/site_repository.go` (lines 100, 110, 130)
+- `internal/modules/database/repositories/database_repository.go` (lines 96, 109)
+- `internal/modules/notification/repositories/notification_channel_repository.go` (4 occurrences)
+- 10+ more repository files
+
+**Current (duplicated 40+ times):**
+```go
+err := r.DB.WithContext(ctx).
+    Where("server_id = ?", serverID).
+    Order("created_at DESC").  // DUPLICATED
+    Find(&entities).Error
+```
+
+**Solution - Create query scopes:**
+```go
+// internal/pkg/repository/scopes.go
+
+func ScopeLatest(db *gorm.DB) *gorm.DB {
+    return db.Order("created_at DESC")
+}
+
+func ScopeOldest(db *gorm.DB) *gorm.DB {
+    return db.Order("created_at ASC")
+}
+
+func ScopeByServer(serverID string) func(*gorm.DB) *gorm.DB {
+    return func(db *gorm.DB) *gorm.DB {
+        return db.Where("server_id = ?", serverID)
+    }
+}
+
+func ScopeByTeam(teamID string) func(*gorm.DB) *gorm.DB {
+    return func(db *gorm.DB) *gorm.DB {
+        return db.Where("team_id = ?", teamID)
+    }
+}
+
+// Usage
+err := r.DB.WithContext(ctx).
+    Scopes(ScopeByServer(serverID), ScopeLatest).
+    Find(&entities).Error
+```
+
+**Impact:** ~120 lines saved, consistent query patterns
+
+---
+
+## 76. Sync Associations Transaction Pattern (P2)
+
+**Problem:** Backup repository has identical transaction pattern repeated 3 times.
+
+**Files affected:**
+- `internal/modules/backup/repositories/backup_repository.go` (lines 33-50, 119-142, 189-209)
+
+**Current (duplicated 3 times):**
+```go
+func (r *BackupRepository) SyncBackupDatabases(ctx context.Context, backupID string, databaseIDs []string) error {
+    return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+        // Delete existing associations
+        if err := tx.Where("backup_id = ?", backupID).Delete(&models.BackupDatabase{}).Error; err != nil {
+            return err
+        }
+        // Create new associations
+        for _, dbID := range databaseIDs {
+            if err := tx.Create(&models.BackupDatabase{BackupID: backupID, DatabaseID: dbID}).Error; err != nil {
+                return err
+            }
+        }
+        return nil
+    })
+}
+```
+
+**Solution - Create generic sync helper:**
+```go
+// internal/pkg/repository/associations.go
+
+func SyncAssociations[T any](db *gorm.DB, ctx context.Context,
+    foreignKey string, foreignID string,
+    associations []T) error {
+    return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+        // Delete existing
+        if err := tx.Where(foreignKey+" = ?", foreignID).Delete(new(T)).Error; err != nil {
+            return err
+        }
+        // Create new
+        for _, assoc := range associations {
+            if err := tx.Create(&assoc).Error; err != nil {
+                return err
+            }
+        }
+        return nil
+    })
+}
+```
+
+**Impact:** ~60 lines saved
+
+---
+
+## 77. WebSocket Handler Base Struct (P1)
+
+**Problem:** 5 WebSocket handlers have identical struct and initialization.
+
+**Files affected:**
+- `internal/modules/websocket/handlers/terminal.go` (lines 32-47)
+- `internal/modules/websocket/handlers/logs.go` (lines 23-38)
+- `internal/modules/websocket/handlers/metrics.go` (lines 20-35)
+- `internal/modules/websocket/handlers/service_status.go` (lines 42-57)
+- `internal/modules/websocket/handlers/script_execution.go` (lines 23-38)
+
+**Current (duplicated 5 times):**
+```go
+type TerminalHandler struct {
+    db              *gorm.DB
+    jwtSecret       string
+    logger          zerolog.Logger
+    membershipCache *cache.TeamMembershipCache
+}
+
+func NewTerminalHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger,
+    membershipCache *cache.TeamMembershipCache) *TerminalHandler {
+    return &TerminalHandler{
+        db:              db,
+        jwtSecret:       jwtSecret,
+        logger:          logger.With().Str("component", "terminal").Logger(),
+        membershipCache: membershipCache,
+    }
+}
+```
+
+**Solution - Create base WebSocket handler:**
+```go
+// internal/modules/websocket/handlers/base.go
+
+type BaseHandler struct {
+    DB              *gorm.DB
+    JWTSecret       string
+    Logger          zerolog.Logger
+    MembershipCache *cache.TeamMembershipCache
+}
+
+func NewBaseHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger,
+    cache *cache.TeamMembershipCache, component string) BaseHandler {
+    return BaseHandler{
+        DB:              db,
+        JWTSecret:       jwtSecret,
+        Logger:          logger.With().Str("component", component).Logger(),
+        MembershipCache: cache,
+    }
+}
+
+// Handlers embed BaseHandler
+type TerminalHandler struct {
+    BaseHandler
+}
+
+func NewTerminalHandler(...) *TerminalHandler {
+    return &TerminalHandler{BaseHandler: NewBaseHandler(db, jwtSecret, logger, cache, "terminal")}
+}
+```
+
+**Impact:** ~100 lines saved
+
+---
+
+## 78. WebSocket Message Builder (P2)
+
+**Problem:** Inconsistent JSON message building across WebSocket handlers.
+
+**Files affected:**
+- `internal/modules/websocket/handlers/script_execution.go` (lines 331-358) - manual string building
+- `internal/modules/websocket/handlers/metrics.go` (lines 84-86) - fmt.Sprintf
+- `internal/modules/websocket/handlers/service_status.go` (lines 212-234) - json.Marshal
+- `internal/modules/websocket/handlers/logs.go` (lines 60-78) - raw WriteMessage
+
+**Current inconsistencies:**
+```go
+// Pattern A: Manual string building (error-prone)
+msg := "{"
+for k, v := range data {
+    msg += fmt.Sprintf(`"%s":"%s",`, k, v)
+}
+
+// Pattern B: fmt.Sprintf (unescaped)
+c.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf(`{"event":"error","message":"%s"}`, msg)))
+
+// Pattern C: json.Marshal (correct)
+data, _ := json.Marshal(msg)
+c.WriteMessage(websocket.TextMessage, data)
+```
+
+**Solution - Create message builder:**
+```go
+// internal/modules/websocket/message.go
+
+type WSMessage struct {
+    Event   string      `json:"event"`
+    Data    interface{} `json:"data,omitempty"`
+    Message string      `json:"message,omitempty"`
+}
+
+func SendJSON(c *websocket.Conn, event string, data interface{}) error {
+    msg := WSMessage{Event: event, Data: data}
+    bytes, err := json.Marshal(msg)
+    if err != nil {
+        return err
+    }
+    return c.WriteMessage(websocket.TextMessage, bytes)
+}
+
+func SendError(c *websocket.Conn, message string) {
+    SendJSON(c, "error", map[string]string{"message": message})
+    c.Close()
+}
+```
+
+**Impact:** ~80 lines saved, eliminates JSON injection risks
+
+---
+
+## 79. Job Struct Boilerplate (P1 - CRITICAL)
+
+**Problem:** 77 job files have identical struct definition and constructor.
+
+**Files affected:** All 77 job files across modules:
+- `internal/modules/server/jobs/*.go` (42 files)
+- `internal/modules/site/jobs/*.go` (23 files)
+- `internal/modules/database/jobs/*.go` (6 files)
+- `internal/modules/backup/jobs/*.go` (4 files)
+- `internal/modules/script/jobs/*.go` (2 files)
+
+**Current (duplicated 77 times):**
+```go
+type InstallDaemonJob struct {
+    ctx     *JobContext
+    Payload InstallDaemonPayload
+}
+
+func NewInstallDaemonJob(ctx *JobContext, payload InstallDaemonPayload) *InstallDaemonJob {
+    return &InstallDaemonJob{
+        ctx:     ctx,
+        Payload: payload,
+    }
+}
+```
+
+**Solution - Use generics or code generation:**
+```go
+// Option 1: Generic base (requires Go 1.18+)
+// internal/pkg/jobs/base_job.go
+
+type BaseJob[P any, C any] struct {
+    Ctx     *C
+    Payload P
+}
+
+func NewJob[P any, C any](ctx *C, payload P) *BaseJob[P, C] {
+    return &BaseJob[P, C]{Ctx: ctx, Payload: payload}
+}
+
+// Option 2: Embed pattern
+type InstallDaemonJob struct {
+    *pkgjobs.BaseJob[InstallDaemonPayload, JobContext]
+}
+```
+
+**Impact:** ~400 lines saved across 77 files
+
+---
+
+## 80. Cloud Provider HTTP Client (P1)
+
+**Problem:** 6 provider files duplicate identical HTTP request handling.
+
+**Files affected:**
+- `internal/modules/server/providers/digitalocean.go` (lines 263-306)
+- `internal/modules/server/providers/hetzner.go` (lines 222-256)
+- `internal/modules/server/providers/linode.go` (lines 211-245)
+- `internal/modules/server/providers/vultr.go` (lines 218-252)
+- `internal/modules/dns/providers/digitalocean.go` (lines 429-441)
+- `internal/modules/dns/providers/cloudflare.go` (lines 513-525)
+
+**Current (duplicated 6 times with inconsistent error handling):**
+```go
+func (p *Provider) doRequest(ctx context.Context, token, method, path string, body interface{}) (map[string]interface{}, error) {
+    var reqBody io.Reader
+    if body != nil {
+        jsonBody, err := json.Marshal(body)  // Some providers ignore this error!
+        if err != nil {
+            return nil, err
+        }
+        reqBody = bytes.NewBuffer(jsonBody)
+    }
+    req, err := http.NewRequestWithContext(ctx, method, baseURL+path, reqBody)
+    req.Header.Set("Authorization", "Bearer "+token)
+    // ... 20 more lines
+}
+```
+
+**Solution - Use shared HTTP client from Pattern 51:**
+```go
+// Already proposed in Pattern 51: internal/pkg/httpclient/client.go
+// Providers should use:
+
+func NewDigitalOceanProvider(config *ProviderConfig) *DigitalOceanProvider {
+    return &DigitalOceanProvider{
+        client: httpclient.New("https://api.digitalocean.com/v2",
+            httpclient.WithBearerToken(config.Token),
+        ),
+    }
+}
+```
+
+**Impact:** ~250 lines saved, consistent error handling
+
+---
+
+## 81. DTO Timestamp Formatter (P1)
+
+**Problem:** Timestamp formatting duplicated 50+ times across DTO files.
+
+**Files affected:**
+- `internal/modules/auth/dto/responses.go` (lines 121-140)
+- `internal/modules/server/dto/responses.go` (lines 78-86, 123-136, 191-197)
+- `internal/modules/site/dto/responses.go` (lines 196-266)
+- `internal/modules/database/dto/responses.go` (lines 58-75, 95-112)
+- `internal/modules/backup/dto/responses.go` (lines 42-91, 137-145)
+- `internal/modules/git/dto/responses.go` (lines 38-87)
+
+**Current (duplicated 50+ times):**
+```go
+createdAt := ""
+if server.CreatedAt != nil {
+    createdAt = server.CreatedAt.Format(time.RFC3339)
+}
+
+// Optional pointer version
+if server.ProvisionedAt != nil {
+    formatted := server.ProvisionedAt.Format(time.RFC3339)
+    resp.ProvisionedAt = &formatted
+}
+```
+
+**Solution - Create DTO helpers (extends Pattern 58):**
+```go
+// internal/pkg/dto/time.go
+
+func FormatTime(t *time.Time) string {
+    if t == nil {
+        return ""
+    }
+    return t.Format(time.RFC3339)
+}
+
+func FormatTimePtr(t *time.Time) *string {
+    if t == nil {
+        return nil
+    }
+    s := t.Format(time.RFC3339)
+    return &s
+}
+
+// Usage
+resp.CreatedAt = dto.FormatTime(model.CreatedAt)
+resp.ProvisionedAt = dto.FormatTimePtr(model.ProvisionedAt)
+```
+
+**Impact:** ~200 lines saved
+
+---
+
+## 82. DTO List Transformation (P2)
+
+**Problem:** Slice transformation repeated 35+ times in handlers and DTOs.
+
+**Files affected:**
+- `internal/modules/server/handlers/server_handler.go` (lines 46-49, 63-66)
+- `internal/modules/site/handlers/site_handler.go` (lines 45-48)
+- `internal/modules/database/dto/responses.go` (lines 126-143)
+- `internal/modules/notification/dto/responses.go` (lines 79-86)
+- 25+ more locations
+
+**Current (duplicated 35+ times):**
+```go
+result := make([]dto.ServerResponse, len(servers))
+for i := range servers {
+    result[i] = dto.ToServerResponse(&servers[i])
+}
+```
+
+**Solution - Create generic transformer:**
+```go
+// internal/pkg/dto/transform.go
+
+func TransformSlice[T any, R any](items []T, transform func(*T) R) []R {
+    result := make([]R, len(items))
+    for i := range items {
+        result[i] = transform(&items[i])
+    }
+    return result
+}
+
+// Usage
+result := dto.TransformSlice(servers, dto.ToServerResponse)
+```
+
+**Impact:** ~100 lines saved
+
+---
+
+## 83. Activity Logging Helper (P1)
+
+**Problem:** Activity logging pattern duplicated 75+ times across services and jobs.
+
+**Files affected:**
+- `internal/modules/auth/services/team_service.go` (lines 42-48, 75-81, 107-113)
+- `internal/modules/server/services/cron_service.go` (3 occurrences)
+- `internal/modules/server/services/firewall_rule_service.go` (3 occurrences)
+- `internal/modules/server/services/daemon_service.go` (4 occurrences)
+- `internal/modules/database/services/database_service.go` (2 occurrences)
+- `internal/modules/site/services/site_service.go` (3 occurrences)
+- 25+ job files with similar pattern
+
+**Current (duplicated 75+ times):**
+```go
+logger := activity.New(s.repos.DB()).
+    WithContext(ctx).
+    UseLog("server").
+    On(model).
+    WithEvent("created")
+if userID != nil {
+    logger.CausedByUser(*userID)
+}
+logger.Log("Firewall rule was created")
+```
+
+**Solution - Create service mixin:**
+```go
+// internal/pkg/activity/mixin.go
+
+type ActivityMixin struct {
+    db      *gorm.DB
+    logName string
+}
+
+func (m *ActivityMixin) LogActivity(ctx context.Context, model activity.Subject,
+    event, description string, userID *string) {
+    logger := activity.New(m.db).
+        WithContext(ctx).
+        UseLog(m.logName).
+        On(model).
+        WithEvent(event)
+    if userID != nil {
+        logger.CausedByUser(*userID)
+    }
+    logger.Log(description)
+}
+
+// Usage in services
+type FirewallRuleService struct {
+    activity.ActivityMixin
+    // ...
+}
+
+func (s *FirewallRuleService) Create(ctx context.Context, rule *models.FirewallRule, userID *string) error {
+    // ... create logic
+    s.LogActivity(ctx, rule, "created", "Firewall rule was created", userID)
+}
+```
+
+**Impact:** ~200 lines saved, consistent audit trail
+
+---
+
+## 84. ParseAndValidate Adoption (P1)
+
+**Problem:** `ParseAndValidate` helper exists but 50+ handlers use manual parsing.
+
+**Files affected (manual parsing should be replaced):**
+- `internal/modules/auth/handlers/team_handler.go` (lines 27-33, 66-72, 113-119)
+- `internal/modules/server/handlers/server_handler.go` (lines 77-83, 118-124, 214-220)
+- `internal/modules/site/handlers/site_handler.go` (lines 109-115)
+- `internal/modules/database/handlers/database_handler.go` (lines 47-53)
+- `internal/modules/backup/handlers/backup_handler.go` (lines 47-53, 94-100)
+- `internal/modules/dns/handlers/dns_record_handler.go` (lines 50-56, 76-82)
+- 40+ more handler methods
+
+**Current (duplicated 50+ times):**
+```go
+if err := c.BodyParser(&req); err != nil {
+    return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+}
+
+if errs := validator.Validate(&req); errs != nil {
+    return response.ValidationError(c, errs)
+}
+```
+
+**Already exists at `internal/pkg/fiber/request.go` (lines 11-28):**
+```go
+func ParseAndValidate[T any](c *fiber.Ctx, req *T) error {
+    if err := c.BodyParser(req); err != nil {
+        return response.BadRequest(c, "Invalid request body")
+    }
+    if normalizable, ok := any(req).(dto.Normalizable); ok {
+        normalizable.Normalize()
+    }
+    if errs := validator.Validate(req); errs != nil {
+        return response.ValidationError(c, errs)
+    }
+    return nil
+}
+```
+
+**Solution - Replace all manual parsing:**
+```go
+// Before (6 lines)
+if err := c.BodyParser(&req); err != nil {
+    return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+}
+if errs := validator.Validate(&req); errs != nil {
+    return response.ValidationError(c, errs)
+}
+
+// After (3 lines)
+if err := fiberctx.ParseAndValidate(c, &req); err != nil {
+    return err
+}
+```
+
+**Impact:** ~150 lines saved, enables automatic normalization
+
+---
+
+## 85. MockRepository Code Generation (P2)
+
+**Problem:** MockRepository has 900+ lines of repetitive CRUD methods.
+
+**File affected:**
+- `tests/testutil/mock_repository.go` (902 lines)
+
+**Current pattern repeated for each entity (8 entities × ~100 lines each):**
+```go
+func (m *MockRepository) CreateServer(ctx context.Context, server *models.Server) error {
+    if err := m.getError("CreateServer"); err != nil {
+        return err
+    }
+    m.Servers[server.ID] = server
+    return nil
+}
+
+func (m *MockRepository) FindServerByID(ctx context.Context, id string) (*models.Server, error) {
+    if err := m.getError("FindServerByID"); err != nil {
+        return nil, err
+    }
+    server, ok := m.Servers[id]
+    if !ok {
+        return nil, gorm.ErrRecordNotFound
+    }
+    return server, nil
+}
+// Repeated for Update, Delete, FindAll, etc.
+```
+
+**Solution - Create generic mock:**
+```go
+// tests/testutil/generic_mock.go
+
+type MockStore[T any] struct {
+    items  map[string]*T
+    errors map[string]error
+}
+
+func (m *MockStore[T]) Create(item *T, getID func(*T) string) error {
+    if err := m.errors["Create"]; err != nil {
+        return err
+    }
+    m.items[getID(item)] = item
+    return nil
+}
+
+func (m *MockStore[T]) FindByID(id string) (*T, error) {
+    if err := m.errors["FindByID"]; err != nil {
+        return nil, err
+    }
+    item, ok := m.items[id]
+    if !ok {
+        return nil, gorm.ErrRecordNotFound
+    }
+    return item, nil
+}
+
+// MockRepository uses generic stores
+type MockRepository struct {
+    Servers *MockStore[models.Server]
+    Crons   *MockStore[models.Cron]
+    // ...
+}
+```
+
+**Impact:** ~600 lines saved in test code
+
+---
+
+## 86. Email Normalization Consolidation (P2)
+
+**Problem:** Email normalization duplicated in 6 auth DTOs.
+
+**Files affected:**
+- `internal/modules/auth/dto/requests.go` (6 Normalize implementations)
+  - Line 19-22: RegisterRequest
+  - Line 32-34: LoginRequest
+  - Line 49-52: UpdateProfileRequest
+  - Line 67-69: ForgotPasswordRequest
+  - Line 80-82: ResetPasswordRequest
+  - Line 124-126: InviteTeamMemberRequest
+
+**Current (duplicated 6 times):**
+```go
+func (r *RegisterRequest) Normalize() {
+    r.Email = strings.ToLower(strings.TrimSpace(r.Email))
+    r.Name = strings.TrimSpace(r.Name)
+}
+```
+
+**Helper already exists at `internal/pkg/dto/normalizer.go` (lines 61-66):**
+```go
+func NormalizeEmail(s *string) {
+    if s != nil {
+        *s = strings.ToLower(strings.TrimSpace(*s))
+    }
+}
+```
+
+**Solution - Use existing helper:**
+```go
+func (r *RegisterRequest) Normalize() {
+    pkgdto.NormalizeEmail(&r.Email)
+    pkgdto.TrimSpace(&r.Name)
+}
+```
+
+**Impact:** ~30 lines saved, consistent normalization
+
+---
+
+## Extended Summary (Items 75-86)
+
+| Category | Items | Est. LOC Saved |
+|----------|-------|----------------|
+| GORM Query Scopes | Item 75 | ~120 lines |
+| Sync Associations Helper | Item 76 | ~60 lines |
+| WebSocket Handler Base | Item 77 | ~100 lines |
+| WebSocket Message Builder | Item 78 | ~80 lines |
+| Job Struct Boilerplate | Item 79 | ~400 lines |
+| Cloud Provider HTTP | Item 80 | ~250 lines |
+| DTO Timestamp Formatter | Item 81 | ~200 lines |
+| DTO List Transformation | Item 82 | ~100 lines |
+| Activity Logging Helper | Item 83 | ~200 lines |
+| ParseAndValidate Adoption | Item 84 | ~150 lines |
+| MockRepository Generic | Item 85 | ~600 lines |
+| Email Normalization | Item 86 | ~30 lines |
+| **Round 5 Total** | **12 patterns** | **~2290 lines** |
+
+---
+
+## Updated Final Summary
+
+| Category | Items | Total LOC Saved |
+|----------|-------|-----------------|
+| Handler Bases | 5 patterns | ~400 lines |
+| Repository Patterns | 5 patterns | ~1200 lines |
+| Service Patterns | 3 patterns | ~450 lines |
+| Job/Task Patterns | 3 patterns | ~800 lines |
+| Model Mixins | 5 patterns | ~270 lines |
+| Provider API Clients | 3 patterns | ~450 lines |
+| Middleware Patterns | 1 pattern | ~30 lines |
+| Config Patterns | 1 pattern | ~86 lines |
+| DTO/Request Patterns | 2 patterns | ~550 lines |
+| Testing Patterns | 2 patterns | ~250 lines |
+| Infrastructure Patterns | 6 patterns | ~1075 lines |
+| Validation & Response | 5 patterns | ~610 lines |
+| Template & Script | 3 patterns | ~160 lines |
+| Interface & Query | 4 patterns | ~500 lines |
+| Security & Events | 3 patterns | ~100 lines |
+| HTTP & Helpers (Round 3) | 12 patterns | ~1790 lines |
+| Error & DI (Round 4) | 12 patterns | ~1320 lines |
+| GORM & Jobs (Round 5) | 12 patterns | ~2290 lines |
+| **Grand Total** | **86 patterns** | **~12,331 lines** |
