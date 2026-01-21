@@ -7615,3 +7615,635 @@ func Default() *Config {
 | GORM & Jobs (Round 5) | 12 patterns | ~2290 lines |
 | Context & Auth (Round 6) | 12 patterns | ~2560 lines |
 | **Grand Total** | **98 patterns** | **~14,891 lines** |
+
+---
+
+## 99. Duplicate AppError Type Consolidation (P1)
+
+**Problem:** Two identical `AppError` types defined in separate packages.
+
+**Files affected:**
+- `internal/pkg/errors/errors.go:22-45` - `type AppError struct { Err, Message, Code }`
+- `internal/pkg/response/errors.go:11-33` - `type AppError struct { Err, Status, Message }`
+
+**Current (duplicated):**
+```go
+// internal/pkg/errors/errors.go
+type AppError struct {
+    Err     error
+    Message string
+    Code    int
+}
+
+// internal/pkg/response/errors.go
+type AppError struct {
+    Err     error
+    Status  int
+    Message string
+}
+```
+
+**Solution - Consolidate to single type:**
+```go
+// internal/pkg/errors/app_error.go
+type AppError struct {
+    Err     error  `json:"-"`
+    Message string `json:"message"`
+    Code    int    `json:"code"`
+}
+
+func (e *AppError) Error() string { return e.Message }
+func (e *AppError) Unwrap() error { return e.Err }
+func (e *AppError) HTTPStatus() int { return e.Code }
+```
+
+**Impact:** ~50 lines saved, single source of truth for application errors
+
+---
+
+## 100. Validation Field Embedding (P1)
+
+**Problem:** 74 Request DTOs repeat identical validation tags for email, name, password fields.
+
+**Files affected:**
+- `internal/modules/auth/dto/requests.go` (7 email fields, 5 name fields, 5 password fields)
+- `internal/modules/server/dto/requests.go` (name, email fields)
+- `internal/modules/site/dto/requests.go` (email field)
+- `internal/modules/notification/dto/requests.go` (email fields)
+- `internal/modules/database/dto/requests.go` (password fields)
+
+**Current (repeated 7+ times):**
+```go
+Email string `json:"email" validate:"required,email"`
+Name  string `json:"name" validate:"required,min=2,max=255"`
+Password string `json:"password" validate:"required,min=8"`
+PasswordConfirmation string `json:"password_confirmation" validate:"required,eqfield=Password"`
+```
+
+**Solution - Create embeddable field structs:**
+```go
+// internal/pkg/dto/fields.go
+type EmailField struct {
+    Email string `json:"email" validate:"required,email"`
+}
+
+type NameField struct {
+    Name string `json:"name" validate:"required,min=2,max=255"`
+}
+
+type PasswordWithConfirmation struct {
+    Password             string `json:"password" validate:"required,min=8"`
+    PasswordConfirmation string `json:"password_confirmation" validate:"required,eqfield=Password"`
+}
+
+// Usage
+type RegisterRequest struct {
+    EmailField
+    NameField
+    PasswordWithConfirmation
+}
+```
+
+**Impact:** ~200 lines saved, consistent validation across all DTOs
+
+---
+
+## 101. Handler Validation Flow Consolidation (P1)
+
+**Problem:** 40+ handlers repeat identical body parsing and validation pattern.
+
+**Files affected:**
+- `internal/modules/auth/handlers/auth_handler.go` (3 handlers)
+- `internal/modules/auth/handlers/team_handler.go` (2 handlers)
+- `internal/modules/server/handlers/server_handler.go` (2 handlers)
+- `internal/modules/site/handlers/site_handler.go` (2 handlers)
+- 30+ more handlers...
+
+**Current (repeated 40+ times):**
+```go
+func (h *Handler) Create(c *fiber.Ctx) error {
+    var req dto.CreateRequest
+    if err := c.BodyParser(&req); err != nil {
+        return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
+    }
+    if errs := validator.Validate(&req); errs != nil {
+        return response.ValidationError(c, errs)
+    }
+    // ...
+}
+```
+
+**Solution - Use existing ParseAndValidate helper:**
+```go
+// Already exists at internal/pkg/fiber/request.go:14-27
+func ParseAndValidate[T any](c *fiber.Ctx, req *T) error
+
+// Adoption across all handlers:
+func (h *Handler) Create(c *fiber.Ctx) error {
+    var req dto.CreateRequest
+    if err := fiberctx.ParseAndValidate(c, &req); err != nil {
+        return err
+    }
+    // ...
+}
+```
+
+**Impact:** ~200 lines saved, consistent error handling
+
+---
+
+## 102. Broadcaster Interface Deduplication (P1)
+
+**Problem:** Identical broadcaster interfaces defined in two packages.
+
+**Files affected:**
+- `internal/websocket/broadcaster.go:5-35` - Broadcaster + ModelBroadcaster interfaces
+- `internal/pkg/broadcast/broadcaster.go` - Same interfaces duplicated
+
+**Current (duplicated):**
+```go
+// Both files define identical:
+type Broadcaster interface {
+    Broadcast(channel, event string, data interface{})
+    BroadcastToServer(serverID, event string, data interface{})
+    BroadcastToSite(siteID, event string, data interface{})
+    BroadcastToDeployment(deploymentID, event string, data interface{})
+    BroadcastToTeam(teamID, event string, data interface{})
+}
+
+type ModelBroadcaster interface {
+    Broadcaster
+    BroadcastModelCreated(teamID, modelName, modelID string, payload interface{})
+    BroadcastModelUpdated(teamID, modelName, modelID string, payload interface{})
+    BroadcastModelDeleted(teamID, modelName, modelID string, payload interface{})
+}
+```
+
+**Solution - Keep single definition:**
+```go
+// Keep only internal/pkg/broadcast/broadcaster.go
+// Remove internal/websocket/broadcaster.go
+// Update all imports
+```
+
+**Impact:** ~35 lines saved, single source of truth
+
+---
+
+## 103. Model Broadcast Payload Deduplication (P2)
+
+**Problem:** Identical BroadcastModelCreated/Updated/Deleted implementations in Hub and RedisBroadcaster.
+
+**Files affected:**
+- `internal/websocket/hub.go:179-210`
+- `internal/websocket/redis_broadcaster.go:81-112`
+
+**Current (duplicated in both files):**
+```go
+func (h *Hub) BroadcastModelCreated(teamID, modelName, modelID string, payload interface{}) {
+    h.BroadcastToTeam(teamID, modelName+".created", map[string]interface{}{
+        "id":      modelID,
+        "model":   modelName,
+        "action":  "created",
+        "team_id": teamID,
+        "data":    payload,
+    })
+}
+// Same implementation in redis_broadcaster.go
+```
+
+**Solution - Extract to shared helper:**
+```go
+// internal/pkg/broadcast/model_event.go
+func BuildModelEventPayload(modelName, modelID, action, teamID string, data interface{}) map[string]interface{} {
+    return map[string]interface{}{
+        "id":      modelID,
+        "model":   modelName,
+        "action":  action,
+        "team_id": teamID,
+        "data":    data,
+    }
+}
+
+// Both Hub and Redis use:
+func (h *Hub) BroadcastModelCreated(teamID, modelName, modelID string, payload interface{}) {
+    h.BroadcastToTeam(teamID, modelName+".created",
+        broadcast.BuildModelEventPayload(modelName, modelID, "created", teamID, payload))
+}
+```
+
+**Impact:** ~60 lines saved, consistent event payloads
+
+---
+
+## 104. Logger Field Iteration Helper (P2)
+
+**Problem:** Same field iteration pattern duplicated across 4 files for variadic logging.
+
+**Files affected:**
+- `internal/pkg/jobs/context.go:155-161`
+- `internal/pkg/service/base.go:141-147`
+- `internal/pkg/handler/base.go:61-68`
+- `internal/modules/dns/services/base.go:104-109`
+
+**Current (duplicated 4 times):**
+```go
+func logWithFields(event *zerolog.Event, msg string, fields ...any) {
+    for i := 0; i < len(fields)-1; i += 2 {
+        if key, ok := fields[i].(string); ok {
+            event = event.Interface(key, fields[i+1])
+        }
+    }
+    event.Msg(msg)
+}
+```
+
+**Solution - Create shared utility:**
+```go
+// internal/pkg/logger/fields.go
+func ApplyFields(event *zerolog.Event, fields ...any) *zerolog.Event {
+    for i := 0; i < len(fields)-1; i += 2 {
+        if key, ok := fields[i].(string); ok {
+            event = event.Interface(key, fields[i+1])
+        }
+    }
+    return event
+}
+
+// Usage in all Base structs:
+func (s *Base) LogInfo(msg string, fields ...any) {
+    logger.ApplyFields(s.Logger.Info(), fields...).Msg(msg)
+}
+```
+
+**Impact:** ~80 lines saved, single implementation
+
+---
+
+## 105. BeforeCreate Hook Status Initialization (P2)
+
+**Problem:** 8 models implement identical BeforeCreate pattern for status/default initialization.
+
+**Files affected:**
+- `internal/modules/server/models/server.go:74-88`
+- `internal/modules/server/models/task.go:29-39`
+- `internal/modules/server/models/firewall_rule.go:29-39`
+- `internal/modules/server/models/installed_service.go:29-39`
+- `internal/modules/server/models/daemon.go:31-49`
+- `internal/modules/server/models/cron.go:27-37`
+- `internal/modules/backup/models/backup_job.go:26-36`
+- `internal/modules/database/models/database_user.go:28-38`
+
+**Current (repeated 8 times):**
+```go
+func (s *Server) BeforeCreate(tx *gorm.DB) error {
+    if err := s.BaseModel.BeforeCreate(tx); err != nil {
+        return err
+    }
+    if s.Status == "" {
+        s.Status = enums.ServerStatusNew
+    }
+    return nil
+}
+```
+
+**Solution - Create status mixin:**
+```go
+// internal/pkg/models/status_model.go
+type StatusModel[T ~string] struct {
+    Status T
+}
+
+func (m *StatusModel[T]) InitializeStatus(defaultStatus T) {
+    if m.Status == "" {
+        m.Status = defaultStatus
+    }
+}
+
+// Usage in models:
+func (s *Server) BeforeCreate(tx *gorm.DB) error {
+    if err := s.BaseModel.BeforeCreate(tx); err != nil {
+        return err
+    }
+    s.InitializeStatus(enums.ServerStatusNew)
+    return nil
+}
+```
+
+**Impact:** ~100 lines saved, consistent initialization
+
+---
+
+## 106. Enum Boilerplate Consolidation (P2)
+
+**Problem:** 40+ enum types repeat identical IsValid/Label/Scan/Value/All/Parse method patterns.
+
+**Files affected:**
+- `internal/modules/server/enums/` (13 enum files)
+- `internal/modules/site/enums/enums.go` (11 enum types)
+- `internal/modules/git/enums/enums.go` (4 enum types)
+- `internal/modules/billing/enums/` (5 enum files)
+- Other modules with 10+ enum types
+
+**Current (repeated 40+ times per method):**
+```go
+func (t ServerStatus) IsValid() bool {
+    switch t {
+    case StatusNew, StatusStarting, StatusProvisioning, ...:
+        return true
+    }
+    return false
+}
+
+func (t ServerStatus) Label() string {
+    labels := map[ServerStatus]string{
+        StatusNew: "New",
+        StatusStarting: "Starting",
+        // ...
+    }
+    if label, ok := labels[t]; ok {
+        return label
+    }
+    return "Unknown"
+}
+
+func (t *ServerStatus) Scan(value interface{}) error { ... }
+func (t ServerStatus) Value() (driver.Value, error) { ... }
+func AllServerStatuses() []ServerStatus { ... }
+func ParseServerStatus(s string) (ServerStatus, error) { ... }
+```
+
+**Solution - Generic enum helpers:**
+```go
+// internal/pkg/enums/helpers.go
+func GenericScan[T ~string](t *T, value interface{}) error {
+    switch v := value.(type) {
+    case []byte:
+        *t = T(v)
+    case string:
+        *t = T(v)
+    default:
+        return fmt.Errorf("cannot scan type %T", value)
+    }
+    return nil
+}
+
+func GenericValue[T ~string](t T) (driver.Value, error) {
+    return string(t), nil
+}
+
+// Usage in enums:
+func (t *ServerStatus) Scan(v interface{}) error { return enums.GenericScan(t, v) }
+func (t ServerStatus) Value() (driver.Value, error) { return enums.GenericValue(t) }
+```
+
+**Impact:** ~400 lines saved across all enum files
+
+---
+
+## 107. Repository Registry Factory (P2)
+
+**Problem:** Every module has identical Registry factory pattern with manual repository creation.
+
+**Files affected:**
+- `internal/modules/server/repositories/registry.go:26-41`
+- `internal/modules/site/repositories/registry.go:17-27`
+- `internal/modules/backup/repositories/registry.go:14-21`
+- `internal/modules/script/repositories/registry.go:12-17`
+- `internal/modules/dns/repositories/registry.go`
+
+**Current (repeated 5+ times):**
+```go
+type Registry struct {
+    db           *gorm.DB
+    server       *ServerRepository
+    service      *ServiceRepository
+    firewallRule *FirewallRuleRepository
+    // ... 10 more repos
+}
+
+func NewRegistry(db *gorm.DB) *Registry {
+    return &Registry{
+        db:           db,
+        server:       NewServerRepository(db),
+        service:      NewServiceRepository(db),
+        firewallRule: NewFirewallRuleRepository(db),
+        // ... 10 more manual creations
+    }
+}
+
+func (r *Registry) Server() *ServerRepository { return r.server }
+func (r *Registry) Service() *ServiceRepository { return r.service }
+// ... 10 more getters
+```
+
+**Solution - Generic registry builder:**
+```go
+// internal/pkg/repository/registry.go
+type RegistryBuilder[T any] struct {
+    db    *gorm.DB
+    repos map[string]any
+}
+
+func NewRegistryBuilder[T any](db *gorm.DB) *RegistryBuilder[T] {
+    return &RegistryBuilder[T]{db: db, repos: make(map[string]any)}
+}
+
+func Register[R any](b *RegistryBuilder[any], name string, factory func(*gorm.DB) R) {
+    b.repos[name] = factory(b.db)
+}
+```
+
+**Impact:** ~200 lines saved across 5+ modules
+
+---
+
+## 108. Slice Transformation Generic Helper (P1)
+
+**Problem:** 40+ handlers repeat identical Model→DTO slice transformation loop.
+
+**Files affected:**
+- `internal/modules/server/handlers/server_handler.go:46-50`
+- `internal/modules/site/handlers/site_handler.go:45-48`
+- `internal/modules/site/handlers/deployment_handler.go:60-63`
+- `internal/modules/dns/handlers/domain_handler.go:99-105`
+- 36+ more handlers with list operations
+
+**Current (repeated 40+ times):**
+```go
+result := make([]dto.ServerResponse, len(servers))
+for i := range servers {
+    result[i] = dto.ToServerResponse(&servers[i])
+}
+```
+
+**Solution - Generic Map function:**
+```go
+// internal/pkg/collection/transform.go
+func Map[T, U any](slice []T, transform func(*T) U) []U {
+    result := make([]U, len(slice))
+    for i := range slice {
+        result[i] = transform(&slice[i])
+    }
+    return result
+}
+
+// Usage in handlers:
+result := collection.Map(servers, dto.ToServerResponse)
+```
+
+**Impact:** ~250 lines saved, cleaner handler code
+
+---
+
+## 109. Safe Map Access Helper (P3)
+
+**Problem:** 50+ map type assertion patterns repeated in services.
+
+**Files affected:**
+- `internal/modules/site/services/deployment_service.go:481-617`
+- `internal/modules/git/handlers/webhook_handler.go`
+- `internal/modules/billing/handlers/webhook_handler.go`
+
+**Current (repeated 50+ times):**
+```go
+result := make(map[string]interface{})
+if id, ok := commit["id"].(string); ok {
+    result["commit_id"] = id
+    if len(id) >= 7 {
+        result["sha"] = id[:7]
+    }
+}
+if author, ok := commit["author"].(map[string]any); ok {
+    if name, ok := author["name"].(string); ok {
+        result["name"] = name
+    }
+}
+```
+
+**Solution - Safe accessor helpers:**
+```go
+// internal/pkg/maputil/safe.go
+func GetString(m map[string]any, key string) string {
+    if v, ok := m[key].(string); ok {
+        return v
+    }
+    return ""
+}
+
+func GetStringPtr(m map[string]any, key string) *string {
+    if v, ok := m[key].(string); ok {
+        return &v
+    }
+    return nil
+}
+
+func GetNestedString(m map[string]any, keys ...string) string {
+    current := m
+    for _, key := range keys[:len(keys)-1] {
+        if nested, ok := current[key].(map[string]any); ok {
+            current = nested
+        } else {
+            return ""
+        }
+    }
+    return GetString(current, keys[len(keys)-1])
+}
+```
+
+**Impact:** ~150 lines saved, safer map access
+
+---
+
+## 110. Collection Filter-Map Pattern (P3)
+
+**Problem:** Repeated append-in-loop with filtering, causing inefficient allocations.
+
+**Files affected:**
+- `internal/modules/server/handlers/log_handler.go:34-55`
+- `internal/modules/auth/services/team_member_service.go:256-284`
+- `internal/modules/auth/dto/responses.go:252-271`
+
+**Current (inefficient):**
+```go
+var logs []LogInfo
+for _, service := range server.Services {
+    software := enums.Software(service.Software)
+    if software.HasLogPath() {
+        logs = append(logs, LogInfo{...})  // Inefficient append
+    }
+}
+if logs == nil {
+    logs = []LogInfo{}
+}
+```
+
+**Solution - Generic FilterMap:**
+```go
+// internal/pkg/collection/filter.go
+func FilterMap[T, U any](slice []T, predicate func(*T) bool, transform func(*T) U) []U {
+    result := make([]U, 0, len(slice)/2)  // Estimate half will match
+    for i := range slice {
+        if predicate(&slice[i]) {
+            result = append(result, transform(&slice[i]))
+        }
+    }
+    return result
+}
+
+// Usage:
+logs := collection.FilterMap(server.Services,
+    func(s *models.Service) bool { return enums.Software(s.Software).HasLogPath() },
+    func(s *models.Service) LogInfo { return buildLogInfo(s) },
+)
+```
+
+**Impact:** ~80 lines saved, better performance
+
+---
+
+## Extended Summary (Items 99-110)
+
+| Category | Items | Est. LOC Saved |
+|----------|-------|----------------|
+| Duplicate AppError Types | Item 99 | ~50 lines |
+| Validation Field Embedding | Item 100 | ~200 lines |
+| Handler Validation Flow | Item 101 | ~200 lines |
+| Broadcaster Interface Dedup | Item 102 | ~35 lines |
+| Model Broadcast Payload | Item 103 | ~60 lines |
+| Logger Field Iteration | Item 104 | ~80 lines |
+| BeforeCreate Hook Status | Item 105 | ~100 lines |
+| Enum Boilerplate | Item 106 | ~400 lines |
+| Repository Registry Factory | Item 107 | ~200 lines |
+| Slice Transformation Helper | Item 108 | ~250 lines |
+| Safe Map Access | Item 109 | ~150 lines |
+| Collection Filter-Map | Item 110 | ~80 lines |
+| **Round 7 Total** | **12 patterns** | **~1805 lines** |
+
+---
+
+## Updated Final Summary
+
+| Category | Items | Total LOC Saved |
+|----------|-------|-----------------|
+| Handler Bases | 5 patterns | ~400 lines |
+| Repository Patterns | 5 patterns | ~1200 lines |
+| Service Patterns | 3 patterns | ~450 lines |
+| Job/Task Patterns | 3 patterns | ~800 lines |
+| Model Mixins | 5 patterns | ~270 lines |
+| Provider API Clients | 3 patterns | ~450 lines |
+| Middleware Patterns | 1 pattern | ~30 lines |
+| Config Patterns | 1 pattern | ~86 lines |
+| DTO/Request Patterns | 2 patterns | ~550 lines |
+| Testing Patterns | 2 patterns | ~250 lines |
+| Infrastructure Patterns | 6 patterns | ~1075 lines |
+| Validation & Response | 5 patterns | ~610 lines |
+| Template & Script | 3 patterns | ~160 lines |
+| Interface & Query | 4 patterns | ~500 lines |
+| Security & Events | 3 patterns | ~100 lines |
+| HTTP & Helpers (Round 3) | 12 patterns | ~1790 lines |
+| Error & DI (Round 4) | 12 patterns | ~1320 lines |
+| GORM & Jobs (Round 5) | 12 patterns | ~2290 lines |
+| Context & Auth (Round 6) | 12 patterns | ~2560 lines |
+| Validation & Enums (Round 7) | 12 patterns | ~1805 lines |
+| **Grand Total** | **110 patterns** | **~16,696 lines** |
