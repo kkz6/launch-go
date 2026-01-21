@@ -6,6 +6,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // WebhookHandler handles deployment webhook requests
@@ -40,23 +42,28 @@ func (h *WebhookHandler) DeployWebhook(c *fiber.Ctx) error {
 	// Trigger deployment via service
 	err := h.deploymentService.DeployFromWebhook(c.Context(), siteID, token, payload)
 	if err != nil {
-		switch {
-		case errors.Is(err, services.ErrInvalidDeployToken):
-			return c.SendStatus(fiber.StatusForbidden)
-		case errors.Is(err, services.ErrBranchMismatch):
-			// Not an error, just don't deploy (branch doesn't match)
+		// Special case: branch mismatch is not an error, just skip deployment
+		if errors.Is(err, services.ErrBranchMismatch) {
 			return c.SendStatus(fiber.StatusOK)
-		case errors.Is(err, services.ErrPendingDeployment):
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{
-				"error": "a deployment is already in progress",
-			})
-		case err.Error() == "site not found":
-			return c.SendStatus(fiber.StatusNotFound)
-		default:
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+		}
+
+		// For HTTPStatusError types, use their built-in status code
+		var httpErr response.HTTPStatusError
+		if errors.As(err, &httpErr) {
+			return c.Status(httpErr.HTTPStatus()).JSON(fiber.Map{
 				"error": err.Error(),
 			})
 		}
+
+		// Check for site not found
+		if errors.Is(err, apperrors.ErrSiteNotFound) {
+			return c.SendStatus(fiber.StatusNotFound)
+		}
+
+		// Default to internal server error
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": err.Error(),
+		})
 	}
 
 	// Return 204 No Content on success (standard for webhooks)

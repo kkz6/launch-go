@@ -1,4 +1,4 @@
-.PHONY: build run worker test lint migrate migrate-rollback migrate-fresh migrate-status shellcheck help client-install client-dev dev-all
+.PHONY: build run worker test lint lint-revive lint-static lint-fix lint-install migrate migrate-rollback migrate-fresh migrate-status shellcheck help client-install client-dev dev-all setup-hooks
 
 # Build variables
 BINARY_API=bin/api
@@ -6,6 +6,7 @@ BINARY_WORKER=bin/worker
 BINARY_MIGRATE=bin/migrate
 BINARY_SHELLCHECK=bin/shellcheck
 GO_FILES=$(shell find . -name '*.go' -type f -not -path "./vendor/*")
+GOBIN=$(shell go env GOPATH)/bin
 
 # Default target
 all: build
@@ -57,13 +58,67 @@ test-coverage:
 	@go test -v -coverprofile=coverage.out ./...
 	@go tool cover -html=coverage.out -o coverage.html
 
-## lint: Run linter
-lint:
-	@golangci-lint run
+## lint: Run all linters (revive, staticcheck, go vet)
+lint: lint-revive lint-static lint-vet
+	@echo "All linters passed!"
+
+## lint-revive: Run revive linter
+lint-revive:
+	@echo "Running revive..."
+	@$(GOBIN)/revive -config revive.toml -formatter friendly ./...
+
+## lint-static: Run staticcheck
+lint-static:
+	@echo "Running staticcheck..."
+	@$(GOBIN)/staticcheck -f stylish ./...
+
+## lint-vet: Run go vet
+lint-vet:
+	@echo "Running go vet..."
+	@go vet ./...
+
+## lint-fix: Auto-fix imports with goimports
+lint-fix:
+	@echo "Running goimports..."
+	@$(GOBIN)/goimports -w $(GO_FILES)
+	@echo "Imports fixed!"
+
+## lint-install: Install all linting tools
+lint-install:
+	@echo "Installing linting tools..."
+	@go install golang.org/x/tools/cmd/goimports@latest
+	@go install github.com/mgechev/revive@latest
+	@go install honnef.co/go/tools/cmd/staticcheck@latest
+	@go install golang.org/x/vuln/cmd/govulncheck@latest
+	@echo "All linting tools installed at $(GOBIN)"
+
+## lint-check: Check if code needs formatting (CI use)
+lint-check:
+	@echo "Checking code formatting..."
+	@GOFMT_OUTPUT=$$(gofmt -l -s .); \
+	if [ -n "$$GOFMT_OUTPUT" ]; then \
+		echo "The following files need formatting:"; \
+		echo "$$GOFMT_OUTPUT"; \
+		echo ""; \
+		echo "Run 'make fmt' to fix formatting issues"; \
+		exit 1; \
+	fi
+	@echo "All files are properly formatted!"
+
+## vuln: Run vulnerability check
+vuln:
+	@echo "Running govulncheck..."
+	@$(GOBIN)/govulncheck ./...
 
 ## fmt: Format code
 fmt:
 	@gofmt -s -w $(GO_FILES)
+	@echo "Code formatted!"
+
+## setup-hooks: Setup git hooks and install linting tools
+setup-hooks:
+	@chmod +x scripts/setup-hooks.sh
+	@./scripts/setup-hooks.sh
 
 ## tidy: Tidy go modules
 tidy:
