@@ -1,6 +1,6 @@
 // Package utils provides common utility functions for string manipulation,
 // map operations, and slice operations.
-package utils
+package xutil
 
 import (
 	"strings"

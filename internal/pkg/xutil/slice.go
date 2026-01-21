@@ -1,4 +1,4 @@
-package utils
+package xutil
 
 // Unique returns a new slice containing only unique elements.
 // The order of first occurrence is preserved.
