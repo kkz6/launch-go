@@ -102,171 +102,25 @@ After implementing these embeddings:
 
 ---
 
-## 15. Model NamedModel Mixin (P1)
+## 15-17. Model Mixins (Named, StateTracking, Progress) ✅ ALREADY IMPLEMENTED
 
-**Issue:** 13+ models repeat Name + Description field definitions.
+**Status:** Mixins already exist in `internal/pkg/models/mixins.go`
 
-**Files Affected:**
-- `internal/modules/server/models/server.go:22-23`
-- `internal/modules/server/models/ssh_key.go:18-20`
-- `internal/modules/server/models/firewall_rule.go:18-23`
-- `internal/modules/billing/models/plan.go:5-7`
-- `internal/modules/dns/models/domain.go:13-14`
-- `internal/modules/backup/models/storage_provider.go:16`
-- `internal/modules/script/models/script.go:13`
+**Existing Mixins:**
+- `Named` - provides `Name string` field with getter/setter
+- `Described` - provides `Description *string` field with getter/setter
+- `ProgressTracking` - provides `Progress int` and `ProgressMessage *string` fields
+- `Archivable` - provides `ArchivedAt *time.Time` for soft-archive
+- `StatusTracking[S]` - generic status field with type parameter
+- `Tokenized` - provides secure token field
 
-**Current Pattern:**
-```go
-// Repeated in 13+ models
-Name        string  `gorm:"type:varchar(255);not null" json:"name"`
-Description *string `gorm:"type:varchar(255)" json:"description,omitempty"`
-```
+**Analysis:**
+- Most models only have `Name` (not combined `Name+Description`)
+- Server requires special `index` tag on Name, preventing mixin use
+- State tracking fields vary too much (`LastStatusCheck` vs `LastSyncedAt`)
+- Existing mixins cover the patterns; adoption is optional for new code
 
-**Solution:** Create `internal/pkg/models/named.go`
-```go
-package models
-
-// NamedModel provides Name and Description fields for models
-type NamedModel struct {
-    Name        string  `gorm:"type:varchar(255);not null" json:"name"`
-    Description *string `gorm:"type:text" json:"description,omitempty"`
-}
-
-// SetName sets the name field
-func (m *NamedModel) SetName(name string) {
-    m.Name = name
-}
-
-// SetDescription sets the description field
-func (m *NamedModel) SetDescription(desc *string) {
-    m.Description = desc
-}
-```
-
-**Refactored Model:**
-```go
-type Server struct {
-    basemodels.BaseModel
-    basemodels.NamedModel
-    basemodels.TeamScopedModel
-    // ... other fields
-}
-```
-
-**Refactoring Steps:**
-- [ ] Create `internal/pkg/models/named.go`
-- [ ] Refactor server model to embed `NamedModel`
-- [ ] Refactor ssh_key model
-- [ ] Refactor firewall_rule model
-- [ ] Refactor all other affected models
-
-**Impact:** ~26 lines eliminated, consistent naming pattern
-
----
-
-## 16. Model StateTrackingModel Mixin (P2)
-
-**Issue:** 10+ models track state transitions with similar timestamp fields.
-
-**Files Affected:**
-- `internal/modules/server/models/server.go:46-47` - ProvisionedAt, LastUpdateCheck, LastConnectivityCheck
-- `internal/modules/server/models/daemon.go:23` - LastStatusCheck
-- `internal/modules/site/models/queue.go:37` - LastStatusCheck
-- `internal/modules/git/models/source_control.go:27-33` - ConnectedAt, LastSyncedAt, TokenExpiresAt
-
-**Current Pattern:**
-```go
-// Repeated across models
-LastCheckedAt *time.Time `gorm:"column:last_checked_at" json:"last_checked_at,omitempty"`
-LastSyncedAt  *time.Time `gorm:"column:last_synced_at" json:"last_synced_at,omitempty"`
-ConnectedAt   *time.Time `gorm:"column:connected_at" json:"connected_at,omitempty"`
-```
-
-**Solution:** Create `internal/pkg/models/state_tracking.go`
-```go
-package models
-
-import "time"
-
-// StateTrackingModel provides common state/sync tracking timestamps
-type StateTrackingModel struct {
-    LastCheckedAt *time.Time `gorm:"column:last_checked_at;type:timestamp null" json:"last_checked_at,omitempty"`
-    LastSyncedAt  *time.Time `gorm:"column:last_synced_at;type:timestamp null" json:"last_synced_at,omitempty"`
-}
-
-// MarkChecked updates the last checked timestamp
-func (m *StateTrackingModel) MarkChecked() {
-    now := time.Now()
-    m.LastCheckedAt = &now
-}
-
-// MarkSynced updates the last synced timestamp
-func (m *StateTrackingModel) MarkSynced() {
-    now := time.Now()
-    m.LastSyncedAt = &now
-}
-
-// ConnectableModel for models tracking connection state
-type ConnectableModel struct {
-    ConnectedAt *time.Time `gorm:"column:connected_at;type:timestamp null" json:"connected_at,omitempty"`
-}
-
-// MarkConnected updates the connected timestamp
-func (m *ConnectableModel) MarkConnected() {
-    now := time.Now()
-    m.ConnectedAt = &now
-}
-```
-
-**Impact:** ~30 lines eliminated, consistent state tracking
-
----
-
-## 17. Model ProgressTrackingModel Mixin (P2)
-
-**Issue:** 3 models track operation progress with identical fields.
-
-**Files Affected:**
-- `internal/modules/server/models/server.go:52-53`
-- `internal/modules/site/models/site.go:58`
-
-**Current Pattern:**
-```go
-Progress     int     `gorm:"type:int;not null;default:0" json:"progress,omitempty"`
-ProgressStep *string `gorm:"column:progress_step;type:varchar(255)" json:"progress_step,omitempty"`
-```
-
-**Solution:** Create `internal/pkg/models/progress.go`
-```go
-package models
-
-// ProgressTrackingModel provides progress tracking for long-running operations
-type ProgressTrackingModel struct {
-    Progress     int     `gorm:"type:int;not null;default:0" json:"progress"`
-    ProgressStep *string `gorm:"column:progress_step;type:varchar(255)" json:"progress_step,omitempty"`
-}
-
-// SetProgress updates progress percentage
-func (m *ProgressTrackingModel) SetProgress(percent int, step string) {
-    m.Progress = percent
-    if step != "" {
-        m.ProgressStep = &step
-    }
-}
-
-// ResetProgress clears progress tracking
-func (m *ProgressTrackingModel) ResetProgress() {
-    m.Progress = 0
-    m.ProgressStep = nil
-}
-
-// IsComplete returns true if progress is 100
-func (m *ProgressTrackingModel) IsComplete() bool {
-    return m.Progress >= 100
-}
-```
-
-**Impact:** ~10 lines eliminated, reusable progress tracking
+**Decision:** Mixins exist and are available for new models. Refactoring existing models provides minimal benefit (~1-2 lines per model) with GORM compatibility risks.
 
 ---
 
