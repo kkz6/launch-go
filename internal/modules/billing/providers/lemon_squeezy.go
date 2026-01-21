@@ -1,12 +1,10 @@
 package providers
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -99,11 +97,7 @@ func (c *LemonSqueezyClient) lsRequest(ctx context.Context, method, path string,
 		WithHeader("Content-Type", "application/vnd.api+json")
 
 	if body != nil {
-		jsonBody, err := json.Marshal(body)
-		if err != nil {
-			return nil, err
-		}
-		builder.WithBody(bytes.NewBuffer(jsonBody))
+		builder.JSONBody(body)
 	}
 
 	req, err := builder.Build()
@@ -115,29 +109,34 @@ func (c *LemonSqueezyClient) lsRequest(ctx context.Context, method, path string,
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
+	r, err := httpclient.HandleResponse(resp)
 	if err != nil {
 		return nil, err
 	}
 
-	switch resp.StatusCode {
-	case http.StatusOK, http.StatusCreated, http.StatusNoContent:
-		return respBody, nil
-	case http.StatusUnauthorized:
-		return nil, ErrLemonSqueezyUnauthorized
-	case http.StatusNotFound:
-		return nil, ErrLemonSqueezyNotFound
-	case http.StatusTooManyRequests:
-		return nil, ErrLemonSqueezyRateLimited
-	default:
+	statusHandler := httpclient.NewStatusHandler().
+		On(http.StatusUnauthorized, ErrLemonSqueezyUnauthorized).
+		On(http.StatusNotFound, ErrLemonSqueezyNotFound).
+		On(http.StatusTooManyRequests, ErrLemonSqueezyRateLimited)
+
+	if err = statusHandler.Check(r); err != nil {
+		// Log all API errors
 		c.logger.Error().
-			Int("status", resp.StatusCode).
-			Str("body", string(respBody)).
+			Int("status", r.StatusCode).
+			Str("body", r.String()).
 			Msg("LemonSqueezy API error")
-		return nil, fmt.Errorf("%w: status %d", ErrLemonSqueezyAPIError, resp.StatusCode)
+
+		// For unmapped errors, wrap with our API error
+		if errors.Is(err, ErrLemonSqueezyUnauthorized) ||
+			errors.Is(err, ErrLemonSqueezyNotFound) ||
+			errors.Is(err, ErrLemonSqueezyRateLimited) {
+			return nil, err
+		}
+		return nil, fmt.Errorf("%w: status %d", ErrLemonSqueezyAPIError, r.StatusCode)
 	}
+
+	return r.Body, nil
 }
 
 // CreateCheckout creates a new checkout session
