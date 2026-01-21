@@ -3,7 +3,6 @@ package dashboard
 import (
 	"github.com/kkz6/launch-go/internal/modules/dashboard/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/module"
 )
 
 const ModuleName = "dashboard"
@@ -16,18 +15,18 @@ var (
 
 // Module represents the dashboard module
 type Module struct {
-	module.Base
+	app.Base
 	service *services.DashboardService
 }
 
 // NewModule creates a new dashboard module
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 
 	service := services.NewDashboardService(deps.DB, deps.Logger)
 
 	return &Module{
-		Base:    module.NewBase(ModuleName, b),
+		Base:    app.NewBase(ModuleName, b),
 		service: service,
 	}
 }

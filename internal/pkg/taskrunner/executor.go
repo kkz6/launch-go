@@ -7,7 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
-	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 // ServerConnection provides SSH connection details for a server.

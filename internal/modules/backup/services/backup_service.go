@@ -11,7 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/jobs"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 // BackupService handles business logic for backups

@@ -8,7 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/enums"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 

@@ -9,7 +9,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/dto"
 	"github.com/kkz6/launch-go/internal/modules/database/jobs"
 	"github.com/kkz6/launch-go/internal/modules/database/models"
-	"github.com/kkz6/launch-go/internal/pkg/activity"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 // CreateDatabase creates a new database on a server

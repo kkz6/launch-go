@@ -11,7 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 // Base provides common dependencies for all job contexts.

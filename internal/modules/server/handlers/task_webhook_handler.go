@@ -15,7 +15,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 	"github.com/kkz6/launch-go/internal/pkg/webhook"
-	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 // TaskWebhookRepository interface for webhook handler

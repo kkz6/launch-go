@@ -11,7 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 // JobContext holds dependencies for server jobs.

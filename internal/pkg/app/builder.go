@@ -1,16 +1,15 @@
-package module
+package app
 
 import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
-	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 // Deps holds common dependencies for all modules
@@ -47,7 +46,7 @@ func NewBuilder(deps Deps) *Builder {
 }
 
 // NewBuilderFromContext creates a builder from app context
-func NewBuilderFromContext(ctx *app.Context) *Builder {
+func NewBuilderFromContext(ctx *Context) *Builder {
 	return &Builder{
 		deps: Deps{
 			DB:              ctx.DB,

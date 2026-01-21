@@ -6,8 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/websocket/handlers"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
-	"github.com/kkz6/launch-go/internal/pkg/module"
-	ws "github.com/kkz6/launch-go/internal/websocket"
+	ws "github.com/kkz6/launch-go/internal/pkg/websocket"
 )
 
 const ModuleName = "websocket"
@@ -21,7 +20,7 @@ var (
 
 // Module is the WebSocket module that manages all WebSocket routes
 type Module struct {
-	module.Base
+	app.Base
 	hub                    *ws.Hub
 	terminalHandler        *handlers.TerminalHandler
 	logsHandler            *handlers.LogsHandler
@@ -33,7 +32,7 @@ type Module struct {
 }
 
 // NewModule creates a new WebSocket module
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 	jwtSecret := deps.Config.JWT.Secret
 
@@ -44,7 +43,7 @@ func NewModule(b *module.Builder) *Module {
 	handlerBase := handlers.NewBase(deps.DB, jwtSecret, *deps.Logger, deps.MembershipCache)
 
 	return &Module{
-		Base:                   module.NewBase(ModuleName, b),
+		Base:                   app.NewBase(ModuleName, b),
 		hub:                    hub,
 		terminalHandler:        handlers.NewTerminalHandler(handlerBase),
 		logsHandler:            handlers.NewLogsHandler(handlerBase),

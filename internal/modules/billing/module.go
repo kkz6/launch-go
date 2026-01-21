@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
 	"github.com/kkz6/launch-go/internal/modules/billing/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/module"
 )
 
 const ModuleName = "billing"
@@ -20,14 +19,14 @@ var (
 
 // Module represents the billing module
 type Module struct {
-	module.Base
+	app.Base
 	service       *services.BillingService
 	repos         *repositories.Registry
 	serverCountFn func(teamID string) (int, error)
 }
 
 // NewModule creates a new billing module
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 	cfg := deps.Config.Billing
 
@@ -50,7 +49,7 @@ func NewModule(b *module.Builder) *Module {
 	service := services.NewBillingService(repos, lsClient, billingConfig, deps.Logger)
 
 	return &Module{
-		Base:    module.NewBase(ModuleName, b),
+		Base:    app.NewBase(ModuleName, b),
 		service: service,
 		repos:   repos,
 	}

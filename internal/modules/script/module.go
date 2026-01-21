@@ -8,7 +8,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/script/services"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/module"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
@@ -23,17 +22,17 @@ var (
 
 // Module represents the script module
 type Module struct {
-	module.Base
+	app.Base
 	repos       *repositories.Registry
 	serverRepos *serverrepos.Registry
 }
 
 // NewModule creates a new script module
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 
 	return &Module{
-		Base:        module.NewBase(ModuleName, b),
+		Base:        app.NewBase(ModuleName, b),
 		repos:       repositories.NewRegistry(deps.DB),
 		serverRepos: serverrepos.NewRegistry(deps.DB),
 	}
