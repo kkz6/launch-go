@@ -37,131 +37,22 @@ The following foundational infrastructure has been implemented:
 | - | Constants/Limits | ✅ DONE | `1cf762a` - constants/limits.go |
 | 1 | Job Base Payload Generic | ✅ DONE | `13ebce5` - jobs/context.go BaseJob[C,P] |
 | 2 | Installable Repository Mixin | ✅ DONE | `5a998b7` - Go embedding promotes methods |
+| 3 | Queue Dispatch Unification | ✅ DONE | `81a797c` - jobs.Base.Dispatch* methods |
 
 ---
 
 ## Table of Contents
 
-1. [Queue Dispatch Unification (P2)](#1-queue-dispatch-unification-p2)
-2. [Pagination Embedding (P2)](#2-pagination-embedding-p2)
-3. [Task Builder Pattern (P2)](#3-task-builder-pattern-p2)
-4. [Model Scoped Fields Adoption (P2)](#4-model-scoped-fields-adoption-p2)
-5. [Activity Logging Builder (P2)](#5-activity-logging-builder-p2)
-6. [Broadcast Payload Builder (P3)](#6-broadcast-payload-builder-p3)
-7. [DTO Timestamp Embedding (P3)](#7-dto-timestamp-embedding-p3)
+1. [Pagination Embedding (P2)](#1-pagination-embedding-p2)
+2. [Task Builder Pattern (P2)](#2-task-builder-pattern-p2)
+3. [Model Scoped Fields Adoption (P2)](#3-model-scoped-fields-adoption-p2)
+4. [Activity Logging Builder (P2)](#4-activity-logging-builder-p2)
+5. [Broadcast Payload Builder (P3)](#5-broadcast-payload-builder-p3)
+6. [DTO Timestamp Embedding (P3)](#6-dto-timestamp-embedding-p3)
 
 ---
 
-## 1. Queue Dispatch Unification (P2)
-
-**Issue:** Job dispatching uses 3+ different patterns across codebase.
-
-**Files Affected:**
-- `internal/modules/site/tasks/deploy.go:320-331` - Has `dispatchJob()` helper
-- `internal/modules/site/jobs/deploy.go:335-346` - Direct `Queue.Enqueue()`
-- `internal/modules/server/handlers/task_webhook_handler.go:219-220` - Inline construction
-- `internal/modules/server/tasks/runner.go:585-586` - Direct dispatch
-- 50+ other locations
-
-**Current Patterns:**
-```go
-// Pattern 1: Helper method (site/tasks/deploy.go)
-func (t *deploySiteTask) dispatchJob(cbCtx *taskrunner.CallbackContext, jobType string, payload any, taskID string) {
-    // implementation
-}
-
-// Pattern 2: Direct (site/jobs/deploy.go)
-task := asynq.NewTask(jobType, data)
-if _, err := j.ctx.Queue.Enqueue(task); err != nil { }
-
-// Pattern 3: Inline (server/handlers/task_webhook_handler.go)
-asynqTask := asynq.NewTask(jobRef.Type, jobRef.Payload)
-if _, err := h.queue.Enqueue(asynqTask); err != nil { }
-```
-
-**Solution:** Create `internal/pkg/jobs/dispatcher.go`
-```go
-package jobs
-
-import (
-    "encoding/json"
-    "github.com/hibiken/asynq"
-    "github.com/rs/zerolog"
-    "github.com/kkz6/launch-go/internal/pkg/queue"
-)
-
-// Dispatcher provides unified job dispatching
-type Dispatcher struct {
-    queue  *queue.Client
-    logger *zerolog.Logger
-}
-
-// NewDispatcher creates a new job dispatcher
-func NewDispatcher(queue *queue.Client, logger *zerolog.Logger) *Dispatcher {
-    return &Dispatcher{queue: queue, logger: logger}
-}
-
-// Dispatch sends a job to the queue
-func (d *Dispatcher) Dispatch(jobType string, payload any, opts ...asynq.Option) error {
-    data, err := json.Marshal(payload)
-    if err != nil {
-        d.logger.Error().Err(err).Str("job_type", jobType).Msg("Failed to marshal job payload")
-        return err
-    }
-
-    task := asynq.NewTask(jobType, data, opts...)
-    info, err := d.queue.Enqueue(task)
-    if err != nil {
-        d.logger.Error().Err(err).Str("job_type", jobType).Msg("Failed to enqueue job")
-        return err
-    }
-
-    d.logger.Debug().
-        Str("job_type", jobType).
-        Str("task_id", info.ID).
-        Str("queue", info.Queue).
-        Msg("Job dispatched")
-
-    return nil
-}
-
-// DispatchWithDelay sends a job with delay
-func (d *Dispatcher) DispatchWithDelay(jobType string, payload any, delay time.Duration, opts ...asynq.Option) error {
-    opts = append(opts, asynq.ProcessIn(delay))
-    return d.Dispatch(jobType, payload, opts...)
-}
-
-// DispatchToQueue sends a job to specific queue
-func (d *Dispatcher) DispatchToQueue(jobType string, payload any, queueName string, opts ...asynq.Option) error {
-    opts = append(opts, asynq.Queue(queueName))
-    return d.Dispatch(jobType, payload, opts...)
-}
-```
-
-**Usage:**
-```go
-// Before
-data, _ := json.Marshal(payload)
-task := asynq.NewTask(jobType, data)
-queue.Enqueue(task)
-
-// After
-dispatcher.Dispatch(jobType, payload)
-```
-
-**Refactoring Steps:**
-- [ ] Create `internal/pkg/jobs/dispatcher.go`
-- [ ] Add to service base or job context
-- [ ] Refactor site tasks to use dispatcher
-- [ ] Refactor server handlers to use dispatcher
-- [ ] Refactor all direct `Enqueue()` calls
-- [ ] Add logging and error handling uniformly
-
-**Impact:** Centralized logging, consistent error handling, ~100 lines of dispatch code consolidated
-
----
-
-## 2. Pagination Embedding (P2)
+## 1. Pagination Embedding (P2)
 
 **Issue:** Pagination logic is ad-hoc and not reusable across repositories.
 
@@ -250,7 +141,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 
 ---
 
-## 3. Task Builder Pattern (P2)
+## 2. Task Builder Pattern (P2)
 
 **Issue:** Each task file repeats callback data struct and task creation boilerplate.
 
@@ -401,7 +292,7 @@ func DeploySiteTask(opts DeployOptions) *taskrunner.BuiltTask[callbackData] {
 
 ---
 
-## 4. Model Scoped Fields Adoption (P2)
+## 3. Model Scoped Fields Adoption (P2)
 
 **Issue:** Models define scope fields manually instead of using existing mixins.
 
@@ -460,7 +351,7 @@ type Database struct {
 
 ---
 
-## 5. Activity Logging Builder (P2)
+## 4. Activity Logging Builder (P2)
 
 **Issue:** Activity logging pattern repeated with builder chain across 40+ locations.
 
@@ -557,7 +448,7 @@ activity.LogCreation(s.repos.DB(), ctx, database, "database", userID, "Database 
 
 ---
 
-## 6. Broadcast Payload Builder (P3)
+## 5. Broadcast Payload Builder (P3)
 
 **Issue:** Broadcast payloads created inline with inconsistent structure.
 
@@ -632,7 +523,7 @@ func (p ServerMetricsPayload) ToMap() map[string]interface{} {
 
 ---
 
-## 7. DTO Timestamp Embedding (P3)
+## 6. DTO Timestamp Embedding (P3)
 
 **Issue:** Timestamp formatting repeated 81+ times in DTO converters.
 
