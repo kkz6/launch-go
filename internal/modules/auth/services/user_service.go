@@ -73,13 +73,7 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID string, req *dto
 		return nil, err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("auth").
-		CausedByUser(userID).
-		On(user).
-		WithEvent("updated").
-		Log("User profile was updated")
+	activity.LogWithLog(ctx, s.repos.DB(), "auth", "updated", userID, user, "User profile was updated")
 
 	return user, nil
 }
@@ -110,13 +104,7 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dt
 		return err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("auth").
-		CausedByUser(userID).
-		On(user).
-		WithEvent("password_changed").
-		Log("User password was changed")
+	activity.LogWithLog(ctx, s.repos.DB(), "auth", "password_changed", userID, user, "User password was changed")
 
 	return nil
 }
@@ -132,13 +120,7 @@ func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
 		return apperrors.ErrNotFound
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("auth").
-		CausedByUser(userID).
-		On(user).
-		WithEvent("deleted").
-		Log("User account was deleted")
+	activity.LogWithLog(ctx, s.repos.DB(), "auth", "deleted", userID, user, "User account was deleted")
 
 	// Delete owned teams
 	ownedTeams, err := s.repos.Team().GetUserTeams(ctx, userID)

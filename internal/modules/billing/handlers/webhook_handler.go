@@ -19,6 +19,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
 	"github.com/kkz6/launch-go/internal/modules/billing/services"
+	"github.com/kkz6/launch-go/internal/pkg/webhook"
 )
 
 // Webhook errors
@@ -32,21 +33,19 @@ var (
 
 // WebhookHandler handles incoming webhooks from LemonSqueezy
 type WebhookHandler struct {
-	repos         *repositories.Registry
-	service       *services.BillingService
-	webhookSecret string
-	logger        *zerolog.Logger
-	maxRetries    int
+	webhook.Base
+	repos      *repositories.Registry
+	service    *services.BillingService
+	maxRetries int
 }
 
 // NewWebhookHandler creates a new webhook handler
 func NewWebhookHandler(repos *repositories.Registry, service *services.BillingService, webhookSecret string, logger *zerolog.Logger) *WebhookHandler {
 	return &WebhookHandler{
-		repos:         repos,
-		service:       service,
-		webhookSecret: webhookSecret,
-		logger:        logger,
-		maxRetries:    3,
+		Base:       webhook.NewBase(webhookSecret, logger),
+		repos:      repos,
+		service:    service,
+		maxRetries: 3,
 	}
 }
 
@@ -54,7 +53,7 @@ func NewWebhookHandler(repos *repositories.Registry, service *services.BillingSe
 func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 	signature := c.Get("X-Signature")
 	if signature == "" {
-		h.logger.Warn().Msg("Webhook received without signature")
+		h.LogWarn("Webhook received without signature")
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Missing signature",
 		})
@@ -62,8 +61,8 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 
 	body := c.Body()
 
-	if !h.VerifySignature(body, signature) {
-		h.logger.Warn().Msg("Invalid webhook signature")
+	if !h.verifyLemonSqueezySignature(body, signature) {
+		h.LogWarn("Invalid webhook signature")
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{
 			"error": "Invalid signature",
 		})
@@ -71,7 +70,7 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 
 	var payload dto.WebhookPayload
 	if err := json.Unmarshal(body, &payload); err != nil {
-		h.logger.Error().Err(err).Msg("Failed to parse webhook payload")
+		h.LogError(err, "Failed to parse webhook payload")
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
 			"error": "Invalid payload",
 		})
@@ -85,14 +84,14 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 	}
 
 	if err := h.repos.WebhookEvent().Create(c.Context(), event); err != nil {
-		h.logger.Error().Err(err).Msg("Failed to store webhook event")
+		h.LogError(err, "Failed to store webhook event")
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to store event",
 		})
 	}
 
 	if err := h.processWebhook(c.Context(), event, &payload); err != nil {
-		h.logger.Error().Err(err).Str("event_id", event.ID).Msg("Failed to process webhook")
+		h.LogError(err, "Failed to process webhook", "event_id", event.ID)
 		h.repos.WebhookEvent().MarkFailed(c.Context(), event.ID, err.Error())
 		return c.Status(fiber.StatusOK).JSON(fiber.Map{
 			"message": "Webhook received but processing failed",
@@ -107,10 +106,10 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 	})
 }
 
-// VerifySignature verifies the webhook signature
-func (h *WebhookHandler) VerifySignature(payload []byte, signature string) bool {
-	mac := hmac.New(sha256.New, []byte(h.webhookSecret))
-	mac.Write(payload)
+// verifyLemonSqueezySignature verifies the webhook signature using LemonSqueezy's HMAC format
+func (h *WebhookHandler) verifyLemonSqueezySignature(payload []byte, signature string) bool {
+	mac := hmac.New(sha256.New, []byte(h.Signer.GetSecretKey()))
+	_, _ = mac.Write(payload) // hash.Hash.Write never returns an error
 	expectedSignature := hex.EncodeToString(mac.Sum(nil))
 
 	return hmac.Equal([]byte(expectedSignature), []byte(signature))
@@ -121,7 +120,7 @@ func (h *WebhookHandler) processWebhook(ctx context.Context, event *models.Webho
 	eventType := enums.WebhookEventType(payload.Meta.EventName)
 
 	if !eventType.IsValid() {
-		h.logger.Warn().Str("event", payload.Meta.EventName).Msg("Unknown webhook event type")
+		h.LogWarn("Unknown webhook event type", "event", payload.Meta.EventName)
 		return nil
 	}
 

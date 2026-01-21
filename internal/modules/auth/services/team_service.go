@@ -39,13 +39,7 @@ func (s *TeamService) CreateTeam(ctx context.Context, userID string, req *dto.Cr
 		return nil, err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("auth").
-		CausedByUser(userID).
-		On(team).
-		WithEvent("created").
-		Log("Team was created")
+	activity.LogWithLog(ctx, s.repos.DB(), "auth", "created", userID, team, "Team was created")
 
 	return team, nil
 }
@@ -72,13 +66,7 @@ func (s *TeamService) UpdateTeam(ctx context.Context, userID, teamID string, req
 		return nil, err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("auth").
-		CausedByUser(userID).
-		On(team).
-		WithEvent("updated").
-		Log("Team was updated")
+	activity.LogWithLog(ctx, s.repos.DB(), "auth", "updated", userID, team, "Team was updated")
 
 	return team, nil
 }
@@ -104,13 +92,7 @@ func (s *TeamService) DeleteTeam(ctx context.Context, userID, teamID string) err
 		return errors.New("cannot delete personal team")
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("auth").
-		CausedByUser(userID).
-		On(team).
-		WithEvent("deleted").
-		Log("Team was deleted")
+	activity.LogWithLog(ctx, s.repos.DB(), "auth", "deleted", userID, team, "Team was deleted")
 
 	return s.repos.Team().Delete(ctx, teamID)
 }

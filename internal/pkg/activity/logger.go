@@ -3,6 +3,7 @@ package activity
 import (
 	"context"
 	"reflect"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -145,4 +146,15 @@ func getTypeName(v any) string {
 		t = t.Elem()
 	}
 	return t.Name()
+}
+
+// getLogName returns a lowercase version of the type name for use as log name.
+// For example, *models.Server -> "server", *models.Site -> "site"
+func getLogName(v any) string {
+	name := getTypeName(v)
+	if name == "" {
+		return "default"
+	}
+	// Convert to lowercase for log name
+	return strings.ToLower(name)
 }

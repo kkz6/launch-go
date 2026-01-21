@@ -42,12 +42,7 @@ func (s *RedirectService) Create(ctx context.Context, siteID, serverID, userID s
 		return nil, err
 	}
 
-	activity.New(s.Repos().Redirect().DB).
-		WithContext(ctx).
-		UseLog("site").
-		On(redirect).
-		WithEvent("created").
-		Log("Redirect was created")
+	activity.LogWithLog(ctx, s.Repos().Redirect().DB, "site", "created", "", redirect, "Redirect was created")
 
 	// Dispatch Caddyfile update job
 	s.dispatchCaddyfileUpdate(site.ID, userID)
@@ -75,12 +70,7 @@ func (s *RedirectService) Delete(ctx context.Context, redirectID, siteID, server
 		return err
 	}
 
-	activity.New(s.Repos().Redirect().DB).
-		WithContext(ctx).
-		UseLog("site").
-		On(redirect).
-		WithEvent("deleted").
-		Log("Redirect was deleted")
+	activity.LogWithLog(ctx, s.Repos().Redirect().DB, "site", "deleted", "", redirect, "Redirect was deleted")
 
 	if err := s.Repos().Redirect().Delete(ctx, redirectID); err != nil {
 		return err
