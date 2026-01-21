@@ -1,52 +1,41 @@
 package cryptoutil
 
 import (
-	"crypto/rand"
-	"encoding/base64"
-	"encoding/hex"
-	"fmt"
+	"github.com/kkz6/launch-go/internal/pkg/token"
 )
 
+// GenerateToken generates a base64url-encoded token.
+// Deprecated: Use token.New().WithEncoding(token.Base64URL).Generate() instead.
 func GenerateToken(length int) string {
-	bytes, err := GenerateSecureBytes(length)
-	if err != nil {
-		return ""
-	}
-	return base64.URLEncoding.EncodeToString(bytes)
+	return token.New(length).WithEncoding(token.Base64URL).MustGenerate()
 }
 
+// GenerateSecureBytes generates cryptographically secure random bytes.
+// Deprecated: Use token.SecureBytes instead.
 func GenerateSecureBytes(length int) ([]byte, error) {
-	if length <= 0 {
-		return nil, fmt.Errorf("length must be positive")
-	}
-
-	bytes := make([]byte, length)
-	if _, err := rand.Read(bytes); err != nil {
-		return nil, fmt.Errorf("failed to generate random bytes: %w", err)
-	}
-	return bytes, nil
+	return token.SecureBytes(length)
 }
 
+// GenerateHexToken generates a hex-encoded token.
+// Deprecated: Use token.HexToken instead.
 func GenerateHexToken(length int) (string, error) {
-	bytes, err := GenerateSecureBytes(length)
-	if err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(bytes), nil
+	return token.HexToken(length)
 }
 
+// MustGenerateHexToken generates a hex-encoded token or panics.
+// Deprecated: Use token.MustHexToken instead.
 func MustGenerateHexToken(length int) string {
-	token, err := GenerateHexToken(length)
-	if err != nil {
-		panic(err)
-	}
-	return token
+	return token.MustHexToken(length)
 }
 
+// GenerateWebhookSecret generates a 32-byte hex-encoded webhook secret.
+// Deprecated: Use token.WebhookSecret instead.
 func GenerateWebhookSecret() (string, error) {
-	return GenerateHexToken(32)
+	return token.WebhookSecret()
 }
 
+// GenerateAPIKey generates a base64url-encoded API key.
+// Deprecated: Use token.MustSecureToken instead.
 func GenerateAPIKey() string {
-	return GenerateToken(32)
+	return token.MustSecureToken()
 }
