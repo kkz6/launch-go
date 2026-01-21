@@ -39,12 +39,12 @@ func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *Ins
 func (j *InstallDatabaseJob) Handle(ctx context.Context) error {
 	j.ctx.LogInfo("Installing database", "database_id", j.Payload.DatabaseID)
 
-	database, err := repository.Find[models.Database](j.ctx.DB, ctx, j.Payload.DatabaseID)
+	database, err := repository.Find[models.Database](ctx, j.ctx.DB, j.Payload.DatabaseID)
 	if err != nil {
 		return fmt.Errorf("failed to find database: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](j.ctx.DB, ctx, database.ServerID)
+	server, err := repository.Find[servermodels.Server](ctx, j.ctx.DB, database.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -94,12 +94,12 @@ func (j *InstallDatabaseJob) Handle(ctx context.Context) error {
 func (j *InstallDatabaseJob) Failed(ctx context.Context, err error) {
 	j.ctx.LogError(err, "Failed to install database", "database_id", j.Payload.DatabaseID)
 
-	database, findErr := repository.Find[models.Database](j.ctx.DB, ctx, j.Payload.DatabaseID)
+	database, findErr := repository.Find[models.Database](ctx, j.ctx.DB, j.Payload.DatabaseID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](j.ctx.DB, ctx, database.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.ctx.DB, database.ServerID)
 	if findErr != nil {
 		return
 	}

@@ -91,7 +91,7 @@ func (c *JobContext) BroadcastDatabaseEvent(server *servermodels.Server, event s
 
 // GetDatabaseType returns the database type for a server (mysql or postgresql).
 func (c *JobContext) GetDatabaseType(ctx context.Context, serverID string) string {
-	service, err := repository.NewQuery[servermodels.InstalledService](c.DB, ctx).
+	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
 			string(serverenums.ServiceTypePostgreSql),
@@ -110,7 +110,7 @@ func (c *JobContext) GetDatabaseType(ctx context.Context, serverID string) strin
 
 // GetDatabaseServiceType returns the database service type for a server.
 func (c *JobContext) GetDatabaseServiceType(ctx context.Context, serverID string) serverenums.ServiceType {
-	service, err := repository.NewQuery[servermodels.InstalledService](c.DB, ctx).
+	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
 			string(serverenums.ServiceTypePostgreSql),

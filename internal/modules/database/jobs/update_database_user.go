@@ -38,7 +38,7 @@ func NewUpdateDatabaseUserJob(ctx *JobContext, payload UpdateDatabaseUserPayload
 func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 	j.ctx.LogInfo("Updating database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, err := repository.NewQuery[models.DatabaseUser](j.ctx.DB, ctx).
+	dbUser, err := repository.NewQuery[models.DatabaseUser](ctx, j.ctx.DB).
 		WithModel("DatabaseUser").
 		Preload("Databases").
 		FindByID(j.Payload.DatabaseUserID).
@@ -47,7 +47,7 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find database user: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](j.ctx.DB, ctx, dbUser.ServerID)
+	server, err := repository.Find[servermodels.Server](ctx, j.ctx.DB, dbUser.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -89,12 +89,12 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 func (j *UpdateDatabaseUserJob) Failed(ctx context.Context, err error) {
 	j.ctx.LogError(err, "Failed to update database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, findErr := repository.Find[models.DatabaseUser](j.ctx.DB, ctx, j.Payload.DatabaseUserID)
+	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.ctx.DB, j.Payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](j.ctx.DB, ctx, dbUser.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.ctx.DB, dbUser.ServerID)
 	if findErr != nil {
 		return
 	}

@@ -39,12 +39,12 @@ func NewUninstallDatabaseUserJob(ctx *JobContext, payload UninstallDatabaseUserP
 func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 	j.ctx.LogInfo("Uninstalling database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, err := repository.Find[models.DatabaseUser](j.ctx.DB, ctx, j.Payload.DatabaseUserID)
+	dbUser, err := repository.Find[models.DatabaseUser](ctx, j.ctx.DB, j.Payload.DatabaseUserID)
 	if err != nil {
 		return fmt.Errorf("failed to find database user: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](j.ctx.DB, ctx, dbUser.ServerID)
+	server, err := repository.Find[servermodels.Server](ctx, j.ctx.DB, dbUser.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -92,12 +92,12 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 func (j *UninstallDatabaseUserJob) Failed(ctx context.Context, err error) {
 	j.ctx.LogError(err, "Failed to uninstall database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, findErr := repository.Find[models.DatabaseUser](j.ctx.DB, ctx, j.Payload.DatabaseUserID)
+	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.ctx.DB, j.Payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](j.ctx.DB, ctx, dbUser.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.ctx.DB, dbUser.ServerID)
 	if findErr != nil {
 		return
 	}
