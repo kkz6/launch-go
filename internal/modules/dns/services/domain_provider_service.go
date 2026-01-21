@@ -185,7 +185,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 	}
 
 	// Sync domains within a transaction
-	err = s.Repos().Provider().WithTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.Repos().Provider().Transaction(ctx, func(tx *gorm.DB) error {
 		for providerID, domainName := range domainsList {
 			// Create or update domain
 			domain, err := s.Repos().Domain().UpdateOrCreate(ctx, map[string]interface{}{

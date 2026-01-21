@@ -46,7 +46,7 @@ func (s *DnsRecordService) CreateRecord(ctx context.Context, domainID, teamID st
 
 	dnsProvider.SetDomain(domain.Address)
 
-	err = s.Repos().DnsRecord().WithTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.Repos().DnsRecord().Transaction(ctx, func(tx *gorm.DB) error {
 		// Add record to provider
 		providerID, err := dnsProvider.AddRecord(ctx, toProviderDnsRecord(record))
 		if err != nil {
@@ -98,7 +98,7 @@ func (s *DnsRecordService) UpdateRecord(ctx context.Context, recordID, domainID,
 	// Apply updates
 	req.ApplyToModel(record)
 
-	err = s.Repos().DnsRecord().WithTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.Repos().DnsRecord().Transaction(ctx, func(tx *gorm.DB) error {
 		// Update record at provider
 		if err := dnsProvider.UpdateRecord(ctx, toProviderDnsRecord(record)); err != nil {
 			return err
@@ -144,7 +144,7 @@ func (s *DnsRecordService) DeleteRecord(ctx context.Context, recordID, domainID,
 
 	dnsProvider.SetDomain(domain.Address)
 
-	return s.Repos().DnsRecord().WithTransaction(ctx, func(tx *gorm.DB) error {
+	return s.Repos().DnsRecord().Transaction(ctx, func(tx *gorm.DB) error {
 		// Delete record from provider
 		if err := dnsProvider.DeleteRecord(ctx, toProviderDnsRecord(record)); err != nil {
 			return err

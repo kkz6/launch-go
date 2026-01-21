@@ -6,29 +6,30 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // DomainRepository handles database operations for domains
 type DomainRepository struct {
-	*BaseRepository
+	repository.Base[models.Domain]
 }
 
 // NewDomainRepository creates a new DomainRepository instance
 func NewDomainRepository(db *gorm.DB) *DomainRepository {
 	return &DomainRepository{
-		BaseRepository: NewBaseRepository(db),
+		Base: repository.NewBase[models.Domain](db),
 	}
 }
 
 // Create creates a new domain
 func (r *DomainRepository) Create(ctx context.Context, domain *models.Domain) error {
-	return r.db.WithContext(ctx).Create(domain).Error
+	return r.DB.WithContext(ctx).Create(domain).Error
 }
 
 // FindByID finds a domain by ID
 func (r *DomainRepository) FindByID(ctx context.Context, id string) (*models.Domain, error) {
 	var domain models.Domain
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Preload("Provider").
 		Preload("Records").
 		First(&domain, "id = ?", id).Error
@@ -42,7 +43,7 @@ func (r *DomainRepository) FindByID(ctx context.Context, id string) (*models.Dom
 // FindByIDAndTeam finds a domain by ID and team
 func (r *DomainRepository) FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Domain, error) {
 	var domain models.Domain
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Preload("Provider").
 		Preload("Records", func(db *gorm.DB) *gorm.DB {
 			return db.Order("type ASC, name ASC")
@@ -58,7 +59,7 @@ func (r *DomainRepository) FindByIDAndTeam(ctx context.Context, id, teamID strin
 // FindByTeam finds all domains for a team
 func (r *DomainRepository) FindByTeam(ctx context.Context, teamID string) ([]models.Domain, error) {
 	var domains []models.Domain
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Preload("Provider").
 		Preload("Records").
 		Where("team_id = ?", teamID).
@@ -71,7 +72,7 @@ func (r *DomainRepository) FindByTeam(ctx context.Context, teamID string) ([]mod
 // FindByProvider finds all domains for a provider
 func (r *DomainRepository) FindByProvider(ctx context.Context, providerID string) ([]models.Domain, error) {
 	var domains []models.Domain
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Preload("Records").
 		Where("domain_provider_id = ?", providerID).
 		Find(&domains).Error
@@ -82,7 +83,7 @@ func (r *DomainRepository) FindByProvider(ctx context.Context, providerID string
 // FindByAddressAndProvider finds a domain by address and provider
 func (r *DomainRepository) FindByAddressAndProvider(ctx context.Context, address, providerID string) (*models.Domain, error) {
 	var domain models.Domain
-	err := r.db.WithContext(ctx).
+	err := r.DB.WithContext(ctx).
 		Where("address = ? AND domain_provider_id = ?", address, providerID).
 		First(&domain).Error
 	if err != nil {
@@ -94,7 +95,7 @@ func (r *DomainRepository) FindByAddressAndProvider(ctx context.Context, address
 
 // Update updates a domain
 func (r *DomainRepository) Update(ctx context.Context, domain *models.Domain) error {
-	return r.db.WithContext(ctx).Save(domain).Error
+	return r.DB.WithContext(ctx).Save(domain).Error
 }
 
 // UpdateOrCreate updates or creates a domain
@@ -102,14 +103,14 @@ func (r *DomainRepository) UpdateOrCreate(ctx context.Context, where map[string]
 	var domain models.Domain
 
 	// First try to find existing
-	err := r.db.WithContext(ctx).Where(where).First(&domain).Error
+	err := r.DB.WithContext(ctx).Where(where).First(&domain).Error
 	if err == gorm.ErrRecordNotFound {
 		// Create new domain with all values
 		for k, v := range where {
 			update[k] = v
 		}
 		domain = models.Domain{}
-		if err := r.db.WithContext(ctx).Model(&domain).Create(update).Error; err != nil {
+		if err := r.DB.WithContext(ctx).Model(&domain).Create(update).Error; err != nil {
 			return nil, err
 		}
 		// Reload the domain
@@ -121,7 +122,7 @@ func (r *DomainRepository) UpdateOrCreate(ctx context.Context, where map[string]
 	}
 
 	// Update existing
-	if err := r.db.WithContext(ctx).Model(&domain).Updates(update).Error; err != nil {
+	if err := r.DB.WithContext(ctx).Model(&domain).Updates(update).Error; err != nil {
 		return nil, err
 	}
 
@@ -130,5 +131,5 @@ func (r *DomainRepository) UpdateOrCreate(ctx context.Context, where map[string]
 
 // Delete deletes a domain
 func (r *DomainRepository) Delete(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).Delete(&models.Domain{}, "id = ?", id).Error
+	return r.DB.WithContext(ctx).Delete(&models.Domain{}, "id = ?", id).Error
 }
