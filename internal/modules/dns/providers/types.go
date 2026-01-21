@@ -139,8 +139,8 @@ type ProviderRecord struct {
 	Proxied  *bool      `json:"proxied,omitempty"`
 }
 
-// DnsRecord represents a DNS record for provider operations
-type DnsRecord struct {
+// DNSRecord represents a DNS record for provider operations
+type DNSRecord struct {
 	ID         string
 	ProviderID string
 	Type       RecordType
@@ -157,11 +157,11 @@ type DnsRecord struct {
 }
 
 // IsEditable returns true if this record type can be edited by users
-func (r *DnsRecord) IsEditable() bool {
+func (r *DNSRecord) IsEditable() bool {
 	return r.Type != RecordTypeNS && r.Type != RecordTypeSOA
 }
 
 // IsDeletable returns true if this record type can be deleted by users
-func (r *DnsRecord) IsDeletable() bool {
+func (r *DNSRecord) IsDeletable() bool {
 	return r.Type != RecordTypeNS && r.Type != RecordTypeSOA
 }

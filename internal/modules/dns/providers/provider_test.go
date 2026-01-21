@@ -230,25 +230,25 @@ func TestParseDnsProviderType(t *testing.T) {
 	assert.Error(t, err)
 }
 
-func TestDnsRecord_IsEditable(t *testing.T) {
-	record := &DnsRecord{Type: RecordTypeA}
+func TestDNSRecord_IsEditable(t *testing.T) {
+	record := &DNSRecord{Type: RecordTypeA}
 	assert.True(t, record.IsEditable())
 
-	nsRecord := &DnsRecord{Type: RecordTypeNS}
+	nsRecord := &DNSRecord{Type: RecordTypeNS}
 	assert.False(t, nsRecord.IsEditable())
 
-	soaRecord := &DnsRecord{Type: RecordTypeSOA}
+	soaRecord := &DNSRecord{Type: RecordTypeSOA}
 	assert.False(t, soaRecord.IsEditable())
 }
 
-func TestDnsRecord_IsDeletable(t *testing.T) {
-	record := &DnsRecord{Type: RecordTypeA}
+func TestDNSRecord_IsDeletable(t *testing.T) {
+	record := &DNSRecord{Type: RecordTypeA}
 	assert.True(t, record.IsDeletable())
 
-	nsRecord := &DnsRecord{Type: RecordTypeNS}
+	nsRecord := &DNSRecord{Type: RecordTypeNS}
 	assert.False(t, nsRecord.IsDeletable())
 
-	soaRecord := &DnsRecord{Type: RecordTypeSOA}
+	soaRecord := &DNSRecord{Type: RecordTypeSOA}
 	assert.False(t, soaRecord.IsDeletable())
 }
 

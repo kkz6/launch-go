@@ -155,7 +155,7 @@ func TestCloudflareProvider_ListRecords_Response(t *testing.T) {
 }
 
 func TestCloudflareProvider_AddRecord_RequestData(t *testing.T) {
-	record := &DnsRecord{
+	record := &DNSRecord{
 		Type:       RecordTypeA,
 		Name:       "@",
 		Value:      "1.2.3.4",
@@ -200,7 +200,7 @@ func TestCloudflareProvider_UpdateRecord_RequestData(t *testing.T) {
 	priority := 10
 	comment := "Updated comment"
 
-	record := &DnsRecord{
+	record := &DNSRecord{
 		Type:       RecordTypeMX,
 		Name:       "mail",
 		Value:      "mail.example.com",

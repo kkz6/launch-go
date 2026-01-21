@@ -89,12 +89,12 @@ type DaemonRepository interface {
 
 // SSHKeyRepository defines the interface for SSH key database operations
 type SSHKeyRepository interface {
-	Create(ctx context.Context, key *models.SshKey) error
-	FindByID(ctx context.Context, id string) (*models.SshKey, error)
-	FindByTeam(ctx context.Context, teamID string) ([]models.SshKey, error)
-	FindByServer(ctx context.Context, serverID string) ([]models.SshKey, error)
-	FindGlobal(ctx context.Context) ([]models.SshKey, error)
-	Update(ctx context.Context, key *models.SshKey) error
+	Create(ctx context.Context, key *models.SSHKey) error
+	FindByID(ctx context.Context, id string) (*models.SSHKey, error)
+	FindByTeam(ctx context.Context, teamID string) ([]models.SSHKey, error)
+	FindByServer(ctx context.Context, serverID string) ([]models.SSHKey, error)
+	FindGlobal(ctx context.Context) ([]models.SSHKey, error)
+	Update(ctx context.Context, key *models.SSHKey) error
 	Delete(ctx context.Context, id string) error
 	AttachToServer(ctx context.Context, serverID, sshKeyID string) error
 	DetachFromServer(ctx context.Context, serverID, sshKeyID string) error

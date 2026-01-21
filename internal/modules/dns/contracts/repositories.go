@@ -35,15 +35,15 @@ type DomainRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// DnsRecordRepository defines the interface for DNS record repository operations
-type DnsRecordRepository interface {
-	Create(ctx context.Context, record *models.DnsRecord) error
-	FindByID(ctx context.Context, id string) (*models.DnsRecord, error)
-	FindByIDAndDomain(ctx context.Context, id, domainID string) (*models.DnsRecord, error)
-	FindByDomain(ctx context.Context, domainID string) ([]models.DnsRecord, error)
-	FindByType(ctx context.Context, domainID string, recordType enums.RecordType) ([]models.DnsRecord, error)
-	Update(ctx context.Context, record *models.DnsRecord) error
-	UpdateOrCreate(ctx context.Context, where map[string]interface{}, update map[string]interface{}) (*models.DnsRecord, error)
+// DNSRecordRepository defines the interface for DNS record repository operations
+type DNSRecordRepository interface {
+	Create(ctx context.Context, record *models.DNSRecord) error
+	FindByID(ctx context.Context, id string) (*models.DNSRecord, error)
+	FindByIDAndDomain(ctx context.Context, id, domainID string) (*models.DNSRecord, error)
+	FindByDomain(ctx context.Context, domainID string) ([]models.DNSRecord, error)
+	FindByType(ctx context.Context, domainID string, recordType enums.RecordType) ([]models.DNSRecord, error)
+	Update(ctx context.Context, record *models.DNSRecord) error
+	UpdateOrCreate(ctx context.Context, where map[string]interface{}, update map[string]interface{}) (*models.DNSRecord, error)
 	Delete(ctx context.Context, id string) error
 	DeleteByDomain(ctx context.Context, domainID string) error
 }

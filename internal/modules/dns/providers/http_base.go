@@ -184,7 +184,7 @@ func (p *HTTPBaseProvider) UnmarshalResponse(resp *httpclient.Response, target i
 
 // BuildRecordData creates a map with common DNS record fields.
 // This is a helper for building request bodies when creating/updating records.
-func BuildRecordData(record *DnsRecord) map[string]interface{} {
+func BuildRecordData(record *DNSRecord) map[string]interface{} {
 	data := map[string]interface{}{
 		"type": record.Type.String(),
 		"name": record.Name,

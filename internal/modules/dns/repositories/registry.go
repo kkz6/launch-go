@@ -8,7 +8,7 @@ import (
 type Registry struct {
 	provider  *DomainProviderRepository
 	domain    *DomainRepository
-	dnsRecord *DnsRecordRepository
+	dnsRecord *DNSRecordRepository
 }
 
 // NewRegistry creates all repositories
@@ -16,7 +16,7 @@ func NewRegistry(db *gorm.DB) *Registry {
 	return &Registry{
 		provider:  NewDomainProviderRepository(db),
 		domain:    NewDomainRepository(db),
-		dnsRecord: NewDnsRecordRepository(db),
+		dnsRecord: NewDNSRecordRepository(db),
 	}
 }
 
@@ -26,5 +26,5 @@ func (r *Registry) Provider() *DomainProviderRepository { return r.provider }
 // Domain returns the domain repository
 func (r *Registry) Domain() *DomainRepository { return r.domain }
 
-// DnsRecord returns the DNS record repository
-func (r *Registry) DnsRecord() *DnsRecordRepository { return r.dnsRecord }
+// DNSRecord returns the DNS record repository
+func (r *Registry) DNSRecord() *DNSRecordRepository { return r.dnsRecord }

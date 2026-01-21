@@ -31,7 +31,7 @@ type SiteService struct {
 	gitReader            contracts.GitReader
 	cronCreator          contracts.CronCreator
 	databaseManager      contracts.DatabaseManager
-	dnsRecordService     dnscontracts.DnsRecordService
+	dnsRecordService     dnscontracts.DNSRecordService
 	sourceControlService gitcontracts.SourceControlService
 }
 
@@ -63,7 +63,7 @@ func (s *SiteService) SetDatabaseManager(manager contracts.DatabaseManager) {
 }
 
 // SetDNSRecordService sets the DNS record service for cross-module operations
-func (s *SiteService) SetDNSRecordService(svc dnscontracts.DnsRecordService) {
+func (s *SiteService) SetDNSRecordService(svc dnscontracts.DNSRecordService) {
 	s.dnsRecordService = svc
 }
 

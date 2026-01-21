@@ -211,7 +211,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 
 			for _, r := range records {
 				pr := fromProviderRecord(r)
-				_, err := s.Repos().DnsRecord().UpdateOrCreate(ctx, map[string]interface{}{
+				_, err := s.Repos().DNSRecord().UpdateOrCreate(ctx, map[string]interface{}{
 					"domain_id":   domain.ID,
 					"type":        pr.Type,
 					"name":        pr.Name,

@@ -393,8 +393,8 @@ type SSHKeyResponse struct {
 	UpdatedAt   string  `json:"updated_at"`
 }
 
-// ToSSHKeyResponse converts an SshKey model to an SSHKeyResponse DTO
-func ToSSHKeyResponse(key *models.SshKey) SSHKeyResponse {
+// ToSSHKeyResponse converts an SSHKey model to an SSHKeyResponse DTO
+func ToSSHKeyResponse(key *models.SSHKey) SSHKeyResponse {
 	return SSHKeyResponse{
 		ID:          key.ID,
 		Name:        key.Name,

@@ -65,7 +65,7 @@ func TestDigitalOceanProvider_GetNameservers(t *testing.T) {
 func TestDigitalOceanProvider_PrepValue_CNAME(t *testing.T) {
 	provider := NewDigitalOceanProvider(map[string]string{"token": "test"})
 
-	record := &DnsRecord{
+	record := &DNSRecord{
 		Type:  RecordTypeCNAME,
 		Value: "example.com",
 	}
@@ -78,7 +78,7 @@ func TestDigitalOceanProvider_PrepValue_CNAME(t *testing.T) {
 func TestDigitalOceanProvider_PrepValue_CNAME_AlreadyHasDot(t *testing.T) {
 	provider := NewDigitalOceanProvider(map[string]string{"token": "test"})
 
-	record := &DnsRecord{
+	record := &DNSRecord{
 		Type:  RecordTypeCNAME,
 		Value: "example.com.",
 	}
@@ -91,7 +91,7 @@ func TestDigitalOceanProvider_PrepValue_CNAME_AlreadyHasDot(t *testing.T) {
 func TestDigitalOceanProvider_PrepValue_NonCNAME(t *testing.T) {
 	provider := NewDigitalOceanProvider(map[string]string{"token": "test"})
 
-	record := &DnsRecord{
+	record := &DNSRecord{
 		Type:  RecordTypeA,
 		Value: "1.2.3.4",
 	}
@@ -184,7 +184,7 @@ func TestDigitalOceanProvider_AddRecord_RequestData(t *testing.T) {
 	flags := 0
 	tag := "issue"
 
-	record := &DnsRecord{
+	record := &DNSRecord{
 		Type:     RecordTypeSRV,
 		Name:     "_service",
 		Value:    "target.example.com",

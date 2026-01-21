@@ -256,7 +256,7 @@ func (p *DigitalOceanProvider) ListRecords(ctx context.Context) ([]ProviderRecor
 }
 
 // AddRecord adds a DNS record to DigitalOcean
-func (p *DigitalOceanProvider) AddRecord(ctx context.Context, record *DnsRecord) (string, error) {
+func (p *DigitalOceanProvider) AddRecord(ctx context.Context, record *DNSRecord) (string, error) {
 	data := map[string]interface{}{
 		"type": record.Type.String(),
 		"name": record.Name,
@@ -313,7 +313,7 @@ func (p *DigitalOceanProvider) AddRecord(ctx context.Context, record *DnsRecord)
 }
 
 // UpdateRecord updates a DNS record in DigitalOcean
-func (p *DigitalOceanProvider) UpdateRecord(ctx context.Context, record *DnsRecord) error {
+func (p *DigitalOceanProvider) UpdateRecord(ctx context.Context, record *DNSRecord) error {
 	data := map[string]interface{}{
 		"type": record.Type.String(),
 		"name": record.Name,
@@ -365,7 +365,7 @@ func (p *DigitalOceanProvider) UpdateRecord(ctx context.Context, record *DnsReco
 }
 
 // DeleteRecord deletes a DNS record from DigitalOcean
-func (p *DigitalOceanProvider) DeleteRecord(ctx context.Context, record *DnsRecord) error {
+func (p *DigitalOceanProvider) DeleteRecord(ctx context.Context, record *DNSRecord) error {
 	req, err := p.newRequest(ctx, http.MethodDelete, fmt.Sprintf("/domains/%s/records/%s", p.domain, record.ProviderID), nil)
 	if err != nil {
 		return err
@@ -418,7 +418,7 @@ func (p *DigitalOceanProvider) getExistingDomain(ctx context.Context) (map[strin
 }
 
 // prepValue prepares a record value for DigitalOcean
-func (p *DigitalOceanProvider) prepValue(record *DnsRecord) string {
+func (p *DigitalOceanProvider) prepValue(record *DNSRecord) string {
 	if record.Type == RecordTypeCNAME {
 		return WithTrailingDot(record.Value)
 	}

@@ -10,12 +10,12 @@ import (
 )
 
 // ListSSHKeys returns all SSH keys for a team
-func (s *Service) ListSSHKeys(ctx context.Context, teamID string) ([]models.SshKey, error) {
+func (s *Service) ListSSHKeys(ctx context.Context, teamID string) ([]models.SSHKey, error) {
 	return s.repos.SSHKey().FindByTeam(ctx, teamID)
 }
 
 // ListServerSSHKeys returns all SSH keys attached to a server
-func (s *Service) ListServerSSHKeys(ctx context.Context, serverID, teamID string) ([]models.SshKey, error) {
+func (s *Service) ListServerSSHKeys(ctx context.Context, serverID, teamID string) ([]models.SSHKey, error) {
 	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
@@ -24,8 +24,8 @@ func (s *Service) ListServerSSHKeys(ctx context.Context, serverID, teamID string
 }
 
 // CreateSSHKey creates a new SSH key
-func (s *Service) CreateSSHKey(ctx context.Context, teamID, userID string, req *dto.CreateSSHKeyRequest) (*models.SshKey, error) {
-	key := &models.SshKey{
+func (s *Service) CreateSSHKey(ctx context.Context, teamID, userID string, req *dto.CreateSSHKeyRequest) (*models.SSHKey, error) {
+	key := &models.SSHKey{
 		Name:        req.Name,
 		PublicKey:   req.PublicKey,
 		Description: req.Description,
@@ -118,7 +118,7 @@ func (s *Service) DeleteSSHKey(ctx context.Context, teamID, sshKeyID string) err
 	return s.repos.SSHKey().Delete(ctx, sshKeyID)
 }
 
-func (s *Service) dispatchSSHKeyAddJob(server *models.Server, key *models.SshKey) error {
+func (s *Service) dispatchSSHKeyAddJob(server *models.Server, key *models.SSHKey) error {
 	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
@@ -131,7 +131,7 @@ func (s *Service) dispatchSSHKeyAddJob(server *models.Server, key *models.SshKey
 	return s.EnqueueTask(task)
 }
 
-func (s *Service) dispatchSSHKeyRemoveJob(server *models.Server, key *models.SshKey) error {
+func (s *Service) dispatchSSHKeyRemoveJob(server *models.Server, key *models.SSHKey) error {
 	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}

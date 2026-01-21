@@ -6,8 +6,8 @@ import (
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
-// DnsRecord represents a DNS record for a domain
-type DnsRecord struct {
+// DNSRecord represents a DNS record for a domain
+type DNSRecord struct {
 	basemodels.BaseModel
 	basemodels.TeamScopedModel
 	DomainID   string           `gorm:"column:domain_id;type:char(26);not null;index" json:"domain_id"`
@@ -28,24 +28,24 @@ type DnsRecord struct {
 	Domain *Domain `gorm:"foreignKey:DomainID;references:ID" json:"domain,omitempty"`
 }
 
-// TableName specifies the table name for DnsRecord
-func (DnsRecord) TableName() string {
+// TableName specifies the table name for DNSRecord
+func (DNSRecord) TableName() string {
 	return "dns_records"
 }
 
 // IsEditable returns true if this record type can be edited by users
-func (r *DnsRecord) IsEditable() bool {
+func (r *DNSRecord) IsEditable() bool {
 	return r.Type != enums.RecordTypeNS && r.Type != enums.RecordTypeSOA
 }
 
 // IsDeletable returns true if this record type can be deleted by users
-func (r *DnsRecord) IsDeletable() bool {
+func (r *DNSRecord) IsDeletable() bool {
 	return r.Type != enums.RecordTypeNS && r.Type != enums.RecordTypeSOA
 }
 
-// ToProviderRecord converts DnsRecord to providers.DnsRecord for provider operations
-func (r *DnsRecord) ToProviderRecord() *providers.DnsRecord {
-	return &providers.DnsRecord{
+// ToProviderRecord converts DNSRecord to providers.DNSRecord for provider operations
+func (r *DNSRecord) ToProviderRecord() *providers.DNSRecord {
+	return &providers.DNSRecord{
 		ID:         r.ID,
 		ProviderID: r.ProviderID,
 		Type:       providers.RecordType(r.Type),
