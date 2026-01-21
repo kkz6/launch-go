@@ -6,11 +6,15 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	servercontracts "github.com/kkz6/launch-go/internal/modules/server/contracts"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/queue"
 )
 
-// JobContext provides shared dependencies for all backup jobs
+// JobContext provides shared dependencies for all backup jobs.
+// It embeds pkgjobs.Base for common logging functionality.
 type JobContext struct {
+	pkgjobs.Base
+	// Public fields for backward compatibility with existing jobs
 	DB          *gorm.DB
 	Repos       *repositories.Registry
 	ServerRepos servercontracts.RepositoryRegistry
@@ -27,35 +31,16 @@ func NewJobContext(
 	queueClient *queue.Client,
 ) *JobContext {
 	return &JobContext{
+		Base: pkgjobs.NewBase(pkgjobs.BaseDeps{
+			DB:     db,
+			Logger: logger,
+			Queue:  queueClient,
+		}),
+		// Public fields for backward compatibility
 		DB:          db,
 		Repos:       repos,
 		ServerRepos: serverRepos,
 		Logger:      logger,
 		Queue:       queueClient,
 	}
-}
-
-// LogInfo logs an info message
-func (c *JobContext) LogInfo(msg string, fields ...interface{}) {
-	event := c.Logger.Info()
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			event = event.Interface(key, fields[i+1])
-		}
-	}
-	event.Msg(msg)
-}
-
-// LogError logs an error message
-func (c *JobContext) LogError(err error, msg string, fields ...interface{}) {
-	event := c.Logger.Error()
-	if err != nil {
-		event = event.Err(err)
-	}
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			event = event.Interface(key, fields[i+1])
-		}
-	}
-	event.Msg(msg)
 }

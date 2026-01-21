@@ -288,11 +288,14 @@ func logWithFields(event *zerolog.Event, msg string, fields ...interface{}) {
 ```
 
 **Refactoring Steps:**
-- [ ] Create `internal/pkg/jobs/context.go`
-- [ ] Create `internal/pkg/jobs/context_test.go`
-- [ ] Refactor `internal/modules/database/jobs/context.go` to use pkg
-- [ ] Refactor all other module job contexts
-- [ ] Remove duplicated logging helpers
+- [x] Create `internal/pkg/jobs/context.go`
+- [x] Create `internal/pkg/jobs/context_test.go`
+- [x] Refactor `internal/modules/database/jobs/context.go` to use pkg
+- [x] Refactor `internal/modules/server/jobs/context.go` to use pkg
+- [x] Refactor `internal/modules/site/jobs/context.go` to use pkg
+- [x] Refactor `internal/modules/script/jobs/context.go` to use pkg
+- [x] Refactor `internal/modules/backup/jobs/context.go` to use pkg
+- [x] Remove duplicated logging helpers (LogInfo, LogError methods now inherited from Base)
 
 ---
 
@@ -1544,7 +1547,7 @@ Each module needs similar audit for:
 3. [x] Silent error audit (P0 - 1.3) - Complete (58 instances fixed)
 
 ### Phase 2: Infrastructure (Week 3-4)
-4. [ ] Generic job context (P1 - 2.1)
+4. [x] Generic job context (P1 - 2.1) - Complete (pkgjobs.Base embedded in all 5 module job contexts)
 5. [ ] Service factory (P1 - 2.2)
 6. [~] Handler boilerplate extraction (P1 - 3.1) - In progress (helpers created, 2 handlers refactored)
 7. [x] Handler base class (P1 - 3.2)

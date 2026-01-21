@@ -11,16 +11,19 @@ import (
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 )
 
-// JobContext holds dependencies for site job execution
+// JobContext holds dependencies for site job execution.
+// It embeds pkgjobs.Base for common logging functionality.
 type JobContext struct {
+	pkgjobs.Base
+	// Public fields for backward compatibility with existing jobs
 	DB                *gorm.DB
 	Logger            *zerolog.Logger
 	WS                broadcast.TeamBroadcaster
-	Dispatcher        taskrunner.TaskDispatcher
 	Queue             *queue.Client
 	SiteRepo          *repositories.SiteRepository
 	CommandRepo       *repositories.CommandRepository
@@ -52,10 +55,17 @@ func NewJobContext(
 	providerFactory *gitproviders.ProviderFactory,
 ) *JobContext {
 	return &JobContext{
+		Base: pkgjobs.NewBase(pkgjobs.BaseDeps{
+			DB:         db,
+			Logger:     logger,
+			WS:         ws,
+			Dispatcher: dispatcher,
+			Queue:      queueClient,
+		}),
+		// Public fields for backward compatibility
 		DB:                db,
 		Logger:            logger,
 		WS:                ws,
-		Dispatcher:        dispatcher,
 		Queue:             queueClient,
 		SiteRepo:          siteRepo,
 		CommandRepo:       commandRepo,
@@ -86,44 +96,9 @@ func (c *JobContext) RunTaskOnServer(server *servermodels.Server, task taskrunne
 	return c.TaskRunnerDeps.NewRunner(server, task)
 }
 
-// BroadcastToTeam sends a websocket event to a team channel.
-func (c *JobContext) BroadcastToTeam(teamID, event string, data any) {
-	if c.WS != nil {
-		c.WS.BroadcastToTeam(teamID, event, data)
-	}
-}
-
 // BroadcastServerEvent broadcasts an event for a server to its team channel.
 func (c *JobContext) BroadcastServerEvent(server *servermodels.Server, event string, data any) {
 	if c.WS != nil && server != nil {
 		c.WS.BroadcastToTeam(server.TeamID, event, data)
 	}
-}
-
-// LogInfo logs an info message with optional fields.
-func (c *JobContext) LogInfo(msg string, fields ...any) {
-	if c.Logger == nil {
-		return
-	}
-	event := c.Logger.Info()
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			event = event.Interface(key, fields[i+1])
-		}
-	}
-	event.Msg(msg)
-}
-
-// LogError logs an error message with optional fields.
-func (c *JobContext) LogError(err error, msg string, fields ...any) {
-	if c.Logger == nil {
-		return
-	}
-	event := c.Logger.Error().Err(err)
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			event = event.Interface(key, fields[i+1])
-		}
-	}
-	event.Msg(msg)
 }
