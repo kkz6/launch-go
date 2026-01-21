@@ -95,17 +95,11 @@ func (j *DisableLaravelQueueJob) Handle(ctx context.Context) error {
 
 // dispatchUninstallQueue dispatches the UninstallQueue job
 func (j *DisableLaravelQueueJob) dispatchUninstallQueue(queueID, siteID string) error {
-	if j.Ctx.Queue == nil {
-		return fmt.Errorf("queue client not available")
-	}
-
 	task, err := NewUninstallQueueTask(siteID, queueID, j.Payload.UserID)
 	if err != nil {
 		return err
 	}
-
-	_, err = j.Ctx.Queue.Enqueue(task)
-	return err
+	return j.Ctx.DispatchTask(task)
 }
 
 // Failed handles job failure

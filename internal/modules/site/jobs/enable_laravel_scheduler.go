@@ -130,17 +130,11 @@ func (j *EnableLaravelSchedulerJob) buildSchedulerCommand(site *models.Site) str
 
 // dispatchInstallCron dispatches the server InstallCron job
 func (j *EnableLaravelSchedulerJob) dispatchInstallCron(cronID, serverID string) error {
-	if j.Ctx.Queue == nil {
-		return fmt.Errorf("queue client not available")
-	}
-
 	task, err := serverjobs.NewInstallCronTask(serverID, cronID, j.Payload.UserID)
 	if err != nil {
 		return err
 	}
-
-	_, err = j.Ctx.Queue.Enqueue(task)
-	return err
+	return j.Ctx.DispatchTask(task)
 }
 
 // Failed handles job failure

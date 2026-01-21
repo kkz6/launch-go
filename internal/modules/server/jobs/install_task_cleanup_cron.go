@@ -82,17 +82,11 @@ func (j *InstallTaskCleanupCronJob) Handle(ctx context.Context) error {
 
 // dispatchInstallCron dispatches the InstallCron job
 func (j *InstallTaskCleanupCronJob) dispatchInstallCron(cronID, serverID string) error {
-	if j.Ctx.Queue == nil {
-		return fmt.Errorf("queue client not available")
-	}
-
 	task, err := NewInstallCronTask(serverID, cronID, j.Payload.UserID)
 	if err != nil {
 		return err
 	}
-
-	_, err = j.Ctx.Queue.Enqueue(task)
-	return err
+	return j.Ctx.DispatchTask(task)
 }
 
 // Failed handles job failure

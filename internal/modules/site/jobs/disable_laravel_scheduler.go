@@ -96,17 +96,11 @@ func (j *DisableLaravelSchedulerJob) Handle(ctx context.Context) error {
 
 // dispatchUninstallCron dispatches the server UninstallCron job
 func (j *DisableLaravelSchedulerJob) dispatchUninstallCron(cronID, serverID string) error {
-	if j.Ctx.Queue == nil {
-		return fmt.Errorf("queue client not available")
-	}
-
 	task, err := serverjobs.NewUninstallCronTask(serverID, cronID, j.Payload.UserID)
 	if err != nil {
 		return err
 	}
-
-	_, err = j.Ctx.Queue.Enqueue(task)
-	return err
+	return j.Ctx.DispatchTask(task)
 }
 
 // Failed handles job failure

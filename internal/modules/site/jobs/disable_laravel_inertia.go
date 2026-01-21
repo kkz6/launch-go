@@ -103,9 +103,7 @@ func (j *DisableLaravelInertiaJob) dispatchUninstallQueue(queueID, siteID string
 	if err != nil {
 		return err
 	}
-
-	_, err = j.Ctx.Queue.Enqueue(task)
-	return err
+	return j.Ctx.DispatchTask(task)
 }
 
 // Failed handles job failure
