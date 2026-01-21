@@ -11,12 +11,12 @@ import (
 
 // UserHandler handles user management HTTP requests
 type UserHandler struct {
-	service *services.Service
+	BaseHandler
 }
 
 // NewUserHandler creates a new UserHandler instance
 func NewUserHandler(service *services.Service) *UserHandler {
-	return &UserHandler{service: service}
+	return &UserHandler{BaseHandler: NewBaseHandler(service)}
 }
 
 // User returns the current authenticated user
@@ -26,7 +26,7 @@ func (h *UserHandler) User(c *fiber.Ctx) error {
 		return err
 	}
 
-	user, err := h.service.GetUser(c.Context(), userID)
+	user, err := h.Service().GetUser(c.Context(), userID)
 	if err != nil {
 		return response.NotFound(c, response.MsgUserNotFound)
 	}
@@ -38,7 +38,7 @@ func (h *UserHandler) User(c *fiber.Ctx) error {
 	// Check if current team is subscribed or user is admin (admins bypass subscription)
 	isSubscribed := false
 	if user.CurrentTeamID != nil {
-		isSubscribed = h.service.IsTeamSubscribedOrUserAdmin(*user.CurrentTeamID, userID)
+		isSubscribed = h.Service().IsTeamSubscribedOrUserAdmin(*user.CurrentTeamID, userID)
 	}
 
 	return response.OK(c, "User retrieved", dto.ToUserResponseWithSubscription(user, isSubscribed))
@@ -56,7 +56,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		return err
 	}
 
-	user, err := h.service.UpdateProfile(c.Context(), userID, req)
+	user, err := h.Service().UpdateProfile(c.Context(), userID, req)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -76,7 +76,7 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.service.ChangePassword(c.Context(), userID, req); err != nil {
+	if err := h.Service().ChangePassword(c.Context(), userID, req); err != nil {
 		return response.HandleError(c, err)
 	}
 
@@ -90,7 +90,7 @@ func (h *UserHandler) DeleteAccount(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.service.DeleteAccount(c.Context(), userID); err != nil {
+	if err := h.Service().DeleteAccount(c.Context(), userID); err != nil {
 		return response.HandleError(c, err)
 	}
 
@@ -104,7 +104,7 @@ func (h *UserHandler) CheckUserStatus(c *fiber.Ctx) error {
 		return err
 	}
 
-	status, err := h.service.CheckUserStatus(c.Context(), req.Email)
+	status, err := h.Service().CheckUserStatus(c.Context(), req.Email)
 	if err != nil {
 		return response.HandleError(c, err)
 	}

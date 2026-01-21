@@ -11,12 +11,12 @@ import (
 
 // PasswordHandler handles password-related HTTP requests
 type PasswordHandler struct {
-	service *services.Service
+	BaseHandler
 }
 
 // NewPasswordHandler creates a new PasswordHandler instance
 func NewPasswordHandler(service *services.Service) *PasswordHandler {
-	return &PasswordHandler{service: service}
+	return &PasswordHandler{BaseHandler: NewBaseHandler(service)}
 }
 
 // ForgotPassword initiates password reset
@@ -27,7 +27,7 @@ func (h *PasswordHandler) ForgotPassword(c *fiber.Ctx) error {
 	}
 
 	// Always return success to prevent email enumeration
-	_ = h.service.SendPasswordResetLink(c.Context(), req.Email)
+	_ = h.Service().SendPasswordResetLink(c.Context(), req.Email)
 
 	return response.OK(c, "If an account with that email exists, a password reset link has been sent", nil)
 }
@@ -39,7 +39,7 @@ func (h *PasswordHandler) ResetPassword(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.service.ResetPassword(c.Context(), req); err != nil {
+	if err := h.Service().ResetPassword(c.Context(), req); err != nil {
 		return response.HandleError(c, err)
 	}
 
