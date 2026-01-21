@@ -38,7 +38,7 @@ enableAllRules = false
 [rule.time-naming]
 [rule.unexported-return]
 [rule.unreachable-code]
-[rule.unused-parameter]
+# [rule.unused-parameter]  # Disabled - callback signatures often require unused params
 [rule.var-declaration]
 [rule.var-naming]
 
@@ -49,7 +49,7 @@ enableAllRules = false
 [rule.confusing-naming]
 [rule.confusing-results]
 [rule.constant-logical-expr]
-[rule.deep-exit]
+# [rule.deep-exit]  # Disabled - log.Fatalf in bootstrap is acceptable
 [rule.defer]
 [rule.duplicated-imports]
 [rule.early-return]

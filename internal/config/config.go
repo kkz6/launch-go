@@ -17,6 +17,7 @@ type Config struct {
 	Billing  BillingConfig
 	Git      GitConfig
 	Slack    SlackConfig
+	Sentry   SentryConfig
 }
 
 // Load loads all configuration from environment variables and .env file
@@ -47,6 +48,7 @@ func Load() (*Config, error) {
 		Billing:  loadBillingConfig(),
 		Git:      loadGitConfig(),
 		Slack:    loadSlackConfig(),
+		Sentry:   loadSentryConfig(),
 	}, nil
 }
 
@@ -61,4 +63,5 @@ func setDefaults() {
 	setBillingDefaults()
 	setGitDefaults()
 	setSlackDefaults()
+	setSentryDefaults()
 }
