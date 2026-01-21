@@ -98,13 +98,13 @@ func NewLogsHandler(base BaseWebSocketHandler) *LogsHandler {
 ```
 
 **Refactoring Steps:**
-- [ ] Create `internal/modules/websocket/handlers/base.go`
-- [ ] Refactor `LogsHandler` to embed base
-- [ ] Refactor `MetricsHandler` to embed base
-- [ ] Refactor `ServiceStatusHandler` to embed base
-- [ ] Refactor `TerminalHandler` to embed base
-- [ ] Refactor `ScriptExecutionHandler` to embed base
-- [ ] Update `builder.go` to construct base once
+- [x] Create `internal/modules/websocket/handlers/base.go`
+- [x] Refactor `LogsHandler` to embed base
+- [x] Refactor `MetricsHandler` to embed base
+- [x] Refactor `ServiceStatusHandler` to embed base
+- [x] Refactor `TerminalHandler` to embed base
+- [x] Refactor `ScriptExecutionHandler` to embed base
+- [x] Update `module.go` to construct base once
 
 **Impact:** ~50-75 lines eliminated, single point of change for dependencies
 
@@ -204,12 +204,12 @@ func NewMetricsWebhookHandler(secretKey string, logger *zerolog.Logger, repo met
 ```
 
 **Refactoring Steps:**
-- [ ] Create `internal/pkg/webhook/base.go`
-- [ ] Add `VerifySignature()` helper method
-- [ ] Add logging helper methods
-- [ ] Refactor `MetricsWebhookHandler` to embed
-- [ ] Refactor `TaskWebhookHandler` to embed
-- [ ] Refactor git `WebhookHandler` to embed
+- [x] Create `internal/pkg/webhook/base.go`
+- [x] Add `VerifySignature()` helper method
+- [x] Add logging helper methods
+- [x] Refactor `MetricsWebhookHandler` to embed
+- [x] Refactor `TaskWebhookHandler` to embed
+- [ ] Refactor git `WebhookHandler` to embed (N/A - uses provider-specific validation)
 
 **Impact:** ~30-40 lines eliminated, centralized signature verification
 
@@ -13384,12 +13384,12 @@ func (h *BaseWebhookHandler) LogWebhookReceived(c *fiber.Ctx, webhookType string
 - Replace BodyParser+Validate with `ParseAndValidate`
 
 ### Files to Create:
-- [ ] `internal/pkg/handler/base.go`
-- [ ] `internal/pkg/handler/context.go`
-- [ ] `internal/pkg/handler/request.go`
-- [ ] `internal/pkg/handler/errors.go`
-- [ ] `internal/pkg/webhook/base.go`
-- [ ] `internal/modules/websocket/handlers/base.go`
+- [x] `internal/pkg/handler/base.go` (previously created)
+- [x] `internal/pkg/handler/context.go` (previously created)
+- [x] `internal/pkg/handler/request.go` (previously created)
+- [x] `internal/pkg/handler/errors.go` (previously created)
+- [x] `internal/pkg/webhook/base.go` ✅ COMPLETED
+- [x] `internal/modules/websocket/handlers/base.go` ✅ COMPLETED
 
 ### Estimated Effort: 2-3 days
 

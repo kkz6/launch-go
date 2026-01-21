@@ -13,25 +13,24 @@ import (
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
-	ws "github.com/kkz6/launch-go/internal/websocket"
 )
 
 // MetricsHandler handles WebSocket metrics streaming connections
 type MetricsHandler struct {
-	db              *gorm.DB
-	jwtSecret       string
-	logger          zerolog.Logger
-	membershipCache *cache.TeamMembershipCache
+	Base
 }
 
 // NewMetricsHandler creates a new metrics handler
-func NewMetricsHandler(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *MetricsHandler {
+func NewMetricsHandler(base Base) *MetricsHandler {
 	return &MetricsHandler{
-		db:              db,
-		jwtSecret:       jwtSecret,
-		logger:          logger.With().Str("component", "metrics_stream").Logger(),
-		membershipCache: membershipCache,
+		Base: base.WithComponent("metrics_stream"),
 	}
+}
+
+// NewMetricsHandlerWithDeps creates a new metrics handler with individual dependencies (legacy).
+// Deprecated: Use NewMetricsHandler with Base instead.
+func NewMetricsHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Logger, membershipCache *cache.TeamMembershipCache) *MetricsHandler {
+	return NewMetricsHandler(NewBase(db, jwtSecret, logger, membershipCache))
 }
 
 // Handler returns a Fiber handler for metrics streaming WebSocket connections
@@ -54,26 +53,26 @@ func (h *MetricsHandler) Handler() fiber.Handler {
 		}
 
 		// Authenticate using centralized auth (validates team membership)
-		claims, err := ws.AuthenticateWebSocket(c, h.jwtSecret, h.membershipCache)
+		claims, err := h.Authenticate(c)
 		if err != nil {
-			h.logger.Warn().Err(err).Msg("Authentication failed")
+			h.LogError(err, "Authentication failed")
 			h.sendError(c, "Authentication failed")
 			return
 		}
 
 		// Fetch server from database
 		var server serverModels.Server
-		if err := h.db.Where("id = ? AND team_id = ?", serverID, claims.TeamID).First(&server).Error; err != nil {
-			h.logger.Error().Err(err).Str("server_id", serverID).Msg("Server not found")
+		if err := h.DB.Where("id = ? AND team_id = ?", serverID, claims.TeamID).First(&server).Error; err != nil {
+			h.LogError(err, "Server not found", "server_id", serverID)
 			h.sendError(c, "Server not found")
 			return
 		}
 
-		h.logger.Info().
-			Str("server_id", serverID).
-			Str("server_name", server.Name).
-			Int("interval", interval).
-			Msg("Metrics streaming requested")
+		h.LogInfo("Metrics streaming requested",
+			"server_id", serverID,
+			"server_name", server.Name,
+			"interval", interval,
+		)
 
 		// Stream metrics via SSH
 		h.streamMetrics(c, &server, interval)
@@ -101,7 +100,7 @@ func (h *MetricsHandler) streamMetrics(c *websocket.Conn, server *serverModels.S
 	// Parse private key
 	signer, err := ssh.ParsePrivateKey([]byte(sshConfig.PrivateKey))
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to parse private key")
+		h.LogError(err, "Failed to parse private key")
 		h.sendError(c, "Invalid SSH key")
 		return
 	}
@@ -120,7 +119,7 @@ func (h *MetricsHandler) streamMetrics(c *websocket.Conn, server *serverModels.S
 	addr := fmt.Sprintf("%s:%d", sshConfig.Host, sshConfig.Port)
 	conn, err := ssh.Dial("tcp", addr, config)
 	if err != nil {
-		h.logger.Error().Err(err).Str("addr", addr).Msg("Failed to connect to SSH")
+		h.LogError(err, "Failed to connect to SSH", "addr", addr)
 		h.sendError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
 		return
 	}
@@ -129,7 +128,7 @@ func (h *MetricsHandler) streamMetrics(c *websocket.Conn, server *serverModels.S
 	// Create SSH session
 	session, err := conn.NewSession()
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to create SSH session")
+		h.LogError(err, "Failed to create SSH session")
 		h.sendError(c, "Failed to create session")
 		return
 	}
@@ -221,12 +220,12 @@ while true; do
 done
 '`, interval, interval, interval)
 
-	h.logger.Info().Int("interval", interval).Msg("Executing metrics stream command")
+	h.LogInfo("Executing metrics stream command", "interval", interval)
 
 	// Get stdout pipe
 	stdout, err := session.StdoutPipe()
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to get stdout pipe")
+		h.LogError(err, "Failed to get stdout pipe")
 		h.sendError(c, "Failed to setup output stream")
 		return
 	}
@@ -234,14 +233,14 @@ done
 	// Get stderr pipe for error handling
 	stderr, err := session.StderrPipe()
 	if err != nil {
-		h.logger.Error().Err(err).Msg("Failed to get stderr pipe")
+		h.LogError(err, "Failed to get stderr pipe")
 		h.sendError(c, "Failed to setup error stream")
 		return
 	}
 
 	// Start command
 	if err := session.Start(command); err != nil {
-		h.logger.Error().Err(err).Msg("Failed to start command")
+		h.LogError(err, "Failed to start command")
 		h.sendError(c, "Failed to start metrics streaming")
 		return
 	}
@@ -286,7 +285,7 @@ done
 					return
 				}
 				if n > 0 {
-					h.logger.Warn().Str("stderr", string(buf[:n])).Msg("Metrics stream stderr")
+					h.LogWarn("Metrics stream stderr", "stderr", string(buf[:n]))
 				}
 			}
 		}
@@ -302,5 +301,5 @@ done
 	close(done)
 	session.Signal(ssh.SIGTERM)
 	session.Close()
-	h.logger.Info().Str("server_id", server.ID).Msg("Metrics streaming ended")
+	h.LogInfo("Metrics streaming ended", "server_id", server.ID)
 }
