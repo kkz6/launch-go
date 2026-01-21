@@ -33,9 +33,9 @@ import (
 //	    }
 //	}
 type Base struct {
+	broadcast.Mixin
 	db         *gorm.DB
 	logger     *zerolog.Logger
-	ws         broadcast.TeamBroadcaster
 	dispatcher taskrunner.TaskDispatcher
 	queue      *queue.Client
 }
@@ -51,13 +51,14 @@ type BaseDeps struct {
 
 // NewBase creates a new Base context with the provided dependencies.
 func NewBase(deps BaseDeps) Base {
-	return Base{
+	b := Base{
 		db:         deps.DB,
 		logger:     deps.Logger,
-		ws:         deps.WS,
 		dispatcher: deps.Dispatcher,
 		queue:      deps.Queue,
 	}
+	b.SetBroadcaster(deps.WS)
+	return b
 }
 
 // DB returns the database connection.
@@ -72,7 +73,7 @@ func (b *Base) Logger() *zerolog.Logger {
 
 // WS returns the team broadcaster.
 func (b *Base) WS() broadcast.TeamBroadcaster {
-	return b.ws
+	return b.GetBroadcaster()
 }
 
 // Dispatcher returns the task dispatcher.
@@ -219,18 +220,6 @@ func (b *Base) LogWarn(msg string, fields ...any) {
 //	ctx.LogDebug("Job payload", "payload", payload)
 func (b *Base) LogDebug(msg string, fields ...any) {
 	logger.Debug(b.logger, msg, fields...)
-}
-
-// BroadcastToTeam sends a websocket event to a team channel.
-// This is a no-op if the broadcaster is nil.
-//
-// Example:
-//
-//	ctx.BroadcastToTeam(teamID, "server.updated", serverData)
-func (b *Base) BroadcastToTeam(teamID, event string, data any) {
-	if b.ws != nil {
-		b.ws.BroadcastToTeam(teamID, event, data)
-	}
 }
 
 // BaseJob provides common job structure with typed context and payload.

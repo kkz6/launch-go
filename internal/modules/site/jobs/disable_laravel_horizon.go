@@ -95,7 +95,7 @@ func (j *DisableLaravelHorizonJob) Handle(ctx context.Context) error {
 
 // dispatchUninstallQueue dispatches the UninstallQueue job
 func (j *DisableLaravelHorizonJob) dispatchUninstallQueue(queueID, siteID string) error {
-	if j.Ctx.Queue == nil {
+	if j.Ctx.Queue() == nil {
 		return fmt.Errorf("queue client not available")
 	}
 
