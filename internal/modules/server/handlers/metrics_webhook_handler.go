@@ -9,9 +9,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/webhook"
-	ws "github.com/kkz6/launch-go/internal/websocket"
 )
 
 // MetricsWebhookRepository interface for metrics webhook handler
@@ -39,11 +39,11 @@ func (r *metricsWebhookRepo) CreateMetric(ctx context.Context, metric *models.Me
 type MetricsWebhookHandler struct {
 	webhook.Base
 	repo MetricsWebhookRepository
-	hub  ws.Broadcaster
+	hub  broadcast.Broadcaster
 }
 
 // NewMetricsWebhookHandler creates a new metrics webhook handler
-func NewMetricsWebhookHandler(db *gorm.DB, secretKey string, hub ws.Broadcaster, logger *zerolog.Logger) *MetricsWebhookHandler {
+func NewMetricsWebhookHandler(db *gorm.DB, secretKey string, hub broadcast.Broadcaster, logger *zerolog.Logger) *MetricsWebhookHandler {
 	return &MetricsWebhookHandler{
 		Base: webhook.NewBase(secretKey, logger),
 		repo: &metricsWebhookRepo{db: db},
@@ -145,20 +145,13 @@ func (h *MetricsWebhookHandler) ReceivePulse(c *fiber.Ctx) error {
 
 	// Broadcast to team via WebSocket
 	if h.hub != nil {
-		h.hub.BroadcastToTeam(server.TeamID, "server.metrics", map[string]interface{}{
-			"server_id": serverID,
-			"load":      req.Data.Load,
-			"memory": map[string]interface{}{
-				"total": memoryTotal,
-				"used":  memoryUsed,
-				"free":  memoryFree,
-			},
-			"disk": map[string]interface{}{
-				"total": diskTotal,
-				"used":  diskUsed,
-				"free":  diskFree,
-			},
-		})
+		payload := broadcast.ServerMetricsPayload{
+			ServerID: serverID,
+			Load:     req.Data.Load,
+			Memory:   broadcast.ResourceMetrics{Total: memoryTotal, Used: memoryUsed, Free: memoryFree},
+			Disk:     broadcast.ResourceMetrics{Total: diskTotal, Used: diskUsed, Free: diskFree},
+		}
+		h.hub.BroadcastToTeam(server.TeamID, broadcast.ServerMetrics, payload.ToMap())
 	}
 
 	return response.OK(c, "Pulse received", nil)

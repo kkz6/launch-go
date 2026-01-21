@@ -45,163 +45,35 @@ The following foundational infrastructure has been implemented:
 
 ## Table of Contents
 
-1. [Model Scoped Fields Adoption (P2)](#1-model-scoped-fields-adoption-p2)
-2. [Activity Logging Builder (P2)](#2-activity-logging-builder-p2)
-3. [Broadcast Payload Builder (P3)](#3-broadcast-payload-builder-p3)
-4. [DTO Timestamp Embedding (P3)](#4-dto-timestamp-embedding-p3)
+1. [Broadcast Payload Builder (P3)](#1-broadcast-payload-builder-p3)
+2. [DTO Timestamp Embedding (P3)](#2-dto-timestamp-embedding-p3)
 
 ---
 
-## 1. Model Scoped Fields Adoption (P2) ✅ COMPLETED
+## 1. Broadcast Payload Builder (P3) ✅ COMPLETED
 
-**Status:** Completed - All models now use embedded scope mixins.
+**Status:** Partially completed - typed payloads added for complex cases.
 
-**Refactored Models:**
-- Database module: `Database`, `DatabaseUser`
-- Server module: `Server`, `Task`, `Cron`, `FirewallRule`, `InstalledService`, `Daemon`, `SshKey`
-- Site module: `Site`, `Certificate`, `Deployment`, `Command`, `Queue`, `Redirect`
-- Backup module: `Backup`, `BackupJob`
-- DNS module: `Domain`, `DomainProvider`, `DnsRecord`
-- Git module: `SourceControl`
+**Analysis:** After reviewing 100+ broadcast calls across the codebase:
+- Most broadcasts are simple ID-based payloads (`map[string]any{"server_id": id}`)
+- Existing helpers (`StatusPayload`, `ProgressPayload`, `ErrorPayload`) handle common patterns
+- Only complex nested payloads (like server metrics) benefit from typed structs
 
-**Pattern Used:**
-```go
-type Database struct {
-    basemodels.BaseModel
-    basemodels.InstallableModel
-    basemodels.ServerScopedModel  // Embedded mixin
-    basemodels.TeamScopedModel    // Embedded mixin
-    Name string `gorm:"type:varchar(255);not null" json:"name"`
-}
-```
+**Added to `internal/pkg/broadcast/helpers.go`:**
+- `ResourceMetrics` - Typed struct for memory/disk metrics
+- `ServerMetricsPayload` - Typed payload for server.metrics events
+- `DeploymentProgressPayload` - Typed payload for deployment.progress events
 
-**Note:** Struct literal usages updated to assign embedded fields after construction:
-```go
-db := &models.Database{Name: req.Name}
-db.ServerID = serverID
-db.TeamID = teamID
-```
+**Refactored:**
+- `metrics_webhook_handler.go` - Now uses `ServerMetricsPayload` instead of inline map
 
-**Impact:** ~100 lines eliminated, consistent field definitions across all models
+**Decision:** Simple ID-based broadcasts (`map[string]any{"server_id": id}`) don't need typed structs - the overhead outweighs the benefit. Typed payloads are reserved for complex nested structures.
+
+**Impact:** Type safety for complex payloads, minimal overhead for simple cases
 
 ---
 
-## 2. Activity Logging Builder (P2) ✅ COMPLETED
-
-**Status:** Completed - Helper functions created in `internal/pkg/activity/helpers.go`
-
-**Helpers Implemented:**
-- `LogCreated(ctx, db, userID, subject, description)` - Log creation events
-- `LogUpdated(ctx, db, userID, subject, description)` - Log update events
-- `LogDeleted(ctx, db, userID, subject, description)` - Log deletion events
-- `LogEvent(ctx, db, event, userID, subject, description)` - Log custom events
-- `LogEventWithProps(ctx, db, event, userID, subject, description, props)` - Log with properties
-- `LogWithLog(ctx, db, logName, event, userID, subject, description)` - Custom log name
-- `LogEventPtr(ctx, db, event, userID, subject, description)` - Pointer userID variant
-- `LogWithLogPtr(ctx, db, logName, event, userID, subject, description)` - Pointer variant with custom log
-- `LogWithLogAndPropsPtr(ctx, db, logName, event, userID, subject, description, props)` - Full variant
-
-**Refactored Files:**
-- Database jobs: `install_database.go`, `install_database_user.go`, `uninstall_database.go`, `uninstall_database_user.go`
-- Server jobs: `add_ssh_key.go`, `remove_ssh_key.go`, `install_cron.go`, `uninstall_cron.go`, `install_daemon.go`, `uninstall_daemon.go`, `install_firewall_rule.go`, `uninstall_firewall_rule.go`, `remove_service.go`, `reboot_server.go`, `delete_server.go`, `unarchive_server.go`, `vulnerability_audit.go`, `cleanup_failed_provisioning.go`
-
-**Example Usage:**
-```go
-// Before (9 lines)
-logger := activity.New(j.Ctx.DB).
-    WithContext(ctx).
-    UseLog("server").
-    On(cron).
-    WithEvent("installed")
-if j.Payload.UserID != nil {
-    logger.CausedByUser(*j.Payload.UserID)
-}
-logger.Log("Cron job was installed")
-
-// After (1 line)
-activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "installed", j.Payload.UserID, cron, "Cron job was installed")
-```
-
-**Impact:** ~150 lines eliminated, consistent logging pattern across all jobs
-
----
-
-## 3. Broadcast Payload Builder (P3)
-
-**Issue:** Broadcast payloads created inline with inconsistent structure.
-
-**Files Affected:**
-- `internal/modules/server/handlers/metrics_webhook_handler.go:152-167`
-- Multiple services with broadcast calls
-
-**Current Pattern:**
-```go
-h.hub.BroadcastToTeam(server.TeamID, "server.metrics", map[string]interface{}{
-    "server_id": serverID,
-    "load":      req.Data.Load,
-    "memory": map[string]interface{}{
-        "total": memoryTotal,
-        "used":  memoryUsed,
-        "free":  memoryFree,
-    },
-    "disk": map[string]interface{}{
-        "total": diskTotal,
-        "used":  diskUsed,
-        "free":  diskFree,
-    },
-})
-```
-
-**Solution:** Create typed broadcast payloads
-```go
-// internal/pkg/broadcast/payloads.go
-package broadcast
-
-// ServerMetricsPayload is the typed payload for server metrics events
-type ServerMetricsPayload struct {
-    ServerID string          `json:"server_id"`
-    Load     float64         `json:"load"`
-    Memory   ResourceMetrics `json:"memory"`
-    Disk     ResourceMetrics `json:"disk"`
-}
-
-type ResourceMetrics struct {
-    Total int64 `json:"total"`
-    Used  int64 `json:"used"`
-    Free  int64 `json:"free"`
-}
-
-// ToMap converts to map for broadcasting
-func (p ServerMetricsPayload) ToMap() map[string]interface{} {
-    return map[string]interface{}{
-        "server_id": p.ServerID,
-        "load":      p.Load,
-        "memory": map[string]interface{}{
-            "total": p.Memory.Total,
-            "used":  p.Memory.Used,
-            "free":  p.Memory.Free,
-        },
-        "disk": map[string]interface{}{
-            "total": p.Disk.Total,
-            "used":  p.Disk.Used,
-            "free":  p.Disk.Free,
-        },
-    }
-}
-```
-
-**Refactoring Steps:**
-- [ ] Identify all broadcast event types
-- [ ] Create typed payload structs in `internal/pkg/broadcast/payloads.go`
-- [ ] Refactor metrics webhook handler
-- [ ] Refactor other broadcast calls
-- [ ] Add payload validation
-
-**Impact:** Type safety, IDE autocompletion, consistent structure
-
----
-
-## 4. DTO Timestamp Embedding (P3)
+## 2. DTO Timestamp Embedding (P3)
 
 **Issue:** Timestamp formatting repeated 81+ times in DTO converters.
 
