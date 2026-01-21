@@ -38,110 +38,21 @@ The following foundational infrastructure has been implemented:
 | 1 | Job Base Payload Generic | ✅ DONE | `13ebce5` - jobs/context.go BaseJob[C,P] |
 | 2 | Installable Repository Mixin | ✅ DONE | `5a998b7` - Go embedding promotes methods |
 | 3 | Queue Dispatch Unification | ✅ DONE | `81a797c` - jobs.Base.Dispatch* methods |
+| 4 | Pagination Embedding | ✅ DONE | repository.Paginate, PaginatedResult[T] |
 
 ---
 
 ## Table of Contents
 
-1. [Pagination Embedding (P2)](#1-pagination-embedding-p2)
-2. [Task Builder Pattern (P2)](#2-task-builder-pattern-p2)
-3. [Model Scoped Fields Adoption (P2)](#3-model-scoped-fields-adoption-p2)
-4. [Activity Logging Builder (P2)](#4-activity-logging-builder-p2)
-5. [Broadcast Payload Builder (P3)](#5-broadcast-payload-builder-p3)
-6. [DTO Timestamp Embedding (P3)](#6-dto-timestamp-embedding-p3)
+1. [Task Builder Pattern (P2)](#1-task-builder-pattern-p2)
+2. [Model Scoped Fields Adoption (P2)](#2-model-scoped-fields-adoption-p2)
+3. [Activity Logging Builder (P2)](#3-activity-logging-builder-p2)
+4. [Broadcast Payload Builder (P3)](#4-broadcast-payload-builder-p3)
+5. [DTO Timestamp Embedding (P3)](#5-dto-timestamp-embedding-p3)
 
 ---
 
-## 1. Pagination Embedding (P2)
-
-**Issue:** Pagination logic is ad-hoc and not reusable across repositories.
-
-**Files Affected:**
-- `internal/modules/server/repositories/server_repository.go:93-100`
-- `internal/modules/server/services/server_service.go:35`
-- Most repositories lack pagination
-
-**Current Pattern:**
-```go
-func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID string, page, perPage int) ([]models.Server, int64, error) {
-    var servers []models.Server
-    var total int64
-
-    query := r.db.WithContext(ctx).Where("team_id = ?", teamID)
-    if err := query.Model(&models.Server{}).Count(&total).Error; err != nil {
-        return nil, 0, err
-    }
-
-    offset := (page - 1) * perPage
-    if err := query.Offset(offset).Limit(perPage).Find(&servers).Error; err != nil {
-        return nil, 0, err
-    }
-
-    return servers, total, nil
-}
-```
-
-**Solution:** Add pagination to `internal/pkg/repository/base.go`
-```go
-package repository
-
-// PaginatedResult holds paginated query results
-type PaginatedResult[T any] struct {
-    Data       []T   `json:"data"`
-    Total      int64 `json:"total"`
-    Page       int   `json:"page"`
-    PerPage    int   `json:"per_page"`
-    TotalPages int   `json:"total_pages"`
-}
-
-// Paginate executes a paginated query
-func (r *BaseRepository) Paginate[T any](ctx context.Context, query *gorm.DB, page, perPage int) (*PaginatedResult[T], error) {
-    var total int64
-    if err := query.Count(&total).Error; err != nil {
-        return nil, err
-    }
-
-    var results []T
-    offset := (page - 1) * perPage
-    if err := query.Offset(offset).Limit(perPage).Find(&results).Error; err != nil {
-        return nil, err
-    }
-
-    totalPages := int(total) / perPage
-    if int(total)%perPage > 0 {
-        totalPages++
-    }
-
-    return &PaginatedResult[T]{
-        Data:       results,
-        Total:      total,
-        Page:       page,
-        PerPage:    perPage,
-        TotalPages: totalPages,
-    }, nil
-}
-```
-
-**Refactored Usage:**
-```go
-func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID string, page, perPage int) (*repository.PaginatedResult[models.Server], error) {
-    query := r.WithContext(ctx).Where("team_id = ?", teamID)
-    return r.Paginate[models.Server](ctx, query, page, perPage)
-}
-```
-
-**Refactoring Steps:**
-- [ ] Add `Paginate` method to `BaseRepository`
-- [ ] Create `PaginatedResult` struct
-- [ ] Refactor `ServerRepository.FindAllByTeamPaginated`
-- [ ] Add pagination to other repositories as needed
-- [ ] Standardize pagination in handlers
-
-**Impact:** Consistent pagination, ~50 lines of reusable code
-
----
-
-## 2. Task Builder Pattern (P2)
+## 1. Task Builder Pattern (P2)
 
 **Issue:** Each task file repeats callback data struct and task creation boilerplate.
 
@@ -292,7 +203,7 @@ func DeploySiteTask(opts DeployOptions) *taskrunner.BuiltTask[callbackData] {
 
 ---
 
-## 3. Model Scoped Fields Adoption (P2)
+## 2. Model Scoped Fields Adoption (P2)
 
 **Issue:** Models define scope fields manually instead of using existing mixins.
 
@@ -351,7 +262,7 @@ type Database struct {
 
 ---
 
-## 4. Activity Logging Builder (P2)
+## 3. Activity Logging Builder (P2)
 
 **Issue:** Activity logging pattern repeated with builder chain across 40+ locations.
 
@@ -448,7 +359,7 @@ activity.LogCreation(s.repos.DB(), ctx, database, "database", userID, "Database 
 
 ---
 
-## 5. Broadcast Payload Builder (P3)
+## 4. Broadcast Payload Builder (P3)
 
 **Issue:** Broadcast payloads created inline with inconsistent structure.
 
@@ -523,7 +434,7 @@ func (p ServerMetricsPayload) ToMap() map[string]interface{} {
 
 ---
 
-## 6. DTO Timestamp Embedding (P3)
+## 5. DTO Timestamp Embedding (P3)
 
 **Issue:** Timestamp formatting repeated 81+ times in DTO converters.
 

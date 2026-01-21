@@ -18,6 +18,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // ListServers returns all servers for a team
@@ -31,10 +32,8 @@ func (s *Service) ListArchivedServers(ctx context.Context, teamID string) ([]mod
 }
 
 // ListServersPaginated returns servers with pagination
-func (s *Service) ListServersPaginated(ctx context.Context, teamID string, page, perPage int) ([]models.Server, int64, error) {
-	offset := (page - 1) * perPage
-
-	return s.repos.Server().FindAllByTeamPaginated(ctx, teamID, perPage, offset)
+func (s *Service) ListServersPaginated(ctx context.Context, teamID string, page, perPage int) (*repository.PaginatedResult[models.Server], error) {
+	return s.repos.Server().FindAllByTeamPaginated(ctx, teamID, page, perPage)
 }
 
 // GetServer returns a server by ID
