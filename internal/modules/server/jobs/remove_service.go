@@ -57,15 +57,7 @@ func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(service).
-		WithEvent("removed")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Service was removed")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "removed", j.Payload.UserID, service, "Service was removed")
 
 	// Delete the service record
 	if err := j.Ctx.Repos.Service().Delete(ctx, service.ID); err != nil {

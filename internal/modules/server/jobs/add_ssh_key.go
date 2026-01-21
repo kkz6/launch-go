@@ -59,12 +59,7 @@ func (j *AddSSHKeyJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(sshKey).
-		WithEvent("added").
-		Log("SSH key was added to server")
+	activity.LogWithLog(ctx, j.Ctx.DB, "server", "added", "", sshKey, "SSH key was added to server")
 
 	j.Ctx.LogInfo("SSH key added successfully",
 		"key_id", sshKey.ID,

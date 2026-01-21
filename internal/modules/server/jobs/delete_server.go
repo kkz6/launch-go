@@ -88,15 +88,7 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(server).
-		WithEvent("deleted")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Server was deleted")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "deleted", j.Payload.UserID, server, "Server was deleted")
 
 	j.Ctx.LogInfo("Server deleted successfully",
 		"server_id", server.ID,

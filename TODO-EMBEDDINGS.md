@@ -86,100 +86,43 @@ db.TeamID = teamID
 
 ---
 
-## 2. Activity Logging Builder (P2)
+## 2. Activity Logging Builder (P2) ✅ COMPLETED
 
-**Issue:** Activity logging pattern repeated with builder chain across 40+ locations.
+**Status:** Completed - Helper functions created in `internal/pkg/activity/helpers.go`
 
-**Files Affected:**
-- `internal/modules/database/services/database_service.go:36-44`
-- `internal/modules/database/jobs/install_database.go:79-87`
-- Similar patterns in site, server, auth modules
+**Helpers Implemented:**
+- `LogCreated(ctx, db, userID, subject, description)` - Log creation events
+- `LogUpdated(ctx, db, userID, subject, description)` - Log update events
+- `LogDeleted(ctx, db, userID, subject, description)` - Log deletion events
+- `LogEvent(ctx, db, event, userID, subject, description)` - Log custom events
+- `LogEventWithProps(ctx, db, event, userID, subject, description, props)` - Log with properties
+- `LogWithLog(ctx, db, logName, event, userID, subject, description)` - Custom log name
+- `LogEventPtr(ctx, db, event, userID, subject, description)` - Pointer userID variant
+- `LogWithLogPtr(ctx, db, logName, event, userID, subject, description)` - Pointer variant with custom log
+- `LogWithLogAndPropsPtr(ctx, db, logName, event, userID, subject, description, props)` - Full variant
 
-**Current Pattern:**
+**Refactored Files:**
+- Database jobs: `install_database.go`, `install_database_user.go`, `uninstall_database.go`, `uninstall_database_user.go`
+- Server jobs: `add_ssh_key.go`, `remove_ssh_key.go`, `install_cron.go`, `uninstall_cron.go`, `install_daemon.go`, `uninstall_daemon.go`, `install_firewall_rule.go`, `uninstall_firewall_rule.go`, `remove_service.go`, `reboot_server.go`, `delete_server.go`, `unarchive_server.go`, `vulnerability_audit.go`, `cleanup_failed_provisioning.go`
+
+**Example Usage:**
 ```go
-logger := activity.New(s.repos.DB()).
+// Before (9 lines)
+logger := activity.New(j.Ctx.DB).
     WithContext(ctx).
-    UseLog("database").
-    On(database).
-    WithEvent("created")
-if userID != nil {
-    logger.CausedByUser(*userID)
+    UseLog("server").
+    On(cron).
+    WithEvent("installed")
+if j.Payload.UserID != nil {
+    logger.CausedByUser(*j.Payload.UserID)
 }
-logger.Log("Database was created")
+logger.Log("Cron job was installed")
+
+// After (1 line)
+activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "installed", j.Payload.UserID, cron, "Cron job was installed")
 ```
 
-**Solution:** Create standardized activity patterns `internal/pkg/activity/helpers.go`
-```go
-package activity
-
-// LogCreation logs a creation event
-func LogCreation(db *gorm.DB, ctx context.Context, model interface{}, logName string, userID *string, message string) error {
-    logger := New(db).
-        WithContext(ctx).
-        UseLog(logName).
-        On(model).
-        WithEvent("created")
-
-    if userID != nil {
-        logger.CausedByUser(*userID)
-    }
-
-    return logger.Log(message)
-}
-
-// LogUpdate logs an update event
-func LogUpdate(db *gorm.DB, ctx context.Context, model interface{}, logName string, userID *string, message string) error {
-    // similar pattern
-}
-
-// LogDeletion logs a deletion event
-func LogDeletion(db *gorm.DB, ctx context.Context, model interface{}, logName string, userID *string, message string) error {
-    // similar pattern
-}
-
-// LogWithProperties logs with additional properties
-func LogWithProperties(db *gorm.DB, ctx context.Context, model interface{}, logName, event string, userID *string, props map[string]interface{}, message string) error {
-    logger := New(db).
-        WithContext(ctx).
-        UseLog(logName).
-        On(model).
-        WithEvent(event).
-        WithProperties(props)
-
-    if userID != nil {
-        logger.CausedByUser(*userID)
-    }
-
-    return logger.Log(message)
-}
-```
-
-**Refactored Usage:**
-```go
-// Before
-logger := activity.New(s.repos.DB()).
-    WithContext(ctx).
-    UseLog("database").
-    On(database).
-    WithEvent("created")
-if userID != nil {
-    logger.CausedByUser(*userID)
-}
-logger.Log("Database was created")
-
-// After
-activity.LogCreation(s.repos.DB(), ctx, database, "database", userID, "Database was created")
-```
-
-**Refactoring Steps:**
-- [ ] Create `internal/pkg/activity/helpers.go`
-- [ ] Add `LogCreation`, `LogUpdate`, `LogDeletion` helpers
-- [ ] Refactor database services
-- [ ] Refactor site services
-- [ ] Refactor server services
-- [ ] Refactor jobs
-
-**Impact:** ~150 lines eliminated, consistent logging pattern
+**Impact:** ~150 lines eliminated, consistent logging pattern across all jobs
 
 ---
 

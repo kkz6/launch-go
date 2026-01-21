@@ -67,15 +67,7 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context) error {
 		j.Ctx.LogInfo("Database drop completed with errors", "output", result.GetOutput())
 	}
 
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("database").
-		On(database).
-		WithEvent("uninstalled")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Database was uninstalled")
+	activity.LogEventPtr(ctx, j.Ctx.DB, "uninstalled", j.Payload.UserID, database, "Database was uninstalled")
 
 	if err := j.MarkAsUninstalled(j.Ctx.DB, database); err != nil {
 		return fmt.Errorf("failed to delete database record: %w", err)

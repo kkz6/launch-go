@@ -92,15 +92,7 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to update database user status: %w", err)
 	}
 
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("database").
-		On(dbUser).
-		WithEvent("installed")
-	if j.Payload.CallerID != nil {
-		logger.CausedByUser(*j.Payload.CallerID)
-	}
-	logger.Log("Database user was installed")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB, "database", "installed", j.Payload.CallerID, dbUser, "Database user was installed")
 
 	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "installed", fmt.Sprintf("Database user %s created successfully", dbUser.Name))
 

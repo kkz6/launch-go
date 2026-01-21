@@ -58,15 +58,7 @@ func (j *UninstallFirewallRuleJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(rule).
-		WithEvent("uninstalled")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Firewall rule was uninstalled")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "uninstalled", j.Payload.UserID, rule, "Firewall rule was uninstalled")
 
 	// Delete the rule record
 	if err := j.Ctx.Repos.FirewallRule().Delete(ctx, rule.ID); err != nil {

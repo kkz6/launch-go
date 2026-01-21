@@ -48,15 +48,7 @@ func (j *RebootServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(server).
-		WithEvent("rebooted")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Server reboot was initiated")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "rebooted", j.Payload.UserID, server, "Server reboot was initiated")
 
 	j.Ctx.LogInfo("Server reboot initiated",
 		"server_id", server.ID,

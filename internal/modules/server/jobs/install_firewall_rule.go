@@ -63,15 +63,7 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	logger := activity.New(j.Ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(rule).
-		WithEvent("installed")
-	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
-	}
-	logger.Log("Firewall rule was installed")
+	activity.LogWithLogPtr(ctx, j.Ctx.DB, "server", "installed", j.Payload.UserID, rule, "Firewall rule was installed")
 
 	j.Ctx.LogInfo("Firewall rule installed successfully",
 		"rule_id", rule.ID,
