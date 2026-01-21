@@ -9873,6 +9873,1351 @@ subStatus := timeutil.SubscriptionStatus{
 
 ---
 
+## 123. HTTP Client Base Pattern (P1)
+
+**Problem:** 14 provider files duplicate identical HTTP client creation with 30-second timeouts.
+
+**Files affected:**
+- `internal/modules/server/providers/digitalocean.go:35`
+- `internal/modules/server/providers/hetzner.go:35`
+- `internal/modules/server/providers/linode.go:35`
+- `internal/modules/server/providers/vultr.go:35`
+- `internal/modules/git/providers/github.go:35-37`
+- `internal/modules/git/providers/gitlab.go:31-33`
+- `internal/modules/git/providers/bitbucket.go:31-33`
+- `internal/modules/dns/providers/cloudflare.go:29-31`
+- `internal/modules/dns/providers/digitalocean.go:26-28`
+- `internal/modules/backup/storage/dropbox.go:23-25`
+- `internal/modules/billing/providers/lemon_squeezy.go:59-61`
+- `internal/modules/notification/slack/admin_alert.go:21-23`
+
+**Current (repeated 14 times):**
+```go
+type DigitalOceanProvider struct {
+    BaseProvider
+    client *http.Client
+}
+
+func NewDigitalOceanProvider() *DigitalOceanProvider {
+    return &DigitalOceanProvider{
+        client: &http.Client{Timeout: 30 * time.Second},
+    }
+}
+```
+
+**Solution - Unified HTTP Client Factory:**
+```go
+// internal/pkg/httpclient/client.go
+package httpclient
+
+import (
+    "net/http"
+    "time"
+)
+
+type Config struct {
+    Timeout       time.Duration
+    MaxRetries    int
+    RetryWaitMin  time.Duration
+    RetryWaitMax  time.Duration
+}
+
+func DefaultConfig() Config {
+    return Config{
+        Timeout:      30 * time.Second,
+        MaxRetries:   3,
+        RetryWaitMin: 1 * time.Second,
+        RetryWaitMax: 5 * time.Second,
+    }
+}
+
+type Client struct {
+    http   *http.Client
+    config Config
+}
+
+func New(opts ...Option) *Client {
+    cfg := DefaultConfig()
+    for _, opt := range opts {
+        opt(&cfg)
+    }
+    return &Client{
+        http:   &http.Client{Timeout: cfg.Timeout},
+        config: cfg,
+    }
+}
+
+func WithTimeout(d time.Duration) Option {
+    return func(c *Config) { c.Timeout = d }
+}
+
+// Shared client for providers
+var DefaultClient = New()
+```
+
+**Refactored Provider:**
+```go
+type DigitalOceanProvider struct {
+    BaseProvider
+    client *httpclient.Client
+}
+
+func NewDigitalOceanProvider() *DigitalOceanProvider {
+    return &DigitalOceanProvider{
+        client: httpclient.DefaultClient,
+    }
+}
+```
+
+**Impact:** ~280 lines saved, configurable retry behavior
+
+---
+
+## 124. API Request Builder (P1)
+
+**Problem:** 20+ repetitions of Bearer token auth, 15+ Content-Type header settings.
+
+**Files affected:**
+- `internal/modules/git/providers/github.go:96, 134, 178, 233, 283, 375, 410, 493, 585`
+- `internal/modules/git/providers/gitlab.go:174, 249, 326, 372`
+- `internal/modules/git/providers/bitbucket.go:168, 244`
+- `internal/modules/server/providers/digitalocean.go:278-279`
+- `internal/modules/server/providers/hetzner.go:234-235`
+- `internal/modules/dns/providers/cloudflare.go:520-522`
+- `internal/modules/billing/providers/lemon_squeezy.go:84-86`
+
+**Current (repeated 20+ times):**
+```go
+req, _ := http.NewRequestWithContext(ctx, method, url, body)
+req.Header.Set("Authorization", "Bearer "+token)
+req.Header.Set("Content-Type", "application/json")
+req.Header.Set("Accept", "application/json")
+```
+
+**Solution - Fluent Request Builder:**
+```go
+// internal/pkg/httpclient/request.go
+package httpclient
+
+type RequestBuilder struct {
+    method  string
+    url     string
+    headers map[string]string
+    body    io.Reader
+    ctx     context.Context
+}
+
+func NewRequest(ctx context.Context, method, url string) *RequestBuilder {
+    return &RequestBuilder{
+        ctx:     ctx,
+        method:  method,
+        url:     url,
+        headers: make(map[string]string),
+    }
+}
+
+func (r *RequestBuilder) BearerAuth(token string) *RequestBuilder {
+    r.headers["Authorization"] = "Bearer " + token
+    return r
+}
+
+func (r *RequestBuilder) BasicAuth(user, pass string) *RequestBuilder {
+    auth := base64.StdEncoding.EncodeToString([]byte(user + ":" + pass))
+    r.headers["Authorization"] = "Basic " + auth
+    return r
+}
+
+func (r *RequestBuilder) JSON() *RequestBuilder {
+    r.headers["Content-Type"] = "application/json"
+    r.headers["Accept"] = "application/json"
+    return r
+}
+
+func (r *RequestBuilder) JSONBody(v any) *RequestBuilder {
+    data, _ := json.Marshal(v)
+    r.body = bytes.NewReader(data)
+    return r.JSON()
+}
+
+func (r *RequestBuilder) Build() (*http.Request, error) {
+    req, err := http.NewRequestWithContext(r.ctx, r.method, r.url, r.body)
+    if err != nil {
+        return nil, err
+    }
+    for k, v := range r.headers {
+        req.Header.Set(k, v)
+    }
+    return req, nil
+}
+```
+
+**Refactored Usage:**
+```go
+req, err := httpclient.NewRequest(ctx, "POST", url).
+    BearerAuth(token).
+    JSONBody(payload).
+    Build()
+```
+
+**Impact:** ~400 lines saved, type-safe request building
+
+---
+
+## 125. Response Handler Consolidation (P1)
+
+**Problem:** Duplicated status code validation and body parsing across 10+ providers.
+
+**Files affected:**
+- `internal/modules/server/providers/digitalocean.go:287-305`
+- `internal/modules/server/providers/hetzner.go:239-252`
+- `internal/modules/server/providers/linode.go:232-245`
+- `internal/modules/server/providers/vultr.go:239-252`
+- `internal/modules/git/providers/github.go:105-116, 143-150`
+- `internal/modules/billing/providers/lemon_squeezy.go:99-114`
+- `internal/modules/dns/providers/cloudflare.go:114-120`
+
+**Current (repeated 7+ times):**
+```go
+respBody, err := io.ReadAll(resp.Body)
+if err != nil {
+    return nil, fmt.Errorf("failed to read response: %w", err)
+}
+
+if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+    return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(respBody))
+}
+
+if len(respBody) == 0 {
+    return nil, nil
+}
+
+var result map[string]interface{}
+if err := json.Unmarshal(respBody, &result); err != nil {
+    return nil, fmt.Errorf("failed to parse response: %w", err)
+}
+```
+
+**Solution - Generic Response Handler:**
+```go
+// internal/pkg/httpclient/response.go
+package httpclient
+
+import (
+    "encoding/json"
+    "fmt"
+    "io"
+    "net/http"
+)
+
+type Response struct {
+    StatusCode int
+    Body       []byte
+    Raw        *http.Response
+}
+
+func HandleResponse(resp *http.Response) (*Response, error) {
+    defer resp.Body.Close()
+
+    body, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, fmt.Errorf("failed to read response: %w", err)
+    }
+
+    return &Response{
+        StatusCode: resp.StatusCode,
+        Body:       body,
+        Raw:        resp,
+    }, nil
+}
+
+func (r *Response) IsSuccess() bool {
+    return r.StatusCode >= 200 && r.StatusCode < 300
+}
+
+func (r *Response) CheckSuccess() error {
+    if !r.IsSuccess() {
+        return fmt.Errorf("request failed with status %d: %s", r.StatusCode, string(r.Body))
+    }
+    return nil
+}
+
+func (r *Response) Decode(v any) error {
+    if err := r.CheckSuccess(); err != nil {
+        return err
+    }
+    if len(r.Body) == 0 {
+        return nil
+    }
+    return json.Unmarshal(r.Body, v)
+}
+
+func (r *Response) DecodeMap() (map[string]any, error) {
+    var result map[string]any
+    if err := r.Decode(&result); err != nil {
+        return nil, err
+    }
+    return result, nil
+}
+
+// Status-specific error handling
+type StatusHandler struct {
+    handlers map[int]error
+}
+
+func NewStatusHandler() *StatusHandler {
+    return &StatusHandler{handlers: make(map[int]error)}
+}
+
+func (h *StatusHandler) On(code int, err error) *StatusHandler {
+    h.handlers[code] = err
+    return h
+}
+
+func (h *StatusHandler) Check(r *Response) error {
+    if err, ok := h.handlers[r.StatusCode]; ok {
+        return err
+    }
+    return r.CheckSuccess()
+}
+```
+
+**Refactored Usage:**
+```go
+resp, err := client.Do(req)
+if err != nil {
+    return nil, err
+}
+
+r, err := httpclient.HandleResponse(resp)
+if err != nil {
+    return nil, err
+}
+
+// Simple case
+var result ServerResponse
+if err := r.Decode(&result); err != nil {
+    return nil, err
+}
+
+// With specific error mapping
+err = httpclient.NewStatusHandler().
+    On(http.StatusNotFound, ErrNotFound).
+    On(http.StatusUnauthorized, ErrUnauthorized).
+    Check(r)
+```
+
+**Impact:** ~350 lines saved, consistent error handling
+
+---
+
+## 126. Pagination Parameter Parser (P2)
+
+**Problem:** 4+ handlers manually parse limit parameters with different validation.
+
+**Files affected:**
+- `internal/modules/server/handlers/task_handler.go:21-25`
+- `internal/modules/server/handlers/metric_handler.go:42-46`
+- `internal/modules/websocket/handlers/logs.go:49-56`
+- `internal/modules/websocket/handlers/metrics.go:40-49`
+- `internal/modules/websocket/handlers/service_status.go:63-67`
+
+**Current (repeated 5+ times with different ranges):**
+```go
+// task_handler.go - max 100
+limit, _ := strconv.Atoi(c.Query("limit", "50"))
+if limit < 1 || limit > 100 {
+    limit = 50
+}
+
+// metric_handler.go - max 1000
+limit, _ := strconv.Atoi(c.Query("limit", "100"))
+if limit < 1 || limit > 1000 {
+    limit = 100
+}
+
+// logs.go - different param name
+tail, _ := strconv.Atoi(c.Query("tail", "100"))
+if tail <= 0 {
+    tail = 100
+}
+```
+
+**Solution - Generic Parameter Parser:**
+```go
+// internal/pkg/fiber/params.go
+package fiber
+
+import (
+    "strconv"
+    "github.com/gofiber/fiber/v2"
+)
+
+type IntParamConfig struct {
+    Name    string
+    Default int
+    Min     int
+    Max     int
+}
+
+func ParseIntParam(c *fiber.Ctx, cfg IntParamConfig) int {
+    val, err := strconv.Atoi(c.Query(cfg.Name, strconv.Itoa(cfg.Default)))
+    if err != nil || val < cfg.Min {
+        return cfg.Default
+    }
+    if cfg.Max > 0 && val > cfg.Max {
+        return cfg.Max
+    }
+    return val
+}
+
+// Pre-configured parsers
+func ParseLimit(c *fiber.Ctx, defaultVal, maxVal int) int {
+    return ParseIntParam(c, IntParamConfig{
+        Name:    "limit",
+        Default: defaultVal,
+        Min:     1,
+        Max:     maxVal,
+    })
+}
+
+func ParseTail(c *fiber.Ctx) int {
+    return ParseIntParam(c, IntParamConfig{
+        Name:    "tail",
+        Default: 100,
+        Min:     1,
+        Max:     10000,
+    })
+}
+
+func ParseInterval(c *fiber.Ctx, defaultVal int) int {
+    return ParseIntParam(c, IntParamConfig{
+        Name:    "interval",
+        Default: defaultVal,
+        Min:     1,
+        Max:     60,
+    })
+}
+```
+
+**Refactored Usage:**
+```go
+limit := fiber.ParseLimit(c, 50, 100)
+tail := fiber.ParseTail(c)
+interval := fiber.ParseInterval(c, 5)
+```
+
+**Impact:** ~100 lines saved, consistent validation
+
+---
+
+## 127. Dynamic Sort Handler (P2)
+
+**Problem:** 25+ hardcoded `.Order()` clauses with no dynamic sorting support.
+
+**Files affected:**
+- `internal/modules/server/repositories/server_repository.go:87, 107, 122`
+- `internal/modules/site/repositories/site_repository.go:100, 110, 130, 141`
+- `internal/modules/site/repositories/deployment_repository.go:58, 69, 85, 101, 154`
+- `internal/modules/server/repositories/task_repository.go:47, 62`
+- `internal/modules/server/repositories/metric_repository.go:44, 59`
+- `internal/modules/backup/repositories/backup_repository.go:58, 80, 102`
+- `internal/modules/dns/repositories/domain_repository.go:48, 65`
+- Plus 10+ more repository files
+
+**Current (hardcoded everywhere):**
+```go
+// All repositories hardcode sort
+query.Order("created_at DESC")
+query.Order("recorded_at DESC")
+query.Order("type ASC, name ASC")  // DNS special case
+```
+
+**Solution - Dynamic Sort with Validation:**
+```go
+// internal/pkg/repository/sort.go
+package repository
+
+import (
+    "fmt"
+    "gorm.io/gorm"
+)
+
+type SortConfig struct {
+    AllowedFields map[string]string  // user field -> DB column
+    DefaultField  string
+    DefaultDir    string
+}
+
+type SortParams struct {
+    Field     string
+    Direction string
+}
+
+func (s SortParams) Apply(db *gorm.DB, cfg SortConfig) *gorm.DB {
+    field := s.Field
+    dir := s.Direction
+
+    // Use defaults if not specified
+    if field == "" {
+        field = cfg.DefaultField
+    }
+    if dir == "" {
+        dir = cfg.DefaultDir
+    }
+
+    // Validate field
+    dbColumn, ok := cfg.AllowedFields[field]
+    if !ok {
+        dbColumn = cfg.AllowedFields[cfg.DefaultField]
+    }
+
+    // Validate direction
+    if dir != "asc" && dir != "desc" {
+        dir = cfg.DefaultDir
+    }
+
+    return db.Order(fmt.Sprintf("%s %s", dbColumn, dir))
+}
+
+// Pre-built configs
+var ServerSortConfig = SortConfig{
+    AllowedFields: map[string]string{
+        "created_at": "created_at",
+        "name":       "name",
+        "status":     "status",
+    },
+    DefaultField: "created_at",
+    DefaultDir:   "desc",
+}
+
+var DeploymentSortConfig = SortConfig{
+    AllowedFields: map[string]string{
+        "created_at": "created_at",
+        "status":     "status",
+    },
+    DefaultField: "created_at",
+    DefaultDir:   "desc",
+}
+```
+
+**Refactored Usage:**
+```go
+func (r *ServerRepository) FindAll(ctx context.Context, teamID string, sort SortParams) ([]models.Server, error) {
+    var servers []models.Server
+    query := r.DB().WithContext(ctx).Where("team_id = ?", teamID)
+    query = sort.Apply(query, ServerSortConfig)
+    return servers, query.Find(&servers).Error
+}
+```
+
+**Impact:** ~200 lines saved, flexible sorting with security
+
+---
+
+## 128. Filter Options Pattern (P2)
+
+**Problem:** Repeated WHERE clause building with optional filters across repositories.
+
+**Files affected:**
+- `internal/modules/server/repositories/metric_repository.go:31-51`
+- `internal/modules/git/repositories/source_control_repository.go:236-266`
+- `internal/modules/site/repositories/deployment_repository.go:80-94`
+- `internal/modules/server/repositories/server_repository.go:80-89`
+
+**Current (repeated conditional WHERE building):**
+```go
+query := r.DB().WithContext(ctx).Where("server_id = ?", serverID)
+if from != nil {
+    query = query.Where("recorded_at >= ?", from)
+}
+if to != nil {
+    query = query.Where("recorded_at <= ?", to)
+}
+if limit > 0 {
+    query = query.Limit(limit)
+}
+```
+
+**Solution - Generic Filter Options:**
+```go
+// internal/pkg/repository/filter.go
+package repository
+
+import (
+    "time"
+    "gorm.io/gorm"
+)
+
+type FilterOption func(*gorm.DB) *gorm.DB
+
+func WithDateRange(column string, from, to *time.Time) FilterOption {
+    return func(db *gorm.DB) *gorm.DB {
+        if from != nil {
+            db = db.Where(column+" >= ?", from)
+        }
+        if to != nil {
+            db = db.Where(column+" <= ?", to)
+        }
+        return db
+    }
+}
+
+func WithOptionalLimit(limit int) FilterOption {
+    return func(db *gorm.DB) *gorm.DB {
+        if limit > 0 {
+            return db.Limit(limit)
+        }
+        return db
+    }
+}
+
+func WithStatus(status string) FilterOption {
+    return func(db *gorm.DB) *gorm.DB {
+        if status != "" {
+            return db.Where("status = ?", status)
+        }
+        return db
+    }
+}
+
+func WithStatuses(statuses []string) FilterOption {
+    return func(db *gorm.DB) *gorm.DB {
+        if len(statuses) > 0 {
+            return db.Where("status IN ?", statuses)
+        }
+        return db
+    }
+}
+
+func ApplyFilters(db *gorm.DB, opts ...FilterOption) *gorm.DB {
+    for _, opt := range opts {
+        db = opt(db)
+    }
+    return db
+}
+```
+
+**Refactored Usage:**
+```go
+func (r *MetricRepository) FindByServer(ctx context.Context, serverID string, from, to *time.Time, limit int) ([]models.Metric, error) {
+    var metrics []models.Metric
+    query := r.DB().WithContext(ctx).Where("server_id = ?", serverID)
+
+    query = repository.ApplyFilters(query,
+        repository.WithDateRange("recorded_at", from, to),
+        repository.WithOptionalLimit(limit),
+    )
+
+    return metrics, query.Order("recorded_at DESC").Find(&metrics).Error
+}
+```
+
+**Impact:** ~180 lines saved, composable filters
+
+---
+
+## 129. Retry Strategy Consolidation (P2)
+
+**Problem:** Scattered retry logic with different backoff strategies across modules.
+
+**Files affected:**
+- `internal/modules/server/jobs/wait_for_server_to_connect.go:17-23, 132-212`
+- `internal/modules/site/jobs/deploy.go:39-50`
+- `internal/modules/billing/models/webhook_event.go:18-32`
+- `internal/modules/server/jobs/create_on_provider.go` (polling)
+
+**Current (different retry implementations):**
+```go
+// wait_for_server_to_connect.go - Exponential backoff
+const (
+    maxConnectionAttempts = 30
+    initialRetryDelay     = 10 * time.Second
+    maxRetryDelay         = 30 * time.Second
+)
+
+delay := initialRetryDelay
+for attempt := 1; attempt <= maxConnectionAttempts; attempt++ {
+    // ... attempt connection ...
+    time.Sleep(delay)
+    delay = time.Duration(float64(delay) * 1.2)
+    if delay > maxRetryDelay {
+        delay = maxRetryDelay
+    }
+}
+
+// deploy.go - Fixed retry
+for i := 0; i < 3; i++ {
+    deployment, err = j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+    if err == nil {
+        break
+    }
+    if i < 2 {
+        time.Sleep(500 * time.Millisecond)
+    }
+}
+```
+
+**Solution - Unified Retry Package:**
+```go
+// internal/pkg/retry/retry.go
+package retry
+
+import (
+    "context"
+    "time"
+)
+
+type Strategy interface {
+    NextDelay(attempt int) time.Duration
+    MaxAttempts() int
+}
+
+type ExponentialBackoff struct {
+    Initial    time.Duration
+    Max        time.Duration
+    Multiplier float64
+    Attempts   int
+}
+
+func (e ExponentialBackoff) NextDelay(attempt int) time.Duration {
+    delay := time.Duration(float64(e.Initial) * pow(e.Multiplier, float64(attempt-1)))
+    if delay > e.Max {
+        return e.Max
+    }
+    return delay
+}
+
+func (e ExponentialBackoff) MaxAttempts() int { return e.Attempts }
+
+type FixedDelay struct {
+    Delay    time.Duration
+    Attempts int
+}
+
+func (f FixedDelay) NextDelay(_ int) time.Duration { return f.Delay }
+func (f FixedDelay) MaxAttempts() int              { return f.Attempts }
+
+func Do[T any](ctx context.Context, s Strategy, fn func() (T, error)) (T, error) {
+    var result T
+    var err error
+
+    for attempt := 1; attempt <= s.MaxAttempts(); attempt++ {
+        result, err = fn()
+        if err == nil {
+            return result, nil
+        }
+
+        if attempt < s.MaxAttempts() {
+            select {
+            case <-ctx.Done():
+                return result, ctx.Err()
+            case <-time.After(s.NextDelay(attempt)):
+            }
+        }
+    }
+    return result, err
+}
+
+// Pre-configured strategies
+var (
+    ConnectionRetry = ExponentialBackoff{
+        Initial:    10 * time.Second,
+        Max:        30 * time.Second,
+        Multiplier: 1.2,
+        Attempts:   30,
+    }
+
+    QuickRetry = FixedDelay{
+        Delay:    500 * time.Millisecond,
+        Attempts: 3,
+    }
+)
+```
+
+**Refactored Usage:**
+```go
+// Connection with exponential backoff
+connected, err := retry.Do(ctx, retry.ConnectionRetry, func() (bool, error) {
+    return j.attemptConnection(ctx)
+})
+
+// Quick DB read retry
+deployment, err := retry.Do(ctx, retry.QuickRetry, func() (*models.Deployment, error) {
+    return j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+})
+```
+
+**Impact:** ~250 lines saved, consistent retry behavior
+
+---
+
+## 130. Metrics Parsing Helper (P2)
+
+**Problem:** 6 identical strconv.ParseFloat patterns in metrics webhook handler.
+
+**Files affected:**
+- `internal/modules/server/handlers/metrics_webhook_handler.go:104-127`
+
+**Current (repeated 6 times):**
+```go
+diskTotal, err := strconv.ParseFloat(req.Data.DiskTotal, 64)
+if err != nil {
+    h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.DiskTotal).Msg("Failed to parse disk_total")
+}
+diskFree, err := strconv.ParseFloat(req.Data.DiskFree, 64)
+if err != nil {
+    h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.DiskFree).Msg("Failed to parse disk_free")
+}
+diskUsed, err := strconv.ParseFloat(req.Data.DiskUsed, 64)
+// ... repeated for memory_total, memory_free, memory_used
+```
+
+**Solution - Metrics Parser Helper:**
+```go
+// internal/pkg/metrics/parser.go
+package metrics
+
+import (
+    "strconv"
+    "github.com/rs/zerolog"
+)
+
+type Parser struct {
+    logger   zerolog.Logger
+    serverID string
+    errors   []string
+}
+
+func NewParser(logger zerolog.Logger, serverID string) *Parser {
+    return &Parser{logger: logger, serverID: serverID}
+}
+
+func (p *Parser) ParseFloat(value, fieldName string) float64 {
+    if value == "" {
+        return 0
+    }
+    v, err := strconv.ParseFloat(value, 64)
+    if err != nil {
+        p.logger.Warn().
+            Err(err).
+            Str("server_id", p.serverID).
+            Str("field", fieldName).
+            Str("value", value).
+            Msg("Failed to parse metric")
+        p.errors = append(p.errors, fieldName)
+        return 0
+    }
+    return v
+}
+
+func (p *Parser) ParseInt(value, fieldName string) int64 {
+    if value == "" {
+        return 0
+    }
+    v, err := strconv.ParseInt(value, 10, 64)
+    if err != nil {
+        p.logger.Warn().
+            Err(err).
+            Str("server_id", p.serverID).
+            Str("field", fieldName).
+            Str("value", value).
+            Msg("Failed to parse metric")
+        p.errors = append(p.errors, fieldName)
+        return 0
+    }
+    return v
+}
+
+func (p *Parser) HasErrors() bool {
+    return len(p.errors) > 0
+}
+```
+
+**Refactored Usage:**
+```go
+parser := metrics.NewParser(h.logger, serverID)
+
+metric := &models.Metric{
+    DiskTotal:   parser.ParseFloat(req.Data.DiskTotal, "disk_total"),
+    DiskFree:    parser.ParseFloat(req.Data.DiskFree, "disk_free"),
+    DiskUsed:    parser.ParseFloat(req.Data.DiskUsed, "disk_used"),
+    MemoryTotal: parser.ParseFloat(req.Data.MemoryTotal, "memory_total"),
+    MemoryFree:  parser.ParseFloat(req.Data.MemoryFree, "memory_free"),
+    MemoryUsed:  parser.ParseFloat(req.Data.MemoryUsed, "memory_used"),
+}
+```
+
+**Impact:** ~80 lines saved, consistent error logging
+
+---
+
+## 131. Service Status Checker (P2)
+
+**Problem:** Duplicated service status parsing and memory formatting in WebSocket and job handlers.
+
+**Files affected:**
+- `internal/modules/websocket/handlers/service_status.go:325-405`
+- `internal/modules/server/jobs/check_service_status.go:135-234`
+
+**Current (duplicated formatting):**
+```go
+// WebSocket handler - lines 353-370
+func formatMemory(bytes int64) string {
+    const unit = 1024
+    if bytes < unit {
+        return fmt.Sprintf("%d B", bytes)
+    }
+    div, exp := int64(unit), 0
+    for n := bytes / unit; n >= unit; n /= unit {
+        div *= unit
+        exp++
+    }
+    return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// Job handler - lines 215-234 (similar but different implementation)
+func formatBytes(bytesStr string) string {
+    // Similar logic...
+}
+```
+
+**Solution - Unified Status Package:**
+```go
+// internal/pkg/status/format.go
+package status
+
+import (
+    "fmt"
+    "time"
+)
+
+func FormatBytes(bytes int64) string {
+    const unit = 1024
+    if bytes < unit {
+        return fmt.Sprintf("%d B", bytes)
+    }
+    div, exp := int64(unit), 0
+    for n := bytes / unit; n >= unit; n /= unit {
+        div *= unit
+        exp++
+    }
+    return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+func FormatUptime(seconds int64) string {
+    d := time.Duration(seconds) * time.Second
+    days := int(d.Hours() / 24)
+    hours := int(d.Hours()) % 24
+    minutes := int(d.Minutes()) % 60
+
+    if days > 0 {
+        return fmt.Sprintf("%dd %dh %dm", days, hours, minutes)
+    }
+    if hours > 0 {
+        return fmt.Sprintf("%dh %dm", hours, minutes)
+    }
+    return fmt.Sprintf("%dm", minutes)
+}
+
+// internal/pkg/status/parser.go
+type ServiceStatus struct {
+    ID       string `json:"id"`
+    Software string `json:"software"`
+    Name     string `json:"name"`
+    Status   string `json:"status"`
+    IsActive bool   `json:"is_active"`
+    Memory   string `json:"memory,omitempty"`
+    Uptime   string `json:"uptime,omitempty"`
+    PID      int    `json:"pid,omitempty"`
+}
+
+func ParseSystemctlOutput(output string) *ServiceStatus {
+    // Unified parsing logic
+}
+```
+
+**Impact:** ~150 lines saved, consistent formatting
+
+---
+
+## 132. Daemon Status Task Deduplication (P1)
+
+**Problem:** 85+ lines of identical bash script duplicated between server and site modules.
+
+**Files affected:**
+- `internal/modules/server/tasks/daemon_status.go:18-85`
+- `internal/modules/site/tasks/daemon_status.go:18-85`
+
+**Current (IDENTICAL 85+ lines in both files):**
+```go
+// server/tasks/daemon_status.go
+const CheckServerDaemonStatusTaskType = "server:check_daemon_status"
+
+// site/tasks/daemon_status.go
+const CheckDaemonStatusTaskType = "site:check_daemon_status"
+
+// Both contain identical bash script:
+script := `#!/bin/bash
+set -euo pipefail
+
+# Get supervisorctl status and parse it
+supervisorctl status 2>/dev/null | while read -r line; do
+    # ... 60+ lines of identical parsing logic ...
+done
+
+echo "===STATUS_CHECK_COMPLETE==="`
+```
+
+**Solution - Single Shared Task:**
+```go
+// internal/pkg/tasks/daemon_status.go
+package tasks
+
+import (
+    "github.com/kkz6/launch-go/internal/pkg/taskrunner"
+)
+
+const CheckDaemonStatusTaskType = "common:check_daemon_status"
+
+var daemonStatusScript = `#!/bin/bash
+set -euo pipefail
+
+# Get supervisorctl status and parse it
+supervisorctl status 2>/dev/null | while read -r line; do
+    program=$(echo "$line" | awk '{print $1}')
+    status=$(echo "$line" | awk '{print $2}')
+    # ... parsing logic ...
+done
+
+echo "===STATUS_CHECK_COMPLETE==="`
+
+func CheckDaemonStatus() *taskrunner.BaseTask {
+    return taskrunner.NewBaseTask(
+        taskrunner.WithName("Check Daemon Status"),
+        taskrunner.WithScript(daemonStatusScript),
+        taskrunner.WithTimeoutSeconds(30),
+    )
+}
+
+// Result parser
+type DaemonStatus struct {
+    DaemonID      string `json:"daemon_id"`
+    Status        string `json:"status"`
+    PID           string `json:"pid"`
+    UptimeSeconds int64  `json:"uptime_seconds"`
+    Description   string `json:"description"`
+    Error         string `json:"error,omitempty"`
+}
+
+func ParseDaemonStatusOutput(output string) []DaemonStatus {
+    // Unified parsing logic
+}
+```
+
+**Refactored Usage:**
+```go
+// Both modules use the same task
+import "github.com/kkz6/launch-go/internal/pkg/tasks"
+
+task := tasks.CheckDaemonStatus()
+result, err := runner.RunTask(task).Dispatch(ctx)
+statuses := tasks.ParseDaemonStatusOutput(result.GetOutput())
+```
+
+**Impact:** ~170 lines saved (85 lines x 2 - shared code)
+
+---
+
+## 133. Health Check Aggregator (P2)
+
+**Problem:** Basic health endpoint with no dependency checks.
+
+**Files affected:**
+- `cmd/api/main.go:230-234` - Minimal health check
+- `internal/pkg/cache/redis.go:65-68` - Redis Ping exists but unused
+
+**Current (minimal implementation):**
+```go
+// cmd/api/main.go
+func (a *Application) healthCheck(c *fiber.Ctx) error {
+    return c.JSON(fiber.Map{
+        "status": "ok",
+        "time":   time.Now().UTC(),
+    })
+}
+```
+
+**Solution - Comprehensive Health Package:**
+```go
+// internal/pkg/health/health.go
+package health
+
+import (
+    "context"
+    "sync"
+    "time"
+)
+
+type Status string
+
+const (
+    StatusHealthy   Status = "healthy"
+    StatusDegraded  Status = "degraded"
+    StatusUnhealthy Status = "unhealthy"
+)
+
+type Check struct {
+    Name    string        `json:"name"`
+    Status  Status        `json:"status"`
+    Message string        `json:"message,omitempty"`
+    Latency time.Duration `json:"latency_ms"`
+}
+
+type Result struct {
+    Status    Status    `json:"status"`
+    Timestamp time.Time `json:"timestamp"`
+    Checks    []Check   `json:"checks"`
+}
+
+type Checker interface {
+    Name() string
+    Check(ctx context.Context) error
+}
+
+type Aggregator struct {
+    checkers []Checker
+}
+
+func NewAggregator() *Aggregator {
+    return &Aggregator{}
+}
+
+func (a *Aggregator) Add(c Checker) *Aggregator {
+    a.checkers = append(a.checkers, c)
+    return a
+}
+
+func (a *Aggregator) Check(ctx context.Context) Result {
+    result := Result{
+        Status:    StatusHealthy,
+        Timestamp: time.Now().UTC(),
+        Checks:    make([]Check, len(a.checkers)),
+    }
+
+    var wg sync.WaitGroup
+    for i, checker := range a.checkers {
+        wg.Add(1)
+        go func(idx int, c Checker) {
+            defer wg.Done()
+            start := time.Now()
+            err := c.Check(ctx)
+            check := Check{
+                Name:    c.Name(),
+                Latency: time.Since(start),
+                Status:  StatusHealthy,
+            }
+            if err != nil {
+                check.Status = StatusUnhealthy
+                check.Message = err.Error()
+                result.Status = StatusDegraded
+            }
+            result.Checks[idx] = check
+        }(i, checker)
+    }
+    wg.Wait()
+
+    return result
+}
+
+// Built-in checkers
+type DatabaseChecker struct {
+    db *gorm.DB
+}
+
+func (c *DatabaseChecker) Name() string { return "database" }
+func (c *DatabaseChecker) Check(ctx context.Context) error {
+    sqlDB, err := c.db.DB()
+    if err != nil {
+        return err
+    }
+    return sqlDB.PingContext(ctx)
+}
+
+type RedisChecker struct {
+    client *redis.Client
+}
+
+func (c *RedisChecker) Name() string { return "redis" }
+func (c *RedisChecker) Check(ctx context.Context) error {
+    return c.client.Ping(ctx).Err()
+}
+```
+
+**Refactored Usage:**
+```go
+healthChecker := health.NewAggregator().
+    Add(&health.DatabaseChecker{db: db}).
+    Add(&health.RedisChecker{client: redis})
+
+func (a *Application) healthCheck(c *fiber.Ctx) error {
+    result := a.healthChecker.Check(c.Context())
+    status := fiber.StatusOK
+    if result.Status != health.StatusHealthy {
+        status = fiber.StatusServiceUnavailable
+    }
+    return c.Status(status).JSON(result)
+}
+```
+
+**Impact:** ~120 lines saved, proper dependency checking
+
+---
+
+## 134. Config Loader Helper (P2)
+
+**Problem:** Repeating load/setDefaults pattern in all 10 config files.
+
+**Files affected:**
+- `internal/config/app.go:21-40`
+- `internal/config/database.go:35-57`
+- `internal/config/redis.go:12-24`
+- `internal/config/jwt.go:11-21`
+- `internal/config/cors.go:10-18`
+- `internal/config/queue.go:10-18`
+- `internal/config/billing.go:20-36`
+- `internal/config/git.go:36-68`
+- `internal/config/slack.go:17-21` (inconsistent key naming)
+- `internal/config/sentry.go:21-45`
+
+**Current (repeated in every config file):**
+```go
+func loadAppConfig() AppConfig {
+    return AppConfig{
+        Name:        viper.GetString("APP_NAME"),
+        Environment: viper.GetString("APP_ENV"),
+        Port:        viper.GetString("APP_PORT"),
+        Debug:       viper.GetBool("APP_DEBUG"),
+    }
+}
+
+func setAppDefaults() {
+    viper.SetDefault("APP_NAME", "Launch")
+    viper.SetDefault("APP_ENV", "development")
+    viper.SetDefault("APP_PORT", "8080")
+    viper.SetDefault("APP_DEBUG", true)
+}
+```
+
+**Solution - Declarative Config Loader:**
+```go
+// internal/pkg/config/loader.go
+package config
+
+import (
+    "reflect"
+    "github.com/spf13/viper"
+)
+
+// Tag-based config loading
+// Field tag: `env:"APP_NAME" default:"Launch"`
+
+func Load(cfg interface{}) error {
+    v := reflect.ValueOf(cfg).Elem()
+    t := v.Type()
+
+    for i := 0; i < t.NumField(); i++ {
+        field := t.Field(i)
+        envKey := field.Tag.Get("env")
+        defaultVal := field.Tag.Get("default")
+
+        if envKey == "" {
+            continue
+        }
+
+        // Set default if specified
+        if defaultVal != "" {
+            viper.SetDefault(envKey, defaultVal)
+        }
+
+        // Load value based on field type
+        switch field.Type.Kind() {
+        case reflect.String:
+            v.Field(i).SetString(viper.GetString(envKey))
+        case reflect.Bool:
+            v.Field(i).SetBool(viper.GetBool(envKey))
+        case reflect.Int, reflect.Int64:
+            v.Field(i).SetInt(viper.GetInt64(envKey))
+        }
+    }
+    return nil
+}
+
+// Validation interface
+type Validator interface {
+    Validate() error
+}
+
+func LoadAndValidate(cfg interface{}) error {
+    if err := Load(cfg); err != nil {
+        return err
+    }
+    if v, ok := cfg.(Validator); ok {
+        return v.Validate()
+    }
+    return nil
+}
+```
+
+**Refactored Config:**
+```go
+type AppConfig struct {
+    Name        string `env:"APP_NAME" default:"Launch"`
+    Environment string `env:"APP_ENV" default:"development"`
+    Port        string `env:"APP_PORT" default:"8080"`
+    Debug       bool   `env:"APP_DEBUG" default:"true"`
+    URL         string `env:"APP_URL" default:"http://localhost:8080"`
+    Key         string `env:"APP_KEY"`
+    LocalMode   bool   `env:"APP_LOCAL_MODE" default:"false"`
+}
+
+func (c AppConfig) Validate() error {
+    if c.Key == "" && c.Environment == "production" {
+        return errors.New("APP_KEY is required in production")
+    }
+    return nil
+}
+
+func loadAppConfig() AppConfig {
+    var cfg AppConfig
+    config.LoadAndValidate(&cfg)
+    return cfg
+}
+```
+
+**Impact:** ~200 lines saved, declarative configuration
+
+---
+
+## Extended Summary (Items 123-134)
+
+| Category | Items | Est. LOC Saved |
+|----------|-------|----------------|
+| HTTP Client Base Pattern | Item 123 | ~280 lines |
+| API Request Builder | Item 124 | ~400 lines |
+| Response Handler Consolidation | Item 125 | ~350 lines |
+| Pagination Parameter Parser | Item 126 | ~100 lines |
+| Dynamic Sort Handler | Item 127 | ~200 lines |
+| Filter Options Pattern | Item 128 | ~180 lines |
+| Retry Strategy Consolidation | Item 129 | ~250 lines |
+| Metrics Parsing Helper | Item 130 | ~80 lines |
+| Service Status Checker | Item 131 | ~150 lines |
+| Daemon Status Task Deduplication | Item 132 | ~170 lines |
+| Health Check Aggregator | Item 133 | ~120 lines |
+| Config Loader Helper | Item 134 | ~200 lines |
+| **Round 9 Total** | **12 patterns** | **~2480 lines** |
+
+---
+
 ## Updated Final Summary
 
 | Category | Items | Total LOC Saved |
@@ -9898,4 +11243,5 @@ subStatus := timeutil.SubscriptionStatus{
 | Context & Auth (Round 6) | 12 patterns | ~2560 lines |
 | Validation & Enums (Round 7) | 12 patterns | ~1805 lines |
 | Routes & Crypto (Round 8) | 12 patterns | ~3615 lines |
-| **Grand Total** | **122 patterns** | **~20,311 lines** |
+| HTTP Client & Config (Round 9) | 12 patterns | ~2480 lines |
+| **Grand Total** | **134 patterns** | **~22,791 lines** |
