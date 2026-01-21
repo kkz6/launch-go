@@ -6,16 +6,19 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/script/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // ScriptExecutionRepository handles database operations for script executions
 type ScriptExecutionRepository struct {
-	DB *gorm.DB
+	repository.Base[models.ScriptExecution]
 }
 
 // NewScriptExecutionRepository creates a new execution repository
 func NewScriptExecutionRepository(db *gorm.DB) *ScriptExecutionRepository {
-	return &ScriptExecutionRepository{DB: db}
+	return &ScriptExecutionRepository{
+		Base: repository.NewBase[models.ScriptExecution](db),
+	}
 }
 
 // Create creates a new execution record

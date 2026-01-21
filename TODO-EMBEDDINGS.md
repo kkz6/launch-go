@@ -40,110 +40,21 @@ The following foundational infrastructure has been implemented:
 
 ## Table of Contents
 
-1. [Repository BaseRepository Enforcement (P1)](#1-repository-baserepository-enforcement-p1)
-2. [Service Base Enforcement (P1)](#2-service-base-enforcement-p1)
-3. [Module Handler Field Consolidation (P1)](#3-module-handler-field-consolidation-p1)
-4. [Job Base Payload Generic (P2)](#4-job-base-payload-generic-p2)
-5. [Installable Repository Mixin (P2)](#5-installable-repository-mixin-p2)
-6. [Queue Dispatch Unification (P2)](#6-queue-dispatch-unification-p2)
-7. [Pagination Embedding (P2)](#7-pagination-embedding-p2)
-8. [Task Builder Pattern (P2)](#8-task-builder-pattern-p2)
-9. [Model Scoped Fields Adoption (P2)](#9-model-scoped-fields-adoption-p2)
-10. [Activity Logging Builder (P2)](#10-activity-logging-builder-p2)
-11. [Broadcast Payload Builder (P3)](#11-broadcast-payload-builder-p3)
-12. [DTO Timestamp Embedding (P3)](#12-dto-timestamp-embedding-p3)
+1. [Service Base Enforcement (P1)](#1-service-base-enforcement-p1)
+2. [Module Handler Field Consolidation (P1)](#2-module-handler-field-consolidation-p1)
+3. [Job Base Payload Generic (P2)](#3-job-base-payload-generic-p2)
+4. [Installable Repository Mixin (P2)](#4-installable-repository-mixin-p2)
+5. [Queue Dispatch Unification (P2)](#5-queue-dispatch-unification-p2)
+6. [Pagination Embedding (P2)](#6-pagination-embedding-p2)
+7. [Task Builder Pattern (P2)](#7-task-builder-pattern-p2)
+8. [Model Scoped Fields Adoption (P2)](#8-model-scoped-fields-adoption-p2)
+9. [Activity Logging Builder (P2)](#9-activity-logging-builder-p2)
+10. [Broadcast Payload Builder (P3)](#10-broadcast-payload-builder-p3)
+11. [DTO Timestamp Embedding (P3)](#11-dto-timestamp-embedding-p3)
 
 ---
 
-## 1. Repository BaseRepository Enforcement (P1)
-
-**Issue:** Many repositories define `db *gorm.DB` field directly instead of embedding BaseRepository.
-
-**Files Affected:**
-- `internal/modules/auth/repositories/user_repository.go:14-15`
-- `internal/modules/auth/repositories/team_repository.go` (implied)
-- `internal/modules/notification/repositories/notification_channel_repository.go:20-21`
-- `internal/modules/database/repositories/base.go:55-57`
-- ~25 more repositories with bare `db *gorm.DB` field
-
-**Current Pattern (Inconsistent):**
-```go
-// Auth module - NO base embedding
-type UserRepository struct {
-    db *gorm.DB
-}
-
-// Server module - Uses embedded base (CORRECT)
-type ServerRepository struct {
-    BaseRepository
-}
-```
-
-**Solution:** Create central `internal/pkg/repository/base.go` and enforce usage
-```go
-package repository
-
-import (
-    "context"
-    "gorm.io/gorm"
-)
-
-// BaseRepository provides common database operations for all repositories
-type BaseRepository struct {
-    db *gorm.DB
-}
-
-// NewBaseRepository creates a new base repository
-func NewBaseRepository(db *gorm.DB) BaseRepository {
-    return BaseRepository{db: db}
-}
-
-// DB returns the database connection
-func (r *BaseRepository) DB() *gorm.DB {
-    return r.db
-}
-
-// WithContext returns DB with context
-func (r *BaseRepository) WithContext(ctx context.Context) *gorm.DB {
-    return r.db.WithContext(ctx)
-}
-
-// Transaction executes function within a transaction
-func (r *BaseRepository) Transaction(ctx context.Context, fn func(tx *gorm.DB) error) error {
-    return r.db.WithContext(ctx).Transaction(fn)
-}
-```
-
-**Refactored Repository:**
-```go
-// auth/repositories/user_repository.go
-type UserRepository struct {
-    repository.BaseRepository
-}
-
-func NewUserRepository(db *gorm.DB) *UserRepository {
-    return &UserRepository{
-        BaseRepository: repository.NewBaseRepository(db),
-    }
-}
-
-// Now use r.DB() or r.WithContext(ctx) instead of r.db
-```
-
-**Refactoring Steps:**
-- [ ] Ensure `internal/pkg/repository/base.go` exists with all helpers
-- [ ] Audit all 30+ repositories for `db *gorm.DB` field
-- [ ] Refactor auth module repositories (5 files)
-- [ ] Refactor notification module repositories (3 files)
-- [ ] Refactor database module repositories (2 files)
-- [ ] Refactor remaining modules
-- [ ] Remove per-module BaseRepository definitions
-
-**Impact:** ~450 lines eliminated (15 lines × 30 repos), consistent DB access pattern
-
----
-
-## 2. Service Base Enforcement (P1)
+## 1. Service Base Enforcement (P1)
 
 **Issue:** Service base class usage is inconsistent across modules.
 
@@ -212,7 +123,7 @@ type AuthService struct {
 
 ---
 
-## 3. Module Handler Field Consolidation (P1)
+## 2. Module Handler Field Consolidation (P1)
 
 **Issue:** Individual handlers within a module repeat the same service injection field.
 
@@ -297,7 +208,7 @@ type UserHandler struct {
 
 ---
 
-## 4. Job Base Payload Generic (P2)
+## 3. Job Base Payload Generic (P2)
 
 **Issue:** All jobs repeat context field and handler setup pattern.
 
@@ -390,7 +301,7 @@ func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *Ins
 
 ---
 
-## 5. Installable Repository Mixin (P2)
+## 4. Installable Repository Mixin (P2)
 
 **Issue:** Repositories with installable models repeat delegation to `Installable` trait.
 
@@ -498,7 +409,7 @@ func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) 
 
 ---
 
-## 6. Queue Dispatch Unification (P2)
+## 5. Queue Dispatch Unification (P2)
 
 **Issue:** Job dispatching uses 3+ different patterns across codebase.
 
@@ -607,7 +518,7 @@ dispatcher.Dispatch(jobType, payload)
 
 ---
 
-## 7. Pagination Embedding (P2)
+## 6. Pagination Embedding (P2)
 
 **Issue:** Pagination logic is ad-hoc and not reusable across repositories.
 
@@ -696,7 +607,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 
 ---
 
-## 8. Task Builder Pattern (P2)
+## 7. Task Builder Pattern (P2)
 
 **Issue:** Each task file repeats callback data struct and task creation boilerplate.
 
@@ -847,7 +758,7 @@ func DeploySiteTask(opts DeployOptions) *taskrunner.BuiltTask[callbackData] {
 
 ---
 
-## 9. Model Scoped Fields Adoption (P2)
+## 8. Model Scoped Fields Adoption (P2)
 
 **Issue:** Models define scope fields manually instead of using existing mixins.
 
@@ -906,7 +817,7 @@ type Database struct {
 
 ---
 
-## 10. Activity Logging Builder (P2)
+## 9. Activity Logging Builder (P2)
 
 **Issue:** Activity logging pattern repeated with builder chain across 40+ locations.
 
@@ -1003,7 +914,7 @@ activity.LogCreation(s.repos.DB(), ctx, database, "database", userID, "Database 
 
 ---
 
-## 11. Broadcast Payload Builder (P3)
+## 10. Broadcast Payload Builder (P3)
 
 **Issue:** Broadcast payloads created inline with inconsistent structure.
 
@@ -1078,7 +989,7 @@ func (p ServerMetricsPayload) ToMap() map[string]interface{} {
 
 ---
 
-## 12. DTO Timestamp Embedding (P3)
+## 11. DTO Timestamp Embedding (P3)
 
 **Issue:** Timestamp formatting repeated 81+ times in DTO converters.
 

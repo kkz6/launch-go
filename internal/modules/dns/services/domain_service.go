@@ -42,7 +42,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 	}
 
 	var domain *models.Domain
-	err = s.Repos().Domain().WithTransaction(ctx, func(tx *gorm.DB) error {
+	err = s.Repos().Domain().Transaction(ctx, func(tx *gorm.DB) error {
 		// Add domain to provider
 		providerID, err := dnsProvider.AddDomain(ctx, req.Address)
 		if err != nil {
@@ -246,7 +246,7 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 	}
 
 	// Sync records in a transaction
-	return s.Repos().Domain().WithTransaction(ctx, func(tx *gorm.DB) error {
+	return s.Repos().Domain().Transaction(ctx, func(tx *gorm.DB) error {
 		// Delete existing records for this domain
 		if err := s.Repos().DnsRecord().DeleteByDomain(ctx, domainID); err != nil {
 			return fmt.Errorf("failed to delete existing records: %w", err)
