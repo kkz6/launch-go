@@ -6899,3 +6899,719 @@ func (r *RegisterRequest) Normalize() {
 | Error & DI (Round 4) | 12 patterns | ~1320 lines |
 | GORM & Jobs (Round 5) | 12 patterns | ~2290 lines |
 | **Grand Total** | **86 patterns** | **~12,331 lines** |
+
+---
+
+## 87. Request Context Extraction Consolidation (P1)
+
+**Problem:** 319 context extraction points with unsafe direct casts scattered across 44 handler files.
+
+**Files affected:**
+- `internal/modules/server/handlers/server_handler.go` (10+ extractions)
+- `internal/modules/site/handlers/site_handler.go` (10+ extractions)
+- `internal/modules/git/handlers/source_control_handler.go` (12+ extractions)
+- `internal/modules/dns/handlers/domain_handler.go` (8+ extractions)
+- `internal/modules/billing/handlers/billing_handler.go` (8+ extractions)
+- 39 more handler files...
+
+**Current (unsafe, duplicated 98+ times):**
+```go
+func (h *Handler) List(c *fiber.Ctx) error {
+    teamID := c.Locals("teamID").(string)  // Will panic if not set!
+    userID := c.Locals("userID").(string)  // Will panic if not set!
+    // ...
+}
+```
+
+**Database module already has safe helpers at `internal/modules/database/handlers/helper.go:9-23`:**
+```go
+func getUserIDFromContext(c *fiber.Ctx) *string {
+    if userID, ok := c.Locals("userID").(string); ok && userID != "" {
+        return &userID
+    }
+    return nil
+}
+```
+
+**Solution - Create shared `internal/pkg/fiber/context.go`:**
+```go
+package fiber
+
+type RequestContext struct {
+    UserID   string
+    TeamID   string
+    TeamRole string
+    Email    string
+    TraceID  string
+}
+
+func FromFiber(c *fiber.Ctx) (*RequestContext, error) {
+    teamID, ok := c.Locals("teamID").(string)
+    if !ok || teamID == "" {
+        return nil, ErrMissingTeamContext
+    }
+    userID, _ := c.Locals("userID").(string)
+    return &RequestContext{
+        UserID:   userID,
+        TeamID:   teamID,
+        TeamRole: c.Locals("teamRole").(string),
+    }, nil
+}
+
+// Context key constants
+const (
+    KeyTeamID   = "teamID"
+    KeyUserID   = "userID"
+    KeyTeamRole = "teamRole"
+)
+```
+
+**Refactored handlers:**
+```go
+func (h *Handler) List(c *fiber.Ctx) error {
+    ctx, err := fiberctx.FromFiber(c)
+    if err != nil {
+        return response.BadRequest(c, err.Error())
+    }
+    servers, err := h.service.ListServers(c.Context(), ctx.TeamID)
+    // ...
+}
+```
+
+**Impact:** ~300 lines saved, eliminates runtime panic risk
+
+---
+
+## 88. Repository Authorization Method Consolidation (P1)
+
+**Problem:** 60+ repository methods duplicating `FindByIDAndTeam` authorization patterns across 12+ repositories.
+
+**Files affected:**
+- `internal/modules/server/repositories/server_repository.go:46-58`
+- `internal/modules/site/repositories/site_repository.go:67-78`
+- `internal/modules/database/repositories/database_repository.go:53-68`
+- `internal/modules/git/repositories/source_control_repository.go:62-73`
+- `internal/modules/notification/repositories/notification_channel_repository.go:69-84`
+- `internal/modules/dns/repositories/domain_provider_repository.go:41-51`
+- 6 more repositories...
+
+**Current (repeated 12+ times):**
+```go
+func (r *ServerRepository) FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Server, error) {
+    var server models.Server
+    err := r.DB().WithContext(ctx).
+        Preload("Services").
+        First(&server, "id = ? AND team_id = ?", id, teamID).Error
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return nil, ErrServerNotFound
+        }
+        return nil, err
+    }
+    return &server, nil
+}
+```
+
+**Solution - Add to `internal/pkg/repository/base.go`:**
+```go
+func (r *Base[T]) FindByIDAndTeam(ctx context.Context, id, teamID string, preloads ...string) (*T, error) {
+    var entity T
+    query := r.db.WithContext(ctx)
+    for _, p := range preloads {
+        query = query.Preload(p)
+    }
+    err := query.First(&entity, "id = ? AND team_id = ?", id, teamID).Error
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return nil, r.notFoundError
+        }
+        return nil, err
+    }
+    return &entity, nil
+}
+
+func (r *Base[T]) FindByServerAndTeam(ctx context.Context, serverID, teamID string) ([]T, error) {
+    var entities []T
+    err := r.db.WithContext(ctx).
+        Where("server_id = ? AND team_id = ?", serverID, teamID).
+        Order("created_at DESC").
+        Find(&entities).Error
+    return entities, err
+}
+```
+
+**Usage:**
+```go
+// Before: 12 lines per repository
+server, err := r.repos.Server().FindByIDAndTeam(ctx, id, teamID)
+
+// After: 0 lines needed, inherited from Base[T]
+```
+
+**Impact:** ~800 lines saved across 12+ repositories
+
+---
+
+## 89. Preload Chain Consolidation (P2)
+
+**Problem:** 40+ identical preload chains duplicated within repositories.
+
+**Files affected:**
+- `internal/modules/backup/repositories/backup_repository.go` (3 identical chains)
+- `internal/modules/database/repositories/database_repository.go` (7 identical preloads)
+- `internal/modules/git/repositories/source_control_repository.go` (7 identical preloads)
+- `internal/modules/dns/repositories/domain_repository.go` (3 identical chains)
+
+**Current (duplicated 7 times in database_repository.go):**
+```go
+func (r *DatabaseRepository) FindByID(...) { Preload("Users")... }
+func (r *DatabaseRepository) FindByIDAndServer(...) { Preload("Users")... }
+func (r *DatabaseRepository) FindByIDAndTeam(...) { Preload("Users")... }
+func (r *DatabaseRepository) FindByIDAndServerAndTeam(...) { Preload("Users")... }
+// ... 3 more methods with same Preload
+```
+
+**Solution - Add default preloads to repository:**
+```go
+type DatabaseRepository struct {
+    repository.Base[models.Database]
+    defaultPreloads []string
+}
+
+func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository {
+    return &DatabaseRepository{
+        Base:            repository.NewBase[models.Database](db),
+        defaultPreloads: []string{"Users"},
+    }
+}
+
+func (r *DatabaseRepository) withPreloads(query *gorm.DB) *gorm.DB {
+    for _, p := range r.defaultPreloads {
+        query = query.Preload(p)
+    }
+    return query
+}
+```
+
+**Impact:** ~400 lines saved, DRY preload configuration
+
+---
+
+## 90. Service BaseService Accessor Duplication (P2)
+
+**Problem:** All 6 module BaseService implementations have identical accessor methods.
+
+**Files affected:**
+- `internal/modules/dns/services/base.go:79-96`
+- `internal/modules/backup/services/base.go:74-92`
+- `internal/modules/site/services/base.go:45-62`
+- `internal/modules/git/services/base.go:48-65`
+- `internal/modules/notification/services/base.go:55-72`
+- `internal/modules/database/services/base.go:52-69`
+
+**Current (duplicated 6 times):**
+```go
+func (s *BaseService) Repos() *repositories.Registry { return s.repos }
+func (s *BaseService) DB() *gorm.DB { return s.deps.DB }
+func (s *BaseService) Logger() *zerolog.Logger { return s.logger }
+func (s *BaseService) Services() *ServiceRegistry { return s.deps.registry }
+```
+
+**Solution - Create generic module base at `internal/pkg/service/module_base.go`:**
+```go
+type ModuleBase[R any, S any] struct {
+    Base
+    deps     *Dependencies
+    repos    R
+    registry S
+}
+
+func (m *ModuleBase[R, S]) Repos() R { return m.repos }
+func (m *ModuleBase[R, S]) DB() *gorm.DB { return m.deps.DB }
+func (m *ModuleBase[R, S]) Services() S { return m.registry }
+```
+
+**Impact:** ~120 lines saved, consistent service base
+
+---
+
+## 91. Retry Logic Consolidation (P2)
+
+**Problem:** 7 distinct retry patterns with no central backoff strategy.
+
+**Files affected:**
+- `internal/modules/server/jobs/wait_for_server_to_connect.go:132-209` (exponential backoff)
+- `internal/modules/site/jobs/deploy.go:42-50, 473-481` (fixed 500ms, DUPLICATED)
+- `internal/pkg/taskrunner/ssh_client.go:340-361` (fixed 10s)
+- `internal/modules/server/jobs/create_on_provider.go:194-231` (fixed 10s polling)
+- `internal/modules/billing/repositories/webhook_event_repository.go:39-48` (DB-backed counter)
+
+**Current (duplicated in deploy.go):**
+```go
+var deployment *models.Deployment
+for i := 0; i < 3; i++ {
+    deployment, err = j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+    if err == nil { break }
+    if i < 2 { time.Sleep(500 * time.Millisecond) }
+}
+```
+
+**Solution - Create `internal/pkg/retry/retry.go`:**
+```go
+package retry
+
+type Config struct {
+    MaxAttempts int
+    Initial     time.Duration
+    Max         time.Duration
+    Multiplier  float64
+    Jitter      float64
+}
+
+var (
+    DefaultFixed       = Config{MaxAttempts: 3, Initial: 500 * time.Millisecond}
+    DefaultExponential = Config{MaxAttempts: 30, Initial: 10 * time.Second, Max: 30 * time.Second, Multiplier: 1.2}
+)
+
+func WithBackoff[T any](ctx context.Context, cfg Config, fn func() (T, error)) (T, error) {
+    var result T
+    var lastErr error
+    delay := cfg.Initial
+
+    for attempt := 1; attempt <= cfg.MaxAttempts; attempt++ {
+        result, lastErr = fn()
+        if lastErr == nil { return result, nil }
+
+        select {
+        case <-ctx.Done():
+            return result, ctx.Err()
+        case <-time.After(delay):
+        }
+
+        if cfg.Multiplier > 0 {
+            delay = time.Duration(float64(delay) * cfg.Multiplier)
+            if cfg.Max > 0 && delay > cfg.Max { delay = cfg.Max }
+        }
+    }
+    return result, lastErr
+}
+```
+
+**Usage:**
+```go
+deployment, err := retry.WithBackoff(ctx, retry.DefaultFixed, func() (*models.Deployment, error) {
+    return j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+})
+```
+
+**Impact:** ~200 lines saved, consistent retry behavior
+
+---
+
+## 92. HTTP Client Factory Consolidation (P2)
+
+**Problem:** 8+ identical HTTP client instances with same 30-second timeout.
+
+**Files affected:**
+- `internal/modules/git/providers/github.go:35-37`
+- `internal/modules/server/providers/digitalocean.go:35`
+- `internal/modules/server/providers/hetzner.go`
+- `internal/modules/server/providers/linode.go`
+- `internal/modules/server/providers/vultr.go`
+- `internal/modules/notification/channels/http_client.go:20-24`
+- `internal/modules/backup/storage/dropbox.go:23-24`
+- `internal/modules/dns/providers/cloudflare.go:29-30`
+
+**Current (repeated 8+ times):**
+```go
+httpClient := &http.Client{
+    Timeout: 30 * time.Second,
+}
+```
+
+**Solution - Create `internal/pkg/httpclient/client.go`:**
+```go
+package httpclient
+
+var (
+    DefaultTimeout = 30 * time.Second
+    defaultClient  *http.Client
+    once           sync.Once
+)
+
+func Default() *http.Client {
+    once.Do(func() {
+        defaultClient = &http.Client{
+            Timeout: DefaultTimeout,
+            Transport: &http.Transport{
+                MaxIdleConns:        100,
+                MaxIdleConnsPerHost: 10,
+                IdleConnTimeout:     90 * time.Second,
+            },
+        }
+    })
+    return defaultClient
+}
+
+func WithTimeout(timeout time.Duration) *http.Client {
+    return &http.Client{Timeout: timeout}
+}
+```
+
+**Impact:** ~150 lines saved, connection pooling benefits
+
+---
+
+## 93. JobContext Field Duplication (P2)
+
+**Problem:** All module JobContexts duplicate fields already in `jobs.Base`.
+
+**Files affected:**
+- `internal/modules/server/jobs/context.go:19-29`
+- `internal/modules/site/jobs/context.go:21-38`
+- `internal/modules/backup/jobs/context.go`
+- `internal/modules/database/jobs/context.go`
+- `internal/modules/script/jobs/context.go`
+
+**Current (5 modules):**
+```go
+type JobContext struct {
+    pkgjobs.Base                    // Already has DB, Logger, WS, Queue
+    DB              *gorm.DB        // DUPLICATE!
+    Logger          *zerolog.Logger // DUPLICATE!
+    WS              broadcast.TeamBroadcaster // DUPLICATE!
+    Queue           *queue.Client   // DUPLICATE!
+    Repos           contracts.RepositoryRegistry
+    // ... module-specific fields
+}
+```
+
+**Solution - Remove duplicates, use embedded fields:**
+```go
+type JobContext struct {
+    pkgjobs.Base
+    Repos contracts.RepositoryRegistry
+    // Only module-specific fields here
+}
+
+// Access via embedded Base methods:
+// j.ctx.DB(), j.ctx.Logger(), j.ctx.WS(), j.ctx.Queue()
+```
+
+**Impact:** ~100 lines saved, cleaner inheritance
+
+---
+
+## 94. Double-Check Lock Pattern Extraction (P3)
+
+**Problem:** Same double-check locking duplicated for cached values.
+
+**File affected:**
+- `internal/modules/billing/services/team_subscription_options.go:227-268`
+
+**Current (duplicated twice in same file):**
+```go
+func (t *TeamSubscriptionOptions) PlanOptions(ctx context.Context) models.PlanOptions {
+    t.mu.RLock()
+    if t.cachedOptions != nil {
+        defer t.mu.RUnlock()
+        return *t.cachedOptions
+    }
+    t.mu.RUnlock()
+
+    t.mu.Lock()
+    defer t.mu.Unlock()
+
+    if t.cachedOptions != nil { return *t.cachedOptions }
+
+    options := t.resolvePlanOptions(ctx)
+    t.cachedOptions = &options
+    return options
+}
+```
+
+**Solution - Create `internal/pkg/sync/cached.go`:**
+```go
+package sync
+
+type Cached[T any] struct {
+    mu    sync.RWMutex
+    value *T
+}
+
+func (c *Cached[T]) GetOrCompute(compute func() T) T {
+    c.mu.RLock()
+    if c.value != nil {
+        defer c.mu.RUnlock()
+        return *c.value
+    }
+    c.mu.RUnlock()
+
+    c.mu.Lock()
+    defer c.mu.Unlock()
+
+    if c.value != nil { return *c.value }
+
+    result := compute()
+    c.value = &result
+    return result
+}
+```
+
+**Usage:**
+```go
+type TeamSubscriptionOptions struct {
+    cachedOptions sync.Cached[models.PlanOptions]
+    cachedIsAdmin sync.Cached[bool]
+}
+
+func (t *TeamSubscriptionOptions) PlanOptions(ctx context.Context) models.PlanOptions {
+    return t.cachedOptions.GetOrCompute(func() models.PlanOptions {
+        return t.resolvePlanOptions(ctx)
+    })
+}
+```
+
+**Impact:** ~50 lines saved, reusable pattern
+
+---
+
+## 95. NotifierFake Lock Wrapper (P3)
+
+**Problem:** 16+ identical lock/defer patterns in test fake.
+
+**File affected:**
+- `internal/modules/notification/testing/notifier_fake.go` (lines 49-243)
+
+**Current (repeated 16+ times):**
+```go
+func (n *NotifierFake) SendToTeam(...) error {
+    n.mu.Lock()
+    defer n.mu.Unlock()
+    // method body
+}
+
+func (n *NotifierFake) SendToChannel(...) error {
+    n.mu.Lock()
+    defer n.mu.Unlock()
+    // method body
+}
+// ... 14 more identical patterns
+```
+
+**Solution - Create wrapper method:**
+```go
+func (n *NotifierFake) withLock(fn func()) {
+    n.mu.Lock()
+    defer n.mu.Unlock()
+    fn()
+}
+
+func (n *NotifierFake) withLockReturn[T any](fn func() T) T {
+    n.mu.Lock()
+    defer n.mu.Unlock()
+    return fn()
+}
+
+// Usage:
+func (n *NotifierFake) SendToTeam(...) error {
+    n.withLock(func() {
+        n.sendToTeamCalled++
+        n.sentNotifications = append(n.sentNotifications, ...)
+    })
+    return nil
+}
+```
+
+**Impact:** ~100 lines saved in test code
+
+---
+
+## 96. ServiceRegistry Boilerplate (P3)
+
+**Problem:** Every module repeats identical registry struct + getter pattern.
+
+**Files affected:**
+- `internal/modules/site/services/base.go:24-45`
+- `internal/modules/dns/services/base.go:34-52`
+- `internal/modules/backup/services/base.go:24-42`
+- `internal/modules/git/services/base.go:24-42`
+- `internal/modules/notification/services/base.go:24-42`
+
+**Current (repeated 5+ times):**
+```go
+type ServiceRegistry struct {
+    site       *SiteService
+    deployment *DeploymentService
+    // ...
+}
+
+func (r *ServiceRegistry) Site() *SiteService { return r.site }
+func (r *ServiceRegistry) Deployment() *DeploymentService { return r.deployment }
+// ... more getters
+```
+
+**Solution - Use generic container or code generation:**
+```go
+// Option 1: Generic container
+type Registry[T any] struct {
+    services map[string]T
+}
+
+// Option 2: Documented pattern with interface
+type ServiceRegistry interface {
+    Get(name string) any
+}
+```
+
+**Impact:** ~90 lines saved across 5 modules
+
+---
+
+## 97. Soft Delete Pattern Standardization (P3)
+
+**Problem:** Inconsistent soft-delete approaches (GORM DeletedAt vs ArchivedAt vs status-based).
+
+**Files affected:**
+- `internal/modules/server/models/server.go:56` (ArchivedAt field)
+- `internal/modules/auth/models/personal_access_token.go:12` (SoftDeleteModel)
+- `internal/modules/billing/repositories/subscription_repository.go:61-77` (status-based)
+
+**Current inconsistency:**
+```go
+// Pattern 1: Custom ArchivedAt (Server)
+type Server struct {
+    ArchivedAt *time.Time `gorm:"column:archived_at"`
+}
+
+// Pattern 2: GORM SoftDeleteModel (PersonalAccessToken)
+type PersonalAccessToken struct {
+    basemodels.SoftDeleteModel  // DeletedAt gorm.DeletedAt
+}
+
+// Pattern 3: Status-based (Subscription)
+Where("status IN ?", []enums.SubscriptionStatus{Active, OnTrial})
+```
+
+**Solution - Create unified archivable interface:**
+```go
+// internal/pkg/models/archivable.go
+type Archivable interface {
+    IsArchived() bool
+    Archive()
+    Unarchive()
+}
+
+type ArchivableModel struct {
+    ArchivedAt *time.Time `gorm:"column:archived_at;type:timestamp null"`
+}
+
+func (m *ArchivableModel) IsArchived() bool { return m.ArchivedAt != nil }
+func (m *ArchivableModel) Archive() { now := time.Now(); m.ArchivedAt = &now }
+func (m *ArchivableModel) Unarchive() { m.ArchivedAt = nil }
+```
+
+**Impact:** ~150 lines saved, consistent soft-delete semantics
+
+---
+
+## 98. Timeout Configuration Consolidation (P3)
+
+**Problem:** Timeout values scattered across 85+ files with no central configuration.
+
+**Files affected:**
+- `internal/pkg/taskrunner/task.go:59` (10 min default)
+- `internal/pkg/taskrunner/dispatcher.go:153` (30s SSH)
+- `internal/pkg/taskrunner/ssh_client.go:78` (30s default)
+- `cmd/api/main.go:110-111` (30s Fiber)
+- All provider files (30s HTTP)
+- Task definition files (600s-3600s)
+
+**Current (scattered):**
+```go
+// dispatcher.go:153
+sshClient, _ := NewSSHClient(SSHConfig{Timeout: 30 * time.Second})
+
+// ssh_client.go:78
+if timeout == 0 { timeout = 30 * time.Second }
+
+// main.go:110
+fiberApp := fiber.New(fiber.Config{ReadTimeout: 30 * time.Second})
+```
+
+**Solution - Create `internal/pkg/timeout/config.go`:**
+```go
+package timeout
+
+var (
+    SSH          = 30 * time.Second
+    HTTP         = 30 * time.Second
+    Fiber        = 30 * time.Second
+    TaskDefault  = 10 * time.Minute
+    NetworkDial  = 5 * time.Second
+    RetryDelay   = 10 * time.Second
+)
+
+type Config struct {
+    SSH         time.Duration
+    HTTP        time.Duration
+    TaskDefault time.Duration
+}
+
+func Default() *Config {
+    return &Config{
+        SSH:         SSH,
+        HTTP:        HTTP,
+        TaskDefault: TaskDefault,
+    }
+}
+```
+
+**Impact:** ~100 lines saved, centralized timeout management
+
+---
+
+## Extended Summary (Items 87-98)
+
+| Category | Items | Est. LOC Saved |
+|----------|-------|----------------|
+| Request Context Extraction | Item 87 | ~300 lines |
+| Repository Authorization | Item 88 | ~800 lines |
+| Preload Chain Consolidation | Item 89 | ~400 lines |
+| Service Accessor Duplication | Item 90 | ~120 lines |
+| Retry Logic Consolidation | Item 91 | ~200 lines |
+| HTTP Client Factory | Item 92 | ~150 lines |
+| JobContext Field Duplication | Item 93 | ~100 lines |
+| Double-Check Lock Pattern | Item 94 | ~50 lines |
+| NotifierFake Lock Wrapper | Item 95 | ~100 lines |
+| ServiceRegistry Boilerplate | Item 96 | ~90 lines |
+| Soft Delete Standardization | Item 97 | ~150 lines |
+| Timeout Configuration | Item 98 | ~100 lines |
+| **Round 6 Total** | **12 patterns** | **~2560 lines** |
+
+---
+
+## Updated Final Summary
+
+| Category | Items | Total LOC Saved |
+|----------|-------|-----------------|
+| Handler Bases | 5 patterns | ~400 lines |
+| Repository Patterns | 5 patterns | ~1200 lines |
+| Service Patterns | 3 patterns | ~450 lines |
+| Job/Task Patterns | 3 patterns | ~800 lines |
+| Model Mixins | 5 patterns | ~270 lines |
+| Provider API Clients | 3 patterns | ~450 lines |
+| Middleware Patterns | 1 pattern | ~30 lines |
+| Config Patterns | 1 pattern | ~86 lines |
+| DTO/Request Patterns | 2 patterns | ~550 lines |
+| Testing Patterns | 2 patterns | ~250 lines |
+| Infrastructure Patterns | 6 patterns | ~1075 lines |
+| Validation & Response | 5 patterns | ~610 lines |
+| Template & Script | 3 patterns | ~160 lines |
+| Interface & Query | 4 patterns | ~500 lines |
+| Security & Events | 3 patterns | ~100 lines |
+| HTTP & Helpers (Round 3) | 12 patterns | ~1790 lines |
+| Error & DI (Round 4) | 12 patterns | ~1320 lines |
+| GORM & Jobs (Round 5) | 12 patterns | ~2290 lines |
+| Context & Auth (Round 6) | 12 patterns | ~2560 lines |
+| **Grand Total** | **98 patterns** | **~14,891 lines** |
