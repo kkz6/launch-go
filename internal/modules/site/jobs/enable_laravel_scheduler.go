@@ -7,6 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
@@ -70,12 +71,13 @@ func (j *EnableLaravelSchedulerJob) Handle(ctx context.Context) error {
 	command := j.buildSchedulerCommand(site)
 
 	// Create cron record
+	schedule := serverenums.CronEveryMinute
 	cron := &servermodels.Cron{
 		SiteID:     &site.ID,
-		Expression: "* * * * *",
+		Expression: schedule.Expression(),
 		Command:    basemodels.EncryptedString(command),
 		User:       site.User,
-		Frequency:  "every_minute",
+		Frequency:  schedule.FrequencyName(),
 		Hidden:     true, // Laravel scheduler crons are hidden
 	}
 	cron.ServerID = server.ID
