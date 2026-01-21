@@ -7,6 +7,8 @@ import (
 	"io/fs"
 	"path/filepath"
 	"text/template"
+
+	pkgtemplates "github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
 
 //go:embed *.sh
@@ -18,7 +20,15 @@ var templateFS embed.FS
 var templates *template.Template
 
 func init() {
-	templates = template.New("").Funcs(templateFuncs)
+	// Create a copy of CommonFuncMap and override shellDefaults with lenient version
+	// Site module uses set -eu (not pipefail) to match Laravel behavior
+	funcMap := make(template.FuncMap)
+	for k, v := range pkgtemplates.CommonFuncMap {
+		funcMap[k] = v
+	}
+	funcMap["shellDefaults"] = pkgtemplates.ShellDefaultsLenient
+
+	templates = template.New("").Funcs(funcMap)
 
 	// Walk through embedded files and add each template with its full path
 	err := fs.WalkDir(templateFS, ".", func(path string, d fs.DirEntry, err error) error {
@@ -46,12 +56,6 @@ func init() {
 	}
 }
 
-// templateFuncs provides custom template functions
-var templateFuncs = template.FuncMap{
-	"shellDefaults": ShellDefaults,
-	"dirName":       filepath.Dir,
-}
-
 // Render executes a named template with the given data
 func Render(name string, data any) (string, error) {
 	var buf bytes.Buffer
@@ -68,11 +72,4 @@ func MustRender(name string, data any) string {
 		panic(err)
 	}
 	return result
-}
-
-// ShellDefaults returns the standard shell script header
-// Uses set -eu (not pipefail) to match Laravel behavior
-func ShellDefaults() string {
-	return `set -eu
-export DEBIAN_FRONTEND=noninteractive`
 }

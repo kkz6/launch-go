@@ -10,11 +10,12 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
+	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks/templates"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
+	pkgtemplates "github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
 
 // Task type constants for deployment operations
@@ -484,7 +485,7 @@ func buildStandardScript(opts DeployOptions) string {
 	var scriptBuilder strings.Builder
 
 	scriptBuilder.WriteString("#!/bin/bash\n")
-	scriptBuilder.WriteString(templates.ShellDefaults())
+	scriptBuilder.WriteString(pkgtemplates.ShellDefaultsLenient())
 	scriptBuilder.WriteString("\n\n")
 
 	scriptBuilder.WriteString(templates.MustRender("deployment/shell_variables.sh", struct {
@@ -544,7 +545,7 @@ func buildZeroDowntimeScript(opts DeployOptions) string {
 	var scriptBuilder strings.Builder
 
 	scriptBuilder.WriteString("#!/bin/bash\n")
-	scriptBuilder.WriteString(templates.ShellDefaults())
+	scriptBuilder.WriteString(pkgtemplates.ShellDefaultsLenient())
 	scriptBuilder.WriteString("\n\n")
 
 	scriptBuilder.WriteString(templates.MustRender("deployment/shell_variables.sh", struct {
@@ -755,4 +756,3 @@ func RollbackDeployment(config RollbackDeploymentConfig) *taskrunner.BaseTask {
 		taskrunner.WithTimeoutSeconds(60),
 	)
 }
-
