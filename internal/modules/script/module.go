@@ -3,10 +3,10 @@ package script
 import (
 	"github.com/hibiken/asynq"
 
-	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/script/jobs"
 	"github.com/kkz6/launch-go/internal/modules/script/repositories"
 	"github.com/kkz6/launch-go/internal/modules/script/services"
+	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/module"
 )
@@ -60,10 +60,11 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 func (m *Module) createService() *services.ScriptService {
 	deps := m.Deps()
 
-	return services.NewScriptService(
-		m.repos,
-		m.serverRepos,
-		deps.Queue,
-		deps.Logger,
-	)
+	serviceDeps := &services.ServiceDeps{
+		Dependencies: deps.ServiceDeps(),
+		Repos:        m.repos,
+		ServerRepos:  m.serverRepos,
+	}
+
+	return services.NewScriptService(serviceDeps)
 }
