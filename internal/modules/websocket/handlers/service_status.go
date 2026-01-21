@@ -16,6 +16,7 @@ import (
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
+	"github.com/kkz6/launch-go/internal/pkg/fiberutil"
 )
 
 // ServiceStatus represents the status of a service
@@ -60,16 +61,8 @@ func (h *ServiceStatusHandler) Handler() fiber.Handler {
 	return websocket.New(func(c *websocket.Conn) {
 		// Get parameters
 		serverID := c.Query("serverId")
-		serviceID := c.Query("serviceId")       // Optional: monitor specific service
-		intervalStr := c.Query("interval", "5") // Polling interval in seconds
-
-		interval, _ := strconv.Atoi(intervalStr)
-		if interval < 2 {
-			interval = 2 // Minimum 2 seconds
-		}
-		if interval > 60 {
-			interval = 60 // Maximum 60 seconds
-		}
+		serviceID := c.Query("serviceId") // Optional: monitor specific service
+		interval := fiberutil.ParseIntValue(c.Query("interval", "5"), 5, 2, 60)
 
 		if serverID == "" {
 			h.sendError(c, "Missing serverId parameter")

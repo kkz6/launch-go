@@ -1,7 +1,9 @@
 package httpclient
 
 import (
+	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -83,6 +85,32 @@ func (r *Request) WithHeaders(headers map[string]string) *Request {
 	for k, v := range headers {
 		r.headers[k] = v
 	}
+	return r
+}
+
+// BearerAuth sets the Authorization header with a Bearer token.
+func (r *Request) BearerAuth(token string) *Request {
+	r.headers["Authorization"] = "Bearer " + token
+	return r
+}
+
+// BasicAuth sets the Authorization header with Basic authentication.
+func (r *Request) BasicAuth(username, password string) *Request {
+	auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	r.headers["Authorization"] = "Basic " + auth
+	return r
+}
+
+// TokenAuth sets the Authorization header with a token scheme (e.g., "token abc123").
+func (r *Request) TokenAuth(scheme, token string) *Request {
+	r.headers["Authorization"] = scheme + " " + token
+	return r
+}
+
+// JSON sets both Content-Type and Accept headers to application/json.
+func (r *Request) JSON() *Request {
+	r.headers["Content-Type"] = "application/json"
+	r.headers["Accept"] = "application/json"
 	return r
 }
 
@@ -224,6 +252,24 @@ type Response struct {
 	Body       []byte
 }
 
+// HandleResponse reads and wraps an http.Response for easier handling.
+// It closes the response body after reading.
+func HandleResponse(resp *http.Response) (*Response, error) {
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	return &Response{
+		StatusCode: resp.StatusCode,
+		Status:     resp.Status,
+		Headers:    resp.Header,
+		Body:       body,
+	}, nil
+}
+
 // JSON unmarshals the response body into the given target.
 func (r *Response) JSON(target interface{}) error {
 	if len(r.Body) == 0 {
@@ -240,6 +286,59 @@ func (r *Response) String() string {
 // IsSuccess returns true if the response status code is 2xx.
 func (r *Response) IsSuccess() bool {
 	return r.StatusCode >= 200 && r.StatusCode < 300
+}
+
+// CheckSuccess returns an error if the response status code is not 2xx.
+func (r *Response) CheckSuccess() error {
+	if !r.IsSuccess() {
+		return fmt.Errorf("request failed with status %d: %s", r.StatusCode, string(r.Body))
+	}
+	return nil
+}
+
+// Decode validates the response is successful and unmarshals the body into v.
+func (r *Response) Decode(v interface{}) error {
+	if err := r.CheckSuccess(); err != nil {
+		return err
+	}
+	if len(r.Body) == 0 {
+		return nil
+	}
+	return json.Unmarshal(r.Body, v)
+}
+
+// DecodeMap validates the response and returns the body as a map.
+func (r *Response) DecodeMap() (map[string]interface{}, error) {
+	var result map[string]interface{}
+	if err := r.Decode(&result); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
+
+// StatusHandler allows mapping specific status codes to custom errors.
+type StatusHandler struct {
+	handlers map[int]error
+}
+
+// NewStatusHandler creates a new StatusHandler for custom error mapping.
+func NewStatusHandler() *StatusHandler {
+	return &StatusHandler{handlers: make(map[int]error)}
+}
+
+// On maps a status code to a specific error.
+func (h *StatusHandler) On(code int, err error) *StatusHandler {
+	h.handlers[code] = err
+	return h
+}
+
+// Check returns the mapped error for the response status code,
+// or calls CheckSuccess if no mapping exists.
+func (h *StatusHandler) Check(r *Response) error {
+	if err, ok := h.handlers[r.StatusCode]; ok {
+		return err
+	}
+	return r.CheckSuccess()
 }
 
 // DoResponse executes the request and returns a Response wrapper.
@@ -307,4 +406,106 @@ func ToMap(v interface{}) (map[string]interface{}, error) {
 	}
 
 	return result, nil
+}
+
+// RequestBuilder is a standalone builder for constructing http.Request objects
+// without requiring an httpclient.Client. Use this when you need to build
+// requests for use with a raw http.Client.
+type RequestBuilder struct {
+	ctx     context.Context
+	method  string
+	url     string
+	headers map[string]string
+	body    io.Reader
+}
+
+// NewRequest creates a new standalone request builder.
+// This is useful when you need to build an http.Request without using httpclient.Client.
+func NewRequest(ctx context.Context, method, requestURL string) *RequestBuilder {
+	return &RequestBuilder{
+		ctx:     ctx,
+		method:  method,
+		url:     requestURL,
+		headers: make(map[string]string),
+	}
+}
+
+// WithHeader adds a header to the request.
+func (r *RequestBuilder) WithHeader(key, value string) *RequestBuilder {
+	r.headers[key] = value
+	return r
+}
+
+// WithHeaders adds multiple headers to the request.
+func (r *RequestBuilder) WithHeaders(headers map[string]string) *RequestBuilder {
+	for k, v := range headers {
+		r.headers[k] = v
+	}
+	return r
+}
+
+// BearerAuth sets the Authorization header with a Bearer token.
+func (r *RequestBuilder) BearerAuth(token string) *RequestBuilder {
+	r.headers["Authorization"] = "Bearer " + token
+	return r
+}
+
+// BasicAuth sets the Authorization header with Basic authentication.
+func (r *RequestBuilder) BasicAuth(username, password string) *RequestBuilder {
+	auth := base64.StdEncoding.EncodeToString([]byte(username + ":" + password))
+	r.headers["Authorization"] = "Basic " + auth
+	return r
+}
+
+// TokenAuth sets the Authorization header with a custom token scheme.
+func (r *RequestBuilder) TokenAuth(scheme, token string) *RequestBuilder {
+	r.headers["Authorization"] = scheme + " " + token
+	return r
+}
+
+// JSON sets both Content-Type and Accept headers to application/json.
+func (r *RequestBuilder) JSON() *RequestBuilder {
+	r.headers["Content-Type"] = "application/json"
+	r.headers["Accept"] = "application/json"
+	return r
+}
+
+// WithBody sets the request body from an io.Reader.
+func (r *RequestBuilder) WithBody(body io.Reader) *RequestBuilder {
+	r.body = body
+	return r
+}
+
+// JSONBody marshals the given value to JSON and sets it as the request body.
+// Also sets Content-Type and Accept headers to application/json.
+func (r *RequestBuilder) JSONBody(v interface{}) *RequestBuilder {
+	data, err := json.Marshal(v)
+	if err != nil {
+		return r
+	}
+	r.body = bytes.NewReader(data)
+	return r.JSON()
+}
+
+// Build constructs the http.Request with all configured options.
+func (r *RequestBuilder) Build() (*http.Request, error) {
+	req, err := http.NewRequestWithContext(r.ctx, r.method, r.url, r.body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	for k, v := range r.headers {
+		req.Header.Set(k, v)
+	}
+
+	return req, nil
+}
+
+// MustBuild constructs the http.Request or panics if an error occurs.
+func (r *RequestBuilder) MustBuild() *http.Request {
+	req, err := r.Build()
+	if err != nil {
+		panic(err)
+	}
+	return req
 }

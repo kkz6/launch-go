@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/gofiber/contrib/websocket"
@@ -13,6 +12,7 @@ import (
 
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
+	"github.com/kkz6/launch-go/internal/pkg/fiberutil"
 )
 
 // MetricsHandler handles WebSocket metrics streaming connections
@@ -37,15 +37,7 @@ func NewMetricsHandlerWithDeps(db *gorm.DB, jwtSecret string, logger zerolog.Log
 func (h *MetricsHandler) Handler() fiber.Handler {
 	return websocket.New(func(c *websocket.Conn) {
 		serverID := c.Query("serverId")
-		intervalStr := c.Query("interval", "2")
-
-		interval, _ := strconv.Atoi(intervalStr)
-		if interval < 1 {
-			interval = 1
-		}
-		if interval > 60 {
-			interval = 60
-		}
+		interval := fiberutil.ParseIntervalValue(c.Query("interval", "2"), 2)
 
 		if serverID == "" {
 			h.sendError(c, "Missing serverId parameter")

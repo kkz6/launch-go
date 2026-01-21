@@ -1,11 +1,11 @@
 package slack
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 )
 
 // AdminAlerter sends admin alerts to Slack
@@ -18,9 +18,7 @@ type AdminAlerter struct {
 func NewAdminAlerter(webhookURL string) *AdminAlerter {
 	return &AdminAlerter{
 		webhookURL: webhookURL,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+		httpClient: httpclient.WithCustomTimeout(10 * time.Second),
 	}
 }
 
@@ -35,17 +33,12 @@ func (a *AdminAlerter) Send(ctx context.Context, message *BlockKitMessage) error
 		return nil // Silently skip if not configured
 	}
 
-	payload, err := json.Marshal(message)
+	req, err := httpclient.NewRequest(ctx, http.MethodPost, a.webhookURL).
+		JSONBody(message).
+		Build()
 	if err != nil {
 		return err
 	}
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, a.webhookURL, bytes.NewReader(payload))
-	if err != nil {
-		return err
-	}
-
-	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := a.httpClient.Do(req)
 	if err != nil {

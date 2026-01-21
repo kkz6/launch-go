@@ -585,3 +585,147 @@ func TestParseOffset(t *testing.T) {
 		})
 	}
 }
+
+func TestParseIntValue(t *testing.T) {
+	tests := []struct {
+		name       string
+		str        string
+		defaultVal int
+		min        int
+		max        int
+		expected   int
+	}{
+		{
+			name:       "returns default for empty string",
+			str:        "",
+			defaultVal: 10,
+			min:        1,
+			max:        100,
+			expected:   10,
+		},
+		{
+			name:       "parses valid integer",
+			str:        "50",
+			defaultVal: 10,
+			min:        1,
+			max:        100,
+			expected:   50,
+		},
+		{
+			name:       "returns default for invalid string",
+			str:        "abc",
+			defaultVal: 10,
+			min:        1,
+			max:        100,
+			expected:   10,
+		},
+		{
+			name:       "clamps to min",
+			str:        "0",
+			defaultVal: 10,
+			min:        1,
+			max:        100,
+			expected:   1,
+		},
+		{
+			name:       "clamps to max",
+			str:        "200",
+			defaultVal: 10,
+			min:        1,
+			max:        100,
+			expected:   100,
+		},
+		{
+			name:       "no clamping when min and max are zero",
+			str:        "500",
+			defaultVal: 10,
+			min:        0,
+			max:        0,
+			expected:   500,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseIntValue(tt.str, tt.defaultVal, tt.min, tt.max)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestParseTailValue(t *testing.T) {
+	tests := []struct {
+		name     string
+		str      string
+		expected int
+	}{
+		{
+			name:     "returns default 100 for empty string",
+			str:      "",
+			expected: 100,
+		},
+		{
+			name:     "parses valid tail",
+			str:      "500",
+			expected: 500,
+		},
+		{
+			name:     "clamps to min 1",
+			str:      "0",
+			expected: 1,
+		},
+		{
+			name:     "clamps to max 10000",
+			str:      "20000",
+			expected: 10000,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseTailValue(tt.str)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}
+
+func TestParseIntervalValue(t *testing.T) {
+	tests := []struct {
+		name       string
+		str        string
+		defaultVal int
+		expected   int
+	}{
+		{
+			name:       "returns default for empty string",
+			str:        "",
+			defaultVal: 5,
+			expected:   5,
+		},
+		{
+			name:       "parses valid interval",
+			str:        "30",
+			defaultVal: 5,
+			expected:   30,
+		},
+		{
+			name:       "clamps to min 1",
+			str:        "0",
+			defaultVal: 5,
+			expected:   1,
+		},
+		{
+			name:       "clamps to max 60",
+			str:        "100",
+			defaultVal: 5,
+			expected:   60,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := ParseIntervalValue(tt.str, tt.defaultVal)
+			assert.Equal(t, tt.expected, result)
+		})
+	}
+}

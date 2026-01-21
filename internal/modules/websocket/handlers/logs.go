@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"strconv"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -15,6 +14,7 @@ import (
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
+	"github.com/kkz6/launch-go/internal/pkg/fiberutil"
 )
 
 // LogsHandler handles WebSocket log streaming connections
@@ -44,14 +44,9 @@ func (h *LogsHandler) Handler() fiber.Handler {
 		entityID := c.Query("entityId")
 		software := c.Query("software")
 		route := c.Query("route") // encrypted file route for site logs
-		tailStr := c.Query("tail", "100")
+		tail := fiberutil.ParseTailValue(c.Query("tail", "100"))
 		search := c.Query("search")
 		logType := c.Query("type", "output")
-
-		tail, _ := strconv.Atoi(tailStr)
-		if tail <= 0 {
-			tail = 100
-		}
 
 		if serverID == "" {
 			h.SendError(c, "Missing server ID")
