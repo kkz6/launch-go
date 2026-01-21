@@ -50,6 +50,11 @@ func (r *RedisBroadcaster) BroadcastToDeployment(deploymentID string, event stri
 	r.publish("deployment."+deploymentID, event, data)
 }
 
+// BroadcastToUser publishes a message to Redis for the user channel
+func (r *RedisBroadcaster) BroadcastToUser(userID string, event string, data interface{}) {
+	r.publish("user."+userID, event, data)
+}
+
 // Broadcast publishes a message to Redis for a specific channel
 func (r *RedisBroadcaster) Broadcast(channel string, event string, data interface{}) {
 	r.publish(channel, event, data)

@@ -176,6 +176,11 @@ func (h *Hub) BroadcastToTeam(teamID string, event string, data interface{}) {
 	h.Broadcast("team."+teamID, event, data)
 }
 
+// BroadcastToUser sends a message to the user's channel
+func (h *Hub) BroadcastToUser(userID string, event string, data interface{}) {
+	h.Broadcast("user."+userID, event, data)
+}
+
 // BroadcastModelCreated broadcasts a model creation event to the team channel
 func (h *Hub) BroadcastModelCreated(teamID, modelName, modelID string, payload interface{}) {
 	h.BroadcastToTeam(teamID, modelName+".created", map[string]interface{}{

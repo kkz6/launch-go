@@ -125,6 +125,14 @@ func (s *Base) BroadcastToDeployment(deploymentID, event string, data interface{
 	s.WS.BroadcastToDeployment(deploymentID, event, data)
 }
 
+// BroadcastToUser broadcasts a message to a specific user
+func (s *Base) BroadcastToUser(userID, event string, data interface{}) {
+	if s.WS == nil {
+		return
+	}
+	s.WS.BroadcastToUser(userID, event, data)
+}
+
 // Broadcast broadcasts a message to a channel
 func (s *Base) Broadcast(channel, event string, data interface{}) {
 	if s.WS == nil {
