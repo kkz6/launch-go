@@ -526,7 +526,10 @@ func (p *CloudflareProvider) newRequest(ctx context.Context, method, path string
 
 // parseErrorResponse parses an error response from Cloudflare
 func (p *CloudflareProvider) parseErrorResponse(resp *http.Response) error {
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return NewProviderError("Cloudflare", resp.StatusCode, "failed to read error response", err)
+	}
 
 	var result cloudflareResponse
 	if err := json.Unmarshal(body, &result); err == nil && len(result.Errors) > 0 {
@@ -538,9 +541,9 @@ func (p *CloudflareProvider) parseErrorResponse(resp *http.Response) error {
 
 // cloudflareResponse represents a response from the Cloudflare API
 type cloudflareResponse struct {
-	Success bool                     `json:"success"`
-	Result  interface{}              `json:"result"`
-	Errors  []cloudflareError        `json:"errors"`
+	Success bool              `json:"success"`
+	Result  interface{}       `json:"result"`
+	Errors  []cloudflareError `json:"errors"`
 }
 
 // cloudflareError represents an error from the Cloudflare API

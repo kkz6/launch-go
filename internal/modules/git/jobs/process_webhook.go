@@ -31,19 +31,7 @@ type ProcessGitWebhookJob struct {
 	logger          *zerolog.Logger
 	service         *services.SourceControlService
 	providerFactory *providers.ProviderFactory
-	siteRepo        SiteRepository
-	queueClient     QueueClient
 	Payload         ProcessGitWebhookPayload
-}
-
-// SiteRepository interface for site operations
-type SiteRepository interface {
-	FindByRepositoryAndBranch(ctx context.Context, repository, branch string) ([]any, error)
-}
-
-// QueueClient interface for dispatching jobs
-type QueueClient interface {
-	Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
 }
 
 // Handle processes the webhook
@@ -90,7 +78,10 @@ func (j *ProcessGitWebhookJob) Failed(ctx context.Context, err error) {
 }
 
 func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data map[string]any) error {
-	action, _ := data["action"].(string)
+	action, ok := data["action"].(string)
+	if !ok && data["action"] != nil {
+		j.logger.Debug().Interface("action", data["action"]).Msg("GitHub webhook: unexpected action type")
+	}
 
 	// Handle installation events
 	if installation, ok := data["installation"].(map[string]any); ok {
@@ -114,8 +105,14 @@ func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data ma
 	// Handle push events for deployments
 	if commits, ok := data["commits"].([]any); ok && len(commits) > 0 {
 		if repository, ok := data["repository"].(map[string]any); ok {
-			fullName, _ := repository["full_name"].(string)
-			ref, _ := data["ref"].(string)
+			fullName, ok := repository["full_name"].(string)
+			if !ok {
+				j.logger.Debug().Interface("full_name", repository["full_name"]).Msg("GitHub webhook: unexpected full_name type")
+			}
+			ref, ok := data["ref"].(string)
+			if !ok {
+				j.logger.Debug().Interface("ref", data["ref"]).Msg("GitHub webhook: unexpected ref type")
+			}
 			branch := strings.TrimPrefix(ref, "refs/heads/")
 
 			if fullName != "" && branch != "" {
@@ -128,12 +125,21 @@ func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data ma
 }
 
 func (j *ProcessGitWebhookJob) processGitLabWebhook(ctx context.Context, data map[string]any) error {
-	eventType, _ := data["event_type"].(string)
+	eventType, ok := data["event_type"].(string)
+	if !ok && data["event_type"] != nil {
+		j.logger.Debug().Interface("event_type", data["event_type"]).Msg("GitLab webhook: unexpected event_type type")
+	}
 
 	if eventType == "push" {
 		if project, ok := data["project"].(map[string]any); ok {
-			fullName, _ := project["path_with_namespace"].(string)
-			ref, _ := data["ref"].(string)
+			fullName, ok := project["path_with_namespace"].(string)
+			if !ok {
+				j.logger.Debug().Interface("path_with_namespace", project["path_with_namespace"]).Msg("GitLab webhook: unexpected path_with_namespace type")
+			}
+			ref, ok := data["ref"].(string)
+			if !ok {
+				j.logger.Debug().Interface("ref", data["ref"]).Msg("GitLab webhook: unexpected ref type")
+			}
 			branch := strings.TrimPrefix(ref, "refs/heads/")
 
 			if fullName != "" && branch != "" {
@@ -149,12 +155,18 @@ func (j *ProcessGitWebhookJob) processBitbucketWebhook(ctx context.Context, data
 	if push, ok := data["push"].(map[string]any); ok {
 		if changes, ok := push["changes"].([]any); ok && len(changes) > 0 {
 			if repository, ok := data["repository"].(map[string]any); ok {
-				fullName, _ := repository["full_name"].(string)
+				fullName, ok := repository["full_name"].(string)
+				if !ok {
+					j.logger.Debug().Interface("full_name", repository["full_name"]).Msg("Bitbucket webhook: unexpected full_name type")
+				}
 
 				if change, ok := changes[0].(map[string]any); ok {
 					var branch string
 					if newRef, ok := change["new"].(map[string]any); ok {
-						branch, _ = newRef["name"].(string)
+						branch, ok = newRef["name"].(string)
+						if !ok {
+							j.logger.Debug().Interface("name", newRef["name"]).Msg("Bitbucket webhook: unexpected branch name type")
+						}
 					}
 
 					if fullName != "" && branch != "" {
@@ -169,7 +181,11 @@ func (j *ProcessGitWebhookJob) processBitbucketWebhook(ctx context.Context, data
 }
 
 func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, data map[string]any, installationID string) error {
-	sender, _ := data["sender"].(map[string]any)
+	sender, ok := data["sender"].(map[string]any)
+	if !ok {
+		j.logger.Debug().Interface("sender", data["sender"]).Msg("GitHub webhook: unexpected sender type in installation created")
+		return nil
+	}
 	if sender == nil {
 		return nil
 	}
@@ -184,7 +200,9 @@ func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, da
 	// Update with installer info
 	providerData := make(map[string]any)
 	if sc.ProviderData != nil && *sc.ProviderData != "" {
-		_ = json.Unmarshal([]byte(*sc.ProviderData), &providerData)
+		if err := json.Unmarshal([]byte(*sc.ProviderData), &providerData); err != nil {
+			j.logger.Warn().Err(err).Str("installation_id", installationID).Msg("Failed to parse existing provider data")
+		}
 	}
 
 	providerData["github_installer"] = map[string]any{
@@ -195,7 +213,10 @@ func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, da
 		"installed_via_webhook": true,
 	}
 
-	providerDataJSON, _ := json.Marshal(providerData)
+	providerDataJSON, err := json.Marshal(providerData)
+	if err != nil {
+		return fmt.Errorf("failed to marshal provider data: %w", err)
+	}
 	providerDataStr := string(providerDataJSON)
 
 	return j.service.GetSourceControlRepo().UpdateFields(ctx, sc.ID, map[string]any{
@@ -233,7 +254,10 @@ func (j *ProcessGitWebhookJob) triggerDeployments(ctx context.Context, repositor
 	}
 
 	// Get commit data from webhook
-	provider, _ := j.providerFactory.GetProvider(providers.GitProviderType(providerType))
+	provider, err := j.providerFactory.GetProvider(providers.GitProviderType(providerType))
+	if err != nil {
+		return fmt.Errorf("failed to get provider: %w", err)
+	}
 	commitData := provider.GetCommitData(webhookData)
 
 	if commitData == nil || commitData.Branch != branch {
@@ -299,7 +323,6 @@ type JobContext struct {
 	Service         *services.SourceControlService
 	ProviderFactory *providers.ProviderFactory
 	SCRepo          *repositories.SourceControlRepository
-	QueueClient     QueueClient
 }
 
 // NewProcessGitWebhookJob creates a new ProcessGitWebhookJob
@@ -312,4 +335,3 @@ func NewProcessGitWebhookJob(ctx *JobContext, payload ProcessGitWebhookPayload) 
 		Payload:         payload,
 	}
 }
-

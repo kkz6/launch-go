@@ -22,6 +22,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/utils"
 )
@@ -64,8 +65,8 @@ func (s *SiteService) SetDatabaseService(svc *databaseservices.Service) {
 	s.databaseService = svc
 }
 
-// SetDnsRecordService sets the DNS record service for cross-module operations
-func (s *SiteService) SetDnsRecordService(svc dnscontracts.DnsRecordService) {
+// SetDNSRecordService sets the DNS record service for cross-module operations
+func (s *SiteService) SetDNSRecordService(svc dnscontracts.DnsRecordService) {
 	s.dnsRecordService = svc
 }
 
@@ -83,7 +84,10 @@ func (s *SiteService) List(ctx context.Context, serverID, teamID string) ([]mode
 
 	// Load latest deployment for each site
 	for i := range sites {
-		deployment, _ := s.Repos().Deployment().FindLatestBySite(ctx, sites[i].ID)
+		deployment, err := s.Repos().Deployment().FindLatestBySite(ctx, sites[i].ID)
+		if err != nil && !errors.Is(err, repositories.ErrDeploymentNotFound) {
+			s.LogWarn("Failed to fetch latest deployment", "siteID", sites[i].ID, "error", err)
+		}
 		sites[i].LatestDeployment = deployment
 	}
 
@@ -124,7 +128,10 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	}
 
 	// Check if site with same address exists
-	existing, _ := s.Repos().Site().FindByAddress(ctx, req.Address, serverID)
+	existing, err := s.Repos().Site().FindByAddress(ctx, req.Address, serverID)
+	if err != nil && !errors.Is(err, repositories.ErrSiteNotFound) {
+		return nil, fmt.Errorf("failed to check for existing site: %w", err)
+	}
 	if existing != nil {
 		return nil, errors.New("a site with this address already exists on this server")
 	}
@@ -270,7 +277,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 		if server.PublicIPv4 != nil {
 			serverIP = *server.PublicIPv4
 		}
-		s.handleDnsRecordCreation(ctx, site, *req.ConnectedDomainID, server.TeamID, serverIP)
+		s.handleDNSRecordCreation(ctx, site, *req.ConnectedDomainID, server.TeamID, serverIP)
 	}
 
 	// Handle scheduler creation for Laravel and WordPress sites
@@ -592,8 +599,8 @@ func (s *SiteService) validateSourceControl(ctx context.Context, sourceControlID
 	return nil
 }
 
-// handleDnsRecordCreation creates a DNS A record for a site
-func (s *SiteService) handleDnsRecordCreation(ctx context.Context, site *models.Site, domainID, teamID, serverIP string) {
+// handleDNSRecordCreation creates a DNS A record for a site
+func (s *SiteService) handleDNSRecordCreation(ctx context.Context, site *models.Site, domainID, teamID, serverIP string) {
 	if s.dnsRecordService == nil {
 		s.LogError(nil, "DNS service not configured, skipping DNS record creation", "site_id", site.ID)
 		return
@@ -651,7 +658,10 @@ func (s *SiteService) FindByID(ctx context.Context, id, serverID, teamID string)
 	}
 
 	// Load latest deployment
-	deployment, _ := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
+	deployment, err := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
+	if err != nil && !errors.Is(err, repositories.ErrDeploymentNotFound) {
+		s.LogWarn("Failed to fetch latest deployment", "siteID", site.ID, "error", err)
+	}
 	site.LatestDeployment = deployment
 
 	return site, nil
@@ -729,7 +739,10 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID s
 	}
 
 	// Load latest deployment
-	deployment, _ := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
+	deployment, err := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
+	if err != nil && !errors.Is(err, repositories.ErrDeploymentNotFound) {
+		s.LogWarn("Failed to fetch latest deployment", "siteID", site.ID, "error", err)
+	}
 	site.LatestDeployment = deployment
 
 	s.LogInfo("Site updated", "site_id", site.ID)
@@ -792,7 +805,11 @@ func (s *SiteService) GetDeletionSummary(ctx context.Context, id, serverID, team
 		return nil, err
 	}
 
-	queueCount, _ := s.Repos().Queue().CountBySite(ctx, site.ID)
+	queueCount, err := s.Repos().Queue().CountBySite(ctx, site.ID)
+	if err != nil {
+		s.LogWarn("Failed to count queues for deletion summary", "siteID", site.ID, "error", err)
+		queueCount = 0
+	}
 	// TODO: Add cron count
 
 	return &dto.DeletionSummaryResponse{
@@ -835,11 +852,17 @@ func (s *SiteService) GetSettings(ctx context.Context, id, serverID, teamID stri
 	}
 
 	// Load latest deployment
-	deployment, _ := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
+	deployment, err := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
+	if err != nil && !errors.Is(err, repositories.ErrDeploymentNotFound) {
+		s.LogWarn("Failed to fetch latest deployment for settings", "siteID", site.ID, "error", err)
+	}
 	site.LatestDeployment = deployment
 
 	// Get active certificate
-	activeCert, _ := s.Repos().Certificate().FindActiveBySite(ctx, site.ID)
+	activeCert, err := s.Repos().Certificate().FindActiveBySite(ctx, site.ID)
+	if err != nil && !errors.Is(err, repositories.ErrCertificateNotFound) {
+		s.LogWarn("Failed to fetch active certificate", "siteID", site.ID, "error", err)
+	}
 
 	// Get PHP versions from server services
 	phpVersions := s.getServerPhpVersions(ctx, serverID)

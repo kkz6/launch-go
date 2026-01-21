@@ -55,7 +55,12 @@ func (h *DomainProviderHandler) CreateProvider(c *fiber.Ctx) error {
 		return response.Error(c, fiber.StatusBadRequest, err.Error())
 	}
 
-	count, _ := h.providerService.CountDomainsByProvider(c.Context(), provider.ID)
+	// Count is 0 for newly created provider, but we check anyway
+	count, err := h.providerService.CountDomainsByProvider(c.Context(), provider.ID)
+	if err != nil {
+		// Non-critical error - provider was created, just use 0 for count
+		count = 0
+	}
 
 	return response.Created(c, "Provider created", dto.ToDomainProviderResponse(provider, int(count)))
 }

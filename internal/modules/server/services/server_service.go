@@ -285,14 +285,10 @@ func (s *Service) ConnectServer(ctx context.Context, id, teamID string) error {
 	}
 
 	now := time.Now()
-	if err := s.repos.Server().UpdateFields(ctx, id, map[string]interface{}{
+	return s.repos.Server().UpdateFields(ctx, id, map[string]interface{}{
 		"connected":               true,
 		"last_connectivity_check": now,
-	}); err != nil {
-		return err
-	}
-
-	return nil
+	})
 }
 
 // HasLaunchAgent checks if a server has the Launch Agent installed
@@ -307,9 +303,18 @@ func (s *Service) GetShowPageData(ctx context.Context, serverID, teamID string) 
 		return nil, err
 	}
 
-	latestTask, _ := s.repos.Task().FindLatestByServer(ctx, serverID)
-	latestMetric, _ := s.repos.Metric().FindLatestByServer(ctx, serverID)
-	hasLaunchAgent, _ := s.repos.Server().HasLaunchAgent(ctx, serverID)
+	latestTask, err := s.repos.Task().FindLatestByServer(ctx, serverID)
+	if err != nil {
+		s.LogWarn("Failed to fetch latest task for server", "serverID", serverID, "error", err)
+	}
+	latestMetric, err := s.repos.Metric().FindLatestByServer(ctx, serverID)
+	if err != nil {
+		s.LogWarn("Failed to fetch latest metric for server", "serverID", serverID, "error", err)
+	}
+	hasLaunchAgent, err := s.repos.Server().HasLaunchAgent(ctx, serverID)
+	if err != nil {
+		s.LogWarn("Failed to check launch agent status", "serverID", serverID, "error", err)
+	}
 
 	services := make([]dto.ServiceResponse, len(server.Services))
 	for i, svc := range server.Services {
@@ -364,19 +369,6 @@ func (s *Service) broadcastServerUpdate(server *models.Server) {
 	s.BroadcastToTeam(server.TeamID, "server.updated", dto.ToServerResponse(server))
 }
 
-func (s *Service) dispatchProvisionJob(server *models.Server, sshKeyIDs []string) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewProvisionServerTask(server.ID, server.TeamID, nil, sshKeyIDs)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTaskWithOptions(task)
-}
-
 func (s *Service) dispatchCreateOnProviderJob(server *models.Server, serverProviderID string, sshKeyIDs []string) error {
 	if !s.HasQueue() {
 		return ErrQueueNotConfigured
@@ -404,7 +396,7 @@ func (s *Service) dispatchDeleteJob(server *models.Server) error {
 }
 
 // GenerateSSHKeyPair generates an RSA SSH key pair
-func GenerateSSHKeyPair() (string, string, error) {
+func GenerateSSHKeyPair() (privateKeyStr string, publicKeyStr string, err error) {
 	privateKey, err := rsa.GenerateKey(rand.Reader, 4096)
 	if err != nil {
 		return "", "", err
@@ -420,7 +412,7 @@ func GenerateSSHKeyPair() (string, string, error) {
 		return "", "", err
 	}
 
-	publicKeyStr := string(ssh.MarshalAuthorizedKey(publicKey))
+	publicKeyStr = string(ssh.MarshalAuthorizedKey(publicKey))
 
 	return string(privateKeyPEM), publicKeyStr, nil
 }

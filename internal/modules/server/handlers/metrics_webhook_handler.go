@@ -55,8 +55,8 @@ func NewMetricsWebhookHandler(db *gorm.DB, secretKey string, hub ws.Broadcaster,
 
 // PulseRequest represents the incoming pulse data from launch-agent
 type PulseRequest struct {
-	Event string     `json:"event"`
-	Data  PulseData  `json:"data"`
+	Event string    `json:"event"`
+	Data  PulseData `json:"data"`
 }
 
 // PulseData represents the metrics data from launch-agent
@@ -101,12 +101,30 @@ func (h *MetricsWebhookHandler) ReceivePulse(c *fiber.Ctx) error {
 	}
 
 	// Parse string values to float64
-	diskTotal, _ := strconv.ParseFloat(req.Data.DiskTotal, 64)
-	diskFree, _ := strconv.ParseFloat(req.Data.DiskFree, 64)
-	diskUsed, _ := strconv.ParseFloat(req.Data.DiskUsed, 64)
-	memoryTotal, _ := strconv.ParseFloat(req.Data.MemoryTotal, 64)
-	memoryFree, _ := strconv.ParseFloat(req.Data.MemoryFree, 64)
-	memoryUsed, _ := strconv.ParseFloat(req.Data.MemoryUsed, 64)
+	diskTotal, err := strconv.ParseFloat(req.Data.DiskTotal, 64)
+	if err != nil {
+		h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.DiskTotal).Msg("Failed to parse disk_total")
+	}
+	diskFree, err := strconv.ParseFloat(req.Data.DiskFree, 64)
+	if err != nil {
+		h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.DiskFree).Msg("Failed to parse disk_free")
+	}
+	diskUsed, err := strconv.ParseFloat(req.Data.DiskUsed, 64)
+	if err != nil {
+		h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.DiskUsed).Msg("Failed to parse disk_used")
+	}
+	memoryTotal, err := strconv.ParseFloat(req.Data.MemoryTotal, 64)
+	if err != nil {
+		h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.MemoryTotal).Msg("Failed to parse memory_total")
+	}
+	memoryFree, err := strconv.ParseFloat(req.Data.MemoryFree, 64)
+	if err != nil {
+		h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.MemoryFree).Msg("Failed to parse memory_free")
+	}
+	memoryUsed, err := strconv.ParseFloat(req.Data.MemoryUsed, 64)
+	if err != nil {
+		h.logger.Warn().Err(err).Str("server_id", serverID).Str("value", req.Data.MemoryUsed).Msg("Failed to parse memory_used")
+	}
 
 	// Create metric record
 	metric := &models.Metric{

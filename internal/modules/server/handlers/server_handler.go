@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
@@ -92,7 +93,10 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 // Show returns a single server
 func (h *Handler) Show(c *fiber.Ctx) error {
 	teamID := c.Locals("teamID").(string)
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	server, err := h.service.GetServerWithRelations(c.Context(), id, teamID)
 	if err != nil {
@@ -105,7 +109,10 @@ func (h *Handler) Show(c *fiber.Ctx) error {
 // Update updates a server
 func (h *Handler) Update(c *fiber.Ctx) error {
 	teamID := c.Locals("teamID").(string)
-	id := c.Params("id")
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
 
 	var req dto.UpdateServerRequest
 	if err := c.BodyParser(&req); err != nil {

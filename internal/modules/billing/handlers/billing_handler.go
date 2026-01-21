@@ -202,7 +202,10 @@ func (h *BillingHandler) GetSubscriptionOptions(c *fiber.Ctx) error {
 func (h *BillingHandler) RegisterSubscription(c *fiber.Ctx) error {
 	teamID := c.Locals("teamID").(string)
 
-	subscribed, _ := h.service.IsSubscribed(c.Context(), teamID)
+	subscribed, err := h.service.IsSubscribed(c.Context(), teamID)
+	if err != nil {
+		return response.HandleError(c, err)
+	}
 	if subscribed {
 		return response.HandleError(c, services.ErrAlreadySubscribed)
 	}

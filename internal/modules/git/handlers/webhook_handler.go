@@ -77,13 +77,11 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 		task, err := jobs.NewProcessGitWebhookTask(providerStr, string(payload), signature)
 		if err != nil {
 			h.logger.Error().Err(err).Msg("Failed to create webhook task")
+		} else if _, err := h.queueClient.Enqueue(task); err != nil {
+			h.logger.Error().Err(err).Msg("Failed to enqueue webhook task")
 		} else {
-			if _, err := h.queueClient.Enqueue(task); err != nil {
-				h.logger.Error().Err(err).Msg("Failed to enqueue webhook task")
-			} else {
-				h.logger.Info().Str("provider", providerStr).Msg("Webhook queued for async processing")
-				return c.Status(fiber.StatusOK).SendString("OK")
-			}
+			h.logger.Info().Str("provider", providerStr).Msg("Webhook queued for async processing")
+			return c.Status(fiber.StatusOK).SendString("OK")
 		}
 	}
 
@@ -132,7 +130,10 @@ func (h *WebhookHandler) processWebhook(providerType enums.GitProviderType, data
 
 // processGitHubWebhook processes GitHub webhook events
 func (h *WebhookHandler) processGitHubWebhook(ctx context.Context, data map[string]interface{}) {
-	action, _ := data["action"].(string)
+	action, ok := data["action"].(string)
+	if !ok && data["action"] != nil {
+		h.logger.Debug().Interface("action", data["action"]).Msg("GitHub webhook: unexpected action type")
+	}
 
 	// Handle installation events
 	if installation, ok := data["installation"].(map[string]interface{}); ok {
@@ -158,8 +159,14 @@ func (h *WebhookHandler) processGitHubWebhook(ctx context.Context, data map[stri
 	// Handle push events for deployments
 	if commits, ok := data["commits"].([]interface{}); ok && len(commits) > 0 {
 		if repository, ok := data["repository"].(map[string]interface{}); ok {
-			fullName, _ := repository["full_name"].(string)
-			ref, _ := data["ref"].(string)
+			fullName, ok := repository["full_name"].(string)
+			if !ok {
+				h.logger.Debug().Interface("full_name", repository["full_name"]).Msg("GitHub webhook: unexpected full_name type")
+			}
+			ref, ok := data["ref"].(string)
+			if !ok {
+				h.logger.Debug().Interface("ref", data["ref"]).Msg("GitHub webhook: unexpected ref type")
+			}
 			branch := strings.TrimPrefix(ref, "refs/heads/")
 
 			if fullName != "" && branch != "" {
@@ -171,12 +178,21 @@ func (h *WebhookHandler) processGitHubWebhook(ctx context.Context, data map[stri
 
 // processGitLabWebhook processes GitLab webhook events
 func (h *WebhookHandler) processGitLabWebhook(ctx context.Context, data map[string]interface{}) {
-	eventType, _ := data["event_type"].(string)
+	eventType, ok := data["event_type"].(string)
+	if !ok && data["event_type"] != nil {
+		h.logger.Debug().Interface("event_type", data["event_type"]).Msg("GitLab webhook: unexpected event_type type")
+	}
 
 	if eventType == "push" {
 		if project, ok := data["project"].(map[string]interface{}); ok {
-			fullName, _ := project["path_with_namespace"].(string)
-			ref, _ := data["ref"].(string)
+			fullName, ok := project["path_with_namespace"].(string)
+			if !ok {
+				h.logger.Debug().Interface("path_with_namespace", project["path_with_namespace"]).Msg("GitLab webhook: unexpected path_with_namespace type")
+			}
+			ref, ok := data["ref"].(string)
+			if !ok {
+				h.logger.Debug().Interface("ref", data["ref"]).Msg("GitLab webhook: unexpected ref type")
+			}
 			branch := strings.TrimPrefix(ref, "refs/heads/")
 
 			if fullName != "" && branch != "" {
@@ -191,12 +207,18 @@ func (h *WebhookHandler) processBitbucketWebhook(ctx context.Context, data map[s
 	if push, ok := data["push"].(map[string]interface{}); ok {
 		if changes, ok := push["changes"].([]interface{}); ok && len(changes) > 0 {
 			if repository, ok := data["repository"].(map[string]interface{}); ok {
-				fullName, _ := repository["full_name"].(string)
+				fullName, ok := repository["full_name"].(string)
+				if !ok {
+					h.logger.Debug().Interface("full_name", repository["full_name"]).Msg("Bitbucket webhook: unexpected full_name type")
+				}
 
 				if change, ok := changes[0].(map[string]interface{}); ok {
 					var branch string
 					if newRef, ok := change["new"].(map[string]interface{}); ok {
-						branch, _ = newRef["name"].(string)
+						branch, ok = newRef["name"].(string)
+						if !ok {
+							h.logger.Debug().Interface("name", newRef["name"]).Msg("Bitbucket webhook: unexpected branch name type")
+						}
 					}
 
 					if fullName != "" && branch != "" {
@@ -210,8 +232,16 @@ func (h *WebhookHandler) processBitbucketWebhook(ctx context.Context, data map[s
 
 // handleInstallationCreated handles the creation of an app installation
 func (h *WebhookHandler) handleInstallationCreated(ctx context.Context, data map[string]interface{}, installationID string) {
-	sender, _ := data["sender"].(map[string]interface{})
-	installation, _ := data["installation"].(map[string]interface{})
+	sender, ok := data["sender"].(map[string]interface{})
+	if !ok {
+		h.logger.Debug().Interface("sender", data["sender"]).Msg("GitHub webhook: unexpected sender type in installation created")
+		return
+	}
+	installation, ok := data["installation"].(map[string]interface{})
+	if !ok {
+		h.logger.Debug().Interface("installation", data["installation"]).Msg("GitHub webhook: unexpected installation type in installation created")
+		return
+	}
 
 	if sender == nil || installation == nil {
 		return

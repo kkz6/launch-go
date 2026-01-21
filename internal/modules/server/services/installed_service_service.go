@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -11,6 +12,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 )
 
 // ListServices returns all services for a server
@@ -25,9 +27,7 @@ func (s *Service) ListServices(ctx context.Context, serverID, teamID string) ([]
 	}
 
 	result := make([]models.InstalledService, len(services))
-	for i, svc := range services {
-		result[i] = svc
-	}
+	copy(result, services)
 
 	return result, nil
 }
@@ -44,7 +44,10 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 		return nil, ErrInvalidSoftware
 	}
 
-	existingService, _ := s.repos.Service().FindByServerAndSoftware(ctx, serverID, software)
+	existingService, err := s.repos.Service().FindByServerAndSoftware(ctx, serverID, software)
+	if err != nil && !errors.Is(err, repositories.ErrServiceNotFound) {
+		return nil, fmt.Errorf("failed to check existing service: %w", err)
+	}
 	if existingService != nil {
 		return nil, ErrServiceAlreadyExists
 	}

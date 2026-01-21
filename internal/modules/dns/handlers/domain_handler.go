@@ -35,7 +35,10 @@ func (h *DomainHandler) ListDomains(c *fiber.Ctx) error {
 	}
 
 	// Also get providers for the dropdown
-	providers, _ := h.providerService.ListProviders(c.Context(), teamID)
+	providers, err := h.providerService.ListProviders(c.Context(), teamID)
+	if err != nil {
+		return response.InternalError(c, "Failed to fetch providers")
+	}
 
 	pageData := dto.DomainIndexPageData{
 		Domains:   domains,
@@ -84,7 +87,10 @@ func (h *DomainHandler) ShowDomain(c *fiber.Ctx) error {
 	}
 
 	// Get records for this domain
-	records, _ := h.domainService.GetDomainRecords(c.Context(), id, teamID)
+	records, err := h.domainService.GetDomainRecords(c.Context(), id, teamID)
+	if err != nil {
+		return response.InternalError(c, "Failed to fetch domain records")
+	}
 
 	// Get record types
 	recordTypesList := services.GetRecordTypes()
