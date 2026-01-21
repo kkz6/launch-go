@@ -7,7 +7,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/module"
 )
 
 const ModuleName = "server"
@@ -21,13 +20,13 @@ var (
 
 // Module represents the server module
 type Module struct {
-	module.Base
+	app.Base
 	repos   *repositories.Registry
 	service *services.Service
 }
 
 // NewModule creates a new server module using the builder
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	repos := repositories.NewRegistry(b.DB())
 	service := services.NewService(services.ServiceDeps{
 		Dependencies: b.ServiceDeps(),
@@ -35,7 +34,7 @@ func NewModule(b *module.Builder) *Module {
 	})
 
 	return &Module{
-		Base:    module.NewBase(ModuleName, b),
+		Base:    app.NewBase(ModuleName, b),
 		repos:   repos,
 		service: service,
 	}

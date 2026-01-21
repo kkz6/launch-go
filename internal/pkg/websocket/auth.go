@@ -7,7 +7,7 @@ import (
 	"github.com/gofiber/contrib/websocket"
 
 	"github.com/kkz6/launch-go/internal/pkg/cache"
-	"github.com/kkz6/launch-go/internal/pkg/jwt"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // Claims represents the JWT claims for WebSocket authentication
@@ -29,14 +29,14 @@ func ValidateToken(tokenString, jwtSecret string) (string, error) {
 		return "", ErrMissingToken
 	}
 
-	claims, err := jwt.ParseToken(tokenString, jwtSecret)
+	claims, err := security.ParseJWTToken(tokenString, jwtSecret)
 	if err != nil {
-		return "", jwt.ErrInvalidToken
+		return "", security.ErrInvalidToken
 	}
 
-	userID, err := jwt.ExtractClaim(claims, "sub")
+	userID, err := security.ExtractJWTClaim(claims, "sub")
 	if err != nil {
-		return "", jwt.ErrMissingClaim
+		return "", security.ErrMissingClaim
 	}
 
 	return userID, nil
@@ -85,14 +85,14 @@ func AuthenticateWebSocketLegacy(c *websocket.Conn, jwtSecret string) (*Claims, 
 		return nil, ErrMissingToken
 	}
 
-	claims, err := jwt.ParseToken(token, jwtSecret)
+	claims, err := security.ParseJWTToken(token, jwtSecret)
 	if err != nil {
-		return nil, jwt.ErrInvalidToken
+		return nil, security.ErrInvalidToken
 	}
 
-	userID, err := jwt.ExtractClaim(claims, "sub")
+	userID, err := security.ExtractJWTClaim(claims, "sub")
 	if err != nil {
-		return nil, jwt.ErrMissingClaim
+		return nil, security.ErrMissingClaim
 	}
 
 	// Try to get team_id from query param first (new approach)

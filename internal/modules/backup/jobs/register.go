@@ -6,13 +6,13 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	servercontracts "github.com/kkz6/launch-go/internal/modules/server/contracts"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/app"
 )
 
 var jobContext *JobContext
 
 // Register initializes and registers all backup job handlers
-func Register(mux *asynq.ServeMux, deps module.Deps, repos *repositories.Registry, serverRepos servercontracts.RepositoryRegistry) {
+func Register(mux *asynq.ServeMux, deps app.Deps, repos *repositories.Registry, serverRepos servercontracts.RepositoryRegistry) {
 	jobContext = NewJobContext(
 		deps.DB,
 		repos,

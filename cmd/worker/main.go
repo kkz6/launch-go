@@ -20,11 +20,10 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
-	"github.com/kkz6/launch-go/internal/pkg/module"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
+	"github.com/kkz6/launch-go/internal/pkg/websocket"
 )
 
 func main() {
@@ -98,7 +97,7 @@ func main() {
 
 	// Create application kernel for module registration
 	kernel := app.NewKernel(appLogger)
-	builder := module.NewBuilderFromContext(ctx)
+	builder := app.NewBuilderFromContext(ctx)
 
 	// Initialize modules
 	gitModule := git.NewModule(builder)

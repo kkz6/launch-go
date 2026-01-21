@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/pkg/cache"
-	ws "github.com/kkz6/launch-go/internal/websocket"
+	ws "github.com/kkz6/launch-go/internal/pkg/websocket"
 )
 
 // WSMessage is a standard WebSocket message format for consistent JSON structure.

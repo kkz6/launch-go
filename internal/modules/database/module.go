@@ -7,7 +7,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/repositories"
 	"github.com/kkz6/launch-go/internal/modules/database/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/module"
 )
 
 const ModuleName = "database"
@@ -21,19 +20,19 @@ var (
 
 // Module represents the database module
 type Module struct {
-	module.Base
+	app.Base
 	repos   *repositories.Registry
 	service *services.Service
 }
 
 // NewModule creates a new database module
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 	repos := repositories.NewRegistry(deps.DB)
 	service := services.NewService(repos, nil, deps.Queue, deps.WebSocket, deps.Logger)
 
 	return &Module{
-		Base:    module.NewBase(ModuleName, b),
+		Base:    app.NewBase(ModuleName, b),
 		repos:   repos,
 		service: service,
 	}

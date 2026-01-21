@@ -16,7 +16,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 // TaskStatus represents the status of a task execution.

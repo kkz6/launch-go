@@ -33,11 +33,10 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/cache"
 	"github.com/kkz6/launch-go/internal/pkg/health"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
-	"github.com/kkz6/launch-go/internal/pkg/module"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/queue"
-	"github.com/kkz6/launch-go/internal/websocket"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
+	"github.com/kkz6/launch-go/internal/pkg/websocket"
 )
 
 // Application holds all application dependencies
@@ -170,7 +169,7 @@ func (a *Application) registerModules() {
 	a.kernel = app.NewKernel(a.logger)
 
 	// Create module builder
-	builder := module.NewBuilderFromContext(ctx)
+	builder := app.NewBuilderFromContext(ctx)
 
 	// Create modules using builder pattern
 	authModule := auth.NewModule(builder)

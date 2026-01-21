@@ -4,7 +4,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/module"
 )
 
 const ModuleName = "auth"
@@ -17,19 +16,19 @@ var (
 
 // Module represents the auth module with all its dependencies
 type Module struct {
-	module.Base
+	app.Base
 	service *services.Service
 	repos   *repositories.Registry
 }
 
 // NewModule creates a new auth Module instance
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 	repos := repositories.NewRegistry(deps.DB)
 	service := services.NewService(repos, deps.Config, deps.Logger)
 
 	return &Module{
-		Base:    module.NewBase(ModuleName, b),
+		Base:    app.NewBase(ModuleName, b),
 		service: service,
 		repos:   repos,
 	}

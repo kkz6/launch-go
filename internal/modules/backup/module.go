@@ -4,7 +4,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
-	"github.com/kkz6/launch-go/internal/pkg/module"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
@@ -19,18 +18,18 @@ var (
 
 // Module represents the backup module
 type Module struct {
-	module.Base
+	app.Base
 
 	// Repository registry
 	repos *repositories.Registry
 }
 
 // NewModule creates a new backup module
-func NewModule(b *module.Builder) *Module {
+func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 
 	return &Module{
-		Base:  module.NewBase(ModuleName, b),
+		Base:  app.NewBase(ModuleName, b),
 		repos: repositories.NewRegistry(deps.DB),
 	}
 }
