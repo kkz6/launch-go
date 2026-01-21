@@ -8,6 +8,8 @@ import (
 	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/site/adapters"
+	"github.com/kkz6/launch-go/internal/modules/site/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
@@ -34,9 +36,15 @@ type Module struct {
 	// Repository registry for site module repositories
 	repos *repositories.Registry
 
-	// Cross-module repositories
+	// Cross-module repositories (used for jobs which still need concrete types)
 	serverRepos *serverrepos.Registry
 	gitRepos    *gitrepos.Registry
+
+	// Interface-based cross-module dependencies
+	serverReader    contracts.ServerReader
+	gitReader       contracts.GitReader
+	cronCreator     contracts.CronCreator
+	databaseManager contracts.DatabaseManager
 
 	// Git provider factory (set via SetProviderFactory)
 	providerFactory *gitproviders.ProviderFactory
@@ -49,11 +57,21 @@ type Module struct {
 func NewModule(b *module.Builder) *Module {
 	deps := b.Deps()
 
+	// Create concrete repositories (still needed for jobs)
+	serverRepos := serverrepos.NewRegistry(deps.DB)
+	gitRepos := gitrepos.NewRegistry(deps.DB)
+
+	// Create interface adapters for services
+	serverReader := adapters.NewServerReaderAdapter(serverRepos)
+	gitReader := adapters.NewGitReaderAdapter(gitRepos.SourceControl(), gitRepos.SourceControlRepo())
+
 	return &Module{
-		Base:        module.NewBase(ModuleName, b),
-		repos:       repositories.NewRegistry(deps.DB),
-		serverRepos: serverrepos.NewRegistry(deps.DB),
-		gitRepos:    gitrepos.NewRegistry(deps.DB),
+		Base:         module.NewBase(ModuleName, b),
+		repos:        repositories.NewRegistry(deps.DB),
+		serverRepos:  serverRepos,
+		gitRepos:     gitRepos,
+		serverReader: serverReader,
+		gitReader:    gitReader,
 	}
 }
 
@@ -104,6 +122,16 @@ func (m *Module) SetDomainRepository(repo dnscontracts.DomainRepository) {
 	m.domainRepo = repo
 }
 
+// SetCronCreator sets the cron creator for cross-module operations
+func (m *Module) SetCronCreator(creator contracts.CronCreator) {
+	m.cronCreator = creator
+}
+
+// SetDatabaseManager sets the database manager for cross-module operations
+func (m *Module) SetDatabaseManager(manager contracts.DatabaseManager) {
+	m.databaseManager = manager
+}
+
 // createServices creates all services needed for route handlers
 func (m *Module) createServices(taskRunnerDeps *servertasks.TaskRunnerDeps) *services.ServiceRegistry {
 	deps := m.Deps()
@@ -118,10 +146,12 @@ func (m *Module) createServices(taskRunnerDeps *servertasks.TaskRunnerDeps) *ser
 	// Create service registry - handles all service creation and wiring
 	registry := services.NewServiceRegistry(svcDeps)
 
-	// Set cross-module dependencies
+	// Set cross-module dependencies using interfaces
 	registry.SetCrossModuleDeps(&services.CrossModuleDeps{
-		ServerRepos:     m.serverRepos,
-		GitRepos:        m.gitRepos,
+		ServerReader:    m.serverReader,
+		GitReader:       m.gitReader,
+		CronCreator:     m.cronCreator,
+		DatabaseManager: m.databaseManager,
 		ProviderFactory: m.providerFactory,
 	})
 
