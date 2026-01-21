@@ -31,6 +31,7 @@ import (
 	wsmodule "github.com/kkz6/launch-go/internal/modules/websocket"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
+	"github.com/kkz6/launch-go/internal/pkg/health"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/module"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
@@ -52,6 +53,7 @@ type Application struct {
 	kernel          *app.Kernel
 	redisCache      *cache.RedisCache
 	membershipCache *cache.TeamMembershipCache
+	healthChecker   *health.Aggregator
 	sentryEnabled   bool
 }
 
@@ -105,6 +107,11 @@ func bootstrap() *Application {
 	redisCache := cache.NewRedisCache(cfg.Redis)
 	membershipCache := cache.NewTeamMembershipCache(redisCache, db)
 
+	// Initialize health check aggregator
+	healthChecker := health.NewAggregator().
+		Add(&health.DatabaseChecker{DB: db}).
+		Add(&health.RedisChecker{Client: redisCache.Client()})
+
 	fiberApp := fiber.New(fiber.Config{
 		AppName:      "Launch API",
 		ReadTimeout:  30 * time.Second,
@@ -123,6 +130,7 @@ func bootstrap() *Application {
 		fiber:           fiberApp,
 		redisCache:      redisCache,
 		membershipCache: membershipCache,
+		healthChecker:   healthChecker,
 		sentryEnabled:   sentryEnabled,
 	}
 }
@@ -228,10 +236,14 @@ func (a *Application) registerModules() {
 
 // healthCheck handles the health check endpoint
 func (a *Application) healthCheck(c *fiber.Ctx) error {
-	return c.JSON(fiber.Map{
-		"status": "ok",
-		"time":   time.Now().UTC(),
-	})
+	result := a.healthChecker.Check(c.Context())
+
+	status := fiber.StatusOK
+	if result.Status != health.StatusHealthy {
+		status = fiber.StatusServiceUnavailable
+	}
+
+	return c.Status(status).JSON(result)
 }
 
 // run starts the server and handles graceful shutdown
