@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
@@ -56,22 +57,8 @@ func (h *SiteHandler) Create(c *fiber.Ctx) error {
 	userID := c.Locals("userID").(string)
 
 	var req dto.CreateSiteRequest
-	if err := c.BodyParser(&req); err != nil {
-		return response.Error(c, fiber.StatusBadRequest, "Invalid request body")
-	}
-
-	// Normalize empty string pointers to nil before validation
-	normalizeEmptyStringPtr(&req.SourceControlID)
-	normalizeEmptyStringPtr(&req.SourceControlRepositoriesID)
-	normalizeEmptyStringPtr(&req.ConnectedDomainID)
-	normalizeEmptyStringPtr(&req.DatabaseID)
-	normalizeEmptyStringPtr(&req.DatabaseName)
-	normalizeEmptyStringPtr(&req.DatabaseUserID)
-	normalizeEmptyStringPtr(&req.DatabaseUserName)
-	normalizeEmptyStringPtr(&req.DatabaseUserPassword)
-
-	if errs := validator.Validate(&req); errs != nil {
-		return response.ValidationError(c, errs)
+	if err := fiberctx.ParseAndValidate(c, &req); err != nil {
+		return err
 	}
 
 	site, err := h.siteService.Create(c.Context(), serverID, teamID, userID, &req)
@@ -80,13 +67,6 @@ func (h *SiteHandler) Create(c *fiber.Ctx) error {
 	}
 
 	return response.Created(c, "Site created", dto.ToSiteResponse(site))
-}
-
-// normalizeEmptyStringPtr converts empty string pointers to nil
-func normalizeEmptyStringPtr(s **string) {
-	if s != nil && *s != nil && strings.TrimSpace(**s) == "" {
-		*s = nil
-	}
 }
 
 // Show returns a single site

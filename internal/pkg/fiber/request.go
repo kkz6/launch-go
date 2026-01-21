@@ -3,16 +3,24 @@ package fiber
 import (
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/kkz6/launch-go/internal/pkg/dto"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 // ParseAndValidate parses request body into the provided struct and validates it.
+// If the request implements dto.Normalizable, Normalize() is called before validation.
 // Returns nil on success, or sends an error response and returns the error.
 func ParseAndValidate[T any](c *fiber.Ctx, req *T) error {
 	if err := c.BodyParser(req); err != nil {
 		return response.BadRequest(c, "Invalid request body")
 	}
+
+	// Call Normalize() if the request implements Normalizable
+	if normalizable, ok := any(req).(dto.Normalizable); ok {
+		normalizable.Normalize()
+	}
+
 	if errs := validator.Validate(req); errs != nil {
 		return response.ValidationError(c, errs)
 	}
