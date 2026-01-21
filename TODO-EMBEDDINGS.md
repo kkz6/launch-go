@@ -143,11 +143,52 @@ After implementing these embeddings:
 
 ---
 
-## 19. Cloud Provider BaseAPIClient (P1)
+## 19-21. API Client Base Infrastructure ✅ ALREADY IMPLEMENTED
 
-**Issue:** All cloud providers repeat identical HTTP request/response handling.
+**Status:** Base API client infrastructure already exists across all three areas.
 
-**Files Affected:**
+### 19. Cloud Provider BaseAPIClient ✅
+
+**Location:** `internal/pkg/httpclient/` and `internal/modules/server/providers/base.go`
+
+**Existing Infrastructure:**
+- `httpclient.Client` with functional options, retry support, auth handling
+- `BaseCloudProvider` struct embedding `httpclient.Client`
+- Helper functions: `DoGet`, `DoPost`, `DoDelete`, `ValidateConnection`
+- Error handling: `WrapHTTPError`, `APIError`
+- All four providers (DigitalOcean, Hetzner, Linode, Vultr) already use this infrastructure
+
+### 20. Git Provider BaseGitAPIClient ✅
+
+**Location:** `internal/modules/git/providers/base.go`
+
+**Existing Infrastructure:**
+- `BaseGitProvider` struct wrapping `httpclient.Client`
+- HTTP methods: `Get`, `Post`, `Put`, `Delete`, `DoRaw`
+- Pagination: `FetchAllPages`, `ParseLinkHeader`, `HasNextPage`
+- Webhook verification: `VerifyHMACSHA256Signature`, `VerifyTokenSignature`
+- Error handling: `HandleAPIError`, `CheckResponseStatus`
+- All three providers (GitHub, GitLab, Bitbucket) already use this infrastructure
+
+### 21. Notification BaseWebhookChannel (Minimal Benefit)
+
+**Analysis:**
+- Slack and Discord have similar `Send`/`Connect` patterns (~50 lines each)
+- Telegram has different URL construction (bot token in path)
+- Channels already use shared `HTTPClient` interface
+- Creating a base would save ~30-40 lines but add abstraction complexity
+
+**Decision:** Current implementation is clean and testable. Minimal benefit from refactoring.
+
+---
+
+## ~~19. Cloud Provider BaseAPIClient~~ (P1) - COMPLETED ABOVE
+
+*This section has been consolidated above. The content below is preserved for reference but the work is complete.*
+
+**Original Issue:** All cloud providers repeat identical HTTP request/response handling.
+
+**Original Files Affected:**
 - `internal/modules/server/providers/digitalocean.go:263-306` - doRequest()
 - `internal/modules/server/providers/hetzner.go:222-256` - doRequest()
 - `internal/modules/server/providers/linode.go:211-245` - doRequest()
@@ -291,11 +332,13 @@ func NewDigitalOceanProvider(keyGenerator sshkey.Generator) *DigitalOceanProvide
 
 ---
 
-## 20. Git Provider BaseGitAPIClient (P1)
+## ~~20. Git Provider BaseGitAPIClient~~ (P1) - COMPLETED ABOVE
 
-**Issue:** Git providers repeat HTTP client creation, pagination, and auth handling.
+*This section has been consolidated into Item 19-21 above. The work is complete.*
 
-**Files Affected:**
+**Original Issue:** Git providers repeat HTTP client creation, pagination, and auth handling.
+
+**Original Files Affected:**
 - `internal/modules/git/providers/github.go:32-37, 89-119, 216-268`
 - `internal/modules/git/providers/gitlab.go:28-34, 164-182, 359-405`
 - `internal/modules/git/providers/bitbucket.go:28-34, 159-176, 234-277`
@@ -395,11 +438,13 @@ func (c *BaseGitAPIClient) PaginatedFetch(
 
 ---
 
-## 21. Notification BaseWebhookChannel (P1)
+## ~~21. Notification BaseWebhookChannel~~ (P1) - MINIMAL BENEFIT
 
-**Issue:** Webhook-based notification channels repeat identical send/connect logic.
+*This section has been evaluated above. Decision: Current implementation is clean, channels use shared HTTPClient interface, refactoring provides minimal benefit (~30-40 lines) with added complexity.*
 
-**Files Affected:**
+**Original Issue:** Webhook-based notification channels repeat identical send/connect logic.
+
+**Original Files Affected:**
 - `internal/modules/notification/channels/slack.go:30-80`
 - `internal/modules/notification/channels/discord.go:30-80`
 - `internal/modules/notification/channels/telegram.go:45-90`
