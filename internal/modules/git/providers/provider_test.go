@@ -142,7 +142,7 @@ func TestProviderFactory_GetProviderWithInstallation(t *testing.T) {
 	if !ok {
 		t.Fatal("Expected GitHubProvider")
 	}
-	if ghProvider.sourceControl != sc {
+	if ghProvider.SourceControl() != sc {
 		t.Error("Source control should be set on provider")
 	}
 }
@@ -170,10 +170,10 @@ func TestNewGitHubProvider(t *testing.T) {
 	if provider == nil {
 		t.Fatal("NewGitHubProvider() returned nil")
 	}
-	if provider.config != config {
+	if provider.Config() != config {
 		t.Error("Config should be set")
 	}
-	if provider.httpClient == nil {
+	if provider.APIClient() == nil {
 		t.Error("HTTP client should be initialized")
 	}
 }
@@ -191,7 +191,7 @@ func TestGitHubProvider_SetSourceControl(t *testing.T) {
 
 	provider.SetSourceControl(sc)
 
-	if provider.sourceControl != sc {
+	if provider.SourceControl() != sc {
 		t.Error("SetSourceControl() should set source control")
 	}
 }
@@ -246,7 +246,7 @@ func TestGitHubProvider_ValidateWebhook(t *testing.T) {
 
 	// Generate valid signature
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(payload)
+	_, _ = mac.Write(payload)
 	validSignature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
 
 	tests := []struct {
@@ -434,7 +434,7 @@ func TestNewGitLabProvider(t *testing.T) {
 	if provider == nil {
 		t.Fatal("NewGitLabProvider() returned nil")
 	}
-	if provider.httpClient == nil {
+	if provider.APIClient() == nil {
 		t.Error("HTTP client should be initialized")
 	}
 }
@@ -452,7 +452,7 @@ func TestGitLabProvider_SetSourceControl(t *testing.T) {
 
 	provider.SetSourceControl(sc)
 
-	if provider.sourceControl != sc {
+	if provider.SourceControl() != sc {
 		t.Error("SetSourceControl() should set source control")
 	}
 }
@@ -687,7 +687,7 @@ func TestParseGitLabRepository(t *testing.T) {
 	if result["html_url"] != "https://gitlab.com/owner/repo" {
 		t.Errorf("html_url = %v, want https://gitlab.com/owner/repo", result["html_url"])
 	}
-	if result["private"] != false {
+	if result["private"].(bool) {
 		t.Error("private should be false for public visibility")
 	}
 }
@@ -700,7 +700,7 @@ func TestParseGitLabRepository_Private(t *testing.T) {
 
 	result := parseGitLabRepository(project)
 
-	if result["private"] != true {
+	if !result["private"].(bool) {
 		t.Error("private should be true for private visibility")
 	}
 }
@@ -718,7 +718,7 @@ func TestNewBitbucketProvider(t *testing.T) {
 	if provider == nil {
 		t.Fatal("NewBitbucketProvider() returned nil")
 	}
-	if provider.httpClient == nil {
+	if provider.APIClient() == nil {
 		t.Error("HTTP client should be initialized")
 	}
 }
@@ -736,7 +736,7 @@ func TestBitbucketProvider_SetSourceControl(t *testing.T) {
 
 	provider.SetSourceControl(sc)
 
-	if provider.sourceControl != sc {
+	if provider.SourceControl() != sc {
 		t.Error("SetSourceControl() should set source control")
 	}
 }
@@ -789,7 +789,7 @@ func TestBitbucketProvider_ValidateWebhook(t *testing.T) {
 
 	// Generate valid signature (Bitbucket uses HMAC)
 	mac := hmac.New(sha256.New, []byte(secret))
-	mac.Write(payload)
+	_, _ = mac.Write(payload)
 	validSignature := hex.EncodeToString(mac.Sum(nil))
 
 	tests := []struct {
@@ -1008,7 +1008,7 @@ func TestParseBitbucketRepository(t *testing.T) {
 	if result["ssh_url"] != "git@bitbucket.org:owner/repo.git" {
 		t.Errorf("ssh_url = %v, want git@bitbucket.org:owner/repo.git", result["ssh_url"])
 	}
-	if result["private"] != true {
+	if !result["private"].(bool) {
 		t.Error("private should be true")
 	}
 	if result["default_branch"] != "master" {
