@@ -3,8 +3,38 @@
 A comprehensive plan for leveraging Go's struct embedding to reduce code duplication, following Laravel's trait-like composition patterns.
 
 **Generated:** 2026-01-21
+**Updated:** 2026-01-21
 **Focus:** Struct embedding & composition patterns (NOT covered in TODO-REFACTORING.md)
 **Estimated LOC Reduction:** 4000+ lines
+
+---
+
+## Completed Infrastructure (Phase 1)
+
+The following foundational infrastructure has been implemented:
+
+| # | Work Package | Status | Commit |
+|---|-------------|--------|--------|
+| 46 | GitLab Webhook Timing Attack Fix | ✅ DONE | `4c7a6b3` |
+| 47 | Broadcast Event Constants | ✅ DONE | (in broadcast/events.go) |
+| 49 | Crypto Package Consolidation | ✅ DONE | `4c7a6b3` - cryptoutil/ |
+| 51 | HTTP Client Base with Request Builder | ✅ DONE | `f14f33f` - httpclient/ |
+| 63 | Error Type Consolidation | ✅ DONE | `fde7a4f` - errors/ |
+| 75 | GORM Query Scope - Order By Latest | ✅ DONE | `ed049ad` - repository/scopes.go |
+| 79 | Job Struct Boilerplate | ✅ DONE | `d699376` - jobs/builder.go, payload.go |
+| 81 | DTO Timestamp Formatter | ✅ DONE | `f14f33f` - dto/response.go |
+| 106 | Enum Boilerplate Consolidation | ✅ DONE | `065e17c` - enums/ |
+| 108 | Slice Transformation Generic Helper | ✅ DONE | `de817a9` - utils/slice.go |
+| 109 | Safe Map Access Helper | ✅ DONE | `de817a9` - utils/map.go |
+| 115 | Nil-Safe Dereference Helpers | ✅ DONE | (already in ptr/) |
+| 148 | Generic Slice Mapper | ✅ DONE | `de817a9` - utils/slice.go |
+| 149 | Enum Response Helper | ✅ DONE | dto/enum.go |
+| 150 | Pointer Dereference Utilities | ✅ DONE | (already in ptr/) |
+| 151 | URL Builder Package | ✅ DONE | (already in urlbuilder/) |
+| 152 | Generic UpdateStatus Repository Method | ✅ DONE | `ed049ad` - repository/base.go |
+| 154 | Preload Scope Helpers | ✅ DONE | `ed049ad` - repository/scopes.go |
+| - | Model Mixins (Named, Described, etc.) | ✅ DONE | `44808a1` - models/mixins.go |
+| - | Constants/Limits | ✅ DONE | `1cf762a` - constants/limits.go |
 
 ---
 
@@ -4240,7 +4270,7 @@ func (r *DaemonRepository) FindByIDWithServer(ctx context.Context, id string) (*
 
 ---
 
-## 46. GitLab Webhook Timing Attack Fix (P1 - SECURITY)
+## 46. ✅ COMPLETED - GitLab Webhook Timing Attack Fix
 
 **Issue:** GitLab webhook validation uses direct string comparison - vulnerable to timing attacks.
 
@@ -4270,7 +4300,7 @@ func (p *GitLabProvider) ValidateWebhook(payload []byte, signature string) bool 
 
 ---
 
-## 47. Broadcast Event Constants (P2)
+## 47. ✅ COMPLETED - Broadcast Event Constants
 
 **Issue:** Event names hardcoded as strings throughout codebase.
 
@@ -4412,7 +4442,7 @@ func (h *BaseHandler) LogSiteError(err error, siteID, msg string) {
 
 ---
 
-## 49. Crypto Package Consolidation (P2)
+## 49. ✅ COMPLETED - Crypto Package Consolidation
 
 **Issue:** Cryptographic operations scattered across 5+ files.
 
@@ -4592,7 +4622,7 @@ func (r *SiteRepository) FindByServerWithLatestDeployment(ctx context.Context, s
 
 # Deep Analysis Round 3 (Items 51-62)
 
-## 51. HTTP Client Base with Request Builder (P1 - CRITICAL)
+## 51. ✅ COMPLETED - HTTP Client Base with Request Builder
 
 **Problem:** HTTP client initialization and request handling duplicated across 12+ provider files.
 
@@ -5487,7 +5517,7 @@ var (
 
 # Deep Analysis Round 4 (Items 63-74)
 
-## 63. Error Type Consolidation (P1 - CRITICAL)
+## 63. ✅ COMPLETED - Error Type Consolidation
 
 **Problem:** 5 different error types doing similar work across 4 packages.
 
@@ -6199,7 +6229,7 @@ func (c *SlackChannel) GetCreateRules() map[string]string {
 
 # Deep Analysis Round 5 (Items 75-86)
 
-## 75. GORM Query Scope - Order By Latest (P1)
+## 75. ✅ COMPLETED - GORM Query Scope - Order By Latest
 
 **Problem:** `Order("created_at DESC")` appears 40+ times across repositories.
 
@@ -6430,7 +6460,7 @@ func SendError(c *websocket.Conn, message string) {
 
 ---
 
-## 79. Job Struct Boilerplate (P1 - CRITICAL)
+## 79. ✅ COMPLETED - Job Struct Boilerplate
 
 **Problem:** 77 job files have identical struct definition and constructor.
 
@@ -6527,7 +6557,7 @@ func NewDigitalOceanProvider(config *ProviderConfig) *DigitalOceanProvider {
 
 ---
 
-## 81. DTO Timestamp Formatter (P1)
+## 81. ✅ COMPLETED - DTO Timestamp Formatter
 
 **Problem:** Timestamp formatting duplicated 50+ times across DTO files.
 
@@ -7934,7 +7964,7 @@ func (s *Server) BeforeCreate(tx *gorm.DB) error {
 
 ---
 
-## 106. Enum Boilerplate Consolidation (P2)
+## 106. ✅ COMPLETED - Enum Boilerplate Consolidation
 
 **Problem:** 40+ enum types repeat identical IsValid/Label/Scan/Value/All/Parse method patterns.
 
@@ -8058,7 +8088,7 @@ func Register[R any](b *RegistryBuilder[any], name string, factory func(*gorm.DB
 
 ---
 
-## 108. Slice Transformation Generic Helper (P1)
+## 108. ✅ COMPLETED - Slice Transformation Generic Helper
 
 **Problem:** 40+ handlers repeat identical Model→DTO slice transformation loop.
 
@@ -8096,7 +8126,7 @@ result := collection.Map(servers, dto.ToServerResponse)
 
 ---
 
-## 109. Safe Map Access Helper (P3)
+## 109. ✅ COMPLETED - Safe Map Access Helper
 
 **Problem:** 50+ map type assertion patterns repeated in services.
 
@@ -8669,7 +8699,7 @@ func Conditional(cond bool, trueVal, falseVal string) string {
 
 ---
 
-## 115. Nil-Safe Dereference Helpers (P1)
+## 115. ✅ COMPLETED - Nil-Safe Dereference Helpers
 
 **Problem:** 150+ pointer nil check + dereference patterns across codebase.
 
@@ -12350,7 +12380,7 @@ func (s *Server) BeforeCreate(tx *gorm.DB) error {
 
 ---
 
-## 148. Generic Slice Mapper (P1)
+## 148. ✅ COMPLETED - Generic Slice Mapper
 
 **Problem:** Identical slice transformation pattern repeated in 8+ DTO files.
 
@@ -12413,7 +12443,7 @@ responses := dto.MapSlice(servers, dto.ToServerResponse)
 
 ---
 
-## 149. Enum Response Helper (P2)
+## 149. ✅ COMPLETED - Enum Response Helper
 
 **Problem:** Status enums all have identical String() and Label() boilerplate.
 
@@ -12485,7 +12515,7 @@ func (s ServerStatus) Label() string {
 
 ---
 
-## 150. Pointer Dereference Utilities (P2)
+## 150. ✅ COMPLETED - Pointer Dereference Utilities
 
 **Problem:** Scattered nil-check pointer dereference patterns throughout handlers and DTOs.
 
@@ -12553,7 +12583,7 @@ response.AvatarURL = ptr.Deref(user.AvatarURL)
 
 ---
 
-## 151. URL Builder Package (P1)
+## 151. ✅ COMPLETED - URL Builder Package
 
 **Problem:** API endpoint and webhook URL construction scattered with fmt.Sprintf.
 
@@ -12629,7 +12659,7 @@ webhookURL := urlbuilder.App().Path("api", "webhooks", "github", site.ID)
 
 ---
 
-## 152. Generic UpdateStatus Repository Method (P1)
+## 152. ✅ COMPLETED - Generic UpdateStatus Repository Method
 
 **Problem:** Identical UpdateStatus methods in 5+ repositories.
 
@@ -12785,7 +12815,7 @@ func (s ServerStatus) IsTerminal() bool { return serverStatusSet.IsTerminal(s) }
 
 ---
 
-## 154. Preload Scope Helpers (P1)
+## 154. ✅ COMPLETED - Preload Scope Helpers
 
 **Problem:** Identical preload chains repeated across repository methods.
 
