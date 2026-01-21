@@ -3,8 +3,8 @@ package models
 import (
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/token"
 )
 
 // Backup represents a backup configuration for a server
@@ -38,7 +38,7 @@ func (b *Backup) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	if b.DispatchToken == "" {
-		b.DispatchToken = cryptoutil.GenerateToken(32)
+		b.DispatchToken = token.New(32).WithEncoding(token.Base64URL).MustGenerate()
 	}
 
 	if b.Retention == 0 {

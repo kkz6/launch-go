@@ -3,6 +3,7 @@ package configutil
 import (
 	"errors"
 	"reflect"
+	"strings"
 	"time"
 
 	"github.com/spf13/viper"
@@ -157,7 +158,16 @@ func setFieldValue(field reflect.Value, envKey string) {
 
 	case reflect.Slice:
 		if field.Type().Elem().Kind() == reflect.String {
-			field.Set(reflect.ValueOf(viper.GetStringSlice(envKey)))
+			// viper.GetStringSlice doesn't split comma-separated env vars,
+			// so we handle it manually
+			val := viper.GetString(envKey)
+			if val != "" {
+				parts := strings.Split(val, ",")
+				for i := range parts {
+					parts[i] = strings.TrimSpace(parts[i])
+				}
+				field.Set(reflect.ValueOf(parts))
+			}
 		}
 	}
 }

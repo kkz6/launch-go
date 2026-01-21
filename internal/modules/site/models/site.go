@@ -12,8 +12,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
-	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/token"
 	"github.com/kkz6/launch-go/internal/pkg/xutil"
 )
 
@@ -81,8 +81,8 @@ func (s *Site) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	if s.DeployToken == nil || *s.DeployToken == "" {
-		token := cryptoutil.GenerateToken(32)
-		s.DeployToken = &token
+		deployToken := token.New(32).WithEncoding(token.Base64URL).MustGenerate()
+		s.DeployToken = &deployToken
 	}
 
 	return nil
