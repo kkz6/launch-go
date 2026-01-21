@@ -625,9 +625,9 @@ func HandleServiceError(c *fiber.Ctx, err error) error {
 ```
 
 **Refactoring Steps:**
-- [ ] Create centralized error-to-response mapping
-- [ ] Define error types for all common scenarios
-- [ ] Refactor all handlers to use `HandleServiceError`
+- [x] Create centralized error-to-response mapping (`internal/pkg/fiber/errors.go`)
+- [x] Define error types for all common scenarios (ResourceError, AppError, context errors)
+- [ ] Refactor all handlers to use `HandleServiceError` (gradual adoption)
 - [ ] Add logging for unexpected errors
 
 ---
@@ -1073,9 +1073,10 @@ func ParseTime(s string) (*time.Time, error) {
 ```
 
 **Refactoring Steps:**
-- [ ] Create `internal/pkg/dto/time.go`
-- [ ] Refactor all DTO response builders
-- [ ] Replace direct `time.Format(time.RFC3339)` calls
+- [x] Create `internal/pkg/dto/time.go` with FormatTime, FormatTimeValue, FormatTimeOrEmpty, ParseTime, ParseTimePtr, Now, NowPtr, TimeAgo, TimeAgoPtr
+- [x] Create `internal/pkg/dto/time_test.go` with comprehensive tests
+- [x] Refactor all DTO response builders (auth, backup, database, dns, git, notification, server, site)
+- [x] Replace direct `time.Format(time.RFC3339)` calls (~60+ occurrences updated)
 
 ---
 
@@ -1593,7 +1594,7 @@ Each module needs similar audit for:
 13. [ ] Task templates consolidation (P1 - 2.4)
 
 ### Phase 5: Polish (Week 9-10)
-14. [ ] Time format helpers (P2 - 7.1)
+14. [x] Time format helpers (P2 - 7.1) - Complete (pkg/dto/time.go with FormatTime, FormatTimeValue, FormatTimeOrEmpty, ParseTime, TimeAgo, etc.)
 15. [ ] Error handling standardization (P2 - 8.1)
 16. [ ] Constants extraction (P3 - 9.1)
 17. [ ] Logging additions (P3 - 10.1)
