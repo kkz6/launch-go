@@ -7,7 +7,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
-	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -76,13 +75,8 @@ func (s *Server) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 
-	if s.Status == "" {
-		s.Status = enums.ServerStatusNew
-	}
-
-	if s.LaunchToken == "" {
-		s.LaunchToken = cryptoutil.MustGenerateHexToken(16)
-	}
+	basemodels.SetDefaultStatus(&s.Status, enums.ServerStatusNew)
+	basemodels.SetDefaultToken(&s.LaunchToken, 16)
 
 	return nil
 }

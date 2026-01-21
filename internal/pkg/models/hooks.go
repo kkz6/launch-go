@@ -1,7 +1,7 @@
 package models
 
 import (
-	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
+	"github.com/kkz6/launch-go/internal/pkg/token"
 )
 
 // StatusInitializer is implemented by models that have a default status value.
@@ -67,7 +67,7 @@ type TokenInitializer interface {
 func InitializeToken(model TokenInitializer, length int) {
 	field := model.TokenField()
 	if field != nil && *field == "" {
-		*field = cryptoutil.MustGenerateHexToken(length / 2)
+		*field = token.MustHexToken(length / 2)
 	}
 }
 

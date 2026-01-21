@@ -28,9 +28,7 @@ func (j *BackupJob) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 
-	if j.Status == "" {
-		j.Status = enums.BackupJobStatusPending
-	}
+	basemodels.SetDefaultStatus(&j.Status, enums.BackupJobStatusPending)
 
 	return nil
 }

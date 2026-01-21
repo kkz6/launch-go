@@ -31,9 +31,7 @@ func (t *Task) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 
-	if t.Status == "" {
-		t.Status = "pending"
-	}
+	basemodels.SetDefaultStatus(&t.Status, "pending")
 
 	return nil
 }
