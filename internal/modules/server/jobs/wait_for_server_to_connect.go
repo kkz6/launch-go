@@ -10,17 +10,13 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/retry"
 )
 
 const TypeWaitForServerToConnect = "server:wait_for_connect"
 
-// Connection retry configuration
-const (
-	maxConnectionAttempts = 30 // Maximum number of connection attempts
-	initialRetryDelay     = 10 * time.Second
-	maxRetryDelay         = 30 * time.Second
-	connectionTimeout     = 15 * time.Second
-)
+// connectionTimeout is the timeout for individual SSH connection attempts
+const connectionTimeout = 15 * time.Second
 
 type WaitForServerToConnectPayload struct {
 	ServerID         string   `json:"server_id"`
@@ -102,8 +98,15 @@ func (j *WaitForServerToConnectJob) Handle(ctx context.Context) error {
 
 // waitForIP waits for the server to have a public IP address
 func (j *WaitForServerToConnectJob) waitForIP(ctx context.Context) error {
-	maxIPAttempts := 30
-	for attempt := 1; attempt <= maxIPAttempts; attempt++ {
+	cfg := retry.ServerConnectionRetry
+	cfg.OnRetry = func(attempt int, _ error, _ time.Duration) {
+		j.Ctx.LogInfo("Waiting for server IP address",
+			"server_id", j.Payload.ServerID,
+			"attempt", attempt,
+		)
+	}
+
+	return retry.Do(ctx, cfg, func() error {
 		server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 		if err != nil {
 			return err
@@ -113,101 +116,79 @@ func (j *WaitForServerToConnectJob) waitForIP(ctx context.Context) error {
 			return nil
 		}
 
-		j.Ctx.LogInfo("Waiting for server IP address",
-			"server_id", server.ID,
-			"attempt", attempt,
-		)
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(10 * time.Second):
-		}
-	}
-
-	return fmt.Errorf("timeout waiting for server IP address")
+		return fmt.Errorf("server has no public IP yet")
+	})
 }
 
 // attemptConnection tries to connect to the server with exponential backoff
 func (j *WaitForServerToConnectJob) attemptConnection(ctx context.Context) (bool, int) {
-	delay := initialRetryDelay
-
-	for attempt := 1; attempt <= maxConnectionAttempts; attempt++ {
-		// Reload server to get latest data (including keys)
+	cfg := retry.ServerConnectionRetry
+	cfg.OnRetry = func(attempt int, _ error, delay time.Duration) {
+		// Reload server for event broadcast
 		server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 		if err != nil {
-			j.Ctx.LogError(err, "Failed to reload server",
-				"attempt", attempt,
-			)
-			continue
-		}
-
-		// Skip if no private key yet
-		if server.PrivateKey.IsEmpty() {
-			j.Ctx.LogInfo("Server has no private key yet, waiting...",
-				"server_id", server.ID,
-				"attempt", attempt,
-			)
-			time.Sleep(delay)
-			continue
-		}
-
-		// Skip if no IP yet
-		if server.PublicIPv4 == nil || *server.PublicIPv4 == "" {
-			j.Ctx.LogInfo("Server has no IP address yet, waiting...",
-				"server_id", server.ID,
-				"attempt", attempt,
-			)
-			time.Sleep(delay)
-			continue
-		}
-
-		// Try to connect using whoami task
-		task := tasks.Whoami()
-
-		connCtx, cancel := context.WithTimeout(ctx, connectionTimeout)
-		result, err := j.Ctx.ForServer(server).RunTask(task).
-			AsRoot().
-			Dispatch(connCtx)
-		cancel()
-
-		if err == nil && result != nil && result.IsSuccessful() {
-			j.Ctx.LogInfo("SSH connection successful",
-				"server_id", server.ID,
-				"attempt", attempt,
-				"output", result.GetOutput(),
-			)
-			return true, attempt
+			return
 		}
 
 		j.Ctx.LogInfo("SSH connection attempt failed, retrying...",
 			"server_id", server.ID,
 			"attempt", attempt,
-			"max_attempts", maxConnectionAttempts,
+			"max_attempts", cfg.MaxAttempts,
 			"next_delay", delay.String(),
 		)
 
 		j.Ctx.BroadcastServerEvent(server, "server.connection_attempt", map[string]any{
 			"server_id":    server.ID,
 			"attempt":      attempt,
-			"max_attempts": maxConnectionAttempts,
+			"max_attempts": cfg.MaxAttempts,
 			"status":       "retrying",
 		})
-
-		select {
-		case <-ctx.Done():
-			return false, attempt
-		case <-time.After(delay):
-		}
-
-		// Increase delay with exponential backoff, capped at maxRetryDelay
-		delay = time.Duration(float64(delay) * 1.2)
-		if delay > maxRetryDelay {
-			delay = maxRetryDelay
-		}
 	}
 
-	return false, maxConnectionAttempts
+	attempts, err := retry.DoWithAttempts(ctx, cfg, func() error {
+		// Reload server to get latest data (including keys)
+		server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+		if err != nil {
+			return fmt.Errorf("failed to reload server: %w", err)
+		}
+
+		// Skip if no private key yet
+		if server.PrivateKey.IsEmpty() {
+			j.Ctx.LogInfo("Server has no private key yet, waiting...",
+				"server_id", server.ID,
+			)
+			return fmt.Errorf("server has no private key")
+		}
+
+		// Skip if no IP yet
+		if server.PublicIPv4 == nil || *server.PublicIPv4 == "" {
+			j.Ctx.LogInfo("Server has no IP address yet, waiting...",
+				"server_id", server.ID,
+			)
+			return fmt.Errorf("server has no IP address")
+		}
+
+		// Try to connect using whoami task
+		task := tasks.Whoami()
+
+		connCtx, cancel := context.WithTimeout(ctx, connectionTimeout)
+		result, connErr := j.Ctx.ForServer(server).RunTask(task).
+			AsRoot().
+			Dispatch(connCtx)
+		cancel()
+
+		if connErr != nil || result == nil || !result.IsSuccessful() {
+			return fmt.Errorf("SSH connection failed")
+		}
+
+		j.Ctx.LogInfo("SSH connection successful",
+			"server_id", server.ID,
+			"output", result.GetOutput(),
+		)
+		return nil
+	})
+
+	return err == nil, attempts
 }
 
 // dispatchProvisionJob dispatches the ProvisionServer job

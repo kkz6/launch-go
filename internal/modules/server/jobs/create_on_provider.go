@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/retry"
 )
 
 const TypeCreateOnProvider = "server:create_on_provider"
@@ -191,41 +192,39 @@ func (j *CreateOnProviderJob) dispatchWaitForConnection() error {
 
 func (j *CreateOnProviderJob) waitForPublicIP(
 	ctx context.Context,
-	server any,
-	provider any,
+	_ any, // server (unused, we reload it)
+	_ any, // provider (unused, we recreate it)
 	credentials map[string]any,
 ) (string, error) {
-	srv, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
-	if err != nil {
-		return "", err
-	}
-
-	prov, err := j.Ctx.ProviderFactory.Create(srv.Provider)
-	if err != nil {
-		return "", err
-	}
-
-	maxAttempts := 30
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		ip, err := prov.GetPublicIPv4(ctx, srv, credentials)
-		if err == nil && ip != "" {
-			return ip, nil
-		}
-
+	cfg := retry.ServerConnectionRetry
+	cfg.OnRetry = func(attempt int, _ error, _ time.Duration) {
 		j.Ctx.LogInfo("Waiting for public IP",
-			"server_id", srv.ID,
+			"server_id", j.Payload.ServerID,
 			"attempt", attempt,
 		)
-
-		select {
-		case <-ctx.Done():
-			return "", ctx.Err()
-		case <-time.After(10 * time.Second):
-			srv, _ = j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
-		}
 	}
 
-	return "", fmt.Errorf("timeout waiting for public IP")
+	return retry.WithBackoff(ctx, cfg, func() (string, error) {
+		srv, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+		if err != nil {
+			return "", err
+		}
+
+		prov, err := j.Ctx.ProviderFactory.Create(srv.Provider)
+		if err != nil {
+			return "", err
+		}
+
+		ip, err := prov.GetPublicIPv4(ctx, srv, credentials)
+		if err != nil {
+			return "", err
+		}
+		if ip == "" {
+			return "", fmt.Errorf("no public IP available yet")
+		}
+
+		return ip, nil
+	})
 }
 
 func (j *CreateOnProviderJob) Failed(ctx context.Context, err error) {
