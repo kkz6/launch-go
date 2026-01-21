@@ -4587,3 +4587,898 @@ func (r *SiteRepository) FindByServerWithLatestDeployment(ctx context.Context, s
 | Interface & Query | 4 patterns | ~500 lines |
 | Security & Events | 3 patterns | ~100 lines |
 | **Grand Total** | **50 patterns** | **~6931 lines** |
+
+---
+
+# Deep Analysis Round 3 (Items 51-62)
+
+## 51. HTTP Client Base with Request Builder (P1 - CRITICAL)
+
+**Problem:** HTTP client initialization and request handling duplicated across 12+ provider files.
+
+**Files affected:**
+- `internal/modules/git/providers/github.go` (5+ locations)
+- `internal/modules/git/providers/gitlab.go` (4+ locations)
+- `internal/modules/git/providers/bitbucket.go` (4+ locations)
+- `internal/modules/server/providers/digitalocean.go`
+- `internal/modules/server/providers/hetzner.go`
+- `internal/modules/server/providers/linode.go`
+- `internal/modules/server/providers/vultr.go`
+- `internal/modules/dns/providers/cloudflare.go`
+- `internal/modules/dns/providers/digitalocean.go`
+- `internal/modules/billing/providers/lemon_squeezy.go`
+- `internal/modules/backup/storage/dropbox.go`
+- `internal/modules/notification/channels/http_client.go`
+
+**Current (duplicated 12+ times):**
+```go
+client := &http.Client{Timeout: 30 * time.Second}
+
+req, err := http.NewRequestWithContext(ctx, method, url, body)
+req.Header.Set("Authorization", "Bearer "+token)
+req.Header.Set("Content-Type", "application/json")
+resp, err := client.Do(req)
+defer resp.Body.Close()
+if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+    return nil, fmt.Errorf("request failed: %d", resp.StatusCode)
+}
+```
+
+**Solution - Create `internal/pkg/httpclient/client.go`:**
+```go
+package httpclient
+
+type Client struct {
+    http      *http.Client
+    baseURL   string
+    authToken string
+    headers   map[string]string
+}
+
+type ClientOption func(*Client)
+
+func WithTimeout(d time.Duration) ClientOption {
+    return func(c *Client) {
+        c.http.Timeout = d
+    }
+}
+
+func WithBearerToken(token string) ClientOption {
+    return func(c *Client) {
+        c.authToken = token
+    }
+}
+
+func WithHeader(key, value string) ClientOption {
+    return func(c *Client) {
+        c.headers[key] = value
+    }
+}
+
+func New(baseURL string, opts ...ClientOption) *Client {
+    c := &Client{
+        http:    &http.Client{Timeout: 30 * time.Second},
+        baseURL: baseURL,
+        headers: make(map[string]string),
+    }
+    for _, opt := range opts {
+        opt(c)
+    }
+    return c
+}
+
+func (c *Client) Do(ctx context.Context, method, path string, body, result any) error {
+    var reqBody io.Reader
+    if body != nil {
+        data, err := json.Marshal(body)
+        if err != nil {
+            return fmt.Errorf("marshal body: %w", err)
+        }
+        reqBody = bytes.NewReader(data)
+    }
+
+    req, err := http.NewRequestWithContext(ctx, method, c.baseURL+path, reqBody)
+    if err != nil {
+        return fmt.Errorf("create request: %w", err)
+    }
+
+    if c.authToken != "" {
+        req.Header.Set("Authorization", "Bearer "+c.authToken)
+    }
+    req.Header.Set("Content-Type", "application/json")
+    for k, v := range c.headers {
+        req.Header.Set(k, v)
+    }
+
+    resp, err := c.http.Do(req)
+    if err != nil {
+        return fmt.Errorf("execute request: %w", err)
+    }
+    defer resp.Body.Close()
+
+    respBody, _ := io.ReadAll(resp.Body)
+    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+        return &HTTPError{StatusCode: resp.StatusCode, Body: respBody}
+    }
+
+    if result != nil {
+        if err := json.Unmarshal(respBody, result); err != nil {
+            return fmt.Errorf("decode response: %w", err)
+        }
+    }
+    return nil
+}
+
+func (c *Client) Get(ctx context.Context, path string, result any) error {
+    return c.Do(ctx, http.MethodGet, path, nil, result)
+}
+
+func (c *Client) Post(ctx context.Context, path string, body, result any) error {
+    return c.Do(ctx, http.MethodPost, path, body, result)
+}
+
+func (c *Client) Put(ctx context.Context, path string, body, result any) error {
+    return c.Do(ctx, http.MethodPut, path, body, result)
+}
+
+func (c *Client) Delete(ctx context.Context, path string) error {
+    return c.Do(ctx, http.MethodDelete, path, nil, nil)
+}
+```
+
+**Usage in providers:**
+```go
+// Before (50+ lines per provider)
+func (p *GitHubProvider) CreateWebhook(...) { ... lots of HTTP code ... }
+
+// After (2 lines)
+func (p *GitHubProvider) CreateWebhook(ctx context.Context, repo, url, secret string) (*Webhook, error) {
+    var result Webhook
+    return &result, p.client.Post(ctx, "/repos/"+repo+"/hooks", webhookPayload{...}, &result)
+}
+```
+
+**Impact:** ~500 lines saved, consistent error handling, retry logic can be added centrally
+
+---
+
+## 52. Context Extraction Helpers (P1)
+
+**Problem:** Unsafe context value extraction duplicated across 15+ middleware and handler files.
+
+**Files affected:**
+- `internal/middleware/auth.go` (lines 45-46, 88-89)
+- `internal/middleware/team.go` (lines 71-72, 105-106, 171-172)
+- `internal/middleware/team_role.go` (lines 32-35, 62-65, 92-95)
+- `internal/middleware/email.go` (lines 24-26)
+- `internal/middleware/two_factor.go` (lines 19-22)
+- `internal/middleware/subscription.go` (lines 41-44)
+- All handler files using `c.Locals("userID").(string)`
+
+**Current (duplicated 15+ times):**
+```go
+userID, ok := c.Locals("userID").(string)
+if !ok || userID == "" {
+    return response.Unauthorized(c, "User not authenticated")
+}
+```
+
+**Solution - Extend `internal/pkg/fiber/context.go`:**
+```go
+package fiber
+
+import (
+    "github.com/gofiber/fiber/v2"
+    "launch-go/internal/pkg/response"
+)
+
+// Context keys
+const (
+    KeyUserID   = "userID"
+    KeyTeamID   = "teamID"
+    KeyTeamRole = "teamRole"
+    KeyEmail    = "email"
+)
+
+// MustGetUserID returns userID or sends 401 response
+func MustGetUserID(c *fiber.Ctx) (string, error) {
+    userID, ok := c.Locals(KeyUserID).(string)
+    if !ok || userID == "" {
+        return "", response.Unauthorized(c, "User not authenticated")
+    }
+    return userID, nil
+}
+
+// MustGetTeamID returns teamID or sends 400 response
+func MustGetTeamID(c *fiber.Ctx) (string, error) {
+    teamID, ok := c.Locals(KeyTeamID).(string)
+    if !ok || teamID == "" {
+        return "", response.Error(c, fiber.StatusBadRequest, "Team context required")
+    }
+    return teamID, nil
+}
+
+// GetUserID returns userID or empty string (for optional auth)
+func GetUserID(c *fiber.Ctx) string {
+    if id, ok := c.Locals(KeyUserID).(string); ok {
+        return id
+    }
+    return ""
+}
+
+// GetTeamRole returns role or empty string
+func GetTeamRole(c *fiber.Ctx) string {
+    if role, ok := c.Locals(KeyTeamRole).(string); ok {
+        return role
+    }
+    return ""
+}
+
+// SetUserContext sets user-related context values
+func SetUserContext(c *fiber.Ctx, userID, email string) {
+    c.Locals(KeyUserID, userID)
+    c.Locals(KeyEmail, email)
+}
+
+// SetTeamContext sets team-related context values
+func SetTeamContext(c *fiber.Ctx, teamID, role string) {
+    c.Locals(KeyTeamID, teamID)
+    c.Locals(KeyTeamRole, role)
+}
+```
+
+**Usage:**
+```go
+// Before (4 lines per extraction)
+userID, ok := c.Locals("userID").(string)
+if !ok || userID == "" {
+    return response.Unauthorized(c, "User not authenticated")
+}
+
+// After (1 line)
+userID, err := fiber.MustGetUserID(c)
+if err != nil { return err }
+```
+
+**Impact:** ~200 lines saved, type safety, consistent error messages
+
+---
+
+## 53. JWT Token Parser Helper (P1)
+
+**Problem:** JWT parsing logic duplicated in auth.go (Auth and OptionalAuth functions).
+
+**Files affected:**
+- `internal/middleware/auth.go` (lines 24-29, 67-72)
+- `internal/websocket/auth.go`
+
+**Current (duplicated 2+ times):**
+```go
+token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+    if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+        return nil, fiber.ErrUnauthorized
+    }
+    return []byte(jwtSecret), nil
+})
+```
+
+**Solution - Create `internal/pkg/jwt/parser.go`:**
+```go
+package jwt
+
+import (
+    "github.com/golang-jwt/jwt/v5"
+)
+
+type Claims map[string]interface{}
+
+func ParseToken(tokenString, secret string) (Claims, error) {
+    token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
+        if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
+            return nil, ErrInvalidSigningMethod
+        }
+        return []byte(secret), nil
+    })
+    if err != nil {
+        return nil, ErrInvalidToken
+    }
+
+    claims, ok := token.Claims.(jwt.MapClaims)
+    if !ok || !token.Valid {
+        return nil, ErrInvalidToken
+    }
+
+    return Claims(claims), nil
+}
+
+func (c Claims) GetString(key string) string {
+    if v, ok := c[key].(string); ok {
+        return v
+    }
+    return ""
+}
+
+func (c Claims) GetUserID() string {
+    return c.GetString("sub")
+}
+
+func (c Claims) GetEmail() string {
+    return c.GetString("email")
+}
+```
+
+**Impact:** ~100 lines saved, centralized JWT handling
+
+---
+
+## 54. Redis Client Factory (P1)
+
+**Problem:** Redis client initialization duplicated 5 times across codebase.
+
+**Files affected:**
+- `internal/pkg/cache/redis.go` (lines 19-26)
+- `internal/websocket/redis_broadcaster.go` (lines 20-31, 129-144)
+- `internal/queue/client.go` (lines 14-25)
+- `internal/queue/scheduler.go` (lines 15-25)
+
+**Current (duplicated 5 times):**
+```go
+client := redis.NewClient(&redis.Options{
+    Addr:     cfg.Address,
+    Password: cfg.Password,
+    DB:       cfg.DB,
+})
+```
+
+**Solution - Create `internal/pkg/redis/client.go`:**
+```go
+package redis
+
+import (
+    "github.com/redis/go-redis/v9"
+    "launch-go/internal/config"
+)
+
+var defaultClient *redis.Client
+
+func InitClient(cfg config.RedisConfig) *redis.Client {
+    defaultClient = redis.NewClient(&redis.Options{
+        Addr:     cfg.Address,
+        Password: cfg.Password,
+        DB:       cfg.DB,
+    })
+    return defaultClient
+}
+
+func Client() *redis.Client {
+    return defaultClient
+}
+
+func Options(cfg config.RedisConfig) *redis.Options {
+    return &redis.Options{
+        Addr:     cfg.Address,
+        Password: cfg.Password,
+        DB:       cfg.DB,
+    }
+}
+```
+
+**Impact:** ~100 lines saved, single source of Redis configuration
+
+---
+
+## 55. Home Directory Helper (P1)
+
+**Problem:** Home directory path resolution duplicated 8+ times.
+
+**Files affected:**
+- `internal/modules/server/tasks/ssh_keys.go` (lines 59-61, 79-81, 96-98, 110-112)
+- `internal/modules/site/models/queue.go` (lines 55-61, 64-70)
+- `internal/pkg/taskrunner/connection.go` (lines 13-20)
+- `internal/modules/server/models/task.go` (lines 69-86)
+
+**Current (duplicated 8+ times):**
+```go
+homeDir := fmt.Sprintf("/home/%s", user)
+if user == "root" {
+    homeDir = "/root"
+}
+```
+
+**Solution - Create `internal/pkg/paths/home.go`:**
+```go
+package paths
+
+import "fmt"
+
+// GetHomeDir returns the home directory for a user
+func GetHomeDir(user string) string {
+    if user == "root" {
+        return "/root"
+    }
+    // Handle system users like ubuntu
+    if user == "ubuntu" {
+        return "/ubuntu"
+    }
+    return fmt.Sprintf("/home/%s", user)
+}
+
+// GetSSHDir returns the .ssh directory for a user
+func GetSSHDir(user string) string {
+    return GetHomeDir(user) + "/.ssh"
+}
+
+// GetTaskDir returns the .launch-tasks directory for a user
+func GetTaskDir(user string) string {
+    return GetHomeDir(user) + "/.launch-tasks"
+}
+
+// GetAuthorizedKeysPath returns the authorized_keys file path
+func GetAuthorizedKeysPath(user string) string {
+    return GetSSHDir(user) + "/authorized_keys"
+}
+```
+
+**Impact:** ~80 lines saved, consistent path handling
+
+---
+
+## 56. Task File Path Builder (P2)
+
+**Problem:** Task file naming pattern duplicated 5+ times.
+
+**Files affected:**
+- `internal/pkg/taskrunner/dispatcher.go` (lines 170-171, 358-359, 444)
+- `internal/pkg/taskrunner/stream_monitor.go` (lines 119, 327)
+
+**Current (duplicated 5+ times):**
+```go
+scriptFile := filepath.Join(scriptPath, fmt.Sprintf("task-%s.sh", taskID))
+outputFile := filepath.Join(scriptPath, fmt.Sprintf("task-%s.log", taskID))
+```
+
+**Solution - Add to `internal/pkg/paths/tasks.go`:**
+```go
+package paths
+
+import (
+    "fmt"
+    "path/filepath"
+)
+
+type TaskPaths struct {
+    Dir    string
+    Script string
+    Log    string
+    PID    string
+}
+
+func GetTaskPaths(taskDir, taskID string) TaskPaths {
+    return TaskPaths{
+        Dir:    taskDir,
+        Script: filepath.Join(taskDir, fmt.Sprintf("task-%s.sh", taskID)),
+        Log:    filepath.Join(taskDir, fmt.Sprintf("task-%s.log", taskID)),
+        PID:    filepath.Join(taskDir, fmt.Sprintf("task-%s.pid", taskID)),
+    }
+}
+```
+
+**Impact:** ~60 lines saved, consistent task file naming
+
+---
+
+## 57. BeforeCreate Hook Consolidation (P2)
+
+**Problem:** 10 models follow identical BeforeCreate pattern with default setting.
+
+**Files affected:**
+- `internal/modules/site/models/site.go` (lines 78-89)
+- `internal/modules/server/models/server.go` (lines 71-85)
+- `internal/modules/database/models/database_user.go` (lines 28-38)
+- `internal/modules/backup/models/backup.go` (lines 35-53)
+- `internal/modules/backup/models/backup_job.go` (lines 26-36)
+- `internal/modules/server/models/installed_service.go` (lines 29-39)
+- `internal/modules/server/models/task.go` (lines 29-39)
+- `internal/modules/server/models/firewall_rule.go` (lines 29-39)
+- `internal/modules/server/models/cron.go` (lines 27-37)
+- `internal/modules/server/models/daemon.go` (lines 31-49)
+
+**Current (duplicated 10 times):**
+```go
+func (m *Model) BeforeCreate(tx *gorm.DB) error {
+    if err := m.BaseModel.BeforeCreate(tx); err != nil {
+        return err
+    }
+    if m.Status == "" {
+        m.Status = "pending"
+    }
+    return nil
+}
+```
+
+**Solution - Add default setters to BaseModel:**
+```go
+// internal/pkg/models/base.go
+
+type DefaultsProvider interface {
+    SetDefaults()
+}
+
+func (b *BaseModel) BeforeCreate(tx *gorm.DB) error {
+    if b.ID == "" {
+        b.ID = utils.NewULID()
+    }
+    // Call SetDefaults if model implements it
+    if dp, ok := tx.Statement.Dest.(DefaultsProvider); ok {
+        dp.SetDefaults()
+    }
+    return nil
+}
+
+// Models just implement SetDefaults()
+func (s *Site) SetDefaults() {
+    if s.DeployToken == "" {
+        s.DeployToken = utils.GenerateRandomString(32)
+    }
+}
+
+func (t *Task) SetDefaults() {
+    if t.Status == "" {
+        t.Status = "pending"
+    }
+}
+```
+
+**Impact:** ~150 lines saved, cleaner model definitions
+
+---
+
+## 58. JSON Timestamp Helper (P2)
+
+**Problem:** Timestamp formatting to string duplicated 26+ times across DTO files.
+
+**Files affected:**
+- `internal/modules/site/dto/responses.go` (lines 248-266)
+- `internal/modules/backup/dto/responses.go` (lines 83-91)
+- `internal/modules/database/dto/responses.go` (lines 62-75)
+- `internal/modules/auth/dto/responses.go` (lines 122-140)
+- `internal/modules/git/dto/responses.go` (lines 80-88)
+
+**Current (duplicated 60+ times):**
+```go
+if model.CreatedAt != nil {
+    createdAt = model.CreatedAt.Format(time.RFC3339)
+}
+
+if model.OptionalTime != nil {
+    t := model.OptionalTime.Format(time.RFC3339)
+    resp.OptionalTime = &t
+}
+```
+
+**Solution - Create `internal/pkg/helpers/time.go`:**
+```go
+package helpers
+
+import "time"
+
+// FormatTimestamp formats a time pointer to RFC3339 string or empty
+func FormatTimestamp(t *time.Time) string {
+    if t == nil {
+        return ""
+    }
+    return t.Format(time.RFC3339)
+}
+
+// FormatTimestampPtr returns a pointer to RFC3339 string or nil
+func FormatTimestampPtr(t *time.Time) *string {
+    if t == nil {
+        return nil
+    }
+    s := t.Format(time.RFC3339)
+    return &s
+}
+
+// ParseTimestamp parses RFC3339 string to time pointer
+func ParseTimestamp(s string) *time.Time {
+    if s == "" {
+        return nil
+    }
+    t, err := time.Parse(time.RFC3339, s)
+    if err != nil {
+        return nil
+    }
+    return &t
+}
+```
+
+**Usage:**
+```go
+// Before (4 lines)
+if model.CreatedAt != nil {
+    t := model.CreatedAt.Format(time.RFC3339)
+    resp.CreatedAt = &t
+}
+
+// After (1 line)
+resp.CreatedAt = helpers.FormatTimestampPtr(model.CreatedAt)
+```
+
+**Impact:** ~150 lines saved across DTO files
+
+---
+
+## 59. Optional/Required Middleware Factory (P2)
+
+**Problem:** Auth and OptionalAuth middleware have 90% duplicated logic.
+
+**Files affected:**
+- `internal/middleware/auth.go` (Auth: lines 12-53, OptionalAuth: lines 55-95)
+- `internal/middleware/team.go` (TeamScope: lines 37-76, OptionalTeamScope: lines 83-110)
+- `internal/pkg/signedurl/middleware.go`
+
+**Current pattern:**
+```go
+// Auth() returns error on failure
+// OptionalAuth() calls c.Next() on failure
+
+// 90% of logic is identical
+```
+
+**Solution - Create middleware factory:**
+```go
+package middleware
+
+type AuthConfig struct {
+    Required  bool
+    JWTSecret string
+}
+
+func AuthMiddleware(cfg AuthConfig) fiber.Handler {
+    return func(c *fiber.Ctx) error {
+        claims, err := parseAuthHeader(c, cfg.JWTSecret)
+        if err != nil {
+            if cfg.Required {
+                return response.Unauthorized(c, "Authentication required")
+            }
+            return c.Next() // Optional - continue without auth
+        }
+
+        fiber.SetUserContext(c, claims.GetUserID(), claims.GetEmail())
+        return c.Next()
+    }
+}
+
+// Convenience functions
+func Auth(jwtSecret string) fiber.Handler {
+    return AuthMiddleware(AuthConfig{Required: true, JWTSecret: jwtSecret})
+}
+
+func OptionalAuth(jwtSecret string) fiber.Handler {
+    return AuthMiddleware(AuthConfig{Required: false, JWTSecret: jwtSecret})
+}
+```
+
+**Impact:** ~100 lines saved, consistent auth behavior
+
+---
+
+## 60. Config Loading with Struct Tags (P2)
+
+**Problem:** 10 config files repeat identical load/setDefaults pattern.
+
+**Files affected:**
+- `internal/config/app.go`
+- `internal/config/database.go`
+- `internal/config/redis.go`
+- `internal/config/jwt.go`
+- `internal/config/queue.go`
+- `internal/config/cors.go`
+- `internal/config/billing.go`
+- `internal/config/git.go`
+- `internal/config/sentry.go`
+- `internal/config/slack.go`
+
+**Current (repeated 10 times):**
+```go
+func loadRedisConfig() RedisConfig {
+    return RedisConfig{
+        Address:  viper.GetString("REDIS_ADDRESS"),
+        Password: viper.GetString("REDIS_PASSWORD"),
+        DB:       viper.GetInt("REDIS_DB"),
+    }
+}
+
+func setRedisDefaults() {
+    viper.SetDefault("REDIS_ADDRESS", "localhost:6379")
+    viper.SetDefault("REDIS_PASSWORD", "")
+    viper.SetDefault("REDIS_DB", 0)
+}
+```
+
+**Solution - Use struct tags with reflection:**
+```go
+package config
+
+type RedisConfig struct {
+    Address  string `env:"REDIS_ADDRESS" default:"localhost:6379"`
+    Password string `env:"REDIS_PASSWORD" default:""`
+    DB       int    `env:"REDIS_DB" default:"0"`
+}
+
+// Generic loader using reflection
+func Load[T any]() (*T, error) {
+    var cfg T
+    v := reflect.ValueOf(&cfg).Elem()
+    t := v.Type()
+
+    for i := 0; i < t.NumField(); i++ {
+        field := t.Field(i)
+        envKey := field.Tag.Get("env")
+        defaultVal := field.Tag.Get("default")
+
+        if envKey != "" {
+            viper.SetDefault(envKey, defaultVal)
+            switch field.Type.Kind() {
+            case reflect.String:
+                v.Field(i).SetString(viper.GetString(envKey))
+            case reflect.Int:
+                v.Field(i).SetInt(int64(viper.GetInt(envKey)))
+            case reflect.Bool:
+                v.Field(i).SetBool(viper.GetBool(envKey))
+            }
+        }
+    }
+    return &cfg, nil
+}
+```
+
+**Impact:** ~200 lines saved, eliminates boilerplate config functions
+
+---
+
+## 61. Broadcast Channel Builder (P2)
+
+**Problem:** Broadcast methods duplicate channel prefix patterns.
+
+**Files affected:**
+- `internal/websocket/redis_broadcaster.go` (lines 33-56)
+
+**Current:**
+```go
+func (r *RedisBroadcaster) BroadcastToTeam(teamID, event string, data interface{}) {
+    r.publish("team."+teamID, event, data)
+}
+func (r *RedisBroadcaster) BroadcastToServer(serverID, event string, data interface{}) {
+    r.publish("server."+serverID, event, data)
+}
+func (r *RedisBroadcaster) BroadcastToSite(siteID, event string, data interface{}) {
+    r.publish("site."+siteID, event, data)
+}
+func (r *RedisBroadcaster) BroadcastToDeployment(deploymentID, event string, data interface{}) {
+    r.publish("deployment."+deploymentID, event, data)
+}
+```
+
+**Solution - Use single generic method:**
+```go
+type ChannelType string
+
+const (
+    ChannelTeam       ChannelType = "team"
+    ChannelServer     ChannelType = "server"
+    ChannelSite       ChannelType = "site"
+    ChannelDeployment ChannelType = "deployment"
+)
+
+func (r *RedisBroadcaster) Broadcast(channelType ChannelType, id, event string, data interface{}) {
+    r.publish(string(channelType)+"."+id, event, data)
+}
+
+// Keep convenience methods as wrappers for backwards compatibility
+func (r *RedisBroadcaster) BroadcastToTeam(teamID, event string, data interface{}) {
+    r.Broadcast(ChannelTeam, teamID, event, data)
+}
+```
+
+**Impact:** ~50 lines, cleaner API, type-safe channels
+
+---
+
+## 62. Pagination Query Helpers (P2)
+
+**Problem:** Limit parameter extraction and validation duplicated across handlers.
+
+**Files affected:**
+- `internal/modules/server/handlers/metric_handler.go` (lines 33-36)
+- `internal/modules/server/handlers/task_handler.go` (lines 16-19)
+
+**Current:**
+```go
+limit, _ := strconv.Atoi(c.Query("limit", "100"))
+if limit < 1 || limit > 1000 {
+    limit = 100
+}
+```
+
+**Solution - Extend `internal/pkg/pagination/pagination.go`:**
+```go
+package pagination
+
+type LimitParams struct {
+    Limit  int
+    Offset int
+}
+
+type LimitConfig struct {
+    Default int
+    Max     int
+}
+
+func GetLimitParams(c *fiber.Ctx, cfg LimitConfig) LimitParams {
+    limit, _ := strconv.Atoi(c.Query("limit", strconv.Itoa(cfg.Default)))
+    offset, _ := strconv.Atoi(c.Query("offset", "0"))
+
+    if limit < 1 || limit > cfg.Max {
+        limit = cfg.Default
+    }
+    if offset < 0 {
+        offset = 0
+    }
+
+    return LimitParams{Limit: limit, Offset: offset}
+}
+
+// Default configs
+var (
+    DefaultPagination = LimitConfig{Default: 15, Max: 100}
+    MetricsPagination = LimitConfig{Default: 100, Max: 1000}
+    TasksPagination   = LimitConfig{Default: 50, Max: 100}
+)
+```
+
+**Impact:** ~100 lines, consistent pagination across handlers
+
+---
+
+## Extended Summary (Items 51-62)
+
+| Category | Items | Est. LOC Saved |
+|----------|-------|----------------|
+| HTTP Client Base | Item 51 | ~500 lines |
+| Context Extraction | Item 52 | ~200 lines |
+| JWT Token Parser | Item 53 | ~100 lines |
+| Redis Client Factory | Item 54 | ~100 lines |
+| Home Directory Helper | Item 55 | ~80 lines |
+| Task File Paths | Item 56 | ~60 lines |
+| BeforeCreate Hooks | Item 57 | ~150 lines |
+| JSON Timestamp Helper | Item 58 | ~150 lines |
+| Middleware Factory | Item 59 | ~100 lines |
+| Config Struct Tags | Item 60 | ~200 lines |
+| Broadcast Channel Builder | Item 61 | ~50 lines |
+| Pagination Helpers | Item 62 | ~100 lines |
+| **Round 3 Total** | **12 patterns** | **~1790 lines** |
+
+---
+
+## Updated Final Summary
+
+| Category | Items | Total LOC Saved |
+|----------|-------|-----------------|
+| Handler Bases | 5 patterns | ~400 lines |
+| Repository Patterns | 5 patterns | ~1200 lines |
+| Service Patterns | 3 patterns | ~450 lines |
+| Job/Task Patterns | 3 patterns | ~800 lines |
+| Model Mixins | 5 patterns | ~270 lines |
+| Provider API Clients | 3 patterns | ~450 lines |
+| Middleware Patterns | 1 pattern | ~30 lines |
+| Config Patterns | 1 pattern | ~86 lines |
+| DTO/Request Patterns | 2 patterns | ~550 lines |
+| Testing Patterns | 2 patterns | ~250 lines |
+| Infrastructure Patterns | 6 patterns | ~1075 lines |
+| Validation & Response | 5 patterns | ~610 lines |
+| Template & Script | 3 patterns | ~160 lines |
+| Interface & Query | 4 patterns | ~500 lines |
+| Security & Events | 3 patterns | ~100 lines |
+| HTTP & Helpers (Round 3) | 12 patterns | ~1790 lines |
+| **Grand Total** | **62 patterns** | **~8721 lines** |
