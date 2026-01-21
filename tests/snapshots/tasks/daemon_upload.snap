@@ -1,13 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-cat > "/etc/supervisor/conf.d/queue-worker.conf" << 'DAEMONEOF'
+cat > "/etc/supervisor/conf.d/queue-worker.conf" << 'CONFIGEOF'
 [program:queue-worker]
 command=php /home/launcher/site/artisan queue:work
 user=launcher
 autostart=true
 autorestart=true
-DAEMONEOF
+CONFIGEOF
 
 chmod 644 "/etc/supervisor/conf.d/queue-worker.conf"
 
