@@ -22,11 +22,6 @@ func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository {
 	}
 }
 
-// FindByServer returns all databases for a server
-func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) ([]models.Database, error) {
-	return r.Base.FindByServer(ctx, serverID)
-}
-
 // FindByID returns a database by ID
 func (r *DatabaseRepository) FindByID(ctx context.Context, id string) (*models.Database, error) {
 	database, err := r.Base.FindByID(ctx, id)
@@ -50,16 +45,6 @@ func (r *DatabaseRepository) FindByIDWithServer(ctx context.Context, id string) 
 		return nil, err
 	}
 	return &database, nil
-}
-
-// Create creates a new database
-func (r *DatabaseRepository) Create(ctx context.Context, db *models.Database) error {
-	return r.Base.Create(ctx, db)
-}
-
-// Delete deletes a database
-func (r *DatabaseRepository) Delete(ctx context.Context, id string) error {
-	return r.Base.Delete(ctx, id)
 }
 
 // FindUsersByServer returns all database users for a server
