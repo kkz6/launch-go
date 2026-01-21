@@ -10,7 +10,6 @@ import (
 )
 
 // CommandRepository handles database operations for commands.
-// Embeds repository.Base[T] for common CRUD operations.
 type CommandRepository struct {
 	repository.Base[models.Command]
 }
@@ -56,10 +55,3 @@ func (r *CommandRepository) DeleteBySite(ctx context.Context, siteID string) err
 		Where("site_id = ?", siteID).
 		Delete(&models.Command{}).Error
 }
-
-// Note: The following methods are inherited from repository.Base[T]:
-// - Create(ctx, entity) error
-// - Update(ctx, entity) error
-// - Delete(ctx, id) error
-// - UpdateFields(ctx, id, fields) error
-// - Transaction(ctx, fn) error

@@ -36,131 +36,23 @@ The following foundational infrastructure has been implemented:
 | - | Model Mixins (Named, Described, etc.) | ✅ DONE | `44808a1` - models/mixins.go |
 | - | Constants/Limits | ✅ DONE | `1cf762a` - constants/limits.go |
 | 1 | Job Base Payload Generic | ✅ DONE | `13ebce5` - jobs/context.go BaseJob[C,P] |
+| 2 | Installable Repository Mixin | ✅ DONE | `5a998b7` - Go embedding promotes methods |
 
 ---
 
 ## Table of Contents
 
-1. [Installable Repository Mixin (P2)](#1-installable-repository-mixin-p2)
-2. [Queue Dispatch Unification (P2)](#2-queue-dispatch-unification-p2)
-3. [Pagination Embedding (P2)](#3-pagination-embedding-p2)
-4. [Task Builder Pattern (P2)](#4-task-builder-pattern-p2)
-5. [Model Scoped Fields Adoption (P2)](#5-model-scoped-fields-adoption-p2)
-6. [Activity Logging Builder (P2)](#6-activity-logging-builder-p2)
-7. [Broadcast Payload Builder (P3)](#7-broadcast-payload-builder-p3)
-8. [DTO Timestamp Embedding (P3)](#8-dto-timestamp-embedding-p3)
+1. [Queue Dispatch Unification (P2)](#1-queue-dispatch-unification-p2)
+2. [Pagination Embedding (P2)](#2-pagination-embedding-p2)
+3. [Task Builder Pattern (P2)](#3-task-builder-pattern-p2)
+4. [Model Scoped Fields Adoption (P2)](#4-model-scoped-fields-adoption-p2)
+5. [Activity Logging Builder (P2)](#5-activity-logging-builder-p2)
+6. [Broadcast Payload Builder (P3)](#6-broadcast-payload-builder-p3)
+7. [DTO Timestamp Embedding (P3)](#7-dto-timestamp-embedding-p3)
 
 ---
 
-## 1. Installable Repository Mixin (P2)
-
-**Issue:** Repositories with installable models repeat delegation to `Installable` trait.
-
-**Files Affected:**
-- `internal/modules/database/repositories/base.go:54-79`
-- Similar patterns in server and site modules
-
-**Current Pattern:**
-```go
-type DatabaseRepository struct {
-    db          *gorm.DB
-    installable repository.Installable[models.Database]
-}
-
-// Repeated delegation methods
-func (r *DatabaseRepository) Create(ctx context.Context, database *models.Database) error {
-    return r.installable.Create(ctx, database)
-}
-
-func (r *DatabaseRepository) Update(ctx context.Context, database *models.Database) error {
-    return r.installable.Update(ctx, database)
-}
-
-func (r *DatabaseRepository) MarkAsInstalled(ctx context.Context, id string) error {
-    return r.installable.MarkAsInstalled(ctx, id)
-}
-// ... 5+ more delegation methods
-```
-
-**Solution:** Create `internal/pkg/repository/installable_repository.go`
-```go
-package repository
-
-import (
-    "context"
-    "gorm.io/gorm"
-)
-
-// InstallableRepository provides CRUD operations for installable models
-type InstallableRepository[T any] struct {
-    BaseRepository
-    installable Installable[T]
-}
-
-// NewInstallableRepository creates repository with installable trait
-func NewInstallableRepository[T any](db *gorm.DB) *InstallableRepository[T] {
-    return &InstallableRepository[T]{
-        BaseRepository: NewBaseRepository(db),
-        installable:    NewInstallable[T](db),
-    }
-}
-
-// All common methods implemented once
-func (r *InstallableRepository[T]) Create(ctx context.Context, model *T) error {
-    return r.installable.Create(ctx, model)
-}
-
-func (r *InstallableRepository[T]) Update(ctx context.Context, model *T) error {
-    return r.installable.Update(ctx, model)
-}
-
-func (r *InstallableRepository[T]) MarkAsInstalled(ctx context.Context, id string) error {
-    return r.installable.MarkAsInstalled(ctx, id)
-}
-
-func (r *InstallableRepository[T]) MarkAsInstallationFailed(ctx context.Context, id string) error {
-    return r.installable.MarkAsInstallationFailed(ctx, id)
-}
-
-func (r *InstallableRepository[T]) MarkAsUninstallationRequested(ctx context.Context, id string) error {
-    return r.installable.MarkAsUninstallationRequested(ctx, id)
-}
-
-func (r *InstallableRepository[T]) Delete(ctx context.Context, id string) error {
-    return r.installable.Delete(ctx, id)
-}
-```
-
-**Refactored Repository:**
-```go
-type DatabaseRepository struct {
-    *repository.InstallableRepository[models.Database]
-}
-
-func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository {
-    return &DatabaseRepository{
-        InstallableRepository: repository.NewInstallableRepository[models.Database](db),
-    }
-}
-
-// Only add model-specific methods, all installable methods inherited
-func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) ([]models.Database, error) {
-    // custom query
-}
-```
-
-**Refactoring Steps:**
-- [ ] Create `internal/pkg/repository/installable_repository.go`
-- [ ] Refactor `DatabaseRepository` to embed
-- [ ] Refactor `DatabaseUserRepository` to embed
-- [ ] Audit other installable repositories
-- [ ] Remove delegation boilerplate
-
-**Impact:** ~200 lines eliminated across 5+ repositories
-
----
-
-## 2. Queue Dispatch Unification (P2)
+## 1. Queue Dispatch Unification (P2)
 
 **Issue:** Job dispatching uses 3+ different patterns across codebase.
 
@@ -269,7 +161,7 @@ dispatcher.Dispatch(jobType, payload)
 
 ---
 
-## 3. Pagination Embedding (P2)
+## 2. Pagination Embedding (P2)
 
 **Issue:** Pagination logic is ad-hoc and not reusable across repositories.
 
@@ -358,7 +250,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 
 ---
 
-## 4. Task Builder Pattern (P2)
+## 3. Task Builder Pattern (P2)
 
 **Issue:** Each task file repeats callback data struct and task creation boilerplate.
 
@@ -509,7 +401,7 @@ func DeploySiteTask(opts DeployOptions) *taskrunner.BuiltTask[callbackData] {
 
 ---
 
-## 5. Model Scoped Fields Adoption (P2)
+## 4. Model Scoped Fields Adoption (P2)
 
 **Issue:** Models define scope fields manually instead of using existing mixins.
 
@@ -568,7 +460,7 @@ type Database struct {
 
 ---
 
-## 6. Activity Logging Builder (P2)
+## 5. Activity Logging Builder (P2)
 
 **Issue:** Activity logging pattern repeated with builder chain across 40+ locations.
 
@@ -665,7 +557,7 @@ activity.LogCreation(s.repos.DB(), ctx, database, "database", userID, "Database 
 
 ---
 
-## 7. Broadcast Payload Builder (P3)
+## 6. Broadcast Payload Builder (P3)
 
 **Issue:** Broadcast payloads created inline with inconsistent structure.
 
@@ -740,7 +632,7 @@ func (p ServerMetricsPayload) ToMap() map[string]interface{} {
 
 ---
 
-## 8. DTO Timestamp Embedding (P3)
+## 7. DTO Timestamp Embedding (P3)
 
 **Issue:** Timestamp formatting repeated 81+ times in DTO converters.
 

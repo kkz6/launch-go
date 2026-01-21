@@ -52,7 +52,6 @@ func (r *Registry) DB() *gorm.DB {
 }
 
 // DatabaseRepository provides database operations.
-// Embeds repository.Installable[T] for CRUD + installation status operations.
 type DatabaseRepository struct {
 	repository.Installable[models.Database]
 }
@@ -65,7 +64,6 @@ func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository {
 }
 
 // DatabaseUserRepository provides database user operations.
-// Embeds repository.Installable[T] for CRUD + installation status operations.
 type DatabaseUserRepository struct {
 	repository.Installable[models.DatabaseUser]
 }

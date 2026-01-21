@@ -10,7 +10,6 @@ import (
 )
 
 // QueueRepository handles database operations for queues.
-// Embeds repository.Installable[T] for CRUD + installation status operations.
 type QueueRepository struct {
 	repository.Installable[models.Queue]
 }

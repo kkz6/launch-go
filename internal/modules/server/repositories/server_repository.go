@@ -24,11 +24,6 @@ func NewServerRepository(db *gorm.DB) *ServerRepository {
 	}
 }
 
-// Create creates a new server
-func (r *ServerRepository) Create(ctx context.Context, server *models.Server) error {
-	return r.Base.Create(ctx, server)
-}
-
 // FindByID finds a server by ID with Services preloaded
 func (r *ServerRepository) FindByID(ctx context.Context, id string) (*models.Server, error) {
 	var server models.Server
@@ -125,11 +120,6 @@ func (r *ServerRepository) FindArchivedByTeam(ctx context.Context, teamID string
 	return servers, err
 }
 
-// Update updates a server
-func (r *ServerRepository) Update(ctx context.Context, server *models.Server) error {
-	return r.Base.Update(ctx, server)
-}
-
 // UpdateStatus updates only the server status
 func (r *ServerRepository) UpdateStatus(ctx context.Context, id string, status enums.ServerStatus) error {
 	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
@@ -143,11 +133,6 @@ func (r *ServerRepository) UpdateProgress(ctx context.Context, id string, progre
 		"progress":      progress,
 		"progress_step": step,
 	})
-}
-
-// UpdateFields updates specific fields on a server
-func (r *ServerRepository) UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error {
-	return r.Base.UpdateFields(ctx, id, fields)
 }
 
 // Archive archives a server
@@ -165,11 +150,6 @@ func (r *ServerRepository) Unarchive(ctx context.Context, id string) error {
 		"archived_at": nil,
 		"status":      enums.ServerStatusStopped,
 	})
-}
-
-// Delete deletes a server
-func (r *ServerRepository) Delete(ctx context.Context, id string) error {
-	return r.Base.Delete(ctx, id)
 }
 
 // CountByTeam counts the total number of servers for a team

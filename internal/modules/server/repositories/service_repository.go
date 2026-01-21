@@ -23,11 +23,6 @@ func NewServiceRepository(db *gorm.DB) *ServiceRepository {
 	}
 }
 
-// Create creates a new service
-func (r *ServiceRepository) Create(ctx context.Context, service *models.InstalledService) error {
-	return r.Base.Create(ctx, service)
-}
-
 // FindByID finds a service by ID
 func (r *ServiceRepository) FindByID(ctx context.Context, id string) (*models.InstalledService, error) {
 	service, err := r.Base.FindByID(ctx, id)
@@ -96,11 +91,6 @@ func (r *ServiceRepository) FindDatabaseService(ctx context.Context, serverID st
 	return &service, nil
 }
 
-// Update updates a service
-func (r *ServiceRepository) Update(ctx context.Context, service *models.InstalledService) error {
-	return r.Base.Update(ctx, service)
-}
-
 // UpdateStatus updates the service status
 func (r *ServiceRepository) UpdateStatus(ctx context.Context, id string, status enums.ServiceStatus) error {
 	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
@@ -126,11 +116,6 @@ func (r *ServiceRepository) UpdateWithTypeData(ctx context.Context, id string, s
 		"status":    status,
 		"type_data": service.TypeData,
 	})
-}
-
-// Delete deletes a service
-func (r *ServiceRepository) Delete(ctx context.Context, id string) error {
-	return r.Base.Delete(ctx, id)
 }
 
 // SetDefault sets the is_default flag for a service

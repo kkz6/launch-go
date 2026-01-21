@@ -12,7 +12,6 @@ import (
 )
 
 // DeploymentRepository handles database operations for deployments.
-// Embeds repository.Base[T] for common CRUD operations.
 type DeploymentRepository struct {
 	repository.Base[models.Deployment]
 }
@@ -170,10 +169,3 @@ func (r *DeploymentRepository) CleanupOldDeployments(ctx context.Context, siteID
 
 	return result.RowsAffected, result.Error
 }
-
-// Note: The following methods are inherited from repository.Base[T]:
-// - Create(ctx, entity) error
-// - Update(ctx, entity) error
-// - UpdateFields(ctx, id, fields) error
-// - Delete(ctx, id) error
-// - Transaction(ctx, fn) error
