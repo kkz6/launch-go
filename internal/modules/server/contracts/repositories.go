@@ -7,6 +7,7 @@ import (
 	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"gorm.io/gorm"
 )
 
@@ -17,7 +18,7 @@ type ServerRepository interface {
 	FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Server, error)
 	FindWithRelations(ctx context.Context, id, teamID string) (*models.Server, error)
 	FindAllByTeam(ctx context.Context, teamID string) ([]models.Server, error)
-	FindAllByTeamPaginated(ctx context.Context, teamID string, limit, offset int) ([]models.Server, int64, error)
+	FindAllByTeamPaginated(ctx context.Context, teamID string, page, perPage int) (*repository.PaginatedResult[models.Server], error)
 	FindArchivedByTeam(ctx context.Context, teamID string) ([]models.Server, error)
 	Update(ctx context.Context, server *models.Server) error
 	UpdateStatus(ctx context.Context, id string, status enums.ServerStatus) error

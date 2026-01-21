@@ -7,12 +7,13 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // ServerService defines the interface for server business logic
 type ServerService interface {
 	ListServers(ctx context.Context, teamID string) ([]models.Server, error)
-	ListServersPaginated(ctx context.Context, teamID string, page, perPage int) ([]models.Server, int64, error)
+	ListServersPaginated(ctx context.Context, teamID string, page, perPage int) (*repository.PaginatedResult[models.Server], error)
 	GetServer(ctx context.Context, id, teamID string) (*models.Server, error)
 	GetServerWithRelations(ctx context.Context, id, teamID string) (*models.Server, error)
 	CreateServer(ctx context.Context, teamID, userID string, req *dto.CreateServerRequest) (*models.Server, error)

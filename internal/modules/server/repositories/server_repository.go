@@ -86,26 +86,18 @@ func (r *ServerRepository) FindAllByTeam(ctx context.Context, teamID string) ([]
 }
 
 // FindAllByTeamPaginated finds all servers for a team with pagination
-func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID string, limit, offset int) ([]models.Server, int64, error) {
-	var servers []models.Server
-	var total int64
+func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID string, page, perPage int) (*repository.PaginatedResult[models.Server], error) {
+	countQuery := r.DB.WithContext(ctx).
+		Model(&models.Server{}).
+		Scopes(repository.WithTeamID(teamID), repository.WithActive())
 
-	query := r.DB.WithContext(ctx).Model(&models.Server{}).Where("team_id = ?", teamID)
-
-	if err := query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-
-	err := r.DB.WithContext(ctx).
+	dataQuery := r.DB.WithContext(ctx).
 		Select("servers.*, (SELECT COUNT(*) FROM sites WHERE sites.server_id = servers.id) as sites_count").
 		Preload("Services").
-		Where("team_id = ?", teamID).
-		Order("created_at DESC").
-		Limit(limit).
-		Offset(offset).
-		Find(&servers).Error
+		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
+		Order("created_at DESC")
 
-	return servers, total, err
+	return repository.PaginateWithCount[models.Server](countQuery, dataQuery, page, perPage)
 }
 
 // FindArchivedByTeam finds all archived servers for a team
