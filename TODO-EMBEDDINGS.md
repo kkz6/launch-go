@@ -40,90 +40,20 @@ The following foundational infrastructure has been implemented:
 
 ## Table of Contents
 
-1. [Service Base Enforcement (P1)](#1-service-base-enforcement-p1)
-2. [Module Handler Field Consolidation (P1)](#2-module-handler-field-consolidation-p1)
-3. [Job Base Payload Generic (P2)](#3-job-base-payload-generic-p2)
-4. [Installable Repository Mixin (P2)](#4-installable-repository-mixin-p2)
-5. [Queue Dispatch Unification (P2)](#5-queue-dispatch-unification-p2)
-6. [Pagination Embedding (P2)](#6-pagination-embedding-p2)
-7. [Task Builder Pattern (P2)](#7-task-builder-pattern-p2)
-8. [Model Scoped Fields Adoption (P2)](#8-model-scoped-fields-adoption-p2)
-9. [Activity Logging Builder (P2)](#9-activity-logging-builder-p2)
-10. [Broadcast Payload Builder (P3)](#10-broadcast-payload-builder-p3)
-11. [DTO Timestamp Embedding (P3)](#11-dto-timestamp-embedding-p3)
+1. [Module Handler Field Consolidation (P1)](#1-module-handler-field-consolidation-p1)
+2. [Job Base Payload Generic (P2)](#2-job-base-payload-generic-p2)
+3. [Installable Repository Mixin (P2)](#3-installable-repository-mixin-p2)
+4. [Queue Dispatch Unification (P2)](#4-queue-dispatch-unification-p2)
+5. [Pagination Embedding (P2)](#5-pagination-embedding-p2)
+6. [Task Builder Pattern (P2)](#6-task-builder-pattern-p2)
+7. [Model Scoped Fields Adoption (P2)](#7-model-scoped-fields-adoption-p2)
+8. [Activity Logging Builder (P2)](#8-activity-logging-builder-p2)
+9. [Broadcast Payload Builder (P3)](#9-broadcast-payload-builder-p3)
+10. [DTO Timestamp Embedding (P3)](#10-dto-timestamp-embedding-p3)
 
 ---
 
-## 1. Service Base Enforcement (P1)
-
-**Issue:** Service base class usage is inconsistent across modules.
-
-**Files Affected:**
-- `internal/pkg/service/base.go` - Central base (exists but not universally used)
-- `internal/modules/auth/services/service.go:15-18` - Has bare fields, no base
-- `internal/modules/notification/services/base.go:54-57` - Defines own BaseService
-- `internal/modules/server/services/base.go:40` - Has own base
-- `internal/modules/database/services/base.go:38-50` - Uses `service.Base` (correct)
-- `internal/modules/site/services/base.go:112-126` - Uses `service.Base` (correct)
-
-**Current Pattern (Inconsistent):**
-```go
-// Auth module - NO embedding
-type Service struct {
-    repos        *repositories.Registry
-    config       *config.Config
-    logger       *zerolog.Logger
-    emailService EmailService
-    // ... more fields
-}
-
-// Notification module - Own base
-type BaseService struct {
-    deps   *ServiceDeps
-    repos  *repositories.Registry
-    logger *zerolog.Logger
-}
-
-// Database module - Uses pkg base (CORRECT)
-type Service struct {
-    service.Base
-    repos      *repositories.Registry
-    serverRepo ServerRepository
-}
-```
-
-**Solution:** Enforce `internal/pkg/service/base.go` across ALL modules
-```go
-// Ensure pkg/service/base.go has all needed methods:
-package service
-
-type Base struct {
-    queue       *queue.Client
-    broadcaster broadcast.ModelBroadcaster
-    logger      *zerolog.Logger
-}
-
-// All modules should embed:
-type AuthService struct {
-    service.Base
-    repos  *repositories.Registry
-    config *config.Config
-}
-```
-
-**Refactoring Steps:**
-- [ ] Audit `internal/pkg/service/base.go` for completeness
-- [ ] Refactor auth module services to embed `service.Base`
-- [ ] Refactor notification module to use pkg base (remove local BaseService)
-- [ ] Refactor server module to use pkg base
-- [ ] Remove all per-module `BaseService` definitions
-- [ ] Update all constructors
-
-**Impact:** ~200 lines eliminated, single source of service infrastructure
-
----
-
-## 2. Module Handler Field Consolidation (P1)
+## 1. Module Handler Field Consolidation (P1)
 
 **Issue:** Individual handlers within a module repeat the same service injection field.
 
@@ -208,7 +138,7 @@ type UserHandler struct {
 
 ---
 
-## 3. Job Base Payload Generic (P2)
+## 2. Job Base Payload Generic (P2)
 
 **Issue:** All jobs repeat context field and handler setup pattern.
 
@@ -301,7 +231,7 @@ func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *Ins
 
 ---
 
-## 4. Installable Repository Mixin (P2)
+## 3. Installable Repository Mixin (P2)
 
 **Issue:** Repositories with installable models repeat delegation to `Installable` trait.
 
@@ -409,7 +339,7 @@ func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) 
 
 ---
 
-## 5. Queue Dispatch Unification (P2)
+## 4. Queue Dispatch Unification (P2)
 
 **Issue:** Job dispatching uses 3+ different patterns across codebase.
 
@@ -518,7 +448,7 @@ dispatcher.Dispatch(jobType, payload)
 
 ---
 
-## 6. Pagination Embedding (P2)
+## 5. Pagination Embedding (P2)
 
 **Issue:** Pagination logic is ad-hoc and not reusable across repositories.
 
@@ -607,7 +537,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 
 ---
 
-## 7. Task Builder Pattern (P2)
+## 6. Task Builder Pattern (P2)
 
 **Issue:** Each task file repeats callback data struct and task creation boilerplate.
 
@@ -758,7 +688,7 @@ func DeploySiteTask(opts DeployOptions) *taskrunner.BuiltTask[callbackData] {
 
 ---
 
-## 8. Model Scoped Fields Adoption (P2)
+## 7. Model Scoped Fields Adoption (P2)
 
 **Issue:** Models define scope fields manually instead of using existing mixins.
 
@@ -817,7 +747,7 @@ type Database struct {
 
 ---
 
-## 9. Activity Logging Builder (P2)
+## 8. Activity Logging Builder (P2)
 
 **Issue:** Activity logging pattern repeated with builder chain across 40+ locations.
 
@@ -914,7 +844,7 @@ activity.LogCreation(s.repos.DB(), ctx, database, "database", userID, "Database 
 
 ---
 
-## 10. Broadcast Payload Builder (P3)
+## 9. Broadcast Payload Builder (P3)
 
 **Issue:** Broadcast payloads created inline with inconsistent structure.
 
@@ -989,7 +919,7 @@ func (p ServerMetricsPayload) ToMap() map[string]interface{} {
 
 ---
 
-## 11. DTO Timestamp Embedding (P3)
+## 10. DTO Timestamp Embedding (P3)
 
 **Issue:** Timestamp formatting repeated 81+ times in DTO converters.
 

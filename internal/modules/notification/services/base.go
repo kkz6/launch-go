@@ -2,16 +2,16 @@ package services
 
 import (
 	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
-// ServiceDeps holds all dependencies needed for notification services
+// ServiceDeps holds all dependencies needed for notification services.
+// Embedding service.Dependencies provides common dependencies (DB, Logger, Queue, Broadcaster).
 type ServiceDeps struct {
-	DB             *gorm.DB
-	Logger         *zerolog.Logger
+	service.Dependencies
 	Repos          *repositories.Registry
 	ChannelFactory *channels.Factory
 
@@ -50,19 +50,21 @@ func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
 	return registry
 }
 
-// BaseService provides common service dependencies
+// BaseService provides common service dependencies for notification services.
+// It embeds service.Base to get common functionality (queue, broadcast, logging)
+// and adds module-specific accessors.
 type BaseService struct {
-	deps   *ServiceDeps
-	repos  *repositories.Registry
-	logger *zerolog.Logger
+	service.Base
+	deps  *ServiceDeps
+	repos *repositories.Registry
 }
 
 // NewBaseService creates a new base service from ServiceDeps
 func NewBaseService(deps *ServiceDeps) *BaseService {
 	return &BaseService{
-		deps:   deps,
-		repos:  deps.Repos,
-		logger: deps.Logger,
+		Base:  service.NewBaseFromDeps(deps.Dependencies),
+		deps:  deps,
+		repos: deps.Repos,
 	}
 }
 
@@ -71,14 +73,9 @@ func (s *BaseService) Repos() *repositories.Registry {
 	return s.repos
 }
 
-// DB returns the database connection
-func (s *BaseService) DB() *gorm.DB {
-	return s.deps.DB
-}
-
-// Logger returns the logger
+// Logger returns the logger (overrides Base.Logger for pointer return)
 func (s *BaseService) Logger() *zerolog.Logger {
-	return s.logger
+	return s.deps.Logger
 }
 
 // ChannelFactory returns the channel factory
