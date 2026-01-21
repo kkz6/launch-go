@@ -52,6 +52,7 @@ type Application struct {
 	kernel          *app.Kernel
 	redisCache      *cache.RedisCache
 	membershipCache *cache.TeamMembershipCache
+	sentryEnabled   bool
 }
 
 func main() {
@@ -61,6 +62,9 @@ func main() {
 	application.run()
 }
 
+// Version can be set via ldflags during build
+var Version = "development"
+
 // bootstrap initializes all application dependencies
 func bootstrap() *Application {
 	cfg, err := config.Load()
@@ -69,6 +73,9 @@ func bootstrap() *Application {
 	}
 
 	appLogger := logger.NewWithConfig(cfg.App.Environment, cfg.App.Debug)
+
+	// Initialize Sentry for error tracking (only in production)
+	sentryEnabled := middleware.InitSentry(cfg.Sentry, cfg.App.Name, Version, appLogger)
 
 	if err := database.InitEncryption(cfg.App.Key); err != nil {
 		appLogger.Fatal().Err(err).Msg("Failed to initialize encryption")
@@ -116,11 +123,18 @@ func bootstrap() *Application {
 		fiber:           fiberApp,
 		redisCache:      redisCache,
 		membershipCache: membershipCache,
+		sentryEnabled:   sentryEnabled,
 	}
 }
 
 // registerMiddleware sets up global middleware
 func (a *Application) registerMiddleware() {
+	// Sentry must be first to capture all panics and errors
+	if a.sentryEnabled {
+		a.fiber.Use(middleware.SentryHandler())
+		a.fiber.Use(middleware.EnhanceSentryScope)
+	}
+
 	a.fiber.Use(recover.New())
 	a.fiber.Use(cors.New(cors.Config{
 		AllowOrigins:     a.config.Cors.AllowedOrigins,
@@ -190,10 +204,10 @@ func (a *Application) registerModules() {
 	api.Get("/health", a.healthCheck)
 
 	authMiddleware := middleware.Auth(a.config.JWT.Secret)
-	teamContextMiddleware := middleware.TeamContext(a.membershipCache)
 
 	// Initialize team middleware with membership cache
 	middleware.InitTeamMiddleware(a.membershipCache)
+	teamContextMiddleware := middleware.TeamScope()
 
 	// Initialize subscription middleware
 	middleware.InitSubscriptionMiddleware(a.db, a.config.Billing.SubscriptionsEnabled)
@@ -260,6 +274,12 @@ func (a *Application) shutdown() {
 	}
 
 	a.queueClient.Close()
+
+	// Flush Sentry events before exiting
+	if a.sentryEnabled {
+		a.logger.Info().Msg("Flushing Sentry events...")
+		middleware.FlushSentry(5 * time.Second)
+	}
 
 	a.logger.Info().Msg("Server stopped")
 }

@@ -3,6 +3,7 @@ package middleware
 import (
 	"errors"
 
+	sentryfiber "github.com/getsentry/sentry-go/fiber"
 	"github.com/gofiber/fiber/v2"
 )
 
@@ -34,6 +35,13 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 			var httpErr HTTPStatusError
 			if errors.As(err, &httpErr) {
 				code = httpErr.HTTPStatus()
+			}
+		}
+
+		// Capture 5xx errors to Sentry (if Sentry is enabled)
+		if code >= 500 {
+			if hub := sentryfiber.GetHubFromContext(c); hub != nil {
+				hub.CaptureException(err)
 			}
 		}
 	}
