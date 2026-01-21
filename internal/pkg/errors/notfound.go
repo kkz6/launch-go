@@ -76,7 +76,7 @@ var (
 	ErrFirewallRuleNotFound   = NotFound("Firewall rule not found")
 	ErrCronNotFound           = NotFound("Cron job not found")
 	ErrDaemonNotFound         = NotFound("Daemon not found")
-	ErrSshKeyNotFound         = NotFound("SSH key not found")
+	ErrSSHKeyNotFound         = NotFound("SSH key not found")
 	ErrTaskNotFound           = NotFound("Task not found")
 	ErrMetricNotFound         = NotFound("Metric not found")
 	ErrServerProviderNotFound = NotFound("Server provider not found")

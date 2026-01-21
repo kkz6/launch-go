@@ -3,11 +3,42 @@ package service
 import (
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 )
+
+// Dependencies holds common dependencies needed by all services.
+// Use this struct to pass dependencies consistently across modules.
+//
+// Example usage in a module:
+//
+//	type ServiceDeps struct {
+//	    service.Dependencies
+//	    Repos *repositories.Registry
+//	    // ... module-specific fields
+//	}
+type Dependencies struct {
+	DB          *gorm.DB
+	Logger      *zerolog.Logger
+	Queue       *queue.Client
+	Broadcaster broadcast.ModelBroadcaster
+	Dispatcher  *taskrunner.Dispatcher
+}
+
+// NewDependencies creates a new Dependencies instance with all common dependencies.
+func NewDependencies(db *gorm.DB, logger *zerolog.Logger, q *queue.Client, ws broadcast.ModelBroadcaster, dispatcher *taskrunner.Dispatcher) Dependencies {
+	return Dependencies{
+		DB:          db,
+		Logger:      logger,
+		Queue:       q,
+		Broadcaster: ws,
+		Dispatcher:  dispatcher,
+	}
+}
 
 // Base provides common service dependencies.
 // Embed this in your service to get common functionality.
@@ -30,6 +61,15 @@ func NewBase(q *queue.Client, ws broadcast.ModelBroadcaster, logger *zerolog.Log
 		Queue:  q,
 		WS:     ws,
 		Logger: logger,
+	}
+}
+
+// NewBaseFromDeps creates a new Base service from Dependencies
+func NewBaseFromDeps(deps Dependencies) Base {
+	return Base{
+		Queue:  deps.Queue,
+		WS:     deps.Broadcaster,
+		Logger: deps.Logger,
 	}
 }
 

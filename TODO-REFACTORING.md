@@ -343,10 +343,14 @@ func (f *ServiceFactory) CreateBase() *Base {
 ```
 
 **Refactoring Steps:**
-- [ ] Create `internal/pkg/service/factory.go`
-- [ ] Update module builders to use ServiceFactory
-- [ ] Standardize all service constructors
-- [ ] Remove per-module ServiceDeps types
+- [x] Create `internal/pkg/service/base.go` with Dependencies struct
+- [x] Add NewBaseFromDeps and NewDependencies functions
+- [x] Add ServiceDeps() method to module.Builder and module.Deps
+- [x] Update server module to use ServiceDeps with embedded Dependencies
+- [x] Update site module to embed service.Dependencies in ServiceDeps
+- [x] Update dns module to embed service.Dependencies in ServiceDeps
+- [x] Update backup module to embed service.Dependencies in ServiceDeps
+- [x] Add tests for service package
 
 ---
 
@@ -1548,7 +1552,7 @@ Each module needs similar audit for:
 
 ### Phase 2: Infrastructure (Week 3-4)
 4. [x] Generic job context (P1 - 2.1) - Complete (pkgjobs.Base embedded in all 5 module job contexts)
-5. [ ] Service factory (P1 - 2.2)
+5. [x] Service factory (P1 - 2.2) - Complete (service.Dependencies embedded in module ServiceDeps)
 6. [~] Handler boilerplate extraction (P1 - 3.1) - In progress (helpers created, 2 handlers refactored)
 7. [x] Handler base class (P1 - 3.2)
 

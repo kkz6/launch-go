@@ -3,9 +3,6 @@ package services
 import (
 	"strings"
 
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
-
 	databaseservices "github.com/kkz6/launch-go/internal/modules/database/services"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
@@ -13,17 +10,13 @@ import (
 	serverservices "github.com/kkz6/launch-go/internal/modules/server/services"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
-	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/service"
-	"github.com/kkz6/launch-go/internal/queue"
 )
 
-// ServiceDeps holds all dependencies needed for site services
+// ServiceDeps holds all dependencies needed for site services.
+// Embedding service.Dependencies provides common dependencies.
 type ServiceDeps struct {
-	DB             *gorm.DB
-	Logger         *zerolog.Logger
-	Queue          *queue.Client
-	WebSocket      broadcast.ModelBroadcaster
+	service.Dependencies
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
 	Repos          *repositories.Registry
 
@@ -119,7 +112,7 @@ type BaseService struct {
 // NewBaseService creates a new base service from ServiceDeps
 func NewBaseService(deps *ServiceDeps) *BaseService {
 	return &BaseService{
-		Base:  service.NewBase(deps.Queue, deps.WebSocket, deps.Logger),
+		Base:  service.NewBaseFromDeps(deps.Dependencies),
 		deps:  deps,
 		repos: deps.Repos,
 	}

@@ -1,8 +1,6 @@
 package services
 
 import (
-	"github.com/rs/zerolog"
-
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
@@ -32,9 +30,16 @@ var (
 	ErrFirewallRuleNotFound = repositories.ErrFirewallRuleNotFound
 	ErrCronNotFound         = repositories.ErrCronNotFound
 	ErrDaemonNotFound       = repositories.ErrDaemonNotFound
-	ErrSshKeyNotFound       = repositories.ErrSshKeyNotFound
+	ErrSSHKeyNotFound       = repositories.ErrSSHKeyNotFound
 	ErrTaskNotFound         = repositories.ErrTaskNotFound
 )
+
+// ServiceDeps holds all dependencies needed for server services.
+// Embedding service.Dependencies provides common dependencies.
+type ServiceDeps struct {
+	service.Dependencies
+	Repos contracts.RepositoryRegistry
+}
 
 // Service provides business logic for server operations
 type Service struct {
@@ -43,10 +48,20 @@ type Service struct {
 	dispatcher *taskrunner.Dispatcher
 }
 
-// NewService creates a new Service instance
-func NewService(repos contracts.RepositoryRegistry, q *queue.Client, ws broadcast.ModelBroadcaster, dispatcher *taskrunner.Dispatcher, logger *zerolog.Logger) *Service {
+// NewService creates a new Service instance from ServiceDeps
+func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		Base:       service.NewBase(q, ws, logger),
+		Base:       service.NewBaseFromDeps(deps.Dependencies),
+		repos:      deps.Repos,
+		dispatcher: deps.Dispatcher,
+	}
+}
+
+// NewServiceWithParams creates a new Service instance with individual parameters.
+// Deprecated: Use NewService with ServiceDeps instead for consistency.
+func NewServiceWithParams(repos contracts.RepositoryRegistry, q *queue.Client, ws broadcast.ModelBroadcaster, dispatcher *taskrunner.Dispatcher) *Service {
+	return &Service{
+		Base:       service.NewBase(q, ws, nil),
 		repos:      repos,
 		dispatcher: dispatcher,
 	}
