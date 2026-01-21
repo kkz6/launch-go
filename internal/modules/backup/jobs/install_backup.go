@@ -11,12 +11,6 @@ import (
 
 const TypeInstallBackup = "backup:install"
 
-type InstallBackupPayload struct {
-	ServerID string  `json:"server_id"`
-	BackupID string  `json:"backup_id"`
-	UserID   *string `json:"user_id,omitempty"`
-}
-
 // InstallBackupJob installs backup configuration on a server
 type InstallBackupJob struct {
 	ctx     *JobContext

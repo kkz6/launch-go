@@ -5,7 +5,7 @@ import (
 )
 
 // Service-level errors with HTTP status codes
-// These errors automatically map to the correct HTTP responses when using response.Abort()
+// These errors automatically map to the correct HTTP responses when using fiberctx.Abort()
 var (
 	// 409 Conflict - resource state conflicts
 	ErrPendingDeployment = apperrors.Conflict("A deployment is already in progress")

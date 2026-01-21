@@ -5,7 +5,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
 
-	"github.com/kkz6/launch-go/internal/pkg/signature"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
@@ -19,29 +19,29 @@ const (
 )
 
 // VerifyHMACSHA256 verifies an HMAC-SHA256 signature.
-// Deprecated: Use signature.GitLab.Verify or signature.ComputeSignature instead.
+// Deprecated: Use security.GitLabSignature.Verify or security.ComputeHMACSignature instead.
 func VerifyHMACSHA256(payload []byte, sig string, secret string) bool {
-	return signature.GitLab.Verify(payload, sig, secret)
+	return security.GitLabSignature.Verify(payload, sig, secret)
 }
 
 // VerifyGitHubSignature verifies a GitHub webhook signature (X-Hub-Signature-256 header).
 func VerifyGitHubSignature(payload []byte, signatureHeader, secret string) bool {
-	return signature.VerifyGitHub(payload, signatureHeader, secret)
+	return security.VerifyGitHubSignature(payload, signatureHeader, secret)
 }
 
 // VerifyGitLabToken verifies a GitLab webhook token (X-Gitlab-Token header).
 func VerifyGitLabToken(providedToken, expectedToken string) bool {
-	return signature.VerifyGitLab(providedToken, expectedToken)
+	return security.VerifyGitLabToken(providedToken, expectedToken)
 }
 
 // VerifyStripeSignature verifies a Stripe webhook signature (Stripe-Signature header).
 func VerifyStripeSignature(payload []byte, signatureHeader, secret string) bool {
-	return signature.VerifyStripe(payload, signatureHeader, secret)
+	return security.VerifyStripeSignature(payload, signatureHeader, secret)
 }
 
 // VerifyLemonSqueezySignature verifies a LemonSqueezy webhook signature (X-Signature header).
 func VerifyLemonSqueezySignature(payload []byte, signatureHeader, secret string) bool {
-	return signature.VerifyLemonSqueezy(payload, signatureHeader, secret)
+	return security.VerifyLemonSqueezySignature(payload, signatureHeader, secret)
 }
 
 // Base provides common dependencies and functionality for webhook handlers.

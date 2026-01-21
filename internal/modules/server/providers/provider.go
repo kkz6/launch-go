@@ -7,17 +7,17 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/response"
-	"github.com/kkz6/launch-go/internal/pkg/sshkey"
+	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
 
 // Provider errors with HTTP status codes
 var (
-	ErrConnectionFailed    = response.ErrBadRequest("Failed to connect to provider")
-	ErrProviderError       = response.ErrBadRequest("Provider error")
-	ErrInvalidCredentials  = response.ErrBadRequest("Invalid credentials")
-	ErrServerNotFound      = response.ErrNotFound("Server not found on provider")
-	ErrUnsupportedProvider = response.ErrBadRequest("Unsupported provider")
+	ErrConnectionFailed    = apperrors.BadRequest("Failed to connect to provider")
+	ErrProviderError       = apperrors.BadRequest("Provider error")
+	ErrInvalidCredentials  = apperrors.BadRequest("Invalid credentials")
+	ErrServerNotFound      = apperrors.NotFound("Server not found on provider")
+	ErrUnsupportedProvider = apperrors.BadRequest("Unsupported provider")
 )
 
 // KeyPair is an alias for sshkey.KeyPair for backwards compatibility.

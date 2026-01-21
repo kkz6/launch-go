@@ -6,7 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/billing/dto"
 	"github.com/kkz6/launch-go/internal/modules/billing/enums"
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
-	"github.com/kkz6/launch-go/internal/pkg/syncutil"
+	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
 // AdminLimits are the limits for admin users
@@ -38,8 +38,8 @@ type TeamSubscriptionOptions struct {
 	siteCountFn       func(ctx context.Context, serverID string) (int, error)
 	userRole          enums.UserRole
 
-	cachedOptions syncutil.Cached[models.PlanOptions]
-	cachedIsAdmin syncutil.Cached[bool]
+	cachedOptions util.Cached[models.PlanOptions]
+	cachedIsAdmin util.Cached[bool]
 }
 
 // NewTeamSubscriptionOptions creates a new TeamSubscriptionOptions

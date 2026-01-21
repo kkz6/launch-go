@@ -3,7 +3,7 @@ package tasks
 import (
 	"fmt"
 
-	"github.com/kkz6/launch-go/internal/pkg/pathutil"
+	"github.com/kkz6/launch-go/internal/pkg/launch/paths"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
@@ -57,8 +57,8 @@ func GeneratePublicKey(privateKeyPath string) *taskrunner.BaseTask {
 
 // AuthorizePublicKey creates a task to add a public key to authorized_keys
 func AuthorizePublicKey(publicKey string, user string) *taskrunner.BaseTask {
-	sshDir := pathutil.SSHDir(user)
-	authorizedKeys := pathutil.AuthorizedKeysPath(user)
+	sshDir := paths.SSHDir(user)
+	authorizedKeys := paths.AuthorizedKeysPath(user)
 
 	script := fmt.Sprintf(`mkdir -p %s
 chmod 700 %s
@@ -75,7 +75,7 @@ chown -R %s:%s %s`, sshDir, sshDir, publicKey, authorizedKeys, authorizedKeys, u
 
 // DeauthorizePublicKey creates a task to remove a public key from authorized_keys
 func DeauthorizePublicKey(publicKey string, user string) *taskrunner.BaseTask {
-	authorizedKeys := pathutil.AuthorizedKeysPath(user)
+	authorizedKeys := paths.AuthorizedKeysPath(user)
 
 	// Escape special characters in the public key for sed
 	script := fmt.Sprintf(`sed -i '\|%s|d' %s`, publicKey, authorizedKeys)
@@ -89,7 +89,7 @@ func DeauthorizePublicKey(publicKey string, user string) *taskrunner.BaseTask {
 
 // GetAuthorizedKeys creates a task to get all authorized keys for a user
 func GetAuthorizedKeys(user string) *taskrunner.BaseTask {
-	authorizedKeys := pathutil.AuthorizedKeysPath(user)
+	authorizedKeys := paths.AuthorizedKeysPath(user)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get Authorized Keys"),
@@ -100,8 +100,8 @@ func GetAuthorizedKeys(user string) *taskrunner.BaseTask {
 
 // UpdateAuthorizedKeys creates a task to replace the authorized_keys file with new content
 func UpdateAuthorizedKeys(user string, publicKey string) *taskrunner.BaseTask {
-	sshDir := pathutil.SSHDir(user)
-	authorizedKeys := pathutil.AuthorizedKeysPath(user)
+	sshDir := paths.SSHDir(user)
+	authorizedKeys := paths.AuthorizedKeysPath(user)
 
 	script := fmt.Sprintf(`mkdir -p %s
 chmod 700 %s

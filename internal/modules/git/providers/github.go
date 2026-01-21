@@ -12,7 +12,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
-	"github.com/kkz6/launch-go/internal/pkg/urlbuilder"
+	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
 const (
@@ -47,7 +47,7 @@ func (p *GitHubProvider) GetInstallationURL() (string, error) {
 	if p.Config().AppSlug == "" {
 		return "", errors.New("GitHub App slug is not configured")
 	}
-	return urlbuilder.New(p.BaseURL()).Path("apps", p.Config().AppSlug, "installations", "new").String(), nil
+	return util.New(p.BaseURL()).Path("apps", p.Config().AppSlug, "installations", "new").String(), nil
 }
 
 // generateJWT generates a JWT for GitHub App authentication

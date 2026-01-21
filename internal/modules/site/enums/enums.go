@@ -205,6 +205,46 @@ func (s SiteType) wordpressDefaults() map[string]interface{} {
 	}
 }
 
+// IsLaravel returns true if this is a Laravel site type
+func (s SiteType) IsLaravel() bool {
+	return s == SiteTypeLaravel
+}
+
+// IsPHP returns true if this is a PHP-based site type
+func (s SiteType) IsPHP() bool {
+	return s.IsLaravel() || s == SiteTypeWordpress
+}
+
+// IsStatic returns true if this is a static site type
+func (s SiteType) IsStatic() bool {
+	return s == SiteTypeStatic
+}
+
+// SupportsZeroDowntime returns true if this site type supports zero-downtime deployments
+func (s SiteType) SupportsZeroDowntime() bool {
+	return s.IsLaravel() || s == SiteTypeStatic
+}
+
+// SupportsQueue returns true if this site type supports queue workers
+func (s SiteType) SupportsQueue() bool {
+	return s.IsLaravel()
+}
+
+// SupportsScheduler returns true if this site type supports the task scheduler
+func (s SiteType) SupportsScheduler() bool {
+	return s.IsLaravel()
+}
+
+// SupportsHorizon returns true if this site type supports Laravel Horizon
+func (s SiteType) SupportsHorizon() bool {
+	return s.IsLaravel()
+}
+
+// SupportsMigrations returns true if this site type supports database migrations
+func (s SiteType) SupportsMigrations() bool {
+	return s.IsLaravel()
+}
+
 // ParseSiteType parses a string into a SiteType
 func ParseSiteType(s string) (SiteType, error) {
 	st := SiteType(s)

@@ -71,7 +71,7 @@ func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID 
 		}
 		return &dto.OpcacheStatusResponse{
 			Enabled: false,
-			Error:   fmt.Sprintf("No valid JSON output found in response. Raw output: %s", rawOutput),
+			Error:   fmt.Sprintf("No valid JSON output found in fiberctx. Raw output: %s", rawOutput),
 		}, nil
 	}
 

@@ -115,7 +115,7 @@ func (d *FakeDispatcher) SetFailure(nameOrID string, exitCode int, output string
 	})
 }
 
-// SetTimeout configures a task to timeout.
+// SetTimeout configures a task to config.
 func (d *FakeDispatcher) SetTimeout(nameOrID string) {
 	d.SetResult(nameOrID, &TaskResult{
 		ExitCode:   124,

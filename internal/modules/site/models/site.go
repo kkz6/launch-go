@@ -13,8 +13,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
-	"github.com/kkz6/launch-go/internal/pkg/token"
-	"github.com/kkz6/launch-go/internal/pkg/xutil"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // Site represents a web application deployed on a server
@@ -81,7 +80,7 @@ func (s *Site) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	if s.DeployToken == nil || *s.DeployToken == "" {
-		deployToken := token.New(32).WithEncoding(token.Base64URL).MustGenerate()
+		deployToken := security.NewTokenGenerator(32).WithEncoding(security.TokenBase64URL).MustGenerate()
 		s.DeployToken = &deployToken
 	}
 
@@ -168,7 +167,7 @@ func (s *Site) GenerateEnvironmentVariables() map[string]string {
 
 	switch s.Type {
 	case enums.SiteTypeLaravel:
-		variables["APP_KEY"] = xutil.GenerateAppKey()
+		variables["APP_KEY"] = security.AppKey()
 		variables["APP_URL"] = s.GetURL()
 
 	case enums.SiteTypeWordpress:

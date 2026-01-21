@@ -2,7 +2,7 @@
 
 A comprehensive plan for leveraging Go's struct embedding to reduce code duplication, following Laravel's trait-like composition patterns.
 
-## 142. Backup Job Payload Base (P2)
+## 142. ✅ COMPLETED - Backup Job Payload Base (P2)
 
 **Problem:** 3 backup jobs have identical payload structures.
 
@@ -50,9 +50,11 @@ type SyncLaunchConfigPayload = BackupJobPayload
 
 ---
 
-## 144. Webhook Signature Verifier (P1)
+## 144. ✅ COMPLETED - Webhook Signature Verifier (P1)
 
 **Problem:** 4 separate HMAC-SHA256 signature verification implementations.
+
+**Status:** Already consolidated in `internal/pkg/webhook/base.go` and `internal/modules/git/providers/base.go` with unified verification methods.
 
 **Files affected:**
 - `internal/modules/git/providers/github.go:319-321`
@@ -416,9 +418,11 @@ func NewServerRepository(db *gorm.DB) *ServerRepository {
 
 ---
 
-## 153. Status Enum Base Generator (P2)
+## 153. ✅ COMPLETED - Status Enum Base Generator (P2)
 
 **Problem:** All status enums have identical structure with Values(), IsValid(), terminal states.
+
+**Status:** Implemented in `internal/pkg/enums/set.go` with generic Set[T comparable] helper.
 
 **Files affected:**
 - `internal/modules/server/enums/server_status.go:50-75`
@@ -574,9 +578,11 @@ func (r *BackupRepository) FindByID(ctx context.Context, id string) (*models.Bac
 
 ---
 
-## 155. Soft Delete Scope Unification (P2)
+## 155. ✅ COMPLETED - Soft Delete Scope Unification (P2)
 
 **Problem:** Mixed ArchivedAt and DeletedAt approaches with inconsistent filtering.
+
+**Status:** Implemented in `internal/pkg/models/archivable.go` with ArchivableModel mixin and scopes in `internal/pkg/repository/scopes.go` (WithActive, WithArchived, NotArchived).
 
 **Files affected:**
 - `internal/modules/server/models/server.go:45` (ArchivedAt)
@@ -661,7 +667,7 @@ func (r *ServerRepository) FindActive(ctx context.Context) ([]models.Server, err
 
 ---
 
-## 156. Site Type Helper Methods (P2)
+## 156. ✅ COMPLETED - Site Type Helper Methods (P2)
 
 **Problem:** Scattered site type checks throughout the codebase.
 
@@ -930,7 +936,7 @@ func NewRegistry[R any](db *gorm.DB, factory func(*gorm.DB) R) *Registry[R]
 - [x] `internal/modules/server/repositories/server_repository.go` - Uses WithActive(), WithTeamID() scopes
 - [x] `internal/modules/dashboard/services/dashboard_service.go` - Uses WithActive(), WithTeamID() scopes
 
-### Estimated Effort: 2-3 days
+### Estimated Effort: 2-3 days - ✅ COMPLETED
 
 ---
 
@@ -1008,12 +1014,12 @@ func (j *FeatureJob[P]) Handle() error {
 - Convert feature enable jobs to `FeatureJob`
 
 ### Files to Create:
-- [ ] Enhance `internal/pkg/jobs/base.go`
-- [ ] Create `internal/pkg/jobs/payload.go`
-- [ ] Create `internal/pkg/jobs/builder.go`
-- [ ] Create `internal/pkg/jobs/feature_job.go`
+- [x] Enhance `internal/pkg/jobs/base.go` ✅ (context.go with Base, ModuleContext, ServerContext)
+- [x] Create `internal/pkg/jobs/payload.go` ✅ (backup/jobs/payloads.go for backup jobs)
+- [x] Create `internal/pkg/jobs/builder.go` ✅ (TaskBuilder with fluent API)
+- [x] Create `internal/pkg/jobs/feature_job.go` ✅ (site/jobs/feature_job_helpers.go)
 
-### Estimated Effort: 2 days
+### Estimated Effort: 2 days - ✅ COMPLETED
 
 ---
 
@@ -1107,11 +1113,11 @@ type TeamServerScoped struct {
 ```
 
 ### Files to Create:
-- [ ] Create `internal/pkg/models/mixins.go`
-- [ ] Create `internal/pkg/models/hooks.go`
-- [ ] Create `internal/pkg/models/scopes.go`
+- [x] Create `internal/pkg/models/mixins.go` ✅ (Named, Described, StatusTracking, ProgressTracking, Tokenized)
+- [x] Create `internal/pkg/models/hooks.go` ✅ (StatusInitializer, TokenInitializer, SetDefaultStatus, SetDefaultToken)
+- [x] Create `internal/pkg/models/scopes.go` ✅ (TeamScoped, ServerScoped, SiteScoped, compound scopes)
 
-### Estimated Effort: 1-2 days
+### Estimated Effort: 1-2 days - ✅ COMPLETED
 
 ---
 
@@ -1200,14 +1206,14 @@ type SortRequest struct {
 ```
 
 ### Files to Create/Modify:
-- [ ] Enhance `internal/pkg/dto/time.go`
-- [ ] Create `internal/pkg/dto/ptr.go`
-- [ ] Create `internal/pkg/dto/mapper.go`
-- [ ] Create `internal/pkg/dto/enum.go`
-- [ ] Create `internal/pkg/dto/response.go`
-- [ ] Create `internal/pkg/dto/request.go`
+- [x] Enhance `internal/pkg/dto/time.go` ✅ (FormatTime, ParseTime, TimeAgo, display formats)
+- [x] Create `internal/pkg/dto/ptr.go` ✅ (in internal/pkg/ptr/ptr.go - Deref, DerefOr, Ptr, Map, Coalesce)
+- [x] Create `internal/pkg/dto/mapper.go` ✅ (in converter.go - MapSlice, FilterSlice, GroupBy, Unique)
+- [x] Create `internal/pkg/dto/enum.go` ✅ (EnumResponse, EnumToResponse, EnumsToResponses)
+- [x] Create `internal/pkg/dto/response.go` ✅ (TimestampResponse, PaginationMeta, APIResponse)
+- [x] Create `internal/pkg/dto/request.go` ✅ (in request_mixins.go and fields.go)
 
-### Estimated Effort: 1-2 days
+### Estimated Effort: 1-2 days - ✅ COMPLETED
 
 ---
 
@@ -1634,12 +1640,12 @@ func (m *Mixin) BroadcastToTeam(teamID string, payload Payload)
 ```
 
 ### Files to Modify/Create:
-- [ ] Create `internal/pkg/broadcast/events.go`
-- [ ] Create `internal/pkg/broadcast/channels.go`
-- [ ] Enhance `internal/pkg/broadcast/payload.go`
-- [ ] Create `internal/pkg/broadcast/mixin.go`
+- [x] Create `internal/pkg/broadcast/events.go` ✅ (50+ event constants)
+- [x] Create `internal/pkg/broadcast/channels.go` ✅ (TeamChannel, ServerChannel, SiteChannel, etc.)
+- [x] Enhance `internal/pkg/broadcast/payload.go` ✅ (helpers.go with typed payloads)
+- [x] Create `internal/pkg/broadcast/mixin.go` ✅ (Mixin and ModelMixin with nil-safe broadcasting)
 
-### Estimated Effort: 1 day
+### Estimated Effort: 1 day - ✅ COMPLETED
 
 ---
 

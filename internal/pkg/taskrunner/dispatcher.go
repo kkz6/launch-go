@@ -8,7 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kkz6/launch-go/internal/pkg/pathutil"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	"github.com/kkz6/launch-go/internal/pkg/launch/paths"
 
 	"github.com/rs/zerolog"
 )
@@ -161,7 +162,7 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 		taskID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 
-	paths := pathutil.GetTaskPaths(taskDir, taskID)
+	taskPaths := paths.GetTaskPaths(taskDir, taskID)
 
 	// Ensure script directory exists
 	if _, err := sshClient.Run(ctx, fmt.Sprintf("mkdir -p %s", taskDir)); err != nil {
@@ -169,31 +170,31 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 	}
 
 	// Upload script
-	if err := sshClient.Upload(ctx, []byte(script), paths.Script, 0755); err != nil {
+	if err := sshClient.Upload(ctx, []byte(script), taskPaths.Script, 0755); err != nil {
 		return nil, fmt.Errorf("failed to upload script: %w", err)
 	}
 
 	startTime := time.Now()
 
 	if pt.Background {
-		return d.runRemoteBackground(ctx, sshClient, pt, paths, startTime)
+		return d.runRemoteBackground(ctx, sshClient, pt, taskPaths, startTime)
 	}
 
-	return d.runRemoteForeground(ctx, sshClient, pt, paths, startTime)
+	return d.runRemoteForeground(ctx, sshClient, pt, taskPaths, startTime)
 }
 
 func (d *Dispatcher) runRemoteForeground(
 	ctx context.Context,
 	client *SSHClient,
 	pt *PendingTask,
-	paths pathutil.TaskPaths,
+	taskPaths paths.TaskPaths,
 	startTime time.Time,
 ) (*TaskResult, error) {
 	timeout := int(pt.Task.Timeout().Seconds())
 
 	// Run with timeout and tee output
 	command := fmt.Sprintf("timeout %ds bash %s 2>&1 | tee %s; exit ${PIPESTATUS[0]}",
-		timeout, paths.Script, paths.Output)
+		timeout, taskPaths.Script, taskPaths.Output)
 
 	cmdResult, err := client.Run(ctx, command)
 
@@ -232,7 +233,7 @@ func (d *Dispatcher) runRemoteBackground(
 	ctx context.Context,
 	client *SSHClient,
 	pt *PendingTask,
-	paths pathutil.TaskPaths,
+	taskPaths paths.TaskPaths,
 	startTime time.Time,
 ) (*TaskResult, error) {
 	timeout := int(pt.Task.Timeout().Seconds())
@@ -241,7 +242,7 @@ func (d *Dispatcher) runRemoteBackground(
 	// Also write exit code to a file for SSH polling to detect completion
 	command := fmt.Sprintf(
 		"nohup bash -c 'timeout %ds bash %s > %s 2>&1; echo $? > %s' & echo $!",
-		timeout, paths.Script, paths.Output, paths.ExitCode,
+		timeout, taskPaths.Script, taskPaths.Output, taskPaths.ExitCode,
 	)
 
 	cmdResult, err := client.Run(ctx, command)
@@ -254,7 +255,7 @@ func (d *Dispatcher) runRemoteBackground(
 	d.logger.Info().
 		Str("task_id", pt.TaskID).
 		Str("pid", pid).
-		Str("output_file", paths.Output).
+		Str("output_file", taskPaths.Output).
 		Bool("local_mode", d.localMode).
 		Msg("Background task started")
 
@@ -335,7 +336,7 @@ func (d *Dispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*Ta
 		taskID = fmt.Sprintf("%d", time.Now().UnixNano())
 	}
 
-	paths := pathutil.GetTaskPaths(taskDir, taskID)
+	taskPaths := paths.GetTaskPaths(taskDir, taskID)
 
 	// Ensure script directory exists
 	if _, err := sshClient.Run(ctx, fmt.Sprintf("mkdir -p %s", taskDir)); err != nil {
@@ -343,7 +344,7 @@ func (d *Dispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*Ta
 	}
 
 	// Upload script
-	if err := sshClient.Upload(ctx, []byte(script), paths.Script, 0755); err != nil {
+	if err := sshClient.Upload(ctx, []byte(script), taskPaths.Script, 0755); err != nil {
 		return nil, fmt.Errorf("failed to upload script: %w", err)
 	}
 
@@ -352,7 +353,7 @@ func (d *Dispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*Ta
 
 	// Run with output streaming
 	var outputBuffer strings.Builder
-	command := fmt.Sprintf("timeout %ds bash %s 2>&1 | tee %s", timeout, paths.Script, paths.Output)
+	command := fmt.Sprintf("timeout %ds bash %s 2>&1 | tee %s", timeout, taskPaths.Script, taskPaths.Output)
 
 	var exitCode int
 	err = sshClient.StreamOutput(ctx, command, func(line string) error {
@@ -363,7 +364,7 @@ func (d *Dispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*Ta
 
 		// Broadcast to WebSocket
 		if d.ws != nil {
-			d.ws.Broadcast("task."+taskID, "task.output", map[string]interface{}{
+			d.ws.Broadcast(broadcast.TaskChannel(taskID), "task.output", map[string]interface{}{
 				"task_id": taskID,
 				"output":  outputBuffer.String(),
 				"status":  "running",
@@ -411,8 +412,8 @@ func (d *Dispatcher) GetTaskOutput(ctx context.Context, conn *Connection, taskID
 	}
 	defer sshClient.Close()
 
-	paths := pathutil.GetTaskPaths(conn.GetScriptPath(), taskID)
-	output, err := sshClient.Download(ctx, paths.Output)
+	taskPaths := paths.GetTaskPaths(conn.GetScriptPath(), taskID)
+	output, err := sshClient.Download(ctx, taskPaths.Output)
 	if err != nil {
 		return "", err
 	}

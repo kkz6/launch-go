@@ -3,7 +3,7 @@ package config
 import (
 	"strings"
 
-	"github.com/kkz6/launch-go/internal/pkg/configutil"
+	"github.com/kkz6/launch-go/internal/pkg/config"
 	"github.com/spf13/viper"
 )
 
@@ -37,15 +37,15 @@ func Load() (*Config, error) {
 
 	// Load all configurations using declarative struct tags
 	return &Config{
-		App:      configutil.Load[AppConfig](),
-		Database: configutil.Load[DatabaseConfig](),
-		Redis:    configutil.Load[RedisConfig](),
-		JWT:      configutil.Load[JWTConfig](),
-		Cors:     configutil.Load[CorsConfig](),
-		Queue:    configutil.Load[QueueConfig](),
-		Billing:  configutil.Load[BillingConfig](),
-		Git:      configutil.Load[GitConfig](),
-		Slack:    configutil.Load[SlackConfig](),
-		Sentry:   configutil.Load[SentryConfig](),
+		App:      config.Load[AppConfig](),
+		Database: config.Load[DatabaseConfig](),
+		Redis:    config.Load[RedisConfig](),
+		JWT:      config.Load[JWTConfig](),
+		Cors:     config.Load[CorsConfig](),
+		Queue:    config.Load[QueueConfig](),
+		Billing:  config.Load[BillingConfig](),
+		Git:      config.Load[GitConfig](),
+		Slack:    config.Load[SlackConfig](),
+		Sentry:   config.Load[SentryConfig](),
 	}, nil
 }

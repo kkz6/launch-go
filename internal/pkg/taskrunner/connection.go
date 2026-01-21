@@ -3,8 +3,8 @@ package taskrunner
 import (
 	"time"
 
-	"github.com/kkz6/launch-go/internal/pkg/pathutil"
-	"github.com/kkz6/launch-go/internal/pkg/timeout"
+	"github.com/kkz6/launch-go/internal/pkg/config"
+	"github.com/kkz6/launch-go/internal/pkg/launch/paths"
 )
 
 // Connection represents SSH connection details
@@ -19,7 +19,7 @@ type Connection struct {
 // GetScriptPath returns the script storage path on the remote server
 func (c *Connection) GetScriptPath() string {
 	if c.ScriptPath == "" {
-		return pathutil.GetTaskDir(c.User)
+		return paths.GetTaskDir(c.User)
 	}
 	return c.ScriptPath
 }
@@ -35,9 +35,9 @@ func (c *Connection) Is(other *Connection) bool {
 }
 
 // NewSSHClient creates an SSH client from this connection configuration.
-// If t is not provided, timeout.SSH (30 seconds) is used.
+// If t is not provided, config.SSH (30 seconds) is used.
 func (c *Connection) NewSSHClient(t ...time.Duration) (*SSHClient, error) {
-	sshTimeout := timeout.SSH
+	sshTimeout := config.SSH
 	if len(t) > 0 && t[0] > 0 {
 		sshTimeout = t[0]
 	}
@@ -58,7 +58,7 @@ func (c *Connection) NewSSHClient(t ...time.Duration) (*SSHClient, error) {
 
 // Dial creates an SSH client and establishes the connection.
 // This is a convenience method that combines NewSSHClient and Connect.
-// If t is not provided, timeout.SSH (30 seconds) is used.
+// If t is not provided, config.SSH (30 seconds) is used.
 func (c *Connection) Dial(t ...time.Duration) (*SSHClient, error) {
 	client, err := c.NewSSHClient(t...)
 	if err != nil {

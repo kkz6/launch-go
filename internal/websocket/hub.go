@@ -159,27 +159,27 @@ func (h *Hub) Broadcast(channel string, event string, data interface{}) {
 
 // BroadcastToServer sends a message to the server's channel
 func (h *Hub) BroadcastToServer(serverID string, event string, data interface{}) {
-	h.Broadcast("server."+serverID, event, data)
+	h.Broadcast(broadcast.ServerChannel(serverID), event, data)
 }
 
 // BroadcastToSite sends a message to the site's channel
 func (h *Hub) BroadcastToSite(siteID string, event string, data interface{}) {
-	h.Broadcast("site."+siteID, event, data)
+	h.Broadcast(broadcast.SiteChannel(siteID), event, data)
 }
 
 // BroadcastToDeployment sends a message to the deployment's channel
 func (h *Hub) BroadcastToDeployment(deploymentID string, event string, data interface{}) {
-	h.Broadcast("deployment."+deploymentID, event, data)
+	h.Broadcast(broadcast.DeploymentChannel(deploymentID), event, data)
 }
 
 // BroadcastToTeam sends a message to the team's channel
 func (h *Hub) BroadcastToTeam(teamID string, event string, data interface{}) {
-	h.Broadcast("team."+teamID, event, data)
+	h.Broadcast(broadcast.TeamChannel(teamID), event, data)
 }
 
 // BroadcastToUser sends a message to the user's channel
 func (h *Hub) BroadcastToUser(userID string, event string, data interface{}) {
-	h.Broadcast("user."+userID, event, data)
+	h.Broadcast(broadcast.UserChannel(userID), event, data)
 }
 
 // BroadcastModelCreated broadcasts a model creation event to the team channel
@@ -237,7 +237,7 @@ func Handler(hub *Hub, jwtSecret string, membershipCache *cache.TeamMembershipCa
 		hub.Register(client)
 
 		// Auto-subscribe to team channel
-		hub.Subscribe(client, "team."+client.TeamID)
+		hub.Subscribe(client, broadcast.TeamChannel(client.TeamID))
 
 		// Start pumps
 		go client.WritePump()

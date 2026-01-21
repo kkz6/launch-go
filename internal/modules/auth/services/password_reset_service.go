@@ -11,8 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
-	"github.com/kkz6/launch-go/internal/pkg/cryptoutil"
-	"github.com/kkz6/launch-go/internal/pkg/token"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // PasswordResetService handles password reset operations
@@ -40,7 +39,7 @@ func (s *PasswordResetService) SendPasswordResetLink(ctx context.Context, email 
 	}
 
 	// Generate token
-	tokenStr := token.New(32).WithEncoding(token.Base64URL).MustGenerate()
+	tokenStr := security.NewTokenGenerator(32).WithEncoding(security.TokenBase64URL).MustGenerate()
 
 	// Hash the token for storage
 	hashedToken := s.hashToken(tokenStr)
@@ -98,7 +97,7 @@ func (s *PasswordResetService) ResetPassword(ctx context.Context, req *dto.Reset
 	}
 
 	// Hash new password
-	hashedPassword, err := cryptoutil.HashPassword(req.Password)
+	hashedPassword, err := security.HashPassword(req.Password)
 	if err != nil {
 		return err
 	}

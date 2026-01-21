@@ -34,27 +34,27 @@ func NewRedisBroadcaster(addr, password string, db int, logger *zerolog.Logger) 
 
 // BroadcastToTeam publishes a message to Redis for the team channel
 func (r *RedisBroadcaster) BroadcastToTeam(teamID string, event string, data any) {
-	r.publish("team."+teamID, event, data)
+	r.publish(broadcast.TeamChannel(teamID), event, data)
 }
 
 // BroadcastToServer publishes a message to Redis for the server channel
 func (r *RedisBroadcaster) BroadcastToServer(serverID string, event string, data any) {
-	r.publish("server."+serverID, event, data)
+	r.publish(broadcast.ServerChannel(serverID), event, data)
 }
 
 // BroadcastToSite publishes a message to Redis for the site channel
 func (r *RedisBroadcaster) BroadcastToSite(siteID string, event string, data any) {
-	r.publish("site."+siteID, event, data)
+	r.publish(broadcast.SiteChannel(siteID), event, data)
 }
 
 // BroadcastToDeployment publishes a message to Redis for the deployment channel
 func (r *RedisBroadcaster) BroadcastToDeployment(deploymentID string, event string, data any) {
-	r.publish("deployment."+deploymentID, event, data)
+	r.publish(broadcast.DeploymentChannel(deploymentID), event, data)
 }
 
 // BroadcastToUser publishes a message to Redis for the user channel
 func (r *RedisBroadcaster) BroadcastToUser(userID string, event string, data any) {
-	r.publish("user."+userID, event, data)
+	r.publish(broadcast.UserChannel(userID), event, data)
 }
 
 // Broadcast publishes a message to Redis for a specific channel

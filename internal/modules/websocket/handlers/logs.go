@@ -14,7 +14,7 @@ import (
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
-	"github.com/kkz6/launch-go/internal/pkg/fiberutil"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // LogsHandler handles WebSocket log streaming connections

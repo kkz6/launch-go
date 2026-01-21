@@ -8,7 +8,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/jwtutil"
+	jwtutil "github.com/kkz6/launch-go/internal/pkg/jwt"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 

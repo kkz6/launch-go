@@ -44,7 +44,7 @@ func NewTimestampResponseFromValues(createdAt, updatedAt time.Time) TimestampRes
 }
 
 // TimestampPtrResponse is like TimestampResponse but uses string pointers.
-// Use this when timestamps are optional in the response.
+// Use this when timestamps are optional in the fiberctx.
 //
 // Example:
 //
@@ -148,7 +148,7 @@ type APIResponse struct {
 	Errors  map[string]string `json:"errors,omitempty"`
 }
 
-// NewSuccessResponse creates a successful API response.
+// NewSuccessResponse creates a successful API fiberctx.
 func NewSuccessResponse(message string, data any) APIResponse {
 	return APIResponse{
 		Success: true,
@@ -167,7 +167,7 @@ func NewSuccessResponseWithMeta(message string, data any, meta PaginationMeta) A
 	}
 }
 
-// NewErrorResponse creates an error API response.
+// NewErrorResponse creates an error API fiberctx.
 func NewErrorResponse(message string, errors map[string]string) APIResponse {
 	return APIResponse{
 		Success: false,
