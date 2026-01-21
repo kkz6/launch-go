@@ -23,11 +23,6 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 	}
 }
 
-// Create creates a new user in the database
-func (r *UserRepository) Create(ctx context.Context, user *models.User) error {
-	return r.Base.Create(ctx, user)
-}
-
 // FindByID finds a user by their ID with preloaded relations
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*models.User, error) {
 	var user models.User
@@ -64,16 +59,6 @@ func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*models
 	}
 
 	return &user, nil
-}
-
-// Update updates an existing user
-func (r *UserRepository) Update(ctx context.Context, user *models.User) error {
-	return r.Base.Update(ctx, user)
-}
-
-// Delete deletes a user by their ID
-func (r *UserRepository) Delete(ctx context.Context, id string) error {
-	return r.Base.Delete(ctx, id)
 }
 
 // ExistsByEmail checks if a user with the given email exists

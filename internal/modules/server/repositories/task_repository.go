@@ -22,11 +22,6 @@ func NewTaskRepository(db *gorm.DB) *TaskRepository {
 	}
 }
 
-// Create creates a new task
-func (r *TaskRepository) Create(ctx context.Context, task *models.Task) error {
-	return r.Base.Create(ctx, task)
-}
-
 // FindByID finds a task by ID
 func (r *TaskRepository) FindByID(ctx context.Context, id string) (*models.Task, error) {
 	task, err := r.Base.FindByID(ctx, id)
@@ -68,11 +63,6 @@ func (r *TaskRepository) FindLatestByServer(ctx context.Context, serverID string
 		return nil, err
 	}
 	return &task, nil
-}
-
-// Update updates a task
-func (r *TaskRepository) Update(ctx context.Context, task *models.Task) error {
-	return r.Base.Update(ctx, task)
 }
 
 // UpdateOutput updates the output field of a task

@@ -23,11 +23,6 @@ func NewPersonalAccessTokenRepository(db *gorm.DB) *PersonalAccessTokenRepositor
 	}
 }
 
-// Create creates a new personal access token
-func (r *PersonalAccessTokenRepository) Create(ctx context.Context, token *models.PersonalAccessToken) error {
-	return r.Base.Create(ctx, token)
-}
-
 // FindByToken finds a personal access token by its token value
 func (r *PersonalAccessTokenRepository) FindByToken(ctx context.Context, token string) (*models.PersonalAccessToken, error) {
 	var pat models.PersonalAccessToken
@@ -52,11 +47,6 @@ func (r *PersonalAccessTokenRepository) UpdateLastUsed(ctx context.Context, id s
 	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
 		"last_used_at": &now,
 	})
-}
-
-// Delete deletes a personal access token
-func (r *PersonalAccessTokenRepository) Delete(ctx context.Context, id string) error {
-	return r.Base.Delete(ctx, id)
 }
 
 // GetByUser gets all personal access tokens for a user

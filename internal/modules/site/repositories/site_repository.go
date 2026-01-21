@@ -11,7 +11,6 @@ import (
 )
 
 // SiteRepository handles database operations for sites.
-// Embeds repository.Installable[T] for CRUD + installation status operations.
 type SiteRepository struct {
 	repository.Installable[models.Site]
 }

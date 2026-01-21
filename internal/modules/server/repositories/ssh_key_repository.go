@@ -21,11 +21,6 @@ func NewSSHKeyRepository(db *gorm.DB) *SSHKeyRepository {
 	}
 }
 
-// Create creates a new SSH key
-func (r *SSHKeyRepository) Create(ctx context.Context, key *models.SshKey) error {
-	return r.Base.Create(ctx, key)
-}
-
 // FindByID finds an SSH key by ID
 func (r *SSHKeyRepository) FindByID(ctx context.Context, id string) (*models.SshKey, error) {
 	key, err := r.Base.FindByID(ctx, id)
@@ -36,11 +31,6 @@ func (r *SSHKeyRepository) FindByID(ctx context.Context, id string) (*models.Ssh
 		return nil, err
 	}
 	return key, nil
-}
-
-// FindByTeam finds all SSH keys for a team
-func (r *SSHKeyRepository) FindByTeam(ctx context.Context, teamID string) ([]models.SshKey, error) {
-	return r.Base.FindByTeam(ctx, teamID)
 }
 
 // FindByServer finds all SSH keys attached to a server
@@ -61,16 +51,6 @@ func (r *SSHKeyRepository) FindGlobal(ctx context.Context) ([]models.SshKey, err
 		Order("created_at DESC").
 		Find(&keys).Error
 	return keys, err
-}
-
-// Update updates an SSH key
-func (r *SSHKeyRepository) Update(ctx context.Context, key *models.SshKey) error {
-	return r.Base.Update(ctx, key)
-}
-
-// Delete deletes an SSH key
-func (r *SSHKeyRepository) Delete(ctx context.Context, id string) error {
-	return r.Base.Delete(ctx, id)
 }
 
 // AttachToServer attaches an SSH key to a server

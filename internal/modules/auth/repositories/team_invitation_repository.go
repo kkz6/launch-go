@@ -22,11 +22,6 @@ func NewTeamInvitationRepository(db *gorm.DB) *TeamInvitationRepository {
 	}
 }
 
-// Create creates a new team invitation
-func (r *TeamInvitationRepository) Create(ctx context.Context, invitation *models.TeamInvitation) error {
-	return r.Base.Create(ctx, invitation)
-}
-
 // FindByID finds a team invitation by its ID with preloaded Team
 func (r *TeamInvitationRepository) FindByID(ctx context.Context, id string) (*models.TeamInvitation, error) {
 	var invitation models.TeamInvitation
@@ -73,9 +68,4 @@ func (r *TeamInvitationRepository) GetByTeam(ctx context.Context, teamID string)
 		Find(&invitations).Error
 
 	return invitations, err
-}
-
-// Delete deletes a team invitation
-func (r *TeamInvitationRepository) Delete(ctx context.Context, id string) error {
-	return r.Base.Delete(ctx, id)
 }

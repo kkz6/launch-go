@@ -26,11 +26,6 @@ func (r *PasskeyRepository) FindByUserID(ctx context.Context, userID string) ([]
 	return r.Base.FindByUser(ctx, userID)
 }
 
-// FindByID finds a passkey by ID
-func (r *PasskeyRepository) FindByID(ctx context.Context, id string) (*models.Passkey, error) {
-	return r.Base.FindByID(ctx, id)
-}
-
 // FindByCredentialID finds a passkey by credential ID
 func (r *PasskeyRepository) FindByCredentialID(ctx context.Context, credentialID string) (*models.Passkey, error) {
 	var passkey models.Passkey
@@ -40,21 +35,6 @@ func (r *PasskeyRepository) FindByCredentialID(ctx context.Context, credentialID
 	}
 
 	return &passkey, nil
-}
-
-// Create creates a new passkey
-func (r *PasskeyRepository) Create(ctx context.Context, passkey *models.Passkey) error {
-	return r.Base.Create(ctx, passkey)
-}
-
-// Update updates an existing passkey
-func (r *PasskeyRepository) Update(ctx context.Context, passkey *models.Passkey) error {
-	return r.Base.Update(ctx, passkey)
-}
-
-// Delete deletes a passkey by ID
-func (r *PasskeyRepository) Delete(ctx context.Context, id string) error {
-	return r.Base.Delete(ctx, id)
 }
 
 // DeleteByUserID deletes a passkey by ID and user ID (ensures user owns the passkey)

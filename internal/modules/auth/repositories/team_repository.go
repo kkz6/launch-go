@@ -22,11 +22,6 @@ func NewTeamRepository(db *gorm.DB) *TeamRepository {
 	}
 }
 
-// Create creates a new team
-func (r *TeamRepository) Create(ctx context.Context, team *models.Team) error {
-	return r.Base.Create(ctx, team)
-}
-
 // FindByID finds a team by its ID with preloaded relations
 func (r *TeamRepository) FindByID(ctx context.Context, id string) (*models.Team, error) {
 	var team models.Team
@@ -44,11 +39,6 @@ func (r *TeamRepository) FindByID(ctx context.Context, id string) (*models.Team,
 	}
 
 	return &team, nil
-}
-
-// Update updates an existing team
-func (r *TeamRepository) Update(ctx context.Context, team *models.Team) error {
-	return r.Base.Update(ctx, team)
 }
 
 // Delete deletes a team by its ID
