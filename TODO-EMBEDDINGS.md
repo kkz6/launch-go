@@ -11218,6 +11218,1021 @@ func loadAppConfig() AppConfig {
 
 ---
 
+## 135. Webhook Channel Base Class (P1)
+
+**Problem:** 3 webhook-based notification channels duplicate identical HTTP posting and validation logic.
+
+**Files affected:**
+- `internal/modules/notification/channels/slack.go` (95 lines)
+- `internal/modules/notification/channels/discord.go` (95 lines)
+- `internal/modules/notification/channels/telegram.go` (123 lines)
+
+**Current (repeated 3 times):**
+```go
+type SlackChannel struct {
+    webhookURL string
+    httpClient HTTPClient
+}
+
+func (s *SlackChannel) Connect(ctx context.Context) error {
+    webhookURL := s.GetWebhookURL()
+    if webhookURL == "" {
+        return ErrInvalidConfiguration
+    }
+    if s.httpClient == nil {
+        return ErrConnectionFailed
+    }
+
+    payload := slackMessage{Text: "*Connected to Launch*..."}
+    _, statusCode, err := s.httpClient.Post(ctx, webhookURL, payload)
+    if statusCode < 200 || statusCode >= 300 {
+        return fmt.Errorf("%w: received status code %d", ErrConnectionFailed, statusCode)
+    }
+    return nil
+}
+
+func (s *SlackChannel) Send(ctx context.Context, n Notification) error {
+    // Identical pattern: build message -> POST -> check status
+}
+```
+
+**Solution - Base Webhook Channel:**
+```go
+// internal/modules/notification/channels/webhook_base.go
+package channels
+
+type WebhookChannel struct {
+    httpClient     HTTPClient
+    webhookURL     string
+    connectMessage string
+}
+
+func (w *WebhookChannel) ValidateConfig() error {
+    if w.webhookURL == "" {
+        return ErrInvalidConfiguration
+    }
+    if w.httpClient == nil {
+        return ErrConnectionFailed
+    }
+    return nil
+}
+
+func (w *WebhookChannel) Post(ctx context.Context, payload any) error {
+    if err := w.ValidateConfig(); err != nil {
+        return err
+    }
+    _, statusCode, err := w.httpClient.Post(ctx, w.webhookURL, payload)
+    if err != nil {
+        return fmt.Errorf("%w: %v", ErrSendFailed, err)
+    }
+    if statusCode < 200 || statusCode >= 300 {
+        return fmt.Errorf("%w: received status code %d", ErrSendFailed, statusCode)
+    }
+    return nil
+}
+
+// Subclass only overrides message formatting
+type SlackChannel struct {
+    WebhookChannel
+}
+
+func (s *SlackChannel) Connect(ctx context.Context) error {
+    return s.Post(ctx, slackMessage{Text: "*Connected to Launch*..."})
+}
+
+func (s *SlackChannel) Send(ctx context.Context, n Notification) error {
+    return s.Post(ctx, slackMessage{Text: n.ToSlack()})
+}
+```
+
+**Impact:** ~190 lines saved, consistent webhook handling
+
+---
+
+## 136. Admin Alert Base Class (P1)
+
+**Problem:** 4 admin alert types duplicate 500+ lines of identical builder methods and message construction.
+
+**Files affected:**
+- `internal/modules/notification/slack/server_provisioning_failed_alert.go` (174 lines)
+- `internal/modules/notification/slack/php_installation_failed_alert.go` (143 lines)
+- `internal/modules/notification/slack/php_extension_install_failed_alert.go` (141 lines)
+- `internal/modules/notification/slack/php_extension_uninstall_failed_alert.go` (~140 lines)
+
+**Current (repeated in all 4 files):**
+```go
+type ServerProvisioningFailedAdminAlert struct {
+    alerter              *AdminAlerter
+    server               ServerInfo
+    user                 *UserInfo
+    output               string
+    errorMessage         string
+    outputRetrievalError string
+}
+
+// These 4 builder methods are IDENTICAL in all files:
+func (a *ServerProvisioningFailedAdminAlert) WithUser(user *UserInfo) *ServerProvisioningFailedAdminAlert {
+    a.user = user
+    return a
+}
+
+func (a *ServerProvisioningFailedAdminAlert) WithOutput(output string) *ServerProvisioningFailedAdminAlert {
+    a.output = output
+    return a
+}
+
+func (a *ServerProvisioningFailedAdminAlert) WithErrorMessage(msg string) *ServerProvisioningFailedAdminAlert {
+    a.errorMessage = msg
+    return a
+}
+
+// buildMessage() is 80% identical with minor header/description differences
+func (a *ServerProvisioningFailedAdminAlert) buildMessage() *BlockKitMessage {
+    message := NewBlockKitMessage(fallbackText)
+    message.AddHeader("🚨 Server Provisioning Failed")  // Only this differs
+    message.AddSection("Description specific to alert type")  // And this
+    message.AddDivider()
+
+    // IDENTICAL: Server details section (25 lines)
+    message.AddFieldsSection(
+        fmt.Sprintf("*Server Name:*\n%s", a.server.Name),
+        fmt.Sprintf("*Team:*\n%s", a.server.TeamName),
+    )
+
+    // IDENTICAL: User details section (15 lines)
+    userName := "Unknown"
+    if a.user != nil && a.user.Name != "" {
+        userName = a.user.Name
+    }
+    message.AddFieldsSection(...)
+
+    // IDENTICAL: Output handling (10 lines)
+    if a.output != "" {
+        message.AddSection(fmt.Sprintf("```\n%s\n```", TruncateOutput(a.output, 2900)))
+    }
+
+    // IDENTICAL: Context footer (5 lines)
+    message.AddContext(fmt.Sprintf("Server ID: %s | Team ID: %s | %s", ...))
+
+    return message
+}
+```
+
+**Solution - Base Admin Alert:**
+```go
+// internal/modules/notification/slack/base_admin_alert.go
+package slack
+
+type BaseAdminAlert struct {
+    alerter              *AdminAlerter
+    server               ServerInfo
+    user                 *UserInfo
+    output               string
+    errorMessage         string
+    outputRetrievalError string
+}
+
+func (b *BaseAdminAlert) WithUser(user *UserInfo) *BaseAdminAlert {
+    b.user = user
+    return b
+}
+
+func (b *BaseAdminAlert) WithOutput(output string) *BaseAdminAlert {
+    b.output = output
+    return b
+}
+
+func (b *BaseAdminAlert) WithErrorMessage(msg string) *BaseAdminAlert {
+    b.errorMessage = msg
+    return b
+}
+
+type AlertConfig struct {
+    Header       string
+    Description  string
+    ExtraFields  func(*BlockKitMessage)  // Hook for type-specific fields
+}
+
+func (b *BaseAdminAlert) BuildMessage(cfg AlertConfig) *BlockKitMessage {
+    message := NewBlockKitMessage(cfg.Header)
+    message.AddHeader(cfg.Header)
+    message.AddSection(cfg.Description)
+    message.AddDivider()
+
+    // Standard server details
+    b.addServerDetails(message)
+
+    // Type-specific fields
+    if cfg.ExtraFields != nil {
+        cfg.ExtraFields(message)
+    }
+
+    // Standard user, output, context
+    b.addUserDetails(message)
+    b.addOutputSection(message)
+    b.addContextFooter(message)
+
+    return message
+}
+
+// Specific alert only defines config
+type ServerProvisioningFailedAdminAlert struct {
+    BaseAdminAlert
+}
+
+func (a *ServerProvisioningFailedAdminAlert) buildMessage() *BlockKitMessage {
+    return a.BuildMessage(AlertConfig{
+        Header:      "🚨 Server Provisioning Failed",
+        Description: "Server provisioning has failed. Details below.",
+    })
+}
+```
+
+**Impact:** ~400 lines saved, extensible alert system
+
+---
+
+## 137. SSH Client Factory (P1)
+
+**Problem:** 7+ instances of identical SSH client creation with hardcoded 30-second timeout.
+
+**Files affected:**
+- `internal/pkg/taskrunner/dispatcher.go:148-154, 336-342`
+- `internal/pkg/taskrunner/stream_monitor.go:97-103, 305-311`
+- `internal/modules/server/services/server_service.go:262-268`
+
+**Current (repeated 7+ times):**
+```go
+sshClient, err := taskrunner.NewSSHClient(taskrunner.SSHConfig{
+    Host:       conn.Host,
+    Port:       conn.Port,
+    User:       conn.User,
+    PrivateKey: conn.PrivateKey,
+    Timeout:    30 * time.Second,  // Hardcoded everywhere
+})
+if err != nil {
+    return nil, fmt.Errorf("failed to create SSH client: %w", err)
+}
+defer sshClient.Close()
+
+if err := sshClient.Connect(); err != nil {
+    return nil, fmt.Errorf("failed to connect: %w", err)
+}
+```
+
+**Solution - SSH Client Factory:**
+```go
+// internal/pkg/ssh/factory.go
+package ssh
+
+import (
+    "context"
+    "time"
+)
+
+type ClientFactory struct {
+    defaultTimeout time.Duration
+}
+
+func NewClientFactory(timeout time.Duration) *ClientFactory {
+    if timeout == 0 {
+        timeout = 30 * time.Second
+    }
+    return &ClientFactory{defaultTimeout: timeout}
+}
+
+var DefaultFactory = NewClientFactory(30 * time.Second)
+
+func (f *ClientFactory) Connect(ctx context.Context, conn *Connection) (*Client, error) {
+    client, err := NewSSHClient(SSHConfig{
+        Host:       conn.Host,
+        Port:       conn.Port,
+        User:       conn.User,
+        PrivateKey: conn.PrivateKey,
+        Timeout:    f.defaultTimeout,
+    })
+    if err != nil {
+        return nil, fmt.Errorf("failed to create SSH client: %w", err)
+    }
+
+    if err := client.Connect(); err != nil {
+        client.Close()
+        return nil, fmt.Errorf("failed to connect: %w", err)
+    }
+
+    return client, nil
+}
+
+// WithConnection provides a session scoped to a connection
+func (f *ClientFactory) WithConnection(ctx context.Context, conn *Connection, fn func(*Client) error) error {
+    client, err := f.Connect(ctx, conn)
+    if err != nil {
+        return err
+    }
+    defer client.Close()
+    return fn(client)
+}
+```
+
+**Refactored Usage:**
+```go
+err := ssh.DefaultFactory.WithConnection(ctx, conn, func(client *ssh.Client) error {
+    return client.Run(ctx, command)
+})
+```
+
+**Impact:** ~140 lines saved, configurable timeout
+
+---
+
+## 138. Cron Schedule Constants (P2)
+
+**Problem:** Cron expressions and frequencies duplicated across job files with redundant Frequency field.
+
+**Files affected:**
+- `internal/modules/site/jobs/enable_laravel_scheduler.go:75-83`
+- `internal/modules/site/jobs/install_wordpress_cron.go:69-77`
+- `internal/modules/server/jobs/install_task_cleanup_cron.go:52-59`
+- `internal/modules/server/jobs/cleanup_old_metrics.go:67-71`
+- `internal/modules/server/models/cron.go:18-19` (redundant fields)
+
+**Current (Expression and Frequency both stored):**
+```go
+cron := &servermodels.Cron{
+    ServerID:   server.ID,
+    Expression: "* * * * *",    // Hardcoded
+    Frequency:  "every_minute", // Redundant!
+    Hidden:     true,
+}
+```
+
+**Solution - Cron Schedule Enum:**
+```go
+// internal/modules/server/enums/cron_schedule.go
+package enums
+
+type CronSchedule string
+
+const (
+    EveryMinute CronSchedule = "* * * * *"
+    Hourly      CronSchedule = "0 * * * *"
+    Daily2AM    CronSchedule = "0 2 * * *"
+    Daily3AM    CronSchedule = "0 3 * * *"
+    Weekly      CronSchedule = "0 0 * * 0"
+)
+
+func (c CronSchedule) Expression() string {
+    return string(c)
+}
+
+func (c CronSchedule) Description() string {
+    switch c {
+    case EveryMinute:
+        return "every_minute"
+    case Hourly:
+        return "hourly"
+    case Daily2AM, Daily3AM:
+        return "daily"
+    case Weekly:
+        return "weekly"
+    }
+    return "custom"
+}
+
+// Remove Frequency field from Cron model - derive from Expression
+func (c *Cron) GetFrequency() string {
+    return CronSchedule(c.Expression).Description()
+}
+```
+
+**Impact:** ~60 lines saved, single source of truth
+
+---
+
+## 139. Job Task Builder Generator (P1)
+
+**Problem:** 78+ nearly identical NewTaskName() functions wrapping pkgjobs.NewTask().
+
+**Files affected:**
+- `internal/modules/site/jobs/*.go` (20+ task builders)
+- `internal/modules/server/jobs/*.go` (30+ task builders)
+- `internal/modules/database/jobs/*.go` (10+ task builders)
+- `internal/modules/backup/jobs/*.go` (5+ task builders)
+
+**Current (repeated 78+ times):**
+```go
+func NewCreateDeploymentTask(siteID string, userID *string, gitHash *string, branch *string) (*asynq.Task, error) {
+    return pkgjobs.NewTask(TypeCreateDeployment, CreateDeploymentPayload{
+        SiteID:  siteID,
+        UserID:  userID,
+        GitHash: gitHash,
+        Branch:  branch,
+    })
+}
+
+func NewInstallQueueTask(siteID, queueID string, userID *string) (*asynq.Task, error) {
+    return pkgjobs.NewTask(TypeInstallQueue, InstallQueuePayload{
+        SiteID:  siteID,
+        QueueID: queueID,
+        UserID:  userID,
+    })
+}
+```
+
+**Solution - Generic Task Builder:**
+```go
+// internal/pkg/jobs/builder.go
+package jobs
+
+import (
+    "encoding/json"
+    "github.com/hibiken/asynq"
+)
+
+type TaskBuilder[P any] struct {
+    taskType string
+    opts     []asynq.Option
+}
+
+func NewTaskBuilder[P any](taskType string) *TaskBuilder[P] {
+    return &TaskBuilder[P]{taskType: taskType}
+}
+
+func (b *TaskBuilder[P]) WithTaskID(id string) *TaskBuilder[P] {
+    b.opts = append(b.opts, asynq.TaskID(id))
+    return b
+}
+
+func (b *TaskBuilder[P]) WithRetry(n int) *TaskBuilder[P] {
+    b.opts = append(b.opts, asynq.MaxRetry(n))
+    return b
+}
+
+func (b *TaskBuilder[P]) Build(payload P) (*asynq.Task, error) {
+    data, err := json.Marshal(payload)
+    if err != nil {
+        return nil, err
+    }
+    return asynq.NewTask(b.taskType, data, b.opts...), nil
+}
+
+// Usage becomes simpler
+var CreateDeploymentBuilder = NewTaskBuilder[CreateDeploymentPayload](TypeCreateDeployment)
+
+// Call site
+task, err := CreateDeploymentBuilder.Build(CreateDeploymentPayload{
+    SiteID: siteID,
+    UserID: userID,
+})
+```
+
+**Impact:** ~400 lines saved, type-safe builders
+
+---
+
+## 140. Job Context Base Consolidation (P1)
+
+**Problem:** 5-6 JobContext implementations with ~70% duplicated code.
+
+**Files affected:**
+- `internal/modules/site/jobs/context.go:40-87`
+- `internal/modules/server/jobs/context.go:31-64`
+- `internal/modules/database/jobs/context.go:37-68`
+- `internal/modules/backup/jobs/context.go:25-46`
+- `internal/modules/script/jobs/context.go`
+
+**Current (repeated in each module):**
+```go
+type JobContext struct {
+    *pkgjobs.Base
+    DB         *gorm.DB
+    Logger     *zerolog.Logger
+    WS         broadcast.TeamBroadcaster
+    Dispatcher taskrunner.TaskDispatcher
+    Queue      *queue.Client
+    // Module-specific repos...
+    SiteRepo   *repositories.SiteRepository
+}
+
+func NewJobContext(
+    db *gorm.DB,
+    logger *zerolog.Logger,
+    ws broadcast.TeamBroadcaster,
+    dispatcher taskrunner.TaskDispatcher,
+    queueClient *queue.Client,
+    // 5+ more parameters...
+) *JobContext {
+    return &JobContext{
+        Base: pkgjobs.NewBase(pkgjobs.BaseDeps{
+            DB:         db,
+            Logger:     logger,
+            WS:         ws,
+            Dispatcher: dispatcher,
+        }),
+        DB:         db,
+        Logger:     logger,
+        // Repeat all assignments...
+    }
+}
+```
+
+**Solution - Composable Job Context:**
+```go
+// internal/pkg/jobs/context.go
+package jobs
+
+type CoreDeps struct {
+    DB         *gorm.DB
+    Logger     *zerolog.Logger
+    WS         broadcast.TeamBroadcaster
+    Dispatcher taskrunner.TaskDispatcher
+    Queue      *queue.Client
+}
+
+type CoreContext struct {
+    *Base
+    deps CoreDeps
+}
+
+func NewCoreContext(deps CoreDeps) *CoreContext {
+    return &CoreContext{
+        Base: NewBase(BaseDeps{
+            DB:         deps.DB,
+            Logger:     deps.Logger,
+            WS:         deps.WS,
+            Dispatcher: deps.Dispatcher,
+        }),
+        deps: deps,
+    }
+}
+
+func (c *CoreContext) DB() *gorm.DB           { return c.deps.DB }
+func (c *CoreContext) Logger() *zerolog.Logger { return c.deps.Logger }
+func (c *CoreContext) Queue() *queue.Client    { return c.deps.Queue }
+
+// Module contexts embed core and add repos
+type SiteJobContext struct {
+    *CoreContext
+    repos *SiteRepositories
+}
+
+func NewSiteJobContext(core *CoreContext, repos *SiteRepositories) *SiteJobContext {
+    return &SiteJobContext{CoreContext: core, repos: repos}
+}
+```
+
+**Impact:** ~250 lines saved, consistent initialization
+
+---
+
+## 141. DNS Provider HTTP Base (P1)
+
+**Problem:** Cloudflare (559 lines) and DigitalOcean (494 lines) DNS providers duplicate HTTP handling.
+
+**Files affected:**
+- `internal/modules/dns/providers/cloudflare.go:513-540`
+- `internal/modules/dns/providers/digitalocean.go:428-456`
+
+**Current (duplicated request/response handling):**
+```go
+// Both providers have identical HTTP patterns:
+func (p *CloudflareProvider) doRequest(ctx context.Context, method, path string, body any) ([]byte, error) {
+    req, _ := http.NewRequestWithContext(ctx, method, p.baseURL+path, bodyReader)
+    req.Header.Set("Authorization", "Bearer "+p.token)
+    req.Header.Set("Content-Type", "application/json")
+
+    resp, err := p.httpClient.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    respBody, _ := io.ReadAll(resp.Body)
+
+    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+        return nil, p.parseError(respBody)
+    }
+
+    return respBody, nil
+}
+```
+
+**Solution - DNS Provider Base:**
+```go
+// internal/modules/dns/providers/base.go
+package providers
+
+type BaseHTTPProvider struct {
+    httpClient *http.Client
+    baseURL    string
+    token      string
+}
+
+func (p *BaseHTTPProvider) DoRequest(ctx context.Context, method, path string, body any) ([]byte, error) {
+    var bodyReader io.Reader
+    if body != nil {
+        data, _ := json.Marshal(body)
+        bodyReader = bytes.NewReader(data)
+    }
+
+    req, err := http.NewRequestWithContext(ctx, method, p.baseURL+path, bodyReader)
+    if err != nil {
+        return nil, err
+    }
+
+    req.Header.Set("Authorization", "Bearer "+p.token)
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("Accept", "application/json")
+
+    resp, err := p.httpClient.Do(req)
+    if err != nil {
+        return nil, err
+    }
+    defer resp.Body.Close()
+
+    respBody, err := io.ReadAll(resp.Body)
+    if err != nil {
+        return nil, err
+    }
+
+    if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+        return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(respBody))
+    }
+
+    return respBody, nil
+}
+
+// Cloudflare embeds base
+type CloudflareProvider struct {
+    BaseHTTPProvider
+    accountID string
+    zoneCache map[string]string
+}
+```
+
+**Impact:** ~200 lines saved, consistent HTTP handling
+
+---
+
+## 142. Backup Job Payload Base (P2)
+
+**Problem:** 3 backup jobs have identical payload structures.
+
+**Files affected:**
+- `internal/modules/backup/jobs/install_backup.go:14-18`
+- `internal/modules/backup/jobs/run_manual_backup.go:14-18`
+- `internal/modules/backup/jobs/sync_launch_config.go:15-18`
+
+**Current (identical structures):**
+```go
+// install_backup.go
+type InstallBackupPayload struct {
+    ServerID string  `json:"server_id"`
+    BackupID string  `json:"backup_id"`
+    UserID   *string `json:"user_id,omitempty"`
+}
+
+// run_manual_backup.go
+type RunManualBackupPayload struct {
+    ServerID string  `json:"server_id"`
+    BackupID string  `json:"backup_id"`
+    UserID   *string `json:"user_id,omitempty"`
+}
+```
+
+**Solution - Shared Backup Payload:**
+```go
+// internal/modules/backup/jobs/payloads.go
+package jobs
+
+// BackupJobPayload is the common payload for backup-related jobs
+type BackupJobPayload struct {
+    ServerID string  `json:"server_id"`
+    BackupID string  `json:"backup_id"`
+    UserID   *string `json:"user_id,omitempty"`
+}
+
+// Type aliases for clarity (optional)
+type InstallBackupPayload = BackupJobPayload
+type RunManualBackupPayload = BackupJobPayload
+type SyncLaunchConfigPayload = BackupJobPayload
+```
+
+**Impact:** ~30 lines saved, single payload definition
+
+---
+
+## 143. Service Dispatch Helper (P2)
+
+**Problem:** 3 nearly identical job dispatch helper methods in backup service.
+
+**Files affected:**
+- `internal/modules/backup/services/backup_service.go:224-291`
+
+**Current (repeated 3 times):**
+```go
+func (s *BackupService) dispatchInstallBackup(serverID, backupID string) {
+    if s.Queue == nil {
+        s.Logger.Warn().Msg("Queue not configured, skipping InstallBackup job")
+        return
+    }
+    task, err := jobs.NewInstallBackupTask(serverID, backupID, nil)
+    if err != nil {
+        s.Logger.Error().Err(err).Msg("Failed to create InstallBackup task")
+        return
+    }
+    if _, err := s.Queue.EnqueueDefault(task); err != nil {
+        s.Logger.Error().Err(err).Msg("Failed to enqueue InstallBackup job")
+    }
+}
+
+// dispatchDeleteBackup and dispatchRunManualBackup are identical patterns
+```
+
+**Solution - Generic Dispatch Helper:**
+```go
+// internal/pkg/service/dispatch.go
+package service
+
+type TaskFactory func() (*asynq.Task, error)
+
+func (s *Base) DispatchTask(name string, factory TaskFactory) {
+    if s.Queue == nil {
+        s.Logger.Warn().Str("task", name).Msg("Queue not configured, skipping task")
+        return
+    }
+    task, err := factory()
+    if err != nil {
+        s.Logger.Error().Err(err).Str("task", name).Msg("Failed to create task")
+        return
+    }
+    if _, err := s.Queue.EnqueueDefault(task); err != nil {
+        s.Logger.Error().Err(err).Str("task", name).Msg("Failed to enqueue task")
+    }
+}
+
+// Usage
+s.DispatchTask("InstallBackup", func() (*asynq.Task, error) {
+    return jobs.NewInstallBackupTask(serverID, backupID, nil)
+})
+```
+
+**Impact:** ~50 lines saved, reusable dispatch
+
+---
+
+## 144. Webhook Signature Verifier (P1)
+
+**Problem:** 4 separate HMAC-SHA256 signature verification implementations.
+
+**Files affected:**
+- `internal/modules/git/providers/github.go:319-321`
+- `internal/modules/git/providers/gitlab.go:159`
+- `internal/modules/git/providers/bitbucket.go:90`
+- `internal/modules/billing/handlers/webhook_handler.go:112`
+
+**Current (repeated 4 times):**
+```go
+// GitHub
+mac := hmac.New(sha256.New, []byte(p.config.WebhookSecret))
+mac.Write(payload)
+expectedSignature := "sha256=" + hex.EncodeToString(mac.Sum(nil))
+if !hmac.Equal([]byte(signature), []byte(expectedSignature)) {
+    return ErrInvalidSignature
+}
+
+// GitLab (slightly different format)
+// Bitbucket (different header)
+// Billing (Stripe format)
+```
+
+**Solution - Unified Signature Verifier:**
+```go
+// internal/pkg/webhook/signature.go
+package webhook
+
+import (
+    "crypto/hmac"
+    "crypto/sha256"
+    "encoding/hex"
+    "strings"
+)
+
+type SignatureFormat int
+
+const (
+    FormatSHA256Prefix   SignatureFormat = iota // "sha256=..."
+    FormatRaw                                    // Raw hex signature
+    FormatStripe                                 // "t=timestamp,v1=signature"
+)
+
+type Verifier struct {
+    secret string
+    format SignatureFormat
+}
+
+func NewVerifier(secret string, format SignatureFormat) *Verifier {
+    return &Verifier{secret: secret, format: format}
+}
+
+func (v *Verifier) Verify(payload []byte, signature string) bool {
+    expected := v.computeSignature(payload)
+
+    switch v.format {
+    case FormatSHA256Prefix:
+        return hmac.Equal([]byte("sha256="+expected), []byte(signature))
+    case FormatRaw:
+        return hmac.Equal([]byte(expected), []byte(signature))
+    case FormatStripe:
+        return v.verifyStripe(payload, signature)
+    }
+    return false
+}
+
+func (v *Verifier) computeSignature(payload []byte) string {
+    mac := hmac.New(sha256.New, []byte(v.secret))
+    mac.Write(payload)
+    return hex.EncodeToString(mac.Sum(nil))
+}
+
+// Pre-configured verifiers
+func GitHubVerifier(secret string) *Verifier {
+    return NewVerifier(secret, FormatSHA256Prefix)
+}
+
+func GitLabVerifier(secret string) *Verifier {
+    return NewVerifier(secret, FormatRaw)
+}
+```
+
+**Impact:** ~80 lines saved, secure verification
+
+---
+
+## 145. Activity Logger Helper (P2)
+
+**Problem:** 18+ files repeat identical activity logging boilerplate with optional user attribution.
+
+**Files affected:**
+- `internal/modules/server/jobs/archive_server.go:41-49`
+- `internal/modules/server/jobs/unarchive_server.go:41-49`
+- `internal/modules/server/jobs/delete_server.go:92-100`
+- `internal/modules/database/jobs/install_database.go:79-87`
+- Plus 14+ more job files
+
+**Current (repeated 20+ times):**
+```go
+logger := activity.New(j.ctx.DB).
+    WithContext(ctx).
+    UseLog("server").
+    On(server).
+    WithEvent("archived")
+if j.Payload.UserID != nil {
+    logger.CausedByUser(*j.Payload.UserID)
+}
+logger.Log("Server has been archived")
+```
+
+**Solution - Activity Logger Helper:**
+```go
+// internal/pkg/activity/helpers.go
+package activity
+
+// LogAction is a helper for common activity logging pattern
+func LogAction(db *gorm.DB, ctx context.Context, opts LogOptions) {
+    logger := New(db).
+        WithContext(ctx).
+        UseLog(opts.Log).
+        On(opts.Subject).
+        WithEvent(opts.Event)
+
+    if opts.UserID != nil {
+        logger.CausedByUser(*opts.UserID)
+    }
+
+    if opts.Properties != nil {
+        logger.WithProperties(opts.Properties)
+    }
+
+    logger.Log(opts.Description)
+}
+
+type LogOptions struct {
+    Log         string
+    Subject     Subject
+    Event       string
+    Description string
+    UserID      *string
+    Properties  map[string]any
+}
+
+// Usage becomes one-liner
+activity.LogAction(j.ctx.DB, ctx, activity.LogOptions{
+    Log:         "server",
+    Subject:     server,
+    Event:       "archived",
+    Description: "Server has been archived",
+    UserID:      j.Payload.UserID,
+})
+```
+
+**Impact:** ~180 lines saved, consistent activity logging
+
+---
+
+## 146. Token Generation Consolidation (P2)
+
+**Problem:** Duplicate token generation in model and utils package.
+
+**Files affected:**
+- `internal/pkg/utils/token.go:11-46` (4 functions)
+- `internal/modules/auth/models/password_reset_token.go:31-39` (duplicate)
+
+**Current (duplicated):**
+```go
+// utils/token.go
+func GenerateSecureToken(byteLength int) (string, error) {
+    bytes := make([]byte, byteLength)
+    if _, err := rand.Read(bytes); err != nil {
+        return "", err
+    }
+    return base64.URLEncoding.EncodeToString(bytes), nil
+}
+
+// models/password_reset_token.go - DUPLICATE
+func GenerateToken(length int) (string, error) {
+    bytes := make([]byte, length)
+    if _, err := rand.Read(bytes); err != nil {
+        return "", err
+    }
+    return base64.URLEncoding.EncodeToString(bytes)[:length], nil
+}
+```
+
+**Solution - Single Token Generator:**
+```go
+// internal/pkg/token/generator.go
+package token
+
+import (
+    "crypto/rand"
+    "encoding/base64"
+    "encoding/hex"
+)
+
+type Encoding int
+
+const (
+    Base64URL Encoding = iota
+    Hex
+)
+
+func Generate(byteLength int, encoding Encoding) (string, error) {
+    bytes := make([]byte, byteLength)
+    if _, err := rand.Read(bytes); err != nil {
+        return "", err
+    }
+
+    switch encoding {
+    case Hex:
+        return hex.EncodeToString(bytes), nil
+    default:
+        return base64.URLEncoding.EncodeToString(bytes), nil
+    }
+}
+
+// Convenience functions
+func SecureToken() (string, error)     { return Generate(32, Base64URL) }
+func ShortToken() (string, error)      { return Generate(8, Base64URL) }
+func HexToken(length int) string       { s, _ := Generate(length, Hex); return s }
+
+// Remove duplicate from models/password_reset_token.go
+```
+
+**Impact:** ~40 lines saved, single token source
+
+---
+
+## Extended Summary (Items 135-146)
+
+| Category | Items | Est. LOC Saved |
+|----------|-------|----------------|
+| Webhook Channel Base Class | Item 135 | ~190 lines |
+| Admin Alert Base Class | Item 136 | ~400 lines |
+| SSH Client Factory | Item 137 | ~140 lines |
+| Cron Schedule Constants | Item 138 | ~60 lines |
+| Job Task Builder Generator | Item 139 | ~400 lines |
+| Job Context Base Consolidation | Item 140 | ~250 lines |
+| DNS Provider HTTP Base | Item 141 | ~200 lines |
+| Backup Job Payload Base | Item 142 | ~30 lines |
+| Service Dispatch Helper | Item 143 | ~50 lines |
+| Webhook Signature Verifier | Item 144 | ~80 lines |
+| Activity Logger Helper | Item 145 | ~180 lines |
+| Token Generation Consolidation | Item 146 | ~40 lines |
+| **Round 10 Total** | **12 patterns** | **~2020 lines** |
+
+---
+
 ## Updated Final Summary
 
 | Category | Items | Total LOC Saved |
@@ -11244,4 +12259,5 @@ func loadAppConfig() AppConfig {
 | Validation & Enums (Round 7) | 12 patterns | ~1805 lines |
 | Routes & Crypto (Round 8) | 12 patterns | ~3615 lines |
 | HTTP Client & Config (Round 9) | 12 patterns | ~2480 lines |
-| **Grand Total** | **134 patterns** | **~22,791 lines** |
+| Notification & Jobs (Round 10) | 12 patterns | ~2020 lines |
+| **Grand Total** | **146 patterns** | **~24,811 lines** |
