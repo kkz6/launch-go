@@ -91,6 +91,23 @@ The following foundational infrastructure has been implemented:
 | 118 | SSH Stream Reader | ✅ SKIP | Already in taskrunner/ssh_client.go |
 | 119 | Home Directory Helper | ✅ DONE | serverpath/path.go |
 | 120 | HMAC Signature Validator | ✅ DONE | signature/hmac.go |
+| 121 | Token Generator | ✅ DONE | token/generator.go |
+| 122 | Time Expiration Checker | ✅ DONE | timeutil/expiration.go |
+| 123-125 | HTTP Client Patterns | ✅ SKIP | Already done in httpclient/ |
+| 126 | Pagination Parameter Parser | ✅ DONE | fiberutil/params.go |
+| 127 | Dynamic Sort Handler | ✅ DONE | repository/sort.go |
+| 128 | Filter Options Pattern | ✅ DONE | repository/filter.go |
+| 129 | Retry Strategy | ✅ SKIP | Already done (Item 91) |
+| 130 | Metrics Parsing Helper | ✅ DONE | metrics/parser.go |
+| 131 | Service Status Checker | ✅ DONE | status/format.go |
+| 132 | Daemon Status Task | ✅ SKIP | Module-specific, kept separate |
+| 133 | Health Check Aggregator | ✅ DONE | health/health.go |
+| 134 | Config Loader Helper | ✅ DONE | configutil/loader.go LoadInto |
+| 135 | Webhook Channel Base | ✅ DONE | channels/webhook_base.go |
+| 136 | Admin Alert Base | ✅ SKIP | Already done (Item 66) |
+| 137 | SSH Client Factory | ✅ SKIP | Already in taskrunner/ssh_client.go |
+| 138 | Cron Schedule Constants | ✅ DONE | enums/cron_schedule.go |
+| 139-140 | Job Task Builder/Context | ✅ SKIP | Already done (Items 71, 79) |
 
 ---
 
