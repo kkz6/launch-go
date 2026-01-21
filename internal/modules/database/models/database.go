@@ -8,9 +8,9 @@ import (
 type Database struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	ServerID string `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
-	TeamID   string `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-	Name     string `gorm:"type:varchar(255);not null" json:"name"`
+	basemodels.ServerScopedModel
+	basemodels.TeamScopedModel
+	Name string `gorm:"type:varchar(255);not null" json:"name"`
 
 	// Relations
 	Users []DatabaseUser `gorm:"many2many:database_database_user;" json:"users,omitempty"`

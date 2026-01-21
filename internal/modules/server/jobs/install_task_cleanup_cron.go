@@ -48,13 +48,13 @@ func (j *InstallTaskCleanupCronJob) Handle(ctx context.Context) error {
 
 	// Create cron record (runs daily at 3 AM)
 	cron := &models.Cron{
-		ServerID:   server.ID,
 		Expression: "0 3 * * *",
 		Command:    basemodels.EncryptedString(cleanupCommand),
 		User:       "root",
 		Frequency:  "daily",
 		Hidden:     true, // System cron, hidden from user
 	}
+	cron.ServerID = server.ID
 
 	if err := j.Ctx.Repos.Cron().Create(ctx, cron); err != nil {
 		return fmt.Errorf("failed to create cron: %w", err)

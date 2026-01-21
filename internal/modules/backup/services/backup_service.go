@@ -49,8 +49,6 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID, team
 	}
 
 	backup := &models.Backup{
-		ServerID:              serverID,
-		TeamID:                teamID,
 		UserID:                &userID,
 		StorageProviderID:     storageProviderID,
 		CronExpression:        req.CronExpression,
@@ -62,6 +60,8 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID, team
 		Enabled:               req.Enabled,
 		Path:                  req.Path,
 	}
+	backup.ServerID = serverID
+	backup.TeamID = teamID
 
 	databaseIDs := []string{req.DatabaseID}
 

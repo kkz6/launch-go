@@ -21,46 +21,46 @@ import (
 type Site struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	ServerID                     string           `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
-	TeamID                       string           `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-	UserID                       string           `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	SourceControlID              *string          `gorm:"column:source_control_id;type:char(26);index" json:"source_control_id,omitempty"`
-	Address                      string           `gorm:"type:varchar(255);not null" json:"address"`
-	Type                         enums.SiteType   `gorm:"type:varchar(255);not null;index" json:"type"`
-	TypeData                     *string          `gorm:"column:type_data;type:json" json:"type_data,omitempty"`
-	VcsData                      *string          `gorm:"column:vcs_data;type:json" json:"vcs_data,omitempty"`
+	basemodels.ServerScopedModel
+	basemodels.TeamScopedModel
+	basemodels.UserScopedModel
+	SourceControlID              *string                    `gorm:"column:source_control_id;type:char(26);index" json:"source_control_id,omitempty"`
+	Address                      string                     `gorm:"type:varchar(255);not null" json:"address"`
+	Type                         enums.SiteType             `gorm:"type:varchar(255);not null;index" json:"type"`
+	TypeData                     *string                    `gorm:"column:type_data;type:json" json:"type_data,omitempty"`
+	VcsData                      *string                    `gorm:"column:vcs_data;type:json" json:"vcs_data,omitempty"`
 	Aliases                      basemodels.JSONStringSlice `gorm:"type:json;serializer:json" json:"aliases,omitempty"`
 	TlsSetting                   enums.TlsSetting           `gorm:"column:tls_setting;type:varchar(255);not null;index" json:"tls_setting"`
-	ZeroDowntimeDeployment       bool             `gorm:"column:zero_downtime_deployment" json:"zero_downtime_deployment"`
-	DeploymentReleasesRetention  int              `gorm:"column:deployment_releases_retention;default:10" json:"deployment_releases_retention"`
-	AutoDeployment               bool             `gorm:"column:auto_deployment;default:false" json:"auto_deployment"`
-	QueueDeployments             bool             `gorm:"column:queue_deployments;default:false" json:"queue_deployments"`
-	AutoRestartQueue             bool             `gorm:"column:auto_restart_queue;default:false" json:"auto_restart_queue"`
+	ZeroDowntimeDeployment       bool                       `gorm:"column:zero_downtime_deployment" json:"zero_downtime_deployment"`
+	DeploymentReleasesRetention  int                        `gorm:"column:deployment_releases_retention;default:10" json:"deployment_releases_retention"`
+	AutoDeployment               bool                       `gorm:"column:auto_deployment;default:false" json:"auto_deployment"`
+	QueueDeployments             bool                       `gorm:"column:queue_deployments;default:false" json:"queue_deployments"`
+	AutoRestartQueue             bool                       `gorm:"column:auto_restart_queue;default:false" json:"auto_restart_queue"`
 	Features                     basemodels.JSONStringSlice `gorm:"type:json;serializer:json" json:"features,omitempty"`
 	EnabledFeatures              EnabledFeaturesSlice       `gorm:"column:enabled_features;type:json;serializer:json" json:"enabled_features,omitempty"`
 	PendingFeatures              basemodels.JSONStringSlice `gorm:"column:pending_features;type:json;serializer:json" json:"pending_features,omitempty"`
-	SourceControlRepositoriesID  *uint64          `gorm:"column:source_control_repositories_id;index" json:"source_control_repositories_id,omitempty"`
-	RepositoryBranch             *string          `gorm:"column:repository_branch;type:varchar(255)" json:"repository_branch,omitempty"`
-	DeployToken                  *string          `gorm:"column:deploy_token;type:varchar(32)" json:"-"`
-	DeployNotificationEmail      *string          `gorm:"column:deploy_notification_email;type:varchar(255)" json:"deploy_notification_email,omitempty"`
+	SourceControlRepositoriesID  *uint64                    `gorm:"column:source_control_repositories_id;index" json:"source_control_repositories_id,omitempty"`
+	RepositoryBranch             *string                    `gorm:"column:repository_branch;type:varchar(255)" json:"repository_branch,omitempty"`
+	DeployToken                  *string                    `gorm:"column:deploy_token;type:varchar(32)" json:"-"`
+	DeployNotificationEmail      *string                    `gorm:"column:deploy_notification_email;type:varchar(255)" json:"deploy_notification_email,omitempty"`
 	DeployKeyPublic              *string                    `gorm:"column:deploy_key_public;type:longtext" json:"-"`
 	DeployKeyPrivate             basemodels.EncryptedString `gorm:"column:deploy_key_private;type:longtext" json:"-"`
-	User                         string           `gorm:"type:varchar(255);not null" json:"user"`
-	Path                         string           `gorm:"type:varchar(255);not null" json:"path"`
-	WebFolder                    string           `gorm:"column:web_folder;type:varchar(255);not null" json:"web_folder"`
-	PhpVersion                   *enums.PhpVersion `gorm:"column:php_version;type:varchar(255);index" json:"php_version,omitempty"`
-	PendingTlsUpdateSince        *time.Time       `gorm:"column:pending_tls_update_since;type:timestamp null" json:"pending_tls_update_since,omitempty"`
-	PendingCaddyfileUpdateSince  *time.Time       `gorm:"column:pending_caddyfile_update_since;type:timestamp null" json:"pending_caddyfile_update_since,omitempty"`
+	User                         string                     `gorm:"type:varchar(255);not null" json:"user"`
+	Path                         string                     `gorm:"type:varchar(255);not null" json:"path"`
+	WebFolder                    string                     `gorm:"column:web_folder;type:varchar(255);not null" json:"web_folder"`
+	PhpVersion                   *enums.PhpVersion          `gorm:"column:php_version;type:varchar(255);index" json:"php_version,omitempty"`
+	PendingTlsUpdateSince        *time.Time                 `gorm:"column:pending_tls_update_since;type:timestamp null" json:"pending_tls_update_since,omitempty"`
+	PendingCaddyfileUpdateSince  *time.Time                 `gorm:"column:pending_caddyfile_update_since;type:timestamp null" json:"pending_caddyfile_update_since,omitempty"`
 	SharedDirectories            basemodels.JSONStringSlice `gorm:"column:shared_directories;type:json;serializer:json" json:"shared_directories"`
 	WriteableDirectories         basemodels.JSONStringSlice `gorm:"column:writeable_directories;type:json;serializer:json" json:"writeable_directories"`
 	SharedFiles                  basemodels.JSONStringSlice `gorm:"column:shared_files;type:json;serializer:json" json:"shared_files"`
-	Port                         *int             `gorm:"type:int" json:"port,omitempty"`
-	Progress                     *int             `gorm:"default:0" json:"progress,omitempty"`
-	HookBeforeUpdatingRepository *string          `gorm:"column:hook_before_updating_repository;type:longtext" json:"hook_before_updating_repository,omitempty"`
-	HookAfterUpdatingRepository  *string          `gorm:"column:hook_after_updating_repository;type:longtext" json:"hook_after_updating_repository,omitempty"`
-	HookBeforeMakingCurrent      *string          `gorm:"column:hook_before_making_current;type:longtext" json:"hook_before_making_current,omitempty"`
-	HookAfterMakingCurrent       *string          `gorm:"column:hook_after_making_current;type:longtext" json:"hook_after_making_current,omitempty"`
-	ConnectedDomainID            *string          `gorm:"column:connected_domain_id;type:char(26);index" json:"connected_domain_id,omitempty"`
+	Port                         *int                       `gorm:"type:int" json:"port,omitempty"`
+	Progress                     *int                       `gorm:"default:0" json:"progress,omitempty"`
+	HookBeforeUpdatingRepository *string                    `gorm:"column:hook_before_updating_repository;type:longtext" json:"hook_before_updating_repository,omitempty"`
+	HookAfterUpdatingRepository  *string                    `gorm:"column:hook_after_updating_repository;type:longtext" json:"hook_after_updating_repository,omitempty"`
+	HookBeforeMakingCurrent      *string                    `gorm:"column:hook_before_making_current;type:longtext" json:"hook_before_making_current,omitempty"`
+	HookAfterMakingCurrent       *string                    `gorm:"column:hook_after_making_current;type:longtext" json:"hook_after_making_current,omitempty"`
+	ConnectedDomainID            *string                    `gorm:"column:connected_domain_id;type:char(26);index" json:"connected_domain_id,omitempty"`
 
 	// Relations
 	Deployments      []Deployment  `gorm:"foreignKey:SiteID;references:ID" json:"deployments,omitempty"`

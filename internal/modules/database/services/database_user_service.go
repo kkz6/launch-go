@@ -33,11 +33,11 @@ func (s *Service) CreateDatabaseUser(ctx context.Context, serverID, teamID strin
 
 	// Create database user
 	dbUser := &models.DatabaseUser{
-		ServerID: serverID,
-		TeamID:   teamID,
 		Name:     req.Name,
 		Password: &req.Password,
 	}
+	dbUser.ServerID = serverID
+	dbUser.TeamID = teamID
 
 	if err := s.repos.User().Create(ctx, dbUser); err != nil {
 		return nil, fmt.Errorf("failed to create database user: %w", err)

@@ -59,14 +59,14 @@ func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, team
 
 	// Create domain provider record
 	dp := &models.DomainProvider{
-		UserID:         userID,
-		TeamID:         teamID,
 		Profile:        &req.Profile,
 		Provider:       providerType,
 		Connected:      true,
 		Credentials:    credentials,
 		AdditionalData: additionalData,
 	}
+	dp.UserID = userID
+	dp.TeamID = teamID
 
 	if err := s.Repos().Provider().Create(ctx, dp); err != nil {
 		return nil, err

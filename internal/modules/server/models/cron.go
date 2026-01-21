@@ -12,7 +12,7 @@ import (
 type Cron struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	ServerID   string                     `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	basemodels.ServerScopedModel
 	SiteID     *string                    `gorm:"column:site_id;type:char(26);index" json:"site_id,omitempty"`
 	User       string                     `gorm:"type:varchar(255);not null" json:"user"`
 	Expression string                     `gorm:"type:varchar(255);not null" json:"expression"`

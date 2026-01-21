@@ -38,7 +38,6 @@ func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *
 	}
 
 	cron := &models.Cron{
-		ServerID:   serverID,
 		SiteID:     req.SiteID,
 		User:       user,
 		Expression: req.Expression,
@@ -46,6 +45,7 @@ func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *
 		Frequency:  frequency,
 		Hidden:     false,
 	}
+	cron.ServerID = serverID
 
 	if err := s.repos.Cron().Create(ctx, cron); err != nil {
 		return nil, err

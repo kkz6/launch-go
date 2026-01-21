@@ -106,9 +106,9 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		}
 
 		database := &dbmodels.Database{
-			ServerID: j.Payload.ServerID,
-			Name:     dbName,
+			Name: dbName,
 		}
+		database.ServerID = j.Payload.ServerID
 		database.MarkAsInstalled()
 
 		if err := j.Ctx.DB.WithContext(ctx).Create(database).Error; err != nil {

@@ -9,8 +9,8 @@ import (
 // DnsRecord represents a DNS record for a domain
 type DnsRecord struct {
 	basemodels.BaseModel
+	basemodels.TeamScopedModel
 	DomainID   string           `gorm:"column:domain_id;type:char(26);not null;index" json:"domain_id"`
-	TeamID     string           `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
 	ProviderID string           `gorm:"column:provider_id;type:varchar(255);not null" json:"provider_id"`
 	Type       enums.RecordType `gorm:"type:varchar(255);not null" json:"type"`
 	Name       string           `gorm:"type:varchar(255);not null" json:"name"`

@@ -33,7 +33,6 @@ func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID strin
 	}
 
 	rule := &models.FirewallRule{
-		ServerID: serverID,
 		Name:     req.Name,
 		Action:   action,
 		Port:     req.Port,
@@ -41,6 +40,7 @@ func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID strin
 		Mask:     req.Mask,
 		Note:     req.Note,
 	}
+	rule.ServerID = serverID
 
 	if err := s.repos.FirewallRule().Create(ctx, rule); err != nil {
 		return nil, err

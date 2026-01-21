@@ -49,13 +49,13 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 			privateKey = basemodels.EncryptedString(*req.PrivateKey)
 		}
 		cert := &models.Certificate{
-			SiteID:      site.ID,
-			TeamID:      site.TeamID,
 			Type:        enums.CertificateTypeCustom,
 			PrivateKey:  privateKey,
 			Certificate: req.Certificate,
 			IsActive:    true,
 		}
+		cert.SiteID = site.ID
+		cert.TeamID = site.TeamID
 
 		cert.Domains = append([]string{site.Address}, site.Aliases...)
 

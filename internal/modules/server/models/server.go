@@ -19,9 +19,9 @@ var _ taskrunner.ServerConnection = (*Server)(nil)
 // Server represents a managed server
 type Server struct {
 	basemodels.BaseModel
+	basemodels.TeamScopedModel
+	basemodels.UserScopedModel
 	ServerProviderID          *string                    `gorm:"column:server_provider_id;type:char(26);index" json:"server_provider_id,omitempty"`
-	TeamID                    string                     `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-	UserID                    string                     `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
 	Name                      string                     `gorm:"type:varchar(255);not null;index" json:"name"`
 	Description               *string                    `gorm:"type:varchar(255)" json:"description,omitempty"`
 	Provider                  enums.ServerProvider       `gorm:"type:varchar(255);not null" json:"provider"`

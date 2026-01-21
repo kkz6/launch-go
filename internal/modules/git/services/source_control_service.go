@@ -64,8 +64,6 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 	initialRepoCount := 0
 
 	sc := &models.SourceControl{
-		UserID:                  userID,
-		TeamID:                  teamID,
 		Provider:                providerType,
 		ProviderID:              installationID,
 		ProviderData:            &providerDataStr,
@@ -83,6 +81,8 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 		ConnectedAt:             &now,
 		LastSyncedAt:            &now,
 	}
+	sc.UserID = userID
+	sc.TeamID = teamID
 
 	// Check if already exists and update, or create new
 	existing, err := s.Repos().SourceControl().FindByProviderAndInstallationAndTeam(ctx, providerType, installationID, teamID)
@@ -350,8 +350,6 @@ func (s *SourceControlService) SyncUserInstallation(ctx context.Context, provide
 	permissionsStr := string(permissionsJSON)
 
 	sc := &models.SourceControl{
-		TeamID:                  teamID,
-		UserID:                  userID,
 		Provider:                providerType,
 		ProviderID:              installation.ID,
 		ProviderAccountID:       &installation.AccountID,
@@ -368,6 +366,8 @@ func (s *SourceControlService) SyncUserInstallation(ctx context.Context, provide
 		ConnectedAt:             &now,
 		LastSyncedAt:            &now,
 	}
+	sc.TeamID = teamID
+	sc.UserID = userID
 
 	if err := s.Repos().SourceControl().Create(ctx, sc); err != nil {
 		return err

@@ -187,12 +187,12 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 	}
 
 	deployment := &models.Deployment{
-		SiteID:     site.ID,
 		UserID:     userIDPtr,
 		Status:     enums.DeploymentStatusPending,
 		GitHash:    targetDeployment.GitHash,
 		CommitData: commitData,
 	}
+	deployment.SiteID = site.ID
 
 	if err := s.Repos().Deployment().Create(ctx, deployment); err != nil {
 		return nil, err
@@ -234,12 +234,12 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 		if site.QueueDeployments {
 			// Queue the deployment
 			deployment := &models.Deployment{
-				SiteID:     site.ID,
 				UserID:     userIDPtr,
 				Status:     enums.DeploymentStatusQueued,
 				GitHash:    gitHash,
 				CommitData: commitData,
 			}
+			deployment.SiteID = site.ID
 
 			if err := s.Repos().Deployment().Create(ctx, deployment); err != nil {
 				return nil, err
@@ -254,12 +254,12 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 	}
 
 	deployment := &models.Deployment{
-		SiteID:     site.ID,
 		UserID:     userIDPtr,
 		Status:     enums.DeploymentStatusPending,
 		GitHash:    gitHash,
 		CommitData: commitData,
 	}
+	deployment.SiteID = site.ID
 
 	if err := s.Repos().Deployment().Create(ctx, deployment); err != nil {
 		return nil, err

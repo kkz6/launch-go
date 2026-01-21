@@ -52,62 +52,37 @@ The following foundational infrastructure has been implemented:
 
 ---
 
-## 1. Model Scoped Fields Adoption (P2)
+## 1. Model Scoped Fields Adoption (P2) ✅ COMPLETED
 
-**Issue:** Models define scope fields manually instead of using existing mixins.
+**Status:** Completed - All models now use embedded scope mixins.
 
-**Files Affected:**
-- `internal/modules/database/models/database.go:11-12`
-- `internal/modules/database/models/database_user.go:13-14`
-- `internal/modules/site/models/site.go`
-- 30+ other models
+**Refactored Models:**
+- Database module: `Database`, `DatabaseUser`
+- Server module: `Server`, `Task`, `Cron`, `FirewallRule`, `InstalledService`, `Daemon`, `SshKey`
+- Site module: `Site`, `Certificate`, `Deployment`, `Command`, `Queue`, `Redirect`
+- Backup module: `Backup`, `BackupJob`
+- DNS module: `Domain`, `DomainProvider`, `DnsRecord`
+- Git module: `SourceControl`
 
-**Existing Mixins (Not Used):**
-```go
-// internal/pkg/models/base.go:124-142
-type ServerScopedModel struct {
-    ServerID string `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
-}
-
-type TeamScopedModel struct {
-    TeamID string `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-}
-
-type SiteScopedModel struct {
-    SiteID string `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
-}
-```
-
-**Current Pattern (NOT using mixins):**
+**Pattern Used:**
 ```go
 type Database struct {
     basemodels.BaseModel
     basemodels.InstallableModel
-    ServerID string `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
-    TeamID   string `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-    Name     string `gorm:"type:varchar(255);not null" json:"name"`
-}
-```
-
-**Should Be (using mixins):**
-```go
-type Database struct {
-    basemodels.BaseModel
-    basemodels.InstallableModel
-    basemodels.ServerScopedModel
-    basemodels.TeamScopedModel
+    basemodels.ServerScopedModel  // Embedded mixin
+    basemodels.TeamScopedModel    // Embedded mixin
     Name string `gorm:"type:varchar(255);not null" json:"name"`
 }
 ```
 
-**Refactoring Steps:**
-- [ ] Audit `internal/pkg/models/base.go` for all available mixins
-- [ ] Refactor `database/models/database.go` to use mixins
-- [ ] Refactor `database/models/database_user.go` to use mixins
-- [ ] Audit and refactor all other models
-- [ ] Ensure GORM handles embedded fields correctly
+**Note:** Struct literal usages updated to assign embedded fields after construction:
+```go
+db := &models.Database{Name: req.Name}
+db.ServerID = serverID
+db.TeamID = teamID
+```
 
-**Impact:** Improved clarity, consistent field definitions, ~100 lines eliminated
+**Impact:** ~100 lines eliminated, consistent field definitions across all models
 
 ---
 

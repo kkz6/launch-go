@@ -24,10 +24,10 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 
 	// Create database record
 	database := &models.Database{
-		ServerID: serverID,
-		TeamID:   teamID,
-		Name:     req.Name,
+		Name: req.Name,
 	}
+	database.ServerID = serverID
+	database.TeamID = teamID
 
 	if err := s.repos.Database().Create(ctx, database); err != nil {
 		return nil, fmt.Errorf("failed to create database: %w", err)
@@ -79,11 +79,11 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 
 	// Create database user
 	dbUser := &models.DatabaseUser{
-		ServerID: serverID,
-		TeamID:   teamID,
 		Name:     req.UserName,
 		Password: &req.UserPassword,
 	}
+	dbUser.ServerID = serverID
+	dbUser.TeamID = teamID
 
 	if err := s.repos.User().Create(ctx, dbUser); err != nil {
 		return nil, fmt.Errorf("failed to create database user: %w", err)

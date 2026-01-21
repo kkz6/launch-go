@@ -29,14 +29,14 @@ func (s *RedirectService) Create(ctx context.Context, siteID, serverID, userID s
 	}
 
 	redirect := &models.Redirect{
-		SiteID: site.ID,
-		TeamID: site.TeamID,
-		UserID: userID,
 		Mode:   req.Mode,
 		From:   req.From,
 		To:     req.To,
 		Status: "pending",
 	}
+	redirect.SiteID = site.ID
+	redirect.TeamID = site.TeamID
+	redirect.UserID = userID
 
 	if err := s.Repos().Redirect().Create(ctx, redirect); err != nil {
 		return nil, err
