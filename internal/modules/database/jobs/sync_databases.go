@@ -51,7 +51,7 @@ func NewSyncDatabasesJob(ctx *JobContext, payload SyncDatabasesPayload) *SyncDat
 func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 	j.ctx.LogInfo("Syncing databases from server", "server_id", j.Payload.ServerID)
 
-	server, err := repository.NewQuery[servermodels.Server](j.ctx.DB, ctx).
+	server, err := repository.NewQuery[servermodels.Server](ctx, j.ctx.DB).
 		WithModel("Server").
 		Preload("Services").
 		FindByID(j.Payload.ServerID).
@@ -89,7 +89,7 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		"user_databases", len(userDatabases),
 	)
 
-	existingDatabases, err := repository.NewQuery[dbmodels.Database](j.ctx.DB, ctx).
+	existingDatabases, err := repository.NewQuery[dbmodels.Database](ctx, j.ctx.DB).
 		Where("server_id = ?", j.Payload.ServerID).
 		All()
 	if err != nil {
@@ -173,7 +173,7 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 func (j *SyncDatabasesJob) Failed(ctx context.Context, err error) {
 	j.ctx.LogError(err, "Failed to sync databases", "server_id", j.Payload.ServerID)
 
-	server, findErr := repository.Find[servermodels.Server](j.ctx.DB, ctx, j.Payload.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.ctx.DB, j.Payload.ServerID)
 	if findErr != nil {
 		return
 	}

@@ -12,8 +12,8 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
-	"github.com/kkz6/launch-go/internal/pkg/traits"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/traits"
 )
 
 const TypeInstallDatabaseUser = "database:user:install"
@@ -41,7 +41,7 @@ func NewInstallDatabaseUserJob(ctx *JobContext, payload InstallDatabaseUserPaylo
 func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 	j.ctx.LogInfo("Installing database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, err := repository.NewQuery[models.DatabaseUser](j.ctx.DB, ctx).
+	dbUser, err := repository.NewQuery[models.DatabaseUser](ctx, j.ctx.DB).
 		WithModel("DatabaseUser").
 		Preload("Databases").
 		FindByID(j.Payload.DatabaseUserID).
@@ -50,7 +50,7 @@ func (j *InstallDatabaseUserJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find database user: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](j.ctx.DB, ctx, dbUser.ServerID)
+	server, err := repository.Find[servermodels.Server](ctx, j.ctx.DB, dbUser.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -123,12 +123,12 @@ func (j *InstallDatabaseUserJob) runTask(ctx context.Context, server *servermode
 func (j *InstallDatabaseUserJob) Failed(ctx context.Context, err error) {
 	j.ctx.LogError(err, "Failed to install database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, findErr := repository.Find[models.DatabaseUser](j.ctx.DB, ctx, j.Payload.DatabaseUserID)
+	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.ctx.DB, j.Payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](j.ctx.DB, ctx, dbUser.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.ctx.DB, dbUser.ServerID)
 	if findErr != nil {
 		return
 	}

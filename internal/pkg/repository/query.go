@@ -16,7 +16,7 @@ type Query[T any] struct {
 }
 
 // NewQuery creates a new Query builder
-func NewQuery[T any](db *gorm.DB, ctx context.Context) *Query[T] {
+func NewQuery[T any](ctx context.Context, db *gorm.DB) *Query[T] {
 	var entity T
 	q := &Query[T]{
 		db:        db.WithContext(ctx),
@@ -43,6 +43,14 @@ func (q *Query[T]) Preload(relations ...string) *Query[T] {
 // Where adds a where clause
 func (q *Query[T]) Where(query interface{}, args ...interface{}) *Query[T] {
 	q.db = q.db.Where(query, args...)
+	return q
+}
+
+// Scopes applies one or more scope functions to the query
+func (q *Query[T]) Scopes(scopes ...Scope) *Query[T] {
+	for _, scope := range scopes {
+		q.db = scope(q.db)
+	}
 	return q
 }
 
@@ -121,16 +129,16 @@ func (q *Query[T]) DB() *gorm.DB {
 }
 
 // Find is a convenience function to find a record by ID or fail
-func Find[T any](db *gorm.DB, ctx context.Context, id string) (*T, error) {
-	return NewQuery[T](db, ctx).FindByID(id).FirstOrFail()
+func Find[T any](ctx context.Context, db *gorm.DB, id string) (*T, error) {
+	return NewQuery[T](ctx, db).FindByID(id).FirstOrFail()
 }
 
 // FindWithPreload finds a record by ID with preloaded relations or fail
-func FindWithPreload[T any](db *gorm.DB, ctx context.Context, id string, relations ...string) (*T, error) {
-	return NewQuery[T](db, ctx).Preload(relations...).FindByID(id).FirstOrFail()
+func FindWithPreload[T any](ctx context.Context, db *gorm.DB, id string, relations ...string) (*T, error) {
+	return NewQuery[T](ctx, db).Preload(relations...).FindByID(id).FirstOrFail()
 }
 
 // FindByServer finds a record by ID and server ID or fail
-func FindByServer[T any](db *gorm.DB, ctx context.Context, id, serverID string) (*T, error) {
-	return NewQuery[T](db, ctx).FindByIDAndServer(id, serverID).FirstOrFail()
+func FindByServer[T any](ctx context.Context, db *gorm.DB, id, serverID string) (*T, error) {
+	return NewQuery[T](ctx, db).FindByIDAndServer(id, serverID).FirstOrFail()
 }
