@@ -38,15 +38,11 @@ func (j *ArchiveServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	logger := activity.New(j.ctx.DB).
-		WithContext(ctx).
-		UseLog("server").
-		On(server).
-		WithEvent("archived")
+	userID := ""
 	if j.Payload.UserID != nil {
-		logger.CausedByUser(*j.Payload.UserID)
+		userID = *j.Payload.UserID
 	}
-	logger.Log("Server was archived")
+	activity.LogEvent(ctx, j.ctx.DB, "archived", userID, server, "Server was archived")
 
 	j.ctx.LogInfo("Server archived successfully",
 		"server_id", server.ID,

@@ -33,15 +33,11 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 		return nil, fmt.Errorf("failed to create database: %w", err)
 	}
 
-	logger := activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("database").
-		On(database).
-		WithEvent("created")
+	uid := ""
 	if userID != nil {
-		logger.CausedByUser(*userID)
+		uid = *userID
 	}
-	logger.Log("Database was created")
+	activity.LogEvent(ctx, s.repos.DB(), "created", uid, database, "Database was created")
 
 	// Attach root user if exists
 	s.attachRootUser(ctx, serverID, database.ID)
@@ -51,7 +47,8 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 		existingUser, err := s.repos.User().FindByIDAndServer(ctx, *req.ExistingUserID, serverID)
 		if err != nil {
 			s.LogWarn("Failed to find existing user", "user_id", *req.ExistingUserID, "error", err)
-		} else {
+		}
+		if err == nil {
 			if err := s.repos.Database().AttachUser(ctx, database.ID, existingUser.ID); err != nil {
 				s.LogError(err, "Failed to attach existing user to database")
 			}
@@ -124,15 +121,11 @@ func (s *Service) DeleteDatabase(ctx context.Context, id, serverID, teamID strin
 		return ErrDatabaseBeingUninstalled
 	}
 
-	logger := activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("database").
-		On(database).
-		WithEvent("deleted")
+	uid := ""
 	if userID != nil {
-		logger.CausedByUser(*userID)
+		uid = *userID
 	}
-	logger.Log("Database deletion requested")
+	activity.LogEvent(ctx, s.repos.DB(), "deleted", uid, database, "Database deletion requested")
 
 	// Mark as uninstalling
 	database.MarkAsUninstalling()

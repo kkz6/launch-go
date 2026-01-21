@@ -1,10 +1,13 @@
 package service
 
 import (
+	"context"
+
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/pkg/activity"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -50,6 +53,7 @@ func NewDependencies(db *gorm.DB, logger *zerolog.Logger, q *queue.Client, ws br
 //	    repo *repositories.Repository
 //	}
 type Base struct {
+	db     *gorm.DB
 	Queue  *queue.Client
 	WS     broadcast.ModelBroadcaster
 	Logger *zerolog.Logger
@@ -64,9 +68,20 @@ func NewBase(q *queue.Client, ws broadcast.ModelBroadcaster, logger *zerolog.Log
 	}
 }
 
+// NewBaseWithDB creates a new Base service with database access
+func NewBaseWithDB(db *gorm.DB, q *queue.Client, ws broadcast.ModelBroadcaster, logger *zerolog.Logger) Base {
+	return Base{
+		db:     db,
+		Queue:  q,
+		WS:     ws,
+		Logger: logger,
+	}
+}
+
 // NewBaseFromDeps creates a new Base service from Dependencies
 func NewBaseFromDeps(deps Dependencies) Base {
 	return Base{
+		db:     deps.DB,
 		Queue:  deps.Queue,
 		WS:     deps.Broadcaster,
 		Logger: deps.Logger,
@@ -233,4 +248,119 @@ func (s *Base) BroadcastModelDeleted(model models.Broadcastable) {
 		model.BroadcastPayload()["id"].(string),
 		model.BroadcastPayload(),
 	)
+}
+
+// -----------------------------------------------------------------------------
+// Activity Logging Helpers
+// -----------------------------------------------------------------------------
+
+// LogActivity logs an activity for a model without a causer.
+// This is a convenience method for common activity logging patterns.
+//
+// Usage:
+//
+//	s.LogActivity(ctx, "server", "created", "Server was created", server)
+func (s *Base) LogActivity(ctx context.Context, logName, event, message string, model activity.Subject) {
+	if s.db == nil {
+		return
+	}
+	activity.New(s.db).
+		WithContext(ctx).
+		UseLog(logName).
+		On(model).
+		WithEvent(event).
+		Log(message)
+}
+
+// LogActivityByUser logs an activity for a model caused by a user.
+// This is a convenience method for common activity logging patterns.
+//
+// Usage:
+//
+//	s.LogActivityByUser(ctx, userID, "server", "created", "Server was created", server)
+func (s *Base) LogActivityByUser(ctx context.Context, userID, logName, event, message string, model activity.Subject) {
+	if s.db == nil {
+		return
+	}
+	activity.New(s.db).
+		WithContext(ctx).
+		UseLog(logName).
+		CausedByUser(userID).
+		On(model).
+		WithEvent(event).
+		Log(message)
+}
+
+// LogActivityWithProps logs an activity with additional properties.
+// This is useful when you need to add extra context to the activity log.
+//
+// Usage:
+//
+//	s.LogActivityWithProps(ctx, "server", "failed", "Server provisioning failed", server, map[string]any{
+//	    "error": err.Error(),
+//	    "step": "install_php",
+//	})
+func (s *Base) LogActivityWithProps(ctx context.Context, logName, event, message string, model activity.Subject, props map[string]any) {
+	if s.db == nil {
+		return
+	}
+	activity.New(s.db).
+		WithContext(ctx).
+		UseLog(logName).
+		On(model).
+		WithEvent(event).
+		WithProperties(props).
+		Log(message)
+}
+
+// LogActivityByUserWithProps logs an activity caused by a user with additional properties.
+//
+// Usage:
+//
+//	s.LogActivityByUserWithProps(ctx, userID, "server", "updated", "Server settings changed", server, map[string]any{
+//	    "changes": changedFields,
+//	})
+func (s *Base) LogActivityByUserWithProps(ctx context.Context, userID, logName, event, message string, model activity.Subject, props map[string]any) {
+	if s.db == nil {
+		return
+	}
+	activity.New(s.db).
+		WithContext(ctx).
+		UseLog(logName).
+		CausedByUser(userID).
+		On(model).
+		WithEvent(event).
+		WithProperties(props).
+		Log(message)
+}
+
+// ActivityLogger returns an activity logger configured with the service's database.
+// Use this for more complex activity logging scenarios that require the full fluent API.
+//
+// Usage:
+//
+//	s.ActivityLogger().
+//	    WithContext(ctx).
+//	    UseLog("server").
+//	    CausedByUser(userID).
+//	    On(server).
+//	    WithEvent("created").
+//	    WithProperty("source", "api").
+//	    Log("Server was created")
+func (s *Base) ActivityLogger() *activity.Logger {
+	if s.db == nil {
+		return nil
+	}
+	return activity.New(s.db)
+}
+
+// HasDB returns true if a database connection is configured
+func (s *Base) HasDB() bool {
+	return s.db != nil
+}
+
+// DB returns the underlying database connection.
+// This is useful for services that need direct database access.
+func (s *Base) DB() *gorm.DB {
+	return s.db
 }

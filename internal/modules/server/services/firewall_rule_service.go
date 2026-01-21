@@ -46,12 +46,7 @@ func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID strin
 		return nil, err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		On(rule).
-		WithEvent("created").
-		Log("Firewall rule was created")
+	activity.LogWithLog(ctx, s.repos.DB(), "server", "created", "", rule, "Firewall rule was created")
 
 	if server.IsProvisioned() {
 		if err := s.dispatchFirewallRuleInstallJob(server, rule); err != nil {
@@ -106,12 +101,7 @@ func (s *Service) UpdateFirewallRule(ctx context.Context, serverID, teamID, rule
 		return nil, err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		On(rule).
-		WithEvent("updated").
-		Log("Firewall rule was updated")
+	activity.LogWithLog(ctx, s.repos.DB(), "server", "updated", "", rule, "Firewall rule was updated")
 
 	return rule, nil
 }
@@ -128,12 +118,7 @@ func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, rule
 		return err
 	}
 
-	activity.New(s.repos.DB()).
-		WithContext(ctx).
-		UseLog("server").
-		On(rule).
-		WithEvent("deleted").
-		Log("Firewall rule deletion requested")
+	activity.LogWithLog(ctx, s.repos.DB(), "server", "deleted", "", rule, "Firewall rule deletion requested")
 
 	if rule.IsInstalled() && server.IsProvisioned() {
 		now := time.Now()
