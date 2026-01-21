@@ -5,6 +5,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/module"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 const ModuleName = "backup"
@@ -38,10 +39,12 @@ func NewModule(b *module.Builder) *Module {
 func (m *Module) createServices() *services.ServiceRegistry {
 	deps := m.Deps()
 
-	// Create shared service dependencies using standardized Dependencies
+	// Create shared service dependencies using standardized ModuleDeps
 	svcDeps := &services.ServiceDeps{
-		Dependencies: deps.ServiceDeps(),
-		Repos:        m.repos,
+		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
+			Dependencies: deps.ServiceDeps(),
+			Repos:        m.repos,
+		},
 	}
 
 	// Create service registry - handles all service creation and wiring

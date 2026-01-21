@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"strconv"
-	"time"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -248,47 +247,28 @@ func (h *LogsHandler) streamTaskOutput(c *websocket.Conn, taskID, serverID strin
 
 func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server, logFilePath string, tail int, search string) {
 	// Get SSH connection config using the server's connection method
-	sshConfig := server.ConnectionAsRoot()
-	if sshConfig.Host == "" {
+	conn := server.ConnectionAsRoot()
+	if conn.Host == "" {
 		c.WriteMessage(websocket.TextMessage, []byte("Server has no public IP"))
 		return
 	}
 
-	if sshConfig.PrivateKey == "" {
+	if conn.PrivateKey == "" {
 		c.WriteMessage(websocket.TextMessage, []byte("No SSH key configured"))
 		return
 	}
 
-	// Parse private key
-	signer, err := ssh.ParsePrivateKey([]byte(sshConfig.PrivateKey))
+	// Create SSH client using taskrunner
+	sshClient, err := conn.Dial()
 	if err != nil {
-		h.LogError(err, "Failed to parse private key")
-		h.SendError(c, "Invalid SSH key")
-		return
-	}
-
-	// SSH client config - use root for reading log files
-	config := &ssh.ClientConfig{
-		User: sshConfig.User,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(),
-		Timeout:         10 * time.Second,
-	}
-
-	// Connect to SSH server
-	addr := fmt.Sprintf("%s:%d", sshConfig.Host, sshConfig.Port)
-	conn, err := ssh.Dial("tcp", addr, config)
-	if err != nil {
-		h.LogError(err, "Failed to connect to SSH", "addr", addr)
+		h.LogError(err, "Failed to connect to SSH", "host", conn.Host, "port", conn.Port)
 		h.SendError(c, fmt.Sprintf("SSH connection failed: %s", err.Error()))
 		return
 	}
-	defer conn.Close()
+	defer sshClient.Close()
 
 	// Create SSH session
-	session, err := conn.NewSession()
+	session, err := sshClient.NewSession()
 	if err != nil {
 		h.LogError(err, "Failed to create SSH session")
 		h.SendError(c, "Failed to create session")
@@ -360,6 +340,7 @@ func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server,
 	}
 
 	close(done)
+	session.Signal(ssh.SIGTERM)
 	session.Close()
 	h.LogInfo("Log streaming ended")
 }

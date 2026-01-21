@@ -21,10 +21,10 @@ func TestNewServerProvisioningFailedAdminAlert(t *testing.T) {
 	alert := NewServerProvisioningFailedAdminAlert(alerter, server)
 
 	require.NotNil(t, alert)
-	assert.Equal(t, server, alert.server)
-	assert.Nil(t, alert.user)
-	assert.Empty(t, alert.output)
-	assert.Empty(t, alert.errorMessage)
+	assert.Equal(t, server, alert.Server)
+	assert.Nil(t, alert.User)
+	assert.Empty(t, alert.Output)
+	assert.Empty(t, alert.ErrorMessage)
 }
 
 func TestServerProvisioningFailedAdminAlert_WithUser(t *testing.T) {
@@ -36,7 +36,7 @@ func TestServerProvisioningFailedAdminAlert_WithUser(t *testing.T) {
 	result := alert.WithUser(user)
 
 	assert.Same(t, alert, result)
-	assert.Equal(t, user, alert.user)
+	assert.Equal(t, user, alert.User)
 }
 
 func TestServerProvisioningFailedAdminAlert_WithOutput(t *testing.T) {
@@ -47,7 +47,7 @@ func TestServerProvisioningFailedAdminAlert_WithOutput(t *testing.T) {
 	result := alert.WithOutput("task output")
 
 	assert.Same(t, alert, result)
-	assert.Equal(t, "task output", alert.output)
+	assert.Equal(t, "task output", alert.Output)
 }
 
 func TestServerProvisioningFailedAdminAlert_WithErrorMessage(t *testing.T) {
@@ -58,7 +58,7 @@ func TestServerProvisioningFailedAdminAlert_WithErrorMessage(t *testing.T) {
 	result := alert.WithErrorMessage("connection timeout")
 
 	assert.Same(t, alert, result)
-	assert.Equal(t, "connection timeout", alert.errorMessage)
+	assert.Equal(t, "connection timeout", alert.ErrorMessage)
 }
 
 func TestServerProvisioningFailedAdminAlert_WithOutputRetrievalError(t *testing.T) {
@@ -69,7 +69,7 @@ func TestServerProvisioningFailedAdminAlert_WithOutputRetrievalError(t *testing.
 	result := alert.WithOutputRetrievalError("logs not available")
 
 	assert.Same(t, alert, result)
-	assert.Equal(t, "logs not available", alert.outputRetrievalError)
+	assert.Equal(t, "logs not available", alert.OutputRetrievalError)
 }
 
 func TestServerProvisioningFailedAdminAlert_Send(t *testing.T) {

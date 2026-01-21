@@ -2,9 +2,6 @@ package handlers
 
 import (
 	"context"
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -52,7 +49,7 @@ func NewWebhookHandler(repos *repositories.Registry, service *services.BillingSe
 
 // HandleWebhook handles incoming webhook requests
 func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
-	signature := c.Get("X-Signature")
+	signature := c.Get(webhook.HeaderLemonSqueezySignature)
 	if signature == "" {
 		h.LogWarn("Webhook received without signature")
 		return response.Unauthorized(c, "Missing signature")
@@ -96,11 +93,7 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 
 // verifyLemonSqueezySignature verifies the webhook signature using LemonSqueezy's HMAC format
 func (h *WebhookHandler) verifyLemonSqueezySignature(payload []byte, signature string) bool {
-	mac := hmac.New(sha256.New, []byte(h.Signer.GetSecretKey()))
-	_, _ = mac.Write(payload) // hash.Hash.Write never returns an error
-	expectedSignature := hex.EncodeToString(mac.Sum(nil))
-
-	return hmac.Equal([]byte(expectedSignature), []byte(signature))
+	return webhook.VerifyHMACSHA256(payload, signature, h.Signer.GetSecretKey())
 }
 
 // processWebhook processes a webhook event

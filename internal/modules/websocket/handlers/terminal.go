@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"sync"
-	"time"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -55,7 +54,7 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 
 		if serverID == "" {
 			h.LogWarn("Missing serverId")
-			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Missing server ID\x1b[0m\r\n"))
+			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mMissing server ID\x1b[0m\r\n"))
 			c.Close()
 			return
 		}
@@ -64,7 +63,7 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 		claims, err := h.Authenticate(c)
 		if err != nil {
 			h.LogError(err, "Authentication failed")
-			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Authentication failed\x1b[0m\r\n"))
+			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mAuthentication failed\x1b[0m\r\n"))
 			c.Close()
 			return
 		}
@@ -80,7 +79,7 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 		var server serverModels.Server
 		if err := h.DB.Where("id = ? AND team_id = ?", serverID, claims.TeamID).First(&server).Error; err != nil {
 			h.LogError(err, "Server not found", "server_id", serverID)
-			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Server not found\x1b[0m\r\n"))
+			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mServer not found\x1b[0m\r\n"))
 			c.Close()
 			return
 		}
@@ -91,7 +90,7 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 			var site siteModels.Site
 			if err := h.DB.Where("id = ? AND server_id = ?", siteID, serverID).First(&site).Error; err != nil {
 				h.LogError(err, "Site not found", "site_id", siteID)
-				c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Site not found\x1b[0m\r\n"))
+				c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mSite not found\x1b[0m\r\n"))
 				c.Close()
 				return
 			}
@@ -101,7 +100,7 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 		// Check if server is connected
 		if !server.Connected {
 			h.LogWarn("Server not connected", "server_id", serverID)
-			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[33m⚠️ Server is not connected\x1b[0m\r\n"))
+			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[33mServer is not connected\x1b[0m\r\n"))
 			c.Close()
 			return
 		}
@@ -116,59 +115,40 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 
 		if conn.Host == "" {
 			h.LogError(nil, "Server has no public IP", "server_id", serverID)
-			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Server has no public IP\x1b[0m\r\n"))
+			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mServer has no public IP\x1b[0m\r\n"))
 			c.Close()
 			return
 		}
 
 		if conn.PrivateKey == "" {
 			h.LogError(nil, "Server has no SSH key", "server_id", serverID)
-			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ No SSH key configured\x1b[0m\r\n"))
+			c.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mNo SSH key configured\x1b[0m\r\n"))
 			c.Close()
 			return
 		}
 
-		// Establish SSH connection
-		h.handleSSHConnection(c, conn.Host, conn.Port, conn.User, conn.PrivateKey, server.Name, sitePath)
+		// Establish SSH connection using taskrunner SSHClient
+		h.handleSSHConnection(c, conn, server.Name, sitePath)
 	})
 }
 
-func (h *TerminalHandler) handleSSHConnection(wsConn *websocket.Conn, host string, port int, username, privateKey, serverName, sitePath string) {
-	// Parse private key
-	signer, err := ssh.ParsePrivateKey([]byte(privateKey))
+func (h *TerminalHandler) handleSSHConnection(wsConn *websocket.Conn, conn *taskrunner.Connection, serverName, sitePath string) {
+	// Create SSH client using taskrunner
+	h.LogInfo("Connecting to SSH", "host", conn.Host, "port", conn.Port, "username", conn.User)
+
+	sshClient, err := conn.Dial()
 	if err != nil {
-		h.LogError(err, "Failed to parse private key")
-		wsConn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Invalid SSH key\x1b[0m\r\n"))
+		h.LogError(err, "Failed to connect to SSH", "host", conn.Host, "port", conn.Port)
+		wsConn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n\x1b[31mSSH connection failed: %s\x1b[0m\r\n", err.Error())))
 		return
 	}
-
-	// SSH client config
-	config := &ssh.ClientConfig{
-		User: username,
-		Auth: []ssh.AuthMethod{
-			ssh.PublicKeys(signer),
-		},
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: Implement proper host key verification
-		Timeout:         10 * time.Second,
-	}
-
-	// Connect to SSH server
-	addr := fmt.Sprintf("%s:%d", host, port)
-	h.LogInfo("Connecting to SSH", "addr", addr, "username", username)
-
-	conn, err := ssh.Dial("tcp", addr, config)
-	if err != nil {
-		h.LogError(err, "Failed to connect to SSH", "addr", addr)
-		wsConn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n\x1b[31m❌ SSH connection failed: %s\x1b[0m\r\n", err.Error())))
-		return
-	}
-	defer conn.Close()
+	defer sshClient.Close()
 
 	// Create SSH session
-	session, err := conn.NewSession()
+	session, err := sshClient.NewSession()
 	if err != nil {
 		h.LogError(err, "Failed to create SSH session")
-		wsConn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Failed to create session\x1b[0m\r\n"))
+		wsConn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mFailed to create session\x1b[0m\r\n"))
 		return
 	}
 	defer session.Close()
@@ -183,7 +163,7 @@ func (h *TerminalHandler) handleSSHConnection(wsConn *websocket.Conn, host strin
 	// Request pseudo-terminal
 	if err := session.RequestPty("xterm-256color", 24, 80, modes); err != nil {
 		h.LogError(err, "Failed to request pty")
-		wsConn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Failed to allocate terminal\x1b[0m\r\n"))
+		wsConn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mFailed to allocate terminal\x1b[0m\r\n"))
 		return
 	}
 
@@ -209,11 +189,11 @@ func (h *TerminalHandler) handleSSHConnection(wsConn *websocket.Conn, host strin
 	// Start shell
 	if err := session.Shell(); err != nil {
 		h.LogError(err, "Failed to start shell")
-		wsConn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31m❌ Failed to start shell\x1b[0m\r\n"))
+		wsConn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mFailed to start shell\x1b[0m\r\n"))
 		return
 	}
 
-	h.LogInfo("SSH session started", "server", serverName, "username", username, "sitePath", sitePath)
+	h.LogInfo("SSH session started", "server", serverName, "username", conn.User, "sitePath", sitePath)
 
 	// Send a clear screen to the terminal first
 	wsConn.WriteMessage(websocket.TextMessage, []byte("\x1bc"))
