@@ -430,6 +430,64 @@ if err != nil {
 
 Services contain business logic and orchestrate operations between repositories.
 
+### Service Dependencies
+
+Services use a standardized `service.Dependencies` struct for common dependencies:
+
+```go
+package services
+
+import (
+    "github.com/kkz6/launch-go/internal/modules/mymodule/repositories"
+    "github.com/kkz6/launch-go/internal/pkg/service"
+)
+
+// ServiceDeps holds all dependencies needed for module services.
+// Embedding service.Dependencies provides common dependencies.
+type ServiceDeps struct {
+    service.Dependencies   // DB, Logger, Queue, Broadcaster, Dispatcher
+    Repos *repositories.Registry
+    // ... module-specific fields
+}
+
+// BaseService embeds service.Base for common functionality
+type BaseService struct {
+    service.Base
+    deps  *ServiceDeps
+    repos *repositories.Registry
+}
+
+func NewBaseService(deps *ServiceDeps) *BaseService {
+    return &BaseService{
+        Base:  service.NewBaseFromDeps(deps.Dependencies),
+        deps:  deps,
+        repos: deps.Repos,
+    }
+}
+```
+
+The `service.Dependencies` struct provides:
+- `DB *gorm.DB` - Database connection
+- `Logger *zerolog.Logger` - Structured logger
+- `Queue *queue.Client` - Job queue client
+- `Broadcaster broadcast.ModelBroadcaster` - WebSocket broadcaster
+- `Dispatcher *taskrunner.Dispatcher` - SSH task dispatcher
+
+In module initialization:
+
+```go
+func (m *Module) createServices() *services.ServiceRegistry {
+    deps := m.Deps()
+
+    svcDeps := &services.ServiceDeps{
+        Dependencies: deps.ServiceDeps(),  // Converts module.Deps to service.Dependencies
+        Repos:        m.repos,
+    }
+
+    return services.NewServiceRegistry(svcDeps)
+}
+```
+
 ### Service Structure
 
 ```go

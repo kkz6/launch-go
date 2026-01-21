@@ -13,7 +13,7 @@ var (
 	ErrFirewallRuleNotFound   = apperrors.ErrFirewallRuleNotFound
 	ErrCronNotFound           = apperrors.ErrCronNotFound
 	ErrDaemonNotFound         = apperrors.ErrDaemonNotFound
-	ErrSshKeyNotFound         = apperrors.ErrSshKeyNotFound
+	ErrSSHKeyNotFound         = apperrors.ErrSSHKeyNotFound
 	ErrTaskNotFound           = apperrors.ErrTaskNotFound
 	ErrMetricNotFound         = apperrors.ErrMetricNotFound
 	ErrServerProviderNotFound = apperrors.ErrServerProviderNotFound

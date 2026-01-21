@@ -6,6 +6,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/dns/repositories"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 // Service errors - re-exported from centralized error package
@@ -19,11 +20,11 @@ var (
 	ErrInvalidCredentials       = apperrors.BadRequest("Invalid credentials")
 )
 
-// ServiceDeps holds all dependencies needed for DNS services
+// ServiceDeps holds all dependencies needed for DNS services.
+// Embedding service.Dependencies provides common dependencies.
 type ServiceDeps struct {
-	DB     *gorm.DB
-	Logger *zerolog.Logger
-	Repos  *repositories.Registry
+	service.Dependencies
+	Repos *repositories.Registry
 
 	// Service registry - allows services to access other services
 	registry *ServiceRegistry
@@ -92,4 +93,32 @@ func (s *BaseService) Logger() *zerolog.Logger {
 // Services returns the service registry for accessing other services
 func (s *BaseService) Services() *ServiceRegistry {
 	return s.deps.registry
+}
+
+// LogInfo logs an info message with optional fields
+func (s *BaseService) LogInfo(msg string, fields ...interface{}) {
+	if s.logger == nil {
+		return
+	}
+	event := s.logger.Info()
+	for i := 0; i < len(fields)-1; i += 2 {
+		if key, ok := fields[i].(string); ok {
+			event = event.Interface(key, fields[i+1])
+		}
+	}
+	event.Msg(msg)
+}
+
+// LogError logs an error message with optional fields
+func (s *BaseService) LogError(err error, msg string, fields ...interface{}) {
+	if s.logger == nil {
+		return
+	}
+	event := s.logger.Error().Err(err)
+	for i := 0; i < len(fields)-1; i += 2 {
+		if key, ok := fields[i].(string); ok {
+			event = event.Interface(key, fields[i+1])
+		}
+	}
+	event.Msg(msg)
 }

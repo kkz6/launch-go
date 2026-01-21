@@ -20,11 +20,11 @@ const ModuleName = "site"
 
 // Ensure Module implements required interfaces
 var (
-	_ app.Module                 = (*Module)(nil)
-	_ app.RouteRegistrar         = (*Module)(nil)
-	_ app.WebhookRegistrar       = (*Module)(nil)
-	_ app.JobRegistrar           = (*Module)(nil)
-	_ app.TaskCallbackRegistrar  = (*Module)(nil)
+	_ app.Module                = (*Module)(nil)
+	_ app.RouteRegistrar        = (*Module)(nil)
+	_ app.WebhookRegistrar      = (*Module)(nil)
+	_ app.JobRegistrar          = (*Module)(nil)
+	_ app.TaskCallbackRegistrar = (*Module)(nil)
 )
 
 // Module represents the site module
@@ -108,12 +108,9 @@ func (m *Module) SetDomainRepository(repo dnscontracts.DomainRepository) {
 func (m *Module) createServices(taskRunnerDeps *servertasks.TaskRunnerDeps) *services.ServiceRegistry {
 	deps := m.Deps()
 
-	// Create shared service dependencies
+	// Create shared service dependencies using standardized Dependencies
 	svcDeps := &services.ServiceDeps{
-		DB:             deps.DB,
-		Logger:         deps.Logger,
-		Queue:          deps.Queue,
-		WebSocket:      deps.WebSocket,
+		Dependencies:   deps.ServiceDeps(),
 		TaskRunnerDeps: taskRunnerDeps,
 		Repos:          m.repos,
 	}

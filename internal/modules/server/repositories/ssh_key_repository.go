@@ -32,7 +32,7 @@ func (r *SshKeyRepository) FindByID(ctx context.Context, id string) (*models.Ssh
 	err := r.DB().WithContext(ctx).First(&key, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrSshKeyNotFound
+			return nil, ErrSSHKeyNotFound
 		}
 		return nil, err
 	}

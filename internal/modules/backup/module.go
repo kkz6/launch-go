@@ -38,13 +38,10 @@ func NewModule(b *module.Builder) *Module {
 func (m *Module) createServices() *services.ServiceRegistry {
 	deps := m.Deps()
 
-	// Create shared service dependencies
+	// Create shared service dependencies using standardized Dependencies
 	svcDeps := &services.ServiceDeps{
-		DB:        deps.DB,
-		Logger:    deps.Logger,
-		Queue:     deps.Queue,
-		WebSocket: deps.WebSocket,
-		Repos:     m.repos,
+		Dependencies: deps.ServiceDeps(),
+		Repos:        m.repos,
 	}
 
 	// Create service registry - handles all service creation and wiring

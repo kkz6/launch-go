@@ -115,7 +115,7 @@ func (s *Service) DeleteSshKey(ctx context.Context, teamID, sshKeyID string) err
 	}
 
 	if key.TeamID != teamID {
-		return ErrSshKeyNotFound
+		return ErrSSHKeyNotFound
 	}
 
 	activity.New(s.repos.DB()).

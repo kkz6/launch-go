@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/queue"
 )
@@ -21,6 +22,18 @@ type Deps struct {
 	Logger          *zerolog.Logger
 	Config          *config.Config
 	MembershipCache *cache.TeamMembershipCache
+}
+
+// ServiceDeps returns the common dependencies as a service.Dependencies struct.
+// This allows modules to easily create services using the standardized Dependencies type.
+func (d Deps) ServiceDeps() service.Dependencies {
+	return service.Dependencies{
+		DB:          d.DB,
+		Logger:      d.Logger,
+		Queue:       d.Queue,
+		Broadcaster: d.WebSocket,
+		Dispatcher:  d.Dispatcher,
+	}
 }
 
 // Builder helps construct modules with common dependencies
@@ -81,6 +94,18 @@ func (b *Builder) Logger() *zerolog.Logger {
 // Config returns the app config
 func (b *Builder) Config() *config.Config {
 	return b.deps.Config
+}
+
+// ServiceDeps returns the common dependencies as a service.Dependencies struct.
+// This allows modules to easily create services using the standardized Dependencies type.
+func (b *Builder) ServiceDeps() service.Dependencies {
+	return service.Dependencies{
+		DB:          b.deps.DB,
+		Logger:      b.deps.Logger,
+		Queue:       b.deps.Queue,
+		Broadcaster: b.deps.WebSocket,
+		Dispatcher:  b.deps.Dispatcher,
+	}
 }
 
 // AppKey returns the app secret key (useful for webhooks)

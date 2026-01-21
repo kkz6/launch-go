@@ -29,7 +29,10 @@ type Module struct {
 // NewModule creates a new server module using the builder
 func NewModule(b *module.Builder) *Module {
 	repos := repositories.NewRegistry(b.DB())
-	service := services.NewService(repos, b.Queue(), b.WebSocket(), b.Dispatcher(), b.Logger())
+	service := services.NewService(services.ServiceDeps{
+		Dependencies: b.ServiceDeps(),
+		Repos:        repos,
+	})
 
 	return &Module{
 		Base:    module.NewBase(ModuleName, b),

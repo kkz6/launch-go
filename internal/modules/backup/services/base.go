@@ -1,23 +1,18 @@
 package services
 
 import (
-	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/backup/storage"
-	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/service"
-	"github.com/kkz6/launch-go/internal/queue"
 )
 
-// ServiceDeps holds all dependencies needed for backup services
+// ServiceDeps holds all dependencies needed for backup services.
+// Embedding service.Dependencies provides common dependencies.
 type ServiceDeps struct {
-	DB        *gorm.DB
-	Logger    *zerolog.Logger
-	Queue     *queue.Client
-	WebSocket broadcast.ModelBroadcaster
-	Repos     *repositories.Registry
+	service.Dependencies
+	Repos *repositories.Registry
 
 	// Service registry - allows services to access other services
 	registry *ServiceRegistry
@@ -70,7 +65,7 @@ type BaseService struct {
 // NewBaseService creates a new base service from ServiceDeps
 func NewBaseService(deps *ServiceDeps) *BaseService {
 	return &BaseService{
-		Base:  service.NewBase(deps.Queue, deps.WebSocket, deps.Logger),
+		Base:  service.NewBaseFromDeps(deps.Dependencies),
 		deps:  deps,
 		repos: deps.Repos,
 	}
