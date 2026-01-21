@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"strconv"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/jobs"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
@@ -207,46 +209,19 @@ func (s *BackupService) MarkBackupInstallationFailed(ctx context.Context, id str
 // Job dispatch helpers
 
 func (s *BackupService) dispatchInstallBackup(serverID, backupID string) {
-	task, err := jobs.NewInstallBackupTask(serverID, backupID, nil)
-	if err != nil {
-		s.LogError(err, "Failed to create InstallBackup task")
-		return
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue InstallBackup job")
-		return
-	}
-
-	s.LogInfo("InstallBackup job enqueued", "server_id", serverID, "backup_id", backupID)
+	s.DispatchTask("InstallBackup", func() (*asynq.Task, error) {
+		return jobs.NewInstallBackupTask(serverID, backupID, nil)
+	}, "server_id", serverID, "backup_id", backupID)
 }
 
 func (s *BackupService) dispatchDeleteBackup(serverID, backupID string) {
-	task, err := jobs.NewDeleteBackupTask(serverID, backupID, nil)
-	if err != nil {
-		s.LogError(err, "Failed to create DeleteBackup task")
-		return
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue DeleteBackup job")
-		return
-	}
-
-	s.LogInfo("DeleteBackup job enqueued", "server_id", serverID, "backup_id", backupID)
+	s.DispatchTask("DeleteBackup", func() (*asynq.Task, error) {
+		return jobs.NewDeleteBackupTask(serverID, backupID, nil)
+	}, "server_id", serverID, "backup_id", backupID)
 }
 
 func (s *BackupService) dispatchRunManualBackup(serverID, backupID string) {
-	task, err := jobs.NewRunManualBackupTask(serverID, backupID, nil)
-	if err != nil {
-		s.LogError(err, "Failed to create RunManualBackup task")
-		return
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue RunManualBackup job")
-		return
-	}
-
-	s.LogInfo("RunManualBackup job enqueued", "server_id", serverID, "backup_id", backupID)
+	s.DispatchTask("RunManualBackup", func() (*asynq.Task, error) {
+		return jobs.NewRunManualBackupTask(serverID, backupID, nil)
+	}, "server_id", serverID, "backup_id", backupID)
 }

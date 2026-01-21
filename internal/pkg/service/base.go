@@ -109,6 +109,40 @@ func (s *Base) EnqueueTaskWithOptions(task *asynq.Task, opts ...asynq.Option) er
 	return err
 }
 
+// TaskFactory is a function that creates an asynq task
+type TaskFactory func() (*asynq.Task, error)
+
+// DispatchTask creates and enqueues a task using the provided factory.
+// It handles all error logging internally and optionally logs success.
+//
+// Usage:
+//
+//	s.DispatchTask("InstallBackup", func() (*asynq.Task, error) {
+//	    return jobs.NewInstallBackupTask(serverID, backupID, nil)
+//	}, "server_id", serverID, "backup_id", backupID)
+func (s *Base) DispatchTask(name string, factory TaskFactory, logFields ...interface{}) {
+	if s.Queue == nil {
+		s.LogWarn("Queue not configured, skipping task", "task", name)
+		return
+	}
+
+	task, err := factory()
+	if err != nil {
+		s.LogError(err, "Failed to create task", "task", name)
+		return
+	}
+
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue task", "task", name)
+		return
+	}
+
+	if len(logFields) > 0 {
+		fields := append([]interface{}{"task", name}, logFields...)
+		s.LogInfo("Task enqueued", fields...)
+	}
+}
+
 // BroadcastToServer broadcasts a message to all clients subscribed to a server
 func (s *Base) BroadcastToServer(serverID, event string, data interface{}) {
 	if s.WS == nil {
