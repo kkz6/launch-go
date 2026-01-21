@@ -5,6 +5,8 @@ import (
 	"net/http"
 
 	"github.com/gofiber/fiber/v2"
+
+	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 
 // AppError represents an application error with HTTP status and message
@@ -66,15 +68,12 @@ func ErrInternal(message string) *AppError {
 	return NewAppError(http.StatusInternalServerError, message)
 }
 
-// HTTPStatusError is an interface for errors that have an HTTP status
+// HTTPStatusError is an alias to the canonical interface in pkg/errors.
 // This is implemented by:
 // - AppError (this package)
 // - ResourceError (pkg/errors)
 // - ModelError (pkg/repository)
-type HTTPStatusError interface {
-	error
-	HTTPStatus() int
-}
+type HTTPStatusError = apperrors.HTTPStatusError
 
 // =============================================================================
 // Laravel-style Abort Functions

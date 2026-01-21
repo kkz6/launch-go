@@ -5,15 +5,9 @@ import (
 
 	sentryfiber "github.com/getsentry/sentry-go/fiber"
 	"github.com/gofiber/fiber/v2"
-)
 
-// HTTPStatusError is an interface for errors that carry HTTP status codes
-// This matches errors from pkg/errors (ResourceError), pkg/response (AppError),
-// and pkg/repository (ModelError)
-type HTTPStatusError interface {
-	error
-	HTTPStatus() int
-}
+	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+)
 
 // ErrorHandler is the global error handler for Fiber
 // It automatically converts our custom error types to proper HTTP responses
@@ -32,7 +26,7 @@ func ErrorHandler(c *fiber.Ctx, err error) error {
 		} else {
 			// Check for our custom HTTPStatusError interface
 			// This catches ResourceError, AppError, and ModelError
-			var httpErr HTTPStatusError
+			var httpErr apperrors.HTTPStatusError
 			if errors.As(err, &httpErr) {
 				code = httpErr.HTTPStatus()
 			}
