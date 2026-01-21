@@ -24,34 +24,32 @@ type UninstallDatabaseUserPayload struct {
 }
 
 type UninstallDatabaseUserJob struct {
-	ctx *JobContext
+	pkgjobs.BaseJob[*JobContext, UninstallDatabaseUserPayload]
 	traits.UninstallationTracker
-	Payload UninstallDatabaseUserPayload
 }
 
 func NewUninstallDatabaseUserJob(ctx *JobContext, payload UninstallDatabaseUserPayload) *UninstallDatabaseUserJob {
 	return &UninstallDatabaseUserJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
-	j.ctx.LogInfo("Uninstalling database user", "database_user_id", j.Payload.DatabaseUserID)
+	j.Ctx.LogInfo("Uninstalling database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, err := repository.Find[models.DatabaseUser](ctx, j.ctx.DB, j.Payload.DatabaseUserID)
+	dbUser, err := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB, j.Payload.DatabaseUserID)
 	if err != nil {
 		return fmt.Errorf("failed to find database user: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](ctx, j.ctx.DB, dbUser.ServerID)
+	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB, dbUser.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "uninstalling", fmt.Sprintf("Dropping database user: %s", dbUser.Name))
+	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "uninstalling", fmt.Sprintf("Dropping database user: %s", dbUser.Name))
 
-	factory := j.ctx.GetTaskFactory(ctx, dbUser.ServerID)
+	factory := j.Ctx.GetTaskFactory(ctx, dbUser.ServerID)
 	task := factory.DropUser(tasks.DropUserConfig{
 		Username:      dbUser.Name,
 		AdminUser:     "root",
@@ -59,7 +57,7 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 		Hosts:         []string{"%"},
 	})
 
-	result, err := j.ctx.RunTaskOnServer(server, task).
+	result, err := j.Ctx.RunTaskOnServer(server, task).
 		AsRoot().
 		Dispatch(ctx)
 	if err != nil {
@@ -67,10 +65,10 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 	}
 
 	if !result.IsSuccessful() {
-		j.ctx.LogInfo("Database user drop completed with errors", "output", result.GetOutput())
+		j.Ctx.LogInfo("Database user drop completed with errors", "output", result.GetOutput())
 	}
 
-	logger := activity.New(j.ctx.DB).
+	logger := activity.New(j.Ctx.DB).
 		WithContext(ctx).
 		UseLog("database").
 		On(dbUser).
@@ -80,29 +78,29 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 	}
 	logger.Log("Database user was uninstalled")
 
-	if err := j.MarkAsUninstalled(j.ctx.DB, dbUser); err != nil {
+	if err := j.MarkAsUninstalled(j.Ctx.DB, dbUser); err != nil {
 		return fmt.Errorf("failed to delete database user record: %w", err)
 	}
 
-	j.ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "deleted", fmt.Sprintf("Database user %s deleted successfully", dbUser.Name))
+	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "deleted", fmt.Sprintf("Database user %s deleted successfully", dbUser.Name))
 
 	return nil
 }
 
 func (j *UninstallDatabaseUserJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to uninstall database user", "database_user_id", j.Payload.DatabaseUserID)
+	j.Ctx.LogError(err, "Failed to uninstall database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.ctx.DB, j.Payload.DatabaseUserID)
+	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB, j.Payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](ctx, j.ctx.DB, dbUser.ServerID)
+	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB, dbUser.ServerID)
 	if findErr != nil {
 		return
 	}
 
-	j.ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "failed", fmt.Sprintf("Failed to delete database user: %s", dbUser.Name))
+	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "failed", fmt.Sprintf("Failed to delete database user: %s", dbUser.Name))
 }
 
 // NewUninstallDatabaseUserTask creates a database user uninstallation job

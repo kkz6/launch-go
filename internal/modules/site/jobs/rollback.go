@@ -24,52 +24,50 @@ type RollbackPayload struct {
 
 // RollbackJob handles deployment rollback
 type RollbackJob struct {
-	ctx     *JobContext
-	Payload RollbackPayload
+	pkgjobs.BaseJob[*JobContext, RollbackPayload]
 }
 
 // NewRollbackJob creates a new rollback job
 func NewRollbackJob(ctx *JobContext, payload RollbackPayload) *RollbackJob {
 	return &RollbackJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the rollback job
 func (j *RollbackJob) Handle(ctx context.Context) error {
 	// Get current deployment (the new deployment record for this rollback)
-	currentDeployment, err := j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+	currentDeployment, err := j.Ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to find current deployment: %w", err)
 	}
 
 	// Get target deployment (the deployment to roll back to)
-	targetDeployment, err := j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.TargetDeploymentID)
+	targetDeployment, err := j.Ctx.DeploymentRepo.FindByID(ctx, j.Payload.TargetDeploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to find target deployment: %w", err)
 	}
 
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Update deployment status to Installing
 	currentDeployment.Status = enums.DeploymentStatusInstalling
-	if err := j.ctx.DeploymentRepo.Update(ctx, currentDeployment); err != nil {
-		j.ctx.LogError(err, "Failed to update deployment status to installing")
+	if err := j.Ctx.DeploymentRepo.Update(ctx, currentDeployment); err != nil {
+		j.Ctx.LogError(err, "Failed to update deployment status to installing")
 	}
 
 	// Broadcast rollback started
-	j.ctx.BroadcastServerEvent(server, "deployment.rollback.started", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "deployment.rollback.started", map[string]interface{}{
 		"team_id":              server.TeamID,
 		"site_id":              site.ID,
 		"deployment_id":        currentDeployment.ID,
@@ -87,7 +85,7 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 		CurrentDirectory: currentDirectory,
 	})
 
-	j.ctx.LogInfo("Executing rollback",
+	j.Ctx.LogInfo("Executing rollback",
 		"site_id", site.ID,
 		"deployment_id", currentDeployment.ID,
 		"target_deployment_id", targetDeployment.ID,
@@ -95,7 +93,7 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 	)
 
 	// Execute the task on the server as site user (with DB tracking)
-	result, err := j.ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().Dispatch(ctx)
+	result, err := j.Ctx.RunTaskOnServer(server, task).AsUser(site.User).TrackInDB().Dispatch(ctx)
 	if err != nil {
 		j.handleRollbackFailure(ctx, currentDeployment, site.ID, targetDeployment.ID, err)
 		return err
@@ -104,8 +102,8 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 	// Update deployment with task ID
 	if result.TaskModel != nil {
 		currentDeployment.TaskID = &result.TaskModel.ID
-		if updateErr := j.ctx.DeploymentRepo.Update(ctx, currentDeployment); updateErr != nil {
-			j.ctx.LogError(updateErr, "Failed to update deployment with task ID")
+		if updateErr := j.Ctx.DeploymentRepo.Update(ctx, currentDeployment); updateErr != nil {
+			j.Ctx.LogError(updateErr, "Failed to update deployment with task ID")
 		}
 	}
 
@@ -127,32 +125,32 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 func (j *RollbackJob) handleRollbackSuccess(ctx context.Context, deployment *models.Deployment, siteID, targetDeploymentID string) {
 	deployment.Status = enums.DeploymentStatusFinished
 
-	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
-		j.ctx.LogError(err, "Failed to update deployment status to finished")
+	if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
+		j.Ctx.LogError(err, "Failed to update deployment status to finished")
 	}
 
 	// Get site and server for broadcasting
-	site, err := j.ctx.SiteRepo.FindByID(ctx, siteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, siteID)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to find site for broadcast")
+		j.Ctx.LogError(err, "Failed to find site for broadcast")
 		return
 	}
 
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to find server for broadcast")
+		j.Ctx.LogError(err, "Failed to find server for broadcast")
 		return
 	}
 
 	// Broadcast rollback completed
-	j.ctx.BroadcastServerEvent(server, "deployment.rollback.completed", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "deployment.rollback.completed", map[string]interface{}{
 		"team_id":              server.TeamID,
 		"site_id":              siteID,
 		"deployment_id":        deployment.ID,
 		"target_deployment_id": targetDeploymentID,
 	})
 
-	j.ctx.LogInfo("Rollback completed successfully",
+	j.Ctx.LogInfo("Rollback completed successfully",
 		"site_id", siteID,
 		"deployment_id", deployment.ID,
 		"target_deployment_id", targetDeploymentID,
@@ -163,15 +161,15 @@ func (j *RollbackJob) handleRollbackSuccess(ctx context.Context, deployment *mod
 func (j *RollbackJob) handleRollbackFailure(ctx context.Context, deployment *models.Deployment, siteID, targetDeploymentID string, err error) {
 	deployment.Status = enums.DeploymentStatusFailed
 
-	if updateErr := j.ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
-		j.ctx.LogError(updateErr, "Failed to update deployment status to failed")
+	if updateErr := j.Ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
+		j.Ctx.LogError(updateErr, "Failed to update deployment status to failed")
 	}
 
 	// Get site and server for broadcasting
-	site, siteErr := j.ctx.SiteRepo.FindByID(ctx, siteID)
+	site, siteErr := j.Ctx.SiteRepo.FindByID(ctx, siteID)
 	if siteErr != nil {
-		j.ctx.LogError(siteErr, "Failed to find site for broadcast")
-		j.ctx.LogError(err, "Rollback failed",
+		j.Ctx.LogError(siteErr, "Failed to find site for broadcast")
+		j.Ctx.LogError(err, "Rollback failed",
 			"site_id", siteID,
 			"deployment_id", deployment.ID,
 			"target_deployment_id", targetDeploymentID,
@@ -179,10 +177,10 @@ func (j *RollbackJob) handleRollbackFailure(ctx context.Context, deployment *mod
 		return
 	}
 
-	server, serverErr := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, serverErr := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if serverErr != nil {
-		j.ctx.LogError(serverErr, "Failed to find server for broadcast")
-		j.ctx.LogError(err, "Rollback failed",
+		j.Ctx.LogError(serverErr, "Failed to find server for broadcast")
+		j.Ctx.LogError(err, "Rollback failed",
 			"site_id", siteID,
 			"deployment_id", deployment.ID,
 			"target_deployment_id", targetDeploymentID,
@@ -191,7 +189,7 @@ func (j *RollbackJob) handleRollbackFailure(ctx context.Context, deployment *mod
 	}
 
 	// Broadcast rollback failed
-	j.ctx.BroadcastServerEvent(server, "deployment.rollback.failed", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "deployment.rollback.failed", map[string]interface{}{
 		"team_id":              server.TeamID,
 		"site_id":              siteID,
 		"deployment_id":        deployment.ID,
@@ -199,7 +197,7 @@ func (j *RollbackJob) handleRollbackFailure(ctx context.Context, deployment *mod
 		"error":                err.Error(),
 	})
 
-	j.ctx.LogError(err, "Rollback failed",
+	j.Ctx.LogError(err, "Rollback failed",
 		"site_id", siteID,
 		"deployment_id", deployment.ID,
 		"target_deployment_id", targetDeploymentID,
@@ -208,33 +206,33 @@ func (j *RollbackJob) handleRollbackFailure(ctx context.Context, deployment *mod
 
 // Failed handles job failure
 func (j *RollbackJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Rollback job failed",
+	j.Ctx.LogError(err, "Rollback job failed",
 		"site_id", j.Payload.SiteID,
 		"deployment_id", j.Payload.DeploymentID,
 	)
 
 	// Try to update deployment status
-	deployment, findErr := j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+	deployment, findErr := j.Ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
 	if findErr != nil {
 		return
 	}
 
 	deployment.Status = enums.DeploymentStatusFailed
-	_ = j.ctx.DeploymentRepo.Update(ctx, deployment)
+	_ = j.Ctx.DeploymentRepo.Update(ctx, deployment)
 
 	// Get site and server for broadcasting
-	site, siteErr := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, siteErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if siteErr != nil {
 		return
 	}
 
-	server, serverErr := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, serverErr := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if serverErr != nil {
 		return
 	}
 
 	// Broadcast failure
-	j.ctx.BroadcastServerEvent(server, "deployment.rollback.failed", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "deployment.rollback.failed", map[string]interface{}{
 		"team_id":              server.TeamID,
 		"site_id":              j.Payload.SiteID,
 		"deployment_id":        j.Payload.DeploymentID,

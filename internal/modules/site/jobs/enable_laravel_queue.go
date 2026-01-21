@@ -23,22 +23,20 @@ type EnableLaravelQueuePayload struct {
 
 // EnableLaravelQueueJob enables a Laravel queue worker for a site
 type EnableLaravelQueueJob struct {
-	ctx     *JobContext
-	Payload EnableLaravelQueuePayload
+	pkgjobs.BaseJob[*JobContext, EnableLaravelQueuePayload]
 }
 
 // NewEnableLaravelQueueJob creates a new EnableLaravelQueueJob
 func NewEnableLaravelQueueJob(ctx *JobContext, payload EnableLaravelQueuePayload) *EnableLaravelQueueJob {
 	return &EnableLaravelQueueJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the enable queue job
 func (j *EnableLaravelQueueJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
@@ -50,17 +48,17 @@ func (j *EnableLaravelQueueJob) Handle(ctx context.Context) error {
 
 	// Check if queue is already enabled
 	if site.HasEnabledFeature("queue") {
-		j.ctx.LogInfo("Queue already enabled", "site_id", site.ID)
+		j.Ctx.LogInfo("Queue already enabled", "site_id", site.ID)
 		return nil
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Enabling Laravel queue worker",
+	j.Ctx.LogInfo("Enabling Laravel queue worker",
 		"site_id", site.ID,
 		"server_id", server.ID,
 	)
@@ -108,14 +106,14 @@ func (j *EnableLaravelQueueJob) Handle(ctx context.Context) error {
 		RunWithListen:         false,
 	}
 
-	if err := j.ctx.QueueRepo.Create(ctx, queue); err != nil {
+	if err := j.Ctx.QueueRepo.Create(ctx, queue); err != nil {
 		return fmt.Errorf("failed to create queue: %w", err)
 	}
 
 	// Dispatch InstallQueue job
 	if err := j.dispatchInstallQueue(queue.ID, site.ID); err != nil {
 		// Cleanup the queue record if dispatch fails
-		_ = j.ctx.QueueRepo.Delete(ctx, queue.ID)
+		_ = j.Ctx.QueueRepo.Delete(ctx, queue.ID)
 		return fmt.Errorf("failed to dispatch install queue job: %w", err)
 	}
 
@@ -129,20 +127,20 @@ func (j *EnableLaravelQueueJob) Handle(ctx context.Context) error {
 	site.AddEnabledFeature(feature)
 	site.RemovePendingFeature("queue")
 
-	if err := j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+	if err := j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
 		"enabled_features": site.EnabledFeatures,
 		"pending_features": site.PendingFeatures,
 	}); err != nil {
-		j.ctx.LogError(err, "Failed to update site enabled_features")
+		j.Ctx.LogError(err, "Failed to update site enabled_features")
 	}
 
 	// Broadcast success
-	j.ctx.BroadcastServerEvent(server, "site.queue_enabled", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "site.queue_enabled", map[string]interface{}{
 		"site_id":  site.ID,
 		"queue_id": queue.ID,
 	})
 
-	j.ctx.LogInfo("Laravel queue worker enabled successfully",
+	j.Ctx.LogInfo("Laravel queue worker enabled successfully",
 		"site_id", site.ID,
 		"queue_id", queue.ID,
 	)
@@ -158,7 +156,7 @@ func (j *EnableLaravelQueueJob) buildQueueCommand(site *models.Site) string {
 
 // dispatchInstallQueue dispatches the InstallQueue job
 func (j *EnableLaravelQueueJob) dispatchInstallQueue(queueID, siteID string) error {
-	if j.ctx.Queue == nil {
+	if j.Ctx.Queue == nil {
 		return fmt.Errorf("queue client not available")
 	}
 
@@ -167,21 +165,21 @@ func (j *EnableLaravelQueueJob) dispatchInstallQueue(queueID, siteID string) err
 		return err
 	}
 
-	_, err = j.ctx.Queue.Enqueue(task)
+	_, err = j.Ctx.Queue.Enqueue(task)
 	return err
 }
 
 // Failed handles job failure
 func (j *EnableLaravelQueueJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to enable Laravel queue worker",
+	j.Ctx.LogError(err, "Failed to enable Laravel queue worker",
 		"site_id", j.Payload.SiteID,
 	)
 
 	// Remove from pending features
-	site, findErr := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, findErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if findErr == nil {
 		site.RemovePendingFeature("queue")
-		_ = j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+		_ = j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
 			"pending_features": site.PendingFeatures,
 		})
 	}

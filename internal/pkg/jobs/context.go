@@ -1,3 +1,4 @@
+// Package jobs provides infrastructure for async job handling with asynq.
 package jobs
 
 import (
@@ -159,4 +160,53 @@ func logWithFields(event *zerolog.Event, msg string, fields ...any) {
 		}
 	}
 	event.Msg(msg)
+}
+
+// BaseJob provides common job structure with typed context and payload.
+// This eliminates the repeated ctx/payload field declarations across jobs.
+//
+// The context type parameter C allows each module to use its own JobContext type,
+// which may have module-specific methods (e.g., GetTaskFactory, ForServer, etc.)
+//
+// Example usage:
+//
+//	type InstallDatabaseJob struct {
+//	    jobs.BaseJob[*JobContext, InstallDatabasePayload]
+//	    traits.InstallationTracker
+//	}
+//
+//	func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *InstallDatabaseJob {
+//	    return &InstallDatabaseJob{
+//	        BaseJob: jobs.NewBaseJob(ctx, payload),
+//	    }
+//	}
+//
+//	func (j *InstallDatabaseJob) Handle(ctx context.Context) error {
+//	    j.Ctx.LogInfo("Installing database", "database_id", j.Payload.DatabaseID)
+//	    // ... use j.Ctx for context methods, j.Payload for payload fields
+//	}
+type BaseJob[C any, P any] struct {
+	// Ctx is the job context providing access to DB, logging, broadcasting, etc.
+	// Public field allows direct access: j.Ctx.LogInfo(...)
+	Ctx C
+
+	// Payload contains job-specific data passed when the job was enqueued.
+	// Public field allows direct access: j.Payload.SomeField
+	Payload P
+}
+
+// NewBaseJob creates a new base job with the given context and payload.
+//
+// Example:
+//
+//	func NewInstallDatabaseJob(ctx *JobContext, payload InstallDatabasePayload) *InstallDatabaseJob {
+//	    return &InstallDatabaseJob{
+//	        BaseJob: jobs.NewBaseJob(ctx, payload),
+//	    }
+//	}
+func NewBaseJob[C any, P any](ctx C, payload P) BaseJob[C, P] {
+	return BaseJob[C, P]{
+		Ctx:     ctx,
+		Payload: payload,
+	}
 }

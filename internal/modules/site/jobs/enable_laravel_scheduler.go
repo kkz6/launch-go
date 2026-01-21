@@ -11,8 +11,8 @@ import (
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 const TypeEnableLaravelScheduler = "site:enable_laravel_scheduler"
@@ -26,22 +26,20 @@ type EnableLaravelSchedulerPayload struct {
 
 // EnableLaravelSchedulerJob enables the Laravel scheduler cron for a site
 type EnableLaravelSchedulerJob struct {
-	ctx     *JobContext
-	Payload EnableLaravelSchedulerPayload
+	pkgjobs.BaseJob[*JobContext, EnableLaravelSchedulerPayload]
 }
 
 // NewEnableLaravelSchedulerJob creates a new EnableLaravelSchedulerJob
 func NewEnableLaravelSchedulerJob(ctx *JobContext, payload EnableLaravelSchedulerPayload) *EnableLaravelSchedulerJob {
 	return &EnableLaravelSchedulerJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the enable scheduler job
 func (j *EnableLaravelSchedulerJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
@@ -53,17 +51,17 @@ func (j *EnableLaravelSchedulerJob) Handle(ctx context.Context) error {
 
 	// Check if scheduler is already enabled
 	if site.HasEnabledFeature("scheduler") {
-		j.ctx.LogInfo("Scheduler already enabled", "site_id", site.ID)
+		j.Ctx.LogInfo("Scheduler already enabled", "site_id", site.ID)
 		return nil
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Enabling Laravel scheduler",
+	j.Ctx.LogInfo("Enabling Laravel scheduler",
 		"site_id", site.ID,
 		"server_id", server.ID,
 	)
@@ -82,14 +80,14 @@ func (j *EnableLaravelSchedulerJob) Handle(ctx context.Context) error {
 		Hidden:     true, // Laravel scheduler crons are hidden
 	}
 
-	if err := j.ctx.ServerRepos.Cron().Create(ctx, cron); err != nil {
+	if err := j.Ctx.ServerRepos.Cron().Create(ctx, cron); err != nil {
 		return fmt.Errorf("failed to create cron: %w", err)
 	}
 
 	// Dispatch InstallCron job
 	if err := j.dispatchInstallCron(cron.ID, server.ID); err != nil {
 		// Cleanup the cron record if dispatch fails
-		_ = j.ctx.ServerRepos.Cron().Delete(ctx, cron.ID)
+		_ = j.Ctx.ServerRepos.Cron().Delete(ctx, cron.ID)
 		return fmt.Errorf("failed to dispatch install cron job: %w", err)
 	}
 
@@ -103,20 +101,20 @@ func (j *EnableLaravelSchedulerJob) Handle(ctx context.Context) error {
 	site.AddEnabledFeature(feature)
 	site.RemovePendingFeature("scheduler")
 
-	if err := j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+	if err := j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
 		"enabled_features": site.EnabledFeatures,
 		"pending_features": site.PendingFeatures,
 	}); err != nil {
-		j.ctx.LogError(err, "Failed to update site enabled_features")
+		j.Ctx.LogError(err, "Failed to update site enabled_features")
 	}
 
 	// Broadcast success
-	j.ctx.BroadcastServerEvent(server, "site.scheduler_enabled", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "site.scheduler_enabled", map[string]interface{}{
 		"site_id": site.ID,
 		"cron_id": cron.ID,
 	})
 
-	j.ctx.LogInfo("Laravel scheduler enabled successfully",
+	j.Ctx.LogInfo("Laravel scheduler enabled successfully",
 		"site_id", site.ID,
 		"cron_id", cron.ID,
 	)
@@ -132,7 +130,7 @@ func (j *EnableLaravelSchedulerJob) buildSchedulerCommand(site *models.Site) str
 
 // dispatchInstallCron dispatches the server InstallCron job
 func (j *EnableLaravelSchedulerJob) dispatchInstallCron(cronID, serverID string) error {
-	if j.ctx.Queue == nil {
+	if j.Ctx.Queue == nil {
 		return fmt.Errorf("queue client not available")
 	}
 
@@ -141,21 +139,21 @@ func (j *EnableLaravelSchedulerJob) dispatchInstallCron(cronID, serverID string)
 		return err
 	}
 
-	_, err = j.ctx.Queue.Enqueue(task)
+	_, err = j.Ctx.Queue.Enqueue(task)
 	return err
 }
 
 // Failed handles job failure
 func (j *EnableLaravelSchedulerJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to enable Laravel scheduler",
+	j.Ctx.LogError(err, "Failed to enable Laravel scheduler",
 		"site_id", j.Payload.SiteID,
 	)
 
 	// Remove from pending features
-	site, findErr := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, findErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if findErr == nil {
 		site.RemovePendingFeature("scheduler")
-		_ = j.ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+		_ = j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
 			"pending_features": site.PendingFeatures,
 		})
 	}

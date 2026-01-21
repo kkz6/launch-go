@@ -23,40 +23,38 @@ type CleanupPendingSiteDeploymentPayload struct {
 
 // CleanupPendingSiteDeploymentJob cleans up deployments stuck in pending/installing state
 type CleanupPendingSiteDeploymentJob struct {
-	ctx     *JobContext
-	Payload CleanupPendingSiteDeploymentPayload
+	pkgjobs.BaseJob[*JobContext, CleanupPendingSiteDeploymentPayload]
 }
 
 // NewCleanupPendingSiteDeploymentJob creates a new CleanupPendingSiteDeploymentJob
 func NewCleanupPendingSiteDeploymentJob(ctx *JobContext, payload CleanupPendingSiteDeploymentPayload) *CleanupPendingSiteDeploymentJob {
 	return &CleanupPendingSiteDeploymentJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the cleanup job
 func (j *CleanupPendingSiteDeploymentJob) Handle(ctx context.Context) error {
-	deployment, err := j.ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
+	deployment, err := j.Ctx.DeploymentRepo.FindByID(ctx, j.Payload.DeploymentID)
 	if err != nil {
 		return fmt.Errorf("failed to find deployment: %w", err)
 	}
 
 	// Only cleanup if still in pending or installing status
 	if !deployment.Status.IsActive() {
-		j.ctx.LogInfo("Deployment no longer active, skipping cleanup",
+		j.Ctx.LogInfo("Deployment no longer active, skipping cleanup",
 			"deployment_id", deployment.ID,
 			"status", deployment.Status,
 		)
 		return nil
 	}
 
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
-	j.ctx.LogInfo("Cleaning up stuck deployment",
+	j.Ctx.LogInfo("Cleaning up stuck deployment",
 		"site_id", site.ID,
 		"deployment_id", deployment.ID,
 		"status", deployment.Status,
@@ -64,22 +62,22 @@ func (j *CleanupPendingSiteDeploymentJob) Handle(ctx context.Context) error {
 
 	// Mark deployment as timed out
 	deployment.Status = enums.DeploymentStatusTimeout
-	if err := j.ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
+	if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
 	// If this was the first deployment, mark site installation as failed
 	if site.InstalledAt == nil {
 		site.MarkAsFailed()
-		if err := j.ctx.SiteRepo.Update(ctx, site); err != nil {
-			j.ctx.LogError(err, "Failed to mark site installation as failed")
+		if err := j.Ctx.SiteRepo.Update(ctx, site); err != nil {
+			j.Ctx.LogError(err, "Failed to mark site installation as failed")
 		}
 	}
 
 	// Broadcast cleanup event
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err == nil && server != nil {
-		j.ctx.BroadcastServerEvent(server, "deployment.timeout", map[string]interface{}{
+		j.Ctx.BroadcastServerEvent(server, "deployment.timeout", map[string]interface{}{
 			"team_id":       server.TeamID,
 			"site_id":       site.ID,
 			"deployment_id": deployment.ID,
@@ -87,7 +85,7 @@ func (j *CleanupPendingSiteDeploymentJob) Handle(ctx context.Context) error {
 		})
 	}
 
-	j.ctx.LogInfo("Stuck deployment cleaned up",
+	j.Ctx.LogInfo("Stuck deployment cleaned up",
 		"site_id", site.ID,
 		"deployment_id", deployment.ID,
 	)
@@ -100,7 +98,7 @@ func (j *CleanupPendingSiteDeploymentJob) Handle(ctx context.Context) error {
 
 // processNextQueuedDeployment processes the next queued deployment for the site
 func (j *CleanupPendingSiteDeploymentJob) processNextQueuedDeployment(ctx context.Context, site *models.Site) {
-	queuedDeployments, err := j.ctx.DeploymentRepo.FindQueuedBySite(ctx, site.ID)
+	queuedDeployments, err := j.Ctx.DeploymentRepo.FindQueuedBySite(ctx, site.ID)
 	if err != nil || len(queuedDeployments) == 0 {
 		return
 	}
@@ -108,8 +106,8 @@ func (j *CleanupPendingSiteDeploymentJob) processNextQueuedDeployment(ctx contex
 	nextDeployment := &queuedDeployments[0]
 	nextDeployment.Status = enums.DeploymentStatusPending
 
-	if err := j.ctx.DeploymentRepo.Update(ctx, nextDeployment); err != nil {
-		j.ctx.LogError(err, "Failed to update queued deployment status")
+	if err := j.Ctx.DeploymentRepo.Update(ctx, nextDeployment); err != nil {
+		j.Ctx.LogError(err, "Failed to update queued deployment status")
 		return
 	}
 
@@ -124,20 +122,20 @@ func (j *CleanupPendingSiteDeploymentJob) processNextQueuedDeployment(ctx contex
 	}
 
 	if taskErr != nil {
-		j.ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
+		j.Ctx.LogError(taskErr, "Failed to create deployment task for queued deployment")
 		return
 	}
 
-	if j.ctx.Queue != nil {
-		if _, err := j.ctx.Queue.Enqueue(task); err != nil {
-			j.ctx.LogError(err, "Failed to enqueue next deployment")
+	if j.Ctx.Queue != nil {
+		if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
+			j.Ctx.LogError(err, "Failed to enqueue next deployment")
 		}
 	}
 }
 
 // Failed handles job failure
 func (j *CleanupPendingSiteDeploymentJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to cleanup pending deployment",
+	j.Ctx.LogError(err, "Failed to cleanup pending deployment",
 		"site_id", j.Payload.SiteID,
 		"deployment_id", j.Payload.DeploymentID,
 	)

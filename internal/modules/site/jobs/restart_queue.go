@@ -22,39 +22,37 @@ type RestartQueuePayload struct {
 
 // RestartQueueJob handles queue worker restart
 type RestartQueueJob struct {
-	ctx     *JobContext
-	Payload RestartQueuePayload
+	pkgjobs.BaseJob[*JobContext, RestartQueuePayload]
 }
 
 // NewRestartQueueJob creates a new RestartQueueJob with the given context and payload
 func NewRestartQueueJob(ctx *JobContext, payload RestartQueuePayload) *RestartQueueJob {
 	return &RestartQueueJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the restart queue job
 func (j *RestartQueueJob) Handle(ctx context.Context) error {
 	// Get queue
-	queue, err := j.ctx.QueueRepo.FindByID(ctx, j.Payload.QueueID)
+	queue, err := j.Ctx.QueueRepo.FindByID(ctx, j.Payload.QueueID)
 	if err != nil {
 		return fmt.Errorf("failed to find queue: %w", err)
 	}
 
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Restarting queue worker",
+	j.Ctx.LogInfo("Restarting queue worker",
 		"queue_id", queue.ID,
 		"site_id", site.ID,
 	)
@@ -62,31 +60,31 @@ func (j *RestartQueueJob) Handle(ctx context.Context) error {
 	// Restart the queue using supervisor
 	restartTask := tasks.RestartQueue(queue.ID)
 
-	result, err := j.ctx.RunTaskOnServer(server, restartTask).AsRoot().Dispatch(ctx)
+	result, err := j.Ctx.RunTaskOnServer(server, restartTask).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to restart queue", "queue_id", queue.ID)
+		j.Ctx.LogError(err, "Failed to restart queue", "queue_id", queue.ID)
 		return err
 	}
 
 	if result.GetExitCode() != 0 {
-		j.ctx.LogError(nil, "Queue restart failed", "queue_id", queue.ID, "exit_code", result.GetExitCode())
+		j.Ctx.LogError(nil, "Queue restart failed", "queue_id", queue.ID, "exit_code", result.GetExitCode())
 		return fmt.Errorf("queue restart failed with exit code %d", result.GetExitCode())
 	}
 
 	// Broadcast success
-	j.ctx.BroadcastServerEvent(server, "queue.restarted", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "queue.restarted", map[string]interface{}{
 		"site_id":  site.ID,
 		"queue_id": queue.ID,
 	})
 
-	j.ctx.LogInfo("Queue worker restarted successfully", "queue_id", queue.ID)
+	j.Ctx.LogInfo("Queue worker restarted successfully", "queue_id", queue.ID)
 
 	return nil
 }
 
 // Failed handles job failure
 func (j *RestartQueueJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Restart queue job failed",
+	j.Ctx.LogError(err, "Restart queue job failed",
 		"site_id", j.Payload.SiteID,
 		"queue_id", j.Payload.QueueID,
 	)
@@ -100,44 +98,42 @@ type RestartAllSiteQueuesPayload struct {
 
 // RestartAllSiteQueuesJob handles restarting all queues for a site
 type RestartAllSiteQueuesJob struct {
-	ctx     *JobContext
-	Payload RestartAllSiteQueuesPayload
+	pkgjobs.BaseJob[*JobContext, RestartAllSiteQueuesPayload]
 }
 
 // NewRestartAllSiteQueuesJob creates a new RestartAllSiteQueuesJob with the given context and payload
 func NewRestartAllSiteQueuesJob(ctx *JobContext, payload RestartAllSiteQueuesPayload) *RestartAllSiteQueuesJob {
 	return &RestartAllSiteQueuesJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the restart all queues job
 func (j *RestartAllSiteQueuesJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
 	// Get all queues for the site
-	queues, err := j.ctx.QueueRepo.FindBySite(ctx, site.ID)
+	queues, err := j.Ctx.QueueRepo.FindBySite(ctx, site.ID)
 	if err != nil {
 		return fmt.Errorf("failed to find queues: %w", err)
 	}
 
 	if len(queues) == 0 {
-		j.ctx.LogInfo("No queues to restart", "site_id", site.ID)
+		j.Ctx.LogInfo("No queues to restart", "site_id", site.ID)
 		return nil
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Restarting all queues for site",
+	j.Ctx.LogInfo("Restarting all queues for site",
 		"site_id", site.ID,
 		"queue_count", len(queues),
 	)
@@ -151,30 +147,30 @@ func (j *RestartAllSiteQueuesJob) Handle(ctx context.Context) error {
 	// Restart all queues
 	restartTask := tasks.RestartAllQueues(queueIDs)
 
-	result, err := j.ctx.RunTaskOnServer(server, restartTask).AsRoot().Dispatch(ctx)
+	result, err := j.Ctx.RunTaskOnServer(server, restartTask).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.ctx.LogError(err, "Failed to restart queues", "site_id", site.ID)
+		j.Ctx.LogError(err, "Failed to restart queues", "site_id", site.ID)
 		return err
 	}
 
 	if result.GetExitCode() != 0 {
-		j.ctx.LogError(nil, "Queue restart failed", "site_id", site.ID, "exit_code", result.GetExitCode())
+		j.Ctx.LogError(nil, "Queue restart failed", "site_id", site.ID, "exit_code", result.GetExitCode())
 	}
 
 	// Broadcast success
-	j.ctx.BroadcastServerEvent(server, "queues.restarted", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "queues.restarted", map[string]interface{}{
 		"site_id":     site.ID,
 		"queue_count": len(queues),
 	})
 
-	j.ctx.LogInfo("All queues restarted successfully", "site_id", site.ID)
+	j.Ctx.LogInfo("All queues restarted successfully", "site_id", site.ID)
 
 	return nil
 }
 
 // Failed handles job failure
 func (j *RestartAllSiteQueuesJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Restart all queues job failed", "site_id", j.Payload.SiteID)
+	j.Ctx.LogError(err, "Restart all queues job failed", "site_id", j.Payload.SiteID)
 }
 
 // NewRestartQueueTask creates a restart queue job

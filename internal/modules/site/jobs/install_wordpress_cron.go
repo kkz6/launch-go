@@ -9,8 +9,8 @@ import (
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 const TypeInstallWordpressCron = "site:install_wordpress_cron"
@@ -24,39 +24,37 @@ type InstallWordpressCronPayload struct {
 
 // InstallWordpressCronJob installs the WordPress cron job for a site
 type InstallWordpressCronJob struct {
-	ctx     *JobContext
-	Payload InstallWordpressCronPayload
+	pkgjobs.BaseJob[*JobContext, InstallWordpressCronPayload]
 }
 
 // NewInstallWordpressCronJob creates a new InstallWordpressCronJob
 func NewInstallWordpressCronJob(ctx *JobContext, payload InstallWordpressCronPayload) *InstallWordpressCronJob {
 	return &InstallWordpressCronJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the install WordPress cron job
 func (j *InstallWordpressCronJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
 	// Check if site is WordPress type
 	if site.Type != enums.SiteTypeWordpress {
-		j.ctx.LogInfo("Site is not WordPress, skipping cron installation", "site_id", site.ID)
+		j.Ctx.LogInfo("Site is not WordPress, skipping cron installation", "site_id", site.ID)
 		return nil
 	}
 
 	// Get server
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Installing WordPress cron",
+	j.Ctx.LogInfo("Installing WordPress cron",
 		"site_id", site.ID,
 		"server_id", server.ID,
 	)
@@ -76,24 +74,24 @@ func (j *InstallWordpressCronJob) Handle(ctx context.Context) error {
 		Hidden:     true, // WordPress crons are hidden system crons
 	}
 
-	if err := j.ctx.ServerRepos.Cron().Create(ctx, cron); err != nil {
+	if err := j.Ctx.ServerRepos.Cron().Create(ctx, cron); err != nil {
 		return fmt.Errorf("failed to create cron: %w", err)
 	}
 
 	// Dispatch InstallCron job
 	if err := j.dispatchInstallCron(cron.ID, server.ID); err != nil {
 		// Cleanup the cron record if dispatch fails
-		_ = j.ctx.ServerRepos.Cron().Delete(ctx, cron.ID)
+		_ = j.Ctx.ServerRepos.Cron().Delete(ctx, cron.ID)
 		return fmt.Errorf("failed to dispatch install cron job: %w", err)
 	}
 
 	// Broadcast success
-	j.ctx.BroadcastServerEvent(server, "site.wordpress_cron_installed", map[string]interface{}{
+	j.Ctx.BroadcastServerEvent(server, "site.wordpress_cron_installed", map[string]interface{}{
 		"site_id": site.ID,
 		"cron_id": cron.ID,
 	})
 
-	j.ctx.LogInfo("WordPress cron installed successfully",
+	j.Ctx.LogInfo("WordPress cron installed successfully",
 		"site_id", site.ID,
 		"cron_id", cron.ID,
 	)
@@ -111,7 +109,7 @@ func (j *InstallWordpressCronJob) buildWpCronCommand(site interface{ GetWebDirec
 
 // dispatchInstallCron dispatches the server InstallCron job
 func (j *InstallWordpressCronJob) dispatchInstallCron(cronID, serverID string) error {
-	if j.ctx.Queue == nil {
+	if j.Ctx.Queue == nil {
 		return fmt.Errorf("queue client not available")
 	}
 
@@ -120,13 +118,13 @@ func (j *InstallWordpressCronJob) dispatchInstallCron(cronID, serverID string) e
 		return err
 	}
 
-	_, err = j.ctx.Queue.Enqueue(task)
+	_, err = j.Ctx.Queue.Enqueue(task)
 	return err
 }
 
 // Failed handles job failure
 func (j *InstallWordpressCronJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to install WordPress cron",
+	j.Ctx.LogError(err, "Failed to install WordPress cron",
 		"site_id", j.Payload.SiteID,
 	)
 }

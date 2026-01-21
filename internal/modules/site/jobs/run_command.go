@@ -22,48 +22,46 @@ type RunCommandPayload struct {
 
 // RunCommandJob handles running commands on a site
 type RunCommandJob struct {
-	ctx     *JobContext
-	Payload RunCommandPayload
+	pkgjobs.BaseJob[*JobContext, RunCommandPayload]
 }
 
 // NewRunCommandJob creates a new RunCommandJob instance
 func NewRunCommandJob(ctx *JobContext, payload RunCommandPayload) *RunCommandJob {
 	return &RunCommandJob{
-		ctx:     ctx,
-		Payload: payload,
+		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
 	}
 }
 
 // Handle executes the run command job
 func (j *RunCommandJob) Handle(ctx context.Context) error {
 	// Get the command from database (with user preloaded)
-	command, err := j.ctx.CommandRepo.FindByID(ctx, j.Payload.CommandID)
+	command, err := j.Ctx.CommandRepo.FindByID(ctx, j.Payload.CommandID)
 	if err != nil {
 		return fmt.Errorf("failed to find command: %w", err)
 	}
 
 	// Get the site with server info
-	site, err := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
 
 	// Get the server for SSH connection
-	server, err := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Update command status to running
 	command.Status = enums.CommandStatusRunning
-	if err := j.ctx.CommandRepo.UpdateFields(ctx, command.ID, map[string]any{
+	if err := j.Ctx.CommandRepo.UpdateFields(ctx, command.ID, map[string]any{
 		"status": enums.CommandStatusRunning,
 	}); err != nil {
-		j.ctx.LogError(err, "Failed to update command status", "command_id", command.ID)
+		j.Ctx.LogError(err, "Failed to update command status", "command_id", command.ID)
 	}
 
 	// Broadcast that command is running with full command data
-	j.ctx.BroadcastServerEvent(server, "command.updated", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "command.updated", map[string]any{
 		"command": dto.ToCommandResponse(command),
 	})
 
@@ -74,7 +72,7 @@ func (j *RunCommandJob) Handle(ctx context.Context) error {
 	})
 
 	// Run the task on the server as the site user
-	result, err := j.ctx.RunTaskOnServer(server, task).
+	result, err := j.Ctx.RunTaskOnServer(server, task).
 		AsUser(site.User).
 		Dispatch(ctx)
 
@@ -97,20 +95,20 @@ func (j *RunCommandJob) Handle(ctx context.Context) error {
 	}
 
 	// Persist the updates
-	if updateErr := j.ctx.CommandRepo.UpdateFields(ctx, command.ID, map[string]any{
+	if updateErr := j.Ctx.CommandRepo.UpdateFields(ctx, command.ID, map[string]any{
 		"status":    command.Status,
 		"output":    command.Output,
 		"exit_code": command.ExitCode,
 	}); updateErr != nil {
-		j.ctx.LogError(updateErr, "Failed to update command result", "command_id", command.ID)
+		j.Ctx.LogError(updateErr, "Failed to update command result", "command_id", command.ID)
 	}
 
 	// Broadcast completion with full command data
-	j.ctx.BroadcastServerEvent(server, "command.updated", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "command.updated", map[string]any{
 		"command": dto.ToCommandResponse(command),
 	})
 
-	j.ctx.LogInfo("Command executed",
+	j.Ctx.LogInfo("Command executed",
 		"site_id", site.ID,
 		"command_id", command.ID,
 		"status", command.Status,
@@ -125,7 +123,7 @@ func (j *RunCommandJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *RunCommandJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to run command",
+	j.Ctx.LogError(err, "Failed to run command",
 		"site_id", j.Payload.SiteID,
 		"command_id", j.Payload.CommandID,
 	)
@@ -133,35 +131,35 @@ func (j *RunCommandJob) Failed(ctx context.Context, err error) {
 	errMsg := err.Error()
 
 	// Update command status to failed
-	if updateErr := j.ctx.CommandRepo.UpdateFields(ctx, j.Payload.CommandID, map[string]any{
+	if updateErr := j.Ctx.CommandRepo.UpdateFields(ctx, j.Payload.CommandID, map[string]any{
 		"status": enums.CommandStatusFailed,
 		"output": errMsg,
 	}); updateErr != nil {
-		j.ctx.LogError(updateErr, "Failed to update command status on failure")
+		j.Ctx.LogError(updateErr, "Failed to update command status on failure")
 	}
 
 	// Get the updated command to broadcast
-	command, findErr := j.ctx.CommandRepo.FindByID(ctx, j.Payload.CommandID)
+	command, findErr := j.Ctx.CommandRepo.FindByID(ctx, j.Payload.CommandID)
 	if findErr != nil {
-		j.ctx.LogError(findErr, "Failed to find command for broadcast")
+		j.Ctx.LogError(findErr, "Failed to find command for broadcast")
 		return
 	}
 
 	// Get site and server for broadcasting
-	site, siteErr := j.ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, siteErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
 	if siteErr != nil {
-		j.ctx.LogError(siteErr, "Failed to find site for broadcast")
+		j.Ctx.LogError(siteErr, "Failed to find site for broadcast")
 		return
 	}
 
-	server, serverErr := j.ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, serverErr := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if serverErr != nil {
-		j.ctx.LogError(serverErr, "Failed to find server for broadcast")
+		j.Ctx.LogError(serverErr, "Failed to find server for broadcast")
 		return
 	}
 
 	// Broadcast failure with full command data
-	j.ctx.BroadcastServerEvent(server, "command.updated", map[string]any{
+	j.Ctx.BroadcastServerEvent(server, "command.updated", map[string]any{
 		"command": dto.ToCommandResponse(command),
 	})
 }
