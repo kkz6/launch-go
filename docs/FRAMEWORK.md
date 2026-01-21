@@ -198,27 +198,47 @@ Handlers are HTTP request handlers that parse input, call services, and return r
 
 ### Handler Structure
 
+Handlers can optionally embed `handler.Base` to get access to logging methods:
+
 ```go
 package handlers
 
 import (
     "github.com/gofiber/fiber/v2"
+    "github.com/rs/zerolog"
 
     fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
     "github.com/kkz6/launch-go/internal/modules/mymodule/dto"
     "github.com/kkz6/launch-go/internal/modules/mymodule/services"
+    "github.com/kkz6/launch-go/internal/pkg/handler"
     "github.com/kkz6/launch-go/internal/pkg/response"
-    "github.com/kkz6/launch-go/internal/pkg/validator"
 )
 
 type Handler struct {
+    handler.Base  // Embed for logging support (optional)
     service *services.Service
 }
 
-func NewHandler(service *services.Service) *Handler {
-    return &Handler{service: service}
+func NewHandler(service *services.Service, logger *zerolog.Logger) *Handler {
+    return &Handler{
+        Base:    handler.NewBase(logger),
+        service: service,
+    }
 }
 ```
+
+### Handler Base Methods
+
+When embedding `handler.Base`, you get access to these logging methods:
+
+| Method | Description |
+|--------|-------------|
+| `LogRequest(c, action)` | Log incoming request with action |
+| `LogError(c, err, msg)` | Log error with request context |
+| `LogWarn(c, msg)` | Log warning with request context |
+| `LogInfo(c, action, msg)` | Log info with action context |
+| `LogDebug(msg, fields...)` | Log debug with custom fields |
+| `GetTraceID(c)` | Get trace ID from request |
 
 ### Handler Patterns
 

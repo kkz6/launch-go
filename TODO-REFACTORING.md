@@ -566,10 +566,10 @@ func (h *Base) LogError(c *fiber.Ctx, err error, msg string) {
 ```
 
 **Refactoring Steps:**
-- [ ] Create `internal/pkg/handler/base.go`
-- [ ] Add logging and error helpers
-- [ ] Embed Base in all module handlers
-- [ ] Add request tracing support
+- [x] Create `internal/pkg/handler/base.go`
+- [x] Add logging and error helpers
+- [ ] Embed Base in all module handlers (gradual adoption)
+- [x] Add request tracing support (GetTraceID method)
 
 ---
 
@@ -1547,7 +1547,7 @@ Each module needs similar audit for:
 4. [ ] Generic job context (P1 - 2.1)
 5. [ ] Service factory (P1 - 2.2)
 6. [~] Handler boilerplate extraction (P1 - 3.1) - In progress (helpers created, 2 handlers refactored)
-7. [ ] Handler base class (P1 - 3.2)
+7. [x] Handler base class (P1 - 3.2)
 
 ### Phase 3: Services (Week 5-6)
 8. [ ] Interface-based dependencies (P1 - 4.1)
