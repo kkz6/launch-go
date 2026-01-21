@@ -124,57 +124,22 @@ After implementing these embeddings:
 
 ---
 
-## 18. Compound Scoping Mixins (P2)
+## 18. Compound Scoping Mixins (P2) ✅ ALREADY IMPLEMENTED
 
-**Issue:** Models frequently combine the same scope fields.
+**Status:** Compound scoping mixins already exist in `internal/pkg/models/scopes.go`
 
-**Files Affected:**
-- Site-related models: Site, Certificate, Command, Queue, Redirect, Deployment
-- Server-related models: Database, DatabaseUser, Cron, Daemon, FirewallRule
+**Existing Scopes:**
+- Individual: `TeamScoped`, `ServerScoped`, `SiteScoped`, `UserScoped` (with Get/Set methods)
+- Compound: `TeamServerScoped`, `TeamSiteScoped`, `ServerSiteScoped`, `FullScoped`
+- Query scopes: `ScopeByTeam()`, `ScopeByServer()`, `ScopeBySite()`, `ScopeByUser()`, `ScopeByStatus[S]()`
 
-**Current Pattern:**
-```go
-// Repeated for site resources
-SiteID   string `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
-TeamID   string `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-UserID   string `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-```
+**Analysis:**
+- Full compound mixin infrastructure already exists
+- GORM tag compatibility is already verified
+- Query scope functions for convenient filtering
+- New combinations (e.g., TeamUserScoped) can be added following the established pattern
 
-**Solution:** Create compound mixins `internal/pkg/models/scopes.go`
-```go
-package models
-
-// SiteResourceModel for resources belonging to a site
-type SiteResourceModel struct {
-    SiteScopedModel
-    TeamScopedModel
-    UserScopedModel
-}
-
-// ServerResourceModel for resources belonging to a server
-type ServerResourceModel struct {
-    ServerScopedModel
-    TeamScopedModel
-}
-
-// TeamResourceModel for team-owned resources with user tracking
-type TeamResourceModel struct {
-    TeamScopedModel
-    UserScopedModel
-}
-```
-
-**Refactored Model:**
-```go
-type Certificate struct {
-    basemodels.BaseModel
-    basemodels.SiteResourceModel  // Includes SiteID, TeamID, UserID
-    Domain string `json:"domain"`
-    // ...
-}
-```
-
-**Impact:** ~100 lines eliminated across 15+ models
+**Decision:** Infrastructure complete. New compound mixins can be added as needed following the same pattern.
 
 ---
 
