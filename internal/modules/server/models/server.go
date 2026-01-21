@@ -13,6 +13,9 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/utils"
 )
 
+// Compile-time check that Server implements ServerConnection
+var _ taskrunner.ServerConnection = (*Server)(nil)
+
 // Server represents a managed server
 type Server struct {
 	basemodels.BaseModel
@@ -196,9 +199,32 @@ func (s *Server) ConnectionAsUser(username ...string) *taskrunner.Connection {
 	}
 }
 
+// GetID returns the server's unique identifier
+func (s *Server) GetID() string {
+	return s.ID
+}
+
 // GetTeamID returns the team ID for broadcasting
 func (s *Server) GetTeamID() string {
 	return s.TeamID
+}
+
+// GetIPAddress returns the server's public IP address
+func (s *Server) GetIPAddress() string {
+	if s.PublicIPv4 != nil {
+		return *s.PublicIPv4
+	}
+	return ""
+}
+
+// GetPrivateKey returns the SSH private key
+func (s *Server) GetPrivateKey() string {
+	return s.PrivateKey.String()
+}
+
+// GetSudoPassword returns the password for sudo operations
+func (s *Server) GetSudoPassword() string {
+	return s.Password.String()
 }
 
 // BroadcastName returns the model name for broadcasting
