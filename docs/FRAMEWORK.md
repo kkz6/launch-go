@@ -791,6 +791,77 @@ func (j *ProcessItemJob) ProcessTask(ctx context.Context, task *asynq.Task) erro
 }
 ```
 
+### Job Context
+
+Each module has a `JobContext` that provides shared dependencies for all jobs in that module.
+The module `JobContext` embeds `pkgjobs.Base` for common logging and broadcasting functionality.
+
+```go
+package jobs
+
+import (
+    "github.com/rs/zerolog"
+    "gorm.io/gorm"
+
+    "github.com/kkz6/launch-go/internal/modules/mymodule/repositories"
+    pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+    "github.com/kkz6/launch-go/internal/queue"
+)
+
+// JobContext provides shared dependencies for all module jobs.
+// It embeds pkgjobs.Base for common logging functionality.
+type JobContext struct {
+    pkgjobs.Base
+    // Public fields for backward compatibility
+    DB     *gorm.DB
+    Repos  *repositories.Registry
+    Logger *zerolog.Logger
+    Queue  *queue.Client
+}
+
+// NewJobContext creates a new job context
+func NewJobContext(db *gorm.DB, repos *repositories.Registry, logger *zerolog.Logger, queueClient *queue.Client) *JobContext {
+    return &JobContext{
+        Base: pkgjobs.NewBase(pkgjobs.BaseDeps{
+            DB:     db,
+            Logger: logger,
+            Queue:  queueClient,
+        }),
+        DB:     db,
+        Repos:  repos,
+        Logger: logger,
+        Queue:  queueClient,
+    }
+}
+```
+
+The `pkgjobs.Base` provides these common methods:
+
+- `LogInfo(msg string, fields ...any)` - Log info with key-value pairs
+- `LogError(err error, msg string, fields ...any)` - Log error with key-value pairs
+- `LogWarn(msg string, fields ...any)` - Log warning
+- `LogDebug(msg string, fields ...any)` - Log debug
+- `BroadcastToTeam(teamID, event string, data any)` - Send websocket event
+
+Example usage in a job:
+
+```go
+func (j *ProcessItemJob) Handle(ctx context.Context) error {
+    j.ctx.LogInfo("Processing item", "itemID", j.payload.ItemID)
+
+    if err := j.doSomething(); err != nil {
+        j.ctx.LogError(err, "Failed to process item", "itemID", j.payload.ItemID)
+        return err
+    }
+
+    j.ctx.BroadcastToTeam(j.payload.TeamID, "item.processed", map[string]any{
+        "item_id": j.payload.ItemID,
+    })
+
+    return nil
+}
+```
+
 ### Dispatching Jobs
 
 ```go
