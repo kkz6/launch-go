@@ -62,10 +62,8 @@ func (j *UpdateSiteTLSSettingJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to create update caddyfile task: %w", err)
 	}
 
-	if j.Ctx.Queue != nil {
-		if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
-			return fmt.Errorf("failed to enqueue update caddyfile job: %w", err)
-		}
+	if err := j.Ctx.DispatchTask(task); err != nil {
+		return fmt.Errorf("failed to enqueue update caddyfile job: %w", err)
 	}
 
 	j.Ctx.LogInfo("TLS setting updated, Caddyfile update dispatched",

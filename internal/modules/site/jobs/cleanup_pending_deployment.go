@@ -126,10 +126,8 @@ func (j *CleanupPendingSiteDeploymentJob) processNextQueuedDeployment(ctx contex
 		return
 	}
 
-	if j.Ctx.Queue != nil {
-		if _, err := j.Ctx.Queue.Enqueue(task); err != nil {
-			j.Ctx.LogError(err, "Failed to enqueue next deployment")
-		}
+	if err := j.Ctx.DispatchTask(task); err != nil {
+		j.Ctx.LogError(err, "Failed to enqueue next deployment")
 	}
 }
 
