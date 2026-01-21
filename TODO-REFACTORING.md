@@ -106,7 +106,7 @@ func GetUser[T any](c *fiber.Ctx) (*T, error) {
 
 ---
 
-### 1.2 Path Parameter Validation Middleware
+### 1.2 Path Parameter Validation ✅
 **Issue:** 30+ handlers accept path parameters without validation
 **Risk:** Empty strings passed to database queries, potential injection
 
@@ -115,58 +115,65 @@ func GetUser[T any](c *fiber.Ctx) (*T, error) {
 - `internal/modules/site/handlers/site_handler.go:94-96`
 - All handlers using `c.Params("id")`, `c.Params("serverId")`, etc.
 
-**Solution:** Create `internal/middleware/params.go`
+**Solution:** Created `internal/pkg/fiber/params.go` with handler-level helpers
 ```go
-package middleware
+package fiber
 
 import (
     "github.com/gofiber/fiber/v2"
+    "github.com/kkz6/launch-go/internal/pkg/response"
     "github.com/oklog/ulid/v2"
 )
 
-// ValidateULIDParams validates specified path parameters are valid ULIDs
-func ValidateULIDParams(params ...string) fiber.Handler {
-    return func(c *fiber.Ctx) error {
-        for _, param := range params {
-            value := c.Params(param)
-            if value == "" {
-                return response.BadRequest(c, "Missing required parameter: "+param)
-            }
-            if _, err := ulid.Parse(value); err != nil {
-                return response.BadRequest(c, "Invalid parameter format: "+param)
-            }
-        }
-        return c.Next()
-    }
+// GetID extracts and validates the "id" path parameter as a ULID.
+func GetID(c *fiber.Ctx) (string, error) {
+    return GetULIDParam(c, "id")
 }
 
-// RequireParams ensures specified params are non-empty
-func RequireParams(params ...string) fiber.Handler {
-    return func(c *fiber.Ctx) error {
-        for _, param := range params {
-            if c.Params(param) == "" {
-                return response.BadRequest(c, "Missing required parameter: "+param)
-            }
-        }
-        return c.Next()
+// GetServerID extracts and validates the "serverId" path parameter as a ULID.
+func GetServerID(c *fiber.Ctx) (string, error) {
+    return GetULIDParam(c, "serverId")
+}
+
+// GetULIDParam extracts and validates a path parameter as a ULID.
+func GetULIDParam(c *fiber.Ctx, name string) (string, error) {
+    value := c.Params(name)
+    if value == "" {
+        return "", response.BadRequest(c, "Missing required parameter: "+name)
     }
+    if _, err := ulid.Parse(value); err != nil {
+        return "", response.BadRequest(c, "Invalid parameter format: "+name)
+    }
+    return value, nil
+}
+```
+
+**Usage in handlers:**
+```go
+func (h *Handler) Show(c *fiber.Ctx) error {
+    id, err := fiberctx.GetID(c)
+    if err != nil {
+        return err
+    }
+    // ... use validated id
 }
 ```
 
 **Refactoring Steps:**
-- [ ] Create `internal/middleware/params.go`
-- [ ] Add middleware to all routes with path parameters
-- [ ] Create route helper that auto-applies validation
+- [x] Create `internal/pkg/fiber/params.go`
+- [x] Create `internal/pkg/fiber/params_test.go`
+- [x] Create middleware alternative in `internal/middleware/params.go`
+- [ ] Update all handlers to use safe extraction (gradual refactoring)
 
 ---
 
-### 1.3 Silent Error Handling Audit
+### 1.3 Silent Error Handling Audit (In Progress)
 **Issue:** Errors silently ignored with blank identifier
 **Risk:** Data inconsistency, debugging difficulty
 
 **Files Affected:**
 - `internal/modules/site/services/site_service.go:84-88` - Silent error in loop
-- Multiple similar patterns across services
+- Multiple similar patterns across services (58 instances identified)
 
 **Example of Bad Pattern:**
 ```go
@@ -188,8 +195,12 @@ for i := range sites {
 ```
 
 **Refactoring Steps:**
-- [ ] Audit all uses of `_` for error return values
-- [ ] Add appropriate logging or error propagation
+- [x] Audit all uses of `_` for error return values (58 instances found)
+- [x] Fix site_service.go (7 instances)
+- [x] Fix deployment_service.go (4 instances - critical: active deployment checks)
+- [x] Fix metrics_webhook_handler.go (6 instances - data parsing)
+- [ ] Fix git webhook handlers/jobs
+- [ ] Fix remaining handlers and services
 - [ ] Create linter rule to flag silent error handling
 
 ---
@@ -1527,8 +1538,8 @@ Each module needs similar audit for:
 
 ### Phase 1: Critical (Week 1-2)
 1. [x] Safe context extraction (P0 - 1.1)
-2. [ ] Path parameter validation (P0 - 1.2)
-3. [ ] Silent error audit (P0 - 1.3)
+2. [x] Path parameter validation (P0 - 1.2)
+3. [~] Silent error audit (P0 - 1.3) - In progress (17/58 fixed)
 
 ### Phase 2: Infrastructure (Week 3-4)
 4. [ ] Generic job context (P1 - 2.1)

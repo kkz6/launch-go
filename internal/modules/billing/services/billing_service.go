@@ -202,7 +202,11 @@ func (s *BillingService) GetBillingData(ctx context.Context, teamID string, serv
 		plan := s.GetPlanByProductID(sub.ProductID)
 		updateURL := ""
 		if s.lemonSqueezy != nil {
-			updateURL, _ = s.lemonSqueezy.GetUpdatePaymentMethodURL(ctx, sub.LemonSqueezyID)
+			var err error
+			updateURL, err = s.lemonSqueezy.GetUpdatePaymentMethodURL(ctx, sub.LemonSqueezyID)
+			if err != nil {
+				s.logger.Warn().Err(err).Uint("subscription_id", sub.ID).Msg("Failed to get update payment method URL")
+			}
 		}
 		subscriptionResponses[i] = dto.ToSubscriptionResponse(&sub, plan, updateURL)
 	}

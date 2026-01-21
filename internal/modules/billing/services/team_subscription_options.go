@@ -69,7 +69,11 @@ func (t *TeamSubscriptionOptions) MustVerifySubscription() bool {
 
 // IsSubscribed checks if the team is subscribed
 func (t *TeamSubscriptionOptions) IsSubscribed(ctx context.Context) bool {
-	subscribed, _ := t.service.IsSubscribed(ctx, t.teamID)
+	subscribed, err := t.service.IsSubscribed(ctx, t.teamID)
+	if err != nil {
+		t.service.logger.Warn().Err(err).Str("team_id", t.teamID).Msg("Failed to check subscription status")
+		return false
+	}
 	return subscribed
 }
 
@@ -320,11 +324,17 @@ func (t *TeamSubscriptionOptions) getSubscribedPlanOptions(subscription *models.
 func (t *TeamSubscriptionOptions) GetSubscriptionOptionsResponse(ctx context.Context) (*dto.SubscriptionOptionsResponse, error) {
 	options := t.PlanOptions(ctx)
 
-	serverCount, _ := t.CountServers(ctx)
+	serverCount, err := t.CountServers(ctx)
+	if err != nil {
+		t.service.logger.Warn().Err(err).Str("team_id", t.teamID).Msg("Failed to count servers for subscription options")
+	}
 
 	subscribed := t.IsSubscribed(ctx)
 
-	subscription, _ := t.service.GetActiveSubscription(ctx, t.teamID)
+	subscription, err := t.service.GetActiveSubscription(ctx, t.teamID)
+	if err != nil {
+		t.service.logger.Warn().Err(err).Str("team_id", t.teamID).Msg("Failed to get active subscription")
+	}
 	onTrial := subscription != nil && subscription.OnTrial()
 
 	return &dto.SubscriptionOptionsResponse{

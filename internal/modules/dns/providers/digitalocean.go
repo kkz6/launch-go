@@ -442,7 +442,10 @@ func (p *DigitalOceanProvider) newRequest(ctx context.Context, method, path stri
 
 // parseErrorResponse parses an error response from DigitalOcean
 func (p *DigitalOceanProvider) parseErrorResponse(resp *http.Response) error {
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return NewProviderError("DigitalOcean", resp.StatusCode, "failed to read error response", err)
+	}
 
 	var result doErrorResponse
 	if err := json.Unmarshal(body, &result); err == nil && result.Message != "" {

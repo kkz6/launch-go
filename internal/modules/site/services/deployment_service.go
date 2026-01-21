@@ -154,13 +154,19 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 	}
 
 	// Check for active deployment
-	activeDeployment, _ := s.Repos().Deployment().FindActiveBySite(ctx, site.ID)
+	activeDeployment, err := s.Repos().Deployment().FindActiveBySite(ctx, site.ID)
+	if err != nil {
+		return nil, errors.New("failed to check for active deployment")
+	}
 	if activeDeployment != nil {
 		return nil, ErrPendingDeployment
 	}
 
 	// Get latest deployment for rollback metadata
-	latestDeployment, _ := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
+	latestDeployment, err := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
+	if err != nil {
+		s.LogWarn("Failed to fetch latest deployment for rollback", "siteID", site.ID, "error", err)
+	}
 
 	// Create rollback deployment
 	commitData := map[string]interface{}{
@@ -220,7 +226,10 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 	gitHash := extractGitHash(commitData)
 
 	// Check for active deployment
-	activeDeployment, _ := s.Repos().Deployment().FindActiveBySite(ctx, site.ID)
+	activeDeployment, err := s.Repos().Deployment().FindActiveBySite(ctx, site.ID)
+	if err != nil {
+		return nil, errors.New("failed to check for active deployment")
+	}
 	if activeDeployment != nil {
 		if site.QueueDeployments {
 			// Queue the deployment
@@ -309,7 +318,10 @@ func (s *DeploymentService) ProcessNextQueued(ctx context.Context, siteID string
 	}
 
 	// Check for active deployment
-	activeDeployment, _ := s.Repos().Deployment().FindActiveBySite(ctx, site.ID)
+	activeDeployment, err := s.Repos().Deployment().FindActiveBySite(ctx, site.ID)
+	if err != nil {
+		return nil, errors.New("failed to check for active deployment")
+	}
 	if activeDeployment != nil {
 		return nil, nil
 	}
