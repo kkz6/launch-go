@@ -362,3 +362,180 @@ func TestContainsAll(t *testing.T) {
 		assert.True(t, ContainsAll([]string{"a", "b", "c"}))
 	})
 }
+
+type testUser struct {
+	Name   string
+	Age    int
+	Active bool
+}
+
+func TestFilterTransform(t *testing.T) {
+	t.Run("filters and transforms elements", func(t *testing.T) {
+		users := []testUser{
+			{Name: "Alice", Age: 30, Active: true},
+			{Name: "Bob", Age: 25, Active: false},
+			{Name: "Charlie", Age: 35, Active: true},
+		}
+		names := FilterTransform(users,
+			func(u *testUser) bool { return u.Active },
+			func(u *testUser) string { return u.Name },
+		)
+		assert.Equal(t, []string{"Alice", "Charlie"}, names)
+	})
+
+	t.Run("transforms with different type", func(t *testing.T) {
+		users := []testUser{
+			{Name: "Alice", Age: 30, Active: true},
+			{Name: "Bob", Age: 25, Active: true},
+		}
+		ages := FilterTransform(users,
+			func(u *testUser) bool { return u.Age >= 30 },
+			func(u *testUser) int { return u.Age },
+		)
+		assert.Equal(t, []int{30}, ages)
+	})
+
+	t.Run("no matches returns empty slice", func(t *testing.T) {
+		users := []testUser{
+			{Name: "Alice", Age: 30, Active: false},
+			{Name: "Bob", Age: 25, Active: false},
+		}
+		names := FilterTransform(users,
+			func(u *testUser) bool { return u.Active },
+			func(u *testUser) string { return u.Name },
+		)
+		assert.Empty(t, names)
+		assert.NotNil(t, names)
+	})
+
+	t.Run("all match", func(t *testing.T) {
+		users := []testUser{
+			{Name: "Alice", Age: 30, Active: true},
+			{Name: "Bob", Age: 25, Active: true},
+		}
+		names := FilterTransform(users,
+			func(u *testUser) bool { return u.Active },
+			func(u *testUser) string { return u.Name },
+		)
+		assert.Equal(t, []string{"Alice", "Bob"}, names)
+	})
+
+	t.Run("empty slice", func(t *testing.T) {
+		users := []testUser{}
+		names := FilterTransform(users,
+			func(u *testUser) bool { return u.Active },
+			func(u *testUser) string { return u.Name },
+		)
+		assert.Empty(t, names)
+		assert.NotNil(t, names)
+	})
+
+	t.Run("nil slice returns nil", func(t *testing.T) {
+		var users []testUser
+		names := FilterTransform(users,
+			func(u *testUser) bool { return u.Active },
+			func(u *testUser) string { return u.Name },
+		)
+		assert.Nil(t, names)
+	})
+
+	t.Run("predicate receives pointer to original", func(t *testing.T) {
+		users := []testUser{
+			{Name: "Alice", Age: 30, Active: true},
+		}
+		FilterTransform(users,
+			func(u *testUser) bool {
+				u.Age = 99 // Modify through pointer
+				return true
+			},
+			func(u *testUser) string { return u.Name },
+		)
+		assert.Equal(t, 99, users[0].Age)
+	})
+
+	t.Run("works with primitive types", func(t *testing.T) {
+		numbers := []int{1, 2, 3, 4, 5}
+		doubled := FilterTransform(numbers,
+			func(n *int) bool { return *n%2 == 0 },
+			func(n *int) int { return *n * 2 },
+		)
+		assert.Equal(t, []int{4, 8}, doubled)
+	})
+}
+
+func TestFilterPtr(t *testing.T) {
+	t.Run("filters elements with pointer predicate", func(t *testing.T) {
+		users := []testUser{
+			{Name: "Alice", Age: 30, Active: true},
+			{Name: "Bob", Age: 25, Active: false},
+			{Name: "Charlie", Age: 35, Active: true},
+		}
+		active := FilterPtr(users, func(u *testUser) bool { return u.Active })
+		assert.Equal(t, []testUser{
+			{Name: "Alice", Age: 30, Active: true},
+			{Name: "Charlie", Age: 35, Active: true},
+		}, active)
+	})
+
+	t.Run("no matches returns empty slice", func(t *testing.T) {
+		users := []testUser{
+			{Name: "Alice", Age: 30, Active: false},
+			{Name: "Bob", Age: 25, Active: false},
+		}
+		active := FilterPtr(users, func(u *testUser) bool { return u.Active })
+		assert.Empty(t, active)
+		assert.NotNil(t, active)
+	})
+
+	t.Run("all match", func(t *testing.T) {
+		users := []testUser{
+			{Name: "Alice", Age: 30, Active: true},
+			{Name: "Bob", Age: 25, Active: true},
+		}
+		active := FilterPtr(users, func(u *testUser) bool { return u.Active })
+		assert.Len(t, active, 2)
+	})
+
+	t.Run("empty slice", func(t *testing.T) {
+		users := []testUser{}
+		active := FilterPtr(users, func(u *testUser) bool { return u.Active })
+		assert.Empty(t, active)
+		assert.NotNil(t, active)
+	})
+
+	t.Run("nil slice returns nil", func(t *testing.T) {
+		var users []testUser
+		active := FilterPtr(users, func(u *testUser) bool { return u.Active })
+		assert.Nil(t, active)
+	})
+
+	t.Run("predicate receives pointer to original", func(t *testing.T) {
+		users := []testUser{
+			{Name: "Alice", Age: 30, Active: true},
+		}
+		FilterPtr(users, func(u *testUser) bool {
+			u.Age = 99 // Modify through pointer
+			return true
+		})
+		assert.Equal(t, 99, users[0].Age)
+	})
+
+	t.Run("filter by age threshold", func(t *testing.T) {
+		users := []testUser{
+			{Name: "Alice", Age: 30, Active: true},
+			{Name: "Bob", Age: 25, Active: true},
+			{Name: "Charlie", Age: 35, Active: true},
+		}
+		seniors := FilterPtr(users, func(u *testUser) bool { return u.Age >= 30 })
+		assert.Equal(t, []testUser{
+			{Name: "Alice", Age: 30, Active: true},
+			{Name: "Charlie", Age: 35, Active: true},
+		}, seniors)
+	})
+
+	t.Run("works with primitive types", func(t *testing.T) {
+		numbers := []int{1, 2, 3, 4, 5}
+		evens := FilterPtr(numbers, func(n *int) bool { return *n%2 == 0 })
+		assert.Equal(t, []int{2, 4}, evens)
+	})
+}

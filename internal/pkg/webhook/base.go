@@ -2,13 +2,10 @@
 package webhook
 
 import (
-	"crypto/hmac"
-	"crypto/sha256"
-	"encoding/hex"
-
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
 
+	"github.com/kkz6/launch-go/internal/pkg/signature"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
@@ -17,15 +14,34 @@ const (
 	HeaderGitHubSignature       = "X-Hub-Signature-256"
 	HeaderGitLabToken           = "X-Gitlab-Token"
 	HeaderLemonSqueezySignature = "X-Signature"
+	HeaderStripeSignature       = "Stripe-Signature"
+	HeaderPaddleSignature       = "Paddle-Signature"
 )
 
-// VerifyHMACSHA256 verifies an HMAC-SHA256 signature
-func VerifyHMACSHA256(payload []byte, signature string, secret string) bool {
-	mac := hmac.New(sha256.New, []byte(secret))
-	_, _ = mac.Write(payload) // hash.Hash.Write never returns an error
-	expectedSignature := hex.EncodeToString(mac.Sum(nil))
+// VerifyHMACSHA256 verifies an HMAC-SHA256 signature.
+// Deprecated: Use signature.GitLab.Verify or signature.ComputeSignature instead.
+func VerifyHMACSHA256(payload []byte, sig string, secret string) bool {
+	return signature.GitLab.Verify(payload, sig, secret)
+}
 
-	return hmac.Equal([]byte(expectedSignature), []byte(signature))
+// VerifyGitHubSignature verifies a GitHub webhook signature (X-Hub-Signature-256 header).
+func VerifyGitHubSignature(payload []byte, signatureHeader, secret string) bool {
+	return signature.VerifyGitHub(payload, signatureHeader, secret)
+}
+
+// VerifyGitLabToken verifies a GitLab webhook token (X-Gitlab-Token header).
+func VerifyGitLabToken(providedToken, expectedToken string) bool {
+	return signature.VerifyGitLab(providedToken, expectedToken)
+}
+
+// VerifyStripeSignature verifies a Stripe webhook signature (Stripe-Signature header).
+func VerifyStripeSignature(payload []byte, signatureHeader, secret string) bool {
+	return signature.VerifyStripe(payload, signatureHeader, secret)
+}
+
+// VerifyLemonSqueezySignature verifies a LemonSqueezy webhook signature (X-Signature header).
+func VerifyLemonSqueezySignature(payload []byte, signatureHeader, secret string) bool {
+	return signature.VerifyLemonSqueezy(payload, signatureHeader, secret)
 }
 
 // Base provides common dependencies and functionality for webhook handlers.

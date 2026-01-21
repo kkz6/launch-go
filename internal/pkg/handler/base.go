@@ -3,6 +3,8 @@ package handler
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
+
+	"github.com/kkz6/launch-go/internal/pkg/logger"
 )
 
 // Base provides common handler functionality including logging.
@@ -12,8 +14,8 @@ type Base struct {
 }
 
 // NewBase creates a new Base handler with the provided logger.
-func NewBase(logger *zerolog.Logger) Base {
-	return Base{logger: logger}
+func NewBase(log *zerolog.Logger) Base {
+	return Base{logger: log}
 }
 
 // Logger returns the handler's logger.
@@ -59,13 +61,7 @@ func (h *Base) LogInfo(c *fiber.Ctx, action, msg string) {
 
 // LogDebug logs a debug message with optional fields.
 func (h *Base) LogDebug(msg string, fields ...interface{}) {
-	event := h.logger.Debug()
-	for i := 0; i < len(fields)-1; i += 2 {
-		if key, ok := fields[i].(string); ok {
-			event = event.Interface(key, fields[i+1])
-		}
-	}
-	event.Msg(msg)
+	logger.Debug(h.logger, msg, fields...)
 }
 
 // GetTraceID extracts the trace ID from request context if available.

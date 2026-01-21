@@ -7,6 +7,7 @@ import (
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
 )
 
@@ -183,35 +184,29 @@ func (h *Hub) BroadcastToUser(userID string, event string, data interface{}) {
 
 // BroadcastModelCreated broadcasts a model creation event to the team channel
 func (h *Hub) BroadcastModelCreated(teamID, modelName, modelID string, payload interface{}) {
-	h.BroadcastToTeam(teamID, modelName+".created", map[string]interface{}{
-		"id":      modelID,
-		"model":   modelName,
-		"action":  "created",
-		"team_id": teamID,
-		"data":    payload,
-	})
+	h.BroadcastToTeam(
+		teamID,
+		broadcast.ModelEventName(modelName, "created"),
+		broadcast.BuildModelEventPayload(modelName, modelID, "created", teamID, payload),
+	)
 }
 
 // BroadcastModelUpdated broadcasts a model update event to the team channel
 func (h *Hub) BroadcastModelUpdated(teamID, modelName, modelID string, payload interface{}) {
-	h.BroadcastToTeam(teamID, modelName+".updated", map[string]interface{}{
-		"id":      modelID,
-		"model":   modelName,
-		"action":  "updated",
-		"team_id": teamID,
-		"data":    payload,
-	})
+	h.BroadcastToTeam(
+		teamID,
+		broadcast.ModelEventName(modelName, "updated"),
+		broadcast.BuildModelEventPayload(modelName, modelID, "updated", teamID, payload),
+	)
 }
 
 // BroadcastModelDeleted broadcasts a model deletion event to the team channel
 func (h *Hub) BroadcastModelDeleted(teamID, modelName, modelID string, payload interface{}) {
-	h.BroadcastToTeam(teamID, modelName+".deleted", map[string]interface{}{
-		"id":      modelID,
-		"model":   modelName,
-		"action":  "deleted",
-		"team_id": teamID,
-		"data":    payload,
-	})
+	h.BroadcastToTeam(
+		teamID,
+		broadcast.ModelEventName(modelName, "deleted"),
+		broadcast.BuildModelEventPayload(modelName, modelID, "deleted", teamID, payload),
+	)
 }
 
 // Shutdown gracefully shuts down the hub

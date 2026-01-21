@@ -6,6 +6,8 @@ import (
 
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog"
+
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 )
 
 const wsChannel = "websocket:broadcast"
@@ -31,37 +33,37 @@ func NewRedisBroadcaster(addr, password string, db int, logger *zerolog.Logger) 
 }
 
 // BroadcastToTeam publishes a message to Redis for the team channel
-func (r *RedisBroadcaster) BroadcastToTeam(teamID string, event string, data interface{}) {
+func (r *RedisBroadcaster) BroadcastToTeam(teamID string, event string, data any) {
 	r.publish("team."+teamID, event, data)
 }
 
 // BroadcastToServer publishes a message to Redis for the server channel
-func (r *RedisBroadcaster) BroadcastToServer(serverID string, event string, data interface{}) {
+func (r *RedisBroadcaster) BroadcastToServer(serverID string, event string, data any) {
 	r.publish("server."+serverID, event, data)
 }
 
 // BroadcastToSite publishes a message to Redis for the site channel
-func (r *RedisBroadcaster) BroadcastToSite(siteID string, event string, data interface{}) {
+func (r *RedisBroadcaster) BroadcastToSite(siteID string, event string, data any) {
 	r.publish("site."+siteID, event, data)
 }
 
 // BroadcastToDeployment publishes a message to Redis for the deployment channel
-func (r *RedisBroadcaster) BroadcastToDeployment(deploymentID string, event string, data interface{}) {
+func (r *RedisBroadcaster) BroadcastToDeployment(deploymentID string, event string, data any) {
 	r.publish("deployment."+deploymentID, event, data)
 }
 
 // BroadcastToUser publishes a message to Redis for the user channel
-func (r *RedisBroadcaster) BroadcastToUser(userID string, event string, data interface{}) {
+func (r *RedisBroadcaster) BroadcastToUser(userID string, event string, data any) {
 	r.publish("user."+userID, event, data)
 }
 
 // Broadcast publishes a message to Redis for a specific channel
-func (r *RedisBroadcaster) Broadcast(channel string, event string, data interface{}) {
+func (r *RedisBroadcaster) Broadcast(channel string, event string, data any) {
 	r.publish(channel, event, data)
 }
 
 // publish sends a message to Redis Pub/Sub
-func (r *RedisBroadcaster) publish(channel, event string, data interface{}) {
+func (r *RedisBroadcaster) publish(channel, event string, data any) {
 	msg := &Message{
 		Channel: channel,
 		Event:   event,
@@ -84,36 +86,30 @@ func (r *RedisBroadcaster) publish(channel, event string, data interface{}) {
 }
 
 // BroadcastModelCreated broadcasts a model creation event to the team channel
-func (r *RedisBroadcaster) BroadcastModelCreated(teamID, modelName, modelID string, payload interface{}) {
-	r.BroadcastToTeam(teamID, modelName+".created", map[string]interface{}{
-		"id":      modelID,
-		"model":   modelName,
-		"action":  "created",
-		"team_id": teamID,
-		"data":    payload,
-	})
+func (r *RedisBroadcaster) BroadcastModelCreated(teamID, modelName, modelID string, payload any) {
+	r.BroadcastToTeam(
+		teamID,
+		broadcast.ModelEventName(modelName, "created"),
+		broadcast.BuildModelEventPayload(modelName, modelID, "created", teamID, payload),
+	)
 }
 
 // BroadcastModelUpdated broadcasts a model update event to the team channel
-func (r *RedisBroadcaster) BroadcastModelUpdated(teamID, modelName, modelID string, payload interface{}) {
-	r.BroadcastToTeam(teamID, modelName+".updated", map[string]interface{}{
-		"id":      modelID,
-		"model":   modelName,
-		"action":  "updated",
-		"team_id": teamID,
-		"data":    payload,
-	})
+func (r *RedisBroadcaster) BroadcastModelUpdated(teamID, modelName, modelID string, payload any) {
+	r.BroadcastToTeam(
+		teamID,
+		broadcast.ModelEventName(modelName, "updated"),
+		broadcast.BuildModelEventPayload(modelName, modelID, "updated", teamID, payload),
+	)
 }
 
 // BroadcastModelDeleted broadcasts a model deletion event to the team channel
-func (r *RedisBroadcaster) BroadcastModelDeleted(teamID, modelName, modelID string, payload interface{}) {
-	r.BroadcastToTeam(teamID, modelName+".deleted", map[string]interface{}{
-		"id":      modelID,
-		"model":   modelName,
-		"action":  "deleted",
-		"team_id": teamID,
-		"data":    payload,
-	})
+func (r *RedisBroadcaster) BroadcastModelDeleted(teamID, modelName, modelID string, payload any) {
+	r.BroadcastToTeam(
+		teamID,
+		broadcast.ModelEventName(modelName, "deleted"),
+		broadcast.BuildModelEventPayload(modelName, modelID, "deleted", teamID, payload),
+	)
 }
 
 // Close closes the Redis connection
