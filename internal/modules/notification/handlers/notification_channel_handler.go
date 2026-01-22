@@ -9,7 +9,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/services"
 	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // NotificationChannelHandler handles HTTP requests for notification channels
@@ -31,10 +30,10 @@ func (h *NotificationChannelHandler) Index(c *fiber.Ctx) error {
 
 	channels, err := h.service.ListChannels(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	return response.OK(c, "Notification channels retrieved", dto.ListChannelsResponse{
+	return fiberutil.OK(c, "Notification channels retrieved", dto.ListChannelsResponse{
 		Channels: dto.ToChannelResponses(channels),
 	})
 }
@@ -54,13 +53,13 @@ func (h *NotificationChannelHandler) Show(c *fiber.Ctx) error {
 	channel, err := h.service.GetChannel(c.Context(), channelID, teamID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, "Notification channel not found")
+			return fiberutil.RespondNotFound(c, "Notification channel not found")
 		}
 
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	return response.OK(c, "Notification channel retrieved", dto.ToChannelResponse(channel))
+	return fiberutil.OK(c, "Notification channel retrieved", dto.ToChannelResponse(channel))
 }
 
 // Store creates a new notification channel
@@ -78,17 +77,17 @@ func (h *NotificationChannelHandler) Store(c *fiber.Ctx) error {
 	channel, err := h.service.CreateChannel(c.Context(), userID, teamID, req)
 	if err != nil {
 		if errors.Is(err, services.ErrInvalidProvider) {
-			return response.BadRequest(c, "Invalid notification provider")
+			return fiberutil.RespondBadRequest(c, "Invalid notification provider")
 		}
 
 		if errors.Is(err, services.ErrConnectionFailed) {
-			return response.BadRequest(c, "Could not connect to the notification channel. Please verify your configuration.")
+			return fiberutil.RespondBadRequest(c, "Could not connect to the notification channel. Please verify your configuration.")
 		}
 
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	return response.Created(c, "Notification channel created", dto.ToChannelResponse(channel))
+	return fiberutil.Created(c, "Notification channel created", dto.ToChannelResponse(channel))
 }
 
 // Update updates an existing notification channel
@@ -111,17 +110,17 @@ func (h *NotificationChannelHandler) Update(c *fiber.Ctx) error {
 	channel, err := h.service.UpdateChannel(c.Context(), channelID, userID, teamID, req)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, "Notification channel not found")
+			return fiberutil.RespondNotFound(c, "Notification channel not found")
 		}
 
 		if errors.Is(err, services.ErrConnectionFailed) {
-			return response.BadRequest(c, "Could not connect to the notification channel. Please verify your configuration.")
+			return fiberutil.RespondBadRequest(c, "Could not connect to the notification channel. Please verify your configuration.")
 		}
 
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	return response.OK(c, "Notification channel updated", dto.ToChannelResponse(channel))
+	return fiberutil.OK(c, "Notification channel updated", dto.ToChannelResponse(channel))
 }
 
 // Destroy deletes a notification channel
@@ -139,17 +138,17 @@ func (h *NotificationChannelHandler) Destroy(c *fiber.Ctx) error {
 	err = h.service.DeleteChannel(c.Context(), channelID, teamID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, "Notification channel not found")
+			return fiberutil.RespondNotFound(c, "Notification channel not found")
 		}
 
 		if errors.Is(err, services.ErrUnauthorized) {
-			return response.Forbidden(c, response.MsgForbidden)
+			return fiberutil.RespondForbidden(c, fiberutil.MsgForbidden)
 		}
 
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	return response.NoContent(c)
+	return fiberutil.NoContent(c)
 }
 
 // Test sends a test notification through a channel
@@ -174,17 +173,17 @@ func (h *NotificationChannelHandler) Test(c *fiber.Ctx) error {
 	err = h.service.TestChannel(c.Context(), channelID, teamID, message)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, "Notification channel not found")
+			return fiberutil.RespondNotFound(c, "Notification channel not found")
 		}
 
 		if errors.Is(err, services.ErrNotificationFailed) {
-			return response.BadRequest(c, "Failed to send test notification. Please verify your channel configuration.")
+			return fiberutil.RespondBadRequest(c, "Failed to send test notification. Please verify your channel configuration.")
 		}
 
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	return response.OK(c, "Test notification sent successfully", nil)
+	return fiberutil.OK(c, "Test notification sent successfully", nil)
 }
 
 // SetDefault sets a channel as the default for its provider type
@@ -202,13 +201,13 @@ func (h *NotificationChannelHandler) SetDefault(c *fiber.Ctx) error {
 	err = h.service.SetChannelDefault(c.Context(), channelID, teamID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, "Notification channel not found")
+			return fiberutil.RespondNotFound(c, "Notification channel not found")
 		}
 
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	return response.OK(c, "Default channel updated", nil)
+	return fiberutil.OK(c, "Default channel updated", nil)
 }
 
 // Disconnect marks a channel as disconnected
@@ -226,13 +225,13 @@ func (h *NotificationChannelHandler) Disconnect(c *fiber.Ctx) error {
 	err = h.service.DisconnectChannel(c.Context(), channelID, teamID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, "Notification channel not found")
+			return fiberutil.RespondNotFound(c, "Notification channel not found")
 		}
 
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	return response.OK(c, "Channel disconnected", nil)
+	return fiberutil.OK(c, "Channel disconnected", nil)
 }
 
 // Reconnect attempts to reconnect a channel
@@ -250,17 +249,17 @@ func (h *NotificationChannelHandler) Reconnect(c *fiber.Ctx) error {
 	err = h.service.ReconnectChannel(c.Context(), channelID, teamID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, "Notification channel not found")
+			return fiberutil.RespondNotFound(c, "Notification channel not found")
 		}
 
 		if errors.Is(err, services.ErrConnectionFailed) {
-			return response.BadRequest(c, "Could not reconnect to the notification channel. Please verify your configuration.")
+			return fiberutil.RespondBadRequest(c, "Could not reconnect to the notification channel. Please verify your configuration.")
 		}
 
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	return response.OK(c, "Channel reconnected successfully", nil)
+	return fiberutil.OK(c, "Channel reconnected successfully", nil)
 }
 
 // GetService returns the underlying service for use by other modules
@@ -280,5 +279,5 @@ func (h *NotificationChannelHandler) ListChannelTypes(c *fiber.Ctx) error {
 		}
 	}
 
-	return response.OK(c, "Notification channel types retrieved", result)
+	return fiberutil.OK(c, "Notification channel types retrieved", result)
 }

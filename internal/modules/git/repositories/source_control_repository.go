@@ -177,7 +177,7 @@ func (r *SourceControlRepository) FirstOrCreateByProviderAndInstallationAndTeam(
 		sc.UserID = userID
 	}
 
-	if providerData, ok := defaults["provider_data"].(models.JSONMap); ok {
+	if providerData, ok := defaults["provider_data"].(map[string]interface{}); ok {
 		if jsonBytes, err := json.Marshal(providerData); err == nil {
 			jsonStr := string(jsonBytes)
 			sc.ProviderData = &jsonStr

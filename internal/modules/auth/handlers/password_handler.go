@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // PasswordHandler handles password-related HTTP requests
@@ -29,7 +28,7 @@ func (h *PasswordHandler) ForgotPassword(c *fiber.Ctx) error {
 	// Always return success to prevent email enumeration
 	_ = h.Service().SendPasswordResetLink(c.Context(), req.Email)
 
-	return response.OK(c, "If an account with that email exists, a password reset link has been sent", nil)
+	return fiberctx.OK(c, "If an account with that email exists, a password reset link has been sent", nil)
 }
 
 // ResetPassword resets the user's password
@@ -40,8 +39,8 @@ func (h *PasswordHandler) ResetPassword(c *fiber.Ctx) error {
 	}
 
 	if err := h.Service().ResetPassword(c.Context(), req); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Password reset successfully", nil)
+	return fiberctx.OK(c, "Password reset successfully", nil)
 }

@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // BackupJobHandler handles HTTP requests for backup jobs
@@ -32,12 +31,12 @@ func (h *BackupJobHandler) CreateBackupJob(c *fiber.Ctx) error {
 	_, err = h.jobService.CreateBackupJob(c.Context(), backupID, token, req)
 	if err != nil {
 		if err == services.ErrInvalidDispatchToken {
-			return response.Forbidden(c, response.MsgForbidden)
+			return fiberutil.RespondForbidden(c, fiberutil.MsgForbidden)
 		}
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgBackupNotFound)
+			return fiberutil.RespondNotFound(c, "Backup not found")
 		}
-		return response.HandleError(c, err)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return c.SendStatus(fiber.StatusNoContent)

@@ -5,7 +5,6 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // ListSSHKeys returns all SSH keys for the team
@@ -17,7 +16,7 @@ func (h *Handler) ListSSHKeys(c *fiber.Ctx) error {
 
 	keys, err := h.service.ListSSHKeys(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch SSH keys")
+		return fiberctx.RespondInternalError(c, "Failed to fetch SSH keys")
 	}
 
 	result := make([]dto.SSHKeyResponse, len(keys))
@@ -25,7 +24,7 @@ func (h *Handler) ListSSHKeys(c *fiber.Ctx) error {
 		result[i] = dto.ToSSHKeyResponse(&key)
 	}
 
-	return response.OK(c, "SSH keys retrieved", result)
+	return fiberctx.OK(c, "SSH keys retrieved", result)
 }
 
 // ListServerSSHKeys returns all SSH keys attached to a server
@@ -42,7 +41,7 @@ func (h *Handler) ListServerSSHKeys(c *fiber.Ctx) error {
 
 	keys, err := h.service.ListServerSSHKeys(c.Context(), serverID, teamID)
 	if err != nil {
-		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch SSH keys")
+		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch SSH keys")
 	}
 
 	result := make([]dto.SSHKeyResponse, len(keys))
@@ -50,7 +49,7 @@ func (h *Handler) ListServerSSHKeys(c *fiber.Ctx) error {
 		result[i] = dto.ToSSHKeyResponse(&key)
 	}
 
-	return response.OK(c, "SSH keys retrieved", result)
+	return fiberctx.OK(c, "SSH keys retrieved", result)
 }
 
 // CreateSSHKey creates a new SSH key
@@ -67,10 +66,10 @@ func (h *Handler) CreateSSHKey(c *fiber.Ctx) error {
 
 	key, err := h.service.CreateSSHKey(c.Context(), teamID, userID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.Created(c, "SSH key created", dto.ToSSHKeyResponse(key))
+	return fiberctx.Created(c, "SSH key created", dto.ToSSHKeyResponse(key))
 }
 
 // AttachSSHKey attaches an SSH key to a server
@@ -91,10 +90,10 @@ func (h *Handler) AttachSSHKey(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.AttachSSHKey(c.Context(), serverID, teamID, req.SSHKeyID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "SSH key attached", nil)
+	return fiberctx.OK(c, "SSH key attached", nil)
 }
 
 // DetachSSHKey detaches an SSH key from a server
@@ -115,10 +114,10 @@ func (h *Handler) DetachSSHKey(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.DetachSSHKey(c.Context(), serverID, teamID, sshKeyID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.NoContent(c)
+	return fiberctx.NoContent(c)
 }
 
 // DeleteSSHKey deletes an SSH key
@@ -134,8 +133,8 @@ func (h *Handler) DeleteSSHKey(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.DeleteSSHKey(c.Context(), teamID, sshKeyID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.NoContent(c)
+	return fiberctx.NoContent(c)
 }

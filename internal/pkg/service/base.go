@@ -7,11 +7,11 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // Dependencies holds common dependencies needed by all services.
@@ -59,29 +59,8 @@ type Base struct {
 	Logger *zerolog.Logger
 }
 
-// NewBase creates a new Base service
-func NewBase(q *queue.Client, ws broadcast.ModelBroadcaster, log *zerolog.Logger) Base {
-	b := Base{
-		Queue:  q,
-		Logger: log,
-	}
-	b.SetModelBroadcaster(ws)
-	return b
-}
-
-// NewBaseWithDB creates a new Base service with database access
-func NewBaseWithDB(db *gorm.DB, q *queue.Client, ws broadcast.ModelBroadcaster, log *zerolog.Logger) Base {
-	b := Base{
-		db:     db,
-		Queue:  q,
-		Logger: log,
-	}
-	b.SetModelBroadcaster(ws)
-	return b
-}
-
-// NewBaseFromDeps creates a new Base service from Dependencies
-func NewBaseFromDeps(deps Dependencies) Base {
+// NewBase creates a new Base service from Dependencies
+func NewBase(deps Dependencies) Base {
 	b := Base{
 		db:     deps.DB,
 		Queue:  deps.Queue,
@@ -89,6 +68,12 @@ func NewBaseFromDeps(deps Dependencies) Base {
 	}
 	b.SetModelBroadcaster(deps.Broadcaster)
 	return b
+}
+
+// NewBaseFromDeps is an alias for NewBase for backwards compatibility.
+// Deprecated: Use NewBase directly.
+func NewBaseFromDeps(deps Dependencies) Base {
+	return NewBase(deps)
 }
 
 // EnqueueTask enqueues a task to the default queue

@@ -2,7 +2,9 @@ package middleware
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/kkz6/launch-go/internal/pkg/response"
+
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/oklog/ulid/v2"
 )
 
@@ -21,10 +23,10 @@ func ValidateULIDParams(params ...string) fiber.Handler {
 		for _, param := range params {
 			value := c.Params(param)
 			if value == "" {
-				return response.BadRequest(c, "Missing required parameter: "+param)
+				return fiberctx.RespondBadRequest(c, "Missing required parameter: "+param)
 			}
 			if _, err := ulid.Parse(value); err != nil {
-				return response.BadRequest(c, "Invalid parameter format: "+param)
+				return fiberctx.RespondBadRequest(c, "Invalid parameter format: "+param)
 			}
 		}
 		return c.Next()
@@ -37,7 +39,7 @@ func RequireParams(params ...string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		for _, param := range params {
 			if c.Params(param) == "" {
-				return response.BadRequest(c, "Missing required parameter: "+param)
+				return fiberctx.RespondBadRequest(c, "Missing required parameter: "+param)
 			}
 		}
 		return c.Next()

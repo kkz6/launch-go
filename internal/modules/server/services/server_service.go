@@ -16,8 +16,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -85,8 +85,8 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		Status:          types.ServerStatusNew,
 		SSHPort:         &defaultSSHPort,
 		Username:        &defaultUsername,
-		PrivateKey:      basemodels.EncryptedString(privateKey),
-		PublicKey:       basemodels.EncryptedString(publicKey),
+		PrivateKey:      dbtype.EncryptedString(privateKey),
+		PublicKey:       dbtype.EncryptedString(publicKey),
 	}
 	server.TeamID = teamID
 	server.UserID = userID
@@ -101,7 +101,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 
 	if provider == types.ProviderCustom {
 		server.PublicIPv4 = &req.IPAddress
-		server.PrivateKey = basemodels.EncryptedString(req.PrivateKey)
+		server.PrivateKey = dbtype.EncryptedString(req.PrivateKey)
 		server.PublicKey = ""
 	}
 

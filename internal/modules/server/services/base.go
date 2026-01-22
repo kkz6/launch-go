@@ -2,10 +2,8 @@ package services
 
 import (
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
-	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
-	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
@@ -43,17 +41,6 @@ func NewService(deps ServiceDeps) *Service {
 		ActivityMixin: activity.NewActivityMixin(deps.DB, "server"),
 		repos:         deps.Repos,
 		dispatcher:    deps.Dispatcher,
-	}
-}
-
-// NewServiceWithParams creates a new Service instance with individual parameters.
-// Deprecated: Use NewService with ServiceDeps instead for consistency.
-func NewServiceWithParams(repos contracts.RepositoryRegistry, q *queue.Client, ws broadcast.ModelBroadcaster, dispatcher *taskrunner.Dispatcher) *Service {
-	return &Service{
-		Base:          service.NewBase(q, ws, nil),
-		ActivityMixin: activity.NewActivityMixin(repos.DB(), "server"),
-		repos:         repos,
-		dispatcher:    dispatcher,
 	}
 }
 

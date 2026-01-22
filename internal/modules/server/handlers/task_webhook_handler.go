@@ -11,12 +11,12 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
-	"github.com/kkz6/launch-go/internal/pkg/response"
+	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/util"
-	"github.com/kkz6/launch-go/internal/pkg/webhook"
 )
 
 // TaskWebhookRepository interface for webhook handler
@@ -27,7 +27,8 @@ type TaskWebhookRepository interface {
 
 // TaskWebhookHandler handles task completion callbacks
 type TaskWebhookHandler struct {
-	webhook.Base
+	signer   *signedurl.Signer
+	logger   *zerolog.Logger
 	repo     TaskWebhookRepository
 	registry *taskrunner.TaskTypeRegistry
 	queue    *queue.Client
@@ -37,7 +38,8 @@ type TaskWebhookHandler struct {
 // NewTaskWebhookHandler creates a new webhook handler
 func NewTaskWebhookHandler(repo TaskWebhookRepository, secretKey string, queueClient *queue.Client, logger *zerolog.Logger) *TaskWebhookHandler {
 	return &TaskWebhookHandler{
-		Base:     webhook.NewBase(secretKey, logger),
+		signer:   signedurl.NewSigner(secretKey),
+		logger:   logger,
 		repo:     repo,
 		registry: taskrunner.DefaultRegistry,
 		queue:    queueClient,
@@ -61,17 +63,17 @@ func (h *TaskWebhookHandler) MarkAsFinished(c *fiber.Ctx) error {
 	taskID := c.Params("id")
 	ctx := c.Context()
 
-	if !h.VerifySignature(c) {
-		return response.Unauthorized(c, "Invalid signature")
+	if !signedurl.ValidateSignedURL(c, h.signer) {
+		return fiberctx.RespondUnauthorized(c, "Invalid signature")
 	}
 
 	task, err := h.repo.FindTaskByID(ctx, taskID)
 	if err != nil {
-		return response.NotFound(c, "Task not found")
+		return fiberctx.RespondNotFound(c, "Task not found")
 	}
 
 	if task.IsFinished() {
-		return response.OK(c, "Task already finished", nil)
+		return fiberctx.OK(c, "Task already finished", nil)
 	}
 
 	task.Status = "finished"
@@ -79,7 +81,7 @@ func (h *TaskWebhookHandler) MarkAsFinished(c *fiber.Ctx) error {
 	task.ExitCode = &exitCode
 
 	if err := h.repo.UpdateTask(ctx, task); err != nil {
-		return response.InternalError(c, "Failed to update task")
+		return fiberctx.RespondInternalError(c, "Failed to update task")
 	}
 
 	// Handle callback if task has instance data
@@ -88,7 +90,7 @@ func (h *TaskWebhookHandler) MarkAsFinished(c *fiber.Ctx) error {
 	// Dispatch job to fetch task output from server
 	h.dispatchOutputFetch(task)
 
-	return response.OK(c, "Task marked as finished", nil)
+	return fiberctx.OK(c, "Task marked as finished", nil)
 }
 
 // MarkAsFailed handles task failure
@@ -96,17 +98,17 @@ func (h *TaskWebhookHandler) MarkAsFailed(c *fiber.Ctx) error {
 	taskID := c.Params("id")
 	ctx := c.Context()
 
-	if !h.VerifySignature(c) {
-		return response.Unauthorized(c, "Invalid signature")
+	if !signedurl.ValidateSignedURL(c, h.signer) {
+		return fiberctx.RespondUnauthorized(c, "Invalid signature")
 	}
 
 	task, err := h.repo.FindTaskByID(ctx, taskID)
 	if err != nil {
-		return response.NotFound(c, "Task not found")
+		return fiberctx.RespondNotFound(c, "Task not found")
 	}
 
 	if task.IsFinished() {
-		return response.OK(c, "Task already finished", nil)
+		return fiberctx.OK(c, "Task already finished", nil)
 	}
 
 	var body struct {
@@ -123,11 +125,11 @@ func (h *TaskWebhookHandler) MarkAsFailed(c *fiber.Ctx) error {
 	task.Status = "failed"
 	task.ExitCode = &exitCode
 	if body.Output != "" {
-		task.Output = basemodels.EncryptedString(body.Output)
+		task.Output = dbtype.EncryptedString(body.Output)
 	}
 
 	if err := h.repo.UpdateTask(ctx, task); err != nil {
-		return response.InternalError(c, "Failed to update task")
+		return fiberctx.RespondInternalError(c, "Failed to update task")
 	}
 
 	// Handle callback if task has instance data
@@ -136,7 +138,7 @@ func (h *TaskWebhookHandler) MarkAsFailed(c *fiber.Ctx) error {
 	// Dispatch job to fetch task output from server
 	h.dispatchOutputFetch(task)
 
-	return response.OK(c, "Task marked as failed", nil)
+	return fiberctx.OK(c, "Task marked as failed", nil)
 }
 
 // MarkAsTimeout handles task timeout
@@ -144,17 +146,17 @@ func (h *TaskWebhookHandler) MarkAsTimeout(c *fiber.Ctx) error {
 	taskID := c.Params("id")
 	ctx := c.Context()
 
-	if !h.VerifySignature(c) {
-		return response.Unauthorized(c, "Invalid signature")
+	if !signedurl.ValidateSignedURL(c, h.signer) {
+		return fiberctx.RespondUnauthorized(c, "Invalid signature")
 	}
 
 	task, err := h.repo.FindTaskByID(ctx, taskID)
 	if err != nil {
-		return response.NotFound(c, "Task not found")
+		return fiberctx.RespondNotFound(c, "Task not found")
 	}
 
 	if task.IsFinished() {
-		return response.OK(c, "Task already finished", nil)
+		return fiberctx.OK(c, "Task already finished", nil)
 	}
 
 	task.Status = "timeout"
@@ -162,7 +164,7 @@ func (h *TaskWebhookHandler) MarkAsTimeout(c *fiber.Ctx) error {
 	task.ExitCode = &exitCode
 
 	if err := h.repo.UpdateTask(ctx, task); err != nil {
-		return response.InternalError(c, "Failed to update task")
+		return fiberctx.RespondInternalError(c, "Failed to update task")
 	}
 
 	// Handle callback if task has instance data
@@ -171,7 +173,7 @@ func (h *TaskWebhookHandler) MarkAsTimeout(c *fiber.Ctx) error {
 	// Dispatch job to fetch task output from server
 	h.dispatchOutputFetch(task)
 
-	return response.OK(c, "Task marked as timeout", nil)
+	return fiberctx.OK(c, "Task marked as timeout", nil)
 }
 
 // handleCallback processes the task completion by either:
@@ -215,29 +217,29 @@ func (h *TaskWebhookHandler) handleCompletionConfig(task *models.Task, callbackT
 
 	// Dispatch the asynq job
 	if h.queue == nil {
-		if h.Logger != nil {
-			h.LogWarn("Queue client not available, cannot dispatch completion job",
-				"task_id", task.ID,
-				"job_type", jobRef.Type,
-			)
+		if h.logger != nil {
+			h.logger.Warn().
+				Str("task_id", task.ID).
+				Str("job_type", jobRef.Type).
+				Msg("Queue client not available, cannot dispatch completion job")
 		}
 		return true
 	}
 
 	asynqTask := asynq.NewTask(jobRef.Type, jobRef.Payload)
 	if _, err := h.queue.Enqueue(asynqTask); err != nil {
-		if h.Logger != nil {
-			h.LogError(err, "Failed to dispatch completion job",
-				"task_id", task.ID,
-				"job_type", jobRef.Type,
-			)
+		if h.logger != nil {
+			h.logger.Error().Err(err).
+				Str("task_id", task.ID).
+				Str("job_type", jobRef.Type).
+				Msg("Failed to dispatch completion job")
 		}
-	} else if h.Logger != nil {
-		h.LogInfo("Dispatched completion job",
-			"task_id", task.ID,
-			"job_type", jobRef.Type,
-			"callback_type", string(callbackType),
-		)
+	} else if h.logger != nil {
+		h.logger.Info().
+			Str("task_id", task.ID).
+			Str("job_type", jobRef.Type).
+			Str("callback_type", string(callbackType)).
+			Msg("Dispatched completion job")
 	}
 
 	return true
@@ -247,11 +249,11 @@ func (h *TaskWebhookHandler) handleCompletionConfig(task *models.Task, callbackT
 func (h *TaskWebhookHandler) handleLegacyCallback(ctx context.Context, task *models.Task, callbackType taskrunner.CallbackType, exitCode int) {
 	handler, err := taskrunner.ReconstructFromInstance(task.Instance.String())
 	if err != nil {
-		if h.Logger != nil {
-			h.LogError(err, "Failed to reconstruct task callback handler",
-				"task_id", task.ID,
-				"task_type", task.Type,
-			)
+		if h.logger != nil {
+			h.logger.Error().Err(err).
+				Str("task_id", task.ID).
+				Str("task_type", task.Type).
+				Msg("Failed to reconstruct task callback handler")
 		}
 		return
 	}
@@ -264,7 +266,7 @@ func (h *TaskWebhookHandler) handleLegacyCallback(ctx context.Context, task *mod
 	cbCtx := &taskrunner.CallbackContext{
 		DB:     h.db,
 		Queue:  h.queue,
-		Logger: h.Logger,
+		Logger: h.logger,
 	}
 
 	// Execute callback based on type
@@ -278,11 +280,11 @@ func (h *TaskWebhookHandler) handleLegacyCallback(ctx context.Context, task *mod
 		callbackErr = handler.OnExpired(ctx, cbCtx, task.ID)
 	}
 
-	if callbackErr != nil && h.Logger != nil {
-		h.LogError(callbackErr, "Task callback handler failed",
-			"task_id", task.ID,
-			"callback_type", string(callbackType),
-		)
+	if callbackErr != nil && h.logger != nil {
+		h.logger.Error().Err(callbackErr).
+			Str("task_id", task.ID).
+			Str("callback_type", string(callbackType)).
+			Msg("Task callback handler failed")
 	}
 }
 
@@ -298,7 +300,7 @@ func (h *TaskWebhookHandler) GenerateCallbackURLs(baseURL, taskID string, expire
 	customPath := basePath.Clone().Path("callback").String()
 
 	// Use the signer with the base URL for generating absolute URLs
-	signerWithBase := h.Signer.WithBaseURL(baseURL)
+	signerWithBase := h.signer.WithBaseURL(baseURL)
 
 	return CallbackURLs{
 		Finished: signerWithBase.SignedURL(finishedPath, nil, expireDuration),
@@ -322,18 +324,18 @@ func (h *TaskWebhookHandler) CustomCallback(c *fiber.Ctx) error {
 	taskID := c.Params("id")
 	ctx := c.Context()
 
-	if !h.VerifySignature(c) {
-		return response.Unauthorized(c, "Invalid signature")
+	if !signedurl.ValidateSignedURL(c, h.signer) {
+		return fiberctx.RespondUnauthorized(c, "Invalid signature")
 	}
 
 	task, err := h.repo.FindTaskByID(ctx, taskID)
 	if err != nil {
-		return response.NotFound(c, "Task not found")
+		return fiberctx.RespondNotFound(c, "Task not found")
 	}
 
 	// Only allow callbacks for pending/running tasks
 	if task.Status != "pending" && task.Status != "running" {
-		return response.OK(c, "Task already completed", nil)
+		return fiberctx.OK(c, "Task already completed", nil)
 	}
 
 	// Fetch the latest output from the server
@@ -342,7 +344,7 @@ func (h *TaskWebhookHandler) CustomCallback(c *fiber.Ctx) error {
 	// Handle callback if task has instance data
 	h.handleCallback(ctx, task, taskrunner.CallbackCustom, 0)
 
-	return response.OK(c, "Callback processed", nil)
+	return fiberctx.OK(c, "Callback processed", nil)
 }
 
 // dispatchOutputFetch dispatches a job to fetch the task output from the server
@@ -359,17 +361,17 @@ func (h *TaskWebhookHandler) dispatchOutputFetch(task *models.Task) {
 
 	asynqTask, err := jobs.NewFetchTaskOutputTask(task.ID, serverID, 0) // 0 = no reschedule
 	if err != nil {
-		if h.Logger != nil {
-			h.LogError(err, "Failed to create fetch output task", "task_id", task.ID)
+		if h.logger != nil {
+			h.logger.Error().Err(err).Str("task_id", task.ID).Msg("Failed to create fetch output task")
 		}
 		return
 	}
 
 	if _, err := h.queue.Enqueue(asynqTask); err != nil {
-		if h.Logger != nil {
-			h.LogError(err, "Failed to dispatch fetch output job", "task_id", task.ID)
+		if h.logger != nil {
+			h.logger.Error().Err(err).Str("task_id", task.ID).Msg("Failed to dispatch fetch output job")
 		}
-	} else if h.Logger != nil {
-		h.LogInfo("Dispatched output fetch job", "task_id", task.ID)
+	} else if h.logger != nil {
+		h.logger.Info().Str("task_id", task.ID).Msg("Dispatched output fetch job")
 	}
 }

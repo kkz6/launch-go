@@ -7,7 +7,6 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // ProvisionScriptRepository interface for provision script handler
@@ -46,17 +45,17 @@ func (h *ProvisionScriptHandler) GetProvisionScript(c *fiber.Ctx) error {
 	// Find the server (including archived)
 	server, err := h.repo.FindServerByID(ctx, serverID)
 	if err != nil {
-		return response.NotFound(c, "Server not found")
+		return fiberctx.RespondNotFound(c, "Server not found")
 	}
 
 	if server == nil {
-		return response.NotFound(c, "Server not found")
+		return fiberctx.RespondNotFound(c, "Server not found")
 	}
 
 	// Get the provision script
 	script, err := h.service.GetProvisionScript(ctx, serverID)
 	if err != nil {
-		return response.InternalError(c, "Failed to generate provision script")
+		return fiberctx.RespondInternalError(c, "Failed to generate provision script")
 	}
 
 	// Return as plain text (bash script)

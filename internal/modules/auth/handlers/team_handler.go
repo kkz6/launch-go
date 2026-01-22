@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // TeamHandler handles team management HTTP requests
@@ -33,10 +32,10 @@ func (h *TeamHandler) CreateTeam(c *fiber.Ctx) error {
 
 	team, err := h.Service().CreateTeam(c.Context(), userID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.Created(c, "Team created successfully", dto.ToTeamResponse(*team))
+	return fiberctx.Created(c, "Team created successfully", dto.ToTeamResponse(*team))
 }
 
 // GetTeam retrieves a team with details
@@ -53,14 +52,14 @@ func (h *TeamHandler) GetTeam(c *fiber.Ctx) error {
 
 	team, members, invitations, err := h.Service().GetTeamWithDetails(c.Context(), teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	if team == nil {
-		return response.NotFound(c, response.MsgTeamNotFound)
+		return fiberctx.RespondNotFound(c, "Team not found")
 	}
 
-	return response.OK(c, "Team retrieved", dto.ToTeamDetailResponse(team, members, invitations, userID))
+	return fiberctx.OK(c, "Team retrieved", dto.ToTeamDetailResponse(team, members, invitations, userID))
 }
 
 // UpdateTeam updates a team
@@ -82,10 +81,10 @@ func (h *TeamHandler) UpdateTeam(c *fiber.Ctx) error {
 
 	team, err := h.Service().UpdateTeam(c.Context(), userID, teamID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Team updated successfully", dto.ToTeamResponse(*team))
+	return fiberctx.OK(c, "Team updated successfully", dto.ToTeamResponse(*team))
 }
 
 // DeleteTeam deletes a team
@@ -101,10 +100,10 @@ func (h *TeamHandler) DeleteTeam(c *fiber.Ctx) error {
 	}
 
 	if err := h.Service().DeleteTeam(c.Context(), userID, teamID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Team deleted successfully", nil)
+	return fiberctx.OK(c, "Team deleted successfully", nil)
 }
 
 // GetUserTeams retrieves all teams for the current user
@@ -116,10 +115,10 @@ func (h *TeamHandler) GetUserTeams(c *fiber.Ctx) error {
 
 	teams, err := h.Service().GetUserTeams(c.Context(), userID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Teams retrieved", dto.ToTeamsResponseForUser(teams, userID))
+	return fiberctx.OK(c, "Teams retrieved", dto.ToTeamsResponseForUser(teams, userID))
 }
 
 // SwitchTeam switches the user's current team (from request body)
@@ -138,10 +137,10 @@ func (h *TeamHandler) SwitchTeam(c *fiber.Ctx) error {
 
 	user, err := h.Service().SwitchTeam(c.Context(), userID, req.TeamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Team switched. Use X-Team-ID header for subsequent requests.", dto.ToUserResponse(user))
+	return fiberctx.OK(c, "Team switched. Use X-Team-ID header for subsequent requests.", dto.ToUserResponse(user))
 }
 
 // SwitchTeamByID switches the user's current team using URL parameter
@@ -160,8 +159,8 @@ func (h *TeamHandler) SwitchTeamByID(c *fiber.Ctx) error {
 
 	user, err := h.Service().SwitchTeam(c.Context(), userID, teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Team switched. Use X-Team-ID header for subsequent requests.", dto.ToUserResponse(user))
+	return fiberctx.OK(c, "Team switched. Use X-Team-ID header for subsequent requests.", dto.ToUserResponse(user))
 }

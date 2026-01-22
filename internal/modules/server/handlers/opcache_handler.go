@@ -5,12 +5,11 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // GetOpcacheDefaults returns the default OPcache settings
 func (h *Handler) GetOpcacheDefaults(c *fiber.Ctx) error {
-	return response.OK(c, "OPcache defaults retrieved", dto.GetDefaultOpcacheSettings())
+	return fiberctx.OK(c, "OPcache defaults retrieved", dto.GetDefaultOpcacheSettings())
 }
 
 // GetOpcacheStatus returns the OPcache status for a PHP version
@@ -32,10 +31,10 @@ func (h *Handler) GetOpcacheStatus(c *fiber.Ctx) error {
 
 	status, err := h.service.GetOpcacheStatus(c.Context(), serverID, teamID, phpID)
 	if err != nil {
-		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch OPcache status")
+		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch OPcache status")
 	}
 
-	return response.OK(c, "OPcache status retrieved", status)
+	return fiberctx.OK(c, "OPcache status retrieved", status)
 }
 
 // ResetOpcache resets the OPcache for a PHP version
@@ -56,10 +55,10 @@ func (h *Handler) ResetOpcache(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.ResetOpcache(c.Context(), serverID, teamID, phpID); err != nil {
-		return response.HandleErrorOrInternalErr(c, err, "Failed to reset OPcache")
+		return fiberctx.HandleErrorOrInternal(c, err, "Failed to reset OPcache")
 	}
 
-	return response.OK(c, "OPcache reset initiated", nil)
+	return fiberctx.OK(c, "OPcache reset initiated", nil)
 }
 
 // ConfigureOpcache configures OPcache settings for a PHP version
@@ -85,8 +84,8 @@ func (h *Handler) ConfigureOpcache(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.ConfigureOpcache(c.Context(), serverID, teamID, phpID, req); err != nil {
-		return response.HandleErrorOrInternalErr(c, err, "Failed to configure OPcache")
+		return fiberctx.HandleErrorOrInternal(c, err, "Failed to configure OPcache")
 	}
 
-	return response.OK(c, "OPcache configuration initiated", nil)
+	return fiberctx.OK(c, "OPcache configuration initiated", nil)
 }

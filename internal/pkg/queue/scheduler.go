@@ -26,18 +26,24 @@ func NewScheduler(cfg config.RedisConfig) *Scheduler {
 
 // ScheduledTask represents a task to be scheduled
 type ScheduledTask struct {
-	CronSpec string
-	Task     *asynq.Task
-	Opts     []asynq.Option
+	Name     string         // Human-readable name for logging
+	CronSpec string         // Cron expression (e.g., "0 2 * * *")
+	Task     *asynq.Task    // The asynq task to run
+	Opts     []asynq.Option // Additional asynq options
 }
 
 // RegisterTasks registers multiple scheduled tasks
 func (s *Scheduler) RegisterTasks(tasks []ScheduledTask) error {
 	for _, t := range tasks {
+		if t.Task == nil {
+			continue // Skip tasks that failed to initialize
+		}
+
 		_, err := s.Register(t.CronSpec, t.Task, t.Opts...)
 		if err != nil {
 			return err
 		}
 	}
+
 	return nil
 }

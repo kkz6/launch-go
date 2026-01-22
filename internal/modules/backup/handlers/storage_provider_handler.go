@@ -9,7 +9,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
 	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // StorageProviderHandler handles HTTP requests for storage providers
@@ -31,7 +30,7 @@ func (h *StorageProviderHandler) ListStorageProviders(c *fiber.Ctx) error {
 
 	providers, err := h.providerService.ListStorageProvidersByTeam(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
 	result := make([]dto.StorageProviderResponse, len(providers))
@@ -39,7 +38,7 @@ func (h *StorageProviderHandler) ListStorageProviders(c *fiber.Ctx) error {
 		result[i] = dto.ToStorageProviderResponse(&provider)
 	}
 
-	return response.OK(c, "Storage providers retrieved", result)
+	return fiberutil.OK(c, "Storage providers retrieved", result)
 }
 
 // ListStorageProvidersForDropdown returns a simplified list for dropdowns
@@ -51,7 +50,7 @@ func (h *StorageProviderHandler) ListStorageProvidersForDropdown(c *fiber.Ctx) e
 
 	providers, err := h.providerService.ListStorageProvidersByTeam(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
 	result := make(map[uint64]string)
@@ -63,7 +62,7 @@ func (h *StorageProviderHandler) ListStorageProvidersForDropdown(c *fiber.Ctx) e
 		result[provider.ID] = label
 	}
 
-	return response.OK(c, "Storage providers retrieved", result)
+	return fiberutil.OK(c, "Storage providers retrieved", result)
 }
 
 // ConnectStorageProvider creates a new storage provider connection
@@ -77,7 +76,7 @@ func (h *StorageProviderHandler) ConnectStorageProvider(c *fiber.Ctx) error {
 	// Validate provider type
 	driver := backuptypes.StorageDriver(providerType)
 	if !driver.IsValid() {
-		return response.BadRequest(c, "Invalid storage provider type")
+		return fiberutil.RespondBadRequest(c, "Invalid storage provider type")
 	}
 
 	req, err := fiberutil.MustParseAndValidate[dto.CreateStorageProviderRequest](c)
@@ -91,12 +90,12 @@ func (h *StorageProviderHandler) ConnectStorageProvider(c *fiber.Ctx) error {
 	provider, err := h.providerService.ConnectStorageProvider(c.Context(), userID, teamID, req)
 	if err != nil {
 		if err == services.ErrConnectionFailed {
-			return response.BadRequest(c, "Failed to connect to storage provider")
+			return fiberutil.RespondBadRequest(c, "Failed to connect to storage provider")
 		}
-		return response.HandleError(c, err)
+		return fiberutil.HandleError(c, err)
 	}
 
-	return response.Created(c, "Storage provider connected successfully", dto.ToStorageProviderResponse(provider))
+	return fiberutil.Created(c, "Storage provider connected successfully", dto.ToStorageProviderResponse(provider))
 }
 
 // UpdateStorageProvider updates an existing storage provider
@@ -106,7 +105,7 @@ func (h *StorageProviderHandler) UpdateStorageProvider(c *fiber.Ctx) error {
 	// Validate provider type
 	driver := backuptypes.StorageDriver(providerType)
 	if !driver.IsValid() {
-		return response.BadRequest(c, "Invalid storage provider type")
+		return fiberutil.RespondBadRequest(c, "Invalid storage provider type")
 	}
 
 	req, err := fiberutil.MustParseAndValidate[dto.UpdateStorageProviderRequest](c)
@@ -120,15 +119,15 @@ func (h *StorageProviderHandler) UpdateStorageProvider(c *fiber.Ctx) error {
 	provider, err := h.providerService.UpdateStorageProvider(c.Context(), req.ID, req)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgStorageProviderNotFound)
+			return fiberutil.RespondNotFound(c, "Storage provider not found")
 		}
 		if err == services.ErrConnectionFailed {
-			return response.BadRequest(c, "Failed to connect to storage provider")
+			return fiberutil.RespondBadRequest(c, "Failed to connect to storage provider")
 		}
-		return response.HandleError(c, err)
+		return fiberutil.HandleError(c, err)
 	}
 
-	return response.OK(c, "Storage provider updated successfully", dto.ToStorageProviderResponse(provider))
+	return fiberutil.OK(c, "Storage provider updated successfully", dto.ToStorageProviderResponse(provider))
 }
 
 // DeleteStorageProvider deletes a storage provider
@@ -137,20 +136,20 @@ func (h *StorageProviderHandler) DeleteStorageProvider(c *fiber.Ctx) error {
 
 	providerID, err := strconv.ParseUint(providerIDStr, 10, 64)
 	if err != nil {
-		return response.BadRequest(c, "Invalid provider ID")
+		return fiberutil.RespondBadRequest(c, "Invalid provider ID")
 	}
 
 	if err := h.providerService.DeleteStorageProvider(c.Context(), providerID); err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgStorageProviderNotFound)
+			return fiberutil.RespondNotFound(c, "Storage provider not found")
 		}
 		if err == services.ErrStorageProviderHasBackups {
-			return response.Conflict(c, "Storage provider has associated backups and cannot be deleted")
+			return fiberutil.RespondConflict(c, "Storage provider has associated backups and cannot be deleted")
 		}
-		return response.HandleError(c, err)
+		return fiberutil.HandleError(c, err)
 	}
 
-	return response.NoContent(c)
+	return fiberutil.NoContent(c)
 }
 
 // ShowStorageProvider shows a single storage provider
@@ -159,16 +158,16 @@ func (h *StorageProviderHandler) ShowStorageProvider(c *fiber.Ctx) error {
 
 	providerID, err := strconv.ParseUint(providerIDStr, 10, 64)
 	if err != nil {
-		return response.BadRequest(c, "Invalid provider ID")
+		return fiberutil.RespondBadRequest(c, "Invalid provider ID")
 	}
 
 	provider, err := h.providerService.GetStorageProvider(c.Context(), providerID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgStorageProviderNotFound)
+			return fiberutil.RespondNotFound(c, "Storage provider not found")
 		}
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	return response.OK(c, "Storage provider retrieved", dto.ToStorageProviderResponse(provider))
+	return fiberutil.OK(c, "Storage provider retrieved", dto.ToStorageProviderResponse(provider))
 }

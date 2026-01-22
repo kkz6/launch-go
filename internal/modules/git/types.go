@@ -52,8 +52,6 @@ const (
 )
 
 // Models
-type JSONMap = models.JSONMap
-type JSONArray = models.JSONArray
 type SourceControl = models.SourceControl
 type SourceControlRepository = models.SourceControlRepository
 

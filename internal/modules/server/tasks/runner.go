@@ -15,6 +15,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -351,7 +352,7 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 			r.updateTaskModel(taskModel, taskResult)
 		} else if execErr != nil {
 			taskModel.Status = string(TaskStatusFailed)
-			taskModel.Output = basemodels.EncryptedString(execErr.Error())
+			taskModel.Output = dbtype.EncryptedString(execErr.Error())
 			r.db.Save(taskModel)
 			// Broadcast failure
 			r.broadcastTaskEvent("task.updated", taskModel, execErr.Error())
@@ -480,7 +481,7 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 			r.updateTaskModel(taskModel, taskResult)
 		} else if execErr != nil {
 			taskModel.Status = string(TaskStatusFailed)
-			taskModel.Output = basemodels.EncryptedString(execErr.Error())
+			taskModel.Output = dbtype.EncryptedString(execErr.Error())
 			r.db.Save(taskModel)
 			// Broadcast failure
 			r.broadcastTaskEvent("task.updated", taskModel, execErr.Error())
@@ -688,7 +689,7 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 		Name:              r.task.Name(),
 		User:              user,
 		Type:              taskType,
-		Script:            basemodels.EncryptedString(script),
+		Script:            dbtype.EncryptedString(script),
 		Timeout:           int(r.task.Timeout().Seconds()),
 		Status:            string(TaskStatusPending),
 	}
@@ -706,13 +707,13 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal completion config: %w", err)
 		}
-		taskModel.Instance = basemodels.EncryptedString(instance)
+		taskModel.Instance = dbtype.EncryptedString(instance)
 	} else if callbackTask, ok := r.task.(taskrunner.CallbackPayload); ok {
 		instance, err := taskrunner.MarshalInstance(callbackTask)
 		if err != nil {
 			return nil, fmt.Errorf("failed to marshal callback payload: %w", err)
 		}
-		taskModel.Instance = basemodels.EncryptedString(instance)
+		taskModel.Instance = dbtype.EncryptedString(instance)
 	}
 
 	if err := r.db.Create(taskModel).Error; err != nil {
@@ -727,7 +728,7 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 
 func (r *TaskRunner) updateTaskModel(taskModel *models.Task, result *taskrunner.TaskResult) {
 	// Update model fields directly to ensure EncryptedString Valuer is used
-	taskModel.Output = basemodels.EncryptedString(result.Output)
+	taskModel.Output = dbtype.EncryptedString(result.Output)
 	taskModel.ExitCode = &result.ExitCode
 
 	if result.TimedOut {

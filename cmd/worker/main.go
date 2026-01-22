@@ -16,7 +16,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git"
 	"github.com/kkz6/launch-go/internal/modules/script"
 	"github.com/kkz6/launch-go/internal/modules/server"
-	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
@@ -25,6 +24,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 	"github.com/kkz6/launch-go/internal/pkg/websocket"
+	"github.com/kkz6/launch-go/internal/schedule"
 )
 
 func main() {
@@ -129,8 +129,8 @@ func main() {
 	// Initialize scheduler for periodic tasks
 	scheduler := queue.NewScheduler(cfg.Redis)
 
-	// Register scheduled tasks from all modules
-	scheduledTasks := serverjobs.GetScheduledTasks()
+	// Register scheduled tasks from centralized schedule kernel
+	scheduledTasks := schedule.GetScheduledTasks()
 	if err := scheduler.RegisterTasks(scheduledTasks); err != nil {
 		appLogger.Fatal().Err(err).Msg("Failed to register scheduled tasks")
 	}

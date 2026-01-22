@@ -17,11 +17,12 @@ A comprehensive guide for developers working on the Launch-Go codebase. This doc
 7. [DTOs (Data Transfer Objects)](#7-dtos-data-transfer-objects)
 8. [Models](#8-models)
 9. [Jobs & Background Tasks](#9-jobs--background-tasks)
-10. [Task Runner (SSH Tasks)](#10-task-runner-ssh-tasks)
-11. [Error Handling](#11-error-handling)
-12. [Validation](#12-validation)
-13. [WebSocket](#13-websocket)
-14. [Testing](#14-testing)
+10. [Scheduled Tasks (Cron)](#10-scheduled-tasks-cron)
+11. [Task Runner (SSH Tasks)](#11-task-runner-ssh-tasks)
+12. [Error Handling](#12-error-handling)
+13. [Validation](#13-validation)
+14. [WebSocket](#14-websocket)
+15. [Testing](#15-testing)
 
 ---
 
@@ -48,6 +49,7 @@ launch-go/
 │   │       ├── contracts/    # Interfaces for cross-module deps
 │   │       ├── routes.go     # Route registration
 │   │       └── module.go     # Module initialization
+│   ├── schedule/         # Centralized cron job definitions
 │   └── pkg/              # Shared packages
 │       ├── fiber/        # Fiber helpers (context, params)
 │       ├── response/     # HTTP response helpers
@@ -1055,7 +1057,136 @@ s.deps.DispatchToQueue(jobType, payload, "low")     // Specific queue
 
 ---
 
-## 10. Task Runner (SSH Tasks)
+## 10. Scheduled Tasks (Cron)
+
+Scheduled tasks (cron jobs) are defined in a single, centralized location: `internal/schedule/kernel.go`. This provides a clear overview of all recurring tasks in the application.
+
+### Schedule Kernel
+
+All scheduled tasks are defined in `internal/schedule/kernel.go`:
+
+```go
+package schedule
+
+import (
+    serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
+    "github.com/kkz6/launch-go/internal/pkg/queue"
+)
+
+func GetScheduledTasks() []queue.ScheduledTask {
+    return []queue.ScheduledTask{
+        // Server maintenance - runs daily at 2 AM on low priority queue
+        DailyAt2AMTask(serverjobs.NewCleanupOldMetricsTask, LowPriority()),
+
+        // Backup cleanup - runs daily at 3 AM
+        DailyAt3AMTask(backupjobs.NewPruneOldBackupsTask, LowPriority()),
+
+        // Health checks - runs every 5 minutes
+        Every5MinutesTask(sitejobs.NewCheckSiteHealthTask),
+
+        // Custom schedule - weekdays at 9 AM
+        AtTask("0 9 * * 1-5", notificationjobs.NewSendDailyDigestTask),
+    }
+}
+```
+
+### Available Schedule Helpers
+
+| Helper | Schedule | Cron Expression |
+|--------|----------|-----------------|
+| `EveryMinuteTask(taskFn)` | Every minute | `* * * * *` |
+| `Every5MinutesTask(taskFn)` | Every 5 minutes | `*/5 * * * *` |
+| `Every10MinutesTask(taskFn)` | Every 10 minutes | `*/10 * * * *` |
+| `Every15MinutesTask(taskFn)` | Every 15 minutes | `*/15 * * * *` |
+| `Every30MinutesTask(taskFn)` | Every 30 minutes | `*/30 * * * *` |
+| `HourlyTask(taskFn)` | Every hour at :00 | `0 * * * *` |
+| `DailyTask(taskFn)` | Daily at midnight | `0 0 * * *` |
+| `DailyAt2AMTask(taskFn)` | Daily at 2:00 AM | `0 2 * * *` |
+| `DailyAt3AMTask(taskFn)` | Daily at 3:00 AM | `0 3 * * *` |
+| `WeeklyTask(taskFn)` | Sunday at midnight | `0 0 * * 0` |
+| `MonthlyTask(taskFn)` | 1st of month at midnight | `0 0 1 * *` |
+| `AtTask(cronSpec, taskFn)` | Custom cron expression | User-defined |
+
+### Priority Options
+
+Tasks can be assigned to different queues based on priority:
+
+```go
+// Low priority - for maintenance tasks that can wait
+DailyAt2AMTask(taskFn, LowPriority())
+
+// Default priority - for standard tasks
+HourlyTask(taskFn, DefaultPriority())
+
+// Critical priority - for time-sensitive tasks
+Every5MinutesTask(taskFn, CriticalPriority())
+```
+
+### Creating a Task Function
+
+Scheduled tasks use the same job infrastructure. The task function must return `(*asynq.Task, error)`:
+
+```go
+// In your module's jobs package
+func NewCleanupOldMetricsTask() (*asynq.Task, error) {
+    return pkgjobs.Task(TypeCleanupOldMetrics, CleanupOldMetricsPayload{})
+}
+```
+
+### Custom Cron Expressions
+
+For schedules not covered by helpers, use `AtTask` with a cron expression:
+
+```go
+// Cron format: minute hour day-of-month month day-of-week
+
+// Every 2 hours
+AtTask("0 */2 * * *", taskFn)
+
+// Weekdays at 9 AM
+AtTask("0 9 * * 1-5", taskFn)
+
+// 15th of each month at noon
+AtTask("0 12 15 * *", taskFn)
+
+// Every 15 minutes during business hours (9-5, weekdays)
+AtTask("*/15 9-17 * * 1-5", taskFn)
+```
+
+### Adding a New Scheduled Task
+
+1. **Create the job** in the appropriate module's `jobs/` directory (see [Jobs & Background Tasks](#9-jobs--background-tasks))
+
+2. **Create a task function** that returns `(*asynq.Task, error)`:
+```go
+func NewMyScheduledTask() (*asynq.Task, error) {
+    return pkgjobs.Task(TypeMyJob, MyJobPayload{})
+}
+```
+
+3. **Add to kernel** in `internal/schedule/kernel.go`:
+```go
+func GetScheduledTasks() []queue.ScheduledTask {
+    return []queue.ScheduledTask{
+        // ... existing tasks ...
+
+        // My new scheduled task - runs hourly
+        HourlyTask(myjobs.NewMyScheduledTask, DefaultPriority()),
+    }
+}
+```
+
+### Best Practices
+
+1. **Use appropriate priorities** - Maintenance tasks should use `LowPriority()` to not compete with user-triggered jobs
+2. **Stagger heavy tasks** - Don't schedule multiple resource-intensive tasks at the same time
+3. **Consider time zones** - Cron uses server time; account for this in user-facing schedules
+4. **Add comments** - Document what each scheduled task does in the kernel file
+5. **Group related tasks** - Use comments to organize tasks by category (maintenance, notifications, etc.)
+
+---
+
+## 11. Task Runner (SSH Tasks)
 
 Tasks are SSH scripts that run on remote servers. The task runner handles both local development (live SSH streaming) and production mode (HTTP callbacks with background execution).
 
@@ -1450,7 +1581,7 @@ funcs := taskrunner.AptFunctions()     // waitForAptUnlock, etc.
 
 ---
 
-## 11. Error Handling
+## 12. Error Handling
 
 ### Response Helpers
 
@@ -1514,7 +1645,7 @@ Validation error format:
 
 ---
 
-## 12. Validation
+## 13. Validation
 
 ### Request Validation
 
@@ -1548,7 +1679,7 @@ func validateULID(fl validator.FieldLevel) bool {
 
 ---
 
-## 13. WebSocket
+## 14. WebSocket
 
 WebSocket handlers are in `internal/modules/websocket/handlers/`.
 
@@ -1584,7 +1715,7 @@ func (h *Handler) StreamLogs(c *websocket.Conn) {
 
 ---
 
-## 14. Testing
+## 15. Testing
 
 ### Test File Location
 
@@ -1664,6 +1795,20 @@ go test -v -run TestService_Create ./internal/modules/mymodule/services/
 6. Optional: Implement `Failed(ctx context.Context, err error)` for cleanup
 7. Create task creator function for dispatching
 8. Register with `pkgjobs.RegisterTyped(mux, TypeXxx, NewXxxJob)` in `register.go`
+
+### Adding a Scheduled Task (Cron Job)
+
+1. Create the job following "Adding a Background Job" steps above
+2. Add a task creator function:
+```go
+func NewMyScheduledTask() (*asynq.Task, error) {
+    return pkgjobs.Task(TypeMyJob, MyJobPayload{})
+}
+```
+3. Add to `internal/schedule/kernel.go`:
+```go
+HourlyTask(myjobs.NewMyScheduledTask, DefaultPriority()),
+```
 
 ### Adding an SSH Task
 

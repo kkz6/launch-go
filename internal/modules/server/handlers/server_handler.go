@@ -10,7 +10,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // SiteCounter interface for counting sites by server
@@ -43,10 +42,10 @@ func (h *Handler) List(c *fiber.Ctx) error {
 
 	servers, err := h.service.ListServers(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch servers")
+		return fiberctx.RespondInternalError(c, "Failed to fetch servers")
 	}
 
-	return response.OK(c, "Servers retrieved", pkgdto.TransformSlice(servers, dto.ToServerResponse))
+	return fiberctx.OK(c, "Servers retrieved", pkgdto.TransformSlice(servers, dto.ToServerResponse))
 }
 
 // ListArchived returns all archived servers for the team
@@ -58,10 +57,10 @@ func (h *Handler) ListArchived(c *fiber.Ctx) error {
 
 	servers, err := h.service.ListArchivedServers(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch archived servers")
+		return fiberctx.RespondInternalError(c, "Failed to fetch archived servers")
 	}
 
-	return response.OK(c, "Archived servers retrieved", pkgdto.TransformSlice(servers, dto.ToServerResponse))
+	return fiberctx.OK(c, "Archived servers retrieved", pkgdto.TransformSlice(servers, dto.ToServerResponse))
 }
 
 // Create creates a new server
@@ -78,10 +77,10 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 
 	server, err := h.service.CreateServer(c.Context(), teamID, userID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.Created(c, "Server created", dto.ToServerResponse(server))
+	return fiberctx.Created(c, "Server created", dto.ToServerResponse(server))
 }
 
 // Show returns a single server
@@ -98,10 +97,10 @@ func (h *Handler) Show(c *fiber.Ctx) error {
 
 	server, err := h.service.GetServerWithRelations(c.Context(), id, teamID)
 	if err != nil {
-		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch server")
+		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch server")
 	}
 
-	return response.OK(c, "Server retrieved", dto.ToServerResponse(server))
+	return fiberctx.OK(c, "Server retrieved", dto.ToServerResponse(server))
 }
 
 // Update updates a server
@@ -123,10 +122,10 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 
 	server, err := h.service.UpdateServer(c.Context(), id, teamID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Server updated", dto.ToServerResponse(server))
+	return fiberctx.OK(c, "Server updated", dto.ToServerResponse(server))
 }
 
 // Delete deletes a server
@@ -142,10 +141,10 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.DeleteServer(c.Context(), id, teamID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.NoContent(c)
+	return fiberctx.NoContent(c)
 }
 
 // Reboot reboots a server
@@ -161,10 +160,10 @@ func (h *Handler) Reboot(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.RebootServer(c.Context(), id, teamID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Server reboot initiated", nil)
+	return fiberctx.OK(c, "Server reboot initiated", nil)
 }
 
 // Connect tests the connection to a server
@@ -180,10 +179,10 @@ func (h *Handler) Connect(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.ConnectServer(c.Context(), id, teamID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Server connection successful", nil)
+	return fiberctx.OK(c, "Server connection successful", nil)
 }
 
 // Archive archives a server
@@ -199,10 +198,10 @@ func (h *Handler) Archive(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.ArchiveServer(c.Context(), id, teamID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Server archived", nil)
+	return fiberctx.OK(c, "Server archived", nil)
 }
 
 // Unarchive unarchives a server
@@ -218,10 +217,10 @@ func (h *Handler) Unarchive(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.UnarchiveServer(c.Context(), id, teamID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Server unarchived", nil)
+	return fiberctx.OK(c, "Server unarchived", nil)
 }
 
 // ShowPage returns aggregated data for the server show page
@@ -238,10 +237,10 @@ func (h *Handler) ShowPage(c *fiber.Ctx) error {
 
 	data, err := h.service.GetShowPageData(c.Context(), id, teamID)
 	if err != nil {
-		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch server data")
+		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch server data")
 	}
 
-	return response.OK(c, "Server page data retrieved", data)
+	return fiberctx.OK(c, "Server page data retrieved", data)
 }
 
 // RunVulnerabilityAudit runs a security vulnerability audit on a server
@@ -262,10 +261,10 @@ func (h *Handler) RunVulnerabilityAudit(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.RunVulnerabilityAudit(c.Context(), id, teamID, userID, req.Email); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Vulnerability audit has been queued and will be sent to your email when completed.", nil)
+	return fiberctx.OK(c, "Vulnerability audit has been queued and will be sent to your email when completed.", nil)
 }
 
 // GetSiteCount returns the number of sites for a server
@@ -282,18 +281,18 @@ func (h *Handler) GetSiteCount(c *fiber.Ctx) error {
 
 	// Verify server exists and belongs to team
 	if _, err := h.service.GetServer(c.Context(), serverID, teamID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	// Check if site counter is configured
 	if h.siteCounter == nil {
-		return response.OK(c, "Site count retrieved", fiber.Map{"count": 0})
+		return fiberctx.OK(c, "Site count retrieved", fiber.Map{"count": 0})
 	}
 
 	count, err := h.siteCounter.CountByServer(c.Context(), serverID)
 	if err != nil {
-		return response.InternalError(c, "Failed to count sites")
+		return fiberctx.RespondInternalError(c, "Failed to count sites")
 	}
 
-	return response.OK(c, "Site count retrieved", fiber.Map{"count": count})
+	return fiberctx.OK(c, "Site count retrieved", fiber.Map{"count": count})
 }

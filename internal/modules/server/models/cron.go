@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -14,12 +15,12 @@ type Cron struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
 	basemodels.ServerScopedModel
-	SiteID     *string                    `gorm:"column:site_id;type:char(26);index" json:"site_id,omitempty"`
-	User       string                     `gorm:"type:varchar(255);not null" json:"user"`
-	Expression string                     `gorm:"type:varchar(255);not null" json:"expression"`
-	Command    basemodels.EncryptedString `gorm:"type:longtext;not null" json:"-"`
-	Frequency  string                     `gorm:"type:varchar(255);not null" json:"frequency"`
-	Hidden     bool                       `gorm:"type:tinyint(1);not null;default:0" json:"hidden"`
+	SiteID     *string                `gorm:"column:site_id;type:char(26);index" json:"site_id,omitempty"`
+	User       string                 `gorm:"type:varchar(255);not null" json:"user"`
+	Expression string                 `gorm:"type:varchar(255);not null" json:"expression"`
+	Command    dbtype.EncryptedString `gorm:"type:longtext;not null" json:"-"`
+	Frequency  string                 `gorm:"type:varchar(255);not null" json:"frequency"`
+	Hidden     bool                   `gorm:"type:tinyint(1);not null;default:0" json:"hidden"`
 
 	// Relations
 	Server *Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`

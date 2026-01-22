@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -20,42 +21,42 @@ type Server struct {
 	basemodels.BaseModel
 	basemodels.TeamScopedModel
 	basemodels.UserScopedModel
-	ServerProviderID          *string                    `gorm:"column:server_provider_id;type:char(26);index" json:"server_provider_id,omitempty"`
-	Name                      string                     `gorm:"type:varchar(255);not null;index" json:"name"`
-	Description               *string                    `gorm:"type:varchar(255)" json:"description,omitempty"`
-	Provider                  types.ServerProvider       `gorm:"type:varchar(255);not null" json:"provider"`
-	ProviderData              basemodels.JSONMap         `gorm:"type:json" json:"-"`
-	Type                      *string                    `gorm:"type:varchar(255)" json:"type,omitempty"`
-	Connected                 bool                       `gorm:"type:tinyint(1);not null;default:0" json:"connected"`
-	LaunchToken               string                     `gorm:"type:varchar(32);not null" json:"-"`
-	MonitoringEnabled         bool                       `gorm:"column:monitoring_enabled;type:tinyint(1);not null;default:0" json:"monitoring_enabled"`
-	CPUCores                  *int                       `gorm:"column:cpu_cores;type:int" json:"cpu_cores,omitempty"`
-	MemoryInMB                *int                       `gorm:"column:memory_in_mb;type:int" json:"memory_in_mb,omitempty"`
-	StorageInGB               *int                       `gorm:"column:storage_in_gb;type:int" json:"storage_in_gb,omitempty"`
-	OperatingSystem           *string                    `gorm:"column:operating_system;type:varchar(255)" json:"operating_system,omitempty"`
-	Status                    types.ServerStatus         `gorm:"type:varchar(255);not null" json:"status"`
-	PublicIPv4                *string                    `gorm:"column:public_ipv4;type:varchar(255)" json:"public_ipv4,omitempty"`
-	PrivateIPv4               *string                    `gorm:"column:private_ipv4;type:varchar(255)" json:"-"`
-	PublicKey                 basemodels.EncryptedString `gorm:"type:longtext" json:"-"`
-	PrivateKey                basemodels.EncryptedString `gorm:"type:longtext" json:"-"`
-	UserPublicKey             basemodels.EncryptedString `gorm:"column:user_public_key;type:longtext" json:"-"`
-	Username                  *string                    `gorm:"type:varchar(255)" json:"username,omitempty"`
-	Password                  basemodels.EncryptedString `gorm:"type:longtext" json:"-"`
-	DatabasePassword          basemodels.EncryptedString `gorm:"column:database_password;type:longtext" json:"-"`
-	SSHPort                   *int                       `gorm:"column:ssh_port;type:int" json:"ssh_port,omitempty"`
-	WorkingDirectory          *string                    `gorm:"column:working_directory;type:varchar(255)" json:"-"`
-	CompletedProvisionSteps   basemodels.JSONStringSlice `gorm:"column:completed_provision_steps;type:json" json:"-"`
-	ProvisionedAt             *time.Time                 `gorm:"column:provisioned_at;type:timestamp null" json:"provisioned_at,omitempty"`
-	UninstallationRequestedAt *time.Time                 `gorm:"column:uninstallation_requested_at;type:timestamp null" json:"-"`
-	Updates                   bool                       `gorm:"type:tinyint(1);not null;default:0" json:"-"`
-	AutoUpdate                bool                       `gorm:"column:auto_update;type:tinyint(1);not null;default:0" json:"auto_update"`
-	AvailableUpdates          *int                       `gorm:"column:available_updates;type:int" json:"-"`
-	SecurityUpdates           *int                       `gorm:"column:security_updates;type:int" json:"-"`
-	Progress                  int                        `gorm:"type:int;not null;default:0" json:"progress"`
-	ProgressStep              *string                    `gorm:"column:progress_step;type:varchar(255)" json:"progress_step,omitempty"`
-	LastUpdateCheck           *time.Time                 `gorm:"column:last_update_check;type:timestamp null" json:"-"`
-	LastConnectivityCheck     *time.Time                 `gorm:"column:last_connectivity_check;type:timestamp null" json:"last_connectivity_check,omitempty"`
-	ArchivedAt                *time.Time                 `gorm:"column:archived_at;type:timestamp null" json:"archived_at,omitempty"`
+	ServerProviderID          *string                `gorm:"column:server_provider_id;type:char(26);index" json:"server_provider_id,omitempty"`
+	Name                      string                 `gorm:"type:varchar(255);not null;index" json:"name"`
+	Description               *string                `gorm:"type:varchar(255)" json:"description,omitempty"`
+	Provider                  types.ServerProvider   `gorm:"type:varchar(255);not null" json:"provider"`
+	ProviderData              dbtype.JSONMap         `gorm:"type:json" json:"-"`
+	Type                      *string                `gorm:"type:varchar(255)" json:"type,omitempty"`
+	Connected                 bool                   `gorm:"type:tinyint(1);not null;default:0" json:"connected"`
+	LaunchToken               string                 `gorm:"type:varchar(32);not null" json:"-"`
+	MonitoringEnabled         bool                   `gorm:"column:monitoring_enabled;type:tinyint(1);not null;default:0" json:"monitoring_enabled"`
+	CPUCores                  *int                   `gorm:"column:cpu_cores;type:int" json:"cpu_cores,omitempty"`
+	MemoryInMB                *int                   `gorm:"column:memory_in_mb;type:int" json:"memory_in_mb,omitempty"`
+	StorageInGB               *int                   `gorm:"column:storage_in_gb;type:int" json:"storage_in_gb,omitempty"`
+	OperatingSystem           *string                `gorm:"column:operating_system;type:varchar(255)" json:"operating_system,omitempty"`
+	Status                    types.ServerStatus     `gorm:"type:varchar(255);not null" json:"status"`
+	PublicIPv4                *string                `gorm:"column:public_ipv4;type:varchar(255)" json:"public_ipv4,omitempty"`
+	PrivateIPv4               *string                `gorm:"column:private_ipv4;type:varchar(255)" json:"-"`
+	PublicKey                 dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
+	PrivateKey                dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
+	UserPublicKey             dbtype.EncryptedString `gorm:"column:user_public_key;type:longtext" json:"-"`
+	Username                  *string                `gorm:"type:varchar(255)" json:"username,omitempty"`
+	Password                  dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
+	DatabasePassword          dbtype.EncryptedString `gorm:"column:database_password;type:longtext" json:"-"`
+	SSHPort                   *int                   `gorm:"column:ssh_port;type:int" json:"ssh_port,omitempty"`
+	WorkingDirectory          *string                `gorm:"column:working_directory;type:varchar(255)" json:"-"`
+	CompletedProvisionSteps   dbtype.JSONStringSlice `gorm:"column:completed_provision_steps;type:json" json:"-"`
+	ProvisionedAt             *time.Time             `gorm:"column:provisioned_at;type:timestamp null" json:"provisioned_at,omitempty"`
+	UninstallationRequestedAt *time.Time             `gorm:"column:uninstallation_requested_at;type:timestamp null" json:"-"`
+	Updates                   bool                   `gorm:"type:tinyint(1);not null;default:0" json:"-"`
+	AutoUpdate                bool                   `gorm:"column:auto_update;type:tinyint(1);not null;default:0" json:"auto_update"`
+	AvailableUpdates          *int                   `gorm:"column:available_updates;type:int" json:"-"`
+	SecurityUpdates           *int                   `gorm:"column:security_updates;type:int" json:"-"`
+	Progress                  int                    `gorm:"type:int;not null;default:0" json:"progress"`
+	ProgressStep              *string                `gorm:"column:progress_step;type:varchar(255)" json:"progress_step,omitempty"`
+	LastUpdateCheck           *time.Time             `gorm:"column:last_update_check;type:timestamp null" json:"-"`
+	LastConnectivityCheck     *time.Time             `gorm:"column:last_connectivity_check;type:timestamp null" json:"last_connectivity_check,omitempty"`
+	ArchivedAt                *time.Time             `gorm:"column:archived_at;type:timestamp null" json:"archived_at,omitempty"`
 
 	// Relations
 	Services      []InstalledService `gorm:"foreignKey:ServerID;references:ID" json:"services,omitempty"`

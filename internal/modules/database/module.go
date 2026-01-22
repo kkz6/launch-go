@@ -29,7 +29,10 @@ type Module struct {
 func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 	repos := repositories.NewRegistry(deps.DB)
-	service := services.NewService(repos, nil, deps.Queue, deps.WebSocket, deps.Logger)
+	service := services.NewService(services.ServiceDeps{
+		Dependencies: deps.ServiceDeps(),
+		Repos:        repos,
+	})
 
 	return &Module{
 		Base:    app.NewBase(ModuleName, b),

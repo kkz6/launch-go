@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // UserHandler handles user management HTTP requests
@@ -28,11 +27,11 @@ func (h *UserHandler) User(c *fiber.Ctx) error {
 
 	user, err := h.Service().GetUser(c.Context(), userID)
 	if err != nil {
-		return response.NotFound(c, response.MsgUserNotFound)
+		return fiberctx.RespondNotFound(c, "User not found")
 	}
 
 	if user == nil {
-		return response.NotFound(c, response.MsgUserNotFound)
+		return fiberctx.RespondNotFound(c, "User not found")
 	}
 
 	// Check if current team is subscribed or user is admin (admins bypass subscription)
@@ -41,7 +40,7 @@ func (h *UserHandler) User(c *fiber.Ctx) error {
 		isSubscribed = h.Service().IsTeamSubscribedOrUserAdmin(*user.CurrentTeamID, userID)
 	}
 
-	return response.OK(c, "User retrieved", dto.ToUserResponseWithSubscription(user, isSubscribed))
+	return fiberctx.OK(c, "User retrieved", dto.ToUserResponseWithSubscription(user, isSubscribed))
 }
 
 // UpdateProfile updates the user's profile
@@ -58,10 +57,10 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 
 	user, err := h.Service().UpdateProfile(c.Context(), userID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Profile updated", dto.ToUserResponse(user))
+	return fiberctx.OK(c, "Profile updated", dto.ToUserResponse(user))
 }
 
 // ChangePassword changes the user's password
@@ -77,10 +76,10 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 	}
 
 	if err := h.Service().ChangePassword(c.Context(), userID, req); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Password changed successfully", nil)
+	return fiberctx.OK(c, "Password changed successfully", nil)
 }
 
 // DeleteAccount deletes the user's account
@@ -91,10 +90,10 @@ func (h *UserHandler) DeleteAccount(c *fiber.Ctx) error {
 	}
 
 	if err := h.Service().DeleteAccount(c.Context(), userID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Account deleted successfully", nil)
+	return fiberctx.OK(c, "Account deleted successfully", nil)
 }
 
 // CheckUserStatus checks a user's status by email
@@ -106,8 +105,8 @@ func (h *UserHandler) CheckUserStatus(c *fiber.Ctx) error {
 
 	status, err := h.Service().CheckUserStatus(c.Context(), req.Email)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "User status retrieved", status)
+	return fiberctx.OK(c, "User status retrieved", status)
 }

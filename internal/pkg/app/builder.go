@@ -35,6 +35,14 @@ func (d Deps) ServiceDeps() service.Dependencies {
 	}
 }
 
+// AppKey returns the app secret key (useful for webhooks)
+func (d Deps) AppKey() string {
+	if d.Config != nil {
+		return d.Config.App.Key
+	}
+	return ""
+}
+
 // Builder helps construct modules with common dependencies
 type Builder struct {
 	deps Deps
@@ -47,72 +55,12 @@ func NewBuilder(deps Deps) *Builder {
 
 // NewBuilderFromContext creates a builder from app context
 func NewBuilderFromContext(ctx *Context) *Builder {
-	return &Builder{
-		deps: Deps{
-			DB:              ctx.DB,
-			Queue:           ctx.Queue,
-			WebSocket:       ctx.WebSocket,
-			Dispatcher:      ctx.Dispatcher,
-			Logger:          ctx.Logger,
-			Config:          ctx.Config,
-			MembershipCache: ctx.MembershipCache,
-		},
-	}
+	return &Builder{deps: ctx.Deps}
 }
 
 // Deps returns the common dependencies
 func (b *Builder) Deps() Deps {
 	return b.deps
-}
-
-// DB returns the database connection
-func (b *Builder) DB() *gorm.DB {
-	return b.deps.DB
-}
-
-// Queue returns the queue client
-func (b *Builder) Queue() *queue.Client {
-	return b.deps.Queue
-}
-
-// WebSocket returns the websocket broadcaster
-func (b *Builder) WebSocket() broadcast.ModelBroadcaster {
-	return b.deps.WebSocket
-}
-
-// Dispatcher returns the task dispatcher
-func (b *Builder) Dispatcher() *taskrunner.Dispatcher {
-	return b.deps.Dispatcher
-}
-
-// Logger returns the logger
-func (b *Builder) Logger() *zerolog.Logger {
-	return b.deps.Logger
-}
-
-// Config returns the app config
-func (b *Builder) Config() *config.Config {
-	return b.deps.Config
-}
-
-// ServiceDeps returns the common dependencies as a service.Dependencies struct.
-// This allows modules to easily create services using the standardized Dependencies type.
-func (b *Builder) ServiceDeps() service.Dependencies {
-	return service.Dependencies{
-		DB:          b.deps.DB,
-		Logger:      b.deps.Logger,
-		Queue:       b.deps.Queue,
-		Broadcaster: b.deps.WebSocket,
-		Dispatcher:  b.deps.Dispatcher,
-	}
-}
-
-// AppKey returns the app secret key (useful for webhooks)
-func (b *Builder) AppKey() string {
-	if b.deps.Config != nil {
-		return b.deps.Config.App.Key
-	}
-	return ""
 }
 
 // Base provides common module functionality that can be embedded

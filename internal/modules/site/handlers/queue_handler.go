@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // QueueHandler handles HTTP requests for queue workers
@@ -43,10 +42,10 @@ func (h *QueueHandler) CreateQueue(c *fiber.Ctx) error {
 
 	queue, err := h.queueService.Create(c.Context(), siteID, serverID, userID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.Created(c, "Queue created", dto.ToQueueResponse(queue))
+	return fiberctx.Created(c, "Queue created", dto.ToQueueResponse(queue))
 }
 
 // ListQueues returns all queues for a site
@@ -63,7 +62,7 @@ func (h *QueueHandler) ListQueues(c *fiber.Ctx) error {
 
 	queues, err := h.queueService.List(c.Context(), siteID, serverID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	result := make([]dto.QueueResponse, len(queues))
@@ -71,7 +70,7 @@ func (h *QueueHandler) ListQueues(c *fiber.Ctx) error {
 		result[i] = dto.ToQueueResponse(&queue)
 	}
 
-	return response.OK(c, "Queues retrieved", result)
+	return fiberctx.OK(c, "Queues retrieved", result)
 }
 
 // DeleteQueue deletes a queue
@@ -92,10 +91,10 @@ func (h *QueueHandler) DeleteQueue(c *fiber.Ctx) error {
 	}
 
 	if err := h.queueService.Delete(c.Context(), queueID, siteID, serverID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Queue deletion initiated", nil)
+	return fiberctx.OK(c, "Queue deletion initiated", nil)
 }
 
 // UpdateAutoRestartQueue updates the auto-restart queue setting
@@ -116,7 +115,7 @@ func (h *QueueHandler) UpdateAutoRestartQueue(c *fiber.Ctx) error {
 	}
 
 	if err := h.queueService.UpdateAutoRestart(c.Context(), siteID, serverID, req.Enabled); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	message := "Auto-restart queue disabled"
@@ -124,7 +123,7 @@ func (h *QueueHandler) UpdateAutoRestartQueue(c *fiber.Ctx) error {
 		message = "Auto-restart queue enabled"
 	}
 
-	return response.OK(c, message, nil)
+	return fiberctx.OK(c, message, nil)
 }
 
 // SyncQueues triggers a status synchronization for all queue workers
@@ -145,8 +144,8 @@ func (h *QueueHandler) SyncQueues(c *fiber.Ctx) error {
 	}
 
 	if err := h.queueService.SyncStatus(c.Context(), siteID, serverID, userID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Queue sync initiated", nil)
+	return fiberctx.OK(c, "Queue sync initiated", nil)
 }

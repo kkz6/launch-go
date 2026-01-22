@@ -11,8 +11,8 @@ import (
 	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 const TypeInstallWordpressCron = "site:install_wordpress_cron"
@@ -72,7 +72,7 @@ func (j *InstallWordpressCronJob) Handle(ctx context.Context) error {
 	cron := &servermodels.Cron{
 		SiteID:     &site.ID,
 		Expression: schedule.Expression(),
-		Command:    basemodels.EncryptedString(command),
+		Command:    dbtype.EncryptedString(command),
 		User:       site.User,
 		Frequency:  schedule.FrequencyName(),
 		Hidden:     true, // WordPress crons are hidden system crons

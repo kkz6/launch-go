@@ -18,13 +18,23 @@ import (
 //	kernel.Register(databaseModule)
 //
 //	// Boot HTTP routes
-//	kernel.BootHTTP(api, authMiddleware)
+//	kernel.BootHTTP(BootHTTPOptions{
+//	    Router:         api,
+//	    AuthMiddleware: authMiddleware,
+//	})
 //
 //	// Boot background jobs
 //	kernel.BootJobs(mux)
 type Kernel struct {
 	modules []Module
 	logger  *zerolog.Logger
+}
+
+// BootHTTPOptions configures HTTP route registration
+type BootHTTPOptions struct {
+	Router                fiber.Router
+	AuthMiddleware        fiber.Handler
+	TeamContextMiddleware fiber.Handler // Optional: set to nil if not needed
 }
 
 // NewKernel creates a new application kernel
@@ -47,12 +57,11 @@ func (k *Kernel) Register(module Module) *Kernel {
 
 // BootHTTP registers all HTTP routes from all modules.
 // Call this once after all modules are registered.
-// The teamContextMiddleware is optional and can be used by modules that require team context.
-func (k *Kernel) BootHTTP(router fiber.Router, authMiddleware fiber.Handler, teamContextMiddleware ...fiber.Handler) {
+func (k *Kernel) BootHTTP(opts BootHTTPOptions) {
 	// First, register public routes (no auth required)
 	for _, module := range k.modules {
 		if registrar, ok := module.(PublicRouteRegistrar); ok {
-			registrar.RegisterPublicRoutes(router)
+			registrar.RegisterPublicRoutes(opts.Router)
 			if k.logger != nil {
 				k.logger.Debug().Str("module", module.Name()).Msg("Public routes registered")
 			}
@@ -62,16 +71,16 @@ func (k *Kernel) BootHTTP(router fiber.Router, authMiddleware fiber.Handler, tea
 	// Then, register authenticated routes
 	for _, module := range k.modules {
 		if registrar, ok := module.(RouteRegistrar); ok {
-			registrar.RegisterRoutes(router, authMiddleware)
+			registrar.RegisterRoutes(opts.Router, opts.AuthMiddleware)
 			if k.logger != nil {
 				k.logger.Debug().Str("module", module.Name()).Msg("Routes registered")
 			}
 		}
 
 		// Register team-scoped routes if the module supports it
-		if len(teamContextMiddleware) > 0 {
+		if opts.TeamContextMiddleware != nil {
 			if registrar, ok := module.(TeamScopedRouteRegistrar); ok {
-				registrar.RegisterTeamScopedRoutes(router, authMiddleware, teamContextMiddleware[0])
+				registrar.RegisterTeamScopedRoutes(opts.Router, opts.AuthMiddleware, opts.TeamContextMiddleware)
 				if k.logger != nil {
 					k.logger.Debug().Str("module", module.Name()).Msg("Team-scoped routes registered")
 				}

@@ -5,6 +5,7 @@ import (
 	"time"
 
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -13,14 +14,14 @@ type Certificate struct {
 	basemodels.BaseModel
 	basemodels.SiteScopedModel
 	basemodels.TeamScopedModel
-	Type        sitetypes.CertificateType  `gorm:"type:varchar(255);not null;default:letsencrypt" json:"type"`
-	Domains     basemodels.JSONStringSlice `gorm:"type:json" json:"domains,omitempty"`
-	CSR         *string                    `gorm:"column:csr;type:longtext" json:"csr,omitempty"`
-	PublicKey   *string                    `gorm:"column:public_key;type:longtext" json:"public_key,omitempty"`
-	PrivateKey  basemodels.EncryptedString `gorm:"column:private_key;type:longtext" json:"-"`
-	Certificate *string                    `gorm:"type:longtext" json:"certificate,omitempty"`
-	UploadedAt  *time.Time                 `gorm:"column:uploaded_at;type:timestamp null" json:"uploaded_at,omitempty"`
-	IsActive    bool                       `gorm:"column:is_active;default:false" json:"is_active"`
+	Type        sitetypes.CertificateType `gorm:"type:varchar(255);not null;default:letsencrypt" json:"type"`
+	Domains     dbtype.JSONStringSlice    `gorm:"type:json" json:"domains,omitempty"`
+	CSR         *string                   `gorm:"column:csr;type:longtext" json:"csr,omitempty"`
+	PublicKey   *string                   `gorm:"column:public_key;type:longtext" json:"public_key,omitempty"`
+	PrivateKey  dbtype.EncryptedString    `gorm:"column:private_key;type:longtext" json:"-"`
+	Certificate *string                   `gorm:"type:longtext" json:"certificate,omitempty"`
+	UploadedAt  *time.Time                `gorm:"column:uploaded_at;type:timestamp null" json:"uploaded_at,omitempty"`
+	IsActive    bool                      `gorm:"column:is_active;default:false" json:"is_active"`
 
 	// Relations
 	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`

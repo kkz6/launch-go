@@ -2,9 +2,9 @@ package middleware
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/pkg/response"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"gorm.io/gorm"
 )
 
 // subscriptionMiddleware holds the shared state for subscription verification
@@ -40,7 +40,7 @@ func VerifySubscription() fiber.Handler {
 
 		userID, ok := c.Locals("userID").(string)
 		if !ok || userID == "" {
-			return response.Unauthorized(c, "Authentication required")
+			return fiberctx.RespondUnauthorized(c, "Authentication required")
 		}
 
 		// Admins bypass subscription checks
@@ -50,7 +50,7 @@ func VerifySubscription() fiber.Handler {
 
 		teamID, ok := c.Locals("teamID").(string)
 		if !ok || teamID == "" {
-			return response.Error(c, fiber.StatusBadRequest, "Team context required")
+			return fiberctx.Error(c, fiber.StatusBadRequest, "Team context required")
 		}
 
 		// Check if team has active subscription
@@ -58,7 +58,7 @@ func VerifySubscription() fiber.Handler {
 			return c.Next()
 		}
 
-		return response.Error(c, fiber.StatusPaymentRequired, "Active subscription required")
+		return fiberctx.Error(c, fiber.StatusPaymentRequired, "Active subscription required")
 	}
 }
 
