@@ -28,7 +28,7 @@ func NewDomainProviderService(deps *ServiceDeps) *DomainProviderService {
 
 // CreateProvider creates a new DNS provider
 func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, teamID string, req *dto.CreateDomainProviderRequest) (*models.DomainProvider, error) {
-	providerType, err := dnstypes.ParseDnsProvider(req.Provider)
+	providerType, err := dnstypes.ParseDNSProvider(req.Provider)
 	if err != nil {
 		return nil, err
 	}
@@ -47,7 +47,7 @@ func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, team
 	}
 
 	// Create provider instance to validate credentials
-	provider, err := providers.NewProvider(providers.DnsProviderType(providerType), credentials, additionalData)
+	provider, err := providers.NewProvider(providers.DNSProviderType(providerType), credentials, additionalData)
 	if err != nil {
 		return nil, err
 	}
@@ -137,7 +137,7 @@ func (s *DomainProviderService) CheckProviderConnectivity(ctx context.Context, i
 		return err
 	}
 
-	provider, err := providers.NewProvider(providers.DnsProviderType(dp.Provider), dp.Credentials, dp.AdditionalData)
+	provider, err := providers.NewProvider(providers.DNSProviderType(dp.Provider), dp.Credentials, dp.AdditionalData)
 	if err != nil {
 		return err
 	}
@@ -172,7 +172,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 		"sync_error_message": nil,
 	})
 
-	provider, err := providers.NewProvider(providers.DnsProviderType(dp.Provider), dp.Credentials, dp.AdditionalData)
+	provider, err := providers.NewProvider(providers.DNSProviderType(dp.Provider), dp.Credentials, dp.AdditionalData)
 	if err != nil {
 		s.markSyncFailed(ctx, id, err.Error())
 		return err

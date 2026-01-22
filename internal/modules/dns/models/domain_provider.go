@@ -13,7 +13,7 @@ type DomainProvider struct {
 	basemodels.UserScopedModel
 	basemodels.TeamScopedModel
 	Profile          *string                           `gorm:"type:varchar(255)" json:"profile,omitempty"`
-	Provider         dnstypes.DnsProvider              `gorm:"type:varchar(255);not null" json:"provider"`
+	Provider         dnstypes.DNSProvider              `gorm:"type:varchar(255);not null" json:"provider"`
 	Credentials      basemodels.EncryptedJSONStringMap `gorm:"type:longtext;not null" json:"-"`
 	Connected        bool                              `gorm:"default:true" json:"connected"`
 	AdditionalData   basemodels.JSONMap                `gorm:"column:additional_data;type:json" json:"-"`

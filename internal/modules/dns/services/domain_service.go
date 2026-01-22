@@ -37,7 +37,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 		return nil, err
 	}
 
-	dnsProvider, err := providers.NewProvider(providers.DnsProviderType(provider.Provider), provider.Credentials, provider.AdditionalData)
+	dnsProvider, err := providers.NewProvider(providers.DNSProviderType(provider.Provider), provider.Credentials, provider.AdditionalData)
 	if err != nil {
 		return nil, err
 	}
@@ -155,7 +155,7 @@ func (s *DomainService) DeleteDomain(ctx context.Context, id, teamID string, del
 	}
 
 	if deleteFromProvider && domain.Provider != nil {
-		dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
+		dnsProvider, err := providers.NewProvider(providers.DNSProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
 		if err == nil {
 			if err := dnsProvider.DeleteDomain(ctx, domain.Address); err != nil {
 				s.Logger.Warn().Err(err).Str("domain", domain.Address).Msg("Failed to delete domain from provider")
@@ -201,7 +201,7 @@ func (s *DomainService) GetDomainNameservers(ctx context.Context, domain *models
 	}
 
 	dnsProvider, err := providers.NewProvider(
-		providers.DnsProviderType(domain.Provider.Provider),
+		providers.DNSProviderType(domain.Provider.Provider),
 		domain.Provider.Credentials,
 		domain.Provider.AdditionalData,
 	)
@@ -230,7 +230,7 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 
 	// Create provider instance
 	dnsProvider, err := providers.NewProvider(
-		providers.DnsProviderType(domain.Provider.Provider),
+		providers.DNSProviderType(domain.Provider.Provider),
 		domain.Provider.Credentials,
 		domain.Provider.AdditionalData,
 	)

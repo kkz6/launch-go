@@ -40,7 +40,7 @@ func (s *DNSRecordService) CreateRecord(ctx context.Context, domainID, teamID st
 	record.TeamID = domain.TeamID
 
 	// Get provider to add record
-	dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
+	dnsProvider, err := providers.NewProvider(providers.DNSProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
 	if err != nil {
 		return nil, err
 	}
@@ -89,7 +89,7 @@ func (s *DNSRecordService) UpdateRecord(ctx context.Context, recordID, domainID,
 	}
 
 	// Get provider
-	dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
+	dnsProvider, err := providers.NewProvider(providers.DNSProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
 	if err != nil {
 		return nil, err
 	}
@@ -138,7 +138,7 @@ func (s *DNSRecordService) DeleteRecord(ctx context.Context, recordID, domainID,
 	}
 
 	// Get provider
-	dnsProvider, err := providers.NewProvider(providers.DnsProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
+	dnsProvider, err := providers.NewProvider(providers.DNSProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
 	if err != nil {
 		return err
 	}
