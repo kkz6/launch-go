@@ -3,24 +3,24 @@ package models
 import (
 	"time"
 
-	"github.com/kkz6/launch-go/internal/modules/backup/enums"
+	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 )
 
 // StorageProvider represents a configured storage destination
 // Note: Uses auto-increment ID
 type StorageProvider struct {
-	ID             uint64              `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID         string              `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	TeamID         string              `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-	Provider       enums.StorageDriver `gorm:"type:varchar(255);not null" json:"provider"`
-	Label          *string             `gorm:"type:varchar(255)" json:"label,omitempty"`
-	Token          *string             `gorm:"type:varchar(1000)" json:"-"`
-	Credentials    EncryptedJSON       `gorm:"type:longtext" json:"-"`
-	RefreshToken   *string             `gorm:"column:refresh_token;type:varchar(1000)" json:"-"`
-	Connected      bool                `gorm:"default:true" json:"connected"`
-	TokenExpiresAt *time.Time          `gorm:"column:token_expires_at;type:timestamp null" json:"token_expires_at,omitempty"`
-	CreatedAt      *time.Time          `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt      *time.Time          `gorm:"type:timestamp null" json:"updated_at,omitempty"`
+	ID             uint64                    `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID         string                    `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	TeamID         string                    `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
+	Provider       backuptypes.StorageDriver `gorm:"type:varchar(255);not null" json:"provider"`
+	Label          *string                   `gorm:"type:varchar(255)" json:"label,omitempty"`
+	Token          *string                   `gorm:"type:varchar(1000)" json:"-"`
+	Credentials    EncryptedJSON             `gorm:"type:longtext" json:"-"`
+	RefreshToken   *string                   `gorm:"column:refresh_token;type:varchar(1000)" json:"-"`
+	Connected      bool                      `gorm:"default:true" json:"connected"`
+	TokenExpiresAt *time.Time                `gorm:"column:token_expires_at;type:timestamp null" json:"token_expires_at,omitempty"`
+	CreatedAt      *time.Time                `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt      *time.Time                `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
 	Backups []Backup `gorm:"foreignKey:StorageProviderID;references:ID" json:"backups,omitempty"`

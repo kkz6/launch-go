@@ -1,8 +1,8 @@
 package dto
 
 import (
-	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
+	dnstypes "github.com/kkz6/launch-go/internal/modules/dns/types"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
@@ -25,7 +25,7 @@ type CreateDNSRecordRequest struct {
 func (r *CreateDNSRecordRequest) ToModel(domainID string) *models.DNSRecord {
 	record := &models.DNSRecord{
 		DomainID: domainID,
-		Type:     enums.RecordType(r.Type),
+		Type:     dnstypes.RecordType(r.Type),
 		Name:     r.Name,
 		Value:    r.Value,
 		TTL:      r.TTL,
@@ -70,7 +70,7 @@ type UpdateDNSRecordRequest struct {
 func (r *UpdateDNSRecordRequest) ApplyToModel(record *models.DNSRecord) {
 	record.Name = r.Name
 	record.Value = r.Value
-	record.Type = enums.RecordType(r.Type)
+	record.Type = dnstypes.RecordType(r.Type)
 	record.Priority = r.Priority
 	record.Weight = r.Weight
 	record.Port = r.Port

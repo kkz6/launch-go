@@ -8,7 +8,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/retry"
@@ -43,7 +43,7 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	if server.Provider == enums.ProviderCustom {
+	if server.Provider == types.ProviderCustom {
 		j.Ctx.LogInfo("Skipping cloud creation for custom server", "server_id", server.ID)
 		return nil
 	}
@@ -71,7 +71,7 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("no credentials found for server provider")
 	}
 
-	if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, enums.ServerStatusStarting); err != nil {
+	if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, types.ServerStatusStarting); err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
@@ -232,7 +232,7 @@ func (j *CreateOnProviderJob) Failed(ctx context.Context, err error) {
 		"server_id", j.Payload.ServerID,
 	)
 
-	if updateErr := j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
+	if updateErr := j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, types.ServerStatusFailed); updateErr != nil {
 		j.Ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 

@@ -3,8 +3,8 @@ package tasks_test
 import (
 	"testing"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/tests/testutil"
 )
 
@@ -19,7 +19,7 @@ func TestProvisionFreshServer_BasicConfig(t *testing.T) {
 		WorkingDirectory: ".launch",
 		SSHKeys:          []string{"ssh-rsa KEY1...", "ssh-rsa KEY2..."},
 		SSHPort:          22,
-		SoftwareStack:    []enums.Software{enums.SoftwareCaddy2},
+		SoftwareStack:    []types.Software{types.SoftwareCaddy2},
 		DatabasePassword: "dbpassword123",
 		DatabaseName:     "launch",
 	}
@@ -62,11 +62,11 @@ func TestProvisionFreshServer_WithMySQLAndPHP(t *testing.T) {
 		Password:         "password123",
 		WorkingDirectory: ".launch",
 		SSHPort:          22,
-		SoftwareStack: []enums.Software{
-			enums.SoftwareCaddy2,
-			enums.SoftwarePhp83,
-			enums.SoftwareComposer2,
-			enums.SoftwareMySql80,
+		SoftwareStack: []types.Software{
+			types.SoftwareCaddy2,
+			types.SoftwarePhp83,
+			types.SoftwareComposer2,
+			types.SoftwareMySql80,
 		},
 		DatabasePassword: "mysqlpassword",
 		DatabaseName:     "app_db",
@@ -98,10 +98,10 @@ func TestProvisionFreshServer_WithPostgreSQL(t *testing.T) {
 		Password:         "password123",
 		WorkingDirectory: ".launch",
 		SSHPort:          2222,
-		SoftwareStack: []enums.Software{
-			enums.SoftwareCaddy2,
-			enums.SoftwarePhp83,
-			enums.SoftwarePostgreSql16,
+		SoftwareStack: []types.Software{
+			types.SoftwareCaddy2,
+			types.SoftwarePhp83,
+			types.SoftwarePostgreSql16,
 		},
 		DatabasePassword: "pgpassword",
 		DatabaseName:     "app_db",

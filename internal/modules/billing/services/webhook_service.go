@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/dto"
-	"github.com/kkz6/launch-go/internal/modules/billing/enums"
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
+	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 )
 
 // WebhookService handles webhook event processing
@@ -94,7 +94,7 @@ func (s *WebhookService) CancelSubscriptionByWebhook(ctx context.Context, lemonS
 		return err
 	}
 
-	subscription.Status = enums.SubscriptionStatusCancelled
+	subscription.Status = billingtypes.SubscriptionStatusCancelled
 	subscription.EndsAt = ParseTime(attrs.EndsAt)
 
 	return s.repos.Subscription().Update(ctx, subscription)
@@ -107,7 +107,7 @@ func (s *WebhookService) ResumeSubscriptionByWebhook(ctx context.Context, lemonS
 		return err
 	}
 
-	subscription.Status = enums.SubscriptionStatusActive
+	subscription.Status = billingtypes.SubscriptionStatusActive
 	subscription.EndsAt = nil
 	subscription.RenewsAt = ParseTime(attrs.RenewsAt)
 
@@ -116,7 +116,7 @@ func (s *WebhookService) ResumeSubscriptionByWebhook(ctx context.Context, lemonS
 
 // ExpireSubscription marks a subscription as expired
 func (s *WebhookService) ExpireSubscription(ctx context.Context, lemonSqueezyID string) error {
-	return s.repos.Subscription().UpdateStatusByLemonSqueezyID(ctx, lemonSqueezyID, enums.SubscriptionStatusExpired)
+	return s.repos.Subscription().UpdateStatusByLemonSqueezyID(ctx, lemonSqueezyID, billingtypes.SubscriptionStatusExpired)
 }
 
 // PauseSubscription pauses a subscription
@@ -127,7 +127,7 @@ func (s *WebhookService) PauseSubscription(ctx context.Context, lemonSqueezyID s
 	}
 
 	pauseMode := "void"
-	subscription.Status = enums.SubscriptionStatusPaused
+	subscription.Status = billingtypes.SubscriptionStatusPaused
 	subscription.PauseMode = &pauseMode
 	subscription.PauseResumesAt = ParseTime(attrs.ResumesAt)
 
@@ -141,7 +141,7 @@ func (s *WebhookService) UnpauseSubscription(ctx context.Context, lemonSqueezyID
 		return err
 	}
 
-	subscription.Status = enums.SubscriptionStatusActive
+	subscription.Status = billingtypes.SubscriptionStatusActive
 	subscription.PauseMode = nil
 	subscription.PauseResumesAt = nil
 
@@ -155,8 +155,8 @@ func (s *WebhookService) HandlePaymentSuccess(ctx context.Context, lemonSqueezyI
 		return err
 	}
 
-	if subscription.Status == enums.SubscriptionStatusPastDue || subscription.Status == enums.SubscriptionStatusUnpaid {
-		subscription.Status = enums.SubscriptionStatusActive
+	if subscription.Status == billingtypes.SubscriptionStatusPastDue || subscription.Status == billingtypes.SubscriptionStatusUnpaid {
+		subscription.Status = billingtypes.SubscriptionStatusActive
 	}
 
 	subscription.RenewsAt = ParseTime(attrs.RenewsAt)
@@ -166,12 +166,12 @@ func (s *WebhookService) HandlePaymentSuccess(ctx context.Context, lemonSqueezyI
 
 // HandlePaymentFailed handles a failed payment
 func (s *WebhookService) HandlePaymentFailed(ctx context.Context, lemonSqueezyID string) error {
-	return s.repos.Subscription().UpdateStatusByLemonSqueezyID(ctx, lemonSqueezyID, enums.SubscriptionStatusPastDue)
+	return s.repos.Subscription().UpdateStatusByLemonSqueezyID(ctx, lemonSqueezyID, billingtypes.SubscriptionStatusPastDue)
 }
 
 // HandlePaymentRecovered handles a recovered payment
 func (s *WebhookService) HandlePaymentRecovered(ctx context.Context, lemonSqueezyID string) error {
-	return s.repos.Subscription().UpdateStatusByLemonSqueezyID(ctx, lemonSqueezyID, enums.SubscriptionStatusActive)
+	return s.repos.Subscription().UpdateStatusByLemonSqueezyID(ctx, lemonSqueezyID, billingtypes.SubscriptionStatusActive)
 }
 
 // CreateOrder creates a new order
@@ -220,7 +220,7 @@ func (s *WebhookService) CreateOrder(ctx context.Context, teamID, lemonSqueezyID
 		Tax:            tax,
 		Total:          total,
 		TaxName:        attrs.TaxName,
-		Status:         enums.OrderStatusPaid,
+		Status:         billingtypes.OrderStatusPaid,
 		ReceiptURL:     attrs.ReceiptURL,
 		Refunded:       false,
 		OrderedAt:      time.Now(),
@@ -237,7 +237,7 @@ func (s *WebhookService) RefundOrder(ctx context.Context, lemonSqueezyID string)
 	}
 
 	now := time.Now()
-	order.Status = enums.OrderStatusRefunded
+	order.Status = billingtypes.OrderStatusRefunded
 	order.Refunded = true
 	order.RefundedAt = &now
 
@@ -245,24 +245,24 @@ func (s *WebhookService) RefundOrder(ctx context.Context, lemonSqueezyID string)
 }
 
 // MapLemonSqueezyStatus maps LemonSqueezy status to internal status
-func MapLemonSqueezyStatus(status string) enums.SubscriptionStatus {
+func MapLemonSqueezyStatus(status string) billingtypes.SubscriptionStatus {
 	switch status {
 	case "on_trial":
-		return enums.SubscriptionStatusOnTrial
+		return billingtypes.SubscriptionStatusOnTrial
 	case "active":
-		return enums.SubscriptionStatusActive
+		return billingtypes.SubscriptionStatusActive
 	case "paused":
-		return enums.SubscriptionStatusPaused
+		return billingtypes.SubscriptionStatusPaused
 	case "past_due":
-		return enums.SubscriptionStatusPastDue
+		return billingtypes.SubscriptionStatusPastDue
 	case "unpaid":
-		return enums.SubscriptionStatusUnpaid
+		return billingtypes.SubscriptionStatusUnpaid
 	case "cancelled":
-		return enums.SubscriptionStatusCancelled
+		return billingtypes.SubscriptionStatusCancelled
 	case "expired":
-		return enums.SubscriptionStatusExpired
+		return billingtypes.SubscriptionStatusExpired
 	default:
-		return enums.SubscriptionStatusActive
+		return billingtypes.SubscriptionStatusActive
 	}
 }
 

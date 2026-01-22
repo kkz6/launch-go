@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
@@ -33,8 +33,8 @@ func NewLinodeProvider(keyGenerator sshkey.Generator) *LinodeProvider {
 }
 
 // Type returns the provider type
-func (p *LinodeProvider) Type() enums.ServerProvider {
-	return enums.ProviderLinode
+func (p *LinodeProvider) Type() types.ServerProvider {
+	return types.ProviderLinode
 }
 
 // Connect tests the connection to Linode
@@ -140,7 +140,7 @@ func (p *LinodeProvider) GetPublicIPv4(ctx context.Context, server *models.Serve
 }
 
 // GetImage returns the image ID for an operating system
-func (p *LinodeProvider) GetImage(os enums.OperatingSystem) string {
+func (p *LinodeProvider) GetImage(os types.OperatingSystem) string {
 	return p.GetImageFromConfig(os, "linode/ubuntu24.04")
 }
 
@@ -225,9 +225,9 @@ func (p *LinodeProvider) extractPublicIPv4(resp map[string]interface{}) (string,
 	return "", nil
 }
 
-func (p *LinodeProvider) getOperatingSystem(server *models.Server) enums.OperatingSystem {
+func (p *LinodeProvider) getOperatingSystem(server *models.Server) types.OperatingSystem {
 	if server.OperatingSystem != nil {
-		return enums.OperatingSystem(*server.OperatingSystem)
+		return types.OperatingSystem(*server.OperatingSystem)
 	}
-	return enums.OSUbuntu24
+	return types.OSUbuntu24
 }

@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // FailedToDeleteServerNotification is sent when server deletion from provider fails
@@ -20,7 +20,7 @@ type FailedToDeleteServerNotification struct {
 func NewFailedToDeleteServerNotification(serverName, provider, errorMessage string) *FailedToDeleteServerNotification {
 	rawText := fmt.Sprintf("Failed to delete server '%s' from %s. You may need to manually delete it from the provider.", serverName, provider)
 	return &FailedToDeleteServerNotification{
-		BaseNotification: models.NewBaseNotification(enums.NotificationTypeFailedToDeleteServer, rawText),
+		BaseNotification: models.NewBaseNotification(notificationtypes.NotificationTypeFailedToDeleteServer, rawText),
 		ServerName:       serverName,
 		Provider:         provider,
 		ErrorMessage:     errorMessage,

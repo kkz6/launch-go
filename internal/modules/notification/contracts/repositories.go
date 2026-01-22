@@ -3,8 +3,8 @@ package contracts
 import (
 	"context"
 
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // NotificationChannelRepository defines the interface for notification channel persistence
@@ -31,7 +31,7 @@ type NotificationChannelRepository interface {
 	FindByUserID(ctx context.Context, userID string) ([]models.NotificationChannel, error)
 
 	// FindByProvider finds all notification channels by provider type
-	FindByProvider(ctx context.Context, teamID string, provider enums.ChannelType) ([]models.NotificationChannel, error)
+	FindByProvider(ctx context.Context, teamID string, provider notificationtypes.ChannelType) ([]models.NotificationChannel, error)
 
 	// FindConnected finds all connected notification channels for a team
 	FindConnected(ctx context.Context, teamID string) ([]models.NotificationChannel, error)
@@ -40,7 +40,7 @@ type NotificationChannelRepository interface {
 	SetConnected(ctx context.Context, id string, connected bool) error
 
 	// SetDefault sets a notification channel as the default for its type
-	SetDefault(ctx context.Context, id string, teamID string, provider enums.ChannelType) error
+	SetDefault(ctx context.Context, id string, teamID string, provider notificationtypes.ChannelType) error
 
 	// Exists checks if a notification channel exists
 	Exists(ctx context.Context, id string) (bool, error)

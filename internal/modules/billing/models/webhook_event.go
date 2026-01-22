@@ -3,20 +3,20 @@ package models
 import (
 	"time"
 
-	"github.com/kkz6/launch-go/internal/modules/billing/enums"
+	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // WebhookEvent represents a webhook event received from LemonSqueezy
 type WebhookEvent struct {
 	basemodels.BaseModel
-	EventName   enums.WebhookEventType `gorm:"size:100;not null;index" json:"event_name"`
-	Payload     string                 `gorm:"type:text;not null" json:"payload"`
-	Signature   string                 `gorm:"size:255;not null" json:"signature"`
-	Processed   bool                   `gorm:"default:false" json:"processed"`
-	ProcessedAt *time.Time             `json:"processed_at,omitempty"`
-	Error       *string                `gorm:"type:text" json:"error,omitempty"`
-	RetryCount  int                    `gorm:"default:0" json:"retry_count"`
+	EventName   billingtypes.WebhookEventType `gorm:"size:100;not null;index" json:"event_name"`
+	Payload     string                        `gorm:"type:text;not null" json:"payload"`
+	Signature   string                        `gorm:"size:255;not null" json:"signature"`
+	Processed   bool                          `gorm:"default:false" json:"processed"`
+	ProcessedAt *time.Time                    `json:"processed_at,omitempty"`
+	Error       *string                       `gorm:"type:text" json:"error,omitempty"`
+	RetryCount  int                           `gorm:"default:0" json:"retry_count"`
 }
 
 // TableName returns the table name for GORM

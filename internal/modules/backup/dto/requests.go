@@ -1,7 +1,7 @@
 package dto
 
 import (
-	"github.com/kkz6/launch-go/internal/modules/backup/enums"
+	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 )
 
 // CreateBackupRequest represents a request to create a backup configuration
@@ -34,9 +34,9 @@ type UpdateBackupRequest struct {
 
 // CreateBackupJobRequest represents a request to create a backup job (webhook from agent)
 type CreateBackupJobRequest struct {
-	Status enums.BackupJobStatus `json:"status" validate:"required,oneof=pending running finished failed"`
-	Size   int64                 `json:"size,omitempty"`
-	Error  string                `json:"error,omitempty"`
+	Status backuptypes.BackupJobStatus `json:"status" validate:"required,oneof=pending running finished failed"`
+	Size   int64                       `json:"size,omitempty"`
+	Error  string                      `json:"error,omitempty"`
 }
 
 // CreateStorageProviderRequest represents a request to create a storage provider

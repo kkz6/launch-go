@@ -10,8 +10,8 @@ import (
 
 	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
 	dbtasks "github.com/kkz6/launch-go/internal/modules/database/tasks"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -69,7 +69,7 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 	}
 
 	var protectedDatabases []string
-	if dbServiceType == enums.ServiceTypeMySql {
+	if dbServiceType == types.ServiceTypeMySQL {
 		protectedDatabases = protectedMySQLDatabases
 	} else {
 		protectedDatabases = protectedPostgreSQLDatabases
@@ -135,7 +135,7 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 	return nil
 }
 
-func (j *SyncDatabasesJob) getDatabaseServiceType(server *servermodels.Server) enums.ServiceType {
+func (j *SyncDatabasesJob) getDatabaseServiceType(server *servermodels.Server) types.ServiceType {
 	for _, service := range server.Services {
 		if service.Type.IsDatabase() && service.Status.IsActive() {
 			return service.Type
@@ -144,7 +144,7 @@ func (j *SyncDatabasesJob) getDatabaseServiceType(server *servermodels.Server) e
 	return ""
 }
 
-func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *servermodels.Server, dbType enums.ServiceType) ([]string, error) {
+func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *servermodels.Server, dbType types.ServiceType) ([]string, error) {
 	factory := dbtasks.NewFactory(dbType)
 	task := factory.GetDatabases(dbtasks.GetDatabasesConfig{
 		AdminUser:     "root",

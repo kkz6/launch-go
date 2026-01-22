@@ -6,8 +6,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -65,7 +65,7 @@ func (j *CleanupFailedPhpInstallationJob) Handle(ctx context.Context) error {
 
 	// Update service status to failed if service exists
 	if j.Payload.ServiceID != "" {
-		if err := j.Ctx.Repos().Service().UpdateStatus(ctx, j.Payload.ServiceID, enums.ServiceStatusFailed); err != nil {
+		if err := j.Ctx.Repos().Service().UpdateStatus(ctx, j.Payload.ServiceID, types.ServiceStatusFailed); err != nil {
 			j.Ctx.LogError(err, "Failed to update service status", "service_id", j.Payload.ServiceID)
 		}
 	}

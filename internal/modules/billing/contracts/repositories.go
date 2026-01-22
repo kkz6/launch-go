@@ -6,8 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/billing/enums"
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
+	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 )
 
 // SubscriptionRepository defines the interface for subscription data operations
@@ -18,8 +18,8 @@ type SubscriptionRepository interface {
 	FindByTeam(ctx context.Context, teamID string) ([]models.Subscription, error)
 	FindActiveByTeam(ctx context.Context, teamID string) (*models.Subscription, error)
 	Update(ctx context.Context, subscription *models.Subscription) error
-	UpdateStatus(ctx context.Context, id string, status enums.SubscriptionStatus) error
-	UpdateStatusByLemonSqueezyID(ctx context.Context, lemonSqueezyID string, status enums.SubscriptionStatus) error
+	UpdateStatus(ctx context.Context, id string, status billingtypes.SubscriptionStatus) error
+	UpdateStatusByLemonSqueezyID(ctx context.Context, lemonSqueezyID string, status billingtypes.SubscriptionStatus) error
 	UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error
 	Delete(ctx context.Context, id string) error
 	CountActiveByTeam(ctx context.Context, teamID string) (int64, error)
@@ -35,7 +35,7 @@ type OrderRepository interface {
 	FindByTeam(ctx context.Context, teamID string) ([]models.Order, error)
 	FindBySubscription(ctx context.Context, subscriptionID string) ([]models.Order, error)
 	Update(ctx context.Context, order *models.Order) error
-	UpdateStatus(ctx context.Context, id string, status enums.OrderStatus) error
+	UpdateStatus(ctx context.Context, id string, status billingtypes.OrderStatus) error
 }
 
 // WebhookEventRepository defines the interface for webhook event data operations

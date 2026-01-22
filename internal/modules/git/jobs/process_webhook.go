@@ -9,11 +9,11 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/gitref"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/repositories"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
+	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -36,7 +36,7 @@ type ProcessGitWebhookJob struct {
 
 // Handle processes the webhook
 func (j *ProcessGitWebhookJob) Handle(ctx context.Context) error {
-	providerType, err := enums.ParseGitProviderType(j.Payload.Provider)
+	providerType, err := gittypes.ParseGitProviderType(j.Payload.Provider)
 	if err != nil {
 		return fmt.Errorf("invalid provider: %w", err)
 	}
@@ -59,11 +59,11 @@ func (j *ProcessGitWebhookJob) Handle(ctx context.Context) error {
 
 	// Process based on provider
 	switch providerType {
-	case enums.GitProviderGitHub:
+	case gittypes.GitProviderGitHub:
 		return j.processGitHubWebhook(ctx, data)
-	case enums.GitProviderGitLab:
+	case gittypes.GitProviderGitLab:
 		return j.processGitLabWebhook(ctx, data)
-	case enums.GitProviderBitbucket:
+	case gittypes.GitProviderBitbucket:
 		return j.processBitbucketWebhook(ctx, data)
 	}
 
@@ -116,7 +116,7 @@ func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data ma
 			branch := gitref.ExtractBranchName(ref)
 
 			if fullName != "" && branch != "" {
-				return j.triggerDeployments(ctx, fullName, branch, data, enums.GitProviderGitHub)
+				return j.triggerDeployments(ctx, fullName, branch, data, gittypes.GitProviderGitHub)
 			}
 		}
 	}
@@ -143,7 +143,7 @@ func (j *ProcessGitWebhookJob) processGitLabWebhook(ctx context.Context, data ma
 			branch := gitref.ExtractBranchName(ref)
 
 			if fullName != "" && branch != "" {
-				return j.triggerDeployments(ctx, fullName, branch, data, enums.GitProviderGitLab)
+				return j.triggerDeployments(ctx, fullName, branch, data, gittypes.GitProviderGitLab)
 			}
 		}
 	}
@@ -170,7 +170,7 @@ func (j *ProcessGitWebhookJob) processBitbucketWebhook(ctx context.Context, data
 					}
 
 					if fullName != "" && branch != "" {
-						return j.triggerDeployments(ctx, fullName, branch, data, enums.GitProviderBitbucket)
+						return j.triggerDeployments(ctx, fullName, branch, data, gittypes.GitProviderBitbucket)
 					}
 				}
 			}
@@ -191,7 +191,7 @@ func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, da
 	}
 
 	// Find existing source control
-	sc, err := j.service.GetSourceControlByInstallation(ctx, enums.GitProviderGitHub, installationID)
+	sc, err := j.service.GetSourceControlByInstallation(ctx, gittypes.GitProviderGitHub, installationID)
 	if err != nil {
 		j.logger.Warn().Str("installation_id", installationID).Msg("Source control not found for installation")
 		return nil
@@ -232,7 +232,7 @@ func (j *ProcessGitWebhookJob) handleRepositoriesChanged(ctx context.Context, in
 	return j.service.SyncRepositoriesForInstallation(ctx, installationID)
 }
 
-func (j *ProcessGitWebhookJob) triggerDeployments(ctx context.Context, repository, branch string, webhookData map[string]any, providerType enums.GitProviderType) error {
+func (j *ProcessGitWebhookJob) triggerDeployments(ctx context.Context, repository, branch string, webhookData map[string]any, providerType gittypes.GitProviderType) error {
 	j.logger.Info().
 		Str("repository", repository).
 		Str("branch", branch).

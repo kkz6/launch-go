@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
@@ -33,8 +33,8 @@ func NewHetznerProvider(keyGenerator sshkey.Generator) *HetznerProvider {
 }
 
 // Type returns the provider type
-func (p *HetznerProvider) Type() enums.ServerProvider {
-	return enums.ProviderHetzner
+func (p *HetznerProvider) Type() types.ServerProvider {
+	return types.ProviderHetzner
 }
 
 // Connect tests the connection to Hetzner
@@ -150,7 +150,7 @@ func (p *HetznerProvider) GetPublicIPv4(ctx context.Context, server *models.Serv
 }
 
 // GetImage returns the image ID for an operating system
-func (p *HetznerProvider) GetImage(os enums.OperatingSystem) string {
+func (p *HetznerProvider) GetImage(os types.OperatingSystem) string {
 	return p.GetImageFromConfig(os, "ubuntu-24.04")
 }
 
@@ -254,9 +254,9 @@ func (p *HetznerProvider) extractPublicIPv4(resp map[string]interface{}) (string
 	return "", nil
 }
 
-func (p *HetznerProvider) getOperatingSystem(server *models.Server) enums.OperatingSystem {
+func (p *HetznerProvider) getOperatingSystem(server *models.Server) types.OperatingSystem {
 	if server.OperatingSystem != nil {
-		return enums.OperatingSystem(*server.OperatingSystem)
+		return types.OperatingSystem(*server.OperatingSystem)
 	}
-	return enums.OSUbuntu24
+	return types.OSUbuntu24
 }

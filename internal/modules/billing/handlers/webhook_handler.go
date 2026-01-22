@@ -11,9 +11,9 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/dto"
-	"github.com/kkz6/launch-go/internal/modules/billing/enums"
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/billing/services"
+	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/webhook"
 )
@@ -67,7 +67,7 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 	}
 
 	event := &models.WebhookEvent{
-		EventName: enums.WebhookEventType(payload.Meta.EventName),
+		EventName: billingtypes.WebhookEventType(payload.Meta.EventName),
 		Payload:   string(body),
 		Signature: signature,
 		Processed: false,
@@ -96,7 +96,7 @@ func (h *WebhookHandler) verifyLemonSqueezySignature(payload []byte, signature s
 
 // processWebhook processes a webhook event
 func (h *WebhookHandler) processWebhook(ctx context.Context, event *models.WebhookEvent, payload *dto.WebhookPayload) error {
-	eventType := enums.WebhookEventType(payload.Meta.EventName)
+	eventType := billingtypes.WebhookEventType(payload.Meta.EventName)
 
 	if !eventType.IsValid() {
 		h.LogWarn("Unknown webhook event type", "event", payload.Meta.EventName)
@@ -115,7 +115,7 @@ func (h *WebhookHandler) processWebhook(ctx context.Context, event *models.Webho
 }
 
 // handleSubscriptionEvent handles subscription-related webhook events
-func (h *WebhookHandler) handleSubscriptionEvent(ctx context.Context, eventType enums.WebhookEventType, payload *dto.WebhookPayload) error {
+func (h *WebhookHandler) handleSubscriptionEvent(ctx context.Context, eventType billingtypes.WebhookEventType, payload *dto.WebhookPayload) error {
 	teamID := ""
 	if payload.Meta.CustomData != nil {
 		teamID = payload.Meta.CustomData["team_id"]
@@ -129,34 +129,34 @@ func (h *WebhookHandler) handleSubscriptionEvent(ctx context.Context, eventType 
 	attrs := payload.Data.Attributes
 
 	switch eventType {
-	case enums.WebhookEventSubscriptionCreated:
+	case billingtypes.WebhookEventSubscriptionCreated:
 		return h.webhookService.CreateSubscription(ctx, teamID, lemonSqueezyID, &attrs)
 
-	case enums.WebhookEventSubscriptionUpdated:
+	case billingtypes.WebhookEventSubscriptionUpdated:
 		return h.webhookService.UpdateSubscription(ctx, lemonSqueezyID, &attrs)
 
-	case enums.WebhookEventSubscriptionCancelled:
+	case billingtypes.WebhookEventSubscriptionCancelled:
 		return h.webhookService.CancelSubscriptionByWebhook(ctx, lemonSqueezyID, &attrs)
 
-	case enums.WebhookEventSubscriptionResumed:
+	case billingtypes.WebhookEventSubscriptionResumed:
 		return h.webhookService.ResumeSubscriptionByWebhook(ctx, lemonSqueezyID, &attrs)
 
-	case enums.WebhookEventSubscriptionExpired:
+	case billingtypes.WebhookEventSubscriptionExpired:
 		return h.webhookService.ExpireSubscription(ctx, lemonSqueezyID)
 
-	case enums.WebhookEventSubscriptionPaused:
+	case billingtypes.WebhookEventSubscriptionPaused:
 		return h.webhookService.PauseSubscription(ctx, lemonSqueezyID, &attrs)
 
-	case enums.WebhookEventSubscriptionUnpaused:
+	case billingtypes.WebhookEventSubscriptionUnpaused:
 		return h.webhookService.UnpauseSubscription(ctx, lemonSqueezyID)
 
-	case enums.WebhookEventSubscriptionPaymentSuccess:
+	case billingtypes.WebhookEventSubscriptionPaymentSuccess:
 		return h.webhookService.HandlePaymentSuccess(ctx, lemonSqueezyID, &attrs)
 
-	case enums.WebhookEventSubscriptionPaymentFailed:
+	case billingtypes.WebhookEventSubscriptionPaymentFailed:
 		return h.webhookService.HandlePaymentFailed(ctx, lemonSqueezyID)
 
-	case enums.WebhookEventSubscriptionPaymentRecovered:
+	case billingtypes.WebhookEventSubscriptionPaymentRecovered:
 		return h.webhookService.HandlePaymentRecovered(ctx, lemonSqueezyID)
 
 	default:
@@ -165,7 +165,7 @@ func (h *WebhookHandler) handleSubscriptionEvent(ctx context.Context, eventType 
 }
 
 // handleOrderEvent handles order-related webhook events
-func (h *WebhookHandler) handleOrderEvent(ctx context.Context, eventType enums.WebhookEventType, payload *dto.WebhookPayload) error {
+func (h *WebhookHandler) handleOrderEvent(ctx context.Context, eventType billingtypes.WebhookEventType, payload *dto.WebhookPayload) error {
 	teamID := ""
 	if payload.Meta.CustomData != nil {
 		teamID = payload.Meta.CustomData["team_id"]
@@ -179,10 +179,10 @@ func (h *WebhookHandler) handleOrderEvent(ctx context.Context, eventType enums.W
 	attrs := payload.Data.Attributes
 
 	switch eventType {
-	case enums.WebhookEventOrderCreated:
+	case billingtypes.WebhookEventOrderCreated:
 		return h.webhookService.CreateOrder(ctx, teamID, lemonSqueezyID, &attrs)
 
-	case enums.WebhookEventOrderRefunded:
+	case billingtypes.WebhookEventOrderRefunded:
 		return h.webhookService.RefundOrder(ctx, lemonSqueezyID)
 
 	default:

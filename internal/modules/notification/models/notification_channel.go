@@ -5,22 +5,22 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // NotificationChannel represents a notification channel configuration
 // Note: Uses auto-increment ID
 type NotificationChannel struct {
-	ID        uint64            `gorm:"primaryKey;autoIncrement" json:"id"`
-	UserID    string            `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-	TeamID    string            `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-	Provider  enums.ChannelType `gorm:"type:varchar(255);not null" json:"provider"`
-	Label     string            `gorm:"type:varchar(255);not null" json:"label"`
-	Data      ChannelData       `gorm:"type:json" json:"data"`
-	Connected bool              `gorm:"default:false" json:"connected"`
-	IsDefault bool              `gorm:"column:is_default;default:false" json:"is_default"`
-	CreatedAt *time.Time        `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt *time.Time        `gorm:"type:timestamp null" json:"updated_at,omitempty"`
+	ID        uint64                        `gorm:"primaryKey;autoIncrement" json:"id"`
+	UserID    string                        `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
+	TeamID    string                        `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
+	Provider  notificationtypes.ChannelType `gorm:"type:varchar(255);not null" json:"provider"`
+	Label     string                        `gorm:"type:varchar(255);not null" json:"label"`
+	Data      ChannelData                   `gorm:"type:json" json:"data"`
+	Connected bool                          `gorm:"default:false" json:"connected"`
+	IsDefault bool                          `gorm:"column:is_default;default:false" json:"is_default"`
+	CreatedAt *time.Time                    `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt *time.Time                    `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 }
 
 // TableName returns the table name for the NotificationChannel model

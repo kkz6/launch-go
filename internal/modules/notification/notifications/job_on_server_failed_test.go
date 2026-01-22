@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 func TestNewJobOnServerFailedNotification(t *testing.T) {
@@ -16,7 +16,7 @@ func TestNewJobOnServerFailedNotification(t *testing.T) {
 	assert.Equal(t, "my-server", notif.ServerName)
 	assert.Equal(t, "server-123", notif.ServerID)
 	assert.Equal(t, "Install PHP extensions", notif.Reference)
-	assert.Equal(t, enums.NotificationTypeJobOnServerFailed, notif.Type())
+	assert.Equal(t, notificationtypes.NotificationTypeJobOnServerFailed, notif.Type())
 	assert.Contains(t, notif.RawText(), "Job on server failed")
 }
 

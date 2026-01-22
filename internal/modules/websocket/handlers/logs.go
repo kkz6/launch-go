@@ -9,8 +9,8 @@ import (
 	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -90,7 +90,7 @@ func (h *LogsHandler) Handler() fiber.Handler {
 				logFilePath = routeData.Path
 			} else if software != "" {
 				// Fallback to old behavior using software parameter
-				sw := enums.Software(software)
+				sw := types.Software(software)
 				if !sw.HasLogPath() {
 					_ = SendErrorEvent(c, "Unknown software type")
 					c.Close()

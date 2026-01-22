@@ -5,8 +5,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
+	dnstypes "github.com/kkz6/launch-go/internal/modules/dns/types"
 )
 
 // DomainProviderRepository defines the interface for domain provider repository operations
@@ -41,7 +41,7 @@ type DNSRecordRepository interface {
 	FindByID(ctx context.Context, id string) (*models.DNSRecord, error)
 	FindByIDAndDomain(ctx context.Context, id, domainID string) (*models.DNSRecord, error)
 	FindByDomain(ctx context.Context, domainID string) ([]models.DNSRecord, error)
-	FindByType(ctx context.Context, domainID string, recordType enums.RecordType) ([]models.DNSRecord, error)
+	FindByType(ctx context.Context, domainID string, recordType dnstypes.RecordType) ([]models.DNSRecord, error)
 	Update(ctx context.Context, record *models.DNSRecord) error
 	UpdateOrCreate(ctx context.Context, where map[string]interface{}, update map[string]interface{}) (*models.DNSRecord, error)
 	Delete(ctx context.Context, id string) error

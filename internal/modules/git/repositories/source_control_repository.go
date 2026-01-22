@@ -10,8 +10,8 @@ import (
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 
 	"github.com/kkz6/launch-go/internal/modules/git/contracts"
-	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
+	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -103,7 +103,7 @@ func (r *SourceControlRepository) FindAllByUser(ctx context.Context, userID stri
 }
 
 // FindByProvider finds all source controls for a specific provider
-func (r *SourceControlRepository) FindByProvider(ctx context.Context, provider enums.GitProviderType) ([]models.SourceControl, error) {
+func (r *SourceControlRepository) FindByProvider(ctx context.Context, provider gittypes.GitProviderType) ([]models.SourceControl, error) {
 	var sourceControls []models.SourceControl
 	err := r.DB.WithContext(ctx).
 		Preload("Repositories").
@@ -114,7 +114,7 @@ func (r *SourceControlRepository) FindByProvider(ctx context.Context, provider e
 }
 
 // FindByTeamAndProvider finds source controls for a team and provider
-func (r *SourceControlRepository) FindByTeamAndProvider(ctx context.Context, teamID string, provider enums.GitProviderType) ([]models.SourceControl, error) {
+func (r *SourceControlRepository) FindByTeamAndProvider(ctx context.Context, teamID string, provider gittypes.GitProviderType) ([]models.SourceControl, error) {
 	var sourceControls []models.SourceControl
 	err := r.DB.WithContext(ctx).
 		Preload("Repositories").
@@ -127,7 +127,7 @@ func (r *SourceControlRepository) FindByTeamAndProvider(ctx context.Context, tea
 // FindByProviderAndInstallationAndTeam finds a source control by provider, installation ID, and team
 func (r *SourceControlRepository) FindByProviderAndInstallationAndTeam(
 	ctx context.Context,
-	provider enums.GitProviderType,
+	provider gittypes.GitProviderType,
 	installationID string,
 	teamID string,
 ) (*models.SourceControl, error) {
@@ -147,7 +147,7 @@ func (r *SourceControlRepository) FindByProviderAndInstallationAndTeam(
 // FirstOrCreateByProviderAndInstallationAndTeam finds or creates a source control
 func (r *SourceControlRepository) FirstOrCreateByProviderAndInstallationAndTeam(
 	ctx context.Context,
-	provider enums.GitProviderType,
+	provider gittypes.GitProviderType,
 	installationID string,
 	teamID string,
 	defaults map[string]interface{},
@@ -240,7 +240,7 @@ func (r *SourceControlRepository) DeleteByInstallationID(ctx context.Context, in
 // GetInstallations gets installations with flexible filtering
 func (r *SourceControlRepository) GetInstallations(
 	ctx context.Context,
-	provider enums.GitProviderType,
+	provider gittypes.GitProviderType,
 	opts ...contracts.InstallationQueryOption,
 ) ([]models.SourceControl, error) {
 	query := r.DB.WithContext(ctx).
@@ -273,7 +273,7 @@ func (r *SourceControlRepository) GetInstallations(
 // GetFirstInstallation gets the first installation matching criteria
 func (r *SourceControlRepository) GetFirstInstallation(
 	ctx context.Context,
-	provider enums.GitProviderType,
+	provider gittypes.GitProviderType,
 	opts ...contracts.InstallationQueryOption,
 ) (*models.SourceControl, error) {
 	query := r.DB.WithContext(ctx).

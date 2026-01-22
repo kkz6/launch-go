@@ -8,8 +8,8 @@ import (
 
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 
-	"github.com/kkz6/launch-go/internal/modules/backup/enums"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
+	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -64,7 +64,7 @@ func (r *BackupJobRepository) FindBackupJobsByBackupID(ctx context.Context, back
 func (r *BackupJobRepository) FindFinishedBackupJobs(ctx context.Context, backupID string) ([]models.BackupJob, error) {
 	var jobs []models.BackupJob
 	err := r.DB.WithContext(ctx).
-		Where("backup_id = ? AND status = ?", backupID, enums.BackupJobStatusFinished).
+		Where("backup_id = ? AND status = ?", backupID, backuptypes.BackupJobStatusFinished).
 		Order("created_at DESC").
 		Find(&jobs).Error
 
@@ -86,7 +86,7 @@ func (r *BackupJobRepository) GetBackupJobsTotalSize(ctx context.Context, backup
 	var totalSize int64
 	err := r.DB.WithContext(ctx).
 		Model(&models.BackupJob{}).
-		Where("backup_id = ? AND status = ?", backupID, enums.BackupJobStatusFinished).
+		Where("backup_id = ? AND status = ?", backupID, backuptypes.BackupJobStatusFinished).
 		Select("COALESCE(SUM(size), 0)").
 		Scan(&totalSize).Error
 

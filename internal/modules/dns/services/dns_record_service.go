@@ -8,9 +8,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
-	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
+	dnstypes "github.com/kkz6/launch-go/internal/modules/dns/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -195,7 +195,7 @@ func (s *DNSRecordService) CreateRecordForSite(ctx context.Context, domainID, te
 
 // GetRecordTypes returns all available record types (package-level function)
 func GetRecordTypes() []string {
-	types := enums.AllRecordTypes()
+	types := dnstypes.AllRecordTypes()
 	result := make([]string, len(types))
 	for i, t := range types {
 		result[i] = t.String()

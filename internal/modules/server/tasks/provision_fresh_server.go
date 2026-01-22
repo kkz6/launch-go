@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks/templates"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	pkgtemplates "github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
@@ -50,7 +50,7 @@ type ProvisionFreshServerConfig struct {
 	SSHPort int
 
 	// Software stack to install
-	SoftwareStack []enums.Software
+	SoftwareStack []types.Software
 
 	// Database config (for MySQL or PostgreSQL)
 	DatabasePassword string
@@ -95,7 +95,7 @@ func ProvisionFreshServer(config ProvisionFreshServerConfig) *provisionFreshServ
 	swappiness := calculateSwappiness(config.MemoryInMB)
 
 	// 2. Loop through provision steps (matching Laravel's @foreach($provisionSteps()))
-	provisionSteps := enums.ForFreshServer()
+	provisionSteps := types.ForFreshServer()
 	for _, step := range provisionSteps {
 		script := renderProvisionStep(step, config, swapInMB, swappiness)
 		scriptBuilder.WriteString(fmt.Sprintf("\n# === Provision Step: %s ===\n", step.Description()))
@@ -172,7 +172,7 @@ func (t *provisionFreshServerTask) OnSuccess(ctx context.Context, cbCtx *taskrun
 	if err := cbCtx.DB.Model(&models.Server{}).
 		Where("id = ?", t.callback.ServerID).
 		Updates(map[string]interface{}{
-			"status":       enums.ServerStatusRunning,
+			"status":       types.ServerStatusRunning,
 			"installed_at": now,
 		}).Error; err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
@@ -208,7 +208,7 @@ func (t *provisionFreshServerTask) OnFailure(ctx context.Context, cbCtx *taskrun
 	// Update server status to failed
 	if err := cbCtx.DB.Model(&models.Server{}).
 		Where("id = ?", t.callback.ServerID).
-		Update("status", enums.ServerStatusFailed).Error; err != nil {
+		Update("status", types.ServerStatusFailed).Error; err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
@@ -249,7 +249,7 @@ func (t *provisionFreshServerTask) OnExpired(ctx context.Context, cbCtx *taskrun
 	// Update server status to failed
 	if err := cbCtx.DB.Model(&models.Server{}).
 		Where("id = ?", t.callback.ServerID).
-		Update("status", enums.ServerStatusFailed).Error; err != nil {
+		Update("status", types.ServerStatusFailed).Error; err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
@@ -322,34 +322,34 @@ func (s provisionCallbackData) NewTask() taskrunner.CallbackHandler {
 }
 
 // renderProvisionStep renders the appropriate template for a provision step
-func renderProvisionStep(step enums.ProvisionStep, config ProvisionFreshServerConfig, swapInMB, swappiness int) string {
+func renderProvisionStep(step types.ProvisionStep, config ProvisionFreshServerConfig, swapInMB, swappiness int) string {
 	data := buildProvisionStepData(step, config, swapInMB, swappiness)
 	return templates.MustRender(step.TemplateName(), data)
 }
 
 // buildProvisionStepData builds the template data for a provision step
-func buildProvisionStepData(step enums.ProvisionStep, config ProvisionFreshServerConfig, swapInMB, swappiness int) any {
+func buildProvisionStepData(step types.ProvisionStep, config ProvisionFreshServerConfig, swapInMB, swappiness int) any {
 	switch step {
-	case enums.ProvisionStepConfigureSwap:
+	case types.ProvisionStepConfigureSwap:
 		return struct {
 			SwapInMegabytes int
 			Swappiness      int
 		}{swapInMB, swappiness}
 
-	case enums.ProvisionStepConfigureFirewall:
+	case types.ProvisionStepConfigureFirewall:
 		sshPort := config.SSHPort
 		if sshPort == 0 {
 			sshPort = 22
 		}
 		return struct{ SSHPort int }{sshPort}
 
-	case enums.ProvisionStepSetupRoot:
+	case types.ProvisionStepSetupRoot:
 		return struct {
 			PublicKey string
 			Provider  string
 		}{config.PublicKey, config.Provider}
 
-	case enums.ProvisionStepSetupDefaultUser:
+	case types.ProvisionStepSetupDefaultUser:
 		return struct {
 			Username         string
 			Password         string
@@ -372,15 +372,15 @@ func buildProvisionStepData(step enums.ProvisionStep, config ProvisionFreshServe
 }
 
 // renderSoftwareInstall renders the appropriate template for software installation
-func renderSoftwareInstall(software enums.Software, config ProvisionFreshServerConfig) string {
+func renderSoftwareInstall(software types.Software, config ProvisionFreshServerConfig) string {
 	data := buildSoftwareInstallData(software, config)
 	return templates.MustRender(software.InstallTemplateName(), data)
 }
 
 // buildSoftwareInstallData builds the template data for software installation
-func buildSoftwareInstallData(software enums.Software, config ProvisionFreshServerConfig) any {
+func buildSoftwareInstallData(software types.Software, config ProvisionFreshServerConfig) any {
 	switch software {
-	case enums.SoftwareMySql80:
+	case types.SoftwareMySql80:
 		return struct {
 			RootPassword   string
 			DatabaseName   string
@@ -388,23 +388,23 @@ func buildSoftwareInstallData(software enums.Software, config ProvisionFreshServ
 			MaxConnections int
 		}{config.DatabasePassword, config.DatabaseName, config.PublicIPv4, software.MaxConnections(config.MemoryInMB)}
 
-	case enums.SoftwarePostgreSql16:
+	case types.SoftwarePostgreSql16:
 		return struct {
 			DatabasePassword string
 			DatabaseName     string
 			MaxConnections   int
 		}{config.DatabasePassword, config.DatabaseName, software.MaxConnections(config.MemoryInMB)}
 
-	case enums.SoftwareCaddy2:
+	case types.SoftwareCaddy2:
 		return struct {
 			Username   string
 			PublicIPv4 string
 		}{config.Username, config.PublicIPv4}
 
-	case enums.SoftwareComposer2:
+	case types.SoftwareComposer2:
 		return struct{ Username string }{config.Username}
 
-	case enums.SoftwareLaunchAgent:
+	case types.SoftwareLaunchAgent:
 		return struct {
 			AgentConfigPath string
 			AgentURL        string

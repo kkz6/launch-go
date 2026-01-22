@@ -5,9 +5,9 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
-	"github.com/kkz6/launch-go/internal/modules/backup/enums"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	"github.com/kkz6/launch-go/internal/modules/backup/storage"
+	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 )
 
 // StorageProviderService handles business logic for storage providers
@@ -26,7 +26,7 @@ func NewStorageProviderService(deps *ServiceDeps, storageFactory *storage.Factor
 
 // ConnectStorageProvider creates a new storage provider connection
 func (s *StorageProviderService) ConnectStorageProvider(ctx context.Context, userID, teamID string, req *dto.CreateStorageProviderRequest) (*models.StorageProvider, error) {
-	driver := enums.StorageDriver(req.Provider)
+	driver := backuptypes.StorageDriver(req.Provider)
 	if !driver.IsValid() {
 		return nil, ErrInvalidStorageDriver
 	}
@@ -77,7 +77,7 @@ func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id u
 		return nil, err
 	}
 
-	driver := enums.StorageDriver(req.Provider)
+	driver := backuptypes.StorageDriver(req.Provider)
 	if !driver.IsValid() {
 		return nil, ErrInvalidStorageDriver
 	}

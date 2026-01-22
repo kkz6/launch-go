@@ -5,8 +5,8 @@ import (
 	"time"
 
 	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"gorm.io/gorm"
 )
@@ -21,7 +21,7 @@ type ServerRepository interface {
 	FindAllByTeamPaginated(ctx context.Context, teamID string, page, perPage int) (*repository.PaginatedResult[models.Server], error)
 	FindArchivedByTeam(ctx context.Context, teamID string) ([]models.Server, error)
 	Update(ctx context.Context, server *models.Server) error
-	UpdateStatus(ctx context.Context, id string, status enums.ServerStatus) error
+	UpdateStatus(ctx context.Context, id string, status types.ServerStatus) error
 	UpdateProgress(ctx context.Context, id string, progress int, step string) error
 	UpdateFields(ctx context.Context, id string, fields map[string]any) error
 	Archive(ctx context.Context, id string) error
@@ -36,13 +36,13 @@ type ServiceRepository interface {
 	Create(ctx context.Context, service *models.InstalledService) error
 	FindByID(ctx context.Context, id string) (*models.InstalledService, error)
 	FindByServer(ctx context.Context, serverID string) ([]models.InstalledService, error)
-	FindByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) ([]models.InstalledService, error)
-	FindOneByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) (*models.InstalledService, error)
-	FindByServerAndSoftware(ctx context.Context, serverID string, software enums.Software) (*models.InstalledService, error)
+	FindByServerAndType(ctx context.Context, serverID string, serviceType types.ServiceType) ([]models.InstalledService, error)
+	FindOneByServerAndType(ctx context.Context, serverID string, serviceType types.ServiceType) (*models.InstalledService, error)
+	FindByServerAndSoftware(ctx context.Context, serverID string, software types.Software) (*models.InstalledService, error)
 	FindDatabaseService(ctx context.Context, serverID string) (*models.InstalledService, error)
 	Update(ctx context.Context, service *models.InstalledService) error
-	UpdateStatus(ctx context.Context, id string, status enums.ServiceStatus) error
-	UpdateWithTypeData(ctx context.Context, id string, status enums.ServiceStatus, typeData map[string]any) error
+	UpdateStatus(ctx context.Context, id string, status types.ServiceStatus) error
+	UpdateWithTypeData(ctx context.Context, id string, status types.ServiceStatus, typeData map[string]any) error
 	Delete(ctx context.Context, id string) error
 	SetDefault(ctx context.Context, id string, isDefault bool) error
 	UnsetDefaultPhp(ctx context.Context, serverID string) error

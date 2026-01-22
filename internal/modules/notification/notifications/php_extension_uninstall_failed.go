@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // PhpExtensionUninstallFailedNotification is sent when PHP extension removal fails
@@ -22,7 +22,7 @@ type PhpExtensionUninstallFailedNotification struct {
 func NewPhpExtensionUninstallFailedNotification(serverName, extensionName, phpVersion, output, errorMessage string) *PhpExtensionUninstallFailedNotification {
 	rawText := fmt.Sprintf("PHP extension '%s' removal failed on server '%s' (PHP %s).", extensionName, serverName, phpVersion)
 	return &PhpExtensionUninstallFailedNotification{
-		BaseNotification: models.NewBaseNotification(enums.NotificationTypePhpExtensionUninstallFailed, rawText),
+		BaseNotification: models.NewBaseNotification(notificationtypes.NotificationTypePhpExtensionUninstallFailed, rawText),
 		ServerName:       serverName,
 		ExtensionName:    extensionName,
 		PhpVersion:       phpVersion,

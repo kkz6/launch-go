@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 func TestNewPhpInstallationFailedNotification(t *testing.T) {
@@ -17,7 +17,7 @@ func TestNewPhpInstallationFailedNotification(t *testing.T) {
 	assert.Equal(t, "8.2", notif.PhpVersion)
 	assert.Equal(t, "apt-get output", notif.Output)
 	assert.Equal(t, "package not found", notif.ErrorMessage)
-	assert.Equal(t, enums.NotificationTypePhpInstallationFailed, notif.Type())
+	assert.Equal(t, notificationtypes.NotificationTypePhpInstallationFailed, notif.Type())
 	assert.Contains(t, notif.RawText(), "PHP 8.2")
 	assert.Contains(t, notif.RawText(), "my-server")
 }

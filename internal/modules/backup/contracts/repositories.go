@@ -3,8 +3,8 @@ package contracts
 import (
 	"context"
 
-	"github.com/kkz6/launch-go/internal/modules/backup/enums"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
+	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 )
 
 // BackupRepository defines the interface for backup database operations
@@ -44,8 +44,8 @@ type StorageProviderRepository interface {
 	FindStorageProviderByID(ctx context.Context, id uint) (*models.StorageProvider, error)
 	FindStorageProviderByIDString(ctx context.Context, id string) (*models.StorageProvider, error)
 	FindStorageProvidersByTeamID(ctx context.Context, teamID string) ([]models.StorageProvider, error)
-	FindStorageProvidersByDriver(ctx context.Context, driver enums.StorageDriver) ([]models.StorageProvider, error)
-	FindStorageProvidersByTeamAndDriver(ctx context.Context, teamID string, driver enums.StorageDriver) ([]models.StorageProvider, error)
+	FindStorageProvidersByDriver(ctx context.Context, driver backuptypes.StorageDriver) ([]models.StorageProvider, error)
+	FindStorageProvidersByTeamAndDriver(ctx context.Context, teamID string, driver backuptypes.StorageDriver) ([]models.StorageProvider, error)
 	UpdateStorageProvider(ctx context.Context, provider *models.StorageProvider) error
 	DeleteStorageProvider(ctx context.Context, id uint) error
 	StorageProviderExists(ctx context.Context, id uint) (bool, error)

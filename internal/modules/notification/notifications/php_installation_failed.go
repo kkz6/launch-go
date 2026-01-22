@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // PhpInstallationFailedNotification is sent when PHP installation fails
@@ -21,7 +21,7 @@ type PhpInstallationFailedNotification struct {
 func NewPhpInstallationFailedNotification(serverName, phpVersion, output, errorMessage string) *PhpInstallationFailedNotification {
 	rawText := fmt.Sprintf("PHP %s installation failed on server '%s'.", phpVersion, serverName)
 	return &PhpInstallationFailedNotification{
-		BaseNotification: models.NewBaseNotification(enums.NotificationTypePhpInstallationFailed, rawText),
+		BaseNotification: models.NewBaseNotification(notificationtypes.NotificationTypePhpInstallationFailed, rawText),
 		ServerName:       serverName,
 		PhpVersion:       phpVersion,
 		Output:           output,

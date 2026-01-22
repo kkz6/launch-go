@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -31,7 +31,7 @@ type ServerService interface {
 type InstalledServiceService interface {
 	ListServices(ctx context.Context, serverID, teamID string) ([]models.InstalledService, error)
 	InstallService(ctx context.Context, serverID, teamID string, req *dto.CreateServiceRequest) (*models.InstalledService, error)
-	HandleServiceOperation(ctx context.Context, serverID, teamID, serviceID string, operation enums.ServiceOption) error
+	HandleServiceOperation(ctx context.Context, serverID, teamID, serviceID string, operation types.ServiceOption) error
 }
 
 // FirewallRuleService defines the interface for firewall rule business logic

@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 func TestNewServerThresholdExceededNotification(t *testing.T) {
@@ -16,7 +16,7 @@ func TestNewServerThresholdExceededNotification(t *testing.T) {
 	assert.Equal(t, "my-server", notif.ServerName)
 	assert.Equal(t, "192.168.1.100", notif.ServerIP)
 	assert.Empty(t, notif.Thresholds)
-	assert.Equal(t, enums.NotificationTypeServerThresholdExceeded, notif.Type())
+	assert.Equal(t, notificationtypes.NotificationTypeServerThresholdExceeded, notif.Type())
 	assert.Contains(t, notif.RawText(), "my-server")
 	assert.Contains(t, notif.RawText(), "threshold")
 }

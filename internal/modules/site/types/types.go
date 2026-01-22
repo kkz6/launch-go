@@ -5,7 +5,7 @@ import (
 	"database/sql/driver"
 	"fmt"
 
-	baseenums "github.com/kkz6/launch-go/internal/pkg/enums"
+	"github.com/kkz6/launch-go/internal/pkg/enumtypes"
 )
 
 // =============================================================================
@@ -72,11 +72,11 @@ func (s SiteType) GetDefaultWebFolder() string {
 }
 
 func (s *SiteType) Scan(value interface{}) error {
-	return baseenums.Scan(s, value)
+	return enumtypes.Scan(s, value)
 }
 
 func (s SiteType) Value() (driver.Value, error) {
-	return baseenums.Value(s)
+	return enumtypes.Value(s)
 }
 
 // GetDatabaseEnvVarNames returns environment variable names for database configuration
@@ -285,11 +285,11 @@ func (s SiteStatus) IsValid() bool {
 }
 
 func (s *SiteStatus) Scan(value interface{}) error {
-	return baseenums.Scan(s, value)
+	return enumtypes.Scan(s, value)
 }
 
 func (s SiteStatus) Value() (driver.Value, error) {
-	return baseenums.Value(s)
+	return enumtypes.Value(s)
 }
 
 // =============================================================================
@@ -348,11 +348,11 @@ func (d DeploymentStatus) IsComplete() bool {
 }
 
 func (d *DeploymentStatus) Scan(value interface{}) error {
-	return baseenums.Scan(d, value)
+	return enumtypes.Scan(d, value)
 }
 
 func (d DeploymentStatus) Value() (driver.Value, error) {
-	return baseenums.Value(d)
+	return enumtypes.Value(d)
 }
 
 // AllDeploymentStatuses returns all valid deployment statuses
@@ -430,11 +430,11 @@ func (t TLSSetting) GetProtocol() string {
 }
 
 func (t *TLSSetting) Scan(value interface{}) error {
-	return baseenums.Scan(t, value)
+	return enumtypes.Scan(t, value)
 }
 
 func (t TLSSetting) Value() (driver.Value, error) {
-	return baseenums.Value(t)
+	return enumtypes.Value(t)
 }
 
 // AllTLSSettings returns all valid TLS settings
@@ -536,11 +536,11 @@ func (c CommandStatus) IsValid() bool {
 }
 
 func (c *CommandStatus) Scan(value interface{}) error {
-	return baseenums.Scan(c, value)
+	return enumtypes.Scan(c, value)
 }
 
 func (c CommandStatus) Value() (driver.Value, error) {
-	return baseenums.Value(c)
+	return enumtypes.Value(c)
 }
 
 // =============================================================================
@@ -572,11 +572,11 @@ func (q QueueStatus) IsValid() bool {
 }
 
 func (q *QueueStatus) Scan(value interface{}) error {
-	return baseenums.Scan(q, value)
+	return enumtypes.Scan(q, value)
 }
 
 func (q QueueStatus) Value() (driver.Value, error) {
-	return baseenums.Value(q)
+	return enumtypes.Value(q)
 }
 
 // =============================================================================
@@ -683,11 +683,11 @@ func (c CertificateType) IsValid() bool {
 }
 
 func (c *CertificateType) Scan(value interface{}) error {
-	return baseenums.Scan(c, value)
+	return enumtypes.Scan(c, value)
 }
 
 func (c CertificateType) Value() (driver.Value, error) {
-	return baseenums.Value(c)
+	return enumtypes.Value(c)
 }
 
 // =============================================================================
@@ -790,11 +790,11 @@ func (p PhpVersion) SocketPath() string {
 }
 
 func (p *PhpVersion) Scan(value interface{}) error {
-	return baseenums.Scan(p, value)
+	return enumtypes.Scan(p, value)
 }
 
 func (p PhpVersion) Value() (driver.Value, error) {
-	return baseenums.Value(p)
+	return enumtypes.Value(p)
 }
 
 // AllPhpVersions returns all supported PHP versions (newest first)

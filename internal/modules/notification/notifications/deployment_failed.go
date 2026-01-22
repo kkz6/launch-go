@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // DeploymentStatus represents the status of a deployment
@@ -40,7 +40,7 @@ func NewDeploymentFailedNotification(siteAddress, serverName string, status Depl
 
 	rawText := fmt.Sprintf("Deployment %s for site '%s' on server '%s'.", statusLabel, siteAddress, serverName)
 	return &DeploymentFailedNotification{
-		BaseNotification: models.NewBaseNotification(enums.NotificationTypeDeploymentFailed, rawText),
+		BaseNotification: models.NewBaseNotification(notificationtypes.NotificationTypeDeploymentFailed, rawText),
 		SiteAddress:      siteAddress,
 		ServerName:       serverName,
 		Status:           status,

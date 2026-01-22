@@ -6,8 +6,8 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -23,7 +23,7 @@ func (s *Service) GetComposerAuth(ctx context.Context, serverID, teamID string) 
 	}
 
 	// Check if Composer is installed
-	composerService, err := s.repos.Service().FindOneByServerAndType(ctx, serverID, enums.ServiceTypeComposer)
+	composerService, err := s.repos.Service().FindOneByServerAndType(ctx, serverID, types.ServiceTypeComposer)
 	if err != nil && !fiberutil.IsNotFound(err) {
 		return nil, fmt.Errorf("failed to check composer installation: %w", err)
 	}
@@ -84,7 +84,7 @@ func (s *Service) UpdateComposerAuth(ctx context.Context, serverID, teamID strin
 	}
 
 	// Check if Composer is installed
-	composerService, err := s.repos.Service().FindOneByServerAndType(ctx, serverID, enums.ServiceTypeComposer)
+	composerService, err := s.repos.Service().FindOneByServerAndType(ctx, serverID, types.ServiceTypeComposer)
 	if err != nil && !fiberutil.IsNotFound(err) {
 		return fmt.Errorf("failed to check composer installation: %w", err)
 	}

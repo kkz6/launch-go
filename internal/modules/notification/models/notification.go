@@ -2,13 +2,13 @@ package models
 
 import (
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // Notification represents an abstract notification that can be sent through channels
 type Notification interface {
 	// Type returns the notification type
-	Type() enums.NotificationType
+	Type() notificationtypes.NotificationType
 
 	// RawText returns the plain text representation
 	RawText() string
@@ -28,12 +28,12 @@ type Notification interface {
 
 // BaseNotification provides a default implementation for notifications
 type BaseNotification struct {
-	notificationType enums.NotificationType
+	notificationType notificationtypes.NotificationType
 	rawText          string
 }
 
 // NewBaseNotification creates a new base notification
-func NewBaseNotification(notificationType enums.NotificationType, rawText string) *BaseNotification {
+func NewBaseNotification(notificationType notificationtypes.NotificationType, rawText string) *BaseNotification {
 	return &BaseNotification{
 		notificationType: notificationType,
 		rawText:          rawText,
@@ -41,7 +41,7 @@ func NewBaseNotification(notificationType enums.NotificationType, rawText string
 }
 
 // Type returns the notification type
-func (n *BaseNotification) Type() enums.NotificationType {
+func (n *BaseNotification) Type() notificationtypes.NotificationType {
 	return n.notificationType
 }
 

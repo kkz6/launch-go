@@ -2,8 +2,8 @@ package dto
 
 import (
 	serverconfig "github.com/kkz6/launch-go/internal/modules/server/config"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
@@ -55,7 +55,7 @@ func ToServerResponse(server *models.Server) ServerResponse {
 	serverType := ""
 	serverTypeLabel := ""
 	if server.Type != nil && *server.Type != "" {
-		st := enums.ServerType(*server.Type)
+		st := types.ServerType(*server.Type)
 		serverType = st.String()
 		serverTypeLabel = st.Label()
 	}
@@ -64,7 +64,7 @@ func ToServerResponse(server *models.Server) ServerResponse {
 	operatingSystem := ""
 	operatingSystemLabel := ""
 	if server.OperatingSystem != nil && *server.OperatingSystem != "" {
-		os := enums.OperatingSystem(*server.OperatingSystem)
+		os := types.OperatingSystem(*server.OperatingSystem)
 		operatingSystem = os.String()
 		operatingSystemLabel = os.Label()
 	}
@@ -117,7 +117,7 @@ func ToServerResponse(server *models.Server) ServerResponse {
 	resp.LastConnectivityCheck = pkgdto.FormatTime(server.LastConnectivityCheck)
 	resp.ArchivedAt = pkgdto.FormatTime(server.ArchivedAt)
 
-	if server.Status == enums.ServerStatusNew {
+	if server.Status == types.ServerStatusNew {
 		resp.ProvisionCommand = server.GetProvisionCommand()
 	}
 
@@ -194,7 +194,7 @@ func ToServiceResponse(service *models.InstalledService) ServiceResponse {
 
 	// Handle Software (now string, convert to enum for labels)
 	if service.Software != "" {
-		sw := enums.Software(service.Software)
+		sw := types.Software(service.Software)
 		swStr := sw.String()
 		resp.Software = &swStr
 		label := sw.Label()
@@ -509,7 +509,7 @@ type ProviderResponse struct {
 
 // GetAllProviders returns all available server providers
 func GetAllProviders() []ProviderResponse {
-	providers := enums.AllServerProviders()
+	providers := types.AllServerProviders()
 	result := make([]ProviderResponse, len(providers))
 	for i, p := range providers {
 		result[i] = ProviderResponse{
@@ -523,9 +523,9 @@ func GetAllProviders() []ProviderResponse {
 
 // GetAllServerTypes returns all available server types
 func GetAllServerTypes() []ProviderResponse {
-	types := enums.AllServerTypes()
-	result := make([]ProviderResponse, len(types))
-	for i, t := range types {
+	serverTypes := types.AllServerTypes()
+	result := make([]ProviderResponse, len(serverTypes))
+	for i, t := range serverTypes {
 		result[i] = ProviderResponse{
 			Value: t.String(),
 			Label: t.Label(),
@@ -537,7 +537,7 @@ func GetAllServerTypes() []ProviderResponse {
 
 // GetAllOperatingSystems returns all available operating systems
 func GetAllOperatingSystems() []ProviderResponse {
-	oses := enums.AllOperatingSystems()
+	oses := types.AllOperatingSystems()
 	result := make([]ProviderResponse, len(oses))
 	for i, os := range oses {
 		result[i] = ProviderResponse{
@@ -551,7 +551,7 @@ func GetAllOperatingSystems() []ProviderResponse {
 
 // GetAllRuleActions returns all available firewall rule actions
 func GetAllRuleActions() []ProviderResponse {
-	actions := enums.AllRuleActions()
+	actions := types.AllRuleActions()
 	result := make([]ProviderResponse, len(actions))
 	for i, a := range actions {
 		result[i] = ProviderResponse{

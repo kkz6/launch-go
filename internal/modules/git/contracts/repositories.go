@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
-	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
+	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 )
 
 // SourceControlRepository defines the interface for source control database operations
@@ -18,14 +18,14 @@ type SourceControlRepository interface {
 	FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.SourceControl, error)
 	FindAllByTeam(ctx context.Context, teamID string) ([]models.SourceControl, error)
 	FindAllByUser(ctx context.Context, userID string) ([]models.SourceControl, error)
-	FindByProvider(ctx context.Context, provider enums.GitProviderType) ([]models.SourceControl, error)
-	FindByTeamAndProvider(ctx context.Context, teamID string, provider enums.GitProviderType) ([]models.SourceControl, error)
-	FindByProviderAndInstallationAndTeam(ctx context.Context, provider enums.GitProviderType, installationID string, teamID string) (*models.SourceControl, error)
-	FirstOrCreateByProviderAndInstallationAndTeam(ctx context.Context, provider enums.GitProviderType, installationID string, teamID string, defaults map[string]interface{}) (*models.SourceControl, bool, error)
+	FindByProvider(ctx context.Context, provider gittypes.GitProviderType) ([]models.SourceControl, error)
+	FindByTeamAndProvider(ctx context.Context, teamID string, provider gittypes.GitProviderType) ([]models.SourceControl, error)
+	FindByProviderAndInstallationAndTeam(ctx context.Context, provider gittypes.GitProviderType, installationID string, teamID string) (*models.SourceControl, error)
+	FirstOrCreateByProviderAndInstallationAndTeam(ctx context.Context, provider gittypes.GitProviderType, installationID string, teamID string, defaults map[string]interface{}) (*models.SourceControl, bool, error)
 	FindByInstallationID(ctx context.Context, installationID string) ([]models.SourceControl, error)
 	DeleteByInstallationID(ctx context.Context, installationID string) (int64, error)
-	GetInstallations(ctx context.Context, provider enums.GitProviderType, opts ...InstallationQueryOption) ([]models.SourceControl, error)
-	GetFirstInstallation(ctx context.Context, provider enums.GitProviderType, opts ...InstallationQueryOption) (*models.SourceControl, error)
+	GetInstallations(ctx context.Context, provider gittypes.GitProviderType, opts ...InstallationQueryOption) ([]models.SourceControl, error)
+	GetFirstInstallation(ctx context.Context, provider gittypes.GitProviderType, opts ...InstallationQueryOption) (*models.SourceControl, error)
 }
 
 // SourceControlRepoRepository defines the interface for source control repository database operations
@@ -39,7 +39,7 @@ type SourceControlRepoRepository interface {
 	FindRepositoryByFullName(ctx context.Context, fullName string) (*models.SourceControlRepository, error)
 	FindRepositoriesBySourceControlID(ctx context.Context, sourceControlID string) ([]models.SourceControlRepository, error)
 	FindPublicRepositories(ctx context.Context) ([]models.SourceControlRepository, error)
-	GetInstallationRepositories(ctx context.Context, provider enums.GitProviderType, installationID string, teamID string) ([]models.SourceControlRepository, error)
+	GetInstallationRepositories(ctx context.Context, provider gittypes.GitProviderType, installationID string, teamID string) ([]models.SourceControlRepository, error)
 	UpsertRepository(ctx context.Context, sourceControlID string, data *dto.RepositoryData) (*models.SourceControlRepository, error)
 	CountRepositoriesBySourceControlID(ctx context.Context, sourceControlID string) (int64, error)
 }

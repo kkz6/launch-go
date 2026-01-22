@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
@@ -33,8 +33,8 @@ func NewDigitalOceanProvider(keyGenerator sshkey.Generator) *DigitalOceanProvide
 }
 
 // Type returns the provider type
-func (p *DigitalOceanProvider) Type() enums.ServerProvider {
-	return enums.ProviderDigitalOcean
+func (p *DigitalOceanProvider) Type() types.ServerProvider {
+	return types.ProviderDigitalOcean
 }
 
 // Connect tests the connection to DigitalOcean
@@ -148,7 +148,7 @@ func (p *DigitalOceanProvider) GetPublicIPv4(ctx context.Context, server *models
 }
 
 // GetImage returns the image ID for an operating system
-func (p *DigitalOceanProvider) GetImage(os enums.OperatingSystem) string {
+func (p *DigitalOceanProvider) GetImage(os types.OperatingSystem) string {
 	return p.GetImageFromConfig(os, "ubuntu-24-04-x64")
 }
 
@@ -267,9 +267,9 @@ func (p *DigitalOceanProvider) extractPublicIPv4(resp map[string]interface{}) (s
 	return "", nil
 }
 
-func (p *DigitalOceanProvider) getOperatingSystem(server *models.Server) enums.OperatingSystem {
+func (p *DigitalOceanProvider) getOperatingSystem(server *models.Server) types.OperatingSystem {
 	if server.OperatingSystem != nil {
-		return enums.OperatingSystem(*server.OperatingSystem)
+		return types.OperatingSystem(*server.OperatingSystem)
 	}
-	return enums.OSUbuntu24
+	return types.OSUbuntu24
 }

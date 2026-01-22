@@ -5,8 +5,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/git/contracts"
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
-	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
+	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
@@ -90,7 +90,7 @@ func (h *SourceControlHandler) Connect(c *fiber.Ctx) error {
 		return err
 	}
 
-	providerType, err := enums.ParseGitProviderType(req.Provider)
+	providerType, err := gittypes.ParseGitProviderType(req.Provider)
 	if err != nil {
 		return response.BadRequest(c, "Invalid provider")
 	}
@@ -122,7 +122,7 @@ func (h *SourceControlHandler) Disconnect(c *fiber.Ctx) error {
 func (h *SourceControlHandler) GetInstallationURL(c *fiber.Ctx) error {
 	providerStr := c.Params("provider")
 
-	providerType, err := enums.ParseGitProviderType(providerStr)
+	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
 		return response.BadRequest(c, "Invalid provider")
 	}
@@ -142,7 +142,7 @@ func (h *SourceControlHandler) GetInstallationURL(c *fiber.Ctx) error {
 func (h *SourceControlHandler) GetInstallations(c *fiber.Ctx) error {
 	providerStr := c.Params("provider")
 
-	providerType, err := enums.ParseGitProviderType(providerStr)
+	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
 		return response.BadRequest(c, "Invalid provider")
 	}
@@ -163,7 +163,7 @@ func (h *SourceControlHandler) GetInstallation(c *fiber.Ctx) error {
 	providerStr := c.Params("provider")
 	installationID := c.Params("installationId")
 
-	providerType, err := enums.ParseGitProviderType(providerStr)
+	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
 		return response.BadRequest(c, "Invalid provider")
 	}
@@ -190,7 +190,7 @@ func (h *SourceControlHandler) GetInstallationRepositories(c *fiber.Ctx) error {
 	providerStr := c.Params("provider")
 	installationID := c.Params("installationId")
 
-	providerType, err := enums.ParseGitProviderType(providerStr)
+	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
 		return response.BadRequest(c, "Invalid provider")
 	}
@@ -216,7 +216,7 @@ func (h *SourceControlHandler) GetCachedInstallationRepositories(c *fiber.Ctx) e
 	providerStr := c.Params("provider")
 	installationID := c.Params("installationId")
 
-	providerType, err := enums.ParseGitProviderType(providerStr)
+	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
 		return response.BadRequest(c, "Invalid provider")
 	}
@@ -246,7 +246,7 @@ func (h *SourceControlHandler) RefreshInstallationRepositories(c *fiber.Ctx) err
 	providerStr := c.Params("provider")
 	installationID := c.Params("installationId")
 
-	providerType, err := enums.ParseGitProviderType(providerStr)
+	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
 		return response.BadRequest(c, "Invalid provider")
 	}
@@ -280,7 +280,7 @@ func (h *SourceControlHandler) HandleInstallationCallback(c *fiber.Ctx) error {
 		return c.Redirect("/settings/git-providers")
 	}
 
-	providerType, err := enums.ParseGitProviderType(providerStr)
+	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
 		return c.Redirect("/settings/git-providers")
 	}
@@ -305,7 +305,7 @@ func (h *SourceControlHandler) HandleInstallationCallback(c *fiber.Ctx) error {
 func (h *SourceControlHandler) TestConnection(c *fiber.Ctx) error {
 	providerStr := c.Params("provider")
 
-	providerType, err := enums.ParseGitProviderType(providerStr)
+	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
 		return response.BadRequest(c, "Invalid provider")
 	}
@@ -338,7 +338,7 @@ func (h *SourceControlHandler) GetInstallationsWithCounts(c *fiber.Ctx) error {
 
 	// Get available providers (matches Laravel's format)
 	providers := make([]fiber.Map, 0)
-	for _, p := range enums.AllGitProviders() {
+	for _, p := range gittypes.AllGitProviders() {
 		providers = append(providers, fiber.Map{
 			"value": p.String(),
 			"label": p.Label(),

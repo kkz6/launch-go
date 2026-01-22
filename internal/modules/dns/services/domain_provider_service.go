@@ -7,9 +7,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
-	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
+	dnstypes "github.com/kkz6/launch-go/internal/modules/dns/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
@@ -28,7 +28,7 @@ func NewDomainProviderService(deps *ServiceDeps) *DomainProviderService {
 
 // CreateProvider creates a new DNS provider
 func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, teamID string, req *dto.CreateDomainProviderRequest) (*models.DomainProvider, error) {
-	providerType, err := enums.ParseDnsProvider(req.Provider)
+	providerType, err := dnstypes.ParseDnsProvider(req.Provider)
 	if err != nil {
 		return nil, err
 	}
@@ -168,7 +168,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 
 	// Update sync status
 	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
-		"sync_status":        enums.SyncStatusSyncing,
+		"sync_status":        dnstypes.SyncStatusSyncing,
 		"sync_error_message": nil,
 	})
 
@@ -244,7 +244,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 	// Update sync status to completed
 	now := util.NewULID() // Using ULID for timestamp as a workaround
 	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
-		"sync_status":        enums.SyncStatusCompleted,
+		"sync_status":        dnstypes.SyncStatusCompleted,
 		"last_synced_at":     now,
 		"sync_error_message": nil,
 	})
@@ -259,7 +259,7 @@ func (s *DomainProviderService) CountDomainsByProvider(ctx context.Context, prov
 
 func (s *DomainProviderService) markSyncFailed(ctx context.Context, id, errMsg string) {
 	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
-		"sync_status":        enums.SyncStatusFailed,
+		"sync_status":        dnstypes.SyncStatusFailed,
 		"sync_error_message": errMsg,
 	})
 }
@@ -268,7 +268,7 @@ func (s *DomainProviderService) markSyncFailed(ctx context.Context, id, errMsg s
 func fromProviderRecord(r providers.ProviderRecord) models.ProviderRecord {
 	return models.ProviderRecord{
 		ID:       r.ID,
-		Type:     enums.RecordType(r.Type),
+		Type:     dnstypes.RecordType(r.Type),
 		Name:     r.Name,
 		Value:    r.Value,
 		TTL:      r.TTL,

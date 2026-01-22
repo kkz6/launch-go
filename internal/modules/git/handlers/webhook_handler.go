@@ -9,11 +9,11 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
 
-	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/gitref"
 	"github.com/kkz6/launch-go/internal/modules/git/jobs"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
+	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/webhook"
@@ -45,7 +45,7 @@ func (h *WebhookHandler) SetQueueClient(client taskrunner.QueueClient) {
 func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 	providerStr := c.Params("provider")
 
-	providerType, err := enums.ParseGitProviderType(providerStr)
+	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
 		h.LogError(err, "Invalid provider in webhook", "provider", providerStr)
 		return response.BadRequest(c, "Invalid provider")
@@ -99,13 +99,13 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 }
 
 // getSignature extracts the webhook signature based on provider
-func (h *WebhookHandler) getSignature(c *fiber.Ctx, providerType enums.GitProviderType) string {
+func (h *WebhookHandler) getSignature(c *fiber.Ctx, providerType gittypes.GitProviderType) string {
 	switch providerType {
-	case enums.GitProviderGitHub:
+	case gittypes.GitProviderGitHub:
 		return c.Get("X-Hub-Signature-256")
-	case enums.GitProviderGitLab:
+	case gittypes.GitProviderGitLab:
 		return c.Get("X-Gitlab-Token")
-	case enums.GitProviderBitbucket:
+	case gittypes.GitProviderBitbucket:
 		return c.Get("X-Hook-UUID")
 	default:
 		return ""
@@ -113,15 +113,15 @@ func (h *WebhookHandler) getSignature(c *fiber.Ctx, providerType enums.GitProvid
 }
 
 // processWebhook processes a webhook payload
-func (h *WebhookHandler) processWebhook(providerType enums.GitProviderType, data map[string]interface{}, signature string) {
+func (h *WebhookHandler) processWebhook(providerType gittypes.GitProviderType, data map[string]interface{}, signature string) {
 	ctx := context.Background()
 
 	switch providerType {
-	case enums.GitProviderGitHub:
+	case gittypes.GitProviderGitHub:
 		h.processGitHubWebhook(ctx, data)
-	case enums.GitProviderGitLab:
+	case gittypes.GitProviderGitLab:
 		h.processGitLabWebhook(ctx, data)
-	case enums.GitProviderBitbucket:
+	case gittypes.GitProviderBitbucket:
 		h.processBitbucketWebhook(ctx, data)
 	}
 }
@@ -168,7 +168,7 @@ func (h *WebhookHandler) processGitHubWebhook(ctx context.Context, data map[stri
 			branch := gitref.ExtractBranchName(ref)
 
 			if fullName != "" && branch != "" {
-				h.triggerDeployments(ctx, fullName, branch, data, enums.GitProviderGitHub)
+				h.triggerDeployments(ctx, fullName, branch, data, gittypes.GitProviderGitHub)
 			}
 		}
 	}
@@ -194,7 +194,7 @@ func (h *WebhookHandler) processGitLabWebhook(ctx context.Context, data map[stri
 			branch := gitref.ExtractBranchName(ref)
 
 			if fullName != "" && branch != "" {
-				h.triggerDeployments(ctx, fullName, branch, data, enums.GitProviderGitLab)
+				h.triggerDeployments(ctx, fullName, branch, data, gittypes.GitProviderGitLab)
 			}
 		}
 	}
@@ -220,7 +220,7 @@ func (h *WebhookHandler) processBitbucketWebhook(ctx context.Context, data map[s
 					}
 
 					if fullName != "" && branch != "" {
-						h.triggerDeployments(ctx, fullName, branch, data, enums.GitProviderBitbucket)
+						h.triggerDeployments(ctx, fullName, branch, data, gittypes.GitProviderBitbucket)
 					}
 				}
 			}
@@ -246,7 +246,7 @@ func (h *WebhookHandler) handleInstallationCreated(ctx context.Context, data map
 	}
 
 	// Find existing source control
-	sc, err := h.service.GetSourceControlByInstallation(ctx, enums.GitProviderGitHub, installationID)
+	sc, err := h.service.GetSourceControlByInstallation(ctx, gittypes.GitProviderGitHub, installationID)
 	if err != nil {
 		return
 	}
@@ -293,14 +293,14 @@ func (h *WebhookHandler) handleRepositoriesChanged(ctx context.Context, installa
 	// Dispatch SyncInstallationRepos job via queue for async processing
 	if h.queueClient != nil {
 		// Get the source control to get team and user IDs
-		sc, err := h.service.GetSourceControlByInstallation(ctx, enums.GitProviderGitHub, installationID)
+		sc, err := h.service.GetSourceControlByInstallation(ctx, gittypes.GitProviderGitHub, installationID)
 		if err != nil {
 			h.LogError(err, "Failed to find source control for installation", "installation_id", installationID)
 			return
 		}
 
 		task, err := jobs.NewSyncInstallationReposTask(
-			string(enums.GitProviderGitHub),
+			string(gittypes.GitProviderGitHub),
 			installationID,
 			sc.TeamID,
 			sc.UserID,
@@ -322,7 +322,7 @@ func (h *WebhookHandler) handleRepositoriesChanged(ctx context.Context, installa
 }
 
 // triggerDeployments triggers deployments for sites matching the repository and branch
-func (h *WebhookHandler) triggerDeployments(ctx context.Context, repository, branch string, webhookData map[string]interface{}, providerType enums.GitProviderType) {
+func (h *WebhookHandler) triggerDeployments(ctx context.Context, repository, branch string, webhookData map[string]interface{}, providerType gittypes.GitProviderType) {
 	// TODO: Get sites by repository and branch from site repository
 	// For now, just log the deployment trigger
 	h.LogInfo("Would trigger deployments for repository", "repository", repository, "branch", branch, "provider", providerType.String())

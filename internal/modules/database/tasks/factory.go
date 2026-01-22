@@ -3,7 +3,7 @@ package tasks
 import (
 	"fmt"
 
-	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
+	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
@@ -122,19 +122,19 @@ type GetTablesConfig struct {
 }
 
 type Factory struct {
-	dbType serverenums.ServiceType
+	dbType servertypes.ServiceType
 }
 
-func NewFactory(dbType serverenums.ServiceType) *Factory {
+func NewFactory(dbType servertypes.ServiceType) *Factory {
 	return &Factory{dbType: dbType}
 }
 
 func (f *Factory) IsMySQL() bool {
-	return f.dbType == serverenums.ServiceTypeMySql
+	return f.dbType == servertypes.ServiceTypeMySQL
 }
 
 func (f *Factory) IsPostgreSQL() bool {
-	return f.dbType == serverenums.ServiceTypePostgreSql
+	return f.dbType == servertypes.ServiceTypePostgreSQL
 }
 
 // TaskType returns the full task type string for a given operation based on the database type
@@ -289,9 +289,9 @@ func (f *Factory) GetTables(config GetTablesConfig) taskrunner.Task {
 func NewFactoryFromString(dbType string) (*Factory, error) {
 	switch dbType {
 	case "mysql":
-		return NewFactory(serverenums.ServiceTypeMySql), nil
+		return NewFactory(servertypes.ServiceTypeMySQL), nil
 	case "postgresql":
-		return NewFactory(serverenums.ServiceTypePostgreSql), nil
+		return NewFactory(servertypes.ServiceTypePostgreSQL), nil
 	default:
 		return nil, fmt.Errorf("unsupported database type: %s", dbType)
 	}

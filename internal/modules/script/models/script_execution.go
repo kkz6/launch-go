@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	"github.com/kkz6/launch-go/internal/modules/script/enums"
+	scripttypes "github.com/kkz6/launch-go/internal/modules/script/types"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 )
 
@@ -19,22 +19,22 @@ const (
 
 // ScriptExecution represents a single execution of a script on a server
 type ScriptExecution struct {
-	ID         uint64           `gorm:"primaryKey;autoIncrement" json:"id"`
-	ScriptID   string           `gorm:"column:script_id;type:char(26);not null;index" json:"script_id"`
-	ServerID   string           `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
-	BatchID    *string          `gorm:"column:batch_id;type:char(26);index" json:"batch_id,omitempty"`
-	RunAs      *enums.RunAsUser `gorm:"column:user;type:varchar(255)" json:"run_as,omitempty"`
-	Status     ExecutionStatus  `gorm:"type:varchar(50);not null;default:pending" json:"status"`
-	ExitCode   *int            `gorm:"column:exit_code" json:"exit_code,omitempty"`
-	Output     *string         `gorm:"type:longtext" json:"output,omitempty"`
-	StartedAt  *time.Time      `gorm:"column:started_at;type:timestamp null" json:"started_at,omitempty"`
-	FinishedAt *time.Time      `gorm:"column:finished_at;type:timestamp null" json:"finished_at,omitempty"`
-	CreatedAt  *time.Time      `gorm:"type:timestamp null" json:"created_at,omitempty"`
-	UpdatedAt  *time.Time      `gorm:"type:timestamp null" json:"updated_at,omitempty"`
+	ID         uint64                 `gorm:"primaryKey;autoIncrement" json:"id"`
+	ScriptID   string                 `gorm:"column:script_id;type:char(26);not null;index" json:"script_id"`
+	ServerID   string                 `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
+	BatchID    *string                `gorm:"column:batch_id;type:char(26);index" json:"batch_id,omitempty"`
+	RunAs      *scripttypes.RunAsUser `gorm:"column:user;type:varchar(255)" json:"run_as,omitempty"`
+	Status     ExecutionStatus        `gorm:"type:varchar(50);not null;default:pending" json:"status"`
+	ExitCode   *int                   `gorm:"column:exit_code" json:"exit_code,omitempty"`
+	Output     *string                `gorm:"type:longtext" json:"output,omitempty"`
+	StartedAt  *time.Time             `gorm:"column:started_at;type:timestamp null" json:"started_at,omitempty"`
+	FinishedAt *time.Time             `gorm:"column:finished_at;type:timestamp null" json:"finished_at,omitempty"`
+	CreatedAt  *time.Time             `gorm:"type:timestamp null" json:"created_at,omitempty"`
+	UpdatedAt  *time.Time             `gorm:"type:timestamp null" json:"updated_at,omitempty"`
 
 	// Relations
-	Script *Script               `gorm:"foreignKey:ScriptID;references:ID" json:"script,omitempty"`
-	Server *servermodels.Server  `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
+	Script *Script              `gorm:"foreignKey:ScriptID;references:ID" json:"script,omitempty"`
+	Server *servermodels.Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`
 }
 
 func (ScriptExecution) TableName() string {

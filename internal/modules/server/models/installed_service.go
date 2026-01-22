@@ -3,7 +3,7 @@ package models
 import (
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -11,11 +11,11 @@ import (
 type InstalledService struct {
 	basemodels.BaseModel
 	basemodels.ServerScopedModel
-	Type      enums.ServiceType   `gorm:"type:varchar(255);not null" json:"type"`
+	Type      types.ServiceType   `gorm:"type:varchar(255);not null" json:"type"`
 	TypeData  basemodels.JSONMap  `gorm:"type:json" json:"-"`
 	Name      string              `gorm:"type:varchar(255);not null" json:"name"`
 	Version   string              `gorm:"type:varchar(255);not null" json:"version"`
-	Status    enums.ServiceStatus `gorm:"type:varchar(255);not null" json:"status"`
+	Status    types.ServiceStatus `gorm:"type:varchar(255);not null" json:"status"`
 	IsDefault bool                `gorm:"column:is_default;type:tinyint(1);not null;default:1" json:"is_default"`
 	Unit      *string             `gorm:"type:varchar(255)" json:"unit,omitempty"`
 	Software  string              `gorm:"type:varchar(255);not null" json:"software"`
@@ -31,7 +31,7 @@ func (s *InstalledService) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 
-	basemodels.SetDefaultStatus(&s.Status, enums.ServiceStatusPending)
+	basemodels.SetDefaultStatus(&s.Status, types.ServiceStatusPending)
 
 	return nil
 }
@@ -56,19 +56,19 @@ func (s *InstalledService) GetServiceName() string {
 
 	// Map service types to their typical systemd unit names
 	switch s.Type {
-	case enums.ServiceTypeMySql:
+	case types.ServiceTypeMySQL:
 		return "mysql"
-	case enums.ServiceTypePostgreSql:
+	case types.ServiceTypePostgreSQL:
 		return "postgresql"
-	case enums.ServiceTypeRedis:
+	case types.ServiceTypeRedis:
 		return "redis-server"
-	case enums.ServiceTypeCaddy:
+	case types.ServiceTypeCaddy:
 		return "caddy"
-	case enums.ServiceTypeSupervisor:
+	case types.ServiceTypeSupervisor:
 		return "supervisor"
-	case enums.ServiceTypePhp:
-		return enums.PhpFpmServiceFromVersion(s.Version)
-	case enums.ServiceTypeLaunchAgent:
+	case types.ServiceTypePhp:
+		return types.PhpFpmServiceFromVersion(s.Version)
+	case types.ServiceTypeLaunchAgent:
 		return "launch-agent"
 	default:
 		return s.Name
@@ -76,6 +76,6 @@ func (s *InstalledService) GetServiceName() string {
 }
 
 // GetSoftware returns the software enum for this service
-func (s *InstalledService) GetSoftware() enums.Software {
-	return enums.Software(s.Software)
+func (s *InstalledService) GetSoftware() types.Software {
+	return types.Software(s.Software)
 }

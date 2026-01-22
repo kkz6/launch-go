@@ -7,8 +7,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/retry"
 )
@@ -39,7 +39,7 @@ func (j *WaitForServerToConnectJob) Handle(ctx context.Context) error {
 	}
 
 	// Update status to indicate we're waiting for connection
-	if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, enums.ServerStatusStarting); err != nil {
+	if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, types.ServerStatusStarting); err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
@@ -220,7 +220,7 @@ func (j *WaitForServerToConnectJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Update server status to failed
-	if updateErr := j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
+	if updateErr := j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, types.ServerStatusFailed); updateErr != nil {
 		j.Ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 

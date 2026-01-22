@@ -9,8 +9,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/status"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
@@ -54,7 +54,7 @@ func (j *CheckServiceStatusJob) Handle(ctx context.Context) error {
 		Dispatch(ctx)
 
 	if err != nil {
-		j.updateServiceStatus(ctx, service.ID, enums.ServiceStatusFailed, "", nil, err.Error())
+		j.updateServiceStatus(ctx, service.ID, types.ServiceStatusFailed, "", nil, err.Error())
 		return fmt.Errorf("failed to check service status: %w", err)
 	}
 
@@ -87,7 +87,7 @@ func (j *CheckServiceStatusJob) Failed(ctx context.Context, err error) {
 	)
 }
 
-func (j *CheckServiceStatusJob) updateServiceStatus(ctx context.Context, serviceID string, svcStatus enums.ServiceStatus, output string, details map[string]any, errorMsg string) {
+func (j *CheckServiceStatusJob) updateServiceStatus(ctx context.Context, serviceID string, svcStatus types.ServiceStatus, output string, details map[string]any, errorMsg string) {
 	typeData := basemodels.JSONMap{
 		"last_status_check": time.Now().Format(time.RFC3339),
 		"status_output":     output,
@@ -106,29 +106,29 @@ func (j *CheckServiceStatusJob) updateServiceStatus(ctx context.Context, service
 	}
 }
 
-func (j *CheckServiceStatusJob) parseServiceStatus(output string) enums.ServiceStatus {
+func (j *CheckServiceStatusJob) parseServiceStatus(output string) types.ServiceStatus {
 	lowerOutput := strings.ToLower(output)
 
 	if strings.Contains(lowerOutput, "active (running)") ||
 		strings.Contains(lowerOutput, "is running") ||
 		strings.Contains(lowerOutput, "status: started") {
-		return enums.ServiceStatusRunning
+		return types.ServiceStatusRunning
 	}
 
 	if strings.Contains(lowerOutput, "inactive (dead)") ||
 		strings.Contains(lowerOutput, "is stopped") ||
 		strings.Contains(lowerOutput, "status: stopped") ||
 		strings.Contains(lowerOutput, "not running") {
-		return enums.ServiceStatusStopped
+		return types.ServiceStatusStopped
 	}
 
 	if strings.Contains(lowerOutput, "failed") ||
 		strings.Contains(lowerOutput, "error") ||
 		strings.Contains(lowerOutput, "could not") {
-		return enums.ServiceStatusFailed
+		return types.ServiceStatusFailed
 	}
 
-	return enums.ServiceStatusInstalled
+	return types.ServiceStatusInstalled
 }
 
 func (j *CheckServiceStatusJob) parseStatusDetails(output string) map[string]any {

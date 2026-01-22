@@ -6,8 +6,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
+	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -28,7 +28,7 @@ type SyncInstallationReposJob struct {
 
 // Handle processes the job
 func (j *SyncInstallationReposJob) Handle(ctx context.Context) error {
-	providerType, err := enums.ParseGitProviderType(j.Payload.Provider)
+	providerType, err := gittypes.ParseGitProviderType(j.Payload.Provider)
 	if err != nil {
 		return fmt.Errorf("invalid provider: %w", err)
 	}
@@ -102,4 +102,3 @@ func NewSyncInstallationReposJob(ctx *JobContext, payload SyncInstallationReposP
 		Payload: payload,
 	}
 }
-

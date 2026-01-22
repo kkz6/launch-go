@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // SiteInstallationFailedNotification is sent when initial site installation fails
@@ -25,7 +25,7 @@ type SiteInstallationFailedNotification struct {
 func NewSiteInstallationFailedNotification(siteAddress, serverName string) *SiteInstallationFailedNotification {
 	rawText := fmt.Sprintf("Site installation failed for '%s' on server '%s'.", siteAddress, serverName)
 	return &SiteInstallationFailedNotification{
-		BaseNotification: models.NewBaseNotification(enums.NotificationTypeSiteInstallationFailed, rawText),
+		BaseNotification: models.NewBaseNotification(notificationtypes.NotificationTypeSiteInstallationFailed, rawText),
 		SiteAddress:      siteAddress,
 		ServerName:       serverName,
 		InstallTime:      time.Now(),

@@ -8,9 +8,9 @@ import (
 	"strconv"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -32,12 +32,12 @@ func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID 
 		return nil, fiberutil.NotFound()
 	}
 
-	if service.Type != enums.ServiceTypePhp {
+	if service.Type != types.ServiceTypePhp {
 		return nil, fmt.Errorf("service is not a PHP installation")
 	}
 
 	// Get the PHP version from the software
-	software := enums.Software(service.Software)
+	software := types.Software(service.Software)
 	version := software.GetVersion()
 
 	// Create and run the task
@@ -161,12 +161,12 @@ func (s *Service) ResetOpcache(ctx context.Context, serverID, teamID, phpID stri
 		return fiberutil.NotFound()
 	}
 
-	if service.Type != enums.ServiceTypePhp {
+	if service.Type != types.ServiceTypePhp {
 		return fmt.Errorf("service is not a PHP installation")
 	}
 
 	// Get the PHP version from the software
-	software := enums.Software(service.Software)
+	software := types.Software(service.Software)
 	version := software.GetVersion()
 
 	// Create and run the task asynchronously
@@ -198,7 +198,7 @@ func (s *Service) ConfigureOpcache(ctx context.Context, serverID, teamID, phpID 
 		return fiberutil.NotFound()
 	}
 
-	if service.Type != enums.ServiceTypePhp {
+	if service.Type != types.ServiceTypePhp {
 		return fmt.Errorf("service is not a PHP installation")
 	}
 
@@ -215,7 +215,7 @@ func (s *Service) ConfigureOpcache(ctx context.Context, serverID, teamID, phpID 
 	}
 
 	// Add JIT settings for PHP 8.0+
-	software := enums.Software(service.Software)
+	software := types.Software(service.Software)
 	version := software.GetVersion()
 	if isPhp8OrNewer(version) && req.JITEnabled {
 		settings["jit_buffer_size"] = req.JITBufferSize

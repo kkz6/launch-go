@@ -6,8 +6,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
@@ -48,7 +48,7 @@ func (j *InstallTaskCleanupCronJob) Handle(ctx context.Context) error {
 	cleanupCommand := `find /tmp -name "launch_task_*" -mtime +7 -delete 2>/dev/null; find /var/log/launch -name "*.log" -mtime +30 -delete 2>/dev/null`
 
 	// Create cron record (runs daily at 3 AM)
-	schedule := enums.CronDaily3AM
+	schedule := types.CronDaily3AM
 	cron := &models.Cron{
 		Expression: schedule.Expression(),
 		Command:    basemodels.EncryptedString(cleanupCommand),

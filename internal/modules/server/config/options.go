@@ -1,6 +1,6 @@
 package config
 
-import "github.com/kkz6/launch-go/internal/modules/server/enums"
+import servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 
 // PlanOption represents a plan option for cloud providers
 type PlanOption struct {
@@ -24,7 +24,7 @@ type ProviderConfig struct {
 // GetPhpVersions returns all available PHP versions as key-value pairs
 func GetPhpVersions() map[string]string {
 	versions := make(map[string]string)
-	for _, php := range enums.AllPhpVersions() {
+	for _, php := range servertypes.AllPhpVersions() {
 		versions[php.String()] = php.Label()
 	}
 	return versions
@@ -32,26 +32,26 @@ func GetPhpVersions() map[string]string {
 
 // GetDatabaseTypes returns all available database types as key-value pairs
 func GetDatabaseTypes() map[string]string {
-	types := make(map[string]string)
-	for _, db := range enums.AllDatabaseTypes() {
-		types[db.String()] = db.Label()
+	result := make(map[string]string)
+	for _, db := range servertypes.AllDatabaseTypes() {
+		result[db.String()] = db.Label()
 	}
-	return types
+	return result
 }
 
 // GetServerTypes returns all available server types as key-value pairs
 func GetServerTypes() map[string]string {
-	types := make(map[string]string)
-	for _, st := range enums.AllServerTypes() {
-		types[st.String()] = st.Label()
+	result := make(map[string]string)
+	for _, st := range servertypes.AllServerTypes() {
+		result[st.String()] = st.Label()
 	}
-	return types
+	return result
 }
 
 // GetOperatingSystems returns all available operating systems as key-value pairs
 func GetOperatingSystems() map[string]string {
 	systems := make(map[string]string)
-	for _, os := range enums.AllOperatingSystems() {
+	for _, os := range servertypes.AllOperatingSystems() {
 		systems[os.String()] = os.Label()
 	}
 	return systems

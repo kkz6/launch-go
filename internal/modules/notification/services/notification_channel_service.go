@@ -7,8 +7,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/dto"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 var (
@@ -33,7 +33,7 @@ func NewNotificationChannelService(deps *ServiceDeps) *NotificationChannelServic
 // CreateChannel creates a new notification channel
 func (s *NotificationChannelService) CreateChannel(ctx context.Context, userID, teamID string, req *dto.CreateChannelRequest) (*models.NotificationChannel, error) {
 	// Parse and validate provider
-	provider, err := enums.ParseChannelType(req.Provider)
+	provider, err := notificationtypes.ParseChannelType(req.Provider)
 	if err != nil {
 		return nil, ErrInvalidProvider
 	}
@@ -193,7 +193,7 @@ func (s *NotificationChannelService) TestChannel(ctx context.Context, id, teamID
 
 	// Create a test notification
 	testNotif := models.NewBaseNotification(
-		enums.NotificationType("test"),
+		notificationtypes.NotificationType("test"),
 		message,
 	)
 

@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/dto"
-	"github.com/kkz6/launch-go/internal/modules/billing/enums"
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
+	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
@@ -36,7 +36,7 @@ type TeamSubscriptionOptions struct {
 	serverCountFn     func(ctx context.Context, teamID string) (int, error)
 	teamMemberCountFn func(ctx context.Context, teamID string) (int, error)
 	siteCountFn       func(ctx context.Context, serverID string) (int, error)
-	userRole          enums.UserRole
+	userRole          billingtypes.UserRole
 
 	cachedOptions util.Cached[models.PlanOptions]
 	cachedIsAdmin util.Cached[bool]
@@ -46,7 +46,7 @@ type TeamSubscriptionOptions struct {
 func NewTeamSubscriptionOptions(
 	teamID string,
 	service *BillingService,
-	userRole enums.UserRole,
+	userRole billingtypes.UserRole,
 	serverCountFn func(ctx context.Context, teamID string) (int, error),
 	teamMemberCountFn func(ctx context.Context, teamID string) (int, error),
 	siteCountFn func(ctx context.Context, serverID string) (int, error),

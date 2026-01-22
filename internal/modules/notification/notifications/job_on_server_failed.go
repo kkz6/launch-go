@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // JobOnServerFailedNotification is sent when a generic job fails on a server
@@ -20,7 +20,7 @@ type JobOnServerFailedNotification struct {
 func NewJobOnServerFailedNotification(serverName, serverID, reference string) *JobOnServerFailedNotification {
 	rawText := "Job on server failed. We tried to run a job on your server, but it failed."
 	return &JobOnServerFailedNotification{
-		BaseNotification: models.NewBaseNotification(enums.NotificationTypeJobOnServerFailed, rawText),
+		BaseNotification: models.NewBaseNotification(notificationtypes.NotificationTypeJobOnServerFailed, rawText),
 		ServerName:       serverName,
 		ServerID:         serverID,
 		Reference:        reference,
