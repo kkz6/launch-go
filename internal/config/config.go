@@ -19,6 +19,7 @@ type Config struct {
 	Git      GitConfig
 	Slack    SlackConfig
 	Sentry   SentryConfig
+	Core     CoreConfig
 }
 
 // Load loads all configuration from environment variables and .env file
@@ -47,5 +48,6 @@ func Load() (*Config, error) {
 		Git:      config.Load[GitConfig](),
 		Slack:    config.Load[SlackConfig](),
 		Sentry:   config.Load[SentryConfig](),
+		Core:     *GetCoreConfig(),
 	}, nil
 }

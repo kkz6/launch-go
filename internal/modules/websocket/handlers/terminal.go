@@ -13,6 +13,7 @@ import (
 	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/config"
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
@@ -50,7 +51,7 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 		// Get parameters
 		serverID := c.Query("serverId")
 		siteID := c.Query("siteId")
-		username := c.Query("username", "launcher")
+		username := c.Query("username", config.ServerDefaults().Username)
 
 		if serverID == "" {
 			h.LogWarn("Missing serverId")

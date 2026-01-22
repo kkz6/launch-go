@@ -13,40 +13,47 @@ type DatabaseResponse struct {
 	CreatedAt string `json:"created_at,omitempty"`
 }
 
+// ServerUsersResponse represents the users available for SSH connections
+type ServerUsersResponse struct {
+	Root  string `json:"root"`
+	Local string `json:"local"`
+}
+
 // ServerResponse represents the response for a server
 type ServerResponse struct {
-	ID                    string   `json:"id"`
-	TeamID                string   `json:"team_id"`
-	Name                  string   `json:"name"`
-	Description           *string  `json:"description,omitempty"`
-	Provider              string   `json:"provider"`
-	ProviderLabel         string   `json:"provider_label"`
-	Type                  string   `json:"type"`
-	TypeLabel             string   `json:"type_label"`
-	Connected             bool     `json:"connected"`
-	MonitoringEnabled     bool     `json:"monitoring_enabled"`
-	CPUCores              *int     `json:"cpu_cores,omitempty"`
-	MemoryInMB            *int     `json:"memory_in_mb,omitempty"`
-	StorageInGB           *int     `json:"storage_in_gb,omitempty"`
-	OperatingSystem       string   `json:"operating_system"`
-	OperatingSystemLabel  string   `json:"operating_system_label"`
-	Status                string   `json:"status"`
-	StatusLabel           string   `json:"status_label"`
-	PublicIPv4            *string  `json:"public_ipv4,omitempty"`
-	Username              string   `json:"username"`
-	SSHPort               int      `json:"ssh_port"`
-	AutoUpdate            bool     `json:"auto_update"`
-	Progress              *int     `json:"progress,omitempty"`
-	ProgressStep          *string  `json:"progress_step,omitempty"`
-	ProvisionedAt         *string  `json:"provisioned_at,omitempty"`
-	LastConnectivityCheck *string  `json:"last_connectivity_check,omitempty"`
-	ArchivedAt            *string  `json:"archived_at,omitempty"`
-	CreatedAt             string   `json:"created_at"`
-	UpdatedAt             string   `json:"updated_at"`
-	ProvisionCommand      string   `json:"provision_command,omitempty"`
-	Features              []string `json:"features,omitempty"`
-	SitesCount            int      `json:"sites_count,omitempty"`
-	ServicesCount         int      `json:"services_count,omitempty"`
+	ID                    string               `json:"id"`
+	TeamID                string               `json:"team_id"`
+	Name                  string               `json:"name"`
+	Description           *string              `json:"description,omitempty"`
+	Provider              string               `json:"provider"`
+	ProviderLabel         string               `json:"provider_label"`
+	Type                  string               `json:"type"`
+	TypeLabel             string               `json:"type_label"`
+	Connected             bool                 `json:"connected"`
+	MonitoringEnabled     bool                 `json:"monitoring_enabled"`
+	CPUCores              *int                 `json:"cpu_cores,omitempty"`
+	MemoryInMB            *int                 `json:"memory_in_mb,omitempty"`
+	StorageInGB           *int                 `json:"storage_in_gb,omitempty"`
+	OperatingSystem       string               `json:"operating_system"`
+	OperatingSystemLabel  string               `json:"operating_system_label"`
+	Status                string               `json:"status"`
+	StatusLabel           string               `json:"status_label"`
+	PublicIPv4            *string              `json:"public_ipv4,omitempty"`
+	Username              string               `json:"username"`
+	Users                 *ServerUsersResponse `json:"users,omitempty"`
+	SSHPort               int                  `json:"ssh_port"`
+	AutoUpdate            bool                 `json:"auto_update"`
+	Progress              *int                 `json:"progress,omitempty"`
+	ProgressStep          *string              `json:"progress_step,omitempty"`
+	ProvisionedAt         *string              `json:"provisioned_at,omitempty"`
+	LastConnectivityCheck *string              `json:"last_connectivity_check,omitempty"`
+	ArchivedAt            *string              `json:"archived_at,omitempty"`
+	CreatedAt             string               `json:"created_at"`
+	UpdatedAt             string               `json:"updated_at"`
+	ProvisionCommand      string               `json:"provision_command,omitempty"`
+	Features              []string             `json:"features,omitempty"`
+	SitesCount            int                  `json:"sites_count,omitempty"`
+	ServicesCount         int                  `json:"services_count,omitempty"`
 }
 
 // ToServerResponse converts a Server model to a ServerResponse DTO
@@ -103,14 +110,18 @@ func ToServerResponse(server *models.Server) ServerResponse {
 		StatusLabel:          server.Status.Label(),
 		PublicIPv4:           server.PublicIPv4,
 		Username:             username,
-		SSHPort:              sshPort,
-		AutoUpdate:           server.AutoUpdate,
-		Progress:             progress,
-		ProgressStep:         server.ProgressStep,
-		CreatedAt:            createdAt,
-		UpdatedAt:            updatedAt,
-		SitesCount:           int(server.SitesCount),
-		ServicesCount:        len(server.Services),
+		Users: &ServerUsersResponse{
+			Root:  server.RootUsername(),
+			Local: username,
+		},
+		SSHPort:       sshPort,
+		AutoUpdate:    server.AutoUpdate,
+		Progress:      progress,
+		ProgressStep:  server.ProgressStep,
+		CreatedAt:     createdAt,
+		UpdatedAt:     updatedAt,
+		SitesCount:    int(server.SitesCount),
+		ServicesCount: len(server.Services),
 	}
 
 	resp.ProvisionedAt = pkgdto.FormatTime(server.ProvisionedAt)
