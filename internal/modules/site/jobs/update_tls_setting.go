@@ -7,7 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -15,9 +15,9 @@ const TypeUpdateSiteTLSSetting = "site:update_tls_setting"
 
 // UpdateSiteTLSSettingPayload holds data for updating TLS settings
 type UpdateSiteTLSSettingPayload struct {
-	SiteID     string           `json:"site_id"`
-	TLSSetting enums.TLSSetting `json:"tls_setting"`
-	UserID     *string          `json:"user_id,omitempty"`
+	SiteID     string               `json:"site_id"`
+	TLSSetting sitetypes.TLSSetting `json:"tls_setting"`
+	UserID     *string              `json:"user_id,omitempty"`
 }
 
 // UpdateSiteTLSSettingJob updates TLS settings for a site
@@ -99,7 +99,7 @@ func (j *UpdateSiteTLSSettingJob) Failed(ctx context.Context, err error) {
 }
 
 // NewUpdateSiteTLSSettingTask creates an update TLS setting task
-func NewUpdateSiteTLSSettingTask(siteID string, tlsSetting enums.TLSSetting, userID *string) (*asynq.Task, error) {
+func NewUpdateSiteTLSSettingTask(siteID string, tlsSetting sitetypes.TLSSetting, userID *string) (*asynq.Task, error) {
 	return pkgjobs.NewTask(TypeUpdateSiteTLSSetting, UpdateSiteTLSSettingPayload{
 		SiteID:     siteID,
 		TLSSetting: tlsSetting,

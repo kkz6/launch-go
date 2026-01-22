@@ -6,10 +6,10 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
+	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
@@ -44,7 +44,7 @@ func (j *InstallWordpressCronJob) Handle(ctx context.Context) error {
 	}
 
 	// Check if site is WordPress type
-	if site.Type != enums.SiteTypeWordpress {
+	if site.Type != sitetypes.SiteTypeWordpress {
 		j.Ctx.LogInfo("Site is not WordPress, skipping cron installation", "site_id", site.ID)
 		return nil
 	}
@@ -65,7 +65,7 @@ func (j *InstallWordpressCronJob) Handle(ctx context.Context) error {
 	command := j.buildWpCronCommand(site)
 
 	// Create cron record
-	schedule := serverenums.CronEveryMinute
+	schedule := servertypes.CronEveryMinute
 	cron := &servermodels.Cron{
 		SiteID:     &site.ID,
 		Expression: schedule.Expression(),

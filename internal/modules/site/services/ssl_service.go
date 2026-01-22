@@ -6,9 +6,9 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -31,13 +31,13 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 		return err
 	}
 
-	tlsSetting := enums.TLSSetting(req.TLSSetting)
+	tlsSetting := sitetypes.TLSSetting(req.TLSSetting)
 	if !tlsSetting.IsValid() {
 		return errors.New("invalid TLS setting")
 	}
 
 	// Handle custom certificate
-	if tlsSetting == enums.TLSSettingCustom && req.PrivateKey != nil && req.Certificate != nil {
+	if tlsSetting == sitetypes.TLSSettingCustom && req.PrivateKey != nil && req.Certificate != nil {
 		// Deactivate existing certificates
 		if err := s.Repos().Certificate().DeactivateAll(ctx, site.ID); err != nil {
 			return err
@@ -49,7 +49,7 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 			privateKey = basemodels.EncryptedString(*req.PrivateKey)
 		}
 		cert := &models.Certificate{
-			Type:        enums.CertificateTypeCustom,
+			Type:        sitetypes.CertificateTypeCustom,
 			PrivateKey:  privateKey,
 			Certificate: req.Certificate,
 			IsActive:    true,

@@ -2,7 +2,7 @@ package models
 
 import (
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -12,10 +12,10 @@ type Command struct {
 	basemodels.SiteScopedModel
 	basemodels.TeamScopedModel
 	basemodels.UserScopedModel
-	Command  string              `gorm:"type:varchar(255);not null" json:"command"`
-	Status   enums.CommandStatus `gorm:"type:varchar(255);not null" json:"status"`
-	Output   *string             `gorm:"type:longtext" json:"output,omitempty"`
-	ExitCode *int                `gorm:"column:exit_code" json:"exit_code,omitempty"`
+	Command  string                  `gorm:"type:varchar(255);not null" json:"command"`
+	Status   sitetypes.CommandStatus `gorm:"type:varchar(255);not null" json:"status"`
+	Output   *string                 `gorm:"type:longtext" json:"output,omitempty"`
+	ExitCode *int                    `gorm:"column:exit_code" json:"exit_code,omitempty"`
 
 	// Relations
 	Site *Site            `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`

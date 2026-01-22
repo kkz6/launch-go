@@ -11,9 +11,9 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks/templates"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	pkgtemplates "github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
@@ -76,7 +76,9 @@ type deploySiteTask struct {
 }
 
 // DeploySiteTask creates a new deployment task with callback support.
-func DeploySiteTask(opts DeployOptions) *deploySiteTask {
+// Returns taskrunner.Task interface to satisfy the linter while preserving
+// callback functionality through type assertions internally.
+func DeploySiteTask(opts DeployOptions) taskrunner.Task {
 	var name, script string
 
 	if opts.Site.ZeroDowntimeDeployment {
@@ -134,7 +136,7 @@ func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.Callba
 	// Update deployment status to finished
 	if err := cbCtx.DB.Model(&models.Deployment{}).
 		Where("id = ?", t.callback.DeploymentID).
-		Update("status", enums.DeploymentStatusFinished).Error; err != nil {
+		Update("status", sitetypes.DeploymentStatusFinished).Error; err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
@@ -152,7 +154,7 @@ func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.Callba
 	}
 
 	// Analyze Laravel features for Laravel sites
-	if t.callback.SiteType == string(enums.SiteTypeLaravel) {
+	if t.callback.SiteType == string(sitetypes.SiteTypeLaravel) {
 		t.dispatchAnalyzeLaravelFeatures(cbCtx)
 	}
 
@@ -186,7 +188,7 @@ func (t *deploySiteTask) OnFailure(ctx context.Context, cbCtx *taskrunner.Callba
 	// Update deployment status to failed
 	if err := cbCtx.DB.Model(&models.Deployment{}).
 		Where("id = ?", t.callback.DeploymentID).
-		Update("status", enums.DeploymentStatusFailed).Error; err != nil {
+		Update("status", sitetypes.DeploymentStatusFailed).Error; err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
@@ -230,7 +232,7 @@ func (t *deploySiteTask) OnExpired(ctx context.Context, cbCtx *taskrunner.Callba
 	// Update deployment status to timeout
 	if err := cbCtx.DB.Model(&models.Deployment{}).
 		Where("id = ?", t.callback.DeploymentID).
-		Update("status", enums.DeploymentStatusTimeout).Error; err != nil {
+		Update("status", sitetypes.DeploymentStatusTimeout).Error; err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
 
@@ -366,7 +368,7 @@ func (t *deploySiteTask) dispatchAnalyzeLaravelFeatures(cbCtx *taskrunner.Callba
 // processNextQueuedDeployment finds and dispatches the next queued deployment
 func (t *deploySiteTask) processNextQueuedDeployment(ctx context.Context, cbCtx *taskrunner.CallbackContext) {
 	var nextDeployment models.Deployment
-	err := cbCtx.DB.Where("site_id = ? AND status = ?", t.callback.SiteID, enums.DeploymentStatusQueued).
+	err := cbCtx.DB.Where("site_id = ? AND status = ?", t.callback.SiteID, sitetypes.DeploymentStatusQueued).
 		Order("created_at ASC").
 		First(&nextDeployment).Error
 
@@ -375,7 +377,7 @@ func (t *deploySiteTask) processNextQueuedDeployment(ctx context.Context, cbCtx 
 	}
 
 	// Update status to pending
-	cbCtx.DB.Model(&nextDeployment).Update("status", enums.DeploymentStatusPending)
+	cbCtx.DB.Model(&nextDeployment).Update("status", sitetypes.DeploymentStatusPending)
 
 	// Get site to check zero downtime setting
 	var site models.Site
@@ -520,7 +522,7 @@ func buildStandardScript(opts DeployOptions) string {
 		scriptBuilder.WriteString("\n")
 	}
 
-	if site.InstalledAt != nil && site.Type == enums.SiteTypeWordpress {
+	if site.InstalledAt != nil && site.Type == sitetypes.SiteTypeWordpress {
 		scriptBuilder.WriteString("echo \"Wordpress already installed!\"\n\n")
 	}
 
@@ -698,7 +700,7 @@ func renderPrepareFreshInstallation(opts DeployOptions, repoDir, releaseDir, sha
 	scriptBuilder.WriteString(fmt.Sprintf("cd %s\n\n", site.Path))
 
 	switch site.Type {
-	case enums.SiteTypeLaravel:
+	case sitetypes.SiteTypeLaravel:
 		scriptBuilder.WriteString(templates.MustRender("deployment/prepare_fresh_installation/laravel.sh", struct {
 			SitePath               string
 			ZeroDowntimeDeployment bool
@@ -715,7 +717,7 @@ func renderPrepareFreshInstallation(opts DeployOptions, repoDir, releaseDir, sha
 			EnvVariables:           opts.EnvVariables,
 		}))
 
-	case enums.SiteTypeWordpress:
+	case sitetypes.SiteTypeWordpress:
 		scriptBuilder.WriteString(templates.MustRender("deployment/prepare_fresh_installation/wordpress.sh", struct {
 			SitePath            string
 			RepositoryDirectory string

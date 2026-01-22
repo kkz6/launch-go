@@ -7,8 +7,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -61,7 +61,7 @@ func (j *CleanupPendingSiteDeploymentJob) Handle(ctx context.Context) error {
 	)
 
 	// Mark deployment as timed out
-	deployment.Status = enums.DeploymentStatusTimeout
+	deployment.Status = sitetypes.DeploymentStatusTimeout
 	if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
@@ -103,7 +103,7 @@ func (j *CleanupPendingSiteDeploymentJob) processNextQueuedDeployment(ctx contex
 	}
 
 	nextDeployment := &queuedDeployments[0]
-	nextDeployment.Status = enums.DeploymentStatusPending
+	nextDeployment.Status = sitetypes.DeploymentStatusPending
 
 	if err := j.Ctx.DeploymentRepo.Update(ctx, nextDeployment); err != nil {
 		j.Ctx.LogError(err, "Failed to update queued deployment status")

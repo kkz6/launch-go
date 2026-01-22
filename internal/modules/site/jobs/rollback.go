@@ -6,9 +6,9 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -61,7 +61,7 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 	}
 
 	// Update deployment status to Installing
-	currentDeployment.Status = enums.DeploymentStatusInstalling
+	currentDeployment.Status = sitetypes.DeploymentStatusInstalling
 	if err := j.Ctx.DeploymentRepo.Update(ctx, currentDeployment); err != nil {
 		j.Ctx.LogError(err, "Failed to update deployment status to installing")
 	}
@@ -123,7 +123,7 @@ func (j *RollbackJob) Handle(ctx context.Context) error {
 
 // handleRollbackSuccess handles successful rollback
 func (j *RollbackJob) handleRollbackSuccess(ctx context.Context, deployment *models.Deployment, siteID, targetDeploymentID string) {
-	deployment.Status = enums.DeploymentStatusFinished
+	deployment.Status = sitetypes.DeploymentStatusFinished
 
 	if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		j.Ctx.LogError(err, "Failed to update deployment status to finished")
@@ -159,7 +159,7 @@ func (j *RollbackJob) handleRollbackSuccess(ctx context.Context, deployment *mod
 
 // handleRollbackFailure handles failed rollback
 func (j *RollbackJob) handleRollbackFailure(ctx context.Context, deployment *models.Deployment, siteID, targetDeploymentID string, err error) {
-	deployment.Status = enums.DeploymentStatusFailed
+	deployment.Status = sitetypes.DeploymentStatusFailed
 
 	if updateErr := j.Ctx.DeploymentRepo.Update(ctx, deployment); updateErr != nil {
 		j.Ctx.LogError(updateErr, "Failed to update deployment status to failed")
@@ -217,7 +217,7 @@ func (j *RollbackJob) Failed(ctx context.Context, err error) {
 		return
 	}
 
-	deployment.Status = enums.DeploymentStatusFailed
+	deployment.Status = sitetypes.DeploymentStatusFailed
 	_ = j.Ctx.DeploymentRepo.Update(ctx, deployment)
 
 	// Get site and server for broadcasting

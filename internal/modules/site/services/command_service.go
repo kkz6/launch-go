@@ -6,9 +6,9 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -37,7 +37,7 @@ func (s *CommandService) Create(ctx context.Context, siteID, serverID, userID st
 
 	cmd := &models.Command{
 		Command: req.Command,
-		Status:  enums.CommandStatusPending,
+		Status:  sitetypes.CommandStatusPending,
 	}
 	cmd.SiteID = site.ID
 	cmd.TeamID = site.TeamID

@@ -1,33 +1,33 @@
 package dto
 
 import (
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
 // CreateSiteRequest represents the request to create a new site
 type CreateSiteRequest struct {
-	Address                     string         `json:"address" validate:"required,max=255"`
-	Aliases                     []string       `json:"aliases" validate:"omitempty,dive,max=255"`
-	PhpVersion                  string         `json:"php_version" validate:"required"`
-	Type                        enums.SiteType `json:"type" validate:"required,oneof=laravel wordpress static generic"`
-	WebFolder                   string         `json:"web_folder" validate:"omitempty,max=255"`
-	ZeroDowntimeDeployment      bool           `json:"zero_downtime_deployment"`
-	SourceControlID             *string        `json:"source_control_id" validate:"omitempty,ulid"`
-	SourceControlRepositoriesID *string        `json:"source_control_repositories_id" validate:"omitempty"`
-	RepositoryBranch            string         `json:"repository_branch" validate:"omitempty,max=255"`
-	CreateDNSRecord             bool           `json:"create_dns_record"`
-	ConnectedDomainID           *string        `json:"connected_domain_id" validate:"omitempty,ulid"`
-	CreateDatabase              bool           `json:"create_database"`
-	DatabaseOption              string         `json:"database_option" validate:"omitempty,oneof=new existing"`
-	DatabaseID                  *string        `json:"database_id" validate:"omitempty,ulid"`
-	DatabaseName                *string        `json:"database_name" validate:"omitempty,max=255"`
-	DatabaseUserOption          string         `json:"database_user_option" validate:"omitempty,oneof=new existing"`
-	DatabaseUserID              *string        `json:"database_user_id" validate:"omitempty,ulid"`
-	DatabaseUserName            *string        `json:"database_user_name" validate:"omitempty,max=255"`
-	DatabaseUserPassword        *string        `json:"database_user_password" validate:"omitempty,max=255"`
-	CreateScheduler             bool           `json:"create_scheduler"`
-	CreateQueue                 bool           `json:"create_queue"`
+	Address                     string             `json:"address" validate:"required,max=255"`
+	Aliases                     []string           `json:"aliases" validate:"omitempty,dive,max=255"`
+	PhpVersion                  string             `json:"php_version" validate:"required"`
+	Type                        sitetypes.SiteType `json:"type" validate:"required,oneof=laravel wordpress static generic"`
+	WebFolder                   string             `json:"web_folder" validate:"omitempty,max=255"`
+	ZeroDowntimeDeployment      bool               `json:"zero_downtime_deployment"`
+	SourceControlID             *string            `json:"source_control_id" validate:"omitempty,ulid"`
+	SourceControlRepositoriesID *string            `json:"source_control_repositories_id" validate:"omitempty"`
+	RepositoryBranch            string             `json:"repository_branch" validate:"omitempty,max=255"`
+	CreateDNSRecord             bool               `json:"create_dns_record"`
+	ConnectedDomainID           *string            `json:"connected_domain_id" validate:"omitempty,ulid"`
+	CreateDatabase              bool               `json:"create_database"`
+	DatabaseOption              string             `json:"database_option" validate:"omitempty,oneof=new existing"`
+	DatabaseID                  *string            `json:"database_id" validate:"omitempty,ulid"`
+	DatabaseName                *string            `json:"database_name" validate:"omitempty,max=255"`
+	DatabaseUserOption          string             `json:"database_user_option" validate:"omitempty,oneof=new existing"`
+	DatabaseUserID              *string            `json:"database_user_id" validate:"omitempty,ulid"`
+	DatabaseUserName            *string            `json:"database_user_name" validate:"omitempty,max=255"`
+	DatabaseUserPassword        *string            `json:"database_user_password" validate:"omitempty,max=255"`
+	CreateScheduler             bool               `json:"create_scheduler"`
+	CreateQueue                 bool               `json:"create_queue"`
 }
 
 // Normalize normalizes the request by converting empty string pointers to nil.

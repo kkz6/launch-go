@@ -11,9 +11,9 @@ import (
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/site/contracts"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 )
 
 // DeploymentService handles business logic for deployments
@@ -149,7 +149,7 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 		return nil, ErrDeploymentNotBelongToSite
 	}
 
-	if targetDeployment.Status != enums.DeploymentStatusFinished {
+	if targetDeployment.Status != sitetypes.DeploymentStatusFinished {
 		return nil, ErrInvalidRollbackTarget
 	}
 
@@ -188,7 +188,7 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 
 	deployment := &models.Deployment{
 		UserID:     userIDPtr,
-		Status:     enums.DeploymentStatusPending,
+		Status:     sitetypes.DeploymentStatusPending,
 		GitHash:    targetDeployment.GitHash,
 		CommitData: commitData,
 	}
@@ -235,7 +235,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 			// Queue the deployment
 			deployment := &models.Deployment{
 				UserID:     userIDPtr,
-				Status:     enums.DeploymentStatusQueued,
+				Status:     sitetypes.DeploymentStatusQueued,
 				GitHash:    gitHash,
 				CommitData: commitData,
 			}
@@ -255,7 +255,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 
 	deployment := &models.Deployment{
 		UserID:     userIDPtr,
-		Status:     enums.DeploymentStatusPending,
+		Status:     sitetypes.DeploymentStatusPending,
 		GitHash:    gitHash,
 		CommitData: commitData,
 	}
@@ -337,7 +337,7 @@ func (s *DeploymentService) ProcessNextQueued(ctx context.Context, siteID string
 	}
 
 	deployment := &queuedDeployments[0]
-	deployment.Status = enums.DeploymentStatusPending
+	deployment.Status = sitetypes.DeploymentStatusPending
 
 	if err := s.Repos().Deployment().Update(ctx, deployment); err != nil {
 		return nil, err

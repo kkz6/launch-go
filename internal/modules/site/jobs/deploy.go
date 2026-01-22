@@ -10,9 +10,9 @@ import (
 
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/retry"
 )
@@ -57,7 +57,7 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 	}
 
 	// Update deployment status to installing
-	deployment.Status = enums.DeploymentStatusInstalling
+	deployment.Status = sitetypes.DeploymentStatusInstalling
 	if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
@@ -269,7 +269,7 @@ func (j *DeployJob) broadcastDeploymentProgress(ctx context.Context, siteID, dep
 }
 
 func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
-	deployment.Status = enums.DeploymentStatusFailed
+	deployment.Status = sitetypes.DeploymentStatusFailed
 
 	if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		j.Ctx.LogError(err, "Failed to update deployment status to failed")
@@ -301,7 +301,7 @@ func (j *DeployJob) processNextQueuedDeployment(ctx context.Context, siteID stri
 
 	// Update the first queued deployment to pending and dispatch
 	nextDeployment := &queuedDeployments[0]
-	nextDeployment.Status = enums.DeploymentStatusPending
+	nextDeployment.Status = sitetypes.DeploymentStatusPending
 
 	if err := j.Ctx.DeploymentRepo.Update(ctx, nextDeployment); err != nil {
 		j.Ctx.LogError(err, "Failed to update queued deployment status")
@@ -474,7 +474,7 @@ func (j *DeployZeroDowntimeJob) Handle(ctx context.Context) error {
 	}
 
 	// Update deployment status to installing
-	deployment.Status = enums.DeploymentStatusInstalling
+	deployment.Status = sitetypes.DeploymentStatusInstalling
 	if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to update deployment status: %w", err)
 	}
@@ -690,7 +690,7 @@ func (j *DeployZeroDowntimeJob) broadcastDeploymentProgress(ctx context.Context,
 }
 
 func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, deployment *models.Deployment, site *models.Site, message string) {
-	deployment.Status = enums.DeploymentStatusFailed
+	deployment.Status = sitetypes.DeploymentStatusFailed
 
 	if err := j.Ctx.DeploymentRepo.Update(ctx, deployment); err != nil {
 		j.Ctx.LogError(err, "Failed to update deployment status to failed")
@@ -720,7 +720,7 @@ func (j *DeployZeroDowntimeJob) processNextQueuedDeployment(ctx context.Context,
 	}
 
 	nextDeployment := &queuedDeployments[0]
-	nextDeployment.Status = enums.DeploymentStatusPending
+	nextDeployment.Status = sitetypes.DeploymentStatusPending
 
 	if err := j.Ctx.DeploymentRepo.Update(ctx, nextDeployment); err != nil {
 		j.Ctx.LogError(err, "Failed to update queued deployment status")

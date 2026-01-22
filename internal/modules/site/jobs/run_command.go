@@ -7,8 +7,8 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -53,9 +53,9 @@ func (j *RunCommandJob) Handle(ctx context.Context) error {
 	}
 
 	// Update command status to running
-	command.Status = enums.CommandStatusRunning
+	command.Status = sitetypes.CommandStatusRunning
 	if err := j.Ctx.CommandRepo.UpdateFields(ctx, command.ID, map[string]any{
-		"status": enums.CommandStatusRunning,
+		"status": sitetypes.CommandStatusRunning,
 	}); err != nil {
 		j.Ctx.LogError(err, "Failed to update command status", "command_id", command.ID)
 	}
@@ -84,12 +84,12 @@ func (j *RunCommandJob) Handle(ctx context.Context) error {
 		command.ExitCode = &exitCode
 
 		if result.IsSuccessful() {
-			command.Status = enums.CommandStatusFinished
+			command.Status = sitetypes.CommandStatusFinished
 		} else {
-			command.Status = enums.CommandStatusFailed
+			command.Status = sitetypes.CommandStatusFailed
 		}
 	} else if err != nil {
-		command.Status = enums.CommandStatusFailed
+		command.Status = sitetypes.CommandStatusFailed
 		errMsg := err.Error()
 		command.Output = &errMsg
 	}
@@ -132,7 +132,7 @@ func (j *RunCommandJob) Failed(ctx context.Context, err error) {
 
 	// Update command status to failed
 	if updateErr := j.Ctx.CommandRepo.UpdateFields(ctx, j.Payload.CommandID, map[string]any{
-		"status": enums.CommandStatusFailed,
+		"status": sitetypes.CommandStatusFailed,
 		"output": errMsg,
 	}); updateErr != nil {
 		j.Ctx.LogError(updateErr, "Failed to update command status on failure")

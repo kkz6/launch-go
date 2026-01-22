@@ -11,7 +11,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
@@ -25,11 +25,11 @@ type Site struct {
 	basemodels.UserScopedModel
 	SourceControlID              *string                    `gorm:"column:source_control_id;type:char(26);index" json:"source_control_id,omitempty"`
 	Address                      string                     `gorm:"type:varchar(255);not null" json:"address"`
-	Type                         enums.SiteType             `gorm:"type:varchar(255);not null;index" json:"type"`
+	Type                         sitetypes.SiteType         `gorm:"type:varchar(255);not null;index" json:"type"`
 	TypeData                     *string                    `gorm:"column:type_data;type:json" json:"type_data,omitempty"`
 	VcsData                      *string                    `gorm:"column:vcs_data;type:json" json:"vcs_data,omitempty"`
 	Aliases                      basemodels.JSONStringSlice `gorm:"type:json;serializer:json" json:"aliases,omitempty"`
-	TLSSetting                   enums.TLSSetting           `gorm:"column:tls_setting;type:varchar(255);not null;index" json:"tls_setting"`
+	TLSSetting                   sitetypes.TLSSetting       `gorm:"column:tls_setting;type:varchar(255);not null;index" json:"tls_setting"`
 	ZeroDowntimeDeployment       bool                       `gorm:"column:zero_downtime_deployment" json:"zero_downtime_deployment"`
 	DeploymentReleasesRetention  int                        `gorm:"column:deployment_releases_retention;default:10" json:"deployment_releases_retention"`
 	AutoDeployment               bool                       `gorm:"column:auto_deployment;default:false" json:"auto_deployment"`
@@ -47,7 +47,7 @@ type Site struct {
 	User                         string                     `gorm:"type:varchar(255);not null" json:"user"`
 	Path                         string                     `gorm:"type:varchar(255);not null" json:"path"`
 	WebFolder                    string                     `gorm:"column:web_folder;type:varchar(255);not null" json:"web_folder"`
-	PhpVersion                   *enums.PhpVersion          `gorm:"column:php_version;type:varchar(255);index" json:"php_version,omitempty"`
+	PhpVersion                   *sitetypes.PhpVersion      `gorm:"column:php_version;type:varchar(255);index" json:"php_version,omitempty"`
 	PendingTLSUpdateSince        *time.Time                 `gorm:"column:pending_tls_update_since;type:timestamp null" json:"pending_tls_update_since,omitempty"`
 	PendingCaddyfileUpdateSince  *time.Time                 `gorm:"column:pending_caddyfile_update_since;type:timestamp null" json:"pending_caddyfile_update_since,omitempty"`
 	SharedDirectories            basemodels.JSONStringSlice `gorm:"column:shared_directories;type:json;serializer:json" json:"shared_directories"`
@@ -166,11 +166,11 @@ func (s *Site) GenerateEnvironmentVariables() map[string]string {
 	variables := make(map[string]string)
 
 	switch s.Type {
-	case enums.SiteTypeLaravel:
+	case sitetypes.SiteTypeLaravel:
 		variables["APP_KEY"] = security.AppKey()
 		variables["APP_URL"] = s.GetURL()
 
-	case enums.SiteTypeWordpress:
+	case sitetypes.SiteTypeWordpress:
 		wpSaltKeys := []string{
 			"AUTH_KEY", "AUTH_SALT", "LOGGED_IN_KEY", "LOGGED_IN_SALT",
 			"NONCE_KEY", "NONCE_SALT", "SECURE_AUTH_KEY", "SECURE_AUTH_SALT",

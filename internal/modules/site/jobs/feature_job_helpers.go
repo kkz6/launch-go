@@ -6,8 +6,8 @@ import (
 	"time"
 
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 )
 
 // Laravel feature names
@@ -38,7 +38,7 @@ func (h *FeatureJobHelpers) LoadAndValidate(ctx context.Context, siteID, serverI
 		return nil, fmt.Errorf("failed to find site: %w", err)
 	}
 
-	if site.Type != enums.SiteTypeLaravel {
+	if site.Type != sitetypes.SiteTypeLaravel {
 		return nil, fmt.Errorf("%s can only be enabled for Laravel sites", featureName)
 	}
 

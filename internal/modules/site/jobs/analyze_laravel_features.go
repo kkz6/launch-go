@@ -8,8 +8,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -71,7 +71,7 @@ func (j *AnalyzeLaravelFeaturesJob) Handle(ctx context.Context) error {
 	}
 
 	// Only analyze Laravel sites
-	if site.Type != enums.SiteTypeLaravel {
+	if site.Type != sitetypes.SiteTypeLaravel {
 		j.Ctx.LogInfo("Site is not Laravel, skipping feature analysis", "site_id", site.ID, "type", site.Type)
 		return nil
 	}
