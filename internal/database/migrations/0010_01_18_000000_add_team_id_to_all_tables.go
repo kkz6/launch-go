@@ -38,6 +38,7 @@ var tablesToUpdate = []tableConfig{
 	// Then tables that depend on sites
 	{"certificates", "site_id", "sites", "site_id"},
 	{"commands", "site_id", "sites", "site_id"},
+	{"deployments", "site_id", "sites", "site_id"},
 	{"queues", "site_id", "sites", "site_id"},
 	{"redirects", "site_id", "sites", "site_id"},
 	// Then tables that depend on backups

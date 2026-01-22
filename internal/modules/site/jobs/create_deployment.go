@@ -68,6 +68,7 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 		GitHash: j.Payload.GitHash,
 	}
 	deployment.SiteID = site.ID
+	deployment.TeamID = site.TeamID
 
 	if err := j.Deps.Repos.Deployment().Create(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to create deployment: %w", err)
