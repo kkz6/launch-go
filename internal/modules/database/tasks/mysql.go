@@ -1,8 +1,8 @@
 package tasks
 
 import (
-	"github.com/kkz6/launch-go/internal/modules/database/tasks/templates"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
 
 // MySQLCreateDatabaseConfig holds configuration for creating a MySQL database
@@ -22,7 +22,7 @@ func MySQLCreateDatabase(config MySQLCreateDatabaseConfig) *taskrunner.BaseTask 
 	if config.Collation == "" {
 		config.Collation = "utf8mb4_unicode_ci"
 	}
-	script := templates.MustRender("mysql/create_database.sh", config)
+	script := templates.MustRender("database", "mysql/create_database.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Create MySQL Database"),
 		taskrunner.WithScript(script),
@@ -39,7 +39,7 @@ type MySQLDropDatabaseConfig struct {
 
 // MySQLDropDatabase creates a task to drop a MySQL database
 func MySQLDropDatabase(config MySQLDropDatabaseConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("mysql/drop_database.sh", config)
+	script := templates.MustRender("database", "mysql/drop_database.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Drop MySQL Database"),
 		taskrunner.WithScript(script),
@@ -61,7 +61,7 @@ func MySQLCreateUser(config MySQLCreateUserConfig) *taskrunner.BaseTask {
 	if len(config.Hosts) == 0 {
 		config.Hosts = []string{"%"}
 	}
-	script := templates.MustRender("mysql/create_user.sh", config)
+	script := templates.MustRender("database", "mysql/create_user.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Create MySQL User"),
 		taskrunner.WithScript(script),
@@ -82,7 +82,7 @@ func MySQLDropUser(config MySQLDropUserConfig) *taskrunner.BaseTask {
 	if len(config.Hosts) == 0 {
 		config.Hosts = []string{"%"}
 	}
-	script := templates.MustRender("mysql/drop_user.sh", config)
+	script := templates.MustRender("database", "mysql/drop_user.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Drop MySQL User"),
 		taskrunner.WithScript(script),
@@ -104,7 +104,7 @@ func MySQLGrantPrivileges(config MySQLGrantPrivilegesConfig) *taskrunner.BaseTas
 	if len(config.Hosts) == 0 {
 		config.Hosts = []string{"%"}
 	}
-	script := templates.MustRender("mysql/grant_privileges.sh", config)
+	script := templates.MustRender("database", "mysql/grant_privileges.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Grant MySQL Privileges"),
 		taskrunner.WithScript(script),
@@ -126,7 +126,7 @@ func MySQLRevokePrivileges(config MySQLRevokePrivilegesConfig) *taskrunner.BaseT
 	if len(config.Hosts) == 0 {
 		config.Hosts = []string{"%"}
 	}
-	script := templates.MustRender("mysql/revoke_privileges.sh", config)
+	script := templates.MustRender("database", "mysql/revoke_privileges.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Revoke MySQL Privileges"),
 		taskrunner.WithScript(script),
@@ -148,7 +148,7 @@ func MySQLUpdatePassword(config MySQLUpdatePasswordConfig) *taskrunner.BaseTask 
 	if len(config.Hosts) == 0 {
 		config.Hosts = []string{"%"}
 	}
-	script := templates.MustRender("mysql/update_password.sh", config)
+	script := templates.MustRender("database", "mysql/update_password.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Update MySQL Password"),
 		taskrunner.WithScript(script),
@@ -164,7 +164,7 @@ type MySQLGetDatabasesConfig struct {
 
 // MySQLGetDatabases creates a task to list all MySQL databases
 func MySQLGetDatabases(config MySQLGetDatabasesConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("mysql/get_databases.sh", config)
+	script := templates.MustRender("database", "mysql/get_databases.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get MySQL Databases"),
 		taskrunner.WithScript(script),
@@ -180,7 +180,7 @@ type MySQLGetUsersConfig struct {
 
 // MySQLGetUsers creates a task to list all MySQL users
 func MySQLGetUsers(config MySQLGetUsersConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("mysql/get_users.sh", config)
+	script := templates.MustRender("database", "mysql/get_users.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get MySQL Users"),
 		taskrunner.WithScript(script),
@@ -197,7 +197,7 @@ type MySQLGetTablesConfig struct {
 
 // MySQLGetTables creates a task to list all tables in a MySQL database
 func MySQLGetTables(config MySQLGetTablesConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("mysql/get_tables.sh", config)
+	script := templates.MustRender("database", "mysql/get_tables.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get MySQL Tables"),
 		taskrunner.WithScript(script),

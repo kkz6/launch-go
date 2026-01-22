@@ -7,9 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/kkz6/launch-go/internal/modules/server"
-	"github.com/kkz6/launch-go/internal/modules/site"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
 
 func main() {
@@ -18,24 +16,14 @@ func main() {
 	flag.Parse()
 
 	if err := run(*outputDir, *dryRun); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		_, _ = fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 		os.Exit(1)
 	}
 }
 
 func run(outputDir string, dryRun bool) error {
-	engine, err := taskrunner.NewTemplateEngine()
-	if err != nil {
-		return fmt.Errorf("failed to create template engine: %w", err)
-	}
-
-	// Register module templates
-	if err := engine.RegisterModuleTemplates(server.TemplateFS, "server"); err != nil {
-		return fmt.Errorf("failed to register server templates: %w", err)
-	}
-	if err := engine.RegisterModuleTemplates(site.TemplateFS, "site"); err != nil {
-		return fmt.Errorf("failed to register site templates: %w", err)
-	}
+	// Register all module templates
+	templates.MustRegisterAll()
 
 	if !dryRun {
 		if err := os.MkdirAll(outputDir, 0755); err != nil {
@@ -44,7 +32,7 @@ func run(outputDir string, dryRun bool) error {
 		// Clean directory
 		entries, _ := os.ReadDir(outputDir)
 		for _, entry := range entries {
-			os.RemoveAll(filepath.Join(outputDir, entry.Name()))
+			_ = os.RemoveAll(filepath.Join(outputDir, entry.Name()))
 		}
 	}
 
@@ -56,8 +44,7 @@ func run(outputDir string, dryRun bool) error {
 	errorCount := 0
 
 	for name, data := range tasks {
-		templateName := data.template
-		script, err := engine.Render(templateName, data.data)
+		script, err := templates.Render(data.module, data.template, data.data)
 
 		filename := slugify(name) + ".sh"
 
@@ -100,30 +87,12 @@ func run(outputDir string, dryRun bool) error {
 }
 
 type taskData struct {
+	module   string
 	template string
 	data     interface{}
 }
 
 // Data structures for template rendering
-
-type ServerProvisionData struct {
-	ServerName           string
-	Provider             string
-	Timezone             string
-	SwapSize             string
-	SSHPort              int
-	DisablePasswordAuth  bool
-	CreateUser           bool
-	Username             string
-	PublicKey            string
-	PHPVersion           string
-	NodeVersion          string
-	InstallCaddy         bool
-	DatabaseType         string
-	DatabaseRootPassword string
-	InstallRedis         bool
-	InstallSupervisor    bool
-}
 
 type InstallPHPData struct {
 	PHPVersion                string
@@ -152,34 +121,6 @@ type ConfigureFirewallData struct {
 	Rules      []FirewallRule
 }
 
-type DeployData struct {
-	SiteName         string
-	Domain           string
-	SitePath         string
-	Release          string
-	RepoURL          string
-	Branch           string
-	DeployKey        bool
-	DeployKeyPath    string
-	SharedDirs       []string
-	HasComposer      bool
-	HasNpm           bool
-	UseNpmCi         bool
-	BuildAssets      bool
-	BuildCommand     string
-	IsLaravel        bool
-	RunMigrations    bool
-	RunSeeders       bool
-	CustomScript     string
-	PHPVersion       string
-	RestartQueue     bool
-	RestartScheduler bool
-	UseSupervisor    bool
-	QueueWorkerName  string
-	ReleasesToKeep   int
-	HealthCheckURL   string
-}
-
 type RollbackData struct {
 	SiteName           string
 	SitePath           string
@@ -195,41 +136,13 @@ type RollbackData struct {
 	HealthCheckURL     string
 }
 
-type InstallSSLData struct {
-	Domain         string
-	Aliases        []string
-	Email          string
-	UseCaddy       bool
-	PHPVersion     string
-	HealthCheckURL string
-}
-
 func getTasksToRender() map[string]taskData {
 	// Sample data for rendering templates
+	// Template names match the actual file paths under each module's templates directory
 	return map[string]taskData{
-		"server-provision": {
-			template: "server/provision",
-			data: ServerProvisionData{
-				ServerName:           "test-server",
-				Provider:             "digitalocean",
-				Timezone:             "UTC",
-				SwapSize:             "1G",
-				SSHPort:              22,
-				DisablePasswordAuth:  true,
-				CreateUser:           true,
-				Username:             "launch",
-				PublicKey:            "ssh-ed25519 AAAA... test@example.com",
-				PHPVersion:           "8.3",
-				NodeVersion:          "20",
-				InstallCaddy:         true,
-				DatabaseType:         "mysql",
-				DatabaseRootPassword: "secret-password",
-				InstallRedis:         true,
-				InstallSupervisor:    true,
-			},
-		},
 		"server-install-php": {
-			template: "server/install_php",
+			module:   "server",
+			template: "software/install_php.sh",
 			data: InstallPHPData{
 				PHPVersion:                "8.3",
 				UploadMaxFilesize:         "100M",
@@ -243,7 +156,8 @@ func getTasksToRender() map[string]taskData {
 			},
 		},
 		"server-configure-firewall": {
-			template: "server/configure_firewall",
+			module:   "server",
+			template: "provision/configure_firewall.sh",
 			data: ConfigureFirewallData{
 				ServerName: "test-server",
 				SSHPort:    22,
@@ -255,38 +169,9 @@ func getTasksToRender() map[string]taskData {
 				},
 			},
 		},
-		"site-deploy": {
-			template: "site/deploy",
-			data: DeployData{
-				SiteName:         "example-site",
-				Domain:           "example.com",
-				SitePath:         "/home/launch/example.com",
-				Release:          "20240115120000",
-				RepoURL:          "git@github.com:example/repo.git",
-				Branch:           "main",
-				DeployKey:        true,
-				DeployKeyPath:    "/home/launch/.ssh/deploy_key",
-				SharedDirs:       []string{"storage", "bootstrap/cache"},
-				HasComposer:      true,
-				HasNpm:           true,
-				UseNpmCi:         true,
-				BuildAssets:      true,
-				BuildCommand:     "npm run build",
-				IsLaravel:        true,
-				RunMigrations:    true,
-				RunSeeders:       false,
-				CustomScript:     "",
-				PHPVersion:       "8.3",
-				RestartQueue:     true,
-				RestartScheduler: true,
-				UseSupervisor:    true,
-				QueueWorkerName:  "example-site-worker",
-				ReleasesToKeep:   5,
-				HealthCheckURL:   "https://example.com/health",
-			},
-		},
 		"site-rollback": {
-			template: "site/rollback",
+			module:   "site",
+			template: "rollback_deployment.sh",
 			data: RollbackData{
 				SiteName:           "example-site",
 				SitePath:           "/home/launch/example.com",
@@ -300,17 +185,6 @@ func getTasksToRender() map[string]taskData {
 				PreRollbackScript:  "",
 				PostRollbackScript: "",
 				HealthCheckURL:     "https://example.com/health",
-			},
-		},
-		"site-install-ssl": {
-			template: "site/install_ssl",
-			data: InstallSSLData{
-				Domain:         "example.com",
-				Aliases:        []string{"www.example.com"},
-				Email:          "admin@example.com",
-				UseCaddy:       true,
-				PHPVersion:     "8.3",
-				HealthCheckURL: "https://example.com",
 			},
 		},
 	}

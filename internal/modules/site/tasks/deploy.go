@@ -12,10 +12,9 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/modules/site/tasks/templates"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	pkgtemplates "github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
 
 // Task type constants for deployment operations
@@ -487,10 +486,10 @@ func buildStandardScript(opts DeployOptions) string {
 	var scriptBuilder strings.Builder
 
 	scriptBuilder.WriteString("#!/bin/bash\n")
-	scriptBuilder.WriteString(pkgtemplates.ShellDefaultsLenient())
+	scriptBuilder.WriteString(templates.ShellDefaultsLenient())
 	scriptBuilder.WriteString("\n\n")
 
-	scriptBuilder.WriteString(templates.MustRender("deployment/shell_variables.sh", struct {
+	scriptBuilder.WriteString(templates.MustRender("site", "deployment/shell_variables.sh", struct {
 		PHPBinary string
 	}{phpBinary}))
 	scriptBuilder.WriteString("\n")
@@ -547,10 +546,10 @@ func buildZeroDowntimeScript(opts DeployOptions) string {
 	var scriptBuilder strings.Builder
 
 	scriptBuilder.WriteString("#!/bin/bash\n")
-	scriptBuilder.WriteString(pkgtemplates.ShellDefaultsLenient())
+	scriptBuilder.WriteString(templates.ShellDefaultsLenient())
 	scriptBuilder.WriteString("\n\n")
 
-	scriptBuilder.WriteString(templates.MustRender("deployment/shell_variables.sh", struct {
+	scriptBuilder.WriteString(templates.MustRender("site", "deployment/shell_variables.sh", struct {
 		PHPBinary string
 	}{phpBinary}))
 	scriptBuilder.WriteString("\n")
@@ -563,7 +562,7 @@ func buildZeroDowntimeScript(opts DeployOptions) string {
 	scriptBuilder.WriteString("\n")
 
 	scriptBuilder.WriteString("# Cleanup old releases\n")
-	scriptBuilder.WriteString(templates.MustRender("deployment/cleanup_old_releases.sh", struct {
+	scriptBuilder.WriteString(templates.MustRender("site", "deployment/cleanup_old_releases.sh", struct {
 		LatestDeploymentTimestamp string
 		ReleasesDirectory         string
 		RetentionCount            int
@@ -597,7 +596,7 @@ func buildZeroDowntimeScript(opts DeployOptions) string {
 	}
 
 	scriptBuilder.WriteString("# Link shared directories\n")
-	scriptBuilder.WriteString(templates.MustRender("deployment/link_shared_directories.sh", struct {
+	scriptBuilder.WriteString(templates.MustRender("site", "deployment/link_shared_directories.sh", struct {
 		SharedDirectories []string
 		SharedDirectory   string
 		ReleaseDirectory  string
@@ -609,7 +608,7 @@ func buildZeroDowntimeScript(opts DeployOptions) string {
 	scriptBuilder.WriteString("\n")
 
 	scriptBuilder.WriteString("# Link shared files\n")
-	scriptBuilder.WriteString(templates.MustRender("deployment/link_shared_files.sh", struct {
+	scriptBuilder.WriteString(templates.MustRender("site", "deployment/link_shared_files.sh", struct {
 		SharedFiles      []string
 		SharedDirectory  string
 		ReleaseDirectory string
@@ -621,7 +620,7 @@ func buildZeroDowntimeScript(opts DeployOptions) string {
 	scriptBuilder.WriteString("\n")
 
 	scriptBuilder.WriteString("# Make directories writable\n")
-	scriptBuilder.WriteString(templates.MustRender("deployment/make_directories_writable.sh", struct {
+	scriptBuilder.WriteString(templates.MustRender("site", "deployment/make_directories_writable.sh", struct {
 		WritableDirectories []string
 		ReleaseDirectory    string
 		Username            string
@@ -639,7 +638,7 @@ func buildZeroDowntimeScript(opts DeployOptions) string {
 	}
 
 	scriptBuilder.WriteString("# Make deployment current\n")
-	scriptBuilder.WriteString(templates.MustRender("deployment/make_deployment_current.sh", struct {
+	scriptBuilder.WriteString(templates.MustRender("site", "deployment/make_deployment_current.sh", struct {
 		SitePath         string
 		ReleaseDirectory string
 		CurrentDirectory string
@@ -664,7 +663,7 @@ func buildZeroDowntimeScript(opts DeployOptions) string {
 // renderUpdateRepository renders the update repository template
 func renderUpdateRepository(opts DeployOptions, repoDir, releaseDir string) string {
 	site := opts.Site
-	return templates.MustRender("deployment/update_repository.sh", struct {
+	return templates.MustRender("site", "deployment/update_repository.sh", struct {
 		RepositoryDirectory    string
 		RepositoryURL          string
 		RepositoryBranch       string
@@ -701,7 +700,7 @@ func renderPrepareFreshInstallation(opts DeployOptions, repoDir, releaseDir, sha
 
 	switch site.Type {
 	case sitetypes.SiteTypeLaravel:
-		scriptBuilder.WriteString(templates.MustRender("deployment/prepare_fresh_installation/laravel.sh", struct {
+		scriptBuilder.WriteString(templates.MustRender("site", "deployment/prepare_fresh_installation/laravel.sh", struct {
 			SitePath               string
 			ZeroDowntimeDeployment bool
 			SharedDirectory        string
@@ -718,7 +717,7 @@ func renderPrepareFreshInstallation(opts DeployOptions, repoDir, releaseDir, sha
 		}))
 
 	case sitetypes.SiteTypeWordpress:
-		scriptBuilder.WriteString(templates.MustRender("deployment/prepare_fresh_installation/wordpress.sh", struct {
+		scriptBuilder.WriteString(templates.MustRender("site", "deployment/prepare_fresh_installation/wordpress.sh", struct {
 			SitePath            string
 			RepositoryDirectory string
 			EnvVariables        map[string]string
@@ -742,7 +741,7 @@ type RollbackDeploymentConfig struct {
 
 // RollbackDeployment creates a task to rollback to a previous deployment
 func RollbackDeployment(config RollbackDeploymentConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("rollback_deployment.sh", struct {
+	script := templates.MustRender("site", "rollback_deployment.sh", struct {
 		SitePath         string
 		ReleaseDirectory string
 		CurrentDirectory string

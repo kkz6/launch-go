@@ -3,10 +3,7 @@
 package templates
 
 import (
-	"bytes"
-	"embed"
 	"fmt"
-	"io/fs"
 	"path/filepath"
 	"strings"
 	"text/template"
@@ -146,98 +143,4 @@ function taskStatus() {
     local message="$1"
     echo "::LAUNCH_TASK_STATUS::${message}"
 }`
-}
-
-// Engine provides template parsing and rendering with common functions.
-type Engine struct {
-	templates *template.Template
-	funcMap   template.FuncMap
-}
-
-// NewEngine creates a new template engine with common functions.
-func NewEngine() *Engine {
-	funcMap := make(template.FuncMap)
-	for k, v := range CommonFuncMap {
-		funcMap[k] = v
-	}
-
-	return &Engine{
-		templates: template.New("").Funcs(funcMap),
-		funcMap:   funcMap,
-	}
-}
-
-// LoadFromFS loads templates from an embedded filesystem.
-// Templates are named by their path relative to the root.
-func (e *Engine) LoadFromFS(fsys embed.FS, root string) error {
-	return fs.WalkDir(fsys, root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() || filepath.Ext(path) != ".sh" {
-			return nil
-		}
-
-		content, err := fsys.ReadFile(path)
-		if err != nil {
-			return fmt.Errorf("reading %s: %w", path, err)
-		}
-
-		// Strip the root prefix from the template name
-		name := strings.TrimPrefix(path, root+"/")
-		if name == path {
-			name = strings.TrimPrefix(path, root)
-		}
-
-		_, err = e.templates.New(name).Parse(string(content))
-		if err != nil {
-			return fmt.Errorf("parsing %s: %w", path, err)
-		}
-
-		return nil
-	})
-}
-
-// AddFunc adds a custom template function.
-func (e *Engine) AddFunc(name string, fn interface{}) {
-	e.funcMap[name] = fn
-	e.templates = e.templates.Funcs(template.FuncMap{name: fn})
-}
-
-// Render executes a named template with the given data.
-func (e *Engine) Render(name string, data interface{}) (string, error) {
-	var buf bytes.Buffer
-	if err := e.templates.ExecuteTemplate(&buf, name, data); err != nil {
-		return "", fmt.Errorf("template %s: %w", name, err)
-	}
-	return buf.String(), nil
-}
-
-// MustRender executes a template and panics on error.
-func (e *Engine) MustRender(name string, data interface{}) string {
-	result, err := e.Render(name, data)
-	if err != nil {
-		panic(err)
-	}
-	return result
-}
-
-// RenderString renders an inline template string with the given data.
-func (e *Engine) RenderString(templateStr string, data interface{}) (string, error) {
-	tmpl, err := e.templates.Clone()
-	if err != nil {
-		return "", err
-	}
-
-	tmpl, err = tmpl.Parse(templateStr)
-	if err != nil {
-		return "", fmt.Errorf("parsing template string: %w", err)
-	}
-
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("rendering template: %w", err)
-	}
-
-	return buf.String(), nil
 }

@@ -37,6 +37,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 	"github.com/kkz6/launch-go/internal/pkg/websocket"
 )
 
@@ -69,6 +70,9 @@ var Version = "development"
 
 // bootstrap initializes all application dependencies
 func bootstrap() *Application {
+	// Register all script templates at startup
+	templates.MustRegisterAll()
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)

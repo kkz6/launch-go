@@ -1,14 +1,14 @@
 package tasks
 
 import (
-	"github.com/kkz6/launch-go/internal/modules/site/tasks/templates"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
 
 // Task type constants for command operations
 const (
-	RunCommandForSiteTaskType      = "site:run_command_for_site"
-	RestartAllSiteQueuesTaskType   = "site:restart_all_site_queues"
+	RunCommandForSiteTaskType    = "site:run_command_for_site"
+	RestartAllSiteQueuesTaskType = "site:restart_all_site_queues"
 )
 
 // RunCommandForSiteConfig holds configuration for running a command in a site's directory
@@ -19,7 +19,7 @@ type RunCommandForSiteConfig struct {
 
 // RunCommandForSite creates a task to run a command in a site's application directory
 func RunCommandForSite(config RunCommandForSiteConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("run_command_for_site.sh", struct {
+	script := templates.MustRender("site", "run_command_for_site.sh", struct {
 		ApplicationDirectory string
 		Command              string
 	}{
@@ -43,7 +43,7 @@ type RestartAllSiteQueuesConfig struct {
 
 // RestartAllSiteQueues creates a task to restart all queue workers for a site
 func RestartAllSiteQueues(config RestartAllSiteQueuesConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("restart_all_site_queues.sh", struct {
+	script := templates.MustRender("site", "restart_all_site_queues.sh", struct {
 		SiteAddress string
 		HasQueues   bool
 		Commands    []string
