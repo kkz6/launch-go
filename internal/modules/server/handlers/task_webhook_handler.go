@@ -9,13 +9,14 @@ import (
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 	"github.com/kkz6/launch-go/internal/pkg/webhook"
-	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 // TaskWebhookRepository interface for webhook handler
@@ -84,6 +85,9 @@ func (h *TaskWebhookHandler) MarkAsFinished(c *fiber.Ctx) error {
 	// Handle callback if task has instance data
 	h.handleCallback(ctx, task, taskrunner.CallbackFinished, 0)
 
+	// Dispatch job to fetch task output from server
+	h.dispatchOutputFetch(task)
+
 	return response.OK(c, "Task marked as finished", nil)
 }
 
@@ -129,6 +133,9 @@ func (h *TaskWebhookHandler) MarkAsFailed(c *fiber.Ctx) error {
 	// Handle callback if task has instance data
 	h.handleCallback(ctx, task, taskrunner.CallbackFailed, exitCode)
 
+	// Dispatch job to fetch task output from server
+	h.dispatchOutputFetch(task)
+
 	return response.OK(c, "Task marked as failed", nil)
 }
 
@@ -160,6 +167,9 @@ func (h *TaskWebhookHandler) MarkAsTimeout(c *fiber.Ctx) error {
 
 	// Handle callback if task has instance data
 	h.handleCallback(ctx, task, taskrunner.CallbackTimeout, 124)
+
+	// Dispatch job to fetch task output from server
+	h.dispatchOutputFetch(task)
 
 	return response.OK(c, "Task marked as timeout", nil)
 }
@@ -301,4 +311,33 @@ type CallbackURLs struct {
 	Finished string
 	Failed   string
 	Timeout  string
+}
+
+// dispatchOutputFetch dispatches a job to fetch the task output from the server
+func (h *TaskWebhookHandler) dispatchOutputFetch(task *models.Task) {
+	if h.queue == nil {
+		return
+	}
+
+	// Get server ID from task
+	serverID := task.ServerID
+	if serverID == "" {
+		return
+	}
+
+	asynqTask, err := jobs.NewFetchTaskOutputTask(task.ID, serverID, 0) // 0 = no reschedule
+	if err != nil {
+		if h.Logger != nil {
+			h.LogError(err, "Failed to create fetch output task", "task_id", task.ID)
+		}
+		return
+	}
+
+	if _, err := h.queue.Enqueue(asynqTask); err != nil {
+		if h.Logger != nil {
+			h.LogError(err, "Failed to dispatch fetch output job", "task_id", task.ID)
+		}
+	} else if h.Logger != nil {
+		h.LogInfo("Dispatched output fetch job", "task_id", task.ID)
+	}
 }

@@ -2,7 +2,7 @@
 
 A comprehensive guide for developers working on the Launch-Go codebase. This document covers architecture patterns, conventions, and how to implement new features consistently.
 
-**Last Updated:** 2026-01-21
+**Last Updated:** 2026-01-22
 
 ---
 
@@ -807,169 +807,332 @@ func (Item) TableName() string {
 
 ## 9. Jobs & Background Tasks
 
-Jobs are background tasks processed by the queue worker.
+Jobs are background tasks processed by the queue worker using asynq.
+
+### Job Interface
+
+Jobs implement the `Handler` interface from `internal/pkg/jobs`:
+
+```go
+// Handler is the minimal interface for jobs
+type Handler interface {
+    Handle(ctx context.Context) error
+}
+
+// FailableHandler is for jobs that need cleanup on failure
+type FailableHandler interface {
+    Handler
+    Failed(ctx context.Context, err error)
+}
+```
 
 ### Job Structure
+
+Each job consists of:
+1. A type constant (e.g., `TypeRebootServer = "server:reboot"`)
+2. A payload struct with JSON tags
+3. A job struct with `Deps` and `Payload` fields
+4. A constructor that returns `pkgjobs.Handler`
+5. A `Handle` method implementing the job logic
+6. Optional `Failed` method for cleanup
+7. A task creator function for dispatching
 
 ```go
 package jobs
 
 import (
     "context"
-    "encoding/json"
+    "fmt"
 
     "github.com/hibiken/asynq"
+
+    "github.com/kkz6/launch-go/internal/modules/server/models"
+    "github.com/kkz6/launch-go/internal/modules/server/tasks"
+    pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
-const TypeProcessItem = "item:process"
+// 1. Type constant
+const TypeRebootServer = "server:reboot"
 
-type ProcessItemPayload struct {
-    ItemID   string `json:"item_id"`
-    TeamID   string `json:"team_id"`
-    ServerID string `json:"server_id"`
+// 2. Payload struct
+type RebootServerPayload struct {
+    ServerID string  `json:"server_id"`
+    UserID   *string `json:"user_id,omitempty"`
 }
 
-type ProcessItemJob struct {
-    ctx *JobContext
+// 3. Job struct - references module deps and payload
+type RebootServerJob struct {
+    Deps    *JobDeps
+    Payload RebootServerPayload
+
+    // Private fields for loaded data
+    server *models.Server
 }
 
-func NewProcessItemJob(ctx *JobContext) *ProcessItemJob {
-    return &ProcessItemJob{ctx: ctx}
+// 4. Constructor - returns pkgjobs.Handler, uses package-level deps
+func NewRebootServerJob(p RebootServerPayload) pkgjobs.Handler {
+    return &RebootServerJob{Deps: deps, Payload: p}
 }
 
-func (j *ProcessItemJob) ProcessTask(ctx context.Context, task *asynq.Task) error {
-    var payload ProcessItemPayload
-    if err := json.Unmarshal(task.Payload(), &payload); err != nil {
-        return err
+// 5. Handle method - implements the job logic
+func (j *RebootServerJob) Handle(ctx context.Context) error {
+    var err error
+    j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
+    if err != nil {
+        return fmt.Errorf("find server: %w", err)
     }
 
-    // Process the item...
+    task := tasks.RebootServer()
+    _, err = j.Deps.RunTask(j.server, task).
+        AsRoot().
+        Dispatch(ctx)
+
+    j.Deps.Logger.Info().
+        Str("server_id", j.server.ID).
+        Msg("server reboot initiated")
+
+    j.Deps.BroadcastServerEvent(j.server, "server.rebooting", map[string]any{
+        "server_id": j.server.ID,
+    })
 
     return nil
 }
+
+// 6. Optional Failed method for cleanup
+func (j *RebootServerJob) Failed(ctx context.Context, err error) {
+    j.Deps.Logger.Error().Err(err).
+        Str("server_id", j.Payload.ServerID).
+        Msg("failed to reboot server")
+}
+
+// 7. Task creator for dispatching
+func NewRebootServerTask(serverID string, userID *string) (*asynq.Task, error) {
+    return pkgjobs.TaskWithID(TypeRebootServer,
+        RebootServerPayload{ServerID: serverID, UserID: userID},
+        pkgjobs.Dedup("reboot", serverID), // Deduplication ID
+    )
+}
 ```
 
-### Job Context
+### Job Dependencies (JobDeps)
 
-Each module has a `JobContext` that provides shared dependencies for all jobs in that module.
-The module `JobContext` embeds `pkgjobs.Base` for common logging and broadcasting functionality.
+Each module has a `JobDeps` struct that embeds `*pkgjobs.Deps` and adds module-specific dependencies:
 
 ```go
 package jobs
 
 import (
-    "github.com/rs/zerolog"
-    "gorm.io/gorm"
-
-    "github.com/kkz6/launch-go/internal/modules/mymodule/repositories"
+    "github.com/kkz6/launch-go/internal/modules/server/contracts"
+    "github.com/kkz6/launch-go/internal/modules/server/providers"
+    "github.com/kkz6/launch-go/internal/modules/server/tasks"
+    "github.com/kkz6/launch-go/internal/pkg/app"
     pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-    "github.com/kkz6/launch-go/internal/queue"
 )
 
-// JobContext provides shared dependencies for all module jobs.
-// It embeds pkgjobs.Base for common logging functionality.
-type JobContext struct {
-    pkgjobs.Base
-    // Public fields for backward compatibility
-    DB     *gorm.DB
-    Repos  *repositories.Registry
-    Logger *zerolog.Logger
-    Queue  *queue.Client
+// JobDeps holds all dependencies for module jobs
+type JobDeps struct {
+    *pkgjobs.Deps  // DB, Logger, Queue, Broadcaster, Dispatcher
+    Repos           contracts.RepositoryRegistry
+    ProviderFactory *providers.Factory
+    TaskRunnerDeps  *tasks.TaskRunnerDeps
 }
 
-// NewJobContext creates a new job context
-func NewJobContext(db *gorm.DB, repos *repositories.Registry, logger *zerolog.Logger, queueClient *queue.Client) *JobContext {
-    return &JobContext{
-        Base: pkgjobs.NewBase(pkgjobs.BaseDeps{
-            DB:     db,
-            Logger: logger,
-            Queue:  queueClient,
-        }),
-        DB:     db,
-        Repos:  repos,
-        Logger: logger,
-        Queue:  queueClient,
+// NewJobDeps creates JobDeps from app dependencies
+func NewJobDeps(appDeps app.Deps, repos contracts.RepositoryRegistry) *JobDeps {
+    return &JobDeps{
+        Deps: &pkgjobs.Deps{
+            DB:          appDeps.DB,
+            Logger:      appDeps.Logger,
+            Queue:       appDeps.Queue,
+            Broadcaster: appDeps.WebSocket,
+            Dispatcher:  appDeps.Dispatcher,
+        },
+        Repos: repos,
+        // ... additional fields
+    }
+}
+
+// RunTask creates a task runner for a server
+func (d *JobDeps) RunTask(server *models.Server, task pkgtaskrunner.Task) *tasks.TaskRunner {
+    return d.TaskRunnerDeps.NewRunner(server, task)
+}
+
+// BroadcastServerEvent broadcasts an event for a server
+func (d *JobDeps) BroadcastServerEvent(server *models.Server, event string, data any) {
+    if server != nil {
+        d.BroadcastToTeam(server.TeamID, event, data)
     }
 }
 ```
 
-The `pkgjobs.Base` provides these common methods:
+The `pkgjobs.Deps` struct provides:
+- `DB *gorm.DB` - Database connection
+- `Logger *zerolog.Logger` - Structured logger
+- `Queue *queue.Client` - Job queue client
+- `Broadcaster broadcast.TeamBroadcaster` - WebSocket broadcaster
+- `Dispatcher taskrunner.TaskDispatcher` - SSH task dispatcher
 
-- `LogInfo(msg string, fields ...any)` - Log info with key-value pairs
-- `LogError(err error, msg string, fields ...any)` - Log error with key-value pairs
-- `LogWarn(msg string, fields ...any)` - Log warning
-- `LogDebug(msg string, fields ...any)` - Log debug
-- `BroadcastToTeam(teamID, event string, data any)` - Send websocket event
+And these helper methods:
+- `Dispatch(jobType, payload, opts...)` - Dispatch a job
+- `DispatchWithID(jobType, payload, taskID, opts...)` - Dispatch with deduplication
+- `DispatchIn(jobType, payload, delay, opts...)` - Dispatch with delay
+- `DispatchTask(task, opts...)` - Dispatch pre-built task
+- `BroadcastToTeam(teamID, event, data)` - Send websocket event
 
-Example usage in a job:
+### Job Registration
+
+Jobs are registered in the module's `register.go` file:
 
 ```go
-func (j *ProcessItemJob) Handle(ctx context.Context) error {
-    j.ctx.LogInfo("Processing item", "itemID", j.payload.ItemID)
+package jobs
 
-    if err := j.doSomething(); err != nil {
-        j.ctx.LogError(err, "Failed to process item", "itemID", j.payload.ItemID)
-        return err
-    }
+import (
+    "github.com/hibiken/asynq"
 
-    j.ctx.BroadcastToTeam(j.payload.TeamID, "item.processed", map[string]any{
-        "item_id": j.payload.ItemID,
-    })
+    "github.com/kkz6/launch-go/internal/modules/server/contracts"
+    "github.com/kkz6/launch-go/internal/pkg/app"
+    pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+)
 
-    return nil
+// Package-level deps set during registration
+var deps *JobDeps
+
+// Register initializes and registers all module job handlers
+func Register(mux *asynq.ServeMux, appDeps app.Deps, repos contracts.RepositoryRegistry) {
+    deps = NewJobDeps(appDeps, repos)
+    registerHandlers(mux)
 }
+
+func registerHandlers(mux *asynq.ServeMux) {
+    // Use RegisterTyped for automatic JSON unmarshaling
+    pkgjobs.RegisterTyped(mux, TypeRebootServer, NewRebootServerJob)
+    pkgjobs.RegisterTyped(mux, TypeProvisionServer, NewProvisionServerJob)
+    pkgjobs.RegisterTyped(mux, TypeDeleteServer, NewDeleteServerJob)
+    // ... more registrations
+}
+```
+
+### Task Creator Helpers
+
+Use helpers from `internal/pkg/jobs/task.go` to create asynq tasks:
+
+```go
+// Basic task creation
+task, err := pkgjobs.Task(TypeRebootServer, payload)
+
+// Task with deduplication ID
+task, err := pkgjobs.TaskWithID(TypeRebootServer, payload, "reboot:server123")
+
+// Create deduplication ID from parts
+id := pkgjobs.Dedup("reboot", serverID) // "reboot:server123"
 ```
 
 ### Dispatching Jobs
 
+**From a service (using Deps):**
 ```go
-// In service
-func (s *Service) TriggerProcess(ctx context.Context, itemID, teamID, serverID string) error {
-    payload := jobs.ProcessItemPayload{
-        ItemID:   itemID,
-        TeamID:   teamID,
+func (s *Service) TriggerReboot(ctx context.Context, serverID string) error {
+    return s.deps.Dispatch(jobs.TypeRebootServer, jobs.RebootServerPayload{
         ServerID: serverID,
-    }
+    })
+}
+```
 
-    data, err := json.Marshal(payload)
-    if err != nil {
-        return err
-    }
-
-    task := asynq.NewTask(jobs.TypeProcessItem, data)
-    _, err = s.queue.Enqueue(task)
+**Using task creator functions:**
+```go
+task, err := jobs.NewRebootServerTask(serverID, &userID)
+if err != nil {
     return err
 }
+_, err = s.queue.Enqueue(task)
+```
+
+**With options:**
+```go
+s.deps.DispatchIn(jobType, payload, 5*time.Minute)  // Delayed
+s.deps.DispatchToQueue(jobType, payload, "low")     // Specific queue
 ```
 
 ---
 
 ## 10. Task Runner (SSH Tasks)
 
-Tasks are SSH scripts that run on remote servers.
+Tasks are SSH scripts that run on remote servers. The task runner handles both local development (live SSH streaming) and production mode (HTTP callbacks with background execution).
+
+### Task Interfaces
+
+**Task Interface** - For basic script execution:
+```go
+type Task interface {
+    Name() string
+    Script() string
+    Timeout() time.Duration
+    OnOutput(output string)
+    OnFinished(ctx context.Context, result *TaskResult)
+    OnFailed(ctx context.Context, result *TaskResult)
+    OnTimeout(ctx context.Context, result *TaskResult)
+}
+```
+
+**CallbackHandler Interface** - For tasks with server-side callbacks:
+```go
+type CallbackHandler interface {
+    OnSuccess(ctx context.Context, cbCtx *CallbackContext, taskID string) error
+    OnFailure(ctx context.Context, cbCtx *CallbackContext, taskID string, exitCode int) error
+    OnExpired(ctx context.Context, cbCtx *CallbackContext, taskID string) error
+}
+```
+
+**CallbackPayload Interface** - For tasks that can be serialized/reconstructed:
+```go
+type CallbackPayload interface {
+    CallbackHandler
+    TypeName() string
+    MarshalPayload() ([]byte, error)
+}
+```
 
 ### Task Definition
+
+A task with callbacks consists of:
+1. A type constant for registration
+2. A callback data struct (IDs only - no models)
+3. A task struct embedding `*taskrunner.BaseTask`
+4. A constructor that builds the script and callback data
+5. `TypeName()` and `MarshalPayload()` for serialization
+6. Callback methods: `OnSuccess`, `OnFailure`, `OnExpired`
+7. A factory method implementing `CallbackStateFactory`
 
 ```go
 package tasks
 
 import (
+    "context"
+    "encoding/json"
+    "fmt"
+    "time"
+
+    "github.com/kkz6/launch-go/internal/modules/server/models"
     "github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// 1. Type constant
 const InstallItemTaskType = "item:install"
 
-type InstallItemTask struct {
-    *taskrunner.BaseTask
-    callback callbackData
-}
-
-type callbackData struct {
+// 2. Callback data - ONLY IDs and simple values (serialized to DB)
+type installCallbackData struct {
     ItemID   string `json:"item_id"`
-    ServerID string `json:"server_id"`
+    ServerID string `json:"server_id"`  // Include ALL IDs needed by callbacks
     TeamID   string `json:"team_id"`
 }
 
+// 3. Task struct
+type InstallItemTask struct {
+    *taskrunner.BaseTask
+    callback installCallbackData
+}
+
+// 4. Constructor - builds script and populates callback data
 func NewInstallItemTask(item *models.Item, server *models.Server) *InstallItemTask {
     script := buildInstallScript(item)
 
@@ -979,14 +1142,15 @@ func NewInstallItemTask(item *models.Item, server *models.Server) *InstallItemTa
             taskrunner.WithScript(script),
             taskrunner.WithTimeoutSeconds(300),
         ),
-        callback: callbackData{
+        callback: installCallbackData{
             ItemID:   item.ID,
-            ServerID: server.ID,
+            ServerID: server.ID,  // Needed for follow-up jobs
             TeamID:   item.TeamID,
         },
     }
 }
 
+// 5. Serialization methods
 func (t *InstallItemTask) TypeName() string {
     return InstallItemTaskType
 }
@@ -995,32 +1159,154 @@ func (t *InstallItemTask) MarshalPayload() ([]byte, error) {
     return json.Marshal(t.callback)
 }
 
-// Callbacks
+// 6. Callback methods
 func (t *InstallItemTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
-    return cbCtx.DB.Model(&models.Item{}).
+    // Update status
+    if err := cbCtx.DB.Model(&models.Item{}).
         Where("id = ?", t.callback.ItemID).
-        Update("status", "installed").Error
+        Update("status", "installed").Error; err != nil {
+        return fmt.Errorf("failed to update item status: %w", err)
+    }
+
+    // Broadcast event
+    cbCtx.BroadcastToTeam(t.callback.TeamID, "item.installed", map[string]any{
+        "item_id": t.callback.ItemID,
+    })
+
+    // Dispatch follow-up job
+    return cbCtx.DispatchJob("item:configure", map[string]string{
+        "item_id":   t.callback.ItemID,
+        "server_id": t.callback.ServerID,
+    })
 }
 
 func (t *InstallItemTask) OnFailure(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string, exitCode int) error {
+    cbCtx.Logger.Error().
+        Str("task_id", taskID).
+        Int("exit_code", exitCode).
+        Msg("Item installation failed")
+
     return cbCtx.DB.Model(&models.Item{}).
         Where("id = ?", t.callback.ItemID).
         Update("status", "failed").Error
+}
+
+func (t *InstallItemTask) OnExpired(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+    cbCtx.Logger.Error().
+        Str("task_id", taskID).
+        Msg("Item installation timed out")
+
+    return cbCtx.DB.Model(&models.Item{}).
+        Where("id = ?", t.callback.ItemID).
+        Update("status", "timeout").Error
+}
+
+// 7. Factory method - enables reconstruction from serialized data
+func (c installCallbackData) NewTask() taskrunner.CallbackHandler {
+    return &InstallItemTask{
+        BaseTask: taskrunner.NewBaseTask(),
+        callback: c,
+    }
 }
 ```
 
 ### Task Registration
 
+Register tasks in the module's `tasks/register.go`:
+
 ```go
-// In tasks/register.go
 package tasks
 
 import "github.com/kkz6/launch-go/internal/pkg/taskrunner"
 
 func RegisterTaskCallbacks() {
-    taskrunner.RegisterCallbackState[callbackData](InstallItemTaskType)
+    // Use RegisterCallbackState when callback data implements NewTask()
+    taskrunner.RegisterCallbackState[installCallbackData](InstallItemTaskType)
+    taskrunner.RegisterCallbackState[provisionCallbackData](ProvisionServerTaskType)
 }
 ```
+
+### Callback Context
+
+The `CallbackContext` provides dependencies to callback handlers:
+
+```go
+type CallbackContext struct {
+    broadcast.Mixin  // BroadcastToTeam, BroadcastToServer, etc.
+    DB       *gorm.DB
+    Queue    QueueClient
+    Logger   *zerolog.Logger
+    Notifier NotifierService
+}
+```
+
+Available methods:
+- `BroadcastToTeam(teamID, event, data)` - Send websocket event
+- `DispatchJob(jobType, payload)` - Dispatch a follow-up job
+- `NotifyTeam(ctx, teamID, notification)` - Send notification
+- `NotifyChannel(ctx, channelID, notification)` - Send to specific channel
+
+### Running Tasks
+
+Tasks are run via the module's TaskRunner:
+
+```go
+// From a job
+result, err := j.Deps.RunTask(server, task).
+    AsRoot().           // Run as root user
+    WithOutputPolling(30). // Poll output every 30s (production mode)
+    Dispatch(ctx)       // Or Run(ctx) for sync execution
+
+// Check result
+if result.TaskResult != nil && result.TaskResult.IsSuccessful() {
+    // Task succeeded
+}
+```
+
+### Execution Modes
+
+**Local/Dev Mode (Live SSH Streaming):**
+```
+1. Task starts → persistent SSH connection
+2. StreamMonitor attaches to output
+3. Output broadcast to WebSocket in real-time
+4. Task completes → callbacks invoked directly
+```
+
+**Production Mode (HTTP Callbacks):**
+```
+1. Task starts → script wrapped with callback URLs
+2. FetchTaskOutput job dispatched (if polling enabled)
+3. Job polls server every N seconds for output
+4. Script completes → calls webhook endpoint
+5. Webhook updates status, fetches final output
+6. Callbacks invoked via CallbackHandler
+```
+
+### Script Helpers
+
+The taskrunner provides helpers for building scripts:
+
+```go
+// Wrap script with shell defaults
+script := taskrunner.WrapScript(myScript)
+// Result: #!/bin/bash\nset -euo pipefail\nexport DEBIAN_FRONTEND=noninteractive\n\n...
+
+// Get shell defaults for embedding
+defaults := taskrunner.ShellDefaults()
+
+// Get common bash functions
+funcs := taskrunner.CommonFunctions()  // httpPostSilently, etc.
+funcs := taskrunner.AptFunctions()     // waitForAptUnlock, etc.
+```
+
+### Key Rules
+
+1. **Callback data must only contain IDs** - Never store model pointers or complex objects
+2. **Include ALL IDs needed by callbacks** - If a callback dispatches a job that needs `server_id`, include it
+3. **Use typed payloads for job dispatch** - Avoid `map[string]string` which has no compile-time safety
+4. **Register in register.go** - Explicit registration, not `init()` magic
+5. **Callbacks run in ALL execution modes** - Whether sync, async, or background with HTTP callbacks
 
 ---
 
@@ -1230,19 +1516,26 @@ go test -v -run TestService_Create ./internal/modules/mymodule/services/
 
 ### Adding a Background Job
 
-1. Define job type constant
-2. Create payload struct
-3. Create job struct with `ProcessTask` method
-4. Register in worker
-5. Dispatch from service
+1. Define job type constant (e.g., `TypeProcessItem = "item:process"`)
+2. Create payload struct with JSON tags
+3. Create job struct with `Deps *JobDeps` and `Payload` fields
+4. Create constructor returning `pkgjobs.Handler` (uses package-level `deps`)
+5. Implement `Handle(ctx context.Context) error` method
+6. Optional: Implement `Failed(ctx context.Context, err error)` for cleanup
+7. Create task creator function for dispatching
+8. Register with `pkgjobs.RegisterTyped(mux, TypeXxx, NewXxxJob)` in `register.go`
 
 ### Adding an SSH Task
 
-1. Define task type constant
-2. Create task struct with callback data
-3. Implement `OnSuccess`, `OnFailure`, `OnExpired`
-4. Register callback in `register.go`
-5. Dispatch via task runner
+1. Define task type constant (e.g., `InstallItemTaskType = "item:install"`)
+2. Create callback data struct (IDs only - no model pointers)
+3. Create task struct embedding `*taskrunner.BaseTask` and callback data
+4. Create constructor that builds script and populates callback data
+5. Implement `TypeName()` and `MarshalPayload()` for serialization
+6. Implement callback methods: `OnSuccess`, `OnFailure`, `OnExpired`
+7. Implement `NewTask()` on callback data struct (for `CallbackStateFactory`)
+8. Register with `taskrunner.RegisterCallbackState[callbackData](TaskType)` in `register.go`
+9. Run via `deps.RunTask(server, task).Dispatch(ctx)`
 
 ---
 
