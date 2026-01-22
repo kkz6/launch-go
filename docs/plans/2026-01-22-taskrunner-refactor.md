@@ -83,9 +83,10 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/launch/paths"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/paths"
 )
 
 const TypeFetchTaskOutput = "server:fetch_task_output"
@@ -100,38 +101,41 @@ type FetchTaskOutputPayload struct {
 // FetchTaskOutputJob SSHes into the server to download task output.
 // If RescheduleIntervalSec > 0 and task is still pending, it reschedules itself.
 type FetchTaskOutputJob struct {
-	pkgjobs.BaseJob[*JobContext, FetchTaskOutputPayload]
+	Deps    *JobDeps
+	Payload FetchTaskOutputPayload
+
+	task   *models.Task
+	server *models.Server
 }
 
-// NewFetchTaskOutputJob creates a new FetchTaskOutputJob
-func NewFetchTaskOutputJob(ctx *JobContext, payload FetchTaskOutputPayload) *FetchTaskOutputJob {
-	return &FetchTaskOutputJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewFetchTaskOutputJob(p FetchTaskOutputPayload) pkgjobs.Handler {
+	return &FetchTaskOutputJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the fetch task output job
 func (j *FetchTaskOutputJob) Handle(ctx context.Context) error {
+	var err error
+
 	// Load task
-	task, err := j.Ctx.Repos().Task().FindByID(ctx, j.Payload.TaskID)
+	j.task, err = j.Deps.Repos.Task().FindByID(ctx, j.Payload.TaskID)
 	if err != nil {
 		return fmt.Errorf("failed to find task: %w", err)
 	}
 
 	// Load server
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.Ctx.LogInfo("Fetching task output from server",
-		"task_id", task.ID,
-		"server_id", server.ID,
-	)
+	j.Deps.Logger.Info().
+		Str("task_id", j.task.ID).
+		Str("server_id", j.server.ID).
+		Msg("Fetching task output from server")
 
 	// Build output file path
-	taskDir := paths.GetTaskDir(task.User)
-	taskPaths := paths.GetTaskPaths(taskDir, "task-"+task.ID)
+	taskDir := paths.GetTaskDir(j.task.User)
+	taskPaths := paths.GetTaskPaths(taskDir, "task-"+j.task.ID)
 
 	// Create GetFile task to fetch the output
 	getFileTask := tasks.GetFile(tasks.GetFileConfig{
@@ -140,43 +144,51 @@ func (j *FetchTaskOutputJob) Handle(ctx context.Context) error {
 	})
 
 	// Run as root to ensure we can read the file
-	result, err := j.Ctx.TaskRunnerDeps.NewRunner(server, getFileTask).
+	result, err := j.Deps.RunTask(j.server, getFileTask).
 		AsRoot().
 		Run(ctx)
 
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to fetch task output", "task_id", task.ID)
+		j.Deps.Logger.Error().Err(err).
+			Str("task_id", j.task.ID).
+			Msg("Failed to fetch task output")
 		return err
 	}
 
 	if result.TaskResult != nil && result.TaskResult.IsSuccessful() {
 		// Update task output in database
 		output := result.TaskResult.Output
-		if err := j.Ctx.Repos().Task().UpdateOutput(ctx, task.ID, output); err != nil {
-			j.Ctx.LogError(err, "Failed to update task output", "task_id", task.ID)
+		if err := j.Deps.Repos.Task().UpdateOutput(ctx, j.task.ID, output); err != nil {
+			j.Deps.Logger.Error().Err(err).
+				Str("task_id", j.task.ID).
+				Msg("Failed to update task output")
 		} else {
-			j.Ctx.LogInfo("Task output updated", "task_id", task.ID)
+			j.Deps.Logger.Info().
+				Str("task_id", j.task.ID).
+				Msg("Task output updated")
 		}
 
 		// Broadcast output update
-		j.Ctx.BroadcastServerEvent(server, "task.output", map[string]interface{}{
-			"task_id": task.ID,
+		j.Deps.BroadcastServerEvent(j.server, "task.output", map[string]any{
+			"task_id": j.task.ID,
 			"output":  output,
-			"status":  task.Status,
+			"status":  j.task.Status,
 		})
 	}
 
 	// Check if task has timed out (status still pending but exceeded timeout)
-	if task.Status == "pending" || task.Status == "running" {
-		if task.CreatedAt != nil {
-			timeoutDuration := time.Duration(task.Timeout) * time.Second
-			if time.Since(*task.CreatedAt) > timeoutDuration {
+	if j.task.Status == "pending" || j.task.Status == "running" {
+		if j.task.CreatedAt != nil {
+			timeoutDuration := time.Duration(j.task.Timeout) * time.Second
+			if time.Since(*j.task.CreatedAt) > timeoutDuration {
 				exitCode := 124
-				j.Ctx.Repos().Task().Update(ctx, task.ID, map[string]interface{}{
+				j.Deps.Repos.Task().Update(ctx, j.task.ID, map[string]any{
 					"status":    "timeout",
 					"exit_code": exitCode,
 				})
-				j.Ctx.LogInfo("Task marked as timeout", "task_id", task.ID)
+				j.Deps.Logger.Info().
+					Str("task_id", j.task.ID).
+					Msg("Task marked as timeout")
 			}
 		}
 	}
@@ -184,8 +196,8 @@ func (j *FetchTaskOutputJob) Handle(ctx context.Context) error {
 	// Self-reschedule if interval > 0 and task is still running
 	if j.Payload.RescheduleIntervalSec > 0 {
 		// Reload task to check current status
-		task, _ = j.Ctx.Repos().Task().FindByID(ctx, j.Payload.TaskID)
-		if task != nil && (task.Status == "pending" || task.Status == "running") {
+		j.task, _ = j.Deps.Repos.Task().FindByID(ctx, j.Payload.TaskID)
+		if j.task != nil && (j.task.Status == "pending" || j.task.Status == "running") {
 			j.reschedule()
 		}
 	}
@@ -195,7 +207,7 @@ func (j *FetchTaskOutputJob) Handle(ctx context.Context) error {
 
 // reschedule dispatches a new job with the same parameters after the interval
 func (j *FetchTaskOutputJob) reschedule() {
-	if j.Ctx.Queue() == nil {
+	if j.Deps.Queue == nil {
 		return
 	}
 
@@ -205,40 +217,32 @@ func (j *FetchTaskOutputJob) reschedule() {
 		j.Payload.RescheduleIntervalSec,
 	)
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to create reschedule task")
+		j.Deps.Logger.Error().Err(err).Msg("Failed to create reschedule task")
 		return
 	}
 
 	delay := time.Duration(j.Payload.RescheduleIntervalSec) * time.Second
-	_, err = j.Ctx.Queue().Enqueue(newTask, asynq.ProcessIn(delay))
+	_, err = j.Deps.Queue.Enqueue(newTask, asynq.ProcessIn(delay))
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to reschedule fetch task output job")
+		j.Deps.Logger.Error().Err(err).Msg("Failed to reschedule fetch task output job")
 	} else {
-		j.Ctx.LogInfo("Rescheduled fetch task output job",
-			"task_id", j.Payload.TaskID,
-			"delay_seconds", j.Payload.RescheduleIntervalSec,
-		)
+		j.Deps.Logger.Info().
+			Str("task_id", j.Payload.TaskID).
+			Int("delay_seconds", j.Payload.RescheduleIntervalSec).
+			Msg("Rescheduled fetch task output job")
 	}
 }
 
 // Failed handles job failure
 func (j *FetchTaskOutputJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to fetch task output",
-		"task_id", j.Payload.TaskID,
-	)
-}
-
-// RetryConfig returns retry configuration with exponential backoff
-func (j *FetchTaskOutputJob) RetryConfig() pkgjobs.RetryConfig {
-	return pkgjobs.RetryConfig{
-		MaxRetries: 5,
-		Backoff:    []time.Duration{5 * time.Second, 10 * time.Second, 30 * time.Second, 60 * time.Second, 120 * time.Second},
-	}
+	j.Deps.Logger.Error().Err(err).
+		Str("task_id", j.Payload.TaskID).
+		Msg("Failed to fetch task output")
 }
 
 // NewFetchTaskOutputTask creates a fetch task output asynq task
 func NewFetchTaskOutputTask(taskID, serverID string, rescheduleIntervalSec int) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeFetchTaskOutput, FetchTaskOutputPayload{
+	return pkgjobs.Task(TypeFetchTaskOutput, FetchTaskOutputPayload{
 		TaskID:                taskID,
 		ServerID:              serverID,
 		RescheduleIntervalSec: rescheduleIntervalSec,
@@ -248,11 +252,9 @@ func NewFetchTaskOutputTask(taskID, serverID string, rescheduleIntervalSec int) 
 
 **Step 2: Register the job in register.go**
 
-Add to the job registration:
+Add to registerHandlers function:
 ```go
-TypeFetchTaskOutput: pkgjobs.NewHandler(func(ctx *JobContext, p FetchTaskOutputPayload) pkgjobs.JobHandler {
-    return NewFetchTaskOutputJob(ctx, p)
-}),
+pkgjobs.RegisterTyped(mux, TypeFetchTaskOutput, NewFetchTaskOutputJob)
 ```
 
 **Step 3: Commit**
@@ -269,18 +271,31 @@ git commit -m "feat(server): add FetchTaskOutput job for SSH-based output pollin
 **Files:**
 - Modify: `internal/modules/server/handlers/task_webhook_handler.go`
 
-**Step 1: Add output fetching after callback processing**
-
-After each webhook endpoint updates the task status, dispatch FetchTaskOutput:
+**Step 1: Add import for jobs package**
 
 ```go
-// Add to MarkAsFinished, MarkAsFailed, MarkAsTimeout:
+import (
+	// ... existing imports
+	"github.com/kkz6/launch-go/internal/modules/server/jobs"
+)
+```
 
-// Dispatch job to fetch final output from server
+**Step 2: Add output fetching after callback processing**
+
+Update each webhook endpoint (MarkAsFinished, MarkAsFailed, MarkAsTimeout) to dispatch output fetch after updating task status. Add before the final return statement:
+
+```go
+// MarkAsFinished - add before return:
+h.dispatchOutputFetch(task)
+
+// MarkAsFailed - add before return:
+h.dispatchOutputFetch(task)
+
+// MarkAsTimeout - add before return:
 h.dispatchOutputFetch(task)
 ```
 
-Add the helper method:
+**Step 3: Add the helper method**
 
 ```go
 // dispatchOutputFetch dispatches a job to fetch the task output from the server
@@ -307,11 +322,13 @@ func (h *TaskWebhookHandler) dispatchOutputFetch(task *models.Task) {
 		if h.Logger != nil {
 			h.LogError(err, "Failed to dispatch fetch output job", "task_id", task.ID)
 		}
+	} else if h.Logger != nil {
+		h.LogInfo("Dispatched output fetch job", "task_id", task.ID)
 	}
 }
 ```
 
-**Step 2: Commit**
+**Step 4: Commit**
 
 ```bash
 git add internal/modules/server/handlers/task_webhook_handler.go
@@ -324,11 +341,13 @@ git commit -m "feat(server): dispatch output fetch job after webhook callbacks"
 
 **Files:**
 - Modify: `internal/modules/server/handlers/task_webhook_handler.go`
+- Modify: `internal/modules/server/routes.go` (or wherever webhook routes are defined)
 
-**Step 1: Add CustomCallback endpoint**
+**Step 1: Add CustomCallback endpoint to handler**
 
 ```go
 // CustomCallback handles custom callbacks from running tasks (for progress updates)
+// This can be called by scripts during execution to trigger output fetch or custom logic
 func (h *TaskWebhookHandler) CustomCallback(c *fiber.Ctx) error {
 	taskID := c.Params("id")
 	ctx := c.Context()
@@ -347,6 +366,9 @@ func (h *TaskWebhookHandler) CustomCallback(c *fiber.Ctx) error {
 		return response.OK(c, "Task already completed", nil)
 	}
 
+	// Fetch the latest output from the server
+	h.dispatchOutputFetch(task)
+
 	// Handle callback if task has instance data
 	h.handleCallback(ctx, task, taskrunner.CallbackCustom, 0)
 
@@ -354,28 +376,19 @@ func (h *TaskWebhookHandler) CustomCallback(c *fiber.Ctx) error {
 }
 ```
 
-**Step 2: Add CallbackCustom constant to callback.go**
+Note: `CallbackCustom` already exists in `internal/pkg/taskrunner/callback.go`.
 
+**Step 2: Add route for custom callback**
+
+Find the webhook routes file and add:
 ```go
-const (
-	CallbackFinished CallbackType = "finished"
-	CallbackFailed   CallbackType = "failed"
-	CallbackTimeout  CallbackType = "timeout"
-	CallbackCustom   CallbackType = "custom"
-)
-```
-
-**Step 3: Update routes to include custom callback**
-
-```go
-// Add to webhook routes:
 app.Post("/webhooks/tasks/:id/callback", handler.CustomCallback)
 ```
 
-**Step 4: Commit**
+**Step 3: Commit**
 
 ```bash
-git add internal/modules/server/handlers/task_webhook_handler.go internal/pkg/taskrunner/callback.go
+git add internal/modules/server/handlers/task_webhook_handler.go internal/modules/server/routes.go
 git commit -m "feat(server): add custom callback endpoint for task progress updates"
 ```
 
@@ -386,42 +399,58 @@ git commit -m "feat(server): add custom callback endpoint for task progress upda
 **Files:**
 - Modify: `internal/modules/server/tasks/runner.go`
 
-**Step 1: Add updateLogIntervalInSeconds option**
+**Step 1: Add import for jobs package**
+
+```go
+import (
+	// ... existing imports
+	"github.com/kkz6/launch-go/internal/modules/server/jobs"
+)
+```
+
+**Step 2: Add outputPollingIntervalSec field to TaskRunner struct**
 
 ```go
 type TaskRunner struct {
 	// ... existing fields
-	updateLogIntervalSec int // Polling interval for background tasks
+	outputPollingIntervalSec int // Polling interval for background tasks (0 = disabled)
 }
+```
 
-// WithOutputPolling sets the interval for fetching output during background execution
+**Step 3: Add WithOutputPolling builder method**
+
+```go
+// WithOutputPolling sets the interval for fetching output during background execution.
+// The job will SSH into the server at this interval to fetch the task output file.
+// Set to 0 (default) to disable polling.
 func (r *TaskRunner) WithOutputPolling(intervalSeconds int) *TaskRunner {
-	r.updateLogIntervalSec = intervalSeconds
+	r.outputPollingIntervalSec = intervalSeconds
 	return r
 }
 ```
 
-**Step 2: Dispatch polling job in runWithCallbacks**
+**Step 4: Update runWithCallbacks to dispatch polling job**
 
-After starting the background task, dispatch the first FetchTaskOutput job:
+Add after updating status to running (around line 412-413):
 
 ```go
-func (r *TaskRunner) runWithCallbacks(ctx context.Context) (*models.Task, error) {
-	// ... existing code to start task ...
+// runWithCallbacks - add after r.broadcastTaskRunning(taskModel):
 
-	// Start output polling if configured
-	if r.updateLogIntervalSec > 0 && r.queue != nil {
-		r.dispatchOutputPolling(taskModel)
-	}
-
-	return taskModel, nil
+// Start output polling if configured
+if r.outputPollingIntervalSec > 0 && r.queue != nil {
+	r.dispatchOutputPolling(taskModel)
 }
+```
 
+**Step 5: Add dispatchOutputPolling helper method**
+
+```go
+// dispatchOutputPolling schedules the first output fetch job with self-rescheduling
 func (r *TaskRunner) dispatchOutputPolling(taskModel *models.Task) {
 	task, err := jobs.NewFetchTaskOutputTask(
 		taskModel.ID,
 		r.server.ID,
-		r.updateLogIntervalSec,
+		r.outputPollingIntervalSec,
 	)
 	if err != nil {
 		if r.logger != nil {
@@ -430,15 +459,22 @@ func (r *TaskRunner) dispatchOutputPolling(taskModel *models.Task) {
 		return
 	}
 
-	// Delay first poll by 5 seconds
+	// Delay first poll by 5 seconds to let the task start
 	_, err = r.queue.Enqueue(task, asynq.ProcessIn(5*time.Second))
-	if err != nil && r.logger != nil {
-		r.logger.Error().Err(err).Msg("Failed to dispatch output polling job")
+	if err != nil {
+		if r.logger != nil {
+			r.logger.Error().Err(err).Msg("Failed to dispatch output polling job")
+		}
+	} else if r.logger != nil {
+		r.logger.Info().
+			Str("task_id", taskModel.ID).
+			Int("interval_sec", r.outputPollingIntervalSec).
+			Msg("Started output polling")
 	}
 }
 ```
 
-**Step 3: Commit**
+**Step 6: Commit**
 
 ```bash
 git add internal/modules/server/tasks/runner.go
@@ -452,16 +488,21 @@ git commit -m "feat(server): add output polling option to TaskRunner"
 **Files:**
 - Modify: `internal/modules/server/handlers/task_webhook_handler.go`
 
-**Step 1: Update GenerateCallbackURLs to include custom callback**
+**Step 1: Update CallbackURLs struct to include Custom field**
 
 ```go
+// CallbackURLs contains the four webhook URLs for task completion
 type CallbackURLs struct {
 	Finished string
 	Failed   string
 	Timeout  string
 	Custom   string // For progress updates from script
 }
+```
 
+**Step 2: Update GenerateCallbackURLs to include custom callback**
+
+```go
 func (h *TaskWebhookHandler) GenerateCallbackURLs(baseURL, taskID string, expireMinutes int) CallbackURLs {
 	expireDuration := time.Duration(expireMinutes) * time.Minute
 
@@ -482,10 +523,14 @@ func (h *TaskWebhookHandler) GenerateCallbackURLs(baseURL, taskID string, expire
 }
 ```
 
-**Step 2: Commit**
+**Step 3: Update CallbackURLs in runner.go (if it has a separate struct)**
+
+Check if `internal/modules/server/tasks/runner.go` has its own `CallbackURLs` struct and add the `Custom` field there too (or remove duplication).
+
+**Step 4: Commit**
 
 ```bash
-git add internal/modules/server/handlers/task_webhook_handler.go
+git add internal/modules/server/handlers/task_webhook_handler.go internal/modules/server/tasks/runner.go
 git commit -m "feat(server): add custom callback URL generation"
 ```
 
