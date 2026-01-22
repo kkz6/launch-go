@@ -152,13 +152,13 @@ func TestParseRecordType(t *testing.T) {
 	}
 }
 
-func TestDnsProvider_String(t *testing.T) {
+func TestDNSProvider_String(t *testing.T) {
 	tests := []struct {
-		p        dnstypes.DnsProvider
+		p        dnstypes.DNSProvider
 		expected string
 	}{
-		{dnstypes.DnsProviderCloudflare, "cloudflare"},
-		{dnstypes.DnsProviderDigitalOcean, "digitalocean"},
+		{dnstypes.DNSProviderCloudflare, "cloudflare"},
+		{dnstypes.DNSProviderDigitalOcean, "digitalocean"},
 	}
 
 	for _, tt := range tests {
@@ -168,14 +168,14 @@ func TestDnsProvider_String(t *testing.T) {
 	}
 }
 
-func TestDnsProvider_Label(t *testing.T) {
+func TestDNSProvider_Label(t *testing.T) {
 	tests := []struct {
-		p        dnstypes.DnsProvider
+		p        dnstypes.DNSProvider
 		expected string
 	}{
-		{dnstypes.DnsProviderCloudflare, "Cloudflare"},
-		{dnstypes.DnsProviderDigitalOcean, "DigitalOcean"},
-		{dnstypes.DnsProvider("unknown"), "unknown"},
+		{dnstypes.DNSProviderCloudflare, "Cloudflare"},
+		{dnstypes.DNSProviderDigitalOcean, "DigitalOcean"},
+		{dnstypes.DNSProvider("unknown"), "unknown"},
 	}
 
 	for _, tt := range tests {
@@ -185,15 +185,15 @@ func TestDnsProvider_Label(t *testing.T) {
 	}
 }
 
-func TestDnsProvider_IsValid(t *testing.T) {
+func TestDNSProvider_IsValid(t *testing.T) {
 	tests := []struct {
-		p        dnstypes.DnsProvider
+		p        dnstypes.DNSProvider
 		expected bool
 	}{
-		{dnstypes.DnsProviderCloudflare, true},
-		{dnstypes.DnsProviderDigitalOcean, true},
-		{dnstypes.DnsProvider("invalid"), false},
-		{dnstypes.DnsProvider(""), false},
+		{dnstypes.DNSProviderCloudflare, true},
+		{dnstypes.DNSProviderDigitalOcean, true},
+		{dnstypes.DNSProvider("invalid"), false},
+		{dnstypes.DNSProvider(""), false},
 	}
 
 	for _, tt := range tests {
@@ -203,31 +203,31 @@ func TestDnsProvider_IsValid(t *testing.T) {
 	}
 }
 
-func TestDnsProvider_Value(t *testing.T) {
-	p := dnstypes.DnsProviderCloudflare
+func TestDNSProvider_Value(t *testing.T) {
+	p := dnstypes.DNSProviderCloudflare
 	val, err := p.Value()
 
 	require.NoError(t, err)
 	assert.Equal(t, driver.Value("cloudflare"), val)
 }
 
-func TestDnsProvider_Scan(t *testing.T) {
+func TestDNSProvider_Scan(t *testing.T) {
 	tests := []struct {
 		name     string
 		input    interface{}
-		expected dnstypes.DnsProvider
+		expected dnstypes.DNSProvider
 		wantErr  bool
 	}{
-		{"string cloudflare", "cloudflare", dnstypes.DnsProviderCloudflare, false},
-		{"string digitalocean", "digitalocean", dnstypes.DnsProviderDigitalOcean, false},
-		{"bytes", []byte("cloudflare"), dnstypes.DnsProviderCloudflare, false},
-		{"nil", nil, dnstypes.DnsProvider(""), false},
-		{"invalid type", 123, dnstypes.DnsProvider(""), true},
+		{"string cloudflare", "cloudflare", dnstypes.DNSProviderCloudflare, false},
+		{"string digitalocean", "digitalocean", dnstypes.DNSProviderDigitalOcean, false},
+		{"bytes", []byte("cloudflare"), dnstypes.DNSProviderCloudflare, false},
+		{"nil", nil, dnstypes.DNSProvider(""), false},
+		{"invalid type", 123, dnstypes.DNSProvider(""), true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			var p dnstypes.DnsProvider
+			var p dnstypes.DNSProvider
 			err := p.Scan(tt.input)
 
 			if tt.wantErr {
@@ -240,29 +240,29 @@ func TestDnsProvider_Scan(t *testing.T) {
 	}
 }
 
-func TestAllDnsProviders(t *testing.T) {
-	providers := dnstypes.AllDnsProviders()
+func TestAllDNSProviders(t *testing.T) {
+	providers := dnstypes.AllDNSProviders()
 
 	assert.Len(t, providers, 2)
-	assert.Contains(t, providers, dnstypes.DnsProviderCloudflare)
-	assert.Contains(t, providers, dnstypes.DnsProviderDigitalOcean)
+	assert.Contains(t, providers, dnstypes.DNSProviderCloudflare)
+	assert.Contains(t, providers, dnstypes.DNSProviderDigitalOcean)
 }
 
-func TestParseDnsProvider(t *testing.T) {
+func TestParseDNSProvider(t *testing.T) {
 	tests := []struct {
 		input    string
-		expected dnstypes.DnsProvider
+		expected dnstypes.DNSProvider
 		wantErr  bool
 	}{
-		{"cloudflare", dnstypes.DnsProviderCloudflare, false},
-		{"digitalocean", dnstypes.DnsProviderDigitalOcean, false},
-		{"invalid", dnstypes.DnsProvider(""), true},
-		{"", dnstypes.DnsProvider(""), true},
+		{"cloudflare", dnstypes.DNSProviderCloudflare, false},
+		{"digitalocean", dnstypes.DNSProviderDigitalOcean, false},
+		{"invalid", dnstypes.DNSProvider(""), true},
+		{"", dnstypes.DNSProvider(""), true},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			p, err := dnstypes.ParseDnsProvider(tt.input)
+			p, err := dnstypes.ParseDNSProvider(tt.input)
 
 			if tt.wantErr {
 				assert.Error(t, err)
@@ -349,12 +349,12 @@ func TestSyncStatus_Scan(t *testing.T) {
 	}
 }
 
-func TestDnsProvider_ToProviderType(t *testing.T) {
-	p := dnstypes.DnsProviderCloudflare
+func TestDNSProvider_ToProviderType(t *testing.T) {
+	p := dnstypes.DNSProviderCloudflare
 	pt := p.ToProviderType()
 	assert.Equal(t, "cloudflare", pt.String())
 
-	p = dnstypes.DnsProviderDigitalOcean
+	p = dnstypes.DNSProviderDigitalOcean
 	pt = p.ToProviderType()
 	assert.Equal(t, "digitalocean", pt.String())
 }

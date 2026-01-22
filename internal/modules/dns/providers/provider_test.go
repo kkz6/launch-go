@@ -59,7 +59,7 @@ func TestNewProvider_Cloudflare(t *testing.T) {
 	creds := map[string]string{"token": "test-token"}
 	additionalData := map[string]interface{}{"account_id": "acc123"}
 
-	provider, err := NewProvider(DnsProviderTypeCloudflare, creds, additionalData)
+	provider, err := NewProvider(DNSProviderTypeCloudflare, creds, additionalData)
 	require.NoError(t, err)
 
 	assert.NotNil(t, provider)
@@ -69,7 +69,7 @@ func TestNewProvider_Cloudflare(t *testing.T) {
 func TestNewProvider_DigitalOcean(t *testing.T) {
 	creds := map[string]string{"token": "test-token"}
 
-	provider, err := NewProvider(DnsProviderTypeDigitalOcean, creds, nil)
+	provider, err := NewProvider(DNSProviderTypeDigitalOcean, creds, nil)
 	require.NoError(t, err)
 
 	assert.NotNil(t, provider)
@@ -79,7 +79,7 @@ func TestNewProvider_DigitalOcean(t *testing.T) {
 func TestNewProvider_Invalid(t *testing.T) {
 	creds := map[string]string{"token": "test-token"}
 
-	_, err := NewProvider(DnsProviderType("invalid"), creds, nil)
+	_, err := NewProvider(DNSProviderType("invalid"), creds, nil)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "unsupported provider")
 }
@@ -193,40 +193,40 @@ func TestAllRecordTypes(t *testing.T) {
 	assert.Contains(t, types, RecordTypeCNAME)
 }
 
-func TestDnsProviderType_String(t *testing.T) {
-	assert.Equal(t, "cloudflare", DnsProviderTypeCloudflare.String())
-	assert.Equal(t, "digitalocean", DnsProviderTypeDigitalOcean.String())
+func TestDNSProviderType_String(t *testing.T) {
+	assert.Equal(t, "cloudflare", DNSProviderTypeCloudflare.String())
+	assert.Equal(t, "digitalocean", DNSProviderTypeDigitalOcean.String())
 }
 
-func TestDnsProviderType_Label(t *testing.T) {
-	assert.Equal(t, "Cloudflare", DnsProviderTypeCloudflare.Label())
-	assert.Equal(t, "DigitalOcean", DnsProviderTypeDigitalOcean.Label())
-	assert.Equal(t, "unknown", DnsProviderType("unknown").Label())
+func TestDNSProviderType_Label(t *testing.T) {
+	assert.Equal(t, "Cloudflare", DNSProviderTypeCloudflare.Label())
+	assert.Equal(t, "DigitalOcean", DNSProviderTypeDigitalOcean.Label())
+	assert.Equal(t, "unknown", DNSProviderType("unknown").Label())
 }
 
-func TestDnsProviderType_IsValid(t *testing.T) {
-	assert.True(t, DnsProviderTypeCloudflare.IsValid())
-	assert.True(t, DnsProviderTypeDigitalOcean.IsValid())
-	assert.False(t, DnsProviderType("invalid").IsValid())
+func TestDNSProviderType_IsValid(t *testing.T) {
+	assert.True(t, DNSProviderTypeCloudflare.IsValid())
+	assert.True(t, DNSProviderTypeDigitalOcean.IsValid())
+	assert.False(t, DNSProviderType("invalid").IsValid())
 }
 
-func TestAllDnsProviderTypes(t *testing.T) {
-	types := AllDnsProviderTypes()
+func TestAllDNSProviderTypes(t *testing.T) {
+	types := AllDNSProviderTypes()
 	assert.Len(t, types, 2)
-	assert.Contains(t, types, DnsProviderTypeCloudflare)
-	assert.Contains(t, types, DnsProviderTypeDigitalOcean)
+	assert.Contains(t, types, DNSProviderTypeCloudflare)
+	assert.Contains(t, types, DNSProviderTypeDigitalOcean)
 }
 
-func TestParseDnsProviderType(t *testing.T) {
-	pt, err := ParseDnsProviderType("cloudflare")
+func TestParseDNSProviderType(t *testing.T) {
+	pt, err := ParseDNSProviderType("cloudflare")
 	require.NoError(t, err)
-	assert.Equal(t, DnsProviderTypeCloudflare, pt)
+	assert.Equal(t, DNSProviderTypeCloudflare, pt)
 
-	pt, err = ParseDnsProviderType("digitalocean")
+	pt, err = ParseDNSProviderType("digitalocean")
 	require.NoError(t, err)
-	assert.Equal(t, DnsProviderTypeDigitalOcean, pt)
+	assert.Equal(t, DNSProviderTypeDigitalOcean, pt)
 
-	_, err = ParseDnsProviderType("invalid")
+	_, err = ParseDNSProviderType("invalid")
 	assert.Error(t, err)
 }
 

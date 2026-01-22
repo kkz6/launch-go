@@ -40,48 +40,48 @@ func ParseRecordType(s string) (RecordType, error) {
 }
 
 // =============================================================================
-// DnsProvider
+// DNSProvider
 // =============================================================================
 
-// DnsProvider represents a DNS provider
-type DnsProvider string
+// DNSProvider represents a DNS provider
+type DNSProvider string
 
 const (
-	DnsProviderCloudflare   DnsProvider = "cloudflare"
-	DnsProviderDigitalOcean DnsProvider = "digitalocean"
+	DNSProviderCloudflare   DNSProvider = "cloudflare"
+	DNSProviderDigitalOcean DNSProvider = "digitalocean"
 )
 
-var allDnsProviders = []DnsProvider{
-	DnsProviderCloudflare,
-	DnsProviderDigitalOcean,
+var allDNSProviders = []DNSProvider{
+	DNSProviderCloudflare,
+	DNSProviderDigitalOcean,
 }
 
-// AllDnsProviders returns all valid DNS providers
-func AllDnsProviders() []DnsProvider {
-	return allDnsProviders
+// AllDNSProviders returns all valid DNS providers
+func AllDNSProviders() []DNSProvider {
+	return allDNSProviders
 }
 
-// String returns the string representation of DnsProvider
-func (p DnsProvider) String() string {
+// String returns the string representation of DNSProvider
+func (p DNSProvider) String() string {
 	return string(p)
 }
 
 // Label returns a human-readable label for the provider
-func (p DnsProvider) Label() string {
+func (p DNSProvider) Label() string {
 	switch p {
-	case DnsProviderCloudflare:
+	case DNSProviderCloudflare:
 		return "Cloudflare"
-	case DnsProviderDigitalOcean:
+	case DNSProviderDigitalOcean:
 		return "DigitalOcean"
 	default:
 		return string(p)
 	}
 }
 
-// IsValid checks if the DnsProvider is valid
-func (p DnsProvider) IsValid() bool {
+// IsValid checks if the DNSProvider is valid
+func (p DNSProvider) IsValid() bool {
 	switch p {
-	case DnsProviderCloudflare, DnsProviderDigitalOcean:
+	case DNSProviderCloudflare, DNSProviderDigitalOcean:
 		return true
 	}
 
@@ -89,23 +89,23 @@ func (p DnsProvider) IsValid() bool {
 }
 
 // Value implements driver.Valuer for database storage
-func (p DnsProvider) Value() (driver.Value, error) {
+func (p DNSProvider) Value() (driver.Value, error) {
 	return enumtypes.Value(p)
 }
 
 // Scan implements sql.Scanner for database retrieval
-func (p *DnsProvider) Scan(value any) error {
+func (p *DNSProvider) Scan(value any) error {
 	return enumtypes.Scan(p, value)
 }
 
-// ToProviderType converts DnsProvider to providers.DnsProviderType
-func (p DnsProvider) ToProviderType() providers.DnsProviderType {
-	return providers.DnsProviderType(p)
+// ToProviderType converts DNSProvider to providers.DNSProviderType
+func (p DNSProvider) ToProviderType() providers.DNSProviderType {
+	return providers.DNSProviderType(p)
 }
 
-// ParseDnsProvider parses a string into a DnsProvider
-func ParseDnsProvider(s string) (DnsProvider, error) {
-	p := DnsProvider(s)
+// ParseDNSProvider parses a string into a DNSProvider
+func ParseDNSProvider(s string) (DNSProvider, error) {
+	p := DNSProvider(s)
 	if !p.IsValid() {
 		return "", fmt.Errorf("invalid dns provider: %s", s)
 	}

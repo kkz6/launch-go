@@ -94,9 +94,9 @@ func WithTrailingDot(value string) string {
 }
 
 // NewProvider creates a new provider based on the provider type
-func NewProvider(providerType DnsProviderType, credentials map[string]string, additionalData map[string]interface{}) (Provider, error) {
+func NewProvider(providerType DNSProviderType, credentials map[string]string, additionalData map[string]interface{}) (Provider, error) {
 	switch providerType {
-	case DnsProviderTypeCloudflare:
+	case DNSProviderTypeCloudflare:
 		accountID := ""
 		if additionalData != nil {
 			if id, ok := additionalData["account_id"].(string); ok {
@@ -104,7 +104,7 @@ func NewProvider(providerType DnsProviderType, credentials map[string]string, ad
 			}
 		}
 		return NewCloudflareProvider(credentials, accountID), nil
-	case DnsProviderTypeDigitalOcean:
+	case DNSProviderTypeDigitalOcean:
 		return NewDigitalOceanProvider(credentials), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", providerType)

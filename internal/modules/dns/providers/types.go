@@ -72,51 +72,51 @@ func ParseRecordType(s string) (RecordType, error) {
 	return rt, nil
 }
 
-// DnsProviderType represents a DNS provider type
-type DnsProviderType string
+// DNSProviderType represents a DNS provider type
+type DNSProviderType string
 
 const (
-	DnsProviderTypeCloudflare   DnsProviderType = "cloudflare"
-	DnsProviderTypeDigitalOcean DnsProviderType = "digitalocean"
+	DNSProviderTypeCloudflare   DNSProviderType = "cloudflare"
+	DNSProviderTypeDigitalOcean DNSProviderType = "digitalocean"
 )
 
-// String returns the string representation of DnsProviderType
-func (p DnsProviderType) String() string {
+// String returns the string representation of DNSProviderType
+func (p DNSProviderType) String() string {
 	return string(p)
 }
 
 // Label returns a human-readable label for the provider
-func (p DnsProviderType) Label() string {
+func (p DNSProviderType) Label() string {
 	switch p {
-	case DnsProviderTypeCloudflare:
+	case DNSProviderTypeCloudflare:
 		return "Cloudflare"
-	case DnsProviderTypeDigitalOcean:
+	case DNSProviderTypeDigitalOcean:
 		return "DigitalOcean"
 	default:
 		return string(p)
 	}
 }
 
-// IsValid checks if the DnsProviderType is valid
-func (p DnsProviderType) IsValid() bool {
+// IsValid checks if the DNSProviderType is valid
+func (p DNSProviderType) IsValid() bool {
 	switch p {
-	case DnsProviderTypeCloudflare, DnsProviderTypeDigitalOcean:
+	case DNSProviderTypeCloudflare, DNSProviderTypeDigitalOcean:
 		return true
 	}
 	return false
 }
 
-// AllDnsProviderTypes returns all valid DNS provider types
-func AllDnsProviderTypes() []DnsProviderType {
-	return []DnsProviderType{
-		DnsProviderTypeCloudflare,
-		DnsProviderTypeDigitalOcean,
+// AllDNSProviderTypes returns all valid DNS provider types
+func AllDNSProviderTypes() []DNSProviderType {
+	return []DNSProviderType{
+		DNSProviderTypeCloudflare,
+		DNSProviderTypeDigitalOcean,
 	}
 }
 
-// ParseDnsProviderType parses a string into a DnsProviderType
-func ParseDnsProviderType(s string) (DnsProviderType, error) {
-	p := DnsProviderType(s)
+// ParseDNSProviderType parses a string into a DNSProviderType
+func ParseDNSProviderType(s string) (DNSProviderType, error) {
+	p := DNSProviderType(s)
 	if !p.IsValid() {
 		return "", fmt.Errorf("invalid dns provider type: %s", s)
 	}
