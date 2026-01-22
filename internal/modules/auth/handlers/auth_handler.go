@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // AuthHandler handles authentication-related HTTP requests
@@ -28,10 +27,10 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 
 	result, err := h.Service().Register(c.Context(), req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.Created(c, "Registration successful", result)
+	return fiberctx.Created(c, "Registration successful", result)
 }
 
 // Login handles user authentication
@@ -43,10 +42,10 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 
 	result, err := h.Service().Login(c.Context(), req)
 	if err != nil {
-		return response.Unauthorized(c, response.MsgInvalidCredentials)
+		return fiberctx.RespondUnauthorized(c, fiberctx.MsgInvalidCredentials)
 	}
 
-	return response.OK(c, "Login successful", result)
+	return fiberctx.OK(c, "Login successful", result)
 }
 
 // Logout handles user logout
@@ -57,10 +56,10 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 	}
 
 	if err := h.Service().Logout(c.Context(), userID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Logged out successfully", nil)
+	return fiberctx.OK(c, "Logged out successfully", nil)
 }
 
 // RefreshToken handles token refresh
@@ -72,8 +71,8 @@ func (h *AuthHandler) RefreshToken(c *fiber.Ctx) error {
 
 	result, err := h.Service().RefreshToken(c.Context(), req.RefreshToken)
 	if err != nil {
-		return response.Unauthorized(c, response.MsgInvalidToken)
+		return fiberctx.RespondUnauthorized(c, fiberctx.MsgInvalidToken)
 	}
 
-	return response.OK(c, "Token refreshed successfully", result)
+	return fiberctx.OK(c, "Token refreshed successfully", result)
 }

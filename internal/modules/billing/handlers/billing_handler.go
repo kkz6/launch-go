@@ -9,7 +9,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/billing/services"
 	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // BillingHandler handles HTTP requests for billing
@@ -45,10 +44,10 @@ func (h *BillingHandler) Index(c *fiber.Ctx) error {
 
 	data, err := h.service.GetBillingData(c.Context(), teamID, serverCount)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Billing data retrieved", data)
+	return fiberctx.OK(c, "Billing data retrieved", data)
 }
 
 // GetPlans returns all available subscription plans
@@ -60,7 +59,7 @@ func (h *BillingHandler) GetPlans(c *fiber.Ctx) error {
 		planResponses[i] = dto.ToPlanResponse(&plan)
 	}
 
-	return response.OK(c, "Plans retrieved", planResponses)
+	return fiberctx.OK(c, "Plans retrieved", planResponses)
 }
 
 // GenerateCheckoutURL generates a checkout URL for subscribing
@@ -79,10 +78,10 @@ func (h *BillingHandler) GenerateCheckoutURL(c *fiber.Ctx) error {
 
 	url, err := h.service.GenerateCheckoutURL(c.Context(), teamID, req, redirectURL)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Checkout URL generated", dto.GenerateCheckoutURLResponse{URL: url})
+	return fiberctx.OK(c, "Checkout URL generated", dto.GenerateCheckoutURLResponse{URL: url})
 }
 
 // CancelSubscription cancels a subscription
@@ -93,10 +92,10 @@ func (h *BillingHandler) CancelSubscription(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.CancelSubscription(c.Context(), req.SubscriptionID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Subscription cancelled successfully", nil)
+	return fiberctx.OK(c, "Subscription cancelled successfully", nil)
 }
 
 // ResumeSubscription resumes a cancelled subscription
@@ -107,10 +106,10 @@ func (h *BillingHandler) ResumeSubscription(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.ResumeSubscription(c.Context(), req.SubscriptionID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Subscription resumed successfully", nil)
+	return fiberctx.OK(c, "Subscription resumed successfully", nil)
 }
 
 // GetSubscriptions returns all subscriptions for the current team
@@ -122,7 +121,7 @@ func (h *BillingHandler) GetSubscriptions(c *fiber.Ctx) error {
 
 	subscriptions, err := h.service.GetSubscriptions(c.Context(), teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	subscriptionResponses := make([]dto.SubscriptionResponse, len(subscriptions))
@@ -131,7 +130,7 @@ func (h *BillingHandler) GetSubscriptions(c *fiber.Ctx) error {
 		subscriptionResponses[i] = dto.ToSubscriptionResponse(&sub, plan, "")
 	}
 
-	return response.OK(c, "Subscriptions retrieved", subscriptionResponses)
+	return fiberctx.OK(c, "Subscriptions retrieved", subscriptionResponses)
 }
 
 // GetSubscription returns a specific subscription
@@ -140,11 +139,11 @@ func (h *BillingHandler) GetSubscription(c *fiber.Ctx) error {
 
 	subscription, err := h.service.GetSubscriptionByID(c.Context(), id)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	plan := h.service.GetPlanByProductID(subscription.ProductID)
-	return response.OK(c, "Subscription retrieved", dto.ToSubscriptionResponse(subscription, plan, ""))
+	return fiberctx.OK(c, "Subscription retrieved", dto.ToSubscriptionResponse(subscription, plan, ""))
 }
 
 // GetOrders returns all orders for the current team
@@ -156,7 +155,7 @@ func (h *BillingHandler) GetOrders(c *fiber.Ctx) error {
 
 	orders, err := h.service.GetOrders(c.Context(), teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	orderResponses := make([]dto.OrderResponse, len(orders))
@@ -164,7 +163,7 @@ func (h *BillingHandler) GetOrders(c *fiber.Ctx) error {
 		orderResponses[i] = dto.ToOrderResponse(&order)
 	}
 
-	return response.OK(c, "Orders retrieved", orderResponses)
+	return fiberctx.OK(c, "Orders retrieved", orderResponses)
 }
 
 // GetSubscriptionOptions returns the subscription limits/options for the current team
@@ -195,10 +194,10 @@ func (h *BillingHandler) GetSubscriptionOptions(c *fiber.Ctx) error {
 
 	resp, err := options.GetSubscriptionOptionsResponse(c.Context())
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Subscription options retrieved", resp)
+	return fiberctx.OK(c, "Subscription options retrieved", resp)
 }
 
 // RegisterSubscription shows the subscription selection page
@@ -210,10 +209,10 @@ func (h *BillingHandler) RegisterSubscription(c *fiber.Ctx) error {
 
 	subscribed, err := h.service.IsSubscribed(c.Context(), teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 	if subscribed {
-		return response.HandleError(c, services.ErrAlreadySubscribed)
+		return fiberctx.HandleError(c, services.ErrAlreadySubscribed)
 	}
 
 	plans := h.service.GetPlans()
@@ -222,5 +221,5 @@ func (h *BillingHandler) RegisterSubscription(c *fiber.Ctx) error {
 		planResponses[i] = dto.ToPlanResponse(&plan)
 	}
 
-	return response.OK(c, "Registration subscription plans", planResponses)
+	return fiberctx.OK(c, "Registration subscription plans", planResponses)
 }

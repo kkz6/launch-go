@@ -5,7 +5,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/kkz6/launch-go/internal/pkg/response"
+	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // TeamService defines the interface for team-related operations needed by middlewares
@@ -31,7 +31,7 @@ func TeamMember(service TeamService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID, ok := c.Locals("userID").(string)
 		if !ok || userID == "" {
-			return response.Unauthorized(c, "User not authenticated")
+			return fiberctx.RespondUnauthorized(c, "User not authenticated")
 		}
 
 		teamID := c.Params("teamId")
@@ -40,16 +40,16 @@ func TeamMember(service TeamService) fiber.Handler {
 		}
 
 		if teamID == "" {
-			return response.Forbidden(c, "Team context required")
+			return fiberctx.RespondForbidden(c, "Team context required")
 		}
 
 		isMember, err := service.IsTeamMember(c.Context(), teamID, userID)
 		if err != nil {
-			return response.Error(c, fiber.StatusInternalServerError, "Failed to check team membership")
+			return fiberctx.Error(c, fiber.StatusInternalServerError, "Failed to check team membership")
 		}
 
 		if !isMember {
-			return response.Forbidden(c, "You are not a member of this team")
+			return fiberctx.RespondForbidden(c, "You are not a member of this team")
 		}
 
 		return c.Next()
@@ -61,25 +61,25 @@ func TeamOwner(service TeamService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID, ok := c.Locals("userID").(string)
 		if !ok || userID == "" {
-			return response.Unauthorized(c, "User not authenticated")
+			return fiberctx.RespondUnauthorized(c, "User not authenticated")
 		}
 
 		teamID := c.Params("teamId")
 		if teamID == "" {
-			return response.Forbidden(c, "Team ID required")
+			return fiberctx.RespondForbidden(c, "Team ID required")
 		}
 
 		team, err := service.GetTeam(c.Context(), teamID)
 		if err != nil {
-			return response.Error(c, fiber.StatusInternalServerError, "Failed to get team")
+			return fiberctx.Error(c, fiber.StatusInternalServerError, "Failed to get team")
 		}
 
 		if team == nil {
-			return response.NotFound(c, "Team not found")
+			return fiberctx.RespondNotFound(c, "Team not found")
 		}
 
 		if team.GetUserID() != userID {
-			return response.Forbidden(c, "Only team owner can perform this action")
+			return fiberctx.RespondForbidden(c, "Only team owner can perform this action")
 		}
 
 		return c.Next()
@@ -91,21 +91,21 @@ func TeamAdmin(service TeamService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID, ok := c.Locals("userID").(string)
 		if !ok || userID == "" {
-			return response.Unauthorized(c, "User not authenticated")
+			return fiberctx.RespondUnauthorized(c, "User not authenticated")
 		}
 
 		teamID := c.Params("teamId")
 		if teamID == "" {
-			return response.Forbidden(c, "Team ID required")
+			return fiberctx.RespondForbidden(c, "Team ID required")
 		}
 
 		team, err := service.GetTeam(c.Context(), teamID)
 		if err != nil {
-			return response.Error(c, fiber.StatusInternalServerError, "Failed to get team")
+			return fiberctx.Error(c, fiber.StatusInternalServerError, "Failed to get team")
 		}
 
 		if team == nil {
-			return response.NotFound(c, "Team not found")
+			return fiberctx.RespondNotFound(c, "Team not found")
 		}
 
 		if team.GetUserID() == userID {
@@ -114,11 +114,11 @@ func TeamAdmin(service TeamService) fiber.Handler {
 
 		member, err := service.GetTeamMember(c.Context(), teamID, userID)
 		if err != nil {
-			return response.Error(c, fiber.StatusInternalServerError, "Failed to check membership")
+			return fiberctx.Error(c, fiber.StatusInternalServerError, "Failed to check membership")
 		}
 
 		if member == nil || !member.IsAdmin() {
-			return response.Forbidden(c, "Only team admins can perform this action")
+			return fiberctx.RespondForbidden(c, "Only team admins can perform this action")
 		}
 
 		return c.Next()

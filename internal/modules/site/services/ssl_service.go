@@ -9,7 +9,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 )
 
 // SSLService handles business logic for SSL/TLS
@@ -44,9 +44,9 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 		}
 
 		// Create new certificate
-		privateKey := basemodels.EncryptedString("")
+		privateKey := dbtype.EncryptedString("")
 		if req.PrivateKey != nil {
-			privateKey = basemodels.EncryptedString(*req.PrivateKey)
+			privateKey = dbtype.EncryptedString(*req.PrivateKey)
 		}
 		cert := &models.Certificate{
 			Type:        sitetypes.CertificateTypeCustom,

@@ -11,7 +11,6 @@ import (
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // SiteHandler handles HTTP requests for sites
@@ -44,10 +43,10 @@ func (h *SiteHandler) List(c *fiber.Ctx) error {
 
 	sites, err := h.siteService.List(c.Context(), serverID, teamID)
 	if err != nil {
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
 	}
 
-	return response.OK(c, "Sites retrieved", pkgdto.TransformSlice(sites, dto.ToSiteResponse))
+	return fiberctx.OK(c, "Sites retrieved", pkgdto.TransformSlice(sites, dto.ToSiteResponse))
 }
 
 // Create creates a new site
@@ -74,10 +73,10 @@ func (h *SiteHandler) Create(c *fiber.Ctx) error {
 
 	site, err := h.siteService.Create(c.Context(), serverID, teamID, userID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.Created(c, "Site created", dto.ToSiteResponse(site))
+	return fiberctx.Created(c, "Site created", dto.ToSiteResponse(site))
 }
 
 // Show returns a single site
@@ -99,7 +98,7 @@ func (h *SiteHandler) Show(c *fiber.Ctx) error {
 
 	site, err := h.siteService.FindByID(c.Context(), siteID, serverID, teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	resp := dto.ToSiteResponse(site)
@@ -113,7 +112,7 @@ func (h *SiteHandler) Show(c *fiber.Ctx) error {
 		)
 	}
 
-	return response.OK(c, "Site retrieved", resp)
+	return fiberctx.OK(c, "Site retrieved", resp)
 }
 
 // Update updates a site
@@ -145,10 +144,10 @@ func (h *SiteHandler) Update(c *fiber.Ctx) error {
 
 	site, err := h.siteService.Update(c.Context(), siteID, serverID, teamID, userID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Site updated", dto.ToSiteResponse(site))
+	return fiberctx.OK(c, "Site updated", dto.ToSiteResponse(site))
 }
 
 // Delete deletes a site
@@ -169,10 +168,10 @@ func (h *SiteHandler) Delete(c *fiber.Ctx) error {
 	}
 
 	if err := h.siteService.Delete(c.Context(), siteID, serverID, teamID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Site deletion initiated", nil)
+	return fiberctx.OK(c, "Site deletion initiated", nil)
 }
 
 // GetDeletionSummary returns a summary of resources to be deleted
@@ -194,10 +193,10 @@ func (h *SiteHandler) GetDeletionSummary(c *fiber.Ctx) error {
 
 	summary, err := h.siteService.GetDeletionSummary(c.Context(), siteID, serverID, teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Deletion summary retrieved", summary)
+	return fiberctx.OK(c, "Deletion summary retrieved", summary)
 }
 
 // RegenerateDeployToken regenerates the deploy token
@@ -219,10 +218,10 @@ func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
 
 	site, err := h.siteService.RegenerateDeployToken(c.Context(), siteID, serverID, teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Deploy token regenerated", dto.ToSiteResponse(site))
+	return fiberctx.OK(c, "Deploy token regenerated", dto.ToSiteResponse(site))
 }
 
 // UpdateDeploymentSettings updates deployment settings
@@ -268,10 +267,10 @@ func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 
 	site, err := h.siteService.Update(c.Context(), siteID, serverID, teamID, userID, updateReq)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Deployment settings updated", dto.ToSiteResponse(site))
+	return fiberctx.OK(c, "Deployment settings updated", dto.ToSiteResponse(site))
 }
 
 // GetSettings returns the site settings page data
@@ -293,7 +292,7 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 
 	settingsData, err := h.siteService.GetSettings(c.Context(), siteID, serverID, teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	// Build TLS options
@@ -318,14 +317,14 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 		resp.ActiveCertificate = &certResp
 	}
 
-	return response.OK(c, "Site settings retrieved", resp)
+	return fiberctx.OK(c, "Site settings retrieved", resp)
 }
 
 // VerifyDomain checks if a domain is connected to the user's team
 func (h *SiteHandler) VerifyDomain(c *fiber.Ctx) error {
 	domain := c.Query("domain")
 	if domain == "" {
-		return response.BadRequest(c, response.MsgMissingRequiredParams)
+		return fiberctx.RespondBadRequest(c, fiberctx.MsgMissingRequiredParams)
 	}
 
 	teamID, err := fiberctx.MustGetTeamID(c)
@@ -339,7 +338,7 @@ func (h *SiteHandler) VerifyDomain(c *fiber.Ctx) error {
 	// Check if domain repository is configured
 	if h.domainRepo == nil {
 		// No domain repository configured, return not verified
-		return response.OK(c, "Domain verification result", dto.VerifyDomainResponse{
+		return fiberctx.OK(c, "Domain verification result", dto.VerifyDomainResponse{
 			Verified:        false,
 			Domain:          domain,
 			BaseDomain:      baseDomain,
@@ -350,13 +349,13 @@ func (h *SiteHandler) VerifyDomain(c *fiber.Ctx) error {
 	// Get user's connected domains
 	userDomains, err := h.domainRepo.FindByTeam(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
 	}
 
 	// Check if the base domain exists in user's connected domains
 	for _, userDomain := range userDomains {
 		if userDomain.Address == baseDomain {
-			return response.OK(c, "Domain verification result", dto.VerifyDomainResponse{
+			return fiberctx.OK(c, "Domain verification result", dto.VerifyDomainResponse{
 				Verified:          true,
 				Domain:            domain,
 				BaseDomain:        baseDomain,
@@ -366,7 +365,7 @@ func (h *SiteHandler) VerifyDomain(c *fiber.Ctx) error {
 		}
 	}
 
-	return response.OK(c, "Domain verification result", dto.VerifyDomainResponse{
+	return fiberctx.OK(c, "Domain verification result", dto.VerifyDomainResponse{
 		Verified:        false,
 		Domain:          domain,
 		BaseDomain:      baseDomain,

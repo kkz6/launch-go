@@ -8,8 +8,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 const TypeInstallTaskCleanupCron = "server:install_task_cleanup_cron"
@@ -52,7 +52,7 @@ func (j *InstallTaskCleanupCronJob) Handle(ctx context.Context) error {
 	schedule := types.CronDaily3AM
 	cron := &models.Cron{
 		Expression: schedule.Expression(),
-		Command:    basemodels.EncryptedString(cleanupCommand),
+		Command:    dbtype.EncryptedString(cleanupCommand),
 		User:       "root",
 		Frequency:  schedule.FrequencyName(),
 		Hidden:     true, // System cron, hidden from user

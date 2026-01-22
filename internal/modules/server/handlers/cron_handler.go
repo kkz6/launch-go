@@ -5,7 +5,6 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // ListCrons returns all cron jobs for a server
@@ -22,7 +21,7 @@ func (h *Handler) ListCrons(c *fiber.Ctx) error {
 
 	crons, err := h.service.ListCrons(c.Context(), serverID, teamID)
 	if err != nil {
-		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch cron jobs")
+		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch cron jobs")
 	}
 
 	result := make([]dto.CronResponse, len(crons))
@@ -30,7 +29,7 @@ func (h *Handler) ListCrons(c *fiber.Ctx) error {
 		result[i] = dto.ToCronResponse(&cron)
 	}
 
-	return response.OK(c, "Cron jobs retrieved", result)
+	return fiberctx.OK(c, "Cron jobs retrieved", result)
 }
 
 // CreateCron creates a new cron job
@@ -52,10 +51,10 @@ func (h *Handler) CreateCron(c *fiber.Ctx) error {
 
 	cron, err := h.service.CreateCron(c.Context(), serverID, teamID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.Created(c, "Cron job created", dto.ToCronResponse(cron))
+	return fiberctx.Created(c, "Cron job created", dto.ToCronResponse(cron))
 }
 
 // UpdateCron updates a cron job
@@ -82,10 +81,10 @@ func (h *Handler) UpdateCron(c *fiber.Ctx) error {
 
 	cron, err := h.service.UpdateCron(c.Context(), serverID, teamID, cronID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Cron job updated", dto.ToCronResponse(cron))
+	return fiberctx.OK(c, "Cron job updated", dto.ToCronResponse(cron))
 }
 
 // DeleteCron deletes a cron job
@@ -106,8 +105,8 @@ func (h *Handler) DeleteCron(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.DeleteCron(c.Context(), serverID, teamID, cronID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.NoContent(c)
+	return fiberctx.NoContent(c)
 }

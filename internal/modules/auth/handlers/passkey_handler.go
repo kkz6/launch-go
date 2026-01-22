@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // PasskeyHandler handles passkey-related HTTP requests
@@ -39,7 +38,7 @@ func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
 
 	passkeys, err := h.service.GetUserPasskeys(c.Context(), userID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	passkeyResponses := make([]PasskeyResponse, len(passkeys))
@@ -81,10 +80,10 @@ func (h *PasskeyHandler) Delete(c *fiber.Ctx) error {
 
 	err = h.service.DeletePasskey(c.Context(), passkeyID, userID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Passkey deleted successfully", nil)
+	return fiberctx.OK(c, "Passkey deleted successfully", nil)
 }
 
 // UpdateRequest represents the request body for updating a passkey
@@ -106,8 +105,8 @@ func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.UpdatePasskeyName(c.Context(), passkeyID, userID, req.Name); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Passkey updated successfully", nil)
+	return fiberctx.OK(c, "Passkey updated successfully", nil)
 }

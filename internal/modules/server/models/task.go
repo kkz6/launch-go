@@ -5,6 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -12,15 +13,15 @@ import (
 type Task struct {
 	basemodels.BaseModel
 	basemodels.ServerScopedModel
-	Name     string                     `gorm:"type:varchar(255);not null" json:"name"`
-	User     string                     `gorm:"type:varchar(255);not null" json:"user"`
-	Type     string                     `gorm:"type:varchar(255);not null" json:"type"`
-	Instance basemodels.EncryptedString `gorm:"type:longtext" json:"instance,omitempty"`
-	Script   basemodels.EncryptedString `gorm:"type:longtext" json:"-"`
-	Timeout  int                        `gorm:"type:int;not null" json:"timeout"`
-	Status   string                     `gorm:"type:varchar(255);not null" json:"status"`
-	Output   basemodels.EncryptedString `gorm:"type:longtext" json:"-"`
-	ExitCode *int                       `gorm:"column:exit_code;type:int" json:"exit_code,omitempty"`
+	Name     string                 `gorm:"type:varchar(255);not null" json:"name"`
+	User     string                 `gorm:"type:varchar(255);not null" json:"user"`
+	Type     string                 `gorm:"type:varchar(255);not null" json:"type"`
+	Instance dbtype.EncryptedString `gorm:"type:longtext" json:"instance,omitempty"`
+	Script   dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
+	Timeout  int                    `gorm:"type:int;not null" json:"timeout"`
+	Status   string                 `gorm:"type:varchar(255);not null" json:"status"`
+	Output   dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
+	ExitCode *int                   `gorm:"column:exit_code;type:int" json:"exit_code,omitempty"`
 
 	// Relations
 	Server *Server `gorm:"foreignKey:ServerID;references:ID" json:"server,omitempty"`

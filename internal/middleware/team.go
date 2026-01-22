@@ -5,7 +5,6 @@ import (
 
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // Role hierarchy - higher number = more permissions
@@ -81,18 +80,18 @@ func TeamScope() fiber.Handler {
 		if result.err != nil {
 			fiberErr, ok := result.err.(*fiber.Error)
 			if !ok {
-				return response.Error(c, fiber.StatusInternalServerError, result.err.Error())
+				return fiberctx.Error(c, fiber.StatusInternalServerError, result.err.Error())
 			}
 
 			switch fiberErr.Code {
 			case fiber.StatusBadRequest:
-				return response.Error(c, fiber.StatusBadRequest, fiberErr.Message)
+				return fiberctx.Error(c, fiber.StatusBadRequest, fiberErr.Message)
 			case fiber.StatusUnauthorized:
-				return response.Unauthorized(c, fiberErr.Message)
+				return fiberctx.RespondUnauthorized(c, fiberErr.Message)
 			case fiber.StatusForbidden:
-				return response.Forbidden(c, fiberErr.Message)
+				return fiberctx.RespondForbidden(c, fiberErr.Message)
 			default:
-				return response.Error(c, fiberErr.Code, fiberErr.Message)
+				return fiberctx.Error(c, fiberErr.Code, fiberErr.Message)
 			}
 		}
 
@@ -138,19 +137,19 @@ func RequireRole(minRole string) fiber.Handler {
 	if !validRole {
 		// Invalid role specified - fail closed
 		return func(c *fiber.Ctx) error {
-			return response.Forbidden(c, "Invalid role configuration")
+			return fiberctx.RespondForbidden(c, "Invalid role configuration")
 		}
 	}
 
 	return func(c *fiber.Ctx) error {
 		teamRole, ok := c.Locals(fiberctx.KeyTeamRole).(string)
 		if !ok || teamRole == "" {
-			return response.Forbidden(c, "Team context required")
+			return fiberctx.RespondForbidden(c, "Team context required")
 		}
 
 		userLevel, ok := roleHierarchy[teamRole]
 		if !ok || userLevel < minLevel {
-			return response.Forbidden(c, "Insufficient permissions")
+			return fiberctx.RespondForbidden(c, "Insufficient permissions")
 		}
 
 		return c.Next()
@@ -167,21 +166,21 @@ func TeamContext(membershipCache *launchcache.TeamMembershipCache) fiber.Handler
 	return func(c *fiber.Ctx) error {
 		teamID := c.Get("X-Team-ID")
 		if teamID == "" {
-			return response.Error(c, fiber.StatusBadRequest, "X-Team-ID header is required")
+			return fiberctx.Error(c, fiber.StatusBadRequest, "X-Team-ID header is required")
 		}
 
 		userID, ok := c.Locals(fiberctx.KeyUserID).(string)
 		if !ok || userID == "" {
-			return response.Unauthorized(c, "Authentication required")
+			return fiberctx.RespondUnauthorized(c, "Authentication required")
 		}
 
 		membership, err := membershipCache.GetMembership(c.Context(), userID, teamID)
 		if err != nil {
-			return response.Error(c, fiber.StatusInternalServerError, "Failed to validate team membership")
+			return fiberctx.Error(c, fiber.StatusInternalServerError, "Failed to validate team membership")
 		}
 
 		if !membership.IsMember {
-			return response.Forbidden(c, "You are not a member of this team")
+			return fiberctx.RespondForbidden(c, "You are not a member of this team")
 		}
 
 		fiberctx.SetTeamContext(c, teamID, membership.Role)

@@ -9,7 +9,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // LogInfo represents available log information
@@ -35,7 +34,7 @@ func (h *Handler) ListLogs(c *fiber.Ctx) error {
 	// Get server with services
 	server, err := h.service.GetServerWithRelations(c.Context(), serverID, teamID)
 	if err != nil {
-		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch server")
+		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch server")
 	}
 
 	// Build list of available logs based on installed services
@@ -62,7 +61,7 @@ func (h *Handler) ListLogs(c *fiber.Ctx) error {
 		logs = []LogInfo{}
 	}
 
-	return response.OK(c, "Logs retrieved", logs)
+	return fiberctx.OK(c, "Logs retrieved", logs)
 }
 
 // GetLogContent returns the content of a log file
@@ -81,24 +80,24 @@ func (h *Handler) GetLogContent(c *fiber.Ctx) error {
 	logParam := c.Params("log")
 
 	if logParam == "" {
-		return response.BadRequest(c, "Log parameter is required")
+		return fiberctx.RespondBadRequest(c, "Log parameter is required")
 	}
 
 	// Decode the encrypted log parameter
 	data, err := support.DecodeFileRouteParam(logParam)
 	if err != nil {
-		return response.BadRequest(c, "Invalid log parameter")
+		return fiberctx.RespondBadRequest(c, "Invalid log parameter")
 	}
 
 	// Verify the path is an allowed log path
 	if !isAllowedLogPath(data.Path) {
-		return response.BadRequest(c, "Log path not allowed")
+		return fiberctx.RespondBadRequest(c, "Log path not allowed")
 	}
 
 	// Get server
 	server, err := h.service.GetServerWithRelations(c.Context(), serverID, teamID)
 	if err != nil {
-		return response.HandleErrorOrInternalErr(c, err, "Failed to fetch server")
+		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch server")
 	}
 
 	// Create task to read log content
@@ -111,10 +110,10 @@ func (h *Handler) GetLogContent(c *fiber.Ctx) error {
 		AsRoot().
 		Run(c.Context())
 	if err != nil {
-		return response.InternalError(c, "Failed to read log: "+err.Error())
+		return fiberctx.RespondInternalError(c, "Failed to read log: "+err.Error())
 	}
 
-	return response.OK(c, "Log content retrieved", map[string]string{
+	return fiberctx.OK(c, "Log content retrieved", map[string]string{
 		"content": result.GetOutput(),
 		"path":    data.Path,
 	})

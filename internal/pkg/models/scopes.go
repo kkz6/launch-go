@@ -1,7 +1,5 @@
 package models
 
-import "gorm.io/gorm"
-
 // TeamScoped provides a TeamID field for models that belong to a team.
 // This is the primary multi-tenancy scope - most resources belong to a team.
 //
@@ -149,62 +147,4 @@ type FullScoped struct {
 	TeamScoped
 	ServerScoped
 	SiteScoped
-}
-
-// Scope functions for query building
-
-// ScopeByTeam returns a GORM scope function that filters by team ID
-func ScopeByTeam(teamID string) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		return db.Where("team_id = ?", teamID)
-	}
-}
-
-// ScopeByServer returns a GORM scope function that filters by server ID
-func ScopeByServer(serverID string) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		return db.Where("server_id = ?", serverID)
-	}
-}
-
-// ScopeBySite returns a GORM scope function that filters by site ID
-func ScopeBySite(siteID string) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		return db.Where("site_id = ?", siteID)
-	}
-}
-
-// ScopeByUser returns a GORM scope function that filters by user ID
-func ScopeByUser(userID string) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		return db.Where("user_id = ?", userID)
-	}
-}
-
-// ScopeNotArchived returns a GORM scope function that excludes archived records
-func ScopeNotArchived() func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		return db.Where("archived_at IS NULL")
-	}
-}
-
-// ScopeArchived returns a GORM scope function that only includes archived records
-func ScopeArchived() func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		return db.Where("archived_at IS NOT NULL")
-	}
-}
-
-// ScopeByStatus returns a GORM scope function that filters by status
-func ScopeByStatus[S ~string](status S) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		return db.Where("status = ?", status)
-	}
-}
-
-// ScopeByStatusIn returns a GORM scope function that filters by multiple statuses
-func ScopeByStatusIn[S ~string](statuses ...S) func(db *gorm.DB) *gorm.DB {
-	return func(db *gorm.DB) *gorm.DB {
-		return db.Where("status IN ?", statuses)
-	}
 }

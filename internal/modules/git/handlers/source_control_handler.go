@@ -8,7 +8,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git/services"
 	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // SourceControlHandler handles HTTP requests for git operations
@@ -30,7 +29,7 @@ func (h *SourceControlHandler) ListSourceControls(c *fiber.Ctx) error {
 
 	sourceControls, err := h.service.ListSourceControls(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
 	}
 
 	result := make([]dto.SourceControlResponse, len(sourceControls))
@@ -38,7 +37,7 @@ func (h *SourceControlHandler) ListSourceControls(c *fiber.Ctx) error {
 		result[i] = dto.ToSourceControlResponse(&sc)
 	}
 
-	return response.OK(c, "Source controls retrieved", result)
+	return fiberctx.OK(c, "Source controls retrieved", result)
 }
 
 // GetSourceControl gets a single source control
@@ -51,10 +50,10 @@ func (h *SourceControlHandler) GetSourceControl(c *fiber.Ctx) error {
 
 	sc, err := h.service.GetSourceControl(c.Context(), id, teamID)
 	if err != nil {
-		return response.NotFound(c, response.MsgSourceControlNotFound)
+		return fiberctx.RespondNotFound(c, "Source control not found")
 	}
 
-	return response.OK(c, "Source control retrieved", dto.ToSourceControlResponse(sc))
+	return fiberctx.OK(c, "Source control retrieved", dto.ToSourceControlResponse(sc))
 }
 
 // GetSourceControlRepositories gets all repositories for a source control
@@ -67,7 +66,7 @@ func (h *SourceControlHandler) GetSourceControlRepositories(c *fiber.Ctx) error 
 
 	repos, err := h.service.GetRepositoriesBySourceControlID(c.Context(), id, teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	result := make([]dto.RepositoryResponse, len(repos))
@@ -75,7 +74,7 @@ func (h *SourceControlHandler) GetSourceControlRepositories(c *fiber.Ctx) error 
 		result[i] = dto.ToRepositoryResponse(&repo)
 	}
 
-	return response.OK(c, "Repositories retrieved", result)
+	return fiberctx.OK(c, "Repositories retrieved", result)
 }
 
 // Connect connects a git provider
@@ -92,15 +91,15 @@ func (h *SourceControlHandler) Connect(c *fiber.Ctx) error {
 
 	providerType, err := gittypes.ParseGitProviderType(req.Provider)
 	if err != nil {
-		return response.BadRequest(c, "Invalid provider")
+		return fiberctx.RespondBadRequest(c, "Invalid provider")
 	}
 
 	sc, err := h.service.Connect(c.Context(), userID, teamID, providerType, req.InstallationID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.Created(c, "Provider connected successfully", dto.ToSourceControlResponse(sc))
+	return fiberctx.Created(c, "Provider connected successfully", dto.ToSourceControlResponse(sc))
 }
 
 // Disconnect disconnects a source control
@@ -112,10 +111,10 @@ func (h *SourceControlHandler) Disconnect(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.Disconnect(c.Context(), id, teamID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.NoContent(c)
+	return fiberctx.NoContent(c)
 }
 
 // GetInstallationURL gets the installation URL for a provider
@@ -124,15 +123,15 @@ func (h *SourceControlHandler) GetInstallationURL(c *fiber.Ctx) error {
 
 	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
-		return response.BadRequest(c, "Invalid provider")
+		return fiberctx.RespondBadRequest(c, "Invalid provider")
 	}
 
 	url, err := h.service.GetInstallationURL(providerType)
 	if err != nil {
-		return response.InternalError(c, err.Error())
+		return fiberctx.RespondInternalError(c, err.Error())
 	}
 
-	return response.OK(c, "Installation URL retrieved", dto.InstallationURLResponse{
+	return fiberctx.OK(c, "Installation URL retrieved", dto.InstallationURLResponse{
 		URL:      url,
 		Provider: providerStr,
 	})
@@ -144,15 +143,15 @@ func (h *SourceControlHandler) GetInstallations(c *fiber.Ctx) error {
 
 	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
-		return response.BadRequest(c, "Invalid provider")
+		return fiberctx.RespondBadRequest(c, "Invalid provider")
 	}
 
 	installations, err := h.service.GetInstallations(c.Context(), providerType)
 	if err != nil {
-		return response.InternalError(c, err.Error())
+		return fiberctx.RespondInternalError(c, err.Error())
 	}
 
-	return response.OK(c, "Installations retrieved", dto.InstallationsResponse{
+	return fiberctx.OK(c, "Installations retrieved", dto.InstallationsResponse{
 		Installations: installations,
 		Provider:      providerStr,
 	})
@@ -165,24 +164,24 @@ func (h *SourceControlHandler) GetInstallation(c *fiber.Ctx) error {
 
 	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
-		return response.BadRequest(c, "Invalid provider")
+		return fiberctx.RespondBadRequest(c, "Invalid provider")
 	}
 
 	installations, err := h.service.GetInstallations(c.Context(), providerType)
 	if err != nil {
-		return response.InternalError(c, err.Error())
+		return fiberctx.RespondInternalError(c, err.Error())
 	}
 
 	for _, inst := range installations {
 		if inst.ID == installationID {
-			return response.OK(c, "Installation retrieved", fiber.Map{
+			return fiberctx.OK(c, "Installation retrieved", fiber.Map{
 				"installation": inst,
 				"provider":     providerStr,
 			})
 		}
 	}
 
-	return response.NotFound(c, "Installation not found")
+	return fiberctx.RespondNotFound(c, "Installation not found")
 }
 
 // GetInstallationRepositories gets repositories for an installation from the API
@@ -192,15 +191,15 @@ func (h *SourceControlHandler) GetInstallationRepositories(c *fiber.Ctx) error {
 
 	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
-		return response.BadRequest(c, "Invalid provider")
+		return fiberctx.RespondBadRequest(c, "Invalid provider")
 	}
 
 	repos, err := h.service.GetInstallationRepositoriesFromAPI(c.Context(), providerType, installationID)
 	if err != nil {
-		return response.InternalError(c, err.Error())
+		return fiberctx.RespondInternalError(c, err.Error())
 	}
 
-	return response.OK(c, "Repositories retrieved", fiber.Map{
+	return fiberctx.OK(c, "Repositories retrieved", fiber.Map{
 		"repositories":    repos,
 		"provider":        providerStr,
 		"installation_id": installationID,
@@ -218,12 +217,12 @@ func (h *SourceControlHandler) GetCachedInstallationRepositories(c *fiber.Ctx) e
 
 	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
-		return response.BadRequest(c, "Invalid provider")
+		return fiberctx.RespondBadRequest(c, "Invalid provider")
 	}
 
 	repos, err := h.service.GetCachedRepositories(c.Context(), providerType, installationID, teamID)
 	if err != nil {
-		return response.InternalError(c, err.Error())
+		return fiberctx.RespondInternalError(c, err.Error())
 	}
 
 	result := make([]dto.RepositoryResponse, len(repos))
@@ -231,7 +230,7 @@ func (h *SourceControlHandler) GetCachedInstallationRepositories(c *fiber.Ctx) e
 		result[i] = dto.ToRepositoryResponse(&repo)
 	}
 
-	return response.OK(c, "Cached repositories retrieved", fiber.Map{
+	return fiberctx.OK(c, "Cached repositories retrieved", fiber.Map{
 		"repositories":     result,
 		"repository_count": len(result),
 	})
@@ -248,19 +247,19 @@ func (h *SourceControlHandler) RefreshInstallationRepositories(c *fiber.Ctx) err
 
 	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
-		return response.BadRequest(c, "Invalid provider")
+		return fiberctx.RespondBadRequest(c, "Invalid provider")
 	}
 
 	sc, err := h.service.GetSourceControlByInstallation(c.Context(), providerType, installationID, contracts.WithUserID(userID))
 	if err != nil {
-		return response.NotFound(c, "Installation not found")
+		return fiberctx.RespondNotFound(c, "Installation not found")
 	}
 
 	if err := h.service.RefreshInstallationRepositories(c.Context(), sc); err != nil {
-		return response.InternalError(c, err.Error())
+		return fiberctx.RespondInternalError(c, err.Error())
 	}
 
-	return response.OK(c, "Repositories are being synced in the background", fiber.Map{
+	return fiberctx.OK(c, "Repositories are being synced in the background", fiber.Map{
 		"status": "success",
 	})
 }
@@ -307,18 +306,18 @@ func (h *SourceControlHandler) TestConnection(c *fiber.Ctx) error {
 
 	providerType, err := gittypes.ParseGitProviderType(providerStr)
 	if err != nil {
-		return response.BadRequest(c, "Invalid provider")
+		return fiberctx.RespondBadRequest(c, "Invalid provider")
 	}
 
 	if err := h.service.TestConnection(c.Context(), providerType); err != nil {
-		return response.OK(c, "Connection test failed", fiber.Map{
+		return fiberctx.OK(c, "Connection test failed", fiber.Map{
 			"success":  false,
 			"error":    err.Error(),
 			"provider": providerStr,
 		})
 	}
 
-	return response.OK(c, "Connection test successful", fiber.Map{
+	return fiberctx.OK(c, "Connection test successful", fiber.Map{
 		"success":  true,
 		"provider": providerStr,
 	})
@@ -333,7 +332,7 @@ func (h *SourceControlHandler) GetInstallationsWithCounts(c *fiber.Ctx) error {
 
 	installations, err := h.service.GetInstallationsWithRepositoryCounts(c.Context(), teamID, userID)
 	if err != nil {
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
 	}
 
 	// Get available providers (matches Laravel's format)
@@ -346,7 +345,7 @@ func (h *SourceControlHandler) GetInstallationsWithCounts(c *fiber.Ctx) error {
 	}
 
 	// Return with camelCase keys to match Laravel's Inertia response format
-	return response.OK(c, "Installations retrieved", fiber.Map{
+	return fiberctx.OK(c, "Installations retrieved", fiber.Map{
 		"appInstallations":   installations,
 		"availableProviders": providers,
 	})

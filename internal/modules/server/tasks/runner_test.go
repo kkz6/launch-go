@@ -7,9 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/hibiken/asynq"
-
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
@@ -20,10 +19,9 @@ import (
 
 // mockDispatcher implements taskrunner.TaskDispatcher for testing
 type mockDispatcher struct {
-	runFunc    func(ctx context.Context, task *taskrunner.PendingTask) (*taskrunner.TaskResult, error)
-	callCount  int32
-	lastTask   *taskrunner.PendingTask
-	background bool
+	runFunc   func(ctx context.Context, task *taskrunner.PendingTask) (*taskrunner.TaskResult, error)
+	callCount int32
+	lastTask  *taskrunner.PendingTask
 }
 
 func (m *mockDispatcher) Run(ctx context.Context, task *taskrunner.PendingTask) (*taskrunner.TaskResult, error) {
@@ -45,10 +43,10 @@ type mockTask struct {
 	timeout time.Duration
 }
 
-func (t *mockTask) Name() string                                         { return t.name }
-func (t *mockTask) Script() string                                       { return t.script }
-func (t *mockTask) Timeout() time.Duration                               { return t.timeout }
-func (t *mockTask) OnOutput(output string)                               {}
+func (t *mockTask) Name() string                                                  { return t.name }
+func (t *mockTask) Script() string                                                { return t.script }
+func (t *mockTask) Timeout() time.Duration                                        { return t.timeout }
+func (t *mockTask) OnOutput(output string)                                        {}
 func (t *mockTask) OnFinished(ctx context.Context, result *taskrunner.TaskResult) {}
 func (t *mockTask) OnFailed(ctx context.Context, result *taskrunner.TaskResult)   {}
 func (t *mockTask) OnTimeout(ctx context.Context, result *taskrunner.TaskResult)  {}
@@ -56,13 +54,13 @@ func (t *mockTask) OnTimeout(ctx context.Context, result *taskrunner.TaskResult)
 // mockCallbackTask implements both Task and CallbackPayload
 type mockCallbackTask struct {
 	*mockTask
-	state            mockCallbackState
-	onSuccessCalled  bool
-	onFailureCalled  bool
-	onExpiredCalled  bool
-	lastTaskID       string
-	lastExitCode     int
-	returnError      error
+	state           mockCallbackState
+	onSuccessCalled bool
+	onFailureCalled bool
+	onExpiredCalled bool
+	lastTaskID      string
+	lastExitCode    int
+	returnError     error
 }
 
 func (t *mockCallbackTask) TypeName() string {
@@ -97,22 +95,6 @@ type mockCallbackState struct {
 	DeploymentID string `json:"deployment_id"`
 }
 
-// mockQueue implements queue.Client-like behavior for testing
-type mockQueue struct {
-	tasks        []*asynq.Task
-	enqueueCalls int
-	returnError  error
-}
-
-func (q *mockQueue) Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error) {
-	q.enqueueCalls++
-	if q.returnError != nil {
-		return nil, q.returnError
-	}
-	q.tasks = append(q.tasks, task)
-	return &asynq.TaskInfo{}, nil
-}
-
 // =============================================================================
 // Helper Functions
 // =============================================================================
@@ -127,7 +109,7 @@ func createTestServer() *models.Server {
 		},
 		Name:       "Test Server",
 		PublicIPv4: &ip,
-		PrivateKey: basemodels.EncryptedString(privateKey),
+		PrivateKey: dbtype.EncryptedString(privateKey),
 	}
 	server.TeamID = "test-team-123"
 	server.UserID = "test-user-123"
@@ -549,11 +531,11 @@ func TestTaskRunner_wrapTaskForBackground(t *testing.T) {
 	expectedElements := []string{
 		"#!/bin/bash",
 		"set -euo pipefail",
-		"echo 'hello world'",        // original script
-		"http://finish",             // finished callback URL
-		"http://fail",               // failed callback URL
-		"http://timeout",            // timeout callback URL
-		"EXIT_CODE=$?",              // exit code capture
+		"echo 'hello world'", // original script
+		"http://finish",      // finished callback URL
+		"http://fail",        // failed callback URL
+		"http://timeout",     // timeout callback URL
+		"EXIT_CODE=$?",       // exit code capture
 	}
 
 	for _, elem := range expectedElements {

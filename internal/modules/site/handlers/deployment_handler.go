@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // DeploymentHandler handles HTTP requests for deployments
@@ -38,10 +37,10 @@ func (h *DeploymentHandler) Deploy(c *fiber.Ctx) error {
 
 	deployment, err := h.deploymentService.Deploy(c.Context(), siteID, serverID, userID)
 	if err != nil {
-		return response.Abort(err)
+		return fiberctx.Abort(err)
 	}
 
-	return response.OK(c, "Deployment started", dto.ToDeploymentResponse(deployment))
+	return fiberctx.OK(c, "Deployment started", dto.ToDeploymentResponse(deployment))
 }
 
 // Rollback rolls back to a previous deployment
@@ -68,10 +67,10 @@ func (h *DeploymentHandler) Rollback(c *fiber.Ctx) error {
 
 	deployment, err := h.deploymentService.Rollback(c.Context(), siteID, serverID, targetDeploymentID, userID)
 	if err != nil {
-		return response.Abort(err)
+		return fiberctx.Abort(err)
 	}
 
-	return response.OK(c, "Rollback initiated", dto.ToDeploymentResponse(deployment))
+	return fiberctx.OK(c, "Rollback initiated", dto.ToDeploymentResponse(deployment))
 }
 
 // ListDeployments returns all deployments for a site
@@ -88,7 +87,7 @@ func (h *DeploymentHandler) ListDeployments(c *fiber.Ctx) error {
 
 	deployments, err := h.deploymentService.List(c.Context(), siteID, serverID)
 	if err != nil {
-		return response.Abort(err)
+		return fiberctx.Abort(err)
 	}
 
 	result := make([]dto.DeploymentResponse, len(deployments))
@@ -96,7 +95,7 @@ func (h *DeploymentHandler) ListDeployments(c *fiber.Ctx) error {
 		result[i] = dto.ToDeploymentResponse(&deployment)
 	}
 
-	return response.OK(c, "Deployments retrieved", result)
+	return fiberctx.OK(c, "Deployments retrieved", result)
 }
 
 // ShowDeployment returns a single deployment
@@ -118,10 +117,10 @@ func (h *DeploymentHandler) ShowDeployment(c *fiber.Ctx) error {
 
 	deployment, err := h.deploymentService.FindByID(c.Context(), deploymentID, siteID, serverID)
 	if err != nil {
-		return response.Abort(err)
+		return fiberctx.Abort(err)
 	}
 
-	return response.OK(c, "Deployment retrieved", dto.ToDeploymentResponse(deployment))
+	return fiberctx.OK(c, "Deployment retrieved", dto.ToDeploymentResponse(deployment))
 }
 
 // CancelQueuedDeployments cancels all queued deployments
@@ -138,10 +137,10 @@ func (h *DeploymentHandler) CancelQueuedDeployments(c *fiber.Ctx) error {
 
 	count, err := h.deploymentService.CancelQueued(c.Context(), siteID, serverID)
 	if err != nil {
-		return response.Abort(err)
+		return fiberctx.Abort(err)
 	}
 
-	return response.OK(c, "Queued deployments cancelled", map[string]int64{"cancelled": count})
+	return fiberctx.OK(c, "Queued deployments cancelled", map[string]int64{"cancelled": count})
 }
 
 // EnableAutoDeployment enables auto-deployment
@@ -157,10 +156,10 @@ func (h *DeploymentHandler) EnableAutoDeployment(c *fiber.Ctx) error {
 	}
 
 	if err := h.deploymentService.EnableAutoDeployment(c.Context(), siteID, serverID); err != nil {
-		return response.Abort(err)
+		return fiberctx.Abort(err)
 	}
 
-	return response.OK(c, "Auto-deployment enabled", nil)
+	return fiberctx.OK(c, "Auto-deployment enabled", nil)
 }
 
 // DisableAutoDeployment disables auto-deployment
@@ -176,8 +175,8 @@ func (h *DeploymentHandler) DisableAutoDeployment(c *fiber.Ctx) error {
 	}
 
 	if err := h.deploymentService.DisableAutoDeployment(c.Context(), siteID, serverID); err != nil {
-		return response.Abort(err)
+		return fiberctx.Abort(err)
 	}
 
-	return response.OK(c, "Auto-deployment disabled", nil)
+	return fiberctx.OK(c, "Auto-deployment disabled", nil)
 }

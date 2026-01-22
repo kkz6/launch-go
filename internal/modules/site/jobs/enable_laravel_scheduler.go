@@ -10,8 +10,8 @@ import (
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 const TypeEnableLaravelScheduler = "site:enable_laravel_scheduler"
@@ -84,7 +84,7 @@ func (j *EnableLaravelSchedulerJob) createSchedulerCron(ctx context.Context, sit
 	cron := &servermodels.Cron{
 		SiteID:     &site.ID,
 		Expression: schedule.Expression(),
-		Command:    basemodels.EncryptedString(command),
+		Command:    dbtype.EncryptedString(command),
 		User:       site.User,
 		Frequency:  schedule.FrequencyName(),
 		Hidden:     true,

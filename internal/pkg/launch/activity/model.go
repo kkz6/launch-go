@@ -3,7 +3,7 @@ package activity
 import (
 	"time"
 
-	"github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 )
 
 type ActivityLog struct {
@@ -16,7 +16,7 @@ type ActivityLog struct {
 	SubjectID   *string        `json:"subject_id" gorm:"index;size:26"`
 	CauserType  *string        `json:"causer_type" gorm:"index;size:255"`
 	CauserID    *string        `json:"causer_id" gorm:"index;size:26"`
-	Properties  models.JSONMap `json:"properties" gorm:"type:json"`
+	Properties  dbtype.JSONMap `json:"properties" gorm:"type:json"`
 	Event       *string        `json:"event" gorm:"size:255"`
 	BatchUUID   *string        `json:"batch_uuid" gorm:"index;size:36"`
 }

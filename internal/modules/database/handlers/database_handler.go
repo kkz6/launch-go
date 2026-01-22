@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/dto"
 	"github.com/kkz6/launch-go/internal/modules/database/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // Handler handles HTTP requests for database operations
@@ -23,7 +22,7 @@ func NewHandler(service *services.Service) *Handler {
 func (h *Handler) ListDatabases(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	if serverID == "" {
-		return response.BadRequest(c, response.MsgMissingRequiredParams)
+		return fiberctx.RespondBadRequest(c, fiberctx.MsgMissingRequiredParams)
 	}
 
 	teamID, err := fiberctx.MustGetTeamID(c)
@@ -33,17 +32,17 @@ func (h *Handler) ListDatabases(c *fiber.Ctx) error {
 
 	databases, err := h.service.ListDatabases(c.Context(), serverID, teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Databases retrieved", dto.ToDatabaseResponseList(databases))
+	return fiberctx.OK(c, "Databases retrieved", dto.ToDatabaseResponseList(databases))
 }
 
 // CreateDatabase creates a new database
 func (h *Handler) CreateDatabase(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	if serverID == "" {
-		return response.BadRequest(c, response.MsgMissingRequiredParams)
+		return fiberctx.RespondBadRequest(c, fiberctx.MsgMissingRequiredParams)
 	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.CreateDatabaseRequest](c)
@@ -59,10 +58,10 @@ func (h *Handler) CreateDatabase(c *fiber.Ctx) error {
 
 	database, err := h.service.CreateDatabase(c.Context(), serverID, teamID, req, userID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.Created(c, "Database will be created shortly", dto.ToDatabaseResponse(database))
+	return fiberctx.Created(c, "Database will be created shortly", dto.ToDatabaseResponse(database))
 }
 
 // GetDatabase gets a database by ID
@@ -71,7 +70,7 @@ func (h *Handler) GetDatabase(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if serverID == "" || id == "" {
-		return response.BadRequest(c, response.MsgMissingRequiredParams)
+		return fiberctx.RespondBadRequest(c, fiberctx.MsgMissingRequiredParams)
 	}
 
 	teamID, err := fiberctx.MustGetTeamID(c)
@@ -81,10 +80,10 @@ func (h *Handler) GetDatabase(c *fiber.Ctx) error {
 
 	database, err := h.service.GetDatabase(c.Context(), id, serverID, teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Database retrieved", dto.ToDatabaseResponse(database))
+	return fiberctx.OK(c, "Database retrieved", dto.ToDatabaseResponse(database))
 }
 
 // DeleteDatabase deletes a database
@@ -93,7 +92,7 @@ func (h *Handler) DeleteDatabase(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if serverID == "" || id == "" {
-		return response.BadRequest(c, response.MsgMissingRequiredParams)
+		return fiberctx.RespondBadRequest(c, fiberctx.MsgMissingRequiredParams)
 	}
 
 	teamID, err := fiberctx.MustGetTeamID(c)
@@ -103,24 +102,24 @@ func (h *Handler) DeleteDatabase(c *fiber.Ctx) error {
 	userID := getUserIDFromContext(c)
 
 	if err := h.service.DeleteDatabase(c.Context(), id, serverID, teamID, userID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Database will be deleted shortly", nil)
+	return fiberctx.OK(c, "Database will be deleted shortly", nil)
 }
 
 // SyncDatabases syncs databases from the server
 func (h *Handler) SyncDatabases(c *fiber.Ctx) error {
 	serverID := c.Params("serverId")
 	if serverID == "" {
-		return response.BadRequest(c, response.MsgMissingRequiredParams)
+		return fiberctx.RespondBadRequest(c, fiberctx.MsgMissingRequiredParams)
 	}
 
 	userID := getUserIDFromContext(c)
 
 	if err := h.service.SyncDatabases(c.Context(), serverID, userID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Database sync started", nil)
+	return fiberctx.OK(c, "Database sync started", nil)
 }

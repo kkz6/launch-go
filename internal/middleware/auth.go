@@ -9,7 +9,7 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
+
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
@@ -69,7 +69,7 @@ func Auth(jwtSecret string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		claims, err := parseAuthToken(c, jwtSecret)
 		if err != nil {
-			return response.Unauthorized(c, "Unauthorized")
+			return fiberctx.RespondUnauthorized(c, "Unauthorized")
 		}
 
 		setAuthContext(c, claims)
@@ -106,7 +106,7 @@ func TwoFactor(service TwoFactorService) fiber.Handler {
 
 		has2FA, err := service.HasTwoFactorEnabled(c.Context(), userID)
 		if err != nil {
-			return response.Error(c, fiber.StatusInternalServerError, "Failed to check 2FA status")
+			return fiberctx.Error(c, fiber.StatusInternalServerError, "Failed to check 2FA status")
 		}
 
 		if !has2FA {
@@ -131,16 +131,16 @@ func EmailVerified(service UserService) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		userID, ok := c.Locals("userID").(string)
 		if !ok || userID == "" {
-			return response.Unauthorized(c, "User not authenticated")
+			return fiberctx.RespondUnauthorized(c, "User not authenticated")
 		}
 
 		user, err := service.GetUser(c.Context(), userID)
 		if err != nil {
-			return response.Error(c, fiber.StatusInternalServerError, "Failed to get user")
+			return fiberctx.Error(c, fiber.StatusInternalServerError, "Failed to get user")
 		}
 
 		if user == nil {
-			return response.NotFound(c, "User not found")
+			return fiberctx.RespondNotFound(c, "User not found")
 		}
 
 		if !user.HasVerifiedEmail() {

@@ -5,13 +5,12 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // GetCreateOptions returns the options for creating a server
 func (h *Handler) GetCreateOptions(c *fiber.Ctx) error {
 	options := dto.GetCreateServerOptions()
-	return response.OK(c, "Create options retrieved", options)
+	return fiberctx.OK(c, "Create options retrieved", options)
 }
 
 // ListServerProviders returns all connected server providers for the team
@@ -23,7 +22,7 @@ func (h *Handler) ListServerProviders(c *fiber.Ctx) error {
 
 	providers, err := h.service.ListServerProviders(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch server providers")
+		return fiberctx.RespondInternalError(c, "Failed to fetch server providers")
 	}
 
 	result := make([]dto.ServerProviderResponse, len(providers))
@@ -31,5 +30,5 @@ func (h *Handler) ListServerProviders(c *fiber.Ctx) error {
 		result[i] = dto.ToServerProviderResponse(&provider)
 	}
 
-	return response.OK(c, "Server providers retrieved", result)
+	return fiberctx.OK(c, "Server providers retrieved", result)
 }

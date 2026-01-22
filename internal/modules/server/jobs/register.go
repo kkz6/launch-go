@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 var deps *JobDeps
@@ -75,17 +74,4 @@ func registerHandlers(mux *asynq.ServeMux) {
 
 	// Scheduled maintenance jobs
 	pkgjobs.RegisterTyped(mux, TypeCleanupOldMetrics, NewCleanupOldMetricsJob)
-}
-
-// GetScheduledTasks returns the scheduled tasks for the server module.
-func GetScheduledTasks() []queue.ScheduledTask {
-	cleanupTask, _ := NewCleanupOldMetricsTask()
-
-	return []queue.ScheduledTask{
-		{
-			CronSpec: CleanupOldMetricsCronSpec(),
-			Task:     cleanupTask,
-			Opts:     []asynq.Option{asynq.Queue("low")},
-		},
-	}
 }

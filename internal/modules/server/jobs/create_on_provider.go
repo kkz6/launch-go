@@ -10,8 +10,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/retry"
 )
 
@@ -109,10 +109,10 @@ func (j *CreateOnProviderJob) Handle(ctx context.Context) error {
 	}
 
 	if result.PublicKey != "" {
-		updates["public_key"] = basemodels.EncryptedString(result.PublicKey)
+		updates["public_key"] = dbtype.EncryptedString(result.PublicKey)
 	}
 	if result.PrivateKey != "" {
-		updates["private_key"] = basemodels.EncryptedString(result.PrivateKey)
+		updates["private_key"] = dbtype.EncryptedString(result.PrivateKey)
 	}
 	if result.CPUCores > 0 {
 		updates["cpu_cores"] = result.CPUCores

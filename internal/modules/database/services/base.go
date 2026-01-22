@@ -3,12 +3,8 @@ package services
 import (
 	"context"
 
-	"github.com/rs/zerolog"
-
 	"github.com/kkz6/launch-go/internal/modules/database/repositories"
-	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
@@ -26,6 +22,13 @@ type ServerRepository interface {
 	FindByIDAndTeam(ctx context.Context, id, teamID string) (interface{}, error)
 }
 
+// ServiceDeps holds all dependencies needed for database services
+type ServiceDeps struct {
+	service.Dependencies
+	Repos      *repositories.Registry
+	ServerRepo ServerRepository
+}
+
 // Service provides business logic for database operations
 type Service struct {
 	service.Base
@@ -34,11 +37,11 @@ type Service struct {
 }
 
 // NewService creates a new Service instance
-func NewService(repos *repositories.Registry, serverRepo ServerRepository, q *queue.Client, ws broadcast.ModelBroadcaster, logger *zerolog.Logger) *Service {
+func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		Base:       service.NewBase(q, ws, logger),
-		repos:      repos,
-		serverRepo: serverRepo,
+		Base:       service.NewBaseFromDeps(deps.Dependencies),
+		repos:      deps.Repos,
+		serverRepo: deps.ServerRepo,
 	}
 }
 

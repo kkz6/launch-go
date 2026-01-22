@@ -7,7 +7,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/pkg/models"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 )
 
 type Subject interface {
@@ -130,7 +130,7 @@ func (l *Logger) save() (*ActivityLog, error) {
 	}
 
 	if len(l.properties) > 0 {
-		activity.Properties = models.JSONMap(l.properties)
+		activity.Properties = dbtype.JSONMap(l.properties)
 	}
 
 	if err := l.db.WithContext(l.ctx).Create(activity).Error; err != nil {

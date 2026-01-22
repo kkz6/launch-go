@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // CommandHandler handles HTTP requests for command execution
@@ -43,10 +42,10 @@ func (h *CommandHandler) CreateCommand(c *fiber.Ctx) error {
 
 	cmd, err := h.commandService.Create(c.Context(), siteID, serverID, userID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.Created(c, "Command created", dto.ToCommandResponse(cmd))
+	return fiberctx.Created(c, "Command created", dto.ToCommandResponse(cmd))
 }
 
 // ListCommands returns all commands for a site
@@ -63,7 +62,7 @@ func (h *CommandHandler) ListCommands(c *fiber.Ctx) error {
 
 	commands, err := h.commandService.List(c.Context(), siteID, serverID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	result := make([]dto.CommandResponse, len(commands))
@@ -71,7 +70,7 @@ func (h *CommandHandler) ListCommands(c *fiber.Ctx) error {
 		result[i] = dto.ToCommandResponse(&cmd)
 	}
 
-	return response.OK(c, "Commands retrieved", result)
+	return fiberctx.OK(c, "Commands retrieved", result)
 }
 
 // DeleteCommand deletes a command
@@ -93,8 +92,8 @@ func (h *CommandHandler) DeleteCommand(c *fiber.Ctx) error {
 
 	err = h.commandService.Delete(c.Context(), siteID, serverID, commandID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Command deleted", nil)
+	return fiberctx.OK(c, "Command deleted", nil)
 }

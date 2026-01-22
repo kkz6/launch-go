@@ -12,9 +12,9 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/status"
-	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 const TypeCheckServiceStatus = "server:check_service_status"
@@ -97,7 +97,7 @@ func (j *CheckServiceStatusJob) Failed(ctx context.Context, err error) {
 }
 
 func (j *CheckServiceStatusJob) updateServiceStatus(ctx context.Context, serviceID string, svcStatus types.ServiceStatus, output string, details map[string]any, errorMsg string) {
-	typeData := basemodels.JSONMap{
+	typeData := dbtype.JSONMap{
 		"last_status_check": time.Now().Format(time.RFC3339),
 		"status_output":     output,
 	}

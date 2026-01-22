@@ -226,7 +226,11 @@ func (a *Application) registerModules() {
 
 	// Boot all HTTP routes through the kernel
 	// Note: TeamContext middleware is applied at the route level where team scope is required
-	a.kernel.BootHTTP(api, authMiddleware, teamContextMiddleware)
+	a.kernel.BootHTTP(app.BootHTTPOptions{
+		Router:                api,
+		AuthMiddleware:        authMiddleware,
+		TeamContextMiddleware: teamContextMiddleware,
+	})
 
 	// Register server routes with cross-module dependencies
 	serverModule.RegisterRoutes(api, authMiddleware, siteModule.SiteRepository())

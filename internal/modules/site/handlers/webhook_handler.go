@@ -7,7 +7,6 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // WebhookHandler handles deployment webhook requests
@@ -50,7 +49,7 @@ func (h *WebhookHandler) DeployWebhook(c *fiber.Ctx) error {
 		// For fiber.Error types, use their built-in status code
 		var fiberErr *fiber.Error
 		if errors.As(err, &fiberErr) {
-			return response.Error(c, fiberErr.Code, fiberErr.Message)
+			return fiberutil.Error(c, fiberErr.Code, fiberErr.Message)
 		}
 
 		// Check for site not found
@@ -59,7 +58,7 @@ func (h *WebhookHandler) DeployWebhook(c *fiber.Ctx) error {
 		}
 
 		// Default to internal server error
-		return response.InternalError(c, err.Error())
+		return fiberutil.RespondInternalError(c, err.Error())
 	}
 
 	// Return 204 No Content on success (standard for webhooks)

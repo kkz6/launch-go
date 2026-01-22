@@ -8,7 +8,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
 	"github.com/kkz6/launch-go/internal/modules/dns/services"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // DNSRecordHandler handles HTTP requests for DNS records
@@ -36,12 +35,12 @@ func (h *DNSRecordHandler) ListRecords(c *fiber.Ctx) error {
 	records, err := h.domainService.GetDomainRecords(c.Context(), domainID, teamID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgDomainNotFound)
+			return fiberutil.RespondNotFound(c, "Domain not found")
 		}
-		return response.HandleError(c, err)
+		return fiberutil.HandleError(c, err)
 	}
 
-	return response.OK(c, "Records retrieved", records)
+	return fiberutil.OK(c, "Records retrieved", records)
 }
 
 // CreateRecord creates a new DNS record
@@ -60,12 +59,12 @@ func (h *DNSRecordHandler) CreateRecord(c *fiber.Ctx) error {
 	record, err := h.recordService.CreateRecord(c.Context(), domainID, teamID, req)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgDomainNotFound)
+			return fiberutil.RespondNotFound(c, "Domain not found")
 		}
-		return response.HandleError(c, err)
+		return fiberutil.HandleError(c, err)
 	}
 
-	return response.Created(c, "Record created", dto.ToDNSRecordResponse(record))
+	return fiberutil.Created(c, "Record created", dto.ToDNSRecordResponse(record))
 }
 
 // UpdateRecord updates a DNS record
@@ -85,18 +84,18 @@ func (h *DNSRecordHandler) UpdateRecord(c *fiber.Ctx) error {
 	record, err := h.recordService.UpdateRecord(c.Context(), recordID, domainID, teamID, req)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgDomainNotFound)
+			return fiberutil.RespondNotFound(c, "Domain not found")
 		}
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgDNSRecordNotFound)
+			return fiberutil.RespondNotFound(c, "DNS record not found")
 		}
 		if errors.Is(err, services.ErrRecordNotEditable) {
-			return response.Forbidden(c, "This record type cannot be edited")
+			return fiberutil.RespondForbidden(c, "This record type cannot be edited")
 		}
-		return response.HandleError(c, err)
+		return fiberutil.HandleError(c, err)
 	}
 
-	return response.OK(c, "Record updated", dto.ToDNSRecordResponse(record))
+	return fiberutil.OK(c, "Record updated", dto.ToDNSRecordResponse(record))
 }
 
 // DeleteRecord deletes a DNS record
@@ -111,23 +110,23 @@ func (h *DNSRecordHandler) DeleteRecord(c *fiber.Ctx) error {
 	err = h.recordService.DeleteRecord(c.Context(), recordID, domainID, teamID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgDomainNotFound)
+			return fiberutil.RespondNotFound(c, "Domain not found")
 		}
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgDNSRecordNotFound)
+			return fiberutil.RespondNotFound(c, "DNS record not found")
 		}
 		if errors.Is(err, services.ErrRecordNotDeletable) {
-			return response.Forbidden(c, "This record type cannot be deleted")
+			return fiberutil.RespondForbidden(c, "This record type cannot be deleted")
 		}
-		return response.HandleError(c, err)
+		return fiberutil.HandleError(c, err)
 	}
 
-	return response.NoContent(c)
+	return fiberutil.NoContent(c)
 }
 
 // GetRecordTypes returns all available record types
 func (h *DNSRecordHandler) GetRecordTypes(c *fiber.Ctx) error {
 	types := h.recordService.GetRecordTypes()
 
-	return response.OK(c, "Record types retrieved", types)
+	return fiberutil.OK(c, "Record types retrieved", types)
 }

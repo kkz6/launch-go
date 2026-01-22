@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"testing"
 
 	"github.com/rs/zerolog"
@@ -23,7 +24,7 @@ func TestNewDependencies(t *testing.T) {
 func TestNewBase(t *testing.T) {
 	logger := zerolog.Nop()
 
-	base := NewBase(nil, nil, &logger)
+	base := NewBase(Dependencies{Logger: &logger})
 
 	if base.Logger == nil {
 		t.Error("Expected logger to be set")
@@ -46,7 +47,7 @@ func TestNewBaseFromDeps(t *testing.T) {
 func TestBase_LogInfo(t *testing.T) {
 	var buf bytes.Buffer
 	logger := zerolog.New(&buf)
-	base := NewBase(nil, nil, &logger)
+	base := NewBase(Dependencies{Logger: &logger})
 
 	base.LogInfo("Test message", "key1", "value1")
 
@@ -62,7 +63,7 @@ func TestBase_LogInfo(t *testing.T) {
 func TestBase_LogError(t *testing.T) {
 	var buf bytes.Buffer
 	logger := zerolog.New(&buf)
-	base := NewBase(nil, nil, &logger)
+	base := NewBase(Dependencies{Logger: &logger})
 
 	testErr := &testError{msg: "test error"}
 	base.LogError(testErr, "Error occurred", "jobID", "12345")
@@ -79,7 +80,7 @@ func TestBase_LogError(t *testing.T) {
 func TestBase_LogWarn(t *testing.T) {
 	var buf bytes.Buffer
 	logger := zerolog.New(&buf)
-	base := NewBase(nil, nil, &logger)
+	base := NewBase(Dependencies{Logger: &logger})
 
 	base.LogWarn("Warning message", "count", 5)
 
@@ -90,7 +91,7 @@ func TestBase_LogWarn(t *testing.T) {
 }
 
 func TestBase_LogMethods_NilLogger(t *testing.T) {
-	base := NewBase(nil, nil, nil)
+	base := NewBase(Dependencies{})
 
 	// These should not panic with nil logger
 	base.LogInfo("Test")
@@ -99,21 +100,21 @@ func TestBase_LogMethods_NilLogger(t *testing.T) {
 }
 
 func TestBase_HasQueue(t *testing.T) {
-	base := NewBase(nil, nil, nil)
+	base := NewBase(Dependencies{})
 	if base.HasQueue() {
 		t.Error("Expected HasQueue to return false when queue is nil")
 	}
 }
 
 func TestBase_HasWebsocket(t *testing.T) {
-	base := NewBase(nil, nil, nil)
+	base := NewBase(Dependencies{})
 	if base.HasWebsocket() {
 		t.Error("Expected HasWebsocket to return false when WS is nil")
 	}
 }
 
 func TestBase_BroadcastMethods_NilWS(t *testing.T) {
-	base := NewBase(nil, nil, nil)
+	base := NewBase(Dependencies{})
 
 	// These should not panic with nil WS
 	base.BroadcastToTeam("team-123", "event", nil)
@@ -125,7 +126,7 @@ func TestBase_BroadcastMethods_NilWS(t *testing.T) {
 }
 
 func TestBase_EnqueueTask_NilQueue(t *testing.T) {
-	base := NewBase(nil, nil, nil)
+	base := NewBase(Dependencies{})
 
 	err := base.EnqueueTask(nil)
 	if err != nil {
@@ -134,34 +135,21 @@ func TestBase_EnqueueTask_NilQueue(t *testing.T) {
 }
 
 func TestBase_HasDB(t *testing.T) {
-	base := NewBase(nil, nil, nil)
+	base := NewBase(Dependencies{})
 	if base.HasDB() {
 		t.Error("Expected HasDB to return false when db is nil")
 	}
 }
 
 func TestBase_DB(t *testing.T) {
-	base := NewBase(nil, nil, nil)
+	base := NewBase(Dependencies{})
 	if base.DB() != nil {
 		t.Error("Expected DB to return nil when db is not set")
 	}
 }
 
-func TestNewBaseWithDB(t *testing.T) {
-	logger := zerolog.Nop()
-
-	base := NewBaseWithDB(nil, nil, nil, &logger)
-
-	if base.Logger == nil {
-		t.Error("Expected logger to be set")
-	}
-	if base.HasDB() {
-		t.Error("Expected HasDB to return false when db is nil")
-	}
-}
-
 func TestBase_ActivityLogger_NilDB(t *testing.T) {
-	base := NewBase(nil, nil, nil)
+	base := NewBase(Dependencies{})
 
 	logger := base.ActivityLogger()
 	if logger != nil {
@@ -170,33 +158,33 @@ func TestBase_ActivityLogger_NilDB(t *testing.T) {
 }
 
 func TestBase_LogActivity_NilDB(t *testing.T) {
-	base := NewBase(nil, nil, nil)
+	base := NewBase(Dependencies{})
 
 	// This should not panic with nil db
-	base.LogActivity(nil, "server", "created", "Test message", &testSubject{})
+	base.LogActivity(context.TODO(), "server", "created", "Test message", &testSubject{})
 }
 
 func TestBase_LogActivityByUser_NilDB(t *testing.T) {
-	base := NewBase(nil, nil, nil)
+	base := NewBase(Dependencies{})
 
 	// This should not panic with nil db
-	base.LogActivityByUser(nil, "user-123", "server", "created", "Test message", &testSubject{})
+	base.LogActivityByUser(context.TODO(), "user-123", "server", "created", "Test message", &testSubject{})
 }
 
 func TestBase_LogActivityWithProps_NilDB(t *testing.T) {
-	base := NewBase(nil, nil, nil)
+	base := NewBase(Dependencies{})
 
 	// This should not panic with nil db
-	base.LogActivityWithProps(nil, "server", "created", "Test message", &testSubject{}, map[string]any{
+	base.LogActivityWithProps(context.TODO(), "server", "created", "Test message", &testSubject{}, map[string]any{
 		"key": "value",
 	})
 }
 
 func TestBase_LogActivityByUserWithProps_NilDB(t *testing.T) {
-	base := NewBase(nil, nil, nil)
+	base := NewBase(Dependencies{})
 
 	// This should not panic with nil db
-	base.LogActivityByUserWithProps(nil, "user-123", "server", "created", "Test message", &testSubject{}, map[string]any{
+	base.LogActivityByUserWithProps(context.TODO(), "user-123", "server", "created", "Test message", &testSubject{}, map[string]any{
 		"key": "value",
 	})
 }

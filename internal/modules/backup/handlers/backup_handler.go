@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // BackupHandler handles HTTP requests for backups
@@ -25,7 +24,7 @@ func (h *BackupHandler) ListBackups(c *fiber.Ctx) error {
 
 	backups, err := h.backupService.ListBackupsByServer(c.Context(), serverID)
 	if err != nil {
-		return response.InternalError(c, "Failed to fetch backups")
+		return fiberutil.RespondInternalError(c, "Failed to fetch backups")
 	}
 
 	result := make([]dto.BackupResponse, len(backups))
@@ -33,7 +32,7 @@ func (h *BackupHandler) ListBackups(c *fiber.Ctx) error {
 		result[i] = dto.ToBackupResponse(&backup)
 	}
 
-	return response.OK(c, "Backups retrieved", result)
+	return fiberutil.OK(c, "Backups retrieved", result)
 }
 
 // CreateBackup creates a new backup configuration
@@ -51,10 +50,10 @@ func (h *BackupHandler) CreateBackup(c *fiber.Ctx) error {
 
 	backup, err := h.backupService.CreateBackup(c.Context(), serverID, userID, teamID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberutil.HandleError(c, err)
 	}
 
-	return response.Created(c, "Backup created successfully", dto.ToBackupResponse(backup))
+	return fiberutil.Created(c, "Backup created successfully", dto.ToBackupResponse(backup))
 }
 
 // ShowBackup shows a single backup
@@ -65,12 +64,12 @@ func (h *BackupHandler) ShowBackup(c *fiber.Ctx) error {
 	backup, err := h.backupService.GetBackupByIDAndServer(c.Context(), backupID, serverID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgBackupNotFound)
+			return fiberutil.RespondNotFound(c, "Backup not found")
 		}
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	return response.OK(c, "Backup retrieved", dto.ToBackupResponse(backup))
+	return fiberutil.OK(c, "Backup retrieved", dto.ToBackupResponse(backup))
 }
 
 // UpdateBackup updates a backup configuration
@@ -82,9 +81,9 @@ func (h *BackupHandler) UpdateBackup(c *fiber.Ctx) error {
 	_, err := h.backupService.GetBackupByIDAndServer(c.Context(), backupID, serverID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgBackupNotFound)
+			return fiberutil.RespondNotFound(c, "Backup not found")
 		}
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
 	req, err := fiberutil.MustParseAndValidate[dto.UpdateBackupRequest](c)
@@ -94,10 +93,10 @@ func (h *BackupHandler) UpdateBackup(c *fiber.Ctx) error {
 
 	backup, err := h.backupService.UpdateBackup(c.Context(), backupID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberutil.HandleError(c, err)
 	}
 
-	return response.OK(c, "Backup updated successfully", dto.ToBackupResponse(backup))
+	return fiberutil.OK(c, "Backup updated successfully", dto.ToBackupResponse(backup))
 }
 
 // DeleteBackup deletes a backup configuration
@@ -107,12 +106,12 @@ func (h *BackupHandler) DeleteBackup(c *fiber.Ctx) error {
 
 	if err := h.backupService.DeleteBackup(c.Context(), backupID, serverID); err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgBackupNotFound)
+			return fiberutil.RespondNotFound(c, "Backup not found")
 		}
-		return response.HandleError(c, err)
+		return fiberutil.HandleError(c, err)
 	}
 
-	return response.NoContent(c)
+	return fiberutil.NoContent(c)
 }
 
 // RunManualBackup triggers a manual backup run
@@ -122,10 +121,10 @@ func (h *BackupHandler) RunManualBackup(c *fiber.Ctx) error {
 
 	if err := h.backupService.RunBackup(c.Context(), backupID, serverID); err != nil {
 		if fiberutil.IsNotFound(err) {
-			return response.NotFound(c, response.MsgBackupNotFound)
+			return fiberutil.RespondNotFound(c, "Backup not found")
 		}
-		return response.HandleError(c, err)
+		return fiberutil.HandleError(c, err)
 	}
 
-	return response.OK(c, "Backup queued for execution", nil)
+	return fiberutil.OK(c, "Backup queued for execution", nil)
 }

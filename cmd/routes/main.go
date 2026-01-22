@@ -56,7 +56,7 @@ var (
 		"DELETE": lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("196")), // Red
 	}
 
-	pathStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
+	pathStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("252"))
 	paramStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("117"))
 )
 
@@ -99,8 +99,10 @@ func collectRoutes() []RouteInfo {
 
 	// Create minimal app context (no DB, queue, or websocket needed for route listing)
 	ctx := &app.Context{
-		Config: cfg,
-		Logger: &logger,
+		Deps: app.Deps{
+			Config: cfg,
+			Logger: &logger,
+		},
 	}
 
 	// Create kernel and register modules
@@ -122,7 +124,10 @@ func collectRoutes() []RouteInfo {
 	authMiddleware := middleware.Auth(cfg.JWT.Secret)
 
 	// Boot all routes through the kernel
-	kernel.BootHTTP(api, authMiddleware)
+	kernel.BootHTTP(app.BootHTTPOptions{
+		Router:         api,
+		AuthMiddleware: authMiddleware,
+	})
 	kernel.BootWebhooks(fiberApp)
 	kernel.BootWebSocket(fiberApp)
 

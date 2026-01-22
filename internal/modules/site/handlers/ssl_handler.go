@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // SSLHandler handles HTTP requests for SSL/TLS
@@ -42,10 +41,10 @@ func (h *SSLHandler) UpdateSSL(c *fiber.Ctx) error {
 	}
 
 	if err := h.sslService.UpdateSSL(c.Context(), siteID, serverID, userID, req); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "SSL settings updated", nil)
+	return fiberctx.OK(c, "SSL settings updated", nil)
 }
 
 // ListCertificates returns all certificates for a site
@@ -62,7 +61,7 @@ func (h *SSLHandler) ListCertificates(c *fiber.Ctx) error {
 
 	certs, err := h.sslService.ListCertificates(c.Context(), siteID, serverID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	result := make([]dto.CertificateResponse, len(certs))
@@ -70,5 +69,5 @@ func (h *SSLHandler) ListCertificates(c *fiber.Ctx) error {
 		result[i] = dto.ToCertificateResponse(&cert)
 	}
 
-	return response.OK(c, "Certificates retrieved", result)
+	return fiberctx.OK(c, "Certificates retrieved", result)
 }

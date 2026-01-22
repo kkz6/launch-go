@@ -4,6 +4,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -12,7 +13,7 @@ type InstalledService struct {
 	basemodels.BaseModel
 	basemodels.ServerScopedModel
 	Type      types.ServiceType   `gorm:"type:varchar(255);not null" json:"type"`
-	TypeData  basemodels.JSONMap  `gorm:"type:json" json:"-"`
+	TypeData  dbtype.JSONMap      `gorm:"type:json" json:"-"`
 	Name      string              `gorm:"type:varchar(255);not null" json:"name"`
 	Version   string              `gorm:"type:varchar(255);not null" json:"version"`
 	Status    types.ServiceStatus `gorm:"type:varchar(255);not null" json:"status"`

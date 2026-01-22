@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // TeamMemberHandler handles team member management HTTP requests
@@ -33,10 +32,10 @@ func (h *TeamMemberHandler) InviteTeamMember(c *fiber.Ctx) error {
 	}
 
 	if err := h.Service().InviteTeamMember(c.Context(), userID, teamID, req); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.Created(c, "Invitation sent successfully", nil)
+	return fiberctx.Created(c, "Invitation sent successfully", nil)
 }
 
 // AcceptTeamInvitation accepts a team invitation
@@ -48,10 +47,10 @@ func (h *TeamMemberHandler) AcceptTeamInvitation(c *fiber.Ctx) error {
 	invitationID := c.Params("invitationId")
 
 	if err := h.Service().AcceptTeamInvitation(c.Context(), userID, invitationID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Invitation accepted", nil)
+	return fiberctx.OK(c, "Invitation accepted", nil)
 }
 
 // CancelTeamInvitation cancels a team invitation
@@ -64,10 +63,10 @@ func (h *TeamMemberHandler) CancelTeamInvitation(c *fiber.Ctx) error {
 	invitationID := c.Params("invitationId")
 
 	if err := h.Service().CancelTeamInvitation(c.Context(), userID, teamID, invitationID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Invitation cancelled", nil)
+	return fiberctx.OK(c, "Invitation cancelled", nil)
 }
 
 // UpdateTeamMemberRole updates a team member's role
@@ -85,10 +84,10 @@ func (h *TeamMemberHandler) UpdateTeamMemberRole(c *fiber.Ctx) error {
 	}
 
 	if err := h.Service().UpdateTeamMemberRole(c.Context(), userID, teamID, targetUserID, req); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Member role updated", nil)
+	return fiberctx.OK(c, "Member role updated", nil)
 }
 
 // RemoveTeamMember removes a member from a team
@@ -101,10 +100,10 @@ func (h *TeamMemberHandler) RemoveTeamMember(c *fiber.Ctx) error {
 	targetUserID := c.Params("userId")
 
 	if err := h.Service().RemoveTeamMember(c.Context(), userID, teamID, targetUserID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Member removed", nil)
+	return fiberctx.OK(c, "Member removed", nil)
 }
 
 // GetTeamMembers retrieves all members of a team (including owner)
@@ -113,10 +112,10 @@ func (h *TeamMemberHandler) GetTeamMembers(c *fiber.Ctx) error {
 
 	allMembers, err := h.Service().GetAllTeamMembers(c.Context(), teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Members retrieved", allMembers)
+	return fiberctx.OK(c, "Members retrieved", allMembers)
 }
 
 // GetTeamInvitations retrieves all invitations for a team
@@ -125,8 +124,8 @@ func (h *TeamMemberHandler) GetTeamInvitations(c *fiber.Ctx) error {
 
 	invitations, err := h.Service().GetTeamInvitations(c.Context(), teamID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Invitations retrieved", dto.ToTeamInvitationsResponse(invitations))
+	return fiberctx.OK(c, "Invitations retrieved", dto.ToTeamInvitationsResponse(invitations))
 }

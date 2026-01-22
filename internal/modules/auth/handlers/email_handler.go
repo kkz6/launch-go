@@ -5,7 +5,6 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // EmailHandler handles email verification HTTP requests
@@ -24,10 +23,10 @@ func (h *EmailHandler) VerifyEmail(c *fiber.Ctx) error {
 	hash := c.Params("hash")
 
 	if err := h.Service().VerifyEmail(c.Context(), userID, hash); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Email verified successfully", nil)
+	return fiberctx.OK(c, "Email verified successfully", nil)
 }
 
 // ResendVerificationEmail resends the verification email
@@ -38,8 +37,8 @@ func (h *EmailHandler) ResendVerificationEmail(c *fiber.Ctx) error {
 	}
 
 	if err := h.Service().ResendVerificationEmail(c.Context(), userID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Verification email sent", nil)
+	return fiberctx.OK(c, "Verification email sent", nil)
 }

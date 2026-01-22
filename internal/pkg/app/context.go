@@ -13,15 +13,9 @@ import (
 
 // Context holds all shared application dependencies.
 // This is passed to module factories when creating modules.
-// Similar to NestJS's dependency injection container.
+// It embeds Deps so all dependency fields and methods are available.
 type Context struct {
-	Config          *config.Config
-	DB              *gorm.DB
-	Logger          *zerolog.Logger
-	Queue           *queue.Client
-	WebSocket       broadcast.ModelBroadcaster
-	Dispatcher      *taskrunner.Dispatcher
-	MembershipCache *launchcache.TeamMembershipCache
+	Deps
 }
 
 // NewContext creates a new application context with all dependencies
@@ -35,12 +29,14 @@ func NewContext(
 	membershipCache *launchcache.TeamMembershipCache,
 ) *Context {
 	return &Context{
-		Config:          cfg,
-		DB:              db,
-		Logger:          logger,
-		Queue:           queueClient,
-		WebSocket:       wsBroadcaster,
-		Dispatcher:      dispatcher,
-		MembershipCache: membershipCache,
+		Deps: Deps{
+			Config:          cfg,
+			DB:              db,
+			Logger:          logger,
+			Queue:           queueClient,
+			WebSocket:       wsBroadcaster,
+			Dispatcher:      dispatcher,
+			MembershipCache: membershipCache,
+		},
 	}
 }

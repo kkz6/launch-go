@@ -5,7 +5,6 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/dashboard/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // DashboardHandler handles HTTP requests for dashboard
@@ -27,8 +26,8 @@ func (h *DashboardHandler) Index(c *fiber.Ctx) error {
 
 	dashboard, err := h.service.GetDashboard(c.Context(), teamID)
 	if err != nil {
-		return response.InternalError(c, response.MsgInternalError)
+		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
 	}
 
-	return response.OK(c, "Dashboard data retrieved", dashboard)
+	return fiberctx.OK(c, "Dashboard data retrieved", dashboard)
 }

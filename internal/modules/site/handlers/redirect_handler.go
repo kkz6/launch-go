@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // RedirectHandler handles HTTP requests for redirects
@@ -43,10 +42,10 @@ func (h *RedirectHandler) CreateRedirect(c *fiber.Ctx) error {
 
 	redirect, err := h.redirectService.Create(c.Context(), siteID, serverID, userID, req)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.Created(c, "Redirect created", dto.ToRedirectResponse(redirect))
+	return fiberctx.Created(c, "Redirect created", dto.ToRedirectResponse(redirect))
 }
 
 // ListRedirects returns all redirects for a site
@@ -63,7 +62,7 @@ func (h *RedirectHandler) ListRedirects(c *fiber.Ctx) error {
 
 	redirects, err := h.redirectService.List(c.Context(), siteID, serverID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	result := make([]dto.RedirectResponse, len(redirects))
@@ -71,7 +70,7 @@ func (h *RedirectHandler) ListRedirects(c *fiber.Ctx) error {
 		result[i] = dto.ToRedirectResponse(&redirect)
 	}
 
-	return response.OK(c, "Redirects retrieved", result)
+	return fiberctx.OK(c, "Redirects retrieved", result)
 }
 
 // DeleteRedirect deletes a redirect
@@ -92,8 +91,8 @@ func (h *RedirectHandler) DeleteRedirect(c *fiber.Ctx) error {
 	}
 
 	if err := h.redirectService.Delete(c.Context(), redirectID, siteID, serverID); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Redirect deleted", nil)
+	return fiberctx.OK(c, "Redirect deleted", nil)
 }

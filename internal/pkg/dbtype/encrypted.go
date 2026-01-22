@@ -1,4 +1,4 @@
-package models
+package dbtype
 
 import (
 	"database/sql/driver"
@@ -14,7 +14,7 @@ import (
 // Usage:
 //
 //	type MyModel struct {
-//	    PrivateKey models.EncryptedString `gorm:"type:longtext" json:"-"`
+//	    PrivateKey dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
 //	}
 //
 //	// Direct access:
@@ -82,7 +82,7 @@ func (e EncryptedString) Ptr() *EncryptedString {
 // Usage:
 //
 //	type MyModel struct {
-//	    PrivateKey *models.EncryptedNullableString `gorm:"type:longtext" json:"-"`
+//	    PrivateKey *dbtype.EncryptedNullableString `gorm:"type:longtext" json:"-"`
 //	}
 type EncryptedNullableString struct {
 	String string
@@ -149,11 +149,11 @@ func (e *EncryptedNullableString) Clear() {
 // Usage:
 //
 //	type MyModel struct {
-//	    Credentials models.EncryptedJSONStringMap `gorm:"type:longtext" json:"-"`
+//	    Credentials dbtype.EncryptedJSONStringMap `gorm:"type:longtext" json:"-"`
 //	}
 //
 //	// Direct access:
-//	model.Credentials = models.EncryptedJSONStringMap{"api_key": "secret"}
+//	model.Credentials = dbtype.EncryptedJSONStringMap{"api_key": "secret"}
 //	value := model.Credentials["api_key"]
 type EncryptedJSONStringMap map[string]string
 

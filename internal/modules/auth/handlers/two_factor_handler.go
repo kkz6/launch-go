@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // TwoFactorHandler handles two-factor authentication HTTP requests
@@ -28,10 +27,10 @@ func (h *TwoFactorHandler) EnableTwoFactor(c *fiber.Ctx) error {
 
 	result, err := h.Service().EnableTwoFactor(c.Context(), userID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Two-factor authentication initiated", result)
+	return fiberctx.OK(c, "Two-factor authentication initiated", result)
 }
 
 // ConfirmTwoFactor confirms 2FA setup
@@ -47,10 +46,10 @@ func (h *TwoFactorHandler) ConfirmTwoFactor(c *fiber.Ctx) error {
 	}
 
 	if err := h.Service().ConfirmTwoFactor(c.Context(), userID, req.Code); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Two-factor authentication enabled", nil)
+	return fiberctx.OK(c, "Two-factor authentication enabled", nil)
 }
 
 // DisableTwoFactor disables 2FA
@@ -66,10 +65,10 @@ func (h *TwoFactorHandler) DisableTwoFactor(c *fiber.Ctx) error {
 	}
 
 	if err := h.Service().DisableTwoFactor(c.Context(), userID, req.Password); err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Two-factor authentication disabled", nil)
+	return fiberctx.OK(c, "Two-factor authentication disabled", nil)
 }
 
 // TwoFactorChallenge verifies 2FA code during login
@@ -91,14 +90,14 @@ func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx) error {
 
 	valid, err := h.Service().VerifyTwoFactor(c.Context(), userID, code)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
 	if !valid {
-		return response.Unauthorized(c, "Invalid two-factor code")
+		return fiberctx.RespondUnauthorized(c, "Invalid two-factor code")
 	}
 
-	return response.OK(c, "Two-factor authentication verified", nil)
+	return fiberctx.OK(c, "Two-factor authentication verified", nil)
 }
 
 // GetRecoveryCodes returns the user's recovery codes
@@ -110,10 +109,10 @@ func (h *TwoFactorHandler) GetRecoveryCodes(c *fiber.Ctx) error {
 
 	codes, err := h.Service().GetRecoveryCodes(c.Context(), userID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Recovery codes retrieved", fiber.Map{"recovery_codes": codes})
+	return fiberctx.OK(c, "Recovery codes retrieved", fiber.Map{"recovery_codes": codes})
 }
 
 // RegenerateRecoveryCodes generates new recovery codes
@@ -125,8 +124,8 @@ func (h *TwoFactorHandler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
 
 	codes, err := h.Service().RegenerateRecoveryCodes(c.Context(), userID)
 	if err != nil {
-		return response.HandleError(c, err)
+		return fiberctx.HandleError(c, err)
 	}
 
-	return response.OK(c, "Recovery codes regenerated", fiber.Map{"recovery_codes": codes})
+	return fiberctx.OK(c, "Recovery codes regenerated", fiber.Map{"recovery_codes": codes})
 }
