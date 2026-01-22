@@ -6,6 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
@@ -147,7 +148,7 @@ func (s *Server) GetUsername() string {
 		return *s.Username
 	}
 
-	return "launch"
+	return config.ServerDefaults().Username
 }
 
 func (s *Server) GetSSHPort() int {
