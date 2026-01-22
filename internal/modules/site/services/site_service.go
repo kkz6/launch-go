@@ -11,12 +11,12 @@ import (
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	gitcontracts "github.com/kkz6/launch-go/internal/modules/git/contracts"
 	serverdto "github.com/kkz6/launch-go/internal/modules/server/dto"
-	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
+	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/modules/site/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/security"
@@ -104,7 +104,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	username := server.GetUsername()
 
 	// Validate PHP version is a valid enum and installed on server
-	phpSoftware, err := serverenums.ParseSoftware(req.PhpVersion)
+	phpSoftware, err := servertypes.ParseSoftware(req.PhpVersion)
 	if err != nil || !phpSoftware.IsPhp() {
 		return nil, fmt.Errorf("invalid PHP version: %s", req.PhpVersion)
 	}
@@ -113,7 +113,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	phpInstalled := false
 	expectedVersion := phpSoftware.GetVersion() // e.g., "8.3"
 	for _, svc := range server.Services {
-		if svc.Type == serverenums.ServiceTypePhp && svc.Version == expectedVersion {
+		if svc.Type == servertypes.ServiceTypePhp && svc.Version == expectedVersion {
 			phpInstalled = true
 			break
 		}
@@ -137,7 +137,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	}
 
 	// Validate source control for non-WordPress sites
-	if req.Type != enums.SiteTypeWordpress && req.SourceControlID != nil && *req.SourceControlID != "" {
+	if req.Type != sitetypes.SiteTypeWordpress && req.SourceControlID != nil && *req.SourceControlID != "" {
 		if err := s.validateSourceControl(ctx, req.SourceControlID, req.SourceControlRepositoriesID); err != nil {
 			return nil, err
 		}
@@ -153,9 +153,9 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	}
 
 	// Convert string fields to pointers where needed
-	var phpVersion *enums.PhpVersion
+	var phpVersion *sitetypes.PhpVersion
 	if req.PhpVersion != "" {
-		pv := enums.PhpVersion(req.PhpVersion)
+		pv := sitetypes.PhpVersion(req.PhpVersion)
 		phpVersion = &pv
 	}
 
@@ -166,7 +166,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 
 	// WordPress sites don't support zero-downtime deployment
 	zeroDowntime := req.ZeroDowntimeDeployment
-	if req.Type == enums.SiteTypeWordpress {
+	if req.Type == sitetypes.SiteTypeWordpress {
 		zeroDowntime = false
 	}
 
@@ -183,7 +183,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	site := &models.Site{
 		Address:                     req.Address,
 		Type:                        req.Type,
-		TLSSetting:                  enums.TLSSettingAuto,
+		TLSSetting:                  sitetypes.TLSSettingAuto,
 		ZeroDowntimeDeployment:      zeroDowntime,
 		DeploymentReleasesRetention: 5,
 		RepositoryBranch:            repoBranch,
@@ -243,7 +243,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	}
 
 	// Save repository to source control provider (non-WordPress sites only)
-	if req.Type != enums.SiteTypeWordpress && req.SourceControlID != nil && *req.SourceControlID != "" && sourceControlRepoID != nil {
+	if req.Type != sitetypes.SiteTypeWordpress && req.SourceControlID != nil && *req.SourceControlID != "" && sourceControlRepoID != nil {
 		s.handleSourceControlRepository(ctx, *req.SourceControlID, *sourceControlRepoID)
 	}
 
@@ -263,13 +263,13 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 
 	// Handle scheduler creation for Laravel and WordPress sites
 	if req.CreateScheduler && s.cronCreator != nil {
-		if req.Type == enums.SiteTypeLaravel || req.Type == enums.SiteTypeWordpress {
+		if req.Type == sitetypes.SiteTypeLaravel || req.Type == sitetypes.SiteTypeWordpress {
 			s.handleSchedulerCreation(ctx, site, serverID, userID)
 		}
 	}
 
 	// Handle queue worker creation for Laravel sites
-	if req.CreateQueue && req.Type == enums.SiteTypeLaravel {
+	if req.CreateQueue && req.Type == sitetypes.SiteTypeLaravel {
 		s.handleQueueCreation(ctx, site, serverID, userID)
 	}
 
@@ -421,27 +421,27 @@ func (s *SiteService) getExistingDatabaseInfo(ctx context.Context, databaseID, s
 }
 
 // getDatabaseTypeForServer returns the database software type installed on the server
-func (s *SiteService) getDatabaseTypeForServer(ctx context.Context, serverID string) serverenums.Software {
+func (s *SiteService) getDatabaseTypeForServer(ctx context.Context, serverID string) servertypes.Software {
 	// Query installed services to find the database type
 	if s.serverReader == nil {
-		return serverenums.SoftwareMySql80 // Default to MySQL if we can't determine
+		return servertypes.SoftwareMySql80 // Default to MySQL if we can't determine
 	}
 
 	services, err := s.serverReader.FindServicesByServer(ctx, serverID)
 	if err != nil {
-		return serverenums.SoftwareMySql80 // Default to MySQL if we can't determine
+		return servertypes.SoftwareMySql80 // Default to MySQL if we can't determine
 	}
 
 	for _, service := range services {
-		if service.Type == serverenums.ServiceTypeMySql {
-			return serverenums.SoftwareMySql80
+		if service.Type == servertypes.ServiceTypeMySql {
+			return servertypes.SoftwareMySql80
 		}
-		if service.Type == serverenums.ServiceTypePostgreSql {
-			return serverenums.SoftwarePostgreSql16
+		if service.Type == servertypes.ServiceTypePostgreSql {
+			return servertypes.SoftwarePostgreSql16
 		}
 	}
 
-	return serverenums.SoftwareMySql80 // Default to MySQL
+	return servertypes.SoftwareMySql80 // Default to MySQL
 }
 
 // handleSchedulerCreation creates a cron job for Laravel/WordPress scheduler
@@ -458,10 +458,10 @@ func (s *SiteService) handleSchedulerCreation(ctx context.Context, site *models.
 
 	var command string
 	switch site.Type {
-	case enums.SiteTypeWordpress:
+	case sitetypes.SiteTypeWordpress:
 		// WordPress cron uses wp-cron.php
 		command = fmt.Sprintf("cd %s && %s wp-cron.php >> /dev/null 2>&1", site.GetWebDirectory(), phpBinary)
-	case enums.SiteTypeLaravel:
+	case sitetypes.SiteTypeLaravel:
 		// Laravel uses artisan schedule:run
 		command = fmt.Sprintf("cd %s && %s artisan schedule:run >> /dev/null 2>&1", site.GetApplicationDirectory(), phpBinary)
 	default:
@@ -664,7 +664,7 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID s
 	addIfSet(updates, "queue_deployments", req.QueueDeployments)
 
 	// Conditional field (not for WordPress)
-	if req.RepositoryBranch != nil && site.Type != enums.SiteTypeWordpress {
+	if req.RepositoryBranch != nil && site.Type != sitetypes.SiteTypeWordpress {
 		updates["repository_branch"] = req.RepositoryBranch
 	}
 
@@ -863,7 +863,7 @@ func (s *SiteService) getServerPhpVersions(ctx context.Context, serverID string)
 
 	var result []dto.PhpVersionResponse
 	for _, svc := range server.Services {
-		if svc.Type == serverenums.ServiceTypePhp {
+		if svc.Type == servertypes.ServiceTypePhp {
 			result = append(result, dto.PhpVersionResponse{
 				Version:   svc.Version,
 				IsDefault: svc.IsDefault,

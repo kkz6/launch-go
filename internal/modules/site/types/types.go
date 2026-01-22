@@ -1,9 +1,16 @@
-package enums
+// Package types contains all type definitions for the site module
+package types
 
 import (
 	"database/sql/driver"
 	"fmt"
+
+	baseenums "github.com/kkz6/launch-go/internal/pkg/enums"
 )
+
+// =============================================================================
+// SiteType
+// =============================================================================
 
 // SiteType represents the type of site (Laravel, WordPress, Static, Generic)
 type SiteType string
@@ -65,27 +72,11 @@ func (s SiteType) GetDefaultWebFolder() string {
 }
 
 func (s *SiteType) Scan(value interface{}) error {
-	if value == nil {
-		*s = ""
-		return nil
-	}
-
-	str, ok := value.(string)
-	if !ok {
-		bytes, ok := value.([]byte)
-		if !ok {
-			return fmt.Errorf("failed to scan SiteType: %v", value)
-		}
-		str = string(bytes)
-	}
-
-	*s = SiteType(str)
-
-	return nil
+	return baseenums.Scan(s, value)
 }
 
 func (s SiteType) Value() (driver.Value, error) {
-	return string(s), nil
+	return baseenums.Value(s)
 }
 
 // GetDatabaseEnvVarNames returns environment variable names for database configuration
@@ -265,6 +256,10 @@ func AllSiteTypes() []SiteType {
 	}
 }
 
+// =============================================================================
+// SiteStatus
+// =============================================================================
+
 // SiteStatus represents the installation status of a site
 type SiteStatus string
 
@@ -290,28 +285,16 @@ func (s SiteStatus) IsValid() bool {
 }
 
 func (s *SiteStatus) Scan(value interface{}) error {
-	if value == nil {
-		*s = ""
-		return nil
-	}
-
-	str, ok := value.(string)
-	if !ok {
-		bytes, ok := value.([]byte)
-		if !ok {
-			return fmt.Errorf("failed to scan SiteStatus: %v", value)
-		}
-		str = string(bytes)
-	}
-
-	*s = SiteStatus(str)
-
-	return nil
+	return baseenums.Scan(s, value)
 }
 
 func (s SiteStatus) Value() (driver.Value, error) {
-	return string(s), nil
+	return baseenums.Value(s)
 }
+
+// =============================================================================
+// DeploymentStatus
+// =============================================================================
 
 // DeploymentStatus represents the status of a deployment
 type DeploymentStatus string
@@ -365,27 +348,11 @@ func (d DeploymentStatus) IsComplete() bool {
 }
 
 func (d *DeploymentStatus) Scan(value interface{}) error {
-	if value == nil {
-		*d = ""
-		return nil
-	}
-
-	str, ok := value.(string)
-	if !ok {
-		bytes, ok := value.([]byte)
-		if !ok {
-			return fmt.Errorf("failed to scan DeploymentStatus: %v", value)
-		}
-		str = string(bytes)
-	}
-
-	*d = DeploymentStatus(str)
-
-	return nil
+	return baseenums.Scan(d, value)
 }
 
 func (d DeploymentStatus) Value() (driver.Value, error) {
-	return string(d), nil
+	return baseenums.Value(d)
 }
 
 // AllDeploymentStatuses returns all valid deployment statuses
@@ -399,6 +366,10 @@ func AllDeploymentStatuses() []DeploymentStatus {
 		DeploymentStatusTimeout,
 	}
 }
+
+// =============================================================================
+// TLSSetting
+// =============================================================================
 
 // TLSSetting represents the TLS/SSL configuration for a site
 type TLSSetting string
@@ -459,27 +430,11 @@ func (t TLSSetting) GetProtocol() string {
 }
 
 func (t *TLSSetting) Scan(value interface{}) error {
-	if value == nil {
-		*t = ""
-		return nil
-	}
-
-	str, ok := value.(string)
-	if !ok {
-		bytes, ok := value.([]byte)
-		if !ok {
-			return fmt.Errorf("failed to scan TLSSetting: %v", value)
-		}
-		str = string(bytes)
-	}
-
-	*t = TLSSetting(str)
-
-	return nil
+	return baseenums.Scan(t, value)
 }
 
 func (t TLSSetting) Value() (driver.Value, error) {
-	return string(t), nil
+	return baseenums.Value(t)
 }
 
 // AllTLSSettings returns all valid TLS settings
@@ -491,6 +446,10 @@ func AllTLSSettings() []TLSSetting {
 		TLSSettingOff,
 	}
 }
+
+// =============================================================================
+// RedirectMode
+// =============================================================================
 
 // RedirectMode represents the type of HTTP redirect
 type RedirectMode int
@@ -548,6 +507,10 @@ func (r RedirectMode) Value() (driver.Value, error) {
 	return int64(r), nil
 }
 
+// =============================================================================
+// CommandStatus
+// =============================================================================
+
 // CommandStatus represents the status of a command execution
 type CommandStatus string
 
@@ -573,28 +536,16 @@ func (c CommandStatus) IsValid() bool {
 }
 
 func (c *CommandStatus) Scan(value interface{}) error {
-	if value == nil {
-		*c = ""
-		return nil
-	}
-
-	str, ok := value.(string)
-	if !ok {
-		bytes, ok := value.([]byte)
-		if !ok {
-			return fmt.Errorf("failed to scan CommandStatus: %v", value)
-		}
-		str = string(bytes)
-	}
-
-	*c = CommandStatus(str)
-
-	return nil
+	return baseenums.Scan(c, value)
 }
 
 func (c CommandStatus) Value() (driver.Value, error) {
-	return string(c), nil
+	return baseenums.Value(c)
 }
+
+// =============================================================================
+// QueueStatus
+// =============================================================================
 
 // QueueStatus represents the installation status of a queue worker
 type QueueStatus string
@@ -621,28 +572,16 @@ func (q QueueStatus) IsValid() bool {
 }
 
 func (q *QueueStatus) Scan(value interface{}) error {
-	if value == nil {
-		*q = ""
-		return nil
-	}
-
-	str, ok := value.(string)
-	if !ok {
-		bytes, ok := value.([]byte)
-		if !ok {
-			return fmt.Errorf("failed to scan QueueStatus: %v", value)
-		}
-		str = string(bytes)
-	}
-
-	*q = QueueStatus(str)
-
-	return nil
+	return baseenums.Scan(q, value)
 }
 
 func (q QueueStatus) Value() (driver.Value, error) {
-	return string(q), nil
+	return baseenums.Value(q)
 }
+
+// =============================================================================
+// LaravelFeature
+// =============================================================================
 
 // LaravelFeature represents a Laravel feature that can be enabled/disabled
 type LaravelFeature string
@@ -723,6 +662,10 @@ func AllLaravelFeatures() []LaravelFeature {
 	}
 }
 
+// =============================================================================
+// CertificateType
+// =============================================================================
+
 // CertificateType represents the type of SSL certificate
 type CertificateType string
 
@@ -740,28 +683,16 @@ func (c CertificateType) IsValid() bool {
 }
 
 func (c *CertificateType) Scan(value interface{}) error {
-	if value == nil {
-		*c = ""
-		return nil
-	}
-
-	str, ok := value.(string)
-	if !ok {
-		bytes, ok := value.([]byte)
-		if !ok {
-			return fmt.Errorf("failed to scan CertificateType: %v", value)
-		}
-		str = string(bytes)
-	}
-
-	*c = CertificateType(str)
-
-	return nil
+	return baseenums.Scan(c, value)
 }
 
 func (c CertificateType) Value() (driver.Value, error) {
-	return string(c), nil
+	return baseenums.Value(c)
 }
+
+// =============================================================================
+// PhpVersion
+// =============================================================================
 
 // PhpVersion represents a PHP version for a site
 type PhpVersion string
@@ -859,26 +790,11 @@ func (p PhpVersion) SocketPath() string {
 }
 
 func (p *PhpVersion) Scan(value interface{}) error {
-	if value == nil {
-		*p = ""
-		return nil
-	}
-
-	str, ok := value.(string)
-	if !ok {
-		bytes, ok := value.([]byte)
-		if !ok {
-			return fmt.Errorf("failed to scan PhpVersion: %v", value)
-		}
-		str = string(bytes)
-	}
-
-	*p = PhpVersion(str)
-	return nil
+	return baseenums.Scan(p, value)
 }
 
 func (p PhpVersion) Value() (driver.Value, error) {
-	return string(p), nil
+	return baseenums.Value(p)
 }
 
 // AllPhpVersions returns all supported PHP versions (newest first)

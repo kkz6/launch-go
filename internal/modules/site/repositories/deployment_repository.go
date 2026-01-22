@@ -8,8 +8,8 @@ import (
 
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -82,7 +82,7 @@ func (r *DeploymentRepository) FindLatestBySite(ctx context.Context, siteID stri
 func (r *DeploymentRepository) FindActiveBySite(ctx context.Context, siteID string) (*models.Deployment, error) {
 	var deployment models.Deployment
 	err := r.DB.WithContext(ctx).
-		Where("site_id = ? AND status IN ?", siteID, []enums.DeploymentStatus{enums.DeploymentStatusPending, enums.DeploymentStatusInstalling}).
+		Where("site_id = ? AND status IN ?", siteID, []sitetypes.DeploymentStatus{sitetypes.DeploymentStatusPending, sitetypes.DeploymentStatusInstalling}).
 		Order("created_at DESC").
 		First(&deployment).Error
 	if err != nil {
@@ -98,7 +98,7 @@ func (r *DeploymentRepository) FindActiveBySite(ctx context.Context, siteID stri
 func (r *DeploymentRepository) FindQueuedBySite(ctx context.Context, siteID string) ([]models.Deployment, error) {
 	var deployments []models.Deployment
 	err := r.DB.WithContext(ctx).
-		Where("site_id = ? AND status = ?", siteID, enums.DeploymentStatusQueued).
+		Where("site_id = ? AND status = ?", siteID, sitetypes.DeploymentStatusQueued).
 		Order("created_at ASC").
 		Find(&deployments).Error
 
@@ -110,14 +110,14 @@ func (r *DeploymentRepository) CountQueuedBySite(ctx context.Context, siteID str
 	var count int64
 	err := r.DB.WithContext(ctx).
 		Model(&models.Deployment{}).
-		Where("site_id = ? AND status = ?", siteID, enums.DeploymentStatusQueued).
+		Where("site_id = ? AND status = ?", siteID, sitetypes.DeploymentStatusQueued).
 		Count(&count).Error
 
 	return count, err
 }
 
 // UpdateStatus updates a deployment's status
-func (r *DeploymentRepository) UpdateStatus(ctx context.Context, id string, status enums.DeploymentStatus) error {
+func (r *DeploymentRepository) UpdateStatus(ctx context.Context, id string, status sitetypes.DeploymentStatus) error {
 	return r.DB.WithContext(ctx).
 		Model(&models.Deployment{}).
 		Where("id = ?", id).
@@ -128,8 +128,8 @@ func (r *DeploymentRepository) UpdateStatus(ctx context.Context, id string, stat
 func (r *DeploymentRepository) CancelQueued(ctx context.Context, siteID string) (int64, error) {
 	result := r.DB.WithContext(ctx).
 		Model(&models.Deployment{}).
-		Where("site_id = ? AND status = ?", siteID, enums.DeploymentStatusQueued).
-		Update("status", enums.DeploymentStatusFailed)
+		Where("site_id = ? AND status = ?", siteID, sitetypes.DeploymentStatusQueued).
+		Update("status", sitetypes.DeploymentStatusFailed)
 
 	return result.RowsAffected, result.Error
 }

@@ -6,21 +6,21 @@ import (
 
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 )
 
 // FileOnServer represents an editable file on the server
 type FileOnServer struct {
-	Name        string             `json:"name"`
-	Description string             `json:"description"`
-	Path        string             `json:"path"`
-	Context     string             `json:"context,omitempty"`
-	Type        string             `json:"type"`                   // "default" or "environment"
-	FileType    enums.SiteFileType `json:"file_type"`              // enum value for identification
-	ShowRoute   string             `json:"show_route"`             // encrypted URL parameter for viewing
-	UpdateRoute string             `json:"update_route,omitempty"` // encrypted URL parameter for updating (not included for logs)
+	Name        string                 `json:"name"`
+	Description string                 `json:"description"`
+	Path        string                 `json:"path"`
+	Context     string                 `json:"context,omitempty"`
+	Type        string                 `json:"type"`                   // "default" or "environment"
+	FileType    sitetypes.SiteFileType `json:"file_type"`              // enum value for identification
+	ShowRoute   string                 `json:"show_route"`             // encrypted URL parameter for viewing
+	UpdateRoute string                 `json:"update_route,omitempty"` // encrypted URL parameter for updating (not included for logs)
 }
 
 // FileService handles file operations on sites
@@ -59,19 +59,19 @@ func (s *FileService) ListLogFiles(ctx context.Context, serverID, siteID string)
 
 // getEditableFiles returns the list of editable files based on site type
 func (s *FileService) getEditableFiles(site *models.Site) []FileOnServer {
-	fileTypes := enums.EditableFilesForSiteType(site.Type)
+	fileTypes := sitetypes.EditableFilesForSiteType(site.Type)
 	return s.buildFileList(site, fileTypes, true)
 }
 
 // getLogFiles returns the list of log files based on site type
 func (s *FileService) getLogFiles(site *models.Site) []FileOnServer {
-	fileTypes := enums.LogFilesForSiteType(site.Type)
+	fileTypes := sitetypes.LogFilesForSiteType(site.Type)
 	return s.buildFileList(site, fileTypes, false)
 }
 
 // buildFileList builds a list of FileOnServer from file types
 // includeUpdateRoute determines if the update route should be included (false for log files)
-func (s *FileService) buildFileList(site *models.Site, fileTypes []enums.SiteFileType, includeUpdateRoute bool) []FileOnServer {
+func (s *FileService) buildFileList(site *models.Site, fileTypes []sitetypes.SiteFileType, includeUpdateRoute bool) []FileOnServer {
 	files := make([]FileOnServer, 0, len(fileTypes))
 
 	for _, ft := range fileTypes {

@@ -8,9 +8,9 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -189,7 +189,7 @@ func generateCaddyfile(site *models.Site, redirects []models.Redirect) string {
 	builder.WriteString("}\n\n")
 
 	// PHP FastCGI for non-static sites
-	if site.Type != enums.SiteTypeStatic && site.PhpVersion != nil && site.PhpVersion.IsValid() {
+	if site.Type != sitetypes.SiteTypeStatic && site.PhpVersion != nil && site.PhpVersion.IsValid() {
 		phpSocket := site.PhpVersion.SocketPath()
 		builder.WriteString(fmt.Sprintf("php_fastcgi unix/%s {\n", phpSocket))
 		builder.WriteString("\tresolve_root_symlink\n")
@@ -198,7 +198,7 @@ func generateCaddyfile(site *models.Site, redirects []models.Redirect) string {
 	}
 
 	// WordPress-specific rules
-	if site.Type == enums.SiteTypeWordpress {
+	if site.Type == sitetypes.SiteTypeWordpress {
 		builder.WriteString("@disallowed {\n")
 		builder.WriteString("\tpath /xmlrpc.php\n")
 		builder.WriteString("\tpath *.sql\n")
@@ -264,11 +264,11 @@ func generateTLSSnippet(site *models.Site) string {
 	builder.WriteString(fmt.Sprintf("(tls-%s) {\n", site.ID))
 
 	switch site.TLSSetting {
-	case enums.TLSSettingCustom:
+	case sitetypes.TLSSettingCustom:
 		// TODO: Get active certificate and use its paths
 		// For now, just add a placeholder comment
 		builder.WriteString("\t# Custom TLS certificate\n")
-	case enums.TLSSettingInternal:
+	case sitetypes.TLSSettingInternal:
 		builder.WriteString("\ttls internal\n")
 	default:
 		// Auto TLS or Off - no specific TLS config needed

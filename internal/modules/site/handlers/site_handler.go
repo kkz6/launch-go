@@ -7,8 +7,8 @@ import (
 
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
@@ -298,7 +298,7 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 
 	// Build TLS options
 	tlsOptions := make([]dto.TLSOptionResponse, 0)
-	for _, tls := range enums.AllTLSSettings() {
+	for _, tls := range sitetypes.AllTLSSettings() {
 		tlsOptions = append(tlsOptions, dto.TLSOptionResponse{
 			Value: string(tls),
 			Label: tls.Label(),

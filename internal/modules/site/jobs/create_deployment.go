@@ -7,8 +7,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -52,10 +52,10 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 	}
 
 	// Determine initial status
-	status := enums.DeploymentStatusPending
+	status := sitetypes.DeploymentStatusPending
 	if activeDeployment != nil && site.QueueDeployments {
 		// Queue this deployment if there's already an active one
-		status = enums.DeploymentStatusQueued
+		status = sitetypes.DeploymentStatusQueued
 	} else if activeDeployment != nil {
 		// Can't start a new deployment while one is active and queuing is disabled
 		return fmt.Errorf("deployment already in progress")
@@ -79,7 +79,7 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 	)
 
 	// If queued, we're done - it will be processed when the active deployment finishes
-	if status == enums.DeploymentStatusQueued {
+	if status == sitetypes.DeploymentStatusQueued {
 		j.Ctx.LogInfo("Deployment queued behind active deployment",
 			"deployment_id", deployment.ID,
 		)
@@ -103,7 +103,7 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 	// Add a small delay to ensure DB transaction is committed
 	if err := j.Ctx.DispatchTaskIn(task, time.Second); err != nil {
 		// Cleanup: mark deployment as failed if we can't dispatch the job
-		_ = j.Ctx.DeploymentRepo.UpdateStatus(ctx, deployment.ID, enums.DeploymentStatusFailed)
+		_ = j.Ctx.DeploymentRepo.UpdateStatus(ctx, deployment.ID, sitetypes.DeploymentStatusFailed)
 		return fmt.Errorf("failed to enqueue deploy job: %w", err)
 	}
 

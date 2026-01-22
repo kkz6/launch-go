@@ -3,8 +3,8 @@ package jobs_test
 import (
 	"testing"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 )
 
 // Test CreateDeployment job
@@ -68,14 +68,14 @@ func TestUpdateSiteTLSSettingPayload(t *testing.T) {
 	userID := "user123"
 	payload := sitejobs.UpdateSiteTLSSettingPayload{
 		SiteID:     "site123",
-		TLSSetting: enums.TLSSettingAuto,
+		TLSSetting: sitetypes.TLSSettingAuto,
 		UserID:     &userID,
 	}
 
 	if payload.SiteID != "site123" {
 		t.Errorf("Expected SiteID to be 'site123', got '%s'", payload.SiteID)
 	}
-	if payload.TLSSetting != enums.TLSSettingAuto {
+	if payload.TLSSetting != sitetypes.TLSSettingAuto {
 		t.Errorf("Expected TLSSetting to be 'auto', got '%s'", payload.TLSSetting)
 	}
 	if payload.UserID == nil || *payload.UserID != "user123" {
@@ -84,7 +84,7 @@ func TestUpdateSiteTLSSettingPayload(t *testing.T) {
 }
 
 func TestNewUpdateSiteTLSSettingTask(t *testing.T) {
-	task, err := sitejobs.NewUpdateSiteTLSSettingTask("site123", enums.TLSSettingAuto, nil)
+	task, err := sitejobs.NewUpdateSiteTLSSettingTask("site123", sitetypes.TLSSettingAuto, nil)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -98,11 +98,11 @@ func TestNewUpdateSiteTLSSettingTask(t *testing.T) {
 }
 
 func TestNewUpdateSiteTLSSettingTask_AllTLSSettings(t *testing.T) {
-	testCases := []enums.TLSSetting{
-		enums.TLSSettingAuto,
-		enums.TLSSettingCustom,
-		enums.TLSSettingInternal,
-		enums.TLSSettingOff,
+	testCases := []sitetypes.TLSSetting{
+		sitetypes.TLSSettingAuto,
+		sitetypes.TLSSettingCustom,
+		sitetypes.TLSSettingInternal,
+		sitetypes.TLSSettingOff,
 	}
 
 	for _, tlsSetting := range testCases {

@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -13,7 +13,7 @@ type Certificate struct {
 	basemodels.BaseModel
 	basemodels.SiteScopedModel
 	basemodels.TeamScopedModel
-	Type        enums.CertificateType      `gorm:"type:varchar(255);not null;default:letsencrypt" json:"type"`
+	Type        sitetypes.CertificateType  `gorm:"type:varchar(255);not null;default:letsencrypt" json:"type"`
 	Domains     basemodels.JSONStringSlice `gorm:"type:json" json:"domains,omitempty"`
 	CSR         *string                    `gorm:"column:csr;type:longtext" json:"csr,omitempty"`
 	PublicKey   *string                    `gorm:"column:public_key;type:longtext" json:"public_key,omitempty"`

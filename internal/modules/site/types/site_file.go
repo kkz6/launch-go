@@ -1,8 +1,10 @@
-package enums
+package types
 
 import (
 	"database/sql/driver"
 	"fmt"
+
+	baseenums "github.com/kkz6/launch-go/internal/pkg/enums"
 )
 
 // SiteFileType represents the type of editable file on a site
@@ -136,27 +138,11 @@ func (f SiteFileType) IsValid() bool {
 }
 
 func (f *SiteFileType) Scan(value interface{}) error {
-	if value == nil {
-		*f = ""
-		return nil
-	}
-
-	str, ok := value.(string)
-	if !ok {
-		bytes, ok := value.([]byte)
-		if !ok {
-			return fmt.Errorf("failed to scan SiteFileType: %v", value)
-		}
-		str = string(bytes)
-	}
-
-	*f = SiteFileType(str)
-
-	return nil
+	return baseenums.Scan(f, value)
 }
 
 func (f SiteFileType) Value() (driver.Value, error) {
-	return string(f), nil
+	return baseenums.Value(f)
 }
 
 // EditableFilesForSiteType returns the editable file types for a given site type

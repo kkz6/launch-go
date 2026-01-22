@@ -6,9 +6,9 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
@@ -71,7 +71,7 @@ func (j *EnableLaravelSchedulerJob) createSchedulerCron(ctx context.Context, sit
 	command := fmt.Sprintf("cd %s && %s artisan schedule:run >> /dev/null 2>&1",
 		site.GetApplicationDirectory(), site.GetPhpBinary())
 
-	schedule := serverenums.CronEveryMinute
+	schedule := servertypes.CronEveryMinute
 	cron := &servermodels.Cron{
 		SiteID:     &site.ID,
 		Expression: schedule.Expression(),

@@ -3,8 +3,8 @@ package tasks
 import (
 	"fmt"
 
-	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
@@ -13,14 +13,14 @@ type SiteTaskType string
 
 // Task operation constants (site-agnostic)
 const (
-	TaskDeploy           SiteTaskType = "deploy"
-	TaskUpdateCaddyfile  SiteTaskType = "update_caddyfile"
-	TaskRemoveCaddyfile  SiteTaskType = "remove_caddyfile"
-	TaskDeleteSiteFiles  SiteTaskType = "delete_site_files"
-	TaskRestartQueues    SiteTaskType = "restart_queues"
-	TaskRunCommand       SiteTaskType = "run_command"
-	TaskCheckDaemon      SiteTaskType = "check_daemon"
-	TaskAnalyzeFeatures  SiteTaskType = "analyze_features"
+	TaskDeploy          SiteTaskType = "deploy"
+	TaskUpdateCaddyfile SiteTaskType = "update_caddyfile"
+	TaskRemoveCaddyfile SiteTaskType = "remove_caddyfile"
+	TaskDeleteSiteFiles SiteTaskType = "delete_site_files"
+	TaskRestartQueues   SiteTaskType = "restart_queues"
+	TaskRunCommand      SiteTaskType = "run_command"
+	TaskCheckDaemon     SiteTaskType = "check_daemon"
+	TaskAnalyzeFeatures SiteTaskType = "analyze_features"
 )
 
 // Factory provides site-aware task creation
@@ -40,17 +40,17 @@ func (f *Factory) Site() *models.Site {
 
 // IsLaravel returns true if the site is a Laravel application
 func (f *Factory) IsLaravel() bool {
-	return f.site.Type == enums.SiteTypeLaravel
+	return f.site.Type == sitetypes.SiteTypeLaravel
 }
 
 // IsWordpress returns true if the site is a WordPress application
 func (f *Factory) IsWordpress() bool {
-	return f.site.Type == enums.SiteTypeWordpress
+	return f.site.Type == sitetypes.SiteTypeWordpress
 }
 
 // IsStatic returns true if the site is a static site
 func (f *Factory) IsStatic() bool {
-	return f.site.Type == enums.SiteTypeStatic
+	return f.site.Type == sitetypes.SiteTypeStatic
 }
 
 // TaskType returns the full task type string for a given operation based on the site type
