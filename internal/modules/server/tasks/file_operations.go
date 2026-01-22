@@ -72,23 +72,21 @@ fi
 	)
 }
 
-// GetFileConfig holds configuration for getting file contents
+// GetFileConfig holds configuration for fetching a file
 type GetFileConfig struct {
-	Path string
+	Path     string
+	MaxBytes int // Maximum bytes to fetch (default 1MB)
 }
 
-// GetFile creates a task to get file contents from the server
+// GetFile creates a task to fetch file content from a remote server.
+// Uses tail -c to fetch the last N bytes (default 1MB).
 func GetFile(config GetFileConfig) *taskrunner.BaseTask {
-	script := fmt.Sprintf(`#!/bin/bash
-set -euo pipefail
+	maxBytes := config.MaxBytes
+	if maxBytes <= 0 {
+		maxBytes = 1024 * 1024 // 1MB default
+	}
 
-if [ -f '%s' ]; then
-    cat '%s'
-else
-    echo "ERROR: File does not exist: %s" >&2
-    exit 1
-fi
-`, config.Path, config.Path, config.Path)
+	script := fmt.Sprintf("tail -c %d '%s' 2>/dev/null || echo ''", maxBytes, config.Path)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get File"),
