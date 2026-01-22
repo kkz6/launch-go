@@ -36,6 +36,7 @@ type CallbackURLs struct {
 	FinishedURL string
 	FailedURL   string
 	TimeoutURL  string
+	CustomURL   string // For progress updates from script
 }
 
 // TaskRunnerResult holds the result of a task execution.
