@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // MetricType represents the type of server metric
@@ -38,7 +38,7 @@ type ServerThresholdExceededNotification struct {
 func NewServerThresholdExceededNotification(serverName, serverIP string) *ServerThresholdExceededNotification {
 	rawText := fmt.Sprintf("Server '%s' has exceeded one or more resource thresholds.", serverName)
 	return &ServerThresholdExceededNotification{
-		BaseNotification: models.NewBaseNotification(enums.NotificationTypeServerThresholdExceeded, rawText),
+		BaseNotification: models.NewBaseNotification(notificationtypes.NotificationTypeServerThresholdExceeded, rawText),
 		ServerName:       serverName,
 		ServerIP:         serverIP,
 		Thresholds:       []ThresholdExceeded{},

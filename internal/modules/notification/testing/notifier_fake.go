@@ -4,9 +4,9 @@ import (
 	"context"
 	"sync"
 
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	"github.com/kkz6/launch-go/internal/modules/notification/slack"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // withLockReturn is a generic helper that executes a function while holding a lock
@@ -148,7 +148,7 @@ func (n *NotifierFake) SendPhpExtensionUninstallFailedAdminAlert(ctx context.Con
 }
 
 // AssertSent asserts that a notification of the given type was sent
-func (n *NotifierFake) AssertSent(notificationType enums.NotificationType) bool {
+func (n *NotifierFake) AssertSent(notificationType notificationtypes.NotificationType) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -161,7 +161,7 @@ func (n *NotifierFake) AssertSent(notificationType enums.NotificationType) bool 
 }
 
 // AssertSentTo asserts that a notification of the given type was sent to a specific team
-func (n *NotifierFake) AssertSentTo(teamID string, notificationType enums.NotificationType) bool {
+func (n *NotifierFake) AssertSentTo(teamID string, notificationType notificationtypes.NotificationType) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 
@@ -174,7 +174,7 @@ func (n *NotifierFake) AssertSentTo(teamID string, notificationType enums.Notifi
 }
 
 // AssertNotSent asserts that a notification of the given type was NOT sent
-func (n *NotifierFake) AssertNotSent(notificationType enums.NotificationType) bool {
+func (n *NotifierFake) AssertNotSent(notificationType notificationtypes.NotificationType) bool {
 	return !n.AssertSent(notificationType)
 }
 
@@ -186,7 +186,7 @@ func (n *NotifierFake) AssertNothingSent() bool {
 }
 
 // AssertSentTimes asserts that a notification of the given type was sent a specific number of times
-func (n *NotifierFake) AssertSentTimes(notificationType enums.NotificationType, times int) bool {
+func (n *NotifierFake) AssertSentTimes(notificationType notificationtypes.NotificationType, times int) bool {
 	n.mu.Lock()
 	defer n.mu.Unlock()
 

@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	"github.com/kkz6/launch-go/internal/modules/notification/slack"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // mockNotification embeds BaseNotification to implement all interface methods
@@ -17,7 +17,7 @@ type mockNotification struct {
 	*models.BaseNotification
 }
 
-func newMockNotification(notifType enums.NotificationType) models.Notification {
+func newMockNotification(notifType notificationtypes.NotificationType) models.Notification {
 	return &mockNotification{
 		BaseNotification: models.NewBaseNotification(notifType, "test notification"),
 	}
@@ -34,7 +34,7 @@ func TestNewNotifierFake(t *testing.T) {
 func TestNotifierFake_SendToTeam(t *testing.T) {
 	fake := NewNotifierFake()
 	ctx := context.Background()
-	notif := newMockNotification(enums.NotificationTypeServerProvisioned)
+	notif := newMockNotification(notificationtypes.NotificationTypeServerProvisioned)
 
 	err := fake.SendToTeam(ctx, "team-123", notif)
 
@@ -50,7 +50,7 @@ func TestNotifierFake_SendToTeam(t *testing.T) {
 func TestNotifierFake_SendToChannel(t *testing.T) {
 	fake := NewNotifierFake()
 	ctx := context.Background()
-	notif := newMockNotification(enums.NotificationTypeServerProvisioned)
+	notif := newMockNotification(notificationtypes.NotificationTypeServerProvisioned)
 
 	err := fake.SendToChannel(ctx, "channel-456", notif)
 
@@ -67,40 +67,40 @@ func TestNotifierFake_AssertSent(t *testing.T) {
 	ctx := context.Background()
 
 	// No notifications sent yet
-	assert.False(t, fake.AssertSent(enums.NotificationTypeServerProvisioned))
+	assert.False(t, fake.AssertSent(notificationtypes.NotificationTypeServerProvisioned))
 
 	// Send a notification
-	notif := newMockNotification(enums.NotificationTypeServerProvisioned)
+	notif := newMockNotification(notificationtypes.NotificationTypeServerProvisioned)
 	_ = fake.SendToTeam(ctx, "team-123", notif)
 
 	// Now it should be asserted as sent
-	assert.True(t, fake.AssertSent(enums.NotificationTypeServerProvisioned))
-	assert.False(t, fake.AssertSent(enums.NotificationTypeDeploymentFailed))
+	assert.True(t, fake.AssertSent(notificationtypes.NotificationTypeServerProvisioned))
+	assert.False(t, fake.AssertSent(notificationtypes.NotificationTypeDeploymentFailed))
 }
 
 func TestNotifierFake_AssertSentTo(t *testing.T) {
 	fake := NewNotifierFake()
 	ctx := context.Background()
 
-	notif := newMockNotification(enums.NotificationTypeServerProvisioned)
+	notif := newMockNotification(notificationtypes.NotificationTypeServerProvisioned)
 	_ = fake.SendToTeam(ctx, "team-123", notif)
 
-	assert.True(t, fake.AssertSentTo("team-123", enums.NotificationTypeServerProvisioned))
-	assert.False(t, fake.AssertSentTo("team-456", enums.NotificationTypeServerProvisioned))
-	assert.False(t, fake.AssertSentTo("team-123", enums.NotificationTypeDeploymentFailed))
+	assert.True(t, fake.AssertSentTo("team-123", notificationtypes.NotificationTypeServerProvisioned))
+	assert.False(t, fake.AssertSentTo("team-456", notificationtypes.NotificationTypeServerProvisioned))
+	assert.False(t, fake.AssertSentTo("team-123", notificationtypes.NotificationTypeDeploymentFailed))
 }
 
 func TestNotifierFake_AssertNotSent(t *testing.T) {
 	fake := NewNotifierFake()
 	ctx := context.Background()
 
-	assert.True(t, fake.AssertNotSent(enums.NotificationTypeServerProvisioned))
+	assert.True(t, fake.AssertNotSent(notificationtypes.NotificationTypeServerProvisioned))
 
-	notif := newMockNotification(enums.NotificationTypeServerProvisioned)
+	notif := newMockNotification(notificationtypes.NotificationTypeServerProvisioned)
 	_ = fake.SendToTeam(ctx, "team-123", notif)
 
-	assert.False(t, fake.AssertNotSent(enums.NotificationTypeServerProvisioned))
-	assert.True(t, fake.AssertNotSent(enums.NotificationTypeDeploymentFailed))
+	assert.False(t, fake.AssertNotSent(notificationtypes.NotificationTypeServerProvisioned))
+	assert.True(t, fake.AssertNotSent(notificationtypes.NotificationTypeDeploymentFailed))
 }
 
 func TestNotifierFake_AssertNothingSent(t *testing.T) {
@@ -109,7 +109,7 @@ func TestNotifierFake_AssertNothingSent(t *testing.T) {
 
 	assert.True(t, fake.AssertNothingSent())
 
-	notif := newMockNotification(enums.NotificationTypeServerProvisioned)
+	notif := newMockNotification(notificationtypes.NotificationTypeServerProvisioned)
 	_ = fake.SendToTeam(ctx, "team-123", notif)
 
 	assert.False(t, fake.AssertNothingSent())
@@ -119,14 +119,14 @@ func TestNotifierFake_AssertSentTimes(t *testing.T) {
 	fake := NewNotifierFake()
 	ctx := context.Background()
 
-	assert.True(t, fake.AssertSentTimes(enums.NotificationTypeServerProvisioned, 0))
+	assert.True(t, fake.AssertSentTimes(notificationtypes.NotificationTypeServerProvisioned, 0))
 
-	notif := newMockNotification(enums.NotificationTypeServerProvisioned)
+	notif := newMockNotification(notificationtypes.NotificationTypeServerProvisioned)
 	_ = fake.SendToTeam(ctx, "team-1", notif)
 	_ = fake.SendToTeam(ctx, "team-2", notif)
 
-	assert.True(t, fake.AssertSentTimes(enums.NotificationTypeServerProvisioned, 2))
-	assert.False(t, fake.AssertSentTimes(enums.NotificationTypeServerProvisioned, 1))
+	assert.True(t, fake.AssertSentTimes(notificationtypes.NotificationTypeServerProvisioned, 2))
+	assert.False(t, fake.AssertSentTimes(notificationtypes.NotificationTypeServerProvisioned, 1))
 }
 
 func TestNotifierFake_SendServerProvisioningFailedAdminAlert(t *testing.T) {
@@ -214,7 +214,7 @@ func TestNotifierFake_Reset(t *testing.T) {
 	fake := NewNotifierFake()
 	ctx := context.Background()
 
-	notif := newMockNotification(enums.NotificationTypeServerProvisioned)
+	notif := newMockNotification(notificationtypes.NotificationTypeServerProvisioned)
 	_ = fake.SendToTeam(ctx, "team-123", notif)
 
 	server := slack.ServerInfo{ID: "server-123", Name: "my-server"}
@@ -239,7 +239,7 @@ func TestNotifierFake_ThreadSafety(t *testing.T) {
 	done := make(chan bool, 10)
 	for i := 0; i < 10; i++ {
 		go func() {
-			notif := newMockNotification(enums.NotificationTypeServerProvisioned)
+			notif := newMockNotification(notificationtypes.NotificationTypeServerProvisioned)
 			_ = fake.SendToTeam(ctx, "team-123", notif)
 			done <- true
 		}()

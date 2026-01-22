@@ -8,9 +8,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
-	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
+	dnstypes "github.com/kkz6/launch-go/internal/modules/dns/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -76,7 +76,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 			nsRecord := &models.DNSRecord{
 				DomainID:   domain.ID,
 				ProviderID: fmt.Sprintf("ns-%d", i),
-				Type:       enums.RecordTypeNS,
+				Type:       dnstypes.RecordTypeNS,
 				Name:       "@",
 				Value:      ns,
 				TTL:        3600,
@@ -258,7 +258,7 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 			record := &models.DNSRecord{
 				DomainID:   domainID,
 				ProviderID: pr.ID,
-				Type:       enums.RecordType(pr.Type),
+				Type:       dnstypes.RecordType(pr.Type),
 				Name:       pr.Name,
 				Value:      pr.Value,
 				TTL:        pr.TTL,

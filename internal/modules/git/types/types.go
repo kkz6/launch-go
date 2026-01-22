@@ -1,0 +1,324 @@
+// Package types contains all type definitions for the git module
+package types
+
+import (
+	"database/sql/driver"
+	"fmt"
+	"strings"
+
+	"github.com/kkz6/launch-go/internal/pkg/enumtypes"
+)
+
+// =============================================================================
+// GitProviderType
+// =============================================================================
+
+// GitProviderType represents the type of git provider
+type GitProviderType string
+
+const (
+	GitProviderGitHub    GitProviderType = "github"
+	GitProviderGitLab    GitProviderType = "gitlab"
+	GitProviderBitbucket GitProviderType = "bitbucket"
+)
+
+var allGitProviders = []GitProviderType{
+	GitProviderGitHub,
+	GitProviderGitLab,
+	GitProviderBitbucket,
+}
+
+// AllGitProviders returns all available git providers
+func AllGitProviders() []GitProviderType {
+	return allGitProviders
+}
+
+// String returns the string representation of the provider
+func (p GitProviderType) String() string {
+	return string(p)
+}
+
+// Label returns a human-readable label for the provider
+func (p GitProviderType) Label() string {
+	switch p {
+	case GitProviderGitHub:
+		return "GitHub"
+	case GitProviderGitLab:
+		return "GitLab"
+	case GitProviderBitbucket:
+		return "Bitbucket"
+	default:
+		return string(p)
+	}
+}
+
+// IsValid checks if the provider type is valid
+func (p GitProviderType) IsValid() bool {
+	switch p {
+	case GitProviderGitHub, GitProviderGitLab, GitProviderBitbucket:
+		return true
+	default:
+		return false
+	}
+}
+
+// ParseGitProviderType parses a string into a GitProviderType
+func ParseGitProviderType(s string) (GitProviderType, error) {
+	provider := GitProviderType(strings.ToLower(s))
+
+	if !provider.IsValid() {
+		return "", fmt.Errorf("invalid git provider type: %s", s)
+	}
+
+	return provider, nil
+}
+
+// Value implements driver.Valuer for database storage
+func (p GitProviderType) Value() (driver.Value, error) {
+	return enumtypes.Value(p)
+}
+
+// Scan implements sql.Scanner for database retrieval
+func (p *GitProviderType) Scan(value any) error {
+	return enumtypes.Scan(p, value)
+}
+
+// =============================================================================
+// AccountType
+// =============================================================================
+
+// AccountType represents the type of git account (user or organization)
+type AccountType string
+
+const (
+	AccountTypeUser         AccountType = "user"
+	AccountTypeOrganization AccountType = "organization"
+)
+
+var allAccountTypes = []AccountType{
+	AccountTypeUser,
+	AccountTypeOrganization,
+}
+
+// AllAccountTypes returns all valid account types
+func AllAccountTypes() []AccountType {
+	return allAccountTypes
+}
+
+// String returns the string representation of the account type
+func (a AccountType) String() string {
+	return string(a)
+}
+
+// Label returns a human-readable label for the account type
+func (a AccountType) Label() string {
+	switch a {
+	case AccountTypeUser:
+		return "User"
+	case AccountTypeOrganization:
+		return "Organization"
+	default:
+		return string(a)
+	}
+}
+
+// IsValid checks if the account type is valid
+func (a AccountType) IsValid() bool {
+	switch a {
+	case AccountTypeUser, AccountTypeOrganization:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsOrganization checks if the account is an organization
+func (a AccountType) IsOrganization() bool {
+	return strings.ToLower(string(a)) == string(AccountTypeOrganization)
+}
+
+// IsUser checks if the account is a user
+func (a AccountType) IsUser() bool {
+	return strings.ToLower(string(a)) == string(AccountTypeUser)
+}
+
+// ParseAccountType parses a string into an AccountType
+func ParseAccountType(s string) AccountType {
+	lower := strings.ToLower(s)
+
+	switch lower {
+	case "organization", "org":
+		return AccountTypeOrganization
+	default:
+		return AccountTypeUser
+	}
+}
+
+// Value implements driver.Valuer for database storage
+func (a AccountType) Value() (driver.Value, error) {
+	return enumtypes.Value(a)
+}
+
+// Scan implements sql.Scanner for database retrieval
+func (a *AccountType) Scan(value any) error {
+	return enumtypes.Scan(a, value)
+}
+
+// =============================================================================
+// RepositorySelection
+// =============================================================================
+
+// RepositorySelection represents how repositories are selected for an installation
+type RepositorySelection string
+
+const (
+	RepositorySelectionAll      RepositorySelection = "all"
+	RepositorySelectionSelected RepositorySelection = "selected"
+)
+
+var allRepositorySelections = []RepositorySelection{
+	RepositorySelectionAll,
+	RepositorySelectionSelected,
+}
+
+// AllRepositorySelections returns all valid repository selections
+func AllRepositorySelections() []RepositorySelection {
+	return allRepositorySelections
+}
+
+// String returns the string representation
+func (r RepositorySelection) String() string {
+	return string(r)
+}
+
+// Label returns a human-readable label
+func (r RepositorySelection) Label() string {
+	switch r {
+	case RepositorySelectionAll:
+		return "All"
+	case RepositorySelectionSelected:
+		return "Selected"
+	default:
+		return string(r)
+	}
+}
+
+// IsValid checks if the selection is valid
+func (r RepositorySelection) IsValid() bool {
+	switch r {
+	case RepositorySelectionAll, RepositorySelectionSelected:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsAll returns true if all repositories are selected
+func (r RepositorySelection) IsAll() bool {
+	return r == RepositorySelectionAll
+}
+
+// IsSelected returns true if specific repositories are selected
+func (r RepositorySelection) IsSelected() bool {
+	return r == RepositorySelectionSelected
+}
+
+// Value implements driver.Valuer for database storage
+func (r RepositorySelection) Value() (driver.Value, error) {
+	return enumtypes.Value(r)
+}
+
+// Scan implements sql.Scanner for database retrieval
+func (r *RepositorySelection) Scan(value any) error {
+	return enumtypes.Scan(r, value)
+}
+
+// =============================================================================
+// WebhookEventType
+// =============================================================================
+
+// WebhookEventType represents types of webhook events
+type WebhookEventType string
+
+const (
+	WebhookEventPush                WebhookEventType = "push"
+	WebhookEventPullRequest         WebhookEventType = "pull_request"
+	WebhookEventInstallation        WebhookEventType = "installation"
+	WebhookEventInstallationRepos   WebhookEventType = "installation_repositories"
+	WebhookEventRepositoriesAdded   WebhookEventType = "repositories_added"
+	WebhookEventRepositoriesRemoved WebhookEventType = "repositories_removed"
+	WebhookEventInstallationCreated WebhookEventType = "created"
+	WebhookEventInstallationDeleted WebhookEventType = "deleted"
+)
+
+var allWebhookEventTypes = []WebhookEventType{
+	WebhookEventPush,
+	WebhookEventPullRequest,
+	WebhookEventInstallation,
+	WebhookEventInstallationRepos,
+	WebhookEventRepositoriesAdded,
+	WebhookEventRepositoriesRemoved,
+	WebhookEventInstallationCreated,
+	WebhookEventInstallationDeleted,
+}
+
+// AllWebhookEventTypes returns all valid webhook event types
+func AllWebhookEventTypes() []WebhookEventType {
+	return allWebhookEventTypes
+}
+
+// String returns the string representation
+func (w WebhookEventType) String() string {
+	return string(w)
+}
+
+// Label returns a human-readable label
+func (w WebhookEventType) Label() string {
+	switch w {
+	case WebhookEventPush:
+		return "Push"
+	case WebhookEventPullRequest:
+		return "Pull Request"
+	case WebhookEventInstallation:
+		return "Installation"
+	case WebhookEventInstallationRepos:
+		return "Installation Repositories"
+	case WebhookEventRepositoriesAdded:
+		return "Repositories Added"
+	case WebhookEventRepositoriesRemoved:
+		return "Repositories Removed"
+	case WebhookEventInstallationCreated:
+		return "Installation Created"
+	case WebhookEventInstallationDeleted:
+		return "Installation Deleted"
+	default:
+		return string(w)
+	}
+}
+
+// IsValid checks if the event type is valid
+func (w WebhookEventType) IsValid() bool {
+	switch w {
+	case WebhookEventPush,
+		WebhookEventPullRequest,
+		WebhookEventInstallation,
+		WebhookEventInstallationRepos,
+		WebhookEventRepositoriesAdded,
+		WebhookEventRepositoriesRemoved,
+		WebhookEventInstallationCreated,
+		WebhookEventInstallationDeleted:
+		return true
+	default:
+		return false
+	}
+}
+
+// Value implements driver.Valuer for database storage
+func (w WebhookEventType) Value() (driver.Value, error) {
+	return enumtypes.Value(w)
+}
+
+// Scan implements sql.Scanner for database retrieval
+func (w *WebhookEventType) Scan(value any) error {
+	return enumtypes.Scan(w, value)
+}

@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/pkg/enums"
+	"github.com/kkz6/launch-go/internal/pkg/enumtypes"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
@@ -57,17 +57,17 @@ type InstallableModel struct {
 }
 
 // Status returns the current installation status
-func (m *InstallableModel) Status() enums.InstallationStatus {
+func (m *InstallableModel) Status() enumtypes.InstallationStatus {
 	if m.IsUninstalling() {
-		return enums.StatusUninstalling
+		return enumtypes.StatusUninstalling
 	}
 	if m.IsFailed() {
-		return enums.StatusFailed
+		return enumtypes.StatusFailed
 	}
 	if m.IsInstalled() {
-		return enums.StatusInstalled
+		return enumtypes.StatusInstalled
 	}
-	return enums.StatusPending
+	return enumtypes.StatusPending
 }
 
 // IsInstalled returns true if the resource is installed

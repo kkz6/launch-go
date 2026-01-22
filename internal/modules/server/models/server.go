@@ -6,7 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -23,7 +23,7 @@ type Server struct {
 	ServerProviderID          *string                    `gorm:"column:server_provider_id;type:char(26);index" json:"server_provider_id,omitempty"`
 	Name                      string                     `gorm:"type:varchar(255);not null;index" json:"name"`
 	Description               *string                    `gorm:"type:varchar(255)" json:"description,omitempty"`
-	Provider                  enums.ServerProvider       `gorm:"type:varchar(255);not null" json:"provider"`
+	Provider                  types.ServerProvider       `gorm:"type:varchar(255);not null" json:"provider"`
 	ProviderData              basemodels.JSONMap         `gorm:"type:json" json:"-"`
 	Type                      *string                    `gorm:"type:varchar(255)" json:"type,omitempty"`
 	Connected                 bool                       `gorm:"type:tinyint(1);not null;default:0" json:"connected"`
@@ -33,7 +33,7 @@ type Server struct {
 	MemoryInMB                *int                       `gorm:"column:memory_in_mb;type:int" json:"memory_in_mb,omitempty"`
 	StorageInGB               *int                       `gorm:"column:storage_in_gb;type:int" json:"storage_in_gb,omitempty"`
 	OperatingSystem           *string                    `gorm:"column:operating_system;type:varchar(255)" json:"operating_system,omitempty"`
-	Status                    enums.ServerStatus         `gorm:"type:varchar(255);not null" json:"status"`
+	Status                    types.ServerStatus         `gorm:"type:varchar(255);not null" json:"status"`
 	PublicIPv4                *string                    `gorm:"column:public_ipv4;type:varchar(255)" json:"public_ipv4,omitempty"`
 	PrivateIPv4               *string                    `gorm:"column:private_ipv4;type:varchar(255)" json:"-"`
 	PublicKey                 basemodels.EncryptedString `gorm:"type:longtext" json:"-"`
@@ -75,7 +75,7 @@ func (s *Server) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 
-	basemodels.SetDefaultStatus(&s.Status, enums.ServerStatusNew)
+	basemodels.SetDefaultStatus(&s.Status, types.ServerStatusNew)
 	basemodels.SetDefaultToken(&s.LaunchToken, 16)
 
 	return nil
@@ -98,9 +98,9 @@ func (s *Server) IsArchived() bool {
 }
 
 func (s *Server) RootUsername() string {
-	os := enums.OSUbuntu24
+	os := types.OSUbuntu24
 	if s.OperatingSystem != nil {
-		os = enums.OperatingSystem(*s.OperatingSystem)
+		os = types.OperatingSystem(*s.OperatingSystem)
 	}
 
 	return s.Provider.GetDefaultUsername(os)
@@ -117,28 +117,28 @@ func (s *Server) GetProvisionScriptURL() string {
 	return signedurl.PermanentSign(path, nil)
 }
 
-func (s *Server) HasFeature(feature enums.ServerFeature) bool {
+func (s *Server) HasFeature(feature types.ServerFeature) bool {
 	if s.Type == nil {
-		return enums.ServerTypePhp.HasFeature(feature)
+		return types.ServerTypePhp.HasFeature(feature)
 	}
 
-	return enums.ServerType(*s.Type).HasFeature(feature)
+	return types.ServerType(*s.Type).HasFeature(feature)
 }
 
-func (s *Server) GetFeatures() []enums.ServerFeature {
+func (s *Server) GetFeatures() []types.ServerFeature {
 	if s.Type == nil {
-		return enums.ServerTypePhp.GetFeatures()
+		return types.ServerTypePhp.GetFeatures()
 	}
 
-	return enums.ServerType(*s.Type).GetFeatures()
+	return types.ServerType(*s.Type).GetFeatures()
 }
 
-func (s *Server) GetProcessManager() enums.ProcessManager {
+func (s *Server) GetProcessManager() types.ProcessManager {
 	if s.Type == nil {
-		return enums.ServerTypePhp.GetProcessManager()
+		return types.ServerTypePhp.GetProcessManager()
 	}
 
-	return enums.ServerType(*s.Type).GetProcessManager()
+	return types.ServerType(*s.Type).GetProcessManager()
 }
 
 func (s *Server) GetUsername() string {

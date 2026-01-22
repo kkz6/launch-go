@@ -6,8 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/billing/enums"
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
+	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -66,9 +66,9 @@ func (r *SubscriptionRepository) FindActiveByTeam(ctx context.Context, teamID st
 	var subscription models.Subscription
 	err := r.DB.WithContext(ctx).
 		Where("billable_type IN ? AND billable_id = ?", models.TeamBillableTypes(), teamID).
-		Where("status IN ?", []enums.SubscriptionStatus{
-			enums.SubscriptionStatusActive,
-			enums.SubscriptionStatusOnTrial,
+		Where("status IN ?", []billingtypes.SubscriptionStatus{
+			billingtypes.SubscriptionStatusActive,
+			billingtypes.SubscriptionStatusOnTrial,
 		}).
 		First(&subscription).Error
 
@@ -85,7 +85,7 @@ func (r *SubscriptionRepository) Update(ctx context.Context, subscription *model
 }
 
 // UpdateStatus updates only the status of a subscription
-func (r *SubscriptionRepository) UpdateStatus(ctx context.Context, id string, status enums.SubscriptionStatus) error {
+func (r *SubscriptionRepository) UpdateStatus(ctx context.Context, id string, status billingtypes.SubscriptionStatus) error {
 	return r.DB.WithContext(ctx).
 		Model(&models.Subscription{}).
 		Where("id = ?", id).
@@ -93,7 +93,7 @@ func (r *SubscriptionRepository) UpdateStatus(ctx context.Context, id string, st
 }
 
 // UpdateStatusByLemonSqueezyID updates only the status of a subscription by LemonSqueezy ID
-func (r *SubscriptionRepository) UpdateStatusByLemonSqueezyID(ctx context.Context, lemonSqueezyID string, status enums.SubscriptionStatus) error {
+func (r *SubscriptionRepository) UpdateStatusByLemonSqueezyID(ctx context.Context, lemonSqueezyID string, status billingtypes.SubscriptionStatus) error {
 	return r.DB.WithContext(ctx).
 		Model(&models.Subscription{}).
 		Where("lemon_squeezy_id = ?", lemonSqueezyID).
@@ -119,9 +119,9 @@ func (r *SubscriptionRepository) CountActiveByTeam(ctx context.Context, teamID s
 	err := r.DB.WithContext(ctx).
 		Model(&models.Subscription{}).
 		Where("billable_type IN ? AND billable_id = ?", models.TeamBillableTypes(), teamID).
-		Where("status IN ?", []enums.SubscriptionStatus{
-			enums.SubscriptionStatusActive,
-			enums.SubscriptionStatusOnTrial,
+		Where("status IN ?", []billingtypes.SubscriptionStatus{
+			billingtypes.SubscriptionStatusActive,
+			billingtypes.SubscriptionStatusOnTrial,
 		}).
 		Count(&count).Error
 

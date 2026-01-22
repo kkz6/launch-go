@@ -7,10 +7,10 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/dto"
-	"github.com/kkz6/launch-go/internal/modules/billing/enums"
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/billing/providers"
 	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
+	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -135,7 +135,7 @@ func (s *BillingService) CancelSubscription(ctx context.Context, subscriptionID 
 		return ErrSubscriptionNotFound
 	}
 
-	if subscription.Status == enums.SubscriptionStatusCancelled {
+	if subscription.Status == billingtypes.SubscriptionStatusCancelled {
 		return nil
 	}
 
@@ -145,7 +145,7 @@ func (s *BillingService) CancelSubscription(ctx context.Context, subscriptionID 
 		return err
 	}
 
-	subscription.Status = enums.SubscriptionStatusCancelled
+	subscription.Status = billingtypes.SubscriptionStatusCancelled
 	return s.repos.Subscription().Update(ctx, subscription)
 }
 
@@ -156,7 +156,7 @@ func (s *BillingService) ResumeSubscription(ctx context.Context, subscriptionID 
 		return ErrSubscriptionNotFound
 	}
 
-	if subscription.Status != enums.SubscriptionStatusCancelled {
+	if subscription.Status != billingtypes.SubscriptionStatusCancelled {
 		return ErrSubscriptionNotCancelled
 	}
 
@@ -170,7 +170,7 @@ func (s *BillingService) ResumeSubscription(ctx context.Context, subscriptionID 
 		return err
 	}
 
-	subscription.Status = enums.SubscriptionStatusActive
+	subscription.Status = billingtypes.SubscriptionStatusActive
 	subscription.EndsAt = nil
 	return s.repos.Subscription().Update(ctx, subscription)
 }

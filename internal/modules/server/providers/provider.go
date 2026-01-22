@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
@@ -55,7 +55,7 @@ type Provider interface {
 	Regions() []config.RegionOption
 
 	// GetImage returns the image ID for an operating system
-	GetImage(os enums.OperatingSystem) string
+	GetImage(os types.OperatingSystem) string
 
 	// CredentialRules returns validation rules for credentials
 	CredentialRules() map[string]string
@@ -70,7 +70,7 @@ type Provider interface {
 	ProviderData(input map[string]interface{}) map[string]interface{}
 
 	// Type returns the provider type
-	Type() enums.ServerProvider
+	Type() types.ServerProvider
 }
 
 // Factory creates server provider instances
@@ -86,19 +86,19 @@ func NewFactory(keyGenerator sshkey.Generator) *Factory {
 }
 
 // Create creates a provider instance based on provider type
-func (f *Factory) Create(providerType enums.ServerProvider) (Provider, error) {
+func (f *Factory) Create(providerType types.ServerProvider) (Provider, error) {
 	switch providerType {
-	case enums.ProviderDigitalOcean:
+	case types.ProviderDigitalOcean:
 		return NewDigitalOceanProvider(f.keyGenerator), nil
-	case enums.ProviderHetzner:
+	case types.ProviderHetzner:
 		return NewHetznerProvider(f.keyGenerator), nil
-	case enums.ProviderLinode:
+	case types.ProviderLinode:
 		return NewLinodeProvider(f.keyGenerator), nil
-	case enums.ProviderVultr:
+	case types.ProviderVultr:
 		return NewVultrProvider(f.keyGenerator), nil
-	case enums.ProviderAWS:
+	case types.ProviderAWS:
 		return NewAWSProvider(f.keyGenerator), nil
-	case enums.ProviderCustom:
+	case types.ProviderCustom:
 		return NewCustomProvider(f.keyGenerator), nil
 	default:
 		return nil, fmt.Errorf("unsupported provider: %s", providerType)

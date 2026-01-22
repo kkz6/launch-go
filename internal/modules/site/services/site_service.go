@@ -433,10 +433,10 @@ func (s *SiteService) getDatabaseTypeForServer(ctx context.Context, serverID str
 	}
 
 	for _, service := range services {
-		if service.Type == servertypes.ServiceTypeMySql {
+		if service.Type == servertypes.ServiceTypeMySQL {
 			return servertypes.SoftwareMySql80
 		}
-		if service.Type == servertypes.ServiceTypePostgreSql {
+		if service.Type == servertypes.ServiceTypePostgreSQL {
 			return servertypes.SoftwarePostgreSql16
 		}
 	}

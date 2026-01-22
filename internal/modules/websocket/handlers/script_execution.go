@@ -11,9 +11,9 @@ import (
 	"golang.org/x/crypto/ssh"
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/script/enums"
 	scriptModels "github.com/kkz6/launch-go/internal/modules/script/models"
 	"github.com/kkz6/launch-go/internal/modules/script/support"
+	scripttypes "github.com/kkz6/launch-go/internal/modules/script/types"
 	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
@@ -333,7 +333,7 @@ func (h *ScriptExecutionHandler) sendJSON(c *websocket.Conn, data map[string]any
 
 // resolveRunAsUser resolves the run-as type to the actual username from the server
 // Priority: execution.RunAs > script.RunAs > default to root
-func resolveRunAsUser(executionRunAs *enums.RunAsUser, scriptRunAs enums.RunAsUser, server *serverModels.Server) string {
+func resolveRunAsUser(executionRunAs *scripttypes.RunAsUser, scriptRunAs scripttypes.RunAsUser, server *serverModels.Server) string {
 	// Use execution's run-as if specified, otherwise fall back to script's default
 	runAs := scriptRunAs
 	if executionRunAs != nil {
@@ -341,9 +341,9 @@ func resolveRunAsUser(executionRunAs *enums.RunAsUser, scriptRunAs enums.RunAsUs
 	}
 
 	switch runAs {
-	case enums.RunAsUserLocal:
+	case scripttypes.RunAsUserLocal:
 		return server.GetUsername()
-	case enums.RunAsUserRoot:
+	case scripttypes.RunAsUserRoot:
 		return server.RootUsername()
 	default:
 		return server.RootUsername()

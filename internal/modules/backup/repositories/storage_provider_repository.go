@@ -8,8 +8,8 @@ import (
 
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 
-	"github.com/kkz6/launch-go/internal/modules/backup/enums"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
+	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -74,7 +74,7 @@ func (r *StorageProviderRepository) FindStorageProvidersByTeamID(ctx context.Con
 }
 
 // FindStorageProvidersByDriver finds all storage providers of a specific type
-func (r *StorageProviderRepository) FindStorageProvidersByDriver(ctx context.Context, driver enums.StorageDriver) ([]models.StorageProvider, error) {
+func (r *StorageProviderRepository) FindStorageProvidersByDriver(ctx context.Context, driver backuptypes.StorageDriver) ([]models.StorageProvider, error) {
 	var providers []models.StorageProvider
 	err := r.DB.WithContext(ctx).
 		Where("provider = ?", driver).
@@ -84,7 +84,7 @@ func (r *StorageProviderRepository) FindStorageProvidersByDriver(ctx context.Con
 }
 
 // FindStorageProvidersByTeamAndDriver finds storage providers by team and driver
-func (r *StorageProviderRepository) FindStorageProvidersByTeamAndDriver(ctx context.Context, teamID string, driver enums.StorageDriver) ([]models.StorageProvider, error) {
+func (r *StorageProviderRepository) FindStorageProvidersByTeamAndDriver(ctx context.Context, teamID string, driver backuptypes.StorageDriver) ([]models.StorageProvider, error) {
 	var providers []models.StorageProvider
 	err := r.DB.WithContext(ctx).
 		Where("team_id = ? AND provider = ?", teamID, driver).

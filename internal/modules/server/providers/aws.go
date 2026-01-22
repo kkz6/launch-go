@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
 
@@ -28,8 +28,8 @@ func NewAWSProvider(keyGenerator sshkey.Generator) *AWSProvider {
 }
 
 // Type returns the provider type
-func (p *AWSProvider) Type() enums.ServerProvider {
-	return enums.ProviderAWS
+func (p *AWSProvider) Type() types.ServerProvider {
+	return types.ProviderAWS
 }
 
 // Connect tests the connection to AWS
@@ -80,14 +80,14 @@ func (p *AWSProvider) GetPublicIPv4(ctx context.Context, server *models.Server, 
 }
 
 // GetImage returns the AMI ID for an operating system and region
-func (p *AWSProvider) GetImage(os enums.OperatingSystem) string {
+func (p *AWSProvider) GetImage(os types.OperatingSystem) string {
 	// For AWS, we need region-specific AMIs
 	// This returns a default; actual usage should call GetImageForRegion
 	return ""
 }
 
 // GetImageForRegion returns the AMI ID for an operating system in a specific region
-func (p *AWSProvider) GetImageForRegion(os enums.OperatingSystem, region string) string {
+func (p *AWSProvider) GetImageForRegion(os types.OperatingSystem, region string) string {
 	return config.GetAWSImageForRegion(region, os.String())
 }
 

@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // ServerProvisionedNotification is sent when a server is successfully provisioned
@@ -19,7 +19,7 @@ type ServerProvisionedNotification struct {
 func NewServerProvisionedNotification(serverName, serverIP string) *ServerProvisionedNotification {
 	rawText := fmt.Sprintf("Your server '%s' has been provisioned and is ready to use.", serverName)
 	return &ServerProvisionedNotification{
-		BaseNotification: models.NewBaseNotification(enums.NotificationTypeServerProvisioned, rawText),
+		BaseNotification: models.NewBaseNotification(notificationtypes.NotificationTypeServerProvisioned, rawText),
 		ServerName:       serverName,
 		ServerIP:         serverIP,
 	}

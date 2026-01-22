@@ -9,9 +9,9 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/database/repositories"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
-	serverenums "github.com/kkz6/launch-go/internal/modules/server/enums"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
@@ -107,17 +107,17 @@ func (c *JobContext) GetDatabaseType(ctx context.Context, serverID string) strin
 		return "mysql"
 	}
 
-	if service.Type == serverenums.ServiceTypePostgreSql {
+	if service.Type == servertypes.ServiceTypePostgreSQL {
 		return "postgresql"
 	}
 	return "mysql"
 }
 
 // GetDatabaseServiceType returns the database service type for a server.
-func (c *JobContext) GetDatabaseServiceType(ctx context.Context, serverID string) serverenums.ServiceType {
+func (c *JobContext) GetDatabaseServiceType(ctx context.Context, serverID string) servertypes.ServiceType {
 	service := c.getDatabaseService(ctx, serverID)
 	if service == nil {
-		return serverenums.ServiceTypeMySql
+		return servertypes.ServiceTypeMySQL
 	}
 	return service.Type
 }
@@ -126,8 +126,8 @@ func (c *JobContext) GetDatabaseServiceType(ctx context.Context, serverID string
 func (c *JobContext) getDatabaseService(ctx context.Context, serverID string) *servermodels.InstalledService {
 	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB()).
 		Where("server_id = ? AND type IN ?", serverID, []string{
-			string(serverenums.ServiceTypeMySql),
-			string(serverenums.ServiceTypePostgreSql),
+			string(servertypes.ServiceTypeMySQL),
+			string(servertypes.ServiceTypePostgreSQL),
 		}).
 		First()
 

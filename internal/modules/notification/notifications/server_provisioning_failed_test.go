@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 func TestNewServerProvisioningFailedNotification(t *testing.T) {
@@ -16,7 +16,7 @@ func TestNewServerProvisioningFailedNotification(t *testing.T) {
 	assert.Equal(t, "my-server", notif.ServerName)
 	assert.Equal(t, "some output", notif.Output)
 	assert.Equal(t, "connection timeout", notif.ErrorMessage)
-	assert.Equal(t, enums.NotificationTypeServerProvisioningFailed, notif.Type())
+	assert.Equal(t, notificationtypes.NotificationTypeServerProvisioningFailed, notif.Type())
 	assert.Contains(t, notif.RawText(), "my-server")
 	assert.Contains(t, notif.RawText(), "failed to provision")
 }

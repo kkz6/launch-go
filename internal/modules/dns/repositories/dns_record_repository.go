@@ -5,8 +5,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
+	dnstypes "github.com/kkz6/launch-go/internal/modules/dns/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -63,7 +63,7 @@ func (r *DNSRecordRepository) FindByDomain(ctx context.Context, domainID string)
 }
 
 // FindByType finds all DNS records of a specific type for a domain
-func (r *DNSRecordRepository) FindByType(ctx context.Context, domainID string, recordType enums.RecordType) ([]models.DNSRecord, error) {
+func (r *DNSRecordRepository) FindByType(ctx context.Context, domainID string, recordType dnstypes.RecordType) ([]models.DNSRecord, error) {
 	var records []models.DNSRecord
 	err := r.DB.WithContext(ctx).
 		Where("domain_id = ? AND type = ?", domainID, recordType).

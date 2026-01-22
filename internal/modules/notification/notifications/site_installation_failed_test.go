@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 func TestNewSiteInstallationFailedNotification(t *testing.T) {
@@ -15,7 +15,7 @@ func TestNewSiteInstallationFailedNotification(t *testing.T) {
 	require.NotNil(t, notif)
 	assert.Equal(t, "mysite.com", notif.SiteAddress)
 	assert.Equal(t, "my-server", notif.ServerName)
-	assert.Equal(t, enums.NotificationTypeSiteInstallationFailed, notif.Type())
+	assert.Equal(t, notificationtypes.NotificationTypeSiteInstallationFailed, notif.Type())
 	assert.Contains(t, notif.RawText(), "mysite.com")
 	assert.Contains(t, notif.RawText(), "my-server")
 	assert.NotZero(t, notif.InstallTime)

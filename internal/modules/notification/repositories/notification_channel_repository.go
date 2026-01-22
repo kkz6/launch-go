@@ -6,8 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -107,7 +107,7 @@ func (r *NotificationChannelRepository) FindByUserID(ctx context.Context, userID
 }
 
 // FindByProvider finds all notification channels by provider type
-func (r *NotificationChannelRepository) FindByProvider(ctx context.Context, teamID string, provider enums.ChannelType) ([]models.NotificationChannel, error) {
+func (r *NotificationChannelRepository) FindByProvider(ctx context.Context, teamID string, provider notificationtypes.ChannelType) ([]models.NotificationChannel, error) {
 	var channels []models.NotificationChannel
 
 	err := r.DB.WithContext(ctx).
@@ -139,7 +139,7 @@ func (r *NotificationChannelRepository) SetConnected(ctx context.Context, id str
 }
 
 // SetDefault sets a notification channel as the default for its type
-func (r *NotificationChannelRepository) SetDefault(ctx context.Context, id string, teamID string, provider enums.ChannelType) error {
+func (r *NotificationChannelRepository) SetDefault(ctx context.Context, id string, teamID string, provider notificationtypes.ChannelType) error {
 	// First, unset any existing default for this provider/team combination
 	err := r.DB.WithContext(ctx).
 		Model(&models.NotificationChannel{}).

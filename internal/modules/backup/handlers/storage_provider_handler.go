@@ -6,8 +6,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
-	"github.com/kkz6/launch-go/internal/modules/backup/enums"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
+	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
@@ -75,7 +75,7 @@ func (h *StorageProviderHandler) ConnectStorageProvider(c *fiber.Ctx) error {
 	providerType := c.Params("provider")
 
 	// Validate provider type
-	driver := enums.StorageDriver(providerType)
+	driver := backuptypes.StorageDriver(providerType)
 	if !driver.IsValid() {
 		return response.BadRequest(c, "Invalid storage provider type")
 	}
@@ -104,7 +104,7 @@ func (h *StorageProviderHandler) UpdateStorageProvider(c *fiber.Ctx) error {
 	providerType := c.Params("provider")
 
 	// Validate provider type
-	driver := enums.StorageDriver(providerType)
+	driver := backuptypes.StorageDriver(providerType)
 	if !driver.IsValid() {
 		return response.BadRequest(c, "Invalid storage provider type")
 	}

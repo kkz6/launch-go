@@ -3,52 +3,52 @@ package git
 import (
 	"github.com/kkz6/launch-go/internal/modules/git/contracts"
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
-	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/handlers"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
+	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 )
 
 // Re-export types from subpackages for backward compatibility
 
 // Enums
-type GitProviderType = enums.GitProviderType
+type GitProviderType = gittypes.GitProviderType
 
 const (
-	GitProviderGitHub    = enums.GitProviderGitHub
-	GitProviderGitLab    = enums.GitProviderGitLab
-	GitProviderBitbucket = enums.GitProviderBitbucket
+	GitProviderGitHub    = gittypes.GitProviderGitHub
+	GitProviderGitLab    = gittypes.GitProviderGitLab
+	GitProviderBitbucket = gittypes.GitProviderBitbucket
 )
 
-var AllGitProviders = enums.AllGitProviders
-var ParseGitProviderType = enums.ParseGitProviderType
-var ParseAccountType = enums.ParseAccountType
+var AllGitProviders = gittypes.AllGitProviders
+var ParseGitProviderType = gittypes.ParseGitProviderType
+var ParseAccountType = gittypes.ParseAccountType
 
-type AccountType = enums.AccountType
+type AccountType = gittypes.AccountType
 
 const (
-	AccountTypeUser         = enums.AccountTypeUser
-	AccountTypeOrganization = enums.AccountTypeOrganization
+	AccountTypeUser         = gittypes.AccountTypeUser
+	AccountTypeOrganization = gittypes.AccountTypeOrganization
 )
 
-type RepositorySelection = enums.RepositorySelection
+type RepositorySelection = gittypes.RepositorySelection
 
 const (
-	RepositorySelectionAll      = enums.RepositorySelectionAll
-	RepositorySelectionSelected = enums.RepositorySelectionSelected
+	RepositorySelectionAll      = gittypes.RepositorySelectionAll
+	RepositorySelectionSelected = gittypes.RepositorySelectionSelected
 )
 
-type WebhookEventType = enums.WebhookEventType
+type WebhookEventType = gittypes.WebhookEventType
 
 const (
-	WebhookEventPush                = enums.WebhookEventPush
-	WebhookEventPullRequest         = enums.WebhookEventPullRequest
-	WebhookEventInstallation        = enums.WebhookEventInstallation
-	WebhookEventInstallationRepos   = enums.WebhookEventInstallationRepos
-	WebhookEventRepositoriesAdded   = enums.WebhookEventRepositoriesAdded
-	WebhookEventRepositoriesRemoved = enums.WebhookEventRepositoriesRemoved
-	WebhookEventInstallationCreated = enums.WebhookEventInstallationCreated
-	WebhookEventInstallationDeleted = enums.WebhookEventInstallationDeleted
+	WebhookEventPush                = gittypes.WebhookEventPush
+	WebhookEventPullRequest         = gittypes.WebhookEventPullRequest
+	WebhookEventInstallation        = gittypes.WebhookEventInstallation
+	WebhookEventInstallationRepos   = gittypes.WebhookEventInstallationRepos
+	WebhookEventRepositoriesAdded   = gittypes.WebhookEventRepositoriesAdded
+	WebhookEventRepositoriesRemoved = gittypes.WebhookEventRepositoriesRemoved
+	WebhookEventInstallationCreated = gittypes.WebhookEventInstallationCreated
+	WebhookEventInstallationDeleted = gittypes.WebhookEventInstallationDeleted
 )
 
 // Models

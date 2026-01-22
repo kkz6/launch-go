@@ -6,7 +6,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 func TestNewFailedToDeleteServerNotification(t *testing.T) {
@@ -16,7 +16,7 @@ func TestNewFailedToDeleteServerNotification(t *testing.T) {
 	assert.Equal(t, "my-server", notif.ServerName)
 	assert.Equal(t, "DigitalOcean", notif.Provider)
 	assert.Equal(t, "API rate limit exceeded", notif.ErrorMessage)
-	assert.Equal(t, enums.NotificationTypeFailedToDeleteServer, notif.Type())
+	assert.Equal(t, notificationtypes.NotificationTypeFailedToDeleteServer, notif.Type())
 	assert.Contains(t, notif.RawText(), "my-server")
 	assert.Contains(t, notif.RawText(), "DigitalOcean")
 }

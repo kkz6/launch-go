@@ -9,8 +9,8 @@ import (
 
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -115,7 +115,7 @@ func (r *ServerRepository) FindArchivedByTeam(ctx context.Context, teamID string
 }
 
 // UpdateStatus updates only the server status
-func (r *ServerRepository) UpdateStatus(ctx context.Context, id string, status enums.ServerStatus) error {
+func (r *ServerRepository) UpdateStatus(ctx context.Context, id string, status types.ServerStatus) error {
 	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
 		"status": status,
 	})
@@ -134,7 +134,7 @@ func (r *ServerRepository) Archive(ctx context.Context, id string) error {
 	now := time.Now()
 	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
 		"archived_at": now,
-		"status":      enums.ServerStatusArchived,
+		"status":      types.ServerStatusArchived,
 	})
 }
 
@@ -142,7 +142,7 @@ func (r *ServerRepository) Archive(ctx context.Context, id string) error {
 func (r *ServerRepository) Unarchive(ctx context.Context, id string) error {
 	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
 		"archived_at": nil,
-		"status":      enums.ServerStatusStopped,
+		"status":      types.ServerStatusStopped,
 	})
 }
 
@@ -161,7 +161,7 @@ func (r *ServerRepository) HasLaunchAgent(ctx context.Context, serverID string) 
 	var count int64
 	err := r.DB.WithContext(ctx).
 		Model(&models.InstalledService{}).
-		Where("server_id = ? AND type = ?", serverID, enums.ServiceTypeLaunchAgent).
+		Where("server_id = ? AND type = ?", serverID, types.ServiceTypeLaunchAgent).
 		Count(&count).Error
 	return count > 0, err
 }

@@ -5,7 +5,7 @@ package types
 import (
 	"database/sql/driver"
 
-	baseenums "github.com/kkz6/launch-go/internal/pkg/enums"
+	"github.com/kkz6/launch-go/internal/pkg/enumtypes"
 )
 
 // =============================================================================
@@ -82,15 +82,15 @@ func (r TeamRole) CanEditResources() bool {
 
 // Scan implements sql.Scanner for database reads
 func (r *TeamRole) Scan(value any) error {
-	return baseenums.ScanString(r, value)
+	return enumtypes.ScanString(r, value)
 }
 
 // Value implements driver.Valuer for database writes
 func (r TeamRole) Value() (driver.Value, error) {
-	return baseenums.ValueString(r)
+	return enumtypes.ValueString(r)
 }
 
 // ParseTeamRole parses a string into a TeamRole
 func ParseTeamRole(s string) (TeamRole, error) {
-	return baseenums.ParseEnum(s, allTeamRoles)
+	return enumtypes.ParseEnum(s, allTeamRoles)
 }

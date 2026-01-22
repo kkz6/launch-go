@@ -7,8 +7,8 @@ import (
 	"gorm.io/gorm"
 
 	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 )
 
 // MockRepository is a test mock implementing the Repository interface.
@@ -131,7 +131,7 @@ func (m *MockRepository) UpdateServer(ctx context.Context, server *models.Server
 	return nil
 }
 
-func (m *MockRepository) UpdateServerStatus(ctx context.Context, id string, status enums.ServerStatus) error {
+func (m *MockRepository) UpdateServerStatus(ctx context.Context, id string, status types.ServerStatus) error {
 	if err := m.getError("UpdateServerStatus"); err != nil {
 		return err
 	}
@@ -615,7 +615,7 @@ func (m *MockRepository) FindServicesByServer(ctx context.Context, serverID stri
 	return services, nil
 }
 
-func (m *MockRepository) FindServicesByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) ([]models.InstalledService, error) {
+func (m *MockRepository) FindServicesByServerAndType(ctx context.Context, serverID string, serviceType types.ServiceType) ([]models.InstalledService, error) {
 	if err := m.getError("FindServicesByServerAndType"); err != nil {
 		return nil, err
 	}
@@ -628,7 +628,7 @@ func (m *MockRepository) FindServicesByServerAndType(ctx context.Context, server
 	return services, nil
 }
 
-func (m *MockRepository) FindServiceByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) (*models.InstalledService, error) {
+func (m *MockRepository) FindServiceByServerAndType(ctx context.Context, serverID string, serviceType types.ServiceType) (*models.InstalledService, error) {
 	if err := m.getError("FindServiceByServerAndType"); err != nil {
 		return nil, err
 	}
@@ -640,7 +640,7 @@ func (m *MockRepository) FindServiceByServerAndType(ctx context.Context, serverI
 	return nil, gorm.ErrRecordNotFound
 }
 
-func (m *MockRepository) FindServiceByServerAndSoftware(ctx context.Context, serverID string, software enums.Software) (*models.InstalledService, error) {
+func (m *MockRepository) FindServiceByServerAndSoftware(ctx context.Context, serverID string, software types.Software) (*models.InstalledService, error) {
 	if err := m.getError("FindServiceByServerAndSoftware"); err != nil {
 		return nil, err
 	}
@@ -652,7 +652,7 @@ func (m *MockRepository) FindDatabaseService(ctx context.Context, serverID strin
 		return nil, err
 	}
 	for _, s := range m.Services {
-		if s.ServerID == serverID && (s.Type == enums.ServiceTypeMySql || s.Type == enums.ServiceTypePostgreSql) {
+		if s.ServerID == serverID && (s.Type == types.ServiceTypeMySQL || s.Type == types.ServiceTypePostgreSQL) {
 			return s, nil
 		}
 	}
@@ -667,7 +667,7 @@ func (m *MockRepository) UpdateService(ctx context.Context, service *models.Inst
 	return nil
 }
 
-func (m *MockRepository) UpdateServiceStatus(ctx context.Context, id string, status enums.ServiceStatus) error {
+func (m *MockRepository) UpdateServiceStatus(ctx context.Context, id string, status types.ServiceStatus) error {
 	if err := m.getError("UpdateServiceStatus"); err != nil {
 		return err
 	}
@@ -677,7 +677,7 @@ func (m *MockRepository) UpdateServiceStatus(ctx context.Context, id string, sta
 	return nil
 }
 
-func (m *MockRepository) UpdateServiceWithTypeData(ctx context.Context, id string, status enums.ServiceStatus, typeData map[string]any) error {
+func (m *MockRepository) UpdateServiceWithTypeData(ctx context.Context, id string, status types.ServiceStatus, typeData map[string]any) error {
 	if err := m.getError("UpdateServiceWithTypeData"); err != nil {
 		return err
 	}

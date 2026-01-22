@@ -3,7 +3,7 @@ package models
 import (
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/backup/enums"
+	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -11,11 +11,11 @@ import (
 type BackupJob struct {
 	basemodels.BaseModel
 	basemodels.TeamScopedModel
-	Status            enums.BackupJobStatus `gorm:"type:varchar(255);not null" json:"status"`
-	BackupID          string                `gorm:"column:backup_id;type:char(26);not null;index" json:"backup_id"`
-	StorageProviderID uint64                `gorm:"column:storage_provider_id;not null;index" json:"storage_provider_id"`
-	Size              *int                  `gorm:"type:int" json:"size,omitempty"`
-	Error             *string               `gorm:"type:longtext" json:"error,omitempty"`
+	Status            backuptypes.BackupJobStatus `gorm:"type:varchar(255);not null" json:"status"`
+	BackupID          string                      `gorm:"column:backup_id;type:char(26);not null;index" json:"backup_id"`
+	StorageProviderID uint64                      `gorm:"column:storage_provider_id;not null;index" json:"storage_provider_id"`
+	Size              *int                        `gorm:"type:int" json:"size,omitempty"`
+	Error             *string                     `gorm:"type:longtext" json:"error,omitempty"`
 
 	// Relations
 	Backup          *Backup          `gorm:"foreignKey:BackupID;references:ID" json:"backup,omitempty"`
@@ -28,7 +28,7 @@ func (j *BackupJob) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 
-	basemodels.SetDefaultStatus(&j.Status, enums.BackupJobStatusPending)
+	basemodels.SetDefaultStatus(&j.Status, backuptypes.BackupJobStatusPending)
 
 	return nil
 }
@@ -49,20 +49,20 @@ func (j *BackupJob) GetSizeInMB() int64 {
 
 // IsFinished returns true if the backup job has finished successfully
 func (j *BackupJob) IsFinished() bool {
-	return j.Status == enums.BackupJobStatusFinished
+	return j.Status == backuptypes.BackupJobStatusFinished
 }
 
 // IsFailed returns true if the backup job has failed
 func (j *BackupJob) IsFailed() bool {
-	return j.Status == enums.BackupJobStatusFailed
+	return j.Status == backuptypes.BackupJobStatusFailed
 }
 
 // IsRunning returns true if the backup job is currently running
 func (j *BackupJob) IsRunning() bool {
-	return j.Status == enums.BackupJobStatusRunning
+	return j.Status == backuptypes.BackupJobStatusRunning
 }
 
 // IsPending returns true if the backup job is pending
 func (j *BackupJob) IsPending() bool {
-	return j.Status == enums.BackupJobStatusPending
+	return j.Status == backuptypes.BackupJobStatusPending
 }

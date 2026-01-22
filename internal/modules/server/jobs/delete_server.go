@@ -7,7 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
@@ -43,7 +43,7 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Delete from cloud provider if not a custom server
-	if server.Provider != enums.ProviderCustom && providerServerID != "" {
+	if server.Provider != types.ProviderCustom && providerServerID != "" {
 		j.Ctx.LogInfo("Deleting server from cloud provider",
 			"server_id", server.ID,
 			"provider", server.Provider.String(),

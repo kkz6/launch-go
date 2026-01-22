@@ -4,7 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
@@ -81,7 +81,7 @@ func (h *Handler) ServiceOperation(c *fiber.Ctx) error {
 		return err
 	}
 
-	operation, err := enums.ParseServiceOption(req.Operation)
+	operation, err := types.ParseServiceOption(req.Operation)
 	if err != nil {
 		return response.BadRequest(c, "Invalid operation")
 	}

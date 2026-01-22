@@ -5,9 +5,9 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 )
 
 // ListFirewallRules returns all firewall rules for a server
@@ -26,7 +26,7 @@ func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID strin
 		return nil, err
 	}
 
-	action, err := enums.ParseRuleAction(req.Action)
+	action, err := types.ParseRuleAction(req.Action)
 	if err != nil {
 		return nil, err
 	}
@@ -73,7 +73,7 @@ func (s *Service) UpdateFirewallRule(ctx context.Context, serverID, teamID, rule
 	}
 
 	if req.Action != nil {
-		action, err := enums.ParseRuleAction(*req.Action)
+		action, err := types.ParseRuleAction(*req.Action)
 		if err != nil {
 			return nil, err
 		}

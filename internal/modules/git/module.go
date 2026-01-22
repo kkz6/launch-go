@@ -4,11 +4,11 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/config"
-	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/jobs"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/repositories"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
+	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
@@ -72,7 +72,7 @@ func createProviderFactory(cfg config.GitConfig) *providers.ProviderFactory {
 
 	// Register GitHub provider
 	if cfg.GitHub.AppID != "" {
-		factory.RegisterConfig(providers.GitProviderType(enums.GitProviderGitHub), &providers.ProviderConfig{
+		factory.RegisterConfig(providers.GitProviderType(gittypes.GitProviderGitHub), &providers.ProviderConfig{
 			AppID:         cfg.GitHub.AppID,
 			PrivateKey:    cfg.GitHub.PrivateKey,
 			WebhookSecret: cfg.GitHub.WebhookSecret,
@@ -82,7 +82,7 @@ func createProviderFactory(cfg config.GitConfig) *providers.ProviderFactory {
 
 	// Register GitLab provider
 	if cfg.GitLab.ClientID != "" {
-		factory.RegisterConfig(providers.GitProviderType(enums.GitProviderGitLab), &providers.ProviderConfig{
+		factory.RegisterConfig(providers.GitProviderType(gittypes.GitProviderGitLab), &providers.ProviderConfig{
 			ClientID:      cfg.GitLab.ClientID,
 			ClientSecret:  cfg.GitLab.ClientSecret,
 			WebhookSecret: cfg.GitLab.WebhookSecret,
@@ -91,7 +91,7 @@ func createProviderFactory(cfg config.GitConfig) *providers.ProviderFactory {
 
 	// Register Bitbucket provider
 	if cfg.Bitbucket.ClientID != "" {
-		factory.RegisterConfig(providers.GitProviderType(enums.GitProviderBitbucket), &providers.ProviderConfig{
+		factory.RegisterConfig(providers.GitProviderType(gittypes.GitProviderBitbucket), &providers.ProviderConfig{
 			ClientID:      cfg.Bitbucket.ClientID,
 			ClientSecret:  cfg.Bitbucket.ClientSecret,
 			WebhookSecret: cfg.Bitbucket.WebhookSecret,

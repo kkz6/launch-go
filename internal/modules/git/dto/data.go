@@ -4,8 +4,8 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/gitref"
+	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 )
 
 // AppInstallationData represents data from a git provider app installation
@@ -322,9 +322,9 @@ func (r *RepositoryData) ToMap() map[string]interface{} {
 
 // WebhookPayload represents a parsed webhook payload
 type WebhookPayload struct {
-	Provider  enums.GitProviderType  `json:"provider"`
-	Event     string                 `json:"event"`
-	Action    string                 `json:"action,omitempty"`
-	Data      map[string]interface{} `json:"data"`
-	Signature string                 `json:"-"`
+	Provider  gittypes.GitProviderType `json:"provider"`
+	Event     string                   `json:"event"`
+	Action    string                   `json:"action,omitempty"`
+	Data      map[string]interface{}   `json:"data"`
+	Signature string                   `json:"-"`
 }

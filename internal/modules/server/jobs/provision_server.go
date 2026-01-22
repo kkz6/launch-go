@@ -6,9 +6,9 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
@@ -32,7 +32,7 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, enums.ServerStatusProvisioning); err != nil {
+	if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, types.ServerStatusProvisioning); err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
@@ -100,7 +100,7 @@ func (j *ProvisionServerJob) Failed(ctx context.Context, err error) {
 		"server_id", j.Payload.ServerID,
 	)
 
-	if updateErr := j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed); updateErr != nil {
+	if updateErr := j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, types.ServerStatusFailed); updateErr != nil {
 		j.Ctx.LogError(updateErr, "Failed to update server status to failed")
 	}
 
@@ -178,14 +178,14 @@ func getWorkingDir(server *models.Server) string {
 	return ".launch"
 }
 
-func getDefaultSoftwareStack() []enums.Software {
-	return []enums.Software{
-		enums.SoftwareCaddy2,
-		enums.SoftwarePhp83,
-		enums.SoftwareComposer2,
-		enums.SoftwareMySql80,
-		enums.SoftwareRedis,
-		enums.SoftwareSupervisor,
+func getDefaultSoftwareStack() []types.Software {
+	return []types.Software{
+		types.SoftwareCaddy2,
+		types.SoftwarePhp83,
+		types.SoftwareComposer2,
+		types.SoftwareMySql80,
+		types.SoftwareRedis,
+		types.SoftwareSupervisor,
 	}
 }
 

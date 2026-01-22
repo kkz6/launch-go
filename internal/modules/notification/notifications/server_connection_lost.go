@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // ServerConnectionLostNotification is sent when SSH connection to a server is lost
@@ -19,7 +19,7 @@ type ServerConnectionLostNotification struct {
 func NewServerConnectionLostNotification(serverName, serverIP string) *ServerConnectionLostNotification {
 	rawText := fmt.Sprintf("Connection lost to server '%s'. We were unable to connect to the server via SSH.", serverName)
 	return &ServerConnectionLostNotification{
-		BaseNotification: models.NewBaseNotification(enums.NotificationTypeServerConnectionLost, rawText),
+		BaseNotification: models.NewBaseNotification(notificationtypes.NotificationTypeServerConnectionLost, rawText),
 		ServerName:       serverName,
 		ServerIP:         serverIP,
 	}

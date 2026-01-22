@@ -6,8 +6,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/dto"
-	"github.com/kkz6/launch-go/internal/modules/billing/enums"
 	"github.com/kkz6/launch-go/internal/modules/billing/services"
+	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
@@ -173,10 +173,10 @@ func (h *BillingHandler) GetSubscriptionOptions(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	userRole := enums.UserRoleCustomer
+	userRole := billingtypes.UserRoleCustomer
 
 	if role := fiberctx.GetUserRole(c); role != "" {
-		userRole = enums.UserRole(role)
+		userRole = billingtypes.UserRole(role)
 	}
 
 	options := services.NewTeamSubscriptionOptions(

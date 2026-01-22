@@ -3,7 +3,7 @@ package models
 import (
 	"time"
 
-	"github.com/kkz6/launch-go/internal/modules/dns/enums"
+	dnstypes "github.com/kkz6/launch-go/internal/modules/dns/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -13,11 +13,11 @@ type DomainProvider struct {
 	basemodels.UserScopedModel
 	basemodels.TeamScopedModel
 	Profile          *string                           `gorm:"type:varchar(255)" json:"profile,omitempty"`
-	Provider         enums.DnsProvider                 `gorm:"type:varchar(255);not null" json:"provider"`
+	Provider         dnstypes.DnsProvider              `gorm:"type:varchar(255);not null" json:"provider"`
 	Credentials      basemodels.EncryptedJSONStringMap `gorm:"type:longtext;not null" json:"-"`
 	Connected        bool                              `gorm:"default:true" json:"connected"`
 	AdditionalData   basemodels.JSONMap                `gorm:"column:additional_data;type:json" json:"-"`
-	SyncStatus       enums.SyncStatus                  `gorm:"column:sync_status;type:varchar(255);not null;default:idle" json:"sync_status"`
+	SyncStatus       dnstypes.SyncStatus               `gorm:"column:sync_status;type:varchar(255);not null;default:idle" json:"sync_status"`
 	LastSyncedAt     *time.Time                        `gorm:"column:last_synced_at;type:timestamp null" json:"last_synced_at,omitempty"`
 	SyncErrorMessage *string                           `gorm:"column:sync_error_message;type:text" json:"sync_error_message,omitempty"`
 

@@ -6,8 +6,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -34,11 +34,11 @@ func (j *AddServiceJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	if err := j.Ctx.Repos().Service().UpdateStatus(ctx, service.ID, enums.ServiceStatusInstalling); err != nil {
+	if err := j.Ctx.Repos().Service().UpdateStatus(ctx, service.ID, types.ServiceStatusInstalling); err != nil {
 		return fmt.Errorf("failed to update service status: %w", err)
 	}
 
-	software := enums.Software(j.Payload.Software)
+	software := types.Software(j.Payload.Software)
 
 	task := tasks.InstallSoftware(software)
 
@@ -55,7 +55,7 @@ func (j *AddServiceJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to install service: %s", result.GetOutput())
 	}
 
-	if err := j.Ctx.Repos().Service().UpdateStatus(ctx, service.ID, enums.ServiceStatusRunning); err != nil {
+	if err := j.Ctx.Repos().Service().UpdateStatus(ctx, service.ID, types.ServiceStatusRunning); err != nil {
 		return fmt.Errorf("failed to update service status: %w", err)
 	}
 
@@ -80,7 +80,7 @@ func (j *AddServiceJob) Failed(ctx context.Context, err error) {
 		"server_id", j.Payload.ServerID,
 	)
 
-	_ = j.Ctx.Repos().Service().UpdateStatus(ctx, j.Payload.ServiceID, enums.ServiceStatusFailed)
+	_ = j.Ctx.Repos().Service().UpdateStatus(ctx, j.Payload.ServiceID, types.ServiceStatusFailed)
 }
 
 func NewAddServiceJob(ctx *JobContext, payload AddServicePayload) *AddServiceJob {

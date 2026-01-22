@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
-	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
+	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
 )
 
 // ServerProvisioningFailedNotification is sent when server provisioning fails
@@ -20,7 +20,7 @@ type ServerProvisioningFailedNotification struct {
 func NewServerProvisioningFailedNotification(serverName, output, errorMessage string) *ServerProvisioningFailedNotification {
 	rawText := fmt.Sprintf("The server '%s' failed to provision. You might need to manually remove it from Launch and from your provider for safety reasons.", serverName)
 	return &ServerProvisioningFailedNotification{
-		BaseNotification: models.NewBaseNotification(enums.NotificationTypeServerProvisioningFailed, rawText),
+		BaseNotification: models.NewBaseNotification(notificationtypes.NotificationTypeServerProvisioningFailed, rawText),
 		ServerName:       serverName,
 		Output:           output,
 		ErrorMessage:     errorMessage,

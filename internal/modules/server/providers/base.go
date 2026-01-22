@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
@@ -54,7 +54,7 @@ func (p *BaseCloudProvider) NewClient(token string) *httpclient.Client {
 }
 
 // GetImageFromConfig returns the image ID for an operating system from the provider config.
-func (p *BaseCloudProvider) GetImageFromConfig(os enums.OperatingSystem, defaultImage string) string {
+func (p *BaseCloudProvider) GetImageFromConfig(os types.OperatingSystem, defaultImage string) string {
 	osKey := os.String()
 	if img, ok := p.config.Images[osKey]; ok {
 		if str, ok := img.(string); ok {

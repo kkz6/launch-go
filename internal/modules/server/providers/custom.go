@@ -5,8 +5,8 @@ import (
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
 
@@ -27,8 +27,8 @@ func NewCustomProvider(keyGenerator sshkey.Generator) *CustomProvider {
 }
 
 // Type returns the provider type
-func (p *CustomProvider) Type() enums.ServerProvider {
-	return enums.ProviderCustom
+func (p *CustomProvider) Type() types.ServerProvider {
+	return types.ProviderCustom
 }
 
 // Connect always returns true for custom providers
@@ -61,7 +61,7 @@ func (p *CustomProvider) GetPublicIPv4(ctx context.Context, server *models.Serve
 }
 
 // GetImage returns empty for custom providers
-func (p *CustomProvider) GetImage(os enums.OperatingSystem) string {
+func (p *CustomProvider) GetImage(os types.OperatingSystem) string {
 	return ""
 }
 

@@ -6,8 +6,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -39,12 +39,12 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 	}
 
 	// Verify it's a PHP service
-	if service.Type != enums.ServiceTypePhp {
+	if service.Type != types.ServiceTypePhp {
 		return fmt.Errorf("service is not a PHP installation")
 	}
 
 	// Get the PHP version from the software
-	software := enums.Software(service.Software)
+	software := types.Software(service.Software)
 	version := software.GetVersion()
 
 	// Mark as configuring

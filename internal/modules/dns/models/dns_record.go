@@ -1,8 +1,8 @@
 package models
 
 import (
-	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
+	dnstypes "github.com/kkz6/launch-go/internal/modules/dns/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -10,19 +10,19 @@ import (
 type DNSRecord struct {
 	basemodels.BaseModel
 	basemodels.TeamScopedModel
-	DomainID   string           `gorm:"column:domain_id;type:char(26);not null;index" json:"domain_id"`
-	ProviderID string           `gorm:"column:provider_id;type:varchar(255);not null" json:"provider_id"`
-	Type       enums.RecordType `gorm:"type:varchar(255);not null" json:"type"`
-	Name       string           `gorm:"type:varchar(255);not null" json:"name"`
-	Value      string           `gorm:"type:varchar(255);not null" json:"value"`
-	TTL        int              `gorm:"type:int;not null" json:"ttl"`
-	Priority   *int             `gorm:"type:int" json:"priority,omitempty"`
-	Tag        *string          `gorm:"type:varchar(255)" json:"tag,omitempty"`
-	Weight     *int             `gorm:"type:int" json:"weight,omitempty"`
-	Port       *int             `gorm:"type:int" json:"port,omitempty"`
-	Flags      *int             `gorm:"type:int" json:"flags,omitempty"`
-	Comment    *string          `gorm:"type:varchar(255)" json:"comment,omitempty"`
-	Proxied    *bool            `gorm:"type:boolean" json:"proxied,omitempty"`
+	DomainID   string              `gorm:"column:domain_id;type:char(26);not null;index" json:"domain_id"`
+	ProviderID string              `gorm:"column:provider_id;type:varchar(255);not null" json:"provider_id"`
+	Type       dnstypes.RecordType `gorm:"type:varchar(255);not null" json:"type"`
+	Name       string              `gorm:"type:varchar(255);not null" json:"name"`
+	Value      string              `gorm:"type:varchar(255);not null" json:"value"`
+	TTL        int                 `gorm:"type:int;not null" json:"ttl"`
+	Priority   *int                `gorm:"type:int" json:"priority,omitempty"`
+	Tag        *string             `gorm:"type:varchar(255)" json:"tag,omitempty"`
+	Weight     *int                `gorm:"type:int" json:"weight,omitempty"`
+	Port       *int                `gorm:"type:int" json:"port,omitempty"`
+	Flags      *int                `gorm:"type:int" json:"flags,omitempty"`
+	Comment    *string             `gorm:"type:varchar(255)" json:"comment,omitempty"`
+	Proxied    *bool               `gorm:"type:boolean" json:"proxied,omitempty"`
 
 	// Relations
 	Domain *Domain `gorm:"foreignKey:DomainID;references:ID" json:"domain,omitempty"`
@@ -35,12 +35,12 @@ func (DNSRecord) TableName() string {
 
 // IsEditable returns true if this record type can be edited by users
 func (r *DNSRecord) IsEditable() bool {
-	return r.Type != enums.RecordTypeNS && r.Type != enums.RecordTypeSOA
+	return r.Type != dnstypes.RecordTypeNS && r.Type != dnstypes.RecordTypeSOA
 }
 
 // IsDeletable returns true if this record type can be deleted by users
 func (r *DNSRecord) IsDeletable() bool {
-	return r.Type != enums.RecordTypeNS && r.Type != enums.RecordTypeSOA
+	return r.Type != dnstypes.RecordTypeNS && r.Type != dnstypes.RecordTypeSOA
 }
 
 // ToProviderRecord converts DNSRecord to providers.DNSRecord for provider operations

@@ -5,8 +5,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
@@ -42,7 +42,7 @@ func (h *Handler) ListLogs(c *fiber.Ctx) error {
 	var logs []LogInfo
 
 	for _, service := range server.Services {
-		software := enums.Software(service.Software)
+		software := types.Software(service.Software)
 		if software.HasLogPath() {
 			logPath := software.LogPath()
 			// Generate encrypted route parameter
@@ -122,7 +122,7 @@ func (h *Handler) GetLogContent(c *fiber.Ctx) error {
 
 // isAllowedLogPath checks if the path is in the allowed log paths
 func isAllowedLogPath(path string) bool {
-	for _, software := range enums.AllSoftware() {
+	for _, software := range types.AllSoftware() {
 		if software.LogPath() == path {
 			return true
 		}

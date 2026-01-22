@@ -7,10 +7,10 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/script/enums"
 	"github.com/kkz6/launch-go/internal/modules/script/models"
 	"github.com/kkz6/launch-go/internal/modules/script/support"
 	"github.com/kkz6/launch-go/internal/modules/script/tasks"
+	scripttypes "github.com/kkz6/launch-go/internal/modules/script/types"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
@@ -194,15 +194,15 @@ func NewExecuteScriptTask(executionID uint64, scriptID, serverID, teamID string)
 // resolveRunAsUser resolves the run-as type to the actual username from the server
 // - "root" → server.RootUsername() (e.g., "root" or provider-specific root user)
 // - "local" → server.GetUsername() (e.g., "launch" or custom username)
-func resolveRunAsUser(runAs *enums.RunAsUser, server *servermodels.Server) string {
+func resolveRunAsUser(runAs *scripttypes.RunAsUser, server *servermodels.Server) string {
 	if runAs == nil {
 		return server.RootUsername()
 	}
 
 	switch *runAs {
-	case enums.RunAsUserLocal:
+	case scripttypes.RunAsUserLocal:
 		return server.GetUsername()
-	case enums.RunAsUserRoot:
+	case scripttypes.RunAsUserRoot:
 		return server.RootUsername()
 	default:
 		return server.RootUsername()

@@ -7,7 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
@@ -43,8 +43,8 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 	)
 
 	// Update server status to failed if not already
-	if server.Status != enums.ServerStatusFailed {
-		if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, enums.ServerStatusFailed); err != nil {
+	if server.Status != types.ServerStatusFailed {
+		if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, types.ServerStatusFailed); err != nil {
 			j.Ctx.LogError(err, "Failed to update server status to failed")
 		}
 	}
@@ -58,7 +58,7 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 	}
 
 	// Clean up resources on cloud provider
-	if server.Provider != enums.ProviderCustom && providerServerID != "" {
+	if server.Provider != types.ProviderCustom && providerServerID != "" {
 		if err := j.cleanupProviderResources(ctx, server, providerServerID); err != nil {
 			j.Ctx.LogError(err, "Failed to cleanup provider resources",
 				"server_id", server.ID,
@@ -242,7 +242,7 @@ func (j *CleanupFailedProvisioningJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Even if cleanup fails, ensure server is marked as failed
-	_ = j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, enums.ServerStatusFailed)
+	_ = j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, types.ServerStatusFailed)
 
 	server, findErr := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {

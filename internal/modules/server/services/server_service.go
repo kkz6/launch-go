@@ -13,9 +13,9 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
@@ -48,21 +48,21 @@ func (s *Service) GetServerWithRelations(ctx context.Context, id, teamID string)
 
 // CreateServer creates a new server
 func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *dto.CreateServerRequest) (*models.Server, error) {
-	provider, err := enums.ParseServerProvider(req.Provider)
+	provider, err := types.ParseServerProvider(req.Provider)
 	if err != nil {
 		return nil, ErrInvalidProvider
 	}
 
-	serverType, err := enums.ParseServerType(req.Type)
+	serverType, err := types.ParseServerType(req.Type)
 	if err != nil {
 		return nil, ErrInvalidServerType
 	}
 
-	os := enums.OSUbuntu24
+	os := types.OSUbuntu24
 	if req.OperatingSystem != "" {
-		os, err = enums.ParseOperatingSystem(req.OperatingSystem)
+		os, err = types.ParseOperatingSystem(req.OperatingSystem)
 		if err != nil {
-			os = enums.OSUbuntu24
+			os = types.OSUbuntu24
 		}
 	}
 
@@ -82,7 +82,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		Provider:        provider,
 		Type:            &serverTypeStr,
 		OperatingSystem: &osStr,
-		Status:          enums.ServerStatusNew,
+		Status:          types.ServerStatusNew,
 		SSHPort:         &defaultSSHPort,
 		Username:        &defaultUsername,
 		PrivateKey:      basemodels.EncryptedString(privateKey),
@@ -99,7 +99,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		server.Username = &req.SSHUser
 	}
 
-	if provider == enums.ProviderCustom {
+	if provider == types.ProviderCustom {
 		server.PublicIPv4 = &req.IPAddress
 		server.PrivateKey = basemodels.EncryptedString(req.PrivateKey)
 		server.PublicKey = ""
@@ -109,7 +109,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 	server.WorkingDirectory = &workingDir
 
 	// Set provider data for cloud servers
-	if provider != enums.ProviderCustom {
+	if provider != types.ProviderCustom {
 		server.ServerProviderID = &req.CredentialID
 		server.ProviderData = map[string]interface{}{
 			"region": req.Region,
@@ -123,7 +123,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 
 	activity.RecordCreated(ctx, userID, server, "Server was created")
 
-	if provider != enums.ProviderCustom {
+	if provider != types.ProviderCustom {
 		if err := s.dispatchCreateOnProviderJob(server, req.CredentialID, req.SSHKeyIDs); err != nil {
 			s.LogError(err, "Failed to dispatch create on provider job", "server_id", server.ID)
 		}
@@ -175,17 +175,17 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID string) error {
 
 	activity.RecordEvent(ctx, "deleted", "", server, "Server deletion requested")
 
-	if err := s.repos.Server().UpdateStatus(ctx, id, enums.ServerStatusDeleting); err != nil {
+	if err := s.repos.Server().UpdateStatus(ctx, id, types.ServerStatusDeleting); err != nil {
 		return err
 	}
 
-	if server.Provider != enums.ProviderCustom {
+	if server.Provider != types.ProviderCustom {
 		if err := s.dispatchDeleteJob(server); err != nil {
 			s.LogError(err, "Failed to dispatch delete job", "server_id", server.ID)
 		}
 	}
 
-	if server.Provider == enums.ProviderCustom {
+	if server.Provider == types.ProviderCustom {
 		return s.repos.Server().Delete(ctx, id)
 	}
 
@@ -403,7 +403,7 @@ func (s *Service) GetProvisionScript(ctx context.Context, serverID string) (stri
 	}
 
 	// Only custom servers or archived servers can get provision script
-	if server.Provider != enums.ProviderCustom && server.ArchivedAt == nil {
+	if server.Provider != types.ProviderCustom && server.ArchivedAt == nil {
 		return "", nil
 	}
 

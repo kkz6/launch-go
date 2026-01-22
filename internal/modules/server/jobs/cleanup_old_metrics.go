@@ -7,7 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -66,5 +66,5 @@ func NewCleanupOldMetricsTask() (*asynq.Task, error) {
 // CleanupOldMetricsCronSpec returns the cron spec for the cleanup job
 // Runs daily at 2:00 AM
 func CleanupOldMetricsCronSpec() string {
-	return enums.CronDaily2AM.Expression()
+	return types.CronDaily2AM.Expression()
 }

@@ -9,8 +9,8 @@ import (
 
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -39,7 +39,7 @@ func (r *ServiceRepository) FindByID(ctx context.Context, id string) (*models.In
 }
 
 // FindByServerAndType finds all services by server and type
-func (r *ServiceRepository) FindByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) ([]models.InstalledService, error) {
+func (r *ServiceRepository) FindByServerAndType(ctx context.Context, serverID string, serviceType types.ServiceType) ([]models.InstalledService, error) {
 	var services []models.InstalledService
 	err := r.DB.WithContext(ctx).
 		Where("server_id = ? AND type = ?", serverID, serviceType).
@@ -48,7 +48,7 @@ func (r *ServiceRepository) FindByServerAndType(ctx context.Context, serverID st
 }
 
 // FindOneByServerAndType finds a service by server and type
-func (r *ServiceRepository) FindOneByServerAndType(ctx context.Context, serverID string, serviceType enums.ServiceType) (*models.InstalledService, error) {
+func (r *ServiceRepository) FindOneByServerAndType(ctx context.Context, serverID string, serviceType types.ServiceType) (*models.InstalledService, error) {
 	var service models.InstalledService
 	err := r.DB.WithContext(ctx).
 		First(&service, "server_id = ? AND type = ?", serverID, serviceType).Error
@@ -62,7 +62,7 @@ func (r *ServiceRepository) FindOneByServerAndType(ctx context.Context, serverID
 }
 
 // FindByServerAndSoftware finds a service by server and software
-func (r *ServiceRepository) FindByServerAndSoftware(ctx context.Context, serverID string, software enums.Software) (*models.InstalledService, error) {
+func (r *ServiceRepository) FindByServerAndSoftware(ctx context.Context, serverID string, software types.Software) (*models.InstalledService, error) {
 	var service models.InstalledService
 	err := r.DB.WithContext(ctx).
 		First(&service, "server_id = ? AND software = ?", serverID, software).Error
@@ -79,7 +79,7 @@ func (r *ServiceRepository) FindByServerAndSoftware(ctx context.Context, serverI
 func (r *ServiceRepository) FindDatabaseService(ctx context.Context, serverID string) (*models.InstalledService, error) {
 	var service models.InstalledService
 	err := r.DB.WithContext(ctx).
-		First(&service, "server_id = ? AND (type = ? OR type = ?)", serverID, enums.ServiceTypeMySql, enums.ServiceTypePostgreSql).Error
+		First(&service, "server_id = ? AND (type = ? OR type = ?)", serverID, types.ServiceTypeMySQL, types.ServiceTypePostgreSQL).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fiberutil.NotFound()
@@ -90,14 +90,14 @@ func (r *ServiceRepository) FindDatabaseService(ctx context.Context, serverID st
 }
 
 // UpdateStatus updates the service status
-func (r *ServiceRepository) UpdateStatus(ctx context.Context, id string, status enums.ServiceStatus) error {
+func (r *ServiceRepository) UpdateStatus(ctx context.Context, id string, status types.ServiceStatus) error {
 	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
 		"status": status,
 	})
 }
 
 // UpdateWithTypeData updates the service status and type data
-func (r *ServiceRepository) UpdateWithTypeData(ctx context.Context, id string, status enums.ServiceStatus, typeData map[string]any) error {
+func (r *ServiceRepository) UpdateWithTypeData(ctx context.Context, id string, status types.ServiceStatus, typeData map[string]any) error {
 	service, err := r.FindByID(ctx, id)
 	if err != nil {
 		return err
@@ -127,7 +127,7 @@ func (r *ServiceRepository) SetDefault(ctx context.Context, id string, isDefault
 func (r *ServiceRepository) UnsetDefaultPhp(ctx context.Context, serverID string) error {
 	return r.DB.WithContext(ctx).
 		Model(&models.InstalledService{}).
-		Where("server_id = ? AND type = ?", serverID, enums.ServiceTypePhp).
+		Where("server_id = ? AND type = ?", serverID, types.ServiceTypePhp).
 		Update("is_default", false).Error
 }
 

@@ -10,8 +10,8 @@ import (
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
-	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
+	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -113,7 +113,7 @@ func (r *SourceControlRepoRepository) FindPublicRepositories(ctx context.Context
 // GetInstallationRepositories gets repositories for a specific installation
 func (r *SourceControlRepoRepository) GetInstallationRepositories(
 	ctx context.Context,
-	provider enums.GitProviderType,
+	provider gittypes.GitProviderType,
 	installationID string,
 	teamID string,
 ) ([]models.SourceControlRepository, error) {

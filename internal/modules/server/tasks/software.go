@@ -1,31 +1,31 @@
 package tasks
 
 import (
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks/templates"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // Task type constants for software installation/removal operations
 const (
-	InstallMySQL80TaskType       = "server:install_mysql80"
-	InstallPostgreSQL16TaskType  = "server:install_postgresql16"
-	InstallCaddy2TaskType        = "server:install_caddy2"
-	InstallRedisTaskType         = "server:install_redis"
-	InstallSupervisorTaskType    = "server:install_supervisor"
-	InstallComposer2TaskType     = "server:install_composer2"
-	InstallNode21TaskType        = "server:install_node21"
-	InstallBunTaskType           = "server:install_bun"
-	InstallPHPTaskType           = "server:install_php"
-	InstallLaunchAgentTaskType   = "server:install_launch_agent"
-	InstallSoftwareTaskType      = "server:install_software"
-	RemoveRedisTaskType          = "server:remove_redis"
-	RemoveSupervisorTaskType     = "server:remove_supervisor"
-	RemoveLaunchAgentTaskType    = "server:remove_launch_agent"
-	RemoveMySQLTaskType          = "server:remove_mysql"
-	RemovePostgreSQLTaskType     = "server:remove_postgresql"
-	RemovePHPTaskType            = "server:remove_php"
-	RemoveSoftwareTaskType       = "server:remove_software"
+	InstallMySQL80TaskType      = "server:install_mysql80"
+	InstallPostgreSQL16TaskType = "server:install_postgresql16"
+	InstallCaddy2TaskType       = "server:install_caddy2"
+	InstallRedisTaskType        = "server:install_redis"
+	InstallSupervisorTaskType   = "server:install_supervisor"
+	InstallComposer2TaskType    = "server:install_composer2"
+	InstallNode21TaskType       = "server:install_node21"
+	InstallBunTaskType          = "server:install_bun"
+	InstallPHPTaskType          = "server:install_php"
+	InstallLaunchAgentTaskType  = "server:install_launch_agent"
+	InstallSoftwareTaskType     = "server:install_software"
+	RemoveRedisTaskType         = "server:remove_redis"
+	RemoveSupervisorTaskType    = "server:remove_supervisor"
+	RemoveLaunchAgentTaskType   = "server:remove_launch_agent"
+	RemoveMySQLTaskType         = "server:remove_mysql"
+	RemovePostgreSQLTaskType    = "server:remove_postgresql"
+	RemovePHPTaskType           = "server:remove_php"
+	RemoveSoftwareTaskType      = "server:remove_software"
 )
 
 // MySQLInstallConfig holds configuration for MySQL installation
@@ -242,7 +242,7 @@ func RemovePHP(config PHPRemoveConfig) *taskrunner.BaseTask {
 }
 
 // InstallSoftware creates a task to install software based on the software enum
-func InstallSoftware(software enums.Software) *taskrunner.BaseTask {
+func InstallSoftware(software types.Software) *taskrunner.BaseTask {
 	templateName := software.InstallTemplateName()
 	data := map[string]interface{}{
 		"Version": software.GetVersion(),
@@ -256,7 +256,7 @@ func InstallSoftware(software enums.Software) *taskrunner.BaseTask {
 }
 
 // RemoveSoftware creates a task to remove software based on the software enum
-func RemoveSoftware(software enums.Software) *taskrunner.BaseTask {
+func RemoveSoftware(software types.Software) *taskrunner.BaseTask {
 	templateName := software.RemoveTemplateName()
 	data := map[string]interface{}{
 		"Version": software.GetVersion(),

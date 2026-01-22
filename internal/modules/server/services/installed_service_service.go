@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -38,7 +38,7 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 		return nil, err
 	}
 
-	software, err := enums.ParseSoftware(req.Software)
+	software, err := types.ParseSoftware(req.Software)
 	if err != nil {
 		return nil, ErrInvalidSoftware
 	}
@@ -55,7 +55,7 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 		Type:      software.GetServiceType(),
 		Name:      software.Label(),
 		Software:  software.String(),
-		Status:    enums.ServiceStatusPending,
+		Status:    types.ServiceStatusPending,
 		IsDefault: false,
 		Version:   software.GetVersion(),
 	}
@@ -73,7 +73,7 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 }
 
 // HandleServiceOperation handles service operations (start, stop, restart, remove, status)
-func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, serviceID string, operation enums.ServiceOption) error {
+func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, serviceID string, operation types.ServiceOption) error {
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
@@ -89,13 +89,13 @@ func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, 
 	}
 
 	switch operation {
-	case enums.ServiceOptionStart, enums.ServiceOptionRestart:
+	case types.ServiceOptionStart, types.ServiceOptionRestart:
 		return s.dispatchServiceRestartJob(server, service)
-	case enums.ServiceOptionStop:
+	case types.ServiceOptionStop:
 		return s.dispatchServiceStopJob(server, service)
-	case enums.ServiceOptionRemove:
+	case types.ServiceOptionRemove:
 		return s.dispatchServiceRemoveJob(server, service)
-	case enums.ServiceOptionStatus:
+	case types.ServiceOptionStatus:
 		return s.dispatchServiceStatusJob(server, service)
 	default:
 		return fmt.Errorf("unknown operation: %s", operation)
@@ -218,7 +218,7 @@ func (s *Service) GetAvailableServices(ctx context.Context, serverID, teamID str
 
 	// Build a map of installed software
 	installedMap := make(map[string]*models.InstalledService)
-	var installedDbType enums.ServiceType
+	var installedDbType types.ServiceType
 	for i := range installedServices {
 		svc := &installedServices[i]
 		installedMap[svc.Software] = svc
@@ -229,7 +229,7 @@ func (s *Service) GetAvailableServices(ctx context.Context, serverID, teamID str
 	}
 
 	// Get all software groups
-	groups := enums.GetAllSoftwareGroups()
+	groups := types.GetAllSoftwareGroups()
 	result := make([]dto.AvailableSoftwareResponse, 0, len(groups))
 
 	for _, group := range groups {
@@ -292,7 +292,7 @@ func (s *Service) GetPhpVersions(ctx context.Context, serverID, teamID string) (
 	}
 
 	// Get all installed PHP services
-	installedServices, err := s.repos.Service().FindByServerAndType(ctx, serverID, enums.ServiceTypePhp)
+	installedServices, err := s.repos.Service().FindByServerAndType(ctx, serverID, types.ServiceTypePhp)
 	if err != nil {
 		return nil, err
 	}
@@ -319,7 +319,7 @@ func (s *Service) GetPhpVersions(ctx context.Context, serverID, teamID string) (
 	}
 
 	// Get all available PHP versions
-	allPhpVersions := enums.AllPhpVersions()
+	allPhpVersions := types.AllPhpVersions()
 	result := make([]dto.PhpVersionResponse, len(allPhpVersions))
 
 	for i, software := range allPhpVersions {
@@ -353,7 +353,7 @@ func (s *Service) GetInstalledPhpVersions(ctx context.Context, serverID, teamID 
 	}
 
 	// Get all installed PHP services
-	installedServices, err := s.repos.Service().FindByServerAndType(ctx, serverID, enums.ServiceTypePhp)
+	installedServices, err := s.repos.Service().FindByServerAndType(ctx, serverID, types.ServiceTypePhp)
 	if err != nil {
 		return nil, err
 	}
@@ -379,7 +379,7 @@ func (s *Service) GetInstalledPhpVersions(ctx context.Context, serverID, teamID 
 
 	result := make([]dto.InstalledPhpVersionResponse, 0, len(installedServices))
 	for _, svc := range installedServices {
-		sw := enums.Software(svc.Software)
+		sw := types.Software(svc.Software)
 		result = append(result, dto.InstalledPhpVersionResponse{
 			ID:          svc.ID,
 			Key:         svc.Software,
@@ -439,7 +439,7 @@ func (s *Service) SetDefaultPhpVersion(ctx context.Context, serverID, teamID, se
 		return fiberutil.NotFound()
 	}
 
-	if service.Type != enums.ServiceTypePhp {
+	if service.Type != types.ServiceTypePhp {
 		return fmt.Errorf("service is not a PHP service")
 	}
 

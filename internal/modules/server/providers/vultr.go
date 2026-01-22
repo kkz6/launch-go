@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
@@ -33,8 +33,8 @@ func NewVultrProvider(keyGenerator sshkey.Generator) *VultrProvider {
 }
 
 // Type returns the provider type
-func (p *VultrProvider) Type() enums.ServerProvider {
-	return enums.ProviderVultr
+func (p *VultrProvider) Type() types.ServerProvider {
+	return types.ProviderVultr
 }
 
 // Connect tests the connection to Vultr
@@ -158,7 +158,7 @@ func (p *VultrProvider) GetPublicIPv4(ctx context.Context, server *models.Server
 }
 
 // GetImage returns the image ID for an operating system
-func (p *VultrProvider) GetImage(os enums.OperatingSystem) string {
+func (p *VultrProvider) GetImage(os types.OperatingSystem) string {
 	return p.GetImageFromConfig(os, "2284") // Ubuntu 24.04
 }
 
@@ -245,9 +245,9 @@ func (p *VultrProvider) createInstance(ctx context.Context, client *httpclient.C
 	}, nil
 }
 
-func (p *VultrProvider) getOperatingSystem(server *models.Server) enums.OperatingSystem {
+func (p *VultrProvider) getOperatingSystem(server *models.Server) types.OperatingSystem {
 	if server.OperatingSystem != nil {
-		return enums.OperatingSystem(*server.OperatingSystem)
+		return types.OperatingSystem(*server.OperatingSystem)
 	}
-	return enums.OSUbuntu24
+	return types.OSUbuntu24
 }

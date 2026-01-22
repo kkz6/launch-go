@@ -6,7 +6,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -16,7 +16,7 @@ type FirewallRule struct {
 	basemodels.InstallableModel
 	basemodels.ServerScopedModel
 	Name     string           `gorm:"type:varchar(255);not null" json:"name"`
-	Action   enums.RuleAction `gorm:"type:varchar(255);not null" json:"action"`
+	Action   types.RuleAction `gorm:"type:varchar(255);not null" json:"action"`
 	Port     string           `gorm:"type:varchar(255);not null" json:"port"`
 	FromIPv4 *string          `gorm:"column:from_ipv4;type:varchar(255)" json:"from_ipv4,omitempty"`
 	Mask     *string          `gorm:"type:varchar(255)" json:"mask,omitempty"`
@@ -32,7 +32,7 @@ func (f *FirewallRule) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	if f.Action == "" {
-		f.Action = enums.RuleActionAllow
+		f.Action = types.RuleActionAllow
 	}
 
 	return nil

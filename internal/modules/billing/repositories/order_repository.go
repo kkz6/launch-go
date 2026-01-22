@@ -5,8 +5,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/kkz6/launch-go/internal/modules/billing/enums"
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
+	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -77,7 +77,7 @@ func (r *OrderRepository) Update(ctx context.Context, order *models.Order) error
 }
 
 // UpdateStatus updates only the status of an order
-func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status enums.OrderStatus) error {
+func (r *OrderRepository) UpdateStatus(ctx context.Context, id string, status billingtypes.OrderStatus) error {
 	return r.DB.WithContext(ctx).
 		Model(&models.Order{}).
 		Where("id = ?", id).
