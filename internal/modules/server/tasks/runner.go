@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
@@ -80,20 +81,21 @@ func (r *TaskRunnerResult) GetExitCode() int {
 // TaskRunner handles task execution on servers.
 // Use the builder pattern to configure and execute tasks.
 type TaskRunner struct {
-	server           *models.Server
-	task             taskrunner.Task
-	db               *gorm.DB
-	queue            *queue.Client
-	dispatcher       taskrunner.TaskDispatcher
-	logger           *zerolog.Logger
-	broadcaster      broadcast.TeamBroadcaster
-	notifier         taskrunner.NotifierService
-	asRoot           bool
-	username         string
-	trackInDB        bool
-	throwOnError     bool
-	callbackURLs     *CallbackURLs
-	completionConfig *taskrunner.CompletionConfig
+	server                   *models.Server
+	task                     taskrunner.Task
+	db                       *gorm.DB
+	queue                    *queue.Client
+	dispatcher               taskrunner.TaskDispatcher
+	logger                   *zerolog.Logger
+	broadcaster              broadcast.TeamBroadcaster
+	notifier                 taskrunner.NotifierService
+	asRoot                   bool
+	username                 string
+	trackInDB                bool
+	throwOnError             bool
+	callbackURLs             *CallbackURLs
+	completionConfig         *taskrunner.CompletionConfig
+	outputPollingIntervalSec int // Polling interval for background tasks (0 = disabled)
 }
 
 // NewTaskRunner creates a new TaskRunner for a server.
@@ -178,6 +180,14 @@ func (r *TaskRunner) Throw() *TaskRunner {
 // WithCallbacks sets callback URLs for async tasks.
 func (r *TaskRunner) WithCallbacks(urls *CallbackURLs) *TaskRunner {
 	r.callbackURLs = urls
+	return r
+}
+
+// WithOutputPolling sets the interval for fetching output during background execution.
+// The job will SSH into the server at this interval to fetch the task output file.
+// Set to 0 (default) to disable polling.
+func (r *TaskRunner) WithOutputPolling(intervalSeconds int) *TaskRunner {
+	r.outputPollingIntervalSec = intervalSeconds
 	return r
 }
 
@@ -412,6 +422,11 @@ func (r *TaskRunner) runWithCallbacks(ctx context.Context) (*models.Task, error)
 	r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
 	r.broadcastTaskRunning(taskModel)
 
+	// Start output polling if configured
+	if r.outputPollingIntervalSec > 0 && r.queue != nil {
+		r.dispatchOutputPolling(taskModel)
+	}
+
 	if r.logger != nil {
 		r.logger.Info().
 			Str("task_id", taskModel.ID).
@@ -493,6 +508,46 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 	}()
 
 	return taskModel, nil
+}
+
+// fetchTaskOutputPayload mirrors jobs.FetchTaskOutputPayload to avoid import cycle
+type fetchTaskOutputPayload struct {
+	TaskID                string `json:"task_id"`
+	ServerID              string `json:"server_id"`
+	RescheduleIntervalSec int    `json:"reschedule_interval_sec"`
+}
+
+// dispatchOutputPolling schedules the first output fetch job with self-rescheduling
+func (r *TaskRunner) dispatchOutputPolling(taskModel *models.Task) {
+	payload := fetchTaskOutputPayload{
+		TaskID:                taskModel.ID,
+		ServerID:              r.server.ID,
+		RescheduleIntervalSec: r.outputPollingIntervalSec,
+	}
+
+	data, err := json.Marshal(payload)
+	if err != nil {
+		if r.logger != nil {
+			r.logger.Error().Err(err).Msg("Failed to marshal output polling payload")
+		}
+		return
+	}
+
+	// Use the same type constant as jobs.TypeFetchTaskOutput
+	task := asynq.NewTask("server:fetch_task_output", data, asynq.MaxRetry(0))
+
+	// Delay first poll by 5 seconds to let the task start
+	_, err = r.queue.Enqueue(task, asynq.ProcessIn(5*time.Second))
+	if err != nil {
+		if r.logger != nil {
+			r.logger.Error().Err(err).Msg("Failed to dispatch output polling job")
+		}
+	} else if r.logger != nil {
+		r.logger.Info().
+			Str("task_id", taskModel.ID).
+			Int("interval_sec", r.outputPollingIntervalSec).
+			Msg("Started output polling")
+	}
 }
 
 // handleTaskCompletion handles task completion in local mode.
