@@ -295,6 +295,7 @@ func (h *TaskWebhookHandler) GenerateCallbackURLs(baseURL, taskID string, expire
 	finishedPath := basePath.Clone().Path("finished").String()
 	failedPath := basePath.Clone().Path("failed").String()
 	timeoutPath := basePath.Clone().Path("timeout").String()
+	customPath := basePath.Clone().Path("callback").String()
 
 	// Use the signer with the base URL for generating absolute URLs
 	signerWithBase := h.Signer.WithBaseURL(baseURL)
@@ -303,14 +304,16 @@ func (h *TaskWebhookHandler) GenerateCallbackURLs(baseURL, taskID string, expire
 		Finished: signerWithBase.SignedURL(finishedPath, nil, expireDuration),
 		Failed:   signerWithBase.SignedURL(failedPath, nil, expireDuration),
 		Timeout:  signerWithBase.SignedURL(timeoutPath, nil, expireDuration),
+		Custom:   signerWithBase.SignedURL(customPath, nil, expireDuration),
 	}
 }
 
-// CallbackURLs contains the three webhook URLs for task completion
+// CallbackURLs contains the four webhook URLs for task completion
 type CallbackURLs struct {
 	Finished string
 	Failed   string
 	Timeout  string
+	Custom   string // For progress updates from script
 }
 
 // CustomCallback handles custom callbacks from running tasks (for progress updates)
