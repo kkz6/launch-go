@@ -144,6 +144,7 @@ func (m *Module) registerTaskWebhookRoutes(router fiber.Router, handler *handler
 	webhooks.Post("/:id/finished", handler.MarkAsFinished)
 	webhooks.Post("/:id/failed", handler.MarkAsFailed)
 	webhooks.Post("/:id/timeout", handler.MarkAsTimeout)
+	webhooks.Post("/:id/callback", handler.CustomCallback)
 }
 
 // registerProvisionScriptRoutes registers provision script routes (signed URL protected)
