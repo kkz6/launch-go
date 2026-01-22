@@ -1059,6 +1059,116 @@ s.deps.DispatchToQueue(jobType, payload, "low")     // Specific queue
 
 Tasks are SSH scripts that run on remote servers. The task runner handles both local development (live SSH streaming) and production mode (HTTP callbacks with background execution).
 
+### TaskRunner Overview
+
+The `TaskRunner` in `internal/modules/server/tasks/runner.go` provides a fluent builder API for configuring and executing SSH tasks on servers.
+
+```go
+// Basic usage
+result, err := deps.RunTask(server, task).
+    AsRoot().
+    Dispatch(ctx)
+
+// Full configuration
+result, err := deps.RunTask(server, task).
+    AsRoot().                      // Run as root user
+    TrackInDB().                   // Save task to database
+    WithOutputPolling(30).         // Poll output every 30 seconds (production mode)
+    OnComplete("job:type", payload). // Dispatch job on success
+    OnFailed("job:cleanup", payload). // Dispatch job on failure
+    Throw().                       // Return error if task fails
+    Dispatch(ctx)
+```
+
+### TaskRunner Builder Methods
+
+| Method | Description |
+|--------|-------------|
+| `AsRoot()` | Run script as root user |
+| `AsUser(username...)` | Run as specific user (defaults to server's SSH user) |
+| `TrackInDB()` | Save task record to database for tracking |
+| `ThrowOnError()` / `Throw()` | Return error if task fails (instead of just result) |
+| `WithCallbacks(urls)` | Set webhook URLs for background execution |
+| `WithOutputPolling(seconds)` | Poll server for output at interval (production mode) |
+| `OnComplete(jobType, payload)` | Dispatch job when task succeeds |
+| `OnFailed(jobType, payload)` | Dispatch job when task fails |
+| `OnTimeout(jobType, payload)` | Dispatch job when task times out |
+
+### Execution Methods
+
+| Method | Description | Use Case |
+|--------|-------------|----------|
+| `Run(ctx)` | Synchronous execution, waits for completion | Quick tasks, need immediate result |
+| `Dispatch(ctx)` | Alias for `Run(ctx)` | Preferred name for jobs |
+| `RunAsync(ctx)` | Returns immediately, task runs in goroutine | Long tasks in local mode |
+| `RunInBackground(ctx)` | Uses HTTP callbacks for completion | Production mode, long-running tasks |
+
+### Execution Modes
+
+The TaskRunner automatically selects the execution mode based on configuration:
+
+**Local/Dev Mode (Live SSH Streaming):**
+```
+1. Task starts → persistent SSH connection maintained
+2. StreamMonitor attaches to stdout/stderr
+3. Output broadcast to WebSocket in real-time
+4. Task completes → callbacks invoked directly in-process
+```
+
+Use when: Development, short tasks, need live output streaming.
+
+**Production Mode (HTTP Callbacks):**
+```
+1. Task starts → script wrapped with callback URLs
+2. Script runs in background on server (nohup)
+3. FetchTaskOutput job polls server for output (if WithOutputPolling set)
+4. Script completes → calls webhook endpoint with status
+5. Webhook updates database, fetches final output
+6. CallbackHandler methods invoked to handle completion
+```
+
+Use when: Production, long-running tasks, unreliable connections.
+
+```go
+// Production mode with output polling
+result, err := deps.RunTask(server, task).
+    AsRoot().
+    TrackInDB().
+    WithCallbacks(callbackURLs).    // Enable HTTP callbacks
+    WithOutputPolling(30).          // Poll every 30 seconds
+    RunInBackground(ctx)
+```
+
+### Output Polling (Production Mode)
+
+When `WithOutputPolling(seconds)` is set and the task runs in background mode, the TaskRunner dispatches a `FetchTaskOutput` job that:
+
+1. SSHes into the server at the specified interval
+2. Reads the task's output file using `tail -c`
+3. Updates the task output in the database
+4. Broadcasts output updates via WebSocket
+5. Self-reschedules until the task completes
+
+```go
+// Enable 30-second output polling
+deps.RunTask(server, task).
+    WithOutputPolling(30).
+    RunInBackground(ctx)
+```
+
+### Webhook Endpoints
+
+Production mode uses these webhook endpoints for task completion:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /webhooks/tasks/:id/finished` | Task completed successfully |
+| `POST /webhooks/tasks/:id/failed` | Task failed with exit code |
+| `POST /webhooks/tasks/:id/timeout` | Task timed out |
+| `POST /webhooks/tasks/:id/callback` | Custom callback for progress updates |
+
+The custom callback endpoint can be called by scripts during execution to trigger output fetch and custom logic without changing task status.
+
 ### Task Interfaces
 
 **Task Interface** - For basic script execution:
@@ -1074,7 +1184,7 @@ type Task interface {
 }
 ```
 
-**CallbackHandler Interface** - For tasks with server-side callbacks:
+**CallbackHandler Interface** - For tasks with server-side callbacks (different signatures to allow types to implement both):
 ```go
 type CallbackHandler interface {
     OnSuccess(ctx context.Context, cbCtx *CallbackContext, taskID string) error
@@ -1248,39 +1358,69 @@ Available methods:
 
 ### Running Tasks
 
-Tasks are run via the module's TaskRunner:
+Tasks are run via the module's TaskRunner (usually through `JobDeps.RunTask()`):
 
 ```go
-// From a job
+// Simple synchronous execution
 result, err := j.Deps.RunTask(server, task).
-    AsRoot().           // Run as root user
-    WithOutputPolling(30). // Poll output every 30s (production mode)
-    Dispatch(ctx)       // Or Run(ctx) for sync execution
+    AsRoot().
+    Run(ctx)
 
-// Check result
+if err != nil {
+    return fmt.Errorf("task execution failed: %w", err)
+}
+
 if result.TaskResult != nil && result.TaskResult.IsSuccessful() {
-    // Task succeeded
+    output := result.TaskResult.Output
+    // Process output...
 }
 ```
 
-### Execution Modes
+**Background execution with output polling (production mode):**
+```go
+// Long-running task with periodic output updates
+taskModel, err := j.Deps.RunTask(server, task).
+    AsRoot().
+    TrackInDB().
+    WithOutputPolling(30).  // Poll every 30 seconds
+    RunInBackground(ctx)
 
-**Local/Dev Mode (Live SSH Streaming):**
-```
-1. Task starts → persistent SSH connection
-2. StreamMonitor attaches to output
-3. Output broadcast to WebSocket in real-time
-4. Task completes → callbacks invoked directly
+if err != nil {
+    return fmt.Errorf("failed to start task: %w", err)
+}
+
+// Task is now running in background
+// Output will be polled and broadcast via WebSocket
+// Callbacks will be invoked when task completes
 ```
 
-**Production Mode (HTTP Callbacks):**
+**Using completion jobs instead of callbacks:**
+```go
+// Dispatch jobs on completion (simpler than implementing CallbackHandler)
+j.Deps.RunTask(server, task).
+    AsRoot().
+    TrackInDB().
+    OnComplete("server:configure", ConfigurePayload{ServerID: server.ID}).
+    OnFailed("server:cleanup", CleanupPayload{ServerID: server.ID}).
+    OnTimeout("server:notify_timeout", NotifyPayload{ServerID: server.ID}).
+    RunInBackground(ctx)
 ```
-1. Task starts → script wrapped with callback URLs
-2. FetchTaskOutput job dispatched (if polling enabled)
-3. Job polls server every N seconds for output
-4. Script completes → calls webhook endpoint
-5. Webhook updates status, fetches final output
-6. Callbacks invoked via CallbackHandler
+
+### TaskResult
+
+The `TaskRunnerResult` contains:
+
+```go
+type TaskRunnerResult struct {
+    TaskModel  *models.Task           // Database record (if TrackInDB)
+    TaskResult *taskrunner.TaskResult // Execution result
+    Error      error                  // Execution error
+}
+
+// Helper methods
+result.IsSuccessful() bool  // True if exit code 0
+result.GetOutput() string   // Task output
+result.GetExitCode() int    // Exit code (-1 if unknown)
 ```
 
 ### Script Helpers
@@ -1536,6 +1676,32 @@ go test -v -run TestService_Create ./internal/modules/mymodule/services/
 7. Implement `NewTask()` on callback data struct (for `CallbackStateFactory`)
 8. Register with `taskrunner.RegisterCallbackState[callbackData](TaskType)` in `register.go`
 9. Run via `deps.RunTask(server, task).Dispatch(ctx)`
+
+### Running SSH Tasks (Quick Examples)
+
+**Simple synchronous task:**
+```go
+result, err := deps.RunTask(server, task).AsRoot().Run(ctx)
+```
+
+**Background task with output polling:**
+```go
+deps.RunTask(server, task).
+    AsRoot().
+    TrackInDB().
+    WithOutputPolling(30).
+    RunInBackground(ctx)
+```
+
+**Task with completion jobs:**
+```go
+deps.RunTask(server, task).
+    AsRoot().
+    TrackInDB().
+    OnComplete("item:configure", payload).
+    OnFailed("item:cleanup", payload).
+    RunInBackground(ctx)
+```
 
 ---
 
