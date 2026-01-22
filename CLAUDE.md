@@ -261,6 +261,47 @@ The Laravel project uses task enums for organizing jobs. Reference:
 - `modules/server/src/Enums/ServerTaskEnum.php`
 - `modules/site/src/Enums/SiteTaskEnum.php`
 
+## Type Definitions (Enums)
+
+Go doesn't have native enums, so we use typed constants. All type definitions follow this pattern:
+
+### Location
+- Module-specific types: `internal/modules/{module}/types/`
+- Shared helpers: `internal/pkg/enumtypes/`
+
+### Import Aliases
+Each module's types are imported with a descriptive alias:
+- `servertypes "github.com/kkz6/launch-go/internal/modules/server/types"`
+- `sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"`
+- `authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"`
+- `dnstypes`, `backuptypes`, `billingtypes`, `gittypes`, `notificationtypes`, `scripttypes`
+
+### Pattern
+```go
+type Status string
+
+const (
+    StatusActive   Status = "active"
+    StatusInactive Status = "inactive"
+)
+
+var allStatuses = []Status{StatusActive, StatusInactive}
+
+func AllStatuses() []Status { return allStatuses }
+
+func (s Status) String() string { return string(s) }
+func (s Status) IsValid() bool  { /* switch on all values */ }
+func (s Status) Label() string  { /* switch returning display text */ }
+
+// Database scanning (if stored in DB)
+func (s *Status) Scan(value any) error      { return enumtypes.ScanString(s, value) }
+func (s Status) Value() (driver.Value, error) { return enumtypes.ValueString(s) }
+```
+
+### File Organization
+- Small enums (< 50 lines): Consolidate in `types/types.go`
+- Large enums with many methods: Separate file like `types/software.go`
+
 ## Testing Reference
 
 Laravel tests location: `modules/*/tests/`
