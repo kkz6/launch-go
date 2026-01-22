@@ -7,9 +7,8 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/enums"
-	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
-	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -25,7 +24,7 @@ func NewStorageProviderHandler(providerService *services.StorageProviderService)
 
 // ListStorageProviders lists all storage providers for a team
 func (h *StorageProviderHandler) ListStorageProviders(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
@@ -45,7 +44,7 @@ func (h *StorageProviderHandler) ListStorageProviders(c *fiber.Ctx) error {
 
 // ListStorageProvidersForDropdown returns a simplified list for dropdowns
 func (h *StorageProviderHandler) ListStorageProvidersForDropdown(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
@@ -69,7 +68,7 @@ func (h *StorageProviderHandler) ListStorageProvidersForDropdown(c *fiber.Ctx) e
 
 // ConnectStorageProvider creates a new storage provider connection
 func (h *StorageProviderHandler) ConnectStorageProvider(c *fiber.Ctx) error {
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
@@ -81,7 +80,7 @@ func (h *StorageProviderHandler) ConnectStorageProvider(c *fiber.Ctx) error {
 		return response.BadRequest(c, "Invalid storage provider type")
 	}
 
-	req, err := fiberctx.MustParseAndValidate[dto.CreateStorageProviderRequest](c)
+	req, err := fiberutil.MustParseAndValidate[dto.CreateStorageProviderRequest](c)
 	if err != nil {
 		return err
 	}
@@ -110,7 +109,7 @@ func (h *StorageProviderHandler) UpdateStorageProvider(c *fiber.Ctx) error {
 		return response.BadRequest(c, "Invalid storage provider type")
 	}
 
-	req, err := fiberctx.MustParseAndValidate[dto.UpdateStorageProviderRequest](c)
+	req, err := fiberutil.MustParseAndValidate[dto.UpdateStorageProviderRequest](c)
 	if err != nil {
 		return err
 	}
@@ -120,7 +119,7 @@ func (h *StorageProviderHandler) UpdateStorageProvider(c *fiber.Ctx) error {
 
 	provider, err := h.providerService.UpdateStorageProvider(c.Context(), req.ID, req)
 	if err != nil {
-		if err == repositories.ErrStorageProviderNotFound {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgStorageProviderNotFound)
 		}
 		if err == services.ErrConnectionFailed {
@@ -142,7 +141,7 @@ func (h *StorageProviderHandler) DeleteStorageProvider(c *fiber.Ctx) error {
 	}
 
 	if err := h.providerService.DeleteStorageProvider(c.Context(), providerID); err != nil {
-		if err == repositories.ErrStorageProviderNotFound {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgStorageProviderNotFound)
 		}
 		if err == services.ErrStorageProviderHasBackups {
@@ -165,7 +164,7 @@ func (h *StorageProviderHandler) ShowStorageProvider(c *fiber.Ctx) error {
 
 	provider, err := h.providerService.GetStorageProvider(c.Context(), providerID)
 	if err != nil {
-		if err == repositories.ErrStorageProviderNotFound {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgStorageProviderNotFound)
 		}
 		return response.InternalError(c, response.MsgInternalError)

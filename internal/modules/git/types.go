@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/handlers"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
-	"github.com/kkz6/launch-go/internal/modules/git/repositories"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
 )
 
@@ -84,16 +83,8 @@ var CommitDataFromGitLabPayload = dto.CommitDataFromGitLabPayload
 var CommitDataFromBitbucketPayload = dto.CommitDataFromBitbucketPayload
 var RepositoryDataFromAPIResponse = dto.RepositoryDataFromAPIResponse
 
-// Repositories (use LegacyRepository for full backward compatibility)
-// type Repository = repositories.SourceControlRepository
-
-// Repository errors
-var ErrSourceControlNotFound = repositories.ErrSourceControlNotFound
-var ErrRepositoryNotFound = repositories.ErrRepositoryNotFound
-
 // Repository query options
 type InstallationQueryOption = contracts.InstallationQueryOption
-type installationQueryOptions = contracts.InstallationQueryOptions
 
 var WithUserID = contracts.WithUserID
 var WithProviderID = contracts.WithProviderID
@@ -101,11 +92,6 @@ var RequireInstallationID = contracts.RequireInstallationID
 
 // Services
 type Service = services.SourceControlService
-
-// Service errors
-var ErrProviderNotSupported = services.ErrProviderNotSupported
-var ErrNoInstallationID = services.ErrNoInstallationID
-var ErrHasSites = services.ErrHasSites
 
 // Handlers
 type Handler = handlers.SourceControlHandler

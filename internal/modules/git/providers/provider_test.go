@@ -6,6 +6,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"testing"
+
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 func TestNewProviderFactory(t *testing.T) {
@@ -1042,7 +1044,7 @@ func TestErrorConstants(t *testing.T) {
 		{"ErrInvalidPayload", ErrInvalidPayload, "invalid webhook payload"},
 		{"ErrProviderNotConfigured", ErrProviderNotConfigured, "provider not configured"},
 		{"ErrInstallationNotFound", ErrInstallationNotFound, "installation not found"},
-		{"ErrRepositoryNotFound", ErrRepositoryNotFound, "repository not found"},
+		{"ErrRepositoryNotFound", fiberutil.NotFound(), "Resource not found"},
 		{"ErrPermissionDenied", ErrPermissionDenied, "permission denied"},
 		{"ErrAuthenticationFailed", ErrAuthenticationFailed, "authentication failed"},
 		{"ErrRateLimitExceeded", ErrRateLimitExceeded, "rate limit exceeded"},

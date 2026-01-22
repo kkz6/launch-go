@@ -5,6 +5,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -26,7 +28,7 @@ func (r *QueueRepository) FindByID(ctx context.Context, id string) (*models.Queu
 	queue, err := r.Installable.FindByID(ctx, id)
 	if err != nil {
 		if repository.IsNotFound(err) {
-			return nil, ErrQueueNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -40,7 +42,7 @@ func (r *QueueRepository) FindByIDAndSite(ctx context.Context, id, siteID string
 		First(&queue, "id = ? AND site_id = ?", id, siteID).Error
 	if err != nil {
 		if repository.IsNotFound(err) {
-			return nil, ErrQueueNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}

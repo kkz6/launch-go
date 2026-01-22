@@ -3,12 +3,10 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
-	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
@@ -26,7 +24,7 @@ func (s *Service) GetComposerAuth(ctx context.Context, serverID, teamID string) 
 
 	// Check if Composer is installed
 	composerService, err := s.repos.Service().FindOneByServerAndType(ctx, serverID, enums.ServiceTypeComposer)
-	if err != nil && !errors.Is(err, repositories.ErrServiceNotFound) {
+	if err != nil && !fiberutil.IsNotFound(err) {
 		return nil, fmt.Errorf("failed to check composer installation: %w", err)
 	}
 	if composerService == nil {
@@ -87,7 +85,7 @@ func (s *Service) UpdateComposerAuth(ctx context.Context, serverID, teamID strin
 
 	// Check if Composer is installed
 	composerService, err := s.repos.Service().FindOneByServerAndType(ctx, serverID, enums.ServiceTypeComposer)
-	if err != nil && !errors.Is(err, repositories.ErrServiceNotFound) {
+	if err != nil && !fiberutil.IsNotFound(err) {
 		return fmt.Errorf("failed to check composer installation: %w", err)
 	}
 	if composerService == nil {

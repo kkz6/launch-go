@@ -1,12 +1,9 @@
 package handlers
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
@@ -46,10 +43,6 @@ func (h *QueueHandler) CreateQueue(c *fiber.Ctx) error {
 
 	queue, err := h.queueService.Create(c.Context(), siteID, serverID, userID, req)
 	if err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
 		return response.HandleError(c, err)
 	}
 
@@ -70,11 +63,7 @@ func (h *QueueHandler) ListQueues(c *fiber.Ctx) error {
 
 	queues, err := h.queueService.List(c.Context(), siteID, serverID)
 	if err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
-		return response.InternalError(c, response.MsgInternalError)
+		return response.HandleError(c, err)
 	}
 
 	result := make([]dto.QueueResponse, len(queues))
@@ -103,14 +92,6 @@ func (h *QueueHandler) DeleteQueue(c *fiber.Ctx) error {
 	}
 
 	if err := h.queueService.Delete(c.Context(), queueID, siteID, serverID); err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
-		if errors.Is(err, repositories.ErrQueueNotFound) {
-			return response.NotFound(c, response.MsgQueueNotFound)
-		}
-
 		return response.HandleError(c, err)
 	}
 
@@ -135,10 +116,6 @@ func (h *QueueHandler) UpdateAutoRestartQueue(c *fiber.Ctx) error {
 	}
 
 	if err := h.queueService.UpdateAutoRestart(c.Context(), siteID, serverID, req.Enabled); err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
 		return response.HandleError(c, err)
 	}
 
@@ -168,10 +145,6 @@ func (h *QueueHandler) SyncQueues(c *fiber.Ctx) error {
 	}
 
 	if err := h.queueService.SyncStatus(c.Context(), siteID, serverID, userID); err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
 		return response.HandleError(c, err)
 	}
 

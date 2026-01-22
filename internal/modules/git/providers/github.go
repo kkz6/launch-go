@@ -11,6 +11,7 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
@@ -230,7 +231,7 @@ func (p *GitHubProvider) GetRepository(ctx context.Context, installationID, owne
 	defer resp.Body.Close()
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, ErrRepositoryNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	if resp.StatusCode == http.StatusForbidden {

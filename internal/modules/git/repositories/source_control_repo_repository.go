@@ -7,6 +7,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
 	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
@@ -66,7 +68,7 @@ func (r *SourceControlRepoRepository) FindRepositoryByID(ctx context.Context, id
 		First(&repo, "id = ?", id).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrRepositoryNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	return &repo, err
@@ -80,7 +82,7 @@ func (r *SourceControlRepoRepository) FindRepositoryByFullName(ctx context.Conte
 		First(&repo, "full_name = ?", fullName).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrRepositoryNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	return &repo, err

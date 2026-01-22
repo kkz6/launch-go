@@ -13,6 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git/models"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/repositories"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // SourceControlService handles git-related business logic
@@ -107,7 +108,7 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 		}
 
 		sc = existing
-	} else if err == repositories.ErrSourceControlNotFound {
+	} else if fiberutil.IsNotFound(err) {
 		// Create new
 		if err := s.Repos().SourceControl().Create(ctx, sc); err != nil {
 			return nil, err

@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -27,7 +29,7 @@ func (r *CronRepository) FindByID(ctx context.Context, id string) (*models.Cron,
 	cron, err := r.Installable.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrCronNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -39,7 +41,7 @@ func (r *CronRepository) FindByIDWithServer(ctx context.Context, id string) (*mo
 	cron, err := r.Installable.FindByIDWithServer(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrCronNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -51,7 +53,7 @@ func (r *CronRepository) FindByIDAndServer(ctx context.Context, id, serverID str
 	cron, err := r.Installable.FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrCronNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}

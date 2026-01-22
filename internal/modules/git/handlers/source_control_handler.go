@@ -6,7 +6,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git/contracts"
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
 	"github.com/kkz6/launch-go/internal/modules/git/enums"
-	"github.com/kkz6/launch-go/internal/modules/git/repositories"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
@@ -68,10 +67,7 @@ func (h *SourceControlHandler) GetSourceControlRepositories(c *fiber.Ctx) error 
 
 	repos, err := h.service.GetRepositoriesBySourceControlID(c.Context(), id, teamID)
 	if err != nil {
-		if err == repositories.ErrSourceControlNotFound {
-			return response.NotFound(c, response.MsgSourceControlNotFound)
-		}
-		return response.InternalError(c, response.MsgInternalError)
+		return response.HandleError(c, err)
 	}
 
 	result := make([]dto.RepositoryResponse, len(repos))
@@ -116,13 +112,6 @@ func (h *SourceControlHandler) Disconnect(c *fiber.Ctx) error {
 	id := c.Params("id")
 
 	if err := h.service.Disconnect(c.Context(), id, teamID); err != nil {
-		if err == repositories.ErrSourceControlNotFound {
-			return response.NotFound(c, response.MsgSourceControlNotFound)
-		}
-		if err == services.ErrHasSites {
-			return response.Conflict(c, "Cannot disconnect provider with associated sites")
-		}
-
 		return response.HandleError(c, err)
 	}
 

@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
@@ -28,7 +30,7 @@ func (r *SiteRepository) FindByID(ctx context.Context, id string) (*models.Site,
 	site, err := r.Installable.FindByID(ctx, id)
 	if err != nil {
 		if repository.IsNotFound(err) {
-			return nil, ErrSiteNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -45,7 +47,7 @@ func (r *SiteRepository) FindByIDWithDeployments(ctx context.Context, id string)
 		First(&site, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrSiteNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -57,7 +59,7 @@ func (r *SiteRepository) FindByIDAndServer(ctx context.Context, id, serverID str
 	site, err := r.Installable.FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		if repository.IsNotFound(err) {
-			return nil, ErrSiteNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -71,7 +73,7 @@ func (r *SiteRepository) FindByIDAndTeam(ctx context.Context, id, teamID string)
 		First(&site, "id = ? AND team_id = ?", id, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrSiteNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -85,7 +87,7 @@ func (r *SiteRepository) FindByIDAndServerAndTeam(ctx context.Context, id, serve
 		First(&site, "id = ? AND server_id = ? AND team_id = ?", id, serverID, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrSiteNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -179,7 +181,7 @@ func (r *SiteRepository) FindByAddress(ctx context.Context, address, serverID st
 		First(&site, "address = ? AND server_id = ?", address, serverID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrSiteNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}

@@ -7,6 +7,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -28,7 +30,7 @@ func (r *DaemonRepository) FindByID(ctx context.Context, id string) (*models.Dae
 	daemon, err := r.Installable.FindByID(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrDaemonNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -40,7 +42,7 @@ func (r *DaemonRepository) FindByIDWithServer(ctx context.Context, id string) (*
 	daemon, err := r.Installable.FindByIDWithServer(ctx, id)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrDaemonNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -52,7 +54,7 @@ func (r *DaemonRepository) FindByIDAndServer(ctx context.Context, id, serverID s
 	daemon, err := r.Installable.FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		if errors.Is(err, repository.ErrNotFound) {
-			return nil, ErrDaemonNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}

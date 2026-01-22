@@ -12,20 +12,12 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
-// Service-specific errors - using fiber error utilities
 var (
-	ErrServerNotFound           = fiberutil.NotFound("Server not found")
 	ErrDatabaseNameExists       = fiberutil.Conflict("A database with this name already exists on this server")
 	ErrDatabaseUserNameExists   = fiberutil.Conflict("A database user with this name already exists on this server")
 	ErrInvalidExistingUser      = fiberutil.BadRequest("The specified existing user was not found")
 	ErrDatabaseBeingUninstalled = fiberutil.Conflict("Database is being uninstalled")
 	ErrUserBeingUninstalled     = fiberutil.Conflict("User is being uninstalled")
-)
-
-// Re-export repository errors for convenience
-var (
-	ErrDatabaseNotFound     = repositories.ErrDatabaseNotFound
-	ErrDatabaseUserNotFound = repositories.ErrDatabaseUserNotFound
 )
 
 // ServerRepository defines the interface for server operations needed by the database service

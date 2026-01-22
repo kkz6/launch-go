@@ -9,8 +9,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/script/dto"
 	"github.com/kkz6/launch-go/internal/modules/script/jobs"
 	"github.com/kkz6/launch-go/internal/modules/script/models"
-	"github.com/kkz6/launch-go/internal/modules/script/repositories"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // ScriptService handles business logic for scripts
@@ -39,7 +39,7 @@ func (s *ScriptService) Get(ctx context.Context, scriptID, userID, teamID string
 
 	// Check access
 	if script.UserID != userID && (script.TeamID == nil || *script.TeamID != teamID) {
-		return nil, repositories.ErrScriptNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	return script, nil

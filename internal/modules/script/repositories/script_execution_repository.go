@@ -5,6 +5,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/script/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -36,7 +38,7 @@ func (r *ScriptExecutionRepository) FindByID(ctx context.Context, id uint64) (*m
 
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
-			return nil, ErrExecutionNotFound
+			return nil, fiberutil.NotFound()
 		}
 
 		return nil, err

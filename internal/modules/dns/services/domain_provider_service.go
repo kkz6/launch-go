@@ -10,6 +10,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
@@ -80,7 +81,7 @@ func (s *DomainProviderService) GetProvider(ctx context.Context, id, teamID stri
 	provider, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrProviderNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -108,7 +109,7 @@ func (s *DomainProviderService) DeleteProvider(ctx context.Context, id, teamID s
 	_, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrProviderNotFound
+			return fiberutil.NotFound()
 		}
 		return err
 	}
@@ -131,7 +132,7 @@ func (s *DomainProviderService) CheckProviderConnectivity(ctx context.Context, i
 	dp, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrProviderNotFound
+			return fiberutil.NotFound()
 		}
 		return err
 	}
@@ -160,7 +161,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 	dp, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrProviderNotFound
+			return fiberutil.NotFound()
 		}
 		return err
 	}

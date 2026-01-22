@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/backup/enums"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
@@ -34,7 +36,7 @@ func (r *StorageProviderRepository) FindStorageProviderByID(ctx context.Context,
 	err := r.DB.WithContext(ctx).First(&provider, id).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrStorageProviderNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	if err != nil {
@@ -50,7 +52,7 @@ func (r *StorageProviderRepository) FindStorageProviderByIDString(ctx context.Co
 	err := r.DB.WithContext(ctx).First(&provider, "id = ?", id).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrStorageProviderNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	if err != nil {

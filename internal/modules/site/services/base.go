@@ -1,13 +1,26 @@
 package services
 
 import (
+	"errors"
 	"strings"
 
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/repositories"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/service"
+)
+
+var (
+	ErrPendingDeployment         = fiberutil.Conflict("A deployment is already in progress")
+	ErrRollbackNotSupported      = fiberutil.BadRequest("Rollback is only available for sites with zero downtime deployment enabled")
+	ErrInvalidRollbackTarget     = fiberutil.BadRequest("Can only rollback to a finished deployment")
+	ErrDeploymentNotBelongToSite = fiberutil.BadRequest("Target deployment does not belong to this site")
+	ErrSourceControlNotConnected = fiberutil.BadRequest("Source control is not connected")
+	ErrSiteNotInstalled          = fiberutil.BadRequest("Site is not installed")
+	ErrBranchMismatch            = errors.New("branch mismatch")
+	ErrInvalidDeployToken        = fiberutil.Unauthorized("Invalid deploy token")
 )
 
 // ServiceDeps holds all dependencies needed for site services.

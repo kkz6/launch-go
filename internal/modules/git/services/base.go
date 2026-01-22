@@ -1,9 +1,18 @@
 package services
 
 import (
+	"errors"
+
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/git/repositories"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/service"
+)
+
+var (
+	ErrProviderNotSupported = errors.New("provider not supported")
+	ErrNoInstallationID     = errors.New("no installation ID found")
+	ErrHasSites             = fiberutil.Conflict("Cannot delete source control with associated sites")
 )
 
 // ServiceDeps holds all dependencies needed for git services.

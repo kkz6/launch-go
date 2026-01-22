@@ -9,12 +9,9 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
-// Repository errors - using fiber error utilities
 var (
-	ErrDatabaseNotFound     = fiberutil.NotFound("Database not found")
-	ErrDatabaseUserNotFound = fiberutil.NotFound("Database user not found")
-	ErrDuplicateName        = fiberutil.Conflict("A database with this name already exists on this server")
-	ErrDuplicateUserName    = fiberutil.Conflict("A database user with this name already exists on this server")
+	ErrDuplicateName     = fiberutil.Conflict("A database with this name already exists on this server")
+	ErrDuplicateUserName = fiberutil.Conflict("A database user with this name already exists on this server")
 )
 
 // Ensure Registry implements contracts.RepositoryRegistry

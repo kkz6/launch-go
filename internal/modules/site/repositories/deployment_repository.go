@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
@@ -28,7 +30,7 @@ func (r *DeploymentRepository) FindByID(ctx context.Context, id string) (*models
 	deployment, err := r.Base.FindByID(ctx, id)
 	if err != nil {
 		if repository.IsNotFound(err) {
-			return nil, ErrDeploymentNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -42,7 +44,7 @@ func (r *DeploymentRepository) FindByIDAndSite(ctx context.Context, id, siteID s
 		First(&deployment, "id = ? AND site_id = ?", id, siteID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDeploymentNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}

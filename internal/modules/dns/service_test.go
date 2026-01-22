@@ -9,18 +9,6 @@ import (
 )
 
 func TestServiceErrors(t *testing.T) {
-	t.Run("ErrProviderNotFound", func(t *testing.T) {
-		assert.EqualError(t, services.ErrProviderNotFound, "Provider not found")
-	})
-
-	t.Run("ErrDomainNotFound", func(t *testing.T) {
-		assert.EqualError(t, services.ErrDomainNotFound, "Domain not found")
-	})
-
-	t.Run("ErrRecordNotFound", func(t *testing.T) {
-		assert.EqualError(t, services.ErrRecordNotFound, "Record not found")
-	})
-
 	t.Run("ErrRecordNotEditable", func(t *testing.T) {
 		assert.EqualError(t, services.ErrRecordNotEditable, "Record cannot be edited")
 	})

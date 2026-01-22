@@ -9,7 +9,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // CommandService handles business logic for command execution
@@ -79,7 +79,7 @@ func (s *CommandService) Delete(ctx context.Context, siteID, serverID, commandID
 
 	// Verify command belongs to the site
 	if cmd.SiteID != siteID {
-		return repositories.ErrCommandNotFound
+		return fiberutil.NotFound()
 	}
 
 	// Delete the command

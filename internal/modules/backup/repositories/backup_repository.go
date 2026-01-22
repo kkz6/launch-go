@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -58,7 +60,7 @@ func (r *BackupRepository) FindBackupByID(ctx context.Context, id string) (*mode
 		First(&backup, "id = ?", id).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrBackupNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	if err != nil {
@@ -80,7 +82,7 @@ func (r *BackupRepository) FindBackupByIDAndServer(ctx context.Context, id, serv
 		First(&backup, "id = ? AND server_id = ?", id, serverID).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrBackupNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	if err != nil {
