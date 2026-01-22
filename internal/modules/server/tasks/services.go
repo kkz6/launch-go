@@ -26,13 +26,13 @@ func RestartService(service string) *taskrunner.BaseTask {
 	)
 }
 
-// RestartMySql creates a task to restart MySQL.
-func RestartMySql() *taskrunner.BaseTask {
+// RestartMySQL creates a task to restart MySQL.
+func RestartMySQL() *taskrunner.BaseTask {
 	return RestartService("mysql")
 }
 
-// RestartPostgreSql creates a task to restart PostgreSQL.
-func RestartPostgreSql() *taskrunner.BaseTask {
+// RestartPostgreSQL creates a task to restart PostgreSQL.
+func RestartPostgreSQL() *taskrunner.BaseTask {
 	return RestartService("postgresql")
 }
 

@@ -16,8 +16,8 @@ func TestRestartService_Generic(t *testing.T) {
 		ScriptMatches("tasks/service_restart_generic")
 }
 
-func TestRestartMySql(t *testing.T) {
-	task := tasks.RestartMySql()
+func TestRestartMySQL(t *testing.T) {
+	task := tasks.RestartMySQL()
 
 	testutil.AssertTask(t, task).
 		HasName("Restart mysql").
@@ -25,8 +25,8 @@ func TestRestartMySql(t *testing.T) {
 		ScriptMatches("tasks/service_restart_mysql")
 }
 
-func TestRestartPostgreSql(t *testing.T) {
-	task := tasks.RestartPostgreSql()
+func TestRestartPostgreSQL(t *testing.T) {
+	task := tasks.RestartPostgreSQL()
 
 	testutil.AssertTask(t, task).
 		HasName("Restart postgresql").

@@ -9,8 +9,8 @@ import (
 // Task type constants for service status operations
 const (
 	CheckPhpStatusTaskType        = "server:check_php_status"
-	CheckMySqlStatusTaskType      = "server:check_mysql_status"
-	CheckPostgreSqlStatusTaskType = "server:check_postgresql_status"
+	CheckMySQLStatusTaskType      = "server:check_mysql_status"
+	CheckPostgreSQLStatusTaskType = "server:check_postgresql_status"
 	CheckRedisStatusTaskType      = "server:check_redis_status"
 	CheckCaddyStatusTaskType      = "server:check_caddy_status"
 	CheckSupervisorStatusTaskType = "server:check_supervisor_status"
@@ -40,8 +40,8 @@ sudo ls -la /etc/php/%s/fpm/pool.d/ 2>/dev/null || echo "Pool config not accessi
 	)
 }
 
-// CheckMySqlStatus creates a task to check MySQL status with detailed diagnostics.
-func CheckMySqlStatus() *taskrunner.BaseTask {
+// CheckMySQLStatus creates a task to check MySQL status with detailed diagnostics.
+func CheckMySQLStatus() *taskrunner.BaseTask {
 	script := `sudo systemctl status mysql --no-pager --full
 echo "===PROCESSES==="
 ps aux | grep [m]ysql | head -5
@@ -57,8 +57,8 @@ sudo systemctl show mysql --property=MemoryCurrent,MemoryPeak`
 	)
 }
 
-// CheckPostgreSqlStatus creates a task to check PostgreSQL status with detailed diagnostics.
-func CheckPostgreSqlStatus() *taskrunner.BaseTask {
+// CheckPostgreSQLStatus creates a task to check PostgreSQL status with detailed diagnostics.
+func CheckPostgreSQLStatus() *taskrunner.BaseTask {
 	script := `sudo systemctl status postgresql --no-pager --full
 echo "===PROCESSES==="
 ps aux | grep [p]ostgres | head -5
@@ -167,9 +167,9 @@ func GetServiceStatusTask(software string, version string) *taskrunner.BaseTask 
 	case "php74", "php80", "php81", "php82", "php83", "php84":
 		return CheckPhpStatus(version)
 	case "mysql80", "mysql":
-		return CheckMySqlStatus()
+		return CheckMySQLStatus()
 	case "postgresql16", "postgresql":
-		return CheckPostgreSqlStatus()
+		return CheckPostgreSQLStatus()
 	case "redis":
 		return CheckRedisStatus()
 	case "caddy2", "caddy":
