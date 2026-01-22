@@ -87,7 +87,7 @@ func (j *UninstallFirewallRuleJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Mark uninstallation as failed
-	if markErr := j.Ctx.Repos().FirewallRule().MarkFailed(ctx, j.Payload.RuleID); markErr != nil {
+	if markErr := j.Ctx.Repos().FirewallRule().MarkAsFailed(ctx, j.Payload.RuleID); markErr != nil {
 		j.Ctx.LogError(markErr, "Failed to mark firewall rule failure")
 	}
 }

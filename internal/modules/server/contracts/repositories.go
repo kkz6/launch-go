@@ -57,8 +57,8 @@ type FirewallRuleRepository interface {
 	FindByIDAndServer(ctx context.Context, id, serverID string) (*models.FirewallRule, error)
 	FindByServer(ctx context.Context, serverID string) ([]models.FirewallRule, error)
 	Update(ctx context.Context, rule *models.FirewallRule) error
-	MarkInstalled(ctx context.Context, id string) error
-	MarkFailed(ctx context.Context, id string) error
+	MarkAsInstalled(ctx context.Context, id string) error
+	MarkAsFailed(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
 }
 
@@ -71,7 +71,7 @@ type CronRepository interface {
 	FindByServer(ctx context.Context, serverID string) ([]models.Cron, error)
 	FindVisibleByServer(ctx context.Context, serverID string) ([]models.Cron, error)
 	Update(ctx context.Context, cron *models.Cron) error
-	MarkInstalled(ctx context.Context, id string) error
+	MarkAsInstalled(ctx context.Context, id string) error
 	MarkInstallationFailed(ctx context.Context, id string) error
 	MarkUninstallationFailed(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
@@ -86,7 +86,7 @@ type DaemonRepository interface {
 	FindByServer(ctx context.Context, serverID string) ([]models.Daemon, error)
 	Update(ctx context.Context, daemon *models.Daemon) error
 	UpdateStatus(ctx context.Context, id string, running bool) error
-	MarkInstalled(ctx context.Context, id string) error
+	MarkAsInstalled(ctx context.Context, id string) error
 	MarkInstallationFailed(ctx context.Context, id string) error
 	MarkUninstallationFailed(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error

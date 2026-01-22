@@ -58,7 +58,7 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 	}
 
 	// Mark as installed
-	if err := j.Ctx.Repos().FirewallRule().MarkInstalled(ctx, rule.ID); err != nil {
+	if err := j.Ctx.Repos().FirewallRule().MarkAsInstalled(ctx, rule.ID); err != nil {
 		return fmt.Errorf("failed to mark rule as installed: %w", err)
 	}
 
@@ -88,7 +88,7 @@ func (j *InstallFirewallRuleJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Mark installation as failed
-	if markErr := j.Ctx.Repos().FirewallRule().MarkFailed(ctx, j.Payload.RuleID); markErr != nil {
+	if markErr := j.Ctx.Repos().FirewallRule().MarkAsFailed(ctx, j.Payload.RuleID); markErr != nil {
 		j.Ctx.LogError(markErr, "Failed to mark firewall rule as failed")
 	}
 }

@@ -68,9 +68,4 @@ func (r *DaemonRepository) UpdateStatus(ctx context.Context, id string, running 
 	})
 }
 
-// MarkInstalled marks a daemon as installed (alias for MarkAsInstalled)
-func (r *DaemonRepository) MarkInstalled(ctx context.Context, id string) error {
-	return r.MarkAsInstalled(ctx, id)
-}
-
-// Note: MarkInstallationFailed and MarkUninstallationFailed are inherited from repository.Installable
+// Note: MarkAsInstalled, MarkInstallationFailed and MarkUninstallationFailed are inherited from repository.Installable
