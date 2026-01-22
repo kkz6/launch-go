@@ -14,7 +14,6 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
-	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -787,9 +786,14 @@ func getTaskTypeName(task taskrunner.Task) string {
 }
 
 // TaskRunnerDeps holds dependencies for creating TaskRunners.
-// It embeds pkgjobs.ServerTaskDeps to avoid field duplication.
 type TaskRunnerDeps struct {
-	pkgjobs.ServerTaskDeps
+	DB          *gorm.DB
+	Queue       *queue.Client
+	Dispatcher  taskrunner.TaskDispatcher
+	Logger      *zerolog.Logger
+	Broadcaster broadcast.TeamBroadcaster
+	Notifier    taskrunner.NotifierService
+	LocalMode   bool
 }
 
 // IsLocalMode returns true if running in local development mode

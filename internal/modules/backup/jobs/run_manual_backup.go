@@ -6,32 +6,43 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/backup/models"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 const TypeRunManualBackup = "backup:run_manual"
 
-// RunManualBackupJob triggers a manual backup run on a server
+// RunManualBackupJob triggers a manual backup run on a server.
 type RunManualBackupJob struct {
-	ctx     *JobContext
+	Deps    *JobDeps
 	Payload RunManualBackupPayload
+
+	server *servermodels.Server
+	backup *models.Backup
+}
+
+func NewRunManualBackupJob(p RunManualBackupPayload) pkgjobs.Handler {
+	return &RunManualBackupJob{Deps: deps, Payload: p}
 }
 
 func (j *RunManualBackupJob) Handle(ctx context.Context) error {
-	backup, err := j.ctx.Repos().Backup().FindBackupByID(ctx, j.Payload.BackupID)
+	var err error
+
+	j.backup, err = j.Deps.Repos.Backup().FindBackupByID(ctx, j.Payload.BackupID)
 	if err != nil {
-		return fmt.Errorf("failed to find backup: %w", err)
+		return fmt.Errorf("find backup: %w", err)
 	}
 
-	server, err := j.ctx.Repos().Server().Server().FindByID(ctx, j.Payload.ServerID)
+	j.server, err = j.Deps.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+		return fmt.Errorf("find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Running manual backup",
-		"server_id", server.ID,
-		"backup_id", backup.ID,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("backup_id", j.backup.ID).
+		Msg("running manual backup")
 
 	// TODO: Trigger manual backup execution on the server
 	// This would involve:
@@ -40,32 +51,24 @@ func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 	// 3. Monitor progress and report status
 	// 4. Upload backup to storage provider
 
-	j.ctx.LogInfo("Manual backup completed successfully",
-		"server_id", server.ID,
-		"backup_id", backup.ID,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("backup_id", j.backup.ID).
+		Msg("manual backup completed successfully")
 
 	return nil
 }
 
 func (j *RunManualBackupJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to run manual backup",
-		"server_id", j.Payload.ServerID,
-		"backup_id", j.Payload.BackupID,
-	)
-}
-
-func NewRunManualBackupJob(ctx *JobContext, payload RunManualBackupPayload) *RunManualBackupJob {
-	return &RunManualBackupJob{
-		ctx:     ctx,
-		Payload: payload,
-	}
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Str("backup_id", j.Payload.BackupID).
+		Msg("failed to run manual backup")
 }
 
 func NewRunManualBackupTask(serverID, backupID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeRunManualBackup, RunManualBackupPayload{
-		ServerID: serverID,
-		BackupID: backupID,
-		UserID:   userID,
-	})
+	return pkgjobs.TaskWithID(TypeRunManualBackup,
+		RunManualBackupPayload{ServerID: serverID, BackupID: backupID, UserID: userID},
+		pkgjobs.Dedup("backup-manual", serverID, backupID),
+	)
 }

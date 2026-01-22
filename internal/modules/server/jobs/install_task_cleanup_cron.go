@@ -22,26 +22,27 @@ type InstallTaskCleanupCronPayload struct {
 
 // InstallTaskCleanupCronJob installs a cron job to cleanup old task records
 type InstallTaskCleanupCronJob struct {
-	pkgjobs.BaseJob[*JobContext, InstallTaskCleanupCronPayload]
+	Deps    *JobDeps
+	Payload InstallTaskCleanupCronPayload
+
+	server *models.Server
 }
 
-// NewInstallTaskCleanupCronJob creates a new InstallTaskCleanupCronJob
-func NewInstallTaskCleanupCronJob(ctx *JobContext, payload InstallTaskCleanupCronPayload) *InstallTaskCleanupCronJob {
-	return &InstallTaskCleanupCronJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewInstallTaskCleanupCronJob(p InstallTaskCleanupCronPayload) pkgjobs.Handler {
+	return &InstallTaskCleanupCronJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the install task cleanup cron job
 func (j *InstallTaskCleanupCronJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.Ctx.LogInfo("Installing task cleanup cron",
-		"server_id", server.ID,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Msg("installing task cleanup cron")
 
 	// Build cleanup command
 	// This command cleans up old task output files and temporary files
@@ -56,26 +57,26 @@ func (j *InstallTaskCleanupCronJob) Handle(ctx context.Context) error {
 		Frequency:  schedule.FrequencyName(),
 		Hidden:     true, // System cron, hidden from user
 	}
-	cron.ServerID = server.ID
+	cron.ServerID = j.server.ID
 
-	if err := j.Ctx.Repos().Cron().Create(ctx, cron); err != nil {
+	if err := j.Deps.Repos.Cron().Create(ctx, cron); err != nil {
 		return fmt.Errorf("failed to create cron: %w", err)
 	}
 
 	// Dispatch InstallCron job to install it on the server
-	if err := j.dispatchInstallCron(cron.ID, server.ID); err != nil {
+	if err := j.dispatchInstallCron(cron.ID, j.server.ID); err != nil {
 		// Cleanup the cron record if dispatch fails
-		_ = j.Ctx.Repos().Cron().Delete(ctx, cron.ID)
+		_ = j.Deps.Repos.Cron().Delete(ctx, cron.ID)
 		return fmt.Errorf("failed to dispatch install cron job: %w", err)
 	}
 
-	j.Ctx.LogInfo("Task cleanup cron installed successfully",
-		"server_id", server.ID,
-		"cron_id", cron.ID,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("cron_id", cron.ID).
+		Msg("task cleanup cron installed successfully")
 
-	j.Ctx.BroadcastServerEvent(server, "cron.task_cleanup_installed", map[string]any{
-		"server_id": server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "cron.task_cleanup_installed", map[string]any{
+		"server_id": j.server.ID,
 		"cron_id":   cron.ID,
 	})
 
@@ -88,20 +89,20 @@ func (j *InstallTaskCleanupCronJob) dispatchInstallCron(cronID, serverID string)
 	if err != nil {
 		return err
 	}
-	return j.Ctx.DispatchTask(task)
+	return j.Deps.DispatchTask(task)
 }
 
 // Failed handles job failure
 func (j *InstallTaskCleanupCronJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to install task cleanup cron",
-		"server_id", j.Payload.ServerID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Msg("failed to install task cleanup cron")
 }
 
 // NewInstallTaskCleanupCronTask creates an install task cleanup cron task
 func NewInstallTaskCleanupCronTask(serverID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeInstallTaskCleanupCron, InstallTaskCleanupCronPayload{
+	return pkgjobs.Task(TypeInstallTaskCleanupCron, InstallTaskCleanupCronPayload{
 		ServerID: serverID,
 		UserID:   userID,
-	})
+	}, asynq.TaskID(pkgjobs.Dedup("install_task_cleanup_cron", serverID)))
 }

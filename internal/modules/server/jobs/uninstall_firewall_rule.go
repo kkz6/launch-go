@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
@@ -22,30 +23,37 @@ type UninstallFirewallRulePayload struct {
 // UninstallFirewallRuleJob removes a firewall rule from a server.
 // Similar to Laravel's Modules\Server\Jobs\UninstallFirewallRule
 type UninstallFirewallRuleJob struct {
-	pkgjobs.BaseJob[*JobContext, UninstallFirewallRulePayload]
+	Deps    *JobDeps
+	Payload UninstallFirewallRulePayload
+
+	rule *models.FirewallRule
+}
+
+func NewUninstallFirewallRuleJob(p UninstallFirewallRulePayload) pkgjobs.Handler {
+	return &UninstallFirewallRuleJob{Deps: deps, Payload: p}
 }
 
 // Handle processes the job
 func (j *UninstallFirewallRuleJob) Handle(ctx context.Context) error {
-	// Find the firewall rule with server preloaded
-	rule, err := j.Ctx.Repos().FirewallRule().FindByIDWithServer(ctx, j.Payload.RuleID)
+	var err error
+	j.rule, err = j.Deps.Repos.FirewallRule().FindByIDWithServer(ctx, j.Payload.RuleID)
 	if err != nil {
 		return fmt.Errorf("failed to find firewall rule: %w", err)
 	}
 
 	// Delete firewall rule
 	fromIP := ""
-	if rule.FromIPv4 != nil {
-		fromIP = *rule.FromIPv4
+	if j.rule.FromIPv4 != nil {
+		fromIP = *j.rule.FromIPv4
 	}
 	task := tasks.DeleteFirewallRule(
-		tasks.FirewallAction(rule.Action),
-		rule.Port,
+		tasks.FirewallAction(j.rule.Action),
+		j.rule.Port,
 		"", // protocol is not stored in model
 		fromIP,
 	)
 
-	result, err := j.Ctx.ForServer(rule.Server).RunTask(task).
+	result, err := j.Deps.RunTask(j.rule.Server, task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -58,22 +66,22 @@ func (j *UninstallFirewallRuleJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	activity.RecordWithLogPtr(ctx, "server", "uninstalled", j.Payload.UserID, rule, "Firewall rule was uninstalled")
+	activity.RecordWithLogPtr(ctx, "server", "uninstalled", j.Payload.UserID, j.rule, "Firewall rule was uninstalled")
 
 	// Delete the rule record
-	if err := j.Ctx.Repos().FirewallRule().Delete(ctx, rule.ID); err != nil {
+	if err := j.Deps.Repos.FirewallRule().Delete(ctx, j.rule.ID); err != nil {
 		return fmt.Errorf("failed to delete rule: %w", err)
 	}
 
-	j.Ctx.LogInfo("Firewall rule uninstalled successfully",
-		"rule_id", rule.ID,
-		"server_id", rule.ServerID,
-	)
+	j.Deps.Logger.Info().
+		Str("rule_id", j.rule.ID).
+		Str("server_id", j.rule.ServerID).
+		Msg("Firewall rule uninstalled successfully")
 
 	// Broadcast event
-	j.Ctx.BroadcastServerEvent(rule.Server, "firewall_rule.uninstalled", map[string]any{
-		"rule_id":   rule.ID,
-		"server_id": rule.ServerID,
+	j.Deps.BroadcastServerEvent(j.rule.Server, "firewall_rule.uninstalled", map[string]any{
+		"rule_id":   j.rule.ID,
+		"server_id": j.rule.ServerID,
 	})
 
 	return nil
@@ -81,29 +89,22 @@ func (j *UninstallFirewallRuleJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *UninstallFirewallRuleJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to uninstall firewall rule",
-		"rule_id", j.Payload.RuleID,
-		"server_id", j.Payload.ServerID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("rule_id", j.Payload.RuleID).
+		Str("server_id", j.Payload.ServerID).
+		Msg("Failed to uninstall firewall rule")
 
 	// Mark uninstallation as failed
-	if markErr := j.Ctx.Repos().FirewallRule().MarkAsFailed(ctx, j.Payload.RuleID); markErr != nil {
-		j.Ctx.LogError(markErr, "Failed to mark firewall rule failure")
-	}
-}
-
-func NewUninstallFirewallRuleJob(ctx *JobContext, payload UninstallFirewallRulePayload) *UninstallFirewallRuleJob {
-	return &UninstallFirewallRuleJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
+	if markErr := j.Deps.Repos.FirewallRule().MarkAsFailed(ctx, j.Payload.RuleID); markErr != nil {
+		j.Deps.Logger.Error().Err(markErr).Msg("Failed to mark firewall rule failure")
 	}
 }
 
 // NewUninstallFirewallRuleTask creates an asynq task for uninstalling a firewall rule
 // Uses TaskID for deduplication to prevent duplicate firewall rule removals
 func NewUninstallFirewallRuleTask(serverID, ruleID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeUninstallFirewall, UninstallFirewallRulePayload{
-		ServerID: serverID,
-		RuleID:   ruleID,
-		UserID:   userID,
-	}, asynq.TaskID(fmt.Sprintf("uninstall_firewall:%s:%s", serverID, ruleID)))
+	return pkgjobs.TaskWithID(TypeUninstallFirewall,
+		UninstallFirewallRulePayload{ServerID: serverID, RuleID: ruleID, UserID: userID},
+		pkgjobs.Dedup("uninstall_firewall", serverID, ruleID),
+	)
 }

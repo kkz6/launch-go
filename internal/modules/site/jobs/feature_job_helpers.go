@@ -20,7 +20,7 @@ const (
 
 // FeatureJobHelpers provides common functionality for Laravel feature enable jobs
 type FeatureJobHelpers struct {
-	Ctx *JobContext
+	Deps *JobDeps
 }
 
 // FeatureLoadResult contains the result of loading and validating resources for a feature job
@@ -33,7 +33,7 @@ type FeatureLoadResult struct {
 // LoadAndValidate validates the site is Laravel type and loads site and server.
 // Returns AlreadyEnabled=true if the feature is already enabled (caller should return nil).
 func (h *FeatureJobHelpers) LoadAndValidate(ctx context.Context, siteID, serverID, featureName string) (*FeatureLoadResult, error) {
-	site, err := h.Ctx.SiteRepo.FindByID(ctx, siteID)
+	site, err := h.Deps.Repos.Site().FindByID(ctx, siteID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find site: %w", err)
 	}
@@ -43,11 +43,11 @@ func (h *FeatureJobHelpers) LoadAndValidate(ctx context.Context, siteID, serverI
 	}
 
 	if site.HasEnabledFeature(featureName) {
-		h.Ctx.LogInfo(fmt.Sprintf("%s already enabled", featureName), "site_id", site.ID)
+		h.Deps.Logger.Info().Str("site_id", site.ID).Msgf("%s already enabled", featureName)
 		return &FeatureLoadResult{Site: site, AlreadyEnabled: true}, nil
 	}
 
-	server, err := h.Ctx.ServerRepos.Server().FindByID(ctx, serverID)
+	server, err := h.Deps.ServerRepos.Server().FindByID(ctx, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to find server: %w", err)
 	}
@@ -79,7 +79,7 @@ func (h *FeatureJobHelpers) CreateQueueRecord(ctx context.Context, site *models.
 	queue.ServerID = server.ID
 	queue.UserID = userID
 
-	if err := h.Ctx.QueueRepo.Create(ctx, queue); err != nil {
+	if err := h.Deps.Repos.Queue().Create(ctx, queue); err != nil {
 		return nil, fmt.Errorf("failed to create queue: %w", err)
 	}
 
@@ -93,9 +93,9 @@ func (h *FeatureJobHelpers) DispatchInstallQueue(ctx context.Context, queueID, s
 		return err
 	}
 
-	if err := h.Ctx.DispatchTask(task); err != nil {
+	if err := h.Deps.DispatchTask(task); err != nil {
 		// Cleanup the queue record if dispatch fails
-		_ = h.Ctx.QueueRepo.Delete(ctx, queueID)
+		_ = h.Deps.Repos.Queue().Delete(ctx, queueID)
 		return fmt.Errorf("failed to dispatch install queue job: %w", err)
 	}
 
@@ -115,17 +115,17 @@ func (h *FeatureJobHelpers) EnableFeature(ctx context.Context, site *models.Site
 	site.AddEnabledFeature(feature)
 	site.RemovePendingFeature(featureName)
 
-	if err := h.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+	if err := h.Deps.Repos.Site().UpdateFields(ctx, site.ID, map[string]interface{}{
 		"enabled_features": site.EnabledFeatures,
 		"pending_features": site.PendingFeatures,
 	}); err != nil {
-		h.Ctx.LogError(err, "Failed to update site enabled_features")
+		h.Deps.Logger.Error().Err(err).Msg("Failed to update site enabled_features")
 	}
 }
 
 // BroadcastFeatureEnabled broadcasts a feature enabled event with queue_id
 func (h *FeatureJobHelpers) BroadcastFeatureEnabled(server *servermodels.Server, featureName, siteID, queueID string) {
-	h.Ctx.BroadcastServerEvent(server, fmt.Sprintf("site.%s_enabled", featureName), map[string]interface{}{
+	h.Deps.BroadcastServerEvent(server, fmt.Sprintf("site.%s_enabled", featureName), map[string]interface{}{
 		"site_id":  siteID,
 		"queue_id": queueID,
 	})
@@ -133,7 +133,7 @@ func (h *FeatureJobHelpers) BroadcastFeatureEnabled(server *servermodels.Server,
 
 // BroadcastSchedulerEnabled broadcasts the scheduler enabled event with cron_id
 func (h *FeatureJobHelpers) BroadcastSchedulerEnabled(server *servermodels.Server, siteID, cronID string) {
-	h.Ctx.BroadcastServerEvent(server, "site.scheduler_enabled", map[string]interface{}{
+	h.Deps.BroadcastServerEvent(server, "site.scheduler_enabled", map[string]interface{}{
 		"site_id": siteID,
 		"cron_id": cronID,
 	})
@@ -141,15 +141,15 @@ func (h *FeatureJobHelpers) BroadcastSchedulerEnabled(server *servermodels.Serve
 
 // HandleFailure removes the feature from pending features when a job fails
 func (h *FeatureJobHelpers) HandleFailure(ctx context.Context, err error, siteID, featureName, logMessage string) {
-	h.Ctx.LogError(err, logMessage, "site_id", siteID)
+	h.Deps.Logger.Error().Err(err).Str("site_id", siteID).Msg(logMessage)
 
-	site, findErr := h.Ctx.SiteRepo.FindByID(ctx, siteID)
+	site, findErr := h.Deps.Repos.Site().FindByID(ctx, siteID)
 	if findErr != nil {
 		return
 	}
 
 	site.RemovePendingFeature(featureName)
-	_ = h.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+	_ = h.Deps.Repos.Site().UpdateFields(ctx, site.ID, map[string]interface{}{
 		"pending_features": site.PendingFeatures,
 	})
 }

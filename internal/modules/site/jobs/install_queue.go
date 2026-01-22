@@ -7,7 +7,9 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
@@ -23,41 +25,48 @@ type InstallQueuePayload struct {
 
 // InstallQueueJob handles queue worker installation
 type InstallQueueJob struct {
-	pkgjobs.BaseJob[*JobContext, InstallQueuePayload]
+	Deps    *JobDeps
+	Payload InstallQueuePayload
+
+	// Model fields for Failed() callback
+	site   *models.Site
+	server *servermodels.Server
+	queue  *models.Queue
 }
 
-// NewInstallQueueJob creates a new InstallQueueJob with the given context and payload
-func NewInstallQueueJob(ctx *JobContext, payload InstallQueuePayload) *InstallQueueJob {
-	return &InstallQueueJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+// NewInstallQueueJob creates a new InstallQueueJob with the given payload
+func NewInstallQueueJob(p InstallQueuePayload) pkgjobs.Handler {
+	return &InstallQueueJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the install queue job
 func (j *InstallQueueJob) Handle(ctx context.Context) error {
 	// Get queue
-	queue, err := j.Ctx.QueueRepo.FindByID(ctx, j.Payload.QueueID)
+	queue, err := j.Deps.Repos.Queue().FindByID(ctx, j.Payload.QueueID)
 	if err != nil {
 		return fmt.Errorf("failed to find queue: %w", err)
 	}
+	j.queue = queue
 
 	// Get site
-	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
+	j.site = site
 
 	// Get server
-	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
+	j.server = server
 
-	j.Ctx.LogInfo("Installing queue worker",
-		"queue_id", queue.ID,
-		"site_id", site.ID,
-		"command", queue.Command,
-	)
+	j.Deps.Logger.Info().
+		Str("queue_id", queue.ID).
+		Str("site_id", site.ID).
+		Str("command", queue.Command).
+		Msg("Installing queue worker")
 
 	// Get server username
 	serverUsername := "launch"
@@ -78,9 +87,9 @@ func (j *InstallQueueJob) Handle(ctx context.Context) error {
 		User:         queue.User,
 	})
 
-	result, err := j.Ctx.RunTaskOnServer(server, uploadTask).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, uploadTask).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to upload queue config", "queue_id", queue.ID)
+		j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to upload queue config")
 		return err
 	}
 
@@ -90,44 +99,44 @@ func (j *InstallQueueJob) Handle(ctx context.Context) error {
 
 	// Reload supervisor
 	reloadTask := servertasks.ReloadSupervisor()
-	result, err = j.Ctx.RunTaskOnServer(server, reloadTask).AsRoot().Dispatch(ctx)
+	result, err = j.Deps.RunTask(server, reloadTask).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to reload supervisor", "queue_id", queue.ID)
+		j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to reload supervisor")
 		return err
 	}
 
 	if result.GetExitCode() != 0 {
-		j.Ctx.LogError(nil, "Supervisor reload failed", "queue_id", queue.ID, "exit_code", result.GetExitCode())
+		j.Deps.Logger.Error().Str("queue_id", queue.ID).Int("exit_code", result.GetExitCode()).Msg("Supervisor reload failed")
 	}
 
 	// Mark queue as installed
 	now := time.Now()
 	queue.InstalledAt = &now
 	queue.InstallationFailedAt = nil
-	if err := j.Ctx.QueueRepo.Update(ctx, queue); err != nil {
-		j.Ctx.LogError(err, "Failed to update queue installed status")
+	if err := j.Deps.Repos.Queue().Update(ctx, queue); err != nil {
+		j.Deps.Logger.Error().Err(err).Msg("Failed to update queue installed status")
 	}
 
 	// Broadcast success
-	j.Ctx.BroadcastServerEvent(server, "queue.installed", map[string]interface{}{
+	j.Deps.BroadcastServerEvent(server, "queue.installed", map[string]interface{}{
 		"site_id":  site.ID,
 		"queue_id": queue.ID,
 	})
 
-	j.Ctx.LogInfo("Queue worker installed successfully", "queue_id", queue.ID)
+	j.Deps.Logger.Info().Str("queue_id", queue.ID).Msg("Queue worker installed successfully")
 
 	return nil
 }
 
 // Failed handles job failure
 func (j *InstallQueueJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Install queue job failed",
-		"site_id", j.Payload.SiteID,
-		"queue_id", j.Payload.QueueID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("site_id", j.Payload.SiteID).
+		Str("queue_id", j.Payload.QueueID).
+		Msg("Install queue job failed")
 
 	// Mark installation as failed
-	queue, findErr := j.Ctx.QueueRepo.FindByID(ctx, j.Payload.QueueID)
+	queue, findErr := j.Deps.Repos.Queue().FindByID(ctx, j.Payload.QueueID)
 	if findErr != nil {
 		return
 	}
@@ -135,12 +144,12 @@ func (j *InstallQueueJob) Failed(ctx context.Context, err error) {
 	now := time.Now()
 	queue.InstalledAt = nil
 	queue.InstallationFailedAt = &now
-	_ = j.Ctx.QueueRepo.Update(ctx, queue)
+	_ = j.Deps.Repos.Queue().Update(ctx, queue)
 }
 
 // NewInstallQueueTask creates an install queue job
 func NewInstallQueueTask(siteID, queueID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeInstallQueue, InstallQueuePayload{
+	return pkgjobs.Task(TypeInstallQueue, InstallQueuePayload{
 		SiteID:  siteID,
 		QueueID: queueID,
 		UserID:  userID,

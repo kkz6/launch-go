@@ -7,6 +7,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
@@ -22,92 +24,99 @@ type UninstallQueuePayload struct {
 
 // UninstallQueueJob handles queue worker uninstallation
 type UninstallQueueJob struct {
-	pkgjobs.BaseJob[*JobContext, UninstallQueuePayload]
+	Deps    *JobDeps
+	Payload UninstallQueuePayload
+
+	// Model fields for Failed() callback
+	site   *models.Site
+	server *servermodels.Server
+	queue  *models.Queue
 }
 
-// NewUninstallQueueJob creates a new UninstallQueueJob with the given context and payload
-func NewUninstallQueueJob(ctx *JobContext, payload UninstallQueuePayload) *UninstallQueueJob {
-	return &UninstallQueueJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+// NewUninstallQueueJob creates a new UninstallQueueJob with the given payload
+func NewUninstallQueueJob(p UninstallQueuePayload) pkgjobs.Handler {
+	return &UninstallQueueJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the uninstall queue job
 func (j *UninstallQueueJob) Handle(ctx context.Context) error {
 	// Get queue
-	queue, err := j.Ctx.QueueRepo.FindByID(ctx, j.Payload.QueueID)
+	queue, err := j.Deps.Repos.Queue().FindByID(ctx, j.Payload.QueueID)
 	if err != nil {
 		return fmt.Errorf("failed to find queue: %w", err)
 	}
+	j.queue = queue
 
 	// Get site
-	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
+	j.site = site
 
 	// Get server
-	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
+	j.server = server
 
-	j.Ctx.LogInfo("Uninstalling queue worker",
-		"queue_id", queue.ID,
-		"site_id", site.ID,
-	)
+	j.Deps.Logger.Info().
+		Str("queue_id", queue.ID).
+		Str("site_id", site.ID).
+		Msg("Uninstalling queue worker")
 
 	// Delete the queue config and stop the process
 	deleteTask := tasks.DeleteQueueConfig(queue.GetPath(), queue.ID)
 
-	result, err := j.Ctx.RunTaskOnServer(server, deleteTask).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, deleteTask).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to delete queue config", "queue_id", queue.ID)
+		j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to delete queue config")
 		return err
 	}
 
 	if result.GetExitCode() != 0 {
-		j.Ctx.LogError(nil, "Queue deletion failed", "queue_id", queue.ID, "exit_code", result.GetExitCode())
+		j.Deps.Logger.Error().Str("queue_id", queue.ID).Int("exit_code", result.GetExitCode()).Msg("Queue deletion failed")
 	}
 
 	// Delete the queue record from database
-	if err := j.Ctx.QueueRepo.Delete(ctx, queue.ID); err != nil {
-		j.Ctx.LogError(err, "Failed to delete queue record", "queue_id", queue.ID)
+	if err := j.Deps.Repos.Queue().Delete(ctx, queue.ID); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to delete queue record")
 		return err
 	}
 
 	// Broadcast success
-	j.Ctx.BroadcastServerEvent(server, "queue.uninstalled", map[string]interface{}{
+	j.Deps.BroadcastServerEvent(server, "queue.uninstalled", map[string]interface{}{
 		"site_id":  site.ID,
 		"queue_id": queue.ID,
 	})
 
-	j.Ctx.LogInfo("Queue worker uninstalled successfully", "queue_id", queue.ID)
+	j.Deps.Logger.Info().Str("queue_id", queue.ID).Msg("Queue worker uninstalled successfully")
 
 	return nil
 }
 
 // Failed handles job failure
 func (j *UninstallQueueJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Uninstall queue job failed",
-		"site_id", j.Payload.SiteID,
-		"queue_id", j.Payload.QueueID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("site_id", j.Payload.SiteID).
+		Str("queue_id", j.Payload.QueueID).
+		Msg("Uninstall queue job failed")
 
 	// Mark uninstallation as failed
-	queue, findErr := j.Ctx.QueueRepo.FindByID(ctx, j.Payload.QueueID)
+	queue, findErr := j.Deps.Repos.Queue().FindByID(ctx, j.Payload.QueueID)
 	if findErr != nil {
 		return
 	}
 
 	now := time.Now()
 	queue.UninstallationFailedAt = &now
-	_ = j.Ctx.QueueRepo.Update(ctx, queue)
+	_ = j.Deps.Repos.Queue().Update(ctx, queue)
 }
 
 // NewUninstallQueueTask creates an uninstall queue job
 func NewUninstallQueueTask(siteID, queueID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeUninstallQueue, UninstallQueuePayload{
+	return pkgjobs.Task(TypeUninstallQueue, UninstallQueuePayload{
 		SiteID:  siteID,
 		QueueID: queueID,
 		UserID:  userID,

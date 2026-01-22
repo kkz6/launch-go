@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -20,55 +21,55 @@ type CheckDaemonStatusPayload struct {
 // CheckDaemonStatusJob checks the status of all daemons on a server
 // This is typically triggered by a scheduled command
 type CheckDaemonStatusJob struct {
-	pkgjobs.BaseJob[*JobContext, CheckDaemonStatusPayload]
+	Deps    *JobDeps
+	Payload CheckDaemonStatusPayload
+
+	server *models.Server
 }
 
-// NewCheckDaemonStatusJob creates a new CheckDaemonStatusJob
-func NewCheckDaemonStatusJob(ctx *JobContext, payload CheckDaemonStatusPayload) *CheckDaemonStatusJob {
-	return &CheckDaemonStatusJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewCheckDaemonStatusJob(p CheckDaemonStatusPayload) pkgjobs.Handler {
+	return &CheckDaemonStatusJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the daemon status check job
 // This job delegates to SyncDaemons for the actual work
 func (j *CheckDaemonStatusJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+		return fmt.Errorf("find server: %w", err)
 	}
 
-	j.Ctx.LogInfo("Checking daemon status",
-		"server_id", server.ID,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Msg("checking daemon status")
 
 	// Create and execute the sync daemons job directly
-	syncJob := NewSyncDaemonsJob(j.Ctx, SyncDaemonsPayload{
-		ServerID: j.Payload.ServerID,
-		UserID:   j.Payload.UserID,
-	})
-
-	if err := syncJob.Handle(ctx); err != nil {
-		return fmt.Errorf("failed to sync daemon status: %w", err)
+	syncJob := &SyncDaemonsJob{
+		Deps:    j.Deps,
+		Payload: SyncDaemonsPayload{ServerID: j.Payload.ServerID, UserID: j.Payload.UserID},
 	}
 
-	j.Ctx.LogInfo("Daemon status check completed",
-		"server_id", server.ID,
-	)
+	if err := syncJob.Handle(ctx); err != nil {
+		return fmt.Errorf("sync daemon status: %w", err)
+	}
+
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Msg("daemon status check completed")
 
 	return nil
 }
 
-// Failed handles job failure
 func (j *CheckDaemonStatusJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Daemon status check failed",
-		"server_id", j.Payload.ServerID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Msg("daemon status check failed")
 }
 
-// NewCheckDaemonStatusTask creates a daemon status check task
 func NewCheckDaemonStatusTask(serverID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeCheckDaemonStatus, CheckDaemonStatusPayload{
+	return pkgjobs.Task(TypeCheckDaemonStatus, CheckDaemonStatusPayload{
 		ServerID: serverID,
 		UserID:   userID,
 	})

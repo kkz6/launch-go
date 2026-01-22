@@ -113,16 +113,6 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 	// Create services for job handlers
 	svc := m.createServices()
 
-	// Set up job context
-	jobContext := jobs.NewJobContext(
-		deps.DB,
-		deps.Logger,
-		svc.SourceControl(),
-		m.providerFactory,
-		m.repos.SourceControl(),
-	)
-	jobs.SetJobContext(jobContext)
-
 	// Register job handlers
-	jobs.RegisterHandlers(mux)
+	jobs.Register(mux, deps, m.repos, svc.SourceControl(), m.providerFactory)
 }

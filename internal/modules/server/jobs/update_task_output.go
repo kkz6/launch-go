@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -22,59 +23,60 @@ type UpdateTaskOutputPayload struct {
 // UpdateTaskOutputJob updates the output of a running task in the database
 // This allows streaming task output for long-running tasks
 type UpdateTaskOutputJob struct {
-	pkgjobs.BaseJob[*JobContext, UpdateTaskOutputPayload]
+	Deps    *JobDeps
+	Payload UpdateTaskOutputPayload
+
+	task *models.Task
 }
 
-// NewUpdateTaskOutputJob creates a new UpdateTaskOutputJob
-func NewUpdateTaskOutputJob(ctx *JobContext, payload UpdateTaskOutputPayload) *UpdateTaskOutputJob {
-	return &UpdateTaskOutputJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewUpdateTaskOutputJob(p UpdateTaskOutputPayload) pkgjobs.Handler {
+	return &UpdateTaskOutputJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the update task output job
 func (j *UpdateTaskOutputJob) Handle(ctx context.Context) error {
-	task, err := j.Ctx.Repos().Task().FindByID(ctx, j.Payload.TaskID)
+	var err error
+	j.task, err = j.Deps.Repos.Task().FindByID(ctx, j.Payload.TaskID)
 	if err != nil {
 		return fmt.Errorf("failed to find task: %w", err)
 	}
 
-	j.Ctx.LogInfo("Updating task output",
-		"task_id", task.ID,
-		"server_id", j.Payload.ServerID,
-	)
+	j.Deps.Logger.Info().
+		Str("task_id", j.task.ID).
+		Str("server_id", j.Payload.ServerID).
+		Msg("Updating task output")
 
 	var newOutput string
-	if j.Payload.Append && !task.Output.IsEmpty() {
+	if j.Payload.Append && !j.task.Output.IsEmpty() {
 		// Append to existing output
-		newOutput = task.Output.String() + j.Payload.Output
+		newOutput = j.task.Output.String() + j.Payload.Output
 	} else {
 		// Replace output
 		newOutput = j.Payload.Output
 	}
 
 	// Update the task output
-	if err := j.Ctx.Repos().Task().UpdateOutput(ctx, task.ID, newOutput); err != nil {
+	if err := j.Deps.Repos.Task().UpdateOutput(ctx, j.task.ID, newOutput); err != nil {
 		return fmt.Errorf("failed to update task output: %w", err)
 	}
 
-	j.Ctx.LogInfo("Task output updated",
-		"task_id", task.ID,
-	)
+	j.Deps.Logger.Info().
+		Str("task_id", j.task.ID).
+		Msg("Task output updated")
 
 	return nil
 }
 
 // Failed handles job failure
 func (j *UpdateTaskOutputJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to update task output",
-		"task_id", j.Payload.TaskID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("task_id", j.Payload.TaskID).
+		Msg("Failed to update task output")
 }
 
 // NewUpdateTaskOutputTask creates an update task output task
 func NewUpdateTaskOutputTask(taskID, serverID, output string, shouldAppend bool) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeUpdateTaskOutput, UpdateTaskOutputPayload{
+	return pkgjobs.Task(TypeUpdateTaskOutput, UpdateTaskOutputPayload{
 		TaskID:   taskID,
 		ServerID: serverID,
 		Output:   output,

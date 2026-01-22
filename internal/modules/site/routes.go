@@ -7,7 +7,6 @@ import (
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/handlers"
-	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
 // RegisterRoutes registers all site module routes
@@ -16,12 +15,11 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 	// Create task runner deps for file service
 	taskRunnerDeps := &servertasks.TaskRunnerDeps{
-		ServerTaskDeps: pkgjobs.ServerTaskDeps{
-			DB:         deps.DB,
-			Queue:      deps.Queue,
-			Dispatcher: deps.Dispatcher,
-			Logger:     deps.Logger,
-		},
+		DB:          deps.DB,
+		Queue:       deps.Queue,
+		Dispatcher:  deps.Dispatcher,
+		Logger:      deps.Logger,
+		Broadcaster: deps.WebSocket,
 	}
 
 	// Create service registry
@@ -55,12 +53,11 @@ func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 
 	// Create minimal task runner deps (webhooks don't need file service features)
 	taskRunnerDeps := &servertasks.TaskRunnerDeps{
-		ServerTaskDeps: pkgjobs.ServerTaskDeps{
-			DB:         deps.DB,
-			Queue:      deps.Queue,
-			Dispatcher: deps.Dispatcher,
-			Logger:     deps.Logger,
-		},
+		DB:          deps.DB,
+		Queue:       deps.Queue,
+		Dispatcher:  deps.Dispatcher,
+		Logger:      deps.Logger,
+		Broadcaster: deps.WebSocket,
 	}
 
 	svc := m.createServices(taskRunnerDeps)

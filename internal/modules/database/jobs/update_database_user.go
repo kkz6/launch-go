@@ -7,7 +7,9 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -21,41 +23,46 @@ type UpdateDatabaseUserPayload struct {
 }
 
 type UpdateDatabaseUserJob struct {
-	pkgjobs.BaseJob[*JobContext, UpdateDatabaseUserPayload]
+	Deps    *JobDeps
+	Payload UpdateDatabaseUserPayload
+
+	dbUser *models.DatabaseUser
+	server *servermodels.Server
 }
 
-func NewUpdateDatabaseUserJob(ctx *JobContext, payload UpdateDatabaseUserPayload) *UpdateDatabaseUserJob {
-	return &UpdateDatabaseUserJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewUpdateDatabaseUserJob(p UpdateDatabaseUserPayload) pkgjobs.Handler {
+	return &UpdateDatabaseUserJob{Deps: deps, Payload: p}
 }
 
 func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
-	j.Ctx.LogInfo("Updating database user", "database_user_id", j.Payload.DatabaseUserID)
+	j.Deps.Logger.Info().
+		Str("database_user_id", j.Payload.DatabaseUserID).
+		Msg("Updating database user")
 
-	dbUser, err := j.Ctx.Repos().User().FindByID(ctx, j.Payload.DatabaseUserID)
+	var err error
+	j.dbUser, err = j.Deps.Repos.User().FindByID(ctx, j.Payload.DatabaseUserID)
 	if err != nil {
 		return fmt.Errorf("failed to find database user: %w", err)
 	}
 
-	server, err := j.Ctx.GetServer(ctx, dbUser.ServerID)
+	j.server, err = j.Deps.GetServer(ctx, j.dbUser.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "updating", fmt.Sprintf("Updating database user: %s", dbUser.Name))
+	j.Deps.BroadcastUserProgress(j.server, "database_user.progress", j.Payload.DatabaseUserID, "updating", fmt.Sprintf("Updating database user: %s", j.dbUser.Name))
 
 	if j.Payload.Password != nil && *j.Payload.Password != "" {
-		factory := j.Ctx.GetTaskFactory(ctx, dbUser.ServerID)
+		factory := j.Deps.GetTaskFactory(ctx, j.dbUser.ServerID)
 		task := factory.UpdatePassword(tasks.UpdatePasswordConfig{
-			Username:      dbUser.Name,
+			Username:      j.dbUser.Name,
 			NewPassword:   *j.Payload.Password,
 			AdminUser:     "root",
-			AdminPassword: server.DatabasePassword.String(),
+			AdminPassword: j.server.DatabasePassword.String(),
 			Hosts:         []string{"%"},
 		})
 
-		result, err := j.Ctx.RunTaskOnServer(server, task).
+		result, err := j.Deps.RunTask(j.server, task).
 			AsRoot().
 			Dispatch(ctx)
 		if err != nil {
@@ -68,37 +75,45 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 	}
 
 	now := time.Now()
-	if err := j.Ctx.DB().WithContext(ctx).Model(dbUser).Update("updated_at", &now).Error; err != nil {
+	if err := j.Deps.DB.WithContext(ctx).Model(j.dbUser).Update("updated_at", &now).Error; err != nil {
 		return fmt.Errorf("failed to update database user record: %w", err)
 	}
 
-	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "updated", fmt.Sprintf("Database user %s updated successfully", dbUser.Name))
+	j.Deps.BroadcastUserProgress(j.server, "database_user.progress", j.Payload.DatabaseUserID, "updated", fmt.Sprintf("Database user %s updated successfully", j.dbUser.Name))
 
 	return nil
 }
 
 func (j *UpdateDatabaseUserJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to update database user", "database_user_id", j.Payload.DatabaseUserID)
+	j.Deps.Logger.Error().Err(err).
+		Str("database_user_id", j.Payload.DatabaseUserID).
+		Msg("Failed to update database user")
 
-	dbUser, findErr := j.Ctx.Repos().User().FindByID(ctx, j.Payload.DatabaseUserID)
-	if findErr != nil {
-		return
+	if j.dbUser == nil {
+		dbUser, findErr := j.Deps.Repos.User().FindByID(ctx, j.Payload.DatabaseUserID)
+		if findErr != nil {
+			return
+		}
+		j.dbUser = dbUser
 	}
 
-	server, findErr := j.Ctx.GetServer(ctx, dbUser.ServerID)
-	if findErr != nil {
-		return
+	if j.server == nil {
+		server, findErr := j.Deps.GetServer(ctx, j.dbUser.ServerID)
+		if findErr != nil {
+			return
+		}
+		j.server = server
 	}
 
-	j.Ctx.BroadcastUserProgress(server, "database_user.progress", j.Payload.DatabaseUserID, "failed", fmt.Sprintf("Failed to update database user: %s", dbUser.Name))
+	j.Deps.BroadcastUserProgress(j.server, "database_user.progress", j.Payload.DatabaseUserID, "failed", fmt.Sprintf("Failed to update database user: %s", j.dbUser.Name))
 }
 
 // NewUpdateDatabaseUserTask creates a database user update job
 // Uses TaskID for deduplication to prevent duplicate database user updates
 func NewUpdateDatabaseUserTask(databaseUserID string, password, callerID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeUpdateDatabaseUser, UpdateDatabaseUserPayload{
+	return pkgjobs.Task(TypeUpdateDatabaseUser, UpdateDatabaseUserPayload{
 		DatabaseUserID: databaseUserID,
 		Password:       password,
 		CallerID:       callerID,
-	}, asynq.TaskID(fmt.Sprintf("update_db_user:%s", databaseUserID)))
+	}, asynq.TaskID(pkgjobs.Dedup("update_db_user", databaseUserID)))
 }

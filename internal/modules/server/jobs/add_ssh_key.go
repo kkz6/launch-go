@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
@@ -21,80 +22,73 @@ type AddSSHKeyPayload struct {
 // AddSSHKeyJob adds an SSH key to a server.
 // Similar to Laravel's Modules\Server\Jobs\AddSSHKeyToServer
 type AddSSHKeyJob struct {
-	pkgjobs.BaseJob[*JobContext, AddSSHKeyPayload]
+	Deps    *JobDeps
+	Payload AddSSHKeyPayload
+
+	server *models.Server
+	sshKey *models.SSHKey
 }
 
-// Handle processes the job
+func NewAddSSHKeyJob(p AddSSHKeyPayload) pkgjobs.Handler {
+	return &AddSSHKeyJob{Deps: deps, Payload: p}
+}
+
 func (j *AddSSHKeyJob) Handle(ctx context.Context) error {
-	// Find the SSH key
-	sshKey, err := j.Ctx.Repos().SSHKey().FindByID(ctx, j.Payload.KeyID)
+	var err error
+
+	j.sshKey, err = j.Deps.Repos.SSHKey().FindByID(ctx, j.Payload.KeyID)
 	if err != nil {
-		return fmt.Errorf("failed to find SSH key: %w", err)
+		return fmt.Errorf("find SSH key: %w", err)
 	}
 
-	// Find the server
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+		return fmt.Errorf("find server: %w", err)
 	}
 
-	// Authorize the public key on the server
-	task := tasks.AuthorizePublicKey(sshKey.PublicKey, server.GetUsername())
+	task := tasks.AuthorizePublicKey(j.sshKey.PublicKey, j.server.GetUsername())
 
-	result, err := j.Ctx.ForServer(server).RunTask(task).
+	result, err := j.Deps.RunTask(j.server, task).
 		AsRoot().
 		Dispatch(ctx)
 
 	if err != nil {
-		return fmt.Errorf("failed to add SSH key to server: %w", err)
+		return fmt.Errorf("add SSH key to server: %w", err)
 	}
 
 	if !result.IsSuccessful() {
-		return fmt.Errorf("failed to add SSH key: %s", result.GetOutput())
+		return fmt.Errorf("add SSH key: %s", result.GetOutput())
 	}
 
-	// Attach the key to server in the database
-	if err := j.Ctx.Repos().SSHKey().AttachToServer(ctx, server.ID, sshKey.ID); err != nil {
-		return fmt.Errorf("failed to attach SSH key to server: %w", err)
+	if err := j.Deps.Repos.SSHKey().AttachToServer(ctx, j.server.ID, j.sshKey.ID); err != nil {
+		return fmt.Errorf("attach SSH key to server: %w", err)
 	}
 
-	// Log activity
-	activity.RecordWithLog(ctx, "server", "added", "", sshKey, "SSH key was added to server")
+	activity.RecordWithLog(ctx, "server", "added", "", j.sshKey, "SSH key was added to server")
 
-	j.Ctx.LogInfo("SSH key added successfully",
-		"key_id", sshKey.ID,
-		"server_id", server.ID,
-	)
+	j.Deps.Logger.Info().
+		Str("key_id", j.sshKey.ID).
+		Str("server_id", j.server.ID).
+		Msg("SSH key added successfully")
 
-	// Broadcast event
-	j.Ctx.BroadcastServerEvent(server, "ssh_key.added", map[string]any{
-		"key_id":    sshKey.ID,
-		"server_id": server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "ssh_key.added", map[string]any{
+		"key_id":    j.sshKey.ID,
+		"server_id": j.server.ID,
 	})
 
 	return nil
 }
 
-// Failed is called when the job fails after all retries
 func (j *AddSSHKeyJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to add SSH key",
-		"key_id", j.Payload.KeyID,
-		"server_id", j.Payload.ServerID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("key_id", j.Payload.KeyID).
+		Str("server_id", j.Payload.ServerID).
+		Msg("failed to add SSH key")
 }
 
-// NewAddSSHKeyJob creates a new AddSSHKeyJob with the given context and payload.
-func NewAddSSHKeyJob(ctx *JobContext, payload AddSSHKeyPayload) *AddSSHKeyJob {
-	return &AddSSHKeyJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
-}
-
-// NewAddSSHKeyTask creates an asynq task for adding an SSH key
-// Uses TaskID for deduplication to prevent duplicate key installations
 func NewAddSSHKeyTask(serverID, keyID string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeAddSSHKey, AddSSHKeyPayload{
-		ServerID: serverID,
-		KeyID:    keyID,
-	}, asynq.TaskID(fmt.Sprintf("add_ssh_key:%s:%s", serverID, keyID)))
+	return pkgjobs.TaskWithID(TypeAddSSHKey,
+		AddSSHKeyPayload{ServerID: serverID, KeyID: keyID},
+		pkgjobs.Dedup("add_ssh_key", serverID, keyID),
+	)
 }

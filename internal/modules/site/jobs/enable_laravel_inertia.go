@@ -6,6 +6,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/site/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -20,15 +22,21 @@ type EnableLaravelInertiaPayload struct {
 
 // EnableLaravelInertiaJob enables Inertia SSR for a Laravel site
 type EnableLaravelInertiaJob struct {
-	pkgjobs.BaseJob[*JobContext, EnableLaravelInertiaPayload]
+	Deps    *JobDeps
+	Payload EnableLaravelInertiaPayload
 	FeatureJobHelpers
+
+	// Model fields for Failed() callback
+	site   *models.Site
+	server *servermodels.Server
 }
 
 // NewEnableLaravelInertiaJob creates a new EnableLaravelInertiaJob
-func NewEnableLaravelInertiaJob(ctx *JobContext, payload EnableLaravelInertiaPayload) *EnableLaravelInertiaJob {
+func NewEnableLaravelInertiaJob(p EnableLaravelInertiaPayload) pkgjobs.Handler {
 	return &EnableLaravelInertiaJob{
-		BaseJob:           pkgjobs.NewBaseJob(ctx, payload),
-		FeatureJobHelpers: FeatureJobHelpers{Ctx: ctx},
+		Deps:              deps,
+		Payload:           p,
+		FeatureJobHelpers: FeatureJobHelpers{Deps: deps},
 	}
 }
 
@@ -43,7 +51,10 @@ func (j *EnableLaravelInertiaJob) Handle(ctx context.Context) error {
 	}
 
 	site, server := result.Site, result.Server
-	j.BaseJob.Ctx.LogInfo("Enabling Laravel Inertia SSR", "site_id", site.ID, "server_id", server.ID)
+	j.site = site
+	j.server = server
+
+	j.Deps.Logger.Info().Str("site_id", site.ID).Str("server_id", server.ID).Msg("Enabling Laravel Inertia SSR")
 
 	userID := j.GetUserID(j.Payload.UserID, site)
 	command := fmt.Sprintf("node %s/bootstrap/ssr/ssr.js", site.GetApplicationDirectory())
@@ -59,7 +70,7 @@ func (j *EnableLaravelInertiaJob) Handle(ctx context.Context) error {
 
 	j.EnableFeature(ctx, site, FeatureInertia, &queue.ID, nil)
 	j.BroadcastFeatureEnabled(server, FeatureInertia, site.ID, queue.ID)
-	j.BaseJob.Ctx.LogInfo("Laravel Inertia SSR enabled successfully", "site_id", site.ID, "queue_id", queue.ID)
+	j.Deps.Logger.Info().Str("site_id", site.ID).Str("queue_id", queue.ID).Msg("Laravel Inertia SSR enabled successfully")
 
 	return nil
 }
@@ -71,7 +82,7 @@ func (j *EnableLaravelInertiaJob) Failed(ctx context.Context, err error) {
 
 // NewEnableLaravelInertiaTask creates an enable Inertia task
 func NewEnableLaravelInertiaTask(siteID, serverID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeEnableLaravelInertia, EnableLaravelInertiaPayload{
+	return pkgjobs.Task(TypeEnableLaravelInertia, EnableLaravelInertiaPayload{
 		SiteID:   siteID,
 		ServerID: serverID,
 		UserID:   userID,

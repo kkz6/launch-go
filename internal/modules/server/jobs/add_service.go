@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -20,54 +21,64 @@ type AddServicePayload struct {
 }
 
 type AddServiceJob struct {
-	pkgjobs.BaseJob[*JobContext, AddServicePayload]
+	Deps    *JobDeps
+	Payload AddServicePayload
+
+	server  *models.Server
+	service *models.InstalledService
+}
+
+func NewAddServiceJob(p AddServicePayload) pkgjobs.Handler {
+	return &AddServiceJob{Deps: deps, Payload: p}
 }
 
 func (j *AddServiceJob) Handle(ctx context.Context) error {
-	service, err := j.Ctx.Repos().Service().FindByID(ctx, j.Payload.ServiceID)
+	var err error
+
+	j.service, err = j.Deps.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
-		return fmt.Errorf("failed to find service: %w", err)
+		return fmt.Errorf("find service: %w", err)
 	}
 
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+		return fmt.Errorf("find server: %w", err)
 	}
 
-	if err := j.Ctx.Repos().Service().UpdateStatus(ctx, service.ID, types.ServiceStatusInstalling); err != nil {
-		return fmt.Errorf("failed to update service status: %w", err)
+	if err := j.Deps.Repos.Service().UpdateStatus(ctx, j.service.ID, types.ServiceStatusInstalling); err != nil {
+		return fmt.Errorf("update service status: %w", err)
 	}
 
 	software := types.Software(j.Payload.Software)
 
 	task := tasks.InstallSoftware(software)
 
-	result, err := j.Ctx.ForServer(server).RunTask(task).
+	result, err := j.Deps.RunTask(j.server, task).
 		AsRoot().
 		TrackInDB().
 		Dispatch(ctx)
 
 	if err != nil {
-		return fmt.Errorf("failed to install service: %w", err)
+		return fmt.Errorf("install service: %w", err)
 	}
 
 	if !result.IsSuccessful() {
-		return fmt.Errorf("failed to install service: %s", result.GetOutput())
+		return fmt.Errorf("install service: %s", result.GetOutput())
 	}
 
-	if err := j.Ctx.Repos().Service().UpdateStatus(ctx, service.ID, types.ServiceStatusRunning); err != nil {
-		return fmt.Errorf("failed to update service status: %w", err)
+	if err := j.Deps.Repos.Service().UpdateStatus(ctx, j.service.ID, types.ServiceStatusRunning); err != nil {
+		return fmt.Errorf("update service status: %w", err)
 	}
 
-	j.Ctx.LogInfo("Service installed successfully",
-		"service_id", service.ID,
-		"server_id", server.ID,
-		"software", j.Payload.Software,
-	)
+	j.Deps.Logger.Info().
+		Str("service_id", j.service.ID).
+		Str("server_id", j.server.ID).
+		Str("software", j.Payload.Software).
+		Msg("service installed successfully")
 
-	j.Ctx.BroadcastServerEvent(server, "service.installed", map[string]any{
-		"service_id": service.ID,
-		"server_id":  server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "service.installed", map[string]any{
+		"service_id": j.service.ID,
+		"server_id":  j.server.ID,
 		"software":   j.Payload.Software,
 	})
 
@@ -75,26 +86,17 @@ func (j *AddServiceJob) Handle(ctx context.Context) error {
 }
 
 func (j *AddServiceJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to install service",
-		"service_id", j.Payload.ServiceID,
-		"server_id", j.Payload.ServerID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("service_id", j.Payload.ServiceID).
+		Str("server_id", j.Payload.ServerID).
+		Msg("failed to install service")
 
-	_ = j.Ctx.Repos().Service().UpdateStatus(ctx, j.Payload.ServiceID, types.ServiceStatusFailed)
+	_ = j.Deps.Repos.Service().UpdateStatus(ctx, j.Payload.ServiceID, types.ServiceStatusFailed)
 }
 
-func NewAddServiceJob(ctx *JobContext, payload AddServicePayload) *AddServiceJob {
-	return &AddServiceJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
-}
-
-// NewAddServiceTask creates an asynq task for adding a service
-// Uses TaskID for deduplication to prevent duplicate service installations
 func NewAddServiceTask(serverID, serviceID, software string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeAddService, AddServicePayload{
-		ServerID:  serverID,
-		ServiceID: serviceID,
-		Software:  software,
-	}, asynq.TaskID(fmt.Sprintf("add_service:%s:%s", serverID, serviceID)))
+	return pkgjobs.TaskWithID(TypeAddService,
+		AddServicePayload{ServerID: serverID, ServiceID: serviceID, Software: software},
+		pkgjobs.Dedup("add_service", serverID, serviceID),
+	)
 }

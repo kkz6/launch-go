@@ -24,29 +24,30 @@ type CreateDeploymentPayload struct {
 
 // CreateDeploymentJob creates a deployment record and dispatches the deploy job
 type CreateDeploymentJob struct {
-	pkgjobs.BaseJob[*JobContext, CreateDeploymentPayload]
+	Deps    *JobDeps
+	Payload CreateDeploymentPayload
+
+	// Model fields for Failed() callback
+	site *models.Site
 }
 
 // NewCreateDeploymentJob creates a new CreateDeploymentJob
-func NewCreateDeploymentJob(ctx *JobContext, payload CreateDeploymentPayload) *CreateDeploymentJob {
-	return &CreateDeploymentJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewCreateDeploymentJob(p CreateDeploymentPayload) pkgjobs.Handler {
+	return &CreateDeploymentJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the create deployment job
 func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
-	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
+	j.site = site
 
-	j.Ctx.LogInfo("Creating deployment",
-		"site_id", site.ID,
-	)
+	j.Deps.Logger.Info().Str("site_id", site.ID).Msg("Creating deployment")
 
 	// Check if there's already an active deployment
-	activeDeployment, err := j.Ctx.DeploymentRepo.FindActiveBySite(ctx, site.ID)
+	activeDeployment, err := j.Deps.Repos.Deployment().FindActiveBySite(ctx, site.ID)
 	if err != nil {
 		return fmt.Errorf("failed to check for active deployment: %w", err)
 	}
@@ -68,21 +69,19 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 	}
 	deployment.SiteID = site.ID
 
-	if err := j.Ctx.DeploymentRepo.Create(ctx, deployment); err != nil {
+	if err := j.Deps.Repos.Deployment().Create(ctx, deployment); err != nil {
 		return fmt.Errorf("failed to create deployment: %w", err)
 	}
 
-	j.Ctx.LogInfo("Deployment created",
-		"site_id", site.ID,
-		"deployment_id", deployment.ID,
-		"status", status,
-	)
+	j.Deps.Logger.Info().
+		Str("site_id", site.ID).
+		Str("deployment_id", deployment.ID).
+		Str("status", string(status)).
+		Msg("Deployment created")
 
 	// If queued, we're done - it will be processed when the active deployment finishes
 	if status == sitetypes.DeploymentStatusQueued {
-		j.Ctx.LogInfo("Deployment queued behind active deployment",
-			"deployment_id", deployment.ID,
-		)
+		j.Deps.Logger.Info().Str("deployment_id", deployment.ID).Msg("Deployment queued behind active deployment")
 		return nil
 	}
 
@@ -101,31 +100,29 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 	}
 
 	// Add a small delay to ensure DB transaction is committed
-	if err := j.Ctx.DispatchTaskIn(task, time.Second); err != nil {
+	if err := j.Deps.DispatchTaskIn(task, time.Second); err != nil {
 		// Cleanup: mark deployment as failed if we can't dispatch the job
-		_ = j.Ctx.DeploymentRepo.UpdateStatus(ctx, deployment.ID, sitetypes.DeploymentStatusFailed)
+		_ = j.Deps.Repos.Deployment().UpdateStatus(ctx, deployment.ID, sitetypes.DeploymentStatusFailed)
 		return fmt.Errorf("failed to enqueue deploy job: %w", err)
 	}
 
-	j.Ctx.LogInfo("Deploy job dispatched",
-		"site_id", site.ID,
-		"deployment_id", deployment.ID,
-		"zero_downtime", site.ZeroDowntimeDeployment,
-	)
+	j.Deps.Logger.Info().
+		Str("site_id", site.ID).
+		Str("deployment_id", deployment.ID).
+		Bool("zero_downtime", site.ZeroDowntimeDeployment).
+		Msg("Deploy job dispatched")
 
 	return nil
 }
 
 // Failed handles job failure
 func (j *CreateDeploymentJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to create deployment",
-		"site_id", j.Payload.SiteID,
-	)
+	j.Deps.Logger.Error().Err(err).Str("site_id", j.Payload.SiteID).Msg("Failed to create deployment")
 }
 
 // NewCreateDeploymentTask creates a create deployment task
 func NewCreateDeploymentTask(siteID string, userID *string, gitHash *string, branch *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeCreateDeployment, CreateDeploymentPayload{
+	return pkgjobs.Task(TypeCreateDeployment, CreateDeploymentPayload{
 		SiteID:  siteID,
 		UserID:  userID,
 		GitHash: gitHash,

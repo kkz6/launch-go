@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
@@ -20,25 +21,33 @@ type InstallCronPayload struct {
 }
 
 type InstallCronJob struct {
-	pkgjobs.BaseJob[*JobContext, InstallCronPayload]
+	Deps    *JobDeps
+	Payload InstallCronPayload
+
+	cron *models.Cron
+}
+
+func NewInstallCronJob(p InstallCronPayload) pkgjobs.Handler {
+	return &InstallCronJob{Deps: deps, Payload: p}
 }
 
 func (j *InstallCronJob) Handle(ctx context.Context) error {
-	cron, err := j.Ctx.Repos().Cron().FindByIDWithServer(ctx, j.Payload.CronID)
+	var err error
+	j.cron, err = j.Deps.Repos.Cron().FindByIDWithServer(ctx, j.Payload.CronID)
 	if err != nil {
 		return fmt.Errorf("failed to find cron: %w", err)
 	}
 
-	contents := cron.ToCronFileContents()
+	contents := j.cron.ToCronFileContents()
 
 	task := tasks.UploadCron(tasks.UploadCronConfig{
-		Path:     cron.Path(),
+		Path:     j.cron.Path(),
 		Contents: contents,
-		LogPath:  cron.GetLogPath(),
-		User:     cron.User,
+		LogPath:  j.cron.GetLogPath(),
+		User:     j.cron.User,
 	})
 
-	result, err := j.Ctx.ForServer(cron.Server).RunTask(task).
+	result, err := j.Deps.RunTask(j.cron.Server, task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -50,51 +59,45 @@ func (j *InstallCronJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to upload cron file: %s", result.GetOutput())
 	}
 
-	if err := j.Ctx.Repos().Cron().MarkAsInstalled(ctx, cron.ID); err != nil {
+	if err := j.Deps.Repos.Cron().MarkAsInstalled(ctx, j.cron.ID); err != nil {
 		return fmt.Errorf("failed to mark cron as installed: %w", err)
 	}
 
 	// Log activity
-	activity.RecordWithLogPtr(ctx, "server", "installed", j.Payload.UserID, cron, "Cron job was installed")
+	activity.RecordWithLogPtr(ctx, "server", "installed", j.Payload.UserID, j.cron, "Cron job was installed")
 
-	j.Ctx.LogInfo("Cron installed successfully",
-		"cron_id", cron.ID,
-		"server_id", cron.ServerID,
-		"command", cron.Command.String(),
-	)
+	j.Deps.Logger.Info().
+		Str("cron_id", j.cron.ID).
+		Str("server_id", j.cron.ServerID).
+		Str("command", j.cron.Command.String()).
+		Msg("cron installed successfully")
 
-	j.Ctx.BroadcastServerEvent(cron.Server, "cron.installed", map[string]any{
-		"cron_id":   cron.ID,
-		"server_id": cron.ServerID,
+	j.Deps.BroadcastServerEvent(j.cron.Server, "cron.installed", map[string]any{
+		"cron_id":   j.cron.ID,
+		"server_id": j.cron.ServerID,
 	})
 
 	return nil
 }
 
 func (j *InstallCronJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to install cron",
-		"cron_id", j.Payload.CronID,
-		"server_id", j.Payload.ServerID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("cron_id", j.Payload.CronID).
+		Str("server_id", j.Payload.ServerID).
+		Msg("failed to install cron")
 
 	// Mark installation as failed
-	if markErr := j.Ctx.Repos().Cron().MarkInstallationFailed(ctx, j.Payload.CronID); markErr != nil {
-		j.Ctx.LogError(markErr, "Failed to mark cron installation as failed")
-	}
-}
-
-func NewInstallCronJob(ctx *JobContext, payload InstallCronPayload) *InstallCronJob {
-	return &InstallCronJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
+	if markErr := j.Deps.Repos.Cron().MarkInstallationFailed(ctx, j.Payload.CronID); markErr != nil {
+		j.Deps.Logger.Error().Err(markErr).Msg("failed to mark cron installation as failed")
 	}
 }
 
 // NewInstallCronTask creates an asynq task for installing a cron job
 // Uses TaskID for deduplication to prevent duplicate cron installations
 func NewInstallCronTask(serverID, cronID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeInstallCron, InstallCronPayload{
+	return pkgjobs.Task(TypeInstallCron, InstallCronPayload{
 		ServerID: serverID,
 		CronID:   cronID,
 		UserID:   userID,
-	}, asynq.TaskID(fmt.Sprintf("install_cron:%s:%s", serverID, cronID)))
+	}, asynq.TaskID(pkgjobs.Dedup("install_cron", serverID, cronID)))
 }

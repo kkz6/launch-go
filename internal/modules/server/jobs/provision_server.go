@@ -23,25 +23,35 @@ type ProvisionServerPayload struct {
 }
 
 type ProvisionServerJob struct {
-	pkgjobs.BaseJob[*JobContext, ProvisionServerPayload]
+	Deps    *JobDeps
+	Payload ProvisionServerPayload
+
+	server *models.Server
+}
+
+func NewProvisionServerJob(p ProvisionServerPayload) pkgjobs.Handler {
+	return &ProvisionServerJob{Deps: deps, Payload: p}
 }
 
 func (j *ProvisionServerJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	if err := j.Ctx.Repos().Server().UpdateStatus(ctx, server.ID, types.ServerStatusProvisioning); err != nil {
+	if err := j.Deps.Repos.Server().UpdateStatus(ctx, j.server.ID, types.ServerStatusProvisioning); err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
 	}
 
 	var sshKeyContents []string
 	if len(j.Payload.SSHKeyIDs) > 0 {
 		for _, keyID := range j.Payload.SSHKeyIDs {
-			key, err := j.Ctx.Repos().SSHKey().FindByID(ctx, keyID)
+			key, err := j.Deps.Repos.SSHKey().FindByID(ctx, keyID)
 			if err != nil {
-				j.Ctx.LogError(err, "Failed to find SSH key", "key_id", keyID)
+				j.Deps.Logger.Error().Err(err).
+					Str("key_id", keyID).
+					Msg("failed to find SSH key")
 				continue
 			}
 			sshKeyContents = append(sshKeyContents, key.PublicKey)
@@ -49,29 +59,29 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Generate signed URL for launch-agent pulse webhook
-	agentURL := generateAgentPulseURL(server.ID)
+	agentURL := generateAgentPulseURL(j.server.ID)
 
 	config := tasks.ProvisionFreshServerConfig{
-		ServerID:         server.ID,
-		TeamID:           server.TeamID,
-		MemoryInMB:       getMemoryInMB(server),
-		PublicIPv4:       getPublicIP(server),
-		Provider:         string(server.Provider),
-		PublicKey:        server.PublicKey.String(),
-		Username:         server.GetUsername(),
-		Password:         server.Password.String(),
-		WorkingDirectory: getWorkingDir(server),
+		ServerID:         j.server.ID,
+		TeamID:           j.server.TeamID,
+		MemoryInMB:       getMemoryInMB(j.server),
+		PublicIPv4:       getPublicIP(j.server),
+		Provider:         string(j.server.Provider),
+		PublicKey:        j.server.PublicKey.String(),
+		Username:         j.server.GetUsername(),
+		Password:         j.server.Password.String(),
+		WorkingDirectory: getWorkingDir(j.server),
 		SSHKeys:          sshKeyContents,
-		SSHPort:          server.GetSSHPort(),
+		SSHPort:          j.server.GetSSHPort(),
 		SoftwareStack:    getDefaultSoftwareStack(),
-		DatabasePassword: server.DatabasePassword.String(),
+		DatabasePassword: j.server.DatabasePassword.String(),
 		AgentConfigPath:  "/etc/launch-agent/launch-agent.yaml",
 		AgentURL:         agentURL,
 	}
 
 	task := tasks.ProvisionFreshServer(config)
 
-	taskModel, err := j.Ctx.ForServer(server).RunTask(task).
+	taskModel, err := j.Deps.RunTask(j.server, task).
 		AsRoot().
 		TrackInDB().
 		RunInBackground(ctx)
@@ -80,14 +90,14 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to execute provision task: %w", err)
 	}
 
-	j.Ctx.LogInfo("Server provisioning started",
-		"server_id", server.ID,
-		"server_name", server.Name,
-		"task_id", taskModel.ID,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("server_name", j.server.Name).
+		Str("task_id", taskModel.ID).
+		Msg("server provisioning started")
 
-	j.Ctx.BroadcastServerEvent(server, "server.provisioning", map[string]any{
-		"server_id": server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "server.provisioning", map[string]any{
+		"server_id": j.server.ID,
 		"status":    "provisioning",
 		"task_id":   taskModel.ID,
 	})
@@ -96,17 +106,18 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 }
 
 func (j *ProvisionServerJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to provision server",
-		"server_id", j.Payload.ServerID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Msg("failed to provision server")
 
-	if updateErr := j.Ctx.Repos().Server().UpdateStatus(ctx, j.Payload.ServerID, types.ServerStatusFailed); updateErr != nil {
-		j.Ctx.LogError(updateErr, "Failed to update server status to failed")
+	if updateErr := j.Deps.Repos.Server().UpdateStatus(ctx, j.Payload.ServerID, types.ServerStatusFailed); updateErr != nil {
+		j.Deps.Logger.Error().Err(updateErr).
+			Msg("failed to update server status to failed")
 	}
 
-	server, findErr := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	server, findErr := j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if findErr == nil {
-		j.Ctx.BroadcastServerEvent(server, "server.provision_failed", map[string]any{
+		j.Deps.BroadcastServerEvent(server, "server.provision_failed", map[string]any{
 			"server_id": j.Payload.ServerID,
 			"error":     err.Error(),
 		})
@@ -118,8 +129,9 @@ func (j *ProvisionServerJob) Failed(ctx context.Context, err error) {
 
 // dispatchCleanupJob dispatches the cleanup job for failed provisioning
 func (j *ProvisionServerJob) dispatchCleanupJob(server *models.Server, reason string) {
-	if j.Ctx.Queue() == nil {
-		j.Ctx.LogError(nil, "Queue not available, cannot dispatch cleanup job")
+	if j.Deps.Queue == nil {
+		j.Deps.Logger.Error().
+			Msg("queue not available, cannot dispatch cleanup job")
 		return
 	}
 
@@ -137,24 +149,18 @@ func (j *ProvisionServerJob) dispatchCleanupJob(server *models.Server, reason st
 		false, // Don't delete the record, keep it for debugging
 	)
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to create cleanup task")
+		j.Deps.Logger.Error().Err(err).
+			Msg("failed to create cleanup task")
 		return
 	}
 
-	if err := j.Ctx.DispatchTask(task); err != nil {
+	if err := j.Deps.DispatchTask(task); err != nil {
 		return // Error already logged by DispatchTask
 	}
 
-	j.Ctx.LogInfo("CleanupFailedProvisioning job dispatched",
-		"server_id", j.Payload.ServerID,
-	)
-}
-
-// NewProvisionServerJob creates a new ProvisionServerJob with the given context and payload.
-func NewProvisionServerJob(ctx *JobContext, payload ProvisionServerPayload) *ProvisionServerJob {
-	return &ProvisionServerJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+	j.Deps.Logger.Info().
+		Str("server_id", j.Payload.ServerID).
+		Msg("CleanupFailedProvisioning job dispatched")
 }
 
 func getMemoryInMB(server *models.Server) int {
@@ -192,12 +198,15 @@ func getDefaultSoftwareStack() []types.Software {
 // NewProvisionServerTask creates an asynq task for provisioning a server.
 // Uses TaskID for deduplication to prevent duplicate provisioning
 func NewProvisionServerTask(serverID, teamID string, userID *string, sshKeyIDs []string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeProvisionServer, ProvisionServerPayload{
-		ServerID:  serverID,
-		TeamID:    teamID,
-		UserID:    userID,
-		SSHKeyIDs: sshKeyIDs,
-	}, asynq.TaskID(fmt.Sprintf("provision:%s", serverID)))
+	return pkgjobs.TaskWithID(TypeProvisionServer,
+		ProvisionServerPayload{
+			ServerID:  serverID,
+			TeamID:    teamID,
+			UserID:    userID,
+			SSHKeyIDs: sshKeyIDs,
+		},
+		pkgjobs.Dedup("provision", serverID),
+	)
 }
 
 // generateAgentPulseURL creates a permanent signed URL for the launch-agent pulse webhook

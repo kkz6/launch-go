@@ -22,15 +22,21 @@ type EnableLaravelQueuePayload struct {
 
 // EnableLaravelQueueJob enables a Laravel queue worker for a site
 type EnableLaravelQueueJob struct {
-	pkgjobs.BaseJob[*JobContext, EnableLaravelQueuePayload]
+	Deps    *JobDeps
+	Payload EnableLaravelQueuePayload
 	FeatureJobHelpers
+
+	// Model fields for Failed() callback
+	site   *models.Site
+	server *servermodels.Server
 }
 
 // NewEnableLaravelQueueJob creates a new EnableLaravelQueueJob
-func NewEnableLaravelQueueJob(ctx *JobContext, payload EnableLaravelQueuePayload) *EnableLaravelQueueJob {
+func NewEnableLaravelQueueJob(p EnableLaravelQueuePayload) pkgjobs.Handler {
 	return &EnableLaravelQueueJob{
-		BaseJob:           pkgjobs.NewBaseJob(ctx, payload),
-		FeatureJobHelpers: FeatureJobHelpers{Ctx: ctx},
+		Deps:              deps,
+		Payload:           p,
+		FeatureJobHelpers: FeatureJobHelpers{Deps: deps},
 	}
 }
 
@@ -45,7 +51,10 @@ func (j *EnableLaravelQueueJob) Handle(ctx context.Context) error {
 	}
 
 	site, server := result.Site, result.Server
-	j.BaseJob.Ctx.LogInfo("Enabling Laravel queue worker", "site_id", site.ID, "server_id", server.ID)
+	j.site = site
+	j.server = server
+
+	j.Deps.Logger.Info().Str("site_id", site.ID).Str("server_id", server.ID).Msg("Enabling Laravel queue worker")
 
 	userID := j.GetUserID(j.Payload.UserID, site)
 	queue, err := j.createQueueWithConfig(ctx, site, server, userID)
@@ -59,7 +68,7 @@ func (j *EnableLaravelQueueJob) Handle(ctx context.Context) error {
 
 	j.EnableFeature(ctx, site, FeatureQueue, &queue.ID, nil)
 	j.BroadcastFeatureEnabled(server, FeatureQueue, site.ID, queue.ID)
-	j.BaseJob.Ctx.LogInfo("Laravel queue worker enabled successfully", "site_id", site.ID, "queue_id", queue.ID)
+	j.Deps.Logger.Info().Str("site_id", site.ID).Str("queue_id", queue.ID).Msg("Laravel queue worker enabled successfully")
 
 	return nil
 }
@@ -97,7 +106,7 @@ func (j *EnableLaravelQueueJob) createQueueWithConfig(ctx context.Context, site 
 	queue.ServerID = server.ID
 	queue.UserID = userID
 
-	if err := j.BaseJob.Ctx.QueueRepo.Create(ctx, queue); err != nil {
+	if err := j.Deps.Repos.Queue().Create(ctx, queue); err != nil {
 		return nil, fmt.Errorf("failed to create queue: %w", err)
 	}
 
@@ -111,7 +120,7 @@ func (j *EnableLaravelQueueJob) Failed(ctx context.Context, err error) {
 
 // NewEnableLaravelQueueTask creates an enable queue task
 func NewEnableLaravelQueueTask(siteID, serverID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeEnableLaravelQueue, EnableLaravelQueuePayload{
+	return pkgjobs.Task(TypeEnableLaravelQueue, EnableLaravelQueuePayload{
 		SiteID:   siteID,
 		ServerID: serverID,
 		UserID:   userID,
