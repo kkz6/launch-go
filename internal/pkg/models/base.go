@@ -90,31 +90,6 @@ func (m *InstallableModel) IsUninstalling() bool {
 	return m.UninstallationRequestedAt != nil && m.UninstallationFailedAt == nil
 }
 
-// MarkAsInstalled marks the resource as installed
-func (m *InstallableModel) MarkAsInstalled() {
-	now := time.Now()
-	m.InstalledAt = &now
-	m.InstallationFailedAt = nil
-}
-
-// MarkAsFailed marks the resource installation as failed
-func (m *InstallableModel) MarkAsFailed() {
-	now := time.Now()
-	m.InstallationFailedAt = &now
-}
-
-// MarkAsUninstalling marks the resource as being uninstalled
-func (m *InstallableModel) MarkAsUninstalling() {
-	now := time.Now()
-	m.UninstallationRequestedAt = &now
-}
-
-// MarkUninstallationFailed marks the uninstallation as failed
-func (m *InstallableModel) MarkUninstallationFailed() {
-	now := time.Now()
-	m.UninstallationFailedAt = &now
-}
-
 // SoftDeleteModel provides soft delete functionality.
 // Embed this for models that should be soft-deleted instead of permanently removed.
 type SoftDeleteModel struct {

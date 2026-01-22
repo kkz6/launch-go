@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"gorm.io/gorm"
 )
 
@@ -130,21 +131,21 @@ func (r *Installable[T]) FindByIDWithServer(ctx context.Context, id string) (*T,
 	err := r.DB.WithContext(ctx).Preload("Server").First(&entity, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
 	return &entity, nil
 }
 
-// FindByIDWithServerOrFail finds a record by ID with the Server relation preloaded or returns a typed error
+// FindByIDWithServerOrFail finds a record by ID with the Server relation preloaded or returns a 404 error
 func (r *Installable[T]) FindByIDWithServerOrFail(ctx context.Context, id string) (*T, error) {
 	entity, err := r.FindByIDWithServer(ctx, id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, NotFoundError(r.getModelName(), id)
+		if fiberutil.IsNotFound(err) {
+			return nil, fiberutil.NotFound()
 		}
-		return nil, WrapError(err, r.getModelName(), "failed to find "+r.getModelName())
+		return nil, fiberutil.Internal()
 	}
 	return entity, nil
 }
@@ -159,7 +160,7 @@ func (r *Installable[T]) DeleteByServer(ctx context.Context, id, serverID string
 		return result.Error
 	}
 	if result.RowsAffected == 0 {
-		return ErrNotFound
+		return fiberutil.NotFound()
 	}
 	return nil
 }

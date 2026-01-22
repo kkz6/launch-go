@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"gorm.io/gorm"
 )
 
@@ -250,29 +251,28 @@ func applyScopes(db *gorm.DB, scopes ...Scope) *gorm.DB {
 }
 
 // FindOne finds a single record matching the given scopes.
-// Returns ErrNotFound if no record matches.
+// Returns a 404 error if no record matches.
 func FindOne[T any](ctx context.Context, db *gorm.DB, scopes ...Scope) (*T, error) {
 	var entity T
 	query := applyScopes(db.WithContext(ctx), scopes...)
 	err := query.First(&entity).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
 	return &entity, nil
 }
 
-// FindOneOrFail finds a single record or returns a typed NotFoundError.
+// FindOneOrFail finds a single record or returns a 404 error.
 func FindOneOrFail[T any](ctx context.Context, db *gorm.DB, scopes ...Scope) (*T, error) {
 	entity, err := FindOne[T](ctx, db, scopes...)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			var t T
-			return nil, NotFoundError(getTypeName(t), "")
+		if fiberutil.IsNotFound(err) {
+			return nil, fiberutil.NotFound()
 		}
-		return nil, err
+		return nil, fiberutil.Internal()
 	}
 	return entity, nil
 }

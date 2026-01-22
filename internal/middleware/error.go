@@ -6,30 +6,33 @@ import (
 	sentryfiber "github.com/getsentry/sentry-go/fiber"
 	"github.com/gofiber/fiber/v2"
 
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// ErrorHandler is the global error handler for Fiber
-// It automatically converts our custom error types to proper HTTP responses
-// Similar to Laravel's exception handler
+// ErrorHandler is the global error handler for Fiber.
+// It converts fiber.Error and ValidationError types to proper HTTP JSON responses.
 func ErrorHandler(c *fiber.Ctx, err error) error {
 	code := fiber.StatusInternalServerError
 	message := "Internal server error"
 
 	if err != nil {
-		message = err.Error()
+		// Check for validation errors first
+		var validationErr *fiberutil.ValidationError
+		if errors.As(err, &validationErr) {
+			return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
+				"success": false,
+				"message": "Validation failed",
+				"errors":  validationErr.Errors,
+			})
+		}
 
-		// Check for Fiber's built-in error type first
+		// Check for Fiber's built-in error type
 		var fiberErr *fiber.Error
 		if errors.As(err, &fiberErr) {
 			code = fiberErr.Code
+			message = fiberErr.Message
 		} else {
-			// Check for our custom HTTPStatusError interface
-			// This catches ResourceError, AppError, and ModelError
-			var httpErr apperrors.HTTPStatusError
-			if errors.As(err, &httpErr) {
-				code = httpErr.HTTPStatus()
-			}
+			message = err.Error()
 		}
 
 		// Capture 5xx errors to Sentry (if Sentry is enabled)

@@ -3,25 +3,25 @@ package services
 import (
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
-// Service-specific errors - using centralized error package
+// Service-specific errors - using fiberutil error package
 var (
-	ErrServerNotProvisioned = apperrors.BadRequest("Server is not provisioned")
-	ErrServerNotConnected   = apperrors.BadRequest("Server is not connected")
-	ErrInvalidProvider      = apperrors.BadRequest("Invalid server provider")
-	ErrInvalidServerType    = apperrors.BadRequest("Invalid server type")
-	ErrInvalidSoftware      = apperrors.BadRequest("Invalid software")
-	ErrServiceAlreadyExists = apperrors.Conflict("Service already installed")
-	ErrCannotDeleteService  = apperrors.BadRequest("Cannot delete service")
-	ErrQueueNotConfigured   = apperrors.Internal("Queue not configured")
-	ErrDaemonNotInstalled   = apperrors.BadRequest("Daemon is not installed")
+	ErrServerNotProvisioned = fiberutil.BadRequest("Server is not provisioned")
+	ErrServerNotConnected   = fiberutil.BadRequest("Server is not connected")
+	ErrInvalidProvider      = fiberutil.BadRequest("Invalid server provider")
+	ErrInvalidServerType    = fiberutil.BadRequest("Invalid server type")
+	ErrInvalidSoftware      = fiberutil.BadRequest("Invalid software")
+	ErrServiceAlreadyExists = fiberutil.Conflict("Service already installed")
+	ErrCannotDeleteService  = fiberutil.BadRequest("Cannot delete service")
+	ErrQueueNotConfigured   = fiberutil.Internal("Queue not configured")
+	ErrDaemonNotInstalled   = fiberutil.BadRequest("Daemon is not installed")
 )
 
 // Re-export repository errors for convenience

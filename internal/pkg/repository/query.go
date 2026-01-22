@@ -3,33 +3,23 @@ package repository
 import (
 	"context"
 	"errors"
-	"fmt"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"gorm.io/gorm"
 )
 
 // Query provides a fluent query builder with OrFail support
 type Query[T any] struct {
-	db        *gorm.DB
-	ctx       context.Context
-	modelName string
+	db  *gorm.DB
+	ctx context.Context
 }
 
 // NewQuery creates a new Query builder
 func NewQuery[T any](ctx context.Context, db *gorm.DB) *Query[T] {
-	var entity T
-	q := &Query[T]{
-		db:        db.WithContext(ctx),
-		ctx:       ctx,
-		modelName: getTypeName(entity),
+	return &Query[T]{
+		db:  db.WithContext(ctx),
+		ctx: ctx,
 	}
-	return q
-}
-
-// WithModel sets a custom model name for error messages
-func (q *Query[T]) WithModel(name string) *Query[T] {
-	q.modelName = name
-	return q
 }
 
 // Preload adds preload relations
@@ -72,21 +62,21 @@ func (q *Query[T]) First() (*T, error) {
 	err := q.db.First(&entity).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
 	return &entity, nil
 }
 
-// FirstOrFail executes the query and returns an error if not found
+// FirstOrFail executes the query and returns a 404 error if not found
 func (q *Query[T]) FirstOrFail() (*T, error) {
 	entity, err := q.First()
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, NotFoundError(q.modelName, "")
+		if fiberutil.IsNotFound(err) {
+			return nil, fiberutil.NotFound()
 		}
-		return nil, WrapError(err, q.modelName, fmt.Sprintf("failed to find %s", q.modelName))
+		return nil, fiberutil.Internal()
 	}
 	return entity, nil
 }
@@ -271,11 +261,6 @@ func (q *Query[T]) Update(values map[string]interface{}) error {
 func (q *Query[T]) Debug() *Query[T] {
 	q.db = q.db.Debug()
 	return q
-}
-
-// getTypeName gets the type name using reflection
-func getTypeName(entity interface{}) string {
-	return fmt.Sprintf("%T", entity)
 }
 
 // DB returns the underlying gorm.DB for custom operations

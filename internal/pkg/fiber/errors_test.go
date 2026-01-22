@@ -1,178 +1,315 @@
 package fiber
 
 import (
-	"context"
-	"io"
-	"net/http/httptest"
+	"errors"
 	"testing"
 
 	gofiber "github.com/gofiber/fiber/v2"
-	"gorm.io/gorm"
-
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 )
 
-func TestHandleServiceError(t *testing.T) {
+func TestNotFound(t *testing.T) {
 	tests := []struct {
-		name           string
-		err            error
-		wantStatusCode int
+		name    string
+		message string
+		want    int
 	}{
 		{
-			name:           "nil error returns nil",
-			err:            nil,
-			wantStatusCode: 0, // no response sent
+			name:    "with custom message",
+			message: "User not found",
+			want:    404,
 		},
 		{
-			name:           "ResourceError not found",
-			err:            apperrors.ErrServerNotFound,
-			wantStatusCode: 404,
-		},
-		{
-			name:           "ResourceError bad request",
-			err:            apperrors.BadRequest("invalid input"),
-			wantStatusCode: 400,
-		},
-		{
-			name:           "ResourceError conflict",
-			err:            apperrors.Conflict("resource already exists"),
-			wantStatusCode: 409,
-		},
-		{
-			name:           "ResourceError forbidden",
-			err:            apperrors.Forbidden("access denied"),
-			wantStatusCode: 403,
-		},
-		{
-			name:           "ResourceError unauthorized",
-			err:            apperrors.Unauthorized("not authenticated"),
-			wantStatusCode: 401,
-		},
-		{
-			name:           "ResourceError internal",
-			err:            apperrors.Internal("something went wrong"),
-			wantStatusCode: 500,
-		},
-		{
-			name:           "GORM record not found",
-			err:            gorm.ErrRecordNotFound,
-			wantStatusCode: 404,
-		},
-		{
-			name:           "context canceled",
-			err:            context.Canceled,
-			wantStatusCode: 408,
-		},
-		{
-			name:           "context deadline exceeded",
-			err:            context.DeadlineExceeded,
-			wantStatusCode: 504,
-		},
-		{
-			name:           "base ErrNotFound",
-			err:            apperrors.ErrNotFound,
-			wantStatusCode: 404,
-		},
-		{
-			name:           "base ErrUnauthorized",
-			err:            apperrors.ErrUnauthorized,
-			wantStatusCode: 401,
-		},
-		{
-			name:           "base ErrForbidden",
-			err:            apperrors.ErrForbidden,
-			wantStatusCode: 403,
-		},
-		{
-			name:           "unknown error returns 500",
-			err:            io.EOF, // arbitrary error
-			wantStatusCode: 500,
+			name:    "with default message",
+			message: "",
+			want:    404,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := gofiber.New()
-
-			app.Get("/test", func(c *gofiber.Ctx) error {
-				return HandleServiceError(c, tt.err)
-			})
-
-			req := httptest.NewRequest("GET", "/test", nil)
-			resp, err := app.Test(req)
-			if err != nil {
-				t.Fatalf("app.Test failed: %v", err)
+			var err error
+			if tt.message != "" {
+				err = NotFound(tt.message)
+			} else {
+				err = NotFound()
 			}
 
-			if tt.err == nil {
-				// nil error should return 200 (default)
-				if resp.StatusCode != 200 {
-					t.Errorf("expected 200 for nil error, got %d", resp.StatusCode)
-				}
-			} else {
-				if resp.StatusCode != tt.wantStatusCode {
-					t.Errorf("expected status %d, got %d", tt.wantStatusCode, resp.StatusCode)
-				}
+			var fiberErr *gofiber.Error
+			if !errors.As(err, &fiberErr) {
+				t.Fatalf("expected *fiber.Error, got %T", err)
+			}
+			if fiberErr.Code != tt.want {
+				t.Errorf("expected status %d, got %d", tt.want, fiberErr.Code)
 			}
 		})
 	}
 }
 
-func TestHandleServiceErrorWithMessage(t *testing.T) {
-	app := gofiber.New()
+func TestBadRequest(t *testing.T) {
+	err := BadRequest("invalid input")
 
-	customMsg := "Custom internal error message"
-
-	app.Get("/test", func(c *gofiber.Ctx) error {
-		// Use an unknown error type to trigger the default case
-		return HandleServiceErrorWithMessage(c, io.EOF, customMsg)
-	})
-
-	req := httptest.NewRequest("GET", "/test", nil)
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf("app.Test failed: %v", err)
+	var fiberErr *gofiber.Error
+	if !errors.As(err, &fiberErr) {
+		t.Fatalf("expected *fiber.Error, got %T", err)
 	}
-
-	if resp.StatusCode != 500 {
-		t.Errorf("expected status 500, got %d", resp.StatusCode)
+	if fiberErr.Code != 400 {
+		t.Errorf("expected status 400, got %d", fiberErr.Code)
+	}
+	if fiberErr.Message != "invalid input" {
+		t.Errorf("expected message 'invalid input', got '%s'", fiberErr.Message)
 	}
 }
 
-func TestMustSucceed(t *testing.T) {
-	app := gofiber.New()
+func TestConflict(t *testing.T) {
+	err := Conflict("resource already exists")
 
-	app.Get("/success", func(c *gofiber.Ctx) error {
-		if err := MustSucceed(c, nil); err != nil {
-			return err
-		}
-		return c.SendString("ok")
-	})
-
-	app.Get("/error", func(c *gofiber.Ctx) error {
-		if err := MustSucceed(c, apperrors.ErrNotFound); err != nil {
-			return err
-		}
-		return c.SendString("ok")
-	})
-
-	// Test success case
-	req := httptest.NewRequest("GET", "/success", nil)
-	resp, err := app.Test(req)
-	if err != nil {
-		t.Fatalf("app.Test failed: %v", err)
+	var fiberErr *gofiber.Error
+	if !errors.As(err, &fiberErr) {
+		t.Fatalf("expected *fiber.Error, got %T", err)
 	}
-	if resp.StatusCode != 200 {
-		t.Errorf("expected 200 for nil error, got %d", resp.StatusCode)
+	if fiberErr.Code != 409 {
+		t.Errorf("expected status 409, got %d", fiberErr.Code)
+	}
+}
+
+func TestForbidden(t *testing.T) {
+	err := Forbidden("access denied")
+
+	var fiberErr *gofiber.Error
+	if !errors.As(err, &fiberErr) {
+		t.Fatalf("expected *fiber.Error, got %T", err)
+	}
+	if fiberErr.Code != 403 {
+		t.Errorf("expected status 403, got %d", fiberErr.Code)
+	}
+}
+
+func TestUnauthorized(t *testing.T) {
+	err := Unauthorized("not authenticated")
+
+	var fiberErr *gofiber.Error
+	if !errors.As(err, &fiberErr) {
+		t.Fatalf("expected *fiber.Error, got %T", err)
+	}
+	if fiberErr.Code != 401 {
+		t.Errorf("expected status 401, got %d", fiberErr.Code)
+	}
+}
+
+func TestInternal(t *testing.T) {
+	err := Internal("something went wrong")
+
+	var fiberErr *gofiber.Error
+	if !errors.As(err, &fiberErr) {
+		t.Fatalf("expected *fiber.Error, got %T", err)
+	}
+	if fiberErr.Code != 500 {
+		t.Errorf("expected status 500, got %d", fiberErr.Code)
+	}
+}
+
+func TestValidation(t *testing.T) {
+	err := Validation("validation failed")
+
+	var fiberErr *gofiber.Error
+	if !errors.As(err, &fiberErr) {
+		t.Fatalf("expected *fiber.Error, got %T", err)
+	}
+	if fiberErr.Code != 422 {
+		t.Errorf("expected status 422, got %d", fiberErr.Code)
+	}
+}
+
+func TestTooManyRequests(t *testing.T) {
+	err := TooManyRequests("rate limit exceeded")
+
+	var fiberErr *gofiber.Error
+	if !errors.As(err, &fiberErr) {
+		t.Fatalf("expected *fiber.Error, got %T", err)
+	}
+	if fiberErr.Code != 429 {
+		t.Errorf("expected status 429, got %d", fiberErr.Code)
+	}
+}
+
+func TestIsNotFound(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "ErrNotFound sentinel",
+			err:  ErrNotFound,
+			want: true,
+		},
+		{
+			name: "NotFound function error",
+			err:  NotFound("User not found"),
+			want: true,
+		},
+		{
+			name: "BadRequest error",
+			err:  BadRequest("invalid"),
+			want: false,
+		},
+		{
+			name: "regular error",
+			err:  errors.New("some error"),
+			want: false,
+		},
 	}
 
-	// Test error case
-	req = httptest.NewRequest("GET", "/error", nil)
-	resp, err = app.Test(req)
-	if err != nil {
-		t.Fatalf("app.Test failed: %v", err)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsNotFound(tt.err); got != tt.want {
+				t.Errorf("IsNotFound() = %v, want %v", got, tt.want)
+			}
+		})
 	}
-	if resp.StatusCode != 404 {
-		t.Errorf("expected 404 for ErrNotFound, got %d", resp.StatusCode)
+}
+
+func TestIsUnauthorized(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "Unauthorized error",
+			err:  Unauthorized("not authenticated"),
+			want: true,
+		},
+		{
+			name: "Forbidden error",
+			err:  Forbidden("access denied"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsUnauthorized(tt.err); got != tt.want {
+				t.Errorf("IsUnauthorized() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsForbidden(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "Forbidden error",
+			err:  Forbidden("access denied"),
+			want: true,
+		},
+		{
+			name: "Unauthorized error",
+			err:  Unauthorized("not authenticated"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsForbidden(tt.err); got != tt.want {
+				t.Errorf("IsForbidden() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsConflict(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "Conflict error",
+			err:  Conflict("resource exists"),
+			want: true,
+		},
+		{
+			name: "BadRequest error",
+			err:  BadRequest("invalid"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsConflict(tt.err); got != tt.want {
+				t.Errorf("IsConflict() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsValidationError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "ErrValidation sentinel",
+			err:  ErrValidation,
+			want: true,
+		},
+		{
+			name: "Validation function error",
+			err:  Validation("validation failed"),
+			want: true,
+		},
+		{
+			name: "BadRequest error",
+			err:  BadRequest("invalid"),
+			want: true,
+		},
+		{
+			name: "NotFound error",
+			err:  NotFound("not found"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsValidationError(tt.err); got != tt.want {
+				t.Errorf("IsValidationError() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestIsInternalError(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "Internal error",
+			err:  Internal("server error"),
+			want: true,
+		},
+		{
+			name: "BadRequest error",
+			err:  BadRequest("invalid"),
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := IsInternalError(tt.err); got != tt.want {
+				t.Errorf("IsInternalError() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

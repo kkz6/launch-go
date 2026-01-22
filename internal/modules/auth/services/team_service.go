@@ -8,7 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/enums"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
@@ -52,12 +52,12 @@ func (s *TeamService) UpdateTeam(ctx context.Context, userID, teamID string, req
 	}
 
 	if team == nil {
-		return nil, apperrors.ErrNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	// Check ownership
 	if team.UserID != userID {
-		return nil, apperrors.ErrForbidden
+		return nil, fiberutil.Forbidden()
 	}
 
 	team.Name = req.Name
@@ -79,12 +79,12 @@ func (s *TeamService) DeleteTeam(ctx context.Context, userID, teamID string) err
 	}
 
 	if team == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	// Check ownership
 	if team.UserID != userID {
-		return apperrors.ErrForbidden
+		return fiberutil.Forbidden()
 	}
 
 	// Cannot delete personal team
@@ -110,7 +110,7 @@ func (s *TeamService) GetTeamWithDetails(ctx context.Context, teamID string) (*m
 	}
 
 	if team == nil {
-		return nil, nil, nil, apperrors.ErrNotFound
+		return nil, nil, nil, fiberutil.NotFound()
 	}
 
 	members, err := s.repos.Team().GetMembers(ctx, teamID)
@@ -140,7 +140,7 @@ func (s *TeamService) SwitchTeam(ctx context.Context, userID, teamID string) (*m
 	}
 
 	if !isMember {
-		return nil, apperrors.ErrForbidden
+		return nil, fiberutil.Forbidden()
 	}
 
 	if err := s.repos.User().SetCurrentTeam(ctx, userID, teamID); err != nil {

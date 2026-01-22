@@ -11,19 +11,19 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/billing/providers"
 	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// Service errors - re-exported from centralized error package
+// Service errors - using fiber error utilities
 var (
-	ErrSubscriptionNotFound     = apperrors.ErrSubscriptionNotFound
-	ErrNoActiveSubscription     = apperrors.NotFound("No active subscription found")
-	ErrAlreadySubscribed        = apperrors.Conflict("Team already has an active subscription")
-	ErrSubscriptionNotCancelled = apperrors.BadRequest("Subscription is not cancelled")
-	ErrCannotResume             = apperrors.BadRequest("Cannot resume subscription - grace period has ended")
-	ErrPlanNotFound             = apperrors.ErrPlanNotFound
-	ErrSubscriptionsNotEnabled  = apperrors.BadRequest("Subscriptions are not enabled")
-	ErrLimitExceeded            = apperrors.BadRequest("Limit exceeded")
+	ErrSubscriptionNotFound     = fiberutil.NotFound("Subscription not found")
+	ErrNoActiveSubscription     = fiberutil.NotFound("No active subscription found")
+	ErrAlreadySubscribed        = fiberutil.Conflict("Team already has an active subscription")
+	ErrSubscriptionNotCancelled = fiberutil.BadRequest("Subscription is not cancelled")
+	ErrCannotResume             = fiberutil.BadRequest("Cannot resume subscription - grace period has ended")
+	ErrPlanNotFound             = fiberutil.NotFound("Plan not found")
+	ErrSubscriptionsNotEnabled  = fiberutil.BadRequest("Subscriptions are not enabled")
+	ErrLimitExceeded            = fiberutil.BadRequest("Limit exceeded")
 )
 
 // Config holds billing configuration

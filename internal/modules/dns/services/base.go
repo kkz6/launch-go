@@ -2,19 +2,19 @@ package services
 
 import (
 	"github.com/kkz6/launch-go/internal/modules/dns/repositories"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
-// Service errors - re-exported from centralized error package
+// Service errors - using fiber error utilities
 var (
-	ErrProviderNotFound         = apperrors.ErrDNSProviderNotFound
-	ErrDomainNotFound           = apperrors.ErrDomainNotFound
-	ErrRecordNotFound           = apperrors.ErrDNSRecordNotFound
-	ErrRecordNotEditable        = apperrors.BadRequest("Record cannot be edited")
-	ErrRecordNotDeletable       = apperrors.BadRequest("Record cannot be deleted")
-	ErrProviderHasActiveDomains = apperrors.Conflict("Provider has active domains")
-	ErrInvalidCredentials       = apperrors.BadRequest("Invalid credentials")
+	ErrProviderNotFound         = fiberutil.NotFound("DNS provider not found")
+	ErrDomainNotFound           = fiberutil.NotFound("Domain not found")
+	ErrRecordNotFound           = fiberutil.NotFound("DNS record not found")
+	ErrRecordNotEditable        = fiberutil.BadRequest("Record cannot be edited")
+	ErrRecordNotDeletable       = fiberutil.BadRequest("Record cannot be deleted")
+	ErrProviderHasActiveDomains = fiberutil.Conflict("Provider has active domains")
+	ErrInvalidCredentials       = fiberutil.BadRequest("Invalid credentials")
 )
 
 // ServiceDeps holds all dependencies needed for DNS services.

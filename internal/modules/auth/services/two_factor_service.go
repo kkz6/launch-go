@@ -13,7 +13,7 @@ import (
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
@@ -39,7 +39,7 @@ func (s *TwoFactorService) EnableTwoFactor(ctx context.Context, userID string) (
 	}
 
 	if user == nil {
-		return nil, apperrors.ErrNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	// Generate TOTP secret
@@ -74,7 +74,7 @@ func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, code st
 	}
 
 	if user == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	if user.TwoFactorSecret == nil {
@@ -111,7 +111,7 @@ func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID, passwor
 	}
 
 	if user == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	// Verify password
@@ -134,7 +134,7 @@ func (s *TwoFactorService) VerifyTwoFactor(ctx context.Context, userID, code str
 	}
 
 	if user == nil {
-		return false, apperrors.ErrNotFound
+		return false, fiberutil.NotFound()
 	}
 
 	if !user.HasEnabledTwoFactorAuthentication() {
@@ -173,7 +173,7 @@ func (s *TwoFactorService) GetRecoveryCodes(ctx context.Context, userID string) 
 	}
 
 	if user == nil {
-		return nil, apperrors.ErrNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	if user.TwoFactorRecoveryCodes == nil {
@@ -191,7 +191,7 @@ func (s *TwoFactorService) RegenerateRecoveryCodes(ctx context.Context, userID s
 	}
 
 	if user == nil {
-		return nil, apperrors.ErrNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	if !user.HasEnabledTwoFactorAuthentication() {

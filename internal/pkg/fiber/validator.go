@@ -5,8 +5,6 @@ import (
 	"strings"
 
 	"github.com/go-playground/validator/v10"
-
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 var validate *validator.Validate
@@ -24,13 +22,14 @@ func init() {
 	})
 }
 
-func Validate(s interface{}) response.ValidationErrors {
+// Validate validates a struct and returns field-specific errors.
+func Validate(s interface{}) map[string][]string {
 	err := validate.Struct(s)
 	if err == nil {
 		return nil
 	}
 
-	errors := make(response.ValidationErrors)
+	errors := make(map[string][]string)
 
 	for _, err := range err.(validator.ValidationErrors) {
 		field := err.Field()

@@ -12,7 +12,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/enums"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
@@ -106,15 +106,15 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Au
 
 	user, err := s.repos.User().FindByEmail(ctx, req.Email)
 	if err != nil {
-		return nil, apperrors.ErrUnauthorized
+		return nil, fiberutil.Unauthorized()
 	}
 
 	if user == nil {
-		return nil, apperrors.ErrUnauthorized
+		return nil, fiberutil.Unauthorized()
 	}
 
 	if !security.VerifyPassword(user.Password, req.Password) {
-		return nil, apperrors.ErrUnauthorized
+		return nil, fiberutil.Unauthorized()
 	}
 
 	accessToken, err := s.generateAccessToken(user)
@@ -154,28 +154,28 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 	})
 
 	if err != nil || !token.Valid {
-		return nil, apperrors.ErrUnauthorized
+		return nil, fiberutil.Unauthorized()
 	}
 
 	claims, ok := token.Claims.(jwt.MapClaims)
 	if !ok {
-		return nil, apperrors.ErrUnauthorized
+		return nil, fiberutil.Unauthorized()
 	}
 
 	// Check token type
 	tokenType, ok := claims["type"].(string)
 	if !ok || tokenType != "refresh" {
-		return nil, apperrors.ErrUnauthorized
+		return nil, fiberutil.Unauthorized()
 	}
 
 	userID, ok := claims["sub"].(string)
 	if !ok {
-		return nil, apperrors.ErrUnauthorized
+		return nil, fiberutil.Unauthorized()
 	}
 
 	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil || user == nil {
-		return nil, apperrors.ErrUnauthorized
+		return nil, fiberutil.Unauthorized()
 	}
 
 	accessToken, err := s.generateAccessToken(user)

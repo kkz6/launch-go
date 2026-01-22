@@ -1,11 +1,7 @@
 package fiber
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v2"
-
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
 // Context key constants for storing and retrieving values from fiber.Ctx.Locals
@@ -15,12 +11,6 @@ const (
 	KeyTeamRole = "teamRole"
 	KeyUser     = "user"
 	KeyTraceID  = "traceID"
-)
-
-var (
-	ErrTeamIDNotFound = errors.New("team ID not found in context")
-	ErrUserIDNotFound = errors.New("user ID not found in context")
-	ErrUserNotFound   = errors.New("user not found in context")
 )
 
 // SetUserContext sets the user ID and optional user object in the request context.
@@ -42,20 +32,15 @@ func SetTeamContext(c *fiber.Ctx, teamID, teamRole string) {
 func GetTeamID(c *fiber.Ctx) (string, error) {
 	v, ok := c.Locals(KeyTeamID).(string)
 	if !ok || v == "" {
-		return "", ErrTeamIDNotFound
+		return "", Unauthorized("Team ID not found")
 	}
 	return v, nil
 }
 
-// MustGetTeamID extracts team ID and sends error response if not found.
-// Returns empty string and error response if team ID is not found.
+// MustGetTeamID extracts team ID or returns unauthorized error.
 // Use only in routes protected by auth middleware.
 func MustGetTeamID(c *fiber.Ctx) (string, error) {
-	v, err := GetTeamID(c)
-	if err != nil {
-		return "", response.Unauthorized(c, response.MsgUnauthorized)
-	}
-	return v, nil
+	return GetTeamID(c)
 }
 
 // GetUserID safely extracts user ID from context.
@@ -63,20 +48,15 @@ func MustGetTeamID(c *fiber.Ctx) (string, error) {
 func GetUserID(c *fiber.Ctx) (string, error) {
 	v, ok := c.Locals(KeyUserID).(string)
 	if !ok || v == "" {
-		return "", ErrUserIDNotFound
+		return "", Unauthorized("User ID not found")
 	}
 	return v, nil
 }
 
-// MustGetUserID extracts user ID and sends error response if not found.
-// Returns empty string and error response if user ID is not found.
+// MustGetUserID extracts user ID or returns unauthorized error.
 // Use only in routes protected by auth middleware.
 func MustGetUserID(c *fiber.Ctx) (string, error) {
-	v, err := GetUserID(c)
-	if err != nil {
-		return "", response.Unauthorized(c, response.MsgUnauthorized)
-	}
-	return v, nil
+	return GetUserID(c)
 }
 
 // GetUser safely extracts full user object from context.
@@ -84,19 +64,14 @@ func MustGetUserID(c *fiber.Ctx) (string, error) {
 func GetUser[T any](c *fiber.Ctx) (*T, error) {
 	v, ok := c.Locals(KeyUser).(*T)
 	if !ok || v == nil {
-		return nil, ErrUserNotFound
+		return nil, Unauthorized("User not found")
 	}
 	return v, nil
 }
 
-// MustGetUser extracts user object and sends error response if not found.
-// Returns nil and error response if user is not found.
+// MustGetUser extracts user object or returns unauthorized error.
 func MustGetUser[T any](c *fiber.Ctx) (*T, error) {
-	v, err := GetUser[T](c)
-	if err != nil {
-		return nil, response.Unauthorized(c, response.MsgUnauthorized)
-	}
-	return v, nil
+	return GetUser[T](c)
 }
 
 // GetTeamAndUserID safely extracts both team ID and user ID from context.
@@ -113,17 +88,9 @@ func GetTeamAndUserID(c *fiber.Ctx) (teamID, userID string, err error) {
 	return teamID, userID, nil
 }
 
-// MustGetTeamAndUserID extracts both team ID and user ID, sending error response if either is not found.
+// MustGetTeamAndUserID extracts both team ID and user ID, returning error if either is not found.
 func MustGetTeamAndUserID(c *fiber.Ctx) (teamID, userID string, err error) {
-	teamID, err = MustGetTeamID(c)
-	if err != nil {
-		return "", "", err
-	}
-	userID, err = MustGetUserID(c)
-	if err != nil {
-		return "", "", err
-	}
-	return teamID, userID, nil
+	return GetTeamAndUserID(c)
 }
 
 // GetUserRole safely extracts team role from context.
