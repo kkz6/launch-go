@@ -35,11 +35,7 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 		return nil, fmt.Errorf("failed to create database: %w", err)
 	}
 
-	uid := ""
-	if userID != nil {
-		uid = *userID
-	}
-	activity.LogEvent(ctx, s.repos.DB(), "created", uid, database, "Database was created")
+	activity.RecordEventPtr(ctx, "created", userID, database, "Database was created")
 
 	// Attach root user if exists
 	s.attachRootUser(ctx, serverID, database.ID)
@@ -123,11 +119,7 @@ func (s *Service) DeleteDatabase(ctx context.Context, id, serverID, teamID strin
 		return ErrDatabaseBeingUninstalled
 	}
 
-	uid := ""
-	if userID != nil {
-		uid = *userID
-	}
-	activity.LogEvent(ctx, s.repos.DB(), "deleted", uid, database, "Database deletion requested")
+	activity.RecordEventPtr(ctx, "deleted", userID, database, "Database deletion requested")
 
 	// Mark as uninstalling
 	database.MarkAsUninstalling()

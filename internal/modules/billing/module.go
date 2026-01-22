@@ -20,9 +20,10 @@ var (
 // Module represents the billing module
 type Module struct {
 	app.Base
-	service       *services.BillingService
-	repos         *repositories.Registry
-	serverCountFn func(teamID string) (int, error)
+	service        *services.BillingService
+	webhookService *services.WebhookService
+	repos          *repositories.Registry
+	serverCountFn  func(teamID string) (int, error)
 }
 
 // NewModule creates a new billing module
@@ -47,11 +48,13 @@ func NewModule(b *app.Builder) *Module {
 	}
 
 	service := services.NewBillingService(repos, lsClient, billingConfig, deps.Logger)
+	webhookService := services.NewWebhookService(repos)
 
 	return &Module{
-		Base:    app.NewBase(ModuleName, b),
-		service: service,
-		repos:   repos,
+		Base:           app.NewBase(ModuleName, b),
+		service:        service,
+		webhookService: webhookService,
+		repos:          repos,
 	}
 }
 

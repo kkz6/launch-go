@@ -7,8 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"gorm.io/gorm"
-
 	databasedto "github.com/kkz6/launch-go/internal/modules/database/dto"
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	gitcontracts "github.com/kkz6/launch-go/internal/modules/git/contracts"
@@ -236,17 +234,9 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 		site.HookAfterMakingCurrent = &hook
 	}
 
-	// Use transaction for site creation
+	// Create site with activity logging in a transaction
 	var envVars map[string]string
-	err = s.Repos().Site().DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(site).Error; err != nil {
-			return err
-		}
-
-		activity.LogCreated(ctx, tx, userID, site, "Site was created")
-
-		return nil
-	})
+	err = s.Repos().Site().CreateWithActivity(ctx, site, userID)
 
 	if err != nil {
 		return nil, err
@@ -565,28 +555,21 @@ func (s *SiteService) validateSourceControl(ctx context.Context, sourceControlID
 	}
 
 	// Check source control exists
-	var count int64
-	err := s.Repos().Site().DB.WithContext(ctx).
-		Table("source_controls").
-		Where("id = ?", *sourceControlID).
-		Count(&count).Error
+	exists, err := s.Repos().Site().SourceControlExists(ctx, *sourceControlID)
 	if err != nil {
 		return fmt.Errorf("failed to validate source control: %w", err)
 	}
-	if count == 0 {
+	if !exists {
 		return errors.New("source control not found")
 	}
 
 	// Check repository exists if provided
 	if repoID != nil && *repoID != "" {
-		err := s.Repos().Site().DB.WithContext(ctx).
-			Table("source_control_repositories").
-			Where("id = ?", *repoID).
-			Count(&count).Error
+		exists, err := s.Repos().Site().SourceControlRepositoryExists(ctx, *repoID)
 		if err != nil {
 			return fmt.Errorf("failed to validate repository: %w", err)
 		}
-		if count == 0 {
+		if !exists {
 			return errors.New("repository not found")
 		}
 	}
@@ -717,7 +700,7 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID s
 		return nil, err
 	}
 
-	activity.LogUpdated(ctx, s.Repos().Site().DB, userID, site, "Site was updated")
+	activity.RecordUpdated(ctx, userID, site, "Site was updated")
 
 	// If PHP version or web folder changed, update Caddyfile and deploy
 	if updateCaddyfile {
@@ -756,7 +739,7 @@ func (s *SiteService) Delete(ctx context.Context, id, serverID, teamID string) e
 		return err
 	}
 
-	activity.LogEvent(ctx, s.Repos().Site().DB, "deleted", "", site, "Site deletion requested")
+	activity.RecordEvent(ctx, "deleted", "", site, "Site deletion requested")
 
 	now := time.Now()
 	site.UninstallationRequestedAt = &now

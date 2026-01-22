@@ -7,11 +7,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
-	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 const TypeUpdateDatabaseUser = "database:user:update"
@@ -36,16 +33,12 @@ func NewUpdateDatabaseUserJob(ctx *JobContext, payload UpdateDatabaseUserPayload
 func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 	j.Ctx.LogInfo("Updating database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, err := repository.NewQuery[models.DatabaseUser](ctx, j.Ctx.DB()).
-		WithModel("DatabaseUser").
-		Preload("Databases").
-		FindByID(j.Payload.DatabaseUserID).
-		FirstOrFail()
+	dbUser, err := j.Ctx.Repos().User().FindByID(ctx, j.Payload.DatabaseUserID)
 	if err != nil {
 		return fmt.Errorf("failed to find database user: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), dbUser.ServerID)
+	server, err := j.Ctx.GetServer(ctx, dbUser.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -87,12 +80,12 @@ func (j *UpdateDatabaseUserJob) Handle(ctx context.Context) error {
 func (j *UpdateDatabaseUserJob) Failed(ctx context.Context, err error) {
 	j.Ctx.LogError(err, "Failed to update database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB(), j.Payload.DatabaseUserID)
+	dbUser, findErr := j.Ctx.Repos().User().FindByID(ctx, j.Payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), dbUser.ServerID)
+	server, findErr := j.Ctx.GetServer(ctx, dbUser.ServerID)
 	if findErr != nil {
 		return
 	}

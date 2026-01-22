@@ -6,8 +6,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeUnarchiveServer = "server:unarchive"
@@ -37,7 +37,7 @@ func (j *UnarchiveServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "unarchived", j.Payload.UserID, server, "Server was unarchived")
+	activity.RecordWithLogPtr(ctx, "server", "unarchived", j.Payload.UserID, server, "Server was unarchived")
 
 	j.Ctx.LogInfo("Server unarchived successfully",
 		"server_id", server.ID,

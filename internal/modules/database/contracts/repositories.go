@@ -26,7 +26,9 @@ type DatabaseRepository interface {
 	ExistsByNameAndServer(ctx context.Context, name, serverID string) (bool, error)
 	MarkAsInstalled(ctx context.Context, id string) error
 	MarkAsFailed(ctx context.Context, id string) error
+	MarkInstallationFailed(ctx context.Context, id string) error
 	MarkAsUninstalling(ctx context.Context, id string) error
+	MarkUninstallationFailed(ctx context.Context, id string) error
 	AttachUser(ctx context.Context, databaseID, userID string) error
 	DetachUser(ctx context.Context, databaseID, userID string) error
 	DetachAllUsers(ctx context.Context, databaseID string) error
@@ -47,7 +49,9 @@ type DatabaseUserRepository interface {
 	ExistsByNameAndServer(ctx context.Context, name, serverID string) (bool, error)
 	MarkAsInstalled(ctx context.Context, id string) error
 	MarkAsFailed(ctx context.Context, id string) error
+	MarkInstallationFailed(ctx context.Context, id string) error
 	MarkAsUninstalling(ctx context.Context, id string) error
+	MarkUninstallationFailed(ctx context.Context, id string) error
 	SyncDatabases(ctx context.Context, userID string, databaseIDs []string) error
 }
 

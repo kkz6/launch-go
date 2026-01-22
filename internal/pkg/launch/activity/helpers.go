@@ -198,3 +198,89 @@ func LogWithLogAndPropsPtr(ctx context.Context, db *gorm.DB, logName, event stri
 
 	return logger.Log(description)
 }
+
+// -------------------------------------------------------------------------
+// Service-friendly variants that use the global DB
+// These functions allow services to log activities without accessing DB directly
+// -------------------------------------------------------------------------
+
+// RecordCreated logs a "created" activity using the global DB.
+// Example: RecordCreated(ctx, userID, server, "Server was created")
+func RecordCreated(ctx context.Context, userID string, subject Subject, description string) {
+	if defaultDB == nil {
+		return
+	}
+	_, _ = LogCreated(ctx, defaultDB, userID, subject, description)
+}
+
+// RecordUpdated logs an "updated" activity using the global DB.
+// Example: RecordUpdated(ctx, userID, server, "Server was updated")
+func RecordUpdated(ctx context.Context, userID string, subject Subject, description string) {
+	if defaultDB == nil {
+		return
+	}
+	_, _ = LogUpdated(ctx, defaultDB, userID, subject, description)
+}
+
+// RecordDeleted logs a "deleted" activity using the global DB.
+// Example: RecordDeleted(ctx, userID, server, "Server was deleted")
+func RecordDeleted(ctx context.Context, userID string, subject Subject, description string) {
+	if defaultDB == nil {
+		return
+	}
+	_, _ = LogDeleted(ctx, defaultDB, userID, subject, description)
+}
+
+// RecordEvent logs a custom event using the global DB.
+// Example: RecordEvent(ctx, "archived", userID, server, "Server was archived")
+func RecordEvent(ctx context.Context, event, userID string, subject Subject, description string) {
+	if defaultDB == nil {
+		return
+	}
+	_, _ = LogEvent(ctx, defaultDB, event, userID, subject, description)
+}
+
+// RecordEventWithProps logs a custom event with properties using the global DB.
+// Example: RecordEventWithProps(ctx, "deployed", userID, site, "Deployed", map[string]any{"version": "1.0.0"})
+func RecordEventWithProps(ctx context.Context, event, userID string, subject Subject, description string, props map[string]any) {
+	if defaultDB == nil {
+		return
+	}
+	_, _ = LogEventWithProps(ctx, defaultDB, event, userID, subject, description, props)
+}
+
+// RecordWithLog logs an activity with a custom log name using the global DB.
+// Example: RecordWithLog(ctx, "auth", "created", userID, team, "Team was created")
+func RecordWithLog(ctx context.Context, logName, event, userID string, subject Subject, description string) {
+	if defaultDB == nil {
+		return
+	}
+	_, _ = LogWithLog(ctx, defaultDB, logName, event, userID, subject, description)
+}
+
+// RecordEventPtr logs a custom event using the global DB (pointer-friendly).
+// Example: RecordEventPtr(ctx, "installed", payload.UserID, database, "Database was installed")
+func RecordEventPtr(ctx context.Context, event string, userID *string, subject Subject, description string) {
+	if defaultDB == nil {
+		return
+	}
+	_, _ = LogEventPtr(ctx, defaultDB, event, userID, subject, description)
+}
+
+// RecordWithLogPtr logs with a custom log name using the global DB (pointer-friendly).
+// Example: RecordWithLogPtr(ctx, "server", "installed", payload.UserID, cron, "Cron was installed")
+func RecordWithLogPtr(ctx context.Context, logName, event string, userID *string, subject Subject, description string) {
+	if defaultDB == nil {
+		return
+	}
+	_, _ = LogWithLogPtr(ctx, defaultDB, logName, event, userID, subject, description)
+}
+
+// RecordWithLogAndPropsPtr logs with a custom log name and properties using the global DB.
+// Example: RecordWithLogAndPropsPtr(ctx, "server", "audit_completed", payload.UserID, server, "Audit done", props)
+func RecordWithLogAndPropsPtr(ctx context.Context, logName, event string, userID *string, subject Subject, description string, props map[string]any) {
+	if defaultDB == nil {
+		return
+	}
+	_, _ = LogWithLogAndPropsPtr(ctx, defaultDB, logName, event, userID, subject, description, props)
+}

@@ -6,13 +6,9 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
-	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	pkgmodels "github.com/kkz6/launch-go/internal/pkg/models"
-	"github.com/kkz6/launch-go/internal/pkg/repository"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeUninstallDatabaseUser = "database:user:uninstall"
@@ -25,7 +21,6 @@ type UninstallDatabaseUserPayload struct {
 
 type UninstallDatabaseUserJob struct {
 	pkgjobs.BaseJob[*JobContext, UninstallDatabaseUserPayload]
-	pkgmodels.UninstallationTracker
 }
 
 func NewUninstallDatabaseUserJob(ctx *JobContext, payload UninstallDatabaseUserPayload) *UninstallDatabaseUserJob {
@@ -37,12 +32,12 @@ func NewUninstallDatabaseUserJob(ctx *JobContext, payload UninstallDatabaseUserP
 func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 	j.Ctx.LogInfo("Uninstalling database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, err := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB(), j.Payload.DatabaseUserID)
+	dbUser, err := j.Ctx.Repos().User().FindByID(ctx, j.Payload.DatabaseUserID)
 	if err != nil {
 		return fmt.Errorf("failed to find database user: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), dbUser.ServerID)
+	server, err := j.Ctx.GetServer(ctx, dbUser.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -68,9 +63,9 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 		j.Ctx.LogInfo("Database user drop completed with errors", "output", result.GetOutput())
 	}
 
-	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "database", "uninstalled", j.Payload.CallerID, dbUser, "Database user was uninstalled")
+	activity.RecordWithLogPtr(ctx, "database", "uninstalled", j.Payload.CallerID, dbUser, "Database user was uninstalled")
 
-	if err := j.MarkAsUninstalled(j.Ctx.DB(), dbUser); err != nil {
+	if err := j.Ctx.Repos().User().Delete(ctx, dbUser.ID); err != nil {
 		return fmt.Errorf("failed to delete database user record: %w", err)
 	}
 
@@ -82,12 +77,12 @@ func (j *UninstallDatabaseUserJob) Handle(ctx context.Context) error {
 func (j *UninstallDatabaseUserJob) Failed(ctx context.Context, err error) {
 	j.Ctx.LogError(err, "Failed to uninstall database user", "database_user_id", j.Payload.DatabaseUserID)
 
-	dbUser, findErr := repository.Find[models.DatabaseUser](ctx, j.Ctx.DB(), j.Payload.DatabaseUserID)
+	dbUser, findErr := j.Ctx.Repos().User().FindByID(ctx, j.Payload.DatabaseUserID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), dbUser.ServerID)
+	server, findErr := j.Ctx.GetServer(ctx, dbUser.ServerID)
 	if findErr != nil {
 		return
 	}

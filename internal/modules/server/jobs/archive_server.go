@@ -6,8 +6,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeArchiveServer = "server:archive"
@@ -41,7 +41,7 @@ func (j *ArchiveServerJob) Handle(ctx context.Context) error {
 	if j.Payload.UserID != nil {
 		userID = *j.Payload.UserID
 	}
-	activity.LogEvent(ctx, j.Ctx.DB(), "archived", userID, server, "Server was archived")
+	activity.RecordEvent(ctx, "archived", userID, server, "Server was archived")
 
 	j.Ctx.LogInfo("Server archived successfully",
 		"server_id", server.ID,

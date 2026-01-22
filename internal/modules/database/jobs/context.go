@@ -85,16 +85,25 @@ func (c *JobContext) BroadcastDatabaseEvent(server *servermodels.Server, event s
 	}
 }
 
+// GetServer returns a server by ID.
+// Note: This accesses the server module's data directly as a cross-module operation.
+func (c *JobContext) GetServer(ctx context.Context, serverID string) (*servermodels.Server, error) {
+	return repository.Find[servermodels.Server](ctx, c.DB(), serverID)
+}
+
+// GetServerWithServices returns a server by ID with services preloaded.
+// Note: This accesses the server module's data directly as a cross-module operation.
+func (c *JobContext) GetServerWithServices(ctx context.Context, serverID string) (*servermodels.Server, error) {
+	return repository.NewQuery[servermodels.Server](ctx, c.DB()).
+		Preload("Services").
+		FindByID(serverID).
+		FirstOrFail()
+}
+
 // GetDatabaseType returns the database type for a server (mysql or postgresql).
 func (c *JobContext) GetDatabaseType(ctx context.Context, serverID string) string {
-	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB()).
-		Where("server_id = ? AND type IN ?", serverID, []string{
-			string(serverenums.ServiceTypeMySql),
-			string(serverenums.ServiceTypePostgreSql),
-		}).
-		First()
-
-	if err != nil {
+	service := c.getDatabaseService(ctx, serverID)
+	if service == nil {
 		return "mysql"
 	}
 
@@ -106,6 +115,15 @@ func (c *JobContext) GetDatabaseType(ctx context.Context, serverID string) strin
 
 // GetDatabaseServiceType returns the database service type for a server.
 func (c *JobContext) GetDatabaseServiceType(ctx context.Context, serverID string) serverenums.ServiceType {
+	service := c.getDatabaseService(ctx, serverID)
+	if service == nil {
+		return serverenums.ServiceTypeMySql
+	}
+	return service.Type
+}
+
+// getDatabaseService returns the database service for a server (internal helper).
+func (c *JobContext) getDatabaseService(ctx context.Context, serverID string) *servermodels.InstalledService {
 	service, err := repository.NewQuery[servermodels.InstalledService](ctx, c.DB()).
 		Where("server_id = ? AND type IN ?", serverID, []string{
 			string(serverenums.ServiceTypeMySql),
@@ -114,10 +132,9 @@ func (c *JobContext) GetDatabaseServiceType(ctx context.Context, serverID string
 		First()
 
 	if err != nil {
-		return serverenums.ServiceTypeMySql
+		return nil
 	}
-
-	return service.Type
+	return service
 }
 
 // GetTaskFactory returns a task factory for the server's database type.

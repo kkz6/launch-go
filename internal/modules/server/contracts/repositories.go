@@ -46,6 +46,7 @@ type ServiceRepository interface {
 	Delete(ctx context.Context, id string) error
 	SetDefault(ctx context.Context, id string, isDefault bool) error
 	UnsetDefaultPhp(ctx context.Context, serverID string) error
+	MarkRemovalFailed(ctx context.Context, id string) error
 }
 
 // FirewallRuleRepository defines the interface for firewall rule database operations
@@ -71,6 +72,8 @@ type CronRepository interface {
 	FindVisibleByServer(ctx context.Context, serverID string) ([]models.Cron, error)
 	Update(ctx context.Context, cron *models.Cron) error
 	MarkInstalled(ctx context.Context, id string) error
+	MarkInstallationFailed(ctx context.Context, id string) error
+	MarkUninstallationFailed(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
 }
 
@@ -84,6 +87,8 @@ type DaemonRepository interface {
 	Update(ctx context.Context, daemon *models.Daemon) error
 	UpdateStatus(ctx context.Context, id string, running bool) error
 	MarkInstalled(ctx context.Context, id string) error
+	MarkInstallationFailed(ctx context.Context, id string) error
+	MarkUninstallationFailed(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
 }
 

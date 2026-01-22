@@ -38,7 +38,7 @@ func (s *Service) CreateSSHKey(ctx context.Context, teamID, userID string, req *
 		return nil, err
 	}
 
-	activity.LogEvent(ctx, s.repos.DB(), "created", "", key, "SSH key was created")
+	activity.RecordEvent(ctx, "created", "", key, "SSH key was created")
 
 	return key, nil
 }
@@ -113,7 +113,7 @@ func (s *Service) DeleteSSHKey(ctx context.Context, teamID, sshKeyID string) err
 		return ErrSSHKeyNotFound
 	}
 
-	activity.LogEvent(ctx, s.repos.DB(), "deleted", "", key, "SSH key was deleted")
+	activity.RecordEvent(ctx, "deleted", "", key, "SSH key was deleted")
 
 	return s.repos.SSHKey().Delete(ctx, sshKeyID)
 }

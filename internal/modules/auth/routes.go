@@ -20,7 +20,7 @@ func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 
 	// Create handlers
 	handler := handlers.NewHandler(m.service)
-	passkeyHandler := handlers.NewPasskeyHandler(m.repos)
+	passkeyHandler := handlers.NewPasskeyHandler(m.service)
 
 	authMiddleware := middleware.Auth(deps.Config.JWT.Secret)
 	adapter := NewMiddlewareAdapter(m.service)
@@ -29,7 +29,7 @@ func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 	auth := router.Group("/auth")
 
 	// Public routes (no authentication required)
-	m.registerPublicRoutes(auth, handler)
+	m.setupPublicRoutes(auth, handler)
 
 	// Protected routes (authentication required)
 	protected := auth.Group("", authMiddleware)
@@ -44,8 +44,8 @@ func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 	m.registerUserRoutes(user, passkeyHandler)
 }
 
-// registerPublicRoutes registers routes that don't require authentication
-func (m *Module) registerPublicRoutes(router fiber.Router, handler *handlers.Handler) {
+// setupPublicRoutes registers routes that don't require authentication
+func (m *Module) setupPublicRoutes(router fiber.Router, handler *handlers.Handler) {
 	// Registration and Login
 	router.Post("/register", handler.Auth.Register)
 	router.Post("/login", handler.Auth.Login)

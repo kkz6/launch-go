@@ -3,8 +3,7 @@ package handlers
 import (
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
-	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
@@ -12,13 +11,13 @@ import (
 
 // PasskeyHandler handles passkey-related HTTP requests
 type PasskeyHandler struct {
-	repos contracts.RepositoryRegistry
+	service *services.Service
 }
 
 // NewPasskeyHandler creates a new PasskeyHandler instance
-func NewPasskeyHandler(repos *repositories.Registry) *PasskeyHandler {
+func NewPasskeyHandler(service *services.Service) *PasskeyHandler {
 	return &PasskeyHandler{
-		repos: repos,
+		service: service,
 	}
 }
 
@@ -38,7 +37,7 @@ func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
 		return err
 	}
 
-	passkeys, err := h.repos.Passkey().FindByUserID(c.Context(), userID)
+	passkeys, err := h.service.GetUserPasskeys(c.Context(), userID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -80,7 +79,7 @@ func (h *PasskeyHandler) Delete(c *fiber.Ctx) error {
 	}
 	passkeyID := c.Params("id")
 
-	err = h.repos.Passkey().DeleteByUserID(c.Context(), passkeyID, userID)
+	err = h.service.DeletePasskey(c.Context(), passkeyID, userID)
 	if err != nil {
 		return response.HandleError(c, err)
 	}
@@ -106,17 +105,7 @@ func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
 		return err
 	}
 
-	passkey, err := h.repos.Passkey().FindByID(c.Context(), passkeyID)
-	if err != nil {
-		return response.HandleError(c, err)
-	}
-
-	if passkey.UserID != userID {
-		return response.NotFound(c, response.MsgResourceNotFound)
-	}
-
-	passkey.Name = &req.Name
-	if err := h.repos.Passkey().Update(c.Context(), passkey); err != nil {
+	if err := h.service.UpdatePasskeyName(c.Context(), passkeyID, userID, req.Name); err != nil {
 		return response.HandleError(c, err)
 	}
 

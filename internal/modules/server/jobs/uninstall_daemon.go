@@ -3,13 +3,12 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeUninstallDaemon = "server:uninstall_daemon"
@@ -54,7 +53,7 @@ func (j *UninstallDaemonJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "uninstalled", j.Payload.UserID, daemon, "Daemon was uninstalled")
+	activity.RecordWithLogPtr(ctx, "server", "uninstalled", j.Payload.UserID, daemon, "Daemon was uninstalled")
 
 	// Delete the daemon record
 	if err := j.Ctx.Repos().Daemon().Delete(ctx, daemon.ID); err != nil {
@@ -83,13 +82,8 @@ func (j *UninstallDaemonJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Mark uninstallation as failed
-	daemon, findErr := j.Ctx.Repos().Daemon().FindByID(ctx, j.Payload.DaemonID)
-	if findErr == nil && daemon != nil {
-		now := time.Now()
-		j.Ctx.DB().Model(daemon).Updates(map[string]any{
-			"uninstallation_requested_at": nil,
-			"uninstallation_failed_at":    &now,
-		})
+	if markErr := j.Ctx.Repos().Daemon().MarkUninstallationFailed(ctx, j.Payload.DaemonID); markErr != nil {
+		j.Ctx.LogError(markErr, "Failed to mark daemon uninstallation as failed")
 	}
 }
 

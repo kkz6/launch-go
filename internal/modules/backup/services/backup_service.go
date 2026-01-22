@@ -71,7 +71,7 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID, team
 		return nil, fmt.Errorf("failed to create backup: %w", err)
 	}
 
-	activity.LogEvent(ctx, s.DB(), "created", "", backup, "Backup was created")
+	activity.RecordEvent(ctx, "created", "", backup, "Backup was created")
 
 	// Dispatch installation job
 	s.dispatchInstallBackup(serverID, backup.ID)
@@ -126,7 +126,7 @@ func (s *BackupService) UpdateBackup(ctx context.Context, id string, req *dto.Up
 		return nil, fmt.Errorf("failed to update backup: %w", err)
 	}
 
-	activity.LogEvent(ctx, s.DB(), "updated", "", backup, "Backup was updated")
+	activity.RecordEvent(ctx, "updated", "", backup, "Backup was updated")
 
 	s.Logger.Info().
 		Str("backup_id", backup.ID).
@@ -142,7 +142,7 @@ func (s *BackupService) DeleteBackup(ctx context.Context, id, serverID string) e
 		return err
 	}
 
-	activity.LogEvent(ctx, s.DB(), "deleted", "", backup, "Backup was deleted")
+	activity.RecordEvent(ctx, "deleted", "", backup, "Backup was deleted")
 
 	// Dispatch deletion job
 	s.dispatchDeleteBackup(serverID, backup.ID)
