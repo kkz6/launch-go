@@ -31,3 +31,18 @@ func (h *DashboardHandler) Index(c *fiber.Ctx) error {
 
 	return fiberctx.OK(c, "Dashboard data retrieved", dashboard)
 }
+
+// OnboardingStatus returns the onboarding status for the current user
+func (h *DashboardHandler) OnboardingStatus(c *fiber.Ctx) error {
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	status, err := h.service.GetOnboardingStatus(c.Context(), userID)
+	if err != nil {
+		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+	}
+
+	return fiberctx.OK(c, "Onboarding status retrieved", status)
+}

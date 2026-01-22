@@ -7,8 +7,14 @@ import (
 	"gorm.io/gorm"
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
+	authrepos "github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/dashboard/dto"
+	dnsrepos "github.com/kkz6/launch-go/internal/modules/dns/repositories"
+	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
+	notificationrepos "github.com/kkz6/launch-go/internal/modules/notification/repositories"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	sitemodels "github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -18,17 +24,29 @@ const (
 	maxRecentActivity = 6
 )
 
+// Repositories holds all repositories needed by the dashboard service
+type Repositories struct {
+	User                *authrepos.UserRepository
+	ServerProvider      *serverrepos.ServerProviderRepository
+	SourceControl       *gitrepos.SourceControlRepository
+	DomainProvider      *dnsrepos.DomainProviderRepository
+	StorageProvider     *backuprepos.StorageProviderRepository
+	NotificationChannel *notificationrepos.NotificationChannelRepository
+}
+
 // DashboardService handles dashboard data retrieval
 type DashboardService struct {
 	db     *gorm.DB
 	logger *zerolog.Logger
+	repos  *Repositories
 }
 
 // NewDashboardService creates a new dashboard service
-func NewDashboardService(db *gorm.DB, logger *zerolog.Logger) *DashboardService {
+func NewDashboardService(db *gorm.DB, logger *zerolog.Logger, repos *Repositories) *DashboardService {
 	return &DashboardService{
 		db:     db,
 		logger: logger,
+		repos:  repos,
 	}
 }
 
@@ -127,7 +145,6 @@ func (s *DashboardService) getRecentActivity(ctx context.Context, teamID string)
 			}
 		}
 
-		// Map deployment status to API status
 		status := mapDeploymentStatus(string(r.Status))
 
 		activity[i] = &dto.DashboardActivityResponse{
@@ -165,3 +182,99 @@ func mapDeploymentStatus(status string) string {
 
 // Ensure User model is imported for the query
 var _ = authmodels.User{}
+
+// GetOnboardingStatus returns onboarding status for a user
+func (s *DashboardService) GetOnboardingStatus(ctx context.Context, userID string) (*dto.OnboardingStatusResponse, error) {
+	user, err := s.repos.User.FindByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if user == nil {
+		return nil, nil
+	}
+
+	hasServerProvider, err := s.hasServerProvider(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	hasSourceControl, err := s.hasSourceControl(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	hasDomainProvider, err := s.hasDomainProvider(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	hasStorageProvider, err := s.hasStorageProvider(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	hasNotificationChannel, err := s.hasNotificationChannel(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dto.OnboardingStatusResponse{
+		Onboarded:              user.Onboarded,
+		HasServerProvider:      hasServerProvider,
+		HasSourceControl:       hasSourceControl,
+		HasDomainProvider:      hasDomainProvider,
+		HasStorageProvider:     hasStorageProvider,
+		HasNotificationChannel: hasNotificationChannel,
+	}, nil
+}
+
+// hasServerProvider checks if user has any server provider connected
+func (s *DashboardService) hasServerProvider(ctx context.Context, userID string) (bool, error) {
+	providers, err := s.repos.ServerProvider.FindByUserID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+
+	return len(providers) > 0, nil
+}
+
+// hasSourceControl checks if user has any source control connected
+func (s *DashboardService) hasSourceControl(ctx context.Context, userID string) (bool, error) {
+	sourceControls, err := s.repos.SourceControl.FindAllByUser(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+
+	return len(sourceControls) > 0, nil
+}
+
+// hasDomainProvider checks if user has any domain provider connected
+func (s *DashboardService) hasDomainProvider(ctx context.Context, userID string) (bool, error) {
+	providers, err := s.repos.DomainProvider.FindByUserID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+
+	return len(providers) > 0, nil
+}
+
+// hasStorageProvider checks if user has any storage provider connected
+func (s *DashboardService) hasStorageProvider(ctx context.Context, userID string) (bool, error) {
+	providers, err := s.repos.StorageProvider.FindByUserID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+
+	return len(providers) > 0, nil
+}
+
+// hasNotificationChannel checks if user has any notification channel configured
+func (s *DashboardService) hasNotificationChannel(ctx context.Context, userID string) (bool, error) {
+	channels, err := s.repos.NotificationChannel.FindByUserID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+
+	return len(channels) > 0, nil
+}

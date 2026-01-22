@@ -63,6 +63,17 @@ func (r *DomainProviderRepository) FindByTeam(ctx context.Context, teamID string
 	return providers, err
 }
 
+// FindByUserID finds all domain providers for a user
+func (r *DomainProviderRepository) FindByUserID(ctx context.Context, userID string) ([]models.DomainProvider, error) {
+	var providers []models.DomainProvider
+	err := r.DB.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Find(&providers).Error
+
+	return providers, err
+}
+
 // FindByTeamWithDomainCount finds all domain providers for a team with domain count
 func (r *DomainProviderRepository) FindByTeamWithDomainCount(ctx context.Context, teamID string) ([]models.DomainProvider, map[string]int, error) {
 	var providers []models.DomainProvider
