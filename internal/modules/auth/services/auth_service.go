@@ -9,9 +9,9 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
-	"github.com/kkz6/launch-go/internal/modules/auth/enums"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
@@ -241,7 +241,7 @@ func (s *AuthService) createPersonalTeam(ctx context.Context, user *models.User)
 	}
 
 	// Add user to team as owner
-	if err := s.repos.TeamMember().AddUser(ctx, team.ID, user.ID, enums.TeamRoleOwner.String()); err != nil {
+	if err := s.repos.TeamMember().AddUser(ctx, team.ID, user.ID, authtypes.TeamRoleOwner.String()); err != nil {
 		return err
 	}
 

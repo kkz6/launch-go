@@ -5,9 +5,9 @@ import (
 	"errors"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
-	"github.com/kkz6/launch-go/internal/modules/auth/enums"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
@@ -35,7 +35,7 @@ func (s *TeamService) CreateTeam(ctx context.Context, userID string, req *dto.Cr
 	}
 
 	// Add owner as team member
-	if err := s.repos.TeamMember().AddUser(ctx, team.ID, userID, enums.TeamRoleOwner.String()); err != nil {
+	if err := s.repos.TeamMember().AddUser(ctx, team.ID, userID, authtypes.TeamRoleOwner.String()); err != nil {
 		return nil, err
 	}
 
