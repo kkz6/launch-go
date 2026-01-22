@@ -193,6 +193,7 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 		CommitData: commitData,
 	}
 	deployment.SiteID = site.ID
+	deployment.TeamID = site.TeamID
 
 	if err := s.Repos().Deployment().Create(ctx, deployment); err != nil {
 		return nil, err
@@ -240,6 +241,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 				CommitData: commitData,
 			}
 			deployment.SiteID = site.ID
+			deployment.TeamID = site.TeamID
 
 			if err := s.Repos().Deployment().Create(ctx, deployment); err != nil {
 				return nil, err
@@ -260,6 +262,7 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 		CommitData: commitData,
 	}
 	deployment.SiteID = site.ID
+	deployment.TeamID = site.TeamID
 
 	if err := s.Repos().Deployment().Create(ctx, deployment); err != nil {
 		return nil, err
