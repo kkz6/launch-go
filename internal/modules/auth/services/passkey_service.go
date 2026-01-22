@@ -5,7 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // PasskeyService handles passkey management operations
@@ -36,11 +36,11 @@ func (s *PasskeyService) UpdatePasskeyName(ctx context.Context, passkeyID, userI
 	}
 
 	if passkey == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	if passkey.UserID != userID {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	passkey.Name = &name

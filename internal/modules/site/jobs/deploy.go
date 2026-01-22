@@ -277,8 +277,7 @@ func (j *DeployJob) handleDeploymentFailure(ctx context.Context, deployment *mod
 
 	// If first deployment failed, mark site installation as failed
 	if site != nil && site.InstalledAt == nil {
-		site.MarkAsFailed()
-		if err := j.Ctx.SiteRepo.Update(ctx, site); err != nil {
+		if err := j.Ctx.SiteRepo.MarkAsFailed(ctx, site.ID); err != nil {
 			j.Ctx.LogError(err, "Failed to update site installation_failed_at")
 		}
 	}
@@ -699,8 +698,7 @@ func (j *DeployZeroDowntimeJob) handleDeploymentFailure(ctx context.Context, dep
 
 	// If first deployment failed, mark site installation as failed
 	if site != nil && site.InstalledAt == nil {
-		site.MarkAsFailed()
-		if err := j.Ctx.SiteRepo.Update(ctx, site); err != nil {
+		if err := j.Ctx.SiteRepo.MarkAsFailed(ctx, site.ID); err != nil {
 			j.Ctx.LogError(err, "Failed to update site installation_failed_at")
 		}
 	}

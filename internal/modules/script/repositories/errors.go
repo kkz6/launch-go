@@ -1,9 +1,11 @@
 package repositories
 
-import apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+import (
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+)
 
-// Repository errors - re-exported from centralized error package
+// Repository errors - using fiber error utilities
 var (
-	ErrScriptNotFound    = apperrors.ErrScriptNotFound
-	ErrExecutionNotFound = apperrors.ErrExecutionNotFound
+	ErrScriptNotFound    = fiberutil.NotFound("Script not found")
+	ErrExecutionNotFound = fiberutil.NotFound("Execution not found")
 )

@@ -1,10 +1,12 @@
 package repositories
 
-import apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+import (
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+)
 
-// Repository errors - re-exported from centralized error package
+// Repository errors - using fiber error utilities
 var (
-	ErrBackupNotFound          = apperrors.ErrBackupNotFound
-	ErrStorageProviderNotFound = apperrors.ErrStorageProviderNotFound
-	ErrBackupJobNotFound       = apperrors.ErrBackupJobNotFound
+	ErrBackupNotFound          = fiberutil.NotFound("Backup not found")
+	ErrStorageProviderNotFound = fiberutil.NotFound("Storage provider not found")
+	ErrBackupJobNotFound       = fiberutil.NotFound("Backup job not found")
 )

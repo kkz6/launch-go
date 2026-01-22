@@ -5,8 +5,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -47,14 +47,14 @@ func (h *WebhookHandler) DeployWebhook(c *fiber.Ctx) error {
 			return c.SendStatus(fiber.StatusOK)
 		}
 
-		// For HTTPStatusError types, use their built-in status code
-		var httpErr response.HTTPStatusError
-		if errors.As(err, &httpErr) {
-			return response.Error(c, httpErr.HTTPStatus(), err.Error())
+		// For fiber.Error types, use their built-in status code
+		var fiberErr *fiber.Error
+		if errors.As(err, &fiberErr) {
+			return response.Error(c, fiberErr.Code, fiberErr.Message)
 		}
 
 		// Check for site not found
-		if errors.Is(err, apperrors.ErrSiteNotFound) {
+		if errors.Is(err, repositories.ErrSiteNotFound) {
 			return c.SendStatus(fiber.StatusNotFound)
 		}
 

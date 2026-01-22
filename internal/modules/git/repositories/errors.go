@@ -1,9 +1,11 @@
 package repositories
 
-import apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+import (
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+)
 
-// Repository errors - re-exported from centralized error package
+// Repository errors - using fiber error utilities
 var (
-	ErrSourceControlNotFound = apperrors.ErrSourceControlNotFound
-	ErrRepositoryNotFound    = apperrors.ErrRepositoryNotFound
+	ErrSourceControlNotFound = fiberutil.NotFound("Source control not found")
+	ErrRepositoryNotFound    = fiberutil.NotFound("Repository not found")
 )

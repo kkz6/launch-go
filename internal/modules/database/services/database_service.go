@@ -122,8 +122,7 @@ func (s *Service) DeleteDatabase(ctx context.Context, id, serverID, teamID strin
 	activity.RecordEventPtr(ctx, "deleted", userID, database, "Database deletion requested")
 
 	// Mark as uninstalling
-	database.MarkAsUninstalling()
-	if err := s.repos.Database().Update(ctx, database); err != nil {
+	if err := s.repos.Database().MarkAsUninstalling(ctx, database.ID); err != nil {
 		return fmt.Errorf("failed to update database status: %w", err)
 	}
 

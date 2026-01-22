@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -102,7 +103,10 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 			Name: dbName,
 		}
 		database.ServerID = j.Payload.ServerID
-		database.MarkAsInstalled()
+		// Set as installed before creation (synced databases are already installed on server)
+		now := time.Now()
+		database.InstalledAt = &now
+		database.InstallationFailedAt = nil
 
 		if err := j.Ctx.DB().WithContext(ctx).Create(database).Error; err != nil {
 			j.Ctx.LogError(err, "Failed to create database record",

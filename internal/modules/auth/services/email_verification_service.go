@@ -10,7 +10,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
@@ -36,7 +36,7 @@ func (s *EmailVerificationService) VerifyEmail(ctx context.Context, userID, hash
 	}
 
 	if user == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	// Verify hash matches email
@@ -60,7 +60,7 @@ func (s *EmailVerificationService) ResendVerificationEmail(ctx context.Context, 
 	}
 
 	if user == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	if user.HasVerifiedEmail() {

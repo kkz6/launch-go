@@ -10,11 +10,11 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 var (
-	ErrComposerNotInstalled = apperrors.BadRequest("Composer package manager is not installed on this server")
+	ErrComposerNotInstalled = fiberutil.BadRequest("Composer package manager is not installed on this server")
 )
 
 // GetComposerAuth retrieves the Composer auth.json configuration from the server
@@ -97,7 +97,7 @@ func (s *Service) UpdateComposerAuth(ctx context.Context, serverID, teamID strin
 	// Validate JSON
 	var jsonContent interface{}
 	if err := json.Unmarshal([]byte(req.Contents), &jsonContent); err != nil {
-		return apperrors.BadRequest("Invalid JSON content")
+		return fiberutil.BadRequest("Invalid JSON content")
 	}
 
 	// Get the username for the path

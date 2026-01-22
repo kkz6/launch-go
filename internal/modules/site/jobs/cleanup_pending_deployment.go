@@ -68,8 +68,7 @@ func (j *CleanupPendingSiteDeploymentJob) Handle(ctx context.Context) error {
 
 	// If this was the first deployment, mark site installation as failed
 	if site.InstalledAt == nil {
-		site.MarkAsFailed()
-		if err := j.Ctx.SiteRepo.Update(ctx, site); err != nil {
+		if err := j.Ctx.SiteRepo.MarkAsFailed(ctx, site.ID); err != nil {
 			j.Ctx.LogError(err, "Failed to mark site installation as failed")
 		}
 	}

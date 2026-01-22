@@ -8,7 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
@@ -43,7 +43,7 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID string, req *dto
 	}
 
 	if user == nil {
-		return nil, apperrors.ErrNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	// Check if email is changing and already exists
@@ -85,7 +85,7 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dt
 	}
 
 	if user == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	if !security.VerifyPassword(user.Password, req.CurrentPassword) {
@@ -116,7 +116,7 @@ func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
 	}
 
 	if user == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	activity.RecordWithLog(ctx, "auth", "deleted", userID, user, "User account was deleted")

@@ -1,108 +1,132 @@
 package fiber
 
 import (
-	"context"
 	"errors"
 
 	"github.com/gofiber/fiber/v2"
-	"gorm.io/gorm"
-
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
-// HandleServiceError converts service errors to appropriate HTTP responses.
-// It checks for ResourceError (HTTP-aware), AppError, and common error patterns.
-// Returns nil if err is nil.
-func HandleServiceError(c *fiber.Ctx, err error) error {
-	if err == nil {
-		return nil
-	}
+// Default error messages
+const (
+	MsgNotFound     = "Resource not found"
+	MsgUnauthorized = "Unauthorized"
+	MsgForbidden    = "Access denied"
+	MsgBadRequest   = "Bad request"
+	MsgConflict     = "Resource conflict"
+	MsgInternal     = "Internal server error"
+	MsgValidation   = "Validation failed"
+	MsgTooMany      = "Too many requests"
+)
 
-	// Check for ResourceError (HTTP-aware error with status code)
-	var resourceErr *apperrors.ResourceError
-	if errors.As(err, &resourceErr) {
-		return response.Error(c, resourceErr.HTTPStatus(), resourceErr.Message)
-	}
+// Sentinel errors for errors.Is() checks in business logic
+var (
+	ErrNotFound   = errors.New("not found")
+	ErrValidation = errors.New("validation error")
+)
 
-	// Check for AppError (HTTP-aware error with status code and error code)
-	var appErr *apperrors.AppError
-	if errors.As(err, &appErr) {
-		return response.Error(c, appErr.HTTPStatus(), appErr.Message)
-	}
-
-	// Check for common error patterns
-	switch {
-	case errors.Is(err, gorm.ErrRecordNotFound):
-		return response.NotFound(c, "Resource not found")
-	case errors.Is(err, context.Canceled):
-		return response.Error(c, fiber.StatusRequestTimeout, "Request cancelled")
-	case errors.Is(err, context.DeadlineExceeded):
-		return response.Error(c, fiber.StatusGatewayTimeout, "Request timeout")
-	case errors.Is(err, apperrors.ErrNotFound):
-		return response.NotFound(c, "Resource not found")
-	case errors.Is(err, apperrors.ErrUnauthorized):
-		return response.Unauthorized(c, "Unauthorized")
-	case errors.Is(err, apperrors.ErrForbidden):
-		return response.Forbidden(c, "Access denied")
-	case errors.Is(err, apperrors.ErrValidation):
-		return response.BadRequest(c, err.Error())
-	case errors.Is(err, apperrors.ErrBadRequest):
-		return response.BadRequest(c, err.Error())
-	case errors.Is(err, apperrors.ErrConflict):
-		return response.Error(c, fiber.StatusConflict, err.Error())
-	default:
-		return response.InternalError(c, "An unexpected error occurred")
-	}
+// NotFound returns a 404 error with optional custom message
+func NotFound(message ...string) error {
+	return fiber.NewError(fiber.StatusNotFound, msgOrDefault(message, MsgNotFound))
 }
 
-// HandleServiceErrorWithMessage is like HandleServiceError but uses a custom message
-// for internal/unexpected errors instead of the default generic message.
-func HandleServiceErrorWithMessage(c *fiber.Ctx, err error, internalMsg string) error {
-	if err == nil {
-		return nil
-	}
-
-	// Check for ResourceError (HTTP-aware error with status code)
-	var resourceErr *apperrors.ResourceError
-	if errors.As(err, &resourceErr) {
-		return response.Error(c, resourceErr.HTTPStatus(), resourceErr.Message)
-	}
-
-	// Check for AppError (HTTP-aware error with status code and error code)
-	var appErr *apperrors.AppError
-	if errors.As(err, &appErr) {
-		return response.Error(c, appErr.HTTPStatus(), appErr.Message)
-	}
-
-	// Check for common error patterns
-	switch {
-	case errors.Is(err, gorm.ErrRecordNotFound):
-		return response.NotFound(c, "Resource not found")
-	case errors.Is(err, context.Canceled):
-		return response.Error(c, fiber.StatusRequestTimeout, "Request cancelled")
-	case errors.Is(err, context.DeadlineExceeded):
-		return response.Error(c, fiber.StatusGatewayTimeout, "Request timeout")
-	case errors.Is(err, apperrors.ErrNotFound):
-		return response.NotFound(c, "Resource not found")
-	case errors.Is(err, apperrors.ErrUnauthorized):
-		return response.Unauthorized(c, "Unauthorized")
-	case errors.Is(err, apperrors.ErrForbidden):
-		return response.Forbidden(c, "Access denied")
-	case errors.Is(err, apperrors.ErrValidation):
-		return response.BadRequest(c, err.Error())
-	case errors.Is(err, apperrors.ErrBadRequest):
-		return response.BadRequest(c, err.Error())
-	case errors.Is(err, apperrors.ErrConflict):
-		return response.Error(c, fiber.StatusConflict, err.Error())
-	default:
-		return response.InternalError(c, internalMsg)
-	}
+// Unauthorized returns a 401 error with optional custom message
+func Unauthorized(message ...string) error {
+	return fiber.NewError(fiber.StatusUnauthorized, msgOrDefault(message, MsgUnauthorized))
 }
 
-// MustSucceed is a helper that returns nil if err is nil,
-// otherwise handles the error and returns the response error.
-// Use this for simple "return on error" patterns.
-func MustSucceed(c *fiber.Ctx, err error) error {
-	return HandleServiceError(c, err)
+// Forbidden returns a 403 error with optional custom message
+func Forbidden(message ...string) error {
+	return fiber.NewError(fiber.StatusForbidden, msgOrDefault(message, MsgForbidden))
+}
+
+// BadRequest returns a 400 error with optional custom message
+func BadRequest(message ...string) error {
+	return fiber.NewError(fiber.StatusBadRequest, msgOrDefault(message, MsgBadRequest))
+}
+
+// Conflict returns a 409 error with optional custom message
+func Conflict(message ...string) error {
+	return fiber.NewError(fiber.StatusConflict, msgOrDefault(message, MsgConflict))
+}
+
+// Internal returns a 500 error with optional custom message
+func Internal(message ...string) error {
+	return fiber.NewError(fiber.StatusInternalServerError, msgOrDefault(message, MsgInternal))
+}
+
+// Validation returns a 422 error with optional custom message
+func Validation(message ...string) error {
+	return fiber.NewError(fiber.StatusUnprocessableEntity, msgOrDefault(message, MsgValidation))
+}
+
+// TooManyRequests returns a 429 error with optional custom message
+func TooManyRequests(message ...string) error {
+	return fiber.NewError(fiber.StatusTooManyRequests, msgOrDefault(message, MsgTooMany))
+}
+
+func msgOrDefault(message []string, defaultMsg string) string {
+	if len(message) > 0 && message[0] != "" {
+		return message[0]
+	}
+	return defaultMsg
+}
+
+// IsNotFound checks if error is a not found condition
+func IsNotFound(err error) bool {
+	if errors.Is(err, ErrNotFound) {
+		return true
+	}
+	var e *fiber.Error
+	if errors.As(err, &e) && e.Code == fiber.StatusNotFound {
+		return true
+	}
+	return false
+}
+
+// IsUnauthorized checks if error is an unauthorized condition
+func IsUnauthorized(err error) bool {
+	var e *fiber.Error
+	if errors.As(err, &e) && e.Code == fiber.StatusUnauthorized {
+		return true
+	}
+	return false
+}
+
+// IsForbidden checks if error is a forbidden condition
+func IsForbidden(err error) bool {
+	var e *fiber.Error
+	if errors.As(err, &e) && e.Code == fiber.StatusForbidden {
+		return true
+	}
+	return false
+}
+
+// IsConflict checks if error is a conflict condition
+func IsConflict(err error) bool {
+	var e *fiber.Error
+	if errors.As(err, &e) && e.Code == fiber.StatusConflict {
+		return true
+	}
+	return false
+}
+
+// IsValidationError checks if error is a validation error
+func IsValidationError(err error) bool {
+	if errors.Is(err, ErrValidation) {
+		return true
+	}
+	var e *fiber.Error
+	if errors.As(err, &e) {
+		return e.Code == fiber.StatusBadRequest || e.Code == fiber.StatusUnprocessableEntity
+	}
+	return false
+}
+
+// IsInternalError checks if error is a server error (5xx)
+func IsInternalError(err error) bool {
+	var e *fiber.Error
+	if errors.As(err, &e) && e.Code >= 500 {
+		return true
+	}
+	return false
 }

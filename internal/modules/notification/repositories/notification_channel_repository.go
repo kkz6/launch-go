@@ -8,13 +8,13 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/notification/enums"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
-// Repository errors - re-exported from centralized error package
+// Repository errors - using fiber error utilities
 var (
-	ErrChannelNotFound = apperrors.ErrNotificationChannelNotFound
+	ErrChannelNotFound = fiberutil.NotFound("Notification channel not found")
 )
 
 // NotificationChannelRepository handles database operations for notification channels

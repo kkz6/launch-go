@@ -2,12 +2,11 @@ package fiber
 
 import (
 	"github.com/gofiber/fiber/v2"
-	"github.com/kkz6/launch-go/internal/pkg/response"
 	"github.com/oklog/ulid/v2"
 )
 
 // GetID extracts and validates the "id" path parameter as a ULID.
-// Returns a BadRequest error response if missing or invalid.
+// Returns a BadRequest error if missing or invalid.
 //
 // Usage:
 //
@@ -29,7 +28,7 @@ func GetServerID(c *fiber.Ctx) (string, error) {
 }
 
 // GetULIDParam extracts and validates a path parameter as a ULID.
-// Returns a BadRequest error response if missing or invalid.
+// Returns a BadRequest error if missing or invalid.
 //
 // Usage:
 //
@@ -40,16 +39,16 @@ func GetServerID(c *fiber.Ctx) (string, error) {
 func GetULIDParam(c *fiber.Ctx, name string) (string, error) {
 	value := c.Params(name)
 	if value == "" {
-		return "", response.BadRequest(c, "Missing required parameter: "+name)
+		return "", BadRequest("Missing required parameter: " + name)
 	}
 	if _, err := ulid.Parse(value); err != nil {
-		return "", response.BadRequest(c, "Invalid parameter format: "+name)
+		return "", BadRequest("Invalid parameter format: " + name)
 	}
 	return value, nil
 }
 
 // GetParam extracts a required path parameter (non-ULID).
-// Returns a BadRequest error response if missing.
+// Returns a BadRequest error if missing.
 //
 // Usage:
 //
@@ -62,11 +61,11 @@ func GetParam(c *fiber.Ctx) (string, error) {
 }
 
 // GetRequiredParam extracts a required path parameter by name.
-// Returns a BadRequest error response if missing.
+// Returns a BadRequest error if missing.
 func GetRequiredParam(c *fiber.Ctx, name string) (string, error) {
 	value := c.Params(name)
 	if value == "" {
-		return "", response.BadRequest(c, "Missing required parameter: "+name)
+		return "", BadRequest("Missing required parameter: " + name)
 	}
 	return value, nil
 }

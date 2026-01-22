@@ -121,8 +121,7 @@ func (s *Service) DeleteDatabaseUser(ctx context.Context, id, serverID string, u
 	}
 
 	// Mark as uninstalling
-	dbUser.MarkAsUninstalling()
-	if err := s.repos.User().Update(ctx, dbUser); err != nil {
+	if err := s.repos.User().MarkAsUninstalling(ctx, dbUser.ID); err != nil {
 		return fmt.Errorf("failed to update user status: %w", err)
 	}
 

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -209,8 +210,8 @@ func TestFindOneNotFound(t *testing.T) {
 	ctx := context.Background()
 
 	_, err := FindOne[testModel](ctx, db, WithID("nonexistent"))
-	if err != ErrNotFound {
-		t.Errorf("expected ErrNotFound, got %v", err)
+	if !fiberutil.IsNotFound(err) {
+		t.Errorf("expected NotFound error, got %v", err)
 	}
 }
 
@@ -228,14 +229,13 @@ func TestFindOneOrFail(t *testing.T) {
 		t.Errorf("expected ID 1, got %s", result.ID)
 	}
 
-	// Should fail with typed error
+	// Should fail with fiber.Error (404)
 	_, err = FindOneOrFail[testModel](ctx, db, WithID("nonexistent"))
 	if err == nil {
 		t.Error("expected error, got nil")
 	}
-	_, ok := err.(*ModelError)
-	if !ok {
-		t.Errorf("expected *ModelError, got %T", err)
+	if !fiberutil.IsNotFound(err) {
+		t.Errorf("expected not found error, got %T: %v", err, err)
 	}
 }
 

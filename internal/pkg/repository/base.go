@@ -3,9 +3,15 @@ package repository
 import (
 	"context"
 	"errors"
-	"reflect"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"gorm.io/gorm"
+)
+
+// Common repository errors for backwards compatibility.
+// New code should use fiberutil.NotFound() etc. directly.
+var (
+	ErrNotFound = errors.New("record not found")
 )
 
 // Base provides common database operations using generics.
@@ -36,7 +42,7 @@ func (r *Base[T]) FindByID(ctx context.Context, id string) (*T, error) {
 	err := r.DB.WithContext(ctx).First(&entity, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -49,7 +55,7 @@ func (r *Base[T]) FindByIDAndServer(ctx context.Context, id, serverID string) (*
 	err := r.DB.WithContext(ctx).First(&entity, "id = ? AND server_id = ?", id, serverID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -135,7 +141,7 @@ func (r *Base[T]) FindByNameAndServer(ctx context.Context, name, serverID string
 		First(&entity, "name = ? AND server_id = ?", name, serverID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -180,49 +186,39 @@ func (r *Base[T]) WithPreload(ctx context.Context, relations ...string) *gorm.DB
 	return query
 }
 
-// getModelName returns the type name of T for error messages
-func (r *Base[T]) getModelName() string {
-	var entity T
-	t := reflect.TypeOf(entity)
-	if t.Kind() == reflect.Ptr {
-		t = t.Elem()
-	}
-	return t.Name()
-}
-
-// FindByIDOrFail finds a record by ID or returns a typed error
+// FindByIDOrFail finds a record by ID or returns a 404 error
 func (r *Base[T]) FindByIDOrFail(ctx context.Context, id string) (*T, error) {
 	entity, err := r.FindByID(ctx, id)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, NotFoundError(r.getModelName(), id)
+		if fiberutil.IsNotFound(err) {
+			return nil, fiberutil.NotFound()
 		}
-		return nil, WrapError(err, r.getModelName(), "failed to find "+r.getModelName())
+		return nil, fiberutil.Internal()
 	}
 	return entity, nil
 }
 
-// FindByIDAndServerOrFail finds a record by ID and server ID or returns a typed error
+// FindByIDAndServerOrFail finds a record by ID and server ID or returns a 404 error
 func (r *Base[T]) FindByIDAndServerOrFail(ctx context.Context, id, serverID string) (*T, error) {
 	entity, err := r.FindByIDAndServer(ctx, id, serverID)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, NotFoundError(r.getModelName(), id)
+		if fiberutil.IsNotFound(err) {
+			return nil, fiberutil.NotFound()
 		}
-		return nil, WrapError(err, r.getModelName(), "failed to find "+r.getModelName())
+		return nil, fiberutil.Internal()
 	}
 	return entity, nil
 }
 
-// FirstOrFail executes a query and returns an error if not found
+// FirstOrFail executes a query and returns a 404 error if not found
 func (r *Base[T]) FirstOrFail(ctx context.Context, query *gorm.DB) (*T, error) {
 	var entity T
 	err := query.WithContext(ctx).First(&entity).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, NotFoundError(r.getModelName(), "")
+			return nil, fiberutil.NotFound()
 		}
-		return nil, WrapError(err, r.getModelName(), "failed to find "+r.getModelName())
+		return nil, fiberutil.Internal()
 	}
 	return &entity, nil
 }
@@ -242,21 +238,21 @@ func (r *Base[T]) FindByIDAndTeam(ctx context.Context, id, teamID string, preloa
 	err := query.First(&entity, "id = ? AND team_id = ?", id, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
 	return &entity, nil
 }
 
-// FindByIDAndTeamOrFail finds a record by ID and team ID or returns a typed error
+// FindByIDAndTeamOrFail finds a record by ID and team ID or returns a 404 error
 func (r *Base[T]) FindByIDAndTeamOrFail(ctx context.Context, id, teamID string, preloads ...string) (*T, error) {
 	entity, err := r.FindByIDAndTeam(ctx, id, teamID, preloads...)
 	if err != nil {
-		if errors.Is(err, ErrNotFound) {
-			return nil, NotFoundError(r.getModelName(), id)
+		if fiberutil.IsNotFound(err) {
+			return nil, fiberutil.NotFound()
 		}
-		return nil, WrapError(err, r.getModelName(), "failed to find "+r.getModelName())
+		return nil, fiberutil.Internal()
 	}
 	return entity, nil
 }
@@ -430,4 +426,10 @@ func PaginateWithCount[T any](countQuery, dataQuery *gorm.DB, page, perPage int)
 		PerPage:    perPage,
 		TotalPages: totalPages,
 	}, nil
+}
+
+// IsNotFound checks if an error is a not found error.
+// Works with fiber.Error with 404 status code.
+func IsNotFound(err error) bool {
+	return fiberutil.IsNotFound(err)
 }

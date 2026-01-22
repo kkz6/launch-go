@@ -158,8 +158,7 @@ func (j *UninstallSiteJob) Failed(ctx context.Context, err error) {
 		return
 	}
 
-	site.MarkUninstallationFailed()
-	if updateErr := j.Ctx.SiteRepo.Update(ctx, site); updateErr != nil {
+	if updateErr := j.Ctx.SiteRepo.MarkUninstallationFailed(ctx, site.ID); updateErr != nil {
 		j.Ctx.LogError(updateErr, "Failed to mark site uninstallation as failed")
 	}
 }

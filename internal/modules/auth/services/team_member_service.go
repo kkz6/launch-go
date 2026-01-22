@@ -11,7 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/enums"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
-	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
@@ -35,7 +35,7 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 	}
 
 	if team == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	// Check if user has permission to invite
@@ -46,7 +46,7 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 		}
 
 		if member == nil || member.Role == nil || *member.Role != enums.TeamRoleAdmin.String() {
-			return apperrors.ErrForbidden
+			return fiberutil.Forbidden()
 		}
 	}
 
@@ -95,7 +95,7 @@ func (s *TeamMemberService) AcceptTeamInvitation(ctx context.Context, userID, in
 	}
 
 	if invitation == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	user, err := s.repos.User().FindByID(ctx, userID)
@@ -104,12 +104,12 @@ func (s *TeamMemberService) AcceptTeamInvitation(ctx context.Context, userID, in
 	}
 
 	if user == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	// Verify invitation is for this user
 	if !strings.EqualFold(invitation.Email, user.Email) {
-		return apperrors.ErrForbidden
+		return fiberutil.Forbidden()
 	}
 
 	// Add user to team
@@ -133,7 +133,7 @@ func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, te
 	}
 
 	if team == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	// Check permission
@@ -144,7 +144,7 @@ func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, te
 		}
 
 		if member == nil || member.Role == nil || *member.Role != enums.TeamRoleAdmin.String() {
-			return apperrors.ErrForbidden
+			return fiberutil.Forbidden()
 		}
 	}
 
@@ -154,7 +154,7 @@ func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, te
 	}
 
 	if invitation == nil || invitation.TeamID != teamID {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	return s.repos.TeamInvitation().Delete(ctx, invitationID)
@@ -168,12 +168,12 @@ func (s *TeamMemberService) UpdateTeamMemberRole(ctx context.Context, userID, te
 	}
 
 	if team == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	// Only owner can update roles
 	if team.UserID != userID {
-		return apperrors.ErrForbidden
+		return fiberutil.Forbidden()
 	}
 
 	// Cannot update owner's role
@@ -192,12 +192,12 @@ func (s *TeamMemberService) RemoveTeamMember(ctx context.Context, userID, teamID
 	}
 
 	if team == nil {
-		return apperrors.ErrNotFound
+		return fiberutil.NotFound()
 	}
 
 	// Check permission (owner or self-removal)
 	if team.UserID != userID && userID != memberID {
-		return apperrors.ErrForbidden
+		return fiberutil.Forbidden()
 	}
 
 	// Cannot remove owner
@@ -244,7 +244,7 @@ func (s *TeamMemberService) GetAllTeamMembers(ctx context.Context, teamID string
 		return nil, err
 	}
 	if team == nil {
-		return nil, apperrors.ErrNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	// Get members from pivot table
