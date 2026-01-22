@@ -313,6 +313,35 @@ type CallbackURLs struct {
 	Timeout  string
 }
 
+// CustomCallback handles custom callbacks from running tasks (for progress updates)
+// This can be called by scripts during execution to trigger output fetch or custom logic
+func (h *TaskWebhookHandler) CustomCallback(c *fiber.Ctx) error {
+	taskID := c.Params("id")
+	ctx := c.Context()
+
+	if !h.VerifySignature(c) {
+		return response.Unauthorized(c, "Invalid signature")
+	}
+
+	task, err := h.repo.FindTaskByID(ctx, taskID)
+	if err != nil {
+		return response.NotFound(c, "Task not found")
+	}
+
+	// Only allow callbacks for pending/running tasks
+	if task.Status != "pending" && task.Status != "running" {
+		return response.OK(c, "Task already completed", nil)
+	}
+
+	// Fetch the latest output from the server
+	h.dispatchOutputFetch(task)
+
+	// Handle callback if task has instance data
+	h.handleCallback(ctx, task, taskrunner.CallbackCustom, 0)
+
+	return response.OK(c, "Callback processed", nil)
+}
+
 // dispatchOutputFetch dispatches a job to fetch the task output from the server
 func (h *TaskWebhookHandler) dispatchOutputFetch(task *models.Task) {
 	if h.queue == nil {
