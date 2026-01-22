@@ -114,6 +114,7 @@ type TaskRepository interface {
 	FindLatestByServer(ctx context.Context, serverID string) (*models.Task, error)
 	Update(ctx context.Context, task *models.Task) error
 	UpdateOutput(ctx context.Context, taskID string, output string) error
+	UpdateFields(ctx context.Context, taskID string, fields map[string]any) error
 }
 
 // MetricRepository defines the interface for metric database operations

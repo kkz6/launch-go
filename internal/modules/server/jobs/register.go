@@ -68,6 +68,7 @@ func registerHandlers(mux *asynq.ServeMux) {
 	// Task and maintenance jobs
 	pkgjobs.RegisterTyped(mux, TypeCheckDaemonStatus, NewCheckDaemonStatusJob)
 	pkgjobs.RegisterTyped(mux, TypeUpdateTaskOutput, NewUpdateTaskOutputJob)
+	pkgjobs.RegisterTyped(mux, TypeFetchTaskOutput, NewFetchTaskOutputJob)
 	pkgjobs.RegisterTyped(mux, TypeUpdateUserPublicKey, NewUpdateUserPublicKeyJob)
 	pkgjobs.RegisterTyped(mux, TypeInstallTaskCleanupCron, NewInstallTaskCleanupCronJob)
 	pkgjobs.RegisterTyped(mux, TypeRunAfterUpdate, NewRunAfterUpdateJob)
