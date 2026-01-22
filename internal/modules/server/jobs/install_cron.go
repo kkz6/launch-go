@@ -50,7 +50,7 @@ func (j *InstallCronJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to upload cron file: %s", result.GetOutput())
 	}
 
-	if err := j.Ctx.Repos().Cron().MarkInstalled(ctx, cron.ID); err != nil {
+	if err := j.Ctx.Repos().Cron().MarkAsInstalled(ctx, cron.ID); err != nil {
 		return fmt.Errorf("failed to mark cron as installed: %w", err)
 	}
 

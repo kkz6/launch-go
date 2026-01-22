@@ -61,7 +61,7 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 		j.Ctx.LogError(err, "Failed to reload supervisor, daemon may not start")
 	}
 
-	if err := j.Ctx.Repos().Daemon().MarkInstalled(ctx, daemon.ID); err != nil {
+	if err := j.Ctx.Repos().Daemon().MarkAsInstalled(ctx, daemon.ID); err != nil {
 		return fmt.Errorf("failed to mark daemon as installed: %w", err)
 	}
 

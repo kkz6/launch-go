@@ -58,12 +58,4 @@ func (r *FirewallRuleRepository) FindByIDAndServer(ctx context.Context, id, serv
 	return rule, nil
 }
 
-// MarkInstalled marks a firewall rule as installed (alias for MarkAsInstalled)
-func (r *FirewallRuleRepository) MarkInstalled(ctx context.Context, id string) error {
-	return r.MarkAsInstalled(ctx, id)
-}
-
-// MarkFailed marks a firewall rule installation as failed (alias for MarkAsFailed)
-func (r *FirewallRuleRepository) MarkFailed(ctx context.Context, id string) error {
-	return r.MarkAsFailed(ctx, id)
-}
+// Note: MarkAsInstalled and MarkAsFailed are inherited from repository.Installable

@@ -58,9 +58,4 @@ func (r *CronRepository) FindByIDAndServer(ctx context.Context, id, serverID str
 	return cron, nil
 }
 
-// MarkInstalled marks a cron job as installed (alias for MarkAsInstalled)
-func (r *CronRepository) MarkInstalled(ctx context.Context, id string) error {
-	return r.MarkAsInstalled(ctx, id)
-}
-
-// Note: MarkInstallationFailed and MarkUninstallationFailed are inherited from repository.Installable
+// Note: MarkAsInstalled, MarkInstallationFailed and MarkUninstallationFailed are inherited from repository.Installable
