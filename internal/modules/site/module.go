@@ -82,29 +82,14 @@ func (m *Module) SiteRepository() *repositories.SiteRepository {
 
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
-	deps := m.Deps()
-
-	// Set up job context with all dependencies
-	jobContext := jobs.NewJobContext(
-		deps.DB,
-		deps.Logger,
-		deps.WebSocket,
-		deps.Dispatcher,
-		deps.Queue,
-		m.repos.Site(),
-		m.repos.Command(),
-		m.repos.Deployment(),
-		m.repos.Certificate(),
-		m.repos.Queue(),
-		m.repos.Redirect(),
+	jobs.Register(
+		mux,
+		m.Deps(),
+		m.repos,
 		m.serverRepos,
 		m.gitRepos.SourceControl(),
 		m.providerFactory,
 	)
-	jobs.SetJobContext(jobContext)
-
-	// Register job handlers
-	jobs.RegisterHandlers(mux)
 }
 
 // RegisterTaskCallbacks registers task callback handlers (implements app.TaskCallbackRegistrar)

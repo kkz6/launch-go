@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
@@ -21,24 +22,32 @@ type UninstallPhpExtensionPayload struct {
 
 // UninstallPhpExtensionJob uninstalls a PHP extension from a server
 type UninstallPhpExtensionJob struct {
-	pkgjobs.BaseJob[*JobContext, UninstallPhpExtensionPayload]
+	Deps    *JobDeps
+	Payload UninstallPhpExtensionPayload
+
+	server *models.Server
+}
+
+func NewUninstallPhpExtensionJob(p UninstallPhpExtensionPayload) pkgjobs.Handler {
+	return &UninstallPhpExtensionJob{Deps: deps, Payload: p}
 }
 
 func (j *UninstallPhpExtensionJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.Ctx.LogInfo("Uninstalling PHP extension",
-		"server_id", server.ID,
-		"version", j.Payload.Version,
-		"extension", j.Payload.Extension,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("version", j.Payload.Version).
+		Str("extension", j.Payload.Extension).
+		Msg("Uninstalling PHP extension")
 
 	task := tasks.UninstallPhpExtension(j.Payload.Version, j.Payload.Extension)
 
-	result, err := j.Ctx.ForServer(server).RunTask(task).
+	result, err := j.Deps.RunTask(j.server, task).
 		AsRoot().
 		TrackInDB().
 		Dispatch(ctx)
@@ -51,14 +60,14 @@ func (j *UninstallPhpExtensionJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to uninstall PHP extension: %s", result.GetOutput())
 	}
 
-	j.Ctx.LogInfo("PHP extension uninstalled successfully",
-		"server_id", server.ID,
-		"version", j.Payload.Version,
-		"extension", j.Payload.Extension,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("version", j.Payload.Version).
+		Str("extension", j.Payload.Extension).
+		Msg("PHP extension uninstalled successfully")
 
-	j.Ctx.BroadcastServerEvent(server, "php.extension_uninstalled", map[string]any{
-		"server_id": server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "php.extension_uninstalled", map[string]any{
+		"server_id": j.server.ID,
 		"version":   j.Payload.Version,
 		"extension": j.Payload.Extension,
 	})
@@ -67,21 +76,15 @@ func (j *UninstallPhpExtensionJob) Handle(ctx context.Context) error {
 }
 
 func (j *UninstallPhpExtensionJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to uninstall PHP extension",
-		"server_id", j.Payload.ServerID,
-		"version", j.Payload.Version,
-		"extension", j.Payload.Extension,
-	)
-}
-
-func NewUninstallPhpExtensionJob(ctx *JobContext, payload UninstallPhpExtensionPayload) *UninstallPhpExtensionJob {
-	return &UninstallPhpExtensionJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Str("version", j.Payload.Version).
+		Str("extension", j.Payload.Extension).
+		Msg("Failed to uninstall PHP extension")
 }
 
 func NewUninstallPhpExtensionTask(serverID, version, extension string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeUninstallPhpExtension, UninstallPhpExtensionPayload{
+	return pkgjobs.Task(TypeUninstallPhpExtension, UninstallPhpExtensionPayload{
 		ServerID:  serverID,
 		Version:   version,
 		Extension: extension,

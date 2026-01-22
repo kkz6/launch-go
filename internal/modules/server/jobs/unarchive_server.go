@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
@@ -20,33 +21,40 @@ type UnarchiveServerPayload struct {
 // UnarchiveServerJob unarchives a server (restore from soft delete).
 // Similar to Laravel's Modules\Server\Jobs\UnarchiveServer
 type UnarchiveServerJob struct {
-	pkgjobs.BaseJob[*JobContext, UnarchiveServerPayload]
+	Deps    *JobDeps
+	Payload UnarchiveServerPayload
+
+	server *models.Server
+}
+
+func NewUnarchiveServerJob(p UnarchiveServerPayload) pkgjobs.Handler {
+	return &UnarchiveServerJob{Deps: deps, Payload: p}
 }
 
 // Handle processes the job
 func (j *UnarchiveServerJob) Handle(ctx context.Context) error {
-	// Find the server (including archived)
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Unarchive the server
-	if err := j.Ctx.Repos().Server().Unarchive(ctx, server.ID); err != nil {
+	if err := j.Deps.Repos.Server().Unarchive(ctx, j.server.ID); err != nil {
 		return fmt.Errorf("failed to unarchive server: %w", err)
 	}
 
 	// Log activity
-	activity.RecordWithLogPtr(ctx, "server", "unarchived", j.Payload.UserID, server, "Server was unarchived")
+	activity.RecordWithLogPtr(ctx, "server", "unarchived", j.Payload.UserID, j.server, "Server was unarchived")
 
-	j.Ctx.LogInfo("Server unarchived successfully",
-		"server_id", server.ID,
-		"server_name", server.Name,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("server_name", j.server.Name).
+		Msg("Server unarchived successfully")
 
 	// Broadcast event
-	j.Ctx.BroadcastServerEvent(server, "server.unarchived", map[string]any{
-		"server_id": server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "server.unarchived", map[string]any{
+		"server_id": j.server.ID,
 	})
 
 	return nil
@@ -54,23 +62,16 @@ func (j *UnarchiveServerJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *UnarchiveServerJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to unarchive server",
-		"server_id", j.Payload.ServerID,
-	)
-}
-
-// NewUnarchiveServerJob creates a new UnarchiveServerJob with the given context and payload.
-func NewUnarchiveServerJob(ctx *JobContext, payload UnarchiveServerPayload) *UnarchiveServerJob {
-	return &UnarchiveServerJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Msg("Failed to unarchive server")
 }
 
 // NewUnarchiveServerTask creates an asynq task for unarchiving a server
 // Uses TaskID for deduplication to prevent duplicate unarchive operations
 func NewUnarchiveServerTask(serverID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeUnarchiveServer, UnarchiveServerPayload{
-		ServerID: serverID,
-		UserID:   userID,
-	}, asynq.TaskID(fmt.Sprintf("unarchive_server:%s", serverID)))
+	return pkgjobs.TaskWithID(TypeUnarchiveServer,
+		UnarchiveServerPayload{ServerID: serverID, UserID: userID},
+		pkgjobs.Dedup("unarchive_server", serverID),
+	)
 }

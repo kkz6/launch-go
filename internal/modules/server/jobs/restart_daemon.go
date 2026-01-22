@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
@@ -21,23 +22,32 @@ type RestartDaemonPayload struct {
 // RestartDaemonJob restarts a daemon on a server.
 // Similar to Laravel's Modules\Server\Jobs\RestartDaemon
 type RestartDaemonJob struct {
-	pkgjobs.BaseJob[*JobContext, RestartDaemonPayload]
+	Deps    *JobDeps
+	Payload RestartDaemonPayload
+
+	daemon *models.Daemon
+}
+
+func NewRestartDaemonJob(p RestartDaemonPayload) pkgjobs.Handler {
+	return &RestartDaemonJob{Deps: deps, Payload: p}
 }
 
 // Handle processes the job
 func (j *RestartDaemonJob) Handle(ctx context.Context) error {
+	var err error
+
 	// Find the daemon with server preloaded
-	daemon, err := j.Ctx.Repos().Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
+	j.daemon, err = j.Deps.Repos.Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
 	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
 
 	// Restart the daemon
 	task := tasks.RestartDaemon(tasks.RestartDaemonConfig{
-		ProgramName: daemon.ProgramName(),
+		ProgramName: j.daemon.ProgramName(),
 	})
 
-	result, err := j.Ctx.ForServer(daemon.Server).RunTask(task).
+	result, err := j.Deps.RunTask(j.daemon.Server, task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -49,15 +59,15 @@ func (j *RestartDaemonJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to restart daemon: %s", result.GetOutput())
 	}
 
-	j.Ctx.LogInfo("Daemon restarted successfully",
-		"daemon_id", daemon.ID,
-		"server_id", daemon.ServerID,
-	)
+	j.Deps.Logger.Info().
+		Str("daemon_id", j.daemon.ID).
+		Str("server_id", j.daemon.ServerID).
+		Msg("daemon restarted successfully")
 
 	// Broadcast event
-	j.Ctx.BroadcastServerEvent(daemon.Server, "daemon.restarted", map[string]any{
-		"daemon_id": daemon.ID,
-		"server_id": daemon.ServerID,
+	j.Deps.BroadcastServerEvent(j.daemon.Server, "daemon.restarted", map[string]any{
+		"daemon_id": j.daemon.ID,
+		"server_id": j.daemon.ServerID,
 	})
 
 	return nil
@@ -65,24 +75,21 @@ func (j *RestartDaemonJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *RestartDaemonJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to restart daemon",
-		"daemon_id", j.Payload.DaemonID,
-		"server_id", j.Payload.ServerID,
-	)
-}
-
-func NewRestartDaemonJob(ctx *JobContext, payload RestartDaemonPayload) *RestartDaemonJob {
-	return &RestartDaemonJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+	j.Deps.Logger.Error().Err(err).
+		Str("daemon_id", j.Payload.DaemonID).
+		Str("server_id", j.Payload.ServerID).
+		Msg("failed to restart daemon")
 }
 
 // NewRestartDaemonTask creates an asynq task for restarting a daemon
 // Uses TaskID for deduplication to prevent duplicate daemon restarts
 func NewRestartDaemonTask(serverID, daemonID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeRestartDaemon, RestartDaemonPayload{
-		ServerID: serverID,
-		DaemonID: daemonID,
-		UserID:   userID,
-	}, asynq.TaskID(fmt.Sprintf("restart_daemon:%s:%s", serverID, daemonID)))
+	return pkgjobs.TaskWithID(TypeRestartDaemon,
+		RestartDaemonPayload{
+			ServerID: serverID,
+			DaemonID: daemonID,
+			UserID:   userID,
+		},
+		pkgjobs.Dedup("restart_daemon", serverID, daemonID),
+	)
 }

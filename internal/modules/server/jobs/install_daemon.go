@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
@@ -21,26 +22,34 @@ type InstallDaemonPayload struct {
 
 // InstallDaemonJob installs a daemon (supervisor program) on a server.
 type InstallDaemonJob struct {
-	pkgjobs.BaseJob[*JobContext, InstallDaemonPayload]
+	Deps    *JobDeps
+	Payload InstallDaemonPayload
+
+	daemon *models.Daemon
+}
+
+func NewInstallDaemonJob(p InstallDaemonPayload) pkgjobs.Handler {
+	return &InstallDaemonJob{Deps: deps, Payload: p}
 }
 
 func (j *InstallDaemonJob) Handle(ctx context.Context) error {
-	daemon, err := j.Ctx.Repos().Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
+	var err error
+	j.daemon, err = j.Deps.Repos.Daemon().FindByIDWithServer(ctx, j.Payload.DaemonID)
 	if err != nil {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
 
-	contents := daemon.ToSupervisorConfig()
+	contents := j.daemon.ToSupervisorConfig()
 
 	uploadTask := tasks.UploadDaemon(tasks.UploadDaemonConfig{
-		Path:         daemon.Path(),
+		Path:         j.daemon.Path(),
 		Contents:     contents,
-		LogPath:      daemon.GetLogPath(),
-		ErrorLogPath: daemon.GetErrorLogPath(),
-		User:         daemon.User,
+		LogPath:      j.daemon.GetLogPath(),
+		ErrorLogPath: j.daemon.GetErrorLogPath(),
+		User:         j.daemon.User,
 	})
 
-	result, err := j.Ctx.ForServer(daemon.Server).RunTask(uploadTask).
+	result, err := j.Deps.RunTask(j.daemon.Server, uploadTask).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -53,59 +62,53 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 	}
 
 	reloadTask := tasks.ReloadSupervisor()
-	_, err = j.Ctx.ForServer(daemon.Server).RunTask(reloadTask).
+	_, err = j.Deps.RunTask(j.daemon.Server, reloadTask).
 		AsRoot().
 		Dispatch(ctx)
 
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to reload supervisor, daemon may not start")
+		j.Deps.Logger.Error().Err(err).Msg("failed to reload supervisor, daemon may not start")
 	}
 
-	if err := j.Ctx.Repos().Daemon().MarkAsInstalled(ctx, daemon.ID); err != nil {
+	if err := j.Deps.Repos.Daemon().MarkAsInstalled(ctx, j.daemon.ID); err != nil {
 		return fmt.Errorf("failed to mark daemon as installed: %w", err)
 	}
 
 	// Log activity
-	activity.RecordWithLogPtr(ctx, "server", "installed", j.Payload.UserID, daemon, "Daemon was installed")
+	activity.RecordWithLogPtr(ctx, "server", "installed", j.Payload.UserID, j.daemon, "Daemon was installed")
 
-	j.Ctx.LogInfo("Daemon installed successfully",
-		"daemon_id", daemon.ID,
-		"server_id", daemon.ServerID,
-		"command", daemon.Command,
-	)
+	j.Deps.Logger.Info().
+		Str("daemon_id", j.daemon.ID).
+		Str("server_id", j.daemon.ServerID).
+		Str("command", j.daemon.Command).
+		Msg("daemon installed successfully")
 
-	j.Ctx.BroadcastServerEvent(daemon.Server, "daemon.installed", map[string]any{
-		"daemon_id": daemon.ID,
-		"server_id": daemon.ServerID,
+	j.Deps.BroadcastServerEvent(j.daemon.Server, "daemon.installed", map[string]any{
+		"daemon_id": j.daemon.ID,
+		"server_id": j.daemon.ServerID,
 	})
 
 	return nil
 }
 
 func (j *InstallDaemonJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to install daemon",
-		"daemon_id", j.Payload.DaemonID,
-		"server_id", j.Payload.ServerID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("daemon_id", j.Payload.DaemonID).
+		Str("server_id", j.Payload.ServerID).
+		Msg("failed to install daemon")
 
 	// Mark installation as failed
-	if markErr := j.Ctx.Repos().Daemon().MarkInstallationFailed(ctx, j.Payload.DaemonID); markErr != nil {
-		j.Ctx.LogError(markErr, "Failed to mark daemon installation as failed")
-	}
-}
-
-func NewInstallDaemonJob(ctx *JobContext, payload InstallDaemonPayload) *InstallDaemonJob {
-	return &InstallDaemonJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
+	if markErr := j.Deps.Repos.Daemon().MarkInstallationFailed(ctx, j.Payload.DaemonID); markErr != nil {
+		j.Deps.Logger.Error().Err(markErr).Msg("failed to mark daemon installation as failed")
 	}
 }
 
 // NewInstallDaemonTask creates an asynq task for installing a daemon
 // Uses TaskID for deduplication to prevent duplicate daemon installations
 func NewInstallDaemonTask(serverID, daemonID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeInstallDaemon, InstallDaemonPayload{
+	return pkgjobs.Task(TypeInstallDaemon, InstallDaemonPayload{
 		ServerID: serverID,
 		DaemonID: daemonID,
 		UserID:   userID,
-	}, asynq.TaskID(fmt.Sprintf("install_daemon:%s:%s", serverID, daemonID)))
+	}, asynq.TaskID(pkgjobs.Dedup("install_daemon", serverID, daemonID)))
 }

@@ -25,15 +25,21 @@ type EnableLaravelSchedulerPayload struct {
 
 // EnableLaravelSchedulerJob enables the Laravel scheduler cron for a site
 type EnableLaravelSchedulerJob struct {
-	pkgjobs.BaseJob[*JobContext, EnableLaravelSchedulerPayload]
+	Deps    *JobDeps
+	Payload EnableLaravelSchedulerPayload
 	FeatureJobHelpers
+
+	// Model fields for Failed() callback
+	site   *models.Site
+	server *servermodels.Server
 }
 
 // NewEnableLaravelSchedulerJob creates a new EnableLaravelSchedulerJob
-func NewEnableLaravelSchedulerJob(ctx *JobContext, payload EnableLaravelSchedulerPayload) *EnableLaravelSchedulerJob {
+func NewEnableLaravelSchedulerJob(p EnableLaravelSchedulerPayload) pkgjobs.Handler {
 	return &EnableLaravelSchedulerJob{
-		BaseJob:           pkgjobs.NewBaseJob(ctx, payload),
-		FeatureJobHelpers: FeatureJobHelpers{Ctx: ctx},
+		Deps:              deps,
+		Payload:           p,
+		FeatureJobHelpers: FeatureJobHelpers{Deps: deps},
 	}
 }
 
@@ -48,7 +54,10 @@ func (j *EnableLaravelSchedulerJob) Handle(ctx context.Context) error {
 	}
 
 	site, server := result.Site, result.Server
-	j.BaseJob.Ctx.LogInfo("Enabling Laravel scheduler", "site_id", site.ID, "server_id", server.ID)
+	j.site = site
+	j.server = server
+
+	j.Deps.Logger.Info().Str("site_id", site.ID).Str("server_id", server.ID).Msg("Enabling Laravel scheduler")
 
 	cron, err := j.createSchedulerCron(ctx, site, server)
 	if err != nil {
@@ -61,7 +70,7 @@ func (j *EnableLaravelSchedulerJob) Handle(ctx context.Context) error {
 
 	j.EnableFeature(ctx, site, FeatureScheduler, nil, &cron.ID)
 	j.BroadcastSchedulerEnabled(server, site.ID, cron.ID)
-	j.BaseJob.Ctx.LogInfo("Laravel scheduler enabled successfully", "site_id", site.ID, "cron_id", cron.ID)
+	j.Deps.Logger.Info().Str("site_id", site.ID).Str("cron_id", cron.ID).Msg("Laravel scheduler enabled successfully")
 
 	return nil
 }
@@ -82,7 +91,7 @@ func (j *EnableLaravelSchedulerJob) createSchedulerCron(ctx context.Context, sit
 	}
 	cron.ServerID = server.ID
 
-	if err := j.BaseJob.Ctx.ServerRepos.Cron().Create(ctx, cron); err != nil {
+	if err := j.Deps.ServerRepos.Cron().Create(ctx, cron); err != nil {
 		return nil, fmt.Errorf("failed to create cron: %w", err)
 	}
 
@@ -96,8 +105,8 @@ func (j *EnableLaravelSchedulerJob) dispatchInstallCron(ctx context.Context, cro
 		return err
 	}
 
-	if err := j.BaseJob.Ctx.DispatchTask(task); err != nil {
-		_ = j.BaseJob.Ctx.ServerRepos.Cron().Delete(ctx, cronID)
+	if err := j.Deps.DispatchTask(task); err != nil {
+		_ = j.Deps.ServerRepos.Cron().Delete(ctx, cronID)
 		return fmt.Errorf("failed to dispatch install cron job: %w", err)
 	}
 
@@ -111,7 +120,7 @@ func (j *EnableLaravelSchedulerJob) Failed(ctx context.Context, err error) {
 
 // NewEnableLaravelSchedulerTask creates an enable scheduler task
 func NewEnableLaravelSchedulerTask(siteID, serverID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeEnableLaravelScheduler, EnableLaravelSchedulerPayload{
+	return pkgjobs.Task(TypeEnableLaravelScheduler, EnableLaravelSchedulerPayload{
 		SiteID:   siteID,
 		ServerID: serverID,
 		UserID:   userID,

@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
@@ -21,32 +22,33 @@ type UpdateUserPublicKeyPayload struct {
 
 // UpdateUserPublicKeyJob updates a user's SSH public key on the server
 type UpdateUserPublicKeyJob struct {
-	pkgjobs.BaseJob[*JobContext, UpdateUserPublicKeyPayload]
+	Deps    *JobDeps
+	Payload UpdateUserPublicKeyPayload
+
+	server *models.Server
 }
 
-// NewUpdateUserPublicKeyJob creates a new UpdateUserPublicKeyJob
-func NewUpdateUserPublicKeyJob(ctx *JobContext, payload UpdateUserPublicKeyPayload) *UpdateUserPublicKeyJob {
-	return &UpdateUserPublicKeyJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewUpdateUserPublicKeyJob(p UpdateUserPublicKeyPayload) pkgjobs.Handler {
+	return &UpdateUserPublicKeyJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the update user public key job
 func (j *UpdateUserPublicKeyJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	j.Ctx.LogInfo("Updating user public key",
-		"server_id", server.ID,
-		"username", j.Payload.Username,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("username", j.Payload.Username).
+		Msg("Updating user public key")
 
 	// Create task to update the authorized_keys file
 	task := tasks.UpdateAuthorizedKeys(j.Payload.Username, j.Payload.PublicKey)
 
-	result, err := j.Ctx.ForServer(server).RunTask(task).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to update user public key: %w", err)
 	}
@@ -55,13 +57,13 @@ func (j *UpdateUserPublicKeyJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to update user public key: %s", result.GetOutput())
 	}
 
-	j.Ctx.LogInfo("User public key updated successfully",
-		"server_id", server.ID,
-		"username", j.Payload.Username,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("username", j.Payload.Username).
+		Msg("User public key updated successfully")
 
-	j.Ctx.BroadcastServerEvent(server, "user.public_key_updated", map[string]any{
-		"server_id": server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "user.public_key_updated", map[string]any{
+		"server_id": j.server.ID,
 		"username":  j.Payload.Username,
 	})
 
@@ -70,15 +72,15 @@ func (j *UpdateUserPublicKeyJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *UpdateUserPublicKeyJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to update user public key",
-		"server_id", j.Payload.ServerID,
-		"username", j.Payload.Username,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Str("username", j.Payload.Username).
+		Msg("Failed to update user public key")
 }
 
 // NewUpdateUserPublicKeyTask creates an update user public key task
 func NewUpdateUserPublicKeyTask(serverID, username, publicKey string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeUpdateUserPublicKey, UpdateUserPublicKeyPayload{
+	return pkgjobs.Task(TypeUpdateUserPublicKey, UpdateUserPublicKeyPayload{
 		ServerID:  serverID,
 		Username:  username,
 		PublicKey: publicKey,

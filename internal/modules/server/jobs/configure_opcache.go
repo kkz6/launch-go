@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -21,30 +22,40 @@ type ConfigureOpcachePayload struct {
 
 // ConfigureOpcacheJob configures OPcache settings for a PHP version.
 type ConfigureOpcacheJob struct {
-	pkgjobs.BaseJob[*JobContext, ConfigureOpcachePayload]
+	Deps    *JobDeps
+	Payload ConfigureOpcachePayload
+
+	server  *models.Server
+	service *models.InstalledService
+}
+
+func NewConfigureOpcacheJob(p ConfigureOpcachePayload) pkgjobs.Handler {
+	return &ConfigureOpcacheJob{Deps: deps, Payload: p}
 }
 
 // Handle processes the job
 func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
+	var err error
+
 	// Find the service
-	service, err := j.Ctx.Repos().Service().FindByID(ctx, j.Payload.ServiceID)
+	j.service, err = j.Deps.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
 	// Find the server
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
 	// Verify it's a PHP service
-	if service.Type != types.ServiceTypePhp {
+	if j.service.Type != types.ServiceTypePhp {
 		return fmt.Errorf("service is not a PHP installation")
 	}
 
 	// Get the PHP version from the software
-	software := types.Software(service.Software)
+	software := types.Software(j.service.Software)
 	version := software.GetVersion()
 
 	// Mark as configuring
@@ -53,13 +64,13 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 			"status": "configuring",
 		},
 	}
-	if err := j.Ctx.Repos().Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData); err != nil {
-		j.Ctx.LogError(err, "Failed to update service status")
+	if err := j.Deps.Repos.Service().UpdateWithTypeData(ctx, j.service.ID, j.service.Status, typeData); err != nil {
+		j.Deps.Logger.Error().Err(err).Msg("failed to update service status")
 	}
 
 	// Create and run the configure opcache task
 	task := tasks.ConfigureOpcache(version, j.Payload.Settings)
-	result, err := j.Ctx.ForServer(server).RunTask(task).
+	result, err := j.Deps.RunTask(j.server, task).
 		AsRoot().
 		TrackInDB().
 		Dispatch(ctx)
@@ -68,7 +79,7 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 		// Mark as failed
 		typeData["opcache"].(map[string]any)["status"] = "failed"
 		typeData["opcache"].(map[string]any)["error"] = err.Error()
-		_ = j.Ctx.Repos().Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData)
+		_ = j.Deps.Repos.Service().UpdateWithTypeData(ctx, j.service.ID, j.service.Status, typeData)
 		return fmt.Errorf("failed to configure OPcache: %w", err)
 	}
 
@@ -76,7 +87,7 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 		// Mark as failed
 		typeData["opcache"].(map[string]any)["status"] = "failed"
 		typeData["opcache"].(map[string]any)["error"] = result.GetOutput()
-		_ = j.Ctx.Repos().Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData)
+		_ = j.Deps.Repos.Service().UpdateWithTypeData(ctx, j.service.ID, j.service.Status, typeData)
 		return fmt.Errorf("failed to configure OPcache: %s", result.GetOutput())
 	}
 
@@ -106,19 +117,19 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 	}
 
 	typeData["opcache"] = opcacheSettings
-	if err := j.Ctx.Repos().Service().UpdateWithTypeData(ctx, service.ID, service.Status, typeData); err != nil {
-		j.Ctx.LogError(err, "Failed to save OPcache settings")
+	if err := j.Deps.Repos.Service().UpdateWithTypeData(ctx, j.service.ID, j.service.Status, typeData); err != nil {
+		j.Deps.Logger.Error().Err(err).Msg("failed to save OPcache settings")
 	}
 
-	j.Ctx.LogInfo("OPcache configuration completed",
-		"service_id", service.ID,
-		"server_id", server.ID,
-	)
+	j.Deps.Logger.Info().
+		Str("service_id", j.service.ID).
+		Str("server_id", j.server.ID).
+		Msg("OPcache configuration completed")
 
 	// Broadcast event
-	j.Ctx.BroadcastServerEvent(server, "opcache.configured", map[string]any{
-		"service_id": service.ID,
-		"server_id":  server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "opcache.configured", map[string]any{
+		"service_id": j.service.ID,
+		"server_id":  j.server.ID,
 	})
 
 	return nil
@@ -126,24 +137,17 @@ func (j *ConfigureOpcacheJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *ConfigureOpcacheJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to configure OPcache",
-		"service_id", j.Payload.ServiceID,
-		"server_id", j.Payload.ServerID,
-	)
-}
-
-// NewConfigureOpcacheJob creates a new ConfigureOpcacheJob with the given context and payload.
-func NewConfigureOpcacheJob(ctx *JobContext, payload ConfigureOpcachePayload) *ConfigureOpcacheJob {
-	return &ConfigureOpcacheJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+	j.Deps.Logger.Error().Err(err).
+		Str("service_id", j.Payload.ServiceID).
+		Str("server_id", j.Payload.ServerID).
+		Msg("failed to configure OPcache")
 }
 
 // NewConfigureOpcacheTask creates an asynq task for configuring OPcache
 func NewConfigureOpcacheTask(serverID, serviceID string, settings map[string]string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeConfigureOpcache, ConfigureOpcachePayload{
+	return pkgjobs.Task(TypeConfigureOpcache, ConfigureOpcachePayload{
 		ServerID:  serverID,
 		ServiceID: serviceID,
 		Settings:  settings,
-	})
+	}, asynq.TaskID(pkgjobs.Dedup("configure_opcache", serverID, serviceID)))
 }

@@ -6,6 +6,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/site/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -20,15 +22,21 @@ type EnableLaravelHorizonPayload struct {
 
 // EnableLaravelHorizonJob enables Laravel Horizon for a site
 type EnableLaravelHorizonJob struct {
-	pkgjobs.BaseJob[*JobContext, EnableLaravelHorizonPayload]
+	Deps    *JobDeps
+	Payload EnableLaravelHorizonPayload
 	FeatureJobHelpers
+
+	// Model fields for Failed() callback
+	site   *models.Site
+	server *servermodels.Server
 }
 
 // NewEnableLaravelHorizonJob creates a new EnableLaravelHorizonJob
-func NewEnableLaravelHorizonJob(ctx *JobContext, payload EnableLaravelHorizonPayload) *EnableLaravelHorizonJob {
+func NewEnableLaravelHorizonJob(p EnableLaravelHorizonPayload) pkgjobs.Handler {
 	return &EnableLaravelHorizonJob{
-		BaseJob:           pkgjobs.NewBaseJob(ctx, payload),
-		FeatureJobHelpers: FeatureJobHelpers{Ctx: ctx},
+		Deps:              deps,
+		Payload:           p,
+		FeatureJobHelpers: FeatureJobHelpers{Deps: deps},
 	}
 }
 
@@ -43,13 +51,15 @@ func (j *EnableLaravelHorizonJob) Handle(ctx context.Context) error {
 	}
 
 	site, server := result.Site, result.Server
+	j.site = site
+	j.server = server
 
 	// Horizon and queue workers conflict
 	if site.HasEnabledFeature(FeatureQueue) {
 		return fmt.Errorf("cannot enable Horizon while queue workers are enabled - disable queue workers first")
 	}
 
-	j.BaseJob.Ctx.LogInfo("Enabling Laravel Horizon", "site_id", site.ID, "server_id", server.ID)
+	j.Deps.Logger.Info().Str("site_id", site.ID).Str("server_id", server.ID).Msg("Enabling Laravel Horizon")
 
 	userID := j.GetUserID(j.Payload.UserID, site)
 	command := fmt.Sprintf("%s %s/artisan horizon", site.GetPhpBinary(), site.GetApplicationDirectory())
@@ -65,7 +75,7 @@ func (j *EnableLaravelHorizonJob) Handle(ctx context.Context) error {
 
 	j.EnableFeature(ctx, site, FeatureHorizon, &queue.ID, nil)
 	j.BroadcastFeatureEnabled(server, FeatureHorizon, site.ID, queue.ID)
-	j.BaseJob.Ctx.LogInfo("Laravel Horizon enabled successfully", "site_id", site.ID, "queue_id", queue.ID)
+	j.Deps.Logger.Info().Str("site_id", site.ID).Str("queue_id", queue.ID).Msg("Laravel Horizon enabled successfully")
 
 	return nil
 }
@@ -77,7 +87,7 @@ func (j *EnableLaravelHorizonJob) Failed(ctx context.Context, err error) {
 
 // NewEnableLaravelHorizonTask creates an enable Horizon task
 func NewEnableLaravelHorizonTask(siteID, serverID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeEnableLaravelHorizon, EnableLaravelHorizonPayload{
+	return pkgjobs.Task(TypeEnableLaravelHorizon, EnableLaravelHorizonPayload{
 		SiteID:   siteID,
 		ServerID: serverID,
 		UserID:   userID,

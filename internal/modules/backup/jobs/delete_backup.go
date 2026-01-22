@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -17,22 +18,30 @@ type DeleteBackupPayload struct {
 	UserID   *string `json:"user_id,omitempty"`
 }
 
-// DeleteBackupJob removes backup configuration from a server
+// DeleteBackupJob removes backup configuration from a server.
 type DeleteBackupJob struct {
-	ctx     *JobContext
+	Deps    *JobDeps
 	Payload DeleteBackupPayload
+
+	server *servermodels.Server
+}
+
+func NewDeleteBackupJob(p DeleteBackupPayload) pkgjobs.Handler {
+	return &DeleteBackupJob{Deps: deps, Payload: p}
 }
 
 func (j *DeleteBackupJob) Handle(ctx context.Context) error {
-	server, err := j.ctx.Repos().Server().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+
+	j.server, err = j.Deps.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+		return fmt.Errorf("find server: %w", err)
 	}
 
-	j.ctx.LogInfo("Removing backup configuration",
-		"server_id", server.ID,
-		"backup_id", j.Payload.BackupID,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("backup_id", j.Payload.BackupID).
+		Msg("removing backup configuration")
 
 	// TODO: Remove backup agent configuration from the server
 	// This would involve:
@@ -40,32 +49,24 @@ func (j *DeleteBackupJob) Handle(ctx context.Context) error {
 	// 2. Remove the backup configuration file
 	// 3. Optionally clean up any local backup files
 
-	j.ctx.LogInfo("Backup configuration removed successfully",
-		"server_id", server.ID,
-		"backup_id", j.Payload.BackupID,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("backup_id", j.Payload.BackupID).
+		Msg("backup configuration removed successfully")
 
 	return nil
 }
 
 func (j *DeleteBackupJob) Failed(ctx context.Context, err error) {
-	j.ctx.LogError(err, "Failed to remove backup configuration",
-		"server_id", j.Payload.ServerID,
-		"backup_id", j.Payload.BackupID,
-	)
-}
-
-func NewDeleteBackupJob(ctx *JobContext, payload DeleteBackupPayload) *DeleteBackupJob {
-	return &DeleteBackupJob{
-		ctx:     ctx,
-		Payload: payload,
-	}
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Str("backup_id", j.Payload.BackupID).
+		Msg("failed to remove backup configuration")
 }
 
 func NewDeleteBackupTask(serverID, backupID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeDeleteBackup, DeleteBackupPayload{
-		ServerID: serverID,
-		BackupID: backupID,
-		UserID:   userID,
-	})
+	return pkgjobs.TaskWithID(TypeDeleteBackup,
+		DeleteBackupPayload{ServerID: serverID, BackupID: backupID, UserID: userID},
+		pkgjobs.Dedup("backup-delete", serverID, backupID),
+	)
 }

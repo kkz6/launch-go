@@ -8,6 +8,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
@@ -28,35 +29,40 @@ type CaddyfilePayload struct {
 
 // InstallCaddyfileJob handles site Caddyfile installation
 type InstallCaddyfileJob struct {
-	pkgjobs.BaseJob[*JobContext, CaddyfilePayload]
+	Deps    *JobDeps
+	Payload CaddyfilePayload
+
+	// Model fields for Failed() callback
+	site   *models.Site
+	server *servermodels.Server
 }
 
 // NewInstallCaddyfileJob creates a new InstallCaddyfileJob
-func NewInstallCaddyfileJob(ctx *JobContext, payload CaddyfilePayload) *InstallCaddyfileJob {
-	return &InstallCaddyfileJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewInstallCaddyfileJob(p CaddyfilePayload) pkgjobs.Handler {
+	return &InstallCaddyfileJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the install Caddyfile job
 func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
-	j.Ctx.LogInfo("InstallCaddyfile job started", "site_id", j.Payload.SiteID)
+	j.Deps.Logger.Info().Str("site_id", j.Payload.SiteID).Msg("InstallCaddyfile job started")
 
 	// Get site
-	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
+	j.site = site
 
 	// Get server
-	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
+	j.server = server
 
 	// Get redirects for Caddyfile generation (installed + pending)
-	installedRedirects, _ := j.Ctx.RedirectRepo.FindBySiteForCaddy(ctx, site.ID)
-	pendingRedirects, _ := j.Ctx.RedirectRepo.FindPendingBySite(ctx, site.ID)
+	installedRedirects, _ := j.Deps.Repos.Redirect().FindBySiteForCaddy(ctx, site.ID)
+	pendingRedirects, _ := j.Deps.Repos.Redirect().FindPendingBySite(ctx, site.ID)
 	allRedirects := append(installedRedirects, pendingRedirects...)
 
 	// Generate Caddyfile content
@@ -70,21 +76,21 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 	})
 
 	// Execute the task on the server
-	result, err := j.Ctx.RunTaskOnServer(server, task).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to install Caddyfile", "site_id", site.ID)
+		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to install Caddyfile")
 		return err
 	}
 
 	exitCode := result.GetExitCode()
 	if exitCode != 0 {
-		j.Ctx.LogError(nil, "Caddyfile installation failed", "site_id", site.ID, "exit_code", exitCode)
+		j.Deps.Logger.Error().Str("site_id", site.ID).Int("exit_code", exitCode).Msg("Caddyfile installation failed")
 		return fmt.Errorf("caddyfile installation failed with exit code %d", exitCode)
 	}
 
 	// Update site imports
 	if err := j.updateSiteImports(ctx, server, site); err != nil {
-		j.Ctx.LogError(err, "Failed to update site imports", "site_id", site.ID)
+		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to update site imports")
 	}
 
 	// Mark site as installed and clear pending flags
@@ -92,34 +98,34 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 	site.InstalledAt = &now
 	site.InstallationFailedAt = nil
 	site.PendingCaddyfileUpdateSince = nil
-	if err := j.Ctx.SiteRepo.Update(ctx, site); err != nil {
-		j.Ctx.LogError(err, "Failed to update site installed status")
+	if err := j.Deps.Repos.Site().Update(ctx, site); err != nil {
+		j.Deps.Logger.Error().Err(err).Msg("Failed to update site installed status")
 	}
 
 	// Mark pending redirects as installed
-	if err := j.Ctx.RedirectRepo.UpdateStatusBySite(ctx, site.ID, "pending", "installed"); err != nil {
-		j.Ctx.LogError(err, "Failed to update redirect statuses")
+	if err := j.Deps.Repos.Redirect().UpdateStatusBySite(ctx, site.ID, "pending", "installed"); err != nil {
+		j.Deps.Logger.Error().Err(err).Msg("Failed to update redirect statuses")
 	}
 
 	// Broadcast site.installed event
-	j.Ctx.BroadcastServerEvent(server, "site.installed", map[string]interface{}{
+	j.Deps.BroadcastServerEvent(server, "site.installed", map[string]interface{}{
 		"team_id":   server.TeamID,
 		"site_id":   site.ID,
 		"server_id": server.ID,
 		"address":   site.Address,
 	})
 
-	j.Ctx.LogInfo("Caddyfile installed successfully", "site_id", site.ID)
+	j.Deps.Logger.Info().Str("site_id", site.ID).Msg("Caddyfile installed successfully")
 
 	return nil
 }
 
 // Failed handles job failure
 func (j *InstallCaddyfileJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Install Caddyfile job failed", "site_id", j.Payload.SiteID)
+	j.Deps.Logger.Error().Err(err).Str("site_id", j.Payload.SiteID).Msg("Install Caddyfile job failed")
 
 	// Mark site installation as failed
-	site, findErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, findErr := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if findErr != nil {
 		return
 	}
@@ -127,12 +133,12 @@ func (j *InstallCaddyfileJob) Failed(ctx context.Context, err error) {
 	now := time.Now()
 	site.InstalledAt = nil
 	site.InstallationFailedAt = &now
-	_ = j.Ctx.SiteRepo.Update(ctx, site)
+	_ = j.Deps.Repos.Site().Update(ctx, site)
 
 	// Broadcast site.installation_failed event
-	server, serverErr := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, serverErr := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if serverErr == nil {
-		j.Ctx.BroadcastServerEvent(server, "site.installation_failed", map[string]interface{}{
+		j.Deps.BroadcastServerEvent(server, "site.installation_failed", map[string]interface{}{
 			"team_id":   server.TeamID,
 			"site_id":   site.ID,
 			"server_id": server.ID,
@@ -281,9 +287,9 @@ func generateTLSSnippet(site *models.Site) string {
 }
 
 // updateSiteImports updates the global Caddy site imports file
-func (j *InstallCaddyfileJob) updateSiteImports(ctx context.Context, server any, site *models.Site) error {
+func (j *InstallCaddyfileJob) updateSiteImports(ctx context.Context, server *servermodels.Server, site *models.Site) error {
 	// Get all sites for this server
-	sites, err := j.Ctx.SiteRepo.FindByServer(ctx, site.ServerID)
+	sites, err := j.Deps.Repos.Site().FindByServer(ctx, site.ServerID)
 	if err != nil {
 		return err
 	}
@@ -317,51 +323,45 @@ func (j *InstallCaddyfileJob) updateSiteImports(ctx context.Context, server any,
 		Sites: imports,
 	})
 
-	// Execute on server - need to get server model
-	serverModel, ok := server.(*models.Site)
-	if !ok {
-		// Fetch server again
-		serverModel, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
-		if err != nil {
-			return err
-		}
-		_, err = j.Ctx.RunTaskOnServer(serverModel, task).AsRoot().Dispatch(ctx)
-		return err
-	}
-
-	_, _ = serverModel, task
-	return nil
+	// Execute on server
+	_, err = j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
+	return err
 }
 
 // UpdateCaddyfileJob handles site Caddyfile updates
 type UpdateCaddyfileJob struct {
-	pkgjobs.BaseJob[*JobContext, CaddyfilePayload]
+	Deps    *JobDeps
+	Payload CaddyfilePayload
+
+	// Model fields for Failed() callback
+	site   *models.Site
+	server *servermodels.Server
 }
 
 // NewUpdateCaddyfileJob creates a new UpdateCaddyfileJob
-func NewUpdateCaddyfileJob(ctx *JobContext, payload CaddyfilePayload) *UpdateCaddyfileJob {
-	return &UpdateCaddyfileJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewUpdateCaddyfileJob(p CaddyfilePayload) pkgjobs.Handler {
+	return &UpdateCaddyfileJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the update Caddyfile job
 func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
+	j.site = site
 
 	// Get server
-	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
+	j.server = server
 
 	// Get redirects for Caddyfile generation (installed + pending)
-	installedRedirects, _ := j.Ctx.RedirectRepo.FindBySiteForCaddy(ctx, site.ID)
-	pendingRedirects, _ := j.Ctx.RedirectRepo.FindPendingBySite(ctx, site.ID)
+	installedRedirects, _ := j.Deps.Repos.Redirect().FindBySiteForCaddy(ctx, site.ID)
+	pendingRedirects, _ := j.Deps.Repos.Redirect().FindPendingBySite(ctx, site.ID)
 	allRedirects := append(installedRedirects, pendingRedirects...)
 
 	// Generate Caddyfile content
@@ -375,37 +375,37 @@ func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 	})
 
 	// Execute the task on the server
-	result, err := j.Ctx.RunTaskOnServer(server, task).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to update Caddyfile", "site_id", site.ID)
+		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to update Caddyfile")
 		return err
 	}
 
 	exitCode := result.GetExitCode()
 	if exitCode != 0 {
-		j.Ctx.LogError(nil, "Caddyfile update failed", "site_id", site.ID, "exit_code", exitCode)
+		j.Deps.Logger.Error().Str("site_id", site.ID).Int("exit_code", exitCode).Msg("Caddyfile update failed")
 		return fmt.Errorf("caddyfile update failed with exit code %d", exitCode)
 	}
 
 	// Clear pending Caddyfile update flag
 	site.PendingCaddyfileUpdateSince = nil
-	if err := j.Ctx.SiteRepo.Update(ctx, site); err != nil {
-		j.Ctx.LogError(err, "Failed to clear pending Caddyfile update flag")
+	if err := j.Deps.Repos.Site().Update(ctx, site); err != nil {
+		j.Deps.Logger.Error().Err(err).Msg("Failed to clear pending Caddyfile update flag")
 	}
 
 	// Mark pending redirects as installed
-	if err := j.Ctx.RedirectRepo.UpdateStatusBySite(ctx, site.ID, "pending", "installed"); err != nil {
-		j.Ctx.LogError(err, "Failed to update redirect statuses")
+	if err := j.Deps.Repos.Redirect().UpdateStatusBySite(ctx, site.ID, "pending", "installed"); err != nil {
+		j.Deps.Logger.Error().Err(err).Msg("Failed to update redirect statuses")
 	}
 
-	j.Ctx.LogInfo("Caddyfile updated successfully", "site_id", site.ID)
+	j.Deps.Logger.Info().Str("site_id", site.ID).Msg("Caddyfile updated successfully")
 
 	return nil
 }
 
 // Failed handles job failure
 func (j *UpdateCaddyfileJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Update Caddyfile job failed", "site_id", j.Payload.SiteID)
+	j.Deps.Logger.Error().Err(err).Str("site_id", j.Payload.SiteID).Msg("Update Caddyfile job failed")
 }
 
 // generateCaddyfileContent generates the Caddyfile content for a site
@@ -415,29 +415,34 @@ func (j *UpdateCaddyfileJob) generateCaddyfileContent(site *models.Site, redirec
 
 // UninstallCaddyfileJob handles site Caddyfile uninstallation
 type UninstallCaddyfileJob struct {
-	pkgjobs.BaseJob[*JobContext, CaddyfilePayload]
+	Deps    *JobDeps
+	Payload CaddyfilePayload
+
+	// Model fields for Failed() callback
+	site   *models.Site
+	server *servermodels.Server
 }
 
 // NewUninstallCaddyfileJob creates a new UninstallCaddyfileJob
-func NewUninstallCaddyfileJob(ctx *JobContext, payload CaddyfilePayload) *UninstallCaddyfileJob {
-	return &UninstallCaddyfileJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewUninstallCaddyfileJob(p CaddyfilePayload) pkgjobs.Handler {
+	return &UninstallCaddyfileJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the uninstall Caddyfile job
 func (j *UninstallCaddyfileJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
+	j.site = site
 
 	// Get server
-	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
+	j.server = server
 
 	caddyfilePath := fmt.Sprintf("%s/Caddyfile", site.Path)
 
@@ -447,43 +452,43 @@ func (j *UninstallCaddyfileJob) Handle(ctx context.Context) error {
 	})
 
 	// Execute the task on the server
-	result, err := j.Ctx.RunTaskOnServer(server, task).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to uninstall Caddyfile", "site_id", site.ID)
+		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to uninstall Caddyfile")
 		return err
 	}
 
 	exitCode := result.GetExitCode()
 	if exitCode != 0 {
-		j.Ctx.LogError(nil, "Caddyfile uninstallation failed", "site_id", site.ID, "exit_code", exitCode)
+		j.Deps.Logger.Error().Str("site_id", site.ID).Int("exit_code", exitCode).Msg("Caddyfile uninstallation failed")
 		return fmt.Errorf("caddyfile uninstallation failed with exit code %d", exitCode)
 	}
 
 	// Update site imports to remove this site
 	if err := j.updateSiteImportsAfterRemoval(ctx, site); err != nil {
-		j.Ctx.LogError(err, "Failed to update site imports after removal", "site_id", site.ID)
+		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to update site imports after removal")
 	}
 
-	j.Ctx.LogInfo("Caddyfile uninstalled successfully", "site_id", site.ID)
+	j.Deps.Logger.Info().Str("site_id", site.ID).Msg("Caddyfile uninstalled successfully")
 
 	return nil
 }
 
 // Failed handles job failure
 func (j *UninstallCaddyfileJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Uninstall Caddyfile job failed", "site_id", j.Payload.SiteID)
+	j.Deps.Logger.Error().Err(err).Str("site_id", j.Payload.SiteID).Msg("Uninstall Caddyfile job failed")
 }
 
 // updateSiteImportsAfterRemoval updates site imports after a site is removed
 func (j *UninstallCaddyfileJob) updateSiteImportsAfterRemoval(ctx context.Context, removedSite *models.Site) error {
 	// Get server
-	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, removedSite.ServerID)
+	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, removedSite.ServerID)
 	if err != nil {
 		return err
 	}
 
 	// Get all sites for this server (excluding the removed one)
-	sites, err := j.Ctx.SiteRepo.FindByServer(ctx, removedSite.ServerID)
+	sites, err := j.Deps.Repos.Site().FindByServer(ctx, removedSite.ServerID)
 	if err != nil {
 		return err
 	}
@@ -504,33 +509,33 @@ func (j *UninstallCaddyfileJob) updateSiteImportsAfterRemoval(ctx context.Contex
 	})
 
 	// Execute on server
-	_, err = j.Ctx.RunTaskOnServer(server, task).AsRoot().Dispatch(ctx)
+	_, err = j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	return err
 }
 
 // NewInstallCaddyfileTask creates an install Caddyfile job
 // Uses TaskID for deduplication to prevent duplicate installs
 func NewInstallCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeInstallCaddyfile, CaddyfilePayload{
+	return pkgjobs.Task(TypeInstallCaddyfile, CaddyfilePayload{
 		SiteID: siteID,
 		UserID: userID,
-	}, asynq.TaskID(fmt.Sprintf("install_caddyfile:%s", siteID)))
+	}, asynq.TaskID(pkgjobs.Dedup("install_caddyfile", siteID)))
 }
 
 // NewUpdateCaddyfileTask creates an update Caddyfile job
 // Uses TaskID for deduplication to prevent duplicate updates
 func NewUpdateCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeUpdateCaddyfile, CaddyfilePayload{
+	return pkgjobs.Task(TypeUpdateCaddyfile, CaddyfilePayload{
 		SiteID: siteID,
 		UserID: userID,
-	}, asynq.TaskID(fmt.Sprintf("update_caddyfile:%s", siteID)))
+	}, asynq.TaskID(pkgjobs.Dedup("update_caddyfile", siteID)))
 }
 
 // NewUninstallCaddyfileTask creates an uninstall Caddyfile job
 // Uses TaskID for deduplication to prevent duplicate uninstalls
 func NewUninstallCaddyfileTask(siteID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeUninstallCaddyfile, CaddyfilePayload{
+	return pkgjobs.Task(TypeUninstallCaddyfile, CaddyfilePayload{
 		SiteID: siteID,
 		UserID: userID,
-	}, asynq.TaskID(fmt.Sprintf("uninstall_caddyfile:%s", siteID)))
+	}, asynq.TaskID(pkgjobs.Dedup("uninstall_caddyfile", siteID)))
 }

@@ -4,93 +4,79 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
-	"github.com/kkz6/launch-go/internal/modules/server/providers"
-	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
-var jobContext *JobContext
+var deps *JobDeps
 
 // Register initializes and registers all server job handlers.
-func Register(mux *asynq.ServeMux, deps app.Deps, repos contracts.RepositoryRegistry) {
-	providerFactory := providers.NewFactory(sshkey.NewGenerator())
-
-	jobContext = NewJobContext(
-		deps.DB,
-		repos,
-		deps.Logger,
-		deps.WebSocket,
-		deps.Dispatcher,
-		providerFactory,
-		deps.Queue,
-	)
-
+func Register(mux *asynq.ServeMux, appDeps app.Deps, repos contracts.RepositoryRegistry) {
+	deps = NewJobDeps(appDeps, repos)
 	registerHandlers(mux)
 }
 
-// registerHandlers registers all server job handlers with the asynq mux.
 func registerHandlers(mux *asynq.ServeMux) {
 	// Server lifecycle jobs
-	pkgjobs.RegisterHandler(mux, TypeCreateOnProvider, jobContext, NewCreateOnProviderJob)
-	pkgjobs.RegisterHandler(mux, TypeWaitForServerToConnect, jobContext, NewWaitForServerToConnectJob)
-	pkgjobs.RegisterHandler(mux, TypeProvisionServer, jobContext, NewProvisionServerJob)
-	pkgjobs.RegisterHandler(mux, TypeDeleteServer, jobContext, NewDeleteServerJob)
-	pkgjobs.RegisterHandler(mux, TypeCleanupFailedProvisioning, jobContext, NewCleanupFailedProvisioningJob)
-	pkgjobs.RegisterHandler(mux, TypeRebootServer, jobContext, NewRebootServerJob)
-	pkgjobs.RegisterHandler(mux, TypeArchiveServer, jobContext, NewArchiveServerJob)
-	pkgjobs.RegisterHandler(mux, TypeUnarchiveServer, jobContext, NewUnarchiveServerJob)
-	pkgjobs.RegisterHandler(mux, TypeUpdateConnectivity, jobContext, NewUpdateConnectivityJob)
+	pkgjobs.RegisterTyped(mux, TypeCreateOnProvider, NewCreateOnProviderJob)
+	pkgjobs.RegisterTyped(mux, TypeWaitForServerToConnect, NewWaitForServerToConnectJob)
+	pkgjobs.RegisterTyped(mux, TypeProvisionServer, NewProvisionServerJob)
+	pkgjobs.RegisterTyped(mux, TypeDeleteServer, NewDeleteServerJob)
+	pkgjobs.RegisterTyped(mux, TypeCleanupFailedProvisioning, NewCleanupFailedProvisioningJob)
+	pkgjobs.RegisterTyped(mux, TypeRebootServer, NewRebootServerJob)
+	pkgjobs.RegisterTyped(mux, TypeArchiveServer, NewArchiveServerJob)
+	pkgjobs.RegisterTyped(mux, TypeUnarchiveServer, NewUnarchiveServerJob)
+	pkgjobs.RegisterTyped(mux, TypeUpdateConnectivity, NewUpdateConnectivityJob)
 
 	// Cron jobs
-	pkgjobs.RegisterHandler(mux, TypeInstallCron, jobContext, NewInstallCronJob)
-	pkgjobs.RegisterHandler(mux, TypeUninstallCron, jobContext, NewUninstallCronJob)
+	pkgjobs.RegisterTyped(mux, TypeInstallCron, NewInstallCronJob)
+	pkgjobs.RegisterTyped(mux, TypeUninstallCron, NewUninstallCronJob)
 
 	// Daemon jobs
-	pkgjobs.RegisterHandler(mux, TypeInstallDaemon, jobContext, NewInstallDaemonJob)
-	pkgjobs.RegisterHandler(mux, TypeUninstallDaemon, jobContext, NewUninstallDaemonJob)
-	pkgjobs.RegisterHandler(mux, TypeRestartDaemon, jobContext, NewRestartDaemonJob)
-	pkgjobs.RegisterHandler(mux, TypeSyncDaemons, jobContext, NewSyncDaemonsJob)
+	pkgjobs.RegisterTyped(mux, TypeInstallDaemon, NewInstallDaemonJob)
+	pkgjobs.RegisterTyped(mux, TypeUninstallDaemon, NewUninstallDaemonJob)
+	pkgjobs.RegisterTyped(mux, TypeRestartDaemon, NewRestartDaemonJob)
+	pkgjobs.RegisterTyped(mux, TypeSyncDaemons, NewSyncDaemonsJob)
 
 	// Firewall jobs
-	pkgjobs.RegisterHandler(mux, TypeInstallFirewallRule, jobContext, NewInstallFirewallRuleJob)
-	pkgjobs.RegisterHandler(mux, TypeUninstallFirewall, jobContext, NewUninstallFirewallRuleJob)
+	pkgjobs.RegisterTyped(mux, TypeInstallFirewallRule, NewInstallFirewallRuleJob)
+	pkgjobs.RegisterTyped(mux, TypeUninstallFirewall, NewUninstallFirewallRuleJob)
 
 	// SSH key jobs
-	pkgjobs.RegisterHandler(mux, TypeAddSSHKey, jobContext, NewAddSSHKeyJob)
-	pkgjobs.RegisterHandler(mux, TypeRemoveSSHKey, jobContext, NewRemoveSSHKeyJob)
+	pkgjobs.RegisterTyped(mux, TypeAddSSHKey, NewAddSSHKeyJob)
+	pkgjobs.RegisterTyped(mux, TypeRemoveSSHKey, NewRemoveSSHKeyJob)
 
 	// Service jobs
-	pkgjobs.RegisterHandler(mux, TypeAddService, jobContext, NewAddServiceJob)
-	pkgjobs.RegisterHandler(mux, TypeRemoveService, jobContext, NewRemoveServiceJob)
-	pkgjobs.RegisterHandler(mux, TypeServiceOperation, jobContext, NewServiceOperationJob)
-	pkgjobs.RegisterHandler(mux, TypeCheckServiceStatus, jobContext, NewCheckServiceStatusJob)
-	pkgjobs.RegisterHandler(mux, TypeConfigureOpcache, jobContext, NewConfigureOpcacheJob)
+	pkgjobs.RegisterTyped(mux, TypeAddService, NewAddServiceJob)
+	pkgjobs.RegisterTyped(mux, TypeRemoveService, NewRemoveServiceJob)
+	pkgjobs.RegisterTyped(mux, TypeServiceOperation, NewServiceOperationJob)
+	pkgjobs.RegisterTyped(mux, TypeCheckServiceStatus, NewCheckServiceStatusJob)
+	pkgjobs.RegisterTyped(mux, TypeConfigureOpcache, NewConfigureOpcacheJob)
 
 	// PHP jobs
-	pkgjobs.RegisterHandler(mux, TypeSetDefaultPhp, jobContext, NewSetDefaultPhpJob)
-	pkgjobs.RegisterHandler(mux, TypeInstallPhpExtension, jobContext, NewInstallPhpExtensionJob)
-	pkgjobs.RegisterHandler(mux, TypeUninstallPhpExtension, jobContext, NewUninstallPhpExtensionJob)
-	pkgjobs.RegisterHandler(mux, TypeCleanupFailedPhpInstallation, jobContext, NewCleanupFailedPhpInstallationJob)
-	pkgjobs.RegisterHandler(mux, TypeCleanupFailedPhpExtensionInstall, jobContext, NewCleanupFailedPhpExtensionInstallJob)
-	pkgjobs.RegisterHandler(mux, TypeCleanupFailedPhpExtensionUninstall, jobContext, NewCleanupFailedPhpExtensionUninstallJob)
+	pkgjobs.RegisterTyped(mux, TypeSetDefaultPhp, NewSetDefaultPhpJob)
+	pkgjobs.RegisterTyped(mux, TypeInstallPhpExtension, NewInstallPhpExtensionJob)
+	pkgjobs.RegisterTyped(mux, TypeUninstallPhpExtension, NewUninstallPhpExtensionJob)
+	pkgjobs.RegisterTyped(mux, TypeCleanupFailedPhpInstallation, NewCleanupFailedPhpInstallationJob)
+	pkgjobs.RegisterTyped(mux, TypeCleanupFailedPhpExtensionInstall, NewCleanupFailedPhpExtensionInstallJob)
+	pkgjobs.RegisterTyped(mux, TypeCleanupFailedPhpExtensionUninstall, NewCleanupFailedPhpExtensionUninstallJob)
 
 	// Security audit jobs
-	pkgjobs.RegisterHandler(mux, TypeVulnerabilityAudit, jobContext, NewVulnerabilityAuditJob)
+	pkgjobs.RegisterTyped(mux, TypeVulnerabilityAudit, NewVulnerabilityAuditJob)
 
 	// Task and maintenance jobs
-	pkgjobs.RegisterHandler(mux, TypeCheckDaemonStatus, jobContext, NewCheckDaemonStatusJob)
-	pkgjobs.RegisterHandler(mux, TypeUpdateTaskOutput, jobContext, NewUpdateTaskOutputJob)
-	pkgjobs.RegisterHandler(mux, TypeUpdateUserPublicKey, jobContext, NewUpdateUserPublicKeyJob)
-	pkgjobs.RegisterHandler(mux, TypeInstallTaskCleanupCron, jobContext, NewInstallTaskCleanupCronJob)
-	pkgjobs.RegisterHandler(mux, TypeRunAfterUpdate, jobContext, NewRunAfterUpdateJob)
+	pkgjobs.RegisterTyped(mux, TypeCheckDaemonStatus, NewCheckDaemonStatusJob)
+	pkgjobs.RegisterTyped(mux, TypeUpdateTaskOutput, NewUpdateTaskOutputJob)
+	pkgjobs.RegisterTyped(mux, TypeUpdateUserPublicKey, NewUpdateUserPublicKeyJob)
+	pkgjobs.RegisterTyped(mux, TypeInstallTaskCleanupCron, NewInstallTaskCleanupCronJob)
+	pkgjobs.RegisterTyped(mux, TypeRunAfterUpdate, NewRunAfterUpdateJob)
 
 	// Scheduled maintenance jobs
-	pkgjobs.RegisterHandler(mux, TypeCleanupOldMetrics, jobContext, NewCleanupOldMetricsJob)
+	pkgjobs.RegisterTyped(mux, TypeCleanupOldMetrics, NewCleanupOldMetricsJob)
 }
 
-// GetScheduledTasks returns the scheduled tasks for the server module
+// GetScheduledTasks returns the scheduled tasks for the server module.
 func GetScheduledTasks() []queue.ScheduledTask {
 	cleanupTask, _ := NewCleanupOldMetricsTask()
 

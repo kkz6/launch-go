@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
@@ -22,23 +23,30 @@ type UninstallCronPayload struct {
 // UninstallCronJob uninstalls a cron job from a server.
 // Similar to Laravel's Modules\Server\Jobs\UninstallCron
 type UninstallCronJob struct {
-	pkgjobs.BaseJob[*JobContext, UninstallCronPayload]
+	Deps    *JobDeps
+	Payload UninstallCronPayload
+
+	cron *models.Cron
+}
+
+func NewUninstallCronJob(p UninstallCronPayload) pkgjobs.Handler {
+	return &UninstallCronJob{Deps: deps, Payload: p}
 }
 
 // Handle processes the job
 func (j *UninstallCronJob) Handle(ctx context.Context) error {
-	// Find the cron with server preloaded
-	cron, err := j.Ctx.Repos().Cron().FindByIDWithServer(ctx, j.Payload.CronID)
+	var err error
+	j.cron, err = j.Deps.Repos.Cron().FindByIDWithServer(ctx, j.Payload.CronID)
 	if err != nil {
 		return fmt.Errorf("failed to find cron: %w", err)
 	}
 
 	// Delete cron file from server
 	task := tasks.DeleteFile(tasks.DeleteFileConfig{
-		Path: cron.Path(),
+		Path: j.cron.Path(),
 	})
 
-	result, err := j.Ctx.ForServer(cron.Server).RunTask(task).
+	result, err := j.Deps.RunTask(j.cron.Server, task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -51,22 +59,22 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	activity.RecordWithLogPtr(ctx, "server", "uninstalled", j.Payload.UserID, cron, "Cron job was uninstalled")
+	activity.RecordWithLogPtr(ctx, "server", "uninstalled", j.Payload.UserID, j.cron, "Cron job was uninstalled")
 
 	// Delete the cron record
-	if err := j.Ctx.Repos().Cron().Delete(ctx, cron.ID); err != nil {
+	if err := j.Deps.Repos.Cron().Delete(ctx, j.cron.ID); err != nil {
 		return fmt.Errorf("failed to delete cron: %w", err)
 	}
 
-	j.Ctx.LogInfo("Cron uninstalled successfully",
-		"cron_id", cron.ID,
-		"server_id", cron.ServerID,
-	)
+	j.Deps.Logger.Info().
+		Str("cron_id", j.cron.ID).
+		Str("server_id", j.cron.ServerID).
+		Msg("Cron uninstalled successfully")
 
 	// Broadcast event
-	j.Ctx.BroadcastServerEvent(cron.Server, "cron.uninstalled", map[string]any{
-		"cron_id":   cron.ID,
-		"server_id": cron.ServerID,
+	j.Deps.BroadcastServerEvent(j.cron.Server, "cron.uninstalled", map[string]any{
+		"cron_id":   j.cron.ID,
+		"server_id": j.cron.ServerID,
 	})
 
 	return nil
@@ -74,29 +82,22 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *UninstallCronJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to uninstall cron",
-		"cron_id", j.Payload.CronID,
-		"server_id", j.Payload.ServerID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("cron_id", j.Payload.CronID).
+		Str("server_id", j.Payload.ServerID).
+		Msg("Failed to uninstall cron")
 
 	// Mark uninstallation as failed
-	if markErr := j.Ctx.Repos().Cron().MarkUninstallationFailed(ctx, j.Payload.CronID); markErr != nil {
-		j.Ctx.LogError(markErr, "Failed to mark cron uninstallation as failed")
-	}
-}
-
-func NewUninstallCronJob(ctx *JobContext, payload UninstallCronPayload) *UninstallCronJob {
-	return &UninstallCronJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
+	if markErr := j.Deps.Repos.Cron().MarkUninstallationFailed(ctx, j.Payload.CronID); markErr != nil {
+		j.Deps.Logger.Error().Err(markErr).Msg("Failed to mark cron uninstallation as failed")
 	}
 }
 
 // NewUninstallCronTask creates an asynq task for uninstalling a cron
 // Uses TaskID for deduplication to prevent duplicate cron uninstallations
 func NewUninstallCronTask(serverID, cronID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeUninstallCron, UninstallCronPayload{
-		ServerID: serverID,
-		CronID:   cronID,
-		UserID:   userID,
-	}, asynq.TaskID(fmt.Sprintf("uninstall_cron:%s:%s", serverID, cronID)))
+	return pkgjobs.TaskWithID(TypeUninstallCron,
+		UninstallCronPayload{ServerID: serverID, CronID: cronID, UserID: userID},
+		pkgjobs.Dedup("uninstall_cron", serverID, cronID),
+	)
 }

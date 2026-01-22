@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
@@ -19,13 +20,20 @@ type UpdateConnectivityPayload struct {
 // UpdateConnectivityJob checks and updates the connectivity status of a server.
 // Similar to Laravel's Modules\Server\Jobs\UpdateConnectivity
 type UpdateConnectivityJob struct {
-	pkgjobs.BaseJob[*JobContext, UpdateConnectivityPayload]
+	Deps    *JobDeps
+	Payload UpdateConnectivityPayload
+
+	server *models.Server
+}
+
+func NewUpdateConnectivityJob(p UpdateConnectivityPayload) pkgjobs.Handler {
+	return &UpdateConnectivityJob{Deps: deps, Payload: p}
 }
 
 // Handle processes the job
 func (j *UpdateConnectivityJob) Handle(ctx context.Context) error {
-	// Find the server
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -33,27 +41,27 @@ func (j *UpdateConnectivityJob) Handle(ctx context.Context) error {
 	// Run a simple connectivity check (whoami)
 	task := tasks.Whoami()
 
-	result, err := j.Ctx.ForServer(server).RunTask(task).
+	result, err := j.Deps.RunTask(j.server, task).
 		AsRoot().
 		Dispatch(ctx)
 
 	isConnected := err == nil && result != nil && result.IsSuccessful()
 
 	// Update server connectivity status
-	if err := j.Ctx.Repos().Server().UpdateFields(ctx, server.ID, map[string]any{
+	if err := j.Deps.Repos.Server().UpdateFields(ctx, j.server.ID, map[string]any{
 		"is_connected": isConnected,
 	}); err != nil {
 		return fmt.Errorf("failed to update connectivity status: %w", err)
 	}
 
-	j.Ctx.LogInfo("Server connectivity updated",
-		"server_id", server.ID,
-		"is_connected", isConnected,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Bool("is_connected", isConnected).
+		Msg("Server connectivity updated")
 
 	// Broadcast event
-	j.Ctx.BroadcastServerEvent(server, "server.connectivity", map[string]any{
-		"server_id":    server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "server.connectivity", map[string]any{
+		"server_id":    j.server.ID,
 		"is_connected": isConnected,
 	})
 
@@ -62,26 +70,19 @@ func (j *UpdateConnectivityJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *UpdateConnectivityJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to update connectivity",
-		"server_id", j.Payload.ServerID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Msg("Failed to update connectivity")
 
 	// Mark server as disconnected on failure
-	_ = j.Ctx.Repos().Server().UpdateFields(ctx, j.Payload.ServerID, map[string]any{
+	_ = j.Deps.Repos.Server().UpdateFields(ctx, j.Payload.ServerID, map[string]any{
 		"is_connected": false,
 	})
 }
 
-// NewUpdateConnectivityJob creates a new UpdateConnectivityJob with the given context and payload.
-func NewUpdateConnectivityJob(ctx *JobContext, payload UpdateConnectivityPayload) *UpdateConnectivityJob {
-	return &UpdateConnectivityJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
-}
-
 // NewUpdateConnectivityTask creates an asynq task for updating server connectivity
 func NewUpdateConnectivityTask(serverID string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeUpdateConnectivity, UpdateConnectivityPayload{
+	return pkgjobs.Task(TypeUpdateConnectivity, UpdateConnectivityPayload{
 		ServerID: serverID,
 	})
 }

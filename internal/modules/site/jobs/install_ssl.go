@@ -18,14 +18,12 @@ type InstallSSLPayload struct {
 
 // InstallSSLJob handles SSL certificate installation
 type InstallSSLJob struct {
-	pkgjobs.BaseJob[*JobContext, InstallSSLPayload]
+	Deps    *JobDeps
+	Payload InstallSSLPayload
 }
 
-// NewInstallSSLJob creates a new InstallSSLJob with the given context and payload
-func NewInstallSSLJob(ctx *JobContext, payload InstallSSLPayload) *InstallSSLJob {
-	return &InstallSSLJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewInstallSSLJob(p InstallSSLPayload) pkgjobs.Handler {
+	return &InstallSSLJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the install SSL job
@@ -36,24 +34,25 @@ func (j *InstallSSLJob) Handle(ctx context.Context) error {
 	// 3. Update Caddy configuration
 	// 4. Reload Caddy
 	// 5. Update certificate record
-	j.Ctx.LogInfo("Install SSL job executed (not implemented)",
-		"site_id", j.Payload.SiteID,
-		"address", j.Payload.Address,
-	)
+	j.Deps.Logger.Info().
+		Str("site_id", j.Payload.SiteID).
+		Str("address", j.Payload.Address).
+		Msg("Install SSL job executed (not implemented)")
+
 	return nil
 }
 
 // Failed handles job failure
 func (j *InstallSSLJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Install SSL job failed",
-		"site_id", j.Payload.SiteID,
-		"address", j.Payload.Address,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("site_id", j.Payload.SiteID).
+		Str("address", j.Payload.Address).
+		Msg("Install SSL job failed")
 }
 
 // NewInstallSSLTask creates an install SSL job
 func NewInstallSSLTask(siteID, address string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeInstallSSL, InstallSSLPayload{
+	return pkgjobs.Task(TypeInstallSSL, InstallSSLPayload{
 		SiteID:  siteID,
 		Address: address,
 	})

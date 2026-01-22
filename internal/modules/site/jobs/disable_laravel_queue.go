@@ -6,6 +6,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/site/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -20,75 +22,78 @@ type DisableLaravelQueuePayload struct {
 
 // DisableLaravelQueueJob disables the Laravel queue worker for a site
 type DisableLaravelQueueJob struct {
-	pkgjobs.BaseJob[*JobContext, DisableLaravelQueuePayload]
+	Deps    *JobDeps
+	Payload DisableLaravelQueuePayload
+
+	// Model fields for Failed() callback
+	site   *models.Site
+	server *servermodels.Server
 }
 
 // NewDisableLaravelQueueJob creates a new DisableLaravelQueueJob
-func NewDisableLaravelQueueJob(ctx *JobContext, payload DisableLaravelQueuePayload) *DisableLaravelQueueJob {
-	return &DisableLaravelQueueJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewDisableLaravelQueueJob(p DisableLaravelQueuePayload) pkgjobs.Handler {
+	return &DisableLaravelQueueJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the disable queue job
 func (j *DisableLaravelQueueJob) Handle(ctx context.Context) error {
 	// Get site
-	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
+	j.site = site
 
 	// Check if queue is enabled
 	feature := site.GetEnabledFeature("queue")
 	if feature == nil || feature.QueueID == nil {
-		j.Ctx.LogInfo("Queue not enabled, nothing to disable", "site_id", site.ID)
+		j.Deps.Logger.Info().Str("site_id", site.ID).Msg("Queue not enabled, nothing to disable")
 		return nil
 	}
 
 	queueID := *feature.QueueID
 
 	// Get server
-	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
+	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
+	j.server = server
 
-	j.Ctx.LogInfo("Disabling Laravel queue worker",
-		"site_id", site.ID,
-		"server_id", server.ID,
-		"queue_id", queueID,
-	)
+	j.Deps.Logger.Info().
+		Str("site_id", site.ID).
+		Str("server_id", server.ID).
+		Str("queue_id", queueID).
+		Msg("Disabling Laravel queue worker")
 
 	// Dispatch UninstallQueue job
 	if err := j.dispatchUninstallQueue(queueID, site.ID); err != nil {
-		j.Ctx.LogError(err, "Failed to dispatch uninstall queue job")
+		j.Deps.Logger.Error().Err(err).Msg("Failed to dispatch uninstall queue job")
 		// Continue to update the site's features even if dispatch fails
 	}
 
 	// Delete the queue record
-	if err := j.Ctx.QueueRepo.Delete(ctx, queueID); err != nil {
-		j.Ctx.LogError(err, "Failed to delete queue record", "queue_id", queueID)
+	if err := j.Deps.Repos.Queue().Delete(ctx, queueID); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("queue_id", queueID).Msg("Failed to delete queue record")
 	}
 
 	// Update site's enabled_features
 	site.RemoveEnabledFeature("queue")
 	site.RemovePendingFeature("queue")
 
-	if err := j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+	if err := j.Deps.Repos.Site().UpdateFields(ctx, site.ID, map[string]interface{}{
 		"enabled_features": site.EnabledFeatures,
 		"pending_features": site.PendingFeatures,
 	}); err != nil {
-		j.Ctx.LogError(err, "Failed to update site enabled_features")
+		j.Deps.Logger.Error().Err(err).Msg("Failed to update site enabled_features")
 	}
 
 	// Broadcast success
-	j.Ctx.BroadcastServerEvent(server, "site.queue_disabled", map[string]interface{}{
+	j.Deps.BroadcastServerEvent(server, "site.queue_disabled", map[string]interface{}{
 		"site_id": site.ID,
 	})
 
-	j.Ctx.LogInfo("Laravel queue worker disabled successfully",
-		"site_id", site.ID,
-	)
+	j.Deps.Logger.Info().Str("site_id", site.ID).Msg("Laravel queue worker disabled successfully")
 
 	return nil
 }
@@ -99,20 +104,18 @@ func (j *DisableLaravelQueueJob) dispatchUninstallQueue(queueID, siteID string) 
 	if err != nil {
 		return err
 	}
-	return j.Ctx.DispatchTask(task)
+	return j.Deps.DispatchTask(task)
 }
 
 // Failed handles job failure
 func (j *DisableLaravelQueueJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to disable Laravel queue worker",
-		"site_id", j.Payload.SiteID,
-	)
+	j.Deps.Logger.Error().Err(err).Str("site_id", j.Payload.SiteID).Msg("Failed to disable Laravel queue worker")
 
 	// Remove from pending features
-	site, findErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, findErr := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if findErr == nil {
 		site.RemovePendingFeature("queue")
-		_ = j.Ctx.SiteRepo.UpdateFields(ctx, site.ID, map[string]interface{}{
+		_ = j.Deps.Repos.Site().UpdateFields(ctx, site.ID, map[string]interface{}{
 			"pending_features": site.PendingFeatures,
 		})
 	}
@@ -120,7 +123,7 @@ func (j *DisableLaravelQueueJob) Failed(ctx context.Context, err error) {
 
 // NewDisableLaravelQueueTask creates a disable queue task
 func NewDisableLaravelQueueTask(siteID, serverID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeDisableLaravelQueue, DisableLaravelQueuePayload{
+	return pkgjobs.Task(TypeDisableLaravelQueue, DisableLaravelQueuePayload{
 		SiteID:   siteID,
 		ServerID: serverID,
 		UserID:   userID,

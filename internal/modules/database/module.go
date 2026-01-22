@@ -45,10 +45,7 @@ func (m *Module) SetServerRepository(serverRepo services.ServerRepository) {
 
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
-	deps := m.Deps()
-	jobContext := jobs.NewJobContext(deps.DB, m.repos, deps.Logger, deps.WebSocket, deps.Dispatcher, deps.Queue)
-	jobs.SetJobContext(jobContext)
-	jobs.RegisterHandlers(mux)
+	jobs.Register(mux, m.Deps(), m.repos)
 }
 
 // Repos returns the repository registry

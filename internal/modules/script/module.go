@@ -42,18 +42,8 @@ func NewModule(b *app.Builder) *Module {
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 	deps := m.Deps()
 
-	jobContext := jobs.NewJobContext(
-		deps.DB,
-		deps.Logger,
-		deps.WebSocket,
-		deps.Dispatcher,
-		deps.Queue,
-		m.repos,
-		m.serverRepos,
-	)
-	jobs.SetJobContext(jobContext)
-
-	jobs.RegisterHandlers(mux)
+	// Register job handlers
+	jobs.Register(mux, deps, m.repos, m.serverRepos)
 }
 
 // createService creates the script service

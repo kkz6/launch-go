@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -28,72 +29,72 @@ type CleanupFailedPhpInstallationPayload struct {
 
 // CleanupFailedPhpInstallationJob cleans up after a failed PHP installation
 type CleanupFailedPhpInstallationJob struct {
-	pkgjobs.BaseJob[*JobContext, CleanupFailedPhpInstallationPayload]
+	Deps    *JobDeps
+	Payload CleanupFailedPhpInstallationPayload
+
+	server *models.Server
 }
 
-// NewCleanupFailedPhpInstallationJob creates a new cleanup job
-func NewCleanupFailedPhpInstallationJob(ctx *JobContext, payload CleanupFailedPhpInstallationPayload) *CleanupFailedPhpInstallationJob {
-	return &CleanupFailedPhpInstallationJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewCleanupFailedPhpInstallationJob(p CleanupFailedPhpInstallationPayload) pkgjobs.Handler {
+	return &CleanupFailedPhpInstallationJob{Deps: deps, Payload: p}
 }
 
-// Handle executes the cleanup job
 func (j *CleanupFailedPhpInstallationJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+		return fmt.Errorf("find server: %w", err)
 	}
 
-	j.Ctx.LogInfo("Cleaning up failed PHP installation",
-		"server_id", server.ID,
-		"version", j.Payload.Version,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("version", j.Payload.Version).
+		Msg("cleaning up failed PHP installation")
 
-	// Try to remove any partially installed PHP packages
 	task := tasks.RemovePhpVersion(j.Payload.Version)
-	result, err := j.Ctx.ForServer(server).RunTask(task).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to cleanup PHP packages", "version", j.Payload.Version)
-		// Continue with service cleanup even if removal fails
+		j.Deps.Logger.Error().Err(err).
+			Str("version", j.Payload.Version).
+			Msg("failed to cleanup PHP packages")
 	} else if !result.IsSuccessful() {
-		j.Ctx.LogError(nil, "PHP cleanup returned non-zero exit code",
-			"version", j.Payload.Version,
-			"exit_code", result.GetExitCode(),
-		)
+		j.Deps.Logger.Error().
+			Str("version", j.Payload.Version).
+			Int("exit_code", result.GetExitCode()).
+			Msg("PHP cleanup returned non-zero exit code")
 	}
 
-	// Update service status to failed if service exists
 	if j.Payload.ServiceID != "" {
-		if err := j.Ctx.Repos().Service().UpdateStatus(ctx, j.Payload.ServiceID, types.ServiceStatusFailed); err != nil {
-			j.Ctx.LogError(err, "Failed to update service status", "service_id", j.Payload.ServiceID)
+		if err := j.Deps.Repos.Service().UpdateStatus(ctx, j.Payload.ServiceID, types.ServiceStatusFailed); err != nil {
+			j.Deps.Logger.Error().Err(err).
+				Str("service_id", j.Payload.ServiceID).
+				Msg("failed to update service status")
 		}
 	}
 
-	j.Ctx.LogInfo("PHP installation cleanup completed",
-		"server_id", server.ID,
-		"version", j.Payload.Version,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("version", j.Payload.Version).
+		Msg("PHP installation cleanup completed")
 
-	j.Ctx.BroadcastServerEvent(server, "php.cleanup_completed", map[string]any{
-		"server_id": server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "php.cleanup_completed", map[string]any{
+		"server_id": j.server.ID,
 		"version":   j.Payload.Version,
 	})
 
 	return nil
 }
 
-// Failed handles job failure
 func (j *CleanupFailedPhpInstallationJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to cleanup failed PHP installation",
-		"server_id", j.Payload.ServerID,
-		"version", j.Payload.Version,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Str("version", j.Payload.Version).
+		Msg("failed to cleanup failed PHP installation")
 }
 
-// NewCleanupFailedPhpInstallationTask creates a cleanup task
 func NewCleanupFailedPhpInstallationTask(serverID, serviceID, version string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeCleanupFailedPhpInstallation, CleanupFailedPhpInstallationPayload{
+	return pkgjobs.Task(TypeCleanupFailedPhpInstallation, CleanupFailedPhpInstallationPayload{
 		ServerID:  serverID,
 		ServiceID: serviceID,
 		Version:   version,
@@ -111,59 +112,59 @@ type CleanupFailedPhpExtensionInstallPayload struct {
 
 // CleanupFailedPhpExtensionInstallJob cleans up after a failed extension installation
 type CleanupFailedPhpExtensionInstallJob struct {
-	pkgjobs.BaseJob[*JobContext, CleanupFailedPhpExtensionInstallPayload]
+	Deps    *JobDeps
+	Payload CleanupFailedPhpExtensionInstallPayload
+
+	server *models.Server
 }
 
-// NewCleanupFailedPhpExtensionInstallJob creates a new cleanup job
-func NewCleanupFailedPhpExtensionInstallJob(ctx *JobContext, payload CleanupFailedPhpExtensionInstallPayload) *CleanupFailedPhpExtensionInstallJob {
-	return &CleanupFailedPhpExtensionInstallJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewCleanupFailedPhpExtensionInstallJob(p CleanupFailedPhpExtensionInstallPayload) pkgjobs.Handler {
+	return &CleanupFailedPhpExtensionInstallJob{Deps: deps, Payload: p}
 }
 
-// Handle executes the cleanup job
 func (j *CleanupFailedPhpExtensionInstallJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+		return fmt.Errorf("find server: %w", err)
 	}
 
-	j.Ctx.LogInfo("Cleaning up failed PHP extension installation",
-		"server_id", server.ID,
-		"version", j.Payload.Version,
-		"extension", j.Payload.Extension,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("version", j.Payload.Version).
+		Str("extension", j.Payload.Extension).
+		Msg("cleaning up failed PHP extension installation")
 
-	// Try to remove the partially installed extension
 	task := tasks.UninstallPhpExtension(j.Payload.Version, j.Payload.Extension)
-	result, err := j.Ctx.ForServer(server).RunTask(task).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
-		j.Ctx.LogError(err, "Failed to cleanup PHP extension",
-			"version", j.Payload.Version,
-			"extension", j.Payload.Extension,
-		)
+		j.Deps.Logger.Error().Err(err).
+			Str("version", j.Payload.Version).
+			Str("extension", j.Payload.Extension).
+			Msg("failed to cleanup PHP extension")
 	} else if !result.IsSuccessful() {
-		j.Ctx.LogError(nil, "Extension cleanup returned non-zero exit code",
-			"version", j.Payload.Version,
-			"extension", j.Payload.Extension,
-			"exit_code", result.GetExitCode(),
-		)
+		j.Deps.Logger.Error().
+			Str("version", j.Payload.Version).
+			Str("extension", j.Payload.Extension).
+			Int("exit_code", result.GetExitCode()).
+			Msg("extension cleanup returned non-zero exit code")
 	}
 
-	// Restart PHP-FPM to ensure clean state
 	restartTask := tasks.RestartPhp(j.Payload.Version)
-	if _, err := j.Ctx.ForServer(server).RunTask(restartTask).AsRoot().Dispatch(ctx); err != nil {
-		j.Ctx.LogError(err, "Failed to restart PHP-FPM after cleanup")
+	if _, err := j.Deps.RunTask(j.server, restartTask).AsRoot().Dispatch(ctx); err != nil {
+		j.Deps.Logger.Error().Err(err).
+			Msg("failed to restart PHP-FPM after cleanup")
 	}
 
-	j.Ctx.LogInfo("PHP extension cleanup completed",
-		"server_id", server.ID,
-		"version", j.Payload.Version,
-		"extension", j.Payload.Extension,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("version", j.Payload.Version).
+		Str("extension", j.Payload.Extension).
+		Msg("PHP extension cleanup completed")
 
-	j.Ctx.BroadcastServerEvent(server, "php.extension_cleanup_completed", map[string]any{
-		"server_id": server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "php.extension_cleanup_completed", map[string]any{
+		"server_id": j.server.ID,
 		"version":   j.Payload.Version,
 		"extension": j.Payload.Extension,
 	})
@@ -171,18 +172,16 @@ func (j *CleanupFailedPhpExtensionInstallJob) Handle(ctx context.Context) error 
 	return nil
 }
 
-// Failed handles job failure
 func (j *CleanupFailedPhpExtensionInstallJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to cleanup failed PHP extension installation",
-		"server_id", j.Payload.ServerID,
-		"version", j.Payload.Version,
-		"extension", j.Payload.Extension,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Str("version", j.Payload.Version).
+		Str("extension", j.Payload.Extension).
+		Msg("failed to cleanup failed PHP extension installation")
 }
 
-// NewCleanupFailedPhpExtensionInstallTask creates a cleanup task
 func NewCleanupFailedPhpExtensionInstallTask(serverID, version, extension string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeCleanupFailedPhpExtensionInstall, CleanupFailedPhpExtensionInstallPayload{
+	return pkgjobs.Task(TypeCleanupFailedPhpExtensionInstall, CleanupFailedPhpExtensionInstallPayload{
 		ServerID:  serverID,
 		Version:   version,
 		Extension: extension,
@@ -200,43 +199,44 @@ type CleanupFailedPhpExtensionUninstallPayload struct {
 
 // CleanupFailedPhpExtensionUninstallJob cleans up after a failed extension uninstallation
 type CleanupFailedPhpExtensionUninstallJob struct {
-	pkgjobs.BaseJob[*JobContext, CleanupFailedPhpExtensionUninstallPayload]
+	Deps    *JobDeps
+	Payload CleanupFailedPhpExtensionUninstallPayload
+
+	server *models.Server
 }
 
-// NewCleanupFailedPhpExtensionUninstallJob creates a new cleanup job
-func NewCleanupFailedPhpExtensionUninstallJob(ctx *JobContext, payload CleanupFailedPhpExtensionUninstallPayload) *CleanupFailedPhpExtensionUninstallJob {
-	return &CleanupFailedPhpExtensionUninstallJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewCleanupFailedPhpExtensionUninstallJob(p CleanupFailedPhpExtensionUninstallPayload) pkgjobs.Handler {
+	return &CleanupFailedPhpExtensionUninstallJob{Deps: deps, Payload: p}
 }
 
-// Handle executes the cleanup job
 func (j *CleanupFailedPhpExtensionUninstallJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+		return fmt.Errorf("find server: %w", err)
 	}
 
-	j.Ctx.LogInfo("Cleaning up failed PHP extension uninstallation",
-		"server_id", server.ID,
-		"version", j.Payload.Version,
-		"extension", j.Payload.Extension,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("version", j.Payload.Version).
+		Str("extension", j.Payload.Extension).
+		Msg("cleaning up failed PHP extension uninstallation")
 
-	// Restart PHP-FPM to ensure clean state - the extension might still be loaded
 	restartTask := tasks.RestartPhp(j.Payload.Version)
-	if _, err := j.Ctx.ForServer(server).RunTask(restartTask).AsRoot().Dispatch(ctx); err != nil {
-		j.Ctx.LogError(err, "Failed to restart PHP-FPM after cleanup")
+	if _, err := j.Deps.RunTask(j.server, restartTask).AsRoot().Dispatch(ctx); err != nil {
+		j.Deps.Logger.Error().Err(err).
+			Msg("failed to restart PHP-FPM after cleanup")
 	}
 
-	j.Ctx.LogInfo("PHP extension uninstall cleanup completed",
-		"server_id", server.ID,
-		"version", j.Payload.Version,
-		"extension", j.Payload.Extension,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("version", j.Payload.Version).
+		Str("extension", j.Payload.Extension).
+		Msg("PHP extension uninstall cleanup completed")
 
-	j.Ctx.BroadcastServerEvent(server, "php.extension_uninstall_cleanup_completed", map[string]any{
-		"server_id": server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "php.extension_uninstall_cleanup_completed", map[string]any{
+		"server_id": j.server.ID,
 		"version":   j.Payload.Version,
 		"extension": j.Payload.Extension,
 	})
@@ -244,18 +244,16 @@ func (j *CleanupFailedPhpExtensionUninstallJob) Handle(ctx context.Context) erro
 	return nil
 }
 
-// Failed handles job failure
 func (j *CleanupFailedPhpExtensionUninstallJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to cleanup failed PHP extension uninstallation",
-		"server_id", j.Payload.ServerID,
-		"version", j.Payload.Version,
-		"extension", j.Payload.Extension,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Str("version", j.Payload.Version).
+		Str("extension", j.Payload.Extension).
+		Msg("failed to cleanup failed PHP extension uninstallation")
 }
 
-// NewCleanupFailedPhpExtensionUninstallTask creates a cleanup task
 func NewCleanupFailedPhpExtensionUninstallTask(serverID, version, extension string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeCleanupFailedPhpExtensionUninstall, CleanupFailedPhpExtensionUninstallPayload{
+	return pkgjobs.Task(TypeCleanupFailedPhpExtensionUninstall, CleanupFailedPhpExtensionUninstallPayload{
 		ServerID:  serverID,
 		Version:   version,
 		Extension: extension,

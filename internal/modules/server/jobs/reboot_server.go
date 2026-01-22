@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
@@ -18,69 +19,59 @@ type RebootServerPayload struct {
 	UserID   *string `json:"user_id,omitempty"`
 }
 
-// RebootServerJob reboots a server.
-// Similar to Laravel's Modules\Server\Jobs\RebootServer
 type RebootServerJob struct {
-	pkgjobs.BaseJob[*JobContext, RebootServerPayload]
+	Deps    *JobDeps
+	Payload RebootServerPayload
+
+	server *models.Server
 }
 
-// Handle processes the job
+func NewRebootServerJob(p RebootServerPayload) pkgjobs.Handler {
+	return &RebootServerJob{Deps: deps, Payload: p}
+}
+
 func (j *RebootServerJob) Handle(ctx context.Context) error {
-	// Find the server
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
-		return fmt.Errorf("failed to find server: %w", err)
+		return fmt.Errorf("find server: %w", err)
 	}
 
-	// Create reboot task
 	task := tasks.RebootServer()
 
-	// Execute reboot - don't wait for result as server will disconnect
-	_, err = j.Ctx.ForServer(server).RunTask(task).
+	_, err = j.Deps.RunTask(j.server, task).
 		AsRoot().
 		Dispatch(ctx)
 
-	// Reboot command may cause connection to drop, which is expected
 	if err != nil {
-		j.Ctx.LogInfo("Reboot command sent, connection dropped as expected",
-			"server_id", server.ID,
-		)
+		j.Deps.Logger.Info().
+			Str("server_id", j.server.ID).
+			Msg("reboot command sent, connection dropped as expected")
 	}
 
-	// Log activity
-	activity.RecordWithLogPtr(ctx, "server", "rebooted", j.Payload.UserID, server, "Server reboot was initiated")
+	activity.RecordWithLogPtr(ctx, "server", "rebooted", j.Payload.UserID, j.server, "Server reboot was initiated")
 
-	j.Ctx.LogInfo("Server reboot initiated",
-		"server_id", server.ID,
-		"server_name", server.Name,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("server_name", j.server.Name).
+		Msg("server reboot initiated")
 
-	// Broadcast event
-	j.Ctx.BroadcastServerEvent(server, "server.rebooting", map[string]any{
-		"server_id": server.ID,
+	j.Deps.BroadcastServerEvent(j.server, "server.rebooting", map[string]any{
+		"server_id": j.server.ID,
 	})
 
 	return nil
 }
 
-// Failed is called when the job fails after all retries
 func (j *RebootServerJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to reboot server",
-		"server_id", j.Payload.ServerID,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Msg("failed to reboot server")
 }
 
-func NewRebootServerJob(ctx *JobContext, payload RebootServerPayload) *RebootServerJob {
-	return &RebootServerJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
-}
-
-// NewRebootServerTask creates an asynq task for rebooting a server
-// Uses TaskID for deduplication to prevent duplicate reboots
 func NewRebootServerTask(serverID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeRebootServer, RebootServerPayload{
-		ServerID: serverID,
-		UserID:   userID,
-	}, asynq.TaskID(fmt.Sprintf("reboot:%s", serverID)))
+	return pkgjobs.TaskWithID(TypeRebootServer,
+		RebootServerPayload{ServerID: serverID, UserID: userID},
+		pkgjobs.Dedup("reboot", serverID),
+	)
 }

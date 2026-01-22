@@ -2,54 +2,55 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 
 	"github.com/hibiken/asynq"
 )
 
-// Handleable is the minimal interface for jobs.
-// Jobs only need to implement Handle() to work with RegisterHandler.
-type Handleable interface {
-	Handle(ctx context.Context) error
-}
+// JobFactory creates a job from raw payload bytes.
+type JobFactory func(payload []byte) (Handler, error)
 
-// Failable is an optional interface for jobs that want failure notification.
-// If a job implements this, Failed() will be called when Handle() returns an error.
-type Failable interface {
-	Failed(ctx context.Context, err error)
-}
-
-// RegisterHandler registers a job handler with the asynq mux using generics.
-//
-// Type parameters:
-//   - C: The context type (module-specific JobContext)
-//   - P: The payload type
-//   - J: The job type (must implement Handleable, optionally Failable)
-//
-// The newJob function receives the context and parsed payload, and returns the job instance.
-// If the job implements Failable, Failed() will be called when Handle() returns an error.
-//
-// Example usage:
-//
-//	func RegisterHandlers(mux *asynq.ServeMux) {
-//	    pkgjobs.RegisterHandler(mux, TypeRebootServer, jobContext, NewRebootServerJob)
-//	    pkgjobs.RegisterHandler(mux, TypeInstallCron, jobContext, NewInstallCronJob)
-//	}
-func RegisterHandler[C any, P any, J Handleable](mux *asynq.ServeMux, jobType string, ctx *C, newJob func(*C, P) J) {
-	mux.HandleFunc(jobType, func(c context.Context, t *asynq.Task) error {
-		payload, err := UnmarshalPayload[P](t)
+// Register registers a job handler with the asynq mux.
+// The factory function receives raw payload bytes and returns a Handler.
+func Register(mux *asynq.ServeMux, jobType string, factory JobFactory) {
+	mux.HandleFunc(jobType, func(ctx context.Context, t *asynq.Task) error {
+		job, err := factory(t.Payload())
 		if err != nil {
-			return err
+			return fmt.Errorf("create job: %w", err)
 		}
 
-		job := newJob(ctx, payload)
-
-		if err := job.Handle(c); err != nil {
-			if failable, ok := any(job).(Failable); ok {
-				failable.Failed(c, err)
+		if err := job.Handle(ctx); err != nil {
+			if failable, ok := job.(FailableHandler); ok {
+				failable.Failed(ctx, err)
 			}
 			return err
 		}
 
 		return nil
 	})
+}
+
+// RegisterTyped registers a job handler with automatic JSON unmarshaling.
+// This is the preferred way to register jobs.
+//
+// Example:
+//
+//	jobs.RegisterTyped(mux, TypeRebootServer, NewRebootServerJob)
+func RegisterTyped[P any](mux *asynq.ServeMux, jobType string, newJob func(P) Handler) {
+	Register(mux, jobType, func(payload []byte) (Handler, error) {
+		p, err := unmarshalJSON[P](payload)
+		if err != nil {
+			return nil, fmt.Errorf("unmarshal payload: %w", err)
+		}
+		return newJob(p), nil
+	})
+}
+
+func unmarshalJSON[T any](data []byte) (T, error) {
+	var v T
+	if err := json.Unmarshal(data, &v); err != nil {
+		return v, err
+	}
+	return v, nil
 }

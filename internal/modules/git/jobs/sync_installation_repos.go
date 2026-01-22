@@ -22,8 +22,12 @@ type SyncInstallationReposPayload struct {
 
 // SyncInstallationReposJob syncs repositories for a git installation
 type SyncInstallationReposJob struct {
-	ctx     *JobContext
+	Deps    *JobDeps
 	Payload SyncInstallationReposPayload
+}
+
+func NewSyncInstallationReposJob(p SyncInstallationReposPayload) pkgjobs.Handler {
+	return &SyncInstallationReposJob{Deps: deps, Payload: p}
 }
 
 // Handle processes the job
@@ -34,16 +38,16 @@ func (j *SyncInstallationReposJob) Handle(ctx context.Context) error {
 	}
 
 	// Find source control for this installation
-	sc, err := j.ctx.Service.GetSourceControlByInstallation(ctx, providerType, j.Payload.InstallationID)
+	sc, err := j.Deps.Service.GetSourceControlByInstallation(ctx, providerType, j.Payload.InstallationID)
 	if err != nil {
-		j.ctx.Logger.Warn().
+		j.Deps.Logger.Warn().
 			Str("installation_id", j.Payload.InstallationID).
 			Msg("Source control not found for installation")
 		return nil
 	}
 
 	// Get provider
-	provider, err := j.ctx.ProviderFactory.GetProvider(providers.GitProviderType(providerType))
+	provider, err := j.Deps.ProviderFactory.GetProvider(providers.GitProviderType(providerType))
 	if err != nil {
 		return fmt.Errorf("failed to get provider: %w", err)
 	}
@@ -55,18 +59,18 @@ func (j *SyncInstallationReposJob) Handle(ctx context.Context) error {
 	}
 
 	// Sync repositories
-	if err := j.ctx.Service.SyncInstallationRepositories(ctx, sc, repositories); err != nil {
+	if err := j.Deps.Service.SyncInstallationRepositories(ctx, sc, repositories); err != nil {
 		return fmt.Errorf("failed to sync repositories: %w", err)
 	}
 
 	// Update repository count
-	if err := j.ctx.SCRepo.UpdateFields(ctx, sc.ID, map[string]any{
+	if err := j.Deps.Repos.SourceControl().UpdateFields(ctx, sc.ID, map[string]any{
 		"repository_count": len(repositories),
 	}); err != nil {
-		j.ctx.Logger.Warn().Err(err).Msg("Failed to update repository count")
+		j.Deps.Logger.Warn().Err(err).Msg("Failed to update repository count")
 	}
 
-	j.ctx.Logger.Info().
+	j.Deps.Logger.Info().
 		Str("installation_id", j.Payload.InstallationID).
 		Int("repository_count", len(repositories)).
 		Msg("Synced installation repositories")
@@ -79,7 +83,7 @@ func (j *SyncInstallationReposJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *SyncInstallationReposJob) Failed(ctx context.Context, err error) {
-	j.ctx.Logger.Error().Err(err).
+	j.Deps.Logger.Error().Err(err).
 		Str("provider", j.Payload.Provider).
 		Str("installation_id", j.Payload.InstallationID).
 		Msg("Failed to sync installation repositories")
@@ -87,18 +91,10 @@ func (j *SyncInstallationReposJob) Failed(ctx context.Context, err error) {
 
 // NewSyncInstallationReposTask creates an asynq task for syncing installation repositories
 func NewSyncInstallationReposTask(provider, installationID, teamID, userID string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeSyncInstallationRepos, SyncInstallationReposPayload{
+	return pkgjobs.Task(TypeSyncInstallationRepos, SyncInstallationReposPayload{
 		Provider:       provider,
 		InstallationID: installationID,
 		TeamID:         teamID,
 		UserID:         userID,
 	})
-}
-
-// NewSyncInstallationReposJob creates a new SyncInstallationReposJob
-func NewSyncInstallationReposJob(ctx *JobContext, payload SyncInstallationReposPayload) *SyncInstallationReposJob {
-	return &SyncInstallationReposJob{
-		ctx:     ctx,
-		Payload: payload,
-	}
 }

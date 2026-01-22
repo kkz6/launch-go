@@ -7,6 +7,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
@@ -22,37 +24,41 @@ type UpdateSiteTLSSettingPayload struct {
 
 // UpdateSiteTLSSettingJob updates TLS settings for a site
 type UpdateSiteTLSSettingJob struct {
-	pkgjobs.BaseJob[*JobContext, UpdateSiteTLSSettingPayload]
+	Deps    *JobDeps
+	Payload UpdateSiteTLSSettingPayload
+
+	// Model fields for Failed() callback
+	site   *models.Site
+	server *servermodels.Server
 }
 
 // NewUpdateSiteTLSSettingJob creates a new UpdateSiteTLSSettingJob
-func NewUpdateSiteTLSSettingJob(ctx *JobContext, payload UpdateSiteTLSSettingPayload) *UpdateSiteTLSSettingJob {
-	return &UpdateSiteTLSSettingJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+func NewUpdateSiteTLSSettingJob(p UpdateSiteTLSSettingPayload) pkgjobs.Handler {
+	return &UpdateSiteTLSSettingJob{Deps: deps, Payload: p}
 }
 
 // Handle executes the update TLS setting job
 func (j *UpdateSiteTLSSettingJob) Handle(ctx context.Context) error {
-	site, err := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, err := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if err != nil {
 		return fmt.Errorf("failed to find site: %w", err)
 	}
+	j.site = site
 
 	oldTLSSetting := site.TLSSetting
 
-	j.Ctx.LogInfo("Updating TLS setting",
-		"site_id", site.ID,
-		"old_setting", oldTLSSetting,
-		"new_setting", j.Payload.TLSSetting,
-	)
+	j.Deps.Logger.Info().
+		Str("site_id", site.ID).
+		Str("old_setting", string(oldTLSSetting)).
+		Str("new_setting", string(j.Payload.TLSSetting)).
+		Msg("Updating TLS setting")
 
 	// Update the TLS setting
 	site.TLSSetting = j.Payload.TLSSetting
 	now := time.Now()
 	site.PendingTLSUpdateSince = &now
 
-	if err := j.Ctx.SiteRepo.Update(ctx, site); err != nil {
+	if err := j.Deps.Repos.Site().Update(ctx, site); err != nil {
 		return fmt.Errorf("failed to update site TLS setting: %w", err)
 	}
 
@@ -62,19 +68,20 @@ func (j *UpdateSiteTLSSettingJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to create update caddyfile task: %w", err)
 	}
 
-	if err := j.Ctx.DispatchTask(task); err != nil {
+	if err := j.Deps.DispatchTask(task); err != nil {
 		return fmt.Errorf("failed to enqueue update caddyfile job: %w", err)
 	}
 
-	j.Ctx.LogInfo("TLS setting updated, Caddyfile update dispatched",
-		"site_id", site.ID,
-		"tls_setting", j.Payload.TLSSetting,
-	)
+	j.Deps.Logger.Info().
+		Str("site_id", site.ID).
+		Str("tls_setting", string(j.Payload.TLSSetting)).
+		Msg("TLS setting updated, Caddyfile update dispatched")
 
 	// Broadcast the update
-	server, err := j.Ctx.ServerRepos.Server().FindByID(ctx, site.ServerID)
+	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, site.ServerID)
 	if err == nil && server != nil {
-		j.Ctx.BroadcastServerEvent(server, "site.tls_updated", map[string]interface{}{
+		j.server = server
+		j.Deps.BroadcastServerEvent(server, "site.tls_updated", map[string]interface{}{
 			"site_id":     site.ID,
 			"tls_setting": j.Payload.TLSSetting,
 		})
@@ -85,22 +92,22 @@ func (j *UpdateSiteTLSSettingJob) Handle(ctx context.Context) error {
 
 // Failed handles job failure
 func (j *UpdateSiteTLSSettingJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to update TLS setting",
-		"site_id", j.Payload.SiteID,
-		"tls_setting", j.Payload.TLSSetting,
-	)
+	j.Deps.Logger.Error().Err(err).
+		Str("site_id", j.Payload.SiteID).
+		Str("tls_setting", string(j.Payload.TLSSetting)).
+		Msg("Failed to update TLS setting")
 
 	// Clear pending TLS update flag on failure
-	site, findErr := j.Ctx.SiteRepo.FindByID(ctx, j.Payload.SiteID)
+	site, findErr := j.Deps.Repos.Site().FindByID(ctx, j.Payload.SiteID)
 	if findErr == nil && site != nil {
 		site.PendingTLSUpdateSince = nil
-		_ = j.Ctx.SiteRepo.Update(ctx, site)
+		_ = j.Deps.Repos.Site().Update(ctx, site)
 	}
 }
 
 // NewUpdateSiteTLSSettingTask creates an update TLS setting task
 func NewUpdateSiteTLSSettingTask(siteID string, tlsSetting sitetypes.TLSSetting, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeUpdateSiteTLSSetting, UpdateSiteTLSSettingPayload{
+	return pkgjobs.Task(TypeUpdateSiteTLSSetting, UpdateSiteTLSSettingPayload{
 		SiteID:     siteID,
 		TLSSetting: tlsSetting,
 		UserID:     userID,

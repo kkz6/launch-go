@@ -3,23 +3,28 @@ package jobs
 import (
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/git/providers"
+	"github.com/kkz6/launch-go/internal/modules/git/repositories"
+	"github.com/kkz6/launch-go/internal/modules/git/services"
+	"github.com/kkz6/launch-go/internal/pkg/app"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
-var jobContext *JobContext
+var deps *JobDeps
 
-// SetJobContext sets the global job context.
-func SetJobContext(ctx *JobContext) {
-	jobContext = ctx
+// Register initializes and registers all git job handlers.
+func Register(
+	mux *asynq.ServeMux,
+	appDeps app.Deps,
+	repos *repositories.Registry,
+	service *services.SourceControlService,
+	providerFactory *providers.ProviderFactory,
+) {
+	deps = NewJobDeps(appDeps, repos, service, providerFactory)
+	registerHandlers(mux)
 }
 
-// GetJobContext returns the global job context.
-func GetJobContext() *JobContext {
-	return jobContext
-}
-
-// RegisterHandlers registers all job handlers with the asynq mux.
-func RegisterHandlers(mux *asynq.ServeMux) {
-	pkgjobs.RegisterHandler(mux, TypeProcessGitWebhook, jobContext, NewProcessGitWebhookJob)
-	pkgjobs.RegisterHandler(mux, TypeSyncInstallationRepos, jobContext, NewSyncInstallationReposJob)
+func registerHandlers(mux *asynq.ServeMux) {
+	pkgjobs.RegisterTyped(mux, TypeProcessGitWebhook, NewProcessGitWebhookJob)
+	pkgjobs.RegisterTyped(mux, TypeSyncInstallationRepos, NewSyncInstallationReposJob)
 }

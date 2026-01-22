@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
@@ -21,29 +22,39 @@ type SetDefaultPhpPayload struct {
 
 // SetDefaultPhpJob sets the default PHP version on a server
 type SetDefaultPhpJob struct {
-	pkgjobs.BaseJob[*JobContext, SetDefaultPhpPayload]
+	Deps    *JobDeps
+	Payload SetDefaultPhpPayload
+
+	server  *models.Server
+	service *models.InstalledService
+}
+
+func NewSetDefaultPhpJob(p SetDefaultPhpPayload) pkgjobs.Handler {
+	return &SetDefaultPhpJob{Deps: deps, Payload: p}
 }
 
 func (j *SetDefaultPhpJob) Handle(ctx context.Context) error {
-	server, err := j.Ctx.Repos().Server().FindByID(ctx, j.Payload.ServerID)
+	var err error
+
+	j.server, err = j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
 
-	service, err := j.Ctx.Repos().Service().FindByID(ctx, j.Payload.ServiceID)
+	j.service, err = j.Deps.Repos.Service().FindByID(ctx, j.Payload.ServiceID)
 	if err != nil {
 		return fmt.Errorf("failed to find service: %w", err)
 	}
 
-	j.Ctx.LogInfo("Setting default PHP version",
-		"server_id", server.ID,
-		"version", j.Payload.Version,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("version", j.Payload.Version).
+		Msg("setting default PHP version")
 
 	// Run the update alternatives task
 	task := tasks.UpdateAlternatives(j.Payload.Version)
 
-	result, err := j.Ctx.ForServer(server).RunTask(task).
+	result, err := j.Deps.RunTask(j.server, task).
 		AsRoot().
 		Dispatch(ctx)
 
@@ -57,24 +68,25 @@ func (j *SetDefaultPhpJob) Handle(ctx context.Context) error {
 
 	// Update the service record to mark it as default
 	// First, unset any existing default
-	if err := j.Ctx.Repos().Service().UnsetDefaultPhp(ctx, j.Payload.ServerID); err != nil {
-		j.Ctx.LogError(err, "Failed to unset existing default PHP")
+	if err := j.Deps.Repos.Service().UnsetDefaultPhp(ctx, j.Payload.ServerID); err != nil {
+		j.Deps.Logger.Error().Err(err).
+			Msg("failed to unset existing default PHP")
 	}
 
 	// Set the new default
-	if err := j.Ctx.Repos().Service().SetDefault(ctx, j.Payload.ServiceID, true); err != nil {
+	if err := j.Deps.Repos.Service().SetDefault(ctx, j.Payload.ServiceID, true); err != nil {
 		return fmt.Errorf("failed to update service default status: %w", err)
 	}
 
-	j.Ctx.LogInfo("Default PHP version set successfully",
-		"server_id", server.ID,
-		"service_id", service.ID,
-		"version", j.Payload.Version,
-	)
+	j.Deps.Logger.Info().
+		Str("server_id", j.server.ID).
+		Str("service_id", j.service.ID).
+		Str("version", j.Payload.Version).
+		Msg("default PHP version set successfully")
 
-	j.Ctx.BroadcastServerEvent(server, "php.default_changed", map[string]any{
-		"server_id":  server.ID,
-		"service_id": service.ID,
+	j.Deps.BroadcastServerEvent(j.server, "php.default_changed", map[string]any{
+		"server_id":  j.server.ID,
+		"service_id": j.service.ID,
 		"version":    j.Payload.Version,
 	})
 
@@ -82,20 +94,14 @@ func (j *SetDefaultPhpJob) Handle(ctx context.Context) error {
 }
 
 func (j *SetDefaultPhpJob) Failed(ctx context.Context, err error) {
-	j.Ctx.LogError(err, "Failed to set default PHP version",
-		"server_id", j.Payload.ServerID,
-		"version", j.Payload.Version,
-	)
-}
-
-func NewSetDefaultPhpJob(ctx *JobContext, payload SetDefaultPhpPayload) *SetDefaultPhpJob {
-	return &SetDefaultPhpJob{
-		BaseJob: pkgjobs.NewBaseJob(ctx, payload),
-	}
+	j.Deps.Logger.Error().Err(err).
+		Str("server_id", j.Payload.ServerID).
+		Str("version", j.Payload.Version).
+		Msg("failed to set default PHP version")
 }
 
 func NewSetDefaultPhpTask(serverID, serviceID, version string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeSetDefaultPhp, SetDefaultPhpPayload{
+	return pkgjobs.Task(TypeSetDefaultPhp, SetDefaultPhpPayload{
 		ServerID:  serverID,
 		ServiceID: serviceID,
 		Version:   version,

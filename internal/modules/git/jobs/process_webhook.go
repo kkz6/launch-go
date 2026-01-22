@@ -6,13 +6,9 @@ import (
 	"fmt"
 
 	"github.com/hibiken/asynq"
-	"github.com/rs/zerolog"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/git/gitref"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
-	"github.com/kkz6/launch-go/internal/modules/git/repositories"
-	"github.com/kkz6/launch-go/internal/modules/git/services"
 	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
@@ -27,11 +23,12 @@ type ProcessGitWebhookPayload struct {
 
 // ProcessGitWebhookJob processes git webhooks asynchronously
 type ProcessGitWebhookJob struct {
-	db              *gorm.DB
-	logger          *zerolog.Logger
-	service         *services.SourceControlService
-	providerFactory *providers.ProviderFactory
-	Payload         ProcessGitWebhookPayload
+	Deps    *JobDeps
+	Payload ProcessGitWebhookPayload
+}
+
+func NewProcessGitWebhookJob(p ProcessGitWebhookPayload) pkgjobs.Handler {
+	return &ProcessGitWebhookJob{Deps: deps, Payload: p}
 }
 
 // Handle processes the webhook
@@ -41,7 +38,7 @@ func (j *ProcessGitWebhookJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("invalid provider: %w", err)
 	}
 
-	provider, err := j.providerFactory.GetProvider(providers.GitProviderType(providerType))
+	provider, err := j.Deps.ProviderFactory.GetProvider(providers.GitProviderType(providerType))
 	if err != nil {
 		return fmt.Errorf("failed to get provider: %w", err)
 	}
@@ -72,7 +69,7 @@ func (j *ProcessGitWebhookJob) Handle(ctx context.Context) error {
 
 // Failed is called when the job fails after all retries
 func (j *ProcessGitWebhookJob) Failed(ctx context.Context, err error) {
-	j.logger.Error().Err(err).
+	j.Deps.Logger.Error().Err(err).
 		Str("provider", j.Payload.Provider).
 		Msg("Failed to process git webhook")
 }
@@ -80,7 +77,7 @@ func (j *ProcessGitWebhookJob) Failed(ctx context.Context, err error) {
 func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data map[string]any) error {
 	action, ok := data["action"].(string)
 	if !ok && data["action"] != nil {
-		j.logger.Debug().Interface("action", data["action"]).Msg("GitHub webhook: unexpected action type")
+		j.Deps.Logger.Debug().Interface("action", data["action"]).Msg("GitHub webhook: unexpected action type")
 	}
 
 	// Handle installation events
@@ -107,11 +104,11 @@ func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data ma
 		if repository, ok := data["repository"].(map[string]any); ok {
 			fullName, ok := repository["full_name"].(string)
 			if !ok {
-				j.logger.Debug().Interface("full_name", repository["full_name"]).Msg("GitHub webhook: unexpected full_name type")
+				j.Deps.Logger.Debug().Interface("full_name", repository["full_name"]).Msg("GitHub webhook: unexpected full_name type")
 			}
 			ref, ok := data["ref"].(string)
 			if !ok {
-				j.logger.Debug().Interface("ref", data["ref"]).Msg("GitHub webhook: unexpected ref type")
+				j.Deps.Logger.Debug().Interface("ref", data["ref"]).Msg("GitHub webhook: unexpected ref type")
 			}
 			branch := gitref.ExtractBranchName(ref)
 
@@ -127,18 +124,18 @@ func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data ma
 func (j *ProcessGitWebhookJob) processGitLabWebhook(ctx context.Context, data map[string]any) error {
 	eventType, ok := data["event_type"].(string)
 	if !ok && data["event_type"] != nil {
-		j.logger.Debug().Interface("event_type", data["event_type"]).Msg("GitLab webhook: unexpected event_type type")
+		j.Deps.Logger.Debug().Interface("event_type", data["event_type"]).Msg("GitLab webhook: unexpected event_type type")
 	}
 
 	if eventType == "push" {
 		if project, ok := data["project"].(map[string]any); ok {
 			fullName, ok := project["path_with_namespace"].(string)
 			if !ok {
-				j.logger.Debug().Interface("path_with_namespace", project["path_with_namespace"]).Msg("GitLab webhook: unexpected path_with_namespace type")
+				j.Deps.Logger.Debug().Interface("path_with_namespace", project["path_with_namespace"]).Msg("GitLab webhook: unexpected path_with_namespace type")
 			}
 			ref, ok := data["ref"].(string)
 			if !ok {
-				j.logger.Debug().Interface("ref", data["ref"]).Msg("GitLab webhook: unexpected ref type")
+				j.Deps.Logger.Debug().Interface("ref", data["ref"]).Msg("GitLab webhook: unexpected ref type")
 			}
 			branch := gitref.ExtractBranchName(ref)
 
@@ -157,7 +154,7 @@ func (j *ProcessGitWebhookJob) processBitbucketWebhook(ctx context.Context, data
 			if repository, ok := data["repository"].(map[string]any); ok {
 				fullName, ok := repository["full_name"].(string)
 				if !ok {
-					j.logger.Debug().Interface("full_name", repository["full_name"]).Msg("Bitbucket webhook: unexpected full_name type")
+					j.Deps.Logger.Debug().Interface("full_name", repository["full_name"]).Msg("Bitbucket webhook: unexpected full_name type")
 				}
 
 				if change, ok := changes[0].(map[string]any); ok {
@@ -165,7 +162,7 @@ func (j *ProcessGitWebhookJob) processBitbucketWebhook(ctx context.Context, data
 					if newRef, ok := change["new"].(map[string]any); ok {
 						branch, ok = newRef["name"].(string)
 						if !ok {
-							j.logger.Debug().Interface("name", newRef["name"]).Msg("Bitbucket webhook: unexpected branch name type")
+							j.Deps.Logger.Debug().Interface("name", newRef["name"]).Msg("Bitbucket webhook: unexpected branch name type")
 						}
 					}
 
@@ -183,7 +180,7 @@ func (j *ProcessGitWebhookJob) processBitbucketWebhook(ctx context.Context, data
 func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, data map[string]any, installationID string) error {
 	sender, ok := data["sender"].(map[string]any)
 	if !ok {
-		j.logger.Debug().Interface("sender", data["sender"]).Msg("GitHub webhook: unexpected sender type in installation created")
+		j.Deps.Logger.Debug().Interface("sender", data["sender"]).Msg("GitHub webhook: unexpected sender type in installation created")
 		return nil
 	}
 	if sender == nil {
@@ -191,9 +188,9 @@ func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, da
 	}
 
 	// Find existing source control
-	sc, err := j.service.GetSourceControlByInstallation(ctx, gittypes.GitProviderGitHub, installationID)
+	sc, err := j.Deps.Service.GetSourceControlByInstallation(ctx, gittypes.GitProviderGitHub, installationID)
 	if err != nil {
-		j.logger.Warn().Str("installation_id", installationID).Msg("Source control not found for installation")
+		j.Deps.Logger.Warn().Str("installation_id", installationID).Msg("Source control not found for installation")
 		return nil
 	}
 
@@ -201,7 +198,7 @@ func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, da
 	providerData := make(map[string]any)
 	if sc.ProviderData != nil && *sc.ProviderData != "" {
 		if err := json.Unmarshal([]byte(*sc.ProviderData), &providerData); err != nil {
-			j.logger.Warn().Err(err).Str("installation_id", installationID).Msg("Failed to parse existing provider data")
+			j.Deps.Logger.Warn().Err(err).Str("installation_id", installationID).Msg("Failed to parse existing provider data")
 		}
 	}
 
@@ -219,21 +216,21 @@ func (j *ProcessGitWebhookJob) handleInstallationCreated(ctx context.Context, da
 	}
 	providerDataStr := string(providerDataJSON)
 
-	return j.service.GetSourceControlRepo().UpdateFields(ctx, sc.ID, map[string]any{
+	return j.Deps.Service.GetSourceControlRepo().UpdateFields(ctx, sc.ID, map[string]any{
 		"provider_data": providerDataStr,
 	})
 }
 
 func (j *ProcessGitWebhookJob) handleInstallationDeleted(ctx context.Context, installationID string) error {
-	return j.service.DeleteByInstallationID(ctx, installationID)
+	return j.Deps.Service.DeleteByInstallationID(ctx, installationID)
 }
 
 func (j *ProcessGitWebhookJob) handleRepositoriesChanged(ctx context.Context, installationID string) error {
-	return j.service.SyncRepositoriesForInstallation(ctx, installationID)
+	return j.Deps.Service.SyncRepositoriesForInstallation(ctx, installationID)
 }
 
 func (j *ProcessGitWebhookJob) triggerDeployments(ctx context.Context, repository, branch string, webhookData map[string]any, providerType gittypes.GitProviderType) error {
-	j.logger.Info().
+	j.Deps.Logger.Info().
 		Str("repository", repository).
 		Str("branch", branch).
 		Str("provider", providerType.String()).
@@ -246,7 +243,7 @@ func (j *ProcessGitWebhookJob) triggerDeployments(ctx context.Context, repositor
 	}
 
 	if len(sites) == 0 {
-		j.logger.Info().
+		j.Deps.Logger.Info().
 			Str("repository", repository).
 			Str("branch", branch).
 			Msg("No sites found for auto-deployment")
@@ -254,7 +251,7 @@ func (j *ProcessGitWebhookJob) triggerDeployments(ctx context.Context, repositor
 	}
 
 	// Get commit data from webhook
-	provider, err := j.providerFactory.GetProvider(providers.GitProviderType(providerType))
+	provider, err := j.Deps.ProviderFactory.GetProvider(providers.GitProviderType(providerType))
 	if err != nil {
 		return fmt.Errorf("failed to get provider: %w", err)
 	}
@@ -267,7 +264,7 @@ func (j *ProcessGitWebhookJob) triggerDeployments(ctx context.Context, repositor
 	// Trigger deployment for each site
 	for _, site := range sites {
 		if err := j.dispatchDeploymentJob(ctx, site, commitData); err != nil {
-			j.logger.Error().Err(err).
+			j.Deps.Logger.Error().Err(err).
 				Str("site_id", site.ID).
 				Str("repository", repository).
 				Msg("Failed to dispatch deployment")
@@ -286,7 +283,7 @@ type Site struct {
 func (j *ProcessGitWebhookJob) findSitesByRepositoryAndBranch(ctx context.Context, repository, branch string) ([]Site, error) {
 	// Query sites directly
 	var sites []Site
-	err := j.db.WithContext(ctx).
+	err := j.Deps.DB.WithContext(ctx).
 		Table("sites").
 		Select("id, source_control_id").
 		Where("repository = ? AND branch = ? AND auto_deployment = ?", repository, branch, true).
@@ -298,7 +295,7 @@ func (j *ProcessGitWebhookJob) findSitesByRepositoryAndBranch(ctx context.Contex
 func (j *ProcessGitWebhookJob) dispatchDeploymentJob(ctx context.Context, site Site, commitData *providers.CommitData) error {
 	// TODO: Dispatch deployment job via queue
 	// For now, just log
-	j.logger.Info().
+	j.Deps.Logger.Info().
 		Str("site_id", site.ID).
 		Str("commit_sha", commitData.SHA).
 		Str("commit_message", commitData.Message).
@@ -309,61 +306,9 @@ func (j *ProcessGitWebhookJob) dispatchDeploymentJob(ctx context.Context, site S
 
 // NewProcessGitWebhookTask creates an asynq task for processing a git webhook
 func NewProcessGitWebhookTask(provider, payload, signature string) (*asynq.Task, error) {
-	return pkgjobs.NewTask(TypeProcessGitWebhook, ProcessGitWebhookPayload{
+	return pkgjobs.Task(TypeProcessGitWebhook, ProcessGitWebhookPayload{
 		Provider:  provider,
 		Payload:   payload,
 		Signature: signature,
 	})
-}
-
-// GitRepos holds git module repositories.
-type GitRepos struct {
-	SourceControl *repositories.SourceControlRepository
-}
-
-// JobContext holds dependencies for git jobs.
-// It embeds pkgjobs.ModuleContext for common functionality and typed repository access.
-type JobContext struct {
-	*pkgjobs.ModuleContext[*GitRepos]
-	// Public fields for backward compatibility
-	DB              *gorm.DB
-	Logger          *zerolog.Logger
-	Service         *services.SourceControlService
-	ProviderFactory *providers.ProviderFactory
-	SCRepo          *repositories.SourceControlRepository
-}
-
-// NewJobContext creates a new git job context.
-func NewJobContext(
-	db *gorm.DB,
-	logger *zerolog.Logger,
-	service *services.SourceControlService,
-	providerFactory *providers.ProviderFactory,
-	scRepo *repositories.SourceControlRepository,
-) *JobContext {
-	return &JobContext{
-		ModuleContext: pkgjobs.NewModuleContext(pkgjobs.BaseDeps{
-			DB:     db,
-			Logger: logger,
-		}, &GitRepos{
-			SourceControl: scRepo,
-		}),
-		// Public fields for backward compatibility
-		DB:              db,
-		Logger:          logger,
-		Service:         service,
-		ProviderFactory: providerFactory,
-		SCRepo:          scRepo,
-	}
-}
-
-// NewProcessGitWebhookJob creates a new ProcessGitWebhookJob.
-func NewProcessGitWebhookJob(ctx *JobContext, payload ProcessGitWebhookPayload) *ProcessGitWebhookJob {
-	return &ProcessGitWebhookJob{
-		db:              ctx.DB,
-		logger:          ctx.Logger,
-		service:         ctx.Service,
-		providerFactory: ctx.ProviderFactory,
-		Payload:         payload,
-	}
 }
