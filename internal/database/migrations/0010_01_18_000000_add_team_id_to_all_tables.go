@@ -12,8 +12,8 @@ func init() {
 		ID:        "0010_01_18_000000_add_team_id_to_all_tables",
 		Name:      "Add team_id to all tables",
 		Timestamp: time.Date(2010, 1, 18, 0, 0, 0, 0, time.UTC),
-		Up:        addTeamIdToAllTablesUp,
-		Down:      addTeamIdToAllTablesDown,
+		Up:        addTeamIDToAllTablesUp,
+		Down:      addTeamIDToAllTablesDown,
 	})
 }
 
@@ -54,10 +54,10 @@ var existingNullableTables = []string{
 	"storage_providers",
 }
 
-func addTeamIdToAllTablesUp(db *gorm.DB) error {
+func addTeamIDToAllTablesUp(db *gorm.DB) error {
 	// Add team_id to tables that don't have it
 	for _, cfg := range tablesToUpdate {
-		if err := addTeamIdColumn(db, cfg); err != nil {
+		if err := addTeamIDColumn(db, cfg); err != nil {
 			return fmt.Errorf("failed to add team_id to %s: %w", cfg.table, err)
 		}
 	}
@@ -74,7 +74,7 @@ func addTeamIdToAllTablesUp(db *gorm.DB) error {
 	return nil
 }
 
-func addTeamIdColumn(db *gorm.DB, cfg tableConfig) error {
+func addTeamIDColumn(db *gorm.DB, cfg tableConfig) error {
 	// Add nullable column (backticks for reserved words like 'databases')
 	if err := db.Exec(fmt.Sprintf(
 		"ALTER TABLE `%s` ADD COLUMN team_id CHAR(26) NULL AFTER %s",
@@ -108,17 +108,13 @@ func addTeamIdColumn(db *gorm.DB, cfg tableConfig) error {
 	}
 
 	// Add foreign key constraint
-	if err := db.Exec(fmt.Sprintf(
+	return db.Exec(fmt.Sprintf(
 		"ALTER TABLE `%s` ADD CONSTRAINT fk_%s_team_id FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE",
 		cfg.table, cfg.table,
-	)).Error; err != nil {
-		return err
-	}
-
-	return nil
+	)).Error
 }
 
-func addTeamIdToAllTablesDown(db *gorm.DB) error {
+func addTeamIDToAllTablesDown(db *gorm.DB) error {
 	// Revert NOT NULL on existing tables
 	for _, table := range existingNullableTables {
 		db.Exec(fmt.Sprintf("ALTER TABLE `%s` MODIFY COLUMN team_id CHAR(26) NULL", table))
