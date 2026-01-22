@@ -9,10 +9,9 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/modules/server/tasks/templates"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	pkgtemplates "github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
 
 const (
@@ -83,11 +82,11 @@ func ProvisionFreshServer(config ProvisionFreshServerConfig) *ProvisionFreshServ
 
 	// 1. Shell defaults and common functions (like Laravel's @include)
 	scriptBuilder.WriteString("#!/bin/bash\n")
-	scriptBuilder.WriteString(pkgtemplates.ShellDefaults())
+	scriptBuilder.WriteString(templates.ShellDefaults())
 	scriptBuilder.WriteString("\n\n")
-	scriptBuilder.WriteString(pkgtemplates.CommonFunctions())
+	scriptBuilder.WriteString(templates.CommonFunctions())
 	scriptBuilder.WriteString("\n\n")
-	scriptBuilder.WriteString(pkgtemplates.AptFunctions())
+	scriptBuilder.WriteString(templates.AptFunctions())
 	scriptBuilder.WriteString("\n\n")
 
 	// Calculate swap settings (system-level)
@@ -324,7 +323,7 @@ func (s provisionCallbackData) NewTask() taskrunner.CallbackHandler {
 // renderProvisionStep renders the appropriate template for a provision step
 func renderProvisionStep(step types.ProvisionStep, config ProvisionFreshServerConfig, swapInMB, swappiness int) string {
 	data := buildProvisionStepData(step, config, swapInMB, swappiness)
-	return templates.MustRender(step.TemplateName(), data)
+	return templates.MustRender("server", step.TemplateName(), data)
 }
 
 // buildProvisionStepData builds the template data for a provision step
@@ -374,7 +373,7 @@ func buildProvisionStepData(step types.ProvisionStep, config ProvisionFreshServe
 // renderSoftwareInstall renders the appropriate template for software installation
 func renderSoftwareInstall(software types.Software, config ProvisionFreshServerConfig) string {
 	data := buildSoftwareInstallData(software, config)
-	return templates.MustRender(software.InstallTemplateName(), data)
+	return templates.MustRender("server", software.InstallTemplateName(), data)
 }
 
 // buildSoftwareInstallData builds the template data for software installation

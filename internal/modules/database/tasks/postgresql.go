@@ -1,8 +1,8 @@
 package tasks
 
 import (
-	"github.com/kkz6/launch-go/internal/modules/database/tasks/templates"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
 
 // PostgreSQLCreateDatabaseConfig holds configuration for creating a PostgreSQL database
@@ -13,7 +13,7 @@ type PostgreSQLCreateDatabaseConfig struct {
 
 // PostgreSQLCreateDatabase creates a task to create a PostgreSQL database
 func PostgreSQLCreateDatabase(config PostgreSQLCreateDatabaseConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("postgresql/create_database.sh", config)
+	script := templates.MustRender("database", "postgresql/create_database.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Create PostgreSQL Database"),
 		taskrunner.WithScript(script),
@@ -28,7 +28,7 @@ type PostgreSQLDropDatabaseConfig struct {
 
 // PostgreSQLDropDatabase creates a task to drop a PostgreSQL database
 func PostgreSQLDropDatabase(config PostgreSQLDropDatabaseConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("postgresql/drop_database.sh", config)
+	script := templates.MustRender("database", "postgresql/drop_database.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Drop PostgreSQL Database"),
 		taskrunner.WithScript(script),
@@ -44,7 +44,7 @@ type PostgreSQLCreateUserConfig struct {
 
 // PostgreSQLCreateUser creates a task to create a PostgreSQL user
 func PostgreSQLCreateUser(config PostgreSQLCreateUserConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("postgresql/create_user.sh", config)
+	script := templates.MustRender("database", "postgresql/create_user.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Create PostgreSQL User"),
 		taskrunner.WithScript(script),
@@ -59,7 +59,7 @@ type PostgreSQLDropUserConfig struct {
 
 // PostgreSQLDropUser creates a task to drop a PostgreSQL user
 func PostgreSQLDropUser(config PostgreSQLDropUserConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("postgresql/drop_user.sh", config)
+	script := templates.MustRender("database", "postgresql/drop_user.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Drop PostgreSQL User"),
 		taskrunner.WithScript(script),
@@ -75,7 +75,7 @@ type PostgreSQLGrantPrivilegesConfig struct {
 
 // PostgreSQLGrantPrivileges creates a task to grant privileges to a PostgreSQL user
 func PostgreSQLGrantPrivileges(config PostgreSQLGrantPrivilegesConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("postgresql/grant_privileges.sh", config)
+	script := templates.MustRender("database", "postgresql/grant_privileges.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Grant PostgreSQL Privileges"),
 		taskrunner.WithScript(script),
@@ -91,7 +91,7 @@ type PostgreSQLRevokePrivilegesConfig struct {
 
 // PostgreSQLRevokePrivileges creates a task to revoke privileges from a PostgreSQL user
 func PostgreSQLRevokePrivileges(config PostgreSQLRevokePrivilegesConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("postgresql/revoke_privileges.sh", config)
+	script := templates.MustRender("database", "postgresql/revoke_privileges.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Revoke PostgreSQL Privileges"),
 		taskrunner.WithScript(script),
@@ -107,7 +107,7 @@ type PostgreSQLUpdatePasswordConfig struct {
 
 // PostgreSQLUpdatePassword creates a task to update a PostgreSQL user's password
 func PostgreSQLUpdatePassword(config PostgreSQLUpdatePasswordConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("postgresql/update_password.sh", config)
+	script := templates.MustRender("database", "postgresql/update_password.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Update PostgreSQL Password"),
 		taskrunner.WithScript(script),
@@ -117,7 +117,7 @@ func PostgreSQLUpdatePassword(config PostgreSQLUpdatePasswordConfig) *taskrunner
 
 // PostgreSQLGetDatabases creates a task to list all PostgreSQL databases
 func PostgreSQLGetDatabases() *taskrunner.BaseTask {
-	script := templates.MustRender("postgresql/get_databases.sh", nil)
+	script := templates.MustRender("database", "postgresql/get_databases.sh", nil)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get PostgreSQL Databases"),
 		taskrunner.WithScript(script),
@@ -127,7 +127,7 @@ func PostgreSQLGetDatabases() *taskrunner.BaseTask {
 
 // PostgreSQLGetUsers creates a task to list all PostgreSQL users
 func PostgreSQLGetUsers() *taskrunner.BaseTask {
-	script := templates.MustRender("postgresql/get_users.sh", nil)
+	script := templates.MustRender("database", "postgresql/get_users.sh", nil)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get PostgreSQL Users"),
 		taskrunner.WithScript(script),
@@ -142,7 +142,7 @@ type PostgreSQLGetTablesConfig struct {
 
 // PostgreSQLGetTables creates a task to list all tables in a PostgreSQL database
 func PostgreSQLGetTables(config PostgreSQLGetTablesConfig) *taskrunner.BaseTask {
-	script := templates.MustRender("postgresql/get_tables.sh", config)
+	script := templates.MustRender("database", "postgresql/get_tables.sh", config)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get PostgreSQL Tables"),
 		taskrunner.WithScript(script),

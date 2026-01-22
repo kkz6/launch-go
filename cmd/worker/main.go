@@ -20,13 +20,17 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/queue"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 	"github.com/kkz6/launch-go/internal/pkg/websocket"
 )
 
 func main() {
+	// Register all script templates at startup
+	templates.MustRegisterAll()
+
 	// Load configuration
 	cfg, err := config.Load()
 	if err != nil {
