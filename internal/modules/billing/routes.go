@@ -41,12 +41,12 @@ func (m *Module) registerSubscriptionRoutes(router fiber.Router, authMiddleware 
 // RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
 func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 	deps := m.Deps()
-	webhookHandler := handlers.NewWebhookHandler(m.repos, m.service, deps.Config.Billing.WebhookSecret, deps.Logger)
+	webhookHandler := handlers.NewWebhookHandler(m.service, m.webhookService, deps.Config.Billing.WebhookSecret, deps.Logger)
 
-	m.registerWebhookRoutes(router, webhookHandler)
+	m.setupWebhookRoutes(router, webhookHandler)
 }
 
-// registerWebhookRoutes registers Lemon Squeezy webhook routes
-func (m *Module) registerWebhookRoutes(router fiber.Router, handler *handlers.WebhookHandler) {
+// setupWebhookRoutes registers Lemon Squeezy webhook routes
+func (m *Module) setupWebhookRoutes(router fiber.Router, handler *handlers.WebhookHandler) {
 	router.Post("/webhooks/lemon-squeezy", handler.HandleWebhook)
 }

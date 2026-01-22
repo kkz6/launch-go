@@ -72,3 +72,5 @@ func (r *DaemonRepository) UpdateStatus(ctx context.Context, id string, running 
 func (r *DaemonRepository) MarkInstalled(ctx context.Context, id string) error {
 	return r.MarkAsInstalled(ctx, id)
 }
+
+// Note: MarkInstallationFailed and MarkUninstallationFailed are inherited from repository.Installable

@@ -7,8 +7,8 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeAddSSHKey = "server:add_ssh_key"
@@ -59,7 +59,7 @@ func (j *AddSSHKeyJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	activity.LogWithLog(ctx, j.Ctx.DB(), "server", "added", "", sshKey, "SSH key was added to server")
+	activity.RecordWithLog(ctx, "server", "added", "", sshKey, "SSH key was added to server")
 
 	j.Ctx.LogInfo("SSH key added successfully",
 		"key_id", sshKey.ID,

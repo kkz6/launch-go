@@ -7,6 +7,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -193,4 +194,43 @@ func (r *SiteRepository) FindByRepositoryAndBranch(ctx context.Context, repoName
 		Find(&sites).Error
 
 	return sites, err
+}
+
+// CreateWithActivity creates a site and logs the activity in a single transaction
+func (r *SiteRepository) CreateWithActivity(ctx context.Context, site *models.Site, userID string) error {
+	return r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(site).Error; err != nil {
+			return err
+		}
+
+		// Log activity within the same transaction using activity.LogCreated
+		_, err := activity.LogCreated(ctx, tx, userID, site, "Site was created")
+		return err
+	})
+}
+
+// SourceControlExists checks if a source control with the given ID exists
+func (r *SiteRepository) SourceControlExists(ctx context.Context, sourceControlID string) (bool, error) {
+	var count int64
+	err := r.DB.WithContext(ctx).
+		Table("source_controls").
+		Where("id = ?", sourceControlID).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// SourceControlRepositoryExists checks if a source control repository with the given ID exists
+func (r *SiteRepository) SourceControlRepositoryExists(ctx context.Context, repositoryID string) (bool, error) {
+	var count int64
+	err := r.DB.WithContext(ctx).
+		Table("source_control_repositories").
+		Where("id = ?", repositoryID).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
 }

@@ -7,8 +7,8 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeRebootServer = "server:reboot"
@@ -48,7 +48,7 @@ func (j *RebootServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "rebooted", j.Payload.UserID, server, "Server reboot was initiated")
+	activity.RecordWithLogPtr(ctx, "server", "rebooted", j.Payload.UserID, server, "Server reboot was initiated")
 
 	j.Ctx.LogInfo("Server reboot initiated",
 		"server_id", server.ID,

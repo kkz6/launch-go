@@ -12,7 +12,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 const TypeSyncDatabases = "database:sync"
@@ -49,11 +48,7 @@ func NewSyncDatabasesJob(ctx *JobContext, payload SyncDatabasesPayload) *SyncDat
 func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 	j.Ctx.LogInfo("Syncing databases from server", "server_id", j.Payload.ServerID)
 
-	server, err := repository.NewQuery[servermodels.Server](ctx, j.Ctx.DB()).
-		WithModel("Server").
-		Preload("Services").
-		FindByID(j.Payload.ServerID).
-		FirstOrFail()
+	server, err := j.Ctx.GetServerWithServices(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -87,9 +82,7 @@ func (j *SyncDatabasesJob) Handle(ctx context.Context) error {
 		"user_databases", len(userDatabases),
 	)
 
-	existingDatabases, err := repository.NewQuery[dbmodels.Database](ctx, j.Ctx.DB()).
-		Where("server_id = ?", j.Payload.ServerID).
-		All()
+	existingDatabases, err := j.Ctx.Repos().Database().FindByServer(ctx, j.Payload.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to get existing databases: %w", err)
 	}
@@ -171,7 +164,7 @@ func (j *SyncDatabasesJob) getDatabasesFromServer(ctx context.Context, server *s
 func (j *SyncDatabasesJob) Failed(ctx context.Context, err error) {
 	j.Ctx.LogError(err, "Failed to sync databases", "server_id", j.Payload.ServerID)
 
-	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), j.Payload.ServerID)
+	server, findErr := j.Ctx.GetServer(ctx, j.Payload.ServerID)
 	if findErr != nil {
 		return
 	}

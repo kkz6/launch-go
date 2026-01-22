@@ -3,13 +3,12 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeUninstallCron = "server:uninstall_cron"
@@ -52,7 +51,7 @@ func (j *UninstallCronJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "uninstalled", j.Payload.UserID, cron, "Cron job was uninstalled")
+	activity.RecordWithLogPtr(ctx, "server", "uninstalled", j.Payload.UserID, cron, "Cron job was uninstalled")
 
 	// Delete the cron record
 	if err := j.Ctx.Repos().Cron().Delete(ctx, cron.ID); err != nil {
@@ -81,13 +80,8 @@ func (j *UninstallCronJob) Failed(ctx context.Context, err error) {
 	)
 
 	// Mark uninstallation as failed
-	cron, findErr := j.Ctx.Repos().Cron().FindByID(ctx, j.Payload.CronID)
-	if findErr == nil && cron != nil {
-		now := time.Now()
-		j.Ctx.DB().Model(cron).Updates(map[string]any{
-			"uninstallation_requested_at": nil,
-			"uninstallation_failed_at":    &now,
-		})
+	if markErr := j.Ctx.Repos().Cron().MarkUninstallationFailed(ctx, j.Payload.CronID); markErr != nil {
+		j.Ctx.LogError(markErr, "Failed to mark cron uninstallation as failed")
 	}
 }
 

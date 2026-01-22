@@ -92,6 +92,14 @@ func (r *SubscriptionRepository) UpdateStatus(ctx context.Context, id string, st
 		Update("status", status).Error
 }
 
+// UpdateStatusByLemonSqueezyID updates only the status of a subscription by LemonSqueezy ID
+func (r *SubscriptionRepository) UpdateStatusByLemonSqueezyID(ctx context.Context, lemonSqueezyID string, status enums.SubscriptionStatus) error {
+	return r.DB.WithContext(ctx).
+		Model(&models.Subscription{}).
+		Where("lemon_squeezy_id = ?", lemonSqueezyID).
+		Update("status", status).Error
+}
+
 // UpdateFields updates specific fields of a subscription
 func (r *SubscriptionRepository) UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error {
 	return r.DB.WithContext(ctx).

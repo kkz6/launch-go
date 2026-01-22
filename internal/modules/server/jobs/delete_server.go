@@ -8,8 +8,8 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeDeleteServer = "server:delete"
@@ -88,7 +88,7 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "deleted", j.Payload.UserID, server, "Server was deleted")
+	activity.RecordWithLogPtr(ctx, "server", "deleted", j.Payload.UserID, server, "Server was deleted")
 
 	j.Ctx.LogInfo("Server deleted successfully",
 		"server_id", server.ID,

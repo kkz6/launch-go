@@ -7,8 +7,8 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeInstallFirewallRule = "server:install_firewall_rule"
@@ -63,7 +63,7 @@ func (j *InstallFirewallRuleJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "installed", j.Payload.UserID, rule, "Firewall rule was installed")
+	activity.RecordWithLogPtr(ctx, "server", "installed", j.Payload.UserID, rule, "Firewall rule was installed")
 
 	j.Ctx.LogInfo("Firewall rule installed successfully",
 		"rule_id", rule.ID,

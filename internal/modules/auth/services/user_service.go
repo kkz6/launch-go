@@ -8,8 +8,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	apperrors "github.com/kkz6/launch-go/internal/pkg/errors"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
@@ -72,7 +72,7 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID string, req *dto
 		return nil, err
 	}
 
-	activity.LogWithLog(ctx, s.repos.DB(), "auth", "updated", userID, user, "User profile was updated")
+	activity.RecordWithLog(ctx, "auth", "updated", userID, user, "User profile was updated")
 
 	return user, nil
 }
@@ -103,7 +103,7 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dt
 		return err
 	}
 
-	activity.LogWithLog(ctx, s.repos.DB(), "auth", "password_changed", userID, user, "User password was changed")
+	activity.RecordWithLog(ctx, "auth", "password_changed", userID, user, "User password was changed")
 
 	return nil
 }
@@ -119,7 +119,7 @@ func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
 		return apperrors.ErrNotFound
 	}
 
-	activity.LogWithLog(ctx, s.repos.DB(), "auth", "deleted", userID, user, "User account was deleted")
+	activity.RecordWithLog(ctx, "auth", "deleted", userID, user, "User account was deleted")
 
 	// Delete owned teams
 	ownedTeams, err := s.repos.Team().GetUserTeams(ctx, userID)

@@ -3,13 +3,12 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeInstallDaemon = "server:install_daemon"
@@ -67,7 +66,7 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "installed", j.Payload.UserID, daemon, "Daemon was installed")
+	activity.RecordWithLogPtr(ctx, "server", "installed", j.Payload.UserID, daemon, "Daemon was installed")
 
 	j.Ctx.LogInfo("Daemon installed successfully",
 		"daemon_id", daemon.ID,
@@ -89,13 +88,9 @@ func (j *InstallDaemonJob) Failed(ctx context.Context, err error) {
 		"server_id", j.Payload.ServerID,
 	)
 
-	daemon, findErr := j.Ctx.Repos().Daemon().FindByID(ctx, j.Payload.DaemonID)
-	if findErr == nil && daemon != nil {
-		now := time.Now()
-		j.Ctx.DB().Model(daemon).Updates(map[string]any{
-			"installed_at":           nil,
-			"installation_failed_at": &now,
-		})
+	// Mark installation as failed
+	if markErr := j.Ctx.Repos().Daemon().MarkInstallationFailed(ctx, j.Payload.DaemonID); markErr != nil {
+		j.Ctx.LogError(markErr, "Failed to mark daemon installation as failed")
 	}
 }
 

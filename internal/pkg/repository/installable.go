@@ -55,6 +55,17 @@ func (r *Installable[T]) MarkAsFailed(ctx context.Context, id string) error {
 	})
 }
 
+// MarkInstallationFailed marks a record's installation as failed and clears installed_at.
+// Use this when an installation fails to ensure both the failure timestamp is set
+// and the installed_at is cleared (in case of partial installation).
+func (r *Installable[T]) MarkInstallationFailed(ctx context.Context, id string) error {
+	now := time.Now()
+	return r.UpdateFields(ctx, id, map[string]interface{}{
+		"installed_at":           nil,
+		"installation_failed_at": &now,
+	})
+}
+
 // MarkAsUninstalling marks a record as being uninstalled
 func (r *Installable[T]) MarkAsUninstalling(ctx context.Context, id string) error {
 	now := time.Now()
@@ -63,11 +74,13 @@ func (r *Installable[T]) MarkAsUninstalling(ctx context.Context, id string) erro
 	})
 }
 
-// MarkUninstallationFailed marks a record's uninstallation as failed
+// MarkUninstallationFailed marks a record's uninstallation as failed and clears uninstallation_requested_at.
+// Use this when an uninstallation fails to reset the state for potential retry.
 func (r *Installable[T]) MarkUninstallationFailed(ctx context.Context, id string) error {
 	now := time.Now()
 	return r.UpdateFields(ctx, id, map[string]interface{}{
-		"uninstallation_failed_at": now,
+		"uninstallation_requested_at": nil,
+		"uninstallation_failed_at":    &now,
 	})
 }
 

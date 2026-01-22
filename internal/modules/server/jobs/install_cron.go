@@ -3,13 +3,12 @@ package jobs
 import (
 	"context"
 	"fmt"
-	"time"
 
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeInstallCron = "server:install_cron"
@@ -56,7 +55,7 @@ func (j *InstallCronJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "installed", j.Payload.UserID, cron, "Cron job was installed")
+	activity.RecordWithLogPtr(ctx, "server", "installed", j.Payload.UserID, cron, "Cron job was installed")
 
 	j.Ctx.LogInfo("Cron installed successfully",
 		"cron_id", cron.ID,
@@ -78,13 +77,9 @@ func (j *InstallCronJob) Failed(ctx context.Context, err error) {
 		"server_id", j.Payload.ServerID,
 	)
 
-	cron, findErr := j.Ctx.Repos().Cron().FindByID(ctx, j.Payload.CronID)
-	if findErr == nil && cron != nil {
-		now := time.Now()
-		j.Ctx.DB().Model(cron).Updates(map[string]any{
-			"installed_at":           nil,
-			"installation_failed_at": &now,
-		})
+	// Mark installation as failed
+	if markErr := j.Ctx.Repos().Cron().MarkInstallationFailed(ctx, j.Payload.CronID); markErr != nil {
+		j.Ctx.LogError(markErr, "Failed to mark cron installation as failed")
 	}
 }
 

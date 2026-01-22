@@ -19,6 +19,7 @@ type SubscriptionRepository interface {
 	FindActiveByTeam(ctx context.Context, teamID string) (*models.Subscription, error)
 	Update(ctx context.Context, subscription *models.Subscription) error
 	UpdateStatus(ctx context.Context, id string, status enums.SubscriptionStatus) error
+	UpdateStatusByLemonSqueezyID(ctx context.Context, lemonSqueezyID string, status enums.SubscriptionStatus) error
 	UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error
 	Delete(ctx context.Context, id string) error
 	CountActiveByTeam(ctx context.Context, teamID string) (int64, error)

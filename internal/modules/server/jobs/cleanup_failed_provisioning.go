@@ -8,8 +8,8 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeCleanupFailedProvisioning = "server:cleanup_failed_provisioning"
@@ -81,7 +81,7 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity
-	activity.LogWithLogAndPropsPtr(ctx, j.Ctx.DB(), "server", "provisioning_failed", j.Payload.UserID, server, "Server provisioning failed and resources were cleaned up", map[string]any{
+	activity.RecordWithLogAndPropsPtr(ctx, "server", "provisioning_failed", j.Payload.UserID, server, "Server provisioning failed and resources were cleaned up", map[string]any{
 		"reason": j.Payload.Reason,
 	})
 

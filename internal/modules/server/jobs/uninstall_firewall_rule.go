@@ -7,8 +7,8 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeUninstallFirewall = "server:uninstall_firewall_rule"
@@ -58,7 +58,7 @@ func (j *UninstallFirewallRuleJob) Handle(ctx context.Context) error {
 	}
 
 	// Log activity before deletion
-	activity.LogWithLogPtr(ctx, j.Ctx.DB(), "server", "uninstalled", j.Payload.UserID, rule, "Firewall rule was uninstalled")
+	activity.RecordWithLogPtr(ctx, "server", "uninstalled", j.Payload.UserID, rule, "Firewall rule was uninstalled")
 
 	// Delete the rule record
 	if err := j.Ctx.Repos().FirewallRule().Delete(ctx, rule.ID); err != nil {

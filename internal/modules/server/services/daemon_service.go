@@ -60,7 +60,7 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 		return nil, err
 	}
 
-	activity.LogWithLog(ctx, s.repos.DB(), "server", "created", "", daemon, "Daemon was created")
+	activity.RecordWithLog(ctx, "server", "created", "", daemon, "Daemon was created")
 
 	if server.IsProvisioned() {
 		if err := s.dispatchDaemonInstallJob(server, daemon); err != nil {
@@ -110,7 +110,7 @@ func (s *Service) UpdateDaemon(ctx context.Context, serverID, teamID, daemonID s
 		return nil, err
 	}
 
-	activity.LogWithLog(ctx, s.repos.DB(), "server", "updated", "", daemon, "Daemon was updated")
+	activity.RecordWithLog(ctx, "server", "updated", "", daemon, "Daemon was updated")
 
 	return daemon, nil
 }
@@ -127,7 +127,7 @@ func (s *Service) DeleteDaemon(ctx context.Context, serverID, teamID, daemonID s
 		return err
 	}
 
-	activity.LogWithLog(ctx, s.repos.DB(), "server", "deleted", "", daemon, "Daemon deletion requested")
+	activity.RecordWithLog(ctx, "server", "deleted", "", daemon, "Daemon deletion requested")
 
 	if daemon.IsInstalled() && server.IsProvisioned() {
 		now := time.Now()
@@ -188,7 +188,7 @@ func (s *Service) RestartDaemon(ctx context.Context, serverID, teamID, daemonID 
 		return ErrDaemonNotInstalled
 	}
 
-	activity.LogWithLog(ctx, s.repos.DB(), "server", "restarting", "", daemon, "Daemon restart requested")
+	activity.RecordWithLog(ctx, "server", "restarting", "", daemon, "Daemon restart requested")
 
 	task, err := jobs.NewRestartDaemonTask(server.ID, daemon.ID, userID)
 	if err != nil {

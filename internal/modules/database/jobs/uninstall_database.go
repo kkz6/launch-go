@@ -6,13 +6,9 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/modules/database/tasks"
-	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
-	pkgmodels "github.com/kkz6/launch-go/internal/pkg/models"
-	"github.com/kkz6/launch-go/internal/pkg/repository"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 const TypeUninstallDatabase = "database:uninstall"
@@ -25,7 +21,6 @@ type UninstallDatabasePayload struct {
 
 type UninstallDatabaseJob struct {
 	pkgjobs.BaseJob[*JobContext, UninstallDatabasePayload]
-	pkgmodels.UninstallationTracker
 }
 
 func NewUninstallDatabaseJob(ctx *JobContext, payload UninstallDatabasePayload) *UninstallDatabaseJob {
@@ -37,12 +32,12 @@ func NewUninstallDatabaseJob(ctx *JobContext, payload UninstallDatabasePayload) 
 func (j *UninstallDatabaseJob) Handle(ctx context.Context) error {
 	j.Ctx.LogInfo("Uninstalling database", "database_id", j.Payload.DatabaseID)
 
-	database, err := repository.Find[models.Database](ctx, j.Ctx.DB(), j.Payload.DatabaseID)
+	database, err := j.Ctx.Repos().Database().FindByID(ctx, j.Payload.DatabaseID)
 	if err != nil {
 		return fmt.Errorf("failed to find database: %w", err)
 	}
 
-	server, err := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), database.ServerID)
+	server, err := j.Ctx.GetServer(ctx, database.ServerID)
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
@@ -67,9 +62,9 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context) error {
 		j.Ctx.LogInfo("Database drop completed with errors", "output", result.GetOutput())
 	}
 
-	activity.LogEventPtr(ctx, j.Ctx.DB(), "uninstalled", j.Payload.UserID, database, "Database was uninstalled")
+	activity.RecordEventPtr(ctx, "uninstalled", j.Payload.UserID, database, "Database was uninstalled")
 
-	if err := j.MarkAsUninstalled(j.Ctx.DB(), database); err != nil {
+	if err := j.Ctx.Repos().Database().Delete(ctx, database.ID); err != nil {
 		return fmt.Errorf("failed to delete database record: %w", err)
 	}
 
@@ -81,12 +76,12 @@ func (j *UninstallDatabaseJob) Handle(ctx context.Context) error {
 func (j *UninstallDatabaseJob) Failed(ctx context.Context, err error) {
 	j.Ctx.LogError(err, "Failed to uninstall database", "database_id", j.Payload.DatabaseID)
 
-	database, findErr := repository.Find[models.Database](ctx, j.Ctx.DB(), j.Payload.DatabaseID)
+	database, findErr := j.Ctx.Repos().Database().FindByID(ctx, j.Payload.DatabaseID)
 	if findErr != nil {
 		return
 	}
 
-	server, findErr := repository.Find[servermodels.Server](ctx, j.Ctx.DB(), database.ServerID)
+	server, findErr := j.Ctx.GetServer(ctx, database.ServerID)
 	if findErr != nil {
 		return
 	}

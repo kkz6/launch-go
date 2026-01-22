@@ -121,7 +121,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 		return nil, fmt.Errorf("failed to create server: %w", err)
 	}
 
-	activity.LogCreated(ctx, s.repos.DB(), userID, server, "Server was created")
+	activity.RecordCreated(ctx, userID, server, "Server was created")
 
 	if provider != enums.ProviderCustom {
 		if err := s.dispatchCreateOnProviderJob(server, req.CredentialID, req.SSHKeyIDs); err != nil {
@@ -159,7 +159,7 @@ func (s *Service) UpdateServer(ctx context.Context, id, teamID string, req *dto.
 		return nil, err
 	}
 
-	activity.LogEvent(ctx, s.repos.DB(), "updated", "", server, "Server was updated")
+	activity.RecordEvent(ctx, "updated", "", server, "Server was updated")
 
 	s.broadcastServerUpdate(server)
 
@@ -173,7 +173,7 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID string) error {
 		return err
 	}
 
-	activity.LogEvent(ctx, s.repos.DB(), "deleted", "", server, "Server deletion requested")
+	activity.RecordEvent(ctx, "deleted", "", server, "Server deletion requested")
 
 	if err := s.repos.Server().UpdateStatus(ctx, id, enums.ServerStatusDeleting); err != nil {
 		return err
@@ -465,7 +465,7 @@ func (s *Service) RunVulnerabilityAudit(ctx context.Context, serverID, teamID, u
 		return err
 	}
 
-	activity.LogEvent(ctx, s.repos.DB(), "vulnerability_audit_started", userID, server, "Vulnerability audit was initiated")
+	activity.RecordEvent(ctx, "vulnerability_audit_started", userID, server, "Vulnerability audit was initiated")
 
 	return s.EnqueueTask(task)
 }

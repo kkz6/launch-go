@@ -23,6 +23,7 @@ type Service struct {
 	twoFactor         *TwoFactorService
 	team              *TeamService
 	teamMember        *TeamMemberService
+	passkey           *PasskeyService
 }
 
 // NewService creates a new Service instance
@@ -38,6 +39,7 @@ func NewService(repos *repositories.Registry, cfg *config.Config, logger *zerolo
 		twoFactor:         NewTwoFactorService(repos, cfg),
 		team:              NewTeamService(repos),
 		teamMember:        NewTeamMemberService(repos),
+		passkey:           NewPasskeyService(repos),
 	}
 }
 
@@ -209,6 +211,24 @@ func (s *Service) GetAllTeamMembers(ctx context.Context, teamID string) ([]dto.T
 
 func (s *Service) GetTeamInvitations(ctx context.Context, teamID string) ([]models.TeamInvitation, error) {
 	return s.teamMember.GetTeamInvitations(ctx, teamID)
+}
+
+// Passkey Service Methods
+
+func (s *Service) GetUserPasskeys(ctx context.Context, userID string) ([]models.Passkey, error) {
+	return s.passkey.GetUserPasskeys(ctx, userID)
+}
+
+func (s *Service) GetPasskey(ctx context.Context, passkeyID string) (*models.Passkey, error) {
+	return s.passkey.GetPasskey(ctx, passkeyID)
+}
+
+func (s *Service) UpdatePasskeyName(ctx context.Context, passkeyID, userID, name string) error {
+	return s.passkey.UpdatePasskeyName(ctx, passkeyID, userID, name)
+}
+
+func (s *Service) DeletePasskey(ctx context.Context, passkeyID, userID string) error {
+	return s.passkey.DeletePasskey(ctx, passkeyID, userID)
 }
 
 // Repos returns the repository registry
