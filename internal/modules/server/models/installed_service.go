@@ -67,7 +67,7 @@ func (s *InstalledService) GetServiceName() string {
 	case types.ServiceTypeSupervisor:
 		return "supervisor"
 	case types.ServiceTypePhp:
-		return types.PhpFpmServiceFromVersion(s.Version)
+		return types.PhpFPMServiceFromVersion(s.Version)
 	case types.ServiceTypeLaunchAgent:
 		return "launch-agent"
 	default:

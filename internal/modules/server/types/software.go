@@ -11,8 +11,8 @@ type Software string
 const (
 	SoftwareCaddy2       Software = "caddy2"
 	SoftwareComposer2    Software = "composer2"
-	SoftwareMySql80      Software = "mysql80"
-	SoftwarePostgreSql16 Software = "postgresql16"
+	SoftwareMySQL80      Software = "mysql80"
+	SoftwarePostgreSQL16 Software = "postgresql16"
 	SoftwareNode21       Software = "node21"
 	SoftwareBun          Software = "bun"
 	SoftwarePhp56        Software = "php56"
@@ -39,8 +39,8 @@ func (s Software) Label() string {
 	labels := map[Software]string{
 		SoftwareCaddy2:       "Caddy 2",
 		SoftwareComposer2:    "Composer 2",
-		SoftwareMySql80:      "MySQL 8.0",
-		SoftwarePostgreSql16: "PostgreSQL 16",
+		SoftwareMySQL80:      "MySQL 8.0",
+		SoftwarePostgreSQL16: "PostgreSQL 16",
 		SoftwareNode21:       "Node 21",
 		SoftwareBun:          "Bun",
 		SoftwarePhp56:        "PHP 5.6",
@@ -67,7 +67,7 @@ func (s Software) Label() string {
 
 func (s Software) IsValid() bool {
 	switch s {
-	case SoftwareCaddy2, SoftwareComposer2, SoftwareMySql80, SoftwarePostgreSql16,
+	case SoftwareCaddy2, SoftwareComposer2, SoftwareMySQL80, SoftwarePostgreSQL16,
 		SoftwareNode21, SoftwareBun, SoftwarePhp56, SoftwarePhp70, SoftwarePhp71,
 		SoftwarePhp72, SoftwarePhp73, SoftwarePhp74, SoftwarePhp80, SoftwarePhp81,
 		SoftwarePhp82, SoftwarePhp83, SoftwarePhp84, SoftwareRedis, SoftwareSupervisor,
@@ -91,8 +91,8 @@ func (s Software) GetVersion() string {
 		SoftwarePhp82:        "8.2",
 		SoftwarePhp83:        "8.3",
 		SoftwarePhp84:        "8.4",
-		SoftwareMySql80:      "8.0",
-		SoftwarePostgreSql16: "16",
+		SoftwareMySQL80:      "8.0",
+		SoftwarePostgreSQL16: "16",
 		SoftwareSupervisor:   "latest",
 		SoftwareComposer2:    "2.0",
 		SoftwareCaddy2:       "2.0",
@@ -114,9 +114,9 @@ func (s Software) GetServiceType() ServiceType {
 		SoftwarePhp73, SoftwarePhp74, SoftwarePhp80, SoftwarePhp81,
 		SoftwarePhp82, SoftwarePhp83, SoftwarePhp84:
 		return ServiceTypePhp
-	case SoftwareMySql80:
+	case SoftwareMySQL80:
 		return ServiceTypeMySQL
-	case SoftwarePostgreSql16:
+	case SoftwarePostgreSQL16:
 		return ServiceTypePostgreSQL
 	case SoftwareSupervisor:
 		return ServiceTypeSupervisor
@@ -149,7 +149,7 @@ func (s Software) IsPhp() bool {
 }
 
 func (s Software) IsDatabase() bool {
-	return s == SoftwareMySql80 || s == SoftwarePostgreSql16
+	return s == SoftwareMySQL80 || s == SoftwarePostgreSQL16
 }
 
 func (s Software) Group() string {
@@ -158,9 +158,9 @@ func (s Software) Group() string {
 		SoftwarePhp73, SoftwarePhp74, SoftwarePhp80, SoftwarePhp81,
 		SoftwarePhp82, SoftwarePhp83, SoftwarePhp84:
 		return "php"
-	case SoftwareMySql80:
+	case SoftwareMySQL80:
 		return "mysql"
-	case SoftwarePostgreSql16:
+	case SoftwarePostgreSQL16:
 		return "postgresql"
 	case SoftwareSupervisor:
 		return "supervisor"
@@ -213,7 +213,7 @@ func ParseSoftware(str string) (Software, error) {
 
 func AllSoftware() []Software {
 	return []Software{
-		SoftwareCaddy2, SoftwareComposer2, SoftwareMySql80, SoftwarePostgreSql16,
+		SoftwareCaddy2, SoftwareComposer2, SoftwareMySQL80, SoftwarePostgreSQL16,
 		SoftwareNode21, SoftwareBun, SoftwarePhp56, SoftwarePhp70, SoftwarePhp71,
 		SoftwarePhp72, SoftwarePhp73, SoftwarePhp74, SoftwarePhp80, SoftwarePhp81,
 		SoftwarePhp82, SoftwarePhp83, SoftwarePhp84, SoftwareRedis, SoftwareSupervisor,
@@ -229,7 +229,7 @@ func AllPhpVersions() []Software {
 }
 
 func AllDatabaseTypes() []Software {
-	return []Software{SoftwareMySql80, SoftwarePostgreSql16}
+	return []Software{SoftwareMySQL80, SoftwarePostgreSQL16}
 }
 
 // SoftwareGroup represents a group of software with the same service type
@@ -266,7 +266,7 @@ func GetAllSoftwareGroups() []SoftwareGroup {
 			Label:      "MySQL",
 			Type:       ServiceTypeMySQL,
 			ImagePath:  "/images/software/mysql.svg",
-			Software:   []Software{SoftwareMySql80},
+			Software:   []Software{SoftwareMySQL80},
 			HasStart:   true,
 			HasStop:    true,
 			HasRestart: true,
@@ -278,7 +278,7 @@ func GetAllSoftwareGroups() []SoftwareGroup {
 			Label:      "PostgreSQL",
 			Type:       ServiceTypePostgreSQL,
 			ImagePath:  "/images/software/postgresql.svg",
-			Software:   []Software{SoftwarePostgreSql16},
+			Software:   []Software{SoftwarePostgreSQL16},
 			HasStart:   true,
 			HasStop:    true,
 			HasRestart: true,
@@ -339,8 +339,8 @@ func GetAllSoftwareGroups() []SoftwareGroup {
 // LogPath returns the log file path for the software
 func (s Software) LogPath() string {
 	paths := map[Software]string{
-		SoftwareMySql80:      "/var/log/mysql/error.log",
-		SoftwarePostgreSql16: "/var/log/postgresql/postgresql-16-main.log",
+		SoftwareMySQL80:      "/var/log/mysql/error.log",
+		SoftwarePostgreSQL16: "/var/log/postgresql/postgresql-16-main.log",
 		SoftwareRedis:        "/var/log/redis/redis-server.log",
 		SoftwarePhp56:        "/var/log/php5.6-fpm.log",
 		SoftwarePhp70:        "/var/log/php7.0-fpm.log",
@@ -379,8 +379,8 @@ func (s Software) InstallTemplateName() string {
 	templateNames := map[Software]string{
 		SoftwareCaddy2:       "software/install_caddy2.sh",
 		SoftwareComposer2:    "software/install_composer2.sh",
-		SoftwareMySql80:      "software/install_mysql80.sh",
-		SoftwarePostgreSql16: "software/install_postgresql16.sh",
+		SoftwareMySQL80:      "software/install_mysql80.sh",
+		SoftwarePostgreSQL16: "software/install_postgresql16.sh",
 		SoftwareNode21:       "software/install_node21.sh",
 		SoftwareBun:          "software/install_bun.sh",
 		SoftwareRedis:        "software/install_redis.sh",
@@ -408,9 +408,9 @@ func (s Software) RemoveTemplateName() string {
 // Returns "mysql" for MySQL and "pgsql" for PostgreSQL.
 func (s Software) ConnectionName() string {
 	switch s {
-	case SoftwareMySql80:
+	case SoftwareMySQL80:
 		return "mysql"
-	case SoftwarePostgreSql16:
+	case SoftwarePostgreSQL16:
 		return "pgsql"
 	default:
 		return ""
@@ -420,9 +420,9 @@ func (s Software) ConnectionName() string {
 // Port returns the default port for the database type.
 func (s Software) Port() string {
 	switch s {
-	case SoftwareMySql80:
+	case SoftwareMySQL80:
 		return "3306"
-	case SoftwarePostgreSql16:
+	case SoftwarePostgreSQL16:
 		return "5432"
 	default:
 		return ""
@@ -469,20 +469,20 @@ func (s Software) BinaryPath() string {
 	return ""
 }
 
-// FpmServiceName returns the PHP-FPM service name for the software.
+// FPMServiceName returns the PHP-FPM service name for the software.
 // For PHP versions, returns "php8.3-fpm", "php8.2-fpm", etc.
-func (s Software) FpmServiceName() string {
+func (s Software) FPMServiceName() string {
 	if s.IsPhp() {
 		return "php" + s.GetVersion() + "-fpm"
 	}
 	return ""
 }
 
-// PhpFpmServiceFromVersion returns the PHP-FPM service name from a version string or software name.
+// PhpFPMServiceFromVersion returns the PHP-FPM service name from a version string or software name.
 // Accepts both formats:
 //   - Version string: "8.3" returns "php8.3-fpm"
 //   - Software name: "php83" returns "php8.3-fpm"
-func PhpFpmServiceFromVersion(version string) string {
+func PhpFPMServiceFromVersion(version string) string {
 	if version == "" {
 		return ""
 	}
@@ -490,7 +490,7 @@ func PhpFpmServiceFromVersion(version string) string {
 	// Check if it's a software enum value like "php83"
 	software := Software(version)
 	if software.IsPhp() {
-		return software.FpmServiceName()
+		return software.FPMServiceName()
 	}
 
 	// Otherwise treat as version string like "8.3"

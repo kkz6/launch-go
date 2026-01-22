@@ -66,7 +66,7 @@ func TestProvisionFreshServer_WithMySQLAndPHP(t *testing.T) {
 			types.SoftwareCaddy2,
 			types.SoftwarePhp83,
 			types.SoftwareComposer2,
-			types.SoftwareMySql80,
+			types.SoftwareMySQL80,
 		},
 		DatabasePassword: "mysqlpassword",
 		DatabaseName:     "app_db",
@@ -101,7 +101,7 @@ func TestProvisionFreshServer_WithPostgreSQL(t *testing.T) {
 		SoftwareStack: []types.Software{
 			types.SoftwareCaddy2,
 			types.SoftwarePhp83,
-			types.SoftwarePostgreSql16,
+			types.SoftwarePostgreSQL16,
 		},
 		DatabasePassword: "pgpassword",
 		DatabaseName:     "app_db",

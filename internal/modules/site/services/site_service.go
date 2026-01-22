@@ -424,24 +424,24 @@ func (s *SiteService) getExistingDatabaseInfo(ctx context.Context, databaseID, s
 func (s *SiteService) getDatabaseTypeForServer(ctx context.Context, serverID string) servertypes.Software {
 	// Query installed services to find the database type
 	if s.serverReader == nil {
-		return servertypes.SoftwareMySql80 // Default to MySQL if we can't determine
+		return servertypes.SoftwareMySQL80 // Default to MySQL if we can't determine
 	}
 
 	services, err := s.serverReader.FindServicesByServer(ctx, serverID)
 	if err != nil {
-		return servertypes.SoftwareMySql80 // Default to MySQL if we can't determine
+		return servertypes.SoftwareMySQL80 // Default to MySQL if we can't determine
 	}
 
 	for _, service := range services {
 		if service.Type == servertypes.ServiceTypeMySQL {
-			return servertypes.SoftwareMySql80
+			return servertypes.SoftwareMySQL80
 		}
 		if service.Type == servertypes.ServiceTypePostgreSQL {
-			return servertypes.SoftwarePostgreSql16
+			return servertypes.SoftwarePostgreSQL16
 		}
 	}
 
-	return servertypes.SoftwareMySql80 // Default to MySQL
+	return servertypes.SoftwareMySQL80 // Default to MySQL
 }
 
 // handleSchedulerCreation creates a cron job for Laravel/WordPress scheduler
