@@ -37,3 +37,13 @@ type DashboardActivityResponse struct {
 type DashboardUserResponse struct {
 	Name string `json:"name"`
 }
+
+// OnboardingStatusResponse represents the onboarding status API response
+type OnboardingStatusResponse struct {
+	Onboarded              bool `json:"onboarded"`
+	HasServerProvider      bool `json:"has_server_provider"`
+	HasSourceControl       bool `json:"has_source_control"`
+	HasDomainProvider      bool `json:"has_domain_provider"`
+	HasStorageProvider     bool `json:"has_storage_provider"`
+	HasNotificationChannel bool `json:"has_notification_channel"`
+}

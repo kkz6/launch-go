@@ -73,6 +73,17 @@ func (r *StorageProviderRepository) FindStorageProvidersByTeamID(ctx context.Con
 	return providers, err
 }
 
+// FindByUserID finds all storage providers for a user
+func (r *StorageProviderRepository) FindByUserID(ctx context.Context, userID string) ([]models.StorageProvider, error) {
+	var providers []models.StorageProvider
+	err := r.DB.WithContext(ctx).
+		Where("user_id = ?", userID).
+		Order("created_at DESC").
+		Find(&providers).Error
+
+	return providers, err
+}
+
 // FindStorageProvidersByDriver finds all storage providers of a specific type
 func (r *StorageProviderRepository) FindStorageProvidersByDriver(ctx context.Context, driver backuptypes.StorageDriver) ([]models.StorageProvider, error) {
 	var providers []models.StorageProvider
