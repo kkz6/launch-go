@@ -8,9 +8,9 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
-	"github.com/kkz6/launch-go/internal/modules/auth/enums"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
@@ -45,7 +45,7 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 			return err
 		}
 
-		if member == nil || member.Role == nil || *member.Role != enums.TeamRoleAdmin.String() {
+		if member == nil || member.Role == nil || *member.Role != authtypes.TeamRoleAdmin.String() {
 			return fiberutil.Forbidden()
 		}
 	}
@@ -143,7 +143,7 @@ func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, te
 			return err
 		}
 
-		if member == nil || member.Role == nil || *member.Role != enums.TeamRoleAdmin.String() {
+		if member == nil || member.Role == nil || *member.Role != authtypes.TeamRoleAdmin.String() {
 			return fiberutil.Forbidden()
 		}
 	}

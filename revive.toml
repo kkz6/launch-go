@@ -41,6 +41,7 @@ enableAllRules = false
 # [rule.unused-parameter]  # Disabled - callback signatures often require unused params
 [rule.var-declaration]
 [rule.var-naming]
+  arguments = [[], [], [{skipPackageNameChecks = true}]]  # Skip package name checks - "types" is used for module-local type definitions
 
 # Additional useful rules
 [rule.atomic]
