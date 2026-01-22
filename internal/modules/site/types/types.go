@@ -773,8 +773,8 @@ func (p PhpVersion) BinaryPath() string {
 	return "php" + p.GetVersion()
 }
 
-// FpmServiceName returns the PHP-FPM service name (e.g., "php8.3-fpm")
-func (p PhpVersion) FpmServiceName() string {
+// FPMServiceName returns the PHP-FPM service name (e.g., "php8.3-fpm")
+func (p PhpVersion) FPMServiceName() string {
 	if !p.IsValid() {
 		return ""
 	}

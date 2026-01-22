@@ -69,8 +69,8 @@ type provisionCallbackData struct {
 	ServerIP   string `json:"server_ip"`
 }
 
-// provisionFreshServerTask implements Task and CallbackPayload interfaces
-type provisionFreshServerTask struct {
+// ProvisionFreshServerTask implements Task and CallbackPayload interfaces
+type ProvisionFreshServerTask struct {
 	*taskrunner.BaseTask
 	callback provisionCallbackData
 }
@@ -78,7 +78,7 @@ type provisionFreshServerTask struct {
 // ProvisionFreshServer creates a task that provisions a fresh server with all
 // provision steps and software installations combined into a single script.
 // This matches the Laravel approach where all components are included in one task.
-func ProvisionFreshServer(config ProvisionFreshServerConfig) *provisionFreshServerTask {
+func ProvisionFreshServer(config ProvisionFreshServerConfig) *ProvisionFreshServerTask {
 	var scriptBuilder strings.Builder
 
 	// 1. Shell defaults and common functions (like Laravel's @include)
@@ -133,7 +133,7 @@ func ProvisionFreshServer(config ProvisionFreshServerConfig) *provisionFreshServ
 	scriptBuilder.WriteString("waitForAptUnlock\n")
 	scriptBuilder.WriteString("sudo apt-mark unhold cloud-init\n")
 
-	return &provisionFreshServerTask{
+	return &ProvisionFreshServerTask{
 		BaseTask: taskrunner.NewBaseTask(
 			taskrunner.WithName("Provision Fresh Server"),
 			taskrunner.WithScript(scriptBuilder.String()),
@@ -149,17 +149,17 @@ func ProvisionFreshServer(config ProvisionFreshServerConfig) *provisionFreshServ
 }
 
 // TypeName returns the registered type name for reconstruction
-func (t *provisionFreshServerTask) TypeName() string {
+func (t *ProvisionFreshServerTask) TypeName() string {
 	return ProvisionFreshServerTaskType
 }
 
 // MarshalPayload returns JSON representation of the task state needed for callbacks
-func (t *provisionFreshServerTask) MarshalPayload() ([]byte, error) {
+func (t *ProvisionFreshServerTask) MarshalPayload() ([]byte, error) {
 	return json.Marshal(t.callback)
 }
 
 // OnSuccess is called when the task completes successfully
-func (t *provisionFreshServerTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+func (t *ProvisionFreshServerTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
 	if cbCtx.Logger != nil {
 		cbCtx.Logger.Info().
 			Str("task_id", taskID).
@@ -196,7 +196,7 @@ func (t *provisionFreshServerTask) OnSuccess(ctx context.Context, cbCtx *taskrun
 }
 
 // OnFailure is called when the task fails with an exit code
-func (t *provisionFreshServerTask) OnFailure(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string, exitCode int) error {
+func (t *ProvisionFreshServerTask) OnFailure(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string, exitCode int) error {
 	if cbCtx.Logger != nil {
 		cbCtx.Logger.Error().
 			Str("task_id", taskID).
@@ -238,7 +238,7 @@ func (t *provisionFreshServerTask) OnFailure(ctx context.Context, cbCtx *taskrun
 }
 
 // OnExpired is called when the task times out
-func (t *provisionFreshServerTask) OnExpired(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+func (t *ProvisionFreshServerTask) OnExpired(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
 	if cbCtx.Logger != nil {
 		cbCtx.Logger.Error().
 			Str("task_id", taskID).
@@ -278,7 +278,7 @@ func (t *provisionFreshServerTask) OnExpired(ctx context.Context, cbCtx *taskrun
 }
 
 // getTaskOutput retrieves the last 30 lines of task output from the database
-func (t *provisionFreshServerTask) getTaskOutput(cbCtx *taskrunner.CallbackContext, taskID string) string {
+func (t *ProvisionFreshServerTask) getTaskOutput(cbCtx *taskrunner.CallbackContext, taskID string) string {
 	if cbCtx.DB == nil {
 		return ""
 	}
@@ -302,7 +302,7 @@ func (t *provisionFreshServerTask) getTaskOutput(cbCtx *taskrunner.CallbackConte
 }
 
 // dispatchCleanupJob dispatches the cleanup job for failed provisioning
-func (t *provisionFreshServerTask) dispatchCleanupJob(cbCtx *taskrunner.CallbackContext) {
+func (t *ProvisionFreshServerTask) dispatchCleanupJob(cbCtx *taskrunner.CallbackContext) {
 	// Dispatch cleanup job via queue
 	if err := cbCtx.DispatchJob("server:cleanup_failed_provisioning", map[string]interface{}{
 		"server_id": t.callback.ServerID,
@@ -315,7 +315,7 @@ func (t *provisionFreshServerTask) dispatchCleanupJob(cbCtx *taskrunner.Callback
 
 // NewTask implements taskrunner.CallbackStateFactory
 func (s provisionCallbackData) NewTask() taskrunner.CallbackHandler {
-	return &provisionFreshServerTask{
+	return &ProvisionFreshServerTask{
 		BaseTask: taskrunner.NewBaseTask(),
 		callback: s,
 	}
@@ -380,7 +380,7 @@ func renderSoftwareInstall(software types.Software, config ProvisionFreshServerC
 // buildSoftwareInstallData builds the template data for software installation
 func buildSoftwareInstallData(software types.Software, config ProvisionFreshServerConfig) any {
 	switch software {
-	case types.SoftwareMySql80:
+	case types.SoftwareMySQL80:
 		return struct {
 			RootPassword   string
 			DatabaseName   string
@@ -388,7 +388,7 @@ func buildSoftwareInstallData(software types.Software, config ProvisionFreshServ
 			MaxConnections int
 		}{config.DatabasePassword, config.DatabaseName, config.PublicIPv4, software.MaxConnections(config.MemoryInMB)}
 
-	case types.SoftwarePostgreSql16:
+	case types.SoftwarePostgreSQL16:
 		return struct {
 			DatabasePassword string
 			DatabaseName     string

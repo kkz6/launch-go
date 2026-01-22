@@ -183,7 +183,7 @@ func getDefaultSoftwareStack() []types.Software {
 		types.SoftwareCaddy2,
 		types.SoftwarePhp83,
 		types.SoftwareComposer2,
-		types.SoftwareMySql80,
+		types.SoftwareMySQL80,
 		types.SoftwareRedis,
 		types.SoftwareSupervisor,
 	}
