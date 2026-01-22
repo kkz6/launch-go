@@ -241,7 +241,7 @@ func (t ServerType) GetFeatures() []ServerFeature {
 			ServerFeatureQueueWorkers,
 			ServerFeatureDaemons,
 			ServerFeatureScheduler,
-			ServerFeatureSslCertificates,
+			ServerFeatureSSLCertificates,
 			ServerFeatureRedis,
 			ServerFeatureBackups,
 			ServerFeatureServices,
@@ -322,7 +322,7 @@ type ServerFeature string
 
 const (
 	ServerFeatureSites              ServerFeature = "sites"
-	ServerFeatureSslCertificates    ServerFeature = "ssl_certificates"
+	ServerFeatureSSLCertificates    ServerFeature = "ssl_certificates"
 	ServerFeaturePhpManagement      ServerFeature = "php_management"
 	ServerFeatureComposer           ServerFeature = "composer"
 	ServerFeatureDatabaseManagement ServerFeature = "database_management"
@@ -341,7 +341,7 @@ func (f ServerFeature) String() string {
 func (f ServerFeature) Label() string {
 	labels := map[ServerFeature]string{
 		ServerFeatureSites:              "Sites",
-		ServerFeatureSslCertificates:    "SSL Certificates",
+		ServerFeatureSSLCertificates:    "SSL Certificates",
 		ServerFeaturePhpManagement:      "PHP Management",
 		ServerFeatureComposer:           "Composer",
 		ServerFeatureDatabaseManagement: "Database Management",
@@ -361,7 +361,7 @@ func (f ServerFeature) Label() string {
 
 func (f ServerFeature) IsValid() bool {
 	switch f {
-	case ServerFeatureSites, ServerFeatureSslCertificates, ServerFeaturePhpManagement,
+	case ServerFeatureSites, ServerFeatureSSLCertificates, ServerFeaturePhpManagement,
 		ServerFeatureComposer, ServerFeatureDatabaseManagement, ServerFeatureQueueWorkers,
 		ServerFeatureDaemons, ServerFeatureScheduler, ServerFeatureRedis, ServerFeatureBackups,
 		ServerFeatureServices:
@@ -379,7 +379,7 @@ func (f ServerFeature) NavigationKey() string {
 		ServerFeatureQueueWorkers:       "queues",
 		ServerFeatureDaemons:            "daemons",
 		ServerFeatureScheduler:          "scheduler",
-		ServerFeatureSslCertificates:    "ssl",
+		ServerFeatureSSLCertificates:    "ssl",
 		ServerFeatureBackups:            "backups",
 		ServerFeatureServices:           "advanced",
 	}
@@ -392,7 +392,7 @@ func (f ServerFeature) NavigationKey() string {
 
 func AllServerFeatures() []ServerFeature {
 	return []ServerFeature{
-		ServerFeatureSites, ServerFeatureSslCertificates, ServerFeaturePhpManagement,
+		ServerFeatureSites, ServerFeatureSSLCertificates, ServerFeaturePhpManagement,
 		ServerFeatureComposer, ServerFeatureDatabaseManagement, ServerFeatureQueueWorkers,
 		ServerFeatureDaemons, ServerFeatureScheduler, ServerFeatureRedis, ServerFeatureBackups,
 		ServerFeatureServices,
