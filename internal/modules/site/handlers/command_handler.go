@@ -1,12 +1,9 @@
 package handlers
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
@@ -46,14 +43,6 @@ func (h *CommandHandler) CreateCommand(c *fiber.Ctx) error {
 
 	cmd, err := h.commandService.Create(c.Context(), siteID, serverID, userID, req)
 	if err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
-		if errors.Is(err, services.ErrSiteNotInstalled) {
-			return response.BadRequest(c, response.MsgSiteNotInstalled)
-		}
-
 		return response.HandleError(c, err)
 	}
 
@@ -74,11 +63,7 @@ func (h *CommandHandler) ListCommands(c *fiber.Ctx) error {
 
 	commands, err := h.commandService.List(c.Context(), siteID, serverID)
 	if err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
-		return response.InternalError(c, response.MsgInternalError)
+		return response.HandleError(c, err)
 	}
 
 	result := make([]dto.CommandResponse, len(commands))
@@ -108,15 +93,7 @@ func (h *CommandHandler) DeleteCommand(c *fiber.Ctx) error {
 
 	err = h.commandService.Delete(c.Context(), siteID, serverID, commandID)
 	if err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
-		if errors.Is(err, repositories.ErrCommandNotFound) {
-			return response.NotFound(c, response.MsgResourceNotFound)
-		}
-
-		return response.InternalError(c, response.MsgInternalError)
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Command deleted", nil)

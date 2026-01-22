@@ -5,6 +5,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -30,7 +32,7 @@ func (r *CommandRepository) FindByID(ctx context.Context, id string) (*models.Co
 		First(&cmd).Error
 	if err != nil {
 		if repository.IsNotFound(err) {
-			return nil, ErrCommandNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}

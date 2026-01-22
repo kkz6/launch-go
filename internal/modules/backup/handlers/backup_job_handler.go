@@ -4,9 +4,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
-	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
-	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -25,7 +24,7 @@ func (h *BackupJobHandler) CreateBackupJob(c *fiber.Ctx) error {
 	backupID := c.Params("backup")
 	token := c.Params("token")
 
-	req, err := fiberctx.MustParseAndValidate[dto.CreateBackupJobRequest](c)
+	req, err := fiberutil.MustParseAndValidate[dto.CreateBackupJobRequest](c)
 	if err != nil {
 		return err
 	}
@@ -35,7 +34,7 @@ func (h *BackupJobHandler) CreateBackupJob(c *fiber.Ctx) error {
 		if err == services.ErrInvalidDispatchToken {
 			return response.Forbidden(c, response.MsgForbidden)
 		}
-		if err == repositories.ErrBackupNotFound {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgBackupNotFound)
 		}
 		return response.HandleError(c, err)

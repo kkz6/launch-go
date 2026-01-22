@@ -1,15 +1,13 @@
 package handlers
 
 import (
-	"errors"
 	"strconv"
 
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/script/dto"
-	"github.com/kkz6/launch-go/internal/modules/script/repositories"
 	"github.com/kkz6/launch-go/internal/modules/script/services"
-	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -25,7 +23,7 @@ func NewScriptHandler(service *services.ScriptService) *ScriptHandler {
 
 // List returns all scripts accessible to the user
 func (h *ScriptHandler) List(c *fiber.Ctx) error {
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
@@ -45,7 +43,7 @@ func (h *ScriptHandler) List(c *fiber.Ctx) error {
 
 // Show returns a single script
 func (h *ScriptHandler) Show(c *fiber.Ctx) error {
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
@@ -53,7 +51,7 @@ func (h *ScriptHandler) Show(c *fiber.Ctx) error {
 
 	script, err := h.service.Get(c.Context(), scriptID, userID, teamID)
 	if err != nil {
-		if errors.Is(err, repositories.ErrScriptNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, "Script not found")
 		}
 
@@ -65,12 +63,12 @@ func (h *ScriptHandler) Show(c *fiber.Ctx) error {
 
 // Create creates a new script
 func (h *ScriptHandler) Create(c *fiber.Ctx) error {
-	userID, err := fiberctx.MustGetUserID(c)
+	userID, err := fiberutil.MustGetUserID(c)
 	if err != nil {
 		return err
 	}
 
-	req, err := fiberctx.MustParseAndValidate[dto.CreateScriptRequest](c)
+	req, err := fiberutil.MustParseAndValidate[dto.CreateScriptRequest](c)
 	if err != nil {
 		return err
 	}
@@ -85,20 +83,20 @@ func (h *ScriptHandler) Create(c *fiber.Ctx) error {
 
 // Update updates a script
 func (h *ScriptHandler) Update(c *fiber.Ctx) error {
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
 	scriptID := c.Params("id")
 
-	req, err := fiberctx.MustParseAndValidate[dto.UpdateScriptRequest](c)
+	req, err := fiberutil.MustParseAndValidate[dto.UpdateScriptRequest](c)
 	if err != nil {
 		return err
 	}
 
 	script, err := h.service.Update(c.Context(), scriptID, userID, teamID, req)
 	if err != nil {
-		if errors.Is(err, repositories.ErrScriptNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, "Script not found")
 		}
 
@@ -110,14 +108,14 @@ func (h *ScriptHandler) Update(c *fiber.Ctx) error {
 
 // Delete deletes a script
 func (h *ScriptHandler) Delete(c *fiber.Ctx) error {
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
 	scriptID := c.Params("id")
 
 	if err := h.service.Delete(c.Context(), scriptID, userID, teamID); err != nil {
-		if errors.Is(err, repositories.ErrScriptNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, "Script not found")
 		}
 
@@ -129,20 +127,20 @@ func (h *ScriptHandler) Delete(c *fiber.Ctx) error {
 
 // Execute executes a script on servers
 func (h *ScriptHandler) Execute(c *fiber.Ctx) error {
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
 	scriptID := c.Params("id")
 
-	req, err := fiberctx.MustParseAndValidate[dto.ExecuteScriptRequest](c)
+	req, err := fiberutil.MustParseAndValidate[dto.ExecuteScriptRequest](c)
 	if err != nil {
 		return err
 	}
 
 	result, err := h.service.Execute(c.Context(), scriptID, userID, teamID, req)
 	if err != nil {
-		if errors.Is(err, repositories.ErrScriptNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, "Script not found")
 		}
 
@@ -154,7 +152,7 @@ func (h *ScriptHandler) Execute(c *fiber.Ctx) error {
 
 // ListExecutions returns executions for a script
 func (h *ScriptHandler) ListExecutions(c *fiber.Ctx) error {
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
@@ -162,7 +160,7 @@ func (h *ScriptHandler) ListExecutions(c *fiber.Ctx) error {
 
 	executions, err := h.service.ListExecutions(c.Context(), scriptID, userID, teamID)
 	if err != nil {
-		if errors.Is(err, repositories.ErrScriptNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, "Script not found")
 		}
 
@@ -188,7 +186,7 @@ func (h *ScriptHandler) GetExecution(c *fiber.Ctx) error {
 
 	execution, err := h.service.GetExecution(c.Context(), executionID)
 	if err != nil {
-		if errors.Is(err, repositories.ErrExecutionNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, "Execution not found")
 		}
 

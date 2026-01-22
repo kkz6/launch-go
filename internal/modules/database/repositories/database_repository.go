@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 )
 
@@ -17,7 +19,7 @@ func (r *DatabaseRepository) FindByID(ctx context.Context, id string) (*models.D
 		First(&database, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDatabaseNotFound
+			return nil, fiberutil.NotFound()
 		}
 
 		return nil, err
@@ -34,7 +36,7 @@ func (r *DatabaseRepository) FindByIDAndServer(ctx context.Context, id, serverID
 		First(&database, "id = ? AND server_id = ?", id, serverID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDatabaseNotFound
+			return nil, fiberutil.NotFound()
 		}
 
 		return nil, err
@@ -51,7 +53,7 @@ func (r *DatabaseRepository) FindByIDAndTeam(ctx context.Context, id, teamID str
 		First(&database, "id = ? AND team_id = ?", id, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDatabaseNotFound
+			return nil, fiberutil.NotFound()
 		}
 
 		return nil, err
@@ -68,7 +70,7 @@ func (r *DatabaseRepository) FindByIDAndServerAndTeam(ctx context.Context, id, s
 		First(&database, "id = ? AND server_id = ? AND team_id = ?", id, serverID, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDatabaseNotFound
+			return nil, fiberutil.NotFound()
 		}
 
 		return nil, err
@@ -120,7 +122,7 @@ func (r *DatabaseRepository) FindByNameAndServer(ctx context.Context, name, serv
 		First(&database, "name = ? AND server_id = ?", name, serverID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDatabaseNotFound
+			return nil, fiberutil.NotFound()
 		}
 
 		return nil, err

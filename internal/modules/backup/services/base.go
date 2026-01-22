@@ -3,7 +3,15 @@ package services
 import (
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/backup/storage"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/service"
+)
+
+var (
+	ErrStorageProviderHasBackups = fiberutil.Conflict("Storage provider has associated backups and cannot be deleted")
+	ErrInvalidStorageDriver      = fiberutil.BadRequest("Invalid storage driver")
+	ErrConnectionFailed          = fiberutil.BadRequest("Failed to connect to storage provider")
+	ErrInvalidDispatchToken      = fiberutil.Unauthorized("Invalid dispatch token")
 )
 
 // ServiceDeps holds all dependencies needed for backup services.

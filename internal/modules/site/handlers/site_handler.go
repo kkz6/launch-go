@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"errors"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -9,7 +8,6 @@ import (
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -101,11 +99,7 @@ func (h *SiteHandler) Show(c *fiber.Ctx) error {
 
 	site, err := h.siteService.FindByID(c.Context(), siteID, serverID, teamID)
 	if err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
-		return response.InternalError(c, response.MsgInternalError)
+		return response.HandleError(c, err)
 	}
 
 	resp := dto.ToSiteResponse(site)
@@ -151,10 +145,6 @@ func (h *SiteHandler) Update(c *fiber.Ctx) error {
 
 	site, err := h.siteService.Update(c.Context(), siteID, serverID, teamID, userID, req)
 	if err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
 		return response.HandleError(c, err)
 	}
 
@@ -179,10 +169,6 @@ func (h *SiteHandler) Delete(c *fiber.Ctx) error {
 	}
 
 	if err := h.siteService.Delete(c.Context(), siteID, serverID, teamID); err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
 		return response.HandleError(c, err)
 	}
 
@@ -208,11 +194,7 @@ func (h *SiteHandler) GetDeletionSummary(c *fiber.Ctx) error {
 
 	summary, err := h.siteService.GetDeletionSummary(c.Context(), siteID, serverID, teamID)
 	if err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
-		return response.InternalError(c, response.MsgInternalError)
+		return response.HandleError(c, err)
 	}
 
 	return response.OK(c, "Deletion summary retrieved", summary)
@@ -237,10 +219,6 @@ func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
 
 	site, err := h.siteService.RegenerateDeployToken(c.Context(), siteID, serverID, teamID)
 	if err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
 		return response.HandleError(c, err)
 	}
 
@@ -290,10 +268,6 @@ func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 
 	site, err := h.siteService.Update(c.Context(), siteID, serverID, teamID, userID, updateReq)
 	if err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
 		return response.HandleError(c, err)
 	}
 
@@ -319,11 +293,7 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 
 	settingsData, err := h.siteService.GetSettings(c.Context(), siteID, serverID, teamID)
 	if err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
-		return response.InternalError(c, response.MsgInternalError)
+		return response.HandleError(c, err)
 	}
 
 	// Build TLS options

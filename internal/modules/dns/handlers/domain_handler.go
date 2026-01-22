@@ -1,13 +1,11 @@
 package handlers
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
 	"github.com/kkz6/launch-go/internal/modules/dns/services"
-	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -27,7 +25,7 @@ func NewDomainHandler(domainService *services.DomainService, providerService *se
 
 // ListDomains lists all domains for the current team
 func (h *DomainHandler) ListDomains(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
@@ -53,19 +51,19 @@ func (h *DomainHandler) ListDomains(c *fiber.Ctx) error {
 
 // CreateDomain creates a new domain
 func (h *DomainHandler) CreateDomain(c *fiber.Ctx) error {
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
 
-	req, err := fiberctx.MustParseAndValidate[dto.CreateDomainRequest](c)
+	req, err := fiberutil.MustParseAndValidate[dto.CreateDomainRequest](c)
 	if err != nil {
 		return err
 	}
 
 	domain, err := h.domainService.CreateDomain(c.Context(), userID, teamID, req)
 	if err != nil {
-		if errors.Is(err, services.ErrProviderNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, "Provider not found")
 		}
 		return response.HandleError(c, err)
@@ -76,7 +74,7 @@ func (h *DomainHandler) CreateDomain(c *fiber.Ctx) error {
 
 // ShowDomain retrieves a domain by ID
 func (h *DomainHandler) ShowDomain(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
@@ -84,7 +82,7 @@ func (h *DomainHandler) ShowDomain(c *fiber.Ctx) error {
 
 	domain, err := h.domainService.GetDomain(c.Context(), id, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrDomainNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgDomainNotFound)
 		}
 		return response.HandleError(c, err)
@@ -136,20 +134,20 @@ func (h *DomainHandler) ShowDomain(c *fiber.Ctx) error {
 
 // UpdateDomain updates a domain
 func (h *DomainHandler) UpdateDomain(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
 	id := c.Params("id")
 
-	req, err := fiberctx.MustParseAndValidate[dto.UpdateDomainRequest](c)
+	req, err := fiberutil.MustParseAndValidate[dto.UpdateDomainRequest](c)
 	if err != nil {
 		return err
 	}
 
 	domain, err := h.domainService.UpdateDomain(c.Context(), id, teamID, req)
 	if err != nil {
-		if errors.Is(err, services.ErrDomainNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgDomainNotFound)
 		}
 		return response.HandleError(c, err)
@@ -160,7 +158,7 @@ func (h *DomainHandler) UpdateDomain(c *fiber.Ctx) error {
 
 // DeleteDomain deletes a domain
 func (h *DomainHandler) DeleteDomain(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
@@ -171,7 +169,7 @@ func (h *DomainHandler) DeleteDomain(c *fiber.Ctx) error {
 
 	err = h.domainService.DeleteDomain(c.Context(), id, teamID, req.DeleteFromProvider)
 	if err != nil {
-		if errors.Is(err, services.ErrDomainNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgDomainNotFound)
 		}
 		return response.HandleError(c, err)
@@ -182,7 +180,7 @@ func (h *DomainHandler) DeleteDomain(c *fiber.Ctx) error {
 
 // SyncDomain syncs DNS records from the provider to the local database
 func (h *DomainHandler) SyncDomain(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
@@ -190,7 +188,7 @@ func (h *DomainHandler) SyncDomain(c *fiber.Ctx) error {
 
 	err = h.domainService.SyncDomainRecords(c.Context(), id, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrDomainNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgDomainNotFound)
 		}
 		return response.HandleError(c, err)

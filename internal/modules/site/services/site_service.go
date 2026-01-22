@@ -17,7 +17,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/enums"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
@@ -80,7 +80,7 @@ func (s *SiteService) List(ctx context.Context, serverID, teamID string) ([]mode
 	// Load latest deployment for each site
 	for i := range sites {
 		deployment, err := s.Repos().Deployment().FindLatestBySite(ctx, sites[i].ID)
-		if err != nil && !errors.Is(err, repositories.ErrDeploymentNotFound) {
+		if err != nil && !fiberutil.IsNotFound(err) {
 			s.LogWarn("Failed to fetch latest deployment", "siteID", sites[i].ID, "error", err)
 		}
 		sites[i].LatestDeployment = deployment
@@ -124,7 +124,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 
 	// Check if site with same address exists
 	existing, err := s.Repos().Site().FindByAddress(ctx, req.Address, serverID)
-	if err != nil && !errors.Is(err, repositories.ErrSiteNotFound) {
+	if err != nil && !fiberutil.IsNotFound(err) {
 		return nil, fmt.Errorf("failed to check for existing site: %w", err)
 	}
 	if existing != nil {
@@ -637,7 +637,7 @@ func (s *SiteService) FindByID(ctx context.Context, id, serverID, teamID string)
 
 	// Load latest deployment
 	deployment, err := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
-	if err != nil && !errors.Is(err, repositories.ErrDeploymentNotFound) {
+	if err != nil && !fiberutil.IsNotFound(err) {
 		s.LogWarn("Failed to fetch latest deployment", "siteID", site.ID, "error", err)
 	}
 	site.LatestDeployment = deployment
@@ -712,7 +712,7 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID s
 
 	// Load latest deployment
 	deployment, err := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
-	if err != nil && !errors.Is(err, repositories.ErrDeploymentNotFound) {
+	if err != nil && !fiberutil.IsNotFound(err) {
 		s.LogWarn("Failed to fetch latest deployment", "siteID", site.ID, "error", err)
 	}
 	site.LatestDeployment = deployment
@@ -820,14 +820,14 @@ func (s *SiteService) GetSettings(ctx context.Context, id, serverID, teamID stri
 
 	// Load latest deployment
 	deployment, err := s.Repos().Deployment().FindLatestBySite(ctx, site.ID)
-	if err != nil && !errors.Is(err, repositories.ErrDeploymentNotFound) {
+	if err != nil && !fiberutil.IsNotFound(err) {
 		s.LogWarn("Failed to fetch latest deployment for settings", "siteID", site.ID, "error", err)
 	}
 	site.LatestDeployment = deployment
 
 	// Get active certificate
 	activeCert, err := s.Repos().Certificate().FindActiveBySite(ctx, site.ID)
-	if err != nil && !errors.Is(err, repositories.ErrCertificateNotFound) {
+	if err != nil && !fiberutil.IsNotFound(err) {
 		s.LogWarn("Failed to fetch active certificate", "siteID", site.ID, "error", err)
 	}
 

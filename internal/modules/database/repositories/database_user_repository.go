@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 )
 
@@ -18,7 +20,7 @@ func (r *DatabaseUserRepository) FindByID(ctx context.Context, id string) (*mode
 		First(&user, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDatabaseUserNotFound
+			return nil, fiberutil.NotFound()
 		}
 
 		return nil, err
@@ -36,7 +38,7 @@ func (r *DatabaseUserRepository) FindByIDAndServer(ctx context.Context, id, serv
 		First(&user, "id = ? AND server_id = ?", id, serverID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDatabaseUserNotFound
+			return nil, fiberutil.NotFound()
 		}
 
 		return nil, err
@@ -67,7 +69,7 @@ func (r *DatabaseUserRepository) FindByNameAndServer(ctx context.Context, name, 
 		First(&user, "name = ? AND server_id = ?", name, serverID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDatabaseUserNotFound
+			return nil, fiberutil.NotFound()
 		}
 
 		return nil, err

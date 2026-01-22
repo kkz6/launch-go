@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"strings"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
@@ -291,7 +292,7 @@ func HandleAPIError(err error) error {
 
 	switch {
 	case httpErr.IsNotFound():
-		return ErrRepositoryNotFound
+		return fiberutil.NotFound()
 	case httpErr.IsForbidden():
 		return ErrPermissionDenied
 	case httpErr.IsUnauthorized():

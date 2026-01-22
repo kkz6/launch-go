@@ -11,12 +11,10 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
 
-// Provider errors with HTTP status codes
 var (
 	ErrConnectionFailed    = fiberutil.BadRequest("Failed to connect to provider")
 	ErrProviderError       = fiberutil.BadRequest("Provider error")
 	ErrInvalidCredentials  = fiberutil.BadRequest("Invalid credentials")
-	ErrServerNotFound      = fiberutil.NotFound("Server not found on provider")
 	ErrUnsupportedProvider = fiberutil.BadRequest("Unsupported provider")
 )
 

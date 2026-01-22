@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns/enums"
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // DNSRecordService handles business logic for DNS records
@@ -30,7 +31,7 @@ func (s *DNSRecordService) CreateRecord(ctx context.Context, domainID, teamID st
 	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDomainNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -70,7 +71,7 @@ func (s *DNSRecordService) UpdateRecord(ctx context.Context, recordID, domainID,
 	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDomainNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -78,7 +79,7 @@ func (s *DNSRecordService) UpdateRecord(ctx context.Context, recordID, domainID,
 	record, err := s.Repos().DNSRecord().FindByIDAndDomain(ctx, recordID, domainID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrRecordNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -119,7 +120,7 @@ func (s *DNSRecordService) DeleteRecord(ctx context.Context, recordID, domainID,
 	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrDomainNotFound
+			return fiberutil.NotFound()
 		}
 		return err
 	}
@@ -127,7 +128,7 @@ func (s *DNSRecordService) DeleteRecord(ctx context.Context, recordID, domainID,
 	record, err := s.Repos().DNSRecord().FindByIDAndDomain(ctx, recordID, domainID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrRecordNotFound
+			return fiberutil.NotFound()
 		}
 		return err
 	}
@@ -164,7 +165,7 @@ func (s *DNSRecordService) CreateRecordForSite(ctx context.Context, domainID, te
 	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return ErrDomainNotFound
+			return fiberutil.NotFound()
 		}
 		return err
 	}

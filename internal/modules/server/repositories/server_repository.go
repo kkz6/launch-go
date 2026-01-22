@@ -7,6 +7,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
@@ -32,7 +34,7 @@ func (r *ServerRepository) FindByID(ctx context.Context, id string) (*models.Ser
 		First(&server, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrServerNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -47,7 +49,7 @@ func (r *ServerRepository) FindByIDAndTeam(ctx context.Context, id, teamID strin
 		First(&server, "id = ? AND team_id = ?", id, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrServerNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -66,7 +68,7 @@ func (r *ServerRepository) FindWithRelations(ctx context.Context, id, teamID str
 		First(&server, "id = ? AND team_id = ?", id, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrServerNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}

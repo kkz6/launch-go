@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -12,7 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
-	"github.com/kkz6/launch-go/internal/modules/server/repositories"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // ListServices returns all services for a server
@@ -45,7 +44,7 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 	}
 
 	existingService, err := s.repos.Service().FindByServerAndSoftware(ctx, serverID, software)
-	if err != nil && !errors.Is(err, repositories.ErrServiceNotFound) {
+	if err != nil && !fiberutil.IsNotFound(err) {
 		return nil, fmt.Errorf("failed to check existing service: %w", err)
 	}
 	if existingService != nil {
@@ -86,7 +85,7 @@ func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, 
 	}
 
 	if service.ServerID != serverID {
-		return ErrServiceNotFound
+		return fiberutil.NotFound()
 	}
 
 	switch operation {
@@ -180,7 +179,7 @@ func (s *Service) GetServiceStatus(ctx context.Context, serverID, teamID, servic
 	}
 
 	if service.ServerID != serverID {
-		return nil, ErrServiceNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	return service, nil
@@ -199,7 +198,7 @@ func (s *Service) CheckServiceStatus(ctx context.Context, serverID, teamID, serv
 	}
 
 	if service.ServerID != serverID {
-		return ErrServiceNotFound
+		return fiberutil.NotFound()
 	}
 
 	return s.dispatchServiceStatusJob(server, service)
@@ -437,7 +436,7 @@ func (s *Service) SetDefaultPhpVersion(ctx context.Context, serverID, teamID, se
 	}
 
 	if service.ServerID != serverID {
-		return ErrServiceNotFound
+		return fiberutil.NotFound()
 	}
 
 	if service.Type != enums.ServiceTypePhp {

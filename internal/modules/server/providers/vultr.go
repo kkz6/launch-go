@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
@@ -134,12 +135,12 @@ func (p *VultrProvider) GetPublicIPv4(ctx context.Context, server *models.Server
 
 	providerData := server.ProviderData
 	if providerData == nil {
-		return "", ErrServerNotFound
+		return "", fiberutil.NotFound()
 	}
 
 	vultrID := GetStringField(providerData, "vultr_id", "")
 	if vultrID == "" {
-		return "", ErrServerNotFound
+		return "", fiberutil.NotFound()
 	}
 
 	client := p.NewClient(token)

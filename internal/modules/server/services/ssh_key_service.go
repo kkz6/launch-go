@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
@@ -110,7 +111,7 @@ func (s *Service) DeleteSSHKey(ctx context.Context, teamID, sshKeyID string) err
 	}
 
 	if key.TeamID != teamID {
-		return ErrSSHKeyNotFound
+		return fiberutil.NotFound()
 	}
 
 	activity.RecordEvent(ctx, "deleted", "", key, "SSH key was deleted")

@@ -6,11 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
-// Service errors - using fiber error utilities
 var (
-	ErrProviderNotFound         = fiberutil.NotFound("DNS provider not found")
-	ErrDomainNotFound           = fiberutil.NotFound("Domain not found")
-	ErrRecordNotFound           = fiberutil.NotFound("DNS record not found")
 	ErrRecordNotEditable        = fiberutil.BadRequest("Record cannot be edited")
 	ErrRecordNotDeletable       = fiberutil.BadRequest("Record cannot be deleted")
 	ErrProviderHasActiveDomains = fiberutil.Conflict("Provider has active domains")

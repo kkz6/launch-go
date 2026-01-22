@@ -7,6 +7,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
@@ -29,7 +31,7 @@ func (r *ServiceRepository) FindByID(ctx context.Context, id string) (*models.In
 	service, err := r.Base.FindByID(ctx, id)
 	if err != nil {
 		if repository.IsNotFound(err) {
-			return nil, ErrServiceNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -52,7 +54,7 @@ func (r *ServiceRepository) FindOneByServerAndType(ctx context.Context, serverID
 		First(&service, "server_id = ? AND type = ?", serverID, serviceType).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrServiceNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -66,7 +68,7 @@ func (r *ServiceRepository) FindByServerAndSoftware(ctx context.Context, serverI
 		First(&service, "server_id = ? AND software = ?", serverID, software).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrServiceNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -80,7 +82,7 @@ func (r *ServiceRepository) FindDatabaseService(ctx context.Context, serverID st
 		First(&service, "server_id = ? AND (type = ? OR type = ?)", serverID, enums.ServiceTypeMySql, enums.ServiceTypePostgreSql).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrServiceNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}

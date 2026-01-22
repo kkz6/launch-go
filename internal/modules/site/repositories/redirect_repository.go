@@ -5,6 +5,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -26,7 +28,7 @@ func (r *RedirectRepository) FindByID(ctx context.Context, id string) (*models.R
 	redirect, err := r.Base.FindByID(ctx, id)
 	if err != nil {
 		if repository.IsNotFound(err) {
-			return nil, ErrRedirectNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}

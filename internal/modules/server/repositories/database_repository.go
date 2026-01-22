@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -27,7 +29,7 @@ func (r *DatabaseRepository) FindByID(ctx context.Context, id string) (*models.D
 	database, err := r.Base.FindByID(ctx, id)
 	if err != nil {
 		if repository.IsNotFound(err) {
-			return nil, ErrDatabaseNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -40,7 +42,7 @@ func (r *DatabaseRepository) FindByIDWithServer(ctx context.Context, id string) 
 	err := r.DB.WithContext(ctx).Preload("Server").First(&database, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDatabaseNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -63,7 +65,7 @@ func (r *DatabaseRepository) FindUserByID(ctx context.Context, id string) (*mode
 	err := r.DB.WithContext(ctx).First(&user, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDatabaseUserNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}
@@ -76,7 +78,7 @@ func (r *DatabaseRepository) FindUserByIDWithServer(ctx context.Context, id stri
 	err := r.DB.WithContext(ctx).Preload("Server").Preload("Databases").Where("id = ?", id).First(&user).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrDatabaseUserNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}

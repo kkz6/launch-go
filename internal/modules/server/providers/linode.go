@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
@@ -121,12 +122,12 @@ func (p *LinodeProvider) GetPublicIPv4(ctx context.Context, server *models.Serve
 
 	providerData := server.ProviderData
 	if providerData == nil {
-		return "", ErrServerNotFound
+		return "", fiberutil.NotFound()
 	}
 
 	linodeID := GetStringField(providerData, "linode_id", "")
 	if linodeID == "" {
-		return "", ErrServerNotFound
+		return "", fiberutil.NotFound()
 	}
 
 	client := p.NewClient(token)

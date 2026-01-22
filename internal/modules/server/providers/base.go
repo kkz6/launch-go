@@ -7,6 +7,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/httpclient"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
@@ -135,7 +136,7 @@ func WrapHTTPError(err error, operation string) error {
 		case httpErr.IsUnauthorized():
 			return ErrInvalidCredentials
 		case httpErr.IsNotFound():
-			return ErrServerNotFound
+			return fiberutil.NotFound()
 		case httpErr.IsRateLimited():
 			return &APIError{
 				StatusCode: httpErr.StatusCode,

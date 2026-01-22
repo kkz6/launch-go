@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -27,7 +29,7 @@ func (r *TaskRepository) FindByID(ctx context.Context, id string) (*models.Task,
 	task, err := r.Base.FindByID(ctx, id)
 	if err != nil {
 		if repository.IsNotFound(err) {
-			return nil, ErrTaskNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}

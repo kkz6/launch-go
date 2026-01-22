@@ -2,7 +2,6 @@ package services
 
 import (
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
-	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
@@ -11,7 +10,6 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
-// Service-specific errors - using fiberutil error package
 var (
 	ErrServerNotProvisioned = fiberutil.BadRequest("Server is not provisioned")
 	ErrServerNotConnected   = fiberutil.BadRequest("Server is not connected")
@@ -19,20 +17,8 @@ var (
 	ErrInvalidServerType    = fiberutil.BadRequest("Invalid server type")
 	ErrInvalidSoftware      = fiberutil.BadRequest("Invalid software")
 	ErrServiceAlreadyExists = fiberutil.Conflict("Service already installed")
-	ErrCannotDeleteService  = fiberutil.BadRequest("Cannot delete service")
 	ErrQueueNotConfigured   = fiberutil.Internal("Queue not configured")
 	ErrDaemonNotInstalled   = fiberutil.BadRequest("Daemon is not installed")
-)
-
-// Re-export repository errors for convenience
-var (
-	ErrServerNotFound       = repositories.ErrServerNotFound
-	ErrServiceNotFound      = repositories.ErrServiceNotFound
-	ErrFirewallRuleNotFound = repositories.ErrFirewallRuleNotFound
-	ErrCronNotFound         = repositories.ErrCronNotFound
-	ErrDaemonNotFound       = repositories.ErrDaemonNotFound
-	ErrSSHKeyNotFound       = repositories.ErrSSHKeyNotFound
-	ErrTaskNotFound         = repositories.ErrTaskNotFound
 )
 
 // ServiceDeps holds all dependencies needed for server services.

@@ -7,7 +7,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
 	"github.com/kkz6/launch-go/internal/modules/dns/services"
-	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -27,7 +27,7 @@ func NewDNSRecordHandler(recordService *services.DNSRecordService, domainService
 
 // ListRecords lists all DNS records for a domain
 func (h *DNSRecordHandler) ListRecords(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
@@ -35,7 +35,7 @@ func (h *DNSRecordHandler) ListRecords(c *fiber.Ctx) error {
 
 	records, err := h.domainService.GetDomainRecords(c.Context(), domainID, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrDomainNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgDomainNotFound)
 		}
 		return response.HandleError(c, err)
@@ -46,20 +46,20 @@ func (h *DNSRecordHandler) ListRecords(c *fiber.Ctx) error {
 
 // CreateRecord creates a new DNS record
 func (h *DNSRecordHandler) CreateRecord(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
 	domainID := c.Params("id")
 
-	req, err := fiberctx.MustParseAndValidate[dto.CreateDNSRecordRequest](c)
+	req, err := fiberutil.MustParseAndValidate[dto.CreateDNSRecordRequest](c)
 	if err != nil {
 		return err
 	}
 
 	record, err := h.recordService.CreateRecord(c.Context(), domainID, teamID, req)
 	if err != nil {
-		if errors.Is(err, services.ErrDomainNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgDomainNotFound)
 		}
 		return response.HandleError(c, err)
@@ -70,24 +70,24 @@ func (h *DNSRecordHandler) CreateRecord(c *fiber.Ctx) error {
 
 // UpdateRecord updates a DNS record
 func (h *DNSRecordHandler) UpdateRecord(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
 	domainID := c.Params("domainId")
 	recordID := c.Params("recordId")
 
-	req, err := fiberctx.MustParseAndValidate[dto.UpdateDNSRecordRequest](c)
+	req, err := fiberutil.MustParseAndValidate[dto.UpdateDNSRecordRequest](c)
 	if err != nil {
 		return err
 	}
 
 	record, err := h.recordService.UpdateRecord(c.Context(), recordID, domainID, teamID, req)
 	if err != nil {
-		if errors.Is(err, services.ErrDomainNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgDomainNotFound)
 		}
-		if errors.Is(err, services.ErrRecordNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgDNSRecordNotFound)
 		}
 		if errors.Is(err, services.ErrRecordNotEditable) {
@@ -101,7 +101,7 @@ func (h *DNSRecordHandler) UpdateRecord(c *fiber.Ctx) error {
 
 // DeleteRecord deletes a DNS record
 func (h *DNSRecordHandler) DeleteRecord(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
@@ -110,10 +110,10 @@ func (h *DNSRecordHandler) DeleteRecord(c *fiber.Ctx) error {
 
 	err = h.recordService.DeleteRecord(c.Context(), recordID, domainID, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrDomainNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgDomainNotFound)
 		}
-		if errors.Is(err, services.ErrRecordNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, response.MsgDNSRecordNotFound)
 		}
 		if errors.Is(err, services.ErrRecordNotDeletable) {

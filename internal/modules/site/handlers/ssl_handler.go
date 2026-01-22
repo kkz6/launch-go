@@ -1,12 +1,9 @@
 package handlers
 
 import (
-	"errors"
-
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
@@ -45,10 +42,6 @@ func (h *SSLHandler) UpdateSSL(c *fiber.Ctx) error {
 	}
 
 	if err := h.sslService.UpdateSSL(c.Context(), siteID, serverID, userID, req); err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
 		return response.HandleError(c, err)
 	}
 
@@ -69,11 +62,7 @@ func (h *SSLHandler) ListCertificates(c *fiber.Ctx) error {
 
 	certs, err := h.sslService.ListCertificates(c.Context(), siteID, serverID)
 	if err != nil {
-		if errors.Is(err, repositories.ErrSiteNotFound) {
-			return response.NotFound(c, response.MsgSiteNotFound)
-		}
-
-		return response.InternalError(c, response.MsgInternalError)
+		return response.HandleError(c, err)
 	}
 
 	result := make([]dto.CertificateResponse, len(certs))

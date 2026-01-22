@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/enums"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // GetOpcacheStatus returns the OPcache status for a PHP version
@@ -28,7 +29,7 @@ func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID 
 
 	// Verify it belongs to this server and is a PHP service
 	if service.ServerID != serverID {
-		return nil, ErrServiceNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	if service.Type != enums.ServiceTypePhp {
@@ -157,7 +158,7 @@ func (s *Service) ResetOpcache(ctx context.Context, serverID, teamID, phpID stri
 
 	// Verify it belongs to this server and is a PHP service
 	if service.ServerID != serverID {
-		return ErrServiceNotFound
+		return fiberutil.NotFound()
 	}
 
 	if service.Type != enums.ServiceTypePhp {
@@ -194,7 +195,7 @@ func (s *Service) ConfigureOpcache(ctx context.Context, serverID, teamID, phpID 
 
 	// Verify it belongs to this server and is a PHP service
 	if service.ServerID != serverID {
-		return ErrServiceNotFound
+		return fiberutil.NotFound()
 	}
 
 	if service.Type != enums.ServiceTypePhp {

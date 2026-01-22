@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/backup/enums"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
@@ -37,7 +39,7 @@ func (r *BackupJobRepository) FindBackupJobByID(ctx context.Context, id string) 
 		First(&job, "id = ?", id).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrBackupJobNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	if err != nil {

@@ -7,6 +7,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/git/contracts"
 	"github.com/kkz6/launch-go/internal/modules/git/enums"
 	"github.com/kkz6/launch-go/internal/modules/git/models"
@@ -56,7 +58,7 @@ func (r *SourceControlRepository) FindByID(ctx context.Context, id string) (*mod
 		First(&sc, "id = ?", id).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrSourceControlNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	return &sc, err
@@ -70,7 +72,7 @@ func (r *SourceControlRepository) FindByIDAndTeam(ctx context.Context, id, teamI
 		First(&sc, "id = ? AND team_id = ?", id, teamID).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrSourceControlNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	return &sc, err
@@ -136,7 +138,7 @@ func (r *SourceControlRepository) FindByProviderAndInstallationAndTeam(
 		First(&sc).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrSourceControlNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	return &sc, err
@@ -299,7 +301,7 @@ func (r *SourceControlRepository) GetFirstInstallation(
 	err := query.First(&sc).Error
 
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, ErrSourceControlNotFound
+		return nil, fiberutil.NotFound()
 	}
 
 	return &sc, err

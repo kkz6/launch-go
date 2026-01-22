@@ -6,6 +6,8 @@ import (
 
 	"gorm.io/gorm"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
@@ -23,12 +25,12 @@ func NewCertificateRepository(db *gorm.DB) *CertificateRepository {
 }
 
 // FindByID finds a certificate by ID with custom error.
-// Wraps the generic FindByID to return ErrCertificateNotFound.
+// Wraps the generic FindByID to return fiberutil.NotFound().
 func (r *CertificateRepository) FindByID(ctx context.Context, id string) (*models.Certificate, error) {
 	cert, err := r.Base.FindByID(ctx, id)
 	if err != nil {
 		if repository.IsNotFound(err) {
-			return nil, ErrCertificateNotFound
+			return nil, fiberutil.NotFound()
 		}
 		return nil, err
 	}

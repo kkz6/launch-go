@@ -6,14 +6,13 @@ import (
 )
 
 var (
-	ErrInvalidSignature       = errors.New("invalid webhook signature")
-	ErrInvalidPayload         = errors.New("invalid webhook payload")
-	ErrProviderNotConfigured  = errors.New("provider not configured")
-	ErrInstallationNotFound   = errors.New("installation not found")
-	ErrRepositoryNotFound     = errors.New("repository not found")
-	ErrPermissionDenied       = errors.New("permission denied")
-	ErrAuthenticationFailed   = errors.New("authentication failed")
-	ErrRateLimitExceeded      = errors.New("rate limit exceeded")
+	ErrInvalidSignature      = errors.New("invalid webhook signature")
+	ErrInvalidPayload        = errors.New("invalid webhook payload")
+	ErrProviderNotConfigured = errors.New("provider not configured")
+	ErrInstallationNotFound  = errors.New("installation not found")
+	ErrPermissionDenied      = errors.New("permission denied")
+	ErrAuthenticationFailed  = errors.New("authentication failed")
+	ErrRateLimitExceeded     = errors.New("rate limit exceeded")
 )
 
 // Provider defines the interface for git provider integrations

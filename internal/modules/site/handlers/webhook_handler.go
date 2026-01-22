@@ -5,8 +5,8 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/kkz6/launch-go/internal/modules/site/repositories"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -54,7 +54,7 @@ func (h *WebhookHandler) DeployWebhook(c *fiber.Ctx) error {
 		}
 
 		// Check for site not found
-		if errors.Is(err, repositories.ErrSiteNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return c.SendStatus(fiber.StatusNotFound)
 		}
 

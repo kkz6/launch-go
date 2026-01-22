@@ -12,11 +12,6 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
-// Repository errors - using fiber error utilities
-var (
-	ErrChannelNotFound = fiberutil.NotFound("Notification channel not found")
-)
-
 // NotificationChannelRepository handles database operations for notification channels
 type NotificationChannelRepository struct {
 	repository.Base[models.NotificationChannel]
@@ -47,7 +42,7 @@ func (r *NotificationChannelRepository) Delete(ctx context.Context, id string) e
 	}
 
 	if result.RowsAffected == 0 {
-		return ErrChannelNotFound
+		return fiberutil.NotFound()
 	}
 
 	return nil
@@ -60,7 +55,7 @@ func (r *NotificationChannelRepository) FindByID(ctx context.Context, id string)
 	err := r.DB.WithContext(ctx).First(&channel, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrChannelNotFound
+			return nil, fiberutil.NotFound()
 		}
 
 		return nil, err
@@ -78,7 +73,7 @@ func (r *NotificationChannelRepository) FindByIDAndTeamID(ctx context.Context, i
 		First(&channel).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, ErrChannelNotFound
+			return nil, fiberutil.NotFound()
 		}
 
 		return nil, err

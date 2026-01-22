@@ -7,7 +7,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
 	"github.com/kkz6/launch-go/internal/modules/dns/services"
-	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/response"
 )
 
@@ -23,7 +23,7 @@ func NewDomainProviderHandler(providerService *services.DomainProviderService) *
 
 // ListProviders lists all DNS providers for the current team
 func (h *DomainProviderHandler) ListProviders(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
@@ -38,12 +38,12 @@ func (h *DomainProviderHandler) ListProviders(c *fiber.Ctx) error {
 
 // CreateProvider creates a new DNS provider
 func (h *DomainProviderHandler) CreateProvider(c *fiber.Ctx) error {
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
 
-	req, err := fiberctx.MustParseAndValidate[dto.CreateDomainProviderRequest](c)
+	req, err := fiberutil.MustParseAndValidate[dto.CreateDomainProviderRequest](c)
 	if err != nil {
 		return err
 	}
@@ -68,7 +68,7 @@ func (h *DomainProviderHandler) CreateProvider(c *fiber.Ctx) error {
 
 // DeleteProvider deletes a DNS provider
 func (h *DomainProviderHandler) DeleteProvider(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
@@ -76,7 +76,7 @@ func (h *DomainProviderHandler) DeleteProvider(c *fiber.Ctx) error {
 
 	err = h.providerService.DeleteProvider(c.Context(), id, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrProviderNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, "Provider not found")
 		}
 		if errors.Is(err, services.ErrProviderHasActiveDomains) {
@@ -90,7 +90,7 @@ func (h *DomainProviderHandler) DeleteProvider(c *fiber.Ctx) error {
 
 // CheckProviderConnectivity checks if provider credentials are valid
 func (h *DomainProviderHandler) CheckProviderConnectivity(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, err := fiberutil.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func (h *DomainProviderHandler) CheckProviderConnectivity(c *fiber.Ctx) error {
 
 	err = h.providerService.CheckProviderConnectivity(c.Context(), id, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrProviderNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, "Provider not found")
 		}
 		return response.BadRequest(c, "Provider connectivity check failed")
@@ -109,7 +109,7 @@ func (h *DomainProviderHandler) CheckProviderConnectivity(c *fiber.Ctx) error {
 
 // SyncProviderDomains syncs domains from a provider
 func (h *DomainProviderHandler) SyncProviderDomains(c *fiber.Ctx) error {
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
@@ -117,7 +117,7 @@ func (h *DomainProviderHandler) SyncProviderDomains(c *fiber.Ctx) error {
 
 	err = h.providerService.SyncDomains(c.Context(), id, userID, teamID)
 	if err != nil {
-		if errors.Is(err, services.ErrProviderNotFound) {
+		if fiberutil.IsNotFound(err) {
 			return response.NotFound(c, "Provider not found")
 		}
 		return response.BadRequest(c, "Failed to sync domains")
