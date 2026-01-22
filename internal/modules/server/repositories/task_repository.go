@@ -71,3 +71,8 @@ func (r *TaskRepository) UpdateOutput(ctx context.Context, taskID string, output
 		"output": output,
 	})
 }
+
+// UpdateFields updates specific fields of a task
+func (r *TaskRepository) UpdateFields(ctx context.Context, taskID string, fields map[string]any) error {
+	return r.Base.UpdateFields(ctx, taskID, fields)
+}
