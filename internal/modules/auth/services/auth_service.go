@@ -158,7 +158,7 @@ func (s *AuthService) Logout(ctx context.Context, userID string) error {
 // RefreshToken generates new access and refresh tokens
 func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*dto.AuthResponse, error) {
 	// Parse and validate refresh token
-	token, err := jwt.Parse(refreshToken, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.Parse(refreshToken, func(token *jwt.Token) (any, error) {
 		if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, errors.New("invalid signing method")
 		}
@@ -262,7 +262,7 @@ func (s *AuthService) handleInvitation(ctx context.Context, tx *gorm.DB, user *m
 }
 
 // createPersonalTeam creates a personal team for a new user
-func (s *AuthService) createPersonalTeam(ctx context.Context, tx *gorm.DB, user *models.User) error {
+func (s *AuthService) createPersonalTeam(_ context.Context, tx *gorm.DB, user *models.User) error {
 	team := &models.Team{
 		Name:         user.Name + "'s Team",
 		UserID:       user.ID,
