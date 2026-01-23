@@ -62,6 +62,29 @@ func (r *DeploymentRepository) FindBySite(ctx context.Context, siteID string) ([
 	return deployments, err
 }
 
+// FindLatestBySiteIDs finds the latest deployment for each of the given site IDs.
+// Returns a map keyed by site ID.
+func (r *DeploymentRepository) FindLatestBySiteIDs(ctx context.Context, siteIDs []string) (map[string]*models.Deployment, error) {
+	if len(siteIDs) == 0 {
+		return make(map[string]*models.Deployment), nil
+	}
+
+	var deployments []models.Deployment
+	err := r.DB.WithContext(ctx).
+		Raw("SELECT DISTINCT ON (site_id) * FROM deployments WHERE site_id IN ? ORDER BY site_id, created_at DESC", siteIDs).
+		Scan(&deployments).Error
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]*models.Deployment, len(deployments))
+	for i := range deployments {
+		result[deployments[i].SiteID] = &deployments[i]
+	}
+
+	return result, nil
+}
+
 // FindLatestBySite finds the latest deployment for a site
 func (r *DeploymentRepository) FindLatestBySite(ctx context.Context, siteID string) (*models.Deployment, error) {
 	var deployment models.Deployment

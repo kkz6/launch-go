@@ -4,11 +4,17 @@ import (
 	"context"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
+)
+
+const (
+	defaultCronUser = "root"
 )
 
 // ListCrons returns all cron jobs for a server
@@ -27,7 +33,7 @@ func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *
 		return nil, err
 	}
 
-	user := "root"
+	user := defaultCronUser
 	if req.User != "" {
 		user = req.User
 	}
@@ -125,14 +131,17 @@ func (s *Service) DeleteCron(ctx context.Context, serverID, teamID, cronID strin
 	activity.RecordWithLog(ctx, "server", "deleted", "", cron, "Cron job deletion requested")
 
 	if cron.IsInstalled() && server.IsProvisioned() {
-		now := time.Now()
-		cron.UninstallationRequestedAt = &now
-		if err := s.repos.Cron().Update(ctx, cron); err != nil {
-			return err
-		}
+		err := s.WithTransaction(ctx, func(tx *gorm.DB) error {
+			now := time.Now()
+			cron.UninstallationRequestedAt = &now
+			if err := tx.Save(cron).Error; err != nil {
+				return err
+			}
 
-		if err := s.dispatchCronUninstallJob(server, cron); err != nil {
-			s.LogError(err, "Failed to dispatch cron uninstall job", "server_id", serverID, "cron_id", cronID)
+			return s.dispatchCronUninstallJob(server, cron)
+		})
+		if err != nil {
+			return err
 		}
 
 		// Broadcast cron deleted event

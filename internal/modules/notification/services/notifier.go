@@ -15,10 +15,15 @@ type Notifier struct {
 
 // NewNotifier creates a new notifier
 func NewNotifier(channelService *NotificationChannelService, adminWebhookURL string) *Notifier {
-	return &Notifier{
+	n := &Notifier{
 		channelService: channelService,
-		adminAlerter:   slack.NewAdminAlerter(adminWebhookURL),
 	}
+
+	if adminWebhookURL != "" {
+		n.adminAlerter = slack.NewAdminAlerter(adminWebhookURL)
+	}
+
+	return n
 }
 
 // SendToTeam sends a notification to all connected channels for a team
@@ -38,6 +43,10 @@ func (n *Notifier) AdminAlerter() *slack.AdminAlerter {
 
 // SendServerProvisioningFailedAdminAlert sends an admin alert for server provisioning failure
 func (n *Notifier) SendServerProvisioningFailedAdminAlert(ctx context.Context, server slack.ServerInfo, user *slack.UserInfo, output, errorMessage string) error {
+	if n.adminAlerter == nil {
+		return nil
+	}
+
 	alert := slack.NewServerProvisioningFailedAdminAlert(n.adminAlerter, server).
 		WithUser(user).
 		WithOutput(output).
@@ -48,6 +57,10 @@ func (n *Notifier) SendServerProvisioningFailedAdminAlert(ctx context.Context, s
 
 // SendPhpInstallationFailedAdminAlert sends an admin alert for PHP installation failure
 func (n *Notifier) SendPhpInstallationFailedAdminAlert(ctx context.Context, server slack.ServerInfo, phpVersion string, user *slack.UserInfo, output, errorMessage string) error {
+	if n.adminAlerter == nil {
+		return nil
+	}
+
 	alert := slack.NewPhpInstallationFailedAdminAlert(n.adminAlerter, server, phpVersion).
 		WithUser(user).
 		WithOutput(output).
@@ -58,6 +71,10 @@ func (n *Notifier) SendPhpInstallationFailedAdminAlert(ctx context.Context, serv
 
 // SendPhpExtensionInstallFailedAdminAlert sends an admin alert for PHP extension installation failure
 func (n *Notifier) SendPhpExtensionInstallFailedAdminAlert(ctx context.Context, server slack.ServerInfo, extensionName, phpVersion string, user *slack.UserInfo, output, errorMessage string) error {
+	if n.adminAlerter == nil {
+		return nil
+	}
+
 	alert := slack.NewPhpExtensionInstallFailedAdminAlert(n.adminAlerter, server, extensionName, phpVersion).
 		WithUser(user).
 		WithOutput(output).
@@ -68,6 +85,10 @@ func (n *Notifier) SendPhpExtensionInstallFailedAdminAlert(ctx context.Context, 
 
 // SendPhpExtensionUninstallFailedAdminAlert sends an admin alert for PHP extension removal failure
 func (n *Notifier) SendPhpExtensionUninstallFailedAdminAlert(ctx context.Context, server slack.ServerInfo, extensionName, phpVersion string, user *slack.UserInfo, output, errorMessage string) error {
+	if n.adminAlerter == nil {
+		return nil
+	}
+
 	alert := slack.NewPhpExtensionUninstallFailedAdminAlert(n.adminAlerter, server, extensionName, phpVersion).
 		WithUser(user).
 		WithOutput(output).

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
+	"time"
 
 	"github.com/hibiken/asynq"
 
@@ -13,6 +14,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
+
+const defaultBackupRetention = 10
 
 // BackupService handles business logic for backups
 type BackupService struct {
@@ -47,7 +50,7 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID, team
 
 	retention := req.Retention
 	if retention == 0 {
-		retention = 10
+		retention = defaultBackupRetention
 	}
 
 	backup := &models.Backup{
@@ -144,12 +147,15 @@ func (s *BackupService) DeleteBackup(ctx context.Context, id, serverID string) e
 
 	activity.RecordEvent(ctx, "deleted", "", backup, "Backup was deleted")
 
-	// Dispatch deletion job
-	s.dispatchDeleteBackup(serverID, backup.ID)
-
+	// Delete record first, then dispatch the cleanup job
 	if err := s.Repos().Backup().DeleteBackup(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete backup: %w", err)
 	}
+
+	// Dispatch deletion job to remove backup files from server.
+	// If dispatch fails, the backup file remains on the server but the record is already gone.
+	// This is the safer inconsistency since the record is the source of truth.
+	s.dispatchDeleteBackup(serverID, backup.ID)
 
 	s.Logger.Info().
 		Str("backup_id", id).
@@ -194,7 +200,7 @@ func (s *BackupService) RunBackup(ctx context.Context, id, serverID string) erro
 // MarkBackupInstalled marks a backup as installed
 func (s *BackupService) MarkBackupInstalled(ctx context.Context, id string) error {
 	return s.Repos().Backup().UpdateBackupFields(ctx, id, map[string]interface{}{
-		"installed_at":           "NOW()",
+		"installed_at":           time.Now(),
 		"installation_failed_at": nil,
 	})
 }
@@ -202,7 +208,7 @@ func (s *BackupService) MarkBackupInstalled(ctx context.Context, id string) erro
 // MarkBackupInstallationFailed marks a backup installation as failed
 func (s *BackupService) MarkBackupInstallationFailed(ctx context.Context, id string) error {
 	return s.Repos().Backup().UpdateBackupFields(ctx, id, map[string]interface{}{
-		"installation_failed_at": "NOW()",
+		"installation_failed_at": time.Now(),
 	})
 }
 

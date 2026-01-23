@@ -3,6 +3,7 @@ package models
 import (
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -12,9 +13,9 @@ type DatabaseUser struct {
 	basemodels.InstallableModel
 	basemodels.ServerScopedModel
 	basemodels.TeamScopedModel
-	Name     string  `gorm:"type:varchar(255);not null" json:"name"`
-	Password *string `gorm:"type:longtext" json:"-"`
-	Host     string  `gorm:"type:varchar(255);not null;default:localhost" json:"host"`
+	Name     string                          `gorm:"type:varchar(255);not null" json:"name"`
+	Password *dbtype.EncryptedNullableString `gorm:"type:longtext" json:"-"`
+	Host     string                          `gorm:"type:varchar(255);not null;default:localhost" json:"host"`
 
 	// Relations
 	Databases []Database `gorm:"many2many:database_database_user;" json:"databases,omitempty"`

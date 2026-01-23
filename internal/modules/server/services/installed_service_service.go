@@ -20,15 +20,7 @@ func (s *Service) ListServices(ctx context.Context, serverID, teamID string) ([]
 		return nil, err
 	}
 
-	services, err := s.repos.Service().FindByServer(ctx, serverID)
-	if err != nil {
-		return nil, err
-	}
-
-	result := make([]models.InstalledService, len(services))
-	copy(result, services)
-
-	return result, nil
+	return s.repos.Service().FindByServer(ctx, serverID)
 }
 
 // InstallService installs a software on a server
@@ -65,8 +57,10 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 		return nil, err
 	}
 
-	if err := s.dispatchServiceInstallJob(server, service); err != nil {
-		s.LogError(err, "Failed to dispatch service install job", "server_id", serverID, "service_id", service.ID)
+	if server.IsProvisioned() {
+		if err := s.dispatchServiceInstallJob(server, service); err != nil {
+			s.LogError(err, "Failed to dispatch service install job", "server_id", serverID, "service_id", service.ID)
+		}
 	}
 
 	return service, nil

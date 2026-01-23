@@ -22,6 +22,10 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
+const (
+	defaultDeploymentReleasesRetention = 5
+)
+
 // SiteService handles business logic for sites
 type SiteService struct {
 	*BaseService
@@ -77,13 +81,21 @@ func (s *SiteService) List(ctx context.Context, serverID, teamID string) ([]mode
 		return nil, err
 	}
 
-	// Load latest deployment for each site
-	for i := range sites {
-		deployment, err := s.Repos().Deployment().FindLatestBySite(ctx, sites[i].ID)
-		if err != nil && !fiberutil.IsNotFound(err) {
-			s.LogWarn("Failed to fetch latest deployment", "siteID", sites[i].ID, "error", err)
+	// Load latest deployments for all sites in a single batch query
+	if len(sites) > 0 {
+		siteIDs := make([]string, len(sites))
+		for i := range sites {
+			siteIDs[i] = sites[i].ID
 		}
-		sites[i].LatestDeployment = deployment
+
+		deploymentMap, err := s.Repos().Deployment().FindLatestBySiteIDs(ctx, siteIDs)
+		if err != nil {
+			s.LogWarn("Failed to fetch latest deployments", "error", err)
+		} else {
+			for i := range sites {
+				sites[i].LatestDeployment = deploymentMap[sites[i].ID]
+			}
+		}
 	}
 
 	return sites, nil
@@ -185,7 +197,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 		Type:                        req.Type,
 		TLSSetting:                  sitetypes.TLSSettingAuto,
 		ZeroDowntimeDeployment:      zeroDowntime,
-		DeploymentReleasesRetention: 5,
+		DeploymentReleasesRetention: defaultDeploymentReleasesRetention,
 		RepositoryBranch:            repoBranch,
 		User:                        username,
 		Path:                        path,
@@ -278,7 +290,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 		// Fetch git commit data if source control is configured
 		commitData := s.Services().Deployment().FetchLatestCommitData(ctx, site)
 		if commitData == nil {
-			commitData = make(map[string]interface{})
+			commitData = make(map[string]any)
 		}
 
 		// Add environment variables to commit data
@@ -286,7 +298,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 			commitData["env_variables"] = envVars
 		}
 
-		var deployCommitData map[string]interface{}
+		var deployCommitData map[string]any
 		if len(commitData) > 0 {
 			deployCommitData = commitData
 		}
@@ -302,7 +314,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	s.LogInfo("Site created", "site_id", site.ID, "address", site.Address)
 
 	// Broadcast site created event
-	s.BroadcastToTeam(server.TeamID, "site.created", map[string]interface{}{
+	s.BroadcastToTeam(server.TeamID, "site.created", map[string]any{
 		"team_id": server.TeamID,
 		"site":    dto.ToSiteResponse(site),
 	})
@@ -493,7 +505,7 @@ func (s *SiteService) handleSchedulerCreation(ctx context.Context, site *models.
 		EnabledAt: &now,
 	}
 	site.AddEnabledFeature(feature)
-	if err := s.Repos().Site().UpdateFields(ctx, site.ID, map[string]interface{}{
+	if err := s.Repos().Site().UpdateFields(ctx, site.ID, map[string]any{
 		"enabled_features": site.EnabledFeatures,
 	}); err != nil {
 		s.LogError(err, "Failed to update enabled_features for scheduler", "site_id", site.ID)
@@ -539,7 +551,7 @@ func (s *SiteService) handleQueueCreation(ctx context.Context, site *models.Site
 		EnabledAt: &now,
 	}
 	site.AddEnabledFeature(feature)
-	if err := s.Repos().Site().UpdateFields(ctx, site.ID, map[string]interface{}{
+	if err := s.Repos().Site().UpdateFields(ctx, site.ID, map[string]any{
 		"enabled_features": site.EnabledFeatures,
 	}); err != nil {
 		s.LogError(err, "Failed to update enabled_features for queue", "site_id", site.ID)
@@ -706,7 +718,10 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID s
 	if updateCaddyfile {
 		now := time.Now()
 		site.PendingCaddyfileUpdateSince = &now
-		s.Repos().Site().Update(ctx, site)
+		if err := s.Repos().Site().Update(ctx, site); err != nil {
+			s.LogError(err, "Failed to update site pending caddyfile timestamp", "site_id", site.ID)
+			return nil, err
+		}
 		// TODO: Add UpdateCaddyfile job dispatch
 	}
 
@@ -722,7 +737,7 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID s
 	// Broadcast site updated event
 	if s.serverReader != nil {
 		if server, err := s.serverReader.FindServerByID(ctx, serverID); err == nil {
-			s.BroadcastToTeam(server.TeamID, "site.updated", map[string]interface{}{
+			s.BroadcastToTeam(server.TeamID, "site.updated", map[string]any{
 				"team_id": server.TeamID,
 				"site":    dto.ToSiteResponse(site),
 			})

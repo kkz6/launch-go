@@ -4,6 +4,8 @@ import (
 	"context"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
@@ -123,17 +125,15 @@ func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, rule
 	s.LogSystemActivity(ctx, rule, "deleted", "Firewall rule deletion requested")
 
 	if rule.IsInstalled() && server.IsProvisioned() {
-		now := time.Now()
-		rule.UninstallationRequestedAt = &now
-		if err := s.repos.FirewallRule().Update(ctx, rule); err != nil {
-			return err
-		}
+		return s.WithTransaction(ctx, func(tx *gorm.DB) error {
+			now := time.Now()
+			rule.UninstallationRequestedAt = &now
+			if err := tx.Save(rule).Error; err != nil {
+				return err
+			}
 
-		if err := s.dispatchFirewallRuleUninstallJob(server, rule); err != nil {
-			s.LogError(err, "Failed to dispatch firewall rule uninstall job", "server_id", serverID, "rule_id", ruleID)
-		}
-
-		return nil
+			return s.dispatchFirewallRuleUninstallJob(server, rule)
+		})
 	}
 
 	return s.repos.FirewallRule().Delete(ctx, ruleID)

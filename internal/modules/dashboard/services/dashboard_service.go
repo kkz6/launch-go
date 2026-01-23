@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/rs/zerolog"
+	"golang.org/x/sync/errgroup"
 	"gorm.io/gorm"
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
@@ -194,28 +195,62 @@ func (s *DashboardService) GetOnboardingStatus(ctx context.Context, userID strin
 		return nil, nil
 	}
 
-	hasServerProvider, err := s.hasServerProvider(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
+	var (
+		hasServerProvider      bool
+		hasSourceControl       bool
+		hasDomainProvider      bool
+		hasStorageProvider     bool
+		hasNotificationChannel bool
+	)
 
-	hasSourceControl, err := s.hasSourceControl(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
+	g, ctx := errgroup.WithContext(ctx)
 
-	hasDomainProvider, err := s.hasDomainProvider(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
+	g.Go(func() error {
+		result, err := s.hasServerProvider(ctx, userID)
+		if err != nil {
+			return err
+		}
+		hasServerProvider = result
+		return nil
+	})
 
-	hasStorageProvider, err := s.hasStorageProvider(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
+	g.Go(func() error {
+		result, err := s.hasSourceControl(ctx, userID)
+		if err != nil {
+			return err
+		}
+		hasSourceControl = result
+		return nil
+	})
 
-	hasNotificationChannel, err := s.hasNotificationChannel(ctx, userID)
-	if err != nil {
+	g.Go(func() error {
+		result, err := s.hasDomainProvider(ctx, userID)
+		if err != nil {
+			return err
+		}
+		hasDomainProvider = result
+		return nil
+	})
+
+	g.Go(func() error {
+		result, err := s.hasStorageProvider(ctx, userID)
+		if err != nil {
+			return err
+		}
+		hasStorageProvider = result
+		return nil
+	})
+
+	g.Go(func() error {
+		result, err := s.hasNotificationChannel(ctx, userID)
+		if err != nil {
+			return err
+		}
+		hasNotificationChannel = result
+		return nil
+	})
+
+	if err := g.Wait(); err != nil {
 		return nil, err
 	}
 
@@ -231,50 +266,60 @@ func (s *DashboardService) GetOnboardingStatus(ctx context.Context, userID strin
 
 // hasServerProvider checks if user has any server provider connected
 func (s *DashboardService) hasServerProvider(ctx context.Context, userID string) (bool, error) {
-	providers, err := s.repos.ServerProvider.FindByUserID(ctx, userID)
-	if err != nil {
-		return false, err
-	}
+	var count int64
+	err := s.db.WithContext(ctx).
+		Table("server_providers").
+		Where("user_id = ?", userID).
+		Limit(1).
+		Count(&count).Error
 
-	return len(providers) > 0, nil
+	return count > 0, err
 }
 
 // hasSourceControl checks if user has any source control connected
 func (s *DashboardService) hasSourceControl(ctx context.Context, userID string) (bool, error) {
-	sourceControls, err := s.repos.SourceControl.FindAllByUser(ctx, userID)
-	if err != nil {
-		return false, err
-	}
+	var count int64
+	err := s.db.WithContext(ctx).
+		Table("source_controls").
+		Where("user_id = ?", userID).
+		Limit(1).
+		Count(&count).Error
 
-	return len(sourceControls) > 0, nil
+	return count > 0, err
 }
 
 // hasDomainProvider checks if user has any domain provider connected
 func (s *DashboardService) hasDomainProvider(ctx context.Context, userID string) (bool, error) {
-	providers, err := s.repos.DomainProvider.FindByUserID(ctx, userID)
-	if err != nil {
-		return false, err
-	}
+	var count int64
+	err := s.db.WithContext(ctx).
+		Table("domain_providers").
+		Where("user_id = ?", userID).
+		Limit(1).
+		Count(&count).Error
 
-	return len(providers) > 0, nil
+	return count > 0, err
 }
 
 // hasStorageProvider checks if user has any storage provider connected
 func (s *DashboardService) hasStorageProvider(ctx context.Context, userID string) (bool, error) {
-	providers, err := s.repos.StorageProvider.FindByUserID(ctx, userID)
-	if err != nil {
-		return false, err
-	}
+	var count int64
+	err := s.db.WithContext(ctx).
+		Table("storage_providers").
+		Where("user_id = ?", userID).
+		Limit(1).
+		Count(&count).Error
 
-	return len(providers) > 0, nil
+	return count > 0, err
 }
 
 // hasNotificationChannel checks if user has any notification channel configured
 func (s *DashboardService) hasNotificationChannel(ctx context.Context, userID string) (bool, error) {
-	channels, err := s.repos.NotificationChannel.FindByUserID(ctx, userID)
-	if err != nil {
-		return false, err
-	}
+	var count int64
+	err := s.db.WithContext(ctx).
+		Table("notification_channels").
+		Where("user_id = ?", userID).
+		Limit(1).
+		Count(&count).Error
 
-	return len(channels) > 0, nil
+	return count > 0, err
 }

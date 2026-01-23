@@ -2,13 +2,16 @@ package services
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/hibiken/asynq"
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/database/dto"
 	"github.com/kkz6/launch-go/internal/modules/database/jobs"
 	"github.com/kkz6/launch-go/internal/modules/database/models"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 )
 
 // CreateDatabaseUser creates a new database user
@@ -23,33 +26,46 @@ func (s *Service) CreateDatabaseUser(ctx context.Context, serverID, teamID strin
 		return nil, ErrDatabaseUserNameExists
 	}
 
-	// Validate database IDs belong to server
+	// Validate database IDs belong to server in a single query
 	if len(req.Databases) > 0 {
-		for _, dbID := range req.Databases {
-			_, err := s.repos.Database().FindByIDAndServer(ctx, dbID, serverID)
-			if err != nil {
-				return nil, fmt.Errorf("database %s not found on server: %w", dbID, err)
-			}
+		validDBs, err := s.repos.Database().FindByIDsAndServer(ctx, req.Databases, serverID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to validate databases: %w", err)
+		}
+
+		if len(validDBs) != len(req.Databases) {
+			return nil, errors.New("one or more databases not found on this server")
 		}
 	}
 
-	// Create database user
+	password := &dbtype.EncryptedNullableString{}
+	password.Set(req.Password)
+
 	dbUser := &models.DatabaseUser{
 		Name:     req.Name,
-		Password: &req.Password,
+		Password: password,
 	}
 	dbUser.ServerID = serverID
 	dbUser.TeamID = teamID
 
-	if err := s.repos.User().Create(ctx, dbUser); err != nil {
-		return nil, fmt.Errorf("failed to create database user: %w", err)
-	}
-
-	// Attach databases
-	for _, dbID := range req.Databases {
-		if err := s.repos.Database().AttachUser(ctx, dbID, dbUser.ID); err != nil {
-			s.LogError(err, "Failed to attach database to user", "database_id", dbID, "user_id", dbUser.ID)
+	err = s.WithTransaction(ctx, func(tx *gorm.DB) error {
+		if err := tx.Create(dbUser).Error; err != nil {
+			return fmt.Errorf("failed to create database user: %w", err)
 		}
+
+		for _, dbID := range req.Databases {
+			if err := tx.Create(&models.DatabaseDatabaseUser{
+				DatabaseID:     dbID,
+				DatabaseUserID: dbUser.ID,
+			}).Error; err != nil {
+				return fmt.Errorf("failed to attach database %s to user: %w", dbID, err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Dispatch job to create user on server
@@ -79,18 +95,23 @@ func (s *Service) UpdateDatabaseUser(ctx context.Context, id, serverID string, r
 		return nil, ErrUserBeingUninstalled
 	}
 
-	// Validate database IDs belong to server
+	// Validate database IDs belong to server in a single query
 	if len(req.Databases) > 0 {
-		for _, dbID := range req.Databases {
-			_, err := s.repos.Database().FindByIDAndServer(ctx, dbID, serverID)
-			if err != nil {
-				return nil, fmt.Errorf("database %s not found on server: %w", dbID, err)
-			}
+		validDBs, err := s.repos.Database().FindByIDsAndServer(ctx, req.Databases, serverID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to validate databases: %w", err)
+		}
+
+		if len(validDBs) != len(req.Databases) {
+			return nil, errors.New("one or more databases not found on this server")
 		}
 	}
 
 	// Update password
-	dbUser.Password = &req.Password
+	password := &dbtype.EncryptedNullableString{}
+	password.Set(req.Password)
+	dbUser.Password = password
+
 	if err := s.repos.User().Update(ctx, dbUser); err != nil {
 		return nil, fmt.Errorf("failed to update database user: %w", err)
 	}
@@ -104,7 +125,10 @@ func (s *Service) UpdateDatabaseUser(ctx context.Context, id, serverID string, r
 	s.dispatchUpdateDatabaseUser(ctx, dbUser, &req.Password, userID)
 
 	// Reload user with databases
-	dbUser, _ = s.repos.User().FindByID(ctx, dbUser.ID)
+	dbUser, err = s.repos.User().FindByID(ctx, dbUser.ID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to reload database user: %w", err)
+	}
 
 	return dbUser, nil
 }

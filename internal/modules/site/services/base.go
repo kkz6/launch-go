@@ -95,6 +95,7 @@ func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
 func (r *ServiceRegistry) SetCrossModuleDeps(deps *CrossModuleDeps) {
 	if deps.ServerReader != nil {
 		r.site.SetServerReader(deps.ServerReader)
+		r.file.SetServerReader(deps.ServerReader)
 	}
 	if deps.GitReader != nil {
 		r.site.SetGitReader(deps.GitReader)
@@ -137,6 +138,14 @@ func (s *BaseService) Services() *ServiceRegistry {
 }
 
 // Helper functions
+
+// stringToPtr converts a string to a *string, returning nil for empty strings.
+func stringToPtr(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
+}
 
 func normalizeLineEndings(s string) string {
 	s = strings.ReplaceAll(s, "\r\n", "\n")

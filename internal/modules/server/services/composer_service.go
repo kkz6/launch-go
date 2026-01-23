@@ -15,6 +15,10 @@ var (
 	ErrComposerNotInstalled = fiberutil.BadRequest("Composer package manager is not installed on this server")
 )
 
+func composerAuthPath(username string) string {
+	return fmt.Sprintf("/home/%s/.config/composer/auth.json", username)
+}
+
 // GetComposerAuth retrieves the Composer auth.json configuration from the server
 func (s *Service) GetComposerAuth(ctx context.Context, serverID, teamID string) (*dto.ComposerAuthResponse, error) {
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
@@ -32,11 +36,10 @@ func (s *Service) GetComposerAuth(ctx context.Context, serverID, teamID string) 
 	}
 
 	// Get the username for the path
-	username := server.GetUsername()
-	composerAuthPath := fmt.Sprintf("/home/%s/.config/composer/auth.json", username)
+	authPath := composerAuthPath(server.GetUsername())
 
 	// Create and run the task to get the file contents
-	task := tasks.GetFile(tasks.GetFileConfig{Path: composerAuthPath})
+	task := tasks.GetFile(tasks.GetFileConfig{Path: authPath})
 	runner := tasks.NewTaskRunner(server, task).
 		WithDispatcher(s.dispatcher).
 		WithLogger(s.Logger)
@@ -45,7 +48,7 @@ func (s *Service) GetComposerAuth(ctx context.Context, serverID, teamID string) 
 	if err != nil {
 		// File might not exist yet, return empty config
 		return &dto.ComposerAuthResponse{
-			Path:     composerAuthPath,
+			Path:     authPath,
 			Contents: map[string]interface{}{},
 		}, nil
 	}
@@ -55,7 +58,7 @@ func (s *Service) GetComposerAuth(ctx context.Context, serverID, teamID string) 
 	// If file doesn't exist or is empty, return empty config
 	if output == "" || !result.IsSuccessful() {
 		return &dto.ComposerAuthResponse{
-			Path:     composerAuthPath,
+			Path:     authPath,
 			Contents: map[string]interface{}{},
 		}, nil
 	}
@@ -65,13 +68,13 @@ func (s *Service) GetComposerAuth(ctx context.Context, serverID, teamID string) 
 	if err := json.Unmarshal([]byte(output), &contents); err != nil {
 		// If parsing fails, return raw content as string
 		return &dto.ComposerAuthResponse{
-			Path:     composerAuthPath,
+			Path:     authPath,
 			Contents: output,
 		}, nil
 	}
 
 	return &dto.ComposerAuthResponse{
-		Path:     composerAuthPath,
+		Path:     authPath,
 		Contents: contents,
 	}, nil
 }
@@ -98,13 +101,12 @@ func (s *Service) UpdateComposerAuth(ctx context.Context, serverID, teamID strin
 		return fiberutil.BadRequest("Invalid JSON content")
 	}
 
-	// Get the username for the path
-	username := server.GetUsername()
-	composerAuthPath := fmt.Sprintf("/home/%s/.config/composer/auth.json", username)
+	// Get the path for the auth file
+	authPath := composerAuthPath(server.GetUsername())
 
 	// Create and run the task to upload the file
 	task := tasks.UploadFile(tasks.UploadFileConfig{
-		Path:     composerAuthPath,
+		Path:     authPath,
 		Contents: req.Contents,
 		Mode:     "644",
 	})

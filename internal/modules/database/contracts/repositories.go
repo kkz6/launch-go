@@ -13,6 +13,7 @@ type DatabaseRepository interface {
 	Create(ctx context.Context, database *models.Database) error
 	FindByID(ctx context.Context, id string) (*models.Database, error)
 	FindByIDAndServer(ctx context.Context, id, serverID string) (*models.Database, error)
+	FindByIDsAndServer(ctx context.Context, ids []string, serverID string) ([]models.Database, error)
 	FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Database, error)
 	FindByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.Database, error)
 	FindByServer(ctx context.Context, serverID string) ([]models.Database, error)

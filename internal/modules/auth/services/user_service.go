@@ -3,7 +3,10 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
+
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
@@ -119,21 +122,32 @@ func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
 		return fiberutil.NotFound()
 	}
 
-	activity.RecordWithLog(ctx, "auth", "deleted", userID, user, "User account was deleted")
-
 	// Delete owned teams
 	ownedTeams, err := s.repos.Team().GetUserTeams(ctx, userID)
 	if err != nil {
 		return err
 	}
 
-	for _, team := range ownedTeams {
-		if team.UserID == userID {
-			s.repos.Team().Delete(ctx, team.ID)
+	err = s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for _, team := range ownedTeams {
+			if team.UserID != userID {
+				continue
+			}
+
+			if err := s.repos.Team().Delete(ctx, team.ID); err != nil {
+				return fmt.Errorf("failed to delete team %s: %w", team.ID, err)
+			}
 		}
+
+		return tx.Delete(&models.User{}, "id = ?", userID).Error
+	})
+	if err != nil {
+		return err
 	}
 
-	return s.repos.User().Delete(ctx, userID)
+	activity.RecordWithLog(ctx, "auth", "deleted", userID, user, "User account was deleted")
+
+	return nil
 }
 
 // CheckUserStatus checks a user's status by email

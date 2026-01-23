@@ -1,6 +1,8 @@
 package repositories
 
 import (
+	"context"
+
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
@@ -62,9 +64,9 @@ func (r *Registry) DB() *gorm.DB { return r.db }
 
 // IsTeamSubscribed checks if a team has an active subscription
 // This queries the lemon_squeezy_subscriptions table directly to avoid circular dependencies
-func (r *Registry) IsTeamSubscribed(teamID string) bool {
+func (r *Registry) IsTeamSubscribed(ctx context.Context, teamID string) bool {
 	var count int64
-	r.db.Table("lemon_squeezy_subscriptions").
+	r.db.WithContext(ctx).Table("lemon_squeezy_subscriptions").
 		Where("billable_id = ?", teamID).
 		Where("billable_type IN ?", []string{"Modules\\Auth\\Models\\Team", "App\\Models\\Team"}).
 		Where("status IN ?", []string{"active", "on_trial"}).
@@ -74,9 +76,9 @@ func (r *Registry) IsTeamSubscribed(teamID string) bool {
 }
 
 // IsUserAdmin checks if a user has admin or manager role (from Spatie Permission tables)
-func (r *Registry) IsUserAdmin(userID string) bool {
+func (r *Registry) IsUserAdmin(ctx context.Context, userID string) bool {
 	var count int64
-	r.db.Table("model_has_roles").
+	r.db.WithContext(ctx).Table("model_has_roles").
 		Joins("JOIN roles ON roles.id = model_has_roles.role_id").
 		Where("model_has_roles.model_id = ?", userID).
 		Where("model_has_roles.model_type IN ?", []string{"Modules\\Auth\\Models\\User", "App\\Models\\User"}).

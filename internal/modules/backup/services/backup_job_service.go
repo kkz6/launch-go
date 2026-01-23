@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"crypto/subtle"
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
@@ -27,8 +28,8 @@ func (s *BackupJobService) CreateBackupJob(ctx context.Context, backupID, token 
 		return nil, err
 	}
 
-	// Verify dispatch token
-	if backup.DispatchToken != token {
+	// Verify dispatch token using constant-time comparison to prevent timing attacks
+	if subtle.ConstantTimeCompare([]byte(backup.DispatchToken), []byte(token)) != 1 {
 		return nil, ErrInvalidDispatchToken
 	}
 

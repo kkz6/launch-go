@@ -37,7 +37,7 @@ func (h *UserHandler) User(c *fiber.Ctx) error {
 	// Check if current team is subscribed or user is admin (admins bypass subscription)
 	isSubscribed := false
 	if user.CurrentTeamID != nil {
-		isSubscribed = h.Service().IsTeamSubscribedOrUserAdmin(*user.CurrentTeamID, userID)
+		isSubscribed = h.Service().IsTeamSubscribedOrUserAdmin(c.Context(), *user.CurrentTeamID, userID)
 	}
 
 	return fiberctx.OK(c, "User retrieved", dto.ToUserResponseWithSubscription(user, isSubscribed))

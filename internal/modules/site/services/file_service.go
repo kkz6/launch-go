@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/site/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
@@ -26,6 +26,7 @@ type FileOnServer struct {
 // FileService handles file operations on sites
 type FileService struct {
 	*BaseService
+	serverReader contracts.ServerReader
 }
 
 // NewFileService creates a new FileService instance
@@ -33,6 +34,11 @@ func NewFileService(deps *ServiceDeps) *FileService {
 	return &FileService{
 		BaseService: NewBaseService(deps),
 	}
+}
+
+// SetServerReader sets the server reader for cross-module queries
+func (s *FileService) SetServerReader(reader contracts.ServerReader) {
+	s.serverReader = reader
 }
 
 // ListFiles returns the list of editable files for a site
@@ -116,8 +122,11 @@ func (s *FileService) GetFileContent(ctx context.Context, serverID, siteID, file
 	}
 
 	// Get the server for SSH connection
-	var server servermodels.Server
-	if err := s.ServiceDeps().DB.First(&server, "id = ?", serverID).Error; err != nil {
+	if s.serverReader == nil {
+		return "", fmt.Errorf("server reader not configured")
+	}
+	server, err := s.serverReader.FindServerByID(ctx, serverID)
+	if err != nil {
 		return "", fmt.Errorf("server not found: %w", err)
 	}
 
@@ -127,7 +136,7 @@ func (s *FileService) GetFileContent(ctx context.Context, serverID, siteID, file
 	})
 
 	// Run task using task runner
-	result, err := s.ServiceDeps().TaskRunnerDeps.NewRunner(&server, task).
+	result, err := s.ServiceDeps().TaskRunnerDeps.NewRunner(server, task).
 		AsUser().
 		Run(ctx)
 	if err != nil {
@@ -151,8 +160,11 @@ func (s *FileService) UpdateFileContent(ctx context.Context, serverID, siteID, f
 	}
 
 	// Get the server for SSH connection
-	var server servermodels.Server
-	if err := s.ServiceDeps().DB.First(&server, "id = ?", serverID).Error; err != nil {
+	if s.serverReader == nil {
+		return fmt.Errorf("server reader not configured")
+	}
+	server, err := s.serverReader.FindServerByID(ctx, serverID)
+	if err != nil {
 		return fmt.Errorf("server not found: %w", err)
 	}
 
@@ -163,7 +175,7 @@ func (s *FileService) UpdateFileContent(ctx context.Context, serverID, siteID, f
 	})
 
 	// Run task using task runner
-	result, err := s.ServiceDeps().TaskRunnerDeps.NewRunner(&server, task).
+	result, err := s.ServiceDeps().TaskRunnerDeps.NewRunner(server, task).
 		AsUser().
 		Throw().
 		Run(ctx)

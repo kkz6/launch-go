@@ -86,12 +86,7 @@ func (s *RedirectService) Delete(ctx context.Context, redirectID, siteID, server
 
 // dispatchCaddyfileUpdate dispatches a Caddyfile update job for the site
 func (s *RedirectService) dispatchCaddyfileUpdate(siteID, userID string) {
-	var userIDPtr *string
-	if userID != "" {
-		userIDPtr = &userID
-	}
-
 	s.DispatchTask("UpdateCaddyfile", func() (*asynq.Task, error) {
-		return jobs.NewUpdateCaddyfileTask(siteID, userIDPtr)
+		return jobs.NewUpdateCaddyfileTask(siteID, stringToPtr(userID))
 	}, "site_id", siteID)
 }

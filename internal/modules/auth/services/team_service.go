@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"gorm.io/gorm"
+
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
@@ -30,12 +32,20 @@ func (s *TeamService) CreateTeam(ctx context.Context, userID string, req *dto.Cr
 		PersonalTeam: req.PersonalTeam,
 	}
 
-	if err := s.repos.Team().Create(ctx, team); err != nil {
-		return nil, err
-	}
+	err := s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(team).Error; err != nil {
+			return err
+		}
 
-	// Add owner as team member
-	if err := s.repos.TeamMember().AddUser(ctx, team.ID, userID, authtypes.TeamRoleOwner.String()); err != nil {
+		// Add owner as team member
+		ownerRole := authtypes.TeamRoleOwner.String()
+		return tx.Create(&models.TeamMember{
+			TeamID: team.ID,
+			UserID: userID,
+			Role:   &ownerRole,
+		}).Error
+	})
+	if err != nil {
 		return nil, err
 	}
 
@@ -92,9 +102,13 @@ func (s *TeamService) DeleteTeam(ctx context.Context, userID, teamID string) err
 		return errors.New("cannot delete personal team")
 	}
 
+	if err := s.repos.Team().Delete(ctx, teamID); err != nil {
+		return err
+	}
+
 	activity.RecordWithLog(ctx, "auth", "deleted", userID, team, "Team was deleted")
 
-	return s.repos.Team().Delete(ctx, teamID)
+	return nil
 }
 
 // GetTeam retrieves a team by ID

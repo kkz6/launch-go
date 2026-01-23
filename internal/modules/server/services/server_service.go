@@ -8,9 +8,11 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/sync/errgroup"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
@@ -206,6 +208,11 @@ func (s *Service) ArchiveServer(ctx context.Context, id, teamID string) error {
 
 // UnarchiveServer unarchives a server
 func (s *Service) UnarchiveServer(ctx context.Context, id, teamID string) error {
+	_, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
+	if err != nil {
+		return err
+	}
+
 	return s.repos.Server().Unarchive(ctx, id)
 }
 
@@ -277,18 +284,42 @@ func (s *Service) GetShowPageData(ctx context.Context, serverID, teamID string) 
 		return nil, err
 	}
 
-	latestTask, err := s.repos.Task().FindLatestByServer(ctx, serverID)
-	if err != nil {
-		s.LogWarn("Failed to fetch latest task for server", "serverID", serverID, "error", err)
-	}
-	latestMetric, err := s.repos.Metric().FindLatestByServer(ctx, serverID)
-	if err != nil {
-		s.LogWarn("Failed to fetch latest metric for server", "serverID", serverID, "error", err)
-	}
-	hasLaunchAgent, err := s.repos.Server().HasLaunchAgent(ctx, serverID)
-	if err != nil {
-		s.LogWarn("Failed to check launch agent status", "serverID", serverID, "error", err)
-	}
+	var (
+		latestTask     *models.Task
+		latestMetric   *models.Metric
+		hasLaunchAgent bool
+	)
+
+	g, gctx := errgroup.WithContext(ctx)
+
+	g.Go(func() error {
+		var err error
+		latestTask, err = s.repos.Task().FindLatestByServer(gctx, serverID)
+		if err != nil {
+			s.LogWarn("Failed to fetch latest task for server", "serverID", serverID, "error", err)
+		}
+		return nil
+	})
+
+	g.Go(func() error {
+		var err error
+		latestMetric, err = s.repos.Metric().FindLatestByServer(gctx, serverID)
+		if err != nil {
+			s.LogWarn("Failed to fetch latest metric for server", "serverID", serverID, "error", err)
+		}
+		return nil
+	})
+
+	g.Go(func() error {
+		var err error
+		hasLaunchAgent, err = s.repos.Server().HasLaunchAgent(gctx, serverID)
+		if err != nil {
+			s.LogWarn("Failed to check launch agent status", "serverID", serverID, "error", err)
+		}
+		return nil
+	})
+
+	_ = g.Wait()
 
 	services := make([]dto.ServiceResponse, len(server.Services))
 	for i, svc := range server.Services {
@@ -414,15 +445,22 @@ func (s *Service) GetProvisionScript(ctx context.Context, serverID string) (stri
 	return script, nil
 }
 
+// shellEscape escapes a string for safe inclusion in a single-quoted shell string.
+// It replaces any single quote with the sequence '\” (end quote, escaped quote, start quote).
+func shellEscape(s string) string {
+	return strings.ReplaceAll(s, "'", "'\\''")
+}
+
 // generateAuthorizeKeyScript generates a bash script to authorize the management key
 func (s *Service) generateAuthorizeKeyScript(server *models.Server) string {
 	publicKey := string(server.PublicKey)
+	escapedName := shellEscape(server.Name)
 
 	script := `#!/bin/bash
 set -e
 
 # Launch Server Provisioning Script
-# Server: %s
+# Server: '%s'
 
 echo "Authorizing Launch management key..."
 
@@ -444,7 +482,7 @@ fi
 # Notify the server that provisioning is complete
 echo "Provisioning script completed."
 `
-	return fmt.Sprintf(script, server.Name, publicKey)
+	return fmt.Sprintf(script, escapedName, publicKey)
 }
 
 // RunVulnerabilityAudit runs a security vulnerability audit on a server

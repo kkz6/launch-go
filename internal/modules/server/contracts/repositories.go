@@ -86,6 +86,7 @@ type DaemonRepository interface {
 	FindByServer(ctx context.Context, serverID string) ([]models.Daemon, error)
 	Update(ctx context.Context, daemon *models.Daemon) error
 	UpdateStatus(ctx context.Context, id string, running bool) error
+	UpdateLastStatusCheckByServer(ctx context.Context, serverID string, t time.Time) error
 	MarkAsInstalled(ctx context.Context, id string) error
 	MarkInstallationFailed(ctx context.Context, id string) error
 	MarkUninstallationFailed(ctx context.Context, id string) error

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
@@ -13,6 +14,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
+
+var jsonRegex = regexp.MustCompile(`\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}`)
 
 // GetOpcacheStatus returns the OPcache status for a PHP version
 func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID string) (*dto.OpcacheStatusResponse, error) {
@@ -119,8 +122,7 @@ func extractJSON(s string) string {
 	}
 
 	// Fallback: try regex for simpler JSON objects
-	re := regexp.MustCompile(`\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}`)
-	matches := re.FindAllString(s, -1)
+	matches := jsonRegex.FindAllString(s, -1)
 
 	// Return the last match (usually the most complete JSON)
 	for i := len(matches) - 1; i >= 0; i-- {
@@ -243,9 +245,11 @@ func boolToString(b bool) string {
 }
 
 func isPhp8OrNewer(version string) bool {
-	major, err := strconv.ParseFloat(version, 64)
-	if err != nil {
+	parts := strings.Split(version, ".")
+	if len(parts) == 0 {
 		return false
 	}
-	return major >= 8.0
+
+	major, err := strconv.Atoi(parts[0])
+	return err == nil && major >= 8
 }

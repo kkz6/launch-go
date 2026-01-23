@@ -2,6 +2,7 @@ package repositories
 
 import (
 	"context"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -69,4 +70,12 @@ func (r *QueueRepository) CountBySite(ctx context.Context, siteID string) (int64
 		Count(&count).Error
 
 	return count, err
+}
+
+// UpdateLastStatusCheckBySite updates the last_status_check for all queues of a site
+func (r *QueueRepository) UpdateLastStatusCheckBySite(ctx context.Context, siteID string, t time.Time) error {
+	return r.DB.WithContext(ctx).
+		Model(&models.Queue{}).
+		Where("site_id = ?", siteID).
+		Update("last_status_check", t).Error
 }
