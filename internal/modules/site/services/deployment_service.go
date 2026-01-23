@@ -54,7 +54,7 @@ func (s *DeploymentService) Deploy(ctx context.Context, siteID, serverID, userID
 }
 
 // FetchLatestCommitData fetches the latest commit data from the git provider
-func (s *DeploymentService) FetchLatestCommitData(ctx context.Context, site *models.Site) map[string]interface{} {
+func (s *DeploymentService) FetchLatestCommitData(ctx context.Context, site *models.Site) map[string]any {
 	if site.SourceControlID == nil || site.SourceControlRepositoriesID == nil {
 		return nil
 	}
@@ -169,9 +169,11 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 	}
 
 	// Create rollback deployment
-	commitData := map[string]interface{}{
-		"rollback_from": latestDeployment.ID,
-		"rollback_to":   targetDeployment.ID,
+	commitData := map[string]any{
+		"rollback_to": targetDeployment.ID,
+	}
+	if latestDeployment != nil {
+		commitData["rollback_from"] = latestDeployment.ID
 	}
 
 	for k, v := range targetDeployment.CommitData {
@@ -180,14 +182,8 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 		}
 	}
 
-	// Convert empty userID to nil
-	var userIDPtr *string
-	if userID != "" {
-		userIDPtr = &userID
-	}
-
 	deployment := &models.Deployment{
-		UserID:     userIDPtr,
+		UserID:     stringToPtr(userID),
 		Status:     sitetypes.DeploymentStatusPending,
 		GitHash:    targetDeployment.GitHash,
 		CommitData: commitData,
@@ -216,12 +212,9 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 }
 
 // createDeployment creates a new deployment for a site
-func (s *DeploymentService) createDeployment(ctx context.Context, site *models.Site, userID string, commitData map[string]interface{}) (*models.Deployment, error) {
+func (s *DeploymentService) createDeployment(ctx context.Context, site *models.Site, userID string, commitData map[string]any) (*models.Deployment, error) {
 	// Convert empty userID to nil (webhook deployments have no user)
-	var userIDPtr *string
-	if userID != "" {
-		userIDPtr = &userID
-	}
+	userIDPtr := stringToPtr(userID)
 
 	// Extract git hash from commit data
 	gitHash := extractGitHash(commitData)
@@ -400,14 +393,18 @@ func (s *DeploymentService) EnableAutoDeployment(ctx context.Context, siteID, se
 
 // DisableAutoDeployment disables auto-deployment for a site
 func (s *DeploymentService) DisableAutoDeployment(ctx context.Context, siteID, serverID string) error {
-	return s.Repos().Site().UpdateFields(ctx, siteID, map[string]interface{}{
+	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+		return err
+	}
+
+	return s.Repos().Site().UpdateFields(ctx, siteID, map[string]any{
 		"auto_deployment": false,
 	})
 }
 
 // BroadcastProgress broadcasts deployment progress
 func (s *DeploymentService) BroadcastProgress(siteID, deploymentID, status, message string) {
-	s.BroadcastToDeployment(deploymentID, "deployment.progress", map[string]interface{}{
+	s.BroadcastToDeployment(deploymentID, "deployment.progress", map[string]any{
 		"site_id":       siteID,
 		"deployment_id": deploymentID,
 		"status":        status,
@@ -455,7 +452,7 @@ func (s *DeploymentService) DeployFromWebhook(ctx context.Context, siteID, token
 }
 
 // parseWebhookPayload extracts commit data from git provider webhook payloads
-func (s *DeploymentService) parseWebhookPayload(payload map[string]any, site *models.Site) map[string]interface{} {
+func (s *DeploymentService) parseWebhookPayload(payload map[string]any, site *models.Site) map[string]any {
 	if payload == nil {
 		return nil
 	}
@@ -481,8 +478,8 @@ func (s *DeploymentService) parseWebhookPayload(payload map[string]any, site *mo
 }
 
 // parseGitHubPayload parses GitHub webhook payload
-func (s *DeploymentService) parseGitHubPayload(payload, commit map[string]any) map[string]interface{} {
-	result := make(map[string]interface{})
+func (s *DeploymentService) parseGitHubPayload(payload, commit map[string]any) map[string]any {
+	result := make(map[string]any)
 
 	if id, ok := commit["id"].(string); ok {
 		result["commit_id"] = id
@@ -520,8 +517,8 @@ func (s *DeploymentService) parseGitHubPayload(payload, commit map[string]any) m
 }
 
 // parseGitLabPayload parses GitLab webhook payload
-func (s *DeploymentService) parseGitLabPayload(payload, commit map[string]any) map[string]interface{} {
-	result := make(map[string]interface{})
+func (s *DeploymentService) parseGitLabPayload(payload, commit map[string]any) map[string]any {
+	result := make(map[string]any)
 
 	if id, ok := commit["id"].(string); ok {
 		result["commit_id"] = id
@@ -561,7 +558,7 @@ func (s *DeploymentService) parseGitLabPayload(payload, commit map[string]any) m
 }
 
 // parseBitbucketPayload parses Bitbucket webhook payload
-func (s *DeploymentService) parseBitbucketPayload(push map[string]any) map[string]interface{} {
+func (s *DeploymentService) parseBitbucketPayload(push map[string]any) map[string]any {
 	changes, ok := push["changes"].([]any)
 	if !ok || len(changes) == 0 {
 		return nil
@@ -582,7 +579,7 @@ func (s *DeploymentService) parseBitbucketPayload(push map[string]any) map[strin
 		return nil
 	}
 
-	result := make(map[string]interface{})
+	result := make(map[string]any)
 
 	if hash, ok := commit["hash"].(string); ok {
 		result["commit_id"] = hash
@@ -620,7 +617,7 @@ func (s *DeploymentService) parseBitbucketPayload(push map[string]any) map[strin
 }
 
 // extractGitHash extracts the git hash from commit data
-func extractGitHash(commitData map[string]interface{}) *string {
+func extractGitHash(commitData map[string]any) *string {
 	if commitData == nil {
 		return nil
 	}

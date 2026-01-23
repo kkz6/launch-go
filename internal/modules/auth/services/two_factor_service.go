@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/pquerna/otp/totp"
+	"golang.org/x/crypto/bcrypt"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
@@ -97,7 +98,17 @@ func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, code st
 		return err
 	}
 
-	codesStr := strings.Join(recoveryCodes, ",")
+	// Hash recovery codes before storage
+	hashedCodes := make([]string, len(recoveryCodes))
+	for i, code := range recoveryCodes {
+		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+		if err != nil {
+			return fmt.Errorf("failed to hash recovery code: %w", err)
+		}
+		hashedCodes[i] = string(hash)
+	}
+
+	codesStr := strings.Join(hashedCodes, ",")
 	user.TwoFactorRecoveryCodes = &codesStr
 
 	return s.repos.User().Update(ctx, user)
@@ -149,13 +160,16 @@ func (s *TwoFactorService) VerifyTwoFactor(ctx context.Context, userID, code str
 	// Try recovery code
 	if user.TwoFactorRecoveryCodes != nil {
 		codes := strings.Split(*user.TwoFactorRecoveryCodes, ",")
-		for i, c := range codes {
-			if c == code {
+		for i, hashedCode := range codes {
+			if bcrypt.CompareHashAndPassword([]byte(hashedCode), []byte(code)) == nil {
 				// Remove used recovery code
 				codes = append(codes[:i], codes[i+1:]...)
 				codesStr := strings.Join(codes, ",")
 				user.TwoFactorRecoveryCodes = &codesStr
-				s.repos.User().Update(ctx, user)
+
+				if err := s.repos.User().Update(ctx, user); err != nil {
+					return false, fmt.Errorf("failed to remove used recovery code: %w", err)
+				}
 
 				return true, nil
 			}
@@ -165,22 +179,10 @@ func (s *TwoFactorService) VerifyTwoFactor(ctx context.Context, userID, code str
 	return false, nil
 }
 
-// GetRecoveryCodes returns the user's recovery codes
+// GetRecoveryCodes regenerates recovery codes and returns the plaintext versions.
+// Stored codes are hashed and cannot be retrieved, so this always generates fresh codes.
 func (s *TwoFactorService) GetRecoveryCodes(ctx context.Context, userID string) ([]string, error) {
-	user, err := s.repos.User().FindByID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	if user == nil {
-		return nil, fiberutil.NotFound()
-	}
-
-	if user.TwoFactorRecoveryCodes == nil {
-		return []string{}, nil
-	}
-
-	return strings.Split(*user.TwoFactorRecoveryCodes, ","), nil
+	return s.RegenerateRecoveryCodes(ctx, userID)
 }
 
 // RegenerateRecoveryCodes generates new recovery codes
@@ -203,7 +205,17 @@ func (s *TwoFactorService) RegenerateRecoveryCodes(ctx context.Context, userID s
 		return nil, err
 	}
 
-	codesStr := strings.Join(codes, ",")
+	// Hash recovery codes before storage
+	hashedCodes := make([]string, len(codes))
+	for i, code := range codes {
+		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+		if err != nil {
+			return nil, fmt.Errorf("failed to hash recovery code: %w", err)
+		}
+		hashedCodes[i] = string(hash)
+	}
+
+	codesStr := strings.Join(hashedCodes, ",")
 	user.TwoFactorRecoveryCodes = &codesStr
 
 	if err := s.repos.User().Update(ctx, user); err != nil {

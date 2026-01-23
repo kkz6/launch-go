@@ -25,6 +25,14 @@ func NewTeamMemberService(repos *repositories.Registry) *TeamMemberService {
 	return &TeamMemberService{repos: repos}
 }
 
+// canManageMembers checks if a team member has permission to manage other members
+func (s *TeamMemberService) canManageMembers(member *models.TeamMember) bool {
+	if member == nil || member.Role == nil {
+		return false
+	}
+	return *member.Role == authtypes.TeamRoleOwner.String() || *member.Role == authtypes.TeamRoleAdmin.String()
+}
+
 // InviteTeamMember invites a user to a team
 func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID string, req *dto.InviteTeamMemberRequest) error {
 	req.Normalize()
@@ -45,7 +53,7 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 			return err
 		}
 
-		if member == nil || member.Role == nil || *member.Role != authtypes.TeamRoleAdmin.String() {
+		if !s.canManageMembers(member) {
 			return fiberutil.Forbidden()
 		}
 	}
@@ -143,7 +151,7 @@ func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, te
 			return err
 		}
 
-		if member == nil || member.Role == nil || *member.Role != authtypes.TeamRoleAdmin.String() {
+		if !s.canManageMembers(member) {
 			return fiberutil.Forbidden()
 		}
 	}

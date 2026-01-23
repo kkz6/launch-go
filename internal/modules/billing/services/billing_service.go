@@ -34,20 +34,40 @@ type Config struct {
 
 // BillingService handles billing operations
 type BillingService struct {
-	repos        *repositories.Registry
-	lemonSqueezy *providers.LemonSqueezyClient
-	config       *Config
-	logger       *zerolog.Logger
+	repos            *repositories.Registry
+	lemonSqueezy     *providers.LemonSqueezyClient
+	config           *Config
+	logger           *zerolog.Logger
+	plansByID        map[string]*models.Plan
+	plansByProductID map[string]*models.Plan
+	plansByVariantID map[string]*models.Plan
 }
 
 // NewBillingService creates a new billing service
 func NewBillingService(repos *repositories.Registry, lemonSqueezy *providers.LemonSqueezyClient, config *Config, logger *zerolog.Logger) *BillingService {
-	return &BillingService{
-		repos:        repos,
-		lemonSqueezy: lemonSqueezy,
-		config:       config,
-		logger:       logger,
+	svc := &BillingService{
+		repos:            repos,
+		lemonSqueezy:     lemonSqueezy,
+		config:           config,
+		logger:           logger,
+		plansByID:        make(map[string]*models.Plan, len(config.Plans)),
+		plansByProductID: make(map[string]*models.Plan, len(config.Plans)),
+		plansByVariantID: make(map[string]*models.Plan, len(config.Plans)),
 	}
+
+	for i := range config.Plans {
+		p := &config.Plans[i]
+		svc.plansByID[p.ID] = p
+		svc.plansByProductID[p.ID] = p
+		if p.MonthlyID != "" {
+			svc.plansByVariantID[p.MonthlyID] = p
+		}
+		if p.YearlyID != "" {
+			svc.plansByVariantID[p.YearlyID] = p
+		}
+	}
+
+	return svc
 }
 
 // GetPlans returns all available plans
@@ -57,35 +77,17 @@ func (s *BillingService) GetPlans() []models.Plan {
 
 // GetPlanByID finds a plan by its ID
 func (s *BillingService) GetPlanByID(planID string) *models.Plan {
-	for i := range s.config.Plans {
-		if s.config.Plans[i].ID == planID {
-			return &s.config.Plans[i]
-		}
-	}
-
-	return nil
+	return s.plansByID[planID]
 }
 
 // GetPlanByProductID finds a plan by its product ID
 func (s *BillingService) GetPlanByProductID(productID string) *models.Plan {
-	for i := range s.config.Plans {
-		if s.config.Plans[i].ID == productID {
-			return &s.config.Plans[i]
-		}
-	}
-
-	return nil
+	return s.plansByProductID[productID]
 }
 
 // GetPlanByVariantID finds a plan by its variant ID
 func (s *BillingService) GetPlanByVariantID(variantID string) *models.Plan {
-	for i := range s.config.Plans {
-		if s.config.Plans[i].MonthlyID == variantID || s.config.Plans[i].YearlyID == variantID {
-			return &s.config.Plans[i]
-		}
-	}
-
-	return nil
+	return s.plansByVariantID[variantID]
 }
 
 // GenerateCheckoutURL generates a checkout URL for a team to subscribe
@@ -197,6 +199,10 @@ func (s *BillingService) GetBillingData(ctx context.Context, teamID string, serv
 		return nil, err
 	}
 
+	// NOTE: Payment URL fetches are N+1 because the LemonSqueezy API does not support
+	// batch retrieval of update payment method URLs. Each subscription requires a
+	// separate API call. Consider caching these URLs if performance becomes an issue,
+	// as they typically don't change frequently.
 	subscriptionResponses := make([]dto.SubscriptionResponse, len(subscriptions))
 	for i, sub := range subscriptions {
 		plan := s.GetPlanByProductID(sub.ProductID)

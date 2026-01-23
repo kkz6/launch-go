@@ -5,10 +5,12 @@ import (
 	"fmt"
 
 	"github.com/hibiken/asynq"
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/database/dto"
 	"github.com/kkz6/launch-go/internal/modules/database/jobs"
 	"github.com/kkz6/launch-go/internal/modules/database/models"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
@@ -24,76 +26,102 @@ func (s *Service) CreateDatabase(ctx context.Context, serverID, teamID string, r
 		return nil, ErrDatabaseNameExists
 	}
 
-	// Create database record
+	// If creating a user, validate username doesn't exist before starting the transaction
+	if req.CreateUser {
+		userExists, err := s.repos.User().ExistsByNameAndServer(ctx, req.UserName, serverID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to check existing user: %w", err)
+		}
+
+		if userExists {
+			return nil, ErrDatabaseUserNameExists
+		}
+	}
+
 	database := &models.Database{
 		Name: req.Name,
 	}
 	database.ServerID = serverID
 	database.TeamID = teamID
 
-	if err := s.repos.Database().Create(ctx, database); err != nil {
-		return nil, fmt.Errorf("failed to create database: %w", err)
+	var dbUser *models.DatabaseUser
+	var existingUser *models.DatabaseUser
+
+	err = s.WithTransaction(ctx, func(tx *gorm.DB) error {
+		if err := tx.Create(database).Error; err != nil {
+			return fmt.Errorf("failed to create database: %w", err)
+		}
+
+		// Attach root user if exists
+		rootUser, rootErr := s.repos.User().FindRootUser(ctx, serverID)
+		if rootErr == nil {
+			if err := tx.Create(&models.DatabaseDatabaseUser{
+				DatabaseID:     database.ID,
+				DatabaseUserID: rootUser.ID,
+			}).Error; err != nil {
+				return fmt.Errorf("failed to attach root user to database: %w", err)
+			}
+		}
+
+		// Handle existing user attachment
+		if !req.CreateUser && req.ExistingUserID != nil && *req.ExistingUserID != "" {
+			user, err := s.repos.User().FindByIDAndServer(ctx, *req.ExistingUserID, serverID)
+			if err != nil {
+				return fmt.Errorf("existing user not found: %w", err)
+			}
+
+			existingUser = user
+
+			if err := tx.Create(&models.DatabaseDatabaseUser{
+				DatabaseID:     database.ID,
+				DatabaseUserID: existingUser.ID,
+			}).Error; err != nil {
+				return fmt.Errorf("failed to attach existing user to database: %w", err)
+			}
+
+			return nil
+		}
+
+		// If creating a new user
+		if req.CreateUser {
+			password := &dbtype.EncryptedNullableString{}
+			password.Set(req.UserPassword)
+
+			dbUser = &models.DatabaseUser{
+				Name:     req.UserName,
+				Password: password,
+			}
+			dbUser.ServerID = serverID
+			dbUser.TeamID = teamID
+
+			if err := tx.Create(dbUser).Error; err != nil {
+				return fmt.Errorf("failed to create database user: %w", err)
+			}
+
+			if err := tx.Create(&models.DatabaseDatabaseUser{
+				DatabaseID:     database.ID,
+				DatabaseUserID: dbUser.ID,
+			}).Error; err != nil {
+				return fmt.Errorf("failed to attach user to database: %w", err)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	activity.RecordEventPtr(ctx, "created", userID, database, "Database was created")
 
-	// Attach root user if exists
-	s.attachRootUser(ctx, serverID, database.ID)
-
-	// Handle existing user attachment
-	if !req.CreateUser && req.ExistingUserID != nil && *req.ExistingUserID != "" {
-		existingUser, err := s.repos.User().FindByIDAndServer(ctx, *req.ExistingUserID, serverID)
-		if err != nil {
-			s.LogWarn("Failed to find existing user", "user_id", *req.ExistingUserID, "error", err)
-		}
-		if err == nil {
-			if err := s.repos.Database().AttachUser(ctx, database.ID, existingUser.ID); err != nil {
-				s.LogError(err, "Failed to attach existing user to database")
-			}
-
-			// Dispatch job to create database and update user permissions
-			s.dispatchCreateDatabaseWithExistingUser(ctx, database, existingUser, userID)
-
-			return database, nil
-		}
-	}
-
-	// If not creating a user, just dispatch database creation
-	if !req.CreateUser {
+	// Dispatch appropriate jobs after successful transaction
+	if existingUser != nil {
+		s.dispatchCreateDatabaseWithExistingUser(ctx, database, existingUser, userID)
+	} else if dbUser != nil {
+		s.dispatchCreateDatabaseWithNewUser(ctx, database, dbUser, req.UserPassword, userID)
+	} else {
 		s.dispatchCreateDatabase(ctx, database, userID)
-
-		return database, nil
 	}
-
-	// Check if user name already exists
-	userExists, err := s.repos.User().ExistsByNameAndServer(ctx, req.UserName, serverID)
-	if err != nil {
-		return nil, fmt.Errorf("failed to check existing user: %w", err)
-	}
-
-	if userExists {
-		return nil, ErrDatabaseUserNameExists
-	}
-
-	// Create database user
-	dbUser := &models.DatabaseUser{
-		Name:     req.UserName,
-		Password: &req.UserPassword,
-	}
-	dbUser.ServerID = serverID
-	dbUser.TeamID = teamID
-
-	if err := s.repos.User().Create(ctx, dbUser); err != nil {
-		return nil, fmt.Errorf("failed to create database user: %w", err)
-	}
-
-	// Attach user to database
-	if err := s.repos.Database().AttachUser(ctx, database.ID, dbUser.ID); err != nil {
-		return nil, fmt.Errorf("failed to attach user to database: %w", err)
-	}
-
-	// Dispatch jobs to create database and user
-	s.dispatchCreateDatabaseWithNewUser(ctx, database, dbUser, req.UserPassword, userID)
 
 	return database, nil
 }
@@ -164,17 +192,6 @@ func (s *Service) BroadcastDatabaseStatus(serverID, databaseID, status, message 
 
 // Helper methods
 
-func (s *Service) attachRootUser(ctx context.Context, serverID, databaseID string) {
-	rootUser, err := s.repos.User().FindRootUser(ctx, serverID)
-	if err != nil {
-		return
-	}
-
-	if err := s.repos.Database().AttachUser(ctx, databaseID, rootUser.ID); err != nil {
-		s.LogError(err, "Failed to attach root user to database", "database_id", databaseID)
-	}
-}
-
 func (s *Service) dispatchCreateDatabase(ctx context.Context, database *models.Database, userID *string) {
 	s.DispatchTask("InstallDatabase", func() (*asynq.Task, error) {
 		return jobs.NewInstallDatabaseTask(database.ID, userID)
@@ -182,7 +199,11 @@ func (s *Service) dispatchCreateDatabase(ctx context.Context, database *models.D
 }
 
 func (s *Service) dispatchCreateDatabaseWithExistingUser(ctx context.Context, database *models.Database, user *models.DatabaseUser, userID *string) {
-	// Create database first, then update user permissions
+	// NOTE: These two tasks have an ordering dependency (database must exist before granting
+	// user permissions). The task implementations are idempotent -- InstallDatabaseUser and
+	// UpdateDatabaseUser will re-check state before executing. The asynq TaskID deduplication
+	// also prevents duplicate concurrent execution. If stronger ordering is needed in the
+	// future, these should be combined into a single composite task.
 	s.DispatchTask("InstallDatabase", func() (*asynq.Task, error) {
 		return jobs.NewInstallDatabaseTask(database.ID, userID)
 	}, "database_id", database.ID)
@@ -193,7 +214,11 @@ func (s *Service) dispatchCreateDatabaseWithExistingUser(ctx context.Context, da
 }
 
 func (s *Service) dispatchCreateDatabaseWithNewUser(ctx context.Context, database *models.Database, user *models.DatabaseUser, password string, userID *string) {
-	// Create database first, then create user
+	// NOTE: These two tasks have an ordering dependency (database must exist before creating
+	// the user with grants on it). The task implementations are idempotent -- the install
+	// database user job will re-check state and grant privileges only on databases that exist.
+	// The asynq TaskID deduplication also prevents duplicate concurrent execution. If stronger
+	// ordering is needed in the future, these should be combined into a single composite task.
 	s.DispatchTask("InstallDatabase", func() (*asynq.Task, error) {
 		return jobs.NewInstallDatabaseTask(database.ID, userID)
 	}, "database_id", database.ID)

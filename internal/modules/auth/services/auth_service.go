@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
+	"github.com/rs/zerolog"
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
@@ -16,17 +18,21 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
+const defaultRefreshTokenHours = 24 * 30 // 30 days
+
 // AuthService handles authentication-related operations
 type AuthService struct {
 	repos  *repositories.Registry
 	config *config.Config
+	logger *zerolog.Logger
 }
 
 // NewAuthService creates a new AuthService instance
-func NewAuthService(repos *repositories.Registry, cfg *config.Config) *AuthService {
+func NewAuthService(repos *repositories.Registry, cfg *config.Config, logger *zerolog.Logger) *AuthService {
 	return &AuthService{
 		repos:  repos,
 		config: cfg,
+		logger: logger,
 	}
 }
 
@@ -56,7 +62,7 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		timezone = "UTC"
 	}
 
-	// Create user
+	// Create user, team, and handle invitation in a transaction
 	user := &models.User{
 		Name:     req.Name,
 		Email:    req.Email,
@@ -64,20 +70,27 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		Timezone: &timezone,
 	}
 
-	if err := s.repos.User().Create(ctx, user); err != nil {
-		return nil, err
-	}
-
-	// Handle invitation if provided
-	if req.InvitationID != nil && *req.InvitationID != "" {
-		s.handleInvitation(ctx, user, *req.InvitationID)
-	}
-
-	// Create personal team if requested and not joining via invitation
-	if req.CreatePersonalTeam && (req.InvitationID == nil || *req.InvitationID == "") {
-		if err := s.createPersonalTeam(ctx, user); err != nil {
-			return nil, err
+	err = s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(user).Error; err != nil {
+			return err
 		}
+
+		// Handle invitation if provided
+		if req.InvitationID != nil && *req.InvitationID != "" {
+			s.handleInvitation(ctx, tx, user, *req.InvitationID)
+		}
+
+		// Create personal team if requested and not joining via invitation
+		if req.CreatePersonalTeam && (req.InvitationID == nil || *req.InvitationID == "") {
+			if err := s.createPersonalTeam(ctx, tx, user); err != nil {
+				return err
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
 
 	// Generate tokens
@@ -198,9 +211,12 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 }
 
 // handleInvitation handles team invitation during registration
-func (s *AuthService) handleInvitation(ctx context.Context, user *models.User, invitationID string) {
+func (s *AuthService) handleInvitation(ctx context.Context, tx *gorm.DB, user *models.User, invitationID string) {
 	invitation, err := s.repos.TeamInvitation().FindByID(ctx, invitationID)
 	if err != nil || invitation == nil {
+		if err != nil {
+			s.logger.Error().Err(err).Str("invitation_id", invitationID).Msg("Failed to find invitation")
+		}
 		return
 	}
 
@@ -213,40 +229,62 @@ func (s *AuthService) handleInvitation(ctx context.Context, user *models.User, i
 	if invitation.Role != nil {
 		role = *invitation.Role
 	}
-	if err := s.repos.TeamMember().AddUser(ctx, invitation.TeamID, user.ID, role); err != nil {
+
+	if err := tx.Create(&models.TeamMember{
+		TeamID: invitation.TeamID,
+		UserID: user.ID,
+		Role:   &role,
+	}).Error; err != nil {
+		s.logger.Error().Err(err).
+			Str("team_id", invitation.TeamID).
+			Str("user_id", user.ID).
+			Msg("Failed to add user to team during invitation handling")
 		return
 	}
 
 	// Set current team
-	if err := s.repos.User().SetCurrentTeam(ctx, user.ID, invitation.TeamID); err != nil {
+	if err := tx.Model(user).Update("current_team_id", invitation.TeamID).Error; err != nil {
+		s.logger.Error().Err(err).
+			Str("user_id", user.ID).
+			Str("team_id", invitation.TeamID).
+			Msg("Failed to set current team during invitation handling")
 		return
 	}
 
 	user.CurrentTeamID = &invitation.TeamID
 
 	// Delete invitation
-	s.repos.TeamInvitation().Delete(ctx, invitation.ID)
+	if err := tx.Delete(invitation).Error; err != nil {
+		s.logger.Error().Err(err).
+			Str("invitation_id", invitation.ID).
+			Msg("Failed to delete invitation during registration")
+	}
 }
 
 // createPersonalTeam creates a personal team for a new user
-func (s *AuthService) createPersonalTeam(ctx context.Context, user *models.User) error {
+func (s *AuthService) createPersonalTeam(ctx context.Context, tx *gorm.DB, user *models.User) error {
 	team := &models.Team{
 		Name:         user.Name + "'s Team",
 		UserID:       user.ID,
 		PersonalTeam: true,
 	}
 
-	if err := s.repos.Team().Create(ctx, team); err != nil {
+	if err := tx.Create(team).Error; err != nil {
 		return err
 	}
 
 	// Add user to team as owner
-	if err := s.repos.TeamMember().AddUser(ctx, team.ID, user.ID, authtypes.TeamRoleOwner.String()); err != nil {
+	ownerRole := authtypes.TeamRoleOwner.String()
+	if err := tx.Create(&models.TeamMember{
+		TeamID: team.ID,
+		UserID: user.ID,
+		Role:   &ownerRole,
+	}).Error; err != nil {
 		return err
 	}
 
 	// Set current team
-	if err := s.repos.User().SetCurrentTeam(ctx, user.ID, team.ID); err != nil {
+	if err := tx.Model(user).Update("current_team_id", team.ID).Error; err != nil {
 		return err
 	}
 
@@ -260,12 +298,13 @@ func (s *AuthService) createPersonalTeam(ctx context.Context, user *models.User)
 // Note: team_id is NOT included in the token. Team context is passed via X-Team-ID header
 // and validated by the TeamContext middleware with cached membership checks.
 func (s *AuthService) generateAccessToken(user *models.User) (string, error) {
+	now := time.Now()
 	claims := jwt.MapClaims{
 		"sub":   user.ID,
 		"email": user.Email,
 		"type":  "access",
-		"exp":   time.Now().Add(time.Hour * time.Duration(s.config.JWT.Expiration)).Unix(),
-		"iat":   time.Now().Unix(),
+		"iat":   now.Unix(),
+		"exp":   now.Add(time.Hour * time.Duration(s.config.JWT.Expiration)).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
@@ -275,11 +314,12 @@ func (s *AuthService) generateAccessToken(user *models.User) (string, error) {
 
 // generateRefreshToken generates a JWT refresh token
 func (s *AuthService) generateRefreshToken(user *models.User) (string, error) {
+	now := time.Now()
 	claims := jwt.MapClaims{
 		"sub":  user.ID,
 		"type": "refresh",
-		"exp":  time.Now().Add(time.Hour * 24 * 30).Unix(), // 30 days
-		"iat":  time.Now().Unix(),
+		"iat":  now.Unix(),
+		"exp":  now.Add(time.Hour * defaultRefreshTokenHours).Unix(),
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

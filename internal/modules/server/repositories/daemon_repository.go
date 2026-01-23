@@ -70,4 +70,12 @@ func (r *DaemonRepository) UpdateStatus(ctx context.Context, id string, running 
 	})
 }
 
+// UpdateLastStatusCheckByServer batch-updates last_status_check for all daemons on a server
+func (r *DaemonRepository) UpdateLastStatusCheckByServer(ctx context.Context, serverID string, t time.Time) error {
+	return r.DB.WithContext(ctx).
+		Model(&models.Daemon{}).
+		Where("server_id = ?", serverID).
+		Update("last_status_check", t).Error
+}
+
 // Note: MarkAsInstalled, MarkInstallationFailed and MarkUninstallationFailed are inherited from repository.Installable

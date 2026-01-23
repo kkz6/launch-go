@@ -28,6 +28,17 @@ func (r *DatabaseRepository) FindByID(ctx context.Context, id string) (*models.D
 	return &database, nil
 }
 
+// FindByIDsAndServer finds databases by a list of IDs belonging to the given server
+func (r *DatabaseRepository) FindByIDsAndServer(ctx context.Context, ids []string, serverID string) ([]models.Database, error) {
+	var databases []models.Database
+
+	err := r.DB.WithContext(ctx).
+		Where("id IN ? AND server_id = ?", ids, serverID).
+		Find(&databases).Error
+
+	return databases, err
+}
+
 // FindByIDAndServer finds a database by ID and server ID
 func (r *DatabaseRepository) FindByIDAndServer(ctx context.Context, id, serverID string) (*models.Database, error) {
 	var database models.Database

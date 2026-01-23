@@ -4,10 +4,19 @@ import (
 	"context"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
+)
+
+const (
+	defaultDaemonUser       = "root"
+	defaultDaemonProcesses  = 1
+	defaultDaemonStopWait   = 10
+	defaultDaemonStopSignal = "SIGTERM"
 )
 
 // ListDaemons returns all daemons for a server
@@ -26,22 +35,22 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 		return nil, err
 	}
 
-	user := "root"
+	user := defaultDaemonUser
 	if req.User != "" {
 		user = req.User
 	}
 
-	processes := 1
+	processes := defaultDaemonProcesses
 	if req.Processes > 0 {
 		processes = req.Processes
 	}
 
-	stopWaitSeconds := 10
+	stopWaitSeconds := defaultDaemonStopWait
 	if req.StopWaitSeconds > 0 {
 		stopWaitSeconds = req.StopWaitSeconds
 	}
 
-	stopSignal := "SIGTERM"
+	stopSignal := defaultDaemonStopSignal
 	if req.StopSignal != nil {
 		stopSignal = *req.StopSignal
 	}
@@ -130,17 +139,15 @@ func (s *Service) DeleteDaemon(ctx context.Context, serverID, teamID, daemonID s
 	activity.RecordWithLog(ctx, "server", "deleted", "", daemon, "Daemon deletion requested")
 
 	if daemon.IsInstalled() && server.IsProvisioned() {
-		now := time.Now()
-		daemon.UninstallationRequestedAt = &now
-		if err := s.repos.Daemon().Update(ctx, daemon); err != nil {
-			return err
-		}
+		return s.WithTransaction(ctx, func(tx *gorm.DB) error {
+			now := time.Now()
+			daemon.UninstallationRequestedAt = &now
+			if err := tx.Save(daemon).Error; err != nil {
+				return err
+			}
 
-		if err := s.dispatchDaemonUninstallJob(server, daemon); err != nil {
-			s.LogError(err, "Failed to dispatch daemon uninstall job", "server_id", serverID, "daemon_id", daemonID)
-		}
-
-		return nil
+			return s.dispatchDaemonUninstallJob(server, daemon)
+		})
 	}
 
 	return s.repos.Daemon().Delete(ctx, daemonID)
@@ -225,13 +232,11 @@ func (s *Service) SyncDaemonsStatus(ctx context.Context, serverID, teamID string
 		return nil
 	}
 
-	// Update last status check time for all daemons
+	// Batch update last status check time for all daemons on this server
 	now := time.Now()
-	for i := range daemons {
-		daemons[i].LastStatusCheck = &now
-		if err := s.repos.Daemon().Update(ctx, &daemons[i]); err != nil {
-			s.LogError(err, "Failed to update daemon last status check", "daemon_id", daemons[i].ID)
-		}
+	if err := s.repos.Daemon().UpdateLastStatusCheckByServer(ctx, serverID, now); err != nil {
+		s.LogError(err, "Failed to batch update daemon last status check", "server_id", serverID)
+		return err
 	}
 
 	// Dispatch the sync job to check supervisor status on the server

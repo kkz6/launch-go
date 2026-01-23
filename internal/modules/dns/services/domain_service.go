@@ -42,24 +42,23 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 		return nil, err
 	}
 
-	var domain *models.Domain
+	// Call external API first, before any DB transaction
+	providerID, err := dnsProvider.AddDomain(ctx, req.Address)
+	if err != nil {
+		return nil, err
+	}
+
+	// Create domain record in a transaction
+	domain := &models.Domain{
+		DomainProviderID: provider.ID,
+		ProviderID:       providerID,
+		Label:            req.Label,
+		Address:          req.Address,
+	}
+	domain.UserID = userID
+	domain.TeamID = teamID
+
 	err = s.Repos().Domain().Transaction(ctx, func(tx *gorm.DB) error {
-		// Add domain to provider
-		providerID, err := dnsProvider.AddDomain(ctx, req.Address)
-		if err != nil {
-			return err
-		}
-
-		// Create domain record
-		domain = &models.Domain{
-			DomainProviderID: provider.ID,
-			ProviderID:       providerID,
-			Label:            req.Label,
-			Address:          req.Address,
-		}
-		domain.UserID = userID
-		domain.TeamID = teamID
-
 		if err := s.Repos().Domain().Create(ctx, domain); err != nil {
 			return err
 		}
@@ -91,6 +90,10 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 	})
 
 	if err != nil {
+		// Compensating action: remove domain from provider since DB transaction failed
+		if deleteErr := dnsProvider.DeleteDomain(ctx, req.Address); deleteErr != nil {
+			s.Logger.Error().Err(deleteErr).Str("domain", req.Address).Msg("Failed to delete domain from provider after DB transaction failure")
+		}
 		return nil, err
 	}
 
@@ -163,12 +166,14 @@ func (s *DomainService) DeleteDomain(ctx context.Context, id, teamID string, del
 		}
 	}
 
-	// Delete records first
-	if err := s.Repos().DNSRecord().DeleteByDomain(ctx, id); err != nil {
-		return err
-	}
+	// Delete records and domain in a transaction
+	return s.Repos().Domain().Transaction(ctx, func(tx *gorm.DB) error {
+		if err := tx.Where("domain_id = ?", id).Delete(&models.DNSRecord{}).Error; err != nil {
+			return err
+		}
 
-	return s.Repos().Domain().Delete(ctx, id)
+		return tx.Where("id = ?", id).Delete(&models.Domain{}).Error
+	})
 }
 
 // GetDomainRecords retrieves all DNS records for a domain
@@ -246,34 +251,39 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 		return fmt.Errorf("failed to fetch records from provider: %w", err)
 	}
 
-	// Sync records in a transaction
+	// Build all records upfront for batch insert
+	records := make([]models.DNSRecord, 0, len(providerRecords))
+	for _, pr := range providerRecords {
+		record := models.DNSRecord{
+			DomainID:   domainID,
+			ProviderID: pr.ID,
+			Type:       dnstypes.RecordType(pr.Type),
+			Name:       pr.Name,
+			Value:      pr.Value,
+			TTL:        pr.TTL,
+			Priority:   pr.Priority,
+			Tag:        pr.Tag,
+			Weight:     pr.Weight,
+			Port:       pr.Port,
+			Flags:      pr.Flags,
+			Comment:    pr.Comment,
+			Proxied:    pr.Proxied,
+		}
+		record.TeamID = domain.TeamID
+		records = append(records, record)
+	}
+
+	// Sync records in a transaction with batch insert
 	return s.Repos().Domain().Transaction(ctx, func(tx *gorm.DB) error {
 		// Delete existing records for this domain
-		if err := s.Repos().DNSRecord().DeleteByDomain(ctx, domainID); err != nil {
+		if err := tx.Where("domain_id = ?", domainID).Delete(&models.DNSRecord{}).Error; err != nil {
 			return fmt.Errorf("failed to delete existing records: %w", err)
 		}
 
-		// Insert new records from provider
-		for _, pr := range providerRecords {
-			record := &models.DNSRecord{
-				DomainID:   domainID,
-				ProviderID: pr.ID,
-				Type:       dnstypes.RecordType(pr.Type),
-				Name:       pr.Name,
-				Value:      pr.Value,
-				TTL:        pr.TTL,
-				Priority:   pr.Priority,
-				Tag:        pr.Tag,
-				Weight:     pr.Weight,
-				Port:       pr.Port,
-				Flags:      pr.Flags,
-				Comment:    pr.Comment,
-				Proxied:    pr.Proxied,
-			}
-			record.TeamID = domain.TeamID
-
-			if err := s.Repos().DNSRecord().Create(ctx, record); err != nil {
-				s.Logger.Warn().Err(err).Str("record", pr.Name).Msg("Failed to create record during sync")
+		// Batch insert all records
+		if len(records) > 0 {
+			if err := tx.CreateInBatches(&records, 100).Error; err != nil {
+				return fmt.Errorf("failed to insert records: %w", err)
 			}
 		}
 

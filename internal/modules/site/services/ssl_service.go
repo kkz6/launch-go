@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"gorm.io/gorm"
+
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
@@ -36,44 +38,57 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 		return errors.New("invalid TLS setting")
 	}
 
-	// Handle custom certificate
+	// Handle custom certificate within a transaction
 	if tlsSetting == sitetypes.TLSSettingCustom && req.PrivateKey != nil && req.Certificate != nil {
-		// Deactivate existing certificates
-		if err := s.Repos().Certificate().DeactivateAll(ctx, site.ID); err != nil {
+		if err := s.WithTransaction(ctx, func(tx *gorm.DB) error {
+			// Deactivate existing certificates
+			if err := tx.Model(&models.Certificate{}).
+				Where("site_id = ?", site.ID).
+				Update("is_active", false).Error; err != nil {
+				return err
+			}
+
+			// Create new certificate
+			privateKey := dbtype.EncryptedString(*req.PrivateKey)
+			cert := &models.Certificate{
+				Type:        sitetypes.CertificateTypeCustom,
+				PrivateKey:  privateKey,
+				Certificate: req.Certificate,
+				IsActive:    true,
+			}
+			cert.SiteID = site.ID
+			cert.TeamID = site.TeamID
+			cert.Domains = append([]string{site.Address}, site.Aliases...)
+
+			now := time.Now()
+			cert.UploadedAt = &now
+
+			if err := tx.Create(cert).Error; err != nil {
+				return err
+			}
+
+			// Update TLS setting within the same transaction
+			now2 := time.Now()
+			site.TLSSetting = tlsSetting
+			site.PendingTLSUpdateSince = &now2
+
+			return tx.Save(site).Error
+		}); err != nil {
 			return err
 		}
 
-		// Create new certificate
-		privateKey := dbtype.EncryptedString("")
-		if req.PrivateKey != nil {
-			privateKey = dbtype.EncryptedString(*req.PrivateKey)
-		}
-		cert := &models.Certificate{
-			Type:        sitetypes.CertificateTypeCustom,
-			PrivateKey:  privateKey,
-			Certificate: req.Certificate,
-			IsActive:    true,
-		}
-		cert.SiteID = site.ID
-		cert.TeamID = site.TeamID
-
-		cert.Domains = append([]string{site.Address}, site.Aliases...)
-
-		now := time.Now()
-		cert.UploadedAt = &now
-
-		if err := s.Repos().Certificate().Create(ctx, cert); err != nil {
-			return err
-		}
-
-		// Dispatch certificate installation job
+		// Dispatch certificate installation job (outside transaction)
 		task, err := jobs.NewInstallSSLTask(site.ID, site.Address)
-		if err == nil {
-			s.EnqueueTask(task)
+		if err != nil {
+			s.LogError(err, "Failed to create install SSL task", "site_id", site.ID)
+		} else if err := s.EnqueueTask(task); err != nil {
+			s.LogError(err, "Failed to enqueue install SSL task", "site_id", site.ID)
 		}
+
+		return nil
 	}
 
-	// Update TLS setting
+	// Update TLS setting (non-custom case)
 	now := time.Now()
 	site.TLSSetting = tlsSetting
 	site.PendingTLSUpdateSince = &now

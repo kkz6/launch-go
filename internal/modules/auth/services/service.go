@@ -32,7 +32,7 @@ func NewService(repos *repositories.Registry, cfg *config.Config, logger *zerolo
 		repos:             repos,
 		config:            cfg,
 		logger:            logger,
-		auth:              NewAuthService(repos, cfg),
+		auth:              NewAuthService(repos, cfg, logger),
 		user:              NewUserService(repos),
 		emailVerification: NewEmailVerificationService(repos, cfg),
 		passwordReset:     NewPasswordResetService(repos),
@@ -237,20 +237,20 @@ func (s *Service) Repos() *repositories.Registry {
 }
 
 // IsTeamSubscribed checks if a team has an active subscription
-func (s *Service) IsTeamSubscribed(teamID string) bool {
-	return s.repos.IsTeamSubscribed(teamID)
+func (s *Service) IsTeamSubscribed(ctx context.Context, teamID string) bool {
+	return s.repos.IsTeamSubscribed(ctx, teamID)
 }
 
 // IsUserAdmin checks if a user has admin or manager role
-func (s *Service) IsUserAdmin(userID string) bool {
-	return s.repos.IsUserAdmin(userID)
+func (s *Service) IsUserAdmin(ctx context.Context, userID string) bool {
+	return s.repos.IsUserAdmin(ctx, userID)
 }
 
 // IsTeamSubscribedOrUserAdmin checks if a team is subscribed or the user is an admin
 // Admins bypass subscription requirements
-func (s *Service) IsTeamSubscribedOrUserAdmin(teamID, userID string) bool {
-	if s.repos.IsUserAdmin(userID) {
+func (s *Service) IsTeamSubscribedOrUserAdmin(ctx context.Context, teamID, userID string) bool {
+	if s.repos.IsUserAdmin(ctx, userID) {
 		return true
 	}
-	return s.repos.IsTeamSubscribed(teamID)
+	return s.repos.IsTeamSubscribed(ctx, teamID)
 }

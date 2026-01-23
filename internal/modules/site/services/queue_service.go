@@ -9,6 +9,13 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 )
 
+const (
+	defaultStopWaitSeconds = 10
+	defaultStopSignal      = "TERM"
+	defaultMaxMemory       = 128
+	defaultNumProcs        = 1
+)
+
 // QueueService handles business logic for queue workers
 type QueueService struct {
 	*BaseService
@@ -57,8 +64,8 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 		AutoStart:             true,
 		AutoRestart:           true,
 		RedirectStderr:        true,
-		StopWaitSeconds:       10,
-		StopSignal:            "TERM",
+		StopWaitSeconds:       defaultStopWaitSeconds,
+		StopSignal:            defaultStopSignal,
 	}
 	queueModel.SiteID = site.ID
 	queueModel.TeamID = site.TeamID
@@ -72,14 +79,14 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 	if req.MaxMemory != nil {
 		queueModel.MaxMemory = req.MaxMemory
 	} else {
-		defaultMemory := 128
-		queueModel.MaxMemory = &defaultMemory
+		mem := defaultMaxMemory
+		queueModel.MaxMemory = &mem
 	}
 
 	if req.NumProcs != nil {
 		queueModel.NumProcs = *req.NumProcs
 	} else {
-		queueModel.NumProcs = 1
+		queueModel.NumProcs = defaultNumProcs
 	}
 
 	if req.StopWaitSeconds != nil {
@@ -95,10 +102,7 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 	}
 
 	// Dispatch queue installation job
-	var userIDPtr *string
-	if userID != "" {
-		userIDPtr = &userID
-	}
+	userIDPtr := stringToPtr(userID)
 
 	task, err := jobs.NewInstallQueueTask(site.ID, queueModel.ID, userIDPtr)
 	if err != nil {
@@ -163,7 +167,7 @@ func (s *QueueService) UpdateAutoRestart(ctx context.Context, siteID, serverID s
 		return err
 	}
 
-	return s.Repos().Site().UpdateFields(ctx, siteID, map[string]interface{}{
+	return s.Repos().Site().UpdateFields(ctx, siteID, map[string]any{
 		"auto_restart_queue": enabled,
 	})
 }
@@ -185,22 +189,14 @@ func (s *QueueService) SyncStatus(ctx context.Context, siteID, serverID, userID 
 		return nil
 	}
 
-	// Update last status check time for all queues
+	// Update last status check time for all queues in a single batch
 	now := time.Now()
-	for i := range queues {
-		queues[i].LastStatusCheck = &now
-		if err := s.Repos().Queue().Update(ctx, &queues[i]); err != nil {
-			s.LogError(err, "Failed to update queue last status check", "queue_id", queues[i].ID)
-		}
+	if err := s.Repos().Queue().UpdateLastStatusCheckBySite(ctx, siteID, now); err != nil {
+		s.LogError(err, "Failed to update queue last status check", "site_id", siteID)
 	}
 
 	// Dispatch the sync job to check supervisor status on the server
-	var userIDPtr *string
-	if userID != "" {
-		userIDPtr = &userID
-	}
-
-	task, err := jobs.NewSyncQueuesTask(site.ID, serverID, userIDPtr)
+	task, err := jobs.NewSyncQueuesTask(site.ID, serverID, stringToPtr(userID))
 	if err != nil {
 		s.LogError(err, "Failed to create sync queues task")
 		return err
