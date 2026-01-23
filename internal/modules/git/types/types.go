@@ -48,7 +48,11 @@ func (p GitProviderType) Label() string {
 	case GitProviderBitbucket:
 		return "Bitbucket"
 	default:
-		return string(p)
+		s := string(p)
+		if len(s) == 0 {
+			return s
+		}
+		return strings.ToUpper(s[:1]) + s[1:]
 	}
 }
 

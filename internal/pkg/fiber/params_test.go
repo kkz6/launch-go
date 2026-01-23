@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	gofiber "github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/recover"
 	"github.com/oklog/ulid/v2"
 )
 
@@ -178,6 +179,7 @@ func TestGetRequiredParam(t *testing.T) {
 func TestMustGetID_Panics(t *testing.T) {
 	// Test that MustGetID panics when given invalid input
 	app := gofiber.New()
+	app.Use(recover.New())
 
 	app.Get("/test/:id", func(c *gofiber.Ctx) error {
 		_ = MustGetID(c)
@@ -187,11 +189,10 @@ func TestMustGetID_Panics(t *testing.T) {
 	req := httptest.NewRequest("GET", "/test/invalid", nil)
 	resp, _ := app.Test(req)
 
-	// MustGetID panics with the error from GetID
-	// Fiber's default error handler catches this and returns 500
-	// The fiberctx.BadRequest was already sent, so we get 400
-	if resp.StatusCode == 200 {
-		t.Error("Expected non-200 status for invalid ULID")
+	// MustGetID panics with the BadRequest error from GetID
+	// The recover middleware catches the panic and Fiber's error handler returns 400
+	if resp.StatusCode != 400 {
+		t.Errorf("Expected 400 status for invalid ULID, got %d", resp.StatusCode)
 	}
 }
 

@@ -60,7 +60,9 @@ func TestParseAndValidate(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			app := gofiber.New()
+			app := gofiber.New(gofiber.Config{
+				ErrorHandler: NewErrorHandler(),
+			})
 			app.Post("/test", func(c *gofiber.Ctx) error {
 				var req testRequest
 				if err := ParseAndValidate(c, &req); err != nil {
