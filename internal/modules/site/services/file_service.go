@@ -135,9 +135,9 @@ func (s *FileService) GetFileContent(ctx context.Context, serverID, siteID, file
 		Path: filePath,
 	})
 
-	// Run task using task runner
+	// Run task using task runner as the server's configured user
 	result, err := s.ServiceDeps().TaskRunnerDeps.NewRunner(server, task).
-		AsUser().
+		AsRoot().
 		Run(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to read file: %w", err)
@@ -174,9 +174,9 @@ func (s *FileService) UpdateFileContent(ctx context.Context, serverID, siteID, f
 		Contents: content,
 	})
 
-	// Run task using task runner
+	// Run task using task runner as the server's configured user
 	result, err := s.ServiceDeps().TaskRunnerDeps.NewRunner(server, task).
-		AsUser().
+		AsRoot().
 		Throw().
 		Run(ctx)
 	if err != nil {
