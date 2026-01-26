@@ -22,10 +22,11 @@ type ServiceStatus struct {
 
 // ServiceState constants for service status
 const (
-	StateRunning = "running"
-	StateStopped = "stopped"
-	StateFailed  = "failed"
-	StateUnknown = "unknown"
+	StateRunning   = "running"
+	StateStopped   = "stopped"
+	StateFailed    = "failed"
+	StateUnknown   = "unknown"
+	StateInstalled = "installed"
 )
 
 // CalculateUptimeFromTimestamp calculates uptime from a timestamp string.
@@ -68,8 +69,28 @@ func CalculateUptimeFromTimestamp(timeStr string) string {
 	return fmt.Sprintf("%dm", minutes)
 }
 
+// IsDaemonService returns true if the software runs as a daemon/systemd service.
+// CLI tools like Composer, Node, Bun return false as they don't have a running status.
+func IsDaemonService(software string) bool {
+	// Check for versioned prefixes (e.g., node21, bun1)
+	nonDaemonPrefixes := []string{"node", "bun", "composer"}
+	for _, prefix := range nonDaemonPrefixes {
+		if strings.HasPrefix(software, prefix) {
+			return false
+		}
+	}
+
+	// Non-daemon services (CLI tools, package managers)
+	nonDaemonServices := map[string]bool{
+		"launch_agent": true,
+		"git":          true,
+	}
+
+	return !nonDaemonServices[software]
+}
+
 // GetSystemdServiceName maps software identifiers to their systemd service names.
-// Returns an empty string if the software is not recognized.
+// Returns an empty string if the software is not recognized or is not a daemon service.
 func GetSystemdServiceName(software string) string {
 	switch {
 	case strings.HasPrefix(software, "php"):

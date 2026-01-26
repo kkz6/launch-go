@@ -220,6 +220,12 @@ func (h *ServiceStatusHandler) getServiceStatus(conn *ssh.Client, svc *serverMod
 		IsActive: false,
 	}
 
+	// Check if this is a non-daemon service (CLI tool, package manager)
+	if !status.IsDaemonService(svc.Software) {
+		svcStatus.Status = status.StateInstalled
+		return svcStatus
+	}
+
 	// Determine the systemd service name based on software
 	serviceName := status.GetSystemdServiceName(svc.Software)
 	if serviceName == "" {
