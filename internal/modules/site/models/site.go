@@ -21,9 +21,9 @@ import (
 type Site struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	basemodels.ServerScopedModel
-	basemodels.TeamScopedModel
-	basemodels.UserScopedModel
+	basemodels.ServerScoped
+	basemodels.TeamScoped
+	basemodels.UserScoped
 	SourceControlID              *string                `gorm:"column:source_control_id;type:char(26);index" json:"source_control_id,omitempty"`
 	Address                      string                 `gorm:"type:varchar(255);not null" json:"address"`
 	Type                         sitetypes.SiteType     `gorm:"type:varchar(255);not null;index" json:"type"`

@@ -31,7 +31,7 @@ func (e EncryptedString) Value() (driver.Value, error) {
 }
 
 // Scan implements sql.Scanner - decrypts the string when reading from database
-func (e *EncryptedString) Scan(value interface{}) error {
+func (e *EncryptedString) Scan(value any) error {
 	if value == nil {
 		*e = ""
 		return nil
@@ -98,7 +98,7 @@ func (e EncryptedNullableString) Value() (driver.Value, error) {
 }
 
 // Scan implements sql.Scanner - decrypts the string when reading from database
-func (e *EncryptedNullableString) Scan(value interface{}) error {
+func (e *EncryptedNullableString) Scan(value any) error {
 	if value == nil {
 		e.String = ""
 		e.Valid = false
@@ -174,7 +174,7 @@ func (e EncryptedJSONStringMap) Value() (driver.Value, error) {
 }
 
 // Scan implements sql.Scanner - decrypts and JSON unmarshals when reading from database
-func (e *EncryptedJSONStringMap) Scan(value interface{}) error {
+func (e *EncryptedJSONStringMap) Scan(value any) error {
 	if value == nil {
 		*e = nil
 		return nil
@@ -210,4 +210,95 @@ func (e *EncryptedJSONStringMap) Scan(value interface{}) error {
 	}
 
 	return nil
+}
+
+// EncryptedJSONMap is a map[string]any that is stored as encrypted JSON in the database.
+// Use this for credentials and other sensitive data with mixed value types.
+//
+// Usage:
+//
+//	type MyModel struct {
+//	    Credentials dbtype.EncryptedJSONMap `gorm:"type:longtext" json:"-"`
+//	}
+//
+//	// Direct access:
+//	model.Credentials = dbtype.EncryptedJSONMap{"api_key": "secret", "enabled": true}
+//	value := model.Credentials["api_key"]
+type EncryptedJSONMap map[string]any
+
+// Value implements driver.Valuer - JSON marshals and encrypts when storing to database
+func (e EncryptedJSONMap) Value() (driver.Value, error) {
+	if e == nil {
+		return nil, nil
+	}
+
+	// Marshal to JSON
+	jsonBytes, err := json.Marshal(e)
+	if err != nil {
+		return nil, err
+	}
+
+	// Encrypt the JSON string
+	return serializers.Encrypt(string(jsonBytes))
+}
+
+// Scan implements sql.Scanner - decrypts and JSON unmarshals when reading from database
+func (e *EncryptedJSONMap) Scan(value any) error {
+	if value == nil {
+		*e = nil
+		return nil
+	}
+
+	var encrypted string
+	switch v := value.(type) {
+	case []byte:
+		encrypted = string(v)
+	case string:
+		encrypted = v
+	default:
+		return errors.New("unsupported type for EncryptedJSONMap")
+	}
+
+	if encrypted == "" {
+		*e = nil
+		return nil
+	}
+
+	// Decrypt the value
+	decrypted, err := serializers.Decrypt(encrypted)
+	if err != nil {
+		return err
+	}
+
+	// Try to unmarshal JSON - if it fails, the data might still be in Laravel format
+	// or double-encrypted, return empty map instead of error
+	if err := json.Unmarshal([]byte(decrypted), e); err != nil {
+		// Data might not be migrated yet - return empty map
+		*e = make(EncryptedJSONMap)
+		return nil
+	}
+
+	return nil
+}
+
+// GetString safely gets a string value from the map
+func (e EncryptedJSONMap) GetString(key string) string {
+	if e == nil {
+		return ""
+	}
+	if v, ok := e[key].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// GetBool safely gets a bool value from the map
+func (e EncryptedJSONMap) GetBool(key string) bool {
+	if e == nil {
+		return false
+	}
+	if v, ok := e[key].(bool); ok {
+		return v
+	}
+	return false
 }

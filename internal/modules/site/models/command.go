@@ -9,9 +9,9 @@ import (
 // Command represents a command executed on a site
 type Command struct {
 	basemodels.BaseModel
-	basemodels.SiteScopedModel
-	basemodels.TeamScopedModel
-	basemodels.UserScopedModel
+	basemodels.SiteScoped
+	basemodels.TeamScoped
+	basemodels.UserScoped
 	Command  string                  `gorm:"type:varchar(255);not null" json:"command"`
 	Status   sitetypes.CommandStatus `gorm:"type:varchar(255);not null" json:"status"`
 	Output   *string                 `gorm:"type:longtext" json:"output,omitempty"`

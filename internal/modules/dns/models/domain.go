@@ -8,8 +8,8 @@ import (
 // Domain represents a domain managed by a DNS provider
 type Domain struct {
 	basemodels.BaseModel
-	basemodels.UserScopedModel
-	basemodels.TeamScopedModel
+	basemodels.UserScoped
+	basemodels.TeamScoped
 	DomainProviderID string         `gorm:"column:domain_provider_id;type:char(26);not null;index" json:"domain_provider_id"`
 	Label            string         `gorm:"type:varchar(255);not null" json:"label"`
 	Address          string         `gorm:"type:varchar(255);not null" json:"address"`

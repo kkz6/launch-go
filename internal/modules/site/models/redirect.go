@@ -7,9 +7,9 @@ import (
 // Redirect represents an HTTP redirect rule for a site
 type Redirect struct {
 	basemodels.BaseModel
-	basemodels.SiteScopedModel
-	basemodels.TeamScopedModel
-	basemodels.UserScopedModel
+	basemodels.SiteScoped
+	basemodels.TeamScoped
+	basemodels.UserScoped
 	Mode   int    `gorm:"type:int;not null" json:"mode"`
 	From   string `gorm:"type:text;not null" json:"from"`
 	To     string `gorm:"type:text;not null" json:"to"`

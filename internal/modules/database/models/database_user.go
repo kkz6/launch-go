@@ -11,8 +11,8 @@ import (
 type DatabaseUser struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	basemodels.ServerScopedModel
-	basemodels.TeamScopedModel
+	basemodels.ServerScoped
+	basemodels.TeamScoped
 	Name     string                          `gorm:"type:varchar(255);not null" json:"name"`
 	Password *dbtype.EncryptedNullableString `gorm:"type:longtext" json:"-"`
 	Host     string                          `gorm:"type:varchar(255);not null;default:localhost" json:"host"`

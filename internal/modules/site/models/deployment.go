@@ -11,8 +11,8 @@ import (
 // Deployment represents a site deployment
 type Deployment struct {
 	basemodels.BaseModel
-	basemodels.SiteScopedModel
-	basemodels.TeamScopedModel
+	basemodels.SiteScoped
+	basemodels.TeamScoped
 	UserID         *string                    `gorm:"column:user_id;type:char(26);index" json:"user_id,omitempty"`
 	TaskID         *string                    `gorm:"column:task_id;type:char(26);index" json:"task_id,omitempty"`
 	Status         sitetypes.DeploymentStatus `gorm:"type:varchar(255);not null" json:"status"`

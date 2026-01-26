@@ -11,7 +11,7 @@ import (
 // InstalledService represents an installed service on a server
 type InstalledService struct {
 	basemodels.BaseModel
-	basemodels.ServerScopedModel
+	basemodels.ServerScoped
 	Type      types.ServiceType   `gorm:"type:varchar(255);not null" json:"type"`
 	TypeData  dbtype.JSONMap      `gorm:"type:json" json:"-"`
 	Name      string              `gorm:"type:varchar(255);not null" json:"name"`

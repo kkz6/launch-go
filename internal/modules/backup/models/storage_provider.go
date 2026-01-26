@@ -4,6 +4,7 @@ import (
 	"time"
 
 	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 )
 
 // StorageProvider represents a configured storage destination
@@ -15,7 +16,7 @@ type StorageProvider struct {
 	Provider       backuptypes.StorageDriver `gorm:"type:varchar(255);not null" json:"provider"`
 	Label          *string                   `gorm:"type:varchar(255)" json:"label,omitempty"`
 	Token          *string                   `gorm:"type:varchar(1000)" json:"-"`
-	Credentials    EncryptedJSON             `gorm:"type:longtext" json:"-"`
+	Credentials    dbtype.EncryptedJSONMap   `gorm:"type:longtext" json:"-"`
 	RefreshToken   *string                   `gorm:"column:refresh_token;type:varchar(1000)" json:"-"`
 	Connected      bool                      `gorm:"default:true" json:"connected"`
 	TokenExpiresAt *time.Time                `gorm:"column:token_expires_at;type:timestamp null" json:"token_expires_at,omitempty"`
@@ -31,20 +32,17 @@ func (StorageProvider) TableName() string {
 	return "storage_providers"
 }
 
-// GetCredentials decrypts and returns credentials as a map
-func (s *StorageProvider) GetCredentials() (map[string]interface{}, error) {
-	return s.Credentials.Decrypt()
+// GetCredentials returns credentials as a map
+func (s *StorageProvider) GetCredentials() map[string]any {
+	if s.Credentials == nil {
+		return make(map[string]any)
+	}
+	return s.Credentials
 }
 
-// SetCredentials encrypts and sets credentials from a map
-func (s *StorageProvider) SetCredentials(creds map[string]interface{}) error {
-	encrypted, err := NewEncryptedJSON(creds)
-	if err != nil {
-		return err
-	}
-	s.Credentials = encrypted
-
-	return nil
+// SetCredentials sets credentials from a map
+func (s *StorageProvider) SetCredentials(creds map[string]any) {
+	s.Credentials = creds
 }
 
 // S3Credentials represents S3-specific credentials

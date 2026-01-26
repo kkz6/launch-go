@@ -12,8 +12,8 @@ import (
 // Certificate represents an SSL certificate for a site
 type Certificate struct {
 	basemodels.BaseModel
-	basemodels.SiteScopedModel
-	basemodels.TeamScopedModel
+	basemodels.SiteScoped
+	basemodels.TeamScoped
 	Type        sitetypes.CertificateType `gorm:"type:varchar(255);not null;default:letsencrypt" json:"type"`
 	Domains     dbtype.JSONStringSlice    `gorm:"type:json" json:"domains,omitempty"`
 	CSR         *string                   `gorm:"column:csr;type:longtext" json:"csr,omitempty"`

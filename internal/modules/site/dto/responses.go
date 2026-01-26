@@ -3,6 +3,7 @@ package dto
 import (
 	"encoding/json"
 
+	"github.com/kkz6/launch-go/internal/modules/site/formatter"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
@@ -52,17 +53,17 @@ type SiteResponse struct {
 
 // DeploymentResponse represents a deployment in API responses
 type DeploymentResponse struct {
-	ID           string                 `json:"id"`
-	SiteID       string                 `json:"site_id"`
-	UserID       *string                `json:"user_id,omitempty"`
-	TaskID       *string                `json:"task_id,omitempty"`
-	Status       string                 `json:"status"`
-	GitHash      *string                `json:"git_hash,omitempty"`
-	ShortGitHash string                 `json:"short_git_hash,omitempty"`
-	CommitData   map[string]interface{} `json:"commit_data,omitempty"`
-	IsRollback   bool                   `json:"is_rollback"`
-	CreatedAt    string                 `json:"created_at"`
-	UpdatedAt    string                 `json:"updated_at"`
+	ID           string         `json:"id"`
+	SiteID       string         `json:"site_id"`
+	UserID       *string        `json:"user_id,omitempty"`
+	TaskID       *string        `json:"task_id,omitempty"`
+	Status       string         `json:"status"`
+	GitHash      *string        `json:"git_hash,omitempty"`
+	ShortGitHash string         `json:"short_git_hash,omitempty"`
+	CommitData   map[string]any `json:"commit_data,omitempty"`
+	IsRollback   bool           `json:"is_rollback"`
+	CreatedAt    string         `json:"created_at"`
+	UpdatedAt    string         `json:"updated_at"`
 }
 
 // CertificateResponse represents a certificate in API responses
@@ -78,28 +79,28 @@ type CertificateResponse struct {
 
 // QueueResponse represents a queue in API responses
 type QueueResponse struct {
-	ID                    string                 `json:"id"`
-	SiteID                string                 `json:"site_id"`
-	ServerID              string                 `json:"server_id"`
-	Name                  string                 `json:"name"`
-	Directory             string                 `json:"directory"`
-	Command               string                 `json:"command"`
-	User                  string                 `json:"user"`
-	QueueConnection       string                 `json:"queue_connection"`
-	Queue                 string                 `json:"queue"`
-	NumProcs              int                    `json:"numprocs"`
-	MaxSecondsPerJob      int                    `json:"max_seconds_per_job"`
-	MaxTries              int                    `json:"max_tries"`
-	RestSecondsOnEmpty    int                    `json:"rest_seconds_on_empty"`
-	FailedJobDelaySeconds int                    `json:"failed_job_delay_seconds"`
-	MaxMemory             int                    `json:"max_memory"`
-	RunOnMaintenance      bool                   `json:"run_on_maintenance"`
-	RunWithListen         bool                   `json:"run_with_listen"`
-	Running               bool                   `json:"running"`
-	Info                  map[string]interface{} `json:"info,omitempty"`
-	LastStatusCheck       *string                `json:"last_status_check,omitempty"`
-	InstalledAt           *string                `json:"installed_at,omitempty"`
-	CreatedAt             string                 `json:"created_at"`
+	ID                    string         `json:"id"`
+	SiteID                string         `json:"site_id"`
+	ServerID              string         `json:"server_id"`
+	Name                  string         `json:"name"`
+	Directory             string         `json:"directory"`
+	Command               string         `json:"command"`
+	User                  string         `json:"user"`
+	QueueConnection       string         `json:"queue_connection"`
+	Queue                 string         `json:"queue"`
+	NumProcs              int            `json:"numprocs"`
+	MaxSecondsPerJob      int            `json:"max_seconds_per_job"`
+	MaxTries              int            `json:"max_tries"`
+	RestSecondsOnEmpty    int            `json:"rest_seconds_on_empty"`
+	FailedJobDelaySeconds int            `json:"failed_job_delay_seconds"`
+	MaxMemory             int            `json:"max_memory"`
+	RunOnMaintenance      bool           `json:"run_on_maintenance"`
+	RunWithListen         bool           `json:"run_with_listen"`
+	Running               bool           `json:"running"`
+	Info                  map[string]any `json:"info,omitempty"`
+	LastStatusCheck       *string        `json:"last_status_check,omitempty"`
+	InstalledAt           *string        `json:"installed_at,omitempty"`
+	CreatedAt             string         `json:"created_at"`
 }
 
 // UserSummaryResponse represents limited user info in API responses
@@ -305,7 +306,7 @@ func ToQueueResponse(queue *models.Queue) QueueResponse {
 		ServerID:              queue.ServerID,
 		Name:                  queue.QueueName,
 		Directory:             directory,
-		Command:               queue.BuildCommand(),
+		Command:               formatter.QueueCommand(queue),
 		User:                  queue.User,
 		QueueConnection:       queue.QueueConnection,
 		Queue:                 queue.QueueName,
@@ -325,7 +326,7 @@ func ToQueueResponse(queue *models.Queue) QueueResponse {
 
 	// Parse info JSON if present
 	if queue.Info != nil && *queue.Info != "" {
-		var info map[string]interface{}
+		var info map[string]any
 		if err := json.Unmarshal([]byte(*queue.Info), &info); err == nil {
 			resp.Info = info
 		}

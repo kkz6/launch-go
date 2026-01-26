@@ -8,8 +8,8 @@ import (
 type Database struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	basemodels.ServerScopedModel
-	basemodels.TeamScopedModel
+	basemodels.ServerScoped
+	basemodels.TeamScoped
 	Name string `gorm:"type:varchar(255);not null" json:"name"`
 
 	// Relations

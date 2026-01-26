@@ -12,7 +12,7 @@ import (
 // Task represents a task execution record
 type Task struct {
 	basemodels.BaseModel
-	basemodels.ServerScopedModel
+	basemodels.ServerScoped
 	Name     string                 `gorm:"type:varchar(255);not null" json:"name"`
 	User     string                 `gorm:"type:varchar(255);not null" json:"user"`
 	Type     string                 `gorm:"type:varchar(255);not null" json:"type"`

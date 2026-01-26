@@ -2,6 +2,7 @@ package dto
 
 import (
 	serverconfig "github.com/kkz6/launch-go/internal/modules/server/config"
+	"github.com/kkz6/launch-go/internal/modules/server/formatter"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
@@ -297,7 +298,7 @@ func ToFirewallRuleResponse(rule *models.FirewallRule) FirewallRuleResponse {
 		IsPending:   rule.IsPending(),
 		HasFailed:   rule.HasFailed(),
 		InstalledAt: pkgdto.FormatTime(rule.InstalledAt),
-		UfwRule:     rule.FormatAsUfwRule(),
+		UfwRule:     formatter.UfwRule(rule),
 		CreatedAt:   pkgdto.FormatTimeOrEmpty(rule.CreatedAt),
 		UpdatedAt:   pkgdto.FormatTimeOrEmpty(rule.UpdatedAt),
 	}
@@ -347,22 +348,22 @@ func ToCronResponse(cron *models.Cron) CronResponse {
 
 // DaemonResponse represents the response for a daemon
 type DaemonResponse struct {
-	ID              string                 `json:"id"`
-	ServerID        string                 `json:"server_id"`
-	User            string                 `json:"user"`
-	Directory       *string                `json:"directory,omitempty"`
-	Command         string                 `json:"command"`
-	Processes       int                    `json:"processes"`
-	StopWaitSeconds int                    `json:"stop_wait_seconds"`
-	StopSignal      *string                `json:"stop_signal,omitempty"`
-	IsInstalled     bool                   `json:"is_installed"`
-	Running         bool                   `json:"running"`
-	Info            map[string]interface{} `json:"info,omitempty"`
-	Path            string                 `json:"path"`
-	InstalledAt     *string                `json:"installed_at,omitempty"`
-	LastStatusCheck *string                `json:"last_status_check,omitempty"`
-	CreatedAt       string                 `json:"created_at"`
-	UpdatedAt       string                 `json:"updated_at"`
+	ID              string         `json:"id"`
+	ServerID        string         `json:"server_id"`
+	User            string         `json:"user"`
+	Directory       *string        `json:"directory,omitempty"`
+	Command         string         `json:"command"`
+	Processes       int            `json:"processes"`
+	StopWaitSeconds int            `json:"stop_wait_seconds"`
+	StopSignal      *string        `json:"stop_signal,omitempty"`
+	IsInstalled     bool           `json:"is_installed"`
+	Running         bool           `json:"running"`
+	Info            map[string]any `json:"info,omitempty"`
+	Path            string         `json:"path"`
+	InstalledAt     *string        `json:"installed_at,omitempty"`
+	LastStatusCheck *string        `json:"last_status_check,omitempty"`
+	CreatedAt       string         `json:"created_at"`
+	UpdatedAt       string         `json:"updated_at"`
 }
 
 // ToDaemonResponse converts a Daemon model to a DaemonResponse DTO
@@ -674,7 +675,7 @@ type OpcacheStatusResponse struct {
 	InternedStrings   *OpcacheInternedStrings `json:"interned_strings,omitempty"`
 	JIT               *OpcacheJITStatus       `json:"jit,omitempty"`
 	Scripts           []OpcacheScript         `json:"scripts,omitempty"`
-	Directives        map[string]interface{}  `json:"directives,omitempty"`
+	Directives        map[string]any          `json:"directives,omitempty"`
 	Error             string                  `json:"error,omitempty"`
 }
 

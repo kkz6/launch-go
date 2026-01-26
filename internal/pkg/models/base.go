@@ -96,26 +96,6 @@ type SoftDeleteModel struct {
 	DeletedAt gorm.DeletedAt `gorm:"index" json:"deleted_at,omitempty"`
 }
 
-// ServerScopedModel provides a ServerID field for models scoped to a server.
-type ServerScopedModel struct {
-	ServerID string `gorm:"column:server_id;type:char(26);not null;index" json:"server_id"`
-}
-
-// TeamScopedModel provides a TeamID field for models scoped to a team.
-type TeamScopedModel struct {
-	TeamID string `gorm:"column:team_id;type:char(26);not null;index" json:"team_id"`
-}
-
-// UserScopedModel provides a UserID field for models scoped to a user.
-type UserScopedModel struct {
-	UserID string `gorm:"column:user_id;type:char(26);not null;index" json:"user_id"`
-}
-
-// SiteScopedModel provides a SiteID field for models scoped to a site.
-type SiteScopedModel struct {
-	SiteID string `gorm:"column:site_id;type:char(26);not null;index" json:"site_id"`
-}
-
 // GetUserHomeDir returns the home directory path for a given user.
 // For root and ubuntu users, returns /{user}, otherwise /home/{user}.
 func GetUserHomeDir(user string) string {

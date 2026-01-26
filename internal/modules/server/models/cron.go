@@ -14,7 +14,7 @@ import (
 type Cron struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	basemodels.ServerScopedModel
+	basemodels.ServerScoped
 	SiteID     *string                `gorm:"column:site_id;type:char(26);index" json:"site_id,omitempty"`
 	User       string                 `gorm:"type:varchar(255);not null" json:"user"`
 	Expression string                 `gorm:"type:varchar(255);not null" json:"expression"`
@@ -57,12 +57,6 @@ func (c *Cron) GetLogPath() string {
 	return fmt.Sprintf("%s/cron-%s.log", basemodels.GetWorkingDir(c.User, workingDir), c.ID)
 }
 
-// ToCronFileContents generates the cron file contents
-func (c *Cron) ToCronFileContents() string {
-	// Format: expression user command >> logfile 2>&1
-	return fmt.Sprintf("%s %s %s >> %s 2>&1\n", c.Expression, c.User, c.Command.String(), c.GetLogPath())
-}
-
 // GetCommand returns the decrypted command string
 func (c *Cron) GetCommand() string {
 	return c.Command.String()
@@ -87,8 +81,8 @@ func (c *Cron) BroadcastName() string {
 }
 
 // BroadcastPayload returns the data to broadcast
-func (c *Cron) BroadcastPayload() map[string]interface{} {
-	return map[string]interface{}{
+func (c *Cron) BroadcastPayload() map[string]any {
+	return map[string]any{
 		"id":        c.ID,
 		"server_id": c.ServerID,
 	}

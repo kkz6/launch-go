@@ -11,8 +11,8 @@ import (
 // DomainProvider represents a DNS provider configuration
 type DomainProvider struct {
 	basemodels.BaseModel
-	basemodels.UserScopedModel
-	basemodels.TeamScopedModel
+	basemodels.UserScoped
+	basemodels.TeamScoped
 	Profile          *string                       `gorm:"type:varchar(255)" json:"profile,omitempty"`
 	Provider         dnstypes.DNSProvider          `gorm:"type:varchar(255);not null" json:"provider"`
 	Credentials      dbtype.EncryptedJSONStringMap `gorm:"type:longtext;not null" json:"-"`
