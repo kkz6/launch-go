@@ -86,3 +86,10 @@ func (r *UserRepository) MarkEmailAsVerified(ctx context.Context, userID string)
 		"email_verified_at": &now,
 	})
 }
+
+// SetOnboarded sets the user's onboarded status
+func (r *UserRepository) SetOnboarded(ctx context.Context, userID string, onboarded bool) error {
+	return r.Base.UpdateFields(ctx, userID, map[string]interface{}{
+		"onboarded": onboarded,
+	})
+}

@@ -40,7 +40,7 @@ func (h *UserHandler) User(c *fiber.Ctx) error {
 		isSubscribed = h.Service().IsTeamSubscribedOrUserAdmin(c.Context(), *user.CurrentTeamID, userID)
 	}
 
-	return fiberctx.OK(c, "User retrieved", dto.ToUserResponseWithSubscription(user, isSubscribed))
+	return fiberctx.OK(c, "User retrieved", dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded))
 }
 
 // UpdateProfile updates the user's profile
@@ -60,7 +60,13 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		return fiberctx.HandleError(c, err)
 	}
 
-	return fiberctx.OK(c, "Profile updated", dto.ToUserResponse(user))
+	// Check subscription status for the user's current team
+	isSubscribed := false
+	if user.CurrentTeamID != nil {
+		isSubscribed = h.Service().IsTeamSubscribedOrUserAdmin(c.Context(), *user.CurrentTeamID, userID)
+	}
+
+	return fiberctx.OK(c, "Profile updated", dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded))
 }
 
 // ChangePassword changes the user's password
@@ -109,4 +115,30 @@ func (h *UserHandler) CheckUserStatus(c *fiber.Ctx) error {
 	}
 
 	return fiberctx.OK(c, "User status retrieved", status)
+}
+
+// ResetOnboarding resets the user's onboarding status
+func (h *UserHandler) ResetOnboarding(c *fiber.Ctx) error {
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	if err := h.Service().SetOnboarded(c.Context(), userID, false); err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	// Get updated user data
+	user, err := h.Service().GetUser(c.Context(), userID)
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	// Check subscription status
+	isSubscribed := false
+	if user.CurrentTeamID != nil {
+		isSubscribed = h.Service().IsTeamSubscribedOrUserAdmin(c.Context(), *user.CurrentTeamID, userID)
+	}
+
+	return fiberctx.OK(c, "Onboarding reset successfully", dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded))
 }

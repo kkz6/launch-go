@@ -68,6 +68,7 @@ func (m *Module) registerProtectedRoutes(router fiber.Router, handler *handlers.
 	router.Get("/user", handler.User.User)
 	router.Put("/profile", handler.User.UpdateProfile)
 	router.Put("/password", handler.User.ChangePassword)
+	router.Post("/reset-onboarding", handler.User.ResetOnboarding)
 	router.Delete("/account", handler.User.DeleteAccount)
 	router.Post("/logout", handler.Auth.Logout)
 

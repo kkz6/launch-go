@@ -46,3 +46,17 @@ func (h *DashboardHandler) OnboardingStatus(c *fiber.Ctx) error {
 
 	return fiberctx.OK(c, "Onboarding status retrieved", status)
 }
+
+// CompleteOnboarding marks the current user as onboarded
+func (h *DashboardHandler) CompleteOnboarding(c *fiber.Ctx) error {
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	if err := h.service.CompleteOnboarding(c.Context(), userID); err != nil {
+		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+	}
+
+	return fiberctx.OK(c, "Onboarding completed", nil)
+}
