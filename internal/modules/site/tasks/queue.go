@@ -3,16 +3,17 @@ package tasks
 import (
 	"fmt"
 
+	"github.com/kkz6/launch-go/internal/modules/site/formatter"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // Task type constants for queue operations
 const (
-	UploadQueueConfigTaskType  = "site:upload_queue_config"
-	DeleteQueueConfigTaskType  = "site:delete_queue_config"
-	RestartQueueTaskType       = "site:restart_queue"
-	RestartAllQueuesTaskType   = "site:restart_all_queues"
+	UploadQueueConfigTaskType = "site:upload_queue_config"
+	DeleteQueueConfigTaskType = "site:delete_queue_config"
+	RestartQueueTaskType      = "site:restart_queue"
+	RestartAllQueuesTaskType  = "site:restart_all_queues"
 )
 
 // BuildQueueSupervisorConfig generates the supervisor config for a queue worker
@@ -36,17 +37,17 @@ numprocs=%d
 stdout_logfile=%s
 stderr_logfile=%s
 stdout_logfile_maxbytes=5MB
-`, queue.ID, queue.BuildCommand(), serverUsername, directory, queue.NumProcs, queue.GetLogPath(), queue.GetErrorLogPath())
+`, queue.ID, formatter.QueueCommand(queue), serverUsername, directory, queue.NumProcs, queue.GetLogPath(), queue.GetErrorLogPath())
 }
 
 // UploadQueueConfigParams holds parameters for uploading queue config
 type UploadQueueConfigParams struct {
-	Path           string
-	Contents       string
-	LogPath        string
-	ErrorLogPath   string
-	User           string
-	WorkingDir     string
+	Path         string
+	Contents     string
+	LogPath      string
+	ErrorLogPath string
+	User         string
+	WorkingDir   string
 }
 
 // UploadQueueConfig creates a task to upload a queue supervisor config

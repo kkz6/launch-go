@@ -14,7 +14,7 @@ import (
 type Daemon struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	basemodels.ServerScopedModel
+	basemodels.ServerScoped
 	User            string         `gorm:"type:varchar(255);not null" json:"user"`
 	Directory       *string        `gorm:"type:varchar(255)" json:"directory,omitempty"`
 	Command         string         `gorm:"type:longtext;not null" json:"command"`
@@ -59,7 +59,7 @@ func (d *Daemon) Path() string {
 }
 
 // GetInfo returns the daemon info
-func (d *Daemon) GetInfo() map[string]interface{} {
+func (d *Daemon) GetInfo() map[string]any {
 	if d.Info == nil {
 		return nil
 	}
@@ -67,7 +67,7 @@ func (d *Daemon) GetInfo() map[string]interface{} {
 }
 
 // SetInfo sets the daemon info
-func (d *Daemon) SetInfo(info map[string]interface{}) {
+func (d *Daemon) SetInfo(info map[string]any) {
 	d.Info = info
 }
 
@@ -94,34 +94,4 @@ func (d *Daemon) GetErrorLogPath() string {
 // ProgramName returns the supervisor program name
 func (d *Daemon) ProgramName() string {
 	return fmt.Sprintf("daemon-%s", d.ID)
-}
-
-// ToSupervisorConfig generates the supervisor configuration file contents
-func (d *Daemon) ToSupervisorConfig() string {
-	dir := ""
-	if d.Directory != nil {
-		dir = *d.Directory
-	}
-
-	config := fmt.Sprintf(`[program:%s]
-process_name=%%(program_name)s_%%(process_num)02d
-command=%s
-autostart=true
-autorestart=true
-stopasgroup=true
-killasgroup=true
-user=%s
-numprocs=%d
-redirect_stderr=true
-stdout_logfile=%s
-stderr_logfile=%s
-stopwaitsecs=%d
-stopsignal=%s
-`, d.ProgramName(), d.Command, d.User, d.Processes, d.GetLogPath(), d.GetErrorLogPath(), d.StopWaitSeconds, d.StopSignal)
-
-	if dir != "" {
-		config += fmt.Sprintf("directory=%s\n", dir)
-	}
-
-	return config
 }

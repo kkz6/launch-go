@@ -1,9 +1,6 @@
 package models
 
 import (
-	"fmt"
-	"strings"
-
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/types"
@@ -14,7 +11,7 @@ import (
 type FirewallRule struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	basemodels.ServerScopedModel
+	basemodels.ServerScoped
 	Name     string           `gorm:"type:varchar(255);not null" json:"name"`
 	Action   types.RuleAction `gorm:"type:varchar(255);not null" json:"action"`
 	Port     string           `gorm:"type:varchar(255);not null" json:"port"`
@@ -48,18 +45,4 @@ func (f *FirewallRule) IsPending() bool {
 
 func (f *FirewallRule) HasFailed() bool {
 	return f.IsFailed()
-}
-
-func (f *FirewallRule) FormatAsUfwRule() string {
-	parts := []string{f.Action.String()}
-
-	if f.FromIPv4 != nil && *f.FromIPv4 != "" {
-		parts = append(parts, fmt.Sprintf("from %s to any port", *f.FromIPv4))
-	}
-
-	if f.Port != "" {
-		parts = append(parts, f.Port)
-	}
-
-	return strings.Join(parts, " ")
 }

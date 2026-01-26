@@ -685,13 +685,13 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 	}
 
 	taskModel := &models.Task{
-		ServerScopedModel: basemodels.ServerScopedModel{ServerID: r.server.ID},
-		Name:              r.task.Name(),
-		User:              user,
-		Type:              taskType,
-		Script:            dbtype.EncryptedString(script),
-		Timeout:           int(r.task.Timeout().Seconds()),
-		Status:            string(TaskStatusPending),
+		ServerScoped: basemodels.ServerScoped{ServerID: r.server.ID},
+		Name:         r.task.Name(),
+		User:         user,
+		Type:         taskType,
+		Script:       dbtype.EncryptedString(script),
+		Timeout:      int(r.task.Timeout().Seconds()),
+		Status:       string(TaskStatusPending),
 	}
 
 	completionConfig := r.completionConfig

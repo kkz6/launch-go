@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/formatter"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -39,7 +40,7 @@ func (j *InstallDaemonJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find daemon: %w", err)
 	}
 
-	contents := j.daemon.ToSupervisorConfig()
+	contents := formatter.SupervisorConfig(j.daemon)
 
 	uploadTask := tasks.UploadDaemon(tasks.UploadDaemonConfig{
 		Path:         j.daemon.Path(),

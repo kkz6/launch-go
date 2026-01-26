@@ -11,10 +11,10 @@ import (
 type Queue struct {
 	basemodels.BaseModel
 	basemodels.InstallableModel
-	basemodels.SiteScopedModel
-	basemodels.TeamScopedModel
-	basemodels.ServerScopedModel
-	basemodels.UserScopedModel
+	basemodels.SiteScoped
+	basemodels.TeamScoped
+	basemodels.ServerScoped
+	basemodels.UserScoped
 	Directory             *string    `gorm:"type:varchar(255)" json:"directory,omitempty"`
 	Command               string     `gorm:"type:text;not null" json:"command"`
 	User                  string     `gorm:"type:varchar(255);not null" json:"user"`
@@ -67,46 +67,6 @@ func (q *Queue) OutputLogPath(workingDirectory string) string {
 	}
 
 	return fmt.Sprintf("/home/%s/%s/daemon-%s.log", q.User, workingDirectory, q.ID)
-}
-
-// BuildCommand builds the artisan queue command
-func (q *Queue) BuildCommand() string {
-	run := "work"
-	if q.RunWithListen {
-		run = "listen"
-	}
-
-	cmd := fmt.Sprintf("php artisan queue:%s %s --queue=%s", run, q.QueueConnection, q.QueueName)
-
-	if q.MaxTries != nil && *q.MaxTries > 0 {
-		cmd += fmt.Sprintf(" --tries=%d", *q.MaxTries)
-	}
-
-	if q.Environment != nil && *q.Environment != "" {
-		cmd += fmt.Sprintf(" --env=%s", *q.Environment)
-	}
-
-	if q.RestSecondsOnEmpty != nil {
-		cmd += fmt.Sprintf(" --sleep=%d", *q.RestSecondsOnEmpty)
-	}
-
-	if q.MaxSecondsPerJob != nil {
-		cmd += fmt.Sprintf(" --timeout=%d", *q.MaxSecondsPerJob)
-	}
-
-	if q.FailedJobDelaySeconds != nil && *q.FailedJobDelaySeconds > 0 {
-		cmd += fmt.Sprintf(" --backoff=%d", *q.FailedJobDelaySeconds)
-	}
-
-	if q.RunOnMaintenance {
-		cmd += " --force"
-	}
-
-	if q.MaxMemory != nil && *q.MaxMemory > 0 {
-		cmd += fmt.Sprintf(" --memory=%d", *q.MaxMemory)
-	}
-
-	return cmd
 }
 
 // GetLogPath returns the path to the output log file using default working directory

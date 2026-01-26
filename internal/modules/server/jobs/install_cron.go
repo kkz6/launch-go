@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/formatter"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -38,7 +39,7 @@ func (j *InstallCronJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to find cron: %w", err)
 	}
 
-	contents := j.cron.ToCronFileContents()
+	contents := formatter.CronFileContents(j.cron)
 
 	task := tasks.UploadCron(tasks.UploadCronConfig{
 		Path:     j.cron.Path(),

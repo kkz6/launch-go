@@ -54,9 +54,7 @@ func (s *StorageProviderService) ConnectStorageProvider(ctx context.Context, use
 		Connected: true,
 	}
 
-	if err := provider.SetCredentials(storageProvider.CredentialData(credentials)); err != nil {
-		return nil, fmt.Errorf("failed to set credentials: %w", err)
-	}
+	provider.SetCredentials(storageProvider.CredentialData(credentials))
 
 	if err := s.Repos().StorageProvider().CreateStorageProvider(ctx, provider); err != nil {
 		return nil, fmt.Errorf("failed to create storage provider: %w", err)
@@ -100,9 +98,7 @@ func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id u
 	provider.Provider = driver
 	provider.Connected = true
 
-	if err := provider.SetCredentials(storageProvider.CredentialData(credentials)); err != nil {
-		return nil, fmt.Errorf("failed to set credentials: %w", err)
-	}
+	provider.SetCredentials(storageProvider.CredentialData(credentials))
 
 	if err := s.Repos().StorageProvider().UpdateStorageProvider(ctx, provider); err != nil {
 		return nil, fmt.Errorf("failed to update storage provider: %w", err)
@@ -157,16 +153,13 @@ func (s *StorageProviderService) ListStorageProvidersByTeam(ctx context.Context,
 }
 
 // GetStorageProviderConfig gets the agent configuration for a storage provider
-func (s *StorageProviderService) GetStorageProviderConfig(ctx context.Context, id uint64) (map[string]interface{}, error) {
+func (s *StorageProviderService) GetStorageProviderConfig(ctx context.Context, id uint64) (map[string]any, error) {
 	provider, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, id)
 	if err != nil {
 		return nil, err
 	}
 
-	credentials, err := provider.GetCredentials()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get credentials: %w", err)
-	}
+	credentials := provider.GetCredentials()
 
 	storageProvider, err := s.storageFactory.Create(string(provider.Provider), credentials)
 	if err != nil {
@@ -178,8 +171,8 @@ func (s *StorageProviderService) GetStorageProviderConfig(ctx context.Context, i
 
 // Helper methods
 
-func (s *StorageProviderService) buildCredentials(req *dto.CreateStorageProviderRequest) map[string]interface{} {
-	credentials := make(map[string]interface{})
+func (s *StorageProviderService) buildCredentials(req *dto.CreateStorageProviderRequest) map[string]any {
+	credentials := make(map[string]any)
 
 	switch req.Provider {
 	case "s3":
@@ -197,8 +190,8 @@ func (s *StorageProviderService) buildCredentials(req *dto.CreateStorageProvider
 	return credentials
 }
 
-func (s *StorageProviderService) buildCredentialsFromUpdate(req *dto.UpdateStorageProviderRequest) map[string]interface{} {
-	credentials := make(map[string]interface{})
+func (s *StorageProviderService) buildCredentialsFromUpdate(req *dto.UpdateStorageProviderRequest) map[string]any {
+	credentials := make(map[string]any)
 
 	switch req.Provider {
 	case "s3":
