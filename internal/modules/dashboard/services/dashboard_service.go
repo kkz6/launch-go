@@ -264,6 +264,11 @@ func (s *DashboardService) GetOnboardingStatus(ctx context.Context, userID strin
 	}, nil
 }
 
+// CompleteOnboarding marks the user as onboarded
+func (s *DashboardService) CompleteOnboarding(ctx context.Context, userID string) error {
+	return s.repos.User.SetOnboarded(ctx, userID, true)
+}
+
 // hasServerProvider checks if user has any server provider connected
 func (s *DashboardService) hasServerProvider(ctx context.Context, userID string) (bool, error) {
 	var count int64

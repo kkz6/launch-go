@@ -109,11 +109,16 @@ type PasswordResetResponse struct {
 
 // ToUserResponse converts a User model to a UserResponse DTO
 func ToUserResponse(user *models.User) UserResponse {
-	return ToUserResponseWithSubscription(user, false)
+	return ToUserResponseWithStatus(user, false, user.Onboarded)
 }
 
 // ToUserResponseWithSubscription converts a User model to a UserResponse DTO with subscription status
 func ToUserResponseWithSubscription(user *models.User, isSubscribed bool) UserResponse {
+	return ToUserResponseWithStatus(user, isSubscribed, user.Onboarded)
+}
+
+// ToUserResponseWithStatus converts a User model to a UserResponse DTO with explicit status flags
+func ToUserResponseWithStatus(user *models.User, isSubscribed bool, onboarded bool) UserResponse {
 	timezone := ""
 	if user.Timezone != nil {
 		timezone = *user.Timezone
@@ -126,7 +131,7 @@ func ToUserResponseWithSubscription(user *models.User, isSubscribed bool) UserRe
 		ProfilePhotoURL:  user.ProfilePhotoURL(),
 		CurrentTeamID:    user.CurrentTeamID,
 		Timezone:         timezone,
-		Onboarded:        user.Onboarded,
+		Onboarded:        onboarded,
 		TwoFactorEnabled: user.TwoFactorEnabled(),
 		CreatedAt:        pkgdto.FormatTimeOrEmpty(user.CreatedAt),
 		EmailVerifiedAt:  pkgdto.FormatTime(user.EmailVerifiedAt),

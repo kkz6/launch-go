@@ -140,7 +140,13 @@ func (h *TeamHandler) SwitchTeam(c *fiber.Ctx) error {
 		return fiberctx.HandleError(c, err)
 	}
 
-	return fiberctx.OK(c, "Team switched. Use X-Team-ID header for subsequent requests.", dto.ToUserResponse(user))
+	// Check subscription status for the new team
+	isSubscribed := false
+	if user.CurrentTeamID != nil {
+		isSubscribed = h.Service().IsTeamSubscribedOrUserAdmin(c.Context(), *user.CurrentTeamID, userID)
+	}
+
+	return fiberctx.OK(c, "Team switched. Use X-Team-ID header for subsequent requests.", dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded))
 }
 
 // SwitchTeamByID switches the user's current team using URL parameter
@@ -162,5 +168,11 @@ func (h *TeamHandler) SwitchTeamByID(c *fiber.Ctx) error {
 		return fiberctx.HandleError(c, err)
 	}
 
-	return fiberctx.OK(c, "Team switched. Use X-Team-ID header for subsequent requests.", dto.ToUserResponse(user))
+	// Check subscription status for the new team
+	isSubscribed := false
+	if user.CurrentTeamID != nil {
+		isSubscribed = h.Service().IsTeamSubscribedOrUserAdmin(c.Context(), *user.CurrentTeamID, userID)
+	}
+
+	return fiberctx.OK(c, "Team switched. Use X-Team-ID header for subsequent requests.", dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded))
 }

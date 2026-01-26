@@ -18,6 +18,7 @@ type UserRepository interface {
 	ExistsByEmail(ctx context.Context, email string) (bool, error)
 	SetCurrentTeam(ctx context.Context, userID, teamID string) error
 	MarkEmailAsVerified(ctx context.Context, userID string) error
+	SetOnboarded(ctx context.Context, userID string, onboarded bool) error
 }
 
 // TeamRepository defines the interface for team repository operations
@@ -87,4 +88,3 @@ type RepositoryRegistry interface {
 	Passkey() PasskeyRepository
 	DB() *gorm.DB
 }
-

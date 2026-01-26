@@ -254,3 +254,8 @@ func (s *Service) IsTeamSubscribedOrUserAdmin(ctx context.Context, teamID, userI
 	}
 	return s.repos.IsTeamSubscribed(ctx, teamID)
 }
+
+// SetOnboarded updates the user's onboarded status
+func (s *Service) SetOnboarded(ctx context.Context, userID string, onboarded bool) error {
+	return s.repos.User().SetOnboarded(ctx, userID, onboarded)
+}

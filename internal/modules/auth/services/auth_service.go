@@ -104,8 +104,11 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		return nil, err
 	}
 
+	// Check subscription status for the user's current team
+	isSubscribed := s.isTeamSubscribedOrUserAdmin(ctx, user)
+
 	return &dto.AuthResponse{
-		User:         dto.ToUserResponse(user),
+		User:         dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    s.config.JWT.Expiration * 3600,
@@ -140,8 +143,11 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Au
 		return nil, err
 	}
 
+	// Check subscription status for the user's current team
+	isSubscribed := s.isTeamSubscribedOrUserAdmin(ctx, user)
+
 	return &dto.AuthResponse{
-		User:         dto.ToUserResponse(user),
+		User:         dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded),
 		AccessToken:  accessToken,
 		RefreshToken: refreshToken,
 		ExpiresIn:    s.config.JWT.Expiration * 3600,
@@ -201,8 +207,11 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		return nil, err
 	}
 
+	// Check subscription status for the user's current team
+	isSubscribed := s.isTeamSubscribedOrUserAdmin(ctx, user)
+
 	return &dto.AuthResponse{
-		User:         dto.ToUserResponse(user),
+		User:         dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded),
 		AccessToken:  accessToken,
 		RefreshToken: newRefreshToken,
 		ExpiresIn:    s.config.JWT.Expiration * 3600,
@@ -325,4 +334,18 @@ func (s *AuthService) generateRefreshToken(user *models.User) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	return token.SignedString([]byte(s.config.JWT.Secret))
+}
+
+// isTeamSubscribedOrUserAdmin checks if the user's current team is subscribed or user is admin
+func (s *AuthService) isTeamSubscribedOrUserAdmin(ctx context.Context, user *models.User) bool {
+	if user.CurrentTeamID == nil {
+		return false
+	}
+
+	// Admin users bypass subscription check
+	if s.repos.IsUserAdmin(ctx, user.ID) {
+		return true
+	}
+
+	return s.repos.IsTeamSubscribed(ctx, *user.CurrentTeamID)
 }
