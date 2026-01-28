@@ -123,31 +123,38 @@ func PhpPpaFunctions() string {
 
 // TaskMarkerFunctions returns functions for task status markers.
 // These are used by the StreamMonitor to detect task status in SSH output.
+// Marker format: ::LAUNCH::<type>::<value>
 func TaskMarkerFunctions() string {
 	return `# Task output markers for SSH streaming
-function taskStarted() {
-    echo "::LAUNCH_TASK_STARTED::"
-}
+# Format: ::LAUNCH::<type>::<value>
 
-function taskFinished() {
+function taskExitCode() {
     local exit_code=${1:-0}
-    echo "::LAUNCH_EXIT_CODE::${exit_code}"
-    echo "::LAUNCH_TASK_FINISHED::"
-}
-
-function taskFailed() {
-    local exit_code=${1:-1}
-    echo "::LAUNCH_EXIT_CODE::${exit_code}"
-    echo "::LAUNCH_TASK_FAILED::"
+    echo "::LAUNCH::exit_code::${exit_code}"
 }
 
 function taskProgress() {
     local progress=${1:-0}
-    echo "::LAUNCH_TASK_PROGRESS::${progress}"
+    echo "::LAUNCH::progress::${progress}"
 }
 
 function taskStatus() {
     local message="$1"
-    echo "::LAUNCH_TASK_STATUS::${message}"
+    echo "::LAUNCH::status::${message}"
+}
+
+function taskStepCompleted() {
+    local step="$1"
+    echo "::LAUNCH::step_completed::${step}"
+}
+
+function taskSoftwareInstalled() {
+    local software="$1"
+    echo "::LAUNCH::software_installed::${software}"
+}
+
+function taskError() {
+    local message="$1"
+    echo "::LAUNCH::error::${message}"
 }`
 }

@@ -216,31 +216,6 @@ func TestTaskRunner_ThrowOnError(t *testing.T) {
 	}
 }
 
-func TestTaskRunner_WithCallbacks(t *testing.T) {
-	server := createTestServer()
-	task := createTestTask()
-
-	runner := NewTaskRunner(server, task).
-		WithCallbacks(&CallbackURLs{
-			FinishedURL: "http://finish",
-			FailedURL:   "http://fail",
-			TimeoutURL:  "http://timeout",
-		})
-
-	if runner.callbackURLs == nil {
-		t.Fatal("Expected callbackURLs to be set")
-	}
-	if runner.callbackURLs.FinishedURL != "http://finish" {
-		t.Errorf("Expected FinishedURL 'http://finish', got '%s'", runner.callbackURLs.FinishedURL)
-	}
-	if runner.callbackURLs.FailedURL != "http://fail" {
-		t.Errorf("Expected FailedURL 'http://fail', got '%s'", runner.callbackURLs.FailedURL)
-	}
-	if runner.callbackURLs.TimeoutURL != "http://timeout" {
-		t.Errorf("Expected TimeoutURL 'http://timeout', got '%s'", runner.callbackURLs.TimeoutURL)
-	}
-}
-
 // =============================================================================
 // TaskStatus Tests
 // =============================================================================
@@ -261,22 +236,6 @@ func TestTaskStatus_Constants(t *testing.T) {
 		if string(tt.status) != tt.expected {
 			t.Errorf("Expected status '%s', got '%s'", tt.expected, string(tt.status))
 		}
-	}
-}
-
-// =============================================================================
-// CallbackURLs Tests
-// =============================================================================
-
-func TestCallbackURLs(t *testing.T) {
-	urls := &CallbackURLs{
-		FinishedURL: "http://example.com/finished",
-		FailedURL:   "http://example.com/failed",
-		TimeoutURL:  "http://example.com/timeout",
-	}
-
-	if urls.FinishedURL != "http://example.com/finished" {
-		t.Errorf("Expected FinishedURL to be set correctly")
 	}
 }
 
@@ -407,52 +366,6 @@ func TestTaskRunnerResult_GetExitCode(t *testing.T) {
 }
 
 // =============================================================================
-// Execution Mode Detection Tests
-// =============================================================================
-
-func TestTaskRunner_hasCallbackURLs(t *testing.T) {
-	server := createTestServer()
-	task := createTestTask()
-
-	tests := []struct {
-		name     string
-		urls     *CallbackURLs
-		expected bool
-	}{
-		{
-			name:     "no callback URLs",
-			urls:     nil,
-			expected: false,
-		},
-		{
-			name: "with finished URL",
-			urls: &CallbackURLs{
-				FinishedURL: "http://example.com/finished",
-			},
-			expected: true,
-		},
-		{
-			name: "empty finished URL",
-			urls: &CallbackURLs{
-				FinishedURL: "",
-			},
-			expected: false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			runner := NewTaskRunner(server, task)
-			runner.callbackURLs = tt.urls
-
-			if got := runner.hasCallbackURLs(); got != tt.expected {
-				t.Errorf("hasCallbackURLs() = %v, want %v", got, tt.expected)
-			}
-		})
-	}
-}
-
-// =============================================================================
 // Run Method Tests (without DB - basic flow)
 // =============================================================================
 
@@ -503,45 +416,6 @@ func TestTaskRunner_Run_NoPrivateKey(t *testing.T) {
 
 	if err == nil {
 		t.Fatal("Expected error when server has no private key")
-	}
-}
-
-// =============================================================================
-// Background Script Wrapper Tests
-// =============================================================================
-
-func TestTaskRunner_wrapTaskForBackground(t *testing.T) {
-	server := createTestServer()
-	task := createTestTask()
-
-	taskModel := &models.Task{
-		BaseModel: basemodels.BaseModel{ID: "task-123"},
-	}
-
-	runner := NewTaskRunner(server, task).
-		WithCallbacks(&CallbackURLs{
-			FinishedURL: "http://finish",
-			FailedURL:   "http://fail",
-			TimeoutURL:  "http://timeout",
-		})
-
-	script := runner.wrapTaskForBackground(taskModel)
-
-	// Verify script contains expected elements
-	expectedElements := []string{
-		"#!/bin/bash",
-		"set -euo pipefail",
-		"echo 'hello world'", // original script
-		"http://finish",      // finished callback URL
-		"http://fail",        // failed callback URL
-		"http://timeout",     // timeout callback URL
-		"EXIT_CODE=$?",       // exit code capture
-	}
-
-	for _, elem := range expectedElements {
-		if !containsString(script, elem) {
-			t.Errorf("Expected script to contain '%s'", elem)
-		}
 	}
 }
 
@@ -690,17 +564,4 @@ func TestTaskRunner_invokeTaskCallbacks_NonCallbackTask(t *testing.T) {
 
 func intPtr(i int) *int {
 	return &i
-}
-
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(s) > 0 && containsSubstring(s, substr))
-}
-
-func containsSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

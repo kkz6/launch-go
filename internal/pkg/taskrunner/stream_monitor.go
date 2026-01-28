@@ -16,17 +16,6 @@ import (
 	"github.com/rs/zerolog"
 )
 
-// Legacy task status markers (kept for backward compatibility during migration)
-// TODO: Remove after all tasks are migrated to new marker format
-const (
-	MarkerTaskStarted  = "::LAUNCH_TASK_STARTED::"
-	MarkerTaskFinished = "::LAUNCH_TASK_FINISHED::"
-	MarkerTaskFailed   = "::LAUNCH_TASK_FAILED::"
-	MarkerTaskProgress = "::LAUNCH_TASK_PROGRESS::"
-	MarkerTaskStatus   = "::LAUNCH_TASK_STATUS::"
-	MarkerExitCode     = "::LAUNCH_EXIT_CODE::"
-)
-
 // ErrTaskCompleted signals that the task has completed (not an error)
 var ErrTaskCompleted = errors.New("task completed")
 
@@ -161,32 +150,9 @@ func (m *StreamMonitor) StreamTaskOutput(
 	var finalStatus string
 
 	err = sshClient.StreamOutput(streamCtx, tailCmd, func(line string) error {
-		// Check for new-style markers first
+		// Check for markers
 		if marker := markers.Parse(line); marker != nil {
 			return m.handleMarker(streamCtx, taskID, marker, &exitCode, &finalStatus)
-		}
-
-		// Legacy marker support (TODO: remove after migration)
-		if strings.Contains(line, MarkerTaskFinished) {
-			finalStatus = "finished"
-			return ErrTaskCompleted
-		}
-
-		if strings.Contains(line, MarkerTaskFailed) {
-			finalStatus = "failed"
-			exitCode = 1
-			return ErrTaskCompleted
-		}
-
-		// Legacy progress marker
-		if strings.Contains(line, MarkerTaskProgress) {
-			// Extract number after marker
-			parts := strings.Split(line, MarkerTaskProgress)
-			if len(parts) > 1 {
-				if progress, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
-					m.broadcastProgress(taskID, progress)
-				}
-			}
 		}
 
 		// Regular output line - add to buffer
@@ -446,7 +412,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 					exitCode, _ = strconv.Atoi(strings.TrimSpace(exitResult.Stdout))
 				}
 
-				// Check for new-style exit_code marker in output
+				// Check for exit_code marker in output
 				for _, line := range strings.Split(lastOutput, "\n") {
 					if marker := markers.Parse(line); marker != nil && marker.Type == markers.ExitCode {
 						exitCode = marker.ExitCodeValue()
@@ -454,12 +420,8 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 					}
 				}
 
-				// Determine status based on exit code and legacy markers
-				if strings.Contains(lastOutput, MarkerTaskFinished) {
-					status = "finished"
-				} else if strings.Contains(lastOutput, MarkerTaskFailed) {
-					status = "failed"
-				} else if exitCode == 0 {
+				// Determine status based on exit code
+				if exitCode == 0 {
 					status = "finished"
 				} else if exitCode == 124 {
 					status = "timeout"

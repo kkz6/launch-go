@@ -34,48 +34,39 @@ type Dispatcher struct {
 	logger        *zerolog.Logger
 	ws            SimpleBroadcaster
 	streamMonitor *StreamMonitor
-	localMode     bool
 }
 
 // DispatcherConfig holds configuration for the dispatcher
 type DispatcherConfig struct {
-	LocalMode         bool          // Use SSH streaming instead of HTTP callbacks
 	BroadcastInterval time.Duration // How often to broadcast output updates
 }
 
 // NewDispatcher creates a new task dispatcher
 func NewDispatcher(logger *zerolog.Logger, ws SimpleBroadcaster) *Dispatcher {
 	return &Dispatcher{
-		logger:    logger,
-		ws:        ws,
-		localMode: false,
+		logger:        logger,
+		ws:            ws,
+		streamMonitor: NewStreamMonitor(logger, ws, nil),
 	}
 }
 
 // NewDispatcherWithConfig creates a new dispatcher with configuration
 func NewDispatcherWithConfig(logger *zerolog.Logger, ws SimpleBroadcaster, cfg *DispatcherConfig) *Dispatcher {
-	d := &Dispatcher{
-		logger:    logger,
-		ws:        ws,
-		localMode: cfg != nil && cfg.LocalMode,
+	var broadcastInterval time.Duration
+	if cfg != nil {
+		broadcastInterval = cfg.BroadcastInterval
 	}
 
-	// Initialize stream monitor if in local mode
-	if d.localMode {
-		d.streamMonitor = NewStreamMonitor(logger, ws, &StreamMonitorConfig{
-			BroadcastInterval: cfg.BroadcastInterval,
-		})
+	return &Dispatcher{
+		logger: logger,
+		ws:     ws,
+		streamMonitor: NewStreamMonitor(logger, ws, &StreamMonitorConfig{
+			BroadcastInterval: broadcastInterval,
+		}),
 	}
-
-	return d
 }
 
-// IsLocalMode returns whether the dispatcher is in local mode
-func (d *Dispatcher) IsLocalMode() bool {
-	return d.localMode
-}
-
-// GetStreamMonitor returns the stream monitor (may be nil if not in local mode)
+// GetStreamMonitor returns the stream monitor
 func (d *Dispatcher) GetStreamMonitor() *StreamMonitor {
 	return d.streamMonitor
 }
@@ -256,11 +247,10 @@ func (d *Dispatcher) runRemoteBackground(
 		Str("task_id", pt.TaskID).
 		Str("pid", pid).
 		Str("output_file", taskPaths.Output).
-		Bool("local_mode", d.localMode).
 		Msg("Background task started")
 
-	// In local mode, start SSH streaming to monitor the task
-	if d.localMode && d.streamMonitor != nil {
+	// Start SSH streaming to monitor the task
+	if d.streamMonitor != nil {
 		go func() {
 			// Create a new context for streaming (don't use the original which may be cancelled)
 			streamCtx, cancel := context.WithTimeout(context.Background(), pt.Task.Timeout()+time.Minute)
