@@ -22,6 +22,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // ListServers returns all servers for a team
@@ -80,17 +81,23 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 	defaults := config.ServerDefaults()
 	defaultUsername := defaults.Username
 
+	// Generate passwords for system user and database (like Laravel's Str::password)
+	password := security.GeneratePassword(32)
+	databasePassword := security.GeneratePassword(32)
+
 	server := &models.Server{
-		Name:            req.Name,
-		Description:     req.Description,
-		Provider:        provider,
-		Type:            &serverTypeStr,
-		OperatingSystem: &osStr,
-		Status:          types.ServerStatusNew,
-		SSHPort:         &defaultSSHPort,
-		Username:        &defaultUsername,
-		PrivateKey:      dbtype.EncryptedString(privateKey),
-		PublicKey:       dbtype.EncryptedString(publicKey),
+		Name:             req.Name,
+		Description:      req.Description,
+		Provider:         provider,
+		Type:             &serverTypeStr,
+		OperatingSystem:  &osStr,
+		Status:           types.ServerStatusNew,
+		SSHPort:          &defaultSSHPort,
+		Username:         &defaultUsername,
+		Password:         dbtype.EncryptedString(password),
+		DatabasePassword: dbtype.EncryptedString(databasePassword),
+		PrivateKey:       dbtype.EncryptedString(privateKey),
+		PublicKey:        dbtype.EncryptedString(publicKey),
 	}
 	server.TeamID = teamID
 	server.UserID = userID
@@ -110,22 +117,46 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 	workingDir := ".launch"
 	server.WorkingDirectory = &workingDir
 
-	// Set provider data for cloud servers
+	// Set provider data including software configuration
+	providerData := map[string]interface{}{}
 	if provider != types.ProviderCustom {
 		server.ServerProviderID = &req.CredentialID
-		server.ProviderData = map[string]interface{}{
-			"region": req.Region,
-			"plan":   req.Size,
-		}
+		providerData["region"] = req.Region
+		providerData["plan"] = req.Size
 	}
+
+	// Store PHP version and database type for provisioning
+	if req.PHPVersion != "" {
+		providerData["php_version"] = req.PHPVersion
+	}
+	if req.DatabaseType != "" {
+		providerData["database_type"] = req.DatabaseType
+	}
+	server.ProviderData = providerData
 
 	if err := s.repos.Server().Create(ctx, server); err != nil {
 		return nil, fmt.Errorf("failed to create server: %w", err)
 	}
 
+	// Attach SSH keys to server
+	if len(req.SSHKeyIDs) > 0 {
+		for _, keyID := range req.SSHKeyIDs {
+			if err := s.repos.SSHKey().AttachToServer(ctx, server.ID, keyID); err != nil {
+				s.LogError(err, "Failed to attach SSH key to server", "server_id", server.ID, "key_id", keyID)
+			}
+		}
+	}
+
 	activity.RecordCreated(ctx, userID, server, "Server was created")
 
-	if provider != types.ProviderCustom {
+	// Dispatch appropriate job based on provider type
+	if provider == types.ProviderCustom {
+		// Custom servers skip cloud creation, go straight to waiting for connection
+		if err := s.dispatchWaitForConnectionJob(server, req.SSHKeyIDs); err != nil {
+			s.LogError(err, "Failed to dispatch wait for connection job", "server_id", server.ID)
+		}
+	} else {
+		// Cloud servers need to be created on the provider first
 		if err := s.dispatchCreateOnProviderJob(server, req.CredentialID, req.SSHKeyIDs); err != nil {
 			s.LogError(err, "Failed to dispatch create on provider job", "server_id", server.ID)
 		}
@@ -378,6 +409,19 @@ func (s *Service) dispatchCreateOnProviderJob(server *models.Server, serverProvi
 	}
 
 	task, err := jobs.NewCreateOnProviderTask(server.ID, server.TeamID, serverProviderID, nil, sshKeyIDs)
+	if err != nil {
+		return err
+	}
+
+	return s.EnqueueTaskWithOptions(task)
+}
+
+func (s *Service) dispatchWaitForConnectionJob(server *models.Server, sshKeyIDs []string) error {
+	if !s.HasQueue() {
+		return ErrQueueNotConfigured
+	}
+
+	task, err := jobs.NewWaitForServerToConnectTask(server.ID, server.TeamID, "", nil, sshKeyIDs)
 	if err != nil {
 		return err
 	}

@@ -142,3 +142,15 @@ func AppKey() string {
 func WebhookSecret() (string, error) {
 	return HexToken(32)
 }
+
+// GeneratePassword generates a random alphanumeric password of the specified length.
+// This is similar to Laravel's Str::password(symbols: false).
+func GeneratePassword(length int) string {
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	bytes := MustSecureBytes(length)
+	result := make([]byte, length)
+	for i := 0; i < length; i++ {
+		result[i] = charset[int(bytes[i])%len(charset)]
+	}
+	return string(result)
+}
