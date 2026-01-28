@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 sudo mysql --user="root" --password="rootpassword" -e "DROP DATABASE IF EXISTS old_database;"

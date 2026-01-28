@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 sudo mysql --user="root" --password="rootpassword" -e "CREATE DATABASE myapp_production CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
