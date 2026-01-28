@@ -11,6 +11,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+	sitemodels "github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -75,11 +76,18 @@ func (r *ServerRepository) FindWithRelations(ctx context.Context, id, teamID str
 	return &server, nil
 }
 
+// sitesCountSubquery returns a GORM subquery for counting sites per server (database-agnostic)
+func (r *ServerRepository) sitesCountSubquery() *gorm.DB {
+	return r.DB.Model(&sitemodels.Site{}).
+		Select("COUNT(*)").
+		Where("sites.server_id = servers.id")
+}
+
 // FindAllByTeam finds all active (non-archived) servers for a team
 func (r *ServerRepository) FindAllByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
 	var servers []models.Server
 	err := r.DB.WithContext(ctx).
-		Select("servers.*, (SELECT COUNT(*) FROM sites WHERE sites.server_id = servers.id) as sites_count").
+		Select("servers.*, (?) as sites_count", r.sitesCountSubquery()).
 		Preload("Services").
 		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
 		Order("created_at DESC").
@@ -94,7 +102,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 		Scopes(repository.WithTeamID(teamID), repository.WithActive())
 
 	dataQuery := r.DB.WithContext(ctx).
-		Select("servers.*, (SELECT COUNT(*) FROM sites WHERE sites.server_id = servers.id) as sites_count").
+		Select("servers.*, (?) as sites_count", r.sitesCountSubquery()).
 		Preload("Services").
 		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
 		Order("created_at DESC")
@@ -106,7 +114,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 func (r *ServerRepository) FindArchivedByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
 	var servers []models.Server
 	err := r.DB.WithContext(ctx).
-		Select("servers.*, (SELECT COUNT(*) FROM sites WHERE sites.server_id = servers.id) as sites_count").
+		Select("servers.*, (?) as sites_count", r.sitesCountSubquery()).
 		Unscoped().
 		Where("team_id = ? AND archived_at IS NOT NULL", teamID).
 		Order("archived_at DESC").

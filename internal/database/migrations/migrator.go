@@ -196,27 +196,19 @@ func (m *Migrator) Rollback() error {
 func (m *Migrator) Fresh() error {
 	m.logger.Info().Msg("Dropping all tables...")
 
-	// Get all tables
-	var tables []string
-	if err := m.db.Raw("SHOW TABLES").Scan(&tables).Error; err != nil {
+	migrator := m.db.Migrator()
+
+	// Get all tables using GORM's database-agnostic method
+	tables, err := migrator.GetTables()
+	if err != nil {
 		return fmt.Errorf("failed to get tables: %w", err)
 	}
 
-	// Disable foreign key checks
-	if err := m.db.Exec("SET FOREIGN_KEY_CHECKS = 0").Error; err != nil {
-		return fmt.Errorf("failed to disable foreign key checks: %w", err)
-	}
-
-	// Drop all tables
+	// Drop all tables using GORM's migrator (handles foreign keys internally)
 	for _, table := range tables {
-		if err := m.db.Exec(fmt.Sprintf("DROP TABLE IF EXISTS `%s`", table)).Error; err != nil {
+		if err := migrator.DropTable(table); err != nil {
 			return fmt.Errorf("failed to drop table %s: %w", table, err)
 		}
-	}
-
-	// Re-enable foreign key checks
-	if err := m.db.Exec("SET FOREIGN_KEY_CHECKS = 1").Error; err != nil {
-		return fmt.Errorf("failed to enable foreign key checks: %w", err)
 	}
 
 	m.logger.Info().Msg("Running fresh migrations...")

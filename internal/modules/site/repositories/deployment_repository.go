@@ -69,10 +69,17 @@ func (r *DeploymentRepository) FindLatestBySiteIDs(ctx context.Context, siteIDs 
 		return make(map[string]*models.Deployment), nil
 	}
 
+	// Build subquery for max created_at per site_id
+	subquery := r.DB.Model(&models.Deployment{}).
+		Select("site_id, MAX(created_at) as max_created_at").
+		Where("site_id IN ?", siteIDs).
+		Group("site_id")
+
 	var deployments []models.Deployment
 	err := r.DB.WithContext(ctx).
-		Raw("SELECT DISTINCT ON (site_id) * FROM deployments WHERE site_id IN ? ORDER BY site_id, created_at DESC", siteIDs).
-		Scan(&deployments).Error
+		Joins("INNER JOIN (?) AS latest ON deployments.site_id = latest.site_id AND deployments.created_at = latest.max_created_at", subquery).
+		Where("deployments.site_id IN ?", siteIDs).
+		Find(&deployments).Error
 	if err != nil {
 		return nil, err
 	}
