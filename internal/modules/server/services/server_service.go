@@ -104,9 +104,7 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 	}
 
 	if provider == types.ProviderCustom {
-		server.PublicIPv4 = &req.IPAddress
-		server.PrivateKey = dbtype.EncryptedString(req.PrivateKey)
-		server.PublicKey = ""
+		server.PublicIPv4 = &req.IP
 	}
 
 	workingDir := ".launch"
