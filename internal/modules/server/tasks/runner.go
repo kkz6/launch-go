@@ -19,6 +19,7 @@ import (
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/markers"
 )
 
 // TaskStatus represents the status of a task execution.
@@ -98,6 +99,7 @@ type TaskRunner struct {
 	callbackURLs             *CallbackURLs
 	completionConfig         *taskrunner.CompletionConfig
 	outputPollingIntervalSec int // Polling interval for background tasks (0 = disabled)
+	markerHandler            taskrunner.MarkerHandler
 }
 
 // NewTaskRunner creates a new TaskRunner for a server.
@@ -190,6 +192,14 @@ func (r *TaskRunner) WithCallbacks(urls *CallbackURLs) *TaskRunner {
 // Set to 0 (default) to disable polling.
 func (r *TaskRunner) WithOutputPolling(intervalSeconds int) *TaskRunner {
 	r.outputPollingIntervalSec = intervalSeconds
+	return r
+}
+
+// WithMarkerHandler sets a handler for processing output markers during task execution.
+// Markers are structured output lines (e.g., ::LAUNCH::progress::50) that communicate
+// task progress back to the application.
+func (r *TaskRunner) WithMarkerHandler(handler taskrunner.MarkerHandler) *TaskRunner {
+	r.markerHandler = handler
 	return r
 }
 
@@ -456,6 +466,7 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 			Str("task_id", taskModel.ID).
 			Str("task_name", taskModel.Name).
 			Str("mode", "long_running").
+			Bool("has_marker_handler", r.markerHandler != nil).
 			Msg("Task started with long-running SSH connection")
 	}
 
@@ -466,6 +477,24 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 		pendingTask := taskrunner.NewPendingTask(r.task)
 		pendingTask.OnConnection(conn)
 		pendingTask.As("task-" + taskModel.ID)
+
+		// Set up output callback for marker processing
+		if r.markerHandler != nil {
+			pendingTask.OnOutput(func(output string) {
+				// Process each line for markers
+				for _, line := range strings.Split(output, "\n") {
+					if marker := markers.Parse(line); marker != nil {
+						if err := r.markerHandler.OnMarker(context.Background(), taskModel.ID, marker); err != nil {
+							if r.logger != nil {
+								r.logger.Warn().Err(err).
+									Str("marker_type", marker.Type).
+									Msg("Marker handler error")
+							}
+						}
+					}
+				}
+			})
+		}
 
 		bgCtx := context.Background()
 		taskResult, execErr := r.dispatcher.Run(bgCtx, pendingTask)

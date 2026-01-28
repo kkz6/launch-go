@@ -82,9 +82,19 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 
 	task := tasks.ProvisionFreshServer(config)
 
+	// Create marker handler for real-time progress updates
+	markerHandler := tasks.NewProvisionMarkerHandler(tasks.ProvisionMarkerHandlerConfig{
+		DB:          j.Deps.DB,
+		Broadcaster: j.Deps.Broadcaster,
+		Logger:      j.Deps.Logger,
+		ServerID:    j.server.ID,
+		TeamID:      j.server.TeamID,
+	})
+
 	taskModel, err := j.Deps.RunTask(j.server, task).
 		AsRoot().
 		TrackInDB().
+		WithMarkerHandler(markerHandler).
 		RunInBackground(ctx)
 
 	if err != nil {
