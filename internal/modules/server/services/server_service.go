@@ -591,9 +591,17 @@ func GenerateSSHKeyPair() (privateKeyStr string, publicKeyStr string, err error)
 
 // GetProvisionScript returns the provision script for a server
 // This is used for custom servers that need to run the provision script manually
-func (s *Service) GetProvisionScript(ctx context.Context, serverID string) (string, error) {
-	// Find server (including archived)
-	server, err := s.repos.Server().FindByID(ctx, serverID)
+// If teamID is provided, it validates team ownership
+func (s *Service) GetProvisionScript(ctx context.Context, serverID string, teamID ...string) (string, error) {
+	var server *models.Server
+	var err error
+
+	// Find server with optional team validation
+	if len(teamID) > 0 && teamID[0] != "" {
+		server, err = s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID[0])
+	} else {
+		server, err = s.repos.Server().FindByID(ctx, serverID)
+	}
 	if err != nil {
 		return "", err
 	}

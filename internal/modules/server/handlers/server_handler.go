@@ -296,3 +296,26 @@ func (h *Handler) GetSiteCount(c *fiber.Ctx) error {
 
 	return fiberctx.OK(c, "Site count retrieved", fiber.Map{"count": count})
 }
+
+// GetProvisionScriptContent returns the provision script content for a server
+// This endpoint is for authenticated users to get the script content directly (for local dev mode)
+func (h *Handler) GetProvisionScriptContent(c *fiber.Ctx) error {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	script, err := h.service.GetProvisionScript(c.Context(), serverID, teamID)
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return fiberctx.OK(c, "Provision script retrieved", fiber.Map{
+		"script": script,
+	})
+}

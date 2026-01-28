@@ -129,7 +129,9 @@ func ToServerResponse(server *models.Server) ServerResponse {
 	resp.LastConnectivityCheck = pkgdto.FormatTime(server.LastConnectivityCheck)
 	resp.ArchivedAt = pkgdto.FormatTime(server.ArchivedAt)
 
-	if server.Status == types.ServerStatusNew {
+	// Include provision command for custom servers that need manual provisioning
+	// (status: new, starting, or failed - before successful provisioning)
+	if server.Provider == types.ProviderCustom && server.ProvisionedAt == nil {
 		resp.ProvisionCommand = server.GetProvisionCommand()
 	}
 
