@@ -1,5 +1,8 @@
 # Build stage
-FROM golang:1.22-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+
+ARG TARGETOS
+ARG TARGETARCH
 
 RUN apk add --no-cache git ca-certificates tzdata
 
@@ -12,9 +15,10 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build binaries
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /api ./cmd/api
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-w -s" -o /worker ./cmd/worker
+# Build binaries for target platform
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-w -s" -o /api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-w -s" -o /worker ./cmd/worker
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-w -s" -o /migrate ./cmd/migrate
 
 # Final stage
 FROM alpine:3.19
@@ -26,9 +30,9 @@ WORKDIR /app
 # Copy binaries from builder
 COPY --from=builder /api .
 COPY --from=builder /worker .
+COPY --from=builder /migrate .
 
-# Copy migrations and scripts
-COPY migrations ./migrations
+# Copy scripts
 COPY scripts ./scripts
 
 # Copy and set up entrypoint
@@ -41,10 +45,11 @@ USER appuser
 
 EXPOSE 8080
 
-# Default mode is 'api', can be overridden with 'worker'
 # Usage:
-#   docker run <image>                    # runs api (default)
-#   docker run <image> api                # runs api explicitly
-#   docker run <image> worker             # runs worker
+#   docker run <image>                              # runs api (default)
+#   docker run <image> api                          # runs api explicitly
+#   docker run <image> worker                       # runs worker
+#   docker run -e RUN_MIGRATIONS=true <image>       # runs migrations then api
+#   docker run <image> ./migrate status             # run migrate CLI directly
 ENTRYPOINT ["/app/entrypoint.sh"]
 CMD ["api"]
