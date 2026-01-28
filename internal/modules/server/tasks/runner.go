@@ -2,11 +2,9 @@ package tasks
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"reflect"
 	"strings"
-	"time"
 
 	"github.com/hibiken/asynq"
 	"github.com/oklog/ulid/v2"
@@ -32,14 +30,6 @@ const (
 	TaskStatusFailed   TaskStatus = "failed"
 	TaskStatusTimeout  TaskStatus = "timeout"
 )
-
-// CallbackURLs holds the webhook URLs for task status updates.
-type CallbackURLs struct {
-	FinishedURL string
-	FailedURL   string
-	TimeoutURL  string
-	CustomURL   string // For progress updates from script
-}
 
 // TaskRunnerResult holds the result of a task execution.
 type TaskRunnerResult struct {
@@ -84,22 +74,20 @@ func (r *TaskRunnerResult) GetExitCode() int {
 // TaskRunner handles task execution on servers.
 // Use the builder pattern to configure and execute tasks.
 type TaskRunner struct {
-	server                   *models.Server
-	task                     taskrunner.Task
-	db                       *gorm.DB
-	queue                    *queue.Client
-	dispatcher               taskrunner.TaskDispatcher
-	logger                   *zerolog.Logger
-	broadcaster              broadcast.TeamBroadcaster
-	notifier                 taskrunner.NotifierService
-	asRoot                   bool
-	username                 string
-	trackInDB                bool
-	throwOnError             bool
-	callbackURLs             *CallbackURLs
-	completionConfig         *taskrunner.CompletionConfig
-	outputPollingIntervalSec int // Polling interval for background tasks (0 = disabled)
-	markerHandler            taskrunner.MarkerHandler
+	server           *models.Server
+	task             taskrunner.Task
+	db               *gorm.DB
+	queue            *queue.Client
+	dispatcher       taskrunner.TaskDispatcher
+	logger           *zerolog.Logger
+	broadcaster      broadcast.TeamBroadcaster
+	notifier         taskrunner.NotifierService
+	asRoot           bool
+	username         string
+	trackInDB        bool
+	throwOnError     bool
+	completionConfig *taskrunner.CompletionConfig
+	markerHandler    taskrunner.MarkerHandler
 }
 
 // NewTaskRunner creates a new TaskRunner for a server.
@@ -179,20 +167,6 @@ func (r *TaskRunner) ThrowOnError() *TaskRunner {
 // Throw is an alias for ThrowOnError.
 func (r *TaskRunner) Throw() *TaskRunner {
 	return r.ThrowOnError()
-}
-
-// WithCallbacks sets callback URLs for async tasks.
-func (r *TaskRunner) WithCallbacks(urls *CallbackURLs) *TaskRunner {
-	r.callbackURLs = urls
-	return r
-}
-
-// WithOutputPolling sets the interval for fetching output during background execution.
-// The job will SSH into the server at this interval to fetch the task output file.
-// Set to 0 (default) to disable polling.
-func (r *TaskRunner) WithOutputPolling(intervalSeconds int) *TaskRunner {
-	r.outputPollingIntervalSec = intervalSeconds
-	return r
 }
 
 // WithMarkerHandler sets a handler for processing output markers during task execution.
@@ -375,10 +349,8 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 	return taskModel, nil
 }
 
-// RunInBackground executes the task in the background.
-// The execution mode is automatically determined:
-//   - If callback URLs are configured: Uses HTTP callbacks (production mode)
-//   - If no callback URLs: Uses long-running SSH connection (local/dev mode)
+// RunInBackground executes the task in the background using a long-running SSH connection.
+// Progress is communicated via output markers (e.g., ::LAUNCH::progress::50).
 func (r *TaskRunner) RunInBackground(ctx context.Context) (*models.Task, error) {
 	r.trackInDB = true
 
@@ -390,64 +362,7 @@ func (r *TaskRunner) RunInBackground(ctx context.Context) (*models.Task, error) 
 		return nil, fmt.Errorf("database required for background tasks")
 	}
 
-	if r.hasCallbackURLs() {
-		return r.runWithCallbacks(ctx)
-	}
-
 	return r.runLongRunning(ctx)
-}
-
-func (r *TaskRunner) hasCallbackURLs() bool {
-	return r.callbackURLs != nil && r.callbackURLs.FinishedURL != ""
-}
-
-func (r *TaskRunner) runWithCallbacks(ctx context.Context) (*models.Task, error) {
-	conn, err := r.getConnection()
-	if err != nil {
-		return nil, err
-	}
-
-	taskModel, err := r.createTaskModel()
-	if err != nil {
-		return nil, fmt.Errorf("failed to create task model: %w", err)
-	}
-
-	wrappedScript := r.wrapTaskForBackground(taskModel)
-	wrappedTask := taskrunner.NewBaseTask(
-		taskrunner.WithName(r.task.Name()+" (Background)"),
-		taskrunner.WithScript(wrappedScript),
-		taskrunner.WithTimeout(r.task.Timeout()+30*time.Second),
-	)
-
-	pendingTask := taskrunner.NewPendingTask(wrappedTask)
-	pendingTask.OnConnection(conn)
-	pendingTask.InBackground()
-	pendingTask.As("task-" + taskModel.ID)
-
-	_, err = r.dispatcher.Run(ctx, pendingTask)
-	if err != nil {
-		r.db.Model(taskModel).Update("status", string(TaskStatusFailed))
-		r.broadcastTaskEvent("task.updated", taskModel, err.Error())
-		return taskModel, err
-	}
-
-	r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
-	r.broadcastTaskRunning(taskModel)
-
-	// Start output polling if configured
-	if r.outputPollingIntervalSec > 0 && r.queue != nil {
-		r.dispatchOutputPolling(taskModel)
-	}
-
-	if r.logger != nil {
-		r.logger.Info().
-			Str("task_id", taskModel.ID).
-			Str("task_name", taskModel.Name).
-			Str("mode", "callback").
-			Msg("Task started in background with callbacks")
-	}
-
-	return taskModel, nil
 }
 
 func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
@@ -541,47 +456,7 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 	return taskModel, nil
 }
 
-// fetchTaskOutputPayload mirrors jobs.FetchTaskOutputPayload to avoid import cycle
-type fetchTaskOutputPayload struct {
-	TaskID                string `json:"task_id"`
-	ServerID              string `json:"server_id"`
-	RescheduleIntervalSec int    `json:"reschedule_interval_sec"`
-}
-
-// dispatchOutputPolling schedules the first output fetch job with self-rescheduling
-func (r *TaskRunner) dispatchOutputPolling(taskModel *models.Task) {
-	payload := fetchTaskOutputPayload{
-		TaskID:                taskModel.ID,
-		ServerID:              r.server.ID,
-		RescheduleIntervalSec: r.outputPollingIntervalSec,
-	}
-
-	data, err := json.Marshal(payload)
-	if err != nil {
-		if r.logger != nil {
-			r.logger.Error().Err(err).Msg("Failed to marshal output polling payload")
-		}
-		return
-	}
-
-	// Use the same type constant as jobs.TypeFetchTaskOutput
-	task := asynq.NewTask("server:fetch_task_output", data, asynq.MaxRetry(0))
-
-	// Delay first poll by 5 seconds to let the task start
-	_, err = r.queue.Enqueue(task, asynq.ProcessIn(5*time.Second))
-	if err != nil {
-		if r.logger != nil {
-			r.logger.Error().Err(err).Msg("Failed to dispatch output polling job")
-		}
-	} else if r.logger != nil {
-		r.logger.Info().
-			Str("task_id", taskModel.ID).
-			Int("interval_sec", r.outputPollingIntervalSec).
-			Msg("Started output polling")
-	}
-}
-
-// handleTaskCompletion handles task completion in local mode.
+// handleTaskCompletion handles task completion.
 // It tries both approaches:
 // 1. CallbackPayload: Calls OnSuccess/OnFailure/OnExpired on the task itself
 // 2. CompletionConfig: Dispatches asynq jobs
@@ -815,54 +690,6 @@ func (r *TaskRunner) broadcastTaskRunning(taskModel *models.Task) {
 	})
 }
 
-func (r *TaskRunner) wrapTaskForBackground(taskModel *models.Task) string {
-	actualScript := r.task.Script()
-	timeout := r.task.Timeout()
-
-	var timeoutCmd string
-	if timeout > 0 {
-		timeoutCmd = fmt.Sprintf("timeout %ds ", int(timeout.Seconds()))
-	}
-
-	finishedURL := ""
-	failedURL := ""
-	timeoutURL := ""
-	if r.callbackURLs != nil {
-		finishedURL = r.callbackURLs.FinishedURL
-		failedURL = r.callbackURLs.FailedURL
-		timeoutURL = r.callbackURLs.TimeoutURL
-	}
-
-	return fmt.Sprintf(`#!/bin/bash
-set -euo pipefail
-export DEBIAN_FRONTEND=noninteractive
-
-%s
-
-DIRECTORY=$(dirname "$0")
-FILENAME=$(basename "$0")
-EXT="${FILENAME##*.}"
-PATH_ACTUAL_SCRIPT="$DIRECTORY/${FILENAME%%.*}-original.$EXT"
-
-cat > $PATH_ACTUAL_SCRIPT << 'TASK_EOF'
-%s
-TASK_EOF
-
-%sbash $PATH_ACTUAL_SCRIPT
-EXIT_CODE=$?
-
-if [[ $EXIT_CODE -eq 0 ]]; then
-    httpPostSilently "%s"
-elif [[ $EXIT_CODE -eq 124 ]]; then
-    httpPostSilently "%s"
-else
-    httpPostSilently "%s" "{\"exit_code\":$EXIT_CODE}"
-fi
-
-exit $EXIT_CODE
-`, taskrunner.CommonFunctions(), strings.TrimSpace(actualScript), timeoutCmd, finishedURL, timeoutURL, failedURL)
-}
-
 func getTaskTypeName(task taskrunner.Task) string {
 	t := reflect.TypeOf(task)
 	if t.Kind() == reflect.Ptr {
@@ -879,12 +706,6 @@ type TaskRunnerDeps struct {
 	Logger      *zerolog.Logger
 	Broadcaster broadcast.TeamBroadcaster
 	Notifier    taskrunner.NotifierService
-	LocalMode   bool
-}
-
-// IsLocalMode returns true if running in local development mode
-func (d *TaskRunnerDeps) IsLocalMode() bool {
-	return d.LocalMode
 }
 
 // NewRunner creates a new TaskRunner with dependencies pre-configured.

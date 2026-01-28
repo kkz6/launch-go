@@ -46,13 +46,6 @@ func WithTimeoutSeconds(seconds int) TaskOption {
 	return WithTimeout(time.Duration(seconds) * time.Second)
 }
 
-// WithCallbackURL sets the callback URL for async task completion
-func WithCallbackURL(url string) TaskOption {
-	return func(t *BaseTask) {
-		t.callbackURL = url
-	}
-}
-
 // NewBaseTask creates a new BaseTask with the given options
 func NewBaseTask(opts ...TaskOption) *BaseTask {
 	t := &BaseTask{
@@ -66,10 +59,9 @@ func NewBaseTask(opts ...TaskOption) *BaseTask {
 
 // BaseTask provides the standard task implementation
 type BaseTask struct {
-	name        string
-	script      string
-	timeout     time.Duration
-	callbackURL string
+	name    string
+	script  string
+	timeout time.Duration
 
 	// Callbacks
 	OutputCallback   func(output string)
@@ -94,11 +86,6 @@ func (t *BaseTask) Timeout() time.Duration {
 		return 10 * time.Minute
 	}
 	return t.timeout
-}
-
-// GetCallbackURL returns the callback URL
-func (t *BaseTask) GetCallbackURL() string {
-	return t.callbackURL
 }
 
 // SetScript sets the script content

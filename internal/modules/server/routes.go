@@ -130,23 +130,11 @@ func (m *Module) registerSSHKeyRoutes(router fiber.Router, authMiddleware fiber.
 
 // RegisterWebhookRoutes registers all webhook routes (no auth required, uses signed URLs)
 func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
-	deps := m.Deps()
-	webhookHandler := handlers.NewTaskWebhookHandler(m.repos, deps.Config.App.Key, deps.Queue, deps.Logger)
 	provisionScriptHandler := handlers.NewProvisionScriptHandler(m.repos, m.service)
-	metricsWebhookHandler := handlers.NewMetricsWebhookHandler(deps.DB, deps.Config.App.Key, deps.WebSocket, deps.Logger)
+	metricsWebhookHandler := handlers.NewMetricsWebhookHandler(m.Deps().DB, m.Deps().Config.App.Key, m.Deps().WebSocket, m.Deps().Logger)
 
-	m.registerTaskWebhookRoutes(router, webhookHandler)
 	m.registerProvisionScriptRoutes(router, provisionScriptHandler)
 	m.registerMetricsWebhookRoutes(router, metricsWebhookHandler)
-}
-
-// registerTaskWebhookRoutes registers task completion webhook routes
-func (m *Module) registerTaskWebhookRoutes(router fiber.Router, handler *handlers.TaskWebhookHandler) {
-	webhooks := router.Group("/webhooks/tasks")
-	webhooks.Post("/:id/finished", handler.MarkAsFinished)
-	webhooks.Post("/:id/failed", handler.MarkAsFailed)
-	webhooks.Post("/:id/timeout", handler.MarkAsTimeout)
-	webhooks.Post("/:id/callback", handler.CustomCallback)
 }
 
 // registerProvisionScriptRoutes registers provision script routes (signed URL protected)

@@ -1,7 +1,7 @@
 # SSH Streaming Refactor: Remove HTTP Callbacks
 
 **Date:** 2026-01-28
-**Status:** In Progress
+**Status:** Mostly Complete (reconnect/resume pending)
 
 ## Overview
 
@@ -142,16 +142,26 @@ echo "::LAUNCH::progress::50"
 
 ### Phase 4: Remove HTTP Callback Infrastructure
 
-- [ ] Remove callback endpoint handlers
-- [ ] Remove signed URL generation for callbacks
-- [ ] Remove `localMode` flag from dispatcher
-- [ ] Simplify dispatcher to single execution path
+- [x] Remove `CallbackURLs` struct from runner.go
+- [x] Remove `WithCallbacks()` method from TaskRunner
+- [x] Remove `hasCallbackURLs()` and `runWithCallbacks()` methods
+- [x] Remove `wrapTaskForBackground()` method
+- [x] Remove `WithOutputPolling()` and related code
+- [x] Simplify `RunInBackground()` to directly use SSH streaming
+- [x] Remove `localMode` flag from dispatcher
+- [x] Remove `LocalMode` from TaskRunnerDeps
+- [x] Update tests to remove callback-related tests
+- [x] Remove callback endpoint handlers (task_webhook_handler.go)
+- [x] Remove legacy marker constants from stream_monitor.go
+- [x] Remove legacy marker parsing from StreamTaskOutput and MonitorBackgroundTask
 
 ### Phase 5: Cleanup
 
-- [ ] Update tests
-- [ ] Update documentation
-- [ ] Remove unused code
+- [x] Update tests
+- [x] Remove callback URL support from BaseTask
+- [x] Update TaskMarkerFunctions to use new marker format
+- [ ] Update documentation (this file)
+- [ ] Verify all other tasks use new markers (not just ProvisionFreshServer)
 
 ## Files to Modify
 
@@ -171,26 +181,50 @@ internal/modules/server/tasks/
 ```
 internal/pkg/taskrunner/
 ├── stream_monitor.go   # Add marker parsing and handling ✅
-├── dispatcher.go       # Remove localMode, simplify execution
-├── task.go             # Remove callback-related fields
+├── dispatcher.go       # Remove localMode, simplify to single path ✅
+├── task.go             # Remove callback URL support ✅
 
 internal/modules/server/tasks/
 ├── provision_fresh_server.go  # Use markers instead of HTTP callbacks ✅
-├── runner.go                  # Add WithMarkerHandler support ✅
+├── runner.go                  # Remove callbacks, add WithMarkerHandler ✅
+├── runner_test.go             # Remove callback tests ✅
 
 internal/modules/server/jobs/
 ├── provision_server.go        # Use marker handler during provisioning ✅
 
 internal/pkg/taskrunner/templates/
-├── functions.go        # SIGPIPE handling added ✅
+├── functions.go        # SIGPIPE handling + update marker functions to new format ✅
+
+cmd/worker/main.go      # Remove LocalMode from dispatcher config ✅
 ```
 
 ### Removed Files/Code
 
 ```
-# Callback endpoints (if any)
-# Signed URL generation for callbacks
-# LocalMode-specific code paths
+internal/modules/server/handlers/task_webhook_handler.go  # Removed ✅
+internal/modules/server/tasks/runner.go:
+  - CallbackURLs struct ✅
+  - WithCallbacks(), hasCallbackURLs(), runWithCallbacks() ✅
+  - wrapTaskForBackground() ✅
+  - WithOutputPolling(), dispatchOutputPolling() ✅
+internal/modules/server/tasks/runner_test.go:
+  - TestTaskRunner_WithCallbacks ✅
+  - TestCallbackURLs ✅
+  - TestTaskRunner_hasCallbackURLs ✅
+  - TestTaskRunner_wrapTaskForBackground ✅
+internal/pkg/taskrunner/dispatcher.go:
+  - localMode field ✅
+  - LocalMode config option ✅
+  - IsLocalMode() method ✅
+internal/pkg/taskrunner/stream_monitor.go:
+  - Legacy marker constants ✅
+  - Legacy marker parsing code ✅
+internal/pkg/taskrunner/task.go:
+  - WithCallbackURL() option ✅
+  - callbackURL field ✅
+  - GetCallbackURL() method ✅
+internal/pkg/taskrunner/templates/functions.go:
+  - Legacy marker functions updated to new format ✅
 ```
 
 ## Rollout Strategy
@@ -211,9 +245,9 @@ internal/pkg/taskrunner/templates/
 
 ## Success Criteria
 
-- [ ] Provisioning works with SSH streaming only
-- [ ] Progress updates appear in real-time in UI
-- [ ] Connection drops don't kill long-running tasks
+- [x] Provisioning works with SSH streaming only
+- [x] Progress updates appear in real-time in UI (via markers)
+- [x] Connection drops don't kill long-running tasks (nohup background execution)
 - [ ] Can resume monitoring after app restart
-- [ ] No HTTP callback code remains
-- [ ] Single code path for all environments
+- [x] No HTTP callback code remains
+- [x] Single code path for all environments

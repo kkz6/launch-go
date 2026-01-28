@@ -59,15 +59,10 @@ func main() {
 	// The worker publishes to Redis, and the API server subscribes and forwards to clients
 	redisBroadcaster := websocket.NewRedisBroadcaster(cfg.Redis.Address, cfg.Redis.Password, cfg.Redis.DB, appLogger)
 
-	// Initialize task dispatcher with local mode support
+	// Initialize task dispatcher with SSH streaming
 	dispatcher := taskrunner.NewDispatcherWithConfig(appLogger, redisBroadcaster, &taskrunner.DispatcherConfig{
-		LocalMode:         cfg.App.IsLocal(),
 		BroadcastInterval: 2 * time.Second,
 	})
-
-	if cfg.App.IsLocal() {
-		appLogger.Info().Msg("Running in local mode - using SSH streaming for task output")
-	}
 
 	// Initialize queue client for dispatching jobs from within jobs
 	queueClient := queue.NewClient(cfg.Redis)
