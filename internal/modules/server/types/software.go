@@ -558,3 +558,81 @@ func SoftwareFromPhpVersion(version string) Software {
 	}
 	return ""
 }
+
+// RequiresPhp returns true if this software requires PHP to be installed first.
+func (s Software) RequiresPhp() bool {
+	return s == SoftwareComposer2
+}
+
+// InstallOrder returns the installation priority for sorting.
+// Lower numbers are installed first.
+func (s Software) InstallOrder() int {
+	// Order matters for dependencies:
+	// 1. System services (supervisor) - needed by PHP-FPM and other services
+	// 2. Web server (caddy) - can install independently
+	// 3. PHP versions - needed by composer
+	// 4. Composer - requires PHP
+	// 5. Databases (mysql, postgresql)
+	// 6. Other tools (redis, node, bun)
+	// 7. Launch agent - last
+	orders := map[Software]int{
+		SoftwareSupervisor:   10,
+		SoftwareCaddy2:       20,
+		SoftwarePhp56:        30,
+		SoftwarePhp70:        30,
+		SoftwarePhp71:        30,
+		SoftwarePhp72:        30,
+		SoftwarePhp73:        30,
+		SoftwarePhp74:        30,
+		SoftwarePhp80:        30,
+		SoftwarePhp81:        30,
+		SoftwarePhp82:        30,
+		SoftwarePhp83:        30,
+		SoftwarePhp84:        30,
+		SoftwareComposer2:    40, // After PHP
+		SoftwareMySQL80:      50,
+		SoftwarePostgreSQL16: 50,
+		SoftwareRedis:        60,
+		SoftwareNode21:       70,
+		SoftwareBun:          70,
+		SoftwareLaunchAgent:  100,
+	}
+	if order, ok := orders[s]; ok {
+		return order
+	}
+	return 99
+}
+
+// SortSoftwareStack sorts a software stack by installation order and removes
+// software with unmet dependencies (e.g., Composer without PHP).
+func SortSoftwareStack(stack []Software) []Software {
+	// Check if PHP is in the stack
+	hasPhp := false
+	for _, s := range stack {
+		if s.IsPhp() {
+			hasPhp = true
+			break
+		}
+	}
+
+	// Filter out software with unmet dependencies
+	var filtered []Software
+	for _, s := range stack {
+		if s.RequiresPhp() && !hasPhp {
+			// Skip Composer if no PHP is installed
+			continue
+		}
+		filtered = append(filtered, s)
+	}
+
+	// Sort by install order
+	for i := 0; i < len(filtered)-1; i++ {
+		for j := i + 1; j < len(filtered); j++ {
+			if filtered[j].InstallOrder() < filtered[i].InstallOrder() {
+				filtered[i], filtered[j] = filtered[j], filtered[i]
+			}
+		}
+	}
+
+	return filtered
+}

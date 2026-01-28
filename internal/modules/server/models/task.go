@@ -5,6 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
@@ -58,29 +59,33 @@ func (t *Task) IsFinished() bool {
 }
 
 // GetLogPath returns the path to the task log file
-// Requires Server to be preloaded to determine root username
+// Requires Server to be preloaded to determine root username and working directory
 func (t *Task) GetLogPath() string {
 	rootUser := "root"
+	workingDir := config.ServerDefaults().WorkingDirectory
 	if t.Server != nil {
 		rootUser = t.Server.RootUsername()
+		if t.Server.WorkingDirectory != nil && *t.Server.WorkingDirectory != "" {
+			workingDir = *t.Server.WorkingDirectory
+		}
 	}
 
-	var scriptPath string
+	var homeDir string
 	if t.User == rootUser {
-		// Use root's script path
+		// Use root's home path
 		if rootUser == "root" {
-			scriptPath = "/root/.launch-tasks"
+			homeDir = "/root"
 		} else {
-			scriptPath = fmt.Sprintf("/%s/.launch-tasks", rootUser)
+			homeDir = "/" + rootUser
 		}
 	} else {
-		// Use the task user's script path
+		// Use the task user's home path
 		if t.User == "root" || t.User == "ubuntu" {
-			scriptPath = fmt.Sprintf("/%s/.launch-tasks", t.User)
+			homeDir = "/" + t.User
 		} else {
-			scriptPath = fmt.Sprintf("/home/%s/.launch-tasks", t.User)
+			homeDir = "/home/" + t.User
 		}
 	}
 
-	return fmt.Sprintf("%s/task-%s.log", scriptPath, t.ID)
+	return fmt.Sprintf("%s/%s/task-%s.log", homeDir, workingDir, t.ID)
 }

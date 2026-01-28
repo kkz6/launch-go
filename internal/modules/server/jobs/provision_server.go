@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
@@ -61,7 +62,8 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 	// Generate signed URL for launch-agent pulse webhook
 	agentURL := generateAgentPulseURL(j.server.ID)
 
-	config := tasks.ProvisionFreshServerConfig{
+	serverDefaults := config.ServerDefaults()
+	provisionConfig := tasks.ProvisionFreshServerConfig{
 		ServerID:         j.server.ID,
 		TeamID:           j.server.TeamID,
 		ServerName:       j.server.Name,
@@ -76,11 +78,12 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 		SSHPort:          j.server.GetSSHPort(),
 		SoftwareStack:    getSoftwareStack(j.server),
 		DatabasePassword: j.server.DatabasePassword.String(),
+		DatabaseName:     serverDefaults.DatabaseName,
 		AgentConfigPath:  "/etc/launch-agent/launch-agent.yaml",
 		AgentURL:         agentURL,
 	}
 
-	task := tasks.ProvisionFreshServer(config)
+	task := tasks.ProvisionFreshServer(provisionConfig)
 
 	// Create marker handler for real-time progress updates
 	markerHandler := tasks.NewProvisionMarkerHandler(tasks.ProvisionMarkerHandlerConfig{
@@ -197,6 +200,8 @@ func getWorkingDir(server *models.Server) string {
 
 // getSoftwareStack returns the software stack to install based on server's services.
 // This mirrors Laravel's behavior of reading from server.services.
+// The stack is sorted by installation order to ensure dependencies are met
+// (e.g., PHP is installed before Composer).
 func getSoftwareStack(server *models.Server) []types.Software {
 	var stack []types.Software
 
@@ -209,19 +214,20 @@ func getSoftwareStack(server *models.Server) []types.Software {
 	}
 
 	// If no services found (e.g., not preloaded), fall back to defaults
-	// Note: These match createPhpServerServices() - Supervisor, Caddy, Composer, PHP, MySQL
+	// Note: These match createPhpServerServices() - Supervisor, Caddy, PHP, Composer, MySQL
 	// Redis is NOT included by default (matches Laravel PhpServerType behavior)
 	if len(stack) == 0 {
 		stack = []types.Software{
 			types.SoftwareSupervisor,
 			types.SoftwareCaddy2,
-			types.SoftwareComposer2,
 			types.SoftwarePhp83,
+			types.SoftwareComposer2,
 			types.SoftwareMySQL80,
 		}
 	}
 
-	return stack
+	// Sort by installation order and filter out software with unmet dependencies
+	return types.SortSoftwareStack(stack)
 }
 
 // NewProvisionServerTask creates an asynq task for provisioning a server.

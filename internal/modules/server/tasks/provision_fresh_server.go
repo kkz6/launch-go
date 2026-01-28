@@ -203,15 +203,12 @@ func (t *ProvisionFreshServerTask) OnSuccess(ctx context.Context, cbCtx *taskrun
 		}
 	}
 
-	// Mark all services as installed
+	// Mark all services as running (Laravel uses status field, not installed_at)
 	if err := cbCtx.DB.Model(&models.InstalledService{}).
 		Where("server_id = ?", t.callback.ServerID).
-		Updates(map[string]interface{}{
-			"installed_at": now,
-			"status":       types.ServiceStatusRunning,
-		}).Error; err != nil {
+		Update("status", types.ServiceStatusRunning).Error; err != nil {
 		if cbCtx.Logger != nil {
-			cbCtx.Logger.Warn().Err(err).Msg("Failed to mark services as installed")
+			cbCtx.Logger.Warn().Err(err).Msg("Failed to mark services as running")
 		}
 	}
 

@@ -253,9 +253,9 @@ func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 	pendingTask.OnConnection(conn)
 
 	if taskModel != nil {
-		pendingTask.As("task-" + taskModel.ID)
+		pendingTask.As(taskModel.ID)
 	} else {
-		pendingTask.As("task-" + ulid.Make().String())
+		pendingTask.As(ulid.Make().String())
 	}
 
 	taskResult, execErr := r.dispatcher.Run(ctx, pendingTask)
@@ -320,7 +320,7 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 
 		pendingTask := taskrunner.NewPendingTask(r.task)
 		pendingTask.OnConnection(conn)
-		pendingTask.As("task-" + taskModel.ID)
+		pendingTask.As(taskModel.ID)
 
 		bgCtx := context.Background()
 		taskResult, execErr := r.dispatcher.Run(bgCtx, pendingTask)
@@ -391,14 +391,30 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 
 		pendingTask := taskrunner.NewPendingTask(r.task)
 		pendingTask.OnConnection(conn)
-		pendingTask.As("task-" + taskModel.ID)
+		pendingTask.As(taskModel.ID)
 
 		// Set up output callback for marker processing
 		if r.markerHandler != nil {
 			pendingTask.OnOutput(func(output string) {
+				if r.logger != nil {
+					r.logger.Info().
+						Str("task_id", taskModel.ID).
+						Int("output_len", len(output)).
+						Msg("runLongRunning: OnOutput callback invoked")
+				}
+
 				// Process each line for markers
+				markerCount := 0
 				for _, line := range strings.Split(output, "\n") {
 					if marker := markers.Parse(line); marker != nil {
+						markerCount++
+						if r.logger != nil {
+							r.logger.Info().
+								Str("task_id", taskModel.ID).
+								Str("marker_type", marker.Type).
+								Str("marker_value", marker.Value).
+								Msg("runLongRunning: parsed marker, calling handler")
+						}
 						if err := r.markerHandler.OnMarker(context.Background(), taskModel.ID, marker); err != nil {
 							if r.logger != nil {
 								r.logger.Warn().Err(err).
@@ -408,31 +424,69 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 						}
 					}
 				}
+
+				if r.logger != nil && markerCount > 0 {
+					r.logger.Info().
+						Str("task_id", taskModel.ID).
+						Int("marker_count", markerCount).
+						Msg("runLongRunning: processed markers")
+				}
 			})
+		} else {
+			if r.logger != nil {
+				r.logger.Warn().
+					Str("task_id", taskModel.ID).
+					Msg("runLongRunning: NO markerHandler set!")
+			}
 		}
 
 		bgCtx := context.Background()
-		taskResult, execErr := r.dispatcher.Run(bgCtx, pendingTask)
 
-		if execErr != nil && r.logger != nil {
-			r.logger.Error().Err(execErr).
+		// Create a completion channel to receive the actual result when task finishes
+		completionChan := make(chan *taskrunner.TaskResult, 1)
+
+		// Use background mode for long-running tasks - this is more resilient
+		// because nohup detaches the task, so it continues even if SSH drops.
+		// The streamMonitor periodically checks output and calls the OnOutput callback.
+		pendingTask.InBackground()
+		pendingTask.WithCompletionChannel(completionChan)
+
+		if r.logger != nil {
+			r.logger.Info().
 				Str("task_id", taskModel.ID).
-				Str("task_name", taskModel.Name).
-				Msg("Long-running task execution failed")
+				Bool("has_OnOutput", pendingTask.GetOnOutput() != nil).
+				Bool("background", pendingTask.Background).
+				Bool("has_completion_chan", pendingTask.GetCompletionChannel() != nil).
+				Msg("runLongRunning: calling dispatcher.Run()")
 		}
 
-		if taskResult != nil {
-			r.updateTaskModel(taskModel, taskResult)
-		} else if execErr != nil {
+		_, execErr := r.dispatcher.Run(bgCtx, pendingTask)
+
+		if execErr != nil {
+			if r.logger != nil {
+				r.logger.Error().Err(execErr).
+					Str("task_id", taskModel.ID).
+					Str("task_name", taskModel.Name).
+					Msg("Long-running task failed to start")
+			}
 			taskModel.Status = string(TaskStatusFailed)
 			taskModel.Output = dbtype.EncryptedString(execErr.Error())
 			r.db.Save(taskModel)
-			// Broadcast failure
 			r.broadcastTaskEvent("task.updated", taskModel, execErr.Error())
+			r.handleTaskCompletion(bgCtx, taskModel, nil, execErr)
+			return
 		}
 
-		// Handle task completion - invokes callbacks and dispatches completion jobs
-		r.handleTaskCompletion(bgCtx, taskModel, taskResult, execErr)
+		// Wait for the task to actually complete via the completion channel
+		// This keeps the goroutine alive to handle proper completion callbacks
+		if r.logger != nil {
+			r.logger.Debug().
+				Str("task_id", taskModel.ID).
+				Str("task_name", taskModel.Name).
+				Msg("Waiting for background task to complete")
+		}
+
+		taskResult := <-completionChan
 
 		if r.logger != nil {
 			status := "unknown"
@@ -451,6 +505,13 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 				Str("status", status).
 				Msg("Long-running task completed")
 		}
+
+		if taskResult != nil {
+			r.updateTaskModel(taskModel, taskResult)
+		}
+
+		// Handle task completion - invokes callbacks and dispatches completion jobs
+		r.handleTaskCompletion(bgCtx, taskModel, taskResult, nil)
 	}()
 
 	return taskModel, nil

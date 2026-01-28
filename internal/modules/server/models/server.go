@@ -171,6 +171,7 @@ func (s *Server) ConnectionAsRoot() *taskrunner.Connection {
 		Port:       s.GetSSHPort(),
 		User:       s.RootUsername(),
 		PrivateKey: s.PrivateKey.String(),
+		ScriptPath: s.GetScriptPath(s.RootUsername()),
 	}
 }
 
@@ -192,7 +193,28 @@ func (s *Server) ConnectionAsUser(username ...string) *taskrunner.Connection {
 		Port:       s.GetSSHPort(),
 		User:       user,
 		PrivateKey: s.PrivateKey.String(),
+		ScriptPath: s.GetScriptPath(user),
 	}
+}
+
+// GetScriptPath returns the script/task directory path for a given user
+func (s *Server) GetScriptPath(user string) string {
+	// Use server's working directory, fall back to config default
+	workingDir := config.ServerDefaults().WorkingDirectory
+	if s.WorkingDirectory != nil && *s.WorkingDirectory != "" {
+		workingDir = *s.WorkingDirectory
+	}
+
+	var homeDir string
+	if user == "root" {
+		homeDir = "/root"
+	} else if user == "ubuntu" {
+		homeDir = "/ubuntu"
+	} else {
+		homeDir = "/home/" + user
+	}
+
+	return homeDir + "/" + workingDir
 }
 
 // GetID returns the server's unique identifier

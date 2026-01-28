@@ -166,6 +166,28 @@ func (h *Handler) Reboot(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Server reboot initiated", nil)
 }
 
+// GetProvisionStatus returns the provision status for a server
+func (h *Handler) GetProvisionStatus(c *fiber.Ctx) error {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	server, err := h.service.GetServerWithRelations(c.Context(), id, teamID)
+	if err != nil {
+		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch server")
+	}
+
+	latestTask, _ := h.service.GetLatestTask(c.Context(), id, teamID)
+
+	return fiberctx.OK(c, "Provision status retrieved", dto.BuildProvisionStatus(server, latestTask))
+}
+
 // Connect tests the connection to a server
 func (h *Handler) Connect(c *fiber.Ctx) error {
 	teamID, err := fiberctx.MustGetTeamID(c)

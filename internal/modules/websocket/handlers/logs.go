@@ -217,14 +217,15 @@ func (h *LogsHandler) getEntityLogPath(entity, entityID, serverID, logType strin
 
 func (h *LogsHandler) streamTaskOutput(c *websocket.Conn, taskID, serverID string, tail int) {
 	var task serverModels.Task
-	if err := h.DB.Where("id = ? AND server_id = ?", taskID, serverID).First(&task).Error; err != nil {
+	// Preload Server to get RootUsername for path calculation
+	if err := h.DB.Preload("Server").Where("id = ? AND server_id = ?", taskID, serverID).First(&task).Error; err != nil {
 		_ = SendErrorEvent(c, "Task not found")
 		c.Close()
 		return
 	}
 
-	// If task is finished, just send the output and close
-	if task.Status == "finished" || task.Status == "failed" {
+	// If task is finished or failed, send the stored output and close
+	if task.Status == "finished" || task.Status == "failed" || task.Status == "timeout" {
 		if !task.Output.IsEmpty() {
 			c.WriteMessage(websocket.TextMessage, []byte(task.Output.String()))
 		}
@@ -232,12 +233,18 @@ func (h *LogsHandler) streamTaskOutput(c *websocket.Conn, taskID, serverID strin
 		return
 	}
 
-	// For running tasks, we'd need to stream from the log file
-	// For now, send current output
-	if !task.Output.IsEmpty() {
-		c.WriteMessage(websocket.TextMessage, []byte(task.Output.String()))
-	}
-	c.Close()
+	// For running/pending tasks, stream from the log file on the server
+	// Use the Task's GetLogPath method which handles all path logic
+	logFilePath := task.GetLogPath()
+
+	h.LogInfo("Streaming task output",
+		"task_id", taskID,
+		"task_status", task.Status,
+		"log_path", logFilePath,
+	)
+
+	// Stream logs via SSH (same as other entities)
+	h.streamLogs(c, task.Server, logFilePath, tail, "")
 }
 
 func (h *LogsHandler) streamLogs(c *websocket.Conn, server *serverModels.Server, logFilePath string, tail int, search string) {

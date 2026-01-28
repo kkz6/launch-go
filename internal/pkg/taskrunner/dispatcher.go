@@ -140,12 +140,20 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 
 	conn := pt.Connection
 
+	d.logger.Debug().
+		Str("task_id", pt.TaskID).
+		Str("host", conn.Host).
+		Msg("runRemote: connecting via SSH")
+
 	// Create SSH client
 	sshClient, err := conn.Dial()
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
-	defer sshClient.Close()
+
+	d.logger.Debug().
+		Str("task_id", pt.TaskID).
+		Msg("runRemote: SSH connected, creating script directory")
 
 	taskDir := conn.GetScriptPath()
 	taskID := pt.TaskID
@@ -157,20 +165,37 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 
 	// Ensure script directory exists
 	if _, err := sshClient.Run(ctx, fmt.Sprintf("mkdir -p %s", taskDir)); err != nil {
+		sshClient.Close()
 		return nil, fmt.Errorf("failed to create script directory: %w", err)
 	}
 
+	d.logger.Debug().
+		Str("task_id", pt.TaskID).
+		Str("script_path", taskPaths.Script).
+		Msg("runRemote: uploading script")
+
 	// Upload script
 	if err := sshClient.Upload(ctx, []byte(script), taskPaths.Script, 0755); err != nil {
+		sshClient.Close()
 		return nil, fmt.Errorf("failed to upload script: %w", err)
 	}
+
+	d.logger.Debug().
+		Str("task_id", pt.TaskID).
+		Bool("background", pt.Background).
+		Msg("runRemote: script uploaded, starting execution")
 
 	startTime := time.Now()
 
 	if pt.Background {
+		// For background tasks, the SSH client will be closed by runRemoteBackground
+		// after starting the background process. A NEW connection will be created
+		// by MonitorBackgroundTask for monitoring.
 		return d.runRemoteBackground(ctx, sshClient, pt, taskPaths, startTime)
 	}
 
+	// For foreground tasks, close SSH client when done
+	defer sshClient.Close()
 	return d.runRemoteForeground(ctx, sshClient, pt, taskPaths, startTime)
 }
 
@@ -230,13 +255,26 @@ func (d *Dispatcher) runRemoteBackground(
 	timeout := int(pt.Task.Timeout().Seconds())
 
 	// Background execution with nohup
-	// Also write exit code to a file for SSH polling to detect completion
+	// Write exit code to both a file AND append as marker to output for real-time streaming detection
+	// Use stdbuf -oL for line buffering so markers are immediately visible to tail -f
+	// Without this, stdout is fully buffered when redirected to a file, causing markers
+	// to only appear when the buffer is full or the script completes.
 	command := fmt.Sprintf(
-		"nohup bash -c 'timeout %ds bash %s > %s 2>&1; echo $? > %s' & echo $!",
-		timeout, taskPaths.Script, taskPaths.Output, taskPaths.ExitCode,
+		"nohup bash -c 'stdbuf -oL timeout %ds bash %s > %s 2>&1; EXIT_CODE=$?; echo $EXIT_CODE > %s; echo \"::LAUNCH::exit_code::$EXIT_CODE\" >> %s' & echo $!",
+		timeout, taskPaths.Script, taskPaths.Output, taskPaths.ExitCode, taskPaths.Output,
 	)
 
+	d.logger.Debug().
+		Str("task_id", pt.TaskID).
+		Str("command", command).
+		Msg("runRemoteBackground: executing nohup command")
+
 	cmdResult, err := client.Run(ctx, command)
+
+	// Close the SSH client - we're done with it after starting the background process.
+	// MonitorBackgroundTask will create its own NEW connection for monitoring.
+	client.Close()
+
 	if err != nil {
 		return nil, fmt.Errorf("failed to start background task: %w", err)
 	}
@@ -250,56 +288,84 @@ func (d *Dispatcher) runRemoteBackground(
 		Msg("Background task started")
 
 	// Start SSH streaming to monitor the task
-	if d.streamMonitor != nil {
-		go func() {
-			// Create a new context for streaming (don't use the original which may be cancelled)
-			streamCtx, cancel := context.WithTimeout(context.Background(), pt.Task.Timeout()+time.Minute)
-			defer cancel()
-
-			err := d.streamMonitor.MonitorBackgroundTask(
-				streamCtx,
-				pt.Connection,
-				pt.TaskID,
-				pid,
-				func(output string, status string) {
-					// Output update callback
-					pt.Task.OnOutput(output)
-				},
-				func(result *StreamResult) {
-					// Completion callback
-					taskResult := &TaskResult{
-						TaskID:     result.TaskID,
-						Output:     result.Output,
-						ExitCode:   result.ExitCode,
-						Duration:   time.Since(startTime),
-						FinishedAt: result.FinishedAt,
-					}
-
-					switch result.Status {
-					case "finished":
-						pt.Task.OnFinished(streamCtx, taskResult)
-					case "timeout":
-						taskResult.TimedOut = true
-						pt.Task.OnTimeout(streamCtx, taskResult)
-					default:
-						pt.Task.OnFailed(streamCtx, taskResult)
-					}
-				},
-			)
-
-			if err != nil {
-				d.logger.Error().Err(err).Str("task_id", pt.TaskID).Msg("SSH streaming error")
+	if d.streamMonitor == nil {
+		// If no stream monitor, send immediate result to completion channel
+		// to prevent the caller from blocking forever
+		if ch := pt.GetCompletionChannel(); ch != nil {
+			ch <- &TaskResult{
+				TaskID:     pt.TaskID,
+				Output:     fmt.Sprintf("Background task started with PID: %s (no monitoring)", pid),
+				Duration:   time.Since(startTime),
+				FinishedAt: time.Now(),
 			}
-		}()
+		}
+		return nil, nil
 	}
 
+	go func() {
+		// Create a new context for streaming (don't use the original which may be cancelled)
+		streamCtx, cancel := context.WithTimeout(context.Background(), pt.Task.Timeout()+time.Minute)
+		defer cancel()
+
+		d.logger.Info().
+			Str("task_id", pt.TaskID).
+			Str("pid", pid).
+			Bool("has_OnOutput", pt.GetOnOutput() != nil).
+			Msg("runRemoteBackground: starting MonitorBackgroundTask goroutine")
+
+		err := d.streamMonitor.MonitorBackgroundTask(
+			streamCtx,
+			pt.Connection,
+			pt.TaskID,
+			pid,
+			func(output string, status string) {
+				// Output update callback - call PendingTask's callback first for marker processing
+				if callback := pt.GetOnOutput(); callback != nil {
+					callback(output)
+				}
+				// Then call Task's OnOutput for backwards compatibility
+				pt.Task.OnOutput(output)
+			},
+			func(result *StreamResult) {
+				// Completion callback
+				taskResult := &TaskResult{
+					TaskID:     result.TaskID,
+					Output:     result.Output,
+					ExitCode:   result.ExitCode,
+					Duration:   time.Since(startTime),
+					FinishedAt: result.FinishedAt,
+				}
+
+				if result.Status == "timeout" {
+					taskResult.TimedOut = true
+				}
+
+				// Send result to completion channel if set (for proper callback handling)
+				if ch := pt.GetCompletionChannel(); ch != nil {
+					ch <- taskResult
+				}
+
+				// Also call task callbacks for backwards compatibility
+				switch result.Status {
+				case "finished":
+					pt.Task.OnFinished(streamCtx, taskResult)
+				case "timeout":
+					pt.Task.OnTimeout(streamCtx, taskResult)
+				default:
+					pt.Task.OnFailed(streamCtx, taskResult)
+				}
+			},
+		)
+
+		if err != nil {
+			d.logger.Error().Err(err).Str("task_id", pt.TaskID).Msg("SSH streaming error")
+		}
+	}()
+
 	// Return immediately - task will complete asynchronously
-	return &TaskResult{
-		TaskID:     pt.TaskID,
-		Output:     fmt.Sprintf("Background task started with PID: %s", pid),
-		Duration:   time.Since(startTime),
-		FinishedAt: time.Now(),
-	}, nil
+	// Return nil result to indicate the task is still running.
+	// The actual result will be provided by MonitorBackgroundTask when the task completes.
+	return nil, nil
 }
 
 // RunWithStreaming runs a task on a remote server with live SSH output streaming
@@ -349,7 +415,11 @@ func (d *Dispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*Ta
 	err = sshClient.StreamOutput(ctx, command, func(line string) error {
 		outputBuffer.WriteString(line + "\n")
 
-		// Call OnOutput callback for live updates
+		// Call PendingTask's callback first for marker processing
+		if callback := pt.GetOnOutput(); callback != nil {
+			callback(outputBuffer.String())
+		}
+		// Then call Task's OnOutput for backwards compatibility
 		pt.Task.OnOutput(outputBuffer.String())
 
 		// Broadcast to WebSocket

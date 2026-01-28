@@ -99,6 +99,7 @@ func (h *Hub) broadcastToChannel(message *Message) {
 	clients, ok := h.channels[message.Channel]
 	if !ok {
 		h.mu.RUnlock()
+		// No clients subscribed to this channel - this is normal if no one is viewing the page
 		return
 	}
 
@@ -110,8 +111,11 @@ func (h *Hub) broadcastToChannel(message *Message) {
 	h.mu.RUnlock()
 
 	// Send to all clients
+	sentCount := 0
 	for _, client := range clientsCopy {
-		if !client.SafeSend(data) {
+		if client.SafeSend(data) {
+			sentCount++
+		} else {
 			// Client buffer full or closing, schedule for removal
 			go func(c *Client) {
 				h.unregister <- c
@@ -237,7 +241,8 @@ func Handler(hub *Hub, jwtSecret string, membershipCache *launchcache.TeamMember
 		hub.Register(client)
 
 		// Auto-subscribe to team channel
-		hub.Subscribe(client, broadcast.TeamChannel(client.TeamID))
+		teamChannel := broadcast.TeamChannel(client.TeamID)
+		hub.Subscribe(client, teamChannel)
 
 		// Start pumps
 		go client.WritePump()

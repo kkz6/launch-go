@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -332,7 +331,7 @@ func (m *StreamMonitor) broadcastMarkerEvent(taskID, eventType string, data map[
 }
 
 // MonitorBackgroundTask monitors a background task that's already running
-// It polls the process status and streams output until completion
+// It uses tail -f to stream output in real-time until the exit_code marker is seen
 func (m *StreamMonitor) MonitorBackgroundTask(
 	ctx context.Context,
 	conn *Connection,
@@ -358,9 +357,13 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 		m.mu.Unlock()
 	}()
 
-	// Create SSH client - this single connection will be used throughout
+	// Create SSH client for streaming
 	sshClient, err := conn.Dial()
 	if err != nil {
+		m.logger.Error().Err(err).
+			Str("task_id", taskID).
+			Str("host", conn.Host).
+			Msg("MonitorBackgroundTask: failed to connect via SSH")
 		return fmt.Errorf("failed to connect: %w", err)
 	}
 	defer sshClient.Close()
@@ -369,88 +372,119 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 		Str("task_id", taskID).
 		Str("pid", pid).
 		Str("host", conn.Host).
-		Msg("Started monitoring background task")
+		Bool("has_onUpdate", onUpdate != nil).
+		Bool("has_onComplete", onComplete != nil).
+		Msg("MonitorBackgroundTask: started real-time streaming")
 
 	taskPaths := paths.GetTaskPaths(conn.GetScriptPath(), taskID)
 
-	var lastOutput string
-	checkInterval := 2 * time.Second
-	ticker := time.NewTicker(checkInterval)
-	defer ticker.Stop()
+	// Wait for log file to exist (task may not have started writing yet)
+	// Timeout after 30 seconds to avoid hanging forever
+	waitCmd := fmt.Sprintf("timeout 30 bash -c 'while [ ! -f %s ]; do sleep 0.1; done'; echo 'ready'", taskPaths.Output)
+	m.logger.Debug().
+		Str("task_id", taskID).
+		Str("output_path", taskPaths.Output).
+		Msg("MonitorBackgroundTask: waiting for output file to exist")
 
-	for {
-		select {
-		case <-streamCtx.Done():
+	if _, err := sshClient.Run(streamCtx, waitCmd); err != nil {
+		if streamCtx.Err() != nil {
 			return streamCtx.Err()
+		}
+		m.logger.Warn().Err(err).Str("task_id", taskID).Msg("Log file wait timed out or failed, continuing anyway")
+	}
 
-		case <-ticker.C:
-			// Check if process is still running
-			psResult, _ := sshClient.Run(streamCtx, fmt.Sprintf("ps -p %s -o pid= 2>/dev/null", pid))
-			isRunning := strings.TrimSpace(psResult.Stdout) != ""
+	// Use tail -f to stream the log file in real-time
+	// -n +1 starts from the beginning of the file
+	tailCmd := fmt.Sprintf("tail -n +1 -f %s 2>/dev/null", taskPaths.Output)
 
-			// Get current output
-			output, err := sshClient.Download(streamCtx, taskPaths.Output)
-			if err == nil {
-				currentOutput := string(output)
-				if currentOutput != lastOutput {
-					lastOutput = currentOutput
-					if onUpdate != nil {
-						onUpdate(currentOutput, "running")
-					}
-					m.broadcastOutput(taskID, currentOutput, "running")
-				}
+	m.logger.Info().
+		Str("task_id", taskID).
+		Str("output_path", taskPaths.Output).
+		Str("tail_cmd", tailCmd).
+		Msg("MonitorBackgroundTask: starting tail -f streaming")
+
+	var outputBuffer strings.Builder
+	var lastBroadcast time.Time
+	var exitCode int
+	var finalStatus string
+
+	lineCount := 0
+	err = sshClient.StreamOutput(streamCtx, tailCmd, func(line string) error {
+		lineCount++
+		if lineCount <= 5 || lineCount%100 == 0 {
+			m.logger.Debug().
+				Str("task_id", taskID).
+				Int("line_count", lineCount).
+				Msg("MonitorBackgroundTask: received line from tail -f")
+		}
+
+		// Check for markers - process them via handleMarker (same as StreamTaskOutput)
+		if marker := markers.Parse(line); marker != nil {
+			m.logger.Info().
+				Str("task_id", taskID).
+				Str("marker_type", string(marker.Type)).
+				Str("marker_value", marker.Value).
+				Msg("MonitorBackgroundTask: detected marker")
+
+			// Use handleMarker to process marker and invoke marker handler callbacks
+			if err := m.handleMarker(streamCtx, taskID, marker, &exitCode, &finalStatus); err != nil {
+				return err
 			}
 
-			if !isRunning {
-				// Process finished - get exit code
-				var exitCode int
-				var status string
-
-				// Try to read exit code from file (if script wrote it)
-				exitResult, err := sshClient.Run(streamCtx, fmt.Sprintf("cat %s 2>/dev/null", taskPaths.ExitCode))
-				if err == nil && exitResult.Stdout != "" {
-					exitCode, _ = strconv.Atoi(strings.TrimSpace(exitResult.Stdout))
-				}
-
-				// Check for exit_code marker in output
-				for _, line := range strings.Split(lastOutput, "\n") {
-					if marker := markers.Parse(line); marker != nil && marker.Type == markers.ExitCode {
-						exitCode = marker.ExitCodeValue()
-						break
-					}
-				}
-
-				// Determine status based on exit code
-				if exitCode == 0 {
-					status = "finished"
-				} else if exitCode == 124 {
-					status = "timeout"
-				} else {
-					status = "failed"
-				}
-
-				result := &StreamResult{
-					TaskID:     taskID,
-					Output:     lastOutput,
-					ExitCode:   exitCode,
-					Status:     status,
-					FinishedAt: time.Now(),
-				}
-
-				m.broadcastOutput(taskID, lastOutput, status)
-
-				if onComplete != nil {
-					onComplete(result)
-				}
-
-				m.logger.Info().
-					Str("task_id", taskID).
-					Str("status", status).
-					Int("exit_code", exitCode).
-					Msg("Background task monitoring completed")
-
-				return nil
+			// For non-exit markers, also call onUpdate with full output
+			outputBuffer.WriteString(line + "\n")
+			if onUpdate != nil {
+				onUpdate(outputBuffer.String(), "running")
 			}
+			m.broadcastOutput(taskID, outputBuffer.String(), "running")
+			lastBroadcast = time.Now()
+			return nil
+		}
+
+		// Regular output line - add to buffer
+		outputBuffer.WriteString(line + "\n")
+
+		// Broadcast accumulated output periodically (every 2 seconds)
+		if time.Since(lastBroadcast) >= m.broadcastInterval {
+			output := outputBuffer.String()
+			if onUpdate != nil {
+				onUpdate(output, "running")
+			}
+			m.broadcastOutput(taskID, output, "running")
+			lastBroadcast = time.Now()
+		}
+
+		return nil
+	})
+
+	// Handle completion
+	result := &StreamResult{
+		TaskID:     taskID,
+		Output:     outputBuffer.String(),
+		ExitCode:   exitCode,
+		Status:     finalStatus,
+		FinishedAt: time.Now(),
+	}
+
+	if err != nil && !errors.Is(err, ErrTaskCompleted) {
+		result.Error = err
+		if finalStatus == "" {
+			result.Status = "failed"
 		}
 	}
+
+	// Final broadcast with complete output
+	m.broadcastOutput(taskID, result.Output, result.Status)
+
+	if onComplete != nil {
+		onComplete(result)
+	}
+
+	m.logger.Info().
+		Str("task_id", taskID).
+		Str("status", result.Status).
+		Int("exit_code", result.ExitCode).
+		Msg("Background task monitoring completed")
+
+	return nil
 }
