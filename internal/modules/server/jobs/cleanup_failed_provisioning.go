@@ -110,13 +110,9 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 			"reason":    "provisioning_failed",
 		})
 	} else {
-		if err := j.Deps.Repos.Server().UpdateFields(ctx, j.server.ID, map[string]any{
-			"connected": false,
-		}); err != nil {
-			j.Deps.Logger.Error().Err(err).
-				Msg("failed to update server fields")
-		}
-
+		// Note: We intentionally don't reset 'connected' to false here.
+		// If the connection was established before provisioning failed,
+		// we want to preserve that status to allow retry provisioning.
 		j.Deps.Logger.Info().
 			Str("server_id", j.server.ID).
 			Msg("server marked as failed, record preserved for debugging")
