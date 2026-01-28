@@ -69,12 +69,19 @@ func (s *DashboardService) GetDashboard(ctx context.Context, teamID string) (*dt
 	}, nil
 }
 
+// sitesCountSubquery returns a GORM subquery for counting sites per server (database-agnostic)
+func (s *DashboardService) sitesCountSubquery() *gorm.DB {
+	return s.db.Model(&sitemodels.Site{}).
+		Select("COUNT(*)").
+		Where("sites.server_id = servers.id")
+}
+
 // getServers returns up to 8 servers for the team
 func (s *DashboardService) getServers(ctx context.Context, teamID string) ([]*dto.DashboardServerResponse, error) {
 	var servers []servermodels.Server
 
 	err := s.db.WithContext(ctx).
-		Select("servers.*, (SELECT COUNT(*) FROM sites WHERE sites.server_id = servers.id) as sites_count").
+		Select("servers.*, (?) as sites_count", s.sitesCountSubquery()).
 		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
 		Order("created_at DESC").
 		Limit(maxServers).
@@ -117,14 +124,14 @@ func (s *DashboardService) getRecentActivity(ctx context.Context, teamID string)
 	var results []recentActivityResult
 
 	err := s.db.WithContext(ctx).
-		Table("deployments").
-		Select(`
-			deployments.*,
-			sites.address as site_name,
-			sites.server_id as server_id,
-			servers.name as server_name,
-			users.name as user_name
-		`).
+		Model(&sitemodels.Deployment{}).
+		Select(
+			"deployments.*",
+			"sites.address as site_name",
+			"sites.server_id as server_id",
+			"servers.name as server_name",
+			"users.name as user_name",
+		).
 		Joins("JOIN sites ON deployments.site_id = sites.id").
 		Joins("JOIN servers ON sites.server_id = servers.id").
 		Joins("LEFT JOIN users ON deployments.user_id = users.id").
