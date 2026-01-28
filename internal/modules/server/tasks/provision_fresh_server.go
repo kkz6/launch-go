@@ -166,15 +166,38 @@ func (t *ProvisionFreshServerTask) OnSuccess(ctx context.Context, cbCtx *taskrun
 			Msg("ProvisionFreshServer: onFinished callback triggered")
 	}
 
-	// Update server status to running
 	now := time.Now()
+
+	// Update server status to running
 	if err := cbCtx.DB.Model(&models.Server{}).
 		Where("id = ?", t.callback.ServerID).
 		Updates(map[string]interface{}{
-			"status":       types.ServerStatusRunning,
-			"installed_at": now,
+			"status":         types.ServerStatusRunning,
+			"provisioned_at": now,
+			"progress":       100,
 		}).Error; err != nil {
 		return fmt.Errorf("failed to update server status: %w", err)
+	}
+
+	// Mark all firewall rules as installed (they were configured during provisioning)
+	if err := cbCtx.DB.Model(&models.FirewallRule{}).
+		Where("server_id = ?", t.callback.ServerID).
+		Update("installed_at", now).Error; err != nil {
+		if cbCtx.Logger != nil {
+			cbCtx.Logger.Warn().Err(err).Msg("Failed to mark firewall rules as installed")
+		}
+	}
+
+	// Mark all services as installed
+	if err := cbCtx.DB.Model(&models.InstalledService{}).
+		Where("server_id = ?", t.callback.ServerID).
+		Updates(map[string]interface{}{
+			"installed_at": now,
+			"status":       types.ServiceStatusRunning,
+		}).Error; err != nil {
+		if cbCtx.Logger != nil {
+			cbCtx.Logger.Warn().Err(err).Msg("Failed to mark services as installed")
+		}
 	}
 
 	// Broadcast server provisioned event

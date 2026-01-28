@@ -164,3 +164,45 @@ func (s *Service) dispatchFirewallRuleUninstallJob(server *models.Server, rule *
 
 	return s.EnqueueTask(task)
 }
+
+// CreateDefaultFirewallRules creates the default firewall rules for a new server (SSH, HTTP, HTTPS)
+// These rules are created in the database but not installed until the server is provisioned.
+func (s *Service) CreateDefaultFirewallRules(ctx context.Context, serverID string) error {
+	defaultRules := []models.FirewallRule{
+		{
+			Name:     "ssh",
+			Port:     "22",
+			FromIPv4: strPtr("0.0.0.0"),
+			Mask:     strPtr("0"),
+			Action:   types.RuleActionAllow,
+		},
+		{
+			Name:     "http",
+			Port:     "80",
+			FromIPv4: strPtr("0.0.0.0"),
+			Mask:     strPtr("0"),
+			Action:   types.RuleActionAllow,
+		},
+		{
+			Name:     "https",
+			Port:     "443",
+			FromIPv4: strPtr("0.0.0.0"),
+			Mask:     strPtr("0"),
+			Action:   types.RuleActionAllow,
+		},
+	}
+
+	for i := range defaultRules {
+		defaultRules[i].ServerID = serverID
+		if err := s.repos.FirewallRule().Create(ctx, &defaultRules[i]); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// strPtr returns a pointer to the given string
+func strPtr(s string) *string {
+	return &s
+}

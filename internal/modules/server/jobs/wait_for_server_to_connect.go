@@ -81,7 +81,7 @@ func (j *WaitForServerToConnectJob) Handle(ctx context.Context) error {
 
 	// Update connectivity status
 	if err := j.Deps.Repos.Server().UpdateFields(ctx, j.server.ID, map[string]any{
-		"is_connected": true,
+		"connected": true,
 	}); err != nil {
 		j.Deps.Logger.Error().Err(err).Msg("Failed to update connectivity status")
 	}
@@ -235,7 +235,7 @@ func (j *WaitForServerToConnectJob) Failed(ctx context.Context, err error) {
 
 	// Update connectivity status
 	_ = j.Deps.Repos.Server().UpdateFields(ctx, j.Payload.ServerID, map[string]any{
-		"is_connected": false,
+		"connected": false,
 	})
 
 	server, findErr := j.Deps.Repos.Server().FindByID(ctx, j.Payload.ServerID)

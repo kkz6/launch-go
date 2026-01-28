@@ -64,6 +64,7 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 	config := tasks.ProvisionFreshServerConfig{
 		ServerID:         j.server.ID,
 		TeamID:           j.server.TeamID,
+		ServerName:       j.server.Name,
 		MemoryInMB:       getMemoryInMB(j.server),
 		PublicIPv4:       getPublicIP(j.server),
 		Provider:         string(j.server.Provider),
@@ -184,43 +185,29 @@ func getWorkingDir(server *models.Server) string {
 	return ".launch"
 }
 
-// getSoftwareStack returns the software stack to install based on server configuration.
-// It reads php_version and database_type from provider_data, falling back to defaults.
+// getSoftwareStack returns the software stack to install based on server's services.
+// This mirrors Laravel's behavior of reading from server.services.
 func getSoftwareStack(server *models.Server) []types.Software {
-	stack := []types.Software{
-		types.SoftwareCaddy2,
-		types.SoftwareComposer2,
-		types.SoftwareRedis,
-		types.SoftwareSupervisor,
-	}
+	var stack []types.Software
 
-	// Get PHP version from provider_data or use default
-	phpVersion := "php83" // default
-	if server.ProviderData != nil {
-		if v, ok := server.ProviderData["php_version"].(string); ok && v != "" {
-			phpVersion = v
-		}
-	}
-	if phpSoftware, err := types.ParseSoftware(phpVersion); err == nil {
-		stack = append(stack, phpSoftware)
-	} else {
-		stack = append(stack, types.SoftwarePhp83)
-	}
-
-	// Get database type from provider_data or use default
-	databaseType := "mysql80" // default
-	if server.ProviderData != nil {
-		if v, ok := server.ProviderData["database_type"].(string); ok && v != "" {
-			databaseType = v
+	// Read from server.Services relationship (must be preloaded)
+	for _, service := range server.Services {
+		software := types.Software(service.Software)
+		if software.IsValid() {
+			stack = append(stack, software)
 		}
 	}
 
-	// Skip database if "none" is selected
-	if databaseType != "none" && databaseType != "" {
-		if dbSoftware, err := types.ParseSoftware(databaseType); err == nil {
-			stack = append(stack, dbSoftware)
-		} else {
-			stack = append(stack, types.SoftwareMySQL80)
+	// If no services found (e.g., not preloaded), fall back to defaults
+	// Note: These match createPhpServerServices() - Supervisor, Caddy, Composer, PHP, MySQL
+	// Redis is NOT included by default (matches Laravel PhpServerType behavior)
+	if len(stack) == 0 {
+		stack = []types.Software{
+			types.SoftwareSupervisor,
+			types.SoftwareCaddy2,
+			types.SoftwareComposer2,
+			types.SoftwarePhp83,
+			types.SoftwareMySQL80,
 		}
 	}
 

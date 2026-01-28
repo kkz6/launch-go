@@ -9,10 +9,11 @@ type CreateServerRequest struct {
 	OperatingSystem string   `json:"operating_system" validate:"omitempty,oneof=ubuntu_20 ubuntu_22 ubuntu_24"`
 	Region          string   `json:"region" validate:"required_unless=Provider custom_server"`
 	Size            string   `json:"size" validate:"required_unless=Provider custom_server"`
-	PHPVersion      string   `json:"php_version" validate:"omitempty,oneof=5.6 7.0 7.1 7.2 7.3 7.4 8.0 8.1 8.2 8.3 8.4"`
-	DatabaseType    string   `json:"database_type" validate:"omitempty,oneof=mysql80 postgresql16"`
+	PHPVersion      string   `json:"php_version" validate:"omitempty,oneof=none php56 php70 php71 php72 php73 php74 php80 php81 php82 php83 php84"`
+	DatabaseType    string   `json:"database_type" validate:"omitempty,oneof=none mysql80 postgresql16"`
 	CredentialID    string   `json:"credential_id" validate:"required_unless=Provider custom_server,omitempty,ulid"`
 	SSHKeyIDs       []string `json:"ssh_key_ids" validate:"omitempty"`
+	InstallAgent    *bool    `json:"install_agent"`
 
 	// For custom servers (key pair is auto-generated, not user-provided)
 	IP      string `json:"ip" validate:"required_if=Provider custom_server,omitempty,ip"`
