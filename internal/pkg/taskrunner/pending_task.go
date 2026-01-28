@@ -12,6 +12,10 @@ type PendingTask struct {
 
 	// Output callback for streaming
 	onOutput func(output string)
+
+	// Completion channel for background tasks
+	// When set, the dispatcher will send the result here when the task completes
+	completionChan chan *TaskResult
 }
 
 // NewPendingTask creates a new PendingTask wrapper
@@ -90,6 +94,17 @@ func (p *PendingTask) GetID() string {
 // GetOutputPath returns the output path
 func (p *PendingTask) GetOutputPath() string {
 	return p.OutputPath
+}
+
+// WithCompletionChannel sets a channel to receive the result when task completes
+func (p *PendingTask) WithCompletionChannel(ch chan *TaskResult) *PendingTask {
+	p.completionChan = ch
+	return p
+}
+
+// GetCompletionChannel returns the completion channel if set
+func (p *PendingTask) GetCompletionChannel() chan *TaskResult {
+	return p.completionChan
 }
 
 // Dispatch executes the task using the provided dispatcher

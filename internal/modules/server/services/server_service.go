@@ -465,11 +465,11 @@ func (s *Service) createServicesForServer(ctx context.Context, server *models.Se
 
 // createPhpServerServices creates services for a PHP server type (matches Laravel PhpServerType::createServices)
 func (s *Service) createPhpServerServices(ctx context.Context, server *models.Server, req *dto.CreateServerRequest) error {
-	// Base services for PHP server: Supervisor, Caddy, Composer (NO Redis by default)
+	// Base services for PHP server: Supervisor, Caddy (NO Redis by default)
+	// Composer is only added if PHP is being installed
 	baseSoftware := []types.Software{
 		types.SoftwareSupervisor,
 		types.SoftwareCaddy2,
-		types.SoftwareComposer2,
 	}
 
 	for _, sw := range baseSoftware {
@@ -496,7 +496,8 @@ func (s *Service) createPhpServerServices(ctx context.Context, server *models.Se
 		}
 	}
 
-	// Add PHP if not "none"
+	// Add PHP and Composer if PHP is not "none"
+	// Composer requires PHP, so they're installed together
 	if req.PHPVersion != "none" {
 		var phpSoftware types.Software
 		if req.PHPVersion != "" {
@@ -511,6 +512,11 @@ func (s *Service) createPhpServerServices(ctx context.Context, server *models.Se
 		}
 		if err := s.createService(ctx, server.ID, phpSoftware); err != nil {
 			return fmt.Errorf("failed to create PHP service: %w", err)
+		}
+
+		// Add Composer (requires PHP)
+		if err := s.createService(ctx, server.ID, types.SoftwareComposer2); err != nil {
+			return fmt.Errorf("failed to create Composer service: %w", err)
 		}
 	}
 

@@ -78,6 +78,14 @@ func (r *RedisBroadcaster) publish(channel, event string, data any) {
 		return
 	}
 
+	if r.logger != nil {
+		r.logger.Debug().
+			Str("redis_channel", wsChannel).
+			Str("target_channel", channel).
+			Str("event", event).
+			Msg("RedisBroadcaster: publishing WebSocket message to Redis")
+	}
+
 	if err := r.client.Publish(context.Background(), wsChannel, payload).Err(); err != nil {
 		if r.logger != nil {
 			r.logger.Error().Err(err).Msg("Failed to publish WebSocket message to Redis")
@@ -170,6 +178,13 @@ func (s *RedisSubscriber) Start() {
 					continue
 				}
 
+				if s.logger != nil {
+					s.logger.Debug().
+						Str("channel", wsMsg.Channel).
+						Str("event", wsMsg.Event).
+						Msg("RedisSubscriber: received message from Redis, forwarding to hub")
+				}
+
 				// Forward to the local WebSocket hub
 				s.hub.Broadcast(wsMsg.Channel, wsMsg.Event, wsMsg.Data)
 			}
@@ -177,7 +192,7 @@ func (s *RedisSubscriber) Start() {
 	}()
 
 	if s.logger != nil {
-		s.logger.Info().Msg("Redis WebSocket subscriber started")
+		s.logger.Info().Str("redis_channel", wsChannel).Msg("Redis WebSocket subscriber started")
 	}
 }
 

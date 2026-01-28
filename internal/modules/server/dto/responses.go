@@ -426,6 +426,109 @@ type GenerateSSHKeyResponse struct {
 	PublicKey  string `json:"publicKey"`
 }
 
+// ProvisionStatusStep represents a step in the provisioning process
+type ProvisionStatusStep struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Status      string `json:"status"` // "completed", "current", "pending"
+}
+
+// ProvisionStatusResponse represents the provision status for a server
+type ProvisionStatusResponse struct {
+	Steps       []ProvisionStatusStep `json:"steps"`
+	CurrentStep *ProvisionStatusStep  `json:"current_step,omitempty"`
+	LatestTask  *TaskResponse         `json:"latest_task,omitempty"`
+}
+
+// BuildProvisionStatus builds the provision status from a server
+func BuildProvisionStatus(server *models.Server, latestTask *models.Task) ProvisionStatusResponse {
+	completedSteps := make(map[string]bool)
+	for _, step := range server.CompletedProvisionSteps {
+		completedSteps[step] = true
+	}
+
+	// Build steps list
+	var steps []ProvisionStatusStep
+	var currentStep *ProvisionStatusStep
+
+	// First step: connecting to server
+	connectingStatus := "pending"
+	if latestTask != nil {
+		connectingStatus = "completed"
+	} else if server.Status == types.ServerStatusStarting {
+		connectingStatus = "current"
+	}
+	connectingStep := ProvisionStatusStep{
+		Name:        "connecting_server",
+		Description: "Waiting for server to connect",
+		Status:      connectingStatus,
+	}
+	steps = append(steps, connectingStep)
+	if connectingStatus == "current" {
+		currentStep = &connectingStep
+	}
+
+	// Provision steps
+	provisionSteps := types.ForFreshServer()
+	foundCurrent := false
+	for _, ps := range provisionSteps {
+		status := "pending"
+		if completedSteps[ps.String()] {
+			status = "completed"
+		} else if !foundCurrent && connectingStatus == "completed" {
+			status = "current"
+			foundCurrent = true
+		}
+
+		step := ProvisionStatusStep{
+			Name:        ps.String(),
+			Description: ps.Description(),
+			Status:      status,
+		}
+		steps = append(steps, step)
+		if status == "current" {
+			currentStep = &step
+		}
+	}
+
+	// Service installation steps
+	for _, service := range server.Services {
+		status := "pending"
+		desc := "Installing " + service.Name
+		if service.Status.IsActive() {
+			status = "completed"
+			desc = "Installed " + service.Name
+		} else if service.Status == types.ServiceStatusInstalling {
+			status = "current"
+		} else if !foundCurrent {
+			status = "current"
+			foundCurrent = true
+		}
+
+		step := ProvisionStatusStep{
+			Name:        service.Name,
+			Description: desc,
+			Status:      status,
+		}
+		steps = append(steps, step)
+		if status == "current" {
+			currentStep = &step
+		}
+	}
+
+	resp := ProvisionStatusResponse{
+		Steps:       steps,
+		CurrentStep: currentStep,
+	}
+
+	if latestTask != nil {
+		taskResp := ToTaskResponse(latestTask)
+		resp.LatestTask = &taskResp
+	}
+
+	return resp
+}
+
 // TaskResponse represents the response for a task
 type TaskResponse struct {
 	ID        string  `json:"id"`
