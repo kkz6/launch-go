@@ -49,7 +49,7 @@ func (j *UpdateConnectivityJob) Handle(ctx context.Context) error {
 
 	// Update server connectivity status
 	if err := j.Deps.Repos.Server().UpdateFields(ctx, j.server.ID, map[string]any{
-		"is_connected": isConnected,
+		"connected": isConnected,
 	}); err != nil {
 		return fmt.Errorf("failed to update connectivity status: %w", err)
 	}
@@ -76,7 +76,7 @@ func (j *UpdateConnectivityJob) Failed(ctx context.Context, err error) {
 
 	// Mark server as disconnected on failure
 	_ = j.Deps.Repos.Server().UpdateFields(ctx, j.Payload.ServerID, map[string]any{
-		"is_connected": false,
+		"connected": false,
 	})
 }
 

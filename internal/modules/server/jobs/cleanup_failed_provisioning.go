@@ -111,7 +111,7 @@ func (j *CleanupFailedProvisioningJob) Handle(ctx context.Context) error {
 		})
 	} else {
 		if err := j.Deps.Repos.Server().UpdateFields(ctx, j.server.ID, map[string]any{
-			"is_connected": false,
+			"connected": false,
 		}); err != nil {
 			j.Deps.Logger.Error().Err(err).
 				Msg("failed to update server fields")

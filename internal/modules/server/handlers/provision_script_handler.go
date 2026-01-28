@@ -16,7 +16,7 @@ type ProvisionScriptRepository interface {
 
 // ProvisionScriptService interface for generating provision scripts
 type ProvisionScriptService interface {
-	GetProvisionScript(ctx context.Context, serverID string) (string, error)
+	GetProvisionScript(ctx context.Context, serverID string, teamID ...string) (string, error)
 }
 
 // ProvisionScriptHandler handles provision script requests
