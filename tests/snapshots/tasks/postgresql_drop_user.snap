@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 sudo -u postgres psql -c "DROP USER IF EXISTS olduser;"

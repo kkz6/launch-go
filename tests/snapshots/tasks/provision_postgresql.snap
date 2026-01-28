@@ -1,5 +1,6 @@
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 # Send a POST request to the given URL, ignoring the response and errors
@@ -39,6 +40,7 @@ function waitForAptUnlock() {
 # === Provision Step: Configure a swap file so the server can handle more memory-intensive tasks ===
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 echo "Configure swap"
@@ -61,6 +63,7 @@ fi
 # === Provision Step: Configure the firewall with the default rules (SSH, HTTP, HTTPS) ===
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 echo "Configure firewall with SSH port, HTTP and HTTPS"
@@ -75,6 +78,7 @@ sudo service ufw restart
 # === Provision Step: Update package lists and installed system packages ===
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 # Wait for apt to be unlocked
@@ -131,6 +135,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
 # === Provision Step: Install essential packages (curl, git, wget, etc.) ===
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 echo "Install essential packages"
@@ -160,6 +165,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
 # === Provision Step: Configure unattended upgrades to keep the server up to date automatically ===
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 echo "Setup unattended upgrades"
@@ -186,6 +192,7 @@ EOF
 # === Provision Step: Configure the root user ===
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 echo "Add public key for this server"
@@ -249,6 +256,7 @@ echo "Script completed successfully."
 # === Provision Step: Enhance SSH security by disabling password authentication and root login ===
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 echo "Enhance SSH security"
@@ -269,6 +277,7 @@ fi
 # === Provision Step: Create a default user account ===
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 echo "Rename existing user 1000 if it exists, otherwise create a new user"
@@ -351,6 +360,7 @@ sudo chmod 600 /home/launcher/.ssh/authorized_keys
 # === Install Software: Caddy 2 ===
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 # Wait for apt to be unlocked
@@ -425,6 +435,7 @@ EOF
 # === Install Software: PHP 8.3 ===
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 # Wait for apt to be unlocked
@@ -542,6 +553,7 @@ echo "launcher ALL=NOPASSWD: /usr/sbin/service php8.3-fpm reload" | sudo tee /et
 # === Install Software: PostgreSQL 16 ===
 #!/bin/bash
 set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
 # Wait for apt to be unlocked

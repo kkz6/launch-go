@@ -43,15 +43,22 @@ var CommonFuncMap = template.FuncMap{
 //   - -e: Exit on first error
 //   - -u: Exit on undefined variable
 //   - -o pipefail: Exit if any command in a pipeline fails
+//
+// Also traps SIGPIPE to prevent scripts from dying when running over SSH
+// with output piped through tee. This is necessary because SSH session
+// pipe closure can send SIGPIPE to the running script.
 func ShellDefaults() string {
 	return `set -euo pipefail
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive`
 }
 
 // ShellDefaultsLenient returns a shell script header that's more lenient.
 // Uses set -eu (no pipefail) for compatibility with Laravel's behavior.
+// Also traps SIGPIPE to prevent scripts from dying when running over SSH.
 func ShellDefaultsLenient() string {
 	return `set -eu
+trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive`
 }
 
