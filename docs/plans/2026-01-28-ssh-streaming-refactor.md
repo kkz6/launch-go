@@ -130,7 +130,7 @@ echo "::LAUNCH::progress::50"
 - [x] Update `StreamMonitor` to parse markers from output
 - [x] Add marker handler callbacks (MarkerHandler interface)
 - [x] Add WebSocket broadcast for markers
-- [ ] Add database update logic for markers (via MarkerHandler)
+- [x] Add database update logic for markers (via ProvisionMarkerHandler)
 - [ ] Handle reconnection and resume
 
 ### Phase 3: Update Task Scripts
@@ -159,23 +159,30 @@ echo "::LAUNCH::progress::50"
 
 ```
 internal/pkg/taskrunner/markers/
-├── markers.go        # Marker constants and parsing
-└── markers_test.go   # Tests
+├── markers.go        # Marker constants and parsing ✅
+└── markers_test.go   # Tests ✅
+
+internal/modules/server/tasks/
+├── provision_marker_handler.go  # Database/WebSocket handler for provision markers ✅
 ```
 
 ### Modified Files
 
 ```
 internal/pkg/taskrunner/
-├── stream_monitor.go   # Add marker parsing and handling
+├── stream_monitor.go   # Add marker parsing and handling ✅
 ├── dispatcher.go       # Remove localMode, simplify execution
 ├── task.go             # Remove callback-related fields
 
 internal/modules/server/tasks/
-├── provision_fresh_server.go  # Use markers instead of HTTP callbacks
+├── provision_fresh_server.go  # Use markers instead of HTTP callbacks ✅
+├── runner.go                  # Add WithMarkerHandler support ✅
+
+internal/modules/server/jobs/
+├── provision_server.go        # Use marker handler during provisioning ✅
 
 internal/pkg/taskrunner/templates/
-├── functions.go        # Add marker helper functions
+├── functions.go        # SIGPIPE handling added ✅
 ```
 
 ### Removed Files/Code
