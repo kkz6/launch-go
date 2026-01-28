@@ -14,11 +14,10 @@ type CreateServerRequest struct {
 	CredentialID    string   `json:"credential_id" validate:"required_unless=Provider custom_server,omitempty,ulid"`
 	SSHKeyIDs       []string `json:"ssh_key_ids" validate:"omitempty"`
 
-	// For custom servers
-	IPAddress  string `json:"ip_address" validate:"required_if=Provider custom_server,omitempty,ip"`
-	SSHPort    int    `json:"ssh_port" validate:"omitempty,min=1,max=65535"`
-	SSHUser    string `json:"ssh_user" validate:"omitempty,max=100"`
-	PrivateKey string `json:"private_key" validate:"required_if=Provider custom_server"`
+	// For custom servers (key pair is auto-generated, not user-provided)
+	IP      string `json:"ip" validate:"required_if=Provider custom_server,omitempty,ip"`
+	SSHPort int    `json:"port" validate:"omitempty,min=1,max=65535"`
+	SSHUser string `json:"ssh_user" validate:"omitempty,max=100"`
 }
 
 // UpdateServerRequest represents the request body for updating a server
