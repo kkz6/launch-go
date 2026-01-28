@@ -297,6 +297,25 @@ func (h *Handler) GetSiteCount(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Site count retrieved", fiber.Map{"count": count})
 }
 
+// RetryProvision retries the provisioning of a failed server
+func (h *Handler) RetryProvision(c *fiber.Ctx) error {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
+	id, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	if err := h.service.RetryProvision(c.Context(), id, teamID); err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return fiberctx.OK(c, "Server provisioning has been queued", nil)
+}
+
 // GetProvisionScriptContent returns the provision script content for a server
 // This endpoint is for authenticated users to get the script content directly (for local dev mode)
 func (h *Handler) GetProvisionScriptContent(c *fiber.Ctx) error {

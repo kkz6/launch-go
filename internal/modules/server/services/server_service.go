@@ -660,6 +660,50 @@ echo "Provisioning script completed."
 	return fmt.Sprintf(script, escapedName, publicKey)
 }
 
+// RetryProvision retries the provisioning of a failed server
+// This only works if the server has connected successfully but provisioning failed
+func (s *Service) RetryProvision(ctx context.Context, serverID, teamID string) error {
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return err
+	}
+
+	// Only allow retry if server status is failed
+	if server.Status != types.ServerStatusFailed {
+		return errors.New("server is not in failed state")
+	}
+
+	// Only allow retry if server has connected (SSH connection was successful)
+	if !server.Connected {
+		return errors.New("server has not connected successfully")
+	}
+
+	// Get SSH keys attached to this server
+	sshKeys, err := s.repos.SSHKey().FindByServer(ctx, serverID)
+	if err != nil {
+		s.LogError(err, "Failed to get SSH keys for retry", "server_id", serverID)
+	}
+
+	var sshKeyIDs []string
+	for _, key := range sshKeys {
+		sshKeyIDs = append(sshKeyIDs, key.ID)
+	}
+
+	// Dispatch the provision job again
+	task, err := jobs.NewProvisionServerTask(serverID, teamID, nil, sshKeyIDs)
+	if err != nil {
+		return fmt.Errorf("failed to create provision task: %w", err)
+	}
+
+	if err := s.EnqueueTask(task); err != nil {
+		return fmt.Errorf("failed to enqueue provision task: %w", err)
+	}
+
+	activity.RecordEvent(ctx, "provision_retry", "", server, "Server provisioning was retried")
+
+	return nil
+}
+
 // RunVulnerabilityAudit runs a security vulnerability audit on a server
 func (s *Service) RunVulnerabilityAudit(ctx context.Context, serverID, teamID, userID string, emailRecipient *string) error {
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
