@@ -73,7 +73,7 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 		WorkingDirectory: getWorkingDir(j.server),
 		SSHKeys:          sshKeyContents,
 		SSHPort:          j.server.GetSSHPort(),
-		SoftwareStack:    getDefaultSoftwareStack(),
+		SoftwareStack:    getSoftwareStack(j.server),
 		DatabasePassword: j.server.DatabasePassword.String(),
 		AgentConfigPath:  "/etc/launch-agent/launch-agent.yaml",
 		AgentURL:         agentURL,
@@ -184,15 +184,47 @@ func getWorkingDir(server *models.Server) string {
 	return ".launch"
 }
 
-func getDefaultSoftwareStack() []types.Software {
-	return []types.Software{
+// getSoftwareStack returns the software stack to install based on server configuration.
+// It reads php_version and database_type from provider_data, falling back to defaults.
+func getSoftwareStack(server *models.Server) []types.Software {
+	stack := []types.Software{
 		types.SoftwareCaddy2,
-		types.SoftwarePhp83,
 		types.SoftwareComposer2,
-		types.SoftwareMySQL80,
 		types.SoftwareRedis,
 		types.SoftwareSupervisor,
 	}
+
+	// Get PHP version from provider_data or use default
+	phpVersion := "php83" // default
+	if server.ProviderData != nil {
+		if v, ok := server.ProviderData["php_version"].(string); ok && v != "" {
+			phpVersion = v
+		}
+	}
+	if phpSoftware, err := types.ParseSoftware(phpVersion); err == nil {
+		stack = append(stack, phpSoftware)
+	} else {
+		stack = append(stack, types.SoftwarePhp83)
+	}
+
+	// Get database type from provider_data or use default
+	databaseType := "mysql80" // default
+	if server.ProviderData != nil {
+		if v, ok := server.ProviderData["database_type"].(string); ok && v != "" {
+			databaseType = v
+		}
+	}
+
+	// Skip database if "none" is selected
+	if databaseType != "none" && databaseType != "" {
+		if dbSoftware, err := types.ParseSoftware(databaseType); err == nil {
+			stack = append(stack, dbSoftware)
+		} else {
+			stack = append(stack, types.SoftwareMySQL80)
+		}
+	}
+
+	return stack
 }
 
 // NewProvisionServerTask creates an asynq task for provisioning a server.
