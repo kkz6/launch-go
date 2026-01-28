@@ -117,25 +117,32 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 	workingDir := ".launch"
 	server.WorkingDirectory = &workingDir
 
-	// Set provider data including software configuration
-	providerData := map[string]interface{}{}
+	// Set provider data for cloud servers
 	if provider != types.ProviderCustom {
 		server.ServerProviderID = &req.CredentialID
-		providerData["region"] = req.Region
-		providerData["plan"] = req.Size
+		server.ProviderData = map[string]interface{}{
+			"region": req.Region,
+			"plan":   req.Size,
+		}
 	}
-
-	// Store PHP version and database type for provisioning
-	if req.PHPVersion != "" {
-		providerData["php_version"] = req.PHPVersion
-	}
-	if req.DatabaseType != "" {
-		providerData["database_type"] = req.DatabaseType
-	}
-	server.ProviderData = providerData
 
 	if err := s.repos.Server().Create(ctx, server); err != nil {
 		return nil, fmt.Errorf("failed to create server: %w", err)
+	}
+
+	// Create services based on server type (like Laravel's createServices)
+	if err := s.createServicesForServer(ctx, server, req); err != nil {
+		s.LogError(err, "Failed to create services for server", "server_id", server.ID)
+	}
+
+	// Create default firewall rules (SSH, HTTP, HTTPS)
+	if err := s.CreateDefaultFirewallRules(ctx, server.ID); err != nil {
+		s.LogError(err, "Failed to create default firewall rules", "server_id", server.ID)
+	}
+
+	// Update progress to 15% (matches Laravel's flow)
+	if err := s.repos.Server().UpdateProgress(ctx, server.ID, 15, "installing updates"); err != nil {
+		s.LogError(err, "Failed to update server progress", "server_id", server.ID)
 	}
 
 	// Attach SSH keys to server
@@ -440,6 +447,124 @@ func (s *Service) dispatchDeleteJob(server *models.Server) error {
 	}
 
 	return s.EnqueueTask(task)
+}
+
+// createServicesForServer creates the initial services for a server based on its type and configuration.
+// This mirrors Laravel's ServerType::createServices() method.
+func (s *Service) createServicesForServer(ctx context.Context, server *models.Server, req *dto.CreateServerRequest) error {
+	serverType, _ := types.ParseServerType(req.Type)
+
+	switch serverType {
+	case types.ServerTypeDatabase:
+		return s.createDatabaseServerServices(ctx, server, req)
+	default:
+		// Default to PHP server type
+		return s.createPhpServerServices(ctx, server, req)
+	}
+}
+
+// createPhpServerServices creates services for a PHP server type (matches Laravel PhpServerType::createServices)
+func (s *Service) createPhpServerServices(ctx context.Context, server *models.Server, req *dto.CreateServerRequest) error {
+	// Base services for PHP server: Supervisor, Caddy, Composer (NO Redis by default)
+	baseSoftware := []types.Software{
+		types.SoftwareSupervisor,
+		types.SoftwareCaddy2,
+		types.SoftwareComposer2,
+	}
+
+	for _, sw := range baseSoftware {
+		if err := s.createService(ctx, server.ID, sw); err != nil {
+			return fmt.Errorf("failed to create service %s: %w", sw, err)
+		}
+	}
+
+	// Add database if not "none"
+	if req.DatabaseType != "none" {
+		var dbSoftware types.Software
+		if req.DatabaseType != "" {
+			var err error
+			dbSoftware, err = types.ParseSoftware(req.DatabaseType)
+			if err != nil {
+				dbSoftware = types.SoftwareMySQL80
+			}
+		} else {
+			// Default to MySQL 8.0 if not specified
+			dbSoftware = types.SoftwareMySQL80
+		}
+		if err := s.createService(ctx, server.ID, dbSoftware); err != nil {
+			return fmt.Errorf("failed to create database service: %w", err)
+		}
+	}
+
+	// Add PHP if not "none"
+	if req.PHPVersion != "none" {
+		var phpSoftware types.Software
+		if req.PHPVersion != "" {
+			var err error
+			phpSoftware, err = types.ParseSoftware(req.PHPVersion)
+			if err != nil {
+				phpSoftware = types.SoftwarePhp83
+			}
+		} else {
+			// Default to PHP 8.3 if not specified
+			phpSoftware = types.SoftwarePhp83
+		}
+		if err := s.createService(ctx, server.ID, phpSoftware); err != nil {
+			return fmt.Errorf("failed to create PHP service: %w", err)
+		}
+	}
+
+	// Add Launch Agent if install_agent is not explicitly false
+	if req.InstallAgent == nil || *req.InstallAgent {
+		if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent); err != nil {
+			return fmt.Errorf("failed to create Launch Agent service: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// createDatabaseServerServices creates services for a Database server type (matches Laravel DatabaseServerType::createServices)
+func (s *Service) createDatabaseServerServices(ctx context.Context, server *models.Server, req *dto.CreateServerRequest) error {
+	// Add database if not "none"
+	if req.DatabaseType != "none" {
+		var dbSoftware types.Software
+		if req.DatabaseType != "" {
+			var err error
+			dbSoftware, err = types.ParseSoftware(req.DatabaseType)
+			if err != nil {
+				dbSoftware = types.SoftwareMySQL80
+			}
+		} else {
+			dbSoftware = types.SoftwareMySQL80
+		}
+		if err := s.createService(ctx, server.ID, dbSoftware); err != nil {
+			return fmt.Errorf("failed to create database service: %w", err)
+		}
+	}
+
+	// Add Launch Agent if install_agent is not explicitly false
+	if req.InstallAgent == nil || *req.InstallAgent {
+		if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent); err != nil {
+			return fmt.Errorf("failed to create Launch Agent service: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// createService creates a single service record for a server
+func (s *Service) createService(ctx context.Context, serverID string, software types.Software) error {
+	service := &models.InstalledService{
+		Type:     software.GetServiceType(),
+		Name:     software.Label(),
+		Version:  software.GetVersion(),
+		Status:   types.ServiceStatusPending,
+		Software: software.String(),
+	}
+	service.ServerID = serverID
+
+	return s.repos.Service().Create(ctx, service)
 }
 
 // GenerateSSHKeyPair generates an RSA SSH key pair
