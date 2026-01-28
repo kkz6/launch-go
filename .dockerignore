@@ -1,0 +1,50 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.swp
+*.swo
+
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test artifacts
+coverage.out
+coverage.html
+*.test
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Client/frontend (built separately if needed)
+client/node_modules
+client/.nuxt
+client/.output
+client/dist
+
+# Storage and temp files
+storage/
+tmp/
+*.log
+
+# Documentation
+*.md
+!README.md
+
+# macOS
+.DS_Store
+
+# Development tools
+.air.toml
+
+# ShellCheck output
+storage/shellcheck/
