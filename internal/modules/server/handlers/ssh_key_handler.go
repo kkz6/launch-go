@@ -1,7 +1,14 @@
 package handlers
 
 import (
+	"crypto/ed25519"
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
+	"encoding/pem"
+
 	"github.com/gofiber/fiber/v2"
+	"golang.org/x/crypto/ssh"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -14,7 +21,9 @@ func (h *Handler) ListSSHKeys(c *fiber.Ctx) error {
 		return err
 	}
 
-	keys, err := h.service.ListSSHKeys(c.Context(), teamID)
+	globalOnly := c.QueryBool("global", false)
+
+	keys, err := h.service.ListSSHKeys(c.Context(), teamID, globalOnly)
 	if err != nil {
 		return fiberctx.RespondInternalError(c, "Failed to fetch SSH keys")
 	}
@@ -25,6 +34,62 @@ func (h *Handler) ListSSHKeys(c *fiber.Ctx) error {
 	}
 
 	return fiberctx.OK(c, "SSH keys retrieved", result)
+}
+
+// GenerateSSHKey generates a new SSH key pair
+func (h *Handler) GenerateSSHKey(c *fiber.Ctx) error {
+	req, err := fiberctx.MustParseAndValidate[dto.GenerateSSHKeyRequest](c)
+	if err != nil {
+		return err
+	}
+
+	var privateKeyPEM, publicKeyStr string
+
+	switch req.Type {
+	case "ed25519":
+		pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+		if err != nil {
+			return fiberctx.RespondInternalError(c, "Failed to generate ED25519 key")
+		}
+
+		privKeyBytes, err := x509.MarshalPKCS8PrivateKey(privKey)
+		if err != nil {
+			return fiberctx.RespondInternalError(c, "Failed to marshal private key")
+		}
+
+		privateKeyPEM = string(pem.EncodeToMemory(&pem.Block{
+			Type:  "PRIVATE KEY",
+			Bytes: privKeyBytes,
+		}))
+
+		sshPubKey, err := ssh.NewPublicKey(pubKey)
+		if err != nil {
+			return fiberctx.RespondInternalError(c, "Failed to create SSH public key")
+		}
+		publicKeyStr = string(ssh.MarshalAuthorizedKey(sshPubKey))
+
+	default: // rsa
+		privKey, err := rsa.GenerateKey(rand.Reader, 4096)
+		if err != nil {
+			return fiberctx.RespondInternalError(c, "Failed to generate RSA key")
+		}
+
+		privateKeyPEM = string(pem.EncodeToMemory(&pem.Block{
+			Type:  "RSA PRIVATE KEY",
+			Bytes: x509.MarshalPKCS1PrivateKey(privKey),
+		}))
+
+		sshPubKey, err := ssh.NewPublicKey(&privKey.PublicKey)
+		if err != nil {
+			return fiberctx.RespondInternalError(c, "Failed to create SSH public key")
+		}
+		publicKeyStr = string(ssh.MarshalAuthorizedKey(sshPubKey))
+	}
+
+	return fiberctx.OK(c, "SSH key generated", dto.GenerateSSHKeyResponse{
+		PrivateKey: privateKeyPEM,
+		PublicKey:  publicKeyStr,
+	})
 }
 
 // ListServerSSHKeys returns all SSH keys attached to a server

@@ -418,6 +418,12 @@ func ToSSHKeyResponse(key *models.SSHKey) SSHKeyResponse {
 	}
 }
 
+// GenerateSSHKeyResponse represents the response for generating an SSH key pair
+type GenerateSSHKeyResponse struct {
+	PrivateKey string `json:"privateKey"`
+	PublicKey  string `json:"publicKey"`
+}
+
 // TaskResponse represents the response for a task
 type TaskResponse struct {
 	ID        string  `json:"id"`

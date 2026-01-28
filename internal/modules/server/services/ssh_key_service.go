@@ -10,8 +10,11 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
-// ListSSHKeys returns all SSH keys for a team
-func (s *Service) ListSSHKeys(ctx context.Context, teamID string) ([]models.SSHKey, error) {
+// ListSSHKeys returns all SSH keys for a team, optionally filtered by global status
+func (s *Service) ListSSHKeys(ctx context.Context, teamID string, globalOnly bool) ([]models.SSHKey, error) {
+	if globalOnly {
+		return s.repos.SSHKey().FindGlobalByTeam(ctx, teamID)
+	}
 	return s.repos.SSHKey().FindByTeam(ctx, teamID)
 }
 
