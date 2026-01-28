@@ -55,6 +55,16 @@ func (r *SSHKeyRepository) FindGlobal(ctx context.Context) ([]models.SSHKey, err
 	return keys, err
 }
 
+// FindGlobalByTeam finds all global SSH keys for a team
+func (r *SSHKeyRepository) FindGlobalByTeam(ctx context.Context, teamID string) ([]models.SSHKey, error) {
+	var keys []models.SSHKey
+	err := r.DB.WithContext(ctx).
+		Where("team_id = ? AND is_global = ?", teamID, true).
+		Order("created_at DESC").
+		Find(&keys).Error
+	return keys, err
+}
+
 // AttachToServer attaches an SSH key to a server
 func (r *SSHKeyRepository) AttachToServer(ctx context.Context, serverID, sshKeyID string) error {
 	return r.DB.WithContext(ctx).Create(&models.ServerSSHKey{

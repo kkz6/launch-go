@@ -109,6 +109,11 @@ type CreateSSHKeyRequest struct {
 	IsGlobal    bool    `json:"is_global"`
 }
 
+// GenerateSSHKeyRequest represents the request body for generating an SSH key pair
+type GenerateSSHKeyRequest struct {
+	Type string `json:"type" validate:"omitempty,oneof=rsa ed25519"`
+}
+
 // AttachSSHKeyRequest represents the request body for attaching an SSH key to a server
 type AttachSSHKeyRequest struct {
 	SSHKeyID string `json:"ssh_key_id" validate:"required,ulid"`

@@ -100,6 +100,7 @@ type SSHKeyRepository interface {
 	FindByTeam(ctx context.Context, teamID string) ([]models.SSHKey, error)
 	FindByServer(ctx context.Context, serverID string) ([]models.SSHKey, error)
 	FindGlobal(ctx context.Context) ([]models.SSHKey, error)
+	FindGlobalByTeam(ctx context.Context, teamID string) ([]models.SSHKey, error)
 	Update(ctx context.Context, key *models.SSHKey) error
 	Delete(ctx context.Context, id string) error
 	AttachToServer(ctx context.Context, serverID, sshKeyID string) error

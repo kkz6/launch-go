@@ -122,6 +122,7 @@ func (m *Module) registerSSHKeyRoutes(router fiber.Router, authMiddleware fiber.
 	{
 		sshKeys.Get("/", handler.ListSSHKeys)
 		sshKeys.Post("/", handler.CreateSSHKey)
+		sshKeys.Post("/generate", handler.GenerateSSHKey)
 		sshKeys.Delete("/:sshKeyId", handler.DeleteSSHKey)
 	}
 }
