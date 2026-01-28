@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -12,11 +11,13 @@ import (
 
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/launch/paths"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/markers"
 
 	"github.com/rs/zerolog"
 )
 
-// Task status markers that scripts should output
+// Legacy task status markers (kept for backward compatibility during migration)
+// TODO: Remove after all tasks are migrated to new marker format
 const (
 	MarkerTaskStarted  = "::LAUNCH_TASK_STARTED::"
 	MarkerTaskFinished = "::LAUNCH_TASK_FINISHED::"
@@ -29,25 +30,47 @@ const (
 // ErrTaskCompleted signals that the task has completed (not an error)
 var ErrTaskCompleted = errors.New("task completed")
 
+// MarkerHandler is called when a marker is detected in the output stream.
+// It allows tasks to respond to progress updates, step completions, etc.
+type MarkerHandler interface {
+	// OnMarker is called for each marker detected in the output.
+	// Return an error to stop streaming (e.g., ErrTaskCompleted).
+	OnMarker(ctx context.Context, taskID string, marker *markers.Marker) error
+}
+
+// MarkerHandlerFunc is a function adapter for MarkerHandler
+type MarkerHandlerFunc func(ctx context.Context, taskID string, marker *markers.Marker) error
+
+func (f MarkerHandlerFunc) OnMarker(ctx context.Context, taskID string, marker *markers.Marker) error {
+	return f(ctx, taskID, marker)
+}
+
 // StreamMonitor monitors task output via persistent SSH connection
 type StreamMonitor struct {
 	logger            *zerolog.Logger
 	wsHub             SimpleBroadcaster
 	broadcastInterval time.Duration
 	activeStreams     map[string]context.CancelFunc
+	markerHandler     MarkerHandler
 	mu                sync.RWMutex
 }
 
 // StreamMonitorConfig holds configuration for the stream monitor
 type StreamMonitorConfig struct {
 	BroadcastInterval time.Duration // How often to broadcast accumulated output
+	MarkerHandler     MarkerHandler // Optional handler for markers
 }
 
 // NewStreamMonitor creates a new stream monitor
 func NewStreamMonitor(logger *zerolog.Logger, wsHub SimpleBroadcaster, cfg *StreamMonitorConfig) *StreamMonitor {
 	interval := 2 * time.Second
-	if cfg != nil && cfg.BroadcastInterval > 0 {
-		interval = cfg.BroadcastInterval
+	var markerHandler MarkerHandler
+
+	if cfg != nil {
+		if cfg.BroadcastInterval > 0 {
+			interval = cfg.BroadcastInterval
+		}
+		markerHandler = cfg.MarkerHandler
 	}
 
 	return &StreamMonitor{
@@ -55,7 +78,15 @@ func NewStreamMonitor(logger *zerolog.Logger, wsHub SimpleBroadcaster, cfg *Stre
 		wsHub:             wsHub,
 		broadcastInterval: interval,
 		activeStreams:     make(map[string]context.CancelFunc),
+		markerHandler:     markerHandler,
 	}
+}
+
+// SetMarkerHandler sets the marker handler for this stream monitor
+func (m *StreamMonitor) SetMarkerHandler(handler MarkerHandler) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.markerHandler = handler
 }
 
 // StreamResult contains the final result of streaming a task
@@ -129,38 +160,37 @@ func (m *StreamMonitor) StreamTaskOutput(
 	var exitCode int
 	var finalStatus string
 
-	// Pattern matchers for markers
-	progressPattern := regexp.MustCompile(MarkerTaskProgress + `(\d+)`)
-	exitCodePattern := regexp.MustCompile(MarkerExitCode + `(\d+)`)
-
 	err = sshClient.StreamOutput(streamCtx, tailCmd, func(line string) error {
-		outputBuffer.WriteString(line + "\n")
+		// Check for new-style markers first
+		if marker := markers.Parse(line); marker != nil {
+			return m.handleMarker(streamCtx, taskID, marker, &exitCode, &finalStatus)
+		}
 
-		// Check for completion markers
+		// Legacy marker support (TODO: remove after migration)
 		if strings.Contains(line, MarkerTaskFinished) {
 			finalStatus = "finished"
-			// Try to extract exit code
-			if matches := exitCodePattern.FindStringSubmatch(line); len(matches) > 1 {
-				exitCode, _ = strconv.Atoi(matches[1])
-			}
 			return ErrTaskCompleted
 		}
 
 		if strings.Contains(line, MarkerTaskFailed) {
 			finalStatus = "failed"
-			if matches := exitCodePattern.FindStringSubmatch(line); len(matches) > 1 {
-				exitCode, _ = strconv.Atoi(matches[1])
-			} else {
-				exitCode = 1
-			}
+			exitCode = 1
 			return ErrTaskCompleted
 		}
 
-		// Check for progress updates
-		if matches := progressPattern.FindStringSubmatch(line); len(matches) > 1 {
-			progress, _ := strconv.Atoi(matches[1])
-			m.broadcastProgress(taskID, progress)
+		// Legacy progress marker
+		if strings.Contains(line, MarkerTaskProgress) {
+			// Extract number after marker
+			parts := strings.Split(line, MarkerTaskProgress)
+			if len(parts) > 1 {
+				if progress, err := strconv.Atoi(strings.TrimSpace(parts[1])); err == nil {
+					m.broadcastProgress(taskID, progress)
+				}
+			}
 		}
+
+		// Regular output line - add to buffer
+		outputBuffer.WriteString(line + "\n")
 
 		// Broadcast accumulated output periodically
 		if time.Since(lastBroadcast) >= m.broadcastInterval {
@@ -267,6 +297,74 @@ func (m *StreamMonitor) broadcastProgress(taskID string, progress int) {
 	})
 }
 
+// handleMarker processes a parsed marker and updates state accordingly
+func (m *StreamMonitor) handleMarker(
+	ctx context.Context,
+	taskID string,
+	marker *markers.Marker,
+	exitCode *int,
+	finalStatus *string,
+) error {
+	// Call custom marker handler if set
+	m.mu.RLock()
+	handler := m.markerHandler
+	m.mu.RUnlock()
+
+	if handler != nil {
+		if err := handler.OnMarker(ctx, taskID, marker); err != nil {
+			return err
+		}
+	}
+
+	// Handle built-in marker types
+	switch marker.Type {
+	case markers.Progress:
+		m.broadcastProgress(taskID, marker.ProgressValue())
+
+	case markers.StepCompleted:
+		m.broadcastMarkerEvent(taskID, "task.step_completed", map[string]interface{}{
+			"step": marker.Value,
+		})
+
+	case markers.SoftwareInstalled:
+		m.broadcastMarkerEvent(taskID, "task.software_installed", map[string]interface{}{
+			"software": marker.Value,
+		})
+
+	case markers.Status:
+		m.broadcastMarkerEvent(taskID, "task.status", map[string]interface{}{
+			"message": marker.Value,
+		})
+
+	case markers.Error:
+		m.broadcastMarkerEvent(taskID, "task.error", map[string]interface{}{
+			"message": marker.Value,
+		})
+
+	case markers.ExitCode:
+		code := marker.ExitCodeValue()
+		*exitCode = code
+		if code == 0 {
+			*finalStatus = "finished"
+		} else {
+			*finalStatus = "failed"
+		}
+		return ErrTaskCompleted
+	}
+
+	return nil
+}
+
+// broadcastMarkerEvent broadcasts a marker-specific event
+func (m *StreamMonitor) broadcastMarkerEvent(taskID, eventType string, data map[string]interface{}) {
+	if m.wsHub == nil {
+		return
+	}
+
+	data["task_id"] = taskID
+	m.wsHub.Broadcast(broadcast.TaskChannel(taskID), eventType, data)
+}
+
 // MonitorBackgroundTask monitors a background task that's already running
 // It polls the process status and streams output until completion
 func (m *StreamMonitor) MonitorBackgroundTask(
@@ -348,7 +446,15 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 					exitCode, _ = strconv.Atoi(strings.TrimSpace(exitResult.Stdout))
 				}
 
-				// Also check for markers in output
+				// Check for new-style exit_code marker in output
+				for _, line := range strings.Split(lastOutput, "\n") {
+					if marker := markers.Parse(line); marker != nil && marker.Type == markers.ExitCode {
+						exitCode = marker.ExitCodeValue()
+						break
+					}
+				}
+
+				// Determine status based on exit code and legacy markers
 				if strings.Contains(lastOutput, MarkerTaskFinished) {
 					status = "finished"
 				} else if strings.Contains(lastOutput, MarkerTaskFailed) {

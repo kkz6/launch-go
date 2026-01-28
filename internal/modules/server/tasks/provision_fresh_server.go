@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/markers"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner/templates"
 )
 
@@ -21,9 +22,6 @@ const (
 
 // ProvisionFreshServerConfig holds all configuration needed to provision a fresh server
 type ProvisionFreshServerConfig struct {
-	// Callback URL for progress reporting
-	CallbackURL string
-
 	// Server and team info for callbacks
 	ServerID   string
 	TeamID     string
@@ -93,44 +91,61 @@ func ProvisionFreshServer(config ProvisionFreshServerConfig) *ProvisionFreshServ
 	swapInMB := calculateSwapInMegabytes(config.MemoryInMB)
 	swappiness := calculateSwappiness(config.MemoryInMB)
 
-	// 2. Loop through provision steps (matching Laravel's @foreach($provisionSteps()))
+	// Calculate total steps for progress tracking
 	provisionSteps := types.ForFreshServer()
+	totalSteps := len(provisionSteps) + len(config.SoftwareStack)
+	currentStep := 0
+
+	// Helper to calculate progress percentage
+	calcProgress := func() int {
+		if totalSteps == 0 {
+			return 0
+		}
+		// Reserve 0-90% for steps, 90-100% for cleanup
+		return (currentStep * 90) / totalSteps
+	}
+
+	// 2. Loop through provision steps (matching Laravel's @foreach($provisionSteps()))
 	for _, step := range provisionSteps {
 		script := renderProvisionStep(step, config, swapInMB, swappiness)
 		scriptBuilder.WriteString(fmt.Sprintf("\n# === Provision Step: %s ===\n", step.Description()))
+
+		// Emit status marker before step
+		scriptBuilder.WriteString(markers.BashEchoStatus(step.Description()) + "\n")
+
 		scriptBuilder.WriteString(script)
 		scriptBuilder.WriteString("\n")
 
-		// Add callback after each step (like Laravel's <x-server::task-callback>)
-		if config.CallbackURL != "" {
-			scriptBuilder.WriteString(fmt.Sprintf(
-				`httpPostSilently "%s" '{"provision_step_completed":"%s"}'`+"\n",
-				config.CallbackURL, step.String(),
-			))
-		}
+		// Emit step completed and progress markers
+		currentStep++
+		scriptBuilder.WriteString(markers.BashEchoStepCompleted(step.String()) + "\n")
+		scriptBuilder.WriteString(markers.BashEchoProgress(calcProgress()) + "\n")
 	}
 
 	// 3. Loop through software stack (matching Laravel's @foreach($softwareStack()))
 	for _, software := range config.SoftwareStack {
 		script := renderSoftwareInstall(software, config)
 		scriptBuilder.WriteString(fmt.Sprintf("\n# === Install Software: %s ===\n", software.Label()))
+
+		// Emit status marker before installation
+		scriptBuilder.WriteString(markers.BashEchoStatus("Installing "+software.Label()) + "\n")
+
 		scriptBuilder.WriteString(script)
 		scriptBuilder.WriteString("\n")
 
-		// Add callback after each software install
-		if config.CallbackURL != "" {
-			scriptBuilder.WriteString(fmt.Sprintf(
-				`httpPostSilently "%s" '{"software_installed":"%s"}'`+"\n",
-				config.CallbackURL, software.String(),
-			))
-		}
+		// Emit software installed and progress markers
+		currentStep++
+		scriptBuilder.WriteString(markers.BashEchoSoftwareInstalled(software.String()) + "\n")
+		scriptBuilder.WriteString(markers.BashEchoProgress(calcProgress()) + "\n")
 	}
 
 	// 4. Final cleanup (from Laravel template)
 	scriptBuilder.WriteString("\n# === Final Cleanup ===\n")
+	scriptBuilder.WriteString(markers.BashEchoStatus("Running final cleanup") + "\n")
 	scriptBuilder.WriteString("# See 'apt-update-upgrade'\n")
 	scriptBuilder.WriteString("waitForAptUnlock\n")
 	scriptBuilder.WriteString("sudo apt-mark unhold cloud-init\n")
+	scriptBuilder.WriteString(markers.BashEchoProgress(100) + "\n")
 
 	return &ProvisionFreshServerTask{
 		BaseTask: taskrunner.NewBaseTask(

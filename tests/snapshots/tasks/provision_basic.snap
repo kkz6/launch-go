@@ -38,6 +38,7 @@ function waitForAptUnlock() {
 
 
 # === Provision Step: Configure a swap file so the server can handle more memory-intensive tasks ===
+echo "::LAUNCH::status::Configure a swap file so the server can handle more memory-intensive tasks"
 #!/bin/bash
 set -euo pipefail
 trap '' PIPE
@@ -59,8 +60,11 @@ if [ ! -f /swapfile ]; then
     echo "vm.vfs_cache_pressure=50" | sudo tee -a /etc/sysctl.conf > /dev/null
 fi
 
+echo "::LAUNCH::step_completed::configure_swap"
+echo "::LAUNCH::progress::10"
 
 # === Provision Step: Configure the firewall with the default rules (SSH, HTTP, HTTPS) ===
+echo "::LAUNCH::status::Configure the firewall with the default rules (SSH, HTTP, HTTPS)"
 #!/bin/bash
 set -euo pipefail
 trap '' PIPE
@@ -74,8 +78,11 @@ sudo ufw allow 443
 sudo yes | sudo ufw enable
 sudo service ufw restart
 
+echo "::LAUNCH::step_completed::configure_firewall"
+echo "::LAUNCH::progress::20"
 
 # === Provision Step: Update package lists and installed system packages ===
+echo "::LAUNCH::status::Update package lists and installed system packages"
 #!/bin/bash
 set -euo pipefail
 trap '' PIPE
@@ -131,8 +138,11 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
 waitForAptUnlock
 sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
 
+echo "::LAUNCH::step_completed::apt_update_upgrade"
+echo "::LAUNCH::progress::30"
 
 # === Provision Step: Install essential packages (curl, git, wget, etc.) ===
+echo "::LAUNCH::status::Install essential packages (curl, git, wget, etc.)"
 #!/bin/bash
 set -euo pipefail
 trap '' PIPE
@@ -161,8 +171,11 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
     wget \
     zip
 
+echo "::LAUNCH::step_completed::install_essential_packages"
+echo "::LAUNCH::progress::40"
 
 # === Provision Step: Configure unattended upgrades to keep the server up to date automatically ===
+echo "::LAUNCH::status::Configure unattended upgrades to keep the server up to date automatically"
 #!/bin/bash
 set -euo pipefail
 trap '' PIPE
@@ -188,8 +201,11 @@ APT::Periodic::AutocleanInterval "7";
 APT::Periodic::Unattended-Upgrade "1";
 EOF
 
+echo "::LAUNCH::step_completed::setup_unattended_upgrades"
+echo "::LAUNCH::progress::50"
 
 # === Provision Step: Configure the root user ===
+echo "::LAUNCH::status::Configure the root user"
 #!/bin/bash
 set -euo pipefail
 trap '' PIPE
@@ -222,8 +238,11 @@ sudo ssh-keyscan -H gitlab.com | sudo tee -a /root/.ssh/known_hosts > /dev/null
 
 
 
+echo "::LAUNCH::step_completed::setup_root"
+echo "::LAUNCH::progress::60"
 
 # === Provision Step: Enhance SSH security by disabling password authentication and root login ===
+echo "::LAUNCH::status::Enhance SSH security by disabling password authentication and root login"
 #!/bin/bash
 set -euo pipefail
 trap '' PIPE
@@ -243,8 +262,11 @@ then
     sudo touch /root/.ssh/authorized_keys
 fi
 
+echo "::LAUNCH::step_completed::ssh_security"
+echo "::LAUNCH::progress::70"
 
 # === Provision Step: Create a default user account ===
+echo "::LAUNCH::status::Create a default user account"
 #!/bin/bash
 set -euo pipefail
 trap '' PIPE
@@ -337,8 +359,11 @@ sudo chmod 700 /home/launcher/.ssh
 sudo chmod 700 /home/launcher/.ssh/id_rsa
 sudo chmod 600 /home/launcher/.ssh/authorized_keys
 
+echo "::LAUNCH::step_completed::setup_default_user"
+echo "::LAUNCH::progress::80"
 
 # === Install Software: Caddy 2 ===
+echo "::LAUNCH::status::Installing Caddy 2"
 #!/bin/bash
 set -euo pipefail
 trap '' PIPE
@@ -412,8 +437,12 @@ sudo tee -a /etc/sudoers.d/caddy > /dev/null <<EOF
 launcher ALL=(root) NOPASSWD: /usr/sbin/service caddy reload
 EOF
 
+echo "::LAUNCH::software_installed::caddy2"
+echo "::LAUNCH::progress::90"
 
 # === Final Cleanup ===
+echo "::LAUNCH::status::Running final cleanup"
 # See 'apt-update-upgrade'
 waitForAptUnlock
 sudo apt-mark unhold cloud-init
+echo "::LAUNCH::progress::100"
