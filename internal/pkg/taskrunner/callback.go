@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"sync"
 
 	"github.com/hibiken/asynq"
@@ -11,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 )
 
 // CallbackType represents the type of callback
@@ -109,6 +111,32 @@ func (c *CallbackContext) DispatchJob(jobType string, payload interface{}) error
 		c.Logger.Info().Str("job_type", jobType).Msg("Job dispatched from callback")
 	}
 	return nil
+}
+
+// GetTaskOutputTail retrieves the last N lines of task output from the database.
+// Returns empty string if DB is nil, task not found, or output is empty.
+func (c *CallbackContext) GetTaskOutputTail(taskID string, lines int) string {
+	if c.DB == nil {
+		return ""
+	}
+
+	var result struct {
+		Output dbtype.EncryptedString
+	}
+	if err := c.DB.Table("tasks").Select("output").Where("id = ?", taskID).Take(&result).Error; err != nil {
+		return ""
+	}
+
+	output := result.Output.String()
+	if output == "" {
+		return ""
+	}
+
+	parts := strings.Split(output, "\n")
+	if len(parts) > lines {
+		parts = parts[len(parts)-lines:]
+	}
+	return strings.Join(parts, "\n")
 }
 
 // CallbackHandler is implemented by tasks that need continuation logic after

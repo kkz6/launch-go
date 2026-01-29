@@ -865,3 +865,26 @@ func ParseRuleAction(s string) (RuleAction, error) {
 func AllRuleActions() []RuleAction {
 	return []RuleAction{RuleActionAllow, RuleActionDeny, RuleActionReject}
 }
+
+// =============================================================================
+// TaskStatus
+// =============================================================================
+
+// TaskStatus represents the status of a task execution
+type TaskStatus string
+
+const (
+	TaskStatusPending  TaskStatus = "pending"
+	TaskStatusRunning  TaskStatus = "running"
+	TaskStatusFinished TaskStatus = "finished"
+	TaskStatusFailed   TaskStatus = "failed"
+	TaskStatusTimeout  TaskStatus = "timeout"
+)
+
+func (s TaskStatus) String() string {
+	return string(s)
+}
+
+func (s TaskStatus) IsTerminal() bool {
+	return s == TaskStatusFinished || s == TaskStatusFailed || s == TaskStatusTimeout
+}

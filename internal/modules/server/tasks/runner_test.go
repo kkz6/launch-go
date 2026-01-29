@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -222,14 +223,14 @@ func TestTaskRunner_ThrowOnError(t *testing.T) {
 
 func TestTaskStatus_Constants(t *testing.T) {
 	tests := []struct {
-		status   TaskStatus
+		status   servertypes.TaskStatus
 		expected string
 	}{
-		{TaskStatusPending, "pending"},
-		{TaskStatusRunning, "running"},
-		{TaskStatusFinished, "finished"},
-		{TaskStatusFailed, "failed"},
-		{TaskStatusTimeout, "timeout"},
+		{servertypes.TaskStatusPending, "pending"},
+		{servertypes.TaskStatusRunning, "running"},
+		{servertypes.TaskStatusFinished, "finished"},
+		{servertypes.TaskStatusFailed, "failed"},
+		{servertypes.TaskStatusTimeout, "timeout"},
 	}
 
 	for _, tt := range tests {

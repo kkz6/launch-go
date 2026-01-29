@@ -254,7 +254,7 @@ func (t *ProvisionFreshServerTask) OnFailure(ctx context.Context, cbCtx *taskrun
 	})
 
 	// Get task output for notification
-	output := t.getTaskOutput(cbCtx, taskID)
+	output := cbCtx.GetTaskOutputTail(taskID, 30)
 	errorMessage := fmt.Sprintf("Task failed with exit code %d", exitCode)
 
 	// Send notification to team
@@ -294,7 +294,7 @@ func (t *ProvisionFreshServerTask) OnExpired(ctx context.Context, cbCtx *taskrun
 	})
 
 	// Get task output for notification
-	output := t.getTaskOutput(cbCtx, taskID)
+	output := cbCtx.GetTaskOutputTail(taskID, 30)
 	errorMessage := "Task timed out"
 
 	// Send notification to team
@@ -309,30 +309,6 @@ func (t *ProvisionFreshServerTask) OnExpired(ctx context.Context, cbCtx *taskrun
 	t.dispatchCleanupJob(cbCtx)
 
 	return nil
-}
-
-// getTaskOutput retrieves the last 30 lines of task output from the database
-func (t *ProvisionFreshServerTask) getTaskOutput(cbCtx *taskrunner.CallbackContext, taskID string) string {
-	if cbCtx.DB == nil {
-		return ""
-	}
-
-	var task models.Task
-	if err := cbCtx.DB.Select("output").First(&task, "id = ?", taskID).Error; err != nil {
-		return ""
-	}
-
-	output := task.Output.String()
-	if output == "" {
-		return ""
-	}
-
-	// Return last 30 lines
-	lines := strings.Split(output, "\n")
-	if len(lines) > 30 {
-		lines = lines[len(lines)-30:]
-	}
-	return strings.Join(lines, "\n")
 }
 
 // dispatchCleanupJob dispatches the cleanup job for failed provisioning
