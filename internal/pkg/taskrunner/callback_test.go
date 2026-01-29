@@ -19,13 +19,13 @@ type testState struct {
 
 // testCallbackTask is a mock task that implements CallbackHandler
 type testCallbackTask struct {
-	state            testState
-	onSuccessCalled  bool
-	onFailureCalled  bool
-	onExpiredCalled  bool
-	lastTaskID       string
-	lastExitCode     int
-	returnError      error
+	state           testState
+	onSuccessCalled bool
+	onFailureCalled bool
+	onExpiredCalled bool
+	lastTaskID      string
+	lastExitCode    int
+	returnError     error
 }
 
 func (t *testCallbackTask) OnSuccess(ctx context.Context, cbCtx *CallbackContext, taskID string) error {
@@ -69,10 +69,7 @@ type stateWithFactory struct {
 
 func (s stateWithFactory) NewTask() CallbackHandler {
 	return &testCallbackTask{
-		state: testState{
-			SiteID:       s.SiteID,
-			DeploymentID: s.DeploymentID,
-		},
+		state: testState(s),
 	}
 }
 

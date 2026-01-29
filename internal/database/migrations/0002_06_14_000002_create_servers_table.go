@@ -18,47 +18,47 @@ func init() {
 
 // serverMigration model for migration (matches Laravel schema)
 type serverMigration struct {
-	ID                       string     `gorm:"type:char(26);primaryKey"`
-	ServerProviderID         *string    `gorm:"column:server_provider_id;type:char(26);index"`
-	TeamID                   string     `gorm:"column:team_id;type:char(26);not null;index"`
-	UserID                   string     `gorm:"column:user_id;type:char(26);not null;index"`
-	Name                     string     `gorm:"type:varchar(255);not null;index"`
-	Description              *string    `gorm:"type:varchar(255)"`
-	Provider                 string     `gorm:"type:varchar(255);not null"`
-	ProviderData             *string    `gorm:"type:json"`
-	Type                     *string    `gorm:"type:varchar(255)"`
-	Connected                bool       `gorm:"type:tinyint(1);not null;default:0"`
-	LaunchToken              string     `gorm:"type:varchar(32);not null"`
-	MonitoringEnabled        bool       `gorm:"type:tinyint(1);not null;default:0"`
-	CPUCores                 *int       `gorm:"column:cpu_cores;type:int"`
-	MemoryInMB               *int       `gorm:"column:memory_in_mb;type:int"`
-	StorageInGB              *int       `gorm:"column:storage_in_gb;type:int"`
-	OperatingSystem          *string    `gorm:"type:varchar(255)"`
-	Status                   string     `gorm:"type:varchar(255);not null"`
-	PublicIPv4               *string    `gorm:"column:public_ipv4;type:varchar(255)"`
-	PrivateIPv4              *string    `gorm:"column:private_ipv4;type:varchar(255)"`
-	PublicKey                *string    `gorm:"type:longtext"`
-	PrivateKey               *string    `gorm:"type:longtext"`
-	UserPublicKey            *string    `gorm:"column:user_public_key;type:longtext"`
-	Username                 *string    `gorm:"type:varchar(255)"`
-	Password                 *string    `gorm:"type:longtext"`
-	DatabasePassword         *string    `gorm:"type:longtext"`
-	SSHPort                  *int       `gorm:"column:ssh_port;type:int"`
-	WorkingDirectory         *string    `gorm:"type:varchar(255)"`
-	CompletedProvisionSteps  *string    `gorm:"type:json"`
-	ProvisionedAt            *time.Time `gorm:"type:timestamp null"`
+	ID                        string     `gorm:"type:char(26);primaryKey"`
+	ServerProviderID          *string    `gorm:"column:server_provider_id;type:char(26);index"`
+	TeamID                    string     `gorm:"column:team_id;type:char(26);not null;index"`
+	UserID                    string     `gorm:"column:user_id;type:char(26);not null;index"`
+	Name                      string     `gorm:"type:varchar(255);not null;index"`
+	Description               *string    `gorm:"type:varchar(255)"`
+	Provider                  string     `gorm:"type:varchar(255);not null"`
+	ProviderData              *string    `gorm:"type:json"`
+	Type                      *string    `gorm:"type:varchar(255)"`
+	Connected                 bool       `gorm:"type:tinyint(1);not null;default:0"`
+	LaunchToken               string     `gorm:"type:varchar(32);not null"`
+	MonitoringEnabled         bool       `gorm:"type:tinyint(1);not null;default:0"`
+	CPUCores                  *int       `gorm:"column:cpu_cores;type:int"`
+	MemoryInMB                *int       `gorm:"column:memory_in_mb;type:int"`
+	StorageInGB               *int       `gorm:"column:storage_in_gb;type:int"`
+	OperatingSystem           *string    `gorm:"type:varchar(255)"`
+	Status                    string     `gorm:"type:varchar(255);not null"`
+	PublicIPv4                *string    `gorm:"column:public_ipv4;type:varchar(255)"`
+	PrivateIPv4               *string    `gorm:"column:private_ipv4;type:varchar(255)"`
+	PublicKey                 *string    `gorm:"type:longtext"`
+	PrivateKey                *string    `gorm:"type:longtext"`
+	UserPublicKey             *string    `gorm:"column:user_public_key;type:longtext"`
+	Username                  *string    `gorm:"type:varchar(255)"`
+	Password                  *string    `gorm:"type:longtext"`
+	DatabasePassword          *string    `gorm:"type:longtext"`
+	SSHPort                   *int       `gorm:"column:ssh_port;type:int"`
+	WorkingDirectory          *string    `gorm:"type:varchar(255)"`
+	CompletedProvisionSteps   *string    `gorm:"type:json"`
+	ProvisionedAt             *time.Time `gorm:"type:timestamp null"`
 	UninstallationRequestedAt *time.Time `gorm:"type:timestamp null"`
-	Updates                  bool       `gorm:"type:tinyint(1);not null;default:0"`
-	AutoUpdate               bool       `gorm:"type:tinyint(1);not null;default:0"`
-	AvailableUpdates         *int       `gorm:"type:int"`
-	SecurityUpdates          *int       `gorm:"type:int"`
-	Progress                 int        `gorm:"type:int;not null;default:0"`
-	ProgressStep             *string    `gorm:"type:varchar(255)"`
-	LastUpdateCheck          *time.Time `gorm:"type:timestamp null"`
-	LastConnectivityCheck    *time.Time `gorm:"type:timestamp null"`
-	ArchivedAt               *time.Time `gorm:"type:timestamp null"`
-	CreatedAt                *time.Time `gorm:"type:timestamp null"`
-	UpdatedAt                *time.Time `gorm:"type:timestamp null"`
+	Updates                   bool       `gorm:"type:tinyint(1);not null;default:0"`
+	AutoUpdate                bool       `gorm:"type:tinyint(1);not null;default:0"`
+	AvailableUpdates          *int       `gorm:"type:int"`
+	SecurityUpdates           *int       `gorm:"type:int"`
+	Progress                  int        `gorm:"type:int;not null;default:0"`
+	ProgressStep              *string    `gorm:"type:varchar(255)"`
+	LastUpdateCheck           *time.Time `gorm:"type:timestamp null"`
+	LastConnectivityCheck     *time.Time `gorm:"type:timestamp null"`
+	ArchivedAt                *time.Time `gorm:"type:timestamp null"`
+	CreatedAt                 *time.Time `gorm:"type:timestamp null"`
+	UpdatedAt                 *time.Time `gorm:"type:timestamp null"`
 }
 
 func (serverMigration) TableName() string {
@@ -112,11 +112,7 @@ func createServersTableUp(db *gorm.DB) error {
 	}
 
 	// Now add the FK constraint for tasks.server_id -> servers.id (deferred from tasks migration)
-	if err := migrator.CreateConstraint(&taskWithServerFK{}, "Server"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&taskWithServerFK{}, "Server")
 }
 
 func createServersTableDown(db *gorm.DB) error {

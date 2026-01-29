@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/kkz6/launch-go/internal/middleware"
-	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 )
 
@@ -70,28 +69,3 @@ var (
 	_ middleware.UserService      = (*MiddlewareAdapter)(nil)
 	_ middleware.TwoFactorService = (*MiddlewareAdapter)(nil)
 )
-
-// teamWrapper wraps *models.Team to satisfy middleware.TeamInfo
-type teamWrapper struct {
-	*models.Team
-}
-
-func (t *teamWrapper) GetUserID() string {
-	return t.UserID
-}
-
-// memberWrapper wraps *models.TeamMember to satisfy middleware.TeamMemberInfo
-type memberWrapper struct {
-	*models.TeamMember
-}
-
-func (m *memberWrapper) GetRole() string {
-	if m.Role == nil {
-		return ""
-	}
-	return *m.Role
-}
-
-func (m *memberWrapper) IsAdmin() bool {
-	return m.Role != nil && *m.Role == "admin"
-}

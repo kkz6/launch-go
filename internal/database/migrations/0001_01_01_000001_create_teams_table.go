@@ -34,7 +34,7 @@ func (teamMigration) TableName() string {
 
 // teamWithUserFK defines the foreign key relationship for teams.user_id -> users.id
 type teamWithUserFK struct {
-	UserID string          `gorm:"column:user_id"`
+	UserID string         `gorm:"column:user_id"`
 	User   *userMigration `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE"`
 }
 
@@ -44,7 +44,7 @@ func (teamWithUserFK) TableName() string {
 
 // userWithTeamFK defines the foreign key relationship for users.current_team_id -> teams.id
 type userWithTeamFK struct {
-	CurrentTeamID *string         `gorm:"column:current_team_id"`
+	CurrentTeamID *string        `gorm:"column:current_team_id"`
 	CurrentTeam   *teamMigration `gorm:"foreignKey:CurrentTeamID;references:ID;constraint:OnDelete:SET NULL"`
 }
 
@@ -66,11 +66,7 @@ func createTeamsTableUp(db *gorm.DB) error {
 	}
 
 	// Add foreign key constraint for users.current_team_id -> teams.id
-	if err := migrator.CreateConstraint(&userWithTeamFK{}, "CurrentTeam"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&userWithTeamFK{}, "CurrentTeam")
 }
 
 func createTeamsTableDown(db *gorm.DB) error {
@@ -80,9 +76,5 @@ func createTeamsTableDown(db *gorm.DB) error {
 	_ = migrator.DropConstraint(&userWithTeamFK{}, "CurrentTeam")
 
 	// Drop teams table (will cascade drop teams_user_id_foreign)
-	if err := migrator.DropTable(&teamMigration{}); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.DropTable(&teamMigration{})
 }

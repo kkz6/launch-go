@@ -197,7 +197,7 @@ func TestNewSlackChannel(t *testing.T) {
 	channel := NewSlackChannel(nc, mockHTTP)
 
 	if channel == nil {
-		t.Error("NewSlackChannel() returned nil")
+		t.Fatal("NewSlackChannel() returned nil")
 	}
 	if channel.channel != nc {
 		t.Error("channel not set correctly")

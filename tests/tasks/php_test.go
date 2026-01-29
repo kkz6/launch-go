@@ -99,11 +99,11 @@ func TestClearOpcache(t *testing.T) {
 
 func TestConfigureOpcache(t *testing.T) {
 	settings := map[string]string{
-		"memory_consumption":        "128",
-		"interned_strings_buffer":   "8",
-		"max_accelerated_files":     "10000",
-		"revalidate_freq":           "2",
-		"enable_cli":                "1",
+		"memory_consumption":      "128",
+		"interned_strings_buffer": "8",
+		"max_accelerated_files":   "10000",
+		"revalidate_freq":         "2",
+		"enable_cli":              "1",
 	}
 
 	task := tasks.ConfigureOpcache("8.2", settings)
