@@ -15,9 +15,9 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	m.registerDatabaseUserRoutes(router, authMiddleware, handler)
 }
 
-// registerDatabaseRoutes registers database routes under /servers/:id/databases
+// registerDatabaseRoutes registers database routes under /servers/:serverId/databases
 func (m *Module) registerDatabaseRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler) {
-	databases := router.Group("/servers/:serverId/databases", middleware.AuthenticatedChain(authMiddleware)...)
+	databases := router.Group("/servers/:serverId/databases", middleware.Append(middleware.AuthenticatedChain(authMiddleware), middleware.RequireProvisionedServer("serverId"))...)
 	{
 		databases.Get("/", handler.ListDatabases)
 		databases.Post("/", handler.CreateDatabase)
@@ -27,9 +27,9 @@ func (m *Module) registerDatabaseRoutes(router fiber.Router, authMiddleware fibe
 	}
 }
 
-// registerDatabaseUserRoutes registers database user routes under /servers/:id/database-users
+// registerDatabaseUserRoutes registers database user routes under /servers/:serverId/database-users
 func (m *Module) registerDatabaseUserRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler) {
-	users := router.Group("/servers/:serverId/database-users", middleware.AuthenticatedChain(authMiddleware)...)
+	users := router.Group("/servers/:serverId/database-users", middleware.Append(middleware.AuthenticatedChain(authMiddleware), middleware.RequireProvisionedServer("serverId"))...)
 	{
 		users.Get("/", handler.ListDatabaseUsers)
 		users.Post("/", handler.CreateDatabaseUser)

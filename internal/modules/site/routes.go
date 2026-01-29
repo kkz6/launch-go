@@ -33,9 +33,9 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	sitesGlobal := router.Group("/sites", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	m.registerGlobalSiteRoutes(sitesGlobal, h.Site)
 
-	// Sites are nested under servers
+	// Sites are nested under servers (require provisioned server)
 	servers := router.Group("/servers/:serverId", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
-	sites := servers.Group("/sites")
+	sites := servers.Group("/sites", middleware.RequireProvisionedServer("serverId"))
 
 	m.registerSiteRoutes(sites, h.Site)
 	m.registerDeploymentRoutes(sites, h.Deployment)

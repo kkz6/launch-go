@@ -22,7 +22,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 // registerBackupRoutes registers server backup routes
 func (m *Module) registerBackupRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.BackupHandler) {
-	serverBackups := router.Group("/servers/:serverId/backups", middleware.AuthenticatedChain(authMiddleware)...)
+	serverBackups := router.Group("/servers/:serverId/backups", middleware.Append(middleware.AuthenticatedChain(authMiddleware), middleware.RequireProvisionedServer("serverId"))...)
 	{
 		serverBackups.Get("/", handler.ListBackups)
 		serverBackups.Post("/", handler.CreateBackup)
