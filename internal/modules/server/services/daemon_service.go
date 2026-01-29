@@ -71,10 +71,8 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 
 	activity.RecordWithLog(ctx, "server", "created", "", daemon, "Daemon was created")
 
-	if server.IsProvisioned() {
-		if err := s.dispatchDaemonInstallJob(server, daemon); err != nil {
-			s.LogError(err, "Failed to dispatch daemon install job", "server_id", serverID, "daemon_id", daemon.ID)
-		}
+	if err := s.dispatchDaemonInstallJob(server, daemon); err != nil {
+		s.LogError(err, "Failed to dispatch daemon install job", "server_id", serverID, "daemon_id", daemon.ID)
 	}
 
 	return daemon, nil
@@ -138,7 +136,7 @@ func (s *Service) DeleteDaemon(ctx context.Context, serverID, teamID, daemonID s
 
 	activity.RecordWithLog(ctx, "server", "deleted", "", daemon, "Daemon deletion requested")
 
-	if daemon.IsInstalled() && server.IsProvisioned() {
+	if daemon.IsInstalled() {
 		return s.WithTransaction(ctx, func(tx *gorm.DB) error {
 			now := time.Now()
 			daemon.UninstallationRequestedAt = &now
@@ -191,7 +189,7 @@ func (s *Service) RestartDaemon(ctx context.Context, serverID, teamID, daemonID 
 		return err
 	}
 
-	if !daemon.IsInstalled() || !server.IsProvisioned() {
+	if !daemon.IsInstalled() {
 		return ErrDaemonNotInstalled
 	}
 

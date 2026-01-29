@@ -72,10 +72,8 @@ func (s *Service) AttachSSHKey(ctx context.Context, serverID, teamID, sshKeyID s
 		return err
 	}
 
-	if server.IsProvisioned() {
-		if err := s.dispatchSSHKeyAddJob(server, key); err != nil {
-			s.LogError(err, "Failed to dispatch SSH key add job", "server_id", serverID, "ssh_key_id", sshKeyID)
-		}
+	if err := s.dispatchSSHKeyAddJob(server, key); err != nil {
+		s.LogError(err, "Failed to dispatch SSH key add job", "server_id", serverID, "ssh_key_id", sshKeyID)
 	}
 
 	return nil
@@ -97,10 +95,8 @@ func (s *Service) DetachSSHKey(ctx context.Context, serverID, teamID, sshKeyID s
 		return err
 	}
 
-	if server.IsProvisioned() {
-		if err := s.dispatchSSHKeyRemoveJob(server, key); err != nil {
-			s.LogError(err, "Failed to dispatch SSH key remove job", "server_id", serverID, "ssh_key_id", sshKeyID)
-		}
+	if err := s.dispatchSSHKeyRemoveJob(server, key); err != nil {
+		s.LogError(err, "Failed to dispatch SSH key remove job", "server_id", serverID, "ssh_key_id", sshKeyID)
 	}
 
 	return nil

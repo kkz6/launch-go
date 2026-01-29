@@ -50,10 +50,8 @@ func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID strin
 	// Using embedded ActivityMixin for consistent activity logging
 	s.LogSystemActivity(ctx, rule, "created", "Firewall rule was created")
 
-	if server.IsProvisioned() {
-		if err := s.dispatchFirewallRuleInstallJob(server, rule); err != nil {
-			s.LogError(err, "Failed to dispatch firewall rule install job", "server_id", serverID, "rule_id", rule.ID)
-		}
+	if err := s.dispatchFirewallRuleInstallJob(server, rule); err != nil {
+		s.LogError(err, "Failed to dispatch firewall rule install job", "server_id", serverID, "rule_id", rule.ID)
 	}
 
 	return rule, nil
@@ -124,7 +122,7 @@ func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, rule
 	// Using embedded ActivityMixin for consistent activity logging
 	s.LogSystemActivity(ctx, rule, "deleted", "Firewall rule deletion requested")
 
-	if rule.IsInstalled() && server.IsProvisioned() {
+	if rule.IsInstalled() {
 		return s.WithTransaction(ctx, func(tx *gorm.DB) error {
 			now := time.Now()
 			rule.UninstallationRequestedAt = &now

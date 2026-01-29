@@ -65,10 +65,8 @@ func (s *Service) CreateCron(ctx context.Context, serverID, teamID string, req *
 		"server_id": serverID,
 	})
 
-	if server.IsProvisioned() {
-		if err := s.dispatchCronInstallJob(server, cron); err != nil {
-			s.LogError(err, "Failed to dispatch cron install job", "server_id", serverID, "cron_id", cron.ID)
-		}
+	if err := s.dispatchCronInstallJob(server, cron); err != nil {
+		s.LogError(err, "Failed to dispatch cron install job", "server_id", serverID, "cron_id", cron.ID)
 	}
 
 	return cron, nil
@@ -130,7 +128,7 @@ func (s *Service) DeleteCron(ctx context.Context, serverID, teamID, cronID strin
 
 	activity.RecordWithLog(ctx, "server", "deleted", "", cron, "Cron job deletion requested")
 
-	if cron.IsInstalled() && server.IsProvisioned() {
+	if cron.IsInstalled() {
 		err := s.WithTransaction(ctx, func(tx *gorm.DB) error {
 			now := time.Now()
 			cron.UninstallationRequestedAt = &now
