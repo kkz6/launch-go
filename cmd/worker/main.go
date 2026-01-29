@@ -14,12 +14,14 @@ import (
 	"github.com/kkz6/launch-go/internal/database"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/git"
+	"github.com/kkz6/launch-go/internal/modules/notification"
 	"github.com/kkz6/launch-go/internal/modules/script"
 	"github.com/kkz6/launch-go/internal/modules/server"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
+	"github.com/kkz6/launch-go/internal/pkg/mail"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -91,9 +93,19 @@ func main() {
 		},
 	)
 
+	// Create email sender and notification module for notifier access
+	emailSender := mail.NewEmailSender(cfg.Mail)
+	notifBuilder := app.NewBuilder(app.Deps{
+		DB:     db,
+		Logger: appLogger,
+		Config: cfg,
+	})
+	notificationModule := notification.NewModule(notifBuilder, emailSender)
+	notifier := notificationModule.Notifier()
+
 	// Create application context with all shared dependencies
 	// Note: membershipCache is nil for worker since it's only needed for HTTP middleware
-	ctx := app.NewContext(cfg, db, appLogger, queueClient, redisBroadcaster, dispatcher, nil)
+	ctx := app.NewContext(cfg, db, appLogger, queueClient, redisBroadcaster, dispatcher, notifier, nil)
 
 	// Create application kernel for module registration
 	kernel := app.NewKernel(appLogger)
@@ -119,7 +131,7 @@ func main() {
 	kernel.BootTaskCallbacks()
 
 	// Recover orphaned tasks from previous worker session
-	recoverer := servertasks.NewTaskRecoverer(db, appLogger, dispatcher, queueClient, redisBroadcaster, nil)
+	recoverer := servertasks.NewTaskRecoverer(db, appLogger, dispatcher, queueClient, redisBroadcaster, notifier)
 	if err := recoverer.RecoverOrphanedTasks(context.Background()); err != nil {
 		appLogger.Error().Err(err).Msg("Task recovery encountered errors")
 	}

@@ -34,6 +34,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/health"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
+	"github.com/kkz6/launch-go/internal/pkg/mail"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -167,6 +168,7 @@ func (a *Application) registerModules() {
 		a.queueClient,
 		a.wsHub,
 		a.dispatcher,
+		nil, // Notifier - set after notification module creation
 		a.membershipCache,
 	)
 
@@ -175,6 +177,9 @@ func (a *Application) registerModules() {
 
 	// Create module builder
 	builder := app.NewBuilderFromContext(ctx)
+
+	// Create email sender based on mail configuration
+	emailSender := mail.NewEmailSender(a.config.Mail)
 
 	// Create modules using builder pattern
 	authModule := auth.NewModule(builder)
@@ -185,7 +190,7 @@ func (a *Application) registerModules() {
 	backupModule := backup.NewModule(builder)
 	billingModule := billing.NewModule(builder)
 	gitModule := git.NewModule(builder)
-	notificationModule := notification.NewModule(builder)
+	notificationModule := notification.NewModule(builder, emailSender)
 	scriptModule := script.NewModule(builder)
 	dashboardModule := dashboard.NewModule(builder)
 	wsModule := wsmodule.NewModule(builder)
@@ -193,6 +198,9 @@ func (a *Application) registerModules() {
 	// Wire cross-module dependencies
 	siteModule.SetDomainRepository(dnsModule.Repos().Domain())
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
+
+	// Wire notifier into shared deps so modules creating TaskRunnerDeps can access it
+	ctx.Notifier = notificationModule.Notifier()
 
 	// Register all modules with the kernel
 	a.kernel.
