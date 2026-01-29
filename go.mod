@@ -2,7 +2,7 @@ module github.com/kkz6/launch-go
 
 go 1.24.0
 
-toolchain go1.24.4
+toolchain go1.24.12
 
 require (
 	github.com/charmbracelet/lipgloss v1.1.0
