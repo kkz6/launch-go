@@ -8,30 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/ssh"
-
-	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/launch/paths"
 
 	"github.com/rs/zerolog"
 )
-
-// extractExitCode extracts the exit code from an SSH session error.
-// Returns 0 if the error is not an ExitError.
-func extractExitCode(err error) int {
-	if err == nil {
-		return 0
-	}
-	if exitErr, ok := err.(*ssh.ExitError); ok {
-		return exitErr.ExitStatus()
-	}
-	// For session.Wait errors that wrap ExitError
-	if exitErr, ok := err.(*ssh.ExitMissingError); ok {
-		_ = exitErr
-		return 1
-	}
-	return 0
-}
 
 // SimpleBroadcaster is a minimal interface for broadcasting.
 // This is satisfied by broadcast.Broadcaster, broadcast.NopBroadcaster, and any
@@ -46,7 +26,6 @@ type SimpleBroadcaster interface {
 // Both Dispatcher and FakeDispatcher implement this interface.
 type TaskDispatcher interface {
 	Run(ctx context.Context, pt *PendingTask) (*TaskResult, error)
-	RunWithStreaming(ctx context.Context, pt *PendingTask) (*TaskResult, error)
 }
 
 // Dispatcher handles task execution
@@ -338,16 +317,14 @@ func (d *Dispatcher) runRemoteBackground(
 			pt.Connection,
 			pt.TaskID,
 			pid,
+			pt.GetMarkerHandler(),
 			func(output string, status string) {
-				// Output update callback - call PendingTask's callback first for marker processing
 				if callback := pt.GetOnOutput(); callback != nil {
 					callback(output)
 				}
-				// Then call Task's OnOutput for backwards compatibility
 				pt.Task.OnOutput(output)
 			},
 			func(result *StreamResult) {
-				// Completion callback
 				taskResult := &TaskResult{
 					TaskID:     result.TaskID,
 					Output:     result.Output,
@@ -359,13 +336,14 @@ func (d *Dispatcher) runRemoteBackground(
 				if result.Status == "timeout" {
 					taskResult.TimedOut = true
 				}
+				if result.Error != nil {
+					taskResult.Error = result.Error
+				}
 
-				// Send result to completion channel if set (for proper callback handling)
 				if ch := pt.GetCompletionChannel(); ch != nil {
 					ch <- taskResult
 				}
 
-				// Also call task callbacks for backwards compatibility
 				switch result.Status {
 				case "finished":
 					pt.Task.OnFinished(streamCtx, taskResult)
@@ -379,6 +357,23 @@ func (d *Dispatcher) runRemoteBackground(
 
 		if err != nil {
 			d.logger.Error().Err(err).Str("task_id", pt.TaskID).Msg("SSH streaming error")
+
+			// If MonitorBackgroundTask failed before calling onComplete (e.g., SSH connection failure),
+			// send a failure result to the completion channel to prevent the caller from blocking forever.
+			if ch := pt.GetCompletionChannel(); ch != nil {
+				select {
+				case ch <- &TaskResult{
+					TaskID:     pt.TaskID,
+					ExitCode:   1,
+					Output:     fmt.Sprintf("SSH monitoring failed: %s", err),
+					Duration:   time.Since(startTime),
+					FinishedAt: time.Now(),
+					Error:      err,
+				}:
+				default:
+					// onComplete already sent a result — no action needed
+				}
+			}
 		}
 	}()
 
@@ -386,146 +381,6 @@ func (d *Dispatcher) runRemoteBackground(
 	// Return nil result to indicate the task is still running.
 	// The actual result will be provided by MonitorBackgroundTask when the task completes.
 	return nil, nil
-}
-
-// RunWithStreaming runs a task on a remote server with live SSH output streaming.
-// Output flows directly through the SSH pipe — no file intermediary — ensuring
-// real-time delivery of each line (including markers) as it's written.
-func (d *Dispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*TaskResult, error) {
-	if pt.Connection == nil {
-		return nil, fmt.Errorf("streaming requires a remote connection")
-	}
-
-	script := pt.Task.Script()
-
-	conn := pt.Connection
-
-	// Create SSH client
-	sshClient, err := conn.Dial()
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect: %w", err)
-	}
-	defer sshClient.Close()
-
-	taskDir := conn.GetScriptPath()
-	taskID := pt.TaskID
-	if taskID == "" {
-		taskID = fmt.Sprintf("%d", time.Now().UnixNano())
-	}
-
-	taskPaths := paths.GetTaskPaths(taskDir, taskID)
-
-	// Ensure script directory exists
-	if _, err := sshClient.Run(ctx, fmt.Sprintf("mkdir -p %s", taskDir)); err != nil {
-		return nil, fmt.Errorf("failed to create script directory: %w", err)
-	}
-
-	// Upload script
-	if err := sshClient.Upload(ctx, []byte(script), taskPaths.Script, 0755); err != nil {
-		return nil, fmt.Errorf("failed to upload script: %w", err)
-	}
-
-	d.logger.Info().
-		Str("task_id", taskID).
-		Str("host", conn.Host).
-		Msg("RunWithStreaming: starting direct SSH streaming")
-
-	startTime := time.Now()
-	timeout := int(pt.Task.Timeout().Seconds())
-
-	// Run with output streaming via SSH pipe (no file intermediary).
-	// Use pipefail so the exit code of timeout/bash propagates through tee.
-	// The script output goes directly through the SSH pipe for real-time delivery.
-	var outputBuffer strings.Builder
-	command := fmt.Sprintf(
-		"bash -c 'set -o pipefail; timeout %ds bash %s 2>&1 | tee %s'",
-		timeout, taskPaths.Script, taskPaths.Output,
-	)
-
-	onLine := pt.GetOnLine()
-	var lastBroadcast time.Time
-
-	err = sshClient.StreamOutput(ctx, command, func(line string) error {
-		outputBuffer.WriteString(line + "\n")
-
-		// Call per-line callback for efficient marker processing
-		if onLine != nil {
-			onLine(line)
-		}
-
-		// Call full-output callback for backwards compatibility
-		if callback := pt.GetOnOutput(); callback != nil {
-			callback(outputBuffer.String())
-		}
-		pt.Task.OnOutput(outputBuffer.String())
-
-		// Throttle WebSocket broadcasts to avoid flooding (every 500ms)
-		if d.ws != nil && time.Since(lastBroadcast) >= 500*time.Millisecond {
-			d.ws.Broadcast(broadcast.TaskChannel(taskID), "task.output", map[string]interface{}{
-				"task_id": taskID,
-				"output":  outputBuffer.String(),
-				"status":  "running",
-			})
-			lastBroadcast = time.Now()
-		}
-
-		return nil
-	})
-
-	// Extract exit code from the SSH session error
-	var exitCode int
-	if err != nil {
-		exitCode = extractExitCode(err)
-	}
-
-	result := &TaskResult{
-		TaskID:     pt.TaskID,
-		Output:     outputBuffer.String(),
-		Duration:   time.Since(startTime),
-		FinishedAt: time.Now(),
-		ExitCode:   exitCode,
-	}
-
-	if err != nil {
-		if ctx.Err() != nil {
-			result.Error = ctx.Err()
-		} else if exitCode == 0 {
-			// Non-exit-code error (SSH error, etc.)
-			result.Error = err
-		}
-		// If exitCode != 0, it's a normal script failure — not an error
-	}
-
-	// Final broadcast with complete output
-	if d.ws != nil {
-		status := "finished"
-		if result.ExitCode != 0 {
-			status = "failed"
-		}
-		d.ws.Broadcast(broadcast.TaskChannel(taskID), "task.output", map[string]interface{}{
-			"task_id": taskID,
-			"output":  outputBuffer.String(),
-			"status":  status,
-		})
-	}
-
-	// Determine final status
-	if result.ExitCode == 124 {
-		result.TimedOut = true
-		pt.Task.OnTimeout(ctx, result)
-	} else if result.ExitCode != 0 || result.Error != nil {
-		pt.Task.OnFailed(ctx, result)
-	} else {
-		pt.Task.OnFinished(ctx, result)
-	}
-
-	d.logger.Info().
-		Str("task_id", taskID).
-		Int("exit_code", result.ExitCode).
-		Dur("duration", result.Duration).
-		Msg("RunWithStreaming: completed")
-
-	return result, nil
 }
 
 // GetTaskOutput fetches output from a remote task
@@ -554,7 +409,10 @@ func (d *Dispatcher) CheckTaskStatus(ctx context.Context, conn *Connection, pid 
 	defer sshClient.Close()
 
 	// Check if process is running
-	result, _ := sshClient.Run(ctx, fmt.Sprintf("ps -p %s -o pid= 2>/dev/null", pid))
+	result, err := sshClient.Run(ctx, fmt.Sprintf("ps -p %s -o pid= 2>/dev/null", pid))
+	if err != nil || result == nil {
+		return false, 0, err
+	}
 	isRunning := strings.TrimSpace(result.Stdout) != ""
 
 	if isRunning {

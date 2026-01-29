@@ -95,12 +95,12 @@ func (d *FakeDispatcher) Run(ctx context.Context, pt *PendingTask) (*TaskResult,
 		pt.Task.OnFailed(ctx, taskResult)
 	}
 
-	return taskResult, nil
-}
+	// Send to completion channel if set (for background task testing)
+	if ch := pt.GetCompletionChannel(); ch != nil {
+		ch <- taskResult
+	}
 
-// RunWithStreaming delegates to Run for testing purposes.
-func (d *FakeDispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*TaskResult, error) {
-	return d.Run(ctx, pt)
+	return taskResult, nil
 }
 
 // SetResult configures a specific result for a task by name or ID.
@@ -120,7 +120,7 @@ func (d *FakeDispatcher) SetFailure(nameOrID string, exitCode int, output string
 	})
 }
 
-// SetTimeout configures a task to config.
+// SetTimeout configures a task to time out.
 func (d *FakeDispatcher) SetTimeout(nameOrID string) {
 	d.SetResult(nameOrID, &TaskResult{
 		ExitCode:   124,

@@ -145,7 +145,7 @@ func TestUser_Join(t *testing.T) {
 
 func TestUser_TaskDir(t *testing.T) {
 	u := ForUser("deploy")
-	want := "/home/deploy/.launch-tasks"
+	want := "/home/deploy/.launch"
 	if got := u.TaskDir(); got != want {
 		t.Errorf("User.TaskDir() = %v, want %v", got, want)
 	}
@@ -277,21 +277,21 @@ func TestSite_WebDirectory(t *testing.T) {
 }
 
 func TestGetTaskPaths(t *testing.T) {
-	paths := GetTaskPaths("/home/deploy/.launch-tasks", "abc123")
+	paths := GetTaskPaths("/home/deploy/.launch", "abc123")
 
-	if paths.Script != "/home/deploy/.launch-tasks/task-abc123.sh" {
-		t.Errorf("TaskPaths.Script = %v, want %v", paths.Script, "/home/deploy/.launch-tasks/task-abc123.sh")
+	if paths.Script != "/home/deploy/.launch/task-abc123.sh" {
+		t.Errorf("TaskPaths.Script = %v, want %v", paths.Script, "/home/deploy/.launch/task-abc123.sh")
 	}
-	if paths.Output != "/home/deploy/.launch-tasks/task-abc123.log" {
-		t.Errorf("TaskPaths.Output = %v, want %v", paths.Output, "/home/deploy/.launch-tasks/task-abc123.log")
+	if paths.Output != "/home/deploy/.launch/task-abc123.log" {
+		t.Errorf("TaskPaths.Output = %v, want %v", paths.Output, "/home/deploy/.launch/task-abc123.log")
 	}
-	if paths.ExitCode != "/home/deploy/.launch-tasks/task-abc123.exit" {
-		t.Errorf("TaskPaths.ExitCode = %v, want %v", paths.ExitCode, "/home/deploy/.launch-tasks/task-abc123.exit")
+	if paths.ExitCode != "/home/deploy/.launch/task-abc123.exit" {
+		t.Errorf("TaskPaths.ExitCode = %v, want %v", paths.ExitCode, "/home/deploy/.launch/task-abc123.exit")
 	}
 }
 
 func TestGetTaskDir(t *testing.T) {
-	want := "/home/deploy/.launch-tasks"
+	want := "/home/deploy/.launch"
 	if got := GetTaskDir("deploy"); got != want {
 		t.Errorf("GetTaskDir() = %v, want %v", got, want)
 	}

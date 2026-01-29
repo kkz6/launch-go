@@ -13,8 +13,10 @@ type PendingTask struct {
 	// Output callback for streaming (receives full accumulated output)
 	onOutput func(output string)
 
-	// Line callback for per-line processing (receives individual lines)
-	onLine func(line string)
+	// Per-task marker handler for real-time marker processing during background monitoring.
+	// This is called for each marker detected in the output stream, allowing tasks to
+	// respond to progress updates, step completions, etc. as they happen.
+	markerHandler MarkerHandler
 
 	// Completion channel for background tasks
 	// When set, the dispatcher will send the result here when the task completes
@@ -74,17 +76,17 @@ func (p *PendingTask) GetOnOutput() func(output string) {
 	return p.onOutput
 }
 
-// OnLine sets a callback for per-line processing during streaming.
-// Unlike OnOutput which receives the full accumulated buffer, OnLine receives
-// individual lines as they arrive — ideal for marker detection without re-parsing.
-func (p *PendingTask) OnLine(callback func(line string)) *PendingTask {
-	p.onLine = callback
+// WithMarkerHandler sets a per-task marker handler for real-time processing
+// during background monitoring. The handler is called for each marker detected
+// in the output stream (e.g., progress, step_completed, software_installed).
+func (p *PendingTask) WithMarkerHandler(handler MarkerHandler) *PendingTask {
+	p.markerHandler = handler
 	return p
 }
 
-// GetOnLine returns the per-line callback
-func (p *PendingTask) GetOnLine() func(line string) {
-	return p.onLine
+// GetMarkerHandler returns the per-task marker handler
+func (p *PendingTask) GetMarkerHandler() MarkerHandler {
+	return p.markerHandler
 }
 
 // ShouldRunInBackground returns true if task should run in background

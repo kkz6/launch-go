@@ -16,7 +16,6 @@ import (
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-	"github.com/kkz6/launch-go/internal/pkg/taskrunner/markers"
 )
 
 // TaskStatus represents the status of a task execution.
@@ -361,10 +360,10 @@ func (r *TaskRunner) RunInBackground(ctx context.Context) (*models.Task, error) 
 		return nil, fmt.Errorf("database required for background tasks")
 	}
 
-	return r.runLongRunning(ctx)
+	return r.runLongRunning()
 }
 
-func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
+func (r *TaskRunner) runLongRunning() (*models.Task, error) {
 	conn, err := r.getConnection()
 	if err != nil {
 		return nil, err
@@ -380,7 +379,7 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 			Str("task_id", taskModel.ID).
 			Str("task_name", taskModel.Name).
 			Bool("has_marker_handler", r.markerHandler != nil).
-			Msg("Task started with direct SSH streaming")
+			Msg("Task started with nohup + SSH monitor")
 	}
 
 	go func() {
@@ -390,55 +389,44 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 		pendingTask := taskrunner.NewPendingTask(r.task)
 		pendingTask.OnConnection(conn)
 		pendingTask.As(taskModel.ID)
+		pendingTask.InBackground()
 
-		// Set up per-line callback for real-time marker processing.
-		// Each line is processed individually as it arrives from the SSH pipe —
-		// no re-parsing of the full buffer, no file intermediary delays.
+		// Set per-task marker handler for real-time processing during monitoring.
+		// The monitor calls this for each marker detected via tail -f, enabling
+		// real-time DB updates and WebSocket broadcasts as the script executes.
 		if r.markerHandler != nil {
-			pendingTask.OnLine(func(line string) {
-				marker := markers.Parse(line)
-				if marker == nil {
-					return
-				}
-
-				if r.logger != nil {
-					r.logger.Debug().
-						Str("task_id", taskModel.ID).
-						Str("marker_type", marker.Type).
-						Str("marker_value", marker.Value).
-						Msg("runLongRunning: marker detected, calling handler")
-				}
-
-				if err := r.markerHandler.OnMarker(context.Background(), taskModel.ID, marker); err != nil {
-					if r.logger != nil {
-						r.logger.Warn().Err(err).
-							Str("marker_type", marker.Type).
-							Msg("Marker handler error")
-					}
-				}
-			})
+			pendingTask.WithMarkerHandler(r.markerHandler)
 		}
+
+		// Set up completion channel to receive result from the background monitor.
+		// The dispatcher starts the script with nohup (survives SSH disconnects),
+		// then monitors via tail -f on a separate SSH connection. When the
+		// exit_code marker is detected, the result is sent here.
+		completionChan := make(chan *taskrunner.TaskResult, 1)
+		pendingTask.WithCompletionChannel(completionChan)
 
 		bgCtx := context.Background()
 
 		if r.logger != nil {
 			r.logger.Info().
 				Str("task_id", taskModel.ID).
-				Bool("has_OnLine", pendingTask.GetOnLine() != nil).
-				Msg("runLongRunning: calling dispatcher.RunWithStreaming()")
+				Bool("has_marker_handler", r.markerHandler != nil).
+				Msg("runLongRunning: dispatching background task with nohup + monitor")
 		}
 
-		// Use direct SSH streaming: script output flows through the SSH pipe
-		// with no file intermediary. Each line (including markers) is delivered
-		// immediately as the script writes it.
-		taskResult, execErr := r.dispatcher.RunWithStreaming(bgCtx, pendingTask)
-
+		// Dispatch the task in background mode:
+		// 1. Uploads script to server via SCP
+		// 2. Starts with nohup (detached from SSH session, survives disconnects)
+		// 3. Spawns MonitorBackgroundTask goroutine on a new SSH connection
+		// 4. Monitor uses tail -f to stream output and detect markers in real-time
+		// 5. Returns immediately (nil result) — actual result comes via completionChan
+		_, execErr := r.dispatcher.Run(bgCtx, pendingTask)
 		if execErr != nil {
 			if r.logger != nil {
 				r.logger.Error().Err(execErr).
 					Str("task_id", taskModel.ID).
 					Str("task_name", taskModel.Name).
-					Msg("Streaming task execution failed")
+					Msg("Failed to start background task")
 			}
 			taskModel.Status = string(TaskStatusFailed)
 			taskModel.Output = dbtype.EncryptedString(execErr.Error())
@@ -447,6 +435,10 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 			r.handleTaskCompletion(bgCtx, taskModel, nil, execErr)
 			return
 		}
+
+		// Wait for the background monitor to complete.
+		// This blocks until the exit_code marker is detected or the monitor times out.
+		taskResult := <-completionChan
 
 		if r.logger != nil {
 			status := "unknown"
@@ -463,7 +455,7 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 				Str("task_id", taskModel.ID).
 				Str("task_name", taskModel.Name).
 				Str("status", status).
-				Msg("Streaming task completed")
+				Msg("Background task completed")
 		}
 
 		if taskResult != nil {
@@ -471,7 +463,7 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 		}
 
 		// Handle task completion - invokes callbacks and dispatches completion jobs
-		r.handleTaskCompletion(bgCtx, taskModel, taskResult, execErr)
+		r.handleTaskCompletion(bgCtx, taskModel, taskResult, nil)
 	}()
 
 	return taskModel, nil
