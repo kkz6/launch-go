@@ -68,9 +68,9 @@ func (u User) Join(parts ...string) string {
 	return filepath.Join(args...)
 }
 
-// TaskDir returns the .launch-tasks directory for the user.
+// TaskDir returns the .launch directory for the user.
 func (u User) TaskDir() string {
-	return u.Join(".launch-tasks")
+	return u.Join(".launch")
 }
 
 // Site represents a site for path construction.
@@ -175,7 +175,7 @@ func GetTaskPaths(baseDir, taskID string) TaskPaths {
 	}
 }
 
-// GetTaskDir returns the .launch-tasks directory for a user.
+// GetTaskDir returns the .launch directory for a user.
 func GetTaskDir(user string) string {
 	return ForUser(user).TaskDir()
 }

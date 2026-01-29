@@ -184,6 +184,9 @@ func (m *StreamMonitor) StreamTaskOutput(
 		if finalStatus == "" {
 			result.Status = "failed"
 		}
+		if result.ExitCode == 0 {
+			result.ExitCode = 1
+		}
 	}
 
 	// Final broadcast
@@ -330,13 +333,17 @@ func (m *StreamMonitor) broadcastMarkerEvent(taskID, eventType string, data map[
 	m.wsHub.Broadcast(broadcast.TaskChannel(taskID), eventType, data)
 }
 
-// MonitorBackgroundTask monitors a background task that's already running
-// It uses tail -f to stream output in real-time until the exit_code marker is seen
+// MonitorBackgroundTask monitors a background task that's already running.
+// It uses tail -f to stream output in real-time until the exit_code marker is seen.
+// The optional taskMarkerHandler is called for each marker detected, enabling
+// real-time callbacks (e.g., updating DB progress, broadcasting step completions)
+// during script execution — not just after completion.
 func (m *StreamMonitor) MonitorBackgroundTask(
 	ctx context.Context,
 	conn *Connection,
 	taskID string,
 	pid string,
+	taskMarkerHandler MarkerHandler,
 	onUpdate func(output string, status string),
 	onComplete func(result *StreamResult),
 ) error {
@@ -418,7 +425,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 				Msg("MonitorBackgroundTask: received line from tail -f")
 		}
 
-		// Check for markers - process them via handleMarker (same as StreamTaskOutput)
+		// Check for markers - process them in real-time
 		if marker := markers.Parse(line); marker != nil {
 			m.logger.Info().
 				Str("task_id", taskID).
@@ -426,7 +433,18 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 				Str("marker_value", marker.Value).
 				Msg("MonitorBackgroundTask: detected marker")
 
-			// Use handleMarker to process marker and invoke marker handler callbacks
+			// Call per-task marker handler first for real-time callbacks
+			// (e.g., updating server progress in DB, marking steps complete)
+			if taskMarkerHandler != nil {
+				if err := taskMarkerHandler.OnMarker(streamCtx, taskID, marker); err != nil {
+					m.logger.Warn().Err(err).
+						Str("task_id", taskID).
+						Str("marker_type", string(marker.Type)).
+						Msg("MonitorBackgroundTask: per-task marker handler error")
+				}
+			}
+
+			// Then call global handleMarker for built-in broadcast handling
 			if err := m.handleMarker(streamCtx, taskID, marker, &exitCode, &finalStatus); err != nil {
 				return err
 			}
@@ -470,6 +488,9 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 		result.Error = err
 		if finalStatus == "" {
 			result.Status = "failed"
+		}
+		if result.ExitCode == 0 {
+			result.ExitCode = 1
 		}
 	}
 

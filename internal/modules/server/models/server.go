@@ -209,7 +209,7 @@ func (s *Server) GetScriptPath(user string) string {
 	if user == "root" {
 		homeDir = "/root"
 	} else if user == "ubuntu" {
-		homeDir = "/ubuntu"
+		homeDir = "/home/ubuntu"
 	} else {
 		homeDir = "/home/" + user
 	}

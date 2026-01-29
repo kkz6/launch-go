@@ -13,7 +13,7 @@ type Connection struct {
 	Port       int
 	User       string
 	PrivateKey string
-	ScriptPath string // Remote path for scripts (default: ~/.launch-tasks)
+	ScriptPath string // Remote path for scripts (default: ~/.launch)
 }
 
 // GetScriptPath returns the script storage path on the remote server

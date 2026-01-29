@@ -36,10 +36,6 @@ func (m *mockDispatcher) Run(ctx context.Context, task *taskrunner.PendingTask) 
 	}, nil
 }
 
-func (m *mockDispatcher) RunWithStreaming(ctx context.Context, task *taskrunner.PendingTask) (*taskrunner.TaskResult, error) {
-	return m.Run(ctx, task)
-}
-
 // mockTask implements taskrunner.Task for testing
 type mockTask struct {
 	name    string
