@@ -25,13 +25,22 @@ type Module struct {
 
 	// Channel factory (needed for creating notification channels)
 	channelFactory *channels.Factory
+
+	// Cached service registry (lazily created by createServices)
+	serviceRegistry *services.ServiceRegistry
 }
 
 // NewModule creates a new notification module
-func NewModule(b *app.Builder) *Module {
+func NewModule(b *app.Builder, emailSender channels.EmailSender) *Module {
 	deps := b.Deps()
 	httpClient := channels.NewDefaultHTTPClient()
-	channelFactory := channels.NewFactory(httpClient)
+
+	var channelFactory *channels.Factory
+	if emailSender != nil {
+		channelFactory = channels.NewFactoryWithEmail(httpClient, emailSender)
+	} else {
+		channelFactory = channels.NewFactory(httpClient)
+	}
 
 	return &Module{
 		Base:           app.NewBase(ModuleName, b),
@@ -40,8 +49,13 @@ func NewModule(b *app.Builder) *Module {
 	}
 }
 
-// createServices creates all services needed for route handlers
+// createServices creates all services needed for route handlers.
+// The result is cached so subsequent calls return the same registry.
 func (m *Module) createServices() *services.ServiceRegistry {
+	if m.serviceRegistry != nil {
+		return m.serviceRegistry
+	}
+
 	deps := m.Deps()
 
 	// Get admin webhook URL from config
@@ -61,7 +75,15 @@ func (m *Module) createServices() *services.ServiceRegistry {
 	}
 
 	// Create service registry - handles all service creation and wiring
-	return services.NewServiceRegistry(svcDeps)
+	m.serviceRegistry = services.NewServiceRegistry(svcDeps)
+	return m.serviceRegistry
+}
+
+// Notifier returns a NotifierAdapter that satisfies the taskrunner.NotifierService
+// interface. It lazily creates the service registry if needed.
+func (m *Module) Notifier() *NotifierAdapter {
+	svc := m.createServices()
+	return NewNotifierAdapter(svc.Notifier())
 }
 
 // Repos returns the repository registry
