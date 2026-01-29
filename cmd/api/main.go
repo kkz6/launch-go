@@ -160,6 +160,17 @@ func (a *Application) registerMiddleware() {
 
 // registerModules sets up all application modules using the kernel
 func (a *Application) registerModules() {
+	// Create email sender and notifier before building context,
+	// so the Notifier is available in Deps from the start (Deps is copied by value)
+	emailSender := mail.NewEmailSender(a.config.Mail)
+	notifBuilder := app.NewBuilder(app.Deps{
+		DB:     a.db,
+		Logger: a.logger,
+		Config: a.config,
+	})
+	notificationModule := notification.NewModule(notifBuilder, emailSender)
+	notifier := notificationModule.Notifier()
+
 	// Create application context with all shared dependencies
 	ctx := app.NewContext(
 		a.config,
@@ -168,7 +179,7 @@ func (a *Application) registerModules() {
 		a.queueClient,
 		a.wsHub,
 		a.dispatcher,
-		nil, // Notifier - set after notification module creation
+		notifier,
 		a.membershipCache,
 	)
 
@@ -177,9 +188,6 @@ func (a *Application) registerModules() {
 
 	// Create module builder
 	builder := app.NewBuilderFromContext(ctx)
-
-	// Create email sender based on mail configuration
-	emailSender := mail.NewEmailSender(a.config.Mail)
 
 	// Create modules using builder pattern
 	authModule := auth.NewModule(builder)
@@ -190,7 +198,6 @@ func (a *Application) registerModules() {
 	backupModule := backup.NewModule(builder)
 	billingModule := billing.NewModule(builder)
 	gitModule := git.NewModule(builder)
-	notificationModule := notification.NewModule(builder, emailSender)
 	scriptModule := script.NewModule(builder)
 	dashboardModule := dashboard.NewModule(builder)
 	wsModule := wsmodule.NewModule(builder)
@@ -198,9 +205,6 @@ func (a *Application) registerModules() {
 	// Wire cross-module dependencies
 	siteModule.SetDomainRepository(dnsModule.Repos().Domain())
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
-
-	// Wire notifier into shared deps so modules creating TaskRunnerDeps can access it
-	ctx.Notifier = notificationModule.Notifier()
 
 	// Register all modules with the kernel
 	a.kernel.

@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 )
 
 // ResendSender sends emails via the Resend API.
@@ -23,7 +24,7 @@ func NewResendSender(apiKey, fromAddress, fromName string) *ResendSender {
 		apiKey:      apiKey,
 		fromAddress: fromAddress,
 		fromName:    fromName,
-		httpClient:  &http.Client{},
+		httpClient:  &http.Client{Timeout: 30 * time.Second},
 	}
 }
 
