@@ -9,7 +9,6 @@ import (
 )
 
 var (
-	ErrServerNotProvisioned = fiberutil.BadRequest("Server is not provisioned")
 	ErrServerNotConnected   = fiberutil.BadRequest("Server is not connected")
 	ErrInvalidProvider      = fiberutil.BadRequest("Invalid server provider")
 	ErrInvalidServerType    = fiberutil.BadRequest("Invalid server type")

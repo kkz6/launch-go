@@ -259,10 +259,6 @@ func (s *Service) RebootServer(ctx context.Context, id, teamID string) error {
 		return err
 	}
 
-	if !server.IsProvisioned() {
-		return ErrServerNotProvisioned
-	}
-
 	task, err := jobs.NewRebootServerTask(server.ID, nil)
 	if err != nil {
 		return err
@@ -715,10 +711,6 @@ func (s *Service) RunVulnerabilityAudit(ctx context.Context, serverID, teamID, u
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
-	}
-
-	if !server.IsProvisioned() {
-		return ErrServerNotProvisioned
 	}
 
 	if !server.IsConnected() {

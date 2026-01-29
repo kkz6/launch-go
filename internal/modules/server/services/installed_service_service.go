@@ -57,10 +57,8 @@ func (s *Service) InstallService(ctx context.Context, serverID, teamID string, r
 		return nil, err
 	}
 
-	if server.IsProvisioned() {
-		if err := s.dispatchServiceInstallJob(server, service); err != nil {
-			s.LogError(err, "Failed to dispatch service install job", "server_id", serverID, "service_id", service.ID)
-		}
+	if err := s.dispatchServiceInstallJob(server, service); err != nil {
+		s.LogError(err, "Failed to dispatch service install job", "server_id", serverID, "service_id", service.ID)
 	}
 
 	return service, nil
