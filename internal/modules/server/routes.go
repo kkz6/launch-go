@@ -48,74 +48,81 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Get("/:id", handler.Show)
 		servers.Get("/:id/page", handler.ShowPage)
 		servers.Get("/:id/site-count", handler.GetSiteCount)
-		servers.Put("/:id", handler.Update)
-		servers.Patch("/:id", handler.Update)
 		servers.Delete("/:id", handler.Delete)
 
-		// Actions
-		servers.Post("/:id/reboot", handler.Reboot)
-		servers.Post("/:id/connect", handler.Connect)
-		servers.Post("/:id/archive", handler.Archive)
-		servers.Post("/:id/unarchive", handler.Unarchive)
+		// Provisioning actions (don't require provisioned server)
 		servers.Post("/:id/retry-provision", handler.RetryProvision)
 		servers.Get("/:id/provision-status", handler.GetProvisionStatus)
-		servers.Post("/:id/vulnerability-audit", handler.RunVulnerabilityAudit)
 		servers.Get("/:id/provision-script-content", handler.GetProvisionScriptContent)
+		servers.Post("/:id/archive", handler.Archive)
+		servers.Post("/:id/unarchive", handler.Unarchive)
 
-		// Services
-		servers.Get("/:id/services", handler.ListServices)
-		servers.Get("/:id/services/create", handler.GetAvailableServices)
-		servers.Post("/:id/services", handler.InstallService)
-		servers.Post("/:id/services/:serviceId", handler.ServiceOperation)
-
-		// PHP
-		servers.Get("/:id/php", handler.ListPhpVersions)
-		servers.Get("/:id/php-versions", handler.ListInstalledPhpVersions)
-		servers.Get("/:id/php/opcache/defaults", handler.GetOpcacheDefaults)
-		servers.Get("/:id/php/:phpId/opcache/status", handler.GetOpcacheStatus)
-		servers.Post("/:id/php/:phpId/opcache/reset", handler.ResetOpcache)
-		servers.Post("/:id/php/:phpId/opcache/configure", handler.ConfigureOpcache)
-
-		// Composer Packages
-		servers.Get("/:id/packages", handler.GetComposerAuth)
-		servers.Put("/:id/packages", handler.UpdateComposerAuth)
-
-		// Firewall Rules
-		servers.Get("/:id/firewall-rules", handler.ListFirewallRules)
-		servers.Post("/:id/firewall-rules", handler.CreateFirewallRule)
-		servers.Put("/:id/firewall-rules/:ruleId", handler.UpdateFirewallRule)
-		servers.Delete("/:id/firewall-rules/:ruleId", handler.DeleteFirewallRule)
-
-		// Cron Jobs
-		servers.Get("/:id/crons", handler.ListCrons)
-		servers.Post("/:id/crons", handler.CreateCron)
-		servers.Put("/:id/crons/:cronId", handler.UpdateCron)
-		servers.Delete("/:id/crons/:cronId", handler.DeleteCron)
-
-		// Daemons
-		servers.Get("/:id/daemons", handler.ListDaemons)
-		servers.Post("/:id/daemons", handler.CreateDaemon)
-		servers.Post("/:id/daemons/sync", handler.SyncDaemons)
-		servers.Put("/:id/daemons/:daemonId", handler.UpdateDaemon)
-		servers.Post("/:id/daemons/:daemonId/restart", handler.RestartDaemon)
-		servers.Delete("/:id/daemons/:daemonId", handler.DeleteDaemon)
-
-		// SSH Keys (server-specific)
-		servers.Get("/:id/ssh-keys", handler.ListServerSSHKeys)
-		servers.Post("/:id/ssh-keys", handler.AttachSSHKey)
-		servers.Delete("/:id/ssh-keys/:sshKeyId", handler.DetachSSHKey)
-
-		// Tasks
+		// Tasks (needed during provisioning to show progress)
 		servers.Get("/:id/tasks", handler.ListTasks)
 		servers.Get("/:id/tasks/latest", handler.GetLatestTask)
 
-		// Metrics
-		servers.Get("/:id/metrics", handler.GetMetrics)
-		servers.Get("/:id/metrics/latest", handler.GetLatestMetric)
+		// Routes that require a provisioned (running) server
+		provisioned := servers.Group("", middleware.RequireProvisionedServer())
+		{
+			provisioned.Put("/:id", handler.Update)
+			provisioned.Patch("/:id", handler.Update)
 
-		// Logs
-		servers.Get("/:id/logs", handler.ListLogs)
-		servers.Get("/:id/logs/:log", handler.GetLogContent)
+			// Actions
+			provisioned.Post("/:id/reboot", handler.Reboot)
+			provisioned.Post("/:id/connect", handler.Connect)
+			provisioned.Post("/:id/vulnerability-audit", handler.RunVulnerabilityAudit)
+
+			// Services
+			provisioned.Get("/:id/services", handler.ListServices)
+			provisioned.Get("/:id/services/create", handler.GetAvailableServices)
+			provisioned.Post("/:id/services", handler.InstallService)
+			provisioned.Post("/:id/services/:serviceId", handler.ServiceOperation)
+
+			// PHP
+			provisioned.Get("/:id/php", handler.ListPhpVersions)
+			provisioned.Get("/:id/php-versions", handler.ListInstalledPhpVersions)
+			provisioned.Get("/:id/php/opcache/defaults", handler.GetOpcacheDefaults)
+			provisioned.Get("/:id/php/:phpId/opcache/status", handler.GetOpcacheStatus)
+			provisioned.Post("/:id/php/:phpId/opcache/reset", handler.ResetOpcache)
+			provisioned.Post("/:id/php/:phpId/opcache/configure", handler.ConfigureOpcache)
+
+			// Composer Packages
+			provisioned.Get("/:id/packages", handler.GetComposerAuth)
+			provisioned.Put("/:id/packages", handler.UpdateComposerAuth)
+
+			// Firewall Rules
+			provisioned.Get("/:id/firewall-rules", handler.ListFirewallRules)
+			provisioned.Post("/:id/firewall-rules", handler.CreateFirewallRule)
+			provisioned.Put("/:id/firewall-rules/:ruleId", handler.UpdateFirewallRule)
+			provisioned.Delete("/:id/firewall-rules/:ruleId", handler.DeleteFirewallRule)
+
+			// Cron Jobs
+			provisioned.Get("/:id/crons", handler.ListCrons)
+			provisioned.Post("/:id/crons", handler.CreateCron)
+			provisioned.Put("/:id/crons/:cronId", handler.UpdateCron)
+			provisioned.Delete("/:id/crons/:cronId", handler.DeleteCron)
+
+			// Daemons
+			provisioned.Get("/:id/daemons", handler.ListDaemons)
+			provisioned.Post("/:id/daemons", handler.CreateDaemon)
+			provisioned.Post("/:id/daemons/sync", handler.SyncDaemons)
+			provisioned.Put("/:id/daemons/:daemonId", handler.UpdateDaemon)
+			provisioned.Post("/:id/daemons/:daemonId/restart", handler.RestartDaemon)
+			provisioned.Delete("/:id/daemons/:daemonId", handler.DeleteDaemon)
+
+			// SSH Keys (server-specific)
+			provisioned.Get("/:id/ssh-keys", handler.ListServerSSHKeys)
+			provisioned.Post("/:id/ssh-keys", handler.AttachSSHKey)
+			provisioned.Delete("/:id/ssh-keys/:sshKeyId", handler.DetachSSHKey)
+
+			// Metrics
+			provisioned.Get("/:id/metrics", handler.GetMetrics)
+			provisioned.Get("/:id/metrics/latest", handler.GetLatestMetric)
+
+			// Logs
+			provisioned.Get("/:id/logs", handler.ListLogs)
+			provisioned.Get("/:id/logs/:log", handler.GetLogContent)
+		}
 	}
 }
 
