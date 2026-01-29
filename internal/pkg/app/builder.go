@@ -18,6 +18,7 @@ type Deps struct {
 	Queue           *queue.Client
 	WebSocket       broadcast.ModelBroadcaster
 	Dispatcher      *taskrunner.Dispatcher
+	Notifier        taskrunner.NotifierService
 	Logger          *zerolog.Logger
 	Config          *config.Config
 	MembershipCache *launchcache.TeamMembershipCache
