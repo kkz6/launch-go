@@ -22,12 +22,21 @@ func InitServerProvisionedMiddleware(db *gorm.DB) {
 // RequireProvisionedServer middleware ensures the server has status "running".
 // Must be used after Auth and TeamScope middleware so that teamID is available in Locals.
 //
+// An optional param name can be provided to specify the route parameter that holds the server ID.
+// Defaults to "id" if not specified.
+//
 // Usage:
 //
-//	servers.Get("/:id/services", middleware.RequireProvisionedServer(), handler.ListServices)
-func RequireProvisionedServer() fiber.Handler {
+//	servers.Group("/:id", middleware.RequireProvisionedServer())
+//	servers.Group("/:serverId", middleware.RequireProvisionedServer("serverId"))
+func RequireProvisionedServer(paramName ...string) fiber.Handler {
+	name := "id"
+	if len(paramName) > 0 && paramName[0] != "" {
+		name = paramName[0]
+	}
+
 	return func(c *fiber.Ctx) error {
-		id := c.Params("id")
+		id := c.Params(name)
 		if id == "" {
 			return fiberctx.RespondBadRequest(c, "Missing server ID")
 		}
