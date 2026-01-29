@@ -50,11 +50,7 @@ func createSourceControlRepositoriesTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&sourceControlRepositoryWithFK{}, "SourceControl"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&sourceControlRepositoryWithFK{}, "SourceControl")
 }
 
 func createSourceControlRepositoriesTableDown(db *gorm.DB) error {

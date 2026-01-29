@@ -64,11 +64,7 @@ func createRedirectsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&redirectWithUserFK{}, "User"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&redirectWithUserFK{}, "User")
 }
 
 func createRedirectsTableDown(db *gorm.DB) error {

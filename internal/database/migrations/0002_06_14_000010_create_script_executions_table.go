@@ -62,11 +62,7 @@ func createScriptExecutionsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&scriptExecutionWithServerFK{}, "Server"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&scriptExecutionWithServerFK{}, "Server")
 }
 
 func createScriptExecutionsTableDown(db *gorm.DB) error {

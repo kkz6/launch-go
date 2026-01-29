@@ -35,28 +35,28 @@ func (c *Client) Request(method, path string) *Request {
 	}
 }
 
-// GET creates a new GET request builder.
-func (c *Client) GET(path string) *Request {
+// GetReq creates a new GET request builder.
+func (c *Client) GetReq(path string) *Request {
 	return c.Request(http.MethodGet, path)
 }
 
-// POST creates a new POST request builder.
-func (c *Client) POST(path string) *Request {
+// PostReq creates a new POST request builder.
+func (c *Client) PostReq(path string) *Request {
 	return c.Request(http.MethodPost, path)
 }
 
-// PUT creates a new PUT request builder.
-func (c *Client) PUT(path string) *Request {
+// PutReq creates a new PUT request builder.
+func (c *Client) PutReq(path string) *Request {
 	return c.Request(http.MethodPut, path)
 }
 
-// PATCH creates a new PATCH request builder.
-func (c *Client) PATCH(path string) *Request {
+// PatchReq creates a new PATCH request builder.
+func (c *Client) PatchReq(path string) *Request {
 	return c.Request(http.MethodPatch, path)
 }
 
-// DELETE creates a new DELETE request builder.
-func (c *Client) DELETE(path string) *Request {
+// DeleteReq creates a new DELETE request builder.
+func (c *Client) DeleteReq(path string) *Request {
 	return c.Request(http.MethodDelete, path)
 }
 

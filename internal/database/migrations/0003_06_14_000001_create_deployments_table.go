@@ -80,11 +80,7 @@ func createDeploymentsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&deploymentWithTaskFK{}, "Task"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&deploymentWithTaskFK{}, "Task")
 }
 
 func createDeploymentsTableDown(db *gorm.DB) error {

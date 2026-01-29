@@ -49,19 +49,11 @@ func createTeamInvitationsTableUp(db *gorm.DB) error {
 	}
 
 	// Add foreign key constraint for team_invitations.team_id -> teams.id
-	if err := migrator.CreateConstraint(&teamInvitationWithFK{}, "Team"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&teamInvitationWithFK{}, "Team")
 }
 
 func createTeamInvitationsTableDown(db *gorm.DB) error {
 	migrator := db.Migrator()
 
-	if err := migrator.DropTable(&teamInvitationMigration{}); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.DropTable(&teamInvitationMigration{})
 }

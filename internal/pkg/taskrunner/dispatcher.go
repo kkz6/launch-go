@@ -164,7 +164,7 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 
 	// Ensure script directory exists
 	if _, err := sshClient.Run(ctx, fmt.Sprintf("mkdir -p %s", taskDir)); err != nil {
-		sshClient.Close()
+		_ = sshClient.Close()
 		return nil, fmt.Errorf("failed to create script directory: %w", err)
 	}
 
@@ -175,7 +175,7 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 
 	// Upload script
 	if err := sshClient.Upload(ctx, []byte(script), taskPaths.Script, 0755); err != nil {
-		sshClient.Close()
+		_ = sshClient.Close()
 		return nil, fmt.Errorf("failed to upload script: %w", err)
 	}
 
@@ -279,7 +279,7 @@ func (d *Dispatcher) runRemoteBackground(
 
 	// Close the SSH client - we're done with it after starting the background process.
 	// MonitorBackgroundTask will create its own NEW connection for monitoring.
-	client.Close()
+	_ = client.Close()
 
 	if err != nil {
 		return nil, fmt.Errorf("failed to start background task: %w", err)

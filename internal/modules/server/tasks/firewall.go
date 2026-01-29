@@ -60,12 +60,12 @@ func DeleteFirewallRule(action FirewallAction, port string, protocol string, fro
 	)
 }
 
-func formatUfwRule(rule FirewallRuleConfig, delete bool) string {
+func formatUfwRule(rule FirewallRuleConfig, remove bool) string {
 	var parts []string
 
 	parts = append(parts, "sudo ufw")
 
-	if delete {
+	if remove {
 		parts = append(parts, "delete")
 	} else if rule.Action == FirewallDeny {
 		parts = append(parts, "insert 1")

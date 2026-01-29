@@ -49,11 +49,7 @@ func createPostsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&postWithUserFK{}, "User"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&postWithUserFK{}, "User")
 }
 
 func createPostsTableDown(db *gorm.DB) error {

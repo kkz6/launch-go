@@ -153,10 +153,7 @@ func (m *MockRepository) UpdateServerProgress(ctx context.Context, id string, pr
 }
 
 func (m *MockRepository) UpdateServerFields(ctx context.Context, id string, fields map[string]interface{}) error {
-	if err := m.getError("UpdateServerFields"); err != nil {
-		return err
-	}
-	return nil
+	return m.getError("UpdateServerFields")
 }
 
 func (m *MockRepository) ArchiveServer(ctx context.Context, id string) error {
@@ -376,10 +373,7 @@ func (m *MockRepository) UpdateDaemon(ctx context.Context, daemon *models.Daemon
 }
 
 func (m *MockRepository) UpdateDaemonStatus(ctx context.Context, id string, running bool) error {
-	if err := m.getError("UpdateDaemonStatus"); err != nil {
-		return err
-	}
-	return nil
+	return m.getError("UpdateDaemonStatus")
 }
 
 func (m *MockRepository) MarkDaemonInstalled(ctx context.Context, id string) error {
@@ -480,10 +474,7 @@ func (m *MockRepository) MarkFirewallRuleInstalled(ctx context.Context, id strin
 }
 
 func (m *MockRepository) MarkFirewallRuleFailed(ctx context.Context, id string) error {
-	if err := m.getError("MarkFirewallRuleFailed"); err != nil {
-		return err
-	}
-	return nil
+	return m.getError("MarkFirewallRuleFailed")
 }
 
 func (m *MockRepository) DeleteFirewallRule(ctx context.Context, id string) error {
@@ -561,17 +552,11 @@ func (m *MockRepository) DeleteSSHKey(ctx context.Context, id string) error {
 }
 
 func (m *MockRepository) AttachSSHKeyToServer(ctx context.Context, serverID, sshKeyID string) error {
-	if err := m.getError("AttachSSHKeyToServer"); err != nil {
-		return err
-	}
-	return nil
+	return m.getError("AttachSSHKeyToServer")
 }
 
 func (m *MockRepository) DetachSSHKeyFromServer(ctx context.Context, serverID, sshKeyID string) error {
-	if err := m.getError("DetachSSHKeyFromServer"); err != nil {
-		return err
-	}
-	return nil
+	return m.getError("DetachSSHKeyFromServer")
 }
 
 func (m *MockRepository) IsSSHKeyAttachedToServer(ctx context.Context, serverID, sshKeyID string) (bool, error) {
@@ -781,10 +766,7 @@ func (m *MockRepository) FindLatestMetricByServer(ctx context.Context, serverID 
 }
 
 func (m *MockRepository) DeleteOldMetrics(ctx context.Context, serverID string, before time.Time) error {
-	if err := m.getError("DeleteOldMetrics"); err != nil {
-		return err
-	}
-	return nil
+	return m.getError("DeleteOldMetrics")
 }
 
 // ---- ServerProviderRepository ----

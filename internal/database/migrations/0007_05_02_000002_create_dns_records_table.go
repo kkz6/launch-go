@@ -57,11 +57,7 @@ func createDNSRecordsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&dnsRecordWithDomainFK{}, "Domain"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&dnsRecordWithDomainFK{}, "Domain")
 }
 
 func createDNSRecordsTableDown(db *gorm.DB) error {

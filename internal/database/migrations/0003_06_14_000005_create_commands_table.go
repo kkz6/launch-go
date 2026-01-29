@@ -64,11 +64,7 @@ func createCommandsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&commandWithUserFK{}, "User"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&commandWithUserFK{}, "User")
 }
 
 func createCommandsTableDown(db *gorm.DB) error {

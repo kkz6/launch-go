@@ -65,11 +65,7 @@ func createNotificationChannelsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&notificationChannelWithTeamFK{}, "Team"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&notificationChannelWithTeamFK{}, "Team")
 }
 
 func createNotificationChannelsTableDown(db *gorm.DB) error {

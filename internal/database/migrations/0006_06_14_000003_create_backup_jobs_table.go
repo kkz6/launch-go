@@ -63,11 +63,7 @@ func createBackupJobsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&backupJobWithStorageProviderFK{}, "StorageProvider"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&backupJobWithStorageProviderFK{}, "StorageProvider")
 }
 
 func createBackupJobsTableDown(db *gorm.DB) error {

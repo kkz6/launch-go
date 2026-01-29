@@ -58,11 +58,7 @@ func createDaemonsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&daemonWithFK{}, "Server"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&daemonWithFK{}, "Server")
 }
 
 func createDaemonsTableDown(db *gorm.DB) error {

@@ -68,11 +68,7 @@ func createDomainProvidersTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&domainProviderWithTeamFK{}, "Team"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&domainProviderWithTeamFK{}, "Team")
 }
 
 func createDomainProvidersTableDown(db *gorm.DB) error {

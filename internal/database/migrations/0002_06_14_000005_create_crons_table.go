@@ -55,11 +55,7 @@ func createCronsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&cronWithFK{}, "Server"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&cronWithFK{}, "Server")
 }
 
 func createCronsTableDown(db *gorm.DB) error {
