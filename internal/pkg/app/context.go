@@ -26,6 +26,7 @@ func NewContext(
 	queueClient *queue.Client,
 	wsBroadcaster broadcast.ModelBroadcaster,
 	dispatcher *taskrunner.Dispatcher,
+	notifier taskrunner.NotifierService,
 	membershipCache *launchcache.TeamMembershipCache,
 ) *Context {
 	return &Context{
@@ -36,6 +37,7 @@ func NewContext(
 			Queue:           queueClient,
 			WebSocket:       wsBroadcaster,
 			Dispatcher:      dispatcher,
+			Notifier:        notifier,
 			MembershipCache: membershipCache,
 		},
 	}
