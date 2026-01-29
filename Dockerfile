@@ -1,8 +1,9 @@
 # Build stage
-FROM --platform=$BUILDPLATFORM golang:1.22-alpine AS builder
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
 
 ARG TARGETOS
 ARG TARGETARCH
+ARG VERSION=development
 
 RUN apk add --no-cache git ca-certificates tzdata
 
@@ -16,12 +17,12 @@ RUN go mod download
 COPY . .
 
 # Build binaries for target platform
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-w -s" -o /api ./cmd/api
+RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-w -s -X main.Version=${VERSION}" -o /api ./cmd/api
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-w -s" -o /worker ./cmd/worker
 RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-w -s" -o /migrate ./cmd/migrate
 
 # Final stage
-FROM alpine:3.19
+FROM alpine:3.21
 
 RUN apk --no-cache add ca-certificates tzdata
 
