@@ -6,6 +6,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
+	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
@@ -33,7 +34,7 @@ func (t *Task) BeforeCreate(tx *gorm.DB) error {
 		return err
 	}
 
-	basemodels.SetDefaultStatus(&t.Status, "pending")
+	basemodels.SetDefaultStatus(&t.Status, string(servertypes.TaskStatusPending))
 
 	return nil
 }
@@ -47,15 +48,33 @@ func (t *Task) IsSuccessful() bool {
 }
 
 func (t *Task) IsPending() bool {
-	return t.Status == "pending"
+	return t.Status == string(servertypes.TaskStatusPending)
 }
 
 func (t *Task) IsRunning() bool {
-	return t.Status == "running"
+	return t.Status == string(servertypes.TaskStatusRunning)
 }
 
 func (t *Task) IsFinished() bool {
-	return t.Status == "finished" || t.Status == "failed"
+	return t.Status == string(servertypes.TaskStatusFinished) || t.Status == string(servertypes.TaskStatusFailed)
+}
+
+// BroadcastData returns the standard broadcast payload for task events.
+func (t *Task) BroadcastData(output string) map[string]interface{} {
+	data := map[string]interface{}{
+		"task_id":   t.ID,
+		"server_id": t.ServerID,
+		"name":      t.Name,
+		"status":    t.Status,
+		"user":      t.User,
+	}
+	if t.ExitCode != nil {
+		data["exit_code"] = *t.ExitCode
+	}
+	if output != "" {
+		data["output"] = output
+	}
+	return data
 }
 
 // GetLogPath returns the path to the task log file

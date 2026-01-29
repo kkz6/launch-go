@@ -10,7 +10,6 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
-	serverModels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -257,7 +256,7 @@ func (t *deploySiteTask) OnExpired(ctx context.Context, cbCtx *taskrunner.Callba
 // sendDeploymentNotification sends the appropriate notification for deployment failure
 func (t *deploySiteTask) sendDeploymentNotification(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string, status notifications.DeploymentStatus) {
 	// Get task output
-	output := t.getTaskOutput(cbCtx, taskID)
+	output := cbCtx.GetTaskOutputTail(taskID, 30)
 
 	// Get deployment for git info
 	var deployment models.Deployment
@@ -293,30 +292,6 @@ func (t *deploySiteTask) sendDeploymentNotification(ctx context.Context, cbCtx *
 			}
 		}
 	}
-}
-
-// getTaskOutput retrieves the last 30 lines of task output from the database
-func (t *deploySiteTask) getTaskOutput(cbCtx *taskrunner.CallbackContext, taskID string) string {
-	if cbCtx.DB == nil {
-		return ""
-	}
-
-	var task serverModels.Task
-	if err := cbCtx.DB.Select("output").First(&task, "id = ?", taskID).Error; err != nil {
-		return ""
-	}
-
-	output := task.Output.String()
-	if output == "" {
-		return ""
-	}
-
-	// Return last 30 lines
-	lines := strings.Split(output, "\n")
-	if len(lines) > 30 {
-		lines = lines[len(lines)-30:]
-	}
-	return strings.Join(lines, "\n")
 }
 
 // dispatchJob is a helper to dispatch an asynq job with MaxRetry(0) to prevent retries

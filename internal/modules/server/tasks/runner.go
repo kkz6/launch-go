@@ -11,22 +11,12 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
-)
-
-// TaskStatus represents the status of a task execution.
-type TaskStatus string
-
-const (
-	TaskStatusPending  TaskStatus = "pending"
-	TaskStatusRunning  TaskStatus = "running"
-	TaskStatusFinished TaskStatus = "finished"
-	TaskStatusFailed   TaskStatus = "failed"
-	TaskStatusTimeout  TaskStatus = "timeout"
 )
 
 // TaskRunnerResult holds the result of a task execution.
@@ -243,7 +233,7 @@ func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 		if err != nil {
 			return nil, fmt.Errorf("failed to create task model: %w", err)
 		}
-		r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
+		r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning))
 		r.broadcastTaskRunning(taskModel)
 	}
 
@@ -313,7 +303,7 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 	}
 
 	go func() {
-		r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
+		r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning))
 		r.broadcastTaskRunning(taskModel)
 
 		pendingTask := taskrunner.NewPendingTask(r.task)
@@ -333,7 +323,7 @@ func (r *TaskRunner) RunAsync(ctx context.Context) (*models.Task, error) {
 		if taskResult != nil {
 			r.updateTaskModel(taskModel, taskResult)
 		} else if execErr != nil {
-			taskModel.Status = string(TaskStatusFailed)
+			taskModel.Status = string(servertypes.TaskStatusFailed)
 			taskModel.Output = dbtype.EncryptedString(execErr.Error())
 			r.db.Save(taskModel)
 			// Broadcast failure
@@ -383,7 +373,7 @@ func (r *TaskRunner) runLongRunning() (*models.Task, error) {
 	}
 
 	go func() {
-		r.db.Model(taskModel).Update("status", string(TaskStatusRunning))
+		r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning))
 		r.broadcastTaskRunning(taskModel)
 
 		pendingTask := taskrunner.NewPendingTask(r.task)
@@ -428,7 +418,7 @@ func (r *TaskRunner) runLongRunning() (*models.Task, error) {
 					Str("task_name", taskModel.Name).
 					Msg("Failed to start background task")
 			}
-			taskModel.Status = string(TaskStatusFailed)
+			taskModel.Status = string(servertypes.TaskStatusFailed)
 			taskModel.Output = dbtype.EncryptedString(execErr.Error())
 			r.db.Save(taskModel)
 			r.broadcastTaskEvent("task.updated", taskModel, execErr.Error())
@@ -608,7 +598,7 @@ func (r *TaskRunner) createTaskModel() (*models.Task, error) {
 		Type:         taskType,
 		Script:       dbtype.EncryptedString(script),
 		Timeout:      int(r.task.Timeout().Seconds()),
-		Status:       string(TaskStatusPending),
+		Status:       string(servertypes.TaskStatusPending),
 	}
 
 	completionConfig := r.completionConfig
@@ -649,11 +639,11 @@ func (r *TaskRunner) updateTaskModel(taskModel *models.Task, result *taskrunner.
 	taskModel.ExitCode = &result.ExitCode
 
 	if result.TimedOut {
-		taskModel.Status = string(TaskStatusTimeout)
+		taskModel.Status = string(servertypes.TaskStatusTimeout)
 	} else if result.IsSuccessful() {
-		taskModel.Status = string(TaskStatusFinished)
+		taskModel.Status = string(servertypes.TaskStatusFinished)
 	} else {
-		taskModel.Status = string(TaskStatusFailed)
+		taskModel.Status = string(servertypes.TaskStatusFailed)
 	}
 
 	r.db.Save(taskModel)
@@ -667,26 +657,7 @@ func (r *TaskRunner) broadcastTaskEvent(event string, taskModel *models.Task, ou
 	if r.broadcaster == nil || r.server == nil {
 		return
 	}
-
-	data := map[string]interface{}{
-		"task_id":   taskModel.ID,
-		"server_id": taskModel.ServerID,
-		"name":      taskModel.Name,
-		"status":    taskModel.Status,
-		"user":      taskModel.User,
-	}
-
-	// Include exit code if available
-	if taskModel.ExitCode != nil {
-		data["exit_code"] = *taskModel.ExitCode
-	}
-
-	// Include output for updated events
-	if output != "" {
-		data["output"] = output
-	}
-
-	r.broadcaster.BroadcastToTeam(r.server.TeamID, event, data)
+	r.broadcaster.BroadcastToTeam(r.server.TeamID, event, taskModel.BroadcastData(output))
 }
 
 // broadcastTaskRunning broadcasts that a task has started running.
@@ -699,7 +670,7 @@ func (r *TaskRunner) broadcastTaskRunning(taskModel *models.Task) {
 		"task_id":   taskModel.ID,
 		"server_id": taskModel.ServerID,
 		"name":      taskModel.Name,
-		"status":    string(TaskStatusRunning),
+		"status":    string(servertypes.TaskStatusRunning),
 	})
 }
 

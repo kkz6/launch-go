@@ -87,6 +87,23 @@ type StreamResult struct {
 	FinishedAt time.Time
 }
 
+// ToTaskResult converts a StreamResult to a TaskResult.
+func (r *StreamResult) ToTaskResult() *TaskResult {
+	result := &TaskResult{
+		TaskID:     r.TaskID,
+		Output:     r.Output,
+		ExitCode:   r.ExitCode,
+		FinishedAt: r.FinishedAt,
+	}
+	if r.Status == "timeout" {
+		result.TimedOut = true
+	}
+	if r.Error != nil {
+		result.Error = r.Error
+	}
+	return result
+}
+
 // StreamTaskOutput starts streaming output from a remote task
 // This maintains a single SSH connection and uses tail -f to stream the log file
 func (m *StreamMonitor) StreamTaskOutput(

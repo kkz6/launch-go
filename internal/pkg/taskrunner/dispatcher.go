@@ -258,8 +258,15 @@ func (d *Dispatcher) runRemoteBackground(
 	// Use stdbuf -oL for line buffering so markers are immediately visible to tail -f
 	// Without this, stdout is fully buffered when redirected to a file, causing markers
 	// to only appear when the buffer is full or the script completes.
+	//
+	// IMPORTANT: The outer "> /dev/null 2>&1" redirects nohup's own stdout/stderr to /dev/null.
+	// Without this, the SSH session holds open waiting for the nohup child's inherited file
+	// descriptors to close — which only happens when the script finishes. This causes
+	// client.Run() to block for the entire script duration, delaying the monitor goroutine
+	// and preventing real-time marker processing.
+	// The script's actual output is already captured inside the bash -c via "> taskPaths.Output 2>&1".
 	command := fmt.Sprintf(
-		"nohup bash -c 'stdbuf -oL timeout %ds bash %s > %s 2>&1; EXIT_CODE=$?; echo $EXIT_CODE > %s; echo \"::LAUNCH::exit_code::$EXIT_CODE\" >> %s' & echo $!",
+		"nohup bash -c 'stdbuf -oL timeout %ds bash %s > %s 2>&1; EXIT_CODE=$?; echo $EXIT_CODE > %s; echo \"::LAUNCH::exit_code::$EXIT_CODE\" >> %s' > /dev/null 2>&1 & echo $!",
 		timeout, taskPaths.Script, taskPaths.Output, taskPaths.ExitCode, taskPaths.Output,
 	)
 
@@ -325,20 +332,8 @@ func (d *Dispatcher) runRemoteBackground(
 				pt.Task.OnOutput(output)
 			},
 			func(result *StreamResult) {
-				taskResult := &TaskResult{
-					TaskID:     result.TaskID,
-					Output:     result.Output,
-					ExitCode:   result.ExitCode,
-					Duration:   time.Since(startTime),
-					FinishedAt: result.FinishedAt,
-				}
-
-				if result.Status == "timeout" {
-					taskResult.TimedOut = true
-				}
-				if result.Error != nil {
-					taskResult.Error = result.Error
-				}
+				taskResult := result.ToTaskResult()
+				taskResult.Duration = time.Since(startTime)
 
 				if ch := pt.GetCompletionChannel(); ch != nil {
 					ch <- taskResult
