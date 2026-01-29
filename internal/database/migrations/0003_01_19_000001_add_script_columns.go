@@ -33,11 +33,7 @@ func addScriptColumnsUp(db *gorm.DB) error {
 	}
 
 	// Add foreign key for team_id
-	if err := db.Exec("ALTER TABLE scripts ADD CONSTRAINT fk_scripts_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE").Error; err != nil {
-		return err
-	}
-
-	return nil
+	return db.Exec("ALTER TABLE scripts ADD CONSTRAINT fk_scripts_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE").Error
 }
 
 func addScriptColumnsDown(db *gorm.DB) error {

@@ -67,11 +67,7 @@ func createStorageProvidersTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&storageProviderWithTeamFK{}, "Team"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&storageProviderWithTeamFK{}, "Team")
 }
 
 func createStorageProvidersTableDown(db *gorm.DB) error {

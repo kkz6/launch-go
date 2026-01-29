@@ -114,7 +114,7 @@ func TestWithBackoff_ExponentialBackoff(t *testing.T) {
 	}
 
 	var attempts int32
-	WithBackoff(ctx, cfg, func() (struct{}, error) {
+	_, _ = WithBackoff(ctx, cfg, func() (struct{}, error) {
 		atomic.AddInt32(&attempts, 1)
 		return struct{}{}, errors.New("failure")
 	})
@@ -154,7 +154,7 @@ func TestWithBackoff_MaxDelayCap(t *testing.T) {
 		delays = append(delays, delay)
 	}
 
-	WithBackoff(ctx, cfg, func() (struct{}, error) {
+	_, _ = WithBackoff(ctx, cfg, func() (struct{}, error) {
 		return struct{}{}, errors.New("failure")
 	})
 

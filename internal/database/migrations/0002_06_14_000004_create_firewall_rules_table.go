@@ -55,11 +55,7 @@ func createFirewallRulesTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&firewallRuleWithFK{}, "Server"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&firewallRuleWithFK{}, "Server")
 }
 
 func createFirewallRulesTableDown(db *gorm.DB) error {

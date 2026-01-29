@@ -53,11 +53,7 @@ func createCertificatesTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&certificateWithSiteFK{}, "Site"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&certificateWithSiteFK{}, "Site")
 }
 
 func createCertificatesTableDown(db *gorm.DB) error {

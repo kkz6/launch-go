@@ -59,11 +59,7 @@ func createMonitorNotificationChannelTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&monitorNotificationChannelWithChannelFK{}, "NotificationChannel"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&monitorNotificationChannelWithChannelFK{}, "NotificationChannel")
 }
 
 func createMonitorNotificationChannelTableDown(db *gorm.DB) error {

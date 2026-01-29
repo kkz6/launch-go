@@ -78,11 +78,7 @@ func createUsersTableUp(db *gorm.DB) error {
 	}
 
 	// Create sessions table
-	if err := migrator.CreateTable(&sessionMigration{}); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateTable(&sessionMigration{})
 }
 
 func createUsersTableDown(db *gorm.DB) error {
@@ -94,9 +90,5 @@ func createUsersTableDown(db *gorm.DB) error {
 	if err := migrator.DropTable(&passwordResetTokenMigration{}); err != nil {
 		return err
 	}
-	if err := migrator.DropTable(&userMigration{}); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.DropTable(&userMigration{})
 }

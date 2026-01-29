@@ -39,7 +39,7 @@ func EncodeFileRouteParam(path, fileType string) (string, error) {
 	}
 
 	if _, err := gzipWriter.Write(jsonBytes); err != nil {
-		gzipWriter.Close()
+		_ = gzipWriter.Close()
 		return "", fmt.Errorf("failed to write gzip data: %w", err)
 	}
 

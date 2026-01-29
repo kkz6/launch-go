@@ -48,11 +48,7 @@ func addScriptExecutionColumnsUp(db *gorm.DB) error {
 	}
 
 	// Add index for status
-	if err := db.Exec("CREATE INDEX idx_script_executions_status ON script_executions(status)").Error; err != nil {
-		return err
-	}
-
-	return nil
+	return db.Exec("CREATE INDEX idx_script_executions_status ON script_executions(status)").Error
 }
 
 func addScriptExecutionColumnsDown(db *gorm.DB) error {

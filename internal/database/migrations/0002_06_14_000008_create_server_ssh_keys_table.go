@@ -51,11 +51,7 @@ func createServerSSHKeysTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&serverSSHKeyWithFK{}, "SSHKey"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&serverSSHKeyWithFK{}, "SSHKey")
 }
 
 func createServerSSHKeysTableDown(db *gorm.DB) error {

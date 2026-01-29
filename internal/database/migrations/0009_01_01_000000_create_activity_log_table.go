@@ -38,19 +38,11 @@ func (activityLogMigration) TableName() string {
 func createActivityLogTableUp(db *gorm.DB) error {
 	migrator := db.Migrator()
 
-	if err := migrator.CreateTable(&activityLogMigration{}); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateTable(&activityLogMigration{})
 }
 
 func createActivityLogTableDown(db *gorm.DB) error {
 	migrator := db.Migrator()
 
-	if err := migrator.DropTable(&activityLogMigration{}); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.DropTable(&activityLogMigration{})
 }

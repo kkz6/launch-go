@@ -211,7 +211,7 @@ func (c *Client) doWithRetry(req *http.Request) (*http.Response, error) {
 
 		// Close the response body if we got one (we'll retry)
 		if resp != nil {
-			resp.Body.Close()
+			_ = resp.Body.Close()
 		}
 
 		lastErr = err

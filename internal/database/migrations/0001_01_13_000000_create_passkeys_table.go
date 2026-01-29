@@ -54,11 +54,7 @@ func createPasskeysTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&passkeyWithUserFK{}, "User"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&passkeyWithUserFK{}, "User")
 }
 
 func createPasskeysTableDown(db *gorm.DB) error {

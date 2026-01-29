@@ -158,7 +158,7 @@ func TestS3Provider_GetConfigForAgent(t *testing.T) {
 	if config["path"] != "/backups" {
 		t.Errorf("path = %v, want /backups", config["path"])
 	}
-	if config["force_path_style"] != true {
+	if val, ok := config["force_path_style"].(bool); !ok || !val {
 		t.Errorf("force_path_style = %v, want true", config["force_path_style"])
 	}
 	if config["access_key_id"] != "access-key" {
@@ -219,7 +219,7 @@ func TestS3Provider_CredentialData(t *testing.T) {
 	if data["path"] != "/data" {
 		t.Errorf("path = %v, want /data", data["path"])
 	}
-	if data["force_path_style"] != true {
+	if val, ok := data["force_path_style"].(bool); !ok || !val {
 		t.Errorf("force_path_style = %v, want true", data["force_path_style"])
 	}
 }
@@ -242,7 +242,7 @@ func TestS3Provider_CredentialData_Defaults(t *testing.T) {
 	if data["path"] != "" {
 		t.Errorf("path = %v, want empty", data["path"])
 	}
-	if data["force_path_style"] != false {
+	if val, ok := data["force_path_style"].(bool); !ok || val {
 		t.Errorf("force_path_style = %v, want false", data["force_path_style"])
 	}
 }

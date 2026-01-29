@@ -49,11 +49,7 @@ func createMonitorsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&monitorWithServerFK{}, "Server"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&monitorWithServerFK{}, "Server")
 }
 
 func createMonitorsTableDown(db *gorm.DB) error {

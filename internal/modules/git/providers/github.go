@@ -187,7 +187,7 @@ func (p *GitHubProvider) GetInstallationRepositories(ctx context.Context, instal
 
 		if resp.StatusCode != http.StatusOK {
 			body, _ := io.ReadAll(resp.Body)
-			resp.Body.Close()
+			_ = resp.Body.Close()
 			return nil, fmt.Errorf("failed to get repositories: %s", string(body))
 		}
 

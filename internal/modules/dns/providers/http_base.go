@@ -103,7 +103,7 @@ func (p *HTTPBaseProvider) DoRequest(ctx context.Context, req *httpclient.Reques
 
 // GetWithQuery performs a GET request with query parameters.
 func (p *HTTPBaseProvider) GetWithQuery(ctx context.Context, path string, params map[string]string, result interface{}) error {
-	req := p.client.GET(path).WithQueryParams(params)
+	req := p.client.GetReq(path).WithQueryParams(params)
 	err := req.Do(ctx, result)
 	return p.wrapError(err, "GET", path)
 }

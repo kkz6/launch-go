@@ -52,11 +52,7 @@ func createMetricsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&metricWithServerFK{}, "Server"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&metricWithServerFK{}, "Server")
 }
 
 func createMetricsTableDown(db *gorm.DB) error {

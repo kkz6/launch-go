@@ -66,7 +66,7 @@ func (c *Connection) Dial(t ...time.Duration) (*SSHClient, error) {
 	}
 
 	if err := client.Connect(); err != nil {
-		client.Close()
+		_ = client.Close()
 		return nil, err
 	}
 

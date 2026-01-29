@@ -38,19 +38,11 @@ func createPersonalAccessTokensTableUp(db *gorm.DB) error {
 	migrator := db.Migrator()
 
 	// Create personal_access_tokens table
-	if err := migrator.CreateTable(&personalAccessTokenMigration{}); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateTable(&personalAccessTokenMigration{})
 }
 
 func createPersonalAccessTokensTableDown(db *gorm.DB) error {
 	migrator := db.Migrator()
 
-	if err := migrator.DropTable(&personalAccessTokenMigration{}); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.DropTable(&personalAccessTokenMigration{})
 }

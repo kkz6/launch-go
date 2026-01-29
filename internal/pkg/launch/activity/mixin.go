@@ -63,7 +63,7 @@ func (m *ActivityMixin) LogActivity(ctx context.Context, model Subject, event, d
 		logger.CausedByUser(*userID)
 	}
 
-	logger.Log(description)
+	_, _ = logger.Log(description)
 }
 
 // LogActivityWithProps logs an activity with additional properties.
@@ -92,7 +92,7 @@ func (m *ActivityMixin) LogActivityWithProps(ctx context.Context, model Subject,
 		logger.CausedByUser(*userID)
 	}
 
-	logger.Log(description)
+	_, _ = logger.Log(description)
 }
 
 // LogActivityByUser logs an activity caused by a specific user.
@@ -102,7 +102,7 @@ func (m *ActivityMixin) LogActivityByUser(ctx context.Context, model Subject, ev
 		return
 	}
 
-	New(m.db).
+	_, _ = New(m.db).
 		WithContext(ctx).
 		UseLog(m.logName).
 		CausedByUser(userID).
@@ -117,7 +117,7 @@ func (m *ActivityMixin) LogActivityByUserWithProps(ctx context.Context, model Su
 		return
 	}
 
-	New(m.db).
+	_, _ = New(m.db).
 		WithContext(ctx).
 		UseLog(m.logName).
 		CausedByUser(userID).
@@ -134,7 +134,7 @@ func (m *ActivityMixin) LogSystemActivity(ctx context.Context, model Subject, ev
 		return
 	}
 
-	New(m.db).
+	_, _ = New(m.db).
 		WithContext(ctx).
 		UseLog(m.logName).
 		On(model).
@@ -148,7 +148,7 @@ func (m *ActivityMixin) LogSystemActivityWithProps(ctx context.Context, model Su
 		return
 	}
 
-	New(m.db).
+	_, _ = New(m.db).
 		WithContext(ctx).
 		UseLog(m.logName).
 		On(model).

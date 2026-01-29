@@ -47,11 +47,7 @@ func createScriptsTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&scriptWithUserFK{}, "User"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&scriptWithUserFK{}, "User")
 }
 
 func createScriptsTableDown(db *gorm.DB) error {

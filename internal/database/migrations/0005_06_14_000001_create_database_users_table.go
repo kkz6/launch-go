@@ -52,11 +52,7 @@ func createDatabaseUsersTableUp(db *gorm.DB) error {
 		return err
 	}
 
-	if err := migrator.CreateConstraint(&databaseUserWithServerFK{}, "Server"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&databaseUserWithServerFK{}, "Server")
 }
 
 func createDatabaseUsersTableDown(db *gorm.DB) error {
