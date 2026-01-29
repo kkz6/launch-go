@@ -1,0 +1,93 @@
+#!/bin/bash
+# Pre-push hook for Launch Go
+# Runs the same lint checks as CI (gofmt, govet, revive, staticcheck) on the entire codebase
+# This catches issues the pre-commit hook misses (which only checks staged files)
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+NC='\033[0m' # No Color
+
+# Get Go bin path
+GOBIN="$(go env GOPATH)/bin"
+
+# Tool paths
+REVIVE="$GOBIN/revive"
+STATICCHECK="$GOBIN/staticcheck"
+
+echo -e "${YELLOW}Running pre-push checks on entire codebase...${NC}"
+echo ""
+
+# Check if required tools are installed
+check_tool() {
+    if [ ! -x "$1" ]; then
+        echo -e "${RED}Error: $1 is not installed${NC}"
+        echo "Run 'make lint-install' to install required tools"
+        exit 1
+    fi
+}
+
+check_tool "$REVIVE"
+check_tool "$STATICCHECK"
+
+# Track if any check fails
+FAILED=0
+
+# 1. Run gofmt -s on the entire codebase (matches CI: checks output)
+echo -e "${YELLOW}[1/4] Running gofmt...${NC}"
+GOFMT_OUTPUT=$(gofmt -l -s . 2>&1 || true)
+if [ -n "$GOFMT_OUTPUT" ]; then
+    echo -e "${RED}  The following files need formatting:${NC}"
+    echo "$GOFMT_OUTPUT"
+    echo ""
+    echo "  Run 'gofmt -l -s -w .' to fix formatting issues"
+    FAILED=1
+else
+    echo -e "${GREEN}  gofmt passed${NC}"
+fi
+echo ""
+
+# 2. Run go vet (matches CI: checks exit code)
+echo -e "${YELLOW}[2/4] Running go vet...${NC}"
+if ! go vet ./... 2>&1; then
+    echo -e "${RED}  go vet found issues${NC}"
+    FAILED=1
+else
+    echo -e "${GREEN}  go vet passed${NC}"
+fi
+echo ""
+
+# 3. Run revive (matches CI: checks exit code, not output)
+echo -e "${YELLOW}[3/4] Running revive...${NC}"
+if ! "$REVIVE" -config revive.toml -formatter friendly ./... 2>&1; then
+    echo -e "${RED}  revive found errors${NC}"
+    FAILED=1
+else
+    echo -e "${GREEN}  revive passed${NC}"
+fi
+echo ""
+
+# 4. Run staticcheck (matches CI: checks exit code)
+echo -e "${YELLOW}[4/4] Running staticcheck...${NC}"
+if ! "$STATICCHECK" -f stylish ./... 2>&1; then
+    echo -e "${RED}  staticcheck found issues${NC}"
+    FAILED=1
+else
+    echo -e "${GREEN}  staticcheck passed${NC}"
+fi
+echo ""
+
+# Final result
+if [ $FAILED -eq 1 ]; then
+    echo -e "${RED}Pre-push checks failed!${NC}"
+    echo -e "${YELLOW}Fix the issues above before pushing.${NC}"
+    echo ""
+    echo "To bypass this check (not recommended), use: git push --no-verify"
+    exit 1
+fi
+
+echo -e "${GREEN}All pre-push checks passed!${NC}"
+exit 0
