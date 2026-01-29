@@ -19,6 +19,7 @@ type Config struct {
 	Git      GitConfig
 	Slack    SlackConfig
 	Sentry   SentryConfig
+	Mail     MailConfig
 	Core     CoreConfig
 }
 
@@ -48,6 +49,7 @@ func Load() (*Config, error) {
 		Git:      config.Load[GitConfig](),
 		Slack:    config.Load[SlackConfig](),
 		Sentry:   config.Load[SentryConfig](),
+		Mail:     config.Load[MailConfig](),
 		Core:     *GetCoreConfig(),
 	}, nil
 }
