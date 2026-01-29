@@ -10,8 +10,11 @@ type PendingTask struct {
 	TaskID     string
 	OutputPath string // Local path to write output
 
-	// Output callback for streaming
+	// Output callback for streaming (receives full accumulated output)
 	onOutput func(output string)
+
+	// Line callback for per-line processing (receives individual lines)
+	onLine func(line string)
 
 	// Completion channel for background tasks
 	// When set, the dispatcher will send the result here when the task completes
@@ -69,6 +72,19 @@ func (p *PendingTask) OnOutput(callback func(output string)) *PendingTask {
 // GetOnOutput returns the output callback
 func (p *PendingTask) GetOnOutput() func(output string) {
 	return p.onOutput
+}
+
+// OnLine sets a callback for per-line processing during streaming.
+// Unlike OnOutput which receives the full accumulated buffer, OnLine receives
+// individual lines as they arrive — ideal for marker detection without re-parsing.
+func (p *PendingTask) OnLine(callback func(line string)) *PendingTask {
+	p.onLine = callback
+	return p
+}
+
+// GetOnLine returns the per-line callback
+func (p *PendingTask) GetOnLine() func(line string) {
+	return p.onLine
 }
 
 // ShouldRunInBackground returns true if task should run in background
