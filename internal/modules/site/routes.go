@@ -20,6 +20,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 		Dispatcher:  deps.Dispatcher,
 		Logger:      deps.Logger,
 		Broadcaster: deps.WebSocket,
+		Notifier:    deps.Notifier,
 	}
 
 	// Create service registry
@@ -58,6 +59,7 @@ func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 		Dispatcher:  deps.Dispatcher,
 		Logger:      deps.Logger,
 		Broadcaster: deps.WebSocket,
+		Notifier:    deps.Notifier,
 	}
 
 	svc := m.createServices(taskRunnerDeps)

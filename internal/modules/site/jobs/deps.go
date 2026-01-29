@@ -53,6 +53,7 @@ func NewJobDeps(
 			Dispatcher:  appDeps.Dispatcher,
 			Logger:      appDeps.Logger,
 			Broadcaster: appDeps.WebSocket,
+			Notifier:    appDeps.Notifier,
 		},
 	}
 }

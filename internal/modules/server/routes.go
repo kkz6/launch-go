@@ -18,6 +18,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 		Dispatcher:  deps.Dispatcher,
 		Logger:      deps.Logger,
 		Broadcaster: deps.WebSocket,
+		Notifier:    deps.Notifier,
 	}
 	handler := handlers.NewHandler(m.service, taskRunnerDeps, siteCounter)
 
