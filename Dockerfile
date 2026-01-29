@@ -44,13 +44,12 @@ RUN chmod +x ./entrypoint.sh
 RUN adduser -D -g '' appuser
 USER appuser
 
+ENV MODE=api
+
 EXPOSE 8080
 
 # Usage:
 #   docker run <image>                              # runs api (default)
-#   docker run <image> api                          # runs api explicitly
-#   docker run <image> worker                       # runs worker
+#   docker run -e MODE=worker <image>               # runs worker
 #   docker run -e RUN_MIGRATIONS=true <image>       # runs migrations then api
-#   docker run <image> ./migrate status             # run migrate CLI directly
 ENTRYPOINT ["/app/entrypoint.sh"]
-CMD ["api"]

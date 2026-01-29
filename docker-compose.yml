@@ -34,8 +34,8 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    command: ["worker"]
     environment:
+      - MODE=worker
       - APP_ENV=development
       - DB_DRIVER=mysql
       - DB_HOST=db
