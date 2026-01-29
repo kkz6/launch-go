@@ -16,6 +16,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git"
 	"github.com/kkz6/launch-go/internal/modules/script"
 	"github.com/kkz6/launch-go/internal/modules/server"
+	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
@@ -116,6 +117,12 @@ func main() {
 
 	// Boot task callbacks (for local mode SSH streaming callbacks)
 	kernel.BootTaskCallbacks()
+
+	// Recover orphaned tasks from previous worker session
+	recoverer := servertasks.NewTaskRecoverer(db, appLogger, dispatcher, queueClient, redisBroadcaster, nil)
+	if err := recoverer.RecoverOrphanedTasks(context.Background()); err != nil {
+		appLogger.Error().Err(err).Msg("Task recovery encountered errors")
+	}
 
 	// Boot all jobs through the kernel
 	mux := asynq.NewServeMux()
