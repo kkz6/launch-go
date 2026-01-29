@@ -74,3 +74,15 @@ type SentryConfig struct {
 func (c SentryConfig) IsEnabled() bool {
 	return c.Enabled && c.DSN != ""
 }
+
+// MailConfig holds email sending configuration
+type MailConfig struct {
+	Driver      string `env:"MAIL_DRIVER" default:"resend"`
+	FromAddress string `env:"MAIL_FROM_ADDRESS" default:"noreply@example.com"`
+	FromName    string `env:"MAIL_FROM_NAME" default:"Launch"`
+	ResendKey   string `env:"RESEND_API_KEY" default:""`
+	SMTPHost    string `env:"SMTP_HOST" default:""`
+	SMTPPort    int    `env:"SMTP_PORT" default:"587"`
+	SMTPUser    string `env:"SMTP_USERNAME" default:""`
+	SMTPPass    string `env:"SMTP_PASSWORD" default:""`
+}
