@@ -44,6 +44,7 @@ func NewJobDeps(appDeps app.Deps, repos contracts.RepositoryRegistry) *JobDeps {
 			Dispatcher:  appDeps.Dispatcher,
 			Logger:      appDeps.Logger,
 			Broadcaster: appDeps.WebSocket,
+			Notifier:    appDeps.Notifier,
 		},
 	}
 }
