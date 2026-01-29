@@ -35,10 +35,10 @@ func (serverProviderMigration) TableName() string {
 
 // serverProviderWithFK defines foreign key relationships
 type serverProviderWithFK struct {
-	UserID string          `gorm:"column:user_id"`
-	TeamID *string         `gorm:"column:team_id"`
-	User   *userMigration  `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE"`
-	Team   *teamMigration  `gorm:"foreignKey:TeamID;references:ID;constraint:OnDelete:CASCADE"`
+	UserID string         `gorm:"column:user_id"`
+	TeamID *string        `gorm:"column:team_id"`
+	User   *userMigration `gorm:"foreignKey:UserID;references:ID;constraint:OnDelete:CASCADE"`
+	Team   *teamMigration `gorm:"foreignKey:TeamID;references:ID;constraint:OnDelete:CASCADE"`
 }
 
 func (serverProviderWithFK) TableName() string {
@@ -58,11 +58,7 @@ func createServerProvidersTableUp(db *gorm.DB) error {
 	}
 
 	// Add foreign key constraint for team_id -> teams.id
-	if err := migrator.CreateConstraint(&serverProviderWithFK{}, "Team"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&serverProviderWithFK{}, "Team")
 }
 
 func createServerProvidersTableDown(db *gorm.DB) error {

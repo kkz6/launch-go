@@ -96,11 +96,6 @@ func RequestLogger(logger *zerolog.Logger) fiber.Handler {
 		method := c.Method()
 		path := c.Path()
 		ip := c.IP()
-		userAgent := c.Get("User-Agent")
-
-		if len(userAgent) > 50 {
-			userAgent = userAgent[:50] + "..."
-		}
 
 		var event *zerolog.Event
 		switch {

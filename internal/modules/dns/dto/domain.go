@@ -94,17 +94,17 @@ func ToDomainResponse(d *models.Domain) DomainResponse {
 
 // DomainIndexPageData represents the data for the domain index page
 type DomainIndexPageData struct {
-	Domains   []DomainResponse          `json:"domains"`
-	Providers []DomainProviderResponse  `json:"providers"`
+	Domains   []DomainResponse         `json:"domains"`
+	Providers []DomainProviderResponse `json:"providers"`
 }
 
 // DomainShowPageData represents the data for the domain show page
 type DomainShowPageData struct {
-	Domain      DomainResponse           `json:"domain"`
-	Records     []DNSRecordResponse      `json:"records"`
-	RecordTypes []RecordTypeOption       `json:"recordTypes"`
-	Nameservers []string                 `json:"nameservers"`
-	Provider    *DomainProviderResponse  `json:"provider,omitempty"`
+	Domain      DomainResponse          `json:"domain"`
+	Records     []DNSRecordResponse     `json:"records"`
+	RecordTypes []RecordTypeOption      `json:"recordTypes"`
+	Nameservers []string                `json:"nameservers"`
+	Provider    *DomainProviderResponse `json:"provider,omitempty"`
 }
 
 // RecordTypeOption represents a DNS record type option

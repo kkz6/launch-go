@@ -260,7 +260,7 @@ func TestNewDefaultHTTPClient(t *testing.T) {
 	client := NewDefaultHTTPClient()
 
 	if client == nil {
-		t.Error("NewDefaultHTTPClient() returned nil")
+		t.Fatal("NewDefaultHTTPClient() returned nil")
 	}
 	if client.client == nil {
 		t.Error("client.client should not be nil")

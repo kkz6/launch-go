@@ -53,7 +53,7 @@ func TestNewFactory(t *testing.T) {
 	factory := NewFactory(mockHTTP)
 
 	if factory == nil {
-		t.Error("NewFactory() returned nil")
+		t.Fatal("NewFactory() returned nil")
 	}
 	if factory.httpClient != mockHTTP {
 		t.Error("httpClient not set correctly")
@@ -66,7 +66,7 @@ func TestNewFactoryWithEmail(t *testing.T) {
 	factory := NewFactoryWithEmail(mockHTTP, mockEmail)
 
 	if factory == nil {
-		t.Error("NewFactoryWithEmail() returned nil")
+		t.Fatal("NewFactoryWithEmail() returned nil")
 	}
 	if factory.httpClient != mockHTTP {
 		t.Error("httpClient not set correctly")

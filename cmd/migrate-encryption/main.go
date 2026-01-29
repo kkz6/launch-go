@@ -64,9 +64,7 @@ func main() {
 	}
 
 	// Parse Laravel key format
-	if strings.HasPrefix(keyStr, "base64:") {
-		keyStr = keyStr[7:]
-	}
+	keyStr = strings.TrimPrefix(keyStr, "base64:")
 	var err error
 	encryptionKey, err = base64.StdEncoding.DecodeString(keyStr)
 	if err != nil {
@@ -271,11 +269,11 @@ func checkField(name string, value *string) {
 	}
 }
 
-func truncate(s string, max int) string {
-	if len(s) <= max {
+func truncate(s string, maxLen int) string {
+	if len(s) <= maxLen {
 		return s
 	}
-	return s[:max]
+	return s[:maxLen]
 }
 
 func isLaravelEncrypted(data string) bool {
@@ -545,17 +543,6 @@ func isValidPlaintext(data string) bool {
 		return true
 	}
 	return false
-}
-
-// looksLikeBase64 checks if string looks like base64 encoded data
-func looksLikeBase64(s string) bool {
-	// Base64 strings are usually multiples of 4 and contain only base64 chars
-	if len(s) < 20 {
-		return false
-	}
-	// Check if it's valid base64
-	_, err := base64.StdEncoding.DecodeString(s)
-	return err == nil
 }
 
 // fixDoubleEncryptedValue attempts to fix multi-layer encrypted data
@@ -866,8 +853,8 @@ func decryptLaravel(encrypted string) (string, error) {
 
 func validateMAC(payload *LaravelPayload) bool {
 	h := hmac.New(sha256.New, encryptionKey)
-	h.Write([]byte(payload.IV))
-	h.Write([]byte(payload.Value))
+	_, _ = h.Write([]byte(payload.IV))
+	_, _ = h.Write([]byte(payload.Value))
 	computedMAC := hex.EncodeToString(h.Sum(nil))
 	return hmac.Equal([]byte(computedMAC), []byte(payload.MAC))
 }

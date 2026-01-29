@@ -18,49 +18,49 @@ func init() {
 
 // siteMigration model for migration (matches Laravel schema with all fields merged)
 type siteMigration struct {
-	ID                            string     `gorm:"type:char(26);primaryKey"`
-	ServerID                      string     `gorm:"column:server_id;type:char(26);not null;index"`
-	UserID                        string     `gorm:"column:user_id;type:char(26);not null;index"`
-	SourceControlID               *string    `gorm:"column:source_control_id;type:char(26);index"`
-	Address                       string     `gorm:"type:varchar(255);not null"`
-	Type                          string     `gorm:"type:varchar(255);not null;index"`
-	TypeData                      *string    `gorm:"column:type_data;type:json"`
-	VCSData                       *string    `gorm:"column:vcs_data;type:json"`
-	Aliases                       *string    `gorm:"type:json"`
-	TLSSetting                    string     `gorm:"column:tls_setting;type:varchar(255);not null;index"`
-	ZeroDowntimeDeployment        bool       `gorm:"column:zero_downtime_deployment;default:true"`
-	DeploymentReleasesRetention   int        `gorm:"column:deployment_releases_retention;default:10"`
-	AutoDeployment                bool       `gorm:"column:auto_deployment;default:false"`
-	QueueDeployments              bool       `gorm:"column:queue_deployments;default:false"`
-	AutoRestartQueue              bool       `gorm:"column:auto_restart_queue;default:false"`
-	Features                      *string    `gorm:"type:json"`
-	SourceControlRepositoriesID   *uint64    `gorm:"column:source_control_repositories_id;index"`
-	RepositoryBranch              *string    `gorm:"column:repository_branch;type:varchar(255)"`
-	DeployToken                   *string    `gorm:"column:deploy_token;type:varchar(32)"`
-	DeployNotificationEmail       *string    `gorm:"column:deploy_notification_email;type:varchar(255)"`
-	DeployKeyPublic               *string    `gorm:"column:deploy_key_public;type:longtext"`
-	DeployKeyPrivate              *string    `gorm:"column:deploy_key_private;type:longtext"`
-	User                          string     `gorm:"type:varchar(255);not null"`
-	Path                          string     `gorm:"type:varchar(255);not null"`
-	WebFolder                     string     `gorm:"column:web_folder;type:varchar(255);not null"`
-	PHPVersion                    *string    `gorm:"column:php_version;type:varchar(255);index"`
-	PendingTLSUpdateSince         *time.Time `gorm:"column:pending_tls_update_since;type:timestamp null"`
-	PendingCaddyfileUpdateSince   *time.Time `gorm:"column:pending_caddyfile_update_since;type:timestamp null"`
-	SharedDirectories             string     `gorm:"column:shared_directories;type:json;not null"`
-	WriteableDirectories          string     `gorm:"column:writeable_directories;type:json;not null"`
-	SharedFiles                   string     `gorm:"column:shared_files;type:json;not null"`
-	Port                          *int       `gorm:"type:int"`
-	Progress                      *int       `gorm:"default:0"`
-	HookBeforeUpdatingRepository  *string    `gorm:"column:hook_before_updating_repository;type:longtext"`
-	HookAfterUpdatingRepository   *string    `gorm:"column:hook_after_updating_repository;type:longtext"`
-	HookBeforeMakingCurrent       *string    `gorm:"column:hook_before_making_current;type:longtext"`
-	HookAfterMakingCurrent        *string    `gorm:"column:hook_after_making_current;type:longtext"`
-	InstalledAt                   *time.Time `gorm:"column:installed_at;type:timestamp null"`
-	InstallationFailedAt          *time.Time `gorm:"column:installation_failed_at;type:timestamp null"`
-	UninstallationRequestedAt     *time.Time `gorm:"column:uninstallation_requested_at;type:timestamp null"`
-	UninstallationFailedAt        *time.Time `gorm:"column:uninstallation_failed_at;type:timestamp null"`
-	CreatedAt                     *time.Time `gorm:"type:timestamp null"`
-	UpdatedAt                     *time.Time `gorm:"type:timestamp null"`
+	ID                           string     `gorm:"type:char(26);primaryKey"`
+	ServerID                     string     `gorm:"column:server_id;type:char(26);not null;index"`
+	UserID                       string     `gorm:"column:user_id;type:char(26);not null;index"`
+	SourceControlID              *string    `gorm:"column:source_control_id;type:char(26);index"`
+	Address                      string     `gorm:"type:varchar(255);not null"`
+	Type                         string     `gorm:"type:varchar(255);not null;index"`
+	TypeData                     *string    `gorm:"column:type_data;type:json"`
+	VCSData                      *string    `gorm:"column:vcs_data;type:json"`
+	Aliases                      *string    `gorm:"type:json"`
+	TLSSetting                   string     `gorm:"column:tls_setting;type:varchar(255);not null;index"`
+	ZeroDowntimeDeployment       bool       `gorm:"column:zero_downtime_deployment;default:true"`
+	DeploymentReleasesRetention  int        `gorm:"column:deployment_releases_retention;default:10"`
+	AutoDeployment               bool       `gorm:"column:auto_deployment;default:false"`
+	QueueDeployments             bool       `gorm:"column:queue_deployments;default:false"`
+	AutoRestartQueue             bool       `gorm:"column:auto_restart_queue;default:false"`
+	Features                     *string    `gorm:"type:json"`
+	SourceControlRepositoriesID  *uint64    `gorm:"column:source_control_repositories_id;index"`
+	RepositoryBranch             *string    `gorm:"column:repository_branch;type:varchar(255)"`
+	DeployToken                  *string    `gorm:"column:deploy_token;type:varchar(32)"`
+	DeployNotificationEmail      *string    `gorm:"column:deploy_notification_email;type:varchar(255)"`
+	DeployKeyPublic              *string    `gorm:"column:deploy_key_public;type:longtext"`
+	DeployKeyPrivate             *string    `gorm:"column:deploy_key_private;type:longtext"`
+	User                         string     `gorm:"type:varchar(255);not null"`
+	Path                         string     `gorm:"type:varchar(255);not null"`
+	WebFolder                    string     `gorm:"column:web_folder;type:varchar(255);not null"`
+	PHPVersion                   *string    `gorm:"column:php_version;type:varchar(255);index"`
+	PendingTLSUpdateSince        *time.Time `gorm:"column:pending_tls_update_since;type:timestamp null"`
+	PendingCaddyfileUpdateSince  *time.Time `gorm:"column:pending_caddyfile_update_since;type:timestamp null"`
+	SharedDirectories            string     `gorm:"column:shared_directories;type:json;not null"`
+	WriteableDirectories         string     `gorm:"column:writeable_directories;type:json;not null"`
+	SharedFiles                  string     `gorm:"column:shared_files;type:json;not null"`
+	Port                         *int       `gorm:"type:int"`
+	Progress                     *int       `gorm:"default:0"`
+	HookBeforeUpdatingRepository *string    `gorm:"column:hook_before_updating_repository;type:longtext"`
+	HookAfterUpdatingRepository  *string    `gorm:"column:hook_after_updating_repository;type:longtext"`
+	HookBeforeMakingCurrent      *string    `gorm:"column:hook_before_making_current;type:longtext"`
+	HookAfterMakingCurrent       *string    `gorm:"column:hook_after_making_current;type:longtext"`
+	InstalledAt                  *time.Time `gorm:"column:installed_at;type:timestamp null"`
+	InstallationFailedAt         *time.Time `gorm:"column:installation_failed_at;type:timestamp null"`
+	UninstallationRequestedAt    *time.Time `gorm:"column:uninstallation_requested_at;type:timestamp null"`
+	UninstallationFailedAt       *time.Time `gorm:"column:uninstallation_failed_at;type:timestamp null"`
+	CreatedAt                    *time.Time `gorm:"type:timestamp null"`
+	UpdatedAt                    *time.Time `gorm:"type:timestamp null"`
 }
 
 func (siteMigration) TableName() string {
@@ -141,11 +141,7 @@ func createSitesTableUp(db *gorm.DB) error {
 	}
 
 	// Add FK constraint for crons.site_id -> sites.id (deferred from crons migration)
-	if err := migrator.CreateConstraint(&cronWithSiteFK{}, "Site"); err != nil {
-		return err
-	}
-
-	return nil
+	return migrator.CreateConstraint(&cronWithSiteFK{}, "Site")
 }
 
 func createSitesTableDown(db *gorm.DB) error {

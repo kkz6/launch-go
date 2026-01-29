@@ -70,14 +70,14 @@ type CheckoutURLs struct {
 
 // LemonSqueezyCheckoutRequest represents a request to create a checkout session
 type LemonSqueezyCheckoutRequest struct {
-	StoreID        int               `json:"store_id"`
-	VariantID      int               `json:"variant_id"`
-	CustomPrice    *int64            `json:"custom_price,omitempty"`
-	ProductOptions map[string]string `json:"product_options,omitempty"`
-	CheckoutOptions CheckoutOptions  `json:"checkout_options,omitempty"`
-	CheckoutData    CheckoutData     `json:"checkout_data,omitempty"`
-	ExpiresAt      *string           `json:"expires_at,omitempty"`
-	Preview        bool              `json:"preview,omitempty"`
+	StoreID         int               `json:"store_id"`
+	VariantID       int               `json:"variant_id"`
+	CustomPrice     *int64            `json:"custom_price,omitempty"`
+	ProductOptions  map[string]string `json:"product_options,omitempty"`
+	CheckoutOptions CheckoutOptions   `json:"checkout_options,omitempty"`
+	CheckoutData    CheckoutData      `json:"checkout_data,omitempty"`
+	ExpiresAt       *string           `json:"expires_at,omitempty"`
+	Preview         bool              `json:"preview,omitempty"`
 }
 
 // CheckoutOptions represents checkout configuration options
@@ -100,16 +100,22 @@ type CheckoutData struct {
 	DiscountCode string            `json:"discount_code,omitempty"`
 }
 
+// LemonSqueezyCheckoutAttributes represents the attributes of a checkout response
+type LemonSqueezyCheckoutAttributes struct {
+	StoreID   int    `json:"store_id"`
+	VariantID int    `json:"variant_id"`
+	URL       string `json:"url"`
+	ExpiresAt string `json:"expires_at"`
+}
+
+// LemonSqueezyCheckoutData represents the data field of a checkout response
+type LemonSqueezyCheckoutData struct {
+	ID         string                         `json:"id"`
+	Type       string                         `json:"type"`
+	Attributes LemonSqueezyCheckoutAttributes `json:"attributes"`
+}
+
 // LemonSqueezyCheckoutResponse represents the checkout creation response
 type LemonSqueezyCheckoutResponse struct {
-	Data struct {
-		ID         string `json:"id"`
-		Type       string `json:"type"`
-		Attributes struct {
-			StoreID   int    `json:"store_id"`
-			VariantID int    `json:"variant_id"`
-			URL       string `json:"url"`
-			ExpiresAt string `json:"expires_at"`
-		} `json:"attributes"`
-	} `json:"data"`
+	Data LemonSqueezyCheckoutData `json:"data"`
 }

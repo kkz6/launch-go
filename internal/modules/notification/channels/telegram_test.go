@@ -241,7 +241,7 @@ func TestNewTelegramChannel(t *testing.T) {
 	channel := NewTelegramChannel(nc, mockHTTP)
 
 	if channel == nil {
-		t.Error("NewTelegramChannel() returned nil")
+		t.Fatal("NewTelegramChannel() returned nil")
 	}
 	if channel.channel != nc {
 		t.Error("channel not set correctly")
@@ -264,7 +264,7 @@ func TestNewTelegramChannelWithURL(t *testing.T) {
 	channel := NewTelegramChannelWithURL(nc, mockHTTP, customURL)
 
 	if channel == nil {
-		t.Error("NewTelegramChannelWithURL() returned nil")
+		t.Fatal("NewTelegramChannelWithURL() returned nil")
 	}
 	if channel.apiURL != customURL {
 		t.Errorf("apiURL = %s, want %s", channel.apiURL, customURL)

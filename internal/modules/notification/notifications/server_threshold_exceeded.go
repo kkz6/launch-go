@@ -2,7 +2,6 @@ package notifications
 
 import (
 	"fmt"
-	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
@@ -68,14 +67,6 @@ func (n *ServerThresholdExceededNotification) metricLabel(metric MetricType) str
 	default:
 		return string(metric)
 	}
-}
-
-func (n *ServerThresholdExceededNotification) formatThresholds() string {
-	var parts []string
-	for _, t := range n.Thresholds {
-		parts = append(parts, fmt.Sprintf("%s: %.1f%% (threshold: %.1f%%)", n.metricLabel(t.Metric), t.Current, t.Threshold))
-	}
-	return strings.Join(parts, "\n")
 }
 
 // ToEmail returns the email message content

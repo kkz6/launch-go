@@ -240,7 +240,7 @@ func TestNewEmailChannel(t *testing.T) {
 	channel := NewEmailChannel(nc, sender)
 
 	if channel == nil {
-		t.Error("NewEmailChannel() returned nil")
+		t.Fatal("NewEmailChannel() returned nil")
 	}
 	if channel.channel != nc {
 		t.Error("channel not set correctly")

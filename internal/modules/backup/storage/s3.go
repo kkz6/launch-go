@@ -7,13 +7,13 @@ import (
 
 // S3Provider implements the Provider interface for S3-compatible storage
 type S3Provider struct {
-	endpoint       string
-	accessKeyID    string
+	endpoint        string
+	accessKeyID     string
 	secretAccessKey string
-	region         string
-	bucket         string
-	path           string
-	forcePathStyle bool
+	region          string
+	bucket          string
+	path            string
+	forcePathStyle  bool
 }
 
 // NewS3Provider creates a new S3 storage provider

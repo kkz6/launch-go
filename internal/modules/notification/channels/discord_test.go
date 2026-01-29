@@ -197,7 +197,7 @@ func TestNewDiscordChannel(t *testing.T) {
 	channel := NewDiscordChannel(nc, mockHTTP)
 
 	if channel == nil {
-		t.Error("NewDiscordChannel() returned nil")
+		t.Fatal("NewDiscordChannel() returned nil")
 	}
 	if channel.channel != nc {
 		t.Error("channel not set correctly")
