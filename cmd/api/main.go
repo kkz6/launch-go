@@ -224,6 +224,9 @@ func (a *Application) registerModules() {
 	// Initialize subscription middleware
 	middleware.InitSubscriptionMiddleware(a.db, a.config.Billing.SubscriptionsEnabled)
 
+	// Initialize server provisioned middleware
+	middleware.InitServerProvisionedMiddleware(a.db)
+
 	// Boot all HTTP routes through the kernel
 	// Note: TeamContext middleware is applied at the route level where team scope is required
 	a.kernel.BootHTTP(app.BootHTTPOptions{
