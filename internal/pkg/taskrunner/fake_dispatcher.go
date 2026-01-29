@@ -98,6 +98,11 @@ func (d *FakeDispatcher) Run(ctx context.Context, pt *PendingTask) (*TaskResult,
 	return taskResult, nil
 }
 
+// RunWithStreaming delegates to Run for testing purposes.
+func (d *FakeDispatcher) RunWithStreaming(ctx context.Context, pt *PendingTask) (*TaskResult, error) {
+	return d.Run(ctx, pt)
+}
+
 // SetResult configures a specific result for a task by name or ID.
 func (d *FakeDispatcher) SetResult(nameOrID string, result *TaskResult) {
 	d.mu.Lock()

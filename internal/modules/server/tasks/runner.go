@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"reflect"
-	"strings"
 
 	"github.com/hibiken/asynq"
 	"github.com/oklog/ulid/v2"
@@ -380,9 +379,8 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 		r.logger.Info().
 			Str("task_id", taskModel.ID).
 			Str("task_name", taskModel.Name).
-			Str("mode", "long_running").
 			Bool("has_marker_handler", r.markerHandler != nil).
-			Msg("Task started with long-running SSH connection")
+			Msg("Task started with direct SSH streaming")
 	}
 
 	go func() {
@@ -393,81 +391,54 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 		pendingTask.OnConnection(conn)
 		pendingTask.As(taskModel.ID)
 
-		// Set up output callback for marker processing
+		// Set up per-line callback for real-time marker processing.
+		// Each line is processed individually as it arrives from the SSH pipe —
+		// no re-parsing of the full buffer, no file intermediary delays.
 		if r.markerHandler != nil {
-			pendingTask.OnOutput(func(output string) {
-				if r.logger != nil {
-					r.logger.Info().
-						Str("task_id", taskModel.ID).
-						Int("output_len", len(output)).
-						Msg("runLongRunning: OnOutput callback invoked")
+			pendingTask.OnLine(func(line string) {
+				marker := markers.Parse(line)
+				if marker == nil {
+					return
 				}
 
-				// Process each line for markers
-				markerCount := 0
-				for _, line := range strings.Split(output, "\n") {
-					if marker := markers.Parse(line); marker != nil {
-						markerCount++
-						if r.logger != nil {
-							r.logger.Info().
-								Str("task_id", taskModel.ID).
-								Str("marker_type", marker.Type).
-								Str("marker_value", marker.Value).
-								Msg("runLongRunning: parsed marker, calling handler")
-						}
-						if err := r.markerHandler.OnMarker(context.Background(), taskModel.ID, marker); err != nil {
-							if r.logger != nil {
-								r.logger.Warn().Err(err).
-									Str("marker_type", marker.Type).
-									Msg("Marker handler error")
-							}
-						}
+				if r.logger != nil {
+					r.logger.Debug().
+						Str("task_id", taskModel.ID).
+						Str("marker_type", marker.Type).
+						Str("marker_value", marker.Value).
+						Msg("runLongRunning: marker detected, calling handler")
+				}
+
+				if err := r.markerHandler.OnMarker(context.Background(), taskModel.ID, marker); err != nil {
+					if r.logger != nil {
+						r.logger.Warn().Err(err).
+							Str("marker_type", marker.Type).
+							Msg("Marker handler error")
 					}
 				}
-
-				if r.logger != nil && markerCount > 0 {
-					r.logger.Info().
-						Str("task_id", taskModel.ID).
-						Int("marker_count", markerCount).
-						Msg("runLongRunning: processed markers")
-				}
 			})
-		} else {
-			if r.logger != nil {
-				r.logger.Warn().
-					Str("task_id", taskModel.ID).
-					Msg("runLongRunning: NO markerHandler set!")
-			}
 		}
 
 		bgCtx := context.Background()
 
-		// Create a completion channel to receive the actual result when task finishes
-		completionChan := make(chan *taskrunner.TaskResult, 1)
-
-		// Use background mode for long-running tasks - this is more resilient
-		// because nohup detaches the task, so it continues even if SSH drops.
-		// The streamMonitor periodically checks output and calls the OnOutput callback.
-		pendingTask.InBackground()
-		pendingTask.WithCompletionChannel(completionChan)
-
 		if r.logger != nil {
 			r.logger.Info().
 				Str("task_id", taskModel.ID).
-				Bool("has_OnOutput", pendingTask.GetOnOutput() != nil).
-				Bool("background", pendingTask.Background).
-				Bool("has_completion_chan", pendingTask.GetCompletionChannel() != nil).
-				Msg("runLongRunning: calling dispatcher.Run()")
+				Bool("has_OnLine", pendingTask.GetOnLine() != nil).
+				Msg("runLongRunning: calling dispatcher.RunWithStreaming()")
 		}
 
-		_, execErr := r.dispatcher.Run(bgCtx, pendingTask)
+		// Use direct SSH streaming: script output flows through the SSH pipe
+		// with no file intermediary. Each line (including markers) is delivered
+		// immediately as the script writes it.
+		taskResult, execErr := r.dispatcher.RunWithStreaming(bgCtx, pendingTask)
 
 		if execErr != nil {
 			if r.logger != nil {
 				r.logger.Error().Err(execErr).
 					Str("task_id", taskModel.ID).
 					Str("task_name", taskModel.Name).
-					Msg("Long-running task failed to start")
+					Msg("Streaming task execution failed")
 			}
 			taskModel.Status = string(TaskStatusFailed)
 			taskModel.Output = dbtype.EncryptedString(execErr.Error())
@@ -476,17 +447,6 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 			r.handleTaskCompletion(bgCtx, taskModel, nil, execErr)
 			return
 		}
-
-		// Wait for the task to actually complete via the completion channel
-		// This keeps the goroutine alive to handle proper completion callbacks
-		if r.logger != nil {
-			r.logger.Debug().
-				Str("task_id", taskModel.ID).
-				Str("task_name", taskModel.Name).
-				Msg("Waiting for background task to complete")
-		}
-
-		taskResult := <-completionChan
 
 		if r.logger != nil {
 			status := "unknown"
@@ -503,7 +463,7 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 				Str("task_id", taskModel.ID).
 				Str("task_name", taskModel.Name).
 				Str("status", status).
-				Msg("Long-running task completed")
+				Msg("Streaming task completed")
 		}
 
 		if taskResult != nil {
@@ -511,7 +471,7 @@ func (r *TaskRunner) runLongRunning(ctx context.Context) (*models.Task, error) {
 		}
 
 		// Handle task completion - invokes callbacks and dispatches completion jobs
-		r.handleTaskCompletion(bgCtx, taskModel, taskResult, nil)
+		r.handleTaskCompletion(bgCtx, taskModel, taskResult, execErr)
 	}()
 
 	return taskModel, nil
