@@ -154,3 +154,8 @@ type UpdateComposerAuthRequest struct {
 type VulnerabilityAuditRequest struct {
 	Email *string `json:"email" validate:"omitempty,email"`
 }
+
+// InstallPhpExtensionRequest represents the request body for installing a PHP extension
+type InstallPhpExtensionRequest struct {
+	Extension string `json:"extension" validate:"required,min=1,max=50"`
+}

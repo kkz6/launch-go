@@ -374,3 +374,61 @@ func GetProviderImage(provider, os string) string {
 	}
 	return ""
 }
+
+// PhpExtension represents a PHP extension that can be installed
+type PhpExtension struct {
+	Value       string `json:"value"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
+}
+
+// GetAvailablePhpExtensions returns PHP extensions available via Ondrej PPA (apt-get install php{version}-{ext})
+func GetAvailablePhpExtensions() []PhpExtension {
+	return []PhpExtension{
+		{Value: "bcmath", Label: "BCMath", Description: "Arbitrary precision mathematics"},
+		{Value: "bz2", Label: "Bzip2", Description: "Bzip2 compression"},
+		{Value: "curl", Label: "cURL", Description: "URL transfer library"},
+		{Value: "dba", Label: "DBA", Description: "Database abstraction layer"},
+		{Value: "enchant", Label: "Enchant", Description: "Spell checking library"},
+		{Value: "gd", Label: "GD", Description: "Image processing"},
+		{Value: "gmp", Label: "GMP", Description: "GNU Multiple Precision"},
+		{Value: "igbinary", Label: "Igbinary", Description: "Binary serialization"},
+		{Value: "imagick", Label: "ImageMagick", Description: "Image manipulation"},
+		{Value: "imap", Label: "IMAP", Description: "Email protocol support"},
+		{Value: "intl", Label: "Intl", Description: "Internationalization"},
+		{Value: "ldap", Label: "LDAP", Description: "Directory access protocol"},
+		{Value: "mbstring", Label: "Mbstring", Description: "Multibyte string handling"},
+		{Value: "memcached", Label: "Memcached", Description: "Memcached caching"},
+		{Value: "mongodb", Label: "MongoDB", Description: "MongoDB driver"},
+		{Value: "msgpack", Label: "MessagePack", Description: "MessagePack serialization"},
+		{Value: "mysql", Label: "MySQL", Description: "MySQL database support"},
+		{Value: "odbc", Label: "ODBC", Description: "ODBC database access"},
+		{Value: "opcache", Label: "OPcache", Description: "Opcode caching"},
+		{Value: "pgsql", Label: "PostgreSQL", Description: "PostgreSQL database support"},
+		{Value: "pspell", Label: "Pspell", Description: "Spell checking"},
+		{Value: "readline", Label: "Readline", Description: "CLI line editing"},
+		{Value: "redis", Label: "Redis", Description: "Redis caching"},
+		{Value: "snmp", Label: "SNMP", Description: "Network management protocol"},
+		{Value: "soap", Label: "SOAP", Description: "SOAP web services"},
+		{Value: "sqlite3", Label: "SQLite3", Description: "SQLite database support"},
+		{Value: "tidy", Label: "Tidy", Description: "HTML/XML cleanup"},
+		{Value: "xdebug", Label: "Xdebug", Description: "Debugging and profiling"},
+		{Value: "xml", Label: "XML", Description: "XML parsing"},
+		{Value: "xsl", Label: "XSL", Description: "XSL transformations"},
+		{Value: "zip", Label: "Zip", Description: "ZIP archive handling"},
+	}
+}
+
+// GetPhpExtensionLabel returns the label for a PHP extension
+func GetPhpExtensionLabel(value string) string {
+	for _, ext := range GetAvailablePhpExtensions() {
+		if ext.Value == value {
+			return ext.Label
+		}
+	}
+	// If not found in our list, capitalize the first letter
+	if len(value) > 0 {
+		return string(value[0]-32) + value[1:]
+	}
+	return value
+}

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -35,16 +36,16 @@ func WithProviderType(t GitProviderType) BaseGitProviderOption {
 }
 
 // WithBaseURL sets the base URL (e.g., https://github.com).
-func WithBaseURL(url string) BaseGitProviderOption {
+func WithBaseURL(baseURL string) BaseGitProviderOption {
 	return func(b *BaseGitProvider) {
-		b.baseURL = url
+		b.baseURL = baseURL
 	}
 }
 
 // WithAPIURL sets the API URL (e.g., https://api.github.com).
-func WithAPIURL(url string) BaseGitProviderOption {
+func WithAPIURL(apiURL string) BaseGitProviderOption {
 	return func(b *BaseGitProvider) {
-		b.apiURL = url
+		b.apiURL = apiURL
 	}
 }
 
@@ -195,7 +196,9 @@ type PaginatedResponse struct {
 }
 
 // ParseLinkHeader parses GitHub-style Link headers to extract pagination URLs.
-// Returns the next page URL if present, empty string otherwise.
+// Returns the path portion of the next page URL if present, empty string otherwise.
+// This extracts just the path+query (e.g., "/installation/repositories?page=2")
+// from a full URL (e.g., "https://api.github.com/installation/repositories?page=2").
 func ParseLinkHeader(linkHeader string) string {
 	if linkHeader == "" {
 		return ""
@@ -209,8 +212,20 @@ func ParseLinkHeader(linkHeader string) string {
 		}
 
 		if strings.TrimSpace(parts[1]) == `rel="next"` {
-			url := strings.TrimSpace(parts[0])
-			return strings.Trim(url, "<>")
+			rawURL := strings.TrimSpace(parts[0])
+			rawURL = strings.Trim(rawURL, "<>")
+
+			// Parse the URL and return just the path+query
+			parsedURL, err := url.Parse(rawURL)
+			if err != nil {
+				return rawURL // Fallback to full URL if parsing fails
+			}
+
+			// Return path with query string
+			if parsedURL.RawQuery != "" {
+				return parsedURL.Path + "?" + parsedURL.RawQuery
+			}
+			return parsedURL.Path
 		}
 	}
 

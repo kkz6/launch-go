@@ -47,6 +47,10 @@ type ServiceRepository interface {
 	SetDefault(ctx context.Context, id string, isDefault bool) error
 	UnsetDefaultPhp(ctx context.Context, serverID string) error
 	MarkRemovalFailed(ctx context.Context, id string) error
+	FindPhpByServerAndVersion(ctx context.Context, serverID, version string) (*models.InstalledService, error)
+	AddExtension(ctx context.Context, id, extension string) error
+	RemoveExtension(ctx context.Context, id, extension string) error
+	SetExtensionStatus(ctx context.Context, id, extension, status string) error
 }
 
 // FirewallRuleRepository defines the interface for firewall rule database operations

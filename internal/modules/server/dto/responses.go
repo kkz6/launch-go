@@ -176,6 +176,7 @@ type ServiceResponse struct {
 type ExtensionResponse struct {
 	Value       string  `json:"value"`
 	Label       string  `json:"label"`
+	Description string  `json:"description,omitempty"`
 	Status      *string `json:"status,omitempty"`
 	IsInstalled bool    `json:"is_installed"`
 	IsPending   bool    `json:"is_pending"`
@@ -226,35 +227,87 @@ func ToServiceResponse(service *models.InstalledService) ServiceResponse {
 		if statusOutput, ok := service.TypeData["status_output"].(string); ok {
 			resp.StatusOutput = &statusOutput
 		}
-		// Extract OPcache settings
+		// Extract OPcache settings (PHP only)
 		if opcache, ok := service.TypeData["opcache"].(map[string]any); ok {
 			resp.Opcache = opcache
 		}
-		// Extract extensions
-		if extensions, ok := service.TypeData["extensions"].(map[string]any); ok {
-			resp.Extensions = convertExtensionsToResponse(extensions)
+	}
+
+	// For PHP services, always include available extensions
+	if service.Type == types.ServiceTypePhp {
+		var installedExtensions map[string]any
+		if service.TypeData != nil {
+			installedExtensions, _ = service.TypeData["extensions"].(map[string]any)
 		}
+		resp.Extensions = convertExtensionsToResponse(installedExtensions)
 	}
 
 	return resp
 }
 
 // convertExtensionsToResponse converts extensions map to response slice
-func convertExtensionsToResponse(extensions map[string]any) []ExtensionResponse {
-	result := make([]ExtensionResponse, 0, len(extensions))
-	for name, status := range extensions {
-		statusStr, _ := status.(string)
+// It includes all available extensions, marking installed ones appropriately
+func convertExtensionsToResponse(installedExtensions map[string]any) []ExtensionResponse {
+	// Get all available extensions
+	availableExtensions := serverconfig.GetAvailablePhpExtensions()
+
+	// Create a map of installed extensions for quick lookup
+	// Extensions can be stored as either a string status or a map with "status" key
+	installedMap := make(map[string]string)
+	for name, value := range installedExtensions {
+		var status string
+		switch v := value.(type) {
+		case string:
+			status = v
+		case map[string]any:
+			if s, ok := v["status"].(string); ok {
+				status = s
+			}
+		}
+		if status != "" {
+			installedMap[name] = status
+		}
+	}
+
+	// Build the response with all available extensions
+	result := make([]ExtensionResponse, 0, len(availableExtensions))
+	for _, available := range availableExtensions {
+		ext := ExtensionResponse{
+			Value:       available.Value,
+			Label:       available.Label,
+			Description: available.Description,
+			IsInstalled: false,
+			IsPending:   false,
+		}
+
+		// Check if this extension is installed
+		if status, exists := installedMap[available.Value]; exists {
+			ext.IsInstalled = status == "installed"
+			ext.IsPending = status == "installing" || status == "removing"
+			if status != "" {
+				ext.Status = &status
+			}
+			// Remove from map so we can handle any extra installed extensions not in our list
+			delete(installedMap, available.Value)
+		}
+
+		result = append(result, ext)
+	}
+
+	// Add any installed extensions that weren't in our available list
+	for name, status := range installedMap {
 		ext := ExtensionResponse{
 			Value:       name,
-			Label:       name, // Can be enhanced with proper labels
-			IsInstalled: statusStr == "installed",
-			IsPending:   statusStr == "installing" || statusStr == "uninstalling",
+			Label:       serverconfig.GetPhpExtensionLabel(name),
+			IsInstalled: status == "installed",
+			IsPending:   status == "installing" || status == "removing",
 		}
-		if statusStr != "" {
-			ext.Status = &statusStr
+		if status != "" {
+			ext.Status = &status
 		}
 		result = append(result, ext)
 	}
+
 	return result
 }
 

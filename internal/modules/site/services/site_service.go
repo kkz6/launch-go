@@ -103,13 +103,23 @@ func (s *SiteService) List(ctx context.Context, serverID, teamID string) ([]mode
 
 // Create creates a new site
 func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID string, req *dto.CreateSiteRequest) (*models.Site, error) {
+	s.Logger.Debug().
+		Str("server_id", serverID).
+		Str("team_id", teamID).
+		Str("address", req.Address).
+		Str("type", string(req.Type)).
+		Str("php_version", req.PhpVersion).
+		Msg("creating site")
+
 	// Get server to determine username and validate PHP version
 	if s.serverReader == nil {
+		s.Logger.Error().Msg("server reader not configured")
 		return nil, errors.New("server reader not configured")
 	}
 
 	server, err := s.serverReader.FindServerByID(ctx, serverID)
 	if err != nil {
+		s.Logger.Error().Err(err).Str("server_id", serverID).Msg("failed to fetch server")
 		return nil, fmt.Errorf("failed to fetch server: %w", err)
 	}
 
@@ -118,7 +128,9 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 	// Validate PHP version is a valid enum and installed on server
 	phpSoftware, err := servertypes.ParseSoftware(req.PhpVersion)
 	if err != nil || !phpSoftware.IsPhp() {
-		return nil, fmt.Errorf("invalid PHP version: %s", req.PhpVersion)
+		return nil, fiberutil.NewValidationError(map[string][]string{
+			"php_version": {fmt.Sprintf("Invalid PHP version: %s", req.PhpVersion)},
+		})
 	}
 
 	// Check if PHP version is installed on the server
@@ -131,7 +143,9 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 		}
 	}
 	if !phpInstalled {
-		return nil, fmt.Errorf("PHP version %s is not installed on this server", req.PhpVersion)
+		return nil, fiberutil.NewValidationError(map[string][]string{
+			"php_version": {fmt.Sprintf("PHP %s is not installed on this server", req.PhpVersion)},
+		})
 	}
 
 	// Check if site with same address exists
@@ -140,12 +154,16 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 		return nil, fmt.Errorf("failed to check for existing site: %w", err)
 	}
 	if existing != nil {
-		return nil, errors.New("a site with this address already exists on this server")
+		return nil, fiberutil.NewValidationError(map[string][]string{
+			"address": {"A site with this address already exists on this server"},
+		})
 	}
 
 	// Validate site type
 	if !req.Type.IsValid() {
-		return nil, fmt.Errorf("invalid site type: %s", req.Type)
+		return nil, fiberutil.NewValidationError(map[string][]string{
+			"type": {fmt.Sprintf("Invalid site type: %s", req.Type)},
+		})
 	}
 
 	// Validate source control for non-WordPress sites
@@ -248,9 +266,25 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 
 	// Create site with activity logging in a transaction
 	var envVars map[string]string
+	s.Logger.Debug().
+		Str("site_address", site.Address).
+		Str("site_server_id", site.ServerID).
+		Str("site_team_id", site.TeamID).
+		Str("site_user_id", site.UserID).
+		Str("site_type", string(site.Type)).
+		Str("site_path", site.Path).
+		Str("site_user", site.User).
+		Msg("about to create site record")
+
 	err = s.Repos().Site().CreateWithActivity(ctx, site, userID)
 
 	if err != nil {
+		s.Logger.Error().Err(err).
+			Str("address", req.Address).
+			Str("server_id", serverID).
+			Str("team_id", teamID).
+			Str("type", string(req.Type)).
+			Msg("failed to create site")
 		return nil, err
 	}
 
@@ -572,7 +606,9 @@ func (s *SiteService) validateSourceControl(ctx context.Context, sourceControlID
 		return fmt.Errorf("failed to validate source control: %w", err)
 	}
 	if !exists {
-		return errors.New("source control not found")
+		return fiberutil.NewValidationError(map[string][]string{
+			"source_control_id": {"The selected source control does not exist"},
+		})
 	}
 
 	// Check repository exists if provided
@@ -582,7 +618,9 @@ func (s *SiteService) validateSourceControl(ctx context.Context, sourceControlID
 			return fmt.Errorf("failed to validate repository: %w", err)
 		}
 		if !exists {
-			return errors.New("repository not found")
+			return fiberutil.NewValidationError(map[string][]string{
+				"source_control_repositories_id": {"The selected repository does not exist"},
+			})
 		}
 	}
 
