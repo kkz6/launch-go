@@ -138,3 +138,74 @@ func (r *ServiceRepository) MarkRemovalFailed(ctx context.Context, id string) er
 		"removal_failed_at":    time.Now(),
 	})
 }
+
+// FindPhpByServerAndVersion finds a PHP service by server ID and version (e.g., "8.4")
+func (r *ServiceRepository) FindPhpByServerAndVersion(ctx context.Context, serverID, version string) (*models.InstalledService, error) {
+	var service models.InstalledService
+	err := r.DB.WithContext(ctx).
+		First(&service, "server_id = ? AND type = ? AND version = ?", serverID, types.ServiceTypePhp, version).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fiberutil.NotFound()
+		}
+		return nil, err
+	}
+	return &service, nil
+}
+
+// AddExtension adds an extension to a PHP service's type_data with "installed" status
+func (r *ServiceRepository) AddExtension(ctx context.Context, id, extension string) error {
+	return r.SetExtensionStatus(ctx, id, extension, "installed")
+}
+
+// SetExtensionStatus sets the status of an extension in a PHP service's type_data
+func (r *ServiceRepository) SetExtensionStatus(ctx context.Context, id, extension, status string) error {
+	service, err := r.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if service.TypeData == nil {
+		service.TypeData = make(map[string]any)
+	}
+
+	extensions, ok := service.TypeData["extensions"].(map[string]any)
+	if !ok {
+		extensions = make(map[string]any)
+	}
+
+	extensions[extension] = map[string]any{
+		"status": status,
+	}
+	service.TypeData["extensions"] = extensions
+
+	return r.DB.WithContext(ctx).
+		Model(&models.InstalledService{}).
+		Where("id = ?", id).
+		Update("type_data", service.TypeData).Error
+}
+
+// RemoveExtension removes an extension from a PHP service's type_data
+func (r *ServiceRepository) RemoveExtension(ctx context.Context, id, extension string) error {
+	service, err := r.FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+
+	if service.TypeData == nil {
+		return nil
+	}
+
+	extensions, ok := service.TypeData["extensions"].(map[string]any)
+	if !ok {
+		return nil
+	}
+
+	delete(extensions, extension)
+	service.TypeData["extensions"] = extensions
+
+	return r.DB.WithContext(ctx).
+		Model(&models.InstalledService{}).
+		Where("id = ?", id).
+		Update("type_data", service.TypeData).Error
+}

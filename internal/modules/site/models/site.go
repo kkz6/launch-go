@@ -81,7 +81,8 @@ func (s *Site) BeforeCreate(tx *gorm.DB) error {
 	}
 
 	if s.DeployToken == nil || *s.DeployToken == "" {
-		deployToken := security.NewTokenGenerator(32).WithEncoding(security.TokenBase64URL).MustGenerate()
+		// 24 bytes -> 32 characters when Base64URL encoded (24 * 4/3 = 32)
+		deployToken := security.NewTokenGenerator(24).WithEncoding(security.TokenBase64URL).MustGenerate()
 		s.DeployToken = &deployToken
 	}
 

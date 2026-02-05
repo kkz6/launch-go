@@ -151,3 +151,91 @@ func (h *Handler) GetAvailableServices(c *fiber.Ctx) error {
 
 	return fiberctx.OK(c, "Available services retrieved", services)
 }
+
+// InstallPhpExtension installs a PHP extension on a server
+func (h *Handler) InstallPhpExtension(c *fiber.Ctx) error {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	phpID, err := fiberctx.GetULIDParam(c, "phpId")
+	if err != nil {
+		return err
+	}
+
+	req, err := fiberctx.MustParseAndValidate[dto.InstallPhpExtensionRequest](c)
+	if err != nil {
+		return err
+	}
+
+	// Get the PHP service to find its version
+	svc, err := h.service.GetServiceStatus(c.Context(), serverID, teamID, phpID)
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	if svc.Type != types.ServiceTypePhp {
+		return fiberctx.RespondBadRequest(c, "Service is not a PHP installation")
+	}
+
+	userID, err := fiberctx.GetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	if err := h.service.InstallPhpExtension(c.Context(), serverID, teamID, svc.Version, req.Extension, &userID); err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return fiberctx.OK(c, "Extension installation initiated", nil)
+}
+
+// UninstallPhpExtension uninstalls a PHP extension from a server
+func (h *Handler) UninstallPhpExtension(c *fiber.Ctx) error {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	phpID, err := fiberctx.GetULIDParam(c, "phpId")
+	if err != nil {
+		return err
+	}
+
+	extension := c.Params("extension")
+	if extension == "" {
+		return fiberctx.RespondBadRequest(c, "Extension name is required")
+	}
+
+	// Get the PHP service to find its version
+	svc, err := h.service.GetServiceStatus(c.Context(), serverID, teamID, phpID)
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	if svc.Type != types.ServiceTypePhp {
+		return fiberctx.RespondBadRequest(c, "Service is not a PHP installation")
+	}
+
+	userID, err := fiberctx.GetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	if err := h.service.UninstallPhpExtension(c.Context(), serverID, teamID, svc.Version, extension, &userID); err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return fiberctx.OK(c, "Extension uninstall initiated", nil)
+}

@@ -458,6 +458,12 @@ func (s *Service) InstallPhpExtension(ctx context.Context, serverID, teamID, ver
 		return ErrQueueNotConfigured
 	}
 
+	// Mark extension as "installing" in the database
+	phpService, err := s.repos.Service().FindPhpByServerAndVersion(ctx, serverID, version)
+	if err == nil {
+		_ = s.repos.Service().SetExtensionStatus(ctx, phpService.ID, extension, "installing")
+	}
+
 	task, err := jobs.NewInstallPhpExtensionTask(server.ID, version, extension, userID)
 	if err != nil {
 		return err
@@ -475,6 +481,12 @@ func (s *Service) UninstallPhpExtension(ctx context.Context, serverID, teamID, v
 
 	if !s.HasQueue() {
 		return ErrQueueNotConfigured
+	}
+
+	// Mark extension as "removing" in the database
+	phpService, err := s.repos.Service().FindPhpByServerAndVersion(ctx, serverID, version)
+	if err == nil {
+		_ = s.repos.Service().SetExtensionStatus(ctx, phpService.ID, extension, "removing")
 	}
 
 	task, err := jobs.NewUninstallPhpExtensionTask(server.ID, version, extension, userID)

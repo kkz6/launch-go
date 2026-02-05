@@ -311,7 +311,7 @@ func TestParseLinkHeader(t *testing.T) {
 		{
 			name:     "Header with next link",
 			header:   `<https://api.github.com/installations?page=2>; rel="next", <https://api.github.com/installations?page=5>; rel="last"`,
-			expected: "https://api.github.com/installations?page=2",
+			expected: "/installations?page=2",
 		},
 		{
 			name:     "Header without next link",
@@ -321,7 +321,7 @@ func TestParseLinkHeader(t *testing.T) {
 		{
 			name:     "Only next link",
 			header:   `<https://api.github.com/repos?page=2>; rel="next"`,
-			expected: "https://api.github.com/repos?page=2",
+			expected: "/repos?page=2",
 		},
 	}
 

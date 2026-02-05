@@ -60,6 +60,23 @@ func (j *InstallPhpExtensionJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("failed to install PHP extension: %s", result.GetOutput())
 	}
 
+	// Find the PHP service and update its extensions
+	phpService, err := j.Deps.Repos.Service().FindPhpByServerAndVersion(ctx, j.server.ID, j.Payload.Version)
+	if err != nil {
+		j.Deps.Logger.Warn().Err(err).
+			Str("server_id", j.server.ID).
+			Str("version", j.Payload.Version).
+			Msg("failed to find PHP service to update extensions")
+	} else {
+		if err := j.Deps.Repos.Service().AddExtension(ctx, phpService.ID, j.Payload.Extension); err != nil {
+			j.Deps.Logger.Warn().Err(err).
+				Str("server_id", j.server.ID).
+				Str("version", j.Payload.Version).
+				Str("extension", j.Payload.Extension).
+				Msg("failed to update extension in database")
+		}
+	}
+
 	j.Deps.Logger.Info().
 		Str("server_id", j.server.ID).
 		Str("version", j.Payload.Version).

@@ -3,6 +3,7 @@ package repositories
 import (
 	"context"
 	"errors"
+	"fmt"
 
 	"gorm.io/gorm"
 
@@ -202,12 +203,15 @@ func (r *SiteRepository) FindByRepositoryAndBranch(ctx context.Context, repoName
 func (r *SiteRepository) CreateWithActivity(ctx context.Context, site *models.Site, userID string) error {
 	return r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(site).Error; err != nil {
-			return err
+			return fmt.Errorf("failed to insert site record: %w", err)
 		}
 
 		// Log activity within the same transaction using activity.LogCreated
 		_, err := activity.LogCreated(ctx, tx, userID, site, "Site was created")
-		return err
+		if err != nil {
+			return fmt.Errorf("failed to log activity: %w", err)
+		}
+		return nil
 	})
 }
 

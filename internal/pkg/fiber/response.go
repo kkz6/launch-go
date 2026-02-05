@@ -80,12 +80,22 @@ func RespondInternalError(c *fiber.Ctx, message string) error {
 	return Error(c, fiber.StatusInternalServerError, message)
 }
 
-// HandleError checks if error is a fiber.Error and returns appropriate response.
+// HandleError checks if error is a fiber.Error or ValidationError and returns appropriate response.
 // Use this when you want to handle the response immediately in the handler
 // instead of letting the global error handler handle it.
 func HandleError(c *fiber.Ctx, err error) error {
 	if err == nil {
 		return nil
+	}
+
+	// Check for validation errors first
+	var validationErr *ValidationError
+	if errors.As(err, &validationErr) {
+		return c.Status(fiber.StatusUnprocessableEntity).JSON(fiber.Map{
+			"success": false,
+			"message": MsgValidation,
+			"errors":  validationErr.Errors,
+		})
 	}
 
 	code := fiber.StatusInternalServerError

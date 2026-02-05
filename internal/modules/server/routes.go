@@ -86,6 +86,8 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Get("/:id/php/:phpId/opcache/status", provisioned, handler.GetOpcacheStatus)
 		servers.Post("/:id/php/:phpId/opcache/reset", provisioned, handler.ResetOpcache)
 		servers.Post("/:id/php/:phpId/opcache/configure", provisioned, handler.ConfigureOpcache)
+		servers.Post("/:id/php/:phpId/extensions", provisioned, handler.InstallPhpExtension)
+		servers.Delete("/:id/php/:phpId/extensions/:extension", provisioned, handler.UninstallPhpExtension)
 
 		// Composer Packages
 		servers.Get("/:id/packages", provisioned, handler.GetComposerAuth)

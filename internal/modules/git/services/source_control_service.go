@@ -202,15 +202,28 @@ func (s *SourceControlService) SyncRepositories(ctx context.Context, sc *models.
 
 	provider, err := s.ProviderFactory().GetProvider(providers.GitProviderType(sc.Provider))
 	if err != nil {
-		return err
+		s.Logger.Error().Err(err).Str("provider", string(sc.Provider)).Msg("failed to get git provider")
+		return fmt.Errorf("failed to get provider: %w", err)
 	}
 
 	repos, err := provider.GetInstallationRepositories(ctx, *sc.InstallationID)
 	if err != nil {
-		return err
+		s.Logger.Error().Err(err).
+			Str("installation_id", *sc.InstallationID).
+			Str("provider", string(sc.Provider)).
+			Msg("failed to get installation repositories from provider")
+		return fmt.Errorf("failed to fetch repositories from provider: %w", err)
 	}
 
-	return s.SyncInstallationRepositories(ctx, sc, repos)
+	if err := s.SyncInstallationRepositories(ctx, sc, repos); err != nil {
+		s.Logger.Error().Err(err).
+			Str("source_control_id", sc.ID).
+			Int("repo_count", len(repos)).
+			Msg("failed to sync repositories to database")
+		return fmt.Errorf("failed to sync repositories: %w", err)
+	}
+
+	return nil
 }
 
 // SyncInstallationRepositories syncs repositories for an installation
