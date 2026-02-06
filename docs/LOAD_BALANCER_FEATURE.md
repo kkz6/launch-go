@@ -126,18 +126,19 @@ This allows:
                           ┌─────────────────────────────────┐
                           │         Load Balancer           │
                           │    Handles: app.example.com     │
+                          │    TLS termination here         │
                           └─────────────┬───────────────────┘
-                                        │
+                                        │ HTTP to :8080
                     ┌───────────────────┼───────────────────┐
                     ▼                                       ▼
         ┌───────────────────────┐               ┌───────────────────────┐
         │      PHP Server 1      │               │      PHP Server 2      │
         ├───────────────────────┤               ├───────────────────────┤
-        │ app.example.com       │◄──────────────│ app.example.com       │
-        │ (Caddy disabled,      │   LB Traffic  │ (Caddy disabled,      │
-        │  PHP-FPM only)        │               │  PHP-FPM only)        │
+        │ app.example.com:8080  │               │ app.example.com:8080  │
+        │ (Caddy on :8080,      │   LB Traffic  │ (Caddy on :8080,      │
+        │  HTTP only, IP locked) │◄─────────────│  HTTP only, IP locked) │
         ├───────────────────────┤               ├───────────────────────┤
-        │ api.example.com       │               │ blog.example.com      │
+        │ api.example.com :443  │               │ blog.example.com :443 │
         │ (Caddy active,        │               │ (Caddy active,        │
         │  serves directly)     │               │  serves directly)     │
         └───────────────────────┘               └───────────────────────┘
@@ -145,27 +146,29 @@ This allows:
 
 ### What Happens to Backend Site's Caddy?
 
-**Important**: Backend Caddy keeps running, but the Caddyfile IS modified:
+**Important**: Backend Caddy keeps running. A **new Caddyfile block on a dedicated port (8080)** is added for load-balanced traffic. The original site Caddyfile on ports 80/443 is removed (since DNS now points to the LB).
 
 1. **PHP-FPM uses Unix sockets**, not HTTP
 2. Load balancer can only proxy HTTP requests
 3. Backend Caddy is needed to translate HTTP → FastCGI → PHP-FPM
+4. **Dedicated port 8080** avoids conflicts with other sites on 80/443
 
 **Traffic flow**:
 ```
-Client → Load Balancer (Caddy) → Backend Server (Caddy) → PHP-FPM
-                                  ↑
-                                  Host: app.example.com header
+Client → Load Balancer (Caddy :443) → Backend Server (Caddy :8080) → PHP-FPM
+                                        ↑
+                                        Host: app.example.com header
+                                        Plain HTTP (no TLS overhead)
 ```
 
 ### Backend Caddyfile Changes
 
-When a site is added to a load balancer, its Caddyfile is regenerated:
+When a site is added to a load balancer, a **new Caddyfile block on port 8080** is created for load-balanced traffic. The original site block on 80/443 is removed (since DNS points to the LB now).
 
 **Before (normal mode)**:
 ```caddyfile
 app.example.com {
-    # Caddy auto-manages TLS
+    # Caddy auto-manages TLS on port 443
     root * /home/launch/app.example.com/current/public
     php_fastcgi unix//run/php/php8.3-fpm.sock
     file_server
@@ -174,8 +177,8 @@ app.example.com {
 
 **After (load balanced mode)**:
 ```caddyfile
-http://app.example.com {
-    # http:// prefix disables auto-TLS (LB handles SSL)
+http://app.example.com:8080 {
+    # Dedicated port for LB traffic, HTTP only (no TLS)
 
     # Only accept requests from load balancer
     @notlb not remote_ip {{ .LoadBalancerIP }}
@@ -188,9 +191,11 @@ http://app.example.com {
 ```
 
 **Key changes**:
-1. **`http://` prefix** - Disables Caddy's auto-TLS (no Let's Encrypt cert)
-2. **IP restriction** - Only accepts requests from load balancer IP
-3. **Domain kept** - Matches the `Host` header sent by load balancer
+1. **Dedicated port 8080** - Completely separate from other sites on 80/443
+2. **`http://` prefix** - Plain HTTP only (no TLS overhead, LB handles SSL termination)
+3. **IP restriction** - Only accepts requests from load balancer IP
+4. **Domain kept** - Matches the `Host` header sent by load balancer
+5. **Firewall rule** - UFW rule added: `allow from <LB_IP> to any port 8080`
 
 ### Why Keep the Domain?
 
@@ -213,19 +218,28 @@ X-Forwarded-For: 203.0.113.100
 
 User must update DNS to point to load balancer. UI should show this warning.
 
-### Security: IP Restriction
+### Security: IP Restriction + Firewall
 
-The backend only accepts requests from the load balancer:
-- Direct access to backend IP returns 403 Forbidden
-- Prevents bypassing the load balancer
+The backend is protected by two layers:
+1. **Firewall (UFW)**: Port 8080 only allows traffic from load balancer IP
+2. **Caddy IP restriction**: Requests from non-LB IPs get 403 Forbidden
+- Direct access to backend IP on port 8080 is blocked at firewall level
+- Even if firewall is misconfigured, Caddy IP matcher provides backup protection
 - Load balancer IP is stored in upstream config
+
+When a backend is added to an upstream, the system automatically:
+- Creates UFW rule: `allow from <LB_IP> to any port 8080`
+When a backend is removed:
+- Removes the UFW rule for port 8080
 
 ### Failover Capability
 
 If the load balancer fails:
-1. Regenerate backend Caddyfile to normal mode (remove `http://`, remove IP restriction)
-2. Update DNS to point directly to backend
-3. Or: Add secondary load balancer for HA
+1. Remove the :8080 Caddyfile block on backends
+2. Regenerate original site Caddyfile on 80/443 (normal mode with TLS)
+3. Remove the port 8080 firewall rule
+4. Update DNS to point directly to backend
+5. Or: Add secondary load balancer for HA
 
 ---
 
@@ -238,7 +252,7 @@ When creating an upstream with address `app.example.com`:
 1. **System searches** for existing sites with that address in the team
 2. **If found**, UI shows:
    - Which servers have this site installed
-   - Warning that Caddyfile will be removed from those servers
+   - Warning that site Caddyfile will be moved to port 8080
    - Option to auto-add those servers as backends
 
 ### UI Flow for Upstream Creation
@@ -255,13 +269,13 @@ When creating an upstream with address `app.example.com`:
 │  │  This domain exists as a site on the following servers:      │    │
 │  │                                                               │    │
 │  │  ☑ Server 1 (192.168.1.10) - app.example.com                 │    │
-│  │    └─ Caddyfile will be removed, PHP-FPM will continue      │    │
+│  │    └─ Caddy moved to port 8080, PHP-FPM will continue       │    │
 │  │                                                               │    │
 │  │  ☑ Server 2 (192.168.1.11) - app.example.com                 │    │
-│  │    └─ Caddyfile will be removed, PHP-FPM will continue      │    │
+│  │    └─ Caddy moved to port 8080, PHP-FPM will continue       │    │
 │  │                                                               │    │
 │  │  These sites will become backends for this upstream.         │    │
-│  │  Traffic will flow: Client → Load Balancer → Backend Sites   │    │
+│  │  Traffic will flow: Client → Load Balancer → Backend :8080   │    │
 │  └─────────────────────────────────────────────────────────────┘    │
 │                                                                      │
 │  Load Balancing Policy: [Round Robin                          ▼]   │
@@ -317,13 +331,14 @@ When adding a backend server that doesn't have the site:
 │  │  Status: Installed                                            │    │
 │  │                                                               │    │
 │  │  Adding this backend will:                                    │    │
-│  │  • Remove Caddyfile from Server 2                            │    │
+│  │  • Create Caddyfile on port 8080 for LB traffic              │    │
+│  │  • Remove original Caddyfile on 80/443                       │    │
+│  │  • Add firewall rule allowing LB IP on port 8080             │    │
 │  │  • Route traffic through Load Balancer                       │    │
 │  │  • Keep PHP-FPM running for application requests             │    │
 │  └─────────────────────────────────────────────────────────────┘    │
 │                                                                      │
-│  Weight:        [1                                             ]    │
-│  Backup Only:   [ ] Use only when primary backends are down        │
+│  Port:          [8080                                         ]    │
 │                                                                      │
 │                              [Cancel]  [Add Backend]                 │
 └─────────────────────────────────────────────────────────────────────┘
@@ -402,13 +417,10 @@ CREATE TABLE load_balancer_backends (
     server_id       CHAR(26) NOT NULL REFERENCES servers(id) ON DELETE CASCADE,  -- Denormalized for quick lookups
 
     -- Backend configuration
-    weight          INT DEFAULT 1,                  -- Traffic weight (1-100)
-    max_fails       INT DEFAULT 3,                  -- Failures before marking unhealthy
-    fail_timeout    VARCHAR(20) DEFAULT '30s',      -- How long to mark as unhealthy
-    is_backup       BOOLEAN DEFAULT FALSE,          -- Only use when others are down
+    port            INT DEFAULT 8080,               -- Dedicated port for LB traffic on backend
     is_down         BOOLEAN DEFAULT FALSE,          -- Manually marked as down
 
-    -- Health status (updated by health checks)
+    -- Health status (updated by Caddy's built-in health checks)
     health_status   VARCHAR(50) DEFAULT 'unknown',  -- healthy, unhealthy, unknown
     last_health_check_at TIMESTAMP NULL,
 
@@ -453,18 +465,63 @@ A server can have some sites load balanced and others not.
 
 **File**: `internal/modules/server/types/types.go`
 
+Changes needed in the following methods:
+
 ```go
+// Add new constant
 const (
     ServerTypePhp          ServerType = "php"
     ServerTypeDatabase     ServerType = "database"
     ServerTypeLoadBalancer ServerType = "loadbalancer"  // NEW
 )
 
-// Features for load balancer
-var loadBalancerFeatures = []ServerFeature{
-    ServerFeatureLoadBalancing,  // NEW feature
-    ServerFeatureSSLCertificates,
-    ServerFeatureServices,
+// Update Label()
+func (t ServerType) Label() string {
+    labels := map[ServerType]string{
+        ServerTypePhp:          "PHP Application Server",
+        ServerTypeDatabase:     "Database Server",
+        ServerTypeLoadBalancer: "Load Balancer",  // NEW
+    }
+    // ...
+}
+
+// Update IsValid()
+func (t ServerType) IsValid() bool {
+    switch t {
+    case ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer:  // ADD
+        return true
+    }
+    return false
+}
+
+// Update GetFeatures() - add new case
+func (t ServerType) GetFeatures() []ServerFeature {
+    switch t {
+    // ... existing cases ...
+    case ServerTypeLoadBalancer:
+        return []ServerFeature{
+            ServerFeatureLoadBalancing,  // NEW feature
+            ServerFeatureSSLCertificates,
+            ServerFeatureServices,
+        }
+    }
+    return nil
+}
+
+// Update GetProcessManager() - LB has no process manager
+func (t ServerType) GetProcessManager() ProcessManager {
+    switch t {
+    case ServerTypePhp:
+        return ProcessManagerSupervisor
+    case ServerTypeDatabase, ServerTypeLoadBalancer:  // ADD
+        return ProcessManagerNone
+    }
+    return ProcessManagerNone
+}
+
+// Update AllServerTypes()
+func AllServerTypes() []ServerType {
+    return []ServerType{ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer}  // ADD
 }
 ```
 
@@ -478,6 +535,39 @@ const (
     ServerFeatureLoadBalancing ServerFeature = "load_balancing"  // NEW
 )
 ```
+
+### 2b. Update CreateServerRequest Validation
+
+**File**: `internal/modules/server/dto/requests.go`
+
+The `CreateServerRequest` must accept `loadbalancer` as a type and conditionally skip
+PHP/database fields since load balancers don't need them:
+
+```go
+type CreateServerRequest struct {
+    Name            string   `json:"name" validate:"required,min=2,max=255"`
+    Description     *string  `json:"description" validate:"omitempty,max=1000"`
+    Provider        string   `json:"provider" validate:"required,oneof=digitalocean hetzner linode vultr aws custom_server"`
+    Type            string   `json:"type" validate:"required,oneof=php database loadbalancer"`  // ADD loadbalancer
+    OperatingSystem string   `json:"operating_system" validate:"omitempty,oneof=ubuntu_20 ubuntu_22 ubuntu_24"`
+    Region          string   `json:"region" validate:"required_unless=Provider custom_server"`
+    Size            string   `json:"size" validate:"required_unless=Provider custom_server"`
+    PHPVersion      string   `json:"php_version" validate:"omitempty,oneof=none php56 php70 php71 php72 php73 php74 php80 php81 php82 php83 php84"`
+    DatabaseType    string   `json:"database_type" validate:"omitempty,oneof=none mysql80 postgresql16"`
+    CredentialID    string   `json:"credential_id" validate:"required_unless=Provider custom_server,omitempty,ulid"`
+    SSHKeyIDs       []string `json:"ssh_key_ids" validate:"omitempty"`
+    InstallAgent    *bool    `json:"install_agent"`
+
+    // For custom servers
+    IP      string `json:"ip" validate:"required_if=Provider custom_server,omitempty,ip"`
+    SSHPort int    `json:"port" validate:"omitempty,min=1,max=65535"`
+    SSHUser string `json:"ssh_user" validate:"omitempty,max=100"`
+}
+```
+
+Note: `PHPVersion` and `DatabaseType` are already `omitempty`, so they're not required.
+The `createServicesForServer` switch handles ignoring these for load balancer type.
+No additional validation changes needed — the service layer handles the logic.
 
 ### 3. New Models
 
@@ -522,12 +612,10 @@ type LoadBalancerBackend struct {
     SiteID     string `gorm:"size:26;not null;index"`     // The specific site
     ServerID   string `gorm:"size:26;not null;index"`     // Denormalized from site
 
-    Weight      int    `gorm:"default:1"`
-    MaxFails    int    `gorm:"default:3"`
-    FailTimeout string `gorm:"size:20;default:30s"`
-    IsBackup    bool   `gorm:"default:false"`
-    IsDown      bool   `gorm:"default:false"`
+    Port   int  `gorm:"default:8080"`  // Dedicated port for LB traffic on backend
+    IsDown bool `gorm:"default:false"` // Manually marked as down
 
+    // Health status (updated by Caddy's built-in health checks)
     HealthStatus      string     `gorm:"size:50;default:unknown"`
     LastHealthCheckAt *time.Time
 
@@ -609,35 +697,46 @@ func AllLBPolicies() []LBPolicy {
 
 **File**: `internal/modules/server/services/server_service.go`
 
+The existing `createServicesForServer` uses a switch on `serverType` and calls
+`s.createService(ctx, serverID, software)` which creates an `InstalledService` record.
+Follow the exact same pattern as `createPhpServerServices` and `createDatabaseServerServices`:
+
 ```go
-func (s *ServerService) createServicesForServer(ctx context.Context, server *models.Server, opts CreateServerOptions) error {
-    switch server.Type {
-    case servertypes.ServerTypePhp:
-        return s.createPhpServerServices(ctx, server, opts)
-    case servertypes.ServerTypeDatabase:
-        return s.createDatabaseServerServices(ctx, server, opts)
-    case servertypes.ServerTypeLoadBalancer:
-        return s.createLoadBalancerServerServices(ctx, server, opts)  // NEW
+// Update the switch to include load balancer (line ~453)
+func (s *Service) createServicesForServer(ctx context.Context, server *models.Server, req *dto.CreateServerRequest) error {
+    serverType, _ := types.ParseServerType(req.Type)
+
+    switch serverType {
+    case types.ServerTypeDatabase:
+        return s.createDatabaseServerServices(ctx, server, req)
+    case types.ServerTypeLoadBalancer:                              // NEW
+        return s.createLoadBalancerServerServices(ctx, server, req) // NEW
+    default:
+        return s.createPhpServerServices(ctx, server, req)
     }
+}
+
+// NEW: Load balancer only needs Caddy (LB mode) and optionally Launch Agent
+func (s *Service) createLoadBalancerServerServices(ctx context.Context, server *models.Server, req *dto.CreateServerRequest) error {
+    // Caddy in load balancer mode (uses install_caddy2_loadbalancer.sh template)
+    if err := s.createService(ctx, server.ID, types.SoftwareCaddy2LB); err != nil {
+        return fmt.Errorf("failed to create Caddy LB service: %w", err)
+    }
+
+    // Add Launch Agent if install_agent is not explicitly false
+    if req.InstallAgent == nil || *req.InstallAgent {
+        if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent); err != nil {
+            return fmt.Errorf("failed to create Launch Agent service: %w", err)
+        }
+    }
+
     return nil
 }
-
-func (s *ServerService) createLoadBalancerServerServices(ctx context.Context, server *models.Server, opts CreateServerOptions) error {
-    // Load balancer only needs Caddy and Launch Agent
-    services := []serviceData{
-        {serviceType: servertypes.ServiceTypeCaddy, software: servertypes.SoftwareCaddy2},
-    }
-
-    if opts.InstallAgent {
-        services = append(services, serviceData{
-            serviceType: servertypes.ServiceTypeLaunchAgent,
-            software:    servertypes.SoftwareLaunchAgent,
-        })
-    }
-
-    return s.createServices(ctx, server.ID, services)
-}
 ```
+
+Note: `s.createService(ctx, serverID, software)` internally calls `software.GetServiceType()`,
+`software.Label()`, `software.GetVersion()`, and `software.String()` to populate the
+`InstalledService` record. This is why `SoftwareCaddy2LB` must implement all these methods.
 
 ### 6. New Service Layer
 
@@ -701,7 +800,7 @@ func (s *LoadBalancerService) CreateUpstream(ctx context.Context, serverID strin
             _, _ = s.AddBackend(ctx, upstream.ID, dto.AddBackendRequest{
                 SiteID:   site.ID,
                 ServerID: site.ServerID,
-                Weight:   1,
+                Port:     8080,
             })
         }
     }
@@ -749,14 +848,16 @@ func (s *LoadBalancerService) AddBackend(ctx context.Context, upstreamID string,
         return nil, errors.New("site's server must be a PHP server")
     }
 
+    port := req.Port
+    if port == 0 {
+        port = 8080
+    }
+
     backend := &models.LoadBalancerBackend{
-        UpstreamID:  upstreamID,
-        SiteID:      req.SiteID,
-        ServerID:    site.ServerID,
-        Weight:      req.Weight,
-        MaxFails:    req.MaxFails,
-        FailTimeout: req.FailTimeout,
-        IsBackup:    req.IsBackup,
+        UpstreamID: upstreamID,
+        SiteID:     req.SiteID,
+        ServerID:   site.ServerID,
+        Port:       port,
     }
 
     if err := s.Repos().LoadBalancerBackend().Create(ctx, backend); err != nil {
@@ -771,9 +872,12 @@ func (s *LoadBalancerService) AddBackend(ctx context.Context, upstreamID string,
     }
 
     // Dispatch jobs:
-    // 1. Regenerate backend site's Caddyfile (http:// mode, IP restricted)
-    // 2. Update load balancer Caddyfile to include new backend
-    s.dispatchRegenerateSiteCaddyfile(site, upstream.Server.PublicIPv4)
+    // 1. Add firewall rule on backend server: allow LB IP on dedicated port
+    // 2. Create backend site Caddyfile on dedicated port (http://domain:8080, IP restricted)
+    // 3. Remove original site Caddyfile on 80/443 (DNS now points to LB)
+    // 4. Update load balancer Caddyfile to include new backend
+    s.dispatchAddBackendFirewallRule(server, upstream.Server.PublicIPv4, port)
+    s.dispatchRegenerateSiteCaddyfile(site, upstream.Server.PublicIPv4, port)
     s.dispatchUpdateUpstream(upstream)
 
     return backend, nil
@@ -801,14 +905,18 @@ func (s *LoadBalancerService) RemoveBackend(ctx context.Context, upstreamID, bac
     }
 
     // Dispatch jobs:
-    // 1. Regenerate backend site's Caddyfile (normal mode, with TLS)
-    // 2. Update load balancer Caddyfile to remove backend
+    // 1. Remove firewall rule on backend server for the dedicated port
+    // 2. Remove the :8080 Caddyfile block from backend
+    // 3. Regenerate original site Caddyfile on 80/443 (normal mode, with TLS)
+    // 4. Update load balancer Caddyfile to remove backend
     //
     // Note: Jobs are processed via the queue system (Asynq), which handles
     // concurrency. Multiple Caddyfile updates for the same server are
     // serialized through the queue, preventing race conditions.
-    s.dispatchRegenerateSiteCaddyfile(site, "") // Empty LB IP = normal mode
+    server, _ := s.Repos().Server().FindByID(ctx, backend.ServerID)
     upstream, _ := s.Repos().LoadBalancerUpstream().FindByID(ctx, upstreamID)
+    s.dispatchRemoveBackendFirewallRule(server, upstream.Server.PublicIPv4, backend.Port)
+    s.dispatchRegenerateSiteCaddyfile(site, "", 0) // Empty LB IP + port 0 = normal mode
     s.dispatchUpdateUpstream(upstream)
 
     return nil
@@ -819,6 +927,177 @@ func (s *LoadBalancerService) RemoveBackend(ctx context.Context, upstreamID, bac
 // to the queue system. The queue worker processes jobs sequentially per queue,
 // ensuring that concurrent add/remove operations don't cause race conditions
 // when regenerating Caddyfiles.
+```
+
+### 7. Repository Registry Updates
+
+**File**: `internal/modules/server/repositories/registry.go`
+
+The server module's registry must include the new repositories. Follow the existing pattern:
+
+```go
+type Registry struct {
+    db             *gorm.DB
+    server         *ServerRepository
+    service        *ServiceRepository
+    firewallRule   *FirewallRuleRepository
+    cron           *CronRepository
+    daemon         *DaemonRepository
+    sshKey         *SSHKeyRepository
+    task           *TaskRepository
+    metric         *MetricRepository
+    serverProvider *ServerProviderRepository
+    database       *DatabaseRepository
+    lbUpstream     *LoadBalancerUpstreamRepository  // NEW
+    lbBackend      *LoadBalancerBackendRepository   // NEW
+}
+
+func NewRegistry(db *gorm.DB) *Registry {
+    return &Registry{
+        db:             db,
+        server:         NewServerRepository(db),
+        service:        NewServiceRepository(db),
+        // ... existing repos ...
+        lbUpstream:     NewLoadBalancerUpstreamRepository(db),  // NEW
+        lbBackend:      NewLoadBalancerBackendRepository(db),   // NEW
+    }
+}
+
+// NEW: Accessor methods
+func (r *Registry) LoadBalancerUpstream() *LoadBalancerUpstreamRepository { return r.lbUpstream }
+func (r *Registry) LoadBalancerBackend() *LoadBalancerBackendRepository  { return r.lbBackend }
+```
+
+**New repository files**:
+
+**File**: `internal/modules/server/repositories/load_balancer_upstream_repository.go`
+
+```go
+type LoadBalancerUpstreamRepository struct {
+    db *gorm.DB
+}
+
+func NewLoadBalancerUpstreamRepository(db *gorm.DB) *LoadBalancerUpstreamRepository {
+    return &LoadBalancerUpstreamRepository{db: db}
+}
+
+func (r *LoadBalancerUpstreamRepository) Create(ctx context.Context, upstream *models.LoadBalancerUpstream) error { ... }
+func (r *LoadBalancerUpstreamRepository) FindByID(ctx context.Context, id string) (*models.LoadBalancerUpstream, error) { ... }
+func (r *LoadBalancerUpstreamRepository) FindByServerID(ctx context.Context, serverID string) ([]models.LoadBalancerUpstream, error) { ... }
+func (r *LoadBalancerUpstreamRepository) Update(ctx context.Context, id string, updates map[string]any) error { ... }
+func (r *LoadBalancerUpstreamRepository) Delete(ctx context.Context, id string) error { ... }
+```
+
+**File**: `internal/modules/server/repositories/load_balancer_backend_repository.go`
+
+```go
+type LoadBalancerBackendRepository struct {
+    db *gorm.DB
+}
+
+func NewLoadBalancerBackendRepository(db *gorm.DB) *LoadBalancerBackendRepository {
+    return &LoadBalancerBackendRepository{db: db}
+}
+
+func (r *LoadBalancerBackendRepository) Create(ctx context.Context, backend *models.LoadBalancerBackend) error { ... }
+func (r *LoadBalancerBackendRepository) FindByID(ctx context.Context, id string) (*models.LoadBalancerBackend, error) { ... }
+func (r *LoadBalancerBackendRepository) FindByUpstreamID(ctx context.Context, upstreamID string) ([]models.LoadBalancerBackend, error) { ... }
+func (r *LoadBalancerBackendRepository) CountByUpstreamID(ctx context.Context, upstreamID string) (int64, error) { ... }
+func (r *LoadBalancerBackendRepository) Delete(ctx context.Context, id string) error { ... }
+```
+
+### 8. Cross-Module Contracts
+
+The `LoadBalancerService` needs to access the **site module's** repository to look up sites by address.
+The codebase uses **explicit injection** for cross-module dependencies — never import another module's
+repos directly in service code.
+
+**Pattern**: Define an interface in the server module, implement it with the site repo, inject at bootstrap.
+
+**File**: `internal/modules/server/contracts/site_reader.go`
+
+```go
+package contracts
+
+type SiteReader interface {
+    FindByAddressAndTeam(ctx context.Context, address, teamID string) ([]SiteInfo, error)
+    FindByID(ctx context.Context, id string) (*SiteInfo, error)
+    IsLoadBalanced(ctx context.Context, siteID string) (bool, error)
+    UpdateLoadBalancedUpstreamID(ctx context.Context, siteID string, upstreamID *string) error
+}
+
+// SiteInfo is a read-only projection — avoids importing site models
+type SiteInfo struct {
+    ID       string
+    ServerID string
+    TeamID   string
+    Address  string
+    Type     string
+    LoadBalancedUpstreamID *string
+}
+```
+
+**File**: `internal/modules/server/module.go` — add setter
+
+```go
+type Module struct {
+    app.Base
+    repos      *repositories.Registry
+    service    *services.Service
+    siteReader contracts.SiteReader  // NEW
+}
+
+func (m *Module) SetSiteReader(reader contracts.SiteReader) {
+    m.siteReader = reader
+    m.service.SetSiteReader(reader)  // Pass down to service
+}
+```
+
+**File**: `cmd/api/main.go` — wire at bootstrap
+
+```go
+// After creating modules
+serverModule.SetSiteReader(siteModule.SiteReader())
+
+// Site module exposes a SiteReader adapter:
+func (m *Module) SiteReader() servercontracts.SiteReader {
+    return &siteReaderAdapter{repo: m.repos.Site()}
+}
+```
+
+This follows the exact same pattern as:
+- `siteModule.SetDomainRepository(dnsModule.Repos().Domain())`
+- `serverModule.RegisterRoutes(api, authMiddleware, siteModule.SiteRepository())`
+
+### 9. Job Dependencies for Load Balancer Jobs
+
+Load balancer jobs that run in the queue worker need cross-module repos. Follow the site module's
+`JobDeps` pattern:
+
+**File**: `internal/modules/server/jobs/lb_deps.go`
+
+```go
+type LBJobDeps struct {
+    *pkgjobs.Deps
+    Repos          *repositories.Registry
+    SiteReader     contracts.SiteReader
+    TaskRunnerDeps *tasks.TaskRunnerDeps
+}
+```
+
+**File**: `internal/modules/server/jobs/register.go` — register LB job handlers
+
+```go
+func Register(mux *asynq.ServeMux, deps *JobDeps) {
+    // ... existing job registrations ...
+
+    // Load Balancer jobs
+    mux.HandleFunc("server:install_lb_caddyfile", handleInstallLBCaddyfile(deps))
+    mux.HandleFunc("server:update_lb_caddyfile", handleUpdateLBCaddyfile(deps))
+    mux.HandleFunc("server:remove_lb_caddyfile", handleRemoveLBCaddyfile(deps))
+    mux.HandleFunc("server:add_backend_firewall", handleAddBackendFirewall(deps))
+    mux.HandleFunc("server:remove_backend_firewall", handleRemoveBackendFirewall(deps))
+}
 ```
 
 ---
@@ -851,10 +1130,7 @@ Each upstream gets its own Caddyfile at `/etc/caddy/upstreams/{upstream_id}.cadd
 # Backends: 2
 
 myapp.com {
-    # TLS configuration
-    tls {
-        # auto-managed by default
-    }
+    # TLS auto-managed by Caddy (Let's Encrypt)
 
     # Security headers
     header {
@@ -866,23 +1142,19 @@ myapp.com {
 
     # Reverse proxy to backends with load balancing
     reverse_proxy {
-        # Backend servers
-        to 192.168.1.10:443 192.168.1.11:443
+        # Backend servers (port 8080 - dedicated LB port, plain HTTP)
+        to 192.168.1.10:8080 192.168.1.11:8080
 
         # Load balancing policy
         lb_policy round_robin
 
-        # Health checks
+        # Health checks (on the dedicated LB port)
         health_uri /health
         health_interval 30s
         health_timeout 10s
         health_status 200
 
-        # TLS to backends (if using HTTPS)
-        transport http {
-            tls
-            tls_insecure_skip_verify  # For self-signed certs on backends
-        }
+        # No TLS transport needed - backends serve plain HTTP on port 8080
 
         # Headers
         header_up Host {upstream_hostport}
@@ -945,14 +1217,15 @@ func generateLBCaddyfile(upstream *models.LoadBalancerUpstream, backends []model
     // Reverse proxy block
     sb.WriteString("    reverse_proxy {\n")
 
-    // Backend addresses
+    // Backend addresses (port 8080 - dedicated LB port, plain HTTP)
     var addrs []string
     for _, backend := range backends {
         if !backend.IsDown {
-            addr := fmt.Sprintf("%s:443", backend.Server.PublicIPv4)
-            if backend.IsBackup {
-                addr += " # backup"
+            port := backend.Port
+            if port == 0 {
+                port = 8080
             }
+            addr := fmt.Sprintf("%s:%d", backend.Server.PublicIPv4, port)
             addrs = append(addrs, addr)
         }
     }
@@ -967,13 +1240,7 @@ func generateLBCaddyfile(upstream *models.LoadBalancerUpstream, backends []model
     sb.WriteString(fmt.Sprintf("        health_timeout %s\n", upstream.HealthCheckTimeout))
     sb.WriteString("        health_status 200\n\n")
 
-    // TLS transport
-    sb.WriteString(`        transport http {
-            tls
-            tls_insecure_skip_verify
-        }
-
-`)
+    // No TLS transport needed - backends serve plain HTTP on dedicated port
 
     // Forwarding headers
     sb.WriteString(`        header_up Host {upstream_hostport}
@@ -1098,8 +1365,7 @@ const loadBalancerTabs = [
                 <span class="text-sm text-gray-500">{{ backend.server.public_ipv4 }}</span>
               </div>
               <div class="flex items-center gap-2">
-                <span v-if="backend.is_backup" class="badge badge-yellow">Backup</span>
-                <span class="text-sm">Weight: {{ backend.weight }}</span>
+                <span class="text-sm text-gray-500">Port: {{ backend.port }}</span>
                 <Button size="sm" variant="ghost" @click="removeBackend(upstream.id, backend.id)">
                   Remove
                 </Button>
@@ -1237,10 +1503,7 @@ interface LoadBalancerBackend {
   upstream_id: string;
   server_id: string;
   server: Server;
-  weight: number;
-  max_fails: number;
-  fail_timeout: string;
-  is_backup: boolean;
+  port: number;           // Dedicated port for LB traffic (default 8080)
   is_down: boolean;
   health_status: 'healthy' | 'unhealthy' | 'unknown';
   last_health_check_at?: string;
@@ -1254,29 +1517,32 @@ interface LoadBalancerBackend {
 ### New Endpoints for Load Balancer Management
 
 ```
+# All routes nested under /servers/:serverId for middleware consistency
+# (RequireProvisionedServer, team-scoping, authorization)
+
 # Domain Conflict Detection (call before creating upstream)
 GET    /api/servers/:serverId/upstreams/check-domain?address=app.example.com
        # Returns: { exists: true, sites: [...] } if domain is already used
 
 # Upstreams
-GET    /api/servers/:serverId/upstreams           # List upstreams for LB server
-POST   /api/servers/:serverId/upstreams           # Create upstream
-GET    /api/servers/:serverId/upstreams/:id       # Get upstream details
-PUT    /api/servers/:serverId/upstreams/:id       # Update upstream config
-DELETE /api/servers/:serverId/upstreams/:id       # Delete upstream
+GET    /api/servers/:serverId/upstreams                    # List upstreams for LB server
+POST   /api/servers/:serverId/upstreams                    # Create upstream
+GET    /api/servers/:serverId/upstreams/:upstreamId        # Get upstream details
+PUT    /api/servers/:serverId/upstreams/:upstreamId        # Update upstream config
+DELETE /api/servers/:serverId/upstreams/:upstreamId        # Delete upstream
 
-# Backends (site-level)
-GET    /api/upstreams/:upstreamId/backends                 # List backend sites
-POST   /api/upstreams/:upstreamId/backends                 # Add site as backend
-PUT    /api/upstreams/:upstreamId/backends/:id             # Update backend config
-DELETE /api/upstreams/:upstreamId/backends/:id             # Remove site from upstream
+# Backends (nested under upstreams)
+GET    /api/servers/:serverId/upstreams/:upstreamId/backends           # List backend sites
+POST   /api/servers/:serverId/upstreams/:upstreamId/backends           # Add site as backend
+PUT    /api/servers/:serverId/upstreams/:upstreamId/backends/:id       # Update backend config
+DELETE /api/servers/:serverId/upstreams/:upstreamId/backends/:id       # Remove site from upstream
 
 # Available Sites for Backend (sites matching upstream address, not yet added)
-GET    /api/upstreams/:upstreamId/available-sites          # Sites that can be added
+GET    /api/servers/:serverId/upstreams/:upstreamId/available-sites    # Sites that can be added
 
 # Health
-GET    /api/upstreams/:upstreamId/health                   # Get health status of all backends
-POST   /api/upstreams/:upstreamId/backends/:id/toggle-down # Toggle backend up/down
+GET    /api/servers/:serverId/upstreams/:upstreamId/health             # Get health status of all backends
+POST   /api/servers/:serverId/upstreams/:upstreamId/backends/:id/toggle-down  # Toggle backend up/down
 ```
 
 ### Domain Check Response Example
@@ -1328,6 +1594,77 @@ GET    /api/servers/:id
 GET    /api/servers/create-options
 ```
 
+### Server Response: SitesCount vs UpstreamsCount
+
+**Problem**: The server list API returns `sites_count` for each server (via `SiteCounter` interface).
+Load balancer servers have zero sites — showing "0 sites" is misleading.
+
+**Solution**: Add `upstreams_count` to the response and use it contextually in the UI.
+
+**File**: `internal/modules/server/dto/responses.go`
+
+```go
+type ServerResponse struct {
+    // ... existing fields ...
+    SitesCount     int `json:"sites_count,omitempty"`
+    UpstreamsCount int `json:"upstreams_count,omitempty"`  // NEW: only for LB servers
+}
+
+func ToServerResponse(server *models.Server) ServerResponse {
+    resp := ServerResponse{
+        // ... existing fields ...
+        SitesCount: int(server.SitesCount),
+    }
+
+    // For load balancer servers, include upstream count
+    if server.Type == servertypes.ServerTypeLoadBalancer {
+        resp.UpstreamsCount = int(server.UpstreamsCount)
+    }
+
+    return resp
+}
+```
+
+**File**: `internal/modules/server/models/server.go` — add computed field
+
+```go
+type Server struct {
+    // ... existing fields ...
+    SitesCount     int64 `gorm:"-"` // Existing: computed by SiteCounter
+    UpstreamsCount int64 `gorm:"-"` // NEW: computed by UpstreamCounter
+}
+```
+
+**File**: `internal/modules/server/handlers/server_handler.go` — add UpstreamCounter
+
+```go
+type UpstreamCounter interface {
+    CountByServer(ctx context.Context, serverID string) (int64, error)
+}
+
+type Handler struct {
+    service         *services.Service
+    taskRunner      *tasks.TaskRunnerDeps
+    siteCounter     SiteCounter
+    upstreamCounter UpstreamCounter  // NEW
+}
+```
+
+**UI handling**: The server card component uses `upstreams_count` for LB servers:
+
+```vue
+<template>
+  <!-- For PHP/Database servers -->
+  <span v-if="server.type !== 'loadbalancer'">
+    {{ server.sites_count }} {{ server.sites_count === 1 ? 'site' : 'sites' }}
+  </span>
+  <!-- For Load Balancer servers -->
+  <span v-else>
+    {{ server.upstreams_count }} {{ server.upstreams_count === 1 ? 'upstream' : 'upstreams' }}
+  </span>
+</template>
+```
+
 ---
 
 ## Implementation Phases
@@ -1342,77 +1679,108 @@ GET    /api/servers/create-options
 - [ ] Create `LBPolicy` enum type
 - [ ] Add `ServerTypeLoadBalancer` to server types
 - [ ] Add `ServerFeatureLoadBalancing` feature
+- [ ] Add `SoftwareCaddy2LB` to software types (all ~15 methods)
+- [ ] Update `CreateServerRequest` validation: `oneof=php database loadbalancer`
 
 ### Phase 2: Server Provisioning
-- [ ] Update server creation to handle load balancer type
+- [ ] Update `createServicesForServer` switch for load balancer type
 - [ ] Create `createLoadBalancerServerServices()` function
 - [ ] Create `install_caddy2_loadbalancer.sh` script (or parameterize existing)
-- [ ] Test load balancer server provisioning
+- [ ] Verify all 8 provision steps work for LB servers (no changes needed)
+- [ ] Test load balancer server provisioning end-to-end
 
 **See: [Load Balancer Provisioning Details](#load-balancer-provisioning-details)**
 
-### Phase 3: Upstream Management (Backend)
-- [ ] Create `LoadBalancerUpstreamRepository`
-- [ ] Create `LoadBalancerBackendRepository`
+### Phase 3: Repositories & Cross-Module Contracts
+- [ ] Create `LoadBalancerUpstreamRepository` with CRUD methods
+- [ ] Create `LoadBalancerBackendRepository` with CRUD methods
+- [ ] Add both repos to server module `Registry` struct
+- [ ] Create `SiteReader` contract interface in `server/contracts/`
+- [ ] Implement `SiteReader` adapter in site module
+- [ ] Wire `SetSiteReader()` in `cmd/api/main.go`
+- [ ] Add `UpstreamCounter` interface to server handler
+
+### Phase 4: Service Layer & Handlers
 - [ ] Create `LoadBalancerService`
 - [ ] Implement `FindExistingSites()` for domain conflict detection
 - [ ] Create upstream handlers (CRUD)
 - [ ] Create backend handlers (add/remove/update) - site-level
 - [ ] Create domain check endpoint (`/check-domain`)
-- [ ] Register routes
+- [ ] Register routes under `/servers/:serverId/upstreams/...`
+- [ ] Update `ServerResponse` to include `upstreams_count` for LB servers
 
-### Phase 4: Backend Site Caddyfile Changes
+### Phase 5: Backend Site Caddyfile Changes
 - [ ] Modify `generateCaddyfile()` to check `IsLoadBalanced()`
-- [ ] Add `http://` prefix when load balanced (disables auto-TLS)
-- [ ] Add IP restriction matcher when load balanced
-- [ ] Store load balancer IP in site or fetch from upstream
+- [ ] Generate dedicated port Caddyfile: `http://domain:8080` (plain HTTP, no TLS)
+- [ ] Add IP restriction matcher (`@notlb not remote_ip`) when load balanced
+- [ ] Store load balancer IP and backend port from upstream/backend models
+- [ ] Auto-create UFW firewall rule: `allow from <LB_IP> to any port 8080`
+- [ ] Remove original site Caddyfile on 80/443 when adding to upstream
+- [ ] Restore original site Caddyfile on 80/443 when removing from upstream
+- [ ] Auto-remove UFW firewall rule on backend removal
+- [ ] Implement task callbacks (`OnSuccess`/`OnFailure`/`OnExpired`) for all jobs
 - [ ] Test Caddyfile regeneration on add/remove backend
 
-### Phase 5: Load Balancer Caddy Configuration
+### Phase 6: Load Balancer Caddy Configuration
 - [ ] Create `generateLBCaddyfile()` function
-- [ ] Create `InstallUpstreamCaddyfile` job
-- [ ] Create `UpdateUpstreamCaddyfile` job
-- [ ] Create `RemoveUpstreamCaddyfile` job
+- [ ] Create `InstallUpstreamCaddyfile` job with task callbacks
+- [ ] Create `UpdateUpstreamCaddyfile` job with task callbacks
+- [ ] Create `RemoveUpstreamCaddyfile` job with task callbacks
 - [ ] Create `/etc/caddy/Upstreams.caddy` import management
+- [ ] Register LB job handlers in `jobs/register.go`
+- [ ] Create `LBJobDeps` struct for cross-module deps
 - [ ] Test Caddy configuration generation
 
-### Phase 6: Frontend - Server List & Types
+### Phase 7: WebSocket Events & Error Recovery
+- [ ] Add LB event constants to `broadcast/events.go`
+- [ ] Broadcast events from service methods and job callbacks
+- [ ] Implement error recovery for add/remove backend failures
+- [ ] Create `CleanupLBBackendsJob` for orphaned state cleanup
+- [ ] Configure retry policy for LB jobs (max 3, exponential backoff)
+- [ ] Test failure scenarios (partial add, partial remove)
+
+### Phase 8: Frontend - Server List & Types
 - [ ] Update server type display for load balancer
 - [ ] Add load balancer badge/icon in server cards
+- [ ] Show `upstreams_count` instead of `sites_count` for LB servers
 - [ ] Add "load balanced" indicator for sites in site list
 - [ ] Update TypeScript types for new models
 
-### Phase 7: Frontend - Upstream Creation with Domain Detection
+### Phase 9: Frontend - Upstream Creation with Domain Detection
 - [ ] Create domain check API call on address input (debounced)
 - [ ] Show warning when existing sites found
 - [ ] Display which servers have the site
 - [ ] Checkbox to auto-add existing sites as backends
 - [ ] DNS update warning display
 
-### Phase 8: Frontend - Load Balancer Detail
+### Phase 10: Frontend - Load Balancer Detail
 - [ ] Create `LoadBalancerUpstreams` component
 - [ ] Create `CreateUpstreamForm` component with domain detection
 - [ ] Create `AddBackendForm` component (site selector)
 - [ ] Create `HealthIndicator` component
 - [ ] Update tab structure for load balancer servers
+- [ ] Wire WebSocket events for real-time upstream/backend updates
 
-### Phase 9: Frontend - Site Updates
+### Phase 11: Frontend - Site Updates
 - [ ] Add "Load Balanced" badge to site cards
 - [ ] Create `LoadBalancedBanner` component for site detail
 - [ ] Show upstream info and link to load balancer
 - [ ] Warning about deployment sync
 
-### Phase 10: Health Checks & Monitoring
+### Phase 12: Health Checks & Monitoring
 - [ ] Implement health check result storage
 - [ ] Create scheduled job for health check polling
-- [ ] WebSocket events for health status changes
+- [ ] Broadcast `backend.health_changed` events
 - [ ] UI updates for real-time health status
 
-### Phase 11: Testing & Polish
-- [ ] Unit tests for services
+### Phase 13: Testing & Polish
+- [ ] Unit tests for services (LoadBalancerService, SiteReader adapter)
+- [ ] Unit tests for repositories (upstream, backend CRUD)
 - [ ] Integration tests for API endpoints
 - [ ] Test domain conflict detection flow
 - [ ] Test LB Caddyfile generation
+- [ ] Test error recovery (partial add/remove failures)
+- [ ] Test WebSocket event broadcasting
 - [ ] E2E tests for UI flows
 - [ ] Documentation updates
 
@@ -1423,14 +1791,17 @@ GET    /api/servers/create-options
 ### 1. Backend Server Deletion
 - When a PHP server is deleted that's part of an upstream:
   - Automatically remove from all upstreams
-  - Update Caddyfile on load balancers
+  - Remove :8080 Caddyfile blocks (no need since server is being deleted)
+  - Update LB Caddyfiles to remove this backend
   - Send notification about reduced capacity
 
 ### 2. Load Balancer Deletion
 - When a load balancer is deleted:
   - Clear `load_balanced_upstream_id` on all backend sites
   - Delete all associated upstreams and backends
-  - Regenerate backend site Caddyfiles to normal mode
+  - Remove :8080 Caddyfile blocks from all backend servers
+  - Restore original site Caddyfiles on 80/443
+  - Remove firewall rules for port 8080 on backend servers
   - Notify affected team members
 
 ### 3. Backend Server Unreachable
@@ -1440,9 +1811,9 @@ GET    /api/servers/create-options
 - Send notification after N consecutive failures
 
 ### 4. SSL Certificate Management
-- Load balancer handles SSL termination by default
-- Option for SSL passthrough to backends
-- Certificate sync between load balancer and backends for passthrough
+- Load balancer handles SSL termination (Caddy auto-manages Let's Encrypt)
+- Backends serve plain HTTP on :8080 (no TLS needed)
+- No certificate sync needed between LB and backends
 
 ### 5. Same Site on Multiple Backends
 - Sites with same address on different backend servers
@@ -1694,6 +2065,132 @@ health_status 200
 
 ---
 
+## Error Recovery Strategy
+
+Adding/removing a backend involves multiple sequential jobs. If any job fails mid-way,
+the system must handle partial state gracefully. Follow the existing callback pattern
+(`OnSuccess`/`OnFailure`/`OnExpired` from `taskrunner.CallbackHandler`).
+
+### Add Backend: Failure Scenarios
+
+When `AddBackend()` dispatches jobs in this order:
+1. Add firewall rule on backend server (port 8080)
+2. Create :8080 Caddyfile on backend server
+3. Remove original :80/:443 Caddyfile from backend
+4. Update LB Caddyfile to include new backend
+
+| Failure Point | State | Recovery |
+|---------------|-------|----------|
+| Step 1 fails (firewall) | Backend record exists, no Caddy changes | Mark backend as `pending`, retry job. Site still serves normally on 80/443. |
+| Step 2 fails (:8080 Caddyfile) | Firewall rule exists, no Caddy | Mark backend as `pending`. Firewall rule is harmless (port 8080 open but nothing listening). Retry job. |
+| Step 3 fails (remove :80/:443) | :8080 Caddyfile exists AND :80/:443 still active | Both ports serve the site. Not harmful — site works via both LB and direct. Retry removal. |
+| Step 4 fails (LB Caddyfile) | Backend ready but LB not routing to it | LB doesn't send traffic yet. Retry job. Previous backends still work. |
+
+**Key principle**: Each step is idempotent. Retrying a step that already succeeded is safe
+(firewall rule already exists → UFW ignores, Caddyfile already present → overwrite is fine).
+
+### Remove Backend: Failure Scenarios
+
+When `RemoveBackend()` dispatches jobs:
+1. Remove firewall rule on backend server
+2. Remove :8080 Caddyfile from backend
+3. Restore original :80/:443 Caddyfile
+4. Update LB Caddyfile to remove backend
+
+| Failure Point | State | Recovery |
+|---------------|-------|----------|
+| Step 1 fails (firewall) | Backend record deleted, firewall rule remains | Orphaned rule for port 8080. Harmless but should be cleaned up. Log warning. |
+| Step 2 fails (remove :8080) | Firewall removed, :8080 still serves | :8080 Caddy block remains but firewall blocks access. Retry removal. |
+| Step 3 fails (restore :80/:443) | :8080 removed, original not restored | **Critical**: Site has no Caddy config at all. Retry immediately. On persistent failure, notify user. |
+| Step 4 fails (LB Caddyfile) | Backend restored but LB still routes to it | LB sends traffic to :8080 which no longer exists → Caddy health check marks it unhealthy. Self-healing. |
+
+### Implementation: Task Callbacks
+
+Each multi-step operation uses task callbacks to track state:
+
+```go
+// Example: AddBackendCaddyfile task callback
+type addBackendCaddyfileCallback struct {
+    BackendID  string `json:"backend_id"`
+    UpstreamID string `json:"upstream_id"`
+    SiteID     string `json:"site_id"`
+    ServerID   string `json:"server_id"`
+}
+
+func (t *addBackendCaddyfileTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string) error {
+    // Mark backend as installed
+    cbCtx.DB.Model(&models.LoadBalancerBackend{}).
+        Where("id = ?", t.callback.BackendID).
+        Update("installed_at", time.Now())
+
+    // Broadcast success
+    cbCtx.BroadcastToTeam(t.callback.TeamID, broadcast.BackendCaddyInstalled, map[string]any{
+        "backend_id":  t.callback.BackendID,
+        "upstream_id": t.callback.UpstreamID,
+    })
+
+    // Dispatch next step: remove original :80/:443 Caddyfile
+    t.dispatchRemoveOriginalCaddyfile(cbCtx)
+
+    return nil
+}
+
+func (t *addBackendCaddyfileTask) OnFailure(ctx context.Context, cbCtx *taskrunner.CallbackContext, taskID string, exitCode int) error {
+    // Mark backend status as failed
+    cbCtx.DB.Model(&models.LoadBalancerBackend{}).
+        Where("id = ?", t.callback.BackendID).
+        Update("health_status", "install_failed")
+
+    // Broadcast failure
+    cbCtx.BroadcastToTeam(t.callback.TeamID, broadcast.UpstreamInstallFailed, map[string]any{
+        "backend_id":  t.callback.BackendID,
+        "upstream_id": t.callback.UpstreamID,
+        "exit_code":   exitCode,
+    })
+
+    // Notify team
+    cbCtx.Notifier.NotifyTeam(t.callback.TeamID, notification.LBBackendInstallFailed{
+        BackendID: t.callback.BackendID,
+        ExitCode:  exitCode,
+    })
+
+    return nil
+}
+```
+
+### Cleanup Job for Orphaned State
+
+If a load balancer server is deleted while jobs are still queued, orphaned state may remain
+on backend servers (firewall rules, :8080 Caddyfile blocks). A cleanup job handles this:
+
+```go
+// server:cleanup_lb_backends - dispatched when deleting a LB server
+type CleanupLBBackendsJob struct {
+    BackendSiteIDs []string // All sites that were backends
+    LBServerIP     string   // For removing firewall rules
+}
+
+func (j *CleanupLBBackendsJob) Process(ctx context.Context) error {
+    for _, siteID := range j.BackendSiteIDs {
+        // 1. Remove firewall rule for port 8080
+        // 2. Remove :8080 Caddyfile
+        // 3. Restore original Caddyfile on 80/443
+        // 4. Clear load_balanced_upstream_id on site
+    }
+    return nil
+}
+```
+
+### Retry Policy
+
+LB jobs use the default Asynq retry policy:
+- **Max retries**: 3
+- **Retry delay**: Exponential backoff (10s, 30s, 90s)
+- **Dead letter**: After max retries, job moves to dead queue
+- **Monitoring**: Dead letter jobs trigger notification to team
+
+---
+
 ## Security Considerations
 
 1. **Backend Communication**
@@ -1713,6 +2210,101 @@ health_status 200
 4. **Firewall Rules**
    - Auto-configure firewall on backends to allow LB IP
    - Restrict direct access to backends (optional)
+
+---
+
+## WebSocket Events
+
+Load balancer operations broadcast events via the existing WebSocket system.
+Follow the pattern in `internal/pkg/broadcast/events.go`.
+
+### New Event Constants
+
+**File**: `internal/pkg/broadcast/events.go`
+
+```go
+// Load Balancer Events
+const (
+    // Upstream lifecycle
+    UpstreamCreated        = "upstream.created"
+    UpstreamUpdated        = "upstream.updated"
+    UpstreamDeleted        = "upstream.deleted"
+    UpstreamInstalled      = "upstream.installed"       // Caddyfile applied on LB
+    UpstreamInstallFailed  = "upstream.install_failed"
+
+    // Backend lifecycle
+    BackendAdded           = "backend.added"
+    BackendRemoved         = "backend.removed"
+    BackendUpdated         = "backend.updated"
+    BackendCaddyInstalled  = "backend.caddy_installed"  // :8080 Caddyfile applied
+    BackendCaddyRemoved    = "backend.caddy_removed"    // :8080 Caddyfile removed
+    BackendRestored        = "backend.restored"         // Original Caddyfile restored on 80/443
+
+    // Health
+    BackendHealthChanged   = "backend.health_changed"   // Health status transition
+    BackendMarkedDown      = "backend.marked_down"      // Manually toggled down
+    BackendMarkedUp        = "backend.marked_up"        // Manually toggled up
+)
+```
+
+### Broadcasting Pattern
+
+Events are broadcast to the **team channel** (`team.{teamID}`) so all team members
+see real-time updates. Follow existing patterns:
+
+```go
+// In LoadBalancerService or job callbacks
+s.Broadcaster().BroadcastToTeam(upstream.TeamID, broadcast.UpstreamCreated, map[string]any{
+    "upstream_id": upstream.ID,
+    "server_id":   upstream.ServerID,
+    "address":     upstream.Address,
+})
+
+// Backend health changes also broadcast to the server channel
+s.Broadcaster().BroadcastToServer(backend.ServerID, broadcast.BackendHealthChanged, map[string]any{
+    "backend_id":    backend.ID,
+    "upstream_id":   backend.UpstreamID,
+    "health_status": newStatus,
+    "previous":      oldStatus,
+})
+```
+
+### When Events Fire
+
+| Event | Triggered By | Channel |
+|-------|-------------|---------|
+| `upstream.created` | `CreateUpstream()` service method | `team.{id}` |
+| `upstream.installed` | Upstream Caddyfile job `OnSuccess` callback | `team.{id}` |
+| `upstream.install_failed` | Upstream Caddyfile job `OnFailure` callback | `team.{id}` |
+| `upstream.updated` | `UpdateUpstream()` service method | `team.{id}` |
+| `upstream.deleted` | `DeleteUpstream()` service method | `team.{id}` |
+| `backend.added` | `AddBackend()` service method | `team.{id}` |
+| `backend.caddy_installed` | Backend :8080 Caddyfile job `OnSuccess` callback | `team.{id}`, `server.{id}` |
+| `backend.removed` | `RemoveBackend()` service method | `team.{id}` |
+| `backend.restored` | Restore original Caddyfile job `OnSuccess` callback | `team.{id}`, `server.{id}` |
+| `backend.health_changed` | Health check polling job | `team.{id}`, `server.{id}` |
+| `backend.marked_down` | `ToggleBackendDown()` handler | `team.{id}` |
+
+### Frontend WebSocket Handling
+
+```typescript
+// In LoadBalancerUpstreams.vue composable
+const channel = `team.${teamId}`;
+
+ws.on(channel, 'upstream.created', (data) => {
+    upstreams.value.push(data.upstream);
+});
+
+ws.on(channel, 'upstream.installed', (data) => {
+    const upstream = upstreams.value.find(u => u.id === data.upstream_id);
+    if (upstream) upstream.installed_at = data.installed_at;
+});
+
+ws.on(channel, 'backend.health_changed', (data) => {
+    const backend = findBackend(data.backend_id);
+    if (backend) backend.health_status = data.health_status;
+});
+```
 
 ---
 
@@ -1758,17 +2350,35 @@ health_status 200
 
 ## Load Balancer Provisioning Details
 
+### Provisioning Steps (System-Level)
+
+Server provisioning runs the same base provision steps regardless of server type
+(defined in `types/provision_step.go` → `ForFreshServer()`). All 8 steps apply to load balancers:
+
+| Order | Step | Template | LB Notes |
+|-------|------|----------|----------|
+| 1 | Configure Swap | `provision/configure_swap.sh` | Same — swap based on memory |
+| 2 | Configure Firewall | `provision/configure_firewall.sh` | Same — opens SSH (22), HTTP (80), HTTPS (443) |
+| 3 | Apt Update & Upgrade | `provision/apt_update_upgrade.sh` | Same |
+| 4 | Install Essential Packages | `provision/install_essential_packages.sh` | Same — curl, git, fail2ban, ufw, etc. |
+| 5 | Setup Unattended Upgrades | `provision/setup_unattended_upgrades.sh` | Same |
+| 6 | Setup Root | `provision/setup_root.sh` | Same — SSH keys, git keyscan |
+| 7 | SSH Security | `provision/ssh_security.sh` | Same — disable password auth |
+| 8 | Setup Default User | `provision/setup_default_user.sh` | Same — create user, SSH keys, working directory |
+
+No per-server-type variation in provision steps — the differentiation is **only in the software stack**.
+
 ### Current PHP Server Provisioning
 
 For reference, the current PHP server installs these services:
 ```
 PHP Server Services:
-├── Supervisor (process manager)
-├── Caddy 2 (web server with Sites.caddy imports)
-├── Database (MySQL 8.0 or PostgreSQL 16)
-├── PHP (8.3 default)
-├── Composer 2
-└── Launch Agent (optional)
+├── Supervisor (process manager)      [Install order: 10]
+├── Caddy 2 (web server)              [Install order: 20]
+├── PHP (8.3 default)                 [Install order: 30]
+├── Composer 2                        [Install order: 40, requires PHP]
+├── Database (MySQL 8.0 or PG 16)     [Install order: 50]
+└── Launch Agent (optional)           [Install order: 100]
 ```
 
 ### Load Balancer Server Services
@@ -1776,11 +2386,41 @@ PHP Server Services:
 Load balancer needs minimal services:
 ```
 Load Balancer Services:
-├── Caddy 2 (reverse proxy with Upstreams.caddy imports)
-└── Launch Agent (optional)
+├── Caddy 2 LB (reverse proxy)       [Install order: 20, uses install_caddy2_loadbalancer.sh]
+└── Launch Agent (optional)           [Install order: 100]
 ```
 
-**NO**: Supervisor, PHP, Composer, Database
+**NOT installed**: Supervisor, PHP, Composer, Database, Redis, Node
+
+### Software Stack Determination
+
+The provisioning task builds the software stack from `InstalledService` records
+(created by `createServicesForServer` during server creation). The task's
+`ProvisionFreshServerConfig` includes:
+
+```go
+type ProvisionFreshServerConfig struct {
+    // ... other fields ...
+    SoftwareStack []types.Software  // Built from server's services
+}
+```
+
+For a load balancer, `SoftwareStack` will contain:
+- `types.SoftwareCaddy2LB` (always)
+- `types.SoftwareLaunchAgent` (if agent enabled)
+
+The `SortSoftwareStack()` function handles dependency ordering — Caddy2LB has no
+dependencies so it installs at order 20, same as regular Caddy.
+
+### Progress Tracking
+
+The provisioning task calculates progress as:
+- Total steps = 8 (provision steps) + len(SoftwareStack) = 8 + 2 = **10 steps**
+- Steps 1-8: Provision steps (0-72%)
+- Steps 9-10: Software install (72-90%)
+- Final: Cleanup (90-100%)
+
+Progress is reported via `BashEchoProgress()` markers parsed by the task runner.
 
 ### Service Creation Function
 
@@ -1963,45 +2603,140 @@ fi
 # ... rest of script same ...
 ```
 
-### New Software Type (Recommended)
+### New Software Type: `SoftwareCaddy2LB`
 
 **File**: `internal/modules/server/types/software.go`
 
-Add a new software type for load balancer Caddy:
+Adding a new `Software` enum requires implementing **all** methods. The Caddy binary is identical
+but the install script creates `/etc/caddy/Upstreams.caddy` instead of `/etc/caddy/Sites.caddy`.
+
+**Changes to existing methods** (add `SoftwareCaddy2LB` cases):
 
 ```go
+// Add constant
 const (
-    // ... existing ...
     SoftwareCaddy2   Software = "caddy2"
     SoftwareCaddy2LB Software = "caddy2_lb"  // NEW: Load Balancer mode
+    // ...
 )
 
-func (s Software) GetInstallTemplate() string {
-    switch s {
-    case SoftwareCaddy2:
-        return "software/install_caddy2.sh"
-    case SoftwareCaddy2LB:
-        return "software/install_caddy2_loadbalancer.sh"  // NEW
+// Label() - add case
+func (s Software) Label() string {
+    labels := map[Software]string{
+        // ... existing ...
+        SoftwareCaddy2LB: "Caddy 2 (Load Balancer)",  // NEW
+    }
     // ...
+}
+
+// IsValid() - add to switch
+func (s Software) IsValid() bool {
+    switch s {
+    case SoftwareCaddy2, SoftwareCaddy2LB, /* ... existing ... */:  // ADD
+        return true
+    }
+    return false
+}
+
+// GetVersion() - same version as Caddy2
+func (s Software) GetVersion() string {
+    versions := map[Software]string{
+        // ... existing ...
+        SoftwareCaddy2LB: "2.0",  // NEW - same binary version
+    }
+    // ...
+}
+
+// GetServiceType() - maps to same Caddy service type
+func (s Software) GetServiceType() ServiceType {
+    switch s {
+    // ... existing ...
+    case SoftwareCaddy2, SoftwareCaddy2LB:  // ADD to existing Caddy case
+        return ServiceTypeCaddy
+    }
+    return ""
+}
+
+// Group() - same group as Caddy
+func (s Software) Group() string {
+    switch s {
+    // ... existing ...
+    case SoftwareCaddy2, SoftwareCaddy2LB:  // ADD to existing Caddy case
+        return "caddy"
+    }
+    return ""
+}
+
+// LogPath() - same log path
+func (s Software) LogPath() string {
+    paths := map[Software]string{
+        // ... existing ...
+        SoftwareCaddy2LB: "/var/log/caddy/access.log",  // NEW - same path
+    }
+    // ...
+}
+
+// InstallTemplateName() - different install script
+func (s Software) InstallTemplateName() string {
+    templateNames := map[Software]string{
+        // ... existing ...
+        SoftwareCaddy2:   "software/install_caddy2.sh",
+        SoftwareCaddy2LB: "software/install_caddy2_loadbalancer.sh",  // NEW
+    }
+    // ...
+}
+
+// RemoveTemplateName() - same removal as regular Caddy
+func (s Software) RemoveTemplateName() string {
+    // SoftwareCaddy2LB falls through to default: "software/remove_caddy2_lb.sh"
+    // Or handle explicitly to reuse caddy2 removal
+}
+
+// InstallOrder() - same priority as Caddy (20)
+func (s Software) InstallOrder() int {
+    orders := map[Software]int{
+        // ... existing ...
+        SoftwareCaddy2LB: 20,  // NEW - same as Caddy2
+    }
+    // ...
+}
+
+// AllSoftware() - add to list
+func AllSoftware() []Software {
+    return []Software{
+        SoftwareCaddy2, SoftwareCaddy2LB, /* ... rest ... */  // ADD
     }
 }
 ```
 
-### Firewall Rules for Load Balancer
+**No changes needed** for these methods (not applicable to Caddy):
+- `IsPhp()` — returns false (no change needed)
+- `IsDatabase()` — returns false (no change needed)
+- `MaxConnections()` — only for databases (no change needed)
+- `MaxChildren()` — only for PHP (no change needed)
+- `BinaryPath()` — only for PHP (no change needed)
+- `FPMServiceName()` — only for PHP (no change needed)
+- `RequiresPhp()` — returns false (no change needed)
+- `SortSoftwareStack()` — no special dependencies (no change needed)
 
-Load balancer needs:
+### Firewall Rules
+
+**Load Balancer Server** (same as PHP server, no changes needed):
 - Port 22 (SSH)
 - Port 80 (HTTP - for Let's Encrypt validation)
 - Port 443 (HTTPS - main traffic)
 
-Same as PHP server, so no changes needed to `CreateDefaultFirewallRules`.
+**Backend PHP Servers** (auto-managed when adding/removing backends):
+- Port 8080: `allow from <LB_IP> to any port 8080` — added when site is added as backend
+- Rule is removed when site is removed from upstream
+- This is handled by `dispatchAddBackendFirewallRule` and `dispatchRemoveBackendFirewallRule`
 
 ### Comparison: PHP Server vs Load Balancer Provisioning
 
 | Aspect | PHP Server | Load Balancer |
 |--------|------------|---------------|
 | **Caddy Config** | `/etc/caddy/Sites.caddy` | `/etc/caddy/Upstreams.caddy` |
-| **Caddyfile Structure** | File server + PHP-FPM | Reverse proxy + health check |
+| **Caddyfile Structure** | File server + PHP-FPM on :80/:443 | Reverse proxy to backends on :8080 |
 | **Services Installed** | Supervisor, Caddy, PHP, Composer, DB | Caddy only |
 | **User Home** | Sites deployed here | Not used for sites |
 | **Default Page** | File server on IP:80 | "Launch Load Balancer" response |
@@ -2015,10 +2750,11 @@ Same as PHP server, so no changes needed to `CreateDefaultFirewallRules`.
 |----------|--------|-----------|
 | **Backend Granularity** | Site-level (not server-level) | Allows mixed scenarios where some sites on a server are load balanced and others are served directly |
 | **Domain Conflict Detection** | Check on upstream creation | Prevents accidental overwriting; shows user which sites will be affected |
-| **Backend Caddy** | Modify Caddyfile (not disable) | Use `http://` prefix to disable TLS, add IP restriction, keep domain for Host matching |
+| **Backend Caddy** | Dedicated port 8080 (not modify 80/443) | Separate port avoids conflicts with direct sites; `http://domain:8080` with IP restriction |
+| **Backend Port** | Port 8080 (configurable per backend) | Dedicated port for LB traffic; firewall rule auto-created; no TLS overhead |
 | **Deployment Strategy** | Independent per-site (initially) | Simple, uses existing flow; coordinated deployment is a future enhancement |
-| **Health Check** | Caddy built-in with configurable path | No custom agent needed; uses standard HTTP health checks |
-| **TLS Termination** | At load balancer only | Backend uses HTTP (no TLS overhead); IP restriction ensures security |
+| **Health Check** | Caddy built-in with configurable path | No custom agent needed; uses standard HTTP health checks on :8080 |
+| **TLS Termination** | At load balancer only | Backend uses plain HTTP on :8080; firewall + IP restriction ensures security |
 | **Site Deletion** | Block when load balanced | Prevent orphaned configs; user must remove from LB first |
 | **Zero Backends** | Allow but show warnings | Return 503 placeholder; don't block removal |
 | **Session Warning** | UI warning only | Inform users about ip_hash or Redis sessions; no forced changes |
@@ -2031,15 +2767,15 @@ Same as PHP server, so no changes needed to `CreateDefaultFirewallRules`.
 | Scenario | System Behavior |
 |----------|-----------------|
 | **Create upstream with existing domain** | UI shows warning, offers to auto-add sites as backends |
-| **Add site as backend** | Site Caddyfile regenerated (http://, IP restricted), LB Caddyfile updated |
-| **Remove backend** | Site Caddyfile regenerated (normal mode with TLS), LB Caddyfile updated |
-| **Remove last backend** | Warning shown; upstream returns 503; site restored to normal |
-| **Delete load balancer** | All backend sites' Caddyfiles regenerated to normal, upstreams deleted |
+| **Add site as backend** | Caddyfile created on :8080 (IP restricted), original :80/443 removed, firewall rule added, LB Caddyfile updated |
+| **Remove backend** | :8080 Caddyfile removed, original site Caddyfile restored on :80/443, firewall rule removed, LB Caddyfile updated |
+| **Remove last backend** | Warning shown; upstream returns 503; site restored to normal mode |
+| **Delete load balancer** | All backend sites restored to normal (:8080 removed, :80/443 restored), firewall rules removed, upstreams deleted |
 | **Try to delete load balanced site** | **Blocked** - user must remove from load balancer first |
 | **Delete backend server** | All its sites removed from upstreams, LB Caddyfiles updated |
 | **Deploy to load balanced site** | Normal deployment; other backends NOT automatically updated; version mismatch warning shown |
-| **Health check fails** | Caddy stops routing to that backend; UI shows unhealthy status |
-| **Direct access attempt** | Returns 403 Forbidden (IP restriction in backend Caddyfile) |
+| **Health check fails** | Caddy stops routing to that backend on :8080; UI shows unhealthy status |
+| **Direct access to backend :8080** | Blocked by firewall (UFW) + Caddy IP restriction (403 Forbidden) |
 | **WebSocket connection** | Caddy maintains connection to same backend; reconnects may go elsewhere |
 | **Use round_robin with sessions** | Sessions may be lost; UI warns to use ip_hash or Redis sessions |
 
@@ -2048,21 +2784,35 @@ Same as PHP server, so no changes needed to `CreateDefaultFirewallRules`.
 | File/Location | Changes |
 |---------------|---------|
 | **Backend - Types & Models** | |
-| `internal/modules/server/types/types.go` | Add `ServerTypeLoadBalancer`, `ServerFeatureLoadBalancing` |
-| `internal/modules/server/types/software.go` | Add `SoftwareCaddy2LB` for load balancer Caddy |
+| `internal/modules/server/types/types.go` | Add `ServerTypeLoadBalancer`, `ServerFeatureLoadBalancing`, update `Label()`, `IsValid()`, `GetFeatures()`, `GetProcessManager()`, `AllServerTypes()` |
+| `internal/modules/server/types/software.go` | Add `SoftwareCaddy2LB` with all ~15 methods |
 | `internal/modules/server/types/load_balancer.go` | New file: `LBPolicy` enum |
 | `internal/modules/server/models/` | New: `LoadBalancerUpstream`, `LoadBalancerBackend` |
-| `internal/modules/site/models/site.go` | Add `LoadBalancedUpstreamID`, `CaddyfileDisabled` |
+| `internal/modules/server/models/server.go` | Add `UpstreamsCount` computed field |
+| `internal/modules/site/models/site.go` | Add `LoadBalancedUpstreamID` |
+| `internal/modules/server/dto/requests.go` | Add `loadbalancer` to `Type` validation |
+| `internal/modules/server/dto/responses.go` | Add `UpstreamsCount` to `ServerResponse` |
+| **Backend - Repositories** | |
+| `internal/modules/server/repositories/registry.go` | Add `lbUpstream`, `lbBackend` fields and accessors |
+| `internal/modules/server/repositories/load_balancer_upstream_repository.go` | **New**: upstream CRUD |
+| `internal/modules/server/repositories/load_balancer_backend_repository.go` | **New**: backend CRUD |
+| **Backend - Contracts & Cross-Module** | |
+| `internal/modules/server/contracts/site_reader.go` | **New**: `SiteReader` interface for cross-module access |
+| `internal/modules/server/handlers/server_handler.go` | Add `UpstreamCounter` interface |
+| `cmd/api/main.go` | Wire `SetSiteReader()` injection |
 | **Backend - Services & Handlers** | |
 | `internal/modules/server/services/server_service.go` | Add `createLoadBalancerServerServices()` function |
-| `internal/modules/server/services/load_balancer_service.go` | New: `LoadBalancerService` |
+| `internal/modules/server/services/load_balancer_service.go` | **New**: `LoadBalancerService` |
 | `internal/modules/server/handlers/` | New: upstream/backend handlers |
 | `internal/modules/server/routes.go` | Register new endpoints |
 | **Backend - Provisioning Scripts** | |
 | `internal/modules/server/tasks/templates/software/install_caddy2_loadbalancer.sh` | **New**: Caddy install script for LB mode |
-| **Backend - Caddy Jobs** | |
-| `internal/modules/site/jobs/install_caddyfile.go` | Modify `generateCaddyfile()` to handle load balanced mode |
-| `internal/modules/server/jobs/` | New: LB upstream Caddyfile install/update/remove jobs |
+| **Backend - Jobs & Events** | |
+| `internal/modules/site/jobs/install_caddyfile.go` | Modify to generate :8080 Caddyfile block for load balanced sites |
+| `internal/modules/server/jobs/` | New: LB Caddyfile install/update/remove, firewall add/remove, cleanup jobs |
+| `internal/modules/server/jobs/lb_deps.go` | **New**: `LBJobDeps` struct |
+| `internal/modules/server/jobs/register.go` | Register LB job handlers |
+| `internal/pkg/broadcast/events.go` | Add upstream/backend WebSocket event constants |
 | **Frontend** | |
 | `client/types/index.ts` | Add `LoadBalancerUpstream`, `LoadBalancerBackend` types |
 | `client/components/server/` | New: `LoadBalancerUpstreams`, `HealthIndicator`, etc. |
