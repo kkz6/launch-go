@@ -14,12 +14,12 @@ import (
 type SubscriptionRepository interface {
 	Create(ctx context.Context, subscription *models.Subscription) error
 	FindByID(ctx context.Context, id string) (*models.Subscription, error)
-	FindByLemonSqueezyID(ctx context.Context, lemonSqueezyID string) (*models.Subscription, error)
+	FindByProviderSubscriptionID(ctx context.Context, providerSubscriptionID string) (*models.Subscription, error)
 	FindByTeam(ctx context.Context, teamID string) ([]models.Subscription, error)
 	FindActiveByTeam(ctx context.Context, teamID string) (*models.Subscription, error)
 	Update(ctx context.Context, subscription *models.Subscription) error
 	UpdateStatus(ctx context.Context, id string, status billingtypes.SubscriptionStatus) error
-	UpdateStatusByLemonSqueezyID(ctx context.Context, lemonSqueezyID string, status billingtypes.SubscriptionStatus) error
+	UpdateStatusByProviderSubscriptionID(ctx context.Context, providerSubscriptionID string, status billingtypes.SubscriptionStatus) error
 	UpdateFields(ctx context.Context, id string, fields map[string]interface{}) error
 	Delete(ctx context.Context, id string) error
 	CountActiveByTeam(ctx context.Context, teamID string) (int64, error)
@@ -31,7 +31,7 @@ type SubscriptionRepository interface {
 type OrderRepository interface {
 	Create(ctx context.Context, order *models.Order) error
 	FindByID(ctx context.Context, id string) (*models.Order, error)
-	FindByLemonSqueezyID(ctx context.Context, lemonSqueezyID string) (*models.Order, error)
+	FindByProviderOrderID(ctx context.Context, providerOrderID string) (*models.Order, error)
 	FindByTeam(ctx context.Context, teamID string) ([]models.Order, error)
 	FindBySubscription(ctx context.Context, subscriptionID string) ([]models.Order, error)
 	Update(ctx context.Context, order *models.Order) error

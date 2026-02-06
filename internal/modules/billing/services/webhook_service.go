@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/billing/dto"
@@ -46,97 +45,108 @@ func (s *WebhookService) DeleteOldProcessedWebhookEvents(ctx context.Context, ol
 	return s.repos.WebhookEvent().DeleteOldProcessed(ctx, olderThan)
 }
 
-// CreateSubscription creates a new subscription
-func (s *WebhookService) CreateSubscription(ctx context.Context, teamID, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	status := MapLemonSqueezyStatus(attrs.Status)
+// CreateOrUpdateSubscription creates a new subscription or updates an existing one
+func (s *WebhookService) CreateOrUpdateSubscription(ctx context.Context, teamID, providerSubscriptionID string, sub *dto.DodoSubscription) error {
+	existing, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
+	if err == nil && existing != nil {
+		return s.updateSubscriptionFromWebhook(ctx, existing, sub)
+	}
+
+	status := MapDodoPaymentsStatus(sub.Status)
+
+	var cardBrand, cardLastFour *string
+	if sub.PaymentMethod != nil {
+		cardBrand = sub.PaymentMethod.CardBrand
+		cardLastFour = sub.PaymentMethod.CardLastFour
+	}
 
 	subscription := &models.Subscription{
-		BillableType:   models.BillableTypeTeam,
-		BillableID:     teamID,
-		Type:           "default",
-		LemonSqueezyID: lemonSqueezyID,
-		ProductID:      strconv.Itoa(attrs.ProductID),
-		VariantID:      strconv.Itoa(attrs.VariantID),
-		Status:         status,
-		CardBrand:      attrs.CardBrand,
-		CardLastFour:   attrs.CardLastFour,
-		TrialEndsAt:    ParseTime(attrs.TrialEndsAt),
-		RenewsAt:       ParseTime(attrs.RenewsAt),
-		EndsAt:         ParseTime(attrs.EndsAt),
+		BillableType:           models.BillableTypeTeam,
+		BillableID:             teamID,
+		Type:                   "default",
+		Provider:               models.ProviderDodoPayments,
+		ProviderSubscriptionID: providerSubscriptionID,
+		ProductID:              sub.ProductID,
+		VariantID:              sub.ProductID, // DodoPayments uses ProductID, no separate variant
+		Status:                 status,
+		CardBrand:              cardBrand,
+		CardLastFour:           cardLastFour,
+		TrialEndsAt:            sub.TrialPeriodEnd,
+		RenewsAt:               sub.CurrentPeriodEnd,
+		EndsAt:                 sub.CancelledAt,
 	}
 
 	return s.repos.Subscription().Create(ctx, subscription)
 }
 
-// UpdateSubscription updates an existing subscription
-func (s *WebhookService) UpdateSubscription(ctx context.Context, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	subscription, err := s.repos.Subscription().FindByLemonSqueezyID(ctx, lemonSqueezyID)
-	if err != nil {
-		return err
+// updateSubscriptionFromWebhook updates an existing subscription from webhook data
+func (s *WebhookService) updateSubscriptionFromWebhook(ctx context.Context, subscription *models.Subscription, sub *dto.DodoSubscription) error {
+	subscription.ProductID = sub.ProductID
+	subscription.VariantID = sub.ProductID
+	subscription.Status = MapDodoPaymentsStatus(sub.Status)
+
+	if sub.PaymentMethod != nil {
+		subscription.CardBrand = sub.PaymentMethod.CardBrand
+		subscription.CardLastFour = sub.PaymentMethod.CardLastFour
 	}
 
-	subscription.ProductID = strconv.Itoa(attrs.ProductID)
-	subscription.VariantID = strconv.Itoa(attrs.VariantID)
-	subscription.Status = MapLemonSqueezyStatus(attrs.Status)
-	subscription.CardBrand = attrs.CardBrand
-	subscription.CardLastFour = attrs.CardLastFour
-	subscription.TrialEndsAt = ParseTime(attrs.TrialEndsAt)
-	subscription.RenewsAt = ParseTime(attrs.RenewsAt)
-	subscription.EndsAt = ParseTime(attrs.EndsAt)
+	subscription.TrialEndsAt = sub.TrialPeriodEnd
+	subscription.RenewsAt = sub.CurrentPeriodEnd
+	subscription.EndsAt = sub.CancelledAt
 
 	return s.repos.Subscription().Update(ctx, subscription)
 }
 
+// UpdateSubscription updates an existing subscription
+func (s *WebhookService) UpdateSubscription(ctx context.Context, providerSubscriptionID string, sub *dto.DodoSubscription) error {
+	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
+	if err != nil {
+		return err
+	}
+
+	return s.updateSubscriptionFromWebhook(ctx, subscription, sub)
+}
+
 // CancelSubscriptionByWebhook marks a subscription as cancelled from webhook
-func (s *WebhookService) CancelSubscriptionByWebhook(ctx context.Context, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	subscription, err := s.repos.Subscription().FindByLemonSqueezyID(ctx, lemonSqueezyID)
+func (s *WebhookService) CancelSubscriptionByWebhook(ctx context.Context, providerSubscriptionID string, sub *dto.DodoSubscription) error {
+	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
 	if err != nil {
 		return err
 	}
 
 	subscription.Status = billingtypes.SubscriptionStatusCancelled
-	subscription.EndsAt = ParseTime(attrs.EndsAt)
-
-	return s.repos.Subscription().Update(ctx, subscription)
-}
-
-// ResumeSubscriptionByWebhook resumes a subscription from webhook
-func (s *WebhookService) ResumeSubscriptionByWebhook(ctx context.Context, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	subscription, err := s.repos.Subscription().FindByLemonSqueezyID(ctx, lemonSqueezyID)
-	if err != nil {
-		return err
-	}
-
-	subscription.Status = billingtypes.SubscriptionStatusActive
-	subscription.EndsAt = nil
-	subscription.RenewsAt = ParseTime(attrs.RenewsAt)
+	subscription.EndsAt = sub.CancelledAt
 
 	return s.repos.Subscription().Update(ctx, subscription)
 }
 
 // ExpireSubscription marks a subscription as expired
-func (s *WebhookService) ExpireSubscription(ctx context.Context, lemonSqueezyID string) error {
-	return s.repos.Subscription().UpdateStatusByLemonSqueezyID(ctx, lemonSqueezyID, billingtypes.SubscriptionStatusExpired)
+func (s *WebhookService) ExpireSubscription(ctx context.Context, providerSubscriptionID string) error {
+	return s.repos.Subscription().UpdateStatusByProviderSubscriptionID(ctx, providerSubscriptionID, billingtypes.SubscriptionStatusExpired)
+}
+
+// HandleSubscriptionFailed handles a failed subscription
+func (s *WebhookService) HandleSubscriptionFailed(ctx context.Context, providerSubscriptionID string) error {
+	return s.repos.Subscription().UpdateStatusByProviderSubscriptionID(ctx, providerSubscriptionID, billingtypes.SubscriptionStatusUnpaid)
 }
 
 // PauseSubscription pauses a subscription
-func (s *WebhookService) PauseSubscription(ctx context.Context, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	subscription, err := s.repos.Subscription().FindByLemonSqueezyID(ctx, lemonSqueezyID)
+func (s *WebhookService) PauseSubscription(ctx context.Context, providerSubscriptionID string) error {
+	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
 	if err != nil {
 		return err
 	}
 
-	pauseMode := "void"
+	pauseMode := "on_hold"
 	subscription.Status = billingtypes.SubscriptionStatusPaused
 	subscription.PauseMode = &pauseMode
-	subscription.PauseResumesAt = ParseTime(attrs.ResumesAt)
 
 	return s.repos.Subscription().Update(ctx, subscription)
 }
 
 // UnpauseSubscription unpauses a subscription
-func (s *WebhookService) UnpauseSubscription(ctx context.Context, lemonSqueezyID string) error {
-	subscription, err := s.repos.Subscription().FindByLemonSqueezyID(ctx, lemonSqueezyID)
+func (s *WebhookService) UnpauseSubscription(ctx context.Context, providerSubscriptionID string) error {
+	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
 	if err != nil {
 		return err
 	}
@@ -148,90 +158,59 @@ func (s *WebhookService) UnpauseSubscription(ctx context.Context, lemonSqueezyID
 	return s.repos.Subscription().Update(ctx, subscription)
 }
 
-// HandlePaymentSuccess handles a successful payment
-func (s *WebhookService) HandlePaymentSuccess(ctx context.Context, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	subscription, err := s.repos.Subscription().FindByLemonSqueezyID(ctx, lemonSqueezyID)
+// HandleSubscriptionRenewed handles a subscription renewal
+func (s *WebhookService) HandleSubscriptionRenewed(ctx context.Context, providerSubscriptionID string, sub *dto.DodoSubscription) error {
+	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
 	if err != nil {
 		return err
 	}
 
-	if subscription.Status == billingtypes.SubscriptionStatusPastDue || subscription.Status == billingtypes.SubscriptionStatusUnpaid {
-		subscription.Status = billingtypes.SubscriptionStatusActive
-	}
-
-	subscription.RenewsAt = ParseTime(attrs.RenewsAt)
+	subscription.Status = billingtypes.SubscriptionStatusActive
+	subscription.RenewsAt = sub.CurrentPeriodEnd
 
 	return s.repos.Subscription().Update(ctx, subscription)
 }
 
 // HandlePaymentFailed handles a failed payment
-func (s *WebhookService) HandlePaymentFailed(ctx context.Context, lemonSqueezyID string) error {
-	return s.repos.Subscription().UpdateStatusByLemonSqueezyID(ctx, lemonSqueezyID, billingtypes.SubscriptionStatusPastDue)
+func (s *WebhookService) HandlePaymentFailed(ctx context.Context, providerSubscriptionID string) error {
+	return s.repos.Subscription().UpdateStatusByProviderSubscriptionID(ctx, providerSubscriptionID, billingtypes.SubscriptionStatusPastDue)
 }
 
-// HandlePaymentRecovered handles a recovered payment
-func (s *WebhookService) HandlePaymentRecovered(ctx context.Context, lemonSqueezyID string) error {
-	return s.repos.Subscription().UpdateStatusByLemonSqueezyID(ctx, lemonSqueezyID, billingtypes.SubscriptionStatusActive)
-}
-
-// CreateOrder creates a new order
-func (s *WebhookService) CreateOrder(ctx context.Context, teamID, lemonSqueezyID string, attrs *dto.LemonSqueezyAttributes) error {
-	orderNumber := 0
-	if attrs.OrderNumber != nil {
-		orderNumber = *attrs.OrderNumber
-	}
-
-	currency := "USD"
-	if attrs.Currency != nil {
-		currency = *attrs.Currency
-	}
-
-	var subtotal, discountTotal, tax, total int64
-	if attrs.Subtotal != nil {
-		subtotal = *attrs.Subtotal
-	}
-	if attrs.DiscountTotal != nil {
-		discountTotal = *attrs.DiscountTotal
-	}
-	if attrs.Tax != nil {
-		tax = *attrs.Tax
-	}
-	if attrs.Total != nil {
-		total = *attrs.Total
-	}
-
-	identifier := ""
-	if attrs.Identifier != nil {
-		identifier = *attrs.Identifier
+// CreateOrder creates a new order from a payment webhook
+func (s *WebhookService) CreateOrder(ctx context.Context, teamID string, payment *dto.DodoPayment) error {
+	productID := ""
+	if payment.ProductID != nil {
+		productID = *payment.ProductID
 	}
 
 	order := &models.Order{
-		BillableType:   models.BillableTypeTeam,
-		BillableID:     teamID,
-		LemonSqueezyID: lemonSqueezyID,
-		CustomerID:     strconv.Itoa(attrs.CustomerID),
-		Identifier:     identifier,
-		ProductID:      strconv.Itoa(attrs.ProductID),
-		VariantID:      strconv.Itoa(attrs.VariantID),
-		OrderNumber:    orderNumber,
-		Currency:       currency,
-		Subtotal:       subtotal,
-		DiscountTotal:  discountTotal,
-		Tax:            tax,
-		Total:          total,
-		TaxName:        attrs.TaxName,
-		Status:         billingtypes.OrderStatusPaid,
-		ReceiptURL:     attrs.ReceiptURL,
-		Refunded:       false,
-		OrderedAt:      time.Now(),
+		BillableType:    models.BillableTypeTeam,
+		BillableID:      teamID,
+		Provider:        models.ProviderDodoPayments,
+		ProviderOrderID: payment.PaymentID,
+		CustomerID:      payment.CustomerID,
+		Identifier:      payment.PaymentID,
+		ProductID:       productID,
+		VariantID:       productID,
+		OrderNumber:     0, // DodoPayments doesn't have order numbers
+		Currency:        payment.Currency,
+		Subtotal:        payment.Subtotal,
+		DiscountTotal:   payment.DiscountAmount,
+		Tax:             payment.Tax,
+		Total:           payment.TotalAmount,
+		TaxName:         nil,
+		Status:          billingtypes.OrderStatusPaid,
+		ReceiptURL:      nil, // DodoPayments provides receipts via customer portal
+		Refunded:        false,
+		OrderedAt:       payment.CreatedAt,
 	}
 
 	return s.repos.Order().Create(ctx, order)
 }
 
-// RefundOrder marks an order as refunded
-func (s *WebhookService) RefundOrder(ctx context.Context, lemonSqueezyID string) error {
-	order, err := s.repos.Order().FindByLemonSqueezyID(ctx, lemonSqueezyID)
+// RefundOrder marks an order as refunded by payment ID
+func (s *WebhookService) RefundOrder(ctx context.Context, paymentID string) error {
+	order, err := s.repos.Order().FindByProviderOrderID(ctx, paymentID)
 	if err != nil {
 		return err
 	}
@@ -244,38 +223,54 @@ func (s *WebhookService) RefundOrder(ctx context.Context, lemonSqueezyID string)
 	return s.repos.Order().Update(ctx, order)
 }
 
-// MapLemonSqueezyStatus maps LemonSqueezy status to internal status
-func MapLemonSqueezyStatus(status string) billingtypes.SubscriptionStatus {
+// HandleDisputeOpened handles a dispute being opened
+func (s *WebhookService) HandleDisputeOpened(ctx context.Context, paymentID string) error {
+	order, err := s.repos.Order().FindByProviderOrderID(ctx, paymentID)
+	if err != nil {
+		return err
+	}
+
+	order.Status = billingtypes.OrderStatusDisputed
+	return s.repos.Order().Update(ctx, order)
+}
+
+// HandleDisputeResolved handles a dispute being resolved (won or lost)
+func (s *WebhookService) HandleDisputeResolved(ctx context.Context, paymentID string, lost bool) error {
+	order, err := s.repos.Order().FindByProviderOrderID(ctx, paymentID)
+	if err != nil {
+		return err
+	}
+
+	if lost {
+		now := time.Now()
+		order.Status = billingtypes.OrderStatusRefunded
+		order.Refunded = true
+		order.RefundedAt = &now
+	} else {
+		order.Status = billingtypes.OrderStatusPaid
+	}
+
+	return s.repos.Order().Update(ctx, order)
+}
+
+// MapDodoPaymentsStatus maps DodoPayments status to internal status
+func MapDodoPaymentsStatus(status string) billingtypes.SubscriptionStatus {
 	switch status {
-	case "on_trial":
-		return billingtypes.SubscriptionStatusOnTrial
 	case "active":
 		return billingtypes.SubscriptionStatusActive
-	case "paused":
-		return billingtypes.SubscriptionStatusPaused
-	case "past_due":
-		return billingtypes.SubscriptionStatusPastDue
-	case "unpaid":
-		return billingtypes.SubscriptionStatusUnpaid
+	case "on_trial":
+		return billingtypes.SubscriptionStatusOnTrial
 	case "cancelled":
 		return billingtypes.SubscriptionStatusCancelled
 	case "expired":
 		return billingtypes.SubscriptionStatusExpired
+	case "failed":
+		return billingtypes.SubscriptionStatusUnpaid
+	case "on_hold":
+		return billingtypes.SubscriptionStatusPaused
+	case "renewed", "updated":
+		return billingtypes.SubscriptionStatusActive
 	default:
 		return billingtypes.SubscriptionStatusActive
 	}
-}
-
-// ParseTime parses a time string from LemonSqueezy
-func ParseTime(s *string) *time.Time {
-	if s == nil || *s == "" {
-		return nil
-	}
-
-	t, err := time.Parse(time.RFC3339, *s)
-	if err != nil {
-		return nil
-	}
-
-	return &t
 }

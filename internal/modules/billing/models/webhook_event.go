@@ -7,7 +7,7 @@ import (
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
-// WebhookEvent represents a webhook event received from LemonSqueezy
+// WebhookEvent represents a webhook event received from the billing provider
 type WebhookEvent struct {
 	basemodels.BaseModel
 	EventName   billingtypes.WebhookEventType `gorm:"size:100;not null;index" json:"event_name"`
@@ -21,7 +21,7 @@ type WebhookEvent struct {
 
 // TableName returns the table name for GORM
 func (WebhookEvent) TableName() string {
-	return "lemon_squeezy_webhook_events"
+	return "billing_webhook_events"
 }
 
 // MarkProcessed marks the webhook event as processed

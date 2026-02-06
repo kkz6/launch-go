@@ -3,6 +3,7 @@ package security
 import (
 	"crypto/hmac"
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"strconv"
 	"testing"
@@ -374,15 +375,20 @@ func TestVerifyPaddleSignature(t *testing.T) {
 	}
 }
 
-func TestVerifyLemonSqueezySignature(t *testing.T) {
-	secret := "lemonsqueezy-webhook-secret"
-	payload := []byte(`{"meta": {"event_name": "order_created"}}`)
+func TestVerifyDodoPaymentsSignature(t *testing.T) {
+	secret := "dodo-payments-webhook-secret"
+	payload := []byte(`{"business_id": "test", "type": "subscription.active"}`)
+	webhookID := "wh_123"
+	timestamp := strconv.FormatInt(time.Now().Unix(), 10)
 
-	verifier := NewSignatureVerifier(SignatureSHA256, SignatureFormatPrefixed)
-	validSig := "sha256=" + verifier.Sign(payload, secret)
+	// Create a proper Standard Webhooks signature (base64 encoded)
+	signedPayload := webhookID + "." + timestamp + "." + string(payload)
+	mac := hmac.New(sha256.New, []byte(secret))
+	_, _ = mac.Write([]byte(signedPayload))
+	sig := "v1," + base64.StdEncoding.EncodeToString(mac.Sum(nil))
 
-	if !VerifyLemonSqueezySignature(payload, validSig, secret) {
-		t.Error("expected valid LemonSqueezy signature to pass")
+	if !VerifyDodoPaymentsSignature(payload, webhookID, sig, timestamp, secret) {
+		t.Error("expected valid DodoPayments signature to pass")
 	}
 }
 
@@ -483,10 +489,9 @@ func TestPreConfiguredVerifiers(t *testing.T) {
 		}
 	})
 
-	t.Run("LemonSqueezy", func(t *testing.T) {
-		sig := "sha256=" + LemonSqueezySignature.Sign(payload, secret)
-		if !LemonSqueezySignature.Verify(payload, sig, secret) {
-			t.Error("LemonSqueezy verifier should work with prefixed format")
+	t.Run("DodoPayments", func(t *testing.T) {
+		if DodoPaymentsSignature.maxAge != 5*time.Minute {
+			t.Errorf("DodoPayments maxAge = %v, want 5 minutes", DodoPaymentsSignature.maxAge)
 		}
 	})
 }

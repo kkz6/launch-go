@@ -35,7 +35,7 @@ type Config struct {
 // BillingService handles billing operations
 type BillingService struct {
 	repos            *repositories.Registry
-	lemonSqueezy     *providers.LemonSqueezyClient
+	dodoPayments     *providers.DodoPaymentsClient
 	config           *Config
 	logger           *zerolog.Logger
 	plansByID        map[string]*models.Plan
@@ -44,10 +44,10 @@ type BillingService struct {
 }
 
 // NewBillingService creates a new billing service
-func NewBillingService(repos *repositories.Registry, lemonSqueezy *providers.LemonSqueezyClient, config *Config, logger *zerolog.Logger) *BillingService {
+func NewBillingService(repos *repositories.Registry, dodoPayments *providers.DodoPaymentsClient, config *Config, logger *zerolog.Logger) *BillingService {
 	svc := &BillingService{
 		repos:            repos,
-		lemonSqueezy:     lemonSqueezy,
+		dodoPayments:     dodoPayments,
 		config:           config,
 		logger:           logger,
 		plansByID:        make(map[string]*models.Plan, len(config.Plans)),
@@ -92,7 +92,7 @@ func (s *BillingService) GetPlanByVariantID(variantID string) *models.Plan {
 
 // GenerateCheckoutURL generates a checkout URL for a team to subscribe
 func (s *BillingService) GenerateCheckoutURL(ctx context.Context, teamID string, req *dto.GenerateCheckoutURLRequest, redirectURL string) (string, error) {
-	if s.lemonSqueezy == nil {
+	if s.dodoPayments == nil {
 		return "", ErrSubscriptionsNotEnabled
 	}
 
@@ -101,12 +101,13 @@ func (s *BillingService) GenerateCheckoutURL(ctx context.Context, teamID string,
 		return "", ErrPlanNotFound
 	}
 
-	variantID := plan.MonthlyID
+	// Use the appropriate product ID based on billing period
+	productID := plan.MonthlyID
 	if req.Annual {
-		variantID = plan.YearlyID
+		productID = plan.YearlyID
 	}
 
-	url, err := s.lemonSqueezy.CreateCheckout(ctx, variantID, plan.Name, teamID, redirectURL)
+	url, err := s.dodoPayments.CreateCheckout(ctx, productID, plan.Name, teamID, redirectURL)
 	if err != nil {
 		s.logger.Error().Err(err).Str("team_id", teamID).Str("plan_id", req.Plan).Msg("Failed to create checkout URL")
 		return "", err
@@ -141,7 +142,7 @@ func (s *BillingService) CancelSubscription(ctx context.Context, subscriptionID 
 		return nil
 	}
 
-	err = s.lemonSqueezy.CancelSubscription(ctx, subscription.LemonSqueezyID)
+	err = s.dodoPayments.CancelSubscription(ctx, subscription.ProviderSubscriptionID)
 	if err != nil {
 		s.logger.Error().Err(err).Str("subscription_id", subscriptionID).Msg("Failed to cancel subscription")
 		return err
@@ -166,7 +167,7 @@ func (s *BillingService) ResumeSubscription(ctx context.Context, subscriptionID 
 		return ErrCannotResume
 	}
 
-	err = s.lemonSqueezy.ResumeSubscription(ctx, subscription.LemonSqueezyID)
+	err = s.dodoPayments.ResumeSubscription(ctx, subscription.ProviderSubscriptionID)
 	if err != nil {
 		s.logger.Error().Err(err).Str("subscription_id", subscriptionID).Msg("Failed to resume subscription")
 		return err
@@ -199,17 +200,14 @@ func (s *BillingService) GetBillingData(ctx context.Context, teamID string, serv
 		return nil, err
 	}
 
-	// NOTE: Payment URL fetches are N+1 because the LemonSqueezy API does not support
-	// batch retrieval of update payment method URLs. Each subscription requires a
-	// separate API call. Consider caching these URLs if performance becomes an issue,
-	// as they typically don't change frequently.
 	subscriptionResponses := make([]dto.SubscriptionResponse, len(subscriptions))
 	for i, sub := range subscriptions {
 		plan := s.GetPlanByProductID(sub.ProductID)
 		updateURL := ""
-		if s.lemonSqueezy != nil {
+		if s.dodoPayments != nil {
+			// DodoPayments uses customer portal for payment method updates
 			var err error
-			updateURL, err = s.lemonSqueezy.GetUpdatePaymentMethodURL(ctx, sub.LemonSqueezyID)
+			updateURL, err = s.dodoPayments.GetUpdatePaymentMethodURL(ctx, sub.BillableID)
 			if err != nil {
 				s.logger.Warn().Err(err).Uint("subscription_id", sub.ID).Msg("Failed to get update payment method URL")
 			}
@@ -240,9 +238,9 @@ func (s *BillingService) GetConfig() *Config {
 	return s.config
 }
 
-// GetLemonSqueezyClient returns the LemonSqueezy client
-func (s *BillingService) GetLemonSqueezyClient() *providers.LemonSqueezyClient {
-	return s.lemonSqueezy
+// GetDodoPaymentsClient returns the DodoPayments client
+func (s *BillingService) GetDodoPaymentsClient() *providers.DodoPaymentsClient {
+	return s.dodoPayments
 }
 
 // SetSubscriptionsEnabled sets whether subscriptions are enabled

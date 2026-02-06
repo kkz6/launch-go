@@ -69,7 +69,7 @@ func isTeamSubscribed(teamID string) bool {
 	}
 
 	var count int64
-	subscriptionMiddleware.db.Table("lemon_squeezy_subscriptions").
+	subscriptionMiddleware.db.Table("subscriptions").
 		Where("billable_id = ?", teamID).
 		Where("billable_type IN ?", []string{"Modules\\Auth\\Models\\Team", "App\\Models\\Team"}).
 		Where("status IN ?", []string{"active", "on_trial"}).

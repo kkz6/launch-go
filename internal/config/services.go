@@ -14,14 +14,14 @@ type CorsConfig struct {
 // BillingConfig holds billing configuration
 type BillingConfig struct {
 	SubscriptionsEnabled bool   `env:"BILLING_SUBSCRIPTIONS_ENABLED" default:"false"`
-	WebhookSecret        string `env:"LEMON_SQUEEZY_SIGNING_SECRET" default:""`
-	LemonSqueezy         LemonSqueezyConfig
+	WebhookSecret        string `env:"DODO_PAYMENTS_WEBHOOK_KEY" default:""`
+	DodoPayments         DodoPaymentsConfig
 }
 
-// LemonSqueezyConfig holds Lemon Squeezy provider configuration
-type LemonSqueezyConfig struct {
-	APIKey  string `env:"LEMON_SQUEEZY_API_KEY" default:""`
-	StoreID int    `env:"LEMON_SQUEEZY_STORE" default:"0"`
+// DodoPaymentsConfig holds Dodo Payments provider configuration
+type DodoPaymentsConfig struct {
+	APIKey   string `env:"DODO_PAYMENTS_API_KEY" default:""`
+	TestMode bool   `env:"DODO_PAYMENTS_TEST_MODE" default:"true"`
 }
 
 // GitConfig holds git provider configuration

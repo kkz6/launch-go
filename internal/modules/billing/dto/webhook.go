@@ -1,121 +1,151 @@
 package dto
 
-// WebhookPayload represents the payload from LemonSqueezy webhook
-type WebhookPayload struct {
-	Meta LemonSqueezyMeta `json:"meta"`
-	Data LemonSqueezyData `json:"data"`
+import "time"
+
+// DodoWebhookPayload represents the payload from DodoPayments webhook
+type DodoWebhookPayload struct {
+	BusinessID string        `json:"business_id"`
+	Type       string        `json:"type"`      // e.g., "subscription.active", "payment.succeeded"
+	Timestamp  string        `json:"timestamp"` // ISO 8601
+	Data       DodoEventData `json:"data"`
 }
 
-// LemonSqueezyMeta represents the meta information in webhook payload
-type LemonSqueezyMeta struct {
-	EventName  string            `json:"event_name"`
-	CustomData map[string]string `json:"custom_data,omitempty"`
-	TestMode   bool              `json:"test_mode"`
-}
-
-// LemonSqueezyData represents the data in webhook payload
-type LemonSqueezyData struct {
-	Type          string                 `json:"type"`
-	ID            string                 `json:"id"`
-	Attributes    LemonSqueezyAttributes `json:"attributes"`
-	Relationships map[string]interface{} `json:"relationships,omitempty"`
-}
-
-// LemonSqueezyAttributes represents the attributes in webhook data
-type LemonSqueezyAttributes struct {
+// DodoEventData represents the data in webhook payload
+// This is a union type that can contain different event-specific data
+type DodoEventData struct {
 	// Common fields
-	StoreID     int    `json:"store_id"`
-	CustomerID  int    `json:"customer_id"`
-	OrderID     *int   `json:"order_id,omitempty"`
-	ProductID   int    `json:"product_id"`
-	VariantID   int    `json:"variant_id"`
-	ProductName string `json:"product_name"`
-	VariantName string `json:"variant_name"`
-	Status      string `json:"status"`
-	TestMode    bool   `json:"test_mode"`
+	PayloadType string `json:"payload_type"` // Payment, Subscription, Refund, Dispute
 
-	// Subscription specific fields
-	TrialEndsAt            *string `json:"trial_ends_at,omitempty"`
-	RenewsAt               *string `json:"renews_at,omitempty"`
-	EndsAt                 *string `json:"ends_at,omitempty"`
-	PauseMode              *string `json:"pause_mode,omitempty"`
-	ResumesAt              *string `json:"resumes_at,omitempty"`
-	BillingAnchor          int     `json:"billing_anchor"`
-	CardBrand              *string `json:"card_brand,omitempty"`
-	CardLastFour           *string `json:"card_last_four,omitempty"`
-	UpdatePaymentMethodURL *string `json:"urls,omitempty"`
+	// Subscription fields (when payload_type is Subscription)
+	Subscription *DodoSubscription `json:"subscription,omitempty"`
 
-	// Order specific fields
-	OrderNumber   *int    `json:"order_number,omitempty"`
-	Identifier    *string `json:"identifier,omitempty"`
-	Currency      *string `json:"currency,omitempty"`
-	CurrencyRate  *string `json:"currency_rate,omitempty"`
-	Subtotal      *int64  `json:"subtotal,omitempty"`
-	DiscountTotal *int64  `json:"discount_total,omitempty"`
-	Tax           *int64  `json:"tax,omitempty"`
-	Total         *int64  `json:"total,omitempty"`
-	TaxName       *string `json:"tax_name,omitempty"`
-	ReceiptURL    *string `json:"receipt_url,omitempty"`
+	// Payment fields (when payload_type is Payment)
+	Payment *DodoPayment `json:"payment,omitempty"`
 
-	// Timestamps
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
+	// Refund fields (when payload_type is Refund)
+	Refund *DodoRefund `json:"refund,omitempty"`
+
+	// Dispute fields (when payload_type is Dispute)
+	Dispute *DodoDispute `json:"dispute,omitempty"`
 }
 
-// CheckoutURLs represents the URLs returned from LemonSqueezy checkout
+// DodoSubscription represents subscription data in webhook
+type DodoSubscription struct {
+	SubscriptionID    string                  `json:"subscription_id"`
+	CustomerID        string                  `json:"customer_id"`
+	ProductID         string                  `json:"product_id"`
+	Status            string                  `json:"status"` // active, cancelled, expired, failed, on_hold, renewed, updated
+	PreviousStatus    *string                 `json:"previous_status,omitempty"`
+	Currency          string                  `json:"currency"`
+	RecurringAmount   int64                   `json:"recurring_amount"`
+	CurrentPeriodEnd  *time.Time              `json:"current_period_end,omitempty"`
+	TrialPeriodEnd    *time.Time              `json:"trial_period_end,omitempty"`
+	CancelledAt       *time.Time              `json:"cancelled_at,omitempty"`
+	Metadata          map[string]string       `json:"metadata,omitempty"`
+	PaymentMethod     *DodoPaymentMethod      `json:"payment_method,omitempty"`
+	SubscriptionMeter []DodoSubscriptionMeter `json:"subscription_meter,omitempty"`
+	CreatedAt         time.Time               `json:"created_at"`
+	UpdatedAt         time.Time               `json:"updated_at"`
+}
+
+// DodoPayment represents payment data in webhook
+type DodoPayment struct {
+	PaymentID      string             `json:"payment_id"`
+	CustomerID     string             `json:"customer_id"`
+	ProductID      *string            `json:"product_id,omitempty"`
+	SubscriptionID *string            `json:"subscription_id,omitempty"`
+	Status         string             `json:"status"` // succeeded, failed, processing, cancelled
+	Currency       string             `json:"currency"`
+	TotalAmount    int64              `json:"total_amount"`
+	Subtotal       int64              `json:"subtotal"`
+	Tax            int64              `json:"tax"`
+	DiscountAmount int64              `json:"discount_amount"`
+	RefundedAmount int64              `json:"refunded_amount"`
+	Metadata       map[string]string  `json:"metadata,omitempty"`
+	PaymentMethod  *DodoPaymentMethod `json:"payment_method,omitempty"`
+	CreatedAt      time.Time          `json:"created_at"`
+	UpdatedAt      time.Time          `json:"updated_at"`
+}
+
+// DodoRefund represents refund data in webhook
+type DodoRefund struct {
+	RefundID  string            `json:"refund_id"`
+	PaymentID string            `json:"payment_id"`
+	Status    string            `json:"status"` // succeeded, failed
+	Amount    int64             `json:"amount"`
+	Currency  string            `json:"currency"`
+	Reason    *string           `json:"reason,omitempty"`
+	Metadata  map[string]string `json:"metadata,omitempty"`
+	CreatedAt time.Time         `json:"created_at"`
+}
+
+// DodoDispute represents dispute data in webhook
+type DodoDispute struct {
+	DisputeID    string    `json:"dispute_id"`
+	PaymentID    string    `json:"payment_id"`
+	Status       string    `json:"status"` // opened, won, lost
+	Amount       int64     `json:"amount"`
+	Currency     string    `json:"currency"`
+	Reason       *string   `json:"reason,omitempty"`
+	DisputeStage *string   `json:"dispute_stage,omitempty"`
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+// DodoPaymentMethod represents payment method details
+type DodoPaymentMethod struct {
+	Type         string  `json:"type"` // card, bank_transfer, etc.
+	CardBrand    *string `json:"card_brand,omitempty"`
+	CardLastFour *string `json:"card_last_four,omitempty"`
+}
+
+// DodoSubscriptionMeter represents usage meter data
+type DodoSubscriptionMeter struct {
+	MeterID      string `json:"meter_id"`
+	CurrentUsage int64  `json:"current_usage"`
+	PeriodStart  string `json:"period_start"`
+	PeriodEnd    string `json:"period_end"`
+}
+
+// GetTeamID extracts team_id from metadata
+func (p *DodoWebhookPayload) GetTeamID() string {
+	switch p.Data.PayloadType {
+	case "Subscription":
+		if p.Data.Subscription != nil && p.Data.Subscription.Metadata != nil {
+			return p.Data.Subscription.Metadata["team_id"]
+		}
+	case "Payment":
+		if p.Data.Payment != nil && p.Data.Payment.Metadata != nil {
+			return p.Data.Payment.Metadata["team_id"]
+		}
+	case "Refund":
+		if p.Data.Refund != nil && p.Data.Refund.Metadata != nil {
+			return p.Data.Refund.Metadata["team_id"]
+		}
+	case "Dispute":
+		// Disputes don't typically have metadata, need to look up via payment
+		return ""
+	}
+
+	return ""
+}
+
+// CheckoutURLs represents the URLs returned from DodoPayments checkout
 type CheckoutURLs struct {
-	UpdatePaymentMethod string `json:"update_payment_method"`
-	CustomerPortal      string `json:"customer_portal"`
+	CustomerPortal string `json:"customer_portal"`
 }
 
-// LemonSqueezyCheckoutRequest represents a request to create a checkout session
-type LemonSqueezyCheckoutRequest struct {
-	StoreID         int               `json:"store_id"`
-	VariantID       int               `json:"variant_id"`
-	CustomPrice     *int64            `json:"custom_price,omitempty"`
-	ProductOptions  map[string]string `json:"product_options,omitempty"`
-	CheckoutOptions CheckoutOptions   `json:"checkout_options,omitempty"`
-	CheckoutData    CheckoutData      `json:"checkout_data,omitempty"`
-	ExpiresAt       *string           `json:"expires_at,omitempty"`
-	Preview         bool              `json:"preview,omitempty"`
+// DodoCheckoutRequest represents a request to create a checkout session
+type DodoCheckoutRequest struct {
+	ProductID   string            `json:"product_id"`
+	CustomerID  string            `json:"customer_id,omitempty"`
+	SuccessURL  string            `json:"success_url,omitempty"`
+	CancelURL   string            `json:"cancel_url,omitempty"`
+	Metadata    map[string]string `json:"metadata,omitempty"`
+	PaymentLink bool              `json:"payment_link,omitempty"`
 }
 
-// CheckoutOptions represents checkout configuration options
-type CheckoutOptions struct {
-	Embed               bool    `json:"embed,omitempty"`
-	Media               bool    `json:"media,omitempty"`
-	Logo                bool    `json:"logo,omitempty"`
-	Desc                bool    `json:"desc,omitempty"`
-	Discount            bool    `json:"discount,omitempty"`
-	Dark                bool    `json:"dark,omitempty"`
-	SubscriptionPreview bool    `json:"subscription_preview,omitempty"`
-	ButtonColor         *string `json:"button_color,omitempty"`
-}
-
-// CheckoutData represents the data passed to checkout
-type CheckoutData struct {
-	Email        string            `json:"email,omitempty"`
-	Name         string            `json:"name,omitempty"`
-	Custom       map[string]string `json:"custom,omitempty"`
-	DiscountCode string            `json:"discount_code,omitempty"`
-}
-
-// LemonSqueezyCheckoutAttributes represents the attributes of a checkout response
-type LemonSqueezyCheckoutAttributes struct {
-	StoreID   int    `json:"store_id"`
-	VariantID int    `json:"variant_id"`
+// DodoCheckoutResponse represents the checkout creation response
+type DodoCheckoutResponse struct {
+	SessionID string `json:"session_id"`
 	URL       string `json:"url"`
-	ExpiresAt string `json:"expires_at"`
-}
-
-// LemonSqueezyCheckoutData represents the data field of a checkout response
-type LemonSqueezyCheckoutData struct {
-	ID         string                         `json:"id"`
-	Type       string                         `json:"type"`
-	Attributes LemonSqueezyCheckoutAttributes `json:"attributes"`
-}
-
-// LemonSqueezyCheckoutResponse represents the checkout creation response
-type LemonSqueezyCheckoutResponse struct {
-	Data LemonSqueezyCheckoutData `json:"data"`
 }

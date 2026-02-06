@@ -4,6 +4,7 @@ import (
 	"crypto/hmac"
 	"crypto/sha256"
 	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"hash"
 	"strconv"
@@ -80,6 +81,66 @@ func (v *SignatureVerifier) Verify(payload []byte, signatureHeader, secret strin
 	default:
 		return false
 	}
+}
+
+// VerifyStandardWebhooks verifies a Standard Webhooks signature.
+// This is used by DodoPayments and other providers following the spec.
+// The signed payload format is: {webhook-id}.{webhook-timestamp}.{payload}
+func (v *SignatureVerifier) VerifyStandardWebhooks(payload []byte, webhookID, signature, timestamp, secret string) bool {
+	if webhookID == "" || signature == "" || timestamp == "" || secret == "" {
+		return false
+	}
+
+	if v.maxAge > 0 {
+		ts, err := strconv.ParseInt(timestamp, 10, 64)
+		if err != nil {
+			return false
+		}
+
+		signedAt := time.Unix(ts, 0)
+		if time.Since(signedAt) > v.maxAge {
+			return false
+		}
+	}
+
+	signedPayload := webhookID + "." + timestamp + "." + string(payload)
+	expected := v.computeBase64([]byte(signedPayload), secret)
+
+	signatures := strings.Split(signature, " ")
+	for _, sig := range signatures {
+		if strings.HasPrefix(sig, "v1,") {
+			actualSig := strings.TrimPrefix(sig, "v1,")
+			if hmac.Equal([]byte(expected), []byte(actualSig)) {
+				return true
+			}
+		}
+	}
+
+	return false
+}
+
+// computeBase64 generates the HMAC signature and returns it as base64
+func (v *SignatureVerifier) computeBase64(payload []byte, secret string) string {
+	var h func() hash.Hash
+
+	switch v.algorithm {
+	case SignatureSHA256:
+		h = sha256.New
+	case SignatureSHA512:
+		h = sha512.New
+	default:
+		h = sha256.New
+	}
+
+	secretBytes, err := base64.StdEncoding.DecodeString(secret)
+	if err != nil {
+		secretBytes = []byte(secret)
+	}
+
+	mac := hmac.New(h, secretBytes)
+	_, _ = mac.Write(payload)
+
+	return base64.StdEncoding.EncodeToString(mac.Sum(nil))
 }
 
 // Sign computes the HMAC signature for a payload using the given secret.
@@ -183,6 +244,11 @@ func (v *SignatureVerifier) compute(payload []byte, secret string) string {
 	return hex.EncodeToString(mac.Sum(nil))
 }
 
+// SignatureFormatStandardWebhooks expects signatures in Standard Webhooks format.
+// Headers: webhook-id, webhook-signature (v1,signature), webhook-timestamp
+// Used by DodoPayments and other providers following the Standard Webhooks spec.
+const SignatureFormatStandardWebhooks SignatureFormat = "standard_webhooks"
+
 // Pre-configured verifiers for common webhook providers.
 var (
 	// GitHubSignature verifies GitHub webhook signatures.
@@ -202,9 +268,11 @@ var (
 	// Paddle sends signatures in prefixed format.
 	PaddleSignature = NewSignatureVerifier(SignatureSHA256, SignatureFormatPrefixed)
 
-	// LemonSqueezySignature verifies LemonSqueezy webhook signatures.
-	// LemonSqueezy sends: X-Signature: sha256=abc123...
-	LemonSqueezySignature = NewSignatureVerifier(SignatureSHA256, SignatureFormatPrefixed)
+	// DodoPaymentsSignature verifies DodoPayments webhook signatures.
+	// DodoPayments uses Standard Webhooks spec with headers:
+	// webhook-id, webhook-signature (v1,base64signature), webhook-timestamp
+	// Default max age is 5 minutes to prevent replay attacks.
+	DodoPaymentsSignature = NewSignatureVerifier(SignatureSHA256, SignatureFormatStandardWebhooks).WithMaxAge(5 * time.Minute)
 )
 
 // VerifyGitHubSignature is a convenience function for verifying GitHub webhook signatures.
@@ -234,10 +302,13 @@ func VerifyPaddleSignature(payload []byte, signature, secret string) bool {
 	return PaddleSignature.Verify(payload, signature, secret)
 }
 
-// VerifyLemonSqueezySignature is a convenience function for verifying LemonSqueezy webhook signatures.
-// signature should be the value of the X-Signature header.
-func VerifyLemonSqueezySignature(payload []byte, signature, secret string) bool {
-	return LemonSqueezySignature.Verify(payload, signature, secret)
+// VerifyDodoPaymentsSignature is a convenience function for verifying DodoPayments webhook signatures.
+// DodoPayments uses the Standard Webhooks spec with three headers:
+// - webhook-id: Unique identifier for the webhook
+// - webhook-signature: The signature in format "v1,base64signature"
+// - webhook-timestamp: Unix timestamp when the webhook was sent
+func VerifyDodoPaymentsSignature(payload []byte, webhookID, signature, timestamp, secret string) bool {
+	return DodoPaymentsSignature.VerifyStandardWebhooks(payload, webhookID, signature, timestamp, secret)
 }
 
 // ComputeHMACSignature computes an HMAC-SHA256 signature for the given payload.
