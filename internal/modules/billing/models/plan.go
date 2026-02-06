@@ -28,10 +28,10 @@ type PlanOptions struct {
 func DefaultPlans() []Plan {
 	return []Plan{
 		{
-			ID:             "396982",
+			ID:             "hobby",
 			Name:           "Hobby Plan",
-			MonthlyID:      "616451",
-			YearlyID:       "616450",
+			MonthlyID:      "pdt_0NXvMTj4rVMbbEhFF34nD",
+			YearlyID:       "pdt_0NXvMZxP5iKHblFYCUQ3I",
 			MonthlyPricing: 199,
 			YearlyPricing:  2380,
 			Features: []string{
@@ -51,10 +51,10 @@ func DefaultPlans() []Plan {
 			},
 		},
 		{
-			ID:             "409766",
+			ID:             "compact",
 			Name:           "Compact Plan",
-			MonthlyID:      "625979",
-			YearlyID:       "625980",
+			MonthlyID:      "pdt_0NXvMeSTeHZD1ETlUUuwL",
+			YearlyID:       "pdt_0NXvMi7nhQ8vLsuqLMHpr",
 			MonthlyPricing: 699,
 			YearlyPricing:  8388,
 			Features: []string{
@@ -76,10 +76,10 @@ func DefaultPlans() []Plan {
 			},
 		},
 		{
-			ID:             "433445",
+			ID:             "turbo",
 			Name:           "Turbo Plan",
-			MonthlyID:      "666642",
-			YearlyID:       "666643",
+			MonthlyID:      "pdt_0NXvMmccM70LXXjjCuTSd",
+			YearlyID:       "pdt_0NXvMqZY4iYrFUmldDc08",
 			MonthlyPricing: 2000,
 			YearlyPricing:  24000,
 			Features: []string{
