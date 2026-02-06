@@ -46,7 +46,7 @@ func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 	m.setupWebhookRoutes(router, webhookHandler)
 }
 
-// setupWebhookRoutes registers Lemon Squeezy webhook routes
+// setupWebhookRoutes registers DodoPayments webhook routes
 func (m *Module) setupWebhookRoutes(router fiber.Router, handler *handlers.WebhookHandler) {
-	router.Post("/webhooks/lemon-squeezy", handler.HandleWebhook)
+	router.Post("/webhooks/dodo-payments", handler.HandleWebhook)
 }

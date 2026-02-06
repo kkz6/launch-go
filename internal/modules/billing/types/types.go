@@ -324,37 +324,52 @@ func (u *UserRole) Scan(value any) error {
 // WebhookEventType
 // =============================================================================
 
-// WebhookEventType represents types of webhook events from LemonSqueezy
+// WebhookEventType represents types of webhook events from DodoPayments
 type WebhookEventType string
 
 const (
-	WebhookEventSubscriptionCreated          WebhookEventType = "subscription_created"
-	WebhookEventSubscriptionUpdated          WebhookEventType = "subscription_updated"
-	WebhookEventSubscriptionCancelled        WebhookEventType = "subscription_cancelled"
-	WebhookEventSubscriptionResumed          WebhookEventType = "subscription_resumed"
-	WebhookEventSubscriptionExpired          WebhookEventType = "subscription_expired"
-	WebhookEventSubscriptionPaused           WebhookEventType = "subscription_paused"
-	WebhookEventSubscriptionUnpaused         WebhookEventType = "subscription_unpaused"
-	WebhookEventSubscriptionPaymentSuccess   WebhookEventType = "subscription_payment_success"
-	WebhookEventSubscriptionPaymentFailed    WebhookEventType = "subscription_payment_failed"
-	WebhookEventSubscriptionPaymentRecovered WebhookEventType = "subscription_payment_recovered"
-	WebhookEventOrderCreated                 WebhookEventType = "order_created"
-	WebhookEventOrderRefunded                WebhookEventType = "order_refunded"
+	// Subscription events
+	WebhookEventSubscriptionActive    WebhookEventType = "subscription.active"
+	WebhookEventSubscriptionCancelled WebhookEventType = "subscription.cancelled"
+	WebhookEventSubscriptionExpired   WebhookEventType = "subscription.expired"
+	WebhookEventSubscriptionFailed    WebhookEventType = "subscription.failed"
+	WebhookEventSubscriptionOnHold    WebhookEventType = "subscription.on_hold"
+	WebhookEventSubscriptionRenewed   WebhookEventType = "subscription.renewed"
+	WebhookEventSubscriptionUpdated   WebhookEventType = "subscription.updated"
+
+	// Payment events
+	WebhookEventPaymentSucceeded  WebhookEventType = "payment.succeeded"
+	WebhookEventPaymentFailed     WebhookEventType = "payment.failed"
+	WebhookEventPaymentProcessing WebhookEventType = "payment.processing"
+	WebhookEventPaymentCancelled  WebhookEventType = "payment.cancelled"
+
+	// Refund events
+	WebhookEventRefundSucceeded WebhookEventType = "refund.succeeded"
+	WebhookEventRefundFailed    WebhookEventType = "refund.failed"
+
+	// Dispute events
+	WebhookEventDisputeOpened WebhookEventType = "dispute.opened"
+	WebhookEventDisputeWon    WebhookEventType = "dispute.won"
+	WebhookEventDisputeLost   WebhookEventType = "dispute.lost"
 )
 
 var allWebhookEventTypes = []WebhookEventType{
-	WebhookEventSubscriptionCreated,
-	WebhookEventSubscriptionUpdated,
+	WebhookEventSubscriptionActive,
 	WebhookEventSubscriptionCancelled,
-	WebhookEventSubscriptionResumed,
 	WebhookEventSubscriptionExpired,
-	WebhookEventSubscriptionPaused,
-	WebhookEventSubscriptionUnpaused,
-	WebhookEventSubscriptionPaymentSuccess,
-	WebhookEventSubscriptionPaymentFailed,
-	WebhookEventSubscriptionPaymentRecovered,
-	WebhookEventOrderCreated,
-	WebhookEventOrderRefunded,
+	WebhookEventSubscriptionFailed,
+	WebhookEventSubscriptionOnHold,
+	WebhookEventSubscriptionRenewed,
+	WebhookEventSubscriptionUpdated,
+	WebhookEventPaymentSucceeded,
+	WebhookEventPaymentFailed,
+	WebhookEventPaymentProcessing,
+	WebhookEventPaymentCancelled,
+	WebhookEventRefundSucceeded,
+	WebhookEventRefundFailed,
+	WebhookEventDisputeOpened,
+	WebhookEventDisputeWon,
+	WebhookEventDisputeLost,
 }
 
 // AllWebhookEventTypes returns all valid webhook event types
@@ -370,30 +385,38 @@ func (w WebhookEventType) String() string {
 // Label returns a human-readable label for the webhook event type
 func (w WebhookEventType) Label() string {
 	switch w {
-	case WebhookEventSubscriptionCreated:
-		return "Subscription Created"
-	case WebhookEventSubscriptionUpdated:
-		return "Subscription Updated"
+	case WebhookEventSubscriptionActive:
+		return "Subscription Active"
 	case WebhookEventSubscriptionCancelled:
 		return "Subscription Cancelled"
-	case WebhookEventSubscriptionResumed:
-		return "Subscription Resumed"
 	case WebhookEventSubscriptionExpired:
 		return "Subscription Expired"
-	case WebhookEventSubscriptionPaused:
-		return "Subscription Paused"
-	case WebhookEventSubscriptionUnpaused:
-		return "Subscription Unpaused"
-	case WebhookEventSubscriptionPaymentSuccess:
-		return "Subscription Payment Success"
-	case WebhookEventSubscriptionPaymentFailed:
-		return "Subscription Payment Failed"
-	case WebhookEventSubscriptionPaymentRecovered:
-		return "Subscription Payment Recovered"
-	case WebhookEventOrderCreated:
-		return "Order Created"
-	case WebhookEventOrderRefunded:
-		return "Order Refunded"
+	case WebhookEventSubscriptionFailed:
+		return "Subscription Failed"
+	case WebhookEventSubscriptionOnHold:
+		return "Subscription On Hold"
+	case WebhookEventSubscriptionRenewed:
+		return "Subscription Renewed"
+	case WebhookEventSubscriptionUpdated:
+		return "Subscription Updated"
+	case WebhookEventPaymentSucceeded:
+		return "Payment Succeeded"
+	case WebhookEventPaymentFailed:
+		return "Payment Failed"
+	case WebhookEventPaymentProcessing:
+		return "Payment Processing"
+	case WebhookEventPaymentCancelled:
+		return "Payment Cancelled"
+	case WebhookEventRefundSucceeded:
+		return "Refund Succeeded"
+	case WebhookEventRefundFailed:
+		return "Refund Failed"
+	case WebhookEventDisputeOpened:
+		return "Dispute Opened"
+	case WebhookEventDisputeWon:
+		return "Dispute Won"
+	case WebhookEventDisputeLost:
+		return "Dispute Lost"
 	default:
 		return string(w)
 	}
@@ -402,18 +425,22 @@ func (w WebhookEventType) Label() string {
 // IsValid checks if the webhook event type is valid
 func (w WebhookEventType) IsValid() bool {
 	switch w {
-	case WebhookEventSubscriptionCreated,
-		WebhookEventSubscriptionUpdated,
+	case WebhookEventSubscriptionActive,
 		WebhookEventSubscriptionCancelled,
-		WebhookEventSubscriptionResumed,
 		WebhookEventSubscriptionExpired,
-		WebhookEventSubscriptionPaused,
-		WebhookEventSubscriptionUnpaused,
-		WebhookEventSubscriptionPaymentSuccess,
-		WebhookEventSubscriptionPaymentFailed,
-		WebhookEventSubscriptionPaymentRecovered,
-		WebhookEventOrderCreated,
-		WebhookEventOrderRefunded:
+		WebhookEventSubscriptionFailed,
+		WebhookEventSubscriptionOnHold,
+		WebhookEventSubscriptionRenewed,
+		WebhookEventSubscriptionUpdated,
+		WebhookEventPaymentSucceeded,
+		WebhookEventPaymentFailed,
+		WebhookEventPaymentProcessing,
+		WebhookEventPaymentCancelled,
+		WebhookEventRefundSucceeded,
+		WebhookEventRefundFailed,
+		WebhookEventDisputeOpened,
+		WebhookEventDisputeWon,
+		WebhookEventDisputeLost:
 		return true
 	default:
 		return false
@@ -423,25 +450,40 @@ func (w WebhookEventType) IsValid() bool {
 // IsSubscriptionEvent checks if the event is a subscription-related event
 func (w WebhookEventType) IsSubscriptionEvent() bool {
 	switch w {
-	case WebhookEventSubscriptionCreated,
-		WebhookEventSubscriptionUpdated,
+	case WebhookEventSubscriptionActive,
 		WebhookEventSubscriptionCancelled,
-		WebhookEventSubscriptionResumed,
 		WebhookEventSubscriptionExpired,
-		WebhookEventSubscriptionPaused,
-		WebhookEventSubscriptionUnpaused,
-		WebhookEventSubscriptionPaymentSuccess,
-		WebhookEventSubscriptionPaymentFailed,
-		WebhookEventSubscriptionPaymentRecovered:
+		WebhookEventSubscriptionFailed,
+		WebhookEventSubscriptionOnHold,
+		WebhookEventSubscriptionRenewed,
+		WebhookEventSubscriptionUpdated:
 		return true
 	default:
 		return false
 	}
 }
 
-// IsOrderEvent checks if the event is an order-related event
-func (w WebhookEventType) IsOrderEvent() bool {
-	return w == WebhookEventOrderCreated || w == WebhookEventOrderRefunded
+// IsPaymentEvent checks if the event is a payment-related event
+func (w WebhookEventType) IsPaymentEvent() bool {
+	switch w {
+	case WebhookEventPaymentSucceeded,
+		WebhookEventPaymentFailed,
+		WebhookEventPaymentProcessing,
+		WebhookEventPaymentCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+// IsRefundEvent checks if the event is a refund-related event
+func (w WebhookEventType) IsRefundEvent() bool {
+	return w == WebhookEventRefundSucceeded || w == WebhookEventRefundFailed
+}
+
+// IsDisputeEvent checks if the event is a dispute-related event
+func (w WebhookEventType) IsDisputeEvent() bool {
+	return w == WebhookEventDisputeOpened || w == WebhookEventDisputeWon || w == WebhookEventDisputeLost
 }
 
 // Value implements driver.Valuer for database storage

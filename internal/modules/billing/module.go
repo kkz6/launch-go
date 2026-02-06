@@ -33,13 +33,14 @@ func NewModule(b *app.Builder) *Module {
 
 	repos := repositories.NewRegistry(deps.DB)
 
-	var lsClient *providers.LemonSqueezyClient
-	if cfg.LemonSqueezy.APIKey != "" {
-		lsConfig := &providers.LemonSqueezyConfig{
-			APIKey:  cfg.LemonSqueezy.APIKey,
-			StoreID: cfg.LemonSqueezy.StoreID,
+	var dpClient *providers.DodoPaymentsClient
+	if cfg.DodoPayments.APIKey != "" {
+		dpConfig := &providers.DodoPaymentsConfig{
+			APIKey:     cfg.DodoPayments.APIKey,
+			WebhookKey: cfg.WebhookSecret,
+			TestMode:   cfg.DodoPayments.TestMode,
 		}
-		lsClient = providers.NewLemonSqueezyClient(lsConfig, deps.Logger)
+		dpClient = providers.NewDodoPaymentsClient(dpConfig, deps.Logger)
 	}
 
 	billingConfig := &services.Config{
@@ -47,7 +48,7 @@ func NewModule(b *app.Builder) *Module {
 		Plans:                models.DefaultPlans(),
 	}
 
-	service := services.NewBillingService(repos, lsClient, billingConfig, deps.Logger)
+	service := services.NewBillingService(repos, dpClient, billingConfig, deps.Logger)
 	webhookService := services.NewWebhookService(repos)
 
 	return &Module{

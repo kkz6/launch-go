@@ -39,10 +39,10 @@ func (r *SubscriptionRepository) FindByID(ctx context.Context, id string) (*mode
 	return &subscription, nil
 }
 
-// FindByLemonSqueezyID finds a subscription by LemonSqueezy ID
-func (r *SubscriptionRepository) FindByLemonSqueezyID(ctx context.Context, lemonSqueezyID string) (*models.Subscription, error) {
+// FindByProviderSubscriptionID finds a subscription by provider subscription ID
+func (r *SubscriptionRepository) FindByProviderSubscriptionID(ctx context.Context, providerSubscriptionID string) (*models.Subscription, error) {
 	var subscription models.Subscription
-	err := r.DB.WithContext(ctx).First(&subscription, "lemon_squeezy_id = ?", lemonSqueezyID).Error
+	err := r.DB.WithContext(ctx).First(&subscription, "provider_subscription_id = ?", providerSubscriptionID).Error
 	if err != nil {
 		return nil, err
 	}
@@ -92,11 +92,11 @@ func (r *SubscriptionRepository) UpdateStatus(ctx context.Context, id string, st
 		Update("status", status).Error
 }
 
-// UpdateStatusByLemonSqueezyID updates only the status of a subscription by LemonSqueezy ID
-func (r *SubscriptionRepository) UpdateStatusByLemonSqueezyID(ctx context.Context, lemonSqueezyID string, status billingtypes.SubscriptionStatus) error {
+// UpdateStatusByProviderSubscriptionID updates only the status of a subscription by provider subscription ID
+func (r *SubscriptionRepository) UpdateStatusByProviderSubscriptionID(ctx context.Context, providerSubscriptionID string, status billingtypes.SubscriptionStatus) error {
 	return r.DB.WithContext(ctx).
 		Model(&models.Subscription{}).
-		Where("lemon_squeezy_id = ?", lemonSqueezyID).
+		Where("provider_subscription_id = ?", providerSubscriptionID).
 		Update("status", status).Error
 }
 

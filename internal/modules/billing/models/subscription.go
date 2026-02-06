@@ -8,23 +8,24 @@ import (
 
 // Subscription represents a team's subscription to a plan
 type Subscription struct {
-	ID             uint                            `gorm:"primaryKey" json:"id"`
-	BillableType   string                          `gorm:"size:255;not null;index:idx_billable" json:"billable_type"`
-	BillableID     string                          `gorm:"size:26;not null;index:idx_billable" json:"billable_id"`
-	Type           string                          `gorm:"size:255;not null" json:"type"`
-	LemonSqueezyID string                          `gorm:"size:255;uniqueIndex;not null" json:"lemon_squeezy_id"`
-	Status         billingtypes.SubscriptionStatus `gorm:"size:50;not null" json:"status"`
-	ProductID      string                          `gorm:"size:255;not null" json:"product_id"`
-	VariantID      string                          `gorm:"size:255;not null" json:"variant_id"`
-	CardBrand      *string                         `gorm:"size:50" json:"card_brand,omitempty"`
-	CardLastFour   *string                         `gorm:"size:4" json:"card_last_four,omitempty"`
-	PauseMode      *string                         `gorm:"size:50" json:"pause_mode,omitempty"`
-	PauseResumesAt *time.Time                      `json:"pause_resumes_at,omitempty"`
-	TrialEndsAt    *time.Time                      `json:"trial_ends_at,omitempty"`
-	RenewsAt       *time.Time                      `json:"renews_at,omitempty"`
-	EndsAt         *time.Time                      `json:"ends_at,omitempty"`
-	CreatedAt      time.Time                       `json:"created_at"`
-	UpdatedAt      time.Time                       `json:"updated_at"`
+	ID                     uint                            `gorm:"primaryKey" json:"id"`
+	BillableType           string                          `gorm:"size:255;not null;index:idx_billable" json:"billable_type"`
+	BillableID             string                          `gorm:"size:26;not null;index:idx_billable" json:"billable_id"`
+	Type                   string                          `gorm:"size:255;not null" json:"type"`
+	Provider               string                          `gorm:"size:50;not null;default:dodo_payments" json:"provider"`
+	ProviderSubscriptionID string                          `gorm:"size:255;uniqueIndex;not null" json:"provider_subscription_id"`
+	Status                 billingtypes.SubscriptionStatus `gorm:"size:50;not null" json:"status"`
+	ProductID              string                          `gorm:"size:255;not null" json:"product_id"`
+	VariantID              string                          `gorm:"size:255;not null" json:"variant_id"`
+	CardBrand              *string                         `gorm:"size:50" json:"card_brand,omitempty"`
+	CardLastFour           *string                         `gorm:"size:4" json:"card_last_four,omitempty"`
+	PauseMode              *string                         `gorm:"size:50" json:"pause_mode,omitempty"`
+	PauseResumesAt         *time.Time                      `json:"pause_resumes_at,omitempty"`
+	TrialEndsAt            *time.Time                      `json:"trial_ends_at,omitempty"`
+	RenewsAt               *time.Time                      `json:"renews_at,omitempty"`
+	EndsAt                 *time.Time                      `json:"ends_at,omitempty"`
+	CreatedAt              time.Time                       `json:"created_at"`
+	UpdatedAt              time.Time                       `json:"updated_at"`
 }
 
 // BillableTypeTeam is the current billable type for teams (Laravel modules structure)
@@ -32,6 +33,9 @@ const BillableTypeTeam = "Modules\\Auth\\Models\\Team"
 
 // BillableTypeTeamLegacy is the legacy billable type (before Laravel modules migration)
 const BillableTypeTeamLegacy = "App\\Models\\Team"
+
+// ProviderDodoPayments is the billing provider constant for DodoPayments
+const ProviderDodoPayments = "dodo_payments"
 
 // TeamBillableTypes returns all valid billable types for teams (current + legacy)
 func TeamBillableTypes() []string {
@@ -45,7 +49,7 @@ func (s *Subscription) TeamID() string {
 
 // TableName returns the table name for GORM
 func (Subscription) TableName() string {
-	return "lemon_squeezy_subscriptions"
+	return "subscriptions"
 }
 
 // IsActive checks if the subscription is active or on trial

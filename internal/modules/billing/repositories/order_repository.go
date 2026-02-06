@@ -38,10 +38,10 @@ func (r *OrderRepository) FindByID(ctx context.Context, id string) (*models.Orde
 	return &order, nil
 }
 
-// FindByLemonSqueezyID finds an order by LemonSqueezy ID
-func (r *OrderRepository) FindByLemonSqueezyID(ctx context.Context, lemonSqueezyID string) (*models.Order, error) {
+// FindByProviderOrderID finds an order by provider order ID (e.g., payment ID)
+func (r *OrderRepository) FindByProviderOrderID(ctx context.Context, providerOrderID string) (*models.Order, error) {
 	var order models.Order
-	err := r.DB.WithContext(ctx).First(&order, "lemon_squeezy_id = ?", lemonSqueezyID).Error
+	err := r.DB.WithContext(ctx).First(&order, "provider_order_id = ?", providerOrderID).Error
 	if err != nil {
 		return nil, err
 	}

@@ -24,7 +24,7 @@ type PlanOptions struct {
 	HasMonitoring         bool `json:"has_monitoring"`
 }
 
-// DefaultPlans returns default plan configurations with LemonSqueezy product/variant IDs
+// DefaultPlans returns default plan configurations with DodoPayments product IDs
 func DefaultPlans() []Plan {
 	return []Plan{
 		{
