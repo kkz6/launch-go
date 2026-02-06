@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
+	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
 // FailedToDeleteServerNotification is sent when server deletion from provider fails
@@ -29,6 +30,34 @@ func NewFailedToDeleteServerNotification(serverName, provider, errorMessage stri
 
 // ToEmail returns the email message content
 func (n *FailedToDeleteServerNotification) ToEmail() *channels.EmailMessage {
+	builder := templates.NewEmail().
+		WithGreeting("Failed to Delete Server from Provider").
+		WithIntro(fmt.Sprintf("Failed to delete server **%s** from **%s**.", n.ServerName, n.Provider)).
+		WithIntro(fmt.Sprintf("The server has been removed from Launch, but we were unable to delete it from your cloud provider. You may need to manually delete it from your %s account to avoid additional charges.", n.Provider))
+
+	details := fmt.Sprintf(`**Server:** %s
+
+**Provider:** %s`, n.ServerName, n.Provider)
+
+	if n.ErrorMessage != "" {
+		details += fmt.Sprintf("\n\n**Error:** %s", n.ErrorMessage)
+	}
+
+	builder.WithPanel(details)
+
+	html, err := builder.Build()
+	if err != nil {
+		return n.plainTextEmail()
+	}
+
+	return &channels.EmailMessage{
+		Subject: "Failed to Delete Server from Provider",
+		Body:    html,
+		IsHTML:  true,
+	}
+}
+
+func (n *FailedToDeleteServerNotification) plainTextEmail() *channels.EmailMessage {
 	body := fmt.Sprintf(`Failed to delete server '%s' from %s.
 
 The server has been removed from Launch, but we were unable to delete it from your cloud provider. You may need to manually delete it from your %s account to avoid additional charges.

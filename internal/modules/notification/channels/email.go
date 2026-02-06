@@ -3,6 +3,8 @@ package channels
 import (
 	"context"
 	"fmt"
+
+	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
 // EmailSender interface for sending emails
@@ -55,7 +57,14 @@ func (e *EmailChannel) Connect(ctx context.Context) error {
 		return ErrConnectionFailed
 	}
 
-	err := e.sender.Send(ctx, email, "Connected to Launch", "This email confirms that you have connected your email to Launch.", false)
+	html, _, err := templates.ConnectionTestEmail()
+	if err != nil {
+		// Fallback to plain text
+		err = e.sender.Send(ctx, email, "Connected to Launch", "This email confirms that you have connected your email to Launch.", false)
+	} else {
+		err = e.sender.Send(ctx, email, "Connected to Launch", html, true)
+	}
+
 	if err != nil {
 		return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
 	}

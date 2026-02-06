@@ -60,10 +60,11 @@ type ProvisionFreshServerConfig struct {
 
 // provisionCallbackData holds data needed for callback handling
 type provisionCallbackData struct {
-	ServerID   string `json:"server_id"`
-	TeamID     string `json:"team_id"`
-	ServerName string `json:"server_name"`
-	ServerIP   string `json:"server_ip"`
+	ServerID       string `json:"server_id"`
+	TeamID         string `json:"team_id"`
+	ServerName     string `json:"server_name"`
+	ServerIP       string `json:"server_ip"`
+	ServerUsername string `json:"server_username"`
 }
 
 // ProvisionFreshServerTask implements Task and CallbackPayload interfaces
@@ -154,10 +155,11 @@ func ProvisionFreshServer(config ProvisionFreshServerConfig) *ProvisionFreshServ
 			taskrunner.WithTimeoutSeconds(15*60),
 		),
 		callback: provisionCallbackData{
-			ServerID:   config.ServerID,
-			TeamID:     config.TeamID,
-			ServerName: config.ServerName,
-			ServerIP:   config.PublicIPv4,
+			ServerID:       config.ServerID,
+			TeamID:         config.TeamID,
+			ServerName:     config.ServerName,
+			ServerIP:       config.PublicIPv4,
+			ServerUsername: config.Username,
 		},
 	}
 }
@@ -219,7 +221,7 @@ func (t *ProvisionFreshServerTask) OnSuccess(ctx context.Context, cbCtx *taskrun
 	})
 
 	// Send notification to team
-	notif := notifications.NewServerProvisionedNotification(t.callback.ServerName, t.callback.ServerIP)
+	notif := notifications.NewServerProvisionedNotification(t.callback.ServerName, t.callback.ServerIP, t.callback.ServerUsername)
 	if err := cbCtx.NotifyTeam(ctx, t.callback.TeamID, notif); err != nil {
 		if cbCtx.Logger != nil {
 			cbCtx.Logger.Warn().Err(err).Msg("Failed to send server provisioned notification")

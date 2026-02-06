@@ -159,7 +159,7 @@ func TestDeploymentFailedNotification_ToEmail(t *testing.T) {
 	assert.Contains(t, email.Body, "John Doe")
 	assert.Contains(t, email.Body, "jane@example.com")
 	assert.Contains(t, email.Body, "error output")
-	assert.False(t, email.IsHTML)
+	assert.True(t, email.IsHTML)
 }
 
 func TestDeploymentFailedNotification_ToSlack(t *testing.T) {

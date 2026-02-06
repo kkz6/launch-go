@@ -31,7 +31,7 @@ func TestServerConnectionLostNotification_ToEmail(t *testing.T) {
 	assert.Contains(t, email.Body, "192.168.1.100")
 	assert.Contains(t, email.Body, "SSH")
 	assert.Contains(t, email.Body, "offline")
-	assert.False(t, email.IsHTML)
+	assert.True(t, email.IsHTML)
 }
 
 func TestServerConnectionLostNotification_ToSlack(t *testing.T) {

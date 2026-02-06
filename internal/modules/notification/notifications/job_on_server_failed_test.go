@@ -26,10 +26,10 @@ func TestJobOnServerFailedNotification_ToEmail(t *testing.T) {
 	email := notif.ToEmail()
 
 	require.NotNil(t, email)
-	assert.Equal(t, "Job on server failed", email.Subject)
+	assert.Equal(t, "Job on Server Failed", email.Subject)
 	assert.Contains(t, email.Body, "my-server")
 	assert.Contains(t, email.Body, "Install PHP extensions")
-	assert.False(t, email.IsHTML)
+	assert.True(t, email.IsHTML)
 }
 
 func TestJobOnServerFailedNotification_ToSlack(t *testing.T) {

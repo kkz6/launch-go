@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
+	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
 // ServerProvisioningFailedNotification is sent when server provisioning fails
@@ -14,6 +15,7 @@ type ServerProvisioningFailedNotification struct {
 	ServerName   string
 	Output       string
 	ErrorMessage string
+	ServerURL    string
 }
 
 // NewServerProvisioningFailedNotification creates a new server provisioning failed notification
@@ -27,8 +29,35 @@ func NewServerProvisioningFailedNotification(serverName, output, errorMessage st
 	}
 }
 
+// WithServerURL sets the server URL for the action button
+func (n *ServerProvisioningFailedNotification) WithServerURL(url string) *ServerProvisioningFailedNotification {
+	n.ServerURL = url
+	return n
+}
+
 // ToEmail returns the email message content
 func (n *ServerProvisioningFailedNotification) ToEmail() *channels.EmailMessage {
+	html, _, err := templates.GenericFailureEmail(
+		"Server Provisioning Failed",
+		fmt.Sprintf("The server **%s** failed to provision. You might need to manually remove it from Launch and from your provider for safety reasons.", n.ServerName),
+		n.Output,
+		n.ErrorMessage,
+		n.ServerURL,
+		"View Server",
+	)
+
+	if err != nil {
+		return n.plainTextEmail()
+	}
+
+	return &channels.EmailMessage{
+		Subject: "Server Provisioning Failed",
+		Body:    html,
+		IsHTML:  true,
+	}
+}
+
+func (n *ServerProvisioningFailedNotification) plainTextEmail() *channels.EmailMessage {
 	body := fmt.Sprintf("The server '%s' failed to provision. You might need to manually remove it from Launch and from your provider for safety reasons.", n.ServerName)
 
 	if n.Output != "" {
