@@ -98,7 +98,7 @@ func TestSiteInstallationFailedNotification_ToEmail(t *testing.T) {
 	assert.Contains(t, email.Body, "Initial commit")
 	assert.Contains(t, email.Body, "john@example.com")
 	assert.Contains(t, email.Body, "npm failed")
-	assert.False(t, email.IsHTML)
+	assert.True(t, email.IsHTML)
 }
 
 func TestSiteInstallationFailedNotification_ToSlack(t *testing.T) {

@@ -52,7 +52,7 @@ func TestFailedToDeleteServerNotification_ToEmail(t *testing.T) {
 
 			require.NotNil(t, email)
 			assert.Equal(t, "Failed to Delete Server from Provider", email.Subject)
-			assert.False(t, email.IsHTML)
+			assert.True(t, email.IsHTML)
 
 			for _, want := range tt.wantInBody {
 				assert.Contains(t, email.Body, want)

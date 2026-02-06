@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
+	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
 // SiteInstallationFailedNotification is sent when initial site installation fails
@@ -19,6 +20,7 @@ type SiteInstallationFailedNotification struct {
 	TriggeredBy   string
 	Output        string
 	InstallTime   time.Time
+	SiteURL       string
 }
 
 // NewSiteInstallationFailedNotification creates a new site installation failed notification
@@ -51,6 +53,12 @@ func (n *SiteInstallationFailedNotification) WithOutput(output string) *SiteInst
 	return n
 }
 
+// WithSiteURL sets the site URL for the action button
+func (n *SiteInstallationFailedNotification) WithSiteURL(url string) *SiteInstallationFailedNotification {
+	n.SiteURL = url
+	return n
+}
+
 // ShortGitHash returns a shortened version of the git hash
 func (n *SiteInstallationFailedNotification) ShortGitHash() string {
 	if len(n.GitHash) > 7 {
@@ -61,6 +69,52 @@ func (n *SiteInstallationFailedNotification) ShortGitHash() string {
 
 // ToEmail returns the email message content
 func (n *SiteInstallationFailedNotification) ToEmail() *channels.EmailMessage {
+	builder := templates.NewEmail().
+		WithGreeting("Site Installation Failed").
+		WithIntro(fmt.Sprintf("Site installation failed for **%s** on server **%s**.", n.SiteAddress, n.ServerName))
+
+	// Build details panel
+	var details string
+	if n.GitHash != "" {
+		details += fmt.Sprintf("**Commit:** `%s`\n\n", n.ShortGitHash())
+	}
+
+	if n.CommitMessage != "" {
+		details += fmt.Sprintf("**Commit Message:** %s\n\n", n.CommitMessage)
+	}
+
+	if n.TriggeredBy != "" {
+		details += fmt.Sprintf("**Triggered by:** %s\n\n", n.TriggeredBy)
+	}
+
+	details += fmt.Sprintf("**Time:** %s", n.InstallTime.Format(time.RFC1123))
+
+	if details != "" {
+		builder.WithPanel(details)
+	}
+
+	if n.Output != "" {
+		builder.WithIntro("**Last lines of output:**")
+		builder.WithPanel("```\n" + n.Output + "\n```")
+	}
+
+	if n.SiteURL != "" {
+		builder.WithAction("View Site", n.SiteURL, "error")
+	}
+
+	html, err := builder.Build()
+	if err != nil {
+		return n.plainTextEmail()
+	}
+
+	return &channels.EmailMessage{
+		Subject: "Site Installation Failed",
+		Body:    html,
+		IsHTML:  true,
+	}
+}
+
+func (n *SiteInstallationFailedNotification) plainTextEmail() *channels.EmailMessage {
 	body := fmt.Sprintf("Site installation failed for '%s' on server '%s'.\n\n", n.SiteAddress, n.ServerName)
 
 	if n.GitHash != "" {

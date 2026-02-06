@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
+	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
 // PhpExtensionUninstallFailedNotification is sent when PHP extension removal fails
@@ -16,6 +17,7 @@ type PhpExtensionUninstallFailedNotification struct {
 	PhpVersion    string
 	Output        string
 	ErrorMessage  string
+	ServerURL     string
 }
 
 // NewPhpExtensionUninstallFailedNotification creates a new PHP extension uninstall failed notification
@@ -31,8 +33,35 @@ func NewPhpExtensionUninstallFailedNotification(serverName, extensionName, phpVe
 	}
 }
 
+// WithServerURL sets the server URL for the action button
+func (n *PhpExtensionUninstallFailedNotification) WithServerURL(url string) *PhpExtensionUninstallFailedNotification {
+	n.ServerURL = url
+	return n
+}
+
 // ToEmail returns the email message content
 func (n *PhpExtensionUninstallFailedNotification) ToEmail() *channels.EmailMessage {
+	html, _, err := templates.GenericFailureEmail(
+		"PHP Extension Removal Failed",
+		fmt.Sprintf("PHP extension **%s** removal failed on server **%s** (PHP %s).", n.ExtensionName, n.ServerName, n.PhpVersion),
+		n.Output,
+		n.ErrorMessage,
+		n.ServerURL,
+		"View Server",
+	)
+
+	if err != nil {
+		return n.plainTextEmail()
+	}
+
+	return &channels.EmailMessage{
+		Subject: "PHP Extension Removal Failed",
+		Body:    html,
+		IsHTML:  true,
+	}
+}
+
+func (n *PhpExtensionUninstallFailedNotification) plainTextEmail() *channels.EmailMessage {
 	body := fmt.Sprintf("PHP extension '%s' removal failed on server '%s' (PHP %s).", n.ExtensionName, n.ServerName, n.PhpVersion)
 
 	if n.Output != "" {

@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
+	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
 // JobOnServerFailedNotification is sent when a generic job fails on a server
@@ -14,6 +15,7 @@ type JobOnServerFailedNotification struct {
 	ServerName string
 	ServerID   string
 	Reference  string
+	ServerURL  string
 }
 
 // NewJobOnServerFailedNotification creates a new job on server failed notification
@@ -27,8 +29,37 @@ func NewJobOnServerFailedNotification(serverName, serverID, reference string) *J
 	}
 }
 
+// WithServerURL sets the server URL for the action button
+func (n *JobOnServerFailedNotification) WithServerURL(url string) *JobOnServerFailedNotification {
+	n.ServerURL = url
+	return n
+}
+
 // ToEmail returns the email message content
 func (n *JobOnServerFailedNotification) ToEmail() *channels.EmailMessage {
+	builder := templates.NewEmail().
+		WithGreeting("Job on Server Failed").
+		WithIntro(fmt.Sprintf("We tried to run a job on your server **%s**, but it failed.", n.ServerName)).
+		WithIntro("Here's what we tried to do:").
+		WithPanel(n.Reference)
+
+	if n.ServerURL != "" {
+		builder.WithAction("View Server", n.ServerURL, "error")
+	}
+
+	html, err := builder.Build()
+	if err != nil {
+		return n.plainTextEmail()
+	}
+
+	return &channels.EmailMessage{
+		Subject: "Job on Server Failed",
+		Body:    html,
+		IsHTML:  true,
+	}
+}
+
+func (n *JobOnServerFailedNotification) plainTextEmail() *channels.EmailMessage {
 	body := fmt.Sprintf("We tried to run a job on your server '%s', but it failed.\n\nHere's what we tried to do:\n\n%s", n.ServerName, n.Reference)
 
 	return &channels.EmailMessage{

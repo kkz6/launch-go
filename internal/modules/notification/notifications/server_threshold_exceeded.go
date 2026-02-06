@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
+	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
 // MetricType represents the type of server metric
@@ -30,6 +31,7 @@ type ServerThresholdExceededNotification struct {
 	*models.BaseNotification
 	ServerName string
 	ServerIP   string
+	ServerURL  string
 	Thresholds []ThresholdExceeded
 }
 
@@ -54,6 +56,12 @@ func (n *ServerThresholdExceededNotification) AddThreshold(metric MetricType, th
 	return n
 }
 
+// WithServerURL sets the server URL for the action button
+func (n *ServerThresholdExceededNotification) WithServerURL(url string) *ServerThresholdExceededNotification {
+	n.ServerURL = url
+	return n
+}
+
 func (n *ServerThresholdExceededNotification) metricLabel(metric MetricType) string {
 	switch metric {
 	case MetricTypeCPU:
@@ -71,6 +79,36 @@ func (n *ServerThresholdExceededNotification) metricLabel(metric MetricType) str
 
 // ToEmail returns the email message content
 func (n *ServerThresholdExceededNotification) ToEmail() *channels.EmailMessage {
+	// Build HTML email using templates
+	builder := templates.NewEmail().
+		WithGreeting("Server Threshold Alert").
+		WithIntro(fmt.Sprintf("Server **%s** (%s) has exceeded one or more resource thresholds.", n.ServerName, n.ServerIP))
+
+	// Build thresholds panel
+	details := "**Exceeded Thresholds:**\n\n"
+	for _, t := range n.Thresholds {
+		details += fmt.Sprintf("- **%s:** %.1f%% (threshold: %.1f%%)\n", n.metricLabel(t.Metric), t.Current, t.Threshold)
+	}
+	builder.WithPanel(details)
+	builder.WithOutro("Please investigate this issue to ensure optimal server performance.")
+
+	if n.ServerURL != "" {
+		builder.WithAction("View Server", n.ServerURL, "error")
+	}
+
+	html, err := builder.Build()
+	if err != nil {
+		return n.plainTextEmail()
+	}
+
+	return &channels.EmailMessage{
+		Subject: fmt.Sprintf("Server Threshold Exceeded - %s", n.ServerName),
+		Body:    html,
+		IsHTML:  true,
+	}
+}
+
+func (n *ServerThresholdExceededNotification) plainTextEmail() *channels.EmailMessage {
 	body := fmt.Sprintf("Server '%s' (%s) has exceeded one or more resource thresholds.\n\n", n.ServerName, n.ServerIP)
 
 	body += "Exceeded Thresholds:\n"

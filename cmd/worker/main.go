@@ -22,6 +22,7 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/mail"
+	mailtemplates "github.com/kkz6/launch-go/internal/pkg/mail/templates"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -39,6 +40,9 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
 	}
+
+	// Initialize email templates with app name and URL
+	mailtemplates.Initialize(cfg.App.Name, cfg.App.URL)
 
 	// Initialize logger
 	appLogger := logger.New(cfg.App.Environment)

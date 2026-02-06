@@ -61,7 +61,7 @@ func TestPhpExtensionUninstallFailedNotification_ToEmail(t *testing.T) {
 
 			require.NotNil(t, email)
 			assert.Equal(t, "PHP Extension Removal Failed", email.Subject)
-			assert.False(t, email.IsHTML)
+			assert.True(t, email.IsHTML)
 
 			for _, want := range tt.wantInBody {
 				assert.Contains(t, email.Body, want)

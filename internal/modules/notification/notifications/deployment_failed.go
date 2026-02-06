@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
+	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
 // DeploymentStatus represents the status of a deployment
@@ -29,6 +30,7 @@ type DeploymentFailedNotification struct {
 	TriggeredBy    string
 	Output         string
 	DeploymentTime time.Time
+	SiteURL        string
 }
 
 // NewDeploymentFailedNotification creates a new deployment failed notification
@@ -74,6 +76,12 @@ func (n *DeploymentFailedNotification) WithDeploymentTime(t time.Time) *Deployme
 	return n
 }
 
+// WithSiteURL adds the site URL for the action button
+func (n *DeploymentFailedNotification) WithSiteURL(url string) *DeploymentFailedNotification {
+	n.SiteURL = url
+	return n
+}
+
 // ShortGitHash returns a shortened version of the git hash
 func (n *DeploymentFailedNotification) ShortGitHash() string {
 	if len(n.GitHash) > 7 {
@@ -92,6 +100,33 @@ func (n *DeploymentFailedNotification) StatusLabel() string {
 
 // ToEmail returns the email message content
 func (n *DeploymentFailedNotification) ToEmail() *channels.EmailMessage {
+	statusLabel := n.StatusLabel()
+
+	html, _, err := templates.DeploymentFailedEmail(
+		n.SiteAddress,
+		n.ServerName,
+		statusLabel,
+		n.GitHash,
+		n.CommitMessage,
+		n.CommitAuthor,
+		n.TriggeredBy,
+		n.DeploymentTime,
+		n.Output,
+		n.SiteURL,
+	)
+
+	if err != nil {
+		return n.plainTextEmail()
+	}
+
+	return &channels.EmailMessage{
+		Subject: fmt.Sprintf("Deployment %s", statusLabel),
+		Body:    html,
+		IsHTML:  true,
+	}
+}
+
+func (n *DeploymentFailedNotification) plainTextEmail() *channels.EmailMessage {
 	statusLabel := n.StatusLabel()
 
 	body := fmt.Sprintf("Deployment %s for site '%s' on server '%s'.\n\n", statusLabel, n.SiteAddress, n.ServerName)

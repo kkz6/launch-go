@@ -83,7 +83,7 @@ func TestServerThresholdExceededNotification_ToEmail(t *testing.T) {
 	assert.Contains(t, email.Body, "Memory Usage")
 	assert.Contains(t, email.Body, "95.5%")
 	assert.Contains(t, email.Body, "80.0%")
-	assert.False(t, email.IsHTML)
+	assert.True(t, email.IsHTML)
 }
 
 func TestServerThresholdExceededNotification_ToSlack(t *testing.T) {
