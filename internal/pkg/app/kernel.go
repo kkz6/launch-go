@@ -103,7 +103,6 @@ func (k *Kernel) BootWebhooks(router fiber.Router) {
 }
 
 // BootWebSocket registers all WebSocket routes from all modules.
-// WebSocket routes are registered at the root level (not under /api).
 func (k *Kernel) BootWebSocket(router fiber.Router) {
 	for _, module := range k.modules {
 		if registrar, ok := module.(WebSocketRegistrar); ok {
