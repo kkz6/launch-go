@@ -292,11 +292,15 @@ func TestGenerateLBCaddyfile_NoActiveBackends(t *testing.T) {
 
 	result := GenerateLBCaddyfile(upstream, backends)
 
-	if !strings.Contains(result, "# No active backends") {
-		t.Error("expected '# No active backends' when all backends are down")
+	// Should respond 503 instead of generating an invalid reverse_proxy block
+	if !strings.Contains(result, `respond "Service Unavailable" 503`) {
+		t.Error("expected 'respond 503' when all backends are down")
+	}
+	if strings.Contains(result, "reverse_proxy") {
+		t.Error("should not have reverse_proxy block when no backends are active")
 	}
 	if strings.Contains(result, "to 10.0.0.1") || strings.Contains(result, "to 10.0.0.2") {
-		t.Error("should not have backend addresses in a 'to' directive when no backends are active")
+		t.Error("should not have backend addresses when no backends are active")
 	}
 }
 

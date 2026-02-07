@@ -136,5 +136,23 @@ func TestNewCheckLBBackendHealthTask(t *testing.T) {
 	var payload CheckLBBackendHealthPayload
 	err = json.Unmarshal(task.Payload(), &payload)
 	require.NoError(t, err)
-	assert.Equal(t, CheckLBBackendHealthPayload{}, payload)
+	assert.Empty(t, payload.UpstreamID)
+}
+
+func TestNewCheckLBBackendHealthTaskForUpstream(t *testing.T) {
+	upstreamID := "ups_01JTEST00000000000000010"
+
+	task, err := NewCheckLBBackendHealthTaskForUpstream(upstreamID)
+	require.NoError(t, err)
+	require.NotNil(t, task)
+
+	assert.Equal(t, TypeCheckLBBackendHealth, task.Type())
+
+	var payload CheckLBBackendHealthPayload
+	err = json.Unmarshal(task.Payload(), &payload)
+	require.NoError(t, err)
+	assert.Equal(t, upstreamID, payload.UpstreamID)
+
+	expectedDedupID := pkgjobs.Dedup("check_lb_health", upstreamID)
+	assert.Equal(t, "check_lb_health:ups_01JTEST00000000000000010", expectedDedupID)
 }

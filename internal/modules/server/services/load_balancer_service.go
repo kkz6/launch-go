@@ -177,6 +177,9 @@ func (s *LoadBalancerService) UpdateUpstream(ctx context.Context, serverID, team
 	if req.Name != nil {
 		updates["name"] = *req.Name
 	}
+	if req.TLSSetting != nil {
+		updates["tls_setting"] = *req.TLSSetting
+	}
 	if req.LBPolicy != nil {
 		updates["lb_policy"] = *req.LBPolicy
 	}
@@ -222,7 +225,9 @@ func (s *LoadBalancerService) DeleteUpstream(ctx context.Context, serverID, team
 	// Clear load_balanced_upstream_id on all associated sites and restore their Caddyfiles
 	for _, backend := range upstream.Backends {
 		if s.siteReader != nil {
-			_ = s.siteReader.UpdateLoadBalancedUpstreamID(ctx, backend.SiteID, nil)
+			if err := s.siteReader.UpdateLoadBalancedUpstreamID(ctx, backend.SiteID, nil); err != nil {
+				s.LogError(err, "failed to clear load balanced status on site", "site_id", backend.SiteID)
+			}
 		}
 
 		// Dispatch site Caddyfile update (restores normal TLS mode)
@@ -348,7 +353,9 @@ func (s *LoadBalancerService) addBackendInternal(ctx context.Context, upstream *
 
 	// Mark site as load balanced
 	if s.siteReader != nil {
-		_ = s.siteReader.UpdateLoadBalancedUpstreamID(ctx, siteID, &upstream.ID)
+		if err := s.siteReader.UpdateLoadBalancedUpstreamID(ctx, siteID, &upstream.ID); err != nil {
+			s.LogError(err, "failed to mark site as load balanced", "site_id", siteID)
+		}
 	}
 
 	return backend, nil
@@ -419,7 +426,9 @@ func (s *LoadBalancerService) RemoveBackend(ctx context.Context, serverID, teamI
 
 	// Clear load balanced status on site
 	if s.siteReader != nil {
-		_ = s.siteReader.UpdateLoadBalancedUpstreamID(ctx, backend.SiteID, nil)
+		if err := s.siteReader.UpdateLoadBalancedUpstreamID(ctx, backend.SiteID, nil); err != nil {
+			s.LogError(err, "failed to clear load balanced status on site", "site_id", backend.SiteID)
+		}
 	}
 
 	if err := s.repos.LoadBalancerBackend().Delete(ctx, backendID); err != nil {
@@ -567,14 +576,14 @@ func (s *LoadBalancerService) GetUpstreamHealth(ctx context.Context, serverID, t
 	}, nil
 }
 
-// TriggerHealthCheck dispatches an on-demand health check for all backends
+// TriggerHealthCheck dispatches an on-demand health check for a specific upstream's backends
 func (s *LoadBalancerService) TriggerHealthCheck(ctx context.Context, serverID, teamID, upstreamID string) error {
 	if _, err := s.GetUpstream(ctx, serverID, teamID, upstreamID); err != nil {
 		return err
 	}
 
 	s.DispatchTask("CheckLBBackendHealth", func() (*asynq.Task, error) {
-		return jobs.NewCheckLBBackendHealthTask()
+		return jobs.NewCheckLBBackendHealthTaskForUpstream(upstreamID)
 	}, "upstream_id", upstreamID)
 
 	return nil
@@ -607,6 +616,7 @@ func (s *LoadBalancerService) dispatchSiteCaddyfileUpdate(siteID string) {
 func (s *LoadBalancerService) dispatchAddLBFirewallRule(upstream *models.LoadBalancerUpstream, backendServerID string, port int) {
 	lbIP := s.getUpstreamServerIP(upstream)
 	if lbIP == "" {
+		s.LogWarn("skipping firewall rule: LB server IP unavailable", "upstream_id", upstream.ID, "backend_server_id", backendServerID)
 		return
 	}
 
@@ -619,6 +629,7 @@ func (s *LoadBalancerService) dispatchAddLBFirewallRule(upstream *models.LoadBal
 func (s *LoadBalancerService) dispatchRemoveLBFirewallRule(upstream *models.LoadBalancerUpstream, backendServerID string, port int) {
 	lbIP := s.getUpstreamServerIP(upstream)
 	if lbIP == "" {
+		s.LogWarn("skipping firewall rule removal: LB server IP unavailable", "upstream_id", upstream.ID, "backend_server_id", backendServerID)
 		return
 	}
 

@@ -31,9 +31,11 @@ type lbUpstreamMigration struct {
 	HealthCheckInterval string `gorm:"column:health_check_interval;type:varchar(20);default:30s"`
 	HealthCheckTimeout  string `gorm:"column:health_check_timeout;type:varchar(20);default:10s"`
 
-	InstalledAt              *time.Time `gorm:"column:installed_at;type:timestamp null"`
-	InstallationFailedAt     *time.Time `gorm:"column:installation_failed_at;type:timestamp null"`
-	PendingConfigUpdateSince *time.Time `gorm:"column:pending_config_update_since;type:timestamp null"`
+	InstalledAt               *time.Time `gorm:"column:installed_at;type:timestamp null"`
+	InstallationFailedAt      *time.Time `gorm:"column:installation_failed_at;type:timestamp null"`
+	UninstallationRequestedAt *time.Time `gorm:"column:uninstallation_requested_at;type:timestamp null"`
+	UninstallationFailedAt    *time.Time `gorm:"column:uninstallation_failed_at;type:timestamp null"`
+	PendingConfigUpdateSince  *time.Time `gorm:"column:pending_config_update_since;type:timestamp null"`
 
 	CreatedAt *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt *time.Time `gorm:"type:timestamp null"`

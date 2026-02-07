@@ -50,7 +50,7 @@ func GetScheduledTasks() []queue.ScheduledTask {
 		// │                     Load Balancer Health Checks                 │
 		// └─────────────────────────────────────────────────────────────────┘
 
-		// Poll all LB backend health endpoints every 30 seconds
+		// Poll all LB backend health endpoints every minute
 		At("*/1 * * * *", serverjobs.NewCheckLBBackendHealthTask,
 			WithName("check-lb-backend-health"),
 		),

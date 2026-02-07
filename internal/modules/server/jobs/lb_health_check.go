@@ -17,10 +17,17 @@ import (
 
 const TypeCheckLBBackendHealth = "server:check_lb_backend_health"
 
-// CheckLBBackendHealthPayload is empty — the job checks all upstreams
-type CheckLBBackendHealthPayload struct{}
+// maxConcurrentHealthChecks limits parallel HTTP health check requests
+const maxConcurrentHealthChecks = 20
 
-// CheckLBBackendHealthJob polls health endpoints for all load balancer backends
+// CheckLBBackendHealthPayload optionally scopes to a single upstream
+type CheckLBBackendHealthPayload struct {
+	UpstreamID string `json:"upstream_id,omitempty"`
+}
+
+// CheckLBBackendHealthJob polls health endpoints for load balancer backends.
+// Health checks are routed through the LB server's reverse proxy (not directly
+// to backends) since backend port 8080 is firewalled to the LB IP only.
 type CheckLBBackendHealthJob struct {
 	Deps    *JobDeps
 	Payload CheckLBBackendHealthPayload
@@ -38,8 +45,7 @@ func NewCheckLBBackendHealthJob(p CheckLBBackendHealthPayload) pkgjobs.Handler {
 }
 
 func (j *CheckLBBackendHealthJob) Handle(ctx context.Context) error {
-	// Find all LB servers that have upstreams
-	upstreams, err := j.findAllUpstreams(ctx)
+	upstreams, err := j.findUpstreams(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to find upstreams: %w", err)
 	}
@@ -49,9 +55,22 @@ func (j *CheckLBBackendHealthJob) Handle(ctx context.Context) error {
 	}
 
 	var wg sync.WaitGroup
+	sem := make(chan struct{}, maxConcurrentHealthChecks)
 
 	for i := range upstreams {
 		upstream := &upstreams[i]
+
+		// Need the LB server IP to route health checks through the LB
+		lbIP := ""
+		if upstream.Server != nil && upstream.Server.PublicIPv4 != nil {
+			lbIP = *upstream.Server.PublicIPv4
+		}
+		if lbIP == "" {
+			j.Deps.Logger.Warn().
+				Str("upstream_id", upstream.ID).
+				Msg("skipping health check: LB server has no public IP")
+			continue
+		}
 
 		for k := range upstream.Backends {
 			backend := &upstream.Backends[k]
@@ -63,7 +82,9 @@ func (j *CheckLBBackendHealthJob) Handle(ctx context.Context) error {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				j.checkBackendHealth(ctx, upstream, backend)
+				sem <- struct{}{}
+				defer func() { <-sem }()
+				j.checkBackendHealth(ctx, upstream, backend, lbIP)
 			}()
 		}
 	}
@@ -77,24 +98,30 @@ func (j *CheckLBBackendHealthJob) Failed(ctx context.Context, err error) {
 	j.Deps.Logger.Error().Err(err).Msg("LB backend health check job failed")
 }
 
-// findAllUpstreams returns all upstreams with their backends and servers preloaded
-func (j *CheckLBBackendHealthJob) findAllUpstreams(ctx context.Context) ([]models.LoadBalancerUpstream, error) {
+// findUpstreams returns upstreams with backends and servers preloaded.
+// If UpstreamID is set, only that upstream is returned.
+func (j *CheckLBBackendHealthJob) findUpstreams(ctx context.Context) ([]models.LoadBalancerUpstream, error) {
 	var upstreams []models.LoadBalancerUpstream
-	err := j.Deps.DB.WithContext(ctx).
-		Preload("Backends").
-		Preload("Backends.Server").
-		Find(&upstreams).Error
 
+	query := j.Deps.DB.WithContext(ctx).
+		Preload("Server").
+		Preload("Backends").
+		Preload("Backends.Server")
+
+	if j.Payload.UpstreamID != "" {
+		query = query.Where("id = ?", j.Payload.UpstreamID)
+	}
+
+	err := query.Find(&upstreams).Error
 	return upstreams, err
 }
 
-// checkBackendHealth makes an HTTP request to the backend's health endpoint
-func (j *CheckLBBackendHealthJob) checkBackendHealth(ctx context.Context, upstream *models.LoadBalancerUpstream, backend *models.LoadBalancerBackend) {
-	if backend.Server == nil || backend.Server.PublicIPv4 == nil {
-		return
-	}
-
-	healthURL := fmt.Sprintf("http://%s:%d%s", *backend.Server.PublicIPv4, backend.Port, upstream.HealthCheckPath)
+// checkBackendHealth checks a backend's health by routing through the LB server's
+// reverse proxy. This avoids firewall/Caddy IP restrictions on backend port 8080.
+func (j *CheckLBBackendHealthJob) checkBackendHealth(ctx context.Context, upstream *models.LoadBalancerUpstream, backend *models.LoadBalancerBackend, lbIP string) {
+	// Route through the LB server: http://<lb_ip>:<upstream_port><health_path>
+	// with Host header set to the upstream address so Caddy routes correctly.
+	healthURL := fmt.Sprintf("http://%s:%d%s", lbIP, upstream.Port, upstream.HealthCheckPath)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
@@ -102,7 +129,7 @@ func (j *CheckLBBackendHealthJob) checkBackendHealth(ctx context.Context, upstre
 		return
 	}
 
-	// Set Host header so Caddy routes correctly
+	// Set Host header so the LB's Caddy routes to the correct upstream
 	req.Host = upstream.Address
 
 	resp, err := j.client.Do(req)
@@ -154,4 +181,11 @@ func (j *CheckLBBackendHealthJob) updateHealthStatus(ctx context.Context, upstre
 // NewCheckLBBackendHealthTask creates an asynq task for the health check job
 func NewCheckLBBackendHealthTask() (*asynq.Task, error) {
 	return pkgjobs.Task(TypeCheckLBBackendHealth, CheckLBBackendHealthPayload{})
+}
+
+// NewCheckLBBackendHealthTaskForUpstream creates a scoped health check task for a single upstream
+func NewCheckLBBackendHealthTaskForUpstream(upstreamID string) (*asynq.Task, error) {
+	return pkgjobs.Task(TypeCheckLBBackendHealth, CheckLBBackendHealthPayload{
+		UpstreamID: upstreamID,
+	}, asynq.TaskID(pkgjobs.Dedup("check_lb_health", upstreamID)))
 }
