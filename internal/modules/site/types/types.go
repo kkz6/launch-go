@@ -16,10 +16,11 @@ import (
 type SiteType string
 
 const (
-	SiteTypeLaravel   SiteType = "laravel"
-	SiteTypeWordpress SiteType = "wordpress"
-	SiteTypeStatic    SiteType = "static"
-	SiteTypeGeneric   SiteType = "generic"
+	SiteTypeLaravel    SiteType = "laravel"
+	SiteTypeWordpress  SiteType = "wordpress"
+	SiteTypeStatic     SiteType = "static"
+	SiteTypeGeneric    SiteType = "generic"
+	SiteTypePhpMyAdmin SiteType = "phpmyadmin"
 )
 
 func (s SiteType) String() string {
@@ -28,10 +29,11 @@ func (s SiteType) String() string {
 
 func (s SiteType) Label() string {
 	labels := map[SiteType]string{
-		SiteTypeLaravel:   "Laravel",
-		SiteTypeWordpress: "Wordpress",
-		SiteTypeStatic:    "Static",
-		SiteTypeGeneric:   "Generic",
+		SiteTypeLaravel:    "Laravel",
+		SiteTypeWordpress:  "Wordpress",
+		SiteTypeStatic:     "Static",
+		SiteTypeGeneric:    "Generic",
+		SiteTypePhpMyAdmin: "phpMyAdmin",
 	}
 
 	if label, ok := labels[s]; ok {
@@ -43,7 +45,7 @@ func (s SiteType) Label() string {
 
 func (s SiteType) IsValid() bool {
 	switch s {
-	case SiteTypeLaravel, SiteTypeWordpress, SiteTypeStatic, SiteTypeGeneric:
+	case SiteTypeLaravel, SiteTypeWordpress, SiteTypeStatic, SiteTypeGeneric, SiteTypePhpMyAdmin:
 		return true
 	}
 
@@ -60,12 +62,12 @@ func (s SiteType) HasEnvironment() bool {
 }
 
 func (s SiteType) RequiresGitAccount() bool {
-	return s != SiteTypeWordpress
+	return s != SiteTypeWordpress && s != SiteTypePhpMyAdmin
 }
 
 // GetDefaultWebFolder returns the default web folder for the site type
 func (s SiteType) GetDefaultWebFolder() string {
-	if s == SiteTypeWordpress {
+	if s == SiteTypeWordpress || s == SiteTypePhpMyAdmin {
 		return "/"
 	}
 	return "public"
@@ -111,6 +113,8 @@ func (s SiteType) GetDefaultAttributes(zeroDowntime bool) map[string]interface{}
 		return s.staticDefaults(zeroDowntime)
 	case SiteTypeWordpress:
 		return s.wordpressDefaults()
+	case SiteTypePhpMyAdmin:
+		return s.phpmyadminDefaults()
 	default:
 		return map[string]interface{}{}
 	}
@@ -196,6 +200,25 @@ func (s SiteType) wordpressDefaults() map[string]interface{} {
 	}
 }
 
+func (s SiteType) phpmyadminDefaults() map[string]interface{} {
+	return map[string]interface{}{
+		"type":                            SiteTypePhpMyAdmin,
+		"tls_setting":                     TLSSettingAuto,
+		"web_folder":                      "/",
+		"zero_downtime_deployment":        false,
+		"source_control_repositories_id":  nil,
+		"repository_branch":               "main",
+		"deploy_notification_email":       nil,
+		"shared_directories":              []string{},
+		"shared_files":                    []string{},
+		"writeable_directories":           []string{},
+		"hook_before_updating_repository": "",
+		"hook_after_updating_repository":  "",
+		"hook_before_making_current":      "",
+		"hook_after_making_current":       "",
+	}
+}
+
 // IsLaravel returns true if this is a Laravel site type
 func (s SiteType) IsLaravel() bool {
 	return s == SiteTypeLaravel
@@ -203,7 +226,7 @@ func (s SiteType) IsLaravel() bool {
 
 // IsPHP returns true if this is a PHP-based site type
 func (s SiteType) IsPHP() bool {
-	return s.IsLaravel() || s == SiteTypeWordpress
+	return s.IsLaravel() || s == SiteTypeWordpress || s == SiteTypePhpMyAdmin
 }
 
 // IsStatic returns true if this is a static site type
@@ -253,6 +276,7 @@ func AllSiteTypes() []SiteType {
 		SiteTypeWordpress,
 		SiteTypeStatic,
 		SiteTypeGeneric,
+		SiteTypePhpMyAdmin,
 	}
 }
 

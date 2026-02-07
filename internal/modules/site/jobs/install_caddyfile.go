@@ -297,6 +297,17 @@ func generateStandardCaddyfile(site *models.Site, redirects []models.Redirect) s
 		builder.WriteString("rewrite @disallowed '/index.php'\n\n")
 	}
 
+	// phpMyAdmin-specific security rules
+	if site.Type == sitetypes.SiteTypePhpMyAdmin {
+		builder.WriteString("@phpmyadmin_blocked {\n")
+		builder.WriteString("\tpath /setup/*\n")
+		builder.WriteString("\tpath /config.inc.php\n")
+		builder.WriteString("\tpath /libraries/*\n")
+		builder.WriteString("\tpath /templates/*\n")
+		builder.WriteString("}\n\n")
+		builder.WriteString("respond @phpmyadmin_blocked 403\n\n")
+	}
+
 	// Custom redirects
 	if len(redirects) > 0 {
 		builder.WriteString("# Custom redirects\n")
