@@ -17,19 +17,26 @@ type SiteCounter interface {
 	CountByServer(ctx context.Context, serverID string) (int64, error)
 }
 
+// UpstreamCounter interface for counting load balancer upstreams by server
+type UpstreamCounter interface {
+	CountByServerID(ctx context.Context, serverID string) (int64, error)
+}
+
 // Handler handles all server-related HTTP requests
 type Handler struct {
-	service     *services.Service
-	taskRunner  *tasks.TaskRunnerDeps
-	siteCounter SiteCounter
+	service         *services.Service
+	taskRunner      *tasks.TaskRunnerDeps
+	siteCounter     SiteCounter
+	upstreamCounter UpstreamCounter
 }
 
 // NewHandler creates a new server handler
-func NewHandler(service *services.Service, taskRunner *tasks.TaskRunnerDeps, siteCounter SiteCounter) *Handler {
+func NewHandler(service *services.Service, taskRunner *tasks.TaskRunnerDeps, siteCounter SiteCounter, upstreamCounter UpstreamCounter) *Handler {
 	return &Handler{
-		service:     service,
-		taskRunner:  taskRunner,
-		siteCounter: siteCounter,
+		service:         service,
+		taskRunner:      taskRunner,
+		siteCounter:     siteCounter,
+		upstreamCounter: upstreamCounter,
 	}
 }
 

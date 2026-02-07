@@ -65,8 +65,11 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 	pendingRedirects, _ := j.Deps.Repos.Redirect().FindPendingBySite(ctx, site.ID)
 	allRedirects := append(installedRedirects, pendingRedirects...)
 
+	// Resolve load balancer IP if site is behind a load balancer
+	loadBalancerIP := j.resolveLoadBalancerIP(ctx, site)
+
 	// Generate Caddyfile content
-	caddyfileContent := j.generateCaddyfileContent(site, allRedirects)
+	caddyfileContent := j.generateCaddyfileContent(site, allRedirects, loadBalancerIP)
 	caddyfilePath := fmt.Sprintf("%s/Caddyfile", site.Path)
 
 	// Create update Caddyfile task
@@ -149,12 +152,93 @@ func (j *InstallCaddyfileJob) Failed(ctx context.Context, err error) {
 }
 
 // generateCaddyfileContent generates the Caddyfile content for a site
-func (j *InstallCaddyfileJob) generateCaddyfileContent(site *models.Site, redirects []models.Redirect) string {
-	return generateCaddyfile(site, redirects)
+func (j *InstallCaddyfileJob) generateCaddyfileContent(site *models.Site, redirects []models.Redirect, loadBalancerIP string) string {
+	return generateCaddyfile(site, redirects, loadBalancerIP)
 }
 
-// generateCaddyfile generates the Caddyfile content for a site (shared function)
-func generateCaddyfile(site *models.Site, redirects []models.Redirect) string {
+// generateCaddyfile generates the Caddyfile content for a site (shared function).
+// When loadBalancerIP is non-empty and the site is load balanced, a dedicated
+// port-8080 Caddyfile is generated with HTTP only and IP restriction.
+func generateCaddyfile(site *models.Site, redirects []models.Redirect, loadBalancerIP string) string {
+	if site.IsLoadBalanced() && loadBalancerIP != "" {
+		return generateLoadBalancedCaddyfile(site, redirects, loadBalancerIP)
+	}
+
+	return generateStandardCaddyfile(site, redirects)
+}
+
+// generateLoadBalancedCaddyfile generates a Caddyfile for a site behind a load balancer.
+// Uses dedicated port 8080 with HTTP only (no TLS) and IP restriction from the LB.
+func generateLoadBalancedCaddyfile(site *models.Site, redirects []models.Redirect, loadBalancerIP string) string {
+	var builder strings.Builder
+
+	// Load balanced: HTTP only on dedicated port 8080
+	builder.WriteString(fmt.Sprintf("http://%s:8080 {\n", site.Address))
+
+	// IP restriction — only accept requests from the load balancer
+	builder.WriteString(fmt.Sprintf("\t@notlb not remote_ip %s\n", loadBalancerIP))
+	builder.WriteString("\trespond @notlb \"Forbidden\" 403\n\n")
+
+	// Root directory
+	builder.WriteString(fmt.Sprintf("\troot * %s\n", site.GetWebDirectory()))
+	builder.WriteString("\tencode zstd gzip\n\n")
+
+	// Security headers
+	builder.WriteString("\theader {\n")
+	builder.WriteString("\t\t-Server\n")
+	builder.WriteString("\t\tX-Content-Type-Options nosniff\n")
+	builder.WriteString("\t\tX-Frame-Options SAMEORIGIN\n")
+	builder.WriteString("\t\tX-Powered-By \"Launch\"\n")
+	builder.WriteString("\t\tX-XSS-Protection \"1; mode=block\"\n")
+	builder.WriteString("\t}\n\n")
+
+	// PHP FastCGI for non-static sites
+	if site.Type != sitetypes.SiteTypeStatic && site.PhpVersion != nil && site.PhpVersion.IsValid() {
+		phpSocket := site.PhpVersion.SocketPath()
+		builder.WriteString(fmt.Sprintf("\tphp_fastcgi unix/%s {\n", phpSocket))
+		builder.WriteString("\t\tresolve_root_symlink\n")
+		builder.WriteString("\t\ttry_files {path} {path}/index.html {path}/index.htm index.php\n")
+		builder.WriteString("\t}\n\n")
+	}
+
+	// WordPress-specific rules
+	if site.Type == sitetypes.SiteTypeWordpress {
+		builder.WriteString("\t@disallowed {\n")
+		builder.WriteString("\t\tpath /xmlrpc.php\n")
+		builder.WriteString("\t\tpath *.sql\n")
+		builder.WriteString("\t\tpath /wp-content/uploads/*.php\n")
+		builder.WriteString("\t}\n\n")
+		builder.WriteString("\trewrite @disallowed '/index.php'\n\n")
+	}
+
+	// Custom redirects
+	if len(redirects) > 0 {
+		builder.WriteString("\t# Custom redirects\n")
+		for _, r := range redirects {
+			builder.WriteString("\t" + generateRedirectDirective(&r))
+		}
+		builder.WriteString("\n")
+	}
+
+	// File server
+	builder.WriteString("\tfile_server\n\n")
+
+	// Logging with rotation
+	builder.WriteString("\tlog {\n")
+	builder.WriteString(fmt.Sprintf("\t\toutput file %s/caddy.log {\n", site.Path+"/logs"))
+	builder.WriteString("\t\t\troll_size 100mb\n")
+	builder.WriteString("\t\t\troll_keep 30\n")
+	builder.WriteString("\t\t\troll_keep_for 720h\n")
+	builder.WriteString("\t\t}\n")
+	builder.WriteString("\t}\n")
+
+	builder.WriteString("}\n")
+
+	return builder.String()
+}
+
+// generateStandardCaddyfile generates the standard Caddyfile for a directly-served site.
+func generateStandardCaddyfile(site *models.Site, redirects []models.Redirect) string {
 	var builder strings.Builder
 	port := site.GetPort()
 
@@ -339,6 +423,26 @@ func (j *InstallCaddyfileJob) updateSiteImports(ctx context.Context, server *ser
 	return err
 }
 
+// resolveLoadBalancerIP looks up the load balancer server's public IP for a load-balanced site.
+// Returns empty string if the site is not load balanced or the IP cannot be resolved.
+func (j *InstallCaddyfileJob) resolveLoadBalancerIP(ctx context.Context, site *models.Site) string {
+	if !site.IsLoadBalanced() {
+		return ""
+	}
+
+	upstream, err := j.Deps.ServerRepos.LoadBalancerUpstream().FindByIDWithBackends(ctx, *site.LoadBalancedUpstreamID)
+	if err != nil || upstream == nil || upstream.Server == nil {
+		j.Deps.Logger.Warn().Str("site_id", site.ID).Msg("Could not resolve load balancer IP for site")
+		return ""
+	}
+
+	if upstream.Server.PublicIPv4 == nil {
+		return ""
+	}
+
+	return *upstream.Server.PublicIPv4
+}
+
 // UpdateCaddyfileJob handles site Caddyfile updates
 type UpdateCaddyfileJob struct {
 	Deps    *JobDeps
@@ -375,8 +479,11 @@ func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 	pendingRedirects, _ := j.Deps.Repos.Redirect().FindPendingBySite(ctx, site.ID)
 	allRedirects := append(installedRedirects, pendingRedirects...)
 
+	// Resolve load balancer IP if site is behind a load balancer
+	loadBalancerIP := j.resolveLoadBalancerIP(ctx, site)
+
 	// Generate Caddyfile content
-	caddyfileContent := j.generateCaddyfileContent(site, allRedirects)
+	caddyfileContent := j.generateCaddyfileContent(site, allRedirects, loadBalancerIP)
 	caddyfilePath := fmt.Sprintf("%s/Caddyfile", site.Path)
 
 	// Create update Caddyfile task
@@ -420,8 +527,27 @@ func (j *UpdateCaddyfileJob) Failed(ctx context.Context, err error) {
 }
 
 // generateCaddyfileContent generates the Caddyfile content for a site
-func (j *UpdateCaddyfileJob) generateCaddyfileContent(site *models.Site, redirects []models.Redirect) string {
-	return generateCaddyfile(site, redirects)
+func (j *UpdateCaddyfileJob) generateCaddyfileContent(site *models.Site, redirects []models.Redirect, loadBalancerIP string) string {
+	return generateCaddyfile(site, redirects, loadBalancerIP)
+}
+
+// resolveLoadBalancerIP looks up the load balancer server's public IP for a load-balanced site.
+func (j *UpdateCaddyfileJob) resolveLoadBalancerIP(ctx context.Context, site *models.Site) string {
+	if !site.IsLoadBalanced() {
+		return ""
+	}
+
+	upstream, err := j.Deps.ServerRepos.LoadBalancerUpstream().FindByIDWithBackends(ctx, *site.LoadBalancedUpstreamID)
+	if err != nil || upstream == nil || upstream.Server == nil {
+		j.Deps.Logger.Warn().Str("site_id", site.ID).Msg("Could not resolve load balancer IP for site")
+		return ""
+	}
+
+	if upstream.Server.PublicIPv4 == nil {
+		return ""
+	}
+
+	return *upstream.Server.PublicIPv4
 }
 
 // UninstallCaddyfileJob handles site Caddyfile uninstallation

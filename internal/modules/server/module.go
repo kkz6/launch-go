@@ -3,6 +3,7 @@ package server
 import (
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/server/services"
@@ -21,8 +22,9 @@ var (
 // Module represents the server module
 type Module struct {
 	app.Base
-	repos   *repositories.Registry
-	service *services.Service
+	repos      *repositories.Registry
+	service    *services.Service
+	siteReader contracts.SiteReader
 }
 
 // NewModule creates a new server module using the builder
@@ -44,6 +46,11 @@ func NewModule(b *app.Builder) *Module {
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 	jobs.Register(mux, m.Deps(), m.repos)
+}
+
+// SetSiteReader sets the site reader for cross-module access
+func (m *Module) SetSiteReader(reader contracts.SiteReader) {
+	m.siteReader = reader
 }
 
 // Repos returns the repository registry

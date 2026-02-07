@@ -201,8 +201,9 @@ func AllServerProviders() []ServerProvider {
 type ServerType string
 
 const (
-	ServerTypePhp      ServerType = "php"
-	ServerTypeDatabase ServerType = "database"
+	ServerTypePhp          ServerType = "php"
+	ServerTypeDatabase     ServerType = "database"
+	ServerTypeLoadBalancer ServerType = "loadbalancer"
 )
 
 func (t ServerType) String() string {
@@ -211,8 +212,9 @@ func (t ServerType) String() string {
 
 func (t ServerType) Label() string {
 	labels := map[ServerType]string{
-		ServerTypePhp:      "PHP Application Server",
-		ServerTypeDatabase: "Database Server",
+		ServerTypePhp:          "PHP Application Server",
+		ServerTypeDatabase:     "Database Server",
+		ServerTypeLoadBalancer: "Load Balancer",
 	}
 	if label, ok := labels[t]; ok {
 		return label
@@ -223,7 +225,7 @@ func (t ServerType) Label() string {
 
 func (t ServerType) IsValid() bool {
 	switch t {
-	case ServerTypePhp, ServerTypeDatabase:
+	case ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer:
 		return true
 	}
 
@@ -251,6 +253,12 @@ func (t ServerType) GetFeatures() []ServerFeature {
 			ServerFeatureDatabaseManagement,
 			ServerFeatureBackups,
 		}
+	case ServerTypeLoadBalancer:
+		return []ServerFeature{
+			ServerFeatureLoadBalancing,
+			ServerFeatureSSLCertificates,
+			ServerFeatureServices,
+		}
 	}
 
 	return nil
@@ -271,7 +279,7 @@ func (t ServerType) GetProcessManager() ProcessManager {
 	switch t {
 	case ServerTypePhp:
 		return ProcessManagerSupervisor
-	case ServerTypeDatabase:
+	case ServerTypeDatabase, ServerTypeLoadBalancer:
 		return ProcessManagerNone
 	}
 
@@ -310,7 +318,7 @@ func ParseServerType(s string) (ServerType, error) {
 }
 
 func AllServerTypes() []ServerType {
-	return []ServerType{ServerTypePhp, ServerTypeDatabase}
+	return []ServerType{ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer}
 }
 
 // =============================================================================
@@ -332,6 +340,7 @@ const (
 	ServerFeatureRedis              ServerFeature = "redis"
 	ServerFeatureBackups            ServerFeature = "backups"
 	ServerFeatureServices           ServerFeature = "services"
+	ServerFeatureLoadBalancing      ServerFeature = "load_balancing"
 )
 
 func (f ServerFeature) String() string {
@@ -351,6 +360,7 @@ func (f ServerFeature) Label() string {
 		ServerFeatureRedis:              "Redis",
 		ServerFeatureBackups:            "Backups",
 		ServerFeatureServices:           "Services",
+		ServerFeatureLoadBalancing:      "Load Balancing",
 	}
 	if label, ok := labels[f]; ok {
 		return label
@@ -364,7 +374,7 @@ func (f ServerFeature) IsValid() bool {
 	case ServerFeatureSites, ServerFeatureSSLCertificates, ServerFeaturePhpManagement,
 		ServerFeatureComposer, ServerFeatureDatabaseManagement, ServerFeatureQueueWorkers,
 		ServerFeatureDaemons, ServerFeatureScheduler, ServerFeatureRedis, ServerFeatureBackups,
-		ServerFeatureServices:
+		ServerFeatureServices, ServerFeatureLoadBalancing:
 		return true
 	}
 
@@ -382,6 +392,7 @@ func (f ServerFeature) NavigationKey() string {
 		ServerFeatureSSLCertificates:    "ssl",
 		ServerFeatureBackups:            "backups",
 		ServerFeatureServices:           "advanced",
+		ServerFeatureLoadBalancing:      "upstreams",
 	}
 	if key, ok := keys[f]; ok {
 		return key
@@ -395,7 +406,7 @@ func AllServerFeatures() []ServerFeature {
 		ServerFeatureSites, ServerFeatureSSLCertificates, ServerFeaturePhpManagement,
 		ServerFeatureComposer, ServerFeatureDatabaseManagement, ServerFeatureQueueWorkers,
 		ServerFeatureDaemons, ServerFeatureScheduler, ServerFeatureRedis, ServerFeatureBackups,
-		ServerFeatureServices,
+		ServerFeatureServices, ServerFeatureLoadBalancing,
 	}
 }
 
