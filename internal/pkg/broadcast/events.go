@@ -320,6 +320,45 @@ const (
 	TeamMemberUpdated = "team.member.updated"
 )
 
+// Load Balancer upstream events
+const (
+	// UpstreamCreated is broadcast when a new upstream is created
+	UpstreamCreated = "upstream.created"
+
+	// UpstreamUpdated is broadcast when an upstream is updated
+	UpstreamUpdated = "upstream.updated"
+
+	// UpstreamDeleted is broadcast when an upstream is deleted
+	UpstreamDeleted = "upstream.deleted"
+
+	// UpstreamInstalled is broadcast when an upstream Caddyfile is installed on the LB server
+	UpstreamInstalled = "upstream.installed"
+
+	// UpstreamInstallFailed is broadcast when upstream Caddyfile installation fails
+	UpstreamInstallFailed = "upstream.install_failed"
+)
+
+// Load Balancer backend events
+const (
+	// BackendAdded is broadcast when a backend is added to an upstream
+	BackendAdded = "backend.added"
+
+	// BackendRemoved is broadcast when a backend is removed from an upstream
+	BackendRemoved = "backend.removed"
+
+	// BackendUpdated is broadcast when a backend is updated
+	BackendUpdated = "backend.updated"
+
+	// BackendMarkedDown is broadcast when a backend is marked as down
+	BackendMarkedDown = "backend.marked_down"
+
+	// BackendMarkedUp is broadcast when a backend is marked as up
+	BackendMarkedUp = "backend.marked_up"
+
+	// BackendHealthChanged is broadcast when a backend's health status changes
+	BackendHealthChanged = "backend.health_changed"
+)
+
 // Activity events
 const (
 	// ActivityCreated is broadcast when a new activity is logged
