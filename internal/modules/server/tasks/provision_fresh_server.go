@@ -56,9 +56,6 @@ type ProvisionFreshServerConfig struct {
 	// Launch Agent
 	AgentConfigPath string
 	AgentURL        string
-
-	// Docker/Traefik config
-	AdminEmail string
 }
 
 // provisionCallbackData holds data needed for callback handling
@@ -425,16 +422,6 @@ func buildSoftwareInstallData(software types.Software, config ProvisionFreshServ
 			AgentURL        string
 			RootUsername    string
 		}{config.AgentConfigPath, config.AgentURL, "root"}
-
-	case types.SoftwareDocker:
-		return struct{ Username string }{config.Username}
-
-	case types.SoftwareTraefik:
-		email := config.AdminEmail
-		if email == "" {
-			email = "admin@" + config.PublicIPv4
-		}
-		return struct{ AdminEmail string }{email}
 
 	default:
 		// Handle PHP versions
