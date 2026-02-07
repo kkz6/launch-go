@@ -58,7 +58,7 @@ func NewModule(b *app.Builder) *Module {
 // RegisterWebSocketRoutes registers all WebSocket routes
 func (m *Module) RegisterWebSocketRoutes(router fiber.Router) {
 	// Main WebSocket endpoint for pub/sub events
-	// Connection URL: /ws?token=xxx&team_id=xxx
+	// Connection URL: /api/ws?token=xxx&team_id=xxx
 	router.Get("/ws", ws.Handler(m.hub, m.jwtSecret, m.membershipCache))
 
 	// Terminal WebSocket endpoint
@@ -74,7 +74,7 @@ func (m *Module) RegisterWebSocketRoutes(router fiber.Router) {
 	router.Get("/metrics/stream", m.metricsHandler.Handler())
 
 	// Script execution streaming WebSocket endpoint
-	// Connection URL: /scripts/execute?executionId=xxx&token=xxx&team_id=xxx
+	// Connection URL: /api/scripts/execute?executionId=xxx&token=xxx&team_id=xxx
 	router.Get("/scripts/execute", m.scriptExecutionHandler.Handler())
 }
 

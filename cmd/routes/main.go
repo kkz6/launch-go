@@ -129,7 +129,7 @@ func collectRoutes() []RouteInfo {
 		AuthMiddleware: authMiddleware,
 	})
 	kernel.BootWebhooks(fiberApp)
-	kernel.BootWebSocket(fiberApp)
+	kernel.BootWebSocket(api)
 
 	// Standard HTTP methods we care about
 	validMethods := map[string]bool{

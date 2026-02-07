@@ -258,8 +258,8 @@ func (a *Application) registerModules() {
 	// Boot webhook routes (at root level, no /api prefix)
 	a.kernel.BootWebhooks(a.fiber)
 
-	// Boot WebSocket routes (at root level, no /api prefix)
-	a.kernel.BootWebSocket(a.fiber)
+	// Boot WebSocket routes (under /api prefix)
+	a.kernel.BootWebSocket(api)
 }
 
 // healthCheck handles the health check endpoint
