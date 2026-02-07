@@ -79,4 +79,6 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterTyped(mux, TypeInstallLBCaddyfile, NewInstallLBCaddyfileJob)
 	pkgjobs.RegisterTyped(mux, TypeUpdateLBCaddyfile, NewUpdateLBCaddyfileJob)
 	pkgjobs.RegisterTyped(mux, TypeRemoveLBCaddyfile, NewRemoveLBCaddyfileJob)
+	pkgjobs.RegisterTyped(mux, TypeAddLBFirewallRule, NewAddLBFirewallRuleJob)
+	pkgjobs.RegisterTyped(mux, TypeRemoveLBFirewallRule, NewRemoveLBFirewallRuleJob)
 }
