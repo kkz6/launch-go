@@ -5,7 +5,7 @@ type CreateServerRequest struct {
 	Name            string   `json:"name" validate:"required,min=2,max=255"`
 	Description     *string  `json:"description" validate:"omitempty,max=1000"`
 	Provider        string   `json:"provider" validate:"required,oneof=digitalocean hetzner linode vultr aws custom_server"`
-	Type            string   `json:"type" validate:"required,oneof=php database"`
+	Type            string   `json:"type" validate:"required,oneof=php database loadbalancer"`
 	OperatingSystem string   `json:"operating_system" validate:"omitempty,oneof=ubuntu_20 ubuntu_22 ubuntu_24"`
 	Region          string   `json:"region" validate:"required_unless=Provider custom_server"`
 	Size            string   `json:"size" validate:"required_unless=Provider custom_server"`
