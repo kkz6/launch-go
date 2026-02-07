@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/formatter"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
@@ -377,6 +378,40 @@ func ToRedirectResponse(redirect *models.Redirect) RedirectResponse {
 		To:        redirect.To,
 		Status:    redirect.Status,
 		CreatedAt: pkgdto.FormatTimeOrEmpty(redirect.CreatedAt),
+	}
+}
+
+// SiteTypeOption represents a site type option for the create site form
+type SiteTypeOption struct {
+	Value            string `json:"value"`
+	Label            string `json:"label"`
+	DefaultWebFolder string `json:"default_web_folder"`
+	RequiresGit      bool   `json:"requires_git"`
+	SupportsGit      bool   `json:"supports_git"`
+}
+
+// CreateSiteOptionsResponse represents the response for site creation options
+type CreateSiteOptionsResponse struct {
+	SiteTypes []SiteTypeOption `json:"site_types"`
+}
+
+// GetCreateSiteOptions builds the create site options response
+func GetCreateSiteOptions() CreateSiteOptionsResponse {
+	types := sitetypes.AllSiteTypes()
+	options := make([]SiteTypeOption, len(types))
+
+	for i, st := range types {
+		options[i] = SiteTypeOption{
+			Value:            st.String(),
+			Label:            st.Label(),
+			DefaultWebFolder: st.GetDefaultWebFolder(),
+			RequiresGit:      st.RequiresGitAccount(),
+			SupportsGit:      st.RequiresGitAccount(),
+		}
+	}
+
+	return CreateSiteOptionsResponse{
+		SiteTypes: options,
 	}
 }
 

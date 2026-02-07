@@ -78,7 +78,7 @@ func (m *Module) DomainRepository() dnscontracts.DomainRepository {
 
 // registerGlobalSiteRoutes registers site routes not nested under servers
 func (m *Module) registerGlobalSiteRoutes(router fiber.Router, handler *handlers.SiteHandler) {
-	// Domain verification
+	router.Get("/create-options", handler.GetCreateOptions)
 	router.Get("/verify-domain", handler.VerifyDomain)
 }
 
