@@ -10,7 +10,7 @@ type CreateSiteRequest struct {
 	Address                     string             `json:"address" validate:"required,max=255"`
 	Aliases                     []string           `json:"aliases" validate:"omitempty,dive,max=255"`
 	PhpVersion                  string             `json:"php_version" validate:"required"`
-	Type                        sitetypes.SiteType `json:"type" validate:"required,oneof=laravel wordpress static generic"`
+	Type                        sitetypes.SiteType `json:"type" validate:"required,oneof=laravel wordpress static generic phpmyadmin"`
 	WebFolder                   string             `json:"web_folder" validate:"omitempty,max=255"`
 	ZeroDowntimeDeployment      bool               `json:"zero_downtime_deployment"`
 	SourceControlID             *string            `json:"source_control_id" validate:"omitempty,ulid"`
