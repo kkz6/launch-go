@@ -41,9 +41,6 @@ func GenerateLBCaddyfile(upstream *models.LoadBalancerUpstream, backends []model
 	sb.WriteString("        X-Powered-By \"Launch\"\n")
 	sb.WriteString("    }\n\n")
 
-	// Reverse proxy block
-	sb.WriteString("    reverse_proxy {\n")
-
 	// Backend addresses (plain HTTP on dedicated port)
 	var addrs []string
 	for _, backend := range backends {
@@ -67,28 +64,31 @@ func GenerateLBCaddyfile(upstream *models.LoadBalancerUpstream, backends []model
 		addrs = append(addrs, fmt.Sprintf("%s:%d", ip, port))
 	}
 
-	if len(addrs) > 0 {
-		sb.WriteString(fmt.Sprintf("        to %s\n\n", strings.Join(addrs, " ")))
+	if len(addrs) == 0 {
+		// No active backends — respond 503 instead of generating an invalid reverse_proxy block
+		sb.WriteString("    respond \"Service Unavailable\" 503\n\n")
 	} else {
-		sb.WriteString("        # No active backends\n\n")
+		// Reverse proxy block
+		sb.WriteString("    reverse_proxy {\n")
+		sb.WriteString(fmt.Sprintf("        to %s\n\n", strings.Join(addrs, " ")))
+
+		// Load balancing policy
+		sb.WriteString(fmt.Sprintf("        lb_policy %s\n\n", upstream.LBPolicy))
+
+		// Health checks
+		sb.WriteString(fmt.Sprintf("        health_uri %s\n", upstream.HealthCheckPath))
+		sb.WriteString(fmt.Sprintf("        health_interval %s\n", upstream.HealthCheckInterval))
+		sb.WriteString(fmt.Sprintf("        health_timeout %s\n", upstream.HealthCheckTimeout))
+		sb.WriteString("        health_status 200\n\n")
+
+		// Forwarding headers
+		sb.WriteString("        header_up Host {upstream_hostport}\n")
+		sb.WriteString("        header_up X-Real-IP {remote_host}\n")
+		sb.WriteString("        header_up X-Forwarded-For {remote_host}\n")
+		sb.WriteString("        header_up X-Forwarded-Proto {scheme}\n")
+
+		sb.WriteString("    }\n\n")
 	}
-
-	// Load balancing policy
-	sb.WriteString(fmt.Sprintf("        lb_policy %s\n\n", upstream.LBPolicy))
-
-	// Health checks
-	sb.WriteString(fmt.Sprintf("        health_uri %s\n", upstream.HealthCheckPath))
-	sb.WriteString(fmt.Sprintf("        health_interval %s\n", upstream.HealthCheckInterval))
-	sb.WriteString(fmt.Sprintf("        health_timeout %s\n", upstream.HealthCheckTimeout))
-	sb.WriteString("        health_status 200\n\n")
-
-	// Forwarding headers
-	sb.WriteString("        header_up Host {upstream_hostport}\n")
-	sb.WriteString("        header_up X-Real-IP {remote_host}\n")
-	sb.WriteString("        header_up X-Forwarded-For {remote_host}\n")
-	sb.WriteString("        header_up X-Forwarded-Proto {scheme}\n")
-
-	sb.WriteString("    }\n\n")
 
 	// Logging
 	logPath := fmt.Sprintf("/var/log/caddy/%s.log", strings.ReplaceAll(upstream.Address, ".", "_"))

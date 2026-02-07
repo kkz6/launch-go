@@ -167,19 +167,20 @@ type CreateUpstreamRequest struct {
 	Port                 int    `json:"port" validate:"omitempty,min=1,max=65535"`
 	TLSSetting           string `json:"tls_setting" validate:"omitempty,oneof=auto custom internal off"`
 	LBPolicy             string `json:"lb_policy" validate:"required,oneof=round_robin least_conn ip_hash first random"`
-	HealthCheckPath      string `json:"health_check_path" validate:"omitempty,max=255"`
-	HealthCheckInterval  string `json:"health_check_interval" validate:"omitempty,max=20"`
-	HealthCheckTimeout   string `json:"health_check_timeout" validate:"omitempty,max=20"`
+	HealthCheckPath      string `json:"health_check_path" validate:"omitempty,startswith=/,max=255,excludesall=\n\r"`
+	HealthCheckInterval  string `json:"health_check_interval" validate:"omitempty,max=20,oneof=5s 10s 15s 20s 30s 45s 1m 2m 5m"`
+	HealthCheckTimeout   string `json:"health_check_timeout" validate:"omitempty,max=20,oneof=5s 10s 15s 20s 30s 45s 1m 2m 5m"`
 	AutoAddExistingSites bool   `json:"auto_add_existing_sites"`
 }
 
 // UpdateUpstreamRequest represents the request body for updating an upstream
 type UpdateUpstreamRequest struct {
 	Name                *string `json:"name" validate:"omitempty,min=1,max=255"`
+	TLSSetting          *string `json:"tls_setting" validate:"omitempty,oneof=auto custom internal off"`
 	LBPolicy            *string `json:"lb_policy" validate:"omitempty,oneof=round_robin least_conn ip_hash first random"`
-	HealthCheckPath     *string `json:"health_check_path" validate:"omitempty,max=255"`
-	HealthCheckInterval *string `json:"health_check_interval" validate:"omitempty,max=20"`
-	HealthCheckTimeout  *string `json:"health_check_timeout" validate:"omitempty,max=20"`
+	HealthCheckPath     *string `json:"health_check_path" validate:"omitempty,startswith=/,max=255,excludesall=\n\r"`
+	HealthCheckInterval *string `json:"health_check_interval" validate:"omitempty,max=20,oneof=5s 10s 15s 20s 30s 45s 1m 2m 5m"`
+	HealthCheckTimeout  *string `json:"health_check_timeout" validate:"omitempty,max=20,oneof=5s 10s 15s 20s 30s 45s 1m 2m 5m"`
 }
 
 // AddBackendRequest represents the request body for adding a backend to an upstream

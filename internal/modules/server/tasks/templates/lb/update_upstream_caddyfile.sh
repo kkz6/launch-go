@@ -6,25 +6,25 @@ echo "Updating upstream Caddyfile at {{ .CaddyfilePath }}"
 sudo mkdir -p /etc/caddy/upstreams
 
 # Create a temporary file with the new Caddyfile
-cat > {{ .CaddyfilePath }}.tmp <<'CADDYEOF'
+cat > "{{ .CaddyfilePath }}.tmp" <<'LAUNCH_CADDYFILE_EOF'
 {{ .CaddyfileContent }}
-CADDYEOF
+LAUNCH_CADDYFILE_EOF
 
 # Validate the Caddyfile
 set +e
-caddy validate --config {{ .CaddyfilePath }}.tmp --adapter caddyfile
+caddy validate --config "{{ .CaddyfilePath }}.tmp" --adapter caddyfile
 if [ $? -ne 0 ]; then
-    rm -f {{ .CaddyfilePath }}.tmp
+    rm -f "{{ .CaddyfilePath }}.tmp"
     echo "Caddyfile validation failed"
     exit 1
 fi
 set -e
 
 # Format the Caddyfile
-caddy fmt {{ .CaddyfilePath }}.tmp --overwrite
+caddy fmt "{{ .CaddyfilePath }}.tmp" --overwrite
 
 # Replace the old Caddyfile with the new one
-mv {{ .CaddyfilePath }}.tmp {{ .CaddyfilePath }}
+mv "{{ .CaddyfilePath }}.tmp" "{{ .CaddyfilePath }}"
 
 # Reload Caddy
 sudo /usr/sbin/service caddy reload
