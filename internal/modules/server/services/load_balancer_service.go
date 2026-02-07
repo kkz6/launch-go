@@ -534,6 +534,52 @@ func (s *LoadBalancerService) ListBackends(ctx context.Context, serverID, teamID
 	return s.repos.LoadBalancerBackend().FindByUpstreamID(ctx, upstreamID)
 }
 
+// GetUpstreamHealth returns health status of all backends in an upstream
+func (s *LoadBalancerService) GetUpstreamHealth(ctx context.Context, serverID, teamID, upstreamID string) (*dto.UpstreamHealthResponse, error) {
+	upstream, err := s.GetUpstream(ctx, serverID, teamID, upstreamID)
+	if err != nil {
+		return nil, err
+	}
+
+	backends := make([]dto.BackendHealthStatus, len(upstream.Backends))
+	healthy := 0
+	for i, b := range upstream.Backends {
+		backends[i] = dto.BackendHealthStatus{
+			BackendID:         b.ID,
+			ServerID:          b.ServerID,
+			SiteID:            b.SiteID,
+			Port:              b.Port,
+			IsDown:            b.IsDown,
+			HealthStatus:      string(b.HealthStatus),
+			LastHealthCheckAt: b.LastHealthCheckAt,
+		}
+		if b.HealthStatus == types.HealthStatusHealthy && !b.IsDown {
+			healthy++
+		}
+	}
+
+	return &dto.UpstreamHealthResponse{
+		UpstreamID:      upstream.ID,
+		Address:         upstream.Address,
+		TotalBackends:   len(upstream.Backends),
+		HealthyBackends: healthy,
+		Backends:        backends,
+	}, nil
+}
+
+// TriggerHealthCheck dispatches an on-demand health check for all backends
+func (s *LoadBalancerService) TriggerHealthCheck(ctx context.Context, serverID, teamID, upstreamID string) error {
+	if _, err := s.GetUpstream(ctx, serverID, teamID, upstreamID); err != nil {
+		return err
+	}
+
+	s.DispatchTask("CheckLBBackendHealth", func() (*asynq.Task, error) {
+		return jobs.NewCheckLBBackendHealthTask()
+	}, "upstream_id", upstreamID)
+
+	return nil
+}
+
 // isLoadBalancer checks if a server is a load balancer type
 func (s *LoadBalancerService) isLoadBalancer(server *models.Server) bool {
 	return server.Type != nil && types.ServerType(*server.Type) == types.ServerTypeLoadBalancer

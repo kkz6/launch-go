@@ -287,6 +287,55 @@ func (h *LoadBalancerHandler) RemoveBackend(c *fiber.Ctx) error {
 	return fiberctx.NoContent(c)
 }
 
+// GetUpstreamHealth returns the health status of all backends
+func (h *LoadBalancerHandler) GetUpstreamHealth(c *fiber.Ctx) error {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	upstreamID := c.Params("upstreamId")
+	if upstreamID == "" {
+		return fiberctx.BadRequest("Upstream ID is required")
+	}
+
+	health, err := h.lbService.GetUpstreamHealth(c.Context(), serverID, teamID, upstreamID)
+	if err != nil {
+		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch upstream health")
+	}
+
+	return fiberctx.OK(c, "Upstream health retrieved", health)
+}
+
+// TriggerHealthCheck triggers an on-demand health check for an upstream's backends
+func (h *LoadBalancerHandler) TriggerHealthCheck(c *fiber.Ctx) error {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	upstreamID := c.Params("upstreamId")
+	if upstreamID == "" {
+		return fiberctx.BadRequest("Upstream ID is required")
+	}
+
+	if err := h.lbService.TriggerHealthCheck(c.Context(), serverID, teamID, upstreamID); err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return fiberctx.OK(c, "Health check triggered", nil)
+}
+
 // ToggleBackendDown toggles a backend's down status
 func (h *LoadBalancerHandler) ToggleBackendDown(c *fiber.Ctx) error {
 	teamID, err := fiberctx.MustGetTeamID(c)

@@ -145,6 +145,10 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Put("/:id/upstreams/:upstreamId/backends/:backendId", provisioned, lbHandler.UpdateBackend)
 		servers.Delete("/:id/upstreams/:upstreamId/backends/:backendId", provisioned, lbHandler.RemoveBackend)
 		servers.Post("/:id/upstreams/:upstreamId/backends/:backendId/toggle-down", provisioned, lbHandler.ToggleBackendDown)
+
+		// Load Balancer Health Checks
+		servers.Get("/:id/upstreams/:upstreamId/health", provisioned, lbHandler.GetUpstreamHealth)
+		servers.Post("/:id/upstreams/:upstreamId/health-check", provisioned, lbHandler.TriggerHealthCheck)
 	}
 }
 

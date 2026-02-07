@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"time"
+
 	serverconfig "github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/formatter"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
@@ -1027,6 +1029,26 @@ func ToLoadBalancerBackendResponse(backend *models.LoadBalancerBackend) LoadBala
 		CreatedAt:         pkgdto.FormatTimeOrEmpty(backend.CreatedAt),
 		UpdatedAt:         pkgdto.FormatTimeOrEmpty(backend.UpdatedAt),
 	}
+}
+
+// UpstreamHealthResponse represents the health status of all backends in an upstream
+type UpstreamHealthResponse struct {
+	UpstreamID      string                `json:"upstream_id"`
+	Address         string                `json:"address"`
+	TotalBackends   int                   `json:"total_backends"`
+	HealthyBackends int                   `json:"healthy_backends"`
+	Backends        []BackendHealthStatus `json:"backends"`
+}
+
+// BackendHealthStatus represents the health status of a single backend
+type BackendHealthStatus struct {
+	BackendID         string     `json:"backend_id"`
+	ServerID          string     `json:"server_id"`
+	SiteID            string     `json:"site_id"`
+	Port              int        `json:"port"`
+	IsDown            bool       `json:"is_down"`
+	HealthStatus      string     `json:"health_status"`
+	LastHealthCheckAt *time.Time `json:"last_health_check_at,omitempty"`
 }
 
 // ToServerProviderResponse converts a ServerProvider model to response
