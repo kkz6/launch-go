@@ -53,6 +53,11 @@ func (f *Factory) IsStatic() bool {
 	return f.site.Type == sitetypes.SiteTypeStatic
 }
 
+// IsPhpMyAdmin returns true if the site is a phpMyAdmin application
+func (f *Factory) IsPhpMyAdmin() bool {
+	return f.site.Type == sitetypes.SiteTypePhpMyAdmin
+}
+
 // TaskType returns the full task type string for a given operation based on the site type
 func (f *Factory) TaskType(taskType SiteTaskType) string {
 	return fmt.Sprintf("site:%s_%s", f.site.Type, taskType)
