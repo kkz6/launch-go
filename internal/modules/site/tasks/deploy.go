@@ -496,8 +496,8 @@ func buildStandardScript(opts DeployOptions) string {
 		scriptBuilder.WriteString("\n")
 	}
 
-	if site.InstalledAt != nil && site.Type == sitetypes.SiteTypeWordpress {
-		scriptBuilder.WriteString("echo \"Wordpress already installed!\"\n\n")
+	if site.InstalledAt != nil && (site.Type == sitetypes.SiteTypeWordpress || site.Type == sitetypes.SiteTypePhpMyAdmin) {
+		scriptBuilder.WriteString("echo \"Application already installed!\"\n\n")
 	}
 
 	scriptBuilder.WriteString("echo \"Done!\"\n")
@@ -700,6 +700,15 @@ func renderPrepareFreshInstallation(opts DeployOptions, repoDir, releaseDir, sha
 			SitePath:            site.Path,
 			RepositoryDirectory: repoDir,
 			EnvVariables:        opts.EnvVariables,
+		}))
+
+	case sitetypes.SiteTypePhpMyAdmin:
+		scriptBuilder.WriteString(templates.MustRender("site", "deployment/prepare_fresh_installation/phpmyadmin.sh", struct {
+			SitePath            string
+			RepositoryDirectory string
+		}{
+			SitePath:            site.Path,
+			RepositoryDirectory: repoDir,
 		}))
 	}
 

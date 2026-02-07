@@ -166,8 +166,8 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 		})
 	}
 
-	// Validate source control for non-WordPress sites
-	if req.Type != sitetypes.SiteTypeWordpress && req.SourceControlID != nil && *req.SourceControlID != "" {
+	// Validate source control for non-WordPress/phpMyAdmin sites
+	if req.Type != sitetypes.SiteTypeWordpress && req.Type != sitetypes.SiteTypePhpMyAdmin && req.SourceControlID != nil && *req.SourceControlID != "" {
 		if err := s.validateSourceControl(ctx, req.SourceControlID, req.SourceControlRepositoriesID); err != nil {
 			return nil, err
 		}
@@ -194,9 +194,9 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 		repoBranch = &req.RepositoryBranch
 	}
 
-	// WordPress sites don't support zero-downtime deployment
+	// WordPress and phpMyAdmin sites don't support zero-downtime deployment
 	zeroDowntime := req.ZeroDowntimeDeployment
-	if req.Type == sitetypes.SiteTypeWordpress {
+	if req.Type == sitetypes.SiteTypeWordpress || req.Type == sitetypes.SiteTypePhpMyAdmin {
 		zeroDowntime = false
 	}
 
@@ -288,8 +288,8 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 		return nil, err
 	}
 
-	// Save repository to source control provider (non-WordPress sites only)
-	if req.Type != sitetypes.SiteTypeWordpress && req.SourceControlID != nil && *req.SourceControlID != "" && sourceControlRepoID != nil {
+	// Save repository to source control provider (non-WordPress/phpMyAdmin sites only)
+	if req.Type != sitetypes.SiteTypeWordpress && req.Type != sitetypes.SiteTypePhpMyAdmin && req.SourceControlID != nil && *req.SourceControlID != "" && sourceControlRepoID != nil {
 		s.handleSourceControlRepository(ctx, *req.SourceControlID, *sourceControlRepoID)
 	}
 
@@ -714,7 +714,7 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID s
 	addIfSet(updates, "queue_deployments", req.QueueDeployments)
 
 	// Conditional field (not for WordPress)
-	if req.RepositoryBranch != nil && site.Type != sitetypes.SiteTypeWordpress {
+	if req.RepositoryBranch != nil && site.Type != sitetypes.SiteTypeWordpress && site.Type != sitetypes.SiteTypePhpMyAdmin {
 		updates["repository_branch"] = req.RepositoryBranch
 	}
 
