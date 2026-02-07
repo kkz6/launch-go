@@ -813,6 +813,28 @@ func (p PhpVersion) SocketPath() string {
 	return "/run/php/php" + p.GetVersion() + "-fpm.sock"
 }
 
+// GetPhpMyAdminVersion returns the correct phpMyAdmin version for this PHP version
+func (p PhpVersion) GetPhpMyAdminVersion() string {
+	switch p {
+	case PhpVersion56, PhpVersion70:
+		return "4.9.11"
+	case PhpVersion71:
+		return "5.1.4"
+	default:
+		return "latest"
+	}
+}
+
+// GetPhpMyAdminDownloadURL returns the download URL for the correct phpMyAdmin version
+func (p PhpVersion) GetPhpMyAdminDownloadURL() string {
+	version := p.GetPhpMyAdminVersion()
+	if version == "latest" {
+		return "https://www.phpmyadmin.net/downloads/phpMyAdmin-latest-all-languages.tar.gz"
+	}
+
+	return fmt.Sprintf("https://files.phpmyadmin.net/phpMyAdmin/%s/phpMyAdmin-%s-all-languages.tar.gz", version, version)
+}
+
 func (p *PhpVersion) Scan(value interface{}) error {
 	return enumtypes.Scan(p, value)
 }
