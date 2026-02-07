@@ -159,3 +159,37 @@ type VulnerabilityAuditRequest struct {
 type InstallPhpExtensionRequest struct {
 	Extension string `json:"extension" validate:"required,min=1,max=50"`
 }
+
+// CreateUpstreamRequest represents the request body for creating a load balancer upstream
+type CreateUpstreamRequest struct {
+	Name                 string `json:"name" validate:"required,min=1,max=255"`
+	Address              string `json:"address" validate:"required,hostname_rfc1123"`
+	Port                 int    `json:"port" validate:"omitempty,min=1,max=65535"`
+	TLSSetting           string `json:"tls_setting" validate:"omitempty,oneof=auto custom internal off"`
+	LBPolicy             string `json:"lb_policy" validate:"required,oneof=round_robin least_conn ip_hash first random"`
+	HealthCheckPath      string `json:"health_check_path" validate:"omitempty,max=255"`
+	HealthCheckInterval  string `json:"health_check_interval" validate:"omitempty,max=20"`
+	HealthCheckTimeout   string `json:"health_check_timeout" validate:"omitempty,max=20"`
+	AutoAddExistingSites bool   `json:"auto_add_existing_sites"`
+}
+
+// UpdateUpstreamRequest represents the request body for updating an upstream
+type UpdateUpstreamRequest struct {
+	Name                *string `json:"name" validate:"omitempty,min=1,max=255"`
+	LBPolicy            *string `json:"lb_policy" validate:"omitempty,oneof=round_robin least_conn ip_hash first random"`
+	HealthCheckPath     *string `json:"health_check_path" validate:"omitempty,max=255"`
+	HealthCheckInterval *string `json:"health_check_interval" validate:"omitempty,max=20"`
+	HealthCheckTimeout  *string `json:"health_check_timeout" validate:"omitempty,max=20"`
+}
+
+// AddBackendRequest represents the request body for adding a backend to an upstream
+type AddBackendRequest struct {
+	SiteID string `json:"site_id" validate:"required,ulid"`
+	Port   int    `json:"port" validate:"omitempty,min=1,max=65535"`
+}
+
+// UpdateBackendRequest represents the request body for updating a backend
+type UpdateBackendRequest struct {
+	Port   *int  `json:"port" validate:"omitempty,min=1,max=65535"`
+	IsDown *bool `json:"is_down"`
+}

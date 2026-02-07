@@ -55,6 +55,7 @@ type ServerResponse struct {
 	Features              []string             `json:"features,omitempty"`
 	SitesCount            int                  `json:"sites_count,omitempty"`
 	ServicesCount         int                  `json:"services_count,omitempty"`
+	UpstreamsCount        int                  `json:"upstreams_count,omitempty"`
 }
 
 // ToServerResponse converts a Server model to a ServerResponse DTO
@@ -115,14 +116,15 @@ func ToServerResponse(server *models.Server) ServerResponse {
 			Root:  server.RootUsername(),
 			Local: username,
 		},
-		SSHPort:       sshPort,
-		AutoUpdate:    server.AutoUpdate,
-		Progress:      progress,
-		ProgressStep:  server.ProgressStep,
-		CreatedAt:     createdAt,
-		UpdatedAt:     updatedAt,
-		SitesCount:    int(server.SitesCount),
-		ServicesCount: len(server.Services),
+		SSHPort:        sshPort,
+		AutoUpdate:     server.AutoUpdate,
+		Progress:       progress,
+		ProgressStep:   server.ProgressStep,
+		CreatedAt:      createdAt,
+		UpdatedAt:      updatedAt,
+		SitesCount:     int(server.SitesCount),
+		ServicesCount:  len(server.Services),
+		UpstreamsCount: int(server.UpstreamsCount),
 	}
 
 	resp.ProvisionedAt = pkgdto.FormatTime(server.ProvisionedAt)
@@ -929,6 +931,102 @@ func GetDefaultOpcacheSettings() OpcacheDefaultsResponse {
 type ComposerAuthResponse struct {
 	Path     string      `json:"path"`
 	Contents interface{} `json:"contents"`
+}
+
+// LoadBalancerUpstreamResponse represents the response for a load balancer upstream
+type LoadBalancerUpstreamResponse struct {
+	ID                  string                        `json:"id"`
+	ServerID            string                        `json:"server_id"`
+	TeamID              string                        `json:"team_id"`
+	Name                string                        `json:"name"`
+	Address             string                        `json:"address"`
+	Port                int                           `json:"port"`
+	TLSSetting          string                        `json:"tls_setting"`
+	LBPolicy            string                        `json:"lb_policy"`
+	LBPolicyLabel       string                        `json:"lb_policy_label"`
+	HealthCheckPath     string                        `json:"health_check_path"`
+	HealthCheckInterval string                        `json:"health_check_interval"`
+	HealthCheckTimeout  string                        `json:"health_check_timeout"`
+	InstalledAt         *string                       `json:"installed_at,omitempty"`
+	CreatedAt           string                        `json:"created_at"`
+	UpdatedAt           string                        `json:"updated_at"`
+	Backends            []LoadBalancerBackendResponse `json:"backends,omitempty"`
+}
+
+// LoadBalancerBackendResponse represents the response for a load balancer backend
+type LoadBalancerBackendResponse struct {
+	ID                string  `json:"id"`
+	UpstreamID        string  `json:"upstream_id"`
+	SiteID            string  `json:"site_id"`
+	ServerID          string  `json:"server_id"`
+	Port              int     `json:"port"`
+	IsDown            bool    `json:"is_down"`
+	HealthStatus      string  `json:"health_status"`
+	LastHealthCheckAt *string `json:"last_health_check_at,omitempty"`
+	CreatedAt         string  `json:"created_at"`
+	UpdatedAt         string  `json:"updated_at"`
+}
+
+// CheckDomainResponse represents the response for domain conflict detection
+type CheckDomainResponse struct {
+	Address string            `json:"address"`
+	Exists  bool              `json:"exists"`
+	Sites   []DomainCheckSite `json:"sites,omitempty"`
+	Warning string            `json:"warning,omitempty"`
+}
+
+// DomainCheckSite represents a site found during domain conflict check
+type DomainCheckSite struct {
+	ID       string `json:"id"`
+	ServerID string `json:"server_id"`
+	Address  string `json:"address"`
+	Type     string `json:"type"`
+}
+
+// ToLoadBalancerUpstreamResponse converts a LoadBalancerUpstream model to response
+func ToLoadBalancerUpstreamResponse(upstream *models.LoadBalancerUpstream) LoadBalancerUpstreamResponse {
+	resp := LoadBalancerUpstreamResponse{
+		ID:                  upstream.ID,
+		ServerID:            upstream.ServerID,
+		TeamID:              upstream.TeamID,
+		Name:                upstream.Name,
+		Address:             upstream.Address,
+		Port:                upstream.Port,
+		TLSSetting:          upstream.TLSSetting,
+		LBPolicy:            upstream.LBPolicy.String(),
+		LBPolicyLabel:       upstream.LBPolicyLabel(),
+		HealthCheckPath:     upstream.HealthCheckPath,
+		HealthCheckInterval: upstream.HealthCheckInterval,
+		HealthCheckTimeout:  upstream.HealthCheckTimeout,
+		InstalledAt:         pkgdto.FormatTime(upstream.InstalledAt),
+		CreatedAt:           pkgdto.FormatTimeOrEmpty(upstream.CreatedAt),
+		UpdatedAt:           pkgdto.FormatTimeOrEmpty(upstream.UpdatedAt),
+	}
+
+	if upstream.Backends != nil {
+		resp.Backends = make([]LoadBalancerBackendResponse, len(upstream.Backends))
+		for i := range upstream.Backends {
+			resp.Backends[i] = ToLoadBalancerBackendResponse(&upstream.Backends[i])
+		}
+	}
+
+	return resp
+}
+
+// ToLoadBalancerBackendResponse converts a LoadBalancerBackend model to response
+func ToLoadBalancerBackendResponse(backend *models.LoadBalancerBackend) LoadBalancerBackendResponse {
+	return LoadBalancerBackendResponse{
+		ID:                backend.ID,
+		UpstreamID:        backend.UpstreamID,
+		SiteID:            backend.SiteID,
+		ServerID:          backend.ServerID,
+		Port:              backend.Port,
+		IsDown:            backend.IsDown,
+		HealthStatus:      string(backend.HealthStatus),
+		LastHealthCheckAt: pkgdto.FormatTime(backend.LastHealthCheckAt),
+		CreatedAt:         pkgdto.FormatTimeOrEmpty(backend.CreatedAt),
+		UpdatedAt:         pkgdto.FormatTimeOrEmpty(backend.UpdatedAt),
+	}
 }
 
 // ToServerProviderResponse converts a ServerProvider model to response
