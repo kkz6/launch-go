@@ -703,12 +703,21 @@ func renderPrepareFreshInstallation(opts DeployOptions, repoDir, releaseDir, sha
 		}))
 
 	case sitetypes.SiteTypePhpMyAdmin:
+		phpVersion := sitetypes.PhpVersion84
+		if site.PhpVersion != nil {
+			phpVersion = *site.PhpVersion
+		}
+
 		scriptBuilder.WriteString(templates.MustRender("site", "deployment/prepare_fresh_installation/phpmyadmin.sh", struct {
 			SitePath            string
 			RepositoryDirectory string
+			DownloadURL         string
+			Version             string
 		}{
 			SitePath:            site.Path,
 			RepositoryDirectory: repoDir,
+			DownloadURL:         phpVersion.GetPhpMyAdminDownloadURL(),
+			Version:             phpVersion.GetPhpMyAdminVersion(),
 		}))
 	}
 

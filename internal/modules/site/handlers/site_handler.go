@@ -320,6 +320,12 @@ func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Site settings retrieved", resp)
 }
 
+// GetCreateOptions returns the options for creating a site
+func (h *SiteHandler) GetCreateOptions(c *fiber.Ctx) error {
+	options := dto.GetCreateSiteOptions()
+	return fiberctx.OK(c, "Create options retrieved", options)
+}
+
 // VerifyDomain checks if a domain is connected to the user's team
 func (h *SiteHandler) VerifyDomain(c *fiber.Ctx) error {
 	domain := c.Query("domain")
