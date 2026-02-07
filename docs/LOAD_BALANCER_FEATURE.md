@@ -1763,9 +1763,9 @@ type Handler struct {
 
 ### Phase 11: Frontend - Site Updates ✅
 - [x] Add "Load Balanced" badge to site cards (`ShowSites.vue` "LB" badge)
-- [ ] Create `LoadBalancedBanner` component for site detail
-- [ ] Show upstream info and link to load balancer
-- [ ] Warning about deployment sync
+- [x] Create `LoadBalancedBanner` component for site detail
+- [x] Show upstream info on site detail page
+- [x] Warning about deployment sync (banner includes sync message)
 
 ### Phase 12: Health Checks & Monitoring ✅
 - [x] Implement health check result storage
