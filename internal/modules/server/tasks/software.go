@@ -26,6 +26,8 @@ const (
 	RemovePostgreSQLTaskType    = "server:remove_postgresql"
 	RemovePHPTaskType           = "server:remove_php"
 	RemoveSoftwareTaskType      = "server:remove_software"
+	InstallDockerTaskType       = "server:install_docker"
+	InstallTraefikTaskType      = "server:install_traefik"
 )
 
 // MySQLInstallConfig holds configuration for MySQL installation
@@ -252,6 +254,36 @@ func InstallSoftware(software types.Software) *taskrunner.BaseTask {
 		taskrunner.WithName("Install "+software.Label()),
 		taskrunner.WithScript(script),
 		taskrunner.WithTimeoutSeconds(900),
+	)
+}
+
+// DockerInstallConfig holds configuration for Docker installation
+type DockerInstallConfig struct {
+	Username string
+}
+
+// InstallDocker creates a task to install Docker Engine
+func InstallDocker(config DockerInstallConfig) *taskrunner.BaseTask {
+	script := templates.MustRender("server", "software/install_docker.sh", config)
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Install Docker Engine"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(600),
+	)
+}
+
+// TraefikInstallConfig holds configuration for Traefik installation
+type TraefikInstallConfig struct {
+	AdminEmail string
+}
+
+// InstallTraefik creates a task to install Traefik reverse proxy
+func InstallTraefik(config TraefikInstallConfig) *taskrunner.BaseTask {
+	script := templates.MustRender("server", "software/install_traefik.sh", config)
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Install Traefik"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(300),
 	)
 }
 
