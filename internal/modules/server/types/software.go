@@ -30,8 +30,6 @@ const (
 	SoftwareRedis        Software = "redis"
 	SoftwareSupervisor   Software = "supervisor"
 	SoftwareLaunchAgent  Software = "launch_agent"
-	SoftwareDocker       Software = "docker"
-	SoftwareTraefik      Software = "traefik"
 )
 
 func (s Software) String() string {
@@ -61,8 +59,6 @@ func (s Software) Label() string {
 		SoftwareRedis:        "Redis",
 		SoftwareSupervisor:   "Supervisor",
 		SoftwareLaunchAgent:  "Launch Agent",
-		SoftwareDocker:       "Docker Engine",
-		SoftwareTraefik:      "Traefik",
 	}
 	if label, ok := labels[s]; ok {
 		return label
@@ -77,7 +73,7 @@ func (s Software) IsValid() bool {
 		SoftwareNode21, SoftwareBun, SoftwarePhp56, SoftwarePhp70, SoftwarePhp71,
 		SoftwarePhp72, SoftwarePhp73, SoftwarePhp74, SoftwarePhp80, SoftwarePhp81,
 		SoftwarePhp82, SoftwarePhp83, SoftwarePhp84, SoftwareRedis, SoftwareSupervisor,
-		SoftwareLaunchAgent, SoftwareDocker, SoftwareTraefik:
+		SoftwareLaunchAgent:
 		return true
 	}
 
@@ -107,8 +103,6 @@ func (s Software) GetVersion() string {
 		SoftwareBun:          "latest",
 		SoftwareRedis:        "latest",
 		SoftwareLaunchAgent:  "latest",
-		SoftwareDocker:       "latest",
-		SoftwareTraefik:      "3",
 	}
 	if v, ok := versions[s]; ok {
 		return v
@@ -141,10 +135,6 @@ func (s Software) GetServiceType() ServiceType {
 		return ServiceTypeBun
 	case SoftwareLaunchAgent:
 		return ServiceTypeLaunchAgent
-	case SoftwareDocker:
-		return ServiceTypeDocker
-	case SoftwareTraefik:
-		return ServiceTypeTraefik
 	}
 
 	return ""
@@ -189,10 +179,6 @@ func (s Software) Group() string {
 		return "bun"
 	case SoftwareLaunchAgent:
 		return "launch-agent"
-	case SoftwareDocker:
-		return "docker"
-	case SoftwareTraefik:
-		return "traefik"
 	}
 
 	return ""
@@ -234,7 +220,7 @@ func AllSoftware() []Software {
 		SoftwareNode21, SoftwareBun, SoftwarePhp56, SoftwarePhp70, SoftwarePhp71,
 		SoftwarePhp72, SoftwarePhp73, SoftwarePhp74, SoftwarePhp80, SoftwarePhp81,
 		SoftwarePhp82, SoftwarePhp83, SoftwarePhp84, SoftwareRedis, SoftwareSupervisor,
-		SoftwareLaunchAgent, SoftwareDocker, SoftwareTraefik,
+		SoftwareLaunchAgent,
 	}
 }
 
@@ -405,8 +391,6 @@ func (s Software) InstallTemplateName() string {
 		SoftwareRedis:        "software/install_redis.sh",
 		SoftwareSupervisor:   "software/install_supervisor.sh",
 		SoftwareLaunchAgent:  "software/install_launch_agent.sh",
-		SoftwareDocker:       "software/install_docker.sh",
-		SoftwareTraefik:      "software/install_traefik.sh",
 	}
 
 	if name, ok := templateNames[s]; ok {
@@ -617,8 +601,6 @@ func (s Software) InstallOrder() int {
 		SoftwareRedis:        60,
 		SoftwareNode21:       70,
 		SoftwareBun:          70,
-		SoftwareDocker:       15,
-		SoftwareTraefik:      16,
 		SoftwareLaunchAgent:  100,
 	}
 	if order, ok := orders[s]; ok {

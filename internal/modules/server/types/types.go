@@ -204,7 +204,6 @@ const (
 	ServerTypePhp          ServerType = "php"
 	ServerTypeDatabase     ServerType = "database"
 	ServerTypeLoadBalancer ServerType = "loadbalancer"
-	ServerTypeDocker       ServerType = "docker"
 )
 
 func (t ServerType) String() string {
@@ -216,7 +215,6 @@ func (t ServerType) Label() string {
 		ServerTypePhp:          "PHP Application Server",
 		ServerTypeDatabase:     "Database Server",
 		ServerTypeLoadBalancer: "Load Balancer",
-		ServerTypeDocker:       "Docker Application Server",
 	}
 	if label, ok := labels[t]; ok {
 		return label
@@ -227,7 +225,7 @@ func (t ServerType) Label() string {
 
 func (t ServerType) IsValid() bool {
 	switch t {
-	case ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer, ServerTypeDocker:
+	case ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer:
 		return true
 	}
 
@@ -261,12 +259,6 @@ func (t ServerType) GetFeatures() []ServerFeature {
 			ServerFeatureSSLCertificates,
 			ServerFeatureServices,
 		}
-	case ServerTypeDocker:
-		return []ServerFeature{
-			ServerFeatureDockerServices,
-			ServerFeatureSSLCertificates,
-			ServerFeatureServices,
-		}
 	}
 
 	return nil
@@ -287,7 +279,7 @@ func (t ServerType) GetProcessManager() ProcessManager {
 	switch t {
 	case ServerTypePhp:
 		return ProcessManagerSupervisor
-	case ServerTypeDatabase, ServerTypeLoadBalancer, ServerTypeDocker:
+	case ServerTypeDatabase, ServerTypeLoadBalancer:
 		return ProcessManagerNone
 	}
 
@@ -326,7 +318,7 @@ func ParseServerType(s string) (ServerType, error) {
 }
 
 func AllServerTypes() []ServerType {
-	return []ServerType{ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer, ServerTypeDocker}
+	return []ServerType{ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer}
 }
 
 // =============================================================================
@@ -349,7 +341,6 @@ const (
 	ServerFeatureBackups            ServerFeature = "backups"
 	ServerFeatureServices           ServerFeature = "services"
 	ServerFeatureLoadBalancing      ServerFeature = "load_balancing"
-	ServerFeatureDockerServices     ServerFeature = "docker_services"
 )
 
 func (f ServerFeature) String() string {
@@ -370,7 +361,6 @@ func (f ServerFeature) Label() string {
 		ServerFeatureBackups:            "Backups",
 		ServerFeatureServices:           "Services",
 		ServerFeatureLoadBalancing:      "Load Balancing",
-		ServerFeatureDockerServices:     "Docker Services",
 	}
 	if label, ok := labels[f]; ok {
 		return label
@@ -384,7 +374,7 @@ func (f ServerFeature) IsValid() bool {
 	case ServerFeatureSites, ServerFeatureSSLCertificates, ServerFeaturePhpManagement,
 		ServerFeatureComposer, ServerFeatureDatabaseManagement, ServerFeatureQueueWorkers,
 		ServerFeatureDaemons, ServerFeatureScheduler, ServerFeatureRedis, ServerFeatureBackups,
-		ServerFeatureServices, ServerFeatureLoadBalancing, ServerFeatureDockerServices:
+		ServerFeatureServices, ServerFeatureLoadBalancing:
 		return true
 	}
 
@@ -403,7 +393,6 @@ func (f ServerFeature) NavigationKey() string {
 		ServerFeatureBackups:            "backups",
 		ServerFeatureServices:           "advanced",
 		ServerFeatureLoadBalancing:      "upstreams",
-		ServerFeatureDockerServices:     "docker",
 	}
 	if key, ok := keys[f]; ok {
 		return key
@@ -417,7 +406,7 @@ func AllServerFeatures() []ServerFeature {
 		ServerFeatureSites, ServerFeatureSSLCertificates, ServerFeaturePhpManagement,
 		ServerFeatureComposer, ServerFeatureDatabaseManagement, ServerFeatureQueueWorkers,
 		ServerFeatureDaemons, ServerFeatureScheduler, ServerFeatureRedis, ServerFeatureBackups,
-		ServerFeatureServices, ServerFeatureLoadBalancing, ServerFeatureDockerServices,
+		ServerFeatureServices, ServerFeatureLoadBalancing,
 	}
 }
 
@@ -439,8 +428,6 @@ const (
 	ServiceTypeNode        ServiceType = "node"
 	ServiceTypeBun         ServiceType = "bun"
 	ServiceTypeLaunchAgent ServiceType = "launch_agent"
-	ServiceTypeDocker      ServiceType = "docker"
-	ServiceTypeTraefik     ServiceType = "traefik"
 )
 
 func (s ServiceType) String() string {
@@ -459,8 +446,6 @@ func (s ServiceType) Label() string {
 		ServiceTypeNode:        "Node.js",
 		ServiceTypeBun:         "Bun",
 		ServiceTypeLaunchAgent: "Launch Agent",
-		ServiceTypeDocker:      "Docker",
-		ServiceTypeTraefik:     "Traefik",
 	}
 	if label, ok := labels[s]; ok {
 		return label
@@ -473,8 +458,7 @@ func (s ServiceType) IsValid() bool {
 	switch s {
 	case ServiceTypePhp, ServiceTypeMySQL, ServiceTypePostgreSQL,
 		ServiceTypeSupervisor, ServiceTypeRedis, ServiceTypeCaddy,
-		ServiceTypeComposer, ServiceTypeNode, ServiceTypeBun, ServiceTypeLaunchAgent,
-		ServiceTypeDocker, ServiceTypeTraefik:
+		ServiceTypeComposer, ServiceTypeNode, ServiceTypeBun, ServiceTypeLaunchAgent:
 		return true
 	}
 
@@ -542,7 +526,6 @@ func AllServiceTypes() []ServiceType {
 		ServiceTypePhp, ServiceTypeMySQL, ServiceTypePostgreSQL,
 		ServiceTypeSupervisor, ServiceTypeRedis, ServiceTypeCaddy,
 		ServiceTypeComposer, ServiceTypeNode, ServiceTypeBun, ServiceTypeLaunchAgent,
-		ServiceTypeDocker, ServiceTypeTraefik,
 	}
 }
 

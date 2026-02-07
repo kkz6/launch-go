@@ -213,18 +213,6 @@ func getSoftwareStack(server *models.Server) []types.Software {
 		}
 	}
 
-	// For docker servers, use Docker + Traefik stack
-	if server.Type != nil && types.ServerType(*server.Type) == types.ServerTypeDocker {
-		if len(stack) == 0 {
-			stack = []types.Software{
-				types.SoftwareDocker,
-				types.SoftwareTraefik,
-				types.SoftwareLaunchAgent,
-			}
-		}
-		return types.SortSoftwareStack(stack)
-	}
-
 	// If no services found (e.g., not preloaded), fall back to defaults
 	// Note: These match createPhpServerServices() - Supervisor, Caddy, PHP, Composer, MySQL
 	// Redis is NOT included by default (matches Laravel PhpServerType behavior)
