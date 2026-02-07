@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/hibiken/asynq"
@@ -13,6 +14,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
@@ -217,11 +219,17 @@ func (s *LoadBalancerService) DeleteUpstream(ctx context.Context, serverID, team
 		return err
 	}
 
-	// Clear load_balanced_upstream_id on all associated sites
-	if s.siteReader != nil {
-		for _, backend := range upstream.Backends {
+	// Clear load_balanced_upstream_id on all associated sites and restore their Caddyfiles
+	for _, backend := range upstream.Backends {
+		if s.siteReader != nil {
 			_ = s.siteReader.UpdateLoadBalancedUpstreamID(ctx, backend.SiteID, nil)
 		}
+
+		// Dispatch site Caddyfile update (restores normal TLS mode)
+		s.dispatchSiteCaddyfileUpdate(backend.SiteID)
+
+		// Remove firewall rule on backend server
+		s.dispatchRemoveLBFirewallRule(upstream, backend.ServerID, backend.Port)
 	}
 
 	// Delete all backends first
@@ -297,6 +305,12 @@ func (s *LoadBalancerService) AddBackend(ctx context.Context, serverID, teamID, 
 	s.DispatchTask("UpdateLBCaddyfile", func() (*asynq.Task, error) {
 		return jobs.NewUpdateLBCaddyfileTask(serverID, upstreamID)
 	}, "server_id", serverID, "upstream_id", upstreamID)
+
+	// Dispatch backend site Caddyfile update (switches to port 8080 mode)
+	s.dispatchSiteCaddyfileUpdate(req.SiteID)
+
+	// Dispatch firewall rule to allow LB traffic on backend server
+	s.dispatchAddLBFirewallRule(upstream, site.ServerID, port)
 
 	// Broadcast backend added event
 	s.BroadcastToTeam(teamID, broadcast.BackendAdded, map[string]any{
@@ -389,7 +403,8 @@ func (s *LoadBalancerService) UpdateBackend(ctx context.Context, serverID, teamI
 
 // RemoveBackend removes a site from an upstream
 func (s *LoadBalancerService) RemoveBackend(ctx context.Context, serverID, teamID, upstreamID, backendID string) error {
-	if _, err := s.GetUpstream(ctx, serverID, teamID, upstreamID); err != nil {
+	upstream, err := s.GetUpstream(ctx, serverID, teamID, upstreamID)
+	if err != nil {
 		return err
 	}
 
@@ -415,6 +430,12 @@ func (s *LoadBalancerService) RemoveBackend(ctx context.Context, serverID, teamI
 	s.DispatchTask("UpdateLBCaddyfile", func() (*asynq.Task, error) {
 		return jobs.NewUpdateLBCaddyfileTask(serverID, upstreamID)
 	}, "server_id", serverID, "upstream_id", upstreamID)
+
+	// Dispatch backend site Caddyfile update (restores normal TLS mode)
+	s.dispatchSiteCaddyfileUpdate(backend.SiteID)
+
+	// Dispatch firewall rule removal on the backend server
+	s.dispatchRemoveLBFirewallRule(upstream, backend.ServerID, backend.Port)
 
 	// Broadcast backend removed event
 	s.BroadcastToTeam(teamID, broadcast.BackendRemoved, map[string]any{
@@ -516,4 +537,55 @@ func (s *LoadBalancerService) ListBackends(ctx context.Context, serverID, teamID
 // isLoadBalancer checks if a server is a load balancer type
 func (s *LoadBalancerService) isLoadBalancer(server *models.Server) bool {
 	return server.Type != nil && types.ServerType(*server.Type) == types.ServerTypeLoadBalancer
+}
+
+// dispatchSiteCaddyfileUpdate dispatches a site:update_caddyfile job to regenerate
+// the backend site's Caddyfile (switches to/from load-balanced port 8080 mode).
+func (s *LoadBalancerService) dispatchSiteCaddyfileUpdate(siteID string) {
+	type sitePayload struct {
+		SiteID string `json:"site_id"`
+	}
+
+	s.DispatchTask("UpdateBackendSiteCaddyfile", func() (*asynq.Task, error) {
+		data, err := json.Marshal(sitePayload{SiteID: siteID})
+		if err != nil {
+			return nil, err
+		}
+		return asynq.NewTask("site:update_caddyfile", data,
+			asynq.TaskID(pkgjobs.Dedup("update_caddyfile", siteID)),
+		), nil
+	}, "site_id", siteID)
+}
+
+// dispatchAddLBFirewallRule dispatches a firewall rule job to allow LB traffic on the backend server.
+func (s *LoadBalancerService) dispatchAddLBFirewallRule(upstream *models.LoadBalancerUpstream, backendServerID string, port int) {
+	lbIP := s.getUpstreamServerIP(upstream)
+	if lbIP == "" {
+		return
+	}
+
+	s.DispatchTask("AddLBFirewallRule", func() (*asynq.Task, error) {
+		return jobs.NewAddLBFirewallRuleTask(backendServerID, lbIP, port)
+	}, "backend_server_id", backendServerID, "lb_ip", lbIP, "port", port)
+}
+
+// dispatchRemoveLBFirewallRule dispatches a firewall rule removal job on the backend server.
+func (s *LoadBalancerService) dispatchRemoveLBFirewallRule(upstream *models.LoadBalancerUpstream, backendServerID string, port int) {
+	lbIP := s.getUpstreamServerIP(upstream)
+	if lbIP == "" {
+		return
+	}
+
+	s.DispatchTask("RemoveLBFirewallRule", func() (*asynq.Task, error) {
+		return jobs.NewRemoveLBFirewallRuleTask(backendServerID, lbIP, port)
+	}, "backend_server_id", backendServerID, "lb_ip", lbIP, "port", port)
+}
+
+// getUpstreamServerIP returns the load balancer server's public IPv4 address.
+func (s *LoadBalancerService) getUpstreamServerIP(upstream *models.LoadBalancerUpstream) string {
+	if upstream.Server != nil && upstream.Server.PublicIPv4 != nil {
+		return *upstream.Server.PublicIPv4
+	}
+
+	return ""
 }
