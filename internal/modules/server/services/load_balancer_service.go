@@ -4,11 +4,16 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
 var (
@@ -20,13 +25,15 @@ var (
 
 // LoadBalancerService provides business logic for load balancer operations
 type LoadBalancerService struct {
+	service.Base
 	repos      contracts.RepositoryRegistry
 	siteReader contracts.SiteReader
 }
 
 // NewLoadBalancerService creates a new LoadBalancerService
-func NewLoadBalancerService(repos contracts.RepositoryRegistry, siteReader contracts.SiteReader) *LoadBalancerService {
+func NewLoadBalancerService(deps service.Dependencies, repos contracts.RepositoryRegistry, siteReader contracts.SiteReader) *LoadBalancerService {
 	return &LoadBalancerService{
+		Base:       service.NewBase(deps),
 		repos:      repos,
 		siteReader: siteReader,
 	}
@@ -140,6 +147,18 @@ func (s *LoadBalancerService) CreateUpstream(ctx context.Context, serverID, team
 		}
 	}
 
+	// Dispatch job to install upstream Caddyfile on the LB server
+	s.DispatchTask("InstallLBCaddyfile", func() (*asynq.Task, error) {
+		return jobs.NewInstallLBCaddyfileTask(serverID, upstream.ID)
+	}, "server_id", serverID, "upstream_id", upstream.ID)
+
+	// Broadcast upstream created event
+	s.BroadcastToTeam(teamID, broadcast.UpstreamCreated, map[string]any{
+		"upstream_id": upstream.ID,
+		"server_id":   serverID,
+		"address":     upstream.Address,
+	})
+
 	// Reload with backends
 	return s.repos.LoadBalancerUpstream().FindByIDWithBackends(ctx, upstream.ID)
 }
@@ -177,6 +196,17 @@ func (s *LoadBalancerService) UpdateUpstream(ctx context.Context, serverID, team
 		return nil, err
 	}
 
+	// Dispatch job to update upstream Caddyfile (policy/health check changes affect config)
+	s.DispatchTask("UpdateLBCaddyfile", func() (*asynq.Task, error) {
+		return jobs.NewUpdateLBCaddyfileTask(serverID, upstreamID)
+	}, "server_id", serverID, "upstream_id", upstreamID)
+
+	// Broadcast upstream updated event
+	s.BroadcastToTeam(teamID, broadcast.UpstreamUpdated, map[string]any{
+		"upstream_id": upstreamID,
+		"server_id":   serverID,
+	})
+
 	return s.repos.LoadBalancerUpstream().FindByIDWithBackends(ctx, upstreamID)
 }
 
@@ -203,6 +233,17 @@ func (s *LoadBalancerService) DeleteUpstream(ctx context.Context, serverID, team
 	if err := s.repos.LoadBalancerUpstream().Delete(ctx, upstreamID); err != nil {
 		return fmt.Errorf("failed to delete upstream: %w", err)
 	}
+
+	// Dispatch job to remove upstream Caddyfile from the LB server
+	s.DispatchTask("RemoveLBCaddyfile", func() (*asynq.Task, error) {
+		return jobs.NewRemoveLBCaddyfileTask(serverID, upstreamID)
+	}, "server_id", serverID, "upstream_id", upstreamID)
+
+	// Broadcast upstream deleted event
+	s.BroadcastToTeam(teamID, broadcast.UpstreamDeleted, map[string]any{
+		"upstream_id": upstreamID,
+		"server_id":   serverID,
+	})
 
 	return nil
 }
@@ -247,7 +288,25 @@ func (s *LoadBalancerService) AddBackend(ctx context.Context, serverID, teamID, 
 		port = 8080
 	}
 
-	return s.addBackendInternal(ctx, upstream, req.SiteID, site.ServerID, port)
+	backend, err := s.addBackendInternal(ctx, upstream, req.SiteID, site.ServerID, port)
+	if err != nil {
+		return nil, err
+	}
+
+	// Dispatch job to update LB Caddyfile with new backend
+	s.DispatchTask("UpdateLBCaddyfile", func() (*asynq.Task, error) {
+		return jobs.NewUpdateLBCaddyfileTask(serverID, upstreamID)
+	}, "server_id", serverID, "upstream_id", upstreamID)
+
+	// Broadcast backend added event
+	s.BroadcastToTeam(teamID, broadcast.BackendAdded, map[string]any{
+		"backend_id":  backend.ID,
+		"upstream_id": upstreamID,
+		"server_id":   serverID,
+		"site_id":     req.SiteID,
+	})
+
+	return backend, nil
 }
 
 // addBackendInternal creates a backend record and marks the site as load balanced
@@ -313,6 +372,18 @@ func (s *LoadBalancerService) UpdateBackend(ctx context.Context, serverID, teamI
 		return nil, err
 	}
 
+	// Dispatch job to update LB Caddyfile (port/down status affects config)
+	s.DispatchTask("UpdateLBCaddyfile", func() (*asynq.Task, error) {
+		return jobs.NewUpdateLBCaddyfileTask(serverID, upstreamID)
+	}, "server_id", serverID, "upstream_id", upstreamID)
+
+	// Broadcast backend updated event
+	s.BroadcastToTeam(teamID, broadcast.BackendUpdated, map[string]any{
+		"backend_id":  backendID,
+		"upstream_id": upstreamID,
+		"server_id":   serverID,
+	})
+
 	return s.repos.LoadBalancerBackend().FindByID(ctx, backendID)
 }
 
@@ -336,7 +407,23 @@ func (s *LoadBalancerService) RemoveBackend(ctx context.Context, serverID, teamI
 		_ = s.siteReader.UpdateLoadBalancedUpstreamID(ctx, backend.SiteID, nil)
 	}
 
-	return s.repos.LoadBalancerBackend().Delete(ctx, backendID)
+	if err := s.repos.LoadBalancerBackend().Delete(ctx, backendID); err != nil {
+		return err
+	}
+
+	// Dispatch job to update LB Caddyfile without this backend
+	s.DispatchTask("UpdateLBCaddyfile", func() (*asynq.Task, error) {
+		return jobs.NewUpdateLBCaddyfileTask(serverID, upstreamID)
+	}, "server_id", serverID, "upstream_id", upstreamID)
+
+	// Broadcast backend removed event
+	s.BroadcastToTeam(teamID, broadcast.BackendRemoved, map[string]any{
+		"backend_id":  backendID,
+		"upstream_id": upstreamID,
+		"server_id":   serverID,
+	})
+
+	return nil
 }
 
 // ToggleBackendDown toggles a backend's down status
@@ -354,11 +441,29 @@ func (s *LoadBalancerService) ToggleBackendDown(ctx context.Context, serverID, t
 		return nil, fiberutil.NotFound()
 	}
 
+	newIsDown := !backend.IsDown
 	if err := s.repos.LoadBalancerBackend().Update(ctx, backendID, map[string]any{
-		"is_down": !backend.IsDown,
+		"is_down": newIsDown,
 	}); err != nil {
 		return nil, err
 	}
+
+	// Dispatch job to update LB Caddyfile (down status affects which backends are active)
+	s.DispatchTask("UpdateLBCaddyfile", func() (*asynq.Task, error) {
+		return jobs.NewUpdateLBCaddyfileTask(serverID, upstreamID)
+	}, "server_id", serverID, "upstream_id", upstreamID)
+
+	// Broadcast appropriate event
+	event := broadcast.BackendMarkedDown
+	if !newIsDown {
+		event = broadcast.BackendMarkedUp
+	}
+	s.BroadcastToTeam(teamID, event, map[string]any{
+		"backend_id":  backendID,
+		"upstream_id": upstreamID,
+		"server_id":   serverID,
+		"is_down":     newIsDown,
+	})
 
 	return s.repos.LoadBalancerBackend().FindByID(ctx, backendID)
 }

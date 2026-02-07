@@ -24,7 +24,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	handler := handlers.NewHandler(m.service, taskRunnerDeps, siteCounter, m.repos.LoadBalancerUpstream())
 
 	// Create LB service and handler
-	lbService := services.NewLoadBalancerService(m.repos, m.siteReader)
+	lbService := services.NewLoadBalancerService(deps.ServiceDeps(), m.repos, m.siteReader)
 	lbHandler := handlers.NewLoadBalancerHandler(lbService)
 
 	m.registerServerProviderRoutes(router, authMiddleware, handler)

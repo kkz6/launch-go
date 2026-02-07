@@ -130,7 +130,7 @@ func NewInstallLBCaddyfileTask(serverID, upstreamID string) (*asynq.Task, error)
 	return pkgjobs.Task(TypeInstallLBCaddyfile, InstallLBCaddyfilePayload{
 		ServerID:   serverID,
 		UpstreamID: upstreamID,
-	}, asynq.TaskID(pkgjobs.Dedup("install_lb_caddyfile", serverID, upstreamID)))
+	}, asynq.TaskID(pkgjobs.Dedup("install_lb_caddyfile", serverID, upstreamID)), asynq.MaxRetry(3))
 }
 
 // --- Update LB Caddyfile ---
@@ -208,7 +208,7 @@ func NewUpdateLBCaddyfileTask(serverID, upstreamID string) (*asynq.Task, error) 
 	return pkgjobs.Task(TypeUpdateLBCaddyfile, UpdateLBCaddyfilePayload{
 		ServerID:   serverID,
 		UpstreamID: upstreamID,
-	}, asynq.TaskID(pkgjobs.Dedup("update_lb_caddyfile", serverID, upstreamID)))
+	}, asynq.TaskID(pkgjobs.Dedup("update_lb_caddyfile", serverID, upstreamID)), asynq.MaxRetry(3))
 }
 
 // --- Remove LB Caddyfile ---
@@ -317,5 +317,5 @@ func NewRemoveLBCaddyfileTask(serverID, upstreamID string) (*asynq.Task, error) 
 	return pkgjobs.Task(TypeRemoveLBCaddyfile, RemoveLBCaddyfilePayload{
 		ServerID:   serverID,
 		UpstreamID: upstreamID,
-	}, asynq.TaskID(pkgjobs.Dedup("remove_lb_caddyfile", serverID, upstreamID)))
+	}, asynq.TaskID(pkgjobs.Dedup("remove_lb_caddyfile", serverID, upstreamID)), asynq.MaxRetry(3))
 }
