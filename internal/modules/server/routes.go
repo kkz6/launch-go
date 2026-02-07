@@ -20,7 +20,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 		Broadcaster: deps.WebSocket,
 		Notifier:    deps.Notifier,
 	}
-	handler := handlers.NewHandler(m.service, taskRunnerDeps, siteCounter)
+	handler := handlers.NewHandler(m.service, taskRunnerDeps, siteCounter, m.repos.LoadBalancerUpstream())
 
 	m.registerServerProviderRoutes(router, authMiddleware, handler)
 	m.registerServerRoutes(router, authMiddleware, handler)

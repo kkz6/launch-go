@@ -21,6 +21,8 @@ type Registry struct {
 	metric         *MetricRepository
 	serverProvider *ServerProviderRepository
 	database       *DatabaseRepository
+	lbUpstream     *LoadBalancerUpstreamRepository
+	lbBackend      *LoadBalancerBackendRepository
 }
 
 // NewRegistry creates all repositories
@@ -37,6 +39,8 @@ func NewRegistry(db *gorm.DB) *Registry {
 		metric:         NewMetricRepository(db),
 		serverProvider: NewServerProviderRepository(db),
 		database:       NewDatabaseRepository(db),
+		lbUpstream:     NewLoadBalancerUpstreamRepository(db),
+		lbBackend:      NewLoadBalancerBackendRepository(db),
 	}
 }
 
@@ -69,6 +73,16 @@ func (r *Registry) ServerProvider() contracts.ServerProviderRepository { return 
 
 // Database returns the database repository
 func (r *Registry) Database() contracts.DatabaseRepository { return r.database }
+
+// LoadBalancerUpstream returns the load balancer upstream repository
+func (r *Registry) LoadBalancerUpstream() contracts.LoadBalancerUpstreamRepository {
+	return r.lbUpstream
+}
+
+// LoadBalancerBackend returns the load balancer backend repository
+func (r *Registry) LoadBalancerBackend() contracts.LoadBalancerBackendRepository {
+	return r.lbBackend
+}
 
 // DB returns the underlying database connection for activity logging
 func (r *Registry) DB() *gorm.DB { return r.db }
