@@ -61,6 +61,7 @@ type Site struct {
 	HookBeforeMakingCurrent      *string                `gorm:"column:hook_before_making_current;type:longtext" json:"hook_before_making_current,omitempty"`
 	HookAfterMakingCurrent       *string                `gorm:"column:hook_after_making_current;type:longtext" json:"hook_after_making_current,omitempty"`
 	ConnectedDomainID            *string                `gorm:"column:connected_domain_id;type:char(26);index" json:"connected_domain_id,omitempty"`
+	LoadBalancedUpstreamID       *string                `gorm:"column:load_balanced_upstream_id;type:char(26);index" json:"load_balanced_upstream_id,omitempty"`
 
 	// Relations
 	Deployments      []Deployment  `gorm:"foreignKey:SiteID;references:ID" json:"deployments,omitempty"`
@@ -101,6 +102,11 @@ func (s *Site) GetPort() int {
 	}
 
 	return s.TLSSetting.GetPort()
+}
+
+// IsLoadBalanced returns true if this site is behind a load balancer
+func (s *Site) IsLoadBalanced() bool {
+	return s.LoadBalancedUpstreamID != nil && *s.LoadBalancedUpstreamID != ""
 }
 
 // StartsWithWww checks if the address starts with www.

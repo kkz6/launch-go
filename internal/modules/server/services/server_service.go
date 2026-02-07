@@ -453,6 +453,8 @@ func (s *Service) createServicesForServer(ctx context.Context, server *models.Se
 	switch serverType {
 	case types.ServerTypeDatabase:
 		return s.createDatabaseServerServices(ctx, server, req)
+	case types.ServerTypeLoadBalancer:
+		return s.createLoadBalancerServerServices(ctx, server, req)
 	default:
 		// Default to PHP server type
 		return s.createPhpServerServices(ctx, server, req)
@@ -546,6 +548,23 @@ func (s *Service) createDatabaseServerServices(ctx context.Context, server *mode
 	}
 
 	// Add Launch Agent if install_agent is not explicitly false
+	if req.InstallAgent == nil || *req.InstallAgent {
+		if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent); err != nil {
+			return fmt.Errorf("failed to create Launch Agent service: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// createLoadBalancerServerServices creates services for a Load Balancer server type
+func (s *Service) createLoadBalancerServerServices(ctx context.Context, server *models.Server, req *dto.CreateServerRequest) error {
+	// Load balancer only needs Caddy configured for reverse proxy
+	if err := s.createService(ctx, server.ID, types.SoftwareCaddy2LB); err != nil {
+		return fmt.Errorf("failed to create Caddy LB service: %w", err)
+	}
+
+	// Add Launch Agent if not explicitly disabled
 	if req.InstallAgent == nil || *req.InstallAgent {
 		if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent); err != nil {
 			return fmt.Errorf("failed to create Launch Agent service: %w", err)

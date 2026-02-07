@@ -5,7 +5,7 @@ type CreateServerRequest struct {
 	Name            string   `json:"name" validate:"required,min=2,max=255"`
 	Description     *string  `json:"description" validate:"omitempty,max=1000"`
 	Provider        string   `json:"provider" validate:"required,oneof=digitalocean hetzner linode vultr aws custom_server"`
-	Type            string   `json:"type" validate:"required,oneof=php database"`
+	Type            string   `json:"type" validate:"required,oneof=php database loadbalancer"`
 	OperatingSystem string   `json:"operating_system" validate:"omitempty,oneof=ubuntu_20 ubuntu_22 ubuntu_24"`
 	Region          string   `json:"region" validate:"required_unless=Provider custom_server"`
 	Size            string   `json:"size" validate:"required_unless=Provider custom_server"`
@@ -158,4 +158,39 @@ type VulnerabilityAuditRequest struct {
 // InstallPhpExtensionRequest represents the request body for installing a PHP extension
 type InstallPhpExtensionRequest struct {
 	Extension string `json:"extension" validate:"required,min=1,max=50"`
+}
+
+// CreateUpstreamRequest represents the request body for creating a load balancer upstream
+type CreateUpstreamRequest struct {
+	Name                 string `json:"name" validate:"required,min=1,max=255"`
+	Address              string `json:"address" validate:"required,hostname_rfc1123"`
+	Port                 int    `json:"port" validate:"omitempty,min=1,max=65535"`
+	TLSSetting           string `json:"tls_setting" validate:"omitempty,oneof=auto custom internal off"`
+	LBPolicy             string `json:"lb_policy" validate:"required,oneof=round_robin least_conn ip_hash first random"`
+	HealthCheckPath      string `json:"health_check_path" validate:"omitempty,startswith=/,max=255,excludesall=\n\r"`
+	HealthCheckInterval  string `json:"health_check_interval" validate:"omitempty,max=20,oneof=5s 10s 15s 20s 30s 45s 1m 2m 5m"`
+	HealthCheckTimeout   string `json:"health_check_timeout" validate:"omitempty,max=20,oneof=5s 10s 15s 20s 30s 45s 1m 2m 5m"`
+	AutoAddExistingSites bool   `json:"auto_add_existing_sites"`
+}
+
+// UpdateUpstreamRequest represents the request body for updating an upstream
+type UpdateUpstreamRequest struct {
+	Name                *string `json:"name" validate:"omitempty,min=1,max=255"`
+	TLSSetting          *string `json:"tls_setting" validate:"omitempty,oneof=auto custom internal off"`
+	LBPolicy            *string `json:"lb_policy" validate:"omitempty,oneof=round_robin least_conn ip_hash first random"`
+	HealthCheckPath     *string `json:"health_check_path" validate:"omitempty,startswith=/,max=255,excludesall=\n\r"`
+	HealthCheckInterval *string `json:"health_check_interval" validate:"omitempty,max=20,oneof=5s 10s 15s 20s 30s 45s 1m 2m 5m"`
+	HealthCheckTimeout  *string `json:"health_check_timeout" validate:"omitempty,max=20,oneof=5s 10s 15s 20s 30s 45s 1m 2m 5m"`
+}
+
+// AddBackendRequest represents the request body for adding a backend to an upstream
+type AddBackendRequest struct {
+	SiteID string `json:"site_id" validate:"required,ulid"`
+	Port   int    `json:"port" validate:"omitempty,min=1,max=65535"`
+}
+
+// UpdateBackendRequest represents the request body for updating a backend
+type UpdateBackendRequest struct {
+	Port   *int  `json:"port" validate:"omitempty,min=1,max=65535"`
+	IsDown *bool `json:"is_down"`
 }

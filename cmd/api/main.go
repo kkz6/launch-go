@@ -209,6 +209,7 @@ func (a *Application) registerModules() {
 	// Wire cross-module dependencies
 	siteModule.SetDomainRepository(dnsModule.Repos().Domain())
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
+	serverModule.SetSiteReader(siteModule.SiteReader())
 
 	// Register all modules with the kernel
 	a.kernel.

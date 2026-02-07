@@ -10,6 +10,7 @@ type Software string
 
 const (
 	SoftwareCaddy2       Software = "caddy2"
+	SoftwareCaddy2LB     Software = "caddy2_lb"
 	SoftwareComposer2    Software = "composer2"
 	SoftwareMySQL80      Software = "mysql80"
 	SoftwarePostgreSQL16 Software = "postgresql16"
@@ -38,6 +39,7 @@ func (s Software) String() string {
 func (s Software) Label() string {
 	labels := map[Software]string{
 		SoftwareCaddy2:       "Caddy 2",
+		SoftwareCaddy2LB:     "Caddy 2 (Load Balancer)",
 		SoftwareComposer2:    "Composer 2",
 		SoftwareMySQL80:      "MySQL 8.0",
 		SoftwarePostgreSQL16: "PostgreSQL 16",
@@ -67,7 +69,7 @@ func (s Software) Label() string {
 
 func (s Software) IsValid() bool {
 	switch s {
-	case SoftwareCaddy2, SoftwareComposer2, SoftwareMySQL80, SoftwarePostgreSQL16,
+	case SoftwareCaddy2, SoftwareCaddy2LB, SoftwareComposer2, SoftwareMySQL80, SoftwarePostgreSQL16,
 		SoftwareNode21, SoftwareBun, SoftwarePhp56, SoftwarePhp70, SoftwarePhp71,
 		SoftwarePhp72, SoftwarePhp73, SoftwarePhp74, SoftwarePhp80, SoftwarePhp81,
 		SoftwarePhp82, SoftwarePhp83, SoftwarePhp84, SoftwareRedis, SoftwareSupervisor,
@@ -96,6 +98,7 @@ func (s Software) GetVersion() string {
 		SoftwareSupervisor:   "latest",
 		SoftwareComposer2:    "2.0",
 		SoftwareCaddy2:       "2.0",
+		SoftwareCaddy2LB:     "2.0",
 		SoftwareNode21:       "21",
 		SoftwareBun:          "latest",
 		SoftwareRedis:        "latest",
@@ -122,7 +125,7 @@ func (s Software) GetServiceType() ServiceType {
 		return ServiceTypeSupervisor
 	case SoftwareRedis:
 		return ServiceTypeRedis
-	case SoftwareCaddy2:
+	case SoftwareCaddy2, SoftwareCaddy2LB:
 		return ServiceTypeCaddy
 	case SoftwareComposer2:
 		return ServiceTypeComposer
@@ -166,7 +169,7 @@ func (s Software) Group() string {
 		return "supervisor"
 	case SoftwareRedis:
 		return "redis"
-	case SoftwareCaddy2:
+	case SoftwareCaddy2, SoftwareCaddy2LB:
 		return "caddy"
 	case SoftwareComposer2:
 		return "composer"
@@ -213,7 +216,7 @@ func ParseSoftware(str string) (Software, error) {
 
 func AllSoftware() []Software {
 	return []Software{
-		SoftwareCaddy2, SoftwareComposer2, SoftwareMySQL80, SoftwarePostgreSQL16,
+		SoftwareCaddy2, SoftwareCaddy2LB, SoftwareComposer2, SoftwareMySQL80, SoftwarePostgreSQL16,
 		SoftwareNode21, SoftwareBun, SoftwarePhp56, SoftwarePhp70, SoftwarePhp71,
 		SoftwarePhp72, SoftwarePhp73, SoftwarePhp74, SoftwarePhp80, SoftwarePhp81,
 		SoftwarePhp82, SoftwarePhp83, SoftwarePhp84, SoftwareRedis, SoftwareSupervisor,
@@ -354,6 +357,7 @@ func (s Software) LogPath() string {
 		SoftwarePhp83:        "/var/log/php8.3-fpm.log",
 		SoftwarePhp84:        "/var/log/php8.4-fpm.log",
 		SoftwareCaddy2:       "/var/log/caddy/access.log",
+		SoftwareCaddy2LB:     "/var/log/caddy/access.log",
 		SoftwareSupervisor:   "/var/log/supervisor/supervisord.log",
 	}
 
@@ -378,6 +382,7 @@ func (s Software) InstallTemplateName() string {
 
 	templateNames := map[Software]string{
 		SoftwareCaddy2:       "software/install_caddy2.sh",
+		SoftwareCaddy2LB:     "software/install_caddy2_loadbalancer.sh",
 		SoftwareComposer2:    "software/install_composer2.sh",
 		SoftwareMySQL80:      "software/install_mysql80.sh",
 		SoftwarePostgreSQL16: "software/install_postgresql16.sh",
@@ -578,6 +583,7 @@ func (s Software) InstallOrder() int {
 	orders := map[Software]int{
 		SoftwareSupervisor:   10,
 		SoftwareCaddy2:       20,
+		SoftwareCaddy2LB:     20,
 		SoftwarePhp56:        30,
 		SoftwarePhp70:        30,
 		SoftwarePhp71:        30,

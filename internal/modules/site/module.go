@@ -6,6 +6,7 @@ import (
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
+	servercontracts "github.com/kkz6/launch-go/internal/modules/server/contracts"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/adapters"
@@ -115,6 +116,11 @@ func (m *Module) SetCronCreator(creator contracts.CronCreator) {
 // SetDatabaseManager sets the database manager for cross-module operations
 func (m *Module) SetDatabaseManager(manager contracts.DatabaseManager) {
 	m.databaseManager = manager
+}
+
+// SiteReader returns a SiteReader adapter for cross-module access from the server module
+func (m *Module) SiteReader() servercontracts.SiteReader {
+	return adapters.NewSiteReaderAdapter(m.Deps().DB)
 }
 
 // createServices creates all services needed for route handlers

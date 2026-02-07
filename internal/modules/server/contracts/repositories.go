@@ -154,6 +154,32 @@ type DatabaseRepository interface {
 	DeleteUser(ctx context.Context, id string) error
 }
 
+// LoadBalancerUpstreamRepository defines the interface for LB upstream database operations
+type LoadBalancerUpstreamRepository interface {
+	Create(ctx context.Context, upstream *models.LoadBalancerUpstream) error
+	FindByID(ctx context.Context, id string) (*models.LoadBalancerUpstream, error)
+	FindByIDWithBackends(ctx context.Context, id string) (*models.LoadBalancerUpstream, error)
+	FindByServerID(ctx context.Context, serverID string) ([]models.LoadBalancerUpstream, error)
+	FindByServerIDAndAddress(ctx context.Context, serverID, address string) (*models.LoadBalancerUpstream, error)
+	CountByServerID(ctx context.Context, serverID string) (int64, error)
+	Update(ctx context.Context, id string, updates map[string]any) error
+	Delete(ctx context.Context, id string) error
+}
+
+// LoadBalancerBackendRepository defines the interface for LB backend database operations
+type LoadBalancerBackendRepository interface {
+	Create(ctx context.Context, backend *models.LoadBalancerBackend) error
+	FindByID(ctx context.Context, id string) (*models.LoadBalancerBackend, error)
+	FindByIDWithRelations(ctx context.Context, id string) (*models.LoadBalancerBackend, error)
+	FindByUpstreamID(ctx context.Context, upstreamID string) ([]models.LoadBalancerBackend, error)
+	FindBySiteID(ctx context.Context, siteID string) ([]models.LoadBalancerBackend, error)
+	FindByUpstreamAndSite(ctx context.Context, upstreamID, siteID string) (*models.LoadBalancerBackend, error)
+	CountByUpstreamID(ctx context.Context, upstreamID string) (int64, error)
+	Update(ctx context.Context, id string, updates map[string]any) error
+	Delete(ctx context.Context, id string) error
+	DeleteByUpstreamID(ctx context.Context, upstreamID string) error
+}
+
 // RepositoryRegistry provides access to all repositories
 type RepositoryRegistry interface {
 	Server() ServerRepository
@@ -166,5 +192,7 @@ type RepositoryRegistry interface {
 	Metric() MetricRepository
 	ServerProvider() ServerProviderRepository
 	Database() DatabaseRepository
+	LoadBalancerUpstream() LoadBalancerUpstreamRepository
+	LoadBalancerBackend() LoadBalancerBackendRepository
 	DB() *gorm.DB // Returns the underlying database connection for activity logging
 }
