@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/server/handlers"
+	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
@@ -22,8 +23,12 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	}
 	handler := handlers.NewHandler(m.service, taskRunnerDeps, siteCounter, m.repos.LoadBalancerUpstream())
 
+	// Create LB service and handler
+	lbService := services.NewLoadBalancerService(m.repos, m.siteReader)
+	lbHandler := handlers.NewLoadBalancerHandler(lbService)
+
 	m.registerServerProviderRoutes(router, authMiddleware, handler)
-	m.registerServerRoutes(router, authMiddleware, handler)
+	m.registerServerRoutes(router, authMiddleware, handler, lbHandler)
 	m.registerSSHKeyRoutes(router, authMiddleware, handler)
 }
 
@@ -36,7 +41,7 @@ func (m *Module) registerServerProviderRoutes(router fiber.Router, authMiddlewar
 }
 
 // registerServerRoutes registers all server-related routes
-func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler) {
+func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler, lbHandler *handlers.LoadBalancerHandler) {
 	servers := router.Group("/servers", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		// Options (must be before /:id routes)
@@ -125,6 +130,21 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		// Logs
 		servers.Get("/:id/logs", provisioned, handler.ListLogs)
 		servers.Get("/:id/logs/:log", provisioned, handler.GetLogContent)
+
+		// Load Balancer Upstreams
+		servers.Get("/:id/upstreams/check-domain", provisioned, lbHandler.CheckDomain)
+		servers.Get("/:id/upstreams", provisioned, lbHandler.ListUpstreams)
+		servers.Post("/:id/upstreams", provisioned, lbHandler.CreateUpstream)
+		servers.Get("/:id/upstreams/:upstreamId", provisioned, lbHandler.ShowUpstream)
+		servers.Put("/:id/upstreams/:upstreamId", provisioned, lbHandler.UpdateUpstream)
+		servers.Delete("/:id/upstreams/:upstreamId", provisioned, lbHandler.DeleteUpstream)
+
+		// Load Balancer Backends
+		servers.Get("/:id/upstreams/:upstreamId/backends", provisioned, lbHandler.ListBackends)
+		servers.Post("/:id/upstreams/:upstreamId/backends", provisioned, lbHandler.AddBackend)
+		servers.Put("/:id/upstreams/:upstreamId/backends/:backendId", provisioned, lbHandler.UpdateBackend)
+		servers.Delete("/:id/upstreams/:upstreamId/backends/:backendId", provisioned, lbHandler.RemoveBackend)
+		servers.Post("/:id/upstreams/:upstreamId/backends/:backendId/toggle-down", provisioned, lbHandler.ToggleBackendDown)
 	}
 }
 
