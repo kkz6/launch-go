@@ -76,6 +76,7 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 	task := tasks.UpdateCaddyfile(tasks.UpdateCaddyfileConfig{
 		CaddyfilePath:    caddyfilePath,
 		CaddyfileContent: caddyfileContent,
+		SiteUser:         site.User,
 	})
 
 	// Execute the task on the server
@@ -490,6 +491,7 @@ func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 	task := tasks.UpdateCaddyfile(tasks.UpdateCaddyfileConfig{
 		CaddyfilePath:    caddyfilePath,
 		CaddyfileContent: caddyfileContent,
+		SiteUser:         site.User,
 	})
 
 	// Execute the task on the server
