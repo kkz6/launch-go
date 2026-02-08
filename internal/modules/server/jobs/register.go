@@ -74,6 +74,8 @@ func registerHandlers(mux *asynq.ServeMux) {
 
 	// Scheduled maintenance jobs
 	pkgjobs.RegisterTyped(mux, TypeCleanupOldMetrics, NewCleanupOldMetricsJob)
+	pkgjobs.RegisterTyped(mux, TypeSyncAllDaemons, NewSyncAllDaemonsJob)
+	pkgjobs.RegisterTyped(mux, TypeCheckAllConnectivity, NewCheckAllConnectivityJob)
 
 	// Load Balancer jobs
 	pkgjobs.RegisterTyped(mux, TypeInstallLBCaddyfile, NewInstallLBCaddyfileJob)

@@ -2,6 +2,7 @@ package schedule
 
 import (
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
+	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
@@ -53,6 +54,32 @@ func GetScheduledTasks() []queue.ScheduledTask {
 		// Poll all LB backend health endpoints every minute
 		At("*/1 * * * *", serverjobs.NewCheckLBBackendHealthTask,
 			WithName("check-lb-backend-health"),
+		),
+
+		// ┌─────────────────────────────────────────────────────────────────┐
+		// │                     Daemon & Queue Status Sync                  │
+		// └─────────────────────────────────────────────────────────────────┘
+
+		// Sync daemon status for all connected servers - runs daily at midnight
+		Daily(serverjobs.NewSyncAllDaemonsTask,
+			WithName("sync-all-daemons"),
+			LowPriority(),
+		),
+
+		// Sync queue status for all sites on connected servers - runs daily at midnight
+		Daily(sitejobs.NewSyncAllQueuesTask,
+			WithName("sync-all-queues"),
+			LowPriority(),
+		),
+
+		// ┌─────────────────────────────────────────────────────────────────┐
+		// │                     Server Connectivity Checks                  │
+		// └─────────────────────────────────────────────────────────────────┘
+
+		// Check connectivity for servers not updated in the last week - runs daily at midnight
+		Daily(serverjobs.NewCheckAllConnectivityTask,
+			WithName("check-all-connectivity"),
+			LowPriority(),
 		),
 
 		// ┌─────────────────────────────────────────────────────────────────┐
