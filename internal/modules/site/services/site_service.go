@@ -349,8 +349,10 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 
 	// Broadcast site created event
 	s.BroadcastToTeam(server.TeamID, "site.created", map[string]any{
-		"team_id": server.TeamID,
-		"site":    dto.ToSiteResponse(site),
+		"team_id":   server.TeamID,
+		"server_id": server.ID,
+		"site_id":   site.ID,
+		"site":      dto.ToSiteResponse(site),
 	})
 
 	return site, nil
@@ -776,8 +778,10 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID s
 	if s.serverReader != nil {
 		if server, err := s.serverReader.FindServerByID(ctx, serverID); err == nil {
 			s.BroadcastToTeam(server.TeamID, "site.updated", map[string]any{
-				"team_id": server.TeamID,
-				"site":    dto.ToSiteResponse(site),
+				"team_id":   server.TeamID,
+				"server_id": server.ID,
+				"site_id":   site.ID,
+				"site":      dto.ToSiteResponse(site),
 			})
 		}
 	}
@@ -799,6 +803,18 @@ func (s *SiteService) Delete(ctx context.Context, id, serverID, teamID string) e
 
 	if err := s.Repos().Site().Update(ctx, site); err != nil {
 		return err
+	}
+
+	// Broadcast site updated event (so UI shows "Uninstalling" state immediately)
+	if s.serverReader != nil {
+		if server, err := s.serverReader.FindServerByID(ctx, serverID); err == nil {
+			s.BroadcastToTeam(server.TeamID, "site.updated", map[string]any{
+				"team_id":   server.TeamID,
+				"server_id": server.ID,
+				"site_id":   site.ID,
+				"site":      dto.ToSiteResponse(site),
+			})
+		}
 	}
 
 	// Dispatch site uninstall job
