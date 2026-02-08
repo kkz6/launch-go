@@ -92,6 +92,11 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 		}
 	}
 
+	// Delete server-specific (non-global) SSH keys before deleting the server
+	if err := j.Deps.Repos.SSHKey().DeleteNonGlobalByServer(ctx, j.server.ID); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("server_id", j.server.ID).Msg("failed to delete server-specific SSH keys")
+	}
+
 	// Delete the server record from database
 	if err := j.Deps.Repos.Server().Delete(ctx, j.server.ID); err != nil {
 		return fmt.Errorf("failed to delete server: %w", err)
