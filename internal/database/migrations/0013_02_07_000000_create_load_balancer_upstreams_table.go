@@ -64,7 +64,7 @@ func (lbUpstreamWithServerFK) TableName() string {
 }
 
 func createLoadBalancerUpstreamsTableUp(db *gorm.DB) error {
-	migrator := db.Set("gorm:table_options", "DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci").Migrator()
+	migrator := db.Migrator()
 
 	if err := migrator.CreateTable(&lbUpstreamMigration{}); err != nil {
 		return err
