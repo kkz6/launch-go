@@ -31,13 +31,15 @@ func Connect(cfg config.DatabaseConfig) (*gorm.DB, error) {
 func ConnectWithLogger(cfg config.DatabaseConfig, appLogger *zerolog.Logger) (*gorm.DB, error) {
 	var dialector gorm.Dialector
 
-	switch cfg.Driver {
+	driver := cfg.ResolveDriver()
+
+	switch driver {
 	case "mysql":
 		dialector = mysql.Open(cfg.DSN())
 	case "postgres":
 		dialector = postgres.Open(cfg.DSN())
 	default:
-		return nil, fmt.Errorf("unsupported database driver: %s", cfg.Driver)
+		return nil, fmt.Errorf("unsupported database driver: %s", driver)
 	}
 
 	// Configure GORM
