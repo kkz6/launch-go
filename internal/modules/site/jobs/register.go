@@ -45,6 +45,7 @@ func registerHandlers(mux *asynq.ServeMux) {
 
 	// Queue jobs
 	pkgjobs.RegisterTyped(mux, TypeSyncQueues, NewSyncQueuesJob)
+	pkgjobs.RegisterTyped(mux, TypeSyncAllQueues, NewSyncAllQueuesJob)
 	pkgjobs.RegisterTyped(mux, TypeInstallQueue, NewInstallQueueJob)
 	pkgjobs.RegisterTyped(mux, TypeRestartQueue, NewRestartQueueJob)
 	pkgjobs.RegisterTyped(mux, TypeRestartAllSiteQueues, NewRestartAllSiteQueuesJob)
