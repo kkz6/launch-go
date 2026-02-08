@@ -170,15 +170,10 @@ func (h *LogsHandler) getSiteLogPath(site *siteModels.Site, software, logType st
 	switch software {
 	case "laravel":
 		return fmt.Sprintf("%s/laravel.log", logsDir)
-	case "access":
-		return fmt.Sprintf("%s/access.log", logsDir)
-	case "error":
-		return fmt.Sprintf("%s/error.log", logsDir)
+	case "caddy_log":
+		return fmt.Sprintf("%s/caddy.log", logsDir)
 	default:
-		if logType == "error" {
-			return fmt.Sprintf("%s/error.log", logsDir)
-		}
-		return fmt.Sprintf("%s/access.log", logsDir)
+		return fmt.Sprintf("%s/caddy.log", logsDir)
 	}
 }
 

@@ -356,7 +356,6 @@ func (s Software) LogPath() string {
 		SoftwarePhp82:        "/var/log/php8.2-fpm.log",
 		SoftwarePhp83:        "/var/log/php8.3-fpm.log",
 		SoftwarePhp84:        "/var/log/php8.4-fpm.log",
-		SoftwareCaddy2:       "/var/log/caddy/access.log",
 		SoftwareCaddy2LB:     "/var/log/caddy/access.log",
 		SoftwareSupervisor:   "/var/log/supervisor/supervisord.log",
 	}
