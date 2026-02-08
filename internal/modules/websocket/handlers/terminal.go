@@ -6,6 +6,7 @@ import (
 	"io"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
@@ -18,6 +19,15 @@ import (
 	siteModels "github.com/kkz6/launch-go/internal/modules/site/models"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+)
+
+const (
+	// Ping interval for WebSocket keepalive
+	terminalPingInterval = 30 * time.Second
+	// Pong wait deadline - connection closed if no pong received within this duration
+	terminalPongWait = 60 * time.Second
+	// Write wait for control messages
+	terminalWriteWait = 10 * time.Second
 )
 
 // TerminalResizeMessage represents a terminal resize request
@@ -207,22 +217,52 @@ func (h *TerminalHandler) handleSSHConnection(wsConn *websocket.Conn, conn *task
 		stdin.Write([]byte("export DEBIAN_FRONTEND=noninteractive && clear\n"))
 	}
 
+	// Set up WebSocket keepalive
+	var writeMu sync.Mutex
+
+	wsConn.SetPongHandler(func(string) error {
+		wsConn.SetReadDeadline(time.Now().Add(terminalPongWait))
+		return nil
+	})
+	wsConn.SetReadDeadline(time.Now().Add(terminalPongWait))
+
 	// Bridge WebSocket and SSH
 	var wg sync.WaitGroup
 	done := make(chan struct{})
+
+	// Ping ticker to keep WebSocket alive
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		ticker := time.NewTicker(terminalPingInterval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-done:
+				return
+			case <-ticker.C:
+				writeMu.Lock()
+				err := wsConn.WriteControl(websocket.PingMessage, nil, time.Now().Add(terminalWriteWait))
+				writeMu.Unlock()
+				if err != nil {
+					return
+				}
+			}
+		}
+	}()
 
 	// SSH stdout -> WebSocket
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		h.copyToWebSocket(wsConn, stdout, done)
+		h.copyToWebSocket(wsConn, stdout, done, &writeMu)
 	}()
 
 	// SSH stderr -> WebSocket
 	wg.Add(1)
 	go func() {
 		defer wg.Done()
-		h.copyToWebSocket(wsConn, stderr, done)
+		h.copyToWebSocket(wsConn, stderr, done, &writeMu)
 	}()
 
 	// WebSocket -> SSH stdin
@@ -240,7 +280,7 @@ func (h *TerminalHandler) handleSSHConnection(wsConn *websocket.Conn, conn *task
 	h.LogInfo("SSH session ended", "server", serverName)
 }
 
-func (h *TerminalHandler) copyToWebSocket(wsConn *websocket.Conn, reader io.Reader, done chan struct{}) {
+func (h *TerminalHandler) copyToWebSocket(wsConn *websocket.Conn, reader io.Reader, done chan struct{}, writeMu *sync.Mutex) {
 	buf := make([]byte, 8192)
 	for {
 		select {
@@ -256,7 +296,10 @@ func (h *TerminalHandler) copyToWebSocket(wsConn *websocket.Conn, reader io.Read
 			}
 
 			if n > 0 {
-				if err := wsConn.WriteMessage(websocket.TextMessage, buf[:n]); err != nil {
+				writeMu.Lock()
+				err := wsConn.WriteMessage(websocket.TextMessage, buf[:n])
+				writeMu.Unlock()
+				if err != nil {
 					h.LogDebug("WebSocket write error", "error", err.Error())
 					return
 				}
