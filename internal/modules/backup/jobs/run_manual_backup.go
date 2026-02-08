@@ -67,8 +67,7 @@ func (j *RunManualBackupJob) Failed(ctx context.Context, err error) {
 }
 
 func NewRunManualBackupTask(serverID, backupID string, userID *string) (*asynq.Task, error) {
-	return pkgjobs.TaskWithID(TypeRunManualBackup,
+	return pkgjobs.Task(TypeRunManualBackup,
 		RunManualBackupPayload{ServerID: serverID, BackupID: backupID, UserID: userID},
-		pkgjobs.Dedup("backup-manual", serverID, backupID),
 	)
 }
