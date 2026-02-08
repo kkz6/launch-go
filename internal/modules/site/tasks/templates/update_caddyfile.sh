@@ -1,5 +1,8 @@
 {{ shellDefaults }}
 
+# Ensure the site logs directory exists (Caddy needs it to open the log file)
+mkdir -p "$(dirname {{ .CaddyfilePath }})/logs"
+
 # Create a temporary file with the new Caddyfile
 cat > {{ .CaddyfilePath }}.tmp <<EOF
 {{ .CaddyfileContent }}
