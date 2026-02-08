@@ -110,6 +110,7 @@ type SSHKeyRepository interface {
 	AttachToServer(ctx context.Context, serverID, sshKeyID string) error
 	DetachFromServer(ctx context.Context, serverID, sshKeyID string) error
 	IsAttachedToServer(ctx context.Context, serverID, sshKeyID string) (bool, error)
+	DeleteNonGlobalByServer(ctx context.Context, serverID string) error
 }
 
 // TaskRepository defines the interface for task database operations

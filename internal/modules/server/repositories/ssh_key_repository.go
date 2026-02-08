@@ -80,6 +80,17 @@ func (r *SSHKeyRepository) DetachFromServer(ctx context.Context, serverID, sshKe
 		Delete(&models.ServerSSHKey{}).Error
 }
 
+// DeleteNonGlobalByServer deletes server-specific (non-global) SSH keys associated with a server.
+// Global SSH keys are preserved since they are shared across servers.
+func (r *SSHKeyRepository) DeleteNonGlobalByServer(ctx context.Context, serverID string) error {
+	return r.DB.WithContext(ctx).
+		Where("is_global = ? AND id IN (?)",
+			false,
+			r.DB.Model(&models.ServerSSHKey{}).Select("ssh_key_id").Where("server_id = ?", serverID),
+		).
+		Delete(&models.SSHKey{}).Error
+}
+
 // IsAttachedToServer checks if an SSH key is attached to a server
 func (r *SSHKeyRepository) IsAttachedToServer(ctx context.Context, serverID, sshKeyID string) (bool, error) {
 	var count int64
