@@ -407,7 +407,7 @@ func buildSoftwareInstallData(software types.Software, config ProvisionFreshServ
 			MaxConnections   int
 		}{config.DatabasePassword, config.DatabaseName, software.MaxConnections(config.MemoryInMB)}
 
-	case types.SoftwareCaddy2:
+	case types.SoftwareCaddy2, types.SoftwareCaddy2LB:
 		return struct {
 			Username   string
 			PublicIPv4 string
