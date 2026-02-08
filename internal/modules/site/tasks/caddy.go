@@ -17,6 +17,7 @@ const (
 type UpdateCaddyfileConfig struct {
 	CaddyfilePath    string
 	CaddyfileContent string
+	SiteUser         string
 }
 
 // UpdateCaddyfile creates a task to update a site's Caddyfile
@@ -24,9 +25,11 @@ func UpdateCaddyfile(config UpdateCaddyfileConfig) *taskrunner.BaseTask {
 	script := templates.MustRender("site", "update_caddyfile.sh", struct {
 		CaddyfilePath    string
 		CaddyfileContent string
+		SiteUser         string
 	}{
 		CaddyfilePath:    config.CaddyfilePath,
 		CaddyfileContent: config.CaddyfileContent,
+		SiteUser:         config.SiteUser,
 	})
 
 	return taskrunner.NewBaseTask(
