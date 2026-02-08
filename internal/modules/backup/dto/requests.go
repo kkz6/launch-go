@@ -9,7 +9,7 @@ type CreateBackupRequest struct {
 	CronExpression        string   `json:"cron_expression" validate:"required"`
 	Path                  string   `json:"path" validate:"required"`
 	Enabled               bool     `json:"enabled"`
-	DatabaseID            string   `json:"database" validate:"required"`
+	Databases             []string `json:"databases"`
 	StorageProviderID     string   `json:"storage_provider_id" validate:"required"`
 	IncludeFiles          []string `json:"include_files,omitempty"`
 	ExcludeFiles          []string `json:"exclude_files,omitempty"`
@@ -23,7 +23,7 @@ type UpdateBackupRequest struct {
 	CronExpression        string   `json:"cron_expression" validate:"required"`
 	Path                  string   `json:"path" validate:"required"`
 	Enabled               bool     `json:"enabled"`
-	DatabaseID            string   `json:"database" validate:"required"`
+	Databases             []string `json:"databases"`
 	StorageProviderID     string   `json:"storage_provider_id" validate:"required"`
 	IncludeFiles          []string `json:"include_files,omitempty"`
 	ExcludeFiles          []string `json:"exclude_files,omitempty"`

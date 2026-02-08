@@ -68,9 +68,7 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID, team
 	backup.ServerID = serverID
 	backup.TeamID = teamID
 
-	databaseIDs := []string{req.DatabaseID}
-
-	if err := s.Repos().Backup().CreateBackupWithDatabases(ctx, backup, databaseIDs); err != nil {
+	if err := s.Repos().Backup().CreateBackupWithDatabases(ctx, backup, req.Databases); err != nil {
 		return nil, fmt.Errorf("failed to create backup: %w", err)
 	}
 
@@ -123,9 +121,7 @@ func (s *BackupService) UpdateBackup(ctx context.Context, id string, req *dto.Up
 	backup.NotificationOnFailure = req.NotificationOnFailure
 	backup.NotificationOnSuccess = req.NotificationOnSuccess
 
-	databaseIDs := []string{req.DatabaseID}
-
-	if err := s.Repos().Backup().UpdateBackupWithDatabases(ctx, backup, databaseIDs); err != nil {
+	if err := s.Repos().Backup().UpdateBackupWithDatabases(ctx, backup, req.Databases); err != nil {
 		return nil, fmt.Errorf("failed to update backup: %w", err)
 	}
 
