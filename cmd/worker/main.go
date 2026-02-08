@@ -12,6 +12,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/database"
+	"github.com/kkz6/launch-go/internal/modules/backup"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/git"
 	"github.com/kkz6/launch-go/internal/modules/notification"
@@ -127,6 +128,7 @@ func main() {
 	kernel.
 		Register(server.NewModule(builder)).
 		Register(databasemodule.NewModule(builder)).
+		Register(backup.NewModule(builder)).
 		Register(gitModule).
 		Register(siteModule).
 		Register(scriptModule)
