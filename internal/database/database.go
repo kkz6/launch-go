@@ -59,11 +59,6 @@ func ConnectWithLogger(cfg config.DatabaseConfig, appLogger *zerolog.Logger) (*g
 		return nil, fmt.Errorf("failed to connect to database: %w", err)
 	}
 
-	// Match Laravel's default collation so new tables are compatible with existing ones
-	if driver == "mysql" {
-		db = db.Set("gorm:table_options", "DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci")
-	}
-
 	sqlDB, err := db.DB()
 	if err != nil {
 		return nil, fmt.Errorf("failed to get underlying sql.DB: %w", err)
