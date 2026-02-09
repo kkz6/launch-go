@@ -121,7 +121,7 @@ func collectRoutes() []RouteInfo {
 
 	// Setup routes
 	api := fiberApp.Group("/api")
-	authMiddleware := middleware.Auth(cfg.JWT.Secret)
+	authMiddleware := middleware.Auth(cfg.JWT.Secret, nil)
 
 	// Boot all routes through the kernel
 	kernel.BootHTTP(app.BootHTTPOptions{

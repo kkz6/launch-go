@@ -18,6 +18,7 @@ type Registry struct {
 	passwordResetToken  *PasswordResetTokenRepository
 	personalAccessToken *PersonalAccessTokenRepository
 	passkey             *PasskeyRepository
+	session             *SessionRepository
 }
 
 // NewRegistry creates all repositories
@@ -31,6 +32,7 @@ func NewRegistry(db *gorm.DB) *Registry {
 		passwordResetToken:  NewPasswordResetTokenRepository(db),
 		personalAccessToken: NewPersonalAccessTokenRepository(db),
 		passkey:             NewPasskeyRepository(db),
+		session:             NewSessionRepository(db),
 	}
 }
 
@@ -58,6 +60,9 @@ func (r *Registry) PersonalAccessToken() contracts.PersonalAccessTokenRepository
 
 // Passkey returns the passkey repository
 func (r *Registry) Passkey() contracts.PasskeyRepository { return r.passkey }
+
+// Session returns the session repository
+func (r *Registry) Session() *SessionRepository { return r.session }
 
 // DB returns the underlying database connection
 func (r *Registry) DB() *gorm.DB { return r.db }

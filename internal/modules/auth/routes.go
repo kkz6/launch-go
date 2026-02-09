@@ -22,7 +22,7 @@ func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 	handler := handlers.NewHandler(m.service)
 	passkeyHandler := handlers.NewPasskeyHandler(m.service)
 
-	authMiddleware := middleware.Auth(deps.Config.JWT.Secret)
+	authMiddleware := middleware.Auth(deps.Config.JWT.Secret, deps.DB)
 	adapter := NewMiddlewareAdapter(m.service)
 
 	// Auth routes
@@ -125,4 +125,18 @@ func (m *Module) registerUserRoutes(router fiber.Router, passkeyHandler *handler
 	passkeys.Get("/", passkeyHandler.Index)
 	passkeys.Put("/:id", passkeyHandler.Update)
 	passkeys.Delete("/:id", passkeyHandler.Delete)
+
+	// Personal Access Tokens
+	patHandler := handlers.NewPATHandler(m.Deps().DB)
+	tokens := router.Group("/tokens")
+	tokens.Get("/", patHandler.List)
+	tokens.Post("/", patHandler.Create)
+	tokens.Delete("/:id", patHandler.Delete)
+
+	// Sessions
+	sessionHandler := handlers.NewSessionHandler(m.repos.Session())
+	sessions := router.Group("/sessions")
+	sessions.Get("/", sessionHandler.List)
+	sessions.Delete("/", sessionHandler.RevokeOthers)
+	sessions.Delete("/:id", sessionHandler.Revoke)
 }

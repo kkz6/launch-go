@@ -26,7 +26,7 @@ func (h *PasswordHandler) ForgotPassword(c *fiber.Ctx) error {
 	}
 
 	// Always return success to prevent email enumeration
-	_ = h.Service().SendPasswordResetLink(c.Context(), req.Email)
+	_ = h.Service().PasswordReset.SendPasswordResetLink(c.Context(), req.Email)
 
 	return fiberctx.OK(c, "If an account with that email exists, a password reset link has been sent", nil)
 }
@@ -38,7 +38,7 @@ func (h *PasswordHandler) ResetPassword(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().ResetPassword(c.Context(), req); err != nil {
+	if err := h.Service().PasswordReset.ResetPassword(c.Context(), req); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 

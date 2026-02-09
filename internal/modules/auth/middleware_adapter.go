@@ -19,7 +19,7 @@ func NewMiddlewareAdapter(service *services.Service) *MiddlewareAdapter {
 
 // GetTeam implements middleware.TeamService
 func (a *MiddlewareAdapter) GetTeam(ctx context.Context, teamID string) (middleware.TeamInfo, error) {
-	team, err := a.service.GetTeam(ctx, teamID)
+	team, err := a.service.Team.GetTeam(ctx, teamID)
 	if err != nil {
 		return nil, err
 	}
@@ -46,9 +46,9 @@ func (a *MiddlewareAdapter) GetTeamMember(ctx context.Context, teamID, userID st
 	return member, nil
 }
 
-// GetUser implements middleware.UserService
+// GetUser implements middleware.EmailVerifiedService
 func (a *MiddlewareAdapter) GetUser(ctx context.Context, userID string) (middleware.UserInfo, error) {
-	user, err := a.service.GetUser(ctx, userID)
+	user, err := a.service.User.GetUser(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -60,12 +60,16 @@ func (a *MiddlewareAdapter) GetUser(ctx context.Context, userID string) (middlew
 
 // HasTwoFactorEnabled implements middleware.TwoFactorService
 func (a *MiddlewareAdapter) HasTwoFactorEnabled(ctx context.Context, userID string) (bool, error) {
-	return a.service.HasTwoFactorEnabled(ctx, userID)
+	return a.service.TwoFactor.HasTwoFactorEnabled(ctx, userID)
 }
 
-// Ensure MiddlewareAdapter implements the required interfaces
+// IsSessionTwoFactorVerified implements middleware.TwoFactorService
+func (a *MiddlewareAdapter) IsSessionTwoFactorVerified(ctx context.Context, sessionID string) (bool, error) {
+	return a.service.Repos().Session().IsTwoFactorVerified(ctx, sessionID)
+}
+
 var (
-	_ middleware.TeamService      = (*MiddlewareAdapter)(nil)
-	_ middleware.UserService      = (*MiddlewareAdapter)(nil)
-	_ middleware.TwoFactorService = (*MiddlewareAdapter)(nil)
+	_ middleware.TeamService          = (*MiddlewareAdapter)(nil)
+	_ middleware.EmailVerifiedService = (*MiddlewareAdapter)(nil)
+	_ middleware.TwoFactorService     = (*MiddlewareAdapter)(nil)
 )
