@@ -173,9 +173,19 @@ func (s *WebhookService) CreateOrder(ctx context.Context, teamID string, payment
 	productID := ""
 	if len(payment.ProductCart) > 0 {
 		productID = payment.ProductCart[0].ProductID
+	} else if payment.SubscriptionID != "" {
+		// Derive product from the associated subscription when product_cart is null
+		if sub, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, payment.SubscriptionID); err == nil {
+			productID = sub.ProductID
+		}
 	}
 
 	subtotal := payment.TotalAmount - payment.Tax
+
+	var receiptURL *string
+	if payment.InvoiceURL != "" {
+		receiptURL = &payment.InvoiceURL
+	}
 
 	order := &models.Order{
 		BillableType:    models.BillableTypeTeam,
@@ -186,7 +196,6 @@ func (s *WebhookService) CreateOrder(ctx context.Context, teamID string, payment
 		Identifier:      payment.PaymentID,
 		ProductID:       productID,
 		VariantID:       productID,
-		OrderNumber:     0,
 		Currency:        string(payment.Currency),
 		Subtotal:        subtotal,
 		DiscountTotal:   0,
@@ -194,12 +203,39 @@ func (s *WebhookService) CreateOrder(ctx context.Context, teamID string, payment
 		Total:           payment.TotalAmount,
 		TaxName:         nil,
 		Status:          billingtypes.OrderStatusPaid,
-		ReceiptURL:      nil,
+		ReceiptURL:      receiptURL,
 		Refunded:        false,
 		OrderedAt:       payment.CreatedAt,
 	}
 
-	return s.repos.Order().Create(ctx, order)
+	if err := s.repos.Order().Create(ctx, order); err != nil {
+		return err
+	}
+
+	// Use the auto-increment ID as the order number
+	order.OrderNumber = int(order.ID)
+	if err := s.repos.Order().Update(ctx, order); err != nil {
+		return err
+	}
+
+	// Update card details on the associated subscription
+	if payment.SubscriptionID != "" && payment.CardLastFour != "" {
+		s.updateSubscriptionCardInfo(ctx, payment.SubscriptionID, payment.CardNetwork, payment.CardLastFour)
+	}
+
+	return nil
+}
+
+// updateSubscriptionCardInfo updates card brand and last four on a subscription
+func (s *WebhookService) updateSubscriptionCardInfo(ctx context.Context, providerSubscriptionID, cardNetwork, cardLastFour string) {
+	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
+	if err != nil {
+		return
+	}
+
+	subscription.CardBrand = stringOrNil(cardNetwork)
+	subscription.CardLastFour = stringOrNil(cardLastFour)
+	s.repos.Subscription().Update(ctx, subscription)
 }
 
 // RefundOrder marks an order as refunded by payment ID
@@ -275,4 +311,12 @@ func timeOrNil(t time.Time) *time.Time {
 		return nil
 	}
 	return &t
+}
+
+// stringOrNil returns a pointer to s if it is not empty, otherwise nil
+func stringOrNil(s string) *string {
+	if s == "" {
+		return nil
+	}
+	return &s
 }

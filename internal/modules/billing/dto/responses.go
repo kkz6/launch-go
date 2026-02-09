@@ -60,6 +60,7 @@ func ToSubscriptionResponse(s *models.Subscription, plan *models.Plan, updatePay
 type OrderResponse struct {
 	OrderedAt   string  `json:"ordered_at"`
 	OrderNumber string  `json:"order_number"`
+	Currency    string  `json:"currency"`
 	Discount    float64 `json:"discount"`
 	Subtotal    float64 `json:"subtotal"`
 	Total       float64 `json:"total"`
@@ -69,9 +70,15 @@ type OrderResponse struct {
 
 // ToOrderResponse converts an Order model to OrderResponse
 func ToOrderResponse(o *models.Order) OrderResponse {
+	orderNumber := fmt.Sprintf("%d", o.OrderNumber)
+	if o.OrderNumber == 0 {
+		orderNumber = fmt.Sprintf("%d", o.ID)
+	}
+
 	return OrderResponse{
 		OrderedAt:   pkgdto.FormatDisplayTimeValue(o.OrderedAt),
-		OrderNumber: fmt.Sprintf("%d", o.OrderNumber),
+		OrderNumber: orderNumber,
+		Currency:    o.Currency,
 		Discount:    o.FormattedDiscount(),
 		Subtotal:    o.FormattedSubtotal(),
 		Total:       o.FormattedTotal(),
