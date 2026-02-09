@@ -1,7 +1,10 @@
 package handlers
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
+	"math"
 	"time"
 
 	"github.com/gofiber/contrib/websocket"
@@ -243,23 +246,28 @@ done
 	// Stream output to WebSocket
 	done := make(chan struct{})
 
-	// Read stdout (metrics data)
+	// Read stdout (metrics data) line-by-line
 	go func() {
-		buf := make([]byte, 4096)
-		for {
+		scanner := bufio.NewScanner(stdout)
+		scanner.Buffer(make([]byte, 64*1024), 64*1024)
+		backfillDone := false
+
+		for scanner.Scan() {
 			select {
 			case <-done:
 				return
 			default:
-				n, err := stdout.Read(buf)
-				if err != nil {
-					return
-				}
-				if n > 0 {
-					if err := c.WriteMessage(websocket.TextMessage, buf[:n]); err != nil {
-						return
-					}
-				}
+			}
+
+			line := scanner.Bytes()
+
+			// Backfill server details from the first system_info and metrics events
+			if !backfillDone {
+				backfillDone = h.backfillServerDetails(server, line)
+			}
+
+			if err := c.WriteMessage(websocket.TextMessage, line); err != nil {
+				return
 			}
 		}
 	}()
@@ -294,4 +302,82 @@ done
 	session.Signal(ssh.SIGTERM)
 	session.Close()
 	h.LogInfo("Metrics streaming ended", "server_id", server.ID)
+}
+
+type streamEvent struct {
+	Event string `json:"event"`
+}
+
+type systemInfoData struct {
+	CPUCores    int    `json:"cpu_cores"`
+	TotalMemory int64  `json:"total_memory"`
+	OS          string `json:"os"`
+}
+
+type metricsDiskData struct {
+	Total float64 `json:"total"`
+}
+
+type metricsEventData struct {
+	Disk metricsDiskData `json:"disk"`
+}
+
+// backfillServerDetails checks incoming stream lines and updates missing server hardware fields.
+// Returns true when all possible backfilling is complete (no more lines need checking).
+func (h *MetricsHandler) backfillServerDetails(server *serverModels.Server, data []byte) bool {
+	var evt streamEvent
+	if json.Unmarshal(data, &evt) != nil {
+		return false
+	}
+
+	updates := make(map[string]any)
+
+	switch evt.Event {
+	case "system_info":
+		var info systemInfoData
+		if json.Unmarshal(data, &info) != nil {
+			return false
+		}
+
+		if server.CPUCores == nil && info.CPUCores > 0 {
+			updates["cpu_cores"] = info.CPUCores
+			cores := info.CPUCores
+			server.CPUCores = &cores
+		}
+
+		if server.MemoryInMB == nil && info.TotalMemory > 0 {
+			memMB := int(math.Round(float64(info.TotalMemory) / (1024 * 1024)))
+			updates["memory_in_mb"] = memMB
+			server.MemoryInMB = &memMB
+		}
+
+		if server.OperatingSystem == nil && info.OS != "" {
+			updates["operating_system"] = info.OS
+			server.OperatingSystem = &info.OS
+		}
+
+	case "metrics":
+		var m metricsEventData
+		if json.Unmarshal(data, &m) != nil {
+			return true
+		}
+
+		if server.StorageInGB == nil && m.Disk.Total > 0 {
+			diskGB := int(math.Round(m.Disk.Total / (1024 * 1024 * 1024)))
+			updates["storage_in_gb"] = diskGB
+			server.StorageInGB = &diskGB
+		}
+
+	default:
+		return false
+	}
+
+	if len(updates) > 0 {
+		if err := h.DB.Model(&serverModels.Server{}).Where("id = ?", server.ID).Updates(updates).Error; err != nil {
+			h.LogError(err, "Failed to backfill server details from metrics", "server_id", server.ID)
+		}
+	}
+
+	// system_info comes first, then metrics — done after first metrics event
+	return evt.Event == "metrics"
 }
