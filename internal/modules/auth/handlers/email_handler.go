@@ -22,7 +22,7 @@ func (h *EmailHandler) VerifyEmail(c *fiber.Ctx) error {
 	userID := c.Params("id")
 	hash := c.Params("hash")
 
-	if err := h.Service().VerifyEmail(c.Context(), userID, hash); err != nil {
+	if err := h.Service().EmailVerification.VerifyEmail(c.Context(), userID, hash); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -36,7 +36,7 @@ func (h *EmailHandler) ResendVerificationEmail(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().ResendVerificationEmail(c.Context(), userID); err != nil {
+	if err := h.Service().EmailVerification.ResendVerificationEmail(c.Context(), userID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 

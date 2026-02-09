@@ -36,7 +36,7 @@ func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
 		return err
 	}
 
-	passkeys, err := h.service.GetUserPasskeys(c.Context(), userID)
+	passkeys, err := h.service.Passkey.GetUserPasskeys(c.Context(), userID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -78,7 +78,7 @@ func (h *PasskeyHandler) Delete(c *fiber.Ctx) error {
 	}
 	passkeyID := c.Params("id")
 
-	err = h.service.DeletePasskey(c.Context(), passkeyID, userID)
+	err = h.service.Passkey.DeletePasskey(c.Context(), passkeyID, userID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -104,7 +104,7 @@ func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.service.UpdatePasskeyName(c.Context(), passkeyID, userID, req.Name); err != nil {
+	if err := h.service.Passkey.UpdatePasskeyName(c.Context(), passkeyID, userID, req.Name); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 

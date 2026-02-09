@@ -25,7 +25,7 @@ func (h *UserHandler) User(c *fiber.Ctx) error {
 		return err
 	}
 
-	user, err := h.Service().GetUser(c.Context(), userID)
+	user, err := h.Service().User.GetUser(c.Context(), userID)
 	if err != nil {
 		return fiberctx.RespondNotFound(c, "User not found")
 	}
@@ -55,7 +55,7 @@ func (h *UserHandler) UpdateProfile(c *fiber.Ctx) error {
 		return err
 	}
 
-	user, err := h.Service().UpdateProfile(c.Context(), userID, req)
+	user, err := h.Service().User.UpdateProfile(c.Context(), userID, req)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -81,7 +81,7 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().ChangePassword(c.Context(), userID, req); err != nil {
+	if err := h.Service().User.ChangePassword(c.Context(), userID, req); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -95,7 +95,7 @@ func (h *UserHandler) DeleteAccount(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().DeleteAccount(c.Context(), userID); err != nil {
+	if err := h.Service().User.DeleteAccount(c.Context(), userID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -109,7 +109,7 @@ func (h *UserHandler) CheckUserStatus(c *fiber.Ctx) error {
 		return err
 	}
 
-	status, err := h.Service().CheckUserStatus(c.Context(), req.Email)
+	status, err := h.Service().User.CheckUserStatus(c.Context(), req.Email)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -129,7 +129,7 @@ func (h *UserHandler) ResetOnboarding(c *fiber.Ctx) error {
 	}
 
 	// Get updated user data
-	user, err := h.Service().GetUser(c.Context(), userID)
+	user, err := h.Service().User.GetUser(c.Context(), userID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}

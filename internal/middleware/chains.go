@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
@@ -63,10 +64,10 @@ func TeamScopeChain(authMiddleware fiber.Handler) []fiber.Handler {
 //
 // Usage:
 //
-//	router.Group("/public", middleware.OptionalAuthChain(jwtSecret)...)
-func OptionalAuthChain(jwtSecret string) []fiber.Handler {
+//	router.Group("/public", middleware.OptionalAuthChain(jwtSecret, db)...)
+func OptionalAuthChain(jwtSecret string, db *gorm.DB) []fiber.Handler {
 	return []fiber.Handler{
-		OptionalAuth(jwtSecret),
+		OptionalAuth(jwtSecret, db),
 		OptionalTeamScope(),
 	}
 }

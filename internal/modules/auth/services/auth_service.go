@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -93,13 +94,19 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		return nil, err
 	}
 
-	// Generate tokens
-	accessToken, err := s.generateAccessToken(user)
+	// Create session
+	sessionID, err := s.createSession(ctx, user.ID, req.IPAddress, req.UserAgent)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := s.generateRefreshToken(user)
+	// Generate tokens
+	accessToken, err := s.generateAccessToken(user, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshToken, err := s.generateRefreshToken(user, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -133,12 +140,18 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Au
 		return nil, fiberutil.Unauthorized()
 	}
 
-	accessToken, err := s.generateAccessToken(user)
+	// Create session
+	sessionID, err := s.createSession(ctx, user.ID, req.IPAddress, req.UserAgent)
 	if err != nil {
 		return nil, err
 	}
 
-	refreshToken, err := s.generateRefreshToken(user)
+	accessToken, err := s.generateAccessToken(user, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshToken, err := s.generateRefreshToken(user, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -156,8 +169,11 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Au
 }
 
 // Logout invalidates the user's session
-func (s *AuthService) Logout(ctx context.Context, userID string) error {
-	// In a production environment, you would implement token blacklisting here
+func (s *AuthService) Logout(ctx context.Context, userID, sessionID string) error {
+	if sessionID != "" {
+		return s.repos.Session().DeleteByUser(ctx, sessionID, userID)
+	}
+
 	return nil
 }
 
@@ -197,12 +213,26 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		return nil, fiberutil.Unauthorized()
 	}
 
-	accessToken, err := s.generateAccessToken(user)
+	// Extract session_id from refresh token claims and validate session still exists
+	var sessionID string
+	if sid, ok := claims["session_id"].(string); ok {
+		sessionID = sid
+
+		// Verify the session has not been revoked
+		exists, err := s.repos.Session().Exists(ctx, sessionID)
+		if err != nil || !exists {
+			return nil, fiberutil.Unauthorized()
+		}
+
+		_ = s.repos.Session().UpdateLastActivity(ctx, sessionID)
+	}
+
+	accessToken, err := s.generateAccessToken(user, sessionID)
 	if err != nil {
 		return nil, err
 	}
 
-	newRefreshToken, err := s.generateRefreshToken(user)
+	newRefreshToken, err := s.generateRefreshToken(user, sessionID)
 	if err != nil {
 		return nil, err
 	}
@@ -303,10 +333,35 @@ func (s *AuthService) createPersonalTeam(_ context.Context, tx *gorm.DB, user *m
 	return nil
 }
 
+// createSession creates a session record and returns the session ID
+func (s *AuthService) createSession(ctx context.Context, userID, ipAddress, userAgent string) (string, error) {
+	session := &models.Session{
+		UserID:       &userID,
+		IPAddress:    nilIfEmpty(ipAddress),
+		UserAgent:    nilIfEmpty(userAgent),
+		Payload:      "",
+		LastActivity: int(time.Now().Unix()),
+	}
+
+	if err := s.repos.Session().Create(ctx, session); err != nil {
+		return "", fmt.Errorf("failed to create session: %w", err)
+	}
+
+	return session.ID, nil
+}
+
+func nilIfEmpty(s string) *string {
+	if s == "" {
+		return nil
+	}
+
+	return &s
+}
+
 // generateAccessToken generates a JWT access token
 // Note: team_id is NOT included in the token. Team context is passed via X-Team-ID header
 // and validated by the TeamContext middleware with cached membership checks.
-func (s *AuthService) generateAccessToken(user *models.User) (string, error) {
+func (s *AuthService) generateAccessToken(user *models.User, sessionID string) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"sub":   user.ID,
@@ -317,19 +372,27 @@ func (s *AuthService) generateAccessToken(user *models.User) (string, error) {
 		"exp":   now.Add(time.Hour * time.Duration(s.config.JWT.Expiration)).Unix(),
 	}
 
+	if sessionID != "" {
+		claims["session_id"] = sessionID
+	}
+
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 
 	return token.SignedString([]byte(s.config.JWT.Secret))
 }
 
 // generateRefreshToken generates a JWT refresh token
-func (s *AuthService) generateRefreshToken(user *models.User) (string, error) {
+func (s *AuthService) generateRefreshToken(user *models.User, sessionID string) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
 		"sub":  user.ID,
 		"type": "refresh",
 		"iat":  now.Unix(),
 		"exp":  now.Add(time.Hour * defaultRefreshTokenHours).Unix(),
+	}
+
+	if sessionID != "" {
+		claims["session_id"] = sessionID
 	}
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)

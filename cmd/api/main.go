@@ -233,7 +233,7 @@ func (a *Application) registerModules() {
 	api := a.fiber.Group("/api")
 	api.Get("/health", a.healthCheck)
 
-	authMiddleware := middleware.Auth(a.config.JWT.Secret)
+	authMiddleware := middleware.Auth(a.config.JWT.Secret, a.db)
 
 	// Initialize team middleware with membership cache
 	middleware.InitTeamMiddleware(a.membershipCache)
