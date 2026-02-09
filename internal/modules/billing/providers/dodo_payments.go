@@ -229,6 +229,12 @@ func (c *DodoPaymentsClient) mapError(err error) error {
 	return err
 }
 
+// UnsafeUnwrapWebhook parses a webhook payload without signature verification.
+// Use this only for re-processing stored events that were already verified on receipt.
+func (c *DodoPaymentsClient) UnsafeUnwrapWebhook(payload []byte) (*dodopayments.UnsafeUnwrapWebhookEvent, error) {
+	return c.client.Webhooks.UnsafeUnwrap(payload)
+}
+
 // Client returns the underlying DodoPayments client for advanced operations
 func (c *DodoPaymentsClient) Client() *dodopayments.Client {
 	return c.client

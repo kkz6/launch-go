@@ -14,6 +14,7 @@ type Subscription struct {
 	Type                   string                          `gorm:"size:255;not null" json:"type"`
 	Provider               string                          `gorm:"size:50;not null;default:dodo_payments" json:"provider"`
 	ProviderSubscriptionID string                          `gorm:"size:255;uniqueIndex;not null" json:"provider_subscription_id"`
+	CustomerID             string                          `gorm:"size:255" json:"-"`
 	Status                 billingtypes.SubscriptionStatus `gorm:"size:50;not null" json:"status"`
 	ProductID              string                          `gorm:"size:255;not null" json:"product_id"`
 	VariantID              string                          `gorm:"size:255;not null" json:"variant_id"`
