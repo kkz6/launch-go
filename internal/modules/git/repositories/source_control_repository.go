@@ -256,6 +256,10 @@ func (r *SourceControlRepository) GetInstallations(
 		query = query.Where("user_id = ?", options.UserID)
 	}
 
+	if options.TeamID != "" {
+		query = query.Where("team_id = ?", options.TeamID)
+	}
+
 	if options.ProviderID != "" {
 		query = query.Where("provider_id = ?", options.ProviderID)
 	}
@@ -287,6 +291,10 @@ func (r *SourceControlRepository) GetFirstInstallation(
 
 	if options.UserID != "" {
 		query = query.Where("user_id = ?", options.UserID)
+	}
+
+	if options.TeamID != "" {
+		query = query.Where("team_id = ?", options.TeamID)
 	}
 
 	if options.ProviderID != "" {

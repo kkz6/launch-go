@@ -168,7 +168,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 
 	// Validate source control for non-WordPress/phpMyAdmin sites
 	if req.Type != sitetypes.SiteTypeWordpress && req.Type != sitetypes.SiteTypePhpMyAdmin && req.SourceControlID != nil && *req.SourceControlID != "" {
-		if err := s.validateSourceControl(ctx, req.SourceControlID, req.SourceControlRepositoriesID); err != nil {
+		if err := s.validateSourceControl(ctx, teamID, req.SourceControlID, req.SourceControlRepositoriesID); err != nil {
 			return nil, err
 		}
 	}
@@ -290,7 +290,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 
 	// Save repository to source control provider (non-WordPress/phpMyAdmin sites only)
 	if req.Type != sitetypes.SiteTypeWordpress && req.Type != sitetypes.SiteTypePhpMyAdmin && req.SourceControlID != nil && *req.SourceControlID != "" && sourceControlRepoID != nil {
-		s.handleSourceControlRepository(ctx, *req.SourceControlID, *sourceControlRepoID)
+		s.handleSourceControlRepository(ctx, teamID, *req.SourceControlID, *sourceControlRepoID)
 	}
 
 	// Handle database creation if requested (outside main transaction)
@@ -597,13 +597,13 @@ func (s *SiteService) handleQueueCreation(ctx context.Context, site *models.Site
 }
 
 // validateSourceControl validates source control and repository exist
-func (s *SiteService) validateSourceControl(ctx context.Context, sourceControlID *string, repoID *string) error {
+func (s *SiteService) validateSourceControl(ctx context.Context, teamID string, sourceControlID *string, repoID *string) error {
 	if sourceControlID == nil || *sourceControlID == "" {
 		return nil
 	}
 
 	// Check source control exists
-	exists, err := s.Repos().Site().SourceControlExists(ctx, *sourceControlID)
+	exists, err := s.Repos().Site().SourceControlExists(ctx, *sourceControlID, teamID)
 	if err != nil {
 		return fmt.Errorf("failed to validate source control: %w", err)
 	}
@@ -615,7 +615,7 @@ func (s *SiteService) validateSourceControl(ctx context.Context, sourceControlID
 
 	// Check repository exists if provided
 	if repoID != nil && *repoID != "" {
-		exists, err := s.Repos().Site().SourceControlRepositoryExists(ctx, *repoID)
+		exists, err := s.Repos().Site().SourceControlRepositoryExists(ctx, *repoID, teamID)
 		if err != nil {
 			return fmt.Errorf("failed to validate repository: %w", err)
 		}
@@ -652,7 +652,7 @@ func (s *SiteService) handleDNSRecordCreation(ctx context.Context, site *models.
 }
 
 // handleSourceControlRepository fetches and saves repository data from the git provider
-func (s *SiteService) handleSourceControlRepository(ctx context.Context, sourceControlID string, repoID uint64) {
+func (s *SiteService) handleSourceControlRepository(ctx context.Context, teamID, sourceControlID string, repoID uint64) {
 	if s.sourceControlService == nil {
 		s.LogError(nil, "Source control service not configured, skipping repository save")
 		return
@@ -671,7 +671,7 @@ func (s *SiteService) handleSourceControlRepository(ctx context.Context, sourceC
 	}
 
 	// Save repository to source control (fetches latest data from provider)
-	_, err = s.sourceControlService.SaveRepository(ctx, sourceControlID, repo.FullName)
+	_, err = s.sourceControlService.SaveRepository(ctx, sourceControlID, teamID, repo.FullName)
 	if err != nil {
 		s.LogError(err, "Failed to save repository to source control", "source_control_id", sourceControlID, "full_name", repo.FullName)
 		return
@@ -907,7 +907,7 @@ func (s *SiteService) GetSettings(ctx context.Context, id, serverID, teamID stri
 	var sourceControl *dto.SourceControlResponse
 	var repository *dto.SourceControlRepositoryResponse
 	if site.SourceControlID != nil && *site.SourceControlID != "" {
-		sourceControl, repository = s.GetSourceControlInfo(ctx, *site.SourceControlID, site.SourceControlRepositoriesID)
+		sourceControl, repository = s.GetSourceControlInfo(ctx, teamID, *site.SourceControlID, site.SourceControlRepositoriesID)
 	}
 
 	return &SiteSettingsData{
@@ -944,12 +944,12 @@ func (s *SiteService) getServerPhpVersions(ctx context.Context, serverID string)
 }
 
 // GetSourceControlInfo returns source control and repository info
-func (s *SiteService) GetSourceControlInfo(ctx context.Context, sourceControlID string, repoID *uint64) (*dto.SourceControlResponse, *dto.SourceControlRepositoryResponse) {
+func (s *SiteService) GetSourceControlInfo(ctx context.Context, teamID, sourceControlID string, repoID *uint64) (*dto.SourceControlResponse, *dto.SourceControlRepositoryResponse) {
 	if s.gitReader == nil {
 		return nil, nil
 	}
 
-	sc, err := s.gitReader.FindSourceControlByID(ctx, sourceControlID)
+	sc, err := s.gitReader.FindSourceControlByID(ctx, sourceControlID, teamID)
 	if err != nil {
 		return nil, nil
 	}

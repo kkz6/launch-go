@@ -90,8 +90,8 @@ func (p *GitHubProvider) GetInstallationToken(ctx context.Context, installationI
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		body, _ := io.ReadAll(resp.Body)
-		return "", fmt.Errorf("failed to get installation token: %s", string(body))
+		_, _ = io.ReadAll(resp.Body)
+		return "", fmt.Errorf("failed to get installation token: status %d", resp.StatusCode)
 	}
 
 	var result struct {
@@ -123,8 +123,8 @@ func (p *GitHubProvider) GetInstallation(ctx context.Context, installationID str
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get installation: %s", string(body))
+		_, _ = io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get installation: status %d", resp.StatusCode)
 	}
 
 	var data map[string]interface{}
@@ -186,9 +186,9 @@ func (p *GitHubProvider) GetInstallationRepositories(ctx context.Context, instal
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
+			_, _ = io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
-			return nil, fmt.Errorf("failed to get repositories: %s", string(body))
+			return nil, fmt.Errorf("failed to get repositories: status %d", resp.StatusCode)
 		}
 
 		var result struct {
@@ -239,8 +239,8 @@ func (p *GitHubProvider) GetRepository(ctx context.Context, installationID, owne
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to get repository: %s", string(body))
+		_, _ = io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to get repository: status %d", resp.StatusCode)
 	}
 
 	var result map[string]interface{}
@@ -293,8 +293,8 @@ func (p *GitHubProvider) DeployKey(ctx context.Context, sourceControlID, title, 
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		respBody, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("failed to deploy key: %s", string(respBody))
+		_, _ = io.ReadAll(resp.Body)
+		return fmt.Errorf("failed to deploy key: status %d", resp.StatusCode)
 	}
 
 	return nil
@@ -391,8 +391,8 @@ func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusCreated {
-		respBody, _ := io.ReadAll(resp.Body)
-		return nil, fmt.Errorf("failed to create deployment: %s", string(respBody))
+		_, _ = io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("failed to create deployment: status %d", resp.StatusCode)
 	}
 
 	var deploymentResp map[string]interface{}

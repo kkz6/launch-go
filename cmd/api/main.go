@@ -210,6 +210,7 @@ func (a *Application) registerModules() {
 	siteModule.SetDomainRepository(dnsModule.Repos().Domain())
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
 	serverModule.SetSiteReader(siteModule.SiteReader())
+	gitModule.SetSiteChecker(siteModule.SiteChecker())
 
 	// Register all modules with the kernel
 	a.kernel.

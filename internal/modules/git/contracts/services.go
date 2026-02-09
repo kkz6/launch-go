@@ -15,7 +15,7 @@ type SourceControlService interface {
 	Connect(ctx context.Context, userID, teamID string, providerType gittypes.GitProviderType, installationID string) (*models.SourceControl, error)
 	Disconnect(ctx context.Context, id, teamID string) error
 	GetInstallationURL(providerType gittypes.GitProviderType) (string, error)
-	GetInstallations(ctx context.Context, providerType gittypes.GitProviderType) ([]dto.AppInstallationData, error)
+	ListSourceControlsByProvider(ctx context.Context, providerType gittypes.GitProviderType, teamID string) ([]models.SourceControl, error)
 	GetInstallationRepositoriesFromAPI(ctx context.Context, providerType gittypes.GitProviderType, installationID string) ([]map[string]interface{}, error)
 	GetCachedRepositories(ctx context.Context, providerType gittypes.GitProviderType, installationID, teamID string) ([]models.SourceControlRepository, error)
 	SyncRepositories(ctx context.Context, sc *models.SourceControl) error
@@ -23,10 +23,10 @@ type SourceControlService interface {
 	RefreshInstallationRepositories(ctx context.Context, sc *models.SourceControl) error
 	SyncUserInstallation(ctx context.Context, providerType gittypes.GitProviderType, installationID, teamID, userID string) error
 	SyncRepositoriesForInstallation(ctx context.Context, installationID string) error
-	GetInstallationsWithRepositoryCounts(ctx context.Context, teamID, userID string) (map[string][]dto.InstallationSummaryData, error)
+	GetInstallationsWithRepositoryCounts(ctx context.Context, teamID string) (map[string][]dto.InstallationSummaryData, error)
 	DeleteByInstallationID(ctx context.Context, installationID string) error
 	GetSourceControlByInstallation(ctx context.Context, providerType gittypes.GitProviderType, installationID string, opts ...InstallationQueryOption) (*models.SourceControl, error)
 	TestConnection(ctx context.Context, providerType gittypes.GitProviderType) error
 	// SaveRepository fetches a repository from the git provider and saves it to the database
-	SaveRepository(ctx context.Context, sourceControlID, repoFullName string) (*models.SourceControlRepository, error)
+	SaveRepository(ctx context.Context, sourceControlID, teamID, repoFullName string) (*models.SourceControlRepository, error)
 }

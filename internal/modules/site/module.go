@@ -123,6 +123,12 @@ func (m *Module) SiteReader() servercontracts.SiteReader {
 	return adapters.NewSiteReaderAdapter(m.Deps().DB)
 }
 
+// SiteChecker returns an adapter that checks if sites reference a source control.
+// This satisfies the git module's SiteChecker interface via structural typing.
+func (m *Module) SiteChecker() *adapters.SiteCheckerAdapter {
+	return adapters.NewSiteCheckerAdapter(m.Deps().DB)
+}
+
 // createServices creates all services needed for route handlers
 func (m *Module) createServices(taskRunnerDeps *servertasks.TaskRunnerDeps) *services.ServiceRegistry {
 	deps := m.Deps()

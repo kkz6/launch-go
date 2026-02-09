@@ -85,6 +85,7 @@ var RepositoryDataFromAPIResponse = dto.RepositoryDataFromAPIResponse
 type InstallationQueryOption = contracts.InstallationQueryOption
 
 var WithUserID = contracts.WithUserID
+var WithTeamID = contracts.WithTeamID
 var WithProviderID = contracts.WithProviderID
 var RequireInstallationID = contracts.RequireInstallationID
 

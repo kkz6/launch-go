@@ -193,7 +193,8 @@ func (r *SiteRepository) FindByAddress(ctx context.Context, address, serverID st
 func (r *SiteRepository) FindByRepositoryAndBranch(ctx context.Context, repoName, branch string) ([]models.Site, error) {
 	var sites []models.Site
 	err := r.DB.WithContext(ctx).
-		Where("repository_branch = ? AND auto_deployment = ?", branch, true).
+		Joins("JOIN source_control_repositories ON source_control_repositories.id = sites.source_control_repositories_id").
+		Where("source_control_repositories.full_name = ? AND sites.repository_branch = ? AND sites.auto_deployment = ?", repoName, branch, true).
 		Find(&sites).Error
 
 	return sites, err
@@ -215,12 +216,13 @@ func (r *SiteRepository) CreateWithActivity(ctx context.Context, site *models.Si
 	})
 }
 
-// SourceControlExists checks if a source control with the given ID exists
-func (r *SiteRepository) SourceControlExists(ctx context.Context, sourceControlID string) (bool, error) {
+// HasSitesBySourceControlID checks if any sites reference the given source control ID
+func (r *SiteRepository) HasSitesBySourceControlID(ctx context.Context, sourceControlID string) (bool, error) {
 	var count int64
 	err := r.DB.WithContext(ctx).
-		Table("source_controls").
-		Where("id = ?", sourceControlID).
+		Model(&models.Site{}).
+		Where("source_control_id = ?", sourceControlID).
+		Limit(1).
 		Count(&count).Error
 	if err != nil {
 		return false, err
@@ -228,12 +230,26 @@ func (r *SiteRepository) SourceControlExists(ctx context.Context, sourceControlI
 	return count > 0, nil
 }
 
-// SourceControlRepositoryExists checks if a source control repository with the given ID exists
-func (r *SiteRepository) SourceControlRepositoryExists(ctx context.Context, repositoryID string) (bool, error) {
+// SourceControlExists checks if a source control with the given ID exists for a team
+func (r *SiteRepository) SourceControlExists(ctx context.Context, sourceControlID, teamID string) (bool, error) {
+	var count int64
+	err := r.DB.WithContext(ctx).
+		Table("source_controls").
+		Where("id = ? AND team_id = ?", sourceControlID, teamID).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+// SourceControlRepositoryExists checks if a source control repository with the given ID exists for a team
+func (r *SiteRepository) SourceControlRepositoryExists(ctx context.Context, repositoryID, teamID string) (bool, error) {
 	var count int64
 	err := r.DB.WithContext(ctx).
 		Table("source_control_repositories").
-		Where("id = ?", repositoryID).
+		Joins("JOIN source_controls ON source_controls.id = source_control_repositories.source_control_id").
+		Where("source_control_repositories.id = ? AND source_controls.team_id = ?", repositoryID, teamID).
 		Count(&count).Error
 	if err != nil {
 		return false, err

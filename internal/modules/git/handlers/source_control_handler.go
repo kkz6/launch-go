@@ -128,7 +128,7 @@ func (h *SourceControlHandler) GetInstallationURL(c *fiber.Ctx) error {
 
 	url, err := h.service.GetInstallationURL(providerType)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, err.Error())
+		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
 	}
 
 	return fiberctx.OK(c, "Installation URL retrieved", dto.InstallationURLResponse{
@@ -137,8 +137,12 @@ func (h *SourceControlHandler) GetInstallationURL(c *fiber.Ctx) error {
 	})
 }
 
-// GetInstallations gets all installations for a provider
+// GetInstallations gets all installations for a provider scoped to the team
 func (h *SourceControlHandler) GetInstallations(c *fiber.Ctx) error {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 	providerStr := c.Params("provider")
 
 	providerType, err := gittypes.ParseGitProviderType(providerStr)
@@ -146,9 +150,14 @@ func (h *SourceControlHandler) GetInstallations(c *fiber.Ctx) error {
 		return fiberctx.RespondBadRequest(c, "Invalid provider")
 	}
 
-	installations, err := h.service.GetInstallations(c.Context(), providerType)
+	sourceControls, err := h.service.ListSourceControlsByProvider(c.Context(), providerType, teamID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, err.Error())
+		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+	}
+
+	installations := make([]dto.AppInstallationData, len(sourceControls))
+	for i, sc := range sourceControls {
+		installations[i] = services.AppInstallationDataFromSourceControl(&sc)
 	}
 
 	return fiberctx.OK(c, "Installations retrieved", dto.InstallationsResponse{
@@ -157,8 +166,12 @@ func (h *SourceControlHandler) GetInstallations(c *fiber.Ctx) error {
 	})
 }
 
-// GetInstallation gets a single installation
+// GetInstallation gets a single installation scoped to the team
 func (h *SourceControlHandler) GetInstallation(c *fiber.Ctx) error {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 	providerStr := c.Params("provider")
 	installationID := c.Params("installationId")
 
@@ -167,25 +180,25 @@ func (h *SourceControlHandler) GetInstallation(c *fiber.Ctx) error {
 		return fiberctx.RespondBadRequest(c, "Invalid provider")
 	}
 
-	installations, err := h.service.GetInstallations(c.Context(), providerType)
+	sc, err := h.service.GetSourceControlByInstallation(c.Context(), providerType, installationID, contracts.WithTeamID(teamID))
 	if err != nil {
-		return fiberctx.RespondInternalError(c, err.Error())
+		return fiberctx.RespondNotFound(c, "Installation not found")
 	}
 
-	for _, inst := range installations {
-		if inst.ID == installationID {
-			return fiberctx.OK(c, "Installation retrieved", fiber.Map{
-				"installation": inst,
-				"provider":     providerStr,
-			})
-		}
-	}
+	installation := services.AppInstallationDataFromSourceControl(sc)
 
-	return fiberctx.RespondNotFound(c, "Installation not found")
+	return fiberctx.OK(c, "Installation retrieved", fiber.Map{
+		"installation": installation,
+		"provider":     providerStr,
+	})
 }
 
 // GetInstallationRepositories gets repositories for an installation from the API
 func (h *SourceControlHandler) GetInstallationRepositories(c *fiber.Ctx) error {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
 	providerStr := c.Params("provider")
 	installationID := c.Params("installationId")
 
@@ -194,9 +207,15 @@ func (h *SourceControlHandler) GetInstallationRepositories(c *fiber.Ctx) error {
 		return fiberctx.RespondBadRequest(c, "Invalid provider")
 	}
 
+	// Verify team ownership before calling the provider API
+	_, err = h.service.GetSourceControlByInstallation(c.Context(), providerType, installationID, contracts.WithTeamID(teamID))
+	if err != nil {
+		return fiberctx.RespondNotFound(c, "Installation not found")
+	}
+
 	repos, err := h.service.GetInstallationRepositoriesFromAPI(c.Context(), providerType, installationID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, err.Error())
+		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
 	}
 
 	return fiberctx.OK(c, "Repositories retrieved", fiber.Map{
@@ -222,7 +241,7 @@ func (h *SourceControlHandler) GetCachedInstallationRepositories(c *fiber.Ctx) e
 
 	repos, err := h.service.GetCachedRepositories(c.Context(), providerType, installationID, teamID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, err.Error())
+		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
 	}
 
 	result := make([]dto.RepositoryResponse, len(repos))
@@ -238,7 +257,7 @@ func (h *SourceControlHandler) GetCachedInstallationRepositories(c *fiber.Ctx) e
 
 // RefreshInstallationRepositories refreshes repositories for an installation
 func (h *SourceControlHandler) RefreshInstallationRepositories(c *fiber.Ctx) error {
-	userID, err := fiberctx.MustGetUserID(c)
+	teamID, _, err := fiberctx.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
@@ -250,13 +269,13 @@ func (h *SourceControlHandler) RefreshInstallationRepositories(c *fiber.Ctx) err
 		return fiberctx.RespondBadRequest(c, "Invalid provider")
 	}
 
-	sc, err := h.service.GetSourceControlByInstallation(c.Context(), providerType, installationID, contracts.WithUserID(userID))
+	sc, err := h.service.GetSourceControlByInstallation(c.Context(), providerType, installationID, contracts.WithTeamID(teamID))
 	if err != nil {
 		return fiberctx.RespondNotFound(c, "Installation not found")
 	}
 
 	if err := h.service.RefreshInstallationRepositories(c.Context(), sc); err != nil {
-		return fiberctx.RespondInternalError(c, err.Error())
+		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
 	}
 
 	return fiberctx.OK(c, "Repositories are being synced in the background", fiber.Map{
@@ -284,8 +303,8 @@ func (h *SourceControlHandler) HandleInstallationCallback(c *fiber.Ctx) error {
 		return c.Redirect("/settings/git-providers")
 	}
 
-	// Check if installation already exists
-	existingSC, err := h.service.GetSourceControlByInstallation(c.Context(), providerType, installationID, contracts.WithUserID(userID))
+	// Check if installation already exists scoped to the team
+	existingSC, err := h.service.GetSourceControlByInstallation(c.Context(), providerType, installationID, contracts.WithTeamID(teamID))
 
 	if setupAction == "install" {
 		if err == nil && existingSC != nil {
@@ -325,12 +344,12 @@ func (h *SourceControlHandler) TestConnection(c *fiber.Ctx) error {
 
 // GetInstallationsWithCounts gets installations with repository counts for the settings page
 func (h *SourceControlHandler) GetInstallationsWithCounts(c *fiber.Ctx) error {
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+	teamID, err := fiberctx.MustGetTeamID(c)
 	if err != nil {
 		return err
 	}
 
-	installations, err := h.service.GetInstallationsWithRepositoryCounts(c.Context(), teamID, userID)
+	installations, err := h.service.GetInstallationsWithRepositoryCounts(c.Context(), teamID)
 	if err != nil {
 		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
 	}

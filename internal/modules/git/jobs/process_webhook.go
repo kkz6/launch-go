@@ -82,10 +82,7 @@ func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data ma
 
 	// Handle installation events
 	if installation, ok := data["installation"].(map[string]any); ok {
-		var installationID string
-		if idFloat, ok := installation["id"].(float64); ok {
-			installationID = fmt.Sprintf("%.0f", idFloat)
-		}
+		installationID := providers.ExtractFloatID(installation, "id")
 
 		if installationID != "" {
 			switch action {
@@ -281,12 +278,12 @@ type Site struct {
 }
 
 func (j *ProcessGitWebhookJob) findSitesByRepositoryAndBranch(ctx context.Context, repository, branch string) ([]Site, error) {
-	// Query sites directly
 	var sites []Site
 	err := j.Deps.DB.WithContext(ctx).
 		Table("sites").
-		Select("id, source_control_id").
-		Where("repository = ? AND branch = ? AND auto_deployment = ?", repository, branch, true).
+		Select("sites.id, sites.source_control_id").
+		Joins("JOIN source_control_repositories ON source_control_repositories.id = sites.source_control_repositories_id").
+		Where("source_control_repositories.full_name = ? AND sites.repository_branch = ? AND sites.auto_deployment = ?", repository, branch, true).
 		Find(&sites).Error
 
 	return sites, err
