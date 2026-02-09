@@ -10,9 +10,11 @@ import (
 
 	"github.com/pquerna/otp/totp"
 	"golang.org/x/crypto/bcrypt"
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
+	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/security"
@@ -157,22 +159,47 @@ func (s *TwoFactorService) VerifyTwoFactor(ctx context.Context, userID, code str
 		return true, nil
 	}
 
-	// Try recovery code
+	// Try recovery code within a transaction with row-level locking
+	// to prevent concurrent use of the same recovery code
 	if user.TwoFactorRecoveryCodes != nil {
-		codes := strings.Split(*user.TwoFactorRecoveryCodes, ",")
-		for i, hashedCode := range codes {
-			if bcrypt.CompareHashAndPassword([]byte(hashedCode), []byte(code)) == nil {
-				// Remove used recovery code
-				codes = append(codes[:i], codes[i+1:]...)
-				codesStr := strings.Join(codes, ",")
-				user.TwoFactorRecoveryCodes = &codesStr
-
-				if err := s.repos.User().Update(ctx, user); err != nil {
-					return false, fmt.Errorf("failed to remove used recovery code: %w", err)
-				}
-
-				return true, nil
+		var verified bool
+		err := s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			// Lock the user row to prevent concurrent recovery code usage
+			var lockedUser models.User
+			if err := tx.Set("gorm:query_option", "FOR UPDATE").
+				First(&lockedUser, "id = ?", userID).Error; err != nil {
+				return err
 			}
+
+			if lockedUser.TwoFactorRecoveryCodes == nil {
+				return nil
+			}
+
+			codes := strings.Split(*lockedUser.TwoFactorRecoveryCodes, ",")
+			for i, hashedCode := range codes {
+				if bcrypt.CompareHashAndPassword([]byte(hashedCode), []byte(code)) == nil {
+					// Remove used recovery code
+					codes = append(codes[:i], codes[i+1:]...)
+					codesStr := strings.Join(codes, ",")
+
+					if err := tx.Model(&lockedUser).
+						Update("two_factor_recovery_codes", codesStr).Error; err != nil {
+						return fmt.Errorf("failed to remove used recovery code: %w", err)
+					}
+
+					verified = true
+
+					return nil
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
+			return false, err
+		}
+		if verified {
+			return true, nil
 		}
 	}
 

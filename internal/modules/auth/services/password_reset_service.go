@@ -3,6 +3,7 @@ package services
 import (
 	"context"
 	"crypto/sha256"
+	"crypto/subtle"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -101,9 +102,9 @@ func (s *PasswordResetService) ResetPassword(ctx context.Context, req *dto.Reset
 		return errors.New("invalid or expired reset token")
 	}
 
-	// Verify token
+	// Verify token using constant-time comparison to prevent timing attacks
 	hashedToken := s.hashToken(req.Token)
-	if hashedToken != resetToken.Token {
+	if subtle.ConstantTimeCompare([]byte(hashedToken), []byte(resetToken.Token)) != 1 {
 		return errors.New("invalid or expired reset token")
 	}
 

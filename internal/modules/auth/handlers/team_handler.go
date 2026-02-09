@@ -30,7 +30,7 @@ func (h *TeamHandler) CreateTeam(c *fiber.Ctx) error {
 		return err
 	}
 
-	team, err := h.Service().CreateTeam(c.Context(), userID, req)
+	team, err := h.Service().Team.CreateTeam(c.Context(), userID, req)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -50,7 +50,7 @@ func (h *TeamHandler) GetTeam(c *fiber.Ctx) error {
 		return err
 	}
 
-	team, members, invitations, err := h.Service().GetTeamWithDetails(c.Context(), teamID)
+	team, members, invitations, err := h.Service().Team.GetTeamWithDetails(c.Context(), teamID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -79,7 +79,7 @@ func (h *TeamHandler) UpdateTeam(c *fiber.Ctx) error {
 		return err
 	}
 
-	team, err := h.Service().UpdateTeam(c.Context(), userID, teamID, req)
+	team, err := h.Service().Team.UpdateTeam(c.Context(), userID, teamID, req)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -99,7 +99,7 @@ func (h *TeamHandler) DeleteTeam(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().DeleteTeam(c.Context(), userID, teamID); err != nil {
+	if err := h.Service().Team.DeleteTeam(c.Context(), userID, teamID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -113,7 +113,7 @@ func (h *TeamHandler) GetUserTeams(c *fiber.Ctx) error {
 		return err
 	}
 
-	teams, err := h.Service().GetUserTeams(c.Context(), userID)
+	teams, err := h.Service().Team.GetUserTeams(c.Context(), userID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -122,8 +122,6 @@ func (h *TeamHandler) GetUserTeams(c *fiber.Ctx) error {
 }
 
 // SwitchTeam switches the user's current team (from request body)
-// After switching, the frontend should use the returned team ID in the X-Team-ID header
-// for all subsequent API requests that require team context.
 func (h *TeamHandler) SwitchTeam(c *fiber.Ctx) error {
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
@@ -135,7 +133,7 @@ func (h *TeamHandler) SwitchTeam(c *fiber.Ctx) error {
 		return err
 	}
 
-	user, err := h.Service().SwitchTeam(c.Context(), userID, req.TeamID)
+	user, err := h.Service().Team.SwitchTeam(c.Context(), userID, req.TeamID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -150,8 +148,6 @@ func (h *TeamHandler) SwitchTeam(c *fiber.Ctx) error {
 }
 
 // SwitchTeamByID switches the user's current team using URL parameter
-// After switching, the frontend should use the returned team ID in the X-Team-ID header
-// for all subsequent API requests that require team context.
 func (h *TeamHandler) SwitchTeamByID(c *fiber.Ctx) error {
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
@@ -163,7 +159,7 @@ func (h *TeamHandler) SwitchTeamByID(c *fiber.Ctx) error {
 		return err
 	}
 
-	user, err := h.Service().SwitchTeam(c.Context(), userID, teamID)
+	user, err := h.Service().Team.SwitchTeam(c.Context(), userID, teamID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}

@@ -25,7 +25,10 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 		return err
 	}
 
-	result, err := h.Service().Register(c.Context(), req)
+	req.IPAddress = c.IP()
+	req.UserAgent = c.Get("User-Agent")
+
+	result, err := h.Service().Auth.Register(c.Context(), req)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -40,7 +43,10 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 		return err
 	}
 
-	result, err := h.Service().Login(c.Context(), req)
+	req.IPAddress = c.IP()
+	req.UserAgent = c.Get("User-Agent")
+
+	result, err := h.Service().Auth.Login(c.Context(), req)
 	if err != nil {
 		return fiberctx.RespondUnauthorized(c, fiberctx.MsgInvalidCredentials)
 	}
@@ -55,7 +61,9 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().Logout(c.Context(), userID); err != nil {
+	sessionID, _ := c.Locals("sessionID").(string)
+
+	if err := h.Service().Auth.Logout(c.Context(), userID, sessionID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -69,7 +77,7 @@ func (h *AuthHandler) RefreshToken(c *fiber.Ctx) error {
 		return err
 	}
 
-	result, err := h.Service().RefreshToken(c.Context(), req.RefreshToken)
+	result, err := h.Service().Auth.RefreshToken(c.Context(), req.RefreshToken)
 	if err != nil {
 		return fiberctx.RespondUnauthorized(c, fiberctx.MsgInvalidToken)
 	}
