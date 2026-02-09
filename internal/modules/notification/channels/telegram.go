@@ -90,7 +90,7 @@ func (t *TelegramChannel) Connect(ctx context.Context) error {
 
 	payload := telegramMessage{
 		ChatID:    chatID,
-		Text:      "This message confirms that you have connected your Telegram to Launch.",
+		Text:      "This message confirms that you have connected your Telegram to launchctl.",
 		ParseMode: "HTML",
 	}
 
