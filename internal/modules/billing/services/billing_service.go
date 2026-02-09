@@ -91,7 +91,7 @@ func (s *BillingService) GetPlanByVariantID(variantID string) *models.Plan {
 }
 
 // GenerateCheckoutURL generates a checkout URL for a team to subscribe
-func (s *BillingService) GenerateCheckoutURL(ctx context.Context, teamID string, req *dto.GenerateCheckoutURLRequest, redirectURL string) (string, error) {
+func (s *BillingService) GenerateCheckoutURL(ctx context.Context, teamID string, req *dto.GenerateCheckoutURLRequest, redirectURL string, customerEmail string, customerName string) (string, error) {
 	if s.dodoPayments == nil {
 		return "", ErrSubscriptionsNotEnabled
 	}
@@ -107,7 +107,7 @@ func (s *BillingService) GenerateCheckoutURL(ctx context.Context, teamID string,
 		productID = plan.YearlyID
 	}
 
-	url, err := s.dodoPayments.CreateCheckout(ctx, productID, plan.Name, teamID, redirectURL)
+	url, err := s.dodoPayments.CreateCheckout(ctx, productID, plan.Name, teamID, redirectURL, customerEmail, customerName)
 	if err != nil {
 		s.logger.Error().Err(err).Str("team_id", teamID).Str("plan_id", req.Plan).Msg("Failed to create checkout URL")
 		return "", err

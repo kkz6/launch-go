@@ -311,6 +311,7 @@ func (s *AuthService) generateAccessToken(user *models.User) (string, error) {
 	claims := jwt.MapClaims{
 		"sub":   user.ID,
 		"email": user.Email,
+		"name":  user.Name,
 		"type":  "access",
 		"iat":   now.Unix(),
 		"exp":   now.Add(time.Hour * time.Duration(s.config.JWT.Expiration)).Unix(),
