@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"math"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/rs/zerolog"
@@ -18,6 +19,7 @@ import (
 type MetricsWebhookRepository interface {
 	FindServerByID(ctx context.Context, id string) (*models.Server, error)
 	CreateMetric(ctx context.Context, metric *models.Metric) error
+	UpdateServerFields(ctx context.Context, serverID string, fields map[string]any) error
 }
 
 // metricsWebhookRepo implements MetricsWebhookRepository
@@ -33,6 +35,10 @@ func (r *metricsWebhookRepo) FindServerByID(ctx context.Context, id string) (*mo
 
 func (r *metricsWebhookRepo) CreateMetric(ctx context.Context, metric *models.Metric) error {
 	return r.db.WithContext(ctx).Create(metric).Error
+}
+
+func (r *metricsWebhookRepo) UpdateServerFields(ctx context.Context, serverID string, fields map[string]any) error {
+	return r.db.WithContext(ctx).Model(&models.Server{}).Where("id = ?", serverID).Updates(fields).Error
 }
 
 // MetricsWebhookHandler handles incoming metrics from launch-agent
@@ -122,6 +128,9 @@ func (h *MetricsWebhookHandler) ReceivePulse(c *fiber.Ctx) error {
 
 	h.logger.Debug().Str("server_id", serverID).Float64("load", req.Data.Load).Msg("Pulse received and saved")
 
+	// Backfill server hardware details from metrics if missing
+	h.backfillServerDetails(ctx, server, metric)
+
 	// Broadcast to team via WebSocket
 	if h.hub != nil {
 		payload := broadcast.ServerMetricsPayload{
@@ -134,6 +143,29 @@ func (h *MetricsWebhookHandler) ReceivePulse(c *fiber.Ctx) error {
 	}
 
 	return fiberctx.OK(c, "Pulse received", nil)
+}
+
+// backfillServerDetails updates server hardware fields from metric data if they are missing
+func (h *MetricsWebhookHandler) backfillServerDetails(ctx context.Context, server *models.Server, metric *models.Metric) {
+	updates := make(map[string]any)
+
+	if server.MemoryInMB == nil && metric.MemoryTotal > 0 {
+		memMB := int(math.Round(metric.MemoryTotal / (1024 * 1024)))
+		updates["memory_in_mb"] = memMB
+	}
+
+	if server.StorageInGB == nil && metric.DiskTotal > 0 {
+		diskGB := int(math.Round(metric.DiskTotal / (1024 * 1024 * 1024)))
+		updates["storage_in_gb"] = diskGB
+	}
+
+	if len(updates) == 0 {
+		return
+	}
+
+	if err := h.repo.UpdateServerFields(ctx, server.ID, updates); err != nil {
+		h.logger.Error().Err(err).Str("server_id", server.ID).Msg("Failed to backfill server details from metrics")
+	}
 }
 
 // GeneratePulseWebhookURL creates a signed URL for the pulse webhook
