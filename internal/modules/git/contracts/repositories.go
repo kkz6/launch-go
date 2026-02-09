@@ -47,6 +47,7 @@ type SourceControlRepoRepository interface {
 // InstallationQueryOptions holds options for installation queries
 type InstallationQueryOptions struct {
 	UserID                string
+	TeamID                string
 	ProviderID            string
 	RequireInstallationID bool
 }
@@ -65,6 +66,13 @@ func WithUserID(userID string) InstallationQueryOption {
 func WithProviderID(providerID string) InstallationQueryOption {
 	return func(o *InstallationQueryOptions) {
 		o.ProviderID = providerID
+	}
+}
+
+// WithTeamID filters installations by team ID
+func WithTeamID(teamID string) InstallationQueryOption {
+	return func(o *InstallationQueryOptions) {
+		o.TeamID = teamID
 	}
 }
 

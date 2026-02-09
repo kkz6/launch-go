@@ -20,17 +20,17 @@ type SourceControl struct {
 	AvatarURL               *string                  `gorm:"column:avatar_url;type:varchar(255)" json:"avatar_url,omitempty"`
 	HTMLURL                 *string                  `gorm:"column:html_url;type:varchar(255)" json:"html_url,omitempty"`
 	InstallationID          *string                  `gorm:"column:installation_id;type:varchar(255)" json:"installation_id,omitempty"`
-	Permissions             *string                  `gorm:"type:json" json:"permissions,omitempty"`
+	Permissions             *string                  `gorm:"type:json" json:"-"`
 	RepositorySelection     *string                  `gorm:"column:repository_selection;type:varchar(255)" json:"repository_selection,omitempty"`
 	HasMultipleRepositories bool                     `gorm:"column:has_multiple_repositories;default:false" json:"has_multiple_repositories"`
 	RepositoryCount         *int                     `gorm:"column:repository_count" json:"repository_count,omitempty"`
 	ConnectedAt             *time.Time               `gorm:"column:connected_at;type:timestamp null" json:"connected_at,omitempty"`
 	LastSyncedAt            *time.Time               `gorm:"column:last_synced_at;type:timestamp null" json:"last_synced_at,omitempty"`
-	AdditionalData          *string                  `gorm:"column:additional_data;type:json" json:"additional_data,omitempty"`
+	AdditionalData          *string                  `gorm:"column:additional_data;type:json" json:"-"`
 	Provider                gittypes.GitProviderType `gorm:"type:varchar(255);not null;index" json:"provider"`
 	URL                     *string                  `gorm:"type:varchar(255)" json:"url,omitempty"`
-	ProviderData            *string                  `gorm:"column:provider_data;type:json" json:"provider_data,omitempty"`
-	TokenExpiresAt          *time.Time               `gorm:"column:token_expires_at;type:timestamp null" json:"token_expires_at,omitempty"`
+	ProviderData            *string                  `gorm:"column:provider_data;type:json" json:"-"`
+	TokenExpiresAt          *time.Time               `gorm:"column:token_expires_at;type:timestamp null" json:"-"`
 
 	// Relations
 	Repositories []SourceControlRepository `gorm:"foreignKey:SourceControlID;references:ID" json:"repositories,omitempty"`

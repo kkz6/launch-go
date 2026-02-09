@@ -256,9 +256,9 @@ func (b *BaseGitProvider) FetchAllPages(
 		}
 
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
+			_, _ = io.ReadAll(resp.Body)
 			_ = resp.Body.Close()
-			return nil, fmt.Errorf("request failed with status %d: %s", resp.StatusCode, string(body))
+			return nil, fmt.Errorf("request failed with status %d", resp.StatusCode)
 		}
 
 		bodyBytes, err := io.ReadAll(resp.Body)
@@ -299,6 +299,7 @@ func (b *BaseGitProvider) FetchAllPages(
 // Error Handling Helpers
 
 // HandleAPIError converts HTTP errors to provider-specific errors.
+// Raw API response bodies are stripped to prevent leaking internal details to clients.
 func HandleAPIError(err error) error {
 	httpErr, ok := httpclient.IsHTTPError(err)
 	if !ok {
@@ -315,7 +316,7 @@ func HandleAPIError(err error) error {
 	case httpErr.IsRateLimited():
 		return ErrRateLimitExceeded
 	default:
-		return err
+		return fmt.Errorf("provider API error: status %d", httpErr.StatusCode)
 	}
 }
 
@@ -325,11 +326,11 @@ func CheckResponseStatus(resp *http.Response) error {
 		return nil
 	}
 
-	body, _ := io.ReadAll(resp.Body)
+	// Drain the body but don't include it in the error to avoid leaking internal details
+	_, _ = io.ReadAll(resp.Body)
 	httpErr := &httpclient.HTTPError{
 		StatusCode: resp.StatusCode,
 		Status:     resp.Status,
-		Body:       string(body),
 	}
 
 	return HandleAPIError(httpErr)

@@ -38,8 +38,8 @@ type DatabaseManager interface {
 // GitReader provides read-only access to git/source control data.
 // Used by the site module to read source control and repository information.
 type GitReader interface {
-	// FindSourceControlByID retrieves a source control by ID
-	FindSourceControlByID(ctx context.Context, id string) (*gitmodels.SourceControl, error)
+	// FindSourceControlByID retrieves a source control by ID and team ID
+	FindSourceControlByID(ctx context.Context, id, teamID string) (*gitmodels.SourceControl, error)
 	// FindRepositoryByID retrieves a source control repository by ID
 	FindRepositoryByID(ctx context.Context, id string) (*gitmodels.SourceControlRepository, error)
 }

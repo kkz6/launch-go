@@ -64,7 +64,7 @@ func (s *DeploymentService) FetchLatestCommitData(ctx context.Context, site *mod
 	}
 
 	// Get source control
-	sourceControl, err := s.gitReader.FindSourceControlByID(ctx, *site.SourceControlID)
+	sourceControl, err := s.gitReader.FindSourceControlByID(ctx, *site.SourceControlID, site.TeamID)
 	if err != nil {
 		s.LogError(err, "Failed to find source control for commit data", "site_id", site.ID)
 		return nil

@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/git/contracts"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -38,7 +39,7 @@ func (j *SyncInstallationReposJob) Handle(ctx context.Context) error {
 	}
 
 	// Find source control for this installation
-	sc, err := j.Deps.Service.GetSourceControlByInstallation(ctx, providerType, j.Payload.InstallationID)
+	sc, err := j.Deps.Service.GetSourceControlByInstallation(ctx, providerType, j.Payload.InstallationID, contracts.WithTeamID(j.Payload.TeamID))
 	if err != nil {
 		j.Deps.Logger.Warn().
 			Str("installation_id", j.Payload.InstallationID).

@@ -107,6 +107,7 @@ func (h *SiteHandler) Show(c *fiber.Ctx) error {
 	if site.SourceControlID != nil && *site.SourceControlID != "" {
 		resp.SourceControl, resp.Repository = h.siteService.GetSourceControlInfo(
 			c.Context(),
+			teamID,
 			*site.SourceControlID,
 			site.SourceControlRepositoriesID,
 		)

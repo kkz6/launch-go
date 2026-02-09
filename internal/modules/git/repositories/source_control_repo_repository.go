@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"gorm.io/gorm"
 
@@ -165,6 +166,26 @@ func (r *SourceControlRepoRepository) UpsertRepository(ctx context.Context, sour
 		}
 
 		if err := r.DB.WithContext(ctx).Create(&repo).Error; err != nil {
+			// Handle duplicate key error - another goroutine may have created it concurrently
+			if strings.Contains(err.Error(), "Duplicate entry") || strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "UNIQUE constraint") {
+				// Retry: find the record and update it
+				var existingRepo models.SourceControlRepository
+				if findErr := r.DB.WithContext(ctx).
+					Where("source_control_id = ? AND full_name = ?", sourceControlID, data.FullName).
+					First(&existingRepo).Error; findErr != nil {
+					return nil, err // Return original error if we can't find it
+				}
+				existingRepo.Name = data.Name
+				existingRepo.Public = data.IsPublic
+				existingRepo.DefaultBranch = data.DefaultBranch
+				existingRepo.HTMLURL = &data.HTMLURL
+				existingRepo.SSHURL = data.SSHURL
+				existingRepo.AdditionalData = additionalData
+				if updateErr := r.DB.WithContext(ctx).Save(&existingRepo).Error; updateErr != nil {
+					return nil, updateErr
+				}
+				return &existingRepo, nil
+			}
 			return nil, err
 		}
 

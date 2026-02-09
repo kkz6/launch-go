@@ -22,9 +22,9 @@ func NewGitReaderAdapter(sourceControlRepo gitcontracts.SourceControlRepository,
 	}
 }
 
-// FindSourceControlByID retrieves a source control by ID
-func (a *GitReaderAdapter) FindSourceControlByID(ctx context.Context, id string) (*gitmodels.SourceControl, error) {
-	return a.sourceControlRepo.FindByID(ctx, id)
+// FindSourceControlByID retrieves a source control by ID and team ID
+func (a *GitReaderAdapter) FindSourceControlByID(ctx context.Context, id, teamID string) (*gitmodels.SourceControl, error) {
+	return a.sourceControlRepo.FindByIDAndTeam(ctx, id, teamID)
 }
 
 // FindRepositoryByID retrieves a source control repository by ID

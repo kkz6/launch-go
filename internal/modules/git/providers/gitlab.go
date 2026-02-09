@@ -95,8 +95,8 @@ func (p *GitLabProvider) TestConnection(ctx context.Context) error {
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			return fmt.Errorf("connection test failed: %s", string(body))
+			_, _ = io.ReadAll(resp.Body)
+			return fmt.Errorf("connection test failed: status %d", resp.StatusCode)
 		}
 		return nil
 	}
@@ -108,8 +108,8 @@ func (p *GitLabProvider) TestConnection(ctx context.Context) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("connection test failed: %s", string(body))
+		_, _ = io.ReadAll(resp.Body)
+		return fmt.Errorf("connection test failed: status %d", resp.StatusCode)
 	}
 
 	return nil

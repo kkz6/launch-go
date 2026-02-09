@@ -3,8 +3,6 @@ package handlers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"strings"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -92,7 +90,14 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 	}
 
 	// Process webhook in goroutine as fallback
-	go h.processWebhook(providerType, data, signature)
+	go func() {
+		defer func() {
+			if r := recover(); r != nil {
+				h.logger.Error().Interface("panic", r).Str("provider", providerStr).Msg("Panic in webhook processing goroutine")
+			}
+		}()
+		h.processWebhook(providerType, data, signature)
+	}()
 
 	h.logger.Info().Str("provider", providerStr).Msg("Webhook received and processing")
 
@@ -107,7 +112,7 @@ func (h *WebhookHandler) getSignature(c *fiber.Ctx, providerType gittypes.GitPro
 	case gittypes.GitProviderGitLab:
 		return c.Get("X-Gitlab-Token")
 	case gittypes.GitProviderBitbucket:
-		return c.Get("X-Hook-UUID")
+		return c.Get("X-Hub-Signature")
 	default:
 		return ""
 	}
@@ -136,10 +141,7 @@ func (h *WebhookHandler) processGitHubWebhook(ctx context.Context, data map[stri
 
 	// Handle installation events
 	if installation, ok := data["installation"].(map[string]interface{}); ok {
-		var installationID string
-		if idFloat, ok := installation["id"].(float64); ok {
-			installationID = formatFloat(idFloat)
-		}
+		installationID := providers.ExtractFloatID(installation, "id")
 
 		if installationID == "" {
 			return
@@ -256,7 +258,7 @@ func (h *WebhookHandler) handleInstallationCreated(ctx context.Context, data map
 	providerData := make(map[string]interface{})
 	if sc.ProviderData != nil && *sc.ProviderData != "" {
 		if err := json.Unmarshal([]byte(*sc.ProviderData), &providerData); err != nil {
-			h.logger.Warn().Str("error", err.Error()).Msg("Failed to parse existing provider data")
+			h.logger.Warn().Err(err).Msg("Failed to parse existing provider data")
 		}
 	}
 
@@ -332,17 +334,4 @@ func (h *WebhookHandler) triggerDeployments(ctx context.Context, repository, bra
 	// 1. Find all sites that match this repository and branch
 	// 2. Get commit data from the webhook payload
 	// 3. Trigger deployments for each site
-}
-
-// formatFloat formats a float64 as a string without decimal places
-func formatFloat(f float64) string {
-	return strings.TrimSuffix(
-		strings.TrimSuffix(
-			strings.Replace(
-				strings.Replace(
-					fmt.Sprintf("%f", f),
-					".", "", -1),
-				",", "", -1),
-			"0"),
-		".")
 }

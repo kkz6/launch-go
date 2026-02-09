@@ -31,6 +31,9 @@ type Module struct {
 
 	// Provider factory (needed by other modules)
 	providerFactory *providers.ProviderFactory
+
+	// Cross-module: site checker for disconnect validation
+	siteChecker services.SiteChecker
 }
 
 // NewModule creates a new git module
@@ -58,7 +61,14 @@ func (m *Module) createServices() *services.ServiceRegistry {
 	}
 
 	// Create service registry - handles all service creation and wiring
-	return services.NewServiceRegistry(svcDeps)
+	registry := services.NewServiceRegistry(svcDeps)
+
+	// Wire cross-module dependencies
+	if m.siteChecker != nil {
+		registry.SourceControl().SetSiteChecker(m.siteChecker)
+	}
+
+	return registry
 }
 
 // Repos returns the repository registry
@@ -104,6 +114,15 @@ func createProviderFactory(cfg config.GitConfig) *providers.ProviderFactory {
 // ProviderFactory returns the provider factory
 func (m *Module) ProviderFactory() *providers.ProviderFactory {
 	return m.providerFactory
+}
+
+// SiteChecker is the interface accepted by SetSiteChecker for cross-module wiring
+type SiteChecker = services.SiteChecker
+
+// SetSiteChecker sets the site checker on the source control service created during route registration.
+// This is stored on the module and applied when services are created.
+func (m *Module) SetSiteChecker(checker SiteChecker) {
+	m.siteChecker = checker
 }
 
 // RegisterJobs registers background job handlers
