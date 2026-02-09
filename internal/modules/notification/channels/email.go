@@ -60,9 +60,9 @@ func (e *EmailChannel) Connect(ctx context.Context) error {
 	html, _, err := templates.ConnectionTestEmail()
 	if err != nil {
 		// Fallback to plain text
-		err = e.sender.Send(ctx, email, "Connected to Launch", "This email confirms that you have connected your email to Launch.", false)
+		err = e.sender.Send(ctx, email, "Connected to launchctl", "This email confirms that you have connected your email to Launch.", false)
 	} else {
-		err = e.sender.Send(ctx, email, "Connected to Launch", html, true)
+		err = e.sender.Send(ctx, email, "Connected to launchctl", html, true)
 	}
 
 	if err != nil {
