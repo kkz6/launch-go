@@ -17,7 +17,7 @@ type Order struct {
 	Identifier      string                   `gorm:"size:36;uniqueIndex;not null" json:"identifier"`
 	ProductID       string                   `gorm:"size:255;not null;index" json:"product_id"`
 	VariantID       string                   `gorm:"size:255;not null;index" json:"variant_id"`
-	OrderNumber     int                      `gorm:"uniqueIndex;not null" json:"order_number"`
+	OrderNumber     int                      `json:"order_number"`
 	Currency        string                   `gorm:"size:3;not null" json:"currency"`
 	Subtotal        int64                    `gorm:"not null" json:"subtotal"`
 	DiscountTotal   int64                    `gorm:"not null" json:"discount_total"`
