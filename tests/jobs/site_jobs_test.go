@@ -38,7 +38,7 @@ func TestNewCreateDeploymentTask(t *testing.T) {
 	userID := "user123"
 	gitHash := "abc123"
 	branch := "develop"
-	task, err := sitejobs.NewCreateDeploymentTask("site123", &userID, &gitHash, &branch)
+	task, err := sitejobs.NewCreateDeploymentTask("site123", &userID, &gitHash, &branch, nil)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)
@@ -52,7 +52,7 @@ func TestNewCreateDeploymentTask(t *testing.T) {
 }
 
 func TestNewCreateDeploymentTask_WithoutOptionalFields(t *testing.T) {
-	task, err := sitejobs.NewCreateDeploymentTask("site123", nil, nil, nil)
+	task, err := sitejobs.NewCreateDeploymentTask("site123", nil, nil, nil, nil)
 
 	if err != nil {
 		t.Fatalf("Expected no error, got %v", err)

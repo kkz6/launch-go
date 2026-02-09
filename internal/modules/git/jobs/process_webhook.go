@@ -10,6 +10,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git/gitref"
 	"github.com/kkz6/launch-go/internal/modules/git/providers"
 	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
+	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -290,13 +291,23 @@ func (j *ProcessGitWebhookJob) findSitesByRepositoryAndBranch(ctx context.Contex
 }
 
 func (j *ProcessGitWebhookJob) dispatchDeploymentJob(ctx context.Context, site Site, commitData *providers.CommitData) error {
-	// TODO: Dispatch deployment job via queue
-	// For now, just log
+	commitMap := commitData.ToMap()
+	branch := commitData.Branch
+
+	task, err := sitejobs.NewCreateDeploymentTask(site.ID, nil, nil, &branch, commitMap)
+	if err != nil {
+		return fmt.Errorf("failed to create deployment task: %w", err)
+	}
+
+	if err := j.Deps.DispatchTask(task); err != nil {
+		return fmt.Errorf("failed to dispatch deployment task: %w", err)
+	}
+
 	j.Deps.Logger.Info().
 		Str("site_id", site.ID).
 		Str("commit_sha", commitData.SHA).
 		Str("commit_message", commitData.Message).
-		Msg("Would dispatch deployment for site")
+		Msg("Dispatched deployment for site")
 
 	return nil
 }
