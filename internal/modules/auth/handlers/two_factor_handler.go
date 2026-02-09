@@ -25,7 +25,7 @@ func (h *TwoFactorHandler) EnableTwoFactor(c *fiber.Ctx) error {
 		return err
 	}
 
-	result, err := h.Service().EnableTwoFactor(c.Context(), userID)
+	result, err := h.Service().TwoFactor.EnableTwoFactor(c.Context(), userID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -45,7 +45,7 @@ func (h *TwoFactorHandler) ConfirmTwoFactor(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().ConfirmTwoFactor(c.Context(), userID, req.Code); err != nil {
+	if err := h.Service().TwoFactor.ConfirmTwoFactor(c.Context(), userID, req.Code); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -64,7 +64,7 @@ func (h *TwoFactorHandler) DisableTwoFactor(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().DisableTwoFactor(c.Context(), userID, req.Password); err != nil {
+	if err := h.Service().TwoFactor.DisableTwoFactor(c.Context(), userID, req.Password); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -88,13 +88,18 @@ func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx) error {
 		code = req.RecoveryCode
 	}
 
-	valid, err := h.Service().VerifyTwoFactor(c.Context(), userID, code)
+	valid, err := h.Service().TwoFactor.VerifyTwoFactor(c.Context(), userID, code)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
 	if !valid {
 		return fiberctx.RespondUnauthorized(c, "Invalid two-factor code")
+	}
+
+	// Mark the current session as 2FA verified
+	if sessionID, ok := c.Locals("sessionID").(string); ok && sessionID != "" {
+		_ = h.Service().Repos().Session().MarkTwoFactorVerified(c.Context(), sessionID)
 	}
 
 	return fiberctx.OK(c, "Two-factor authentication verified", nil)
@@ -107,7 +112,7 @@ func (h *TwoFactorHandler) GetRecoveryCodes(c *fiber.Ctx) error {
 		return err
 	}
 
-	codes, err := h.Service().GetRecoveryCodes(c.Context(), userID)
+	codes, err := h.Service().TwoFactor.GetRecoveryCodes(c.Context(), userID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -122,7 +127,7 @@ func (h *TwoFactorHandler) RegenerateRecoveryCodes(c *fiber.Ctx) error {
 		return err
 	}
 
-	codes, err := h.Service().RegenerateRecoveryCodes(c.Context(), userID)
+	codes, err := h.Service().TwoFactor.RegenerateRecoveryCodes(c.Context(), userID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}

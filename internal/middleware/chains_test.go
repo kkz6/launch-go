@@ -54,7 +54,7 @@ func TestTeamScopeChain(t *testing.T) {
 }
 
 func TestOptionalAuthChain(t *testing.T) {
-	chain := OptionalAuthChain("test-secret")
+	chain := OptionalAuthChain("test-secret", nil)
 
 	// Should have optional auth and optional team scope
 	assert.Len(t, chain, 2)

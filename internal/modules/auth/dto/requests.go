@@ -13,6 +13,8 @@ type RegisterRequest struct {
 	Timezone             string  `json:"timezone" validate:"omitempty,max=50"`
 	InvitationID         *string `json:"invitation_id" validate:"omitempty"`
 	CreatePersonalTeam   bool    `json:"create_personal_team"`
+	IPAddress            string  `json:"-"`
+	UserAgent            string  `json:"-"`
 }
 
 // Normalize normalizes the email to lowercase
@@ -23,9 +25,11 @@ func (r *RegisterRequest) Normalize() {
 
 // LoginRequest represents a user login request
 type LoginRequest struct {
-	Email    string `json:"email" validate:"required,email"`
-	Password string `json:"password" validate:"required"`
-	Remember bool   `json:"remember"`
+	Email     string `json:"email" validate:"required,email"`
+	Password  string `json:"password" validate:"required"`
+	Remember  bool   `json:"remember"`
+	IPAddress string `json:"-"`
+	UserAgent string `json:"-"`
 }
 
 // Normalize normalizes the email to lowercase
