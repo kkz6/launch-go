@@ -58,7 +58,7 @@ func NewDodoPaymentsClient(config *DodoPaymentsConfig, logger *zerolog.Logger) *
 }
 
 // CreateCheckout creates a new checkout session
-func (c *DodoPaymentsClient) CreateCheckout(ctx context.Context, productID string, productName string, teamID string, redirectURL string) (string, error) {
+func (c *DodoPaymentsClient) CreateCheckout(ctx context.Context, productID string, productName string, teamID string, redirectURL string, customerEmail string, customerName string) (string, error) {
 	params := dodopayments.CheckoutSessionNewParams{
 		CheckoutSessionRequest: dodopayments.CheckoutSessionRequestParam{
 			ProductCart: dodopayments.F([]dodopayments.CheckoutSessionRequestProductCartParam{
@@ -72,6 +72,17 @@ func (c *DodoPaymentsClient) CreateCheckout(ctx context.Context, productID strin
 				"team_id": teamID,
 			}),
 		},
+	}
+
+	// Prefill customer info if available
+	if customerEmail != "" {
+		customer := dodopayments.NewCustomerParam{
+			Email: dodopayments.F(customerEmail),
+		}
+		if customerName != "" {
+			customer.Name = dodopayments.F(customerName)
+		}
+		params.CheckoutSessionRequest.Customer = dodopayments.F[dodopayments.CustomerRequestUnionParam](customer)
 	}
 
 	session, err := c.client.CheckoutSessions.New(ctx, params)

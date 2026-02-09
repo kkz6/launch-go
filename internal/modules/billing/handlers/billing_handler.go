@@ -76,7 +76,11 @@ func (h *BillingHandler) GenerateCheckoutURL(c *fiber.Ctx) error {
 
 	redirectURL := h.appURL + "/settings/billing"
 
-	url, err := h.service.GenerateCheckoutURL(c.Context(), teamID, req, redirectURL)
+	// Extract customer info from auth context to prefill checkout
+	customerEmail, _ := c.Locals("email").(string)
+	customerName, _ := c.Locals("name").(string)
+
+	url, err := h.service.GenerateCheckoutURL(c.Context(), teamID, req, redirectURL, customerEmail, customerName)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}

@@ -58,6 +58,7 @@ func setAuthContext(c *fiber.Ctx, claims jwt.MapClaims) {
 	userID, _ := security.ExtractJWTClaim(claims, "sub")
 	fiberctx.SetUserContext(c, userID, nil)
 	c.Locals("email", claims["email"])
+	c.Locals("name", claims["name"])
 }
 
 // Auth middleware requires a valid JWT token in the Authorization header.

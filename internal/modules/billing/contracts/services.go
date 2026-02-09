@@ -16,7 +16,7 @@ type BillingService interface {
 	GetPlanByVariantID(variantID string) *models.Plan
 
 	// Checkout operations
-	GenerateCheckoutURL(ctx context.Context, teamID string, req *dto.GenerateCheckoutURLRequest, redirectURL string) (string, error)
+	GenerateCheckoutURL(ctx context.Context, teamID string, req *dto.GenerateCheckoutURLRequest, redirectURL string, customerEmail string, customerName string) (string, error)
 
 	// Subscription operations
 	GetSubscriptions(ctx context.Context, teamID string) ([]models.Subscription, error)
