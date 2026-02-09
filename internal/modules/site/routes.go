@@ -114,6 +114,7 @@ func (m *Module) registerDeploymentRoutes(router fiber.Router, handler *handlers
 	router.Delete("/:id/deployments/queued", handler.CancelQueuedDeployments)
 
 	// Auto-deployment
+	router.Post("/:id/autodeploy", handler.ToggleAutoDeployment)
 	router.Post("/:id/auto-deployment/enable", handler.EnableAutoDeployment)
 	router.Post("/:id/auto-deployment/disable", handler.DisableAutoDeployment)
 }
