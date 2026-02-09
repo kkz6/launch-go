@@ -194,7 +194,7 @@ func (a *Application) registerModules() {
 	builder := app.NewBuilderFromContext(ctx)
 
 	// Create modules using builder pattern
-	authModule := auth.NewModule(builder)
+	authModule := auth.NewModule(builder, emailSender)
 	serverModule := server.NewModule(builder)
 	databaseModule := databasemodule.NewModule(builder)
 	siteModule := site.NewModule(builder)
