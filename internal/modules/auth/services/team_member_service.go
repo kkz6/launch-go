@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
-	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
@@ -17,11 +17,11 @@ import (
 
 // TeamMemberService handles team member management operations
 type TeamMemberService struct {
-	repos *repositories.Registry
+	repos contracts.RepositoryRegistry
 }
 
 // NewTeamMemberService creates a new TeamMemberService instance
-func NewTeamMemberService(repos *repositories.Registry) *TeamMemberService {
+func NewTeamMemberService(repos contracts.RepositoryRegistry) *TeamMemberService {
 	return &TeamMemberService{repos: repos}
 }
 
