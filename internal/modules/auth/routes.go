@@ -113,6 +113,7 @@ func (m *Module) registerTeamRoutes(router fiber.Router, handler *handlers.Handl
 	router.Delete("/:teamId/members/:userId", handler.TeamMember.RemoveTeamMember)
 
 	// Team Invitations
+	router.Post("/:teamId/invitations", middleware.TeamAdmin(adapter), handler.TeamMember.InviteTeamMember)
 	router.Get("/:teamId/invitations", middleware.TeamAdmin(adapter), handler.TeamMember.GetTeamInvitations)
 	router.Delete("/:teamId/invitations/:invitationId", middleware.TeamAdmin(adapter), handler.TeamMember.CancelTeamInvitation)
 }
