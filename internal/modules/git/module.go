@@ -17,9 +17,10 @@ const ModuleName = "git"
 
 // Ensure Module implements required interfaces
 var (
-	_ app.Module         = (*Module)(nil)
-	_ app.RouteRegistrar = (*Module)(nil)
-	_ app.JobRegistrar   = (*Module)(nil)
+	_ app.Module           = (*Module)(nil)
+	_ app.RouteRegistrar   = (*Module)(nil)
+	_ app.WebhookRegistrar = (*Module)(nil)
+	_ app.JobRegistrar     = (*Module)(nil)
 )
 
 // Module represents the git module

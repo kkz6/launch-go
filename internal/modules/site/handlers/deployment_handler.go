@@ -143,6 +143,38 @@ func (h *DeploymentHandler) CancelQueuedDeployments(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Queued deployments cancelled", map[string]int64{"cancelled": count})
 }
 
+// ToggleAutoDeployment toggles auto-deployment based on request body
+func (h *DeploymentHandler) ToggleAutoDeployment(c *fiber.Ctx) error {
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
+	var body struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiberctx.RespondBadRequest(c, "Invalid request body")
+	}
+
+	if body.Enabled {
+		if err := h.deploymentService.EnableAutoDeployment(c.Context(), siteID, serverID); err != nil {
+			return fiberctx.Abort(err)
+		}
+		return fiberctx.OK(c, "Auto-deployment enabled", nil)
+	}
+
+	if err := h.deploymentService.DisableAutoDeployment(c.Context(), siteID, serverID); err != nil {
+		return fiberctx.Abort(err)
+	}
+	return fiberctx.OK(c, "Auto-deployment disabled", nil)
+}
+
 // EnableAutoDeployment enables auto-deployment
 func (h *DeploymentHandler) EnableAutoDeployment(c *fiber.Ctx) error {
 	serverID, err := fiberctx.GetServerID(c)

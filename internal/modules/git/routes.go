@@ -9,14 +9,11 @@ import (
 
 // RegisterRoutes registers all git routes
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
-	deps := m.Deps()
-
 	// Create services
 	svc := m.createServices()
 
 	// Create handlers
 	handler := handlers.NewSourceControlHandler(svc.SourceControl())
-	webhookHandler := handlers.NewWebhookHandler(svc.SourceControl(), m.providerFactory, deps.Logger)
 
 	// Settings routes (authenticated + subscription required)
 	settings := router.Group("/settings", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
@@ -71,8 +68,19 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 		sourceControls.Post("/", handler.Connect)
 		sourceControls.Delete("/:id", handler.Disconnect)
 	}
+}
 
-	// Webhook routes (no auth required)
+// RegisterWebhookRoutes registers webhook routes at the root level (no auth, no /api prefix).
+// These routes receive callbacks from external git providers (GitHub, GitLab, Bitbucket).
+func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
+	deps := m.Deps()
+
+	// Create services and webhook handler
+	svc := m.createServices()
+	webhookHandler := handlers.NewWebhookHandler(svc.SourceControl(), m.providerFactory, deps.Logger)
+	webhookHandler.SetQueueClient(deps.Queue)
+
+	// Webhook routes (no auth required - verified via provider signatures)
 	webhooks := router.Group("/webhooks/git")
 	{
 		webhooks.Post("/:provider", webhookHandler.HandleWebhook)
