@@ -111,7 +111,7 @@ type CreateCommandRequest struct {
 type CreateRedirectRequest struct {
 	From string `json:"from" validate:"required,max=500"`
 	To   string `json:"to" validate:"required,max=500"`
-	Mode int    `json:"mode" validate:"required,oneof=1 2"`
+	Type int    `json:"type" validate:"required,oneof=301 302 307 308"`
 }
 
 // RollbackRequest represents a rollback request

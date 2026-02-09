@@ -31,7 +31,7 @@ func (s *RedirectService) Create(ctx context.Context, siteID, serverID, userID s
 	}
 
 	redirect := &models.Redirect{
-		Mode:   req.Mode,
+		Mode:   req.Type,
 		From:   req.From,
 		To:     req.To,
 		Status: "pending",
