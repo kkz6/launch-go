@@ -129,8 +129,8 @@ type CommandResponse struct {
 type RedirectResponse struct {
 	ID        string `json:"id"`
 	SiteID    string `json:"site_id"`
-	Mode      int    `json:"mode"`
-	ModeLabel string `json:"mode_label"`
+	Type      int    `json:"type"`
+	TypeLabel string `json:"type_label"`
 	From      string `json:"from"`
 	To        string `json:"to"`
 	Status    string `json:"status"`
@@ -364,20 +364,32 @@ func ToCommandResponse(cmd *models.Command) CommandResponse {
 
 // ToRedirectResponse converts a Redirect model to a response DTO
 func ToRedirectResponse(redirect *models.Redirect) RedirectResponse {
-	modeLabel := "Temporary (302)"
-	if redirect.Mode == 301 {
-		modeLabel = "Permanent (301)"
-	}
+	typeLabel := redirectTypeLabel(redirect.Mode)
 
 	return RedirectResponse{
 		ID:        redirect.ID,
 		SiteID:    redirect.SiteID,
-		Mode:      redirect.Mode,
-		ModeLabel: modeLabel,
+		Type:      redirect.Mode,
+		TypeLabel: typeLabel,
 		From:      redirect.From,
 		To:        redirect.To,
 		Status:    redirect.Status,
 		CreatedAt: pkgdto.FormatTimeOrEmpty(redirect.CreatedAt),
+	}
+}
+
+func redirectTypeLabel(mode int) string {
+	switch mode {
+	case 301:
+		return "Permanent (301)"
+	case 302:
+		return "Temporary (302)"
+	case 307:
+		return "Temporary (307)"
+	case 308:
+		return "Permanent (308)"
+	default:
+		return "Unknown"
 	}
 }
 
