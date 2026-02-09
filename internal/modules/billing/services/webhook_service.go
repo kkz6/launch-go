@@ -4,7 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/kkz6/launch-go/internal/modules/billing/dto"
+	"github.com/dodopayments/dodopayments-go"
+
 	"github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/billing/repositories"
 	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
@@ -46,19 +47,16 @@ func (s *WebhookService) DeleteOldProcessedWebhookEvents(ctx context.Context, ol
 }
 
 // CreateOrUpdateSubscription creates a new subscription or updates an existing one
-func (s *WebhookService) CreateOrUpdateSubscription(ctx context.Context, teamID, providerSubscriptionID string, sub *dto.DodoSubscription) error {
+func (s *WebhookService) CreateOrUpdateSubscription(ctx context.Context, teamID, providerSubscriptionID string, sub *dodopayments.Subscription) error {
 	existing, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
 	if err == nil && existing != nil {
 		return s.updateSubscriptionFromWebhook(ctx, existing, sub)
 	}
 
-	status := MapDodoPaymentsStatus(sub.Status)
+	status := MapDodoPaymentsStatus(string(sub.Status))
 
-	var cardBrand, cardLastFour *string
-	if sub.PaymentMethod != nil {
-		cardBrand = sub.PaymentMethod.CardBrand
-		cardLastFour = sub.PaymentMethod.CardLastFour
-	}
+	nextBillingDate := sub.NextBillingDate
+	cancelledAt := sub.CancelledAt
 
 	subscription := &models.Subscription{
 		BillableType:           models.BillableTypeTeam,
@@ -66,39 +64,33 @@ func (s *WebhookService) CreateOrUpdateSubscription(ctx context.Context, teamID,
 		Type:                   "default",
 		Provider:               models.ProviderDodoPayments,
 		ProviderSubscriptionID: providerSubscriptionID,
+		CustomerID:             sub.Customer.CustomerID,
 		ProductID:              sub.ProductID,
 		VariantID:              sub.ProductID, // DodoPayments uses ProductID, no separate variant
 		Status:                 status,
-		CardBrand:              cardBrand,
-		CardLastFour:           cardLastFour,
-		TrialEndsAt:            sub.TrialPeriodEnd,
-		RenewsAt:               sub.CurrentPeriodEnd,
-		EndsAt:                 sub.CancelledAt,
+		RenewsAt:               &nextBillingDate,
+		EndsAt:                 timeOrNil(cancelledAt),
 	}
 
 	return s.repos.Subscription().Create(ctx, subscription)
 }
 
 // updateSubscriptionFromWebhook updates an existing subscription from webhook data
-func (s *WebhookService) updateSubscriptionFromWebhook(ctx context.Context, subscription *models.Subscription, sub *dto.DodoSubscription) error {
+func (s *WebhookService) updateSubscriptionFromWebhook(ctx context.Context, subscription *models.Subscription, sub *dodopayments.Subscription) error {
 	subscription.ProductID = sub.ProductID
 	subscription.VariantID = sub.ProductID
-	subscription.Status = MapDodoPaymentsStatus(sub.Status)
+	subscription.CustomerID = sub.Customer.CustomerID
+	subscription.Status = MapDodoPaymentsStatus(string(sub.Status))
 
-	if sub.PaymentMethod != nil {
-		subscription.CardBrand = sub.PaymentMethod.CardBrand
-		subscription.CardLastFour = sub.PaymentMethod.CardLastFour
-	}
-
-	subscription.TrialEndsAt = sub.TrialPeriodEnd
-	subscription.RenewsAt = sub.CurrentPeriodEnd
-	subscription.EndsAt = sub.CancelledAt
+	nextBillingDate := sub.NextBillingDate
+	subscription.RenewsAt = &nextBillingDate
+	subscription.EndsAt = timeOrNil(sub.CancelledAt)
 
 	return s.repos.Subscription().Update(ctx, subscription)
 }
 
 // UpdateSubscription updates an existing subscription
-func (s *WebhookService) UpdateSubscription(ctx context.Context, providerSubscriptionID string, sub *dto.DodoSubscription) error {
+func (s *WebhookService) UpdateSubscription(ctx context.Context, providerSubscriptionID string, sub *dodopayments.Subscription) error {
 	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
 	if err != nil {
 		return err
@@ -108,14 +100,14 @@ func (s *WebhookService) UpdateSubscription(ctx context.Context, providerSubscri
 }
 
 // CancelSubscriptionByWebhook marks a subscription as cancelled from webhook
-func (s *WebhookService) CancelSubscriptionByWebhook(ctx context.Context, providerSubscriptionID string, sub *dto.DodoSubscription) error {
+func (s *WebhookService) CancelSubscriptionByWebhook(ctx context.Context, providerSubscriptionID string, cancelledAt time.Time) error {
 	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
 	if err != nil {
 		return err
 	}
 
 	subscription.Status = billingtypes.SubscriptionStatusCancelled
-	subscription.EndsAt = sub.CancelledAt
+	subscription.EndsAt = timeOrNil(cancelledAt)
 
 	return s.repos.Subscription().Update(ctx, subscription)
 }
@@ -159,14 +151,14 @@ func (s *WebhookService) UnpauseSubscription(ctx context.Context, providerSubscr
 }
 
 // HandleSubscriptionRenewed handles a subscription renewal
-func (s *WebhookService) HandleSubscriptionRenewed(ctx context.Context, providerSubscriptionID string, sub *dto.DodoSubscription) error {
+func (s *WebhookService) HandleSubscriptionRenewed(ctx context.Context, providerSubscriptionID string, nextBillingDate time.Time) error {
 	subscription, err := s.repos.Subscription().FindByProviderSubscriptionID(ctx, providerSubscriptionID)
 	if err != nil {
 		return err
 	}
 
 	subscription.Status = billingtypes.SubscriptionStatusActive
-	subscription.RenewsAt = sub.CurrentPeriodEnd
+	subscription.RenewsAt = &nextBillingDate
 
 	return s.repos.Subscription().Update(ctx, subscription)
 }
@@ -177,30 +169,32 @@ func (s *WebhookService) HandlePaymentFailed(ctx context.Context, providerSubscr
 }
 
 // CreateOrder creates a new order from a payment webhook
-func (s *WebhookService) CreateOrder(ctx context.Context, teamID string, payment *dto.DodoPayment) error {
+func (s *WebhookService) CreateOrder(ctx context.Context, teamID string, payment *dodopayments.Payment) error {
 	productID := ""
-	if payment.ProductID != nil {
-		productID = *payment.ProductID
+	if len(payment.ProductCart) > 0 {
+		productID = payment.ProductCart[0].ProductID
 	}
+
+	subtotal := payment.TotalAmount - payment.Tax
 
 	order := &models.Order{
 		BillableType:    models.BillableTypeTeam,
 		BillableID:      teamID,
 		Provider:        models.ProviderDodoPayments,
 		ProviderOrderID: payment.PaymentID,
-		CustomerID:      payment.CustomerID,
+		CustomerID:      payment.Customer.CustomerID,
 		Identifier:      payment.PaymentID,
 		ProductID:       productID,
 		VariantID:       productID,
-		OrderNumber:     0, // DodoPayments doesn't have order numbers
-		Currency:        payment.Currency,
-		Subtotal:        payment.Subtotal,
-		DiscountTotal:   payment.DiscountAmount,
+		OrderNumber:     0,
+		Currency:        string(payment.Currency),
+		Subtotal:        subtotal,
+		DiscountTotal:   0,
 		Tax:             payment.Tax,
 		Total:           payment.TotalAmount,
 		TaxName:         nil,
 		Status:          billingtypes.OrderStatusPaid,
-		ReceiptURL:      nil, // DodoPayments provides receipts via customer portal
+		ReceiptURL:      nil,
 		Refunded:        false,
 		OrderedAt:       payment.CreatedAt,
 	}
@@ -273,4 +267,12 @@ func MapDodoPaymentsStatus(status string) billingtypes.SubscriptionStatus {
 	default:
 		return billingtypes.SubscriptionStatusActive
 	}
+}
+
+// timeOrNil returns a pointer to t if it is not zero, otherwise nil
+func timeOrNil(t time.Time) *time.Time {
+	if t.IsZero() {
+		return nil
+	}
+	return &t
 }

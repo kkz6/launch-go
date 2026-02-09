@@ -41,7 +41,7 @@ func (m *Module) registerSubscriptionRoutes(router fiber.Router, authMiddleware 
 // RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
 func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 	deps := m.Deps()
-	webhookHandler := handlers.NewWebhookHandler(m.service, m.webhookService, deps.Config.Billing.WebhookSecret, deps.Logger)
+	webhookHandler := handlers.NewWebhookHandler(m.service, m.webhookService, m.service.GetDodoPaymentsClient(), deps.Logger)
 
 	m.setupWebhookRoutes(router, webhookHandler)
 }

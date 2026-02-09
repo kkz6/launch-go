@@ -348,9 +348,16 @@ const (
 	WebhookEventRefundFailed    WebhookEventType = "refund.failed"
 
 	// Dispute events
-	WebhookEventDisputeOpened WebhookEventType = "dispute.opened"
-	WebhookEventDisputeWon    WebhookEventType = "dispute.won"
-	WebhookEventDisputeLost   WebhookEventType = "dispute.lost"
+	WebhookEventDisputeOpened     WebhookEventType = "dispute.opened"
+	WebhookEventDisputeExpired    WebhookEventType = "dispute.expired"
+	WebhookEventDisputeAccepted   WebhookEventType = "dispute.accepted"
+	WebhookEventDisputeCancelled  WebhookEventType = "dispute.cancelled"
+	WebhookEventDisputeChallenged WebhookEventType = "dispute.challenged"
+	WebhookEventDisputeWon        WebhookEventType = "dispute.won"
+	WebhookEventDisputeLost       WebhookEventType = "dispute.lost"
+
+	// Subscription events (additional)
+	WebhookEventSubscriptionPlanChanged WebhookEventType = "subscription.plan_changed"
 )
 
 var allWebhookEventTypes = []WebhookEventType{
@@ -361,6 +368,7 @@ var allWebhookEventTypes = []WebhookEventType{
 	WebhookEventSubscriptionOnHold,
 	WebhookEventSubscriptionRenewed,
 	WebhookEventSubscriptionUpdated,
+	WebhookEventSubscriptionPlanChanged,
 	WebhookEventPaymentSucceeded,
 	WebhookEventPaymentFailed,
 	WebhookEventPaymentProcessing,
@@ -368,6 +376,10 @@ var allWebhookEventTypes = []WebhookEventType{
 	WebhookEventRefundSucceeded,
 	WebhookEventRefundFailed,
 	WebhookEventDisputeOpened,
+	WebhookEventDisputeExpired,
+	WebhookEventDisputeAccepted,
+	WebhookEventDisputeCancelled,
+	WebhookEventDisputeChallenged,
 	WebhookEventDisputeWon,
 	WebhookEventDisputeLost,
 }
@@ -411,8 +423,18 @@ func (w WebhookEventType) Label() string {
 		return "Refund Succeeded"
 	case WebhookEventRefundFailed:
 		return "Refund Failed"
+	case WebhookEventSubscriptionPlanChanged:
+		return "Subscription Plan Changed"
 	case WebhookEventDisputeOpened:
 		return "Dispute Opened"
+	case WebhookEventDisputeExpired:
+		return "Dispute Expired"
+	case WebhookEventDisputeAccepted:
+		return "Dispute Accepted"
+	case WebhookEventDisputeCancelled:
+		return "Dispute Cancelled"
+	case WebhookEventDisputeChallenged:
+		return "Dispute Challenged"
 	case WebhookEventDisputeWon:
 		return "Dispute Won"
 	case WebhookEventDisputeLost:
@@ -432,6 +454,7 @@ func (w WebhookEventType) IsValid() bool {
 		WebhookEventSubscriptionOnHold,
 		WebhookEventSubscriptionRenewed,
 		WebhookEventSubscriptionUpdated,
+		WebhookEventSubscriptionPlanChanged,
 		WebhookEventPaymentSucceeded,
 		WebhookEventPaymentFailed,
 		WebhookEventPaymentProcessing,
@@ -439,6 +462,10 @@ func (w WebhookEventType) IsValid() bool {
 		WebhookEventRefundSucceeded,
 		WebhookEventRefundFailed,
 		WebhookEventDisputeOpened,
+		WebhookEventDisputeExpired,
+		WebhookEventDisputeAccepted,
+		WebhookEventDisputeCancelled,
+		WebhookEventDisputeChallenged,
 		WebhookEventDisputeWon,
 		WebhookEventDisputeLost:
 		return true
@@ -456,7 +483,8 @@ func (w WebhookEventType) IsSubscriptionEvent() bool {
 		WebhookEventSubscriptionFailed,
 		WebhookEventSubscriptionOnHold,
 		WebhookEventSubscriptionRenewed,
-		WebhookEventSubscriptionUpdated:
+		WebhookEventSubscriptionUpdated,
+		WebhookEventSubscriptionPlanChanged:
 		return true
 	default:
 		return false
@@ -483,7 +511,18 @@ func (w WebhookEventType) IsRefundEvent() bool {
 
 // IsDisputeEvent checks if the event is a dispute-related event
 func (w WebhookEventType) IsDisputeEvent() bool {
-	return w == WebhookEventDisputeOpened || w == WebhookEventDisputeWon || w == WebhookEventDisputeLost
+	switch w {
+	case WebhookEventDisputeOpened,
+		WebhookEventDisputeExpired,
+		WebhookEventDisputeAccepted,
+		WebhookEventDisputeCancelled,
+		WebhookEventDisputeChallenged,
+		WebhookEventDisputeWon,
+		WebhookEventDisputeLost:
+		return true
+	default:
+		return false
+	}
 }
 
 // Value implements driver.Valuer for database storage

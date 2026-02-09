@@ -58,11 +58,12 @@ func NewBillingService(repos *repositories.Registry, dodoPayments *providers.Dod
 	for i := range config.Plans {
 		p := &config.Plans[i]
 		svc.plansByID[p.ID] = p
-		svc.plansByProductID[p.ID] = p
 		if p.MonthlyID != "" {
+			svc.plansByProductID[p.MonthlyID] = p
 			svc.plansByVariantID[p.MonthlyID] = p
 		}
 		if p.YearlyID != "" {
+			svc.plansByProductID[p.YearlyID] = p
 			svc.plansByVariantID[p.YearlyID] = p
 		}
 	}
@@ -204,10 +205,9 @@ func (s *BillingService) GetBillingData(ctx context.Context, teamID string, serv
 	for i, sub := range subscriptions {
 		plan := s.GetPlanByProductID(sub.ProductID)
 		updateURL := ""
-		if s.dodoPayments != nil {
-			// DodoPayments uses customer portal for payment method updates
+		if s.dodoPayments != nil && sub.CustomerID != "" {
 			var err error
-			updateURL, err = s.dodoPayments.GetUpdatePaymentMethodURL(ctx, sub.BillableID)
+			updateURL, err = s.dodoPayments.GetUpdatePaymentMethodURL(ctx, sub.CustomerID)
 			if err != nil {
 				s.logger.Warn().Err(err).Uint("subscription_id", sub.ID).Msg("Failed to get update payment method URL")
 			}
