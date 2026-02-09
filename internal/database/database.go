@@ -8,6 +8,7 @@ import (
 	"gorm.io/driver/mysql"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/database/serializers"
@@ -49,9 +50,14 @@ func ConnectWithLogger(cfg config.DatabaseConfig, appLogger *zerolog.Logger) (*g
 		DisableForeignKeyConstraintWhenMigrating: true,
 	}
 
-	// Only enable query logging if explicitly configured
-	if appLogger != nil && cfg.LogQueries {
-		gormConfig.Logger = logger.NewGormLogger(appLogger)
+	// Always use custom logger to suppress noisy ErrRecordNotFound from GORM's default logger.
+	// LogQueries controls whether individual queries are logged (Info level) or only errors/slow queries (Warn level).
+	if appLogger != nil {
+		if cfg.LogQueries {
+			gormConfig.Logger = logger.NewGormLogger(appLogger)
+		} else {
+			gormConfig.Logger = logger.NewGormLoggerWithConfig(appLogger, gormlogger.Warn, 200*time.Millisecond)
+		}
 	}
 
 	db, err := gorm.Open(dialector, gormConfig)
