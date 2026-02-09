@@ -16,10 +16,11 @@ const TypeCreateDeployment = "site:create_deployment"
 
 // CreateDeploymentPayload holds data for creating a deployment
 type CreateDeploymentPayload struct {
-	SiteID  string  `json:"site_id"`
-	UserID  *string `json:"user_id,omitempty"`
-	GitHash *string `json:"git_hash,omitempty"`
-	Branch  *string `json:"branch,omitempty"`
+	SiteID     string         `json:"site_id"`
+	UserID     *string        `json:"user_id,omitempty"`
+	GitHash    *string        `json:"git_hash,omitempty"`
+	Branch     *string        `json:"branch,omitempty"`
+	CommitData map[string]any `json:"commit_data,omitempty"`
 }
 
 // CreateDeploymentJob creates a deployment record and dispatches the deploy job
@@ -62,10 +63,19 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("deployment already in progress")
 	}
 
+	// Extract git hash from commit data if not explicitly provided
+	gitHash := j.Payload.GitHash
+	if gitHash == nil && j.Payload.CommitData != nil {
+		if sha, ok := j.Payload.CommitData["sha"].(string); ok && sha != "" {
+			gitHash = &sha
+		}
+	}
+
 	// Create deployment record
 	deployment := &models.Deployment{
-		Status:  status,
-		GitHash: j.Payload.GitHash,
+		Status:     status,
+		GitHash:    gitHash,
+		CommitData: j.Payload.CommitData,
 	}
 	deployment.SiteID = site.ID
 	deployment.TeamID = site.TeamID
@@ -122,12 +132,13 @@ func (j *CreateDeploymentJob) Failed(ctx context.Context, err error) {
 }
 
 // NewCreateDeploymentTask creates a create deployment task
-func NewCreateDeploymentTask(siteID string, userID *string, gitHash *string, branch *string) (*asynq.Task, error) {
+func NewCreateDeploymentTask(siteID string, userID *string, gitHash *string, branch *string, commitData map[string]any) (*asynq.Task, error) {
 	return pkgjobs.Task(TypeCreateDeployment, CreateDeploymentPayload{
-		SiteID:  siteID,
-		UserID:  userID,
-		GitHash: gitHash,
-		Branch:  branch,
+		SiteID:     siteID,
+		UserID:     userID,
+		GitHash:    gitHash,
+		Branch:     branch,
+		CommitData: commitData,
 	})
 }
 

@@ -71,6 +71,7 @@ func registerHandlers(mux *asynq.ServeMux) {
 	// Deployment management jobs
 	pkgjobs.RegisterTyped(mux, TypeCreateDeployment, NewCreateDeploymentJob)
 	pkgjobs.RegisterTyped(mux, TypeCleanupPendingSiteDeployment, NewCleanupPendingSiteDeploymentJob)
+	pkgjobs.RegisterTyped(mux, TypeUpdateProviderDeploymentStatus, NewUpdateProviderDeploymentStatusJob)
 
 	// Site configuration jobs
 	pkgjobs.RegisterTyped(mux, TypeUpdateSiteTLSSetting, NewUpdateSiteTLSSettingJob)

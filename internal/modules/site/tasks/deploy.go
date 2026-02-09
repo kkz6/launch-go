@@ -146,6 +146,9 @@ func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.Callba
 		"status":        "finished",
 	})
 
+	// Update deployment status on git provider (GitHub/GitLab deployment status)
+	t.dispatchUpdateProviderDeploymentStatus(cbCtx, "success")
+
 	// If first deployment, dispatch InstallCaddyfile job
 	if t.callback.IsFirstDeploy {
 		t.dispatchInstallCaddyfile(cbCtx)
@@ -199,6 +202,9 @@ func (t *deploySiteTask) OnFailure(ctx context.Context, cbCtx *taskrunner.Callba
 		"exit_code":     exitCode,
 	})
 
+	// Update deployment status on git provider
+	t.dispatchUpdateProviderDeploymentStatus(cbCtx, "failure")
+
 	// If first deployment, mark site installation as failed
 	if t.callback.IsFirstDeploy {
 		cbCtx.DB.Model(&models.Site{}).
@@ -241,6 +247,9 @@ func (t *deploySiteTask) OnExpired(ctx context.Context, cbCtx *taskrunner.Callba
 		"deployment_id": t.callback.DeploymentID,
 		"status":        "timeout",
 	})
+
+	// Update deployment status on git provider
+	t.dispatchUpdateProviderDeploymentStatus(cbCtx, "failure")
 
 	// Send notification
 	t.sendDeploymentNotification(ctx, cbCtx, taskID, notifications.DeploymentStatusTimeout)
@@ -312,6 +321,21 @@ func (t *deploySiteTask) dispatchJob(cbCtx *taskrunner.CallbackContext, jobType 
 
 // Typed job payload structs - mirror the job payload types for compile-time safety.
 // These match the payload structs in internal/modules/site/jobs/*.go
+
+type updateProviderDeploymentStatusPayload struct {
+	SiteID       string `json:"site_id"`
+	DeploymentID string `json:"deployment_id"`
+	Status       string `json:"status"`
+}
+
+// dispatchUpdateProviderDeploymentStatus dispatches a job to update deployment status on the git provider.
+func (t *deploySiteTask) dispatchUpdateProviderDeploymentStatus(cbCtx *taskrunner.CallbackContext, status string) {
+	t.dispatchJob(cbCtx, "site:update_provider_deployment_status", updateProviderDeploymentStatusPayload{
+		SiteID:       t.callback.SiteID,
+		DeploymentID: t.callback.DeploymentID,
+		Status:       status,
+	}, "")
+}
 
 type caddyfilePayload struct {
 	SiteID string  `json:"site_id"`
