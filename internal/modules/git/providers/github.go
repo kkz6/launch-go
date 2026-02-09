@@ -375,10 +375,11 @@ func (p *GitHubProvider) CreateDeployment(ctx context.Context, info *DeploymentI
 	// Create deployment
 	path := fmt.Sprintf("/repos/%s/deployments", info.RepoFullName)
 	body := map[string]interface{}{
-		"ref":         info.Branch,
-		"description": info.Description,
-		"environment": info.Environment,
-		"auto_merge":  false,
+		"ref":               info.Branch,
+		"description":       info.Description,
+		"environment":       info.Environment,
+		"auto_merge":        false,
+		"required_contexts": []string{},
 	}
 	if info.GitHash != "" {
 		body["sha"] = info.GitHash
