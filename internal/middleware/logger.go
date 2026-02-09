@@ -17,34 +17,6 @@ const (
 	colorWhite  = "\033[37m"
 )
 
-const (
-	iconGET    = "📥"
-	iconPOST   = "📤"
-	iconPUT    = "📝"
-	iconPATCH  = "🔧"
-	iconDELETE = "🗑️ "
-	iconOPTION = "⚙️ "
-)
-
-func getMethodIcon(method string) string {
-	switch method {
-	case "GET":
-		return iconGET
-	case "POST":
-		return iconPOST
-	case "PUT":
-		return iconPUT
-	case "PATCH":
-		return iconPATCH
-	case "DELETE":
-		return iconDELETE
-	case "OPTIONS":
-		return iconOPTION
-	default:
-		return "📡"
-	}
-}
-
 func getStatusColor(status int) string {
 	switch {
 	case status >= 500:
@@ -60,21 +32,6 @@ func getStatusColor(status int) string {
 	}
 }
 
-func getStatusIcon(status int) string {
-	switch {
-	case status >= 500:
-		return "💥"
-	case status >= 400:
-		return "⚠️ "
-	case status >= 300:
-		return "↪️ "
-	case status >= 200:
-		return "✅"
-	default:
-		return "❓"
-	}
-}
-
 func formatDuration(d time.Duration) string {
 	if d < time.Millisecond {
 		return fmt.Sprintf("%.0fµs", float64(d.Microseconds()))
@@ -85,7 +42,7 @@ func formatDuration(d time.Duration) string {
 	return fmt.Sprintf("%.2fs", d.Seconds())
 }
 
-func RequestLogger(logger *zerolog.Logger) fiber.Handler {
+func RequestLogger(logger *zerolog.Logger, isDev bool) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()
 
@@ -112,22 +69,19 @@ func RequestLogger(logger *zerolog.Logger) fiber.Handler {
 			Str("path", path).
 			Int("status", status).
 			Str("latency", formatDuration(latency)).
-			Str("ip", ip).
-			Msgf("%s %s %s%s%d%s %s",
-				getMethodIcon(method),
-				method,
-				getStatusColor(status),
-				getStatusIcon(status),
-				status,
-				colorReset,
-				path,
-			)
+			Str("ip", ip)
+
+		if isDev {
+			event.Msgf("%s %s%d%s %s", method, getStatusColor(status), status, colorReset, path)
+		} else {
+			event.Msgf("%s %d %s", method, status, path)
+		}
 
 		return err
 	}
 }
 
-func RequestLoggerWithBody(logger *zerolog.Logger) fiber.Handler {
+func RequestLoggerWithBody(logger *zerolog.Logger, isDev bool) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		start := time.Now()
 		reqSize := len(c.Body())
@@ -136,6 +90,8 @@ func RequestLoggerWithBody(logger *zerolog.Logger) fiber.Handler {
 
 		latency := time.Since(start)
 		status := c.Response().StatusCode()
+		method := c.Method()
+		path := c.Path()
 		resSize := len(c.Response().Body())
 
 		var event *zerolog.Event
@@ -149,22 +105,19 @@ func RequestLoggerWithBody(logger *zerolog.Logger) fiber.Handler {
 		}
 
 		event.
-			Str("method", c.Method()).
-			Str("path", c.Path()).
+			Str("method", method).
+			Str("path", path).
 			Int("status", status).
 			Str("latency", formatDuration(latency)).
 			Str("ip", c.IP()).
 			Int("req_size", reqSize).
-			Int("res_size", resSize).
-			Msgf("%s %s %s%s%d%s %s",
-				getMethodIcon(c.Method()),
-				c.Method(),
-				getStatusColor(status),
-				getStatusIcon(status),
-				status,
-				colorReset,
-				c.Path(),
-			)
+			Int("res_size", resSize)
+
+		if isDev {
+			event.Msgf("%s %s%d%s %s", method, getStatusColor(status), status, colorReset, path)
+		} else {
+			event.Msgf("%s %d %s", method, status, path)
+		}
 
 		return err
 	}
