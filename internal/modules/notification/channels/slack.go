@@ -31,7 +31,7 @@ func (s *SlackChannel) Send(ctx context.Context, notif Notification) error {
 // Connect tests the Slack webhook connection
 func (s *SlackChannel) Connect(ctx context.Context) error {
 	return s.PostConnect(ctx, slackMessage{
-		Text: "*Connected to Launch*\nThis webhook confirms that you have connected your Slack to Launch.",
+		Text: "*Connected to launchctl*\nThis webhook confirms that you have connected your Slack to Launch.",
 	})
 }
 

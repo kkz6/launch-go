@@ -31,7 +31,7 @@ func (d *DiscordChannel) Send(ctx context.Context, notif Notification) error {
 // Connect tests the Discord webhook connection
 func (d *DiscordChannel) Connect(ctx context.Context) error {
 	return d.PostConnect(ctx, discordMessage{
-		Content: "*Connected to Launch*\nThis webhook confirms that you have connected your Discord to Launch.",
+		Content: "*Connected to launchctl*\nThis webhook confirms that you have connected your Discord to Launch.",
 	})
 }
 

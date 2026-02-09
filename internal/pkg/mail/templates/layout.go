@@ -395,6 +395,7 @@ code {
     border-left: 18px solid #2d3748;
     border-right: 18px solid #2d3748;
     border-top: 8px solid #2d3748;
+    color: #ffffff !important;
 }
 
 .button-green,
@@ -404,6 +405,7 @@ code {
     border-left: 18px solid #48bb78;
     border-right: 18px solid #48bb78;
     border-top: 8px solid #48bb78;
+    color: #ffffff !important;
 }
 
 .button-red,
@@ -413,6 +415,7 @@ code {
     border-left: 18px solid #e53e3e;
     border-right: 18px solid #e53e3e;
     border-top: 8px solid #e53e3e;
+    color: #ffffff !important;
 }
 
 /* Panels */

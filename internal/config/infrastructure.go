@@ -8,7 +8,7 @@ import (
 
 // AppConfig holds application configuration
 type AppConfig struct {
-	Name        string `env:"APP_NAME" default:"Launch"`
+	Name        string `env:"APP_NAME" default:"launchctl"`
 	Environment string `env:"APP_ENV" default:"development"`
 	Port        string `env:"APP_PORT" default:"8080"`
 	Debug       bool   `env:"APP_DEBUG" default:"true"`
