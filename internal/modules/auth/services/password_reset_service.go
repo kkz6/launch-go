@@ -5,23 +5,34 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
+	"net/url"
 	"strings"
 	"time"
 
+	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/modules/notification/channels"
+	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // PasswordResetService handles password reset operations
 type PasswordResetService struct {
-	repos *repositories.Registry
+	repos       *repositories.Registry
+	config      *config.Config
+	emailSender channels.EmailSender
 }
 
 // NewPasswordResetService creates a new PasswordResetService instance
-func NewPasswordResetService(repos *repositories.Registry) *PasswordResetService {
-	return &PasswordResetService{repos: repos}
+func NewPasswordResetService(repos *repositories.Registry, cfg *config.Config, emailSender channels.EmailSender) *PasswordResetService {
+	return &PasswordResetService{
+		repos:       repos,
+		config:      cfg,
+		emailSender: emailSender,
+	}
 }
 
 // SendPasswordResetLink sends a password reset email
@@ -56,8 +67,18 @@ func (s *PasswordResetService) SendPasswordResetLink(ctx context.Context, email 
 		return err
 	}
 
-	// In a production environment, you would send the reset email here
-	return nil
+	if s.emailSender == nil {
+		return nil
+	}
+
+	resetURL := fmt.Sprintf("%s/reset-password?token=%s&email=%s", s.config.App.URL, url.QueryEscape(tokenStr), url.QueryEscape(email))
+
+	htmlContent, _, err := templates.PasswordResetEmail(resetURL, 60)
+	if err != nil {
+		return err
+	}
+
+	return s.emailSender.Send(ctx, email, "Reset Your Password", htmlContent, true)
 }
 
 // ResetPassword resets a user's password

@@ -3,6 +3,7 @@ package auth
 import (
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 )
 
@@ -22,10 +23,10 @@ type Module struct {
 }
 
 // NewModule creates a new auth Module instance
-func NewModule(b *app.Builder) *Module {
+func NewModule(b *app.Builder, emailSender channels.EmailSender) *Module {
 	deps := b.Deps()
 	repos := repositories.NewRegistry(deps.DB)
-	service := services.NewService(repos, deps.Config, deps.Logger)
+	service := services.NewService(repos, deps.Config, deps.Logger, emailSender)
 
 	return &Module{
 		Base:    app.NewBase(ModuleName, b),

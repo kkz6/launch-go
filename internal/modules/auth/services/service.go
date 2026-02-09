@@ -9,6 +9,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 )
 
 // Service aggregates all auth-related services
@@ -27,7 +28,7 @@ type Service struct {
 }
 
 // NewService creates a new Service instance
-func NewService(repos *repositories.Registry, cfg *config.Config, logger *zerolog.Logger) *Service {
+func NewService(repos *repositories.Registry, cfg *config.Config, logger *zerolog.Logger, emailSender channels.EmailSender) *Service {
 	return &Service{
 		repos:             repos,
 		config:            cfg,
@@ -35,7 +36,7 @@ func NewService(repos *repositories.Registry, cfg *config.Config, logger *zerolo
 		auth:              NewAuthService(repos, cfg, logger),
 		user:              NewUserService(repos),
 		emailVerification: NewEmailVerificationService(repos, cfg),
-		passwordReset:     NewPasswordResetService(repos),
+		passwordReset:     NewPasswordResetService(repos, cfg, emailSender),
 		twoFactor:         NewTwoFactorService(repos, cfg),
 		team:              NewTeamService(repos),
 		teamMember:        NewTeamMemberService(repos),

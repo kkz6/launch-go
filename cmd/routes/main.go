@@ -111,7 +111,7 @@ func collectRoutes() []RouteInfo {
 
 	// Register all modules that have routes
 	kernel.
-		Register(auth.NewModule(builder)).
+		Register(auth.NewModule(builder, nil)).
 		Register(server.NewModule(builder)).
 		Register(databasemodule.NewModule(builder)).
 		Register(site.NewModule(builder)).
