@@ -19,6 +19,7 @@ import (
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
@@ -149,6 +150,11 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Lo
 
 	if !security.VerifyPassword(user.Password, req.Password) {
 		s.recordFailedLogin(ctx, req.Email)
+		activity.RecordWithLogAndPropsPtr(ctx, "security", "login_failed", &user.ID, user, "Failed login attempt", map[string]any{
+			"email":      req.Email,
+			"ip_address": req.IPAddress,
+			"user_agent": req.UserAgent,
+		})
 		return nil, fiberutil.Unauthorized()
 	}
 
@@ -162,6 +168,11 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Lo
 			return nil, err
 		}
 
+		activity.RecordWithLogAndPropsPtr(ctx, "security", "2fa_challenge", &user.ID, user, "Two-factor challenge initiated", map[string]any{
+			"ip_address": req.IPAddress,
+			"user_agent": req.UserAgent,
+		})
+
 		return &dto.LoginResult{
 			TwoFactorRequired: true,
 			ChallengeToken:    challengeToken,
@@ -173,6 +184,8 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Lo
 	if err != nil {
 		return nil, err
 	}
+
+	activity.RecordWithLog(ctx, "security", "login_success", user.ID, user, "User logged in")
 
 	authResp, err := s.buildAuthResponse(ctx, user, sessionID)
 	if err != nil {
@@ -289,6 +302,8 @@ func (s *AuthService) CompleteTwoFactorLogin(ctx context.Context, userID, ipAddr
 
 // Logout invalidates the user's session
 func (s *AuthService) Logout(ctx context.Context, userID, sessionID string) error {
+	activity.RecordWithLog(ctx, "security", "logout", userID, nil, "User logged out")
+
 	if sessionID != "" {
 		return s.repos.Session().DeleteByUser(ctx, sessionID, userID)
 	}

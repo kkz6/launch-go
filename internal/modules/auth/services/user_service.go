@@ -111,7 +111,7 @@ func (s *UserService) ChangePassword(ctx context.Context, userID, currentSession
 		_, _ = s.repos.Session().DeleteAllByUserExcept(ctx, userID, currentSessionID)
 	}
 
-	activity.RecordWithLog(ctx, "auth", "password_changed", userID, user, "User password was changed")
+	activity.RecordWithLog(ctx, "security", "password_changed", userID, user, "User password was changed")
 
 	return nil
 }

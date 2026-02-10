@@ -14,6 +14,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
@@ -78,7 +79,14 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 		Role:   &req.Role,
 	}
 
-	return s.repos.TeamInvitation().Create(ctx, invitation)
+	if err := s.repos.TeamInvitation().Create(ctx, invitation); err != nil {
+		return err
+	}
+
+	team, _ := s.getTeam(ctx, teamID)
+	activity.RecordWithLog(ctx, "security", "member_invited", userID, team, "Team member invited: "+req.Email)
+
+	return nil
 }
 
 // AcceptTeamInvitation accepts a team invitation
@@ -154,7 +162,13 @@ func (s *TeamMemberService) UpdateTeamMemberRole(ctx context.Context, userID, te
 		return errors.New("cannot update owner's role")
 	}
 
-	return s.repos.TeamMember().UpdateRole(ctx, teamID, memberID, req.Role)
+	if err := s.repos.TeamMember().UpdateRole(ctx, teamID, memberID, req.Role); err != nil {
+		return err
+	}
+
+	activity.RecordWithLog(ctx, "security", "role_changed", userID, team, "Team member role changed to "+req.Role)
+
+	return nil
 }
 
 // RemoveTeamMember removes a member from a team
@@ -178,6 +192,8 @@ func (s *TeamMemberService) RemoveTeamMember(ctx context.Context, userID, teamID
 	if err := s.repos.TeamMember().RemoveUser(ctx, teamID, memberID); err != nil {
 		return err
 	}
+
+	activity.RecordWithLog(ctx, "security", "member_removed", userID, team, "Team member removed")
 
 	// If this was their current team, switch to another.
 	// Errors here are logged but not returned since the member removal already succeeded.

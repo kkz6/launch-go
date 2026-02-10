@@ -20,6 +20,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
@@ -145,6 +146,8 @@ func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, current
 		_, _ = s.repos.Session().DeleteAllByUserExcept(ctx, userID, currentSessionID)
 	}
 
+	activity.RecordWithLog(ctx, "security", "2fa_enabled", userID, user, "Two-factor authentication was enabled")
+
 	return recoveryCodes, nil
 }
 
@@ -176,6 +179,8 @@ func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID, current
 	if currentSessionID != "" {
 		_, _ = s.repos.Session().DeleteAllByUserExcept(ctx, userID, currentSessionID)
 	}
+
+	activity.RecordWithLog(ctx, "security", "2fa_disabled", userID, user, "Two-factor authentication was disabled")
 
 	return nil
 }
