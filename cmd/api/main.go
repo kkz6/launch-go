@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -121,12 +122,20 @@ func bootstrap() *Application {
 		Add(&health.DatabaseChecker{DB: db}).
 		Add(&health.RedisChecker{Client: redisCache.Client()})
 
-	fiberApp := fiber.New(fiber.Config{
+	fiberCfg := fiber.Config{
 		AppName:      "Launch API",
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 30 * time.Second,
 		ErrorHandler: middleware.ErrorHandler,
-	})
+	}
+
+	if cfg.Proxy.TrustedProxies != "" {
+		fiberCfg.EnableTrustedProxyCheck = true
+		fiberCfg.TrustedProxies = strings.Split(cfg.Proxy.TrustedProxies, ",")
+		fiberCfg.ProxyHeader = cfg.Proxy.ProxyHeader
+	}
+
+	fiberApp := fiber.New(fiberCfg)
 
 	return &Application{
 		config:          cfg,
@@ -159,6 +168,13 @@ func (a *Application) registerMiddleware() {
 		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-Team-ID",
 		AllowCredentials: true,
 	}))
+
+	// Initialize rate limiting with Redis cache
+	middleware.InitRateLimitMiddleware(a.redisCache)
+
+	// Global rate limit: 120 requests per minute per IP to throttle scanners/bots
+	a.fiber.Use(middleware.GlobalRateLimit(120, time.Minute))
+
 	a.fiber.Use(middleware.RequestLogger(a.logger, a.config.App.Environment == "development"))
 }
 

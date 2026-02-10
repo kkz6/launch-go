@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 
@@ -100,10 +102,10 @@ func WebhookChainWithSigner(signer *signedurl.Signer) []fiber.Handler {
 //
 // Usage:
 //
-//	router.Group("/api/v1", middleware.APIChain(100, 60)...)
-func APIChain(maxRequests int, windowSeconds int) []fiber.Handler {
+//	router.Group("/api/v1", middleware.APIChain(100, time.Minute)...)
+func APIChain(maxRequests int, window time.Duration) []fiber.Handler {
 	return []fiber.Handler{
-		RateLimit(maxRequests, windowSeconds),
+		RateLimit(maxRequests, window),
 	}
 }
 
@@ -112,13 +114,13 @@ func APIChain(maxRequests int, windowSeconds int) []fiber.Handler {
 //
 // Usage:
 //
-//	router.Group("/api/v1", middleware.AuthenticatedAPIChain(authMiddleware, 100, 60)...)
-func AuthenticatedAPIChain(authMiddleware fiber.Handler, maxRequests int, windowSeconds int) []fiber.Handler {
+//	router.Group("/api/v1", middleware.AuthenticatedAPIChain(authMiddleware, 100, time.Minute)...)
+func AuthenticatedAPIChain(authMiddleware fiber.Handler, maxRequests int, window time.Duration) []fiber.Handler {
 	return []fiber.Handler{
 		authMiddleware,
 		TeamScope(),
 		VerifySubscription(),
-		RateLimit(maxRequests, windowSeconds),
+		RateLimit(maxRequests, window),
 	}
 }
 

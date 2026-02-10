@@ -138,3 +138,9 @@ type RedisConfig struct {
 type QueueConfig struct {
 	Concurrency int `env:"QUEUE_CONCURRENCY" default:"10"`
 }
+
+// ProxyConfig holds reverse proxy configuration
+type ProxyConfig struct {
+	TrustedProxies string `env:"TRUSTED_PROXIES" default:""`
+	ProxyHeader    string `env:"PROXY_HEADER" default:"X-Forwarded-For"`
+}

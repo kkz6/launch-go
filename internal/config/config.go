@@ -15,6 +15,7 @@ type Config struct {
 	JWT      JWTConfig
 	Cors     CorsConfig
 	Queue    QueueConfig
+	Proxy    ProxyConfig
 	Billing  BillingConfig
 	Git      GitConfig
 	Slack    SlackConfig
@@ -46,6 +47,7 @@ func Load() (*Config, error) {
 		JWT:      config.Load[JWTConfig](),
 		Cors:     config.Load[CorsConfig](),
 		Queue:    config.Load[QueueConfig](),
+		Proxy:    config.Load[ProxyConfig](),
 		Billing:  config.Load[BillingConfig](),
 		Git:      config.Load[GitConfig](),
 		Slack:    config.Load[SlackConfig](),

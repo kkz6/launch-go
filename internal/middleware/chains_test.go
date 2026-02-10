@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"testing"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/stretchr/testify/assert"
@@ -75,7 +76,7 @@ func TestWebhookChainWithSigner(t *testing.T) {
 }
 
 func TestAPIChain(t *testing.T) {
-	chain := APIChain(100, 60)
+	chain := APIChain(100, time.Minute)
 
 	// Should have rate limiting
 	assert.Len(t, chain, 1)
@@ -83,7 +84,7 @@ func TestAPIChain(t *testing.T) {
 
 func TestAuthenticatedAPIChain(t *testing.T) {
 	authMiddleware := mockHandler()
-	chain := AuthenticatedAPIChain(authMiddleware, 100, 60)
+	chain := AuthenticatedAPIChain(authMiddleware, 100, time.Minute)
 
 	// Should have auth, team scope, subscription, and rate limiting
 	assert.Len(t, chain, 4)
