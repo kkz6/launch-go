@@ -25,7 +25,12 @@ func (h *TwoFactorHandler) EnableTwoFactor(c *fiber.Ctx) error {
 		return err
 	}
 
-	result, err := h.Service().TwoFactor.EnableTwoFactor(c.Context(), userID)
+	req, err := fiberctx.MustParseAndValidate[dto.EnableTwoFactorRequest](c)
+	if err != nil {
+		return err
+	}
+
+	result, err := h.Service().TwoFactor.EnableTwoFactor(c.Context(), userID, req.Password)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -72,13 +77,9 @@ func (h *TwoFactorHandler) DisableTwoFactor(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Two-factor authentication disabled", nil)
 }
 
-// TwoFactorChallenge verifies 2FA code during login
+// TwoFactorChallenge verifies 2FA code during login using a challenge token.
+// This is a public endpoint — no auth middleware required.
 func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx) error {
-	userID, err := fiberctx.MustGetUserID(c)
-	if err != nil {
-		return err
-	}
-
 	req, err := fiberctx.MustParseAndValidate[dto.TwoFactorChallengeRequest](c)
 	if err != nil {
 		return err
@@ -89,16 +90,12 @@ func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx) error {
 		code = req.RecoveryCode
 	}
 
-	valid, err := h.Service().TwoFactor.VerifyTwoFactor(c.Context(), userID, code)
+	result, err := h.Service().TwoFactor.CompleteTwoFactorChallenge(c.Context(), req.ChallengeToken, code)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
-	if !valid {
-		return fiberctx.RespondUnauthorized(c, "Invalid two-factor code")
-	}
-
-	return fiberctx.OK(c, "Two-factor authentication verified", nil)
+	return fiberctx.OK(c, "Login successful", result)
 }
 
 // GetRecoveryCodes returns the remaining recovery code count.

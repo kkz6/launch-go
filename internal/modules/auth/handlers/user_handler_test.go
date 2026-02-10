@@ -28,7 +28,7 @@ func setupUserHandler(t *testing.T) (*fiber.App, *mockRepoRegistry, *handlers.Us
 	reg := newMockRegistry()
 	cfg := testConfig()
 	logger := zerolog.New(os.Stderr).Level(zerolog.Disabled)
-	c := &mockCache{}
+	c := newMockCache()
 
 	svc, err := services.NewService(reg, cfg, &logger, nil, c)
 	require.NoError(t, err)

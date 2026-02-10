@@ -36,7 +36,8 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 	return fiberctx.Created(c, "Registration successful", result)
 }
 
-// Login handles user authentication
+// Login handles user authentication.
+// If the user has 2FA enabled, returns a challenge token instead of auth tokens.
 func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	req, err := fiberctx.MustParseAndValidate[dto.LoginRequest](c)
 	if err != nil {
@@ -49,6 +50,10 @@ func (h *AuthHandler) Login(c *fiber.Ctx) error {
 	result, err := h.Service().Auth.Login(c.Context(), req)
 	if err != nil {
 		return fiberctx.RespondUnauthorized(c, fiberctx.MsgInvalidCredentials)
+	}
+
+	if result.TwoFactorRequired {
+		return fiberctx.OK(c, "Two-factor authentication required", result)
 	}
 
 	return fiberctx.OK(c, "Login successful", result)

@@ -14,7 +14,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
-	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
@@ -23,7 +22,7 @@ func setupTwoFactorHandler(userID string) (*fiber.App, *mockRepoRegistry, *handl
 	reg := newMockRegistry()
 	cfg := testConfig()
 	logger := zerolog.New(os.Stderr)
-	svc, _ := services.NewService(reg, cfg, &logger, nil, &mockCache{})
+	svc, _ := services.NewService(reg, cfg, &logger, nil, newMockCache())
 	handler := handlers.NewHandler(svc)
 	app := newTestAppWithValidation()
 	app.Use(func(c *fiber.Ctx) error {
@@ -37,10 +36,13 @@ func TestTwoFactorHandler_EnableTwoFactor_Success(t *testing.T) {
 	app, reg, handler := setupTwoFactorHandler("user_001")
 	app.Post("/two-factor/enable", handler.TwoFactor.EnableTwoFactor)
 
-	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
+	hashed, _ := security.HashPassword("correct-password")
+	user := newTestUser("user_001", "Test User", "test@example.com", hashed)
 	reg.user.users["user_001"] = user
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/enable", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/enable", map[string]string{
+		"password": "correct-password",
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -57,12 +59,14 @@ func TestTwoFactorHandler_EnableTwoFactor_NoUserID(t *testing.T) {
 	reg := newMockRegistry()
 	cfg := testConfig()
 	logger := zerolog.New(os.Stderr)
-	svc, _ := services.NewService(reg, cfg, &logger, nil, &mockCache{})
+	svc, _ := services.NewService(reg, cfg, &logger, nil, newMockCache())
 	handler := handlers.NewHandler(svc)
 	app := newTestAppWithValidation()
 	app.Post("/two-factor/enable", handler.TwoFactor.EnableTwoFactor)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/enable", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/enable", map[string]string{
+		"password": "any-password",
+	}))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
@@ -188,56 +192,182 @@ func TestTwoFactorHandler_TwoFactorChallenge_Success(t *testing.T) {
 	reg := newMockRegistry()
 	cfg := testConfig()
 	logger := zerolog.New(os.Stderr)
-	svc, _ := services.NewService(reg, cfg, &logger, nil, &mockCache{})
+	mc := newMockCache()
+	svc, _ := services.NewService(reg, cfg, &logger, nil, mc)
 	handler := handlers.NewHandler(svc)
-	app := newTestAppWithValidation()
-	app.Use(func(c *fiber.Ctx) error {
-		c.Locals("userID", "user_001")
-		c.Locals("sessionID", "session_001")
-		return c.Next()
-	})
-	app.Post("/two-factor/challenge", handler.TwoFactor.TwoFactorChallenge)
 
+	// Set up the user with 2FA enabled
 	secret := "JBSWY3DPEHPK3PXP"
 	now := time.Now()
-	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
+	hashed, _ := security.HashPassword("correct-password")
+	user := newTestUser("user_001", "Test User", "test@example.com", hashed)
 	user.TwoFactorSecret = &secret
 	user.TwoFactorConfirmedAt = &now
 	reg.user.users["user_001"] = user
 
-	userID := "user_001"
-	reg.session.sessions["session_001"] = &models.Session{ID: "session_001", UserID: &userID}
+	// Step 1: Login to get a challenge token
+	loginApp := newTestAppWithValidation()
+	loginApp.Post("/login", handler.Auth.Login)
+
+	loginResp, err := loginApp.Test(makeJSONRequest(http.MethodPost, "/login", map[string]string{
+		"email":    "test@example.com",
+		"password": "correct-password",
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, loginResp.StatusCode)
+
+	loginResult := parseResponse(loginResp)
+	assert.True(t, loginResult.Success)
+
+	var loginData map[string]any
+	_ = json.Unmarshal(loginResult.Data, &loginData)
+	assert.True(t, loginData["two_factor_required"].(bool))
+	challengeToken := loginData["challenge_token"].(string)
+	assert.NotEmpty(t, challengeToken)
+	// No auth tokens should be returned
+	assert.Nil(t, loginData["access_token"])
+
+	// Step 2: Complete the challenge
+	challengeApp := newTestAppWithValidation()
+	challengeApp.Post("/two-factor/challenge", handler.TwoFactor.TwoFactorChallenge)
 
 	code, err := totp.GenerateCode(secret, time.Now())
 	require.NoError(t, err)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
-		"code": code,
+	resp, err := challengeApp.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
+		"challenge_token": challengeToken,
+		"code":            code,
 	}))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
 	r := parseResponse(resp)
 	assert.True(t, r.Success)
-	assert.Equal(t, "Two-factor authentication verified", r.Message)
+	assert.Equal(t, "Login successful", r.Message)
+
+	var data map[string]any
+	_ = json.Unmarshal(r.Data, &data)
+	assert.NotEmpty(t, data["access_token"])
+	assert.NotEmpty(t, data["refresh_token"])
+	assert.Equal(t, "Bearer", data["token_type"])
 }
 
 func TestTwoFactorHandler_TwoFactorChallenge_InvalidCode(t *testing.T) {
-	app, reg, handler := setupTwoFactorHandler("user_001")
-	app.Post("/two-factor/challenge", handler.TwoFactor.TwoFactorChallenge)
+	reg := newMockRegistry()
+	cfg := testConfig()
+	logger := zerolog.New(os.Stderr)
+	mc := newMockCache()
+	svc, _ := services.NewService(reg, cfg, &logger, nil, mc)
+	handler := handlers.NewHandler(svc)
 
+	// Set up the user with 2FA enabled
 	secret := "JBSWY3DPEHPK3PXP"
 	now := time.Now()
-	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
+	hashed, _ := security.HashPassword("correct-password")
+	user := newTestUser("user_001", "Test User", "test@example.com", hashed)
 	user.TwoFactorSecret = &secret
 	user.TwoFactorConfirmedAt = &now
 	reg.user.users["user_001"] = user
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
-		"code": "000000",
+	// Login to get a challenge token
+	loginApp := newTestAppWithValidation()
+	loginApp.Post("/login", handler.Auth.Login)
+
+	loginResp, err := loginApp.Test(makeJSONRequest(http.MethodPost, "/login", map[string]string{
+		"email":    "test@example.com",
+		"password": "correct-password",
+	}))
+	require.NoError(t, err)
+
+	loginResult := parseResponse(loginResp)
+	var loginData map[string]any
+	_ = json.Unmarshal(loginResult.Data, &loginData)
+	challengeToken := loginData["challenge_token"].(string)
+
+	// Try with invalid code
+	challengeApp := newTestAppWithValidation()
+	challengeApp.Post("/two-factor/challenge", handler.TwoFactor.TwoFactorChallenge)
+
+	resp, err := challengeApp.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
+		"challenge_token": challengeToken,
+		"code":            "000000",
 	}))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestTwoFactorHandler_TwoFactorChallenge_InvalidToken(t *testing.T) {
+	reg := newMockRegistry()
+	cfg := testConfig()
+	logger := zerolog.New(os.Stderr)
+	svc, _ := services.NewService(reg, cfg, &logger, nil, newMockCache())
+	handler := handlers.NewHandler(svc)
+
+	app := newTestAppWithValidation()
+	app.Post("/two-factor/challenge", handler.TwoFactor.TwoFactorChallenge)
+
+	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
+	reg.user.users["user_001"] = user
+
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
+		"challenge_token": "invalid-token",
+		"code":            "123456",
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestTwoFactorHandler_TwoFactorChallenge_TokenCannotBeReused(t *testing.T) {
+	reg := newMockRegistry()
+	cfg := testConfig()
+	logger := zerolog.New(os.Stderr)
+	mc := newMockCache()
+	svc, _ := services.NewService(reg, cfg, &logger, nil, mc)
+	handler := handlers.NewHandler(svc)
+
+	secret := "JBSWY3DPEHPK3PXP"
+	now := time.Now()
+	hashed, _ := security.HashPassword("correct-password")
+	user := newTestUser("user_001", "Test User", "test@example.com", hashed)
+	user.TwoFactorSecret = &secret
+	user.TwoFactorConfirmedAt = &now
+	reg.user.users["user_001"] = user
+
+	// Login to get challenge token
+	loginApp := newTestAppWithValidation()
+	loginApp.Post("/login", handler.Auth.Login)
+
+	loginResp, err := loginApp.Test(makeJSONRequest(http.MethodPost, "/login", map[string]string{
+		"email":    "test@example.com",
+		"password": "correct-password",
+	}))
+	require.NoError(t, err)
+
+	loginResult := parseResponse(loginResp)
+	var loginData map[string]any
+	_ = json.Unmarshal(loginResult.Data, &loginData)
+	challengeToken := loginData["challenge_token"].(string)
+
+	// First use — succeeds
+	challengeApp := newTestAppWithValidation()
+	challengeApp.Post("/two-factor/challenge", handler.TwoFactor.TwoFactorChallenge)
+
+	code, _ := totp.GenerateCode(secret, time.Now())
+	resp, err := challengeApp.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
+		"challenge_token": challengeToken,
+		"code":            code,
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	// Second use — fails (token consumed)
+	code2, _ := totp.GenerateCode(secret, time.Now())
+	resp2, err := challengeApp.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
+		"challenge_token": challengeToken,
+		"code":            code2,
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusUnauthorized, resp2.StatusCode)
 }
 
 func TestTwoFactorHandler_GetRecoveryCodes_Success(t *testing.T) {
@@ -293,7 +423,7 @@ func TestTwoFactorHandler_RegenerateRecoveryCodes_NoUserID(t *testing.T) {
 	reg := newMockRegistry()
 	cfg := testConfig()
 	logger := zerolog.New(os.Stderr)
-	svc, _ := services.NewService(reg, cfg, &logger, nil, &mockCache{})
+	svc, _ := services.NewService(reg, cfg, &logger, nil, newMockCache())
 	handler := handlers.NewHandler(svc)
 	app := newTestAppWithValidation()
 	app.Post("/two-factor/recovery-codes", handler.TwoFactor.RegenerateRecoveryCodes)
@@ -301,4 +431,44 @@ func TestTwoFactorHandler_RegenerateRecoveryCodes_NoUserID(t *testing.T) {
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/recovery-codes", nil))
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+// Test that login with 2FA user returns challenge token, not auth tokens
+func TestAuthHandler_Login_TwoFactorEnabled_ReturnsChallengeToken(t *testing.T) {
+	reg := newMockRegistry()
+	cfg := testConfig()
+	logger := zerolog.New(os.Stderr)
+	svc, _ := services.NewService(reg, cfg, &logger, nil, newMockCache())
+	handler := handlers.NewHandler(svc)
+	app := newTestAppWithValidation()
+	app.Post("/login", handler.Auth.Login)
+
+	secret := "JBSWY3DPEHPK3PXP"
+	now := time.Now()
+	hashed, _ := security.HashPassword("correct-password")
+	user := newTestUser("user_001", "Test User", "test@example.com", hashed)
+	user.TwoFactorSecret = &secret
+	user.TwoFactorConfirmedAt = &now
+	reg.user.users["user_001"] = user
+
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", map[string]string{
+		"email":    "test@example.com",
+		"password": "correct-password",
+	}))
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+
+	r := parseResponse(resp)
+	assert.True(t, r.Success)
+
+	var data map[string]any
+	_ = json.Unmarshal(r.Data, &data)
+	assert.True(t, data["two_factor_required"].(bool))
+	assert.NotEmpty(t, data["challenge_token"])
+	// No auth tokens should be present
+	assert.Nil(t, data["access_token"])
+	assert.Nil(t, data["refresh_token"])
+
+	// No session should be created
+	assert.Empty(t, reg.session.sessions)
 }

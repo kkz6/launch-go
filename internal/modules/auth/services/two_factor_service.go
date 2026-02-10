@@ -1,10 +1,13 @@
 package services
 
 import (
+	"bytes"
 	"context"
 	"encoding/base32"
+	"encoding/base64"
 	"errors"
 	"fmt"
+	"image/png"
 	"strings"
 	"time"
 
@@ -22,20 +25,22 @@ import (
 
 // TwoFactorService handles two-factor authentication operations
 type TwoFactorService struct {
-	repos  contracts.RepositoryRegistry
-	config *config.Config
+	repos       contracts.RepositoryRegistry
+	config      *config.Config
+	authService *AuthService
 }
 
 // NewTwoFactorService creates a new TwoFactorService instance
-func NewTwoFactorService(repos contracts.RepositoryRegistry, cfg *config.Config) *TwoFactorService {
+func NewTwoFactorService(repos contracts.RepositoryRegistry, cfg *config.Config, authService *AuthService) *TwoFactorService {
 	return &TwoFactorService{
-		repos:  repos,
-		config: cfg,
+		repos:       repos,
+		config:      cfg,
+		authService: authService,
 	}
 }
 
-// EnableTwoFactor initiates 2FA setup
-func (s *TwoFactorService) EnableTwoFactor(ctx context.Context, userID string) (*dto.TwoFactorResponse, error) {
+// EnableTwoFactor initiates 2FA setup after verifying the user's password
+func (s *TwoFactorService) EnableTwoFactor(ctx context.Context, userID, password string) (*dto.TwoFactorResponse, error) {
 	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -43,6 +48,10 @@ func (s *TwoFactorService) EnableTwoFactor(ctx context.Context, userID string) (
 
 	if user == nil {
 		return nil, fiberutil.NotFound()
+	}
+
+	if !security.VerifyPassword(user.Password, password) {
+		return nil, fiberutil.BadRequest("Invalid password")
 	}
 
 	// Generate TOTP secret
@@ -63,8 +72,21 @@ func (s *TwoFactorService) EnableTwoFactor(ctx context.Context, userID string) (
 		return nil, err
 	}
 
+	// Generate QR code image
+	qrImage, err := key.Image(200, 200)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate QR code: %w", err)
+	}
+
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, qrImage); err != nil {
+		return nil, fmt.Errorf("failed to encode QR code: %w", err)
+	}
+
+	qrDataURI := "data:image/png;base64," + base64.StdEncoding.EncodeToString(buf.Bytes())
+
 	return &dto.TwoFactorResponse{
-		QRCodeURL: key.URL(),
+		QRCodeURL: qrDataURI,
 		SecretKey: key.Secret(),
 	}, nil
 }
@@ -280,6 +302,30 @@ func (s *TwoFactorService) RegenerateRecoveryCodes(ctx context.Context, userID s
 	}
 
 	return codes, nil
+}
+
+// CompleteTwoFactorChallenge verifies a 2FA code and completes the login flow.
+// It looks up the challenge token from cache, verifies the TOTP/recovery code,
+// creates a session, and returns auth tokens on success.
+func (s *TwoFactorService) CompleteTwoFactorChallenge(ctx context.Context, challengeToken, code string) (*dto.AuthResponse, error) {
+	// Look up the challenge data (consumes the token)
+	challenge, err := s.authService.LookupTwoFactorChallenge(ctx, challengeToken)
+	if err != nil {
+		return nil, err
+	}
+
+	// Verify the 2FA code
+	valid, err := s.VerifyTwoFactor(ctx, challenge.UserID, code)
+	if err != nil {
+		return nil, err
+	}
+
+	if !valid {
+		return nil, fiberutil.Unauthorized()
+	}
+
+	// Code verified — create session and return tokens
+	return s.authService.CompleteTwoFactorLogin(ctx, challenge.UserID, challenge.IPAddress, challenge.UserAgent)
 }
 
 // HasTwoFactorEnabled checks if user has 2FA enabled

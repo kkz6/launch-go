@@ -59,10 +59,11 @@ func (m *Module) authRateLimit(maxReqs int, window time.Duration) fiber.Handler 
 // setupPublicRoutes registers routes that don't require authentication
 func (m *Module) setupPublicRoutes(router fiber.Router, handler *handlers.Handler, passkeyHandler *handlers.PasskeyHandler) {
 	// Rate limiters for sensitive endpoints
-	authRL := m.authRateLimit(10, time.Minute)    // 10 req/min for login/register
-	resetRL := m.authRateLimit(5, time.Minute)    // 5 req/min for password reset
-	statusRL := m.authRateLimit(20, time.Minute)  // 20 req/min for status check
-	passkeyRL := m.authRateLimit(10, time.Minute) // 10 req/min for passkey auth
+	authRL := m.authRateLimit(10, time.Minute)     // 10 req/min for login/register
+	resetRL := m.authRateLimit(5, time.Minute)     // 5 req/min for password reset
+	statusRL := m.authRateLimit(20, time.Minute)   // 20 req/min for status check
+	passkeyRL := m.authRateLimit(10, time.Minute)  // 10 req/min for passkey auth
+	twoFactorRL := m.authRateLimit(5, time.Minute) // 5 req/min for 2FA challenge
 
 	// Registration and Login
 	router.Post("/register", authRL, handler.Auth.Register)
@@ -78,6 +79,9 @@ func (m *Module) setupPublicRoutes(router fiber.Router, handler *handlers.Handle
 
 	// User Status Check (for login flow)
 	router.Post("/check-user-status", statusRL, handler.User.CheckUserStatus)
+
+	// Two-Factor Challenge (public — uses challenge token from login, not auth)
+	router.Post("/two-factor/challenge", twoFactorRL, handler.TwoFactor.TwoFactorChallenge)
 
 	// Passkey Authentication (guest)
 	router.Post("/passkey/login/options", passkeyRL, passkeyHandler.BeginLogin)
@@ -97,13 +101,11 @@ func (m *Module) registerProtectedRoutes(router fiber.Router, handler *handlers.
 	// Email Verification (resend)
 	router.Post("/email/verification-notification", handler.Email.ResendVerificationEmail)
 
-	// Two-Factor Authentication
-	twoFactorRL := m.authRateLimit(5, time.Minute) // 5 req/min for 2FA challenge
+	// Two-Factor Authentication (management — requires auth)
 	twoFactor := router.Group("/two-factor")
 	twoFactor.Post("/enable", handler.TwoFactor.EnableTwoFactor)
 	twoFactor.Post("/confirm", handler.TwoFactor.ConfirmTwoFactor)
 	twoFactor.Delete("/disable", handler.TwoFactor.DisableTwoFactor)
-	twoFactor.Post("/challenge", twoFactorRL, handler.TwoFactor.TwoFactorChallenge)
 	twoFactor.Get("/recovery-codes", handler.TwoFactor.GetRecoveryCodes)
 	twoFactor.Post("/recovery-codes", handler.TwoFactor.RegenerateRecoveryCodes)
 

@@ -96,10 +96,12 @@ type VerifyEmailRequest struct {
 	Hash string `json:"hash" validate:"required"`
 }
 
-// TwoFactorChallengeRequest represents a 2FA challenge verification request
+// TwoFactorChallengeRequest represents a 2FA challenge verification request during login.
+// The ChallengeToken is issued by the login endpoint when the user has 2FA enabled.
 type TwoFactorChallengeRequest struct {
-	Code         string `json:"code" validate:"required_without=RecoveryCode"`
-	RecoveryCode string `json:"recovery_code" validate:"required_without=Code"`
+	ChallengeToken string `json:"challenge_token" validate:"required"`
+	Code           string `json:"code" validate:"required_without=RecoveryCode"`
+	RecoveryCode   string `json:"recovery_code" validate:"required_without=Code"`
 }
 
 // EnableTwoFactorRequest represents a request to enable 2FA

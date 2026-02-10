@@ -23,7 +23,7 @@ func setupEmailHandler() (*fiber.App, *mockRepoRegistry, *handlers.Handler) {
 	reg := newMockRegistry()
 	cfg := testConfig()
 	logger := zerolog.New(os.Stderr)
-	svc, _ := services.NewService(reg, cfg, &logger, nil, &mockCache{})
+	svc, _ := services.NewService(reg, cfg, &logger, nil, newMockCache())
 	handler := handlers.NewHandler(svc)
 	app := newTestAppWithValidation()
 	return app, reg, handler
