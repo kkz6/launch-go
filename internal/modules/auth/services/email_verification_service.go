@@ -10,19 +10,19 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/config"
-	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 // EmailVerificationService handles email verification operations
 type EmailVerificationService struct {
-	repos  *repositories.Registry
+	repos  contracts.RepositoryRegistry
 	config *config.Config
 }
 
 // NewEmailVerificationService creates a new EmailVerificationService instance
-func NewEmailVerificationService(repos *repositories.Registry, cfg *config.Config) *EmailVerificationService {
+func NewEmailVerificationService(repos contracts.RepositoryRegistry, cfg *config.Config) *EmailVerificationService {
 	return &EmailVerificationService{
 		repos:  repos,
 		config: cfg,

@@ -58,7 +58,7 @@ func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
 	}
 
 	return c.JSON(fiber.Map{
-		"passkeys": responses,
+		"data": responses,
 	})
 }
 

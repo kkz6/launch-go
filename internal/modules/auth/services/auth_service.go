@@ -11,9 +11,9 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
-	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/security"
@@ -24,13 +24,13 @@ const defaultRefreshTokenHours = 24 * 30 // 30 days
 
 // AuthService handles authentication-related operations
 type AuthService struct {
-	repos  *repositories.Registry
+	repos  contracts.RepositoryRegistry
 	config *config.Config
 	logger *zerolog.Logger
 }
 
 // NewAuthService creates a new AuthService instance
-func NewAuthService(repos *repositories.Registry, cfg *config.Config, logger *zerolog.Logger) *AuthService {
+func NewAuthService(repos contracts.RepositoryRegistry, cfg *config.Config, logger *zerolog.Logger) *AuthService {
 	return &AuthService{
 		repos:  repos,
 		config: cfg,

@@ -6,17 +6,17 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
-	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
+	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // SessionHandler handles session management endpoints
 type SessionHandler struct {
-	sessionRepo *repositories.SessionRepository
+	sessionRepo contracts.SessionRepository
 }
 
 // NewSessionHandler creates a new SessionHandler
-func NewSessionHandler(sessionRepo *repositories.SessionRepository) *SessionHandler {
+func NewSessionHandler(sessionRepo contracts.SessionRepository) *SessionHandler {
 	return &SessionHandler{sessionRepo: sessionRepo}
 }
 
@@ -138,14 +138,14 @@ func parseUserAgent(ua string) agentInfo {
 	switch {
 	case strings.Contains(lower, "windows"):
 		platform = "Windows"
-	case strings.Contains(lower, "macintosh") || strings.Contains(lower, "mac os"):
-		platform = "macOS"
-	case strings.Contains(lower, "linux") && !strings.Contains(lower, "android"):
-		platform = "Linux"
-	case strings.Contains(lower, "android"):
-		platform = "Android"
 	case strings.Contains(lower, "iphone") || strings.Contains(lower, "ipad"):
 		platform = "iOS"
+	case strings.Contains(lower, "android"):
+		platform = "Android"
+	case strings.Contains(lower, "macintosh") || strings.Contains(lower, "mac os"):
+		platform = "macOS"
+	case strings.Contains(lower, "linux"):
+		platform = "Linux"
 	}
 
 	isDesktop := !strings.Contains(lower, "mobile") &&

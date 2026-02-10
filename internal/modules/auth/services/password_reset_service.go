@@ -12,9 +12,9 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
-	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 	"github.com/kkz6/launch-go/internal/pkg/security"
@@ -22,13 +22,13 @@ import (
 
 // PasswordResetService handles password reset operations
 type PasswordResetService struct {
-	repos       *repositories.Registry
+	repos       contracts.RepositoryRegistry
 	config      *config.Config
 	emailSender channels.EmailSender
 }
 
 // NewPasswordResetService creates a new PasswordResetService instance
-func NewPasswordResetService(repos *repositories.Registry, cfg *config.Config, emailSender channels.EmailSender) *PasswordResetService {
+func NewPasswordResetService(repos contracts.RepositoryRegistry, cfg *config.Config, emailSender channels.EmailSender) *PasswordResetService {
 	return &PasswordResetService{
 		repos:       repos,
 		config:      cfg,

@@ -6,9 +6,9 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
-	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
@@ -16,11 +16,11 @@ import (
 
 // TeamService handles team management operations
 type TeamService struct {
-	repos *repositories.Registry
+	repos contracts.RepositoryRegistry
 }
 
 // NewTeamService creates a new TeamService instance
-func NewTeamService(repos *repositories.Registry) *TeamService {
+func NewTeamService(repos contracts.RepositoryRegistry) *TeamService {
 	return &TeamService{repos: repos}
 }
 

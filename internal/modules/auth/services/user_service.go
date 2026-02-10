@@ -8,9 +8,9 @@ import (
 
 	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
-	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/security"
@@ -18,11 +18,11 @@ import (
 
 // UserService handles user management operations
 type UserService struct {
-	repos *repositories.Registry
+	repos contracts.RepositoryRegistry
 }
 
 // NewUserService creates a new UserService instance
-func NewUserService(repos *repositories.Registry) *UserService {
+func NewUserService(repos contracts.RepositoryRegistry) *UserService {
 	return &UserService{repos: repos}
 }
 

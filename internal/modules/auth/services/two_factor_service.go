@@ -13,21 +13,21 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
-	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // TwoFactorService handles two-factor authentication operations
 type TwoFactorService struct {
-	repos  *repositories.Registry
+	repos  contracts.RepositoryRegistry
 	config *config.Config
 }
 
 // NewTwoFactorService creates a new TwoFactorService instance
-func NewTwoFactorService(repos *repositories.Registry, cfg *config.Config) *TwoFactorService {
+func NewTwoFactorService(repos contracts.RepositoryRegistry, cfg *config.Config) *TwoFactorService {
 	return &TwoFactorService{
 		repos:  repos,
 		config: cfg,

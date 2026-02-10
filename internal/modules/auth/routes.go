@@ -152,7 +152,7 @@ func (m *Module) registerUserRoutes(router fiber.Router, passkeyHandler *handler
 	passkeys.Delete("/:id", passkeyHandler.Delete)
 
 	// Personal Access Tokens
-	patHandler := handlers.NewPATHandler(m.repos.PersonalAccessToken())
+	patHandler := handlers.NewPATHandler(m.repos.PersonalAccessToken(), m.service.TwoFactor, m.repos.User())
 	tokens := router.Group("/tokens")
 	tokens.Get("/", patHandler.List)
 	tokens.Post("/", patHandler.Create)
