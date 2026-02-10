@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
@@ -77,6 +78,11 @@ func (j *CleanupFailedPhpInstallationJob) Handle(ctx context.Context) error {
 		Str("server_id", j.server.ID).
 		Str("version", j.Payload.Version).
 		Msg("PHP installation cleanup completed")
+
+	if j.Deps.TaskRunnerDeps.Notifier != nil {
+		notif := notifications.NewPhpInstallationFailedNotification(j.server.Name, j.Payload.Version, "", "PHP installation failed")
+		_ = j.Deps.TaskRunnerDeps.Notifier.SendToTeam(ctx, j.server.TeamID, notif)
+	}
 
 	j.Deps.BroadcastServerEvent(j.server, "php.cleanup_completed", map[string]any{
 		"server_id": j.server.ID,
@@ -163,6 +169,11 @@ func (j *CleanupFailedPhpExtensionInstallJob) Handle(ctx context.Context) error 
 		Str("extension", j.Payload.Extension).
 		Msg("PHP extension cleanup completed")
 
+	if j.Deps.TaskRunnerDeps.Notifier != nil {
+		notif := notifications.NewPhpExtensionInstallFailedNotification(j.server.Name, j.Payload.Extension, j.Payload.Version, "", "PHP extension installation failed")
+		_ = j.Deps.TaskRunnerDeps.Notifier.SendToTeam(ctx, j.server.TeamID, notif)
+	}
+
 	j.Deps.BroadcastServerEvent(j.server, "php.extension_cleanup_completed", map[string]any{
 		"server_id": j.server.ID,
 		"version":   j.Payload.Version,
@@ -234,6 +245,11 @@ func (j *CleanupFailedPhpExtensionUninstallJob) Handle(ctx context.Context) erro
 		Str("version", j.Payload.Version).
 		Str("extension", j.Payload.Extension).
 		Msg("PHP extension uninstall cleanup completed")
+
+	if j.Deps.TaskRunnerDeps.Notifier != nil {
+		notif := notifications.NewPhpExtensionUninstallFailedNotification(j.server.Name, j.Payload.Extension, j.Payload.Version, "", "PHP extension uninstallation failed")
+		_ = j.Deps.TaskRunnerDeps.Notifier.SendToTeam(ctx, j.server.TeamID, notif)
+	}
 
 	j.Deps.BroadcastServerEvent(j.server, "php.extension_uninstall_cleanup_completed", map[string]any{
 		"server_id": j.server.ID,

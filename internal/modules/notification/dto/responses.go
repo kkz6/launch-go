@@ -70,6 +70,28 @@ func ToChannelResponses(channels []models.NotificationChannel) []ChannelResponse
 	return pkgdto.TransformSlice(channels, ToChannelResponse)
 }
 
+// NotificationPreferencesResponse represents the response for notification preferences
+type NotificationPreferencesResponse struct {
+	EmailServerCreated     bool `json:"email_server_created"`
+	EmailServerDeleted     bool `json:"email_server_deleted"`
+	EmailDeploymentSuccess bool `json:"email_deployment_success"`
+	EmailDeploymentFailed  bool `json:"email_deployment_failed"`
+	EmailBackupSuccess     bool `json:"email_backup_success"`
+	EmailBackupFailed      bool `json:"email_backup_failed"`
+}
+
+// ToNotificationPreferencesResponse converts a model to a response DTO
+func ToNotificationPreferencesResponse(p *models.NotificationPreference) NotificationPreferencesResponse {
+	return NotificationPreferencesResponse{
+		EmailServerCreated:     p.EmailServerCreated,
+		EmailServerDeleted:     p.EmailServerDeleted,
+		EmailDeploymentSuccess: p.EmailDeploymentSuccess,
+		EmailDeploymentFailed:  p.EmailDeploymentFailed,
+		EmailBackupSuccess:     p.EmailBackupSuccess,
+		EmailBackupFailed:      p.EmailBackupFailed,
+	}
+}
+
 // maskToken masks sensitive tokens for display
 func maskToken(token string) string {
 	if token == "" {

@@ -7,6 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -82,6 +83,11 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 						Str("server_id", j.server.ID).
 						Str("provider", j.server.Provider.String()).
 						Msg("failed to delete server from provider, continuing with database deletion")
+
+					if j.Deps.TaskRunnerDeps.Notifier != nil {
+						notif := notifications.NewFailedToDeleteServerNotification(j.server.Name, j.server.Provider.String(), err.Error())
+						_ = j.Deps.TaskRunnerDeps.Notifier.SendToTeam(ctx, j.server.TeamID, notif)
+					}
 				} else {
 					j.Deps.Logger.Info().
 						Str("server_id", j.server.ID).
