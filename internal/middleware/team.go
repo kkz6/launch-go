@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
 )
 
@@ -89,6 +90,22 @@ func TeamScope() fiber.Handler {
 			case fiber.StatusUnauthorized:
 				return fiberctx.RespondUnauthorized(c, fiberErr.Message)
 			case fiber.StatusForbidden:
+				if activity.IsInitialized() {
+					userID, _ := c.Locals(fiberctx.KeyUserID).(string)
+					teamID := c.Get("X-Team-ID")
+					activity.Activity().
+						WithContext(c.Context()).
+						UseLog("security").
+						WithEvent("authorization_failed").
+						CausedByUser(userID).
+						WithProperties(map[string]any{
+							"team_id":    teamID,
+							"path":       c.Path(),
+							"method":     c.Method(),
+							"ip_address": c.IP(),
+						}).
+						Log("Team membership authorization failed")
+				}
 				return fiberctx.RespondForbidden(c, fiberErr.Message)
 			default:
 				return fiberctx.Error(c, fiberErr.Code, fiberErr.Message)
@@ -144,11 +161,46 @@ func RequireRole(minRole string) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		teamRole, ok := c.Locals(fiberctx.KeyTeamRole).(string)
 		if !ok || teamRole == "" {
+			if activity.IsInitialized() {
+				userID, _ := c.Locals(fiberctx.KeyUserID).(string)
+				teamID, _ := c.Locals(fiberctx.KeyTeamID).(string)
+				activity.Activity().
+					WithContext(c.Context()).
+					UseLog("security").
+					WithEvent("authorization_failed").
+					CausedByUser(userID).
+					WithProperties(map[string]any{
+						"team_id":       teamID,
+						"required_role": minRole,
+						"path":          c.Path(),
+						"method":        c.Method(),
+						"ip_address":    c.IP(),
+					}).
+					Log("Insufficient role for requested action")
+			}
 			return fiberctx.RespondForbidden(c, "Team context required")
 		}
 
 		userLevel, ok := roleHierarchy[teamRole]
 		if !ok || userLevel < minLevel {
+			if activity.IsInitialized() {
+				userID, _ := c.Locals(fiberctx.KeyUserID).(string)
+				teamID, _ := c.Locals(fiberctx.KeyTeamID).(string)
+				activity.Activity().
+					WithContext(c.Context()).
+					UseLog("security").
+					WithEvent("authorization_failed").
+					CausedByUser(userID).
+					WithProperties(map[string]any{
+						"team_id":       teamID,
+						"current_role":  teamRole,
+						"required_role": minRole,
+						"path":          c.Path(),
+						"method":        c.Method(),
+						"ip_address":    c.IP(),
+					}).
+					Log("Insufficient role for requested action")
+			}
 			return fiberctx.RespondForbidden(c, "Insufficient permissions")
 		}
 
@@ -180,6 +232,20 @@ func TeamContext(membershipCache *launchcache.TeamMembershipCache) fiber.Handler
 		}
 
 		if !membership.IsMember {
+			if activity.IsInitialized() {
+				activity.Activity().
+					WithContext(c.Context()).
+					UseLog("security").
+					WithEvent("authorization_failed").
+					CausedByUser(userID).
+					WithProperties(map[string]any{
+						"team_id":    teamID,
+						"path":       c.Path(),
+						"method":     c.Method(),
+						"ip_address": c.IP(),
+					}).
+					Log("Team membership authorization failed")
+			}
 			return fiberctx.RespondForbidden(c, "You are not a member of this team")
 		}
 
