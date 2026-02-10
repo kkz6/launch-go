@@ -88,6 +88,16 @@ func (j *CleanupPendingSiteDeploymentJob) Handle(ctx context.Context) error {
 			"team_id":       server.TeamID,
 			"site_id":       site.ID,
 			"deployment_id": deployment.ID,
+			"status":        "timeout",
+			"message":       "Deployment timed out and was cleaned up",
+		})
+
+		// Also broadcast as deployment.progress so existing listeners pick up the terminal status
+		j.Deps.BroadcastServerEvent(server, "deployment.progress", map[string]interface{}{
+			"team_id":       server.TeamID,
+			"site_id":       site.ID,
+			"deployment_id": deployment.ID,
+			"status":        "timeout",
 			"message":       "Deployment timed out and was cleaned up",
 		})
 	}
