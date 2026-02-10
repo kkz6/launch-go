@@ -164,12 +164,18 @@ func (s *UserService) CheckUserStatus(ctx context.Context, email string) (*dto.U
 			UserExists:           false,
 			RequiresVerification: false,
 			HasTwoFactor:         false,
+			HasPasskeys:          false,
+			PasskeyCount:         0,
 		}, nil
 	}
+
+	passkeyCount, _ := s.repos.Passkey().CountByUserID(ctx, user.ID)
 
 	return &dto.UserStatusResponse{
 		UserExists:           true,
 		RequiresVerification: !user.HasVerifiedEmail(),
 		HasTwoFactor:         user.HasEnabledTwoFactorAuthentication(),
+		HasPasskeys:          passkeyCount > 0,
+		PasskeyCount:         int(passkeyCount),
 	}, nil
 }

@@ -1,8 +1,11 @@
 package handlers
 
 import (
+	"encoding/json"
+
 	"github.com/gofiber/fiber/v2"
 
+	authdto "github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -20,15 +23,6 @@ func NewPasskeyHandler(service *services.Service) *PasskeyHandler {
 	}
 }
 
-// PasskeyResponse represents a passkey in API responses
-type PasskeyResponse struct {
-	ID         string   `json:"id"`
-	Name       string   `json:"name"`
-	CreatedAt  string   `json:"created_at"`
-	LastUsedAt *string  `json:"last_used_at,omitempty"`
-	Transports []string `json:"transports,omitempty"`
-}
-
 // Index returns all passkeys for the authenticated user
 func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
 	userID, err := fiberctx.MustGetUserID(c)
@@ -41,20 +35,13 @@ func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
 		return fiberctx.HandleError(c, err)
 	}
 
-	passkeyResponses := make([]PasskeyResponse, len(passkeys))
+	responses := make([]authdto.PasskeyResponse, len(passkeys))
 	for i, p := range passkeys {
-		name := "Passkey"
 		createdAtStr := dto.FormatDisplayTimeOrEmpty(p.CreatedAt)
 
-		if p.Name != nil && *p.Name != "" {
-			name = *p.Name
-		} else if createdAtStr != "" {
-			name = "Passkey created on " + createdAtStr
-		}
-
-		resp := PasskeyResponse{
+		resp := authdto.PasskeyResponse{
 			ID:        p.ID,
-			Name:      name,
+			Name:      p.DisplayName(),
 			CreatedAt: createdAtStr,
 		}
 
@@ -62,28 +49,90 @@ func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
 			resp.LastUsedAt = dto.FormatDisplayDateTime(p.LastUsedAt)
 		}
 
-		passkeyResponses[i] = resp
+		if p.Transports != nil {
+			var transports []string
+			if err := json.Unmarshal([]byte(*p.Transports), &transports); err == nil {
+				resp.Transports = transports
+			}
+		}
+
+		responses[i] = resp
 	}
 
 	return c.JSON(fiber.Map{
-		"passkeys": passkeyResponses,
+		"passkeys": responses,
 	})
 }
 
-// Delete removes a passkey
-func (h *PasskeyHandler) Delete(c *fiber.Ctx) error {
+// BeginRegistration generates WebAuthn registration options
+func (h *PasskeyHandler) BeginRegistration(c *fiber.Ctx) error {
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
 	}
-	passkeyID := c.Params("id")
 
-	err = h.service.Passkey.DeletePasskey(c.Context(), passkeyID, userID)
+	options, err := h.service.Passkey.BeginRegistration(c.Context(), userID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
-	return fiberctx.OK(c, "Passkey deleted successfully", nil)
+	return c.JSON(options)
+}
+
+// FinishRegistration completes WebAuthn registration
+func (h *PasskeyHandler) FinishRegistration(c *fiber.Ctx) error {
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	var nameReq authdto.PasskeyRegisterRequest
+	_ = c.BodyParser(&nameReq)
+
+	var name *string
+	if nameReq.Name != "" {
+		name = &nameReq.Name
+	}
+
+	passkey, err := h.service.Passkey.FinishRegistration(c.Context(), userID, c.Body(), name)
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return fiberctx.OK(c, "Passkey registered successfully", authdto.PasskeyResponse{
+		ID:        passkey.ID,
+		Name:      passkey.DisplayName(),
+		CreatedAt: dto.FormatDisplayTimeOrEmpty(passkey.CreatedAt),
+	})
+}
+
+// BeginLogin generates WebAuthn authentication options
+func (h *PasskeyHandler) BeginLogin(c *fiber.Ctx) error {
+	var req authdto.PasskeyLoginRequest
+	_ = c.BodyParser(&req)
+	req.Normalize()
+
+	options, err := h.service.Passkey.BeginLogin(c.Context(), req.Email)
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return c.JSON(options)
+}
+
+// FinishLogin completes WebAuthn authentication
+func (h *PasskeyHandler) FinishLogin(c *fiber.Ctx) error {
+	user, err := h.service.Passkey.FinishLogin(c.Context(), c.Body())
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	authResponse, err := h.service.Auth.LoginWithPasskey(c.Context(), user, c.IP(), string(c.Request().Header.UserAgent()))
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return c.JSON(authResponse)
 }
 
 // UpdateRequest represents the request body for updating a passkey
@@ -97,6 +146,7 @@ func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
+
 	passkeyID := c.Params("id")
 
 	req, err := fiberctx.MustParseAndValidate[UpdateRequest](c)
@@ -109,4 +159,21 @@ func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
 	}
 
 	return fiberctx.OK(c, "Passkey updated successfully", nil)
+}
+
+// Delete removes a passkey
+func (h *PasskeyHandler) Delete(c *fiber.Ctx) error {
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	passkeyID := c.Params("id")
+
+	err = h.service.Passkey.DeletePasskey(c.Context(), passkeyID, userID)
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return fiberctx.OK(c, "Passkey deleted successfully", nil)
 }

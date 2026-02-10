@@ -100,6 +100,17 @@ type UserStatusResponse struct {
 	UserExists           bool `json:"user_exists"`
 	RequiresVerification bool `json:"requires_verification"`
 	HasTwoFactor         bool `json:"has_two_factor"`
+	HasPasskeys          bool `json:"has_passkeys"`
+	PasskeyCount         int  `json:"passkey_count"`
+}
+
+// PasskeyResponse represents a passkey in API responses
+type PasskeyResponse struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	CreatedAt  string   `json:"created_at"`
+	LastUsedAt *string  `json:"last_used_at,omitempty"`
+	Transports []string `json:"transports,omitempty"`
 }
 
 // PasswordResetResponse represents the password reset response

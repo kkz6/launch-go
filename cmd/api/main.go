@@ -194,7 +194,10 @@ func (a *Application) registerModules() {
 	builder := app.NewBuilderFromContext(ctx)
 
 	// Create modules using builder pattern
-	authModule := auth.NewModule(builder, emailSender)
+	authModule, err := auth.NewModule(builder, emailSender, a.redisCache)
+	if err != nil {
+		a.logger.Fatal().Err(err).Msg("Failed to create auth module")
+	}
 	serverModule := server.NewModule(builder)
 	databaseModule := databasemodule.NewModule(builder)
 	siteModule := site.NewModule(builder)

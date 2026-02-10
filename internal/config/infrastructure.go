@@ -118,6 +118,15 @@ func mysqlURLToDSN(rawURL string) string {
 	return dsn
 }
 
+// PasskeyConfig holds WebAuthn/Passkey configuration
+type PasskeyConfig struct {
+	RPName     string `env:"PASSKEY_RP_NAME" default:""`
+	RPID       string `env:"PASSKEY_RP_ID" default:""`
+	RPOrigin   string `env:"PASSKEY_RP_ORIGIN" default:""`
+	Timeout    int    `env:"PASSKEY_TIMEOUT" default:"60000"`
+	MaxPerUser int    `env:"PASSKEY_MAX_PER_USER" default:"10"`
+}
+
 // RedisConfig holds Redis configuration
 type RedisConfig struct {
 	Address  string `env:"REDIS_ADDRESS" default:"localhost:6379"`

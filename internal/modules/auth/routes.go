@@ -29,7 +29,7 @@ func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 	auth := router.Group("/auth")
 
 	// Public routes (no authentication required)
-	m.setupPublicRoutes(auth, handler)
+	m.setupPublicRoutes(auth, handler, passkeyHandler)
 
 	// Protected routes (authentication required)
 	protected := auth.Group("", authMiddleware)
@@ -45,7 +45,7 @@ func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 }
 
 // setupPublicRoutes registers routes that don't require authentication
-func (m *Module) setupPublicRoutes(router fiber.Router, handler *handlers.Handler) {
+func (m *Module) setupPublicRoutes(router fiber.Router, handler *handlers.Handler, passkeyHandler *handlers.PasskeyHandler) {
 	// Registration and Login
 	router.Post("/register", handler.Auth.Register)
 	router.Post("/login", handler.Auth.Login)
@@ -60,6 +60,10 @@ func (m *Module) setupPublicRoutes(router fiber.Router, handler *handlers.Handle
 
 	// User Status Check (for login flow)
 	router.Post("/check-user-status", handler.User.CheckUserStatus)
+
+	// Passkey Authentication (guest)
+	router.Post("/passkey/login/options", passkeyHandler.BeginLogin)
+	router.Post("/passkey/login/verify", passkeyHandler.FinishLogin)
 }
 
 // registerProtectedRoutes registers routes that require authentication
@@ -123,6 +127,8 @@ func (m *Module) registerUserRoutes(router fiber.Router, passkeyHandler *handler
 	// Passkeys
 	passkeys := router.Group("/passkeys")
 	passkeys.Get("/", passkeyHandler.Index)
+	passkeys.Post("/register/options", passkeyHandler.BeginRegistration)
+	passkeys.Post("/register", passkeyHandler.FinishRegistration)
 	passkeys.Put("/:id", passkeyHandler.Update)
 	passkeys.Delete("/:id", passkeyHandler.Delete)
 

@@ -128,7 +128,7 @@ func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID, passwor
 	}
 
 	// Verify password
-	if !verifyPassword(user.Password, password) {
+	if !security.VerifyPassword(user.Password, password) {
 		return errors.New("invalid password")
 	}
 

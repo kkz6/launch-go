@@ -148,3 +148,18 @@ type CheckUserStatusRequest struct {
 func (r *CheckUserStatusRequest) Normalize() {
 	pkgdto.NormalizeEmail(&r.Email)
 }
+
+// PasskeyRegisterRequest represents a request to name a passkey during registration
+type PasskeyRegisterRequest struct {
+	Name string `json:"name" validate:"omitempty,max=255"`
+}
+
+// PasskeyLoginRequest represents a request to begin passkey authentication
+type PasskeyLoginRequest struct {
+	Email string `json:"email" validate:"omitempty,email"`
+}
+
+// Normalize normalizes the email to lowercase
+func (r *PasskeyLoginRequest) Normalize() {
+	pkgdto.NormalizeEmail(&r.Email)
+}
