@@ -159,6 +159,7 @@ func (a *Application) registerMiddleware() {
 		AllowHeaders:     "Origin,Content-Type,Accept,Authorization,X-Team-ID",
 		AllowCredentials: true,
 	}))
+	a.fiber.Use(middleware.SecurityHeaders())
 	a.fiber.Use(middleware.RequestLogger(a.logger, a.config.App.Environment == "development"))
 }
 
