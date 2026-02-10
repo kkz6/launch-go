@@ -249,6 +249,34 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 	}, nil
 }
 
+// LoginWithPasskey creates a session and tokens for an already-verified passkey user
+func (s *AuthService) LoginWithPasskey(ctx context.Context, user *models.User, ipAddress, userAgent string) (*dto.AuthResponse, error) {
+	sessionID, err := s.createSession(ctx, user.ID, ipAddress, userAgent)
+	if err != nil {
+		return nil, err
+	}
+
+	accessToken, err := s.generateAccessToken(user, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshToken, err := s.generateRefreshToken(user, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	isSubscribed := s.isTeamSubscribedOrUserAdmin(ctx, user)
+
+	return &dto.AuthResponse{
+		User:         dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded),
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    s.config.JWT.Expiration * 3600,
+		TokenType:    "Bearer",
+	}, nil
+}
+
 // handleInvitation handles team invitation during registration
 func (s *AuthService) handleInvitation(ctx context.Context, tx *gorm.DB, user *models.User, invitationID string) {
 	invitation, err := s.repos.TeamInvitation().FindByID(ctx, invitationID)

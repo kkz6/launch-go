@@ -5,6 +5,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/cache"
 )
 
 const ModuleName = "auth"
@@ -23,16 +24,20 @@ type Module struct {
 }
 
 // NewModule creates a new auth Module instance
-func NewModule(b *app.Builder, emailSender channels.EmailSender) *Module {
+func NewModule(b *app.Builder, emailSender channels.EmailSender, redisCache cache.Cache) (*Module, error) {
 	deps := b.Deps()
 	repos := repositories.NewRegistry(deps.DB)
-	service := services.NewService(repos, deps.Config, deps.Logger, emailSender)
+
+	service, err := services.NewService(repos, deps.Config, deps.Logger, emailSender, redisCache)
+	if err != nil {
+		return nil, err
+	}
 
 	return &Module{
 		Base:    app.NewBase(ModuleName, b),
 		service: service,
 		repos:   repos,
-	}
+	}, nil
 }
 
 // Service returns the auth service

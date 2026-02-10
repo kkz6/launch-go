@@ -2,12 +2,14 @@ package services
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
+	"github.com/kkz6/launch-go/internal/pkg/cache"
 )
 
 // Service aggregates all auth-related services.
@@ -28,7 +30,12 @@ type Service struct {
 }
 
 // NewService creates a new Service instance
-func NewService(repos *repositories.Registry, cfg *config.Config, logger *zerolog.Logger, emailSender channels.EmailSender) *Service {
+func NewService(repos *repositories.Registry, cfg *config.Config, logger *zerolog.Logger, emailSender channels.EmailSender, c cache.Cache) (*Service, error) {
+	passkeyService, err := NewPasskeyService(repos, cfg, c, logger)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create passkey service: %w", err)
+	}
+
 	return &Service{
 		repos:             repos,
 		config:            cfg,
@@ -40,8 +47,8 @@ func NewService(repos *repositories.Registry, cfg *config.Config, logger *zerolo
 		TwoFactor:         NewTwoFactorService(repos, cfg),
 		Team:              NewTeamService(repos),
 		TeamMember:        NewTeamMemberService(repos),
-		Passkey:           NewPasskeyService(repos),
-	}
+		Passkey:           passkeyService,
+	}, nil
 }
 
 // Repos returns the repository registry

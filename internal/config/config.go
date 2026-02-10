@@ -21,6 +21,7 @@ type Config struct {
 	Sentry   SentryConfig
 	Mail     MailConfig
 	Core     CoreConfig
+	Passkey  PasskeyConfig
 }
 
 // Load loads all configuration from environment variables and .env file
@@ -51,5 +52,6 @@ func Load() (*Config, error) {
 		Sentry:   config.Load[SentryConfig](),
 		Mail:     config.Load[MailConfig](),
 		Core:     *GetCoreConfig(),
+		Passkey:  config.Load[PasskeyConfig](),
 	}, nil
 }

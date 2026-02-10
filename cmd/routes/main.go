@@ -22,6 +22,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site"
 	wsmodule "github.com/kkz6/launch-go/internal/modules/websocket"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/cache"
 )
 
 var (
@@ -110,8 +111,13 @@ func collectRoutes() []RouteInfo {
 	builder := app.NewBuilderFromContext(ctx)
 
 	// Register all modules that have routes
+	authModule, err := auth.NewModule(builder, nil, cache.NewNoopCache())
+	if err != nil {
+		logger.Fatal().Err(err).Msg("Failed to create auth module")
+	}
+
 	kernel.
-		Register(auth.NewModule(builder, nil)).
+		Register(authModule).
 		Register(server.NewModule(builder)).
 		Register(databasemodule.NewModule(builder)).
 		Register(site.NewModule(builder)).
