@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strconv"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -26,6 +27,12 @@ const (
 	defaultRefreshTokenHours    = 24 * 30 // 30 days
 	twoFactorChallengeTTL       = 5 * time.Minute
 	twoFactorChallengeKeyPrefix = "2fa_challenge:"
+)
+
+const (
+	loginLockoutMaxAttempts = 5
+	loginLockoutWindow      = 15 * time.Minute
+	loginLockoutKeyPrefix   = "login_lockout:"
 )
 
 // TwoFactorChallengeData is stored in cache when a 2FA challenge is pending
@@ -127,6 +134,10 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResult, error) {
 	req.Normalize()
 
+	if s.isLockedOut(ctx, req.Email) {
+		return nil, fiberutil.TooManyRequests("Account temporarily locked due to too many failed login attempts. Please try again later.")
+	}
+
 	user, err := s.repos.User().FindByEmail(ctx, req.Email)
 	if err != nil {
 		return nil, fiberutil.Unauthorized()
@@ -137,8 +148,12 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Lo
 	}
 
 	if !security.VerifyPassword(user.Password, req.Password) {
+		s.recordFailedLogin(ctx, req.Email)
 		return nil, fiberutil.Unauthorized()
 	}
+
+	// Successful password verification — clear any lockout counter
+	s.clearFailedLogins(ctx, req.Email)
 
 	// If 2FA is enabled, issue a challenge token instead of auth tokens
 	if user.HasEnabledTwoFactorAuthentication() {
@@ -165,6 +180,49 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Lo
 	}
 
 	return &dto.LoginResult{AuthResponse: authResp}, nil
+}
+
+// isLockedOut checks if the account is locked due to too many failed login attempts.
+func (s *AuthService) isLockedOut(ctx context.Context, email string) bool {
+	if s.cache == nil {
+		return false
+	}
+
+	val, err := s.cache.Get(ctx, loginLockoutKeyPrefix+email)
+	if err != nil {
+		return false
+	}
+
+	count, _ := strconv.Atoi(val)
+
+	return count >= loginLockoutMaxAttempts
+}
+
+// recordFailedLogin increments the failed login counter for an email.
+func (s *AuthService) recordFailedLogin(ctx context.Context, email string) {
+	if s.cache == nil {
+		return
+	}
+
+	key := loginLockoutKeyPrefix + email
+
+	val, err := s.cache.Get(ctx, key)
+	if err != nil {
+		_ = s.cache.Set(ctx, key, "1", loginLockoutWindow)
+		return
+	}
+
+	count, _ := strconv.Atoi(val)
+	_ = s.cache.Set(ctx, key, strconv.Itoa(count+1), loginLockoutWindow)
+}
+
+// clearFailedLogins resets the failed login counter after a successful login.
+func (s *AuthService) clearFailedLogins(ctx context.Context, email string) {
+	if s.cache == nil {
+		return
+	}
+
+	_ = s.cache.Delete(ctx, loginLockoutKeyPrefix+email)
 }
 
 // createTwoFactorChallenge generates a challenge token and stores the pending
