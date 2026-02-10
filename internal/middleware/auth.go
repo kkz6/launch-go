@@ -5,7 +5,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"strings"
 	"time"
 
@@ -18,40 +17,15 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
-// parseAuthToken extracts and validates the JWT token from the Authorization header.
-// Returns the validated claims or an error if the token is missing/invalid.
-func parseAuthToken(c *fiber.Ctx, jwtSecret string) (jwt.MapClaims, error) {
-	authHeader := c.Get("Authorization")
-	if authHeader == "" {
-		return nil, errors.New("missing authorization header")
-	}
-
-	parts := strings.Split(authHeader, " ")
-	if len(parts) != 2 || parts[0] != "Bearer" {
-		return nil, errors.New("invalid authorization header format")
-	}
-
-	claims, err := security.ParseJWTToken(parts[1], jwtSecret)
-	if err != nil {
-		return nil, err
-	}
-
-	if err := security.ValidateJWTTokenType(claims, "access"); err != nil {
-		return nil, err
-	}
-
-	return claims, nil
-}
-
-// extractBearerToken extracts the raw bearer token from the Authorization header.
-func extractBearerToken(c *fiber.Ctx) (string, error) {
+// bearerToken extracts the raw bearer token from the Authorization header.
+func bearerToken(c *fiber.Ctx) (string, error) {
 	authHeader := c.Get("Authorization")
 	if authHeader == "" {
 		return "", errors.New("missing authorization header")
 	}
 
-	parts := strings.Split(authHeader, " ")
-	if len(parts) != 2 || parts[0] != "Bearer" {
+	parts := strings.Fields(authHeader)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
 		return "", errors.New("invalid authorization header format")
 	}
 
@@ -88,11 +62,11 @@ func validatePAT(ctx context.Context, db *gorm.DB, token string) (string, error)
 		Where("token = ?", hashedToken).
 		First(&pat).Error
 	if err != nil {
-		return "", fmt.Errorf("token not found")
+		return "", errors.New("token not found")
 	}
 
 	if pat.ExpiresAt != nil && pat.ExpiresAt.Before(time.Now()) {
-		return "", fmt.Errorf("token expired")
+		return "", errors.New("token expired")
 	}
 
 	// Update last_used_at
@@ -105,27 +79,37 @@ func validatePAT(ctx context.Context, db *gorm.DB, token string) (string, error)
 	return pat.TokenableID, nil
 }
 
+func tryAuthenticate(c *fiber.Ctx, jwtSecret string, db *gorm.DB) bool {
+	token, err := bearerToken(c)
+	if err != nil {
+		return false
+	}
+
+	claims, err := security.ParseJWTToken(token, jwtSecret)
+	if err == nil {
+		if err := security.ValidateJWTTokenType(claims, "access"); err == nil {
+			setAuthContext(c, claims)
+			return true
+		}
+	}
+
+	userID, patErr := validatePAT(c.Context(), db, token)
+	if patErr == nil && userID != "" {
+		fiberctx.SetUserContext(c, userID, nil)
+		return true
+	}
+
+	return false
+}
+
 // Auth middleware requires a valid JWT token or PAT in the Authorization header.
 // It sets userID and email in request context (c.Locals).
 //
 // Authentication order: JWT -> PAT lookup.
 func Auth(jwtSecret string, db *gorm.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Try JWT first
-		claims, err := parseAuthToken(c, jwtSecret)
-		if err == nil {
-			setAuthContext(c, claims)
+		if tryAuthenticate(c, jwtSecret, db) {
 			return c.Next()
-		}
-
-		// Try PAT
-		token, tokenErr := extractBearerToken(c)
-		if tokenErr == nil {
-			userID, patErr := validatePAT(c.Context(), db, token)
-			if patErr == nil && userID != "" {
-				fiberctx.SetUserContext(c, userID, nil)
-				return c.Next()
-			}
 		}
 
 		return fiberctx.RespondUnauthorized(c, "Unauthorized")
@@ -137,23 +121,7 @@ func Auth(jwtSecret string, db *gorm.DB) fiber.Handler {
 // If no token or invalid token, it continues without user context.
 func OptionalAuth(jwtSecret string, db *gorm.DB) fiber.Handler {
 	return func(c *fiber.Ctx) error {
-		// Try JWT first
-		claims, err := parseAuthToken(c, jwtSecret)
-		if err == nil {
-			setAuthContext(c, claims)
-			return c.Next()
-		}
-
-		// Try PAT
-		token, tokenErr := extractBearerToken(c)
-		if tokenErr == nil {
-			userID, patErr := validatePAT(c.Context(), db, token)
-			if patErr == nil && userID != "" {
-				fiberctx.SetUserContext(c, userID, nil)
-				return c.Next()
-			}
-		}
-
+		_ = tryAuthenticate(c, jwtSecret, db)
 		return c.Next()
 	}
 }

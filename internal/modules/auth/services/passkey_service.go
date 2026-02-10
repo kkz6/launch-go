@@ -92,16 +92,7 @@ func NewPasskeyService(repos *repositories.Registry, cfg *config.Config, c cache
 
 // BeginRegistration generates WebAuthn registration options
 func (s *PasskeyService) BeginRegistration(ctx context.Context, userID string) (*protocol.CredentialCreation, error) {
-	user, err := s.repos.User().FindByID(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	if user == nil {
-		return nil, fiberutil.NotFound()
-	}
-
-	passkeys, err := s.repos.Passkey().FindByUserID(ctx, userID)
+	user, passkeys, err := s.getUserAndPasskeys(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -132,13 +123,8 @@ func (s *PasskeyService) BeginRegistration(ctx context.Context, userID string) (
 		return nil, fmt.Errorf("failed to begin registration: %w", err)
 	}
 
-	sessionData, err := json.Marshal(session)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal session data: %w", err)
-	}
-
-	if err := s.cache.Set(ctx, passkeyRegKeyPrefix+userID, string(sessionData), passkeySessionTTL); err != nil {
-		return nil, fmt.Errorf("failed to store session data: %w", err)
+	if err := s.storeSession(ctx, passkeyRegKeyPrefix+userID, session); err != nil {
+		return nil, err
 	}
 
 	return creation, nil
@@ -146,31 +132,14 @@ func (s *PasskeyService) BeginRegistration(ctx context.Context, userID string) (
 
 // FinishRegistration completes WebAuthn registration
 func (s *PasskeyService) FinishRegistration(ctx context.Context, userID string, body []byte, name *string) (*models.Passkey, error) {
-	user, err := s.repos.User().FindByID(ctx, userID)
+	user, passkeys, err := s.getUserAndPasskeys(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
-	if user == nil {
-		return nil, fiberutil.NotFound()
-	}
-
-	passkeys, err := s.repos.Passkey().FindByUserID(ctx, userID)
+	session, err := s.loadSession(ctx, passkeyRegKeyPrefix+userID, "registration session expired or not found")
 	if err != nil {
 		return nil, err
-	}
-
-	// Retrieve and delete session data
-	sessionJSON, err := s.cache.Get(ctx, passkeyRegKeyPrefix+userID)
-	if err != nil {
-		return nil, errors.New("registration session expired or not found")
-	}
-
-	_ = s.cache.Delete(ctx, passkeyRegKeyPrefix+userID)
-
-	var session webauthn.SessionData
-	if err := json.Unmarshal([]byte(sessionJSON), &session); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal session data: %w", err)
 	}
 
 	webAuthnUser := models.NewWebAuthnUser(user, passkeys)
@@ -180,7 +149,7 @@ func (s *PasskeyService) FinishRegistration(ctx context.Context, userID string, 
 		return nil, fmt.Errorf("failed to parse registration response: %w", err)
 	}
 
-	credential, err := s.webauthn.CreateCredential(webAuthnUser, session, parsedResponse)
+	credential, err := s.webauthn.CreateCredential(webAuthnUser, *session, parsedResponse)
 	if err != nil {
 		return nil, fmt.Errorf("failed to verify registration: %w", err)
 	}
@@ -233,13 +202,8 @@ func (s *PasskeyService) BeginLogin(ctx context.Context, email string) (*protoco
 		cacheKey = passkeyAuthKeyPrefix + passkeyAuthDiscoverable + ":" + session.Challenge
 	}
 
-	sessionData, err := json.Marshal(session)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal session data: %w", err)
-	}
-
-	if err := s.cache.Set(ctx, cacheKey, string(sessionData), passkeySessionTTL); err != nil {
-		return nil, fmt.Errorf("failed to store session data: %w", err)
+	if err := s.storeSession(ctx, cacheKey, session); err != nil {
+		return nil, err
 	}
 
 	return assertion, nil
@@ -259,7 +223,6 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, body []byte) (*models.
 		// Try user-specific session first
 		cacheKey := passkeyAuthKeyPrefix + userID
 		sessionJSON, err := s.cache.Get(ctx, cacheKey)
-
 		if err != nil {
 			// Try discoverable sessions by looking up credential
 			credentialID := base64.RawURLEncoding.EncodeToString(parsedResponse.RawID)
@@ -275,52 +238,16 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, body []byte) (*models.
 			}
 		}
 
-		_ = s.cache.Delete(ctx, cacheKey)
-
-		var session webauthn.SessionData
-		if err := json.Unmarshal([]byte(sessionJSON), &session); err != nil {
-			return nil, fmt.Errorf("failed to unmarshal session data: %w", err)
+		if err := s.cache.Delete(ctx, cacheKey); err != nil && s.logger != nil {
+			s.logger.Warn().Err(err).Msg("Failed to delete passkey session")
 		}
 
-		user, err := s.repos.User().FindByID(ctx, userID)
-		if err != nil || user == nil {
-			return nil, fiberutil.Unauthorized()
-		}
-
-		passkeys, err := s.repos.Passkey().FindByUserID(ctx, user.ID)
+		session, err := s.parseSession(sessionJSON)
 		if err != nil {
 			return nil, err
 		}
 
-		webAuthnUser := models.NewWebAuthnUser(user, passkeys)
-
-		if len(session.UserID) == 0 {
-			// Discoverable login
-			credential, err := s.webauthn.ValidateDiscoverableLogin(
-				func(rawID, userHandle []byte) (webauthn.User, error) {
-					return webAuthnUser, nil
-				},
-				session,
-				parsedResponse,
-			)
-			if err != nil {
-				return nil, fmt.Errorf("failed to verify discoverable login: %w", err)
-			}
-
-			s.updatePasskeyAfterLogin(ctx, parsedResponse.RawID, credential)
-
-			return user, nil
-		}
-
-		// User-specific login
-		credential, err := s.webauthn.ValidateLogin(webAuthnUser, session, parsedResponse)
-		if err != nil {
-			return nil, fmt.Errorf("failed to verify login: %w", err)
-		}
-
-		s.updatePasskeyAfterLogin(ctx, parsedResponse.RawID, credential)
-
-		return user, nil
+		return s.finishLoginWithSession(ctx, userID, session, parsedResponse)
 	}
 
 	// Fallback: try to find the user by credential ID
@@ -331,37 +258,12 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, body []byte) (*models.
 	}
 
 	cacheKey := passkeyAuthKeyPrefix + passkey.UserID
-	sessionJSON, err := s.cache.Get(ctx, cacheKey)
-	if err != nil {
-		return nil, errors.New("login session expired or not found")
-	}
-
-	_ = s.cache.Delete(ctx, cacheKey)
-
-	var session webauthn.SessionData
-	if err := json.Unmarshal([]byte(sessionJSON), &session); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal session data: %w", err)
-	}
-
-	user, err := s.repos.User().FindByID(ctx, passkey.UserID)
-	if err != nil || user == nil {
-		return nil, fiberutil.Unauthorized()
-	}
-
-	passkeys, err := s.repos.Passkey().FindByUserID(ctx, user.ID)
+	session, err := s.loadSession(ctx, cacheKey, "login session expired or not found")
 	if err != nil {
 		return nil, err
 	}
 
-	webAuthnUser := models.NewWebAuthnUser(user, passkeys)
-	credential, err := s.webauthn.ValidateLogin(webAuthnUser, session, parsedResponse)
-	if err != nil {
-		return nil, fmt.Errorf("failed to verify login: %w", err)
-	}
-
-	s.updatePasskeyAfterLogin(ctx, parsedResponse.RawID, credential)
-
-	return user, nil
+	return s.finishLoginWithSession(ctx, passkey.UserID, session, parsedResponse)
 }
 
 // updatePasskeyAfterLogin updates the passkey sign count and last used timestamp
@@ -378,6 +280,119 @@ func (s *PasskeyService) updatePasskeyAfterLogin(ctx context.Context, rawID []by
 	if err := s.repos.Passkey().Update(ctx, passkey); err != nil {
 		s.logger.Error().Err(err).Str("passkey_id", passkey.ID).Msg("Failed to update passkey usage")
 	}
+}
+
+func (s *PasskeyService) getUserAndPasskeys(ctx context.Context, userID string) (*models.User, []models.Passkey, error) {
+	user, err := s.repos.User().FindByID(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if user == nil {
+		return nil, nil, fiberutil.NotFound()
+	}
+
+	passkeys, err := s.repos.Passkey().FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return user, passkeys, nil
+}
+
+func (s *PasskeyService) storeSession(ctx context.Context, key string, session *webauthn.SessionData) error {
+	sessionData, err := json.Marshal(session)
+	if err != nil {
+		return fmt.Errorf("failed to marshal session data: %w", err)
+	}
+
+	if err := s.cache.Set(ctx, key, string(sessionData), passkeySessionTTL); err != nil {
+		return fmt.Errorf("failed to store session data: %w", err)
+	}
+
+	return nil
+}
+
+func (s *PasskeyService) parseSession(sessionJSON string) (*webauthn.SessionData, error) {
+	var session webauthn.SessionData
+	if err := json.Unmarshal([]byte(sessionJSON), &session); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal session data: %w", err)
+	}
+
+	return &session, nil
+}
+
+func (s *PasskeyService) loadSession(ctx context.Context, key, notFoundMsg string) (*webauthn.SessionData, error) {
+	sessionJSON, err := s.cache.Get(ctx, key)
+	if err != nil {
+		return nil, errors.New(notFoundMsg)
+	}
+
+	if err := s.cache.Delete(ctx, key); err != nil && s.logger != nil {
+		s.logger.Warn().Err(err).Msg("Failed to delete passkey session")
+	}
+
+	return s.parseSession(sessionJSON)
+}
+
+func (s *PasskeyService) finishLoginWithSession(ctx context.Context, userID string, session *webauthn.SessionData, parsedResponse *protocol.ParsedCredentialAssertionData) (*models.User, error) {
+	user, passkeys, err := s.getUserAndPasskeysForLogin(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	webAuthnUser := models.NewWebAuthnUser(user, passkeys)
+
+	credential, err := s.verifyLogin(webAuthnUser, session, parsedResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	s.updatePasskeyAfterLogin(ctx, parsedResponse.RawID, credential)
+
+	return user, nil
+}
+
+func (s *PasskeyService) getUserAndPasskeysForLogin(ctx context.Context, userID string) (*models.User, []models.Passkey, error) {
+	user, err := s.repos.User().FindByID(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	if user == nil {
+		return nil, nil, fiberutil.Unauthorized()
+	}
+
+	passkeys, err := s.repos.Passkey().FindByUserID(ctx, userID)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return user, passkeys, nil
+}
+
+func (s *PasskeyService) verifyLogin(user *models.WebAuthnUser, session *webauthn.SessionData, parsedResponse *protocol.ParsedCredentialAssertionData) (*webauthn.Credential, error) {
+	if len(session.UserID) == 0 {
+		credential, err := s.webauthn.ValidateDiscoverableLogin(
+			func(rawID, userHandle []byte) (webauthn.User, error) {
+				return user, nil
+			},
+			*session,
+			parsedResponse,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("failed to verify discoverable login: %w", err)
+		}
+
+		return credential, nil
+	}
+
+	credential, err := s.webauthn.ValidateLogin(user, *session, parsedResponse)
+	if err != nil {
+		return nil, fmt.Errorf("failed to verify login: %w", err)
+	}
+
+	return credential, nil
 }
 
 // GetUserPasskeys returns all passkeys for a user

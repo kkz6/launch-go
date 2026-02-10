@@ -100,27 +100,7 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		return nil, err
 	}
 
-	// Generate tokens
-	accessToken, err := s.generateAccessToken(user, sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	refreshToken, err := s.generateRefreshToken(user, sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check subscription status for the user's current team
-	isSubscribed := s.isTeamSubscribedOrUserAdmin(ctx, user)
-
-	return &dto.AuthResponse{
-		User:         dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded),
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    s.config.JWT.Expiration * 3600,
-		TokenType:    "Bearer",
-	}, nil
+	return s.buildAuthResponse(ctx, user, sessionID)
 }
 
 // Login authenticates a user
@@ -146,26 +126,7 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Au
 		return nil, err
 	}
 
-	accessToken, err := s.generateAccessToken(user, sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	refreshToken, err := s.generateRefreshToken(user, sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	// Check subscription status for the user's current team
-	isSubscribed := s.isTeamSubscribedOrUserAdmin(ctx, user)
-
-	return &dto.AuthResponse{
-		User:         dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded),
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    s.config.JWT.Expiration * 3600,
-		TokenType:    "Bearer",
-	}, nil
+	return s.buildAuthResponse(ctx, user, sessionID)
 }
 
 // Logout invalidates the user's session
@@ -237,7 +198,6 @@ func (s *AuthService) RefreshToken(ctx context.Context, refreshToken string) (*d
 		return nil, err
 	}
 
-	// Check subscription status for the user's current team
 	isSubscribed := s.isTeamSubscribedOrUserAdmin(ctx, user)
 
 	return &dto.AuthResponse{
@@ -256,25 +216,7 @@ func (s *AuthService) LoginWithPasskey(ctx context.Context, user *models.User, i
 		return nil, err
 	}
 
-	accessToken, err := s.generateAccessToken(user, sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	refreshToken, err := s.generateRefreshToken(user, sessionID)
-	if err != nil {
-		return nil, err
-	}
-
-	isSubscribed := s.isTeamSubscribedOrUserAdmin(ctx, user)
-
-	return &dto.AuthResponse{
-		User:         dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded),
-		AccessToken:  accessToken,
-		RefreshToken: refreshToken,
-		ExpiresIn:    s.config.JWT.Expiration * 3600,
-		TokenType:    "Bearer",
-	}, nil
+	return s.buildAuthResponse(ctx, user, sessionID)
 }
 
 // handleInvitation handles team invitation during registration
@@ -376,6 +318,28 @@ func (s *AuthService) createSession(ctx context.Context, userID, ipAddress, user
 	}
 
 	return session.ID, nil
+}
+
+func (s *AuthService) buildAuthResponse(ctx context.Context, user *models.User, sessionID string) (*dto.AuthResponse, error) {
+	accessToken, err := s.generateAccessToken(user, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	refreshToken, err := s.generateRefreshToken(user, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	isSubscribed := s.isTeamSubscribedOrUserAdmin(ctx, user)
+
+	return &dto.AuthResponse{
+		User:         dto.ToUserResponseWithStatus(user, isSubscribed, user.Onboarded),
+		AccessToken:  accessToken,
+		RefreshToken: refreshToken,
+		ExpiresIn:    s.config.JWT.Expiration * 3600,
+		TokenType:    "Bearer",
+	}, nil
 }
 
 func nilIfEmpty(s string) *string {

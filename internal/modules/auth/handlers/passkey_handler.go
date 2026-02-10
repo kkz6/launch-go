@@ -13,14 +13,12 @@ import (
 
 // PasskeyHandler handles passkey-related HTTP requests
 type PasskeyHandler struct {
-	service *services.Service
+	BaseHandler
 }
 
 // NewPasskeyHandler creates a new PasskeyHandler instance
 func NewPasskeyHandler(service *services.Service) *PasskeyHandler {
-	return &PasskeyHandler{
-		service: service,
-	}
+	return &PasskeyHandler{BaseHandler: NewBaseHandler(service)}
 }
 
 // Index returns all passkeys for the authenticated user
@@ -30,7 +28,7 @@ func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
 		return err
 	}
 
-	passkeys, err := h.service.Passkey.GetUserPasskeys(c.Context(), userID)
+	passkeys, err := h.Service().Passkey.GetUserPasskeys(c.Context(), userID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -71,7 +69,7 @@ func (h *PasskeyHandler) BeginRegistration(c *fiber.Ctx) error {
 		return err
 	}
 
-	options, err := h.service.Passkey.BeginRegistration(c.Context(), userID)
+	options, err := h.Service().Passkey.BeginRegistration(c.Context(), userID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -94,7 +92,7 @@ func (h *PasskeyHandler) FinishRegistration(c *fiber.Ctx) error {
 		name = &nameReq.Name
 	}
 
-	passkey, err := h.service.Passkey.FinishRegistration(c.Context(), userID, c.Body(), name)
+	passkey, err := h.Service().Passkey.FinishRegistration(c.Context(), userID, c.Body(), name)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -112,7 +110,7 @@ func (h *PasskeyHandler) BeginLogin(c *fiber.Ctx) error {
 	_ = c.BodyParser(&req)
 	req.Normalize()
 
-	options, err := h.service.Passkey.BeginLogin(c.Context(), req.Email)
+	options, err := h.Service().Passkey.BeginLogin(c.Context(), req.Email)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -122,12 +120,12 @@ func (h *PasskeyHandler) BeginLogin(c *fiber.Ctx) error {
 
 // FinishLogin completes WebAuthn authentication
 func (h *PasskeyHandler) FinishLogin(c *fiber.Ctx) error {
-	user, err := h.service.Passkey.FinishLogin(c.Context(), c.Body())
+	user, err := h.Service().Passkey.FinishLogin(c.Context(), c.Body())
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
-	authResponse, err := h.service.Auth.LoginWithPasskey(c.Context(), user, c.IP(), string(c.Request().Header.UserAgent()))
+	authResponse, err := h.Service().Auth.LoginWithPasskey(c.Context(), user, c.IP(), string(c.Request().Header.UserAgent()))
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -154,7 +152,7 @@ func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.service.Passkey.UpdatePasskeyName(c.Context(), passkeyID, userID, req.Name); err != nil {
+	if err := h.Service().Passkey.UpdatePasskeyName(c.Context(), passkeyID, userID, req.Name); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -170,7 +168,7 @@ func (h *PasskeyHandler) Delete(c *fiber.Ctx) error {
 
 	passkeyID := c.Params("id")
 
-	err = h.service.Passkey.DeletePasskey(c.Context(), passkeyID, userID)
+	err = h.Service().Passkey.DeletePasskey(c.Context(), passkeyID, userID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}

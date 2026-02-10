@@ -7,6 +7,7 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
@@ -73,6 +74,15 @@ func (s *Service) IsTeamSubscribedOrUserAdmin(ctx context.Context, teamID, userI
 		return true
 	}
 	return s.repos.IsTeamSubscribed(ctx, teamID)
+}
+
+// IsUserSubscribed checks subscription for the user's current team.
+func (s *Service) IsUserSubscribed(ctx context.Context, user *models.User) bool {
+	if user == nil || user.CurrentTeamID == nil {
+		return false
+	}
+
+	return s.IsTeamSubscribedOrUserAdmin(ctx, *user.CurrentTeamID, user.ID)
 }
 
 // SetOnboarded updates the user's onboarded status
