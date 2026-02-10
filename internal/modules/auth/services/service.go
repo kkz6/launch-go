@@ -7,8 +7,8 @@ import (
 	"github.com/rs/zerolog"
 
 	"github.com/kkz6/launch-go/internal/config"
+	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
-	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
 )
@@ -25,13 +25,13 @@ type Service struct {
 	TeamMember        *TeamMemberService
 	Passkey           *PasskeyService
 
-	repos  *repositories.Registry
+	repos  contracts.RepositoryRegistry
 	config *config.Config
 	logger *zerolog.Logger
 }
 
 // NewService creates a new Service instance
-func NewService(repos *repositories.Registry, cfg *config.Config, logger *zerolog.Logger, emailSender channels.EmailSender, c cache.Cache) (*Service, error) {
+func NewService(repos contracts.RepositoryRegistry, cfg *config.Config, logger *zerolog.Logger, emailSender channels.EmailSender, c cache.Cache) (*Service, error) {
 	passkeyService, err := NewPasskeyService(repos, cfg, c, logger)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create passkey service: %w", err)
@@ -53,7 +53,7 @@ func NewService(repos *repositories.Registry, cfg *config.Config, logger *zerolo
 }
 
 // Repos returns the repository registry
-func (s *Service) Repos() *repositories.Registry {
+func (s *Service) Repos() contracts.RepositoryRegistry {
 	return s.repos
 }
 

@@ -62,7 +62,7 @@ func (r *Registry) PersonalAccessToken() contracts.PersonalAccessTokenRepository
 func (r *Registry) Passkey() contracts.PasskeyRepository { return r.passkey }
 
 // Session returns the session repository
-func (r *Registry) Session() *SessionRepository { return r.session }
+func (r *Registry) Session() contracts.SessionRepository { return r.session }
 
 // DB returns the underlying database connection
 func (r *Registry) DB() *gorm.DB { return r.db }

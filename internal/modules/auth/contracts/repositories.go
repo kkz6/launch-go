@@ -78,6 +78,21 @@ type PasskeyRepository interface {
 	CountByUserID(ctx context.Context, userID string) (int64, error)
 }
 
+// SessionRepository defines the interface for session repository operations
+type SessionRepository interface {
+	Create(ctx context.Context, session *models.Session) error
+	FindByID(ctx context.Context, id string) (*models.Session, error)
+	GetByUser(ctx context.Context, userID string) ([]models.Session, error)
+	UpdateLastActivity(ctx context.Context, id string) error
+	Delete(ctx context.Context, id string) error
+	DeleteByUser(ctx context.Context, id, userID string) error
+	DeleteAllByUserExcept(ctx context.Context, userID, exceptID string) (int64, error)
+	DeleteAllByUser(ctx context.Context, userID string) error
+	Exists(ctx context.Context, id string) (bool, error)
+	MarkTwoFactorVerified(ctx context.Context, id string) error
+	IsTwoFactorVerified(ctx context.Context, id string) (bool, error)
+}
+
 // RepositoryRegistry provides access to all auth repositories
 type RepositoryRegistry interface {
 	User() UserRepository
@@ -87,5 +102,8 @@ type RepositoryRegistry interface {
 	PasswordResetToken() PasswordResetTokenRepository
 	PersonalAccessToken() PersonalAccessTokenRepository
 	Passkey() PasskeyRepository
+	Session() SessionRepository
 	DB() *gorm.DB
+	IsTeamSubscribed(ctx context.Context, teamID string) bool
+	IsUserAdmin(ctx context.Context, userID string) bool
 }
