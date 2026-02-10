@@ -148,7 +148,7 @@ func (m *Module) registerUserRoutes(router fiber.Router, passkeyHandler *handler
 	passkeys.Get("/", passkeyHandler.Index)
 	passkeys.Post("/register/options", passkeyHandler.BeginRegistration)
 	passkeys.Post("/register", passkeyHandler.FinishRegistration)
-	passkeys.Put("/:id", passkeyHandler.Update)
+	passkeys.Patch("/:id", passkeyHandler.Update)
 	passkeys.Delete("/:id", passkeyHandler.Delete)
 
 	// Personal Access Tokens
