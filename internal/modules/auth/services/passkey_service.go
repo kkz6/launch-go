@@ -369,9 +369,20 @@ func (s *PasskeyService) verifyLogin(user *models.WebAuthnUser, session *webauth
 		return credential, nil
 	}
 
+	s.logger.Debug().
+		Str("session_user_id", string(session.UserID)).
+		Str("webauthn_user_id", string(user.WebAuthnID())).
+		Str("response_user_handle", base64.RawURLEncoding.EncodeToString(parsedResponse.Response.UserHandle)).
+		Int("credential_count", len(user.WebAuthnCredentials())).
+		Msg("Passkey login: validating")
+
 	credential, err := s.webauthn.ValidateLogin(user, *session, parsedResponse)
 	if err != nil {
-		s.logger.Error().Err(err).Msg("Failed to verify passkey login")
+		s.logger.Error().Err(err).
+			Str("session_user_id", string(session.UserID)).
+			Str("webauthn_user_id", string(user.WebAuthnID())).
+			Str("response_user_handle", base64.RawURLEncoding.EncodeToString(parsedResponse.Response.UserHandle)).
+			Msg("Failed to verify passkey login")
 		return nil, fiberutil.Unauthorized("Passkey verification failed")
 	}
 

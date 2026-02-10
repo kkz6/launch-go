@@ -63,11 +63,6 @@ func (a *MiddlewareAdapter) HasTwoFactorEnabled(ctx context.Context, userID stri
 	return a.service.TwoFactor.HasTwoFactorEnabled(ctx, userID)
 }
 
-// IsSessionTwoFactorVerified implements middleware.TwoFactorService
-func (a *MiddlewareAdapter) IsSessionTwoFactorVerified(ctx context.Context, sessionID string) (bool, error) {
-	return a.service.Repos().Session().IsTwoFactorVerified(ctx, sessionID)
-}
-
 var (
 	_ middleware.TeamService          = (*MiddlewareAdapter)(nil)
 	_ middleware.EmailVerifiedService = (*MiddlewareAdapter)(nil)

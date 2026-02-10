@@ -89,8 +89,6 @@ type SessionRepository interface {
 	DeleteAllByUserExcept(ctx context.Context, userID, exceptID string) (int64, error)
 	DeleteAllByUser(ctx context.Context, userID string) error
 	Exists(ctx context.Context, id string) (bool, error)
-	MarkTwoFactorVerified(ctx context.Context, id string) error
-	IsTwoFactorVerified(ctx context.Context, id string) (bool, error)
 }
 
 // RepositoryRegistry provides access to all auth repositories

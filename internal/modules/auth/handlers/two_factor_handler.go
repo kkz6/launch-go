@@ -98,11 +98,6 @@ func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx) error {
 		return fiberctx.RespondUnauthorized(c, "Invalid two-factor code")
 	}
 
-	// Mark the current session as 2FA verified
-	if sessionID, ok := c.Locals("sessionID").(string); ok && sessionID != "" {
-		_ = h.Service().Repos().Session().MarkTwoFactorVerified(c.Context(), sessionID)
-	}
-
 	return fiberctx.OK(c, "Two-factor authentication verified", nil)
 }
 

@@ -139,7 +139,6 @@ type UserInfo interface {
 // TwoFactorService defines the interface for 2FA operations needed by middlewares
 type TwoFactorService interface {
 	HasTwoFactorEnabled(ctx context.Context, userID string) (bool, error)
-	IsSessionTwoFactorVerified(ctx context.Context, sessionID string) (bool, error)
 }
 
 // EmailVerified checks if the user's email is verified.
@@ -189,15 +188,6 @@ func TwoFactor(service TwoFactorService) fiber.Handler {
 
 		if !has2FA {
 			return c.Next()
-		}
-
-		// Check if the current session has been 2FA verified
-		sessionID, _ := c.Locals("sessionID").(string)
-		if sessionID != "" {
-			verified, err := service.IsSessionTwoFactorVerified(c.Context(), sessionID)
-			if err == nil && verified {
-				return c.Next()
-			}
 		}
 
 		return c.Status(fiber.StatusLocked).JSON(fiber.Map{
