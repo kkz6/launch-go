@@ -62,6 +62,7 @@ type PersonalAccessTokenRepository interface {
 	FindByToken(ctx context.Context, token string) (*models.PersonalAccessToken, error)
 	UpdateLastUsed(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
+	DeleteByUser(ctx context.Context, id, userID string) (int64, error)
 	GetByUser(ctx context.Context, userID string) ([]models.PersonalAccessToken, error)
 }
 

@@ -111,8 +111,8 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dt
 	return nil
 }
 
-// DeleteAccount deletes a user's account
-func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
+// DeleteAccount deletes a user's account after verifying their password
+func (s *UserService) DeleteAccount(ctx context.Context, userID, password string) error {
 	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return err
@@ -120,6 +120,11 @@ func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
 
 	if user == nil {
 		return fiberutil.NotFound()
+	}
+
+	// Verify password before destructive action
+	if !security.VerifyPassword(user.Password, password) {
+		return errors.New("invalid password")
 	}
 
 	// Delete owned teams
@@ -134,7 +139,25 @@ func (s *UserService) DeleteAccount(ctx context.Context, userID string) error {
 				continue
 			}
 
-			if err := s.repos.Team().Delete(ctx, team.ID); err != nil {
+			// Delete team members
+			if err := tx.Where("team_id = ?", team.ID).Delete(&models.TeamMember{}).Error; err != nil {
+				return fmt.Errorf("failed to delete team members for team %s: %w", team.ID, err)
+			}
+
+			// Delete team invitations
+			if err := tx.Where("team_id = ?", team.ID).Delete(&models.TeamInvitation{}).Error; err != nil {
+				return fmt.Errorf("failed to delete team invitations for team %s: %w", team.ID, err)
+			}
+
+			// Clear current_team_id for users referencing this team
+			if err := tx.Model(&models.User{}).
+				Where("current_team_id = ?", team.ID).
+				Update("current_team_id", nil).Error; err != nil {
+				return fmt.Errorf("failed to clear current team references for team %s: %w", team.ID, err)
+			}
+
+			// Delete the team
+			if err := tx.Delete(&models.Team{}, "id = ?", team.ID).Error; err != nil {
 				return fmt.Errorf("failed to delete team %s: %w", team.ID, err)
 			}
 		}

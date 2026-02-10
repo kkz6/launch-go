@@ -87,7 +87,12 @@ func (h *UserHandler) DeleteAccount(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().User.DeleteAccount(c.Context(), userID); err != nil {
+	req, err := fiberctx.MustParseAndValidate[dto.DeleteAccountRequest](c)
+	if err != nil {
+		return err
+	}
+
+	if err := h.Service().User.DeleteAccount(c.Context(), userID, req.Password); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 

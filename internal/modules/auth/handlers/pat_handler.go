@@ -8,37 +8,21 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
-	"gorm.io/gorm"
 
+	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
+	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
 // PATHandler handles personal access token CRUD operations
 type PATHandler struct {
-	db *gorm.DB
+	patRepo contracts.PersonalAccessTokenRepository
 }
 
 // NewPATHandler creates a new PAT handler
-func NewPATHandler(db *gorm.DB) *PATHandler {
-	return &PATHandler{db: db}
-}
-
-type patRecord struct {
-	ID            string     `gorm:"type:char(26);primaryKey" json:"id"`
-	TokenableType string     `gorm:"column:tokenable_type" json:"-"`
-	TokenableID   string     `gorm:"column:tokenable_id" json:"-"`
-	Name          string     `gorm:"type:varchar(255)" json:"name"`
-	Token         string     `gorm:"type:varchar(64)" json:"-"`
-	Abilities     *string    `gorm:"type:text" json:"abilities,omitempty"`
-	LastUsedAt    *time.Time `gorm:"column:last_used_at" json:"last_used_at,omitempty"`
-	ExpiresAt     *time.Time `gorm:"column:expires_at" json:"expires_at,omitempty"`
-	CreatedAt     *time.Time `json:"created_at,omitempty"`
-	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
-}
-
-func (patRecord) TableName() string {
-	return "personal_access_tokens"
+func NewPATHandler(patRepo contracts.PersonalAccessTokenRepository) *PATHandler {
+	return &PATHandler{patRepo: patRepo}
 }
 
 type patResponse struct {
@@ -61,7 +45,7 @@ type createPATRequest struct {
 	ExpiresAt *string  `json:"expires_at"`
 }
 
-func toPATResponse(rec *patRecord) patResponse {
+func toPATResponse(rec *models.PersonalAccessToken) patResponse {
 	var abilities []string
 	if rec.Abilities != nil {
 		_ = json.Unmarshal([]byte(*rec.Abilities), &abilities)
@@ -87,17 +71,14 @@ func (h *PATHandler) List(c *fiber.Ctx) error {
 		return err
 	}
 
-	var tokens []patRecord
-	if err := h.db.WithContext(c.Context()).
-		Where("tokenable_type = ? AND tokenable_id = ?", "User", userID).
-		Order("created_at DESC").
-		Find(&tokens).Error; err != nil {
+	tokens, err := h.patRepo.GetByUser(c.Context(), userID)
+	if err != nil {
 		return fiberctx.RespondInternalError(c, "Failed to fetch tokens")
 	}
 
 	results := make([]patResponse, len(tokens))
-	for i, t := range tokens {
-		results[i] = toPATResponse(&t)
+	for i := range tokens {
+		results[i] = toPATResponse(&tokens[i])
 	}
 
 	return fiberctx.OK(c, "Tokens retrieved", results)
@@ -134,19 +115,19 @@ func (h *PATHandler) Create(c *fiber.Ctx) error {
 	plainToken, hashedToken := generatePATToken()
 
 	now := time.Now()
-	record := &patRecord{
-		ID:            util.NewULID(),
+	record := &models.PersonalAccessToken{
 		TokenableType: "User",
 		TokenableID:   userID,
 		Name:          req.Name,
 		Token:         hashedToken,
 		Abilities:     &abilitiesStr,
 		ExpiresAt:     expiresAt,
-		CreatedAt:     &now,
-		UpdatedAt:     &now,
 	}
+	record.ID = util.NewULID()
+	record.CreatedAt = &now
+	record.UpdatedAt = &now
 
-	if err := h.db.WithContext(c.Context()).Create(record).Error; err != nil {
+	if err := h.patRepo.Create(c.Context(), record); err != nil {
 		return fiberctx.RespondInternalError(c, "Failed to create token")
 	}
 
@@ -170,14 +151,11 @@ func (h *PATHandler) Delete(c *fiber.Ctx) error {
 		return fiberctx.RespondBadRequest(c, "Token ID is required")
 	}
 
-	result := h.db.WithContext(c.Context()).
-		Where("id = ? AND tokenable_type = ? AND tokenable_id = ?", tokenID, "User", userID).
-		Delete(&patRecord{})
-
-	if result.Error != nil {
+	rowsAffected, err := h.patRepo.DeleteByUser(c.Context(), tokenID, userID)
+	if err != nil {
 		return fiberctx.RespondInternalError(c, "Failed to delete token")
 	}
-	if result.RowsAffected == 0 {
+	if rowsAffected == 0 {
 		return fiberctx.RespondNotFound(c, "Token not found")
 	}
 

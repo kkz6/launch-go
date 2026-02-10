@@ -17,6 +17,7 @@ import (
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/security"
+	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
 const defaultRefreshTokenHours = 24 * 30 // 30 days
@@ -78,7 +79,9 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 
 		// Handle invitation if provided
 		if req.InvitationID != nil && *req.InvitationID != "" {
-			s.handleInvitation(ctx, tx, user, *req.InvitationID)
+			if err := s.handleInvitation(ctx, tx, user, *req.InvitationID); err != nil {
+				return err
+			}
 		}
 
 		// Create personal team if requested and not joining via invitation
@@ -220,17 +223,21 @@ func (s *AuthService) LoginWithPasskey(ctx context.Context, user *models.User, i
 }
 
 // handleInvitation handles team invitation during registration
-func (s *AuthService) handleInvitation(ctx context.Context, tx *gorm.DB, user *models.User, invitationID string) {
+func (s *AuthService) handleInvitation(ctx context.Context, tx *gorm.DB, user *models.User, invitationID string) error {
 	invitation, err := s.repos.TeamInvitation().FindByID(ctx, invitationID)
-	if err != nil || invitation == nil {
-		if err != nil {
-			s.logger.Error().Err(err).Str("invitation_id", invitationID).Msg("Failed to find invitation")
-		}
-		return
+	if err != nil {
+		return fmt.Errorf("failed to find invitation: %w", err)
+	}
+
+	if invitation == nil {
+		// Invitation not found — not a hard error, just skip
+		s.logger.Warn().Str("invitation_id", invitationID).Msg("Invitation not found during registration")
+		return nil
 	}
 
 	if invitation.Email != user.Email {
-		return
+		// Invitation is for a different email — skip silently
+		return nil
 	}
 
 	// Add user to team
@@ -244,30 +251,22 @@ func (s *AuthService) handleInvitation(ctx context.Context, tx *gorm.DB, user *m
 		UserID: user.ID,
 		Role:   &role,
 	}).Error; err != nil {
-		s.logger.Error().Err(err).
-			Str("team_id", invitation.TeamID).
-			Str("user_id", user.ID).
-			Msg("Failed to add user to team during invitation handling")
-		return
+		return fmt.Errorf("failed to add user to team: %w", err)
 	}
 
 	// Set current team
 	if err := tx.Model(user).Update("current_team_id", invitation.TeamID).Error; err != nil {
-		s.logger.Error().Err(err).
-			Str("user_id", user.ID).
-			Str("team_id", invitation.TeamID).
-			Msg("Failed to set current team during invitation handling")
-		return
+		return fmt.Errorf("failed to set current team: %w", err)
 	}
 
 	user.CurrentTeamID = &invitation.TeamID
 
 	// Delete invitation
 	if err := tx.Delete(invitation).Error; err != nil {
-		s.logger.Error().Err(err).
-			Str("invitation_id", invitation.ID).
-			Msg("Failed to delete invitation during registration")
+		return fmt.Errorf("failed to delete invitation: %w", err)
 	}
+
+	return nil
 }
 
 // createPersonalTeam creates a personal team for a new user
@@ -356,6 +355,7 @@ func nilIfEmpty(s string) *string {
 func (s *AuthService) generateAccessToken(user *models.User, sessionID string) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
+		"jti":   util.NewULID(),
 		"sub":   user.ID,
 		"email": user.Email,
 		"name":  user.Name,
@@ -377,6 +377,7 @@ func (s *AuthService) generateAccessToken(user *models.User, sessionID string) (
 func (s *AuthService) generateRefreshToken(user *models.User, sessionID string) (string, error) {
 	now := time.Now()
 	claims := jwt.MapClaims{
+		"jti":  util.NewULID(),
 		"sub":  user.ID,
 		"type": "refresh",
 		"iat":  now.Unix(),

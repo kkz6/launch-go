@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"crypto/hmac"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
@@ -67,15 +68,23 @@ func (s *EmailVerificationService) ResendVerificationEmail(ctx context.Context, 
 		return errors.New("email already verified")
 	}
 
-	// In a production environment, you would send the verification email here
+	// TODO: Send verification email using emailSender when available
 	return nil
 }
 
-// generateEmailHash generates a hash for email verification
+// generateEmailHash generates an HMAC hash for email verification.
+// Uses the app key as the HMAC secret so verification links survive JWT secret rotation.
 func (s *EmailVerificationService) generateEmailHash(email string) string {
-	hash := sha256.Sum256([]byte(email + s.config.JWT.Secret))
+	key := s.config.App.Key
+	if key == "" {
+		// Fallback to JWT secret if app key is not set
+		key = s.config.JWT.Secret
+	}
 
-	return hex.EncodeToString(hash[:])
+	mac := hmac.New(sha256.New, []byte(key))
+	_, _ = mac.Write([]byte(email))
+
+	return hex.EncodeToString(mac.Sum(nil))
 }
 
 // GenerateVerificationURL generates a signed URL for email verification

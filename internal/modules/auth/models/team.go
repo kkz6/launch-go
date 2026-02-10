@@ -1,6 +1,8 @@
 package models
 
 import (
+	"net/url"
+
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -40,7 +42,7 @@ func (t *Team) DefaultImageURL() string {
 		name = "T"
 	}
 
-	return "https://ui-avatars.com/api/?name=" + name + "&color=7F9CF5&background=EBF4FF"
+	return "https://ui-avatars.com/api/?name=" + url.QueryEscape(name) + "&color=7F9CF5&background=EBF4FF"
 }
 
 // HasUser checks if a user belongs to the team

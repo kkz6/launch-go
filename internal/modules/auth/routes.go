@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/middleware"
@@ -44,26 +46,42 @@ func (m *Module) RegisterPublicRoutes(router fiber.Router) {
 	m.registerUserRoutes(user, passkeyHandler)
 }
 
+// authRateLimit returns a rate limiter for authentication endpoints.
+// Limits to maxReqs per window to prevent brute-force attacks.
+func (m *Module) authRateLimit(maxReqs int, window time.Duration) fiber.Handler {
+	return middleware.RateLimitWithCache(middleware.RateLimitConfig{
+		Max:    maxReqs,
+		Window: window,
+		Cache:  m.cache,
+	})
+}
+
 // setupPublicRoutes registers routes that don't require authentication
 func (m *Module) setupPublicRoutes(router fiber.Router, handler *handlers.Handler, passkeyHandler *handlers.PasskeyHandler) {
+	// Rate limiters for sensitive endpoints
+	authRL := m.authRateLimit(10, time.Minute)    // 10 req/min for login/register
+	resetRL := m.authRateLimit(5, time.Minute)    // 5 req/min for password reset
+	statusRL := m.authRateLimit(20, time.Minute)  // 20 req/min for status check
+	passkeyRL := m.authRateLimit(10, time.Minute) // 10 req/min for passkey auth
+
 	// Registration and Login
-	router.Post("/register", handler.Auth.Register)
-	router.Post("/login", handler.Auth.Login)
+	router.Post("/register", authRL, handler.Auth.Register)
+	router.Post("/login", authRL, handler.Auth.Login)
 	router.Post("/refresh", handler.Auth.RefreshToken)
 
 	// Password Reset
-	router.Post("/forgot-password", handler.Password.ForgotPassword)
-	router.Post("/reset-password", handler.Password.ResetPassword)
+	router.Post("/forgot-password", resetRL, handler.Password.ForgotPassword)
+	router.Post("/reset-password", resetRL, handler.Password.ResetPassword)
 
 	// Email Verification (public for verification links, requires signed URL)
 	router.Get("/verify-email/:id/:hash", signedurl.RequireSignedURL(nil), handler.Email.VerifyEmail)
 
 	// User Status Check (for login flow)
-	router.Post("/check-user-status", handler.User.CheckUserStatus)
+	router.Post("/check-user-status", statusRL, handler.User.CheckUserStatus)
 
 	// Passkey Authentication (guest)
-	router.Post("/passkey/login/options", passkeyHandler.BeginLogin)
-	router.Post("/passkey/login/verify", passkeyHandler.FinishLogin)
+	router.Post("/passkey/login/options", passkeyRL, passkeyHandler.BeginLogin)
+	router.Post("/passkey/login/verify", passkeyRL, passkeyHandler.FinishLogin)
 }
 
 // registerProtectedRoutes registers routes that require authentication
@@ -80,11 +98,12 @@ func (m *Module) registerProtectedRoutes(router fiber.Router, handler *handlers.
 	router.Post("/email/verification-notification", handler.Email.ResendVerificationEmail)
 
 	// Two-Factor Authentication
+	twoFactorRL := m.authRateLimit(5, time.Minute) // 5 req/min for 2FA challenge
 	twoFactor := router.Group("/two-factor")
 	twoFactor.Post("/enable", handler.TwoFactor.EnableTwoFactor)
 	twoFactor.Post("/confirm", handler.TwoFactor.ConfirmTwoFactor)
 	twoFactor.Delete("/disable", handler.TwoFactor.DisableTwoFactor)
-	twoFactor.Post("/challenge", handler.TwoFactor.TwoFactorChallenge)
+	twoFactor.Post("/challenge", twoFactorRL, handler.TwoFactor.TwoFactorChallenge)
 	twoFactor.Get("/recovery-codes", handler.TwoFactor.GetRecoveryCodes)
 	twoFactor.Post("/recovery-codes", handler.TwoFactor.RegenerateRecoveryCodes)
 
@@ -116,7 +135,7 @@ func (m *Module) registerTeamRoutes(router fiber.Router, handler *handlers.Handl
 	router.Put("/:teamId/members/:userId", middleware.TeamOwner(adapter), handler.TeamMember.UpdateTeamMemberRole)
 	router.Delete("/:teamId/members/:userId", handler.TeamMember.RemoveTeamMember)
 
-	// Team Invitations
+	// Team Invitations (POST /:teamId/invitations is an alias for POST /:teamId/members for API compatibility)
 	router.Post("/:teamId/invitations", middleware.TeamAdmin(adapter), handler.TeamMember.InviteTeamMember)
 	router.Get("/:teamId/invitations", middleware.TeamAdmin(adapter), handler.TeamMember.GetTeamInvitations)
 	router.Delete("/:teamId/invitations/:invitationId", middleware.TeamAdmin(adapter), handler.TeamMember.CancelTeamInvitation)
@@ -133,7 +152,7 @@ func (m *Module) registerUserRoutes(router fiber.Router, passkeyHandler *handler
 	passkeys.Delete("/:id", passkeyHandler.Delete)
 
 	// Personal Access Tokens
-	patHandler := handlers.NewPATHandler(m.Deps().DB)
+	patHandler := handlers.NewPATHandler(m.repos.PersonalAccessToken())
 	tokens := router.Group("/tokens")
 	tokens.Get("/", patHandler.List)
 	tokens.Post("/", patHandler.Create)

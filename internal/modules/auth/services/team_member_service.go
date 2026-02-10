@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/rs/zerolog"
+
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
@@ -17,12 +19,13 @@ import (
 
 // TeamMemberService handles team member management operations
 type TeamMemberService struct {
-	repos contracts.RepositoryRegistry
+	repos  contracts.RepositoryRegistry
+	logger *zerolog.Logger
 }
 
 // NewTeamMemberService creates a new TeamMemberService instance
-func NewTeamMemberService(repos contracts.RepositoryRegistry) *TeamMemberService {
-	return &TeamMemberService{repos: repos}
+func NewTeamMemberService(repos contracts.RepositoryRegistry, logger *zerolog.Logger) *TeamMemberService {
+	return &TeamMemberService{repos: repos, logger: logger}
 }
 
 // canManageMembers checks if a team member has permission to manage other members
@@ -176,20 +179,32 @@ func (s *TeamMemberService) RemoveTeamMember(ctx context.Context, userID, teamID
 		return err
 	}
 
-	// If this was their current team, switch to another
+	// If this was their current team, switch to another.
+	// Errors here are logged but not returned since the member removal already succeeded.
 	member, err := s.repos.User().FindByID(ctx, memberID)
 	if err != nil {
-		return nil // Member removed successfully, ignore this error
+		s.logger.Error().Err(err).
+			Str("user_id", memberID).
+			Msg("Failed to find removed member for current team cleanup")
+		return nil
 	}
 
 	if member != nil && member.CurrentTeamID != nil && *member.CurrentTeamID == teamID {
 		teams, err := s.repos.Team().GetUserTeams(ctx, memberID)
 		if err != nil {
+			s.logger.Error().Err(err).
+				Str("user_id", memberID).
+				Msg("Failed to get user teams for current team cleanup")
 			return nil
 		}
 
 		if len(teams) > 0 {
-			s.repos.User().SetCurrentTeam(ctx, memberID, teams[0].ID)
+			if err := s.repos.User().SetCurrentTeam(ctx, memberID, teams[0].ID); err != nil {
+				s.logger.Error().Err(err).
+					Str("user_id", memberID).
+					Str("team_id", teams[0].ID).
+					Msg("Failed to switch user to new team after removal")
+			}
 		}
 	}
 
