@@ -262,6 +262,41 @@ func (h *NotificationChannelHandler) Reconnect(c *fiber.Ctx) error {
 	return fiberutil.OK(c, "Channel reconnected successfully", nil)
 }
 
+// GetPreferences returns notification preferences for the current team
+func (h *NotificationChannelHandler) GetPreferences(c *fiber.Ctx) error {
+	teamID, err := fiberutil.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
+	pref, err := h.service.GetPreferences(c.Context(), teamID)
+	if err != nil {
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+	}
+
+	return fiberutil.OK(c, "Notification preferences retrieved", dto.ToNotificationPreferencesResponse(pref))
+}
+
+// UpdatePreferences updates notification preferences for the current team
+func (h *NotificationChannelHandler) UpdatePreferences(c *fiber.Ctx) error {
+	teamID, err := fiberutil.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
+	req, err := fiberutil.MustParseAndValidate[dto.UpdateNotificationPreferencesRequest](c)
+	if err != nil {
+		return err
+	}
+
+	pref, err := h.service.UpdatePreferences(c.Context(), teamID, req)
+	if err != nil {
+		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+	}
+
+	return fiberutil.OK(c, "Notification preferences updated", dto.ToNotificationPreferencesResponse(pref))
+}
+
 // GetService returns the underlying service for use by other modules
 func (h *NotificationChannelHandler) GetService() *services.NotificationChannelService {
 	return h.service

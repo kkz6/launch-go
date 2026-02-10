@@ -63,3 +63,13 @@ type SendNotificationRequest struct {
 type TestChannelRequest struct {
 	Message string `json:"message" validate:"omitempty,max=500"`
 }
+
+// UpdateNotificationPreferencesRequest represents the request to update notification preferences
+type UpdateNotificationPreferencesRequest struct {
+	EmailServerCreated     bool `json:"email_server_created"`
+	EmailServerDeleted     bool `json:"email_server_deleted"`
+	EmailDeploymentSuccess bool `json:"email_deployment_success"`
+	EmailDeploymentFailed  bool `json:"email_deployment_failed"`
+	EmailBackupSuccess     bool `json:"email_backup_success"`
+	EmailBackupFailed      bool `json:"email_backup_failed"`
+}

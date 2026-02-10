@@ -18,6 +18,32 @@ var (
 	ErrUnauthorized       = errors.New("unauthorized access to channel")
 )
 
+// GetPreferences returns notification preferences for a team, creating defaults if needed
+func (s *NotificationChannelService) GetPreferences(ctx context.Context, teamID string) (*models.NotificationPreference, error) {
+	return s.Repos().NotificationPreference().FindOrCreateByTeamID(ctx, teamID)
+}
+
+// UpdatePreferences updates notification preferences for a team
+func (s *NotificationChannelService) UpdatePreferences(ctx context.Context, teamID string, req *dto.UpdateNotificationPreferencesRequest) (*models.NotificationPreference, error) {
+	pref, err := s.Repos().NotificationPreference().FindOrCreateByTeamID(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+
+	pref.EmailServerCreated = req.EmailServerCreated
+	pref.EmailServerDeleted = req.EmailServerDeleted
+	pref.EmailDeploymentSuccess = req.EmailDeploymentSuccess
+	pref.EmailDeploymentFailed = req.EmailDeploymentFailed
+	pref.EmailBackupSuccess = req.EmailBackupSuccess
+	pref.EmailBackupFailed = req.EmailBackupFailed
+
+	if err := s.Repos().NotificationPreference().UpdateByTeamID(ctx, teamID, pref); err != nil {
+		return nil, err
+	}
+
+	return pref, nil
+}
+
 // NotificationChannelService handles notification channel business logic
 type NotificationChannelService struct {
 	*BaseService
@@ -208,6 +234,18 @@ func (s *NotificationChannelService) TestChannel(ctx context.Context, id, teamID
 
 // SendToTeam sends a notification to all connected channels for a team
 func (s *NotificationChannelService) SendToTeam(ctx context.Context, teamID string, notif models.Notification) error {
+	// Check team preferences to see if this notification type should be sent
+	pref, err := s.Repos().NotificationPreference().FindOrCreateByTeamID(ctx, teamID)
+	if err != nil {
+		s.Logger.Warn().Err(err).Str("team_id", teamID).Msg("failed to load notification preferences, sending anyway")
+	} else if !pref.ShouldSend(notif.Type()) {
+		s.Logger.Info().
+			Str("team_id", teamID).
+			Str("notification_type", notif.Type().String()).
+			Msg("notification suppressed by team preferences")
+		return nil
+	}
+
 	// Get all connected channels for the team
 	chans, err := s.Repos().NotificationChannel().FindConnected(ctx, teamID)
 	if err != nil {
