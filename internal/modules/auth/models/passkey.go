@@ -29,6 +29,12 @@ type Passkey struct {
 	User *User `gorm:"foreignKey:UserID;references:ID" json:"user,omitempty"`
 }
 
+// credentialFlags stores WebAuthn credential flags in attestation_data JSON
+type credentialFlags struct {
+	BackupEligible bool `json:"backup_eligible"`
+	BackupState    bool `json:"backup_state"`
+}
+
 // TableName returns the table name for the Passkey model
 func (Passkey) TableName() string {
 	return "passkeys"
@@ -52,10 +58,19 @@ func (p *Passkey) ToWebAuthnCredential() webauthn.Credential {
 	credID, _ := base64.RawURLEncoding.DecodeString(p.CredentialID)
 	pubKey, _ := base64.RawURLEncoding.DecodeString(p.PublicKey)
 
+	var flags credentialFlags
+	if p.AttestationData != nil {
+		_ = json.Unmarshal([]byte(*p.AttestationData), &flags)
+	}
+
 	cred := webauthn.Credential{
 		ID:              credID,
 		PublicKey:       pubKey,
 		AttestationType: "",
+		Flags: webauthn.CredentialFlags{
+			BackupEligible: flags.BackupEligible,
+			BackupState:    flags.BackupState,
+		},
 		Authenticator: webauthn.Authenticator{
 			SignCount: uint32(p.SignCount),
 		},
@@ -103,14 +118,23 @@ func PasskeyFromCredential(userID string, cred *webauthn.Credential, name *strin
 		aaguid = &aaguidStr
 	}
 
+	var attestationData *string
+	flagsData, _ := json.Marshal(credentialFlags{
+		BackupEligible: cred.Flags.BackupEligible,
+		BackupState:    cred.Flags.BackupState,
+	})
+	s := string(flagsData)
+	attestationData = &s
+
 	return &Passkey{
-		UserID:       userID,
-		Name:         name,
-		CredentialID: credID,
-		PublicKey:    pubKey,
-		SignCount:    int(cred.Authenticator.SignCount),
-		AAGUID:       aaguid,
-		Transports:   transports,
-		Type:         "public-key",
+		UserID:          userID,
+		Name:            name,
+		CredentialID:    credID,
+		PublicKey:       pubKey,
+		SignCount:       int(cred.Authenticator.SignCount),
+		AAGUID:          aaguid,
+		Transports:      transports,
+		Type:            "public-key",
+		AttestationData: attestationData,
 	}
 }

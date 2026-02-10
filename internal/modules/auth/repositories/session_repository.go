@@ -108,22 +108,3 @@ func (r *SessionRepository) Exists(ctx context.Context, id string) (bool, error)
 
 	return count > 0, err
 }
-
-// MarkTwoFactorVerified sets the two_factor_verified_at timestamp on a session
-func (r *SessionRepository) MarkTwoFactorVerified(ctx context.Context, id string) error {
-	return r.db.WithContext(ctx).
-		Model(&models.Session{}).
-		Where("id = ?", id).
-		Update("two_factor_verified_at", time.Now()).Error
-}
-
-// IsTwoFactorVerified checks if a session has been 2FA verified
-func (r *SessionRepository) IsTwoFactorVerified(ctx context.Context, id string) (bool, error) {
-	var count int64
-	err := r.db.WithContext(ctx).
-		Model(&models.Session{}).
-		Where("id = ? AND two_factor_verified_at IS NOT NULL", id).
-		Count(&count).Error
-
-	return count > 0, err
-}

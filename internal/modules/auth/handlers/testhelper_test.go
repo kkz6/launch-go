@@ -452,21 +452,6 @@ func (m *mockSessionRepo) Exists(_ context.Context, id string) (bool, error) {
 	return ok, nil
 }
 
-func (m *mockSessionRepo) MarkTwoFactorVerified(_ context.Context, id string) error {
-	if s, ok := m.sessions[id]; ok {
-		now := time.Now()
-		s.TwoFactorVerifiedAt = &now
-	}
-	return nil
-}
-
-func (m *mockSessionRepo) IsTwoFactorVerified(_ context.Context, id string) (bool, error) {
-	if s, ok := m.sessions[id]; ok {
-		return s.TwoFactorVerifiedAt != nil, nil
-	}
-	return false, nil
-}
-
 // ============================================================================
 // Mock repository registry
 // ============================================================================
