@@ -32,7 +32,7 @@ func setupAuthHandler(t *testing.T) (*fiber.App, *mockRepoRegistry, *handlers.Au
 	cfg := testConfig()
 	logger := zerolog.New(os.Stderr).Level(zerolog.Disabled)
 
-	svc, err := services.NewService(reg, cfg, &logger, nil, &mockCache{})
+	svc, err := services.NewService(reg, cfg, &logger, nil, newMockCache())
 	require.NoError(t, err)
 
 	handler := handlers.NewAuthHandler(svc)

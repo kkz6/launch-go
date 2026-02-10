@@ -23,7 +23,8 @@ func setupPATHandler(userID string) (*fiber.App, *mockRepoRegistry, *handlers.PA
 		JWT: config.JWTConfig{Secret: "test-secret"},
 		App: config.AppConfig{Name: "TestApp"},
 	}
-	twoFactorSvc := services.NewTwoFactorService(reg, cfg)
+	authSvc := services.NewAuthService(reg, cfg, nil, newMockCache())
+	twoFactorSvc := services.NewTwoFactorService(reg, cfg, authSvc)
 	handler := handlers.NewPATHandler(reg.pat, twoFactorSvc, reg.user)
 
 	app := fiber.New(fiber.Config{

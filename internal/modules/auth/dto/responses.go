@@ -88,6 +88,15 @@ type TeamInvitationResponse struct {
 	CreatedAt string       `json:"created_at"`
 }
 
+// LoginResult wraps the login response which may require 2FA verification.
+// If TwoFactorRequired is true, the client must complete the 2FA challenge
+// using the ChallengeToken before receiving auth tokens.
+type LoginResult struct {
+	TwoFactorRequired bool   `json:"two_factor_required"`
+	ChallengeToken    string `json:"challenge_token,omitempty"`
+	*AuthResponse     `json:",omitempty"`
+}
+
 // TwoFactorResponse represents the 2FA setup response
 type TwoFactorResponse struct {
 	QRCodeURL     string   `json:"qr_code_url"`

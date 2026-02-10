@@ -37,15 +37,17 @@ func NewService(repos contracts.RepositoryRegistry, cfg *config.Config, logger *
 		return nil, fmt.Errorf("failed to create passkey service: %w", err)
 	}
 
+	authService := NewAuthService(repos, cfg, logger, c)
+
 	return &Service{
 		repos:             repos,
 		config:            cfg,
 		logger:            logger,
-		Auth:              NewAuthService(repos, cfg, logger),
+		Auth:              authService,
 		User:              NewUserService(repos),
 		EmailVerification: NewEmailVerificationService(repos, cfg),
 		PasswordReset:     NewPasswordResetService(repos, cfg, emailSender),
-		TwoFactor:         NewTwoFactorService(repos, cfg),
+		TwoFactor:         NewTwoFactorService(repos, cfg, authService),
 		Team:              NewTeamService(repos),
 		TeamMember:        NewTeamMemberService(repos, logger),
 		Passkey:           passkeyService,

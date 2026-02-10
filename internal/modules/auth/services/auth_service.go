@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -15,26 +16,40 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
+	"github.com/kkz6/launch-go/internal/pkg/cache"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
-const defaultRefreshTokenHours = 24 * 30 // 30 days
+const (
+	defaultRefreshTokenHours    = 24 * 30 // 30 days
+	twoFactorChallengeTTL       = 5 * time.Minute
+	twoFactorChallengeKeyPrefix = "2fa_challenge:"
+)
+
+// TwoFactorChallengeData is stored in cache when a 2FA challenge is pending
+type TwoFactorChallengeData struct {
+	UserID    string `json:"user_id"`
+	IPAddress string `json:"ip_address"`
+	UserAgent string `json:"user_agent"`
+}
 
 // AuthService handles authentication-related operations
 type AuthService struct {
 	repos  contracts.RepositoryRegistry
 	config *config.Config
 	logger *zerolog.Logger
+	cache  cache.Cache
 }
 
 // NewAuthService creates a new AuthService instance
-func NewAuthService(repos contracts.RepositoryRegistry, cfg *config.Config, logger *zerolog.Logger) *AuthService {
+func NewAuthService(repos contracts.RepositoryRegistry, cfg *config.Config, logger *zerolog.Logger, c cache.Cache) *AuthService {
 	return &AuthService{
 		repos:  repos,
 		config: cfg,
 		logger: logger,
+		cache:  c,
 	}
 }
 
@@ -106,8 +121,10 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 	return s.buildAuthResponse(ctx, user, sessionID)
 }
 
-// Login authenticates a user
-func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.AuthResponse, error) {
+// Login authenticates a user. If the user has 2FA enabled, a challenge token
+// is returned instead of auth tokens. The client must complete the 2FA challenge
+// via the /auth/two-factor/challenge endpoint to receive tokens.
+func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.LoginResult, error) {
 	req.Normalize()
 
 	user, err := s.repos.User().FindByEmail(ctx, req.Email)
@@ -123,8 +140,88 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Au
 		return nil, fiberutil.Unauthorized()
 	}
 
-	// Create session
+	// If 2FA is enabled, issue a challenge token instead of auth tokens
+	if user.HasEnabledTwoFactorAuthentication() {
+		challengeToken, err := s.createTwoFactorChallenge(ctx, user.ID, req.IPAddress, req.UserAgent)
+		if err != nil {
+			return nil, err
+		}
+
+		return &dto.LoginResult{
+			TwoFactorRequired: true,
+			ChallengeToken:    challengeToken,
+		}, nil
+	}
+
+	// No 2FA — create session and return tokens
 	sessionID, err := s.createSession(ctx, user.ID, req.IPAddress, req.UserAgent)
+	if err != nil {
+		return nil, err
+	}
+
+	authResp, err := s.buildAuthResponse(ctx, user, sessionID)
+	if err != nil {
+		return nil, err
+	}
+
+	return &dto.LoginResult{AuthResponse: authResp}, nil
+}
+
+// createTwoFactorChallenge generates a challenge token and stores the pending
+// challenge data in cache with a 5-minute TTL.
+func (s *AuthService) createTwoFactorChallenge(ctx context.Context, userID, ipAddress, userAgent string) (string, error) {
+	token, err := security.SecureToken()
+	if err != nil {
+		return "", fmt.Errorf("failed to generate challenge token: %w", err)
+	}
+
+	data := TwoFactorChallengeData{
+		UserID:    userID,
+		IPAddress: ipAddress,
+		UserAgent: userAgent,
+	}
+
+	encoded, err := json.Marshal(data)
+	if err != nil {
+		return "", fmt.Errorf("failed to marshal challenge data: %w", err)
+	}
+
+	if err := s.cache.Set(ctx, twoFactorChallengeKeyPrefix+token, string(encoded), twoFactorChallengeTTL); err != nil {
+		return "", fmt.Errorf("failed to store challenge token: %w", err)
+	}
+
+	return token, nil
+}
+
+// LookupTwoFactorChallenge retrieves and consumes a challenge token from cache.
+// Returns the challenge data if found, or an unauthorized error if expired/invalid.
+func (s *AuthService) LookupTwoFactorChallenge(ctx context.Context, challengeToken string) (*TwoFactorChallengeData, error) {
+	key := twoFactorChallengeKeyPrefix + challengeToken
+	raw, err := s.cache.Get(ctx, key)
+	if err != nil {
+		return nil, fiberutil.Unauthorized()
+	}
+
+	var data TwoFactorChallengeData
+	if err := json.Unmarshal([]byte(raw), &data); err != nil {
+		return nil, fiberutil.Unauthorized()
+	}
+
+	// Delete the challenge token to prevent reuse
+	_ = s.cache.Delete(ctx, key)
+
+	return &data, nil
+}
+
+// CompleteTwoFactorLogin creates a session and returns auth tokens for a
+// user who has successfully passed 2FA verification.
+func (s *AuthService) CompleteTwoFactorLogin(ctx context.Context, userID, ipAddress, userAgent string) (*dto.AuthResponse, error) {
+	user, err := s.repos.User().FindByID(ctx, userID)
+	if err != nil || user == nil {
+		return nil, fiberutil.Unauthorized()
+	}
+
+	sessionID, err := s.createSession(ctx, user.ID, ipAddress, userAgent)
 	if err != nil {
 		return nil, err
 	}

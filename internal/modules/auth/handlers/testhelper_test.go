@@ -560,16 +560,36 @@ func newTestUser(id, name, email, password string) *models.User {
 // Shared test infrastructure
 // ============================================================================
 
-// mockCache implements cache.Cache for testing
-type mockCache struct{}
+// mockCache implements cache.Cache for testing with in-memory storage
+type mockCache struct {
+	store map[string]string
+}
 
-func (m *mockCache) Get(_ context.Context, _ string) (string, error) {
+func newMockCache() *mockCache {
+	return &mockCache{store: make(map[string]string)}
+}
+
+func (m *mockCache) Get(_ context.Context, key string) (string, error) {
+	if v, ok := m.store[key]; ok {
+		return v, nil
+	}
 	return "", errors.New("not found")
 }
 
-func (m *mockCache) Set(_ context.Context, _, _ string, _ time.Duration) error { return nil }
-func (m *mockCache) Delete(_ context.Context, _ string) error                  { return nil }
-func (m *mockCache) Exists(_ context.Context, _ string) (bool, error)          { return false, nil }
+func (m *mockCache) Set(_ context.Context, key, value string, _ time.Duration) error {
+	m.store[key] = value
+	return nil
+}
+
+func (m *mockCache) Delete(_ context.Context, key string) error {
+	delete(m.store, key)
+	return nil
+}
+
+func (m *mockCache) Exists(_ context.Context, key string) (bool, error) {
+	_, ok := m.store[key]
+	return ok, nil
+}
 
 var _ cache.Cache = (*mockCache)(nil)
 
