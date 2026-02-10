@@ -81,7 +81,7 @@ func (s *UserService) UpdateProfile(ctx context.Context, userID string, req *dto
 }
 
 // ChangePassword changes a user's password
-func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dto.ChangePasswordRequest) error {
+func (s *UserService) ChangePassword(ctx context.Context, userID, currentSessionID string, req *dto.ChangePasswordRequest) error {
 	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return err
@@ -104,6 +104,11 @@ func (s *UserService) ChangePassword(ctx context.Context, userID string, req *dt
 
 	if err := s.repos.User().Update(ctx, user); err != nil {
 		return err
+	}
+
+	// Invalidate all other sessions to force re-authentication
+	if currentSessionID != "" {
+		_, _ = s.repos.Session().DeleteAllByUserExcept(ctx, userID, currentSessionID)
 	}
 
 	activity.RecordWithLog(ctx, "auth", "password_changed", userID, user, "User password was changed")
