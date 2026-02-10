@@ -21,6 +21,7 @@ type Module struct {
 	app.Base
 	service *services.Service
 	repos   *repositories.Registry
+	cache   cache.Cache
 }
 
 // NewModule creates a new auth Module instance
@@ -37,6 +38,7 @@ func NewModule(b *app.Builder, emailSender channels.EmailSender, redisCache cach
 		Base:    app.NewBase(ModuleName, b),
 		service: service,
 		repos:   repos,
+		cache:   redisCache,
 	}, nil
 }
 

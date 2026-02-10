@@ -3,8 +3,10 @@ package services
 import (
 	"context"
 	"errors"
+	"os"
 	"testing"
 
+	"github.com/rs/zerolog"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
@@ -239,7 +241,8 @@ func newTestRegistry() (*mockRepoRegistry, *TeamMemberService) {
 	// Set ID on team model
 	reg.team.teams["team_001"].ID = "team_001"
 
-	svc := &TeamMemberService{repos: reg}
+	logger := zerolog.New(os.Stderr).With().Timestamp().Logger()
+	svc := &TeamMemberService{repos: reg, logger: &logger}
 	return reg, svc
 }
 

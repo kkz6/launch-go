@@ -69,25 +69,26 @@ func (s *TwoFactorService) EnableTwoFactor(ctx context.Context, userID string) (
 	}, nil
 }
 
-// ConfirmTwoFactor confirms 2FA setup
-func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, code string) error {
+// ConfirmTwoFactor confirms 2FA setup and returns the plaintext recovery codes.
+// This is the only time recovery codes are returned — they are stored hashed and cannot be retrieved later.
+func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, code string) ([]string, error) {
 	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	if user == nil {
-		return fiberutil.NotFound()
+		return nil, fiberutil.NotFound()
 	}
 
 	if user.TwoFactorSecret == nil {
-		return errors.New("two-factor authentication not initiated")
+		return nil, errors.New("two-factor authentication not initiated")
 	}
 
 	// Verify code
 	valid := totp.Validate(code, *user.TwoFactorSecret)
 	if !valid {
-		return errors.New("invalid verification code")
+		return nil, errors.New("invalid verification code")
 	}
 
 	// Confirm 2FA
@@ -97,7 +98,7 @@ func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, code st
 	// Generate recovery codes
 	recoveryCodes, err := s.generateRecoveryCodes()
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	// Hash recovery codes before storage
@@ -105,7 +106,7 @@ func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, code st
 	for i, code := range recoveryCodes {
 		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
 		if err != nil {
-			return fmt.Errorf("failed to hash recovery code: %w", err)
+			return nil, fmt.Errorf("failed to hash recovery code: %w", err)
 		}
 		hashedCodes[i] = string(hash)
 	}
@@ -113,7 +114,11 @@ func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, code st
 	codesStr := strings.Join(hashedCodes, ",")
 	user.TwoFactorRecoveryCodes = &codesStr
 
-	return s.repos.User().Update(ctx, user)
+	if err := s.repos.User().Update(ctx, user); err != nil {
+		return nil, err
+	}
+
+	return recoveryCodes, nil
 }
 
 // DisableTwoFactor disables 2FA
@@ -206,10 +211,35 @@ func (s *TwoFactorService) VerifyTwoFactor(ctx context.Context, userID, code str
 	return false, nil
 }
 
-// GetRecoveryCodes regenerates recovery codes and returns the plaintext versions.
-// Stored codes are hashed and cannot be retrieved, so this always generates fresh codes.
-func (s *TwoFactorService) GetRecoveryCodes(ctx context.Context, userID string) ([]string, error) {
-	return s.RegenerateRecoveryCodes(ctx, userID)
+// GetRecoveryCodeCount returns the number of remaining recovery codes.
+// Stored codes are hashed and cannot be retrieved. Use RegenerateRecoveryCodes to generate new ones.
+func (s *TwoFactorService) GetRecoveryCodeCount(ctx context.Context, userID string) (int, error) {
+	user, err := s.repos.User().FindByID(ctx, userID)
+	if err != nil {
+		return 0, err
+	}
+
+	if user == nil {
+		return 0, fiberutil.NotFound()
+	}
+
+	if !user.HasEnabledTwoFactorAuthentication() {
+		return 0, errors.New("two-factor authentication not enabled")
+	}
+
+	if user.TwoFactorRecoveryCodes == nil {
+		return 0, nil
+	}
+
+	codes := strings.Split(*user.TwoFactorRecoveryCodes, ",")
+	count := 0
+	for _, c := range codes {
+		if strings.TrimSpace(c) != "" {
+			count++
+		}
+	}
+
+	return count, nil
 }
 
 // RegenerateRecoveryCodes generates new recovery codes

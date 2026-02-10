@@ -33,7 +33,7 @@ func (h *TwoFactorHandler) EnableTwoFactor(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Two-factor authentication initiated", result)
 }
 
-// ConfirmTwoFactor confirms 2FA setup
+// ConfirmTwoFactor confirms 2FA setup and returns recovery codes
 func (h *TwoFactorHandler) ConfirmTwoFactor(c *fiber.Ctx) error {
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
@@ -45,11 +45,12 @@ func (h *TwoFactorHandler) ConfirmTwoFactor(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().TwoFactor.ConfirmTwoFactor(c.Context(), userID, req.Code); err != nil {
+	codes, err := h.Service().TwoFactor.ConfirmTwoFactor(c.Context(), userID, req.Code)
+	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
-	return fiberctx.OK(c, "Two-factor authentication enabled", nil)
+	return fiberctx.OK(c, "Two-factor authentication enabled", fiber.Map{"recovery_codes": codes})
 }
 
 // DisableTwoFactor disables 2FA
@@ -105,19 +106,20 @@ func (h *TwoFactorHandler) TwoFactorChallenge(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Two-factor authentication verified", nil)
 }
 
-// GetRecoveryCodes returns the user's recovery codes
+// GetRecoveryCodes returns the remaining recovery code count.
+// Recovery codes are hashed and cannot be retrieved. Use POST to regenerate new codes.
 func (h *TwoFactorHandler) GetRecoveryCodes(c *fiber.Ctx) error {
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
 	}
 
-	codes, err := h.Service().TwoFactor.GetRecoveryCodes(c.Context(), userID)
+	count, err := h.Service().TwoFactor.GetRecoveryCodeCount(c.Context(), userID)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
-	return fiberctx.OK(c, "Recovery codes retrieved", fiber.Map{"recovery_codes": codes})
+	return fiberctx.OK(c, "Recovery codes are hashed and cannot be retrieved. Use POST to regenerate.", fiber.Map{"remaining_count": count})
 }
 
 // RegenerateRecoveryCodes generates new recovery codes

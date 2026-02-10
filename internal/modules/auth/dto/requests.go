@@ -62,6 +62,11 @@ type ChangePasswordRequest struct {
 	PasswordConfirmation string `json:"password_confirmation" validate:"required,eqfield=Password"`
 }
 
+// DeleteAccountRequest represents an account deletion request
+type DeleteAccountRequest struct {
+	Password string `json:"password" validate:"required"`
+}
+
 // ForgotPasswordRequest represents a password reset request initiation
 type ForgotPasswordRequest struct {
 	Email string `json:"email" validate:"required,email"`

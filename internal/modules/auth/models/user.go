@@ -1,6 +1,7 @@
 package models
 
 import (
+	"net/url"
 	"time"
 
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
@@ -64,7 +65,7 @@ func (u *User) DefaultProfilePhotoURL() string {
 		name = "U"
 	}
 
-	return "https://ui-avatars.com/api/?name=" + name + "&color=7F9CF5&background=EBF4FF"
+	return "https://ui-avatars.com/api/?name=" + url.QueryEscape(name) + "&color=7F9CF5&background=EBF4FF"
 }
 
 // GetTimezone returns the user's timezone or UTC if not set

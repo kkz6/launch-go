@@ -49,7 +49,22 @@ func (r *PersonalAccessTokenRepository) UpdateLastUsed(ctx context.Context, id s
 	})
 }
 
-// GetByUser gets all personal access tokens for a user
+// GetByUser gets all personal access tokens for a user (uses polymorphic tokenable_id)
 func (r *PersonalAccessTokenRepository) GetByUser(ctx context.Context, userID string) ([]models.PersonalAccessToken, error) {
-	return r.Base.FindByUser(ctx, userID)
+	var tokens []models.PersonalAccessToken
+	err := r.DB.WithContext(ctx).
+		Where("tokenable_type = ? AND tokenable_id = ?", "User", userID).
+		Order("created_at DESC").
+		Find(&tokens).Error
+
+	return tokens, err
+}
+
+// DeleteByUser deletes a token owned by a specific user
+func (r *PersonalAccessTokenRepository) DeleteByUser(ctx context.Context, id, userID string) (int64, error) {
+	result := r.DB.WithContext(ctx).
+		Where("id = ? AND tokenable_type = ? AND tokenable_id = ?", id, "User", userID).
+		Delete(&models.PersonalAccessToken{})
+
+	return result.RowsAffected, result.Error
 }

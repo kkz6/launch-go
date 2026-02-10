@@ -47,7 +47,7 @@ func NewService(repos *repositories.Registry, cfg *config.Config, logger *zerolo
 		PasswordReset:     NewPasswordResetService(repos, cfg, emailSender),
 		TwoFactor:         NewTwoFactorService(repos, cfg),
 		Team:              NewTeamService(repos),
-		TeamMember:        NewTeamMemberService(repos),
+		TeamMember:        NewTeamMemberService(repos, logger),
 		Passkey:           passkeyService,
 	}, nil
 }
