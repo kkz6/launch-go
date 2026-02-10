@@ -12,6 +12,11 @@ func SetDB(db *gorm.DB) {
 	defaultDB = db
 }
 
+// IsInitialized returns true if the activity logger's DB has been set.
+func IsInitialized() bool {
+	return defaultDB != nil
+}
+
 func Activity() *Logger {
 	if defaultDB == nil {
 		panic("activity: database not initialized, call activity.SetDB() first")

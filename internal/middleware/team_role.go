@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
 // TeamService defines the interface for team-related operations needed by middlewares
@@ -49,6 +50,20 @@ func TeamMember(service TeamService) fiber.Handler {
 		}
 
 		if !isMember {
+			if activity.IsInitialized() {
+				activity.Activity().
+					WithContext(c.Context()).
+					UseLog("security").
+					WithEvent("authorization_failed").
+					CausedByUser(userID).
+					WithProperties(map[string]any{
+						"team_id":    teamID,
+						"path":       c.Path(),
+						"method":     c.Method(),
+						"ip_address": c.IP(),
+					}).
+					Log("Team membership authorization failed")
+			}
 			return fiberctx.RespondForbidden(c, "You are not a member of this team")
 		}
 
@@ -79,6 +94,21 @@ func TeamOwner(service TeamService) fiber.Handler {
 		}
 
 		if team.GetUserID() != userID {
+			if activity.IsInitialized() {
+				activity.Activity().
+					WithContext(c.Context()).
+					UseLog("security").
+					WithEvent("authorization_failed").
+					CausedByUser(userID).
+					WithProperties(map[string]any{
+						"team_id":       teamID,
+						"required_role": "owner",
+						"path":          c.Path(),
+						"method":        c.Method(),
+						"ip_address":    c.IP(),
+					}).
+					Log("Insufficient role for requested action")
+			}
 			return fiberctx.RespondForbidden(c, "Only team owner can perform this action")
 		}
 
@@ -118,6 +148,26 @@ func TeamAdmin(service TeamService) fiber.Handler {
 		}
 
 		if member == nil || !member.IsAdmin() {
+			if activity.IsInitialized() {
+				currentRole := ""
+				if member != nil {
+					currentRole = member.GetRole()
+				}
+				activity.Activity().
+					WithContext(c.Context()).
+					UseLog("security").
+					WithEvent("authorization_failed").
+					CausedByUser(userID).
+					WithProperties(map[string]any{
+						"team_id":       teamID,
+						"current_role":  currentRole,
+						"required_role": "admin",
+						"path":          c.Path(),
+						"method":        c.Method(),
+						"ip_address":    c.IP(),
+					}).
+					Log("Insufficient role for requested action")
+			}
 			return fiberctx.RespondForbidden(c, "Only team admins can perform this action")
 		}
 
