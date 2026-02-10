@@ -93,7 +93,7 @@ func (s *TwoFactorService) EnableTwoFactor(ctx context.Context, userID, password
 
 // ConfirmTwoFactor confirms 2FA setup and returns the plaintext recovery codes.
 // This is the only time recovery codes are returned — they are stored hashed and cannot be retrieved later.
-func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, code string) ([]string, error) {
+func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, currentSessionID, code string) ([]string, error) {
 	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return nil, err
@@ -140,11 +140,16 @@ func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, code st
 		return nil, err
 	}
 
+	// Invalidate all other sessions — 2FA status change is a security event
+	if currentSessionID != "" {
+		_, _ = s.repos.Session().DeleteAllByUserExcept(ctx, userID, currentSessionID)
+	}
+
 	return recoveryCodes, nil
 }
 
 // DisableTwoFactor disables 2FA
-func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID, password string) error {
+func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID, currentSessionID, password string) error {
 	user, err := s.repos.User().FindByID(ctx, userID)
 	if err != nil {
 		return err
@@ -163,7 +168,16 @@ func (s *TwoFactorService) DisableTwoFactor(ctx context.Context, userID, passwor
 	user.TwoFactorConfirmedAt = nil
 	user.TwoFactorRecoveryCodes = nil
 
-	return s.repos.User().Update(ctx, user)
+	if err := s.repos.User().Update(ctx, user); err != nil {
+		return err
+	}
+
+	// Invalidate all other sessions — 2FA status change is a security event
+	if currentSessionID != "" {
+		_, _ = s.repos.Session().DeleteAllByUserExcept(ctx, userID, currentSessionID)
+	}
+
+	return nil
 }
 
 // VerifyTwoFactor verifies a 2FA code

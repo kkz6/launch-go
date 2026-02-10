@@ -50,7 +50,9 @@ func (h *TwoFactorHandler) ConfirmTwoFactor(c *fiber.Ctx) error {
 		return err
 	}
 
-	codes, err := h.Service().TwoFactor.ConfirmTwoFactor(c.Context(), userID, req.Code)
+	sessionID, _ := c.Locals("sessionID").(string)
+
+	codes, err := h.Service().TwoFactor.ConfirmTwoFactor(c.Context(), userID, sessionID, req.Code)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -70,7 +72,9 @@ func (h *TwoFactorHandler) DisableTwoFactor(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().TwoFactor.DisableTwoFactor(c.Context(), userID, req.Password); err != nil {
+	sessionID, _ := c.Locals("sessionID").(string)
+
+	if err := h.Service().TwoFactor.DisableTwoFactor(c.Context(), userID, sessionID, req.Password); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
