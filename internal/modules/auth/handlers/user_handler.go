@@ -73,7 +73,9 @@ func (h *UserHandler) ChangePassword(c *fiber.Ctx) error {
 		return err
 	}
 
-	if err := h.Service().User.ChangePassword(c.Context(), userID, req); err != nil {
+	sessionID, _ := c.Locals("sessionID").(string)
+
+	if err := h.Service().User.ChangePassword(c.Context(), userID, sessionID, req); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
