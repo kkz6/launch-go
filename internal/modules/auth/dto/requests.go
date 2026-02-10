@@ -168,3 +168,8 @@ type PasskeyLoginRequest struct {
 func (r *PasskeyLoginRequest) Normalize() {
 	pkgdto.NormalizeEmail(&r.Email)
 }
+
+// PasskeyUpdateRequest represents a request to update a passkey's name
+type PasskeyUpdateRequest struct {
+	Name string `json:"name" validate:"required,max=255"`
+}

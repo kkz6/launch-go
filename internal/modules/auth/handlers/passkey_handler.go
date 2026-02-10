@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"encoding/json"
-
 	"github.com/gofiber/fiber/v2"
 
 	authdto "github.com/kkz6/launch-go/internal/modules/auth/dto"
@@ -47,12 +45,7 @@ func (h *PasskeyHandler) Index(c *fiber.Ctx) error {
 			resp.LastUsedAt = dto.FormatDisplayDateTime(p.LastUsedAt)
 		}
 
-		if p.Transports != nil {
-			var transports []string
-			if err := json.Unmarshal([]byte(*p.Transports), &transports); err == nil {
-				resp.Transports = transports
-			}
-		}
+		resp.Transports = p.ParseTransports()
 
 		responses[i] = resp
 	}
@@ -133,11 +126,6 @@ func (h *PasskeyHandler) FinishLogin(c *fiber.Ctx) error {
 	return c.JSON(authResponse)
 }
 
-// UpdateRequest represents the request body for updating a passkey
-type UpdateRequest struct {
-	Name string `json:"name" validate:"required,max=255"`
-}
-
 // Update updates a passkey's name
 func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
 	userID, err := fiberctx.MustGetUserID(c)
@@ -147,7 +135,7 @@ func (h *PasskeyHandler) Update(c *fiber.Ctx) error {
 
 	passkeyID := c.Params("id")
 
-	req, err := fiberctx.MustParseAndValidate[UpdateRequest](c)
+	req, err := fiberctx.MustParseAndValidate[authdto.PasskeyUpdateRequest](c)
 	if err != nil {
 		return err
 	}

@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net/url"
 	"time"
@@ -56,18 +55,20 @@ func NewPasskeyService(repos contracts.RepositoryRegistry, cfg *config.Config, c
 		rpOrigin = cfg.App.URL
 	}
 
+	timeout := time.Duration(cfg.Passkey.Timeout) * time.Millisecond
+
 	wauthn, err := webauthn.New(&webauthn.Config{
 		RPDisplayName: rpName,
 		RPID:          rpID,
 		RPOrigins:     []string{rpOrigin},
 		Timeouts: webauthn.TimeoutsConfig{
 			Login: webauthn.TimeoutConfig{
-				Timeout:    time.Duration(cfg.Passkey.Timeout) * time.Millisecond,
-				TimeoutUVD: time.Duration(cfg.Passkey.Timeout) * time.Millisecond,
+				Timeout:    timeout,
+				TimeoutUVD: timeout,
 			},
 			Registration: webauthn.TimeoutConfig{
-				Timeout:    time.Duration(cfg.Passkey.Timeout) * time.Millisecond,
-				TimeoutUVD: time.Duration(cfg.Passkey.Timeout) * time.Millisecond,
+				Timeout:    timeout,
+				TimeoutUVD: timeout,
 			},
 		},
 		AuthenticatorSelection: protocol.AuthenticatorSelection{
@@ -97,12 +98,11 @@ func (s *PasskeyService) BeginRegistration(ctx context.Context, userID string) (
 	}
 
 	if len(passkeys) >= s.config.Passkey.MaxPerUser {
-		return nil, errors.New("maximum number of passkeys reached")
+		return nil, fiberutil.BadRequest("Maximum number of passkeys reached")
 	}
 
 	webAuthnUser := models.NewWebAuthnUser(user, passkeys)
 
-	// Exclude existing credentials from registration
 	var excludeList []protocol.CredentialDescriptor
 	for _, cred := range webAuthnUser.WebAuthnCredentials() {
 		excludeList = append(excludeList, protocol.CredentialDescriptor{
@@ -119,11 +119,11 @@ func (s *PasskeyService) BeginRegistration(ctx context.Context, userID string) (
 		webauthn.WithResidentKeyRequirement(protocol.ResidentKeyRequirementPreferred),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("failed to begin registration: %w", err)
+		return nil, fiberutil.BadRequest("Failed to begin registration")
 	}
 
 	if err := s.storeSession(ctx, passkeyRegKeyPrefix+userID, session); err != nil {
-		return nil, err
+		return nil, fiberutil.BadRequest("Failed to start registration session")
 	}
 
 	return creation, nil
@@ -136,21 +136,21 @@ func (s *PasskeyService) FinishRegistration(ctx context.Context, userID string, 
 		return nil, err
 	}
 
-	session, err := s.loadSession(ctx, passkeyRegKeyPrefix+userID, "registration session expired or not found")
+	session, err := s.loadSession(ctx, passkeyRegKeyPrefix+userID)
 	if err != nil {
-		return nil, err
+		return nil, fiberutil.BadRequest("Registration session expired or not found")
 	}
 
 	webAuthnUser := models.NewWebAuthnUser(user, passkeys)
 
 	parsedResponse, err := protocol.ParseCredentialCreationResponseBody(bytes.NewReader(body))
 	if err != nil {
-		return nil, fmt.Errorf("failed to parse registration response: %w", err)
+		return nil, fiberutil.BadRequest("Failed to parse registration response")
 	}
 
 	credential, err := s.webauthn.CreateCredential(webAuthnUser, *session, parsedResponse)
 	if err != nil {
-		return nil, fmt.Errorf("failed to verify registration: %w", err)
+		return nil, fiberutil.BadRequest("Failed to verify registration")
 	}
 
 	passkey := models.PasskeyFromCredential(userID, credential, name)
@@ -163,49 +163,11 @@ func (s *PasskeyService) FinishRegistration(ctx context.Context, userID string, 
 
 // BeginLogin generates WebAuthn authentication options
 func (s *PasskeyService) BeginLogin(ctx context.Context, email string) (*protocol.CredentialAssertion, error) {
-	var (
-		assertion *protocol.CredentialAssertion
-		session   *webauthn.SessionData
-		err       error
-		cacheKey  string
-	)
-
-	if email != "" {
-		user, err := s.repos.User().FindByEmail(ctx, email)
-		if err != nil || user == nil {
-			return nil, fiberutil.Unauthorized()
-		}
-
-		passkeys, err := s.repos.Passkey().FindByUserID(ctx, user.ID)
-		if err != nil {
-			return nil, fiberutil.BadRequest("Failed to retrieve passkeys")
-		}
-
-		if len(passkeys) == 0 {
-			return nil, fiberutil.BadRequest("No passkeys registered for this account")
-		}
-
-		webAuthnUser := models.NewWebAuthnUser(user, passkeys)
-		assertion, session, err = s.webauthn.BeginLogin(webAuthnUser)
-		if err != nil {
-			return nil, fiberutil.BadRequest("Failed to initialize passkey authentication")
-		}
-
-		cacheKey = passkeyAuthKeyPrefix + user.ID
-	} else {
-		assertion, session, err = s.webauthn.BeginDiscoverableLogin()
-		if err != nil {
-			return nil, fiberutil.BadRequest("Failed to initialize passkey authentication")
-		}
-
-		cacheKey = passkeyAuthKeyPrefix + passkeyAuthDiscoverable + ":" + session.Challenge
+	if email == "" {
+		return s.beginDiscoverableLogin(ctx)
 	}
 
-	if err := s.storeSession(ctx, cacheKey, session); err != nil {
-		return nil, fiberutil.BadRequest("Failed to start passkey authentication session")
-	}
-
-	return assertion, nil
+	return s.beginEmailLogin(ctx, email)
 }
 
 // FinishLogin completes WebAuthn authentication and returns the authenticated user
@@ -215,40 +177,149 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, body []byte) (*models.
 		return nil, fiberutil.BadRequest("Invalid passkey response")
 	}
 
-	// Always look up the passkey by credential ID to get the real user ID.
-	// We cannot rely on userHandle because EncodeUserIDAsString may cause
-	// the browser to return garbled bytes that don't match the original user ID.
+	// Look up the passkey by credential ID to get the real user ID.
 	credentialID := base64.RawURLEncoding.EncodeToString(parsedResponse.RawID)
-	s.logger.Debug().Str("credential_id", credentialID).Msg("Passkey login: looking up credential")
-
 	passkey, err := s.repos.Passkey().FindByCredentialID(ctx, credentialID)
 	if err != nil {
-		s.logger.Warn().Err(err).Str("credential_id", credentialID).Msg("Passkey login: credential not found")
 		return nil, fiberutil.Unauthorized("Passkey not recognized")
 	}
 
-	userID := passkey.UserID
-	s.logger.Debug().Str("user_id", userID).Str("credential_id", credentialID).Msg("Passkey login: credential found")
-
-	// Try user-specific session first, then discoverable session
-	cacheKey := passkeyAuthKeyPrefix + userID
-	session, err := s.loadSession(ctx, cacheKey, "")
+	session, err := s.findLoginSession(ctx, passkey.UserID, parsedResponse)
 	if err != nil {
-		challenge := parsedResponse.Response.CollectedClientData.Challenge
-		discoverableKey := passkeyAuthKeyPrefix + passkeyAuthDiscoverable + ":" + challenge
-		session, err = s.loadSession(ctx, discoverableKey, "")
-		if err != nil {
-			s.logger.Warn().Str("user_id", userID).Msg("Passkey login: session not found")
-			return nil, fiberutil.BadRequest("Passkey session expired, please try again")
-		}
+		return nil, err
 	}
 
-	s.logger.Debug().Str("user_id", userID).Msg("Passkey login: session found, verifying")
-	return s.finishLoginWithSession(ctx, userID, session, parsedResponse)
+	user, passkeys, err := s.getUserAndPasskeys(ctx, passkey.UserID)
+	if err != nil {
+		return nil, fiberutil.Unauthorized("User not found")
+	}
+
+	webAuthnUser := models.NewWebAuthnUser(user, passkeys)
+
+	credential, err := s.verifyLogin(webAuthnUser, session, parsedResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	s.updatePasskeyUsage(ctx, parsedResponse.RawID, credential)
+
+	return user, nil
 }
 
-// updatePasskeyAfterLogin updates the passkey sign count and last used timestamp
-func (s *PasskeyService) updatePasskeyAfterLogin(ctx context.Context, rawID []byte, credential *webauthn.Credential) {
+// GetUserPasskeys returns all passkeys for a user
+func (s *PasskeyService) GetUserPasskeys(ctx context.Context, userID string) ([]models.Passkey, error) {
+	return s.repos.Passkey().FindByUserID(ctx, userID)
+}
+
+// UpdatePasskeyName updates a passkey's name
+func (s *PasskeyService) UpdatePasskeyName(ctx context.Context, passkeyID, userID, name string) error {
+	passkey, err := s.repos.Passkey().FindByID(ctx, passkeyID)
+	if err != nil {
+		return err
+	}
+
+	if passkey == nil || passkey.UserID != userID {
+		return fiberutil.NotFound()
+	}
+
+	passkey.Name = &name
+
+	return s.repos.Passkey().Update(ctx, passkey)
+}
+
+// DeletePasskey deletes a passkey for a user
+func (s *PasskeyService) DeletePasskey(ctx context.Context, passkeyID, userID string) error {
+	return s.repos.Passkey().DeleteByUserID(ctx, passkeyID, userID)
+}
+
+// --- private helpers ---
+
+func (s *PasskeyService) beginEmailLogin(ctx context.Context, email string) (*protocol.CredentialAssertion, error) {
+	user, err := s.repos.User().FindByEmail(ctx, email)
+	if err != nil || user == nil {
+		return nil, fiberutil.Unauthorized()
+	}
+
+	passkeys, err := s.repos.Passkey().FindByUserID(ctx, user.ID)
+	if err != nil {
+		return nil, fiberutil.BadRequest("Failed to retrieve passkeys")
+	}
+
+	if len(passkeys) == 0 {
+		return nil, fiberutil.BadRequest("No passkeys registered for this account")
+	}
+
+	webAuthnUser := models.NewWebAuthnUser(user, passkeys)
+	assertion, session, err := s.webauthn.BeginLogin(webAuthnUser)
+	if err != nil {
+		return nil, fiberutil.BadRequest("Failed to initialize passkey authentication")
+	}
+
+	if err := s.storeSession(ctx, passkeyAuthKeyPrefix+user.ID, session); err != nil {
+		return nil, fiberutil.BadRequest("Failed to start passkey authentication session")
+	}
+
+	return assertion, nil
+}
+
+func (s *PasskeyService) beginDiscoverableLogin(ctx context.Context) (*protocol.CredentialAssertion, error) {
+	assertion, session, err := s.webauthn.BeginDiscoverableLogin()
+	if err != nil {
+		return nil, fiberutil.BadRequest("Failed to initialize passkey authentication")
+	}
+
+	cacheKey := passkeyAuthKeyPrefix + passkeyAuthDiscoverable + ":" + session.Challenge
+	if err := s.storeSession(ctx, cacheKey, session); err != nil {
+		return nil, fiberutil.BadRequest("Failed to start passkey authentication session")
+	}
+
+	return assertion, nil
+}
+
+func (s *PasskeyService) findLoginSession(ctx context.Context, userID string, parsedResponse *protocol.ParsedCredentialAssertionData) (*webauthn.SessionData, error) {
+	// Try user-specific session first, then discoverable session
+	session, err := s.loadSession(ctx, passkeyAuthKeyPrefix+userID)
+	if err == nil {
+		return session, nil
+	}
+
+	challenge := parsedResponse.Response.CollectedClientData.Challenge
+	discoverableKey := passkeyAuthKeyPrefix + passkeyAuthDiscoverable + ":" + challenge
+	session, err = s.loadSession(ctx, discoverableKey)
+	if err != nil {
+		return nil, fiberutil.BadRequest("Passkey session expired, please try again")
+	}
+
+	return session, nil
+}
+
+func (s *PasskeyService) verifyLogin(user *models.WebAuthnUser, session *webauthn.SessionData, parsedResponse *protocol.ParsedCredentialAssertionData) (*webauthn.Credential, error) {
+	if len(session.UserID) == 0 {
+		credential, err := s.webauthn.ValidateDiscoverableLogin(
+			func(rawID, userHandle []byte) (webauthn.User, error) {
+				return user, nil
+			},
+			*session,
+			parsedResponse,
+		)
+		if err != nil {
+			s.logger.Error().Err(err).Msg("Failed to verify discoverable passkey login")
+			return nil, fiberutil.Unauthorized("Passkey verification failed")
+		}
+
+		return credential, nil
+	}
+
+	credential, err := s.webauthn.ValidateLogin(user, *session, parsedResponse)
+	if err != nil {
+		s.logger.Error().Err(err).Msg("Failed to verify passkey login")
+		return nil, fiberutil.Unauthorized("Passkey verification failed")
+	}
+
+	return credential, nil
+}
+
+func (s *PasskeyService) updatePasskeyUsage(ctx context.Context, rawID []byte, credential *webauthn.Credential) {
 	credentialID := base64.RawURLEncoding.EncodeToString(rawID)
 
 	passkey, err := s.repos.Passkey().FindByCredentialID(ctx, credentialID)
@@ -282,139 +353,26 @@ func (s *PasskeyService) getUserAndPasskeys(ctx context.Context, userID string) 
 }
 
 func (s *PasskeyService) storeSession(ctx context.Context, key string, session *webauthn.SessionData) error {
-	sessionData, err := json.Marshal(session)
+	data, err := json.Marshal(session)
 	if err != nil {
 		return fmt.Errorf("failed to marshal session data: %w", err)
 	}
 
-	if err := s.cache.Set(ctx, key, string(sessionData), passkeySessionTTL); err != nil {
-		return fmt.Errorf("failed to store session data: %w", err)
-	}
-
-	return nil
+	return s.cache.Set(ctx, key, string(data), passkeySessionTTL)
 }
 
-func (s *PasskeyService) parseSession(sessionJSON string) (*webauthn.SessionData, error) {
+func (s *PasskeyService) loadSession(ctx context.Context, key string) (*webauthn.SessionData, error) {
+	sessionJSON, err := s.cache.Get(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+
+	_ = s.cache.Delete(ctx, key)
+
 	var session webauthn.SessionData
 	if err := json.Unmarshal([]byte(sessionJSON), &session); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal session data: %w", err)
 	}
 
 	return &session, nil
-}
-
-func (s *PasskeyService) loadSession(ctx context.Context, key, notFoundMsg string) (*webauthn.SessionData, error) {
-	sessionJSON, err := s.cache.Get(ctx, key)
-	if err != nil {
-		return nil, errors.New(notFoundMsg)
-	}
-
-	if err := s.cache.Delete(ctx, key); err != nil && s.logger != nil {
-		s.logger.Warn().Err(err).Msg("Failed to delete passkey session")
-	}
-
-	return s.parseSession(sessionJSON)
-}
-
-func (s *PasskeyService) finishLoginWithSession(ctx context.Context, userID string, session *webauthn.SessionData, parsedResponse *protocol.ParsedCredentialAssertionData) (*models.User, error) {
-	user, passkeys, err := s.getUserAndPasskeysForLogin(ctx, userID)
-	if err != nil {
-		return nil, err
-	}
-
-	webAuthnUser := models.NewWebAuthnUser(user, passkeys)
-
-	credential, err := s.verifyLogin(webAuthnUser, session, parsedResponse)
-	if err != nil {
-		return nil, err
-	}
-
-	s.updatePasskeyAfterLogin(ctx, parsedResponse.RawID, credential)
-
-	return user, nil
-}
-
-func (s *PasskeyService) getUserAndPasskeysForLogin(ctx context.Context, userID string) (*models.User, []models.Passkey, error) {
-	user, err := s.repos.User().FindByID(ctx, userID)
-	if err != nil {
-		return nil, nil, fiberutil.Unauthorized("User not found")
-	}
-
-	if user == nil {
-		return nil, nil, fiberutil.Unauthorized("User not found")
-	}
-
-	passkeys, err := s.repos.Passkey().FindByUserID(ctx, userID)
-	if err != nil {
-		return nil, nil, fiberutil.BadRequest("Failed to retrieve passkeys")
-	}
-
-	return user, passkeys, nil
-}
-
-func (s *PasskeyService) verifyLogin(user *models.WebAuthnUser, session *webauthn.SessionData, parsedResponse *protocol.ParsedCredentialAssertionData) (*webauthn.Credential, error) {
-	if len(session.UserID) == 0 {
-		credential, err := s.webauthn.ValidateDiscoverableLogin(
-			func(rawID, userHandle []byte) (webauthn.User, error) {
-				return user, nil
-			},
-			*session,
-			parsedResponse,
-		)
-		if err != nil {
-			s.logger.Error().Err(err).Msg("Failed to verify discoverable passkey login")
-			return nil, fiberutil.Unauthorized("Passkey verification failed")
-		}
-
-		return credential, nil
-	}
-
-	s.logger.Debug().
-		Str("session_user_id", string(session.UserID)).
-		Str("webauthn_user_id", string(user.WebAuthnID())).
-		Str("response_user_handle", base64.RawURLEncoding.EncodeToString(parsedResponse.Response.UserHandle)).
-		Int("credential_count", len(user.WebAuthnCredentials())).
-		Msg("Passkey login: validating")
-
-	credential, err := s.webauthn.ValidateLogin(user, *session, parsedResponse)
-	if err != nil {
-		s.logger.Error().Err(err).
-			Str("session_user_id", string(session.UserID)).
-			Str("webauthn_user_id", string(user.WebAuthnID())).
-			Str("response_user_handle", base64.RawURLEncoding.EncodeToString(parsedResponse.Response.UserHandle)).
-			Msg("Failed to verify passkey login")
-		return nil, fiberutil.Unauthorized("Passkey verification failed")
-	}
-
-	return credential, nil
-}
-
-// GetUserPasskeys returns all passkeys for a user
-func (s *PasskeyService) GetUserPasskeys(ctx context.Context, userID string) ([]models.Passkey, error) {
-	return s.repos.Passkey().FindByUserID(ctx, userID)
-}
-
-// UpdatePasskeyName updates a passkey's name
-func (s *PasskeyService) UpdatePasskeyName(ctx context.Context, passkeyID, userID, name string) error {
-	passkey, err := s.repos.Passkey().FindByID(ctx, passkeyID)
-	if err != nil {
-		return err
-	}
-
-	if passkey == nil {
-		return fiberutil.NotFound()
-	}
-
-	if passkey.UserID != userID {
-		return fiberutil.NotFound()
-	}
-
-	passkey.Name = &name
-
-	return s.repos.Passkey().Update(ctx, passkey)
-}
-
-// DeletePasskey deletes a passkey for a user
-func (s *PasskeyService) DeletePasskey(ctx context.Context, passkeyID, userID string) error {
-	return s.repos.Passkey().DeleteByUserID(ctx, passkeyID, userID)
 }

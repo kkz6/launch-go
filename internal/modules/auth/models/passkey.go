@@ -88,6 +88,20 @@ func (p *Passkey) ToWebAuthnCredential() webauthn.Credential {
 	return cred
 }
 
+// ParseTransports returns the transports as a string slice
+func (p *Passkey) ParseTransports() []string {
+	if p.Transports == nil {
+		return nil
+	}
+
+	var transports []string
+	if err := json.Unmarshal([]byte(*p.Transports), &transports); err != nil {
+		return nil
+	}
+
+	return transports
+}
+
 // UpdateUsage updates sign count and last used timestamp
 func (p *Passkey) UpdateUsage(signCount uint32) {
 	p.SignCount = int(signCount)
