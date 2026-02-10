@@ -37,25 +37,8 @@ func (s *TeamMemberService) canManageMembers(member *models.TeamMember) bool {
 func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID string, req *dto.InviteTeamMemberRequest) error {
 	req.Normalize()
 
-	team, err := s.repos.Team().FindByID(ctx, teamID)
-	if err != nil {
+	if _, err := s.requireManageMembers(ctx, teamID, userID); err != nil {
 		return err
-	}
-
-	if team == nil {
-		return fiberutil.NotFound()
-	}
-
-	// Check if user has permission to invite
-	if team.UserID != userID {
-		member, err := s.repos.TeamMember().Get(ctx, teamID, userID)
-		if err != nil {
-			return err
-		}
-
-		if !s.canManageMembers(member) {
-			return fiberutil.Forbidden()
-		}
 	}
 
 	// Check if user is already a member
@@ -135,25 +118,8 @@ func (s *TeamMemberService) AcceptTeamInvitation(ctx context.Context, userID, in
 
 // CancelTeamInvitation cancels a team invitation
 func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, teamID, invitationID string) error {
-	team, err := s.repos.Team().FindByID(ctx, teamID)
-	if err != nil {
+	if _, err := s.requireManageMembers(ctx, teamID, userID); err != nil {
 		return err
-	}
-
-	if team == nil {
-		return fiberutil.NotFound()
-	}
-
-	// Check permission
-	if team.UserID != userID {
-		member, err := s.repos.TeamMember().Get(ctx, teamID, userID)
-		if err != nil {
-			return err
-		}
-
-		if !s.canManageMembers(member) {
-			return fiberutil.Forbidden()
-		}
 	}
 
 	invitation, err := s.repos.TeamInvitation().FindByID(ctx, invitationID)
@@ -170,13 +136,9 @@ func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, te
 
 // UpdateTeamMemberRole updates a team member's role
 func (s *TeamMemberService) UpdateTeamMemberRole(ctx context.Context, userID, teamID, memberID string, req *dto.UpdateTeamMemberRequest) error {
-	team, err := s.repos.Team().FindByID(ctx, teamID)
+	team, err := s.getTeam(ctx, teamID)
 	if err != nil {
 		return err
-	}
-
-	if team == nil {
-		return fiberutil.NotFound()
 	}
 
 	// Only owner can update roles
@@ -194,13 +156,9 @@ func (s *TeamMemberService) UpdateTeamMemberRole(ctx context.Context, userID, te
 
 // RemoveTeamMember removes a member from a team
 func (s *TeamMemberService) RemoveTeamMember(ctx context.Context, userID, teamID, memberID string) error {
-	team, err := s.repos.Team().FindByID(ctx, teamID)
+	team, err := s.getTeam(ctx, teamID)
 	if err != nil {
 		return err
-	}
-
-	if team == nil {
-		return fiberutil.NotFound()
 	}
 
 	// Check permission (owner or self-removal)
@@ -247,12 +205,9 @@ func (s *TeamMemberService) GetTeamMembers(ctx context.Context, teamID string) (
 // This matches Laravel's allUsers() behavior
 func (s *TeamMemberService) GetAllTeamMembers(ctx context.Context, teamID string) ([]dto.TeamMemberResponse, error) {
 	// Get team with owner
-	team, err := s.repos.Team().FindByID(ctx, teamID)
+	team, err := s.getTeam(ctx, teamID)
 	if err != nil {
 		return nil, err
-	}
-	if team == nil {
-		return nil, fiberutil.NotFound()
 	}
 
 	// Get members from pivot table
@@ -304,4 +259,39 @@ func (s *TeamMemberService) GetTeamInvitations(ctx context.Context, teamID strin
 func (s *TeamMemberService) GenerateInvitationURL(invitationID string) string {
 	path := fmt.Sprintf("/api/auth/team-invitations/%s/accept", invitationID)
 	return signedurl.PermanentSign(path, nil)
+}
+
+func (s *TeamMemberService) getTeam(ctx context.Context, teamID string) (*models.Team, error) {
+	team, err := s.repos.Team().FindByID(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+
+	if team == nil {
+		return nil, fiberutil.NotFound()
+	}
+
+	return team, nil
+}
+
+func (s *TeamMemberService) requireManageMembers(ctx context.Context, teamID, userID string) (*models.Team, error) {
+	team, err := s.getTeam(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+
+	if team.UserID == userID {
+		return team, nil
+	}
+
+	member, err := s.repos.TeamMember().Get(ctx, teamID, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	if !s.canManageMembers(member) {
+		return nil, fiberutil.Forbidden()
+	}
+
+	return team, nil
 }
