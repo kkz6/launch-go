@@ -140,10 +140,21 @@ func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.Callba
 
 	// Broadcast deployment finished event
 	cbCtx.BroadcastToTeam(t.callback.TeamID, "deployment.finished", map[string]interface{}{
+		"team_id":       t.callback.TeamID,
 		"site_id":       t.callback.SiteID,
 		"server_id":     t.callback.ServerID,
 		"deployment_id": t.callback.DeploymentID,
 		"status":        "finished",
+	})
+
+	// Also broadcast as deployment.progress so existing listeners pick up the terminal status
+	cbCtx.BroadcastToTeam(t.callback.TeamID, "deployment.progress", map[string]interface{}{
+		"team_id":       t.callback.TeamID,
+		"site_id":       t.callback.SiteID,
+		"server_id":     t.callback.ServerID,
+		"deployment_id": t.callback.DeploymentID,
+		"status":        "finished",
+		"message":       "Deployment finished",
 	})
 
 	// Update deployment status on git provider (GitHub/GitLab deployment status)
@@ -195,11 +206,22 @@ func (t *deploySiteTask) OnFailure(ctx context.Context, cbCtx *taskrunner.Callba
 
 	// Broadcast deployment failed event
 	cbCtx.BroadcastToTeam(t.callback.TeamID, "deployment.failed", map[string]interface{}{
+		"team_id":       t.callback.TeamID,
 		"site_id":       t.callback.SiteID,
 		"server_id":     t.callback.ServerID,
 		"deployment_id": t.callback.DeploymentID,
 		"status":        "failed",
 		"exit_code":     exitCode,
+	})
+
+	// Also broadcast as deployment.progress so existing listeners pick up the terminal status
+	cbCtx.BroadcastToTeam(t.callback.TeamID, "deployment.progress", map[string]interface{}{
+		"team_id":       t.callback.TeamID,
+		"site_id":       t.callback.SiteID,
+		"server_id":     t.callback.ServerID,
+		"deployment_id": t.callback.DeploymentID,
+		"status":        "failed",
+		"message":       "Deployment failed",
 	})
 
 	// Update deployment status on git provider
@@ -242,10 +264,21 @@ func (t *deploySiteTask) OnExpired(ctx context.Context, cbCtx *taskrunner.Callba
 
 	// Broadcast deployment timeout event
 	cbCtx.BroadcastToTeam(t.callback.TeamID, "deployment.timeout", map[string]interface{}{
+		"team_id":       t.callback.TeamID,
 		"site_id":       t.callback.SiteID,
 		"server_id":     t.callback.ServerID,
 		"deployment_id": t.callback.DeploymentID,
 		"status":        "timeout",
+	})
+
+	// Also broadcast as deployment.progress so existing listeners pick up the terminal status
+	cbCtx.BroadcastToTeam(t.callback.TeamID, "deployment.progress", map[string]interface{}{
+		"team_id":       t.callback.TeamID,
+		"site_id":       t.callback.SiteID,
+		"server_id":     t.callback.ServerID,
+		"deployment_id": t.callback.DeploymentID,
+		"status":        "timeout",
+		"message":       "Deployment timed out",
 	})
 
 	// Update deployment status on git provider
