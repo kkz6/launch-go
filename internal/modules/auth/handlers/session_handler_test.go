@@ -48,7 +48,7 @@ func TestSessionHandler_List_Success(t *testing.T) {
 		LastActivity: int(time.Now().Unix()),
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/sessions", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/sessions", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -68,7 +68,7 @@ func TestSessionHandler_List_MarksCurrent(t *testing.T) {
 		LastActivity: int(time.Now().Unix()),
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/sessions", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/sessions", nil), testTimeout)
 	require.NoError(t, err)
 
 	r := parseResponse(resp)
@@ -84,7 +84,7 @@ func TestSessionHandler_List_Empty(t *testing.T) {
 	app, _, handler := setupSessionHandlerWithAuth("user_001", "session_001")
 	app.Get("/sessions", handler.List)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/sessions", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/sessions", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -98,7 +98,7 @@ func TestSessionHandler_List_NoUserID(t *testing.T) {
 	handler := handlers.NewSessionHandler(reg.session)
 	app.Get("/sessions", handler.List)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/sessions", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/sessions", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
@@ -113,7 +113,7 @@ func TestSessionHandler_Revoke_Success(t *testing.T) {
 		UserID: &userID,
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/sessions/session_002", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/sessions/session_002", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -129,7 +129,7 @@ func TestSessionHandler_Revoke_NotFound(t *testing.T) {
 	app, _, handler := setupSessionHandlerWithAuth("user_001", "session_001")
 	app.Delete("/sessions/:id", handler.Revoke)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/sessions/nonexistent", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/sessions/nonexistent", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
@@ -143,7 +143,7 @@ func TestSessionHandler_RevokeOthers_Success(t *testing.T) {
 	reg.session.sessions["session_002"] = &models.Session{ID: "session_002", UserID: &userID}
 	reg.session.sessions["session_003"] = &models.Session{ID: "session_003", UserID: &userID}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/sessions", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/sessions", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -165,7 +165,7 @@ func TestSessionHandler_RevokeOthers_NoCurrentSession(t *testing.T) {
 	app, _, handler := setupSessionHandlerWithAuth("user_001", "")
 	app.Delete("/sessions", handler.RevokeOthers)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/sessions", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/sessions", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 }
@@ -248,7 +248,7 @@ func TestParseUserAgent(t *testing.T) {
 				reg.session.sessions["session_001"].UserAgent = nil
 			}
 
-			resp, err := app.Test(makeJSONRequest(http.MethodGet, "/sessions", nil))
+			resp, err := app.Test(makeJSONRequest(http.MethodGet, "/sessions", nil), testTimeout)
 			require.NoError(t, err)
 
 			r := parseResponse(resp)

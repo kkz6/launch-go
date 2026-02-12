@@ -49,7 +49,7 @@ func TestEmailHandler_VerifyEmail_Success(t *testing.T) {
 
 	hash := computeEmailHash("test@example.com", testConfig())
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/verify-email/user_001/"+hash, nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/verify-email/user_001/"+hash, nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -66,7 +66,7 @@ func TestEmailHandler_VerifyEmail_InvalidHash(t *testing.T) {
 	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
 	reg.user.users["user_001"] = user
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/verify-email/user_001/invalid-hash", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/verify-email/user_001/invalid-hash", nil), testTimeout)
 	require.NoError(t, err)
 	assert.NotEqual(t, http.StatusOK, resp.StatusCode)
 }
@@ -75,7 +75,7 @@ func TestEmailHandler_VerifyEmail_UserNotFound(t *testing.T) {
 	app, _, handler := setupEmailHandler()
 	app.Get("/verify-email/:id/:hash", handler.Email.VerifyEmail)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/verify-email/nonexistent/somehash", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/verify-email/nonexistent/somehash", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 }
@@ -91,7 +91,7 @@ func TestEmailHandler_VerifyEmail_AlreadyVerified(t *testing.T) {
 
 	hash := computeEmailHash("test@example.com", testConfig())
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/verify-email/user_001/"+hash, nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/verify-email/user_001/"+hash, nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 }
@@ -107,7 +107,7 @@ func TestEmailHandler_ResendVerificationEmail_Success(t *testing.T) {
 	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
 	reg.user.users["user_001"] = user
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/email/verification-notification", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/email/verification-notification", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -119,7 +119,7 @@ func TestEmailHandler_ResendVerificationEmail_NoUserID(t *testing.T) {
 	app, _, handler := setupEmailHandler()
 	app.Post("/email/verification-notification", handler.Email.ResendVerificationEmail)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/email/verification-notification", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/email/verification-notification", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }

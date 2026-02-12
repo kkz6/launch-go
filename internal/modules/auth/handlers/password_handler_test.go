@@ -33,7 +33,7 @@ func TestPasswordHandler_ForgotPassword_Success(t *testing.T) {
 
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/forgot-password", map[string]string{
 		"email": "test@example.com",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -49,7 +49,7 @@ func TestPasswordHandler_ForgotPassword_AlwaysReturnsSuccess(t *testing.T) {
 	// Non-existent email should still return success to prevent enumeration
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/forgot-password", map[string]string{
 		"email": "nonexistent@example.com",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -63,7 +63,7 @@ func TestPasswordHandler_ForgotPassword_ValidationError(t *testing.T) {
 
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/forgot-password", map[string]string{
 		"email": "not-an-email",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 }
@@ -73,7 +73,7 @@ func TestPasswordHandler_ResetPassword_ValidationError(t *testing.T) {
 	app.Post("/reset-password", handler.Password.ResetPassword)
 
 	// Missing required fields
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/reset-password", map[string]string{}))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/reset-password", map[string]string{}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 }
@@ -90,7 +90,7 @@ func TestPasswordHandler_ResetPassword_InvalidToken(t *testing.T) {
 		"token":                 "invalid-token",
 		"password":              "newpassword123",
 		"password_confirmation": "newpassword123",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	// No reset token exists, so this should fail
 	assert.NotEqual(t, http.StatusOK, resp.StatusCode)

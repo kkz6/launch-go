@@ -65,7 +65,7 @@ func TestPATHandler_List_Success(t *testing.T) {
 	}
 	reg.pat.tokens["pat_002"].ID = "pat_002"
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/tokens", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/tokens", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -82,7 +82,7 @@ func TestPATHandler_List_Empty(t *testing.T) {
 	app, _, handler := setupPATHandler("user_001")
 	app.Get("/tokens", handler.List)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/tokens", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/tokens", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -99,7 +99,7 @@ func TestPATHandler_List_NoUserID(t *testing.T) {
 	app, _, handler := setupPATHandler("")
 	app.Get("/tokens", handler.List)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/tokens", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/tokens", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
@@ -114,7 +114,7 @@ func TestPATHandler_Create_Success_No2FA(t *testing.T) {
 		"name": "My API Token",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
@@ -143,7 +143,7 @@ func TestPATHandler_Create_WithScopes(t *testing.T) {
 		"scopes": []string{"read", "write"},
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
@@ -172,7 +172,7 @@ func TestPATHandler_Create_WithExpiresAt(t *testing.T) {
 		"expires_at": expiresAt,
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusCreated, resp.StatusCode)
 
@@ -194,7 +194,7 @@ func TestPATHandler_Create_ValidationError_MissingName(t *testing.T) {
 		"scopes": []string{"read"},
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -217,7 +217,7 @@ func TestPATHandler_Create_InvalidExpiresAtFormat(t *testing.T) {
 		"expires_at": "not-a-date",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 
@@ -241,7 +241,7 @@ func TestPATHandler_Create_2FA_RequiredNoCode(t *testing.T) {
 		"name": "Token Without Code",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -270,7 +270,7 @@ func TestPATHandler_Create_2FA_InvalidCode(t *testing.T) {
 		"code": "000000",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/tokens", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -295,7 +295,7 @@ func TestPATHandler_Delete_Success(t *testing.T) {
 	}
 	reg.pat.tokens["pat_001"].ID = "pat_001"
 
-	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/tokens/pat_001", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/tokens/pat_001", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNoContent, resp.StatusCode)
 
@@ -307,7 +307,7 @@ func TestPATHandler_Delete_NotFound(t *testing.T) {
 	app, _, handler := setupPATHandler("user_001")
 	app.Delete("/tokens/:id", handler.Delete)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/tokens/nonexistent", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/tokens/nonexistent", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
 
@@ -321,7 +321,7 @@ func TestPATHandler_Delete_MissingID(t *testing.T) {
 	// Register without :id param to simulate missing ID
 	app.Delete("/tokens/", handler.Delete)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/tokens/", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/tokens/", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
 

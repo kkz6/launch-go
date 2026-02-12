@@ -65,7 +65,7 @@ func TestUserHandler_User_Success(t *testing.T) {
 	user.CurrentTeamID = &teamID
 	reg.user.users["user_001"] = user
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/user", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/user", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -85,7 +85,7 @@ func TestUserHandler_User_NoUserID(t *testing.T) {
 	app, _, handler := setupUserHandler(t)
 	app.Get("/user", handler.User)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/user", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/user", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -109,7 +109,7 @@ func TestUserHandler_UpdateProfile_Success(t *testing.T) {
 		"email": "john@example.com",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPut, "/user/profile", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPut, "/user/profile", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -133,7 +133,7 @@ func TestUserHandler_UpdateProfile_ValidationError_MissingName(t *testing.T) {
 		"email": "john@example.com",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPut, "/user/profile", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPut, "/user/profile", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -156,7 +156,7 @@ func TestUserHandler_UpdateProfile_EmailConflict(t *testing.T) {
 		"email": "jane@example.com",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPut, "/user/profile", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPut, "/user/profile", body), testTimeout)
 	require.NoError(t, err)
 	assert.NotEqual(t, http.StatusOK, resp.StatusCode)
 
@@ -184,7 +184,7 @@ func TestUserHandler_ChangePassword_Success(t *testing.T) {
 		"password_confirmation": "newpassword456",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPut, "/user/password", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPut, "/user/password", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -213,7 +213,7 @@ func TestUserHandler_ChangePassword_WrongCurrentPassword(t *testing.T) {
 		"password_confirmation": "newpassword456",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPut, "/user/password", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPut, "/user/password", body), testTimeout)
 	require.NoError(t, err)
 	assert.NotEqual(t, http.StatusOK, resp.StatusCode)
 
@@ -237,7 +237,7 @@ func TestUserHandler_ChangePassword_ValidationError_PasswordTooShort(t *testing.
 		"password_confirmation": "short",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPut, "/user/password", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPut, "/user/password", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -261,7 +261,7 @@ func TestUserHandler_DeleteAccount_ValidationError_MissingPassword(t *testing.T)
 
 	body := map[string]string{}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/user/account", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/user/account", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -286,7 +286,7 @@ func TestUserHandler_CheckUserStatus_ExistingUser(t *testing.T) {
 		"email": "john@example.com",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/user/status", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/user/status", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -311,7 +311,7 @@ func TestUserHandler_CheckUserStatus_NonExistentUser(t *testing.T) {
 		"email": "nobody@example.com",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/user/status", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/user/status", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -340,7 +340,7 @@ func TestUserHandler_ResetOnboarding_Success(t *testing.T) {
 	user.Onboarded = true
 	reg.user.users["user_001"] = user
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/user/reset-onboarding", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/user/reset-onboarding", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 

@@ -42,7 +42,7 @@ func TestTwoFactorHandler_EnableTwoFactor_Success(t *testing.T) {
 
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/enable", map[string]string{
 		"password": "correct-password",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -66,7 +66,7 @@ func TestTwoFactorHandler_EnableTwoFactor_NoUserID(t *testing.T) {
 
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/enable", map[string]string{
 		"password": "any-password",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
@@ -85,7 +85,7 @@ func TestTwoFactorHandler_ConfirmTwoFactor_Success(t *testing.T) {
 
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/confirm", map[string]string{
 		"code": code,
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -111,7 +111,7 @@ func TestTwoFactorHandler_ConfirmTwoFactor_InvalidCode(t *testing.T) {
 
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/confirm", map[string]string{
 		"code": "000000",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.NotEqual(t, http.StatusOK, resp.StatusCode)
 }
@@ -126,7 +126,7 @@ func TestTwoFactorHandler_ConfirmTwoFactor_ValidationError(t *testing.T) {
 	// Code must be exactly 6 chars
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/confirm", map[string]string{
 		"code": "12",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 }
@@ -145,7 +145,7 @@ func TestTwoFactorHandler_DisableTwoFactor_Success(t *testing.T) {
 
 	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/two-factor/disable", map[string]string{
 		"password": "correct-password",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -171,7 +171,7 @@ func TestTwoFactorHandler_DisableTwoFactor_WrongPassword(t *testing.T) {
 
 	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/two-factor/disable", map[string]string{
 		"password": "wrong-password",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.NotEqual(t, http.StatusOK, resp.StatusCode)
 }
@@ -183,7 +183,7 @@ func TestTwoFactorHandler_DisableTwoFactor_ValidationError(t *testing.T) {
 	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
 	reg.user.users["user_001"] = user
 
-	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/two-factor/disable", map[string]string{}))
+	resp, err := app.Test(makeJSONRequest(http.MethodDelete, "/two-factor/disable", map[string]string{}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 }
@@ -212,7 +212,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_Success(t *testing.T) {
 	loginResp, err := loginApp.Test(makeJSONRequest(http.MethodPost, "/login", map[string]string{
 		"email":    "test@example.com",
 		"password": "correct-password",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, loginResp.StatusCode)
 
@@ -237,7 +237,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_Success(t *testing.T) {
 	resp, err := challengeApp.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
 		"challenge_token": challengeToken,
 		"code":            code,
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -276,7 +276,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_InvalidCode(t *testing.T) {
 	loginResp, err := loginApp.Test(makeJSONRequest(http.MethodPost, "/login", map[string]string{
 		"email":    "test@example.com",
 		"password": "correct-password",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 
 	loginResult := parseResponse(loginResp)
@@ -291,7 +291,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_InvalidCode(t *testing.T) {
 	resp, err := challengeApp.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
 		"challenge_token": challengeToken,
 		"code":            "000000",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
@@ -312,7 +312,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_InvalidToken(t *testing.T) {
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
 		"challenge_token": "invalid-token",
 		"code":            "123456",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
@@ -340,7 +340,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_TokenCannotBeReused(t *testing.T) {
 	loginResp, err := loginApp.Test(makeJSONRequest(http.MethodPost, "/login", map[string]string{
 		"email":    "test@example.com",
 		"password": "correct-password",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 
 	loginResult := parseResponse(loginResp)
@@ -356,7 +356,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_TokenCannotBeReused(t *testing.T) {
 	resp, err := challengeApp.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
 		"challenge_token": challengeToken,
 		"code":            code,
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -365,7 +365,7 @@ func TestTwoFactorHandler_TwoFactorChallenge_TokenCannotBeReused(t *testing.T) {
 	resp2, err := challengeApp.Test(makeJSONRequest(http.MethodPost, "/two-factor/challenge", map[string]string{
 		"challenge_token": challengeToken,
 		"code":            code2,
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp2.StatusCode)
 }
@@ -383,7 +383,7 @@ func TestTwoFactorHandler_GetRecoveryCodes_Success(t *testing.T) {
 	user.TwoFactorRecoveryCodes = &codes
 	reg.user.users["user_001"] = user
 
-	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/two-factor/recovery-codes", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodGet, "/two-factor/recovery-codes", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -406,7 +406,7 @@ func TestTwoFactorHandler_RegenerateRecoveryCodes_Success(t *testing.T) {
 	user.TwoFactorConfirmedAt = &now
 	reg.user.users["user_001"] = user
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/recovery-codes", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/recovery-codes", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -428,7 +428,7 @@ func TestTwoFactorHandler_RegenerateRecoveryCodes_NoUserID(t *testing.T) {
 	app := newTestAppWithValidation()
 	app.Post("/two-factor/recovery-codes", handler.TwoFactor.RegenerateRecoveryCodes)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/recovery-codes", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/two-factor/recovery-codes", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 }
@@ -454,7 +454,7 @@ func TestAuthHandler_Login_TwoFactorEnabled_ReturnsChallengeToken(t *testing.T) 
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", map[string]string{
 		"email":    "test@example.com",
 		"password": "correct-password",
-	}))
+	}), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 

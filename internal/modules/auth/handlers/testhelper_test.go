@@ -618,3 +618,7 @@ func newTestAppWithValidation() *fiber.App {
 		ErrorHandler: fiberutil.NewErrorHandler(),
 	})
 }
+
+// testTimeout is the timeout in ms for app.Test() calls.
+// Default 1000ms is too short for bcrypt hashing in CI environments.
+const testTimeout = 5000
