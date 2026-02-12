@@ -98,7 +98,7 @@ func (m *Module) registerSiteRoutes(router fiber.Router, handler *handlers.SiteH
 	router.Post("/:id/deploy-token/regenerate", handler.RegenerateDeployToken)
 
 	// Deployment settings
-	router.Put("/:id/deployment-settings", handler.UpdateDeploymentSettings)
+	router.Patch("/:id/deployment-settings", handler.UpdateDeploymentSettings)
 
 	// Site settings page
 	router.Get("/:id/settings", handler.GetSettings)

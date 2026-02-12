@@ -254,7 +254,6 @@ func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 
 	// Convert to UpdateSiteRequest
 	updateReq := &dto.UpdateSiteRequest{
-		DeployNotificationEmail:      req.DeployNotificationEmail,
 		SharedDirectories:            req.SharedDirectories,
 		SharedFiles:                  req.SharedFiles,
 		WriteableDirectories:         req.WriteableDirectories,
