@@ -79,7 +79,7 @@ func TestAuthHandler_Register_ValidationError_MissingFields(t *testing.T) {
 	app.Post("/register", handler.Register)
 
 	body := map[string]string{}
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/register", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/register", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -105,7 +105,7 @@ func TestAuthHandler_Register_ValidationError_InvalidEmail(t *testing.T) {
 		"password_confirmation": "password123",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/register", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/register", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -128,7 +128,7 @@ func TestAuthHandler_Register_ValidationError_PasswordMismatch(t *testing.T) {
 		"password_confirmation": "different-password",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/register", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/register", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -151,7 +151,7 @@ func TestAuthHandler_Register_ValidationError_ShortPassword(t *testing.T) {
 		"password_confirmation": "short",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/register", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/register", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -182,7 +182,7 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 		"password": "correct-password",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -219,7 +219,7 @@ func TestAuthHandler_Login_InvalidCredentials_WrongPassword(t *testing.T) {
 		"password": "wrong-password",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -237,7 +237,7 @@ func TestAuthHandler_Login_UserNotFound(t *testing.T) {
 		"password": "some-password",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -254,7 +254,7 @@ func TestAuthHandler_Login_ValidationError_MissingEmail(t *testing.T) {
 		"password": "some-password",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -274,7 +274,7 @@ func TestAuthHandler_Login_ValidationError_MissingPassword(t *testing.T) {
 		"email": "test@example.com",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -301,7 +301,7 @@ func TestAuthHandler_Login_CreatesSession(t *testing.T) {
 		"password": "correct-password",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/login", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -322,7 +322,7 @@ func TestAuthHandler_Logout_Success(t *testing.T) {
 		UserID: &userID,
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/logout", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/logout", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -338,7 +338,7 @@ func TestAuthHandler_Logout_NoUserID(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
 	app.Post("/logout", handler.Logout)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/logout", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/logout", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -350,7 +350,7 @@ func TestAuthHandler_Logout_NoSessionID(t *testing.T) {
 	app, _, handler := setupAuthHandlerWithAuth(t, "user_001", "")
 	app.Post("/logout", handler.Logout)
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/logout", nil))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/logout", nil), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -382,7 +382,7 @@ func TestAuthHandler_RefreshToken_Success(t *testing.T) {
 		"refresh_token": tokenStr,
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusOK, resp.StatusCode)
 
@@ -405,7 +405,7 @@ func TestAuthHandler_RefreshToken_InvalidToken(t *testing.T) {
 		"refresh_token": "invalid-jwt-token",
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -420,7 +420,7 @@ func TestAuthHandler_RefreshToken_ValidationError_EmptyBody(t *testing.T) {
 
 	body := map[string]string{}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnprocessableEntity, resp.StatusCode)
 
@@ -449,7 +449,7 @@ func TestAuthHandler_RefreshToken_ExpiredToken(t *testing.T) {
 		"refresh_token": expiredToken,
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -475,7 +475,7 @@ func TestAuthHandler_RefreshToken_WrongTokenType(t *testing.T) {
 		"refresh_token": accessToken,
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -501,7 +501,7 @@ func TestAuthHandler_RefreshToken_WrongSecret(t *testing.T) {
 		"refresh_token": tokenStr,
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -524,7 +524,7 @@ func TestAuthHandler_RefreshToken_RevokedSession(t *testing.T) {
 		"refresh_token": tokenStr,
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
@@ -551,7 +551,7 @@ func TestAuthHandler_RefreshToken_UserNotFound(t *testing.T) {
 		"refresh_token": tokenStr,
 	}
 
-	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body))
+	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/refresh", body), testTimeout)
 	require.NoError(t, err)
 	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
 
