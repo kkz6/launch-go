@@ -51,7 +51,6 @@ type UpdateSiteRequest struct {
 	TLSSetting                   *string `json:"tls_setting" validate:"omitempty,oneof=auto custom internal off"`
 	PrivateKey                   *string `json:"private_key" validate:"omitempty"`
 	Certificate                  *string `json:"certificate" validate:"omitempty"`
-	DeployNotificationEmail      *string `json:"deploy_notification_email" validate:"omitempty,email"`
 	SharedDirectories            *string `json:"shared_directories" validate:"omitempty"`
 	SharedFiles                  *string `json:"shared_files" validate:"omitempty"`
 	WriteableDirectories         *string `json:"writeable_directories" validate:"omitempty"`
@@ -72,7 +71,6 @@ type UpdateSSLRequest struct {
 
 // UpdateDeploymentSettingsRequest represents deployment settings update
 type UpdateDeploymentSettingsRequest struct {
-	DeployNotificationEmail      *string `json:"deploy_notification_email" validate:"omitempty,email"`
 	SharedDirectories            *string `json:"shared_directories" validate:"omitempty"`
 	SharedFiles                  *string `json:"shared_files" validate:"omitempty"`
 	WriteableDirectories         *string `json:"writeable_directories" validate:"omitempty"`

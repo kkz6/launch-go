@@ -21,7 +21,6 @@ type SiteResponse struct {
 	ZeroDowntimeDeployment       bool                             `json:"zero_downtime_deployment"`
 	DeploymentReleasesRetention  int                              `json:"deployment_releases_retention"`
 	RepositoryBranch             string                           `json:"repository_branch"`
-	DeployNotificationEmail      *string                          `json:"deploy_notification_email,omitempty"`
 	Path                         string                           `json:"path"`
 	WebFolder                    string                           `json:"web_folder"`
 	PhpVersion                   string                           `json:"php_version"`
@@ -212,7 +211,6 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		ZeroDowntimeDeployment:       site.ZeroDowntimeDeployment,
 		DeploymentReleasesRetention:  site.DeploymentReleasesRetention,
 		RepositoryBranch:             repositoryBranch,
-		DeployNotificationEmail:      site.DeployNotificationEmail,
 		Path:                         site.Path,
 		WebFolder:                    site.WebFolder,
 		PhpVersion:                   phpVersion,

@@ -711,7 +711,6 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID s
 	// Simple pointer fields
 	addIfSet(updates, "php_version", req.PhpVersion)
 	addIfSet(updates, "web_folder", req.WebFolder)
-	addIfSet(updates, "deploy_notification_email", req.DeployNotificationEmail)
 	addIfSet(updates, "deployment_releases_retention", req.DeploymentReleasesRetention)
 	addIfSet(updates, "queue_deployments", req.QueueDeployments)
 
