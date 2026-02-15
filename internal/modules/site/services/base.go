@@ -1,6 +1,7 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"strings"
 
@@ -188,6 +189,12 @@ func addHookIfSet(updates map[string]any, key string, value *string) {
 // addSliceIfSet adds a multiline string as a slice
 func addSliceIfSet(updates map[string]any, key string, value *string) {
 	if value != nil {
-		updates[key] = parseMultilineToSlice(*value)
+		slice := parseMultilineToSlice(*value)
+		data, err := json.Marshal(slice)
+		if err != nil {
+			updates[key] = "[]"
+			return
+		}
+		updates[key] = string(data)
 	}
 }
