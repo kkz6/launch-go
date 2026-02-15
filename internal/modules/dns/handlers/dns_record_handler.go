@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/dto"
+	"github.com/kkz6/launch-go/internal/modules/dns/providers"
 	"github.com/kkz6/launch-go/internal/modules/dns/services"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
@@ -61,7 +62,7 @@ func (h *DNSRecordHandler) CreateRecord(c *fiber.Ctx) error {
 		if fiberutil.IsNotFound(err) {
 			return fiberutil.RespondNotFound(c, "Domain not found")
 		}
-		return fiberutil.HandleError(c, err)
+		return handleProviderOrDefaultError(c, err)
 	}
 
 	return fiberutil.Created(c, "Record created", dto.ToDNSRecordResponse(record))
@@ -84,15 +85,12 @@ func (h *DNSRecordHandler) UpdateRecord(c *fiber.Ctx) error {
 	record, err := h.recordService.UpdateRecord(c.Context(), recordID, domainID, teamID, req)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "Domain not found")
-		}
-		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "DNS record not found")
+			return fiberutil.RespondNotFound(c, "Record or domain not found")
 		}
 		if errors.Is(err, services.ErrRecordNotEditable) {
 			return fiberutil.RespondForbidden(c, "This record type cannot be edited")
 		}
-		return fiberutil.HandleError(c, err)
+		return handleProviderOrDefaultError(c, err)
 	}
 
 	return fiberutil.OK(c, "Record updated", dto.ToDNSRecordResponse(record))
@@ -110,15 +108,12 @@ func (h *DNSRecordHandler) DeleteRecord(c *fiber.Ctx) error {
 	err = h.recordService.DeleteRecord(c.Context(), recordID, domainID, teamID)
 	if err != nil {
 		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "Domain not found")
-		}
-		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "DNS record not found")
+			return fiberutil.RespondNotFound(c, "Record or domain not found")
 		}
 		if errors.Is(err, services.ErrRecordNotDeletable) {
 			return fiberutil.RespondForbidden(c, "This record type cannot be deleted")
 		}
-		return fiberutil.HandleError(c, err)
+		return handleProviderOrDefaultError(c, err)
 	}
 
 	return fiberutil.NoContent(c)
@@ -129,4 +124,20 @@ func (h *DNSRecordHandler) GetRecordTypes(c *fiber.Ctx) error {
 	types := h.recordService.GetRecordTypes()
 
 	return fiberutil.OK(c, "Record types retrieved", types)
+}
+
+// handleProviderOrDefaultError converts ProviderError to an HTTP response or falls through to HandleError.
+func handleProviderOrDefaultError(c *fiber.Ctx, err error) error {
+	var providerErr *providers.ProviderError
+	if errors.As(err, &providerErr) {
+		code := fiber.StatusBadGateway
+		if providerErr.Code == 404 {
+			code = fiber.StatusNotFound
+		} else if providerErr.Code == 403 {
+			code = fiber.StatusForbidden
+		}
+		return fiberutil.Error(c, code, providerErr.Message)
+	}
+
+	return fiberutil.HandleError(c, err)
 }

@@ -47,19 +47,15 @@ func (s *DNSRecordService) CreateRecord(ctx context.Context, domainID, teamID st
 
 	dnsProvider.SetDomain(domain.Address)
 
-	err = s.Repos().DNSRecord().Transaction(ctx, func(tx *gorm.DB) error {
-		// Add record to provider
-		providerID, err := dnsProvider.AddRecord(ctx, toProviderDNSRecord(record))
-		if err != nil {
-			return err
-		}
-
-		record.ProviderID = providerID
-
-		return s.Repos().DNSRecord().Create(ctx, record)
-	})
-
+	// Add record to provider first
+	providerID, err := dnsProvider.AddRecord(ctx, toProviderDNSRecord(record))
 	if err != nil {
+		return nil, err
+	}
+
+	record.ProviderID = providerID
+
+	if err := s.Repos().DNSRecord().Create(ctx, record); err != nil {
 		return nil, err
 	}
 
@@ -99,16 +95,12 @@ func (s *DNSRecordService) UpdateRecord(ctx context.Context, recordID, domainID,
 	// Apply updates
 	req.ApplyToModel(record)
 
-	err = s.Repos().DNSRecord().Transaction(ctx, func(tx *gorm.DB) error {
-		// Update record at provider
-		if err := dnsProvider.UpdateRecord(ctx, toProviderDNSRecord(record)); err != nil {
-			return err
-		}
+	// Update record at provider first
+	if err := dnsProvider.UpdateRecord(ctx, toProviderDNSRecord(record)); err != nil {
+		return nil, err
+	}
 
-		return s.Repos().DNSRecord().Update(ctx, record)
-	})
-
-	if err != nil {
+	if err := s.Repos().DNSRecord().Update(ctx, record); err != nil {
 		return nil, err
 	}
 
@@ -145,14 +137,12 @@ func (s *DNSRecordService) DeleteRecord(ctx context.Context, recordID, domainID,
 
 	dnsProvider.SetDomain(domain.Address)
 
-	return s.Repos().DNSRecord().Transaction(ctx, func(tx *gorm.DB) error {
-		// Delete record from provider
-		if err := dnsProvider.DeleteRecord(ctx, toProviderDNSRecord(record)); err != nil {
-			return err
-		}
+	// Delete from provider first, then from database
+	if err := dnsProvider.DeleteRecord(ctx, toProviderDNSRecord(record)); err != nil {
+		return err
+	}
 
-		return s.Repos().DNSRecord().Delete(ctx, record.ID)
-	})
+	return s.Repos().DNSRecord().Delete(ctx, record.ID)
 }
 
 // GetRecordTypes returns all available record types
