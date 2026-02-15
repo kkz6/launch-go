@@ -16,6 +16,7 @@ import (
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/git"
 	"github.com/kkz6/launch-go/internal/modules/notification"
+	"github.com/kkz6/launch-go/internal/modules/platform"
 	"github.com/kkz6/launch-go/internal/modules/script"
 	"github.com/kkz6/launch-go/internal/modules/server"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
@@ -131,7 +132,8 @@ func main() {
 		Register(backup.NewModule(builder)).
 		Register(gitModule).
 		Register(siteModule).
-		Register(scriptModule)
+		Register(scriptModule).
+		Register(platform.NewModule(builder))
 
 	// Boot task callbacks (for local mode SSH streaming callbacks)
 	kernel.BootTaskCallbacks()

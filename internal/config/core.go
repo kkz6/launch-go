@@ -19,7 +19,7 @@ type CoreConfig struct {
 // ServerDefaultsConfig holds default values for server provisioning
 type ServerDefaultsConfig struct {
 	WorkingDirectory string `env:"SERVER_WORKING_DIR" default:".launch"`
-	Username         string `env:"SSH_USER" default:"launcher"`
+	Username         string `env:"SSH_USER" default:"captain"`
 	SSHPort          int    `env:"SSH_PORT" default:"22"`
 	SSHComment       string `env:"SSH_COMMENT" default:"launch@gigcodes.com"`
 	DatabaseName     string `env:"DEFAULT_DATABASE_NAME" default:"launch"`
