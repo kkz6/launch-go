@@ -45,11 +45,13 @@ func (notificationPreferenceWithTeamFK) TableName() string {
 }
 
 func createNotificationPreferencesTableUp(db *gorm.DB) error {
-	if err := db.Migrator().CreateTable(&notificationPreferenceMigration{}); err != nil {
+	migrator := db.Set("gorm:table_options", "DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci").Migrator()
+
+	if err := migrator.CreateTable(&notificationPreferenceMigration{}); err != nil {
 		return err
 	}
 
-	return db.Migrator().CreateConstraint(&notificationPreferenceWithTeamFK{}, "Team")
+	return migrator.CreateConstraint(&notificationPreferenceWithTeamFK{}, "Team")
 }
 
 func createNotificationPreferencesTableDown(db *gorm.DB) error {

@@ -26,6 +26,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns"
 	"github.com/kkz6/launch-go/internal/modules/git"
 	"github.com/kkz6/launch-go/internal/modules/notification"
+	"github.com/kkz6/launch-go/internal/modules/platform"
 	"github.com/kkz6/launch-go/internal/modules/script"
 	"github.com/kkz6/launch-go/internal/modules/server"
 	"github.com/kkz6/launch-go/internal/modules/site"
@@ -222,6 +223,7 @@ func (a *Application) registerModules() {
 	billingModule := billing.NewModule(builder)
 	gitModule := git.NewModule(builder)
 	scriptModule := script.NewModule(builder)
+	platformModule := platform.NewModule(builder)
 	dashboardModule := dashboard.NewModule(builder)
 	wsModule := wsmodule.NewModule(builder)
 
@@ -243,11 +245,17 @@ func (a *Application) registerModules() {
 		Register(gitModule).
 		Register(notificationModule).
 		Register(scriptModule).
+		Register(platformModule).
 		Register(dashboardModule).
 		Register(wsModule)
 
 	// Boot task callbacks (needed for webhook handlers in production mode)
 	a.kernel.BootTaskCallbacks()
+
+	// Boot modules (runs seeders, initialization, etc.)
+	if err := a.kernel.Boot(); err != nil {
+		a.logger.Fatal().Err(err).Msg("Failed to boot modules")
+	}
 
 	api := a.fiber.Group("/api")
 	api.Get("/health", a.healthCheck)
