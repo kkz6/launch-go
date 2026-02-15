@@ -24,12 +24,11 @@ func InitSentry(cfg config.SentryConfig, appName string, release string, logger 
 		Environment:      cfg.Environment,
 		Debug:            cfg.Debug,
 		SampleRate:       cfg.SampleRate,
+		EnableTracing:    cfg.TracesSampleRate > 0,
 		TracesSampleRate: cfg.TracesSampleRate,
 		Release:          release,
 		ServerName:       appName,
 		BeforeSend: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
-			// You can modify or filter events here
-			// For example, scrub sensitive data
 			return event
 		},
 	})
