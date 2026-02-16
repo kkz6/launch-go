@@ -44,7 +44,7 @@ func SeedRenameUsername(ctx context.Context, db *gorm.DB, logger *zerolog.Logger
 	// Find all provisioned servers where username is 'launcher' or NULL
 	// Docker servers get status=skipped
 	var servers []servermodels.Server
-	if err := db.Where("provisioned_at IS NOT NULL").Find(&servers).Error; err != nil {
+	if err := db.Where("provisioned_at IS NOT NULL AND archived_at IS NULL").Find(&servers).Error; err != nil {
 		return fmt.Errorf("failed to find servers: %w", err)
 	}
 
