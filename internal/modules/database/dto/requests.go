@@ -18,6 +18,6 @@ type CreateDatabaseUserRequest struct {
 
 // UpdateDatabaseUserRequest represents the request to update a database user
 type UpdateDatabaseUserRequest struct {
-	Password  string   `json:"password" validate:"required,min=8,max=255"`
+	Password  string   `json:"password" validate:"omitempty,min=8,max=255"`
 	Databases []string `json:"databases" validate:"omitempty,dive,len=26"`
 }
