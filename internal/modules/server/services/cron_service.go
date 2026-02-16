@@ -189,3 +189,8 @@ func (s *Service) dispatchCronUninstallJob(server *models.Server, cron *models.C
 
 	return s.EnqueueTask(task)
 }
+
+// CountCronsBySite counts cron jobs associated with a site
+func (s *Service) CountCronsBySite(ctx context.Context, siteID string) (int64, error) {
+	return s.repos.Cron().CountBySite(ctx, siteID)
+}

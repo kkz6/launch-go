@@ -833,11 +833,19 @@ func (s *SiteService) GetDeletionSummary(ctx context.Context, id, serverID, team
 		s.LogWarn("Failed to count queues for deletion summary", "siteID", site.ID, "error", err)
 		queueCount = 0
 	}
-	// TODO: Add cron count
+
+	var cronCount int64
+	if s.cronCreator != nil {
+		cronCount, err = s.cronCreator.CountCronsBySite(ctx, site.ID)
+		if err != nil {
+			s.LogWarn("Failed to count crons for deletion summary", "siteID", site.ID, "error", err)
+			cronCount = 0
+		}
+	}
 
 	return &dto.DeletionSummaryResponse{
 		Queues: int(queueCount),
-		Crons:  0,
+		Crons:  int(cronCount),
 	}, nil
 }
 

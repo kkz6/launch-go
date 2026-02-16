@@ -60,4 +60,15 @@ func (r *CronRepository) FindByIDAndServer(ctx context.Context, id, serverID str
 	return cron, nil
 }
 
+// CountBySite counts cron jobs associated with a site
+func (r *CronRepository) CountBySite(ctx context.Context, siteID string) (int64, error) {
+	var count int64
+	err := r.DB.WithContext(ctx).
+		Model(&models.Cron{}).
+		Where("site_id = ?", siteID).
+		Count(&count).Error
+
+	return count, err
+}
+
 // Note: MarkAsInstalled, MarkInstallationFailed and MarkUninstallationFailed are inherited from repository.Installable

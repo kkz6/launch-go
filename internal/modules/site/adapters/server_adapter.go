@@ -43,3 +43,8 @@ func NewCronCreatorAdapter(svc servercontracts.CronService) contracts.CronCreato
 func (a *CronCreatorAdapter) CreateCron(ctx context.Context, serverID, teamID string, req *serverdto.CreateCronRequest) (*servermodels.Cron, error) {
 	return a.svc.CreateCron(ctx, serverID, teamID, req)
 }
+
+// CountCronsBySite counts cron jobs associated with a site
+func (a *CronCreatorAdapter) CountCronsBySite(ctx context.Context, siteID string) (int64, error) {
+	return a.svc.CountCronsBySite(ctx, siteID)
+}
