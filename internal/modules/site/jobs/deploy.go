@@ -158,6 +158,18 @@ func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Depl
 	var envVars map[string]string
 	if site.InstalledAt == nil {
 		envVars = site.GenerateEnvironmentVariables()
+
+		// Merge database credentials and other env vars stored during site creation
+		if commitEnvVars, ok := deployment.CommitData["env_variables"].(map[string]any); ok {
+			if envVars == nil {
+				envVars = make(map[string]string)
+			}
+			for k, v := range commitEnvVars {
+				if strVal, ok := v.(string); ok {
+					envVars[k] = strVal
+				}
+			}
+		}
 	}
 
 	return tasks.DeployOptions{
@@ -590,6 +602,18 @@ func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment 
 	var envVars map[string]string
 	if site.InstalledAt == nil {
 		envVars = site.GenerateEnvironmentVariables()
+
+		// Merge database credentials and other env vars stored during site creation
+		if commitEnvVars, ok := deployment.CommitData["env_variables"].(map[string]any); ok {
+			if envVars == nil {
+				envVars = make(map[string]string)
+			}
+			for k, v := range commitEnvVars {
+				if strVal, ok := v.(string); ok {
+					envVars[k] = strVal
+				}
+			}
+		}
 	}
 
 	return tasks.DeployOptions{
