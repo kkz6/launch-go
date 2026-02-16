@@ -22,6 +22,15 @@ sudo tee /etc/caddy/Sites.caddy > /dev/null <<EOF
 EOF
 
 sudo tee /etc/caddy/Caddyfile > /dev/null <<EOF
+{
+    log {
+        output file /var/log/caddy/access.log {
+            roll_size 100mb
+            roll_keep 10
+        }
+    }
+}
+
 {{ .PublicIPv4 }}:80 {
     root * /home/{{ .Username }}/default
     file_server
@@ -30,6 +39,10 @@ sudo tee /etc/caddy/Caddyfile > /dev/null <<EOF
 # Do not remove this Sites.caddy import
 import /etc/caddy/Sites.caddy
 EOF
+
+# Create log directory
+sudo mkdir -p /var/log/caddy
+sudo chown {{ .Username }}:{{ .Username }} /var/log/caddy
 
 echo "Update Caddy service config to run as user"
 
@@ -40,6 +53,8 @@ sudo tee /etc/systemd/system/caddy.service.d/override.conf > /dev/null <<EOF
 [Service]
 User={{ .Username }}
 Group={{ .Username }}
+StandardOutput=append:/var/log/caddy/caddy.log
+StandardError=append:/var/log/caddy/caddy.log
 EOF
 
 # Reload systemd configuration and start Caddy service
