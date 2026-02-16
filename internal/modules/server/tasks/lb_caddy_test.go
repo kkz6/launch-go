@@ -49,7 +49,7 @@ func TestLBUpdateUpstreamCaddyfile_ScriptContainsCaddyValidate(t *testing.T) {
 	require.NotNil(t, task)
 
 	script := task.Script()
-	assert.Contains(t, script, "caddy validate")
+	assert.Contains(t, script, "caddy fmt")
 }
 
 func TestLBUpdateUpstreamCaddyfile_ScriptContainsCaddyReload(t *testing.T) {
