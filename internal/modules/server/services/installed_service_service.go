@@ -138,7 +138,7 @@ func (s *Service) dispatchServiceRemoveJob(server *models.Server, service *model
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, "remove", nil)
+	task, err := jobs.NewRemoveServiceTask(server.ID, service.ID, nil)
 	if err != nil {
 		return err
 	}
