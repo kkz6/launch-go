@@ -241,11 +241,40 @@ func RemovePHP(config PHPRemoveConfig) *taskrunner.BaseTask {
 	)
 }
 
-// InstallSoftware creates a task to install software based on the software enum
-func InstallSoftware(software types.Software) *taskrunner.BaseTask {
+// SoftwareInstallConfig holds server-specific configuration for generic software installation.
+type SoftwareInstallConfig struct {
+	Username         string
+	MemoryInMB       int
+	DatabasePassword string
+	DatabaseName     string
+	PublicIPv4       string
+}
+
+// InstallSoftware creates a task to install software based on the software enum.
+// The config provides server-specific data needed by templates (e.g., PHP needs Username/MaxChildren,
+// MySQL needs RootPassword/DatabaseName/PublicIPv4, etc.).
+func InstallSoftware(software types.Software, config SoftwareInstallConfig) *taskrunner.BaseTask {
 	templateName := software.InstallTemplateName()
+
+	maxChildren := 5
+	if software.IsPhp() && config.MemoryInMB > 0 {
+		maxChildren = software.MaxChildren(config.MemoryInMB)
+	}
+
+	maxConnections := 100
+	if software.IsDatabase() && config.MemoryInMB > 0 {
+		maxConnections = software.MaxConnections(config.MemoryInMB)
+	}
+
 	data := map[string]interface{}{
-		"Version": software.GetVersion(),
+		"Version":          software.GetVersion(),
+		"Username":         config.Username,
+		"MaxChildren":      maxChildren,
+		"RootPassword":     config.DatabasePassword,
+		"DatabasePassword": config.DatabasePassword,
+		"DatabaseName":     config.DatabaseName,
+		"PublicIPv4":       config.PublicIPv4,
+		"MaxConnections":   maxConnections,
 	}
 	script := templates.MustRender("server", templateName, data)
 	return taskrunner.NewBaseTask(

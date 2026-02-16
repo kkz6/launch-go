@@ -537,12 +537,13 @@ func AllServiceTypes() []ServiceType {
 type ServiceStatus string
 
 const (
-	ServiceStatusPending    ServiceStatus = "pending"
-	ServiceStatusInstalling ServiceStatus = "installing"
-	ServiceStatusFailed     ServiceStatus = "failed"
-	ServiceStatusInstalled  ServiceStatus = "installed"
-	ServiceStatusStopped    ServiceStatus = "stopped"
-	ServiceStatusRunning    ServiceStatus = "running"
+	ServiceStatusPending      ServiceStatus = "pending"
+	ServiceStatusInstalling   ServiceStatus = "installing"
+	ServiceStatusUninstalling ServiceStatus = "uninstalling"
+	ServiceStatusFailed       ServiceStatus = "failed"
+	ServiceStatusInstalled    ServiceStatus = "installed"
+	ServiceStatusStopped      ServiceStatus = "stopped"
+	ServiceStatusRunning      ServiceStatus = "running"
 )
 
 func (s ServiceStatus) String() string {
@@ -551,12 +552,13 @@ func (s ServiceStatus) String() string {
 
 func (s ServiceStatus) Label() string {
 	labels := map[ServiceStatus]string{
-		ServiceStatusPending:    "Pending",
-		ServiceStatusInstalling: "Installing",
-		ServiceStatusFailed:     "Failed",
-		ServiceStatusInstalled:  "Installed",
-		ServiceStatusStopped:    "Stopped",
-		ServiceStatusRunning:    "Running",
+		ServiceStatusPending:      "Pending",
+		ServiceStatusInstalling:   "Installing",
+		ServiceStatusUninstalling: "Uninstalling",
+		ServiceStatusFailed:       "Failed",
+		ServiceStatusInstalled:    "Installed",
+		ServiceStatusStopped:      "Stopped",
+		ServiceStatusRunning:      "Running",
 	}
 	if label, ok := labels[s]; ok {
 		return label
@@ -567,8 +569,8 @@ func (s ServiceStatus) Label() string {
 
 func (s ServiceStatus) IsValid() bool {
 	switch s {
-	case ServiceStatusPending, ServiceStatusInstalling, ServiceStatusFailed,
-		ServiceStatusInstalled, ServiceStatusStopped, ServiceStatusRunning:
+	case ServiceStatusPending, ServiceStatusInstalling, ServiceStatusUninstalling,
+		ServiceStatusFailed, ServiceStatusInstalled, ServiceStatusStopped, ServiceStatusRunning:
 		return true
 	}
 
@@ -612,8 +614,8 @@ func ParseServiceStatus(str string) (ServiceStatus, error) {
 
 func AllServiceStatuses() []ServiceStatus {
 	return []ServiceStatus{
-		ServiceStatusPending, ServiceStatusInstalling, ServiceStatusFailed,
-		ServiceStatusInstalled, ServiceStatusStopped, ServiceStatusRunning,
+		ServiceStatusPending, ServiceStatusInstalling, ServiceStatusUninstalling,
+		ServiceStatusFailed, ServiceStatusInstalled, ServiceStatusStopped, ServiceStatusRunning,
 	}
 }
 

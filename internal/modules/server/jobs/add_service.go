@@ -49,9 +49,31 @@ func (j *AddServiceJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("update service status: %w", err)
 	}
 
+	j.Deps.BroadcastServerEvent(j.server, "service.status_changed", map[string]any{
+		"service_id": j.service.ID,
+		"server_id":  j.server.ID,
+		"status":     string(types.ServiceStatusInstalling),
+	})
+
 	software := types.Software(j.Payload.Software)
 
-	task := tasks.InstallSoftware(software)
+	memoryInMB := 0
+	if j.server.MemoryInMB != nil {
+		memoryInMB = *j.server.MemoryInMB
+	}
+
+	publicIPv4 := ""
+	if j.server.PublicIPv4 != nil {
+		publicIPv4 = *j.server.PublicIPv4
+	}
+
+	task := tasks.InstallSoftware(software, tasks.SoftwareInstallConfig{
+		Username:         j.server.GetUsername(),
+		MemoryInMB:       memoryInMB,
+		DatabasePassword: j.server.DatabasePassword.String(),
+		DatabaseName:     j.server.GetUsername(),
+		PublicIPv4:       publicIPv4,
+	})
 
 	result, err := j.Deps.RunTask(j.server, task).
 		AsRoot().

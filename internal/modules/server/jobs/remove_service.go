@@ -8,6 +8,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
@@ -49,6 +50,17 @@ func (j *RemoveServiceJob) Handle(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("failed to find server: %w", err)
 	}
+
+	// Mark service as uninstalling and broadcast status change
+	if err := j.Deps.Repos.Service().UpdateStatus(ctx, j.service.ID, types.ServiceStatusUninstalling); err != nil {
+		return fmt.Errorf("failed to update service status: %w", err)
+	}
+
+	j.Deps.BroadcastServerEvent(j.server, "service.status_changed", map[string]any{
+		"service_id": j.service.ID,
+		"server_id":  j.server.ID,
+		"status":     string(types.ServiceStatusUninstalling),
+	})
 
 	// Create remove task using the software's remove template
 	task := tasks.RemoveSoftware(j.service.GetSoftware())
