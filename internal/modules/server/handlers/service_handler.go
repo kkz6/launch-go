@@ -92,6 +92,37 @@ func (h *Handler) ServiceOperation(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Service operation initiated", nil)
 }
 
+// ServiceOperationByAction performs an operation on a service using the action from the URL path
+func (h *Handler) ServiceOperationByAction(c *fiber.Ctx) error {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	serviceID, err := fiberctx.GetULIDParam(c, "serviceId")
+	if err != nil {
+		return err
+	}
+
+	action := c.Params("action")
+
+	operation, err := types.ParseServiceOption(action)
+	if err != nil {
+		return fiberctx.RespondBadRequest(c, "Invalid operation")
+	}
+
+	if err := h.service.HandleServiceOperation(c.Context(), serverID, teamID, serviceID, operation); err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return fiberctx.OK(c, "Service operation initiated", nil)
+}
+
 // ListPhpVersions returns all PHP versions with their installation status for a server
 func (h *Handler) ListPhpVersions(c *fiber.Ctx) error {
 	teamID, err := fiberctx.MustGetTeamID(c)
