@@ -60,11 +60,11 @@ func AuthorizePublicKey(publicKey string, user string) *taskrunner.BaseTask {
 	sshDir := paths.SSHDir(user)
 	authorizedKeys := paths.AuthorizedKeysPath(user)
 
-	script := fmt.Sprintf(`sudo mkdir -p %s
-sudo chmod 700 %s
-echo '%s' | sudo tee -a %s > /dev/null
-sudo chmod 600 %s
-sudo chown -R %s:%s %s`, sshDir, sshDir, publicKey, authorizedKeys, authorizedKeys, user, user, sshDir)
+	script := fmt.Sprintf(`mkdir -p %s
+chmod 700 %s
+echo '%s' >> %s
+chmod 600 %s
+chown -R %s:%s %s`, sshDir, sshDir, publicKey, authorizedKeys, authorizedKeys, user, user, sshDir)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Authorize Public Key"),
@@ -78,7 +78,7 @@ func DeauthorizePublicKey(publicKey string, user string) *taskrunner.BaseTask {
 	authorizedKeys := paths.AuthorizedKeysPath(user)
 
 	// Escape special characters in the public key for sed
-	script := fmt.Sprintf(`sudo sed -i '\|%s|d' %s`, publicKey, authorizedKeys)
+	script := fmt.Sprintf(`sed -i '\|%s|d' %s`, publicKey, authorizedKeys)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Deauthorize Public Key"),
@@ -93,7 +93,7 @@ func GetAuthorizedKeys(user string) *taskrunner.BaseTask {
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Get Authorized Keys"),
-		taskrunner.WithScript(fmt.Sprintf("sudo cat %s 2>/dev/null || echo ''", authorizedKeys)),
+		taskrunner.WithScript(fmt.Sprintf("cat %s 2>/dev/null || echo ''", authorizedKeys)),
 		taskrunner.WithTimeoutSeconds(15),
 	)
 }
@@ -103,13 +103,13 @@ func UpdateAuthorizedKeys(user string, publicKey string) *taskrunner.BaseTask {
 	sshDir := paths.SSHDir(user)
 	authorizedKeys := paths.AuthorizedKeysPath(user)
 
-	script := fmt.Sprintf(`sudo mkdir -p %s
-sudo chmod 700 %s
-sudo tee %s > /dev/null << 'LAUNCH_EOF'
+	script := fmt.Sprintf(`mkdir -p %s
+chmod 700 %s
+cat > %s << 'LAUNCH_EOF'
 %s
 LAUNCH_EOF
-sudo chmod 600 %s
-sudo chown -R %s:%s %s`, sshDir, sshDir, authorizedKeys, publicKey, authorizedKeys, user, user, sshDir)
+chmod 600 %s
+chown -R %s:%s %s`, sshDir, sshDir, authorizedKeys, publicKey, authorizedKeys, user, user, sshDir)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Update Authorized Keys"),

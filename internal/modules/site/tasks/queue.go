@@ -55,11 +55,11 @@ func UploadQueueConfig(params UploadQueueConfigParams) *taskrunner.BaseTask {
 	script := `#!/bin/bash
 set -euo pipefail
 
-sudo tee "` + params.Path + `" > /dev/null << 'QUEUEEOF'
+cat > "` + params.Path + `" << 'QUEUEEOF'
 ` + params.Contents + `
 QUEUEEOF
 
-sudo chmod 644 "` + params.Path + `"
+chmod 644 "` + params.Path + `"
 
 # Create .launch directory and log files if they don't exist
 LOG_DIR=$(dirname "` + params.LogPath + `")
@@ -67,11 +67,18 @@ mkdir -p "$LOG_DIR"
 
 if [ ! -f "` + params.LogPath + `" ]; then
     touch "` + params.LogPath + `"
+    chown ` + params.User + `:` + params.User + ` "` + params.LogPath + `"
+    chmod 644 "` + params.LogPath + `"
 fi
 
 if [ ! -f "` + params.ErrorLogPath + `" ]; then
     touch "` + params.ErrorLogPath + `"
+    chown ` + params.User + `:` + params.User + ` "` + params.ErrorLogPath + `"
+    chmod 644 "` + params.ErrorLogPath + `"
 fi
+
+# Ensure directory ownership
+chown ` + params.User + `:` + params.User + ` "$LOG_DIR"
 
 echo "Queue config uploaded successfully"
 `
@@ -88,16 +95,16 @@ func DeleteQueueConfig(configPath, programName string) *taskrunner.BaseTask {
 set -euo pipefail
 
 # Stop the queue process
-sudo supervisorctl stop "` + programName + `":* 2>/dev/null || true
+supervisorctl stop "` + programName + `":* 2>/dev/null || true
 
 # Remove the config file
 if [ -f "` + configPath + `" ]; then
-    sudo rm -f "` + configPath + `"
+    rm -f "` + configPath + `"
 fi
 
 # Reload supervisor
-sudo supervisorctl reread
-sudo supervisorctl update
+supervisorctl reread
+supervisorctl update
 
 echo "Queue removed successfully"
 `
@@ -113,7 +120,7 @@ func RestartQueue(programName string) *taskrunner.BaseTask {
 	script := `#!/bin/bash
 set -euo pipefail
 
-sudo supervisorctl restart "` + programName + `":*
+supervisorctl restart "` + programName + `":*
 echo "Queue restarted successfully"
 `
 	return taskrunner.NewBaseTask(
@@ -130,7 +137,7 @@ set -euo pipefail
 
 `
 	for _, id := range queueIDs {
-		script += fmt.Sprintf(`sudo supervisorctl restart "%s":* 2>/dev/null || echo "Queue %s not found or already stopped"
+		script += fmt.Sprintf(`supervisorctl restart "%s":* 2>/dev/null || echo "Queue %s not found or already stopped"
 `, id, id)
 	}
 

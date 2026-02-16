@@ -69,7 +69,7 @@ func (j *RestartQueueJob) Handle(ctx context.Context) error {
 	// Restart the queue using supervisor
 	restartTask := tasks.RestartQueue(queue.ID)
 
-	result, err := j.Deps.RunTask(server, restartTask).AsUser().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, restartTask).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to restart queue")
 		return err
@@ -161,7 +161,7 @@ func (j *RestartAllSiteQueuesJob) Handle(ctx context.Context) error {
 	// Restart all queues
 	restartTask := tasks.RestartAllQueues(queueIDs)
 
-	result, err := j.Deps.RunTask(server, restartTask).AsUser().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, restartTask).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to restart queues")
 		return err

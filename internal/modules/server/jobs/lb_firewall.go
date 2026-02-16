@@ -49,7 +49,7 @@ func (j *AddLBFirewallRuleJob) Handle(ctx context.Context) error {
 		j.Payload.LoadBalancerIP,
 	)
 
-	result, err := j.Deps.RunTask(server, task).AsUser().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to add LB firewall rule: %w", err)
 	}
@@ -109,7 +109,7 @@ func (j *RemoveLBFirewallRuleJob) Handle(ctx context.Context) error {
 		j.Payload.LoadBalancerIP,
 	)
 
-	result, err := j.Deps.RunTask(server, task).AsUser().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to remove LB firewall rule: %w", err)
 	}
