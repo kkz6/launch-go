@@ -50,7 +50,7 @@ func (s *DeploymentService) Deploy(ctx context.Context, siteID, serverID, userID
 	// Fetch the latest commit data from the git provider
 	commitData := s.FetchLatestCommitData(ctx, site)
 
-	return s.createDeployment(ctx, site, userID, commitData)
+	return s.createDeployment(ctx, site, userID, commitData, nil)
 }
 
 // FetchLatestCommitData fetches the latest commit data from the git provider
@@ -211,8 +211,10 @@ func (s *DeploymentService) Rollback(ctx context.Context, siteID, serverID, targ
 	return deployment, nil
 }
 
-// createDeployment creates a new deployment for a site
-func (s *DeploymentService) createDeployment(ctx context.Context, site *models.Site, userID string, commitData map[string]any) (*models.Deployment, error) {
+// createDeployment creates a new deployment for a site.
+// envVars are transient environment variables (e.g. database credentials) passed through the job payload
+// and never persisted in the database.
+func (s *DeploymentService) createDeployment(ctx context.Context, site *models.Site, userID string, commitData map[string]any, envVars map[string]string) (*models.Deployment, error) {
 	// Convert empty userID to nil (webhook deployments have no user)
 	userIDPtr := stringToPtr(userID)
 
@@ -266,9 +268,9 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 	var dispatchErr error
 
 	if site.ZeroDowntimeDeployment {
-		task, dispatchErr = jobs.NewDeployZeroDowntimeTask(site.ID, deployment.ID, userID)
+		task, dispatchErr = jobs.NewDeployZeroDowntimeTask(site.ID, deployment.ID, userID, envVars)
 	} else {
-		task, dispatchErr = jobs.NewDeployTask(site.ID, deployment.ID, userID)
+		task, dispatchErr = jobs.NewDeployTask(site.ID, deployment.ID, userID, envVars)
 	}
 
 	if dispatchErr != nil {
@@ -344,9 +346,9 @@ func (s *DeploymentService) ProcessNextQueued(ctx context.Context, siteID string
 	var dispatchErr error
 
 	if site.ZeroDowntimeDeployment {
-		task, dispatchErr = jobs.NewDeployZeroDowntimeTask(site.ID, deployment.ID, "")
+		task, dispatchErr = jobs.NewDeployZeroDowntimeTask(site.ID, deployment.ID, "", nil)
 	} else {
-		task, dispatchErr = jobs.NewDeployTask(site.ID, deployment.ID, "")
+		task, dispatchErr = jobs.NewDeployTask(site.ID, deployment.ID, "", nil)
 	}
 
 	if dispatchErr != nil {
@@ -443,7 +445,7 @@ func (s *DeploymentService) DeployFromWebhook(ctx context.Context, siteID, token
 	}
 
 	// Create deployment (no user ID for webhook-triggered deployments)
-	_, err = s.createDeployment(ctx, site, "", commitData)
+	_, err = s.createDeployment(ctx, site, "", commitData, nil)
 	if err != nil {
 		return err
 	}

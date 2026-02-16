@@ -25,9 +25,10 @@ const (
 
 // DeployPayload holds data for site deployment
 type DeployPayload struct {
-	SiteID       string  `json:"site_id"`
-	DeploymentID string  `json:"deployment_id"`
-	UserID       *string `json:"user_id,omitempty"`
+	SiteID       string            `json:"site_id"`
+	DeploymentID string            `json:"deployment_id"`
+	UserID       *string           `json:"user_id,omitempty"`
+	EnvVariables map[string]string `json:"env_variables,omitempty"`
 }
 
 // DeployJob handles standard site deployment
@@ -159,16 +160,12 @@ func (j *DeployJob) buildDeployConfig(site *models.Site, deployment *models.Depl
 	if site.InstalledAt == nil {
 		envVars = site.GenerateEnvironmentVariables()
 
-		// Merge database credentials and other env vars stored during site creation
-		if commitEnvVars, ok := deployment.CommitData["env_variables"].(map[string]any); ok {
+		// Merge database credentials passed through the job payload
+		for k, v := range j.Payload.EnvVariables {
 			if envVars == nil {
 				envVars = make(map[string]string)
 			}
-			for k, v := range commitEnvVars {
-				if strVal, ok := v.(string); ok {
-					envVars[k] = strVal
-				}
-			}
+			envVars[k] = v
 		}
 	}
 
@@ -342,7 +339,7 @@ func (j *DeployJob) processNextQueuedDeployment(ctx context.Context, siteID stri
 
 	// Dispatch next deployment
 	if site.ZeroDowntimeDeployment {
-		task, taskErr := NewDeployZeroDowntimeTask(siteID, nextDeployment.ID, "")
+		task, taskErr := NewDeployZeroDowntimeTask(siteID, nextDeployment.ID, "", nil)
 		if taskErr != nil {
 			j.Deps.Logger.Error().Err(taskErr).Msg("Failed to create deployment task for queued deployment")
 			return
@@ -351,7 +348,7 @@ func (j *DeployJob) processNextQueuedDeployment(ctx context.Context, siteID stri
 			j.Deps.Logger.Error().Err(err).Msg("Failed to enqueue next deployment")
 		}
 	} else {
-		task, taskErr := NewDeployTask(siteID, nextDeployment.ID, "")
+		task, taskErr := NewDeployTask(siteID, nextDeployment.ID, "", nil)
 		if taskErr != nil {
 			j.Deps.Logger.Error().Err(taskErr).Msg("Failed to create deployment task for queued deployment")
 			return
@@ -603,16 +600,12 @@ func (j *DeployZeroDowntimeJob) buildDeployConfig(site *models.Site, deployment 
 	if site.InstalledAt == nil {
 		envVars = site.GenerateEnvironmentVariables()
 
-		// Merge database credentials and other env vars stored during site creation
-		if commitEnvVars, ok := deployment.CommitData["env_variables"].(map[string]any); ok {
+		// Merge database credentials passed through the job payload
+		for k, v := range j.Payload.EnvVariables {
 			if envVars == nil {
 				envVars = make(map[string]string)
 			}
-			for k, v := range commitEnvVars {
-				if strVal, ok := v.(string); ok {
-					envVars[k] = strVal
-				}
-			}
+			envVars[k] = v
 		}
 	}
 
@@ -783,7 +776,7 @@ func (j *DeployZeroDowntimeJob) processNextQueuedDeployment(ctx context.Context,
 	}
 
 	if site.ZeroDowntimeDeployment {
-		task, taskErr := NewDeployZeroDowntimeTask(siteID, nextDeployment.ID, "")
+		task, taskErr := NewDeployZeroDowntimeTask(siteID, nextDeployment.ID, "", nil)
 		if taskErr != nil {
 			j.Deps.Logger.Error().Err(taskErr).Msg("Failed to create deployment task for queued deployment")
 			return
@@ -792,7 +785,7 @@ func (j *DeployZeroDowntimeJob) processNextQueuedDeployment(ctx context.Context,
 			j.Deps.Logger.Error().Err(err).Msg("Failed to enqueue next deployment")
 		}
 	} else {
-		task, taskErr := NewDeployTask(siteID, nextDeployment.ID, "")
+		task, taskErr := NewDeployTask(siteID, nextDeployment.ID, "", nil)
 		if taskErr != nil {
 			j.Deps.Logger.Error().Err(taskErr).Msg("Failed to create deployment task for queued deployment")
 			return
@@ -931,7 +924,7 @@ func getProjectIDFromRepo(repo *gitmodels.SourceControlRepository) string {
 
 // NewDeployTask creates a deploy job
 // Uses TaskID for deduplication to prevent the same deployment from running multiple times
-func NewDeployTask(siteID, deploymentID string, userID string) (*asynq.Task, error) {
+func NewDeployTask(siteID, deploymentID string, userID string, envVars map[string]string) (*asynq.Task, error) {
 	var userIDPtr *string
 	if userID != "" {
 		userIDPtr = &userID
@@ -940,12 +933,13 @@ func NewDeployTask(siteID, deploymentID string, userID string) (*asynq.Task, err
 		SiteID:       siteID,
 		DeploymentID: deploymentID,
 		UserID:       userIDPtr,
+		EnvVariables: envVars,
 	}, asynq.TaskID(pkgjobs.Dedup("deploy", deploymentID)))
 }
 
 // NewDeployZeroDowntimeTask creates a zero-downtime deploy job
 // Uses TaskID for deduplication to prevent the same deployment from running multiple times
-func NewDeployZeroDowntimeTask(siteID, deploymentID string, userID string) (*asynq.Task, error) {
+func NewDeployZeroDowntimeTask(siteID, deploymentID string, userID string, envVars map[string]string) (*asynq.Task, error) {
 	var userIDPtr *string
 	if userID != "" {
 		userIDPtr = &userID
@@ -954,5 +948,6 @@ func NewDeployZeroDowntimeTask(siteID, deploymentID string, userID string) (*asy
 		SiteID:       siteID,
 		DeploymentID: deploymentID,
 		UserID:       userIDPtr,
+		EnvVariables: envVars,
 	}, asynq.TaskID(pkgjobs.Dedup("deploy_zd", deploymentID)))
 }

@@ -101,9 +101,9 @@ func (j *CreateDeploymentJob) Handle(ctx context.Context) error {
 	var taskErr error
 
 	if site.ZeroDowntimeDeployment {
-		task, taskErr = NewDeployZeroDowntimeTask(site.ID, deployment.ID, stringPtrValue(j.Payload.UserID))
+		task, taskErr = NewDeployZeroDowntimeTask(site.ID, deployment.ID, stringPtrValue(j.Payload.UserID), nil)
 	} else {
-		task, taskErr = NewDeployTask(site.ID, deployment.ID, stringPtrValue(j.Payload.UserID))
+		task, taskErr = NewDeployTask(site.ID, deployment.ID, stringPtrValue(j.Payload.UserID), nil)
 	}
 
 	if taskErr != nil {
