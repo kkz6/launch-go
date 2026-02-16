@@ -91,8 +91,8 @@ func (m *Module) registerSiteRoutes(router fiber.Router, handler *handlers.SiteH
 	router.Put("/:id", handler.Update)
 	router.Delete("/:id", handler.Delete)
 
-	// Site deletion summary
-	router.Get("/:id/deletion-summary", handler.GetDeletionSummary)
+	// Site deletion resources
+	router.Get("/:id/deletion-resources", handler.GetDeletionSummary)
 
 	// Deploy token
 	router.Post("/:id/deploy-token/regenerate", handler.RegenerateDeployToken)
