@@ -63,6 +63,8 @@ sudo tee /etc/systemd/system/caddy.service.d/override.conf > /dev/null <<EOF
 [Service]
 User={{ .Username }}
 Group={{ .Username }}
+StandardOutput=append:/var/log/caddy/caddy.log
+StandardError=append:/var/log/caddy/caddy.log
 EOF
 
 # Reload systemd configuration and start Caddy service
