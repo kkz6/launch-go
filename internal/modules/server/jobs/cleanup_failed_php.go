@@ -54,7 +54,7 @@ func (j *CleanupFailedPhpInstallationJob) Handle(ctx context.Context) error {
 		Msg("cleaning up failed PHP installation")
 
 	task := tasks.RemovePhpVersion(j.Payload.Version)
-	result, err := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(j.server, task).AsUser().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).
 			Str("version", j.Payload.Version).
@@ -143,7 +143,7 @@ func (j *CleanupFailedPhpExtensionInstallJob) Handle(ctx context.Context) error 
 		Msg("cleaning up failed PHP extension installation")
 
 	task := tasks.UninstallPhpExtension(j.Payload.Version, j.Payload.Extension)
-	result, err := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(j.server, task).AsUser().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).
 			Str("version", j.Payload.Version).
@@ -158,7 +158,7 @@ func (j *CleanupFailedPhpExtensionInstallJob) Handle(ctx context.Context) error 
 	}
 
 	restartTask := tasks.RestartPhp(j.Payload.Version)
-	if _, err := j.Deps.RunTask(j.server, restartTask).AsRoot().Dispatch(ctx); err != nil {
+	if _, err := j.Deps.RunTask(j.server, restartTask).AsUser().Dispatch(ctx); err != nil {
 		j.Deps.Logger.Error().Err(err).
 			Msg("failed to restart PHP-FPM after cleanup")
 	}
@@ -235,7 +235,7 @@ func (j *CleanupFailedPhpExtensionUninstallJob) Handle(ctx context.Context) erro
 		Msg("cleaning up failed PHP extension uninstallation")
 
 	restartTask := tasks.RestartPhp(j.Payload.Version)
-	if _, err := j.Deps.RunTask(j.server, restartTask).AsRoot().Dispatch(ctx); err != nil {
+	if _, err := j.Deps.RunTask(j.server, restartTask).AsUser().Dispatch(ctx); err != nil {
 		j.Deps.Logger.Error().Err(err).
 			Msg("failed to restart PHP-FPM after cleanup")
 	}
