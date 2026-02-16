@@ -23,7 +23,7 @@ set -euo pipefail
 
 # Remove the site directory
 if [ -d "%s" ]; then
-    rm -rf "%s"
+    sudo rm -rf "%s"
     echo "Site directory deleted"
 else
     echo "Site directory not found, skipping"

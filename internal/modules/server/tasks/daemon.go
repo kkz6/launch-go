@@ -52,16 +52,16 @@ func DeleteDaemon(config DeleteDaemonConfig) *taskrunner.BaseTask {
 set -euo pipefail
 
 # Stop the daemon process
-supervisorctl stop "` + config.ProgramName + `":* 2>/dev/null || true
+sudo supervisorctl stop "` + config.ProgramName + `":* 2>/dev/null || true
 
 # Remove the config file
 if [ -f "` + config.Path + `" ]; then
-    rm -f "` + config.Path + `"
+    sudo rm -f "` + config.Path + `"
 fi
 
 # Reload supervisor
-supervisorctl reread
-supervisorctl update
+sudo supervisorctl reread
+sudo supervisorctl update
 
 echo "Daemon removed successfully"
 `
@@ -82,7 +82,7 @@ func RestartDaemon(config RestartDaemonConfig) *taskrunner.BaseTask {
 	restartScript := `#!/bin/bash
 set -euo pipefail
 
-supervisorctl restart "` + config.ProgramName + `":*
+sudo supervisorctl restart "` + config.ProgramName + `":*
 echo "Daemon restarted successfully"
 `
 	return taskrunner.NewBaseTask(
@@ -97,8 +97,8 @@ func ReloadSupervisor() *taskrunner.BaseTask {
 	reloadScript := `#!/bin/bash
 set -euo pipefail
 
-supervisorctl reread
-supervisorctl update
+sudo supervisorctl reread
+sudo supervisorctl update
 echo "Supervisor reloaded successfully"
 `
 	return taskrunner.NewBaseTask(

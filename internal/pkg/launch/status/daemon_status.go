@@ -15,7 +15,7 @@ var daemonStatusScript = `#!/bin/bash
 set -euo pipefail
 
 # Get supervisorctl status and parse it
-supervisorctl status 2>/dev/null | while read -r line; do
+sudo supervisorctl status 2>/dev/null | while read -r line; do
     if [ -z "$line" ]; then
         continue
     fi

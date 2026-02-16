@@ -69,7 +69,7 @@ func (j *UninstallQueueJob) Handle(ctx context.Context) error {
 	// Delete the queue config and stop the process
 	deleteTask := tasks.DeleteQueueConfig(queue.GetPath(), queue.ID)
 
-	result, err := j.Deps.RunTask(server, deleteTask).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, deleteTask).AsUser().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to delete queue config")
 		return err
