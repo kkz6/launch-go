@@ -118,17 +118,21 @@ func main() {
 	builder := app.NewBuilderFromContext(ctx)
 
 	// Initialize modules
+	serverModule := server.NewModule(builder)
+	databaseModule := databasemodule.NewModule(builder)
 	gitModule := git.NewModule(builder)
 	siteModule := site.NewModule(builder)
 	scriptModule := script.NewModule(builder)
 
 	// Set up cross-module dependencies
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
+	siteModule.SetCronCreator(serverModule.Service())
+	siteModule.SetDatabaseManager(databaseModule.Service())
 
 	// Register all modules with the kernel
 	kernel.
-		Register(server.NewModule(builder)).
-		Register(databasemodule.NewModule(builder)).
+		Register(serverModule).
+		Register(databaseModule).
 		Register(backup.NewModule(builder)).
 		Register(gitModule).
 		Register(siteModule).
