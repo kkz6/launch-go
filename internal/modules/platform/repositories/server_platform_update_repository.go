@@ -76,7 +76,7 @@ func (r *ServerPlatformUpdateRepository) FindByServerAndUpdateForTeam(ctx contex
 		Table("server_platform_updates spu").
 		Select("spu.*").
 		Joins("JOIN servers s ON s.id = spu.server_id").
-		Where("spu.server_id = ? AND spu.platform_update_id = ? AND s.team_id = ?", serverID, platformUpdateID, teamID).
+		Where("spu.server_id = ? AND spu.platform_update_id = ? AND s.team_id = ? AND s.archived_at IS NULL", serverID, platformUpdateID, teamID).
 		First(&update).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -95,7 +95,7 @@ func (r *ServerPlatformUpdateRepository) GetServerStatuses(ctx context.Context, 
 		Table("server_platform_updates spu").
 		Select("spu.id, spu.server_id, spu.status, spu.task_id, spu.error_message, spu.completed_at, s.name as server_name").
 		Joins("JOIN servers s ON s.id = spu.server_id").
-		Where("spu.platform_update_id = ? AND s.team_id = ?", platformUpdateID, teamID).
+		Where("spu.platform_update_id = ? AND s.team_id = ? AND s.archived_at IS NULL", platformUpdateID, teamID).
 		Order("s.name ASC").
 		Scan(&rows).Error
 
@@ -122,7 +122,7 @@ func (r *ServerPlatformUpdateRepository) FindPendingForTeam(ctx context.Context,
 		Table("platform_updates").
 		Joins("JOIN server_platform_updates spu ON spu.platform_update_id = platform_updates.id").
 		Joins("JOIN servers s ON s.id = spu.server_id").
-		Where("s.team_id = ?", teamID).
+		Where("s.team_id = ? AND s.archived_at IS NULL", teamID).
 		Where("spu.status = ?", types.UpdateStatusPending).
 		Where("NOT EXISTS (SELECT 1 FROM platform_update_dismissals d WHERE d.platform_update_id = platform_updates.id AND d.user_id = ?)", userID).
 		Order("platform_updates.created_at DESC").
@@ -142,7 +142,7 @@ func (r *ServerPlatformUpdateRepository) CountByStatus(ctx context.Context, plat
 		Table("server_platform_updates spu").
 		Select("spu.status, COUNT(*) as count").
 		Joins("JOIN servers s ON s.id = spu.server_id").
-		Where("spu.platform_update_id = ? AND s.team_id = ?", platformUpdateID, teamID).
+		Where("spu.platform_update_id = ? AND s.team_id = ? AND s.archived_at IS NULL", platformUpdateID, teamID).
 		Group("spu.status").
 		Scan(&results).Error
 	if err != nil {
