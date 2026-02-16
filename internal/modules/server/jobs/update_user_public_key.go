@@ -48,7 +48,7 @@ func (j *UpdateUserPublicKeyJob) Handle(ctx context.Context) error {
 	// Create task to update the authorized_keys file
 	task := tasks.UpdateAuthorizedKeys(j.Payload.Username, j.Payload.PublicKey)
 
-	result, err := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(j.server, task).AsUser().Dispatch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to update user public key: %w", err)
 	}
