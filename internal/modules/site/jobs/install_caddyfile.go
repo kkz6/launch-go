@@ -79,8 +79,8 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 		SiteUser:         site.User,
 	})
 
-	// Execute the task on the server as the default user
-	result, err := j.Deps.RunTask(server, task).AsUser().Dispatch(ctx)
+	// Execute the task on the server
+	result, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to install Caddyfile")
 		return err
@@ -420,7 +420,7 @@ func (j *InstallCaddyfileJob) updateSiteImports(ctx context.Context, server *ser
 	})
 
 	// Execute on server
-	_, err = j.Deps.RunTask(server, task).AsUser().Dispatch(ctx)
+	_, err = j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	return err
 }
 
@@ -495,7 +495,7 @@ func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 	})
 
 	// Execute the task on the server
-	result, err := j.Deps.RunTask(server, task).AsUser().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to update Caddyfile")
 		return err
@@ -591,7 +591,7 @@ func (j *UninstallCaddyfileJob) Handle(ctx context.Context) error {
 	})
 
 	// Execute the task on the server
-	result, err := j.Deps.RunTask(server, task).AsUser().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to uninstall Caddyfile")
 		return err
@@ -648,7 +648,7 @@ func (j *UninstallCaddyfileJob) updateSiteImportsAfterRemoval(ctx context.Contex
 	})
 
 	// Execute on server
-	_, err = j.Deps.RunTask(server, task).AsUser().Dispatch(ctx)
+	_, err = j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	return err
 }
 

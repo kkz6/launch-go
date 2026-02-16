@@ -61,7 +61,7 @@ func (j *SyncDaemonsJob) Handle(ctx context.Context) error {
 	}
 
 	task := tasks.CheckDaemonStatus()
-	result, err := j.Deps.RunTask(j.server, task).AsUser().Dispatch(ctx)
+	result, err := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).
 			Str("server_id", j.server.ID).

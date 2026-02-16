@@ -50,7 +50,7 @@ func (j *RunAfterUpdateJob) Handle(ctx context.Context) error {
 
 	// Reload supervisor to pick up any config changes
 	reloadTask := tasks.ReloadSupervisor()
-	if result, err := j.Deps.RunTask(j.server, reloadTask).AsUser().Dispatch(ctx); err != nil {
+	if result, err := j.Deps.RunTask(j.server, reloadTask).AsRoot().Dispatch(ctx); err != nil {
 		j.Deps.Logger.Error().Err(err).
 			Msg("failed to reload supervisor")
 	} else if !result.IsSuccessful() {
@@ -61,7 +61,7 @@ func (j *RunAfterUpdateJob) Handle(ctx context.Context) error {
 
 	// Reload Caddy configuration
 	caddyTask := tasks.ReloadCaddy()
-	if result, err := j.Deps.RunTask(j.server, caddyTask).AsUser().Dispatch(ctx); err != nil {
+	if result, err := j.Deps.RunTask(j.server, caddyTask).AsRoot().Dispatch(ctx); err != nil {
 		j.Deps.Logger.Error().Err(err).
 			Msg("failed to reload Caddy")
 	} else if !result.IsSuccessful() {
@@ -72,7 +72,7 @@ func (j *RunAfterUpdateJob) Handle(ctx context.Context) error {
 
 	// Clear OPcache if PHP is installed
 	clearOpcacheTask := tasks.ClearOpcache()
-	if _, err := j.Deps.RunTask(j.server, clearOpcacheTask).AsUser().Dispatch(ctx); err != nil {
+	if _, err := j.Deps.RunTask(j.server, clearOpcacheTask).AsRoot().Dispatch(ctx); err != nil {
 		// OPcache clear failure is not critical, just log it
 		j.Deps.Logger.Info().
 			Msg("OPcache clear skipped or failed (may not be installed)")

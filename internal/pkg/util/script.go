@@ -16,7 +16,7 @@ type WriteConfigParams struct {
 
 // WriteConfig generates a bash script that writes a config file with proper permissions.
 // The generated script will:
-// 1. Write content to FilePath using sudo tee (works for privileged paths)
+// 1. Write content to FilePath using heredoc
 // 2. chmod 644 the file
 // 3. If LogPath provided: mkdir -p, touch, chown, chmod the log file
 // 4. If ErrorLogPath provided: same for error log
@@ -38,15 +38,15 @@ func WriteConfig(params WriteConfigParams) string {
 	b.WriteString(`#!/bin/bash
 set -euo pipefail
 
-sudo tee "`)
+cat > "`)
 	b.WriteString(params.FilePath)
-	b.WriteString(`" > /dev/null << 'CONFIGEOF'
+	b.WriteString(`" << 'CONFIGEOF'
 `)
 	b.WriteString(params.Content)
 	b.WriteString(`
 CONFIGEOF
 
-sudo chmod 644 "`)
+chmod 644 "`)
 	b.WriteString(params.FilePath)
 	b.WriteString(`"
 `)
@@ -75,6 +75,16 @@ if [ ! -f "`)
     touch "`)
 			b.WriteString(params.LogPath)
 			b.WriteString(`"
+    chown `)
+			b.WriteString(params.User)
+			b.WriteString(`:`)
+			b.WriteString(params.User)
+			b.WriteString(` "`)
+			b.WriteString(params.LogPath)
+			b.WriteString(`"
+    chmod 644 "`)
+			b.WriteString(params.LogPath)
+			b.WriteString(`"
 fi
 `)
 		}
@@ -87,9 +97,28 @@ if [ ! -f "`)
     touch "`)
 			b.WriteString(params.ErrorLogPath)
 			b.WriteString(`"
+    chown `)
+			b.WriteString(params.User)
+			b.WriteString(`:`)
+			b.WriteString(params.User)
+			b.WriteString(` "`)
+			b.WriteString(params.ErrorLogPath)
+			b.WriteString(`"
+    chmod 644 "`)
+			b.WriteString(params.ErrorLogPath)
+			b.WriteString(`"
 fi
 `)
 		}
+
+		b.WriteString(`
+# Ensure directory ownership
+chown `)
+		b.WriteString(params.User)
+		b.WriteString(`:`)
+		b.WriteString(params.User)
+		b.WriteString(` "$LOG_DIR"
+`)
 	}
 
 	b.WriteString(`

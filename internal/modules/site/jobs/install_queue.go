@@ -87,7 +87,7 @@ func (j *InstallQueueJob) Handle(ctx context.Context) error {
 		User:         queue.User,
 	})
 
-	result, err := j.Deps.RunTask(server, uploadTask).AsUser().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, uploadTask).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to upload queue config")
 		return err
@@ -99,7 +99,7 @@ func (j *InstallQueueJob) Handle(ctx context.Context) error {
 
 	// Reload supervisor
 	reloadTask := servertasks.ReloadSupervisor()
-	result, err = j.Deps.RunTask(server, reloadTask).AsUser().Dispatch(ctx)
+	result, err = j.Deps.RunTask(server, reloadTask).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("queue_id", queue.ID).Msg("Failed to reload supervisor")
 		return err

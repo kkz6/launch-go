@@ -69,7 +69,7 @@ func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 		for _, q := range queues {
 			// Delete queue config and stop process
 			deleteTask := siteFactory.DeleteQueueConfig(q.GetPath(), q.ID)
-			if _, err := j.Deps.RunTask(server, deleteTask).AsUser().Dispatch(ctx); err != nil {
+			if _, err := j.Deps.RunTask(server, deleteTask).AsRoot().Dispatch(ctx); err != nil {
 				j.Deps.Logger.Error().Err(err).Str("queue_id", q.ID).Msg("Failed to uninstall queue")
 			}
 			// Delete queue record
@@ -98,7 +98,7 @@ func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 		updateTask := tasks.UpdateCaddySiteImports(tasks.UpdateCaddySiteImportsConfig{
 			Sites: imports,
 		})
-		if _, err := j.Deps.RunTask(server, updateTask).AsUser().Dispatch(ctx); err != nil {
+		if _, err := j.Deps.RunTask(server, updateTask).AsRoot().Dispatch(ctx); err != nil {
 			j.Deps.Logger.Error().Err(err).Msg("Failed to update Caddyfile site imports")
 		}
 	}
@@ -106,7 +106,7 @@ func (j *UninstallSiteJob) Handle(ctx context.Context) error {
 	// Step 3: Delete site files from server using factory
 	deleteFilesTask := siteFactory.DeleteFiles()
 
-	result, err := j.Deps.RunTask(server, deleteFilesTask).AsUser().Dispatch(ctx)
+	result, err := j.Deps.RunTask(server, deleteFilesTask).AsRoot().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Msg("Failed to delete site files")
 	} else if result.GetExitCode() != 0 {
