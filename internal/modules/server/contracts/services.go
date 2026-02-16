@@ -48,6 +48,7 @@ type CronService interface {
 	CreateCron(ctx context.Context, serverID, teamID string, req *dto.CreateCronRequest) (*models.Cron, error)
 	UpdateCron(ctx context.Context, serverID, teamID, cronID string, req *dto.UpdateCronRequest) (*models.Cron, error)
 	DeleteCron(ctx context.Context, serverID, teamID, cronID string) error
+	CountCronsBySite(ctx context.Context, siteID string) (int64, error)
 }
 
 // DaemonService defines the interface for daemon business logic

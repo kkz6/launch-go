@@ -79,6 +79,7 @@ type CronRepository interface {
 	MarkInstallationFailed(ctx context.Context, id string) error
 	MarkUninstallationFailed(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
+	CountBySite(ctx context.Context, siteID string) (int64, error)
 }
 
 // DaemonRepository defines the interface for daemon database operations

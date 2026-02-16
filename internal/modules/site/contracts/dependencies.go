@@ -19,11 +19,13 @@ type ServerReader interface {
 	FindServicesByServer(ctx context.Context, serverID string) ([]servermodels.InstalledService, error)
 }
 
-// CronCreator provides the ability to create cron jobs.
+// CronCreator provides the ability to create and query cron jobs.
 // Used by the site module to create scheduler crons for Laravel/WordPress sites.
 type CronCreator interface {
 	// CreateCron creates a new cron job on a server
 	CreateCron(ctx context.Context, serverID, teamID string, req *serverdto.CreateCronRequest) (*servermodels.Cron, error)
+	// CountCronsBySite counts cron jobs associated with a site
+	CountCronsBySite(ctx context.Context, siteID string) (int64, error)
 }
 
 // DatabaseManager provides database creation and retrieval operations.
