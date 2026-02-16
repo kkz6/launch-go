@@ -81,8 +81,10 @@ func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, 
 	}
 
 	switch operation {
-	case types.ServiceOptionStart, types.ServiceOptionRestart:
-		return s.dispatchServiceRestartJob(server, service)
+	case types.ServiceOptionStart:
+		return s.dispatchServiceOperationJob(server, service, "start")
+	case types.ServiceOptionRestart:
+		return s.dispatchServiceOperationJob(server, service, "restart")
 	case types.ServiceOptionStop:
 		return s.dispatchServiceStopJob(server, service)
 	case types.ServiceOptionRemove:
@@ -107,12 +109,12 @@ func (s *Service) dispatchServiceInstallJob(server *models.Server, service *mode
 	return s.EnqueueTask(task)
 }
 
-func (s *Service) dispatchServiceRestartJob(server *models.Server, service *models.InstalledService) error {
+func (s *Service) dispatchServiceOperationJob(server *models.Server, service *models.InstalledService, operation string) error {
 	if !s.HasQueue() {
 		return ErrQueueNotConfigured
 	}
 
-	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, "restart", nil)
+	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, operation, nil)
 	if err != nil {
 		return err
 	}
