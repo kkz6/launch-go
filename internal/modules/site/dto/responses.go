@@ -39,6 +39,9 @@ type SiteResponse struct {
 	URL                          string                           `json:"url"`
 	ApplicationDirectory         string                           `json:"app_directory"`
 	RepositoryURL                *string                          `json:"repository_url,omitempty"`
+	EnabledFeatures              []string                         `json:"enabled_features,omitempty"`
+	PendingFeatures              []string                         `json:"pending_features,omitempty"`
+	LoadBalancedUpstreamID       *string                          `json:"load_balanced_upstream_id,omitempty"`
 	Status                       string                           `json:"status"`
 	InstalledAt                  *string                          `json:"installed_at"`
 	InstallationFailedAt         *string                          `json:"installation_failed_at"`
@@ -200,6 +203,12 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		deployWebhookURL = "/deploy/" + site.ID + "/" + *site.DeployToken
 	}
 
+	// Extract enabled feature names
+	var enabledFeatures []string
+	for _, f := range site.EnabledFeatures {
+		enabledFeatures = append(enabledFeatures, f.Name)
+	}
+
 	resp := SiteResponse{
 		ID:                           site.ID,
 		ServerID:                     site.ServerID,
@@ -228,6 +237,9 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		DeployWebhookURL:             deployWebhookURL,
 		URL:                          site.GetURL(),
 		ApplicationDirectory:         site.GetApplicationDirectory(),
+		EnabledFeatures:              enabledFeatures,
+		PendingFeatures:              site.PendingFeatures,
+		LoadBalancedUpstreamID:       site.LoadBalancedUpstreamID,
 		Status:                       string(site.Status()),
 		InstalledAt:                  pkgdto.FormatTime(site.InstalledAt),
 		InstallationFailedAt:         pkgdto.FormatTime(site.InstallationFailedAt),

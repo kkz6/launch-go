@@ -230,6 +230,8 @@ func (a *Application) registerModules() {
 	// Wire cross-module dependencies
 	siteModule.SetDomainRepository(dnsModule.Repos().Domain())
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
+	siteModule.SetCronCreator(serverModule.Service())
+	siteModule.SetDatabaseManager(databaseModule.Service())
 	serverModule.SetSiteReader(siteModule.SiteReader())
 	gitModule.SetSiteChecker(siteModule.SiteChecker())
 

@@ -57,3 +57,8 @@ func (m *Module) SetSiteReader(reader contracts.SiteReader) {
 func (m *Module) Repos() *repositories.Registry {
 	return m.repos
 }
+
+// Service returns the server service
+func (m *Module) Service() *services.Service {
+	return m.service
+}
