@@ -75,7 +75,7 @@ func (j *SyncQueuesJob) Handle(ctx context.Context) error {
 
 	// Create and run the daemon status check task
 	task := tasks.CheckDaemonStatus()
-	result, err := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
+	result, err := j.Deps.RunTask(j.server, task).AsUser().Dispatch(ctx)
 	if err != nil {
 		j.Deps.Logger.Error().Err(err).Str("site_id", j.site.ID).Msg("Failed to check daemon status")
 		return err
