@@ -319,25 +319,13 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 		s.handleQueueCreation(ctx, site, serverID, userID)
 	}
 
-	// Create initial deployment with environment variables and git commit data
+	// Create initial deployment with git commit data
 	if s.Services() != nil {
 		// Fetch git commit data if source control is configured
 		commitData := s.Services().Deployment().FetchLatestCommitData(ctx, site)
-		if commitData == nil {
-			commitData = make(map[string]any)
-		}
 
-		// Add environment variables to commit data
-		if len(envVars) > 0 {
-			commitData["env_variables"] = envVars
-		}
-
-		var deployCommitData map[string]any
-		if len(commitData) > 0 {
-			deployCommitData = commitData
-		}
-
-		deployment, err := s.Services().Deployment().createDeployment(ctx, site, userID, deployCommitData)
+		// Pass database/queue env vars through the job payload (not persisted in DB)
+		deployment, err := s.Services().Deployment().createDeployment(ctx, site, userID, commitData, envVars)
 		if err != nil {
 			s.LogError(err, "Failed to create initial deployment", "site_id", site.ID)
 		} else {

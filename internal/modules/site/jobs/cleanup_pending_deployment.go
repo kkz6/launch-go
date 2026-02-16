@@ -130,9 +130,9 @@ func (j *CleanupPendingSiteDeploymentJob) processNextQueuedDeployment(ctx contex
 	var taskErr error
 
 	if site.ZeroDowntimeDeployment {
-		task, taskErr = NewDeployZeroDowntimeTask(site.ID, nextDeployment.ID, "")
+		task, taskErr = NewDeployZeroDowntimeTask(site.ID, nextDeployment.ID, "", nil)
 	} else {
-		task, taskErr = NewDeployTask(site.ID, nextDeployment.ID, "")
+		task, taskErr = NewDeployTask(site.ID, nextDeployment.ID, "", nil)
 	}
 
 	if taskErr != nil {
