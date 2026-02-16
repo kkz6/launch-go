@@ -107,13 +107,17 @@ func (s *Service) UpdateDatabaseUser(ctx context.Context, id, serverID string, r
 		}
 	}
 
-	// Update password
-	password := &dbtype.EncryptedNullableString{}
-	password.Set(req.Password)
-	dbUser.Password = password
+	// Update password only if provided
+	var passwordForJob *string
+	if req.Password != "" {
+		password := &dbtype.EncryptedNullableString{}
+		password.Set(req.Password)
+		dbUser.Password = password
+		passwordForJob = &req.Password
 
-	if err := s.repos.User().Update(ctx, dbUser); err != nil {
-		return nil, fmt.Errorf("failed to update database user: %w", err)
+		if err := s.repos.User().Update(ctx, dbUser); err != nil {
+			return nil, fmt.Errorf("failed to update database user: %w", err)
+		}
 	}
 
 	// Sync databases
@@ -122,7 +126,7 @@ func (s *Service) UpdateDatabaseUser(ctx context.Context, id, serverID string, r
 	}
 
 	// Dispatch job to update user on server
-	s.dispatchUpdateDatabaseUser(ctx, dbUser, &req.Password, userID)
+	s.dispatchUpdateDatabaseUser(ctx, dbUser, passwordForJob, userID)
 
 	// Reload user with databases
 	dbUser, err = s.repos.User().FindByID(ctx, dbUser.ID)
