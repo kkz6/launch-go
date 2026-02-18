@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"strings"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
@@ -88,4 +90,24 @@ func (h *AuthHandler) RefreshToken(c *fiber.Ctx) error {
 	}
 
 	return fiberctx.OK(c, "Token refreshed successfully", result)
+}
+
+// TokenExchange exchanges a Personal Access Token for JWT tokens
+func (h *AuthHandler) TokenExchange(c *fiber.Ctx) error {
+	authHeader := c.Get("Authorization")
+	if authHeader == "" {
+		return fiberctx.RespondUnauthorized(c, fiberctx.MsgInvalidToken)
+	}
+
+	parts := strings.Fields(authHeader)
+	if len(parts) != 2 || !strings.EqualFold(parts[0], "Bearer") {
+		return fiberctx.RespondUnauthorized(c, fiberctx.MsgInvalidToken)
+	}
+
+	result, err := h.Service().Auth.TokenExchange(c.Context(), parts[1])
+	if err != nil {
+		return fiberctx.RespondUnauthorized(c, fiberctx.MsgInvalidToken)
+	}
+
+	return fiberctx.OK(c, "Token exchanged successfully", result)
 }

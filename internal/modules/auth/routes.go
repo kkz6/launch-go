@@ -69,6 +69,7 @@ func (m *Module) setupPublicRoutes(router fiber.Router, handler *handlers.Handle
 	router.Post("/register", authRL, handler.Auth.Register)
 	router.Post("/login", authRL, handler.Auth.Login)
 	router.Post("/refresh", handler.Auth.RefreshToken)
+	router.Post("/token", authRL, handler.Auth.TokenExchange)
 
 	// Password Reset
 	router.Post("/forgot-password", resetRL, handler.Password.ForgotPassword)
