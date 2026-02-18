@@ -30,6 +30,7 @@ type DatabaseUserResponse struct {
 	ID                        string          `json:"id"`
 	ServerID                  string          `json:"server_id"`
 	Name                      string          `json:"name"`
+	Password                  *string         `json:"password"`
 	Host                      string          `json:"host"`
 	Status                    string          `json:"status"`
 	InstalledAt               *string         `json:"installed_at,omitempty"`
@@ -84,6 +85,10 @@ func ToDatabaseUserResponse(user *models.DatabaseUser) DatabaseUserResponse {
 		UninstallationRequestedAt: pkgdto.FormatTime(user.UninstallationRequestedAt),
 		CreatedAt:                 pkgdto.FormatTimeOrEmpty(user.CreatedAt),
 		UpdatedAt:                 pkgdto.FormatTimeOrEmpty(user.UpdatedAt),
+	}
+
+	if user.Password != nil && user.Password.Valid {
+		resp.Password = &user.Password.String
 	}
 
 	for _, db := range user.Databases {
