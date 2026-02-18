@@ -1,4 +1,5 @@
 {{ shellDefaults }}
+{{ caddyReloadFunc }}
 
 # Ensure the site logs directory exists with correct ownership (Caddy runs as site user)
 LOGS_DIR="$(dirname {{ .CaddyfilePath }})/logs"
@@ -18,4 +19,4 @@ caddy fmt {{ .CaddyfilePath }}.tmp --overwrite
 mv {{ .CaddyfilePath }}.tmp {{ .CaddyfilePath }}
 
 # Reload Caddy (validates config before applying)
-sudo /usr/sbin/service caddy reload
+reloadCaddy

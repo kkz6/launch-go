@@ -1,4 +1,5 @@
 {{ shellDefaults }}
+{{ caddyReloadFunc }}
 
 echo "Updating Upstreams.caddy import file"
 
@@ -14,6 +15,6 @@ echo "Updating Upstreams.caddy import file"
 } | sudo tee /etc/caddy/Upstreams.caddy > /dev/null
 
 # Reload Caddy
-sudo /usr/sbin/service caddy reload
+reloadCaddy
 
 echo "Upstreams imports updated successfully"

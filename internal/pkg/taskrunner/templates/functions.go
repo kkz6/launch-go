@@ -17,6 +17,7 @@ var CommonFuncMap = template.FuncMap{
 	"commonFuncs":          CommonFunctions,
 	"phpPpaFunctions":      PhpPpaFunctions,
 	"taskMarkerFuncs":      TaskMarkerFunctions,
+	"caddyReloadFunc":      CaddyReloadFunction,
 	"dirName":              filepath.Dir,
 	"join":                 strings.Join,
 	"contains":             strings.Contains,
@@ -156,5 +157,29 @@ function taskSoftwareInstalled() {
 function taskError() {
     local message="$1"
     echo "::LAUNCH::error::${message}"
+}`
+}
+
+// CaddyReloadFunction returns a bash function that safely reloads Caddy.
+// It detects if Caddy is stuck in "reloading" state and restarts it instead.
+// The reload itself is wrapped with a timeout to prevent hanging.
+func CaddyReloadFunction() string {
+	return `# Safely reload Caddy with stuck-state detection and timeout
+function reloadCaddy() {
+    # Check if Caddy is stuck in "reloading" state from a previous failed reload
+    if systemctl is-active --quiet caddy && systemctl show caddy --property=ActiveState --value 2>/dev/null | grep -q "reloading"; then
+        echo "Caddy is stuck in reloading state, restarting instead..."
+        sudo systemctl restart caddy
+        return $?
+    fi
+
+    # Attempt reload with a 30-second timeout
+    if timeout 30 sudo /usr/sbin/service caddy reload 2>&1; then
+        return 0
+    fi
+
+    local exit_code=$?
+    echo "Caddy reload failed (exit code: $exit_code), restarting Caddy..."
+    sudo systemctl restart caddy
 }`
 }
