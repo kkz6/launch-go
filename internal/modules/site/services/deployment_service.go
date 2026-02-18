@@ -285,6 +285,13 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 
 	s.LogInfo("Deployment started", "site_id", site.ID, "deployment_id", deployment.ID)
 
+	s.BroadcastToTeam(site.TeamID, "deployment.started", map[string]any{
+		"team_id":       site.TeamID,
+		"site_id":       site.ID,
+		"deployment_id": deployment.ID,
+		"status":        string(deployment.Status),
+	})
+
 	return deployment, nil
 }
 
