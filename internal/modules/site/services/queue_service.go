@@ -160,6 +160,29 @@ func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID str
 	return nil
 }
 
+// Restart restarts a single queue worker
+func (s *QueueService) Restart(ctx context.Context, queueID, siteID, serverID, userID string) error {
+	queue, err := s.Repos().Queue().FindByIDAndSite(ctx, queueID, siteID)
+	if err != nil {
+		return err
+	}
+
+	task, err := jobs.NewRestartQueueTask(queue.SiteID, queue.ID, stringToPtr(userID))
+	if err != nil {
+		s.LogError(err, "Failed to create restart queue task")
+		return err
+	}
+
+	if err := s.EnqueueTask(task); err != nil {
+		s.LogError(err, "Failed to enqueue restart queue job")
+		return err
+	}
+
+	s.LogInfo("Queue restart initiated", "queue_id", queueID)
+
+	return nil
+}
+
 // UpdateAutoRestart updates the auto-restart queue setting
 func (s *QueueService) UpdateAutoRestart(ctx context.Context, siteID, serverID string, enabled bool) error {
 	// Verify site exists and belongs to server

@@ -97,6 +97,35 @@ func (h *QueueHandler) DeleteQueue(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Queue deletion initiated", nil)
 }
 
+// RestartQueue restarts a single queue worker
+func (h *QueueHandler) RestartQueue(c *fiber.Ctx) error {
+	serverID, err := fiberctx.GetServerID(c)
+	if err != nil {
+		return err
+	}
+
+	siteID, err := fiberctx.GetSiteID(c)
+	if err != nil {
+		return err
+	}
+
+	queueID, err := fiberctx.GetULIDParam(c, "queueId")
+	if err != nil {
+		return err
+	}
+
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	if err := h.queueService.Restart(c.Context(), queueID, siteID, serverID, userID); err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return fiberctx.OK(c, "Queue restart initiated", nil)
+}
+
 // UpdateAutoRestartQueue updates the auto-restart queue setting
 func (h *QueueHandler) UpdateAutoRestartQueue(c *fiber.Ctx) error {
 	serverID, err := fiberctx.GetServerID(c)
