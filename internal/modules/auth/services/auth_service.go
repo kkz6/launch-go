@@ -2,6 +2,8 @@ package services
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -317,6 +319,34 @@ func (s *AuthService) LoginWithPasskey(ctx context.Context, user *models.User, i
 	}
 
 	return s.buildAuthResponse(ctx, user, sessionID)
+}
+
+// TokenExchange validates a Personal Access Token and returns JWT tokens
+func (s *AuthService) TokenExchange(ctx context.Context, token string) (*dto.AuthResponse, error) {
+	hash := sha256.Sum256([]byte(token))
+	hashedToken := hex.EncodeToString(hash[:])
+
+	pat, err := s.repos.PersonalAccessToken().FindByToken(ctx, hashedToken)
+	if err != nil {
+		return nil, fiberutil.Unauthorized()
+	}
+
+	if pat == nil {
+		return nil, fiberutil.Unauthorized()
+	}
+
+	if pat.IsExpired() {
+		return nil, fiberutil.Unauthorized()
+	}
+
+	_ = s.repos.PersonalAccessToken().UpdateLastUsed(ctx, pat.ID)
+
+	user, err := s.repos.User().FindByID(ctx, pat.TokenableID)
+	if err != nil || user == nil {
+		return nil, fiberutil.Unauthorized()
+	}
+
+	return s.buildAuthResponse(ctx, user, "")
 }
 
 // handleInvitation handles team invitation during registration
