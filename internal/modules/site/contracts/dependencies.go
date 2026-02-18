@@ -35,6 +35,8 @@ type DatabaseManager interface {
 	CreateDatabase(ctx context.Context, serverID, teamID string, req *databasedto.CreateDatabaseRequest, userID *string) (*databasemodels.Database, error)
 	// GetDatabase retrieves a database by ID with server and team validation
 	GetDatabase(ctx context.Context, id, serverID, teamID string) (*databasemodels.Database, error)
+	// GetDatabaseUser retrieves a database user by ID and server
+	GetDatabaseUser(ctx context.Context, id, serverID string) (*databasemodels.DatabaseUser, error)
 }
 
 // GitReader provides read-only access to git/source control data.
