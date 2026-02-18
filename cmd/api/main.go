@@ -112,7 +112,8 @@ func bootstrap() *Application {
 	wsSubscriber := websocket.NewRedisSubscriber(cfg.Redis.Address, cfg.Redis.Password, cfg.Redis.DB, wsHub, appLogger)
 	wsSubscriber.Start()
 
-	dispatcher := taskrunner.NewDispatcher(appLogger, wsHub)
+	taskLogger := logger.NewFileLogger(cfg.App.Debug)
+	dispatcher := taskrunner.NewDispatcherWithTaskLogger(appLogger, wsHub, taskLogger)
 
 	// Initialize Redis cache for team membership
 	redisCache := cache.NewRedisCache(cfg.Redis)

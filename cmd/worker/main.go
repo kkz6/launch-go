@@ -69,8 +69,10 @@ func main() {
 	redisBroadcaster := websocket.NewRedisBroadcaster(cfg.Redis.Address, cfg.Redis.Password, cfg.Redis.DB, appLogger)
 
 	// Initialize task dispatcher with SSH streaming
+	taskLogger := logger.NewFileLogger(cfg.App.Debug)
 	dispatcher := taskrunner.NewDispatcherWithConfig(appLogger, redisBroadcaster, &taskrunner.DispatcherConfig{
 		BroadcastInterval: 2 * time.Second,
+		TaskLogger:        taskLogger,
 	})
 
 	// Initialize queue client for dispatching jobs from within jobs

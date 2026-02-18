@@ -2,7 +2,9 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -113,6 +115,51 @@ func NewWithConfig(env string, debug bool) *zerolog.Logger {
 	}
 
 	return New(env)
+}
+
+// NewFileLogger creates a zerolog logger that writes to storage/logs/taskrunner.log.
+// When debug is false, returns a disabled (no-op) logger.
+func NewFileLogger(debug bool) *zerolog.Logger {
+	if !debug {
+		l := zerolog.Nop()
+		return &l
+	}
+
+	logDir := "storage/logs"
+	if err := os.MkdirAll(logDir, 0755); err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "failed to create log directory %s: %v\n", logDir, err)
+		l := zerolog.Nop()
+		return &l
+	}
+
+	logPath := filepath.Join(logDir, "taskrunner.log")
+	file, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	if err != nil {
+		_, _ = fmt.Fprintf(os.Stderr, "failed to open log file %s: %v\n", logPath, err)
+		l := zerolog.Nop()
+		return &l
+	}
+
+	output := zerolog.ConsoleWriter{
+		Out:        file,
+		TimeFormat: "2006-01-02 15:04:05",
+		NoColor:    true,
+	}
+
+	l := zerolog.New(output).With().Timestamp().Logger().Level(zerolog.DebugLevel)
+	return &l
+}
+
+// NewFileLoggerWithWriter creates a file logger writing to the given writer (for testing).
+func NewFileLoggerWithWriter(w io.Writer) *zerolog.Logger {
+	output := zerolog.ConsoleWriter{
+		Out:        w,
+		TimeFormat: "2006-01-02 15:04:05",
+		NoColor:    true,
+	}
+
+	l := zerolog.New(output).With().Timestamp().Logger().Level(zerolog.DebugLevel)
+	return &l
 }
 
 // FormatDuration formats a duration for display
