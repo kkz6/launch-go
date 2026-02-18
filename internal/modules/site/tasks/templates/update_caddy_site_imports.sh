@@ -1,5 +1,7 @@
-# Update Caddy site imports
+{{ shellDefaults }}
+{{ caddyReloadFunc }}
 
+# Update Caddy site imports
 {
     echo "# import /home/user/example.com/Caddyfile"
 
@@ -10,4 +12,4 @@
 } | sudo tee /etc/caddy/Sites.caddy > /dev/null
 
 # Reload Caddy
-sudo /usr/sbin/service caddy reload
+reloadCaddy

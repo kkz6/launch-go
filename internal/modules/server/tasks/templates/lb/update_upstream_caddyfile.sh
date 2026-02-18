@@ -1,4 +1,5 @@
 {{ shellDefaults }}
+{{ caddyReloadFunc }}
 
 echo "Updating upstream Caddyfile at {{ .CaddyfilePath }}"
 
@@ -17,6 +18,6 @@ caddy fmt "{{ .CaddyfilePath }}.tmp" --overwrite
 mv "{{ .CaddyfilePath }}.tmp" "{{ .CaddyfilePath }}"
 
 # Reload Caddy (validates config before applying)
-sudo /usr/sbin/service caddy reload
+reloadCaddy
 
 echo "Upstream Caddyfile updated successfully"
