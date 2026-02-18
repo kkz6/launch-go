@@ -31,13 +31,15 @@ type TaskDispatcher interface {
 // Dispatcher handles task execution
 type Dispatcher struct {
 	logger        *zerolog.Logger
+	taskLogger    *zerolog.Logger
 	ws            SimpleBroadcaster
 	streamMonitor *StreamMonitor
 }
 
 // DispatcherConfig holds configuration for the dispatcher
 type DispatcherConfig struct {
-	BroadcastInterval time.Duration // How often to broadcast output updates
+	BroadcastInterval time.Duration   // How often to broadcast output updates
+	TaskLogger        *zerolog.Logger // Optional file logger for task output
 }
 
 // NewDispatcher creates a new task dispatcher
@@ -49,18 +51,33 @@ func NewDispatcher(logger *zerolog.Logger, ws SimpleBroadcaster) *Dispatcher {
 	}
 }
 
+// NewDispatcherWithTaskLogger creates a new task dispatcher with a file logger for task output
+func NewDispatcherWithTaskLogger(logger *zerolog.Logger, ws SimpleBroadcaster, taskLogger *zerolog.Logger) *Dispatcher {
+	return &Dispatcher{
+		logger:        logger,
+		taskLogger:    taskLogger,
+		ws:            ws,
+		streamMonitor: NewStreamMonitor(logger, ws, &StreamMonitorConfig{TaskLogger: taskLogger}),
+	}
+}
+
 // NewDispatcherWithConfig creates a new dispatcher with configuration
 func NewDispatcherWithConfig(logger *zerolog.Logger, ws SimpleBroadcaster, cfg *DispatcherConfig) *Dispatcher {
 	var broadcastInterval time.Duration
+	var taskLogger *zerolog.Logger
+
 	if cfg != nil {
 		broadcastInterval = cfg.BroadcastInterval
+		taskLogger = cfg.TaskLogger
 	}
 
 	return &Dispatcher{
-		logger: logger,
-		ws:     ws,
+		logger:     logger,
+		taskLogger: taskLogger,
+		ws:         ws,
 		streamMonitor: NewStreamMonitor(logger, ws, &StreamMonitorConfig{
 			BroadcastInterval: broadcastInterval,
+			TaskLogger:        taskLogger,
 		}),
 	}
 }
@@ -111,9 +128,12 @@ func (d *Dispatcher) runLocal(ctx context.Context, pt *PendingTask) (*TaskResult
 		FinishedAt: time.Now(),
 	}
 
+	d.logTaskOutput(pt.TaskID, "local", result.Output)
+
 	if ctx.Err() == context.DeadlineExceeded {
 		result.TimedOut = true
 		result.ExitCode = 124
+		d.logTaskEvent(pt.TaskID, "local", "timeout")
 		pt.Task.OnTimeout(ctx, result)
 		return result, nil
 	}
@@ -125,10 +145,12 @@ func (d *Dispatcher) runLocal(ctx context.Context, pt *PendingTask) (*TaskResult
 			result.Error = err
 			result.ExitCode = 1
 		}
+		d.logTaskEvent(pt.TaskID, "local", fmt.Sprintf("failed (exit_code=%d)", result.ExitCode))
 		pt.Task.OnFailed(ctx, result)
 		return result, nil
 	}
 
+	d.logTaskEvent(pt.TaskID, "local", "finished")
 	pt.Task.OnFinished(ctx, result)
 	return result, nil
 }
@@ -184,6 +206,8 @@ func (d *Dispatcher) runRemote(ctx context.Context, pt *PendingTask) (*TaskResul
 		Bool("background", pt.Background).
 		Msg("runRemote: script uploaded, starting execution")
 
+	d.logTaskEvent(pt.TaskID, conn.Host, fmt.Sprintf("started task=%s background=%v", pt.Task.Name(), pt.Background))
+
 	startTime := time.Now()
 
 	if pt.Background {
@@ -228,18 +252,23 @@ func (d *Dispatcher) runRemoteForeground(
 		result.Error = err
 	}
 
+	d.logTaskOutput(pt.TaskID, pt.Connection.Host, result.Output)
+
 	// Exit code 124 means timeout
 	if result.ExitCode == 124 {
 		result.TimedOut = true
+		d.logTaskEvent(pt.TaskID, pt.Connection.Host, "timeout")
 		pt.Task.OnTimeout(ctx, result)
 		return result, nil
 	}
 
 	if result.ExitCode != 0 || result.Error != nil {
+		d.logTaskEvent(pt.TaskID, pt.Connection.Host, fmt.Sprintf("failed (exit_code=%d)", result.ExitCode))
 		pt.Task.OnFailed(ctx, result)
 		return result, nil
 	}
 
+	d.logTaskEvent(pt.TaskID, pt.Connection.Host, "finished")
 	pt.Task.OnFinished(ctx, result)
 	return result, nil
 }
@@ -417,4 +446,33 @@ func (d *Dispatcher) CheckTaskStatus(ctx context.Context, conn *Connection, pid 
 	// Process finished - try to get exit code from wait
 	// This is tricky for background processes, typically need to store in file
 	return false, 0, nil
+}
+
+// logTaskOutput writes task output lines to the file logger
+func (d *Dispatcher) logTaskOutput(taskID, host, output string) {
+	if d.taskLogger == nil {
+		return
+	}
+
+	for _, line := range strings.Split(output, "\n") {
+		if line == "" {
+			continue
+		}
+		d.taskLogger.Debug().
+			Str("task_id", taskID).
+			Str("host", host).
+			Msg(line)
+	}
+}
+
+// logTaskEvent writes a task lifecycle event to the file logger
+func (d *Dispatcher) logTaskEvent(taskID, host, event string) {
+	if d.taskLogger == nil {
+		return
+	}
+
+	d.taskLogger.Info().
+		Str("task_id", taskID).
+		Str("host", host).
+		Msg(event)
 }

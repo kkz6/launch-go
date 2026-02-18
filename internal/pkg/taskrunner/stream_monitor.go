@@ -36,6 +36,7 @@ func (f MarkerHandlerFunc) OnMarker(ctx context.Context, taskID string, marker *
 // StreamMonitor monitors task output via persistent SSH connection
 type StreamMonitor struct {
 	logger            *zerolog.Logger
+	taskLogger        *zerolog.Logger
 	wsHub             SimpleBroadcaster
 	broadcastInterval time.Duration
 	activeStreams     map[string]context.CancelFunc
@@ -45,24 +46,28 @@ type StreamMonitor struct {
 
 // StreamMonitorConfig holds configuration for the stream monitor
 type StreamMonitorConfig struct {
-	BroadcastInterval time.Duration // How often to broadcast accumulated output
-	MarkerHandler     MarkerHandler // Optional handler for markers
+	BroadcastInterval time.Duration   // How often to broadcast accumulated output
+	MarkerHandler     MarkerHandler   // Optional handler for markers
+	TaskLogger        *zerolog.Logger // Optional file logger for task output
 }
 
 // NewStreamMonitor creates a new stream monitor
 func NewStreamMonitor(logger *zerolog.Logger, wsHub SimpleBroadcaster, cfg *StreamMonitorConfig) *StreamMonitor {
 	interval := 2 * time.Second
 	var markerHandler MarkerHandler
+	var taskLogger *zerolog.Logger
 
 	if cfg != nil {
 		if cfg.BroadcastInterval > 0 {
 			interval = cfg.BroadcastInterval
 		}
 		markerHandler = cfg.MarkerHandler
+		taskLogger = cfg.TaskLogger
 	}
 
 	return &StreamMonitor{
 		logger:            logger,
+		taskLogger:        taskLogger,
 		wsHub:             wsHub,
 		broadcastInterval: interval,
 		activeStreams:     make(map[string]context.CancelFunc),
@@ -166,6 +171,8 @@ func (m *StreamMonitor) StreamTaskOutput(
 	var finalStatus string
 
 	err = sshClient.StreamOutput(streamCtx, tailCmd, func(line string) error {
+		m.logOutputLine(taskID, conn.Host, line)
+
 		// Check for markers
 		if marker := markers.Parse(line); marker != nil {
 			return m.handleMarker(streamCtx, taskID, marker, &exitCode, &finalStatus)
@@ -432,6 +439,8 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 	var exitCode int
 	var finalStatus string
 
+	m.logTaskEvent(taskID, conn.Host, "started")
+
 	lineCount := 0
 	err = sshClient.StreamOutput(streamCtx, tailCmd, func(line string) error {
 		lineCount++
@@ -441,6 +450,8 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 				Int("line_count", lineCount).
 				Msg("MonitorBackgroundTask: received line from tail -f")
 		}
+
+		m.logOutputLine(taskID, conn.Host, line)
 
 		// Check for markers - process them in real-time
 		if marker := markers.Parse(line); marker != nil {
@@ -518,6 +529,8 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 		onComplete(result)
 	}
 
+	m.logTaskEvent(taskID, conn.Host, fmt.Sprintf("completed status=%s exit_code=%d", result.Status, result.ExitCode))
+
 	m.logger.Info().
 		Str("task_id", taskID).
 		Str("status", result.Status).
@@ -525,4 +538,28 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 		Msg("Background task monitoring completed")
 
 	return nil
+}
+
+// logOutputLine writes a single output line to the task file logger
+func (m *StreamMonitor) logOutputLine(taskID, host, line string) {
+	if m.taskLogger == nil {
+		return
+	}
+
+	m.taskLogger.Debug().
+		Str("task_id", taskID).
+		Str("host", host).
+		Msg(line)
+}
+
+// logTaskEvent writes a task lifecycle event to the task file logger
+func (m *StreamMonitor) logTaskEvent(taskID, host, event string) {
+	if m.taskLogger == nil {
+		return
+	}
+
+	m.taskLogger.Info().
+		Str("task_id", taskID).
+		Str("host", host).
+		Msg(event)
 }
