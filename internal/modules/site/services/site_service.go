@@ -369,6 +369,22 @@ func (s *SiteService) handleDatabaseCreation(ctx context.Context, site *models.S
 				envVars[envVarNames["port"]] = dbInfo.Port
 			}
 		}
+
+		// Fetch database user credentials
+		if req.DatabaseUserID != nil && s.databaseManager != nil {
+			dbUser, err := s.databaseManager.GetDatabaseUser(ctx, *req.DatabaseUserID, serverID)
+			if err != nil {
+				s.LogError(err, "Failed to fetch database user for existing database", "user_id", *req.DatabaseUserID)
+			} else {
+				if envVarNames["username"] != "" {
+					envVars[envVarNames["username"]] = dbUser.Name
+				}
+				if envVarNames["password"] != "" && dbUser.Password != nil && dbUser.Password.Valid {
+					envVars[envVarNames["password"]] = dbUser.Password.String
+				}
+			}
+		}
+
 		return envVars
 	}
 
@@ -413,13 +429,25 @@ func (s *SiteService) handleDatabaseCreation(ctx context.Context, site *models.S
 		envVars[envVarNames["port"]] = dbType.Port()
 	}
 
-	// Add user credentials if new user was created
+	// Add user credentials
 	if req.DatabaseUserOption == "new" && req.DatabaseUserName != nil && req.DatabaseUserPassword != nil {
 		if envVarNames["username"] != "" {
 			envVars[envVarNames["username"]] = *req.DatabaseUserName
 		}
 		if envVarNames["password"] != "" {
 			envVars[envVarNames["password"]] = *req.DatabaseUserPassword
+		}
+	} else if req.DatabaseUserOption == "existing" && req.DatabaseUserID != nil {
+		dbUser, err := s.databaseManager.GetDatabaseUser(ctx, *req.DatabaseUserID, serverID)
+		if err != nil {
+			s.LogError(err, "Failed to fetch existing database user", "user_id", *req.DatabaseUserID)
+		} else {
+			if envVarNames["username"] != "" {
+				envVars[envVarNames["username"]] = dbUser.Name
+			}
+			if envVarNames["password"] != "" && dbUser.Password != nil && dbUser.Password.Valid {
+				envVars[envVarNames["password"]] = dbUser.Password.String
+			}
 		}
 	}
 
