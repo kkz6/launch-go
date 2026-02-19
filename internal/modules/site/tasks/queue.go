@@ -120,7 +120,15 @@ func RestartQueue(programName string) *taskrunner.BaseTask {
 	script := `#!/bin/bash
 set -euo pipefail
 
-supervisorctl restart "` + programName + `":*
+# Stop the process first (handles FATAL state from previous failed starts)
+supervisorctl stop "` + programName + `":* 2>/dev/null || true
+
+# Reread and update configs in case they changed
+supervisorctl reread
+supervisorctl update
+
+# Start the process
+supervisorctl start "` + programName + `":*
 echo "Queue restarted successfully"
 `
 	return taskrunner.NewBaseTask(
@@ -135,9 +143,22 @@ func RestartAllQueues(queueIDs []string) *taskrunner.BaseTask {
 	script := `#!/bin/bash
 set -euo pipefail
 
+# Stop all queue processes first (handles FATAL state from previous failed starts)
 `
 	for _, id := range queueIDs {
-		script += fmt.Sprintf(`supervisorctl restart "%s":* 2>/dev/null || echo "Queue %s not found or already stopped"
+		script += fmt.Sprintf(`supervisorctl stop "%s":* 2>/dev/null || true
+`, id)
+	}
+
+	script += `
+# Reread and update configs
+supervisorctl reread
+supervisorctl update
+
+# Start all queue processes
+`
+	for _, id := range queueIDs {
+		script += fmt.Sprintf(`supervisorctl start "%s":* 2>/dev/null || echo "Queue %s failed to start"
 `, id, id)
 	}
 

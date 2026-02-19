@@ -62,8 +62,12 @@ func (j *EnableLaravelQueueJob) Handle(ctx context.Context) error {
 		return err
 	}
 
-	if err := j.DispatchInstallQueue(ctx, queue.ID, site.ID, j.Payload.UserID); err != nil {
-		return err
+	// Only install the queue on the server if the site has been deployed
+	// Otherwise, the deploy callback will install pending queues after the first deployment
+	if site.InstalledAt != nil {
+		if err := j.DispatchInstallQueue(ctx, queue.ID, site.ID, j.Payload.UserID); err != nil {
+			return err
+		}
 	}
 
 	j.EnableFeature(ctx, site, FeatureQueue, &queue.ID, nil)
@@ -83,8 +87,11 @@ func (j *EnableLaravelQueueJob) createQueueWithConfig(ctx context.Context, site 
 	restSecondsOnEmpty := 3
 	failedJobDelaySeconds := 3
 
+	appDir := site.GetApplicationDirectory()
+
 	queue := &models.Queue{
 		Command:               command,
+		Directory:             &appDir,
 		User:                  site.User,
 		QueueConnection:       "database",
 		QueueName:             "default",
