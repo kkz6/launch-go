@@ -160,9 +160,10 @@ func (t *deploySiteTask) OnSuccess(ctx context.Context, cbCtx *taskrunner.Callba
 	// Update deployment status on git provider (GitHub/GitLab deployment status)
 	t.dispatchUpdateProviderDeploymentStatus(cbCtx, "success")
 
-	// If first deployment, dispatch InstallCaddyfile job
+	// If first deployment, dispatch InstallCaddyfile job and install pending queues
 	if t.callback.IsFirstDeploy {
 		t.dispatchInstallCaddyfile(cbCtx)
+		t.installPendingQueues(ctx, cbCtx)
 	}
 
 	// Analyze Laravel features for Laravel sites
@@ -427,6 +428,19 @@ func (t *deploySiteTask) processNextQueuedDeployment(ctx context.Context, cbCtx 
 		"site_id":       t.callback.SiteID,
 		"deployment_id": nextDeployment.ID,
 	}, taskID)
+}
+
+// installPendingQueues installs any queues that were created before the first deployment
+func (t *deploySiteTask) installPendingQueues(ctx context.Context, cbCtx *taskrunner.CallbackContext) {
+	var queues []models.Queue
+	cbCtx.DB.Where("site_id = ? AND installed_at IS NULL AND installation_failed_at IS NULL", t.callback.SiteID).Find(&queues)
+
+	for _, q := range queues {
+		t.dispatchJob(cbCtx, "site:install_queue", map[string]string{
+			"site_id":  t.callback.SiteID,
+			"queue_id": q.ID,
+		}, fmt.Sprintf("install_queue:%s:%s", t.callback.SiteID, q.ID))
+	}
 }
 
 // restartQueueWorkers restarts queue workers after deployment

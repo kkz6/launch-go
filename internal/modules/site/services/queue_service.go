@@ -101,18 +101,21 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 		return nil, err
 	}
 
-	// Dispatch queue installation job
-	userIDPtr := stringToPtr(userID)
+	// Only install the queue on the server if the site has been deployed
+	// Otherwise, the deploy callback will install pending queues after the first deployment
+	if site.InstalledAt != nil {
+		userIDPtr := stringToPtr(userID)
 
-	task, err := jobs.NewInstallQueueTask(site.ID, queueModel.ID, userIDPtr)
-	if err != nil {
-		s.LogError(err, "Failed to create install queue task")
-		return nil, err
-	}
+		task, err := jobs.NewInstallQueueTask(site.ID, queueModel.ID, userIDPtr)
+		if err != nil {
+			s.LogError(err, "Failed to create install queue task")
+			return nil, err
+		}
 
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue install queue job")
-		return nil, err
+		if err := s.EnqueueTask(task); err != nil {
+			s.LogError(err, "Failed to enqueue install queue job")
+			return nil, err
+		}
 	}
 
 	s.LogInfo("Queue created", "site_id", site.ID, "queue_id", queueModel.ID)
