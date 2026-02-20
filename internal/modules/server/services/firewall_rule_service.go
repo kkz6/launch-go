@@ -72,27 +72,6 @@ func (s *Service) UpdateFirewallRule(ctx context.Context, serverID, teamID, rule
 		rule.Name = *req.Name
 	}
 
-	if req.Action != nil {
-		action, err := types.ParseRuleAction(*req.Action)
-		if err != nil {
-			return nil, err
-		}
-
-		rule.Action = action
-	}
-
-	if req.Port != nil {
-		rule.Port = *req.Port
-	}
-
-	if req.FromIPv4 != nil {
-		rule.FromIPv4 = req.FromIPv4
-	}
-
-	if req.Mask != nil {
-		rule.Mask = req.Mask
-	}
-
 	if req.Note != nil {
 		rule.Note = req.Note
 	}

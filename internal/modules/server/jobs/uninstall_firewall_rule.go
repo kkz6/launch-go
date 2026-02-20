@@ -94,9 +94,9 @@ func (j *UninstallFirewallRuleJob) Failed(ctx context.Context, err error) {
 		Str("server_id", j.Payload.ServerID).
 		Msg("Failed to uninstall firewall rule")
 
-	// Mark uninstallation as failed
-	if markErr := j.Deps.Repos.FirewallRule().MarkAsFailed(ctx, j.Payload.RuleID); markErr != nil {
-		j.Deps.Logger.Error().Err(markErr).Msg("Failed to mark firewall rule failure")
+	// Mark uninstallation as failed (clears uninstallation_requested_at, sets uninstallation_failed_at)
+	if markErr := j.Deps.Repos.FirewallRule().MarkUninstallationFailed(ctx, j.Payload.RuleID); markErr != nil {
+		j.Deps.Logger.Error().Err(markErr).Msg("Failed to mark firewall rule uninstallation failure")
 	}
 }
 
