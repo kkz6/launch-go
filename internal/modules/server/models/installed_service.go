@@ -17,7 +17,7 @@ type InstalledService struct {
 	Name      string              `gorm:"type:varchar(255);not null" json:"name"`
 	Version   string              `gorm:"type:varchar(255);not null" json:"version"`
 	Status    types.ServiceStatus `gorm:"type:varchar(255);not null" json:"status"`
-	IsDefault bool                `gorm:"column:is_default;type:tinyint(1);not null;default:1" json:"is_default"`
+	IsDefault bool                `gorm:"column:is_default;type:tinyint(1);not null" json:"is_default"`
 	Unit      *string             `gorm:"type:varchar(255)" json:"unit,omitempty"`
 	Software  string              `gorm:"type:varchar(255);not null" json:"software"`
 	TaskID    *string             `gorm:"column:task_id;type:char(26);index" json:"task_id,omitempty"`
