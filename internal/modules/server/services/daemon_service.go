@@ -230,13 +230,6 @@ func (s *Service) SyncDaemonsStatus(ctx context.Context, serverID, teamID string
 		return nil
 	}
 
-	// Batch update last status check time for all daemons on this server
-	now := time.Now()
-	if err := s.repos.Daemon().UpdateLastStatusCheckByServer(ctx, serverID, now); err != nil {
-		s.LogError(err, "Failed to batch update daemon last status check", "server_id", serverID)
-		return err
-	}
-
 	// Dispatch the sync job to check supervisor status on the server
 	task, err := jobs.NewSyncDaemonsTask(server.ID, userID)
 	if err != nil {
