@@ -346,8 +346,6 @@ func TestGenerateStandardCaddyfile_WwwSite(t *testing.T) {
 	}
 }
 
-func intPtr(i int) *int { return &i }
-
 // TestGenerateStandardCaddyfile_OctaneReverseProxy verifies that a site with Octane enabled
 // generates a reverse_proxy directive instead of php_fastcgi.
 func TestGenerateStandardCaddyfile_OctaneReverseProxy(t *testing.T) {
