@@ -1,6 +1,8 @@
 package site
 
 import (
+	"time"
+
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/middleware"
@@ -67,8 +69,9 @@ func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 
 	// Deployment webhook - triggered by git providers (GitHub, GitLab, Bitbucket)
 	// URL: /deploy/:siteId/:token
-	router.Post("/deploy/:siteId/:token", h.Webhook.DeployWebhook)
-	router.Get("/deploy/:siteId/:token", h.Webhook.DeployWebhook) // Some providers use GET
+	rl := middleware.RateLimit(10, time.Minute)
+	router.Post("/deploy/:siteId/:token", rl, h.Webhook.DeployWebhook)
+	router.Get("/deploy/:siteId/:token", rl, h.Webhook.DeployWebhook) // Some providers use GET
 }
 
 // DomainRepository returns the domain repository for cross-module access
