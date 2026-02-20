@@ -53,6 +53,22 @@ func (h *TeamMemberHandler) AcceptTeamInvitation(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Invitation accepted", nil)
 }
 
+// ResendTeamInvitation resends a pending team invitation email
+func (h *TeamMemberHandler) ResendTeamInvitation(c *fiber.Ctx) error {
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
+	teamID := c.Params("teamId")
+	invitationID := c.Params("invitationId")
+
+	if err := h.Service().TeamMember.ResendTeamInvitation(c.Context(), userID, teamID, invitationID); err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return fiberctx.OK(c, "Invitation resent", nil)
+}
+
 // CancelTeamInvitation cancels a team invitation
 func (h *TeamMemberHandler) CancelTeamInvitation(c *fiber.Ctx) error {
 	userID, err := fiberctx.MustGetUserID(c)
