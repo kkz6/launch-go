@@ -471,7 +471,7 @@ func (s *Service) createPhpServerServices(ctx context.Context, server *models.Se
 	}
 
 	for _, sw := range baseSoftware {
-		if err := s.createService(ctx, server.ID, sw); err != nil {
+		if err := s.createService(ctx, server.ID, sw, false); err != nil {
 			return fmt.Errorf("failed to create service %s: %w", sw, err)
 		}
 	}
@@ -489,7 +489,7 @@ func (s *Service) createPhpServerServices(ctx context.Context, server *models.Se
 			// Default to MySQL 8.0 if not specified
 			dbSoftware = types.SoftwareMySQL80
 		}
-		if err := s.createService(ctx, server.ID, dbSoftware); err != nil {
+		if err := s.createService(ctx, server.ID, dbSoftware, false); err != nil {
 			return fmt.Errorf("failed to create database service: %w", err)
 		}
 	}
@@ -508,19 +508,19 @@ func (s *Service) createPhpServerServices(ctx context.Context, server *models.Se
 			// Default to PHP 8.3 if not specified
 			phpSoftware = types.SoftwarePhp83
 		}
-		if err := s.createService(ctx, server.ID, phpSoftware); err != nil {
+		if err := s.createService(ctx, server.ID, phpSoftware, true); err != nil {
 			return fmt.Errorf("failed to create PHP service: %w", err)
 		}
 
 		// Add Composer (requires PHP)
-		if err := s.createService(ctx, server.ID, types.SoftwareComposer2); err != nil {
+		if err := s.createService(ctx, server.ID, types.SoftwareComposer2, false); err != nil {
 			return fmt.Errorf("failed to create Composer service: %w", err)
 		}
 	}
 
 	// Add Launch Agent if install_agent is not explicitly false
 	if req.InstallAgent == nil || *req.InstallAgent {
-		if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent); err != nil {
+		if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent, false); err != nil {
 			return fmt.Errorf("failed to create Launch Agent service: %w", err)
 		}
 	}
@@ -542,14 +542,14 @@ func (s *Service) createDatabaseServerServices(ctx context.Context, server *mode
 		} else {
 			dbSoftware = types.SoftwareMySQL80
 		}
-		if err := s.createService(ctx, server.ID, dbSoftware); err != nil {
+		if err := s.createService(ctx, server.ID, dbSoftware, false); err != nil {
 			return fmt.Errorf("failed to create database service: %w", err)
 		}
 	}
 
 	// Add Launch Agent if install_agent is not explicitly false
 	if req.InstallAgent == nil || *req.InstallAgent {
-		if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent); err != nil {
+		if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent, false); err != nil {
 			return fmt.Errorf("failed to create Launch Agent service: %w", err)
 		}
 	}
@@ -560,13 +560,13 @@ func (s *Service) createDatabaseServerServices(ctx context.Context, server *mode
 // createLoadBalancerServerServices creates services for a Load Balancer server type
 func (s *Service) createLoadBalancerServerServices(ctx context.Context, server *models.Server, req *dto.CreateServerRequest) error {
 	// Load balancer only needs Caddy configured for reverse proxy
-	if err := s.createService(ctx, server.ID, types.SoftwareCaddy2LB); err != nil {
+	if err := s.createService(ctx, server.ID, types.SoftwareCaddy2LB, false); err != nil {
 		return fmt.Errorf("failed to create Caddy LB service: %w", err)
 	}
 
 	// Add Launch Agent if not explicitly disabled
 	if req.InstallAgent == nil || *req.InstallAgent {
-		if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent); err != nil {
+		if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent, false); err != nil {
 			return fmt.Errorf("failed to create Launch Agent service: %w", err)
 		}
 	}
@@ -575,13 +575,14 @@ func (s *Service) createLoadBalancerServerServices(ctx context.Context, server *
 }
 
 // createService creates a single service record for a server
-func (s *Service) createService(ctx context.Context, serverID string, software types.Software) error {
+func (s *Service) createService(ctx context.Context, serverID string, software types.Software, isDefault bool) error {
 	service := &models.InstalledService{
-		Type:     software.GetServiceType(),
-		Name:     software.Label(),
-		Version:  software.GetVersion(),
-		Status:   types.ServiceStatusPending,
-		Software: software.String(),
+		Type:      software.GetServiceType(),
+		Name:      software.Label(),
+		Version:   software.GetVersion(),
+		Status:    types.ServiceStatusPending,
+		Software:  software.String(),
+		IsDefault: isDefault,
 	}
 	service.ServerID = serverID
 
