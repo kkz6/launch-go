@@ -27,7 +27,6 @@ func NewPersonalAccessTokenRepository(db *gorm.DB) *PersonalAccessTokenRepositor
 func (r *PersonalAccessTokenRepository) FindByToken(ctx context.Context, token string) (*models.PersonalAccessToken, error) {
 	var pat models.PersonalAccessToken
 	err := r.DB.WithContext(ctx).
-		Preload("User").
 		First(&pat, "token = ?", token).Error
 
 	if err != nil {
