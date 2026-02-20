@@ -14,6 +14,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
 // DeploymentService handles business logic for deployments
@@ -431,7 +432,7 @@ func (s *DeploymentService) DeployFromWebhook(ctx context.Context, siteID, token
 	}
 
 	// Validate deploy token
-	if site.DeployToken == nil || *site.DeployToken != token {
+	if site.DeployToken == nil || !security.SecureCompare(*site.DeployToken, token) {
 		return ErrInvalidDeployToken
 	}
 
