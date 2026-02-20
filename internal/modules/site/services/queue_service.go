@@ -215,12 +215,6 @@ func (s *QueueService) SyncStatus(ctx context.Context, siteID, serverID, userID 
 		return nil
 	}
 
-	// Update last status check time for all queues in a single batch
-	now := time.Now()
-	if err := s.Repos().Queue().UpdateLastStatusCheckBySite(ctx, siteID, now); err != nil {
-		s.LogError(err, "Failed to update queue last status check", "site_id", siteID)
-	}
-
 	// Dispatch the sync job to check supervisor status on the server
 	task, err := jobs.NewSyncQueuesTask(site.ID, serverID, stringToPtr(userID))
 	if err != nil {
