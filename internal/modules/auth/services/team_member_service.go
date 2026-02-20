@@ -306,6 +306,7 @@ func (s *TeamMemberService) GenerateInvitationURL(invitationID string) string {
 // sendInvitationEmail sends an invitation email to the invitee
 func (s *TeamMemberService) sendInvitationEmail(ctx context.Context, invitation *models.TeamInvitation, teamName string, hasAccount bool) {
 	if s.emailSender == nil {
+		s.logger.Warn().Str("email", invitation.Email).Msg("Skipping invitation email: email sender not configured (check MAIL_DRIVER/RESEND_API_KEY/SMTP_HOST)")
 		return
 	}
 
