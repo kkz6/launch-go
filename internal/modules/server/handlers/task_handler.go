@@ -34,6 +34,35 @@ func (h *Handler) ListTasks(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Tasks retrieved", result)
 }
 
+// GetTask returns a specific task by ID
+func (h *Handler) GetTask(c *fiber.Ctx) error {
+	teamID, err := fiberctx.MustGetTeamID(c)
+	if err != nil {
+		return err
+	}
+
+	serverID, err := fiberctx.GetID(c)
+	if err != nil {
+		return err
+	}
+
+	taskID := c.Params("taskId")
+	if taskID == "" {
+		return fiberctx.RespondBadRequest(c, "Missing task ID")
+	}
+
+	task, err := h.service.GetTask(c.Context(), taskID, serverID, teamID)
+	if err != nil {
+		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch task")
+	}
+
+	if task == nil {
+		return fiberctx.RespondNotFound(c, "Task not found")
+	}
+
+	return fiberctx.OK(c, "Task retrieved", dto.ToTaskResponse(task))
+}
+
 // GetLatestTask returns the latest task for a server
 func (h *Handler) GetLatestTask(c *fiber.Ctx) error {
 	teamID, err := fiberctx.MustGetTeamID(c)
