@@ -27,6 +27,7 @@ type UpdateServerRequest struct {
 	Description       *string `json:"description" validate:"omitempty,max=1000"`
 	MonitoringEnabled *bool   `json:"monitoring_enabled"`
 	AutoUpdate        *bool   `json:"auto_update"`
+	SSHPort           *int    `json:"ssh_port" validate:"omitempty,min=1,max=65535"`
 }
 
 // ArchiveServerRequest represents the request body for archiving a server

@@ -195,6 +195,10 @@ func (s *Service) UpdateServer(ctx context.Context, id, teamID string, req *dto.
 		server.AutoUpdate = *req.AutoUpdate
 	}
 
+	if req.SSHPort != nil {
+		server.SSHPort = req.SSHPort
+	}
+
 	if err := s.repos.Server().Update(ctx, server); err != nil {
 		return nil, err
 	}
