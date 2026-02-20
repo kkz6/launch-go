@@ -1,6 +1,7 @@
 package jobs
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 
@@ -342,5 +343,224 @@ func TestGenerateStandardCaddyfile_WwwSite(t *testing.T) {
 	// Main block should use www.example.com
 	if !strings.Contains(result, "www.example.com:443 {") {
 		t.Errorf("expected main server block with www.example.com:443, got:\n%s", result)
+	}
+}
+
+func intPtr(i int) *int { return &i }
+
+// TestGenerateStandardCaddyfile_OctaneReverseProxy verifies that a site with Octane enabled
+// generates a reverse_proxy directive instead of php_fastcgi.
+func TestGenerateStandardCaddyfile_OctaneReverseProxy(t *testing.T) {
+	site := newLaravelSite()
+	port := 8000
+	site.EnabledFeatures = models.EnabledFeaturesSlice{
+		{Name: "octane", OctanePort: &port, OctaneServer: strPtr("frankenphp")},
+	}
+
+	result := generateStandardCaddyfile(site, nil)
+
+	if !strings.Contains(result, "reverse_proxy localhost:8000") {
+		t.Errorf("expected reverse_proxy localhost:8000, got:\n%s", result)
+	}
+
+	if strings.Contains(result, "php_fastcgi") {
+		t.Errorf("Octane site should NOT have php_fastcgi block, got:\n%s", result)
+	}
+}
+
+// TestGenerateStandardCaddyfile_OctaneDifferentPorts verifies different Octane ports.
+func TestGenerateStandardCaddyfile_OctaneDifferentPorts(t *testing.T) {
+	tests := []struct {
+		name string
+		port int
+	}{
+		{"port_8000", 8000},
+		{"port_8001", 8001},
+		{"port_8080", 8080},
+		{"port_8999", 8999},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			site := newLaravelSite()
+			port := tt.port
+			site.EnabledFeatures = models.EnabledFeaturesSlice{
+				{Name: "octane", OctanePort: &port, OctaneServer: strPtr("swoole")},
+			}
+
+			result := generateStandardCaddyfile(site, nil)
+
+			expected := fmt.Sprintf("reverse_proxy localhost:%d", tt.port)
+			if !strings.Contains(result, expected) {
+				t.Errorf("expected %s, got:\n%s", expected, result)
+			}
+		})
+	}
+}
+
+// TestGenerateStandardCaddyfile_NoOctane_HasPhpFastcgi verifies that a site without Octane
+// still uses php_fastcgi.
+func TestGenerateStandardCaddyfile_NoOctane_HasPhpFastcgi(t *testing.T) {
+	site := newLaravelSite()
+
+	result := generateStandardCaddyfile(site, nil)
+
+	if !strings.Contains(result, "php_fastcgi") {
+		t.Errorf("non-Octane site should have php_fastcgi block, got:\n%s", result)
+	}
+
+	if strings.Contains(result, "reverse_proxy localhost:") {
+		t.Errorf("non-Octane site should NOT have reverse_proxy, got:\n%s", result)
+	}
+}
+
+// TestGenerateStandardCaddyfile_OctaneStillHasOtherDirectives verifies that Octane sites
+// still include root, encode, headers, file_server, log.
+func TestGenerateStandardCaddyfile_OctaneStillHasOtherDirectives(t *testing.T) {
+	site := newLaravelSite()
+	port := 8000
+	site.EnabledFeatures = models.EnabledFeaturesSlice{
+		{Name: "octane", OctanePort: &port, OctaneServer: strPtr("frankenphp")},
+	}
+
+	result := generateStandardCaddyfile(site, nil)
+
+	if !strings.Contains(result, "root * ") {
+		t.Errorf("expected root directive, got:\n%s", result)
+	}
+	if !strings.Contains(result, "encode zstd gzip") {
+		t.Errorf("expected encode directive, got:\n%s", result)
+	}
+	if !strings.Contains(result, "X-Powered-By") {
+		t.Errorf("expected security headers, got:\n%s", result)
+	}
+	if !strings.Contains(result, "file_server") {
+		t.Errorf("expected file_server, got:\n%s", result)
+	}
+	if !strings.Contains(result, "log {") {
+		t.Errorf("expected log block, got:\n%s", result)
+	}
+}
+
+// TestGenerateStandardCaddyfile_OctaneWithRedirects verifies Octane and custom redirects work together.
+func TestGenerateStandardCaddyfile_OctaneWithRedirects(t *testing.T) {
+	site := newLaravelSite()
+	port := 8000
+	site.EnabledFeatures = models.EnabledFeaturesSlice{
+		{Name: "octane", OctanePort: &port, OctaneServer: strPtr("frankenphp")},
+	}
+
+	redirects := []models.Redirect{
+		newRedirect("01HREDIR0000000000000010", "/old", "/new", 301),
+	}
+
+	result := generateStandardCaddyfile(site, redirects)
+
+	if !strings.Contains(result, "reverse_proxy localhost:8000") {
+		t.Errorf("expected reverse_proxy, got:\n%s", result)
+	}
+	if !strings.Contains(result, "redir /old /new permanent") {
+		t.Errorf("expected redirect, got:\n%s", result)
+	}
+}
+
+// TestGenerateLoadBalancedCaddyfile_OctaneReverseProxy verifies that a load-balanced site
+// with Octane enabled generates reverse_proxy instead of php_fastcgi.
+func TestGenerateLoadBalancedCaddyfile_OctaneReverseProxy(t *testing.T) {
+	site := newLaravelSite()
+	site.LoadBalancedUpstreamID = strPtr("01HLBUPSTREAM00000000010")
+	port := 8000
+	site.EnabledFeatures = models.EnabledFeaturesSlice{
+		{Name: "octane", OctanePort: &port, OctaneServer: strPtr("swoole")},
+	}
+	loadBalancerIP := "10.0.0.50"
+
+	result := generateLoadBalancedCaddyfile(site, nil, loadBalancerIP)
+
+	if !strings.Contains(result, "\treverse_proxy localhost:8000") {
+		t.Errorf("expected tab-indented reverse_proxy localhost:8000 in LB Caddyfile, got:\n%s", result)
+	}
+
+	if strings.Contains(result, "php_fastcgi") {
+		t.Errorf("Octane LB site should NOT have php_fastcgi, got:\n%s", result)
+	}
+
+	// Should still have IP restriction
+	if !strings.Contains(result, "@notlb not remote_ip 10.0.0.50") {
+		t.Errorf("expected IP restriction, got:\n%s", result)
+	}
+
+	// Should still have http:// and port 8080
+	if !strings.Contains(result, "http://example.com:8080") {
+		t.Errorf("expected http://example.com:8080, got:\n%s", result)
+	}
+}
+
+// TestGenerateLoadBalancedCaddyfile_NoOctane_HasPhpFastcgi verifies that LB site without
+// Octane still uses php_fastcgi.
+func TestGenerateLoadBalancedCaddyfile_NoOctane_HasPhpFastcgi(t *testing.T) {
+	site := newLaravelSite()
+	loadBalancerIP := "10.0.0.50"
+
+	result := generateLoadBalancedCaddyfile(site, nil, loadBalancerIP)
+
+	if !strings.Contains(result, "php_fastcgi") {
+		t.Errorf("non-Octane LB site should have php_fastcgi, got:\n%s", result)
+	}
+
+	if strings.Contains(result, "reverse_proxy localhost:") {
+		t.Errorf("non-Octane LB site should NOT have reverse_proxy, got:\n%s", result)
+	}
+}
+
+// TestGenerateCaddyfile_OctaneRouting verifies the top-level generateCaddyfile function
+// correctly routes to the right generator with Octane.
+func TestGenerateCaddyfile_OctaneRouting(t *testing.T) {
+	t.Run("standard_with_octane", func(t *testing.T) {
+		site := newLaravelSite()
+		port := 8000
+		site.EnabledFeatures = models.EnabledFeaturesSlice{
+			{Name: "octane", OctanePort: &port, OctaneServer: strPtr("frankenphp")},
+		}
+
+		result := generateCaddyfile(site, nil, "")
+
+		if !strings.Contains(result, "reverse_proxy localhost:8000") {
+			t.Errorf("expected reverse_proxy in standard Octane Caddyfile, got:\n%s", result)
+		}
+	})
+
+	t.Run("load_balanced_with_octane", func(t *testing.T) {
+		site := newLaravelSite()
+		site.LoadBalancedUpstreamID = strPtr("01HLBUPSTREAM00000000020")
+		port := 8001
+		site.EnabledFeatures = models.EnabledFeaturesSlice{
+			{Name: "octane", OctanePort: &port, OctaneServer: strPtr("roadrunner")},
+		}
+
+		result := generateCaddyfile(site, nil, "10.0.0.1")
+
+		if !strings.Contains(result, "reverse_proxy localhost:8001") {
+			t.Errorf("expected reverse_proxy in LB Octane Caddyfile, got:\n%s", result)
+		}
+	})
+}
+
+// TestGenerateStandardCaddyfile_OctaneNilPort verifies that if Octane feature exists
+// but has nil port, we fall back to php_fastcgi.
+func TestGenerateStandardCaddyfile_OctaneNilPort(t *testing.T) {
+	site := newLaravelSite()
+	site.EnabledFeatures = models.EnabledFeaturesSlice{
+		{Name: "octane", OctaneServer: strPtr("frankenphp")},
+	}
+
+	result := generateStandardCaddyfile(site, nil)
+
+	if strings.Contains(result, "reverse_proxy localhost:") {
+		t.Errorf("nil octane port should fall back to php_fastcgi, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "php_fastcgi") {
+		t.Errorf("expected php_fastcgi fallback for nil octane port, got:\n%s", result)
 	}
 }

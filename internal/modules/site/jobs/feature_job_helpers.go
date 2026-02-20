@@ -16,6 +16,7 @@ const (
 	FeatureScheduler = "scheduler"
 	FeatureHorizon   = "horizon"
 	FeatureInertia   = "inertia"
+	FeatureOctane    = "octane"
 )
 
 // FeatureJobHelpers provides common functionality for Laravel feature enable jobs

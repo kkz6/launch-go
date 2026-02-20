@@ -64,6 +64,8 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterTyped(mux, TypeAnalyzeLaravelFeatures, NewAnalyzeLaravelFeaturesJob)
 	pkgjobs.RegisterTyped(mux, TypeEnableLaravelInertia, NewEnableLaravelInertiaJob)
 	pkgjobs.RegisterTyped(mux, TypeDisableLaravelInertia, NewDisableLaravelInertiaJob)
+	pkgjobs.RegisterTyped(mux, TypeEnableLaravelOctane, NewEnableLaravelOctaneJob)
+	pkgjobs.RegisterTyped(mux, TypeDisableLaravelOctane, NewDisableLaravelOctaneJob)
 
 	// WordPress jobs
 	pkgjobs.RegisterTyped(mux, TypeInstallWordpressCron, NewInstallWordpressCronJob)

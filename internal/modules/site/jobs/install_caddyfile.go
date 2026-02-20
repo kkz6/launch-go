@@ -193,8 +193,10 @@ func generateLoadBalancedCaddyfile(site *models.Site, redirects []models.Redirec
 	builder.WriteString("\t\tX-XSS-Protection \"1; mode=block\"\n")
 	builder.WriteString("\t}\n\n")
 
-	// PHP FastCGI for non-static sites
-	if site.Type != sitetypes.SiteTypeStatic && site.PhpVersion != nil && site.PhpVersion.IsValid() {
+	// Octane reverse proxy or PHP FastCGI
+	if octanePort := site.GetOctanePort(); octanePort != nil {
+		builder.WriteString(fmt.Sprintf("\treverse_proxy localhost:%d\n\n", *octanePort))
+	} else if site.Type != sitetypes.SiteTypeStatic && site.PhpVersion != nil && site.PhpVersion.IsValid() {
 		phpSocket := site.PhpVersion.SocketPath()
 		builder.WriteString(fmt.Sprintf("\tphp_fastcgi unix/%s {\n", phpSocket))
 		builder.WriteString("\t\tresolve_root_symlink\n")
@@ -279,8 +281,10 @@ func generateStandardCaddyfile(site *models.Site, redirects []models.Redirect) s
 	builder.WriteString("\tX-XSS-Protection \"1; mode=block\"\n")
 	builder.WriteString("}\n\n")
 
-	// PHP FastCGI for non-static sites
-	if site.Type != sitetypes.SiteTypeStatic && site.PhpVersion != nil && site.PhpVersion.IsValid() {
+	// Octane reverse proxy or PHP FastCGI
+	if octanePort := site.GetOctanePort(); octanePort != nil {
+		builder.WriteString(fmt.Sprintf("reverse_proxy localhost:%d\n\n", *octanePort))
+	} else if site.Type != sitetypes.SiteTypeStatic && site.PhpVersion != nil && site.PhpVersion.IsValid() {
 		phpSocket := site.PhpVersion.SocketPath()
 		builder.WriteString(fmt.Sprintf("php_fastcgi unix/%s {\n", phpSocket))
 		builder.WriteString("\tresolve_root_symlink\n")
