@@ -211,10 +211,12 @@ func escapeWordpressSpecialChars(s string) string {
 
 // EnabledFeature represents an enabled Laravel feature with metadata
 type EnabledFeature struct {
-	Name      string     `json:"name"`
-	QueueID   *string    `json:"queue_id,omitempty"`
-	CronID    *string    `json:"cron_id,omitempty"`
-	EnabledAt *time.Time `json:"enabled_at,omitempty"`
+	Name         string     `json:"name"`
+	QueueID      *string    `json:"queue_id,omitempty"`
+	CronID       *string    `json:"cron_id,omitempty"`
+	OctanePort   *int       `json:"octane_port,omitempty"`
+	OctaneServer *string    `json:"octane_server,omitempty"`
+	EnabledAt    *time.Time `json:"enabled_at,omitempty"`
 }
 
 // EnabledFeaturesSlice is a slice of EnabledFeature that handles JSON serialization
@@ -312,4 +314,13 @@ func (s *Site) RemovePendingFeature(featureName string) {
 		}
 	}
 	s.PendingFeatures = result
+}
+
+// GetOctanePort returns the Octane port if the feature is enabled
+func (s *Site) GetOctanePort() *int {
+	feature := s.GetEnabledFeature("octane")
+	if feature != nil {
+		return feature.OctanePort
+	}
+	return nil
 }

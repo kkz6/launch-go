@@ -41,6 +41,8 @@ type SiteResponse struct {
 	RepositoryURL                *string                          `json:"repository_url,omitempty"`
 	EnabledFeatures              []string                         `json:"enabled_features,omitempty"`
 	PendingFeatures              []string                         `json:"pending_features,omitempty"`
+	OctanePort                   *int                             `json:"octane_port,omitempty"`
+	OctaneServer                 *string                          `json:"octane_server,omitempty"`
 	LoadBalancedUpstreamID       *string                          `json:"load_balanced_upstream_id,omitempty"`
 	Status                       string                           `json:"status"`
 	InstalledAt                  *string                          `json:"installed_at"`
@@ -247,6 +249,11 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		UninstallationFailedAt:       pkgdto.FormatTime(site.UninstallationFailedAt),
 		CreatedAt:                    pkgdto.FormatTimeOrEmpty(site.CreatedAt),
 		UpdatedAt:                    pkgdto.FormatTimeOrEmpty(site.UpdatedAt),
+	}
+
+	if feature := site.GetEnabledFeature("octane"); feature != nil {
+		resp.OctanePort = feature.OctanePort
+		resp.OctaneServer = feature.OctaneServer
 	}
 
 	if site.LatestDeployment != nil {
