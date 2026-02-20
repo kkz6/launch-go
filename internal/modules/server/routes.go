@@ -66,6 +66,7 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		// Tasks (needed during provisioning to show progress)
 		servers.Get("/:id/tasks", handler.ListTasks)
 		servers.Get("/:id/tasks/latest", handler.GetLatestTask)
+		servers.Get("/:id/tasks/:taskId", handler.GetTask)
 
 		// Routes that require a provisioned (running) server
 		provisioned := middleware.RequireProvisionedServer()
