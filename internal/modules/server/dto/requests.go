@@ -54,14 +54,12 @@ type CreateFirewallRuleRequest struct {
 	Note     *string `json:"note" validate:"omitempty,max=500"`
 }
 
-// UpdateFirewallRuleRequest represents the request body for updating a firewall rule
+// UpdateFirewallRuleRequest represents the request body for updating a firewall rule.
+// Only name and note can be updated — action, port, and IP are immutable after creation
+// because changing them would require uninstalling the old UFW rule and reinstalling the new one.
 type UpdateFirewallRuleRequest struct {
-	Name     *string `json:"name" validate:"omitempty,min=1,max=255"`
-	Action   *string `json:"action" validate:"omitempty,oneof=allow deny reject"`
-	Port     *string `json:"port" validate:"omitempty,max=50"`
-	FromIPv4 *string `json:"from_ipv4" validate:"omitempty,ip|cidr"`
-	Mask     *string `json:"mask" validate:"omitempty,max=10"`
-	Note     *string `json:"note" validate:"omitempty,max=500"`
+	Name *string `json:"name" validate:"omitempty,min=1,max=255"`
+	Note *string `json:"note" validate:"omitempty,max=500"`
 }
 
 // CreateCronRequest represents the request body for creating a cron job

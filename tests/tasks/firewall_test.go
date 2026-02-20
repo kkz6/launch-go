@@ -52,6 +52,29 @@ func TestAddFirewallRule_AllowFromIP(t *testing.T) {
 		ScriptMatches("tasks/firewall_allow_from_ip")
 }
 
+func TestAddFirewallRule_RejectWithIP(t *testing.T) {
+	task := tasks.AddFirewallRule(tasks.FirewallReject, "22", "tcp", "192.168.1.100")
+
+	testutil.AssertTask(t, task).
+		HasName("Add Firewall Rule").
+		ScriptContains("insert 1"). // Reject rules are inserted first, like deny
+		ScriptContains("reject").
+		ScriptContains("from 192.168.1.100").
+		ScriptContains("to any port 22").
+		ScriptMatches("tasks/firewall_reject_ip")
+}
+
+func TestDeleteFirewallRule_Reject(t *testing.T) {
+	task := tasks.DeleteFirewallRule(tasks.FirewallReject, "22", "tcp", "192.168.1.100")
+
+	testutil.AssertTask(t, task).
+		HasName("Delete Firewall Rule").
+		ScriptContains("delete").
+		ScriptContains("reject").
+		ScriptContains("from 192.168.1.100").
+		ScriptMatches("tasks/firewall_delete_reject")
+}
+
 func TestDeleteFirewallRule_TCP(t *testing.T) {
 	task := tasks.DeleteFirewallRule(tasks.FirewallAllow, "443", "tcp", "")
 

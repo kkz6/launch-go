@@ -63,6 +63,7 @@ type FirewallRuleRepository interface {
 	Update(ctx context.Context, rule *models.FirewallRule) error
 	MarkAsInstalled(ctx context.Context, id string) error
 	MarkAsFailed(ctx context.Context, id string) error
+	MarkUninstallationFailed(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
 }
 

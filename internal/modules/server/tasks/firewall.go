@@ -16,8 +16,9 @@ const (
 type FirewallAction string
 
 const (
-	FirewallAllow FirewallAction = "allow"
-	FirewallDeny  FirewallAction = "deny"
+	FirewallAllow  FirewallAction = "allow"
+	FirewallDeny   FirewallAction = "deny"
+	FirewallReject FirewallAction = "reject"
 )
 
 // FirewallRuleConfig holds configuration for a firewall rule.
@@ -67,7 +68,7 @@ func formatUfwRule(rule FirewallRuleConfig, remove bool) string {
 
 	if remove {
 		parts = append(parts, "delete")
-	} else if rule.Action == FirewallDeny {
+	} else if rule.Action == FirewallDeny || rule.Action == FirewallReject {
 		parts = append(parts, "insert 1")
 	}
 
