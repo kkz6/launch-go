@@ -118,6 +118,56 @@ func (h *TeamMemberHandler) GetTeamMembers(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Members retrieved", allMembers)
 }
 
+// GetInvitationDetails retrieves invitation details by ID (public endpoint for accept page)
+func (h *TeamMemberHandler) GetInvitationDetails(c *fiber.Ctx) error {
+	invitationID := c.Params("invitationId")
+
+	invitation, err := h.Service().TeamMember.GetInvitationByID(c.Context(), invitationID)
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	teamName := ""
+	if invitation.Team != nil {
+		teamName = invitation.Team.Name
+	}
+
+	return fiberctx.OK(c, "Invitation details", fiber.Map{
+		"email":     invitation.Email,
+		"team_name": teamName,
+	})
+}
+
+// AcceptInvitationWithRegistration accepts an invitation by registering a new user account
+func (h *TeamMemberHandler) AcceptInvitationWithRegistration(c *fiber.Ctx) error {
+	req, err := fiberctx.MustParseAndValidate[dto.AcceptInvitationRequest](c)
+	if err != nil {
+		return err
+	}
+
+	// Look up invitation to get the email
+	invitation, err := h.Service().TeamMember.GetInvitationByID(c.Context(), req.InvitationToken)
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	result, err := h.Service().Auth.Register(c.Context(), &dto.RegisterRequest{
+		Name:                 req.Name,
+		Email:                invitation.Email,
+		Password:             req.Password,
+		PasswordConfirmation: req.PasswordConfirmation,
+		InvitationID:         &req.InvitationToken,
+		CreatePersonalTeam:   false,
+		IPAddress:            c.IP(),
+		UserAgent:            c.Get("User-Agent"),
+	})
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return fiberctx.Created(c, "Account created and invitation accepted", result)
+}
+
 // GetTeamInvitations retrieves all invitations for a team
 func (h *TeamMemberHandler) GetTeamInvitations(c *fiber.Ctx) error {
 	teamID := c.Params("teamId")

@@ -9,23 +9,28 @@ import (
 
 	"github.com/rs/zerolog"
 
+	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/dto"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
+	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
 // TeamMemberService handles team member management operations
 type TeamMemberService struct {
-	repos  contracts.RepositoryRegistry
-	logger *zerolog.Logger
+	repos       contracts.RepositoryRegistry
+	config      *config.Config
+	emailSender channels.EmailSender
+	logger      *zerolog.Logger
 }
 
 // NewTeamMemberService creates a new TeamMemberService instance
-func NewTeamMemberService(repos contracts.RepositoryRegistry, logger *zerolog.Logger) *TeamMemberService {
-	return &TeamMemberService{repos: repos, logger: logger}
+func NewTeamMemberService(repos contracts.RepositoryRegistry, cfg *config.Config, emailSender channels.EmailSender, logger *zerolog.Logger) *TeamMemberService {
+	return &TeamMemberService{repos: repos, config: cfg, emailSender: emailSender, logger: logger}
 }
 
 // canManageMembers checks if a team member has permission to manage other members
@@ -40,7 +45,8 @@ func (s *TeamMemberService) canManageMembers(member *models.TeamMember) bool {
 func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID string, req *dto.InviteTeamMemberRequest) error {
 	req.Normalize()
 
-	if _, err := s.requireManageMembers(ctx, teamID, userID); err != nil {
+	team, err := s.requireManageMembers(ctx, teamID, userID)
+	if err != nil {
 		return err
 	}
 
@@ -78,7 +84,14 @@ func (s *TeamMemberService) InviteTeamMember(ctx context.Context, userID, teamID
 		Role:   &req.Role,
 	}
 
-	return s.repos.TeamInvitation().Create(ctx, invitation)
+	if err := s.repos.TeamInvitation().Create(ctx, invitation); err != nil {
+		return err
+	}
+
+	// Send invitation email
+	s.sendInvitationEmail(ctx, invitation, team.Name, existingUser != nil)
+
+	return nil
 }
 
 // AcceptTeamInvitation accepts a team invitation
@@ -269,11 +282,49 @@ func (s *TeamMemberService) GetTeamInvitations(ctx context.Context, teamID strin
 	return s.repos.TeamInvitation().GetByTeam(ctx, teamID)
 }
 
+// GetInvitationByID retrieves an invitation by its ID (for public access)
+func (s *TeamMemberService) GetInvitationByID(ctx context.Context, invitationID string) (*models.TeamInvitation, error) {
+	invitation, err := s.repos.TeamInvitation().FindByID(ctx, invitationID)
+	if err != nil {
+		return nil, err
+	}
+
+	if invitation == nil {
+		return nil, fiberutil.NotFound()
+	}
+
+	return invitation, nil
+}
+
 // GenerateInvitationURL generates a permanent signed URL for accepting a team invitation
 // Team invitations don't expire - they remain valid until cancelled
 func (s *TeamMemberService) GenerateInvitationURL(invitationID string) string {
 	path := fmt.Sprintf("/api/auth/team-invitations/%s/accept", invitationID)
 	return signedurl.PermanentSign(path, nil)
+}
+
+// sendInvitationEmail sends an invitation email to the invitee
+func (s *TeamMemberService) sendInvitationEmail(ctx context.Context, invitation *models.TeamInvitation, teamName string, hasAccount bool) {
+	if s.emailSender == nil {
+		return
+	}
+
+	registerURL := fmt.Sprintf("%s/invite/%s", s.config.App.URL, invitation.ID)
+
+	acceptURL := s.GenerateInvitationURL(invitation.ID)
+	if s.config.App.URL != "" {
+		acceptURL = fmt.Sprintf("%s%s", s.config.App.URL, acceptURL)
+	}
+
+	htmlContent, _, err := templates.TeamInvitationEmail(teamName, acceptURL, registerURL, !hasAccount)
+	if err != nil {
+		s.logger.Error().Err(err).Str("email", invitation.Email).Msg("Failed to build invitation email template")
+		return
+	}
+
+	if err := s.emailSender.Send(ctx, invitation.Email, fmt.Sprintf("You've been invited to join %s", teamName), htmlContent, true); err != nil {
+		s.logger.Error().Err(err).Str("email", invitation.Email).Msg("Failed to send invitation email")
+	}
 }
 
 func (s *TeamMemberService) getTeam(ctx context.Context, teamID string) (*models.Team, error) {

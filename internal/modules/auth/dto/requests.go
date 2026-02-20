@@ -156,6 +156,19 @@ func (r *CheckUserStatusRequest) Normalize() {
 	pkgdto.NormalizeEmail(&r.Email)
 }
 
+// AcceptInvitationRequest represents a request to accept an invitation by registering a new account
+type AcceptInvitationRequest struct {
+	InvitationToken      string `json:"invitation_token" validate:"required"`
+	Name                 string `json:"name" validate:"required,min=2,max=255"`
+	Password             string `json:"password" validate:"required,min=8"`
+	PasswordConfirmation string `json:"password_confirmation" validate:"required,eqfield=Password"`
+}
+
+// Normalize normalizes the name
+func (r *AcceptInvitationRequest) Normalize() {
+	pkgdto.NormalizeTrim(&r.Name)
+}
+
 // PasskeyRegisterRequest represents a request to name a passkey during registration
 type PasskeyRegisterRequest struct {
 	Name string `json:"name" validate:"omitempty,max=255"`

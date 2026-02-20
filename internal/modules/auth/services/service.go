@@ -49,7 +49,7 @@ func NewService(repos contracts.RepositoryRegistry, cfg *config.Config, logger *
 		PasswordReset:     NewPasswordResetService(repos, cfg, emailSender),
 		TwoFactor:         NewTwoFactorService(repos, cfg, authService),
 		Team:              NewTeamService(repos),
-		TeamMember:        NewTeamMemberService(repos, logger),
+		TeamMember:        NewTeamMemberService(repos, cfg, emailSender, logger),
 		Passkey:           passkeyService,
 	}, nil
 }

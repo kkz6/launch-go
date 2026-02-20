@@ -84,6 +84,10 @@ func (m *Module) setupPublicRoutes(router fiber.Router, handler *handlers.Handle
 	// Two-Factor Challenge (public — uses challenge token from login, not auth)
 	router.Post("/two-factor/challenge", twoFactorRL, handler.TwoFactor.TwoFactorChallenge)
 
+	// Team Invitations (public — for accepting invitations and getting invitation details)
+	router.Get("/invitations/:invitationId", handler.TeamMember.GetInvitationDetails)
+	router.Post("/invitations/accept", handler.TeamMember.AcceptInvitationWithRegistration)
+
 	// Passkey Authentication (guest)
 	router.Post("/passkey/login/options", passkeyRL, passkeyHandler.BeginLogin)
 	router.Post("/passkey/login/verify", passkeyRL, passkeyHandler.FinishLogin)
