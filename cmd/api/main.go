@@ -185,6 +185,9 @@ func (a *Application) registerModules() {
 	// Create email sender and notifier before building context,
 	// so the Notifier is available in Deps from the start (Deps is copied by value)
 	emailSender := mail.NewEmailSender(a.config.Mail)
+	if emailSender == nil {
+		a.logger.Warn().Str("driver", a.config.Mail.Driver).Msg("Email sender not configured — team invitations, password resets, and notifications will not send emails. Set RESEND_API_KEY or SMTP_HOST to enable.")
+	}
 	notifBuilder := app.NewBuilder(app.Deps{
 		DB:     a.db,
 		Logger: a.logger,
