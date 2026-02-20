@@ -132,6 +132,33 @@ func (s *TeamMemberService) AcceptTeamInvitation(ctx context.Context, userID, in
 	return s.repos.TeamInvitation().Delete(ctx, invitationID)
 }
 
+// ResendTeamInvitation resends the invitation email for a pending invitation
+func (s *TeamMemberService) ResendTeamInvitation(ctx context.Context, userID, teamID, invitationID string) error {
+	team, err := s.requireManageMembers(ctx, teamID, userID)
+	if err != nil {
+		return err
+	}
+
+	invitation, err := s.repos.TeamInvitation().FindByID(ctx, invitationID)
+	if err != nil {
+		return err
+	}
+
+	if invitation == nil || invitation.TeamID != teamID {
+		return fiberutil.NotFound()
+	}
+
+	// Check if the invitee already has an account
+	existingUser, err := s.repos.User().FindByEmail(ctx, invitation.Email)
+	if err != nil {
+		return err
+	}
+
+	s.sendInvitationEmail(ctx, invitation, team.Name, existingUser != nil)
+
+	return nil
+}
+
 // CancelTeamInvitation cancels a team invitation
 func (s *TeamMemberService) CancelTeamInvitation(ctx context.Context, userID, teamID, invitationID string) error {
 	if _, err := s.requireManageMembers(ctx, teamID, userID); err != nil {

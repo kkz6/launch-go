@@ -145,6 +145,7 @@ func (m *Module) registerTeamRoutes(router fiber.Router, handler *handlers.Handl
 	// Team Invitations (POST /:teamId/invitations is an alias for POST /:teamId/members for API compatibility)
 	router.Post("/:teamId/invitations", middleware.TeamAdmin(adapter), handler.TeamMember.InviteTeamMember)
 	router.Get("/:teamId/invitations", middleware.TeamAdmin(adapter), handler.TeamMember.GetTeamInvitations)
+	router.Post("/:teamId/invitations/:invitationId/resend", middleware.TeamAdmin(adapter), handler.TeamMember.ResendTeamInvitation)
 	router.Delete("/:teamId/invitations/:invitationId", middleware.TeamAdmin(adapter), handler.TeamMember.CancelTeamInvitation)
 }
 
