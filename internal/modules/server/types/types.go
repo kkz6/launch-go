@@ -156,25 +156,11 @@ func (p ServerProvider) GetDefaultUsername(os OperatingSystem) string {
 }
 
 func (p *ServerProvider) Scan(value interface{}) error {
-	if value == nil {
-		*p = ProviderCustom
-		return nil
-	}
-
-	switch v := value.(type) {
-	case []byte:
-		*p = ServerProvider(v)
-	case string:
-		*p = ServerProvider(v)
-	default:
-		return fmt.Errorf("cannot scan type %T into ServerProvider", value)
-	}
-
-	return nil
+	return enumtypes.ScanStringWithDefault(p, value, ProviderCustom)
 }
 
 func (p ServerProvider) Value() (driver.Value, error) {
-	return string(p), nil
+	return enumtypes.ValueString(p)
 }
 
 func ParseServerProvider(s string) (ServerProvider, error) {
@@ -287,25 +273,11 @@ func (t ServerType) GetProcessManager() ProcessManager {
 }
 
 func (t *ServerType) Scan(value interface{}) error {
-	if value == nil {
-		*t = ServerTypePhp
-		return nil
-	}
-
-	switch v := value.(type) {
-	case []byte:
-		*t = ServerType(v)
-	case string:
-		*t = ServerType(v)
-	default:
-		return fmt.Errorf("cannot scan type %T into ServerType", value)
-	}
-
-	return nil
+	return enumtypes.ScanStringWithDefault(t, value, ServerTypePhp)
 }
 
 func (t ServerType) Value() (driver.Value, error) {
-	return string(t), nil
+	return enumtypes.ValueString(t)
 }
 
 func ParseServerType(s string) (ServerType, error) {
@@ -492,24 +464,11 @@ func (s ServiceType) GetDatabaseConnection() string {
 }
 
 func (s *ServiceType) Scan(value interface{}) error {
-	if value == nil {
-		return nil
-	}
-
-	switch v := value.(type) {
-	case []byte:
-		*s = ServiceType(v)
-	case string:
-		*s = ServiceType(v)
-	default:
-		return fmt.Errorf("cannot scan type %T into ServiceType", value)
-	}
-
-	return nil
+	return enumtypes.ScanString(s, value)
 }
 
 func (s ServiceType) Value() (driver.Value, error) {
-	return string(s), nil
+	return enumtypes.ValueString(s)
 }
 
 func ParseServiceType(str string) (ServiceType, error) {
@@ -582,25 +541,11 @@ func (s ServiceStatus) IsActive() bool {
 }
 
 func (s *ServiceStatus) Scan(value interface{}) error {
-	if value == nil {
-		*s = ServiceStatusPending
-		return nil
-	}
-
-	switch v := value.(type) {
-	case []byte:
-		*s = ServiceStatus(v)
-	case string:
-		*s = ServiceStatus(v)
-	default:
-		return fmt.Errorf("cannot scan type %T into ServiceStatus", value)
-	}
-
-	return nil
+	return enumtypes.ScanStringWithDefault(s, value, ServiceStatusPending)
 }
 
 func (s ServiceStatus) Value() (driver.Value, error) {
-	return string(s), nil
+	return enumtypes.ValueString(s)
 }
 
 func ParseServiceStatus(str string) (ServiceStatus, error) {
@@ -771,25 +716,11 @@ func (o OperatingSystem) IsValid() bool {
 }
 
 func (o *OperatingSystem) Scan(value interface{}) error {
-	if value == nil {
-		*o = OSUbuntu24
-		return nil
-	}
-
-	switch v := value.(type) {
-	case []byte:
-		*o = OperatingSystem(v)
-	case string:
-		*o = OperatingSystem(v)
-	default:
-		return fmt.Errorf("cannot scan type %T into OperatingSystem", value)
-	}
-
-	return nil
+	return enumtypes.ScanStringWithDefault(o, value, OSUbuntu24)
 }
 
 func (o OperatingSystem) Value() (driver.Value, error) {
-	return string(o), nil
+	return enumtypes.ValueString(o)
 }
 
 func ParseOperatingSystem(s string) (OperatingSystem, error) {
@@ -845,25 +776,11 @@ func (r RuleAction) IsValid() bool {
 }
 
 func (r *RuleAction) Scan(value interface{}) error {
-	if value == nil {
-		*r = RuleActionAllow
-		return nil
-	}
-
-	switch v := value.(type) {
-	case []byte:
-		*r = RuleAction(v)
-	case string:
-		*r = RuleAction(v)
-	default:
-		return fmt.Errorf("cannot scan type %T into RuleAction", value)
-	}
-
-	return nil
+	return enumtypes.ScanStringWithDefault(r, value, RuleActionAllow)
 }
 
 func (r RuleAction) Value() (driver.Value, error) {
-	return string(r), nil
+	return enumtypes.ValueString(r)
 }
 
 func ParseRuleAction(s string) (RuleAction, error) {

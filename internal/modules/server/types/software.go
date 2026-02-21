@@ -3,6 +3,8 @@ package types
 import (
 	"database/sql/driver"
 	"fmt"
+
+	"github.com/kkz6/launch-go/internal/pkg/enumtypes"
 )
 
 // Software represents installable software
@@ -185,24 +187,11 @@ func (s Software) Group() string {
 }
 
 func (s *Software) Scan(value interface{}) error {
-	if value == nil {
-		return nil
-	}
-
-	switch v := value.(type) {
-	case []byte:
-		*s = Software(v)
-	case string:
-		*s = Software(v)
-	default:
-		return fmt.Errorf("cannot scan type %T into Software", value)
-	}
-
-	return nil
+	return enumtypes.ScanString(s, value)
 }
 
 func (s Software) Value() (driver.Value, error) {
-	return string(s), nil
+	return enumtypes.ValueString(s)
 }
 
 func ParseSoftware(str string) (Software, error) {
