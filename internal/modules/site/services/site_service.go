@@ -74,6 +74,25 @@ func (s *SiteService) SetSourceControlService(svc gitcontracts.SourceControlServ
 	s.sourceControlService = svc
 }
 
+// broadcastSiteEvent broadcasts a site event with standard fields
+func (s *SiteService) broadcastSiteEvent(teamID, serverID string, site *models.Site, event string) {
+	s.BroadcastToTeam(teamID, event, map[string]any{
+		"team_id":   teamID,
+		"server_id": serverID,
+		"site_id":   site.ID,
+		"site":      dto.ToSiteResponse(site),
+	})
+}
+
+// broadcastSiteUpdate broadcasts a site.updated event, fetching the server via serverReader
+func (s *SiteService) broadcastSiteUpdate(ctx context.Context, serverID string, site *models.Site) {
+	if s.serverReader != nil {
+		if server, err := s.serverReader.FindServerByID(ctx, serverID); err == nil {
+			s.broadcastSiteEvent(server.TeamID, server.ID, site, "site.updated")
+		}
+	}
+}
+
 // List returns all sites for a server filtered by team
 func (s *SiteService) List(ctx context.Context, serverID, teamID string) ([]models.Site, error) {
 	sites, err := s.Repos().Site().FindByServerAndTeam(ctx, serverID, teamID)
@@ -335,13 +354,7 @@ func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID strin
 
 	s.LogInfo("Site created", "site_id", site.ID, "address", site.Address)
 
-	// Broadcast site created event
-	s.BroadcastToTeam(server.TeamID, "site.created", map[string]any{
-		"team_id":   server.TeamID,
-		"server_id": server.ID,
-		"site_id":   site.ID,
-		"site":      dto.ToSiteResponse(site),
-	})
+	s.broadcastSiteEvent(server.TeamID, server.ID, site, "site.created")
 
 	return site, nil
 }
@@ -789,17 +802,7 @@ func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID s
 
 	s.LogInfo("Site updated", "site_id", site.ID)
 
-	// Broadcast site updated event
-	if s.serverReader != nil {
-		if server, err := s.serverReader.FindServerByID(ctx, serverID); err == nil {
-			s.BroadcastToTeam(server.TeamID, "site.updated", map[string]any{
-				"team_id":   server.TeamID,
-				"server_id": server.ID,
-				"site_id":   site.ID,
-				"site":      dto.ToSiteResponse(site),
-			})
-		}
-	}
+	s.broadcastSiteUpdate(ctx, serverID, site)
 
 	return site, nil
 }
@@ -820,17 +823,7 @@ func (s *SiteService) Delete(ctx context.Context, id, serverID, teamID string) e
 		return err
 	}
 
-	// Broadcast site updated event (so UI shows "Uninstalling" state immediately)
-	if s.serverReader != nil {
-		if server, err := s.serverReader.FindServerByID(ctx, serverID); err == nil {
-			s.BroadcastToTeam(server.TeamID, "site.updated", map[string]any{
-				"team_id":   server.TeamID,
-				"server_id": server.ID,
-				"site_id":   site.ID,
-				"site":      dto.ToSiteResponse(site),
-			})
-		}
-	}
+	s.broadcastSiteUpdate(ctx, serverID, site)
 
 	// Dispatch site uninstall job
 	task, err := jobs.NewUninstallSiteTask(site.ID, serverID, nil)
