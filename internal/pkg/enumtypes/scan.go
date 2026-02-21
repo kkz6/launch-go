@@ -24,6 +24,25 @@ func ScanString[T ~string](dest *T, value interface{}) error {
 	return nil
 }
 
+// ScanStringWithDefault is like ScanString but uses a custom default when value is nil.
+func ScanStringWithDefault[T ~string](dest *T, value interface{}, defaultVal T) error {
+	if value == nil {
+		*dest = defaultVal
+		return nil
+	}
+
+	switch v := value.(type) {
+	case string:
+		*dest = T(v)
+	case []byte:
+		*dest = T(string(v))
+	default:
+		return fmt.Errorf("cannot scan type %T into enum", value)
+	}
+
+	return nil
+}
+
 // ValueString is a helper for implementing driver.Valuer for string enums.
 func ValueString[T ~string](v T) (driver.Value, error) {
 	return string(v), nil

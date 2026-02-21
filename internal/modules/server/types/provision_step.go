@@ -3,6 +3,8 @@ package types
 import (
 	"database/sql/driver"
 	"fmt"
+
+	"github.com/kkz6/launch-go/internal/pkg/enumtypes"
 )
 
 // ProvisionStep represents a step in the server provisioning process
@@ -140,22 +142,9 @@ func ParseProvisionStep(s string) (ProvisionStep, error) {
 }
 
 func (p *ProvisionStep) Scan(value interface{}) error {
-	if value == nil {
-		return nil
-	}
-
-	switch v := value.(type) {
-	case []byte:
-		*p = ProvisionStep(v)
-	case string:
-		*p = ProvisionStep(v)
-	default:
-		return fmt.Errorf("cannot scan type %T into ProvisionStep", value)
-	}
-
-	return nil
+	return enumtypes.ScanString(p, value)
 }
 
 func (p ProvisionStep) Value() (driver.Value, error) {
-	return string(p), nil
+	return enumtypes.ValueString(p)
 }

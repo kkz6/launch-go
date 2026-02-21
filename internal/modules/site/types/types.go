@@ -508,25 +508,11 @@ func (r RedirectMode) IsValid() bool {
 }
 
 func (r *RedirectMode) Scan(value interface{}) error {
-	if value == nil {
-		*r = 0
-		return nil
-	}
-
-	switch v := value.(type) {
-	case int64:
-		*r = RedirectMode(v)
-	case int:
-		*r = RedirectMode(v)
-	default:
-		return fmt.Errorf("failed to scan RedirectMode: %v", value)
-	}
-
-	return nil
+	return enumtypes.ScanInt(r, value)
 }
 
 func (r RedirectMode) Value() (driver.Value, error) {
-	return int64(r), nil
+	return enumtypes.ValueInt(r)
 }
 
 // =============================================================================
