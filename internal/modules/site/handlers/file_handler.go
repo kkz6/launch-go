@@ -98,13 +98,21 @@ func (h *FileHandler) UpdateFile(c *fiber.Ctx) error {
 	}
 
 	req, err := fiberctx.MustParseAndValidate[struct {
-		Content string `json:"content"`
+		Content        string `json:"content"`
+		RunConfigCache bool   `json:"run_config_cache"`
 	}](c)
 	if err != nil {
 		return err
 	}
 
-	if err := h.service.UpdateFileContent(c.Context(), serverID, siteID, data.Path, req.Content); err != nil {
+	opts := services.UpdateFileOptions{
+		FilePath:       data.Path,
+		FileType:       data.Type,
+		Content:        req.Content,
+		RunConfigCache: req.RunConfigCache,
+	}
+
+	if err := h.service.UpdateFileContent(c.Context(), serverID, siteID, opts); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
