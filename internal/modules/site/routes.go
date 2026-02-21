@@ -133,7 +133,6 @@ func (m *Module) registerQueueRoutes(router fiber.Router, handler *handlers.Queu
 	router.Get("/:id/queues", handler.ListQueues)
 	router.Post("/:id/queues", handler.CreateQueue)
 	router.Post("/:id/queues/sync", handler.SyncQueues)
-	router.Put("/:id/queues/:queueId", handler.UpdateQueue)
 	router.Patch("/:id/queues/:queueId", handler.UpdateQueue)
 	router.Post("/:id/queues/:queueId/restart", handler.RestartQueue)
 	router.Delete("/:id/queues/:queueId", handler.DeleteQueue)
