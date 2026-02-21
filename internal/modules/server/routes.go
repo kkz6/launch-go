@@ -117,6 +117,7 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Post("/:id/daemons", provisioned, handler.CreateDaemon)
 		servers.Post("/:id/daemons/sync", provisioned, handler.SyncDaemons)
 		servers.Put("/:id/daemons/:daemonId", provisioned, handler.UpdateDaemon)
+		servers.Patch("/:id/daemons/:daemonId", provisioned, handler.UpdateDaemon)
 		servers.Post("/:id/daemons/:daemonId/restart", provisioned, handler.RestartDaemon)
 		servers.Delete("/:id/daemons/:daemonId", provisioned, handler.DeleteDaemon)
 
