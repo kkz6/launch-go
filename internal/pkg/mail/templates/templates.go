@@ -114,12 +114,12 @@ func (b *EmailBuilder) Build() (string, error) {
 		AppName:    b.appName,
 		AppURL:     b.appURL,
 		Greeting:   b.greeting,
-		Intros:     b.intros,
+		Intros:     b.buildIntros(),
 		Content:    template.HTML(renderMarkdown(b.content)),
 		Actions:    b.actions,
 		Panels:     b.buildPanels(),
 		Tables:     b.tables,
-		Outros:     b.outros,
+		Outros:     b.buildOutros(),
 		Subcopy:    b.subcopy,
 		FooterText: b.footerText,
 	}
@@ -172,6 +172,22 @@ func (b *EmailBuilder) BuildPlainText() string {
 	return buf.String()
 }
 
+func (b *EmailBuilder) buildIntros() []template.HTML {
+	intros := make([]template.HTML, len(b.intros))
+	for i, text := range b.intros {
+		intros[i] = template.HTML(renderMarkdown(text))
+	}
+	return intros
+}
+
+func (b *EmailBuilder) buildOutros() []template.HTML {
+	outros := make([]template.HTML, len(b.outros))
+	for i, text := range b.outros {
+		outros[i] = template.HTML(renderMarkdown(text))
+	}
+	return outros
+}
+
 func (b *EmailBuilder) buildPanels() []template.HTML {
 	panels := make([]template.HTML, len(b.panels))
 	for i, p := range b.panels {
@@ -184,12 +200,12 @@ type templateData struct {
 	AppName    string
 	AppURL     string
 	Greeting   string
-	Intros     []string
+	Intros     []template.HTML
 	Content    template.HTML
 	Actions    []Action
 	Panels     []template.HTML
 	Tables     []Table
-	Outros     []string
+	Outros     []template.HTML
 	Subcopy    string
 	FooterText string
 }
