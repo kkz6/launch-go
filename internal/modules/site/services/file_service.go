@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/contracts"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/support"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // FileOnServer represents an editable file on the server
@@ -146,8 +148,16 @@ func (s *FileService) GetFileContent(ctx context.Context, serverID, siteID, file
 	return result.GetOutput(), nil
 }
 
+// UpdateFileOptions holds options for updating a file on the server
+type UpdateFileOptions struct {
+	FilePath       string
+	FileType       string
+	Content        string
+	RunConfigCache bool
+}
+
 // UpdateFileContent updates the content of a file on the server
-func (s *FileService) UpdateFileContent(ctx context.Context, serverID, siteID, filePath, content string) error {
+func (s *FileService) UpdateFileContent(ctx context.Context, serverID, siteID string, opts UpdateFileOptions) error {
 	// Get site to verify access
 	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
@@ -155,7 +165,7 @@ func (s *FileService) UpdateFileContent(ctx context.Context, serverID, siteID, f
 	}
 
 	// Verify the file path is in the allowed list (only editable files, not logs)
-	if !s.isEditableFilePath(site, filePath) {
+	if !s.isEditableFilePath(site, opts.FilePath) {
 		return fmt.Errorf("file path not allowed for editing")
 	}
 
@@ -170,8 +180,8 @@ func (s *FileService) UpdateFileContent(ctx context.Context, serverID, siteID, f
 
 	// Create task to write file content using the predefined UploadFile task
 	task := servertasks.UploadFile(servertasks.UploadFileConfig{
-		Path:     filePath,
-		Contents: content,
+		Path:     opts.FilePath,
+		Contents: opts.Content,
 	})
 
 	// Run task using task runner as the server's configured user
@@ -187,7 +197,33 @@ func (s *FileService) UpdateFileContent(ctx context.Context, serverID, siteID, f
 		return fmt.Errorf("failed to write file: exit code %d", result.GetExitCode())
 	}
 
+	// Run config:cache after environment file update for Laravel sites
+	if opts.RunConfigCache && opts.FileType == "environment" && site.Type.IsLaravel() {
+		s.runConfigCache(ctx, server, site)
+	}
+
 	return nil
+}
+
+// runConfigCache runs php artisan config:cache on the site
+func (s *FileService) runConfigCache(ctx context.Context, server *servermodels.Server, site *models.Site) {
+	appDir := site.GetApplicationDirectory()
+
+	script := fmt.Sprintf("cd %s && php artisan config:cache", appDir)
+
+	task := taskrunner.NewBaseTask(
+		taskrunner.WithName("Config Cache"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(30),
+	)
+
+	if result, err := s.ServiceDeps().TaskRunnerDeps.NewRunner(server, task).
+		AsUser(site.User).
+		Run(ctx); err != nil {
+		s.LogError(err, "Failed to run config:cache", "site_id", site.ID)
+	} else if !result.IsSuccessful() {
+		s.LogError(fmt.Errorf("config:cache failed with exit code %d", result.GetExitCode()), "config:cache failed", "site_id", site.ID)
+	}
 }
 
 // isAllowedFilePath checks if the file path is in the allowed list (editable or log files)
