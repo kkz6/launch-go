@@ -61,6 +61,31 @@ func (h *QueueHandler) ListQueues(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "Queues retrieved", result)
 }
 
+// UpdateQueue updates a queue worker
+func (h *QueueHandler) UpdateQueue(c *fiber.Ctx) error {
+	serverID, siteID, queueID, err := fiberctx.GetServerSiteAndEntityID(c, "queueId")
+	if err != nil {
+		return err
+	}
+
+	userID, err := fiberctx.MustGetUserID(c)
+	if err != nil {
+		return err
+	}
+
+	req, err := fiberctx.MustParseAndValidate[dto.UpdateQueueRequest](c)
+	if err != nil {
+		return err
+	}
+
+	queue, err := h.queueService.Update(c.Context(), queueID, siteID, serverID, userID, req)
+	if err != nil {
+		return fiberctx.HandleError(c, err)
+	}
+
+	return fiberctx.OK(c, "Queue updated", dto.ToQueueResponse(queue))
+}
+
 // DeleteQueue deletes a queue
 func (h *QueueHandler) DeleteQueue(c *fiber.Ctx) error {
 	serverID, siteID, queueID, err := fiberctx.GetServerSiteAndEntityID(c, "queueId")

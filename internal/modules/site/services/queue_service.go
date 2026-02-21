@@ -132,6 +132,99 @@ func (s *QueueService) List(ctx context.Context, siteID, serverID string) ([]mod
 	return s.Repos().Queue().FindBySite(ctx, siteID)
 }
 
+// Update updates a queue worker
+func (s *QueueService) Update(ctx context.Context, queueID, siteID, serverID, userID string, req *dto.UpdateQueueRequest) (*models.Queue, error) {
+	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
+	if err != nil {
+		return nil, err
+	}
+
+	queueModel, err := s.Repos().Queue().FindByIDAndSite(ctx, queueID, siteID)
+	if err != nil {
+		return nil, err
+	}
+
+	if req.QueueConnection != nil {
+		queueModel.QueueConnection = *req.QueueConnection
+	}
+
+	if req.Queue != nil {
+		queueModel.QueueName = *req.Queue
+	}
+
+	if req.User != nil {
+		queueModel.User = *req.User
+	}
+
+	if req.RestSecondsOnEmpty != nil {
+		queueModel.RestSecondsOnEmpty = req.RestSecondsOnEmpty
+	}
+
+	if req.MaxSecondsPerJob != nil {
+		queueModel.MaxSecondsPerJob = req.MaxSecondsPerJob
+	}
+
+	if req.FailedJobDelaySeconds != nil {
+		queueModel.FailedJobDelaySeconds = req.FailedJobDelaySeconds
+	}
+
+	if req.MaxTries != nil {
+		queueModel.MaxTries = req.MaxTries
+	}
+
+	if req.MaxMemory != nil {
+		queueModel.MaxMemory = req.MaxMemory
+	}
+
+	if req.RunOnMaintenance != nil {
+		queueModel.RunOnMaintenance = *req.RunOnMaintenance
+	}
+
+	if req.RunWithListen != nil {
+		queueModel.RunWithListen = *req.RunWithListen
+	}
+
+	if req.Directory != nil {
+		queueModel.Directory = req.Directory
+	}
+
+	if req.Environment != nil {
+		queueModel.Environment = req.Environment
+	}
+
+	if req.NumProcs != nil {
+		queueModel.NumProcs = *req.NumProcs
+	}
+
+	if req.StopWaitSeconds != nil {
+		queueModel.StopWaitSeconds = *req.StopWaitSeconds
+	}
+
+	if err := s.Repos().Queue().Update(ctx, queueModel); err != nil {
+		return nil, err
+	}
+
+	// Re-install the queue on the server if the site has been deployed
+	if site.InstalledAt != nil {
+		userIDPtr := stringToPtr(userID)
+
+		task, err := jobs.NewInstallQueueTask(site.ID, queueModel.ID, userIDPtr)
+		if err != nil {
+			s.LogError(err, "Failed to create install queue task")
+			return nil, err
+		}
+
+		if err := s.EnqueueTask(task); err != nil {
+			s.LogError(err, "Failed to enqueue install queue job")
+			return nil, err
+		}
+	}
+
+	s.LogInfo("Queue updated", "site_id", site.ID, "queue_id", queueModel.ID)
+
+	return queueModel, nil
+}
+
 // Delete deletes a queue
 func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID string) error {
 	queueModel, err := s.Repos().Queue().FindByIDAndSite(ctx, queueID, siteID)
