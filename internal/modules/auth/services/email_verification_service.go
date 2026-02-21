@@ -91,7 +91,7 @@ func (s *EmailVerificationService) generateEmailHash(email string) string {
 // The URL expires after 60 minutes (similar to Laravel's default)
 func (s *EmailVerificationService) GenerateVerificationURL(userID, email string) string {
 	hash := s.generateEmailHash(email)
-	path := fmt.Sprintf("/api/auth/verify-email/%s/%s", userID, hash)
+	path := fmt.Sprintf("/auth/verify-email/%s/%s", userID, hash)
 
 	return signedurl.TemporarySign(path, nil, 60*time.Minute)
 }

@@ -42,7 +42,7 @@ var baseLayout = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
 {{ if .Greeting }}<h1>{{ .Greeting }}</h1>{{ end }}
 
 {{ range .Intros }}
-<p>{{ . }}</p>
+{{ . }}
 {{ end }}
 
 {{ if .Content }}{{ .Content }}{{ end }}
@@ -105,7 +105,7 @@ var baseLayout = `<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN"
 {{ end }}
 
 {{ range .Outros }}
-<p>{{ . }}</p>
+{{ . }}
 {{ end }}
 
 {{ if .Subcopy }}

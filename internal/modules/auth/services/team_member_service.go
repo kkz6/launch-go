@@ -326,7 +326,7 @@ func (s *TeamMemberService) GetInvitationByID(ctx context.Context, invitationID 
 // GenerateInvitationURL generates a permanent signed URL for accepting a team invitation
 // Team invitations don't expire - they remain valid until cancelled
 func (s *TeamMemberService) GenerateInvitationURL(invitationID string) string {
-	path := fmt.Sprintf("/api/auth/team-invitations/%s/accept", invitationID)
+	path := fmt.Sprintf("/auth/team-invitations/%s/accept", invitationID)
 	return signedurl.PermanentSign(path, nil)
 }
 
