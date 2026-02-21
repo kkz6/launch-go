@@ -100,6 +100,24 @@ type CreateQueueRequest struct {
 	StopWaitSeconds       *int    `json:"stop_wait_seconds" validate:"omitempty,min=0"`
 }
 
+// UpdateQueueRequest represents the request to update a queue worker
+type UpdateQueueRequest struct {
+	QueueConnection       *string `json:"queue_connection" validate:"omitempty,max=50"`
+	Queue                 *string `json:"queue" validate:"omitempty,max=100"`
+	User                  *string `json:"user" validate:"omitempty,max=255"`
+	RestSecondsOnEmpty    *int    `json:"rest_seconds_on_empty" validate:"omitempty,min=0"`
+	MaxSecondsPerJob      *int    `json:"max_seconds_per_job" validate:"omitempty,min=1"`
+	FailedJobDelaySeconds *int    `json:"failed_job_delay_seconds" validate:"omitempty,min=0"`
+	MaxTries              *int    `json:"max_tries" validate:"omitempty,min=0"`
+	MaxMemory             *int    `json:"max_memory" validate:"omitempty,min=128"`
+	RunOnMaintenance      *bool   `json:"run_on_maintenance"`
+	RunWithListen         *bool   `json:"run_with_listen"`
+	Directory             *string `json:"directory" validate:"omitempty,max=500"`
+	Environment           *string `json:"environment" validate:"omitempty,max=100"`
+	NumProcs              *int    `json:"numprocs" validate:"omitempty,min=1"`
+	StopWaitSeconds       *int    `json:"stop_wait_seconds" validate:"omitempty,min=0"`
+}
+
 // CreateCommandRequest represents the request to run a command
 type CreateCommandRequest struct {
 	Command string `json:"command" validate:"required"`

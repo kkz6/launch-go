@@ -79,7 +79,8 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 
 // UpdateDaemon updates a daemon
 func (s *Service) UpdateDaemon(ctx context.Context, serverID, teamID, daemonID string, req *dto.UpdateDaemonRequest) (*models.Daemon, error) {
-	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
 		return nil, err
 	}
 
@@ -117,6 +118,10 @@ func (s *Service) UpdateDaemon(ctx context.Context, serverID, teamID, daemonID s
 	}
 
 	activity.RecordWithLog(ctx, "server", "updated", "", daemon, "Daemon was updated")
+
+	if err := s.dispatchDaemonInstallJob(server, daemon); err != nil {
+		s.LogError(err, "Failed to dispatch daemon install job", "server_id", serverID, "daemon_id", daemon.ID)
+	}
 
 	return daemon, nil
 }
