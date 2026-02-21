@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/hibiken/asynq"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
@@ -165,29 +166,15 @@ func (s *Service) DeleteCron(ctx context.Context, serverID, teamID, cronID strin
 }
 
 func (s *Service) dispatchCronInstallJob(server *models.Server, cron *models.Cron) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewInstallCronTask(server.ID, cron.ID, nil)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewInstallCronTask(server.ID, cron.ID, nil)
+	})
 }
 
 func (s *Service) dispatchCronUninstallJob(server *models.Server, cron *models.Cron) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewUninstallCronTask(server.ID, cron.ID, nil)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewUninstallCronTask(server.ID, cron.ID, nil)
+	})
 }
 
 // CountCronsBySite counts cron jobs associated with a site

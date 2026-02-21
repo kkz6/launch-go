@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/hibiken/asynq"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
@@ -152,29 +153,15 @@ func (s *Service) DeleteDaemon(ctx context.Context, serverID, teamID, daemonID s
 }
 
 func (s *Service) dispatchDaemonInstallJob(server *models.Server, daemon *models.Daemon) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewInstallDaemonTask(server.ID, daemon.ID, nil)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewInstallDaemonTask(server.ID, daemon.ID, nil)
+	})
 }
 
 func (s *Service) dispatchDaemonUninstallJob(server *models.Server, daemon *models.Daemon) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewUninstallDaemonTask(server.ID, daemon.ID, nil)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewUninstallDaemonTask(server.ID, daemon.ID, nil)
+	})
 }
 
 // RestartDaemon restarts a daemon on the server

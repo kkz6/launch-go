@@ -3,6 +3,8 @@ package services
 import (
 	"context"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
@@ -119,27 +121,13 @@ func (s *Service) DeleteSSHKey(ctx context.Context, teamID, sshKeyID string) err
 }
 
 func (s *Service) dispatchSSHKeyAddJob(server *models.Server, key *models.SSHKey) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewAddSSHKeyTask(server.ID, key.ID)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewAddSSHKeyTask(server.ID, key.ID)
+	})
 }
 
 func (s *Service) dispatchSSHKeyRemoveJob(server *models.Server, key *models.SSHKey) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewRemoveSSHKeyTask(server.ID, key.ID, false)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewRemoveSSHKeyTask(server.ID, key.ID, false)
+	})
 }

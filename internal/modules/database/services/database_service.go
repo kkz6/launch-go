@@ -162,22 +162,12 @@ func (s *Service) DeleteDatabase(ctx context.Context, id, serverID, teamID strin
 
 // SyncDatabases syncs databases from the server
 func (s *Service) SyncDatabases(ctx context.Context, serverID string, userID *string) error {
-	if !s.HasQueue() {
-		// In test mode without queue, just return success
-		return nil
-	}
-
 	task, err := jobs.NewSyncDatabasesTask(serverID, userID)
 	if err != nil {
-		return fmt.Errorf("failed to create sync task: %w", err)
+		return err
 	}
 
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue sync databases job", "server_id", serverID)
-		return fmt.Errorf("failed to enqueue sync job: %w", err)
-	}
-
-	return nil
+	return s.EnqueueTask(task)
 }
 
 // BroadcastDatabaseStatus broadcasts a database status update

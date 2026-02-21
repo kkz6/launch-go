@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
@@ -96,69 +98,34 @@ func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, 
 	}
 }
 
-func (s *Service) dispatchServiceInstallJob(server *models.Server, service *models.InstalledService) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewAddServiceTask(server.ID, service.ID, string(service.Software))
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+func (s *Service) dispatchServiceInstallJob(server *models.Server, svc *models.InstalledService) error {
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewAddServiceTask(server.ID, svc.ID, string(svc.Software))
+	})
 }
 
-func (s *Service) dispatchServiceOperationJob(server *models.Server, service *models.InstalledService, operation string) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, operation, nil)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+func (s *Service) dispatchServiceOperationJob(server *models.Server, svc *models.InstalledService, operation string) error {
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewServiceOperationTask(server.ID, svc.ID, operation, nil)
+	})
 }
 
-func (s *Service) dispatchServiceStopJob(server *models.Server, service *models.InstalledService) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewServiceOperationTask(server.ID, service.ID, "stop", nil)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+func (s *Service) dispatchServiceStopJob(server *models.Server, svc *models.InstalledService) error {
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewServiceOperationTask(server.ID, svc.ID, "stop", nil)
+	})
 }
 
-func (s *Service) dispatchServiceRemoveJob(server *models.Server, service *models.InstalledService) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewRemoveServiceTask(server.ID, service.ID, nil)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+func (s *Service) dispatchServiceRemoveJob(server *models.Server, svc *models.InstalledService) error {
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewRemoveServiceTask(server.ID, svc.ID, nil)
+	})
 }
 
-func (s *Service) dispatchServiceStatusJob(server *models.Server, service *models.InstalledService) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewCheckServiceStatusTask(server.ID, service.ID, nil)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+func (s *Service) dispatchServiceStatusJob(server *models.Server, svc *models.InstalledService) error {
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewCheckServiceStatusTask(server.ID, svc.ID, nil)
+	})
 }
 
 // GetServiceStatus returns the current status of a service from the database
@@ -437,16 +404,9 @@ func (s *Service) SetDefaultPhpVersion(ctx context.Context, serverID, teamID, se
 		return fmt.Errorf("service is not a PHP service")
 	}
 
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewSetDefaultPhpTask(server.ID, service.ID, service.Version, userID)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewSetDefaultPhpTask(server.ID, service.ID, service.Version, userID)
+	})
 }
 
 // InstallPhpExtension installs a PHP extension on a server
@@ -466,12 +426,9 @@ func (s *Service) InstallPhpExtension(ctx context.Context, serverID, teamID, ver
 		_ = s.repos.Service().SetExtensionStatus(ctx, phpService.ID, extension, "installing")
 	}
 
-	task, err := jobs.NewInstallPhpExtensionTask(server.ID, version, extension, userID)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewInstallPhpExtensionTask(server.ID, version, extension, userID)
+	})
 }
 
 // UninstallPhpExtension uninstalls a PHP extension from a server
@@ -491,10 +448,7 @@ func (s *Service) UninstallPhpExtension(ctx context.Context, serverID, teamID, v
 		_ = s.repos.Service().SetExtensionStatus(ctx, phpService.ID, extension, "removing")
 	}
 
-	task, err := jobs.NewUninstallPhpExtensionTask(server.ID, version, extension, userID)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewUninstallPhpExtensionTask(server.ID, version, extension, userID)
+	})
 }

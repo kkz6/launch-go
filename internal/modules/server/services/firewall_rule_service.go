@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/hibiken/asynq"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
@@ -117,29 +118,15 @@ func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, rule
 }
 
 func (s *Service) dispatchFirewallRuleInstallJob(server *models.Server, rule *models.FirewallRule) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewInstallFirewallRuleTask(server.ID, rule.ID, nil)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewInstallFirewallRuleTask(server.ID, rule.ID, nil)
+	})
 }
 
 func (s *Service) dispatchFirewallRuleUninstallJob(server *models.Server, rule *models.FirewallRule) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewUninstallFirewallRuleTask(server.ID, rule.ID, nil)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewUninstallFirewallRuleTask(server.ID, rule.ID, nil)
+	})
 }
 
 // CreateDefaultFirewallRules creates the default firewall rules for a new server (SSH, HTTP, HTTPS)

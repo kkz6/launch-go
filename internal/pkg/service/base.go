@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
@@ -144,6 +145,47 @@ func (s *Base) LogWarn(msg string, fields ...interface{}) {
 func (s *Base) LogInfo(msg string, fields ...interface{}) {
 	logger.Info(s.Logger, msg, fields...)
 }
+
+// MustDispatch creates and enqueues a task, returning an error if the queue is not configured.
+// Use this for dispatch helpers where the caller needs to know if dispatch failed.
+//
+// Usage:
+//
+//	func (s *Service) dispatchInstallJob(serverID, entityID string) error {
+//	    return s.MustDispatch(func() (*asynq.Task, error) {
+//	        return jobs.NewInstallTask(serverID, entityID, nil)
+//	    })
+//	}
+func (s *Base) MustDispatch(factory TaskFactory) error {
+	if s.Queue == nil {
+		return ErrQueueRequired
+	}
+
+	task, err := factory()
+	if err != nil {
+		return err
+	}
+
+	return s.EnqueueTask(task)
+}
+
+// MustDispatchWithOptions creates and enqueues a task with custom options,
+// returning an error if the queue is not configured.
+func (s *Base) MustDispatchWithOptions(factory TaskFactory, opts ...asynq.Option) error {
+	if s.Queue == nil {
+		return ErrQueueRequired
+	}
+
+	task, err := factory()
+	if err != nil {
+		return err
+	}
+
+	return s.EnqueueTaskWithOptions(task, opts...)
+}
+
+// ErrQueueRequired is returned by MustDispatch when no queue client is configured.
+var ErrQueueRequired = fiber.NewError(fiber.StatusInternalServerError, "Queue not configured")
 
 // HasQueue returns true if a queue client is configured
 func (s *Base) HasQueue() bool {
