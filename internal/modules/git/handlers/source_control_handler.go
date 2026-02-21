@@ -7,6 +7,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/git/dto"
 	"github.com/kkz6/launch-go/internal/modules/git/services"
 	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -32,10 +33,7 @@ func (h *SourceControlHandler) ListSourceControls(c *fiber.Ctx) error {
 		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
 	}
 
-	result := make([]dto.SourceControlResponse, len(sourceControls))
-	for i, sc := range sourceControls {
-		result[i] = dto.ToSourceControlResponse(&sc)
-	}
+	result := pkgdto.TransformSlice(sourceControls, dto.ToSourceControlResponse)
 
 	return fiberctx.OK(c, "Source controls retrieved", result)
 }
@@ -69,10 +67,7 @@ func (h *SourceControlHandler) GetSourceControlRepositories(c *fiber.Ctx) error 
 		return fiberctx.HandleError(c, err)
 	}
 
-	result := make([]dto.RepositoryResponse, len(repos))
-	for i, repo := range repos {
-		result[i] = dto.ToRepositoryResponse(&repo)
-	}
+	result := pkgdto.TransformSlice(repos, dto.ToRepositoryResponse)
 
 	return fiberctx.OK(c, "Repositories retrieved", result)
 }
@@ -244,10 +239,7 @@ func (h *SourceControlHandler) GetCachedInstallationRepositories(c *fiber.Ctx) e
 		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
 	}
 
-	result := make([]dto.RepositoryResponse, len(repos))
-	for i, repo := range repos {
-		result[i] = dto.ToRepositoryResponse(&repo)
-	}
+	result := pkgdto.TransformSlice(repos, dto.ToRepositoryResponse)
 
 	return fiberctx.OK(c, "Cached repositories retrieved", fiber.Map{
 		"repositories":     result,

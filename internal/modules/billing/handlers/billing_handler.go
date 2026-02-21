@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/billing/dto"
 	"github.com/kkz6/launch-go/internal/modules/billing/services"
 	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -54,10 +55,7 @@ func (h *BillingHandler) Index(c *fiber.Ctx) error {
 func (h *BillingHandler) GetPlans(c *fiber.Ctx) error {
 	plans := h.service.GetPlans()
 
-	planResponses := make([]dto.PlanResponse, len(plans))
-	for i, plan := range plans {
-		planResponses[i] = dto.ToPlanResponse(&plan)
-	}
+	planResponses := pkgdto.TransformSlice(plans, dto.ToPlanResponse)
 
 	return fiberctx.OK(c, "Plans retrieved", planResponses)
 }
@@ -162,10 +160,7 @@ func (h *BillingHandler) GetOrders(c *fiber.Ctx) error {
 		return fiberctx.HandleError(c, err)
 	}
 
-	orderResponses := make([]dto.OrderResponse, len(orders))
-	for i, order := range orders {
-		orderResponses[i] = dto.ToOrderResponse(&order)
-	}
+	orderResponses := pkgdto.TransformSlice(orders, dto.ToOrderResponse)
 
 	return fiberctx.OK(c, "Orders retrieved", orderResponses)
 }
@@ -220,10 +215,7 @@ func (h *BillingHandler) RegisterSubscription(c *fiber.Ctx) error {
 	}
 
 	plans := h.service.GetPlans()
-	planResponses := make([]dto.PlanResponse, len(plans))
-	for i, plan := range plans {
-		planResponses[i] = dto.ToPlanResponse(&plan)
-	}
+	planResponses := pkgdto.TransformSlice(plans, dto.ToPlanResponse)
 
 	return fiberctx.OK(c, "Registration subscription plans", planResponses)
 }

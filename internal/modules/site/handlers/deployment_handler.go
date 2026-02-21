@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -90,10 +91,7 @@ func (h *DeploymentHandler) ListDeployments(c *fiber.Ctx) error {
 		return fiberctx.Abort(err)
 	}
 
-	result := make([]dto.DeploymentResponse, len(deployments))
-	for i, deployment := range deployments {
-		result[i] = dto.ToDeploymentResponse(&deployment)
-	}
+	result := pkgdto.TransformSlice(deployments, dto.ToDeploymentResponse)
 
 	return fiberctx.OK(c, "Deployments retrieved", result)
 }

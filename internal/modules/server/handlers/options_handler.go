@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -25,10 +26,5 @@ func (h *Handler) ListServerProviders(c *fiber.Ctx) error {
 		return fiberctx.RespondInternalError(c, "Failed to fetch server providers")
 	}
 
-	result := make([]dto.ServerProviderResponse, len(providers))
-	for i, provider := range providers {
-		result[i] = dto.ToServerProviderResponse(&provider)
-	}
-
-	return fiberctx.OK(c, "Server providers retrieved", result)
+	return fiberctx.OK(c, "Server providers retrieved", pkgdto.TransformSlice(providers, dto.ToServerProviderResponse))
 }

@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
 	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -33,10 +34,7 @@ func (h *StorageProviderHandler) ListStorageProviders(c *fiber.Ctx) error {
 		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	result := make([]dto.StorageProviderResponse, len(providers))
-	for i, provider := range providers {
-		result[i] = dto.ToStorageProviderResponse(&provider)
-	}
+	result := pkgdto.TransformSlice(providers, dto.ToStorageProviderResponse)
 
 	return fiberutil.OK(c, "Storage providers retrieved", result)
 }
