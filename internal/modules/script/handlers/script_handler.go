@@ -7,6 +7,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/script/dto"
 	"github.com/kkz6/launch-go/internal/modules/script/services"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -32,10 +33,7 @@ func (h *ScriptHandler) List(c *fiber.Ctx) error {
 		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	results := make([]*dto.ScriptResponse, len(scripts))
-	for i, s := range scripts {
-		results[i] = dto.ToScriptResponse(&s)
-	}
+	results := pkgdto.ConvertSlicePtr(scripts, dto.ToScriptResponse)
 
 	return fiberutil.OK(c, "Scripts retrieved", results)
 }
@@ -166,10 +164,7 @@ func (h *ScriptHandler) ListExecutions(c *fiber.Ctx) error {
 		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
 	}
 
-	results := make([]*dto.ScriptExecutionResponse, len(executions))
-	for i, e := range executions {
-		results[i] = dto.ToExecutionResponse(&e)
-	}
+	results := pkgdto.ConvertSlicePtr(executions, dto.ToExecutionResponse)
 
 	return fiberutil.OK(c, "Executions retrieved", results)
 }

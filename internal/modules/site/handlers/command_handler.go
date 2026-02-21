@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -65,10 +66,7 @@ func (h *CommandHandler) ListCommands(c *fiber.Ctx) error {
 		return fiberctx.HandleError(c, err)
 	}
 
-	result := make([]dto.CommandResponse, len(commands))
-	for i, cmd := range commands {
-		result[i] = dto.ToCommandResponse(&cmd)
-	}
+	result := pkgdto.TransformSlice(commands, dto.ToCommandResponse)
 
 	return fiberctx.OK(c, "Commands retrieved", result)
 }

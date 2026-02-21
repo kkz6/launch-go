@@ -11,6 +11,7 @@ import (
 	"golang.org/x/crypto/ssh"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -28,12 +29,7 @@ func (h *Handler) ListSSHKeys(c *fiber.Ctx) error {
 		return fiberctx.RespondInternalError(c, "Failed to fetch SSH keys")
 	}
 
-	result := make([]dto.SSHKeyResponse, len(keys))
-	for i, key := range keys {
-		result[i] = dto.ToSSHKeyResponse(&key)
-	}
-
-	return fiberctx.OK(c, "SSH keys retrieved", result)
+	return fiberctx.OK(c, "SSH keys retrieved", pkgdto.TransformSlice(keys, dto.ToSSHKeyResponse))
 }
 
 // GenerateSSHKey generates a new SSH key pair
@@ -109,12 +105,7 @@ func (h *Handler) ListServerSSHKeys(c *fiber.Ctx) error {
 		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch SSH keys")
 	}
 
-	result := make([]dto.SSHKeyResponse, len(keys))
-	for i, key := range keys {
-		result[i] = dto.ToSSHKeyResponse(&key)
-	}
-
-	return fiberctx.OK(c, "SSH keys retrieved", result)
+	return fiberctx.OK(c, "SSH keys retrieved", pkgdto.TransformSlice(keys, dto.ToSSHKeyResponse))
 }
 
 // CreateSSHKey creates a new SSH key

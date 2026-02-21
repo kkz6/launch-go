@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -26,12 +27,7 @@ func (h *Handler) ListTasks(c *fiber.Ctx) error {
 		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch tasks")
 	}
 
-	result := make([]dto.TaskResponse, len(tasks))
-	for i, task := range tasks {
-		result[i] = dto.ToTaskResponse(&task)
-	}
-
-	return fiberctx.OK(c, "Tasks retrieved", result)
+	return fiberctx.OK(c, "Tasks retrieved", pkgdto.TransformSlice(tasks, dto.ToTaskResponse))
 }
 
 // GetTask returns a specific task by ID

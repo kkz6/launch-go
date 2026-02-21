@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -24,12 +25,7 @@ func (h *Handler) ListCrons(c *fiber.Ctx) error {
 		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch cron jobs")
 	}
 
-	result := make([]dto.CronResponse, len(crons))
-	for i, cron := range crons {
-		result[i] = dto.ToCronResponse(&cron)
-	}
-
-	return fiberctx.OK(c, "Cron jobs retrieved", result)
+	return fiberctx.OK(c, "Cron jobs retrieved", pkgdto.TransformSlice(crons, dto.ToCronResponse))
 }
 
 // CreateCron creates a new cron job

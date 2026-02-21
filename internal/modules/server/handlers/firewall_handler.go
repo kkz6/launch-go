@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -24,12 +25,7 @@ func (h *Handler) ListFirewallRules(c *fiber.Ctx) error {
 		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch firewall rules")
 	}
 
-	result := make([]dto.FirewallRuleResponse, len(rules))
-	for i, rule := range rules {
-		result[i] = dto.ToFirewallRuleResponse(&rule)
-	}
-
-	return fiberctx.OK(c, "Firewall rules retrieved", result)
+	return fiberctx.OK(c, "Firewall rules retrieved", pkgdto.TransformSlice(rules, dto.ToFirewallRuleResponse))
 }
 
 // CreateFirewallRule creates a new firewall rule

@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -50,10 +51,5 @@ func (h *Handler) GetMetrics(c *fiber.Ctx) error {
 		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch metrics")
 	}
 
-	result := make([]dto.MetricResponse, len(metrics))
-	for i, metric := range metrics {
-		result[i] = dto.ToMetricResponse(&metric)
-	}
-
-	return fiberctx.OK(c, "Metrics retrieved", result)
+	return fiberctx.OK(c, "Metrics retrieved", pkgdto.TransformSlice(metrics, dto.ToMetricResponse))
 }

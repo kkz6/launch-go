@@ -12,6 +12,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/contracts"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
@@ -80,10 +81,7 @@ func (h *PATHandler) List(c *fiber.Ctx) error {
 		return fiberctx.RespondInternalError(c, "Failed to fetch tokens")
 	}
 
-	results := make([]patResponse, len(tokens))
-	for i := range tokens {
-		results[i] = toPATResponse(&tokens[i])
-	}
+	results := pkgdto.TransformSlice(tokens, toPATResponse)
 
 	return fiberctx.OK(c, "Tokens retrieved", results)
 }

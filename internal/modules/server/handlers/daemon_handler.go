@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -24,12 +25,7 @@ func (h *Handler) ListDaemons(c *fiber.Ctx) error {
 		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch daemons")
 	}
 
-	result := make([]dto.DaemonResponse, len(daemons))
-	for i, daemon := range daemons {
-		result[i] = dto.ToDaemonResponse(&daemon)
-	}
-
-	return fiberctx.OK(c, "Daemons retrieved", result)
+	return fiberctx.OK(c, "Daemons retrieved", pkgdto.TransformSlice(daemons, dto.ToDaemonResponse))
 }
 
 // CreateDaemon creates a new daemon

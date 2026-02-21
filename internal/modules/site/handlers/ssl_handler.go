@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -64,10 +65,7 @@ func (h *SSLHandler) ListCertificates(c *fiber.Ctx) error {
 		return fiberctx.HandleError(c, err)
 	}
 
-	result := make([]dto.CertificateResponse, len(certs))
-	for i, cert := range certs {
-		result[i] = dto.ToCertificateResponse(&cert)
-	}
+	result := pkgdto.TransformSlice(certs, dto.ToCertificateResponse)
 
 	return fiberctx.OK(c, "Certificates retrieved", result)
 }

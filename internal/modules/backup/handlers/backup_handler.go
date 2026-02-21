@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -27,10 +28,7 @@ func (h *BackupHandler) ListBackups(c *fiber.Ctx) error {
 		return fiberutil.RespondInternalError(c, "Failed to fetch backups")
 	}
 
-	result := make([]dto.BackupResponse, len(backups))
-	for i, backup := range backups {
-		result[i] = dto.ToBackupResponse(&backup)
-	}
+	result := pkgdto.TransformSlice(backups, dto.ToBackupResponse)
 
 	return fiberutil.OK(c, "Backups retrieved", result)
 }

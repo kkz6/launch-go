@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -65,10 +66,7 @@ func (h *QueueHandler) ListQueues(c *fiber.Ctx) error {
 		return fiberctx.HandleError(c, err)
 	}
 
-	result := make([]dto.QueueResponse, len(queues))
-	for i, queue := range queues {
-		result[i] = dto.ToQueueResponse(&queue)
-	}
+	result := pkgdto.TransformSlice(queues, dto.ToQueueResponse)
 
 	return fiberctx.OK(c, "Queues retrieved", result)
 }

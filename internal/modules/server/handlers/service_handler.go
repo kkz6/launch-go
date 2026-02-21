@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -25,12 +26,7 @@ func (h *Handler) ListServices(c *fiber.Ctx) error {
 		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch services")
 	}
 
-	result := make([]dto.ServiceResponse, len(svcs))
-	for i, svc := range svcs {
-		result[i] = dto.ToServiceResponse(&svc)
-	}
-
-	return fiberctx.OK(c, "Services retrieved", result)
+	return fiberctx.OK(c, "Services retrieved", pkgdto.TransformSlice(svcs, dto.ToServiceResponse))
 }
 
 // InstallService installs a new service on a server
