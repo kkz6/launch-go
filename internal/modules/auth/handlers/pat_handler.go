@@ -78,7 +78,7 @@ func (h *PATHandler) List(c *fiber.Ctx) error {
 
 	tokens, err := h.patRepo.GetByUser(c.Context(), userID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, "Failed to fetch tokens")
+		return fiberctx.HandleError(c, err)
 	}
 
 	results := pkgdto.TransformSlice(tokens, toPATResponse)
@@ -101,7 +101,7 @@ func (h *PATHandler) Create(c *fiber.Ctx) error {
 	// If user has 2FA enabled, require a valid TOTP/recovery code
 	user, err := h.userRepo.FindByID(c.Context(), userID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, "Failed to fetch user")
+		return fiberctx.HandleError(c, err)
 	}
 
 	if user != nil && user.HasEnabledTwoFactorAuthentication() {
@@ -155,7 +155,7 @@ func (h *PATHandler) Create(c *fiber.Ctx) error {
 	record.UpdatedAt = &now
 
 	if err := h.patRepo.Create(c.Context(), record); err != nil {
-		return fiberctx.RespondInternalError(c, "Failed to create token")
+		return fiberctx.HandleError(c, err)
 	}
 
 	resp := patCreateResponse{
@@ -180,7 +180,7 @@ func (h *PATHandler) Delete(c *fiber.Ctx) error {
 
 	rowsAffected, err := h.patRepo.DeleteByUser(c.Context(), tokenID, userID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, "Failed to delete token")
+		return fiberctx.HandleError(c, err)
 	}
 	if rowsAffected == 0 {
 		return fiberctx.RespondNotFound(c, "Token not found")

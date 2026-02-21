@@ -49,7 +49,7 @@ func (h *Handler) List(c *fiber.Ctx) error {
 
 	servers, err := h.service.ListServers(c.Context(), teamID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, "Failed to fetch servers")
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "Servers retrieved", pkgdto.TransformSlice(servers, dto.ToServerResponse))
@@ -64,7 +64,7 @@ func (h *Handler) ListArchived(c *fiber.Ctx) error {
 
 	servers, err := h.service.ListArchivedServers(c.Context(), teamID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, "Failed to fetch archived servers")
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "Archived servers retrieved", pkgdto.TransformSlice(servers, dto.ToServerResponse))
@@ -320,7 +320,7 @@ func (h *Handler) GetSiteCount(c *fiber.Ctx) error {
 
 	count, err := h.siteCounter.CountByServer(c.Context(), serverID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, "Failed to count sites")
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "Site count retrieved", fiber.Map{"count": count})

@@ -45,7 +45,7 @@ func (h *SessionHandler) List(c *fiber.Ctx) error {
 
 	sessions, err := h.sessionRepo.GetByUser(c.Context(), userID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, "Failed to fetch sessions")
+		return fiberctx.HandleError(c, err)
 	}
 
 	results := make([]sessionResponse, len(sessions))
@@ -104,7 +104,7 @@ func (h *SessionHandler) RevokeOthers(c *fiber.Ctx) error {
 
 	count, err := h.sessionRepo.DeleteAllByUserExcept(c.Context(), userID, currentSessionID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, "Failed to revoke sessions")
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "Other sessions revoked", fiber.Map{"revoked_count": count})

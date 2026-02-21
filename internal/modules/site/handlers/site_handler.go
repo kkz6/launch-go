@@ -43,7 +43,7 @@ func (h *SiteHandler) List(c *fiber.Ctx) error {
 
 	sites, err := h.siteService.List(c.Context(), serverID, teamID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "Sites retrieved", pkgdto.TransformSlice(sites, dto.ToSiteResponse))
@@ -355,7 +355,7 @@ func (h *SiteHandler) VerifyDomain(c *fiber.Ctx) error {
 	// Get user's connected domains
 	userDomains, err := h.domainRepo.FindByTeam(c.Context(), teamID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+		return fiberctx.HandleError(c, err)
 	}
 
 	// Check if the base domain exists in user's connected domains

@@ -26,7 +26,7 @@ func (h *DashboardHandler) Index(c *fiber.Ctx) error {
 
 	dashboard, err := h.service.GetDashboard(c.Context(), teamID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "Dashboard data retrieved", dashboard)
@@ -41,7 +41,7 @@ func (h *DashboardHandler) OnboardingStatus(c *fiber.Ctx) error {
 
 	status, err := h.service.GetOnboardingStatus(c.Context(), userID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "Onboarding status retrieved", status)
@@ -55,7 +55,7 @@ func (h *DashboardHandler) CompleteOnboarding(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.CompleteOnboarding(c.Context(), userID); err != nil {
-		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "Onboarding completed", nil)

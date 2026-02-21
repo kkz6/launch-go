@@ -30,7 +30,7 @@ func (h *ScriptHandler) List(c *fiber.Ctx) error {
 
 	scripts, err := h.service.List(c.Context(), userID, teamID)
 	if err != nil {
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	results := pkgdto.ConvertSlicePtr(scripts, dto.ToScriptResponse)
@@ -52,7 +52,7 @@ func (h *ScriptHandler) Show(c *fiber.Ctx) error {
 			return fiberutil.RespondNotFound(c, "Script not found")
 		}
 
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Script retrieved", dto.ToScriptResponse(script))
@@ -161,7 +161,7 @@ func (h *ScriptHandler) ListExecutions(c *fiber.Ctx) error {
 			return fiberutil.RespondNotFound(c, "Script not found")
 		}
 
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	results := pkgdto.ConvertSlicePtr(executions, dto.ToExecutionResponse)
@@ -184,7 +184,7 @@ func (h *ScriptHandler) GetExecution(c *fiber.Ctx) error {
 			return fiberutil.RespondNotFound(c, "Execution not found")
 		}
 
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Execution retrieved", dto.ToExecutionResponse(execution))

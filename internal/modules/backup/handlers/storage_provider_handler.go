@@ -31,7 +31,7 @@ func (h *StorageProviderHandler) ListStorageProviders(c *fiber.Ctx) error {
 
 	providers, err := h.providerService.ListStorageProvidersByTeam(c.Context(), teamID)
 	if err != nil {
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	result := pkgdto.TransformSlice(providers, dto.ToStorageProviderResponse)
@@ -48,7 +48,7 @@ func (h *StorageProviderHandler) ListStorageProvidersForDropdown(c *fiber.Ctx) e
 
 	providers, err := h.providerService.ListStorageProvidersByTeam(c.Context(), teamID)
 	if err != nil {
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	result := make(map[uint64]string)
@@ -164,7 +164,7 @@ func (h *StorageProviderHandler) ShowStorageProvider(c *fiber.Ctx) error {
 		if fiberutil.IsNotFound(err) {
 			return fiberutil.RespondNotFound(c, "Storage provider not found")
 		}
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Storage provider retrieved", dto.ToStorageProviderResponse(provider))

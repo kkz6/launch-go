@@ -30,7 +30,7 @@ func (h *SourceControlHandler) ListSourceControls(c *fiber.Ctx) error {
 
 	sourceControls, err := h.service.ListSourceControls(c.Context(), teamID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+		return fiberctx.HandleError(c, err)
 	}
 
 	result := pkgdto.TransformSlice(sourceControls, dto.ToSourceControlResponse)
@@ -123,7 +123,7 @@ func (h *SourceControlHandler) GetInstallationURL(c *fiber.Ctx) error {
 
 	url, err := h.service.GetInstallationURL(providerType)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "Installation URL retrieved", dto.InstallationURLResponse{
@@ -147,7 +147,7 @@ func (h *SourceControlHandler) GetInstallations(c *fiber.Ctx) error {
 
 	sourceControls, err := h.service.ListSourceControlsByProvider(c.Context(), providerType, teamID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+		return fiberctx.HandleError(c, err)
 	}
 
 	installations := make([]dto.AppInstallationData, len(sourceControls))
@@ -210,7 +210,7 @@ func (h *SourceControlHandler) GetInstallationRepositories(c *fiber.Ctx) error {
 
 	repos, err := h.service.GetInstallationRepositoriesFromAPI(c.Context(), providerType, installationID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "Repositories retrieved", fiber.Map{
@@ -236,7 +236,7 @@ func (h *SourceControlHandler) GetCachedInstallationRepositories(c *fiber.Ctx) e
 
 	repos, err := h.service.GetCachedRepositories(c.Context(), providerType, installationID, teamID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+		return fiberctx.HandleError(c, err)
 	}
 
 	result := pkgdto.TransformSlice(repos, dto.ToRepositoryResponse)
@@ -267,7 +267,7 @@ func (h *SourceControlHandler) RefreshInstallationRepositories(c *fiber.Ctx) err
 	}
 
 	if err := h.service.RefreshInstallationRepositories(c.Context(), sc); err != nil {
-		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "Repositories are being synced in the background", fiber.Map{
@@ -343,7 +343,7 @@ func (h *SourceControlHandler) GetInstallationsWithCounts(c *fiber.Ctx) error {
 
 	installations, err := h.service.GetInstallationsWithRepositoryCounts(c.Context(), teamID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, fiberctx.MsgInternalError)
+		return fiberctx.HandleError(c, err)
 	}
 
 	// Get available providers (matches Laravel's format)
