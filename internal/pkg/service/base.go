@@ -187,6 +187,35 @@ func (s *Base) MustDispatchWithOptions(factory TaskFactory, opts ...asynq.Option
 // ErrQueueRequired is returned by MustDispatch when no queue client is configured.
 var ErrQueueRequired = fiber.NewError(fiber.StatusInternalServerError, "Queue not configured")
 
+// UninstallOrDelete handles the common pattern of soft-deleting an installed entity
+// (marking it for uninstallation and dispatching a job) or hard-deleting it if not yet installed.
+//
+// Usage:
+//
+//	return s.UninstallOrDelete(ctx, daemon.IsInstalled(), daemon.ID,
+//	    s.repos.Daemon().MarkAsUninstalling,
+//	    s.repos.Daemon().Delete,
+//	    func() error { return s.dispatchDaemonUninstallJob(server, daemon) },
+//	)
+func (s *Base) UninstallOrDelete(
+	ctx context.Context,
+	installed bool,
+	entityID string,
+	markFn func(ctx context.Context, id string) error,
+	deleteFn func(ctx context.Context, id string) error,
+	dispatchFn func() error,
+) error {
+	if installed {
+		if err := markFn(ctx, entityID); err != nil {
+			return err
+		}
+
+		return dispatchFn()
+	}
+
+	return deleteFn(ctx, entityID)
+}
+
 // HasQueue returns true if a queue client is configured
 func (s *Base) HasQueue() bool {
 	return s.Queue != nil

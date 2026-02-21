@@ -2,10 +2,8 @@ package services
 
 import (
 	"context"
-	"time"
 
 	"github.com/hibiken/asynq"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
@@ -137,19 +135,11 @@ func (s *Service) DeleteDaemon(ctx context.Context, serverID, teamID, daemonID s
 
 	activity.RecordWithLog(ctx, "server", "deleted", "", daemon, "Daemon deletion requested")
 
-	if daemon.IsInstalled() {
-		return s.WithTransaction(ctx, func(tx *gorm.DB) error {
-			now := time.Now()
-			daemon.UninstallationRequestedAt = &now
-			if err := tx.Save(daemon).Error; err != nil {
-				return err
-			}
-
-			return s.dispatchDaemonUninstallJob(server, daemon)
-		})
-	}
-
-	return s.repos.Daemon().Delete(ctx, daemonID)
+	return s.UninstallOrDelete(ctx, daemon.IsInstalled(), daemonID,
+		s.repos.Daemon().MarkAsUninstalling,
+		s.repos.Daemon().Delete,
+		func() error { return s.dispatchDaemonUninstallJob(server, daemon) },
+	)
 }
 
 func (s *Service) dispatchDaemonInstallJob(server *models.Server, daemon *models.Daemon) error {

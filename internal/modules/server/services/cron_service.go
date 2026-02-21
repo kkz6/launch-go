@@ -2,10 +2,8 @@ package services
 
 import (
 	"context"
-	"time"
 
 	"github.com/hibiken/asynq"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
@@ -129,34 +127,14 @@ func (s *Service) DeleteCron(ctx context.Context, serverID, teamID, cronID strin
 
 	activity.RecordWithLog(ctx, "server", "deleted", "", cron, "Cron job deletion requested")
 
-	if cron.IsInstalled() {
-		err := s.WithTransaction(ctx, func(tx *gorm.DB) error {
-			now := time.Now()
-			cron.UninstallationRequestedAt = &now
-			if err := tx.Save(cron).Error; err != nil {
-				return err
-			}
-
-			return s.dispatchCronUninstallJob(server, cron)
-		})
-		if err != nil {
-			return err
-		}
-
-		// Broadcast cron deleted event
-		s.BroadcastToTeam(teamID, "cron.deleted", map[string]interface{}{
-			"id":        cronID,
-			"server_id": serverID,
-		})
-
-		return nil
-	}
-
-	if err := s.repos.Cron().Delete(ctx, cronID); err != nil {
+	if err := s.UninstallOrDelete(ctx, cron.IsInstalled(), cronID,
+		s.repos.Cron().MarkAsUninstalling,
+		s.repos.Cron().Delete,
+		func() error { return s.dispatchCronUninstallJob(server, cron) },
+	); err != nil {
 		return err
 	}
 
-	// Broadcast cron deleted event
 	s.BroadcastToTeam(teamID, "cron.deleted", map[string]interface{}{
 		"id":        cronID,
 		"server_id": serverID,

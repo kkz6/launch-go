@@ -63,6 +63,7 @@ type FirewallRuleRepository interface {
 	Update(ctx context.Context, rule *models.FirewallRule) error
 	MarkAsInstalled(ctx context.Context, id string) error
 	MarkAsFailed(ctx context.Context, id string) error
+	MarkAsUninstalling(ctx context.Context, id string) error
 	MarkUninstallationFailed(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
 }
@@ -78,6 +79,7 @@ type CronRepository interface {
 	Update(ctx context.Context, cron *models.Cron) error
 	MarkAsInstalled(ctx context.Context, id string) error
 	MarkInstallationFailed(ctx context.Context, id string) error
+	MarkAsUninstalling(ctx context.Context, id string) error
 	MarkUninstallationFailed(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
 	CountBySite(ctx context.Context, siteID string) (int64, error)
@@ -95,6 +97,7 @@ type DaemonRepository interface {
 	UpdateLastStatusCheckByServer(ctx context.Context, serverID string, t time.Time) error
 	MarkAsInstalled(ctx context.Context, id string) error
 	MarkInstallationFailed(ctx context.Context, id string) error
+	MarkAsUninstalling(ctx context.Context, id string) error
 	MarkUninstallationFailed(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
 }

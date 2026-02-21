@@ -2,10 +2,8 @@ package services
 
 import (
 	"context"
-	"time"
 
 	"github.com/hibiken/asynq"
-	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
@@ -102,19 +100,11 @@ func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, rule
 	// Using embedded ActivityMixin for consistent activity logging
 	s.LogSystemActivity(ctx, rule, "deleted", "Firewall rule deletion requested")
 
-	if rule.IsInstalled() {
-		return s.WithTransaction(ctx, func(tx *gorm.DB) error {
-			now := time.Now()
-			rule.UninstallationRequestedAt = &now
-			if err := tx.Save(rule).Error; err != nil {
-				return err
-			}
-
-			return s.dispatchFirewallRuleUninstallJob(server, rule)
-		})
-	}
-
-	return s.repos.FirewallRule().Delete(ctx, ruleID)
+	return s.UninstallOrDelete(ctx, rule.IsInstalled(), ruleID,
+		s.repos.FirewallRule().MarkAsUninstalling,
+		s.repos.FirewallRule().Delete,
+		func() error { return s.dispatchFirewallRuleUninstallJob(server, rule) },
+	)
 }
 
 func (s *Service) dispatchFirewallRuleInstallJob(server *models.Server, rule *models.FirewallRule) error {
