@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
 	dnstypes "github.com/kkz6/launch-go/internal/modules/dns/types"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -139,12 +140,7 @@ func (s *DomainService) ListDomains(ctx context.Context, teamID string) ([]dto.D
 		return nil, err
 	}
 
-	responses := make([]dto.DomainResponse, len(domains))
-	for i, d := range domains {
-		responses[i] = dto.ToDomainResponse(&d)
-	}
-
-	return responses, nil
+	return pkgdto.TransformSlice(domains, dto.ToDomainResponse), nil
 }
 
 // DeleteDomain deletes a domain
@@ -191,12 +187,7 @@ func (s *DomainService) GetDomainRecords(ctx context.Context, domainID, teamID s
 		return nil, err
 	}
 
-	responses := make([]dto.DNSRecordResponse, len(records))
-	for i, r := range records {
-		responses[i] = dto.ToDNSRecordResponse(&r)
-	}
-
-	return responses, nil
+	return pkgdto.TransformSlice(records, dto.ToDNSRecordResponse), nil
 }
 
 // GetDomainNameservers retrieves nameservers for a domain from its provider

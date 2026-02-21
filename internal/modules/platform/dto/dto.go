@@ -4,6 +4,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/platform/models"
 	"github.com/kkz6/launch-go/internal/modules/platform/repositories"
 	"github.com/kkz6/launch-go/internal/modules/platform/types"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
 // PlatformUpdateResponse represents a platform update with status summary
@@ -38,12 +39,7 @@ func ToPlatformUpdateResponse(update *models.PlatformUpdate) PlatformUpdateRespo
 
 // ToPlatformUpdateListResponse converts a slice of models to response DTOs
 func ToPlatformUpdateListResponse(updates []models.PlatformUpdate) []PlatformUpdateResponse {
-	result := make([]PlatformUpdateResponse, len(updates))
-	for i, u := range updates {
-		result[i] = ToPlatformUpdateResponse(&u)
-	}
-
-	return result
+	return pkgdto.TransformSlice(updates, ToPlatformUpdateResponse)
 }
 
 // PlatformUpdateDetailResponse includes server statuses

@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
 
 // CreateDomainRequest represents a request to create a domain
@@ -83,10 +84,7 @@ func ToDomainResponse(d *models.Domain) DomainResponse {
 	}
 
 	if len(d.Records) > 0 {
-		resp.Records = make([]DNSRecordResponse, len(d.Records))
-		for i, record := range d.Records {
-			resp.Records[i] = ToDNSRecordResponse(&record)
-		}
+		resp.Records = pkgdto.TransformSlice(d.Records, ToDNSRecordResponse)
 	}
 
 	return resp
