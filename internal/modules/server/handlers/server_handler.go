@@ -92,17 +92,12 @@ func (h *Handler) Create(c *fiber.Ctx) error {
 
 // Show returns a single server
 func (h *Handler) Show(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
 
-	id, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	server, err := h.service.GetServerWithRelations(c.Context(), id, teamID)
+	server, err := h.service.GetServerWithRelations(c.Context(), serverID, teamID)
 	if err != nil {
 		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch server")
 	}
@@ -112,12 +107,7 @@ func (h *Handler) Show(c *fiber.Ctx) error {
 
 // Update updates a server
 func (h *Handler) Update(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	id, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -127,7 +117,7 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 		return err
 	}
 
-	server, err := h.service.UpdateServer(c.Context(), id, teamID, req)
+	server, err := h.service.UpdateServer(c.Context(), serverID, teamID, req)
 	if err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -137,17 +127,12 @@ func (h *Handler) Update(c *fiber.Ctx) error {
 
 // Delete deletes a server
 func (h *Handler) Delete(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
 
-	id, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	if err := h.service.DeleteServer(c.Context(), id, teamID); err != nil {
+	if err := h.service.DeleteServer(c.Context(), serverID, teamID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -156,17 +141,12 @@ func (h *Handler) Delete(c *fiber.Ctx) error {
 
 // Reboot reboots a server
 func (h *Handler) Reboot(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
 
-	id, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	if err := h.service.RebootServer(c.Context(), id, teamID); err != nil {
+	if err := h.service.RebootServer(c.Context(), serverID, teamID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -175,39 +155,29 @@ func (h *Handler) Reboot(c *fiber.Ctx) error {
 
 // GetProvisionStatus returns the provision status for a server
 func (h *Handler) GetProvisionStatus(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
 
-	id, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	server, err := h.service.GetServerWithRelations(c.Context(), id, teamID)
+	server, err := h.service.GetServerWithRelations(c.Context(), serverID, teamID)
 	if err != nil {
 		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch server")
 	}
 
-	latestTask, _ := h.service.GetLatestTask(c.Context(), id, teamID)
+	latestTask, _ := h.service.GetLatestTask(c.Context(), serverID, teamID)
 
 	return fiberctx.OK(c, "Provision status retrieved", dto.BuildProvisionStatus(server, latestTask))
 }
 
 // Connect tests the connection to a server
 func (h *Handler) Connect(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
 
-	id, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	if err := h.service.ConnectServer(c.Context(), id, teamID); err != nil {
+	if err := h.service.ConnectServer(c.Context(), serverID, teamID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -216,17 +186,12 @@ func (h *Handler) Connect(c *fiber.Ctx) error {
 
 // Archive archives a server
 func (h *Handler) Archive(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
 
-	id, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	if err := h.service.ArchiveServer(c.Context(), id, teamID); err != nil {
+	if err := h.service.ArchiveServer(c.Context(), serverID, teamID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -235,17 +200,12 @@ func (h *Handler) Archive(c *fiber.Ctx) error {
 
 // Unarchive unarchives a server
 func (h *Handler) Unarchive(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
 
-	id, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	if err := h.service.UnarchiveServer(c.Context(), id, teamID); err != nil {
+	if err := h.service.UnarchiveServer(c.Context(), serverID, teamID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -254,17 +214,12 @@ func (h *Handler) Unarchive(c *fiber.Ctx) error {
 
 // ShowPage returns aggregated data for the server show page
 func (h *Handler) ShowPage(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
 
-	id, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	data, err := h.service.GetShowPageData(c.Context(), id, teamID)
+	data, err := h.service.GetShowPageData(c.Context(), serverID, teamID)
 	if err != nil {
 		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch server data")
 	}
@@ -298,12 +253,7 @@ func (h *Handler) RunVulnerabilityAudit(c *fiber.Ctx) error {
 
 // GetSiteCount returns the number of sites for a server
 func (h *Handler) GetSiteCount(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -328,17 +278,12 @@ func (h *Handler) GetSiteCount(c *fiber.Ctx) error {
 
 // RetryProvision retries the provisioning of a failed server
 func (h *Handler) RetryProvision(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
 
-	id, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	if err := h.service.RetryProvision(c.Context(), id, teamID); err != nil {
+	if err := h.service.RetryProvision(c.Context(), serverID, teamID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 
@@ -348,12 +293,7 @@ func (h *Handler) RetryProvision(c *fiber.Ctx) error {
 // GetProvisionScriptContent returns the provision script content for a server
 // This endpoint is for authenticated users to get the script content directly (for local dev mode)
 func (h *Handler) GetProvisionScriptContent(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}

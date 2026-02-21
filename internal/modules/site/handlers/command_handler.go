@@ -21,12 +21,7 @@ func NewCommandHandler(commandService *services.CommandService) *CommandHandler 
 
 // CreateCommand creates and executes a command
 func (h *CommandHandler) CreateCommand(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
@@ -51,12 +46,7 @@ func (h *CommandHandler) CreateCommand(c *fiber.Ctx) error {
 
 // ListCommands returns all commands for a site
 func (h *CommandHandler) ListCommands(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
@@ -73,17 +63,7 @@ func (h *CommandHandler) ListCommands(c *fiber.Ctx) error {
 
 // DeleteCommand deletes a command
 func (h *CommandHandler) DeleteCommand(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
-	if err != nil {
-		return err
-	}
-
-	commandID, err := fiberctx.GetULIDParam(c, "commandId")
+	serverID, siteID, commandID, err := fiberctx.GetServerSiteAndEntityID(c, "commandId")
 	if err != nil {
 		return err
 	}

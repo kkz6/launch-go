@@ -20,12 +20,7 @@ func NewFileHandler(service *services.FileService) *FileHandler {
 
 // ListFiles returns the list of editable files for a site
 func (h *FileHandler) ListFiles(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
@@ -40,12 +35,7 @@ func (h *FileHandler) ListFiles(c *fiber.Ctx) error {
 
 // ListLogs returns the list of log files for a site
 func (h *FileHandler) ListLogs(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
@@ -61,12 +51,7 @@ func (h *FileHandler) ListLogs(c *fiber.Ctx) error {
 // ShowFile gets the content of a file using the encoded file parameter in the URL path
 // Route: GET /servers/:serverId/sites/:id/files/:file
 func (h *FileHandler) ShowFile(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
@@ -96,12 +81,7 @@ func (h *FileHandler) ShowFile(c *fiber.Ctx) error {
 // UpdateFile updates the content of a file using the encoded file parameter in the URL path
 // Route: PUT /servers/:serverId/sites/:id/files/:file
 func (h *FileHandler) UpdateFile(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}

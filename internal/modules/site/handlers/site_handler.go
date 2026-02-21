@@ -81,12 +81,7 @@ func (h *SiteHandler) Create(c *fiber.Ctx) error {
 
 // Show returns a single site
 func (h *SiteHandler) Show(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
@@ -118,12 +113,7 @@ func (h *SiteHandler) Show(c *fiber.Ctx) error {
 
 // Update updates a site
 func (h *SiteHandler) Update(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
@@ -153,12 +143,7 @@ func (h *SiteHandler) Update(c *fiber.Ctx) error {
 
 // Delete deletes a site
 func (h *SiteHandler) Delete(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
@@ -177,12 +162,7 @@ func (h *SiteHandler) Delete(c *fiber.Ctx) error {
 
 // GetDeletionSummary returns a summary of resources to be deleted
 func (h *SiteHandler) GetDeletionSummary(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
@@ -202,12 +182,7 @@ func (h *SiteHandler) GetDeletionSummary(c *fiber.Ctx) error {
 
 // RegenerateDeployToken regenerates the deploy token
 func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
@@ -227,12 +202,7 @@ func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
 
 // UpdateDeploymentSettings updates deployment settings
 func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
@@ -275,12 +245,7 @@ func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
 
 // GetSettings returns the site settings page data
 func (h *SiteHandler) GetSettings(c *fiber.Ctx) error {
-	serverID, err := fiberctx.GetServerID(c)
-	if err != nil {
-		return err
-	}
-
-	siteID, err := fiberctx.GetSiteID(c)
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}

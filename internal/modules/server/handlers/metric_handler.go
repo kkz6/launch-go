@@ -10,12 +10,7 @@ import (
 
 // GetLatestMetric returns the latest metric for a server
 func (h *Handler) GetLatestMetric(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -34,12 +29,7 @@ func (h *Handler) GetLatestMetric(c *fiber.Ctx) error {
 
 // GetMetrics returns metrics for a server
 func (h *Handler) GetMetrics(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}

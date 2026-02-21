@@ -11,12 +11,7 @@ import (
 
 // ListServices returns all installed services for a server
 func (h *Handler) ListServices(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -31,12 +26,7 @@ func (h *Handler) ListServices(c *fiber.Ctx) error {
 
 // InstallService installs a new service on a server
 func (h *Handler) InstallService(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -56,17 +46,7 @@ func (h *Handler) InstallService(c *fiber.Ctx) error {
 
 // ServiceOperation performs an operation on a service (start, stop, restart)
 func (h *Handler) ServiceOperation(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	serviceID, err := fiberctx.GetULIDParam(c, "serviceId")
+	teamID, serverID, serviceID, err := fiberctx.GetTeamServerAndEntityID(c, "serviceId")
 	if err != nil {
 		return err
 	}
@@ -90,17 +70,7 @@ func (h *Handler) ServiceOperation(c *fiber.Ctx) error {
 
 // ServiceOperationByAction performs an operation on a service using the action from the URL path
 func (h *Handler) ServiceOperationByAction(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	serviceID, err := fiberctx.GetULIDParam(c, "serviceId")
+	teamID, serverID, serviceID, err := fiberctx.GetTeamServerAndEntityID(c, "serviceId")
 	if err != nil {
 		return err
 	}
@@ -121,12 +91,7 @@ func (h *Handler) ServiceOperationByAction(c *fiber.Ctx) error {
 
 // ListPhpVersions returns all PHP versions with their installation status for a server
 func (h *Handler) ListPhpVersions(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -141,12 +106,7 @@ func (h *Handler) ListPhpVersions(c *fiber.Ctx) error {
 
 // ListInstalledPhpVersions returns only the installed PHP versions for a server
 func (h *Handler) ListInstalledPhpVersions(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -161,12 +121,7 @@ func (h *Handler) ListInstalledPhpVersions(c *fiber.Ctx) error {
 
 // GetAvailableServices returns all available services that can be installed on a server
 func (h *Handler) GetAvailableServices(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -181,17 +136,7 @@ func (h *Handler) GetAvailableServices(c *fiber.Ctx) error {
 
 // InstallPhpExtension installs a PHP extension on a server
 func (h *Handler) InstallPhpExtension(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	phpID, err := fiberctx.GetULIDParam(c, "phpId")
+	teamID, serverID, phpID, err := fiberctx.GetTeamServerAndEntityID(c, "phpId")
 	if err != nil {
 		return err
 	}
@@ -225,17 +170,7 @@ func (h *Handler) InstallPhpExtension(c *fiber.Ctx) error {
 
 // UninstallPhpExtension uninstalls a PHP extension from a server
 func (h *Handler) UninstallPhpExtension(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	phpID, err := fiberctx.GetULIDParam(c, "phpId")
+	teamID, serverID, phpID, err := fiberctx.GetTeamServerAndEntityID(c, "phpId")
 	if err != nil {
 		return err
 	}

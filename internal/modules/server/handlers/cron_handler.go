@@ -10,12 +10,7 @@ import (
 
 // ListCrons returns all cron jobs for a server
 func (h *Handler) ListCrons(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -30,12 +25,7 @@ func (h *Handler) ListCrons(c *fiber.Ctx) error {
 
 // CreateCron creates a new cron job
 func (h *Handler) CreateCron(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -55,17 +45,7 @@ func (h *Handler) CreateCron(c *fiber.Ctx) error {
 
 // UpdateCron updates a cron job
 func (h *Handler) UpdateCron(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	cronID, err := fiberctx.GetCronID(c)
+	teamID, serverID, cronID, err := fiberctx.GetTeamServerAndEntityID(c, "cronId")
 	if err != nil {
 		return err
 	}
@@ -85,17 +65,7 @@ func (h *Handler) UpdateCron(c *fiber.Ctx) error {
 
 // DeleteCron deletes a cron job
 func (h *Handler) DeleteCron(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	cronID, err := fiberctx.GetCronID(c)
+	teamID, serverID, cronID, err := fiberctx.GetTeamServerAndEntityID(c, "cronId")
 	if err != nil {
 		return err
 	}

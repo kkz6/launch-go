@@ -10,12 +10,7 @@ import (
 
 // ListFirewallRules returns all firewall rules for a server
 func (h *Handler) ListFirewallRules(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -30,12 +25,7 @@ func (h *Handler) ListFirewallRules(c *fiber.Ctx) error {
 
 // CreateFirewallRule creates a new firewall rule
 func (h *Handler) CreateFirewallRule(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -55,17 +45,7 @@ func (h *Handler) CreateFirewallRule(c *fiber.Ctx) error {
 
 // UpdateFirewallRule updates a firewall rule
 func (h *Handler) UpdateFirewallRule(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	ruleID, err := fiberctx.GetRuleID(c)
+	teamID, serverID, ruleID, err := fiberctx.GetTeamServerAndEntityID(c, "ruleId")
 	if err != nil {
 		return err
 	}
@@ -85,17 +65,7 @@ func (h *Handler) UpdateFirewallRule(c *fiber.Ctx) error {
 
 // DeleteFirewallRule deletes a firewall rule
 func (h *Handler) DeleteFirewallRule(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	ruleID, err := fiberctx.GetRuleID(c)
+	teamID, serverID, ruleID, err := fiberctx.GetTeamServerAndEntityID(c, "ruleId")
 	if err != nil {
 		return err
 	}

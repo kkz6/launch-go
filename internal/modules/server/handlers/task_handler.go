@@ -10,12 +10,7 @@ import (
 
 // ListTasks returns all tasks for a server
 func (h *Handler) ListTasks(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -32,12 +27,7 @@ func (h *Handler) ListTasks(c *fiber.Ctx) error {
 
 // GetTask returns a specific task by ID
 func (h *Handler) GetTask(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -61,12 +51,7 @@ func (h *Handler) GetTask(c *fiber.Ctx) error {
 
 // GetLatestTask returns the latest task for a server
 func (h *Handler) GetLatestTask(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
