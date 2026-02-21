@@ -23,7 +23,7 @@ func (h *Handler) ListServerProviders(c *fiber.Ctx) error {
 
 	providers, err := h.service.ListServerProviders(c.Context(), teamID)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, "Failed to fetch server providers")
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "Server providers retrieved", pkgdto.TransformSlice(providers, dto.ToServerProviderResponse))

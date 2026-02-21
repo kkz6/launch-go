@@ -30,7 +30,7 @@ func (h *NotificationChannelHandler) Index(c *fiber.Ctx) error {
 
 	channels, err := h.service.ListChannels(c.Context(), teamID)
 	if err != nil {
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Notification channels retrieved", dto.ListChannelsResponse{
@@ -56,7 +56,7 @@ func (h *NotificationChannelHandler) Show(c *fiber.Ctx) error {
 			return fiberutil.RespondNotFound(c, "Notification channel not found")
 		}
 
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Notification channel retrieved", dto.ToChannelResponse(channel))
@@ -84,7 +84,7 @@ func (h *NotificationChannelHandler) Store(c *fiber.Ctx) error {
 			return fiberutil.RespondBadRequest(c, "Could not connect to the notification channel. Please verify your configuration.")
 		}
 
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.Created(c, "Notification channel created", dto.ToChannelResponse(channel))
@@ -117,7 +117,7 @@ func (h *NotificationChannelHandler) Update(c *fiber.Ctx) error {
 			return fiberutil.RespondBadRequest(c, "Could not connect to the notification channel. Please verify your configuration.")
 		}
 
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Notification channel updated", dto.ToChannelResponse(channel))
@@ -145,7 +145,7 @@ func (h *NotificationChannelHandler) Destroy(c *fiber.Ctx) error {
 			return fiberutil.RespondForbidden(c, fiberutil.MsgForbidden)
 		}
 
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.NoContent(c)
@@ -180,7 +180,7 @@ func (h *NotificationChannelHandler) Test(c *fiber.Ctx) error {
 			return fiberutil.RespondBadRequest(c, "Failed to send test notification. Please verify your channel configuration.")
 		}
 
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Test notification sent successfully", nil)
@@ -204,7 +204,7 @@ func (h *NotificationChannelHandler) SetDefault(c *fiber.Ctx) error {
 			return fiberutil.RespondNotFound(c, "Notification channel not found")
 		}
 
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Default channel updated", nil)
@@ -228,7 +228,7 @@ func (h *NotificationChannelHandler) Disconnect(c *fiber.Ctx) error {
 			return fiberutil.RespondNotFound(c, "Notification channel not found")
 		}
 
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Channel disconnected", nil)
@@ -256,7 +256,7 @@ func (h *NotificationChannelHandler) Reconnect(c *fiber.Ctx) error {
 			return fiberutil.RespondBadRequest(c, "Could not reconnect to the notification channel. Please verify your configuration.")
 		}
 
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Channel reconnected successfully", nil)
@@ -271,7 +271,7 @@ func (h *NotificationChannelHandler) GetPreferences(c *fiber.Ctx) error {
 
 	pref, err := h.service.GetPreferences(c.Context(), teamID)
 	if err != nil {
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Notification preferences retrieved", dto.ToNotificationPreferencesResponse(pref))
@@ -291,7 +291,7 @@ func (h *NotificationChannelHandler) UpdatePreferences(c *fiber.Ctx) error {
 
 	pref, err := h.service.UpdatePreferences(c.Context(), teamID, req)
 	if err != nil {
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Notification preferences updated", dto.ToNotificationPreferencesResponse(pref))

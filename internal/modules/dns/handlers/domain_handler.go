@@ -31,13 +31,13 @@ func (h *DomainHandler) ListDomains(c *fiber.Ctx) error {
 
 	domains, err := h.domainService.ListDomains(c.Context(), teamID)
 	if err != nil {
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	// Also get providers for the dropdown
 	providers, err := h.providerService.ListProviders(c.Context(), teamID)
 	if err != nil {
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	pageData := dto.DomainIndexPageData{
@@ -90,7 +90,7 @@ func (h *DomainHandler) ShowDomain(c *fiber.Ctx) error {
 	// Get records for this domain
 	records, err := h.domainService.GetDomainRecords(c.Context(), id, teamID)
 	if err != nil {
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	// Get record types

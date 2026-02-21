@@ -25,7 +25,7 @@ func (h *BackupHandler) ListBackups(c *fiber.Ctx) error {
 
 	backups, err := h.backupService.ListBackupsByServer(c.Context(), serverID)
 	if err != nil {
-		return fiberutil.RespondInternalError(c, "Failed to fetch backups")
+		return fiberutil.HandleError(c, err)
 	}
 
 	result := pkgdto.TransformSlice(backups, dto.ToBackupResponse)
@@ -64,7 +64,7 @@ func (h *BackupHandler) ShowBackup(c *fiber.Ctx) error {
 		if fiberutil.IsNotFound(err) {
 			return fiberutil.RespondNotFound(c, "Backup not found")
 		}
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Backup retrieved", dto.ToBackupResponse(backup))
@@ -81,7 +81,7 @@ func (h *BackupHandler) UpdateBackup(c *fiber.Ctx) error {
 		if fiberutil.IsNotFound(err) {
 			return fiberutil.RespondNotFound(c, "Backup not found")
 		}
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	req, err := fiberutil.MustParseAndValidate[dto.UpdateBackupRequest](c)

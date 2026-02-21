@@ -29,7 +29,7 @@ func (h *DomainProviderHandler) ListProviders(c *fiber.Ctx) error {
 
 	providers, err := h.providerService.ListProviders(c.Context(), teamID)
 	if err != nil {
-		return fiberutil.RespondInternalError(c, fiberutil.MsgInternalError)
+		return fiberutil.HandleError(c, err)
 	}
 
 	return fiberutil.OK(c, "Providers retrieved", providers)

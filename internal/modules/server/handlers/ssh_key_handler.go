@@ -26,7 +26,7 @@ func (h *Handler) ListSSHKeys(c *fiber.Ctx) error {
 
 	keys, err := h.service.ListSSHKeys(c.Context(), teamID, globalOnly)
 	if err != nil {
-		return fiberctx.RespondInternalError(c, "Failed to fetch SSH keys")
+		return fiberctx.HandleError(c, err)
 	}
 
 	return fiberctx.OK(c, "SSH keys retrieved", pkgdto.TransformSlice(keys, dto.ToSSHKeyResponse))
