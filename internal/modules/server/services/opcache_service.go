@@ -8,10 +8,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/hibiken/asynq"
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
+
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -224,17 +226,9 @@ func (s *Service) ConfigureOpcache(ctx context.Context, serverID, teamID, phpID 
 		settings["jit"] = req.JITMode
 	}
 
-	// Dispatch the configuration job
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewConfigureOpcacheTask(server.ID, service.ID, settings)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewConfigureOpcacheTask(server.ID, service.ID, settings)
+	})
 }
 
 func boolToString(b bool) string {

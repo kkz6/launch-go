@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/hibiken/asynq"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/sync/errgroup"
 
@@ -411,42 +412,21 @@ func (s *Service) broadcastServerUpdate(server *models.Server) {
 }
 
 func (s *Service) dispatchCreateOnProviderJob(server *models.Server, serverProviderID string, sshKeyIDs []string) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewCreateOnProviderTask(server.ID, server.TeamID, serverProviderID, nil, sshKeyIDs)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTaskWithOptions(task)
+	return s.MustDispatchWithOptions(func() (*asynq.Task, error) {
+		return jobs.NewCreateOnProviderTask(server.ID, server.TeamID, serverProviderID, nil, sshKeyIDs)
+	})
 }
 
 func (s *Service) dispatchWaitForConnectionJob(server *models.Server, sshKeyIDs []string) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewWaitForServerToConnectTask(server.ID, server.TeamID, "", nil, sshKeyIDs)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTaskWithOptions(task)
+	return s.MustDispatchWithOptions(func() (*asynq.Task, error) {
+		return jobs.NewWaitForServerToConnectTask(server.ID, server.TeamID, "", nil, sshKeyIDs)
+	})
 }
 
 func (s *Service) dispatchDeleteJob(server *models.Server) error {
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := jobs.NewDeleteServerTask(server.ID, server.TeamID, nil)
-	if err != nil {
-		return err
-	}
-
-	return s.EnqueueTask(task)
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewDeleteServerTask(server.ID, server.TeamID, nil)
+	})
 }
 
 // createServicesForServer creates the initial services for a server based on its type and configuration.

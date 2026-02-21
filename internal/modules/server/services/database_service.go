@@ -2,7 +2,8 @@ package services
 
 import (
 	"context"
-	"fmt"
+
+	"github.com/hibiken/asynq"
 
 	dbjobs "github.com/kkz6/launch-go/internal/modules/database/jobs"
 	dbmodels "github.com/kkz6/launch-go/internal/modules/database/models"
@@ -53,19 +54,7 @@ func (s *Service) SyncDatabases(ctx context.Context, serverID, teamID string, us
 		return err
 	}
 
-	if !s.HasQueue() {
-		return ErrQueueNotConfigured
-	}
-
-	task, err := dbjobs.NewSyncDatabasesTask(serverID, userID)
-	if err != nil {
-		return fmt.Errorf("failed to create sync task: %w", err)
-	}
-
-	if err := s.EnqueueTask(task); err != nil {
-		s.LogError(err, "Failed to enqueue sync databases job", "server_id", serverID)
-		return fmt.Errorf("failed to enqueue sync job: %w", err)
-	}
-
-	return nil
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return dbjobs.NewSyncDatabasesTask(serverID, userID)
+	})
 }
