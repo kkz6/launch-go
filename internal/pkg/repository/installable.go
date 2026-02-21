@@ -34,9 +34,9 @@ type Installable[T any] struct {
 	Base[T]
 }
 
-// NewInstallable creates a new Installable repository
-func NewInstallable[T any](db *gorm.DB) Installable[T] {
-	return Installable[T]{Base: NewBase[T](db)}
+// NewInstallable creates a new Installable repository with optional default preloads
+func NewInstallable[T any](db *gorm.DB, defaultPreloads ...string) Installable[T] {
+	return Installable[T]{Base: NewBase[T](db, defaultPreloads...)}
 }
 
 // MarkAsInstalled marks a record as installed
@@ -88,7 +88,7 @@ func (r *Installable[T]) MarkUninstallationFailed(ctx context.Context, id string
 // FindInstalled finds all installed records for a server
 func (r *Installable[T]) FindInstalled(ctx context.Context, serverID string) ([]T, error) {
 	var entities []T
-	err := r.DB.WithContext(ctx).
+	err := r.QueryCtx(ctx).
 		Where("server_id = ? AND installed_at IS NOT NULL AND installation_failed_at IS NULL", serverID).
 		Order("created_at DESC").
 		Find(&entities).Error
@@ -98,7 +98,7 @@ func (r *Installable[T]) FindInstalled(ctx context.Context, serverID string) ([]
 // FindPending finds all pending (not yet installed) records for a server
 func (r *Installable[T]) FindPending(ctx context.Context, serverID string) ([]T, error) {
 	var entities []T
-	err := r.DB.WithContext(ctx).
+	err := r.QueryCtx(ctx).
 		Where("server_id = ? AND installed_at IS NULL AND installation_failed_at IS NULL", serverID).
 		Order("created_at DESC").
 		Find(&entities).Error
@@ -108,7 +108,7 @@ func (r *Installable[T]) FindPending(ctx context.Context, serverID string) ([]T,
 // FindFailed finds all failed records for a server
 func (r *Installable[T]) FindFailed(ctx context.Context, serverID string) ([]T, error) {
 	var entities []T
-	err := r.DB.WithContext(ctx).
+	err := r.QueryCtx(ctx).
 		Where("server_id = ? AND installation_failed_at IS NOT NULL", serverID).
 		Order("created_at DESC").
 		Find(&entities).Error
@@ -118,7 +118,7 @@ func (r *Installable[T]) FindFailed(ctx context.Context, serverID string) ([]T, 
 // FindUninstalling finds all records being uninstalled for a server
 func (r *Installable[T]) FindUninstalling(ctx context.Context, serverID string) ([]T, error) {
 	var entities []T
-	err := r.DB.WithContext(ctx).
+	err := r.QueryCtx(ctx).
 		Where("server_id = ? AND uninstallation_requested_at IS NOT NULL AND uninstallation_failed_at IS NULL", serverID).
 		Order("created_at DESC").
 		Find(&entities).Error
@@ -128,7 +128,7 @@ func (r *Installable[T]) FindUninstalling(ctx context.Context, serverID string) 
 // FindByIDWithServer finds a record by ID with the Server relation preloaded
 func (r *Installable[T]) FindByIDWithServer(ctx context.Context, id string) (*T, error) {
 	var entity T
-	err := r.DB.WithContext(ctx).Preload("Server").First(&entity, "id = ?", id).Error
+	err := r.QueryCtx(ctx, "Server").First(&entity, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fiberutil.NotFound()
@@ -169,7 +169,7 @@ func (r *Installable[T]) DeleteByServer(ctx context.Context, id, serverID string
 // This is useful for models that have a "hidden" field for system-managed entries
 func (r *Installable[T]) FindVisibleByServer(ctx context.Context, serverID string) ([]T, error) {
 	var entities []T
-	err := r.DB.WithContext(ctx).
+	err := r.QueryCtx(ctx).
 		Where("server_id = ? AND hidden = ?", serverID, false).
 		Order("created_at DESC").
 		Find(&entities).Error
@@ -192,7 +192,7 @@ func (r *Installable[T]) FindByServerPaginated(ctx context.Context, serverID str
 
 	// Get paginated results
 	offset := (page - 1) * perPage
-	err := r.DB.WithContext(ctx).
+	err := r.QueryCtx(ctx).
 		Where("server_id = ?", serverID).
 		Order("created_at DESC").
 		Offset(offset).

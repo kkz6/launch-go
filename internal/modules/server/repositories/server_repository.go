@@ -23,38 +23,8 @@ type ServerRepository struct {
 // NewServerRepository creates a new ServerRepository instance
 func NewServerRepository(db *gorm.DB) *ServerRepository {
 	return &ServerRepository{
-		Base: repository.NewBase[models.Server](db),
+		Base: repository.NewBase[models.Server](db, "Services"),
 	}
-}
-
-// FindByID finds a server by ID with Services preloaded
-func (r *ServerRepository) FindByID(ctx context.Context, id string) (*models.Server, error) {
-	var server models.Server
-	err := r.DB.WithContext(ctx).
-		Preload("Services").
-		First(&server, "id = ?", id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &server, nil
-}
-
-// FindByIDAndTeam finds a server by ID and team ID with Services preloaded
-func (r *ServerRepository) FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Server, error) {
-	var server models.Server
-	err := r.DB.WithContext(ctx).
-		Preload("Services").
-		First(&server, "id = ? AND team_id = ?", id, teamID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &server, nil
 }
 
 // FindWithRelations finds a server with all relations

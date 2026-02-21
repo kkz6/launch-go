@@ -15,7 +15,7 @@ import (
 type ServerRepository interface {
 	Create(ctx context.Context, server *models.Server) error
 	FindByID(ctx context.Context, id string) (*models.Server, error)
-	FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Server, error)
+	FindByIDAndTeam(ctx context.Context, id, teamID string, preloads ...string) (*models.Server, error)
 	FindWithRelations(ctx context.Context, id, teamID string) (*models.Server, error)
 	FindAllByTeam(ctx context.Context, teamID string) ([]models.Server, error)
 	FindAllByTeamPaginated(ctx context.Context, teamID string, page, perPage int) (*repository.PaginatedResult[models.Server], error)
