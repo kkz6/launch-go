@@ -23,6 +23,12 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
+// recoveryCodeBcryptCost is a lower bcrypt cost for recovery codes.
+// Recovery codes are high-entropy random strings, so they don't need
+// the same computational cost as user passwords. A lower cost keeps
+// hashing 8 codes fast enough for CI (especially under -race).
+const recoveryCodeBcryptCost = 6
+
 // TwoFactorService handles two-factor authentication operations
 type TwoFactorService struct {
 	repos       contracts.RepositoryRegistry
@@ -126,7 +132,7 @@ func (s *TwoFactorService) ConfirmTwoFactor(ctx context.Context, userID, code st
 	// Hash recovery codes before storage
 	hashedCodes := make([]string, len(recoveryCodes))
 	for i, code := range recoveryCodes {
-		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+		hash, err := bcrypt.GenerateFromPassword([]byte(code), recoveryCodeBcryptCost)
 		if err != nil {
 			return nil, fmt.Errorf("failed to hash recovery code: %w", err)
 		}
@@ -287,7 +293,7 @@ func (s *TwoFactorService) RegenerateRecoveryCodes(ctx context.Context, userID s
 	// Hash recovery codes before storage
 	hashedCodes := make([]string, len(codes))
 	for i, code := range codes {
-		hash, err := bcrypt.GenerateFromPassword([]byte(code), bcrypt.DefaultCost)
+		hash, err := bcrypt.GenerateFromPassword([]byte(code), recoveryCodeBcryptCost)
 		if err != nil {
 			return nil, fmt.Errorf("failed to hash recovery code: %w", err)
 		}
