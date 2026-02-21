@@ -75,10 +75,7 @@ func ToSourceControlResponse(sc *models.SourceControl) SourceControlResponse {
 	}
 
 	if len(sc.Repositories) > 0 {
-		resp.Repositories = make([]RepositoryResponse, len(sc.Repositories))
-		for i, repo := range sc.Repositories {
-			resp.Repositories[i] = ToRepositoryResponse(&repo)
-		}
+		resp.Repositories = pkgdto.TransformSlice(sc.Repositories, ToRepositoryResponse)
 	}
 
 	return resp

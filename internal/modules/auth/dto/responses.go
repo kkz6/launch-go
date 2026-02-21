@@ -252,6 +252,7 @@ func ToTeamsResponse(teams []models.Team) []TeamResponse {
 
 // ToTeamsResponseForUser converts a slice of Team models to TeamResponse DTOs with ownership info
 func ToTeamsResponseForUser(teams []models.Team, userID string) []TeamResponse {
+	// Can't use helper here - ToTeamResponseForUser takes extra parameter (userID)
 	responses := make([]TeamResponse, len(teams))
 	for i, team := range teams {
 		responses[i] = ToTeamResponseForUser(team, userID)
@@ -262,6 +263,7 @@ func ToTeamsResponseForUser(teams []models.Team, userID string) []TeamResponse {
 
 // ToTeamMembersResponse converts a slice of TeamMember models to TeamMemberResponse DTOs
 func ToTeamMembersResponse(members []models.TeamMember) []TeamMemberResponse {
+	// Can't use helper here - complex inline transform with conditional logic
 	responses := make([]TeamMemberResponse, len(members))
 	for i, member := range members {
 		if member.User != nil {
@@ -284,12 +286,7 @@ func ToTeamMembersResponse(members []models.TeamMember) []TeamMemberResponse {
 
 // ToTeamInvitationsResponse converts a slice of TeamInvitation models to TeamInvitationResponse DTOs
 func ToTeamInvitationsResponse(invitations []models.TeamInvitation) []TeamInvitationResponse {
-	responses := make([]TeamInvitationResponse, len(invitations))
-	for i := range invitations {
-		responses[i] = ToTeamInvitationResponse(&invitations[i])
-	}
-
-	return responses
+	return pkgdto.TransformSlice(invitations, ToTeamInvitationResponse)
 }
 
 // GetAvailableRoles returns the available roles for team members

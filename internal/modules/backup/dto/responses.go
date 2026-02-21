@@ -74,10 +74,7 @@ func ToBackupResponse(backup *models.Backup) BackupResponse {
 
 	// Convert jobs
 	if len(backup.Jobs) > 0 {
-		resp.Jobs = make([]BackupJobResponse, len(backup.Jobs))
-		for i, job := range backup.Jobs {
-			resp.Jobs[i] = ToBackupJobResponse(&job)
-		}
+		resp.Jobs = pkgdto.TransformSlice(backup.Jobs, ToBackupJobResponse)
 		// Set latest job (assuming jobs are ordered by created_at desc)
 		latestJob := ToBackupJobResponse(&backup.Jobs[0])
 		resp.LatestJob = &latestJob
@@ -85,10 +82,9 @@ func ToBackupResponse(backup *models.Backup) BackupResponse {
 
 	// Convert database IDs
 	if len(backup.Databases) > 0 {
-		resp.Databases = make([]string, len(backup.Databases))
-		for i, db := range backup.Databases {
-			resp.Databases[i] = db.DatabaseID
-		}
+		resp.Databases = pkgdto.MapSlice(backup.Databases, func(db *models.BackupDatabase) string {
+			return db.DatabaseID
+		})
 	} else {
 		resp.Databases = []string{}
 	}

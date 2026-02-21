@@ -140,10 +140,7 @@ func ToServerResponse(server *models.Server) ServerResponse {
 	}
 
 	features := server.GetFeatures()
-	resp.Features = make([]string, len(features))
-	for i, f := range features {
-		resp.Features[i] = f.String()
-	}
+	resp.Features = pkgdto.MapSlice(features, func(f *types.ServerFeature) string { return f.String() })
 
 	return resp
 }
@@ -690,57 +687,45 @@ type ProviderResponse struct {
 // GetAllProviders returns all available server providers
 func GetAllProviders() []ProviderResponse {
 	providers := types.AllServerProviders()
-	result := make([]ProviderResponse, len(providers))
-	for i, p := range providers {
-		result[i] = ProviderResponse{
+	return pkgdto.MapSlice(providers, func(p *types.ServerProvider) ProviderResponse {
+		return ProviderResponse{
 			Value: p.String(),
 			Label: p.Label(),
 		}
-	}
-
-	return result
+	})
 }
 
 // GetAllServerTypes returns all available server types
 func GetAllServerTypes() []ProviderResponse {
 	serverTypes := types.AllServerTypes()
-	result := make([]ProviderResponse, len(serverTypes))
-	for i, t := range serverTypes {
-		result[i] = ProviderResponse{
+	return pkgdto.MapSlice(serverTypes, func(t *types.ServerType) ProviderResponse {
+		return ProviderResponse{
 			Value: t.String(),
 			Label: t.Label(),
 		}
-	}
-
-	return result
+	})
 }
 
 // GetAllOperatingSystems returns all available operating systems
 func GetAllOperatingSystems() []ProviderResponse {
 	oses := types.AllOperatingSystems()
-	result := make([]ProviderResponse, len(oses))
-	for i, os := range oses {
-		result[i] = ProviderResponse{
+	return pkgdto.MapSlice(oses, func(os *types.OperatingSystem) ProviderResponse {
+		return ProviderResponse{
 			Value: os.String(),
 			Label: os.Label(),
 		}
-	}
-
-	return result
+	})
 }
 
 // GetAllRuleActions returns all available firewall rule actions
 func GetAllRuleActions() []ProviderResponse {
 	actions := types.AllRuleActions()
-	result := make([]ProviderResponse, len(actions))
-	for i, a := range actions {
-		result[i] = ProviderResponse{
+	return pkgdto.MapSlice(actions, func(a *types.RuleAction) ProviderResponse {
+		return ProviderResponse{
 			Value: a.String(),
 			Label: a.Label(),
 		}
-	}
-
-	return result
+	})
 }
 
 // ServerShowPageData represents the data for the server show page
@@ -768,13 +753,8 @@ type ServerIndexPageData struct {
 
 // GetServerIndexPageData builds the server index page data
 func GetServerIndexPageData(servers []models.Server, total int64) ServerIndexPageData {
-	serverResponses := make([]ServerResponse, len(servers))
-	for i, s := range servers {
-		serverResponses[i] = ToServerResponse(&s)
-	}
-
 	return ServerIndexPageData{
-		Servers:          serverResponses,
+		Servers:          pkgdto.TransformSlice(servers, ToServerResponse),
 		Total:            total,
 		Providers:        GetAllProviders(),
 		ServerTypes:      GetAllServerTypes(),
@@ -1006,10 +986,7 @@ func ToLoadBalancerUpstreamResponse(upstream *models.LoadBalancerUpstream) LoadB
 	}
 
 	if upstream.Backends != nil {
-		resp.Backends = make([]LoadBalancerBackendResponse, len(upstream.Backends))
-		for i := range upstream.Backends {
-			resp.Backends[i] = ToLoadBalancerBackendResponse(&upstream.Backends[i])
-		}
+		resp.Backends = pkgdto.TransformSlice(upstream.Backends, ToLoadBalancerBackendResponse)
 	}
 
 	return resp
