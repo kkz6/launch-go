@@ -27,7 +27,7 @@ type mockServerRepo struct {
 	err    error
 }
 
-func (m *mockServerRepo) FindByIDAndTeam(_ context.Context, _, _ string) (*models.Server, error) {
+func (m *mockServerRepo) FindByIDAndTeam(_ context.Context, _, _ string, _ ...string) (*models.Server, error) {
 	if m.err != nil {
 		return nil, m.err
 	}
