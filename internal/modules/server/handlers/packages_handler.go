@@ -9,12 +9,7 @@ import (
 
 // GetComposerAuth returns the Composer auth.json configuration
 func (h *Handler) GetComposerAuth(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -29,12 +24,7 @@ func (h *Handler) GetComposerAuth(c *fiber.Ctx) error {
 
 // UpdateComposerAuth updates the Composer auth.json configuration
 func (h *Handler) UpdateComposerAuth(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}

@@ -98,6 +98,62 @@ func MustGetULIDParam(c *fiber.Ctx, name string) string {
 	return id
 }
 
+// GetTeamAndServerID extracts teamID from context and serverID from the "id" path parameter.
+// Common pattern in server module handlers where the server ID is the primary route param.
+func GetTeamAndServerID(c *fiber.Ctx) (teamID, serverID string, err error) {
+	teamID, err = MustGetTeamID(c)
+	if err != nil {
+		return "", "", err
+	}
+	serverID, err = GetID(c)
+	if err != nil {
+		return "", "", err
+	}
+	return teamID, serverID, nil
+}
+
+// GetTeamServerAndEntityID extracts teamID from context, serverID from "id", and an entity ID
+// from the named path parameter. Used for update/delete handlers in the server module.
+func GetTeamServerAndEntityID(c *fiber.Ctx, paramName string) (teamID, serverID, entityID string, err error) {
+	teamID, serverID, err = GetTeamAndServerID(c)
+	if err != nil {
+		return "", "", "", err
+	}
+	entityID, err = GetULIDParam(c, paramName)
+	if err != nil {
+		return "", "", "", err
+	}
+	return teamID, serverID, entityID, nil
+}
+
+// GetServerAndSiteID extracts serverID from "serverId" and siteID from "id" path parameters.
+// Common pattern in site module handlers.
+func GetServerAndSiteID(c *fiber.Ctx) (serverID, siteID string, err error) {
+	serverID, err = GetServerID(c)
+	if err != nil {
+		return "", "", err
+	}
+	siteID, err = GetSiteID(c)
+	if err != nil {
+		return "", "", err
+	}
+	return serverID, siteID, nil
+}
+
+// GetServerSiteAndEntityID extracts serverID, siteID, and an entity ID from the named
+// path parameter. Used for update/delete handlers in the site module.
+func GetServerSiteAndEntityID(c *fiber.Ctx, paramName string) (serverID, siteID, entityID string, err error) {
+	serverID, siteID, err = GetServerAndSiteID(c)
+	if err != nil {
+		return "", "", "", err
+	}
+	entityID, err = GetULIDParam(c, paramName)
+	if err != nil {
+		return "", "", "", err
+	}
+	return serverID, siteID, entityID, nil
+}
+
 // GetSiteID extracts and validates the "id" path parameter as a ULID for site routes.
 // This is an alias for GetID, provided for semantic clarity in nested routes
 // like /servers/:serverId/sites/:id

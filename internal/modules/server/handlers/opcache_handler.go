@@ -14,17 +14,7 @@ func (h *Handler) GetOpcacheDefaults(c *fiber.Ctx) error {
 
 // GetOpcacheStatus returns the OPcache status for a PHP version
 func (h *Handler) GetOpcacheStatus(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	phpID, err := fiberctx.GetULIDParam(c, "phpId")
+	teamID, serverID, phpID, err := fiberctx.GetTeamServerAndEntityID(c, "phpId")
 	if err != nil {
 		return err
 	}
@@ -39,17 +29,7 @@ func (h *Handler) GetOpcacheStatus(c *fiber.Ctx) error {
 
 // ResetOpcache resets the OPcache for a PHP version
 func (h *Handler) ResetOpcache(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	phpID, err := fiberctx.GetULIDParam(c, "phpId")
+	teamID, serverID, phpID, err := fiberctx.GetTeamServerAndEntityID(c, "phpId")
 	if err != nil {
 		return err
 	}
@@ -63,17 +43,7 @@ func (h *Handler) ResetOpcache(c *fiber.Ctx) error {
 
 // ConfigureOpcache configures OPcache settings for a PHP version
 func (h *Handler) ConfigureOpcache(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	phpID, err := fiberctx.GetULIDParam(c, "phpId")
+	teamID, serverID, phpID, err := fiberctx.GetTeamServerAndEntityID(c, "phpId")
 	if err != nil {
 		return err
 	}

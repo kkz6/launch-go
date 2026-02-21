@@ -90,12 +90,7 @@ func (h *Handler) GenerateSSHKey(c *fiber.Ctx) error {
 
 // ListServerSSHKeys returns all SSH keys attached to a server
 func (h *Handler) ListServerSSHKeys(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -130,12 +125,7 @@ func (h *Handler) CreateSSHKey(c *fiber.Ctx) error {
 
 // AttachSSHKey attaches an SSH key to a server
 func (h *Handler) AttachSSHKey(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -154,17 +144,7 @@ func (h *Handler) AttachSSHKey(c *fiber.Ctx) error {
 
 // DetachSSHKey detaches an SSH key from a server
 func (h *Handler) DetachSSHKey(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	sshKeyID, err := fiberctx.GetULIDParam(c, "sshKeyId")
+	teamID, serverID, sshKeyID, err := fiberctx.GetTeamServerAndEntityID(c, "sshKeyId")
 	if err != nil {
 		return err
 	}

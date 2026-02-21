@@ -21,12 +21,7 @@ type LogInfo struct {
 
 // ListLogs returns available logs for a server based on installed services
 func (h *Handler) ListLogs(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -67,12 +62,7 @@ func (h *Handler) ListLogs(c *fiber.Ctx) error {
 // GetLogContent returns the content of a log file
 // Route: GET /servers/:id/logs/:log
 func (h *Handler) GetLogContent(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}

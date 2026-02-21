@@ -21,12 +21,7 @@ func NewLoadBalancerHandler(lbService *services.LoadBalancerService) *LoadBalanc
 
 // ListUpstreams returns all upstreams for a load balancer server
 func (h *LoadBalancerHandler) ListUpstreams(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -41,12 +36,7 @@ func (h *LoadBalancerHandler) ListUpstreams(c *fiber.Ctx) error {
 
 // CreateUpstream creates a new upstream
 func (h *LoadBalancerHandler) CreateUpstream(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -66,19 +56,9 @@ func (h *LoadBalancerHandler) CreateUpstream(c *fiber.Ctx) error {
 
 // ShowUpstream returns a single upstream with backends
 func (h *LoadBalancerHandler) ShowUpstream(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, upstreamID, err := fiberctx.GetTeamServerAndEntityID(c, "upstreamId")
 	if err != nil {
 		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	upstreamID := c.Params("upstreamId")
-	if upstreamID == "" {
-		return fiberctx.BadRequest("Upstream ID is required")
 	}
 
 	upstream, err := h.lbService.GetUpstream(c.Context(), serverID, teamID, upstreamID)
@@ -91,19 +71,9 @@ func (h *LoadBalancerHandler) ShowUpstream(c *fiber.Ctx) error {
 
 // UpdateUpstream updates an upstream's configuration
 func (h *LoadBalancerHandler) UpdateUpstream(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, upstreamID, err := fiberctx.GetTeamServerAndEntityID(c, "upstreamId")
 	if err != nil {
 		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	upstreamID := c.Params("upstreamId")
-	if upstreamID == "" {
-		return fiberctx.BadRequest("Upstream ID is required")
 	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.UpdateUpstreamRequest](c)
@@ -121,19 +91,9 @@ func (h *LoadBalancerHandler) UpdateUpstream(c *fiber.Ctx) error {
 
 // DeleteUpstream deletes an upstream and all its backends
 func (h *LoadBalancerHandler) DeleteUpstream(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, upstreamID, err := fiberctx.GetTeamServerAndEntityID(c, "upstreamId")
 	if err != nil {
 		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	upstreamID := c.Params("upstreamId")
-	if upstreamID == "" {
-		return fiberctx.BadRequest("Upstream ID is required")
 	}
 
 	if err := h.lbService.DeleteUpstream(c.Context(), serverID, teamID, upstreamID); err != nil {
@@ -145,12 +105,7 @@ func (h *LoadBalancerHandler) DeleteUpstream(c *fiber.Ctx) error {
 
 // CheckDomain checks if a domain is already used by existing sites
 func (h *LoadBalancerHandler) CheckDomain(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -170,19 +125,9 @@ func (h *LoadBalancerHandler) CheckDomain(c *fiber.Ctx) error {
 
 // ListBackends returns all backends for an upstream
 func (h *LoadBalancerHandler) ListBackends(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, upstreamID, err := fiberctx.GetTeamServerAndEntityID(c, "upstreamId")
 	if err != nil {
 		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	upstreamID := c.Params("upstreamId")
-	if upstreamID == "" {
-		return fiberctx.BadRequest("Upstream ID is required")
 	}
 
 	backends, err := h.lbService.ListBackends(c.Context(), serverID, teamID, upstreamID)
@@ -195,19 +140,9 @@ func (h *LoadBalancerHandler) ListBackends(c *fiber.Ctx) error {
 
 // AddBackend adds a site as a backend to an upstream
 func (h *LoadBalancerHandler) AddBackend(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, upstreamID, err := fiberctx.GetTeamServerAndEntityID(c, "upstreamId")
 	if err != nil {
 		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	upstreamID := c.Params("upstreamId")
-	if upstreamID == "" {
-		return fiberctx.BadRequest("Upstream ID is required")
 	}
 
 	req, err := fiberctx.MustParseAndValidate[dto.AddBackendRequest](c)
@@ -225,19 +160,9 @@ func (h *LoadBalancerHandler) AddBackend(c *fiber.Ctx) error {
 
 // UpdateBackend updates a backend's configuration
 func (h *LoadBalancerHandler) UpdateBackend(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, upstreamID, err := fiberctx.GetTeamServerAndEntityID(c, "upstreamId")
 	if err != nil {
 		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	upstreamID := c.Params("upstreamId")
-	if upstreamID == "" {
-		return fiberctx.BadRequest("Upstream ID is required")
 	}
 
 	backendID := c.Params("backendId")
@@ -260,19 +185,9 @@ func (h *LoadBalancerHandler) UpdateBackend(c *fiber.Ctx) error {
 
 // RemoveBackend removes a site from an upstream
 func (h *LoadBalancerHandler) RemoveBackend(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, upstreamID, err := fiberctx.GetTeamServerAndEntityID(c, "upstreamId")
 	if err != nil {
 		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	upstreamID := c.Params("upstreamId")
-	if upstreamID == "" {
-		return fiberctx.BadRequest("Upstream ID is required")
 	}
 
 	backendID := c.Params("backendId")
@@ -289,19 +204,9 @@ func (h *LoadBalancerHandler) RemoveBackend(c *fiber.Ctx) error {
 
 // GetUpstreamHealth returns the health status of all backends
 func (h *LoadBalancerHandler) GetUpstreamHealth(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, upstreamID, err := fiberctx.GetTeamServerAndEntityID(c, "upstreamId")
 	if err != nil {
 		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	upstreamID := c.Params("upstreamId")
-	if upstreamID == "" {
-		return fiberctx.BadRequest("Upstream ID is required")
 	}
 
 	health, err := h.lbService.GetUpstreamHealth(c.Context(), serverID, teamID, upstreamID)
@@ -314,19 +219,9 @@ func (h *LoadBalancerHandler) GetUpstreamHealth(c *fiber.Ctx) error {
 
 // TriggerHealthCheck triggers an on-demand health check for an upstream's backends
 func (h *LoadBalancerHandler) TriggerHealthCheck(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, upstreamID, err := fiberctx.GetTeamServerAndEntityID(c, "upstreamId")
 	if err != nil {
 		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	upstreamID := c.Params("upstreamId")
-	if upstreamID == "" {
-		return fiberctx.BadRequest("Upstream ID is required")
 	}
 
 	if err := h.lbService.TriggerHealthCheck(c.Context(), serverID, teamID, upstreamID); err != nil {
@@ -338,19 +233,9 @@ func (h *LoadBalancerHandler) TriggerHealthCheck(c *fiber.Ctx) error {
 
 // ToggleBackendDown toggles a backend's down status
 func (h *LoadBalancerHandler) ToggleBackendDown(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+	teamID, serverID, upstreamID, err := fiberctx.GetTeamServerAndEntityID(c, "upstreamId")
 	if err != nil {
 		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	upstreamID := c.Params("upstreamId")
-	if upstreamID == "" {
-		return fiberctx.BadRequest("Upstream ID is required")
 	}
 
 	backendID := c.Params("backendId")

@@ -10,12 +10,7 @@ import (
 
 // ListDaemons returns all daemons for a server
 func (h *Handler) ListDaemons(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -30,12 +25,7 @@ func (h *Handler) ListDaemons(c *fiber.Ctx) error {
 
 // CreateDaemon creates a new daemon
 func (h *Handler) CreateDaemon(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
+	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
 	if err != nil {
 		return err
 	}
@@ -55,17 +45,7 @@ func (h *Handler) CreateDaemon(c *fiber.Ctx) error {
 
 // UpdateDaemon updates a daemon
 func (h *Handler) UpdateDaemon(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	daemonID, err := fiberctx.GetDaemonID(c)
+	teamID, serverID, daemonID, err := fiberctx.GetTeamServerAndEntityID(c, "daemonId")
 	if err != nil {
 		return err
 	}
@@ -85,17 +65,7 @@ func (h *Handler) UpdateDaemon(c *fiber.Ctx) error {
 
 // DeleteDaemon deletes a daemon
 func (h *Handler) DeleteDaemon(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	serverID, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-
-	daemonID, err := fiberctx.GetDaemonID(c)
+	teamID, serverID, daemonID, err := fiberctx.GetTeamServerAndEntityID(c, "daemonId")
 	if err != nil {
 		return err
 	}
