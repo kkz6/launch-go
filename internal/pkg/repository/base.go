@@ -16,19 +16,41 @@ var (
 
 // Base provides common database operations using generics.
 // Embed this in your repository to get common CRUD operations.
+// Pass default preloads to automatically apply them to all read queries.
 //
 // Usage:
 //
-//	type DatabaseRepository struct {
-//	    repository.Base[models.Database]
+//	type ServerRepository struct {
+//	    repository.Base[models.Server]
+//	}
+//
+//	func NewServerRepository(db *gorm.DB) *ServerRepository {
+//	    return &ServerRepository{
+//	        Base: repository.NewBase[models.Server](db, "Services"),
+//	    }
 //	}
 type Base[T any] struct {
-	DB *gorm.DB
+	DB              *gorm.DB
+	defaultPreloads []string
 }
 
-// NewBase creates a new Base repository
-func NewBase[T any](db *gorm.DB) Base[T] {
-	return Base[T]{DB: db}
+// NewBase creates a new Base repository with optional default preloads.
+// Default preloads are automatically applied to all read queries.
+func NewBase[T any](db *gorm.DB, defaultPreloads ...string) Base[T] {
+	return Base[T]{DB: db, defaultPreloads: defaultPreloads}
+}
+
+// QueryCtx returns a context-scoped query with default preloads applied.
+// Pass extra preloads to add additional relations beyond the defaults.
+func (r *Base[T]) QueryCtx(ctx context.Context, extraPreloads ...string) *gorm.DB {
+	query := r.DB.WithContext(ctx)
+	for _, p := range r.defaultPreloads {
+		query = query.Preload(p)
+	}
+	for _, p := range extraPreloads {
+		query = query.Preload(p)
+	}
+	return query
 }
 
 // Create creates a new record
@@ -39,7 +61,7 @@ func (r *Base[T]) Create(ctx context.Context, entity *T) error {
 // FindByID finds a record by ID
 func (r *Base[T]) FindByID(ctx context.Context, id string) (*T, error) {
 	var entity T
-	err := r.DB.WithContext(ctx).First(&entity, "id = ?", id).Error
+	err := r.QueryCtx(ctx).First(&entity, "id = ?", id).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fiberutil.NotFound()
@@ -52,7 +74,7 @@ func (r *Base[T]) FindByID(ctx context.Context, id string) (*T, error) {
 // FindByIDAndServer finds a record by ID and server ID
 func (r *Base[T]) FindByIDAndServer(ctx context.Context, id, serverID string) (*T, error) {
 	var entity T
-	err := r.DB.WithContext(ctx).First(&entity, "id = ? AND server_id = ?", id, serverID).Error
+	err := r.QueryCtx(ctx).First(&entity, "id = ? AND server_id = ?", id, serverID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fiberutil.NotFound()
@@ -65,7 +87,7 @@ func (r *Base[T]) FindByIDAndServer(ctx context.Context, id, serverID string) (*
 // FindByServer finds all records for a server
 func (r *Base[T]) FindByServer(ctx context.Context, serverID string) ([]T, error) {
 	var entities []T
-	err := r.DB.WithContext(ctx).
+	err := r.QueryCtx(ctx).
 		Where("server_id = ?", serverID).
 		Order("created_at DESC").
 		Find(&entities).Error
@@ -75,7 +97,7 @@ func (r *Base[T]) FindByServer(ctx context.Context, serverID string) ([]T, error
 // FindByTeam finds all records for a team
 func (r *Base[T]) FindByTeam(ctx context.Context, teamID string) ([]T, error) {
 	var entities []T
-	err := r.DB.WithContext(ctx).
+	err := r.QueryCtx(ctx).
 		Where("team_id = ?", teamID).
 		Order("created_at DESC").
 		Find(&entities).Error
@@ -85,7 +107,7 @@ func (r *Base[T]) FindByTeam(ctx context.Context, teamID string) ([]T, error) {
 // FindByUser finds all records for a user
 func (r *Base[T]) FindByUser(ctx context.Context, userID string) ([]T, error) {
 	var entities []T
-	err := r.DB.WithContext(ctx).
+	err := r.QueryCtx(ctx).
 		Where("user_id = ?", userID).
 		Order("created_at DESC").
 		Find(&entities).Error
@@ -137,7 +159,7 @@ func (r *Base[T]) ExistsByNameAndServer(ctx context.Context, name, serverID stri
 // FindByNameAndServer finds a record by name and server ID
 func (r *Base[T]) FindByNameAndServer(ctx context.Context, name, serverID string) (*T, error) {
 	var entity T
-	err := r.DB.WithContext(ctx).
+	err := r.QueryCtx(ctx).
 		First(&entity, "name = ? AND server_id = ?", name, serverID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -228,14 +250,10 @@ func (r *Base[T]) MustFind(ctx context.Context, id string) (*T, error) {
 	return r.FindByIDOrFail(ctx, id)
 }
 
-// FindByIDAndTeam finds a record by ID and team ID with optional preloads
+// FindByIDAndTeam finds a record by ID and team ID with optional extra preloads
 func (r *Base[T]) FindByIDAndTeam(ctx context.Context, id, teamID string, preloads ...string) (*T, error) {
 	var entity T
-	query := r.DB.WithContext(ctx)
-	for _, p := range preloads {
-		query = query.Preload(p)
-	}
-	err := query.First(&entity, "id = ? AND team_id = ?", id, teamID).Error
+	err := r.QueryCtx(ctx, preloads...).First(&entity, "id = ? AND team_id = ?", id, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fiberutil.NotFound()
@@ -261,7 +279,7 @@ func (r *Base[T]) FindByIDAndTeamOrFail(ctx context.Context, id, teamID string, 
 // This is useful for entities that have both server_id and team_id columns.
 func (r *Base[T]) FindByServerAndTeam(ctx context.Context, serverID, teamID string) ([]T, error) {
 	var entities []T
-	err := r.DB.WithContext(ctx).
+	err := r.QueryCtx(ctx).
 		Where("server_id = ? AND team_id = ?", serverID, teamID).
 		Order("created_at DESC").
 		Find(&entities).Error

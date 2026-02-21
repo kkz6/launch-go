@@ -11,23 +11,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/database/models"
 )
 
-// FindByID finds a database by ID
-func (r *DatabaseRepository) FindByID(ctx context.Context, id string) (*models.Database, error) {
-	var database models.Database
-
-	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
-		First(&database, "id = ?", id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-
-		return nil, err
-	}
-
-	return &database, nil
-}
-
 // FindByIDsAndServer finds databases by a list of IDs belonging to the given server
 func (r *DatabaseRepository) FindByIDsAndServer(ctx context.Context, ids []string, serverID string) ([]models.Database, error) {
 	var databases []models.Database
@@ -39,45 +22,11 @@ func (r *DatabaseRepository) FindByIDsAndServer(ctx context.Context, ids []strin
 	return databases, err
 }
 
-// FindByIDAndServer finds a database by ID and server ID
-func (r *DatabaseRepository) FindByIDAndServer(ctx context.Context, id, serverID string) (*models.Database, error) {
-	var database models.Database
-
-	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
-		First(&database, "id = ? AND server_id = ?", id, serverID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-
-		return nil, err
-	}
-
-	return &database, nil
-}
-
-// FindByIDAndTeam finds a database by ID and team ID
-func (r *DatabaseRepository) FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Database, error) {
-	var database models.Database
-
-	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
-		First(&database, "id = ? AND team_id = ?", id, teamID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-
-		return nil, err
-	}
-
-	return &database, nil
-}
-
 // FindByIDAndServerAndTeam finds a database by ID, server ID, and team ID
 func (r *DatabaseRepository) FindByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.Database, error) {
 	var database models.Database
 
-	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
+	err := r.QueryCtx(ctx).
 		First(&database, "id = ? AND server_id = ? AND team_id = ?", id, serverID, teamID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -90,30 +39,6 @@ func (r *DatabaseRepository) FindByIDAndServerAndTeam(ctx context.Context, id, s
 	return &database, nil
 }
 
-// FindByServer finds all databases for a server
-func (r *DatabaseRepository) FindByServer(ctx context.Context, serverID string) ([]models.Database, error) {
-	var databases []models.Database
-
-	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
-		Where("server_id = ?", serverID).
-		Order("created_at DESC").
-		Find(&databases).Error
-
-	return databases, err
-}
-
-// FindByServerAndTeam finds all databases for a server and team
-func (r *DatabaseRepository) FindByServerAndTeam(ctx context.Context, serverID, teamID string) ([]models.Database, error) {
-	var databases []models.Database
-
-	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
-		Where("server_id = ? AND team_id = ?", serverID, teamID).
-		Order("created_at DESC").
-		Find(&databases).Error
-
-	return databases, err
-}
-
 // CountByTeam counts all databases for a team
 func (r *DatabaseRepository) CountByTeam(ctx context.Context, teamID string) (int64, error) {
 	var count int64
@@ -123,23 +48,6 @@ func (r *DatabaseRepository) CountByTeam(ctx context.Context, teamID string) (in
 		Count(&count).Error
 
 	return count, err
-}
-
-// FindByNameAndServer finds a database by name and server ID
-func (r *DatabaseRepository) FindByNameAndServer(ctx context.Context, name, serverID string) (*models.Database, error) {
-	var database models.Database
-
-	err := r.ApplyPreloads(r.DB.WithContext(ctx)).
-		First(&database, "name = ? AND server_id = ?", name, serverID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-
-		return nil, err
-	}
-
-	return &database, nil
 }
 
 // FindByUser finds all databases for a database user
