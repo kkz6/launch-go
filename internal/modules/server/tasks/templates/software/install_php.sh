@@ -37,6 +37,11 @@ echo "Install Memcached for PHP {{ .Version }}"
 waitForAptUnlock
 yes '' | sudo DEBIAN_FRONTEND=noninteractive apt-get -y install php{{ .Version }}-memcached || echo "php{{ .Version }}-memcached not available, skipping..."
 
+echo "Install Swoole for PHP {{ .Version }}"
+
+waitForAptUnlock
+yes '' | sudo DEBIAN_FRONTEND=noninteractive apt-get -y install php{{ .Version }}-swoole || echo "php{{ .Version }}-swoole not available, skipping..."
+
 echo "Update PHP CLI config"
 
 # Update PHP CLI settings in php.ini
