@@ -412,9 +412,10 @@ func (s *DeploymentService) DisableAutoDeployment(ctx context.Context, siteID, s
 	})
 }
 
-// BroadcastProgress broadcasts deployment progress
-func (s *DeploymentService) BroadcastProgress(siteID, deploymentID, status, message string) {
-	s.BroadcastToDeployment(deploymentID, "deployment.progress", map[string]any{
+// BroadcastProgress broadcasts deployment progress to the team channel
+func (s *DeploymentService) BroadcastProgress(teamID, siteID, deploymentID, status, message string) {
+	s.BroadcastToTeam(teamID, "deployment.progress", map[string]any{
+		"team_id":       teamID,
 		"site_id":       siteID,
 		"deployment_id": deploymentID,
 		"status":        status,
