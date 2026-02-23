@@ -2,12 +2,26 @@ package dto
 
 import (
 	"encoding/json"
+	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/site/formatter"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 )
+
+// webhookBaseURL is the base URL used for building deploy webhook URLs.
+// Initialized via SetWebhookBaseURL at application startup.
+var webhookBaseURL string
+
+// SetWebhookBaseURL sets the base URL for webhook URLs (WEBHOOK_URL or APP_URL).
+func SetWebhookBaseURL(webhookURL, appURL string) {
+	if webhookURL != "" {
+		webhookBaseURL = strings.TrimRight(webhookURL, "/")
+	} else {
+		webhookBaseURL = strings.TrimRight(appURL, "/")
+	}
+}
 
 // SiteResponse represents a site in API responses
 type SiteResponse struct {
@@ -202,7 +216,7 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 	// Build deploy webhook URL if token exists
 	var deployWebhookURL string
 	if site.DeployToken != nil && *site.DeployToken != "" {
-		deployWebhookURL = "/deploy/" + site.ID + "/" + *site.DeployToken
+		deployWebhookURL = webhookBaseURL + "/deploy/" + site.ID + "/" + *site.DeployToken
 	}
 
 	// Extract enabled feature names

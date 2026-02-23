@@ -30,6 +30,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/script"
 	"github.com/kkz6/launch-go/internal/modules/server"
 	"github.com/kkz6/launch-go/internal/modules/site"
+	sitedto "github.com/kkz6/launch-go/internal/modules/site/dto"
 	wsmodule "github.com/kkz6/launch-go/internal/modules/websocket"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
@@ -84,6 +85,9 @@ func bootstrap() *Application {
 
 	// Initialize email templates with app name and URL
 	mailtemplates.Initialize(cfg.App.Name, cfg.App.URL)
+
+	// Initialize webhook base URL for deploy webhook URLs
+	sitedto.SetWebhookBaseURL(cfg.Core.WebhookURL, cfg.App.URL)
 
 	appLogger := logger.NewWithConfig(cfg.App.Environment, cfg.App.Debug)
 
