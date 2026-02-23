@@ -47,6 +47,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	m.registerCommandRoutes(sites, h.Command)
 	m.registerRedirectRoutes(sites, h.Redirect)
 	m.registerFileRoutes(sites, h.File)
+	m.registerFeatureRoutes(sites, h.Feature)
 }
 
 // RegisterWebhookRoutes registers webhook routes (implements app.WebhookRegistrar)
@@ -162,4 +163,10 @@ func (m *Module) registerFileRoutes(router fiber.Router, handler *handlers.FileH
 	router.Put("/:id/files/:file", handler.UpdateFile)   // Update file content by encoded param
 	router.Patch("/:id/files/:file", handler.UpdateFile) // Update file content by encoded param (PATCH)
 	router.Get("/:id/logs", handler.ListLogs)
+}
+
+// registerFeatureRoutes registers Laravel feature management routes
+func (m *Module) registerFeatureRoutes(router fiber.Router, handler *handlers.FeatureHandler) {
+	router.Post("/:id/features/:feature/enable", handler.EnableFeature)
+	router.Post("/:id/features/:feature/disable", handler.DisableFeature)
 }

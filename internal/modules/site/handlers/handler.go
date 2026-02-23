@@ -14,6 +14,7 @@ type Handler struct {
 	Command    *CommandHandler
 	Redirect   *RedirectHandler
 	File       *FileHandler
+	Feature    *FeatureHandler
 	Webhook    *WebhookHandler
 }
 
@@ -27,6 +28,7 @@ func NewHandler(svc *services.ServiceRegistry) *Handler {
 		Command:    NewCommandHandler(svc.Command()),
 		Redirect:   NewRedirectHandler(svc.Redirect()),
 		File:       NewFileHandler(svc.File()),
+		Feature:    NewFeatureHandler(svc.Feature()),
 		Webhook:    NewWebhookHandler(svc.Deployment()),
 	}
 }

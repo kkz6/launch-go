@@ -43,6 +43,7 @@ type ServiceRegistry struct {
 	command    *CommandService
 	redirect   *RedirectService
 	file       *FileService
+	feature    *FeatureService
 }
 
 // Site returns the site service
@@ -66,6 +67,9 @@ func (r *ServiceRegistry) Redirect() *RedirectService { return r.redirect }
 // File returns the file service
 func (r *ServiceRegistry) File() *FileService { return r.file }
 
+// Feature returns the feature service
+func (r *ServiceRegistry) Feature() *FeatureService { return r.feature }
+
 // CrossModuleDeps holds dependencies from other modules using interfaces
 type CrossModuleDeps struct {
 	ServerReader    contracts.ServerReader
@@ -88,6 +92,7 @@ func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
 	registry.command = NewCommandService(deps)
 	registry.redirect = NewRedirectService(deps)
 	registry.file = NewFileService(deps)
+	registry.feature = NewFeatureService(deps)
 
 	return registry
 }
@@ -97,6 +102,7 @@ func (r *ServiceRegistry) SetCrossModuleDeps(deps *CrossModuleDeps) {
 	if deps.ServerReader != nil {
 		r.site.SetServerReader(deps.ServerReader)
 		r.file.SetServerReader(deps.ServerReader)
+		r.feature.SetServerReader(deps.ServerReader)
 	}
 	if deps.GitReader != nil {
 		r.site.SetGitReader(deps.GitReader)
