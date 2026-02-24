@@ -87,7 +87,7 @@ func (j *EnableLaravelSchedulerJob) createSchedulerCron(ctx context.Context, sit
 		Command:    dbtype.EncryptedString(command),
 		User:       site.User,
 		Frequency:  schedule.FrequencyName(),
-		Hidden:     true,
+		Hidden:     false,
 	}
 	cron.ServerID = server.ID
 
