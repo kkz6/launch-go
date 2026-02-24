@@ -45,26 +45,13 @@ type ComposerJSON struct {
 	RequireDev map[string]string `json:"require-dev"`
 }
 
-// featurePackageMapping maps Laravel features to their composer packages
+// featurePackageMapping maps Laravel features to their composer packages.
+// Only includes features that are actionable in the UI (can be enabled/disabled or shown).
 var featurePackageMapping = map[string][]string{
-	"horizon":   {"laravel/horizon"},
-	"octane":    {"laravel/octane"},
-	"reverb":    {"laravel/reverb"},
-	"inertia":   {"inertiajs/inertia-laravel"},
-	"scout":     {"laravel/scout"},
-	"pulse":     {"laravel/pulse"},
-	"pennant":   {"laravel/pennant"},
-	"cashier":   {"laravel/cashier", "laravel/cashier-stripe", "laravel/cashier-paddle"},
-	"spark":     {"laravel/spark-stripe", "laravel/spark-paddle"},
-	"nova":      {"laravel/nova"},
-	"vapor":     {"laravel/vapor-core", "laravel/vapor-cli"},
-	"jetstream": {"laravel/jetstream"},
-	"breeze":    {"laravel/breeze"},
-	"sanctum":   {"laravel/sanctum"},
-	"passport":  {"laravel/passport"},
-	"socialite": {"laravel/socialite"},
-	"telescope": {"laravel/telescope"},
-	"dusk":      {"laravel/dusk"},
+	"inertia": {"inertiajs/inertia-laravel", "inertiajs/inertia-vue", "inertiajs/inertia-react"},
+	"horizon": {"laravel/horizon"},
+	"octane":  {"laravel/octane"},
+	"reverb":  {"laravel/reverb"},
 }
 
 // Handle executes the analyze features job
@@ -117,16 +104,13 @@ func (j *AnalyzeLaravelFeaturesJob) Handle(ctx context.Context) error {
 
 	j.Deps.Logger.Info().Str("site_id", site.ID).Strs("features", detectedFeatures).Msg("Detected Laravel features")
 
-	// Update site's features field
-	if len(detectedFeatures) > 0 {
-		// JSON marshal for MySQL JSON column (GORM Updates with map bypasses model serializers)
-		featuresJSON, _ := json.Marshal(detectedFeatures)
-		if err := j.Deps.Repos.Site().UpdateFields(ctx, site.ID, map[string]interface{}{
-			"features": string(featuresJSON),
-		}); err != nil {
-			j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to update site features")
-			return err
-		}
+	// Always update site's features field, even when empty, to clear stale data
+	featuresJSON, _ := json.Marshal(detectedFeatures)
+	if err := j.Deps.Repos.Site().UpdateFields(ctx, site.ID, map[string]interface{}{
+		"features": string(featuresJSON),
+	}); err != nil {
+		j.Deps.Logger.Error().Err(err).Str("site_id", site.ID).Msg("Failed to update site features")
+		return err
 	}
 
 	// Broadcast update
