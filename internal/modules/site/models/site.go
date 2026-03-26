@@ -214,6 +214,7 @@ type EnabledFeature struct {
 	Name         string     `json:"name"`
 	QueueID      *string    `json:"queue_id,omitempty"`
 	CronID       *string    `json:"cron_id,omitempty"`
+	DaemonID     *string    `json:"daemon_id,omitempty"`
 	OctanePort   *int       `json:"octane_port,omitempty"`
 	OctaneServer *string    `json:"octane_server,omitempty"`
 	ReverbPort   *int       `json:"reverb_port,omitempty"`

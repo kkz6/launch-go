@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -44,12 +45,12 @@ func (j *DisableLaravelReverbJob) Handle(ctx context.Context) error {
 	j.site = site
 
 	feature := site.GetEnabledFeature(FeatureReverb)
-	if feature == nil || feature.QueueID == nil {
+	if feature == nil || feature.DaemonID == nil {
 		j.Deps.Logger.Info().Str("site_id", site.ID).Msg("Reverb not enabled, nothing to disable")
 		return nil
 	}
 
-	queueID := *feature.QueueID
+	daemonID := *feature.DaemonID
 
 	server, err := j.Deps.ServerRepos.Server().FindByID(ctx, j.Payload.ServerID)
 	if err != nil {
@@ -60,20 +61,10 @@ func (j *DisableLaravelReverbJob) Handle(ctx context.Context) error {
 	j.Deps.Logger.Info().
 		Str("site_id", site.ID).
 		Str("server_id", server.ID).
-		Str("queue_id", queueID).
+		Str("daemon_id", daemonID).
 		Msg("Disabling Laravel Reverb")
 
-	// Dispatch UninstallQueue job
-	if err := j.dispatchUninstallQueue(queueID, site.ID); err != nil {
-		j.Deps.Logger.Error().Err(err).Msg("Failed to dispatch uninstall queue job")
-	}
-
-	// Delete the queue record
-	if err := j.Deps.Repos.Queue().Delete(ctx, queueID); err != nil {
-		j.Deps.Logger.Error().Err(err).Str("queue_id", queueID).Msg("Failed to delete queue record")
-	}
-
-	// Update site's enabled_features
+	// Update site's enabled_features first (before dispatching uninstall)
 	site.RemoveEnabledFeature(FeatureReverb)
 	site.RemovePendingFeature(FeatureReverb)
 
@@ -82,6 +73,11 @@ func (j *DisableLaravelReverbJob) Handle(ctx context.Context) error {
 		"pending_features": site.PendingFeatures,
 	}); err != nil {
 		j.Deps.Logger.Error().Err(err).Msg("Failed to update site enabled_features")
+	}
+
+	// Dispatch UninstallDaemon job (handles supervisor config removal + record deletion)
+	if err := j.dispatchUninstallDaemon(daemonID, server.ID); err != nil {
+		j.Deps.Logger.Error().Err(err).Msg("Failed to dispatch uninstall daemon job")
 	}
 
 	// Update Caddyfile to remove WebSocket proxy block
@@ -98,13 +94,9 @@ func (j *DisableLaravelReverbJob) Handle(ctx context.Context) error {
 	return nil
 }
 
-// dispatchUninstallQueue dispatches the UninstallQueue job
-func (j *DisableLaravelReverbJob) dispatchUninstallQueue(queueID, siteID string) error {
-	if j.Deps.Queue == nil {
-		return fmt.Errorf("queue client not available")
-	}
-
-	task, err := NewUninstallQueueTask(siteID, queueID, j.Payload.UserID)
+// dispatchUninstallDaemon dispatches the UninstallDaemon job
+func (j *DisableLaravelReverbJob) dispatchUninstallDaemon(daemonID, serverID string) error {
+	task, err := serverjobs.NewUninstallDaemonTask(serverID, daemonID, j.Payload.UserID)
 	if err != nil {
 		return err
 	}
