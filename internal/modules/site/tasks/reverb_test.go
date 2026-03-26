@@ -21,6 +21,7 @@ func TestConfigureReverbEnv_ScriptContainsEnvFile(t *testing.T) {
 	script := task.Script()
 
 	assert.Contains(t, script, `ENV_FILE="/home/launcher/example.com/current/.env"`)
+	assert.Contains(t, script, `readlink -f "$ENV_FILE"`)
 	assert.Contains(t, script, `if [ ! -f "$ENV_FILE" ]`)
 	assert.Contains(t, script, "exit 1")
 }

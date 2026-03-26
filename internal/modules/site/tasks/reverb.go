@@ -19,6 +19,11 @@ set -e
 
 ENV_FILE="%s/.env"
 
+# Resolve symlinks so sed -i modifies the actual file (e.g. shared/.env)
+if [ -L "$ENV_FILE" ]; then
+    ENV_FILE="$(readlink -f "$ENV_FILE")"
+fi
+
 if [ ! -f "$ENV_FILE" ]; then
     echo ".env file not found at $ENV_FILE"
     exit 1
