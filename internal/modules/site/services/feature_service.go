@@ -63,7 +63,9 @@ func (s *FeatureService) SetServerReader(reader contracts.ServerReader) {
 
 // EnableFeatureOptions holds optional parameters for enabling a feature
 type EnableFeatureOptions struct {
-	DeleteQueues bool // For Horizon: delete existing queue workers before enabling
+	DeleteQueues    bool // For Horizon: delete existing queue workers before enabling
+	ConfigureEnv    bool // For Reverb: configure .env variables
+	UpdateCaddyfile bool // For Reverb: update Caddyfile with WebSocket proxy
 }
 
 // EnableFeature enables a Laravel feature for a site
@@ -120,8 +122,13 @@ func (s *FeatureService) EnableFeature(ctx context.Context, siteID, serverID, te
 		return err
 	}
 
-	// Dispatch the enable job
-	if err := s.dispatchFeatureJob(enableTaskFactories, site, serverID, userID, feature); err != nil {
+	// Dispatch the enable job — Reverb uses custom options for env/caddyfile
+	if feature == sitetypes.LaravelFeatureReverb {
+		if err := s.dispatchReverbWithOptions(site, serverID, userID, opts); err != nil {
+			s.rollbackPendingFeature(ctx, site, featureName)
+			return err
+		}
+	} else if err := s.dispatchFeatureJob(enableTaskFactories, site, serverID, userID, feature); err != nil {
 		s.rollbackPendingFeature(ctx, site, featureName)
 		return err
 	}
@@ -156,6 +163,20 @@ func (s *FeatureService) removeQueueFeature(ctx context.Context, site *models.Si
 	return s.Repos().Site().UpdateFields(ctx, site.ID, map[string]interface{}{
 		"enabled_features": site.EnabledFeatures,
 	})
+}
+
+// dispatchReverbWithOptions dispatches the Reverb enable job with env/caddyfile options
+func (s *FeatureService) dispatchReverbWithOptions(site *models.Site, serverID string, userID *string, opts EnableFeatureOptions) error {
+	task, err := jobs.NewEnableLaravelReverbTaskWithOptions(site.ID, serverID, userID, opts.ConfigureEnv, opts.UpdateCaddyfile)
+	if err != nil {
+		return fmt.Errorf("failed to create task: %w", err)
+	}
+
+	if err := s.EnqueueTask(task); err != nil {
+		return fmt.Errorf("failed to enqueue task: %w", err)
+	}
+
+	return nil
 }
 
 // DisableFeature disables a Laravel feature for a site

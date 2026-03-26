@@ -18,9 +18,11 @@ const TypeEnableLaravelReverb = "site:enable_laravel_reverb"
 
 // EnableLaravelReverbPayload holds data for enabling Laravel Reverb
 type EnableLaravelReverbPayload struct {
-	SiteID   string  `json:"site_id"`
-	ServerID string  `json:"server_id"`
-	UserID   *string `json:"user_id,omitempty"`
+	SiteID          string  `json:"site_id"`
+	ServerID        string  `json:"server_id"`
+	UserID          *string `json:"user_id,omitempty"`
+	ConfigureEnv    bool    `json:"configure_env,omitempty"`
+	UpdateCaddyfile bool    `json:"update_caddyfile,omitempty"`
 }
 
 // EnableLaravelReverbJob enables Laravel Reverb for a site
@@ -76,11 +78,12 @@ func (j *EnableLaravelReverbJob) Handle(ctx context.Context) error {
 		return err
 	}
 
-	// Install daemon + configure env + update Caddyfile if site is already deployed
+	// Install daemon + optional env/Caddyfile config if site is already deployed
 	if site.InstalledAt != nil {
-		// Configure .env variables (BROADCAST_CONNECTION, Reverb keys, etc.)
-		if err := j.configureEnv(ctx, site, server, port); err != nil {
-			j.Deps.Logger.Error().Err(err).Msg("Failed to configure Reverb .env variables")
+		if j.Payload.ConfigureEnv {
+			if err := j.configureEnv(ctx, site, server, port); err != nil {
+				j.Deps.Logger.Error().Err(err).Msg("Failed to configure Reverb .env variables")
+			}
 		}
 
 		if err := j.dispatchInstallDaemon(daemon.ID, server.ID); err != nil {
@@ -89,8 +92,10 @@ func (j *EnableLaravelReverbJob) Handle(ctx context.Context) error {
 			return fmt.Errorf("failed to dispatch install daemon job: %w", err)
 		}
 
-		if err := j.dispatchUpdateCaddyfile(site.ID); err != nil {
-			j.Deps.Logger.Error().Err(err).Msg("Failed to dispatch update Caddyfile job")
+		if j.Payload.UpdateCaddyfile {
+			if err := j.dispatchUpdateCaddyfile(site.ID); err != nil {
+				j.Deps.Logger.Error().Err(err).Msg("Failed to dispatch update Caddyfile job")
+			}
 		}
 	}
 
@@ -203,11 +208,24 @@ func (j *EnableLaravelReverbJob) Failed(ctx context.Context, err error) {
 	j.HandleFailure(ctx, err, j.Payload.SiteID, FeatureReverb, "Failed to enable Laravel Reverb")
 }
 
-// NewEnableLaravelReverbTask creates an enable Reverb task
+// NewEnableLaravelReverbTask creates an enable Reverb task with default options (env + caddyfile)
 func NewEnableLaravelReverbTask(siteID, serverID string, userID *string) (*asynq.Task, error) {
 	return pkgjobs.Task(TypeEnableLaravelReverb, EnableLaravelReverbPayload{
-		SiteID:   siteID,
-		ServerID: serverID,
-		UserID:   userID,
+		SiteID:          siteID,
+		ServerID:        serverID,
+		UserID:          userID,
+		ConfigureEnv:    true,
+		UpdateCaddyfile: true,
+	})
+}
+
+// NewEnableLaravelReverbTaskWithOptions creates an enable Reverb task with explicit options
+func NewEnableLaravelReverbTaskWithOptions(siteID, serverID string, userID *string, configureEnv, updateCaddyfile bool) (*asynq.Task, error) {
+	return pkgjobs.Task(TypeEnableLaravelReverb, EnableLaravelReverbPayload{
+		SiteID:          siteID,
+		ServerID:        serverID,
+		UserID:          userID,
+		ConfigureEnv:    configureEnv,
+		UpdateCaddyfile: updateCaddyfile,
 	})
 }
