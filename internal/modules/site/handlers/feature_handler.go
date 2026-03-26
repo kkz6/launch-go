@@ -9,7 +9,9 @@ import (
 
 // EnableFeatureRequest represents optional body for enabling a feature
 type EnableFeatureRequest struct {
-	DeleteQueues bool `json:"delete_queues"`
+	DeleteQueues    bool `json:"delete_queues"`
+	ConfigureEnv    bool `json:"configure_env"`
+	UpdateCaddyfile bool `json:"update_caddyfile"`
 }
 
 // FeatureHandler handles HTTP requests for Laravel feature management
@@ -46,7 +48,9 @@ func (h *FeatureHandler) EnableFeature(c *fiber.Ctx) error {
 	_ = c.BodyParser(&req)
 
 	opts := services.EnableFeatureOptions{
-		DeleteQueues: req.DeleteQueues,
+		DeleteQueues:    req.DeleteQueues,
+		ConfigureEnv:    req.ConfigureEnv,
+		UpdateCaddyfile: req.UpdateCaddyfile,
 	}
 
 	if err := h.featureService.EnableFeature(c.Context(), siteID, serverID, teamID, &userID, featureName, opts); err != nil {
