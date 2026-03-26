@@ -562,3 +562,263 @@ func TestGenerateStandardCaddyfile_OctaneNilPort(t *testing.T) {
 		t.Errorf("expected php_fastcgi fallback for nil octane port, got:\n%s", result)
 	}
 }
+
+// TestGenerateStandardCaddyfile_ReverbWebSocketProxy verifies that a site with Reverb enabled
+// generates a @websocket matcher and reverse_proxy for WebSocket connections.
+func TestGenerateStandardCaddyfile_ReverbWebSocketProxy(t *testing.T) {
+	site := newLaravelSite()
+	port := 6001
+	site.EnabledFeatures = models.EnabledFeaturesSlice{
+		{Name: "reverb", ReverbPort: &port, QueueID: strPtr("q1")},
+	}
+
+	result := generateStandardCaddyfile(site, nil)
+
+	if !strings.Contains(result, "@websocket {") {
+		t.Errorf("expected @websocket matcher block, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "path /app/*") {
+		t.Errorf("expected path /app/* in @websocket matcher, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "header Connection *Upgrade*") {
+		t.Errorf("expected Connection upgrade header in @websocket matcher, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "header Upgrade websocket") {
+		t.Errorf("expected Upgrade websocket header in @websocket matcher, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "reverse_proxy @websocket localhost:6001") {
+		t.Errorf("expected reverse_proxy @websocket localhost:6001, got:\n%s", result)
+	}
+
+	// Should still have php_fastcgi for non-WebSocket traffic
+	if !strings.Contains(result, "php_fastcgi") {
+		t.Errorf("expected php_fastcgi for non-WebSocket traffic, got:\n%s", result)
+	}
+}
+
+// TestGenerateStandardCaddyfile_ReverbDifferentPorts verifies different Reverb ports.
+func TestGenerateStandardCaddyfile_ReverbDifferentPorts(t *testing.T) {
+	tests := []struct {
+		name string
+		port int
+	}{
+		{"port_6001", 6001},
+		{"port_6042", 6042},
+		{"port_6500", 6500},
+		{"port_6999", 6999},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			site := newLaravelSite()
+			port := tt.port
+			site.EnabledFeatures = models.EnabledFeaturesSlice{
+				{Name: "reverb", ReverbPort: &port, QueueID: strPtr("q1")},
+			}
+
+			result := generateStandardCaddyfile(site, nil)
+
+			expected := fmt.Sprintf("reverse_proxy @websocket localhost:%d", tt.port)
+			if !strings.Contains(result, expected) {
+				t.Errorf("expected %s, got:\n%s", expected, result)
+			}
+		})
+	}
+}
+
+// TestGenerateStandardCaddyfile_NoReverb_NoWebSocket verifies that a site without Reverb
+// does not include the @websocket matcher.
+func TestGenerateStandardCaddyfile_NoReverb_NoWebSocket(t *testing.T) {
+	site := newLaravelSite()
+
+	result := generateStandardCaddyfile(site, nil)
+
+	if strings.Contains(result, "@websocket") {
+		t.Errorf("non-Reverb site should NOT have @websocket matcher, got:\n%s", result)
+	}
+
+	if strings.Contains(result, "reverse_proxy @websocket") {
+		t.Errorf("non-Reverb site should NOT have WebSocket reverse_proxy, got:\n%s", result)
+	}
+}
+
+// TestGenerateStandardCaddyfile_ReverbNilPort verifies that if Reverb feature exists
+// but has nil port, no WebSocket proxy is generated.
+func TestGenerateStandardCaddyfile_ReverbNilPort(t *testing.T) {
+	site := newLaravelSite()
+	site.EnabledFeatures = models.EnabledFeaturesSlice{
+		{Name: "reverb", QueueID: strPtr("q1")},
+	}
+
+	result := generateStandardCaddyfile(site, nil)
+
+	if strings.Contains(result, "@websocket") {
+		t.Errorf("nil reverb port should not generate @websocket matcher, got:\n%s", result)
+	}
+
+	if strings.Contains(result, "reverse_proxy @websocket") {
+		t.Errorf("nil reverb port should not generate WebSocket reverse_proxy, got:\n%s", result)
+	}
+}
+
+// TestGenerateStandardCaddyfile_ReverbWithOctane verifies that both Octane and Reverb
+// can coexist in the same Caddyfile.
+func TestGenerateStandardCaddyfile_ReverbWithOctane(t *testing.T) {
+	site := newLaravelSite()
+	octanePort := 8000
+	reverbPort := 6001
+	site.EnabledFeatures = models.EnabledFeaturesSlice{
+		{Name: "octane", OctanePort: &octanePort, OctaneServer: strPtr("frankenphp")},
+		{Name: "reverb", ReverbPort: &reverbPort, QueueID: strPtr("q1")},
+	}
+
+	result := generateStandardCaddyfile(site, nil)
+
+	// Should have Octane reverse_proxy
+	if !strings.Contains(result, "reverse_proxy localhost:8000") {
+		t.Errorf("expected Octane reverse_proxy localhost:8000, got:\n%s", result)
+	}
+
+	// Should have Reverb WebSocket proxy
+	if !strings.Contains(result, "@websocket {") {
+		t.Errorf("expected @websocket matcher block, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "reverse_proxy @websocket localhost:6001") {
+		t.Errorf("expected reverse_proxy @websocket localhost:6001, got:\n%s", result)
+	}
+
+	// Should NOT have php_fastcgi (Octane replaces it)
+	if strings.Contains(result, "php_fastcgi") {
+		t.Errorf("Octane+Reverb site should NOT have php_fastcgi, got:\n%s", result)
+	}
+}
+
+// TestGenerateLoadBalancedCaddyfile_ReverbWebSocketProxy verifies that a load-balanced site
+// with Reverb enabled generates a @websocket matcher and reverse_proxy with tab indentation.
+func TestGenerateLoadBalancedCaddyfile_ReverbWebSocketProxy(t *testing.T) {
+	site := newLaravelSite()
+	site.LoadBalancedUpstreamID = strPtr("01HLBUPSTREAM00000000030")
+	port := 6001
+	site.EnabledFeatures = models.EnabledFeaturesSlice{
+		{Name: "reverb", ReverbPort: &port, QueueID: strPtr("q1")},
+	}
+	loadBalancerIP := "10.0.0.50"
+
+	result := generateLoadBalancedCaddyfile(site, nil, loadBalancerIP)
+
+	// Tab-indented @websocket matcher
+	if !strings.Contains(result, "\t@websocket {") {
+		t.Errorf("expected tab-indented @websocket matcher block in LB Caddyfile, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "\t\tpath /app/*") {
+		t.Errorf("expected double-tab-indented path in LB Caddyfile, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "\t\theader Connection *Upgrade*") {
+		t.Errorf("expected double-tab-indented Connection header in LB Caddyfile, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "\t\theader Upgrade websocket") {
+		t.Errorf("expected double-tab-indented Upgrade header in LB Caddyfile, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "\treverse_proxy @websocket localhost:6001") {
+		t.Errorf("expected tab-indented reverse_proxy @websocket localhost:6001 in LB Caddyfile, got:\n%s", result)
+	}
+
+	// Should still have php_fastcgi and IP restriction
+	if !strings.Contains(result, "php_fastcgi") {
+		t.Errorf("expected php_fastcgi for non-WebSocket traffic in LB Caddyfile, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "@notlb not remote_ip 10.0.0.50") {
+		t.Errorf("expected IP restriction in LB Caddyfile, got:\n%s", result)
+	}
+}
+
+// TestGenerateLoadBalancedCaddyfile_NoReverb_NoWebSocket verifies that a LB site
+// without Reverb does not include the @websocket matcher.
+func TestGenerateLoadBalancedCaddyfile_NoReverb_NoWebSocket(t *testing.T) {
+	site := newLaravelSite()
+	loadBalancerIP := "10.0.0.50"
+
+	result := generateLoadBalancedCaddyfile(site, nil, loadBalancerIP)
+
+	if strings.Contains(result, "@websocket") {
+		t.Errorf("non-Reverb LB site should NOT have @websocket matcher, got:\n%s", result)
+	}
+}
+
+// TestGenerateLoadBalancedCaddyfile_ReverbWithOctane verifies that both Octane and Reverb
+// can coexist in a load-balanced Caddyfile.
+func TestGenerateLoadBalancedCaddyfile_ReverbWithOctane(t *testing.T) {
+	site := newLaravelSite()
+	site.LoadBalancedUpstreamID = strPtr("01HLBUPSTREAM00000000040")
+	octanePort := 8001
+	reverbPort := 6005
+	site.EnabledFeatures = models.EnabledFeaturesSlice{
+		{Name: "octane", OctanePort: &octanePort, OctaneServer: strPtr("swoole")},
+		{Name: "reverb", ReverbPort: &reverbPort, QueueID: strPtr("q1")},
+	}
+	loadBalancerIP := "10.0.0.60"
+
+	result := generateLoadBalancedCaddyfile(site, nil, loadBalancerIP)
+
+	// Octane reverse_proxy
+	if !strings.Contains(result, "\treverse_proxy localhost:8001") {
+		t.Errorf("expected tab-indented Octane reverse_proxy in LB Caddyfile, got:\n%s", result)
+	}
+
+	// Reverb WebSocket proxy
+	if !strings.Contains(result, "\t@websocket {") {
+		t.Errorf("expected tab-indented @websocket matcher in LB Caddyfile, got:\n%s", result)
+	}
+
+	if !strings.Contains(result, "\treverse_proxy @websocket localhost:6005") {
+		t.Errorf("expected tab-indented reverse_proxy @websocket localhost:6005, got:\n%s", result)
+	}
+
+	// Should NOT have php_fastcgi (Octane replaces it)
+	if strings.Contains(result, "php_fastcgi") {
+		t.Errorf("Octane+Reverb LB site should NOT have php_fastcgi, got:\n%s", result)
+	}
+}
+
+// TestGenerateCaddyfile_ReverbRouting verifies the top-level generateCaddyfile function
+// correctly routes to the right generator with Reverb.
+func TestGenerateCaddyfile_ReverbRouting(t *testing.T) {
+	t.Run("standard_with_reverb", func(t *testing.T) {
+		site := newLaravelSite()
+		port := 6001
+		site.EnabledFeatures = models.EnabledFeaturesSlice{
+			{Name: "reverb", ReverbPort: &port, QueueID: strPtr("q1")},
+		}
+
+		result := generateCaddyfile(site, nil, "")
+
+		if !strings.Contains(result, "reverse_proxy @websocket localhost:6001") {
+			t.Errorf("expected reverse_proxy @websocket in standard Reverb Caddyfile, got:\n%s", result)
+		}
+	})
+
+	t.Run("load_balanced_with_reverb", func(t *testing.T) {
+		site := newLaravelSite()
+		site.LoadBalancedUpstreamID = strPtr("01HLBUPSTREAM00000000050")
+		port := 6042
+		site.EnabledFeatures = models.EnabledFeaturesSlice{
+			{Name: "reverb", ReverbPort: &port, QueueID: strPtr("q1")},
+		}
+
+		result := generateCaddyfile(site, nil, "10.0.0.1")
+
+		if !strings.Contains(result, "reverse_proxy @websocket localhost:6042") {
+			t.Errorf("expected reverse_proxy @websocket in LB Reverb Caddyfile, got:\n%s", result)
+		}
+	})
+}

@@ -726,6 +726,15 @@ func (s *SiteService) FindByID(ctx context.Context, id, serverID, teamID string)
 	return site, nil
 }
 
+// GetQueueCount returns the number of queue workers for a site
+func (s *SiteService) GetQueueCount(ctx context.Context, siteID string) int {
+	count, err := s.Repos().Queue().CountBySite(ctx, siteID)
+	if err != nil {
+		return 0
+	}
+	return int(count)
+}
+
 // Update updates a site
 func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID string, req *dto.UpdateSiteRequest) (*models.Site, error) {
 	site, err := s.Repos().Site().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)

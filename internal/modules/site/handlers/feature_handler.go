@@ -7,6 +7,12 @@ import (
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
+// EnableFeatureRequest represents optional body for enabling a feature
+type EnableFeatureRequest struct {
+	DeleteQueues bool `json:"delete_queues"`
+	ConfigureEnv bool `json:"configure_env"`
+}
+
 // FeatureHandler handles HTTP requests for Laravel feature management
 type FeatureHandler struct {
 	featureService *services.FeatureService
@@ -36,7 +42,16 @@ func (h *FeatureHandler) EnableFeature(c *fiber.Ctx) error {
 
 	featureName := c.Params("feature")
 
-	if err := h.featureService.EnableFeature(c.Context(), siteID, serverID, teamID, &userID, featureName); err != nil {
+	// Parse optional request body (allow empty body for simple toggles)
+	var req EnableFeatureRequest
+	_ = c.BodyParser(&req)
+
+	opts := services.EnableFeatureOptions{
+		DeleteQueues: req.DeleteQueues,
+		ConfigureEnv: req.ConfigureEnv,
+	}
+
+	if err := h.featureService.EnableFeature(c.Context(), siteID, serverID, teamID, &userID, featureName, opts); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
 

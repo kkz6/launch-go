@@ -30,6 +30,7 @@ var enableTaskFactories = map[sitetypes.LaravelFeature]taskFactoryFn{
 	sitetypes.LaravelFeatureHorizon:   jobs.NewEnableLaravelHorizonTask,
 	sitetypes.LaravelFeatureInertia:   jobs.NewEnableLaravelInertiaTask,
 	sitetypes.LaravelFeatureOctane:    jobs.NewEnableLaravelOctaneTask,
+	sitetypes.LaravelFeatureReverb:    jobs.NewEnableLaravelReverbTask,
 }
 
 // disableTaskFactories maps feature names to their disable task factory functions
@@ -39,6 +40,7 @@ var disableTaskFactories = map[sitetypes.LaravelFeature]taskFactoryFn{
 	sitetypes.LaravelFeatureHorizon:   jobs.NewDisableLaravelHorizonTask,
 	sitetypes.LaravelFeatureInertia:   jobs.NewDisableLaravelInertiaTask,
 	sitetypes.LaravelFeatureOctane:    jobs.NewDisableLaravelOctaneTask,
+	sitetypes.LaravelFeatureReverb:    jobs.NewDisableLaravelReverbTask,
 }
 
 // FeatureService handles enabling and disabling Laravel features
@@ -59,8 +61,14 @@ func (s *FeatureService) SetServerReader(reader contracts.ServerReader) {
 	s.serverReader = reader
 }
 
+// EnableFeatureOptions holds optional parameters for enabling a feature
+type EnableFeatureOptions struct {
+	DeleteQueues bool // For Horizon: delete existing queue workers before enabling
+	ConfigureEnv bool // For Reverb: configure .env variables
+}
+
 // EnableFeature enables a Laravel feature for a site
-func (s *FeatureService) EnableFeature(ctx context.Context, siteID, serverID, teamID string, userID *string, featureName string) error {
+func (s *FeatureService) EnableFeature(ctx context.Context, siteID, serverID, teamID string, userID *string, featureName string, opts EnableFeatureOptions) error {
 	feature := sitetypes.LaravelFeature(featureName)
 	if !feature.IsValid() {
 		return ErrInvalidFeature
@@ -83,10 +91,18 @@ func (s *FeatureService) EnableFeature(ctx context.Context, siteID, serverID, te
 		return fiberutil.Conflict(fmt.Sprintf("%s is already enabled", feature.Label()))
 	}
 
-	// Check conflicts
+	// Check conflicts — for Horizon with DeleteQueues, auto-remove the queue conflict
 	for _, conflict := range feature.ConflictsWith() {
-		if site.HasEnabledFeature(conflict.String()) {
+		if !site.HasEnabledFeature(conflict.String()) {
+			continue
+		}
+
+		if feature != sitetypes.LaravelFeatureHorizon || conflict != sitetypes.LaravelFeatureQueue || !opts.DeleteQueues {
 			return fiberutil.Conflict(fmt.Sprintf("Cannot enable %s while %s is enabled — disable %s first", feature.Label(), conflict.Label(), conflict.Label()))
+		}
+
+		if err := s.removeQueueFeature(ctx, site, serverID, userID); err != nil {
+			return fmt.Errorf("failed to remove queue workers: %w", err)
 		}
 	}
 
@@ -105,13 +121,61 @@ func (s *FeatureService) EnableFeature(ctx context.Context, siteID, serverID, te
 		return err
 	}
 
-	// Dispatch the enable job
-	if err := s.dispatchFeatureJob(enableTaskFactories, site, serverID, userID, feature); err != nil {
-		s.rollbackPendingFeature(ctx, site, featureName)
-		return err
+	// Dispatch the enable job — use custom dispatch for Reverb with ConfigureEnv
+	if feature == sitetypes.LaravelFeatureReverb && opts.ConfigureEnv {
+		if err := s.dispatchReverbWithOptions(site, serverID, userID, opts.ConfigureEnv); err != nil {
+			s.rollbackPendingFeature(ctx, site, featureName)
+			return err
+		}
+	} else {
+		if err := s.dispatchFeatureJob(enableTaskFactories, site, serverID, userID, feature); err != nil {
+			s.rollbackPendingFeature(ctx, site, featureName)
+			return err
+		}
 	}
 
 	s.broadcastSiteUpdate(ctx, serverID, site)
+
+	return nil
+}
+
+// removeQueueFeature removes the queue feature and all queue workers for a site
+func (s *FeatureService) removeQueueFeature(ctx context.Context, site *models.Site, serverID string, userID *string) error {
+	// Remove the queue feature from enabled_features
+	site.RemoveEnabledFeature("queue")
+
+	// Find all queue records for this site and dispatch uninstall for each
+	queues, err := s.Repos().Queue().FindBySite(ctx, site.ID)
+	if err != nil {
+		return fmt.Errorf("failed to find queues: %w", err)
+	}
+
+	for _, q := range queues {
+		task, err := jobs.NewUninstallQueueTask(site.ID, q.ID, userID)
+		if err != nil {
+			continue
+		}
+		_ = s.EnqueueTask(task)
+
+		_ = s.Repos().Queue().Delete(ctx, q.ID)
+	}
+
+	// Update site features
+	return s.Repos().Site().UpdateFields(ctx, site.ID, map[string]interface{}{
+		"enabled_features": site.EnabledFeatures,
+	})
+}
+
+// dispatchReverbWithOptions dispatches the Reverb enable job with ConfigureEnv option
+func (s *FeatureService) dispatchReverbWithOptions(site *models.Site, serverID string, userID *string, configureEnv bool) error {
+	task, err := jobs.NewEnableLaravelReverbTaskWithOptions(site.ID, serverID, userID, configureEnv)
+	if err != nil {
+		return fmt.Errorf("failed to create task: %w", err)
+	}
+
+	if err := s.EnqueueTask(task); err != nil {
+		return fmt.Errorf("failed to enqueue task: %w", err)
+	}
 
 	return nil
 }
