@@ -10,7 +10,6 @@ import (
 // EnableFeatureRequest represents optional body for enabling a feature
 type EnableFeatureRequest struct {
 	DeleteQueues bool `json:"delete_queues"`
-	ConfigureEnv bool `json:"configure_env"`
 }
 
 // FeatureHandler handles HTTP requests for Laravel feature management
@@ -48,7 +47,6 @@ func (h *FeatureHandler) EnableFeature(c *fiber.Ctx) error {
 
 	opts := services.EnableFeatureOptions{
 		DeleteQueues: req.DeleteQueues,
-		ConfigureEnv: req.ConfigureEnv,
 	}
 
 	if err := h.featureService.EnableFeature(c.Context(), siteID, serverID, teamID, &userID, featureName, opts); err != nil {

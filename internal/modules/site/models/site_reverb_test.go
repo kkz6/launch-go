@@ -12,11 +12,11 @@ import (
 func TestEnabledFeature_ReverbFields_JSONRoundTrip(t *testing.T) {
 	now := time.Now().Truncate(time.Second)
 	port := 6001
-	queueID := "queue-456"
+	daemonID := "daemon-456"
 
 	feature := EnabledFeature{
 		Name:       "reverb",
-		QueueID:    &queueID,
+		DaemonID:   &daemonID,
 		ReverbPort: &port,
 		EnabledAt:  &now,
 	}
@@ -31,8 +31,8 @@ func TestEnabledFeature_ReverbFields_JSONRoundTrip(t *testing.T) {
 	assert.Equal(t, "reverb", decoded.Name)
 	require.NotNil(t, decoded.ReverbPort)
 	assert.Equal(t, 6001, *decoded.ReverbPort)
-	require.NotNil(t, decoded.QueueID)
-	assert.Equal(t, "queue-456", *decoded.QueueID)
+	require.NotNil(t, decoded.DaemonID)
+	assert.Equal(t, "daemon-456", *decoded.DaemonID)
 	assert.Nil(t, decoded.OctanePort)
 	assert.Nil(t, decoded.OctaneServer)
 	assert.Nil(t, decoded.CronID)
@@ -57,7 +57,7 @@ func TestEnabledFeaturesSlice_ScanValue_WithReverb(t *testing.T) {
 
 	original := EnabledFeaturesSlice{
 		{Name: "queue", QueueID: strPtr("q1")},
-		{Name: "reverb", QueueID: strPtr("q2"), ReverbPort: &port},
+		{Name: "reverb", DaemonID: strPtr("d2"), ReverbPort: &port},
 	}
 
 	// Value (serialize for DB)
@@ -80,7 +80,7 @@ func TestEnabledFeaturesSlice_ScanValue_WithReverb(t *testing.T) {
 }
 
 func TestEnabledFeaturesSlice_Scan_StringInput_WithReverb(t *testing.T) {
-	input := `[{"name":"reverb","reverb_port":6005,"queue_id":"q99"}]`
+	input := `[{"name":"reverb","reverb_port":6005,"daemon_id":"d99"}]`
 	var scanned EnabledFeaturesSlice
 	err := scanned.Scan(input)
 	require.NoError(t, err)
@@ -88,8 +88,8 @@ func TestEnabledFeaturesSlice_Scan_StringInput_WithReverb(t *testing.T) {
 	assert.Equal(t, "reverb", scanned[0].Name)
 	require.NotNil(t, scanned[0].ReverbPort)
 	assert.Equal(t, 6005, *scanned[0].ReverbPort)
-	require.NotNil(t, scanned[0].QueueID)
-	assert.Equal(t, "q99", *scanned[0].QueueID)
+	require.NotNil(t, scanned[0].DaemonID)
+	assert.Equal(t, "d99", *scanned[0].DaemonID)
 }
 
 func TestSite_GetReverbPort_Enabled(t *testing.T) {
@@ -126,7 +126,7 @@ func TestSite_GetReverbPort_EmptyFeatures(t *testing.T) {
 func TestSite_GetReverbPort_NilReverbPort(t *testing.T) {
 	site := &Site{
 		EnabledFeatures: EnabledFeaturesSlice{
-			{Name: "reverb", QueueID: strPtr("q1")},
+			{Name: "reverb", DaemonID: strPtr("d1")},
 		},
 	}
 
@@ -145,7 +145,7 @@ func TestSite_AddEnabledFeature_Reverb(t *testing.T) {
 	now := time.Now()
 	site.AddEnabledFeature(EnabledFeature{
 		Name:       "reverb",
-		QueueID:    strPtr("q2"),
+		DaemonID:   strPtr("d2"),
 		ReverbPort: &port,
 		EnabledAt:  &now,
 	})
@@ -204,7 +204,7 @@ func TestEnabledFeature_ReverbAndOctane_Coexist(t *testing.T) {
 
 	features := EnabledFeaturesSlice{
 		{Name: "octane", OctanePort: &octanePort, OctaneServer: strPtr("frankenphp")},
-		{Name: "reverb", ReverbPort: &reverbPort, QueueID: strPtr("q1")},
+		{Name: "reverb", ReverbPort: &reverbPort, DaemonID: strPtr("d1")},
 	}
 
 	data, err := json.Marshal(features)

@@ -7,6 +7,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	"github.com/kkz6/launch-go/internal/modules/site/tasks"
@@ -17,10 +18,9 @@ const TypeEnableLaravelReverb = "site:enable_laravel_reverb"
 
 // EnableLaravelReverbPayload holds data for enabling Laravel Reverb
 type EnableLaravelReverbPayload struct {
-	SiteID       string  `json:"site_id"`
-	ServerID     string  `json:"server_id"`
-	UserID       *string `json:"user_id,omitempty"`
-	ConfigureEnv bool    `json:"configure_env,omitempty"`
+	SiteID   string  `json:"site_id"`
+	ServerID string  `json:"server_id"`
+	UserID   *string `json:"user_id,omitempty"`
 }
 
 // EnableLaravelReverbJob enables Laravel Reverb for a site
@@ -67,27 +67,26 @@ func (j *EnableLaravelReverbJob) Handle(ctx context.Context) error {
 
 	j.Deps.Logger.Info().Str("site_id", site.ID).Int("port", port).Msg("Allocated Reverb port")
 
-	// Create the supervisor/queue record for Reverb
-	userID := j.GetUserID(j.Payload.UserID, site)
+	// Create a daemon record for the Reverb process
 	command := fmt.Sprintf("%s %s/artisan reverb:start --host=0.0.0.0 --port=%d",
 		site.GetPhpBinary(), site.GetApplicationDirectory(), port)
 
-	queue, err := j.CreateQueueRecord(ctx, site, server, command, userID)
+	daemon, err := j.createDaemonRecord(ctx, site, server, command)
 	if err != nil {
 		return err
 	}
 
-	// Configure .env variables if requested
-	if j.Payload.ConfigureEnv {
+	// Install daemon + configure env + update Caddyfile if site is already deployed
+	if site.InstalledAt != nil {
+		// Configure .env variables (BROADCAST_CONNECTION, Reverb keys, etc.)
 		if err := j.configureEnv(ctx, site, server, port); err != nil {
 			j.Deps.Logger.Error().Err(err).Msg("Failed to configure Reverb .env variables")
 		}
-	}
 
-	// Install queue + update Caddyfile if site is already deployed
-	if site.InstalledAt != nil {
-		if err := j.DispatchInstallQueue(ctx, queue.ID, site.ID, j.Payload.UserID); err != nil {
-			return err
+		if err := j.dispatchInstallDaemon(daemon.ID, server.ID); err != nil {
+			// Cleanup daemon record if dispatch fails
+			_ = j.Deps.ServerRepos.Daemon().Delete(ctx, daemon.ID)
+			return fmt.Errorf("failed to dispatch install daemon job: %w", err)
 		}
 
 		if err := j.dispatchUpdateCaddyfile(site.ID); err != nil {
@@ -99,7 +98,7 @@ func (j *EnableLaravelReverbJob) Handle(ctx context.Context) error {
 	now := time.Now()
 	feature := models.EnabledFeature{
 		Name:       FeatureReverb,
-		QueueID:    &queue.ID,
+		DaemonID:   &daemon.ID,
 		ReverbPort: &port,
 		EnabledAt:  &now,
 	}
@@ -114,10 +113,32 @@ func (j *EnableLaravelReverbJob) Handle(ctx context.Context) error {
 		j.Deps.Logger.Error().Err(err).Msg("Failed to update site enabled_features")
 	}
 
-	j.BroadcastFeatureEnabled(server, FeatureReverb, site.ID, queue.ID)
-	j.Deps.Logger.Info().Str("site_id", site.ID).Str("queue_id", queue.ID).Int("port", port).Msg("Laravel Reverb enabled successfully")
+	j.Deps.BroadcastServerEvent(server, "site.reverb_enabled", map[string]interface{}{
+		"site_id":   site.ID,
+		"daemon_id": daemon.ID,
+	})
+
+	j.Deps.Logger.Info().Str("site_id", site.ID).Str("daemon_id", daemon.ID).Int("port", port).Msg("Laravel Reverb enabled successfully")
 
 	return nil
+}
+
+// createDaemonRecord creates a daemon record for the Reverb process
+func (j *EnableLaravelReverbJob) createDaemonRecord(ctx context.Context, site *models.Site, server *servermodels.Server, command string) (*servermodels.Daemon, error) {
+	daemon := &servermodels.Daemon{
+		Command:         command,
+		User:            site.User,
+		Processes:       1,
+		StopWaitSeconds: 10,
+		StopSignal:      "SIGTERM",
+	}
+	daemon.ServerID = server.ID
+
+	if err := j.Deps.ServerRepos.Daemon().Create(ctx, daemon); err != nil {
+		return nil, fmt.Errorf("failed to create daemon: %w", err)
+	}
+
+	return daemon, nil
 }
 
 // allocatePort finds the first available port in the 6001-6999 range for Reverb on a server
@@ -159,6 +180,15 @@ func (j *EnableLaravelReverbJob) configureEnv(ctx context.Context, site *models.
 	return nil
 }
 
+// dispatchInstallDaemon dispatches the InstallDaemon job
+func (j *EnableLaravelReverbJob) dispatchInstallDaemon(daemonID, serverID string) error {
+	task, err := serverjobs.NewInstallDaemonTask(serverID, daemonID, j.Payload.UserID)
+	if err != nil {
+		return err
+	}
+	return j.Deps.DispatchTask(task)
+}
+
 // dispatchUpdateCaddyfile dispatches the UpdateCaddyfile job to apply WebSocket proxy config
 func (j *EnableLaravelReverbJob) dispatchUpdateCaddyfile(siteID string) error {
 	task, err := NewUpdateCaddyfileTask(siteID, j.Payload.UserID)
@@ -179,15 +209,5 @@ func NewEnableLaravelReverbTask(siteID, serverID string, userID *string) (*asynq
 		SiteID:   siteID,
 		ServerID: serverID,
 		UserID:   userID,
-	})
-}
-
-// NewEnableLaravelReverbTaskWithOptions creates an enable Reverb task with additional options
-func NewEnableLaravelReverbTaskWithOptions(siteID, serverID string, userID *string, configureEnv bool) (*asynq.Task, error) {
-	return pkgjobs.Task(TypeEnableLaravelReverb, EnableLaravelReverbPayload{
-		SiteID:       siteID,
-		ServerID:     serverID,
-		UserID:       userID,
-		ConfigureEnv: configureEnv,
 	})
 }
