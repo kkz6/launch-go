@@ -97,6 +97,7 @@ func (h *SiteHandler) Show(c *fiber.Ctx) error {
 	}
 
 	resp := dto.ToSiteResponse(site)
+	resp.QueueCount = h.siteService.GetQueueCount(c.Context(), site.ID)
 
 	// Include source control and repository info if linked
 	if site.SourceControlID != nil && *site.SourceControlID != "" {

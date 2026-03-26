@@ -216,6 +216,7 @@ type EnabledFeature struct {
 	CronID       *string    `json:"cron_id,omitempty"`
 	OctanePort   *int       `json:"octane_port,omitempty"`
 	OctaneServer *string    `json:"octane_server,omitempty"`
+	ReverbPort   *int       `json:"reverb_port,omitempty"`
 	EnabledAt    *time.Time `json:"enabled_at,omitempty"`
 }
 
@@ -321,6 +322,15 @@ func (s *Site) GetOctanePort() *int {
 	feature := s.GetEnabledFeature("octane")
 	if feature != nil {
 		return feature.OctanePort
+	}
+	return nil
+}
+
+// GetReverbPort returns the Reverb port if the feature is enabled
+func (s *Site) GetReverbPort() *int {
+	feature := s.GetEnabledFeature("reverb")
+	if feature != nil {
+		return feature.ReverbPort
 	}
 	return nil
 }

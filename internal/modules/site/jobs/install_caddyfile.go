@@ -204,6 +204,16 @@ func generateLoadBalancedCaddyfile(site *models.Site, redirects []models.Redirec
 		builder.WriteString("\t}\n\n")
 	}
 
+	// Reverb WebSocket proxy
+	if reverbPort := site.GetReverbPort(); reverbPort != nil {
+		builder.WriteString("\t@websocket {\n")
+		builder.WriteString("\t\tpath /app/*\n")
+		builder.WriteString("\t\theader Connection *Upgrade*\n")
+		builder.WriteString("\t\theader Upgrade websocket\n")
+		builder.WriteString("\t}\n")
+		builder.WriteString(fmt.Sprintf("\treverse_proxy @websocket localhost:%d\n\n", *reverbPort))
+	}
+
 	// WordPress-specific rules
 	if site.Type == sitetypes.SiteTypeWordpress {
 		builder.WriteString("\t@disallowed {\n")
@@ -290,6 +300,16 @@ func generateStandardCaddyfile(site *models.Site, redirects []models.Redirect) s
 		builder.WriteString("\tresolve_root_symlink\n")
 		builder.WriteString("\ttry_files {path} {path}/index.html {path}/index.htm index.php\n")
 		builder.WriteString("}\n\n")
+	}
+
+	// Reverb WebSocket proxy
+	if reverbPort := site.GetReverbPort(); reverbPort != nil {
+		builder.WriteString("@websocket {\n")
+		builder.WriteString("\tpath /app/*\n")
+		builder.WriteString("\theader Connection *Upgrade*\n")
+		builder.WriteString("\theader Upgrade websocket\n")
+		builder.WriteString("}\n")
+		builder.WriteString(fmt.Sprintf("reverse_proxy @websocket localhost:%d\n\n", *reverbPort))
 	}
 
 	// WordPress-specific rules

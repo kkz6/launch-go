@@ -53,10 +53,13 @@ type SiteResponse struct {
 	URL                          string                           `json:"url"`
 	ApplicationDirectory         string                           `json:"app_directory"`
 	RepositoryURL                *string                          `json:"repository_url,omitempty"`
+	Features                     []string                         `json:"features,omitempty"`
 	EnabledFeatures              []string                         `json:"enabled_features,omitempty"`
 	PendingFeatures              []string                         `json:"pending_features,omitempty"`
 	OctanePort                   *int                             `json:"octane_port,omitempty"`
 	OctaneServer                 *string                          `json:"octane_server,omitempty"`
+	ReverbPort                   *int                             `json:"reverb_port,omitempty"`
+	QueueCount                   int                              `json:"queue_count"`
 	LoadBalancedUpstreamID       *string                          `json:"load_balanced_upstream_id,omitempty"`
 	Status                       string                           `json:"status"`
 	InstalledAt                  *string                          `json:"installed_at"`
@@ -253,6 +256,7 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 		DeployWebhookURL:             deployWebhookURL,
 		URL:                          site.GetURL(),
 		ApplicationDirectory:         site.GetApplicationDirectory(),
+		Features:                     site.Features,
 		EnabledFeatures:              enabledFeatures,
 		PendingFeatures:              site.PendingFeatures,
 		LoadBalancedUpstreamID:       site.LoadBalancedUpstreamID,
@@ -268,6 +272,10 @@ func ToSiteResponse(site *models.Site) SiteResponse {
 	if feature := site.GetEnabledFeature("octane"); feature != nil {
 		resp.OctanePort = feature.OctanePort
 		resp.OctaneServer = feature.OctaneServer
+	}
+
+	if feature := site.GetEnabledFeature("reverb"); feature != nil {
+		resp.ReverbPort = feature.ReverbPort
 	}
 
 	if site.LatestDeployment != nil {
