@@ -78,6 +78,7 @@ func (h *FeatureJobHelpers) CreateQueueRecord(ctx context.Context, site *models.
 		StopSignal:      "SIGTERM",
 	}
 	queue.SiteID = site.ID
+	queue.TeamID = site.TeamID
 	queue.ServerID = server.ID
 	queue.UserID = userID
 
