@@ -94,14 +94,14 @@ func (r *ServerRepository) FindArchivedByTeam(ctx context.Context, teamID string
 
 // UpdateStatus updates only the server status
 func (r *ServerRepository) UpdateStatus(ctx context.Context, id string, status types.ServerStatus) error {
-	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
+	return r.UpdateFields(ctx, id, map[string]interface{}{
 		"status": status,
 	})
 }
 
 // UpdateProgress updates server provisioning progress
 func (r *ServerRepository) UpdateProgress(ctx context.Context, id string, progress int, step string) error {
-	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
+	return r.UpdateFields(ctx, id, map[string]interface{}{
 		"progress":      progress,
 		"progress_step": step,
 	})
@@ -110,7 +110,7 @@ func (r *ServerRepository) UpdateProgress(ctx context.Context, id string, progre
 // Archive archives a server
 func (r *ServerRepository) Archive(ctx context.Context, id string) error {
 	now := time.Now()
-	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
+	return r.UpdateFields(ctx, id, map[string]interface{}{
 		"archived_at": now,
 		"status":      types.ServerStatusArchived,
 	})
@@ -118,7 +118,7 @@ func (r *ServerRepository) Archive(ctx context.Context, id string) error {
 
 // Unarchive unarchives a server
 func (r *ServerRepository) Unarchive(ctx context.Context, id string) error {
-	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
+	return r.UpdateFields(ctx, id, map[string]interface{}{
 		"archived_at": nil,
 		"status":      types.ServerStatusStopped,
 	})

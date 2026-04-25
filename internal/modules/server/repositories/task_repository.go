@@ -67,7 +67,7 @@ func (r *TaskRepository) FindLatestByServer(ctx context.Context, serverID string
 
 // UpdateOutput updates the output field of a task
 func (r *TaskRepository) UpdateOutput(ctx context.Context, taskID string, output string) error {
-	return r.Base.UpdateFields(ctx, taskID, map[string]interface{}{
+	return r.UpdateFields(ctx, taskID, map[string]interface{}{
 		"output": output,
 	})
 }

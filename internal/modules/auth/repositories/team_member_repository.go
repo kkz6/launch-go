@@ -30,7 +30,7 @@ func (r *TeamMemberRepository) AddUser(ctx context.Context, teamID, userID, role
 		Role:   &role,
 	}
 
-	return r.Base.Create(ctx, &member)
+	return r.Create(ctx, &member)
 }
 
 // RemoveUser removes a user from a team

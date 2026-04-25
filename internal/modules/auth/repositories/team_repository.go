@@ -43,7 +43,7 @@ func (r *TeamRepository) FindByID(ctx context.Context, id string) (*models.Team,
 
 // Delete deletes a team by its ID
 func (r *TeamRepository) Delete(ctx context.Context, id string) error {
-	return r.Base.Transaction(ctx, func(tx *gorm.DB) error {
+	return r.Transaction(ctx, func(tx *gorm.DB) error {
 		// Delete team members first
 		if err := tx.Where("team_id = ?", id).Delete(&models.TeamMember{}).Error; err != nil {
 			return err

@@ -58,7 +58,7 @@ func (r *UserRepository) ExistsByEmail(ctx context.Context, email string) (bool,
 
 // SetCurrentTeam sets the user's current team
 func (r *UserRepository) SetCurrentTeam(ctx context.Context, userID, teamID string) error {
-	return r.Base.UpdateFields(ctx, userID, map[string]interface{}{
+	return r.UpdateFields(ctx, userID, map[string]interface{}{
 		"current_team_id": teamID,
 	})
 }
@@ -66,14 +66,14 @@ func (r *UserRepository) SetCurrentTeam(ctx context.Context, userID, teamID stri
 // MarkEmailAsVerified marks a user's email as verified
 func (r *UserRepository) MarkEmailAsVerified(ctx context.Context, userID string) error {
 	now := time.Now()
-	return r.Base.UpdateFields(ctx, userID, map[string]interface{}{
+	return r.UpdateFields(ctx, userID, map[string]interface{}{
 		"email_verified_at": &now,
 	})
 }
 
 // SetOnboarded sets the user's onboarded status
 func (r *UserRepository) SetOnboarded(ctx context.Context, userID string, onboarded bool) error {
-	return r.Base.UpdateFields(ctx, userID, map[string]interface{}{
+	return r.UpdateFields(ctx, userID, map[string]interface{}{
 		"onboarded": onboarded,
 	})
 }
