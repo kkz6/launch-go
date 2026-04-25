@@ -24,6 +24,13 @@ const (
 
 var allTeamRoles = []TeamRole{TeamRoleOwner, TeamRoleAdmin, TeamRoleEditor, TeamRoleMember}
 
+var teamRoleLabels = map[TeamRole]string{
+	TeamRoleOwner:  "Owner",
+	TeamRoleAdmin:  "Admin",
+	TeamRoleEditor: "Editor",
+	TeamRoleMember: "Member",
+}
+
 // AllTeamRoles returns all valid team roles
 func AllTeamRoles() []TeamRole {
 	return allTeamRoles
@@ -36,18 +43,7 @@ func (r TeamRole) String() string {
 
 // Label returns the human-readable label for the role
 func (r TeamRole) Label() string {
-	switch r {
-	case TeamRoleOwner:
-		return "Owner"
-	case TeamRoleAdmin:
-		return "Admin"
-	case TeamRoleEditor:
-		return "Editor"
-	case TeamRoleMember:
-		return "Member"
-	default:
-		return string(r)
-	}
+	return enumtypes.Label(r, teamRoleLabels, string(r))
 }
 
 // IsValid checks if the role is valid

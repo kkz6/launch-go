@@ -27,24 +27,20 @@ var allSiteTypes = []SiteType{
 	SiteTypeLaravel, SiteTypeWordpress, SiteTypeStatic, SiteTypeGeneric, SiteTypePhpMyAdmin,
 }
 
+var siteTypeLabels = map[SiteType]string{
+	SiteTypeLaravel:    "Laravel",
+	SiteTypeWordpress:  "Wordpress",
+	SiteTypeStatic:     "Static",
+	SiteTypeGeneric:    "Generic",
+	SiteTypePhpMyAdmin: "phpMyAdmin",
+}
+
 func (s SiteType) String() string {
 	return string(s)
 }
 
 func (s SiteType) Label() string {
-	labels := map[SiteType]string{
-		SiteTypeLaravel:    "Laravel",
-		SiteTypeWordpress:  "Wordpress",
-		SiteTypeStatic:     "Static",
-		SiteTypeGeneric:    "Generic",
-		SiteTypePhpMyAdmin: "phpMyAdmin",
-	}
-
-	if label, ok := labels[s]; ok {
-		return label
-	}
-
-	return string(s)
+	return enumtypes.Label(s, siteTypeLabels, string(s))
 }
 
 func (s SiteType) IsValid() bool {
@@ -331,25 +327,21 @@ var allDeploymentStatuses = []DeploymentStatus{
 	DeploymentStatusTimeout,
 }
 
+var deploymentStatusLabels = map[DeploymentStatus]string{
+	DeploymentStatusPending:    "Pending",
+	DeploymentStatusQueued:     "Queued",
+	DeploymentStatusInstalling: "Installing",
+	DeploymentStatusFinished:   "Finished",
+	DeploymentStatusFailed:     "Failed",
+	DeploymentStatusTimeout:    "Timeout",
+}
+
 func (d DeploymentStatus) String() string {
 	return string(d)
 }
 
 func (d DeploymentStatus) Label() string {
-	labels := map[DeploymentStatus]string{
-		DeploymentStatusPending:    "Pending",
-		DeploymentStatusQueued:     "Queued",
-		DeploymentStatusInstalling: "Installing",
-		DeploymentStatusFinished:   "Finished",
-		DeploymentStatusFailed:     "Failed",
-		DeploymentStatusTimeout:    "Timeout",
-	}
-
-	if label, ok := labels[d]; ok {
-		return label
-	}
-
-	return string(d)
+	return enumtypes.Label(d, deploymentStatusLabels, string(d))
 }
 
 func (d DeploymentStatus) IsValid() bool {
@@ -393,23 +385,19 @@ const (
 
 var allTLSSettings = []TLSSetting{TLSSettingAuto, TLSSettingCustom, TLSSettingInternal, TLSSettingOff}
 
+var tlsSettingLabels = map[TLSSetting]string{
+	TLSSettingAuto:     "Auto",
+	TLSSettingCustom:   "Custom",
+	TLSSettingInternal: "Internal",
+	TLSSettingOff:      "Off",
+}
+
 func (t TLSSetting) String() string {
 	return string(t)
 }
 
 func (t TLSSetting) Label() string {
-	labels := map[TLSSetting]string{
-		TLSSettingAuto:     "Auto",
-		TLSSettingCustom:   "Custom",
-		TLSSettingInternal: "Internal",
-		TLSSettingOff:      "Off",
-	}
-
-	if label, ok := labels[t]; ok {
-		return label
-	}
-
-	return string(t)
+	return enumtypes.Label(t, tlsSettingLabels, string(t))
 }
 
 func (t TLSSetting) IsValid() bool {
@@ -463,6 +451,11 @@ const (
 
 var allRedirectModes = []RedirectMode{RedirectModePermanent, RedirectModeTemporary}
 
+var redirectModeLabels = map[RedirectMode]string{
+	RedirectModePermanent: "Permanent",
+	RedirectModeTemporary: "Temporary",
+}
+
 func (r RedirectMode) StatusCode() int {
 	switch r {
 	case RedirectModePermanent:
@@ -475,14 +468,7 @@ func (r RedirectMode) StatusCode() int {
 }
 
 func (r RedirectMode) Label() string {
-	switch r {
-	case RedirectModePermanent:
-		return "Permanent"
-	case RedirectModeTemporary:
-		return "Temporary"
-	default:
-		return "Unknown"
-	}
+	return enumtypes.Label(r, redirectModeLabels, "Unknown")
 }
 
 func (r RedirectMode) IsValid() bool {
@@ -592,38 +578,34 @@ var allLaravelFeatures = []LaravelFeature{
 	LaravelFeatureReverb,
 }
 
+var laravelFeatureLabels = map[LaravelFeature]string{
+	LaravelFeatureScheduler: "Task Scheduler",
+	LaravelFeatureQueue:     "Queue Workers",
+	LaravelFeatureHorizon:   "Horizon",
+	LaravelFeatureInertia:   "Inertia SSR",
+	LaravelFeatureOctane:    "Octane",
+	LaravelFeatureReverb:    "Reverb",
+}
+
+var laravelFeatureDescriptions = map[LaravelFeature]string{
+	LaravelFeatureScheduler: "Run scheduled tasks using Laravel's task scheduler",
+	LaravelFeatureQueue:     "Process queued jobs in the background",
+	LaravelFeatureHorizon:   "Monitor and manage Laravel queues with Horizon",
+	LaravelFeatureInertia:   "Enable server-side rendering for Inertia.js",
+	LaravelFeatureOctane:    "Supercharge your application with Octane",
+	LaravelFeatureReverb:    "Real-time WebSocket broadcasting with Reverb",
+}
+
 func (f LaravelFeature) String() string {
 	return string(f)
 }
 
 func (f LaravelFeature) Label() string {
-	labels := map[LaravelFeature]string{
-		LaravelFeatureScheduler: "Task Scheduler",
-		LaravelFeatureQueue:     "Queue Workers",
-		LaravelFeatureHorizon:   "Horizon",
-		LaravelFeatureInertia:   "Inertia SSR",
-		LaravelFeatureOctane:    "Octane",
-		LaravelFeatureReverb:    "Reverb",
-	}
-	if label, ok := labels[f]; ok {
-		return label
-	}
-	return string(f)
+	return enumtypes.Label(f, laravelFeatureLabels, string(f))
 }
 
 func (f LaravelFeature) Description() string {
-	descriptions := map[LaravelFeature]string{
-		LaravelFeatureScheduler: "Run scheduled tasks using Laravel's task scheduler",
-		LaravelFeatureQueue:     "Process queued jobs in the background",
-		LaravelFeatureHorizon:   "Monitor and manage Laravel queues with Horizon",
-		LaravelFeatureInertia:   "Enable server-side rendering for Inertia.js",
-		LaravelFeatureOctane:    "Supercharge your application with Octane",
-		LaravelFeatureReverb:    "Real-time WebSocket broadcasting with Reverb",
-	}
-	if desc, ok := descriptions[f]; ok {
-		return desc
-	}
-	return ""
+	return enumtypes.Label(f, laravelFeatureDescriptions, "")
 }
 
 func (f LaravelFeature) IsValid() bool {
@@ -705,28 +687,26 @@ var allPhpVersions = []PhpVersion{
 	PhpVersion74, PhpVersion73, PhpVersion72, PhpVersion71, PhpVersion70, PhpVersion56,
 }
 
+var phpVersionLabels = map[PhpVersion]string{
+	PhpVersion56: "PHP 5.6",
+	PhpVersion70: "PHP 7.0",
+	PhpVersion71: "PHP 7.1",
+	PhpVersion72: "PHP 7.2",
+	PhpVersion73: "PHP 7.3",
+	PhpVersion74: "PHP 7.4",
+	PhpVersion80: "PHP 8.0",
+	PhpVersion81: "PHP 8.1",
+	PhpVersion82: "PHP 8.2",
+	PhpVersion83: "PHP 8.3",
+	PhpVersion84: "PHP 8.4",
+}
+
 func (p PhpVersion) String() string {
 	return string(p)
 }
 
 func (p PhpVersion) Label() string {
-	labels := map[PhpVersion]string{
-		PhpVersion56: "PHP 5.6",
-		PhpVersion70: "PHP 7.0",
-		PhpVersion71: "PHP 7.1",
-		PhpVersion72: "PHP 7.2",
-		PhpVersion73: "PHP 7.3",
-		PhpVersion74: "PHP 7.4",
-		PhpVersion80: "PHP 8.0",
-		PhpVersion81: "PHP 8.1",
-		PhpVersion82: "PHP 8.2",
-		PhpVersion83: "PHP 8.3",
-		PhpVersion84: "PHP 8.4",
-	}
-	if label, ok := labels[p]; ok {
-		return label
-	}
-	return string(p)
+	return enumtypes.Label(p, phpVersionLabels, string(p))
 }
 
 func (p PhpVersion) IsValid() bool {

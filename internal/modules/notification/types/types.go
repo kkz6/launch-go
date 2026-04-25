@@ -29,6 +29,13 @@ var allChannelTypes = []ChannelType{
 	ChannelTypeTelegram,
 }
 
+var channelTypeLabels = map[ChannelType]string{
+	ChannelTypeEmail:    "Email",
+	ChannelTypeSlack:    "Slack",
+	ChannelTypeDiscord:  "Discord",
+	ChannelTypeTelegram: "Telegram",
+}
+
 // AllChannelTypes returns all available channel types
 func AllChannelTypes() []ChannelType {
 	return allChannelTypes
@@ -41,18 +48,7 @@ func (c ChannelType) String() string {
 
 // Label returns a human-readable label for the channel type
 func (c ChannelType) Label() string {
-	switch c {
-	case ChannelTypeEmail:
-		return "Email"
-	case ChannelTypeSlack:
-		return "Slack"
-	case ChannelTypeDiscord:
-		return "Discord"
-	case ChannelTypeTelegram:
-		return "Telegram"
-	default:
-		return string(c)
-	}
+	return enumtypes.Label(c, channelTypeLabels, string(c))
 }
 
 // IsValid checks if the channel type is valid
@@ -117,6 +113,21 @@ var allNotificationTypes = []NotificationType{
 	NotificationTypeFailedToDeleteServer,
 }
 
+var notificationTypeLabels = map[NotificationType]string{
+	NotificationTypeServerProvisioned:           "Server Provisioned",
+	NotificationTypeServerProvisioningFailed:    "Server Provisioning Failed",
+	NotificationTypeServerConnectionLost:        "Server Connection Lost",
+	NotificationTypeServerThresholdExceeded:     "Server Threshold Exceeded",
+	NotificationTypeDeploymentFailed:            "Deployment Failed",
+	NotificationTypeSiteInstallationFailed:      "Site Installation Failed",
+	NotificationTypeJobOnServerFailed:           "Job On Server Failed",
+	NotificationTypePhpInstallationFailed:       "PHP Installation Failed",
+	NotificationTypePhpExtensionInstallFailed:   "PHP Extension Install Failed",
+	NotificationTypePhpExtensionUninstallFailed: "PHP Extension Uninstall Failed",
+	NotificationTypeVulnerabilityAuditCompleted: "Vulnerability Audit Completed",
+	NotificationTypeFailedToDeleteServer:        "Failed To Delete Server",
+}
+
 // AllNotificationTypes returns all valid notification types
 func AllNotificationTypes() []NotificationType {
 	return allNotificationTypes
@@ -129,34 +140,7 @@ func (n NotificationType) String() string {
 
 // Label returns a human-readable label for the notification type
 func (n NotificationType) Label() string {
-	switch n {
-	case NotificationTypeServerProvisioned:
-		return "Server Provisioned"
-	case NotificationTypeServerProvisioningFailed:
-		return "Server Provisioning Failed"
-	case NotificationTypeServerConnectionLost:
-		return "Server Connection Lost"
-	case NotificationTypeServerThresholdExceeded:
-		return "Server Threshold Exceeded"
-	case NotificationTypeDeploymentFailed:
-		return "Deployment Failed"
-	case NotificationTypeSiteInstallationFailed:
-		return "Site Installation Failed"
-	case NotificationTypeJobOnServerFailed:
-		return "Job On Server Failed"
-	case NotificationTypePhpInstallationFailed:
-		return "PHP Installation Failed"
-	case NotificationTypePhpExtensionInstallFailed:
-		return "PHP Extension Install Failed"
-	case NotificationTypePhpExtensionUninstallFailed:
-		return "PHP Extension Uninstall Failed"
-	case NotificationTypeVulnerabilityAuditCompleted:
-		return "Vulnerability Audit Completed"
-	case NotificationTypeFailedToDeleteServer:
-		return "Failed To Delete Server"
-	default:
-		return string(n)
-	}
+	return enumtypes.Label(n, notificationTypeLabels, string(n))
 }
 
 // IsValid checks if the notification type is valid

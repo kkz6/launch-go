@@ -24,6 +24,11 @@ var allPlanIntervals = []PlanInterval{
 	PlanIntervalYearly,
 }
 
+var planIntervalLabels = map[PlanInterval]string{
+	PlanIntervalMonthly: "Monthly",
+	PlanIntervalYearly:  "Yearly",
+}
+
 // AllPlanIntervals returns all valid plan intervals
 func AllPlanIntervals() []PlanInterval {
 	return allPlanIntervals
@@ -36,14 +41,7 @@ func (p PlanInterval) String() string {
 
 // Label returns a human-readable label for the interval
 func (p PlanInterval) Label() string {
-	switch p {
-	case PlanIntervalMonthly:
-		return "Monthly"
-	case PlanIntervalYearly:
-		return "Yearly"
-	default:
-		return string(p)
-	}
+	return enumtypes.Label(p, planIntervalLabels, string(p))
 }
 
 // IsValid checks if the interval is valid
@@ -98,6 +96,16 @@ var allSubscriptionStatuses = []SubscriptionStatus{
 	SubscriptionStatusExpired,
 }
 
+var subscriptionStatusLabels = map[SubscriptionStatus]string{
+	SubscriptionStatusOnTrial:   "On Trial",
+	SubscriptionStatusActive:    "Active",
+	SubscriptionStatusPaused:    "Paused",
+	SubscriptionStatusPastDue:   "Past Due",
+	SubscriptionStatusUnpaid:    "Unpaid",
+	SubscriptionStatusCancelled: "Cancelled",
+	SubscriptionStatusExpired:   "Expired",
+}
+
 // AllSubscriptionStatuses returns all valid subscription statuses
 func AllSubscriptionStatuses() []SubscriptionStatus {
 	return allSubscriptionStatuses
@@ -110,24 +118,7 @@ func (s SubscriptionStatus) String() string {
 
 // Label returns a human-readable label for the status
 func (s SubscriptionStatus) Label() string {
-	switch s {
-	case SubscriptionStatusOnTrial:
-		return "On Trial"
-	case SubscriptionStatusActive:
-		return "Active"
-	case SubscriptionStatusPaused:
-		return "Paused"
-	case SubscriptionStatusPastDue:
-		return "Past Due"
-	case SubscriptionStatusUnpaid:
-		return "Unpaid"
-	case SubscriptionStatusCancelled:
-		return "Cancelled"
-	case SubscriptionStatusExpired:
-		return "Expired"
-	default:
-		return string(s)
-	}
+	return enumtypes.Label(s, subscriptionStatusLabels, string(s))
 }
 
 // IsValid checks if the status is a valid subscription status
@@ -188,6 +179,14 @@ var allOrderStatuses = []OrderStatus{
 	OrderStatusDisputed,
 }
 
+var orderStatusLabels = map[OrderStatus]string{
+	OrderStatusPending:  "Pending",
+	OrderStatusPaid:     "Paid",
+	OrderStatusFailed:   "Failed",
+	OrderStatusRefunded: "Refunded",
+	OrderStatusDisputed: "Disputed",
+}
+
 // AllOrderStatuses returns all valid order statuses
 func AllOrderStatuses() []OrderStatus {
 	return allOrderStatuses
@@ -200,20 +199,7 @@ func (o OrderStatus) String() string {
 
 // Label returns a human-readable label for the order status
 func (o OrderStatus) Label() string {
-	switch o {
-	case OrderStatusPending:
-		return "Pending"
-	case OrderStatusPaid:
-		return "Paid"
-	case OrderStatusFailed:
-		return "Failed"
-	case OrderStatusRefunded:
-		return "Refunded"
-	case OrderStatusDisputed:
-		return "Disputed"
-	default:
-		return string(o)
-	}
+	return enumtypes.Label(o, orderStatusLabels, string(o))
 }
 
 // IsValid checks if the order status is valid
@@ -255,6 +241,12 @@ var allUserRoles = []UserRole{
 	UserRoleAdmin,
 }
 
+var userRoleLabels = map[UserRole]string{
+	UserRoleCustomer: "Customer",
+	UserRoleManager:  "Manager",
+	UserRoleAdmin:    "Admin",
+}
+
 // AllUserRoles returns all valid user roles
 func AllUserRoles() []UserRole {
 	return allUserRoles
@@ -267,16 +259,7 @@ func (u UserRole) String() string {
 
 // Label returns a human-readable label for the user role
 func (u UserRole) Label() string {
-	switch u {
-	case UserRoleCustomer:
-		return "Customer"
-	case UserRoleManager:
-		return "Manager"
-	case UserRoleAdmin:
-		return "Admin"
-	default:
-		return string(u)
-	}
+	return enumtypes.Label(u, userRoleLabels, string(u))
 }
 
 // IsValid checks if the user role is valid
@@ -363,6 +346,30 @@ var allWebhookEventTypes = []WebhookEventType{
 	WebhookEventDisputeLost,
 }
 
+var webhookEventTypeLabels = map[WebhookEventType]string{
+	WebhookEventSubscriptionActive:      "Subscription Active",
+	WebhookEventSubscriptionCancelled:   "Subscription Cancelled",
+	WebhookEventSubscriptionExpired:     "Subscription Expired",
+	WebhookEventSubscriptionFailed:      "Subscription Failed",
+	WebhookEventSubscriptionOnHold:      "Subscription On Hold",
+	WebhookEventSubscriptionRenewed:     "Subscription Renewed",
+	WebhookEventSubscriptionUpdated:     "Subscription Updated",
+	WebhookEventSubscriptionPlanChanged: "Subscription Plan Changed",
+	WebhookEventPaymentSucceeded:        "Payment Succeeded",
+	WebhookEventPaymentFailed:           "Payment Failed",
+	WebhookEventPaymentProcessing:       "Payment Processing",
+	WebhookEventPaymentCancelled:        "Payment Cancelled",
+	WebhookEventRefundSucceeded:         "Refund Succeeded",
+	WebhookEventRefundFailed:            "Refund Failed",
+	WebhookEventDisputeOpened:           "Dispute Opened",
+	WebhookEventDisputeExpired:          "Dispute Expired",
+	WebhookEventDisputeAccepted:         "Dispute Accepted",
+	WebhookEventDisputeCancelled:        "Dispute Cancelled",
+	WebhookEventDisputeChallenged:       "Dispute Challenged",
+	WebhookEventDisputeWon:              "Dispute Won",
+	WebhookEventDisputeLost:             "Dispute Lost",
+}
+
 // AllWebhookEventTypes returns all valid webhook event types
 func AllWebhookEventTypes() []WebhookEventType {
 	return allWebhookEventTypes
@@ -375,52 +382,7 @@ func (w WebhookEventType) String() string {
 
 // Label returns a human-readable label for the webhook event type
 func (w WebhookEventType) Label() string {
-	switch w {
-	case WebhookEventSubscriptionActive:
-		return "Subscription Active"
-	case WebhookEventSubscriptionCancelled:
-		return "Subscription Cancelled"
-	case WebhookEventSubscriptionExpired:
-		return "Subscription Expired"
-	case WebhookEventSubscriptionFailed:
-		return "Subscription Failed"
-	case WebhookEventSubscriptionOnHold:
-		return "Subscription On Hold"
-	case WebhookEventSubscriptionRenewed:
-		return "Subscription Renewed"
-	case WebhookEventSubscriptionUpdated:
-		return "Subscription Updated"
-	case WebhookEventPaymentSucceeded:
-		return "Payment Succeeded"
-	case WebhookEventPaymentFailed:
-		return "Payment Failed"
-	case WebhookEventPaymentProcessing:
-		return "Payment Processing"
-	case WebhookEventPaymentCancelled:
-		return "Payment Cancelled"
-	case WebhookEventRefundSucceeded:
-		return "Refund Succeeded"
-	case WebhookEventRefundFailed:
-		return "Refund Failed"
-	case WebhookEventSubscriptionPlanChanged:
-		return "Subscription Plan Changed"
-	case WebhookEventDisputeOpened:
-		return "Dispute Opened"
-	case WebhookEventDisputeExpired:
-		return "Dispute Expired"
-	case WebhookEventDisputeAccepted:
-		return "Dispute Accepted"
-	case WebhookEventDisputeCancelled:
-		return "Dispute Cancelled"
-	case WebhookEventDisputeChallenged:
-		return "Dispute Challenged"
-	case WebhookEventDisputeWon:
-		return "Dispute Won"
-	case WebhookEventDisputeLost:
-		return "Dispute Lost"
-	default:
-		return string(w)
-	}
+	return enumtypes.Label(w, webhookEventTypeLabels, string(w))
 }
 
 // IsValid checks if the webhook event type is valid

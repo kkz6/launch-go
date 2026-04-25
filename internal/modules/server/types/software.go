@@ -42,39 +42,36 @@ var allSoftware = []Software{
 	SoftwareLaunchAgent,
 }
 
+var softwareLabels = map[Software]string{
+	SoftwareCaddy2:       "Caddy 2",
+	SoftwareCaddy2LB:     "Caddy 2 (Load Balancer)",
+	SoftwareComposer2:    "Composer 2",
+	SoftwareMySQL80:      "MySQL 8.0",
+	SoftwarePostgreSQL16: "PostgreSQL 16",
+	SoftwareNode21:       "Node 21",
+	SoftwareBun:          "Bun",
+	SoftwarePhp56:        "PHP 5.6",
+	SoftwarePhp70:        "PHP 7.0",
+	SoftwarePhp71:        "PHP 7.1",
+	SoftwarePhp72:        "PHP 7.2",
+	SoftwarePhp73:        "PHP 7.3",
+	SoftwarePhp74:        "PHP 7.4",
+	SoftwarePhp80:        "PHP 8.0",
+	SoftwarePhp81:        "PHP 8.1",
+	SoftwarePhp82:        "PHP 8.2",
+	SoftwarePhp83:        "PHP 8.3",
+	SoftwarePhp84:        "PHP 8.4",
+	SoftwareRedis:        "Redis",
+	SoftwareSupervisor:   "Supervisor",
+	SoftwareLaunchAgent:  "Launch Agent",
+}
+
 func (s Software) String() string {
 	return string(s)
 }
 
 func (s Software) Label() string {
-	labels := map[Software]string{
-		SoftwareCaddy2:       "Caddy 2",
-		SoftwareCaddy2LB:     "Caddy 2 (Load Balancer)",
-		SoftwareComposer2:    "Composer 2",
-		SoftwareMySQL80:      "MySQL 8.0",
-		SoftwarePostgreSQL16: "PostgreSQL 16",
-		SoftwareNode21:       "Node 21",
-		SoftwareBun:          "Bun",
-		SoftwarePhp56:        "PHP 5.6",
-		SoftwarePhp70:        "PHP 7.0",
-		SoftwarePhp71:        "PHP 7.1",
-		SoftwarePhp72:        "PHP 7.2",
-		SoftwarePhp73:        "PHP 7.3",
-		SoftwarePhp74:        "PHP 7.4",
-		SoftwarePhp80:        "PHP 8.0",
-		SoftwarePhp81:        "PHP 8.1",
-		SoftwarePhp82:        "PHP 8.2",
-		SoftwarePhp83:        "PHP 8.3",
-		SoftwarePhp84:        "PHP 8.4",
-		SoftwareRedis:        "Redis",
-		SoftwareSupervisor:   "Supervisor",
-		SoftwareLaunchAgent:  "Launch Agent",
-	}
-	if label, ok := labels[s]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(s, softwareLabels, "Unknown")
 }
 
 func (s Software) IsValid() bool {
