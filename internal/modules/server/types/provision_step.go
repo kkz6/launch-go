@@ -32,6 +32,17 @@ var allProvisionSteps = []ProvisionStep{
 	ProvisionStepSSHSecurity,
 }
 
+var provisionStepLabels = map[ProvisionStep]string{
+	ProvisionStepAptUpdateUpgrade:         "Apt Update & Upgrade",
+	ProvisionStepConfigureFirewall:        "Configure Firewall",
+	ProvisionStepConfigureSwap:            "Configure Swap",
+	ProvisionStepInstallEssentialPackages: "Install Essential Packages",
+	ProvisionStepSetupDefaultUser:         "Setup Default User",
+	ProvisionStepSetupRoot:                "Setup Root",
+	ProvisionStepSetupUnattendedUpgrades:  "Setup Unattended Upgrades",
+	ProvisionStepSSHSecurity:              "SSH Security",
+}
+
 func (p ProvisionStep) String() string {
 	return string(p)
 }
@@ -87,20 +98,7 @@ func (p ProvisionStep) Description() string {
 
 // Label returns a short label for UI display
 func (p ProvisionStep) Label() string {
-	labels := map[ProvisionStep]string{
-		ProvisionStepAptUpdateUpgrade:         "Apt Update & Upgrade",
-		ProvisionStepConfigureFirewall:        "Configure Firewall",
-		ProvisionStepConfigureSwap:            "Configure Swap",
-		ProvisionStepInstallEssentialPackages: "Install Essential Packages",
-		ProvisionStepSetupDefaultUser:         "Setup Default User",
-		ProvisionStepSetupRoot:                "Setup Root",
-		ProvisionStepSetupUnattendedUpgrades:  "Setup Unattended Upgrades",
-		ProvisionStepSSHSecurity:              "SSH Security",
-	}
-	if label, ok := labels[p]; ok {
-		return label
-	}
-	return string(p)
+	return enumtypes.Label(p, provisionStepLabels, string(p))
 }
 
 // IsValid returns true if this is a valid provision step

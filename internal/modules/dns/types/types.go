@@ -56,6 +56,11 @@ var allDNSProviders = []DNSProvider{
 	DNSProviderDigitalOcean,
 }
 
+var dnsProviderLabels = map[DNSProvider]string{
+	DNSProviderCloudflare:   "Cloudflare",
+	DNSProviderDigitalOcean: "DigitalOcean",
+}
+
 // AllDNSProviders returns all valid DNS providers
 func AllDNSProviders() []DNSProvider {
 	return allDNSProviders
@@ -68,14 +73,7 @@ func (p DNSProvider) String() string {
 
 // Label returns a human-readable label for the provider
 func (p DNSProvider) Label() string {
-	switch p {
-	case DNSProviderCloudflare:
-		return "Cloudflare"
-	case DNSProviderDigitalOcean:
-		return "DigitalOcean"
-	default:
-		return string(p)
-	}
+	return enumtypes.Label(p, dnsProviderLabels, string(p))
 }
 
 // IsValid checks if the DNSProvider is valid
@@ -129,6 +127,13 @@ var allSyncStatuses = []SyncStatus{
 	SyncStatusFailed,
 }
 
+var syncStatusLabels = map[SyncStatus]string{
+	SyncStatusPending:   "Pending",
+	SyncStatusSyncing:   "Syncing",
+	SyncStatusCompleted: "Completed",
+	SyncStatusFailed:    "Failed",
+}
+
 // AllSyncStatuses returns all valid sync statuses
 func AllSyncStatuses() []SyncStatus {
 	return allSyncStatuses
@@ -141,18 +146,7 @@ func (s SyncStatus) String() string {
 
 // Label returns a human-readable label for the sync status
 func (s SyncStatus) Label() string {
-	switch s {
-	case SyncStatusPending:
-		return "Pending"
-	case SyncStatusSyncing:
-		return "Syncing"
-	case SyncStatusCompleted:
-		return "Completed"
-	case SyncStatusFailed:
-		return "Failed"
-	default:
-		return string(s)
-	}
+	return enumtypes.Label(s, syncStatusLabels, string(s))
 }
 
 // IsValid checks if the SyncStatus is valid

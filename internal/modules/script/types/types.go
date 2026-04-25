@@ -27,6 +27,11 @@ var allRunAsUsers = []RunAsUser{
 	RunAsUserLocal,
 }
 
+var runAsUserLabels = map[RunAsUser]string{
+	RunAsUserRoot:  "Root",
+	RunAsUserLocal: "Local",
+}
+
 // AllRunAsUsers returns all valid RunAsUser values
 func AllRunAsUsers() []RunAsUser {
 	return allRunAsUsers
@@ -39,14 +44,7 @@ func (r RunAsUser) String() string {
 
 // Label returns a human-readable label
 func (r RunAsUser) Label() string {
-	switch r {
-	case RunAsUserRoot:
-		return "Root"
-	case RunAsUserLocal:
-		return "Local"
-	default:
-		return string(r)
-	}
+	return enumtypes.Label(r, runAsUserLabels, string(r))
 }
 
 // IsValid checks if the RunAsUser value is valid

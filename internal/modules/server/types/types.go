@@ -34,28 +34,25 @@ var allServerStatuses = []ServerStatus{
 	ServerStatusDeleting, ServerStatusArchived, ServerStatusUnknown, ServerStatusFailed,
 }
 
+var serverStatusLabels = map[ServerStatus]string{
+	ServerStatusNew:          "Connecting",
+	ServerStatusStarting:     "Starting",
+	ServerStatusProvisioning: "Provisioning",
+	ServerStatusRunning:      "Running",
+	ServerStatusPaused:       "Paused",
+	ServerStatusStopped:      "Stopped",
+	ServerStatusDeleting:     "Deleting",
+	ServerStatusArchived:     "Archived",
+	ServerStatusUnknown:      "Unknown",
+	ServerStatusFailed:       "Failed",
+}
+
 func (s ServerStatus) String() string {
 	return string(s)
 }
 
 func (s ServerStatus) Label() string {
-	labels := map[ServerStatus]string{
-		ServerStatusNew:          "Connecting",
-		ServerStatusStarting:     "Starting",
-		ServerStatusProvisioning: "Provisioning",
-		ServerStatusRunning:      "Running",
-		ServerStatusPaused:       "Paused",
-		ServerStatusStopped:      "Stopped",
-		ServerStatusDeleting:     "Deleting",
-		ServerStatusArchived:     "Archived",
-		ServerStatusUnknown:      "Unknown",
-		ServerStatusFailed:       "Failed",
-	}
-	if label, ok := labels[s]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(s, serverStatusLabels, "Unknown")
 }
 
 func (s ServerStatus) IsValid() bool {
@@ -112,24 +109,21 @@ var allServerProviders = []ServerProvider{
 	ProviderVultr, ProviderAWS, ProviderCustom,
 }
 
+var serverProviderLabels = map[ServerProvider]string{
+	ProviderDigitalOcean: "DigitalOcean",
+	ProviderHetzner:      "Hetzner Cloud",
+	ProviderLinode:       "Linode",
+	ProviderVultr:        "Vultr",
+	ProviderAWS:          "AWS",
+	ProviderCustom:       "Custom",
+}
+
 func (p ServerProvider) String() string {
 	return string(p)
 }
 
 func (p ServerProvider) Label() string {
-	labels := map[ServerProvider]string{
-		ProviderDigitalOcean: "DigitalOcean",
-		ProviderHetzner:      "Hetzner Cloud",
-		ProviderLinode:       "Linode",
-		ProviderVultr:        "Vultr",
-		ProviderAWS:          "AWS",
-		ProviderCustom:       "Custom",
-	}
-	if label, ok := labels[p]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(p, serverProviderLabels, "Unknown")
 }
 
 func (p ServerProvider) IsValid() bool {
@@ -185,21 +179,18 @@ const (
 
 var allServerTypes = []ServerType{ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer}
 
+var serverTypeLabels = map[ServerType]string{
+	ServerTypePhp:          "PHP Application Server",
+	ServerTypeDatabase:     "Database Server",
+	ServerTypeLoadBalancer: "Load Balancer",
+}
+
 func (t ServerType) String() string {
 	return string(t)
 }
 
 func (t ServerType) Label() string {
-	labels := map[ServerType]string{
-		ServerTypePhp:          "PHP Application Server",
-		ServerTypeDatabase:     "Database Server",
-		ServerTypeLoadBalancer: "Load Balancer",
-	}
-	if label, ok := labels[t]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(t, serverTypeLabels, "Unknown")
 }
 
 func (t ServerType) IsValid() bool {
@@ -310,30 +301,27 @@ var allServerFeatures = []ServerFeature{
 	ServerFeatureServices, ServerFeatureLoadBalancing,
 }
 
+var serverFeatureLabels = map[ServerFeature]string{
+	ServerFeatureSites:              "Sites",
+	ServerFeatureSSLCertificates:    "SSL Certificates",
+	ServerFeaturePhpManagement:      "PHP Management",
+	ServerFeatureComposer:           "Composer",
+	ServerFeatureDatabaseManagement: "Database Management",
+	ServerFeatureQueueWorkers:       "Queue Workers",
+	ServerFeatureDaemons:            "Daemons",
+	ServerFeatureScheduler:          "Scheduler",
+	ServerFeatureRedis:              "Redis",
+	ServerFeatureBackups:            "Backups",
+	ServerFeatureServices:           "Services",
+	ServerFeatureLoadBalancing:      "Load Balancing",
+}
+
 func (f ServerFeature) String() string {
 	return string(f)
 }
 
 func (f ServerFeature) Label() string {
-	labels := map[ServerFeature]string{
-		ServerFeatureSites:              "Sites",
-		ServerFeatureSSLCertificates:    "SSL Certificates",
-		ServerFeaturePhpManagement:      "PHP Management",
-		ServerFeatureComposer:           "Composer",
-		ServerFeatureDatabaseManagement: "Database Management",
-		ServerFeatureQueueWorkers:       "Queue Workers",
-		ServerFeatureDaemons:            "Daemons",
-		ServerFeatureScheduler:          "Scheduler",
-		ServerFeatureRedis:              "Redis",
-		ServerFeatureBackups:            "Backups",
-		ServerFeatureServices:           "Services",
-		ServerFeatureLoadBalancing:      "Load Balancing",
-	}
-	if label, ok := labels[f]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(f, serverFeatureLabels, "Unknown")
 }
 
 func (f ServerFeature) IsValid() bool {
@@ -390,28 +378,25 @@ var allServiceTypes = []ServiceType{
 	ServiceTypeComposer, ServiceTypeNode, ServiceTypeBun, ServiceTypeLaunchAgent,
 }
 
+var serviceTypeLabels = map[ServiceType]string{
+	ServiceTypePhp:         "PHP",
+	ServiceTypeMySQL:       "MySQL",
+	ServiceTypePostgreSQL:  "PostgreSQL",
+	ServiceTypeSupervisor:  "Supervisor",
+	ServiceTypeRedis:       "Redis",
+	ServiceTypeCaddy:       "Caddy",
+	ServiceTypeComposer:    "Composer",
+	ServiceTypeNode:        "Node.js",
+	ServiceTypeBun:         "Bun",
+	ServiceTypeLaunchAgent: "Launch Agent",
+}
+
 func (s ServiceType) String() string {
 	return string(s)
 }
 
 func (s ServiceType) Label() string {
-	labels := map[ServiceType]string{
-		ServiceTypePhp:         "PHP",
-		ServiceTypeMySQL:       "MySQL",
-		ServiceTypePostgreSQL:  "PostgreSQL",
-		ServiceTypeSupervisor:  "Supervisor",
-		ServiceTypeRedis:       "Redis",
-		ServiceTypeCaddy:       "Caddy",
-		ServiceTypeComposer:    "Composer",
-		ServiceTypeNode:        "Node.js",
-		ServiceTypeBun:         "Bun",
-		ServiceTypeLaunchAgent: "Launch Agent",
-	}
-	if label, ok := labels[s]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(s, serviceTypeLabels, "Unknown")
 }
 
 func (s ServiceType) IsValid() bool {
@@ -487,25 +472,22 @@ var allServiceStatuses = []ServiceStatus{
 	ServiceStatusFailed, ServiceStatusInstalled, ServiceStatusStopped, ServiceStatusRunning,
 }
 
+var serviceStatusLabels = map[ServiceStatus]string{
+	ServiceStatusPending:      "Pending",
+	ServiceStatusInstalling:   "Installing",
+	ServiceStatusUninstalling: "Uninstalling",
+	ServiceStatusFailed:       "Failed",
+	ServiceStatusInstalled:    "Installed",
+	ServiceStatusStopped:      "Stopped",
+	ServiceStatusRunning:      "Running",
+}
+
 func (s ServiceStatus) String() string {
 	return string(s)
 }
 
 func (s ServiceStatus) Label() string {
-	labels := map[ServiceStatus]string{
-		ServiceStatusPending:      "Pending",
-		ServiceStatusInstalling:   "Installing",
-		ServiceStatusUninstalling: "Uninstalling",
-		ServiceStatusFailed:       "Failed",
-		ServiceStatusInstalled:    "Installed",
-		ServiceStatusStopped:      "Stopped",
-		ServiceStatusRunning:      "Running",
-	}
-	if label, ok := labels[s]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(s, serviceStatusLabels, "Unknown")
 }
 
 func (s ServiceStatus) IsValid() bool {
@@ -557,23 +539,20 @@ var allServiceOptions = []ServiceOption{
 	ServiceOptionRemove, ServiceOptionStatus,
 }
 
+var serviceOptionLabels = map[ServiceOption]string{
+	ServiceOptionStart:   "Start",
+	ServiceOptionStop:    "Stop",
+	ServiceOptionRestart: "Restart",
+	ServiceOptionRemove:  "Remove",
+	ServiceOptionStatus:  "Status",
+}
+
 func (o ServiceOption) String() string {
 	return string(o)
 }
 
 func (o ServiceOption) Label() string {
-	labels := map[ServiceOption]string{
-		ServiceOptionStart:   "Start",
-		ServiceOptionStop:    "Stop",
-		ServiceOptionRestart: "Restart",
-		ServiceOptionRemove:  "Remove",
-		ServiceOptionStatus:  "Status",
-	}
-	if label, ok := labels[o]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(o, serviceOptionLabels, "Unknown")
 }
 
 func (o ServiceOption) IsValid() bool {
@@ -607,20 +586,17 @@ const (
 
 var allProcessManagers = []ProcessManager{ProcessManagerSupervisor, ProcessManagerNone}
 
+var processManagerLabels = map[ProcessManager]string{
+	ProcessManagerSupervisor: "Supervisor",
+	ProcessManagerNone:       "None",
+}
+
 func (p ProcessManager) String() string {
 	return string(p)
 }
 
 func (p ProcessManager) Label() string {
-	labels := map[ProcessManager]string{
-		ProcessManagerSupervisor: "Supervisor",
-		ProcessManagerNone:       "None",
-	}
-	if label, ok := labels[p]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(p, processManagerLabels, "Unknown")
 }
 
 func (p ProcessManager) IsValid() bool {
@@ -657,21 +633,18 @@ const (
 
 var allOperatingSystems = []OperatingSystem{OSUbuntu20, OSUbuntu22, OSUbuntu24}
 
+var operatingSystemLabels = map[OperatingSystem]string{
+	OSUbuntu20: "Ubuntu 20.04",
+	OSUbuntu22: "Ubuntu 22.04",
+	OSUbuntu24: "Ubuntu 24.04",
+}
+
 func (o OperatingSystem) String() string {
 	return string(o)
 }
 
 func (o OperatingSystem) Label() string {
-	labels := map[OperatingSystem]string{
-		OSUbuntu20: "Ubuntu 20.04",
-		OSUbuntu22: "Ubuntu 22.04",
-		OSUbuntu24: "Ubuntu 24.04",
-	}
-	if label, ok := labels[o]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(o, operatingSystemLabels, "Unknown")
 }
 
 func (o OperatingSystem) IsValid() bool {
@@ -714,21 +687,18 @@ const (
 
 var allRuleActions = []RuleAction{RuleActionAllow, RuleActionDeny, RuleActionReject}
 
+var ruleActionLabels = map[RuleAction]string{
+	RuleActionAllow:  "Allow",
+	RuleActionDeny:   "Deny",
+	RuleActionReject: "Reject",
+}
+
 func (r RuleAction) String() string {
 	return string(r)
 }
 
 func (r RuleAction) Label() string {
-	labels := map[RuleAction]string{
-		RuleActionAllow:  "Allow",
-		RuleActionDeny:   "Deny",
-		RuleActionReject: "Reject",
-	}
-	if label, ok := labels[r]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(r, ruleActionLabels, "Unknown")
 }
 
 func (r RuleAction) IsValid() bool {

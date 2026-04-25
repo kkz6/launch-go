@@ -27,23 +27,20 @@ var allLBPolicies = []LBPolicy{
 	LBPolicyFirst, LBPolicyRandom,
 }
 
+var lbPolicyLabels = map[LBPolicy]string{
+	LBPolicyRoundRobin: "Round Robin",
+	LBPolicyLeastConn:  "Least Connections",
+	LBPolicyIPHash:     "IP Hash (Sticky Sessions)",
+	LBPolicyFirst:      "First Available",
+	LBPolicyRandom:     "Random",
+}
+
 func (p LBPolicy) String() string {
 	return string(p)
 }
 
 func (p LBPolicy) Label() string {
-	labels := map[LBPolicy]string{
-		LBPolicyRoundRobin: "Round Robin",
-		LBPolicyLeastConn:  "Least Connections",
-		LBPolicyIPHash:     "IP Hash (Sticky Sessions)",
-		LBPolicyFirst:      "First Available",
-		LBPolicyRandom:     "Random",
-	}
-	if label, ok := labels[p]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(p, lbPolicyLabels, "Unknown")
 }
 
 func (p LBPolicy) IsValid() bool {
@@ -91,21 +88,18 @@ const (
 
 var allHealthStatuses = []HealthStatus{HealthStatusHealthy, HealthStatusUnhealthy, HealthStatusUnknown}
 
+var healthStatusLabels = map[HealthStatus]string{
+	HealthStatusHealthy:   "Healthy",
+	HealthStatusUnhealthy: "Unhealthy",
+	HealthStatusUnknown:   "Unknown",
+}
+
 func (h HealthStatus) String() string {
 	return string(h)
 }
 
 func (h HealthStatus) Label() string {
-	labels := map[HealthStatus]string{
-		HealthStatusHealthy:   "Healthy",
-		HealthStatusUnhealthy: "Unhealthy",
-		HealthStatusUnknown:   "Unknown",
-	}
-	if label, ok := labels[h]; ok {
-		return label
-	}
-
-	return "Unknown"
+	return enumtypes.Label(h, healthStatusLabels, "Unknown")
 }
 
 func (h HealthStatus) IsValid() bool {

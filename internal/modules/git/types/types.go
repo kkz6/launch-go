@@ -99,6 +99,11 @@ var allAccountTypes = []AccountType{
 	AccountTypeOrganization,
 }
 
+var accountTypeLabels = map[AccountType]string{
+	AccountTypeUser:         "User",
+	AccountTypeOrganization: "Organization",
+}
+
 // AllAccountTypes returns all valid account types
 func AllAccountTypes() []AccountType {
 	return allAccountTypes
@@ -111,14 +116,7 @@ func (a AccountType) String() string {
 
 // Label returns a human-readable label for the account type
 func (a AccountType) Label() string {
-	switch a {
-	case AccountTypeUser:
-		return "User"
-	case AccountTypeOrganization:
-		return "Organization"
-	default:
-		return string(a)
-	}
+	return enumtypes.Label(a, accountTypeLabels, string(a))
 }
 
 // IsValid checks if the account type is valid
@@ -175,6 +173,11 @@ var allRepositorySelections = []RepositorySelection{
 	RepositorySelectionSelected,
 }
 
+var repositorySelectionLabels = map[RepositorySelection]string{
+	RepositorySelectionAll:      "All",
+	RepositorySelectionSelected: "Selected",
+}
+
 // AllRepositorySelections returns all valid repository selections
 func AllRepositorySelections() []RepositorySelection {
 	return allRepositorySelections
@@ -187,14 +190,7 @@ func (r RepositorySelection) String() string {
 
 // Label returns a human-readable label
 func (r RepositorySelection) Label() string {
-	switch r {
-	case RepositorySelectionAll:
-		return "All"
-	case RepositorySelectionSelected:
-		return "Selected"
-	default:
-		return string(r)
-	}
+	return enumtypes.Label(r, repositorySelectionLabels, string(r))
 }
 
 // IsValid checks if the selection is valid
@@ -251,6 +247,17 @@ var allWebhookEventTypes = []WebhookEventType{
 	WebhookEventInstallationDeleted,
 }
 
+var webhookEventTypeLabels = map[WebhookEventType]string{
+	WebhookEventPush:                "Push",
+	WebhookEventPullRequest:         "Pull Request",
+	WebhookEventInstallation:        "Installation",
+	WebhookEventInstallationRepos:   "Installation Repositories",
+	WebhookEventRepositoriesAdded:   "Repositories Added",
+	WebhookEventRepositoriesRemoved: "Repositories Removed",
+	WebhookEventInstallationCreated: "Installation Created",
+	WebhookEventInstallationDeleted: "Installation Deleted",
+}
+
 // AllWebhookEventTypes returns all valid webhook event types
 func AllWebhookEventTypes() []WebhookEventType {
 	return allWebhookEventTypes
@@ -263,26 +270,7 @@ func (w WebhookEventType) String() string {
 
 // Label returns a human-readable label
 func (w WebhookEventType) Label() string {
-	switch w {
-	case WebhookEventPush:
-		return "Push"
-	case WebhookEventPullRequest:
-		return "Pull Request"
-	case WebhookEventInstallation:
-		return "Installation"
-	case WebhookEventInstallationRepos:
-		return "Installation Repositories"
-	case WebhookEventRepositoriesAdded:
-		return "Repositories Added"
-	case WebhookEventRepositoriesRemoved:
-		return "Repositories Removed"
-	case WebhookEventInstallationCreated:
-		return "Installation Created"
-	case WebhookEventInstallationDeleted:
-		return "Installation Deleted"
-	default:
-		return string(w)
-	}
+	return enumtypes.Label(w, webhookEventTypeLabels, string(w))
 }
 
 // IsValid checks if the event type is valid

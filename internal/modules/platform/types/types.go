@@ -17,21 +17,18 @@ const (
 
 var allSeverities = []UpdateSeverity{SeverityInfo, SeverityWarning, SeverityCritical}
 
+var updateSeverityLabels = map[UpdateSeverity]string{
+	SeverityInfo:     "Info",
+	SeverityWarning:  "Warning",
+	SeverityCritical: "Critical",
+}
+
 func AllSeverities() []UpdateSeverity { return allSeverities }
 
 func (s UpdateSeverity) String() string { return string(s) }
 
 func (s UpdateSeverity) Label() string {
-	switch s {
-	case SeverityInfo:
-		return "Info"
-	case SeverityWarning:
-		return "Warning"
-	case SeverityCritical:
-		return "Critical"
-	default:
-		return string(s)
-	}
+	return enumtypes.Label(s, updateSeverityLabels, string(s))
 }
 
 func (s UpdateSeverity) IsValid() bool {
@@ -60,25 +57,20 @@ var allStatuses = []ServerUpdateStatus{
 	UpdateStatusSkipped,
 }
 
+var serverUpdateStatusLabels = map[ServerUpdateStatus]string{
+	UpdateStatusPending:   "Pending",
+	UpdateStatusRunning:   "Running",
+	UpdateStatusCompleted: "Completed",
+	UpdateStatusFailed:    "Failed",
+	UpdateStatusSkipped:   "Skipped",
+}
+
 func AllStatuses() []ServerUpdateStatus { return allStatuses }
 
 func (s ServerUpdateStatus) String() string { return string(s) }
 
 func (s ServerUpdateStatus) Label() string {
-	switch s {
-	case UpdateStatusPending:
-		return "Pending"
-	case UpdateStatusRunning:
-		return "Running"
-	case UpdateStatusCompleted:
-		return "Completed"
-	case UpdateStatusFailed:
-		return "Failed"
-	case UpdateStatusSkipped:
-		return "Skipped"
-	default:
-		return string(s)
-	}
+	return enumtypes.Label(s, serverUpdateStatusLabels, string(s))
 }
 
 func (s ServerUpdateStatus) IsValid() bool {

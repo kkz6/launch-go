@@ -28,6 +28,13 @@ var allBackupJobStatuses = []BackupJobStatus{
 	BackupJobStatusFailed,
 }
 
+var backupJobStatusLabels = map[BackupJobStatus]string{
+	BackupJobStatusPending:  "Pending",
+	BackupJobStatusRunning:  "Running",
+	BackupJobStatusFinished: "Finished",
+	BackupJobStatusFailed:   "Failed",
+}
+
 // AllBackupJobStatuses returns all valid backup job statuses
 func AllBackupJobStatuses() []BackupJobStatus {
 	return allBackupJobStatuses
@@ -40,18 +47,7 @@ func (s BackupJobStatus) String() string {
 
 // Label returns a human-readable label for the backup job status
 func (s BackupJobStatus) Label() string {
-	switch s {
-	case BackupJobStatusPending:
-		return "Pending"
-	case BackupJobStatusRunning:
-		return "Running"
-	case BackupJobStatusFinished:
-		return "Finished"
-	case BackupJobStatusFailed:
-		return "Failed"
-	default:
-		return string(s)
-	}
+	return enumtypes.Label(s, backupJobStatusLabels, string(s))
 }
 
 // IsValid checks if the status is a valid BackupJobStatus
@@ -86,6 +82,11 @@ var allStorageDrivers = []StorageDriver{
 	StorageDriverDropbox,
 }
 
+var storageDriverLabels = map[StorageDriver]string{
+	StorageDriverS3:      "S3",
+	StorageDriverDropbox: "Dropbox",
+}
+
 // AllStorageDrivers returns all valid storage drivers
 func AllStorageDrivers() []StorageDriver {
 	return allStorageDrivers
@@ -98,14 +99,7 @@ func (d StorageDriver) String() string {
 
 // Label returns the human-readable label for the storage driver
 func (d StorageDriver) Label() string {
-	switch d {
-	case StorageDriverS3:
-		return "S3"
-	case StorageDriverDropbox:
-		return "Dropbox"
-	default:
-		return ""
-	}
+	return enumtypes.Label(d, storageDriverLabels, "")
 }
 
 // IsValid checks if the driver is a valid StorageDriver
