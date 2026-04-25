@@ -23,6 +23,10 @@ const (
 	SiteTypePhpMyAdmin SiteType = "phpmyadmin"
 )
 
+var allSiteTypes = []SiteType{
+	SiteTypeLaravel, SiteTypeWordpress, SiteTypeStatic, SiteTypeGeneric, SiteTypePhpMyAdmin,
+}
+
 func (s SiteType) String() string {
 	return string(s)
 }
@@ -44,12 +48,7 @@ func (s SiteType) Label() string {
 }
 
 func (s SiteType) IsValid() bool {
-	switch s {
-	case SiteTypeLaravel, SiteTypeWordpress, SiteTypeStatic, SiteTypeGeneric, SiteTypePhpMyAdmin:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(s, allSiteTypes...)
 }
 
 func (s SiteType) HasEnvironment() bool {
@@ -269,13 +268,7 @@ func ParseSiteType(s string) (SiteType, error) {
 
 // AllSiteTypes returns all valid site types
 func AllSiteTypes() []SiteType {
-	return []SiteType{
-		SiteTypeLaravel,
-		SiteTypeWordpress,
-		SiteTypeStatic,
-		SiteTypeGeneric,
-		SiteTypePhpMyAdmin,
-	}
+	return allSiteTypes
 }
 
 // =============================================================================
@@ -293,17 +286,16 @@ const (
 	SiteStatusUninstalling SiteStatus = "uninstalling"
 )
 
+var allSiteStatuses = []SiteStatus{
+	SiteStatusPending, SiteStatusInstalling, SiteStatusActive, SiteStatusFailed, SiteStatusUninstalling,
+}
+
 func (s SiteStatus) String() string {
 	return string(s)
 }
 
 func (s SiteStatus) IsValid() bool {
-	switch s {
-	case SiteStatusPending, SiteStatusInstalling, SiteStatusActive, SiteStatusFailed, SiteStatusUninstalling:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(s, allSiteStatuses...)
 }
 
 func (s *SiteStatus) Scan(value interface{}) error {
@@ -330,6 +322,15 @@ const (
 	DeploymentStatusTimeout    DeploymentStatus = "timeout"
 )
 
+var allDeploymentStatuses = []DeploymentStatus{
+	DeploymentStatusPending,
+	DeploymentStatusQueued,
+	DeploymentStatusInstalling,
+	DeploymentStatusFinished,
+	DeploymentStatusFailed,
+	DeploymentStatusTimeout,
+}
+
 func (d DeploymentStatus) String() string {
 	return string(d)
 }
@@ -352,13 +353,7 @@ func (d DeploymentStatus) Label() string {
 }
 
 func (d DeploymentStatus) IsValid() bool {
-	switch d {
-	case DeploymentStatusPending, DeploymentStatusQueued, DeploymentStatusInstalling,
-		DeploymentStatusFinished, DeploymentStatusFailed, DeploymentStatusTimeout:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(d, allDeploymentStatuses...)
 }
 
 func (d DeploymentStatus) IsActive() bool {
@@ -379,14 +374,7 @@ func (d DeploymentStatus) Value() (driver.Value, error) {
 
 // AllDeploymentStatuses returns all valid deployment statuses
 func AllDeploymentStatuses() []DeploymentStatus {
-	return []DeploymentStatus{
-		DeploymentStatusPending,
-		DeploymentStatusQueued,
-		DeploymentStatusInstalling,
-		DeploymentStatusFinished,
-		DeploymentStatusFailed,
-		DeploymentStatusTimeout,
-	}
+	return allDeploymentStatuses
 }
 
 // =============================================================================
@@ -402,6 +390,8 @@ const (
 	TLSSettingInternal TLSSetting = "internal"
 	TLSSettingOff      TLSSetting = "off"
 )
+
+var allTLSSettings = []TLSSetting{TLSSettingAuto, TLSSettingCustom, TLSSettingInternal, TLSSettingOff}
 
 func (t TLSSetting) String() string {
 	return string(t)
@@ -423,12 +413,7 @@ func (t TLSSetting) Label() string {
 }
 
 func (t TLSSetting) IsValid() bool {
-	switch t {
-	case TLSSettingAuto, TLSSettingCustom, TLSSettingInternal, TLSSettingOff:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(t, allTLSSettings...)
 }
 
 func (t TLSSetting) IsEnabled() bool {
@@ -461,12 +446,7 @@ func (t TLSSetting) Value() (driver.Value, error) {
 
 // AllTLSSettings returns all valid TLS settings
 func AllTLSSettings() []TLSSetting {
-	return []TLSSetting{
-		TLSSettingAuto,
-		TLSSettingCustom,
-		TLSSettingInternal,
-		TLSSettingOff,
-	}
+	return allTLSSettings
 }
 
 // =============================================================================
@@ -480,6 +460,8 @@ const (
 	RedirectModePermanent RedirectMode = 1
 	RedirectModeTemporary RedirectMode = 2
 )
+
+var allRedirectModes = []RedirectMode{RedirectModePermanent, RedirectModeTemporary}
 
 func (r RedirectMode) StatusCode() int {
 	switch r {
@@ -504,7 +486,7 @@ func (r RedirectMode) Label() string {
 }
 
 func (r RedirectMode) IsValid() bool {
-	return r == RedirectModePermanent || r == RedirectModeTemporary
+	return enumtypes.IsValid(r, allRedirectModes...)
 }
 
 func (r *RedirectMode) Scan(value interface{}) error {
@@ -530,17 +512,16 @@ const (
 	CommandStatusTimeout  CommandStatus = "timeout"
 )
 
+var allCommandStatuses = []CommandStatus{
+	CommandStatusPending, CommandStatusRunning, CommandStatusFinished, CommandStatusFailed, CommandStatusTimeout,
+}
+
 func (c CommandStatus) String() string {
 	return string(c)
 }
 
 func (c CommandStatus) IsValid() bool {
-	switch c {
-	case CommandStatusPending, CommandStatusRunning, CommandStatusFinished, CommandStatusFailed, CommandStatusTimeout:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(c, allCommandStatuses...)
 }
 
 func (c *CommandStatus) Scan(value interface{}) error {
@@ -566,17 +547,16 @@ const (
 	QueueStatusUninstalling QueueStatus = "uninstalling"
 )
 
+var allQueueStatuses = []QueueStatus{
+	QueueStatusPending, QueueStatusInstalling, QueueStatusActive, QueueStatusFailed, QueueStatusUninstalling,
+}
+
 func (q QueueStatus) String() string {
 	return string(q)
 }
 
 func (q QueueStatus) IsValid() bool {
-	switch q {
-	case QueueStatusPending, QueueStatusInstalling, QueueStatusActive, QueueStatusFailed, QueueStatusUninstalling:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(q, allQueueStatuses...)
 }
 
 func (q *QueueStatus) Scan(value interface{}) error {
@@ -602,6 +582,15 @@ const (
 	LaravelFeatureOctane    LaravelFeature = "octane"
 	LaravelFeatureReverb    LaravelFeature = "reverb"
 )
+
+var allLaravelFeatures = []LaravelFeature{
+	LaravelFeatureScheduler,
+	LaravelFeatureQueue,
+	LaravelFeatureHorizon,
+	LaravelFeatureInertia,
+	LaravelFeatureOctane,
+	LaravelFeatureReverb,
+}
 
 func (f LaravelFeature) String() string {
 	return string(f)
@@ -638,12 +627,7 @@ func (f LaravelFeature) Description() string {
 }
 
 func (f LaravelFeature) IsValid() bool {
-	switch f {
-	case LaravelFeatureScheduler, LaravelFeatureQueue, LaravelFeatureHorizon,
-		LaravelFeatureInertia, LaravelFeatureOctane, LaravelFeatureReverb:
-		return true
-	}
-	return false
+	return enumtypes.IsValid(f, allLaravelFeatures...)
 }
 
 // ConflictsWith returns features that conflict with this feature
@@ -660,14 +644,7 @@ func (f LaravelFeature) ConflictsWith() []LaravelFeature {
 
 // AllLaravelFeatures returns all available Laravel features
 func AllLaravelFeatures() []LaravelFeature {
-	return []LaravelFeature{
-		LaravelFeatureScheduler,
-		LaravelFeatureQueue,
-		LaravelFeatureHorizon,
-		LaravelFeatureInertia,
-		LaravelFeatureOctane,
-		LaravelFeatureReverb,
-	}
+	return allLaravelFeatures
 }
 
 // =============================================================================
@@ -682,12 +659,14 @@ const (
 	CertificateTypeCustom CertificateType = "custom"
 )
 
+var allCertificateTypes = []CertificateType{CertificateTypeAuto, CertificateTypeCustom}
+
 func (c CertificateType) String() string {
 	return string(c)
 }
 
 func (c CertificateType) IsValid() bool {
-	return c == CertificateTypeAuto || c == CertificateTypeCustom
+	return enumtypes.IsValid(c, allCertificateTypes...)
 }
 
 func (c *CertificateType) Scan(value interface{}) error {
@@ -719,6 +698,13 @@ const (
 	PhpVersion84 PhpVersion = "php84"
 )
 
+// allPhpVersions is the canonical list (newest first to match the AllPhpVersions
+// accessor's existing ordering, which is consumed by some UI dropdowns).
+var allPhpVersions = []PhpVersion{
+	PhpVersion84, PhpVersion83, PhpVersion82, PhpVersion81, PhpVersion80,
+	PhpVersion74, PhpVersion73, PhpVersion72, PhpVersion71, PhpVersion70, PhpVersion56,
+}
+
 func (p PhpVersion) String() string {
 	return string(p)
 }
@@ -744,12 +730,7 @@ func (p PhpVersion) Label() string {
 }
 
 func (p PhpVersion) IsValid() bool {
-	switch p {
-	case PhpVersion56, PhpVersion70, PhpVersion71, PhpVersion72, PhpVersion73,
-		PhpVersion74, PhpVersion80, PhpVersion81, PhpVersion82, PhpVersion83, PhpVersion84:
-		return true
-	}
-	return false
+	return enumtypes.IsValid(p, allPhpVersions...)
 }
 
 // GetVersion returns the version string (e.g., "8.3")
@@ -829,10 +810,7 @@ func (p PhpVersion) Value() (driver.Value, error) {
 
 // AllPhpVersions returns all supported PHP versions (newest first)
 func AllPhpVersions() []PhpVersion {
-	return []PhpVersion{
-		PhpVersion84, PhpVersion83, PhpVersion82, PhpVersion81, PhpVersion80,
-		PhpVersion74, PhpVersion73, PhpVersion72, PhpVersion71, PhpVersion70, PhpVersion56,
-	}
+	return allPhpVersions
 }
 
 // ParsePhpVersion parses a string into a PhpVersion

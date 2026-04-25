@@ -80,12 +80,7 @@ func (p DNSProvider) Label() string {
 
 // IsValid checks if the DNSProvider is valid
 func (p DNSProvider) IsValid() bool {
-	switch p {
-	case DNSProviderCloudflare, DNSProviderDigitalOcean:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(p, allDNSProviders...)
 }
 
 // Value implements driver.Valuer for database storage
@@ -162,12 +157,7 @@ func (s SyncStatus) Label() string {
 
 // IsValid checks if the SyncStatus is valid
 func (s SyncStatus) IsValid() bool {
-	switch s {
-	case SyncStatusPending, SyncStatusSyncing, SyncStatusCompleted, SyncStatusFailed:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(s, allSyncStatuses...)
 }
 
 // Value implements driver.Valuer for database storage

@@ -28,6 +28,12 @@ const (
 	ServerStatusFailed       ServerStatus = "failed"
 )
 
+var allServerStatuses = []ServerStatus{
+	ServerStatusNew, ServerStatusStarting, ServerStatusProvisioning,
+	ServerStatusRunning, ServerStatusPaused, ServerStatusStopped,
+	ServerStatusDeleting, ServerStatusArchived, ServerStatusUnknown, ServerStatusFailed,
+}
+
 func (s ServerStatus) String() string {
 	return string(s)
 }
@@ -53,14 +59,7 @@ func (s ServerStatus) Label() string {
 }
 
 func (s ServerStatus) IsValid() bool {
-	switch s {
-	case ServerStatusNew, ServerStatusStarting, ServerStatusProvisioning,
-		ServerStatusRunning, ServerStatusPaused, ServerStatusStopped,
-		ServerStatusDeleting, ServerStatusArchived, ServerStatusUnknown, ServerStatusFailed:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(s, allServerStatuses...)
 }
 
 func (s ServerStatus) IsActive() bool {
@@ -89,11 +88,7 @@ func ParseServerStatus(s string) (ServerStatus, error) {
 }
 
 func AllServerStatuses() []ServerStatus {
-	return []ServerStatus{
-		ServerStatusNew, ServerStatusStarting, ServerStatusProvisioning,
-		ServerStatusRunning, ServerStatusPaused, ServerStatusStopped,
-		ServerStatusDeleting, ServerStatusArchived, ServerStatusUnknown, ServerStatusFailed,
-	}
+	return allServerStatuses
 }
 
 // =============================================================================
@@ -111,6 +106,11 @@ const (
 	ProviderAWS          ServerProvider = "aws"
 	ProviderCustom       ServerProvider = "custom_server"
 )
+
+var allServerProviders = []ServerProvider{
+	ProviderDigitalOcean, ProviderHetzner, ProviderLinode,
+	ProviderVultr, ProviderAWS, ProviderCustom,
+}
 
 func (p ServerProvider) String() string {
 	return string(p)
@@ -133,13 +133,7 @@ func (p ServerProvider) Label() string {
 }
 
 func (p ServerProvider) IsValid() bool {
-	switch p {
-	case ProviderDigitalOcean, ProviderHetzner, ProviderLinode,
-		ProviderVultr, ProviderAWS, ProviderCustom:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(p, allServerProviders...)
 }
 
 func (p ServerProvider) IsCloud() bool {
@@ -173,10 +167,7 @@ func ParseServerProvider(s string) (ServerProvider, error) {
 }
 
 func AllServerProviders() []ServerProvider {
-	return []ServerProvider{
-		ProviderDigitalOcean, ProviderHetzner, ProviderLinode,
-		ProviderVultr, ProviderAWS, ProviderCustom,
-	}
+	return allServerProviders
 }
 
 // =============================================================================
@@ -191,6 +182,8 @@ const (
 	ServerTypeDatabase     ServerType = "database"
 	ServerTypeLoadBalancer ServerType = "loadbalancer"
 )
+
+var allServerTypes = []ServerType{ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer}
 
 func (t ServerType) String() string {
 	return string(t)
@@ -210,12 +203,7 @@ func (t ServerType) Label() string {
 }
 
 func (t ServerType) IsValid() bool {
-	switch t {
-	case ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(t, allServerTypes...)
 }
 
 func (t ServerType) GetFeatures() []ServerFeature {
@@ -290,7 +278,7 @@ func ParseServerType(s string) (ServerType, error) {
 }
 
 func AllServerTypes() []ServerType {
-	return []ServerType{ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer}
+	return allServerTypes
 }
 
 // =============================================================================
@@ -314,6 +302,13 @@ const (
 	ServerFeatureServices           ServerFeature = "services"
 	ServerFeatureLoadBalancing      ServerFeature = "load_balancing"
 )
+
+var allServerFeatures = []ServerFeature{
+	ServerFeatureSites, ServerFeatureSSLCertificates, ServerFeaturePhpManagement,
+	ServerFeatureComposer, ServerFeatureDatabaseManagement, ServerFeatureQueueWorkers,
+	ServerFeatureDaemons, ServerFeatureScheduler, ServerFeatureRedis, ServerFeatureBackups,
+	ServerFeatureServices, ServerFeatureLoadBalancing,
+}
 
 func (f ServerFeature) String() string {
 	return string(f)
@@ -342,15 +337,7 @@ func (f ServerFeature) Label() string {
 }
 
 func (f ServerFeature) IsValid() bool {
-	switch f {
-	case ServerFeatureSites, ServerFeatureSSLCertificates, ServerFeaturePhpManagement,
-		ServerFeatureComposer, ServerFeatureDatabaseManagement, ServerFeatureQueueWorkers,
-		ServerFeatureDaemons, ServerFeatureScheduler, ServerFeatureRedis, ServerFeatureBackups,
-		ServerFeatureServices, ServerFeatureLoadBalancing:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(f, allServerFeatures...)
 }
 
 func (f ServerFeature) NavigationKey() string {
@@ -374,12 +361,7 @@ func (f ServerFeature) NavigationKey() string {
 }
 
 func AllServerFeatures() []ServerFeature {
-	return []ServerFeature{
-		ServerFeatureSites, ServerFeatureSSLCertificates, ServerFeaturePhpManagement,
-		ServerFeatureComposer, ServerFeatureDatabaseManagement, ServerFeatureQueueWorkers,
-		ServerFeatureDaemons, ServerFeatureScheduler, ServerFeatureRedis, ServerFeatureBackups,
-		ServerFeatureServices, ServerFeatureLoadBalancing,
-	}
+	return allServerFeatures
 }
 
 // =============================================================================
@@ -401,6 +383,12 @@ const (
 	ServiceTypeBun         ServiceType = "bun"
 	ServiceTypeLaunchAgent ServiceType = "launch_agent"
 )
+
+var allServiceTypes = []ServiceType{
+	ServiceTypePhp, ServiceTypeMySQL, ServiceTypePostgreSQL,
+	ServiceTypeSupervisor, ServiceTypeRedis, ServiceTypeCaddy,
+	ServiceTypeComposer, ServiceTypeNode, ServiceTypeBun, ServiceTypeLaunchAgent,
+}
 
 func (s ServiceType) String() string {
 	return string(s)
@@ -427,14 +415,7 @@ func (s ServiceType) Label() string {
 }
 
 func (s ServiceType) IsValid() bool {
-	switch s {
-	case ServiceTypePhp, ServiceTypeMySQL, ServiceTypePostgreSQL,
-		ServiceTypeSupervisor, ServiceTypeRedis, ServiceTypeCaddy,
-		ServiceTypeComposer, ServiceTypeNode, ServiceTypeBun, ServiceTypeLaunchAgent:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(s, allServiceTypes...)
 }
 
 func (s ServiceType) IsDatabase() bool {
@@ -481,11 +462,7 @@ func ParseServiceType(str string) (ServiceType, error) {
 }
 
 func AllServiceTypes() []ServiceType {
-	return []ServiceType{
-		ServiceTypePhp, ServiceTypeMySQL, ServiceTypePostgreSQL,
-		ServiceTypeSupervisor, ServiceTypeRedis, ServiceTypeCaddy,
-		ServiceTypeComposer, ServiceTypeNode, ServiceTypeBun, ServiceTypeLaunchAgent,
-	}
+	return allServiceTypes
 }
 
 // =============================================================================
@@ -504,6 +481,11 @@ const (
 	ServiceStatusStopped      ServiceStatus = "stopped"
 	ServiceStatusRunning      ServiceStatus = "running"
 )
+
+var allServiceStatuses = []ServiceStatus{
+	ServiceStatusPending, ServiceStatusInstalling, ServiceStatusUninstalling,
+	ServiceStatusFailed, ServiceStatusInstalled, ServiceStatusStopped, ServiceStatusRunning,
+}
 
 func (s ServiceStatus) String() string {
 	return string(s)
@@ -527,13 +509,7 @@ func (s ServiceStatus) Label() string {
 }
 
 func (s ServiceStatus) IsValid() bool {
-	switch s {
-	case ServiceStatusPending, ServiceStatusInstalling, ServiceStatusUninstalling,
-		ServiceStatusFailed, ServiceStatusInstalled, ServiceStatusStopped, ServiceStatusRunning:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(s, allServiceStatuses...)
 }
 
 func (s ServiceStatus) IsActive() bool {
@@ -558,10 +534,7 @@ func ParseServiceStatus(str string) (ServiceStatus, error) {
 }
 
 func AllServiceStatuses() []ServiceStatus {
-	return []ServiceStatus{
-		ServiceStatusPending, ServiceStatusInstalling, ServiceStatusUninstalling,
-		ServiceStatusFailed, ServiceStatusInstalled, ServiceStatusStopped, ServiceStatusRunning,
-	}
+	return allServiceStatuses
 }
 
 // =============================================================================
@@ -578,6 +551,11 @@ const (
 	ServiceOptionRemove  ServiceOption = "remove"
 	ServiceOptionStatus  ServiceOption = "status"
 )
+
+var allServiceOptions = []ServiceOption{
+	ServiceOptionStart, ServiceOptionStop, ServiceOptionRestart,
+	ServiceOptionRemove, ServiceOptionStatus,
+}
 
 func (o ServiceOption) String() string {
 	return string(o)
@@ -599,13 +577,7 @@ func (o ServiceOption) Label() string {
 }
 
 func (o ServiceOption) IsValid() bool {
-	switch o {
-	case ServiceOptionStart, ServiceOptionStop, ServiceOptionRestart,
-		ServiceOptionRemove, ServiceOptionStatus:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(o, allServiceOptions...)
 }
 
 func ParseServiceOption(s string) (ServiceOption, error) {
@@ -618,10 +590,7 @@ func ParseServiceOption(s string) (ServiceOption, error) {
 }
 
 func AllServiceOptions() []ServiceOption {
-	return []ServiceOption{
-		ServiceOptionStart, ServiceOptionStop, ServiceOptionRestart,
-		ServiceOptionRemove, ServiceOptionStatus,
-	}
+	return allServiceOptions
 }
 
 // =============================================================================
@@ -635,6 +604,8 @@ const (
 	ProcessManagerSupervisor ProcessManager = "supervisor"
 	ProcessManagerNone       ProcessManager = "none"
 )
+
+var allProcessManagers = []ProcessManager{ProcessManagerSupervisor, ProcessManagerNone}
 
 func (p ProcessManager) String() string {
 	return string(p)
@@ -653,12 +624,7 @@ func (p ProcessManager) Label() string {
 }
 
 func (p ProcessManager) IsValid() bool {
-	switch p {
-	case ProcessManagerSupervisor, ProcessManagerNone:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(p, allProcessManagers...)
 }
 
 func (p ProcessManager) ServiceName() string {
@@ -673,7 +639,7 @@ func (p ProcessManager) ServiceName() string {
 }
 
 func AllProcessManagers() []ProcessManager {
-	return []ProcessManager{ProcessManagerSupervisor, ProcessManagerNone}
+	return allProcessManagers
 }
 
 // =============================================================================
@@ -688,6 +654,8 @@ const (
 	OSUbuntu22 OperatingSystem = "ubuntu_22"
 	OSUbuntu24 OperatingSystem = "ubuntu_24"
 )
+
+var allOperatingSystems = []OperatingSystem{OSUbuntu20, OSUbuntu22, OSUbuntu24}
 
 func (o OperatingSystem) String() string {
 	return string(o)
@@ -707,12 +675,7 @@ func (o OperatingSystem) Label() string {
 }
 
 func (o OperatingSystem) IsValid() bool {
-	switch o {
-	case OSUbuntu20, OSUbuntu22, OSUbuntu24:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(o, allOperatingSystems...)
 }
 
 func (o *OperatingSystem) Scan(value interface{}) error {
@@ -733,7 +696,7 @@ func ParseOperatingSystem(s string) (OperatingSystem, error) {
 }
 
 func AllOperatingSystems() []OperatingSystem {
-	return []OperatingSystem{OSUbuntu20, OSUbuntu22, OSUbuntu24}
+	return allOperatingSystems
 }
 
 // =============================================================================
@@ -748,6 +711,8 @@ const (
 	RuleActionDeny   RuleAction = "deny"
 	RuleActionReject RuleAction = "reject"
 )
+
+var allRuleActions = []RuleAction{RuleActionAllow, RuleActionDeny, RuleActionReject}
 
 func (r RuleAction) String() string {
 	return string(r)
@@ -767,12 +732,7 @@ func (r RuleAction) Label() string {
 }
 
 func (r RuleAction) IsValid() bool {
-	switch r {
-	case RuleActionAllow, RuleActionDeny, RuleActionReject:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(r, allRuleActions...)
 }
 
 func (r *RuleAction) Scan(value interface{}) error {
@@ -793,7 +753,7 @@ func ParseRuleAction(s string) (RuleAction, error) {
 }
 
 func AllRuleActions() []RuleAction {
-	return []RuleAction{RuleActionAllow, RuleActionDeny, RuleActionReject}
+	return allRuleActions
 }
 
 // =============================================================================

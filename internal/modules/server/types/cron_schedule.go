@@ -22,6 +22,11 @@ const (
 	CronMonthly        CronSchedule = "0 0 1 * *"
 )
 
+var allCronSchedules = []CronSchedule{
+	CronEveryMinute, CronEvery5Minutes, CronEvery15Minutes, CronEvery30Minutes,
+	CronHourly, CronDaily, CronDaily2AM, CronDaily3AM, CronWeekly, CronMonthly,
+}
+
 var cronScheduleDescriptions = map[CronSchedule]string{
 	CronEveryMinute:    "Every minute",
 	CronEvery5Minutes:  "Every 5 minutes",
@@ -77,13 +82,7 @@ func (c CronSchedule) FrequencyName() string {
 
 // IsValid checks if the schedule is a known constant
 func (c CronSchedule) IsValid() bool {
-	switch c {
-	case CronEveryMinute, CronEvery5Minutes, CronEvery15Minutes, CronEvery30Minutes,
-		CronHourly, CronDaily, CronDaily2AM, CronDaily3AM, CronWeekly, CronMonthly:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(c, allCronSchedules...)
 }
 
 // FromExpression tries to match an expression to a known schedule
@@ -106,8 +105,5 @@ func (c CronSchedule) Value() (driver.Value, error) {
 
 // AllCronSchedules returns all predefined cron schedules
 func AllCronSchedules() []CronSchedule {
-	return []CronSchedule{
-		CronEveryMinute, CronEvery5Minutes, CronEvery15Minutes, CronEvery30Minutes,
-		CronHourly, CronDaily, CronDaily2AM, CronDaily3AM, CronWeekly, CronMonthly,
-	}
+	return allCronSchedules
 }

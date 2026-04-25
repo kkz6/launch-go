@@ -52,12 +52,7 @@ func (r TeamRole) Label() string {
 
 // IsValid checks if the role is valid
 func (r TeamRole) IsValid() bool {
-	switch r {
-	case TeamRoleOwner, TeamRoleAdmin, TeamRoleEditor, TeamRoleMember:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(r, allTeamRoles...)
 }
 
 // CanManageTeam checks if this role can manage team settings

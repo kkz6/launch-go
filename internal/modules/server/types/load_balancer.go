@@ -22,6 +22,11 @@ const (
 	LBPolicyRandom     LBPolicy = "random"
 )
 
+var allLBPolicies = []LBPolicy{
+	LBPolicyRoundRobin, LBPolicyLeastConn, LBPolicyIPHash,
+	LBPolicyFirst, LBPolicyRandom,
+}
+
 func (p LBPolicy) String() string {
 	return string(p)
 }
@@ -42,13 +47,7 @@ func (p LBPolicy) Label() string {
 }
 
 func (p LBPolicy) IsValid() bool {
-	switch p {
-	case LBPolicyRoundRobin, LBPolicyLeastConn, LBPolicyIPHash,
-		LBPolicyFirst, LBPolicyRandom:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(p, allLBPolicies...)
 }
 
 func (p *LBPolicy) Scan(value interface{}) error {
@@ -74,10 +73,7 @@ func ParseLBPolicy(s string) (LBPolicy, error) {
 }
 
 func AllLBPolicies() []LBPolicy {
-	return []LBPolicy{
-		LBPolicyRoundRobin, LBPolicyLeastConn, LBPolicyIPHash,
-		LBPolicyFirst, LBPolicyRandom,
-	}
+	return allLBPolicies
 }
 
 // =============================================================================
@@ -92,6 +88,8 @@ const (
 	HealthStatusUnhealthy HealthStatus = "unhealthy"
 	HealthStatusUnknown   HealthStatus = "unknown"
 )
+
+var allHealthStatuses = []HealthStatus{HealthStatusHealthy, HealthStatusUnhealthy, HealthStatusUnknown}
 
 func (h HealthStatus) String() string {
 	return string(h)
@@ -111,12 +109,7 @@ func (h HealthStatus) Label() string {
 }
 
 func (h HealthStatus) IsValid() bool {
-	switch h {
-	case HealthStatusHealthy, HealthStatusUnhealthy, HealthStatusUnknown:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(h, allHealthStatuses...)
 }
 
 func (h *HealthStatus) Scan(value interface{}) error {

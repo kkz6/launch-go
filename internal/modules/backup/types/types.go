@@ -56,12 +56,7 @@ func (s BackupJobStatus) Label() string {
 
 // IsValid checks if the status is a valid BackupJobStatus
 func (s BackupJobStatus) IsValid() bool {
-	switch s {
-	case BackupJobStatusPending, BackupJobStatusRunning, BackupJobStatusFinished, BackupJobStatusFailed:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(s, allBackupJobStatuses...)
 }
 
 // Value implements driver.Valuer for database storage
@@ -115,12 +110,7 @@ func (d StorageDriver) Label() string {
 
 // IsValid checks if the driver is a valid StorageDriver
 func (d StorageDriver) IsValid() bool {
-	switch d {
-	case StorageDriverS3, StorageDriverDropbox:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(d, allStorageDrivers...)
 }
 
 // Value implements driver.Valuer for database storage

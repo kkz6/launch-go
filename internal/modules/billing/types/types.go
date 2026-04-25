@@ -48,7 +48,7 @@ func (p PlanInterval) Label() string {
 
 // IsValid checks if the interval is valid
 func (p PlanInterval) IsValid() bool {
-	return p == PlanIntervalMonthly || p == PlanIntervalYearly
+	return enumtypes.IsValid(p, allPlanIntervals...)
 }
 
 // IsMonthly checks if the interval is monthly
@@ -132,18 +132,7 @@ func (s SubscriptionStatus) Label() string {
 
 // IsValid checks if the status is a valid subscription status
 func (s SubscriptionStatus) IsValid() bool {
-	switch s {
-	case SubscriptionStatusOnTrial,
-		SubscriptionStatusActive,
-		SubscriptionStatusPaused,
-		SubscriptionStatusPastDue,
-		SubscriptionStatusUnpaid,
-		SubscriptionStatusCancelled,
-		SubscriptionStatusExpired:
-		return true
-	default:
-		return false
-	}
+	return enumtypes.IsValid(s, allSubscriptionStatuses...)
 }
 
 // IsActive checks if the subscription is considered active
@@ -229,12 +218,7 @@ func (o OrderStatus) Label() string {
 
 // IsValid checks if the order status is valid
 func (o OrderStatus) IsValid() bool {
-	switch o {
-	case OrderStatusPending, OrderStatusPaid, OrderStatusFailed, OrderStatusRefunded, OrderStatusDisputed:
-		return true
-	default:
-		return false
-	}
+	return enumtypes.IsValid(o, allOrderStatuses...)
 }
 
 // IsPaid checks if the order is paid
@@ -297,12 +281,7 @@ func (u UserRole) Label() string {
 
 // IsValid checks if the user role is valid
 func (u UserRole) IsValid() bool {
-	switch u {
-	case UserRoleCustomer, UserRoleManager, UserRoleAdmin:
-		return true
-	default:
-		return false
-	}
+	return enumtypes.IsValid(u, allUserRoles...)
 }
 
 // IsAdmin checks if the role is admin or manager
@@ -446,32 +425,7 @@ func (w WebhookEventType) Label() string {
 
 // IsValid checks if the webhook event type is valid
 func (w WebhookEventType) IsValid() bool {
-	switch w {
-	case WebhookEventSubscriptionActive,
-		WebhookEventSubscriptionCancelled,
-		WebhookEventSubscriptionExpired,
-		WebhookEventSubscriptionFailed,
-		WebhookEventSubscriptionOnHold,
-		WebhookEventSubscriptionRenewed,
-		WebhookEventSubscriptionUpdated,
-		WebhookEventSubscriptionPlanChanged,
-		WebhookEventPaymentSucceeded,
-		WebhookEventPaymentFailed,
-		WebhookEventPaymentProcessing,
-		WebhookEventPaymentCancelled,
-		WebhookEventRefundSucceeded,
-		WebhookEventRefundFailed,
-		WebhookEventDisputeOpened,
-		WebhookEventDisputeExpired,
-		WebhookEventDisputeAccepted,
-		WebhookEventDisputeCancelled,
-		WebhookEventDisputeChallenged,
-		WebhookEventDisputeWon,
-		WebhookEventDisputeLost:
-		return true
-	default:
-		return false
-	}
+	return enumtypes.IsValid(w, allWebhookEventTypes...)
 }
 
 // IsSubscriptionEvent checks if the event is a subscription-related event

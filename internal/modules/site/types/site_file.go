@@ -19,6 +19,15 @@ const (
 	SiteFileCaddyLog        SiteFileType = "caddy_log"
 )
 
+var allSiteFileTypes = []SiteFileType{
+	SiteFileCaddyfile,
+	SiteFileEnvironment,
+	SiteFileComposerAuth,
+	SiteFileWordpressConfig,
+	SiteFileLaravelLog,
+	SiteFileCaddyLog,
+}
+
 // String returns the string representation
 func (f SiteFileType) String() string {
 	return string(f)
@@ -128,13 +137,7 @@ func (f SiteFileType) GetPath(sitePath string, zeroDowntime bool) string {
 
 // IsValid checks if the file type is valid
 func (f SiteFileType) IsValid() bool {
-	switch f {
-	case SiteFileCaddyfile, SiteFileEnvironment, SiteFileComposerAuth,
-		SiteFileWordpressConfig, SiteFileLaravelLog, SiteFileCaddyLog:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(f, allSiteFileTypes...)
 }
 
 func (f *SiteFileType) Scan(value interface{}) error {
@@ -176,12 +179,5 @@ func LogFilesForSiteType(siteType SiteType) []SiteFileType {
 
 // AllSiteFileTypes returns all valid site file types
 func AllSiteFileTypes() []SiteFileType {
-	return []SiteFileType{
-		SiteFileCaddyfile,
-		SiteFileEnvironment,
-		SiteFileComposerAuth,
-		SiteFileWordpressConfig,
-		SiteFileLaravelLog,
-		SiteFileCaddyLog,
-	}
+	return allSiteFileTypes
 }
