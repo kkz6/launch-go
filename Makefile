@@ -1,4 +1,4 @@
-.PHONY: build run worker test lint lint-revive lint-static lint-fix lint-install migrate migrate-rollback migrate-fresh migrate-status shellcheck help client-install client-dev dev-all setup-hooks
+.PHONY: build run worker test lint lint-legacy lint-revive lint-static lint-fix lint-install mock migrate migrate-rollback migrate-fresh migrate-status shellcheck help client-install client-dev dev-all setup-hooks
 
 # Build variables
 BINARY_API=bin/api
@@ -58,16 +58,21 @@ test-coverage:
 	@go test -v -coverprofile=coverage.out ./...
 	@go tool cover -html=coverage.out -o coverage.html
 
-## lint: Run all linters (revive, staticcheck, go vet)
-lint: lint-revive lint-static lint-vet
-	@echo "All linters passed!"
+## lint: Run golangci-lint (umbrella over revive, staticcheck, govet, errcheck, gosec, etc.)
+lint:
+	@echo "Running golangci-lint..."
+	@$(GOBIN)/golangci-lint run --timeout=5m
 
-## lint-revive: Run revive linter
+## lint-legacy: Run the original individual linters (revive, staticcheck, go vet)
+lint-legacy: lint-revive lint-static lint-vet
+	@echo "All legacy linters passed!"
+
+## lint-revive: Run revive linter directly (legacy; prefer `make lint`)
 lint-revive:
 	@echo "Running revive..."
 	@$(GOBIN)/revive -config revive.toml -formatter friendly ./...
 
-## lint-static: Run staticcheck
+## lint-static: Run staticcheck directly (legacy; prefer `make lint`)
 lint-static:
 	@echo "Running staticcheck..."
 	@$(GOBIN)/staticcheck -f stylish ./...
@@ -83,10 +88,11 @@ lint-fix:
 	@$(GOBIN)/goimports -w $(GO_FILES)
 	@echo "Imports fixed!"
 
-## lint-install: Install all linting tools
+## lint-install: Install all linting tools (golangci-lint umbrella + legacy tools)
 lint-install:
 	@echo "Installing linting tools..."
 	@go install golang.org/x/tools/cmd/goimports@latest
+	@go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.1.6
 	@go install github.com/mgechev/revive@latest
 	@go install honnef.co/go/tools/cmd/staticcheck@latest
 	@go install golang.org/x/vuln/cmd/govulncheck@latest
@@ -119,6 +125,16 @@ fmt:
 setup-hooks:
 	@chmod +x scripts/setup-hooks.sh
 	@./scripts/setup-hooks.sh
+
+## mock: Regenerate mocks declared in .mockery.yml
+mock:
+	@command -v $(GOBIN)/mockery >/dev/null 2>&1 || { \
+		echo "Installing mockery..."; \
+		go install github.com/vektra/mockery/v3@latest; \
+	}
+	@echo "Generating mocks..."
+	@$(GOBIN)/mockery
+	@echo "Done. Generated mocks live next to their source packages under mocks/."
 
 ## tidy: Tidy go modules
 tidy:
