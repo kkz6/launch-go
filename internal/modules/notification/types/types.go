@@ -57,12 +57,7 @@ func (c ChannelType) Label() string {
 
 // IsValid checks if the channel type is valid
 func (c ChannelType) IsValid() bool {
-	switch c {
-	case ChannelTypeEmail, ChannelTypeSlack, ChannelTypeDiscord, ChannelTypeTelegram:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(c, allChannelTypes...)
 }
 
 // Value implements the driver.Valuer interface
@@ -166,23 +161,7 @@ func (n NotificationType) Label() string {
 
 // IsValid checks if the notification type is valid
 func (n NotificationType) IsValid() bool {
-	switch n {
-	case NotificationTypeServerProvisioned,
-		NotificationTypeServerProvisioningFailed,
-		NotificationTypeServerConnectionLost,
-		NotificationTypeServerThresholdExceeded,
-		NotificationTypeDeploymentFailed,
-		NotificationTypeSiteInstallationFailed,
-		NotificationTypeJobOnServerFailed,
-		NotificationTypePhpInstallationFailed,
-		NotificationTypePhpExtensionInstallFailed,
-		NotificationTypePhpExtensionUninstallFailed,
-		NotificationTypeVulnerabilityAuditCompleted,
-		NotificationTypeFailedToDeleteServer:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(n, allNotificationTypes...)
 }
 
 // Value implements the driver.Valuer interface

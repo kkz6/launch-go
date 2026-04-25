@@ -58,12 +58,7 @@ func (p GitProviderType) Label() string {
 
 // IsValid checks if the provider type is valid
 func (p GitProviderType) IsValid() bool {
-	switch p {
-	case GitProviderGitHub, GitProviderGitLab, GitProviderBitbucket:
-		return true
-	default:
-		return false
-	}
+	return enumtypes.IsValid(p, allGitProviders...)
 }
 
 // ParseGitProviderType parses a string into a GitProviderType
@@ -128,12 +123,7 @@ func (a AccountType) Label() string {
 
 // IsValid checks if the account type is valid
 func (a AccountType) IsValid() bool {
-	switch a {
-	case AccountTypeUser, AccountTypeOrganization:
-		return true
-	default:
-		return false
-	}
+	return enumtypes.IsValid(a, allAccountTypes...)
 }
 
 // IsOrganization checks if the account is an organization
@@ -209,12 +199,7 @@ func (r RepositorySelection) Label() string {
 
 // IsValid checks if the selection is valid
 func (r RepositorySelection) IsValid() bool {
-	switch r {
-	case RepositorySelectionAll, RepositorySelectionSelected:
-		return true
-	default:
-		return false
-	}
+	return enumtypes.IsValid(r, allRepositorySelections...)
 }
 
 // IsAll returns true if all repositories are selected
@@ -302,19 +287,7 @@ func (w WebhookEventType) Label() string {
 
 // IsValid checks if the event type is valid
 func (w WebhookEventType) IsValid() bool {
-	switch w {
-	case WebhookEventPush,
-		WebhookEventPullRequest,
-		WebhookEventInstallation,
-		WebhookEventInstallationRepos,
-		WebhookEventRepositoriesAdded,
-		WebhookEventRepositoriesRemoved,
-		WebhookEventInstallationCreated,
-		WebhookEventInstallationDeleted:
-		return true
-	default:
-		return false
-	}
+	return enumtypes.IsValid(w, allWebhookEventTypes...)
 }
 
 // Value implements driver.Valuer for database storage

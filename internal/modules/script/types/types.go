@@ -51,12 +51,7 @@ func (r RunAsUser) Label() string {
 
 // IsValid checks if the RunAsUser value is valid
 func (r RunAsUser) IsValid() bool {
-	switch r {
-	case RunAsUserRoot, RunAsUserLocal:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(r, allRunAsUsers...)
 }
 
 // Value implements the driver.Valuer interface

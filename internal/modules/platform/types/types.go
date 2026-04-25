@@ -35,12 +35,7 @@ func (s UpdateSeverity) Label() string {
 }
 
 func (s UpdateSeverity) IsValid() bool {
-	switch s {
-	case SeverityInfo, SeverityWarning, SeverityCritical:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(s, allSeverities...)
 }
 
 func (s *UpdateSeverity) Scan(value any) error        { return enumtypes.ScanString(s, value) }
@@ -87,12 +82,7 @@ func (s ServerUpdateStatus) Label() string {
 }
 
 func (s ServerUpdateStatus) IsValid() bool {
-	switch s {
-	case UpdateStatusPending, UpdateStatusRunning, UpdateStatusCompleted, UpdateStatusFailed, UpdateStatusSkipped:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(s, allStatuses...)
 }
 
 func (s *ServerUpdateStatus) Scan(value any) error        { return enumtypes.ScanString(s, value) }

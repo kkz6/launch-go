@@ -21,6 +21,17 @@ const (
 	ProvisionStepSSHSecurity              ProvisionStep = "ssh_security"
 )
 
+var allProvisionSteps = []ProvisionStep{
+	ProvisionStepAptUpdateUpgrade,
+	ProvisionStepConfigureFirewall,
+	ProvisionStepConfigureSwap,
+	ProvisionStepInstallEssentialPackages,
+	ProvisionStepSetupDefaultUser,
+	ProvisionStepSetupRoot,
+	ProvisionStepSetupUnattendedUpgrades,
+	ProvisionStepSSHSecurity,
+}
+
 func (p ProvisionStep) String() string {
 	return string(p)
 }
@@ -94,14 +105,7 @@ func (p ProvisionStep) Label() string {
 
 // IsValid returns true if this is a valid provision step
 func (p ProvisionStep) IsValid() bool {
-	switch p {
-	case ProvisionStepAptUpdateUpgrade, ProvisionStepConfigureFirewall,
-		ProvisionStepConfigureSwap, ProvisionStepInstallEssentialPackages,
-		ProvisionStepSetupDefaultUser, ProvisionStepSetupRoot,
-		ProvisionStepSetupUnattendedUpgrades, ProvisionStepSSHSecurity:
-		return true
-	}
-	return false
+	return enumtypes.IsValid(p, allProvisionSteps...)
 }
 
 // ForFreshServer returns the provision steps in order for a fresh server
@@ -120,16 +124,7 @@ func ForFreshServer() []ProvisionStep {
 
 // AllProvisionSteps returns all provision steps
 func AllProvisionSteps() []ProvisionStep {
-	return []ProvisionStep{
-		ProvisionStepAptUpdateUpgrade,
-		ProvisionStepConfigureFirewall,
-		ProvisionStepConfigureSwap,
-		ProvisionStepInstallEssentialPackages,
-		ProvisionStepSetupDefaultUser,
-		ProvisionStepSetupRoot,
-		ProvisionStepSetupUnattendedUpgrades,
-		ProvisionStepSSHSecurity,
-	}
+	return allProvisionSteps
 }
 
 // ParseProvisionStep parses a string into a ProvisionStep

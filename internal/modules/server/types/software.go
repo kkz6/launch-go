@@ -34,6 +34,14 @@ const (
 	SoftwareLaunchAgent  Software = "launch_agent"
 )
 
+var allSoftware = []Software{
+	SoftwareCaddy2, SoftwareCaddy2LB, SoftwareComposer2, SoftwareMySQL80, SoftwarePostgreSQL16,
+	SoftwareNode21, SoftwareBun, SoftwarePhp56, SoftwarePhp70, SoftwarePhp71,
+	SoftwarePhp72, SoftwarePhp73, SoftwarePhp74, SoftwarePhp80, SoftwarePhp81,
+	SoftwarePhp82, SoftwarePhp83, SoftwarePhp84, SoftwareRedis, SoftwareSupervisor,
+	SoftwareLaunchAgent,
+}
+
 func (s Software) String() string {
 	return string(s)
 }
@@ -70,16 +78,7 @@ func (s Software) Label() string {
 }
 
 func (s Software) IsValid() bool {
-	switch s {
-	case SoftwareCaddy2, SoftwareCaddy2LB, SoftwareComposer2, SoftwareMySQL80, SoftwarePostgreSQL16,
-		SoftwareNode21, SoftwareBun, SoftwarePhp56, SoftwarePhp70, SoftwarePhp71,
-		SoftwarePhp72, SoftwarePhp73, SoftwarePhp74, SoftwarePhp80, SoftwarePhp81,
-		SoftwarePhp82, SoftwarePhp83, SoftwarePhp84, SoftwareRedis, SoftwareSupervisor,
-		SoftwareLaunchAgent:
-		return true
-	}
-
-	return false
+	return enumtypes.IsValid(s, allSoftware...)
 }
 
 func (s Software) GetVersion() string {
@@ -204,13 +203,7 @@ func ParseSoftware(str string) (Software, error) {
 }
 
 func AllSoftware() []Software {
-	return []Software{
-		SoftwareCaddy2, SoftwareCaddy2LB, SoftwareComposer2, SoftwareMySQL80, SoftwarePostgreSQL16,
-		SoftwareNode21, SoftwareBun, SoftwarePhp56, SoftwarePhp70, SoftwarePhp71,
-		SoftwarePhp72, SoftwarePhp73, SoftwarePhp74, SoftwarePhp80, SoftwarePhp81,
-		SoftwarePhp82, SoftwarePhp83, SoftwarePhp84, SoftwareRedis, SoftwareSupervisor,
-		SoftwareLaunchAgent,
-	}
+	return allSoftware
 }
 
 func AllPhpVersions() []Software {
