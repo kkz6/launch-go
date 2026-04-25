@@ -215,6 +215,37 @@ func TestFindOneNotFound(t *testing.T) {
 	}
 }
 
+func TestFindOneOrNil_Found(t *testing.T) {
+	db := setupTestDB(t)
+	seedTestData(t, db)
+	ctx := context.Background()
+
+	result, err := FindOneOrNil[testModel](ctx, db, WithID("1"))
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+	if result.ID != "1" {
+		t.Errorf("expected ID 1, got %s", result.ID)
+	}
+}
+
+func TestFindOneOrNil_NotFoundReturnsNilNil(t *testing.T) {
+	db := setupTestDB(t)
+	seedTestData(t, db)
+	ctx := context.Background()
+
+	result, err := FindOneOrNil[testModel](ctx, db, WithID("nonexistent"))
+	if err != nil {
+		t.Errorf("expected nil error for missing record, got %v", err)
+	}
+	if result != nil {
+		t.Errorf("expected nil result for missing record, got %+v", result)
+	}
+}
+
 func TestFindOneOrFail(t *testing.T) {
 	db := setupTestDB(t)
 	seedTestData(t, db)

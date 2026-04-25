@@ -54,6 +54,13 @@ func WithName(name string) Scope {
 	}
 }
 
+// WithEmail returns a scope that filters by email
+func WithEmail(email string) Scope {
+	return func(db *gorm.DB) *gorm.DB {
+		return db.Where("email = ?", email)
+	}
+}
+
 // WithAddress returns a scope that filters by address
 func WithAddress(address string) Scope {
 	return func(db *gorm.DB) *gorm.DB {
@@ -252,6 +259,9 @@ func applyScopes(db *gorm.DB, scopes ...Scope) *gorm.DB {
 
 // FindOne finds a single record matching the given scopes.
 // Returns a 404 error if no record matches.
+//
+// Use FindOneOrNil instead when "not found" is a valid, non-error outcome
+// (e.g. checking whether a user with an email exists during registration).
 func FindOne[T any](ctx context.Context, db *gorm.DB, scopes ...Scope) (*T, error) {
 	var entity T
 	query := applyScopes(db.WithContext(ctx), scopes...)
@@ -259,6 +269,46 @@ func FindOne[T any](ctx context.Context, db *gorm.DB, scopes ...Scope) (*T, erro
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fiberutil.NotFound()
+		}
+		return nil, err
+	}
+	return &entity, nil
+}
+
+// FindOneOrNil finds a single record matching the given scopes.
+// Returns (nil, nil) when no record matches — use this in lookup methods
+// where "not found" is a valid, non-exceptional outcome (e.g. uniqueness
+// checks, optional foreign-key lookups). Genuine database errors are still
+// returned as the second value.
+//
+// This folds the GORM ErrRecordNotFound → nil idiom that ~30 repository
+// methods currently hand-roll, e.g.:
+//
+//	// Before:
+//	var user models.User
+//	err := r.DB.WithContext(ctx).
+//	    Preload("CurrentTeam").Preload("Teams").
+//	    First(&user, "id = ?", id).Error
+//	if err != nil {
+//	    if errors.Is(err, gorm.ErrRecordNotFound) {
+//	        return nil, nil
+//	    }
+//	    return nil, err
+//	}
+//	return &user, nil
+//
+//	// After:
+//	return repository.FindOneOrNil[models.User](ctx, r.DB,
+//	    repository.WithID(id),
+//	    repository.PreloadMany("CurrentTeam", "Teams"),
+//	)
+func FindOneOrNil[T any](ctx context.Context, db *gorm.DB, scopes ...Scope) (*T, error) {
+	var entity T
+	query := applyScopes(db.WithContext(ctx), scopes...)
+	err := query.First(&entity).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, nil
 		}
 		return nil, err
 	}
