@@ -47,3 +47,6 @@ dist/
 
 # Storage (shellcheck output, etc)
 /storage/
+
+# Mockery v2-to-v3 migration leftover; safe to delete locally
+.mockery_v3.yml
