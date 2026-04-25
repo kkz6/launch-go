@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"gorm.io/gorm"
@@ -23,42 +22,27 @@ func NewUserRepository(db *gorm.DB) *UserRepository {
 	}
 }
 
-// FindByID finds a user by their ID with preloaded relations
+// userPreloads is the standard set of relations loaded with a User.
+// Centralised so FindByID and FindByEmail (and any future lookup methods)
+// stay in sync — adding a new association here flows everywhere at once.
+var userPreloads = repository.PreloadMany("CurrentTeam", "Teams")
+
+// FindByID finds a user by their ID with preloaded relations.
+// Returns (nil, nil) when no user exists with that id.
 func (r *UserRepository) FindByID(ctx context.Context, id string) (*models.User, error) {
-	var user models.User
-	err := r.DB.WithContext(ctx).
-		Preload("CurrentTeam").
-		Preload("Teams").
-		First(&user, "id = ?", id).Error
-
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	return &user, nil
+	return repository.FindOneOrNil[models.User](ctx, r.DB,
+		repository.WithID(id),
+		userPreloads,
+	)
 }
 
-// FindByEmail finds a user by their email
+// FindByEmail finds a user by their email with preloaded relations.
+// Returns (nil, nil) when no user exists with that email.
 func (r *UserRepository) FindByEmail(ctx context.Context, email string) (*models.User, error) {
-	var user models.User
-	err := r.DB.WithContext(ctx).
-		Preload("CurrentTeam").
-		Preload("Teams").
-		First(&user, "email = ?", email).Error
-
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	return &user, nil
+	return repository.FindOneOrNil[models.User](ctx, r.DB,
+		repository.WithEmail(email),
+		userPreloads,
+	)
 }
 
 // ExistsByEmail checks if a user with the given email exists
