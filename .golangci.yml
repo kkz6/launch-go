@@ -1,0 +1,151 @@
+version: "2"
+
+# Consolidates the CI lint matrix (revive / staticcheck / gofmt / govet)
+# into a single golangci-lint run, and layers in errcheck, ineffassign,
+# unused, misspell, unconvert, unparam, and gosec — the same set goshop
+# uses. revive.toml and staticcheck.conf remain authoritative for their
+# rule sets and are referenced from here so config doesn't drift.
+
+run:
+  timeout: 5m
+  go: "1.24"
+
+formatters:
+  enable:
+    - gofmt
+  exclusions:
+    paths:
+      - client
+      - bin
+      - tmp
+      - storage
+      - migrate-encryption
+      - tests/fixtures
+
+linters:
+  default: none
+  enable:
+    - errcheck
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - unconvert
+    - unparam
+    - gosec
+    - revive
+
+  settings:
+    gosec:
+      excludes:
+        # G101 fires on hardcoded test fixtures and config struct field
+        # names ("Token", "Secret"), not real credentials. Same exclusion
+        # goshop uses.
+        - G101
+        # G115 (integer overflow conversion) — too noisy for ULID/ID
+        # arithmetic; revisit once we tighten conversions.
+        - G115
+
+    staticcheck:
+      # Mirrors staticcheck.conf so behaviour is identical when running
+      # via golangci-lint.
+      checks:
+        - "all"
+        - "-ST1000"  # Package comments — too strict for internal packages
+        - "-ST1003"  # Naming conventions — handled by revive
+        - "-ST1016"  # Receiver names — handled by revive
+        - "-ST1020"  # Comment on exported function — too strict
+        - "-ST1021"  # Comment on exported type — too strict
+        - "-ST1022"  # Comment on exported var/const — too strict
+
+    revive:
+      severity: warning
+      confidence: 0.8
+      enable-all-rules: false
+      rules:
+        # Mirrors revive.toml. Keep these in sync if you edit either file.
+        - name: blank-imports
+        - name: context-as-argument
+        - name: context-keys-type
+        - name: dot-imports
+        - name: empty-block
+        - name: error-naming
+        - name: error-return
+        - name: error-strings
+        - name: errorf
+        - name: increment-decrement
+        - name: indent-error-flow
+        - name: range
+        - name: receiver-naming
+        - name: redefines-builtin-id
+        - name: superfluous-else
+        - name: time-naming
+        - name: unexported-return
+        - name: unreachable-code
+        - name: var-declaration
+        - name: var-naming
+          arguments:
+            - []
+            - []
+            - - skipPackageNameChecks: true
+        - name: atomic
+        - name: bare-return
+        - name: bool-literal-in-expr
+        - name: confusing-naming
+        - name: confusing-results
+        - name: constant-logical-expr
+        - name: defer
+        - name: duplicated-imports
+        - name: early-return
+        - name: empty-lines
+        - name: get-return
+        - name: identical-branches
+        - name: if-return
+        - name: import-shadowing
+        - name: modifies-parameter
+        - name: modifies-value-receiver
+        - name: nested-structs
+        - name: optimize-operands-order
+        - name: range-val-address
+        - name: range-val-in-closure
+        - name: redundant-import-alias
+        - name: string-of-int
+        - name: struct-tag
+        - name: time-equal
+        - name: unconditional-recursion
+        - name: unexported-naming
+        - name: unhandled-error
+          arguments:
+            - "fmt.Printf"
+            - "fmt.Println"
+            - "fmt.Print"
+            - "strings\\.Builder\\.WriteString"
+        - name: unnecessary-stmt
+        - name: useless-break
+        - name: waitgroup-by-value
+
+  exclusions:
+    generated: strict
+    paths:
+      - client
+      - bin
+      - tmp
+      - storage
+      - tests/fixtures
+      # Migration files use AutoMigrate which produces unchecked errors
+      # in patterns golangci-lint flags; keep them out of scope.
+      - internal/database/migrations
+    rules:
+      # Test files are allowed to call the things linters typically nag
+      # about (panic on error, hardcoded credentials in fixtures).
+      - path: _test\.go
+        linters:
+          - errcheck
+          - gosec
+          - unparam
+      # Bootstrap code in cmd/ legitimately uses log.Fatal on startup
+      # failures — this matches the "deep-exit" exclusion in revive.toml.
+      - path: cmd/.*/main\.go
+        linters:
+          - gosec
