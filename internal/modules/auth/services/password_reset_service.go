@@ -95,9 +95,13 @@ func (s *PasswordResetService) ResetPassword(ctx context.Context, req *dto.Reset
 		return errors.New("invalid or expired reset token")
 	}
 
-	// Check if token expired
+	// Check if token expired. Best-effort cleanup of the stale row — if the
+	// delete fails the next attempt will still see the token as expired
+	// (IsExpired is the source of truth), so we deliberately swallow the
+	// error rather than leaking it to the user. The explicit assignment
+	// documents intent for the linter and future readers.
 	if resetToken.IsExpired() {
-		s.repos.PasswordResetToken().Delete(ctx, req.Email)
+		_ = s.repos.PasswordResetToken().Delete(ctx, req.Email)
 
 		return errors.New("invalid or expired reset token")
 	}
