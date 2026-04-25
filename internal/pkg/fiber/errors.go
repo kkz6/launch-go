@@ -4,6 +4,8 @@ import (
 	"errors"
 
 	"github.com/gofiber/fiber/v2"
+
+	"github.com/kkz6/launch-go/internal/pkg/apperror"
 )
 
 // Default error messages
@@ -73,7 +75,7 @@ func msgOrDefault(message []string, defaultMsg string) string {
 
 // IsNotFound checks if error is a not found condition
 func IsNotFound(err error) bool {
-	if errors.Is(err, ErrNotFound) {
+	if errors.Is(err, ErrNotFound) || errors.Is(err, apperror.ErrNotFound) {
 		return true
 	}
 	var e *fiber.Error
@@ -85,6 +87,9 @@ func IsNotFound(err error) bool {
 
 // IsUnauthorized checks if error is an unauthorized condition
 func IsUnauthorized(err error) bool {
+	if errors.Is(err, apperror.ErrUnauthorized) {
+		return true
+	}
 	var e *fiber.Error
 	if errors.As(err, &e) && e.Code == fiber.StatusUnauthorized {
 		return true
@@ -94,6 +99,9 @@ func IsUnauthorized(err error) bool {
 
 // IsForbidden checks if error is a forbidden condition
 func IsForbidden(err error) bool {
+	if errors.Is(err, apperror.ErrForbidden) {
+		return true
+	}
 	var e *fiber.Error
 	if errors.As(err, &e) && e.Code == fiber.StatusForbidden {
 		return true
@@ -103,6 +111,9 @@ func IsForbidden(err error) bool {
 
 // IsConflict checks if error is a conflict condition
 func IsConflict(err error) bool {
+	if errors.Is(err, apperror.ErrConflict) {
+		return true
+	}
 	var e *fiber.Error
 	if errors.As(err, &e) && e.Code == fiber.StatusConflict {
 		return true
@@ -112,7 +123,7 @@ func IsConflict(err error) bool {
 
 // IsValidationError checks if error is a validation error
 func IsValidationError(err error) bool {
-	if errors.Is(err, ErrValidation) {
+	if errors.Is(err, ErrValidation) || errors.Is(err, apperror.ErrValidation) || errors.Is(err, apperror.ErrBadRequest) {
 		return true
 	}
 	var e *fiber.Error
@@ -124,6 +135,9 @@ func IsValidationError(err error) bool {
 
 // IsInternalError checks if error is a server error (5xx)
 func IsInternalError(err error) bool {
+	if ae := apperror.As(err); ae != nil && ae.HTTPStatus >= 500 {
+		return true
+	}
 	var e *fiber.Error
 	if errors.As(err, &e) && e.Code >= 500 {
 		return true
