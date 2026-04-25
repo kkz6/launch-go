@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	gofiber "github.com/gofiber/fiber/v2"
+
+	"github.com/kkz6/launch-go/internal/pkg/apperror"
 )
 
 func TestNotFound(t *testing.T) {
@@ -309,6 +311,38 @@ func TestIsInternalError(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := IsInternalError(tt.err); got != tt.want {
 				t.Errorf("IsInternalError() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// AppError integration: the legacy Is* helpers should recognise the new
+// apperror types so handlers can migrate piecemeal without callers needing
+// to know which error shape they got.
+func TestIsHelpersRecogniseAppError(t *testing.T) {
+	tests := []struct {
+		name  string
+		check func(error) bool
+		err   error
+		want  bool
+	}{
+		{"IsNotFound matches apperror.ErrNotFound", IsNotFound, apperror.ErrNotFound, true},
+		{"IsNotFound matches derived AppError", IsNotFound, apperror.ErrNotFound.WithMessage("user gone"), true},
+		{"IsUnauthorized matches apperror.ErrUnauthorized", IsUnauthorized, apperror.ErrUnauthorized, true},
+		{"IsForbidden matches apperror.ErrForbidden", IsForbidden, apperror.ErrForbidden, true},
+		{"IsConflict matches apperror.ErrConflict", IsConflict, apperror.ErrConflict, true},
+		{"IsValidationError matches apperror.ErrValidation", IsValidationError, apperror.ErrValidation, true},
+		{"IsValidationError matches apperror.ErrBadRequest", IsValidationError, apperror.ErrBadRequest, true},
+		{"IsInternalError matches apperror.ErrInternal", IsInternalError, apperror.ErrInternal, true},
+		{"IsInternalError matches custom 503 AppError", IsInternalError, apperror.ErrServiceUnavailable, true},
+		{"IsNotFound rejects apperror.ErrConflict", IsNotFound, apperror.ErrConflict, false},
+		{"IsConflict rejects regular error", IsConflict, errors.New("plain"), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.check(tt.err); got != tt.want {
+				t.Errorf("got %v, want %v", got, tt.want)
 			}
 		})
 	}

@@ -141,11 +141,15 @@ func NewPaginationMeta(page, perPage int, total int64) PaginationMeta {
 //	    "errors": { "field": ["Error message"] }
 //	}
 type APIResponse struct {
-	Success bool              `json:"success"`
-	Message string            `json:"message,omitempty"`
-	Data    any               `json:"data,omitempty"`
-	Meta    *PaginationMeta   `json:"meta,omitempty"`
-	Errors  map[string]string `json:"errors,omitempty"`
+	Success bool            `json:"success"`
+	Message string          `json:"message,omitempty"`
+	Data    any             `json:"data,omitempty"`
+	Meta    *PaginationMeta `json:"meta,omitempty"`
+	// Code is an optional machine-readable error code (e.g. "auth.email_taken")
+	// populated when an AppError flows through the global error handler.
+	// Frontends can branch on this without parsing Message.
+	Code   string            `json:"code,omitempty"`
+	Errors map[string]string `json:"errors,omitempty"`
 }
 
 // NewSuccessResponse creates a successful API fiberctx.
