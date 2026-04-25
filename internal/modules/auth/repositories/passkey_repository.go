@@ -23,7 +23,7 @@ func NewPasskeyRepository(db *gorm.DB) *PasskeyRepository {
 
 // FindByUserID finds all passkeys for a user
 func (r *PasskeyRepository) FindByUserID(ctx context.Context, userID string) ([]models.Passkey, error) {
-	return r.Base.FindByUser(ctx, userID)
+	return r.FindByUser(ctx, userID)
 }
 
 // FindByCredentialID finds a passkey by credential ID

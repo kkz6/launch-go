@@ -91,7 +91,7 @@ func (r *ServiceRepository) FindDatabaseService(ctx context.Context, serverID st
 
 // UpdateStatus updates the service status
 func (r *ServiceRepository) UpdateStatus(ctx context.Context, id string, status types.ServiceStatus) error {
-	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
+	return r.UpdateFields(ctx, id, map[string]interface{}{
 		"status": status,
 	})
 }
@@ -110,7 +110,7 @@ func (r *ServiceRepository) UpdateWithTypeData(ctx context.Context, id string, s
 		service.TypeData[k] = v
 	}
 
-	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
+	return r.UpdateFields(ctx, id, map[string]interface{}{
 		"status":    status,
 		"type_data": service.TypeData,
 	})
@@ -118,7 +118,7 @@ func (r *ServiceRepository) UpdateWithTypeData(ctx context.Context, id string, s
 
 // SetDefault sets the is_default flag for a service
 func (r *ServiceRepository) SetDefault(ctx context.Context, id string, isDefault bool) error {
-	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
+	return r.UpdateFields(ctx, id, map[string]interface{}{
 		"is_default": isDefault,
 	})
 }
@@ -133,7 +133,7 @@ func (r *ServiceRepository) UnsetDefaultPhp(ctx context.Context, serverID string
 
 // MarkRemovalFailed marks a service removal as failed
 func (r *ServiceRepository) MarkRemovalFailed(ctx context.Context, id string) error {
-	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
+	return r.UpdateFields(ctx, id, map[string]interface{}{
 		"removal_requested_at": nil,
 		"removal_failed_at":    time.Now(),
 	})

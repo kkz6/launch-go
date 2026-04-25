@@ -43,7 +43,7 @@ func (r *PersonalAccessTokenRepository) FindByToken(ctx context.Context, token s
 // UpdateLastUsed updates the last used timestamp
 func (r *PersonalAccessTokenRepository) UpdateLastUsed(ctx context.Context, id string) error {
 	now := time.Now()
-	return r.Base.UpdateFields(ctx, id, map[string]interface{}{
+	return r.UpdateFields(ctx, id, map[string]interface{}{
 		"last_used_at": &now,
 	})
 }
