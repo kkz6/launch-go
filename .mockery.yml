@@ -1,0 +1,27 @@
+# Mockery v3 configuration for generating testify-style mocks.
+#
+# Pattern borrowed from goshop. Mocks are placed in a `mocks/` subdirectory
+# next to each source package, named after the interface they implement.
+# Tests import the mock package and construct mocks with NewInterfaceName(t):
+#
+#   import authmocks "github.com/kkz6/launch-go/internal/modules/auth/contracts/mocks"
+#   userRepo := authmocks.NewUserRepository(t)
+#   userRepo.EXPECT().FindByID(mock.Anything, "id_001").Return(&models.User{...}, nil)
+#
+# Run `make mock` to regenerate. Generated files ARE checked in so CI doesn't
+# need mockery installed and IDE autocomplete works out of the box.
+
+dir: "{{.InterfaceDir}}/mocks"
+structname: "{{.InterfaceName}}"
+pkgname: "mocks"
+filename: "{{.InterfaceName}}.go"
+template: testify
+template-data:
+  unroll-variadic: true
+
+packages:
+  # Auth contracts: repository interfaces consumed by services and handlers.
+  # Start small. Add more packages as modules adopt the testify-suite pattern.
+  github.com/kkz6/launch-go/internal/modules/auth/contracts:
+    config:
+      all: true
