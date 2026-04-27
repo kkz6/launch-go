@@ -11,6 +11,7 @@ import (
 	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	"github.com/kkz6/launch-go/internal/modules/site/contracts"
+	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
 	sitetypes "github.com/kkz6/launch-go/internal/modules/site/types"
@@ -296,14 +297,55 @@ func (s *DeploymentService) createDeployment(ctx context.Context, site *models.S
 	return deployment, nil
 }
 
-// List returns all deployments for a site
+// List returns all deployments for a site (model-returning).
 func (s *DeploymentService) List(ctx context.Context, siteID, serverID string) ([]models.Deployment, error) {
-	// Verify site exists and belongs to server
 	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return nil, err
 	}
-
 	return s.Repos().Deployment().FindBySite(ctx, siteID)
+}
+
+// ListResponses returns all deployments for a site as response DTOs.
+// Signature matches IndexDoubleNestedFunc:
+// (ctx, parentID=siteID, grandparentID=serverID, teamID).
+func (s *DeploymentService) ListResponses(ctx context.Context, siteID, serverID, teamID string) ([]dto.DeploymentResponse, error) {
+	_ = teamID
+	deployments, err := s.List(ctx, siteID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.DeploymentResponse, len(deployments))
+	for i := range deployments {
+		out[i] = dto.ToDeploymentResponse(&deployments[i])
+	}
+	return out, nil
+}
+
+// ShowResponse returns a single deployment as a response DTO. Signature
+// matches ShowDoubleNestedFunc.
+func (s *DeploymentService) ShowResponse(ctx context.Context, deploymentID, siteID, serverID, teamID string) (dto.DeploymentResponse, error) {
+	_ = teamID
+	deployment, err := s.FindByID(ctx, deploymentID, siteID, serverID)
+	if err != nil {
+		return dto.DeploymentResponse{}, err
+	}
+	return dto.ToDeploymentResponse(deployment), nil
+}
+
+// EnableAutoDeploymentAction wraps EnableAutoDeployment for the
+// ActionDoubleNested helper.
+func (s *DeploymentService) EnableAutoDeploymentAction(ctx context.Context, siteID, serverID, teamID, userID string) error {
+	_ = teamID
+	_ = userID
+	return s.EnableAutoDeployment(ctx, siteID, serverID)
+}
+
+// DisableAutoDeploymentAction wraps DisableAutoDeployment for the
+// ActionDoubleNested helper.
+func (s *DeploymentService) DisableAutoDeploymentAction(ctx context.Context, siteID, serverID, teamID, userID string) error {
+	_ = teamID
+	_ = userID
+	return s.DisableAutoDeployment(ctx, siteID, serverID)
 }
 
 // FindByID finds a deployment by ID

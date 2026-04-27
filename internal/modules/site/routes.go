@@ -44,7 +44,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	sites := servers.Group("/sites", middleware.RequireProvisionedServer("serverId"))
 
 	m.registerSiteRoutes(sites, h.Site, svc)
-	m.registerDeploymentRoutes(sites, h.Deployment)
+	m.registerDeploymentRoutes(sites, h.Deployment, svc)
 	m.registerSSLRoutes(sites, h.SSL)
 	m.registerSSLListRoutes(sites, svc)
 	m.registerQueueRoutes(sites, h.Queue, svc)
@@ -109,16 +109,20 @@ func (m *Module) registerSiteRoutes(router gofiber.Router, handler *handlers.Sit
 }
 
 // registerDeploymentRoutes registers deployment-related routes.
-func (m *Module) registerDeploymentRoutes(router gofiber.Router, handler *handlers.DeploymentHandler) {
+// List/Show + auto-deployment toggles use double-nested helpers; the
+// actions that return DTOs (Deploy, Rollback) and the custom-shape
+// endpoints (CancelQueued, autodeploy body-toggle) stay bespoke.
+func (m *Module) registerDeploymentRoutes(router gofiber.Router, handler *handlers.DeploymentHandler, svc *services.ServiceRegistry) {
+	d := svc.Deployment()
 	router.Post("/:id/deploy", handler.Deploy)
-	router.Get("/:id/deployments", handler.ListDeployments)
-	router.Get("/:id/deployments/:deploymentId", handler.ShowDeployment)
+	router.Get("/:id/deployments", fiberutil.IndexDoubleNested("serverId", "id", "Deployments retrieved", d.ListResponses))
+	router.Get("/:id/deployments/:deploymentId", fiberutil.ShowDoubleNested("serverId", "id", "deploymentId", "Deployment retrieved", d.ShowResponse))
 	router.Post("/:id/rollback/:deploymentId", handler.Rollback)
 	router.Delete("/:id/deployments/queued", handler.CancelQueuedDeployments)
 
 	router.Post("/:id/autodeploy", handler.ToggleAutoDeployment)
-	router.Post("/:id/auto-deployment/enable", handler.EnableAutoDeployment)
-	router.Post("/:id/auto-deployment/disable", handler.DisableAutoDeployment)
+	router.Post("/:id/auto-deployment/enable", fiberutil.ActionDoubleNested("serverId", "id", "Auto-deployment enabled", d.EnableAutoDeploymentAction))
+	router.Post("/:id/auto-deployment/disable", fiberutil.ActionDoubleNested("serverId", "id", "Auto-deployment disabled", d.DisableAutoDeploymentAction))
 }
 
 // registerSSLRoutes registers SSL/TLS routes.
