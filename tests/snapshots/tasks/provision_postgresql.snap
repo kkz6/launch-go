@@ -550,6 +550,11 @@ echo "Install Memcached for PHP 8.3"
 waitForAptUnlock
 yes '' | sudo DEBIAN_FRONTEND=noninteractive apt-get -y install php8.3-memcached || echo "php8.3-memcached not available, skipping..."
 
+echo "Install Swoole for PHP 8.3"
+
+waitForAptUnlock
+yes '' | sudo DEBIAN_FRONTEND=noninteractive apt-get -y install php8.3-swoole || echo "php8.3-swoole not available, skipping..."
+
 echo "Update PHP CLI config"
 
 # Update PHP CLI settings in php.ini
