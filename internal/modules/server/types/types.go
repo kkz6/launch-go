@@ -175,14 +175,16 @@ const (
 	ServerTypePhp          ServerType = "php"
 	ServerTypeDatabase     ServerType = "database"
 	ServerTypeLoadBalancer ServerType = "loadbalancer"
+	ServerTypeDocker       ServerType = "docker"
 )
 
-var allServerTypes = []ServerType{ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer}
+var allServerTypes = []ServerType{ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer, ServerTypeDocker}
 
 var serverTypeLabels = map[ServerType]string{
 	ServerTypePhp:          "PHP Application Server",
 	ServerTypeDatabase:     "Database Server",
 	ServerTypeLoadBalancer: "Load Balancer",
+	ServerTypeDocker:       "Docker Server",
 }
 
 func (t ServerType) String() string {
@@ -224,6 +226,12 @@ func (t ServerType) GetFeatures() []ServerFeature {
 			ServerFeatureSSLCertificates,
 			ServerFeatureServices,
 		}
+	case ServerTypeDocker:
+		return []ServerFeature{
+			ServerFeatureServices,
+			ServerFeatureBackups,
+			ServerFeatureSSLCertificates,
+		}
 	}
 
 	return nil
@@ -244,7 +252,7 @@ func (t ServerType) GetProcessManager() ProcessManager {
 	switch t {
 	case ServerTypePhp:
 		return ProcessManagerSupervisor
-	case ServerTypeDatabase, ServerTypeLoadBalancer:
+	case ServerTypeDatabase, ServerTypeLoadBalancer, ServerTypeDocker:
 		return ProcessManagerNone
 	}
 
@@ -370,12 +378,15 @@ const (
 	ServiceTypeNode        ServiceType = "node"
 	ServiceTypeBun         ServiceType = "bun"
 	ServiceTypeLaunchAgent ServiceType = "launch_agent"
+	ServiceTypeDocker      ServiceType = "container_runtime"
+	ServiceTypeTraefik     ServiceType = "reverse_proxy"
 )
 
 var allServiceTypes = []ServiceType{
 	ServiceTypePhp, ServiceTypeMySQL, ServiceTypePostgreSQL,
 	ServiceTypeSupervisor, ServiceTypeRedis, ServiceTypeCaddy,
 	ServiceTypeComposer, ServiceTypeNode, ServiceTypeBun, ServiceTypeLaunchAgent,
+	ServiceTypeDocker, ServiceTypeTraefik,
 }
 
 var serviceTypeLabels = map[ServiceType]string{
@@ -389,6 +400,8 @@ var serviceTypeLabels = map[ServiceType]string{
 	ServiceTypeNode:        "Node.js",
 	ServiceTypeBun:         "Bun",
 	ServiceTypeLaunchAgent: "Launch Agent",
+	ServiceTypeDocker:      "Docker",
+	ServiceTypeTraefik:     "Traefik",
 }
 
 func (s ServiceType) String() string {

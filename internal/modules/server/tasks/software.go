@@ -248,6 +248,10 @@ type SoftwareInstallConfig struct {
 	DatabasePassword string
 	DatabaseName     string
 	PublicIPv4       string
+	// TraefikAdminEmail enables Let's Encrypt ACME on the Traefik install
+	// when non-empty. Empty (default) installs Traefik without TLS — the
+	// resolver block is omitted from the generated traefik.yml.
+	TraefikAdminEmail string
 }
 
 // InstallSoftware creates a task to install software based on the software enum.
@@ -267,14 +271,15 @@ func InstallSoftware(software types.Software, config SoftwareInstallConfig) *tas
 	}
 
 	data := map[string]interface{}{
-		"Version":          software.GetVersion(),
-		"Username":         config.Username,
-		"MaxChildren":      maxChildren,
-		"RootPassword":     config.DatabasePassword,
-		"DatabasePassword": config.DatabasePassword,
-		"DatabaseName":     config.DatabaseName,
-		"PublicIPv4":       config.PublicIPv4,
-		"MaxConnections":   maxConnections,
+		"Version":           software.GetVersion(),
+		"Username":          config.Username,
+		"MaxChildren":       maxChildren,
+		"RootPassword":      config.DatabasePassword,
+		"DatabasePassword":  config.DatabasePassword,
+		"DatabaseName":      config.DatabaseName,
+		"PublicIPv4":        config.PublicIPv4,
+		"MaxConnections":    maxConnections,
+		"TraefikAdminEmail": config.TraefikAdminEmail,
 	}
 	script := templates.MustRender("server", templateName, data)
 	return taskrunner.NewBaseTask(

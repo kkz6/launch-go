@@ -56,6 +56,10 @@ type ProvisionFreshServerConfig struct {
 	// Launch Agent
 	AgentConfigPath string
 	AgentURL        string
+
+	// Traefik admin email (Docker server type). Optional — when empty,
+	// Traefik is installed without an ACME / Let's Encrypt resolver.
+	TraefikAdminEmail string
 }
 
 // provisionCallbackData holds data needed for callback handling
@@ -422,6 +426,18 @@ func buildSoftwareInstallData(software types.Software, config ProvisionFreshServ
 			AgentURL        string
 			RootUsername    string
 		}{config.AgentConfigPath, config.AgentURL, "root"}
+
+	case types.SoftwareDocker:
+		return struct {
+			Username string
+		}{config.Username}
+
+	case types.SoftwareTraefik:
+		return struct {
+			Version           string
+			Username          string
+			TraefikAdminEmail string
+		}{software.GetVersion(), config.Username, config.TraefikAdminEmail}
 
 	default:
 		// Handle PHP versions
