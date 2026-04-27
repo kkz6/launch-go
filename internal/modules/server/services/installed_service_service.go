@@ -16,17 +16,35 @@ import (
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// ListServices returns all services for a server
-func (s *Service) ListServices(ctx context.Context, serverID, teamID string) ([]models.InstalledService, error) {
+// ListServices returns all services for a server. Signature matches
+// IndexNestedFunc.
+func (s *Service) ListServices(ctx context.Context, serverID, teamID string) ([]dto.ServiceResponse, error) {
 	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
-
-	return s.repos.Service().FindByServer(ctx, serverID)
+	svcs, err := s.repos.Service().FindByServer(ctx, serverID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.ServiceResponse, len(svcs))
+	for i := range svcs {
+		out[i] = dto.ToServiceResponse(&svcs[i])
+	}
+	return out, nil
 }
 
-// InstallService installs a software on a server
-func (s *Service) InstallService(ctx context.Context, serverID, teamID string, req *dto.CreateServiceRequest) (*models.InstalledService, error) {
+// InstallService installs a software on a server. Signature matches
+// CreateNestedFunc.
+func (s *Service) InstallService(ctx context.Context, serverID, teamID, userID string, req *dto.CreateServiceRequest) (dto.ServiceResponse, error) {
+	_ = userID
+	svc, err := s.runInstallService(ctx, serverID, teamID, req)
+	if err != nil {
+		return dto.ServiceResponse{}, err
+	}
+	return dto.ToServiceResponse(svc), nil
+}
+
+func (s *Service) runInstallService(ctx context.Context, serverID, teamID string, req *dto.CreateServiceRequest) (*models.InstalledService, error) {
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err

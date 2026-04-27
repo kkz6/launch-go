@@ -12,25 +12,47 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
-// ListSSHKeys returns all SSH keys for a team, optionally filtered by global status
-func (s *Service) ListSSHKeys(ctx context.Context, teamID string, globalOnly bool) ([]models.SSHKey, error) {
+// ListSSHKeys returns all SSH keys for a team, optionally filtered by
+// global status. Carries an extra `globalOnly` flag from a query param so
+// it does not fit the generic Index helper; routes wire a small bespoke
+// handler.
+func (s *Service) ListSSHKeys(ctx context.Context, teamID string, globalOnly bool) ([]dto.SSHKeyResponse, error) {
+	var keys []models.SSHKey
+	var err error
 	if globalOnly {
-		return s.repos.SSHKey().FindGlobalByTeam(ctx, teamID)
+		keys, err = s.repos.SSHKey().FindGlobalByTeam(ctx, teamID)
+	} else {
+		keys, err = s.repos.SSHKey().FindByTeam(ctx, teamID)
 	}
-	return s.repos.SSHKey().FindByTeam(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.SSHKeyResponse, len(keys))
+	for i := range keys {
+		out[i] = dto.ToSSHKeyResponse(&keys[i])
+	}
+	return out, nil
 }
 
-// ListServerSSHKeys returns all SSH keys attached to a server
-func (s *Service) ListServerSSHKeys(ctx context.Context, serverID, teamID string) ([]models.SSHKey, error) {
+// ListServerSSHKeys returns all SSH keys attached to a server. Signature
+// matches IndexNestedFunc.
+func (s *Service) ListServerSSHKeys(ctx context.Context, serverID, teamID string) ([]dto.SSHKeyResponse, error) {
 	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
-
-	return s.repos.SSHKey().FindByServer(ctx, serverID)
+	keys, err := s.repos.SSHKey().FindByServer(ctx, serverID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.SSHKeyResponse, len(keys))
+	for i := range keys {
+		out[i] = dto.ToSSHKeyResponse(&keys[i])
+	}
+	return out, nil
 }
 
-// CreateSSHKey creates a new SSH key
-func (s *Service) CreateSSHKey(ctx context.Context, teamID, userID string, req *dto.CreateSSHKeyRequest) (*models.SSHKey, error) {
+// CreateSSHKey creates a new SSH key. Signature matches CreateFunc.
+func (s *Service) CreateSSHKey(ctx context.Context, teamID, userID string, req *dto.CreateSSHKeyRequest) (dto.SSHKeyResponse, error) {
 	key := &models.SSHKey{
 		Name:        req.Name,
 		PublicKey:   req.PublicKey,
@@ -41,15 +63,15 @@ func (s *Service) CreateSSHKey(ctx context.Context, teamID, userID string, req *
 	key.UserID = userID
 
 	if err := s.repos.SSHKey().Create(ctx, key); err != nil {
-		return nil, err
+		return dto.SSHKeyResponse{}, err
 	}
 
-	activity.RecordEvent(ctx, "created", "", key, "SSH key was created")
-
-	return key, nil
+	activity.RecordEvent(ctx, "created", userID, key, "SSH key was created")
+	return dto.ToSSHKeyResponse(key), nil
 }
 
-// AttachSSHKey attaches an SSH key to a server
+// AttachSSHKey attaches an SSH key (by id from the request body) to a
+// server. Has its own signature so it does not fit a generic helper.
 func (s *Service) AttachSSHKey(ctx context.Context, serverID, teamID, sshKeyID string) error {
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
@@ -65,7 +87,6 @@ func (s *Service) AttachSSHKey(ctx context.Context, serverID, teamID, sshKeyID s
 	if err != nil {
 		return err
 	}
-
 	if attached {
 		return nil
 	}
@@ -77,12 +98,13 @@ func (s *Service) AttachSSHKey(ctx context.Context, serverID, teamID, sshKeyID s
 	if err := s.dispatchSSHKeyAddJob(server, key); err != nil {
 		s.LogError(err, "Failed to dispatch SSH key add job", "server_id", serverID, "ssh_key_id", sshKeyID)
 	}
-
 	return nil
 }
 
-// DetachSSHKey detaches an SSH key from a server
-func (s *Service) DetachSSHKey(ctx context.Context, serverID, teamID, sshKeyID string) error {
+// DetachSSHKey detaches an SSH key from a server. Signature matches
+// DeleteNestedFunc: (ctx, id=sshKeyID, parentID=serverID, teamID, userID).
+func (s *Service) DetachSSHKey(ctx context.Context, sshKeyID, serverID, teamID, userID string) error {
+	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
@@ -100,12 +122,12 @@ func (s *Service) DetachSSHKey(ctx context.Context, serverID, teamID, sshKeyID s
 	if err := s.dispatchSSHKeyRemoveJob(server, key); err != nil {
 		s.LogError(err, "Failed to dispatch SSH key remove job", "server_id", serverID, "ssh_key_id", sshKeyID)
 	}
-
 	return nil
 }
 
-// DeleteSSHKey deletes an SSH key
-func (s *Service) DeleteSSHKey(ctx context.Context, teamID, sshKeyID string) error {
+// DeleteSSHKey deletes an SSH key. Signature matches DeleteFunc:
+// (ctx, id=sshKeyID, teamID, userID).
+func (s *Service) DeleteSSHKey(ctx context.Context, sshKeyID, teamID, userID string) error {
 	key, err := s.repos.SSHKey().FindByID(ctx, sshKeyID)
 	if err != nil {
 		return err
@@ -115,8 +137,7 @@ func (s *Service) DeleteSSHKey(ctx context.Context, teamID, sshKeyID string) err
 		return fiberutil.NotFound()
 	}
 
-	activity.RecordEvent(ctx, "deleted", "", key, "SSH key was deleted")
-
+	activity.RecordEvent(ctx, "deleted", userID, key, "SSH key was deleted")
 	return s.repos.SSHKey().Delete(ctx, sshKeyID)
 }
 

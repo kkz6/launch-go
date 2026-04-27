@@ -93,35 +93,54 @@ func (s *SiteService) broadcastSiteUpdate(ctx context.Context, serverID string, 
 	}
 }
 
-// List returns all sites for a server filtered by team
-func (s *SiteService) List(ctx context.Context, serverID, teamID string) ([]models.Site, error) {
+// List returns sites for a server as response DTOs. Signature matches
+// IndexNestedFunc.
+func (s *SiteService) List(ctx context.Context, serverID, teamID string) ([]dto.SiteResponse, error) {
+	sites, err := s.listSites(ctx, serverID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.SiteResponse, len(sites))
+	for i := range sites {
+		out[i] = dto.ToSiteResponse(&sites[i])
+	}
+	return out, nil
+}
+
+func (s *SiteService) listSites(ctx context.Context, serverID, teamID string) ([]models.Site, error) {
 	sites, err := s.Repos().Site().FindByServerAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return nil, err
 	}
 
-	// Load latest deployments for all sites in a single batch query
 	if len(sites) > 0 {
 		siteIDs := make([]string, len(sites))
 		for i := range sites {
 			siteIDs[i] = sites[i].ID
 		}
-
-		deploymentMap, err := s.Repos().Deployment().FindLatestBySiteIDs(ctx, siteIDs)
-		if err != nil {
-			s.LogWarn("Failed to fetch latest deployments", "error", err)
+		deploymentMap, derr := s.Repos().Deployment().FindLatestBySiteIDs(ctx, siteIDs)
+		if derr != nil {
+			s.LogWarn("Failed to fetch latest deployments", "error", derr)
 		} else {
 			for i := range sites {
 				sites[i].LatestDeployment = deploymentMap[sites[i].ID]
 			}
 		}
 	}
-
 	return sites, nil
 }
 
-// Create creates a new site
-func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID string, req *dto.CreateSiteRequest) (*models.Site, error) {
+// Create creates a new site under a server. Signature matches
+// CreateNestedFunc: (ctx, parentID=serverID, teamID, userID, req).
+func (s *SiteService) Create(ctx context.Context, serverID, teamID, userID string, req *dto.CreateSiteRequest) (dto.SiteResponse, error) {
+	site, err := s.createSite(ctx, serverID, teamID, userID, req)
+	if err != nil {
+		return dto.SiteResponse{}, err
+	}
+	return dto.ToSiteResponse(site), nil
+}
+
+func (s *SiteService) createSite(ctx context.Context, serverID, teamID, userID string, req *dto.CreateSiteRequest) (*models.Site, error) {
 	s.Logger.Debug().
 		Str("server_id", serverID).
 		Str("team_id", teamID).
@@ -602,7 +621,7 @@ func (s *SiteService) handleQueueCreation(ctx context.Context, site *models.Site
 	queueReq.NumProcs = &numProcs
 
 	// Use service registry to access queue service
-	queue, err := s.Services().Queue().Create(ctx, site.ID, serverID, userID, queueReq)
+	queue, err := s.Services().Queue().Create(ctx, site.ID, serverID, site.TeamID, userID, queueReq)
 	if err != nil {
 		s.LogError(err, "Failed to create queue worker for site", "site_id", site.ID)
 		return
@@ -736,7 +755,17 @@ func (s *SiteService) GetQueueCount(ctx context.Context, siteID string) int {
 }
 
 // Update updates a site
-func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID string, req *dto.UpdateSiteRequest) (*models.Site, error) {
+// Update updates a site. Signature matches UpdateNestedFunc:
+// (ctx, id, parentID=serverID, teamID, userID, req).
+func (s *SiteService) Update(ctx context.Context, id, serverID, teamID, userID string, req *dto.UpdateSiteRequest) (dto.SiteResponse, error) {
+	site, err := s.updateSite(ctx, id, serverID, teamID, userID, req)
+	if err != nil {
+		return dto.SiteResponse{}, err
+	}
+	return dto.ToSiteResponse(site), nil
+}
+
+func (s *SiteService) updateSite(ctx context.Context, id, serverID, teamID, userID string, req *dto.UpdateSiteRequest) (*models.Site, error) {
 	site, err := s.Repos().Site().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {
 		return nil, err
@@ -852,6 +881,8 @@ func (s *SiteService) Delete(ctx context.Context, id, serverID, teamID string) e
 }
 
 // GetDeletionSummary returns a summary of resources that will be deleted
+// GetDeletionSummary returns a summary of resources to be deleted.
+// Signature matches ShowNestedFunc.
 func (s *SiteService) GetDeletionSummary(ctx context.Context, id, serverID, teamID string) (*dto.DeletionSummaryResponse, error) {
 	site, err := s.Repos().Site().FindByIDAndServerAndTeam(ctx, id, serverID, teamID)
 	if err != nil {

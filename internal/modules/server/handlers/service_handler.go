@@ -5,153 +5,66 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
-	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// ListServices returns all installed services for a server
-func (h *Handler) ListServices(c *fiber.Ctx) error {
-	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
-	if err != nil {
-		return err
-	}
-
-	svcs, err := h.service.ListServices(c.Context(), serverID, teamID)
-	if err != nil {
-		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch services")
-	}
-
-	return fiberctx.OK(c, "Services retrieved", pkgdto.TransformSlice(svcs, dto.ToServiceResponse))
-}
-
-// InstallService installs a new service on a server
-func (h *Handler) InstallService(c *fiber.Ctx) error {
-	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberctx.MustParseAndValidate[dto.CreateServiceRequest](c)
-	if err != nil {
-		return err
-	}
-
-	svc, err := h.service.InstallService(c.Context(), serverID, teamID, req)
-	if err != nil {
-		return fiberctx.HandleError(c, err)
-	}
-
-	return fiberctx.Created(c, "Service installation initiated", dto.ToServiceResponse(svc))
-}
-
-// ServiceOperation performs an operation on a service (start, stop, restart)
+// ServiceOperation performs an operation on a service (start/stop/restart/...)
+// from the request body. Action with body so it does not fit
+// ActionItemNested.
 func (h *Handler) ServiceOperation(c *fiber.Ctx) error {
 	teamID, serverID, serviceID, err := fiberctx.GetTeamServerAndEntityID(c, "serviceId")
 	if err != nil {
 		return err
 	}
-
 	req, err := fiberctx.MustParseAndValidate[dto.ServiceOperationRequest](c)
 	if err != nil {
 		return err
 	}
-
 	operation, err := types.ParseServiceOption(req.Operation)
 	if err != nil {
 		return fiberctx.RespondBadRequest(c, "Invalid operation")
 	}
-
 	if err := h.service.HandleServiceOperation(c.Context(), serverID, teamID, serviceID, operation); err != nil {
-		return fiberctx.HandleError(c, err)
+		return err
 	}
-
 	return fiberctx.OK(c, "Service operation initiated", nil)
 }
 
-// ServiceOperationByAction performs an operation on a service using the action from the URL path
+// ServiceOperationByAction performs the operation named in the URL path.
+// Three path params (server id, service id, action) — does not fit any
+// generic helper.
 func (h *Handler) ServiceOperationByAction(c *fiber.Ctx) error {
 	teamID, serverID, serviceID, err := fiberctx.GetTeamServerAndEntityID(c, "serviceId")
 	if err != nil {
 		return err
 	}
-
-	action := c.Params("action")
-
-	operation, err := types.ParseServiceOption(action)
+	operation, err := types.ParseServiceOption(c.Params("action"))
 	if err != nil {
 		return fiberctx.RespondBadRequest(c, "Invalid operation")
 	}
-
 	if err := h.service.HandleServiceOperation(c.Context(), serverID, teamID, serviceID, operation); err != nil {
-		return fiberctx.HandleError(c, err)
+		return err
 	}
-
 	return fiberctx.OK(c, "Service operation initiated", nil)
 }
 
-// ListPhpVersions returns all PHP versions with their installation status for a server
-func (h *Handler) ListPhpVersions(c *fiber.Ctx) error {
-	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
-	if err != nil {
-		return err
-	}
-
-	phpVersions, err := h.service.GetPhpVersions(c.Context(), serverID, teamID)
-	if err != nil {
-		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch PHP versions")
-	}
-
-	return fiberctx.OK(c, "PHP versions retrieved", phpVersions)
-}
-
-// ListInstalledPhpVersions returns only the installed PHP versions for a server
-func (h *Handler) ListInstalledPhpVersions(c *fiber.Ctx) error {
-	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
-	if err != nil {
-		return err
-	}
-
-	phpVersions, err := h.service.GetInstalledPhpVersions(c.Context(), serverID, teamID)
-	if err != nil {
-		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch installed PHP versions")
-	}
-
-	return fiberctx.OK(c, "Installed PHP versions retrieved", phpVersions)
-}
-
-// GetAvailableServices returns all available services that can be installed on a server
-func (h *Handler) GetAvailableServices(c *fiber.Ctx) error {
-	teamID, serverID, err := fiberctx.GetTeamAndServerID(c)
-	if err != nil {
-		return err
-	}
-
-	services, err := h.service.GetAvailableServices(c.Context(), serverID, teamID)
-	if err != nil {
-		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch available services")
-	}
-
-	return fiberctx.OK(c, "Available services retrieved", services)
-}
-
-// InstallPhpExtension installs a PHP extension on a server
+// InstallPhpExtension installs a PHP extension on a server's PHP service.
+// Action with body, three implied scopes (server, php, extension) — does
+// not fit a generic helper.
 func (h *Handler) InstallPhpExtension(c *fiber.Ctx) error {
 	teamID, serverID, phpID, err := fiberctx.GetTeamServerAndEntityID(c, "phpId")
 	if err != nil {
 		return err
 	}
-
 	req, err := fiberctx.MustParseAndValidate[dto.InstallPhpExtensionRequest](c)
 	if err != nil {
 		return err
 	}
 
-	// Get the PHP service to find its version
 	svc, err := h.service.GetServiceStatus(c.Context(), serverID, teamID, phpID)
 	if err != nil {
-		return fiberctx.HandleError(c, err)
+		return err
 	}
-
 	if svc.Type != types.ServiceTypePhp {
 		return fiberctx.RespondBadRequest(c, "Service is not a PHP installation")
 	}
@@ -162,30 +75,27 @@ func (h *Handler) InstallPhpExtension(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.InstallPhpExtension(c.Context(), serverID, teamID, svc.Version, req.Extension, &userID); err != nil {
-		return fiberctx.HandleError(c, err)
+		return err
 	}
-
 	return fiberctx.OK(c, "Extension installation initiated", nil)
 }
 
-// UninstallPhpExtension uninstalls a PHP extension from a server
+// UninstallPhpExtension uninstalls a PHP extension. Three path params
+// (server id, php id, extension) — does not fit a generic helper.
 func (h *Handler) UninstallPhpExtension(c *fiber.Ctx) error {
 	teamID, serverID, phpID, err := fiberctx.GetTeamServerAndEntityID(c, "phpId")
 	if err != nil {
 		return err
 	}
-
 	extension := c.Params("extension")
 	if extension == "" {
 		return fiberctx.RespondBadRequest(c, "Extension name is required")
 	}
 
-	// Get the PHP service to find its version
 	svc, err := h.service.GetServiceStatus(c.Context(), serverID, teamID, phpID)
 	if err != nil {
-		return fiberctx.HandleError(c, err)
+		return err
 	}
-
 	if svc.Type != types.ServiceTypePhp {
 		return fiberctx.RespondBadRequest(c, "Service is not a PHP installation")
 	}
@@ -196,8 +106,7 @@ func (h *Handler) UninstallPhpExtension(c *fiber.Ctx) error {
 	}
 
 	if err := h.service.UninstallPhpExtension(c.Context(), serverID, teamID, svc.Version, extension, &userID); err != nil {
-		return fiberctx.HandleError(c, err)
+		return err
 	}
-
 	return fiberctx.OK(c, "Extension uninstall initiated", nil)
 }

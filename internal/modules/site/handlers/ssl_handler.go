@@ -5,57 +5,38 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/services"
-	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// SSLHandler handles HTTP requests for SSL/TLS
+// SSLHandler holds the SSL endpoint that does not fit a generic route
+// helper: UpdateSSL is a PUT to a site-singleton setting (no own id)
+// with a body. ListCertificates uses IndexDoubleNested directly in
+// routes.go.
 type SSLHandler struct {
 	sslService *services.SSLService
 }
 
-// NewSSLHandler creates a new SSL handler
+// NewSSLHandler creates a new SSL handler.
 func NewSSLHandler(sslService *services.SSLService) *SSLHandler {
 	return &SSLHandler{sslService: sslService}
 }
 
-// UpdateSSL updates SSL settings
+// UpdateSSL updates SSL settings for a site.
 func (h *SSLHandler) UpdateSSL(c *fiber.Ctx) error {
 	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
-
 	userID, err := fiberctx.MustGetUserID(c)
 	if err != nil {
 		return err
 	}
-
 	req, err := fiberctx.MustParseAndValidate[dto.UpdateSSLRequest](c)
 	if err != nil {
 		return err
 	}
-
 	if err := h.sslService.UpdateSSL(c.Context(), siteID, serverID, userID, req); err != nil {
-		return fiberctx.HandleError(c, err)
-	}
-
-	return fiberctx.OK(c, "SSL settings updated", nil)
-}
-
-// ListCertificates returns all certificates for a site
-func (h *SSLHandler) ListCertificates(c *fiber.Ctx) error {
-	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
-	if err != nil {
 		return err
 	}
-
-	certs, err := h.sslService.ListCertificates(c.Context(), siteID, serverID)
-	if err != nil {
-		return fiberctx.HandleError(c, err)
-	}
-
-	result := pkgdto.TransformSlice(certs, dto.ToCertificateResponse)
-
-	return fiberctx.OK(c, "Certificates retrieved", result)
+	return fiberctx.OK(c, "SSL settings updated", nil)
 }
