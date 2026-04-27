@@ -25,6 +25,7 @@ import (
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/dns"
 	"github.com/kkz6/launch-go/internal/modules/git"
+	"github.com/kkz6/launch-go/internal/modules/managedservice"
 	"github.com/kkz6/launch-go/internal/modules/notification"
 	"github.com/kkz6/launch-go/internal/modules/platform"
 	"github.com/kkz6/launch-go/internal/modules/script"
@@ -226,6 +227,7 @@ func (a *Application) registerModules() {
 	}
 	serverModule := server.NewModule(builder)
 	databaseModule := databasemodule.NewModule(builder)
+	managedServiceModule := managedservice.NewModule(builder)
 	siteModule := site.NewModule(builder)
 	dnsModule := dns.NewModule(builder)
 	backupModule := backup.NewModule(builder)
@@ -243,12 +245,14 @@ func (a *Application) registerModules() {
 	siteModule.SetDatabaseManager(adapters.NewDatabaseManagerAdapter(databaseModule.Service()))
 	serverModule.SetSiteReader(siteModule.SiteReader())
 	gitModule.SetSiteChecker(siteModule.SiteChecker())
+	managedServiceModule.SetServerReader(serverModule.Repos().Server())
 
 	// Register all modules with the kernel
 	a.kernel.
 		Register(authModule).
 		Register(serverModule).
 		Register(databaseModule).
+		Register(managedServiceModule).
 		Register(siteModule).
 		Register(dnsModule).
 		Register(backupModule).

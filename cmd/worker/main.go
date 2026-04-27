@@ -15,6 +15,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/git"
+	"github.com/kkz6/launch-go/internal/modules/managedservice"
 	"github.com/kkz6/launch-go/internal/modules/notification"
 	"github.com/kkz6/launch-go/internal/modules/platform"
 	"github.com/kkz6/launch-go/internal/modules/script"
@@ -123,6 +124,7 @@ func main() {
 	// Initialize modules
 	serverModule := server.NewModule(builder)
 	databaseModule := databasemodule.NewModule(builder)
+	managedServiceModule := managedservice.NewModule(builder)
 	gitModule := git.NewModule(builder)
 	siteModule := site.NewModule(builder)
 	scriptModule := script.NewModule(builder)
@@ -131,11 +133,13 @@ func main() {
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
 	siteModule.SetCronCreator(adapters.NewCronCreatorAdapter(serverModule.Service()))
 	siteModule.SetDatabaseManager(adapters.NewDatabaseManagerAdapter(databaseModule.Service()))
+	managedServiceModule.SetServerReader(serverModule.Repos().Server())
 
 	// Register all modules with the kernel
 	kernel.
 		Register(serverModule).
 		Register(databaseModule).
+		Register(managedServiceModule).
 		Register(backup.NewModule(builder)).
 		Register(gitModule).
 		Register(siteModule).
