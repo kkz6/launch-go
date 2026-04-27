@@ -24,6 +24,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dashboard"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/dns"
+	"github.com/kkz6/launch-go/internal/modules/dockerapp"
+	dockerappadapters "github.com/kkz6/launch-go/internal/modules/dockerapp/adapters"
 	"github.com/kkz6/launch-go/internal/modules/dockerregistry"
 	"github.com/kkz6/launch-go/internal/modules/dockerservice"
 	"github.com/kkz6/launch-go/internal/modules/git"
@@ -230,6 +232,7 @@ func (a *Application) registerModules() {
 	databaseModule := databasemodule.NewModule(builder)
 	dockerServiceModule := dockerservice.NewModule(builder)
 	dockerRegistryModule := dockerregistry.NewModule(builder)
+	dockerAppModule := dockerapp.NewModule(builder)
 	siteModule := site.NewModule(builder)
 	dnsModule := dns.NewModule(builder)
 	backupModule := backup.NewModule(builder)
@@ -248,6 +251,8 @@ func (a *Application) registerModules() {
 	serverModule.SetSiteReader(siteModule.SiteReader())
 	gitModule.SetSiteChecker(siteModule.SiteChecker())
 	dockerServiceModule.SetServerReader(serverModule.Repos().Server())
+	dockerAppModule.SetServerReader(serverModule.Repos().Server())
+	dockerAppModule.SetRegistryCredentialReader(dockerappadapters.NewRegistryCredentialAdapter(dockerRegistryModule.Service()))
 
 	// Register all modules with the kernel
 	a.kernel.
@@ -256,6 +261,7 @@ func (a *Application) registerModules() {
 		Register(databaseModule).
 		Register(dockerServiceModule).
 		Register(dockerRegistryModule).
+		Register(dockerAppModule).
 		Register(siteModule).
 		Register(dnsModule).
 		Register(backupModule).

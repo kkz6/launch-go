@@ -14,6 +14,9 @@ import (
 	"github.com/kkz6/launch-go/internal/database"
 	"github.com/kkz6/launch-go/internal/modules/backup"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
+	"github.com/kkz6/launch-go/internal/modules/dockerapp"
+	dockerappadapters "github.com/kkz6/launch-go/internal/modules/dockerapp/adapters"
+	"github.com/kkz6/launch-go/internal/modules/dockerregistry"
 	"github.com/kkz6/launch-go/internal/modules/dockerservice"
 	"github.com/kkz6/launch-go/internal/modules/git"
 	"github.com/kkz6/launch-go/internal/modules/notification"
@@ -125,6 +128,8 @@ func main() {
 	serverModule := server.NewModule(builder)
 	databaseModule := databasemodule.NewModule(builder)
 	dockerServiceModule := dockerservice.NewModule(builder)
+	dockerRegistryModule := dockerregistry.NewModule(builder)
+	dockerAppModule := dockerapp.NewModule(builder)
 	gitModule := git.NewModule(builder)
 	siteModule := site.NewModule(builder)
 	scriptModule := script.NewModule(builder)
@@ -134,12 +139,16 @@ func main() {
 	siteModule.SetCronCreator(adapters.NewCronCreatorAdapter(serverModule.Service()))
 	siteModule.SetDatabaseManager(adapters.NewDatabaseManagerAdapter(databaseModule.Service()))
 	dockerServiceModule.SetServerReader(serverModule.Repos().Server())
+	dockerAppModule.SetServerReader(serverModule.Repos().Server())
+	dockerAppModule.SetRegistryCredentialReader(dockerappadapters.NewRegistryCredentialAdapter(dockerRegistryModule.Service()))
 
 	// Register all modules with the kernel
 	kernel.
 		Register(serverModule).
 		Register(databaseModule).
 		Register(dockerServiceModule).
+		Register(dockerRegistryModule).
+		Register(dockerAppModule).
 		Register(backup.NewModule(builder)).
 		Register(gitModule).
 		Register(siteModule).

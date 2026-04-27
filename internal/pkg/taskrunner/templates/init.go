@@ -2,6 +2,7 @@ package templates
 
 import (
 	dbtemplates "github.com/kkz6/launch-go/internal/modules/database/tasks/templates"
+	datemplates "github.com/kkz6/launch-go/internal/modules/dockerapp/tasks/templates"
 	dstemplates "github.com/kkz6/launch-go/internal/modules/dockerservice/tasks/templates"
 	servertemplates "github.com/kkz6/launch-go/internal/modules/server/tasks/templates"
 	sitetemplates "github.com/kkz6/launch-go/internal/modules/site/tasks/templates"
@@ -19,7 +20,10 @@ func RegisterAll() error {
 	if err := Register("database", dbtemplates.FS, nil); err != nil {
 		return err
 	}
-	return Register("dockerservice", dstemplates.FS, nil)
+	if err := Register("dockerservice", dstemplates.FS, nil); err != nil {
+		return err
+	}
+	return Register("dockerapp", datemplates.FS, nil)
 }
 
 // MustRegisterAll registers all templates or panics.
