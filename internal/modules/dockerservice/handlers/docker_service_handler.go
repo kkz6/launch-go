@@ -61,6 +61,9 @@ func (h *DockerServiceHandler) Uninstall(c *fiber.Ctx) error {
 			return fiberctx.BadRequest("Invalid request body")
 		}
 	}
+	if c.Query("remove_data") == "true" {
+		req.RemoveData = true
+	}
 
 	userID, _ := fiberctx.GetUserID(c)
 	if err := h.service.Uninstall(c.Context(), serverID, teamID, userID, kind, req.RemoveData); err != nil {
