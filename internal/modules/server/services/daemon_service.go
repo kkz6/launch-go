@@ -18,37 +18,42 @@ const (
 	defaultDaemonStopSignal = "SIGTERM"
 )
 
-// ListDaemons returns all daemons for a server
-func (s *Service) ListDaemons(ctx context.Context, serverID, teamID string) ([]models.Daemon, error) {
+// ListDaemons returns all daemons for a server. Signature matches IndexNestedFunc.
+func (s *Service) ListDaemons(ctx context.Context, serverID, teamID string) ([]dto.DaemonResponse, error) {
 	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
-
-	return s.repos.Daemon().FindByServer(ctx, serverID)
-}
-
-// CreateDaemon creates a new daemon
-func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req *dto.CreateDaemonRequest) (*models.Daemon, error) {
-	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	daemons, err := s.repos.Daemon().FindByServer(ctx, serverID)
 	if err != nil {
 		return nil, err
+	}
+	out := make([]dto.DaemonResponse, len(daemons))
+	for i := range daemons {
+		out[i] = dto.ToDaemonResponse(&daemons[i])
+	}
+	return out, nil
+}
+
+// CreateDaemon creates a new daemon. Signature matches CreateNestedFunc.
+func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID, userID string, req *dto.CreateDaemonRequest) (dto.DaemonResponse, error) {
+	_ = userID
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return dto.DaemonResponse{}, err
 	}
 
 	user := defaultDaemonUser
 	if req.User != "" {
 		user = req.User
 	}
-
 	processes := defaultDaemonProcesses
 	if req.Processes > 0 {
 		processes = req.Processes
 	}
-
 	stopWaitSeconds := defaultDaemonStopWait
 	if req.StopWaitSeconds > 0 {
 		stopWaitSeconds = req.StopWaitSeconds
 	}
-
 	stopSignal := defaultDaemonStopSignal
 	if req.StopSignal != nil {
 		stopSignal = *req.StopSignal
@@ -65,7 +70,7 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 	daemon.ServerID = serverID
 
 	if err := s.repos.Daemon().Create(ctx, daemon); err != nil {
-		return nil, err
+		return dto.DaemonResponse{}, err
 	}
 
 	activity.RecordWithLog(ctx, "server", "created", "", daemon, "Daemon was created")
@@ -73,48 +78,43 @@ func (s *Service) CreateDaemon(ctx context.Context, serverID, teamID string, req
 	if err := s.dispatchDaemonInstallJob(server, daemon); err != nil {
 		s.LogError(err, "Failed to dispatch daemon install job", "server_id", serverID, "daemon_id", daemon.ID)
 	}
-
-	return daemon, nil
+	return dto.ToDaemonResponse(daemon), nil
 }
 
-// UpdateDaemon updates a daemon
-func (s *Service) UpdateDaemon(ctx context.Context, serverID, teamID, daemonID string, req *dto.UpdateDaemonRequest) (*models.Daemon, error) {
+// UpdateDaemon updates a daemon. Signature matches UpdateNestedFunc.
+func (s *Service) UpdateDaemon(ctx context.Context, daemonID, serverID, teamID, userID string, req *dto.UpdateDaemonRequest) (dto.DaemonResponse, error) {
+	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
-		return nil, err
+		return dto.DaemonResponse{}, err
 	}
 
 	daemon, err := s.repos.Daemon().FindByIDAndServer(ctx, daemonID, serverID)
 	if err != nil {
-		return nil, err
+		return dto.DaemonResponse{}, err
 	}
 
 	if req.User != nil {
 		daemon.User = *req.User
 	}
-
 	if req.Directory != nil {
 		daemon.Directory = req.Directory
 	}
-
 	if req.Command != nil {
 		daemon.Command = *req.Command
 	}
-
 	if req.Processes != nil {
 		daemon.Processes = *req.Processes
 	}
-
 	if req.StopWaitSeconds != nil {
 		daemon.StopWaitSeconds = *req.StopWaitSeconds
 	}
-
 	if req.StopSignal != nil {
 		daemon.StopSignal = *req.StopSignal
 	}
 
 	if err := s.repos.Daemon().Update(ctx, daemon); err != nil {
-		return nil, err
+		return dto.DaemonResponse{}, err
 	}
 
 	activity.RecordWithLog(ctx, "server", "updated", "", daemon, "Daemon was updated")
@@ -122,12 +122,12 @@ func (s *Service) UpdateDaemon(ctx context.Context, serverID, teamID, daemonID s
 	if err := s.dispatchDaemonInstallJob(server, daemon); err != nil {
 		s.LogError(err, "Failed to dispatch daemon install job", "server_id", serverID, "daemon_id", daemon.ID)
 	}
-
-	return daemon, nil
+	return dto.ToDaemonResponse(daemon), nil
 }
 
-// DeleteDaemon deletes a daemon
-func (s *Service) DeleteDaemon(ctx context.Context, serverID, teamID, daemonID string) error {
+// DeleteDaemon deletes a daemon. Signature matches DeleteNestedFunc.
+func (s *Service) DeleteDaemon(ctx context.Context, daemonID, serverID, teamID, userID string) error {
+	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
@@ -159,8 +159,9 @@ func (s *Service) dispatchDaemonUninstallJob(server *models.Server, daemon *mode
 	})
 }
 
-// RestartDaemon restarts a daemon on the server
-func (s *Service) RestartDaemon(ctx context.Context, serverID, teamID, daemonID string, userID *string) error {
+// RestartDaemon restarts a daemon on the server. Signature matches
+// ActionItemNestedFunc.
+func (s *Service) RestartDaemon(ctx context.Context, daemonID, serverID, teamID, userID string) error {
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
@@ -177,26 +178,25 @@ func (s *Service) RestartDaemon(ctx context.Context, serverID, teamID, daemonID 
 
 	activity.RecordWithLog(ctx, "server", "restarting", "", daemon, "Daemon restart requested")
 
-	task, err := jobs.NewRestartDaemonTask(server.ID, daemon.ID, userID)
+	uid := userIDPtr(userID)
+	task, err := jobs.NewRestartDaemonTask(server.ID, daemon.ID, uid)
 	if err != nil {
 		s.LogError(err, "Failed to create restart daemon task")
 		return err
 	}
-
 	if s.HasQueue() {
 		if err := s.EnqueueTask(task); err != nil {
 			s.LogError(err, "Failed to enqueue restart daemon job")
 			return err
 		}
 	}
-
 	s.LogInfo("Daemon restart initiated", "server_id", serverID, "daemon_id", daemonID)
-
 	return nil
 }
 
-// SyncDaemonsStatus triggers a status synchronization for all daemons on a server
-func (s *Service) SyncDaemonsStatus(ctx context.Context, serverID, teamID string, userID *string) error {
+// SyncDaemonsStatus triggers a status synchronization for all daemons on
+// a server. Signature matches ActionNestedFunc.
+func (s *Service) SyncDaemonsStatus(ctx context.Context, serverID, teamID, userID string) error {
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
@@ -206,27 +206,32 @@ func (s *Service) SyncDaemonsStatus(ctx context.Context, serverID, teamID string
 	if err != nil {
 		return err
 	}
-
 	if len(daemons) == 0 {
 		s.LogInfo("No daemons to sync", "server_id", serverID)
 		return nil
 	}
 
-	// Dispatch the sync job to check supervisor status on the server
-	task, err := jobs.NewSyncDaemonsTask(server.ID, userID)
+	uid := userIDPtr(userID)
+	task, err := jobs.NewSyncDaemonsTask(server.ID, uid)
 	if err != nil {
 		s.LogError(err, "Failed to create sync daemons task")
 		return err
 	}
-
 	if s.HasQueue() {
 		if err := s.EnqueueTask(task); err != nil {
 			s.LogError(err, "Failed to enqueue sync daemons job")
 			return err
 		}
 	}
-
 	s.LogInfo("Daemon sync initiated", "server_id", serverID, "daemon_count", len(daemons))
-
 	return nil
+}
+
+// userIDPtr returns nil for empty userID, otherwise a pointer. Used at
+// the boundary where downstream APIs accept *string.
+func userIDPtr(userID string) *string {
+	if userID == "" {
+		return nil
+	}
+	return &userID
 }

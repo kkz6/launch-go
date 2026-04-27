@@ -165,7 +165,7 @@ func (h *Handler) GetProvisionStatus(c *fiber.Ctx) error {
 		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch server")
 	}
 
-	latestTask, _ := h.service.GetLatestTask(c.Context(), serverID, teamID)
+	latestTask, _ := h.service.GetLatestTaskRaw(c.Context(), serverID, teamID)
 
 	return fiberctx.OK(c, "Provision status retrieved", dto.BuildProvisionStatus(server, latestTask))
 }

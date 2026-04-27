@@ -202,6 +202,28 @@ func GetTeamIDParam(c *fiber.Ctx) (string, error) {
 	return GetULIDParam(c, "teamId")
 }
 
+// MustParseEnum extracts a path parameter and parses it via the provided
+// function. Returns BadRequest with the supplied message on parse failure.
+//
+// Use this when a route discriminates on a typed enum (provider type,
+// driver, status, ...). Avoids repeating the same 3-line check in every
+// handler.
+//
+// Usage:
+//
+//	provider, err := fiberutil.MustParseEnum(c, "provider", "Invalid provider", gittypes.ParseGitProviderType)
+//	if err != nil {
+//	    return err
+//	}
+func MustParseEnum[E any](c *fiber.Ctx, paramName, errMsg string, parse func(string) (E, error)) (E, error) {
+	var zero E
+	parsed, err := parse(c.Params(paramName))
+	if err != nil {
+		return zero, BadRequest(errMsg)
+	}
+	return parsed, nil
+}
+
 // GetDomainID extracts and validates the "domainId" path parameter as a ULID.
 func GetDomainID(c *fiber.Ctx) (string, error) {
 	return GetULIDParam(c, "domainId")

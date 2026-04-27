@@ -39,9 +39,9 @@ func NewCronCreatorAdapter(svc servercontracts.CronService) contracts.CronCreato
 	return &CronCreatorAdapter{svc: svc}
 }
 
-// CreateCron creates a new cron job on a server
+// CreateCron creates a new cron job on a server.
 func (a *CronCreatorAdapter) CreateCron(ctx context.Context, serverID, teamID string, req *serverdto.CreateCronRequest) (*servermodels.Cron, error) {
-	return a.svc.CreateCron(ctx, serverID, teamID, req)
+	return a.svc.CreateCronRaw(ctx, serverID, teamID, req)
 }
 
 // CountCronsBySite counts cron jobs associated with a site

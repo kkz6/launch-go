@@ -12,30 +12,32 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dns/providers"
 	dnstypes "github.com/kkz6/launch-go/internal/modules/dns/types"
 	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// DomainService handles business logic for domains
+// DomainService handles business logic for domains.
 type DomainService struct {
 	*BaseService
 }
 
-// NewDomainService creates a new DomainService instance
+// NewDomainService creates a new DomainService instance.
 func NewDomainService(deps *ServiceDeps) *DomainService {
-	return &DomainService{
-		BaseService: NewBaseService(deps),
-	}
+	return &DomainService{BaseService: NewBaseService(deps)}
 }
 
-// CreateDomain creates a new domain
-func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string, req *dto.CreateDomainRequest) (*models.Domain, error) {
-	// Get the provider
+// CreateDomain creates a new domain and returns the response DTO.
+func (s *DomainService) CreateDomain(ctx context.Context, teamID, userID string, req *dto.CreateDomainRequest) (dto.DomainResponse, error) {
+	domain, err := s.buildAndDispatchDomain(ctx, teamID, userID, req)
+	if err != nil {
+		return dto.DomainResponse{}, err
+	}
+	return dto.ToDomainResponse(domain), nil
+}
+
+// createDomain runs the create flow and returns the created model.
+func (s *DomainService) buildAndDispatchDomain(ctx context.Context, teamID, userID string, req *dto.CreateDomainRequest) (*models.Domain, error) {
 	provider, err := s.Repos().Provider().FindByIDAndTeam(ctx, req.Provider, teamID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
+		return nil, notFoundAs(err, "Provider not found")
 	}
 
 	dnsProvider, err := providers.NewProvider(providers.DNSProviderType(provider.Provider), provider.Credentials, provider.AdditionalData)
@@ -43,13 +45,11 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 		return nil, err
 	}
 
-	// Call external API first, before any DB transaction
 	providerID, err := dnsProvider.AddDomain(ctx, req.Address)
 	if err != nil {
-		return nil, err
+		return nil, wrapProviderErr(err)
 	}
 
-	// Create domain record in a transaction
 	domain := &models.Domain{
 		DomainProviderID: provider.ID,
 		ProviderID:       providerID,
@@ -64,12 +64,11 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 			return err
 		}
 
-		// Get nameservers and create NS records
 		dnsProvider.SetDomain(req.Address)
 		nameservers, err := dnsProvider.GetNameservers(ctx)
 		if err != nil {
 			s.Logger.Warn().Err(err).Str("domain", req.Address).Msg("Failed to get nameservers")
-			return nil // Don't fail the whole operation
+			return nil
 		}
 
 		for i, ns := range nameservers {
@@ -91,7 +90,7 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 	})
 
 	if err != nil {
-		// Compensating action: remove domain from provider since DB transaction failed
+		// Compensating action: remove the domain from the provider.
 		if deleteErr := dnsProvider.DeleteDomain(ctx, req.Address); deleteErr != nil {
 			s.Logger.Error().Err(deleteErr).Str("domain", req.Address).Msg("Failed to delete domain from provider after DB transaction failure")
 		}
@@ -101,96 +100,134 @@ func (s *DomainService) CreateDomain(ctx context.Context, userID, teamID string,
 	return domain, nil
 }
 
-// GetDomain retrieves a domain by ID
+// GetDomain retrieves a domain by ID.
 func (s *DomainService) GetDomain(ctx context.Context, id, teamID string) (*models.Domain, error) {
 	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
+		return nil, notFoundAs(err, "Domain not found")
 	}
-
 	return domain, nil
 }
 
-// UpdateDomain updates a domain
-func (s *DomainService) UpdateDomain(ctx context.Context, id, teamID string, req *dto.UpdateDomainRequest) (*models.Domain, error) {
+// ListDomainsPage returns the index-page payload combining domains and
+// providers for the team.
+func (s *DomainService) ListDomainsPage(ctx context.Context, teamID string) (dto.DomainIndexPageData, error) {
+	domains, err := s.ListDomains(ctx, teamID)
+	if err != nil {
+		return dto.DomainIndexPageData{}, err
+	}
+	providerList, err := s.Services().Provider().ListProviders(ctx, teamID)
+	if err != nil {
+		return dto.DomainIndexPageData{}, err
+	}
+	return dto.DomainIndexPageData{Domains: domains, Providers: providerList}, nil
+}
+
+// GetDomainPage returns the show-page payload for a single domain.
+func (s *DomainService) GetDomainPage(ctx context.Context, id, teamID string) (dto.DomainShowPageData, error) {
+	domain, err := s.GetDomain(ctx, id, teamID)
+	if err != nil {
+		return dto.DomainShowPageData{}, err
+	}
+
+	records, err := s.GetDomainRecords(ctx, id, teamID)
+	if err != nil {
+		return dto.DomainShowPageData{}, err
+	}
+
+	recordTypeOptions := pkgdto.MapSliceValue(GetRecordTypes(), func(rt string) dto.RecordTypeOption {
+		return dto.RecordTypeOption{Value: rt, Label: rt}
+	})
+
+	nameservers := make([]string, 0)
+	for _, r := range domain.Records {
+		if r.Type == dnstypes.RecordTypeNS {
+			nameservers = append(nameservers, r.Value)
+		}
+	}
+
+	var providerResponse *dto.DomainProviderResponse
+	if domain.Provider != nil {
+		pr := dto.ToDomainProviderResponse(domain.Provider, 0)
+		providerResponse = &pr
+	}
+
+	return dto.DomainShowPageData{
+		Domain:      dto.ToDomainResponse(domain),
+		Records:     records,
+		RecordTypes: recordTypeOptions,
+		Nameservers: nameservers,
+		Provider:    providerResponse,
+	}, nil
+}
+
+// UpdateDomain updates a domain and returns the response DTO. userID is
+// part of the framework-mutation convention; not currently audit-logged.
+func (s *DomainService) UpdateDomain(ctx context.Context, id, teamID, userID string, req *dto.UpdateDomainRequest) (dto.DomainResponse, error) {
+	_ = userID
 	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
+		return dto.DomainResponse{}, notFoundAs(err, "Domain not found")
 	}
 
 	domain.Label = req.Label
-
 	if err := s.Repos().Domain().Update(ctx, domain); err != nil {
-		return nil, err
+		return dto.DomainResponse{}, err
 	}
-
-	return domain, nil
+	return dto.ToDomainResponse(domain), nil
 }
 
-// ListDomains lists all domains for a team
+// ListDomains lists all domains for a team.
 func (s *DomainService) ListDomains(ctx context.Context, teamID string) ([]dto.DomainResponse, error) {
 	domains, err := s.Repos().Domain().FindByTeam(ctx, teamID)
 	if err != nil {
 		return nil, err
 	}
-
 	return pkgdto.TransformSlice(domains, dto.ToDomainResponse), nil
 }
 
-// DeleteDomain deletes a domain
-func (s *DomainService) DeleteDomain(ctx context.Context, id, teamID string, deleteFromProvider bool) error {
+// DeleteDomain deletes a domain. When deleteFromProvider is true and the
+// domain has a configured provider, the domain is also removed at the
+// provider before being deleted locally. userID is part of the
+// framework-mutation convention.
+func (s *DomainService) DeleteDomain(ctx context.Context, id, teamID, userID string, deleteFromProvider bool) error {
+	_ = userID
 	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fiberutil.NotFound()
-		}
-		return err
+		return notFoundAs(err, "Domain not found")
 	}
 
 	if deleteFromProvider && domain.Provider != nil {
-		dnsProvider, err := providers.NewProvider(providers.DNSProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData)
-		if err == nil {
+		if dnsProvider, perr := providers.NewProvider(providers.DNSProviderType(domain.Provider.Provider), domain.Provider.Credentials, domain.Provider.AdditionalData); perr == nil {
 			if err := dnsProvider.DeleteDomain(ctx, domain.Address); err != nil {
 				s.Logger.Warn().Err(err).Str("domain", domain.Address).Msg("Failed to delete domain from provider")
 			}
 		}
 	}
 
-	// Delete records and domain in a transaction
 	return s.Repos().Domain().Transaction(ctx, func(tx *gorm.DB) error {
 		if err := tx.Where("domain_id = ?", id).Delete(&models.DNSRecord{}).Error; err != nil {
 			return err
 		}
-
 		return tx.Where("id = ?", id).Delete(&models.Domain{}).Error
 	})
 }
 
-// GetDomainRecords retrieves all DNS records for a domain
+// GetDomainRecords retrieves all DNS records for a domain.
 func (s *DomainService) GetDomainRecords(ctx context.Context, domainID, teamID string) ([]dto.DNSRecordResponse, error) {
 	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
+		return nil, notFoundAs(err, "Domain not found")
 	}
 
 	records, err := s.Repos().DNSRecord().FindByDomain(ctx, domain.ID)
 	if err != nil {
 		return nil, err
 	}
-
 	return pkgdto.TransformSlice(records, dto.ToDNSRecordResponse), nil
 }
 
-// GetDomainNameservers retrieves nameservers for a domain from its provider
+// GetDomainNameservers retrieves nameservers for a domain from its provider.
 func (s *DomainService) GetDomainNameservers(ctx context.Context, domain *models.Domain) ([]string, error) {
 	if domain.Provider == nil {
 		return nil, nil
@@ -206,25 +243,22 @@ func (s *DomainService) GetDomainNameservers(ctx context.Context, domain *models
 	}
 
 	dnsProvider.SetDomain(domain.Address)
-
 	return dnsProvider.GetNameservers(ctx)
 }
 
-// SyncDomainRecords syncs DNS records from the provider to the local database
-func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID string) error {
+// SyncDomainRecords syncs DNS records from the provider to the local
+// database. userID is part of the framework-mutation convention.
+func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID, userID string) error {
+	_ = userID
 	domain, err := s.Repos().Domain().FindByIDAndTeam(ctx, domainID, teamID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fiberutil.NotFound()
-		}
-		return err
+		return notFoundAs(err, "Domain not found")
 	}
 
 	if domain.Provider == nil {
 		return errors.New("domain has no provider configured")
 	}
 
-	// Create provider instance
 	dnsProvider, err := providers.NewProvider(
 		providers.DNSProviderType(domain.Provider.Provider),
 		domain.Provider.Credentials,
@@ -236,13 +270,11 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 
 	dnsProvider.SetDomain(domain.Address)
 
-	// Fetch records from provider
 	providerRecords, err := dnsProvider.ListRecords(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to fetch records from provider: %w", err)
 	}
 
-	// Build all records upfront for batch insert
 	records := make([]models.DNSRecord, 0, len(providerRecords))
 	for _, pr := range providerRecords {
 		record := models.DNSRecord{
@@ -264,20 +296,15 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID 
 		records = append(records, record)
 	}
 
-	// Sync records in a transaction with batch insert
 	return s.Repos().Domain().Transaction(ctx, func(tx *gorm.DB) error {
-		// Delete existing records for this domain
 		if err := tx.Where("domain_id = ?", domainID).Delete(&models.DNSRecord{}).Error; err != nil {
 			return fmt.Errorf("failed to delete existing records: %w", err)
 		}
-
-		// Batch insert all records
 		if len(records) > 0 {
 			if err := tx.CreateInBatches(&records, 100).Error; err != nil {
 				return fmt.Errorf("failed to insert records: %w", err)
 			}
 		}
-
 		return nil
 	})
 }

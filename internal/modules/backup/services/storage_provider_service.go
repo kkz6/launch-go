@@ -3,20 +3,23 @@ package services
 import (
 	"context"
 	"fmt"
+	"strconv"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	"github.com/kkz6/launch-go/internal/modules/backup/storage"
 	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
+	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// StorageProviderService handles business logic for storage providers
+// StorageProviderService handles business logic for storage providers.
 type StorageProviderService struct {
 	*BaseService
 	storageFactory *storage.Factory
 }
 
-// NewStorageProviderService creates a new storage provider service
+// NewStorageProviderService creates a new storage provider service.
 func NewStorageProviderService(deps *ServiceDeps, storageFactory *storage.Factory) *StorageProviderService {
 	return &StorageProviderService{
 		BaseService:    NewBaseService(deps),
@@ -24,28 +27,26 @@ func NewStorageProviderService(deps *ServiceDeps, storageFactory *storage.Factor
 	}
 }
 
-// ConnectStorageProvider creates a new storage provider connection
-func (s *StorageProviderService) ConnectStorageProvider(ctx context.Context, userID, teamID string, req *dto.CreateStorageProviderRequest) (*models.StorageProvider, error) {
+// ConnectStorageProvider creates a new storage provider connection and
+// returns the response DTO.
+func (s *StorageProviderService) ConnectStorageProvider(ctx context.Context, teamID, userID string, req *dto.CreateStorageProviderRequest) (dto.StorageProviderResponse, error) {
 	driver := backuptypes.StorageDriver(req.Provider)
 	if !driver.IsValid() {
-		return nil, ErrInvalidStorageDriver
+		return dto.StorageProviderResponse{}, ErrInvalidStorageDriver
 	}
 
-	// Build credentials based on provider type
 	credentials := s.buildCredentials(req)
 
-	// Create and test the storage provider connection
 	storageProvider, err := s.storageFactory.Create(req.Provider, credentials)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create storage provider: %w", err)
+		return dto.StorageProviderResponse{}, fmt.Errorf("failed to create storage provider: %w", err)
 	}
 
 	if err := storageProvider.Connect(ctx); err != nil {
 		s.Logger.Error().Err(err).Str("provider", req.Provider).Msg("Failed to connect to storage provider")
-		return nil, ErrConnectionFailed
+		return dto.StorageProviderResponse{}, ErrConnectionFailed
 	}
 
-	// Create the storage provider record
 	provider := &models.StorageProvider{
 		UserID:    userID,
 		TeamID:    teamID,
@@ -53,72 +54,59 @@ func (s *StorageProviderService) ConnectStorageProvider(ctx context.Context, use
 		Label:     &req.Label,
 		Connected: true,
 	}
-
 	provider.SetCredentials(storageProvider.CredentialData(credentials))
 
 	if err := s.Repos().StorageProvider().CreateStorageProvider(ctx, provider); err != nil {
-		return nil, fmt.Errorf("failed to create storage provider: %w", err)
+		return dto.StorageProviderResponse{}, fmt.Errorf("failed to create storage provider: %w", err)
 	}
 
-	s.Logger.Info().
-		Uint64("provider_id", provider.ID).
-		Str("provider_type", req.Provider).
-		Msg("Storage provider connected successfully")
-
-	return provider, nil
+	s.Logger.Info().Uint64("provider_id", provider.ID).Str("provider_type", req.Provider).Msg("Storage provider connected successfully")
+	return dto.ToStorageProviderResponse(provider), nil
 }
 
-// UpdateStorageProvider updates an existing storage provider
-func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id uint64, req *dto.UpdateStorageProviderRequest) (*models.StorageProvider, error) {
+// UpdateStorageProvider updates an existing storage provider and returns
+// the response DTO.
+func (s *StorageProviderService) UpdateStorageProvider(ctx context.Context, id uint64, req *dto.UpdateStorageProviderRequest) (dto.StorageProviderResponse, error) {
 	provider, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, id)
 	if err != nil {
-		return nil, err
+		return dto.StorageProviderResponse{}, err
 	}
 
 	driver := backuptypes.StorageDriver(req.Provider)
 	if !driver.IsValid() {
-		return nil, ErrInvalidStorageDriver
+		return dto.StorageProviderResponse{}, ErrInvalidStorageDriver
 	}
 
-	// Build credentials based on provider type
 	credentials := s.buildCredentialsFromUpdate(req)
 
-	// Create and test the storage provider connection
 	storageProvider, err := s.storageFactory.Create(req.Provider, credentials)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create storage provider: %w", err)
+		return dto.StorageProviderResponse{}, fmt.Errorf("failed to create storage provider: %w", err)
 	}
 
 	if err := storageProvider.Connect(ctx); err != nil {
 		s.Logger.Error().Err(err).Str("provider", req.Provider).Msg("Failed to connect to storage provider")
-		return nil, ErrConnectionFailed
+		return dto.StorageProviderResponse{}, ErrConnectionFailed
 	}
 
 	provider.Label = &req.Label
 	provider.Provider = driver
 	provider.Connected = true
-
 	provider.SetCredentials(storageProvider.CredentialData(credentials))
 
 	if err := s.Repos().StorageProvider().UpdateStorageProvider(ctx, provider); err != nil {
-		return nil, fmt.Errorf("failed to update storage provider: %w", err)
+		return dto.StorageProviderResponse{}, fmt.Errorf("failed to update storage provider: %w", err)
 	}
 
-	// Dispatch config sync job for all servers using this provider
 	s.dispatchSyncServerLaunchConfig(provider.ID)
-
-	s.Logger.Info().
-		Uint64("provider_id", provider.ID).
-		Msg("Storage provider updated successfully")
-
-	return provider, nil
+	s.Logger.Info().Uint64("provider_id", provider.ID).Msg("Storage provider updated successfully")
+	return dto.ToStorageProviderResponse(provider), nil
 }
 
-// DeleteStorageProvider deletes a storage provider
+// DeleteStorageProvider deletes a storage provider after verifying it
+// has no associated backups.
 func (s *StorageProviderService) DeleteStorageProvider(ctx context.Context, id uint64) error {
-	// First verify the provider exists
-	_, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, id)
-	if err != nil {
+	if _, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, id); err != nil {
 		return err
 	}
 
@@ -126,7 +114,6 @@ func (s *StorageProviderService) DeleteStorageProvider(ctx context.Context, id u
 	if err != nil {
 		return err
 	}
-
 	if hasBackups {
 		return ErrStorageProviderHasBackups
 	}
@@ -135,24 +122,61 @@ func (s *StorageProviderService) DeleteStorageProvider(ctx context.Context, id u
 		return fmt.Errorf("failed to delete storage provider: %w", err)
 	}
 
-	s.Logger.Info().
-		Uint64("provider_id", id).
-		Msg("Storage provider deleted successfully")
-
+	s.Logger.Info().Uint64("provider_id", id).Msg("Storage provider deleted successfully")
 	return nil
 }
 
-// GetStorageProvider retrieves a storage provider by ID
-func (s *StorageProviderService) GetStorageProvider(ctx context.Context, id uint64) (*models.StorageProvider, error) {
+// GetStorageProvider retrieves a storage provider by string id and
+// returns the response DTO. Signature matches ShowFunc; teamID is
+// currently not enforced (preserved from prior behavior).
+func (s *StorageProviderService) GetStorageProvider(ctx context.Context, id, teamID string) (dto.StorageProviderResponse, error) {
+	_ = teamID
+	uid, err := strconv.ParseUint(id, 10, 64)
+	if err != nil {
+		return dto.StorageProviderResponse{}, fiberutil.BadRequest("Invalid provider ID")
+	}
+	provider, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, uid)
+	if err != nil {
+		return dto.StorageProviderResponse{}, err
+	}
+	return dto.ToStorageProviderResponse(provider), nil
+}
+
+// ListStorageProviders lists all storage providers for a team. Signature
+// matches IndexFunc.
+func (s *StorageProviderService) ListStorageProviders(ctx context.Context, teamID string) ([]dto.StorageProviderResponse, error) {
+	providers, err := s.Repos().StorageProvider().FindStorageProvidersByTeamID(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	return pkgdto.TransformSlice(providers, dto.ToStorageProviderResponse), nil
+}
+
+// ListStorageProvidersDropdown returns a simplified id→label map suitable
+// for dropdowns. Signature matches IndexFunc.
+func (s *StorageProviderService) ListStorageProvidersDropdown(ctx context.Context, teamID string) (map[uint64]string, error) {
+	providers, err := s.Repos().StorageProvider().FindStorageProvidersByTeamID(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[uint64]string, len(providers))
+	for _, p := range providers {
+		label := ""
+		if p.Label != nil {
+			label = *p.Label
+		}
+		out[p.ID] = label
+	}
+	return out, nil
+}
+
+// GetStorageProviderRaw is the model-returning entrypoint preserved for
+// cross-module callers. HTTP handlers should use GetStorageProvider.
+func (s *StorageProviderService) GetStorageProviderRaw(ctx context.Context, id uint64) (*models.StorageProvider, error) {
 	return s.Repos().StorageProvider().FindStorageProviderByID(ctx, id)
 }
 
-// ListStorageProvidersByTeam lists all storage providers for a team
-func (s *StorageProviderService) ListStorageProvidersByTeam(ctx context.Context, teamID string) ([]models.StorageProvider, error) {
-	return s.Repos().StorageProvider().FindStorageProvidersByTeamID(ctx, teamID)
-}
-
-// GetStorageProviderConfig gets the agent configuration for a storage provider
+// GetStorageProviderConfig gets the agent configuration for a storage provider.
 func (s *StorageProviderService) GetStorageProviderConfig(ctx context.Context, id uint64) (map[string]any, error) {
 	provider, err := s.Repos().StorageProvider().FindStorageProviderByID(ctx, id)
 	if err != nil {
@@ -160,20 +184,15 @@ func (s *StorageProviderService) GetStorageProviderConfig(ctx context.Context, i
 	}
 
 	credentials := provider.GetCredentials()
-
 	storageProvider, err := s.storageFactory.Create(string(provider.Provider), credentials)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create storage provider: %w", err)
 	}
-
 	return storageProvider.GetConfigForAgent(), nil
 }
 
-// Helper methods
-
 func (s *StorageProviderService) buildCredentials(req *dto.CreateStorageProviderRequest) map[string]any {
 	credentials := make(map[string]any)
-
 	switch req.Provider {
 	case "s3":
 		credentials["endpoint"] = req.Endpoint
@@ -186,13 +205,11 @@ func (s *StorageProviderService) buildCredentials(req *dto.CreateStorageProvider
 	case "dropbox":
 		credentials["token"] = req.Token
 	}
-
 	return credentials
 }
 
 func (s *StorageProviderService) buildCredentialsFromUpdate(req *dto.UpdateStorageProviderRequest) map[string]any {
 	credentials := make(map[string]any)
-
 	switch req.Provider {
 	case "s3":
 		credentials["endpoint"] = req.Endpoint
@@ -205,7 +222,6 @@ func (s *StorageProviderService) buildCredentialsFromUpdate(req *dto.UpdateStora
 	case "dropbox":
 		credentials["token"] = req.Token
 	}
-
 	return credentials
 }
 
@@ -213,8 +229,5 @@ func (s *StorageProviderService) dispatchSyncServerLaunchConfig(providerID uint6
 	if s.Queue == nil {
 		return
 	}
-	// In production, this would enqueue a SyncServerLaunchConfig job
-	s.Logger.Debug().
-		Uint64("provider_id", providerID).
-		Msg("Dispatching SyncServerLaunchConfig job")
+	s.Logger.Debug().Uint64("provider_id", providerID).Msg("Dispatching SyncServerLaunchConfig job")
 }

@@ -41,14 +41,49 @@ func (s *SourceControlService) SetSiteChecker(checker SiteChecker) {
 	s.siteChecker = checker
 }
 
-// ListSourceControls lists all source controls for a team
-func (s *SourceControlService) ListSourceControls(ctx context.Context, teamID string) ([]models.SourceControl, error) {
-	return s.Repos().SourceControl().FindAllByTeam(ctx, teamID)
+// ListSourceControls lists all source controls for a team and returns
+// response DTOs. Signature matches IndexFunc.
+func (s *SourceControlService) ListSourceControls(ctx context.Context, teamID string) ([]dto.SourceControlResponse, error) {
+	scs, err := s.Repos().SourceControl().FindAllByTeam(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.SourceControlResponse, len(scs))
+	for i := range scs {
+		out[i] = dto.ToSourceControlResponse(&scs[i])
+	}
+	return out, nil
 }
 
-// GetSourceControl gets a source control by ID
-func (s *SourceControlService) GetSourceControl(ctx context.Context, id, teamID string) (*models.SourceControl, error) {
+// GetSourceControl gets a source control by ID and returns the response
+// DTO. Signature matches ShowFunc.
+func (s *SourceControlService) GetSourceControl(ctx context.Context, id, teamID string) (dto.SourceControlResponse, error) {
+	sc, err := s.Repos().SourceControl().FindByIDAndTeam(ctx, id, teamID)
+	if err != nil {
+		return dto.SourceControlResponse{}, fiberutil.NotFoundAs(err, "Source control not found")
+	}
+	return dto.ToSourceControlResponse(sc), nil
+}
+
+// GetSourceControlRaw is the model-returning fetch preserved for
+// internal callers (handlers needing the raw model for downstream
+// service calls). HTTP handlers should use GetSourceControl.
+func (s *SourceControlService) GetSourceControlRaw(ctx context.Context, id, teamID string) (*models.SourceControl, error) {
 	return s.Repos().SourceControl().FindByIDAndTeam(ctx, id, teamID)
+}
+
+// GetSourceControlRepositories lists all repositories for a source
+// control. Signature matches IndexNestedFunc.
+func (s *SourceControlService) GetSourceControlRepositories(ctx context.Context, sourceControlID, teamID string) ([]dto.RepositoryResponse, error) {
+	repos, err := s.GetRepositoriesBySourceControlID(ctx, sourceControlID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.RepositoryResponse, len(repos))
+	for i := range repos {
+		out[i] = dto.ToRepositoryResponse(&repos[i])
+	}
+	return out, nil
 }
 
 // ensureInstallationNotClaimed checks that no other team has already claimed this installation
@@ -65,8 +100,22 @@ func (s *SourceControlService) ensureInstallationNotClaimed(ctx context.Context,
 	return nil
 }
 
-// Connect connects a git provider using an installation ID
-func (s *SourceControlService) Connect(ctx context.Context, userID, teamID string, providerType gittypes.GitProviderType, installationID string) (*models.SourceControl, error) {
+// Connect connects a git provider using a connect request and returns
+// the response DTO. Signature matches CreateFunc.
+func (s *SourceControlService) Connect(ctx context.Context, teamID, userID string, req *dto.ConnectProviderRequest) (dto.SourceControlResponse, error) {
+	providerType, err := gittypes.ParseGitProviderType(req.Provider)
+	if err != nil {
+		return dto.SourceControlResponse{}, fiberutil.BadRequest("Invalid provider")
+	}
+	sc, err := s.connectInstallation(ctx, teamID, userID, providerType, req.InstallationID)
+	if err != nil {
+		return dto.SourceControlResponse{}, err
+	}
+	return dto.ToSourceControlResponse(sc), nil
+}
+
+// connect runs the provider-connection flow and returns the model.
+func (s *SourceControlService) connectInstallation(ctx context.Context, teamID, userID string, providerType gittypes.GitProviderType, installationID string) (*models.SourceControl, error) {
 	// Ensure this installation is not already claimed by another team
 	if err := s.ensureInstallationNotClaimed(ctx, providerType, installationID, teamID); err != nil {
 		return nil, err
@@ -165,8 +214,10 @@ func (s *SourceControlService) Connect(ctx context.Context, userID, teamID strin
 	return sc, nil
 }
 
-// Disconnect disconnects a source control
-func (s *SourceControlService) Disconnect(ctx context.Context, id, teamID string) error {
+// Disconnect disconnects a source control. Signature matches DeleteFunc;
+// userID is part of the framework-mutation convention.
+func (s *SourceControlService) Disconnect(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
 	sc, err := s.Repos().SourceControl().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return err

@@ -17,32 +17,42 @@ import (
 
 const defaultBackupRetention = 10
 
-// BackupService handles business logic for backups
+// BackupService handles business logic for backups. Service signatures
+// follow the framework helper conventions:
+//
+//	IndexNested:        ListBackups(ctx, serverID, teamID)
+//	ShowNested:         GetBackup(ctx, id, serverID, teamID)
+//	CreateNested:       CreateBackup(ctx, serverID, teamID, userID, req)
+//	UpdateNested:       UpdateBackup(ctx, id, serverID, teamID, userID, req)
+//	DeleteNested:       DeleteBackup(ctx, id, serverID, teamID, userID)
+//	ActionItemNested:   RunBackup(ctx, id, serverID, teamID, userID)
 type BackupService struct {
 	*BaseService
 }
 
-// NewBackupService creates a new backup service
+// NewBackupService creates a new backup service.
 func NewBackupService(deps *ServiceDeps) *BackupService {
-	return &BackupService{
-		BaseService: NewBaseService(deps),
-	}
+	return &BackupService{BaseService: NewBaseService(deps)}
 }
 
-// CreateBackup creates a new backup configuration
-func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID, teamID string, req *dto.CreateBackupRequest) (*models.Backup, error) {
-	// Convert include/exclude files to JSON strings
+// CreateBackup creates a new backup configuration and returns the response DTO.
+func (s *BackupService) CreateBackup(ctx context.Context, serverID, teamID, userID string, req *dto.CreateBackupRequest) (dto.BackupResponse, error) {
+	backup, err := s.buildAndDispatchBackup(ctx, serverID, teamID, userID, req)
+	if err != nil {
+		return dto.BackupResponse{}, err
+	}
+	return dto.ToBackupResponse(backup), nil
+}
+
+func (s *BackupService) buildAndDispatchBackup(ctx context.Context, serverID, teamID, userID string, req *dto.CreateBackupRequest) (*models.Backup, error) {
 	includeFilesJSON, err := json.Marshal(req.IncludeFiles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process include files: %w", err)
 	}
-
 	excludeFilesJSON, err := json.Marshal(req.ExcludeFiles)
 	if err != nil {
 		return nil, fmt.Errorf("failed to process exclude files: %w", err)
 	}
-
-	// Convert StorageProviderID from string to uint64
 	storageProviderID, err := strconv.ParseUint(req.StorageProviderID, 10, 64)
 	if err != nil {
 		return nil, fmt.Errorf("invalid storage provider ID: %w", err)
@@ -53,8 +63,9 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID, team
 		retention = defaultBackupRetention
 	}
 
+	uid := userID
 	backup := &models.Backup{
-		UserID:                &userID,
+		UserID:                &uid,
 		StorageProviderID:     storageProviderID,
 		CronExpression:        req.CronExpression,
 		IncludeFiles:          string(includeFilesJSON),
@@ -72,41 +83,33 @@ func (s *BackupService) CreateBackup(ctx context.Context, serverID, userID, team
 		return nil, fmt.Errorf("failed to create backup: %w", err)
 	}
 
-	activity.RecordEvent(ctx, "created", "", backup, "Backup was created")
-
-	// Dispatch installation job
+	activity.RecordEvent(ctx, "created", userID, backup, "Backup was created")
 	s.dispatchInstallBackup(serverID, backup.ID)
 
-	s.Logger.Info().
-		Str("backup_id", backup.ID).
-		Str("server_id", serverID).
-		Msg("Backup created successfully")
-
+	s.Logger.Info().Str("backup_id", backup.ID).Str("server_id", serverID).Msg("Backup created successfully")
 	return backup, nil
 }
 
-// UpdateBackup updates an existing backup configuration
-func (s *BackupService) UpdateBackup(ctx context.Context, id string, req *dto.UpdateBackupRequest) (*models.Backup, error) {
-	backup, err := s.Repos().Backup().FindBackupByID(ctx, id)
+// UpdateBackup updates an existing backup configuration. The backup must
+// belong to the given server.
+func (s *BackupService) UpdateBackup(ctx context.Context, id, serverID, teamID, userID string, req *dto.UpdateBackupRequest) (dto.BackupResponse, error) {
+	_ = teamID
+	backup, err := s.Repos().Backup().FindBackupByIDAndServer(ctx, id, serverID)
 	if err != nil {
-		return nil, err
+		return dto.BackupResponse{}, err
 	}
 
-	// Convert include/exclude files to JSON strings
 	includeFilesJSON, err := json.Marshal(req.IncludeFiles)
 	if err != nil {
-		return nil, fmt.Errorf("failed to process include files: %w", err)
+		return dto.BackupResponse{}, fmt.Errorf("failed to process include files: %w", err)
 	}
-
 	excludeFilesJSON, err := json.Marshal(req.ExcludeFiles)
 	if err != nil {
-		return nil, fmt.Errorf("failed to process exclude files: %w", err)
+		return dto.BackupResponse{}, fmt.Errorf("failed to process exclude files: %w", err)
 	}
-
-	// Convert StorageProviderID from string to uint64
 	storageProviderID, err := strconv.ParseUint(req.StorageProviderID, 10, 64)
 	if err != nil {
-		return nil, fmt.Errorf("invalid storage provider ID: %w", err)
+		return dto.BackupResponse{}, fmt.Errorf("invalid storage provider ID: %w", err)
 	}
 
 	backup.CronExpression = req.CronExpression
@@ -122,78 +125,85 @@ func (s *BackupService) UpdateBackup(ctx context.Context, id string, req *dto.Up
 	backup.NotificationOnSuccess = req.NotificationOnSuccess
 
 	if err := s.Repos().Backup().UpdateBackupWithDatabases(ctx, backup, req.Databases); err != nil {
-		return nil, fmt.Errorf("failed to update backup: %w", err)
+		return dto.BackupResponse{}, fmt.Errorf("failed to update backup: %w", err)
 	}
 
-	activity.RecordEvent(ctx, "updated", "", backup, "Backup was updated")
+	activity.RecordEvent(ctx, "updated", userID, backup, "Backup was updated")
+	s.Logger.Info().Str("backup_id", backup.ID).Msg("Backup updated successfully")
 
-	s.Logger.Info().
-		Str("backup_id", backup.ID).
-		Msg("Backup updated successfully")
-
-	return backup, nil
+	return dto.ToBackupResponse(backup), nil
 }
 
-// DeleteBackup deletes a backup configuration
-func (s *BackupService) DeleteBackup(ctx context.Context, id, serverID string) error {
+// DeleteBackup deletes a backup configuration.
+func (s *BackupService) DeleteBackup(ctx context.Context, id, serverID, teamID, userID string) error {
+	_ = teamID
 	backup, err := s.Repos().Backup().FindBackupByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return err
 	}
 
-	activity.RecordEvent(ctx, "deleted", "", backup, "Backup was deleted")
+	activity.RecordEvent(ctx, "deleted", userID, backup, "Backup was deleted")
 
-	// Delete record first, then dispatch the cleanup job
 	if err := s.Repos().Backup().DeleteBackup(ctx, id); err != nil {
 		return fmt.Errorf("failed to delete backup: %w", err)
 	}
 
-	// Dispatch deletion job to remove backup files from server.
-	// If dispatch fails, the backup file remains on the server but the record is already gone.
-	// This is the safer inconsistency since the record is the source of truth.
+	// Dispatch deletion job to remove backup files from server. If
+	// dispatch fails, the backup file remains on the server but the
+	// record is already gone — the safer inconsistency.
 	s.dispatchDeleteBackup(serverID, backup.ID)
 
-	s.Logger.Info().
-		Str("backup_id", id).
-		Str("server_id", serverID).
-		Msg("Backup deleted successfully")
-
+	s.Logger.Info().Str("backup_id", id).Str("server_id", serverID).Msg("Backup deleted successfully")
 	return nil
 }
 
-// GetBackup retrieves a backup by ID
-func (s *BackupService) GetBackup(ctx context.Context, id string) (*models.Backup, error) {
-	return s.Repos().Backup().FindBackupByID(ctx, id)
+// GetBackup retrieves a backup by ID, verifying it belongs to the server.
+// Signature matches ShowNestedFunc.
+func (s *BackupService) GetBackup(ctx context.Context, id, serverID, teamID string) (dto.BackupResponse, error) {
+	_ = teamID
+	backup, err := s.Repos().Backup().FindBackupByIDAndServer(ctx, id, serverID)
+	if err != nil {
+		return dto.BackupResponse{}, err
+	}
+	return dto.ToBackupResponse(backup), nil
 }
 
-// GetBackupByIDAndServer retrieves a backup by ID and server ID
-func (s *BackupService) GetBackupByIDAndServer(ctx context.Context, id, serverID string) (*models.Backup, error) {
-	return s.Repos().Backup().FindBackupByIDAndServer(ctx, id, serverID)
+// ListBackups lists all backups for a server. Signature matches IndexNestedFunc.
+func (s *BackupService) ListBackups(ctx context.Context, serverID, teamID string) ([]dto.BackupResponse, error) {
+	_ = teamID
+	backups, err := s.Repos().Backup().FindBackupsByServerID(ctx, serverID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.BackupResponse, len(backups))
+	for i := range backups {
+		out[i] = dto.ToBackupResponse(&backups[i])
+	}
+	return out, nil
 }
 
-// ListBackupsByServer lists all backups for a server
-func (s *BackupService) ListBackupsByServer(ctx context.Context, serverID string) ([]models.Backup, error) {
-	return s.Repos().Backup().FindBackupsByServerID(ctx, serverID)
-}
-
-// RunBackup triggers a manual backup run
-func (s *BackupService) RunBackup(ctx context.Context, id, serverID string) error {
+// RunBackup triggers a manual backup run. Signature matches ActionItemNestedFunc.
+func (s *BackupService) RunBackup(ctx context.Context, id, serverID, teamID, userID string) error {
+	_ = teamID
+	_ = userID
 	backup, err := s.Repos().Backup().FindBackupByIDAndServer(ctx, id, serverID)
 	if err != nil {
 		return err
 	}
 
 	s.dispatchRunManualBackup(serverID, backup.ID)
-
-	s.Logger.Info().
-		Str("backup_id", id).
-		Str("server_id", serverID).
-		Msg("Manual backup queued for execution")
-
+	s.Logger.Info().Str("backup_id", id).Str("server_id", serverID).Msg("Manual backup queued for execution")
 	return nil
 }
 
-// MarkBackupInstalled marks a backup as installed
+// GetBackupRaw is the model-returning entrypoint preserved for
+// cross-service callers (job/agent-config services). HTTP handlers should
+// use GetBackup (DTO-returning).
+func (s *BackupService) GetBackupRaw(ctx context.Context, id string) (*models.Backup, error) {
+	return s.Repos().Backup().FindBackupByID(ctx, id)
+}
+
+// MarkBackupInstalled marks a backup as installed.
 func (s *BackupService) MarkBackupInstalled(ctx context.Context, id string) error {
 	return s.Repos().Backup().UpdateBackupFields(ctx, id, map[string]interface{}{
 		"installed_at":           time.Now(),
@@ -201,14 +211,12 @@ func (s *BackupService) MarkBackupInstalled(ctx context.Context, id string) erro
 	})
 }
 
-// MarkBackupInstallationFailed marks a backup installation as failed
+// MarkBackupInstallationFailed marks a backup installation as failed.
 func (s *BackupService) MarkBackupInstallationFailed(ctx context.Context, id string) error {
 	return s.Repos().Backup().UpdateBackupFields(ctx, id, map[string]interface{}{
 		"installation_failed_at": time.Now(),
 	})
 }
-
-// Job dispatch helpers
 
 func (s *BackupService) dispatchInstallBackup(serverID, backupID string) {
 	s.DispatchTask("InstallBackup", func() (*asynq.Task, error) {

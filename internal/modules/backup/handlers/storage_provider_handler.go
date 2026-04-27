@@ -8,62 +8,32 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
 	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
-	pkgdto "github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// StorageProviderHandler handles HTTP requests for storage providers
+// StorageProviderHandler holds the storage provider endpoints that do
+// not fit the team-scoped route helpers. These routes use the :provider
+// path parameter for two different things:
+//
+//   - POST /storage-providers/:provider/connect — :provider is the type
+//     ("s3", "dropbox") and is copied into the request body.
+//   - PUT /storage-providers/:provider          — :provider is the type;
+//     the actual provider id is in the body.
+//   - DELETE /storage-providers/:provider       — :provider is the
+//     numeric (uint64) id.
+//
+// The list / dropdown / show endpoints are wired directly to route
+// helpers in routes.go.
 type StorageProviderHandler struct {
 	providerService *services.StorageProviderService
 }
 
-// NewStorageProviderHandler creates a new storage provider handler
+// NewStorageProviderHandler creates a new storage provider handler.
 func NewStorageProviderHandler(providerService *services.StorageProviderService) *StorageProviderHandler {
 	return &StorageProviderHandler{providerService: providerService}
 }
 
-// ListStorageProviders lists all storage providers for a team
-func (h *StorageProviderHandler) ListStorageProviders(c *fiber.Ctx) error {
-	teamID, err := fiberutil.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	providers, err := h.providerService.ListStorageProvidersByTeam(c.Context(), teamID)
-	if err != nil {
-		return fiberutil.HandleError(c, err)
-	}
-
-	result := pkgdto.TransformSlice(providers, dto.ToStorageProviderResponse)
-
-	return fiberutil.OK(c, "Storage providers retrieved", result)
-}
-
-// ListStorageProvidersForDropdown returns a simplified list for dropdowns
-func (h *StorageProviderHandler) ListStorageProvidersForDropdown(c *fiber.Ctx) error {
-	teamID, err := fiberutil.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	providers, err := h.providerService.ListStorageProvidersByTeam(c.Context(), teamID)
-	if err != nil {
-		return fiberutil.HandleError(c, err)
-	}
-
-	result := make(map[uint64]string)
-	for _, provider := range providers {
-		label := ""
-		if provider.Label != nil {
-			label = *provider.Label
-		}
-		result[provider.ID] = label
-	}
-
-	return fiberutil.OK(c, "Storage providers retrieved", result)
-}
-
-// ConnectStorageProvider creates a new storage provider connection
+// ConnectStorageProvider creates a new storage provider connection.
 func (h *StorageProviderHandler) ConnectStorageProvider(c *fiber.Ctx) error {
 	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
@@ -71,101 +41,53 @@ func (h *StorageProviderHandler) ConnectStorageProvider(c *fiber.Ctx) error {
 	}
 	providerType := c.Params("provider")
 
-	// Validate provider type
-	driver := backuptypes.StorageDriver(providerType)
-	if !driver.IsValid() {
-		return fiberutil.RespondBadRequest(c, "Invalid storage provider type")
+	if !backuptypes.StorageDriver(providerType).IsValid() {
+		return fiberutil.BadRequest("Invalid storage provider type")
 	}
 
 	req, err := fiberutil.MustParseAndValidate[dto.CreateStorageProviderRequest](c)
 	if err != nil {
 		return err
 	}
-
-	// Set provider from URL param
 	req.Provider = providerType
 
-	provider, err := h.providerService.ConnectStorageProvider(c.Context(), userID, teamID, req)
+	resp, err := h.providerService.ConnectStorageProvider(c.Context(), teamID, userID, req)
 	if err != nil {
-		if err == services.ErrConnectionFailed {
-			return fiberutil.RespondBadRequest(c, "Failed to connect to storage provider")
-		}
-		return fiberutil.HandleError(c, err)
+		return err
 	}
-
-	return fiberutil.Created(c, "Storage provider connected successfully", dto.ToStorageProviderResponse(provider))
+	return fiberutil.Created(c, "Storage provider connected successfully", resp)
 }
 
-// UpdateStorageProvider updates an existing storage provider
+// UpdateStorageProvider updates an existing storage provider. The path
+// parameter `:provider` carries the provider type; the actual provider
+// id is in the request body.
 func (h *StorageProviderHandler) UpdateStorageProvider(c *fiber.Ctx) error {
 	providerType := c.Params("provider")
-
-	// Validate provider type
-	driver := backuptypes.StorageDriver(providerType)
-	if !driver.IsValid() {
-		return fiberutil.RespondBadRequest(c, "Invalid storage provider type")
+	if !backuptypes.StorageDriver(providerType).IsValid() {
+		return fiberutil.BadRequest("Invalid storage provider type")
 	}
 
 	req, err := fiberutil.MustParseAndValidate[dto.UpdateStorageProviderRequest](c)
 	if err != nil {
 		return err
 	}
-
-	// Set provider from URL param
 	req.Provider = providerType
 
-	provider, err := h.providerService.UpdateStorageProvider(c.Context(), req.ID, req)
+	resp, err := h.providerService.UpdateStorageProvider(c.Context(), req.ID, req)
 	if err != nil {
-		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "Storage provider not found")
-		}
-		if err == services.ErrConnectionFailed {
-			return fiberutil.RespondBadRequest(c, "Failed to connect to storage provider")
-		}
-		return fiberutil.HandleError(c, err)
+		return err
 	}
-
-	return fiberutil.OK(c, "Storage provider updated successfully", dto.ToStorageProviderResponse(provider))
+	return fiberutil.OK(c, "Storage provider updated successfully", resp)
 }
 
-// DeleteStorageProvider deletes a storage provider
+// DeleteStorageProvider deletes a storage provider by numeric id.
 func (h *StorageProviderHandler) DeleteStorageProvider(c *fiber.Ctx) error {
-	providerIDStr := c.Params("provider")
-
-	providerID, err := strconv.ParseUint(providerIDStr, 10, 64)
+	providerID, err := strconv.ParseUint(c.Params("provider"), 10, 64)
 	if err != nil {
-		return fiberutil.RespondBadRequest(c, "Invalid provider ID")
+		return fiberutil.BadRequest("Invalid provider ID")
 	}
-
 	if err := h.providerService.DeleteStorageProvider(c.Context(), providerID); err != nil {
-		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "Storage provider not found")
-		}
-		if err == services.ErrStorageProviderHasBackups {
-			return fiberutil.RespondConflict(c, "Storage provider has associated backups and cannot be deleted")
-		}
-		return fiberutil.HandleError(c, err)
+		return err
 	}
-
 	return fiberutil.NoContent(c)
-}
-
-// ShowStorageProvider shows a single storage provider
-func (h *StorageProviderHandler) ShowStorageProvider(c *fiber.Ctx) error {
-	providerIDStr := c.Params("id")
-
-	providerID, err := strconv.ParseUint(providerIDStr, 10, 64)
-	if err != nil {
-		return fiberutil.RespondBadRequest(c, "Invalid provider ID")
-	}
-
-	provider, err := h.providerService.GetStorageProvider(c.Context(), providerID)
-	if err != nil {
-		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "Storage provider not found")
-		}
-		return fiberutil.HandleError(c, err)
-	}
-
-	return fiberutil.OK(c, "Storage provider retrieved", dto.ToStorageProviderResponse(provider))
 }

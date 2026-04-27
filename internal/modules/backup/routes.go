@@ -1,58 +1,48 @@
 package backup
 
 import (
-	"github.com/gofiber/fiber/v2"
+	gofiber "github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/middleware"
+	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/handlers"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// RegisterRoutes registers the backup module routes
-func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
-	// Create services
+// RegisterRoutes registers the backup module routes. Server-scoped backup
+// CRUD goes through the framework helpers; storage-provider routes use a
+// dual-purpose `:provider` path parameter so they stay hand-written.
+func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Handler) {
 	svc := m.createServices()
 
-	// Create handlers
-	backupHandler := handlers.NewBackupHandler(svc.Backup())
 	storageProviderHandler := handlers.NewStorageProviderHandler(svc.StorageProvider())
 
-	m.registerBackupRoutes(router, authMiddleware, backupHandler)
-	m.registerStorageProviderRoutes(router, authMiddleware, storageProviderHandler)
+	// Server-scoped backup CRUD.
+	auth := middleware.Append(middleware.AuthenticatedChain(authMiddleware), middleware.RequireProvisionedServer("serverId"))
+	backups := router.Group("/servers/:serverId/backups", auth...)
+	backups.Get("/", fiberutil.IndexNested("serverId", "Backups retrieved", svc.Backup().ListBackups))
+	backups.Post("/", fiberutil.CreateNested[dto.CreateBackupRequest]("serverId", "Backup created successfully", svc.Backup().CreateBackup))
+	backups.Get("/:id", fiberutil.ShowNested("serverId", "id", "Backup retrieved", svc.Backup().GetBackup))
+	backups.Put("/:id", fiberutil.UpdateNested[dto.UpdateBackupRequest]("serverId", "id", "Backup updated successfully", svc.Backup().UpdateBackup))
+	backups.Delete("/:id", fiberutil.DeleteNested("serverId", "id", svc.Backup().DeleteBackup))
+	backups.Post("/:id/run", fiberutil.ActionItemNested("serverId", "id", "Backup queued for execution", svc.Backup().RunBackup))
+
+	// Team-scoped storage providers. List / dropdown / show fit the
+	// framework helpers; connect / update / delete have unusual path
+	// semantics and live in the bespoke handler.
+	storage := router.Group("/storage-providers", middleware.AuthenticatedChain(authMiddleware)...)
+	storage.Get("/", fiberutil.Index("Storage providers retrieved", svc.StorageProvider().ListStorageProviders))
+	storage.Get("/dropdown", fiberutil.Index("Storage providers retrieved", svc.StorageProvider().ListStorageProvidersDropdown))
+	storage.Get("/:id", fiberutil.Show("Storage provider retrieved", svc.StorageProvider().GetStorageProvider))
+	storage.Post("/:provider/connect", storageProviderHandler.ConnectStorageProvider)
+	storage.Put("/:provider", storageProviderHandler.UpdateStorageProvider)
+	storage.Delete("/:provider", storageProviderHandler.DeleteStorageProvider)
 }
 
-// registerBackupRoutes registers server backup routes
-func (m *Module) registerBackupRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.BackupHandler) {
-	serverBackups := router.Group("/servers/:serverId/backups", middleware.Append(middleware.AuthenticatedChain(authMiddleware), middleware.RequireProvisionedServer("serverId"))...)
-	{
-		serverBackups.Get("/", handler.ListBackups)
-		serverBackups.Post("/", handler.CreateBackup)
-		serverBackups.Get("/:id", handler.ShowBackup)
-		serverBackups.Put("/:id", handler.UpdateBackup)
-		serverBackups.Delete("/:id", handler.DeleteBackup)
-		serverBackups.Post("/:id/run", handler.RunManualBackup)
-	}
-}
-
-// registerStorageProviderRoutes registers storage provider routes
-func (m *Module) registerStorageProviderRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.StorageProviderHandler) {
-	storageProviders := router.Group("/storage-providers", middleware.AuthenticatedChain(authMiddleware)...)
-	{
-		storageProviders.Get("/", handler.ListStorageProviders)
-		storageProviders.Get("/dropdown", handler.ListStorageProvidersForDropdown)
-		storageProviders.Get("/:id", handler.ShowStorageProvider)
-		storageProviders.Post("/:provider/connect", handler.ConnectStorageProvider)
-		storageProviders.Put("/:provider", handler.UpdateStorageProvider)
-		storageProviders.Delete("/:provider", handler.DeleteStorageProvider)
-	}
-}
-
-// RegisterWebhookRoutes registers webhook routes that don't require authentication
-func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
-	// Create services
+// RegisterWebhookRoutes registers webhook routes that don't require
+// authentication.
+func (m *Module) RegisterWebhookRoutes(router gofiber.Router) {
 	svc := m.createServices()
-
-	// Create handler
-	backupJobHandler := handlers.NewBackupJobHandler(svc.BackupJob())
-
-	router.Post("/backup/:backup/:token", backupJobHandler.CreateBackupJob)
+	jobHandler := handlers.NewBackupJobHandler(svc.BackupJob())
+	router.Post("/backup/:backup/:token", jobHandler.CreateBackupJob)
 }

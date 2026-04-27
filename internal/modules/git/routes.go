@@ -1,118 +1,80 @@
 package git
 
 import (
-	"github.com/gofiber/fiber/v2"
+	gofiber "github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/middleware"
+	"github.com/kkz6/launch-go/internal/modules/git/dto"
 	"github.com/kkz6/launch-go/internal/modules/git/handlers"
+	"github.com/kkz6/launch-go/internal/modules/git/services"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// RegisterRoutes registers all git routes
-func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
-	// Create services
+// RegisterRoutes registers all git routes. Standard CRUD on
+// /source-controls maps to framework helpers; provider-discriminated
+// reads (`:provider`-scoped installation lookups, OAuth callbacks) live
+// in the SourceControlHandler.
+func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Handler) {
 	svc := m.createServices()
-
-	// Create handlers
 	handler := handlers.NewSourceControlHandler(svc.SourceControl())
 
-	// Settings routes (authenticated + subscription required)
+	// Settings UI routes.
 	settings := router.Group("/settings", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
-	{
-		// Git providers page
-		settings.Get("/git-providers", handler.GetInstallationsWithCounts)
+	settings.Get("/git-providers", handler.GetInstallationsWithCounts)
+	settings.Get("/git-providers/:provider/installation-url", handler.GetInstallationURL)
+	settings.Get("/git-providers/:provider/installations", handler.GetInstallations)
+	settings.Get("/git-providers/:provider/installations/:installationId/repositories", handler.GetInstallationRepositories)
+	settings.Get("/git-providers/:provider/installations/:installationId/cached-repositories", handler.GetCachedInstallationRepositories)
+	settings.Post("/git-providers/:provider/installations/:installationId/refresh-repositories", handler.RefreshInstallationRepositories)
+	settings.Get("/git-providers/:provider/callback", handler.HandleInstallationCallback)
 
-		// Installation URL
-		settings.Get("/git-providers/:provider/installation-url", handler.GetInstallationURL)
-
-		// Get all installations for a provider
-		settings.Get("/git-providers/:provider/installations", handler.GetInstallations)
-
-		// Get repositories from API
-		settings.Get("/git-providers/:provider/installations/:installationId/repositories", handler.GetInstallationRepositories)
-
-		// Get cached repositories
-		settings.Get("/git-providers/:provider/installations/:installationId/cached-repositories", handler.GetCachedInstallationRepositories)
-
-		// Refresh repositories
-		settings.Post("/git-providers/:provider/installations/:installationId/refresh-repositories", handler.RefreshInstallationRepositories)
-
-		// Installation callback
-		settings.Get("/git-providers/:provider/callback", handler.HandleInstallationCallback)
-	}
-
-	// App-based routes (authenticated + subscription required)
+	// App-based integration routes.
 	integrations := router.Group("/integrations/git-apps", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
-	{
-		// Get installation URL
-		integrations.Get("/:provider/installation-url", handler.GetInstallationURL)
+	integrations.Get("/:provider/installation-url", handler.GetInstallationURL)
+	integrations.Get("/:provider/installations", handler.GetInstallations)
+	integrations.Get("/:provider/installations/:installationId", handler.GetInstallation)
+	integrations.Get("/:provider/installations/:installationId/repositories", handler.GetInstallationRepositories)
+	integrations.Get("/:provider/test-connection", handler.TestConnection)
 
-		// Get all installations
-		integrations.Get("/:provider/installations", handler.GetInstallations)
-
-		// Get single installation
-		integrations.Get("/:provider/installations/:installationId", handler.GetInstallation)
-
-		// Get installation repositories
-		integrations.Get("/:provider/installations/:installationId/repositories", handler.GetInstallationRepositories)
-
-		// Test connection
-		integrations.Get("/:provider/test-connection", handler.TestConnection)
-	}
-
-	// Source controls CRUD (authenticated + subscription required)
-	sourceControls := router.Group("/source-controls", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
-	{
-		sourceControls.Get("/", handler.ListSourceControls)
-		sourceControls.Get("/:id", handler.GetSourceControl)
-		sourceControls.Get("/:id/repositories", handler.GetSourceControlRepositories)
-		sourceControls.Post("/", handler.Connect)
-		sourceControls.Delete("/:id", handler.Disconnect)
-	}
+	// Source-control CRUD via framework helpers.
+	registerSourceControlRoutes(router.Group("/source-controls", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription()), svc)
 }
 
-// RegisterWebhookRoutes registers webhook routes at the root level (no auth, no /api prefix).
-// These routes receive callbacks from external git providers (GitHub, GitLab, Bitbucket).
-func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
+// RegisterWebhookRoutes registers webhook routes at the root level (no
+// auth, no /api prefix). These routes receive callbacks from external
+// git providers (GitHub, GitLab, Bitbucket).
+func (m *Module) RegisterWebhookRoutes(router gofiber.Router) {
 	deps := m.Deps()
-
-	// Create services and webhook handler
 	svc := m.createServices()
 	webhookHandler := handlers.NewWebhookHandler(svc.SourceControl(), m.providerFactory, deps.Logger)
 	webhookHandler.SetQueueClient(deps.Queue)
 
-	// Webhook routes (no auth required - verified via provider signatures)
-	webhooks := router.Group("/webhooks/git")
-	{
-		webhooks.Post("/:provider", webhookHandler.HandleWebhook)
-	}
+	router.Group("/webhooks/git").Post("/:provider", webhookHandler.HandleWebhook)
 }
 
-// RegisterAPIRoutes registers API-only routes
-func (m *Module) RegisterAPIRoutes(router fiber.Router, authMiddleware fiber.Handler) {
-	// Create services
+// RegisterAPIRoutes registers API-only routes.
+func (m *Module) RegisterAPIRoutes(router gofiber.Router, authMiddleware gofiber.Handler) {
 	svc := m.createServices()
-
-	// Create handler
 	handler := handlers.NewSourceControlHandler(svc.SourceControl())
 
-	// API v1 routes
 	api := router.Group("/git", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
-	{
-		// Source controls
-		api.Get("/source-controls", handler.ListSourceControls)
-		api.Get("/source-controls/:id", handler.GetSourceControl)
-		api.Get("/source-controls/:id/repositories", handler.GetSourceControlRepositories)
-		api.Post("/source-controls", handler.Connect)
-		api.Delete("/source-controls/:id", handler.Disconnect)
+	registerSourceControlRoutes(api.Group("/source-controls"), svc)
 
-		// Providers
-		api.Get("/providers/:provider/installation-url", handler.GetInstallationURL)
-		api.Get("/providers/:provider/installations", handler.GetInstallations)
-		api.Get("/providers/:provider/installations/:installationId", handler.GetInstallation)
-		api.Get("/providers/:provider/installations/:installationId/repositories", handler.GetInstallationRepositories)
-		api.Get("/providers/:provider/test-connection", handler.TestConnection)
+	providers := api.Group("/providers")
+	providers.Get("/:provider/installation-url", handler.GetInstallationURL)
+	providers.Get("/:provider/installations", handler.GetInstallations)
+	providers.Get("/:provider/installations/:installationId", handler.GetInstallation)
+	providers.Get("/:provider/installations/:installationId/repositories", handler.GetInstallationRepositories)
+	providers.Get("/:provider/test-connection", handler.TestConnection)
+	providers.Post("/:provider/installations/:installationId/sync", handler.RefreshInstallationRepositories)
+}
 
-		// Sync
-		api.Post("/providers/:provider/installations/:installationId/sync", handler.RefreshInstallationRepositories)
-	}
+// registerSourceControlRoutes wires standard team-scoped CRUD on a
+// /source-controls group via the framework route helpers.
+func registerSourceControlRoutes(g gofiber.Router, svc *services.ServiceRegistry) {
+	g.Get("/", fiberutil.Index("Source controls retrieved", svc.SourceControl().ListSourceControls))
+	g.Get("/:id", fiberutil.Show("Source control retrieved", svc.SourceControl().GetSourceControl))
+	g.Get("/:id/repositories", fiberutil.IndexNested("id", "Repositories retrieved", svc.SourceControl().GetSourceControlRepositories))
+	g.Post("/", fiberutil.Create[dto.ConnectProviderRequest]("Provider connected successfully", svc.SourceControl().Connect))
+	g.Delete("/:id", fiberutil.Delete(svc.SourceControl().Disconnect))
 }

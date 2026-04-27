@@ -2,7 +2,6 @@ package services
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
@@ -14,51 +13,42 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
-// DomainProviderService handles business logic for domain providers
+// DomainProviderService handles business logic for domain providers.
 type DomainProviderService struct {
 	*BaseService
 }
 
-// NewDomainProviderService creates a new DomainProviderService instance
+// NewDomainProviderService creates a new DomainProviderService instance.
 func NewDomainProviderService(deps *ServiceDeps) *DomainProviderService {
-	return &DomainProviderService{
-		BaseService: NewBaseService(deps),
-	}
+	return &DomainProviderService{BaseService: NewBaseService(deps)}
 }
 
-// CreateProvider creates a new DNS provider
-func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, teamID string, req *dto.CreateDomainProviderRequest) (*models.DomainProvider, error) {
+// CreateProvider creates a new DNS provider and returns the response DTO.
+// A new provider always has zero domains, so the count is rendered as 0
+// without a follow-up query.
+func (s *DomainProviderService) CreateProvider(ctx context.Context, teamID, userID string, req *dto.CreateDomainProviderRequest) (dto.DomainProviderResponse, error) {
 	providerType, err := dnstypes.ParseDNSProvider(req.Provider)
 	if err != nil {
-		return nil, err
+		return dto.DomainProviderResponse{}, err
 	}
 
-	// Create credentials map
-	credentials := map[string]string{
-		"token": req.Token,
-	}
+	credentials := map[string]string{"token": req.Token}
 
-	// Build additional data
 	var additionalData map[string]interface{}
 	if req.AccountID != "" {
-		additionalData = map[string]interface{}{
-			"account_id": req.AccountID,
-		}
+		additionalData = map[string]interface{}{"account_id": req.AccountID}
 	}
 
-	// Create provider instance to validate credentials
 	provider, err := providers.NewProvider(providers.DNSProviderType(providerType), credentials, additionalData)
 	if err != nil {
-		return nil, err
+		return dto.DomainProviderResponse{}, err
 	}
 
-	// Validate credentials
 	if err := provider.ValidateCredentials(ctx); err != nil {
 		s.Logger.Error().Err(err).Str("provider", req.Provider).Msg("Failed to validate credentials")
-		return nil, ErrInvalidCredentials
+		return dto.DomainProviderResponse{}, ErrInvalidCredentials
 	}
 
-	// Create domain provider record
 	dp := &models.DomainProvider{
 		Profile:        &req.Profile,
 		Provider:       providerType,
@@ -70,26 +60,22 @@ func (s *DomainProviderService) CreateProvider(ctx context.Context, userID, team
 	dp.TeamID = teamID
 
 	if err := s.Repos().Provider().Create(ctx, dp); err != nil {
-		return nil, err
+		return dto.DomainProviderResponse{}, err
 	}
 
-	return dp, nil
+	return dto.ToDomainProviderResponse(dp, 0), nil
 }
 
-// GetProvider retrieves a DNS provider by ID
+// GetProvider retrieves a DNS provider by ID.
 func (s *DomainProviderService) GetProvider(ctx context.Context, id, teamID string) (*models.DomainProvider, error) {
 	provider, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
+		return nil, notFoundAs(err, "Provider not found")
 	}
-
 	return provider, nil
 }
 
-// ListProviders lists all DNS providers for a team
+// ListProviders lists all DNS providers for a team with their domain counts.
 func (s *DomainProviderService) ListProviders(ctx context.Context, teamID string) ([]dto.DomainProviderResponse, error) {
 	providersList, counts, err := s.Repos().Provider().FindByTeamWithDomainCount(ctx, teamID)
 	if err != nil {
@@ -100,73 +86,61 @@ func (s *DomainProviderService) ListProviders(ctx context.Context, teamID string
 	for i, p := range providersList {
 		responses[i] = dto.ToDomainProviderResponse(&p, counts[p.ID])
 	}
-
 	return responses, nil
 }
 
-// DeleteProvider deletes a DNS provider
-func (s *DomainProviderService) DeleteProvider(ctx context.Context, id, teamID string) error {
-	_, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fiberutil.NotFound()
-		}
-		return err
+// DeleteProvider deletes a DNS provider after verifying it has no domains.
+// userID is part of the framework-mutation convention.
+func (s *DomainProviderService) DeleteProvider(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
+	if _, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID); err != nil {
+		return notFoundAs(err, "Provider not found")
 	}
 
-	// Check if provider has domains
 	count, err := s.Repos().Provider().CountDomainsByProvider(ctx, id)
 	if err != nil {
 		return err
 	}
-
 	if count > 0 {
 		return ErrProviderHasActiveDomains
 	}
-
 	return s.Repos().Provider().Delete(ctx, id)
 }
 
-// CheckProviderConnectivity checks if the provider credentials are still valid
-func (s *DomainProviderService) CheckProviderConnectivity(ctx context.Context, id, teamID string) error {
+// CheckProviderConnectivity validates a provider's stored credentials and
+// updates its connected flag. Validation failures are flattened to a
+// generic 400 so credential-shaped errors are not leaked. userID is part
+// of the framework-mutation convention.
+func (s *DomainProviderService) CheckProviderConnectivity(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
 	dp, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fiberutil.NotFound()
-		}
-		return err
+		return notFoundAs(err, "Provider not found")
 	}
 
 	provider, err := providers.NewProvider(providers.DNSProviderType(dp.Provider), dp.Credentials, dp.AdditionalData)
 	if err != nil {
-		return err
+		return fiberutil.BadRequest("Provider connectivity check failed")
 	}
 
 	if err := provider.ValidateCredentials(ctx); err != nil {
-		s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
-			"connected": false,
-		})
-		return err
+		s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{"connected": false})
+		return fiberutil.BadRequest("Provider connectivity check failed")
 	}
 
-	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
-		"connected": true,
-	})
-
+	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{"connected": true})
 	return nil
 }
 
-// SyncDomains synchronizes domains from a provider
-func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, teamID string) error {
+// SyncDomains synchronizes domains from a provider into the local database.
+// Provider-side failures are flattened to a generic 400 so credential-
+// shaped errors are not leaked.
+func (s *DomainProviderService) SyncDomains(ctx context.Context, id, teamID, userID string) error {
 	dp, err := s.Repos().Provider().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return fiberutil.NotFound()
-		}
-		return err
+		return notFoundAs(err, "Provider not found")
 	}
 
-	// Update sync status
 	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"sync_status":        dnstypes.SyncStatusSyncing,
 		"sync_error_message": nil,
@@ -175,20 +149,17 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 	provider, err := providers.NewProvider(providers.DNSProviderType(dp.Provider), dp.Credentials, dp.AdditionalData)
 	if err != nil {
 		s.markSyncFailed(ctx, id, err.Error())
-		return err
+		return fiberutil.BadRequest("Failed to sync domains")
 	}
 
-	// List domains from provider
 	domainsList, err := provider.ListDomains(ctx)
 	if err != nil {
 		s.markSyncFailed(ctx, id, err.Error())
-		return err
+		return fiberutil.BadRequest("Failed to sync domains")
 	}
 
-	// Sync domains within a transaction
 	err = s.Repos().Provider().Transaction(ctx, func(tx *gorm.DB) error {
 		for providerID, domainName := range domainsList {
-			// Create or update domain
 			domain, err := s.Repos().Domain().UpdateOrCreate(ctx, map[string]interface{}{
 				"provider_id":        providerID,
 				"domain_provider_id": dp.ID,
@@ -202,7 +173,6 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 				return err
 			}
 
-			// Sync records for this domain
 			provider.SetDomain(domainName)
 			records, err := provider.ListRecords(ctx)
 			if err != nil {
@@ -232,27 +202,23 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, userID, tea
 				}
 			}
 		}
-
 		return nil
 	})
 
 	if err != nil {
 		s.markSyncFailed(ctx, id, err.Error())
-		return err
+		return fiberutil.BadRequest("Failed to sync domains")
 	}
 
-	// Update sync status to completed
-	now := util.NewULID() // Using ULID for timestamp as a workaround
 	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"sync_status":        dnstypes.SyncStatusCompleted,
-		"last_synced_at":     now,
+		"last_synced_at":     util.NewULID(),
 		"sync_error_message": nil,
 	})
-
 	return nil
 }
 
-// CountDomainsByProvider counts domains for a provider
+// CountDomainsByProvider counts domains for a provider.
 func (s *DomainProviderService) CountDomainsByProvider(ctx context.Context, providerID string) (int64, error) {
 	return s.Repos().Provider().CountDomainsByProvider(ctx, providerID)
 }
@@ -264,7 +230,7 @@ func (s *DomainProviderService) markSyncFailed(ctx context.Context, id, errMsg s
 	})
 }
 
-// fromProviderRecord converts a providers.ProviderRecord to models.ProviderRecord
+// fromProviderRecord converts a providers.ProviderRecord to models.ProviderRecord.
 func fromProviderRecord(r providers.ProviderRecord) models.ProviderRecord {
 	return models.ProviderRecord{
 		ID:       r.ID,

@@ -4,9 +4,11 @@ import (
 	"github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/middleware"
+	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/handlers"
 	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
@@ -33,10 +35,10 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 }
 
 // registerServerProviderRoutes registers server provider routes
-func (m *Module) registerServerProviderRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler) {
+func (m *Module) registerServerProviderRoutes(router fiber.Router, authMiddleware fiber.Handler, _ *handlers.Handler) {
 	providers := router.Group("/server-providers", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
-		providers.Get("/", handler.ListServerProviders)
+		providers.Get("/", fiberutil.Index("Server providers retrieved", m.service.ListServerProviders))
 	}
 }
 
@@ -65,8 +67,8 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 
 		// Tasks (needed during provisioning to show progress)
 		servers.Get("/:id/tasks", handler.ListTasks)
-		servers.Get("/:id/tasks/latest", handler.GetLatestTask)
-		servers.Get("/:id/tasks/:taskId", handler.GetTask)
+		servers.Get("/:id/tasks/latest", fiberutil.IndexNested("id", "Latest task retrieved", m.service.GetLatestTask))
+		servers.Get("/:id/tasks/:taskId", fiberutil.ShowNested("id", "taskId", "Task retrieved", m.service.GetTask))
 
 		// Routes that require a provisioned (running) server
 		provisioned := middleware.RequireProvisionedServer()
@@ -90,35 +92,35 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Get("/:id/php", provisioned, handler.ListPhpVersions)
 		servers.Get("/:id/php-versions", provisioned, handler.ListInstalledPhpVersions)
 		servers.Get("/:id/php/opcache/defaults", provisioned, handler.GetOpcacheDefaults)
-		servers.Get("/:id/php/:phpId/opcache/status", provisioned, handler.GetOpcacheStatus)
-		servers.Post("/:id/php/:phpId/opcache/reset", provisioned, handler.ResetOpcache)
+		servers.Get("/:id/php/:phpId/opcache/status", provisioned, fiberutil.ShowNested("id", "phpId", "OPcache status retrieved", m.service.GetOpcacheStatus))
+		servers.Post("/:id/php/:phpId/opcache/reset", provisioned, fiberutil.ActionItemNested("id", "phpId", "OPcache reset initiated", m.service.ResetOpcache))
 		servers.Post("/:id/php/:phpId/opcache/configure", provisioned, handler.ConfigureOpcache)
 		servers.Post("/:id/php/:phpId/extensions", provisioned, handler.InstallPhpExtension)
 		servers.Delete("/:id/php/:phpId/extensions/:extension", provisioned, handler.UninstallPhpExtension)
 
 		// Composer Packages
-		servers.Get("/:id/packages", provisioned, handler.GetComposerAuth)
+		servers.Get("/:id/packages", provisioned, fiberutil.IndexNested("id", "Composer auth retrieved", m.service.GetComposerAuth))
 		servers.Put("/:id/packages", provisioned, handler.UpdateComposerAuth)
 
 		// Firewall Rules
-		servers.Get("/:id/firewall-rules", provisioned, handler.ListFirewallRules)
-		servers.Post("/:id/firewall-rules", provisioned, handler.CreateFirewallRule)
-		servers.Put("/:id/firewall-rules/:ruleId", provisioned, handler.UpdateFirewallRule)
-		servers.Delete("/:id/firewall-rules/:ruleId", provisioned, handler.DeleteFirewallRule)
+		servers.Get("/:id/firewall-rules", provisioned, fiberutil.IndexNested("id", "Firewall rules retrieved", m.service.ListFirewallRules))
+		servers.Post("/:id/firewall-rules", provisioned, fiberutil.CreateNested[dto.CreateFirewallRuleRequest]("id", "Firewall rule created", m.service.CreateFirewallRule))
+		servers.Put("/:id/firewall-rules/:ruleId", provisioned, fiberutil.UpdateNested[dto.UpdateFirewallRuleRequest]("id", "ruleId", "Firewall rule updated", m.service.UpdateFirewallRule))
+		servers.Delete("/:id/firewall-rules/:ruleId", provisioned, fiberutil.DeleteNested("id", "ruleId", m.service.DeleteFirewallRule))
 
 		// Cron Jobs
-		servers.Get("/:id/crons", provisioned, handler.ListCrons)
-		servers.Post("/:id/crons", provisioned, handler.CreateCron)
-		servers.Put("/:id/crons/:cronId", provisioned, handler.UpdateCron)
-		servers.Delete("/:id/crons/:cronId", provisioned, handler.DeleteCron)
+		servers.Get("/:id/crons", provisioned, fiberutil.IndexNested("id", "Cron jobs retrieved", m.service.ListCrons))
+		servers.Post("/:id/crons", provisioned, fiberutil.CreateNested[dto.CreateCronRequest]("id", "Cron job created", m.service.CreateCron))
+		servers.Put("/:id/crons/:cronId", provisioned, fiberutil.UpdateNested[dto.UpdateCronRequest]("id", "cronId", "Cron job updated", m.service.UpdateCron))
+		servers.Delete("/:id/crons/:cronId", provisioned, fiberutil.DeleteNested("id", "cronId", m.service.DeleteCron))
 
 		// Daemons
-		servers.Get("/:id/daemons", provisioned, handler.ListDaemons)
-		servers.Post("/:id/daemons", provisioned, handler.CreateDaemon)
-		servers.Post("/:id/daemons/sync", provisioned, handler.SyncDaemons)
-		servers.Patch("/:id/daemons/:daemonId", provisioned, handler.UpdateDaemon)
-		servers.Post("/:id/daemons/:daemonId/restart", provisioned, handler.RestartDaemon)
-		servers.Delete("/:id/daemons/:daemonId", provisioned, handler.DeleteDaemon)
+		servers.Get("/:id/daemons", provisioned, fiberutil.IndexNested("id", "Daemons retrieved", m.service.ListDaemons))
+		servers.Post("/:id/daemons", provisioned, fiberutil.CreateNested[dto.CreateDaemonRequest]("id", "Daemon created", m.service.CreateDaemon))
+		servers.Post("/:id/daemons/sync", provisioned, fiberutil.ActionNested("id", "Daemon sync initiated", m.service.SyncDaemonsStatus))
+		servers.Patch("/:id/daemons/:daemonId", provisioned, fiberutil.UpdateNested[dto.UpdateDaemonRequest]("id", "daemonId", "Daemon updated", m.service.UpdateDaemon))
+		servers.Post("/:id/daemons/:daemonId/restart", provisioned, fiberutil.ActionItemNested("id", "daemonId", "Daemon restart initiated", m.service.RestartDaemon))
+		servers.Delete("/:id/daemons/:daemonId", provisioned, fiberutil.DeleteNested("id", "daemonId", m.service.DeleteDaemon))
 
 		// SSH Keys (server-specific)
 		servers.Get("/:id/ssh-keys", provisioned, handler.ListServerSSHKeys)
@@ -127,7 +129,7 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 
 		// Metrics
 		servers.Get("/:id/metrics", provisioned, handler.GetMetrics)
-		servers.Get("/:id/metrics/latest", provisioned, handler.GetLatestMetric)
+		servers.Get("/:id/metrics/latest", provisioned, fiberutil.IndexNested("id", "Latest metric retrieved", m.service.GetLatestMetric))
 
 		// Logs
 		servers.Get("/:id/logs", provisioned, handler.ListLogs)
