@@ -91,6 +91,7 @@ func (d *JobDeps) BroadcastDockerServiceEvent(server *servermodels.Server, event
 		return
 	}
 	data := map[string]any{
+		"team_id":           server.TeamID,
 		"server_id":         server.ID,
 		"docker_service_id": msID,
 		"status":            status,
