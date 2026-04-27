@@ -28,8 +28,17 @@ func NewQueueService(deps *ServiceDeps) *QueueService {
 	}
 }
 
-// Create creates a new queue worker
-func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID string, req *dto.CreateQueueRequest) (*models.Queue, error) {
+// Create creates a new queue worker. Signature matches CreateDoubleNestedFunc.
+func (s *QueueService) Create(ctx context.Context, siteID, serverID, teamID, userID string, req *dto.CreateQueueRequest) (dto.QueueResponse, error) {
+	_ = teamID
+	queue, err := s.createQueue(ctx, siteID, serverID, userID, req)
+	if err != nil {
+		return dto.QueueResponse{}, err
+	}
+	return dto.ToQueueResponse(queue), nil
+}
+
+func (s *QueueService) createQueue(ctx context.Context, siteID, serverID, userID string, req *dto.CreateQueueRequest) (*models.Queue, error) {
 	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return nil, err
@@ -123,17 +132,34 @@ func (s *QueueService) Create(ctx context.Context, siteID, serverID, userID stri
 	return queueModel, nil
 }
 
-// List returns all queues for a site
-func (s *QueueService) List(ctx context.Context, siteID, serverID string) ([]models.Queue, error) {
+// List returns all queues for a site. Signature matches IndexDoubleNestedFunc.
+func (s *QueueService) List(ctx context.Context, siteID, serverID, teamID string) ([]dto.QueueResponse, error) {
+	_ = teamID
 	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return nil, err
 	}
-
-	return s.Repos().Queue().FindBySite(ctx, siteID)
+	queues, err := s.Repos().Queue().FindBySite(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.QueueResponse, len(queues))
+	for i := range queues {
+		out[i] = dto.ToQueueResponse(&queues[i])
+	}
+	return out, nil
 }
 
-// Update updates a queue worker
-func (s *QueueService) Update(ctx context.Context, queueID, siteID, serverID, userID string, req *dto.UpdateQueueRequest) (*models.Queue, error) {
+// Update updates a queue worker. Signature matches UpdateDoubleNestedFunc.
+func (s *QueueService) Update(ctx context.Context, queueID, siteID, serverID, teamID, userID string, req *dto.UpdateQueueRequest) (dto.QueueResponse, error) {
+	_ = teamID
+	queue, err := s.updateQueue(ctx, queueID, siteID, serverID, userID, req)
+	if err != nil {
+		return dto.QueueResponse{}, err
+	}
+	return dto.ToQueueResponse(queue), nil
+}
+
+func (s *QueueService) updateQueue(ctx context.Context, queueID, siteID, serverID, userID string, req *dto.UpdateQueueRequest) (*models.Queue, error) {
 	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return nil, err
@@ -225,8 +251,10 @@ func (s *QueueService) Update(ctx context.Context, queueID, siteID, serverID, us
 	return queueModel, nil
 }
 
-// Delete deletes a queue
-func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID string) error {
+// Delete deletes a queue. Signature matches DeleteDoubleNestedFunc.
+func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID, teamID, userID string) error {
+	_ = teamID
+	_ = userID
 	queueModel, err := s.Repos().Queue().FindByIDAndSite(ctx, queueID, siteID)
 	if err != nil {
 		return err
@@ -256,8 +284,9 @@ func (s *QueueService) Delete(ctx context.Context, queueID, siteID, serverID str
 	return nil
 }
 
-// Restart restarts a single queue worker
-func (s *QueueService) Restart(ctx context.Context, queueID, siteID, serverID, userID string) error {
+// Restart restarts a single queue worker. Signature matches ActionItemDoubleNestedFunc.
+func (s *QueueService) Restart(ctx context.Context, queueID, siteID, serverID, teamID, userID string) error {
+	_ = teamID
 	queue, err := s.Repos().Queue().FindByIDAndSite(ctx, queueID, siteID)
 	if err != nil {
 		return err
@@ -291,8 +320,10 @@ func (s *QueueService) UpdateAutoRestart(ctx context.Context, siteID, serverID s
 	})
 }
 
-// SyncStatus triggers a status synchronization for all queue workers of a site
-func (s *QueueService) SyncStatus(ctx context.Context, siteID, serverID, userID string) error {
+// SyncStatus triggers a status synchronization for all queue workers of
+// a site. Signature matches ActionDoubleNestedFunc.
+func (s *QueueService) SyncStatus(ctx context.Context, siteID, serverID, teamID, userID string) error {
+	_ = teamID
 	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
 		return err

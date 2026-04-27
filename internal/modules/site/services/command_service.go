@@ -12,27 +12,26 @@ import (
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// CommandService handles business logic for command execution
+// CommandService handles business logic for command execution.
 type CommandService struct {
 	*BaseService
 }
 
-// NewCommandService creates a new command service
+// NewCommandService creates a new command service.
 func NewCommandService(deps *ServiceDeps) *CommandService {
-	return &CommandService{
-		BaseService: NewBaseService(deps),
-	}
+	return &CommandService{BaseService: NewBaseService(deps)}
 }
 
-// Create creates and executes a command
-func (s *CommandService) Create(ctx context.Context, siteID, serverID, userID string, req *dto.CreateCommandRequest) (*models.Command, error) {
+// Create creates and executes a command. Signature matches CreateDoubleNestedFunc.
+func (s *CommandService) Create(ctx context.Context, siteID, serverID, teamID, userID string, req *dto.CreateCommandRequest) (dto.CommandResponse, error) {
+	_ = teamID
 	site, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID)
 	if err != nil {
-		return nil, err
+		return dto.CommandResponse{}, err
 	}
 
 	if !site.IsInstalled() {
-		return nil, ErrSiteNotInstalled
+		return dto.CommandResponse{}, ErrSiteNotInstalled
 	}
 
 	cmd := &models.Command{
@@ -44,50 +43,54 @@ func (s *CommandService) Create(ctx context.Context, siteID, serverID, userID st
 	cmd.UserID = userID
 
 	if err := s.Repos().Command().Create(ctx, cmd); err != nil {
-		return nil, err
+		return dto.CommandResponse{}, err
 	}
 
-	// Dispatch command execution job
 	s.DispatchTask("RunCommand", func() (*asynq.Task, error) {
 		return jobs.NewRunCommandTask(site.ID, cmd.ID)
 	}, "site_id", site.ID, "command_id", cmd.ID)
 
-	return cmd, nil
+	return dto.ToCommandResponse(cmd), nil
 }
 
-// List returns all commands for a site
-func (s *CommandService) List(ctx context.Context, siteID, serverID string) ([]models.Command, error) {
+// List returns all commands for a site. Signature matches IndexDoubleNestedFunc.
+func (s *CommandService) List(ctx context.Context, siteID, serverID, teamID string) ([]dto.CommandResponse, error) {
+	_ = teamID
 	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return nil, err
 	}
-
-	return s.Repos().Command().FindBySite(ctx, siteID)
+	cmds, err := s.Repos().Command().FindBySite(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.CommandResponse, len(cmds))
+	for i := range cmds {
+		out[i] = dto.ToCommandResponse(&cmds[i])
+	}
+	return out, nil
 }
 
-// Delete deletes a command by ID
-func (s *CommandService) Delete(ctx context.Context, siteID, serverID, commandID string) error {
-	// Verify site exists and belongs to server
+// Delete deletes a command by ID. Signature matches DeleteDoubleNestedFunc.
+func (s *CommandService) Delete(ctx context.Context, commandID, siteID, serverID, teamID, userID string) error {
+	_ = teamID
+	_ = userID
 	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return err
 	}
 
-	// Find the command
 	cmd, err := s.Repos().Command().FindByID(ctx, commandID)
 	if err != nil {
 		return err
 	}
 
-	// Verify command belongs to the site
 	if cmd.SiteID != siteID {
 		return fiberutil.NotFound()
 	}
 
-	// Delete the command
 	if err := s.Repos().Command().Delete(ctx, commandID); err != nil {
 		return err
 	}
 
 	s.LogInfo("Command deleted", "site_id", siteID, "command_id", commandID)
-
 	return nil
 }

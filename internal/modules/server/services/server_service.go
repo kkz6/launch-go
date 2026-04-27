@@ -26,33 +26,71 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
-// ListServers returns all servers for a team
-func (s *Service) ListServers(ctx context.Context, teamID string) ([]models.Server, error) {
-	return s.repos.Server().FindAllByTeam(ctx, teamID)
+// ListServers returns all servers for a team. Signature matches IndexFunc.
+func (s *Service) ListServers(ctx context.Context, teamID string) ([]dto.ServerResponse, error) {
+	servers, err := s.repos.Server().FindAllByTeam(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.ServerResponse, len(servers))
+	for i := range servers {
+		out[i] = dto.ToServerResponse(&servers[i])
+	}
+	return out, nil
 }
 
-// ListArchivedServers returns all archived servers for a team
-func (s *Service) ListArchivedServers(ctx context.Context, teamID string) ([]models.Server, error) {
-	return s.repos.Server().FindArchivedByTeam(ctx, teamID)
+// ListArchivedServers returns all archived servers for a team. Signature
+// matches IndexFunc.
+func (s *Service) ListArchivedServers(ctx context.Context, teamID string) ([]dto.ServerResponse, error) {
+	servers, err := s.repos.Server().FindArchivedByTeam(ctx, teamID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.ServerResponse, len(servers))
+	for i := range servers {
+		out[i] = dto.ToServerResponse(&servers[i])
+	}
+	return out, nil
 }
 
-// ListServersPaginated returns servers with pagination
+// ListServersPaginated returns servers with pagination.
 func (s *Service) ListServersPaginated(ctx context.Context, teamID string, page, perPage int) (*repository.PaginatedResult[models.Server], error) {
 	return s.repos.Server().FindAllByTeamPaginated(ctx, teamID, page, perPage)
 }
 
-// GetServer returns a server by ID
-func (s *Service) GetServer(ctx context.Context, id, teamID string) (*models.Server, error) {
+// GetServer returns a server (with relations) by ID and returns the
+// response DTO. Signature matches ShowFunc.
+func (s *Service) GetServer(ctx context.Context, id, teamID string) (dto.ServerResponse, error) {
+	server, err := s.repos.Server().FindWithRelations(ctx, id, teamID)
+	if err != nil {
+		return dto.ServerResponse{}, err
+	}
+	return dto.ToServerResponse(server), nil
+}
+
+// GetServerRaw returns a server model by ID. Used by handlers that need
+// the raw model (e.g. site-count verification).
+func (s *Service) GetServerRaw(ctx context.Context, id, teamID string) (*models.Server, error) {
 	return s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 }
 
-// GetServerWithRelations returns a server with all relations
+// GetServerWithRelations returns a server model with relations. Used by
+// handlers that need access to nested fields (e.g. log_handler).
 func (s *Service) GetServerWithRelations(ctx context.Context, id, teamID string) (*models.Server, error) {
 	return s.repos.Server().FindWithRelations(ctx, id, teamID)
 }
 
-// CreateServer creates a new server
-func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *dto.CreateServerRequest) (*models.Server, error) {
+// CreateServer creates a new server and returns the response DTO.
+// Signature matches CreateFunc.
+func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *dto.CreateServerRequest) (dto.ServerResponse, error) {
+	server, err := s.buildAndDispatchServer(ctx, teamID, userID, req)
+	if err != nil {
+		return dto.ServerResponse{}, err
+	}
+	return dto.ToServerResponse(server), nil
+}
+
+func (s *Service) buildAndDispatchServer(ctx context.Context, teamID, userID string, req *dto.CreateServerRequest) (*models.Server, error) {
 	provider, err := types.ParseServerProvider(req.Provider)
 	if err != nil {
 		return nil, ErrInvalidProvider
@@ -173,11 +211,13 @@ func (s *Service) CreateServer(ctx context.Context, teamID, userID string, req *
 	return server, nil
 }
 
-// UpdateServer updates a server
-func (s *Service) UpdateServer(ctx context.Context, id, teamID string, req *dto.UpdateServerRequest) (*models.Server, error) {
+// UpdateServer updates a server and returns the response DTO. Signature
+// matches UpdateFunc.
+func (s *Service) UpdateServer(ctx context.Context, id, teamID, userID string, req *dto.UpdateServerRequest) (dto.ServerResponse, error) {
+	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
-		return nil, err
+		return dto.ServerResponse{}, err
 	}
 
 	if req.Name != nil {
@@ -201,18 +241,17 @@ func (s *Service) UpdateServer(ctx context.Context, id, teamID string, req *dto.
 	}
 
 	if err := s.repos.Server().Update(ctx, server); err != nil {
-		return nil, err
+		return dto.ServerResponse{}, err
 	}
 
-	activity.RecordEvent(ctx, "updated", "", server, "Server was updated")
-
+	activity.RecordEvent(ctx, "updated", userID, server, "Server was updated")
 	s.broadcastServerUpdate(server)
-
-	return server, nil
+	return dto.ToServerResponse(server), nil
 }
 
-// DeleteServer deletes a server
-func (s *Service) DeleteServer(ctx context.Context, id, teamID string) error {
+// DeleteServer deletes a server. Signature matches DeleteFunc.
+func (s *Service) DeleteServer(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return err
@@ -237,43 +276,41 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID string) error {
 	return nil
 }
 
-// ArchiveServer archives a server
-func (s *Service) ArchiveServer(ctx context.Context, id, teamID string) error {
-	_, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
-	if err != nil {
+// ArchiveServer archives a server. Signature matches ActionFunc.
+func (s *Service) ArchiveServer(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID); err != nil {
 		return err
 	}
-
 	return s.repos.Server().Archive(ctx, id)
 }
 
-// UnarchiveServer unarchives a server
-func (s *Service) UnarchiveServer(ctx context.Context, id, teamID string) error {
-	_, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
-	if err != nil {
+// UnarchiveServer unarchives a server. Signature matches ActionFunc.
+func (s *Service) UnarchiveServer(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
+	if _, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID); err != nil {
 		return err
 	}
-
 	return s.repos.Server().Unarchive(ctx, id)
 }
 
-// RebootServer initiates a server reboot
-func (s *Service) RebootServer(ctx context.Context, id, teamID string) error {
+// RebootServer initiates a server reboot. Signature matches ActionFunc.
+func (s *Service) RebootServer(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return err
 	}
-
 	task, err := jobs.NewRebootServerTask(server.ID, nil)
 	if err != nil {
 		return err
 	}
-
 	return s.EnqueueTask(task)
 }
 
-// ConnectServer tests the connection to a server
-func (s *Service) ConnectServer(ctx context.Context, id, teamID string) error {
+// ConnectServer tests the connection to a server. Signature matches ActionFunc.
+func (s *Service) ConnectServer(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
 		return err
@@ -666,9 +703,11 @@ echo "Provisioning script completed."
 	return fmt.Sprintf(script, escapedName, publicKey)
 }
 
-// RetryProvision retries the provisioning of a failed server
-// This only works if the server has connected successfully but provisioning failed
-func (s *Service) RetryProvision(ctx context.Context, serverID, teamID string) error {
+// RetryProvision retries the provisioning of a failed server. Only
+// works if the server has connected successfully but provisioning
+// failed. Signature matches ActionFunc.
+func (s *Service) RetryProvision(ctx context.Context, serverID, teamID, userID string) error {
+	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err

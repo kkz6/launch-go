@@ -30,7 +30,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	lbHandler := handlers.NewLoadBalancerHandler(lbService)
 
 	m.registerServerProviderRoutes(router, authMiddleware, handler)
-	m.registerServerRoutes(router, authMiddleware, handler, lbHandler)
+	m.registerServerRoutes(router, authMiddleware, handler, lbHandler, lbService)
 	m.registerSSHKeyRoutes(router, authMiddleware, handler)
 }
 
@@ -43,27 +43,27 @@ func (m *Module) registerServerProviderRoutes(router fiber.Router, authMiddlewar
 }
 
 // registerServerRoutes registers all server-related routes
-func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler, lbHandler *handlers.LoadBalancerHandler) {
+func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler, lbHandler *handlers.LoadBalancerHandler, lbService *services.LoadBalancerService) {
 	servers := router.Group("/servers", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		// Options (must be before /:id routes)
 		servers.Get("/create-options", handler.GetCreateOptions)
-		servers.Get("/archived", handler.ListArchived)
+		servers.Get("/archived", fiberutil.Index("Archived servers retrieved", m.service.ListArchivedServers))
 
 		// CRUD
-		servers.Get("/", handler.List)
-		servers.Post("/", handler.Create)
-		servers.Get("/:id", handler.Show)
-		servers.Get("/:id/page", handler.ShowPage)
+		servers.Get("/", fiberutil.Index("Servers retrieved", m.service.ListServers))
+		servers.Post("/", fiberutil.Create[dto.CreateServerRequest]("Server created", m.service.CreateServer))
+		servers.Get("/:id", fiberutil.Show("Server retrieved", m.service.GetServer))
+		servers.Get("/:id/page", fiberutil.Show("Server page data retrieved", m.service.GetShowPageData))
 		servers.Get("/:id/site-count", handler.GetSiteCount)
-		servers.Delete("/:id", handler.Delete)
+		servers.Delete("/:id", fiberutil.Delete(m.service.DeleteServer))
 
 		// Provisioning actions (don't require provisioned server)
-		servers.Post("/:id/retry-provision", handler.RetryProvision)
+		servers.Post("/:id/retry-provision", fiberutil.Action("Server provisioning has been queued", m.service.RetryProvision))
 		servers.Get("/:id/provision-status", handler.GetProvisionStatus)
 		servers.Get("/:id/provision-script-content", handler.GetProvisionScriptContent)
-		servers.Post("/:id/archive", handler.Archive)
-		servers.Post("/:id/unarchive", handler.Unarchive)
+		servers.Post("/:id/archive", fiberutil.Action("Server archived", m.service.ArchiveServer))
+		servers.Post("/:id/unarchive", fiberutil.Action("Server unarchived", m.service.UnarchiveServer))
 
 		// Tasks (needed during provisioning to show progress)
 		servers.Get("/:id/tasks", handler.ListTasks)
@@ -73,24 +73,25 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		// Routes that require a provisioned (running) server
 		provisioned := middleware.RequireProvisionedServer()
 
-		servers.Put("/:id", provisioned, handler.Update)
-		servers.Patch("/:id", provisioned, handler.Update)
+		updateServer := fiberutil.Update[dto.UpdateServerRequest]("Server updated", m.service.UpdateServer)
+		servers.Put("/:id", provisioned, updateServer)
+		servers.Patch("/:id", provisioned, updateServer)
 
 		// Actions
-		servers.Post("/:id/reboot", provisioned, handler.Reboot)
-		servers.Post("/:id/connect", provisioned, handler.Connect)
+		servers.Post("/:id/reboot", provisioned, fiberutil.Action("Server reboot initiated", m.service.RebootServer))
+		servers.Post("/:id/connect", provisioned, fiberutil.Action("Server connection successful", m.service.ConnectServer))
 		servers.Post("/:id/vulnerability-audit", provisioned, handler.RunVulnerabilityAudit)
 
 		// Services
-		servers.Get("/:id/services", provisioned, handler.ListServices)
-		servers.Get("/:id/services/create", provisioned, handler.GetAvailableServices)
-		servers.Post("/:id/services", provisioned, handler.InstallService)
+		servers.Get("/:id/services", provisioned, fiberutil.IndexNested("id", "Services retrieved", m.service.ListServices))
+		servers.Get("/:id/services/create", provisioned, fiberutil.IndexNested("id", "Available services retrieved", m.service.GetAvailableServices))
+		servers.Post("/:id/services", provisioned, fiberutil.CreateNested[dto.CreateServiceRequest]("id", "Service installation initiated", m.service.InstallService))
 		servers.Post("/:id/services/:serviceId/:action", provisioned, handler.ServiceOperationByAction)
 		servers.Post("/:id/services/:serviceId", provisioned, handler.ServiceOperation)
 
 		// PHP
-		servers.Get("/:id/php", provisioned, handler.ListPhpVersions)
-		servers.Get("/:id/php-versions", provisioned, handler.ListInstalledPhpVersions)
+		servers.Get("/:id/php", provisioned, fiberutil.IndexNested("id", "PHP versions retrieved", m.service.GetPhpVersions))
+		servers.Get("/:id/php-versions", provisioned, fiberutil.IndexNested("id", "Installed PHP versions retrieved", m.service.GetInstalledPhpVersions))
 		servers.Get("/:id/php/opcache/defaults", provisioned, handler.GetOpcacheDefaults)
 		servers.Get("/:id/php/:phpId/opcache/status", provisioned, fiberutil.ShowNested("id", "phpId", "OPcache status retrieved", m.service.GetOpcacheStatus))
 		servers.Post("/:id/php/:phpId/opcache/reset", provisioned, fiberutil.ActionItemNested("id", "phpId", "OPcache reset initiated", m.service.ResetOpcache))
@@ -123,9 +124,9 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Delete("/:id/daemons/:daemonId", provisioned, fiberutil.DeleteNested("id", "daemonId", m.service.DeleteDaemon))
 
 		// SSH Keys (server-specific)
-		servers.Get("/:id/ssh-keys", provisioned, handler.ListServerSSHKeys)
+		servers.Get("/:id/ssh-keys", provisioned, fiberutil.IndexNested("id", "SSH keys retrieved", m.service.ListServerSSHKeys))
 		servers.Post("/:id/ssh-keys", provisioned, handler.AttachSSHKey)
-		servers.Delete("/:id/ssh-keys/:sshKeyId", provisioned, handler.DetachSSHKey)
+		servers.Delete("/:id/ssh-keys/:sshKeyId", provisioned, fiberutil.DeleteNested("id", "sshKeyId", m.service.DetachSSHKey))
 
 		// Metrics
 		servers.Get("/:id/metrics", provisioned, handler.GetMetrics)
@@ -137,33 +138,35 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 
 		// Load Balancer Upstreams
 		servers.Get("/:id/upstreams/check-domain", provisioned, lbHandler.CheckDomain)
-		servers.Get("/:id/upstreams", provisioned, lbHandler.ListUpstreams)
-		servers.Post("/:id/upstreams", provisioned, lbHandler.CreateUpstream)
-		servers.Get("/:id/upstreams/:upstreamId", provisioned, lbHandler.ShowUpstream)
-		servers.Put("/:id/upstreams/:upstreamId", provisioned, lbHandler.UpdateUpstream)
-		servers.Delete("/:id/upstreams/:upstreamId", provisioned, lbHandler.DeleteUpstream)
+		servers.Get("/:id/upstreams", provisioned, fiberutil.IndexNested("id", "Upstreams retrieved", lbService.Upstreams))
+		servers.Post("/:id/upstreams", provisioned, fiberutil.CreateNested[dto.CreateUpstreamRequest]("id", "Upstream created", lbService.UpstreamCreate))
+		servers.Get("/:id/upstreams/:upstreamId", provisioned, fiberutil.ShowNested("id", "upstreamId", "Upstream retrieved", lbService.UpstreamShow))
+		servers.Put("/:id/upstreams/:upstreamId", provisioned, fiberutil.UpdateNested[dto.UpdateUpstreamRequest]("id", "upstreamId", "Upstream updated", lbService.UpstreamUpdate))
+		servers.Delete("/:id/upstreams/:upstreamId", provisioned, fiberutil.DeleteNested("id", "upstreamId", lbService.UpstreamDelete))
 
-		// Load Balancer Backends
-		servers.Get("/:id/upstreams/:upstreamId/backends", provisioned, lbHandler.ListBackends)
-		servers.Post("/:id/upstreams/:upstreamId/backends", provisioned, lbHandler.AddBackend)
-		servers.Put("/:id/upstreams/:upstreamId/backends/:backendId", provisioned, lbHandler.UpdateBackend)
-		servers.Delete("/:id/upstreams/:upstreamId/backends/:backendId", provisioned, lbHandler.RemoveBackend)
+		// Load Balancer Backends (doubly-nested under server + upstream)
+		servers.Get("/:id/upstreams/:upstreamId/backends", provisioned, fiberutil.IndexDoubleNested("id", "upstreamId", "Backends retrieved", lbService.Backends))
+		servers.Post("/:id/upstreams/:upstreamId/backends", provisioned, fiberutil.CreateDoubleNested[dto.AddBackendRequest]("id", "upstreamId", "Backend added", lbService.BackendCreate))
+		servers.Put("/:id/upstreams/:upstreamId/backends/:backendId", provisioned, fiberutil.UpdateDoubleNested[dto.UpdateBackendRequest]("id", "upstreamId", "backendId", "Backend updated", lbService.BackendUpdate))
+		servers.Delete("/:id/upstreams/:upstreamId/backends/:backendId", provisioned, fiberutil.DeleteDoubleNested("id", "upstreamId", "backendId", lbService.BackendDelete))
 		servers.Post("/:id/upstreams/:upstreamId/backends/:backendId/toggle-down", provisioned, lbHandler.ToggleBackendDown)
 
 		// Load Balancer Health Checks
-		servers.Get("/:id/upstreams/:upstreamId/health", provisioned, lbHandler.GetUpstreamHealth)
-		servers.Post("/:id/upstreams/:upstreamId/health-check", provisioned, lbHandler.TriggerHealthCheck)
+		servers.Get("/:id/upstreams/:upstreamId/health", provisioned, fiberutil.ShowNested("id", "upstreamId", "Upstream health retrieved", lbService.UpstreamHealth))
+		servers.Post("/:id/upstreams/:upstreamId/health-check", provisioned, fiberutil.ActionItemNested("id", "upstreamId", "Health check triggered", lbService.UpstreamHealthCheck))
 	}
 }
 
-// registerSSHKeyRoutes registers global SSH key routes
+// registerSSHKeyRoutes registers global SSH key routes. The :id path
+// param holds the SSH key id; the legacy :sshKeyId name is preserved on
+// the nested server route only.
 func (m *Module) registerSSHKeyRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.Handler) {
 	sshKeys := router.Group("/ssh-keys", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		sshKeys.Get("/", handler.ListSSHKeys)
-		sshKeys.Post("/", handler.CreateSSHKey)
+		sshKeys.Post("/", fiberutil.Create[dto.CreateSSHKeyRequest]("SSH key created", m.service.CreateSSHKey))
 		sshKeys.Post("/generate", handler.GenerateSSHKey)
-		sshKeys.Delete("/:sshKeyId", handler.DeleteSSHKey)
+		sshKeys.Delete("/:id", fiberutil.Delete(m.service.DeleteSSHKey))
 	}
 }
 

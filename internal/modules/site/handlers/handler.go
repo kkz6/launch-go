@@ -5,28 +5,27 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 )
 
-// Handler aggregates all site-related handlers
+// Handler aggregates the site-related handlers that still hold bespoke
+// routes. The fully-helper-driven sub-resources (commands, redirects,
+// queues CRUD, etc.) have no dedicated struct anymore — they are wired
+// directly to the framework helpers in routes.go.
 type Handler struct {
 	Site       *SiteHandler
 	Deployment *DeploymentHandler
 	SSL        *SSLHandler
 	Queue      *QueueHandler
-	Command    *CommandHandler
-	Redirect   *RedirectHandler
 	File       *FileHandler
 	Feature    *FeatureHandler
 	Webhook    *WebhookHandler
 }
 
-// NewHandler creates a new Handler instance with all sub-handlers
+// NewHandler creates a new Handler instance with all sub-handlers.
 func NewHandler(svc *services.ServiceRegistry) *Handler {
 	return &Handler{
 		Site:       NewSiteHandler(svc.Site()),
 		Deployment: NewDeploymentHandler(svc.Deployment()),
 		SSL:        NewSSLHandler(svc.SSL()),
 		Queue:      NewQueueHandler(svc.Queue()),
-		Command:    NewCommandHandler(svc.Command()),
-		Redirect:   NewRedirectHandler(svc.Redirect()),
 		File:       NewFileHandler(svc.File()),
 		Feature:    NewFeatureHandler(svc.Feature()),
 		Webhook:    NewWebhookHandler(svc.Deployment()),

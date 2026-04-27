@@ -96,11 +96,20 @@ func (s *SSLService) UpdateSSL(ctx context.Context, siteID, serverID, userID str
 	return s.Repos().Site().Update(ctx, site)
 }
 
-// ListCertificates returns all certificates for a site
-func (s *SSLService) ListCertificates(ctx context.Context, siteID, serverID string) ([]models.Certificate, error) {
+// ListCertificates returns all certificates for a site. Signature
+// matches IndexDoubleNestedFunc.
+func (s *SSLService) ListCertificates(ctx context.Context, siteID, serverID, teamID string) ([]dto.CertificateResponse, error) {
+	_ = teamID
 	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
 		return nil, err
 	}
-
-	return s.Repos().Certificate().FindBySite(ctx, siteID)
+	certs, err := s.Repos().Certificate().FindBySite(ctx, siteID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.CertificateResponse, len(certs))
+	for i := range certs {
+		out[i] = dto.ToCertificateResponse(&certs[i])
+	}
+	return out, nil
 }
