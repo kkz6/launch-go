@@ -117,3 +117,122 @@ func TestSoftware_InstallOrder(t *testing.T) {
 		t.Error("Composer should install before MySQL")
 	}
 }
+
+// ----- Docker / Traefik software -----
+
+func TestSoftwareDocker_IsValid(t *testing.T) {
+	if !SoftwareDocker.IsValid() {
+		t.Error("SoftwareDocker must be valid")
+	}
+}
+
+func TestSoftwareTraefik_IsValid(t *testing.T) {
+	if !SoftwareTraefik.IsValid() {
+		t.Error("SoftwareTraefik must be valid")
+	}
+}
+
+func TestSoftwareDocker_Label(t *testing.T) {
+	if SoftwareDocker.Label() != "Docker" {
+		t.Errorf("got %q, want %q", SoftwareDocker.Label(), "Docker")
+	}
+}
+
+func TestSoftwareTraefik_Label(t *testing.T) {
+	if SoftwareTraefik.Label() != "Traefik" {
+		t.Errorf("got %q, want %q", SoftwareTraefik.Label(), "Traefik")
+	}
+}
+
+func TestSoftwareDocker_InstallTemplate(t *testing.T) {
+	want := "software/install_docker.sh"
+	if got := SoftwareDocker.InstallTemplateName(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestSoftwareTraefik_InstallTemplate(t *testing.T) {
+	want := "software/install_traefik.sh"
+	if got := SoftwareTraefik.InstallTemplateName(); got != want {
+		t.Errorf("got %q, want %q", got, want)
+	}
+}
+
+func TestSoftwareDocker_GetServiceType(t *testing.T) {
+	if got := SoftwareDocker.GetServiceType(); got != ServiceTypeDocker {
+		t.Errorf("got %q, want %q", got, ServiceTypeDocker)
+	}
+}
+
+func TestSoftwareTraefik_GetServiceType(t *testing.T) {
+	if got := SoftwareTraefik.GetServiceType(); got != ServiceTypeTraefik {
+		t.Errorf("got %q, want %q", got, ServiceTypeTraefik)
+	}
+}
+
+func TestSoftwareDocker_GetVersion(t *testing.T) {
+	if got := SoftwareDocker.GetVersion(); got == "" {
+		t.Error("SoftwareDocker.GetVersion() must not be empty")
+	}
+}
+
+func TestSoftwareTraefik_GetVersion(t *testing.T) {
+	if got := SoftwareTraefik.GetVersion(); got == "" {
+		t.Error("SoftwareTraefik.GetVersion() must not be empty")
+	}
+}
+
+func TestSoftwareDocker_NotPhpNotDatabase(t *testing.T) {
+	if SoftwareDocker.IsPhp() {
+		t.Error("Docker is not PHP")
+	}
+	if SoftwareDocker.IsDatabase() {
+		t.Error("Docker is not a database")
+	}
+	if SoftwareDocker.RequiresPhp() {
+		t.Error("Docker does not require PHP")
+	}
+}
+
+func TestSoftwareDocker_BeforeTraefikInstallOrder(t *testing.T) {
+	if SoftwareDocker.InstallOrder() >= SoftwareTraefik.InstallOrder() {
+		t.Errorf("Docker (order %d) must install before Traefik (order %d)",
+			SoftwareDocker.InstallOrder(), SoftwareTraefik.InstallOrder())
+	}
+}
+
+func TestSortSoftwareStack_DockerStack(t *testing.T) {
+	stack := []Software{
+		SoftwareTraefik,
+		SoftwareLaunchAgent,
+		SoftwareDocker,
+	}
+	got := SortSoftwareStack(stack)
+	want := []Software{SoftwareDocker, SoftwareTraefik, SoftwareLaunchAgent}
+	if len(got) != len(want) {
+		t.Fatalf("len: got %d, want %d (%v)", len(got), len(want), got)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("pos %d: got %s, want %s", i, got[i], want[i])
+		}
+	}
+}
+
+func TestAllSoftware_IncludesDockerAndTraefik(t *testing.T) {
+	hasDocker, hasTraefik := false, false
+	for _, s := range AllSoftware() {
+		switch s {
+		case SoftwareDocker:
+			hasDocker = true
+		case SoftwareTraefik:
+			hasTraefik = true
+		}
+	}
+	if !hasDocker {
+		t.Error("AllSoftware() must include SoftwareDocker")
+	}
+	if !hasTraefik {
+		t.Error("AllSoftware() must include SoftwareTraefik")
+	}
+}

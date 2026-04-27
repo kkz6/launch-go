@@ -1,0 +1,547 @@
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+# Send a POST request to the given URL, ignoring the response and errors
+function httpPostSilently() {
+    if [ -z "${2:-}" ]; then
+        (curl -X POST --silent --max-time 15 --output /dev/null $1 || true)
+    else
+        (curl -X POST --silent --max-time 15 --output /dev/null $1 -H 'Content-Type: application/json' --data "$2" || true)
+    fi
+}
+
+function httpPostRawSilently() {
+    (curl -X POST --silent --max-time 15 --output /dev/null $1 --data "$2" || true)
+}
+
+# Wait for apt to be unlocked
+function waitForAptUnlock() {
+    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
+        echo "apt, apt-get or dpkg is running..."
+        sleep 5
+    done
+
+    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+        echo "Waiting: apt is locked..."
+        sleep 5
+    done
+
+    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
+        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
+            echo "Waiting: unattended-upgrades is locked..."
+            sleep 5
+        done
+    fi
+}
+
+
+# === Provision Step: Configure a swap file so the server can handle more memory-intensive tasks ===
+echo "::LAUNCH::status::Configure a swap file so the server can handle more memory-intensive tasks"
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Configure swap"
+
+if [ ! -f /swapfile ]; then
+    sudo fallocate -l 1024M /swapfile
+    sudo chmod 600 /swapfile
+    sudo mkswap /swapfile
+    sudo swapon /swapfile || true
+
+    # Use tee to append to /etc/fstab with sudo privileges
+    echo "/swapfile none swap sw 0 0" | sudo tee -a /etc/fstab > /dev/null
+
+    # Use tee to append to /etc/sysctl.conf with sudo privileges
+    echo "vm.swappiness=35" | sudo tee -a /etc/sysctl.conf > /dev/null
+    echo "vm.vfs_cache_pressure=50" | sudo tee -a /etc/sysctl.conf > /dev/null
+fi
+
+echo "::LAUNCH::step_completed::configure_swap"
+echo "::LAUNCH::progress::8"
+
+# === Provision Step: Configure the firewall with the default rules (SSH, HTTP, HTTPS) ===
+echo "::LAUNCH::status::Configure the firewall with the default rules (SSH, HTTP, HTTPS)"
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Configure firewall with SSH port, HTTP and HTTPS"
+
+sudo ufw allow 22
+sudo ufw allow 80
+sudo ufw allow 443
+sudo ufw --force enable
+sudo service ufw restart
+
+echo "::LAUNCH::step_completed::configure_firewall"
+echo "::LAUNCH::progress::16"
+
+# === Provision Step: Update package lists and installed system packages ===
+echo "::LAUNCH::status::Update package lists and installed system packages"
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+# Wait for apt to be unlocked
+function waitForAptUnlock() {
+    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
+        echo "apt, apt-get or dpkg is running..."
+        sleep 5
+    done
+
+    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+        echo "Waiting: apt is locked..."
+        sleep 5
+    done
+
+    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
+        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
+            echo "Waiting: unattended-upgrades is locked..."
+            sleep 5
+        done
+    fi
+}
+
+echo "Update package repositories and upgrade packages"
+
+# This ensures that the cloud-init bundle is not overwritten by a different version when running apt-get upgrade.
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-mark hold cloud-init
+
+# Remove ALL MySQL repository files to prevent expired GPG key errors
+# The MySQL installation script will properly configure the repository later
+sudo rm -f /etc/apt/sources.list.d/*mysql*
+
+# Update package repositories
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+
+# Install software-properties-common
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-get install software-properties-common -y
+
+# Add universe repository
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive add-apt-repository universe -y
+
+# Update package repositories
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+
+# Upgrade packages
+waitForAptUnlock
+sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
+
+echo "::LAUNCH::step_completed::apt_update_upgrade"
+echo "::LAUNCH::progress::24"
+
+# === Provision Step: Install essential packages (curl, git, wget, etc.) ===
+echo "::LAUNCH::status::Install essential packages (curl, git, wget, etc.)"
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Install essential packages"
+
+sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+    acl \
+    apt-transport-https \
+    ca-certificates \
+    cron \
+    curl \
+    debian-archive-keyring \
+    debian-keyring \
+    fail2ban \
+    gcc \
+    git \
+    lsb-release \
+    make \
+    procps \
+    software-properties-common \
+    ufw \
+    unattended-upgrades \
+    unzip \
+    wget \
+    zip
+
+echo "::LAUNCH::step_completed::install_essential_packages"
+echo "::LAUNCH::progress::32"
+
+# === Provision Step: Configure unattended upgrades to keep the server up to date automatically ===
+echo "::LAUNCH::status::Configure unattended upgrades to keep the server up to date automatically"
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Setup unattended upgrades"
+
+# Configure the allowed origins for unattended upgrades
+sudo tee /etc/apt/apt.conf.d/50unattended-upgrades > /dev/null <<EOF
+Unattended-Upgrade::Allowed-Origins {
+    "\${distro_id} \${distro_codename}-security";
+};
+Unattended-Upgrade::Package-Blacklist {
+    //
+};
+EOF
+
+# Configure the periodic settings for APT
+sudo tee /etc/apt/apt.conf.d/10periodic > /dev/null <<EOF
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::AutocleanInterval "7";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+
+echo "::LAUNCH::step_completed::setup_unattended_upgrades"
+echo "::LAUNCH::progress::40"
+
+# === Provision Step: Configure the root user ===
+echo "::LAUNCH::status::Configure the root user"
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Add public key for this server"
+
+sudo mkdir -p /root/.ssh
+sudo touch /root/.ssh/authorized_keys
+
+sudo tee -a /root/.ssh/authorized_keys > /dev/null <<EOF
+ssh-rsa DOCKERKEY... user@host
+EOF
+
+echo "Fix root permissions"
+
+sudo chown root:root /root
+sudo chown -R root:root /root/.ssh
+sudo chmod 700 /root/.ssh
+sudo chmod 600 /root/.ssh/authorized_keys
+
+echo "SSH Keyscans for Source Providers"
+
+sudo ssh-keygen -R github.com 2>/dev/null || true
+sudo ssh-keygen -R bitbucket.org 2>/dev/null || true
+sudo ssh-keygen -R gitlab.com 2>/dev/null || true
+sudo ssh-keyscan -H github.com | sudo tee -a /root/.ssh/known_hosts > /dev/null
+sudo ssh-keyscan -H bitbucket.org | sudo tee -a /root/.ssh/known_hosts > /dev/null
+sudo ssh-keyscan -H gitlab.com | sudo tee -a /root/.ssh/known_hosts > /dev/null
+
+
+
+echo "::LAUNCH::step_completed::setup_root"
+echo "::LAUNCH::progress::49"
+
+# === Provision Step: Enhance SSH security by disabling password authentication and root login ===
+echo "::LAUNCH::status::Enhance SSH security by disabling password authentication and root login"
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Enhance SSH security"
+
+sudo sed -i "/PasswordAuthentication yes/d" /etc/ssh/sshd_config
+echo "PasswordAuthentication no" | sudo tee -a /etc/ssh/sshd_config > /dev/null
+sudo service ssh restart
+
+echo "Setup SSH keys for root"
+
+if [ ! -d /root/.ssh ]
+then
+    sudo mkdir -p /root/.ssh
+    sudo touch /root/.ssh/authorized_keys
+fi
+
+echo "::LAUNCH::step_completed::ssh_security"
+echo "::LAUNCH::progress::57"
+
+# === Provision Step: Create a default user account ===
+echo "::LAUNCH::status::Create a default user account"
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Rename existing user 1000 if it exists, otherwise create a new user"
+
+TARGET_USER="launcher"
+PROTECTED_USERS=("ubuntu" "root" "ec2-user")
+
+if id "$TARGET_USER" > /dev/null 2>&1; then
+    echo "User $TARGET_USER already exists. Skipping user creation."
+elif getent passwd 1000 > /dev/null 2>&1; then
+    OLD_USERNAME=$(getent passwd 1000 | cut -d: -f1)
+
+    # Check if the current user is protected (ubuntu, root, ec2-user, etc.)
+    if [[ " ${PROTECTED_USERS[@]} " =~ " $OLD_USERNAME " ]]; then
+        echo "User $OLD_USERNAME is a protected user. Skipping renaming and adding user."
+        echo "Setup default user"
+        sudo useradd -m -d "/home/$TARGET_USER" -s /bin/bash "$TARGET_USER"
+    else
+        echo "Renaming existing user 1000 ($OLD_USERNAME)"
+        sudo pkill -9 -u "$OLD_USERNAME" || true
+        sudo pkill -KILL -u "$OLD_USERNAME" || true
+        sudo usermod --login "$TARGET_USER" --move-home --home "/home/$TARGET_USER" "$OLD_USERNAME"
+        sudo groupmod --new-name "$TARGET_USER" "$OLD_USERNAME"
+    fi
+else
+    echo "Setup default user"
+    sudo useradd -m -d "/home/$TARGET_USER" -s /bin/bash "$TARGET_USER"
+fi
+
+echo "Create the user's home directory"
+
+sudo mkdir -p /home/launcher/.launch
+sudo mkdir -p /home/launcher/.ssh
+
+echo "Add user to groups"
+
+sudo adduser launcher sudo
+sudo id launcher
+sudo groups launcher
+
+echo "Set shell"
+
+sudo chsh -s /bin/bash launcher
+
+echo "Init default profile/bashrc"
+
+sudo cp /root/.bashrc /home/launcher/.bashrc
+sudo cp /root/.profile /home/launcher/.profile
+
+echo "Copy SSH settings from root and create new key"
+
+sudo cp /root/.ssh/authorized_keys /home/launcher/.ssh/authorized_keys
+sudo cp /root/.ssh/known_hosts /home/launcher/.ssh/known_hosts
+sudo rm -f /home/launcher/.ssh/id_rsa /home/launcher/.ssh/id_rsa.pub
+sudo ssh-keygen -f /home/launcher/.ssh/id_rsa -t rsa -N ''
+
+
+
+echo "Set password"
+PASSWORD=$(mkpasswd -m sha-512 "dockerpassword")
+
+echo "launcher:$PASSWORD" | sudo chpasswd
+
+# Add default Caddy page
+echo "Add default Caddy page"
+sudo mkdir -p /home/"launcher/default"
+sudo tee /home/"launcher/default/index.html" > /dev/null <<EOF
+This server is managed by <a href=""></a>.
+EOF
+
+echo "Fix user permissions"
+
+sudo chown -R launcher:launcher /home/launcher
+sudo chmod -R 755 /home/launcher
+sudo chmod 700 /home/launcher/.ssh
+sudo chmod 700 /home/launcher/.ssh/id_rsa
+sudo chmod 600 /home/launcher/.ssh/authorized_keys
+
+echo "::LAUNCH::step_completed::setup_default_user"
+echo "::LAUNCH::progress::65"
+
+# === Install Software: Docker ===
+echo "::LAUNCH::status::Installing Docker"
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+# Wait for apt to be unlocked
+function waitForAptUnlock() {
+    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
+        echo "apt, apt-get or dpkg is running..."
+        sleep 5
+    done
+
+    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+        echo "Waiting: apt is locked..."
+        sleep 5
+    done
+
+    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
+        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
+            echo "Waiting: unattended-upgrades is locked..."
+            sleep 5
+        done
+    fi
+}
+
+echo "Install Docker Engine + Compose plugin"
+
+# Reject snap-installed Docker — its containerd path differs and breaks
+# the launcher user's docker group access.
+if command -v snap >/dev/null 2>&1 && snap list 2>/dev/null | grep -q '^docker '; then
+    echo "ERROR: Docker installed via snap is not supported. Remove it first: sudo snap remove docker" >&2
+    exit 1
+fi
+
+waitForAptUnlock
+sudo apt-get install -y ca-certificates curl gnupg
+
+# Add Docker's official GPG key + apt repository.
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+    sudo gpg --dearmor --batch --yes -o /etc/apt/keyrings/docker.gpg
+sudo chmod a+r /etc/apt/keyrings/docker.gpg
+
+. /etc/os-release
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+https://download.docker.com/linux/ubuntu ${VERSION_CODENAME} stable" | \
+    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+
+waitForAptUnlock
+sudo apt-get update
+waitForAptUnlock
+sudo apt-get install -y \
+    docker-ce \
+    docker-ce-cli \
+    containerd.io \
+    docker-buildx-plugin \
+    docker-compose-plugin
+
+sudo systemctl enable --now docker
+
+# Allow the launch user to run docker without sudo.
+sudo usermod -aG docker launcher
+
+# Launch directory tree (used by Traefik + future app deploys).
+sudo mkdir -p /etc/launch/traefik/dynamic
+sudo mkdir -p /etc/launch/apps
+sudo mkdir -p /etc/launch/compose
+sudo mkdir -p /etc/launch/logs
+sudo chown -R launcher:launcher /etc/launch
+sudo chmod 750 /etc/launch
+
+# Attachable bridge network shared by Traefik and user containers.
+# Idempotent: only create if it does not already exist.
+if ! sudo docker network inspect launch-network >/dev/null 2>&1; then
+    sudo docker network create --driver bridge launch-network
+fi
+
+echo "Docker installation complete."
+
+echo "::LAUNCH::software_installed::docker"
+echo "::LAUNCH::progress::73"
+
+# === Install Software: Traefik ===
+echo "::LAUNCH::status::Installing Traefik"
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+echo "Configure Traefik"
+
+# Static configuration. The Docker provider auto-discovers containers
+# attached to launch-network that carry traefik.* labels. The file
+# provider lets the rest of the system drop dynamic config snippets in
+# /etc/launch/traefik/dynamic without restarting Traefik.
+sudo tee /etc/launch/traefik/traefik.yml > /dev/null <<'YAML'
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+providers:
+  docker:
+    exposedByDefault: false
+    network: launch-network
+  file:
+    directory: /etc/launch/traefik/dynamic
+    watch: true
+
+api:
+  dashboard: false
+
+log:
+  level: INFO
+YAML
+
+sudo touch /etc/launch/traefik/acme.json
+sudo chmod 600 /etc/launch/traefik/acme.json
+
+# Run Traefik. Idempotent: remove any previous container before
+# launching so re-running this script always lands on the desired image
+# / config.
+sudo docker rm -f launch-traefik >/dev/null 2>&1 || true
+sudo docker run -d \
+    --name launch-traefik \
+    --restart unless-stopped \
+    --network launch-network \
+    -p 80:80 \
+    -p 443:443 \
+    -v /var/run/docker.sock:/var/run/docker.sock:ro \
+    -v /etc/launch/traefik/traefik.yml:/etc/traefik/traefik.yml:ro \
+    -v /etc/launch/traefik/dynamic:/etc/launch/traefik/dynamic:ro \
+    -v /etc/launch/traefik/acme.json:/etc/launch/traefik/acme.json \
+    traefik:v3.6
+
+echo "Traefik installation complete."
+
+echo "::LAUNCH::software_installed::traefik"
+echo "::LAUNCH::progress::81"
+
+# === Install Software: Launch Agent ===
+echo "::LAUNCH::status::Installing Launch Agent"
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+curl -sSL https://kkz6.github.io/launch-util/install | sh
+
+sudo mkdir -p /etc/launch-agent
+
+sudo bash -c "cat >  <<'EOF'
+pulse:
+    enabled: false
+    webhook:
+        url: 
+        method: POST
+EOF"
+
+sudo bash -c "cat > /etc/systemd/system/launch-agent.service <<'EOF'
+[Unit]
+Description=Launch Agent
+After=network.target
+
+[Service]
+Type=oneshot
+User=root
+ExecStart=/usr/local/bin/launch-agent start
+Restart=on-failure
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+
+EOF"
+
+sudo systemctl daemon-reload
+sudo systemctl enable launch-agent
+sudo systemctl start launch-agent
+
+echo "Launch Agent installed successfully"
+
+echo "::LAUNCH::software_installed::launch_agent"
+echo "::LAUNCH::progress::90"
+
+# === Final Cleanup ===
+echo "::LAUNCH::status::Running final cleanup"
+# See 'apt-update-upgrade'
+waitForAptUnlock
+sudo apt-mark unhold cloud-init
+echo "::LAUNCH::progress::100"

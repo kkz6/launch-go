@@ -119,6 +119,54 @@ func TestProvisionFreshServer_WithPostgreSQL(t *testing.T) {
 	testutil.MatchSnapshot(t, "tasks/provision_postgresql", script)
 }
 
+func TestProvisionFreshServer_DockerType(t *testing.T) {
+	config := tasks.ProvisionFreshServerConfig{
+		MemoryInMB:       2048,
+		PublicIPv4:       "203.0.113.10",
+		Provider:         "custom",
+		PublicKey:        "ssh-rsa DOCKERKEY... user@host",
+		Username:         "launcher",
+		Password:         "dockerpassword",
+		WorkingDirectory: ".launch",
+		SSHPort:          22,
+		SoftwareStack: []types.Software{
+			types.SoftwareDocker,
+			types.SoftwareTraefik,
+			types.SoftwareLaunchAgent,
+		},
+	}
+
+	task := tasks.ProvisionFreshServer(config)
+	if task == nil {
+		t.Fatal("Expected task to be created")
+	}
+	script := task.Script()
+
+	// Both install steps must show up in the combined provisioning script.
+	expectedSnippets := []string{
+		"Install Docker Engine + Compose plugin",
+		"containerd.io",
+		"docker-compose-plugin",
+		"usermod -aG docker launcher",
+		"docker network inspect launch-network",
+		"Configure Traefik",
+		"--name launch-traefik",
+		"traefik:v3.6",
+	}
+	for _, snippet := range expectedSnippets {
+		if !containsString(script, snippet) {
+			t.Errorf("docker provisioning script missing %q", snippet)
+		}
+	}
+
+	// Without TraefikAdminEmail, the ACME resolver must NOT be present.
+	if containsString(script, "certificatesResolvers") {
+		t.Error("docker provisioning without TraefikAdminEmail must omit ACME resolver")
+	}
+
+	testutil.MatchSnapshot(t, "tasks/provision_docker_server", script)
+}
+
 func containsString(haystack, needle string) bool {
 	return len(haystack) > 0 && len(needle) > 0 &&
 		(haystack == needle || len(haystack) > len(needle) &&

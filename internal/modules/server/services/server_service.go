@@ -476,10 +476,39 @@ func (s *Service) createServicesForServer(ctx context.Context, server *models.Se
 		return s.createDatabaseServerServices(ctx, server, req)
 	case types.ServerTypeLoadBalancer:
 		return s.createLoadBalancerServerServices(ctx, server, req)
+	case types.ServerTypeDocker:
+		return s.createDockerServerServices(ctx, server, req)
 	default:
 		// Default to PHP server type
 		return s.createPhpServerServices(ctx, server, req)
 	}
+}
+
+// createDockerServerServices creates services for a Docker server type:
+// Docker engine + Compose plugin (which also bootstraps /etc/launch and
+// the launch-network), then Traefik as the reverse proxy. The Launch
+// Agent is added unless the caller opts out via InstallAgent=false.
+func (s *Service) createDockerServerServices(ctx context.Context, server *models.Server, req *dto.CreateServerRequest) error {
+	for _, sw := range dockerServerSoftwareStack(req) {
+		if err := s.createService(ctx, server.ID, sw, false); err != nil {
+			return fmt.Errorf("failed to create %s service: %w", sw.Label(), err)
+		}
+	}
+	return nil
+}
+
+// dockerServerSoftwareStack returns the list of software a Docker
+// server type should pre-create as InstalledService rows. Pure
+// (no DB or context), so it can be unit-tested directly.
+func dockerServerSoftwareStack(req *dto.CreateServerRequest) []types.Software {
+	stack := []types.Software{
+		types.SoftwareDocker,
+		types.SoftwareTraefik,
+	}
+	if req.InstallAgent == nil || *req.InstallAgent {
+		stack = append(stack, types.SoftwareLaunchAgent)
+	}
+	return stack
 }
 
 // createPhpServerServices creates services for a PHP server type (matches Laravel PhpServerType::createServices)
