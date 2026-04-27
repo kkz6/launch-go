@@ -24,6 +24,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dashboard"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/dns"
+	"github.com/kkz6/launch-go/internal/modules/dockerregistry"
 	"github.com/kkz6/launch-go/internal/modules/dockerservice"
 	"github.com/kkz6/launch-go/internal/modules/git"
 	"github.com/kkz6/launch-go/internal/modules/notification"
@@ -228,6 +229,7 @@ func (a *Application) registerModules() {
 	serverModule := server.NewModule(builder)
 	databaseModule := databasemodule.NewModule(builder)
 	dockerServiceModule := dockerservice.NewModule(builder)
+	dockerRegistryModule := dockerregistry.NewModule(builder)
 	siteModule := site.NewModule(builder)
 	dnsModule := dns.NewModule(builder)
 	backupModule := backup.NewModule(builder)
@@ -253,6 +255,7 @@ func (a *Application) registerModules() {
 		Register(serverModule).
 		Register(databaseModule).
 		Register(dockerServiceModule).
+		Register(dockerRegistryModule).
 		Register(siteModule).
 		Register(dnsModule).
 		Register(backupModule).
