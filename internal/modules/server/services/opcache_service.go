@@ -19,26 +19,27 @@ import (
 
 var jsonRegex = regexp.MustCompile(`\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}`)
 
-// GetOpcacheStatus returns the OPcache status for a PHP version
-func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID string) (*dto.OpcacheStatusResponse, error) {
+// GetOpcacheStatus returns the OPcache status for a PHP version.
+// Signature matches ShowNestedFunc: (ctx, id=phpID, parentID=serverID, teamID).
+func (s *Service) GetOpcacheStatus(ctx context.Context, phpID, serverID, teamID string) (dto.OpcacheStatusResponse, error) {
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
-		return nil, err
+		return dto.OpcacheStatusResponse{}, err
 	}
 
 	// Find the PHP service
 	service, err := s.repos.Service().FindByID(ctx, phpID)
 	if err != nil {
-		return nil, err
+		return dto.OpcacheStatusResponse{}, err
 	}
 
 	// Verify it belongs to this server and is a PHP service
 	if service.ServerID != serverID {
-		return nil, fiberutil.NotFound()
+		return dto.OpcacheStatusResponse{}, fiberutil.NotFound()
 	}
 
 	if service.Type != types.ServiceTypePhp {
-		return nil, fmt.Errorf("service is not a PHP installation")
+		return dto.OpcacheStatusResponse{}, fmt.Errorf("service is not a PHP installation")
 	}
 
 	// Get the PHP version from the software
@@ -53,7 +54,7 @@ func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID 
 
 	result, err := runner.Run(ctx)
 	if err != nil {
-		return &dto.OpcacheStatusResponse{
+		return dto.OpcacheStatusResponse{
 			Enabled: false,
 			Error:   fmt.Sprintf("Failed to get OPcache status: %v", err),
 		}, nil
@@ -61,7 +62,7 @@ func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID 
 
 	output := result.GetOutput()
 	if output == "" {
-		return &dto.OpcacheStatusResponse{
+		return dto.OpcacheStatusResponse{
 			Enabled: false,
 			Error:   "No output from OPcache status command. The PHP command may have failed silently.",
 		}, nil
@@ -75,7 +76,7 @@ func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID 
 		if len(rawOutput) > 200 {
 			rawOutput = rawOutput[:200] + "..."
 		}
-		return &dto.OpcacheStatusResponse{
+		return dto.OpcacheStatusResponse{
 			Enabled: false,
 			Error:   fmt.Sprintf("No valid JSON output found in fiberctx. Raw output: %s", rawOutput),
 		}, nil
@@ -84,13 +85,13 @@ func (s *Service) GetOpcacheStatus(ctx context.Context, serverID, teamID, phpID 
 	// Parse JSON output
 	var status dto.OpcacheStatusResponse
 	if err := json.Unmarshal([]byte(jsonStr), &status); err != nil {
-		return &dto.OpcacheStatusResponse{
+		return dto.OpcacheStatusResponse{
 			Enabled: false,
 			Error:   fmt.Sprintf("Failed to parse OPcache status: %v", err),
 		}, nil
 	}
 
-	return &status, nil
+	return status, nil
 }
 
 // extractJSON extracts a JSON object from a string that may contain other content
@@ -147,8 +148,10 @@ func extractJSON(s string) string {
 	return ""
 }
 
-// ResetOpcache resets the OPcache for a PHP version
-func (s *Service) ResetOpcache(ctx context.Context, serverID, teamID, phpID string) error {
+// ResetOpcache resets the OPcache for a PHP version. Signature matches
+// ActionItemNestedFunc: (ctx, id=phpID, parentID=serverID, teamID, userID).
+func (s *Service) ResetOpcache(ctx context.Context, phpID, serverID, teamID, userID string) error {
+	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err

@@ -2,32 +2,43 @@ package services
 
 import (
 	"context"
-	"errors"
 	"fmt"
 
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	"github.com/kkz6/launch-go/internal/modules/notification/dto"
 	"github.com/kkz6/launch-go/internal/modules/notification/models"
 	notificationtypes "github.com/kkz6/launch-go/internal/modules/notification/types"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
+// Service-level sentinel errors carry their final HTTP status and
+// message so the global error handler renders them without per-handler
+// branching. The wire response matches the previous handler-mapped
+// behavior exactly.
 var (
-	ErrInvalidProvider    = errors.New("invalid provider")
-	ErrConnectionFailed   = errors.New("failed to connect to channel")
-	ErrNotificationFailed = errors.New("failed to send notification")
-	ErrUnauthorized       = errors.New("unauthorized access to channel")
+	ErrInvalidProvider    = fiberutil.BadRequest("Invalid notification provider")
+	ErrConnectionFailed   = fiberutil.BadRequest("Could not connect to the notification channel. Please verify your configuration.")
+	ErrNotificationFailed = fiberutil.BadRequest("Failed to send test notification. Please verify your channel configuration.")
+	ErrUnauthorized       = fiberutil.Forbidden(fiberutil.MsgForbidden)
 )
 
-// GetPreferences returns notification preferences for a team, creating defaults if needed
-func (s *NotificationChannelService) GetPreferences(ctx context.Context, teamID string) (*models.NotificationPreference, error) {
-	return s.Repos().NotificationPreference().FindOrCreateByTeamID(ctx, teamID)
-}
-
-// UpdatePreferences updates notification preferences for a team
-func (s *NotificationChannelService) UpdatePreferences(ctx context.Context, teamID string, req *dto.UpdateNotificationPreferencesRequest) (*models.NotificationPreference, error) {
+// GetPreferences returns notification preferences for a team, creating
+// defaults if needed. Signature matches IndexFunc.
+func (s *NotificationChannelService) GetPreferences(ctx context.Context, teamID string) (dto.NotificationPreferencesResponse, error) {
 	pref, err := s.Repos().NotificationPreference().FindOrCreateByTeamID(ctx, teamID)
 	if err != nil {
-		return nil, err
+		return dto.NotificationPreferencesResponse{}, err
+	}
+	return dto.ToNotificationPreferencesResponse(pref), nil
+}
+
+// UpdatePreferences updates notification preferences for a team and
+// returns the response DTO. PUT to a team-singleton resource so it does
+// not fit the generic Update helper.
+func (s *NotificationChannelService) UpdatePreferences(ctx context.Context, teamID string, req *dto.UpdateNotificationPreferencesRequest) (dto.NotificationPreferencesResponse, error) {
+	pref, err := s.Repos().NotificationPreference().FindOrCreateByTeamID(ctx, teamID)
+	if err != nil {
+		return dto.NotificationPreferencesResponse{}, err
 	}
 
 	pref.EmailServerCreated = req.EmailServerCreated
@@ -38,10 +49,9 @@ func (s *NotificationChannelService) UpdatePreferences(ctx context.Context, team
 	pref.EmailBackupFailed = req.EmailBackupFailed
 
 	if err := s.Repos().NotificationPreference().UpdateByTeamID(ctx, teamID, pref); err != nil {
-		return nil, err
+		return dto.NotificationPreferencesResponse{}, err
 	}
-
-	return pref, nil
+	return dto.ToNotificationPreferencesResponse(pref), nil
 }
 
 // NotificationChannelService handles notification channel business logic
@@ -56,9 +66,17 @@ func NewNotificationChannelService(deps *ServiceDeps) *NotificationChannelServic
 	}
 }
 
-// CreateChannel creates a new notification channel
-func (s *NotificationChannelService) CreateChannel(ctx context.Context, userID, teamID string, req *dto.CreateChannelRequest) (*models.NotificationChannel, error) {
-	// Parse and validate provider
+// CreateChannel creates a new notification channel. Signature matches
+// CreateFunc and returns the response DTO.
+func (s *NotificationChannelService) CreateChannel(ctx context.Context, teamID, userID string, req *dto.CreateChannelRequest) (dto.ChannelResponse, error) {
+	channel, err := s.buildAndConnectChannel(ctx, teamID, userID, req)
+	if err != nil {
+		return dto.ChannelResponse{}, err
+	}
+	return dto.ToChannelResponse(channel), nil
+}
+
+func (s *NotificationChannelService) buildAndConnectChannel(ctx context.Context, teamID, userID string, req *dto.CreateChannelRequest) (*models.NotificationChannel, error) {
 	provider, err := notificationtypes.ParseChannelType(req.Provider)
 	if err != nil {
 		return nil, ErrInvalidProvider
@@ -98,12 +116,21 @@ func (s *NotificationChannelService) CreateChannel(ctx context.Context, userID, 
 	return channel, nil
 }
 
-// UpdateChannel updates an existing notification channel
-func (s *NotificationChannelService) UpdateChannel(ctx context.Context, id, userID, teamID string, req *dto.UpdateChannelRequest) (*models.NotificationChannel, error) {
-	// Find the existing channel
+// UpdateChannel updates an existing notification channel. Signature
+// matches UpdateFunc and returns the response DTO.
+func (s *NotificationChannelService) UpdateChannel(ctx context.Context, id, teamID, userID string, req *dto.UpdateChannelRequest) (dto.ChannelResponse, error) {
+	_ = userID
+	channel, err := s.applyChannelUpdate(ctx, id, teamID, req)
+	if err != nil {
+		return dto.ChannelResponse{}, err
+	}
+	return dto.ToChannelResponse(channel), nil
+}
+
+func (s *NotificationChannelService) applyChannelUpdate(ctx context.Context, id, teamID string, req *dto.UpdateChannelRequest) (*models.NotificationChannel, error) {
 	channel, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
 	if err != nil {
-		return nil, err
+		return nil, fiberutil.NotFoundAs(err, "Notification channel not found")
 	}
 
 	// Update the channel data
@@ -153,29 +180,37 @@ func (s *NotificationChannelService) UpdateChannel(ctx context.Context, id, user
 	return channel, nil
 }
 
-// DeleteChannel deletes a notification channel
-func (s *NotificationChannelService) DeleteChannel(ctx context.Context, id, teamID string) error {
-	// Verify the channel belongs to the team
+// DeleteChannel deletes a notification channel. Signature matches DeleteFunc.
+func (s *NotificationChannelService) DeleteChannel(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
 	channel, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
 	if err != nil {
-		return err
+		return fiberutil.NotFoundAs(err, "Notification channel not found")
 	}
-
 	if channel.TeamID != teamID {
 		return ErrUnauthorized
 	}
-
 	return s.Repos().NotificationChannel().Delete(ctx, id)
 }
 
-// GetChannel retrieves a notification channel by ID
-func (s *NotificationChannelService) GetChannel(ctx context.Context, id, teamID string) (*models.NotificationChannel, error) {
-	return s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
+// GetChannel retrieves a notification channel by ID and returns the
+// response DTO. Signature matches ShowFunc.
+func (s *NotificationChannelService) GetChannel(ctx context.Context, id, teamID string) (dto.ChannelResponse, error) {
+	channel, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
+	if err != nil {
+		return dto.ChannelResponse{}, fiberutil.NotFoundAs(err, "Notification channel not found")
+	}
+	return dto.ToChannelResponse(channel), nil
 }
 
-// ListChannels lists all notification channels for a team
-func (s *NotificationChannelService) ListChannels(ctx context.Context, teamID string) ([]models.NotificationChannel, error) {
-	return s.Repos().NotificationChannel().FindByTeamID(ctx, teamID)
+// ListChannels lists all notification channels for a team. Signature
+// matches IndexFunc and wraps the result in ListChannelsResponse.
+func (s *NotificationChannelService) ListChannels(ctx context.Context, teamID string) (dto.ListChannelsResponse, error) {
+	chans, err := s.Repos().NotificationChannel().FindByTeamID(ctx, teamID)
+	if err != nil {
+		return dto.ListChannelsResponse{}, err
+	}
+	return dto.ListChannelsResponse{Channels: dto.ToChannelResponses(chans)}, nil
 }
 
 // notificationAdapter adapts our Notification interface to the channels.Notification interface
@@ -203,12 +238,13 @@ func (a *notificationAdapter) ToTelegram() string {
 	return a.notification.ToTelegram()
 }
 
-// TestChannel tests a notification channel by sending a test message
-func (s *NotificationChannelService) TestChannel(ctx context.Context, id, teamID string, message string) error {
-	// Find the channel
+// TestChannel tests a notification channel by sending a test message.
+// Has its own signature (extra `message` param) so it does not fit the
+// generic Action helper; the route handler stays bespoke.
+func (s *NotificationChannelService) TestChannel(ctx context.Context, id, teamID, message string) error {
 	channel, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
 	if err != nil {
-		return err
+		return fiberutil.NotFoundAs(err, "Notification channel not found")
 	}
 
 	// Get the channel driver
@@ -312,32 +348,32 @@ func (s *NotificationChannelService) SendToChannel(ctx context.Context, channelI
 	return nil
 }
 
-// SetChannelDefault sets a channel as the default for its provider type
-func (s *NotificationChannelService) SetChannelDefault(ctx context.Context, id, teamID string) error {
+// SetChannelDefault sets a channel as the default for its provider type.
+// Signature matches ActionFunc.
+func (s *NotificationChannelService) SetChannelDefault(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
 	channel, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
 	if err != nil {
-		return err
+		return fiberutil.NotFoundAs(err, "Notification channel not found")
 	}
-
 	return s.Repos().NotificationChannel().SetDefault(ctx, id, teamID, channel.Provider)
 }
 
-// DisconnectChannel marks a channel as disconnected
-func (s *NotificationChannelService) DisconnectChannel(ctx context.Context, id, teamID string) error {
-	// Verify the channel belongs to the team
-	_, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
-	if err != nil {
-		return err
+// DisconnectChannel marks a channel as disconnected. Signature matches ActionFunc.
+func (s *NotificationChannelService) DisconnectChannel(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
+	if _, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID); err != nil {
+		return fiberutil.NotFoundAs(err, "Notification channel not found")
 	}
-
 	return s.Repos().NotificationChannel().SetConnected(ctx, id, false)
 }
 
-// ReconnectChannel attempts to reconnect a channel
-func (s *NotificationChannelService) ReconnectChannel(ctx context.Context, id, teamID string) error {
+// ReconnectChannel attempts to reconnect a channel. Signature matches ActionFunc.
+func (s *NotificationChannelService) ReconnectChannel(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
 	channel, err := s.Repos().NotificationChannel().FindByIDAndTeamID(ctx, id, teamID)
 	if err != nil {
-		return err
+		return fiberutil.NotFoundAs(err, "Notification channel not found")
 	}
 
 	driver, err := s.ChannelFactory().CreateChannel(channel.ToChannelsNotificationChannel())
@@ -349,6 +385,5 @@ func (s *NotificationChannelService) ReconnectChannel(ctx context.Context, id, t
 		s.Logger.Warn().Err(err).Str("id", id).Msg("failed to reconnect notification channel")
 		return fmt.Errorf("%w: %v", ErrConnectionFailed, err)
 	}
-
 	return s.Repos().NotificationChannel().SetConnected(ctx, id, true)
 }

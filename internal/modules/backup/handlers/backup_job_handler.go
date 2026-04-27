@@ -8,36 +8,27 @@ import (
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// BackupJobHandler handles HTTP requests for backup jobs
+// BackupJobHandler exposes the public agent webhook for backup job
+// status reports. The webhook is unauthenticated (dispatch-token guarded)
+// so it does not fit the team-scoped route helpers.
 type BackupJobHandler struct {
 	jobService *services.BackupJobService
 }
 
-// NewBackupJobHandler creates a new backup job handler
+// NewBackupJobHandler creates a new backup job handler.
 func NewBackupJobHandler(jobService *services.BackupJobService) *BackupJobHandler {
 	return &BackupJobHandler{jobService: jobService}
 }
 
-// CreateBackupJob creates a new backup job (webhook endpoint for agent)
+// CreateBackupJob is the agent webhook for reporting a backup run result.
 func (h *BackupJobHandler) CreateBackupJob(c *fiber.Ctx) error {
-	backupID := c.Params("backup")
-	token := c.Params("token")
-
 	req, err := fiberutil.MustParseAndValidate[dto.CreateBackupJobRequest](c)
 	if err != nil {
 		return err
 	}
 
-	_, err = h.jobService.CreateBackupJob(c.Context(), backupID, token, req)
-	if err != nil {
-		if err == services.ErrInvalidDispatchToken {
-			return fiberutil.RespondForbidden(c, fiberutil.MsgForbidden)
-		}
-		if fiberutil.IsNotFound(err) {
-			return fiberutil.RespondNotFound(c, "Backup not found")
-		}
-		return fiberutil.HandleError(c, err)
+	if _, err := h.jobService.CreateBackupJob(c.Context(), c.Params("backup"), c.Params("token"), req); err != nil {
+		return err
 	}
-
 	return c.SendStatus(fiber.StatusNoContent)
 }

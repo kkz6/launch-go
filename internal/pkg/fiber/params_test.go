@@ -220,3 +220,58 @@ func TestMustGetID_Success(t *testing.T) {
 		t.Errorf("Expected body %q, got %q", validULID, string(body))
 	}
 }
+
+// fakeEnum + parseFakeEnum exercise MustParseEnum without depending on a
+// real enum package.
+type fakeEnum string
+
+func parseFakeEnum(s string) (fakeEnum, error) {
+	switch s {
+	case "alpha", "beta":
+		return fakeEnum(s), nil
+	default:
+		return "", BadRequest("Invalid enum")
+	}
+}
+
+func TestMustParseEnum_Valid(t *testing.T) {
+	app := gofiber.New(gofiber.Config{ErrorHandler: NewErrorHandler()})
+	app.Get("/items/:provider", func(c *gofiber.Ctx) error {
+		v, err := MustParseEnum(c, "provider", "Invalid provider", parseFakeEnum)
+		if err != nil {
+			return err
+		}
+		return c.SendString(string(v))
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/items/alpha", nil))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	if resp.StatusCode != 200 {
+		t.Fatalf("expected 200, got %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "alpha" {
+		t.Errorf("got %q, want %q", string(body), "alpha")
+	}
+}
+
+func TestMustParseEnum_Invalid(t *testing.T) {
+	app := gofiber.New(gofiber.Config{ErrorHandler: NewErrorHandler()})
+	app.Get("/items/:provider", func(c *gofiber.Ctx) error {
+		v, err := MustParseEnum(c, "provider", "Invalid provider", parseFakeEnum)
+		if err != nil {
+			return err
+		}
+		return c.SendString(string(v))
+	})
+
+	resp, err := app.Test(httptest.NewRequest("GET", "/items/zeta", nil))
+	if err != nil {
+		t.Fatalf("request: %v", err)
+	}
+	if resp.StatusCode != 400 {
+		t.Fatalf("expected 400, got %d", resp.StatusCode)
+	}
+}

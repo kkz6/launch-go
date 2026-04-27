@@ -1,17 +1,49 @@
 package services
 
 import (
+	"errors"
+
+	"github.com/gofiber/fiber/v2"
+
+	"github.com/kkz6/launch-go/internal/modules/dns/providers"
 	"github.com/kkz6/launch-go/internal/modules/dns/repositories"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
+// Service-level sentinel errors. Each carries its final HTTP status and
+// message so the global error handler can render it without per-handler
+// branching. New sentinels MUST follow the same convention.
 var (
-	ErrRecordNotEditable        = fiberutil.BadRequest("Record cannot be edited")
-	ErrRecordNotDeletable       = fiberutil.BadRequest("Record cannot be deleted")
-	ErrProviderHasActiveDomains = fiberutil.Conflict("Provider has active domains")
+	ErrRecordNotEditable        = fiberutil.Forbidden("This record type cannot be edited")
+	ErrRecordNotDeletable       = fiberutil.Forbidden("This record type cannot be deleted")
+	ErrProviderHasActiveDomains = fiberutil.BadRequest("Cannot delete provider with active domains")
 	ErrInvalidCredentials       = fiberutil.BadRequest("Invalid credentials")
 )
+
+// notFoundAs is a thin alias for fiberutil.NotFoundAs kept for call-site
+// readability. New module code may use fiberutil.NotFoundAs directly.
+func notFoundAs(err error, message string) error {
+	return fiberutil.NotFoundAs(err, message)
+}
+
+// wrapProviderErr converts a *providers.ProviderError into a fiber.Error so
+// it surfaces with the right HTTP status. Non-provider errors pass through
+// unchanged.
+func wrapProviderErr(err error) error {
+	var pe *providers.ProviderError
+	if !errors.As(err, &pe) {
+		return err
+	}
+	switch pe.Code {
+	case fiber.StatusNotFound:
+		return fiberutil.NotFound(pe.Message)
+	case fiber.StatusForbidden:
+		return fiberutil.Forbidden(pe.Message)
+	default:
+		return fiber.NewError(fiber.StatusBadGateway, pe.Message)
+	}
+}
 
 // ServiceDeps holds all dependencies needed for DNS services.
 // Embedding service.ModuleDeps provides common dependencies and repository access.
@@ -43,7 +75,6 @@ func NewServiceRegistry(deps *ServiceDeps) *ServiceRegistry {
 	registry := &ServiceRegistry{}
 	deps.registry = registry
 
-	// Create all services
 	registry.provider = NewDomainProviderService(deps)
 	registry.domain = NewDomainService(deps)
 	registry.record = NewDNSRecordService(deps)

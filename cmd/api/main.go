@@ -30,6 +30,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/script"
 	"github.com/kkz6/launch-go/internal/modules/server"
 	"github.com/kkz6/launch-go/internal/modules/site"
+	"github.com/kkz6/launch-go/internal/modules/site/adapters"
 	sitedto "github.com/kkz6/launch-go/internal/modules/site/dto"
 	wsmodule "github.com/kkz6/launch-go/internal/modules/websocket"
 	"github.com/kkz6/launch-go/internal/pkg/app"
@@ -238,8 +239,8 @@ func (a *Application) registerModules() {
 	// Wire cross-module dependencies
 	siteModule.SetDomainRepository(dnsModule.Repos().Domain())
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
-	siteModule.SetCronCreator(serverModule.Service())
-	siteModule.SetDatabaseManager(databaseModule.Service())
+	siteModule.SetCronCreator(adapters.NewCronCreatorAdapter(serverModule.Service()))
+	siteModule.SetDatabaseManager(adapters.NewDatabaseManagerAdapter(databaseModule.Service()))
 	serverModule.SetSiteReader(siteModule.SiteReader())
 	gitModule.SetSiteChecker(siteModule.SiteChecker())
 

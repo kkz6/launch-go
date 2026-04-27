@@ -1,59 +1,52 @@
 package dns
 
 import (
-	"github.com/gofiber/fiber/v2"
+	gofiber "github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/middleware"
+	"github.com/kkz6/launch-go/internal/modules/dns/dto"
 	"github.com/kkz6/launch-go/internal/modules/dns/handlers"
+	"github.com/kkz6/launch-go/internal/modules/dns/services"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// RegisterRoutes registers all DNS module routes
-func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
-	// Create services
+// RegisterRoutes registers all DNS module routes. Most endpoints fit one
+// of the team-scoped route helpers in pkg/fiber, so the wiring here is
+// effectively a route table.
+func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Handler) {
 	svc := m.createServices()
 
-	// Create handlers
-	providerHandler := handlers.NewDomainProviderHandler(svc.Provider())
-	domainHandler := handlers.NewDomainHandler(svc.Domain(), svc.Provider())
-	recordHandler := handlers.NewDNSRecordHandler(svc.Record(), svc.Domain())
+	domainHandler := handlers.NewDomainHandler(svc.Domain())
+	recordHandler := handlers.NewDNSRecordHandler(svc.Record())
 
-	m.registerProviderRoutes(router, authMiddleware, providerHandler)
-	m.registerDomainRoutes(router, authMiddleware, domainHandler, recordHandler)
-	m.registerUtilityRoutes(router, authMiddleware, recordHandler)
+	// Static record-types lookup (not team-scoped).
+	router.Get("/dns/record-types", authMiddleware, recordHandler.GetRecordTypes)
+
+	m.registerProviderRoutes(router, authMiddleware, svc)
+	m.registerDomainRoutes(router, authMiddleware, svc, domainHandler)
 }
 
-// registerProviderRoutes registers DNS provider routes
-func (m *Module) registerProviderRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.DomainProviderHandler) {
-	providers := router.Group("/dns-providers", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
-	{
-		providers.Get("/", handler.ListProviders)
-		providers.Post("/", handler.CreateProvider)
-		providers.Delete("/:id", handler.DeleteProvider)
-		providers.Post("/:id/check", handler.CheckProviderConnectivity)
-		providers.Post("/:id/sync", handler.SyncProviderDomains)
-	}
+func (m *Module) registerProviderRoutes(router gofiber.Router, authMiddleware gofiber.Handler, svc *services.ServiceRegistry) {
+	g := router.Group("/dns-providers", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
+	g.Get("/", fiberutil.Index("Providers retrieved", svc.Provider().ListProviders))
+	g.Post("/", fiberutil.Create[dto.CreateDomainProviderRequest]("Provider created", svc.Provider().CreateProvider))
+	g.Delete("/:id", fiberutil.Delete(svc.Provider().DeleteProvider))
+	g.Post("/:id/check", fiberutil.Action("Provider is connected", svc.Provider().CheckProviderConnectivity))
+	g.Post("/:id/sync", fiberutil.Action("Domains synchronized successfully", svc.Provider().SyncDomains))
 }
 
-// registerDomainRoutes registers domain and DNS record routes
-func (m *Module) registerDomainRoutes(router fiber.Router, authMiddleware fiber.Handler, domainHandler *handlers.DomainHandler, recordHandler *handlers.DNSRecordHandler) {
-	domains := router.Group("/dns/domains", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
-	{
-		domains.Get("/", domainHandler.ListDomains)
-		domains.Post("/", domainHandler.CreateDomain)
-		domains.Get("/:id", domainHandler.ShowDomain)
-		domains.Patch("/:id", domainHandler.UpdateDomain)
-		domains.Delete("/:id", domainHandler.DeleteDomain)
-		domains.Post("/:id/sync", domainHandler.SyncDomain)
+func (m *Module) registerDomainRoutes(router gofiber.Router, authMiddleware gofiber.Handler, svc *services.ServiceRegistry, domainHandler *handlers.DomainHandler) {
+	g := router.Group("/dns/domains", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
+	g.Get("/", fiberutil.Index("Domains retrieved", svc.Domain().ListDomainsPage))
+	g.Post("/", fiberutil.Create[dto.CreateDomainRequest]("Domain created", svc.Domain().CreateDomain))
+	g.Get("/:id", fiberutil.Show("Domain retrieved", svc.Domain().GetDomainPage))
+	g.Patch("/:id", fiberutil.Update[dto.UpdateDomainRequest]("Domain updated", svc.Domain().UpdateDomain))
+	g.Delete("/:id", domainHandler.DeleteDomain)
+	g.Post("/:id/sync", fiberutil.Action("DNS records synced successfully", svc.Domain().SyncDomainRecords))
 
-		// DNS Record routes
-		domains.Get("/:id/records", recordHandler.ListRecords)
-		domains.Post("/:id/records", recordHandler.CreateRecord)
-		domains.Post("/:domainId/records/:recordId", recordHandler.UpdateRecord)
-		domains.Delete("/:domainId/records/:recordId", recordHandler.DeleteRecord)
-	}
-}
-
-// registerUtilityRoutes registers utility routes
-func (m *Module) registerUtilityRoutes(router fiber.Router, authMiddleware fiber.Handler, handler *handlers.DNSRecordHandler) {
-	router.Get("/dns/record-types", authMiddleware, handler.GetRecordTypes)
+	// Nested DNS records.
+	g.Get("/:id/records", fiberutil.IndexNested("id", "Records retrieved", svc.Domain().GetDomainRecords))
+	g.Post("/:id/records", fiberutil.CreateNested[dto.CreateDNSRecordRequest]("id", "Record created", svc.Record().CreateRecord))
+	g.Post("/:domainId/records/:recordId", fiberutil.UpdateNested[dto.UpdateDNSRecordRequest]("domainId", "recordId", "Record updated", svc.Record().UpdateRecord))
+	g.Delete("/:domainId/records/:recordId", fiberutil.DeleteNested("domainId", "recordId", svc.Record().DeleteRecord))
 }

@@ -7,6 +7,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/backup/dto"
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // BackupJobService handles business logic for backup jobs
@@ -25,7 +26,7 @@ func NewBackupJobService(deps *ServiceDeps) *BackupJobService {
 func (s *BackupJobService) CreateBackupJob(ctx context.Context, backupID, token string, req *dto.CreateBackupJobRequest) (*models.BackupJob, error) {
 	backup, err := s.Repos().Backup().FindBackupByID(ctx, backupID)
 	if err != nil {
-		return nil, err
+		return nil, fiberutil.NotFoundAs(err, "Backup not found")
 	}
 
 	// Verify dispatch token using constant-time comparison to prevent timing attacks

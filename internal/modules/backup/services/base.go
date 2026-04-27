@@ -7,11 +7,15 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/service"
 )
 
+// Service-level sentinel errors carry their final HTTP status and
+// message so the global error handler renders them without per-handler
+// branching. The dispatch-token error renders as 403 to match the
+// previous handler-level mapping.
 var (
 	ErrStorageProviderHasBackups = fiberutil.Conflict("Storage provider has associated backups and cannot be deleted")
 	ErrInvalidStorageDriver      = fiberutil.BadRequest("Invalid storage driver")
 	ErrConnectionFailed          = fiberutil.BadRequest("Failed to connect to storage provider")
-	ErrInvalidDispatchToken      = fiberutil.Unauthorized("Invalid dispatch token")
+	ErrInvalidDispatchToken      = fiberutil.Forbidden(fiberutil.MsgForbidden)
 )
 
 // ServiceDeps holds all dependencies needed for backup services.

@@ -73,6 +73,17 @@ func msgOrDefault(message []string, defaultMsg string) string {
 	return defaultMsg
 }
 
+// NotFoundAs re-wraps a not-found error with a custom message. Returns
+// the original error unchanged when it is not a not-found. Use this in
+// services to attach a domain-specific 404 message ("Domain not found",
+// "Backup not found", ...) without per-handler branching.
+func NotFoundAs(err error, message string) error {
+	if IsNotFound(err) {
+		return NotFound(message)
+	}
+	return err
+}
+
 // IsNotFound checks if error is a not found condition
 func IsNotFound(err error) bool {
 	if errors.Is(err, ErrNotFound) || errors.Is(err, apperror.ErrNotFound) {

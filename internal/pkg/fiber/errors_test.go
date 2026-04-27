@@ -347,3 +347,33 @@ func TestIsHelpersRecogniseAppError(t *testing.T) {
 		})
 	}
 }
+
+func TestNotFoundAs(t *testing.T) {
+	t.Run("rewraps not-found with custom message", func(t *testing.T) {
+		err := NotFoundAs(NotFound(), "Backup not found")
+		if !IsNotFound(err) {
+			t.Fatal("expected not-found")
+		}
+		var fiberErr *gofiber.Error
+		if !errors.As(err, &fiberErr) {
+			t.Fatal("expected *fiber.Error")
+		}
+		if fiberErr.Message != "Backup not found" {
+			t.Errorf("got %q, want %q", fiberErr.Message, "Backup not found")
+		}
+	})
+
+	t.Run("passes through non-not-found", func(t *testing.T) {
+		original := errors.New("boom")
+		got := NotFoundAs(original, "won't show")
+		if got != original {
+			t.Errorf("got %v, want passthrough %v", got, original)
+		}
+	})
+
+	t.Run("nil stays nil", func(t *testing.T) {
+		if got := NotFoundAs(nil, "msg"); got != nil {
+			t.Errorf("got %v, want nil", got)
+		}
+	})
+}

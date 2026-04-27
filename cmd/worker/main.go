@@ -21,6 +21,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site"
+	"github.com/kkz6/launch-go/internal/modules/site/adapters"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/logger"
 	"github.com/kkz6/launch-go/internal/pkg/mail"
@@ -128,8 +129,8 @@ func main() {
 
 	// Set up cross-module dependencies
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
-	siteModule.SetCronCreator(serverModule.Service())
-	siteModule.SetDatabaseManager(databaseModule.Service())
+	siteModule.SetCronCreator(adapters.NewCronCreatorAdapter(serverModule.Service()))
+	siteModule.SetDatabaseManager(adapters.NewDatabaseManagerAdapter(databaseModule.Service()))
 
 	// Register all modules with the kernel
 	kernel.

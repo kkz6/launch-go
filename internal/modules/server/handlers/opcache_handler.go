@@ -7,55 +7,25 @@ import (
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
-// GetOpcacheDefaults returns the default OPcache settings
+// GetOpcacheDefaults returns the static default OPcache settings.
+// Not team-scoped — does not fit Index.
 func (h *Handler) GetOpcacheDefaults(c *fiber.Ctx) error {
 	return fiberctx.OK(c, "OPcache defaults retrieved", dto.GetDefaultOpcacheSettings())
 }
 
-// GetOpcacheStatus returns the OPcache status for a PHP version
-func (h *Handler) GetOpcacheStatus(c *fiber.Ctx) error {
-	teamID, serverID, phpID, err := fiberctx.GetTeamServerAndEntityID(c, "phpId")
-	if err != nil {
-		return err
-	}
-
-	status, err := h.service.GetOpcacheStatus(c.Context(), serverID, teamID, phpID)
-	if err != nil {
-		return fiberctx.HandleErrorOrInternal(c, err, "Failed to fetch OPcache status")
-	}
-
-	return fiberctx.OK(c, "OPcache status retrieved", status)
-}
-
-// ResetOpcache resets the OPcache for a PHP version
-func (h *Handler) ResetOpcache(c *fiber.Ctx) error {
-	teamID, serverID, phpID, err := fiberctx.GetTeamServerAndEntityID(c, "phpId")
-	if err != nil {
-		return err
-	}
-
-	if err := h.service.ResetOpcache(c.Context(), serverID, teamID, phpID); err != nil {
-		return fiberctx.HandleErrorOrInternal(c, err, "Failed to reset OPcache")
-	}
-
-	return fiberctx.OK(c, "OPcache reset initiated", nil)
-}
-
-// ConfigureOpcache configures OPcache settings for a PHP version
+// ConfigureOpcache configures OPcache settings for a PHP version.
+// Action with body — does not fit ActionItemNested.
 func (h *Handler) ConfigureOpcache(c *fiber.Ctx) error {
 	teamID, serverID, phpID, err := fiberctx.GetTeamServerAndEntityID(c, "phpId")
 	if err != nil {
 		return err
 	}
-
 	req, err := fiberctx.MustParseAndValidate[dto.ConfigureOpcacheRequest](c)
 	if err != nil {
 		return err
 	}
-
 	if err := h.service.ConfigureOpcache(c.Context(), serverID, teamID, phpID, req); err != nil {
-		return fiberctx.HandleErrorOrInternal(c, err, "Failed to configure OPcache")
+		return err
 	}
-
 	return fiberctx.OK(c, "OPcache configuration initiated", nil)
 }

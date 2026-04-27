@@ -11,25 +11,34 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 )
 
-// ListFirewallRules returns all firewall rules for a server
-func (s *Service) ListFirewallRules(ctx context.Context, serverID, teamID string) ([]models.FirewallRule, error) {
+// ListFirewallRules returns all firewall rules for a server. Signature
+// matches IndexNestedFunc.
+func (s *Service) ListFirewallRules(ctx context.Context, serverID, teamID string) ([]dto.FirewallRuleResponse, error) {
 	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
 		return nil, err
 	}
-
-	return s.repos.FirewallRule().FindByServer(ctx, serverID)
-}
-
-// CreateFirewallRule creates a new firewall rule
-func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID string, req *dto.CreateFirewallRuleRequest) (*models.FirewallRule, error) {
-	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	rules, err := s.repos.FirewallRule().FindByServer(ctx, serverID)
 	if err != nil {
 		return nil, err
+	}
+	out := make([]dto.FirewallRuleResponse, len(rules))
+	for i := range rules {
+		out[i] = dto.ToFirewallRuleResponse(&rules[i])
+	}
+	return out, nil
+}
+
+// CreateFirewallRule creates a new firewall rule. Signature matches CreateNestedFunc.
+func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID, userID string, req *dto.CreateFirewallRuleRequest) (dto.FirewallRuleResponse, error) {
+	_ = userID
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return dto.FirewallRuleResponse{}, err
 	}
 
 	action, err := types.ParseRuleAction(req.Action)
 	if err != nil {
-		return nil, err
+		return dto.FirewallRuleResponse{}, err
 	}
 
 	rule := &models.FirewallRule{
@@ -43,50 +52,46 @@ func (s *Service) CreateFirewallRule(ctx context.Context, serverID, teamID strin
 	rule.ServerID = serverID
 
 	if err := s.repos.FirewallRule().Create(ctx, rule); err != nil {
-		return nil, err
+		return dto.FirewallRuleResponse{}, err
 	}
 
-	// Using embedded ActivityMixin for consistent activity logging
 	s.LogSystemActivity(ctx, rule, "created", "Firewall rule was created")
 
 	if err := s.dispatchFirewallRuleInstallJob(server, rule); err != nil {
 		s.LogError(err, "Failed to dispatch firewall rule install job", "server_id", serverID, "rule_id", rule.ID)
 	}
-
-	return rule, nil
+	return dto.ToFirewallRuleResponse(rule), nil
 }
 
-// UpdateFirewallRule updates a firewall rule
-func (s *Service) UpdateFirewallRule(ctx context.Context, serverID, teamID, ruleID string, req *dto.UpdateFirewallRuleRequest) (*models.FirewallRule, error) {
+// UpdateFirewallRule updates a firewall rule. Signature matches UpdateNestedFunc.
+func (s *Service) UpdateFirewallRule(ctx context.Context, ruleID, serverID, teamID, userID string, req *dto.UpdateFirewallRuleRequest) (dto.FirewallRuleResponse, error) {
+	_ = userID
 	if _, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
-		return nil, err
+		return dto.FirewallRuleResponse{}, err
 	}
 
 	rule, err := s.repos.FirewallRule().FindByIDAndServer(ctx, ruleID, serverID)
 	if err != nil {
-		return nil, err
+		return dto.FirewallRuleResponse{}, err
 	}
 
 	if req.Name != nil {
 		rule.Name = *req.Name
 	}
-
 	if req.Note != nil {
 		rule.Note = req.Note
 	}
 
 	if err := s.repos.FirewallRule().Update(ctx, rule); err != nil {
-		return nil, err
+		return dto.FirewallRuleResponse{}, err
 	}
-
-	// Using embedded ActivityMixin for consistent activity logging
 	s.LogSystemActivity(ctx, rule, "updated", "Firewall rule was updated")
-
-	return rule, nil
+	return dto.ToFirewallRuleResponse(rule), nil
 }
 
-// DeleteFirewallRule deletes a firewall rule
-func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, ruleID string) error {
+// DeleteFirewallRule deletes a firewall rule. Signature matches DeleteNestedFunc.
+func (s *Service) DeleteFirewallRule(ctx context.Context, ruleID, serverID, teamID, userID string) error {
+	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
 	if err != nil {
 		return err
@@ -97,7 +102,6 @@ func (s *Service) DeleteFirewallRule(ctx context.Context, serverID, teamID, rule
 		return err
 	}
 
-	// Using embedded ActivityMixin for consistent activity logging
 	s.LogSystemActivity(ctx, rule, "deleted", "Firewall rule deletion requested")
 
 	return s.UninstallOrDelete(ctx, rule.IsInstalled(), ruleID,
@@ -119,31 +123,14 @@ func (s *Service) dispatchFirewallRuleUninstallJob(server *models.Server, rule *
 	})
 }
 
-// CreateDefaultFirewallRules creates the default firewall rules for a new server (SSH, HTTP, HTTPS)
-// These rules are created in the database but not installed until the server is provisioned.
+// CreateDefaultFirewallRules creates the default firewall rules for a
+// new server (SSH, HTTP, HTTPS). These rules are created in the database
+// but not installed until the server is provisioned.
 func (s *Service) CreateDefaultFirewallRules(ctx context.Context, serverID string) error {
 	defaultRules := []models.FirewallRule{
-		{
-			Name:     "ssh",
-			Port:     "22",
-			FromIPv4: strPtr("0.0.0.0"),
-			Mask:     strPtr("0"),
-			Action:   types.RuleActionAllow,
-		},
-		{
-			Name:     "http",
-			Port:     "80",
-			FromIPv4: strPtr("0.0.0.0"),
-			Mask:     strPtr("0"),
-			Action:   types.RuleActionAllow,
-		},
-		{
-			Name:     "https",
-			Port:     "443",
-			FromIPv4: strPtr("0.0.0.0"),
-			Mask:     strPtr("0"),
-			Action:   types.RuleActionAllow,
-		},
+		{Name: "ssh", Port: "22", FromIPv4: strPtr("0.0.0.0"), Mask: strPtr("0"), Action: types.RuleActionAllow},
+		{Name: "http", Port: "80", FromIPv4: strPtr("0.0.0.0"), Mask: strPtr("0"), Action: types.RuleActionAllow},
+		{Name: "https", Port: "443", FromIPv4: strPtr("0.0.0.0"), Mask: strPtr("0"), Action: types.RuleActionAllow},
 	}
 
 	for i := range defaultRules {
@@ -152,11 +139,7 @@ func (s *Service) CreateDefaultFirewallRules(ctx context.Context, serverID strin
 			return err
 		}
 	}
-
 	return nil
 }
 
-// strPtr returns a pointer to the given string
-func strPtr(s string) *string {
-	return &s
-}
+func strPtr(s string) *string { return &s }
