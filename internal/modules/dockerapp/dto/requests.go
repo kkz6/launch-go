@@ -5,18 +5,27 @@ import "github.com/kkz6/launch-go/internal/modules/dockerapp/types"
 // CreateAppRequest is the body of POST /servers/:serverId/apps.
 type CreateAppRequest struct {
 	Name                 string              `json:"name" validate:"required,min=1,max=64"`
-	Image                string              `json:"image" validate:"required,min=1,max=255"`
+	Source               types.Source        `json:"source" validate:"omitempty"`
+	Image                string              `json:"image" validate:"omitempty,max=255"`
 	Tag                  string              `json:"tag" validate:"omitempty,max=255"`
 	RegistryCredentialID *string             `json:"registry_credential_id" validate:"omitempty,len=26"`
 	RestartPolicy        types.RestartPolicy `json:"restart_policy" validate:"omitempty"`
+
+	// Compose-source fields. Required when Source == "compose".
+	ComposeYAML *string `json:"compose_yaml" validate:"omitempty"`
+	ComposeEnv  *string `json:"compose_env" validate:"omitempty"`
 }
 
 // UpdateAppRequest is the body of PUT /servers/:serverId/apps/:id.
 type UpdateAppRequest struct {
-	Image                *string              `json:"image" validate:"omitempty,min=1,max=255"`
+	Image                *string              `json:"image" validate:"omitempty,max=255"`
 	Tag                  *string              `json:"tag" validate:"omitempty,max=255"`
 	RegistryCredentialID *string              `json:"registry_credential_id" validate:"omitempty"`
 	RestartPolicy        *types.RestartPolicy `json:"restart_policy" validate:"omitempty"`
+
+	// Compose-source fields.
+	ComposeYAML *string `json:"compose_yaml" validate:"omitempty"`
+	ComposeEnv  *string `json:"compose_env" validate:"omitempty"`
 }
 
 // UninstallAppRequest is the body of DELETE.

@@ -8,11 +8,11 @@ func TestSource_IsValid(t *testing.T) {
 	if !SourceImage.IsValid() {
 		t.Error("image source must be valid")
 	}
-	if Source("git").IsValid() {
-		t.Error("git source is not valid in v1 (Phase 5)")
+	if !SourceCompose.IsValid() {
+		t.Error("compose source must be valid")
 	}
-	if Source("compose").IsValid() {
-		t.Error("compose source is not valid in v2 yet (Phase 4)")
+	if Source("git").IsValid() {
+		t.Error("git source is not valid until Phase 5")
 	}
 }
 

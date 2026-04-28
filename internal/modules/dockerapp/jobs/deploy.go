@@ -12,6 +12,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dockerapp/types"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 const TypeDeployApp = "dockerapp:deploy"
@@ -36,8 +37,8 @@ func NewDeployJob(p DeployPayload) pkgjobs.Handler {
 	return &DeployJob{Deps: deps, Payload: p}
 }
 
-// Handle pulls the image and runs the container with all configured
-// env / ports / volumes / Traefik labels.
+// Handle pulls the image (or writes the compose project) and runs the
+// container with all configured env / ports / volumes / Traefik labels.
 func (j *DeployJob) Handle(ctx context.Context) error {
 	if err := j.load(ctx); err != nil {
 		return err
@@ -49,12 +50,22 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 
 	j.Deps.BroadcastAppEvent(j.server, "app.progress", j.app.ID, "deploying", fmt.Sprintf("Deploying %s", j.app.Name))
 
-	opts, err := j.buildDeployOptions(ctx)
-	if err != nil {
-		return err
+	var task *taskrunner.BaseTask
+	switch j.app.Source {
+	case types.SourceCompose:
+		opts, err := j.buildComposeDeployOptions(ctx)
+		if err != nil {
+			return err
+		}
+		task = dockerapptasks.ComposeDeploy(opts)
+	default:
+		opts, err := j.buildDeployOptions(ctx)
+		if err != nil {
+			return err
+		}
+		task = dockerapptasks.Deploy(opts)
 	}
 
-	task := dockerapptasks.Deploy(opts)
 	result, err := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to dispatch deploy task: %w", err)
@@ -156,6 +167,29 @@ func (j *DeployJob) buildDeployOptions(ctx context.Context) (dockerapptasks.Depl
 		})
 	}
 	opts.Labels = dockerapptasks.TraefikLabels(j.app.Name, domains)
+
+	if j.app.RegistryCredentialID != nil && j.Deps.Registry != nil {
+		cred, err := j.Deps.Registry.GetForApp(ctx, *j.app.RegistryCredentialID, j.app.TeamID)
+		if err != nil {
+			return opts, fmt.Errorf("failed to load registry credential: %w", err)
+		}
+		if cred != nil {
+			opts.RegistryURL = cred.URL
+			opts.RegistryUsername = cred.Username
+			opts.RegistryPassword = cred.Password
+		}
+	}
+
+	return opts, nil
+}
+
+func (j *DeployJob) buildComposeDeployOptions(ctx context.Context) (dockerapptasks.ComposeDeployOptions, error) {
+	opts := dockerapptasks.ComposeDeployOptions{
+		AppName:     j.app.Name,
+		Project:     j.app.ComposeProject(),
+		ComposeYAML: j.app.ComposeYAMLValue(),
+		ComposeEnv:  j.app.ComposeEnvValue(),
+	}
 
 	if j.app.RegistryCredentialID != nil && j.Deps.Registry != nil {
 		cred, err := j.Deps.Registry.GetForApp(ctx, *j.app.RegistryCredentialID, j.app.TeamID)

@@ -9,8 +9,8 @@ import (
 
 // =============================================================================
 // Source: where the application's image comes from.
-// v1 only ships SourceImage. SourceCompose lands in Phase 4, SourceGit in
-// Phase 5.
+// SourceImage pulls a pre-built image. SourceCompose runs a docker-compose
+// stack defined inline. SourceGit lands in Phase 5.
 // =============================================================================
 
 // Source identifies how an application is built/pulled.
@@ -19,9 +19,11 @@ type Source string
 const (
 	// SourceImage pulls a pre-built image from a registry.
 	SourceImage Source = "image"
+	// SourceCompose runs a docker compose stack from inline YAML.
+	SourceCompose Source = "compose"
 )
 
-var allSources = []Source{SourceImage}
+var allSources = []Source{SourceImage, SourceCompose}
 
 func (s Source) String() string    { return string(s) }
 func (s Source) IsValid() bool     { return enumtypes.IsValid(s, allSources...) }

@@ -25,6 +25,12 @@ type AppResponse struct {
 	CreatedAt            *string `json:"created_at,omitempty"`
 	UpdatedAt            *string `json:"updated_at,omitempty"`
 
+	// Compose source — YAML is returned, .env content is not (sensitive).
+	ComposeYAML *string `json:"compose_yaml,omitempty"`
+	// HasComposeEnv indicates whether a .env was set, without exposing its content.
+	HasComposeEnv  bool   `json:"has_compose_env"`
+	ComposeProject string `json:"compose_project,omitempty"`
+
 	EnvVars []EnvVarResponse `json:"env_vars,omitempty"`
 	Ports   []PortResponse   `json:"ports,omitempty"`
 	Volumes []VolumeResponse `json:"volumes,omitempty"`
@@ -85,6 +91,13 @@ func ToAppResponse(a *models.App) AppResponse {
 		DeployedAt:           pkgdto.FormatTime(a.DeployedAt),
 		CreatedAt:            pkgdto.FormatTime(a.CreatedAt),
 		UpdatedAt:            pkgdto.FormatTime(a.UpdatedAt),
+		HasComposeEnv:        a.ComposeEnv != nil,
+	}
+	if a.Source.String() == "compose" {
+		resp.ComposeProject = a.ComposeProject()
+		if a.ComposeYAML != nil {
+			resp.ComposeYAML = a.ComposeYAML
+		}
 	}
 	for _, e := range a.EnvVars {
 		out := EnvVarResponse{ID: e.ID, Key: e.Key, Secret: e.Secret}

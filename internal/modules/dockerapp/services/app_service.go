@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dockerapp/models"
 	dockerapptasks "github.com/kkz6/launch-go/internal/modules/dockerapp/tasks"
 	"github.com/kkz6/launch-go/internal/modules/dockerapp/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
@@ -64,10 +65,17 @@ func (s *Service) Create(ctx context.Context, serverID, teamID, userID string, r
 	if policy == "" {
 		policy = types.RestartUnlessStopped
 	}
+	source := req.Source
+	if source == "" {
+		source = types.SourceImage
+	}
+	if !source.IsValid() {
+		return dto.AppResponse{}, fmt.Errorf("invalid source: %s", source)
+	}
 
 	app := &models.App{
 		Name:                 req.Name,
-		Source:               types.SourceImage,
+		Source:               source,
 		Image:                req.Image,
 		Tag:                  tag,
 		RegistryCredentialID: req.RegistryCredentialID,
@@ -76,6 +84,20 @@ func (s *Service) Create(ctx context.Context, serverID, teamID, userID string, r
 	}
 	app.ServerID = serverID
 	app.TeamID = teamID
+
+	if source == types.SourceCompose {
+		if req.ComposeYAML == nil || *req.ComposeYAML == "" {
+			return dto.AppResponse{}, fmt.Errorf("compose_yaml is required for compose source")
+		}
+		yaml := *req.ComposeYAML
+		app.ComposeYAML = &yaml
+		if req.ComposeEnv != nil {
+			env := dbtype.EncryptedString(*req.ComposeEnv)
+			app.ComposeEnv = &env
+		}
+		// Image fields are optional for compose. Keep them blank.
+		app.Image = ""
+	}
 
 	if err := s.repos.App().Create(ctx, app); err != nil {
 		return dto.AppResponse{}, fmt.Errorf("failed to create app: %w", err)
@@ -115,6 +137,14 @@ func (s *Service) Update(ctx context.Context, id, serverID, teamID, userID strin
 	}
 	if req.RestartPolicy != nil {
 		updates["restart_policy"] = *req.RestartPolicy
+	}
+	if req.ComposeYAML != nil {
+		updates["compose_yaml"] = *req.ComposeYAML
+	}
+	if req.ComposeEnv != nil {
+		// Encrypted at rest.
+		env := dbtype.EncryptedString(*req.ComposeEnv)
+		updates["compose_env"] = env
 	}
 
 	if len(updates) > 0 {
@@ -206,12 +236,25 @@ func (s *Service) Logs(ctx context.Context, id, serverID, teamID string, tail in
 		return "", ErrBusy
 	}
 
-	task := dockerapptasks.Logs(dockerapptasks.LogsOptions{
+	if app.Source == types.SourceCompose {
+		composeTask := dockerapptasks.ComposeLogs(dockerapptasks.ComposeLogsOptions{
+			AppName: app.Name,
+			Project: app.ComposeProject(),
+			Tail:    tail,
+		})
+		result, err := s.runnerDeps.RunTask(ctx, server, composeTask, true)
+		if err != nil {
+			return "", fmt.Errorf("failed to fetch logs: %w", err)
+		}
+		return result.GetOutput(), nil
+	}
+
+	imageTask := dockerapptasks.Logs(dockerapptasks.LogsOptions{
 		AppName:   app.Name,
 		Container: app.Container(),
 		Tail:      tail,
 	})
-	result, err := s.runnerDeps.RunTask(ctx, server, task, true)
+	result, err := s.runnerDeps.RunTask(ctx, server, imageTask, true)
 	if err != nil {
 		return "", fmt.Errorf("failed to fetch logs: %w", err)
 	}
@@ -240,14 +283,32 @@ func (s *Service) runLifecycle(
 		return ErrNotDeployed
 	}
 
-	task := dockerapptasks.Lifecycle(dockerapptasks.LifecycleOptions{
-		AppName:   app.Name,
-		Container: app.Container(),
-		Action:    action,
-	})
-	result, err := s.runnerDeps.RunTask(ctx, server, task, true)
-	if err != nil {
-		return fmt.Errorf("failed to %s app: %w", action, err)
+	var result interface {
+		IsSuccessful() bool
+		GetOutput() string
+	}
+	if app.Source == types.SourceCompose {
+		composeTask := dockerapptasks.ComposeLifecycle(dockerapptasks.ComposeLifecycleOptions{
+			AppName: app.Name,
+			Project: app.ComposeProject(),
+			Action:  action,
+		})
+		r, err := s.runnerDeps.RunTask(ctx, server, composeTask, true)
+		if err != nil {
+			return fmt.Errorf("failed to %s app: %w", action, err)
+		}
+		result = r
+	} else {
+		imageTask := dockerapptasks.Lifecycle(dockerapptasks.LifecycleOptions{
+			AppName:   app.Name,
+			Container: app.Container(),
+			Action:    action,
+		})
+		r, err := s.runnerDeps.RunTask(ctx, server, imageTask, true)
+		if err != nil {
+			return fmt.Errorf("failed to %s app: %w", action, err)
+		}
+		result = r
 	}
 	if !result.IsSuccessful() {
 		return fmt.Errorf("%s script failed: %s", action, result.GetOutput())

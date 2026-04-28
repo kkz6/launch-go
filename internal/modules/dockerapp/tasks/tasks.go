@@ -182,3 +182,134 @@ func Logs(opts LogsOptions) *taskrunner.BaseTask {
 		taskrunner.WithTimeoutSeconds(30),
 	)
 }
+
+// =============================================================================
+// Compose tasks
+// =============================================================================
+
+// ComposeDeployOptions configures the compose deploy script.
+type ComposeDeployOptions struct {
+	AppName string
+	Project string
+
+	ComposeYAML string
+	ComposeEnv  string
+
+	RegistryURL      string
+	RegistryUsername string
+	RegistryPassword string
+}
+
+// ComposeDeploy renders a script that writes the compose file + .env to
+// /opt/launch/apps/<name> and runs `docker compose up -d`.
+func ComposeDeploy(opts ComposeDeployOptions) *taskrunner.BaseTask {
+	data := struct {
+		AppName          string
+		Project          string
+		ComposeYAML      string
+		ComposeEnv       string
+		RegistryURL      string
+		RegistryUsername string
+		RegistryPassword string
+	}{
+		AppName:          opts.AppName,
+		Project:          opts.Project,
+		ComposeYAML:      opts.ComposeYAML,
+		ComposeEnv:       opts.ComposeEnv,
+		RegistryURL:      opts.RegistryURL,
+		RegistryUsername: opts.RegistryUsername,
+		RegistryPassword: opts.RegistryPassword,
+	}
+	script := templates.MustRender("dockerapp", "dockerapp/compose_deploy.sh", data)
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Deploy "+opts.AppName+" (compose)"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(1200),
+	)
+}
+
+// ComposeUninstallOptions configures the compose uninstall script.
+type ComposeUninstallOptions struct {
+	AppName    string
+	Project    string
+	RemoveData bool
+}
+
+// ComposeUninstall returns a task that runs `docker compose down` and
+// removes the project directory.
+func ComposeUninstall(opts ComposeUninstallOptions) *taskrunner.BaseTask {
+	data := struct {
+		AppName    string
+		Project    string
+		RemoveData bool
+	}{
+		AppName:    opts.AppName,
+		Project:    opts.Project,
+		RemoveData: opts.RemoveData,
+	}
+	script := templates.MustRender("dockerapp", "dockerapp/compose_uninstall.sh", data)
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Uninstall "+opts.AppName+" (compose)"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(600),
+	)
+}
+
+// ComposeLifecycleOptions configures a compose start/stop/restart task.
+type ComposeLifecycleOptions struct {
+	AppName string
+	Project string
+	Action  LifecycleAction
+}
+
+// ComposeLifecycle returns a task that runs `docker compose start|stop|restart`.
+func ComposeLifecycle(opts ComposeLifecycleOptions) *taskrunner.BaseTask {
+	data := struct {
+		AppName string
+		Project string
+		Action  string
+	}{
+		AppName: opts.AppName,
+		Project: opts.Project,
+		Action:  string(opts.Action),
+	}
+	script := templates.MustRender("dockerapp", "dockerapp/compose_lifecycle.sh", data)
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName(opts.Action.Label()+" "+opts.AppName+" (compose)"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(180),
+	)
+}
+
+// ComposeLogsOptions configures a compose logs-tail task.
+type ComposeLogsOptions struct {
+	AppName    string
+	Project    string
+	Tail       int
+	Timestamps bool
+}
+
+// ComposeLogs returns a task that runs `docker compose logs --tail N`.
+func ComposeLogs(opts ComposeLogsOptions) *taskrunner.BaseTask {
+	tail := opts.Tail
+	if tail <= 0 {
+		tail = 100
+	}
+	data := struct {
+		AppName    string
+		Project    string
+		Tail       int
+		Timestamps bool
+	}{
+		AppName:    opts.AppName,
+		Project:    opts.Project,
+		Tail:       tail,
+		Timestamps: opts.Timestamps,
+	}
+	script := templates.MustRender("dockerapp", "dockerapp/compose_logs.sh", data)
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Tail "+opts.AppName+" logs (compose)"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(30),
+	)
+}

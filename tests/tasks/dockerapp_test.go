@@ -226,3 +226,90 @@ func TestDockerApp_Logs_DefaultsTailTo100(t *testing.T) {
 	})
 	testutil.AssertTask(t, task).ScriptContains("docker logs --tail 100")
 }
+
+// ----- Compose: Deploy -----
+
+func TestDockerApp_ComposeDeploy_WritesProjectAndUps(t *testing.T) {
+	task := dockerapptasks.ComposeDeploy(dockerapptasks.ComposeDeployOptions{
+		AppName:     "myapp",
+		Project:     "launch-app-myapp",
+		ComposeYAML: "version: '3'\nservices:\n  web:\n    image: nginx",
+		ComposeEnv:  "FOO=bar\n",
+	})
+	testutil.AssertTask(t, task).
+		HasName("Deploy myapp (compose)").
+		ScriptContainsAll(
+			"/opt/launch/apps/myapp",
+			"docker-compose.yml",
+			".env",
+			"docker compose -p \"launch-app-myapp\" pull",
+			"docker compose -p \"launch-app-myapp\" up -d",
+			"--remove-orphans",
+		)
+}
+
+func TestDockerApp_ComposeDeploy_LoginsWhenRegistrySet(t *testing.T) {
+	task := dockerapptasks.ComposeDeploy(dockerapptasks.ComposeDeployOptions{
+		AppName:          "myapp",
+		Project:          "launch-app-myapp",
+		ComposeYAML:      "version: '3'",
+		RegistryURL:      "ghcr.io",
+		RegistryUsername: "acme",
+		RegistryPassword: "s3cret",
+	})
+	testutil.AssertTask(t, task).ScriptContainsAll(
+		"docker login \"ghcr.io\"",
+		"--username \"acme\"",
+		"--password-stdin",
+	)
+}
+
+// ----- Compose: Uninstall -----
+
+func TestDockerApp_ComposeUninstall_DownsAndRemovesDir(t *testing.T) {
+	task := dockerapptasks.ComposeUninstall(dockerapptasks.ComposeUninstallOptions{
+		AppName: "myapp",
+		Project: "launch-app-myapp",
+	})
+	testutil.AssertTask(t, task).
+		HasName("Uninstall myapp (compose)").
+		ScriptContainsAll(
+			"docker compose -p \"launch-app-myapp\" down",
+			"--remove-orphans",
+			"rm -rf",
+		)
+}
+
+func TestDockerApp_ComposeUninstall_RemoveDataDropsVolumes(t *testing.T) {
+	task := dockerapptasks.ComposeUninstall(dockerapptasks.ComposeUninstallOptions{
+		AppName:    "myapp",
+		Project:    "launch-app-myapp",
+		RemoveData: true,
+	})
+	testutil.AssertTask(t, task).ScriptContains("down -v")
+}
+
+// ----- Compose: Lifecycle -----
+
+func TestDockerApp_ComposeLifecycle_Start(t *testing.T) {
+	task := dockerapptasks.ComposeLifecycle(dockerapptasks.ComposeLifecycleOptions{
+		AppName: "myapp",
+		Project: "launch-app-myapp",
+		Action:  dockerapptasks.LifecycleStart,
+	})
+	testutil.AssertTask(t, task).
+		HasName("Start myapp (compose)").
+		ScriptContains("docker compose -p \"launch-app-myapp\" start")
+}
+
+// ----- Compose: Logs -----
+
+func TestDockerApp_ComposeLogs_TailsCompose(t *testing.T) {
+	task := dockerapptasks.ComposeLogs(dockerapptasks.ComposeLogsOptions{
+		AppName: "myapp",
+		Project: "launch-app-myapp",
+		Tail:    200,
+	})
+	testutil.AssertTask(t, task).
+		ScriptContains("docker compose -p \"launch-app-myapp\" logs --tail \"200\"")
+}

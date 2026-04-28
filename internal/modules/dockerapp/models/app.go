@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/dockerapp/types"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
@@ -19,14 +20,20 @@ type App struct {
 	// the container name and named-volume prefixes.
 	Name string `gorm:"type:varchar(64);not null;index" json:"name"`
 
-	// Source identifies where the image comes from. v1 supports "image"
-	// only — compose lands in Phase 4, git in Phase 5.
+	// Source identifies where the image comes from. "image" pulls a
+	// pre-built image; "compose" runs an inline docker compose stack.
 	Source types.Source `gorm:"type:varchar(16);not null" json:"source"`
 
-	// Image and Tag are the docker image reference. Combined as
-	// "<image>:<tag>" at deploy time.
-	Image string `gorm:"type:varchar(255);not null" json:"image"`
+	// Image and Tag are the docker image reference for source=image.
+	// Combined as "<image>:<tag>" at deploy time. NULL when source=compose.
+	Image string `gorm:"type:varchar(255)" json:"image"`
 	Tag   string `gorm:"type:varchar(255);not null;default:latest" json:"tag"`
+
+	// ComposeYAML is the inline docker-compose file for source=compose.
+	ComposeYAML *string `gorm:"column:compose_yaml;type:longtext" json:"compose_yaml,omitempty"`
+	// ComposeEnv is the inline .env content for source=compose. Encrypted at
+	// rest because it commonly carries credentials.
+	ComposeEnv *dbtype.EncryptedString `gorm:"column:compose_env;type:longtext" json:"-"`
 
 	// RegistryCredentialID points at a docker_registry_credentials row
 	// when the image is private. NULL means anonymous pull.
@@ -61,11 +68,36 @@ func (App) TableName() string { return "docker_apps" }
 // Container returns the deterministic docker container name on the host.
 func (a *App) Container() string { return types.DefaultContainerName(a.Name) }
 
-// ImageRef returns the "image:tag" string used by docker pull/run.
+// ImageRef returns the "image:tag" string used by docker pull/run for
+// source=image apps. Empty for compose apps.
 func (a *App) ImageRef() string {
+	if a.Source != types.SourceImage {
+		return ""
+	}
 	tag := a.Tag
 	if tag == "" {
 		tag = "latest"
 	}
 	return a.Image + ":" + tag
+}
+
+// ComposeProject returns the deterministic docker-compose project name.
+// Used as the -p flag when running docker compose so multiple apps don't
+// collide on a host.
+func (a *App) ComposeProject() string { return "launch-app-" + a.Name }
+
+// ComposeYAMLValue returns the compose document, or empty string when not set.
+func (a *App) ComposeYAMLValue() string {
+	if a.ComposeYAML == nil {
+		return ""
+	}
+	return *a.ComposeYAML
+}
+
+// ComposeEnvValue returns the decoded .env content, or empty string when not set.
+func (a *App) ComposeEnvValue() string {
+	if a.ComposeEnv == nil {
+		return ""
+	}
+	return string(*a.ComposeEnv)
 }

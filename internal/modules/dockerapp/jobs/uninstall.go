@@ -11,6 +11,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/dockerapp/types"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 const TypeUninstallApp = "dockerapp:uninstall"
@@ -53,20 +54,29 @@ func (j *UninstallJob) Handle(ctx context.Context) error {
 
 	j.Deps.BroadcastAppEvent(j.server, "app.progress", j.app.ID, "uninstalling", fmt.Sprintf("Removing %s", j.app.Name))
 
-	volumes := make([]dockerapptasks.Volume, 0, len(j.app.Volumes))
-	for _, v := range j.app.Volumes {
-		volumes = append(volumes, dockerapptasks.Volume{
-			HostName:  types.DefaultVolumeName(j.app.Name, v.Name),
-			MountPath: v.MountPath,
+	var task *taskrunner.BaseTask
+	switch j.app.Source {
+	case types.SourceCompose:
+		task = dockerapptasks.ComposeUninstall(dockerapptasks.ComposeUninstallOptions{
+			AppName:    j.app.Name,
+			Project:    j.app.ComposeProject(),
+			RemoveData: j.Payload.RemoveData,
+		})
+	default:
+		volumes := make([]dockerapptasks.Volume, 0, len(j.app.Volumes))
+		for _, v := range j.app.Volumes {
+			volumes = append(volumes, dockerapptasks.Volume{
+				HostName:  types.DefaultVolumeName(j.app.Name, v.Name),
+				MountPath: v.MountPath,
+			})
+		}
+		task = dockerapptasks.Uninstall(dockerapptasks.UninstallOptions{
+			AppName:    j.app.Name,
+			Container:  j.app.Container(),
+			Volumes:    volumes,
+			RemoveData: j.Payload.RemoveData,
 		})
 	}
-
-	task := dockerapptasks.Uninstall(dockerapptasks.UninstallOptions{
-		AppName:    j.app.Name,
-		Container:  j.app.Container(),
-		Volumes:    volumes,
-		RemoveData: j.Payload.RemoveData,
-	})
 
 	result, err := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
 	if err != nil {
