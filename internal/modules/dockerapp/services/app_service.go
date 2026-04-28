@@ -193,6 +193,7 @@ func (s *Service) Update(ctx context.Context, id, serverID, teamID, userID strin
 			updates["git_token"] = tok
 		}
 	}
+	applyPolishUpdates(req, updates)
 
 	if len(updates) > 0 {
 		if err := s.repos.App().Update(ctx, app.ID, updates); err != nil {
@@ -383,6 +384,49 @@ func (s *Service) dispatchUninstall(app *models.App, removeData bool, userID str
 	s.DispatchTask("UninstallDockerApp", func() (*asynq.Task, error) {
 		return jobs.NewUninstallTask(app.ID, removeData, uid)
 	}, "app_id", app.ID)
+}
+
+// applyPolishUpdates merges health/limit/auto-redeploy fields from
+// the update request into the GORM update map. Empty strings clear the
+// corresponding column.
+func applyPolishUpdates(req *dto.UpdateAppRequest, updates map[string]any) {
+	if req.HealthCmd != nil {
+		if *req.HealthCmd == "" {
+			updates["health_cmd"] = nil
+		} else {
+			updates["health_cmd"] = *req.HealthCmd
+		}
+	}
+	if req.HealthInterval != nil {
+		updates["health_interval_seconds"] = *req.HealthInterval
+	}
+	if req.HealthTimeout != nil {
+		updates["health_timeout_seconds"] = *req.HealthTimeout
+	}
+	if req.HealthRetries != nil {
+		updates["health_retries"] = *req.HealthRetries
+	}
+	if req.MemoryLimit != nil {
+		if *req.MemoryLimit == "" {
+			updates["memory_limit"] = nil
+		} else {
+			updates["memory_limit"] = *req.MemoryLimit
+		}
+	}
+	if req.CPULimit != nil {
+		if *req.CPULimit == "" {
+			updates["cpu_limit"] = nil
+		} else {
+			updates["cpu_limit"] = *req.CPULimit
+		}
+	}
+	if req.AutoRedeployCron != nil {
+		if *req.AutoRedeployCron == "" {
+			updates["auto_redeploy_cron"] = nil
+		} else {
+			updates["auto_redeploy_cron"] = *req.AutoRedeployCron
+		}
+	}
 }
 
 func userIDPtr(userID string) *string {

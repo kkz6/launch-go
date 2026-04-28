@@ -354,6 +354,43 @@ func TestDockerApp_GitDeploy_InjectsTokenForPrivateRepo(t *testing.T) {
 	)
 }
 
+// ----- Polish: health checks + resource limits -----
+
+func TestDockerApp_Deploy_AppliesHealthAndLimits(t *testing.T) {
+	task := dockerapptasks.Deploy(dockerapptasks.DeployOptions{
+		AppName:        "myapp",
+		Container:      "launch-app-myapp",
+		ImageRef:       "ghcr.io/acme/web:1.0.0",
+		RestartPolicy:  "unless-stopped",
+		HealthCmd:      "curl -f http://localhost/health",
+		HealthInterval: 30,
+		HealthTimeout:  5,
+		HealthRetries:  3,
+		MemoryLimit:    "512m",
+		CPULimit:       "0.5",
+	})
+	testutil.AssertTask(t, task).ScriptContainsAll(
+		"--memory \"512m\"",
+		"--cpus \"0.5\"",
+		"--health-cmd \"curl -f http://localhost/health\"",
+		"--health-interval \"30s\"",
+		"--health-timeout \"5s\"",
+		"--health-retries \"3\"",
+	)
+}
+
+func TestDockerApp_Deploy_OmitsHealthFlagsWhenUnset(t *testing.T) {
+	task := dockerapptasks.Deploy(dockerapptasks.DeployOptions{
+		AppName:       "myapp",
+		Container:     "launch-app-myapp",
+		ImageRef:      "ghcr.io/acme/web:1.0.0",
+		RestartPolicy: "unless-stopped",
+	})
+	for _, frag := range []string{"--memory", "--cpus", "--health-cmd", "--health-interval"} {
+		testutil.AssertTask(t, task).ScriptNotContains(frag)
+	}
+}
+
 func TestDockerApp_GitDeploy_DefaultsDockerfileAndContext(t *testing.T) {
 	task := dockerapptasks.GitDeploy(dockerapptasks.GitDeployOptions{
 		AppName:       "myapp",

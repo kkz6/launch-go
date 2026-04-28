@@ -43,6 +43,24 @@ type App struct {
 	GitToken      *dbtype.EncryptedString `gorm:"column:git_token;type:longtext" json:"-"`
 	GitCommitSHA  *string                 `gorm:"column:git_commit_sha;type:varchar(64)" json:"git_commit_sha,omitempty"`
 
+	// Health check — passed to docker run via --health-* flags. Nil means
+	// no custom health check (image's default still applies).
+	HealthCmd      *string `gorm:"column:health_cmd;type:varchar(255)" json:"health_cmd,omitempty"`
+	HealthInterval *int    `gorm:"column:health_interval_seconds;type:int" json:"health_interval_seconds,omitempty"`
+	HealthTimeout  *int    `gorm:"column:health_timeout_seconds;type:int" json:"health_timeout_seconds,omitempty"`
+	HealthRetries  *int    `gorm:"column:health_retries;type:int" json:"health_retries,omitempty"`
+
+	// Resource limits — passed to docker run via --memory / --cpus.
+	// Nil means unlimited. Values are stored as the literal string accepted
+	// by docker (e.g. "512m", "0.5") to avoid lossy parsing.
+	MemoryLimit *string `gorm:"column:memory_limit;type:varchar(32)" json:"memory_limit,omitempty"`
+	CPULimit    *string `gorm:"column:cpu_limit;type:varchar(32)" json:"cpu_limit,omitempty"`
+
+	// Auto-redeploy — when set, the scheduler triggers a redeploy on this
+	// cron schedule. Used to pick up :latest tag drift, fresh git commits,
+	// or weekly compose stack rebuilds.
+	AutoRedeployCron *string `gorm:"column:auto_redeploy_cron;type:varchar(64)" json:"auto_redeploy_cron,omitempty"`
+
 	// RegistryCredentialID points at a docker_registry_credentials row
 	// when the image is private. NULL means anonymous pull.
 	RegistryCredentialID *string `gorm:"column:registry_credential_id;type:char(26);index" json:"registry_credential_id,omitempty"`

@@ -40,6 +40,15 @@ type UpdateAppRequest struct {
 	GitDockerfile *string `json:"git_dockerfile" validate:"omitempty,max=255"`
 	GitContext    *string `json:"git_context" validate:"omitempty,max=255"`
 	GitToken      *string `json:"git_token" validate:"omitempty"`
+
+	// Polish — health checks, resource limits, auto-redeploy schedule.
+	HealthCmd        *string `json:"health_cmd" validate:"omitempty,max=255"`
+	HealthInterval   *int    `json:"health_interval_seconds" validate:"omitempty,min=1,max=86400"`
+	HealthTimeout    *int    `json:"health_timeout_seconds" validate:"omitempty,min=1,max=86400"`
+	HealthRetries    *int    `json:"health_retries" validate:"omitempty,min=1,max=100"`
+	MemoryLimit      *string `json:"memory_limit" validate:"omitempty,max=32"`
+	CPULimit         *string `json:"cpu_limit" validate:"omitempty,max=32"`
+	AutoRedeployCron *string `json:"auto_redeploy_cron" validate:"omitempty,max=64"`
 }
 
 // UninstallAppRequest is the body of DELETE.

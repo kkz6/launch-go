@@ -135,6 +135,7 @@ func (j *DeployJob) buildDeployOptions(ctx context.Context) (dockerapptasks.Depl
 		ImageRef:      j.app.ImageRef(),
 		RestartPolicy: string(j.app.RestartPolicy),
 	}
+	applyPolishOptions(j.app, &opts)
 
 	for _, e := range j.app.EnvVars {
 		opts.EnvVars = append(opts.EnvVars, dockerapptasks.EnvVar{
@@ -185,6 +186,30 @@ func (j *DeployJob) buildDeployOptions(ctx context.Context) (dockerapptasks.Depl
 	return opts, nil
 }
 
+// applyPolishOptions copies optional health/limit fields from the App
+// model into the deploy options. Centralised so adding a future polish
+// field only touches this one helper.
+func applyPolishOptions(app *models.App, opts *dockerapptasks.DeployOptions) {
+	if app.HealthCmd != nil {
+		opts.HealthCmd = *app.HealthCmd
+	}
+	if app.HealthInterval != nil {
+		opts.HealthInterval = *app.HealthInterval
+	}
+	if app.HealthTimeout != nil {
+		opts.HealthTimeout = *app.HealthTimeout
+	}
+	if app.HealthRetries != nil {
+		opts.HealthRetries = *app.HealthRetries
+	}
+	if app.MemoryLimit != nil {
+		opts.MemoryLimit = *app.MemoryLimit
+	}
+	if app.CPULimit != nil {
+		opts.CPULimit = *app.CPULimit
+	}
+}
+
 func (j *DeployJob) buildGitDeployOptions() dockerapptasks.GitDeployOptions {
 	opts := dockerapptasks.GitDeployOptions{
 		AppName:       j.app.Name,
@@ -222,6 +247,24 @@ func (j *DeployJob) buildGitDeployOptions() dockerapptasks.GitDeployOptions {
 		})
 	}
 	opts.Labels = dockerapptasks.TraefikLabels(j.app.Name, domains)
+	if j.app.HealthCmd != nil {
+		opts.HealthCmd = *j.app.HealthCmd
+	}
+	if j.app.HealthInterval != nil {
+		opts.HealthInterval = *j.app.HealthInterval
+	}
+	if j.app.HealthTimeout != nil {
+		opts.HealthTimeout = *j.app.HealthTimeout
+	}
+	if j.app.HealthRetries != nil {
+		opts.HealthRetries = *j.app.HealthRetries
+	}
+	if j.app.MemoryLimit != nil {
+		opts.MemoryLimit = *j.app.MemoryLimit
+	}
+	if j.app.CPULimit != nil {
+		opts.CPULimit = *j.app.CPULimit
+	}
 	return opts
 }
 

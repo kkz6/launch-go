@@ -61,6 +61,14 @@ type DeployOptions struct {
 	Ports   []Port
 	Volumes []Volume
 	Labels  []string
+
+	// Optional polish — empty/zero means "do not pass the flag".
+	HealthCmd      string
+	HealthInterval int
+	HealthTimeout  int
+	HealthRetries  int
+	MemoryLimit    string
+	CPULimit       string
 }
 
 // Deploy returns a task that pulls the image (with optional registry
@@ -79,6 +87,12 @@ func Deploy(opts DeployOptions) *taskrunner.BaseTask {
 		Ports            []Port
 		Volumes          []Volume
 		Labels           []string
+		HealthCmd        string
+		HealthInterval   int
+		HealthTimeout    int
+		HealthRetries    int
+		MemoryLimit      string
+		CPULimit         string
 	}{
 		Container:        opts.Container,
 		ImageRef:         opts.ImageRef,
@@ -90,6 +104,12 @@ func Deploy(opts DeployOptions) *taskrunner.BaseTask {
 		Ports:            opts.Ports,
 		Volumes:          opts.Volumes,
 		Labels:           opts.Labels,
+		HealthCmd:        opts.HealthCmd,
+		HealthInterval:   opts.HealthInterval,
+		HealthTimeout:    opts.HealthTimeout,
+		HealthRetries:    opts.HealthRetries,
+		MemoryLimit:      opts.MemoryLimit,
+		CPULimit:         opts.CPULimit,
 	}
 	script := templates.MustRender("dockerapp", "dockerapp/deploy.sh", data)
 	return taskrunner.NewBaseTask(
@@ -310,6 +330,13 @@ type GitDeployOptions struct {
 	Ports   []Port
 	Volumes []Volume
 	Labels  []string
+
+	HealthCmd      string
+	HealthInterval int
+	HealthTimeout  int
+	HealthRetries  int
+	MemoryLimit    string
+	CPULimit       string
 }
 
 // GitDeploy renders a script that clones (or fetches) the configured
@@ -324,33 +351,45 @@ func GitDeploy(opts GitDeployOptions) *taskrunner.BaseTask {
 		opts.BuildContext = "."
 	}
 	data := struct {
-		AppName       string
-		Container     string
-		ImageRef      string
-		RestartPolicy string
-		RepoURL       string
-		Branch        string
-		Dockerfile    string
-		BuildContext  string
-		GitToken      string
-		EnvVars       []EnvVar
-		Ports         []Port
-		Volumes       []Volume
-		Labels        []string
+		AppName        string
+		Container      string
+		ImageRef       string
+		RestartPolicy  string
+		RepoURL        string
+		Branch         string
+		Dockerfile     string
+		BuildContext   string
+		GitToken       string
+		EnvVars        []EnvVar
+		Ports          []Port
+		Volumes        []Volume
+		Labels         []string
+		HealthCmd      string
+		HealthInterval int
+		HealthTimeout  int
+		HealthRetries  int
+		MemoryLimit    string
+		CPULimit       string
 	}{
-		AppName:       opts.AppName,
-		Container:     opts.Container,
-		ImageRef:      opts.ImageRef,
-		RestartPolicy: opts.RestartPolicy,
-		RepoURL:       opts.RepoURL,
-		Branch:        opts.Branch,
-		Dockerfile:    opts.Dockerfile,
-		BuildContext:  opts.BuildContext,
-		GitToken:      opts.GitToken,
-		EnvVars:       opts.EnvVars,
-		Ports:         opts.Ports,
-		Volumes:       opts.Volumes,
-		Labels:        opts.Labels,
+		AppName:        opts.AppName,
+		Container:      opts.Container,
+		ImageRef:       opts.ImageRef,
+		RestartPolicy:  opts.RestartPolicy,
+		RepoURL:        opts.RepoURL,
+		Branch:         opts.Branch,
+		Dockerfile:     opts.Dockerfile,
+		BuildContext:   opts.BuildContext,
+		GitToken:       opts.GitToken,
+		EnvVars:        opts.EnvVars,
+		Ports:          opts.Ports,
+		Volumes:        opts.Volumes,
+		Labels:         opts.Labels,
+		HealthCmd:      opts.HealthCmd,
+		HealthInterval: opts.HealthInterval,
+		HealthTimeout:  opts.HealthTimeout,
+		HealthRetries:  opts.HealthRetries,
+		MemoryLimit:    opts.MemoryLimit,
+		CPULimit:       opts.CPULimit,
 	}
 	script := templates.MustRender("dockerapp", "dockerapp/git_deploy.sh", data)
 	return taskrunner.NewBaseTask(

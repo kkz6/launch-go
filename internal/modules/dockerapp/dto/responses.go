@@ -39,6 +39,15 @@ type AppResponse struct {
 	GitCommitSHA  *string `json:"git_commit_sha,omitempty"`
 	HasGitToken   bool    `json:"has_git_token"`
 
+	// Polish — health checks, resource limits, auto-redeploy schedule.
+	HealthCmd        *string `json:"health_cmd,omitempty"`
+	HealthInterval   *int    `json:"health_interval_seconds,omitempty"`
+	HealthTimeout    *int    `json:"health_timeout_seconds,omitempty"`
+	HealthRetries    *int    `json:"health_retries,omitempty"`
+	MemoryLimit      *string `json:"memory_limit,omitempty"`
+	CPULimit         *string `json:"cpu_limit,omitempty"`
+	AutoRedeployCron *string `json:"auto_redeploy_cron,omitempty"`
+
 	EnvVars []EnvVarResponse `json:"env_vars,omitempty"`
 	Ports   []PortResponse   `json:"ports,omitempty"`
 	Volumes []VolumeResponse `json:"volumes,omitempty"`
@@ -115,6 +124,13 @@ func ToAppResponse(a *models.App) AppResponse {
 		resp.GitContext = a.GitContext
 		resp.GitCommitSHA = a.GitCommitSHA
 	}
+	resp.HealthCmd = a.HealthCmd
+	resp.HealthInterval = a.HealthInterval
+	resp.HealthTimeout = a.HealthTimeout
+	resp.HealthRetries = a.HealthRetries
+	resp.MemoryLimit = a.MemoryLimit
+	resp.CPULimit = a.CPULimit
+	resp.AutoRedeployCron = a.AutoRedeployCron
 	for _, e := range a.EnvVars {
 		out := EnvVarResponse{ID: e.ID, Key: e.Key, Secret: e.Secret}
 		if !e.Secret {

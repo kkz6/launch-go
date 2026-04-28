@@ -25,6 +25,24 @@ sudo docker run -d \
     --name "{{ .Container }}" \
     --restart "{{ .RestartPolicy }}" \
     --network launch-network \
+{{- if .MemoryLimit }}
+    --memory "{{ .MemoryLimit }}" \
+{{- end }}
+{{- if .CPULimit }}
+    --cpus "{{ .CPULimit }}" \
+{{- end }}
+{{- if .HealthCmd }}
+    --health-cmd "{{ .HealthCmd }}" \
+{{- end }}
+{{- if .HealthInterval }}
+    --health-interval "{{ .HealthInterval }}s" \
+{{- end }}
+{{- if .HealthTimeout }}
+    --health-timeout "{{ .HealthTimeout }}s" \
+{{- end }}
+{{- if .HealthRetries }}
+    --health-retries "{{ .HealthRetries }}" \
+{{- end }}
 {{- range .EnvVars }}
     -e "{{ .Key }}={{ .Value }}" \
 {{- end }}
