@@ -99,6 +99,32 @@ func (s *Service) Create(ctx context.Context, serverID, teamID, userID string, r
 		app.Image = ""
 	}
 
+	if source == types.SourceGit {
+		if req.GitRepoURL == nil || *req.GitRepoURL == "" {
+			return dto.AppResponse{}, fmt.Errorf("git_repo_url is required for git source")
+		}
+		repo := *req.GitRepoURL
+		app.GitRepoURL = &repo
+		if req.GitBranch != nil && *req.GitBranch != "" {
+			b := *req.GitBranch
+			app.GitBranch = &b
+		}
+		if req.GitDockerfile != nil && *req.GitDockerfile != "" {
+			df := *req.GitDockerfile
+			app.GitDockerfile = &df
+		}
+		if req.GitContext != nil && *req.GitContext != "" {
+			c := *req.GitContext
+			app.GitContext = &c
+		}
+		if req.GitToken != nil && *req.GitToken != "" {
+			tok := dbtype.EncryptedString(*req.GitToken)
+			app.GitToken = &tok
+		}
+		// The image is built locally; the user-supplied image field is ignored.
+		app.Image = ""
+	}
+
 	if err := s.repos.App().Create(ctx, app); err != nil {
 		return dto.AppResponse{}, fmt.Errorf("failed to create app: %w", err)
 	}
@@ -145,6 +171,27 @@ func (s *Service) Update(ctx context.Context, id, serverID, teamID, userID strin
 		// Encrypted at rest.
 		env := dbtype.EncryptedString(*req.ComposeEnv)
 		updates["compose_env"] = env
+	}
+	if req.GitRepoURL != nil {
+		updates["git_repo_url"] = *req.GitRepoURL
+	}
+	if req.GitBranch != nil {
+		updates["git_branch"] = *req.GitBranch
+	}
+	if req.GitDockerfile != nil {
+		updates["git_dockerfile"] = *req.GitDockerfile
+	}
+	if req.GitContext != nil {
+		updates["git_context"] = *req.GitContext
+	}
+	if req.GitToken != nil {
+		// Empty string clears the stored token.
+		if *req.GitToken == "" {
+			updates["git_token"] = nil
+		} else {
+			tok := dbtype.EncryptedString(*req.GitToken)
+			updates["git_token"] = tok
+		}
 	}
 
 	if len(updates) > 0 {

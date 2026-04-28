@@ -58,6 +58,8 @@ func (j *DeployJob) Handle(ctx context.Context) error {
 			return err
 		}
 		task = dockerapptasks.ComposeDeploy(opts)
+	case types.SourceGit:
+		task = dockerapptasks.GitDeploy(j.buildGitDeployOptions())
 	default:
 		opts, err := j.buildDeployOptions(ctx)
 		if err != nil {
@@ -181,6 +183,46 @@ func (j *DeployJob) buildDeployOptions(ctx context.Context) (dockerapptasks.Depl
 	}
 
 	return opts, nil
+}
+
+func (j *DeployJob) buildGitDeployOptions() dockerapptasks.GitDeployOptions {
+	opts := dockerapptasks.GitDeployOptions{
+		AppName:       j.app.Name,
+		Container:     j.app.Container(),
+		ImageRef:      j.app.GitImageRef(),
+		RestartPolicy: string(j.app.RestartPolicy),
+		RepoURL:       j.app.GitRepoURLValue(),
+		Branch:        j.app.GitBranchValue(),
+		Dockerfile:    j.app.GitDockerfileValue(),
+		BuildContext:  j.app.GitContextValue(),
+		GitToken:      j.app.GitTokenValue(),
+	}
+	for _, e := range j.app.EnvVars {
+		opts.EnvVars = append(opts.EnvVars, dockerapptasks.EnvVar{Key: e.Key, Value: e.Value.String()})
+	}
+	for _, p := range j.app.Ports {
+		proto := p.Protocol
+		if proto == "" {
+			proto = "tcp"
+		}
+		opts.Ports = append(opts.Ports, dockerapptasks.Port{
+			HostPort: p.HostPort, ContainerPort: p.ContainerPort, Protocol: proto,
+		})
+	}
+	for _, v := range j.app.Volumes {
+		opts.Volumes = append(opts.Volumes, dockerapptasks.Volume{
+			HostName:  types.DefaultVolumeName(j.app.Name, v.Name),
+			MountPath: v.MountPath,
+		})
+	}
+	domains := make([]dockerapptasks.DomainSpec, 0, len(j.app.Domains))
+	for _, d := range j.app.Domains {
+		domains = append(domains, dockerapptasks.DomainSpec{
+			Domain: d.Domain, ContainerPort: d.ContainerPort, TLS: d.TLS,
+		})
+	}
+	opts.Labels = dockerapptasks.TraefikLabels(j.app.Name, domains)
+	return opts
 }
 
 func (j *DeployJob) buildComposeDeployOptions(ctx context.Context) (dockerapptasks.ComposeDeployOptions, error) {

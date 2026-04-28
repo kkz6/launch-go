@@ -289,6 +289,77 @@ type ComposeLogsOptions struct {
 	Timestamps bool
 }
 
+// =============================================================================
+// Git source tasks — clone, build, run.
+// =============================================================================
+
+// GitDeployOptions configures a git-source deploy.
+type GitDeployOptions struct {
+	AppName       string
+	Container     string
+	ImageRef      string
+	RestartPolicy string
+
+	RepoURL      string
+	Branch       string
+	Dockerfile   string
+	BuildContext string
+	GitToken     string
+
+	EnvVars []EnvVar
+	Ports   []Port
+	Volumes []Volume
+	Labels  []string
+}
+
+// GitDeploy renders a script that clones (or fetches) the configured
+// branch, builds an image from the repo's Dockerfile, and runs it on
+// launch-network. The optional GitToken is injected into the clone URL
+// just for the duration of the git operations.
+func GitDeploy(opts GitDeployOptions) *taskrunner.BaseTask {
+	if opts.Dockerfile == "" {
+		opts.Dockerfile = "Dockerfile"
+	}
+	if opts.BuildContext == "" {
+		opts.BuildContext = "."
+	}
+	data := struct {
+		AppName       string
+		Container     string
+		ImageRef      string
+		RestartPolicy string
+		RepoURL       string
+		Branch        string
+		Dockerfile    string
+		BuildContext  string
+		GitToken      string
+		EnvVars       []EnvVar
+		Ports         []Port
+		Volumes       []Volume
+		Labels        []string
+	}{
+		AppName:       opts.AppName,
+		Container:     opts.Container,
+		ImageRef:      opts.ImageRef,
+		RestartPolicy: opts.RestartPolicy,
+		RepoURL:       opts.RepoURL,
+		Branch:        opts.Branch,
+		Dockerfile:    opts.Dockerfile,
+		BuildContext:  opts.BuildContext,
+		GitToken:      opts.GitToken,
+		EnvVars:       opts.EnvVars,
+		Ports:         opts.Ports,
+		Volumes:       opts.Volumes,
+		Labels:        opts.Labels,
+	}
+	script := templates.MustRender("dockerapp", "dockerapp/git_deploy.sh", data)
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Deploy "+opts.AppName+" (git)"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(1800),
+	)
+}
+
 // ComposeLogs returns a task that runs `docker compose logs --tail N`.
 func ComposeLogs(opts ComposeLogsOptions) *taskrunner.BaseTask {
 	tail := opts.Tail

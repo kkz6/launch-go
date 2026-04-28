@@ -21,9 +21,12 @@ const (
 	SourceImage Source = "image"
 	// SourceCompose runs a docker compose stack from inline YAML.
 	SourceCompose Source = "compose"
+	// SourceGit clones a git repository on the server, builds an image
+	// from its Dockerfile, and runs the result.
+	SourceGit Source = "git"
 )
 
-var allSources = []Source{SourceImage, SourceCompose}
+var allSources = []Source{SourceImage, SourceCompose, SourceGit}
 
 func (s Source) String() string    { return string(s) }
 func (s Source) IsValid() bool     { return enumtypes.IsValid(s, allSources...) }

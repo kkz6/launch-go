@@ -31,6 +31,14 @@ type AppResponse struct {
 	HasComposeEnv  bool   `json:"has_compose_env"`
 	ComposeProject string `json:"compose_project,omitempty"`
 
+	// Git source — URL/branch/etc. are returned, the access token is not.
+	GitRepoURL    *string `json:"git_repo_url,omitempty"`
+	GitBranch     *string `json:"git_branch,omitempty"`
+	GitDockerfile *string `json:"git_dockerfile,omitempty"`
+	GitContext    *string `json:"git_context,omitempty"`
+	GitCommitSHA  *string `json:"git_commit_sha,omitempty"`
+	HasGitToken   bool    `json:"has_git_token"`
+
 	EnvVars []EnvVarResponse `json:"env_vars,omitempty"`
 	Ports   []PortResponse   `json:"ports,omitempty"`
 	Volumes []VolumeResponse `json:"volumes,omitempty"`
@@ -92,12 +100,20 @@ func ToAppResponse(a *models.App) AppResponse {
 		CreatedAt:            pkgdto.FormatTime(a.CreatedAt),
 		UpdatedAt:            pkgdto.FormatTime(a.UpdatedAt),
 		HasComposeEnv:        a.ComposeEnv != nil,
+		HasGitToken:          a.GitToken != nil,
 	}
 	if a.Source.String() == "compose" {
 		resp.ComposeProject = a.ComposeProject()
 		if a.ComposeYAML != nil {
 			resp.ComposeYAML = a.ComposeYAML
 		}
+	}
+	if a.Source.String() == "git" {
+		resp.GitRepoURL = a.GitRepoURL
+		resp.GitBranch = a.GitBranch
+		resp.GitDockerfile = a.GitDockerfile
+		resp.GitContext = a.GitContext
+		resp.GitCommitSHA = a.GitCommitSHA
 	}
 	for _, e := range a.EnvVars {
 		out := EnvVarResponse{ID: e.ID, Key: e.Key, Secret: e.Secret}

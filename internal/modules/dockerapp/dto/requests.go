@@ -14,6 +14,13 @@ type CreateAppRequest struct {
 	// Compose-source fields. Required when Source == "compose".
 	ComposeYAML *string `json:"compose_yaml" validate:"omitempty"`
 	ComposeEnv  *string `json:"compose_env" validate:"omitempty"`
+
+	// Git-source fields. Required when Source == "git".
+	GitRepoURL    *string `json:"git_repo_url" validate:"omitempty,url,max=512"`
+	GitBranch     *string `json:"git_branch" validate:"omitempty,max=255"`
+	GitDockerfile *string `json:"git_dockerfile" validate:"omitempty,max=255"`
+	GitContext    *string `json:"git_context" validate:"omitempty,max=255"`
+	GitToken      *string `json:"git_token" validate:"omitempty"`
 }
 
 // UpdateAppRequest is the body of PUT /servers/:serverId/apps/:id.
@@ -26,6 +33,13 @@ type UpdateAppRequest struct {
 	// Compose-source fields.
 	ComposeYAML *string `json:"compose_yaml" validate:"omitempty"`
 	ComposeEnv  *string `json:"compose_env" validate:"omitempty"`
+
+	// Git-source fields.
+	GitRepoURL    *string `json:"git_repo_url" validate:"omitempty,url,max=512"`
+	GitBranch     *string `json:"git_branch" validate:"omitempty,max=255"`
+	GitDockerfile *string `json:"git_dockerfile" validate:"omitempty,max=255"`
+	GitContext    *string `json:"git_context" validate:"omitempty,max=255"`
+	GitToken      *string `json:"git_token" validate:"omitempty"`
 }
 
 // UninstallAppRequest is the body of DELETE.

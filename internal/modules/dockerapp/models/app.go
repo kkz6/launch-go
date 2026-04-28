@@ -35,6 +35,14 @@ type App struct {
 	// rest because it commonly carries credentials.
 	ComposeEnv *dbtype.EncryptedString `gorm:"column:compose_env;type:longtext" json:"-"`
 
+	// Git source — populated when Source == "git".
+	GitRepoURL    *string                 `gorm:"column:git_repo_url;type:varchar(512)" json:"git_repo_url,omitempty"`
+	GitBranch     *string                 `gorm:"column:git_branch;type:varchar(255)" json:"git_branch,omitempty"`
+	GitDockerfile *string                 `gorm:"column:git_dockerfile;type:varchar(255)" json:"git_dockerfile,omitempty"`
+	GitContext    *string                 `gorm:"column:git_context;type:varchar(255)" json:"git_context,omitempty"`
+	GitToken      *dbtype.EncryptedString `gorm:"column:git_token;type:longtext" json:"-"`
+	GitCommitSHA  *string                 `gorm:"column:git_commit_sha;type:varchar(64)" json:"git_commit_sha,omitempty"`
+
 	// RegistryCredentialID points at a docker_registry_credentials row
 	// when the image is private. NULL means anonymous pull.
 	RegistryCredentialID *string `gorm:"column:registry_credential_id;type:char(26);index" json:"registry_credential_id,omitempty"`
@@ -100,4 +108,53 @@ func (a *App) ComposeEnvValue() string {
 		return ""
 	}
 	return string(*a.ComposeEnv)
+}
+
+// GitImageRef returns the local image reference produced by the build job.
+// Empty for non-git apps.
+func (a *App) GitImageRef() string {
+	if a.Source != types.SourceGit {
+		return ""
+	}
+	return "launch-app-" + a.Name + ":latest"
+}
+
+// GitTokenValue returns the decoded git access token, or empty string.
+func (a *App) GitTokenValue() string {
+	if a.GitToken == nil {
+		return ""
+	}
+	return string(*a.GitToken)
+}
+
+// GitBranchValue returns the configured branch, defaulting to "main".
+func (a *App) GitBranchValue() string {
+	if a.GitBranch == nil || *a.GitBranch == "" {
+		return "main"
+	}
+	return *a.GitBranch
+}
+
+// GitDockerfileValue returns the relative dockerfile path, defaulting to "Dockerfile".
+func (a *App) GitDockerfileValue() string {
+	if a.GitDockerfile == nil || *a.GitDockerfile == "" {
+		return "Dockerfile"
+	}
+	return *a.GitDockerfile
+}
+
+// GitContextValue returns the build context dir, defaulting to ".".
+func (a *App) GitContextValue() string {
+	if a.GitContext == nil || *a.GitContext == "" {
+		return "."
+	}
+	return *a.GitContext
+}
+
+// GitRepoURLValue returns the configured repo URL.
+func (a *App) GitRepoURLValue() string {
+	if a.GitRepoURL == nil {
+		return ""
+	}
+	return *a.GitRepoURL
 }

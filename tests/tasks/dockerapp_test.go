@@ -313,3 +313,58 @@ func TestDockerApp_ComposeLogs_TailsCompose(t *testing.T) {
 	testutil.AssertTask(t, task).
 		ScriptContains("docker compose -p \"launch-app-myapp\" logs --tail \"200\"")
 }
+
+// ----- Git: Deploy -----
+
+func TestDockerApp_GitDeploy_ClonesAndBuilds(t *testing.T) {
+	task := dockerapptasks.GitDeploy(dockerapptasks.GitDeployOptions{
+		AppName:       "myapp",
+		Container:     "launch-app-myapp",
+		ImageRef:      "launch-app-myapp:latest",
+		RestartPolicy: "unless-stopped",
+		RepoURL:       "https://github.com/acme/web.git",
+		Branch:        "main",
+	})
+	testutil.AssertTask(t, task).
+		HasName("Deploy myapp (git)").
+		ScriptContainsAll(
+			"git clone --depth 1 --branch \"main\"",
+			"https://github.com/acme/web.git",
+			"docker build",
+			"-t \"launch-app-myapp:latest\"",
+			"-f \"Dockerfile\"",
+			"docker run -d",
+			"--network launch-network",
+		)
+}
+
+func TestDockerApp_GitDeploy_InjectsTokenForPrivateRepo(t *testing.T) {
+	task := dockerapptasks.GitDeploy(dockerapptasks.GitDeployOptions{
+		AppName:       "myapp",
+		Container:     "launch-app-myapp",
+		ImageRef:      "launch-app-myapp:latest",
+		RestartPolicy: "unless-stopped",
+		RepoURL:       "https://github.com/acme/private.git",
+		Branch:        "main",
+		GitToken:      "ghp_secret",
+	})
+	testutil.AssertTask(t, task).ScriptContainsAll(
+		"x-access-token:ghp_secret@",
+		"git remote set-url origin 'https://github.com/acme/private.git'",
+	)
+}
+
+func TestDockerApp_GitDeploy_DefaultsDockerfileAndContext(t *testing.T) {
+	task := dockerapptasks.GitDeploy(dockerapptasks.GitDeployOptions{
+		AppName:       "myapp",
+		Container:     "launch-app-myapp",
+		ImageRef:      "launch-app-myapp:latest",
+		RestartPolicy: "unless-stopped",
+		RepoURL:       "https://github.com/acme/web.git",
+		Branch:        "main",
+	})
+	testutil.AssertTask(t, task).ScriptContainsAll(
+		"-f \"Dockerfile\"",
+		"\".\"",
+	)
+}

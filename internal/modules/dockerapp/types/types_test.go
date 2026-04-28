@@ -11,8 +11,11 @@ func TestSource_IsValid(t *testing.T) {
 	if !SourceCompose.IsValid() {
 		t.Error("compose source must be valid")
 	}
-	if Source("git").IsValid() {
-		t.Error("git source is not valid until Phase 5")
+	if !SourceGit.IsValid() {
+		t.Error("git source must be valid")
+	}
+	if Source("svn").IsValid() {
+		t.Error("unknown source must not be valid")
 	}
 }
 
