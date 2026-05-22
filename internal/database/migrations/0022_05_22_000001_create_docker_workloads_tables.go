@@ -234,7 +234,12 @@ func (dockerApplicationScheduleWithAppFK) TableName() string {
 }
 
 func createDockerWorkloadsTablesUp(db *gorm.DB) error {
-	migrator := db.Migrator()
+	// Match the legacy schema's charset/collation so FKs to teams/servers
+	// don't fall over on MySQL 8 — see 0021 for the same rationale.
+	migrator := db.Set(
+		"gorm:table_options",
+		"DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+	).Migrator()
 
 	// Order matters — children depend on parents (FK constraints).
 	tables := []any{
