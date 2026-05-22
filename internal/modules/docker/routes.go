@@ -17,6 +17,7 @@ import (
 func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Handler) {
 	projectSvc := m.newProjectService()
 	applicationSvc := m.newApplicationService()
+	domainSvc := m.newDomainService()
 
 	auth := middleware.Append(
 		middleware.AuthenticatedChain(authMiddleware),
@@ -113,5 +114,92 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			return err
 		}
 		return fiberutil.Created(c, "Deployment started", dto.ToDeploymentResponse(deployment))
+	})
+
+	// Application-domain CRUD — same triple-nested pattern as deployments.
+	apps.Get("/:id/domains", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := domainSvc.ListDomains(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Domains retrieved", rows)
+	})
+
+	apps.Post("/:id/domains", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateDomainRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := domainSvc.CreateDomain(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Domain added", out)
+	})
+
+	apps.Patch("/:id/domains/:domainId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateDomainRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := domainSvc.UpdateDomain(
+			c.Context(),
+			c.Params("domainId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Domain updated", out)
+	})
+
+	apps.Delete("/:id/domains/:domainId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := domainSvc.DeleteDomain(
+			c.Context(),
+			c.Params("domainId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
 	})
 }

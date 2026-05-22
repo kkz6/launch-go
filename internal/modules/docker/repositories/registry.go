@@ -7,6 +7,7 @@ type Registry struct {
 	project     *ProjectRepository
 	application *ApplicationRepository
 	deployment  *DeploymentRepository
+	domain      *DomainRepository
 }
 
 // NewRegistry wires up the repositories.
@@ -15,6 +16,7 @@ func NewRegistry(db *gorm.DB) *Registry {
 		project:     NewProjectRepository(db),
 		application: NewApplicationRepository(db),
 		deployment:  NewDeploymentRepository(db),
+		domain:      NewDomainRepository(db),
 	}
 }
 
@@ -26,3 +28,6 @@ func (r *Registry) Application() *ApplicationRepository { return r.application }
 
 // Deployment returns the deployment repository.
 func (r *Registry) Deployment() *DeploymentRepository { return r.deployment }
+
+// Domain returns the application domain repository.
+func (r *Registry) Domain() *DomainRepository { return r.domain }

@@ -184,6 +184,17 @@ func (j *DeployApplicationJob) handleSuccess(ctx context.Context, containerID, i
 	}
 	_ = j.Deps.Repos.Application().UpdateFields(ctx, j.app.ID, appUpdates)
 
+	// Re-sync Traefik so routing rules reflect the just-deployed
+	// container name. Same path that domain mutations take — keeps the
+	// behaviour consistent so an operator can reason about one resync
+	// path, not two.
+	if syncTask, err := NewSyncTraefikConfigTask(j.app.ID, j.Payload.ServerID, j.Payload.TeamID); err == nil {
+		// Queue.Enqueue returns (taskID, error). We don't need the id here.
+		if _, enqErr := j.Deps.Queue.Enqueue(syncTask); enqErr != nil {
+			j.Deps.Logger.Error().Err(enqErr).Msg("failed to enqueue traefik resync after deploy")
+		}
+	}
+
 	j.broadcast("docker.application.deployed", map[string]any{
 		"application_id": j.app.ID,
 		"deployment_id":  j.deployment.ID,

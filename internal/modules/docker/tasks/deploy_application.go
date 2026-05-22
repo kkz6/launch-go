@@ -99,7 +99,14 @@ if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
 fi
 
 echo "::LAUNCH::deploy_step::starting_container"
-CONTAINER_ID=$(docker run -d --name "${CONTAINER_NAME}" --restart=unless-stopped "${DOCKER_IMAGE}")
+# --network launch-network so Traefik can reach the container by DNS name.
+# The network is provisioned during docker server setup (see
+# internal/modules/server/tasks/docker_constants.go).
+CONTAINER_ID=$(docker run -d \
+  --name "${CONTAINER_NAME}" \
+  --restart=unless-stopped \
+  --network launch-network \
+  "${DOCKER_IMAGE}")
 echo "::LAUNCH::container_id::${CONTAINER_ID}"
 echo "::LAUNCH::image_ref::${DOCKER_IMAGE}"
 
