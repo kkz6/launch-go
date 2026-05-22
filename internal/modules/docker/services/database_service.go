@@ -243,6 +243,54 @@ func (s *DatabaseService) Lifecycle(
 	return *dto.ToDatabaseResponse(d, false), nil
 }
 
+// UpdateDatabaseAdvanced applies runtime knobs (currently just restart
+// policy) to a managed database container. Applied immediately via
+// `docker update --restart=<policy>` over SSH; the next deploy will
+// pick up the same value too (the database run task reads it from
+// source_config).
+//
+// Why dispatch through the existing lifecycle job? The task runner
+// already has the SSH plumbing and the lifecycle script accepts a
+// "update-restart:<policy>" pseudo-action.
+func (s *DatabaseService) UpdateDatabaseAdvanced(
+	ctx context.Context, id, projectID, serverID, teamID, userID, restartPolicy string,
+) (dto.DatabaseResponse, error) {
+	_ = userID
+	switch restartPolicy {
+	case "no", "on-failure", "always", "unless-stopped":
+	default:
+		return dto.DatabaseResponse{}, fiberutil.BadRequest("Unsupported restart policy")
+	}
+	if _, err := s.requireProjectForDB(ctx, projectID, serverID, teamID); err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+	db, err := s.Repos().Database().FindByIDAndTeamServer(ctx, id, teamID, serverID)
+	if err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+	if db.ProjectID != projectID {
+		return dto.DatabaseResponse{}, fiberutil.NotFound()
+	}
+
+	task, err := jobs.NewDatabaseLifecycleTask(
+		db.ID, db.ProjectID, serverID, teamID, "update-restart:"+restartPolicy,
+	)
+	if err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+	if err := s.EnqueueTask(task); err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+
+	s.BroadcastToTeam(teamID, "docker.database.advanced.updated", map[string]any{
+		"id":             db.ID,
+		"server_id":      db.ServerID,
+		"team_id":        db.TeamID,
+		"restart_policy": restartPolicy,
+	})
+	return *dto.ToDatabaseResponse(db, false), nil
+}
+
 // requireProjectForDB validates the project chain for database routes —
 // kept named distinctly so the file's other helpers stay obvious in
 // stack traces.
