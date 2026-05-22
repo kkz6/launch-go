@@ -16,6 +16,7 @@ import (
 // teamID extraction in each closure).
 func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Handler) {
 	projectSvc := m.newProjectService()
+	applicationSvc := m.newApplicationService()
 
 	auth := middleware.Append(
 		middleware.AuthenticatedChain(authMiddleware),
@@ -42,5 +43,30 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	projects.Delete(
 		"/:id",
 		fiberutil.DeleteNested("serverId", "id", projectSvc.DeleteProject),
+	)
+
+	// Doubly-nested under projects. Grandparent param is serverId so the
+	// existing RequireProvisionedServer middleware keeps working; the
+	// project lookup happens inside each service method.
+	apps := router.Group("/servers/:serverId/docker/projects/:projectId/applications", auth...)
+	apps.Get(
+		"/",
+		fiberutil.IndexDoubleNested("serverId", "projectId", "Applications retrieved", applicationSvc.ListApplications),
+	)
+	apps.Post(
+		"/",
+		fiberutil.CreateDoubleNested[dto.CreateApplicationRequest]("serverId", "projectId", "Application created", applicationSvc.CreateApplication),
+	)
+	apps.Get(
+		"/:id",
+		fiberutil.ShowDoubleNested("serverId", "projectId", "id", "Application retrieved", applicationSvc.GetApplication),
+	)
+	apps.Patch(
+		"/:id",
+		fiberutil.UpdateDoubleNested[dto.UpdateApplicationRequest]("serverId", "projectId", "id", "Application updated", applicationSvc.UpdateApplication),
+	)
+	apps.Delete(
+		"/:id",
+		fiberutil.DeleteDoubleNested("serverId", "projectId", "id", applicationSvc.DeleteApplication),
 	)
 }
