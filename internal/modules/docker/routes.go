@@ -17,6 +17,7 @@ import (
 func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Handler) {
 	projectSvc := m.newProjectService()
 	applicationSvc := m.newApplicationService()
+	composeSvc := m.newComposeService()
 	domainSvc := m.newDomainService()
 
 	auth := middleware.Append(
@@ -201,5 +202,71 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			return err
 		}
 		return fiberutil.NoContent(c)
+	})
+
+	// Compose-stack routes mirror the application routes one level down.
+	// The fiberutil double-nested helpers handle CRUD; deploy + history
+	// are triple-nested closures (same shape as applications).
+	composes := router.Group("/servers/:serverId/docker/projects/:projectId/composes", auth...)
+	composes.Get(
+		"/",
+		fiberutil.IndexDoubleNested("serverId", "projectId", "Compose stacks retrieved", composeSvc.ListComposes),
+	)
+	composes.Post(
+		"/",
+		fiberutil.CreateDoubleNested[dto.CreateComposeRequest]("serverId", "projectId", "Compose stack created", composeSvc.CreateCompose),
+	)
+	composes.Get(
+		"/:id",
+		fiberutil.ShowDoubleNested("serverId", "projectId", "id", "Compose stack retrieved", composeSvc.GetCompose),
+	)
+	composes.Patch(
+		"/:id",
+		fiberutil.UpdateDoubleNested[dto.UpdateComposeRequest]("serverId", "projectId", "id", "Compose stack updated", composeSvc.UpdateCompose),
+	)
+	composes.Delete(
+		"/:id",
+		fiberutil.DeleteDoubleNested("serverId", "projectId", "id", composeSvc.DeleteCompose),
+	)
+
+	composes.Get("/:id/deployments", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := composeSvc.ListDeployments(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		out := make([]*dto.DeploymentResponse, 0, len(rows))
+		for i := range rows {
+			out = append(out, dto.ToDeploymentResponse(&rows[i]))
+		}
+		return fiberutil.OK(c, "Deployments retrieved", out)
+	})
+
+	composes.Post("/:id/deploy", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		deployment, err := composeSvc.Deploy(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Deployment started", dto.ToDeploymentResponse(deployment))
 	})
 }
