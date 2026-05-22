@@ -205,6 +205,75 @@ func ToVolumeResponse(v *models.ApplicationVolume) *VolumeResponse {
 	}
 }
 
+// BackupResponse is the API shape for a database backup configuration.
+// AccessKey is masked unless the caller passed ?reveal=true on the GET
+// (same pattern as DatabaseCredentials).
+type BackupResponse struct {
+	ID           string     `json:"id"`
+	DatabaseID   string     `json:"database_id"`
+	Provider     string     `json:"provider"`
+	Endpoint     *string    `json:"endpoint,omitempty"`
+	Bucket       string     `json:"bucket"`
+	Region       *string    `json:"region,omitempty"`
+	PathPrefix   *string    `json:"path_prefix,omitempty"`
+	CronSchedule *string    `json:"cron_schedule,omitempty"`
+	Enabled      bool       `json:"enabled"`
+	AccessKey    string     `json:"access_key"`
+	HasSecretKey bool       `json:"has_secret_key"`
+	CreatedAt    *time.Time `json:"created_at,omitempty"`
+	UpdatedAt    *time.Time `json:"updated_at,omitempty"`
+}
+
+// BackupRunResponse is one row in the run-history table.
+type BackupRunResponse struct {
+	ID         string     `json:"id"`
+	BackupID   string     `json:"backup_id"`
+	Status     string     `json:"status"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	ObjectKey  *string    `json:"object_key,omitempty"`
+	SizeBytes  *int64     `json:"size_bytes,omitempty"`
+	Error      *string    `json:"error,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+}
+
+// ToBackupResponse renders a backup config. AccessKey is decoded from
+// the encrypted credentials blob; the secret key is just signalled
+// "present" via HasSecretKey so the UI knows whether to require it on
+// the next update.
+func ToBackupResponse(b *models.DatabaseBackup, accessKey string, hasSecret bool) *BackupResponse {
+	return &BackupResponse{
+		ID:           b.ID,
+		DatabaseID:   b.DatabaseID,
+		Provider:     b.Provider,
+		Endpoint:     b.Endpoint,
+		Bucket:       b.Bucket,
+		Region:       b.Region,
+		PathPrefix:   b.PathPrefix,
+		CronSchedule: b.CronSchedule,
+		Enabled:      b.Enabled,
+		AccessKey:    accessKey,
+		HasSecretKey: hasSecret,
+		CreatedAt:    b.CreatedAt,
+		UpdatedAt:    b.UpdatedAt,
+	}
+}
+
+// ToBackupRunResponse renders a single backup run.
+func ToBackupRunResponse(r *models.DatabaseBackupRun) *BackupRunResponse {
+	return &BackupRunResponse{
+		ID:         r.ID,
+		BackupID:   r.BackupID,
+		Status:     r.Status,
+		StartedAt:  r.StartedAt,
+		FinishedAt: r.FinishedAt,
+		ObjectKey:  r.ObjectKey,
+		SizeBytes:  r.SizeBytes,
+		Error:      r.Error,
+		CreatedAt:  r.CreatedAt,
+	}
+}
+
 // DatabaseCredentials is the shape of the auto-generated DB secrets we
 // reveal to the user when they explicitly ask. Mirrored from the
 // services.Credentials struct.

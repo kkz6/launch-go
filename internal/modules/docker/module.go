@@ -101,6 +101,11 @@ func (m *Module) newScheduleService() *services.ScheduleService {
 	return services.NewScheduleService(m.serviceDeps())
 }
 
+// newBackupService builds the database-backup service.
+func (m *Module) newBackupService() *services.BackupService {
+	return services.NewBackupService(m.serviceDeps())
+}
+
 func (m *Module) serviceDeps() *services.ServiceDeps {
 	deps := m.Deps()
 	return &services.ServiceDeps{

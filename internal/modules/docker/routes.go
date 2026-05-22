@@ -25,6 +25,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	volumeSvc := m.newVolumeService()
 	hostSvc := m.newHostInspectService()
 	scheduleSvc := m.newScheduleService()
+	backupSvc := m.newBackupService()
 
 	auth := middleware.Append(
 		middleware.AuthenticatedChain(authMiddleware),
@@ -643,6 +644,124 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			return err
 		}
 		return fiberutil.OK(c, "Lifecycle action queued", out)
+	})
+
+	// Database backup routes. /backup is singleton (one config per
+	// database); /backup/runs is the history list; /backup/run is the
+	// "run now" entrypoint; /backup/restore replays a past run.
+	databases.Get("/:id/backup", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		out, err := backupSvc.GetBackup(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Backup config retrieved", out)
+	})
+	databases.Put("/:id/backup", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.ConfigureBackupRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := backupSvc.ConfigureBackup(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Backup config saved", out)
+	})
+	databases.Delete("/:id/backup", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := backupSvc.DeleteBackup(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
+	})
+	databases.Get("/:id/backup/runs", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := backupSvc.ListRuns(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Backup runs retrieved", rows)
+	})
+	databases.Post("/:id/backup/run", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		out, err := backupSvc.RunNow(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Backup run started", out)
+	})
+	databases.Post("/:id/backup/restore", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.RestoreBackupRequest](c)
+		if err != nil {
+			return err
+		}
+		if err := backupSvc.Restore(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		); err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Restore complete", nil)
 	})
 
 	// Engine catalogue endpoint — the create dialog calls this to know
