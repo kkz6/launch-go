@@ -16,6 +16,7 @@ import (
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/backup"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
+	"github.com/kkz6/launch-go/internal/modules/docker"
 	"github.com/kkz6/launch-go/internal/modules/git"
 	"github.com/kkz6/launch-go/internal/modules/notification"
 	"github.com/kkz6/launch-go/internal/modules/platform"
@@ -142,6 +143,7 @@ func main() {
 	// Initialize modules
 	serverModule := server.NewModule(builder)
 	databaseModule := databasemodule.NewModule(builder)
+	dockerModule := docker.NewModule(builder)
 	gitModule := git.NewModule(builder)
 	siteModule := site.NewModule(builder)
 	scriptModule := script.NewModule(builder)
@@ -155,6 +157,7 @@ func main() {
 	kernel.
 		Register(serverModule).
 		Register(databaseModule).
+		Register(dockerModule).
 		Register(backup.NewModule(builder)).
 		Register(gitModule).
 		Register(siteModule).

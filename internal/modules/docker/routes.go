@@ -69,4 +69,49 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		"/:id",
 		fiberutil.DeleteDoubleNested("serverId", "projectId", "id", applicationSvc.DeleteApplication),
 	)
+
+	// Deployments are triple-nested (server/project/application). The
+	// fiberutil double-nested helpers don't cover that depth, so we write
+	// the closures by hand here. Same team/userID extraction the helpers
+	// would do — kept tight so reviewers can see the whole thing.
+	apps.Get("/:id/deployments", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		deployments, err := applicationSvc.ListDeployments(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		out := make([]*dto.DeploymentResponse, 0, len(deployments))
+		for i := range deployments {
+			out = append(out, dto.ToDeploymentResponse(&deployments[i]))
+		}
+		return fiberutil.OK(c, "Deployments retrieved", out)
+	})
+
+	apps.Post("/:id/deploy", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		deployment, err := applicationSvc.Deploy(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Deployment started", dto.ToDeploymentResponse(deployment))
+	})
 }

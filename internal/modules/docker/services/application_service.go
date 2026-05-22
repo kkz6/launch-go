@@ -3,8 +3,10 @@ package services
 import (
 	"context"
 	"strings"
+	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/dto"
+	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
@@ -221,6 +223,105 @@ func (s *ApplicationService) DeleteApplication(
 		"team_id":    app.TeamID,
 	})
 	return nil
+}
+
+// ListDeployments returns the deploy history for an application, most
+// recent first. Cap is 50 rows (see DeploymentRepository.ListForTarget)
+// so the response stays bounded even for hot apps with hundreds of
+// redeploys over time.
+//
+// Signature: fiberutil.IndexDoubleNestedFunc — but we need the
+// application ID as a third path param too. We accept (parentID,
+// grandparentID, teamID) here as (projectID, serverID, teamID) and
+// derive the appID from a different signature in the route closure.
+// To keep things simple we expose a non-fiberutil signature and write
+// the closure by hand in routes.go (see ListDeployments wrapper).
+func (s *ApplicationService) ListDeployments(
+	ctx context.Context, applicationID, projectID, serverID, teamID string,
+) ([]models.Deployment, error) {
+	if _, err := s.requireProject(ctx, projectID, serverID, teamID); err != nil {
+		return nil, err
+	}
+	app, err := s.Repos().Application().FindByIDAndTeamServer(ctx, applicationID, teamID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if app.ProjectID != projectID {
+		return nil, fiberutil.NotFound()
+	}
+	return s.Repos().Deployment().ListForTarget(ctx, "application", applicationID)
+}
+
+// Deploy enqueues a deployment for the application. Creates a
+// deployments row in `pending`, then asynchronously dispatches the
+// docker:deploy_application asynq job which runs the SSH script.
+//
+// Returns the created deployment so the UI can render the new row
+// immediately (status=pending) and the WS broadcasts catch up its
+// lifecycle.
+func (s *ApplicationService) Deploy(
+	ctx context.Context, applicationID, projectID, serverID, teamID, userID string,
+) (*models.Deployment, error) {
+	_ = userID
+	if _, err := s.requireProject(ctx, projectID, serverID, teamID); err != nil {
+		return nil, err
+	}
+	app, err := s.Repos().Application().FindByIDAndTeamServer(ctx, applicationID, teamID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if app.ProjectID != projectID {
+		return nil, fiberutil.NotFound()
+	}
+	// Guard against double-clicking Deploy while a previous run is in
+	// flight. The deduplication key on the asynq task is the deployment
+	// ID, but the user-facing 409 here gives a clearer error than asynq's
+	// silent dedupe would.
+	if app.Status == dockertypes.ApplicationStatusBuilding {
+		return nil, fiberutil.Conflict("A deployment is already in progress for this application")
+	}
+
+	now := time.Now().UTC()
+	deployment := &models.Deployment{
+		TargetType: "application",
+		TargetID:   applicationID,
+		Status:     dockertypes.DeploymentStatusPending,
+		StartedAt:  &now,
+	}
+	deployment.TeamID = teamID
+	deployment.ServerID = serverID
+
+	if err := s.Repos().Deployment().Create(ctx, deployment); err != nil {
+		return nil, err
+	}
+
+	task, err := jobs.NewDeployApplicationTask(applicationID, deployment.ID, serverID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.EnqueueTask(task); err != nil {
+		// Don't leak a "pending" row that will never run — mark it
+		// failed so the UI shows the dispatch error instead of a
+		// permanent spinner.
+		errMsg := err.Error()
+		finishedAt := time.Now().UTC()
+		_ = s.Repos().Deployment().UpdateFields(ctx, deployment.ID, map[string]any{
+			"status":      dockertypes.DeploymentStatusFailed,
+			"finished_at": finishedAt,
+			"error":       "failed to enqueue deploy job: " + errMsg,
+		})
+		return nil, err
+	}
+
+	s.BroadcastToTeam(teamID, "docker.application.deploying", map[string]any{
+		"application_id": app.ID,
+		"deployment_id":  deployment.ID,
+		"server_id":      serverID,
+		"team_id":        teamID,
+		"status":         "pending",
+	})
+
+	return deployment, nil
 }
 
 // requireProject validates that the project exists and belongs to the

@@ -1,0 +1,236 @@
+// Package tasks contains the SSH-script tasks the docker module runs on
+// docker-type servers. Each task returns a taskrunner.Task that the
+// dispatcher executes over SSH.
+package tasks
+
+import (
+	"fmt"
+	"strings"
+
+	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+)
+
+// DeployConfig holds the runtime parameters for a deploy. The job
+// layer builds this from the Application + Deployment models so the
+// task itself is a pure rendering function — easier to unit test, and
+// no DB lookups during script generation.
+type DeployConfig struct {
+	DeploymentID string
+	ProjectSlug  string
+	AppSlug      string
+	ContainerName string
+
+	SourceType dockertypes.SourceType
+	// Image source.
+	Image string
+	// Git source.
+	GitRepo        string
+	GitBranch      string
+	BuildType      dockertypes.BuildType
+	DockerfilePath string
+	// Dockerfile source (raw paste).
+	DockerfileContents string
+}
+
+// DeployApplication returns a taskrunner.Task that deploys (or
+// redeploys) an application according to its source type. The script is
+// idempotent: it stops + removes the old container if one exists, then
+// starts a new one with the same name. The new container ID is emitted
+// as a `::LAUNCH::container_id::<id>` marker so the worker can persist
+// it on success.
+//
+// Timeout is 30 minutes — plenty for a `docker build` of a typical web
+// app but short enough to not pin a runaway forever.
+func DeployApplication(cfg DeployConfig) taskrunner.Task {
+	script := buildDeployScript(cfg)
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Deploy Application"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(1800),
+	)
+}
+
+// buildDeployScript composes the bash script the SSH task runs. The
+// script's `set -euo pipefail` means any failing step aborts the deploy;
+// downstream `docker stop`/`docker rm` calls are tolerant of missing
+// containers because that's the bootstrap case (no prior deploy).
+//
+// Source-specific stanzas are constructed via short helpers so this
+// outer function stays readable and the branches are easy to scan.
+func buildDeployScript(cfg DeployConfig) string {
+	var b strings.Builder
+
+	b.WriteString("#!/usr/bin/env bash\n")
+	b.WriteString("set -euo pipefail\n\n")
+
+	fmt.Fprintf(&b, "DEPLOY_ID=%q\n", cfg.DeploymentID)
+	fmt.Fprintf(&b, "CONTAINER_NAME=%q\n", cfg.ContainerName)
+	fmt.Fprintf(&b, "PROJECT_SLUG=%q\n", cfg.ProjectSlug)
+	fmt.Fprintf(&b, "APP_SLUG=%q\n", cfg.AppSlug)
+	b.WriteString("BUILD_ROOT=\"/var/lib/launch/projects/${PROJECT_SLUG}/${APP_SLUG}\"\n")
+	b.WriteString("BUILD_DIR=\"${BUILD_ROOT}/_build/${DEPLOY_ID}\"\n")
+	b.WriteString("mkdir -p \"${BUILD_ROOT}\"\n\n")
+
+	b.WriteString("echo \"::LAUNCH::deploy_step::resolving_source\"\n")
+
+	switch cfg.SourceType {
+	case dockertypes.SourceTypeImage:
+		b.WriteString(buildImageStanza(cfg))
+	case dockertypes.SourceTypeGit:
+		b.WriteString(buildGitStanza(cfg))
+	case dockertypes.SourceTypeDockerfile:
+		b.WriteString(buildDockerfileStanza(cfg))
+	default:
+		// Defensive: should be caught by service validation, but never
+		// generate a script with no payload — that'd hang the runner.
+		fmt.Fprintf(&b, "echo \"unknown source type: %s\" >&2; exit 1\n", cfg.SourceType)
+	}
+
+	// Common shutdown + start. The `|| true` after stop/rm is intentional —
+	// `set -e` would otherwise fail the deploy on a fresh app that has no
+	// container to stop. We tolerate the not-found case explicitly.
+	b.WriteString(`
+echo "::LAUNCH::deploy_step::stopping_old_container"
+if docker ps -a --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
+  docker stop "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+  docker rm   "${CONTAINER_NAME}" >/dev/null 2>&1 || true
+fi
+
+echo "::LAUNCH::deploy_step::starting_container"
+CONTAINER_ID=$(docker run -d --name "${CONTAINER_NAME}" --restart=unless-stopped "${DOCKER_IMAGE}")
+echo "::LAUNCH::container_id::${CONTAINER_ID}"
+echo "::LAUNCH::image_ref::${DOCKER_IMAGE}"
+
+# Clean up the build directory on success. Failed builds leave it in
+# place so an operator can SSH in and look at what the builder produced.
+if [ -d "${BUILD_DIR}" ]; then
+  rm -rf "${BUILD_DIR}"
+fi
+
+echo "::LAUNCH::deploy_step::done"
+`)
+
+	return b.String()
+}
+
+// buildImageStanza handles source_type=image: pull a pre-built image and
+// move on. No build step.
+func buildImageStanza(cfg DeployConfig) string {
+	return fmt.Sprintf(`
+echo "::LAUNCH::deploy_step::pulling_image"
+DOCKER_IMAGE=%q
+docker pull "${DOCKER_IMAGE}"
+`, cfg.Image)
+}
+
+// buildGitStanza handles source_type=git: clone the repo into the build
+// dir, run docker build, then run. Public-repo only in phase 2 — private
+// repos via source-control creds land in slice 2g (see plan).
+//
+// BuildType determines the actual build command. Nixpacks is the default
+// when no Dockerfile is present at the repo root; the script auto-detects.
+func buildGitStanza(cfg DeployConfig) string {
+	dockerfilePath := cfg.DockerfilePath
+	if dockerfilePath == "" {
+		dockerfilePath = "Dockerfile"
+	}
+	return fmt.Sprintf(`
+echo "::LAUNCH::deploy_step::cloning_repository"
+mkdir -p "${BUILD_DIR}"
+git clone --depth 1 --branch %q %q "${BUILD_DIR}"
+cd "${BUILD_DIR}"
+
+echo "::LAUNCH::deploy_step::building_image"
+DOCKER_IMAGE="launch/${PROJECT_SLUG}-${APP_SLUG}:${DEPLOY_ID}"
+BUILD_TYPE=%q
+DOCKERFILE_PATH=%q
+
+# Auto-detect: if the user picked nixpacks but a Dockerfile sits at the
+# given path, prefer it. Saves a footgun for repos that have a Dockerfile
+# but were created with the default builder.
+if [ "${BUILD_TYPE}" = "nixpacks" ] && [ -f "${DOCKERFILE_PATH}" ]; then
+  BUILD_TYPE="dockerfile"
+fi
+
+case "${BUILD_TYPE}" in
+  dockerfile)
+    docker build -t "${DOCKER_IMAGE}" -f "${DOCKERFILE_PATH}" .
+    ;;
+  nixpacks)
+    if ! command -v nixpacks >/dev/null 2>&1; then
+      echo "nixpacks not installed on this server" >&2
+      exit 1
+    fi
+    nixpacks build . --name "${DOCKER_IMAGE}"
+    ;;
+  *)
+    echo "unsupported build type: ${BUILD_TYPE}" >&2
+    exit 1
+    ;;
+esac
+`, cfg.GitBranch, cfg.GitRepo, cfg.BuildType, dockerfilePath)
+}
+
+// buildDockerfileStanza handles source_type=dockerfile: write the user-
+// pasted Dockerfile contents into the build dir and `docker build` it.
+//
+// We use a heredoc with a quoted delimiter ('LAUNCH_DOCKERFILE_EOF') so
+// shell variables inside the pasted Dockerfile aren't expanded by the
+// deploy script — they belong to the docker build context, not us.
+func buildDockerfileStanza(cfg DeployConfig) string {
+	return fmt.Sprintf(`
+echo "::LAUNCH::deploy_step::writing_dockerfile"
+mkdir -p "${BUILD_DIR}"
+cd "${BUILD_DIR}"
+cat > Dockerfile <<'LAUNCH_DOCKERFILE_EOF'
+%s
+LAUNCH_DOCKERFILE_EOF
+
+echo "::LAUNCH::deploy_step::building_image"
+DOCKER_IMAGE="launch/${PROJECT_SLUG}-${APP_SLUG}:${DEPLOY_ID}"
+docker build -t "${DOCKER_IMAGE}" .
+`, cfg.DockerfileContents)
+}
+
+// SlugFromName converts a free-form name into a safe filesystem/path
+// segment. Lower-cased ASCII letters/digits/dashes only; collapses
+// other runs to single dashes; trims leading/trailing dashes.
+//
+// Exposed because the job layer needs it for both Application.Name and
+// Project.Name when building the deploy config — keep one definition.
+func SlugFromName(name string) string {
+	name = strings.ToLower(strings.TrimSpace(name))
+	var b strings.Builder
+	prevDash := false
+	for _, r := range name {
+		switch {
+		case (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9'):
+			b.WriteRune(r)
+			prevDash = false
+		case r == '-' || r == '_':
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		default:
+			if !prevDash && b.Len() > 0 {
+				b.WriteByte('-')
+				prevDash = true
+			}
+		}
+	}
+	out := strings.TrimRight(b.String(), "-")
+	if out == "" {
+		out = "app"
+	}
+	return out
+}
+
+// ContainerNameFor produces the docker container name a deploy will use.
+// Pattern: launch-<project>-<app>. We don't include the deploy ID so the
+// container can be safely replaced in-place by the next deploy.
+func ContainerNameFor(project *models.Project, app *models.Application) string {
+	return fmt.Sprintf("launch-%s-%s", SlugFromName(project.Name), SlugFromName(app.Name))
+}
