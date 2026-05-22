@@ -28,7 +28,9 @@ func (s *Service) ListServerProviders(ctx context.Context, teamID string) ([]dto
 // CreateServerProvider connects a new cloud provider account for the team.
 // Credentials are normalised into the map shape the providers/ package's
 // Extract* helpers expect (e.g. {"token": ...} for token providers, AWS keys
-// for AWS), then JSON-encoded and stored encrypted.
+// for AWS), then verified against the upstream API via Provider.Connect
+// before being JSON-encoded and stored encrypted. A bogus token fails fast
+// with a 400 instead of being silently saved.
 //
 // Signature matches CreateFunc[CreateServerProviderRequest, ServerProviderResponse].
 func (s *Service) CreateServerProvider(ctx context.Context, teamID, userID string, req *dto.CreateServerProviderRequest) (dto.ServerProviderResponse, error) {
@@ -40,6 +42,19 @@ func (s *Service) CreateServerProvider(ctx context.Context, teamID, userID strin
 	creds, err := buildCredentialsMap(providerType, req)
 	if err != nil {
 		return dto.ServerProviderResponse{}, err
+	}
+
+	// Verify the credentials against the upstream API before persisting.
+	// The factory is nil only in unit tests that exercise buildCredentialsMap
+	// directly; production wiring (module.go) always sets it.
+	if s.providerFactory != nil {
+		provider, factoryErr := s.providerFactory.Create(providerType)
+		if factoryErr != nil {
+			return dto.ServerProviderResponse{}, ErrInvalidProvider
+		}
+		if connectErr := provider.Connect(ctx, creds); connectErr != nil {
+			return dto.ServerProviderResponse{}, connectErr
+		}
 	}
 
 	credsJSON, err := json.Marshal(creds)

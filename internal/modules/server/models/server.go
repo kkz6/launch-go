@@ -55,6 +55,7 @@ type Server struct {
 	SecurityUpdates           *int                   `gorm:"column:security_updates;type:int" json:"-"`
 	Progress                  int                    `gorm:"type:int;not null;default:0" json:"progress"`
 	ProgressStep              *string                `gorm:"column:progress_step;type:varchar(255)" json:"progress_step,omitempty"`
+	ProvisionError            *string                `gorm:"column:provision_error;type:text" json:"provision_error,omitempty"`
 	LastUpdateCheck           *time.Time             `gorm:"column:last_update_check;type:timestamp null" json:"-"`
 	LastConnectivityCheck     *time.Time             `gorm:"column:last_connectivity_check;type:timestamp null" json:"last_connectivity_check,omitempty"`
 	ArchivedAt                *time.Time             `gorm:"column:archived_at;type:timestamp null" json:"archived_at,omitempty"`

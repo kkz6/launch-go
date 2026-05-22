@@ -88,6 +88,12 @@ func ProvisionFreshServer(config ProvisionFreshServerConfig) *ProvisionFreshServ
 	scriptBuilder.WriteString(templates.AptFunctions())
 	scriptBuilder.WriteString("\n\n")
 
+	// Make the box safe for apt-get before any step runs. See
+	// quiesceAptForProvisioning in functions.go — same rationale as the
+	// docker provision path.
+	scriptBuilder.WriteString("# Stop apt/dpkg interference before any provision step runs.\n")
+	scriptBuilder.WriteString("quiesceAptForProvisioning\n\n")
+
 	// Calculate swap settings (system-level)
 	swapInMB := calculateSwapInMegabytes(config.MemoryInMB)
 	swappiness := calculateSwappiness(config.MemoryInMB)
@@ -140,12 +146,13 @@ func ProvisionFreshServer(config ProvisionFreshServerConfig) *ProvisionFreshServ
 		scriptBuilder.WriteString(markers.BashEchoProgress(calcProgress()) + "\n")
 	}
 
-	// 4. Final cleanup (from Laravel template)
+	// 4. Final cleanup — restore the apt timer units we masked at the
+	// start so the live server resumes automatic updates.
 	scriptBuilder.WriteString("\n# === Final Cleanup ===\n")
 	scriptBuilder.WriteString(markers.BashEchoStatus("Running final cleanup") + "\n")
-	scriptBuilder.WriteString("# See 'apt-update-upgrade'\n")
 	scriptBuilder.WriteString("waitForAptUnlock\n")
-	scriptBuilder.WriteString("sudo apt-mark unhold cloud-init\n")
+	scriptBuilder.WriteString("sudo apt-mark unhold cloud-init 2>/dev/null || true\n")
+	scriptBuilder.WriteString("restoreUnattendedUpgrades\n")
 	scriptBuilder.WriteString(markers.BashEchoProgress(100) + "\n")
 
 	return &ProvisionFreshServerTask{

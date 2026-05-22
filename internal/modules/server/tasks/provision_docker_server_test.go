@@ -89,9 +89,7 @@ func TestProvisionDockerServer_ScriptContainsAllSteps(t *testing.T) {
 	expectedSubstrings := []string{
 		"Configure a swap file",
 		"Configure the firewall",
-		"Update package lists",
 		"Install essential packages",
-		"Configure unattended upgrades",
 		"Configure the root user",
 		"Enhance SSH security",
 		"Create a default user",

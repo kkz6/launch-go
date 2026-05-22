@@ -250,6 +250,19 @@ func (s *Service) UpdateServer(ctx context.Context, id, teamID, userID string, r
 }
 
 // DeleteServer deletes a server. Signature matches DeleteFunc.
+//
+// Broadcasting contract:
+//   - Immediately after marking status=deleting we broadcast `server.updated`
+//     so the UI flips the badge to "Deleting" without waiting for the worker.
+//     Without this, the user clicks Delete, nothing visible happens for
+//     seconds (cloud delete API can take 10-30s), and they assume sockets
+//     are broken.
+//   - For custom providers we delete the row inline and broadcast
+//     `server.deleted` so the list re-fetches and the card disappears.
+//   - For cloud providers, DeleteServerJob.Handle owns the final
+//     `server.deleted` broadcast after the upstream API call succeeds.
+//     DeleteServerJob.Failed broadcasts `server.deletion_failed` so the UI
+//     can surface the error rather than spinning forever.
 func (s *Service) DeleteServer(ctx context.Context, id, teamID, userID string) error {
 	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
@@ -263,16 +276,24 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID, userID string) e
 		return err
 	}
 
-	if server.Provider != types.ProviderCustom {
-		if err := s.dispatchDeleteJob(server); err != nil {
-			s.LogError(err, "Failed to dispatch delete job", "server_id", server.ID)
-		}
+	// Reload so the broadcast payload reflects the new status.
+	if updated, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID); err == nil {
+		s.broadcastServerUpdate(updated)
 	}
 
 	if server.Provider == types.ProviderCustom {
-		return s.repos.Server().Delete(ctx, id)
+		if err := s.repos.Server().Delete(ctx, id); err != nil {
+			return err
+		}
+		s.BroadcastToTeam(server.TeamID, "server.deleted", map[string]any{
+			"server_id": server.ID,
+		})
+		return nil
 	}
 
+	if err := s.dispatchDeleteJob(server); err != nil {
+		s.LogError(err, "Failed to dispatch delete job", "server_id", server.ID)
+	}
 	return nil
 }
 
@@ -725,9 +746,20 @@ echo "Provisioning script completed."
 	return fmt.Sprintf(script, escapedName, publicKey)
 }
 
-// RetryProvision retries the provisioning of a failed server. Only
-// works if the server has connected successfully but provisioning
-// failed. Signature matches ActionFunc.
+// RetryProvision re-runs a failed server's pipeline from wherever it died.
+// Two distinct failure points to handle:
+//
+//   - Create-on-provider failed: there's no droplet/instance on the cloud
+//     side, and the server never SSH-connected. Re-dispatch CreateOnProvider
+//     so a fresh upstream resource gets created.
+//   - Provisioning failed: the droplet exists, SSH succeeded, but one of the
+//     provision steps blew up. Re-dispatch ProvisionServer.
+//
+// Picking the right branch is what makes the UI "Try again" button do the
+// expected thing — previously we always tried to provision and bailed with
+// "server has not connected successfully" on the more common case.
+//
+// Signature matches ActionFunc.
 func (s *Service) RetryProvision(ctx context.Context, serverID, teamID, userID string) error {
 	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
@@ -735,39 +767,56 @@ func (s *Service) RetryProvision(ctx context.Context, serverID, teamID, userID s
 		return err
 	}
 
-	// Only allow retry if server status is failed
 	if server.Status != types.ServerStatusFailed {
 		return errors.New("server is not in failed state")
 	}
 
-	// Only allow retry if server has connected (SSH connection was successful)
-	if !server.Connected {
-		return errors.New("server has not connected successfully")
+	// Clear the previous failure reason so the UI no longer shows it once the
+	// new attempt starts. Best-effort — if it fails we still proceed.
+	if err := s.repos.Server().UpdateFields(ctx, serverID, map[string]any{
+		"status":          types.ServerStatusStarting,
+		"provision_error": nil,
+		"progress":        0,
+	}); err != nil {
+		s.LogError(err, "Failed to reset server state before retry", "server_id", serverID)
 	}
 
-	// Get SSH keys attached to this server
+	// Gather SSH key IDs once — both job types accept them.
 	sshKeys, err := s.repos.SSHKey().FindByServer(ctx, serverID)
 	if err != nil {
 		s.LogError(err, "Failed to get SSH keys for retry", "server_id", serverID)
 	}
-
 	var sshKeyIDs []string
 	for _, key := range sshKeys {
 		sshKeyIDs = append(sshKeyIDs, key.ID)
 	}
 
-	// Dispatch the provision job again
+	// Pick the right branch.
+	// A cloud-provider-backed server that hasn't connected needs the cloud
+	// resource (re)created first. Custom servers don't have a provider id, so
+	// they fall through to the provision-only retry.
+	needsCloudCreate := !server.Connected && server.ServerProviderID != nil && *server.ServerProviderID != ""
+
+	if needsCloudCreate {
+		task, err := jobs.NewCreateOnProviderTask(serverID, teamID, *server.ServerProviderID, nil, sshKeyIDs)
+		if err != nil {
+			return fmt.Errorf("failed to create cloud-provider task: %w", err)
+		}
+		if err := s.EnqueueTask(task); err != nil {
+			return fmt.Errorf("failed to enqueue cloud-provider task: %w", err)
+		}
+		activity.RecordEvent(ctx, "provision_retry", "", server, "Cloud provider create was retried")
+		return nil
+	}
+
 	task, err := jobs.NewProvisionServerTask(serverID, teamID, nil, sshKeyIDs)
 	if err != nil {
 		return fmt.Errorf("failed to create provision task: %w", err)
 	}
-
 	if err := s.EnqueueTask(task); err != nil {
 		return fmt.Errorf("failed to enqueue provision task: %w", err)
 	}
-
 	activity.RecordEvent(ctx, "provision_retry", "", server, "Server provisioning was retried")
-
 	return nil
 }
 

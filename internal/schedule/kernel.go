@@ -83,6 +83,20 @@ func GetScheduledTasks() []queue.ScheduledTask {
 		),
 
 		// ┌─────────────────────────────────────────────────────────────────┐
+		// │                     Cloud Provider Image Validation             │
+		// └─────────────────────────────────────────────────────────────────┘
+
+		// Walks every connected cloud-provider account and confirms each
+		// configured OS image is still live. Catches retired DO snapshot
+		// IDs and similar before they break customer provisioning. Logs +
+		// Sentry-alerts on failures. Runs daily at 04:30 UTC — off the
+		// midnight peak so it doesn't compete with daemon/queue syncs.
+		At("30 4 * * *", serverjobs.NewValidateProviderImagesTask,
+			WithName("validate-provider-images"),
+			LowPriority(),
+		),
+
+		// ┌─────────────────────────────────────────────────────────────────┐
 		// │                     Site Health Checks                          │
 		// └─────────────────────────────────────────────────────────────────┘
 

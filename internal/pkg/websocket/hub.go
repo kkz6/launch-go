@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
+	"github.com/rs/zerolog/log"
 
 	"github.com/kkz6/launch-go/internal/pkg/broadcast"
 	launchcache "github.com/kkz6/launch-go/internal/pkg/launch/cache"
@@ -92,6 +93,7 @@ func (h *Hub) removeClient(client *Client) {
 func (h *Hub) broadcastToChannel(message *Message) {
 	data, err := json.Marshal(message)
 	if err != nil {
+		log.Warn().Err(err).Str("event", message.Event).Msg("Hub: failed to marshal broadcast message")
 		return
 	}
 
@@ -99,7 +101,10 @@ func (h *Hub) broadcastToChannel(message *Message) {
 	clients, ok := h.channels[message.Channel]
 	if !ok {
 		h.mu.RUnlock()
-		// No clients subscribed to this channel - this is normal if no one is viewing the page
+		// No clients subscribed — normal when nobody is viewing the
+		// page. Caller has already paid for the marshal but that's
+		// cheap; staying silent here avoids log spam during idle
+		// background broadcasts.
 		return
 	}
 
@@ -111,11 +116,8 @@ func (h *Hub) broadcastToChannel(message *Message) {
 	h.mu.RUnlock()
 
 	// Send to all clients
-	sentCount := 0
 	for _, client := range clientsCopy {
-		if client.SafeSend(data) {
-			sentCount++
-		} else {
+		if !client.SafeSend(data) {
 			// Client buffer full or closing, schedule for removal
 			go func(c *Client) {
 				h.unregister <- c
@@ -163,27 +165,31 @@ func (h *Hub) Broadcast(channel string, event string, data interface{}) {
 
 // BroadcastToServer sends a message to the server's channel
 func (h *Hub) BroadcastToServer(serverID string, event string, data interface{}) {
-	h.Broadcast(broadcast.ServerChannel(serverID), event, data)
+	h.Broadcast(broadcast.ServerChannel(serverID), event, broadcast.EnsureRoutingField(data, "server_id", serverID))
 }
 
 // BroadcastToSite sends a message to the site's channel
 func (h *Hub) BroadcastToSite(siteID string, event string, data interface{}) {
-	h.Broadcast(broadcast.SiteChannel(siteID), event, data)
+	h.Broadcast(broadcast.SiteChannel(siteID), event, broadcast.EnsureRoutingField(data, "site_id", siteID))
 }
 
 // BroadcastToDeployment sends a message to the deployment's channel
 func (h *Hub) BroadcastToDeployment(deploymentID string, event string, data interface{}) {
-	h.Broadcast(broadcast.DeploymentChannel(deploymentID), event, data)
+	h.Broadcast(broadcast.DeploymentChannel(deploymentID), event, broadcast.EnsureRoutingField(data, "deployment_id", deploymentID))
 }
 
-// BroadcastToTeam sends a message to the team's channel
+// BroadcastToTeam sends a message to the team's channel.
+//
+// Injects team_id into the payload so the frontend's useChannelEvents
+// filter (eventData.team_id === channelParts[1]) can route the event to
+// the right handler. Mirrors the same injection in RedisBroadcaster.
 func (h *Hub) BroadcastToTeam(teamID string, event string, data interface{}) {
-	h.Broadcast(broadcast.TeamChannel(teamID), event, data)
+	h.Broadcast(broadcast.TeamChannel(teamID), event, broadcast.EnsureRoutingField(data, "team_id", teamID))
 }
 
 // BroadcastToUser sends a message to the user's channel
 func (h *Hub) BroadcastToUser(userID string, event string, data interface{}) {
-	h.Broadcast(broadcast.UserChannel(userID), event, data)
+	h.Broadcast(broadcast.UserChannel(userID), event, broadcast.EnsureRoutingField(data, "user_id", userID))
 }
 
 // BroadcastModelCreated broadcasts a model creation event to the team channel

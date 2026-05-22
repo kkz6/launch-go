@@ -16,25 +16,101 @@ function httpPostRawSilently() {
     (curl -X POST --silent --max-time 15 --output /dev/null $1 --data "$2" || true)
 }
 
-# Wait for apt to be unlocked
+# Wait for any apt/dpkg/unattended-upgrade process to exit and for all
+# the package-manager lock files to be released. Loop indefinitely — we'd
+# rather hang the provision (visible in logs) than race the lock and
+# surface a confusing failure to the customer.
+#
+# Note on process matching: unattended-upgrades runs as a python script
+# named "unattended-upgr" (truncated to 15 chars in /proc/comm), so we
+# use pgrep -f to match the full command line and catch it.
 function waitForAptUnlock() {
-    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
-        echo "apt, apt-get or dpkg is running..."
+    while pgrep -f '(^|/)(apt|apt-get|dpkg|unattended-upgrade)' >/dev/null 2>&1; do
+        echo "apt, apt-get, dpkg, or unattended-upgrade is running..."
         sleep 5
     done
 
-    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+    while sudo fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend \
+                     /var/lib/apt/lists/lock /var/cache/apt/archives/lock \
+                     >/dev/null 2>&1; do
         echo "Waiting: apt is locked..."
         sleep 5
     done
-
-    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
-        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
-            echo "Waiting: unattended-upgrades is locked..."
-            sleep 5
-        done
-    fi
 }
+
+# Bring the box into a state where apt-get cannot be hijacked by cloud-init
+# or the unattended-upgrades systemd timer during provisioning. Called once
+# at the very top of every provision script.
+#
+# Background:
+#   - On a fresh DigitalOcean/Hetzner/Vultr Ubuntu image, cloud-init runs
+#     apt update + apt upgrade as part of its first-boot work. This holds
+#     the dpkg lock for several minutes.
+#   - Even after cloud-init finishes, the apt-daily.timer and
+#     unattended-upgrades.timer systemd units can fire at any time and
+#     grab the lock mid-provision.
+#
+# We removed the historical "apt update + upgrade" provision step (it
+# slowed every provision by 5-15 minutes and broke build reproducibility);
+# the side-effect was that subsequent provision steps now hit apt-install
+# much earlier in the box's lifecycle, exposing the race. This function
+# is the proper fix: wait for cloud-init, then disable the timers for the
+# duration of provisioning. restoreUnattendedUpgrades() puts them back
+# at the end.
+function quiesceAptForProvisioning() {
+    # 1. Wait for cloud-init's first-boot run to finish. Silent on images
+    #    that don't ship cloud-init (e.g. some Contabo minimal images).
+    if command -v cloud-init >/dev/null 2>&1; then
+        echo "Waiting for cloud-init to finish..."
+        sudo cloud-init status --wait >/dev/null 2>&1 || true
+    fi
+
+    # 2. Stop and mask the timer-triggered apt jobs so they can't fire
+    #    while we provision. We do not kill running apt processes —
+    #    interrupting an in-flight unattended-upgrade can leave dpkg in
+    #    an inconsistent state. waitForAptUnlock below handles that case.
+    for unit in unattended-upgrades.service unattended-upgrades.timer \
+                apt-daily.service apt-daily.timer \
+                apt-daily-upgrade.service apt-daily-upgrade.timer; do
+        sudo systemctl stop "${unit}" 2>/dev/null || true
+        sudo systemctl mask "${unit}" 2>/dev/null || true
+    done
+
+    # 3. Wait for any lock-holding process that was already running to
+    #    finish gracefully.
+    waitForAptUnlock
+}
+
+# Re-enable the apt timer units that quiesceAptForProvisioning masked.
+# Critical: only start the TIMER units, never the service units.
+# Starting unattended-upgrades.service directly runs the full upgrade
+# synchronously and adds 3-10 minutes to provisioning. The timer fires
+# the service on its normal schedule (within 24h) — that is what we want.
+function restoreUnattendedUpgrades() {
+    # Unmask everything so the timers can launch their services later.
+    for unit in unattended-upgrades.service unattended-upgrades.timer \
+                apt-daily.service apt-daily.timer \
+                apt-daily-upgrade.service apt-daily-upgrade.timer; do
+        sudo systemctl unmask "${unit}" 2>/dev/null || true
+    done
+
+    # Enable + start the timers only. Each timer knows when to trigger
+    # its corresponding service.
+    for timer in unattended-upgrades.timer apt-daily.timer apt-daily-upgrade.timer; do
+        sudo systemctl enable "${timer}" 2>/dev/null || true
+        sudo systemctl start  "${timer}" 2>/dev/null || true
+    done
+}
+
+# Belt-and-suspenders for apt commands: noninteractive frontend + a
+# server-side dpkg lock wait so apt will retry the lock for up to 120s
+# instead of failing immediately if anything still races us.
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
+export APT_LOCK_WAIT_OPTS='-o DPkg::Lock::Timeout=120'
+
+# Stop apt/dpkg interference before any provision step runs.
+quiesceAptForProvisioning
 
 
 # === Provision Step: Configure a swap file so the server can handle more memory-intensive tasks ===
@@ -61,7 +137,7 @@ if [ ! -f /swapfile ]; then
 fi
 
 echo "::LAUNCH::step_completed::configure_swap"
-echo "::LAUNCH::progress::8"
+echo "::LAUNCH::progress::10"
 
 # === Provision Step: Configure the firewall with the default rules (SSH, HTTP, HTTPS) ===
 echo "::LAUNCH::status::Configure the firewall with the default rules (SSH, HTTP, HTTPS)"
@@ -79,67 +155,7 @@ sudo ufw --force enable
 sudo service ufw restart
 
 echo "::LAUNCH::step_completed::configure_firewall"
-echo "::LAUNCH::progress::16"
-
-# === Provision Step: Update package lists and installed system packages ===
-echo "::LAUNCH::status::Update package lists and installed system packages"
-#!/bin/bash
-set -euo pipefail
-trap '' PIPE
-export DEBIAN_FRONTEND=noninteractive
-
-# Wait for apt to be unlocked
-function waitForAptUnlock() {
-    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
-        echo "apt, apt-get or dpkg is running..."
-        sleep 5
-    done
-
-    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
-        echo "Waiting: apt is locked..."
-        sleep 5
-    done
-
-    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
-        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
-            echo "Waiting: unattended-upgrades is locked..."
-            sleep 5
-        done
-    fi
-}
-
-echo "Update package repositories and upgrade packages"
-
-# This ensures that the cloud-init bundle is not overwritten by a different version when running apt-get upgrade.
-waitForAptUnlock
-sudo DEBIAN_FRONTEND=noninteractive apt-mark hold cloud-init
-
-# Remove ALL MySQL repository files to prevent expired GPG key errors
-# The MySQL installation script will properly configure the repository later
-sudo rm -f /etc/apt/sources.list.d/*mysql*
-
-# Update package repositories
-waitForAptUnlock
-sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
-
-# Install software-properties-common
-waitForAptUnlock
-sudo DEBIAN_FRONTEND=noninteractive apt-get install software-properties-common -y
-
-# Add universe repository
-waitForAptUnlock
-sudo DEBIAN_FRONTEND=noninteractive add-apt-repository universe -y
-
-# Update package repositories
-waitForAptUnlock
-sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
-
-# Upgrade packages
-waitForAptUnlock
-sudo DEBIAN_FRONTEND=noninteractive apt-get upgrade -y
-
-echo "::LAUNCH::step_completed::apt_update_upgrade"
-echo "::LAUNCH::progress::24"
+echo "::LAUNCH::progress::20"
 
 # === Provision Step: Install essential packages (curl, git, wget, etc.) ===
 echo "::LAUNCH::status::Install essential packages (curl, git, wget, etc.)"
@@ -150,7 +166,21 @@ export DEBIAN_FRONTEND=noninteractive
 
 echo "Install essential packages"
 
-sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+# The provision script's preamble (quiesceAptForProvisioning) has already
+# waited for cloud-init and stopped+masked the apt-daily/unattended-
+# upgrades units, so the dpkg lock should be free. We still call
+# waitForAptUnlock here as a safety net AND pass APT_LOCK_WAIT_OPTS so
+# apt itself will retry the lock for up to 120s if anything races us.
+waitForAptUnlock
+
+# Refresh package metadata before install. The historical "apt update +
+# upgrade" provision step was removed (see ForFreshServer); this is the
+# first apt-get update on a fresh box.
+sudo apt-get ${APT_LOCK_WAIT_OPTS} update -y -qq
+
+waitForAptUnlock
+
+sudo apt-get ${APT_LOCK_WAIT_OPTS} install -y -qq \
     acl \
     apt-transport-https \
     ca-certificates \
@@ -172,37 +202,7 @@ sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
     zip
 
 echo "::LAUNCH::step_completed::install_essential_packages"
-echo "::LAUNCH::progress::32"
-
-# === Provision Step: Configure unattended upgrades to keep the server up to date automatically ===
-echo "::LAUNCH::status::Configure unattended upgrades to keep the server up to date automatically"
-#!/bin/bash
-set -euo pipefail
-trap '' PIPE
-export DEBIAN_FRONTEND=noninteractive
-
-echo "Setup unattended upgrades"
-
-# Configure the allowed origins for unattended upgrades
-sudo tee /etc/apt/apt.conf.d/50unattended-upgrades > /dev/null <<EOF
-Unattended-Upgrade::Allowed-Origins {
-    "\${distro_id} \${distro_codename}-security";
-};
-Unattended-Upgrade::Package-Blacklist {
-    //
-};
-EOF
-
-# Configure the periodic settings for APT
-sudo tee /etc/apt/apt.conf.d/10periodic > /dev/null <<EOF
-APT::Periodic::Update-Package-Lists "1";
-APT::Periodic::Download-Upgradeable-Packages "1";
-APT::Periodic::AutocleanInterval "7";
-APT::Periodic::Unattended-Upgrade "1";
-EOF
-
-echo "::LAUNCH::step_completed::setup_unattended_upgrades"
-echo "::LAUNCH::progress::40"
+echo "::LAUNCH::progress::30"
 
 # === Provision Step: Configure the root user ===
 echo "::LAUNCH::status::Configure the root user"
@@ -269,7 +269,7 @@ echo "Script completed successfully."
 
 
 echo "::LAUNCH::step_completed::setup_root"
-echo "::LAUNCH::progress::49"
+echo "::LAUNCH::progress::40"
 
 # === Provision Step: Enhance SSH security by disabling password authentication and root login ===
 echo "::LAUNCH::status::Enhance SSH security by disabling password authentication and root login"
@@ -293,7 +293,7 @@ then
 fi
 
 echo "::LAUNCH::step_completed::ssh_security"
-echo "::LAUNCH::progress::57"
+echo "::LAUNCH::progress::50"
 
 # === Provision Step: Create a default user account ===
 echo "::LAUNCH::status::Create a default user account"
@@ -363,8 +363,11 @@ PASSWORD=$(mkpasswd -m sha-512 "password123")
 
 echo "launcher:$PASSWORD" | sudo chpasswd
 
-# Add default Caddy page
-echo "Add default Caddy page"
+# Add default landing page. Originally for the PHP/Caddy stack to serve
+# from /home/{user}/default, but the file is harmless on docker servers
+# where Traefik does the routing. Kept as a single shared step so we
+# only have one default-user script to maintain.
+echo "Add default landing page"
 sudo mkdir -p /home/"launcher/default"
 sudo tee /home/"launcher/default/index.html" > /dev/null <<EOF
 This server is managed by <a href=""></a>.
@@ -379,7 +382,7 @@ sudo chmod 700 /home/launcher/.ssh/id_rsa
 sudo chmod 600 /home/launcher/.ssh/authorized_keys
 
 echo "::LAUNCH::step_completed::setup_default_user"
-echo "::LAUNCH::progress::65"
+echo "::LAUNCH::progress::60"
 
 # === Install Software: Caddy 2 ===
 echo "::LAUNCH::status::Installing Caddy 2"
@@ -388,25 +391,98 @@ set -euo pipefail
 trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
-# Wait for apt to be unlocked
+# Wait for any apt/dpkg/unattended-upgrade process to exit and for all
+# the package-manager lock files to be released. Loop indefinitely — we'd
+# rather hang the provision (visible in logs) than race the lock and
+# surface a confusing failure to the customer.
+#
+# Note on process matching: unattended-upgrades runs as a python script
+# named "unattended-upgr" (truncated to 15 chars in /proc/comm), so we
+# use pgrep -f to match the full command line and catch it.
 function waitForAptUnlock() {
-    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
-        echo "apt, apt-get or dpkg is running..."
+    while pgrep -f '(^|/)(apt|apt-get|dpkg|unattended-upgrade)' >/dev/null 2>&1; do
+        echo "apt, apt-get, dpkg, or unattended-upgrade is running..."
         sleep 5
     done
 
-    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+    while sudo fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend \
+                     /var/lib/apt/lists/lock /var/cache/apt/archives/lock \
+                     >/dev/null 2>&1; do
         echo "Waiting: apt is locked..."
         sleep 5
     done
-
-    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
-        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
-            echo "Waiting: unattended-upgrades is locked..."
-            sleep 5
-        done
-    fi
 }
+
+# Bring the box into a state where apt-get cannot be hijacked by cloud-init
+# or the unattended-upgrades systemd timer during provisioning. Called once
+# at the very top of every provision script.
+#
+# Background:
+#   - On a fresh DigitalOcean/Hetzner/Vultr Ubuntu image, cloud-init runs
+#     apt update + apt upgrade as part of its first-boot work. This holds
+#     the dpkg lock for several minutes.
+#   - Even after cloud-init finishes, the apt-daily.timer and
+#     unattended-upgrades.timer systemd units can fire at any time and
+#     grab the lock mid-provision.
+#
+# We removed the historical "apt update + upgrade" provision step (it
+# slowed every provision by 5-15 minutes and broke build reproducibility);
+# the side-effect was that subsequent provision steps now hit apt-install
+# much earlier in the box's lifecycle, exposing the race. This function
+# is the proper fix: wait for cloud-init, then disable the timers for the
+# duration of provisioning. restoreUnattendedUpgrades() puts them back
+# at the end.
+function quiesceAptForProvisioning() {
+    # 1. Wait for cloud-init's first-boot run to finish. Silent on images
+    #    that don't ship cloud-init (e.g. some Contabo minimal images).
+    if command -v cloud-init >/dev/null 2>&1; then
+        echo "Waiting for cloud-init to finish..."
+        sudo cloud-init status --wait >/dev/null 2>&1 || true
+    fi
+
+    # 2. Stop and mask the timer-triggered apt jobs so they can't fire
+    #    while we provision. We do not kill running apt processes —
+    #    interrupting an in-flight unattended-upgrade can leave dpkg in
+    #    an inconsistent state. waitForAptUnlock below handles that case.
+    for unit in unattended-upgrades.service unattended-upgrades.timer \
+                apt-daily.service apt-daily.timer \
+                apt-daily-upgrade.service apt-daily-upgrade.timer; do
+        sudo systemctl stop "${unit}" 2>/dev/null || true
+        sudo systemctl mask "${unit}" 2>/dev/null || true
+    done
+
+    # 3. Wait for any lock-holding process that was already running to
+    #    finish gracefully.
+    waitForAptUnlock
+}
+
+# Re-enable the apt timer units that quiesceAptForProvisioning masked.
+# Critical: only start the TIMER units, never the service units.
+# Starting unattended-upgrades.service directly runs the full upgrade
+# synchronously and adds 3-10 minutes to provisioning. The timer fires
+# the service on its normal schedule (within 24h) — that is what we want.
+function restoreUnattendedUpgrades() {
+    # Unmask everything so the timers can launch their services later.
+    for unit in unattended-upgrades.service unattended-upgrades.timer \
+                apt-daily.service apt-daily.timer \
+                apt-daily-upgrade.service apt-daily-upgrade.timer; do
+        sudo systemctl unmask "${unit}" 2>/dev/null || true
+    done
+
+    # Enable + start the timers only. Each timer knows when to trigger
+    # its corresponding service.
+    for timer in unattended-upgrades.timer apt-daily.timer apt-daily-upgrade.timer; do
+        sudo systemctl enable "${timer}" 2>/dev/null || true
+        sudo systemctl start  "${timer}" 2>/dev/null || true
+    done
+}
+
+# Belt-and-suspenders for apt commands: noninteractive frontend + a
+# server-side dpkg lock wait so apt will retry the lock for up to 120s
+# instead of failing immediately if anything still races us.
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
+export APT_LOCK_WAIT_OPTS='-o DPkg::Lock::Timeout=120'
 
 echo "Install Caddy webserver"
 
@@ -472,7 +548,7 @@ launcher ALL=(root) NOPASSWD: /usr/sbin/service caddy reload
 EOF
 
 echo "::LAUNCH::software_installed::caddy2"
-echo "::LAUNCH::progress::73"
+echo "::LAUNCH::progress::70"
 
 # === Install Software: PHP 8.3 ===
 echo "::LAUNCH::status::Installing PHP 8.3"
@@ -481,25 +557,98 @@ set -euo pipefail
 trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
-# Wait for apt to be unlocked
+# Wait for any apt/dpkg/unattended-upgrade process to exit and for all
+# the package-manager lock files to be released. Loop indefinitely — we'd
+# rather hang the provision (visible in logs) than race the lock and
+# surface a confusing failure to the customer.
+#
+# Note on process matching: unattended-upgrades runs as a python script
+# named "unattended-upgr" (truncated to 15 chars in /proc/comm), so we
+# use pgrep -f to match the full command line and catch it.
 function waitForAptUnlock() {
-    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
-        echo "apt, apt-get or dpkg is running..."
+    while pgrep -f '(^|/)(apt|apt-get|dpkg|unattended-upgrade)' >/dev/null 2>&1; do
+        echo "apt, apt-get, dpkg, or unattended-upgrade is running..."
         sleep 5
     done
 
-    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+    while sudo fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend \
+                     /var/lib/apt/lists/lock /var/cache/apt/archives/lock \
+                     >/dev/null 2>&1; do
         echo "Waiting: apt is locked..."
         sleep 5
     done
-
-    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
-        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
-            echo "Waiting: unattended-upgrades is locked..."
-            sleep 5
-        done
-    fi
 }
+
+# Bring the box into a state where apt-get cannot be hijacked by cloud-init
+# or the unattended-upgrades systemd timer during provisioning. Called once
+# at the very top of every provision script.
+#
+# Background:
+#   - On a fresh DigitalOcean/Hetzner/Vultr Ubuntu image, cloud-init runs
+#     apt update + apt upgrade as part of its first-boot work. This holds
+#     the dpkg lock for several minutes.
+#   - Even after cloud-init finishes, the apt-daily.timer and
+#     unattended-upgrades.timer systemd units can fire at any time and
+#     grab the lock mid-provision.
+#
+# We removed the historical "apt update + upgrade" provision step (it
+# slowed every provision by 5-15 minutes and broke build reproducibility);
+# the side-effect was that subsequent provision steps now hit apt-install
+# much earlier in the box's lifecycle, exposing the race. This function
+# is the proper fix: wait for cloud-init, then disable the timers for the
+# duration of provisioning. restoreUnattendedUpgrades() puts them back
+# at the end.
+function quiesceAptForProvisioning() {
+    # 1. Wait for cloud-init's first-boot run to finish. Silent on images
+    #    that don't ship cloud-init (e.g. some Contabo minimal images).
+    if command -v cloud-init >/dev/null 2>&1; then
+        echo "Waiting for cloud-init to finish..."
+        sudo cloud-init status --wait >/dev/null 2>&1 || true
+    fi
+
+    # 2. Stop and mask the timer-triggered apt jobs so they can't fire
+    #    while we provision. We do not kill running apt processes —
+    #    interrupting an in-flight unattended-upgrade can leave dpkg in
+    #    an inconsistent state. waitForAptUnlock below handles that case.
+    for unit in unattended-upgrades.service unattended-upgrades.timer \
+                apt-daily.service apt-daily.timer \
+                apt-daily-upgrade.service apt-daily-upgrade.timer; do
+        sudo systemctl stop "${unit}" 2>/dev/null || true
+        sudo systemctl mask "${unit}" 2>/dev/null || true
+    done
+
+    # 3. Wait for any lock-holding process that was already running to
+    #    finish gracefully.
+    waitForAptUnlock
+}
+
+# Re-enable the apt timer units that quiesceAptForProvisioning masked.
+# Critical: only start the TIMER units, never the service units.
+# Starting unattended-upgrades.service directly runs the full upgrade
+# synchronously and adds 3-10 minutes to provisioning. The timer fires
+# the service on its normal schedule (within 24h) — that is what we want.
+function restoreUnattendedUpgrades() {
+    # Unmask everything so the timers can launch their services later.
+    for unit in unattended-upgrades.service unattended-upgrades.timer \
+                apt-daily.service apt-daily.timer \
+                apt-daily-upgrade.service apt-daily-upgrade.timer; do
+        sudo systemctl unmask "${unit}" 2>/dev/null || true
+    done
+
+    # Enable + start the timers only. Each timer knows when to trigger
+    # its corresponding service.
+    for timer in unattended-upgrades.timer apt-daily.timer apt-daily-upgrade.timer; do
+        sudo systemctl enable "${timer}" 2>/dev/null || true
+        sudo systemctl start  "${timer}" 2>/dev/null || true
+    done
+}
+
+# Belt-and-suspenders for apt commands: noninteractive frontend + a
+# server-side dpkg lock wait so apt will retry the lock for up to 120s
+# instead of failing immediately if anything still races us.
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
+export APT_LOCK_WAIT_OPTS='-o DPkg::Lock::Timeout=120'
 
 function ensurePhpPpaInstalled() {
     if ! grep -q "ondrej/php" /etc/apt/sources.list.d/*.list 2>/dev/null && ! grep -q "ondrej/php" /etc/apt/sources.list.d/*.sources 2>/dev/null; then
@@ -550,6 +699,11 @@ echo "Install Memcached for PHP 8.3"
 waitForAptUnlock
 yes '' | sudo DEBIAN_FRONTEND=noninteractive apt-get -y install php8.3-memcached || echo "php8.3-memcached not available, skipping..."
 
+echo "Install Swoole for PHP 8.3"
+
+waitForAptUnlock
+yes '' | sudo DEBIAN_FRONTEND=noninteractive apt-get -y install php8.3-swoole || echo "php8.3-swoole not available, skipping..."
+
 echo "Update PHP CLI config"
 
 # Update PHP CLI settings in php.ini
@@ -593,7 +747,7 @@ sudo service php8.3-fpm restart > /dev/null 2>&1
 echo "launcher ALL=NOPASSWD: /usr/sbin/service php8.3-fpm reload" | sudo tee /etc/sudoers.d/php-fpm > /dev/null
 
 echo "::LAUNCH::software_installed::php83"
-echo "::LAUNCH::progress::81"
+echo "::LAUNCH::progress::80"
 
 # === Install Software: PostgreSQL 16 ===
 echo "::LAUNCH::status::Installing PostgreSQL 16"
@@ -602,25 +756,98 @@ set -euo pipefail
 trap '' PIPE
 export DEBIAN_FRONTEND=noninteractive
 
-# Wait for apt to be unlocked
+# Wait for any apt/dpkg/unattended-upgrade process to exit and for all
+# the package-manager lock files to be released. Loop indefinitely — we'd
+# rather hang the provision (visible in logs) than race the lock and
+# surface a confusing failure to the customer.
+#
+# Note on process matching: unattended-upgrades runs as a python script
+# named "unattended-upgr" (truncated to 15 chars in /proc/comm), so we
+# use pgrep -f to match the full command line and catch it.
 function waitForAptUnlock() {
-    while ps -C apt,apt-get,dpkg >/dev/null 2>&1; do
-        echo "apt, apt-get or dpkg is running..."
+    while pgrep -f '(^|/)(apt|apt-get|dpkg|unattended-upgrade)' >/dev/null 2>&1; do
+        echo "apt, apt-get, dpkg, or unattended-upgrade is running..."
         sleep 5
     done
 
-    while fuser /var/{lib/{dpkg,apt/lists},cache/apt/archives}/{lock,lock-frontend} >/dev/null 2>&1; do
+    while sudo fuser /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend \
+                     /var/lib/apt/lists/lock /var/cache/apt/archives/lock \
+                     >/dev/null 2>&1; do
         echo "Waiting: apt is locked..."
         sleep 5
     done
-
-    if [ -f /var/log/unattended-upgrades/unattended-upgrades.log ]; then
-        while fuser /var/log/unattended-upgrades/unattended-upgrades.log >/dev/null 2>&1; do
-            echo "Waiting: unattended-upgrades is locked..."
-            sleep 5
-        done
-    fi
 }
+
+# Bring the box into a state where apt-get cannot be hijacked by cloud-init
+# or the unattended-upgrades systemd timer during provisioning. Called once
+# at the very top of every provision script.
+#
+# Background:
+#   - On a fresh DigitalOcean/Hetzner/Vultr Ubuntu image, cloud-init runs
+#     apt update + apt upgrade as part of its first-boot work. This holds
+#     the dpkg lock for several minutes.
+#   - Even after cloud-init finishes, the apt-daily.timer and
+#     unattended-upgrades.timer systemd units can fire at any time and
+#     grab the lock mid-provision.
+#
+# We removed the historical "apt update + upgrade" provision step (it
+# slowed every provision by 5-15 minutes and broke build reproducibility);
+# the side-effect was that subsequent provision steps now hit apt-install
+# much earlier in the box's lifecycle, exposing the race. This function
+# is the proper fix: wait for cloud-init, then disable the timers for the
+# duration of provisioning. restoreUnattendedUpgrades() puts them back
+# at the end.
+function quiesceAptForProvisioning() {
+    # 1. Wait for cloud-init's first-boot run to finish. Silent on images
+    #    that don't ship cloud-init (e.g. some Contabo minimal images).
+    if command -v cloud-init >/dev/null 2>&1; then
+        echo "Waiting for cloud-init to finish..."
+        sudo cloud-init status --wait >/dev/null 2>&1 || true
+    fi
+
+    # 2. Stop and mask the timer-triggered apt jobs so they can't fire
+    #    while we provision. We do not kill running apt processes —
+    #    interrupting an in-flight unattended-upgrade can leave dpkg in
+    #    an inconsistent state. waitForAptUnlock below handles that case.
+    for unit in unattended-upgrades.service unattended-upgrades.timer \
+                apt-daily.service apt-daily.timer \
+                apt-daily-upgrade.service apt-daily-upgrade.timer; do
+        sudo systemctl stop "${unit}" 2>/dev/null || true
+        sudo systemctl mask "${unit}" 2>/dev/null || true
+    done
+
+    # 3. Wait for any lock-holding process that was already running to
+    #    finish gracefully.
+    waitForAptUnlock
+}
+
+# Re-enable the apt timer units that quiesceAptForProvisioning masked.
+# Critical: only start the TIMER units, never the service units.
+# Starting unattended-upgrades.service directly runs the full upgrade
+# synchronously and adds 3-10 minutes to provisioning. The timer fires
+# the service on its normal schedule (within 24h) — that is what we want.
+function restoreUnattendedUpgrades() {
+    # Unmask everything so the timers can launch their services later.
+    for unit in unattended-upgrades.service unattended-upgrades.timer \
+                apt-daily.service apt-daily.timer \
+                apt-daily-upgrade.service apt-daily-upgrade.timer; do
+        sudo systemctl unmask "${unit}" 2>/dev/null || true
+    done
+
+    # Enable + start the timers only. Each timer knows when to trigger
+    # its corresponding service.
+    for timer in unattended-upgrades.timer apt-daily.timer apt-daily-upgrade.timer; do
+        sudo systemctl enable "${timer}" 2>/dev/null || true
+        sudo systemctl start  "${timer}" 2>/dev/null || true
+    done
+}
+
+# Belt-and-suspenders for apt commands: noninteractive frontend + a
+# server-side dpkg lock wait so apt will retry the lock for up to 120s
+# instead of failing immediately if anything still races us.
+export DEBIAN_FRONTEND=noninteractive
+export APT_LISTCHANGES_FRONTEND=none
+export APT_LOCK_WAIT_OPTS='-o DPkg::Lock::Timeout=120'
 
 echo "Install PostgreSQL 16"
 
@@ -709,7 +936,7 @@ echo "::LAUNCH::progress::90"
 
 # === Final Cleanup ===
 echo "::LAUNCH::status::Running final cleanup"
-# See 'apt-update-upgrade'
 waitForAptUnlock
-sudo apt-mark unhold cloud-init
+sudo apt-mark unhold cloud-init 2>/dev/null || true
+restoreUnattendedUpgrades
 echo "::LAUNCH::progress::100"

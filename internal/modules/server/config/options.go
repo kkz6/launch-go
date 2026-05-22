@@ -104,10 +104,18 @@ func getDigitalOceanConfig() ProviderConfig {
 			{Value: "blr1", Title: "Bangalore 1"},
 			{Value: "sfo3", Title: "San Francisco 3"},
 		},
+		// DigitalOcean retires the numeric IDs of base images periodically —
+		// the worker hit a 422 "image no longer available" when 168977420 was
+		// pulled. Slugs like `ubuntu-24-04-x64` are the stable reference; DO
+		// repoints the slug to whatever the current published snapshot is.
+		//
+		// Note: `ubuntu-20-04-x64` was retired on DigitalOcean (confirmed via
+		// `GET /v2/images/ubuntu-20-04-x64` returning 404). Selecting
+		// ubuntu_20 on DO is now unsupported here; the UI hides OS choices
+		// the provider can't fulfil (see GetImagesByProvider).
 		Images: map[string]interface{}{
-			"ubuntu_20": "112929454",
-			"ubuntu_22": "159651797",
-			"ubuntu_24": "168977420",
+			"ubuntu_22": "ubuntu-22-04-x64",
+			"ubuntu_24": "ubuntu-24-04-x64",
 		},
 	}
 }
@@ -149,7 +157,6 @@ func getHetznerConfig() ProviderConfig {
 			{Value: "hil", Title: "US - Hillsboro, OR"},
 		},
 		Images: map[string]interface{}{
-			"ubuntu_18": "ubuntu-18.04",
 			"ubuntu_20": "ubuntu-20.04",
 			"ubuntu_22": "ubuntu-22.04",
 			"ubuntu_24": "ubuntu-24.04",
@@ -203,7 +210,6 @@ func getLinodeConfig() ProviderConfig {
 			{Value: "ap-northeast", Title: "ap-northeast - Japan"},
 		},
 		Images: map[string]interface{}{
-			"ubuntu_18": "linode/ubuntu18.04",
 			"ubuntu_20": "linode/ubuntu20.04",
 			"ubuntu_22": "linode/ubuntu22.04",
 			"ubuntu_24": "linode/ubuntu24.04",
@@ -257,8 +263,11 @@ func getVultrConfig() ProviderConfig {
 			{Value: "syd", Title: "Australia - Sydney"},
 			{Value: "yto", Title: "North America - Toronto"},
 		},
+		// Vultr uses numeric image IDs which can be retired in the future
+		// (the same class of bug that hit DO with snapshot 168977420). When
+		// a 422 fires from Vultr, re-check these against `GET /v2/os` and
+		// the cmd/validate-images helper.
 		Images: map[string]interface{}{
-			"ubuntu_18": "270",
 			"ubuntu_20": "387",
 			"ubuntu_22": "1743",
 			"ubuntu_24": "2284",
@@ -358,6 +367,54 @@ func GetAWSImageForRegion(region, os string) string {
 		}
 	}
 	return ""
+}
+
+// GetSupportedOSesByProvider returns the set of OS keys each provider can
+// actually fulfil right now. Driven entirely by the Images maps so removing
+// a retired image (e.g. ubuntu_20 from DigitalOcean) automatically hides
+// the OS from the picker for that provider. AWS is keyed by region, so we
+// derive the OS list from one of the region maps (all regions carry the
+// same set of OSes — guarded by TestAWSConfig_ImagesCoverAllRegions).
+func GetSupportedOSesByProvider() map[string][]string {
+	out := make(map[string][]string)
+	for provider, cfg := range GetProviderConfigs() {
+		if provider == "aws" {
+			// Pick any one region's map as representative.
+			for _, raw := range cfg.Images {
+				if osMap, ok := raw.(map[string]string); ok {
+					out[provider] = sortedKeys(osMap)
+					break
+				}
+			}
+			continue
+		}
+		oses := make([]string, 0, len(cfg.Images))
+		for os := range cfg.Images {
+			if s, ok := cfg.Images[os].(string); ok && s != "" {
+				oses = append(oses, os)
+			}
+		}
+		out[provider] = sortedStrings(oses)
+	}
+	return out
+}
+
+func sortedKeys(m map[string]string) []string {
+	keys := make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	return sortedStrings(keys)
+}
+
+func sortedStrings(in []string) []string {
+	// Tiny, stable sort — we expect ~3 entries, so cost is irrelevant.
+	for i := 1; i < len(in); i++ {
+		for j := i; j > 0 && in[j-1] > in[j]; j-- {
+			in[j-1], in[j] = in[j], in[j-1]
+		}
+	}
+	return in
 }
 
 // GetProviderImage returns the image ID for a provider and OS

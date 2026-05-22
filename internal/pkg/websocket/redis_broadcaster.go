@@ -32,29 +32,36 @@ func NewRedisBroadcaster(addr, password string, db int, logger *zerolog.Logger) 
 	}
 }
 
-// BroadcastToTeam publishes a message to Redis for the team channel
+// BroadcastToTeam publishes a message to Redis for the team channel.
+//
+// We inject team_id into the payload here (in addition to the Mixin layer)
+// because worker code paths go pkgjobs.Deps → RedisBroadcaster directly,
+// bypassing broadcast.Mixin. The frontend's useChannelEvents filter compares
+// eventData.team_id against the subscribed channel, so a missing team_id
+// would silently drop every event client-side. Same reasoning applies to
+// the other Broadcast methods below.
 func (r *RedisBroadcaster) BroadcastToTeam(teamID string, event string, data any) {
-	r.publish(broadcast.TeamChannel(teamID), event, data)
+	r.publish(broadcast.TeamChannel(teamID), event, broadcast.EnsureRoutingField(data, "team_id", teamID))
 }
 
 // BroadcastToServer publishes a message to Redis for the server channel
 func (r *RedisBroadcaster) BroadcastToServer(serverID string, event string, data any) {
-	r.publish(broadcast.ServerChannel(serverID), event, data)
+	r.publish(broadcast.ServerChannel(serverID), event, broadcast.EnsureRoutingField(data, "server_id", serverID))
 }
 
 // BroadcastToSite publishes a message to Redis for the site channel
 func (r *RedisBroadcaster) BroadcastToSite(siteID string, event string, data any) {
-	r.publish(broadcast.SiteChannel(siteID), event, data)
+	r.publish(broadcast.SiteChannel(siteID), event, broadcast.EnsureRoutingField(data, "site_id", siteID))
 }
 
 // BroadcastToDeployment publishes a message to Redis for the deployment channel
 func (r *RedisBroadcaster) BroadcastToDeployment(deploymentID string, event string, data any) {
-	r.publish(broadcast.DeploymentChannel(deploymentID), event, data)
+	r.publish(broadcast.DeploymentChannel(deploymentID), event, broadcast.EnsureRoutingField(data, "deployment_id", deploymentID))
 }
 
 // BroadcastToUser publishes a message to Redis for the user channel
 func (r *RedisBroadcaster) BroadcastToUser(userID string, event string, data any) {
-	r.publish(broadcast.UserChannel(userID), event, data)
+	r.publish(broadcast.UserChannel(userID), event, broadcast.EnsureRoutingField(data, "user_id", userID))
 }
 
 // Broadcast publishes a message to Redis for a specific channel
