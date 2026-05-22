@@ -121,6 +121,47 @@ type UpdateComposeRequest struct {
 	Name *string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
 }
 
+// CreateEnvVarRequest adds a single env var to an application. Use
+// SetEnvVarsRequest below to replace the entire set in one call
+// (cleaner for the bulk-paste UI).
+type CreateEnvVarRequest struct {
+	Key      string `json:"key" validate:"required,min=1,max=255"`
+	Value    string `json:"value"`
+	IsSecret bool   `json:"is_secret,omitempty"`
+}
+
+// UpdateEnvVarRequest is the partial-update body. Key is immutable —
+// removing + adding is the way to "rename" (otherwise running
+// containers would silently keep the old key).
+type UpdateEnvVarRequest struct {
+	Value    *string `json:"value,omitempty"`
+	IsSecret *bool   `json:"is_secret,omitempty"`
+}
+
+// SetEnvVarsRequest replaces the entire env-var set in one
+// transaction. Matches the "paste your .env file" workflow — easier
+// than asking the user to click N times.
+type SetEnvVarsRequest struct {
+	Vars []CreateEnvVarRequest `json:"vars" validate:"required,dive"`
+}
+
+// CreateVolumeRequest attaches a volume to an application. Type is
+// the discriminator; host_path is required for type=bind.
+type CreateVolumeRequest struct {
+	Name      string  `json:"name" validate:"required,min=1,max=255"`
+	MountPath string  `json:"mount_path" validate:"required,min=1,max=512"`
+	Type      string  `json:"type" validate:"required,oneof=named bind"`
+	HostPath  *string `json:"host_path,omitempty" validate:"omitempty,max=512"`
+}
+
+// UpdateVolumeRequest is the partial-update body. Mount path can be
+// changed but the volume "name" identifies the named-volume in docker
+// — renaming would orphan the old one.
+type UpdateVolumeRequest struct {
+	MountPath *string `json:"mount_path,omitempty" validate:"omitempty,min=1,max=512"`
+	HostPath  *string `json:"host_path,omitempty" validate:"omitempty,max=512"`
+}
+
 // CreateDatabaseRequest provisions a managed-database container in a
 // project. Engine is the discriminator; version defaults to the
 // engine's pinned default if omitted.

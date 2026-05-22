@@ -124,6 +124,62 @@ func ToComposeResponse(c *models.Compose, includeRaw bool) *ComposeResponse {
 	return resp
 }
 
+// EnvVarResponse is the API shape for an application env var. Value is
+// masked when IsSecret=true unless the caller explicitly reveals it.
+type EnvVarResponse struct {
+	ID            string     `json:"id"`
+	ApplicationID string     `json:"application_id"`
+	Key           string     `json:"key"`
+	Value         string     `json:"value"`
+	IsSecret      bool       `json:"is_secret"`
+	CreatedAt     *time.Time `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+}
+
+// ToEnvVarResponse renders an env-var. revealSecret=false (default)
+// masks the value when IsSecret is true so list endpoints never leak
+// passwords — same defence pattern as database credentials.
+func ToEnvVarResponse(v *models.ApplicationEnvVar, revealSecret bool) *EnvVarResponse {
+	value := v.Value
+	if v.IsSecret && !revealSecret {
+		value = "********"
+	}
+	return &EnvVarResponse{
+		ID:            v.ID,
+		ApplicationID: v.ApplicationID,
+		Key:           v.Key,
+		Value:         value,
+		IsSecret:      v.IsSecret,
+		CreatedAt:     v.CreatedAt,
+		UpdatedAt:     v.UpdatedAt,
+	}
+}
+
+// VolumeResponse is the API shape for an application volume.
+type VolumeResponse struct {
+	ID            string     `json:"id"`
+	ApplicationID string     `json:"application_id"`
+	Name          string     `json:"name"`
+	MountPath     string     `json:"mount_path"`
+	Type          string     `json:"type"`
+	HostPath      *string    `json:"host_path,omitempty"`
+	CreatedAt     *time.Time `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+}
+
+func ToVolumeResponse(v *models.ApplicationVolume) *VolumeResponse {
+	return &VolumeResponse{
+		ID:            v.ID,
+		ApplicationID: v.ApplicationID,
+		Name:          v.Name,
+		MountPath:     v.MountPath,
+		Type:          v.Type,
+		HostPath:      v.HostPath,
+		CreatedAt:     v.CreatedAt,
+		UpdatedAt:     v.UpdatedAt,
+	}
+}
+
 // DatabaseCredentials is the shape of the auto-generated DB secrets we
 // reveal to the user when they explicitly ask. Mirrored from the
 // services.Credentials struct.

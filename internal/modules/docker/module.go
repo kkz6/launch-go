@@ -80,6 +80,16 @@ func (m *Module) newDomainService() *services.DomainService {
 	return services.NewDomainService(m.serviceDeps())
 }
 
+// newEnvVarService builds the application env-var service.
+func (m *Module) newEnvVarService() *services.EnvVarService {
+	return services.NewEnvVarService(m.serviceDeps())
+}
+
+// newVolumeService builds the application volume service.
+func (m *Module) newVolumeService() *services.VolumeService {
+	return services.NewVolumeService(m.serviceDeps())
+}
+
 func (m *Module) serviceDeps() *services.ServiceDeps {
 	deps := m.Deps()
 	return &services.ServiceDeps{

@@ -21,6 +21,8 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	composeSvc := m.newComposeService()
 	databaseSvc := m.newDatabaseService()
 	domainSvc := m.newDomainService()
+	envVarSvc := m.newEnvVarService()
+	volumeSvc := m.newVolumeService()
 
 	auth := middleware.Append(
 		middleware.AuthenticatedChain(authMiddleware),
@@ -195,6 +197,204 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		if err := domainSvc.DeleteDomain(
 			c.Context(),
 			c.Params("domainId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
+	})
+
+	// Env-var routes — list / create / update / delete / bulk-set.
+	apps.Get("/:id/env-vars", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := envVarSvc.ListEnvVars(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Env vars retrieved", rows)
+	})
+
+	apps.Post("/:id/env-vars", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateEnvVarRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := envVarSvc.CreateEnvVar(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Env var added", out)
+	})
+
+	apps.Put("/:id/env-vars", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.SetEnvVarsRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := envVarSvc.SetEnvVars(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Env vars saved", out)
+	})
+
+	apps.Patch("/:id/env-vars/:envVarId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateEnvVarRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := envVarSvc.UpdateEnvVar(
+			c.Context(),
+			c.Params("envVarId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Env var updated", out)
+	})
+
+	apps.Delete("/:id/env-vars/:envVarId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := envVarSvc.DeleteEnvVar(
+			c.Context(),
+			c.Params("envVarId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
+	})
+
+	// Volume routes — list / create / update / delete.
+	apps.Get("/:id/volumes", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := volumeSvc.ListVolumes(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Volumes retrieved", rows)
+	})
+
+	apps.Post("/:id/volumes", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateVolumeRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := volumeSvc.CreateVolume(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Volume added", out)
+	})
+
+	apps.Patch("/:id/volumes/:volumeId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateVolumeRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := volumeSvc.UpdateVolume(
+			c.Context(),
+			c.Params("volumeId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Volume updated", out)
+	})
+
+	apps.Delete("/:id/volumes/:volumeId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := volumeSvc.DeleteVolume(
+			c.Context(),
+			c.Params("volumeId"),
 			c.Params("id"),
 			c.Params("projectId"),
 			c.Params("serverId"),
