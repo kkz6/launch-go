@@ -27,6 +27,7 @@ type Module struct {
 	serviceStatusHandler   *handlers.ServiceStatusHandler
 	metricsHandler         *handlers.MetricsHandler
 	scriptExecutionHandler *handlers.ScriptExecutionHandler
+	dockerLogsHandler      *handlers.DockerLogsHandler
 	jwtSecret              string
 	membershipCache        *launchcache.TeamMembershipCache
 }
@@ -50,6 +51,7 @@ func NewModule(b *app.Builder) *Module {
 		serviceStatusHandler:   handlers.NewServiceStatusHandler(handlerBase),
 		metricsHandler:         handlers.NewMetricsHandler(handlerBase),
 		scriptExecutionHandler: handlers.NewScriptExecutionHandler(handlerBase),
+		dockerLogsHandler:      handlers.NewDockerLogsHandler(handlerBase),
 		jwtSecret:              jwtSecret,
 		membershipCache:        deps.MembershipCache,
 	}
@@ -76,6 +78,11 @@ func (m *Module) RegisterWebSocketRoutes(router fiber.Router) {
 	// Script execution streaming WebSocket endpoint
 	// Connection URL: /api/scripts/execute?executionId=xxx&token=xxx&team_id=xxx
 	router.Get("/scripts/execute", m.scriptExecutionHandler.Handler())
+
+	// Docker container logs streaming WebSocket endpoint.
+	// Connection URL: /api/docker/applications/logs?applicationId=xxx&token=xxx
+	// Sends each `docker logs -f` line as a TextMessage frame.
+	router.Get("/docker/applications/logs", m.dockerLogsHandler.Handler())
 }
 
 // Shutdown gracefully shuts down the WebSocket module
