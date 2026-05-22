@@ -38,6 +38,14 @@ type DeployConfig struct {
 	EnvVars []EnvVar
 	// Volumes attached to the container.
 	Volumes []Volume
+
+	// Runtime knobs from build_config["cpu_limit"] etc. Empty values
+	// mean "skip the flag".
+	CPULimit           string
+	MemoryLimit        string
+	RestartPolicy      string // empty → unless-stopped
+	HealthcheckCommand string
+	ExtraPorts         []string
 }
 
 // EnvVar is one key/value pair for the container's environment.
@@ -128,9 +136,35 @@ echo "::LAUNCH::deploy_step::starting_container"
 # internal/modules/server/tasks/docker_constants.go).
 CONTAINER_ID=$(docker run -d \
   --name "${CONTAINER_NAME}" \
-  --restart=unless-stopped \
   --network launch-network \
 `)
+
+	// Restart policy. Default is unless-stopped (most apps want this);
+	// override via build_config.restart_policy.
+	restart := cfg.RestartPolicy
+	if restart == "" {
+		restart = "unless-stopped"
+	}
+	fmt.Fprintf(&b, "  --restart=%s \\\n", shellEscapeArg(restart))
+
+	// Resource limits — both optional. CPU is in --cpus float format
+	// (e.g. "0.5", "2"); memory is in -m byte-suffix format ("512m").
+	if cfg.CPULimit != "" {
+		fmt.Fprintf(&b, "  --cpus=%s \\\n", shellEscapeArg(cfg.CPULimit))
+	}
+	if cfg.MemoryLimit != "" {
+		fmt.Fprintf(&b, "  -m %s \\\n", shellEscapeArg(cfg.MemoryLimit))
+	}
+	// Healthcheck — docker run takes the command as a shell string.
+	if cfg.HealthcheckCommand != "" {
+		fmt.Fprintf(&b, "  --health-cmd=%s \\\n", shellEscapeArg(cfg.HealthcheckCommand))
+	}
+	// Extra host:container ports.
+	for _, p := range cfg.ExtraPorts {
+		if p = strings.TrimSpace(p); p != "" {
+			fmt.Fprintf(&b, "  -p %s \\\n", shellEscapeArg(p))
+		}
+	}
 
 	// Env vars rendered as `-e KEY=VALUE` per line. Values are
 	// single-quote-escaped so passwords with shell metacharacters don't

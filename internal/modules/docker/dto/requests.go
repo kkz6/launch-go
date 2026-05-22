@@ -183,6 +183,38 @@ type DatabaseLifecycleRequest struct {
 	Action string `json:"action" validate:"required,oneof=start stop restart"`
 }
 
+// CreateScheduleRequest adds a cron-style task that runs a command
+// inside the application's container.
+type CreateScheduleRequest struct {
+	Cron    string `json:"cron" validate:"required,min=1,max=255"`
+	Command string `json:"command" validate:"required,min=1"`
+}
+
+// UpdateScheduleRequest is the partial-update body.
+type UpdateScheduleRequest struct {
+	Cron    *string `json:"cron,omitempty" validate:"omitempty,min=1,max=255"`
+	Command *string `json:"command,omitempty" validate:"omitempty,min=1"`
+}
+
+// UpdateAdvancedRequest tweaks runtime knobs on an application without
+// touching its source. All fields are optional; present keys are
+// applied to the application's build_config and take effect on the
+// next deploy.
+type UpdateAdvancedRequest struct {
+	// CPULimit in docker --cpus format (e.g. "0.5", "2"). Empty string clears.
+	CPULimit *string `json:"cpu_limit,omitempty" validate:"omitempty,max=32"`
+	// MemoryLimit in docker -m format (e.g. "512m", "2g"). Empty clears.
+	MemoryLimit *string `json:"memory_limit,omitempty" validate:"omitempty,max=32"`
+	// RestartPolicy: one of no / on-failure / always / unless-stopped.
+	RestartPolicy *string `json:"restart_policy,omitempty" validate:"omitempty,oneof=no on-failure always unless-stopped"`
+	// HealthcheckCommand is a single command run inside the container
+	// for HEALTHCHECK. Empty clears the healthcheck.
+	HealthcheckCommand *string `json:"healthcheck_command,omitempty" validate:"omitempty,max=512"`
+	// ExtraPorts are host:container port mappings ("8080:80"). Each
+	// entry is passed straight through to `docker run -p`.
+	ExtraPorts []string `json:"extra_ports,omitempty" validate:"omitempty,dive,max=32"`
+}
+
 // CreateDomainRequest attaches a hostname to an application. Host is
 // validated as a DNS-compatible string in the service (we don't trust
 // validator alone — it doesn't catch trailing dots or leading hyphens).

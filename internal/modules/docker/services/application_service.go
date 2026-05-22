@@ -330,6 +330,72 @@ func (s *ApplicationService) Deploy(
 	return deployment, nil
 }
 
+// UpdateAdvanced persists runtime knobs on the application by merging
+// the request fields into build_config. We use build_config (not
+// source_config) so source-only changes stay grouped logically and a
+// future "reconfigure source" UI doesn't need to wade through CPU
+// limits.
+//
+// Empty strings clear the value (delete from the JSON map); nil means
+// "don't touch". Changes take effect on the next deploy.
+func (s *ApplicationService) UpdateAdvanced(
+	ctx context.Context, applicationID, projectID, serverID, teamID, userID string,
+	req *dto.UpdateAdvancedRequest,
+) (dto.ApplicationResponse, error) {
+	_ = userID
+	if _, err := s.requireProject(ctx, projectID, serverID, teamID); err != nil {
+		return dto.ApplicationResponse{}, err
+	}
+	app, err := s.Repos().Application().FindByIDAndTeamServer(ctx, applicationID, teamID, serverID)
+	if err != nil {
+		return dto.ApplicationResponse{}, err
+	}
+	if app.ProjectID != projectID {
+		return dto.ApplicationResponse{}, fiberutil.NotFound()
+	}
+
+	cfg := map[string]any(app.BuildConfig)
+	if cfg == nil {
+		cfg = map[string]any{}
+	}
+	applyAdvancedKey := func(key string, val *string) {
+		if val == nil {
+			return
+		}
+		if *val == "" {
+			delete(cfg, key)
+			return
+		}
+		cfg[key] = *val
+	}
+	applyAdvancedKey("cpu_limit", req.CPULimit)
+	applyAdvancedKey("memory_limit", req.MemoryLimit)
+	applyAdvancedKey("restart_policy", req.RestartPolicy)
+	applyAdvancedKey("healthcheck_command", req.HealthcheckCommand)
+
+	if req.ExtraPorts != nil {
+		if len(req.ExtraPorts) == 0 {
+			delete(cfg, "extra_ports")
+		} else {
+			cfg["extra_ports"] = req.ExtraPorts
+		}
+	}
+
+	if err := s.Repos().Application().UpdateFields(ctx, app.ID, map[string]any{
+		"build_config": dbtype.JSONMap(cfg),
+	}); err != nil {
+		return dto.ApplicationResponse{}, err
+	}
+
+	reloaded, err := s.Repos().Application().FindByIDAndTeamServer(ctx, applicationID, teamID, serverID)
+	if err != nil {
+		return dto.ApplicationResponse{}, err
+	}
+	resp := dto.ToApplicationResponse(reloaded)
+	s.BroadcastToTeam(teamID, "docker.application.updated", resp)
+	return *resp, nil
+}
+
 // requireProject validates that the project exists and belongs to the
 // (team, server). Returns the project ID on success — same shape as
 // ProjectService.requireDockerServer so it slots into the same call
