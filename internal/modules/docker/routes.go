@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/docker/dto"
+	"github.com/kkz6/launch-go/internal/modules/docker/services"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -18,6 +19,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	projectSvc := m.newProjectService()
 	applicationSvc := m.newApplicationService()
 	composeSvc := m.newComposeService()
+	databaseSvc := m.newDatabaseService()
 	domainSvc := m.newDomainService()
 
 	auth := middleware.Append(
@@ -269,4 +271,79 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.Created(c, "Deployment started", dto.ToDeploymentResponse(deployment))
 	})
+
+	// Managed-database routes. Mostly the same shape as applications/
+	// composes; the differentiator is the /lifecycle endpoint that runs
+	// start/stop/restart against an existing container.
+	databases := router.Group("/servers/:serverId/docker/projects/:projectId/databases", auth...)
+	databases.Get(
+		"/",
+		fiberutil.IndexDoubleNested("serverId", "projectId", "Databases retrieved", databaseSvc.ListDatabases),
+	)
+	databases.Post(
+		"/",
+		fiberutil.CreateDoubleNested[dto.CreateDatabaseRequest]("serverId", "projectId", "Database creation queued", databaseSvc.CreateDatabase),
+	)
+	databases.Delete(
+		"/:id",
+		fiberutil.DeleteDoubleNested("serverId", "projectId", "id", databaseSvc.DeleteDatabase),
+	)
+
+	databases.Get("/:id", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		reveal := c.Query("reveal") == "true"
+		out, err := databaseSvc.GetDatabase(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			reveal,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Database retrieved", out)
+	})
+
+	databases.Post("/:id/lifecycle", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.DatabaseLifecycleRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := databaseSvc.Lifecycle(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req.Action,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Lifecycle action queued", out)
+	})
+
+	// Engine catalogue endpoint — the create dialog calls this to know
+	// which engines + versions to offer. Returning a static map from
+	// the module keeps the UI in sync without an extra config layer.
+	//
+	// Auth-only (no RequireProvisionedServer) because there's no
+	// serverId in the URL — the catalogue is the same for every
+	// docker server.
+	router.Get(
+		"/docker/databases/engines",
+		append(middleware.AuthenticatedChain(authMiddleware), func(c *gofiber.Ctx) error {
+			return fiberutil.OK(c, "Engine catalogue", services.SupportedDatabaseEngines())
+		})...,
+	)
 }

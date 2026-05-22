@@ -70,6 +70,11 @@ func (m *Module) newComposeService() *services.ComposeService {
 	return services.NewComposeService(m.serviceDeps())
 }
 
+// newDatabaseService builds the managed-database service.
+func (m *Module) newDatabaseService() *services.DatabaseService {
+	return services.NewDatabaseService(m.serviceDeps())
+}
+
 // newDomainService builds the application-domain service.
 func (m *Module) newDomainService() *services.DomainService {
 	return services.NewDomainService(m.serviceDeps())
