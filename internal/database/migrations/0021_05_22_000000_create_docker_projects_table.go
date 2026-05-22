@@ -44,7 +44,14 @@ type dockerProjectWithServerFK struct {
 func (dockerProjectWithServerFK) TableName() string { return "docker_projects" }
 
 func createDockerProjectsTableUp(db *gorm.DB) error {
-	migrator := db.Migrator()
+	// Match the charset/collation used by every other table in this schema
+	// (utf8mb4_unicode_ci). MySQL 8 defaults to utf8mb4_0900_ai_ci which is
+	// FK-incompatible with the legacy tables — see the older migrations
+	// (load_balancer, notification_preferences) for the same incantation.
+	migrator := db.Set(
+		"gorm:table_options",
+		"DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
+	).Migrator()
 
 	if err := migrator.CreateTable(&dockerProjectMigration{}); err != nil {
 		return err
