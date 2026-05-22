@@ -121,6 +121,27 @@ type UpdateComposeRequest struct {
 	Name *string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
 }
 
+// CreateDatabaseRequest provisions a managed-database container in a
+// project. Engine is the discriminator; version defaults to the
+// engine's pinned default if omitted.
+type CreateDatabaseRequest struct {
+	Name    string `json:"name" validate:"required,min=1,max=64"`
+	Engine  string `json:"engine" validate:"required,oneof=postgres mysql mariadb redis mongo"`
+	Version string `json:"version,omitempty" validate:"omitempty,max=32"`
+	// ExternalPort, when set, exposes the database on the host so it's
+	// reachable from outside docker. Leave nil for internal-only (the
+	// default) so the DB stays on launch-network and only sibling
+	// containers can reach it.
+	ExternalPort *int `json:"external_port,omitempty" validate:"omitempty,min=1,max=65535"`
+}
+
+// DatabaseLifecycleRequest is the body for the /lifecycle endpoint. We
+// take the action as a JSON field instead of a path segment so the same
+// endpoint handles all three transitions consistently.
+type DatabaseLifecycleRequest struct {
+	Action string `json:"action" validate:"required,oneof=start stop restart"`
+}
+
 // CreateDomainRequest attaches a hostname to an application. Host is
 // validated as a DNS-compatible string in the service (we don't trust
 // validator alone — it doesn't catch trailing dots or leading hyphens).

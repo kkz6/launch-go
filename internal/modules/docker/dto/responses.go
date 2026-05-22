@@ -124,6 +124,56 @@ func ToComposeResponse(c *models.Compose, includeRaw bool) *ComposeResponse {
 	return resp
 }
 
+// DatabaseCredentials is the shape of the auto-generated DB secrets we
+// reveal to the user when they explicitly ask. Mirrored from the
+// services.Credentials struct.
+type DatabaseCredentials struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+	Database string `json:"database"`
+}
+
+// DatabaseResponse is the API representation of a managed database.
+//
+// Credentials are absent unless the caller asked to reveal them — the
+// reveal flag controls whether the password is included so we don't
+// leak it on list endpoints.
+type DatabaseResponse struct {
+	ID            string               `json:"id"`
+	TeamID        string               `json:"team_id"`
+	ServerID      string               `json:"server_id"`
+	ProjectID     string               `json:"project_id"`
+	Name          string               `json:"name"`
+	Engine        string               `json:"engine"`
+	EngineVersion string               `json:"engine_version"`
+	ImageTag      *string              `json:"image_tag,omitempty"`
+	ExternalPort  *int                 `json:"external_port,omitempty"`
+	Status        string               `json:"status"`
+	Credentials   *DatabaseCredentials `json:"credentials,omitempty"`
+	CreatedAt     *time.Time           `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time           `json:"updated_at,omitempty"`
+}
+
+// ToDatabaseResponse renders a Database model. The caller passes
+// reveal=true only on the explicit-reveal show endpoint; list +
+// default get omit the password entirely.
+func ToDatabaseResponse(d *models.Database, _ bool) *DatabaseResponse {
+	return &DatabaseResponse{
+		ID:            d.ID,
+		TeamID:        d.TeamID,
+		ServerID:      d.ServerID,
+		ProjectID:     d.ProjectID,
+		Name:          d.Name,
+		Engine:        string(d.Engine),
+		EngineVersion: d.EngineVersion,
+		ImageTag:      d.ImageTag,
+		ExternalPort:  d.ExternalPort,
+		Status:        string(d.Status),
+		CreatedAt:     d.CreatedAt,
+		UpdatedAt:     d.UpdatedAt,
+	}
+}
+
 // DomainResponse is the API representation of an application domain.
 type DomainResponse struct {
 	ID            string     `json:"id"`
