@@ -32,6 +32,30 @@ type DeployConfig struct {
 	DockerfilePath string
 	// Dockerfile source (raw paste).
 	DockerfileContents string
+
+	// EnvVars passed to `docker run -e KEY=VALUE`. Order is preserved so
+	// the rendered script is deterministic — useful for diffs in tests.
+	EnvVars []EnvVar
+	// Volumes attached to the container.
+	Volumes []Volume
+}
+
+// EnvVar is one key/value pair for the container's environment.
+// Mirrors the persisted ApplicationEnvVar but stays in the tasks
+// package as plain data so the renderer doesn't import models.
+type EnvVar struct {
+	Key   string
+	Value string
+}
+
+// Volume is one mount for the container. Type discriminates how the
+// `-v` flag is rendered: named volumes use the volume name, bind
+// mounts use the host path.
+type Volume struct {
+	Name      string
+	MountPath string
+	Type      string // "named" | "bind"
+	HostPath  string // bind only; ignored for named
 }
 
 // DeployApplication returns a taskrunner.Task that deploys (or
@@ -106,7 +130,32 @@ CONTAINER_ID=$(docker run -d \
   --name "${CONTAINER_NAME}" \
   --restart=unless-stopped \
   --network launch-network \
-  "${DOCKER_IMAGE}")
+`)
+
+	// Env vars rendered as `-e KEY=VALUE` per line. Values are
+	// single-quote-escaped so passwords with shell metacharacters don't
+	// turn into command injection.
+	for _, ev := range cfg.EnvVars {
+		fmt.Fprintf(&b, "  -e %s \\\n", shellEscapeArg(ev.Key+"="+ev.Value))
+	}
+
+	// Volumes: named → `-v <name>:<mount>`, bind → `-v <host>:<mount>`.
+	// We assume docker create-on-demand for named volumes is fine; if
+	// users want a pre-created volume with specific opts they can run
+	// `docker volume create` first and reference it by name here.
+	for _, v := range cfg.Volumes {
+		switch v.Type {
+		case "bind":
+			if v.HostPath == "" {
+				continue
+			}
+			fmt.Fprintf(&b, "  -v %s:%s \\\n", shellEscapeArg(v.HostPath), shellEscapeArg(v.MountPath))
+		default: // "named"
+			fmt.Fprintf(&b, "  -v %s:%s \\\n", shellEscapeArg(v.Name), shellEscapeArg(v.MountPath))
+		}
+	}
+
+	b.WriteString(`  "${DOCKER_IMAGE}")
 echo "::LAUNCH::container_id::${CONTAINER_ID}"
 echo "::LAUNCH::image_ref::${DOCKER_IMAGE}"
 

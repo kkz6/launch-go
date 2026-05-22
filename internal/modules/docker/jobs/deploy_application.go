@@ -99,6 +99,37 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	// resolveAuthenticatedCloneURL.
 	cfg.GitRepo = j.Deps.resolveAuthenticatedCloneURL(ctx, map[string]any(j.app.SourceConfig), cfg.GitRepo)
 
+	// Hydrate env vars + volumes from their child tables. Best-effort:
+	// transient read errors are logged but don't block the deploy — a
+	// fresh app with no env vars deploys cleanly with an empty list.
+	if envVars, err := j.Deps.Repos.EnvVar().ListForApplication(ctx, j.app.ID); err == nil {
+		cfg.EnvVars = make([]tasks.EnvVar, 0, len(envVars))
+		for _, e := range envVars {
+			cfg.EnvVars = append(cfg.EnvVars, tasks.EnvVar{Key: e.Key, Value: e.Value})
+		}
+	} else {
+		j.Deps.Logger.Warn().Err(err).Str("application_id", j.app.ID).
+			Msg("failed to load env vars; deploying without them")
+	}
+	if vols, err := j.Deps.Repos.Volume().ListForApplication(ctx, j.app.ID); err == nil {
+		cfg.Volumes = make([]tasks.Volume, 0, len(vols))
+		for _, v := range vols {
+			hp := ""
+			if v.HostPath != nil {
+				hp = *v.HostPath
+			}
+			cfg.Volumes = append(cfg.Volumes, tasks.Volume{
+				Name:      v.Name,
+				MountPath: v.MountPath,
+				Type:      v.Type,
+				HostPath:  hp,
+			})
+		}
+	} else {
+		j.Deps.Logger.Warn().Err(err).Str("application_id", j.app.ID).
+			Msg("failed to load volumes; deploying without them")
+	}
+
 	task := tasks.DeployApplication(cfg)
 	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
 
