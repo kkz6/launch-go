@@ -108,16 +108,39 @@ func shellEscapeArg(s string) string {
 	return string(out)
 }
 
-// DatabaseLifecycleScript renders a stop / start / restart / remove
-// script for a managed database. The action is the bash subcommand
-// after the container name — kept narrow so we only accept known
-// commands and don't allow arbitrary docker subcommand injection.
+// DatabaseLifecycleScript renders a script for a managed database
+// container action. Supported actions:
+//
+//   - start | stop | restart  →  docker <action> <container>
+//   - rm                       →  docker stop (best-effort) + docker rm
+//   - update-restart:<policy>  →  docker update --restart=<policy>
+//
+// Everything else returns an error script that exits non-zero, so a
+// caller bug surfaces as a failed task rather than executing an
+// attacker-shaped docker subcommand.
 func DatabaseLifecycleScript(containerName, action string) string {
+	if strings.HasPrefix(action, "update-restart:") {
+		policy := action[len("update-restart:"):]
+		switch policy {
+		case "no", "on-failure", "always", "unless-stopped":
+		default:
+			return fmt.Sprintf(`#!/usr/bin/env bash
+set -euo pipefail
+echo "unsupported restart policy: %s" >&2
+exit 1
+`, policy)
+		}
+		return fmt.Sprintf(`#!/usr/bin/env bash
+set -euo pipefail
+CONTAINER_NAME=%q
+docker update --restart=%s "${CONTAINER_NAME}"
+echo "::LAUNCH::db_lifecycle::update-restart"
+`, containerName, shellEscapeArg(policy))
+	}
 	if action != "start" && action != "stop" && action != "restart" && action != "rm" {
 		// Defensive — the caller is supposed to validate, but never
 		// generate a script with an unknown command.
-		return fmt.Sprintf(
-			`#!/usr/bin/env bash
+		return fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
 echo "unknown lifecycle action: %s" >&2
 exit 1

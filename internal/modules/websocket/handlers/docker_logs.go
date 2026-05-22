@@ -30,18 +30,30 @@ func NewDockerLogsHandler(base Base) *DockerLogsHandler {
 	return &DockerLogsHandler{Base: base.WithComponent("docker_logs")}
 }
 
-// Handler returns a Fiber WebSocket handler. URL parameters:
+// Handler returns a Fiber WebSocket handler. URL parameters (mutually
+// exclusive — exactly one of the *id query params must be present):
 //
-//	applicationId   required — the docker application to stream from.
+//	applicationId   stream from the application's container.
+//	databaseId      stream from the managed-database container.
+//	composeId       stream from every service in the compose stack
+//	                (docker compose logs -f --project-name <name>).
 //	tail            optional, default 200 — number of historical lines
 //	                to backfill before live tailing starts.
 func (h *DockerLogsHandler) Handler() fiber.Handler {
 	return websocket.New(func(c *websocket.Conn) {
-		applicationID := c.Query("applicationId")
+		appID := c.Query("applicationId")
+		dbID := c.Query("databaseId")
+		composeID := c.Query("composeId")
 		tail := parseTail(c.Query("tail", "200"))
 
-		if applicationID == "" {
-			h.SendError(c, "Missing applicationId parameter")
+		set := 0
+		for _, v := range []string{appID, dbID, composeID} {
+			if v != "" {
+				set++
+			}
+		}
+		if set != 1 {
+			h.SendError(c, "Pass exactly one of applicationId / databaseId / composeId")
 			c.Close()
 			return
 		}
@@ -54,50 +66,169 @@ func (h *DockerLogsHandler) Handler() fiber.Handler {
 			return
 		}
 
-		// Resolve the application within the caller's team. Scoping by
-		// team_id here is what prevents a token holder from streaming
-		// another team's container logs by guessing IDs.
-		var app dockermodels.Application
-		if err := h.DB.Where("id = ? AND team_id = ?", applicationID, claims.TeamID).First(&app).Error; err != nil {
-			h.LogError(err, "Application not found", "application_id", applicationID)
-			h.SendError(c, "Application not found")
-			c.Close()
-			return
+		switch {
+		case appID != "":
+			h.streamForApplication(c, claims.TeamID, appID, tail)
+		case dbID != "":
+			h.streamForDatabase(c, claims.TeamID, dbID, tail)
+		case composeID != "":
+			h.streamForCompose(c, claims.TeamID, composeID, tail)
 		}
-		if app.ContainerID == nil || *app.ContainerID == "" {
-			// No container_id yet means the app hasn't deployed
-			// successfully. Tell the user instead of trying to docker-
-			// logs an empty string (which docker would treat as "all").
-			_ = SendEvent(c, "no_container", map[string]any{
-				"message": "This application has not been deployed yet.",
-			})
-			c.Close()
-			return
-		}
-
-		var server serverModels.Server
-		if err := h.DB.Where("id = ? AND team_id = ?", app.ServerID, claims.TeamID).First(&server).Error; err != nil {
-			h.LogError(err, "Server not found", "server_id", app.ServerID)
-			h.SendError(c, "Server not found")
-			c.Close()
-			return
-		}
-
-		h.LogInfo("Docker logs stream requested",
-			"application_id", app.ID,
-			"container_id", *app.ContainerID,
-			"server_id", server.ID,
-			"tail", tail,
-		)
-
-		h.streamLogs(c, &server, *app.ContainerID, tail)
 	})
 }
 
-// streamLogs SSHs to the docker host and pipes `docker logs -f` into
-// the WebSocket. Closes cleanly when the client disconnects.
-func (h *DockerLogsHandler) streamLogs(
-	c *websocket.Conn, server *serverModels.Server, containerID string, tail int,
+// streamForApplication tails a single docker container belonging to a
+// docker application. Same flow as before — kept as a separate method
+// now that the dispatcher handles three sources.
+func (h *DockerLogsHandler) streamForApplication(
+	c *websocket.Conn, teamID, applicationID string, tail int,
+) {
+	var app dockermodels.Application
+	if err := h.DB.Where("id = ? AND team_id = ?", applicationID, teamID).First(&app).Error; err != nil {
+		h.LogError(err, "Application not found", "application_id", applicationID)
+		h.SendError(c, "Application not found")
+		c.Close()
+		return
+	}
+	if app.ContainerID == nil || *app.ContainerID == "" {
+		// No container_id yet means the app hasn't deployed
+		// successfully. Tell the user instead of trying to docker-logs
+		// an empty string (which docker would treat as "all").
+		_ = SendEvent(c, "no_container", map[string]any{
+			"message": "This application has not been deployed yet.",
+		})
+		c.Close()
+		return
+	}
+
+	server, err := h.findServer(app.ServerID, teamID)
+	if err != nil {
+		h.SendError(c, "Server not found")
+		c.Close()
+		return
+	}
+
+	h.LogInfo("Docker logs stream requested (application)",
+		"application_id", app.ID,
+		"container_id", *app.ContainerID,
+		"server_id", server.ID,
+		"tail", tail,
+	)
+
+	cmd := fmt.Sprintf(
+		`docker logs --follow --tail %d --timestamps %s 2>&1`,
+		tail, shellQuote(*app.ContainerID),
+	)
+	h.streamCommand(c, server, cmd, *app.ContainerID)
+}
+
+// streamForDatabase tails a managed-database container's logs. The
+// database row carries container_id the same way an application does,
+// so the SSH-side command is identical to the application path.
+func (h *DockerLogsHandler) streamForDatabase(
+	c *websocket.Conn, teamID, databaseID string, tail int,
+) {
+	var db dockermodels.Database
+	if err := h.DB.Where("id = ? AND team_id = ?", databaseID, teamID).First(&db).Error; err != nil {
+		h.LogError(err, "Database not found", "database_id", databaseID)
+		h.SendError(c, "Database not found")
+		c.Close()
+		return
+	}
+	// The database row doesn't yet store its container_id directly —
+	// it's derivable from project+name via DatabaseContainerName. We
+	// need the project to compose the name, so look it up first.
+	var project dockermodels.Project
+	if err := h.DB.Where("id = ? AND team_id = ?", db.ProjectID, teamID).First(&project).Error; err != nil {
+		h.LogError(err, "Project not found", "project_id", db.ProjectID)
+		h.SendError(c, "Project not found")
+		c.Close()
+		return
+	}
+
+	server, err := h.findServer(db.ServerID, teamID)
+	if err != nil {
+		h.SendError(c, "Server not found")
+		c.Close()
+		return
+	}
+
+	containerName := databaseContainerName(project.Name, db.Name)
+	h.LogInfo("Docker logs stream requested (database)",
+		"database_id", db.ID,
+		"container_name", containerName,
+		"server_id", server.ID,
+		"tail", tail,
+	)
+
+	cmd := fmt.Sprintf(
+		`docker logs --follow --tail %d --timestamps %s 2>&1`,
+		tail, shellQuote(containerName),
+	)
+	h.streamCommand(c, server, cmd, containerName)
+}
+
+// streamForCompose tails every service in the compose stack via
+// `docker compose logs --follow`. Each line is already prefixed with
+// the service name by docker compose, so the user can tell which
+// container emitted what.
+func (h *DockerLogsHandler) streamForCompose(
+	c *websocket.Conn, teamID, composeID string, tail int,
+) {
+	var stack dockermodels.Compose
+	if err := h.DB.Where("id = ? AND team_id = ?", composeID, teamID).First(&stack).Error; err != nil {
+		h.LogError(err, "Compose stack not found", "compose_id", composeID)
+		h.SendError(c, "Compose stack not found")
+		c.Close()
+		return
+	}
+	var project dockermodels.Project
+	if err := h.DB.Where("id = ? AND team_id = ?", stack.ProjectID, teamID).First(&project).Error; err != nil {
+		h.SendError(c, "Project not found")
+		c.Close()
+		return
+	}
+
+	server, err := h.findServer(stack.ServerID, teamID)
+	if err != nil {
+		h.SendError(c, "Server not found")
+		c.Close()
+		return
+	}
+
+	projectName := composeProjectName(project.Name, stack.Name)
+	h.LogInfo("Docker logs stream requested (compose)",
+		"compose_id", stack.ID,
+		"compose_project", projectName,
+		"server_id", server.ID,
+		"tail", tail,
+	)
+
+	cmd := fmt.Sprintf(
+		`docker compose --project-name %s logs --follow --tail %d --timestamps 2>&1`,
+		shellQuote(projectName), tail,
+	)
+	h.streamCommand(c, server, cmd, projectName)
+}
+
+// findServer is a tiny DB lookup helper used by every streamForX.
+func (h *DockerLogsHandler) findServer(serverID, teamID string) (*serverModels.Server, error) {
+	var s serverModels.Server
+	if err := h.DB.Where("id = ? AND team_id = ?", serverID, teamID).First(&s).Error; err != nil {
+		h.LogError(err, "Server not found", "server_id", serverID)
+		return nil, err
+	}
+	return &s, nil
+}
+
+// streamCommand SSHs to the docker host and pipes the given command's
+// stdout into the WebSocket. Closes cleanly when the client disconnects.
+//
+// The `subject` parameter is purely for logging context — typically a
+// container name or compose project name. It doesn't affect the SSH
+// command itself.
+func (h *DockerLogsHandler) streamCommand(
+	c *websocket.Conn, server *serverModels.Server, command, subject string,
 ) {
 	sshConfig := server.ConnectionAsRoot()
 	if sshConfig.Host == "" {
@@ -140,14 +271,10 @@ func (h *DockerLogsHandler) streamLogs(
 	}
 	defer session.Close()
 
-	// `docker logs -f --tail <n>` writes both stdout AND stderr from the
-	// container to the SSH session's stdout (docker collapses them by
-	// default unless you call --details). We pull both pipes to be safe
-	// for older docker versions that route stderr separately.
-	command := fmt.Sprintf(
-		`docker logs --follow --tail %d --timestamps %s 2>&1`,
-		tail, shellQuote(containerID),
-	)
+	// `command` is the already-rendered shell command — `docker logs -f`
+	// for application/database streams, `docker compose logs -f` for
+	// compose. We pull both stdout and stderr to be safe for older
+	// docker versions that route stderr separately.
 	stdout, err := session.StdoutPipe()
 	if err != nil {
 		h.LogError(err, "Failed to get stdout pipe")
@@ -167,7 +294,7 @@ func (h *DockerLogsHandler) streamLogs(
 		return
 	}
 
-	_ = SendEvent(c, "connected", map[string]any{"container_id": containerID})
+	_ = SendEvent(c, "connected", map[string]any{"subject": subject})
 
 	done := make(chan struct{})
 
@@ -220,7 +347,56 @@ func (h *DockerLogsHandler) streamLogs(
 	close(done)
 	_ = session.Signal(ssh.SIGTERM)
 	_ = session.Close()
-	h.LogInfo("Docker logs stream ended", "container_id", containerID)
+	h.LogInfo("Docker logs stream ended", "subject", subject)
+}
+
+// databaseContainerName mirrors tasks.DatabaseContainerName. Duplicated
+// here intentionally — importing the docker tasks package from the
+// websocket handler would invert the dependency direction (the docker
+// module already imports websocket types via the broadcast hub).
+// Slugify behaviour matches tasks.SlugFromName: lowercase a-z0-9 plus
+// dashes, anything else collapses to a single dash.
+func databaseContainerName(projectName, dbName string) string {
+	return fmt.Sprintf("launch-db-%s-%s", slugifyForContainer(projectName), slugifyForContainer(dbName))
+}
+
+// composeProjectName mirrors tasks.SlugFromName-based naming so it
+// matches what jobs.DeployComposeJob actually used at `docker compose
+// --project-name`.
+func composeProjectName(projectName, composeName string) string {
+	return fmt.Sprintf("%s-%s", slugifyForContainer(projectName), slugifyForContainer(composeName))
+}
+
+// slugifyForContainer keeps this handler self-contained. Mirror of
+// tasks.SlugFromName — see the docker tasks package for the canonical
+// implementation + tests.
+func slugifyForContainer(name string) string {
+	out := []byte{}
+	prevDash := false
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		switch {
+		case c >= 'A' && c <= 'Z':
+			out = append(out, c+32)
+			prevDash = false
+		case (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9'):
+			out = append(out, c)
+			prevDash = false
+		default:
+			if !prevDash && len(out) > 0 {
+				out = append(out, '-')
+				prevDash = true
+			}
+		}
+	}
+	// Trim trailing dashes.
+	for len(out) > 0 && out[len(out)-1] == '-' {
+		out = out[:len(out)-1]
+	}
+	if len(out) == 0 {
+		return "app"
+	}
+	return string(out)
 }
 
 // parseTail clamps the tail value to a sane range. A user-provided

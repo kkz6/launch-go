@@ -646,6 +646,34 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Lifecycle action queued", out)
 	})
 
+	// Database advanced settings (currently restart policy only —
+	// other knobs require a recreate flow that lands later).
+	databases.Patch("/:id/advanced", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		body := struct {
+			RestartPolicy string `json:"restart_policy" validate:"required,oneof=no on-failure always unless-stopped"`
+		}{}
+		if err := c.BodyParser(&body); err != nil {
+			return fiberutil.BadRequest("Invalid request body")
+		}
+		out, err := databaseSvc.UpdateDatabaseAdvanced(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			body.RestartPolicy,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Database advanced settings updated", out)
+	})
+
 	// Database backup routes. /backup is singleton (one config per
 	// database); /backup/runs is the history list; /backup/run is the
 	// "run now" entrypoint; /backup/restore replays a past run.
