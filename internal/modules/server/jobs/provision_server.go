@@ -12,6 +12,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 const TypeProvisionServer = "server:provision"
@@ -63,27 +64,52 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 	agentURL := generateAgentPulseURL(j.server.ID)
 
 	serverDefaults := config.ServerDefaults()
-	provisionConfig := tasks.ProvisionFreshServerConfig{
-		ServerID:         j.server.ID,
-		TeamID:           j.server.TeamID,
-		ServerName:       j.server.Name,
-		MemoryInMB:       getMemoryInMB(j.server),
-		PublicIPv4:       getPublicIP(j.server),
-		Provider:         string(j.server.Provider),
-		PublicKey:        j.server.PublicKey.String(),
-		Username:         j.server.GetUsername(),
-		Password:         j.server.Password.String(),
-		WorkingDirectory: getWorkingDir(j.server),
-		SSHKeys:          sshKeyContents,
-		SSHPort:          j.server.GetSSHPort(),
-		SoftwareStack:    getSoftwareStack(j.server),
-		DatabasePassword: j.server.DatabasePassword.String(),
-		DatabaseName:     serverDefaults.DatabaseName,
-		AgentConfigPath:  "/etc/launch-agent/launch-agent.yaml",
-		AgentURL:         agentURL,
-	}
 
-	task := tasks.ProvisionFreshServer(provisionConfig)
+	// Branch on server type — docker servers run the docker provisioning task,
+	// everything else uses the existing fresh-server (PHP-stack) task.
+	var task taskrunner.Task
+	if j.server.Type != nil && *j.server.Type == string(types.ServerTypeDocker) {
+		dockerConfig := tasks.ProvisionDockerServerConfig{
+			ServerID:         j.server.ID,
+			TeamID:           j.server.TeamID,
+			ServerName:       j.server.Name,
+			MemoryInMB:       getMemoryInMB(j.server),
+			PublicIPv4:       getPublicIP(j.server),
+			Provider:         string(j.server.Provider),
+			PublicKey:        j.server.PublicKey.String(),
+			Username:         j.server.GetUsername(),
+			Password:         j.server.Password.String(),
+			WorkingDirectory: getWorkingDir(j.server),
+			SSHKeys:          sshKeyContents,
+			SSHPort:          j.server.GetSSHPort(),
+			NetworkName:      tasks.DockerNetworkName,
+			RootDir:          tasks.DockerRootDir,
+			TraefikVersion:   tasks.TraefikVersion,
+			TraefikService:   tasks.TraefikServiceName,
+		}
+		task = tasks.ProvisionDockerServer(dockerConfig)
+	} else {
+		provisionConfig := tasks.ProvisionFreshServerConfig{
+			ServerID:         j.server.ID,
+			TeamID:           j.server.TeamID,
+			ServerName:       j.server.Name,
+			MemoryInMB:       getMemoryInMB(j.server),
+			PublicIPv4:       getPublicIP(j.server),
+			Provider:         string(j.server.Provider),
+			PublicKey:        j.server.PublicKey.String(),
+			Username:         j.server.GetUsername(),
+			Password:         j.server.Password.String(),
+			WorkingDirectory: getWorkingDir(j.server),
+			SSHKeys:          sshKeyContents,
+			SSHPort:          j.server.GetSSHPort(),
+			SoftwareStack:    getSoftwareStack(j.server),
+			DatabasePassword: j.server.DatabasePassword.String(),
+			DatabaseName:     serverDefaults.DatabaseName,
+			AgentConfigPath:  "/etc/launch-agent/launch-agent.yaml",
+			AgentURL:         agentURL,
+		}
+		task = tasks.ProvisionFreshServer(provisionConfig)
+	}
 
 	// Create marker handler for real-time progress updates
 	markerHandler := tasks.NewProvisionMarkerHandler(tasks.ProvisionMarkerHandlerConfig{

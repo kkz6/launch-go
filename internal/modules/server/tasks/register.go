@@ -9,4 +9,7 @@ import (
 func RegisterTaskCallbacks() {
 	// Register provision fresh server callback
 	taskrunner.RegisterCallbackState[provisionCallbackData](ProvisionFreshServerTaskType)
+
+	// Register provision docker server callback
+	taskrunner.RegisterCallbackState[provisionDockerCallbackData](ProvisionDockerServerTaskType)
 }

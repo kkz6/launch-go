@@ -476,6 +476,8 @@ func (s *Service) createServicesForServer(ctx context.Context, server *models.Se
 		return s.createDatabaseServerServices(ctx, server, req)
 	case types.ServerTypeLoadBalancer:
 		return s.createLoadBalancerServerServices(ctx, server, req)
+	case types.ServerTypeDocker:
+		return s.createDockerServerServices(ctx, server, req)
 	default:
 		// Default to PHP server type
 		return s.createPhpServerServices(ctx, server, req)
@@ -569,6 +571,26 @@ func (s *Service) createDatabaseServerServices(ctx context.Context, server *mode
 	}
 
 	// Add Launch Agent if install_agent is not explicitly false
+	if req.InstallAgent == nil || *req.InstallAgent {
+		if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent, false); err != nil {
+			return fmt.Errorf("failed to create Launch Agent service: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// createDockerServerServices creates services for a Docker server type.
+// Records Docker + Traefik as installed services so the UI surfaces them
+// under Services. They are marked Running by the ProvisionDockerServer callback.
+func (s *Service) createDockerServerServices(ctx context.Context, server *models.Server, req *dto.CreateServerRequest) error {
+	if err := s.createService(ctx, server.ID, types.SoftwareDocker, true); err != nil {
+		return fmt.Errorf("failed to create Docker service: %w", err)
+	}
+	if err := s.createService(ctx, server.ID, types.SoftwareTraefik, true); err != nil {
+		return fmt.Errorf("failed to create Traefik service: %w", err)
+	}
+
 	if req.InstallAgent == nil || *req.InstallAgent {
 		if err := s.createService(ctx, server.ID, types.SoftwareLaunchAgent, false); err != nil {
 			return fmt.Errorf("failed to create Launch Agent service: %w", err)
