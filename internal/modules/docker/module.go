@@ -47,12 +47,21 @@ func (m *Module) Repos() *repositories.Registry { return m.repos }
 
 // newProjectService builds the project service once per request boot.
 func (m *Module) newProjectService() *services.ProjectService {
+	return services.NewProjectService(m.serviceDeps())
+}
+
+// newApplicationService builds the application service.
+func (m *Module) newApplicationService() *services.ApplicationService {
+	return services.NewApplicationService(m.serviceDeps())
+}
+
+func (m *Module) serviceDeps() *services.ServiceDeps {
 	deps := m.Deps()
-	return services.NewProjectService(&services.ServiceDeps{
+	return &services.ServiceDeps{
 		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
 			Dependencies: deps.ServiceDeps(),
 			Repos:        m.repos,
 		},
 		ServerRepos: m.serverRepos,
-	})
+	}
 }
