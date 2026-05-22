@@ -11,9 +11,7 @@ func TestForFreshServer_Order(t *testing.T) {
 	require := []ProvisionStep{
 		ProvisionStepConfigureSwap,
 		ProvisionStepConfigureFirewall,
-		ProvisionStepAptUpdateUpgrade,
 		ProvisionStepInstallEssentialPackages,
-		ProvisionStepSetupUnattendedUpgrades,
 		ProvisionStepSetupRoot,
 		ProvisionStepSSHSecurity,
 		ProvisionStepSetupDefaultUser,
@@ -24,14 +22,12 @@ func TestForFreshServer_Order(t *testing.T) {
 func TestForDockerServer_Order(t *testing.T) {
 	steps := ForDockerServer()
 
-	// Must contain all 8 base hardening steps in the same order as ForFreshServer,
+	// Must contain all 6 base hardening steps in the same order as ForFreshServer,
 	// then the 5 docker-specific steps appended.
 	expected := []ProvisionStep{
 		ProvisionStepConfigureSwap,
 		ProvisionStepConfigureFirewall,
-		ProvisionStepAptUpdateUpgrade,
 		ProvisionStepInstallEssentialPackages,
-		ProvisionStepSetupUnattendedUpgrades,
 		ProvisionStepSetupRoot,
 		ProvisionStepSSHSecurity,
 		ProvisionStepSetupDefaultUser,
@@ -42,8 +38,24 @@ func TestForDockerServer_Order(t *testing.T) {
 		ProvisionStepInstallTraefik,
 	}
 	assert.Equal(t, expected, steps, "docker stack must run base hardening then docker-specific steps")
-	assert.Len(t, steps, 13)
+	assert.Len(t, steps, 11)
 }
+
+// TestForFreshServer_OmitsRemovedSteps pins which historical steps must
+// not come back. Re-adding requires reconsidering the speed/UX tradeoff
+// that drove their removal.
+func TestForFreshServer_OmitsRemovedSteps(t *testing.T) {
+	removed := []string{"apt_update_upgrade", "setup_unattended_upgrades"}
+	for _, list := range [][]ProvisionStep{ForFreshServer(), ForDockerServer()} {
+		for _, step := range list {
+			for _, r := range removed {
+				assert.NotEqual(t, r, string(step),
+					"%s was deliberately removed from provisioning", r)
+			}
+		}
+	}
+}
+
 
 func TestForDockerServer_BaseStepsMatchFreshServer(t *testing.T) {
 	fresh := ForFreshServer()

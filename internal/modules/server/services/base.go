@@ -2,6 +2,7 @@ package services
 
 import (
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
+	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/service"
@@ -22,24 +23,27 @@ var (
 // Embedding service.Dependencies provides common dependencies.
 type ServiceDeps struct {
 	service.Dependencies
-	Repos contracts.RepositoryRegistry
+	Repos           contracts.RepositoryRegistry
+	ProviderFactory *providers.Factory
 }
 
 // Service provides business logic for server operations
 type Service struct {
 	service.Base
 	activity.ActivityMixin
-	repos      contracts.RepositoryRegistry
-	dispatcher *taskrunner.Dispatcher
+	repos           contracts.RepositoryRegistry
+	dispatcher      *taskrunner.Dispatcher
+	providerFactory *providers.Factory
 }
 
 // NewService creates a new Service instance from ServiceDeps
 func NewService(deps ServiceDeps) *Service {
 	return &Service{
-		Base:          service.NewBaseFromDeps(deps.Dependencies),
-		ActivityMixin: activity.NewActivityMixin(deps.DB, "server"),
-		repos:         deps.Repos,
-		dispatcher:    deps.Dispatcher,
+		Base:            service.NewBaseFromDeps(deps.Dependencies),
+		ActivityMixin:   activity.NewActivityMixin(deps.DB, "server"),
+		repos:           deps.Repos,
+		dispatcher:      deps.Dispatcher,
+		providerFactory: deps.ProviderFactory,
 	}
 }
 

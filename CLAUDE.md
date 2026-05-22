@@ -239,21 +239,139 @@ Error responses:
 }
 ```
 
-## WebSocket Events
+## WebSocket Broadcasting — Architecture & Rules
 
-### Server Events
-- `server.status` - Server status change
-- `server.progress` - Provisioning progress
+The WebSocket layer is the single biggest source of "the UI feels broken"
+bugs. Every state change that's visible to the customer must broadcast, and
+the payload must be routable on the client. The rules below are
+non-negotiable; skipping any of them leaves the UI stuck on a stale state.
 
-### Deployment Events
-- `deployment.started` - Deployment started
-- `deployment.progress` - Step progress
-- `deployment.log` - Log output
-- `deployment.finished` - Deployment complete
-- `deployment.failed` - Deployment failed
+### Two transport paths (and why both need attention)
 
-### Site Events
-- `site.updated` - Site configuration changed
+There are two distinct code paths that put a message on a customer's
+browser. **A message that's correct on one path but broken on the other is
+the most common WS bug.**
+
+1. **API path** (`request → service → broadcast`):
+   Services use `broadcast.Mixin` (or `broadcast.ModelMixin`). The Mixin's
+   `BroadcastToTeam`/`BroadcastToServer`/etc. methods inject the routing
+   field automatically and forward to the in-process `Hub`.
+
+2. **Worker path** (`asynq job → JobDeps → RedisBroadcaster`):
+   Jobs call `j.Deps.BroadcastServerEvent(server, event, data)` (or
+   `BroadcastToTeam` directly). This goes through `RedisBroadcaster.publish`
+   which writes to Redis pub/sub. The API process's `RedisSubscriber`
+   receives the message and forwards it to the local `Hub` for fanout to
+   connected clients.
+
+   **Worker code never touches the Mixin.** This is why `RedisBroadcaster`
+   independently calls `broadcast.EnsureRoutingField` — without it, jobs
+   were silently broadcasting events with no `team_id`, the client filter
+   dropped them all, and "the WebSocket isn't working" tickets followed.
+
+### Channel naming (matches `internal/pkg/broadcast/channels.go`)
+
+| Helper | Format | Frontend listener |
+|---|---|---|
+| `broadcast.TeamChannel(teamID)` | `team.{teamID}` | `useServerEvents`, `useTeamEvents` |
+| `broadcast.ServerChannel(serverID)` | `server.{serverID}` | `useServerScopedEvents(serverId)` |
+| `broadcast.SiteChannel(siteID)` | `site.{siteID}` | `useSiteEvents` |
+| `broadcast.DeploymentChannel(deploymentID)` | `deployment.{deploymentID}` | `useDeploymentEvents` |
+| `broadcast.UserChannel(userID)` | `user.{userID}` | per-user notifications |
+
+The frontend `useChannelEvents` filters incoming events by comparing
+`eventData.{team_id|server_id|site_id|deployment_id|user_id}` against the
+subscribed channel's segment. **If the routing field isn't in the payload,
+the event is silently dropped client-side.** This is the symptom of "events
+arrive but UI doesn't update."
+
+### `EnsureRoutingField` — apply at both ends
+
+`broadcast.EnsureRoutingField(data, key, value)` is idempotent. It's safe
+to call it at both the Mixin layer AND the broadcaster layer, and you
+should — they cover non-overlapping callers:
+
+```go
+// internal/pkg/broadcast/mixin.go — for API code via the Mixin
+m.ws.BroadcastToTeam(teamID, event, ensureRoutingField(data, "team_id", teamID))
+
+// internal/pkg/websocket/redis_broadcaster.go — for worker code that
+// bypasses Mixin
+r.publish(channel, event, broadcast.EnsureRoutingField(data, "team_id", teamID))
+
+// internal/pkg/websocket/hub.go — for direct Hub callers (rare)
+h.Broadcast(channel, event, broadcast.EnsureRoutingField(data, "team_id", teamID))
+```
+
+If you add a new `BroadcastTo<Scope>` method, it MUST call
+`EnsureRoutingField` in **all three** layers (Mixin, RedisBroadcaster, Hub),
+otherwise the worker path silently drops the routing field.
+
+### Lifecycle broadcast contract
+
+Every operation that mutates state visible to the customer must broadcast
+at the start, on progress, and on terminal outcome (success **and**
+failure). The classic bug: handler returns 200, status changes in DB,
+worker job runs for 30s, then fails — and the customer never sees anything
+move because no broadcast fired on the entry transition or the failure.
+
+For each mutation, ask:
+- **Did I broadcast the "we started" state?** (e.g. `server.deleting` via
+  `server.updated` with new status). Without this, the UI looks frozen for
+  the duration of the upstream API call.
+- **Does every terminal path broadcast?** Success path AND `job.Failed()`
+  AND timeout path AND cancel path. If only the happy path broadcasts, the
+  UI gets stuck on the "in progress" state when anything goes wrong. See
+  `DeleteServerJob.Failed` for the pattern: broadcast a `*_failed` event
+  carrying enough context for the UI to render an error state.
+- **Is the routing field on the payload?** `team_id` for team-channel
+  broadcasts, `server_id` for server-channel broadcasts, etc. The
+  `EnsureRoutingField` helpers in Mixin/RedisBroadcaster make this
+  automatic — but if you bypass them (manual `r.client.Publish`), you must
+  add the field yourself.
+
+### Subscribing on the frontend
+
+To subscribe to a new event, add the event name to the appropriate list in
+`launch-nuxt/composables/useChannelEvents.ts`. Subscribing to an event that
+the backend never broadcasts is harmless; broadcasting an event that
+nothing subscribes to silently disappears. Both halves must be wired.
+
+When debugging "the UI doesn't update":
+
+1. **Network tab → WS frames**: confirm the event arrives at the browser.
+   If not, the broadcast or Redis pub/sub is the problem.
+2. **Inspect the frame payload**: confirm `team_id` / `server_id` / etc.
+   matches the subscribed channel. If missing, the routing-field injection
+   was skipped on the broadcaster side.
+3. **Confirm the event name is in `useChannelEvents.ts`**. New events need
+   to be added to the explicit allow-list.
+
+### Known event names
+
+These are the events callers may broadcast today. Treat the list as
+authoritative — adding a new event means adding it here AND to
+`useChannelEvents.ts`.
+
+**Server lifecycle (team channel):**
+- `server.created`, `server.updated`, `server.deleted`,
+  `server.deletion_failed`, `server.unarchived`
+- Create flow: `server.created_on_provider`, `server.create_failed`,
+  `server.waiting_for_connection`, `server.connected`,
+  `server.connection_failed`
+- Provisioning: `server.provisioning`, `server.provisioned`,
+  `server.provision_progress`, `server.provision_step`,
+  `server.provision_status`, `server.provision_error`,
+  `server.provision_failed`, `server.provision_timeout`,
+  `server.software_installed`
+- Cleanup: `server.provisioning_cleanup_complete`, `server.cleanup_failed`
+
+**Deployment events (deployment channel):**
+- `deployment.started`, `deployment.progress`, `deployment.log`,
+  `deployment.finished`, `deployment.failed`
+
+**Site events (site channel):**
+- `site.updated`
 
 ## Task Enums Reference
 

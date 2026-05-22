@@ -54,17 +54,25 @@ func (m *Mixin) Broadcast(channel, event string, data any) {
 
 // BroadcastToTeam sends an event to the team channel (team.{teamID}).
 // This is a no-op if the broadcaster is nil.
+//
+// The frontend's `useChannelEvents` composable filters incoming events by
+// comparing `eventData.team_id` against the subscribed channel — so we
+// inject `team_id` here unless the caller already set it. Without this,
+// every team-scoped event was silently filtered out client-side, which
+// is what caused "the WebSocket isn't updating" symptoms after server
+// provisioning failed.
 func (m *Mixin) BroadcastToTeam(teamID, event string, data any) {
 	if m.ws != nil {
-		m.ws.BroadcastToTeam(teamID, event, data)
+		m.ws.BroadcastToTeam(teamID, event, ensureRoutingField(data, "team_id", teamID))
 	}
 }
 
 // BroadcastToServer sends an event to the server channel (server.{serverID}).
-// This is a no-op if the broadcaster is nil.
+// This is a no-op if the broadcaster is nil. Like BroadcastToTeam, this
+// injects `server_id` into the payload so client-side filters work.
 func (m *Mixin) BroadcastToServer(serverID, event string, data any) {
 	if m.ws != nil {
-		m.ws.BroadcastToServer(serverID, event, data)
+		m.ws.BroadcastToServer(serverID, event, ensureRoutingField(data, "server_id", serverID))
 	}
 }
 
@@ -72,7 +80,7 @@ func (m *Mixin) BroadcastToServer(serverID, event string, data any) {
 // This is a no-op if the broadcaster is nil.
 func (m *Mixin) BroadcastToSite(siteID, event string, data any) {
 	if m.ws != nil {
-		m.ws.BroadcastToSite(siteID, event, data)
+		m.ws.BroadcastToSite(siteID, event, ensureRoutingField(data, "site_id", siteID))
 	}
 }
 
@@ -80,7 +88,7 @@ func (m *Mixin) BroadcastToSite(siteID, event string, data any) {
 // This is a no-op if the broadcaster is nil.
 func (m *Mixin) BroadcastToDeployment(deploymentID, event string, data any) {
 	if m.ws != nil {
-		m.ws.BroadcastToDeployment(deploymentID, event, data)
+		m.ws.BroadcastToDeployment(deploymentID, event, ensureRoutingField(data, "deployment_id", deploymentID))
 	}
 }
 
@@ -88,8 +96,42 @@ func (m *Mixin) BroadcastToDeployment(deploymentID, event string, data any) {
 // This is a no-op if the broadcaster is nil.
 func (m *Mixin) BroadcastToUser(userID, event string, data any) {
 	if m.ws != nil {
-		m.ws.BroadcastToUser(userID, event, data)
+		m.ws.BroadcastToUser(userID, event, ensureRoutingField(data, "user_id", userID))
 	}
+}
+
+// EnsureRoutingField guarantees the routing field (e.g. team_id, server_id)
+// is present on the broadcast payload. Existing values are preserved so
+// callers that already set the field keep their data. Non-map payloads are
+// wrapped so a routing field can be attached without losing the original.
+//
+// Exported so the websocket layer can call it on the broadcaster side too —
+// the Mixin only covers callers that opt in to broadcast.Mixin, whereas the
+// worker's broadcast path goes RedisBroadcaster → publish directly and
+// would otherwise miss the field. Calling this at both layers is safe; it's
+// idempotent.
+func EnsureRoutingField(data any, key, value string) any {
+	if value == "" {
+		return data
+	}
+	m, ok := data.(map[string]any)
+	if !ok {
+		return map[string]any{
+			key:       value,
+			"payload": data,
+		}
+	}
+	if _, exists := m[key]; !exists {
+		m[key] = value
+	}
+	return m
+}
+
+// ensureRoutingField is the internal alias used by the Mixin. It exists so
+// existing callers in this file don't have to change; new callers (from
+// outside the package) should use the exported EnsureRoutingField.
+func ensureRoutingField(data any, key, value string) any {
+	return EnsureRoutingField(data, key, value)
 }
 
 // ModelMixin extends Mixin with model-specific broadcasting methods.

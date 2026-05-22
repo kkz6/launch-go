@@ -69,8 +69,11 @@ PASSWORD=$(mkpasswd -m sha-512 "{{ .Password }}")
 
 echo "{{ .Username }}:$PASSWORD" | sudo chpasswd
 
-# Add default Caddy page
-echo "Add default Caddy page"
+# Add default landing page. Originally for the PHP/Caddy stack to serve
+# from /home/{user}/default, but the file is harmless on docker servers
+# where Traefik does the routing. Kept as a single shared step so we
+# only have one default-user script to maintain.
+echo "Add default landing page"
 sudo mkdir -p /home/"{{ .Username }}/default"
 sudo tee /home/"{{ .Username }}/default/index.html" > /dev/null <<EOF
 This server is managed by <a href="{{ .AppURL }}">{{ .AppName }}</a>.

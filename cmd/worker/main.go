@@ -8,10 +8,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/config"
 	"github.com/kkz6/launch-go/internal/database"
+	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/backup"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/git"
@@ -34,6 +36,9 @@ import (
 	"github.com/kkz6/launch-go/internal/schedule"
 )
 
+// WorkerVersion is the build-stamped version string (set via -ldflags in CI).
+var WorkerVersion = "development"
+
 func main() {
 	// Register all script templates at startup
 	templates.MustRegisterAll()
@@ -49,6 +54,11 @@ func main() {
 
 	// Initialize logger
 	appLogger := logger.New(cfg.App.Environment)
+
+	// Initialize Sentry for error tracking (mirrors cmd/api). Without this the
+	// worker — where provider/SSH/task failures actually surface — wouldn't
+	// report anything to Sentry.
+	sentryEnabled := middleware.InitSentry(cfg.Sentry, cfg.App.Name, WorkerVersion, appLogger)
 
 	// Initialize encryption for encrypted fields
 	if err := database.InitEncryption(cfg.App.Key); err != nil {
@@ -98,6 +108,15 @@ func main() {
 					Str("task", task.Type()).
 					Err(err).
 					Msg("Task failed")
+				// Report task failures to Sentry with the task type as a tag so
+				// they're filterable. No-op when Sentry isn't configured.
+				if sentryEnabled {
+					sentry.WithScope(func(scope *sentry.Scope) {
+						scope.SetTag("task_type", task.Type())
+						scope.SetLevel(sentry.LevelError)
+						sentry.CaptureException(err)
+					})
+				}
 			}),
 		},
 	)
@@ -192,6 +211,11 @@ func main() {
 	kernel.Shutdown()
 	redisBroadcaster.Close()
 	queueClient.Close()
+
+	// Flush any buffered Sentry events before exiting; matches cmd/api.
+	if sentryEnabled {
+		middleware.FlushSentry(5 * time.Second)
+	}
 
 	appLogger.Info().Msg("Worker stopped")
 }

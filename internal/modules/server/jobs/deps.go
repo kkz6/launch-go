@@ -83,8 +83,19 @@ func (d *JobDeps) RunTask(server *models.Server, task pkgtaskrunner.Task) *tasks
 }
 
 // BroadcastServerEvent broadcasts an event for a server to its team channel.
+// The team_id and server_id routing fields are injected automatically by
+// the broadcast.Mixin layer, so the caller only needs to pass the
+// event-specific payload.
 func (d *JobDeps) BroadcastServerEvent(server *models.Server, event string, data any) {
-	if server != nil {
-		d.BroadcastToTeam(server.TeamID, event, data)
+	if server == nil {
+		return
 	}
+	// Inject server_id ahead of BroadcastToTeam (which only knows team_id)
+	// so frontends subscribed to a per-server channel still see the id.
+	if m, ok := data.(map[string]any); ok {
+		if _, exists := m["server_id"]; !exists {
+			m["server_id"] = server.ID
+		}
+	}
+	d.BroadcastToTeam(server.TeamID, event, data)
 }
