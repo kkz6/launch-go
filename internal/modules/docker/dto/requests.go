@@ -183,6 +183,27 @@ type DatabaseLifecycleRequest struct {
 	Action string `json:"action" validate:"required,oneof=start stop restart"`
 }
 
+// ConfigureBackupRequest enables (or updates) scheduled backups for a
+// managed database. Provider stays "s3" for now — we accept the same
+// shape for S3-compatible services (R2, B2, MinIO) via the optional
+// endpoint field.
+type ConfigureBackupRequest struct {
+	Provider     string  `json:"provider" validate:"required,oneof=s3"`
+	Endpoint     *string `json:"endpoint,omitempty" validate:"omitempty,max=255"`
+	Bucket       string  `json:"bucket" validate:"required,min=1,max=255"`
+	Region       *string `json:"region,omitempty" validate:"omitempty,max=64"`
+	PathPrefix   *string `json:"path_prefix,omitempty" validate:"omitempty,max=255"`
+	AccessKey    string  `json:"access_key" validate:"required"`
+	SecretKey    string  `json:"secret_key" validate:"required"`
+	CronSchedule *string `json:"cron_schedule,omitempty" validate:"omitempty,max=64"`
+	Enabled      bool    `json:"enabled"`
+}
+
+// RestoreBackupRequest identifies which past run to restore from.
+type RestoreBackupRequest struct {
+	RunID string `json:"run_id" validate:"required"`
+}
+
 // CreateScheduleRequest adds a cron-style task that runs a command
 // inside the application's container.
 type CreateScheduleRequest struct {

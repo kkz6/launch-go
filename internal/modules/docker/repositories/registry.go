@@ -13,6 +13,8 @@ type Registry struct {
 	envVar      *EnvVarRepository
 	volume      *VolumeRepository
 	schedule    *ScheduleRepository
+	backup      *BackupRepository
+	backupRun   *BackupRunRepository
 }
 
 // NewRegistry wires up the repositories.
@@ -27,6 +29,8 @@ func NewRegistry(db *gorm.DB) *Registry {
 		envVar:      NewEnvVarRepository(db),
 		volume:      NewVolumeRepository(db),
 		schedule:    NewScheduleRepository(db),
+		backup:      NewBackupRepository(db),
+		backupRun:   NewBackupRunRepository(db),
 	}
 }
 
@@ -56,3 +60,9 @@ func (r *Registry) Volume() *VolumeRepository { return r.volume }
 
 // Schedule returns the application schedule repository.
 func (r *Registry) Schedule() *ScheduleRepository { return r.schedule }
+
+// Backup returns the database backup-config repository.
+func (r *Registry) Backup() *BackupRepository { return r.backup }
+
+// BackupRun returns the database backup-run history repository.
+func (r *Registry) BackupRun() *BackupRunRepository { return r.backupRun }
