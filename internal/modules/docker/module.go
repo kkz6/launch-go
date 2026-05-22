@@ -65,6 +65,11 @@ func (m *Module) newApplicationService() *services.ApplicationService {
 	return services.NewApplicationService(m.serviceDeps())
 }
 
+// newComposeService builds the compose service.
+func (m *Module) newComposeService() *services.ComposeService {
+	return services.NewComposeService(m.serviceDeps())
+}
+
 // newDomainService builds the application-domain service.
 func (m *Module) newDomainService() *services.DomainService {
 	return services.NewDomainService(m.serviceDeps())

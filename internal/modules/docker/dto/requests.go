@@ -81,6 +81,46 @@ type UpdateApplicationRequest struct {
 	Name *string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
 }
 
+// CreateComposeRequest registers a docker-compose stack inside a project.
+// The compose_source_type discriminates which payload (git or raw_yaml)
+// is required — the service validates that exactly one is present.
+type CreateComposeRequest struct {
+	Name string `json:"name" validate:"required,min=1,max=255"`
+
+	// ComposeSourceType is "git" or "raw_yaml". Different from the
+	// application source type set — compose doesn't have "image" or
+	// "dockerfile" branches because the YAML defines services itself.
+	ComposeSourceType string `json:"compose_source_type" validate:"required,oneof=git raw_yaml"`
+
+	// Git is present when compose_source_type=git.
+	Git *ComposeGitInput `json:"git,omitempty" validate:"omitempty,dive"`
+
+	// RawYAML is present when compose_source_type=raw_yaml.
+	RawYAML *ComposeRawYAMLInput `json:"raw_yaml,omitempty" validate:"omitempty,dive"`
+}
+
+// ComposeGitInput clones a repository containing a docker-compose file.
+type ComposeGitInput struct {
+	Repo            string  `json:"repo" validate:"required,min=1,max=512"`
+	Branch          string  `json:"branch" validate:"required,min=1,max=255"`
+	SourceControlID *string `json:"source_control_id,omitempty"`
+	// ComposeFilePath defaults to docker-compose.yml if empty.
+	ComposeFilePath *string `json:"compose_file_path,omitempty" validate:"omitempty,max=512"`
+}
+
+// ComposeRawYAMLInput stores the docker-compose YAML inline. Capped at
+// 128 KiB — generous, but bounded so a copy-paste of a giant compose
+// file doesn't bloat the row.
+type ComposeRawYAMLInput struct {
+	Contents string `json:"contents" validate:"required,min=1,max=131072"`
+}
+
+// UpdateComposeRequest is the partial-update body. Like
+// UpdateApplicationRequest, only the name is mutable in phase 2h.
+type UpdateComposeRequest struct {
+	Name *string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
+}
+
 // CreateDomainRequest attaches a hostname to an application. Host is
 // validated as a DNS-compatible string in the service (we don't trust
 // validator alone — it doesn't catch trailing dots or leading hyphens).

@@ -81,6 +81,49 @@ type DeploymentResponse struct {
 	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
 }
 
+// ComposeResponse is the API representation of a docker compose stack.
+type ComposeResponse struct {
+	ID                string         `json:"id"`
+	TeamID            string         `json:"team_id"`
+	ServerID          string         `json:"server_id"`
+	ProjectID         string         `json:"project_id"`
+	Name              string         `json:"name"`
+	ComposeSourceType string         `json:"compose_source_type"`
+	SourceConfig      map[string]any `json:"source_config,omitempty"`
+	ComposeFilePath   *string        `json:"compose_file_path,omitempty"`
+	// RawYAML is omitted from list responses to keep them light; pulled
+	// in for single-compose Show responses where the user is editing.
+	RawYAML        *string    `json:"raw_yaml,omitempty"`
+	Status         string     `json:"status"`
+	LastDeployedAt *time.Time `json:"last_deployed_at,omitempty"`
+	CreatedAt      *time.Time `json:"created_at,omitempty"`
+	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+}
+
+// ToComposeResponse converts a Compose model to the API shape. The
+// includeRaw flag controls whether the raw YAML body (potentially KB-
+// scale) is included; list endpoints should pass false.
+func ToComposeResponse(c *models.Compose, includeRaw bool) *ComposeResponse {
+	resp := &ComposeResponse{
+		ID:                c.ID,
+		TeamID:            c.TeamID,
+		ServerID:          c.ServerID,
+		ProjectID:         c.ProjectID,
+		Name:              c.Name,
+		ComposeSourceType: c.ComposeSourceType,
+		SourceConfig:      map[string]any(c.SourceConfig),
+		ComposeFilePath:   c.ComposeFilePath,
+		Status:            string(c.Status),
+		LastDeployedAt:    c.LastDeployedAt,
+		CreatedAt:         c.CreatedAt,
+		UpdatedAt:         c.UpdatedAt,
+	}
+	if includeRaw {
+		resp.RawYAML = c.RawYAML
+	}
+	return resp
+}
+
 // DomainResponse is the API representation of an application domain.
 type DomainResponse struct {
 	ID            string     `json:"id"`
