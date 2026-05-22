@@ -96,6 +96,11 @@ func (m *Module) newHostInspectService() *services.HostInspectService {
 	return services.NewHostInspectService(m.serviceDeps())
 }
 
+// newScheduleService builds the application schedule service.
+func (m *Module) newScheduleService() *services.ScheduleService {
+	return services.NewScheduleService(m.serviceDeps())
+}
+
 func (m *Module) serviceDeps() *services.ServiceDeps {
 	deps := m.Deps()
 	return &services.ServiceDeps{

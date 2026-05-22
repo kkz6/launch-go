@@ -111,6 +111,30 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 		j.Deps.Logger.Warn().Err(err).Str("application_id", j.app.ID).
 			Msg("failed to load env vars; deploying without them")
 	}
+
+	// Advanced knobs travel through build_config; missing keys leave
+	// the corresponding cfg field at zero (the script picks its default).
+	build := map[string]any(j.app.BuildConfig)
+	if v, ok := build["cpu_limit"].(string); ok {
+		cfg.CPULimit = v
+	}
+	if v, ok := build["memory_limit"].(string); ok {
+		cfg.MemoryLimit = v
+	}
+	if v, ok := build["restart_policy"].(string); ok {
+		cfg.RestartPolicy = v
+	}
+	if v, ok := build["healthcheck_command"].(string); ok {
+		cfg.HealthcheckCommand = v
+	}
+	if v, ok := build["extra_ports"].([]any); ok {
+		for _, p := range v {
+			if s, ok := p.(string); ok {
+				cfg.ExtraPorts = append(cfg.ExtraPorts, s)
+			}
+		}
+	}
+
 	if vols, err := j.Deps.Repos.Volume().ListForApplication(ctx, j.app.ID); err == nil {
 		cfg.Volumes = make([]tasks.Volume, 0, len(vols))
 		for _, v := range vols {

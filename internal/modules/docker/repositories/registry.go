@@ -12,6 +12,7 @@ type Registry struct {
 	domain      *DomainRepository
 	envVar      *EnvVarRepository
 	volume      *VolumeRepository
+	schedule    *ScheduleRepository
 }
 
 // NewRegistry wires up the repositories.
@@ -25,6 +26,7 @@ func NewRegistry(db *gorm.DB) *Registry {
 		domain:      NewDomainRepository(db),
 		envVar:      NewEnvVarRepository(db),
 		volume:      NewVolumeRepository(db),
+		schedule:    NewScheduleRepository(db),
 	}
 }
 
@@ -51,3 +53,6 @@ func (r *Registry) EnvVar() *EnvVarRepository { return r.envVar }
 
 // Volume returns the application volume repository.
 func (r *Registry) Volume() *VolumeRepository { return r.volume }
+
+// Schedule returns the application schedule repository.
+func (r *Registry) Schedule() *ScheduleRepository { return r.schedule }

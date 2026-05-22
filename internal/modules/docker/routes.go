@@ -24,6 +24,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	envVarSvc := m.newEnvVarService()
 	volumeSvc := m.newVolumeService()
 	hostSvc := m.newHostInspectService()
+	scheduleSvc := m.newScheduleService()
 
 	auth := middleware.Append(
 		middleware.AuthenticatedChain(authMiddleware),
@@ -405,6 +406,116 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			return err
 		}
 		return fiberutil.NoContent(c)
+	})
+
+	// Schedule routes — list / create / update / delete.
+	apps.Get("/:id/schedules", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := scheduleSvc.ListSchedules(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Schedules retrieved", rows)
+	})
+	apps.Post("/:id/schedules", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateScheduleRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := scheduleSvc.CreateSchedule(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Schedule added", out)
+	})
+	apps.Patch("/:id/schedules/:scheduleId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateScheduleRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := scheduleSvc.UpdateSchedule(
+			c.Context(),
+			c.Params("scheduleId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Schedule updated", out)
+	})
+	apps.Delete("/:id/schedules/:scheduleId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := scheduleSvc.DeleteSchedule(
+			c.Context(),
+			c.Params("scheduleId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
+	})
+
+	// Advanced runtime settings — merged into build_config and applied on
+	// the next deploy.
+	apps.Patch("/:id/advanced", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateAdvancedRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := applicationSvc.UpdateAdvanced(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Advanced settings updated", out)
 	})
 
 	// Compose-stack routes mirror the application routes one level down.

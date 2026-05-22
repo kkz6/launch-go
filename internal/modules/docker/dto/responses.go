@@ -124,6 +124,31 @@ func ToComposeResponse(c *models.Compose, includeRaw bool) *ComposeResponse {
 	return resp
 }
 
+// ScheduleResponse is the API shape for an application schedule.
+type ScheduleResponse struct {
+	ID            string     `json:"id"`
+	ApplicationID string     `json:"application_id"`
+	Cron          string     `json:"cron"`
+	Command       string     `json:"command"`
+	LastRunAt     *time.Time `json:"last_run_at,omitempty"`
+	LastStatus    *string    `json:"last_status,omitempty"`
+	CreatedAt     *time.Time `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+}
+
+func ToScheduleResponse(s *models.ApplicationSchedule) *ScheduleResponse {
+	return &ScheduleResponse{
+		ID:            s.ID,
+		ApplicationID: s.ApplicationID,
+		Cron:          s.Cron,
+		Command:       s.Command,
+		LastRunAt:     s.LastRunAt,
+		LastStatus:    s.LastStatus,
+		CreatedAt:     s.CreatedAt,
+		UpdatedAt:     s.UpdatedAt,
+	}
+}
+
 // EnvVarResponse is the API shape for an application env var. Value is
 // masked when IsSecret=true unless the caller explicitly reveals it.
 type EnvVarResponse struct {
