@@ -19,6 +19,13 @@ const (
 	ProvisionStepSetupRoot                ProvisionStep = "setup_root"
 	ProvisionStepSetupUnattendedUpgrades  ProvisionStep = "setup_unattended_upgrades"
 	ProvisionStepSSHSecurity              ProvisionStep = "ssh_security"
+
+	// Docker-stack steps
+	ProvisionStepValidatePorts       ProvisionStep = "validate_ports"
+	ProvisionStepInstallDocker       ProvisionStep = "install_docker"
+	ProvisionStepSetupSwarmNetwork   ProvisionStep = "setup_swarm_network"
+	ProvisionStepSetupLaunchDirs     ProvisionStep = "setup_launch_dirs"
+	ProvisionStepInstallTraefik      ProvisionStep = "install_traefik"
 )
 
 var allProvisionSteps = []ProvisionStep{
@@ -30,6 +37,11 @@ var allProvisionSteps = []ProvisionStep{
 	ProvisionStepSetupRoot,
 	ProvisionStepSetupUnattendedUpgrades,
 	ProvisionStepSSHSecurity,
+	ProvisionStepValidatePorts,
+	ProvisionStepInstallDocker,
+	ProvisionStepSetupSwarmNetwork,
+	ProvisionStepSetupLaunchDirs,
+	ProvisionStepInstallTraefik,
 }
 
 var provisionStepLabels = map[ProvisionStep]string{
@@ -41,6 +53,11 @@ var provisionStepLabels = map[ProvisionStep]string{
 	ProvisionStepSetupRoot:                "Setup Root",
 	ProvisionStepSetupUnattendedUpgrades:  "Setup Unattended Upgrades",
 	ProvisionStepSSHSecurity:              "SSH Security",
+	ProvisionStepValidatePorts:            "Validate Ports",
+	ProvisionStepInstallDocker:            "Install Docker",
+	ProvisionStepSetupSwarmNetwork:        "Setup Docker Swarm & Network",
+	ProvisionStepSetupLaunchDirs:          "Setup Launch Directories",
+	ProvisionStepInstallTraefik:           "Install Traefik",
 }
 
 func (p ProvisionStep) String() string {
@@ -58,6 +75,11 @@ func (p ProvisionStep) TemplateName() string {
 		ProvisionStepSetupRoot:                "provision/setup_root.sh",
 		ProvisionStepSetupUnattendedUpgrades:  "provision/setup_unattended_upgrades.sh",
 		ProvisionStepSSHSecurity:              "provision/ssh_security.sh",
+		ProvisionStepValidatePorts:            "provision/validate_ports.sh",
+		ProvisionStepInstallDocker:            "provision/install_docker.sh",
+		ProvisionStepSetupSwarmNetwork:        "provision/setup_swarm_network.sh",
+		ProvisionStepSetupLaunchDirs:          "provision/setup_launch_dirs.sh",
+		ProvisionStepInstallTraefik:           "software/install_traefik.sh",
 	}
 
 	if name, ok := templateNames[p]; ok {
@@ -71,7 +93,9 @@ func (p ProvisionStep) TemplateName() string {
 func (p ProvisionStep) RequiresData() bool {
 	switch p {
 	case ProvisionStepConfigureSwap, ProvisionStepConfigureFirewall,
-		ProvisionStepSetupRoot, ProvisionStepSetupDefaultUser:
+		ProvisionStepSetupRoot, ProvisionStepSetupDefaultUser,
+		ProvisionStepInstallDocker, ProvisionStepSetupSwarmNetwork,
+		ProvisionStepSetupLaunchDirs, ProvisionStepInstallTraefik:
 		return true
 	default:
 		return false
@@ -89,6 +113,11 @@ func (p ProvisionStep) Description() string {
 		ProvisionStepSetupRoot:                "Configure the root user",
 		ProvisionStepSetupUnattendedUpgrades:  "Configure unattended upgrades to keep the server up to date automatically",
 		ProvisionStepSSHSecurity:              "Enhance SSH security by disabling password authentication and root login",
+		ProvisionStepValidatePorts:            "Verify ports 80 and 443 are available for Traefik",
+		ProvisionStepInstallDocker:            "Install Docker CE, Compose plugin, and Buildx",
+		ProvisionStepSetupSwarmNetwork:        "Initialize Docker Swarm and create the launch overlay network",
+		ProvisionStepSetupLaunchDirs:          "Create the /etc/launch directory tree for service state",
+		ProvisionStepInstallTraefik:           "Deploy Traefik as a Swarm service for reverse-proxy and ACME",
 	}
 	if desc, ok := descriptions[p]; ok {
 		return desc
@@ -117,6 +146,28 @@ func ForFreshServer() []ProvisionStep {
 		ProvisionStepSetupRoot,
 		ProvisionStepSSHSecurity,
 		ProvisionStepSetupDefaultUser,
+	}
+}
+
+// ForDockerServer returns the provision steps in order for a fresh docker server.
+// Reuses the base hardening steps (swap/firewall/apt/packages/user/ssh) then
+// installs the Docker stack (validate ports, install Docker, init Swarm + overlay
+// network, create launch directory tree, deploy Traefik).
+func ForDockerServer() []ProvisionStep {
+	return []ProvisionStep{
+		ProvisionStepConfigureSwap,
+		ProvisionStepConfigureFirewall,
+		ProvisionStepAptUpdateUpgrade,
+		ProvisionStepInstallEssentialPackages,
+		ProvisionStepSetupUnattendedUpgrades,
+		ProvisionStepSetupRoot,
+		ProvisionStepSSHSecurity,
+		ProvisionStepSetupDefaultUser,
+		ProvisionStepValidatePorts,
+		ProvisionStepInstallDocker,
+		ProvisionStepSetupSwarmNetwork,
+		ProvisionStepSetupLaunchDirs,
+		ProvisionStepInstallTraefik,
 	}
 }
 
