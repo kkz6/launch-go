@@ -59,6 +59,47 @@ type ApplicationResponse struct {
 	UpdatedAt      *time.Time             `json:"updated_at,omitempty"`
 }
 
+// DeploymentResponse is the API representation of a deploy attempt.
+//
+// Mirrors models.Deployment but skips internal fields (LogPath) we
+// haven't wired the UI for yet (slice 2d).
+type DeploymentResponse struct {
+	ID         string     `json:"id"`
+	TeamID     string     `json:"team_id"`
+	ServerID   string     `json:"server_id"`
+	TargetType string     `json:"target_type"`
+	TargetID   string     `json:"target_id"`
+	Status     string     `json:"status"`
+	CommitSHA  *string    `json:"commit_sha,omitempty"`
+	CommitMsg  *string    `json:"commit_msg,omitempty"`
+	ImageRef   *string    `json:"image_ref,omitempty"`
+	StartedAt  *time.Time `json:"started_at,omitempty"`
+	FinishedAt *time.Time `json:"finished_at,omitempty"`
+	Error      *string    `json:"error,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
+}
+
+// ToDeploymentResponse maps a Deployment model to the API response.
+func ToDeploymentResponse(d *models.Deployment) *DeploymentResponse {
+	return &DeploymentResponse{
+		ID:         d.ID,
+		TeamID:     d.TeamID,
+		ServerID:   d.ServerID,
+		TargetType: d.TargetType,
+		TargetID:   d.TargetID,
+		Status:     string(d.Status),
+		CommitSHA:  d.CommitSHA,
+		CommitMsg:  d.CommitMsg,
+		ImageRef:   d.ImageRef,
+		StartedAt:  d.StartedAt,
+		FinishedAt: d.FinishedAt,
+		Error:      d.Error,
+		CreatedAt:  d.CreatedAt,
+		UpdatedAt:  d.UpdatedAt,
+	}
+}
+
 // ToApplicationResponse maps an Application model to its API response shape.
 func ToApplicationResponse(a *models.Application) *ApplicationResponse {
 	var buildType *string

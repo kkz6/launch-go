@@ -8,6 +8,9 @@
 package docker
 
 import (
+	"github.com/hibiken/asynq"
+
+	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/services"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
@@ -21,6 +24,7 @@ const ModuleName = "docker"
 var (
 	_ app.Module         = (*Module)(nil)
 	_ app.RouteRegistrar = (*Module)(nil)
+	_ app.JobRegistrar   = (*Module)(nil)
 )
 
 // Module wires the docker module into the framework.
@@ -44,6 +48,12 @@ func NewModule(b *app.Builder) *Module {
 
 // Repos exposes the repository registry for cross-module access.
 func (m *Module) Repos() *repositories.Registry { return m.repos }
+
+// RegisterJobs implements app.JobRegistrar. Binds every docker asynq task
+// type to its handler.
+func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
+	jobs.Register(mux, m.Deps(), m.repos, m.serverRepos)
+}
 
 // newProjectService builds the project service once per request boot.
 func (m *Module) newProjectService() *services.ProjectService {
