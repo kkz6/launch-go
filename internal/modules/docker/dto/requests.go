@@ -24,6 +24,10 @@ type UpdateProjectRequest struct {
 type CreateApplicationRequest struct {
 	Name string `json:"name" validate:"required,min=1,max=255"`
 
+	// InternalPort is the port the container listens on internally. Traefik
+	// routes here. Optional; default 80 if unset. Validated in the service.
+	InternalPort *int `json:"internal_port,omitempty" validate:"omitempty,min=1,max=65535"`
+
 	SourceType string `json:"source_type" validate:"required,oneof=image git dockerfile"`
 
 	// image source: one of these payloads must be set when source_type=image.
@@ -75,4 +79,25 @@ type DockerfileSourceInput struct {
 // until later slices add a "reconfigure" flow.
 type UpdateApplicationRequest struct {
 	Name *string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
+}
+
+// CreateDomainRequest attaches a hostname to an application. Host is
+// validated as a DNS-compatible string in the service (we don't trust
+// validator alone — it doesn't catch trailing dots or leading hyphens).
+//
+// HTTPS defaults to true at the model level (see ApplicationDomain).
+// Path is optional; when non-empty Traefik routes only requests under
+// that prefix to this app.
+type CreateDomainRequest struct {
+	Host  string  `json:"host" validate:"required,min=1,max=255"`
+	Path  *string `json:"path,omitempty" validate:"omitempty,max=255"`
+	HTTPS *bool   `json:"https,omitempty"`
+}
+
+// UpdateDomainRequest allows toggling HTTPS without re-adding the
+// domain. Host is immutable — renaming would orphan the cert, so users
+// must remove + add to change the hostname.
+type UpdateDomainRequest struct {
+	HTTPS *bool   `json:"https,omitempty"`
+	Path  *string `json:"path,omitempty" validate:"omitempty,max=255"`
 }

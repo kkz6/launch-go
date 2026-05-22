@@ -24,4 +24,5 @@ func Register(
 ) {
 	deps = NewJobDeps(appDeps, repos, serverRepos)
 	pkgjobs.RegisterTyped(mux, TypeDeployApplication, NewDeployApplicationJob)
+	pkgjobs.RegisterTyped(mux, TypeSyncTraefikConfig, NewSyncTraefikConfigJob)
 }

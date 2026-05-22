@@ -25,8 +25,14 @@ type Application struct {
 	BuildType      *dockertypes.BuildType      `gorm:"column:build_type;type:varchar(32)" json:"build_type,omitempty"`
 	BuildConfig    dbtype.JSONMap              `gorm:"column:build_config;type:json" json:"build_config,omitempty"`
 	Status         dockertypes.ApplicationStatus `gorm:"type:varchar(32);not null;default:idle" json:"status"`
-	ContainerID    *string                     `gorm:"column:container_id;type:varchar(255)" json:"container_id,omitempty"`
-	LastDeployedAt *time.Time                  `gorm:"column:last_deployed_at;type:timestamp null" json:"last_deployed_at,omitempty"`
+	ContainerID    *string                       `gorm:"column:container_id;type:varchar(255)" json:"container_id,omitempty"`
+	LastDeployedAt *time.Time                    `gorm:"column:last_deployed_at;type:timestamp null" json:"last_deployed_at,omitempty"`
+
+	// InternalPort is the port the container's service listens on inside
+	// the container. Traefik routes traffic to this port over the
+	// launch-network. Default 80 in the migration so existing rows pick
+	// up a sane value.
+	InternalPort int `gorm:"column:internal_port;type:int;not null;default:80" json:"internal_port"`
 }
 
 func (Application) TableName() string { return "docker_applications" }

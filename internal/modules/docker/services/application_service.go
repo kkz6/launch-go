@@ -114,9 +114,15 @@ func (s *ApplicationService) CreateApplication(
 		return dto.ApplicationResponse{}, err
 	}
 
+	port := 80
+	if req.InternalPort != nil && *req.InternalPort > 0 {
+		port = *req.InternalPort
+	}
+
 	app := &models.Application{
 		ProjectID:    projectID,
 		Name:         name,
+		InternalPort: port,
 		SourceType:   dockertypes.SourceType(req.SourceType),
 		SourceConfig: sourceConfig,
 		BuildType:    buildType,

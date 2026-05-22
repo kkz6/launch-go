@@ -43,20 +43,21 @@ func ToProjectResponse(p *models.Project) *ProjectResponse {
 // than projecting each variant into its own field) keeps the API stable as
 // we add fields to one source type without touching the others.
 type ApplicationResponse struct {
-	ID             string                 `json:"id"`
-	TeamID         string                 `json:"team_id"`
-	ServerID       string                 `json:"server_id"`
-	ProjectID      string                 `json:"project_id"`
-	Name           string                 `json:"name"`
-	SourceType     string                 `json:"source_type"`
-	SourceConfig   map[string]any         `json:"source_config,omitempty"`
-	BuildType      *string                `json:"build_type,omitempty"`
-	BuildConfig    map[string]any         `json:"build_config,omitempty"`
-	Status         string                 `json:"status"`
-	ContainerID    *string                `json:"container_id,omitempty"`
-	LastDeployedAt *time.Time             `json:"last_deployed_at,omitempty"`
-	CreatedAt      *time.Time             `json:"created_at,omitempty"`
-	UpdatedAt      *time.Time             `json:"updated_at,omitempty"`
+	ID             string         `json:"id"`
+	TeamID         string         `json:"team_id"`
+	ServerID       string         `json:"server_id"`
+	ProjectID      string         `json:"project_id"`
+	Name           string         `json:"name"`
+	InternalPort   int            `json:"internal_port"`
+	SourceType     string         `json:"source_type"`
+	SourceConfig   map[string]any `json:"source_config,omitempty"`
+	BuildType      *string        `json:"build_type,omitempty"`
+	BuildConfig    map[string]any `json:"build_config,omitempty"`
+	Status         string         `json:"status"`
+	ContainerID    *string        `json:"container_id,omitempty"`
+	LastDeployedAt *time.Time     `json:"last_deployed_at,omitempty"`
+	CreatedAt      *time.Time     `json:"created_at,omitempty"`
+	UpdatedAt      *time.Time     `json:"updated_at,omitempty"`
 }
 
 // DeploymentResponse is the API representation of a deploy attempt.
@@ -78,6 +79,32 @@ type DeploymentResponse struct {
 	Error      *string    `json:"error,omitempty"`
 	CreatedAt  *time.Time `json:"created_at,omitempty"`
 	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
+}
+
+// DomainResponse is the API representation of an application domain.
+type DomainResponse struct {
+	ID            string     `json:"id"`
+	ApplicationID string     `json:"application_id"`
+	Host          string     `json:"host"`
+	Path          *string    `json:"path,omitempty"`
+	HTTPS         bool       `json:"https"`
+	CertificateID *string    `json:"certificate_id,omitempty"`
+	CreatedAt     *time.Time `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+}
+
+// ToDomainResponse maps a domain model to the API response shape.
+func ToDomainResponse(d *models.ApplicationDomain) *DomainResponse {
+	return &DomainResponse{
+		ID:            d.ID,
+		ApplicationID: d.ApplicationID,
+		Host:          d.Host,
+		Path:          d.Path,
+		HTTPS:         d.HTTPS,
+		CertificateID: d.CertificateID,
+		CreatedAt:     d.CreatedAt,
+		UpdatedAt:     d.UpdatedAt,
+	}
 }
 
 // ToDeploymentResponse maps a Deployment model to the API response.
@@ -113,6 +140,7 @@ func ToApplicationResponse(a *models.Application) *ApplicationResponse {
 		ServerID:       a.ServerID,
 		ProjectID:      a.ProjectID,
 		Name:           a.Name,
+		InternalPort:   a.InternalPort,
 		SourceType:     string(a.SourceType),
 		SourceConfig:   map[string]any(a.SourceConfig),
 		BuildType:      buildType,
