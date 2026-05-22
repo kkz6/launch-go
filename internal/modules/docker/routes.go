@@ -23,6 +23,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	domainSvc := m.newDomainService()
 	envVarSvc := m.newEnvVarService()
 	volumeSvc := m.newVolumeService()
+	hostSvc := m.newHostInspectService()
 
 	auth := middleware.Append(
 		middleware.AuthenticatedChain(authMiddleware),
@@ -546,4 +547,54 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			return fiberutil.OK(c, "Engine catalogue", services.SupportedDatabaseEngines())
 		})...,
 	)
+
+	// Server-host diagnostic endpoints — read-only views over
+	// `docker ps`, `docker volume ls`, `docker network ls`, and
+	// the on-disk Traefik config. Behind the same auth + provisioned-
+	// server gate as the workload routes.
+	hostGroup := router.Group("/servers/:serverId/docker", auth...)
+	hostGroup.Get("/containers", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := hostSvc.ListContainers(c.Context(), c.Params("serverId"), teamID)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Containers retrieved", rows)
+	})
+	hostGroup.Get("/volumes", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := hostSvc.ListVolumes(c.Context(), c.Params("serverId"), teamID)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Volumes retrieved", rows)
+	})
+	hostGroup.Get("/networks", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := hostSvc.ListNetworks(c.Context(), c.Params("serverId"), teamID)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Networks retrieved", rows)
+	})
+	hostGroup.Get("/traefik", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		snap, err := hostSvc.GetTraefikSnapshot(c.Context(), c.Params("serverId"), teamID)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Traefik snapshot retrieved", snap)
+	})
 }

@@ -90,6 +90,12 @@ func (m *Module) newVolumeService() *services.VolumeService {
 	return services.NewVolumeService(m.serviceDeps())
 }
 
+// newHostInspectService builds the docker-host diagnostic service used
+// by the Containers/Volumes/Networks/Traefik tabs.
+func (m *Module) newHostInspectService() *services.HostInspectService {
+	return services.NewHostInspectService(m.serviceDeps())
+}
+
 func (m *Module) serviceDeps() *services.ServiceDeps {
 	deps := m.Deps()
 	return &services.ServiceDeps{
