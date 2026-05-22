@@ -40,6 +40,22 @@ type CreateServiceRequest struct {
 	Software string `json:"software" validate:"required"`
 }
 
+// CreateServerProviderRequest represents the request body for connecting a
+// cloud provider account.
+//
+// Token-based providers (digitalocean / hetzner / linode / vultr) send
+// `api_token`. AWS sends `access_key`, `secret_key`, and `region`. We do the
+// per-provider field-presence checks in the service because validator v10's
+// `required_if` does not support OR conditions across multiple values.
+type CreateServerProviderRequest struct {
+	Provider  string `json:"provider" validate:"required,oneof=digitalocean hetzner linode vultr aws"`
+	Profile   string `json:"profile" validate:"required,min=1,max=255"`
+	APIToken  string `json:"api_token" validate:"omitempty"`
+	AccessKey string `json:"access_key" validate:"omitempty"`
+	SecretKey string `json:"secret_key" validate:"omitempty"`
+	Region    string `json:"region" validate:"omitempty"`
+}
+
 // ServiceOperationRequest represents the request body for service operations
 type ServiceOperationRequest struct {
 	Operation string `json:"operation" validate:"required,oneof=start stop restart remove status"`
