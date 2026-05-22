@@ -74,6 +74,8 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 		ProjectName:  fmt.Sprintf("%s-%s", tasks.SlugFromName(j.project.Name), tasks.SlugFromName(j.compose.Name)),
 	}
 	hydrateComposeSource(&cfg, j.compose)
+	// Same authenticated-clone treatment as application git deploys.
+	cfg.GitRepo = j.Deps.resolveAuthenticatedCloneURL(ctx, map[string]any(j.compose.SourceConfig), cfg.GitRepo)
 
 	task := tasks.DeployCompose(cfg)
 	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)

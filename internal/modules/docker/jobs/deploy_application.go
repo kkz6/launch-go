@@ -93,6 +93,11 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 		SourceType:    j.app.SourceType,
 	}
 	hydrateSourceConfig(&cfg, j.app)
+	// Rewrite the git URL with embedded credentials when a connected
+	// source-control account was selected on the application. No-op for
+	// public repos. Failures fall back to the original URL — see
+	// resolveAuthenticatedCloneURL.
+	cfg.GitRepo = j.Deps.resolveAuthenticatedCloneURL(ctx, map[string]any(j.app.SourceConfig), cfg.GitRepo)
 
 	task := tasks.DeployApplication(cfg)
 	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
