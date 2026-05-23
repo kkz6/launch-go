@@ -822,6 +822,26 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Containers retrieved", rows)
 	})
+	// Per-container inspect — fuller picture than `docker ps` gives
+	// us (state, health, mounts, networks, resources). The frontend
+	// opens this in a status dialog when the user clicks a container's
+	// state badge.
+	hostGroup.Get("/containers/:containerId/inspect", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		info, err := hostSvc.InspectContainer(
+			c.Context(),
+			c.Params("serverId"),
+			teamID,
+			c.Params("containerId"),
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Container inspected", info)
+	})
 	hostGroup.Get("/volumes", func(c *gofiber.Ctx) error {
 		teamID, err := fiberutil.MustGetTeamID(c)
 		if err != nil {
