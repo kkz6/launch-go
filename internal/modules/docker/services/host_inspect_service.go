@@ -29,6 +29,11 @@ func NewHostInspectService(deps *ServiceDeps) *HostInspectService {
 // ContainerInfo mirrors `docker ps --format '{{json .}}'`'s fields,
 // minus the ones we don't render. Extra fields are tolerated by
 // json.Unmarshal so docker's CLI evolution doesn't break us.
+//
+// System (set by ListContainers) marks containers Launch owns —
+// Traefik, future control-plane services. The UI hides these by
+// default behind a "Show system containers" toggle. Dokploy uses the
+// same approach (excludes `dokploy*` from the user view).
 type ContainerInfo struct {
 	ID      string `json:"ID"`
 	Names   string `json:"Names"`
@@ -38,25 +43,74 @@ type ContainerInfo struct {
 	State   string `json:"State"`
 	Ports   string `json:"Ports"`
 	Created string `json:"CreatedAt"`
+	System  bool   `json:"system"`
 }
 
 // VolumeInfo matches `docker volume ls --format '{{json .}}'`.
+// System has the same semantics as ContainerInfo.System.
 type VolumeInfo struct {
 	Name       string `json:"Name"`
 	Driver     string `json:"Driver"`
 	Scope      string `json:"Scope"`
 	Mountpoint string `json:"Mountpoint"`
+	System     bool   `json:"system"`
 }
 
 // NetworkInfo matches `docker network ls --format '{{json .}}'`.
+//
+// System has the same semantics as ContainerInfo.System, plus we mark
+// docker's three built-in networks (bridge / host / none) as system
+// — they exist on every docker host and aren't user-managed.
 type NetworkInfo struct {
 	ID     string `json:"ID"`
 	Name   string `json:"Name"`
 	Driver string `json:"Driver"`
 	Scope  string `json:"Scope"`
+	System bool   `json:"system"`
+}
+
+// isLaunchSystemName matches the names we set on containers/volumes/
+// networks that Launch installs as part of provisioning. Mirrors
+// dokploy's `name.includes("dokploy")` rule.
+//
+// Naming convention to keep this honest:
+//   - System containers: `launch-<service>` (e.g. launch-traefik)
+//   - User app containers: `launch-app-<project>-<name>` (NOT system)
+//   - User database containers: `launch-db-<project>-<name>` (NOT system)
+//
+// We classify only what starts with `launch-` AND is NOT one of those
+// user prefixes. Anything outside the `launch-` namespace is user-
+// supplied even if it happens to contain the substring.
+func isLaunchSystemName(name string) bool {
+	if !strings.HasPrefix(name, "launch-") {
+		return false
+	}
+	rest := strings.TrimPrefix(name, "launch-")
+	switch {
+	case strings.HasPrefix(rest, "app-"),
+		strings.HasPrefix(rest, "db-"),
+		strings.HasPrefix(rest, "compose-"),
+		strings.HasPrefix(rest, "build-"):
+		return false
+	}
+	return true
+}
+
+// dockerBuiltinNetworks: docker's three default networks. Marked
+// system so they don't clutter the user's Networks tab.
+var dockerBuiltinNetworks = map[string]struct{}{
+	"bridge": {},
+	"host":   {},
+	"none":   {},
 }
 
 // ListContainers returns every container on the host (running + stopped).
+// Each row is tagged with `System=true` if Launch installed it. The UI
+// hides system rows behind a toggle.
+//
+// Containers spawned by swarm services carry a name like
+// `launch-traefik.1.<task-id>` — we strip the swarm task suffix
+// before classifying so the service-name-based match works.
 func (s *HostInspectService) ListContainers(
 	ctx context.Context, serverID, teamID string,
 ) ([]ContainerInfo, error) {
@@ -71,6 +125,7 @@ func (s *HostInspectService) ListContainers(
 		if err := json.Unmarshal([]byte(line), &c); err != nil {
 			continue
 		}
+		c.System = isLaunchSystemName(stripSwarmTaskSuffix(c.Names))
 		rows = append(rows, c)
 	}
 	return rows, nil
@@ -90,6 +145,7 @@ func (s *HostInspectService) ListVolumes(
 		if err := json.Unmarshal([]byte(line), &v); err != nil {
 			continue
 		}
+		v.System = isLaunchSystemName(v.Name)
 		rows = append(rows, v)
 	}
 	return rows, nil
@@ -109,9 +165,36 @@ func (s *HostInspectService) ListNetworks(
 		if err := json.Unmarshal([]byte(line), &n); err != nil {
 			continue
 		}
+		// Mark Launch-installed networks AND docker's built-ins as system.
+		// The Networks tab is user-noisy without this — bridge/host/none
+		// are noise to a user who wants to see their own networks.
+		if _, builtin := dockerBuiltinNetworks[n.Name]; builtin {
+			n.System = true
+		} else if isLaunchSystemName(n.Name) || n.Name == "launch-network" {
+			n.System = true
+		}
 		rows = append(rows, n)
 	}
 	return rows, nil
+}
+
+// stripSwarmTaskSuffix removes the `.<replica>.<task-id>` part docker
+// appends to swarm-spawned containers. So `launch-traefik.1.ktub95...`
+// becomes `launch-traefik` for the purposes of classification.
+//
+// Containers can have comma-separated names ("foo,bar") if they're
+// linked — we classify on the first which is the canonical one.
+func stripSwarmTaskSuffix(names string) string {
+	first := names
+	if i := strings.Index(first, ","); i >= 0 {
+		first = first[:i]
+	}
+	// `name.<replica>.<task-id>` — split on first dot, the prefix is
+	// the service name.
+	if i := strings.Index(first, "."); i >= 0 {
+		return first[:i]
+	}
+	return first
 }
 
 // TraefikSnapshot bundles the current static + dynamic config files
