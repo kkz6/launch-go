@@ -853,17 +853,12 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Volumes retrieved", rows)
 	})
-	hostGroup.Get("/networks", func(c *gofiber.Ctx) error {
-		teamID, err := fiberutil.MustGetTeamID(c)
-		if err != nil {
-			return err
-		}
-		rows, err := hostSvc.ListNetworks(c.Context(), c.Params("serverId"), teamID)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Networks retrieved", rows)
-	})
+	// Networks endpoint intentionally not registered: the UI tab was
+	// removed (Launch manages the launch-network overlay; users
+	// don't create custom networks via the UI). ListNetworks /
+	// NetworkInfo stay in HostInspectService for future use and
+	// because the docker.compose deploy task uses the same SSH
+	// path to discover network attachments.
 	hostGroup.Get("/traefik", func(c *gofiber.Ctx) error {
 		teamID, err := fiberutil.MustGetTeamID(c)
 		if err != nil {

@@ -5,9 +5,12 @@ import (
 	"strings"
 	"time"
 
+	"fmt"
+
 	"github.com/kkz6/launch-go/internal/modules/docker/dto"
 	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -114,7 +117,7 @@ func (s *ComposeService) CreateCompose(
 	}
 
 	resp := dto.ToComposeResponse(c, false)
-	s.BroadcastToTeam(teamID, "docker.compose.created", resp)
+	s.BroadcastToTeam(teamID, "docker.compose.created", composeBroadcast(resp))
 	return *resp, nil
 }
 
@@ -166,18 +169,25 @@ func (s *ComposeService) UpdateCompose(
 		return dto.ComposeResponse{}, err
 	}
 	resp := dto.ToComposeResponse(reloaded, false)
-	s.BroadcastToTeam(teamID, "docker.compose.updated", resp)
+	s.BroadcastToTeam(teamID, "docker.compose.updated", composeBroadcast(resp))
 	return *resp, nil
 }
 
-// DeleteCompose soft-deletes the stack. Stopping the actual running
-// containers via `docker compose down` lands in a follow-up — for now
-// the abandoned containers will be reaped by the future cleanup job.
+// DeleteCompose soft-deletes the stack AND dispatches a
+// `docker compose down -v --remove-orphans` task so the containers
+// the stack created go away on the host too. Audit 2026-05-23 flagged
+// this — previously the row vanished from the UI while the containers
+// kept running.
+//
+// Project name = `<project-slug>-<compose-slug>` — same value the
+// deploy job uses for `--project-name`. We resolve it inline so the
+// remove job doesn't need the (soft-deleted) row.
 func (s *ComposeService) DeleteCompose(
 	ctx context.Context, id, projectID, serverID, teamID, userID string,
 ) error {
 	_ = userID
-	if _, err := s.requireProjectScoped(ctx, projectID, serverID, teamID); err != nil {
+	project, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID)
+	if err != nil {
 		return err
 	}
 	c, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, id, teamID, serverID)
@@ -187,11 +197,33 @@ func (s *ComposeService) DeleteCompose(
 	if c.ProjectID != projectID {
 		return fiberutil.NotFound()
 	}
+
+	// Only compute the project name if the stack actually deployed.
+	// Otherwise the down task is a no-op the job will short-circuit.
+	var composeProjectName string
+	if c.LastDeployedAt != nil {
+		composeProjectName = fmt.Sprintf(
+			"%s-%s",
+			tasks.SlugFromName(project.Name),
+			tasks.SlugFromName(c.Name),
+		)
+	}
+
 	if err := s.Repos().Compose().Delete(ctx, id); err != nil {
 		return err
 	}
+
+	if rmTask, err := jobs.NewRemoveComposeTask(
+		c.ID, c.ProjectID, c.ServerID, c.TeamID, composeProjectName,
+	); err == nil {
+		if enqErr := s.EnqueueTask(rmTask); enqErr != nil {
+			s.LogError(enqErr, "failed to dispatch compose removal", "compose_id", c.ID)
+		}
+	}
+
 	s.BroadcastToTeam(teamID, "docker.compose.deleted", map[string]any{
 		"id":         c.ID,
+		"compose_id": c.ID,
 		"project_id": c.ProjectID,
 		"server_id":  c.ServerID,
 		"team_id":    c.TeamID,
@@ -335,4 +367,25 @@ func buildComposeSource(req *dto.CreateComposeRequest) (
 		return nil, nil, nil, fiberutil.BadRequest("unsupported compose_source_type")
 	}
 	return sourceConfig, composeFilePath, rawYAML, nil
+}
+
+// composeBroadcast normalises a compose response for the WebSocket
+// channel. The Vue listeners (e.g. compose/Deployments.vue) filter
+// events by `data.compose_id`, but ComposeResponse's JSON key is
+// `id`. Wrapping the response and inserting `compose_id` alongside
+// keeps the API representation untouched while ensuring every
+// docker.compose.* broadcast carries the routing field the client
+// needs. Audit 2026-05-23 caught this — the renames broadcast was
+// silently being dropped client-side.
+func composeBroadcast(resp *dto.ComposeResponse) map[string]any {
+	return map[string]any{
+		"id":               resp.ID,
+		"compose_id":       resp.ID,
+		"team_id":          resp.TeamID,
+		"server_id":        resp.ServerID,
+		"project_id":       resp.ProjectID,
+		"name":             resp.Name,
+		"status":           resp.Status,
+		"last_deployed_at": resp.LastDeployedAt,
+	}
 }
