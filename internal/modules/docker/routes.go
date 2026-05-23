@@ -855,4 +855,33 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Traefik snapshot retrieved", snap)
 	})
+
+	// Edit a dynamic Traefik config file. The filename is in the URL
+	// rather than the body so the route reads as a normal resource and
+	// the path-validation helper has the canonical input. The body is
+	// just the YAML contents.
+	hostGroup.Put("/traefik/files/:filename", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		body := struct {
+			Contents string `json:"contents" validate:"required,max=262144"`
+		}{}
+		if err := c.BodyParser(&body); err != nil {
+			return fiberutil.BadRequest("Invalid request body")
+		}
+		if err := hostSvc.WriteTraefikDynamicFile(
+			c.Context(),
+			c.Params("serverId"),
+			teamID,
+			c.Params("filename"),
+			body.Contents,
+		); err != nil {
+			return fiberutil.BadRequest(err.Error())
+		}
+		return fiberutil.OK(c, "Traefik file updated", map[string]any{
+			"filename": c.Params("filename"),
+		})
+	})
 }

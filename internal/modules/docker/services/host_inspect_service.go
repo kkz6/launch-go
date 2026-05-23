@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"strings"
 
 	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
@@ -197,17 +198,36 @@ func stripSwarmTaskSuffix(names string) string {
 	return first
 }
 
-// TraefikSnapshot bundles the current static + dynamic config files
-// Traefik is reading from. Useful for "why isn't my domain working?"
-// debugging.
+// TraefikSnapshot bundles the user-visible Traefik config files —
+// strictly the dynamic configs Launch generates for the user's apps,
+// plus any custom YAML the user adds. Launch's own plumbing
+// (traefik.yml static config, acme.json cert storage, certificate
+// archives, access logs) is deliberately NOT included: this is a SaaS
+// product and exposing the internal infrastructure invites edits we
+// can't safely accept.
+//
+// Dokploy is self-hosted so it surfaces the whole /etc/dokploy/traefik
+// tree; the trade-off here is intentional.
 type TraefikSnapshot struct {
-	StaticConfig string            `json:"static_config"`
 	DynamicFiles map[string]string `json:"dynamic_files"`
 }
 
-// GetTraefikSnapshot reads /etc/launch/traefik/traefik.yml plus every
-// file in /etc/launch/traefik/dynamic/ via SSH. Files are returned by
-// path → content; non-readable entries are dropped silently.
+// dynamicFileExcludes — files we skip even when they sit inside the
+// dynamic directory. Keep this list narrow; anything Launch wouldn't
+// want users editing should live somewhere else.
+var traefikDynamicExcludes = map[string]struct{}{
+	"acme.json":      {},
+	"access.log":     {},
+	"access.log.tmp": {},
+}
+
+// GetTraefikSnapshot reads every file in /etc/launch/traefik/dynamic/
+// via SSH and returns them as a name → content map. Files in
+// traefikDynamicExcludes and any non-YAML extensions are filtered out.
+//
+// We intentionally don't read the static traefik.yml at the
+// /etc/launch/traefik/ root — that file is Launch infrastructure and
+// editing it would brick Traefik on the next domain change.
 func (s *HostInspectService) GetTraefikSnapshot(
 	ctx context.Context, serverID, teamID string,
 ) (TraefikSnapshot, error) {
@@ -219,20 +239,25 @@ func (s *HostInspectService) GetTraefikSnapshot(
 
 	snap := TraefikSnapshot{DynamicFiles: map[string]string{}}
 
-	if static, err := client.Run(ctx, "sudo cat /etc/launch/traefik/traefik.yml 2>/dev/null"); err == nil {
-		snap.StaticConfig = static.Stdout
-	}
-
-	// List + cat each dynamic file. One round-trip per file; the set is
-	// small (one per app) so this is fine.
+	// List + cat each dynamic file. One round-trip per file; the set
+	// is small (one per app domain) so this is fine.
 	listing, err := client.Run(ctx, "sudo ls /etc/launch/traefik/dynamic 2>/dev/null")
 	if err != nil {
 		return snap, nil
 	}
 	for _, name := range splitNonEmpty(listing.Stdout) {
-		// Avoid path traversal — we control these names so it's just
-		// belt-and-braces.
+		// Belt-and-braces: even though we control these names, refuse
+		// any path-traversal-shaped entry.
 		if strings.ContainsAny(name, "/\\") {
+			continue
+		}
+		if _, excluded := traefikDynamicExcludes[name]; excluded {
+			continue
+		}
+		// Filter to YAML files. Everything Launch writes is .yml; if a
+		// user drops a non-YAML file in there we don't want to dump it
+		// to the SaaS UI uncritically.
+		if !strings.HasSuffix(name, ".yml") && !strings.HasSuffix(name, ".yaml") {
 			continue
 		}
 		path := fmt.Sprintf("/etc/launch/traefik/dynamic/%s", name)
@@ -242,6 +267,86 @@ func (s *HostInspectService) GetTraefikSnapshot(
 		}
 	}
 	return snap, nil
+}
+
+// WriteTraefikDynamicFile overwrites a file in
+// /etc/launch/traefik/dynamic/ with the given contents.
+//
+// Hard constraints (path traversal + arbitrary write are the two
+// failure modes that matter; anything else is a YAML validity concern
+// best left to Traefik itself, which will refuse to load a bad file):
+//   - filename must match safeTraefikFilenamePattern (no slashes, no
+//     dots leading the name, must end .yml or .yaml)
+//   - contents are capped at 256 KiB to bound the write
+//
+// The file is written via `sudo tee` so it inherits root ownership
+// just like everything else in the dynamic directory.
+func (s *HostInspectService) WriteTraefikDynamicFile(
+	ctx context.Context, serverID, teamID, filename, contents string,
+) error {
+	if err := validateTraefikFilename(filename); err != nil {
+		return err
+	}
+	const maxBytes = 256 * 1024
+	if len(contents) > maxBytes {
+		return fmt.Errorf("contents exceed %d bytes", maxBytes)
+	}
+
+	client, cleanup, err := s.dialServer(ctx, serverID, teamID)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
+	path := fmt.Sprintf("/etc/launch/traefik/dynamic/%s", filename)
+
+	// Use a heredoc so we don't have to escape every shell metachar
+	// in the YAML. The sentinel `__LAUNCH_EOF_<random>__` is chosen so
+	// it can't appear in real config — capital underscore prefix is
+	// rare in YAML, and we'd notice immediately if it ever clashed.
+	cmd := fmt.Sprintf(
+		`sudo tee %s >/dev/null <<'__LAUNCH_EOF_%s__'
+%s
+__LAUNCH_EOF_%s__
+`,
+		path,
+		"TRAEFIK", // fixed sentinel; we only run one write at a time per host
+		contents,
+		"TRAEFIK",
+	)
+	result, err := client.Run(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("write failed: %w", err)
+	}
+	if result.ExitCode != 0 {
+		return fmt.Errorf("write failed (exit %d): %s", result.ExitCode, result.Stderr)
+	}
+	return nil
+}
+
+// safeTraefikFilenamePattern enforces:
+//   - 1–80 chars
+//   - first char alphanumeric (no leading dot → no hidden files)
+//   - body: alphanumeric, dash, dot, underscore
+//   - ends in .yml or .yaml
+var safeTraefikFilenamePattern = regexp.MustCompile(
+	`^[a-zA-Z0-9][a-zA-Z0-9._-]{0,75}\.(yml|yaml)$`,
+)
+
+func validateTraefikFilename(name string) error {
+	if name == "" {
+		return fmt.Errorf("filename is required")
+	}
+	if strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
+		return fmt.Errorf("filename must not contain path separators or ..")
+	}
+	if _, excluded := traefikDynamicExcludes[name]; excluded {
+		return fmt.Errorf("filename %q is reserved", name)
+	}
+	if !safeTraefikFilenamePattern.MatchString(name) {
+		return fmt.Errorf("filename must be 1-80 chars, start with alphanumeric, and end .yml/.yaml")
+	}
+	return nil
 }
 
 // runDockerJSON dials the server, runs a `--format '{{json .}}'`
