@@ -112,21 +112,40 @@ var dockerBuiltinNetworks = map[string]struct{}{
 // missing values are returned empty rather than omitted so the UI
 // can render a uniform table.
 type ContainerInspect struct {
-	ID           string                 `json:"id"`
-	Name         string                 `json:"name"`
-	Image        string                 `json:"image"`
-	ImageID      string                 `json:"image_id"`
-	Command      string                 `json:"command"`
-	CreatedAt    string                 `json:"created_at"`
-	State        ContainerInspectState  `json:"state"`
-	Health       *ContainerInspectHealth `json:"health,omitempty"`
-	RestartCount int                    `json:"restart_count"`
-	Platform     string                 `json:"platform"`
-	Resources    ContainerInspectResources `json:"resources"`
-	RestartPolicy string                `json:"restart_policy"`
-	Mounts       []ContainerInspectMount `json:"mounts"`
-	Networks     []ContainerInspectNetwork `json:"networks"`
-	Labels       map[string]string      `json:"labels,omitempty"`
+	ID      string `json:"id"`
+	Name    string `json:"name"`
+	Image   string `json:"image"`
+	ImageID string `json:"image_id"`
+	// Command keeps the legacy single-string summary (Cmd joined with
+	// spaces, falling back to Path + Args). The UI prefers Entrypoint
+	// + Cmd as separate arrays when available — see below.
+	Command   string `json:"command"`
+	Entrypoint []string `json:"entrypoint,omitempty"`
+	Cmd        []string `json:"cmd,omitempty"`
+	// Path + Args are the *actual* exec'd binary + flags at runtime.
+	// For containers where ENTRYPOINT is empty and CMD is set, Path
+	// is the first element of Cmd; for the inverse, Path is the
+	// entrypoint binary and Args are everything after. Surfacing both
+	// lets the dialog show the structural view AND the runtime view.
+	Path string   `json:"path,omitempty"`
+	Args []string `json:"args,omitempty"`
+
+	CreatedAt     string                    `json:"created_at"`
+	State         ContainerInspectState     `json:"state"`
+	Health        *ContainerInspectHealth   `json:"health,omitempty"`
+	RestartCount  int                       `json:"restart_count"`
+	Platform      string                    `json:"platform"`
+	Resources     ContainerInspectResources `json:"resources"`
+	RestartPolicy string                    `json:"restart_policy"`
+	Mounts        []ContainerInspectMount   `json:"mounts"`
+	Networks      []ContainerInspectNetwork `json:"networks"`
+	Labels        map[string]string         `json:"labels,omitempty"`
+
+	// Raw is the full `docker inspect <id>` JSON, passed through
+	// unchanged. Powers the "View raw config" dialog — mirrors
+	// dokploy's ShowContainerConfig view. json.RawMessage so we
+	// don't pay the cost of re-marshalling something we just parsed.
+	Raw json.RawMessage `json:"raw,omitempty"`
 }
 
 type ContainerInspectState struct {
@@ -206,10 +225,11 @@ type rawContainerInspect struct {
 	} `json:"State"`
 	RestartCount int    `json:"RestartCount"`
 	Platform     string `json:"Platform"`
-	Config       struct {
-		Image  string            `json:"Image"`
-		Cmd    []string          `json:"Cmd"`
-		Labels map[string]string `json:"Labels"`
+	Config struct {
+		Image      string            `json:"Image"`
+		Cmd        []string          `json:"Cmd"`
+		Entrypoint []string          `json:"Entrypoint"`
+		Labels     map[string]string `json:"Labels"`
 	} `json:"Config"`
 	HostConfig struct {
 		Memory     int64 `json:"Memory"`
@@ -260,7 +280,12 @@ func (s *HostInspectService) InspectContainer(
 		return ContainerInspect{}, fmt.Errorf("decode docker inspect: %w", err)
 	}
 
-	return projectContainerInspect(raw), nil
+	projected := projectContainerInspect(raw)
+	// Stash the raw JSON for the "View raw config" dialog. Doing this
+	// here (not in the projector) keeps projectContainerInspect a pure
+	// function the tests can construct inputs for.
+	projected.Raw = json.RawMessage(out[0])
+	return projected, nil
 }
 
 // containerIDPattern: short (12 hex) or long (64 hex) docker IDs only.
@@ -280,7 +305,17 @@ func projectContainerInspect(raw rawContainerInspect) ContainerInspect {
 		Labels:       raw.Config.Labels,
 	}
 
-	// Command: prefer Config.Cmd when present, otherwise Path + Args.
+	// Structural view: Entrypoint and Cmd come straight from Config.
+	// Runtime view: Path + Args is what docker actually exec'd.
+	// Both are useful — they often diverge (Entrypoint=traefik,
+	// Cmd=[--api], Path=traefik, Args=[--api,--providers.swarm,...]).
+	out.Entrypoint = raw.Config.Entrypoint
+	out.Cmd = raw.Config.Cmd
+	out.Path = raw.Path
+	out.Args = raw.Args
+
+	// Legacy single-string Command, kept for any caller that wants
+	// the one-line summary. Prefer Cmd, fall back to Path + Args.
 	if len(raw.Config.Cmd) > 0 {
 		out.Command = strings.Join(raw.Config.Cmd, " ")
 	} else if raw.Path != "" {

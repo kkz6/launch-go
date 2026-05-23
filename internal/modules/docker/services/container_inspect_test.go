@@ -87,6 +87,38 @@ func TestProjectContainerInspect_HealthLogCapped(t *testing.T) {
 	}
 }
 
+func TestProjectContainerInspect_KeepsEntrypointCmdPathArgsSeparately(t *testing.T) {
+	// For docker, "command" splits into Entrypoint + Cmd (structural)
+	// AND Path + Args (runtime). The dialog renders each branch so a
+	// debugging session has the full picture without resorting to
+	// `docker inspect` over SSH. Pin that the projector preserves
+	// each list verbatim rather than over-summarising.
+	raw := rawContainerInspect{
+		Path: "traefik",
+		Args: []string{"--api", "--providers.swarm.network=launch-network"},
+	}
+	raw.Config.Entrypoint = []string{"/entrypoint.sh"}
+	raw.Config.Cmd = []string{"--api"}
+
+	got := projectContainerInspect(raw)
+	if len(got.Entrypoint) != 1 || got.Entrypoint[0] != "/entrypoint.sh" {
+		t.Errorf("Entrypoint = %v, want [/entrypoint.sh]", got.Entrypoint)
+	}
+	if len(got.Cmd) != 1 || got.Cmd[0] != "--api" {
+		t.Errorf("Cmd = %v, want [--api]", got.Cmd)
+	}
+	if got.Path != "traefik" {
+		t.Errorf("Path = %q, want traefik", got.Path)
+	}
+	if len(got.Args) != 2 {
+		t.Errorf("Args length = %d, want 2", len(got.Args))
+	}
+	// Legacy summary still set — the joined Cmd, since it's present.
+	if got.Command != "--api" {
+		t.Errorf("Command summary = %q, want %q", got.Command, "--api")
+	}
+}
+
 func TestProjectContainerInspect_VolumeMountFavorsName(t *testing.T) {
 	// For type=volume mounts, the Source on the host is something
 	// like /var/lib/docker/volumes/<sha>/_data which is useless to
