@@ -49,8 +49,14 @@ type Compose struct {
 	SourceConfig      dbtype.JSONMap                `gorm:"column:source_config;type:json" json:"source_config,omitempty"`
 	ComposeFilePath   *string                       `gorm:"column:compose_file_path;type:varchar(512)" json:"compose_file_path,omitempty"`
 	RawYAML           *string                       `gorm:"column:raw_yaml;type:longtext" json:"raw_yaml,omitempty"`
-	Status            dockertypes.ApplicationStatus `gorm:"type:varchar(32);not null;default:idle" json:"status"`
-	LastDeployedAt    *time.Time                    `gorm:"column:last_deployed_at;type:timestamp null" json:"last_deployed_at,omitempty"`
+	// EnvFile is the body of the `.env` file written next to the
+	// compose file on each deploy. Compose reads it automatically for
+	// ${VAR} substitution and propagates matching keys into service
+	// environment blocks without explicit values. NULL = no env file
+	// (default). UI surfaces this as the compose Environment subtab.
+	EnvFile        *string                       `gorm:"column:env_file;type:longtext" json:"env_file,omitempty"`
+	Status         dockertypes.ApplicationStatus `gorm:"type:varchar(32);not null;default:idle" json:"status"`
+	LastDeployedAt *time.Time                    `gorm:"column:last_deployed_at;type:timestamp null" json:"last_deployed_at,omitempty"`
 }
 
 func (Compose) TableName() string { return "docker_composes" }
@@ -69,6 +75,11 @@ type Database struct {
 	ExternalPort  *int                          `gorm:"column:external_port;type:int" json:"external_port,omitempty"`
 	Credentials   dbtype.EncryptedString        `gorm:"type:longtext" json:"-"`
 	Status        dockertypes.ApplicationStatus `gorm:"type:varchar(32);not null;default:starting" json:"status"`
+	// BuildConfig holds Advanced-subtab knobs (restart_policy,
+	// cpu_limit, memory_limit, cpu_reservation, memory_reservation).
+	// Mirrors docker_applications.build_config so the same DTO shape
+	// works on both sides.
+	BuildConfig dbtype.JSONMap `gorm:"column:build_config;type:longtext" json:"build_config,omitempty"`
 }
 
 func (Database) TableName() string { return "docker_databases" }

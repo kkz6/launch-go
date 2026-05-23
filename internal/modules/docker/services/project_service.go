@@ -2,6 +2,7 @@ package services
 
 import (
 	"context"
+	"fmt"
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/dto"
@@ -149,10 +150,16 @@ func (s *ProjectService) UpdateProject(
 	return *resp, nil
 }
 
-// DeleteProject soft-deletes a project. Once we add workload services we'll
-// extend this to reject deletion while workloads still exist (or cascade
-// after a confirmation flow). For phase 1 we trust the soft-delete and the
-// cascading FKs the migration set up.
+// DeleteProject soft-deletes a project. Hard-blocks if any live
+// applications / composes / databases still belong to it — the user
+// must remove every workload first. Matches how sites refuse to delete
+// while active deployments are tied to them.
+//
+// We could cascade via FK + dispatch docker-rm jobs for every
+// workload, but a project with workloads is almost always "I clicked
+// the wrong button" rather than "I really want to wipe this group of
+// infra". A hard refusal is a safer default — the user can still
+// delete each workload individually from its own detail page.
 //
 // Signature matches fiberutil.DeleteNestedFunc.
 func (s *ProjectService) DeleteProject(
@@ -162,6 +169,34 @@ func (s *ProjectService) DeleteProject(
 	p, err := s.Repos().Project().FindByIDAndTeamServer(ctx, id, teamID, serverID)
 	if err != nil {
 		return err
+	}
+
+	apps, composes, databases, err := s.Repos().Project().CountWorkloads(ctx, id)
+	if err != nil {
+		return err
+	}
+	total := apps + composes + databases
+	if total > 0 {
+		// Build a per-kind summary so the toast tells the user
+		// exactly what's left. UI also reads counts off the project
+		// model and disables the Delete button proactively — this
+		// error is the backstop.
+		parts := []string{}
+		if apps > 0 {
+			parts = append(parts, fmt.Sprintf("%d application(s)", apps))
+		}
+		if composes > 0 {
+			parts = append(parts, fmt.Sprintf("%d compose stack(s)", composes))
+		}
+		if databases > 0 {
+			parts = append(parts, fmt.Sprintf("%d database(s)", databases))
+		}
+		// fiberutil.Validation maps to HTTP 422, which the frontend
+		// surfaces as a toast with the message text intact.
+		return fiberutil.Validation(fmt.Sprintf(
+			"This project still has %s. Remove each one from its detail page first, then delete the project.",
+			strings.Join(parts, ", "),
+		))
 	}
 
 	if err := s.Repos().Project().Delete(ctx, id); err != nil {

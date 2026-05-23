@@ -18,6 +18,11 @@ type engineSpec struct {
 	DefaultVersion  string   // sensible LTS-ish tag
 	SupportedVersions []string
 	InternalPort    int      // the canonical port the daemon listens on
+	// DataPath is the canonical in-container directory where the engine
+	// keeps its on-disk state. The run-database script bind-mounts a
+	// named volume here so the data survives container recreates
+	// (expose-toggle, restart-policy change, image bump, rebuild).
+	DataPath string
 	// EnvFn renders the env-var args for `docker run`. Takes the
 	// generated credentials so we never embed defaults in the catalogue
 	// itself.
@@ -42,6 +47,7 @@ var engineCatalogue = map[dockertypes.DatabaseEngine]engineSpec{
 		DefaultVersion:    "16",
 		SupportedVersions: []string{"16", "15", "14"},
 		InternalPort:      5432,
+		DataPath:          "/var/lib/postgresql/data",
 		EnvFn: func(c Credentials) []string {
 			return []string{
 				fmt.Sprintf("POSTGRES_USER=%s", c.Username),
@@ -55,6 +61,7 @@ var engineCatalogue = map[dockertypes.DatabaseEngine]engineSpec{
 		DefaultVersion:    "8.0",
 		SupportedVersions: []string{"8.0", "8.4"},
 		InternalPort:      3306,
+		DataPath:          "/var/lib/mysql",
 		EnvFn: func(c Credentials) []string {
 			return []string{
 				// MYSQL_ROOT_PASSWORD == app password keeps things simple
@@ -72,6 +79,7 @@ var engineCatalogue = map[dockertypes.DatabaseEngine]engineSpec{
 		DefaultVersion:    "11",
 		SupportedVersions: []string{"11", "10.11"},
 		InternalPort:      3306,
+		DataPath:          "/var/lib/mysql",
 		EnvFn: func(c Credentials) []string {
 			return []string{
 				fmt.Sprintf("MARIADB_ROOT_PASSWORD=%s", c.Password),
@@ -86,6 +94,7 @@ var engineCatalogue = map[dockertypes.DatabaseEngine]engineSpec{
 		DefaultVersion:    "7",
 		SupportedVersions: []string{"7", "6"},
 		InternalPort:      6379,
+		DataPath:          "/data",
 		EnvFn: func(_ Credentials) []string {
 			// Redis doesn't honour env vars for auth; the run task adds
 			// `redis-server --requirepass <password>` instead. EnvFn
@@ -98,6 +107,7 @@ var engineCatalogue = map[dockertypes.DatabaseEngine]engineSpec{
 		DefaultVersion:    "7",
 		SupportedVersions: []string{"7", "6"},
 		InternalPort:      27017,
+		DataPath:          "/data/db",
 		EnvFn: func(c Credentials) []string {
 			return []string{
 				fmt.Sprintf("MONGO_INITDB_ROOT_USERNAME=%s", c.Username),

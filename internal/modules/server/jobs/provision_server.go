@@ -85,7 +85,7 @@ func (j *ProvisionServerJob) Handle(ctx context.Context) error {
 			NetworkName:      tasks.DockerNetworkName,
 			RootDir:          tasks.DockerRootDir,
 			TraefikVersion:   tasks.TraefikVersion,
-			TraefikService:   tasks.TraefikServiceName,
+			TraefikContainer: tasks.TraefikContainerName,
 		}
 		task = tasks.ProvisionDockerServer(dockerConfig)
 	} else {

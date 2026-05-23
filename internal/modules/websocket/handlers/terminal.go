@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -61,6 +62,20 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 		// Get parameters
 		serverID := c.Query("serverId")
 		siteID := c.Query("siteId")
+		// container, when set, switches the session from a plain login
+		// shell to `docker exec -it <container> sh` — used by the
+		// workload detail pages so the Terminal button opens the
+		// container's shell rather than the host's root shell.
+		containerName := c.Query("container")
+		// shell is the program to exec inside the container. We accept
+		// "bash" or "sh" (mirrors dokploy's terminal modal). Empty =>
+		// auto-detect (try bash, fall back to sh). The auto path wraps
+		// the command in `sh -c '… bash || sh'`, which itself breaks if
+		// the container has no `sh` in $PATH at all — distroless / scratch
+		// images. Letting the user pick "bash" directly skips the wrapper
+		// so a node:slim container that lacks /bin/sh but ships /bin/bash
+		// still works.
+		shell := strings.ToLower(strings.TrimSpace(c.Query("shell")))
 		username := c.Query("username", config.ServerDefaults().Username)
 
 		if serverID == "" {
@@ -83,6 +98,7 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 			"user_id", claims.UserID,
 			"server_id", serverID,
 			"site_id", siteID,
+			"container", containerName,
 			"username", username,
 		)
 
@@ -139,11 +155,11 @@ func (h *TerminalHandler) Handler() fiber.Handler {
 		}
 
 		// Establish SSH connection using taskrunner SSHClient
-		h.handleSSHConnection(c, conn, server.Name, sitePath)
+		h.handleSSHConnection(c, conn, server.Name, sitePath, containerName, shell)
 	})
 }
 
-func (h *TerminalHandler) handleSSHConnection(wsConn *websocket.Conn, conn *taskrunner.Connection, serverName, sitePath string) {
+func (h *TerminalHandler) handleSSHConnection(wsConn *websocket.Conn, conn *taskrunner.Connection, serverName, sitePath, containerName, shell string) {
 	// Create SSH client using taskrunner
 	h.LogInfo("Connecting to SSH", "host", conn.Host, "port", conn.Port, "username", conn.User)
 
@@ -197,24 +213,71 @@ func (h *TerminalHandler) handleSSHConnection(wsConn *websocket.Conn, conn *task
 		return
 	}
 
-	// Start shell
-	if err := session.Shell(); err != nil {
-		h.LogError(err, "Failed to start shell")
-		wsConn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mFailed to start shell\x1b[0m\r\n"))
-		return
-	}
-
-	h.LogInfo("SSH session started", "server", serverName, "username", conn.User, "sitePath", sitePath)
-
-	// Send a clear screen to the terminal first
-	wsConn.WriteMessage(websocket.TextMessage, []byte("\x1bc"))
-
-	// If site path is provided, cd into it and clear the screen
-	if sitePath != "" {
-		initCmd := fmt.Sprintf("cd \"%s\" && export DEBIAN_FRONTEND=noninteractive && clear\n", sitePath)
-		stdin.Write([]byte(initCmd))
+	// When `container` is set, replace the host login shell with a
+	// `docker exec` into that container. The PTY we already requested
+	// lives on the host SSH session; `-it` re-attaches it to the
+	// container's stdio, so resize events still flow through.
+	//
+	// We prefer bash if the image carries it, else fall back to sh.
+	// Both Alpine (sh-only) and Debian-based images work.
+	//
+	// Safety: dockerContainerNamePattern below restricts the input to a
+	// container-name-safe charset so we can't be tricked into
+	// arbitrary command injection.
+	if containerName != "" {
+		if !isValidContainerName(containerName) {
+			h.LogWarn("Rejected unsafe container name", "container", containerName)
+			wsConn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mInvalid container name\x1b[0m\r\n"))
+			return
+		}
+		// Pick the shell. Three modes:
+		//   - shell="bash" → invoke /bin/bash directly. Skips the `sh -c`
+		//     wrapper so containers without /bin/sh (distroless variants
+		//     that still ship bash) work.
+		//   - shell="sh"   → invoke /bin/sh directly. Same reasoning for
+		//     alpine-only / minimal images that don't have bash.
+		//   - shell=""     → legacy auto-detect via the wrapper.
+		var execCmd string
+		switch shell {
+		case "bash":
+			execCmd = fmt.Sprintf("docker exec -it -e TERM=xterm-256color %s /bin/bash", containerName)
+		case "sh":
+			execCmd = fmt.Sprintf("docker exec -it -e TERM=xterm-256color %s /bin/sh", containerName)
+		default:
+			execCmd = fmt.Sprintf(
+				"docker exec -it %s sh -c 'export TERM=xterm-256color; (command -v bash >/dev/null && exec bash) || exec sh'",
+				containerName,
+			)
+		}
+		if err := session.Start(execCmd); err != nil {
+			h.LogError(err, "Failed to start docker exec", "container", containerName)
+			wsConn.WriteMessage(websocket.TextMessage, []byte(fmt.Sprintf("\r\n\x1b[31mFailed to attach to container: %s\x1b[0m\r\n", err.Error())))
+			return
+		}
+		h.LogInfo("Docker exec session started",
+			"server", serverName, "username", conn.User, "container", containerName,
+		)
+		wsConn.WriteMessage(websocket.TextMessage, []byte("\x1bc"))
 	} else {
-		stdin.Write([]byte("export DEBIAN_FRONTEND=noninteractive && clear\n"))
+		// Standard host shell — the legacy path.
+		if err := session.Shell(); err != nil {
+			h.LogError(err, "Failed to start shell")
+			wsConn.WriteMessage(websocket.TextMessage, []byte("\r\n\x1b[31mFailed to start shell\x1b[0m\r\n"))
+			return
+		}
+
+		h.LogInfo("SSH session started", "server", serverName, "username", conn.User, "sitePath", sitePath)
+
+		// Send a clear screen to the terminal first
+		wsConn.WriteMessage(websocket.TextMessage, []byte("\x1bc"))
+
+		// If site path is provided, cd into it and clear the screen
+		if sitePath != "" {
+			initCmd := fmt.Sprintf("cd \"%s\" && export DEBIAN_FRONTEND=noninteractive && clear\n", sitePath)
+			stdin.Write([]byte(initCmd))
+		} else {
+			stdin.Write([]byte("export DEBIAN_FRONTEND=noninteractive && clear\n"))
+		}
 	}
 
 	// Set up WebSocket keepalive
@@ -344,6 +407,29 @@ func (h *TerminalHandler) handleWebSocketInput(wsConn *websocket.Conn, stdin io.
 			}
 		}
 	}
+}
+
+// isValidContainerName guards the `docker exec` callsite — the
+// container name flows from a URL query param straight into a shell
+// command, so we restrict it to docker's own naming rules
+// (https://docs.docker.com/engine/reference/run/#name---name).
+// Allowed: [a-zA-Z0-9][a-zA-Z0-9_.-]*, length 1..253. Rejects every
+// metacharacter (`;`, `$`, backtick, space, etc.) which is what
+// matters for command-injection safety.
+func isValidContainerName(s string) bool {
+	if s == "" || len(s) > 253 {
+		return false
+	}
+	for i, r := range s {
+		ok := (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9')
+		if i > 0 {
+			ok = ok || r == '_' || r == '.' || r == '-'
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
 }
 
 // isConnectionClosed checks if the error is a closed connection error

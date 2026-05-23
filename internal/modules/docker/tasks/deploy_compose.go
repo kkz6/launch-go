@@ -26,6 +26,16 @@ type ComposeDeployConfig struct {
 	ComposeFilePath string
 
 	RawYAML string
+
+	// EnvFile is the body the Environment subtab persists into
+	// `docker_composes.env_file`. When non-empty the deploy script
+	// writes it to `${STACK_DIR}/.env` BEFORE `docker compose up`.
+	// Compose reads .env from the project dir automatically for
+	// ${VAR} substitution in the YAML and propagates matching keys
+	// to services. Empty string = no .env file is written (and any
+	// existing one is removed so a cleared Environment tab actually
+	// takes effect on the next deploy).
+	EnvFile string
 }
 
 // DeployCompose returns a taskrunner.Task that brings a compose stack
@@ -102,6 +112,28 @@ fi
 	} else {
 		// Should be unreachable due to service validation — defensive.
 		b.WriteString("echo \"compose deploy missing source\" >&2; exit 1\n")
+	}
+
+	// Write or remove the `.env` file based on EnvFile content. For
+	// raw_yaml the `cd "${STACK_DIR}"` already happened above; for
+	// git deploys we `cd "${BUILD_DIR}"` so the .env writes there.
+	// Either way relative paths resolve from PWD, so .env lives next
+	// to the compose file like docker compose expects.
+	if cfg.EnvFile != "" {
+		b.WriteString(`echo "::LAUNCH::deploy_step::writing_env_file"
+cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
+`)
+		b.WriteString(cfg.EnvFile)
+		if !strings.HasSuffix(cfg.EnvFile, "\n") {
+			b.WriteString("\n")
+		}
+		b.WriteString("LAUNCH_COMPOSE_ENV_EOF\n")
+	} else {
+		// Explicitly clear the file when EnvFile is empty so a
+		// previously-set environment doesn't silently linger on the
+		// host after the user clears the Environment tab. `rm -f`
+		// tolerates the "no such file" case for first deploys.
+		b.WriteString("rm -f .env\n")
 	}
 
 	// `--network launch-network` happens inside the compose file (each

@@ -58,13 +58,31 @@ func (s *VolumeService) CreateVolume(
 		return dto.VolumeResponse{}, fiberutil.BadRequest("Mount path must be absolute")
 	}
 
-	if req.Type == "bind" {
+	// Per-flavour validation. "named" is the legacy spelling — coerce
+	// to "volume" before persistence so downstream code only sees one
+	// of the three canonical types.
+	normalisedType := req.Type
+	if normalisedType == "named" {
+		normalisedType = "volume"
+	}
+	switch normalisedType {
+	case "bind":
 		if req.HostPath == nil || strings.TrimSpace(*req.HostPath) == "" {
-			return dto.VolumeResponse{}, fiberutil.BadRequest("Bind volumes require host_path")
+			return dto.VolumeResponse{}, fiberutil.BadRequest("Bind mounts require host_path")
 		}
-		if !strings.HasPrefix(*req.HostPath, "/") {
+		if !strings.HasPrefix(strings.TrimSpace(*req.HostPath), "/") {
 			return dto.VolumeResponse{}, fiberutil.BadRequest("Host path must be absolute")
 		}
+	case "volume":
+		// `name` already validated above; no extra fields required.
+	case "file":
+		if req.FilePath == nil || strings.TrimSpace(*req.FilePath) == "" {
+			return dto.VolumeResponse{}, fiberutil.BadRequest(
+				"File mounts require file_path (the on-host filename)",
+			)
+		}
+	default:
+		return dto.VolumeResponse{}, fiberutil.BadRequest("Unsupported mount type")
 	}
 
 	taken, err := s.Repos().Volume().ExistsByName(ctx, applicationID, name, "")
@@ -77,12 +95,33 @@ func (s *VolumeService) CreateVolume(
 		)
 	}
 
+	// Trim & nil-out fields not relevant to the chosen type. Keeps
+	// the row tidy so the response shape doesn't leak stale values
+	// from previous edits (the form lets the user switch types
+	// before saving on first create — we wipe what doesn't belong).
+	var hostPath *string
+	if normalisedType == "bind" && req.HostPath != nil {
+		hp := strings.TrimSpace(*req.HostPath)
+		hostPath = &hp
+	}
+	var content *string
+	var filePath *string
+	if normalisedType == "file" {
+		content = req.Content
+		if req.FilePath != nil {
+			fp := strings.TrimSpace(*req.FilePath)
+			filePath = &fp
+		}
+	}
+
 	v := &models.ApplicationVolume{
 		ApplicationID: applicationID,
 		Name:          name,
 		MountPath:     mountPath,
-		Type:          req.Type,
-		HostPath:      req.HostPath,
+		Type:          normalisedType,
+		HostPath:      hostPath,
+		Content:       content,
+		FilePath:      filePath,
 	}
 	if err := s.Repos().Volume().Create(ctx, v); err != nil {
 		return dto.VolumeResponse{}, err
@@ -130,6 +169,26 @@ func (s *VolumeService) UpdateVolume(
 			updates["host_path"] = nil
 		} else {
 			updates["host_path"] = hp
+		}
+	}
+	// File-mount fields. Only meaningful for type=file rows; we still
+	// accept them on other rows (silently apply) rather than rejecting
+	// — keeps the PATCH semantics simple and lets the UI switch a row
+	// to file-mode in a future migration without a separate endpoint.
+	if req.Content != nil {
+		updates["content"] = *req.Content
+	}
+	if req.FilePath != nil {
+		fp := strings.TrimSpace(*req.FilePath)
+		if v.Type == "file" && fp == "" {
+			return dto.VolumeResponse{}, fiberutil.BadRequest(
+				"File mounts require a non-empty file_path",
+			)
+		}
+		if fp == "" {
+			updates["file_path"] = nil
+		} else {
+			updates["file_path"] = fp
 		}
 	}
 	if len(updates) > 0 {

@@ -19,11 +19,18 @@ const (
 	ProvisionStepSSHSecurity              ProvisionStep = "ssh_security"
 
 	// Docker-stack steps
-	ProvisionStepValidatePorts     ProvisionStep = "validate_ports"
-	ProvisionStepInstallDocker     ProvisionStep = "install_docker"
+	ProvisionStepValidatePorts      ProvisionStep = "validate_ports"
+	ProvisionStepInstallDocker      ProvisionStep = "install_docker"
+	ProvisionStepSetupDockerNetwork ProvisionStep = "setup_docker_network"
+	ProvisionStepSetupLaunchDirs    ProvisionStep = "setup_launch_dirs"
+	ProvisionStepInstallTraefik     ProvisionStep = "install_traefik"
+
+	// ProvisionStepSetupSwarmNetwork is the legacy step name from the
+	// pre-v2 docker stack that initialised Docker Swarm and created an
+	// overlay network. Kept here so old `server_provision_logs` rows
+	// still parse via ParseProvisionStep — never re-emitted by new
+	// provisions, never added to ForDockerServer().
 	ProvisionStepSetupSwarmNetwork ProvisionStep = "setup_swarm_network"
-	ProvisionStepSetupLaunchDirs   ProvisionStep = "setup_launch_dirs"
-	ProvisionStepInstallTraefik    ProvisionStep = "install_traefik"
 )
 
 var allProvisionSteps = []ProvisionStep{
@@ -35,9 +42,12 @@ var allProvisionSteps = []ProvisionStep{
 	ProvisionStepSSHSecurity,
 	ProvisionStepValidatePorts,
 	ProvisionStepInstallDocker,
-	ProvisionStepSetupSwarmNetwork,
+	ProvisionStepSetupDockerNetwork,
 	ProvisionStepSetupLaunchDirs,
 	ProvisionStepInstallTraefik,
+	// Legacy step — kept so historical logs still parse. Never
+	// scheduled by ForDockerServer().
+	ProvisionStepSetupSwarmNetwork,
 }
 
 var provisionStepLabels = map[ProvisionStep]string{
@@ -49,9 +59,11 @@ var provisionStepLabels = map[ProvisionStep]string{
 	ProvisionStepSSHSecurity:              "SSH Security",
 	ProvisionStepValidatePorts:            "Validate Ports",
 	ProvisionStepInstallDocker:            "Install Docker",
-	ProvisionStepSetupSwarmNetwork:        "Setup Docker Swarm & Network",
+	ProvisionStepSetupDockerNetwork:       "Setup Launch Docker Network",
 	ProvisionStepSetupLaunchDirs:          "Setup Launch Directories",
 	ProvisionStepInstallTraefik:           "Install Traefik",
+	// Legacy label — historical rows; new provisions never emit this.
+	ProvisionStepSetupSwarmNetwork: "Setup Docker Swarm & Network (legacy)",
 }
 
 func (p ProvisionStep) String() string {
@@ -69,9 +81,12 @@ func (p ProvisionStep) TemplateName() string {
 		ProvisionStepSSHSecurity:              "provision/ssh_security.sh",
 		ProvisionStepValidatePorts:            "provision/validate_ports.sh",
 		ProvisionStepInstallDocker:            "provision/install_docker.sh",
-		ProvisionStepSetupSwarmNetwork:        "provision/setup_swarm_network.sh",
+		ProvisionStepSetupDockerNetwork:       "provision/setup_docker_network.sh",
 		ProvisionStepSetupLaunchDirs:          "provision/setup_launch_dirs.sh",
 		ProvisionStepInstallTraefik:           "software/install_traefik.sh",
+		// Legacy mapping retained so reruns of historical rows still
+		// have a template to render (the file is also kept on disk).
+		ProvisionStepSetupSwarmNetwork: "provision/setup_swarm_network.sh",
 	}
 
 	if name, ok := templateNames[p]; ok {
@@ -86,7 +101,8 @@ func (p ProvisionStep) RequiresData() bool {
 	switch p {
 	case ProvisionStepConfigureSwap, ProvisionStepConfigureFirewall,
 		ProvisionStepSetupRoot, ProvisionStepSetupDefaultUser,
-		ProvisionStepInstallDocker, ProvisionStepSetupSwarmNetwork,
+		ProvisionStepInstallDocker, ProvisionStepSetupDockerNetwork,
+		ProvisionStepSetupSwarmNetwork,
 		ProvisionStepSetupLaunchDirs, ProvisionStepInstallTraefik:
 		return true
 	default:
@@ -105,9 +121,11 @@ func (p ProvisionStep) Description() string {
 		ProvisionStepSSHSecurity:              "Enhance SSH security by disabling password authentication and root login",
 		ProvisionStepValidatePorts:            "Verify ports 80 and 443 are available for Traefik",
 		ProvisionStepInstallDocker:            "Install Docker CE, Compose plugin, and Buildx",
-		ProvisionStepSetupSwarmNetwork:        "Initialize Docker Swarm and create the launch overlay network",
+		ProvisionStepSetupDockerNetwork:       "Create the launch-network bridge so Traefik can route to containers by name",
 		ProvisionStepSetupLaunchDirs:          "Create the /etc/launch directory tree for service state",
-		ProvisionStepInstallTraefik:           "Deploy Traefik as a Swarm service for reverse-proxy and ACME",
+		ProvisionStepInstallTraefik:           "Run Traefik as a container with docker-label discovery + ACME",
+		// Legacy description retained for historical rows.
+		ProvisionStepSetupSwarmNetwork: "Initialize Docker Swarm and create the launch overlay network (legacy)",
 	}
 	if desc, ok := descriptions[p]; ok {
 		return desc
@@ -152,8 +170,13 @@ func ForFreshServer() []ProvisionStep {
 
 // ForDockerServer returns the provision steps in order for a fresh docker server.
 // Reuses the base hardening steps then installs the Docker stack (validate
-// ports, install Docker, init Swarm + overlay network, create launch directory
-// tree, deploy Traefik).
+// ports, install Docker, create the launch-network bridge, create launch
+// directory tree, run Traefik as a container with docker-label discovery).
+//
+// Pre-v2 servers were provisioned with Docker Swarm + an overlay network
+// instead — the legacy ProvisionStepSetupSwarmNetwork is intentionally
+// excluded here. Old servers keep working (their Traefik service is still
+// running) but new provisions never opt in to swarm.
 func ForDockerServer() []ProvisionStep {
 	return []ProvisionStep{
 		ProvisionStepConfigureSwap,
@@ -164,7 +187,7 @@ func ForDockerServer() []ProvisionStep {
 		ProvisionStepSetupDefaultUser,
 		ProvisionStepValidatePorts,
 		ProvisionStepInstallDocker,
-		ProvisionStepSetupSwarmNetwork,
+		ProvisionStepSetupDockerNetwork,
 		ProvisionStepSetupLaunchDirs,
 		ProvisionStepInstallTraefik,
 	}

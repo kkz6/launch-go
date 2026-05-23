@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	dockerjobs "github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/queue"
@@ -40,6 +41,33 @@ func GetScheduledTasks() []queue.ScheduledTask {
 		// ┌─────────────────────────────────────────────────────────────────┐
 		// │                     Backup Jobs                                 │
 		// └─────────────────────────────────────────────────────────────────┘
+
+		// Walk every enabled docker_database_backups row and dispatch a
+		// run for each one whose cron expression fires this minute.
+		// Mirrors dokploy's per-row scheduleJob() at the same 1-minute
+		// resolution, just driven by a single poller instead of N
+		// in-process timers. See poll_due_backups.go for the rationale.
+		At("*/1 * * * *", dockerjobs.NewPollDueBackupsTask,
+			WithName("docker-poll-due-backups"),
+			LowPriority(),
+		),
+
+		// ┌─────────────────────────────────────────────────────────────────┐
+		// │                     Application Schedules                       │
+		// └─────────────────────────────────────────────────────────────────┘
+
+		// Walk every enabled docker_application_schedules row each
+		// minute and dispatch RunApplicationScheduleJob for any whose
+		// cron expression fires now. Mirrors dokploy's initSchedules()
+		// re-arm pass but spread across every minute, so a freshly-
+		// created schedule fires within at most a minute without
+		// restarting the worker (and container restart / rebuild is
+		// transparent — the runner resolves the current container at
+		// dispatch time, not at registration time).
+		At("*/1 * * * *", dockerjobs.NewPollDueSchedulesTask,
+			WithName("docker-poll-due-schedules"),
+			LowPriority(),
+		),
 
 		// Example: Prune old backups - runs daily at 3 AM
 		// At("0 3 * * *", backupjobs.NewPruneOldBackupsTask,

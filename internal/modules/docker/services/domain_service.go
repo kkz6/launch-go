@@ -2,8 +2,11 @@ package services
 
 import (
 	"context"
+	"fmt"
+	"net"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/dto"
 	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
@@ -77,12 +80,24 @@ func (s *DomainService) CreateDomain(
 	if req.HTTPS != nil {
 		https = *req.HTTPS
 	}
+	stripPath := false
+	if req.StripPath != nil {
+		stripPath = *req.StripPath
+	}
+	certProvider := "letsencrypt"
+	if req.CertificateProvider != nil && *req.CertificateProvider != "" {
+		certProvider = *req.CertificateProvider
+	}
 
 	d := &models.ApplicationDomain{
-		ApplicationID: applicationID,
-		Host:          host,
-		Path:          trimEmpty(req.Path),
-		HTTPS:         https,
+		ApplicationID:       applicationID,
+		Host:                host,
+		Path:                trimEmpty(req.Path),
+		InternalPath:        trimEmpty(req.InternalPath),
+		StripPath:           stripPath,
+		ContainerPort:       req.ContainerPort,
+		HTTPS:               https,
+		CertificateProvider: certProvider,
 	}
 	if err := s.Repos().Domain().Create(ctx, d); err != nil {
 		return dto.DomainResponse{}, err
@@ -122,6 +137,24 @@ func (s *DomainService) UpdateDomain(
 	}
 	if req.Path != nil {
 		updates["path"] = trimEmpty(req.Path)
+	}
+	if req.InternalPath != nil {
+		updates["internal_path"] = trimEmpty(req.InternalPath)
+	}
+	if req.StripPath != nil {
+		updates["strip_path"] = *req.StripPath
+	}
+	if req.ContainerPort != nil {
+		// Pass nil-equivalent through when caller sends 0 — lets the
+		// UI "clear the override" by sending 0 from the input.
+		if *req.ContainerPort > 0 {
+			updates["container_port"] = *req.ContainerPort
+		} else {
+			updates["container_port"] = nil
+		}
+	}
+	if req.CertificateProvider != nil && *req.CertificateProvider != "" {
+		updates["certificate_provider"] = *req.CertificateProvider
 	}
 	if len(updates) > 0 {
 		if err := s.Repos().Domain().UpdateFields(ctx, id, updates); err != nil {
@@ -171,6 +204,102 @@ func (s *DomainService) DeleteDomain(
 		"server_id":      serverID,
 	})
 	return nil
+}
+
+// ValidateDNS resolves the domain's hostname against public DNS and
+// compares the result with the docker server's public IP. The
+// frontend's "Validate DNS" button shows the user whether the
+// hostname is pointing at the right server before the deploy / cert
+// issuance bites them.
+//
+// Wildcard-DNS hostnames (*.traefik.me, *.sslip.io, *.nip.io) skip
+// the lookup and report ok=true — those resolvers always answer
+// with the IP encoded in the label by definition, no provisioning
+// required.
+func (s *DomainService) ValidateDNS(
+	ctx context.Context, domainID, applicationID, projectID, serverID, teamID string,
+) (dto.ValidateDNSResponse, error) {
+	app, err := s.scopedApp(ctx, applicationID, projectID, serverID, teamID)
+	if err != nil {
+		return dto.ValidateDNSResponse{}, err
+	}
+	d, err := s.Repos().Domain().FindByID(ctx, domainID)
+	if err != nil {
+		return dto.ValidateDNSResponse{}, err
+	}
+	if d.ApplicationID != applicationID {
+		return dto.ValidateDNSResponse{}, fiberutil.NotFound()
+	}
+
+	host := strings.ToLower(strings.TrimSpace(d.Host))
+	resp := dto.ValidateDNSResponse{Host: host}
+
+	// Wildcard-DNS hostnames are routable by definition.
+	for _, suffix := range wildcardDNSSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			resp.OK = true
+			resp.Wildcard = true
+			resp.Message = "Wildcard DNS hostname — already routable, no validation needed."
+			return resp, nil
+		}
+	}
+
+	server, err := s.ServerRepos().Server().FindByID(ctx, app.ServerID)
+	if err != nil {
+		return dto.ValidateDNSResponse{}, err
+	}
+	expectedIP := ""
+	if server.PublicIPv4 != nil {
+		expectedIP = *server.PublicIPv4
+	}
+	resp.ExpectedIP = expectedIP
+
+	// Bounded DNS lookup so a slow resolver doesn't block the
+	// request thread; 5s is generous for public A records.
+	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIPAddr(lookupCtx, host)
+	if err != nil {
+		resp.OK = false
+		resp.Message = fmt.Sprintf("DNS lookup failed: %v", err)
+		return resp, nil
+	}
+	for _, ip := range ips {
+		v4 := ip.IP.To4()
+		if v4 == nil {
+			continue
+		}
+		resp.ResolvedIPs = append(resp.ResolvedIPs, v4.String())
+		if expectedIP != "" && v4.String() == expectedIP {
+			resp.OK = true
+		}
+	}
+	if resp.OK {
+		resp.Message = fmt.Sprintf("Resolves to %s ✓", expectedIP)
+	} else if len(resp.ResolvedIPs) == 0 {
+		resp.Message = "Hostname doesn't resolve to any A record yet."
+	} else {
+		resp.Message = fmt.Sprintf(
+			"Resolves to %s — expected %s",
+			strings.Join(resp.ResolvedIPs, ", "),
+			expectedIP,
+		)
+	}
+	return resp, nil
+}
+
+// wildcardDNSSuffixes mirrors the frontend list — keep in sync with
+// CreateDomain.vue's WILDCARD_DNS_SUFFIXES.
+//
+// Note: traefik.me is NOT here despite its suggestive name. The
+// service only resolves `traefik.me` itself to 127.0.0.1 — IP-
+// encoded subdomains like `1-2-3-4.traefik.me` return SERVFAIL
+// from public resolvers. Including it caused user-visible
+// "server IP could not be found" errors.
+var wildcardDNSSuffixes = []string{
+	".sslip.io",
+	".nip.io",
+	".localtest.me",
 }
 
 // scopedApp resolves the (server, project, application) triple inside the

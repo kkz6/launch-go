@@ -21,6 +21,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/security"
@@ -267,6 +268,21 @@ func (s *Service) DeleteServer(ctx context.Context, id, teamID, userID string) e
 	_ = userID
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
 	if err != nil {
+		return err
+	}
+
+	// Docker servers refuse deletion while live projects still belong to
+	// them. Mirrors how ProjectService.DeleteProject refuses to delete a
+	// project that still has workloads — the user must tear things down
+	// from the bottom up. Querying the docker_projects table directly
+	// (rather than importing the docker repo) keeps the server module
+	// independent of the docker module's import graph.
+	//
+	// The PHP server types (php / database / loadbalancer) don't have
+	// docker_projects rows by construction, so the COUNT comes back zero
+	// and the check is free for them — no `if server.Type == "docker"`
+	// guard needed.
+	if err := s.guardDockerProjectsExist(ctx, server.ID); err != nil {
 		return err
 	}
 
@@ -839,4 +855,44 @@ func (s *Service) RunVulnerabilityAudit(ctx context.Context, serverID, teamID, u
 	activity.RecordEvent(ctx, "vulnerability_audit_started", userID, server, "Vulnerability audit was initiated")
 
 	return s.EnqueueTask(task)
+}
+
+// guardDockerProjectsExist returns a 422 validation error when the server
+// still has live docker projects. Hard-blocks DeleteServer so the user
+// must tear down projects (and their workloads) first.
+//
+// Implementation note: we query the `docker_projects` table directly via
+// the service's *gorm.DB handle rather than going through the docker
+// module's ProjectRepository. The docker module imports server (for
+// server models / types), so a reverse import would create a cycle.
+// Counting one column with a soft-delete-aware WHERE keeps this cheap
+// — the query is `SELECT 1 FROM docker_projects WHERE server_id = ?
+// AND deleted_at IS NULL LIMIT 1` style, scanning the index docker
+// migrations already create on server_id.
+//
+// The companion frontend disables the Delete button when
+// `projects_count > 0` is exposed on the server response, so this
+// server-side check is the backstop — never the primary UX.
+func (s *Service) guardDockerProjectsExist(ctx context.Context, serverID string) error {
+	if !s.HasDB() {
+		return nil
+	}
+	var count int64
+	if err := s.DB().WithContext(ctx).
+		Table("docker_projects").
+		Where("server_id = ? AND deleted_at IS NULL", serverID).
+		Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to count docker projects: %w", err)
+	}
+	if count == 0 {
+		return nil
+	}
+	noun := "project"
+	if count > 1 {
+		noun = "projects"
+	}
+	return fiberutil.Validation(fmt.Sprintf(
+		"This server still has %d Docker %s. Remove every project (and the apps / compose stacks / databases inside it) before deleting the server.",
+		count, noun,
+	))
 }

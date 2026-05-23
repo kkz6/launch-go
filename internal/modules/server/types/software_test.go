@@ -153,8 +153,10 @@ func TestSoftware_Docker_Group(t *testing.T) {
 }
 
 func TestSoftware_Docker_InstallOrder(t *testing.T) {
-	// Docker installs early; Traefik installs after the base stack so the overlay
-	// network it depends on already exists.
+	// Docker installs early; Traefik installs after the base stack so the
+	// launch-network bridge it joins already exists. (Pre-v2 servers used
+	// an overlay network from the swarm install — same ordering still
+	// holds.)
 	if SoftwareDocker.InstallOrder() >= SoftwareTraefik.InstallOrder() {
 		t.Error("Docker should install before Traefik")
 	}

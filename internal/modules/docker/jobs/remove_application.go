@@ -35,6 +35,13 @@ type RemoveApplicationPayload struct {
 	// `launch-app-<project-slug>-<app-slug>`. Caller passes it so the
 	// job doesn't need to re-resolve the project on a deleted row.
 	ContainerName string `json:"container_name"`
+	// VolumeNames is the list of docker named volumes the application
+	// declared (kind=volume rows on docker_application_volumes). When
+	// non-empty, the remove script runs `docker volume rm` for each
+	// after the container is gone. Caller resolves the names from the
+	// repo before soft-deleting the rows. Empty slice = keep all
+	// volumes (the default opt-out behaviour).
+	VolumeNames []string `json:"volume_names,omitempty"`
 }
 
 // RemoveApplicationJob is the handler.
@@ -75,7 +82,7 @@ func (j *RemoveApplicationJob) Handle(ctx context.Context) error {
 
 	task := taskrunner.NewBaseTask(
 		taskrunner.WithName("Remove application container"),
-		taskrunner.WithScript(tasks.RemoveApplicationScript(j.Payload.ContainerName)),
+		taskrunner.WithScript(tasks.RemoveApplicationScript(j.Payload.ContainerName, j.Payload.VolumeNames)),
 		taskrunner.WithTimeoutSeconds(60),
 	)
 	result, runErr := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
@@ -117,6 +124,7 @@ func (j *RemoveApplicationJob) Failed(ctx context.Context, err error) {
 // from the service layer.
 func NewRemoveApplicationTask(
 	applicationID, projectID, serverID, teamID, containerName string,
+	volumeNames []string,
 ) (*asynq.Task, error) {
 	return pkgjobs.TaskWithID(TypeRemoveApplication, RemoveApplicationPayload{
 		ApplicationID: applicationID,
@@ -124,5 +132,6 @@ func NewRemoveApplicationTask(
 		ServerID:      serverID,
 		TeamID:        teamID,
 		ContainerName: containerName,
+		VolumeNames:   volumeNames,
 	}, pkgjobs.Dedup("docker-remove-app", applicationID))
 }

@@ -23,7 +23,8 @@ func TestForDockerServer_Order(t *testing.T) {
 	steps := ForDockerServer()
 
 	// Must contain all 6 base hardening steps in the same order as ForFreshServer,
-	// then the 5 docker-specific steps appended.
+	// then the 5 docker-specific steps appended. Swarm step is intentionally
+	// excluded from the fresh-provision flow — see ForDockerServer() comment.
 	expected := []ProvisionStep{
 		ProvisionStepConfigureSwap,
 		ProvisionStepConfigureFirewall,
@@ -33,12 +34,19 @@ func TestForDockerServer_Order(t *testing.T) {
 		ProvisionStepSetupDefaultUser,
 		ProvisionStepValidatePorts,
 		ProvisionStepInstallDocker,
-		ProvisionStepSetupSwarmNetwork,
+		ProvisionStepSetupDockerNetwork,
 		ProvisionStepSetupLaunchDirs,
 		ProvisionStepInstallTraefik,
 	}
 	assert.Equal(t, expected, steps, "docker stack must run base hardening then docker-specific steps")
 	assert.Len(t, steps, 11)
+
+	// Swarm step is reachable via the enum (for parsing historical rows)
+	// but must NEVER appear in the live provision sequence.
+	for _, step := range steps {
+		assert.NotEqual(t, ProvisionStepSetupSwarmNetwork, step,
+			"legacy swarm step must not be scheduled by v2 provisions")
+	}
 }
 
 // TestForFreshServer_OmitsRemovedSteps pins which historical steps must
@@ -70,11 +78,14 @@ func TestForDockerServer_BaseStepsMatchFreshServer(t *testing.T) {
 
 func TestProvisionStep_Docker_TemplateNames(t *testing.T) {
 	cases := map[ProvisionStep]string{
-		ProvisionStepValidatePorts:     "provision/validate_ports.sh",
-		ProvisionStepInstallDocker:     "provision/install_docker.sh",
+		ProvisionStepValidatePorts:      "provision/validate_ports.sh",
+		ProvisionStepInstallDocker:      "provision/install_docker.sh",
+		ProvisionStepSetupDockerNetwork: "provision/setup_docker_network.sh",
+		ProvisionStepSetupLaunchDirs:    "provision/setup_launch_dirs.sh",
+		ProvisionStepInstallTraefik:     "software/install_traefik.sh",
+		// Legacy step retained so old rows still parse. Template file
+		// is still on disk for the same reason.
 		ProvisionStepSetupSwarmNetwork: "provision/setup_swarm_network.sh",
-		ProvisionStepSetupLaunchDirs:   "provision/setup_launch_dirs.sh",
-		ProvisionStepInstallTraefik:    "software/install_traefik.sh",
 	}
 	for step, want := range cases {
 		t.Run(string(step), func(t *testing.T) {
@@ -86,7 +97,8 @@ func TestProvisionStep_Docker_TemplateNames(t *testing.T) {
 func TestProvisionStep_Docker_RequiresData(t *testing.T) {
 	for _, step := range []ProvisionStep{
 		ProvisionStepInstallDocker,
-		ProvisionStepSetupSwarmNetwork,
+		ProvisionStepSetupDockerNetwork,
+		ProvisionStepSetupSwarmNetwork, // legacy; still expected to claim it needs data
 		ProvisionStepSetupLaunchDirs,
 		ProvisionStepInstallTraefik,
 	} {
@@ -102,7 +114,8 @@ func TestProvisionStep_Docker_IsValid(t *testing.T) {
 	for _, step := range []ProvisionStep{
 		ProvisionStepValidatePorts,
 		ProvisionStepInstallDocker,
-		ProvisionStepSetupSwarmNetwork,
+		ProvisionStepSetupDockerNetwork,
+		ProvisionStepSetupSwarmNetwork, // legacy; remains valid so historical rows parse
 		ProvisionStepSetupLaunchDirs,
 		ProvisionStepInstallTraefik,
 	} {

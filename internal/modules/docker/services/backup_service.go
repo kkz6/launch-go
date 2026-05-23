@@ -3,22 +3,38 @@ package services
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"time"
 
+	backupmodels "github.com/kkz6/launch-go/internal/modules/backup/models"
+	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 	"github.com/kkz6/launch-go/internal/modules/docker/dto"
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
 	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
-	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // BackupService manages backup configs + run history + ad-hoc run-now
-// + restore-from-snapshot for managed databases. Each operation is a
-// one-shot SSH task (no asynq job yet — scheduler integration lands in
-// a follow-up).
+// + restore-from-snapshot for managed databases.
+//
+// As of the 0027 migration this service no longer stores S3 credentials
+// on the docker_database_backups row. Each backup config references a
+// global storage_providers entry by id; credentials live there and are
+// shared across every backup that targets the same destination. The
+// run-time path (RunNow + the scheduled job) loads the provider, pulls
+// its S3 credentials map, and feeds the existing BackupRunConfig.
+//
+// Two execution paths land here:
+//
+//   - Synchronous (RunNow): user clicks "Run now" in the UI; we run the
+//     SSH task inline so the response carries the resulting BackupRun
+//     back to the browser.
+//   - Asynchronous (scheduled): jobs.PollDueBackupsJob walks enabled
+//     backups every minute and dispatches jobs.RunBackupJob, which
+//     reproduces the same flow off the queue (and broadcasts the same
+//     events). No state on the row distinguishes the two — they share
+//     the same docker_database_backup_runs history.
 type BackupService struct {
 	*BaseService
 }
@@ -27,15 +43,10 @@ func NewBackupService(deps *ServiceDeps) *BackupService {
 	return &BackupService{BaseService: NewBaseService(deps)}
 }
 
-// s3Credentials is the JSON shape we store in the encrypted column.
-type s3Credentials struct {
-	AccessKey string `json:"access_key"`
-	SecretKey string `json:"secret_key"`
-}
-
-// GetBackup returns the backup config, with AccessKey decoded. Returns
-// nil + nil when no backup is configured yet (so the UI can render the
-// "Set up backups" empty state).
+// GetBackup returns the backup config. No credentials in the response —
+// they're owned by the linked storage_providers row. Returns nil + nil
+// when no backup is configured yet so the UI can render the empty
+// state.
 func (s *BackupService) GetBackup(
 	ctx context.Context, databaseID, projectID, serverID, teamID string,
 ) (*dto.BackupResponse, error) {
@@ -49,13 +60,13 @@ func (s *BackupService) GetBackup(
 		}
 		return nil, err
 	}
-	access, hasSecret := decodeS3Credentials(b.Credentials)
-	return dto.ToBackupResponse(b, access, hasSecret), nil
+	return dto.ToBackupResponse(b), nil
 }
 
 // ConfigureBackup creates or updates the backup config for a database.
-// Unique index on (database_id) ensures one config per database; we
-// upsert by finding the live row first.
+// The storage_provider_id must reference an S3-driver provider that
+// belongs to the caller's team — we 400 otherwise so the user gets a
+// useful error instead of a foreign-key violation at insert time.
 func (s *BackupService) ConfigureBackup(
 	ctx context.Context, databaseID, projectID, serverID, teamID, userID string,
 	req *dto.ConfigureBackupRequest,
@@ -66,11 +77,10 @@ func (s *BackupService) ConfigureBackup(
 		return dto.BackupResponse{}, err
 	}
 
-	creds, err := json.Marshal(s3Credentials{
-		AccessKey: req.AccessKey,
-		SecretKey: req.SecretKey,
-	})
-	if err != nil {
+	// Verify the storage provider exists, belongs to this team, and is
+	// an S3-flavoured driver (we don't yet know how to upload database
+	// dumps to non-S3 backends).
+	if _, err := s.loadTeamStorageProvider(ctx, req.StorageProviderID, teamID); err != nil {
 		return dto.BackupResponse{}, err
 	}
 
@@ -82,14 +92,13 @@ func (s *BackupService) ConfigureBackup(
 	var b *models.DatabaseBackup
 	if existing != nil {
 		updates := map[string]any{
-			"provider":      req.Provider,
-			"endpoint":      req.Endpoint,
-			"bucket":        req.Bucket,
-			"region":        req.Region,
-			"path_prefix":   req.PathPrefix,
-			"credentials":   dbtype.EncryptedString(creds),
-			"cron_schedule": req.CronSchedule,
-			"enabled":       req.Enabled,
+			"storage_provider_id": req.StorageProviderID,
+			"path":                req.Path,
+			"retention":           req.Retention,
+			"notify_on_success":   req.NotifyOnSuccess,
+			"notify_on_failure":   req.NotifyOnFailure,
+			"cron_schedule":       req.CronSchedule,
+			"enabled":             req.Enabled,
 		}
 		if err := s.Repos().Backup().UpdateFields(ctx, existing.ID, updates); err != nil {
 			return dto.BackupResponse{}, err
@@ -100,15 +109,14 @@ func (s *BackupService) ConfigureBackup(
 		}
 	} else {
 		b = &models.DatabaseBackup{
-			DatabaseID:   databaseID,
-			Provider:     req.Provider,
-			Endpoint:     req.Endpoint,
-			Bucket:       req.Bucket,
-			Region:       req.Region,
-			PathPrefix:   req.PathPrefix,
-			Credentials:  dbtype.EncryptedString(creds),
-			CronSchedule: req.CronSchedule,
-			Enabled:      req.Enabled,
+			DatabaseID:        databaseID,
+			StorageProviderID: req.StorageProviderID,
+			Path:              req.Path,
+			Retention:         req.Retention,
+			NotifyOnSuccess:   req.NotifyOnSuccess,
+			NotifyOnFailure:   req.NotifyOnFailure,
+			CronSchedule:      req.CronSchedule,
+			Enabled:           req.Enabled,
 		}
 		b.TeamID = teamID
 		if err := s.Repos().Backup().Create(ctx, b); err != nil {
@@ -123,8 +131,7 @@ func (s *BackupService) ConfigureBackup(
 		"backup_id":   b.ID,
 	})
 
-	access, hasSecret := decodeS3Credentials(b.Credentials)
-	return *dto.ToBackupResponse(b, access, hasSecret), nil
+	return *dto.ToBackupResponse(b), nil
 }
 
 // DeleteBackup turns off backups for a database. Existing run rows are
@@ -178,8 +185,9 @@ func (s *BackupService) ListRuns(
 }
 
 // RunNow kicks off an immediate backup. Synchronous SSH call — fits a
-// "click to back up" interaction. For automated cron runs (a follow-up),
-// the scheduler will dispatch this via an asynq job.
+// "click to back up" interaction so the response carries the run row
+// back inline. The scheduled-cron path lives in jobs.RunBackupJob,
+// dispatched once per minute by jobs.PollDueBackupsJob.
 func (s *BackupService) RunNow(
 	ctx context.Context, databaseID, projectID, serverID, teamID, userID string,
 ) (dto.BackupRunResponse, error) {
@@ -202,9 +210,9 @@ func (s *BackupService) RunNow(
 		return dto.BackupRunResponse{}, err
 	}
 
-	creds, err := loadS3Creds(b.Credentials)
+	s3Creds, err := s.loadProviderS3Creds(ctx, b.StorageProviderID, teamID)
 	if err != nil {
-		return dto.BackupRunResponse{}, fiberutil.BadRequest("Backup credentials are missing or corrupt")
+		return dto.BackupRunResponse{}, err
 	}
 	dbCreds, err := loadDBCredentials(db)
 	if err != nil {
@@ -231,22 +239,17 @@ func (s *BackupService) RunNow(
 		Username:   dbCreds.Username,
 		Password:   dbCreds.Password,
 		Database:   dbCreds.Database,
-		Endpoint:   strDeref(b.Endpoint),
-		Region:     strDeref(b.Region),
-		Bucket:     b.Bucket,
-		PathPrefix: strDeref(b.PathPrefix),
-		AccessKey:  creds.AccessKey,
-		SecretKey:  creds.SecretKey,
+		Endpoint:   s3Creds.Endpoint,
+		Region:     s3Creds.Region,
+		Bucket:     s3Creds.Bucket,
+		PathPrefix: backupObjectPath(b.Path, s3Creds.Path),
+		AccessKey:  s3Creds.Key,
+		SecretKey:  s3Creds.Secret,
 	}
 
 	// Run synchronously through the existing taskrunner so we get the
 	// captured output for marker parsing.
 	taskWrapper := tasks.RunBackup(cfg)
-	dispatcher, ok := s.Repos().Backup().DB.Statement.ConnPool.(interface{}) // placeholder
-	_ = dispatcher
-	_ = ok
-	_ = taskrunner.NewBaseTask // keep the import even when unused
-
 	result, runErr := dispatchTaskAsRoot(s.BaseService, ctx, server, taskWrapper)
 
 	finishedAt := time.Now().UTC()
@@ -299,6 +302,13 @@ func (s *BackupService) RunNow(
 		"size_bytes":  sizeBytes,
 	})
 
+	// Honour the retention cap. Best-effort — failure to prune doesn't
+	// fail the run because the snapshot itself is already safely
+	// uploaded.
+	if b.Retention > 0 {
+		_ = s.pruneOldRuns(ctx, b.ID, b.Retention)
+	}
+
 	reloaded, err := s.Repos().BackupRun().FindByID(ctx, run.ID)
 	if err != nil {
 		return *dto.ToBackupRunResponse(run), nil
@@ -338,9 +348,9 @@ func (s *BackupService) Restore(
 	if err != nil {
 		return err
 	}
-	creds, err := loadS3Creds(b.Credentials)
+	s3Creds, err := s.loadProviderS3Creds(ctx, b.StorageProviderID, teamID)
 	if err != nil {
-		return fiberutil.BadRequest("Backup credentials are missing or corrupt")
+		return err
 	}
 	dbCreds, err := loadDBCredentials(db)
 	if err != nil {
@@ -357,12 +367,12 @@ func (s *BackupService) Restore(
 		Username:  dbCreds.Username,
 		Password:  dbCreds.Password,
 		Database:  dbCreds.Database,
-		Endpoint:  strDeref(b.Endpoint),
-		Region:    strDeref(b.Region),
-		Bucket:    b.Bucket,
+		Endpoint:  s3Creds.Endpoint,
+		Region:    s3Creds.Region,
+		Bucket:    s3Creds.Bucket,
 		ObjectKey: *run.ObjectKey,
-		AccessKey: creds.AccessKey,
-		SecretKey: creds.SecretKey,
+		AccessKey: s3Creds.Key,
+		SecretKey: s3Creds.Secret,
 	}
 
 	taskWrapper := tasks.Restore(cfg)
@@ -371,7 +381,7 @@ func (s *BackupService) Restore(
 		return fmt.Errorf("restore failed: %w", runErr)
 	}
 	if result != nil && result.ExitCode != 0 {
-		return fmt.Errorf("restore failed: %s", truncate(result.Stdout + result.Stderr, 4000))
+		return fmt.Errorf("restore failed: %s", truncate(result.Stdout+result.Stderr, 4000))
 	}
 
 	s.BroadcastToTeam(teamID, "docker.database.backup.restored", map[string]any{
@@ -401,37 +411,73 @@ func (s *BackupService) scopedDatabase(
 	return db, nil
 }
 
-// decodeS3Credentials extracts the access-key for display purposes.
-// Returns hasSecret=true when the secret-key field is non-empty so the
-// UI can show "stored ✓" without round-tripping the value.
-func decodeS3Credentials(raw dbtype.EncryptedString) (string, bool) {
-	c, err := loadS3Creds(raw)
-	if err != nil {
-		return "", false
+// loadTeamStorageProvider verifies a storage_provider id, team match,
+// and S3-driver-ness. Used at configure time so the user sees a clean
+// 400 instead of a FK error from MySQL.
+func (s *BackupService) loadTeamStorageProvider(
+	ctx context.Context, id uint64, teamID string,
+) (*backupmodels.StorageProvider, error) {
+	if s.BackupRepos() == nil {
+		return nil, fmt.Errorf("storage providers registry is not wired into docker module")
 	}
-	return c.AccessKey, c.SecretKey != ""
+	p, err := s.BackupRepos().StorageProvider().FindStorageProviderByID(ctx, id)
+	if err != nil {
+		return nil, fiberutil.BadRequest("Storage provider not found")
+	}
+	if p.TeamID != teamID {
+		return nil, fiberutil.BadRequest("Storage provider does not belong to your team")
+	}
+	if p.Provider != backuptypes.StorageDriverS3 {
+		return nil, fiberutil.BadRequest("Only S3-compatible storage providers can host database backups")
+	}
+	return p, nil
 }
 
-func loadS3Creds(raw dbtype.EncryptedString) (s3Credentials, error) {
-	if string(raw) == "" {
-		return s3Credentials{}, errors.New("empty credentials")
+// loadProviderS3Creds is the runtime cousin of loadTeamStorageProvider —
+// called by RunNow/Restore to materialise the S3Credentials struct from
+// the provider's encrypted JSON map.
+func (s *BackupService) loadProviderS3Creds(
+	ctx context.Context, providerID uint64, teamID string,
+) (backupmodels.S3Credentials, error) {
+	p, err := s.loadTeamStorageProvider(ctx, providerID, teamID)
+	if err != nil {
+		return backupmodels.S3Credentials{}, err
 	}
-	var c s3Credentials
-	if err := json.Unmarshal([]byte(raw), &c); err != nil {
-		return s3Credentials{}, err
+	raw, err := json.Marshal(p.GetCredentials())
+	if err != nil {
+		return backupmodels.S3Credentials{}, fmt.Errorf("encode provider credentials: %w", err)
+	}
+	var c backupmodels.S3Credentials
+	if err := json.Unmarshal(raw, &c); err != nil {
+		return backupmodels.S3Credentials{}, fmt.Errorf("decode S3 credentials: %w", err)
+	}
+	if c.Bucket == "" || c.Key == "" || c.Secret == "" {
+		return backupmodels.S3Credentials{}, fiberutil.BadRequest("Storage provider is missing S3 credentials")
 	}
 	return c, nil
 }
 
-func loadDBCredentials(db *models.Database) (Credentials, error) {
-	return decodeCredentials(db.Credentials)
+// pruneOldRuns deletes the oldest run rows once the count exceeds the
+// retention cap. We only delete the run rows here — actually deleting
+// the remote S3 objects is a future enhancement (needs the storage
+// driver layer).
+func (s *BackupService) pruneOldRuns(ctx context.Context, backupID string, retention int) error {
+	rows, err := s.Repos().BackupRun().ListForBackup(ctx, backupID)
+	if err != nil {
+		return err
+	}
+	if len(rows) <= retention {
+		return nil
+	}
+	// ListForBackup returns most-recent-first; trim from the tail.
+	for i := retention; i < len(rows); i++ {
+		_ = s.Repos().BackupRun().Delete(ctx, rows[i].ID)
+	}
+	return nil
 }
 
-func strDeref(s *string) string {
-	if s == nil {
-		return ""
-	}
-	return *s
+func loadDBCredentials(db *models.Database) (Credentials, error) {
+	return decodeCredentials(db.Credentials)
 }
 
 func truncate(s string, n int) string {
@@ -439,6 +485,34 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// backupObjectPath composes the final bucket-prefix used by the upload
+// script — the storage provider's "default" path joined with the
+// per-backup sub-folder. Either may be empty; we strip leading/trailing
+// slashes so the script's "<prefix>/<file>" concat doesn't double up.
+func backupObjectPath(perBackup *string, providerDefault string) string {
+	trim := func(s string) string {
+		for len(s) > 0 && (s[0] == '/' || s[0] == ' ') {
+			s = s[1:]
+		}
+		for len(s) > 0 && (s[len(s)-1] == '/' || s[len(s)-1] == ' ') {
+			s = s[:len(s)-1]
+		}
+		return s
+	}
+	out := trim(providerDefault)
+	if perBackup != nil {
+		seg := trim(*perBackup)
+		if seg != "" {
+			if out == "" {
+				out = seg
+			} else {
+				out = out + "/" + seg
+			}
+		}
+	}
+	return out
 }
 
 // parseBackupMarkers reads `::LAUNCH::object_key::<k>` and `::LAUNCH::
@@ -507,6 +581,7 @@ func dispatchTaskAsRoot(
 	},
 	task taskrunner.Task,
 ) (*taskrunner.SSHCommandResult, error) {
+	_ = base
 	client, err := taskrunner.NewSSHClientFromConnection(server.ConnectionAsRoot())
 	if err != nil {
 		return nil, err
@@ -517,5 +592,3 @@ func dispatchTaskAsRoot(
 	}
 	return client.RunScript(ctx, task.Script())
 }
-
-// (No adapter needed — SSHCommandResult fields are accessed directly.)

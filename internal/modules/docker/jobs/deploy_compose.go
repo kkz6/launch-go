@@ -78,13 +78,26 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 	cfg.GitRepo = j.Deps.resolveAuthenticatedCloneURL(ctx, map[string]any(j.compose.SourceConfig), cfg.GitRepo)
 
 	task := tasks.DeployCompose(cfg)
-	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
+	// TrackInDB() persists a server-tasks row so the frontend can
+	// stream live `docker compose up` output via ServerLogViewer —
+	// matches the application + database paths.
+	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().TrackInDB().Dispatch(ctx)
 
 	output := ""
 	exitCode := -1
+	taskID := ""
 	if result != nil {
 		output = result.GetOutput()
 		exitCode = result.GetExitCode()
+		if result.TaskModel != nil {
+			taskID = result.TaskModel.ID
+		}
+	}
+	if taskID != "" {
+		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+			"task_id": taskID,
+		})
+		j.deployment.TaskID = &taskID
 	}
 
 	if runErr != nil || (result != nil && !result.IsSuccessful()) {
@@ -217,6 +230,12 @@ func hydrateComposeSource(cfg *tasks.ComposeDeployConfig, c *models.Compose) {
 		if c.RawYAML != nil {
 			cfg.RawYAML = *c.RawYAML
 		}
+	}
+	// EnvFile is source-agnostic — the Environment subtab applies to
+	// both git and raw_yaml stacks. Empty/missing → deploy script
+	// removes any stale .env on the host.
+	if c.EnvFile != nil {
+		cfg.EnvFile = *c.EnvFile
 	}
 }
 
