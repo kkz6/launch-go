@@ -30,6 +30,11 @@ type RemoveComposePayload struct {
 	// ProjectName is `<project-slug>-<compose-slug>` — the label
 	// docker compose used at deploy time.
 	ProjectName string `json:"project_name"`
+	// RemoveVolumes flips `docker compose down` ↔ `down -v`. False by
+	// default — preserves named volumes so a fat-fingered Delete
+	// doesn't destroy persistent data. The UI surfaces this as an
+	// opt-in checkbox on the Delete confirmation dialog.
+	RemoveVolumes bool `json:"remove_volumes"`
 }
 
 type RemoveComposeJob struct {
@@ -60,7 +65,7 @@ func (j *RemoveComposeJob) Handle(ctx context.Context) error {
 
 	task := taskrunner.NewBaseTask(
 		taskrunner.WithName("Remove compose stack"),
-		taskrunner.WithScript(tasks.RemoveComposeScript(j.Payload.ProjectName)),
+		taskrunner.WithScript(tasks.RemoveComposeScript(j.Payload.ProjectName, j.Payload.RemoveVolumes)),
 		// `docker compose down -v --remove-orphans` is bounded but a
 		// large stack with slow shutdown hooks can take a minute. Use
 		// 3 minutes to give it room without hanging asynq forever.
@@ -96,12 +101,14 @@ func (j *RemoveComposeJob) Failed(ctx context.Context, err error) {
 
 func NewRemoveComposeTask(
 	composeID, projectID, serverID, teamID, projectName string,
+	removeVolumes bool,
 ) (*asynq.Task, error) {
 	return pkgjobs.TaskWithID(TypeRemoveCompose, RemoveComposePayload{
-		ComposeID:   composeID,
-		ProjectID:   projectID,
-		ServerID:    serverID,
-		TeamID:      teamID,
-		ProjectName: projectName,
+		ComposeID:     composeID,
+		ProjectID:     projectID,
+		ServerID:      serverID,
+		TeamID:        teamID,
+		ProjectName:   projectName,
+		RemoveVolumes: removeVolumes,
 	}, pkgjobs.Dedup("docker-remove-compose", composeID))
 }

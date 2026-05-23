@@ -26,7 +26,7 @@ func testDockerConfig() ProvisionDockerServerConfig {
 		NetworkName:      DockerNetworkName,
 		RootDir:          DockerRootDir,
 		TraefikVersion:   TraefikVersion,
-		TraefikService:   TraefikServiceName,
+		TraefikContainer: TraefikContainerName,
 		ACMEEmail:        "ops@example.com",
 	}
 }
@@ -51,6 +51,7 @@ func TestProvisionDockerServer_AppliesDefaults(t *testing.T) {
 	config.NetworkName = ""
 	config.RootDir = ""
 	config.TraefikVersion = ""
+	config.TraefikContainer = ""
 	config.TraefikService = ""
 
 	task := ProvisionDockerServer(config)
@@ -59,7 +60,21 @@ func TestProvisionDockerServer_AppliesDefaults(t *testing.T) {
 	assert.Contains(t, script, DockerNetworkName, "default network name must be applied")
 	assert.Contains(t, script, DockerRootDir, "default root dir must be applied")
 	assert.Contains(t, script, TraefikVersion, "default traefik version must be applied")
-	assert.Contains(t, script, TraefikServiceName, "default traefik service name must be applied")
+	assert.Contains(t, script, TraefikContainerName, "default traefik container name must be applied")
+}
+
+func TestProvisionDockerServer_LegacyTraefikServiceFieldStillWorks(t *testing.T) {
+	// API compat: callers that still set the deprecated TraefikService
+	// field (instead of TraefikContainer) should still drive the
+	// container name through the rendered script. The new field wins
+	// when both are set.
+	config := testDockerConfig()
+	config.TraefikContainer = ""
+	config.TraefikService = "custom-traefik"
+
+	script := ProvisionDockerServer(config).Script()
+
+	assert.Contains(t, script, "custom-traefik", "deprecated TraefikService field must propagate when TraefikContainer is empty")
 }
 
 func TestProvisionDockerServer_CallbackPayload(t *testing.T) {
@@ -95,9 +110,9 @@ func TestProvisionDockerServer_ScriptContainsAllSteps(t *testing.T) {
 		"Create a default user",
 		"Verify ports 80 and 443",
 		"Install Docker CE",
-		"Initialize Docker Swarm",
+		"Create the launch-network bridge",
 		"Create the /etc/launch directory tree",
-		"Deploy Traefik",
+		"Run Traefik as a container",
 	}
 	for _, want := range expectedSubstrings {
 		assert.Contains(t, script, want, "script missing step: %q", want)
@@ -111,15 +126,20 @@ func TestProvisionDockerServer_ScriptContainsDockerCommands(t *testing.T) {
 	assert.Contains(t, script, "docker-ce", "must install docker-ce")
 	assert.Contains(t, script, "docker-compose-plugin", "must install compose plugin")
 
-	// Swarm + network creation
-	assert.Contains(t, script, "docker swarm init", "must init Swarm")
-	assert.Contains(t, script, "docker network create --driver overlay --attachable launch-network",
-		"must create overlay network")
+	// Bridge network creation (swarm + overlay dropped in v2 — see
+	// ForDockerServer() rationale in provision_step.go).
+	assert.Contains(t, script, "docker network create --driver bridge launch-network",
+		"must create bridge network")
+	assert.NotContains(t, script, "docker swarm init",
+		"v2 provisions must not init swarm")
+	assert.NotContains(t, script, "--driver overlay",
+		"v2 provisions must not create overlay networks")
 
 	// Traefik
 	assert.Contains(t, script, "traefik:"+TraefikVersion, "must reference pinned Traefik image")
-	assert.Contains(t, script, "docker service create", "must deploy Traefik as Swarm service")
-	assert.Contains(t, script, "--name "+TraefikServiceName, "must use configured Traefik service name")
+	assert.Contains(t, script, "docker run -d", "must start Traefik via docker run, not docker service create")
+	assert.Contains(t, script, "--name "+TraefikContainerName, "must use configured Traefik container name")
+	assert.Contains(t, script, "providers:\n  docker:", "must configure docker provider for label discovery")
 	assert.Contains(t, script, "/etc/launch/traefik/traefik.yml", "must write traefik.yml under RootDir")
 }
 
@@ -151,4 +171,5 @@ func TestProvisionDockerServer_ProgressMarkers(t *testing.T) {
 	assert.Contains(t, script, "::LAUNCH::progress::100", "script must end at 100% progress")
 	assert.Contains(t, script, "::LAUNCH::step_completed::install_docker", "must emit install_docker completion marker")
 	assert.Contains(t, script, "::LAUNCH::step_completed::install_traefik", "must emit install_traefik completion marker")
+	assert.Contains(t, script, "::LAUNCH::step_completed::setup_docker_network", "must emit setup_docker_network completion marker")
 }

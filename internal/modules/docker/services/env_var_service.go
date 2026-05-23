@@ -7,6 +7,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/docker/dto"
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
@@ -71,7 +72,7 @@ func (s *EnvVarService) CreateEnvVar(
 	v := &models.ApplicationEnvVar{
 		ApplicationID: applicationID,
 		Key:           key,
-		Value:         req.Value,
+		Value:         dbtype.EncryptedString(req.Value),
 		IsSecret:      req.IsSecret,
 	}
 	if err := s.Repos().EnvVar().Create(ctx, v); err != nil {
@@ -109,7 +110,10 @@ func (s *EnvVarService) UpdateEnvVar(
 
 	updates := map[string]any{}
 	if req.Value != nil {
-		updates["value"] = *req.Value
+		// Wrap in EncryptedString so GORM's Valuer encrypts before
+		// writing — passing the bare string would bypass the type's
+		// Value() method and store plaintext.
+		updates["value"] = dbtype.EncryptedString(*req.Value)
 	}
 	if req.IsSecret != nil {
 		updates["is_secret"] = *req.IsSecret
@@ -207,7 +211,7 @@ func (s *EnvVarService) SetEnvVars(
 		row := &models.ApplicationEnvVar{
 			ApplicationID: applicationID,
 			Key:           strings.TrimSpace(e.Key),
-			Value:         e.Value,
+			Value:         dbtype.EncryptedString(e.Value),
 			IsSecret:      e.IsSecret,
 		}
 		if err := tx.Create(row).Error; err != nil {

@@ -12,6 +12,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/docker/dto"
 	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -59,7 +60,14 @@ func (s *DatabaseService) ListDatabases(
 func (s *DatabaseService) GetDatabase(
 	ctx context.Context, id, projectID, serverID, teamID string, revealCreds bool,
 ) (dto.DatabaseResponse, error) {
-	if _, err := s.requireProjectForDB(ctx, projectID, serverID, teamID); err != nil {
+	// Load the project once here so we can stamp the deterministic
+	// container name onto the response. The Terminal button on the
+	// workload detail page reads `container_name` and forwards it to
+	// the WS handler as `?container=...`, which makes the bottom
+	// pane attach to the database container rather than the host
+	// root shell.
+	project, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID)
+	if err != nil {
 		return dto.DatabaseResponse{}, err
 	}
 	d, err := s.Repos().Database().FindByIDAndTeamServer(ctx, id, teamID, serverID)
@@ -70,6 +78,10 @@ func (s *DatabaseService) GetDatabase(
 		return dto.DatabaseResponse{}, fiberutil.NotFound()
 	}
 	resp := dto.ToDatabaseResponse(d, revealCreds)
+	resp.ContainerName = tasks.DatabaseContainerName(
+		tasks.SlugFromName(project.Name),
+		tasks.SlugFromName(d.Name),
+	)
 	if revealCreds {
 		creds, err := decodeCredentials(d.Credentials)
 		if err == nil {
@@ -176,6 +188,7 @@ func (s *DatabaseService) CreateDatabase(
 // operator can manually remove the container.
 func (s *DatabaseService) DeleteDatabase(
 	ctx context.Context, id, projectID, serverID, teamID, userID string,
+	removeVolume bool,
 ) error {
 	_ = userID
 	if _, err := s.requireProjectForDB(ctx, projectID, serverID, teamID); err != nil {
@@ -191,7 +204,10 @@ func (s *DatabaseService) DeleteDatabase(
 	if err := s.Repos().Database().Delete(ctx, id); err != nil {
 		return err
 	}
-	task, err := jobs.NewDatabaseLifecycleTask(d.ID, d.ProjectID, serverID, teamID, "rm")
+	// Pass removeVolume into the lifecycle job; when true the worker
+	// will compute the deterministic launch-db-<id>-data volume name
+	// and `docker volume rm` it after the container is gone.
+	task, err := jobs.NewDatabaseLifecycleTask(d.ID, d.ProjectID, serverID, teamID, "rm", removeVolume)
 	if err == nil {
 		_ = s.EnqueueTask(task)
 	}
@@ -202,6 +218,27 @@ func (s *DatabaseService) DeleteDatabase(
 		"team_id":    d.TeamID,
 	})
 	return nil
+}
+
+// ListDeployments returns the lifecycle history for a database, most
+// recent first. Reads from docker_deployments with target_type =
+// "database" — same polymorphic table that powers application + compose
+// deploy history. Action column on each row (create / start / restart /
+// stop / rm) tells the UI what verb the entry represents.
+func (s *DatabaseService) ListDeployments(
+	ctx context.Context, databaseID, projectID, serverID, teamID string,
+) ([]models.Deployment, error) {
+	if _, err := s.requireProjectForDB(ctx, projectID, serverID, teamID); err != nil {
+		return nil, err
+	}
+	d, err := s.Repos().Database().FindByIDAndTeamServer(ctx, databaseID, teamID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if d.ProjectID != projectID {
+		return nil, fiberutil.NotFound()
+	}
+	return s.Repos().Deployment().ListForTarget(ctx, "database", databaseID)
 }
 
 // Lifecycle dispatches a start/stop/restart job for the database.
@@ -225,7 +262,7 @@ func (s *DatabaseService) Lifecycle(
 		return dto.DatabaseResponse{}, fiberutil.NotFound()
 	}
 
-	task, err := jobs.NewDatabaseLifecycleTask(d.ID, d.ProjectID, serverID, teamID, action)
+	task, err := jobs.NewDatabaseLifecycleTask(d.ID, d.ProjectID, serverID, teamID, action, false)
 	if err != nil {
 		return dto.DatabaseResponse{}, err
 	}
@@ -243,20 +280,21 @@ func (s *DatabaseService) Lifecycle(
 	return *dto.ToDatabaseResponse(d, false), nil
 }
 
-// UpdateDatabaseAdvanced applies runtime knobs (currently just restart
-// policy) to a managed database container. Applied immediately via
-// `docker update --restart=<policy>` over SSH; the next deploy will
-// pick up the same value too (the database run task reads it from
-// source_config).
+// UpdateDatabaseAdvanced applies the Advanced subtab's runtime knobs
+// to a managed database container — restart policy + resource limits.
+// Persists them into build_config so the values survive container
+// recreation, then dispatches an asynq job that runs the bundled
+// `docker update` over SSH.
 //
-// Why dispatch through the existing lifecycle job? The task runner
-// already has the SSH plumbing and the lifecycle script accepts a
-// "update-restart:<policy>" pseudo-action.
+// Empty resource strings clear that knob (docker treats absence of
+// the flag as "leave unchanged", so the persisted nil acts like an
+// opt-out for fresh `docker run` invocations).
 func (s *DatabaseService) UpdateDatabaseAdvanced(
-	ctx context.Context, id, projectID, serverID, teamID, userID, restartPolicy string,
+	ctx context.Context, id, projectID, serverID, teamID, userID string,
+	req *dto.UpdateDatabaseAdvancedRequest,
 ) (dto.DatabaseResponse, error) {
 	_ = userID
-	switch restartPolicy {
+	switch req.RestartPolicy {
 	case "no", "on-failure", "always", "unless-stopped":
 	default:
 		return dto.DatabaseResponse{}, fiberutil.BadRequest("Unsupported restart policy")
@@ -272,8 +310,40 @@ func (s *DatabaseService) UpdateDatabaseAdvanced(
 		return dto.DatabaseResponse{}, fiberutil.NotFound()
 	}
 
+	// Persist into build_config. Start from the existing map so we
+	// don't clobber unrelated keys a future iteration might add.
+	build := map[string]any(db.BuildConfig)
+	if build == nil {
+		build = map[string]any{}
+	}
+	build["restart_policy"] = req.RestartPolicy
+	setOrClear(build, "cpu_limit", req.CPULimit)
+	setOrClear(build, "memory_limit", req.MemoryLimit)
+	setOrClear(build, "cpu_reservation", req.CPUReservation)
+	setOrClear(build, "memory_reservation", req.MemoryReservation)
+
+	if err := s.Repos().Database().UpdateFields(ctx, db.ID, map[string]any{
+		"build_config": dbtype.JSONMap(build),
+	}); err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+
+	// JSON-encode the advanced update + dispatch through the existing
+	// lifecycle job. The task script reads `update-advanced:<json>` and
+	// builds a single `docker update` invocation with the active flags.
+	advBytes, err := json.Marshal(tasks.DatabaseAdvancedUpdate{
+		RestartPolicy:     req.RestartPolicy,
+		CPULimit:          req.CPULimit,
+		MemoryLimit:       req.MemoryLimit,
+		CPUReservation:    req.CPUReservation,
+		MemoryReservation: req.MemoryReservation,
+	})
+	if err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+
 	task, err := jobs.NewDatabaseLifecycleTask(
-		db.ID, db.ProjectID, serverID, teamID, "update-restart:"+restartPolicy,
+		db.ID, db.ProjectID, serverID, teamID, "update-advanced:"+string(advBytes), false,
 	)
 	if err != nil {
 		return dto.DatabaseResponse{}, err
@@ -286,9 +356,145 @@ func (s *DatabaseService) UpdateDatabaseAdvanced(
 		"id":             db.ID,
 		"server_id":      db.ServerID,
 		"team_id":        db.TeamID,
-		"restart_policy": restartPolicy,
+		"restart_policy": req.RestartPolicy,
 	})
+
+	// Re-pull so the response carries the new build_config.
+	reloaded, err := s.Repos().Database().FindByIDAndTeamServer(ctx, db.ID, teamID, serverID)
+	if err != nil {
+		return *dto.ToDatabaseResponse(db, false), nil
+	}
+	return *dto.ToDatabaseResponse(reloaded, false), nil
+}
+
+// SetExposeExternal toggles the database's external port. When Enabled
+// is true, Port (defaulting to the engine's standard port) is mapped
+// onto the host so the database is reachable from the open internet.
+// When false, the external_port is cleared and the container is
+// recreated without `-p` — sibling containers on launch-network can
+// still reach it by DNS.
+//
+// RunDatabaseScript is idempotent (stops + removes any prior container
+// of the same name), so dispatching RunDatabaseJob re-creates the
+// container with the new port mapping in a single SSH round-trip.
+func (s *DatabaseService) SetExposeExternal(
+	ctx context.Context, id, projectID, serverID, teamID, userID string,
+	req *dto.SetDatabaseExposeRequest,
+) (dto.DatabaseResponse, error) {
+	_ = userID
+	if _, err := s.requireProjectForDB(ctx, projectID, serverID, teamID); err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+	db, err := s.Repos().Database().FindByIDAndTeamServer(ctx, id, teamID, serverID)
+	if err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+	if db.ProjectID != projectID {
+		return dto.DatabaseResponse{}, fiberutil.NotFound()
+	}
+
+	updates := map[string]any{}
+	if req.Enabled {
+		port := 0
+		if req.Port != nil && *req.Port > 0 {
+			port = *req.Port
+		} else if spec, ok := engineSpecFor(db.Engine); ok {
+			port = spec.InternalPort
+		}
+		if port <= 0 {
+			return dto.DatabaseResponse{}, fiberutil.BadRequest(
+				"Port is required to expose this database",
+			)
+		}
+		updates["external_port"] = port
+	} else {
+		// Use a nil *int via gorm's column-clear convention so the
+		// MySQL row's external_port goes back to NULL.
+		updates["external_port"] = nil
+	}
+
+	if err := s.Repos().Database().UpdateFields(ctx, db.ID, updates); err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+
+	// Dispatch a recreate (RunDatabaseJob — idempotent). Worker picks
+	// up the updated row, builds the run script with the new port (or
+	// without -p when cleared), and the container comes back up with
+	// the new mapping. WS broadcasts go out as the worker flips state.
+	task, err := jobs.NewRunDatabaseTask(db.ID, serverID, teamID)
+	if err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+	if err := s.EnqueueTask(task); err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+
+	s.BroadcastToTeam(teamID, "docker.database.expose.updated", map[string]any{
+		"id":            db.ID,
+		"server_id":     db.ServerID,
+		"team_id":       db.TeamID,
+		"enabled":       req.Enabled,
+		"external_port": updates["external_port"],
+	})
+
+	reloaded, err := s.Repos().Database().FindByIDAndTeamServer(ctx, db.ID, teamID, serverID)
+	if err != nil {
+		return *dto.ToDatabaseResponse(db, false), nil
+	}
+	return *dto.ToDatabaseResponse(reloaded, false), nil
+}
+
+// RebuildDatabase is the Danger Zone "wipe + recreate" action. Same
+// container, same image, same credentials — fresh data volume. We
+// dispatch a RunDatabaseJob with WipeVolume=true; the worker stops the
+// container, `docker volume rm`s the named volume, then starts it
+// again from scratch.
+//
+// All scoping (team / project / server) and the broadcast follow the
+// SetExposeExternal shape so the deployments subtab and the navbar
+// dot transition the same way.
+func (s *DatabaseService) RebuildDatabase(
+	ctx context.Context, id, projectID, serverID, teamID, userID string,
+) (dto.DatabaseResponse, error) {
+	_ = userID
+	if _, err := s.requireProjectForDB(ctx, projectID, serverID, teamID); err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+	db, err := s.Repos().Database().FindByIDAndTeamServer(ctx, id, teamID, serverID)
+	if err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+	if db.ProjectID != projectID {
+		return dto.DatabaseResponse{}, fiberutil.NotFound()
+	}
+
+	task, err := jobs.NewRebuildDatabaseTask(db.ID, serverID, teamID)
+	if err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+	if err := s.EnqueueTask(task); err != nil {
+		return dto.DatabaseResponse{}, err
+	}
+
+	s.BroadcastToTeam(teamID, "docker.database.rebuild.queued", map[string]any{
+		"id":         db.ID,
+		"server_id":  db.ServerID,
+		"team_id":    db.TeamID,
+		"project_id": db.ProjectID,
+	})
+
 	return *dto.ToDatabaseResponse(db, false), nil
+}
+
+// setOrClear stores `value` under `key` when non-empty, deletes the
+// key when empty. Lets the user toggle a knob off without leaving a
+// stale string in the map.
+func setOrClear(m map[string]any, key, value string) {
+	if value == "" {
+		delete(m, key)
+		return
+	}
+	m[key] = value
 }
 
 // requireProjectForDB validates the project chain for database routes —

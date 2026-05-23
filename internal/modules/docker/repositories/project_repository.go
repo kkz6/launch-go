@@ -82,6 +82,35 @@ func (r *ProjectRepository) ExistsByName(
 	return count > 0, nil
 }
 
+// CountWorkloads returns the live (non-soft-deleted) count of each
+// workload kind for a project. Caller decides what to do with non-zero
+// counts — used by DeleteProject to refuse deletion when workloads
+// still exist (UI surfaces a "remove all services first" error).
+//
+// Separate from fillCounts (which populates a model for list reads)
+// because this path is on a deletion check and we want explicit
+// per-kind numbers in the error message.
+func (r *ProjectRepository) CountWorkloads(
+	ctx context.Context, projectID string,
+) (apps, composes, databases int64, err error) {
+	for _, t := range []struct {
+		table string
+		dst   *int64
+	}{
+		{"docker_applications", &apps},
+		{"docker_composes", &composes},
+		{"docker_databases", &databases},
+	} {
+		if e := r.DB.WithContext(ctx).
+			Table(t.table).
+			Where("project_id = ? AND deleted_at IS NULL", projectID).
+			Count(t.dst).Error; e != nil {
+			return 0, 0, 0, e
+		}
+	}
+	return apps, composes, databases, nil
+}
+
 // fillCounts populates ApplicationsCount/ComposesCount/DatabasesCount on
 // the given project. Best-effort — errors are swallowed so a stale count
 // never blocks the read path.

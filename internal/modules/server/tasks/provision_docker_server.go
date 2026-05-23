@@ -52,8 +52,19 @@ type ProvisionDockerServerConfig struct {
 	NetworkName    string // e.g. "launch-network"
 	RootDir        string // e.g. "/etc/launch"
 	TraefikVersion string // e.g. "v3.1"
-	TraefikService string // e.g. "launch-traefik"
-	ACMEEmail      string // optional; if empty, the ACME resolver block is omitted
+
+	// TraefikService is a legacy alias kept so existing callers compile.
+	// Treat it as the Traefik container name. New code should set
+	// TraefikContainer instead — if both are set, TraefikContainer wins.
+	//
+	// Deprecated: use TraefikContainer.
+	TraefikService string
+
+	// TraefikContainer is the docker container name for the Traefik
+	// reverse-proxy. Defaults to TraefikContainerName when empty.
+	TraefikContainer string
+
+	ACMEEmail string // optional; if empty, the ACME resolver block is omitted
 }
 
 // provisionDockerCallbackData holds data needed for callback handling.
@@ -74,8 +85,14 @@ type ProvisionDockerServerTask struct {
 
 // ProvisionDockerServer creates a task that provisions a fresh server with the
 // Docker stack: base hardening (swap/firewall/apt/packages/user/ssh) followed by
-// Docker CE install, Swarm init + overlay network, /etc/launch directory tree,
-// and a Traefik service deployed onto that overlay.
+// Docker CE install, the launch-network bridge, /etc/launch directory tree, and
+// Traefik running as a container with docker-label discovery.
+//
+// Pre-v2 docker servers were provisioned with Docker Swarm + an overlay network
+// and Traefik as a swarm service. That model is gone for new servers — see
+// ForDockerServer() in types/provision_step.go for the rationale. Legacy
+// servers keep their swarm setup; the host-inspect helpers (e.g.
+// stripSwarmTaskSuffix) still understand the old naming for backward compat.
 func ProvisionDockerServer(config ProvisionDockerServerConfig) *ProvisionDockerServerTask {
 	if config.NetworkName == "" {
 		config.NetworkName = DockerNetworkName
@@ -86,8 +103,15 @@ func ProvisionDockerServer(config ProvisionDockerServerConfig) *ProvisionDockerS
 	if config.TraefikVersion == "" {
 		config.TraefikVersion = TraefikVersion
 	}
-	if config.TraefikService == "" {
-		config.TraefikService = TraefikServiceName
+	// Resolve to a single canonical container name. The deprecated
+	// TraefikService field shadows TraefikContainer only when the new
+	// field is unset, so callers that haven't migrated keep working.
+	if config.TraefikContainer == "" {
+		if config.TraefikService != "" {
+			config.TraefikContainer = config.TraefikService
+		} else {
+			config.TraefikContainer = TraefikContainerName
+		}
 	}
 
 	var scriptBuilder strings.Builder
@@ -321,7 +345,17 @@ func renderDockerProvisionStep(step types.ProvisionStep, config ProvisionDockerS
 			Username string
 		}{config.Username})
 
+	case types.ProvisionStepSetupDockerNetwork:
+		return templates.MustRender("server", step.TemplateName(), struct {
+			NetworkName string
+		}{config.NetworkName})
+
 	case types.ProvisionStepSetupSwarmNetwork:
+		// Legacy step from the pre-v2 swarm install. New provisions
+		// never select this — ForDockerServer() uses
+		// ProvisionStepSetupDockerNetwork instead. Kept so the
+		// callback-reconstruction path can still render an old row if
+		// it's somehow retried.
 		return templates.MustRender("server", step.TemplateName(), struct {
 			NetworkName string
 			PublicIPv4  string
@@ -337,10 +371,10 @@ func renderDockerProvisionStep(step types.ProvisionStep, config ProvisionDockerS
 		return templates.MustRender("server", step.TemplateName(), struct {
 			RootDir        string
 			NetworkName    string
-			ServiceName    string
+			ContainerName  string
 			TraefikVersion string
 			ACMEEmail      string
-		}{config.RootDir, config.NetworkName, config.TraefikService, config.TraefikVersion, config.ACMEEmail})
+		}{config.RootDir, config.NetworkName, config.TraefikContainer, config.TraefikVersion, config.ACMEEmail})
 	}
 
 	// Fall through to the shared base-hardening renderer.

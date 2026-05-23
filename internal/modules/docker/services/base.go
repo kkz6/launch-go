@@ -1,6 +1,7 @@
 package services
 
 import (
+	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/service"
@@ -10,6 +11,12 @@ import (
 type ServiceDeps struct {
 	service.ModuleDeps[*repositories.Registry]
 	ServerRepos *serverrepos.Registry
+	// BackupRepos exposes the global storage_providers repository so
+	// docker database backups can reference a saved provider instead of
+	// embedding S3 credentials per database. nil-tolerant — if a wiring
+	// stage hasn't populated it, BackupService falls back to a clear
+	// "storage providers unavailable" error.
+	BackupRepos *backuprepos.Registry
 }
 
 // BaseService is the shared dependency carrier for every docker service.
@@ -34,4 +41,11 @@ func (s *BaseService) ServiceDeps() *ServiceDeps { return s.serviceDeps }
 // caller's team?").
 func (s *BaseService) ServerRepos() *serverrepos.Registry {
 	return s.serviceDeps.ServerRepos
+}
+
+// BackupRepos returns the backup module's repository registry, used by
+// BackupService to look up the saved storage_provider rows that docker
+// database backups reference.
+func (s *BaseService) BackupRepos() *backuprepos.Registry {
+	return s.serviceDeps.BackupRepos
 }

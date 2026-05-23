@@ -10,6 +10,7 @@ package docker
 import (
 	"github.com/hibiken/asynq"
 
+	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/services"
@@ -32,17 +33,20 @@ type Module struct {
 	app.Base
 	repos       *repositories.Registry
 	serverRepos *serverrepos.Registry
+	backupRepos *backuprepos.Registry
 }
 
-// NewModule constructs the module. ServerRepos is created here (not
-// injected) so the module owns its dependency graph; if a cross-module
-// access becomes shared, refactor to inject through Builder.SetX.
+// NewModule constructs the module. ServerRepos + BackupRepos are
+// created here (not injected) so the module owns its dependency graph;
+// BackupRepos is what lets database backups reference a saved storage
+// provider instead of embedding S3 creds per row.
 func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 	return &Module{
 		Base:        app.NewBase(ModuleName, b),
 		repos:       repositories.NewRegistry(deps.DB),
 		serverRepos: serverrepos.NewRegistry(deps.DB),
+		backupRepos: backuprepos.NewRegistry(deps.DB),
 	}
 }
 
@@ -52,7 +56,7 @@ func (m *Module) Repos() *repositories.Registry { return m.repos }
 // RegisterJobs implements app.JobRegistrar. Binds every docker asynq task
 // type to its handler.
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
-	jobs.Register(mux, m.Deps(), m.repos, m.serverRepos)
+	jobs.Register(mux, m.Deps(), m.repos, m.serverRepos, m.backupRepos)
 }
 
 // newProjectService builds the project service once per request boot.
@@ -85,6 +89,20 @@ func (m *Module) newEnvVarService() *services.EnvVarService {
 	return services.NewEnvVarService(m.serviceDeps())
 }
 
+// newProjectEnvVarService builds the project-scoped env-var service —
+// the source for `${{project.<KEY>}}` references that workload env
+// vars resolve against at deploy/run time.
+func (m *Module) newProjectEnvVarService() *services.ProjectEnvVarService {
+	return services.NewProjectEnvVarService(m.serviceDeps())
+}
+
+// newDatabaseEnvVarService builds the database env-var service —
+// user-added extras layered on top of the auto-generated engine
+// credentials.
+func (m *Module) newDatabaseEnvVarService() *services.DatabaseEnvVarService {
+	return services.NewDatabaseEnvVarService(m.serviceDeps())
+}
+
 // newVolumeService builds the application volume service.
 func (m *Module) newVolumeService() *services.VolumeService {
 	return services.NewVolumeService(m.serviceDeps())
@@ -114,5 +132,6 @@ func (m *Module) serviceDeps() *services.ServiceDeps {
 			Repos:        m.repos,
 		},
 		ServerRepos: m.serverRepos,
+		BackupRepos: m.backupRepos,
 	}
 }

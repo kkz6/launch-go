@@ -4,33 +4,37 @@ import "gorm.io/gorm"
 
 // Registry holds all docker-module repositories.
 type Registry struct {
-	project     *ProjectRepository
-	application *ApplicationRepository
-	compose     *ComposeRepository
-	database    *DatabaseRepository
-	deployment  *DeploymentRepository
-	domain      *DomainRepository
-	envVar      *EnvVarRepository
-	volume      *VolumeRepository
-	schedule    *ScheduleRepository
-	backup      *BackupRepository
-	backupRun   *BackupRunRepository
+	project        *ProjectRepository
+	application    *ApplicationRepository
+	compose        *ComposeRepository
+	database       *DatabaseRepository
+	deployment     *DeploymentRepository
+	domain         *DomainRepository
+	envVar         *EnvVarRepository
+	projectEnvVar  *ProjectEnvVarRepository
+	databaseEnvVar *DatabaseEnvVarRepository
+	volume         *VolumeRepository
+	schedule       *ScheduleRepository
+	backup         *BackupRepository
+	backupRun      *BackupRunRepository
 }
 
 // NewRegistry wires up the repositories.
 func NewRegistry(db *gorm.DB) *Registry {
 	return &Registry{
-		project:     NewProjectRepository(db),
-		application: NewApplicationRepository(db),
-		compose:     NewComposeRepository(db),
-		database:    NewDatabaseRepository(db),
-		deployment:  NewDeploymentRepository(db),
-		domain:      NewDomainRepository(db),
-		envVar:      NewEnvVarRepository(db),
-		volume:      NewVolumeRepository(db),
-		schedule:    NewScheduleRepository(db),
-		backup:      NewBackupRepository(db),
-		backupRun:   NewBackupRunRepository(db),
+		project:        NewProjectRepository(db),
+		application:    NewApplicationRepository(db),
+		compose:        NewComposeRepository(db),
+		database:       NewDatabaseRepository(db),
+		deployment:     NewDeploymentRepository(db),
+		domain:         NewDomainRepository(db),
+		envVar:         NewEnvVarRepository(db),
+		projectEnvVar:  NewProjectEnvVarRepository(db),
+		databaseEnvVar: NewDatabaseEnvVarRepository(db),
+		volume:         NewVolumeRepository(db),
+		schedule:       NewScheduleRepository(db),
+		backup:         NewBackupRepository(db),
+		backupRun:      NewBackupRunRepository(db),
 	}
 }
 
@@ -54,6 +58,16 @@ func (r *Registry) Domain() *DomainRepository { return r.domain }
 
 // EnvVar returns the application env-var repository.
 func (r *Registry) EnvVar() *EnvVarRepository { return r.envVar }
+
+// ProjectEnvVar returns the project-scoped env-var repository — the
+// source for `${{project.<KEY>}}` references resolved at deploy/run
+// time.
+func (r *Registry) ProjectEnvVar() *ProjectEnvVarRepository { return r.projectEnvVar }
+
+// DatabaseEnvVar returns the env-var repository scoped to a managed
+// database (user-added extras on top of the auto-generated engine
+// credentials).
+func (r *Registry) DatabaseEnvVar() *DatabaseEnvVarRepository { return r.databaseEnvVar }
 
 // Volume returns the application volume repository.
 func (r *Registry) Volume() *VolumeRepository { return r.volume }

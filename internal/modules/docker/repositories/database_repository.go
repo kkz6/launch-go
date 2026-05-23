@@ -37,6 +37,31 @@ func (r *DatabaseRepository) FindByIDAndTeamServer(
 	return &d, nil
 }
 
+// FindByIDUnscoped includes soft-deleted rows. Called by the
+// lifecycle worker on the `rm` path: the service soft-deletes the
+// row first, then enqueues `rm`, so by the time the worker fetches
+// the row the default scope hides it. Without this lookup the
+// worker falls back to using the database ID (ULID) as the name in
+// the container-name template, ends up running `docker rm
+// launch-db-<project>-<ULID>` (which doesn't exist), and leaves the
+// real container orphaned on the host.
+func (r *DatabaseRepository) FindByIDUnscoped(
+	ctx context.Context, id string,
+) (*models.Database, error) {
+	var d models.Database
+	err := r.DB.WithContext(ctx).
+		Unscoped().
+		Where("id = ?", id).
+		First(&d).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, fiberutil.NotFound()
+		}
+		return nil, err
+	}
+	return &d, nil
+}
+
 func (r *DatabaseRepository) ListForProject(
 	ctx context.Context, teamID, projectID string,
 ) ([]models.Database, error) {

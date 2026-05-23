@@ -308,7 +308,8 @@ func projectContainerInspect(raw rawContainerInspect) ContainerInspect {
 	// Structural view: Entrypoint and Cmd come straight from Config.
 	// Runtime view: Path + Args is what docker actually exec'd.
 	// Both are useful — they often diverge (Entrypoint=traefik,
-	// Cmd=[--api], Path=traefik, Args=[--api,--providers.swarm,...]).
+	// Cmd=[--api], Path=traefik, Args=[--api,--providers.docker,...]
+	// on new servers; --providers.swarm on legacy pre-v2 servers).
 	out.Entrypoint = raw.Config.Entrypoint
 	out.Cmd = raw.Config.Cmd
 	out.Path = raw.Path
@@ -391,9 +392,12 @@ func projectContainerInspect(raw rawContainerInspect) ContainerInspect {
 // Each row is tagged with `System=true` if Launch installed it. The UI
 // hides system rows behind a toggle.
 //
-// Containers spawned by swarm services carry a name like
-// `launch-traefik.1.<task-id>` — we strip the swarm task suffix
-// before classifying so the service-name-based match works.
+// Legacy (pre-v2) servers ran Traefik as a swarm service, which makes
+// the spawned container's name `launch-traefik.1.<task-id>`. We still
+// strip that suffix before classifying so old servers continue to
+// hide their Traefik container behind the "system" filter. New
+// servers run Traefik as a plain container named `launch-traefik`,
+// where stripSwarmTaskSuffix is effectively a no-op.
 func (s *HostInspectService) ListContainers(
 	ctx context.Context, serverID, teamID string,
 ) ([]ContainerInfo, error) {
@@ -464,6 +468,12 @@ func (s *HostInspectService) ListNetworks(
 // stripSwarmTaskSuffix removes the `.<replica>.<task-id>` part docker
 // appends to swarm-spawned containers. So `launch-traefik.1.ktub95...`
 // becomes `launch-traefik` for the purposes of classification.
+//
+// New (v2+) docker servers don't use swarm, so this helper is mostly
+// a no-op for fresh provisions. It stays around to support pre-v2
+// servers where Traefik runs as `docker service create launch-traefik`
+// — see ForDockerServer() in server/types/provision_step.go for the
+// rationale on dropping swarm.
 //
 // Containers can have comma-separated names ("foo,bar") if they're
 // linked — we classify on the first which is the canonical one.

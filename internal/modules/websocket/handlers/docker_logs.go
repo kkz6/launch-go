@@ -44,6 +44,13 @@ func (h *DockerLogsHandler) Handler() fiber.Handler {
 		appID := c.Query("applicationId")
 		dbID := c.Query("databaseId")
 		composeID := c.Query("composeId")
+		// `service` only applies to compose streams. When non-empty
+		// the script runs `docker compose logs <service>` so the
+		// stream shows only that container's stdout. Empty (default)
+		// = aggregate logs from every service in the stack. Letters,
+		// digits, hyphen, underscore only — anything else is rejected
+		// before reaching the shell.
+		service := c.Query("service")
 		tail := parseTail(c.Query("tail", "200"))
 
 		set := 0
@@ -72,9 +79,32 @@ func (h *DockerLogsHandler) Handler() fiber.Handler {
 		case dbID != "":
 			h.streamForDatabase(c, claims.TeamID, dbID, tail)
 		case composeID != "":
-			h.streamForCompose(c, claims.TeamID, composeID, tail)
+			h.streamForCompose(c, claims.TeamID, composeID, service, tail)
 		}
 	})
+}
+
+// isSafeServiceName checks `service` against the docker compose
+// service-name rules: lowercase letters / digits / underscore / dash.
+// Defence-in-depth — the value gets shell-quoted before interpolation
+// regardless, but rejecting bad input here makes the failure mode
+// obvious in the WS handshake instead of a malformed docker error
+// down the wire.
+func isSafeServiceName(s string) bool {
+	if s == "" {
+		return true
+	}
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '_' || r == '-' || r == '.':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // streamForApplication tails a single docker container belonging to a
@@ -168,13 +198,19 @@ func (h *DockerLogsHandler) streamForDatabase(
 	h.streamCommand(c, server, cmd, containerName)
 }
 
-// streamForCompose tails every service in the compose stack via
-// `docker compose logs --follow`. Each line is already prefixed with
-// the service name by docker compose, so the user can tell which
-// container emitted what.
+// streamForCompose tails the compose stack's logs via
+// `docker compose logs --follow`. When `service` is empty the
+// command aggregates every container; when set, only that service's
+// logs stream. Each line is prefixed with the service name by docker
+// compose so an "all services" stream is still distinguishable.
 func (h *DockerLogsHandler) streamForCompose(
-	c *websocket.Conn, teamID, composeID string, tail int,
+	c *websocket.Conn, teamID, composeID, service string, tail int,
 ) {
+	if !isSafeServiceName(service) {
+		h.SendError(c, "Invalid service name")
+		c.Close()
+		return
+	}
 	var stack dockermodels.Compose
 	if err := h.DB.Where("id = ? AND team_id = ?", composeID, teamID).First(&stack).Error; err != nil {
 		h.LogError(err, "Compose stack not found", "compose_id", composeID)
@@ -200,15 +236,27 @@ func (h *DockerLogsHandler) streamForCompose(
 	h.LogInfo("Docker logs stream requested (compose)",
 		"compose_id", stack.ID,
 		"compose_project", projectName,
+		"service", service,
 		"server_id", server.ID,
 		"tail", tail,
 	)
 
+	// Append service name when set — `docker compose logs <svc>`
+	// scopes the stream to that one container. `--follow` keeps
+	// streaming new lines until the WS closes.
 	cmd := fmt.Sprintf(
-		`docker compose --project-name %s logs --follow --tail %d --timestamps 2>&1`,
+		`docker compose --project-name %s logs --follow --tail %d --timestamps`,
 		shellQuote(projectName), tail,
 	)
-	h.streamCommand(c, server, cmd, projectName)
+	if service != "" {
+		cmd += " " + shellQuote(service)
+	}
+	cmd += " 2>&1"
+	subject := projectName
+	if service != "" {
+		subject = projectName + ":" + service
+	}
+	h.streamCommand(c, server, cmd, subject)
 }
 
 // findServer is a tiny DB lookup helper used by every streamForX.

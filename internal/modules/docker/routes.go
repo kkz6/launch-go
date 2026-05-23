@@ -22,6 +22,8 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	databaseSvc := m.newDatabaseService()
 	domainSvc := m.newDomainService()
 	envVarSvc := m.newEnvVarService()
+	projectEnvVarSvc := m.newProjectEnvVarService()
+	databaseEnvVarSvc := m.newDatabaseEnvVarService()
 	volumeSvc := m.newVolumeService()
 	hostSvc := m.newHostInspectService()
 	scheduleSvc := m.newScheduleService()
@@ -54,6 +56,94 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		fiberutil.DeleteNested("serverId", "id", projectSvc.DeleteProject),
 	)
 
+	// Project-scoped env vars — the source for `${{project.<KEY>}}`
+	// references that any workload under the project can use in its
+	// own env values. Resolved at deploy/run time by the worker.
+	// Nested under /servers/:serverId/docker/projects/:id/env-vars
+	// — the project id rides in as :id to match the rest of the
+	// project routes' shape.
+	projects.Get("/:id/env-vars", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := projectEnvVarSvc.ListEnvVars(
+			c.Context(),
+			c.Params("id"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Project env vars retrieved", rows)
+	})
+
+	projects.Post("/:id/env-vars", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateEnvVarRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := projectEnvVarSvc.CreateEnvVar(
+			c.Context(),
+			c.Params("id"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Project env var added", out)
+	})
+
+	projects.Patch("/:id/env-vars/:envVarId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateEnvVarRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := projectEnvVarSvc.UpdateEnvVar(
+			c.Context(),
+			c.Params("envVarId"),
+			c.Params("id"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Project env var updated", out)
+	})
+
+	projects.Delete("/:id/env-vars/:envVarId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := projectEnvVarSvc.DeleteEnvVar(
+			c.Context(),
+			c.Params("envVarId"),
+			c.Params("id"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
+	})
+
 	// Doubly-nested under projects. Grandparent param is serverId so the
 	// existing RequireProvisionedServer middleware keeps working; the
 	// project lookup happens inside each service method.
@@ -74,10 +164,27 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		"/:id",
 		fiberutil.UpdateDoubleNested[dto.UpdateApplicationRequest]("serverId", "projectId", "id", "Application updated", applicationSvc.UpdateApplication),
 	)
-	apps.Delete(
-		"/:id",
-		fiberutil.DeleteDoubleNested("serverId", "projectId", "id", applicationSvc.DeleteApplication),
-	)
+	// Application delete reads `?remove_volumes=true` from the query
+	// string. Default false — preserves named volumes the app declared
+	// so a fat-fingered Delete doesn't lose persistent data. See the
+	// matching closure on the compose DELETE for the same shape.
+	apps.Delete("/:id", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		removeVolumes := c.Query("remove_volumes") == "true" || c.Query("remove_volumes") == "1"
+		if err := applicationSvc.DeleteApplication(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID, userID, removeVolumes,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
+	})
 
 	// Deployments are triple-nested (server/project/application). The
 	// fiberutil double-nested helpers don't cover that depth, so we write
@@ -123,6 +230,44 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.Created(c, "Deployment started", dto.ToDeploymentResponse(deployment))
 	})
+
+	// Reload / Stop / Start map to docker restart / stop / start on
+	// the running container. We expose them as separate POST verbs
+	// (instead of one /:id/lifecycle with an `action` body field)
+	// because each has a distinct toast message + status badge mapping
+	// — keeping the actions on the URL means the access log is also
+	// self-documenting.
+	//
+	// All three share applicationSvc.Lifecycle under the hood; the
+	// closure just plugs the verb in. Rebuild lives on /deploy
+	// because force-pull semantics belong to the deploy pipeline.
+	for _, verb := range []string{"reload", "stop", "start"} {
+		// reload is the UI label; backend action is "restart" (the
+		// dokploy convention — "reload" reads better in the Actions
+		// dropdown than "restart").
+		action := verb
+		if verb == "reload" {
+			action = "restart"
+		}
+		apps.Post("/:id/"+verb, func(c *gofiber.Ctx) error {
+			teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+			if err != nil {
+				return err
+			}
+			if err := applicationSvc.Lifecycle(
+				c.Context(),
+				c.Params("id"),
+				c.Params("projectId"),
+				c.Params("serverId"),
+				teamID,
+				userID,
+				action,
+			); err != nil {
+				return err
+			}
+			return fiberutil.OK(c, "Action enqueued", map[string]string{"action": action})
+		})
+	}
 
 	// Application-domain CRUD — same triple-nested pattern as deployments.
 	apps.Get("/:id/domains", func(c *gofiber.Ctx) error {
@@ -205,6 +350,119 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			c.Params("serverId"),
 			teamID,
 			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
+	})
+
+	// Validate DNS — resolves the domain hostname and checks that
+	// the A record points at the docker server's public IP. Read-
+	// only, no side effects; the frontend's "Validate DNS" pill
+	// calls this and surfaces the result as a toast.
+	apps.Get("/:id/domains/:domainId/validate-dns", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		out, err := domainSvc.ValidateDNS(
+			c.Context(),
+			c.Params("domainId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "DNS validation", out)
+	})
+
+	// Redirect routes — list / create / update / delete. Backed by
+	// build_config.redirects (no table); mirrors the PHP-site shape
+	// (from / to / type) so the Redirects subtab can reuse the same
+	// DataTable + dialog the SitesRedirects subtab uses.
+	apps.Get("/:id/redirects", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := applicationSvc.ListRedirects(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Redirects retrieved", rows)
+	})
+
+	apps.Post("/:id/redirects", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateApplicationRedirectRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := applicationSvc.CreateRedirect(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Redirect added", out)
+	})
+
+	apps.Patch("/:id/redirects/:redirectId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateApplicationRedirectRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := applicationSvc.UpdateRedirect(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			c.Params("redirectId"),
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Redirect updated", out)
+	})
+
+	apps.Delete("/:id/redirects/:redirectId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := applicationSvc.DeleteRedirect(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			c.Params("redirectId"),
 		); err != nil {
 			return err
 		}
@@ -539,10 +797,51 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		"/:id",
 		fiberutil.UpdateDoubleNested[dto.UpdateComposeRequest]("serverId", "projectId", "id", "Compose stack updated", composeSvc.UpdateCompose),
 	)
-	composes.Delete(
-		"/:id",
-		fiberutil.DeleteDoubleNested("serverId", "projectId", "id", composeSvc.DeleteCompose),
-	)
+	// Compose delete reads `?remove_volumes=true` from the query
+	// string and threads it into the service so the user can opt in
+	// to wiping named volumes alongside the containers. Default false
+	// (preserves data); the UI surfaces a checkbox on the Delete
+	// confirmation dialog. We can't use fiberutil.DeleteDoubleNested
+	// because that helper doesn't pass the query through.
+	composes.Delete("/:id", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		removeVolumes := c.Query("remove_volumes") == "true" || c.Query("remove_volumes") == "1"
+		if err := composeSvc.DeleteCompose(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID, userID, removeVolumes,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
+	})
+
+	// Service names belonging to this compose stack — drives the
+	// container picker on the Logs subtab. SSHes to the host and runs
+	// `docker compose ps --services`. Empty list when the stack has
+	// never been deployed; the picker falls back to "all services".
+	composes.Get("/:id/services", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		services, err := composeSvc.ListServices(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Compose services retrieved", services)
+	})
 
 	composes.Get("/:id/deployments", func(c *gofiber.Ctx) error {
 		teamID, err := fiberutil.MustGetTeamID(c)
@@ -599,7 +898,27 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	)
 	databases.Delete(
 		"/:id",
-		fiberutil.DeleteDoubleNested("serverId", "projectId", "id", databaseSvc.DeleteDatabase),
+		// Database delete reads `?remove_volumes=true` and threads it
+		// into the rm lifecycle action. False (default) keeps the named
+		// data volume; true wipes it so the database starts fresh on
+		// recreate. Same shape as the application + compose routes.
+		func(c *gofiber.Ctx) error {
+			teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+			if err != nil {
+				return err
+			}
+			removeVolumes := c.Query("remove_volumes") == "true" || c.Query("remove_volumes") == "1"
+			if err := databaseSvc.DeleteDatabase(
+				c.Context(),
+				c.Params("id"),
+				c.Params("projectId"),
+				c.Params("serverId"),
+				teamID, userID, removeVolumes,
+			); err != nil {
+				return err
+			}
+			return fiberutil.NoContent(c)
+		},
 	)
 
 	databases.Get("/:id", func(c *gofiber.Ctx) error {
@@ -620,6 +939,31 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			return err
 		}
 		return fiberutil.OK(c, "Database retrieved", out)
+	})
+
+	// Lifecycle history for a database — same shape as application +
+	// compose deploys. Reads from docker_deployments where target_type =
+	// "database" (see DatabaseService.ListDeployments).
+	databases.Get("/:id/deployments", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := databaseSvc.ListDeployments(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		out := make([]*dto.DeploymentResponse, 0, len(rows))
+		for i := range rows {
+			out = append(out, dto.ToDeploymentResponse(&rows[i]))
+		}
+		return fiberutil.OK(c, "Deployments retrieved", out)
 	})
 
 	databases.Post("/:id/lifecycle", func(c *gofiber.Ctx) error {
@@ -646,18 +990,69 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Lifecycle action queued", out)
 	})
 
-	// Database advanced settings (currently restart policy only —
-	// other knobs require a recreate flow that lands later).
+	// Toggle the database's external port. Enabled=true with a port
+	// (defaulting to the engine's standard) puts a -p mapping on the
+	// container; Enabled=false clears it. RunDatabaseJob's idempotent
+	// script recreates the container with the new state.
+	databases.Post("/:id/expose", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.SetDatabaseExposeRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := databaseSvc.SetExposeExternal(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Expose setting updated", out)
+	})
+
+	// Rebuild Database — Danger Zone action. Stops the container, wipes
+	// the named data volume, then starts it again so the engine
+	// reinitialises from scratch with the same image + credentials. No
+	// request body: the URL fully identifies the target.
+	databases.Post("/:id/rebuild", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		out, err := databaseSvc.RebuildDatabase(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Database rebuild queued", out)
+	})
+
+	// Database advanced settings — restart policy + resource limits
+	// (CPU / memory + reservations). Persists into build_config and
+	// dispatches a `docker update` over SSH so the change applies to
+	// the running container immediately.
 	databases.Patch("/:id/advanced", func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
 		}
-		body := struct {
-			RestartPolicy string `json:"restart_policy" validate:"required,oneof=no on-failure always unless-stopped"`
-		}{}
-		if err := c.BodyParser(&body); err != nil {
-			return fiberutil.BadRequest("Invalid request body")
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateDatabaseAdvancedRequest](c)
+		if err != nil {
+			return err
 		}
 		out, err := databaseSvc.UpdateDatabaseAdvanced(
 			c.Context(),
@@ -666,12 +1061,103 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			c.Params("serverId"),
 			teamID,
 			userID,
-			body.RestartPolicy,
+			req,
 		)
 		if err != nil {
 			return err
 		}
 		return fiberutil.OK(c, "Database advanced settings updated", out)
+	})
+
+	// Database env-var CRUD — user-added env vars layered on top of
+	// the auto-generated engine credentials. Same shape as the
+	// application env-var routes; key/value/is_secret semantics.
+	// Values may reference `${{project.<KEY>}}` — the run-database
+	// worker resolves them at docker-run time.
+	databases.Get("/:id/env-vars", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := databaseEnvVarSvc.ListEnvVars(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Database env vars retrieved", rows)
+	})
+
+	databases.Post("/:id/env-vars", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateEnvVarRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := databaseEnvVarSvc.CreateEnvVar(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Database env var added", out)
+	})
+
+	databases.Patch("/:id/env-vars/:envVarId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateEnvVarRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := databaseEnvVarSvc.UpdateEnvVar(
+			c.Context(),
+			c.Params("envVarId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Database env var updated", out)
+	})
+
+	databases.Delete("/:id/env-vars/:envVarId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := databaseEnvVarSvc.DeleteEnvVar(
+			c.Context(),
+			c.Params("envVarId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
 	})
 
 	// Database backup routes. /backup is singleton (one config per
@@ -842,17 +1328,14 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Container inspected", info)
 	})
-	hostGroup.Get("/volumes", func(c *gofiber.Ctx) error {
-		teamID, err := fiberutil.MustGetTeamID(c)
-		if err != nil {
-			return err
-		}
-		rows, err := hostSvc.ListVolumes(c.Context(), c.Params("serverId"), teamID)
-		if err != nil {
-			return err
-		}
-		return fiberutil.OK(c, "Volumes retrieved", rows)
-	})
+	// Host-level /volumes endpoint intentionally not registered: the
+	// UI tab was removed because per-app volume management lives on
+	// the Application → Volumes subtab (bind / volume / file mount
+	// picker). A flat host-wide list of docker volumes invites
+	// accidental cleanup of volumes belonging to running apps and
+	// doesn't add operational value beyond the per-app view.
+	// `HostInspectService.ListVolumes` stays for future use.
+	//
 	// Networks endpoint intentionally not registered: the UI tab was
 	// removed (Launch manages the launch-network overlay; users
 	// don't create custom networks via the UI). ListNetworks /

@@ -60,6 +60,11 @@ type ServerResponse struct {
 	SitesCount            int                  `json:"sites_count,omitempty"`
 	ServicesCount         int                  `json:"services_count,omitempty"`
 	UpstreamsCount        int                  `json:"upstreams_count,omitempty"`
+	// ProjectsCount is the live docker_projects count on this server.
+	// Populated from server_repository.go via a SELECT subquery; always
+	// returned (0 for PHP servers) so the frontend can disable the
+	// Delete button on docker servers that still have projects.
+	ProjectsCount int `json:"projects_count"`
 }
 
 // ToServerResponse converts a Server model to a ServerResponse DTO
@@ -129,6 +134,7 @@ func ToServerResponse(server *models.Server) ServerResponse {
 		SitesCount:     int(server.SitesCount),
 		ServicesCount:  len(server.Services),
 		UpstreamsCount: int(server.UpstreamsCount),
+		ProjectsCount:  int(server.ProjectsCount),
 	}
 
 	resp.ProvisionedAt = pkgdto.FormatTime(server.ProvisionedAt)

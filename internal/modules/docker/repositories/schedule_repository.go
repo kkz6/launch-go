@@ -42,3 +42,19 @@ func (r *ScheduleRepository) ListForApplication(
 		Find(&rows).Error
 	return rows, err
 }
+
+// ListEnabled returns every schedule row with enabled=true and a
+// non-empty cron expression — the input set for the every-minute
+// PollDueSchedulesJob. Soft-deleted rows are excluded by the default
+// GORM scope, and we filter to rows whose parent application is also
+// still live (joining via application_id) so deleting an application
+// silently stops its schedules without needing an explicit cleanup.
+func (r *ScheduleRepository) ListEnabled(ctx context.Context) ([]models.ApplicationSchedule, error) {
+	var rows []models.ApplicationSchedule
+	err := r.DB.WithContext(ctx).
+		Joins("JOIN docker_applications ON docker_applications.id = docker_application_schedules.application_id AND docker_applications.deleted_at IS NULL").
+		Where("docker_application_schedules.enabled = ?", true).
+		Where("docker_application_schedules.cron <> ''").
+		Find(&rows).Error
+	return rows, err
+}

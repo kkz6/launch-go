@@ -32,6 +32,17 @@ func (r *BackupRepository) FindByDatabase(ctx context.Context, databaseID string
 	return &b, nil
 }
 
+// ListEnabled returns every backup row with enabled=true and a non-empty
+// cron_schedule. Used by the scheduler poller — see PollDueBackupsJob.
+// Filters in SQL so we don't pull rows the scheduler would skip anyway.
+func (r *BackupRepository) ListEnabled(ctx context.Context) ([]models.DatabaseBackup, error) {
+	var rows []models.DatabaseBackup
+	err := r.DB.WithContext(ctx).
+		Where("enabled = ? AND cron_schedule IS NOT NULL AND cron_schedule <> ''", true).
+		Find(&rows).Error
+	return rows, err
+}
+
 // BackupRunRepository tracks past upload attempts.
 type BackupRunRepository struct {
 	repository.Base[models.DatabaseBackupRun]

@@ -95,7 +95,7 @@ func TestProjectContainerInspect_KeepsEntrypointCmdPathArgsSeparately(t *testing
 	// each list verbatim rather than over-summarising.
 	raw := rawContainerInspect{
 		Path: "traefik",
-		Args: []string{"--api", "--providers.swarm.network=launch-network"},
+		Args: []string{"--api", "--providers.docker.network=launch-network"},
 	}
 	raw.Config.Entrypoint = []string{"/entrypoint.sh"}
 	raw.Config.Cmd = []string{"--api"}

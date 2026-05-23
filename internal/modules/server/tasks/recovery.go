@@ -202,6 +202,13 @@ func (r *TaskRecoverer) finalizeCompletedTask(ctx context.Context, task *models.
 
 // remonitorRunningTask re-attaches a monitor to a task that is still running on the server.
 // It spawns a goroutine that monitors via tail -f and finalizes the task when complete.
+//
+// For provision tasks we rebuild a ProvisionMarkerHandler before re-attaching, so the
+// UI keeps getting `server.provision_progress` / `server.provision_step` /
+// `server.software_installed` events after a worker restart. Without this, the SSH task
+// would keep running on the server but the customer's progress bar / step list would
+// freeze until the script finished. See `markerHandlerForTask` for the dispatch
+// (currently provision-only — other task types don't have a per-task marker handler).
 func (r *TaskRecoverer) remonitorRunningTask(ctx context.Context, task *models.Task, conn *taskrunner.Connection) error {
 	monitor := r.dispatcher.GetStreamMonitor()
 	if monitor == nil {
@@ -211,6 +218,7 @@ func (r *TaskRecoverer) remonitorRunningTask(ctx context.Context, task *models.T
 	// Capture task data needed by the goroutine
 	taskID := task.ID
 	taskCopy := *task
+	markerHandler := r.markerHandlerForTask(task)
 
 	go func() {
 		// Use a generous timeout for the re-monitor — use the task's original timeout
@@ -229,8 +237,8 @@ func (r *TaskRecoverer) remonitorRunningTask(ctx context.Context, task *models.T
 			monitorCtx,
 			conn,
 			taskID,
-			"",  // PID unknown during recovery — not needed for tail -f monitoring
-			nil, // No per-task marker handler during recovery
+			"", // PID unknown during recovery — not needed for tail -f monitoring
+			markerHandler,
 			nil, // No onUpdate callback during recovery
 			func(result *taskrunner.StreamResult) {
 				completionChan <- result.ToTaskResult()
@@ -435,4 +443,35 @@ func (r *TaskRecoverer) getConnection(task *models.Task) (*taskrunner.Connection
 		return task.Server.ConnectionAsRoot(), nil
 	}
 	return task.Server.ConnectionAsUser(task.User), nil
+}
+
+// markerHandlerForTask returns the per-task marker handler appropriate for
+// the task's type, or nil if the task type doesn't need one (e.g. site
+// deploys, ad-hoc commands — those already broadcast via callbacks).
+//
+// This is the bridge that keeps provision UI live across worker restarts.
+// Without it, `remonitorRunningTask` would re-attach to the SSH stream and
+// process markers via the stream monitor's built-in handlers — which
+// broadcast `task.progress` / `task.step_completed` on the *task channel*
+// — but never re-emit the server-scoped events the provision UI listens
+// for (`server.provision_progress`, `server.provision_step`,
+// `server.software_installed`). End result: card stuck at the
+// pre-restart progress, sheet stuck on the pre-restart step, until the
+// script finishes and the OnSuccess callback flips status to running.
+func (r *TaskRecoverer) markerHandlerForTask(task *models.Task) taskrunner.MarkerHandler {
+	if task == nil || task.Server == nil {
+		return nil
+	}
+	switch task.Type {
+	case ProvisionFreshServerTaskType, ProvisionDockerServerTaskType:
+		return NewProvisionMarkerHandler(ProvisionMarkerHandlerConfig{
+			DB:          r.db,
+			Broadcaster: r.broadcaster,
+			Logger:      r.logger,
+			ServerID:    task.ServerID,
+			TeamID:      task.Server.TeamID,
+		})
+	default:
+		return nil
+	}
 }

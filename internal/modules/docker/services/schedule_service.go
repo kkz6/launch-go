@@ -59,10 +59,24 @@ func (s *ScheduleService) CreateSchedule(
 		return dto.ScheduleResponse{}, fiberutil.BadRequest("Command is required")
 	}
 
+	// Default shell is sh (universal across alpine + minimal images);
+	// caller can override to bash for debian/ubuntu apps that need
+	// brace-expansion / array syntax. Default enabled=true so a new
+	// row picks up on the next poller tick without an extra toggle.
+	shellType := "sh"
+	if req.ShellType != nil {
+		shellType = *req.ShellType
+	}
+	enabled := true
+	if req.Enabled != nil {
+		enabled = *req.Enabled
+	}
 	sc := &models.ApplicationSchedule{
 		ApplicationID: applicationID,
 		Cron:          cron,
 		Command:       cmd,
+		Enabled:       enabled,
+		ShellType:     shellType,
 	}
 	if err := s.Repos().Schedule().Create(ctx, sc); err != nil {
 		return dto.ScheduleResponse{}, err
@@ -109,6 +123,12 @@ func (s *ScheduleService) UpdateSchedule(
 			return dto.ScheduleResponse{}, fiberutil.BadRequest("Command cannot be empty")
 		}
 		updates["command"] = c
+	}
+	if req.Enabled != nil {
+		updates["enabled"] = *req.Enabled
+	}
+	if req.ShellType != nil {
+		updates["shell_type"] = *req.ShellType
 	}
 	if len(updates) > 0 {
 		if err := s.Repos().Schedule().UpdateFields(ctx, id, updates); err != nil {

@@ -72,6 +72,12 @@ type Server struct {
 	// Computed fields (read-only, not stored in DB)
 	SitesCount     int64 `gorm:"column:sites_count;->" json:"sites_count"`
 	UpstreamsCount int64 `gorm:"-" json:"upstreams_count,omitempty"`
+	// ProjectsCount mirrors the SitesCount pattern but counts live
+	// docker_projects rows for the server. The server module doesn't
+	// import the docker module (docker imports server, not the other
+	// way), so the subquery references the table by name. Populated
+	// from server_repository.go via Select("(?) as projects_count").
+	ProjectsCount int64 `gorm:"column:projects_count;->" json:"projects_count"`
 }
 
 func (s *Server) BeforeCreate(tx *gorm.DB) error {

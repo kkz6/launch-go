@@ -103,9 +103,23 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	// transient read errors are logged but don't block the deploy — a
 	// fresh app with no env vars deploys cleanly with an empty list.
 	if envVars, err := j.Deps.Repos.EnvVar().ListForApplication(ctx, j.app.ID); err == nil {
+		// Load project env vars once so we can resolve any
+		// `${{project.<KEY>}}` references in this app's own env values.
+		// Best-effort: a project-level lookup failure just leaves the
+		// references literal — the user will see `${{project.X}}`
+		// inside the container instead of a silently-empty value.
+		projectEnv, perr := j.Deps.Repos.ProjectEnvVar().ListMapForProject(ctx, j.app.ProjectID)
+		if perr != nil {
+			j.Deps.Logger.Warn().Err(perr).Str("project_id", j.app.ProjectID).
+				Msg("failed to load project env; ${{project.*}} references will not resolve")
+			projectEnv = map[string]string{}
+		}
 		cfg.EnvVars = make([]tasks.EnvVar, 0, len(envVars))
 		for _, e := range envVars {
-			cfg.EnvVars = append(cfg.EnvVars, tasks.EnvVar{Key: e.Key, Value: e.Value})
+			cfg.EnvVars = append(cfg.EnvVars, tasks.EnvVar{
+				Key:   e.Key,
+				Value: tasks.ResolveProjectRefs(string(e.Value), projectEnv),
+			})
 		}
 	} else {
 		j.Deps.Logger.Warn().Err(err).Str("application_id", j.app.ID).
@@ -155,13 +169,31 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	}
 
 	task := tasks.DeployApplication(cfg)
-	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().Dispatch(ctx)
+	// TrackInDB() persists a server-tasks row before SSH starts so the
+	// frontend can stream live build/deploy output via ServerLogViewer
+	// entity="task" :entity-id="task_id" — same pattern site
+	// deployments use.
+	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().TrackInDB().Dispatch(ctx)
 
 	output := ""
 	exitCode := -1
+	taskID := ""
 	if result != nil {
 		output = result.GetOutput()
 		exitCode = result.GetExitCode()
+		if result.TaskModel != nil {
+			taskID = result.TaskModel.ID
+		}
+	}
+	// Persist the task ID onto the deployment row so the Deployments
+	// tab's "View logs" can subscribe to the live log stream. Done
+	// before the success/failure branch so the task_id is visible
+	// whether the deploy passed or failed.
+	if taskID != "" {
+		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+			"task_id": taskID,
+		})
+		j.deployment.TaskID = &taskID
 	}
 
 	if runErr != nil || (result != nil && !result.IsSuccessful()) {

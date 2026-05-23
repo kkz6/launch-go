@@ -53,11 +53,27 @@ func (r *ServerRepository) sitesCountSubquery() *gorm.DB {
 		Where("sites.server_id = servers.id")
 }
 
+// projectsCountSubquery returns a GORM subquery for counting live docker
+// projects per server. Used to populate models.Server.ProjectsCount so the
+// frontend can disable the Delete button on docker servers that still have
+// projects (the DeleteServer service hard-blocks the same condition; this
+// is just for proactive UX).
+//
+// The docker module's models package is intentionally NOT imported here —
+// the dependency direction is docker -> server, never the reverse. We
+// reference the table by name and filter on `deleted_at IS NULL` to match
+// the soft-delete semantics docker_projects uses elsewhere.
+func (r *ServerRepository) projectsCountSubquery() *gorm.DB {
+	return r.DB.Table("docker_projects").
+		Select("COUNT(*)").
+		Where("docker_projects.server_id = servers.id AND docker_projects.deleted_at IS NULL")
+}
+
 // FindAllByTeam finds all active (non-archived) servers for a team
 func (r *ServerRepository) FindAllByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
 	var servers []models.Server
 	err := r.DB.WithContext(ctx).
-		Select("servers.*, (?) as sites_count", r.sitesCountSubquery()).
+		Select("servers.*, (?) as sites_count, (?) as projects_count", r.sitesCountSubquery(), r.projectsCountSubquery()).
 		Preload("Services").
 		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
 		Order("created_at DESC").
@@ -72,7 +88,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 		Scopes(repository.WithTeamID(teamID), repository.WithActive())
 
 	dataQuery := r.DB.WithContext(ctx).
-		Select("servers.*, (?) as sites_count", r.sitesCountSubquery()).
+		Select("servers.*, (?) as sites_count, (?) as projects_count", r.sitesCountSubquery(), r.projectsCountSubquery()).
 		Preload("Services").
 		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
 		Order("created_at DESC")
@@ -84,7 +100,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 func (r *ServerRepository) FindArchivedByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
 	var servers []models.Server
 	err := r.DB.WithContext(ctx).
-		Select("servers.*, (?) as sites_count", r.sitesCountSubquery()).
+		Select("servers.*, (?) as sites_count, (?) as projects_count", r.sitesCountSubquery(), r.projectsCountSubquery()).
 		Unscoped().
 		Where("team_id = ? AND archived_at IS NOT NULL", teamID).
 		Order("archived_at DESC").

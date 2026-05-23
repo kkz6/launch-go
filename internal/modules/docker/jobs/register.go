@@ -3,6 +3,7 @@ package jobs
 import (
 	"github.com/hibiken/asynq"
 
+	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/app"
@@ -21,13 +22,19 @@ func Register(
 	appDeps app.Deps,
 	repos *repositories.Registry,
 	serverRepos *serverrepos.Registry,
+	backupRepos *backuprepos.Registry,
 ) {
-	deps = NewJobDeps(appDeps, repos, serverRepos)
+	deps = NewJobDeps(appDeps, repos, serverRepos, backupRepos)
 	pkgjobs.RegisterTyped(mux, TypeDeployApplication, NewDeployApplicationJob)
 	pkgjobs.RegisterTyped(mux, TypeRemoveApplication, NewRemoveApplicationJob)
+	pkgjobs.RegisterTyped(mux, TypeApplicationLifecycle, NewApplicationLifecycleJob)
+	pkgjobs.RegisterTyped(mux, TypeRunApplicationSchedule, NewRunApplicationScheduleJob)
+	pkgjobs.RegisterTyped(mux, TypePollDueSchedules, NewPollDueSchedulesJob)
 	pkgjobs.RegisterTyped(mux, TypeDeployCompose, NewDeployComposeJob)
 	pkgjobs.RegisterTyped(mux, TypeRemoveCompose, NewRemoveComposeJob)
 	pkgjobs.RegisterTyped(mux, TypeSyncTraefikConfig, NewSyncTraefikConfigJob)
 	pkgjobs.RegisterTyped(mux, TypeRunDatabase, NewRunDatabaseJob)
 	pkgjobs.RegisterTyped(mux, TypeDatabaseLifecycle, NewDatabaseLifecycleJob)
+	pkgjobs.RegisterTyped(mux, TypeRunBackup, NewRunBackupJob)
+	pkgjobs.RegisterTyped(mux, TypePollDueBackups, NewPollDueBackupsJob)
 }

@@ -1,6 +1,7 @@
 package dto
 
 import (
+	"strings"
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
@@ -55,22 +56,38 @@ type ApplicationResponse struct {
 	BuildConfig    map[string]any `json:"build_config,omitempty"`
 	Status         string         `json:"status"`
 	ContainerID    *string        `json:"container_id,omitempty"`
+	// ContainerName is the on-host docker name (e.g.
+	// `launch-<project>-<app>`). Like DatabaseResponse.ContainerName
+	// — fed to the navbar Terminal button so it can attach to the
+	// application container instead of the host root shell.
+	ContainerName  string         `json:"container_name,omitempty"`
 	LastDeployedAt *time.Time     `json:"last_deployed_at,omitempty"`
 	CreatedAt      *time.Time     `json:"created_at,omitempty"`
 	UpdatedAt      *time.Time     `json:"updated_at,omitempty"`
 }
 
-// DeploymentResponse is the API representation of a deploy attempt.
-//
-// Mirrors models.Deployment but skips internal fields (LogPath) we
-// haven't wired the UI for yet (slice 2d).
+// DeploymentResponse is the API representation of a deploy attempt or
+// database-lifecycle action. Shared across all three workload kinds
+// (application / compose / database) — see models.Deployment for the
+// per-field semantics. LogPath is internal and never serialised; the
+// frontend uses TaskID to subscribe to the live task-logs websocket
+// instead.
 type DeploymentResponse struct {
-	ID         string     `json:"id"`
-	TeamID     string     `json:"team_id"`
-	ServerID   string     `json:"server_id"`
-	TargetType string     `json:"target_type"`
-	TargetID   string     `json:"target_id"`
-	Status     string     `json:"status"`
+	ID         string  `json:"id"`
+	TeamID     string  `json:"team_id"`
+	ServerID   string  `json:"server_id"`
+	TargetType string  `json:"target_type"`
+	TargetID   string  `json:"target_id"`
+	// Action is set on database rows (create/start/restart/stop/rm).
+	// nil for application + compose rows (their implicit action is
+	// "deploy"). Lets the same table row a unified Deployments tab UI
+	// across all three workload kinds.
+	Action *string `json:"action,omitempty"`
+	Status string  `json:"status"`
+	// TaskID is the server-tasks ID. Frontend uses this with
+	// ServerLogViewer entity="task" :entity-id="task_id" to stream the
+	// live SSH output — same pattern site deployments use.
+	TaskID     *string    `json:"task_id,omitempty"`
 	CommitSHA  *string    `json:"commit_sha,omitempty"`
 	CommitMsg  *string    `json:"commit_msg,omitempty"`
 	ImageRef   *string    `json:"image_ref,omitempty"`
@@ -93,7 +110,11 @@ type ComposeResponse struct {
 	ComposeFilePath   *string        `json:"compose_file_path,omitempty"`
 	// RawYAML is omitted from list responses to keep them light; pulled
 	// in for single-compose Show responses where the user is editing.
-	RawYAML        *string    `json:"raw_yaml,omitempty"`
+	RawYAML *string `json:"raw_yaml,omitempty"`
+	// EnvFile is the `.env` body the Environment subtab edits. Only
+	// included on single-compose Show responses (same as RawYAML) so
+	// list responses don't carry potentially-large bodies.
+	EnvFile        *string    `json:"env_file,omitempty"`
 	Status         string     `json:"status"`
 	LastDeployedAt *time.Time `json:"last_deployed_at,omitempty"`
 	CreatedAt      *time.Time `json:"created_at,omitempty"`
@@ -120,20 +141,30 @@ func ToComposeResponse(c *models.Compose, includeRaw bool) *ComposeResponse {
 	}
 	if includeRaw {
 		resp.RawYAML = c.RawYAML
+		resp.EnvFile = c.EnvFile
 	}
 	return resp
 }
 
 // ScheduleResponse is the API shape for an application schedule.
 type ScheduleResponse struct {
-	ID            string     `json:"id"`
-	ApplicationID string     `json:"application_id"`
-	Cron          string     `json:"cron"`
-	Command       string     `json:"command"`
-	LastRunAt     *time.Time `json:"last_run_at,omitempty"`
-	LastStatus    *string    `json:"last_status,omitempty"`
-	CreatedAt     *time.Time `json:"created_at,omitempty"`
-	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+	ID            string `json:"id"`
+	ApplicationID string `json:"application_id"`
+	Cron          string `json:"cron"`
+	Command       string `json:"command"`
+	// Enabled = false means the worker won't arm this schedule on
+	// boot. UI shows a paused-pill instead of a status pill.
+	Enabled   bool   `json:"enabled"`
+	ShellType string `json:"shell_type"`
+	// LastTaskID is the server-tasks ULID for the most recent run.
+	// Frontend wires it into <ServerLogViewer entity="task"> so
+	// View Logs streams that single run's output (same surface site
+	// deployments use).
+	LastTaskID *string    `json:"last_task_id,omitempty"`
+	LastRunAt  *time.Time `json:"last_run_at,omitempty"`
+	LastStatus *string    `json:"last_status,omitempty"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
 }
 
 func ToScheduleResponse(s *models.ApplicationSchedule) *ScheduleResponse {
@@ -142,11 +173,26 @@ func ToScheduleResponse(s *models.ApplicationSchedule) *ScheduleResponse {
 		ApplicationID: s.ApplicationID,
 		Cron:          s.Cron,
 		Command:       s.Command,
+		Enabled:       s.Enabled,
+		ShellType:     s.ShellType,
+		LastTaskID:    s.LastTaskID,
 		LastRunAt:     s.LastRunAt,
 		LastStatus:    s.LastStatus,
 		CreatedAt:     s.CreatedAt,
 		UpdatedAt:     s.UpdatedAt,
 	}
+}
+
+// ApplicationRedirectResponse mirrors the PHP-site redirect shape so
+// the docker-app Redirects subtab can reuse the same DataTable +
+// dialog the SitesRedirects subtab uses. Stored inside build_config
+// (no table) but exposed via per-row CRUD endpoints for parity.
+type ApplicationRedirectResponse struct {
+	ID        string `json:"id"`
+	From      string `json:"from"`
+	To        string `json:"to"`
+	Type      int    `json:"type"`
+	CreatedAt string `json:"created_at,omitempty"`
 }
 
 // EnvVarResponse is the API shape for an application env var. Value is
@@ -161,11 +207,78 @@ type EnvVarResponse struct {
 	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
 }
 
+// ProjectEnvVarResponse is the API shape for a project-scoped env
+// var. Same fields as EnvVarResponse, but scoped to project_id —
+// kept distinct so the response is self-documenting (vs. nilable
+// owner fields on a polymorphic shape).
+type ProjectEnvVarResponse struct {
+	ID        string     `json:"id"`
+	ProjectID string     `json:"project_id"`
+	Key       string     `json:"key"`
+	Value     string     `json:"value"`
+	IsSecret  bool       `json:"is_secret"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
+}
+
+// ToProjectEnvVarResponse renders a project env-var. Same masking
+// rule as ToEnvVarResponse — list endpoints pass reveal=false to
+// keep secrets out of the response.
+func ToProjectEnvVarResponse(v *models.ProjectEnvVar, revealSecret bool) *ProjectEnvVarResponse {
+	value := string(v.Value)
+	if v.IsSecret && !revealSecret {
+		value = "********"
+	}
+	return &ProjectEnvVarResponse{
+		ID:        v.ID,
+		ProjectID: v.ProjectID,
+		Key:       v.Key,
+		Value:     value,
+		IsSecret:  v.IsSecret,
+		CreatedAt: v.CreatedAt,
+		UpdatedAt: v.UpdatedAt,
+	}
+}
+
+// DatabaseEnvVarResponse is the API shape for a database-scoped env
+// var (user-added extras on top of the auto-generated engine
+// credentials).
+type DatabaseEnvVarResponse struct {
+	ID         string     `json:"id"`
+	DatabaseID string     `json:"database_id"`
+	Key        string     `json:"key"`
+	Value      string     `json:"value"`
+	IsSecret   bool       `json:"is_secret"`
+	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
+}
+
+// ToDatabaseEnvVarResponse mirrors ToProjectEnvVarResponse — masks
+// secrets unless reveal=true.
+func ToDatabaseEnvVarResponse(v *models.DatabaseEnvVar, revealSecret bool) *DatabaseEnvVarResponse {
+	value := string(v.Value)
+	if v.IsSecret && !revealSecret {
+		value = "********"
+	}
+	return &DatabaseEnvVarResponse{
+		ID:         v.ID,
+		DatabaseID: v.DatabaseID,
+		Key:        v.Key,
+		Value:      value,
+		IsSecret:   v.IsSecret,
+		CreatedAt:  v.CreatedAt,
+		UpdatedAt:  v.UpdatedAt,
+	}
+}
+
 // ToEnvVarResponse renders an env-var. revealSecret=false (default)
 // masks the value when IsSecret is true so list endpoints never leak
 // passwords — same defence pattern as database credentials.
 func ToEnvVarResponse(v *models.ApplicationEnvVar, revealSecret bool) *EnvVarResponse {
-	value := v.Value
+	// Value is `dbtype.EncryptedString` on the model — convert here so
+	// the response stays a plain string. GORM already decrypted the
+	// column when hydrating the row, so `string(v.Value)` is plaintext.
+	value := string(v.Value)
 	if v.IsSecret && !revealSecret {
 		value = "********"
 	}
@@ -180,7 +293,9 @@ func ToEnvVarResponse(v *models.ApplicationEnvVar, revealSecret bool) *EnvVarRes
 	}
 }
 
-// VolumeResponse is the API shape for an application volume.
+// VolumeResponse is the API shape for an application volume / mount.
+// Carries all three mount-kinds (bind / volume / file) in a single
+// shape — fields not relevant to the row's `type` are omitted.
 type VolumeResponse struct {
 	ID            string     `json:"id"`
 	ApplicationID string     `json:"application_id"`
@@ -188,8 +303,13 @@ type VolumeResponse struct {
 	MountPath     string     `json:"mount_path"`
 	Type          string     `json:"type"`
 	HostPath      *string    `json:"host_path,omitempty"`
-	CreatedAt     *time.Time `json:"created_at,omitempty"`
-	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+	// File-mount payload — content + on-host filename. The list
+	// endpoint returns content as well (the editor on the frontend
+	// needs it to render the existing body).
+	Content   *string    `json:"content,omitempty"`
+	FilePath  *string    `json:"file_path,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+	UpdatedAt *time.Time `json:"updated_at,omitempty"`
 }
 
 func ToVolumeResponse(v *models.ApplicationVolume) *VolumeResponse {
@@ -200,28 +320,28 @@ func ToVolumeResponse(v *models.ApplicationVolume) *VolumeResponse {
 		MountPath:     v.MountPath,
 		Type:          v.Type,
 		HostPath:      v.HostPath,
+		Content:       v.Content,
+		FilePath:      v.FilePath,
 		CreatedAt:     v.CreatedAt,
 		UpdatedAt:     v.UpdatedAt,
 	}
 }
 
 // BackupResponse is the API shape for a database backup configuration.
-// AccessKey is masked unless the caller passed ?reveal=true on the GET
-// (same pattern as DatabaseCredentials).
+// References the global storage_providers row by id — the actual S3
+// credentials never travel back to the client.
 type BackupResponse struct {
-	ID           string     `json:"id"`
-	DatabaseID   string     `json:"database_id"`
-	Provider     string     `json:"provider"`
-	Endpoint     *string    `json:"endpoint,omitempty"`
-	Bucket       string     `json:"bucket"`
-	Region       *string    `json:"region,omitempty"`
-	PathPrefix   *string    `json:"path_prefix,omitempty"`
-	CronSchedule *string    `json:"cron_schedule,omitempty"`
-	Enabled      bool       `json:"enabled"`
-	AccessKey    string     `json:"access_key"`
-	HasSecretKey bool       `json:"has_secret_key"`
-	CreatedAt    *time.Time `json:"created_at,omitempty"`
-	UpdatedAt    *time.Time `json:"updated_at,omitempty"`
+	ID                string     `json:"id"`
+	DatabaseID        string     `json:"database_id"`
+	StorageProviderID uint64     `json:"storage_provider_id"`
+	Path              *string    `json:"path,omitempty"`
+	Retention         int        `json:"retention"`
+	NotifyOnSuccess   bool       `json:"notify_on_success"`
+	NotifyOnFailure   bool       `json:"notify_on_failure"`
+	CronSchedule      *string    `json:"cron_schedule,omitempty"`
+	Enabled           bool       `json:"enabled"`
+	CreatedAt         *time.Time `json:"created_at,omitempty"`
+	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
 }
 
 // BackupRunResponse is one row in the run-history table.
@@ -237,25 +357,21 @@ type BackupRunResponse struct {
 	CreatedAt  *time.Time `json:"created_at,omitempty"`
 }
 
-// ToBackupResponse renders a backup config. AccessKey is decoded from
-// the encrypted credentials blob; the secret key is just signalled
-// "present" via HasSecretKey so the UI knows whether to require it on
-// the next update.
-func ToBackupResponse(b *models.DatabaseBackup, accessKey string, hasSecret bool) *BackupResponse {
+// ToBackupResponse renders a backup config. Credentials live on the
+// linked storage_providers row — never on this response.
+func ToBackupResponse(b *models.DatabaseBackup) *BackupResponse {
 	return &BackupResponse{
-		ID:           b.ID,
-		DatabaseID:   b.DatabaseID,
-		Provider:     b.Provider,
-		Endpoint:     b.Endpoint,
-		Bucket:       b.Bucket,
-		Region:       b.Region,
-		PathPrefix:   b.PathPrefix,
-		CronSchedule: b.CronSchedule,
-		Enabled:      b.Enabled,
-		AccessKey:    accessKey,
-		HasSecretKey: hasSecret,
-		CreatedAt:    b.CreatedAt,
-		UpdatedAt:    b.UpdatedAt,
+		ID:                b.ID,
+		DatabaseID:        b.DatabaseID,
+		StorageProviderID: b.StorageProviderID,
+		Path:              b.Path,
+		Retention:         b.Retention,
+		NotifyOnSuccess:   b.NotifyOnSuccess,
+		NotifyOnFailure:   b.NotifyOnFailure,
+		CronSchedule:      b.CronSchedule,
+		Enabled:           b.Enabled,
+		CreatedAt:         b.CreatedAt,
+		UpdatedAt:         b.UpdatedAt,
 	}
 }
 
@@ -300,53 +416,116 @@ type DatabaseResponse struct {
 	ExternalPort  *int                 `json:"external_port,omitempty"`
 	Status        string               `json:"status"`
 	Credentials   *DatabaseCredentials `json:"credentials,omitempty"`
-	CreatedAt     *time.Time           `json:"created_at,omitempty"`
-	UpdatedAt     *time.Time           `json:"updated_at,omitempty"`
+	// BuildConfig surfaces the Advanced subtab's runtime knobs
+	// (restart_policy, cpu_limit, memory_limit, cpu_reservation,
+	// memory_reservation). Same shape applications use.
+	BuildConfig map[string]any `json:"build_config,omitempty"`
+	// VolumeName + DataPath describe the named bind that persists the
+	// database's on-disk state across container recreates. Both are
+	// deterministic — derived from the database id + engine — so the
+	// frontend can render the Volumes section in Advanced without an
+	// extra round-trip.
+	VolumeName string `json:"volume_name,omitempty"`
+	DataPath   string `json:"data_path,omitempty"`
+	// ContainerName is the on-host docker name (e.g.
+	// `launch-db-<project>-<db>`). Surfaced so the navbar's Terminal
+	// button can pass it to the WS handler and open a shell inside
+	// the database container instead of the host root shell.
+	ContainerName string     `json:"container_name,omitempty"`
+	CreatedAt     *time.Time `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+}
+
+// databaseEngineDataPath mirrors services.engineCatalogue's DataPath
+// values. Inlined here (instead of importing the services package) so
+// dto stays a leaf of the package graph — services already imports
+// dto, so the reverse would be a cycle.
+func databaseEngineDataPath(engine string) string {
+	switch engine {
+	case "postgres":
+		return "/var/lib/postgresql/data"
+	case "mysql", "mariadb":
+		return "/var/lib/mysql"
+	case "redis":
+		return "/data"
+	case "mongo":
+		return "/data/db"
+	default:
+		return ""
+	}
 }
 
 // ToDatabaseResponse renders a Database model. The caller passes
 // reveal=true only on the explicit-reveal show endpoint; list +
 // default get omit the password entirely.
 func ToDatabaseResponse(d *models.Database, _ bool) *DatabaseResponse {
+	engine := string(d.Engine)
 	return &DatabaseResponse{
 		ID:            d.ID,
 		TeamID:        d.TeamID,
 		ServerID:      d.ServerID,
 		ProjectID:     d.ProjectID,
 		Name:          d.Name,
-		Engine:        string(d.Engine),
+		Engine:        engine,
 		EngineVersion: d.EngineVersion,
 		ImageTag:      d.ImageTag,
 		ExternalPort:  d.ExternalPort,
 		Status:        string(d.Status),
-		CreatedAt:     d.CreatedAt,
-		UpdatedAt:     d.UpdatedAt,
+		BuildConfig:   map[string]any(d.BuildConfig),
+		// Deterministic — must stay in sync with tasks.DatabaseVolumeName.
+		// Lowercasing the ULID matches docker's volume-name rules and
+		// what the run script writes.
+		VolumeName: "launch-db-" + strings.ToLower(d.ID) + "-data",
+		DataPath:   databaseEngineDataPath(engine),
+		CreatedAt:  d.CreatedAt,
+		UpdatedAt:  d.UpdatedAt,
 	}
+}
+
+// ValidateDNSResponse is the result of the "Validate DNS" button in
+// the Domains subtab. The frontend renders OK + Message as a toast;
+// ResolvedIPs / ExpectedIP let a future Inspect panel show the full
+// diff. Wildcard=true means we short-circuited (traefik.me etc).
+type ValidateDNSResponse struct {
+	Host        string   `json:"host"`
+	OK          bool     `json:"ok"`
+	Wildcard    bool     `json:"wildcard"`
+	ExpectedIP  string   `json:"expected_ip,omitempty"`
+	ResolvedIPs []string `json:"resolved_ips,omitempty"`
+	Message     string   `json:"message"`
 }
 
 // DomainResponse is the API representation of an application domain.
 type DomainResponse struct {
-	ID            string     `json:"id"`
-	ApplicationID string     `json:"application_id"`
-	Host          string     `json:"host"`
-	Path          *string    `json:"path,omitempty"`
-	HTTPS         bool       `json:"https"`
-	CertificateID *string    `json:"certificate_id,omitempty"`
-	CreatedAt     *time.Time `json:"created_at,omitempty"`
-	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+	ID                  string     `json:"id"`
+	ApplicationID       string     `json:"application_id"`
+	Host                string     `json:"host"`
+	Path                *string    `json:"path,omitempty"`
+	InternalPath        *string    `json:"internal_path,omitempty"`
+	StripPath           bool       `json:"strip_path"`
+	ContainerPort       *int       `json:"container_port,omitempty"`
+	HTTPS               bool       `json:"https"`
+	CertificateProvider string     `json:"certificate_provider"`
+	CertificateID       *string    `json:"certificate_id,omitempty"`
+	CreatedAt           *time.Time `json:"created_at,omitempty"`
+	UpdatedAt           *time.Time `json:"updated_at,omitempty"`
 }
 
 // ToDomainResponse maps a domain model to the API response shape.
 func ToDomainResponse(d *models.ApplicationDomain) *DomainResponse {
 	return &DomainResponse{
-		ID:            d.ID,
-		ApplicationID: d.ApplicationID,
-		Host:          d.Host,
-		Path:          d.Path,
-		HTTPS:         d.HTTPS,
-		CertificateID: d.CertificateID,
-		CreatedAt:     d.CreatedAt,
-		UpdatedAt:     d.UpdatedAt,
+		ID:                  d.ID,
+		ApplicationID:       d.ApplicationID,
+		Host:                d.Host,
+		Path:                d.Path,
+		InternalPath:        d.InternalPath,
+		StripPath:           d.StripPath,
+		ContainerPort:       d.ContainerPort,
+		HTTPS:               d.HTTPS,
+		CertificateProvider: d.CertificateProvider,
+		CertificateID:       d.CertificateID,
+		CreatedAt:           d.CreatedAt,
+		UpdatedAt:           d.UpdatedAt,
 	}
 }
 
@@ -358,7 +537,9 @@ func ToDeploymentResponse(d *models.Deployment) *DeploymentResponse {
 		ServerID:   d.ServerID,
 		TargetType: d.TargetType,
 		TargetID:   d.TargetID,
+		Action:     d.Action,
 		Status:     string(d.Status),
+		TaskID:     d.TaskID,
 		CommitSHA:  d.CommitSHA,
 		CommitMsg:  d.CommitMsg,
 		ImageRef:   d.ImageRef,

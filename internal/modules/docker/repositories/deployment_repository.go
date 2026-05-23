@@ -35,7 +35,9 @@ func (r *DeploymentRepository) FindByID(ctx context.Context, id string) (*models
 }
 
 // ListForTarget returns deployment history for a given (type, id) pair,
-// most recent first. Used by the Deployments subtab.
+// most recent first. Used by the Deployments subtab across all three
+// workload kinds — applications, composes, and databases (target_type =
+// "database", added in migration 0025).
 func (r *DeploymentRepository) ListForTarget(
 	ctx context.Context, targetType, targetID string,
 ) ([]models.Deployment, error) {

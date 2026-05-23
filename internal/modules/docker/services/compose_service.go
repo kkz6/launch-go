@@ -14,6 +14,7 @@ import (
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // ComposeService owns CRUD + deploy for docker-compose stacks.
@@ -158,6 +159,18 @@ func (s *ComposeService) UpdateCompose(
 			updates["name"] = newName
 		}
 	}
+	// EnvFile is opt-in: nil leaves the column alone; an empty string
+	// clears it; a non-empty string replaces it verbatim. The deploy
+	// task writes this body to `${COMPOSE_DIR}/.env` before
+	// `docker compose up`, so the change takes effect on the next
+	// deploy without a restart job here.
+	if req.EnvFile != nil {
+		if *req.EnvFile == "" {
+			updates["env_file"] = nil
+		} else {
+			updates["env_file"] = *req.EnvFile
+		}
+	}
 	if len(updates) > 0 {
 		if err := s.Repos().Compose().UpdateFields(ctx, id, updates); err != nil {
 			return dto.ComposeResponse{}, err
@@ -184,6 +197,7 @@ func (s *ComposeService) UpdateCompose(
 // remove job doesn't need the (soft-deleted) row.
 func (s *ComposeService) DeleteCompose(
 	ctx context.Context, id, projectID, serverID, teamID, userID string,
+	removeVolumes bool,
 ) error {
 	_ = userID
 	project, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID)
@@ -214,7 +228,7 @@ func (s *ComposeService) DeleteCompose(
 	}
 
 	if rmTask, err := jobs.NewRemoveComposeTask(
-		c.ID, c.ProjectID, c.ServerID, c.TeamID, composeProjectName,
+		c.ID, c.ProjectID, c.ServerID, c.TeamID, composeProjectName, removeVolumes,
 	); err == nil {
 		if enqErr := s.EnqueueTask(rmTask); enqErr != nil {
 			s.LogError(enqErr, "failed to dispatch compose removal", "compose_id", c.ID)
@@ -310,6 +324,107 @@ func (s *ComposeService) Deploy(
 		"status":        "pending",
 	})
 	return deployment, nil
+}
+
+// ListServices returns the docker compose service names currently
+// known to the stack on the host. Drives the Logs subtab's service
+// picker — the user sees one row per service and can scope the log
+// stream to just that container's stdout.
+//
+// We use `docker compose --project-name <name> ps --services` rather
+// than parsing the YAML because:
+//   - It returns what's ACTUALLY on the host (handles partial
+//     deploys, manually-removed containers, etc.) — the source of
+//     truth for "which container could I tail right now".
+//   - It works regardless of source type (raw_yaml vs git) without
+//     us needing to parse YAML in Go.
+//   - It's authoritative for compose-aware naming (sanitised dashes
+//     and such).
+//
+// Empty list = stack has never been deployed (or all services were
+// removed). The Logs subtab falls back to "all services" in that
+// case.
+func (s *ComposeService) ListServices(
+	ctx context.Context, composeID, projectID, serverID, teamID string,
+) ([]string, error) {
+	if _, err := s.requireProjectScoped(ctx, projectID, serverID, teamID); err != nil {
+		return nil, err
+	}
+	c, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, composeID, teamID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if c.ProjectID != projectID {
+		return nil, fiberutil.NotFound()
+	}
+	if c.LastDeployedAt == nil {
+		// Never deployed → no services to list. Return [] rather
+		// than 404 so the UI can render the dropdown empty.
+		return []string{}, nil
+	}
+
+	project, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	projectName := fmt.Sprintf(
+		"%s-%s",
+		tasks.SlugFromName(project.Name),
+		tasks.SlugFromName(c.Name),
+	)
+
+	server, err := s.ServerRepos().Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return nil, err
+	}
+	client, err := taskrunner.NewSSHClientFromServerAsRoot(server)
+	if err != nil {
+		return nil, err
+	}
+	if err := client.Connect(); err != nil {
+		return nil, err
+	}
+	defer client.Close()
+
+	// `--services` prints one service name per line. We don't need
+	// the running-only filter; compose lists every service declared
+	// in the compose file (`ps --services` doesn't require the
+	// container to be running). That's intentional — the user might
+	// want to tail a service that's currently stopped to see startup
+	// failures.
+	cmd := fmt.Sprintf(
+		`docker compose --project-name %s ps --services 2>&1`,
+		shellQuoteArg(projectName),
+	)
+	result, err := client.Run(ctx, cmd)
+	if err != nil {
+		return nil, err
+	}
+	if result.ExitCode != 0 {
+		// Project label doesn't exist on host yet (deploy in flight
+		// or the user manually `docker compose down`'d everything).
+		// Surface as empty list rather than error so the UI gracefully
+		// degrades.
+		return []string{}, nil
+	}
+
+	var out []string
+	for _, line := range strings.Split(strings.TrimSpace(result.Stdout), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		out = append(out, line)
+	}
+	return out, nil
+}
+
+// shellQuoteArg single-quotes a shell argument; doubles up any
+// embedded single quotes. Used for the compose --project-name value
+// which we treat as untrusted user input even though SlugFromName
+// already sanitises it (defence-in-depth).
+func shellQuoteArg(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 // requireProjectScoped is the compose-side equivalent of

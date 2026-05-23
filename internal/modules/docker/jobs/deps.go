@@ -5,6 +5,7 @@
 package jobs
 
 import (
+	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
@@ -19,18 +20,23 @@ type JobDeps struct {
 	*pkgjobs.Deps
 	Repos          *repositories.Registry
 	ServerRepos    *serverrepos.Registry
+	// BackupRepos exposes the global storage_providers repository. The
+	// RunBackup job needs it to load S3 credentials for the database
+	// backup target (the docker_database_backups row only carries the
+	// FK now, not the creds themselves).
+	BackupRepos    *backuprepos.Registry
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
 }
 
-// NewJobDeps wires JobDeps from app-level dependencies. ServerRepos is
-// passed explicitly (not constructed here) so the docker module and the
-// rest of the system share the same connection-backed registry — sharing
-// matters for cache coherency once the server-repo layer starts caching
-// reads.
+// NewJobDeps wires JobDeps from app-level dependencies. ServerRepos +
+// BackupRepos are passed explicitly (not constructed here) so the
+// docker module and the rest of the system share the same connection-
+// backed registries.
 func NewJobDeps(
 	appDeps app.Deps,
 	repos *repositories.Registry,
 	serverRepos *serverrepos.Registry,
+	backupRepos *backuprepos.Registry,
 ) *JobDeps {
 	return &JobDeps{
 		Deps: &pkgjobs.Deps{
@@ -42,6 +48,7 @@ func NewJobDeps(
 		},
 		Repos:       repos,
 		ServerRepos: serverRepos,
+		BackupRepos: backupRepos,
 		TaskRunnerDeps: &servertasks.TaskRunnerDeps{
 			DB:          appDeps.DB,
 			Queue:       appDeps.Queue,
