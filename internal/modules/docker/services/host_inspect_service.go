@@ -105,6 +105,253 @@ var dockerBuiltinNetworks = map[string]struct{}{
 	"none":   {},
 }
 
+// ContainerInspect is the curated subset of `docker inspect` we
+// surface to the UI. We deliberately skip env vars (could leak
+// secrets) and the raw config blob (overwhelming for a tooltip-ish
+// view). Each field below maps to a real `docker inspect` location;
+// missing values are returned empty rather than omitted so the UI
+// can render a uniform table.
+type ContainerInspect struct {
+	ID           string                 `json:"id"`
+	Name         string                 `json:"name"`
+	Image        string                 `json:"image"`
+	ImageID      string                 `json:"image_id"`
+	Command      string                 `json:"command"`
+	CreatedAt    string                 `json:"created_at"`
+	State        ContainerInspectState  `json:"state"`
+	Health       *ContainerInspectHealth `json:"health,omitempty"`
+	RestartCount int                    `json:"restart_count"`
+	Platform     string                 `json:"platform"`
+	Resources    ContainerInspectResources `json:"resources"`
+	RestartPolicy string                `json:"restart_policy"`
+	Mounts       []ContainerInspectMount `json:"mounts"`
+	Networks     []ContainerInspectNetwork `json:"networks"`
+	Labels       map[string]string      `json:"labels,omitempty"`
+}
+
+type ContainerInspectState struct {
+	Status     string `json:"status"`
+	Running    bool   `json:"running"`
+	StartedAt  string `json:"started_at"`
+	FinishedAt string `json:"finished_at"`
+	ExitCode   int    `json:"exit_code"`
+	Error      string `json:"error,omitempty"`
+	OOMKilled  bool   `json:"oom_killed"`
+	Pid        int    `json:"pid"`
+}
+
+type ContainerInspectHealth struct {
+	Status        string                       `json:"status"` // healthy / unhealthy / starting
+	FailingStreak int                          `json:"failing_streak"`
+	Log           []ContainerInspectHealthLog `json:"log,omitempty"`
+}
+
+type ContainerInspectHealthLog struct {
+	Start    string `json:"start"`
+	End      string `json:"end"`
+	ExitCode int    `json:"exit_code"`
+	Output   string `json:"output"`
+}
+
+type ContainerInspectResources struct {
+	MemoryLimitBytes int64   `json:"memory_limit_bytes"`
+	CPUShares        int64   `json:"cpu_shares"`
+	NanoCPUs         int64   `json:"nano_cpus"`
+}
+
+type ContainerInspectMount struct {
+	Type        string `json:"type"`        // "bind" or "volume"
+	Source      string `json:"source"`      // host path or volume name
+	Destination string `json:"destination"` // in-container path
+	ReadOnly    bool   `json:"read_only"`
+}
+
+type ContainerInspectNetwork struct {
+	Name       string `json:"name"`
+	IPAddress  string `json:"ip_address"`
+	MACAddress string `json:"mac_address,omitempty"`
+}
+
+// rawContainerInspect is the slim subset of `docker inspect` JSON we
+// decode. We pull only what ContainerInspect exposes — the inspect
+// output is enormous and most of it is irrelevant to the UI.
+type rawContainerInspect struct {
+	ID      string `json:"Id"`
+	Name    string `json:"Name"`
+	Image   string `json:"Image"`
+	Created string `json:"Created"`
+	Path    string `json:"Path"`
+	Args    []string `json:"Args"`
+	State   struct {
+		Status     string `json:"Status"`
+		Running    bool   `json:"Running"`
+		Paused     bool   `json:"Paused"`
+		Restarting bool   `json:"Restarting"`
+		OOMKilled  bool   `json:"OOMKilled"`
+		ExitCode   int    `json:"ExitCode"`
+		Error      string `json:"Error"`
+		StartedAt  string `json:"StartedAt"`
+		FinishedAt string `json:"FinishedAt"`
+		Pid        int    `json:"Pid"`
+		Health     *struct {
+			Status        string `json:"Status"`
+			FailingStreak int    `json:"FailingStreak"`
+			Log           []struct {
+				Start    string `json:"Start"`
+				End      string `json:"End"`
+				ExitCode int    `json:"ExitCode"`
+				Output   string `json:"Output"`
+			} `json:"Log"`
+		} `json:"Health"`
+	} `json:"State"`
+	RestartCount int    `json:"RestartCount"`
+	Platform     string `json:"Platform"`
+	Config       struct {
+		Image  string            `json:"Image"`
+		Cmd    []string          `json:"Cmd"`
+		Labels map[string]string `json:"Labels"`
+	} `json:"Config"`
+	HostConfig struct {
+		Memory     int64 `json:"Memory"`
+		CPUShares  int64 `json:"CpuShares"`
+		NanoCPUs   int64 `json:"NanoCpus"`
+		RestartPolicy struct {
+			Name string `json:"Name"`
+		} `json:"RestartPolicy"`
+	} `json:"HostConfig"`
+	Mounts []struct {
+		Type        string `json:"Type"`
+		Name        string `json:"Name"`
+		Source      string `json:"Source"`
+		Destination string `json:"Destination"`
+		Mode        string `json:"Mode"`
+		RW          bool   `json:"RW"`
+	} `json:"Mounts"`
+	NetworkSettings struct {
+		Networks map[string]struct {
+			IPAddress  string `json:"IPAddress"`
+			MacAddress string `json:"MacAddress"`
+		} `json:"Networks"`
+	} `json:"NetworkSettings"`
+}
+
+// InspectContainer runs `docker inspect <id>` on the host and projects
+// the result into ContainerInspect. The container ID can be the short
+// or long form; we treat it as untrusted and validate it to a hex
+// charset to avoid command injection through the URL parameter.
+func (s *HostInspectService) InspectContainer(
+	ctx context.Context, serverID, teamID, containerID string,
+) (ContainerInspect, error) {
+	if !containerIDPattern.MatchString(containerID) {
+		return ContainerInspect{}, fiberutil.BadRequest("Invalid container ID")
+	}
+
+	out, err := s.runDockerJSON(ctx, serverID, teamID,
+		fmt.Sprintf("docker inspect %s --format '{{json .}}'", containerID))
+	if err != nil {
+		return ContainerInspect{}, err
+	}
+	if len(out) == 0 {
+		return ContainerInspect{}, fiberutil.NotFound()
+	}
+
+	var raw rawContainerInspect
+	if err := json.Unmarshal([]byte(out[0]), &raw); err != nil {
+		return ContainerInspect{}, fmt.Errorf("decode docker inspect: %w", err)
+	}
+
+	return projectContainerInspect(raw), nil
+}
+
+// containerIDPattern: short (12 hex) or long (64 hex) docker IDs only.
+// Defends the docker-inspect command construction from injection via
+// the URL path.
+var containerIDPattern = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
+
+func projectContainerInspect(raw rawContainerInspect) ContainerInspect {
+	out := ContainerInspect{
+		ID:           strings.TrimPrefix(raw.ID, ""),
+		Name:         strings.TrimPrefix(raw.Name, "/"),
+		Image:        raw.Config.Image,
+		ImageID:      raw.Image,
+		CreatedAt:    raw.Created,
+		Platform:     raw.Platform,
+		RestartCount: raw.RestartCount,
+		Labels:       raw.Config.Labels,
+	}
+
+	// Command: prefer Config.Cmd when present, otherwise Path + Args.
+	if len(raw.Config.Cmd) > 0 {
+		out.Command = strings.Join(raw.Config.Cmd, " ")
+	} else if raw.Path != "" {
+		out.Command = strings.TrimSpace(raw.Path + " " + strings.Join(raw.Args, " "))
+	}
+
+	out.State = ContainerInspectState{
+		Status:     raw.State.Status,
+		Running:    raw.State.Running,
+		StartedAt:  raw.State.StartedAt,
+		FinishedAt: raw.State.FinishedAt,
+		ExitCode:   raw.State.ExitCode,
+		Error:      raw.State.Error,
+		OOMKilled:  raw.State.OOMKilled,
+		Pid:        raw.State.Pid,
+	}
+
+	if raw.State.Health != nil {
+		h := ContainerInspectHealth{
+			Status:        raw.State.Health.Status,
+			FailingStreak: raw.State.Health.FailingStreak,
+		}
+		// Keep the last 5 health-check entries — full log can be
+		// hundreds of rows long and overwhelms the dialog.
+		const maxLog = 5
+		logs := raw.State.Health.Log
+		if len(logs) > maxLog {
+			logs = logs[len(logs)-maxLog:]
+		}
+		for _, l := range logs {
+			h.Log = append(h.Log, ContainerInspectHealthLog{
+				Start:    l.Start,
+				End:      l.End,
+				ExitCode: l.ExitCode,
+				Output:   l.Output,
+			})
+		}
+		out.Health = &h
+	}
+
+	out.Resources = ContainerInspectResources{
+		MemoryLimitBytes: raw.HostConfig.Memory,
+		CPUShares:        raw.HostConfig.CPUShares,
+		NanoCPUs:         raw.HostConfig.NanoCPUs,
+	}
+	out.RestartPolicy = raw.HostConfig.RestartPolicy.Name
+
+	for _, m := range raw.Mounts {
+		source := m.Source
+		if m.Type == "volume" && m.Name != "" {
+			source = m.Name // for named volumes, the name is friendlier than the host path
+		}
+		out.Mounts = append(out.Mounts, ContainerInspectMount{
+			Type:        m.Type,
+			Source:      source,
+			Destination: m.Destination,
+			ReadOnly:    !m.RW,
+		})
+	}
+
+	for name, n := range raw.NetworkSettings.Networks {
+		out.Networks = append(out.Networks, ContainerInspectNetwork{
+			Name:       name,
+			IPAddress:  n.IPAddress,
+			MACAddress: n.MacAddress,
+		})
+	}
+
+	return out
+}
+
 // ListContainers returns every container on the host (running + stopped).
 // Each row is tagged with `System=true` if Launch installed it. The UI
 // hides system rows behind a toggle.
