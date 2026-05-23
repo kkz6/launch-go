@@ -24,7 +24,9 @@ func Register(
 ) {
 	deps = NewJobDeps(appDeps, repos, serverRepos)
 	pkgjobs.RegisterTyped(mux, TypeDeployApplication, NewDeployApplicationJob)
+	pkgjobs.RegisterTyped(mux, TypeRemoveApplication, NewRemoveApplicationJob)
 	pkgjobs.RegisterTyped(mux, TypeDeployCompose, NewDeployComposeJob)
+	pkgjobs.RegisterTyped(mux, TypeRemoveCompose, NewRemoveComposeJob)
 	pkgjobs.RegisterTyped(mux, TypeSyncTraefikConfig, NewSyncTraefikConfigJob)
 	pkgjobs.RegisterTyped(mux, TypeRunDatabase, NewRunDatabaseJob)
 	pkgjobs.RegisterTyped(mux, TypeDatabaseLifecycle, NewDatabaseLifecycleJob)

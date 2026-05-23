@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/docker/dto"
 	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -197,17 +198,24 @@ func (s *ApplicationService) UpdateApplication(
 	return *resp, nil
 }
 
-// DeleteApplication soft-deletes an application. The actual `docker rm`
-// of the running container lands in slice 2b alongside the deploy job —
-// for phase 2a we trust the soft-delete and let the (future) reaper
-// clean up the abandoned container.
+// DeleteApplication soft-deletes the row AND dispatches a docker
+// stop + docker rm task for the container the deploy job would have
+// created. Audit 2026-05-23 flagged this — previously the row
+// disappeared but the container kept running, leaking ports + name.
+//
+// The teardown runs as an asynq job (not inline) because docker stop
+// can take 10+ seconds on apps with shutdown hooks, and the user
+// expects the row to disappear instantly. Dispatch is best-effort:
+// if Redis is unreachable we log and continue rather than failing
+// the delete button.
 //
 // Signature: fiberutil.DeleteDoubleNestedFunc.
 func (s *ApplicationService) DeleteApplication(
 	ctx context.Context, id, projectID, serverID, teamID, userID string,
 ) error {
 	_ = userID
-	if _, err := s.requireProject(ctx, projectID, serverID, teamID); err != nil {
+	project, err := s.requireProjectModel(ctx, projectID, serverID, teamID)
+	if err != nil {
 		return err
 	}
 	app, err := s.Repos().Application().FindByIDAndTeamServer(ctx, id, teamID, serverID)
@@ -218,8 +226,25 @@ func (s *ApplicationService) DeleteApplication(
 		return fiberutil.NotFound()
 	}
 
+	// Resolve the container name BEFORE soft-deleting so the job
+	// doesn't need an Unscoped query to recompute it. Apps that
+	// never deployed have no container name; the job branches on
+	// that and just broadcasts the no-op terminal event.
+	var containerName string
+	if app.LastDeployedAt != nil {
+		containerName = tasks.ContainerNameFor(project, app)
+	}
+
 	if err := s.Repos().Application().Delete(ctx, id); err != nil {
 		return err
+	}
+
+	if rmTask, err := jobs.NewRemoveApplicationTask(
+		app.ID, app.ProjectID, app.ServerID, app.TeamID, containerName,
+	); err == nil {
+		if enqErr := s.EnqueueTask(rmTask); enqErr != nil {
+			s.LogError(enqErr, "failed to dispatch app removal", "application_id", app.ID)
+		}
 	}
 
 	s.BroadcastToTeam(teamID, "docker.application.deleted", map[string]any{
@@ -396,10 +421,10 @@ func (s *ApplicationService) UpdateAdvanced(
 	return *resp, nil
 }
 
-// requireProject validates that the project exists and belongs to the
-// (team, server). Returns the project ID on success — same shape as
-// ProjectService.requireDockerServer so it slots into the same call
-// pattern in each method.
+// requireProject validates that the project exists and belongs to
+// the (team, server). Returns the project ID on success — same shape
+// as ProjectService.requireDockerServer so it slots into the same
+// call pattern in each method.
 func (s *ApplicationService) requireProject(
 	ctx context.Context, projectID, serverID, teamID string,
 ) (string, error) {
@@ -408,6 +433,15 @@ func (s *ApplicationService) requireProject(
 		return "", err
 	}
 	return p.ID, nil
+}
+
+// requireProjectModel is the same check but returns the loaded
+// model. Used where the caller needs the project Name to compute
+// container names (delete teardown, etc.).
+func (s *ApplicationService) requireProjectModel(
+	ctx context.Context, projectID, serverID, teamID string,
+) (*models.Project, error) {
+	return s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID)
 }
 
 // buildSourceConfig translates the discriminated-union request payload
