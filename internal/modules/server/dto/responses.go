@@ -65,6 +65,12 @@ type ServerResponse struct {
 	// returned (0 for PHP servers) so the frontend can disable the
 	// Delete button on docker servers that still have projects.
 	ProjectsCount int `json:"projects_count"`
+	// WorkloadsCount sums live docker_applications + docker_composes
+	// + docker_databases. Used by the Servers list card to show
+	// "X workloads" on docker servers (where SitesCount is always 0
+	// since the sites table is Laravel-style PHP only). 0 on
+	// non-docker servers.
+	WorkloadsCount int `json:"workloads_count"`
 }
 
 // ToServerResponse converts a Server model to a ServerResponse DTO
@@ -135,6 +141,7 @@ func ToServerResponse(server *models.Server) ServerResponse {
 		ServicesCount:  len(server.Services),
 		UpstreamsCount: int(server.UpstreamsCount),
 		ProjectsCount:  int(server.ProjectsCount),
+		WorkloadsCount: int(server.WorkloadsCount),
 	}
 
 	resp.ProvisionedAt = pkgdto.FormatTime(server.ProvisionedAt)

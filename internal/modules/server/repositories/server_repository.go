@@ -69,11 +69,39 @@ func (r *ServerRepository) projectsCountSubquery() *gorm.DB {
 		Where("docker_projects.server_id = servers.id AND docker_projects.deleted_at IS NULL")
 }
 
+// workloadsCountSubquery sums live docker workloads — applications +
+// composes + databases — for the server. Same cross-module reference
+// pattern as projectsCountSubquery: tables-by-name, no import of the
+// docker package. Populates models.Server.WorkloadsCount so the
+// Servers list card can render "X workloads" on docker servers
+// (where SitesCount is always 0 since `sites` is Laravel-only).
+func (r *ServerRepository) workloadsCountSubquery() *gorm.DB {
+	return r.DB.Raw(`
+		(SELECT COUNT(*) FROM docker_applications
+		    WHERE docker_applications.server_id = servers.id
+		      AND docker_applications.deleted_at IS NULL)
+		+ (SELECT COUNT(*) FROM docker_composes
+		    WHERE docker_composes.server_id = servers.id
+		      AND docker_composes.deleted_at IS NULL)
+		+ (SELECT COUNT(*) FROM docker_databases
+		    WHERE docker_databases.server_id = servers.id
+		      AND docker_databases.deleted_at IS NULL)
+	`)
+}
+
+// listSelect is the shared SELECT projection for the three list-
+// style queries below. Keeps the four columns (sites_count,
+// projects_count, workloads_count) in lockstep so adding another
+// computed count later is a single-line change.
+func (r *ServerRepository) listSelect() string {
+	return "servers.*, (?) as sites_count, (?) as projects_count, (?) as workloads_count"
+}
+
 // FindAllByTeam finds all active (non-archived) servers for a team
 func (r *ServerRepository) FindAllByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
 	var servers []models.Server
 	err := r.DB.WithContext(ctx).
-		Select("servers.*, (?) as sites_count, (?) as projects_count", r.sitesCountSubquery(), r.projectsCountSubquery()).
+		Select(r.listSelect(), r.sitesCountSubquery(), r.projectsCountSubquery(), r.workloadsCountSubquery()).
 		Preload("Services").
 		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
 		Order("created_at DESC").
@@ -88,7 +116,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 		Scopes(repository.WithTeamID(teamID), repository.WithActive())
 
 	dataQuery := r.DB.WithContext(ctx).
-		Select("servers.*, (?) as sites_count, (?) as projects_count", r.sitesCountSubquery(), r.projectsCountSubquery()).
+		Select(r.listSelect(), r.sitesCountSubquery(), r.projectsCountSubquery(), r.workloadsCountSubquery()).
 		Preload("Services").
 		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
 		Order("created_at DESC")
@@ -100,7 +128,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 func (r *ServerRepository) FindArchivedByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
 	var servers []models.Server
 	err := r.DB.WithContext(ctx).
-		Select("servers.*, (?) as sites_count, (?) as projects_count", r.sitesCountSubquery(), r.projectsCountSubquery()).
+		Select(r.listSelect(), r.sitesCountSubquery(), r.projectsCountSubquery(), r.workloadsCountSubquery()).
 		Unscoped().
 		Where("team_id = ? AND archived_at IS NOT NULL", teamID).
 		Order("archived_at DESC").
