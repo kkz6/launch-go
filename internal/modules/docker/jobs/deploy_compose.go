@@ -77,6 +77,34 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 	// Same authenticated-clone treatment as application git deploys.
 	cfg.GitRepo = j.Deps.resolveAuthenticatedCloneURL(ctx, map[string]any(j.compose.SourceConfig), cfg.GitRepo)
 
+	// Type=file rows attached to this stack get materialized to
+	// ${STACK_DIR}/files/<path> by the deploy script. Pulling them
+	// here (vs in the renderer) keeps the renderer pure and lets us
+	// surface load errors as a soft warning rather than a script-time
+	// failure — if the DB is unreachable, the deploy still proceeds
+	// without file mounts; the script's `rm -rf ./files` keeps the
+	// host clean of stale ones from a previous deploy.
+	if rows, err := j.Deps.Repos.Volume().ListForCompose(ctx, j.compose.ID); err == nil {
+		for i := range rows {
+			r := &rows[i]
+			if r.Type != "file" || r.FilePath == nil || *r.FilePath == "" {
+				continue
+			}
+			content := ""
+			if r.Content != nil {
+				content = *r.Content
+			}
+			cfg.FileMounts = append(cfg.FileMounts, tasks.ComposeFileMount{
+				RelativePath: *r.FilePath,
+				Content:      content,
+			})
+		}
+	} else {
+		j.Deps.Logger.Warn().Err(err).
+			Str("compose_id", j.compose.ID).
+			Msg("load compose file-mounts failed; continuing without them")
+	}
+
 	task := tasks.DeployCompose(cfg)
 	// TrackInDB() persists a server-tasks row so the frontend can
 	// stream live `docker compose up` output via ServerLogViewer —

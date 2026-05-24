@@ -45,6 +45,32 @@ type ComposeDeployConfig struct {
 	// preview / "default command" UI hints so the script + the hint
 	// can never disagree.
 	RunCommand string
+
+	// FileMounts are the type=file rows attached to this compose stack.
+	// Each is materialized to `${STACK_DIR}/files/<RelativePath>` on
+	// the host BEFORE `docker compose up` so the YAML can reference
+	// them via `./files/<RelativePath>:<container_path>:ro`. The deploy
+	// script wipes the `files/` directory at the top of each run so
+	// stale rows from previous deploys don't linger.
+	//
+	// Bind- and volume-type rows are NOT included here — those are
+	// informational on the compose surface; the operator wires them
+	// into the YAML themselves and we don't rewrite docker-compose.yml.
+	FileMounts []ComposeFileMount
+}
+
+// ComposeFileMount is a single type=file row materialized for a
+// compose deploy. Pure data — the deploy script does the writing so
+// the rendering function stays deterministic and side-effect-free.
+type ComposeFileMount struct {
+	// RelativePath is the on-host filename written under
+	// `${STACK_DIR}/files/`. Subdirectories are honored (e.g.
+	// "nginx/site.conf") — the script `mkdir -p`s the parent before
+	// the write.
+	RelativePath string
+	// Content is the body written verbatim. Heredoc-quoted so shell
+	// expansion can't corrupt config files that embed `$`-sigils.
+	Content string
 }
 
 // ComposeDefaultRunCommand renders the docker-suffix the deploy
@@ -159,6 +185,37 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
 		// host after the user clears the Environment tab. `rm -f`
 		// tolerates the "no such file" case for first deploys.
 		b.WriteString("rm -f .env\n")
+	}
+
+	// Materialize type=file volume rows to `${STACK_DIR}/files/`. We
+	// wipe `files/` at the top of each deploy so rows removed from
+	// the UI actually disappear on the host — otherwise stale files
+	// would haunt the deploy directory forever. The `mkdir -p` on
+	// each parent dir lets operators use subpaths like
+	// "nginx/site.conf" without an extra round-trip.
+	//
+	// Heredoc tag uses a per-iteration sentinel so a payload that
+	// itself contains "LAUNCH_FILE_EOF" can't terminate the heredoc
+	// early. The tag varies per index; collisions on a content body
+	// that happens to repeat the tag are still possible but vastly
+	// less likely than a single shared sentinel.
+	if len(cfg.FileMounts) > 0 {
+		b.WriteString("\necho \"::LAUNCH::deploy_step::writing_files\"\n")
+		// Resolve `files/` against PWD — same logic the .env block
+		// uses, so raw-YAML deploys land at ${STACK_DIR}/files/ and
+		// git deploys land at ${BUILD_DIR}/files/. The compose YAML's
+		// `./files/<path>` relative paths line up either way.
+		b.WriteString("rm -rf ./files && mkdir -p ./files\n")
+		for i, fm := range cfg.FileMounts {
+			tag := fmt.Sprintf("LAUNCH_FILE_EOF_%d", i)
+			fmt.Fprintf(&b, "mkdir -p \"$(dirname \"./files/%s\")\"\n", fm.RelativePath)
+			fmt.Fprintf(&b, "cat > ./files/%s <<'%s'\n", fm.RelativePath, tag)
+			b.WriteString(fm.Content)
+			if !strings.HasSuffix(fm.Content, "\n") {
+				b.WriteString("\n")
+			}
+			fmt.Fprintf(&b, "%s\n", tag)
+		}
 	}
 
 	// `--network launch-network` happens inside the compose file (each

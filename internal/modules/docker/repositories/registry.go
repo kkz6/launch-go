@@ -69,7 +69,10 @@ func (r *Registry) ProjectEnvVar() *ProjectEnvVarRepository { return r.projectEn
 // credentials).
 func (r *Registry) DatabaseEnvVar() *DatabaseEnvVarRepository { return r.databaseEnvVar }
 
-// Volume returns the application volume repository.
+// Volume returns the docker volume repository — polymorphic by
+// owner. The same row type backs application volumes AND compose-
+// stack volumes; the repo exposes per-owner List / ExistsByName
+// methods that filter by application_id or compose_id.
 func (r *Registry) Volume() *VolumeRepository { return r.volume }
 
 // Schedule returns the application schedule repository.
