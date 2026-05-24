@@ -78,6 +78,14 @@ type Server struct {
 	// way), so the subquery references the table by name. Populated
 	// from server_repository.go via Select("(?) as projects_count").
 	ProjectsCount int64 `gorm:"column:projects_count;->" json:"projects_count"`
+	// WorkloadsCount sums docker_applications + docker_composes +
+	// docker_databases for the server — what the Servers list card
+	// shows on docker servers since SitesCount is always 0 there
+	// (the `sites` table is Laravel-style PHP only). Same cross-
+	// module reference pattern as ProjectsCount: docker tables are
+	// referenced by name from server_repository.go, never imported
+	// (docker depends on server, not the reverse).
+	WorkloadsCount int64 `gorm:"column:workloads_count;->" json:"workloads_count"`
 }
 
 func (s *Server) BeforeCreate(tx *gorm.DB) error {
