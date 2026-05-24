@@ -186,6 +186,25 @@ func (j *DeployComposeJob) handleSuccess(ctx context.Context) {
 		"status":           dockertypes.ApplicationStatusRunning,
 		"last_deployed_at": finishedAt,
 	})
+
+	// Re-render the per-compose Traefik file after a successful
+	// deploy. Container names depend on the compose project name
+	// (which is stable across deploys), so the YAML only changes when
+	// the user mutates a domain — but firing on deploy keeps the file
+	// in sync if Traefik's dynamic dir was wiped, the file was
+	// manually edited, or the very first deploy is happening before
+	// any domain mutation has run. Same idempotency rationale as the
+	// application path.
+	if task, err := NewSyncComposeTraefikConfigTask(
+		j.compose.ID, j.Payload.ServerID, j.Payload.TeamID,
+	); err == nil {
+		if _, err := j.Deps.Queue.Enqueue(task); err != nil {
+			j.Deps.Logger.Warn().Err(err).
+				Str("compose_id", j.compose.ID).
+				Msg("enqueue post-deploy compose traefik sync failed")
+		}
+	}
+
 	j.broadcast("docker.compose.deployed", map[string]any{
 		"compose_id":    j.compose.ID,
 		"deployment_id": j.deployment.ID,

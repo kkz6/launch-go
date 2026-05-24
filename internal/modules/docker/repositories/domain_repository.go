@@ -61,3 +61,35 @@ func (r *DomainRepository) ExistsByHost(
 		Count(&count).Error
 	return count > 0, err
 }
+
+// ListForCompose mirrors ListForApplication on the compose owner
+// column. Ordered by host for a stable UI list. We also sort by
+// service_name as a secondary key so two domains on the same host
+// but different services render in a deterministic order.
+func (r *DomainRepository) ListForCompose(
+	ctx context.Context, composeID string,
+) ([]models.ApplicationDomain, error) {
+	var rows []models.ApplicationDomain
+	err := r.DB.WithContext(ctx).
+		Where("compose_id = ?", composeID).
+		Order("host ASC, service_name ASC").
+		Find(&rows).Error
+	return rows, err
+}
+
+// ExistsByHostForCompose mirrors ExistsByHost but scoped to a
+// compose stack. Uniqueness is per-owner, so an application and a
+// compose stack can both attach the same host without collision —
+// which is fine in theory (different Traefik file targets) but
+// would be confusing in practice; we leave that combination to the
+// operator to spot.
+func (r *DomainRepository) ExistsByHostForCompose(
+	ctx context.Context, composeID, host string,
+) (bool, error) {
+	var count int64
+	err := r.DB.WithContext(ctx).
+		Model(&models.ApplicationDomain{}).
+		Where("compose_id = ? AND host = ?", composeID, host).
+		Count(&count).Error
+	return count > 0, err
+}

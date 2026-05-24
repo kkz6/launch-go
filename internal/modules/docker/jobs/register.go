@@ -33,6 +33,7 @@ func Register(
 	pkgjobs.RegisterTyped(mux, TypeDeployCompose, NewDeployComposeJob)
 	pkgjobs.RegisterTyped(mux, TypeRemoveCompose, NewRemoveComposeJob)
 	pkgjobs.RegisterTyped(mux, TypeSyncTraefikConfig, NewSyncTraefikConfigJob)
+	pkgjobs.RegisterTyped(mux, TypeSyncComposeTraefikConfig, NewSyncComposeTraefikConfigJob)
 	pkgjobs.RegisterTyped(mux, TypeRunDatabase, NewRunDatabaseJob)
 	pkgjobs.RegisterTyped(mux, TypeDatabaseLifecycle, NewDatabaseLifecycleJob)
 	pkgjobs.RegisterTyped(mux, TypeRunBackup, NewRunBackupJob)

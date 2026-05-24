@@ -727,6 +727,83 @@ func traefikFilenameFor(project *models.Project, app *models.Application) string
 	)
 }
 
+// --- Compose-side Traefik card -------------------------------------
+//
+// Parallel surface to the per-application Traefik card. Reads from /
+// writes to `/etc/launch/traefik/dynamic/compose-<project>-<compose>
+// .yml` — namespaced filename so a same-named app + compose in the
+// same project don't collide on disk. Filename is resolved from
+// project + compose slugs server-side; operator can't redirect to
+// a different file via a crafted request.
+
+func (s *HostInspectService) GetComposeTraefikConfig(
+	ctx context.Context, composeID, projectID, serverID, teamID string,
+) (dto.ApplicationTraefikConfigResponse, error) {
+	project, compose, err := s.resolveComposeForTraefik(ctx, composeID, projectID, serverID, teamID)
+	if err != nil {
+		return dto.ApplicationTraefikConfigResponse{}, err
+	}
+	filename := tasks.ComposeTraefikConfigFilename(
+		tasks.SlugFromName(project.Name),
+		tasks.SlugFromName(compose.Name),
+	)
+
+	client, cleanup, err := s.dialServer(ctx, serverID, teamID)
+	if err != nil {
+		return dto.ApplicationTraefikConfigResponse{}, err
+	}
+	defer cleanup()
+
+	path := fmt.Sprintf("/etc/launch/traefik/dynamic/%s", filename)
+	cmd := fmt.Sprintf("sudo cat %s 2>/dev/null", path)
+	result, err := client.Run(ctx, cmd)
+	if err != nil {
+		return dto.ApplicationTraefikConfigResponse{}, fmt.Errorf("read failed: %w", err)
+	}
+	return dto.ApplicationTraefikConfigResponse{
+		Filename: filename,
+		Content:  result.Stdout,
+	}, nil
+}
+
+func (s *HostInspectService) UpdateComposeTraefikConfig(
+	ctx context.Context, composeID, projectID, serverID, teamID, content string,
+) (dto.ApplicationTraefikConfigResponse, error) {
+	project, compose, err := s.resolveComposeForTraefik(ctx, composeID, projectID, serverID, teamID)
+	if err != nil {
+		return dto.ApplicationTraefikConfigResponse{}, err
+	}
+	filename := tasks.ComposeTraefikConfigFilename(
+		tasks.SlugFromName(project.Name),
+		tasks.SlugFromName(compose.Name),
+	)
+
+	if err := s.WriteTraefikDynamicFile(ctx, serverID, teamID, filename, content); err != nil {
+		return dto.ApplicationTraefikConfigResponse{}, err
+	}
+	return dto.ApplicationTraefikConfigResponse{
+		Filename: filename,
+		Content:  content,
+	}, nil
+}
+
+func (s *HostInspectService) resolveComposeForTraefik(
+	ctx context.Context, composeID, projectID, serverID, teamID string,
+) (*models.Project, *models.Compose, error) {
+	project, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID)
+	if err != nil {
+		return nil, nil, err
+	}
+	compose, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, composeID, teamID, serverID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if compose.ProjectID != projectID {
+		return nil, nil, fiberutil.NotFound()
+	}
+	return project, compose, nil
+}
+
 // safeTraefikFilenamePattern enforces:
 //   - 1–80 chars
 //   - first char alphanumeric (no leading dot → no hidden files)
