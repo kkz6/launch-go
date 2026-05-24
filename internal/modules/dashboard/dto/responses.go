@@ -11,12 +11,24 @@ type DashboardResponse struct {
 }
 
 // DashboardServerResponse represents a server in the dashboard
+//
+// Type + WorkloadsCount were added when docker servers landed. Docker
+// servers never have `sites` rows (the `sites` table is Laravel-style
+// PHP sites only); they have docker projects whose workloads
+// (applications + composes + managed databases) are what the
+// dashboard card should actually show. The frontend keys off `Type`
+// to pick the right count to render.
 type DashboardServerResponse struct {
-	ID         string `json:"id"`
-	Name       string `json:"name"`
-	Status     string `json:"status"` // "connected" or "disconnected"
-	Provider   string `json:"provider"`
-	SitesCount int64  `json:"sites_count"`
+	ID       string `json:"id"`
+	Name     string `json:"name"`
+	Status   string `json:"status"` // "connected" or "disconnected"
+	Provider string `json:"provider"`
+	// Type is "php" / "database" / "loadbalancer" / "docker" — same
+	// enum the server module uses. Omitted when nil (legacy rows
+	// pre-typing).
+	Type           string `json:"type,omitempty"`
+	SitesCount     int64  `json:"sites_count"`
+	WorkloadsCount int64  `json:"workloads_count"`
 }
 
 // DashboardActivityResponse represents a recent deployment in the dashboard
