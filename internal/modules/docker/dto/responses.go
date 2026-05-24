@@ -497,6 +497,21 @@ func ToDatabaseResponse(d *models.Database, _ bool) *DatabaseResponse {
 // the Domains subtab. The frontend renders OK + Message as a toast;
 // ResolvedIPs / ExpectedIP let a future Inspect panel show the full
 // diff. Wildcard=true means we short-circuited (traefik.me etc).
+// ApplicationTraefikConfigResponse carries the per-application
+// Traefik dynamic-config file body. Same shape dokploy returns on
+// its Advanced → Traefik card — surfacing just this app's
+// routers/services rather than the whole `/etc/launch/traefik/
+// dynamic` directory.
+//
+// `Filename` is informational: the API resolves it from the app's
+// project+name slug pair, and a separate UPDATE call can't change
+// it. Empty `Content` means the file doesn't exist on the host yet
+// (e.g. the app has no domains attached).
+type ApplicationTraefikConfigResponse struct {
+	Filename string `json:"filename"`
+	Content  string `json:"content"`
+}
+
 type ValidateDNSResponse struct {
 	Host        string   `json:"host"`
 	OK          bool     `json:"ok"`

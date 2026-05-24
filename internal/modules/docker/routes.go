@@ -751,6 +751,60 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.NoContent(c)
 	})
 
+	// Per-application Traefik dynamic-config file. Read returns
+	// the body of /etc/launch/traefik/dynamic/<project>-<app>.yml
+	// as it is on the host RIGHT NOW; write overwrites it via the
+	// same path the deploy task uses on a domain attach. Mirrors
+	// dokploy's Advanced → Traefik card — operator can spot-check or
+	// override the generated routes/services without touching the
+	// server-level dynamic dir. Hand-edits SURVIVE the next deploy as
+	// long as the YAML is still valid (the deploy task rewrites the
+	// file from domain rows, so manual edits are lost when domains
+	// change — the card's UI copy calls this out).
+	apps.Get("/:id/traefik-config", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		out, err := hostSvc.GetApplicationTraefikConfig(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Traefik config retrieved", out)
+	})
+	apps.Patch("/:id/traefik-config", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateApplicationTraefikConfigRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := hostSvc.UpdateApplicationTraefikConfig(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			req.Content,
+		)
+		if err != nil {
+			// Surface validation errors (size cap, etc.) as 400s — the
+			// underlying WriteTraefikDynamicFile distinguishes between
+			// "your input is bad" and "the host is broken" with the
+			// error wording.
+			return fiberutil.BadRequest(err.Error())
+		}
+		return fiberutil.OK(c, "Traefik config updated", out)
+	})
+
 	// Advanced runtime settings — merged into build_config and applied on
 	// the next deploy.
 	apps.Patch("/:id/advanced", func(c *gofiber.Ctx) error {

@@ -7,6 +7,9 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/kkz6/launch-go/internal/modules/docker/dto"
+	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
 	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -614,6 +617,114 @@ __LAUNCH_EOF_%s__
 		return fmt.Errorf("write failed (exit %d): %s", result.ExitCode, result.Stderr)
 	}
 	return nil
+}
+
+// GetApplicationTraefikConfig reads the dynamic Traefik file the
+// platform writes for a specific application. Per-app file lives at
+// `/etc/launch/traefik/dynamic/<projectSlug>-<appSlug>.yml` — same
+// path the deploy task writes during a domain attach. Surface mirrors
+// dokploy's Advanced → Traefik card: the user sees this app's
+// routes/services in isolation instead of scrolling the whole
+// server-level dynamic dir.
+//
+// Returns the (filename, content) pair. If the file doesn't exist
+// yet (app has no domains attached, or Traefik isn't installed),
+// content is empty and an explanatory note is left out of the
+// payload — the frontend renders a "no config yet" state in that case.
+func (s *HostInspectService) GetApplicationTraefikConfig(
+	ctx context.Context, applicationID, projectID, serverID, teamID string,
+) (dto.ApplicationTraefikConfigResponse, error) {
+	project, app, err := s.resolveAppForTraefik(ctx, applicationID, projectID, serverID, teamID)
+	if err != nil {
+		return dto.ApplicationTraefikConfigResponse{}, err
+	}
+	filename := traefikFilenameFor(project, app)
+
+	client, cleanup, err := s.dialServer(ctx, serverID, teamID)
+	if err != nil {
+		return dto.ApplicationTraefikConfigResponse{}, err
+	}
+	defer cleanup()
+
+	// `2>/dev/null` lets the cat-not-found case fall through silently;
+	// the deploy task hasn't run yet for first-time apps and that's
+	// fine — UI shows an empty editor and the operator can save to
+	// create the file (with the obvious "this is now hand-edited"
+	// caveat noted in the card description).
+	path := fmt.Sprintf("/etc/launch/traefik/dynamic/%s", filename)
+	cmd := fmt.Sprintf("sudo cat %s 2>/dev/null", path)
+	result, err := client.Run(ctx, cmd)
+	if err != nil {
+		return dto.ApplicationTraefikConfigResponse{}, fmt.Errorf("read failed: %w", err)
+	}
+	return dto.ApplicationTraefikConfigResponse{
+		Filename: filename,
+		Content:  result.Stdout,
+	}, nil
+}
+
+// UpdateApplicationTraefikConfig overwrites the per-app dynamic
+// Traefik file. Delegates to WriteTraefikDynamicFile so size limits +
+// filename validation stay in one place. The filename always comes
+// from the resolved slug pair, NOT from the request — the operator
+// can change file contents but not the file's identity (preventing
+// "modify other app's config" via a crafted request).
+//
+// The dynamic-config directory is watched by Traefik, so a successful
+// write takes effect with no reload. A malformed YAML body is
+// tolerated by the platform (we don't parse it) but Traefik will
+// refuse to load it — that's a soft failure the operator can recover
+// from by editing and re-saving.
+func (s *HostInspectService) UpdateApplicationTraefikConfig(
+	ctx context.Context, applicationID, projectID, serverID, teamID, content string,
+) (dto.ApplicationTraefikConfigResponse, error) {
+	project, app, err := s.resolveAppForTraefik(ctx, applicationID, projectID, serverID, teamID)
+	if err != nil {
+		return dto.ApplicationTraefikConfigResponse{}, err
+	}
+	filename := traefikFilenameFor(project, app)
+
+	if err := s.WriteTraefikDynamicFile(ctx, serverID, teamID, filename, content); err != nil {
+		return dto.ApplicationTraefikConfigResponse{}, err
+	}
+	return dto.ApplicationTraefikConfigResponse{
+		Filename: filename,
+		Content:  content,
+	}, nil
+}
+
+// resolveAppForTraefik scopes (project, application) to the
+// (team, server) tuple — matches the pattern ApplicationService uses
+// elsewhere. Returns both models so the caller can compute the slug
+// pair without re-reading.
+func (s *HostInspectService) resolveAppForTraefik(
+	ctx context.Context, applicationID, projectID, serverID, teamID string,
+) (*models.Project, *models.Application, error) {
+	project, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID)
+	if err != nil {
+		return nil, nil, err
+	}
+	app, err := s.Repos().Application().FindByIDAndTeamServer(ctx, applicationID, teamID, serverID)
+	if err != nil {
+		return nil, nil, err
+	}
+	if app.ProjectID != projectID {
+		return nil, nil, fiberutil.NotFound()
+	}
+	return project, app, nil
+}
+
+// traefikFilenameFor derives the on-disk filename for an app's
+// dynamic config. Mirrors `tasks.TraefikConfigPath`'s suffix portion
+// so writer + reader agree. Kept here (vs reusing the tasks helper)
+// because tasks.TraefikConfigPath returns the full /etc/launch/...
+// path and HostInspectService stores the directory prefix separately
+// — we only need the basename to feed `WriteTraefikDynamicFile`.
+func traefikFilenameFor(project *models.Project, app *models.Application) string {
+	return fmt.Sprintf("%s-%s.yml",
+		tasks.SlugFromName(project.Name),
+		tasks.SlugFromName(app.Name),
+	)
 }
 
 // safeTraefikFilenamePattern enforces:
