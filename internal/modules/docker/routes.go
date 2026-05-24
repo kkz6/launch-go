@@ -908,6 +908,100 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Deployment started", dto.ToDeploymentResponse(deployment))
 	})
 
+	// Compose volume routes — list / create / update / delete. Shares
+	// the same VolumeService + repository as the application path; only
+	// the owner column differs (`compose_id` vs `application_id`).
+	// File-type rows are materialized to `${STACK_DIR}/files/<file_path>`
+	// before `docker compose up` runs (see tasks/deploy_compose.go) so
+	// the YAML can reference them via `./files/<file_path>`. Bind /
+	// volume rows are informational — the operator wires them into the
+	// YAML themselves; we don't rewrite docker-compose.yml.
+	composes.Get("/:id/volumes", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := volumeSvc.ListComposeVolumes(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Volumes retrieved", rows)
+	})
+
+	composes.Post("/:id/volumes", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateVolumeRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := volumeSvc.CreateComposeVolume(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Volume added", out)
+	})
+
+	composes.Patch("/:id/volumes/:volumeId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateVolumeRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := volumeSvc.UpdateComposeVolume(
+			c.Context(),
+			c.Params("volumeId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Volume updated", out)
+	})
+
+	composes.Delete("/:id/volumes/:volumeId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := volumeSvc.DeleteComposeVolume(
+			c.Context(),
+			c.Params("volumeId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
+	})
+
 	// Managed-database routes. Mostly the same shape as applications/
 	// composes; the differentiator is the /lifecycle endpoint that runs
 	// start/stop/restart against an existing container.

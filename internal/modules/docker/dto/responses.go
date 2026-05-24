@@ -297,16 +297,22 @@ func ToEnvVarResponse(v *models.ApplicationEnvVar, revealSecret bool) *EnvVarRes
 	}
 }
 
-// VolumeResponse is the API shape for an application volume / mount.
-// Carries all three mount-kinds (bind / volume / file) in a single
-// shape — fields not relevant to the row's `type` are omitted.
+// VolumeResponse is the API shape for an application or compose-stack
+// volume / mount. Carries all three mount-kinds (bind / volume / file)
+// in a single shape — fields not relevant to the row's `type` are
+// omitted. Polymorphic by owner: exactly one of `ApplicationID` or
+// `ComposeID` is set per row; the other is `nil` and `omitempty`'d out
+// of the JSON. Frontend keys off whichever endpoint listed the row
+// (per-application vs per-compose) rather than inspecting which field
+// is populated.
 type VolumeResponse struct {
-	ID            string     `json:"id"`
-	ApplicationID string     `json:"application_id"`
-	Name          string     `json:"name"`
-	MountPath     string     `json:"mount_path"`
-	Type          string     `json:"type"`
-	HostPath      *string    `json:"host_path,omitempty"`
+	ID            string  `json:"id"`
+	ApplicationID *string `json:"application_id,omitempty"`
+	ComposeID     *string `json:"compose_id,omitempty"`
+	Name          string  `json:"name"`
+	MountPath     string  `json:"mount_path"`
+	Type          string  `json:"type"`
+	HostPath      *string `json:"host_path,omitempty"`
 	// File-mount payload — content + on-host filename. The list
 	// endpoint returns content as well (the editor on the frontend
 	// needs it to render the existing body).
@@ -320,6 +326,7 @@ func ToVolumeResponse(v *models.ApplicationVolume) *VolumeResponse {
 	return &VolumeResponse{
 		ID:            v.ID,
 		ApplicationID: v.ApplicationID,
+		ComposeID:     v.ComposeID,
 		Name:          v.Name,
 		MountPath:     v.MountPath,
 		Type:          v.Type,
