@@ -124,6 +124,13 @@ func (m *Module) newBackupService() *services.BackupService {
 	return services.NewBackupService(m.serviceDeps())
 }
 
+// newRegistryCredentialService builds the docker-registry credential
+// service backing the Settings → Connections CRUD + the
+// application / compose registry pickers.
+func (m *Module) newRegistryCredentialService() *services.RegistryCredentialService {
+	return services.NewRegistryCredentialService(m.serviceDeps())
+}
+
 func (m *Module) serviceDeps() *services.ServiceDeps {
 	deps := m.Deps()
 	return &services.ServiceDeps{

@@ -33,6 +33,30 @@ type Application struct {
 	// launch-network. Default 80 in the migration so existing rows pick
 	// up a sane value.
 	InternalPort int `gorm:"column:internal_port;type:int;not null;default:80" json:"internal_port"`
+
+	// --- Docker image authentication ---------------------------------
+	//
+	// Pick ONE of two paths (service layer enforces at-most-one-of):
+	//
+	// 1. Saved-credential path: `RegistryCredentialID` references a
+	//    `registry_credentials` row managed in Settings → Connections.
+	//    The deploy script reads the row at deploy time, decrypts the
+	//    secrets, and runs `docker login` before pulling.
+	//
+	// 2. Inline path: `RegistryUsername` + `RegistryPassword` carry
+	//    credentials owned by this application alone. Useful for
+	//    one-off private images where saving a reusable credential
+	//    isn't worth it. Password is encrypted at rest via the same
+	//    `dbtype.EncryptedString` path env-var values use.
+	//
+	// Both empty / nil → public image, no `docker login` step. The
+	// FK on RegistryCredentialID is ON DELETE SET NULL (see 0037) so
+	// deleting a saved credential disconnects but doesn't tombstone
+	// the application — the operator gets a chance to re-attach or
+	// switch to inline.
+	RegistryCredentialID *string                `gorm:"column:registry_credential_id;type:char(26);index" json:"registry_credential_id,omitempty"`
+	RegistryUsername     *string                `gorm:"column:registry_username;type:varchar(255)" json:"registry_username,omitempty"`
+	RegistryPassword     dbtype.EncryptedString `gorm:"column:registry_password;type:longtext" json:"-"`
 }
 
 func (Application) TableName() string { return "docker_applications" }
@@ -65,6 +89,20 @@ type Compose struct {
 	RunCommand     *string                       `gorm:"column:run_command;type:longtext" json:"run_command,omitempty"`
 	Status         dockertypes.ApplicationStatus `gorm:"type:varchar(32);not null;default:idle" json:"status"`
 	LastDeployedAt *time.Time                    `gorm:"column:last_deployed_at;type:timestamp null" json:"last_deployed_at,omitempty"`
+
+	// RegistryCredentials are the 0..N saved registry logins this
+	// stack should authenticate against before pulling images. The
+	// deploy job runs `docker login` for each one before
+	// `docker compose up`. Compose stacks routinely reference images
+	// from multiple registries (ghcr + a private quay), which is why
+	// this is many-to-many rather than the singular pointer the
+	// application path uses.
+	//
+	// Many2many backed by docker_compose_registry_credentials. `-`
+	// in the JSON tag suppresses the relationship on the row's own
+	// serialization — the service layer maps the join into a curated
+	// response DTO (id + name + registry_url, never the secrets).
+	RegistryCredentials []RegistryCredential `gorm:"many2many:docker_compose_registry_credentials;joinForeignKey:ComposeID;joinReferences:RegistryCredentialID" json:"-"`
 }
 
 func (Compose) TableName() string { return "docker_composes" }

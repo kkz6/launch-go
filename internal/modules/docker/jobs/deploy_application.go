@@ -99,6 +99,41 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	// resolveAuthenticatedCloneURL.
 	cfg.GitRepo = j.Deps.resolveAuthenticatedCloneURL(ctx, map[string]any(j.app.SourceConfig), cfg.GitRepo)
 
+	// Resolve registry authentication for image sources. Either path
+	// (saved credential / inline) lands plaintext creds on the cfg
+	// — the deploy script pipes them to `docker login --password-
+	// stdin` so they never appear in `ps`. Best-effort: if the saved
+	// credential lookup fails (deleted between create and deploy)
+	// we fall through to no-auth and the pull will surface the real
+	// "image not found" error on the deploy log.
+	if j.app.SourceType == dockertypes.SourceTypeImage {
+		if j.app.RegistryCredentialID != nil && *j.app.RegistryCredentialID != "" {
+			if cred, err := j.Deps.Repos.RegistryCredential().FindByIDForTeam(
+				ctx, *j.app.RegistryCredentialID, j.app.TeamID,
+			); err == nil {
+				if cred.RegistryURL != nil {
+					cfg.RegistryURL = *cred.RegistryURL
+				}
+				cfg.RegistryUsername = cred.Username.String()
+				cfg.RegistryPassword = cred.Password.String()
+			} else {
+				j.Deps.Logger.Warn().Err(err).
+					Str("application_id", j.app.ID).
+					Str("registry_credential_id", *j.app.RegistryCredentialID).
+					Msg("registry credential lookup failed; pull will run unauthenticated")
+			}
+		} else if j.app.RegistryUsername != nil && *j.app.RegistryUsername != "" &&
+			!j.app.RegistryPassword.IsEmpty() {
+			cfg.RegistryUsername = *j.app.RegistryUsername
+			cfg.RegistryPassword = j.app.RegistryPassword.String()
+			// Inline credentials don't carry a URL field of their own
+			// in the model — source_config holds it for that path.
+			if rawURL, ok := map[string]any(j.app.SourceConfig)["registry_url"].(string); ok {
+				cfg.RegistryURL = rawURL
+			}
+		}
+	}
+
 	// Hydrate env vars + volumes from their child tables. Best-effort:
 	// transient read errors are logged but don't block the deploy — a
 	// fresh app with no env vars deploys cleanly with an empty list.

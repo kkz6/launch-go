@@ -28,6 +28,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	hostSvc := m.newHostInspectService()
 	scheduleSvc := m.newScheduleService()
 	backupSvc := m.newBackupService()
+	registryCredSvc := m.newRegistryCredentialService()
 
 	auth := middleware.Append(
 		middleware.AuthenticatedChain(authMiddleware),
@@ -1707,5 +1708,65 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Traefik file updated", map[string]any{
 			"filename": c.Params("filename"),
 		})
+	})
+
+	// Registry-credential CRUD — team-scoped saved docker registry
+	// logins. Lives at the team root (not nested under a server)
+	// since credentials are reusable across servers. Auth chain
+	// drops the docker-specific RequireProvisionedServer middleware
+	// because there's no serverId in the path.
+	regCreds := router.Group("/registry-credentials",
+		middleware.AuthenticatedChain(authMiddleware)...,
+	)
+	regCreds.Get("/", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		out, err := registryCredSvc.ListCredentials(c.Context(), teamID)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Registry credentials retrieved", out)
+	})
+	regCreds.Post("/", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateRegistryCredentialRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := registryCredSvc.CreateCredential(c.Context(), teamID, userID, req)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Registry credential created", out)
+	})
+	regCreds.Patch("/:id", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateRegistryCredentialRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := registryCredSvc.UpdateCredential(c.Context(), c.Params("id"), teamID, userID, req)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Registry credential updated", out)
+	})
+	regCreds.Delete("/:id", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := registryCredSvc.DeleteCredential(c.Context(), c.Params("id"), teamID, userID); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
 	})
 }

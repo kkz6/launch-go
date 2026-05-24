@@ -143,6 +143,17 @@ func (s *ApplicationService) CreateApplication(
 	app.TeamID = teamID
 	app.ServerID = serverID
 
+	// Wire registry authentication — only meaningful for image
+	// sources. The DTO field validation already capped lengths; the
+	// invariant we enforce here is "at most one of saved-credential
+	// path vs inline path". Both empty = public image, no `docker
+	// login` step at deploy time.
+	if req.SourceType == "image" && req.Image != nil {
+		if err := s.applyRegistryAuthToApp(ctx, app, teamID, req.Image); err != nil {
+			return dto.ApplicationResponse{}, err
+		}
+	}
+
 	if err := s.Repos().Application().Create(ctx, app); err != nil {
 		return dto.ApplicationResponse{}, err
 	}
@@ -893,4 +904,79 @@ func buildSourceConfig(req *dto.CreateApplicationRequest) (
 		return nil, nil, nil, fiberutil.BadRequest("unsupported source_type")
 	}
 	return source, buildType, buildConfig, nil
+}
+
+// applyRegistryAuthToApp resolves the discriminated-union of registry-
+// auth options on the image input + applies the result to the
+// application model. Branches:
+//
+//   - Nothing set                 → public image, no auth on deploy.
+//   - registry_credential_id only → reference a saved credential.
+//                                   Verifies the credential belongs to
+//                                   the caller's team (cross-team picks
+//                                   are rejected as 404 — we don't leak
+//                                   the existence of other teams' creds).
+//   - username + password set     → inline credentials, encrypted at
+//                                   rest via dbtype.EncryptedString.
+//                                   registry_url is optional (empty →
+//                                   Docker Hub at deploy time).
+//   - mixed                       → rejected as 400.
+//
+// Caller is the create flow today. The update flow doesn't expose
+// these (UpdateApplicationRequest is name-only); rotating credentials
+// happens by editing the saved-credential row or deleting + recreating
+// the application.
+func (s *ApplicationService) applyRegistryAuthToApp(
+	ctx context.Context, app *models.Application, teamID string,
+	in *dto.ImageSourceInput,
+) error {
+	hasSaved := in.RegistryCredentialID != nil && *in.RegistryCredentialID != ""
+	hasInline := (in.RegistryUsername != nil && *in.RegistryUsername != "") ||
+		(in.RegistryPassword != nil && *in.RegistryPassword != "")
+
+	if hasSaved && hasInline {
+		return fiberutil.BadRequest(
+			"choose either a saved registry credential OR inline credentials, not both",
+		)
+	}
+
+	if hasSaved {
+		// Team-scoped lookup — rejects cross-team picks.
+		if _, err := s.Repos().RegistryCredential().FindByIDForTeam(
+			ctx, *in.RegistryCredentialID, teamID,
+		); err != nil {
+			return err
+		}
+		app.RegistryCredentialID = in.RegistryCredentialID
+		return nil
+	}
+
+	if hasInline {
+		// Both username + password required for inline. Surfacing a
+		// 400 here is friendlier than a half-set row that silently
+		// fails on `docker login` at deploy time.
+		if in.RegistryUsername == nil || *in.RegistryUsername == "" ||
+			in.RegistryPassword == nil || *in.RegistryPassword == "" {
+			return fiberutil.BadRequest(
+				"inline registry auth requires both username AND password",
+			)
+		}
+		username := strings.TrimSpace(*in.RegistryUsername)
+		app.RegistryUsername = &username
+		app.RegistryPassword = dbtype.EncryptedString(*in.RegistryPassword)
+		// registry_url rides in source_config for the inline path —
+		// it doesn't justify a column of its own (only meaningful
+		// when inline auth is set). Saved credentials carry their
+		// URL on the row instead.
+		if in.RegistryURL != nil {
+			url := strings.TrimSpace(*in.RegistryURL)
+			if url != "" {
+				if app.SourceConfig == nil {
+					app.SourceConfig = dbtype.JSONMap{}
+				}
+				app.SourceConfig["registry_url"] = url
+			}
+		}
+	}
+	return nil
 }
