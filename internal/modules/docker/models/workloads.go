@@ -54,7 +54,15 @@ type Compose struct {
 	// ${VAR} substitution and propagates matching keys into service
 	// environment blocks without explicit values. NULL = no env file
 	// (default). UI surfaces this as the compose Environment subtab.
-	EnvFile        *string                       `gorm:"column:env_file;type:longtext" json:"env_file,omitempty"`
+	EnvFile *string `gorm:"column:env_file;type:longtext" json:"env_file,omitempty"`
+	// RunCommand overrides the docker command suffix the deploy script
+	// runs. When NULL, the default command is rendered (
+	// `compose -p <name> -f <file> up -d --build --remove-orphans`).
+	// When set, the deploy script runs `docker <run_command>` verbatim
+	// — the operator owns the whole tail including the `compose ...`
+	// shape. Matches dokploy's Run Command feature. UI surfaces this
+	// on the Advanced subtab.
+	RunCommand     *string                       `gorm:"column:run_command;type:longtext" json:"run_command,omitempty"`
 	Status         dockertypes.ApplicationStatus `gorm:"type:varchar(32);not null;default:idle" json:"status"`
 	LastDeployedAt *time.Time                    `gorm:"column:last_deployed_at;type:timestamp null" json:"last_deployed_at,omitempty"`
 }

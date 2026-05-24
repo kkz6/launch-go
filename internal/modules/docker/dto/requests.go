@@ -136,6 +136,14 @@ type UpdateComposeRequest struct {
 	// `null`/omit to leave unchanged. Max 128 KiB matches the
 	// raw_yaml cap so the row stays bounded.
 	EnvFile *string `json:"env_file,omitempty" validate:"omitempty,max=131072"`
+	// RunCommand replaces the docker command suffix the deploy
+	// script uses. Empty string clears the override (deploy reverts
+	// to the default `compose -p NAME -f FILE up -d --build
+	// --remove-orphans`). Use `null`/omit to leave unchanged.
+	// Bounded at 8 KiB — realistic ceiling is a few hundred chars,
+	// the cap is just to keep a runaway payload from bloating the
+	// row.
+	RunCommand *string `json:"run_command,omitempty" validate:"omitempty,max=8192"`
 }
 
 // CreateEnvVarRequest adds a single env var to an application. Use

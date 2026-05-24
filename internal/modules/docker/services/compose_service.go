@@ -70,6 +70,42 @@ func (s *ComposeService) GetCompose(
 	return *dto.ToComposeResponse(c, true), nil
 }
 
+// GetDefaultRunCommand renders the docker-suffix the deploy script
+// falls back to when no per-stack RunCommand override is set. The
+// Advanced subtab calls this to show the literal default in its
+// "Default Command (...)" hint so the UI and the actual deploy can
+// never drift — both go through tasks.ComposeDefaultRunCommand.
+//
+// Returns a plain string (not a DTO) — the route wraps it in a
+// thin response object.
+func (s *ComposeService) GetDefaultRunCommand(
+	ctx context.Context, id, projectID, serverID, teamID string,
+) (string, error) {
+	project, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID)
+	if err != nil {
+		return "", err
+	}
+	c, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, id, teamID, serverID)
+	if err != nil {
+		return "", err
+	}
+	if c.ProjectID != projectID {
+		return "", fiberutil.NotFound()
+	}
+	composeProjectName := fmt.Sprintf(
+		"%s-%s",
+		tasks.SlugFromName(project.Name),
+		tasks.SlugFromName(c.Name),
+	)
+	// Compose file path depends on source: raw_yaml writes to
+	// docker-compose.yml (the default), git uses the user-set path.
+	composeFile := "docker-compose.yml"
+	if c.ComposeSourceType == "git" && c.ComposeFilePath != nil && *c.ComposeFilePath != "" {
+		composeFile = *c.ComposeFilePath
+	}
+	return tasks.ComposeDefaultRunCommand(composeProjectName, composeFile), nil
+}
+
 // CreateCompose registers a new compose stack. Source-type-specific
 // payload is required and validated; the deploy step lands in
 // Deploy() below.
@@ -169,6 +205,16 @@ func (s *ComposeService) UpdateCompose(
 			updates["env_file"] = nil
 		} else {
 			updates["env_file"] = *req.EnvFile
+		}
+	}
+	// RunCommand follows the same nil/empty/set semantics. Empty
+	// string clears the override (deploy reverts to default);
+	// non-empty replaces the docker suffix verbatim on next deploy.
+	if req.RunCommand != nil {
+		if strings.TrimSpace(*req.RunCommand) == "" {
+			updates["run_command"] = nil
+		} else {
+			updates["run_command"] = *req.RunCommand
 		}
 	}
 	if len(updates) > 0 {

@@ -237,6 +237,11 @@ func hydrateComposeSource(cfg *tasks.ComposeDeployConfig, c *models.Compose) {
 	if c.EnvFile != nil {
 		cfg.EnvFile = *c.EnvFile
 	}
+	// RunCommand is also source-agnostic — the operator's override
+	// runs verbatim regardless of git vs raw_yaml.
+	if c.RunCommand != nil {
+		cfg.RunCommand = *c.RunCommand
+	}
 }
 
 // NewDeployComposeTask packages the asynq task for the service.

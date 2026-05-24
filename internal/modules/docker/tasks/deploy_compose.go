@@ -36,6 +36,31 @@ type ComposeDeployConfig struct {
 	// existing one is removed so a cleared Environment tab actually
 	// takes effect on the next deploy).
 	EnvFile string
+
+	// RunCommand overrides the docker command suffix the deploy
+	// script runs. When set, the script runs `docker <run_command>`
+	// verbatim instead of the default
+	// `docker compose -p NAME -f FILE up -d --build --remove-orphans`.
+	// Use ComposeDefaultRunCommand to render the default for
+	// preview / "default command" UI hints so the script + the hint
+	// can never disagree.
+	RunCommand string
+}
+
+// ComposeDefaultRunCommand renders the docker-suffix the deploy
+// script falls back to when no per-stack RunCommand override is set.
+// Exposed so the frontend Advanced subtab can show the literal
+// default in its "Default Command (...)" hint via an API endpoint —
+// the hint and the actual deploy can never drift because both call
+// this function.
+func ComposeDefaultRunCommand(projectName, composeFilePath string) string {
+	if composeFilePath == "" {
+		composeFilePath = "docker-compose.yml"
+	}
+	return fmt.Sprintf(
+		"compose -p %s -f %s up -d --build --remove-orphans",
+		projectName, composeFilePath,
+	)
 }
 
 // DeployCompose returns a taskrunner.Task that brings a compose stack
@@ -142,14 +167,27 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
 	// way `docker run` does. Operators routing through Traefik must
 	// declare external: true on the launch-network in their compose
 	// file. This is the documented expectation.
-	b.WriteString(`
-echo "::LAUNCH::deploy_step::compose_up"
-docker compose --project-name "${COMPOSE_PROJECT_NAME}" \
+	//
+	// RunCommand override path: when the operator sets a custom
+	// command via the Advanced subtab, we trust their string and run
+	// `docker <run_command>` verbatim. This is the same shape dokploy
+	// uses — the cost is the operator owns the whole tail including
+	// `compose -p NAME -f FILE`, but the gain is no-cache / no-build /
+	// bring-your-own-tail flexibility that's otherwise impossible to
+	// express through structured flags.
+	b.WriteString("\necho \"::LAUNCH::deploy_step::compose_up\"\n")
+	if cfg.RunCommand != "" {
+		// Single-line invocation so the user's command goes through
+		// the shell exactly as written. They're responsible for any
+		// quoting / escaping — same trust model dokploy applies.
+		fmt.Fprintf(&b, "docker %s\n", cfg.RunCommand)
+	} else {
+		b.WriteString(`docker compose --project-name "${COMPOSE_PROJECT_NAME}" \
   -f "${COMPOSE_FILE_PATH}" \
   up -d --remove-orphans
-
-echo "::LAUNCH::deploy_step::done"
 `)
+	}
+	b.WriteString("\necho \"::LAUNCH::deploy_step::done\"\n")
 
 	return b.String()
 }
