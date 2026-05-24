@@ -411,6 +411,11 @@ type CreateDomainRequest struct {
 	// creation uses.
 	CreateDNSRecord   bool    `json:"create_dns_record"`
 	ConnectedDomainID *string `json:"connected_domain_id,omitempty" validate:"omitempty,ulid"`
+	// ServiceName names the compose YAML service this domain targets.
+	// Only used on the compose-domain endpoint; the application-domain
+	// path ignores this field. Required at the compose service layer
+	// (rejected when missing/empty).
+	ServiceName *string `json:"service_name,omitempty" validate:"omitempty,min=1,max=255"`
 }
 
 // UpdateDomainRequest allows toggling per-domain config without
@@ -423,4 +428,10 @@ type UpdateDomainRequest struct {
 	ContainerPort       *int    `json:"container_port,omitempty" validate:"omitempty,min=1,max=65535"`
 	HTTPS               *bool   `json:"https,omitempty"`
 	CertificateProvider *string `json:"certificate_provider,omitempty" validate:"omitempty,oneof=letsencrypt"`
+	// ServiceName retargets a compose domain at a different YAML
+	// service. Ignored on application-domain rows; on compose rows an
+	// empty value clears nothing (we'd reject the resulting row at
+	// validate time), so callers must send a non-empty string when
+	// they want to change it.
+	ServiceName *string `json:"service_name,omitempty" validate:"omitempty,min=1,max=255"`
 }

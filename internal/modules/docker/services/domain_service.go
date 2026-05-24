@@ -89,8 +89,12 @@ func (s *DomainService) CreateDomain(
 		certProvider = *req.CertificateProvider
 	}
 
+	// ApplicationID is `*string` since the model went polymorphic
+	// (also backs compose domains). Take the address of a local so
+	// the owner column gets set.
+	ownerID := applicationID
 	d := &models.ApplicationDomain{
-		ApplicationID:       applicationID,
+		ApplicationID:       &ownerID,
 		Host:                host,
 		Path:                trimEmpty(req.Path),
 		InternalPath:        trimEmpty(req.InternalPath),
@@ -127,7 +131,7 @@ func (s *DomainService) UpdateDomain(
 	if err != nil {
 		return dto.DomainResponse{}, err
 	}
-	if d.ApplicationID != applicationID {
+	if d.ApplicationID == nil || *d.ApplicationID != applicationID {
 		return dto.DomainResponse{}, fiberutil.NotFound()
 	}
 
@@ -188,7 +192,7 @@ func (s *DomainService) DeleteDomain(
 	if err != nil {
 		return err
 	}
-	if d.ApplicationID != applicationID {
+	if d.ApplicationID == nil || *d.ApplicationID != applicationID {
 		return fiberutil.NotFound()
 	}
 	if err := s.Repos().Domain().Delete(ctx, id); err != nil {
@@ -227,7 +231,7 @@ func (s *DomainService) ValidateDNS(
 	if err != nil {
 		return dto.ValidateDNSResponse{}, err
 	}
-	if d.ApplicationID != applicationID {
+	if d.ApplicationID == nil || *d.ApplicationID != applicationID {
 		return dto.ValidateDNSResponse{}, fiberutil.NotFound()
 	}
 
@@ -333,6 +337,319 @@ func (s *DomainService) dispatchTraefikSync(
 		return err
 	}
 	return s.EnqueueTask(task)
+}
+
+// dispatchComposeTraefikSync mirrors dispatchTraefikSync for compose
+// stacks — dispatches the compose-side renderer job. Same idempotency
+// rationale.
+func (s *DomainService) dispatchComposeTraefikSync(
+	ctx context.Context, c *models.Compose, teamID string,
+) error {
+	_ = ctx
+	task, err := jobs.NewSyncComposeTraefikConfigTask(c.ID, c.ServerID, teamID)
+	if err != nil {
+		return err
+	}
+	return s.EnqueueTask(task)
+}
+
+// --- Compose-scoped domain operations ------------------------------
+//
+// Mirrors the application-domain methods but with a service-name
+// requirement: every compose domain must name a YAML service to
+// route to. The renderer uses (service, port) to compute the target
+// container name; both are mandatory.
+//
+// Uniqueness, host validation, DNS validation are all shared
+// behaviour — only the owner scoping + a couple of extra required-
+// field checks differ.
+
+func (s *DomainService) ListComposeDomains(
+	ctx context.Context, composeID, projectID, serverID, teamID string,
+) ([]dto.DomainResponse, error) {
+	if _, err := s.scopedCompose(ctx, composeID, projectID, serverID, teamID); err != nil {
+		return nil, err
+	}
+	rows, err := s.Repos().Domain().ListForCompose(ctx, composeID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.DomainResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, *dto.ToDomainResponse(&rows[i]))
+	}
+	return out, nil
+}
+
+func (s *DomainService) CreateComposeDomain(
+	ctx context.Context, composeID, projectID, serverID, teamID, userID string,
+	req *dto.CreateDomainRequest,
+) (dto.DomainResponse, error) {
+	_ = userID
+	c, err := s.scopedCompose(ctx, composeID, projectID, serverID, teamID)
+	if err != nil {
+		return dto.DomainResponse{}, err
+	}
+
+	host := strings.TrimSpace(strings.ToLower(req.Host))
+	host = strings.TrimSuffix(host, ".")
+	if !validHostname.MatchString(host) {
+		return dto.DomainResponse{}, fiberutil.BadRequest("Invalid hostname")
+	}
+
+	// service_name + container_port are mandatory on compose — the
+	// renderer needs both to produce a valid `service:` block.
+	serviceName := ""
+	if req.ServiceName != nil {
+		serviceName = strings.TrimSpace(*req.ServiceName)
+	}
+	if serviceName == "" {
+		return dto.DomainResponse{}, fiberutil.BadRequest(
+			"service_name is required for compose domains",
+		)
+	}
+	if req.ContainerPort == nil || *req.ContainerPort <= 0 {
+		return dto.DomainResponse{}, fiberutil.BadRequest(
+			"container_port is required for compose domains (no fallback — the YAML owns the port)",
+		)
+	}
+
+	taken, err := s.Repos().Domain().ExistsByHostForCompose(ctx, composeID, host)
+	if err != nil {
+		return dto.DomainResponse{}, err
+	}
+	if taken {
+		return dto.DomainResponse{}, fiberutil.Conflict("This host is already attached to the stack")
+	}
+
+	https := true
+	if req.HTTPS != nil {
+		https = *req.HTTPS
+	}
+	stripPath := false
+	if req.StripPath != nil {
+		stripPath = *req.StripPath
+	}
+	certProvider := "letsencrypt"
+	if req.CertificateProvider != nil && *req.CertificateProvider != "" {
+		certProvider = *req.CertificateProvider
+	}
+
+	ownerID := composeID
+	d := &models.ApplicationDomain{
+		ComposeID:           &ownerID,
+		Host:                host,
+		Path:                trimEmpty(req.Path),
+		InternalPath:        trimEmpty(req.InternalPath),
+		StripPath:           stripPath,
+		ContainerPort:       req.ContainerPort,
+		HTTPS:               https,
+		CertificateProvider: certProvider,
+		ServiceName:         &serviceName,
+	}
+	if err := s.Repos().Domain().Create(ctx, d); err != nil {
+		return dto.DomainResponse{}, err
+	}
+
+	if err := s.dispatchComposeTraefikSync(ctx, c, teamID); err != nil {
+		s.LogError(err, "failed to enqueue compose traefik sync", "compose_id", c.ID)
+	}
+
+	resp := dto.ToDomainResponse(d)
+	s.BroadcastToTeam(teamID, "docker.compose.domain.added", resp)
+	return *resp, nil
+}
+
+func (s *DomainService) UpdateComposeDomain(
+	ctx context.Context, id, composeID, projectID, serverID, teamID, userID string,
+	req *dto.UpdateDomainRequest,
+) (dto.DomainResponse, error) {
+	_ = userID
+	c, err := s.scopedCompose(ctx, composeID, projectID, serverID, teamID)
+	if err != nil {
+		return dto.DomainResponse{}, err
+	}
+	d, err := s.Repos().Domain().FindByID(ctx, id)
+	if err != nil {
+		return dto.DomainResponse{}, err
+	}
+	if d.ComposeID == nil || *d.ComposeID != composeID {
+		return dto.DomainResponse{}, fiberutil.NotFound()
+	}
+
+	updates := map[string]any{}
+	if req.HTTPS != nil {
+		updates["https"] = *req.HTTPS
+	}
+	if req.Path != nil {
+		updates["path"] = trimEmpty(req.Path)
+	}
+	if req.InternalPath != nil {
+		updates["internal_path"] = trimEmpty(req.InternalPath)
+	}
+	if req.StripPath != nil {
+		updates["strip_path"] = *req.StripPath
+	}
+	if req.ContainerPort != nil {
+		// Unlike the application path, 0/nil is not a "clear the
+		// override" signal on compose — the field is required. Reject
+		// the clear; treat positive as a real change.
+		if *req.ContainerPort <= 0 {
+			return dto.DomainResponse{}, fiberutil.BadRequest(
+				"container_port is required for compose domains",
+			)
+		}
+		updates["container_port"] = *req.ContainerPort
+	}
+	if req.CertificateProvider != nil && *req.CertificateProvider != "" {
+		updates["certificate_provider"] = *req.CertificateProvider
+	}
+	if req.ServiceName != nil {
+		s := strings.TrimSpace(*req.ServiceName)
+		if s == "" {
+			return dto.DomainResponse{}, fiberutil.BadRequest(
+				"service_name cannot be cleared on a compose domain",
+			)
+		}
+		updates["service_name"] = s
+	}
+	if len(updates) > 0 {
+		if err := s.Repos().Domain().UpdateFields(ctx, id, updates); err != nil {
+			return dto.DomainResponse{}, err
+		}
+	}
+
+	if err := s.dispatchComposeTraefikSync(ctx, c, teamID); err != nil {
+		s.LogError(err, "failed to enqueue compose traefik sync", "compose_id", c.ID)
+	}
+
+	reloaded, err := s.Repos().Domain().FindByID(ctx, id)
+	if err != nil {
+		return dto.DomainResponse{}, err
+	}
+	resp := dto.ToDomainResponse(reloaded)
+	s.BroadcastToTeam(teamID, "docker.compose.domain.updated", resp)
+	return *resp, nil
+}
+
+func (s *DomainService) DeleteComposeDomain(
+	ctx context.Context, id, composeID, projectID, serverID, teamID, userID string,
+) error {
+	_ = userID
+	c, err := s.scopedCompose(ctx, composeID, projectID, serverID, teamID)
+	if err != nil {
+		return err
+	}
+	d, err := s.Repos().Domain().FindByID(ctx, id)
+	if err != nil {
+		return err
+	}
+	if d.ComposeID == nil || *d.ComposeID != composeID {
+		return fiberutil.NotFound()
+	}
+	if err := s.Repos().Domain().Delete(ctx, id); err != nil {
+		return err
+	}
+	if err := s.dispatchComposeTraefikSync(ctx, c, teamID); err != nil {
+		s.LogError(err, "failed to enqueue compose traefik sync", "compose_id", c.ID)
+	}
+	s.BroadcastToTeam(teamID, "docker.compose.domain.deleted", map[string]any{
+		"id":         id,
+		"compose_id": composeID,
+		"team_id":    teamID,
+		"server_id":  serverID,
+	})
+	return nil
+}
+
+// ValidateComposeDNS mirrors ValidateDNS for compose-owned domains.
+// Reuses the same wildcard-suffix + public-IP comparison; only the
+// scoping helper differs.
+func (s *DomainService) ValidateComposeDNS(
+	ctx context.Context, domainID, composeID, projectID, serverID, teamID string,
+) (dto.ValidateDNSResponse, error) {
+	c, err := s.scopedCompose(ctx, composeID, projectID, serverID, teamID)
+	if err != nil {
+		return dto.ValidateDNSResponse{}, err
+	}
+	d, err := s.Repos().Domain().FindByID(ctx, domainID)
+	if err != nil {
+		return dto.ValidateDNSResponse{}, err
+	}
+	if d.ComposeID == nil || *d.ComposeID != composeID {
+		return dto.ValidateDNSResponse{}, fiberutil.NotFound()
+	}
+
+	host := strings.ToLower(strings.TrimSpace(d.Host))
+	resp := dto.ValidateDNSResponse{Host: host}
+
+	for _, suffix := range wildcardDNSSuffixes {
+		if strings.HasSuffix(host, suffix) {
+			resp.OK = true
+			resp.Wildcard = true
+			resp.Message = "Wildcard DNS hostname — already routable, no validation needed."
+			return resp, nil
+		}
+	}
+
+	server, err := s.ServerRepos().Server().FindByID(ctx, c.ServerID)
+	if err != nil {
+		return dto.ValidateDNSResponse{}, err
+	}
+	expectedIP := ""
+	if server.PublicIPv4 != nil {
+		expectedIP = *server.PublicIPv4
+	}
+	resp.ExpectedIP = expectedIP
+
+	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	ips, err := net.DefaultResolver.LookupIPAddr(lookupCtx, host)
+	if err != nil {
+		resp.OK = false
+		resp.Message = fmt.Sprintf("DNS lookup failed: %v", err)
+		return resp, nil
+	}
+	for _, ip := range ips {
+		v4 := ip.IP.To4()
+		if v4 == nil {
+			continue
+		}
+		resp.ResolvedIPs = append(resp.ResolvedIPs, v4.String())
+		if expectedIP != "" && v4.String() == expectedIP {
+			resp.OK = true
+		}
+	}
+	if resp.OK {
+		resp.Message = fmt.Sprintf("Resolves to %s ✓", expectedIP)
+	} else if len(resp.ResolvedIPs) == 0 {
+		resp.Message = "Hostname doesn't resolve to any A record yet."
+	} else {
+		resp.Message = fmt.Sprintf(
+			"Resolves to %s — expected %s",
+			strings.Join(resp.ResolvedIPs, ", "),
+			expectedIP,
+		)
+	}
+	return resp, nil
+}
+
+// scopedCompose resolves (server, project, compose) inside the
+// caller's team — mirrors scopedApp but on the compose repo.
+func (s *DomainService) scopedCompose(
+	ctx context.Context, composeID, projectID, serverID, teamID string,
+) (*models.Compose, error) {
+	if _, err := s.Repos().Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID); err != nil {
+		return nil, err
+	}
+	c, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, composeID, teamID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if c.ProjectID != projectID {
+		return nil, fiberutil.NotFound()
+	}
+	return c, nil
 }
 
 // validHostname accepts a minimal RFC-1035-ish hostname: labels of

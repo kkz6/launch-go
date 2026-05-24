@@ -1056,6 +1056,160 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.NoContent(c)
 	})
 
+	// Compose Domains — same shape as the application Domains routes
+	// (list/create/update/delete + validate-dns). Compose domains
+	// require service_name + container_port on Create because the
+	// Traefik renderer needs both to target the right container.
+	composes.Get("/:id/domains", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := domainSvc.ListComposeDomains(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Domains retrieved", rows)
+	})
+
+	composes.Post("/:id/domains", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateDomainRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := domainSvc.CreateComposeDomain(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Domain added", out)
+	})
+
+	composes.Patch("/:id/domains/:domainId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateDomainRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := domainSvc.UpdateComposeDomain(
+			c.Context(),
+			c.Params("domainId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Domain updated", out)
+	})
+
+	composes.Delete("/:id/domains/:domainId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := domainSvc.DeleteComposeDomain(
+			c.Context(),
+			c.Params("domainId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
+	})
+
+	composes.Get("/:id/domains/:domainId/validate-dns", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		out, err := domainSvc.ValidateComposeDNS(
+			c.Context(),
+			c.Params("domainId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "DNS validation", out)
+	})
+
+	// Per-compose Traefik dynamic-config card. Reads/writes
+	// /etc/launch/traefik/dynamic/compose-<project>-<compose>.yml —
+	// the file the SyncComposeTraefikConfig job populates from domain
+	// rows on every mutation. Hand-edits survive until the next
+	// domain change clobbers them; the UI copy spells that out.
+	composes.Get("/:id/traefik-config", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		out, err := hostSvc.GetComposeTraefikConfig(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Traefik config retrieved", out)
+	})
+	composes.Patch("/:id/traefik-config", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateApplicationTraefikConfigRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := hostSvc.UpdateComposeTraefikConfig(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			req.Content,
+		)
+		if err != nil {
+			return fiberutil.BadRequest(err.Error())
+		}
+		return fiberutil.OK(c, "Traefik config updated", out)
+	})
+
 	// Managed-database routes. Mostly the same shape as applications/
 	// composes; the differentiator is the /lifecycle endpoint that runs
 	// start/stop/restart against an existing container.

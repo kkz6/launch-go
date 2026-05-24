@@ -521,10 +521,15 @@ type ValidateDNSResponse struct {
 	Message     string   `json:"message"`
 }
 
-// DomainResponse is the API representation of an application domain.
+// DomainResponse is the API representation of a workload domain.
+// Polymorphic — exactly one of `ApplicationID` / `ComposeID` is set
+// per row; the other is omitted from the JSON. Frontend keys off
+// which endpoint listed the row rather than inspecting the field
+// presence.
 type DomainResponse struct {
 	ID                  string     `json:"id"`
-	ApplicationID       string     `json:"application_id"`
+	ApplicationID       *string    `json:"application_id,omitempty"`
+	ComposeID           *string    `json:"compose_id,omitempty"`
 	Host                string     `json:"host"`
 	Path                *string    `json:"path,omitempty"`
 	InternalPath        *string    `json:"internal_path,omitempty"`
@@ -533,8 +538,11 @@ type DomainResponse struct {
 	HTTPS               bool       `json:"https"`
 	CertificateProvider string     `json:"certificate_provider"`
 	CertificateID       *string    `json:"certificate_id,omitempty"`
-	CreatedAt           *time.Time `json:"created_at,omitempty"`
-	UpdatedAt           *time.Time `json:"updated_at,omitempty"`
+	// ServiceName is non-nil on compose rows (names the YAML service
+	// the domain routes to). Always nil on application rows.
+	ServiceName *string    `json:"service_name,omitempty"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
 }
 
 // ToDomainResponse maps a domain model to the API response shape.
@@ -542,6 +550,7 @@ func ToDomainResponse(d *models.ApplicationDomain) *DomainResponse {
 	return &DomainResponse{
 		ID:                  d.ID,
 		ApplicationID:       d.ApplicationID,
+		ComposeID:           d.ComposeID,
 		Host:                d.Host,
 		Path:                d.Path,
 		InternalPath:        d.InternalPath,
@@ -550,6 +559,7 @@ func ToDomainResponse(d *models.ApplicationDomain) *DomainResponse {
 		HTTPS:               d.HTTPS,
 		CertificateProvider: d.CertificateProvider,
 		CertificateID:       d.CertificateID,
+		ServiceName:         d.ServiceName,
 		CreatedAt:           d.CreatedAt,
 		UpdatedAt:           d.UpdatedAt,
 	}
