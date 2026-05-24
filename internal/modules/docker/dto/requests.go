@@ -289,6 +289,17 @@ type UpdateScheduleRequest struct {
 	ShellType *string `json:"shell_type,omitempty" validate:"omitempty,oneof=bash sh"`
 }
 
+// UpdateApplicationTraefikConfigRequest carries the new YAML body
+// for the per-application dynamic-config file. Size cap matches the
+// server-level WriteTraefikDynamicFile path (256 KiB) so the writer
+// can apply a single ceiling everywhere. Empty string is allowed —
+// it overwrites the file with nothing, which is the right behaviour
+// when the operator wants to disable an app's routes without
+// removing the file via SSH.
+type UpdateApplicationTraefikConfigRequest struct {
+	Content string `json:"content" validate:"max=262144"`
+}
+
 // UpdateAdvancedRequest tweaks runtime knobs on an application without
 // touching its source. All fields are optional; present keys are
 // applied to the application's build_config and take effect on the
