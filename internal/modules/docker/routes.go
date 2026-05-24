@@ -843,6 +843,30 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Compose services retrieved", services)
 	})
 
+	// Default-run-command preview — the Advanced subtab shows this in
+	// its "Default Command (...)" hint when the operator hasn't set
+	// a per-stack override. Wraps the same renderer the deploy job
+	// uses so the hint and the script can't disagree.
+	composes.Get("/:id/default-command", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		cmd, err := composeSvc.GetDefaultRunCommand(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Default command retrieved", map[string]any{
+			"command": cmd,
+		})
+	})
+
 	composes.Get("/:id/deployments", func(c *gofiber.Ctx) error {
 		teamID, err := fiberutil.MustGetTeamID(c)
 		if err != nil {

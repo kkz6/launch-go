@@ -114,7 +114,10 @@ type ComposeResponse struct {
 	// EnvFile is the `.env` body the Environment subtab edits. Only
 	// included on single-compose Show responses (same as RawYAML) so
 	// list responses don't carry potentially-large bodies.
-	EnvFile        *string    `json:"env_file,omitempty"`
+	EnvFile *string `json:"env_file,omitempty"`
+	// RunCommand is the docker-suffix override from the Advanced
+	// subtab. Same Show-only inclusion as RawYAML/EnvFile.
+	RunCommand     *string    `json:"run_command,omitempty"`
 	Status         string     `json:"status"`
 	LastDeployedAt *time.Time `json:"last_deployed_at,omitempty"`
 	CreatedAt      *time.Time `json:"created_at,omitempty"`
@@ -142,6 +145,7 @@ func ToComposeResponse(c *models.Compose, includeRaw bool) *ComposeResponse {
 	if includeRaw {
 		resp.RawYAML = c.RawYAML
 		resp.EnvFile = c.EnvFile
+		resp.RunCommand = c.RunCommand
 	}
 	return resp
 }
