@@ -105,6 +105,32 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 			Msg("load compose file-mounts failed; continuing without them")
 	}
 
+	// Load attached registry credentials (many-to-many) and hand
+	// plaintext creds to the deploy script. The script logs into
+	// each before `docker compose pull/up` and logs out after — same
+	// shape the application path uses. Best-effort: a load failure
+	// proceeds with no auth and surfaces the real `pull` error on
+	// the deploy log if any image is private.
+	if err := j.Deps.DB.Model(j.compose).
+		Association("RegistryCredentials").
+		Find(&j.compose.RegistryCredentials); err == nil {
+		for i := range j.compose.RegistryCredentials {
+			c := &j.compose.RegistryCredentials[i]
+			login := tasks.ComposeRegistryLogin{
+				Username: c.Username.String(),
+				Password: c.Password.String(),
+			}
+			if c.RegistryURL != nil {
+				login.RegistryURL = *c.RegistryURL
+			}
+			cfg.RegistryLogins = append(cfg.RegistryLogins, login)
+		}
+	} else {
+		j.Deps.Logger.Warn().Err(err).
+			Str("compose_id", j.compose.ID).
+			Msg("load compose registry credentials failed; deploy will run unauthenticated")
+	}
+
 	task := tasks.DeployCompose(cfg)
 	// TrackInDB() persists a server-tasks row so the frontend can
 	// stream live `docker compose up` output via ServerLogViewer —

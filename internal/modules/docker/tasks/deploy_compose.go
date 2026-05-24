@@ -57,6 +57,26 @@ type ComposeDeployConfig struct {
 	// informational on the compose surface; the operator wires them
 	// into the YAML themselves and we don't rewrite docker-compose.yml.
 	FileMounts []ComposeFileMount
+
+	// RegistryLogins are the 0..N saved-credential rows the stack
+	// attached. The deploy script runs `docker login` for each
+	// before `docker compose pull/up` so private images on any of
+	// these registries resolve. We do a paired `docker logout` after
+	// the compose command finishes to avoid leaking ambient creds in
+	// the host's `~/.docker/config.json`.
+	//
+	// Plaintext only lives in this in-memory config struct; at-rest
+	// stays encrypted via dbtype.EncryptedString on the saved row.
+	RegistryLogins []ComposeRegistryLogin
+}
+
+// ComposeRegistryLogin is one resolved registry login. RegistryURL
+// is empty for Docker Hub (the script omits the host arg to
+// `docker login` in that case).
+type ComposeRegistryLogin struct {
+	RegistryURL string
+	Username    string
+	Password    string
 }
 
 // ComposeFileMount is a single type=file row materialized for a
@@ -218,6 +238,43 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
 		}
 	}
 
+	// Registry logins — one `docker login` per attached saved
+	// credential. Password piped via `--password-stdin` so it
+	// doesn't appear in `ps`. Each login uses a per-iteration
+	// heredoc sentinel so a password containing the sentinel can't
+	// terminate it early.
+	if len(cfg.RegistryLogins) > 0 {
+		b.WriteString("\necho \"::LAUNCH::deploy_step::registry_login\"\n")
+		b.WriteString("set +x\n")
+		for i, l := range cfg.RegistryLogins {
+			tag := fmt.Sprintf("LAUNCH_DOCKER_PW_EOF_%d", i)
+			fmt.Fprintf(&b, "DOCKER_REGISTRY_URL_%d=%q\n", i, l.RegistryURL)
+			fmt.Fprintf(&b, "DOCKER_REGISTRY_USER_%d=%q\n", i, l.Username)
+			fmt.Fprintf(&b, "if [ -n \"${DOCKER_REGISTRY_URL_%d}\" ]; then\n", i)
+			fmt.Fprintf(&b,
+				"  docker login --username \"${DOCKER_REGISTRY_USER_%d}\" --password-stdin \"${DOCKER_REGISTRY_URL_%d}\" <<'%s'\n",
+				i, i, tag,
+			)
+			b.WriteString(l.Password)
+			if !strings.HasSuffix(l.Password, "\n") {
+				b.WriteString("\n")
+			}
+			fmt.Fprintf(&b, "%s\n", tag)
+			b.WriteString("else\n")
+			fmt.Fprintf(&b,
+				"  docker login --username \"${DOCKER_REGISTRY_USER_%d}\" --password-stdin <<'%s'\n",
+				i, tag,
+			)
+			b.WriteString(l.Password)
+			if !strings.HasSuffix(l.Password, "\n") {
+				b.WriteString("\n")
+			}
+			fmt.Fprintf(&b, "%s\n", tag)
+			b.WriteString("fi\n")
+		}
+		b.WriteString("set -x\n")
+	}
+
 	// `--network launch-network` happens inside the compose file (each
 	// service declares the network); the platform pre-creates it on the
 	// server, but compose doesn't take a top-level --network flag the
@@ -243,6 +300,19 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
   -f "${COMPOSE_FILE_PATH}" \
   up -d --remove-orphans
 `)
+	}
+	// Pair the logins with logouts so the host's docker config
+	// doesn't gain stale credential entries. `|| true` keeps `set -e`
+	// from failing the deploy if the logout itself errors — the
+	// containers are already up, the deploy succeeded.
+	if len(cfg.RegistryLogins) > 0 {
+		for i := range cfg.RegistryLogins {
+			fmt.Fprintf(&b, "if [ -n \"${DOCKER_REGISTRY_URL_%d}\" ]; then\n", i)
+			fmt.Fprintf(&b, "  docker logout \"${DOCKER_REGISTRY_URL_%d}\" || true\n", i)
+			b.WriteString("else\n")
+			b.WriteString("  docker logout || true\n")
+			b.WriteString("fi\n")
+		}
 	}
 	b.WriteString("\necho \"::LAUNCH::deploy_step::done\"\n")
 

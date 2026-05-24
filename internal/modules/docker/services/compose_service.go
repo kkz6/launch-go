@@ -67,6 +67,14 @@ func (s *ComposeService) GetCompose(
 	if c.ProjectID != projectID {
 		return dto.ComposeResponse{}, fiberutil.NotFound()
 	}
+	// Pull attached registry credentials so the detail page renders
+	// chips without a second fetch. Best-effort — a load failure
+	// just leaves the field empty.
+	if err := s.DB().Model(c).
+		Association("RegistryCredentials").
+		Find(&c.RegistryCredentials); err != nil {
+		s.LogError(err, "load compose registry credentials", "compose_id", id)
+	}
 	return *dto.ToComposeResponse(c, true), nil
 }
 
@@ -153,6 +161,22 @@ func (s *ComposeService) CreateCompose(
 		return dto.ComposeResponse{}, err
 	}
 
+	// Attach saved registry credentials (many-to-many). Empty / nil
+	// list = no auth on deploy. Each ID is verified to belong to the
+	// caller's team before the join row lands — 404 for cross-team
+	// picks (don't leak existence). Returned creds are loaded back
+	// onto the model so the response carries the summary.
+	if len(req.RegistryCredentialIDs) > 0 {
+		creds, err := s.resolveRegistryCredentialsForTeam(ctx, req.RegistryCredentialIDs, teamID)
+		if err != nil {
+			return dto.ComposeResponse{}, err
+		}
+		if err := s.DB().Model(c).Association("RegistryCredentials").Replace(creds); err != nil {
+			return dto.ComposeResponse{}, err
+		}
+		c.RegistryCredentials = creds
+	}
+
 	resp := dto.ToComposeResponse(c, false)
 	s.BroadcastToTeam(teamID, "docker.compose.created", composeBroadcast(resp))
 	return *resp, nil
@@ -223,13 +247,75 @@ func (s *ComposeService) UpdateCompose(
 		}
 	}
 
+	// Replace the attached registry credentials in one shot. `nil` =
+	// leave alone; an empty slice = detach all; non-empty = replace
+	// with this exact set (de-duped + verified to belong to the team).
+	// GORM's many2many Replace handles both insertion + deletion of
+	// join rows.
+	if req.RegistryCredentialIDs != nil {
+		creds, err := s.resolveRegistryCredentialsForTeam(ctx, *req.RegistryCredentialIDs, teamID)
+		if err != nil {
+			return dto.ComposeResponse{}, err
+		}
+		if err := s.DB().Model(c).Association("RegistryCredentials").Replace(creds); err != nil {
+			return dto.ComposeResponse{}, err
+		}
+	}
+
 	reloaded, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, id, teamID, serverID)
 	if err != nil {
 		return dto.ComposeResponse{}, err
 	}
+	// Preload the join so the response carries the summary chips.
+	if err := s.DB().Model(reloaded).
+		Association("RegistryCredentials").
+		Find(&reloaded.RegistryCredentials); err != nil {
+		s.LogError(err, "load compose registry credentials", "compose_id", id)
+	}
 	resp := dto.ToComposeResponse(reloaded, false)
 	s.BroadcastToTeam(teamID, "docker.compose.updated", composeBroadcast(resp))
 	return *resp, nil
+}
+
+// resolveRegistryCredentialsForTeam dedupes the incoming ID list +
+// loads the matching rows scoped to the team. Returns 400 if any ID
+// is missing from the team (cross-team picks are rejected the same
+// way the application path handles a single credential).
+//
+// Returns an empty (non-nil) slice for an empty/nil input so the
+// caller's `Association("…").Replace([])` semantics are predictable
+// (Replace with empty = detach all).
+func (s *ComposeService) resolveRegistryCredentialsForTeam(
+	ctx context.Context, ids []string, teamID string,
+) ([]models.RegistryCredential, error) {
+	if len(ids) == 0 {
+		return []models.RegistryCredential{}, nil
+	}
+	// Dedup while preserving order so the same picker submission
+	// twice doesn't double up the join lookups.
+	seen := make(map[string]struct{}, len(ids))
+	uniqIDs := make([]string, 0, len(ids))
+	for _, id := range ids {
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		uniqIDs = append(uniqIDs, id)
+	}
+	creds, err := s.Repos().RegistryCredential().FindManyForTeam(ctx, uniqIDs, teamID)
+	if err != nil {
+		return nil, err
+	}
+	// Surface "ID not found" as a 400 so the user knows which input
+	// was bad — silently dropping unknown IDs would let a stale UI
+	// pick a credential that no longer exists in the team and look
+	// like it succeeded.
+	if len(creds) != len(uniqIDs) {
+		return nil, fiberutil.BadRequest(
+			"one or more registry_credential_ids do not belong to this team",
+		)
+	}
+	return creds, nil
 }
 
 // DeleteCompose soft-deletes the stack AND dispatches a

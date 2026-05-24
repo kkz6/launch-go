@@ -50,9 +50,23 @@ type ImageSourceInput struct {
 	// "nginx:1.27" or "ghcr.io/acme/api:v3". Tag is required — we don't
 	// silently default to :latest because that hides upgrades from the user.
 	Image string `json:"image" validate:"required,min=1,max=512"`
-	// RegistryCredentialID optionally points at a private-registry credential
-	// the user has connected. Left empty for public images.
+	// RegistryCredentialID points at a saved credential the user has
+	// connected in Settings → Connections. Mutually exclusive with
+	// `RegistryUsername`/`RegistryPassword` (service layer enforces
+	// at-most-one-of); empty / both empty → public image, no
+	// `docker login` step.
 	RegistryCredentialID *string `json:"registry_credential_id,omitempty"`
+	// RegistryUsername + RegistryPassword carry inline credentials
+	// owned by THIS application — useful for one-off private images
+	// when saving a reusable credential isn't worth it. Password is
+	// encrypted at rest via `dbtype.EncryptedString` (same path env-
+	// var values use); the response never echoes it back.
+	RegistryUsername *string `json:"registry_username,omitempty" validate:"omitempty,max=255"`
+	RegistryPassword *string `json:"registry_password,omitempty" validate:"omitempty,max=1024"`
+	// RegistryURL is only used with inline credentials — saved
+	// credentials already carry their own URL. Empty inline →
+	// Docker Hub.
+	RegistryURL *string `json:"registry_url,omitempty" validate:"omitempty,max=255"`
 }
 
 // GitSourceInput carries the info needed to clone + build from a git repo.
@@ -109,6 +123,14 @@ type CreateComposeRequest struct {
 	// RawYAML is present when compose_source_type=raw_yaml. Same
 	// reasoning as Git above — no `dive` on the struct pointer.
 	RawYAML *ComposeRawYAMLInput `json:"raw_yaml,omitempty"`
+
+	// RegistryCredentialIDs are the saved registry-login rows this
+	// stack should authenticate against on each deploy. Nil / empty
+	// → no `docker login` step (the stack's images must be public).
+	// Duplicates are ignored. All IDs must exist + belong to the
+	// caller's team; the service layer rejects the request if any
+	// don't.
+	RegistryCredentialIDs []string `json:"registry_credential_ids,omitempty" validate:"omitempty,dive,ulid"`
 }
 
 // ComposeGitInput clones a repository containing a docker-compose file.
@@ -144,6 +166,41 @@ type UpdateComposeRequest struct {
 	// the cap is just to keep a runaway payload from bloating the
 	// row.
 	RunCommand *string `json:"run_command,omitempty" validate:"omitempty,max=8192"`
+	// RegistryCredentialIDs replaces the stack's attached registry
+	// credentials in one shot. nil = leave unchanged; empty slice =
+	// detach all; non-empty = replace with this exact set (duplicates
+	// dropped, missing IDs rejected as 400).
+	RegistryCredentialIDs *[]string `json:"registry_credential_ids,omitempty" validate:"omitempty,dive,ulid"`
+}
+
+// --- Registry Credential CRUD --------------------------------------
+//
+// Manages saved docker-registry logins. The Settings → Connections
+// page does CRUD; application/compose create dialogs pick from the
+// list. Same per-team scoping pattern as storage_providers /
+// source_controls.
+
+// CreateRegistryCredentialRequest creates a saved registry login.
+// `registry_url` is optional — empty means Docker Hub. Username +
+// password are required (the credential is useless without both);
+// they're encrypted at rest before persisting.
+type CreateRegistryCredentialRequest struct {
+	Name        string  `json:"name" validate:"required,min=1,max=255"`
+	RegistryURL *string `json:"registry_url,omitempty" validate:"omitempty,max=255"`
+	Username    string  `json:"username" validate:"required,min=1,max=255"`
+	Password    string  `json:"password" validate:"required,min=1,max=1024"`
+}
+
+// UpdateRegistryCredentialRequest patches a saved credential. All
+// fields optional — pass only what changed. Password is the one
+// field where empty `""` is REJECTED (would clear the credential
+// entirely, which is meaningless and almost certainly a bug); use
+// the delete endpoint to actually remove the row.
+type UpdateRegistryCredentialRequest struct {
+	Name        *string `json:"name,omitempty" validate:"omitempty,min=1,max=255"`
+	RegistryURL *string `json:"registry_url,omitempty" validate:"omitempty,max=255"`
+	Username    *string `json:"username,omitempty" validate:"omitempty,min=1,max=255"`
+	Password    *string `json:"password,omitempty" validate:"omitempty,min=1,max=1024"`
 }
 
 // CreateEnvVarRequest adds a single env var to an application. Use

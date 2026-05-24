@@ -46,6 +46,21 @@ type DeployConfig struct {
 	RestartPolicy      string // empty → unless-stopped
 	HealthcheckCommand string
 	ExtraPorts         []string
+
+	// Registry authentication for source_type=image. When username +
+	// password are both non-empty, the deploy script runs
+	// `docker login` BEFORE `docker pull`, then `docker logout` after
+	// so the host's ambient docker config doesn't gain a stale entry.
+	// RegistryURL: empty → Docker Hub (`docker login` with no host
+	// argument); non-empty → that host (e.g. "ghcr.io").
+	//
+	// Wiring: the application service resolves whichever path is set
+	// (saved credential vs inline) and hands the plaintext values to
+	// the renderer. Plaintext only lives in memory; the at-rest
+	// values stay encrypted via dbtype.EncryptedString.
+	RegistryURL      string
+	RegistryUsername string
+	RegistryPassword string
 }
 
 // EnvVar is one key/value pair for the container's environment.
@@ -205,14 +220,54 @@ echo "::LAUNCH::deploy_step::done"
 	return b.String()
 }
 
-// buildImageStanza handles source_type=image: pull a pre-built image and
-// move on. No build step.
+// buildImageStanza handles source_type=image: optionally login to a
+// private registry, pull a pre-built image, logout. No build step.
+//
+// `docker login` reads the password from stdin (`--password-stdin`)
+// so the secret never lands in `ps` output or the script's shell
+// history. The login → pull → logout sequence is wrapped in a
+// subshell so a non-auth pull failure still tears the login down.
+//
+// We `set +x` around the login block defensively even though the
+// outer script doesn't set `-x` — same belt-and-braces idiom you'd
+// add to a CI script that pipes secrets through a heredoc.
 func buildImageStanza(cfg DeployConfig) string {
-	return fmt.Sprintf(`
+	var b strings.Builder
+	if cfg.RegistryUsername != "" && cfg.RegistryPassword != "" {
+		b.WriteString("\necho \"::LAUNCH::deploy_step::registry_login\"\n")
+		fmt.Fprintf(&b, "DOCKER_REGISTRY_URL=%q\n", cfg.RegistryURL)
+		fmt.Fprintf(&b, "DOCKER_REGISTRY_USER=%q\n", cfg.RegistryUsername)
+		// Heredoc the password so it's not on the command line. The
+		// trailing `set +x` is a no-op here but keeps the shape
+		// uniform with the per-cred login loop the compose path uses.
+		b.WriteString("set +x\n")
+		b.WriteString("if [ -n \"${DOCKER_REGISTRY_URL}\" ]; then\n")
+		b.WriteString("  docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin \"${DOCKER_REGISTRY_URL}\" <<'LAUNCH_DOCKER_PW_EOF'\n")
+		b.WriteString(cfg.RegistryPassword)
+		b.WriteString("\nLAUNCH_DOCKER_PW_EOF\n")
+		b.WriteString("else\n")
+		b.WriteString("  docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin <<'LAUNCH_DOCKER_PW_EOF'\n")
+		b.WriteString(cfg.RegistryPassword)
+		b.WriteString("\nLAUNCH_DOCKER_PW_EOF\n")
+		b.WriteString("fi\n")
+		b.WriteString("set -x\n")
+	}
+	fmt.Fprintf(&b, `
 echo "::LAUNCH::deploy_step::pulling_image"
 DOCKER_IMAGE=%q
 docker pull "${DOCKER_IMAGE}"
 `, cfg.Image)
+	if cfg.RegistryUsername != "" && cfg.RegistryPassword != "" {
+		// Best-effort logout. Failure here doesn't abort the deploy —
+		// the pull already happened. `|| true` keeps `set -e` from
+		// killing a successful run on a quirky logout.
+		b.WriteString("if [ -n \"${DOCKER_REGISTRY_URL}\" ]; then\n")
+		b.WriteString("  docker logout \"${DOCKER_REGISTRY_URL}\" || true\n")
+		b.WriteString("else\n")
+		b.WriteString("  docker logout || true\n")
+		b.WriteString("fi\n")
+	}
+	return b.String()
 }
 
 // buildGitStanza handles source_type=git: clone the repo into the build

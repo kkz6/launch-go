@@ -122,6 +122,11 @@ type ComposeResponse struct {
 	LastDeployedAt *time.Time `json:"last_deployed_at,omitempty"`
 	CreatedAt      *time.Time `json:"created_at,omitempty"`
 	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+	// RegistryCredentials carries the attached registry-login rows
+	// in summary form (id + name + url, never secrets). The picker
+	// on the compose detail page renders this so the user can see
+	// which logins this stack uses without a separate fetch.
+	RegistryCredentials []RegistryCredentialSummary `json:"registry_credentials,omitempty"`
 }
 
 // ToComposeResponse converts a Compose model to the API shape. The
@@ -146,6 +151,19 @@ func ToComposeResponse(c *models.Compose, includeRaw bool) *ComposeResponse {
 		resp.RawYAML = c.RawYAML
 		resp.EnvFile = c.EnvFile
 		resp.RunCommand = c.RunCommand
+	}
+	// Attached registry credentials, summarised. Only emitted when
+	// the caller preloaded the many2many — `len == 0` is "no
+	// preload" OR "no credentials"; the API doesn't distinguish, the
+	// frontend treats empty as "no auth attached".
+	if len(c.RegistryCredentials) > 0 {
+		resp.RegistryCredentials = make([]RegistryCredentialSummary, 0, len(c.RegistryCredentials))
+		for i := range c.RegistryCredentials {
+			resp.RegistryCredentials = append(
+				resp.RegistryCredentials,
+				ToRegistryCredentialSummary(&c.RegistryCredentials[i]),
+			)
+		}
 	}
 	return resp
 }
@@ -610,5 +628,63 @@ func ToApplicationResponse(a *models.Application) *ApplicationResponse {
 		LastDeployedAt: a.LastDeployedAt,
 		CreatedAt:      a.CreatedAt,
 		UpdatedAt:      a.UpdatedAt,
+	}
+}
+
+// --- Registry credentials -----------------------------------------
+
+// RegistryCredentialResponse is the API shape for a saved
+// registry-login row. Username is decrypted and returned so the
+// picker can show "ghcr.io / kkz6" — the password is NEVER returned.
+// HasPassword is the only signal the edit dialog gets to know the
+// password is set (so it can show "•••••• change?" instead of an
+// empty input).
+type RegistryCredentialResponse struct {
+	ID          string     `json:"id"`
+	TeamID      string     `json:"team_id"`
+	UserID      *string    `json:"user_id,omitempty"`
+	Name        string     `json:"name"`
+	RegistryURL *string    `json:"registry_url,omitempty"`
+	Username    string     `json:"username"`
+	HasPassword bool       `json:"has_password"`
+	CreatedAt   *time.Time `json:"created_at,omitempty"`
+	UpdatedAt   *time.Time `json:"updated_at,omitempty"`
+}
+
+// ToRegistryCredentialResponse decrypts username + builds the
+// response. Caller is responsible for not handing the model out to
+// random consumers — the response is the only thing that should
+// leave the service layer.
+func ToRegistryCredentialResponse(c *models.RegistryCredential) *RegistryCredentialResponse {
+	return &RegistryCredentialResponse{
+		ID:          c.ID,
+		TeamID:      c.TeamID,
+		UserID:      c.UserID,
+		Name:        c.Name,
+		RegistryURL: c.RegistryURL,
+		Username:    c.Username.String(),
+		HasPassword: !c.Password.IsEmpty(),
+		CreatedAt:   c.CreatedAt,
+		UpdatedAt:   c.UpdatedAt,
+	}
+}
+
+// RegistryCredentialSummary is the trimmed shape embedded on a
+// compose response — just enough to render the "attached
+// credentials" chip row without a second fetch. Username is NOT
+// included to keep the payload small + avoid surfacing it on a
+// list response that may include many composes.
+type RegistryCredentialSummary struct {
+	ID          string  `json:"id"`
+	Name        string  `json:"name"`
+	RegistryURL *string `json:"registry_url,omitempty"`
+}
+
+// ToRegistryCredentialSummary maps a model to the summary shape.
+func ToRegistryCredentialSummary(c *models.RegistryCredential) RegistryCredentialSummary {
+	return RegistryCredentialSummary{
+		ID:          c.ID,
+		Name:        c.Name,
+		RegistryURL: c.RegistryURL,
 	}
 }

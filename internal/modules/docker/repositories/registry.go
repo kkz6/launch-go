@@ -17,6 +17,7 @@ type Registry struct {
 	schedule       *ScheduleRepository
 	backup         *BackupRepository
 	backupRun      *BackupRunRepository
+	registryCred   *RegistryCredentialRepository
 }
 
 // NewRegistry wires up the repositories.
@@ -35,6 +36,7 @@ func NewRegistry(db *gorm.DB) *Registry {
 		schedule:       NewScheduleRepository(db),
 		backup:         NewBackupRepository(db),
 		backupRun:      NewBackupRunRepository(db),
+		registryCred:   NewRegistryCredentialRepository(db),
 	}
 }
 
@@ -83,3 +85,11 @@ func (r *Registry) Backup() *BackupRepository { return r.backup }
 
 // BackupRun returns the database backup-run history repository.
 func (r *Registry) BackupRun() *BackupRunRepository { return r.backupRun }
+
+// RegistryCredential returns the docker-registry credential
+// repository — the team-scoped saved-login table that backs
+// the application "saved credential" picker + compose stack
+// many-to-many auth attachments.
+func (r *Registry) RegistryCredential() *RegistryCredentialRepository {
+	return r.registryCred
+}
