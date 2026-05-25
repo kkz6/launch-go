@@ -184,7 +184,18 @@ CONTAINER_ID=$(docker run -d \
 	// Env vars rendered as `-e KEY=VALUE` per line. Values are
 	// single-quote-escaped so passwords with shell metacharacters don't
 	// turn into command injection.
+	//
+	// Defensive: keys containing `=` would parse as a different name
+	// at the docker layer (`docker run -e FOO=BAR=value` sets var
+	// `FOO=BAR` which is not a valid identifier on POSIX systems).
+	// Drop any such key so a malformed input from the database can't
+	// corrupt the run line. Service-layer validation (env_var_service)
+	// already enforces the same constraint at write time, so this is
+	// belt-and-braces.
 	for _, ev := range cfg.EnvVars {
+		if strings.Contains(ev.Key, "=") {
+			continue
+		}
 		fmt.Fprintf(&b, "  -e %s \\\n", shellEscapeArg(ev.Key+"="+ev.Value))
 	}
 
