@@ -43,3 +43,17 @@ fi
 if id "{{ .Username }}" >/dev/null 2>&1; then
     sudo usermod -aG docker "{{ .Username }}"
 fi
+
+# Install the AWS CLI so the database-backup task can `aws s3 cp` dumps
+# to the user's storage provider. Database backups run on this host; if
+# awscli is missing every backup silently fails at "aws CLI not
+# installed on this server" inside the backup script. Ubuntu's `awscli`
+# package is AWS CLI v1, which is sufficient for our `s3 cp` / `s3 rm`
+# usage. Idempotent — skipped when already installed.
+echo "Installing AWS CLI"
+if command -v aws >/dev/null 2>&1; then
+    echo "AWS CLI already installed: $(aws --version 2>&1 | head -n1)"
+else
+    waitForAptUnlock
+    sudo apt-get install -y -qq awscli
+fi
