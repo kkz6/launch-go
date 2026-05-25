@@ -265,10 +265,16 @@ func TestPruneBackupObjectsScript_RendersOneRmPerKey(t *testing.T) {
 		AccessKey: "AK",
 		SecretKey: "SK",
 	})
-	if !strings.Contains(got, `aws s3 rm "s3://mybucket/acme/2026-01-01/01HA.sql.gz"`) {
+	// Bucket name is shell-escaped via the printf concatenation idiom
+	// `"s3://"<bucket>"/key"` so the rendered form has the bucket as
+	// its own quoted segment. With a safe bucket name, shellEscapeArg
+	// returns it unquoted, so the literal we expect is:
+	//   "s3://"mybucket"/acme/.../01HA.sql.gz"
+	// (shell parses this as the concatenation s3://mybucket/acme/...).
+	if !strings.Contains(got, `aws s3 rm "s3://"mybucket"/acme/2026-01-01/01HA.sql.gz"`) {
 		t.Errorf("prune script missing rm for first key, got:\n%s", got)
 	}
-	if !strings.Contains(got, `aws s3 rm "s3://mybucket/acme/2026-01-02/01HB.sql.gz"`) {
+	if !strings.Contains(got, `aws s3 rm "s3://"mybucket"/acme/2026-01-02/01HB.sql.gz"`) {
 		t.Errorf("prune script missing rm for second key, got:\n%s", got)
 	}
 	if !strings.Contains(got, "--endpoint-url=") {
@@ -279,6 +285,12 @@ func TestPruneBackupObjectsScript_RendersOneRmPerKey(t *testing.T) {
 	// failures" property that documents the best-effort semantic.
 	if strings.Contains(got, "set -euo") {
 		t.Errorf("prune script must use `set -uo pipefail`, NOT `set -euo` — one missing key shouldn't abort, got:\n%s", got)
+	}
+	// New exit-code contract: the script tracks per-key failures and
+	// exits non-zero when anything broke so the caller's run status
+	// reflects reality. The "exit 1" path only fires when FAILED > 0.
+	if !strings.Contains(got, `if [ "${FAILED}" -gt 0 ]; then exit 1; fi`) {
+		t.Errorf("prune script must exit non-zero when any rm failed, got:\n%s", got)
 	}
 }
 

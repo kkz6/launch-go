@@ -63,3 +63,26 @@ func (r *BackupRunRepository) ListForBackup(
 		Find(&rows).Error
 	return rows, err
 }
+
+// ListStaleForRetention returns rows past the retention window, ordered
+// most-recent-first — i.e. the runs the prune sweep should delete.
+// Bounded at 500 to keep memory predictable; one sweep can therefore
+// reclaim up to that many orphans per tick, and the next sweep picks up
+// any remainder. This exists alongside ListForBackup because the UI
+// listing is happy with the 50-row cap, but a long-lived backup config
+// with Retention >= 50 would otherwise never have anything pruned.
+func (r *BackupRunRepository) ListStaleForRetention(
+	ctx context.Context, backupID string, keep int,
+) ([]models.DatabaseBackupRun, error) {
+	if keep < 0 {
+		keep = 0
+	}
+	var rows []models.DatabaseBackupRun
+	err := r.DB.WithContext(ctx).
+		Where("backup_id = ?", backupID).
+		Order("started_at DESC").
+		Offset(keep).
+		Limit(500).
+		Find(&rows).Error
+	return rows, err
+}

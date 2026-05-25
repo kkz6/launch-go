@@ -54,6 +54,11 @@ echo "Installing AWS CLI"
 if command -v aws >/dev/null 2>&1; then
     echo "AWS CLI already installed: $(aws --version 2>&1 | head -n1)"
 else
+    # If Docker was pre-installed (custom AMI, snap, etc.) the Docker
+    # block above short-circuited and the apt cache may be stale, so
+    # refresh before the install.
+    waitForAptUnlock
+    sudo apt-get update -qq
     waitForAptUnlock
     sudo apt-get install -y -qq awscli
 fi
