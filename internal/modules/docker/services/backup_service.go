@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	backupmodels "github.com/kkz6/launch-go/internal/modules/backup/models"
@@ -256,7 +257,7 @@ func (s *BackupService) RunNow(
 		Endpoint:   s3Creds.Endpoint,
 		Region:     s3Creds.Region,
 		Bucket:     s3Creds.Bucket,
-		PathPrefix: backupObjectPath(b.Path, s3Creds.Path),
+		PathPrefix: tasks.BackupObjectPath(b.Path, s3Creds.Path),
 		AccessKey:  s3Creds.Key,
 		SecretKey:  s3Creds.Secret,
 	}
@@ -295,7 +296,7 @@ func (s *BackupService) RunNow(
 		return *dto.ToBackupRunResponse(run), nil
 	}
 
-	objectKey, sizeBytes := parseBackupMarkers(result.Stdout + result.Stderr)
+	objectKey, sizeBytes := tasks.ParseRunMarkers(result.Stdout + result.Stderr)
 	updates := map[string]any{
 		"status":      "success",
 		"finished_at": finishedAt,
@@ -596,17 +597,13 @@ func (s *BackupService) pruneRunsAndObjects(
 	if b.Retention <= 0 {
 		return nil
 	}
-	rows, err := s.Repos().BackupRun().ListForBackup(ctx, b.ID)
+	stale, err := s.Repos().BackupRun().ListStaleForRetention(ctx, b.ID, b.Retention)
 	if err != nil {
 		return err
 	}
-	if len(rows) <= b.Retention {
+	if len(stale) == 0 {
 		return nil
 	}
-
-	// ListForBackup returns most-recent-first; everything past `Retention`
-	// is what we want to prune.
-	stale := rows[b.Retention:]
 
 	// Collect the object keys we plan to delete. Skip rows that never
 	// uploaded an object (failed runs); those have no S3 footprint.
@@ -662,103 +659,11 @@ func normaliseOptionalString(s *string) *string {
 	if s == nil {
 		return nil
 	}
-	trimmed := *s
-	// Manual trim to avoid pulling in strings purely for one call —
-	// the rest of this file uses tiny non-stdlib helpers for the same
-	// reason (see splitLinesBackup / indexOf).
-	for len(trimmed) > 0 && (trimmed[0] == ' ' || trimmed[0] == '\t') {
-		trimmed = trimmed[1:]
-	}
-	for len(trimmed) > 0 && (trimmed[len(trimmed)-1] == ' ' || trimmed[len(trimmed)-1] == '\t') {
-		trimmed = trimmed[:len(trimmed)-1]
-	}
+	trimmed := strings.TrimSpace(*s)
 	if trimmed == "" {
 		return nil
 	}
 	return &trimmed
-}
-
-// backupObjectPath composes the final bucket-prefix used by the upload
-// script — the storage provider's "default" path joined with the
-// per-backup sub-folder. Either may be empty; we strip leading/trailing
-// slashes so the script's "<prefix>/<file>" concat doesn't double up.
-func backupObjectPath(perBackup *string, providerDefault string) string {
-	trim := func(s string) string {
-		for len(s) > 0 && (s[0] == '/' || s[0] == ' ') {
-			s = s[1:]
-		}
-		for len(s) > 0 && (s[len(s)-1] == '/' || s[len(s)-1] == ' ') {
-			s = s[:len(s)-1]
-		}
-		return s
-	}
-	out := trim(providerDefault)
-	if perBackup != nil {
-		seg := trim(*perBackup)
-		if seg != "" {
-			if out == "" {
-				out = seg
-			} else {
-				out = out + "/" + seg
-			}
-		}
-	}
-	return out
-}
-
-// parseBackupMarkers reads `::LAUNCH::object_key::<k>` and `::LAUNCH::
-// size_bytes::<n>` from the script output. Missing values mean the
-// script aborted before emitting them.
-func parseBackupMarkers(output string) (string, int64) {
-	var key string
-	var size int64
-	for _, line := range splitLinesBackup(output) {
-		const okPrefix = "::LAUNCH::object_key::"
-		const szPrefix = "::LAUNCH::size_bytes::"
-		if i := indexOf(line, okPrefix); i >= 0 {
-			key = line[i+len(okPrefix):]
-		}
-		if i := indexOf(line, szPrefix); i >= 0 {
-			n := int64(0)
-			for _, c := range line[i+len(szPrefix):] {
-				if c < '0' || c > '9' {
-					break
-				}
-				n = n*10 + int64(c-'0')
-			}
-			size = n
-		}
-	}
-	return key, size
-}
-
-// Tiny non-stdlib helpers to avoid a strings import cycle for the
-// small handful of operations we do here.
-func splitLinesBackup(s string) []string {
-	out := []string{}
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			out = append(out, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		out = append(out, s[start:])
-	}
-	return out
-}
-
-func indexOf(haystack, needle string) int {
-	if len(needle) == 0 {
-		return 0
-	}
-	for i := 0; i <= len(haystack)-len(needle); i++ {
-		if haystack[i:i+len(needle)] == needle {
-			return i
-		}
-	}
-	return -1
 }
 
 // dispatchTaskAsRoot is a tiny shim that runs a task via the SSH client
