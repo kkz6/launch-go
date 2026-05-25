@@ -97,6 +97,10 @@ var launchSystemContainerNames = map[string]struct{}{
 	// Constant lives in modules/server/tasks/docker_constants.go;
 	// duplicated here to avoid a cross-module import cycle.
 	"launch-traefik": {},
+	// Shared user-bridge network created at provisioning time so app
+	// containers can resolve each other by service name. Same cycle-
+	// avoidance rationale as launch-traefik.
+	"launch-network": {},
 }
 
 // launchSystemPrefixes lists name prefixes (NOT a wildcard match) for
@@ -320,10 +324,12 @@ var containerIDPattern = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
 
 func projectContainerInspect(raw rawContainerInspect) ContainerInspect {
 	out := ContainerInspect{
-		ID:           strings.TrimPrefix(raw.ID, ""),
+		ID:           raw.ID,
 		Name:         strings.TrimPrefix(raw.Name, "/"),
 		Image:        raw.Config.Image,
-		ImageID:      raw.Image,
+		// Strip the "sha256:" prefix docker prepends to image IDs so
+		// the UI's image-id column matches what `docker images` shows.
+		ImageID: strings.TrimPrefix(raw.Image, "sha256:"),
 		CreatedAt:    raw.Created,
 		Platform:     raw.Platform,
 		RestartCount: raw.RestartCount,
@@ -482,7 +488,7 @@ func (s *HostInspectService) ListNetworks(
 		// are noise to a user who wants to see their own networks.
 		if _, builtin := dockerBuiltinNetworks[n.Name]; builtin {
 			n.System = true
-		} else if isLaunchSystemName(n.Name) || n.Name == "launch-network" {
+		} else if isLaunchSystemName(n.Name) {
 			n.System = true
 		}
 		rows = append(rows, n)
@@ -503,16 +509,11 @@ func (s *HostInspectService) ListNetworks(
 // Containers can have comma-separated names ("foo,bar") if they're
 // linked — we classify on the first which is the canonical one.
 func stripSwarmTaskSuffix(names string) string {
-	first := names
-	if i := strings.Index(first, ","); i >= 0 {
-		first = first[:i]
-	}
-	// `name.<replica>.<task-id>` — split on first dot, the prefix is
-	// the service name.
-	if i := strings.Index(first, "."); i >= 0 {
-		return first[:i]
-	}
-	return first
+	first, _, _ := strings.Cut(names, ",")
+	// `name.<replica>.<task-id>` — keep the prefix up to the first dot,
+	// that's the service name.
+	name, _, _ := strings.Cut(first, ".")
+	return name
 }
 
 // TraefikSnapshot bundles the user-visible Traefik config files —
@@ -618,18 +619,21 @@ func (s *HostInspectService) WriteTraefikDynamicFile(
 	path := fmt.Sprintf("/etc/launch/traefik/dynamic/%s", filename)
 
 	// Use a heredoc so we don't have to escape every shell metachar
-	// in the YAML. The sentinel `__LAUNCH_EOF_<random>__` is chosen so
-	// it can't appear in real config — capital underscore prefix is
-	// rare in YAML, and we'd notice immediately if it ever clashed.
+	// in the YAML. The sentinel is randomised per call so a YAML body
+	// containing the literal sentinel line can't terminate the heredoc
+	// early — the prior fixed sentinel `__LAUNCH_EOF_TRAEFIK__` was a
+	// collision waiting to happen and (with quoted contents) a shell-
+	// injection vector if anyone ever fed user-edited YAML through.
+	sentinel := tasks.RandomHeredocSentinel()
 	cmd := fmt.Sprintf(
-		`sudo tee %s >/dev/null <<'__LAUNCH_EOF_%s__'
+		`sudo tee %s >/dev/null <<'%s'
 %s
-__LAUNCH_EOF_%s__
+%s
 `,
 		path,
-		"TRAEFIK", // fixed sentinel; we only run one write at a time per host
+		sentinel,
 		contents,
-		"TRAEFIK",
+		sentinel,
 	)
 	result, err := client.Run(ctx, cmd)
 	if err != nil {
@@ -902,9 +906,8 @@ func (s *HostInspectService) dialServer(
 
 func splitNonEmpty(s string) []string {
 	out := []string{}
-	for _, line := range strings.Split(s, "\n") {
-		trimmed := strings.TrimSpace(line)
-		if trimmed != "" {
+	for line := range strings.SplitSeq(s, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
 			out = append(out, trimmed)
 		}
 	}

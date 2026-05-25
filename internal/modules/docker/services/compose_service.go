@@ -403,8 +403,11 @@ func (s *ComposeService) PurgeComposeResources(
 	serverID, teamID string,
 	req *dto.PurgeComposeResourcesRequest,
 ) error {
+	// FindByIDAndTeam already returns fiberutil.NotFound() for missing
+	// rows and the original error otherwise — propagate as-is so a DB
+	// connection blip surfaces as 500, not a misleading 404.
 	if _, err := s.ServerRepos().Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
-		return fiberutil.NotFound()
+		return err
 	}
 
 	syntheticID := fmt.Sprintf("purge-%s", req.ProjectName)
@@ -568,6 +571,7 @@ func (s *ComposeService) ListServices(
 		return nil, err
 	}
 	if err := client.Connect(); err != nil {
+		_ = client.Close()
 		return nil, err
 	}
 	defer client.Close()
@@ -595,12 +599,10 @@ func (s *ComposeService) ListServices(
 	}
 
 	var out []string
-	for _, line := range strings.Split(strings.TrimSpace(result.Stdout), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
+	for line := range strings.SplitSeq(strings.TrimSpace(result.Stdout), "\n") {
+		if line = strings.TrimSpace(line); line != "" {
+			out = append(out, line)
 		}
-		out = append(out, line)
 	}
 	return out, nil
 }

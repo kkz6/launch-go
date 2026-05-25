@@ -72,6 +72,20 @@ echo "::LAUNCH::backup_step::dumping"
 `)
 	fmt.Fprintf(&b, "%s | gzip > \"${TMP_FILE}\"\n", dumpCmd)
 	b.WriteString(`
+# Sanity-check the dump before uploading. With set -o pipefail a failing
+# dumpCmd already exits the script — these guards catch the edge cases
+# where the pipeline returns 0 but the artifact is empty or truncated
+# (e.g. an OOM-killed mongodump that exits cleanly before the SIGKILL
+# arrives, or a future refactor that drops pipefail).
+if [ ! -s "${TMP_FILE}" ]; then
+  echo "dump produced an empty archive — refusing to upload" >&2
+  exit 1
+fi
+if ! gzip -t "${TMP_FILE}" 2>/dev/null; then
+  echo "dump archive failed gzip integrity check — refusing to upload" >&2
+  exit 1
+fi
+
 SIZE=$(wc -c <"${TMP_FILE}" | tr -d ' ')
 echo "::LAUNCH::size_bytes::${SIZE}"
 
@@ -88,8 +102,8 @@ echo "::LAUNCH::backup_step::uploading"
 	if cfg.Endpoint != "" {
 		endpointArg = fmt.Sprintf(" --endpoint-url=%s", shellEscapeArg(cfg.Endpoint))
 	}
-	fmt.Fprintf(&b, "aws s3 cp \"${TMP_FILE}\" \"s3://%s/${OBJECT_KEY}\"%s\n",
-		cfg.Bucket, endpointArg)
+	fmt.Fprintf(&b, "aws s3 cp \"${TMP_FILE}\" \"s3://\"%s\"/${OBJECT_KEY}\"%s\n",
+		shellEscapeArg(cfg.Bucket), endpointArg)
 	b.WriteString(`
 echo "::LAUNCH::object_key::${OBJECT_KEY}"
 echo "::LAUNCH::backup_step::done"
@@ -238,6 +252,7 @@ func PruneBackupObjectsScript(cfg PruneBackupObjectsConfig) string {
   exit 1
 fi
 
+FAILED=0
 `)
 
 	fmt.Fprintf(&b, "export AWS_ACCESS_KEY_ID=%s\n", shellEscapeArg(cfg.AccessKey))
@@ -251,18 +266,26 @@ fi
 	}
 
 	for _, key := range cfg.ObjectKeys {
-		// Per-key output markers + "|| true" so one missing object
-		// doesn't stop the loop. The caller logs total + failures via
-		// the markers; not having a stop-on-first-error here is
-		// deliberate — retention prune is best-effort cleanup.
+		// Per-key marker + per-key failure handling — one missing object
+		// shouldn't stop the loop, but we count failures so the script's
+		// exit code reflects whether anything actually broke. Caller
+		// surfaces FAILED=N via the recorded job status.
 		fmt.Fprintf(&b,
 			"echo \"::LAUNCH::prune_key::%s\"\n"+
-				"aws s3 rm \"s3://%s/%s\"%s || echo \"::LAUNCH::prune_failed::%s\"\n",
-			key, cfg.Bucket, key, endpointArg, key,
+				"if ! aws s3 rm \"s3://\"%s\"/%s\"%s; then echo \"::LAUNCH::prune_failed::%s\"; FAILED=$((FAILED+1)); fi\n",
+			key, shellEscapeArg(cfg.Bucket), key, endpointArg, key,
 		)
 	}
 
-	b.WriteString("\necho \"::LAUNCH::prune_step::done\"\n")
+	// Exit non-zero if anything failed so the caller's run status
+	// reflects reality. Clamped to 1 because shell exit codes wrap
+	// at 8 bits — a large FAILED would collide with conventional
+	// codes (e.g. 130 = SIGINT).
+	b.WriteString(`
+echo "::LAUNCH::prune_failures::${FAILED}"
+echo "::LAUNCH::prune_step::done"
+if [ "${FAILED}" -gt 0 ]; then exit 1; fi
+`)
 	return b.String()
 }
 
@@ -342,8 +365,8 @@ echo "::LAUNCH::restore_step::downloading"
 	if cfg.Endpoint != "" {
 		endpointArg = fmt.Sprintf(" --endpoint-url=%s", shellEscapeArg(cfg.Endpoint))
 	}
-	fmt.Fprintf(&b, "aws s3 cp \"s3://%s/${OBJECT_KEY}\" \"${TMP_FILE}\"%s\n",
-		cfg.Bucket, endpointArg)
+	fmt.Fprintf(&b, "aws s3 cp \"s3://\"%s\"/${OBJECT_KEY}\" \"${TMP_FILE}\"%s\n",
+		shellEscapeArg(cfg.Bucket), endpointArg)
 
 	b.WriteString(`
 echo "::LAUNCH::restore_step::restoring"

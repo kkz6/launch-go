@@ -47,7 +47,6 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 	fmt.Fprintf(&b, "# app: %s\n", id)
 	b.WriteString("http:\n")
 	b.WriteString("  routers:\n")
-	hasHTTPS := false
 	for i, d := range args.Domains {
 		host := d.Host
 		safeName := fmt.Sprintf("%s-%d", id, i)
@@ -66,10 +65,7 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 		fmt.Fprintf(&b, "      service: %s\n", id)
 		if d.HTTPS {
 			b.WriteString("      middlewares: [redirect-to-https]\n")
-			hasHTTPS = true
-		}
 
-		if d.HTTPS {
 			fmt.Fprintf(&b, "    %s-https:\n", safeName)
 			fmt.Fprintf(&b, "      rule: %q\n", hostRule)
 			b.WriteString("      entryPoints: [websecure]\n")
@@ -78,7 +74,6 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 			b.WriteString("        certresolver: letsencrypt\n")
 		}
 	}
-	_ = hasHTTPS // placeholder for future TLS-conditional config
 
 	b.WriteString("  services:\n")
 	fmt.Fprintf(&b, "    %s:\n", id)
@@ -103,18 +98,20 @@ func TraefikConfigPath(projectSlug, appSlug string) string {
 // SSH. Traefik watches the directory so the new file is picked up
 // automatically; no reload needed.
 //
-// The heredoc delimiter is quoted so YAML content with $ signs is not
-// expanded by the shell.
+// The heredoc delimiter is single-quoted (so YAML `$` references are
+// preserved verbatim) AND randomised per call (so a body containing
+// the sentinel line can't terminate the heredoc early).
 func WriteTraefikConfigTask(projectSlug, appSlug, contents string) taskrunner.Task {
 	path := TraefikConfigPath(projectSlug, appSlug)
+	sentinel := RandomHeredocSentinel()
 	script := fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
 sudo mkdir -p /etc/launch/traefik/dynamic
-sudo tee %q >/dev/null <<'LAUNCH_TRAEFIK_EOF'
+sudo tee %q >/dev/null <<'%s'
 %s
-LAUNCH_TRAEFIK_EOF
+%s
 echo "::LAUNCH::traefik_config::written"
-`, path, contents)
+`, path, sentinel, contents, sentinel)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Write Traefik Config"),
 		taskrunner.WithScript(script),
@@ -293,14 +290,15 @@ func ComposeTraefikConfigFilename(projectSlug, composeSlug string) string {
 // so no reload is needed.
 func WriteComposeTraefikConfigTask(projectSlug, composeSlug, contents string) taskrunner.Task {
 	path := ComposeTraefikConfigPath(projectSlug, composeSlug)
+	sentinel := RandomHeredocSentinel()
 	script := fmt.Sprintf(`#!/usr/bin/env bash
 set -euo pipefail
 sudo mkdir -p /etc/launch/traefik/dynamic
-sudo tee %q >/dev/null <<'LAUNCH_TRAEFIK_EOF'
+sudo tee %q >/dev/null <<'%s'
 %s
-LAUNCH_TRAEFIK_EOF
+%s
 echo "::LAUNCH::traefik_config::written"
-`, path, contents)
+`, path, sentinel, contents, sentinel)
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName("Write Compose Traefik Config"),
 		taskrunner.WithScript(script),
