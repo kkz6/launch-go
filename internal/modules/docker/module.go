@@ -140,5 +140,11 @@ func (m *Module) serviceDeps() *services.ServiceDeps {
 		},
 		ServerRepos: m.serverRepos,
 		BackupRepos: m.backupRepos,
+		// Notifier is shared with the worker side (TaskRunnerDeps.
+		// Notifier). The API path uses it from BackupService.RunNow's
+		// post-completion dispatch so manual runs honour
+		// NotifyOnSuccess / NotifyOnFailure the same as scheduled
+		// runs do — same notification structs, same channel routing.
+		Notifier: deps.Notifier,
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/service"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 // ServiceDeps holds the dependencies for docker-module services.
@@ -17,6 +18,12 @@ type ServiceDeps struct {
 	// stage hasn't populated it, BackupService falls back to a clear
 	// "storage providers unavailable" error.
 	BackupRepos *backuprepos.Registry
+	// Notifier dispatches email / Slack / Discord / Telegram messages
+	// for backup success/failure (driven by the per-config
+	// NotifyOnSuccess / NotifyOnFailure flags). nil-tolerant: missing
+	// notifier is silently no-op so test rigs and partial bring-ups
+	// don't crash on the synchronous RunNow path.
+	Notifier taskrunner.NotifierService
 }
 
 // BaseService is the shared dependency carrier for every docker service.
@@ -48,4 +55,11 @@ func (s *BaseService) ServerRepos() *serverrepos.Registry {
 // database backups reference.
 func (s *BaseService) BackupRepos() *backuprepos.Registry {
 	return s.serviceDeps.BackupRepos
+}
+
+// Notifier returns the configured notifier service (email/slack/etc).
+// May be nil if the host didn't wire one — callers should nil-check
+// before dispatching so missing notifier infra never panics RunNow.
+func (s *BaseService) Notifier() taskrunner.NotifierService {
+	return s.serviceDeps.Notifier
 }
