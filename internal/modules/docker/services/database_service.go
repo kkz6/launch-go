@@ -54,6 +54,33 @@ func (s *DatabaseService) ListDatabases(
 	return out, nil
 }
 
+// ListDatabasesForServer returns every docker database on the server
+// (across all projects on it) scoped to the caller's team. Used by
+// the backup-restore dialog's "target database" picker, where the
+// user might be redirecting a prod snapshot to a staging row that
+// lives in a different project. Credentials are stripped — same
+// rule as the project-scoped list.
+func (s *DatabaseService) ListDatabasesForServer(
+	ctx context.Context, serverID, teamID string,
+) ([]dto.DatabaseResponse, error) {
+	// Defence-in-depth: confirm the server belongs to the caller's
+	// team before listing. The repo query already filters by team_id,
+	// but a 404 on the server up-front is a cleaner error than an
+	// empty list.
+	if _, err := s.ServerRepos().Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
+		return nil, err
+	}
+	rows, err := s.Repos().Database().ListForServer(ctx, teamID, serverID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]dto.DatabaseResponse, 0, len(rows))
+	for i := range rows {
+		out = append(out, *dto.ToDatabaseResponse(&rows[i], false))
+	}
+	return out, nil
+}
+
 // GetDatabase returns a single database. If revealCreds is true the
 // credentials are included — the handler sets this based on whether
 // the caller passed ?reveal=true.

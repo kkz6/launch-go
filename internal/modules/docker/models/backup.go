@@ -22,6 +22,16 @@ type DatabaseBackup struct {
 
 	DatabaseID        string  `gorm:"column:database_id;type:char(26);not null;index" json:"database_id"`
 	StorageProviderID uint64  `gorm:"column:storage_provider_id;not null;index" json:"storage_provider_id"`
+	// DatabaseName optionally overrides which database INSIDE the engine
+	// the dump command targets. Empty / nil = use the database
+	// provisioned with this row (today's behaviour). Set when the user
+	// has created additional databases inside the engine (e.g.
+	// `CREATE DATABASE analytics;` on the same Postgres container) and
+	// wants this backup config to target one of those instead.
+	//
+	// Stored on the config row rather than on each run because the
+	// scheduler needs to know the target without consulting history.
+	DatabaseName *string `gorm:"column:database_name;type:varchar(64)" json:"database_name,omitempty"`
 	// Path is the sub-folder under the storage provider's bucket where
 	// this database's dumps land. Optional; empty = bucket root.
 	Path *string `gorm:"type:varchar(255)" json:"path,omitempty"`
@@ -37,6 +47,23 @@ type DatabaseBackup struct {
 }
 
 func (DatabaseBackup) TableName() string { return "docker_database_backups" }
+
+// EffectiveDatabaseName returns the database the dump command should
+// target: the per-backup override if the user set one, else the
+// fallback (which the caller pulls from the docker_databases row's
+// stored credentials). Centralised here so the synchronous RunNow
+// path (services/backup_service.go) and the scheduled cron path
+// (jobs/run_backup.go) can't drift — a divergence would mean manual
+// and scheduled runs of the same config target different databases.
+func (b *DatabaseBackup) EffectiveDatabaseName(fallback string) string {
+	if b == nil || b.DatabaseName == nil {
+		return fallback
+	}
+	if *b.DatabaseName == "" {
+		return fallback
+	}
+	return *b.DatabaseName
+}
 
 // DatabaseBackupRun is one past upload attempt — what the UI's history
 // table renders, and what restore-from-snapshot identifies.
