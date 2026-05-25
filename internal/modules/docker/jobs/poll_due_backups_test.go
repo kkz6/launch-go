@@ -3,6 +3,8 @@ package jobs
 import (
 	"testing"
 	"time"
+
+	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
 )
 
 // TestCronDueInWindow pins the "is this expression due in [start, end)?"
@@ -128,7 +130,7 @@ func TestParseRunMarkers(t *testing.T) {
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			gotKey, gotSize := parseRunMarkers(tc.output)
+			gotKey, gotSize := tasks.ParseRunMarkers(tc.output)
 			if gotKey != tc.wantKey {
 				t.Errorf("object_key = %q, want %q", gotKey, tc.wantKey)
 			}

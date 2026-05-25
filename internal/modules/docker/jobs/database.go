@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -659,60 +660,17 @@ func summariseDatabaseRunError(runErr error, output string) string {
 	}
 	// Last meaningful line wins — `docker run` typically prints the
 	// failure reason on the final stderr line.
-	lines := []string{}
-	for _, line := range splitLines(output) {
-		trimmed := trimSpace(line)
-		if trimmed == "" {
-			continue
+	var last string
+	for line := range strings.SplitSeq(output, "\n") {
+		if trimmed := strings.TrimSpace(line); trimmed != "" {
+			last = trimmed
 		}
-		lines = append(lines, trimmed)
 	}
-	if len(lines) == 0 {
+	if last == "" {
 		return "database container failed to start"
 	}
-	last := lines[len(lines)-1]
 	if len(last) > 240 {
 		return last[:240] + "…"
 	}
 	return last
-}
-
-// splitLines splits on \n while preserving the absence of a trailing
-// empty line. Equivalent to strings.Split but kept inline so this file
-// stays self-contained (and to dodge the SplitSeq vs Split lint).
-func splitLines(s string) []string {
-	if s == "" {
-		return nil
-	}
-	out := []string{}
-	start := 0
-	for i := 0; i < len(s); i++ {
-		if s[i] == '\n' {
-			out = append(out, s[start:i])
-			start = i + 1
-		}
-	}
-	if start < len(s) {
-		out = append(out, s[start:])
-	}
-	return out
-}
-
-func trimSpace(s string) string {
-	start, end := 0, len(s)
-	for start < end && isSpace(s[start]) {
-		start++
-	}
-	for end > start && isSpace(s[end-1]) {
-		end--
-	}
-	return s[start:end]
-}
-
-func isSpace(b byte) bool {
-	switch b {
-	case ' ', '\t', '\r', '\n':
-		return true
-	}
-	return false
 }

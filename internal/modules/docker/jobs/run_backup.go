@@ -161,7 +161,7 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		Endpoint:   s3Creds.Endpoint,
 		Region:     s3Creds.Region,
 		Bucket:     s3Creds.Bucket,
-		PathPrefix: composeBackupPath(backup.Path, s3Creds.Path),
+		PathPrefix: tasks.BackupObjectPath(backup.Path, s3Creds.Path),
 		AccessKey:  s3Creds.Key,
 		SecretKey:  s3Creds.Secret,
 	}
@@ -210,7 +210,7 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		return nil
 	}
 
-	objectKey, sizeBytes := parseRunMarkers(output)
+	objectKey, sizeBytes := tasks.ParseRunMarkers(output)
 	updates := map[string]any{
 		"status":      "success",
 		"finished_at": finishedAt,
@@ -362,61 +362,6 @@ func (j *RunBackupJob) loadProviderS3Creds(
 	return c, nil
 }
 
-// composeBackupPath joins the storage provider's default path with the
-// per-backup sub-folder. Either may be empty; we trim slashes so the
-// upload script's "<prefix>/<file>" concat doesn't double up. Same
-// rules as services.backupObjectPath.
-func composeBackupPath(perBackup *string, providerDefault string) string {
-	trim := func(s string) string {
-		for len(s) > 0 && (s[0] == '/' || s[0] == ' ') {
-			s = s[1:]
-		}
-		for len(s) > 0 && (s[len(s)-1] == '/' || s[len(s)-1] == ' ') {
-			s = s[:len(s)-1]
-		}
-		return s
-	}
-	out := trim(providerDefault)
-	if perBackup != nil {
-		seg := trim(*perBackup)
-		if seg != "" {
-			if out == "" {
-				out = seg
-			} else {
-				out = out + "/" + seg
-			}
-		}
-	}
-	return out
-}
-
-// parseRunMarkers walks the SSH output for `::LAUNCH::object_key::<k>`
-// and `::LAUNCH::size_bytes::<n>` lines. Missing values mean the script
-// aborted before emitting them — the caller treats those as failures.
-func parseRunMarkers(output string) (string, int64) {
-	const okPrefix = "::LAUNCH::object_key::"
-	const szPrefix = "::LAUNCH::size_bytes::"
-	var key string
-	var size int64
-	for _, line := range splitLines(output) {
-		line = trimSpace(line)
-		if len(line) > len(okPrefix) && line[:len(okPrefix)] == okPrefix {
-			key = line[len(okPrefix):]
-		}
-		if len(line) > len(szPrefix) && line[:len(szPrefix)] == szPrefix {
-			n := int64(0)
-			for _, c := range line[len(szPrefix):] {
-				if c < '0' || c > '9' {
-					break
-				}
-				n = n*10 + int64(c-'0')
-			}
-			size = n
-		}
-	}
-	return key, size
-}
-
 func strPtr(s string) *string { return &s }
 
 func truncateForRun(s string, n int) string {
@@ -443,14 +388,13 @@ func (j *RunBackupJob) pruneRunsAndObjects(
 	if backup.Retention <= 0 {
 		return nil
 	}
-	rows, err := j.Deps.Repos.BackupRun().ListForBackup(ctx, backup.ID)
+	stale, err := j.Deps.Repos.BackupRun().ListStaleForRetention(ctx, backup.ID, backup.Retention)
 	if err != nil {
 		return err
 	}
-	if len(rows) <= backup.Retention {
+	if len(stale) == 0 {
 		return nil
 	}
-	stale := rows[backup.Retention:]
 
 	objectKeys := make([]string, 0, len(stale))
 	for i := range stale {

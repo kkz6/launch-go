@@ -234,8 +234,17 @@ func (s *DomainService) ValidateDNS(
 	if d.ApplicationID == nil || *d.ApplicationID != applicationID {
 		return dto.ValidateDNSResponse{}, fiberutil.NotFound()
 	}
+	return s.validateDNSAgainstServer(ctx, d.Host, app.ServerID)
+}
 
-	host := strings.ToLower(strings.TrimSpace(d.Host))
+// validateDNSAgainstServer is the shared DNS-lookup core used by
+// ValidateDNS (app-scoped) and ValidateComposeDNS (compose-scoped).
+// Wrappers handle the scope check + domain-ownership check; this only
+// runs the wildcard-suffix short-circuit and the public-IP comparison.
+func (s *DomainService) validateDNSAgainstServer(
+	ctx context.Context, rawHost, serverID string,
+) (dto.ValidateDNSResponse, error) {
+	host := strings.ToLower(strings.TrimSpace(rawHost))
 	resp := dto.ValidateDNSResponse{Host: host}
 
 	// Wildcard-DNS hostnames are routable by definition.
@@ -248,7 +257,7 @@ func (s *DomainService) ValidateDNS(
 		}
 	}
 
-	server, err := s.ServerRepos().Server().FindByID(ctx, app.ServerID)
+	server, err := s.ServerRepos().Server().FindByID(ctx, serverID)
 	if err != nil {
 		return dto.ValidateDNSResponse{}, err
 	}
@@ -258,8 +267,8 @@ func (s *DomainService) ValidateDNS(
 	}
 	resp.ExpectedIP = expectedIP
 
-	// Bounded DNS lookup so a slow resolver doesn't block the
-	// request thread; 5s is generous for public A records.
+	// Bounded DNS lookup so a slow resolver doesn't block the request
+	// thread; 5s is generous for public A records.
 	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	ips, err := net.DefaultResolver.LookupIPAddr(lookupCtx, host)
@@ -278,11 +287,12 @@ func (s *DomainService) ValidateDNS(
 			resp.OK = true
 		}
 	}
-	if resp.OK {
+	switch {
+	case resp.OK:
 		resp.Message = fmt.Sprintf("Resolves to %s ✓", expectedIP)
-	} else if len(resp.ResolvedIPs) == 0 {
+	case len(resp.ResolvedIPs) == 0:
 		resp.Message = "Hostname doesn't resolve to any A record yet."
-	} else {
+	default:
 		resp.Message = fmt.Sprintf(
 			"Resolves to %s — expected %s",
 			strings.Join(resp.ResolvedIPs, ", "),
@@ -563,8 +573,8 @@ func (s *DomainService) DeleteComposeDomain(
 }
 
 // ValidateComposeDNS mirrors ValidateDNS for compose-owned domains.
-// Reuses the same wildcard-suffix + public-IP comparison; only the
-// scoping helper differs.
+// Shares the lookup core via validateDNSAgainstServer; only the scope
+// + ownership check differ.
 func (s *DomainService) ValidateComposeDNS(
 	ctx context.Context, domainID, composeID, projectID, serverID, teamID string,
 ) (dto.ValidateDNSResponse, error) {
@@ -579,59 +589,7 @@ func (s *DomainService) ValidateComposeDNS(
 	if d.ComposeID == nil || *d.ComposeID != composeID {
 		return dto.ValidateDNSResponse{}, fiberutil.NotFound()
 	}
-
-	host := strings.ToLower(strings.TrimSpace(d.Host))
-	resp := dto.ValidateDNSResponse{Host: host}
-
-	for _, suffix := range wildcardDNSSuffixes {
-		if strings.HasSuffix(host, suffix) {
-			resp.OK = true
-			resp.Wildcard = true
-			resp.Message = "Wildcard DNS hostname — already routable, no validation needed."
-			return resp, nil
-		}
-	}
-
-	server, err := s.ServerRepos().Server().FindByID(ctx, c.ServerID)
-	if err != nil {
-		return dto.ValidateDNSResponse{}, err
-	}
-	expectedIP := ""
-	if server.PublicIPv4 != nil {
-		expectedIP = *server.PublicIPv4
-	}
-	resp.ExpectedIP = expectedIP
-
-	lookupCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-	ips, err := net.DefaultResolver.LookupIPAddr(lookupCtx, host)
-	if err != nil {
-		resp.OK = false
-		resp.Message = fmt.Sprintf("DNS lookup failed: %v", err)
-		return resp, nil
-	}
-	for _, ip := range ips {
-		v4 := ip.IP.To4()
-		if v4 == nil {
-			continue
-		}
-		resp.ResolvedIPs = append(resp.ResolvedIPs, v4.String())
-		if expectedIP != "" && v4.String() == expectedIP {
-			resp.OK = true
-		}
-	}
-	if resp.OK {
-		resp.Message = fmt.Sprintf("Resolves to %s ✓", expectedIP)
-	} else if len(resp.ResolvedIPs) == 0 {
-		resp.Message = "Hostname doesn't resolve to any A record yet."
-	} else {
-		resp.Message = fmt.Sprintf(
-			"Resolves to %s — expected %s",
-			strings.Join(resp.ResolvedIPs, ", "),
-			expectedIP,
-		)
-	}
-	return resp, nil
+	return s.validateDNSAgainstServer(ctx, d.Host, c.ServerID)
 }
 
 // scopedCompose resolves (server, project, compose) inside the
