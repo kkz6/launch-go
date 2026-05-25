@@ -360,17 +360,22 @@ func ToVolumeResponse(v *models.ApplicationVolume) *VolumeResponse {
 // References the global storage_providers row by id — the actual S3
 // credentials never travel back to the client.
 type BackupResponse struct {
-	ID                string     `json:"id"`
-	DatabaseID        string     `json:"database_id"`
-	StorageProviderID uint64     `json:"storage_provider_id"`
-	Path              *string    `json:"path,omitempty"`
-	Retention         int        `json:"retention"`
-	NotifyOnSuccess   bool       `json:"notify_on_success"`
-	NotifyOnFailure   bool       `json:"notify_on_failure"`
-	CronSchedule      *string    `json:"cron_schedule,omitempty"`
-	Enabled           bool       `json:"enabled"`
-	CreatedAt         *time.Time `json:"created_at,omitempty"`
-	UpdatedAt         *time.Time `json:"updated_at,omitempty"`
+	ID                string `json:"id"`
+	DatabaseID        string `json:"database_id"`
+	StorageProviderID uint64 `json:"storage_provider_id"`
+	// DatabaseName, when set, is the in-engine database the dump
+	// targets. nil/empty means "the database provisioned with the row";
+	// the UI renders that as a placeholder so the user can see the
+	// effective target without revealing credentials.
+	DatabaseName    *string    `json:"database_name,omitempty"`
+	Path            *string    `json:"path,omitempty"`
+	Retention       int        `json:"retention"`
+	NotifyOnSuccess bool       `json:"notify_on_success"`
+	NotifyOnFailure bool       `json:"notify_on_failure"`
+	CronSchedule    *string    `json:"cron_schedule,omitempty"`
+	Enabled         bool       `json:"enabled"`
+	CreatedAt       *time.Time `json:"created_at,omitempty"`
+	UpdatedAt       *time.Time `json:"updated_at,omitempty"`
 }
 
 // BackupRunResponse is one row in the run-history table.
@@ -393,6 +398,7 @@ func ToBackupResponse(b *models.DatabaseBackup) *BackupResponse {
 		ID:                b.ID,
 		DatabaseID:        b.DatabaseID,
 		StorageProviderID: b.StorageProviderID,
+		DatabaseName:      b.DatabaseName,
 		Path:              b.Path,
 		Retention:         b.Retention,
 		NotifyOnSuccess:   b.NotifyOnSuccess,

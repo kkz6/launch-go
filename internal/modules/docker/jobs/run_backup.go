@@ -11,7 +11,9 @@ import (
 	backupmodels "github.com/kkz6/launch-go/internal/modules/backup/models"
 	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	dockernotifications "github.com/kkz6/launch-go/internal/modules/docker/notifications"
 	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
 
@@ -105,11 +107,13 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 	s3Creds, err := j.loadProviderS3Creds(ctx, backup.StorageProviderID, backup.TeamID)
 	if err != nil {
 		j.recordFailure(ctx, backup.ID, "", err.Error())
+		j.dispatchFailureNotification(ctx, backup, db, server, err.Error())
 		return nil
 	}
 	dbCreds, err := decodeJobCredentials(db.Credentials)
 	if err != nil {
 		j.recordFailure(ctx, backup.ID, "", "database credentials are missing or corrupt")
+		j.dispatchFailureNotification(ctx, backup, db, server, "database credentials are missing or corrupt")
 		return nil
 	}
 
@@ -142,7 +146,14 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		Engine:   db.Engine,
 		Username: dbCreds.Username,
 		Password: dbCreds.Password,
-		Database: dbCreds.Database,
+		// Database-name override mirrors the synchronous RunNow path
+		// in services/backup_service.go — if the user pointed this
+		// backup config at a specific database inside the engine
+		// (e.g. one they created manually after provisioning), the
+		// scheduled run targets the same name. Empty override falls
+		// back to the row's default database. EffectiveDatabaseName
+		// centralises the picker so the two paths can't drift.
+		Database: backup.EffectiveDatabaseName(dbCreds.Database),
 		// All S3 destination fields come from the storage_providers
 		// row now. The backup row only owns the optional sub-folder
 		// (backup.Path) which we join onto the provider's default
@@ -189,6 +200,10 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 			"team_id":     j.Payload.TeamID,
 			"source":      j.Payload.Source,
 		})
+		// Fire the per-config notification (email/slack/etc.) if the
+		// user opted in via NotifyOnFailure. Best-effort — a failed
+		// notify shouldn't override the recorded failure status.
+		j.dispatchFailureNotification(ctx, backup, db, server, errMsg)
 		// Return nil so asynq doesn't auto-retry a backup that will fail
 		// the same way (bad creds, missing CLI tool). The next cron tick
 		// will re-attempt on its natural cadence.
@@ -219,6 +234,24 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		"size_bytes":  sizeBytes,
 		"source":      j.Payload.Source,
 	})
+
+	// Honour the retention cap — prune both old run rows AND their
+	// remote S3 objects. Previously only the synchronous "Run now"
+	// path enforced retention; scheduled runs leaked rows + storage
+	// forever. Best-effort: failure here doesn't fail the run because
+	// the backup itself already succeeded.
+	if backup.Retention > 0 {
+		if err := j.pruneRunsAndObjects(ctx, server, backup, s3Creds); err != nil {
+			j.Deps.Logger.Warn().Err(err).
+				Str("backup_id", backup.ID).
+				Msg("scheduled retention prune failed (run still succeeded)")
+		}
+	}
+
+	// Notifications — only fired AFTER the prune so a user inspecting
+	// the bucket from the email link sees the final state, not a
+	// transient one with stale objects.
+	j.dispatchSuccessNotification(ctx, backup, db, server, run, objectKey)
 	return nil
 }
 
@@ -391,4 +424,178 @@ func truncateForRun(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// pruneRunsAndObjects mirrors the service-side helper in
+// services/backup_service.go — the prune contract has to hold on
+// both the manual and scheduled paths, and the jobs package can't
+// import services (cycle). Best-effort: failure here doesn't fail
+// the surrounding successful run.
+//
+// Deletes BOTH the run rows past Retention AND the corresponding
+// remote S3 objects so the bucket doesn't accumulate stale dumps.
+func (j *RunBackupJob) pruneRunsAndObjects(
+	ctx context.Context,
+	server *servermodels.Server,
+	backup *models.DatabaseBackup,
+	s3Creds backupmodels.S3Credentials,
+) error {
+	if backup.Retention <= 0 {
+		return nil
+	}
+	rows, err := j.Deps.Repos.BackupRun().ListForBackup(ctx, backup.ID)
+	if err != nil {
+		return err
+	}
+	if len(rows) <= backup.Retention {
+		return nil
+	}
+	stale := rows[backup.Retention:]
+
+	objectKeys := make([]string, 0, len(stale))
+	for i := range stale {
+		if stale[i].ObjectKey != nil && *stale[i].ObjectKey != "" {
+			objectKeys = append(objectKeys, *stale[i].ObjectKey)
+		}
+	}
+
+	if len(objectKeys) > 0 {
+		cfg := tasks.PruneBackupObjectsConfig{
+			ObjectKeys: objectKeys,
+			Endpoint:   s3Creds.Endpoint,
+			Region:     s3Creds.Region,
+			Bucket:     s3Creds.Bucket,
+			AccessKey:  s3Creds.Key,
+			SecretKey:  s3Creds.Secret,
+		}
+		task := tasks.PruneBackupObjects(cfg)
+		if _, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx); err != nil {
+			return fmt.Errorf("prune remote objects: %w", err)
+		}
+	}
+
+	for i := range stale {
+		_ = j.Deps.Repos.BackupRun().Delete(ctx, stale[i].ID)
+	}
+	return nil
+}
+
+// dispatchSuccessNotification fires the per-config success
+// notification when the user opted in via NotifyOnSuccess. The
+// notification routes via the TaskRunnerDeps.Notifier (email + Slack
+// + Discord + Telegram per the team's configured channels). No-op if
+// the flag is off or no Notifier is wired (test runs, partial bring-
+// up). The team's enabled channels decide which transports fire.
+func (j *RunBackupJob) dispatchSuccessNotification(
+	ctx context.Context,
+	backup *models.DatabaseBackup,
+	db *models.Database,
+	server *servermodels.Server,
+	run *models.DatabaseBackupRun,
+	objectKey string,
+) {
+	if !backup.NotifyOnSuccess {
+		return
+	}
+	notifier := j.Deps.TaskRunnerDeps.Notifier
+	if notifier == nil {
+		return
+	}
+
+	projectName := j.lookupProjectName(ctx, backup.TeamID, j.Payload.ProjectID, j.Payload.ServerID)
+	providerLabel := j.lookupStorageProviderLabel(ctx, backup.StorageProviderID, backup.TeamID)
+
+	notif := dockernotifications.
+		NewDatabaseBackupSucceededNotification(db.Name, projectName, server.Name, string(db.Engine)).
+		WithObjectKey(objectKey).
+		WithStorageProvider(providerLabel).
+		WithSource(notificationSource(j.Payload.Source))
+	if run.SizeBytes != nil {
+		notif.WithSizeBytes(*run.SizeBytes)
+	}
+
+	if err := notifier.SendToTeam(ctx, backup.TeamID, notif); err != nil {
+		j.Deps.Logger.Warn().Err(err).
+			Str("backup_id", backup.ID).
+			Msg("failed to send backup success notification")
+	}
+}
+
+// dispatchFailureNotification fires the per-config failure
+// notification when the user opted in via NotifyOnFailure (default
+// true). Same routing as success; the error output is truncated for
+// readability by the notification's WithError helper.
+func (j *RunBackupJob) dispatchFailureNotification(
+	ctx context.Context,
+	backup *models.DatabaseBackup,
+	db *models.Database,
+	server *servermodels.Server,
+	errOutput string,
+) {
+	if !backup.NotifyOnFailure {
+		return
+	}
+	notifier := j.Deps.TaskRunnerDeps.Notifier
+	if notifier == nil {
+		return
+	}
+
+	projectName := j.lookupProjectName(ctx, backup.TeamID, j.Payload.ProjectID, j.Payload.ServerID)
+	providerLabel := j.lookupStorageProviderLabel(ctx, backup.StorageProviderID, backup.TeamID)
+
+	notif := dockernotifications.
+		NewDatabaseBackupFailedNotification(db.Name, projectName, server.Name, string(db.Engine)).
+		WithError(errOutput).
+		WithStorageProvider(providerLabel).
+		WithSource(notificationSource(j.Payload.Source))
+
+	if err := notifier.SendToTeam(ctx, backup.TeamID, notif); err != nil {
+		j.Deps.Logger.Warn().Err(err).
+			Str("backup_id", backup.ID).
+			Msg("failed to send backup failure notification")
+	}
+}
+
+// lookupProjectName resolves a project name for notification copy.
+// Falls back to empty string on any error — the notification renders
+// "—" in that slot rather than crashing. Cheap query (PK on
+// projectID); we don't bother caching across notifications.
+func (j *RunBackupJob) lookupProjectName(ctx context.Context, teamID, projectID, serverID string) string {
+	if projectID == "" {
+		return ""
+	}
+	p, err := j.Deps.Repos.Project().FindByIDAndTeamServer(ctx, projectID, teamID, serverID)
+	if err != nil || p == nil {
+		return ""
+	}
+	return p.Name
+}
+
+// lookupStorageProviderLabel resolves a human label for the linked
+// storage_providers row. The notification body shows it so users can
+// see "uploaded to Contabo Storage" instead of a numeric ID.
+func (j *RunBackupJob) lookupStorageProviderLabel(ctx context.Context, providerID uint64, teamID string) string {
+	if j.Deps.BackupRepos == nil {
+		return ""
+	}
+	p, err := j.Deps.BackupRepos.StorageProvider().FindStorageProviderByID(ctx, providerID)
+	if err != nil || p == nil || p.TeamID != teamID {
+		return ""
+	}
+	if p.Label == nil {
+		return ""
+	}
+	return *p.Label
+}
+
+// notificationSource normalises the asynq payload Source field into
+// a human-friendly tag for the notification body. Empty defaults to
+// "schedule" because manual runs are dispatched via the service
+// (which doesn't currently hit this notification path); future
+// async-manual runs can pass "manual".
+func notificationSource(s string) string {
+	if s == "" {
+		return "schedule"
+	}
+	return s
 }

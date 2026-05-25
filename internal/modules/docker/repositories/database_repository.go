@@ -73,6 +73,24 @@ func (r *DatabaseRepository) ListForProject(
 	return rows, err
 }
 
+// ListForServer returns every docker database on a single server,
+// scoped to the caller's team. Used by the restore-target picker —
+// the dialog needs a flat list across all projects (most "restore
+// prod → staging" workflows put those rows in DIFFERENT projects).
+//
+// Sorted by name so the dropdown reads in a stable alphabetical
+// order regardless of which user created the rows when.
+func (r *DatabaseRepository) ListForServer(
+	ctx context.Context, teamID, serverID string,
+) ([]models.Database, error) {
+	var rows []models.Database
+	err := r.DB.WithContext(ctx).
+		Where("team_id = ? AND server_id = ?", teamID, serverID).
+		Order("name ASC").
+		Find(&rows).Error
+	return rows, err
+}
+
 func (r *DatabaseRepository) ExistsByNameInProject(
 	ctx context.Context, projectID, name, excludeID string,
 ) (bool, error) {

@@ -132,18 +132,171 @@ func TestRestoreBackupScript_PerEngineIngest(t *testing.T) {
 	}
 }
 
-func TestRestoreBackupScript_RedisRejected(t *testing.T) {
-	// Redis restore via mongorestore-equivalent doesn't exist — the
-	// .rdb file swap needs a container stop+start dance we haven't
-	// shipped. Confirm the script explicitly fails rather than running
-	// some "best-effort" cargo-culted command.
-	script := RestoreBackupScript(RestoreBackupConfig{
-		Engine: dockertypes.DatabaseEngineRedis,
+// --- Mongo --db override ------------------------------------------------
+
+func TestRunBackupScript_MongoDump_NoDatabase_OmitsDbFlag(t *testing.T) {
+	// Empty Database → full-instance dump. The --db flag must NOT
+	// appear in the rendered command. Regression guard: an earlier
+	// implementation always passed cfg.Database to mongodump, so a
+	// blank value rendered "--db=" which mongodump rejects.
+	script := RunBackupScript(BackupRunConfig{
+		RunID:         "01HZ",
+		ContainerName: "launch-db-x",
+		Engine:        dockertypes.DatabaseEngineMongo,
+		Username:      "u",
+		Password:      "p",
+		Database:      "", // un-overridden
+		Bucket:        "b",
+		AccessKey:     "AK",
+		SecretKey:     "SK",
 	})
-	if !strings.Contains(script, "redis restore is not yet supported") {
-		t.Errorf("redis restore must explicitly say it's unsupported, got:\n%s", script)
+	if !strings.Contains(script, "mongodump") {
+		t.Fatalf("mongo backup must invoke mongodump, got:\n%s", script)
 	}
-	if !strings.Contains(script, "exit 1") {
-		t.Errorf("redis restore script must exit 1")
+	if strings.Contains(script, "--db=") {
+		t.Errorf("mongo dump without database override must not pass --db=, got:\n%s", script)
+	}
+}
+
+func TestRunBackupScript_MongoDump_WithDatabase_AddsDbFlag(t *testing.T) {
+	// Database override → mongodump targets that specific DB. Without
+	// this filter the full-instance archive ignores the user's choice
+	// — exactly the bug the database_name field was added to fix.
+	script := RunBackupScript(BackupRunConfig{
+		RunID:         "01HZ",
+		ContainerName: "launch-db-x",
+		Engine:        dockertypes.DatabaseEngineMongo,
+		Username:      "u",
+		Password:      "p",
+		Database:      "analytics",
+		Bucket:        "b",
+		AccessKey:     "AK",
+		SecretKey:     "SK",
+	})
+	if !strings.Contains(script, "--db=analytics") {
+		t.Errorf("mongo dump with database=analytics must pass --db=analytics, got:\n%s", script)
+	}
+}
+
+func TestRestoreBackupScript_Mongo_WithDatabase_AddsNsInclude(t *testing.T) {
+	// Restore side mirrors backup side: when the config has a database
+	// override the mongorestore command filters via --nsInclude.
+	script := RestoreBackupScript(RestoreBackupConfig{
+		RunID:         "01HZ",
+		ContainerName: "launch-db-x",
+		Engine:        dockertypes.DatabaseEngineMongo,
+		Username:      "u",
+		Password:      "p",
+		Database:      "analytics",
+		Bucket:        "b",
+		ObjectKey:     "analytics/2026-01-01/01HZ.bson.gz",
+		AccessKey:     "AK",
+		SecretKey:     "SK",
+	})
+	// shellEscapeArg single-quotes the value because of the dot.
+	// We check substring match either way (with or without quoting)
+	// so a future change to the escape policy doesn't break this test.
+	if !strings.Contains(script, "--nsInclude=analytics.*") &&
+		!strings.Contains(script, "--nsInclude='analytics.*'") {
+		t.Errorf("mongo restore with database=analytics must pass --nsInclude=analytics.*, got:\n%s", script)
+	}
+}
+
+// --- Redis restore (the docker stop / cp / start flow) -----------------
+
+func TestRestoreBackupScript_Redis_StopCopyStart(t *testing.T) {
+	// Redis restore previously was a stub. The new flow stops the
+	// container, copies the unzipped dump.rdb in via `docker cp`, and
+	// starts the container back up. Pin those three commands so a
+	// well-meaning refactor can't silently revert to the stub.
+	script := RestoreBackupScript(RestoreBackupConfig{
+		RunID:         "01HZ",
+		ContainerName: "launch-db-redis",
+		Engine:        dockertypes.DatabaseEngineRedis,
+		Bucket:        "b",
+		ObjectKey:     "cache/2026-01-01/01HZ.rdb.gz",
+		AccessKey:     "AK",
+		SecretKey:     "SK",
+	})
+
+	mustContain := []string{
+		`docker stop "${CONTAINER}"`,
+		`docker cp "${TMP_UNZIP}" "${CONTAINER}:/data/dump.rdb"`,
+		`docker start "${CONTAINER}"`,
+		`gunzip -c "${TMP_FILE}" > "${TMP_UNZIP}"`,
+	}
+	for _, want := range mustContain {
+		if !strings.Contains(script, want) {
+			t.Errorf("redis restore script missing %q\n----\n%s", want, script)
+		}
+	}
+	// And make sure the stub error string is GONE — otherwise the
+	// restore would still fail at runtime even though the new flow
+	// would also be present.
+	if strings.Contains(script, "redis restore is not yet supported") {
+		t.Errorf("redis restore stub string must be removed")
+	}
+}
+
+// --- PruneBackupObjects ------------------------------------------------
+
+func TestPruneBackupObjectsScript_EmptyList_RendersEmpty(t *testing.T) {
+	// No-op short-circuit: zero keys → empty script (no SSH call).
+	// The service caller relies on this to skip dispatch when there's
+	// nothing to prune.
+	got := PruneBackupObjectsScript(PruneBackupObjectsConfig{
+		Bucket:    "b",
+		AccessKey: "AK",
+		SecretKey: "SK",
+	})
+	if got != "" {
+		t.Errorf("empty key list must render empty script, got:\n%s", got)
+	}
+}
+
+func TestPruneBackupObjectsScript_RendersOneRmPerKey(t *testing.T) {
+	got := PruneBackupObjectsScript(PruneBackupObjectsConfig{
+		ObjectKeys: []string{
+			"acme/2026-01-01/01HA.sql.gz",
+			"acme/2026-01-02/01HB.sql.gz",
+		},
+		Bucket:    "mybucket",
+		Endpoint:  "https://eu-central.contabostorage.com",
+		AccessKey: "AK",
+		SecretKey: "SK",
+	})
+	if !strings.Contains(got, `aws s3 rm "s3://mybucket/acme/2026-01-01/01HA.sql.gz"`) {
+		t.Errorf("prune script missing rm for first key, got:\n%s", got)
+	}
+	if !strings.Contains(got, `aws s3 rm "s3://mybucket/acme/2026-01-02/01HB.sql.gz"`) {
+		t.Errorf("prune script missing rm for second key, got:\n%s", got)
+	}
+	if !strings.Contains(got, "--endpoint-url=") {
+		t.Errorf("prune script must propagate --endpoint-url when set, got:\n%s", got)
+	}
+	// `set -e` is DELIBERATELY absent so one missing key doesn't halt
+	// the whole sweep. This is the exact "loop continues past per-key
+	// failures" property that documents the best-effort semantic.
+	if strings.Contains(got, "set -euo") {
+		t.Errorf("prune script must use `set -uo pipefail`, NOT `set -euo` — one missing key shouldn't abort, got:\n%s", got)
+	}
+}
+
+func TestPruneBackupObjectsScript_KeysAreLoggedViaMarkers(t *testing.T) {
+	// The service caller doesn't currently parse these markers, but
+	// they're the only audit trail of which keys we attempted to
+	// delete — invaluable when debugging "the bucket has 200 objects
+	// but only 50 run rows".
+	got := PruneBackupObjectsScript(PruneBackupObjectsConfig{
+		ObjectKeys: []string{"acme/2026-01-01/01HA.sql.gz"},
+		Bucket:     "b",
+		AccessKey:  "AK",
+		SecretKey:  "SK",
+	})
+	if !strings.Contains(got, "::LAUNCH::prune_key::") {
+		t.Errorf("prune script must emit per-key markers, got:\n%s", got)
+	}
+	if !strings.Contains(got, "::LAUNCH::prune_step::done") {
+		t.Errorf("prune script must emit done marker, got:\n%s", got)
 	}
 }
