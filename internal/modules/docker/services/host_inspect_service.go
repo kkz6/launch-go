@@ -73,31 +73,53 @@ type NetworkInfo struct {
 	System bool   `json:"system"`
 }
 
-// isLaunchSystemName matches the names we set on containers/volumes/
-// networks that Launch installs as part of provisioning. Mirrors
-// dokploy's `name.includes("dokploy")` rule.
+// launchSystemContainerNames is the explicit allow-list of container
+// names Launch owns. Marked `system: true` in the host-inspect output
+// so the Containers tab can hide them behind the "Show system" toggle.
 //
-// Naming convention to keep this honest:
-//   - System containers: `launch-<service>` (e.g. launch-traefik)
-//   - User app containers: `launch-app-<project>-<name>` (NOT system)
-//   - User database containers: `launch-db-<project>-<name>` (NOT system)
+// Allow-list (not deny-list) because the actual customer-workload
+// naming clashes with the deny-list patterns:
 //
-// We classify only what starts with `launch-` AND is NOT one of those
-// user prefixes. Anything outside the `launch-` namespace is user-
-// supplied even if it happens to contain the substring.
+//	app:     launch-<project>-<app>          (see tasks.ContainerNameFor)
+//	db:      launch-db-<project>-<db>        (see tasks.DatabaseContainerName)
+//	compose: <project>-<compose>-<svc>-<n>   (no launch- prefix)
+//
+// The earlier "anything launch-* that doesn't start with app-/db-/…"
+// rule mis-classified every application container as system because
+// app names happen to start with `launch-` but lack the `app-`
+// segment the rule expected. An allow-list is unambiguous: adding a
+// new control-plane container is a one-line edit here.
+//
+// Add new entries when introducing a new system container — e.g. a
+// monitoring or log-shipper sidecar.
+var launchSystemContainerNames = map[string]struct{}{
+	// Reverse proxy installed during docker-server provisioning.
+	// Constant lives in modules/server/tasks/docker_constants.go;
+	// duplicated here to avoid a cross-module import cycle.
+	"launch-traefik": {},
+}
+
+// launchSystemPrefixes lists name prefixes (NOT a wildcard match) for
+// Launch-owned containers/volumes/networks whose full names we don't
+// know upfront. Empty for now — kept as the extensibility hook so the
+// caller below stays readable when we add e.g. a `launch-buildkit-*`
+// pool in the future. Do NOT add `launch-` here — that catches every
+// app container (see comment on launchSystemContainerNames).
+var launchSystemPrefixes = []string{}
+
+// isLaunchSystemName reports whether `name` belongs to a Launch-owned
+// container/volume/network (so the UI should hide it behind the
+// "Show system" toggle).
 func isLaunchSystemName(name string) bool {
-	if !strings.HasPrefix(name, "launch-") {
-		return false
+	if _, ok := launchSystemContainerNames[name]; ok {
+		return true
 	}
-	rest := strings.TrimPrefix(name, "launch-")
-	switch {
-	case strings.HasPrefix(rest, "app-"),
-		strings.HasPrefix(rest, "db-"),
-		strings.HasPrefix(rest, "compose-"),
-		strings.HasPrefix(rest, "build-"):
-		return false
+	for _, p := range launchSystemPrefixes {
+		if strings.HasPrefix(name, p) {
+			return true
+		}
 	}
-	return true
+	return false
 }
 
 // dockerBuiltinNetworks: docker's three default networks. Marked
