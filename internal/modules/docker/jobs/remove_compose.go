@@ -20,8 +20,16 @@ import (
 const TypeRemoveCompose = "docker:remove_compose"
 
 // RemoveComposePayload — IDs only plus the resolved project name
-// (compose's `--project-name` arg). Same rationale as the app
-// version: avoids Unscoped queries.
+// (the compose project label `com.docker.compose.project`) and the
+// individual project + compose slugs so the teardown script can
+// also clean up the on-disk stack dir + Traefik dynamic-config file.
+// Same rationale as the app version: avoids Unscoped queries.
+//
+// ProjectSlug + ComposeSlug were added when the teardown was
+// rewritten to use docker labels — the old script tried to invoke
+// `docker compose down` without the compose file in cwd, which
+// silently no-op'd and left containers running. See the comment at
+// the top of tasks/remove_compose.go for the full history.
 type RemoveComposePayload struct {
 	ComposeID string `json:"compose_id"`
 	ProjectID string `json:"project_id"`
@@ -30,10 +38,16 @@ type RemoveComposePayload struct {
 	// ProjectName is `<project-slug>-<compose-slug>` — the label
 	// docker compose used at deploy time.
 	ProjectName string `json:"project_name"`
-	// RemoveVolumes flips `docker compose down` ↔ `down -v`. False by
-	// default — preserves named volumes so a fat-fingered Delete
-	// doesn't destroy persistent data. The UI surfaces this as an
-	// opt-in checkbox on the Delete confirmation dialog.
+	// ProjectSlug + ComposeSlug let the teardown clean up the
+	// per-stack directory under /var/lib/launch/projects/… and the
+	// per-compose Traefik config file. Both empty for old queued
+	// payloads (the script falls back to containers/networks only).
+	ProjectSlug string `json:"project_slug"`
+	ComposeSlug string `json:"compose_slug"`
+	// RemoveVolumes flips whether named volumes are deleted along
+	// with containers + networks. False by default — preserves data
+	// across an accidental Delete. The UI surfaces this as an opt-in
+	// checkbox on the Delete confirmation dialog.
 	RemoveVolumes bool `json:"remove_volumes"`
 }
 
@@ -65,10 +79,15 @@ func (j *RemoveComposeJob) Handle(ctx context.Context) error {
 
 	task := taskrunner.NewBaseTask(
 		taskrunner.WithName("Remove compose stack"),
-		taskrunner.WithScript(tasks.RemoveComposeScript(j.Payload.ProjectName, j.Payload.RemoveVolumes)),
-		// `docker compose down -v --remove-orphans` is bounded but a
-		// large stack with slow shutdown hooks can take a minute. Use
-		// 3 minutes to give it room without hanging asynq forever.
+		taskrunner.WithScript(tasks.RemoveComposeScript(
+			j.Payload.ProjectName,
+			j.Payload.ProjectSlug,
+			j.Payload.ComposeSlug,
+			j.Payload.RemoveVolumes,
+		)),
+		// Label-based teardown is fast (a few "docker rm" calls). 3
+		// minutes is plenty even for a 10-service stack and gives
+		// asynq's retry policy a sane bound.
 		taskrunner.WithTimeoutSeconds(180),
 	)
 	result, runErr := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
@@ -99,8 +118,18 @@ func (j *RemoveComposeJob) Failed(ctx context.Context, err error) {
 		Msg("compose removal permanently failed — stack may still be running")
 }
 
+// NewRemoveComposeTask builds the asynq Task for compose teardown.
+//
+// projectName is the docker compose project label
+// (<projectSlug>-<composeSlug>). projectSlug and composeSlug are
+// passed SEPARATELY so the script can reconstruct the on-disk paths
+// for stack-dir + Traefik-config cleanup — joining them with "-"
+// would be lossy (project names can contain hyphens). Either slug
+// may be empty; the script falls back to containers/networks-only
+// cleanup in that case.
 func NewRemoveComposeTask(
-	composeID, projectID, serverID, teamID, projectName string,
+	composeID, projectID, serverID, teamID,
+	projectName, projectSlug, composeSlug string,
 	removeVolumes bool,
 ) (*asynq.Task, error) {
 	return pkgjobs.TaskWithID(TypeRemoveCompose, RemoveComposePayload{
@@ -109,6 +138,8 @@ func NewRemoveComposeTask(
 		ServerID:      serverID,
 		TeamID:        teamID,
 		ProjectName:   projectName,
+		ProjectSlug:   projectSlug,
+		ComposeSlug:   composeSlug,
 		RemoveVolumes: removeVolumes,
 	}, pkgjobs.Dedup("docker-remove-compose", composeID))
 }

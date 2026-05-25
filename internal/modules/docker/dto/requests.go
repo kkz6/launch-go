@@ -309,8 +309,15 @@ type SetDatabaseExposeRequest struct {
 // S3 credentials on this endpoint anymore — that pattern duplicated
 // secrets per-database and made cred rotation a nightmare.
 type ConfigureBackupRequest struct {
-	StorageProviderID uint64  `json:"storage_provider_id" validate:"required,min=1"`
-	Path              *string `json:"path,omitempty" validate:"omitempty,max=255"`
+	StorageProviderID uint64 `json:"storage_provider_id" validate:"required,min=1"`
+	// DatabaseName optionally overrides which database INSIDE the engine
+	// the dump command targets. Empty / nil falls back to the database
+	// provisioned with the docker_databases row. Use this when the user
+	// has manually created extra databases on the engine (Postgres /
+	// MySQL / MariaDB CREATE DATABASE) and wants one of those backed up
+	// instead of — or in addition to — the row's default.
+	DatabaseName *string `json:"database_name,omitempty" validate:"omitempty,max=64"`
+	Path         *string `json:"path,omitempty" validate:"omitempty,max=255"`
 	// Retention is the number of past run rows + remote objects to
 	// keep. Defaults to 10 in the migration; min 1 here so the worker
 	// always has something to prune.
@@ -321,9 +328,23 @@ type ConfigureBackupRequest struct {
 	Enabled         bool    `json:"enabled"`
 }
 
-// RestoreBackupRequest identifies which past run to restore from.
+// RestoreBackupRequest identifies which past run to restore from, and
+// optionally redirects the restore to a different database than the
+// one the backup originated from.
+//
+// `target_database_id` is intentionally a *docker_databases ID* (not a
+// raw engine database name) — that way the service can re-resolve the
+// real container + credentials + engine on the backend, instead of
+// trusting a string from the client. Empty means "restore into the
+// source database" (today's behaviour, preserved for backwards-compat
+// with the existing single-button restore call).
+//
+// Same-server + same-engine constraints are enforced server-side:
+// you can restore a Postgres backup of `prod` to a Postgres `staging`
+// row, but you can't cross engines or jump to another server.
 type RestoreBackupRequest struct {
-	RunID string `json:"run_id" validate:"required"`
+	RunID            string  `json:"run_id" validate:"required"`
+	TargetDatabaseID *string `json:"target_database_id,omitempty" validate:"omitempty,len=26"`
 }
 
 // CreateScheduleRequest adds a cron-style task that runs a command
@@ -473,6 +494,28 @@ type CreateDomainRequest struct {
 	// path ignores this field. Required at the compose service layer
 	// (rejected when missing/empty).
 	ServiceName *string `json:"service_name,omitempty" validate:"omitempty,min=1,max=255"`
+}
+
+// PurgeComposeResourcesRequest drives the server-level orphan cleanup
+// endpoint (POST /servers/:id/docker/purge-compose-resources).
+//
+// Use case: a compose stack was deleted from the UI but the containers
+// are still running on the host because the old teardown script
+// silently no-op'd (the "docker compose down without a compose file"
+// bug). The endpoint re-queues the label-based RemoveComposeJob for
+// any given project name, bypassing the now-missing DB row.
+//
+// ProjectName is the `com.docker.compose.project` label value the
+// containers carry (e.g. "test-testing-compose"). ProjectSlug and
+// ComposeSlug are the individual path segments used for stack-dir +
+// Traefik-config cleanup; both optional — the script falls back to
+// containers/networks only if they're empty. RemoveVolumes opts in
+// to wiping named volumes (default false = preserve data).
+type PurgeComposeResourcesRequest struct {
+	ProjectName   string `json:"project_name" validate:"required,min=1,max=255"`
+	ProjectSlug   string `json:"project_slug,omitempty" validate:"omitempty,max=255"`
+	ComposeSlug   string `json:"compose_slug,omitempty" validate:"omitempty,max=255"`
+	RemoveVolumes bool   `json:"remove_volumes"`
 }
 
 // UpdateDomainRequest allows toggling per-domain config without
