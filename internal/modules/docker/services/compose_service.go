@@ -344,15 +344,21 @@ func (s *ComposeService) DeleteCompose(
 		return fiberutil.NotFound()
 	}
 
-	// Only compute the project name if the stack actually deployed.
-	// Otherwise the down task is a no-op the job will short-circuit.
+	// Resolve slugs unconditionally — the remove script uses them for
+	// the stack-dir + traefik-config cleanup paths even when the
+	// stack was never deployed (those paths might exist from a
+	// previous deploy that was later rolled back).
+	projectSlug := tasks.SlugFromName(project.Name)
+	composeSlug := tasks.SlugFromName(c.Name)
+
+	// composeProjectName drives the docker-label teardown (the
+	// com.docker.compose.project label every container carries).
+	// Skip when the stack was never deployed — no containers can
+	// exist on the host yet, so the job's container-removal step
+	// would just emit "no containers" noise.
 	var composeProjectName string
 	if c.LastDeployedAt != nil {
-		composeProjectName = fmt.Sprintf(
-			"%s-%s",
-			tasks.SlugFromName(project.Name),
-			tasks.SlugFromName(c.Name),
-		)
+		composeProjectName = fmt.Sprintf("%s-%s", projectSlug, composeSlug)
 	}
 
 	if err := s.Repos().Compose().Delete(ctx, id); err != nil {
@@ -360,7 +366,9 @@ func (s *ComposeService) DeleteCompose(
 	}
 
 	if rmTask, err := jobs.NewRemoveComposeTask(
-		c.ID, c.ProjectID, c.ServerID, c.TeamID, composeProjectName, removeVolumes,
+		c.ID, c.ProjectID, c.ServerID, c.TeamID,
+		composeProjectName, projectSlug, composeSlug,
+		removeVolumes,
 	); err == nil {
 		if enqErr := s.EnqueueTask(rmTask); enqErr != nil {
 			s.LogError(enqErr, "failed to dispatch compose removal", "compose_id", c.ID)
@@ -373,6 +381,52 @@ func (s *ComposeService) DeleteCompose(
 		"project_id": c.ProjectID,
 		"server_id":  c.ServerID,
 		"team_id":    c.TeamID,
+	})
+	return nil
+}
+
+// PurgeComposeResources re-queues the label-based compose teardown
+// for an already-deleted (or otherwise absent) stack. Normal use case:
+// a compose was deleted while the old broken teardown script was in
+// place, leaving containers running on the host. The DB row is gone,
+// so the normal DeleteCompose path can't be used — this method
+// accepts the project name (the com.docker.compose.project label
+// value) and the optional path slugs and enqueues the same
+// RemoveComposeJob that DeleteCompose would have dispatched.
+//
+// The server is looked up by ID + team so the endpoint can't be used
+// across teams. A synthetic compose ID ("purge-<projectName>") is
+// passed so the job's broadcast payload carries something identifiable
+// in the server log, even though no DB row backs it.
+func (s *ComposeService) PurgeComposeResources(
+	ctx context.Context,
+	serverID, teamID string,
+	req *dto.PurgeComposeResourcesRequest,
+) error {
+	if _, err := s.ServerRepos().Server().FindByIDAndTeam(ctx, serverID, teamID); err != nil {
+		return fiberutil.NotFound()
+	}
+
+	syntheticID := fmt.Sprintf("purge-%s", req.ProjectName)
+	if rmTask, err := jobs.NewRemoveComposeTask(
+		syntheticID, "", serverID, teamID,
+		req.ProjectName,
+		req.ProjectSlug,
+		req.ComposeSlug,
+		req.RemoveVolumes,
+	); err == nil {
+		if enqErr := s.EnqueueTask(rmTask); enqErr != nil {
+			return fmt.Errorf("enqueue purge job: %w", enqErr)
+		}
+	} else {
+		return fmt.Errorf("build purge task: %w", err)
+	}
+
+	s.BroadcastToTeam(teamID, "docker.compose.removed", map[string]any{
+		"compose_id": syntheticID,
+		"project_id": "",
+		"server_id":  serverID,
+		"team_id":    teamID,
 	})
 	return nil
 }

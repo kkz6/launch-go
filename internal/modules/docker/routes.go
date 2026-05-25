@@ -1619,6 +1619,58 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		})...,
 	)
 
+	// Server-level docker database listing. Spans every project on
+	// the server so the restore dialog can show "all candidate target
+	// databases" in one dropdown (a typical restore points prod →
+	// staging where those rows usually live in DIFFERENT projects).
+	router.Get(
+		"/servers/:serverId/docker/databases",
+		append(auth, func(c *gofiber.Ctx) error {
+			teamID, err := fiberutil.MustGetTeamID(c)
+			if err != nil {
+				return err
+			}
+			rows, err := m.newDatabaseService().ListDatabasesForServer(
+				c.Context(), c.Params("serverId"), teamID,
+			)
+			if err != nil {
+				return err
+			}
+			return fiberutil.OK(c, "Server databases retrieved", rows)
+		})...,
+	)
+
+	// Purge orphaned compose resources — queues the same label-based
+	// RemoveComposeJob as the normal delete flow, but driven by project
+	// name alone (no live compose row needed). Intended for cleanup of
+	// stacks that were deleted while the old broken teardown script was
+	// in place, leaving containers running on the host.
+	//
+	// Separate from the compose CRUD group because no projectId is
+	// needed — the caller supplies the project name directly (the
+	// com.docker.compose.project label value). Sits at the server level
+	// so it can't be confused with the per-compose delete endpoint.
+	hostGroup2 := router.Group("/servers/:serverId/docker", auth...)
+	hostGroup2.Post("/purge-compose-resources", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.PurgeComposeResourcesRequest](c)
+		if err != nil {
+			return err
+		}
+		if err := composeSvc.PurgeComposeResources(
+			c.Context(),
+			c.Params("serverId"),
+			teamID,
+			req,
+		); err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Cleanup job queued", nil)
+	})
+
 	// Server-host diagnostic endpoints — read-only views over
 	// `docker ps`, `docker volume ls`, `docker network ls`, and
 	// the on-disk Traefik config. Behind the same auth + provisioned-
