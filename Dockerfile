@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1.7
 # Build stage
 FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
 
@@ -9,17 +10,36 @@ RUN apk add --no-cache git ca-certificates tzdata
 
 WORKDIR /app
 
-# Copy go mod files
+# Module cache lives at /go/pkg/mod; the build cache at /root/.cache/go-build.
+# BuildKit `--mount=type=cache` keeps these directories outside the layer
+# hash, so they survive across builds even when COPY . . invalidates the
+# layer above. Result: the Go compiler reuses .a files for unchanged
+# packages, so a small source edit recompiles in seconds instead of minutes.
+
+# Copy go mod files first — when go.mod/go.sum don't change, the download
+# step is a clean cache hit at the Docker layer level too.
 COPY go.mod go.sum ./
-RUN go mod download
+RUN --mount=type=cache,target=/go/pkg/mod \
+    go mod download
 
 # Copy source code
 COPY . .
 
-# Build binaries for target platform
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-w -s -X main.Version=${VERSION}" -o /api ./cmd/api
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-w -s" -o /worker ./cmd/worker
-RUN CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} go build -ldflags="-w -s" -o /migrate ./cmd/migrate
+# Build binaries for target platform.
+# Each build shares the same cache mounts; the second and third
+# builds reuse compilations from the first.
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -ldflags="-w -s -X main.Version=${VERSION}" -o /api ./cmd/api
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -ldflags="-w -s" -o /worker ./cmd/worker
+RUN --mount=type=cache,target=/root/.cache/go-build \
+    --mount=type=cache,target=/go/pkg/mod \
+    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
+    go build -ldflags="-w -s" -o /migrate ./cmd/migrate
 
 # Final stage
 FROM alpine:3.21
