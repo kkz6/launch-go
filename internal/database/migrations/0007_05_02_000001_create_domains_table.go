@@ -25,7 +25,7 @@ type domainMigration struct {
 	Label            string     `gorm:"type:varchar(255);not null"`
 	Address          string     `gorm:"type:varchar(255);not null"`
 	ProviderID       string     `gorm:"column:provider_id;type:varchar(255);not null"`
-	AdditionalData   *string    `gorm:"column:additional_data;type:json"`
+	AdditionalData   *string    `gorm:"column:additional_data;type:jsonb"`
 	CreatedAt        *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt        *time.Time `gorm:"type:timestamp null"`
 }

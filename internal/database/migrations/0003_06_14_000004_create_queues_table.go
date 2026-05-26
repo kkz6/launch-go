@@ -43,7 +43,7 @@ type queueMigration struct {
 	RunWithListen             bool       `gorm:"column:run_with_listen;default:false"`
 	LastStatusCheck           *time.Time `gorm:"column:last_status_check;type:timestamp null"`
 	Running                   bool       `gorm:"default:false"`
-	Info                      *string    `gorm:"type:json"`
+	Info                      *string    `gorm:"type:jsonb"`
 	InstalledAt               *time.Time `gorm:"column:installed_at;type:timestamp null"`
 	InstallationFailedAt      *time.Time `gorm:"column:installation_failed_at;type:timestamp null"`
 	UninstallationRequestedAt *time.Time `gorm:"column:uninstallation_requested_at;type:timestamp null"`

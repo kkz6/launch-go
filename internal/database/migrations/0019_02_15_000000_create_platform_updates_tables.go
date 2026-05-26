@@ -23,7 +23,7 @@ type platformUpdateMigration struct {
 	Title       string     `gorm:"type:varchar(255);not null"`
 	Description string     `gorm:"type:text;not null"`
 	Severity    string     `gorm:"type:varchar(50);not null;default:'info'"`
-	ServerTypes *string    `gorm:"type:json"`
+	ServerTypes *string    `gorm:"type:jsonb"`
 	CreatedAt   *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt   *time.Time `gorm:"type:timestamp null"`
 }

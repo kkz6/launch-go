@@ -26,7 +26,7 @@ type sourceControlRepositoryMigration struct {
 	SSHURL          string  `gorm:"column:ssh_url;type:varchar(255);not null"`
 	DefaultBranch   string  `gorm:"column:default_branch;type:varchar(255);not null"`
 	HTMLURL         *string `gorm:"column:html_url;type:varchar(255)"`
-	AdditionalData  *string `gorm:"column:additional_data;type:json"`
+	AdditionalData  *string `gorm:"column:additional_data;type:jsonb"`
 }
 
 func (sourceControlRepositoryMigration) TableName() string {

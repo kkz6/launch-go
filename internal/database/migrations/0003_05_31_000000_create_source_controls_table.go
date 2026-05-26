@@ -29,16 +29,16 @@ type sourceControlMigration struct {
 	AvatarURL               *string    `gorm:"column:avatar_url;type:varchar(255)"`
 	HTMLURL                 *string    `gorm:"column:html_url;type:varchar(255)"`
 	InstallationID          *string    `gorm:"column:installation_id;type:varchar(255)"`
-	Permissions             *string    `gorm:"type:json"`
+	Permissions             *string    `gorm:"type:jsonb"`
 	RepositorySelection     *string    `gorm:"column:repository_selection;type:varchar(255)"`
 	HasMultipleRepositories bool       `gorm:"column:has_multiple_repositories;default:false"`
 	RepositoryCount         *int       `gorm:"column:repository_count"`
 	ConnectedAt             *time.Time `gorm:"column:connected_at;type:timestamp null"`
 	LastSyncedAt            *time.Time `gorm:"column:last_synced_at;type:timestamp null"`
-	AdditionalData          *string    `gorm:"column:additional_data;type:json"`
+	AdditionalData          *string    `gorm:"column:additional_data;type:jsonb"`
 	Provider                string     `gorm:"type:varchar(255);not null;index"` // github, gitlab, bitbucket
 	URL                     *string    `gorm:"type:varchar(255)"`
-	ProviderData            *string    `gorm:"column:provider_data;type:json"`
+	ProviderData            *string    `gorm:"column:provider_data;type:jsonb"`
 	TokenExpiresAt          *time.Time `gorm:"column:token_expires_at;type:timestamp null"`
 	CreatedAt               *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt               *time.Time `gorm:"type:timestamp null"`

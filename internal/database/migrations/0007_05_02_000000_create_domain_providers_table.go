@@ -25,7 +25,7 @@ type domainProviderMigration struct {
 	Provider         string     `gorm:"type:varchar(255);not null"`
 	Credentials      string     `gorm:"type:text;not null"` // encrypted
 	Connected        bool       `gorm:"default:true"`
-	AdditionalData   *string    `gorm:"column:additional_data;type:json"`
+	AdditionalData   *string    `gorm:"column:additional_data;type:jsonb"`
 	SyncStatus       string     `gorm:"column:sync_status;type:varchar(255);not null;default:idle"`
 	LastSyncedAt     *time.Time `gorm:"column:last_synced_at;type:timestamp null"`
 	SyncErrorMessage *string    `gorm:"column:sync_error_message;type:text"`

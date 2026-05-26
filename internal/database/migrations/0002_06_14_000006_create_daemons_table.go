@@ -28,7 +28,7 @@ type daemonMigration struct {
 	StopSignal                string     `gorm:"type:varchar(255);not null"`
 	LastStatusCheck           *time.Time `gorm:"type:timestamp null"`
 	Running                   bool       `gorm:"type:boolean;not null;default:0"`
-	Info                      *string    `gorm:"type:json"`
+	Info                      *string    `gorm:"type:jsonb"`
 	InstalledAt               *time.Time `gorm:"type:timestamp null"`
 	InstallationFailedAt      *time.Time `gorm:"type:timestamp null"`
 	UninstallationRequestedAt *time.Time `gorm:"type:timestamp null"`

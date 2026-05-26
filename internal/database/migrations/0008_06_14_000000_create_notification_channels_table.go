@@ -23,7 +23,7 @@ type notificationChannelMigration struct {
 	TeamID    string     `gorm:"column:team_id;type:char(26);not null;index"`
 	Provider  string     `gorm:"type:varchar(255);not null"`
 	Label     string     `gorm:"type:varchar(255);not null"`
-	Data      *string    `gorm:"type:json"`
+	Data      *string    `gorm:"type:jsonb"`
 	Connected bool       `gorm:"default:false"`
 	IsDefault bool       `gorm:"column:is_default;default:false"`
 	CreatedAt *time.Time `gorm:"type:timestamp null"`

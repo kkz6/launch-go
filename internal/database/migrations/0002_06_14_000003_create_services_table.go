@@ -21,7 +21,7 @@ type serviceMigration struct {
 	ID        string     `gorm:"type:char(26);primaryKey"`
 	ServerID  string     `gorm:"column:server_id;type:char(26);not null;index"`
 	Type      string     `gorm:"type:varchar(255);not null"`
-	TypeData  *string    `gorm:"type:json"`
+	TypeData  *string    `gorm:"type:jsonb"`
 	Name      string     `gorm:"type:varchar(255);not null"`
 	Version   string     `gorm:"type:varchar(255);not null"`
 	Status    string     `gorm:"type:varchar(255);not null"`

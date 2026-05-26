@@ -25,9 +25,9 @@ type passkeyMigration struct {
 	PublicKey       string     `gorm:"column:public_key;type:text;not null"`
 	SignCount       int        `gorm:"column:sign_count;type:int;not null;default:0"`
 	AAGUID          *string    `gorm:"type:varchar(255)"`
-	Transports      *string    `gorm:"type:json"`
+	Transports      *string    `gorm:"type:jsonb"`
 	Type            string     `gorm:"type:varchar(255);not null;default:public-key"`
-	AttestationData *string    `gorm:"column:attestation_data;type:json"`
+	AttestationData *string    `gorm:"column:attestation_data;type:jsonb"`
 	LastUsedAt      *time.Time `gorm:"column:last_used_at;type:timestamp null"`
 	CreatedAt       *time.Time `gorm:"type:timestamp null;index:idx_passkeys_user_created,priority:2"`
 	UpdatedAt       *time.Time `gorm:"type:timestamp null"`

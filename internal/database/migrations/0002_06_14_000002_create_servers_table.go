@@ -25,7 +25,7 @@ type serverMigration struct {
 	Name                      string     `gorm:"type:varchar(255);not null;index"`
 	Description               *string    `gorm:"type:varchar(255)"`
 	Provider                  string     `gorm:"type:varchar(255);not null"`
-	ProviderData              *string    `gorm:"type:json"`
+	ProviderData              *string    `gorm:"type:jsonb"`
 	Type                      *string    `gorm:"type:varchar(255)"`
 	Connected                 bool       `gorm:"type:boolean;not null;default:0"`
 	LaunchToken               string     `gorm:"type:varchar(32);not null"`
@@ -45,7 +45,7 @@ type serverMigration struct {
 	DatabasePassword          *string    `gorm:"type:text"`
 	SSHPort                   *int       `gorm:"column:ssh_port;type:int"`
 	WorkingDirectory          *string    `gorm:"type:varchar(255)"`
-	CompletedProvisionSteps   *string    `gorm:"type:json"`
+	CompletedProvisionSteps   *string    `gorm:"type:jsonb"`
 	ProvisionedAt             *time.Time `gorm:"type:timestamp null"`
 	UninstallationRequestedAt *time.Time `gorm:"type:timestamp null"`
 	Updates                   bool       `gorm:"type:boolean;not null;default:0"`

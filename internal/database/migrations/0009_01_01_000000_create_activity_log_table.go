@@ -24,7 +24,7 @@ type activityLogMigration struct {
 	SubjectID   *string    `gorm:"type:char(26);index"`
 	CauserType  *string    `gorm:"type:varchar(255);index"`
 	CauserID    *string    `gorm:"type:char(26);index"`
-	Properties  *string    `gorm:"type:json"`
+	Properties  *string    `gorm:"type:jsonb"`
 	Event       *string    `gorm:"type:varchar(255)"`
 	BatchUUID   *string    `gorm:"type:char(36);index"`
 	CreatedAt   *time.Time `gorm:"type:timestamp null"`

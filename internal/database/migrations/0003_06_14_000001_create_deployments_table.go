@@ -24,8 +24,8 @@ type deploymentMigration struct {
 	TaskID         *string    `gorm:"column:task_id;type:char(26);index"`
 	Status         string     `gorm:"type:varchar(255);not null"`
 	GitHash        *string    `gorm:"column:git_hash;type:varchar(255)"`
-	CommitData     *string    `gorm:"column:commit_data;type:json"`
-	VCSData        *string    `gorm:"column:vcs_data;type:json"`
+	CommitData     *string    `gorm:"column:commit_data;type:jsonb"`
+	VCSData        *string    `gorm:"column:vcs_data;type:jsonb"`
 	UserNotifiedAt *time.Time `gorm:"column:user_notified_at;type:timestamp null"`
 	CreatedAt      *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt      *time.Time `gorm:"type:timestamp null"`

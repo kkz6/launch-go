@@ -25,9 +25,9 @@ type dockerApplicationMigration struct {
 	ProjectID      string         `gorm:"column:project_id;type:char(26);not null;index"`
 	Name           string         `gorm:"type:varchar(255);not null"`
 	SourceType     string         `gorm:"column:source_type;type:varchar(32);not null"`
-	SourceConfig   *string        `gorm:"column:source_config;type:json"`
+	SourceConfig   *string        `gorm:"column:source_config;type:jsonb"`
 	BuildType      *string        `gorm:"column:build_type;type:varchar(32)"`
-	BuildConfig    *string        `gorm:"column:build_config;type:json"`
+	BuildConfig    *string        `gorm:"column:build_config;type:jsonb"`
 	Status         string         `gorm:"type:varchar(32);not null;default:idle"`
 	ContainerID    *string        `gorm:"column:container_id;type:varchar(255)"`
 	LastDeployedAt *time.Time     `gorm:"column:last_deployed_at;type:timestamp null"`
@@ -61,7 +61,7 @@ type dockerComposeMigration struct {
 	ProjectID         string         `gorm:"column:project_id;type:char(26);not null;index"`
 	Name              string         `gorm:"type:varchar(255);not null"`
 	ComposeSourceType string         `gorm:"column:compose_source_type;type:varchar(32);not null"`
-	SourceConfig      *string        `gorm:"column:source_config;type:json"`
+	SourceConfig      *string        `gorm:"column:source_config;type:jsonb"`
 	ComposeFilePath   *string        `gorm:"column:compose_file_path;type:varchar(512)"`
 	RawYAML           *string        `gorm:"column:raw_yaml;type:text"`
 	Status            string         `gorm:"type:varchar(32);not null;default:idle"`

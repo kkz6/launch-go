@@ -24,16 +24,16 @@ type siteMigration struct {
 	SourceControlID              *string    `gorm:"column:source_control_id;type:char(26);index"`
 	Address                      string     `gorm:"type:varchar(255);not null"`
 	Type                         string     `gorm:"type:varchar(255);not null;index"`
-	TypeData                     *string    `gorm:"column:type_data;type:json"`
-	VCSData                      *string    `gorm:"column:vcs_data;type:json"`
-	Aliases                      *string    `gorm:"type:json"`
+	TypeData                     *string    `gorm:"column:type_data;type:jsonb"`
+	VCSData                      *string    `gorm:"column:vcs_data;type:jsonb"`
+	Aliases                      *string    `gorm:"type:jsonb"`
 	TLSSetting                   string     `gorm:"column:tls_setting;type:varchar(255);not null;index"`
 	ZeroDowntimeDeployment       bool       `gorm:"column:zero_downtime_deployment;default:true"`
 	DeploymentReleasesRetention  int        `gorm:"column:deployment_releases_retention;default:10"`
 	AutoDeployment               bool       `gorm:"column:auto_deployment;default:false"`
 	QueueDeployments             bool       `gorm:"column:queue_deployments;default:false"`
 	AutoRestartQueue             bool       `gorm:"column:auto_restart_queue;default:false"`
-	Features                     *string    `gorm:"type:json"`
+	Features                     *string    `gorm:"type:jsonb"`
 	SourceControlRepositoriesID  *uint64    `gorm:"column:source_control_repositories_id;index"`
 	RepositoryBranch             *string    `gorm:"column:repository_branch;type:varchar(255)"`
 	DeployToken                  *string    `gorm:"column:deploy_token;type:varchar(32)"`
@@ -46,9 +46,9 @@ type siteMigration struct {
 	PHPVersion                   *string    `gorm:"column:php_version;type:varchar(255);index"`
 	PendingTLSUpdateSince        *time.Time `gorm:"column:pending_tls_update_since;type:timestamp null"`
 	PendingCaddyfileUpdateSince  *time.Time `gorm:"column:pending_caddyfile_update_since;type:timestamp null"`
-	SharedDirectories            string     `gorm:"column:shared_directories;type:json;not null"`
-	WriteableDirectories         string     `gorm:"column:writeable_directories;type:json;not null"`
-	SharedFiles                  string     `gorm:"column:shared_files;type:json;not null"`
+	SharedDirectories            string     `gorm:"column:shared_directories;type:jsonb;not null"`
+	WriteableDirectories         string     `gorm:"column:writeable_directories;type:jsonb;not null"`
+	SharedFiles                  string     `gorm:"column:shared_files;type:jsonb;not null"`
 	Port                         *int       `gorm:"type:int"`
 	Progress                     *int       `gorm:"default:0"`
 	HookBeforeUpdatingRepository *string    `gorm:"column:hook_before_updating_repository;type:text"`

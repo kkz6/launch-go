@@ -24,8 +24,8 @@ type backupMigration struct {
 	StorageProviderID         uint64     `gorm:"column:storage_provider_id;not null;index"`
 	DispatchToken             string     `gorm:"column:dispatch_token;type:varchar(32);not null"`
 	CronExpression            string     `gorm:"column:cron_expression;type:varchar(255);not null"`
-	IncludeFiles              string     `gorm:"column:include_files;type:json;not null"`
-	ExcludeFiles              string     `gorm:"column:exclude_files;type:json;not null"`
+	IncludeFiles              string     `gorm:"column:include_files;type:jsonb;not null"`
+	ExcludeFiles              string     `gorm:"column:exclude_files;type:jsonb;not null"`
 	Retention                 int        `gorm:"default:14"`
 	NotificationOnFailure     bool       `gorm:"column:notification_on_failure;default:true"`
 	NotificationOnSuccess     bool       `gorm:"column:notification_on_success;default:true"`
