@@ -271,7 +271,10 @@ func (a *Application) registerModules() {
 		a.logger.Fatal().Err(err).Msg("Failed to boot modules")
 	}
 
-	api := a.fiber.Group("/api")
+	// Routes are served at the root path. The API has its own subdomain
+	// (api.<domain>) and WebSockets have theirs (ws.<domain>), so a `/api`
+	// path prefix on top of that would be redundant.
+	api := a.fiber.Group("")
 	api.Get("/health", a.healthCheck)
 
 	authMiddleware := middleware.Auth(a.config.JWT.Secret, a.db)
@@ -297,10 +300,13 @@ func (a *Application) registerModules() {
 	// Register server routes with cross-module dependencies
 	serverModule.RegisterRoutes(api, authMiddleware, siteModule.SiteRepository())
 
-	// Boot webhook routes (at root level, no /api prefix)
+	// Boot webhook routes at the root level (uses fiber app directly so it
+	// doesn't pick up any group-level middleware).
 	a.kernel.BootWebhooks(a.fiber)
 
-	// Boot WebSocket routes (under /api prefix)
+	// Boot WebSocket routes. Served at root paths (e.g. /ws) — intended to
+	// be reached via the dedicated ws.<domain> subdomain, though they also
+	// resolve from api.<domain> since both hostnames hit the same process.
 	a.kernel.BootWebSocket(api)
 }
 
