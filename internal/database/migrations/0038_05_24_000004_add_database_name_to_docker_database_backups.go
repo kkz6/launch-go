@@ -22,13 +22,13 @@ func init() {
 //
 // Why this exists:
 //
-//   A docker_databases row represents one *engine container* (e.g. one
-//   Postgres instance) plus the default database created at provision
-//   time. Users routinely run `CREATE DATABASE` inside that engine to
-//   add more logical DBs — those were silently invisible to backups.
-//   The Create Backup dialog now exposes an optional "Database name"
-//   field; empty preserves today's behaviour (back up the row's default
-//   DB), non-empty overrides the engine-specific dump command's target.
+//	A docker_databases row represents one *engine container* (e.g. one
+//	Postgres instance) plus the default database created at provision
+//	time. Users routinely run `CREATE DATABASE` inside that engine to
+//	add more logical DBs — those were silently invisible to backups.
+//	The Create Backup dialog now exposes an optional "Database name"
+//	field; empty preserves today's behaviour (back up the row's default
+//	DB), non-empty overrides the engine-specific dump command's target.
 //
 // Nullable + no default — empty / NULL means "use the row's default".
 // 64-char width matches the credential-side database column elsewhere

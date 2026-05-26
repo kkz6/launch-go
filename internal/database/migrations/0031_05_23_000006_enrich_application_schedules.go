@@ -21,14 +21,14 @@ func init() {
 // to fire the cron without re-deriving context:
 //
 //   - enabled       BOOL    — pause without delete (dokploy
-//                             `schedule.enabled`)
+//     `schedule.enabled`)
 //   - shell_type    VARCHAR — bash vs sh, mirrors the per-container
-//                             shell picker in the terminal modal
+//     shell picker in the terminal modal
 //   - last_task_id  CHAR(26)— ULID of the server-tasks row from the
-//                             most recent run. The Schedules tab's
-//                             View Logs button reads its log path
-//                             via the existing ServerLogViewer
-//                             entity="task" stream.
+//     most recent run. The Schedules tab's
+//     View Logs button reads its log path
+//     via the existing ServerLogViewer
+//     entity="task" stream.
 func enrichApplicationSchedulesUp(db *gorm.DB) error {
 	if err := db.Exec(
 		"ALTER TABLE docker_application_schedules ADD COLUMN enabled BOOLEAN NOT NULL DEFAULT TRUE",

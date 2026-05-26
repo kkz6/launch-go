@@ -148,7 +148,7 @@ type ContainerInspect struct {
 	// Command keeps the legacy single-string summary (Cmd joined with
 	// spaces, falling back to Path + Args). The UI prefers Entrypoint
 	// + Cmd as separate arrays when available — see below.
-	Command   string `json:"command"`
+	Command    string   `json:"command"`
 	Entrypoint []string `json:"entrypoint,omitempty"`
 	Cmd        []string `json:"cmd,omitempty"`
 	// Path + Args are the *actual* exec'd binary + flags at runtime.
@@ -189,8 +189,8 @@ type ContainerInspectState struct {
 }
 
 type ContainerInspectHealth struct {
-	Status        string                       `json:"status"` // healthy / unhealthy / starting
-	FailingStreak int                          `json:"failing_streak"`
+	Status        string                      `json:"status"` // healthy / unhealthy / starting
+	FailingStreak int                         `json:"failing_streak"`
 	Log           []ContainerInspectHealthLog `json:"log,omitempty"`
 }
 
@@ -202,9 +202,9 @@ type ContainerInspectHealthLog struct {
 }
 
 type ContainerInspectResources struct {
-	MemoryLimitBytes int64   `json:"memory_limit_bytes"`
-	CPUShares        int64   `json:"cpu_shares"`
-	NanoCPUs         int64   `json:"nano_cpus"`
+	MemoryLimitBytes int64 `json:"memory_limit_bytes"`
+	CPUShares        int64 `json:"cpu_shares"`
+	NanoCPUs         int64 `json:"nano_cpus"`
 }
 
 type ContainerInspectMount struct {
@@ -224,11 +224,11 @@ type ContainerInspectNetwork struct {
 // decode. We pull only what ContainerInspect exposes — the inspect
 // output is enormous and most of it is irrelevant to the UI.
 type rawContainerInspect struct {
-	ID      string `json:"Id"`
-	Name    string `json:"Name"`
-	Image   string `json:"Image"`
-	Created string `json:"Created"`
-	Path    string `json:"Path"`
+	ID      string   `json:"Id"`
+	Name    string   `json:"Name"`
+	Image   string   `json:"Image"`
+	Created string   `json:"Created"`
+	Path    string   `json:"Path"`
 	Args    []string `json:"Args"`
 	State   struct {
 		Status     string `json:"Status"`
@@ -254,16 +254,16 @@ type rawContainerInspect struct {
 	} `json:"State"`
 	RestartCount int    `json:"RestartCount"`
 	Platform     string `json:"Platform"`
-	Config struct {
+	Config       struct {
 		Image      string            `json:"Image"`
 		Cmd        []string          `json:"Cmd"`
 		Entrypoint []string          `json:"Entrypoint"`
 		Labels     map[string]string `json:"Labels"`
 	} `json:"Config"`
 	HostConfig struct {
-		Memory     int64 `json:"Memory"`
-		CPUShares  int64 `json:"CpuShares"`
-		NanoCPUs   int64 `json:"NanoCpus"`
+		Memory        int64 `json:"Memory"`
+		CPUShares     int64 `json:"CpuShares"`
+		NanoCPUs      int64 `json:"NanoCpus"`
 		RestartPolicy struct {
 			Name string `json:"Name"`
 		} `json:"RestartPolicy"`
@@ -324,12 +324,12 @@ var containerIDPattern = regexp.MustCompile(`^[a-f0-9]{12,64}$`)
 
 func projectContainerInspect(raw rawContainerInspect) ContainerInspect {
 	out := ContainerInspect{
-		ID:           raw.ID,
-		Name:         strings.TrimPrefix(raw.Name, "/"),
-		Image:        raw.Config.Image,
+		ID:    raw.ID,
+		Name:  strings.TrimPrefix(raw.Name, "/"),
+		Image: raw.Config.Image,
 		// Strip the "sha256:" prefix docker prepends to image IDs so
 		// the UI's image-id column matches what `docker images` shows.
-		ImageID: strings.TrimPrefix(raw.Image, "sha256:"),
+		ImageID:      strings.TrimPrefix(raw.Image, "sha256:"),
 		CreatedAt:    raw.Created,
 		Platform:     raw.Platform,
 		RestartCount: raw.RestartCount,
@@ -844,7 +844,7 @@ func validateTraefikFilename(name string) error {
 		return fmt.Errorf("filename is required")
 	}
 	if strings.ContainsAny(name, "/\\") || strings.Contains(name, "..") {
-		return fmt.Errorf("filename must not contain path separators or ..")
+		return fmt.Errorf("filename must not contain path separators or parent directory references")
 	}
 	if _, excluded := traefikDynamicExcludes[name]; excluded {
 		return fmt.Errorf("filename %q is reserved", name)

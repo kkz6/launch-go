@@ -58,9 +58,9 @@ func TestParseTail_ClampsToSafeRange(t *testing.T) {
 		in   string
 		want int
 	}{
-		{"", 200},        // default
-		{"abc", 200},     // non-numeric → default
-		{"-5", 200},      // negative → default
+		{"", 200},    // default
+		{"abc", 200}, // non-numeric → default
+		{"-5", 200},  // negative → default
 		{"100", 100},
 		{"99999", 5000}, // clamped to ceiling
 	}

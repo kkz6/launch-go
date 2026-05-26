@@ -233,8 +233,8 @@ type SetEnvVarsRequest struct {
 //   - bind   → host_path required (absolute path on the docker host)
 //   - volume → name is the docker-named volume (legacy alias: "named")
 //   - file   → content + file_path required; content is written to
-//             <deploy_dir>/<file_path> on the host and bind-mounted
-//             at mount_path inside the container.
+//     <deploy_dir>/<file_path> on the host and bind-mounted
+//     at mount_path inside the container.
 type CreateVolumeRequest struct {
 	Name      string  `json:"name" validate:"required,min=1,max=255"`
 	MountPath string  `json:"mount_path" validate:"required,min=1,max=512"`

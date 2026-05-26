@@ -442,7 +442,7 @@ func (s *BackupService) Restore(
 		"backup_id":          b.ID,
 		"run_id":             run.ID,
 		"server_id":          server.ID,
-		"team_id":             teamID,
+		"team_id":            teamID,
 		"target_database_id": targetDB.ID,
 	})
 	return nil

@@ -41,8 +41,8 @@ func (dockerProjectEnvVarMigration) TableName() string {
 }
 
 type dockerProjectEnvVarWithProjectFK struct {
-	ProjectID string                   `gorm:"column:project_id"`
-	Project   *dockerProjectMigration  `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:CASCADE"`
+	ProjectID string                  `gorm:"column:project_id"`
+	Project   *dockerProjectMigration `gorm:"foreignKey:ProjectID;references:ID;constraint:OnDelete:CASCADE"`
 }
 
 func (dockerProjectEnvVarWithProjectFK) TableName() string {

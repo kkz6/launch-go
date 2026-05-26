@@ -14,10 +14,10 @@ import (
 // "<image>:<engineVersion>" so a future engine change (e.g. moving to
 // pg-bouncer-fronted Postgres) is a single struct edit.
 type engineSpec struct {
-	Image           string   // image name (no tag)
-	DefaultVersion  string   // sensible LTS-ish tag
+	Image             string // image name (no tag)
+	DefaultVersion    string // sensible LTS-ish tag
 	SupportedVersions []string
-	InternalPort    int      // the canonical port the daemon listens on
+	InternalPort      int // the canonical port the daemon listens on
 	// DataPath is the canonical in-container directory where the engine
 	// keeps its on-disk state. The run-database script bind-mounts a
 	// named volume here so the data survives container recreates

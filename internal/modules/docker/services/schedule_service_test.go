@@ -13,8 +13,8 @@ func TestLooksLikeCron(t *testing.T) {
 		{"0 * * * *", true},
 		{"*/5 * * * 1-5", true},
 		{"   5  10  *  *  *   ", true}, // extra whitespace tolerated
-		{"0 * * *", false},              // 4 fields
-		{"0 * * * * *", false},          // 6 fields (we don't support seconds)
+		{"0 * * *", false},             // 4 fields
+		{"0 * * * * *", false},         // 6 fields (we don't support seconds)
 		{"", false},
 		{"@daily", false}, // we deliberately don't accept @ shortcuts; the
 		// host cron daemon may not either depending on distro.

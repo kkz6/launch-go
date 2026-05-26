@@ -22,12 +22,12 @@ func init() {
 //
 //   - bind    → host_path:mount_path
 //   - volume  → docker named volume :mount_path (formerly "named";
-//               we accept both names on read for back-compat)
+//     we accept both names on read for back-compat)
 //   - file    → content is written to a file on the host at
-//               file_path, then bind-mounted at mount_path. Useful
-//               for config files (nginx.conf, .env) you want
-//               versioned in the platform instead of baked into
-//               the image.
+//     file_path, then bind-mounted at mount_path. Useful
+//     for config files (nginx.conf, .env) you want
+//     versioned in the platform instead of baked into
+//     the image.
 //
 // `content` is LONGTEXT so we can carry whole config files;
 // `file_path` keeps the host-side filename the deploy script writes

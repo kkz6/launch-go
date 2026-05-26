@@ -11,7 +11,6 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/dto"
 	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
-	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
 
 // buildCredentialsMap is the seam between the UI's request payload and the
@@ -107,19 +106,6 @@ func (p *stubProvider) Connect(_ context.Context, creds map[string]any) error {
 	p.connectCalled = true
 	p.gotCreds = creds
 	return p.returnErr
-}
-
-// stubFactory hands back a stub provider with a preset Connect outcome.
-type stubFactory struct {
-	*providers.Factory
-	stub *stubProvider
-}
-
-func newStubFactory(stub *stubProvider) *stubFactory {
-	return &stubFactory{
-		Factory: providers.NewFactory(sshkey.NewGenerator()),
-		stub:    stub,
-	}
 }
 
 func TestCreateServerProvider_ConnectInvokedWithMappedCredentials(t *testing.T) {

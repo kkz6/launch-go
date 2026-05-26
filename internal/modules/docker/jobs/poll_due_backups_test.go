@@ -17,10 +17,10 @@ func TestCronDueInWindow(t *testing.T) {
 	base := time.Date(2026, 5, 23, 14, 0, 0, 0, time.UTC)
 
 	cases := []struct {
-		name       string
-		expr       string
+		name        string
+		expr        string
 		windowStart time.Time
-		want       bool
+		want        bool
 	}{
 		{
 			name:        "every-minute fires every minute",

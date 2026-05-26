@@ -18,8 +18,8 @@ import (
 // JobDeps holds shared dependencies for docker-module asynq jobs.
 type JobDeps struct {
 	*pkgjobs.Deps
-	Repos          *repositories.Registry
-	ServerRepos    *serverrepos.Registry
+	Repos       *repositories.Registry
+	ServerRepos *serverrepos.Registry
 	// BackupRepos exposes the global storage_providers repository. The
 	// RunBackup job needs it to load S3 credentials for the database
 	// backup target (the docker_database_backups row only carries the

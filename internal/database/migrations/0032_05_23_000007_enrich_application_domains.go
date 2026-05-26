@@ -20,22 +20,22 @@ func init() {
 // dokploy parity. New fields and why:
 //
 //   - internal_path        — the path the application expects
-//                             internally. When path-external != internal,
-//                             Traefik strips/rewrites accordingly.
-//                             Defaults to "/" (matches dokploy).
+//     internally. When path-external != internal,
+//     Traefik strips/rewrites accordingly.
+//     Defaults to "/" (matches dokploy).
 //   - strip_path           — explicit toggle to strip the external
-//                             `path` prefix before forwarding. Without
-//                             this Traefik sends the full URL through;
-//                             apps like Nuxt at /api want the prefix
-//                             gone.
+//     `path` prefix before forwarding. Without
+//     this Traefik sends the full URL through;
+//     apps like Nuxt at /api want the prefix
+//     gone.
 //   - container_port       — per-domain override of the application's
-//                             internal_port. Useful when one container
-//                             listens on multiple ports and different
-//                             domains route to different ports.
-//                             NULL = use the app's internal_port.
+//     internal_port. Useful when one container
+//     listens on multiple ports and different
+//     domains route to different ports.
+//     NULL = use the app's internal_port.
 //   - certificate_provider — "letsencrypt" today; reserved for future
-//                             support of ZeroSSL, Cloudflare Origin
-//                             CA, etc. Default "letsencrypt".
+//     support of ZeroSSL, Cloudflare Origin
+//     CA, etc. Default "letsencrypt".
 func enrichApplicationDomainsUp(db *gorm.DB) error {
 	if err := db.Exec(
 		"ALTER TABLE docker_application_domains ADD COLUMN internal_path VARCHAR(255) NULL",

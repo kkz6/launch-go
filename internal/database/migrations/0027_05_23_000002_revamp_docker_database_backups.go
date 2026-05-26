@@ -24,10 +24,11 @@ func init() {
 //
 // Drops:  provider, endpoint, bucket, region, path_prefix, credentials
 // Adds:   storage_provider_id (FK → storage_providers.id, uint64)
-//         path                (varchar 255, bucket sub-folder)
-//         retention           (int, number of past runs to keep)
-//         notify_on_success   (bool, default false)
-//         notify_on_failure   (bool, default true)
+//
+//	path                (varchar 255, bucket sub-folder)
+//	retention           (int, number of past runs to keep)
+//	notify_on_success   (bool, default false)
+//	notify_on_failure   (bool, default true)
 //
 // Any existing rows are deleted before the schema change — they're
 // useless without their storage provider mapping, and we're pre-

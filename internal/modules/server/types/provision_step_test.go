@@ -64,7 +64,6 @@ func TestForFreshServer_OmitsRemovedSteps(t *testing.T) {
 	}
 }
 
-
 func TestForDockerServer_BaseStepsMatchFreshServer(t *testing.T) {
 	fresh := ForFreshServer()
 	docker := ForDockerServer()

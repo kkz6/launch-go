@@ -6,19 +6,19 @@ func TestContainerIDPattern(t *testing.T) {
 	// Whitelist hex-only IDs — anything else gets rejected before we
 	// interpolate the value into a `docker inspect <id>` shell call.
 	good := []string{
-		"757ed9547979",                                                     // 12-char short ID
+		"757ed9547979", // 12-char short ID
 		"757ed9547979aa5566bb1234567890ababcdcdef12345678901234567890aaaa", // 64-char long ID
 		"000000000000",
 	}
 	bad := []string{
 		"",
-		"abc",                                  // too short
-		"757ed9547979g0",                       // non-hex char
-		"foo; rm -rf /",                        // injection attempt
-		"757ed9547979 --format='something'",    // arg injection
-		"757ed9547979\n",                       // newline
-		"757ed9547979/",                        // slash
-		"$(whoami)",                            // command sub
+		"abc",                               // too short
+		"757ed9547979g0",                    // non-hex char
+		"foo; rm -rf /",                     // injection attempt
+		"757ed9547979 --format='something'", // arg injection
+		"757ed9547979\n",                    // newline
+		"757ed9547979/",                     // slash
+		"$(whoami)",                         // command sub
 	}
 	for _, id := range good {
 		if !containerIDPattern.MatchString(id) {

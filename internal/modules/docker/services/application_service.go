@@ -912,14 +912,14 @@ func buildSourceConfig(req *dto.CreateApplicationRequest) (
 //
 //   - Nothing set                 → public image, no auth on deploy.
 //   - registry_credential_id only → reference a saved credential.
-//                                   Verifies the credential belongs to
-//                                   the caller's team (cross-team picks
-//                                   are rejected as 404 — we don't leak
-//                                   the existence of other teams' creds).
+//     Verifies the credential belongs to
+//     the caller's team (cross-team picks
+//     are rejected as 404 — we don't leak
+//     the existence of other teams' creds).
 //   - username + password set     → inline credentials, encrypted at
-//                                   rest via dbtype.EncryptedString.
-//                                   registry_url is optional (empty →
-//                                   Docker Hub at deploy time).
+//     rest via dbtype.EncryptedString.
+//     registry_url is optional (empty →
+//     Docker Hub at deploy time).
 //   - mixed                       → rejected as 400.
 //
 // Caller is the create flow today. The update flow doesn't expose

@@ -20,8 +20,8 @@ type DatabaseBackup struct {
 	basemodels.TeamScoped
 	basemodels.SoftDeleteModel
 
-	DatabaseID        string  `gorm:"column:database_id;type:char(26);not null;index" json:"database_id"`
-	StorageProviderID uint64  `gorm:"column:storage_provider_id;not null;index" json:"storage_provider_id"`
+	DatabaseID        string `gorm:"column:database_id;type:char(26);not null;index" json:"database_id"`
+	StorageProviderID uint64 `gorm:"column:storage_provider_id;not null;index" json:"storage_provider_id"`
 	// DatabaseName optionally overrides which database INSIDE the engine
 	// the dump command targets. Empty / nil = use the database
 	// provisioned with this row (today's behaviour). Set when the user
@@ -40,8 +40,8 @@ type DatabaseBackup struct {
 	Retention int `gorm:"not null;default:10" json:"retention"`
 	// NotifyOnSuccess / NotifyOnFailure feed the notifications module
 	// — drives whether a success / failure email or webhook fires.
-	NotifyOnSuccess bool `gorm:"column:notify_on_success;not null;default:false" json:"notify_on_success"`
-	NotifyOnFailure bool `gorm:"column:notify_on_failure;not null;default:true" json:"notify_on_failure"`
+	NotifyOnSuccess bool    `gorm:"column:notify_on_success;not null;default:false" json:"notify_on_success"`
+	NotifyOnFailure bool    `gorm:"column:notify_on_failure;not null;default:true" json:"notify_on_failure"`
 	CronSchedule    *string `gorm:"column:cron_schedule;type:varchar(64)" json:"cron_schedule,omitempty"`
 	Enabled         bool    `gorm:"not null;default:true" json:"enabled"`
 }

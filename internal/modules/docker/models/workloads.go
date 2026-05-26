@@ -18,12 +18,12 @@ type Application struct {
 	basemodels.TeamScoped
 	basemodels.ServerScoped
 	basemodels.SoftDeleteModel
-	ProjectID      string                      `gorm:"column:project_id;type:char(26);not null;index" json:"project_id"`
-	Name           string                      `gorm:"type:varchar(255);not null" json:"name"`
-	SourceType     dockertypes.SourceType      `gorm:"column:source_type;type:varchar(32);not null" json:"source_type"`
-	SourceConfig   dbtype.JSONMap              `gorm:"column:source_config;type:json" json:"source_config,omitempty"`
-	BuildType      *dockertypes.BuildType      `gorm:"column:build_type;type:varchar(32)" json:"build_type,omitempty"`
-	BuildConfig    dbtype.JSONMap              `gorm:"column:build_config;type:json" json:"build_config,omitempty"`
+	ProjectID      string                        `gorm:"column:project_id;type:char(26);not null;index" json:"project_id"`
+	Name           string                        `gorm:"type:varchar(255);not null" json:"name"`
+	SourceType     dockertypes.SourceType        `gorm:"column:source_type;type:varchar(32);not null" json:"source_type"`
+	SourceConfig   dbtype.JSONMap                `gorm:"column:source_config;type:json" json:"source_config,omitempty"`
+	BuildType      *dockertypes.BuildType        `gorm:"column:build_type;type:varchar(32)" json:"build_type,omitempty"`
+	BuildConfig    dbtype.JSONMap                `gorm:"column:build_config;type:json" json:"build_config,omitempty"`
 	Status         dockertypes.ApplicationStatus `gorm:"type:varchar(32);not null;default:idle" json:"status"`
 	ContainerID    *string                       `gorm:"column:container_id;type:varchar(255)" json:"container_id,omitempty"`
 	LastDeployedAt *time.Time                    `gorm:"column:last_deployed_at;type:timestamp null" json:"last_deployed_at,omitempty"`
@@ -67,12 +67,12 @@ type Compose struct {
 	basemodels.TeamScoped
 	basemodels.ServerScoped
 	basemodels.SoftDeleteModel
-	ProjectID         string                        `gorm:"column:project_id;type:char(26);not null;index" json:"project_id"`
-	Name              string                        `gorm:"type:varchar(255);not null" json:"name"`
-	ComposeSourceType string                        `gorm:"column:compose_source_type;type:varchar(32);not null" json:"compose_source_type"`
-	SourceConfig      dbtype.JSONMap                `gorm:"column:source_config;type:json" json:"source_config,omitempty"`
-	ComposeFilePath   *string                       `gorm:"column:compose_file_path;type:varchar(512)" json:"compose_file_path,omitempty"`
-	RawYAML           *string                       `gorm:"column:raw_yaml;type:longtext" json:"raw_yaml,omitempty"`
+	ProjectID         string         `gorm:"column:project_id;type:char(26);not null;index" json:"project_id"`
+	Name              string         `gorm:"type:varchar(255);not null" json:"name"`
+	ComposeSourceType string         `gorm:"column:compose_source_type;type:varchar(32);not null" json:"compose_source_type"`
+	SourceConfig      dbtype.JSONMap `gorm:"column:source_config;type:json" json:"source_config,omitempty"`
+	ComposeFilePath   *string        `gorm:"column:compose_file_path;type:varchar(512)" json:"compose_file_path,omitempty"`
+	RawYAML           *string        `gorm:"column:raw_yaml;type:longtext" json:"raw_yaml,omitempty"`
 	// EnvFile is the body of the `.env` file written next to the
 	// compose file on each deploy. Compose reads it automatically for
 	// ${VAR} substitution and propagates matching keys into service

@@ -19,32 +19,32 @@ import (
 //
 //   - Host              — public hostname (api.example.com)
 //   - Path              — external URL path Traefik routes from
-//                          ("/api"). Empty = match all paths.
+//     ("/api"). Empty = match all paths.
 //   - InternalPath      — path the application expects internally
-//                          ("/"). When ExternalPath != InternalPath,
-//                          Traefik rewrites between them.
+//     ("/"). When ExternalPath != InternalPath,
+//     Traefik rewrites between them.
 //   - StripPath         — when true, strip Path before forwarding to
-//                          the container. Useful for apps mounted at
-//                          a sub-path externally but listening at "/"
-//                          internally.
+//     the container. Useful for apps mounted at
+//     a sub-path externally but listening at "/"
+//     internally.
 //   - ContainerPort     — per-domain override of the workload's
-//                          internal_port. For applications: NULL
-//                          falls back to app.internal_port. For
-//                          compose: NULL is rejected at the service
-//                          layer (no fallback — the operator must
-//                          name the port their service listens on
-//                          in the YAML).
+//     internal_port. For applications: NULL
+//     falls back to app.internal_port. For
+//     compose: NULL is rejected at the service
+//     layer (no fallback — the operator must
+//     name the port their service listens on
+//     in the YAML).
 //   - HTTPS             — issue + serve a TLS cert for this domain
 //   - CertificateProvider — "letsencrypt" today; reserved for future
-//                            providers (ZeroSSL, Cloudflare Origin CA).
+//     providers (ZeroSSL, Cloudflare Origin CA).
 //   - ServiceName       — compose-only. Names the YAML service this
-//                          domain routes to. Resolved at render time
-//                          to the compose container name
-//                          `<project>-<compose>-<service>-1` (compose
-//                          v2's default naming). Operator must keep
-//                          their YAML service name in sync — same
-//                          trust model as the rest of the compose
-//                          surface.
+//     domain routes to. Resolved at render time
+//     to the compose container name
+//     `<project>-<compose>-<service>-1` (compose
+//     v2's default naming). Operator must keep
+//     their YAML service name in sync — same
+//     trust model as the rest of the compose
+//     surface.
 //
 // Uniqueness per-owner: (application_id, host) and (compose_id, host)
 // are both unique among live rows; soft-deleted rows are excluded

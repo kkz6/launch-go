@@ -19,11 +19,11 @@ func TestShellEscapeArg(t *testing.T) {
 	cases := []struct {
 		in, want string
 	}{
-		{"hello", "hello"},                // safe pass-through
-		{"hello world", "'hello world'"},  // space → quote
-		{"foo$BAR", `'foo$BAR'`},          // $ would expand → quote
-		{"it's", `'it'\''s'`},             // single-quote escape
-		{"", "''"},                        // empty → empty quoted
+		{"hello", "hello"},               // safe pass-through
+		{"hello world", "'hello world'"}, // space → quote
+		{"foo$BAR", `'foo$BAR'`},         // $ would expand → quote
+		{"it's", `'it'\''s'`},            // single-quote escape
+		{"", "''"},                       // empty → empty quoted
 	}
 	for _, c := range cases {
 		if got := shellEscapeArg(c.in); got != c.want {

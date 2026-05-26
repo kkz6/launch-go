@@ -6,8 +6,8 @@ import (
 
 	"github.com/hibiken/asynq"
 
-	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
+	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )

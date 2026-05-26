@@ -716,7 +716,6 @@ func classifyTaskFailure(rawOutput string) string {
 	return "Setup didn't complete on this server. Please try again, or contact support if it keeps happening."
 }
 
-
 // TaskResponse represents the response for a task
 type TaskResponse struct {
 	ID        string  `json:"id"`

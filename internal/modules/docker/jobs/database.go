@@ -197,6 +197,7 @@ func (j *RunDatabaseJob) loadModels(ctx context.Context) error {
 // Env composition (in this order so docker -e overrides go user-wins):
 //  1. Engine-required creds  (POSTGRES_USER + ...)
 //  2. User-added env vars    (docker_database_env_vars rows)
+//
 // Then every value is run through ResolveProjectRefs so
 // `${{project.<KEY>}}` references expand against the project's
 // current env-var set at run time.

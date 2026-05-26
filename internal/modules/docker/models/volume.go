@@ -10,22 +10,22 @@ import (
 // layer). Three flavours (matches dokploy's mount kinds):
 //
 //   - bind:   `HostPath` is the directory on the docker server bind-
-//             mounted into the container at `MountPath`. Application
-//             deploy script renders `-v <host_path>:<mount_path>`;
-//             compose deploys rely on the operator wiring it into
-//             the YAML themselves.
+//     mounted into the container at `MountPath`. Application
+//     deploy script renders `-v <host_path>:<mount_path>`;
+//     compose deploys rely on the operator wiring it into
+//     the YAML themselves.
 //   - volume: `Name` is the docker-named volume that survives
-//             container restarts. Application script renders
-//             `-v <name>:<mount_path>`. The wire value "named" is
-//             still accepted for backward compatibility with rows
-//             created before this slice.
+//     container restarts. Application script renders
+//     `-v <name>:<mount_path>`. The wire value "named" is
+//     still accepted for backward compatibility with rows
+//     created before this slice.
 //   - file:   `Content` is written to the host at the deploy dir
-//             (named by `FilePath`), then bind-mounted at
-//             `MountPath`. Applications render
-//             `-v <deploy_dir>/<file_path>:<mount_path>`; compose
-//             writes it under `${STACK_DIR}/files/<file_path>` so
-//             the YAML can reference it via
-//             `./files/<file_path>:<mount_path>`.
+//     (named by `FilePath`), then bind-mounted at
+//     `MountPath`. Applications render
+//     `-v <deploy_dir>/<file_path>:<mount_path>`; compose
+//     writes it under `${STACK_DIR}/files/<file_path>` so
+//     the YAML can reference it via
+//     `./files/<file_path>:<mount_path>`.
 //
 // The type name stays `ApplicationVolume` rather than the more
 // accurate `DockerVolume` to keep the diff small — every reference

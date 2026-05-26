@@ -173,4 +173,3 @@ func (n *DatabaseBackupSucceededNotification) ToTelegram() string {
 	}
 	return msg
 }
-

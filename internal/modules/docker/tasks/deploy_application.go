@@ -17,9 +17,9 @@ import (
 // task itself is a pure rendering function — easier to unit test, and
 // no DB lookups during script generation.
 type DeployConfig struct {
-	DeploymentID string
-	ProjectSlug  string
-	AppSlug      string
+	DeploymentID  string
+	ProjectSlug   string
+	AppSlug       string
 	ContainerName string
 
 	SourceType dockertypes.SourceType

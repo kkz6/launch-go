@@ -50,16 +50,16 @@ type dockerDatabaseBackupWithDatabaseFK struct {
 func (dockerDatabaseBackupWithDatabaseFK) TableName() string { return "docker_database_backups" }
 
 type dockerDatabaseBackupRunMigration struct {
-	ID            string     `gorm:"type:char(26);primaryKey"`
-	BackupID      string     `gorm:"column:backup_id;type:char(26);not null;index"`
-	Status        string     `gorm:"type:varchar(32);not null;default:running"`
-	StartedAt     *time.Time `gorm:"column:started_at;type:timestamp null"`
-	FinishedAt    *time.Time `gorm:"column:finished_at;type:timestamp null"`
-	ObjectKey     *string    `gorm:"column:object_key;type:varchar(512)"`
-	SizeBytes     *int64     `gorm:"column:size_bytes"`
-	Error         *string    `gorm:"type:text"`
-	CreatedAt     *time.Time `gorm:"type:timestamp null"`
-	UpdatedAt     *time.Time `gorm:"type:timestamp null"`
+	ID         string     `gorm:"type:char(26);primaryKey"`
+	BackupID   string     `gorm:"column:backup_id;type:char(26);not null;index"`
+	Status     string     `gorm:"type:varchar(32);not null;default:running"`
+	StartedAt  *time.Time `gorm:"column:started_at;type:timestamp null"`
+	FinishedAt *time.Time `gorm:"column:finished_at;type:timestamp null"`
+	ObjectKey  *string    `gorm:"column:object_key;type:varchar(512)"`
+	SizeBytes  *int64     `gorm:"column:size_bytes"`
+	Error      *string    `gorm:"type:text"`
+	CreatedAt  *time.Time `gorm:"type:timestamp null"`
+	UpdatedAt  *time.Time `gorm:"type:timestamp null"`
 }
 
 func (dockerDatabaseBackupRunMigration) TableName() string { return "docker_database_backup_runs" }

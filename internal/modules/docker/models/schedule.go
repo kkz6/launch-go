@@ -11,13 +11,13 @@ import (
 // (registered with asynq.Scheduler at boot) — NOT inside the container
 // — so container restart / rebuild is transparent to it. At each tick:
 //
-//   1. The runner resolves the CURRENT container name from the project
-//      + application slugs (so a rebuild that produces a new container
-//      ID is picked up without re-arming the schedule).
-//   2. SSH's to the host and runs `docker exec <container> <shell> -c
-//      '<command>'` via taskrunner.
-//   3. Captures stdout+stderr into the taskrunner log file, and stamps
-//      the resulting task ID onto LastTaskID for the View Logs UI.
+//  1. The runner resolves the CURRENT container name from the project
+//     + application slugs (so a rebuild that produces a new container
+//     ID is picked up without re-arming the schedule).
+//  2. SSH's to the host and runs `docker exec <container> <shell> -c
+//     '<command>'` via taskrunner.
+//  3. Captures stdout+stderr into the taskrunner log file, and stamps
+//     the resulting task ID onto LastTaskID for the View Logs UI.
 //
 // Mirrors dokploy's `runCommand` flow (packages/server/src/utils/
 // schedules/utils.ts).
@@ -28,9 +28,9 @@ import (
 type ApplicationSchedule struct {
 	basemodels.BaseModel
 	basemodels.SoftDeleteModel
-	ApplicationID string     `gorm:"column:application_id;type:char(26);not null;index" json:"application_id"`
-	Cron          string     `gorm:"type:varchar(255);not null" json:"cron"`
-	Command       string     `gorm:"type:text;not null" json:"command"`
+	ApplicationID string `gorm:"column:application_id;type:char(26);not null;index" json:"application_id"`
+	Cron          string `gorm:"type:varchar(255);not null" json:"cron"`
+	Command       string `gorm:"type:text;not null" json:"command"`
 	// Enabled lets the user pause a schedule without deleting it.
 	// Disabled rows are skipped by the scheduler's boot-time arming
 	// pass; mutating this field re-arms the row immediately via the

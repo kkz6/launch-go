@@ -44,26 +44,26 @@ func ToProjectResponse(p *models.Project) *ProjectResponse {
 // than projecting each variant into its own field) keeps the API stable as
 // we add fields to one source type without touching the others.
 type ApplicationResponse struct {
-	ID             string         `json:"id"`
-	TeamID         string         `json:"team_id"`
-	ServerID       string         `json:"server_id"`
-	ProjectID      string         `json:"project_id"`
-	Name           string         `json:"name"`
-	InternalPort   int            `json:"internal_port"`
-	SourceType     string         `json:"source_type"`
-	SourceConfig   map[string]any `json:"source_config,omitempty"`
-	BuildType      *string        `json:"build_type,omitempty"`
-	BuildConfig    map[string]any `json:"build_config,omitempty"`
-	Status         string         `json:"status"`
-	ContainerID    *string        `json:"container_id,omitempty"`
+	ID           string         `json:"id"`
+	TeamID       string         `json:"team_id"`
+	ServerID     string         `json:"server_id"`
+	ProjectID    string         `json:"project_id"`
+	Name         string         `json:"name"`
+	InternalPort int            `json:"internal_port"`
+	SourceType   string         `json:"source_type"`
+	SourceConfig map[string]any `json:"source_config,omitempty"`
+	BuildType    *string        `json:"build_type,omitempty"`
+	BuildConfig  map[string]any `json:"build_config,omitempty"`
+	Status       string         `json:"status"`
+	ContainerID  *string        `json:"container_id,omitempty"`
 	// ContainerName is the on-host docker name (e.g.
 	// `launch-<project>-<app>`). Like DatabaseResponse.ContainerName
 	// — fed to the navbar Terminal button so it can attach to the
 	// application container instead of the host root shell.
-	ContainerName  string         `json:"container_name,omitempty"`
-	LastDeployedAt *time.Time     `json:"last_deployed_at,omitempty"`
-	CreatedAt      *time.Time     `json:"created_at,omitempty"`
-	UpdatedAt      *time.Time     `json:"updated_at,omitempty"`
+	ContainerName  string     `json:"container_name,omitempty"`
+	LastDeployedAt *time.Time `json:"last_deployed_at,omitempty"`
+	CreatedAt      *time.Time `json:"created_at,omitempty"`
+	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
 }
 
 // DeploymentResponse is the API representation of a deploy attempt or
@@ -73,11 +73,11 @@ type ApplicationResponse struct {
 // frontend uses TaskID to subscribe to the live task-logs websocket
 // instead.
 type DeploymentResponse struct {
-	ID         string  `json:"id"`
-	TeamID     string  `json:"team_id"`
-	ServerID   string  `json:"server_id"`
-	TargetType string  `json:"target_type"`
-	TargetID   string  `json:"target_id"`
+	ID         string `json:"id"`
+	TeamID     string `json:"team_id"`
+	ServerID   string `json:"server_id"`
+	TargetType string `json:"target_type"`
+	TargetID   string `json:"target_id"`
 	// Action is set on database rows (create/start/restart/stop/rm).
 	// nil for application + compose rows (their implicit action is
 	// "deploy"). Lets the same table row a unified Deployments tab UI
@@ -551,17 +551,17 @@ type ValidateDNSResponse struct {
 // which endpoint listed the row rather than inspecting the field
 // presence.
 type DomainResponse struct {
-	ID                  string     `json:"id"`
-	ApplicationID       *string    `json:"application_id,omitempty"`
-	ComposeID           *string    `json:"compose_id,omitempty"`
-	Host                string     `json:"host"`
-	Path                *string    `json:"path,omitempty"`
-	InternalPath        *string    `json:"internal_path,omitempty"`
-	StripPath           bool       `json:"strip_path"`
-	ContainerPort       *int       `json:"container_port,omitempty"`
-	HTTPS               bool       `json:"https"`
-	CertificateProvider string     `json:"certificate_provider"`
-	CertificateID       *string    `json:"certificate_id,omitempty"`
+	ID                  string  `json:"id"`
+	ApplicationID       *string `json:"application_id,omitempty"`
+	ComposeID           *string `json:"compose_id,omitempty"`
+	Host                string  `json:"host"`
+	Path                *string `json:"path,omitempty"`
+	InternalPath        *string `json:"internal_path,omitempty"`
+	StripPath           bool    `json:"strip_path"`
+	ContainerPort       *int    `json:"container_port,omitempty"`
+	HTTPS               bool    `json:"https"`
+	CertificateProvider string  `json:"certificate_provider"`
+	CertificateID       *string `json:"certificate_id,omitempty"`
 	// ServiceName is non-nil on compose rows (names the YAML service
 	// the domain routes to). Always nil on application rows.
 	ServiceName *string    `json:"service_name,omitempty"`
