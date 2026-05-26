@@ -53,7 +53,7 @@ EXPOSE 8080
 # deploy even when the app is actually healthy. wget ships in the alpine
 # base; --spider performs a HEAD request that the /health endpoint serves.
 HEALTHCHECK --interval=5s --timeout=3s --start-period=10s --retries=3 \
-  CMD wget -q --spider http://localhost:8080/api/health || exit 1
+  CMD wget -q --spider http://127.0.0.1:8080/api/health || exit 1
 
 # Usage:
 #   docker run <image>                              # runs api (default)
