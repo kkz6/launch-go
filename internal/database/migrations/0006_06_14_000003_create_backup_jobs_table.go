@@ -23,7 +23,7 @@ type backupJobMigration struct {
 	BackupID          string     `gorm:"column:backup_id;type:char(26);not null;index"`
 	StorageProviderID uint64     `gorm:"column:storage_provider_id;not null;index"`
 	Size              *int       `gorm:"type:int"`
-	Error             *string    `gorm:"type:longtext"`
+	Error             *string    `gorm:"type:text"`
 	CreatedAt         *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt         *time.Time `gorm:"type:timestamp null"`
 }

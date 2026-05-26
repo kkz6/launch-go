@@ -23,7 +23,7 @@ type invitationMigration struct {
 	InvitationToken *string    `gorm:"column:invitation_token;type:varchar(32);uniqueIndex"`
 	RegisteredAt    *time.Time `gorm:"column:registered_at;type:timestamp null"`
 	TrialPeriod     *int       `gorm:"column:trial_period"`
-	Comment         *string    `gorm:"type:longtext"`
+	Comment         *string    `gorm:"type:text"`
 	CreatedAt       *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt       *time.Time `gorm:"type:timestamp null"`
 }

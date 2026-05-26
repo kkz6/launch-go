@@ -21,9 +21,9 @@ type sshKeyMigration struct {
 	ID          string     `gorm:"type:char(26);primaryKey"`
 	UserID      string     `gorm:"column:user_id;type:char(26);not null;index"`
 	TeamID      string     `gorm:"column:team_id;type:char(26);not null;index"`
-	IsGlobal    bool       `gorm:"type:tinyint(1);not null;default:0"`
+	IsGlobal    bool       `gorm:"type:boolean;not null;default:0"`
 	Description *string    `gorm:"type:varchar(255)"`
-	PublicKey   string     `gorm:"type:longtext;not null"`
+	PublicKey   string     `gorm:"type:text;not null"`
 	Name        string     `gorm:"type:varchar(255);not null"`
 	Fingerprint *string    `gorm:"type:varchar(255)"`
 	CreatedAt   *time.Time `gorm:"type:timestamp null"`

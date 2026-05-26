@@ -66,7 +66,7 @@ func addTeamIDToAllTablesUp(db *gorm.DB) error {
 	// Make existing nullable team_id columns NOT NULL
 	for _, table := range existingNullableTables {
 		if err := db.Exec(fmt.Sprintf(
-			"ALTER TABLE `%s` MODIFY COLUMN team_id CHAR(26) NOT NULL", table,
+			`ALTER TABLE "%s" ALTER COLUMN team_id SET NOT NULL`, table,
 		)).Error; err != nil {
 			return fmt.Errorf("failed to make team_id NOT NULL on %s: %w", table, err)
 		}
@@ -76,25 +76,26 @@ func addTeamIDToAllTablesUp(db *gorm.DB) error {
 }
 
 func addTeamIDColumn(db *gorm.DB, cfg tableConfig) error {
-	// Add nullable column (backticks for reserved words like 'databases')
+	// Add nullable column. Postgres has no; columns append.
 	if err := db.Exec(fmt.Sprintf(
-		"ALTER TABLE `%s` ADD COLUMN team_id CHAR(26) NULL AFTER %s",
-		cfg.table, cfg.afterColumn,
+		`ALTER TABLE "%s" ADD COLUMN team_id CHAR(26) NULL`,
+		cfg.table,
 	)).Error; err != nil {
 		return err
 	}
 
-	// Backfill from parent table
+	// Backfill from parent table. Postgres UPDATE...FROM syntax instead of
+	// MySQL's UPDATE...INNER JOIN.
 	if err := db.Exec(fmt.Sprintf(
-		"UPDATE `%s` t INNER JOIN `%s` p ON t.%s = p.id SET t.team_id = p.team_id",
+		`UPDATE "%s" t SET team_id = p.team_id FROM "%s" p WHERE t.%s = p.id`,
 		cfg.table, cfg.parentTable, cfg.parentFK,
 	)).Error; err != nil {
 		return err
 	}
 
-	// Make NOT NULL
+	// Make NOT NULL — Postgres splits type and nullability.
 	if err := db.Exec(fmt.Sprintf(
-		"ALTER TABLE `%s` MODIFY COLUMN team_id CHAR(26) NOT NULL",
+		`ALTER TABLE "%s" ALTER COLUMN team_id SET NOT NULL`,
 		cfg.table,
 	)).Error; err != nil {
 		return err
@@ -102,7 +103,7 @@ func addTeamIDColumn(db *gorm.DB, cfg tableConfig) error {
 
 	// Add index
 	if err := db.Exec(fmt.Sprintf(
-		"CREATE INDEX idx_%s_team_id ON `%s`(team_id)",
+		`CREATE INDEX idx_%s_team_id ON "%s"(team_id)`,
 		cfg.table, cfg.table,
 	)).Error; err != nil {
 		return err
@@ -110,7 +111,7 @@ func addTeamIDColumn(db *gorm.DB, cfg tableConfig) error {
 
 	// Add foreign key constraint
 	return db.Exec(fmt.Sprintf(
-		"ALTER TABLE `%s` ADD CONSTRAINT fk_%s_team_id FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE",
+		`ALTER TABLE "%s" ADD CONSTRAINT fk_%s_team_id FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE`,
 		cfg.table, cfg.table,
 	)).Error
 }
@@ -118,15 +119,15 @@ func addTeamIDColumn(db *gorm.DB, cfg tableConfig) error {
 func addTeamIDToAllTablesDown(db *gorm.DB) error {
 	// Revert NOT NULL on existing tables
 	for _, table := range existingNullableTables {
-		db.Exec(fmt.Sprintf("ALTER TABLE `%s` MODIFY COLUMN team_id CHAR(26) NULL", table))
+		db.Exec(fmt.Sprintf(`ALTER TABLE "%s" ALTER COLUMN team_id DROP NOT NULL`, table))
 	}
 
 	// Remove team_id from tables in reverse order
 	for i := len(tablesToUpdate) - 1; i >= 0; i-- {
 		cfg := tablesToUpdate[i]
-		db.Exec(fmt.Sprintf("ALTER TABLE `%s` DROP FOREIGN KEY fk_%s_team_id", cfg.table, cfg.table))
-		db.Exec(fmt.Sprintf("DROP INDEX idx_%s_team_id ON `%s`", cfg.table, cfg.table))
-		db.Exec(fmt.Sprintf("ALTER TABLE `%s` DROP COLUMN team_id", cfg.table))
+		db.Exec(fmt.Sprintf(`ALTER TABLE "%s" DROP CONSTRAINT IF EXISTS fk_%s_team_id`, cfg.table, cfg.table))
+		db.Exec(fmt.Sprintf(`DROP INDEX IF EXISTS idx_%s_team_id`, cfg.table))
+		db.Exec(fmt.Sprintf(`ALTER TABLE "%s" DROP COLUMN IF EXISTS team_id`, cfg.table))
 	}
 
 	return nil

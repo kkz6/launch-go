@@ -38,8 +38,8 @@ type siteMigration struct {
 	RepositoryBranch             *string    `gorm:"column:repository_branch;type:varchar(255)"`
 	DeployToken                  *string    `gorm:"column:deploy_token;type:varchar(32)"`
 	DeployNotificationEmail      *string    `gorm:"column:deploy_notification_email;type:varchar(255)"`
-	DeployKeyPublic              *string    `gorm:"column:deploy_key_public;type:longtext"`
-	DeployKeyPrivate             *string    `gorm:"column:deploy_key_private;type:longtext"`
+	DeployKeyPublic              *string    `gorm:"column:deploy_key_public;type:text"`
+	DeployKeyPrivate             *string    `gorm:"column:deploy_key_private;type:text"`
 	User                         string     `gorm:"type:varchar(255);not null"`
 	Path                         string     `gorm:"type:varchar(255);not null"`
 	WebFolder                    string     `gorm:"column:web_folder;type:varchar(255);not null"`
@@ -51,10 +51,10 @@ type siteMigration struct {
 	SharedFiles                  string     `gorm:"column:shared_files;type:json;not null"`
 	Port                         *int       `gorm:"type:int"`
 	Progress                     *int       `gorm:"default:0"`
-	HookBeforeUpdatingRepository *string    `gorm:"column:hook_before_updating_repository;type:longtext"`
-	HookAfterUpdatingRepository  *string    `gorm:"column:hook_after_updating_repository;type:longtext"`
-	HookBeforeMakingCurrent      *string    `gorm:"column:hook_before_making_current;type:longtext"`
-	HookAfterMakingCurrent       *string    `gorm:"column:hook_after_making_current;type:longtext"`
+	HookBeforeUpdatingRepository *string    `gorm:"column:hook_before_updating_repository;type:text"`
+	HookAfterUpdatingRepository  *string    `gorm:"column:hook_after_updating_repository;type:text"`
+	HookBeforeMakingCurrent      *string    `gorm:"column:hook_before_making_current;type:text"`
+	HookAfterMakingCurrent       *string    `gorm:"column:hook_after_making_current;type:text"`
 	InstalledAt                  *time.Time `gorm:"column:installed_at;type:timestamp null"`
 	InstallationFailedAt         *time.Time `gorm:"column:installation_failed_at;type:timestamp null"`
 	UninstallationRequestedAt    *time.Time `gorm:"column:uninstallation_requested_at;type:timestamp null"`

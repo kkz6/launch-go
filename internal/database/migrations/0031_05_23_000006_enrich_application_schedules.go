@@ -47,16 +47,16 @@ func enrichApplicationSchedulesUp(db *gorm.DB) error {
 
 func enrichApplicationSchedulesDown(db *gorm.DB) error {
 	if err := db.Exec(
-		"ALTER TABLE docker_application_schedules DROP COLUMN last_task_id",
+		"ALTER TABLE docker_application_schedules DROP COLUMN IF EXISTS last_task_id",
 	).Error; err != nil {
 		return err
 	}
 	if err := db.Exec(
-		"ALTER TABLE docker_application_schedules DROP COLUMN shell_type",
+		"ALTER TABLE docker_application_schedules DROP COLUMN IF EXISTS shell_type",
 	).Error; err != nil {
 		return err
 	}
 	return db.Exec(
-		"ALTER TABLE docker_application_schedules DROP COLUMN enabled",
+		"ALTER TABLE docker_application_schedules DROP COLUMN IF EXISTS enabled",
 	).Error
 }

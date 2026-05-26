@@ -26,16 +26,16 @@ func init() {
 //   - cpu_reservation  (docker --cpu-shares analogue)
 //   - memory_reservation (docker --memory-reservation)
 //
-// LONGTEXT keeps us future-proof for additional knobs without another
+// TEXT keeps us future-proof for additional knobs without another
 // migration — matches docker_applications.build_config.
 func addBuildConfigToDockerDatabasesUp(db *gorm.DB) error {
 	return db.Exec(
-		"ALTER TABLE docker_databases ADD COLUMN build_config LONGTEXT NULL",
+		"ALTER TABLE docker_databases ADD COLUMN build_config TEXT NULL",
 	).Error
 }
 
 func addBuildConfigToDockerDatabasesDown(db *gorm.DB) error {
 	return db.Exec(
-		"ALTER TABLE docker_databases DROP COLUMN build_config",
+		"ALTER TABLE docker_databases DROP COLUMN IF EXISTS build_config",
 	).Error
 }

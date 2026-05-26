@@ -21,7 +21,7 @@ type databaseUserMigration struct {
 	ID                        string     `gorm:"type:char(26);primaryKey"`
 	ServerID                  string     `gorm:"column:server_id;type:char(26);not null;index"`
 	Name                      string     `gorm:"type:varchar(255);not null"`
-	Password                  *string    `gorm:"type:longtext"` // encrypted
+	Password                  *string    `gorm:"type:text"` // encrypted
 	Host                      string     `gorm:"type:varchar(255);not null;default:localhost"`
 	InstalledAt               *time.Time `gorm:"column:installed_at;type:timestamp null"`
 	InstallationFailedAt      *time.Time `gorm:"column:installation_failed_at;type:timestamp null"`

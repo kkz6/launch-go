@@ -22,10 +22,10 @@ type certificateMigration struct {
 	SiteID      string     `gorm:"column:site_id;type:char(26);not null;index"`
 	Type        string     `gorm:"type:varchar(255);not null;default:letsencrypt"`
 	Domains     *string    `gorm:"type:varchar(255)"`
-	CSR         *string    `gorm:"column:csr;type:longtext"`
-	PublicKey   *string    `gorm:"column:public_key;type:longtext"`
-	PrivateKey  *string    `gorm:"column:private_key;type:longtext"`
-	Certificate *string    `gorm:"type:longtext"`
+	CSR         *string    `gorm:"column:csr;type:text"`
+	PublicKey   *string    `gorm:"column:public_key;type:text"`
+	PrivateKey  *string    `gorm:"column:private_key;type:text"`
+	Certificate *string    `gorm:"type:text"`
 	UploadedAt  *time.Time `gorm:"column:uploaded_at;type:timestamp null"`
 	IsActive    bool       `gorm:"column:is_active;default:false"`
 	CreatedAt   *time.Time `gorm:"type:timestamp null"`

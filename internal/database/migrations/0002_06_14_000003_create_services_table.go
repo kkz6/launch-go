@@ -25,7 +25,7 @@ type serviceMigration struct {
 	Name      string     `gorm:"type:varchar(255);not null"`
 	Version   string     `gorm:"type:varchar(255);not null"`
 	Status    string     `gorm:"type:varchar(255);not null"`
-	IsDefault bool       `gorm:"type:tinyint(1);not null;default:1"`
+	IsDefault bool       `gorm:"type:boolean;not null;default:1"`
 	Unit      *string    `gorm:"type:varchar(255)"`
 	Software  string     `gorm:"type:varchar(255);not null"`
 	TaskID    *string    `gorm:"column:task_id;type:char(26);index"`

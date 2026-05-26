@@ -19,8 +19,8 @@ func init() {
 
 // makeApplicationVolumesPolymorphicUp turns docker_application_volumes
 // into the shared docker mount table — same row backs application
-// workloads AND compose stacks, with a nullable `application_id` and a
-// new nullable `compose_id`. Exactly one is set per row (enforced at
+// workloads AND compose stacks, with a nullable application_id and a
+// new nullable compose_id. Exactly one is set per row (enforced at
 // the service layer; we don't add a CHECK constraint because MySQL's
 // support is uneven across the versions we target).
 //
@@ -42,7 +42,7 @@ func makeApplicationVolumesPolymorphicUp(db *gorm.DB) error {
 	//    when the value is non-NULL.
 	if err := db.Exec(
 		"ALTER TABLE docker_application_volumes " +
-			"MODIFY COLUMN application_id CHAR(26) NULL",
+			"ALTER COLUMN application_id DROP NOT NULL",
 	).Error; err != nil {
 		return err
 	}
@@ -51,7 +51,7 @@ func makeApplicationVolumesPolymorphicUp(db *gorm.DB) error {
 	//    application-owned rows pass through unchanged.
 	if err := db.Exec(
 		"ALTER TABLE docker_application_volumes " +
-			"ADD COLUMN compose_id CHAR(26) NULL AFTER application_id",
+			"ADD COLUMN compose_id CHAR(26) NULL",
 	).Error; err != nil {
 		return err
 	}
@@ -98,7 +98,7 @@ func makeApplicationVolumesPolymorphicDown(db *gorm.DB) error {
 	// Order matters — drop the FK + indexes before the column itself.
 	if err := db.Exec(
 		"ALTER TABLE docker_application_volumes " +
-			"DROP FOREIGN KEY fk_docker_app_volumes_compose",
+			"DROP CONSTRAINT IF EXISTS fk_docker_app_volumes_compose",
 	).Error; err != nil {
 		return err
 	}
@@ -115,7 +115,7 @@ func makeApplicationVolumesPolymorphicDown(db *gorm.DB) error {
 		return err
 	}
 	if err := db.Exec(
-		"ALTER TABLE docker_application_volumes DROP COLUMN compose_id",
+		"ALTER TABLE docker_application_volumes DROP COLUMN IF EXISTS compose_id",
 	).Error; err != nil {
 		return err
 	}
@@ -125,6 +125,6 @@ func makeApplicationVolumesPolymorphicDown(db *gorm.DB) error {
 	// hard failure rather than silent data loss.
 	return db.Exec(
 		"ALTER TABLE docker_application_volumes " +
-			"MODIFY COLUMN application_id CHAR(26) NOT NULL",
+			"ALTER COLUMN application_id SET NOT NULL",
 	).Error
 }

@@ -16,7 +16,7 @@ func init() {
 	})
 }
 
-// addEnvFileToComposesUp adds the `env_file` LONGTEXT column the
+// addEnvFileToComposesUp adds the env_file TEXT column the
 // compose Environment subtab persists into.
 //
 // The body of this column is written to `${COMPOSE_DIR}/.env` on the
@@ -25,7 +25,7 @@ func init() {
 // passes the same keys/values into containers that declare them in
 // their `environment:` blocks (without explicit values).
 //
-// The column is LONGTEXT rather than a structured key/value table
+// The column is TEXT rather than a structured key/value table
 // because a) compose's .env semantics are line-based with comments
 // and blank-line tolerance — a structured table would lose that
 // fidelity, b) the UI is a textarea editor not a row-grid, c) the
@@ -34,12 +34,12 @@ func init() {
 // pre-migration behavior).
 func addEnvFileToComposesUp(db *gorm.DB) error {
 	return db.Exec(
-		"ALTER TABLE docker_composes ADD COLUMN env_file LONGTEXT NULL",
+		"ALTER TABLE docker_composes ADD COLUMN env_file TEXT NULL",
 	).Error
 }
 
 func addEnvFileToComposesDown(db *gorm.DB) error {
 	return db.Exec(
-		"ALTER TABLE docker_composes DROP COLUMN env_file",
+		"ALTER TABLE docker_composes DROP COLUMN IF EXISTS env_file",
 	).Error
 }

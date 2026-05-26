@@ -24,5 +24,5 @@ func addProvisionErrorToServersUp(db *gorm.DB) error {
 }
 
 func addProvisionErrorToServersDown(db *gorm.DB) error {
-	return db.Exec("ALTER TABLE servers DROP COLUMN provision_error").Error
+	return db.Exec("ALTER TABLE servers DROP COLUMN IF EXISTS provision_error").Error
 }

@@ -23,7 +23,7 @@ type domainProviderMigration struct {
 	TeamID           *string    `gorm:"column:team_id;type:char(26);index"`
 	Profile          *string    `gorm:"type:varchar(255)"`
 	Provider         string     `gorm:"type:varchar(255);not null"`
-	Credentials      string     `gorm:"type:longtext;not null"` // encrypted
+	Credentials      string     `gorm:"type:text;not null"` // encrypted
 	Connected        bool       `gorm:"default:true"`
 	AdditionalData   *string    `gorm:"column:additional_data;type:json"`
 	SyncStatus       string     `gorm:"column:sync_status;type:varchar(255);not null;default:idle"`

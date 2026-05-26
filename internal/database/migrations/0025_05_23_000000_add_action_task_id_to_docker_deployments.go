@@ -24,7 +24,7 @@ func init() {
 //
 // task_id binds the deployment row to the underlying taskrunner.Task
 // (server-tasks table). Same pattern site deployments use — once
-// persisted, the frontend can subscribe to the `task` entity logs
+// persisted, the frontend can subscribe to the task entity logs
 // websocket and stream the SSH output live (no need for a parallel
 // log_path column or polling).
 //
@@ -55,16 +55,16 @@ func addActionTaskIDToDockerDeploymentsUp(db *gorm.DB) error {
 
 func addActionTaskIDToDockerDeploymentsDown(db *gorm.DB) error {
 	if err := db.Exec(
-		"DROP INDEX idx_docker_deployments_task_id ON docker_deployments",
+		"DROP INDEX IF EXISTS idx_docker_deployments_task_id",
 	).Error; err != nil {
 		return err
 	}
 	if err := db.Exec(
-		"DROP INDEX idx_docker_deployments_action ON docker_deployments",
+		"DROP INDEX IF EXISTS idx_docker_deployments_action",
 	).Error; err != nil {
 		return err
 	}
 	return db.Exec(
-		"ALTER TABLE docker_deployments DROP COLUMN action, DROP COLUMN task_id",
+		"ALTER TABLE docker_deployments DROP COLUMN IF EXISTS action, DROP COLUMN IF EXISTS task_id",
 	).Error
 }

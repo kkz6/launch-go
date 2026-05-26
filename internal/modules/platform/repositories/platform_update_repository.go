@@ -37,7 +37,7 @@ func (r *PlatformUpdateRepository) FindByID(ctx context.Context, id string) (*mo
 // FindByKey finds a platform update by its unique key
 func (r *PlatformUpdateRepository) FindByKey(ctx context.Context, key string) (*models.PlatformUpdate, error) {
 	var update models.PlatformUpdate
-	err := r.db.WithContext(ctx).Where("`key` = ?", key).First(&update).Error
+	err := r.db.WithContext(ctx).Where(`"key" = ?`, key).First(&update).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return nil, fiberutil.NotFound()

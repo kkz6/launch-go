@@ -23,8 +23,8 @@ type serverProviderMigration struct {
 	TeamID      *string    `gorm:"column:team_id;type:char(26);index"`
 	Profile     *string    `gorm:"type:varchar(255)"`
 	Provider    string     `gorm:"type:varchar(255);not null"`
-	Credentials string     `gorm:"type:longtext;not null"`
-	Connected   bool       `gorm:"type:tinyint(1);not null;default:1"`
+	Credentials string     `gorm:"type:text;not null"`
+	Connected   bool       `gorm:"type:boolean;not null;default:1"`
 	CreatedAt   *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt   *time.Time `gorm:"type:timestamp null"`
 }

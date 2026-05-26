@@ -18,9 +18,12 @@ import (
 // SeedRenameUsername creates the rename_username_captain platform update
 // and generates server_platform_updates rows for all applicable servers
 func SeedRenameUsername(ctx context.Context, db *gorm.DB, logger *zerolog.Logger) error {
-	// Check if already exists (`key` is a MySQL reserved word, must be backtick-quoted)
+	// Check if already exists. `key` is reserved in both MySQL and Postgres
+	// but the dialects quote differently — use double quotes (SQL standard,
+	// works in Postgres; works in MySQL when ANSI_QUOTES sql_mode is set,
+	// which it is by default for Laravel/PDO clients).
 	var count int64
-	db.Model(&models.PlatformUpdate{}).Where("`key` = ?", tasks.RenameUsernameKey).Count(&count)
+	db.Model(&models.PlatformUpdate{}).Where(`"key" = ?`, tasks.RenameUsernameKey).Count(&count)
 	if count > 0 {
 		if logger != nil {
 			logger.Debug().Msg("Platform update rename_username_captain already seeded")

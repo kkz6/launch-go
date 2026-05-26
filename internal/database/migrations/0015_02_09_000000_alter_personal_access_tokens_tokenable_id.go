@@ -16,5 +16,11 @@ func init() {
 }
 
 func alterPersonalAccessTokensTokenableIDUp(db *gorm.DB) error {
-	return db.Exec("ALTER TABLE `personal_access_tokens` MODIFY `tokenable_id` varchar(26) NOT NULL").Error
+	// Postgres splits the column-type change and the NOT NULL constraint.
+	// USING tokenable_id::varchar handles the bigint → varchar coercion
+	// for any rows that existed before the change.
+	if err := db.Exec(`ALTER TABLE personal_access_tokens ALTER COLUMN tokenable_id TYPE varchar(26) USING tokenable_id::varchar`).Error; err != nil {
+		return err
+	}
+	return db.Exec(`ALTER TABLE personal_access_tokens ALTER COLUMN tokenable_id SET NOT NULL`).Error
 }

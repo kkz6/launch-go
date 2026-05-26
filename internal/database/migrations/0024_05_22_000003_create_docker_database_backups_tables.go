@@ -32,7 +32,7 @@ type dockerDatabaseBackupMigration struct {
 	Bucket       string         `gorm:"type:varchar(255);not null"`
 	Region       *string        `gorm:"type:varchar(64)"`
 	PathPrefix   *string        `gorm:"column:path_prefix;type:varchar(255)"`
-	Credentials  *string        `gorm:"type:longtext"` // encrypted JSON
+	Credentials  *string        `gorm:"type:text"` // encrypted JSON
 	CronSchedule *string        `gorm:"column:cron_schedule;type:varchar(64)"`
 	Enabled      bool           `gorm:"not null;default:true"`
 	CreatedAt    *time.Time     `gorm:"type:timestamp null"`
@@ -72,10 +72,7 @@ type dockerDatabaseBackupRunWithBackupFK struct {
 func (dockerDatabaseBackupRunWithBackupFK) TableName() string { return "docker_database_backup_runs" }
 
 func createDockerDatabaseBackupTablesUp(db *gorm.DB) error {
-	migrator := db.Set(
-		"gorm:table_options",
-		"DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-	).Migrator()
+	migrator := db.Migrator()
 
 	if err := migrator.CreateTable(&dockerDatabaseBackupMigration{}); err != nil {
 		return err

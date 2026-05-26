@@ -22,8 +22,8 @@ type teamMigration struct {
 	UserID               string     `gorm:"column:user_id;type:char(26);not null;index"`
 	Name                 string     `gorm:"type:varchar(255);not null"`
 	ImagePath            *string    `gorm:"column:image_path;type:varchar(255)"`
-	PersonalTeam         bool       `gorm:"type:tinyint(1);not null"`
-	RequiresSubscription bool       `gorm:"type:tinyint(1);not null;default:1"`
+	PersonalTeam         bool       `gorm:"type:boolean;not null"`
+	RequiresSubscription bool       `gorm:"type:boolean;not null;default:1"`
 	CreatedAt            *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt            *time.Time `gorm:"type:timestamp null"`
 }

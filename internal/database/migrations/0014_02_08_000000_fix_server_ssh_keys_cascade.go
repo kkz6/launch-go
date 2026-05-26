@@ -19,13 +19,13 @@ func init() {
 func fixServerSSHKeysCascadeUp(db *gorm.DB) error {
 	// Drop existing constraints
 	if err := db.Exec(
-		"ALTER TABLE server_ssh_keys DROP FOREIGN KEY server_ssh_keys_server_id_foreign",
+		"ALTER TABLE server_ssh_keys DROP CONSTRAINT IF EXISTS server_ssh_keys_server_id_foreign",
 	).Error; err != nil {
 		return err
 	}
 
 	if err := db.Exec(
-		"ALTER TABLE server_ssh_keys DROP FOREIGN KEY server_ssh_keys_ssh_key_id_foreign",
+		"ALTER TABLE server_ssh_keys DROP CONSTRAINT IF EXISTS server_ssh_keys_ssh_key_id_foreign",
 	).Error; err != nil {
 		return err
 	}
@@ -44,8 +44,8 @@ func fixServerSSHKeysCascadeUp(db *gorm.DB) error {
 
 func fixServerSSHKeysCascadeDown(db *gorm.DB) error {
 	// Revert to NO ACTION
-	db.Exec("ALTER TABLE server_ssh_keys DROP FOREIGN KEY server_ssh_keys_server_id_foreign")
-	db.Exec("ALTER TABLE server_ssh_keys DROP FOREIGN KEY server_ssh_keys_ssh_key_id_foreign")
+	db.Exec("ALTER TABLE server_ssh_keys DROP CONSTRAINT IF EXISTS server_ssh_keys_server_id_foreign")
+	db.Exec("ALTER TABLE server_ssh_keys DROP CONSTRAINT IF EXISTS server_ssh_keys_ssh_key_id_foreign")
 	db.Exec("ALTER TABLE server_ssh_keys ADD CONSTRAINT server_ssh_keys_server_id_foreign FOREIGN KEY (server_id) REFERENCES servers(id)")
 
 	return db.Exec(

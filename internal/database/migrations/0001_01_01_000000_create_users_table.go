@@ -30,7 +30,7 @@ type userMigration struct {
 	CurrentTeamID          *string    `gorm:"type:char(26)"`
 	ProfilePhotoPath       *string    `gorm:"type:varchar(2048)"`
 	Timezone               *string    `gorm:"type:varchar(255);default:'UTC'"`
-	Onboarded              bool       `gorm:"type:tinyint(1);not null;default:0"`
+	Onboarded              bool       `gorm:"type:boolean;not null;default:0"`
 	CreatedAt              *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt              *time.Time `gorm:"type:timestamp null"`
 }
@@ -56,7 +56,7 @@ type sessionMigration struct {
 	UserID       *string `gorm:"type:char(26);index"`
 	IPAddress    *string `gorm:"type:varchar(45)"`
 	UserAgent    *string `gorm:"type:text"`
-	Payload      string  `gorm:"type:longtext;not null"`
+	Payload      string  `gorm:"type:text;not null"`
 	LastActivity int     `gorm:"type:int;not null;index"`
 }
 

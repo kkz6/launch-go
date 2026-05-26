@@ -24,7 +24,7 @@ type storageProviderMigration struct {
 	Provider       string     `gorm:"type:varchar(255);not null"`
 	Label          *string    `gorm:"type:varchar(255)"`
 	Token          *string    `gorm:"type:varchar(1000)"` // encrypted
-	Credentials    *string    `gorm:"type:longtext"`      // encrypted
+	Credentials    *string    `gorm:"type:text"`          // encrypted
 	RefreshToken   *string    `gorm:"column:refresh_token;type:varchar(1000)"`
 	Connected      bool       `gorm:"default:true"`
 	TokenExpiresAt *time.Time `gorm:"column:token_expires_at;type:timestamp null"`

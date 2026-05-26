@@ -43,27 +43,27 @@ func revampDockerDatabaseBackupsUp(db *gorm.DB) error {
 		return err
 	}
 
-	// Drop the old credential-bearing columns. Order matters only for
-	// readability — MySQL handles drops independently.
+	// Drop the old credential-bearing columns. IF EXISTS so the
+	// migration is a no-op on fresh installs where the previous
+	// shape never existed.
 	drops := []string{"provider", "endpoint", "bucket", "region", "path_prefix", "credentials"}
 	for _, col := range drops {
 		if err := db.Exec(
-			"ALTER TABLE docker_database_backups DROP COLUMN " + col,
+			"ALTER TABLE docker_database_backups DROP COLUMN IF EXISTS " + col,
 		).Error; err != nil {
 			return err
 		}
 	}
 
 	// Add the storage-provider FK column + the new bookkeeping fields.
-	// storage_provider_id is BIGINT UNSIGNED to match storage_providers.id
+	// storage_provider_id is BIGINT to match storage_providers.id
 	// (autoIncrement uint64).
 	adds := []string{
-		"ADD COLUMN storage_provider_id BIGINT UNSIGNED NOT NULL",
+		"ADD COLUMN storage_provider_id BIGINT NOT NULL",
 		"ADD COLUMN path VARCHAR(255) NULL",
 		"ADD COLUMN retention INT NOT NULL DEFAULT 10",
-		"ADD COLUMN notify_on_success TINYINT(1) NOT NULL DEFAULT 0",
-		"ADD COLUMN notify_on_failure TINYINT(1) NOT NULL DEFAULT 1",
-		"ADD INDEX idx_docker_db_backups_storage_provider (storage_provider_id)",
+		"ADD COLUMN notify_on_success BOOLEAN NOT NULL DEFAULT FALSE",
+		"ADD COLUMN notify_on_failure BOOLEAN NOT NULL DEFAULT TRUE",
 	}
 	for _, clause := range adds {
 		if err := db.Exec(
@@ -71,6 +71,13 @@ func revampDockerDatabaseBackupsUp(db *gorm.DB) error {
 		).Error; err != nil {
 			return err
 		}
+	}
+
+	// Postgres uses CREATE INDEX as a separate statement (no ADD INDEX inside ALTER TABLE).
+	if err := db.Exec(
+		"CREATE INDEX idx_docker_db_backups_storage_provider ON docker_database_backups (storage_provider_id)",
+	).Error; err != nil {
+		return err
 	}
 
 	// FK to storage_providers — ON DELETE RESTRICT keeps users from
@@ -95,18 +102,18 @@ func revampDockerDatabaseBackupsDown(db *gorm.DB) error {
 	}
 
 	if err := db.Exec(
-		"ALTER TABLE docker_database_backups DROP FOREIGN KEY fk_docker_db_backups_storage_provider",
+		"ALTER TABLE docker_database_backups DROP CONSTRAINT IF EXISTS fk_docker_db_backups_storage_provider",
 	).Error; err != nil {
 		return err
 	}
 
 	drops := []string{
 		"DROP INDEX idx_docker_db_backups_storage_provider",
-		"DROP COLUMN storage_provider_id",
-		"DROP COLUMN path",
-		"DROP COLUMN retention",
-		"DROP COLUMN notify_on_success",
-		"DROP COLUMN notify_on_failure",
+		"DROP COLUMN IF EXISTS storage_provider_id",
+		"DROP COLUMN IF EXISTS path",
+		"DROP COLUMN IF EXISTS retention",
+		"DROP COLUMN IF EXISTS notify_on_success",
+		"DROP COLUMN IF EXISTS notify_on_failure",
 	}
 	for _, clause := range drops {
 		if err := db.Exec(
@@ -122,7 +129,7 @@ func revampDockerDatabaseBackupsDown(db *gorm.DB) error {
 		"ADD COLUMN bucket VARCHAR(255) NOT NULL",
 		"ADD COLUMN region VARCHAR(64) NULL",
 		"ADD COLUMN path_prefix VARCHAR(255) NULL",
-		"ADD COLUMN credentials LONGTEXT NULL",
+		"ADD COLUMN credentials TEXT NULL",
 	}
 	for _, clause := range adds {
 		if err := db.Exec(

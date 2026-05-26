@@ -21,7 +21,7 @@ type scriptMigration struct {
 	ID        string     `gorm:"type:char(26);primaryKey"`
 	UserID    string     `gorm:"column:user_id;type:char(26);not null;index"`
 	Name      string     `gorm:"type:varchar(255);not null"`
-	Content   string     `gorm:"type:longtext;not null"`
+	Content   string     `gorm:"type:text;not null"`
 	CreatedAt *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt *time.Time `gorm:"type:timestamp null"`
 }

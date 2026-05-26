@@ -23,7 +23,7 @@ type commandMigration struct {
 	UserID    string     `gorm:"column:user_id;type:char(26);not null;index"`
 	Command   string     `gorm:"type:varchar(255);not null"`
 	Status    string     `gorm:"type:varchar(255);not null"`
-	Output    *string    `gorm:"type:longtext"`
+	Output    *string    `gorm:"type:text"`
 	ExitCode  *int       `gorm:"column:exit_code"`
 	CreatedAt *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt *time.Time `gorm:"type:timestamp null"`

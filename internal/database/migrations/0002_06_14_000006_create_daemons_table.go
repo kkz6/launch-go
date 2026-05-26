@@ -22,12 +22,12 @@ type daemonMigration struct {
 	ServerID                  string     `gorm:"column:server_id;type:char(26);not null;index"`
 	User                      string     `gorm:"type:varchar(255);not null"`
 	Directory                 *string    `gorm:"type:varchar(255)"`
-	Command                   string     `gorm:"type:longtext;not null"`
+	Command                   string     `gorm:"type:text;not null"`
 	Processes                 int        `gorm:"type:int;not null;default:1"`
 	StopWaitSeconds           int        `gorm:"type:int;not null;default:10"`
 	StopSignal                string     `gorm:"type:varchar(255);not null"`
 	LastStatusCheck           *time.Time `gorm:"type:timestamp null"`
-	Running                   bool       `gorm:"type:tinyint(1);not null;default:0"`
+	Running                   bool       `gorm:"type:boolean;not null;default:0"`
 	Info                      *string    `gorm:"type:json"`
 	InstalledAt               *time.Time `gorm:"type:timestamp null"`
 	InstallationFailedAt      *time.Time `gorm:"type:timestamp null"`

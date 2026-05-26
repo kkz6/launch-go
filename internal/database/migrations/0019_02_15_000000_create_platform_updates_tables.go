@@ -102,7 +102,6 @@ func (platformUpdateDismissalWithUpdateFK) TableName() string {
 }
 
 func createPlatformUpdatesTablesUp(db *gorm.DB) error {
-	db = db.Set("gorm:table_options", "DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci")
 
 	// Create platform_updates table
 	if err := db.Migrator().CreateTable(&platformUpdateMigration{}); err != nil {

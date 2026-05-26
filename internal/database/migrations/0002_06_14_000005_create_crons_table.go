@@ -23,9 +23,9 @@ type cronMigration struct {
 	SiteID                    *string    `gorm:"column:site_id;type:char(26);index"`
 	User                      string     `gorm:"type:varchar(255);not null"`
 	Expression                string     `gorm:"type:varchar(255);not null"`
-	Command                   string     `gorm:"type:longtext;not null"`
+	Command                   string     `gorm:"type:text;not null"`
 	Frequency                 string     `gorm:"type:varchar(255);not null"`
-	Hidden                    bool       `gorm:"type:tinyint(1);not null;default:0"`
+	Hidden                    bool       `gorm:"type:boolean;not null;default:0"`
 	InstalledAt               *time.Time `gorm:"type:timestamp null"`
 	InstallationFailedAt      *time.Time `gorm:"type:timestamp null"`
 	UninstallationRequestedAt *time.Time `gorm:"type:timestamp null"`

@@ -23,11 +23,11 @@ type taskMigration struct {
 	Name      string     `gorm:"type:varchar(255);not null"`
 	User      string     `gorm:"type:varchar(255);not null"`
 	Type      string     `gorm:"type:varchar(255);not null"`
-	Instance  *string    `gorm:"type:longtext"`
-	Script    string     `gorm:"type:longtext;not null"`
+	Instance  *string    `gorm:"type:text"`
+	Script    string     `gorm:"type:text;not null"`
 	Timeout   int        `gorm:"type:int;not null"`
 	Status    string     `gorm:"type:varchar(255);not null"`
-	Output    *string    `gorm:"type:longtext"`
+	Output    *string    `gorm:"type:text"`
 	ExitCode  *int       `gorm:"type:int"`
 	CreatedAt *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt *time.Time `gorm:"type:timestamp null"`

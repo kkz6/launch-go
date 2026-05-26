@@ -22,7 +22,7 @@ type postMigration struct {
 	UserID    string     `gorm:"column:user_id;type:char(26);not null;index"`
 	Title     string     `gorm:"type:varchar(255);not null"`
 	Slug      string     `gorm:"type:varchar(255);not null"`
-	Body      string     `gorm:"type:longtext;not null"`
+	Body      string     `gorm:"type:text;not null"`
 	Status    string     `gorm:"type:varchar(255);not null;default:draft"` // draft, published
 	CreatedAt *time.Time `gorm:"type:timestamp null"`
 	UpdatedAt *time.Time `gorm:"type:timestamp null"`

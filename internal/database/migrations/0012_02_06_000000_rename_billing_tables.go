@@ -10,7 +10,7 @@ import (
 func init() {
 	Register(Migration{
 		ID:        "0012_02_06_000000_rename_billing_tables",
-		Name:      "Rename billing tables from lemon_squeezy to generic names",
+		Name:      "Create billing tables (subscriptions, orders, webhook events)",
 		Timestamp: time.Date(2012, 2, 6, 0, 0, 0, 0, time.UTC),
 		Up:        renameBillingTablesUp,
 		Down:      renameBillingTablesDown,
@@ -23,69 +23,101 @@ func tableExists(db *gorm.DB, name string) bool {
 
 func columnExists(db *gorm.DB, table, column string) bool {
 	var count int64
-	db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = DATABASE() AND table_name = ? AND column_name = ?", table, column).Scan(&count)
+	db.Raw("SELECT COUNT(*) FROM information_schema.columns WHERE table_schema = current_schema() AND table_name = ? AND column_name = ?", table, column).Scan(&count)
 	return count > 0
 }
 
+// renameBillingTablesUp historically renamed lemon_squeezy_* tables to
+// their generic provider-agnostic names. The Laravel ancestry that
+// owned those tables is long gone; this migration now just creates the
+// final shape directly. Production data lands via pgloader, not via
+// re-running these migrations, so the rename path is dead weight.
 func renameBillingTablesUp(db *gorm.DB) error {
-	// Rename lemon_squeezy_subscriptions to subscriptions (if old table still exists)
-	if tableExists(db, "lemon_squeezy_subscriptions") {
-		if err := db.Exec("RENAME TABLE `lemon_squeezy_subscriptions` TO `subscriptions`").Error; err != nil {
-			return fmt.Errorf("failed to rename lemon_squeezy_subscriptions: %w", err)
+	if !tableExists(db, "subscriptions") {
+		if err := db.Exec(`CREATE TABLE subscriptions (
+			id BIGSERIAL PRIMARY KEY,
+			billable_type VARCHAR(255) NOT NULL,
+			billable_id CHAR(26) NOT NULL,
+			type VARCHAR(255) NOT NULL,
+			provider VARCHAR(50) NOT NULL DEFAULT 'dodo_payments',
+			provider_subscription_id VARCHAR(255) NOT NULL UNIQUE,
+			customer_id VARCHAR(255) NULL,
+			status VARCHAR(255) NOT NULL,
+			product_id VARCHAR(255) NOT NULL,
+			variant_id VARCHAR(255) NOT NULL,
+			card_brand VARCHAR(255) NULL,
+			card_last_four VARCHAR(255) NULL,
+			pause_mode VARCHAR(255) NULL,
+			pause_resumes_at TIMESTAMP NULL,
+			trial_ends_at TIMESTAMP NULL,
+			renews_at TIMESTAMP NULL,
+			ends_at TIMESTAMP NULL,
+			created_at TIMESTAMP NULL,
+			updated_at TIMESTAMP NULL
+		)`).Error; err != nil {
+			return fmt.Errorf("failed to create subscriptions table: %w", err)
+		}
+		if err := db.Exec(`CREATE INDEX subscriptions_billable_idx ON subscriptions(billable_type, billable_id)`).Error; err != nil {
+			return fmt.Errorf("failed to create subscriptions billable index: %w", err)
 		}
 	}
 
-	// Rename lemon_squeezy_orders to orders (if old table still exists)
-	if tableExists(db, "lemon_squeezy_orders") {
-		if err := db.Exec("RENAME TABLE `lemon_squeezy_orders` TO `orders`").Error; err != nil {
-			return fmt.Errorf("failed to rename lemon_squeezy_orders: %w", err)
+	if !tableExists(db, "orders") {
+		if err := db.Exec(`CREATE TABLE orders (
+			id BIGSERIAL PRIMARY KEY,
+			billable_type VARCHAR(255) NOT NULL,
+			billable_id CHAR(26) NOT NULL,
+			provider VARCHAR(50) NOT NULL DEFAULT 'dodo_payments',
+			provider_order_id VARCHAR(255) NOT NULL UNIQUE,
+			customer_id VARCHAR(255) NOT NULL,
+			identifier CHAR(36) NOT NULL UNIQUE,
+			product_id VARCHAR(255) NOT NULL,
+			variant_id VARCHAR(255) NOT NULL,
+			order_number INTEGER NULL UNIQUE,
+			currency VARCHAR(255) NOT NULL,
+			subtotal INTEGER NOT NULL,
+			discount_total INTEGER NOT NULL,
+			tax INTEGER NOT NULL,
+			total INTEGER NOT NULL,
+			tax_name VARCHAR(255) NULL,
+			status VARCHAR(255) NOT NULL,
+			receipt_url VARCHAR(255) NULL,
+			refunded BOOLEAN NOT NULL DEFAULT FALSE,
+			refunded_at TIMESTAMP NULL,
+			ordered_at TIMESTAMP NOT NULL,
+			created_at TIMESTAMP NULL,
+			updated_at TIMESTAMP NULL
+		)`).Error; err != nil {
+			return fmt.Errorf("failed to create orders table: %w", err)
+		}
+		if err := db.Exec(`CREATE INDEX orders_billable_idx ON orders(billable_type, billable_id)`).Error; err != nil {
+			return fmt.Errorf("failed to create orders billable index: %w", err)
+		}
+		if err := db.Exec(`CREATE INDEX orders_product_id_index ON orders(product_id)`).Error; err != nil {
+			return fmt.Errorf("failed to create orders product_id index: %w", err)
+		}
+		if err := db.Exec(`CREATE INDEX orders_variant_id_index ON orders(variant_id)`).Error; err != nil {
+			return fmt.Errorf("failed to create orders variant_id index: %w", err)
 		}
 	}
 
-	// Rename lemon_squeezy_id column to provider_subscription_id in subscriptions table
-	if tableExists(db, "subscriptions") && columnExists(db, "subscriptions", "lemon_squeezy_id") {
-		if err := db.Exec("ALTER TABLE `subscriptions` CHANGE COLUMN `lemon_squeezy_id` `provider_subscription_id` VARCHAR(255) NOT NULL").Error; err != nil {
-			return fmt.Errorf("failed to rename lemon_squeezy_id column in subscriptions: %w", err)
-		}
-	}
-
-	// Rename lemon_squeezy_id column to provider_order_id in orders table
-	if tableExists(db, "orders") && columnExists(db, "orders", "lemon_squeezy_id") {
-		if err := db.Exec("ALTER TABLE `orders` CHANGE COLUMN `lemon_squeezy_id` `provider_order_id` VARCHAR(255) NOT NULL").Error; err != nil {
-			return fmt.Errorf("failed to rename lemon_squeezy_id column in orders: %w", err)
-		}
-	}
-
-	// Add provider column to subscriptions table
-	if tableExists(db, "subscriptions") && !columnExists(db, "subscriptions", "provider") {
-		if err := db.Exec("ALTER TABLE `subscriptions` ADD COLUMN `provider` VARCHAR(50) NOT NULL DEFAULT 'dodo_payments' AFTER `type`").Error; err != nil {
-			return fmt.Errorf("failed to add provider column to subscriptions: %w", err)
-		}
-	}
-
-	// Add provider column to orders table
-	if tableExists(db, "orders") && !columnExists(db, "orders", "provider") {
-		if err := db.Exec("ALTER TABLE `orders` ADD COLUMN `provider` VARCHAR(50) NOT NULL DEFAULT 'dodo_payments' AFTER `billable_id`").Error; err != nil {
-			return fmt.Errorf("failed to add provider column to orders: %w", err)
-		}
-	}
-
-	// Create billing_webhook_events table (was never created as lemon_squeezy_webhook_events)
 	if !tableExists(db, "billing_webhook_events") {
 		if err := db.Exec(`CREATE TABLE billing_webhook_events (
 			id CHAR(26) PRIMARY KEY,
 			event_name VARCHAR(100) NOT NULL,
 			payload TEXT NOT NULL,
 			signature VARCHAR(255) NOT NULL,
-			processed TINYINT(1) NOT NULL DEFAULT 0,
+			processed BOOLEAN NOT NULL DEFAULT FALSE,
 			processed_at TIMESTAMP NULL,
 			error TEXT NULL,
 			retry_count INT NOT NULL DEFAULT 0,
 			created_at TIMESTAMP NULL,
-			updated_at TIMESTAMP NULL,
-			INDEX idx_event_name (event_name)
+			updated_at TIMESTAMP NULL
 		)`).Error; err != nil {
 			return fmt.Errorf("failed to create billing_webhook_events table: %w", err)
+		}
+		if err := db.Exec(`CREATE INDEX idx_event_name ON billing_webhook_events(event_name)`).Error; err != nil {
+			return fmt.Errorf("failed to create idx_event_name index: %w", err)
 		}
 	}
 
@@ -93,16 +125,8 @@ func renameBillingTablesUp(db *gorm.DB) error {
 }
 
 func renameBillingTablesDown(db *gorm.DB) error {
-	db.Exec("DROP TABLE IF EXISTS `billing_webhook_events`")
-
-	db.Exec("ALTER TABLE `subscriptions` DROP COLUMN `provider`")
-	db.Exec("ALTER TABLE `orders` DROP COLUMN `provider`")
-
-	db.Exec("ALTER TABLE `subscriptions` CHANGE COLUMN `provider_subscription_id` `lemon_squeezy_id` VARCHAR(255) NOT NULL")
-	db.Exec("ALTER TABLE `orders` CHANGE COLUMN `provider_order_id` `lemon_squeezy_id` VARCHAR(255) NOT NULL")
-
-	db.Exec("RENAME TABLE `subscriptions` TO `lemon_squeezy_subscriptions`")
-	db.Exec("RENAME TABLE `orders` TO `lemon_squeezy_orders`")
-
+	db.Exec("DROP TABLE IF EXISTS billing_webhook_events")
+	db.Exec("DROP TABLE IF EXISTS orders")
+	db.Exec("DROP TABLE IF EXISTS subscriptions")
 	return nil
 }

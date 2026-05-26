@@ -63,7 +63,7 @@ type dockerComposeMigration struct {
 	ComposeSourceType string         `gorm:"column:compose_source_type;type:varchar(32);not null"`
 	SourceConfig      *string        `gorm:"column:source_config;type:json"`
 	ComposeFilePath   *string        `gorm:"column:compose_file_path;type:varchar(512)"`
-	RawYAML           *string        `gorm:"column:raw_yaml;type:longtext"`
+	RawYAML           *string        `gorm:"column:raw_yaml;type:text"`
 	Status            string         `gorm:"type:varchar(32);not null;default:idle"`
 	LastDeployedAt    *time.Time     `gorm:"column:last_deployed_at;type:timestamp null"`
 	CreatedAt         *time.Time     `gorm:"type:timestamp null"`
@@ -99,7 +99,7 @@ type dockerDatabaseMigration struct {
 	EngineVersion string         `gorm:"column:engine_version;type:varchar(32);not null"`
 	ImageTag      *string        `gorm:"column:image_tag;type:varchar(255)"`
 	ExternalPort  *int           `gorm:"column:external_port;type:int"`
-	Credentials   *string        `gorm:"type:longtext"`
+	Credentials   *string        `gorm:"type:text"`
 	Status        string         `gorm:"type:varchar(32);not null;default:starting"`
 	CreatedAt     *time.Time     `gorm:"type:timestamp null"`
 	UpdatedAt     *time.Time     `gorm:"type:timestamp null"`
@@ -150,7 +150,7 @@ type dockerApplicationEnvVarMigration struct {
 	ID            string         `gorm:"type:char(26);primaryKey"`
 	ApplicationID string         `gorm:"column:application_id;type:char(26);not null;index"`
 	Key           string         `gorm:"type:varchar(255);not null"`
-	Value         string         `gorm:"type:longtext;not null"`
+	Value         string         `gorm:"type:text;not null"`
 	IsSecret      bool           `gorm:"column:is_secret;not null;default:false"`
 	CreatedAt     *time.Time     `gorm:"type:timestamp null"`
 	UpdatedAt     *time.Time     `gorm:"type:timestamp null"`
@@ -236,10 +236,7 @@ func (dockerApplicationScheduleWithAppFK) TableName() string {
 func createDockerWorkloadsTablesUp(db *gorm.DB) error {
 	// Match the legacy schema's charset/collation so FKs to teams/servers
 	// don't fall over on MySQL 8 — see 0021 for the same rationale.
-	migrator := db.Set(
-		"gorm:table_options",
-		"DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-	).Migrator()
+	migrator := db.Migrator()
 
 	// Order matters — children depend on parents (FK constraints).
 	tables := []any{
@@ -270,7 +267,7 @@ func createDockerWorkloadsTablesUp(db *gorm.DB) error {
 		{&dockerComposeWithServerFK{}, "Server", ""},
 		{&dockerDatabaseWithProjectFK{}, "Project", "project_id, name"},
 		{&dockerDatabaseWithServerFK{}, "Server", ""},
-		{&dockerApplicationEnvVarWithAppFK{}, "Application", "application_id, `key`"},
+		{&dockerApplicationEnvVarWithAppFK{}, "Application", "application_id, key"},
 		{&dockerApplicationDomainWithAppFK{}, "Application", "application_id, host"},
 		{&dockerApplicationVolumeWithAppFK{}, "Application", "application_id, name"},
 		{&dockerApplicationScheduleWithAppFK{}, "Application", ""},
@@ -292,7 +289,7 @@ func createDockerWorkloadsTablesUp(db *gorm.DB) error {
 		{"idx_docker_apps_project_name", "docker_applications", "project_id, name, deleted_at"},
 		{"idx_docker_composes_project_name", "docker_composes", "project_id, name, deleted_at"},
 		{"idx_docker_databases_project_name", "docker_databases", "project_id, name, deleted_at"},
-		{"idx_docker_app_env_app_key", "docker_application_env_vars", "application_id, `key`, deleted_at"},
+		{"idx_docker_app_env_app_key", "docker_application_env_vars", "application_id, key, deleted_at"},
 		{"idx_docker_app_domain_app_host", "docker_application_domains", "application_id, host, deleted_at"},
 		{"idx_docker_app_volume_app_name", "docker_application_volumes", "application_id, name, deleted_at"},
 	}

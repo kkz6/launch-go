@@ -45,17 +45,22 @@ func createRegistryCredentialsUp(db *gorm.DB) error {
 			user_id       CHAR(26)     NULL,
 			name          VARCHAR(255) NOT NULL,
 			registry_url  VARCHAR(255) NULL,
-			username      LONGTEXT     NOT NULL,
-			password      LONGTEXT     NOT NULL,
+			username      TEXT     NOT NULL,
+			password      TEXT     NOT NULL,
 			created_at    TIMESTAMP    NULL,
 			updated_at    TIMESTAMP    NULL,
 			deleted_at    TIMESTAMP    NULL,
 			PRIMARY KEY (id),
-			INDEX idx_reg_creds_team (team_id),
-			INDEX idx_reg_creds_deleted (deleted_at),
 			CONSTRAINT fk_reg_creds_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+		)
 	`).Error; err != nil {
+		return err
+	}
+	// Postgres requires CREATE INDEX statements outside the CREATE TABLE.
+	if err := db.Exec(`CREATE INDEX idx_reg_creds_team ON registry_credentials (team_id)`).Error; err != nil {
+		return err
+	}
+	if err := db.Exec(`CREATE INDEX idx_reg_creds_deleted ON registry_credentials (deleted_at)`).Error; err != nil {
 		return err
 	}
 
@@ -75,9 +80,12 @@ func createRegistryCredentialsUp(db *gorm.DB) error {
 		ALTER TABLE docker_applications
 			ADD COLUMN registry_credential_id CHAR(26)     NULL,
 			ADD COLUMN registry_username      VARCHAR(255) NULL,
-			ADD COLUMN registry_password      LONGTEXT     NULL,
-			ADD INDEX idx_docker_apps_reg_cred (registry_credential_id)
+			ADD COLUMN registry_password      TEXT         NULL
 	`).Error; err != nil {
+		return err
+	}
+	// Postgres requires CREATE INDEX as a separate statement.
+	if err := db.Exec(`CREATE INDEX idx_docker_apps_reg_cred ON docker_applications (registry_credential_id)`).Error; err != nil {
 		return err
 	}
 
@@ -105,13 +113,15 @@ func createRegistryCredentialsUp(db *gorm.DB) error {
 			compose_id             CHAR(26) NOT NULL,
 			registry_credential_id CHAR(26) NOT NULL,
 			PRIMARY KEY (compose_id, registry_credential_id),
-			INDEX idx_dcrc_credential (registry_credential_id),
 			CONSTRAINT fk_dcrc_compose
 				FOREIGN KEY (compose_id) REFERENCES docker_composes(id) ON DELETE CASCADE,
 			CONSTRAINT fk_dcrc_credential
 				FOREIGN KEY (registry_credential_id) REFERENCES registry_credentials(id) ON DELETE CASCADE
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+		)
 	`).Error; err != nil {
+		return err
+	}
+	if err := db.Exec(`CREATE INDEX idx_dcrc_credential ON docker_compose_registry_credentials (registry_credential_id)`).Error; err != nil {
 		return err
 	}
 
@@ -127,16 +137,16 @@ func createRegistryCredentialsDown(db *gorm.DB) error {
 	}
 	if err := db.Exec(`
 		ALTER TABLE docker_applications
-			DROP FOREIGN KEY fk_docker_apps_reg_cred
+			DROP CONSTRAINT IF EXISTS fk_docker_apps_reg_cred
 	`).Error; err != nil {
 		return err
 	}
 	if err := db.Exec(`
 		ALTER TABLE docker_applications
 			DROP INDEX idx_docker_apps_reg_cred,
-			DROP COLUMN registry_password,
-			DROP COLUMN registry_username,
-			DROP COLUMN registry_credential_id
+			DROP COLUMN IF EXISTS registry_password,
+			DROP COLUMN IF EXISTS registry_username,
+			DROP COLUMN IF EXISTS registry_credential_id
 	`).Error; err != nil {
 		return err
 	}

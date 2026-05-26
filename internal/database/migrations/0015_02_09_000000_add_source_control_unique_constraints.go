@@ -32,12 +32,12 @@ func addSourceControlUniqueConstraintsUp(db *gorm.DB) error {
 
 func addSourceControlUniqueConstraintsDown(db *gorm.DB) error {
 	if err := db.Exec(
-		"DROP INDEX idx_source_controls_provider_providerid_teamid ON source_controls",
+		"DROP INDEX IF EXISTS idx_source_controls_provider_providerid_teamid",
 	).Error; err != nil {
 		return err
 	}
 
 	return db.Exec(
-		"DROP INDEX idx_source_control_repos_scid_fullname ON source_control_repositories",
+		"DROP INDEX IF EXISTS idx_source_control_repos_scid_fullname",
 	).Error
 }

@@ -18,14 +18,14 @@ func init() {
 
 func addCustomerIDToSubscriptionsUp(db *gorm.DB) error {
 	if !columnExists(db, "subscriptions", "customer_id") {
-		return db.Exec("ALTER TABLE `subscriptions` ADD COLUMN `customer_id` VARCHAR(255) NULL AFTER `provider_subscription_id`").Error
+		return db.Exec("ALTER TABLE subscriptions ADD COLUMN customer_id VARCHAR(255) NULL").Error
 	}
 	return nil
 }
 
 func addCustomerIDToSubscriptionsDown(db *gorm.DB) error {
 	if columnExists(db, "subscriptions", "customer_id") {
-		return db.Exec("ALTER TABLE `subscriptions` DROP COLUMN `customer_id`").Error
+		return db.Exec("ALTER TABLE subscriptions DROP COLUMN IF EXISTS customer_id").Error
 	}
 	return nil
 }

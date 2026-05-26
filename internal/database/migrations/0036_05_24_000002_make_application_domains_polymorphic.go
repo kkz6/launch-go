@@ -32,15 +32,15 @@ func init() {
 // so removing a compose stack tears down its domain rows alongside
 // the volumes that migration 0035 just landed.
 //
-// Table name `docker_application_domains` is preserved. Renaming it
-// to `docker_workload_domains` would be a strictly cosmetic improve-
+// Table name docker_application_domains is preserved. Renaming it
+// to docker_workload_domains would be a strictly cosmetic improve-
 // ment that ripples through every reference; not worth the diff.
 func makeApplicationDomainsPolymorphicUp(db *gorm.DB) error {
 	// 1. Relax application_id NOT NULL. Existing rows stay non-NULL
 	//    so this is strictly widening — no data migration needed.
 	if err := db.Exec(
 		"ALTER TABLE docker_application_domains " +
-			"MODIFY COLUMN application_id CHAR(26) NULL",
+			"ALTER COLUMN application_id DROP NOT NULL",
 	).Error; err != nil {
 		return err
 	}
@@ -49,7 +49,7 @@ func makeApplicationDomainsPolymorphicUp(db *gorm.DB) error {
 	//    application-owned rows pass through unchanged.
 	if err := db.Exec(
 		"ALTER TABLE docker_application_domains " +
-			"ADD COLUMN compose_id CHAR(26) NULL AFTER application_id",
+			"ADD COLUMN compose_id CHAR(26) NULL",
 	).Error; err != nil {
 		return err
 	}
@@ -60,7 +60,7 @@ func makeApplicationDomainsPolymorphicUp(db *gorm.DB) error {
 	//    distinction is unambiguous at the row level for diagnostics.
 	if err := db.Exec(
 		"ALTER TABLE docker_application_domains " +
-			"ADD COLUMN service_name VARCHAR(255) NULL AFTER compose_id",
+			"ADD COLUMN service_name VARCHAR(255) NULL",
 	).Error; err != nil {
 		return err
 	}
@@ -106,7 +106,7 @@ func makeApplicationDomainsPolymorphicUp(db *gorm.DB) error {
 func makeApplicationDomainsPolymorphicDown(db *gorm.DB) error {
 	if err := db.Exec(
 		"ALTER TABLE docker_application_domains " +
-			"DROP FOREIGN KEY fk_docker_app_domains_compose",
+			"DROP CONSTRAINT IF EXISTS fk_docker_app_domains_compose",
 	).Error; err != nil {
 		return err
 	}
@@ -123,17 +123,17 @@ func makeApplicationDomainsPolymorphicDown(db *gorm.DB) error {
 		return err
 	}
 	if err := db.Exec(
-		"ALTER TABLE docker_application_domains DROP COLUMN service_name",
+		"ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS service_name",
 	).Error; err != nil {
 		return err
 	}
 	if err := db.Exec(
-		"ALTER TABLE docker_application_domains DROP COLUMN compose_id",
+		"ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS compose_id",
 	).Error; err != nil {
 		return err
 	}
 	return db.Exec(
 		"ALTER TABLE docker_application_domains " +
-			"MODIFY COLUMN application_id CHAR(26) NOT NULL",
+			"ALTER COLUMN application_id SET NOT NULL",
 	).Error
 }

@@ -35,8 +35,8 @@ func addLoadBalancedUpstreamIDToSitesUp(db *gorm.DB) error {
 }
 
 func addLoadBalancedUpstreamIDToSitesDown(db *gorm.DB) error {
-	db.Exec("ALTER TABLE sites DROP FOREIGN KEY fk_sites_lb_upstream")
-	db.Exec("DROP INDEX idx_sites_lb_upstream ON sites")
+	db.Exec("ALTER TABLE sites DROP CONSTRAINT IF EXISTS fk_sites_lb_upstream")
+	db.Exec("DROP INDEX IF EXISTS idx_sites_lb_upstream")
 
-	return db.Exec("ALTER TABLE sites DROP COLUMN load_balanced_upstream_id").Error
+	return db.Exec("ALTER TABLE sites DROP COLUMN IF EXISTS load_balanced_upstream_id").Error
 }

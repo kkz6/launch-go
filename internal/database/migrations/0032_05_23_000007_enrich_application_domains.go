@@ -24,7 +24,7 @@ func init() {
 //     Traefik strips/rewrites accordingly.
 //     Defaults to "/" (matches dokploy).
 //   - strip_path           — explicit toggle to strip the external
-//     `path` prefix before forwarding. Without
+//     path prefix before forwarding. Without
 //     this Traefik sends the full URL through;
 //     apps like Nuxt at /api want the prefix
 //     gone.
@@ -59,21 +59,21 @@ func enrichApplicationDomainsUp(db *gorm.DB) error {
 
 func enrichApplicationDomainsDown(db *gorm.DB) error {
 	if err := db.Exec(
-		"ALTER TABLE docker_application_domains DROP COLUMN certificate_provider",
+		"ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS certificate_provider",
 	).Error; err != nil {
 		return err
 	}
 	if err := db.Exec(
-		"ALTER TABLE docker_application_domains DROP COLUMN container_port",
+		"ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS container_port",
 	).Error; err != nil {
 		return err
 	}
 	if err := db.Exec(
-		"ALTER TABLE docker_application_domains DROP COLUMN strip_path",
+		"ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS strip_path",
 	).Error; err != nil {
 		return err
 	}
 	return db.Exec(
-		"ALTER TABLE docker_application_domains DROP COLUMN internal_path",
+		"ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS internal_path",
 	).Error
 }

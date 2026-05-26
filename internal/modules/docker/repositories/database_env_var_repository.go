@@ -41,7 +41,7 @@ func (r *DatabaseEnvVarRepository) ListForDatabase(
 	var rows []models.DatabaseEnvVar
 	err := r.DB.WithContext(ctx).
 		Where("database_id = ?", databaseID).
-		Order("`key` ASC").
+		Order(`"key" ASC`).
 		Find(&rows).Error
 	return rows, err
 }
@@ -51,7 +51,7 @@ func (r *DatabaseEnvVarRepository) ExistsByKey(
 ) (bool, error) {
 	q := r.DB.WithContext(ctx).
 		Model(&models.DatabaseEnvVar{}).
-		Where("database_id = ? AND `key` = ?", databaseID, key)
+		Where(`database_id = ? AND "key" = ?`, databaseID, key)
 	if excludeID != "" {
 		q = q.Where("id <> ?", excludeID)
 	}

@@ -18,7 +18,7 @@ func init() {
 
 // teamUserMigration model for migration (pivot table, matches Laravel schema exactly)
 type teamUserMigration struct {
-	ID        uint64     `gorm:"type:bigint unsigned;primaryKey;autoIncrement"`
+	ID        uint64     `gorm:"type:bigint;primaryKey;autoIncrement"`
 	TeamID    string     `gorm:"column:team_id;type:char(26);not null;uniqueIndex:team_user_team_id_user_id_unique,priority:1"`
 	UserID    string     `gorm:"column:user_id;type:char(26);not null;uniqueIndex:team_user_team_id_user_id_unique,priority:2"`
 	Role      *string    `gorm:"type:varchar(255)"`

@@ -38,7 +38,7 @@ func (r *EnvVarRepository) ListForApplication(
 	var rows []models.ApplicationEnvVar
 	err := r.DB.WithContext(ctx).
 		Where("application_id = ?", applicationID).
-		Order("`key` ASC").
+		Order(`"key" ASC`).
 		Find(&rows).Error
 	return rows, err
 }
@@ -51,7 +51,7 @@ func (r *EnvVarRepository) ExistsByKey(
 ) (bool, error) {
 	q := r.DB.WithContext(ctx).
 		Model(&models.ApplicationEnvVar{}).
-		Where("application_id = ? AND `key` = ?", applicationID, key)
+		Where(`application_id = ? AND "key" = ?`, applicationID, key)
 	if excludeID != "" {
 		q = q.Where("id <> ?", excludeID)
 	}

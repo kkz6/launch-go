@@ -29,5 +29,5 @@ func addInternalPortToDockerApplicationsUp(db *gorm.DB) error {
 }
 
 func addInternalPortToDockerApplicationsDown(db *gorm.DB) error {
-	return db.Exec("ALTER TABLE docker_applications DROP COLUMN internal_port").Error
+	return db.Exec("ALTER TABLE docker_applications DROP COLUMN IF EXISTS internal_port").Error
 }

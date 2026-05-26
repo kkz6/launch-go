@@ -17,29 +17,29 @@ func init() {
 }
 
 func addScriptColumnsUp(db *gorm.DB) error {
-	// Add team_id column (nullable for personal scripts)
-	if err := db.Exec("ALTER TABLE scripts ADD COLUMN team_id CHAR(26) NULL AFTER user_id").Error; err != nil {
+	// Postgres doesn't support `AFTER column_name`; columns land at the end.
+	// Column order doesn't affect semantics so the are dropped.
+	if err := db.Exec(`ALTER TABLE scripts ADD COLUMN team_id CHAR(26) NULL`).Error; err != nil {
 		return err
 	}
 
-	// Add user column (unix user to run as)
-	if err := db.Exec("ALTER TABLE scripts ADD COLUMN user VARCHAR(255) NOT NULL DEFAULT 'root' AFTER name").Error; err != nil {
+	if err := db.Exec(`ALTER TABLE scripts ADD COLUMN "user" VARCHAR(255) NOT NULL DEFAULT 'root'`).Error; err != nil {
 		return err
 	}
 
-	// Add index for team_id
-	if err := db.Exec("CREATE INDEX idx_scripts_team_id ON scripts(team_id)").Error; err != nil {
+	if err := db.Exec(`CREATE INDEX idx_scripts_team_id ON scripts(team_id)`).Error; err != nil {
 		return err
 	}
 
-	// Add foreign key for team_id
-	return db.Exec("ALTER TABLE scripts ADD CONSTRAINT fk_scripts_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE").Error
+	return db.Exec(`ALTER TABLE scripts ADD CONSTRAINT fk_scripts_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE`).Error
 }
 
 func addScriptColumnsDown(db *gorm.DB) error {
-	db.Exec("ALTER TABLE scripts DROP FOREIGN KEY fk_scripts_team")
-	db.Exec("DROP INDEX idx_scripts_team_id ON scripts")
-	db.Exec("ALTER TABLE scripts DROP COLUMN user")
-	db.Exec("ALTER TABLE scripts DROP COLUMN team_id")
+	// Postgres uses DROP CONSTRAINT (not DROP FOREIGN KEY) and supports
+	// IF EXISTS for idempotent down migrations.
+	db.Exec(`ALTER TABLE scripts DROP CONSTRAINT IF EXISTS fk_scripts_team`)
+	db.Exec(`DROP INDEX IF EXISTS idx_scripts_team_id`)
+	db.Exec(`ALTER TABLE scripts DROP COLUMN IF EXISTS IF EXISTS "user"`)
+	db.Exec(`ALTER TABLE scripts DROP COLUMN IF EXISTS IF EXISTS team_id`)
 	return nil
 }

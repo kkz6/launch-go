@@ -27,7 +27,7 @@ type dockerDatabaseEnvVarMigration struct {
 	ID         string         `gorm:"type:char(26);primaryKey"`
 	DatabaseID string         `gorm:"column:database_id;type:char(26);not null;index"`
 	Key        string         `gorm:"type:varchar(255);not null"`
-	Value      string         `gorm:"type:longtext;not null"`
+	Value      string         `gorm:"type:text;not null"`
 	IsSecret   bool           `gorm:"column:is_secret;not null;default:false"`
 	CreatedAt  *time.Time     `gorm:"type:timestamp null"`
 	UpdatedAt  *time.Time     `gorm:"type:timestamp null"`
@@ -48,10 +48,7 @@ func (dockerDatabaseEnvVarWithDatabaseFK) TableName() string {
 }
 
 func createDockerDatabaseEnvVarsUp(db *gorm.DB) error {
-	migrator := db.Set(
-		"gorm:table_options",
-		"DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-	).Migrator()
+	migrator := db.Migrator()
 
 	if err := migrator.CreateTable(&dockerDatabaseEnvVarMigration{}); err != nil {
 		return err
@@ -61,7 +58,7 @@ func createDockerDatabaseEnvVarsUp(db *gorm.DB) error {
 	}
 	return db.Exec(
 		"CREATE UNIQUE INDEX idx_docker_database_env_vars_unique " +
-			"ON docker_database_env_vars (database_id, `key`, deleted_at)",
+			"ON docker_database_env_vars (database_id, key, deleted_at)",
 	).Error
 }
 

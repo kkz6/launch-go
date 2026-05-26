@@ -41,7 +41,7 @@ func (r *ProjectEnvVarRepository) ListForProject(
 	var rows []models.ProjectEnvVar
 	err := r.DB.WithContext(ctx).
 		Where("project_id = ?", projectID).
-		Order("`key` ASC").
+		Order(`"key" ASC`).
 		Find(&rows).Error
 	return rows, err
 }
@@ -72,7 +72,7 @@ func (r *ProjectEnvVarRepository) ExistsByKey(
 ) (bool, error) {
 	q := r.DB.WithContext(ctx).
 		Model(&models.ProjectEnvVar{}).
-		Where("project_id = ? AND `key` = ?", projectID, key)
+		Where(`project_id = ? AND "key" = ?`, projectID, key)
 	if excludeID != "" {
 		q = q.Where("id <> ?", excludeID)
 	}

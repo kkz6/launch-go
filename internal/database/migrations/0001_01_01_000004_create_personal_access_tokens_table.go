@@ -20,7 +20,7 @@ func init() {
 type personalAccessTokenMigration struct {
 	ID            string     `gorm:"type:char(26);primaryKey"`
 	TokenableType string     `gorm:"column:tokenable_type;type:varchar(255);not null;index:personal_access_tokens_tokenable_type_tokenable_id_index,priority:1"`
-	TokenableID   uint64     `gorm:"column:tokenable_id;type:bigint unsigned;not null;index:personal_access_tokens_tokenable_type_tokenable_id_index,priority:2"`
+	TokenableID   uint64     `gorm:"column:tokenable_id;type:bigint;not null;index:personal_access_tokens_tokenable_type_tokenable_id_index,priority:2"`
 	Name          string     `gorm:"type:varchar(255);not null"`
 	Token         string     `gorm:"type:varchar(64);uniqueIndex;not null"`
 	Abilities     *string    `gorm:"type:text"`

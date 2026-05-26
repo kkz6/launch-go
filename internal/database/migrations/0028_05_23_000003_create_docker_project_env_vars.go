@@ -29,7 +29,7 @@ type dockerProjectEnvVarMigration struct {
 	ID        string         `gorm:"type:char(26);primaryKey"`
 	ProjectID string         `gorm:"column:project_id;type:char(26);not null;index"`
 	Key       string         `gorm:"type:varchar(255);not null"`
-	Value     string         `gorm:"type:longtext;not null"`
+	Value     string         `gorm:"type:text;not null"`
 	IsSecret  bool           `gorm:"column:is_secret;not null;default:false"`
 	CreatedAt *time.Time     `gorm:"type:timestamp null"`
 	UpdatedAt *time.Time     `gorm:"type:timestamp null"`
@@ -50,10 +50,7 @@ func (dockerProjectEnvVarWithProjectFK) TableName() string {
 }
 
 func createDockerProjectEnvVarsUp(db *gorm.DB) error {
-	migrator := db.Set(
-		"gorm:table_options",
-		"DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci",
-	).Migrator()
+	migrator := db.Migrator()
 
 	if err := migrator.CreateTable(&dockerProjectEnvVarMigration{}); err != nil {
 		return err
@@ -65,7 +62,7 @@ func createDockerProjectEnvVarsUp(db *gorm.DB) error {
 	// the unique key lets soft-deleted rows coexist with a re-added one.
 	return db.Exec(
 		"CREATE UNIQUE INDEX idx_docker_project_env_vars_unique " +
-			"ON docker_project_env_vars (project_id, `key`, deleted_at)",
+			"ON docker_project_env_vars (project_id, key, deleted_at)",
 	).Error
 }
 

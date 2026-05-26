@@ -29,12 +29,12 @@ func init() {
 //     versioned in the platform instead of baked into
 //     the image.
 //
-// `content` is LONGTEXT so we can carry whole config files;
-// `file_path` keeps the host-side filename the deploy script writes
+// content is TEXT so we can carry whole config files;
+// file_path keeps the host-side filename the deploy script writes
 // to (defaults to the application's deploy directory).
 func addFileMountColumnsUp(db *gorm.DB) error {
 	if err := db.Exec(
-		"ALTER TABLE docker_application_volumes ADD COLUMN content LONGTEXT NULL",
+		"ALTER TABLE docker_application_volumes ADD COLUMN content TEXT NULL",
 	).Error; err != nil {
 		return err
 	}
@@ -45,11 +45,11 @@ func addFileMountColumnsUp(db *gorm.DB) error {
 
 func addFileMountColumnsDown(db *gorm.DB) error {
 	if err := db.Exec(
-		"ALTER TABLE docker_application_volumes DROP COLUMN file_path",
+		"ALTER TABLE docker_application_volumes DROP COLUMN IF EXISTS file_path",
 	).Error; err != nil {
 		return err
 	}
 	return db.Exec(
-		"ALTER TABLE docker_application_volumes DROP COLUMN content",
+		"ALTER TABLE docker_application_volumes DROP COLUMN IF EXISTS content",
 	).Error
 }

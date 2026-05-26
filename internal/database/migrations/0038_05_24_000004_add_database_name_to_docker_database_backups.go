@@ -36,12 +36,12 @@ func init() {
 func addDatabaseNameToDockerDatabaseBackupsUp(db *gorm.DB) error {
 	return db.Exec(
 		"ALTER TABLE docker_database_backups " +
-			"ADD COLUMN database_name VARCHAR(64) NULL AFTER storage_provider_id",
+			"ADD COLUMN database_name VARCHAR(64) NULL",
 	).Error
 }
 
 func addDatabaseNameToDockerDatabaseBackupsDown(db *gorm.DB) error {
 	return db.Exec(
-		"ALTER TABLE docker_database_backups DROP COLUMN database_name",
+		"ALTER TABLE docker_database_backups DROP COLUMN IF EXISTS database_name",
 	).Error
 }
