@@ -11,36 +11,59 @@ import (
 type ProvisionStep string
 
 const (
-	ProvisionStepAptUpdateUpgrade         ProvisionStep = "apt_update_upgrade"
 	ProvisionStepConfigureFirewall        ProvisionStep = "configure_firewall"
 	ProvisionStepConfigureSwap            ProvisionStep = "configure_swap"
 	ProvisionStepInstallEssentialPackages ProvisionStep = "install_essential_packages"
 	ProvisionStepSetupDefaultUser         ProvisionStep = "setup_default_user"
 	ProvisionStepSetupRoot                ProvisionStep = "setup_root"
-	ProvisionStepSetupUnattendedUpgrades  ProvisionStep = "setup_unattended_upgrades"
 	ProvisionStepSSHSecurity              ProvisionStep = "ssh_security"
+
+	// Docker-stack steps
+	ProvisionStepValidatePorts      ProvisionStep = "validate_ports"
+	ProvisionStepInstallDocker      ProvisionStep = "install_docker"
+	ProvisionStepSetupDockerNetwork ProvisionStep = "setup_docker_network"
+	ProvisionStepSetupLaunchDirs    ProvisionStep = "setup_launch_dirs"
+	ProvisionStepInstallTraefik     ProvisionStep = "install_traefik"
+
+	// ProvisionStepSetupSwarmNetwork is the legacy step name from the
+	// pre-v2 docker stack that initialised Docker Swarm and created an
+	// overlay network. Kept here so old `server_provision_logs` rows
+	// still parse via ParseProvisionStep — never re-emitted by new
+	// provisions, never added to ForDockerServer().
+	ProvisionStepSetupSwarmNetwork ProvisionStep = "setup_swarm_network"
 )
 
 var allProvisionSteps = []ProvisionStep{
-	ProvisionStepAptUpdateUpgrade,
 	ProvisionStepConfigureFirewall,
 	ProvisionStepConfigureSwap,
 	ProvisionStepInstallEssentialPackages,
 	ProvisionStepSetupDefaultUser,
 	ProvisionStepSetupRoot,
-	ProvisionStepSetupUnattendedUpgrades,
 	ProvisionStepSSHSecurity,
+	ProvisionStepValidatePorts,
+	ProvisionStepInstallDocker,
+	ProvisionStepSetupDockerNetwork,
+	ProvisionStepSetupLaunchDirs,
+	ProvisionStepInstallTraefik,
+	// Legacy step — kept so historical logs still parse. Never
+	// scheduled by ForDockerServer().
+	ProvisionStepSetupSwarmNetwork,
 }
 
 var provisionStepLabels = map[ProvisionStep]string{
-	ProvisionStepAptUpdateUpgrade:         "Apt Update & Upgrade",
 	ProvisionStepConfigureFirewall:        "Configure Firewall",
 	ProvisionStepConfigureSwap:            "Configure Swap",
 	ProvisionStepInstallEssentialPackages: "Install Essential Packages",
 	ProvisionStepSetupDefaultUser:         "Setup Default User",
 	ProvisionStepSetupRoot:                "Setup Root",
-	ProvisionStepSetupUnattendedUpgrades:  "Setup Unattended Upgrades",
 	ProvisionStepSSHSecurity:              "SSH Security",
+	ProvisionStepValidatePorts:            "Validate Ports",
+	ProvisionStepInstallDocker:            "Install Docker",
+	ProvisionStepSetupDockerNetwork:       "Setup Launch Docker Network",
+	ProvisionStepSetupLaunchDirs:          "Setup Launch Directories",
+	ProvisionStepInstallTraefik:           "Install Traefik",
+	// Legacy label — historical rows; new provisions never emit this.
+	ProvisionStepSetupSwarmNetwork: "Setup Docker Swarm & Network (legacy)",
 }
 
 func (p ProvisionStep) String() string {
@@ -50,14 +73,20 @@ func (p ProvisionStep) String() string {
 // TemplateName returns the template path for this provision step
 func (p ProvisionStep) TemplateName() string {
 	templateNames := map[ProvisionStep]string{
-		ProvisionStepAptUpdateUpgrade:         "provision/apt_update_upgrade.sh",
 		ProvisionStepConfigureFirewall:        "provision/configure_firewall.sh",
 		ProvisionStepConfigureSwap:            "provision/configure_swap.sh",
 		ProvisionStepInstallEssentialPackages: "provision/install_essential_packages.sh",
 		ProvisionStepSetupDefaultUser:         "provision/setup_default_user.sh",
 		ProvisionStepSetupRoot:                "provision/setup_root.sh",
-		ProvisionStepSetupUnattendedUpgrades:  "provision/setup_unattended_upgrades.sh",
 		ProvisionStepSSHSecurity:              "provision/ssh_security.sh",
+		ProvisionStepValidatePorts:            "provision/validate_ports.sh",
+		ProvisionStepInstallDocker:            "provision/install_docker.sh",
+		ProvisionStepSetupDockerNetwork:       "provision/setup_docker_network.sh",
+		ProvisionStepSetupLaunchDirs:          "provision/setup_launch_dirs.sh",
+		ProvisionStepInstallTraefik:           "software/install_traefik.sh",
+		// Legacy mapping retained so reruns of historical rows still
+		// have a template to render (the file is also kept on disk).
+		ProvisionStepSetupSwarmNetwork: "provision/setup_swarm_network.sh",
 	}
 
 	if name, ok := templateNames[p]; ok {
@@ -71,7 +100,10 @@ func (p ProvisionStep) TemplateName() string {
 func (p ProvisionStep) RequiresData() bool {
 	switch p {
 	case ProvisionStepConfigureSwap, ProvisionStepConfigureFirewall,
-		ProvisionStepSetupRoot, ProvisionStepSetupDefaultUser:
+		ProvisionStepSetupRoot, ProvisionStepSetupDefaultUser,
+		ProvisionStepInstallDocker, ProvisionStepSetupDockerNetwork,
+		ProvisionStepSetupSwarmNetwork,
+		ProvisionStepSetupLaunchDirs, ProvisionStepInstallTraefik:
 		return true
 	default:
 		return false
@@ -81,14 +113,19 @@ func (p ProvisionStep) RequiresData() bool {
 // Description returns a human-readable description of this step
 func (p ProvisionStep) Description() string {
 	descriptions := map[ProvisionStep]string{
-		ProvisionStepAptUpdateUpgrade:         "Update package lists and installed system packages",
 		ProvisionStepConfigureFirewall:        "Configure the firewall with the default rules (SSH, HTTP, HTTPS)",
 		ProvisionStepConfigureSwap:            "Configure a swap file so the server can handle more memory-intensive tasks",
 		ProvisionStepInstallEssentialPackages: "Install essential packages (curl, git, wget, etc.)",
 		ProvisionStepSetupDefaultUser:         "Create a default user account",
 		ProvisionStepSetupRoot:                "Configure the root user",
-		ProvisionStepSetupUnattendedUpgrades:  "Configure unattended upgrades to keep the server up to date automatically",
 		ProvisionStepSSHSecurity:              "Enhance SSH security by disabling password authentication and root login",
+		ProvisionStepValidatePorts:            "Verify ports 80 and 443 are available for Traefik",
+		ProvisionStepInstallDocker:            "Install Docker CE, Compose plugin, and Buildx",
+		ProvisionStepSetupDockerNetwork:       "Create the launch-network bridge so Traefik can route to containers by name",
+		ProvisionStepSetupLaunchDirs:          "Create the /etc/launch directory tree for service state",
+		ProvisionStepInstallTraefik:           "Run Traefik as a container with docker-label discovery + ACME",
+		// Legacy description retained for historical rows.
+		ProvisionStepSetupSwarmNetwork: "Initialize Docker Swarm and create the launch overlay network (legacy)",
 	}
 	if desc, ok := descriptions[p]; ok {
 		return desc
@@ -106,17 +143,53 @@ func (p ProvisionStep) IsValid() bool {
 	return enumtypes.IsValid(p, allProvisionSteps...)
 }
 
-// ForFreshServer returns the provision steps in order for a fresh server
+// ForFreshServer returns the provision steps in order for a fresh server.
+//
+// Steps that used to exist here but were removed:
+//
+//   - "apt update + upgrade" — added 5-15 minutes per provision and broke
+//     build reproducibility. Scripts that need fresh package metadata
+//     (install_essential_packages, install_docker) run their own
+//     `apt-get update` inline now.
+//   - "setup_unattended_upgrades" — the unattended-upgrades package ships
+//     sensible security-only defaults at install time (see Ubuntu's
+//     pre-written /etc/apt/apt.conf.d/50unattended-upgrades and
+//     20auto-upgrades). Our custom config wasn't adding meaningful
+//     hardening over the defaults. The timer is re-enabled by
+//     restoreUnattendedUpgrades() at the end of provisioning.
 func ForFreshServer() []ProvisionStep {
 	return []ProvisionStep{
 		ProvisionStepConfigureSwap,
 		ProvisionStepConfigureFirewall,
-		ProvisionStepAptUpdateUpgrade,
 		ProvisionStepInstallEssentialPackages,
-		ProvisionStepSetupUnattendedUpgrades,
 		ProvisionStepSetupRoot,
 		ProvisionStepSSHSecurity,
 		ProvisionStepSetupDefaultUser,
+	}
+}
+
+// ForDockerServer returns the provision steps in order for a fresh docker server.
+// Reuses the base hardening steps then installs the Docker stack (validate
+// ports, install Docker, create the launch-network bridge, create launch
+// directory tree, run Traefik as a container with docker-label discovery).
+//
+// Pre-v2 servers were provisioned with Docker Swarm + an overlay network
+// instead — the legacy ProvisionStepSetupSwarmNetwork is intentionally
+// excluded here. Old servers keep working (their Traefik service is still
+// running) but new provisions never opt in to swarm.
+func ForDockerServer() []ProvisionStep {
+	return []ProvisionStep{
+		ProvisionStepConfigureSwap,
+		ProvisionStepConfigureFirewall,
+		ProvisionStepInstallEssentialPackages,
+		ProvisionStepSetupRoot,
+		ProvisionStepSSHSecurity,
+		ProvisionStepSetupDefaultUser,
+		ProvisionStepValidatePorts,
+		ProvisionStepInstallDocker,
+		ProvisionStepSetupDockerNetwork,
+		ProvisionStepSetupLaunchDirs,
+		ProvisionStepInstallTraefik,
 	}
 }
 

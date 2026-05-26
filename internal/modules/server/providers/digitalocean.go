@@ -3,7 +3,10 @@ package providers
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
+
+	"github.com/rs/zerolog/log"
 
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
@@ -69,7 +72,6 @@ func (p *DigitalOceanProvider) Create(ctx context.Context, server *models.Server
 	if err != nil {
 		return nil, err
 	}
-	sshKeyID := sshKeyResp.ID
 
 	// Get provider data
 	providerData := GetProviderData(server.ProviderData)
@@ -78,8 +80,8 @@ func (p *DigitalOceanProvider) Create(ctx context.Context, server *models.Server
 	os := p.getOperatingSystem(server)
 	image := p.GetImage(os)
 
-	// Create droplet
-	droplet, err := p.createDroplet(ctx, client, sshKeyName, region, plan, image, sshKeyID)
+	// Create droplet — pass numeric SSH key ID so DO treats it as an ID, not a fingerprint
+	droplet, err := p.createDroplet(ctx, client, sshKeyName, region, plan, image, sshKeyResp.NumericID)
 	if err != nil {
 		return nil, err
 	}
@@ -91,10 +93,10 @@ func (p *DigitalOceanProvider) Create(ctx context.Context, server *models.Server
 		CPUCores:         droplet.VCPUs,
 		MemoryMB:         droplet.Memory,
 		DiskGB:           droplet.Disk,
-		SSHKeyID:         sshKeyID,
+		SSHKeyID:         sshKeyResp.ID,
 		ProviderData: map[string]interface{}{
 			"droplet_id": droplet.ID,
-			"ssh_key_id": sshKeyID,
+			"ssh_key_id": sshKeyResp.ID,
 		},
 	}, nil
 }
@@ -152,6 +154,22 @@ func (p *DigitalOceanProvider) GetImage(os types.OperatingSystem) string {
 	return p.GetImageFromConfig(os, "ubuntu-24-04-x64")
 }
 
+// LookupImage asks DO whether the given image (slug or numeric ID) exists.
+// Returns nil if DO returns the image, an error otherwise. Used by
+// cmd/validate-images to catch retired image identifiers before they
+// surface as 422s during provisioning.
+func (p *DigitalOceanProvider) LookupImage(ctx context.Context, credentials map[string]interface{}, slug string) error {
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return err
+	}
+	client := p.NewClient(token)
+	if _, err := DoGet(ctx, client, "/images/"+slug); err != nil {
+		return WrapHTTPError(err, "lookup image "+slug)
+	}
+	return nil
+}
+
 // CredentialRules returns validation rules for credentials
 func (p *DigitalOceanProvider) CredentialRules() map[string]string {
 	return CommonCredentialRules()
@@ -175,7 +193,9 @@ func (p *DigitalOceanProvider) ProviderData(input map[string]interface{}) map[st
 // Internal helper methods
 
 type doSSHKeyResponse struct {
-	ID string
+	ID          string
+	NumericID   int64
+	Fingerprint string
 }
 
 func (p *DigitalOceanProvider) createSSHKey(ctx context.Context, client *httpclient.Client, name, publicKey string) (*doSSHKeyResponse, error) {
@@ -194,8 +214,14 @@ func (p *DigitalOceanProvider) createSSHKey(ctx context.Context, client *httpcli
 		return nil, fmt.Errorf("invalid SSH key response")
 	}
 
+	idStr := ExtractServerID(sshKeyData, "id")
+	numericID, _ := strconv.ParseInt(idStr, 10, 64)
+	fingerprint, _ := sshKeyData["fingerprint"].(string)
+
 	return &doSSHKeyResponse{
-		ID: ExtractServerID(sshKeyData, "id"),
+		ID:          idStr,
+		NumericID:   numericID,
+		Fingerprint: fingerprint,
 	}, nil
 }
 
@@ -206,7 +232,7 @@ type doDropletResponse struct {
 	Disk   int
 }
 
-func (p *DigitalOceanProvider) createDroplet(ctx context.Context, client *httpclient.Client, name, region, plan, image, sshKeyID string) (*doDropletResponse, error) {
+func (p *DigitalOceanProvider) createDroplet(ctx context.Context, client *httpclient.Client, name, region, plan, image string, sshKeyID int64) (*doDropletResponse, error) {
 	body := map[string]interface{}{
 		"name":       name,
 		"region":     region,
@@ -217,6 +243,14 @@ func (p *DigitalOceanProvider) createDroplet(ctx context.Context, client *httpcl
 		"monitoring": false,
 		"ssh_keys":   []interface{}{sshKeyID},
 	}
+
+	log.Info().
+		Str("name", name).
+		Str("region", region).
+		Str("size", plan).
+		Str("image", image).
+		Int64("ssh_key_id", sshKeyID).
+		Msg("DO createDroplet: sending request")
 
 	resp, err := DoPost(ctx, client, "/droplets", body)
 	if err != nil {

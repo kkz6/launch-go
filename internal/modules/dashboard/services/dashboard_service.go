@@ -76,34 +76,78 @@ func (s *DashboardService) sitesCountSubquery() *gorm.DB {
 		Where("sites.server_id = servers.id")
 }
 
+// workloadsCountSubquery counts live docker workloads (applications +
+// composes + managed databases) for the server. Docker servers don't
+// have rows in the `sites` table, so the existing sites_count is
+// always 0 for them — the dashboard card needs this count to show
+// something meaningful instead.
+//
+// We reference tables by name rather than importing docker/models to
+// keep the dependency direction one-way (docker → dashboard via
+// dataflow, never the reverse). Soft-deleted rows are filtered out
+// the same way the docker module's repos do.
+func (s *DashboardService) workloadsCountSubquery() *gorm.DB {
+	return s.db.Raw(`
+		(SELECT COUNT(*) FROM docker_applications
+		    WHERE docker_applications.server_id = servers.id
+		      AND docker_applications.deleted_at IS NULL)
+		+ (SELECT COUNT(*) FROM docker_composes
+		    WHERE docker_composes.server_id = servers.id
+		      AND docker_composes.deleted_at IS NULL)
+		+ (SELECT COUNT(*) FROM docker_databases
+		    WHERE docker_databases.server_id = servers.id
+		      AND docker_databases.deleted_at IS NULL)
+	`)
+}
+
+// dashboardServerRow is a scratch struct used to project the joined
+// counts onto a server. servermodels.Server already has SitesCount;
+// we add WorkloadsCount as a sibling read-only column for this query.
+type dashboardServerRow struct {
+	servermodels.Server
+	WorkloadsCount int64 `gorm:"column:workloads_count;->"`
+}
+
 // getServers returns up to 8 servers for the team
 func (s *DashboardService) getServers(ctx context.Context, teamID string) ([]*dto.DashboardServerResponse, error) {
-	var servers []servermodels.Server
+	var rows []dashboardServerRow
 
 	err := s.db.WithContext(ctx).
-		Select("servers.*, (?) as sites_count", s.sitesCountSubquery()).
+		Model(&servermodels.Server{}).
+		Select(
+			"servers.*, (?) as sites_count, (?) as workloads_count",
+			s.sitesCountSubquery(),
+			s.workloadsCountSubquery(),
+		).
 		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
 		Order("created_at DESC").
 		Limit(maxServers).
-		Find(&servers).Error
+		Find(&rows).Error
 
 	if err != nil {
 		return nil, err
 	}
 
-	result := make([]*dto.DashboardServerResponse, len(servers))
-	for i, server := range servers {
+	result := make([]*dto.DashboardServerResponse, len(rows))
+	for i, row := range rows {
 		status := "disconnected"
-		if server.Connected {
+		if row.Connected {
 			status = "connected"
 		}
 
+		typeStr := ""
+		if row.Type != nil {
+			typeStr = *row.Type
+		}
+
 		result[i] = &dto.DashboardServerResponse{
-			ID:         server.ID,
-			Name:       server.Name,
-			Status:     status,
-			Provider:   server.Provider.String(),
-			SitesCount: server.SitesCount,
+			ID:             row.ID,
+			Name:           row.Name,
+			Status:         status,
+			Provider:       row.Provider.String(),
+			Type:           typeStr,
+			SitesCount:     row.SitesCount,
+			WorkloadsCount: row.WorkloadsCount,
 		}
 	}
 

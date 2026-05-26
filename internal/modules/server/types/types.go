@@ -175,14 +175,16 @@ const (
 	ServerTypePhp          ServerType = "php"
 	ServerTypeDatabase     ServerType = "database"
 	ServerTypeLoadBalancer ServerType = "loadbalancer"
+	ServerTypeDocker       ServerType = "docker"
 )
 
-var allServerTypes = []ServerType{ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer}
+var allServerTypes = []ServerType{ServerTypePhp, ServerTypeDatabase, ServerTypeLoadBalancer, ServerTypeDocker}
 
 var serverTypeLabels = map[ServerType]string{
 	ServerTypePhp:          "PHP Application Server",
 	ServerTypeDatabase:     "Database Server",
 	ServerTypeLoadBalancer: "Load Balancer",
+	ServerTypeDocker:       "Docker Application Server",
 }
 
 func (t ServerType) String() string {
@@ -221,6 +223,11 @@ func (t ServerType) GetFeatures() []ServerFeature {
 	case ServerTypeLoadBalancer:
 		return []ServerFeature{
 			ServerFeatureLoadBalancing,
+			ServerFeatureSSLCertificates,
+			ServerFeatureServices,
+		}
+	case ServerTypeDocker:
+		return []ServerFeature{
 			ServerFeatureSSLCertificates,
 			ServerFeatureServices,
 		}
@@ -370,12 +377,15 @@ const (
 	ServiceTypeNode        ServiceType = "node"
 	ServiceTypeBun         ServiceType = "bun"
 	ServiceTypeLaunchAgent ServiceType = "launch_agent"
+	ServiceTypeDocker      ServiceType = "container_runtime"
+	ServiceTypeTraefik     ServiceType = "reverse_proxy"
 )
 
 var allServiceTypes = []ServiceType{
 	ServiceTypePhp, ServiceTypeMySQL, ServiceTypePostgreSQL,
 	ServiceTypeSupervisor, ServiceTypeRedis, ServiceTypeCaddy,
 	ServiceTypeComposer, ServiceTypeNode, ServiceTypeBun, ServiceTypeLaunchAgent,
+	ServiceTypeDocker, ServiceTypeTraefik,
 }
 
 var serviceTypeLabels = map[ServiceType]string{
@@ -389,6 +399,8 @@ var serviceTypeLabels = map[ServiceType]string{
 	ServiceTypeNode:        "Node.js",
 	ServiceTypeBun:         "Bun",
 	ServiceTypeLaunchAgent: "Launch Agent",
+	ServiceTypeDocker:      "Docker",
+	ServiceTypeTraefik:     "Traefik",
 }
 
 func (s ServiceType) String() string {

@@ -124,11 +124,25 @@ func (j *DeleteServerJob) Handle(ctx context.Context) error {
 	return nil
 }
 
-// Failed is called when the job fails after all retries
+// Failed is called when the job fails after all retries.
+//
+// We must broadcast a terminal event here. Otherwise the UI shows the row
+// stuck on "Deleting" forever — DeleteServer() flipped status to
+// `deleting` synchronously, and the only other broadcast in the lifecycle
+// is `server.deleted` from Handle(). If we never reach Handle's broadcast,
+// the customer has no signal that something went wrong.
 func (j *DeleteServerJob) Failed(ctx context.Context, err error) {
 	j.Deps.Logger.Error().Err(err).
 		Str("server_id", j.Payload.ServerID).
 		Msg("failed to delete server")
+
+	if j.server == nil {
+		return
+	}
+	j.Deps.BroadcastServerEvent(j.server, "server.deletion_failed", map[string]any{
+		"server_id": j.server.ID,
+		"error":     err.Error(),
+	})
 }
 
 // NewDeleteServerTask creates an asynq task for deleting a server

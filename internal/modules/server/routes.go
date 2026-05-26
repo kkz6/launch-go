@@ -39,6 +39,8 @@ func (m *Module) registerServerProviderRoutes(router fiber.Router, authMiddlewar
 	providers := router.Group("/server-providers", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		providers.Get("/", fiberutil.Index("Server providers retrieved", m.service.ListServerProviders))
+		providers.Post("/", fiberutil.Create[dto.CreateServerProviderRequest]("Server provider connected", m.service.CreateServerProvider))
+		providers.Delete("/:id", fiberutil.Delete(m.service.DeleteServerProvider))
 	}
 }
 

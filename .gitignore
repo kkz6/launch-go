@@ -43,6 +43,8 @@ tmp/
 dist/
 /api
 /worker
+/test-do
+/validate-images
 *.db
 
 # Storage (shellcheck output, etc)

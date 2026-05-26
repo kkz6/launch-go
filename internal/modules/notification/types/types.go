@@ -96,6 +96,8 @@ const (
 	NotificationTypePhpExtensionUninstallFailed NotificationType = "php_extension_uninstall_failed"
 	NotificationTypeVulnerabilityAuditCompleted NotificationType = "vulnerability_audit_completed"
 	NotificationTypeFailedToDeleteServer        NotificationType = "failed_to_delete_server"
+	NotificationTypeDatabaseBackupSucceeded     NotificationType = "database_backup_succeeded"
+	NotificationTypeDatabaseBackupFailed        NotificationType = "database_backup_failed"
 )
 
 var allNotificationTypes = []NotificationType{
@@ -111,6 +113,8 @@ var allNotificationTypes = []NotificationType{
 	NotificationTypePhpExtensionUninstallFailed,
 	NotificationTypeVulnerabilityAuditCompleted,
 	NotificationTypeFailedToDeleteServer,
+	NotificationTypeDatabaseBackupSucceeded,
+	NotificationTypeDatabaseBackupFailed,
 }
 
 var notificationTypeLabels = map[NotificationType]string{
@@ -126,6 +130,8 @@ var notificationTypeLabels = map[NotificationType]string{
 	NotificationTypePhpExtensionUninstallFailed: "PHP Extension Uninstall Failed",
 	NotificationTypeVulnerabilityAuditCompleted: "Vulnerability Audit Completed",
 	NotificationTypeFailedToDeleteServer:        "Failed To Delete Server",
+	NotificationTypeDatabaseBackupSucceeded:     "Database Backup Succeeded",
+	NotificationTypeDatabaseBackupFailed:        "Database Backup Failed",
 }
 
 // AllNotificationTypes returns all valid notification types

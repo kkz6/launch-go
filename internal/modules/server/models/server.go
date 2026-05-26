@@ -55,6 +55,7 @@ type Server struct {
 	SecurityUpdates           *int                   `gorm:"column:security_updates;type:int" json:"-"`
 	Progress                  int                    `gorm:"type:int;not null;default:0" json:"progress"`
 	ProgressStep              *string                `gorm:"column:progress_step;type:varchar(255)" json:"progress_step,omitempty"`
+	ProvisionError            *string                `gorm:"column:provision_error;type:text" json:"provision_error,omitempty"`
 	LastUpdateCheck           *time.Time             `gorm:"column:last_update_check;type:timestamp null" json:"-"`
 	LastConnectivityCheck     *time.Time             `gorm:"column:last_connectivity_check;type:timestamp null" json:"last_connectivity_check,omitempty"`
 	ArchivedAt                *time.Time             `gorm:"column:archived_at;type:timestamp null" json:"archived_at,omitempty"`
@@ -71,6 +72,20 @@ type Server struct {
 	// Computed fields (read-only, not stored in DB)
 	SitesCount     int64 `gorm:"column:sites_count;->" json:"sites_count"`
 	UpstreamsCount int64 `gorm:"-" json:"upstreams_count,omitempty"`
+	// ProjectsCount mirrors the SitesCount pattern but counts live
+	// docker_projects rows for the server. The server module doesn't
+	// import the docker module (docker imports server, not the other
+	// way), so the subquery references the table by name. Populated
+	// from server_repository.go via Select("(?) as projects_count").
+	ProjectsCount int64 `gorm:"column:projects_count;->" json:"projects_count"`
+	// WorkloadsCount sums docker_applications + docker_composes +
+	// docker_databases for the server — what the Servers list card
+	// shows on docker servers since SitesCount is always 0 there
+	// (the `sites` table is Laravel-style PHP only). Same cross-
+	// module reference pattern as ProjectsCount: docker tables are
+	// referenced by name from server_repository.go, never imported
+	// (docker depends on server, not the reverse).
+	WorkloadsCount int64 `gorm:"column:workloads_count;->" json:"workloads_count"`
 }
 
 func (s *Server) BeforeCreate(tx *gorm.DB) error {

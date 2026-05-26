@@ -5,9 +5,11 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/contracts"
 	"github.com/kkz6/launch-go/internal/modules/server/jobs"
+	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	"github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/modules/server/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
 
 const ModuleName = "server"
@@ -32,8 +34,9 @@ func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 	repos := repositories.NewRegistry(deps.DB)
 	service := services.NewService(services.ServiceDeps{
-		Dependencies: deps.ServiceDeps(),
-		Repos:        repos,
+		Dependencies:    deps.ServiceDeps(),
+		Repos:           repos,
+		ProviderFactory: providers.NewFactory(sshkey.NewGenerator()),
 	})
 
 	return &Module{

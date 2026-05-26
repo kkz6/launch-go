@@ -9,6 +9,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
+	"github.com/kkz6/launch-go/internal/modules/server/providers"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -238,10 +239,21 @@ func (j *CreateOnProviderJob) Failed(ctx context.Context, err error) {
 		j.Deps.Logger.Error().Err(updateErr).Msg("failed to update server status to failed")
 	}
 
+	// Persist a friendly, plain-language reason so the UI can show it without
+	// leaking raw upstream payloads. Sentry / worker logs still hold the
+	// developer-facing details from logUpstreamError.
 	if j.server != nil {
+		friendly := providers.FriendlyError(j.server.Provider, err)
+		if persistErr := j.Deps.DB.Model(&models.Server{}).
+			Where("id = ?", j.Payload.ServerID).
+			Update("provision_error", friendly).Error; persistErr != nil {
+			j.Deps.Logger.Error().Err(persistErr).Msg("failed to persist provision_error")
+		}
+
 		j.Deps.BroadcastServerEvent(j.server, "server.create_failed", map[string]any{
-			"server_id": j.Payload.ServerID,
-			"error":     err.Error(),
+			"server_id":      j.Payload.ServerID,
+			"error":          err.Error(),
+			"friendly_error": friendly,
 		})
 	}
 }

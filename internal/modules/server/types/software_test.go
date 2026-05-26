@@ -117,3 +117,53 @@ func TestSoftware_InstallOrder(t *testing.T) {
 		t.Error("Composer should install before MySQL")
 	}
 }
+
+func TestSoftware_Docker_IsValid(t *testing.T) {
+	for _, sw := range []Software{SoftwareDocker, SoftwareTraefik} {
+		t.Run(string(sw), func(t *testing.T) {
+			if !sw.IsValid() {
+				t.Errorf("%s should be a valid software", sw)
+			}
+			if sw.Label() == "Unknown" {
+				t.Errorf("%s should have a label", sw)
+			}
+			if sw.GetVersion() == "" {
+				t.Errorf("%s should have a version", sw)
+			}
+		})
+	}
+}
+
+func TestSoftware_Docker_GetServiceType(t *testing.T) {
+	if SoftwareDocker.GetServiceType() != ServiceTypeDocker {
+		t.Errorf("SoftwareDocker should map to ServiceTypeDocker, got %s", SoftwareDocker.GetServiceType())
+	}
+	if SoftwareTraefik.GetServiceType() != ServiceTypeTraefik {
+		t.Errorf("SoftwareTraefik should map to ServiceTypeTraefik, got %s", SoftwareTraefik.GetServiceType())
+	}
+}
+
+func TestSoftware_Docker_Group(t *testing.T) {
+	if SoftwareDocker.Group() != "docker" {
+		t.Errorf("SoftwareDocker group should be 'docker', got %q", SoftwareDocker.Group())
+	}
+	if SoftwareTraefik.Group() != "traefik" {
+		t.Errorf("SoftwareTraefik group should be 'traefik', got %q", SoftwareTraefik.Group())
+	}
+}
+
+func TestSoftware_Docker_InstallOrder(t *testing.T) {
+	// Docker installs early; Traefik installs after the base stack so the
+	// launch-network bridge it joins already exists. (Pre-v2 servers used
+	// an overlay network from the swarm install — same ordering still
+	// holds.)
+	if SoftwareDocker.InstallOrder() >= SoftwareTraefik.InstallOrder() {
+		t.Error("Docker should install before Traefik")
+	}
+}
+
+func TestSoftware_Traefik_InstallTemplateName(t *testing.T) {
+	if got, want := SoftwareTraefik.InstallTemplateName(), "software/install_traefik.sh"; got != want {
+		t.Errorf("SoftwareTraefik install template = %q, want %q", got, want)
+	}
+}

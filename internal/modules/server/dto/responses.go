@@ -1,6 +1,8 @@
 package dto
 
 import (
+	"regexp"
+	"strings"
 	"time"
 
 	serverconfig "github.com/kkz6/launch-go/internal/modules/server/config"
@@ -58,6 +60,17 @@ type ServerResponse struct {
 	SitesCount            int                  `json:"sites_count,omitempty"`
 	ServicesCount         int                  `json:"services_count,omitempty"`
 	UpstreamsCount        int                  `json:"upstreams_count,omitempty"`
+	// ProjectsCount is the live docker_projects count on this server.
+	// Populated from server_repository.go via a SELECT subquery; always
+	// returned (0 for PHP servers) so the frontend can disable the
+	// Delete button on docker servers that still have projects.
+	ProjectsCount int `json:"projects_count"`
+	// WorkloadsCount sums live docker_applications + docker_composes
+	// + docker_databases. Used by the Servers list card to show
+	// "X workloads" on docker servers (where SitesCount is always 0
+	// since the sites table is Laravel-style PHP only). 0 on
+	// non-docker servers.
+	WorkloadsCount int `json:"workloads_count"`
 }
 
 // ToServerResponse converts a Server model to a ServerResponse DTO
@@ -127,6 +140,8 @@ func ToServerResponse(server *models.Server) ServerResponse {
 		SitesCount:     int(server.SitesCount),
 		ServicesCount:  len(server.Services),
 		UpstreamsCount: int(server.UpstreamsCount),
+		ProjectsCount:  int(server.ProjectsCount),
+		WorkloadsCount: int(server.WorkloadsCount),
 	}
 
 	resp.ProvisionedAt = pkgdto.FormatTime(server.ProvisionedAt)
@@ -489,27 +504,43 @@ type ProvisionStatusStep struct {
 
 // ProvisionStatusResponse represents the provision status for a server
 type ProvisionStatusResponse struct {
-	Steps       []ProvisionStatusStep `json:"steps"`
-	CurrentStep *ProvisionStatusStep  `json:"current_step,omitempty"`
-	LatestTask  *TaskResponse         `json:"latest_task,omitempty"`
+	Steps        []ProvisionStatusStep `json:"steps"`
+	CurrentStep  *ProvisionStatusStep  `json:"current_step,omitempty"`
+	LatestTask   *TaskResponse         `json:"latest_task,omitempty"`
+	Failed       bool                  `json:"failed"`
+	ErrorMessage string                `json:"error_message,omitempty"`
 }
 
-// BuildProvisionStatus builds the provision status from a server
+// BuildProvisionStatus builds the provision status for the UI's progress
+// timeline. Two behaviours that bit us in the past:
+//   - Step list must match the server's actual provisioning type. A docker
+//     server runs ForDockerServer() (base hardening + docker stack); a PHP
+//     server runs ForFreshServer(). Hardcoding one type caused docker
+//     provisioning to display PHP-stack steps and a spinner glued to the
+//     wrong row.
+//   - When the server's status is `failed`, no step should be marked
+//     `current` — the failure usually happened *before* the next step
+//     would have run, so the UI must render a failed banner instead of a
+//     spinner that never resolves.
 func BuildProvisionStatus(server *models.Server, latestTask *models.Task) ProvisionStatusResponse {
 	completedSteps := make(map[string]bool)
 	for _, step := range server.CompletedProvisionSteps {
 		completedSteps[step] = true
 	}
 
+	serverFailed := server.Status == types.ServerStatusFailed
+
 	// Build steps list
 	var steps []ProvisionStatusStep
 	var currentStep *ProvisionStatusStep
 
-	// First step: connecting to server
+	// First step: connecting to server. Only "current" while the server is
+	// actively starting AND hasn't failed.
 	connectingStatus := "pending"
-	if latestTask != nil {
+	switch {
+	case latestTask != nil:
 		connectingStatus = "completed"
-	} else if server.Status == types.ServerStatusStarting {
+	case !serverFailed && server.Status == types.ServerStatusStarting:
 		connectingStatus = "current"
 	}
 	connectingStep := ProvisionStatusStep{
@@ -522,14 +553,22 @@ func BuildProvisionStatus(server *models.Server, latestTask *models.Task) Provis
 		currentStep = &connectingStep
 	}
 
-	// Provision steps
-	provisionSteps := types.ForFreshServer()
+	// Provision steps — choose the right list for the server's type. Docker
+	// servers expose the base hardening steps plus the docker-stack steps.
+	var provisionSteps []types.ProvisionStep
+	if server.Type != nil && *server.Type == string(types.ServerTypeDocker) {
+		provisionSteps = types.ForDockerServer()
+	} else {
+		provisionSteps = types.ForFreshServer()
+	}
+
 	foundCurrent := false
 	for _, ps := range provisionSteps {
 		status := "pending"
-		if completedSteps[ps.String()] {
+		switch {
+		case completedSteps[ps.String()]:
 			status = "completed"
-		} else if !foundCurrent && connectingStatus == "completed" {
+		case !serverFailed && !foundCurrent && connectingStatus == "completed":
 			status = "current"
 			foundCurrent = true
 		}
@@ -545,16 +584,24 @@ func BuildProvisionStatus(server *models.Server, latestTask *models.Task) Provis
 		}
 	}
 
-	// Service installation steps
+	// Service installation steps. A service is only allowed to be `current`
+	// once the connecting step has completed AND no earlier step is already
+	// marked `current`. Without this, the UI shows two spinners at once —
+	// "Waiting for server to connect" and "Installing Docker" — because
+	// service.Status can be set to `installing` independently of overall
+	// progress.
 	for _, service := range server.Services {
 		status := "pending"
 		desc := "Installing " + service.Name
-		if service.Status.IsActive() {
+		canBeCurrent := !serverFailed && !foundCurrent && connectingStatus == "completed"
+		switch {
+		case service.Status.IsActive():
 			status = "completed"
 			desc = "Installed " + service.Name
-		} else if service.Status == types.ServiceStatusInstalling {
+		case canBeCurrent && service.Status == types.ServiceStatusInstalling:
 			status = "current"
-		} else if !foundCurrent {
+			foundCurrent = true
+		case canBeCurrent:
 			status = "current"
 			foundCurrent = true
 		}
@@ -573,6 +620,10 @@ func BuildProvisionStatus(server *models.Server, latestTask *models.Task) Provis
 	resp := ProvisionStatusResponse{
 		Steps:       steps,
 		CurrentStep: currentStep,
+		Failed:      serverFailed,
+	}
+	if serverFailed {
+		resp.ErrorMessage = provisionErrorMessage(server, latestTask)
 	}
 
 	if latestTask != nil {
@@ -582,6 +633,89 @@ func BuildProvisionStatus(server *models.Server, latestTask *models.Task) Provis
 
 	return resp
 }
+
+// provisionErrorMessage picks the most informative error string we have for
+// a failed server. Order of preference:
+//  1. server.provision_error — friendly, classified message set by the failing
+//     job/task callbacks (see providers.FriendlyError).
+//  2. trailing output of the latest failed task, **classified into a
+//     short user-friendly sentence** (see classifyTaskFailure). Returning
+//     the raw tail of bash output here once leaked our internal
+//     `::LAUNCH::status::...` markers and dpkg lock noise straight to the
+//     customer-facing failure banner.
+//  3. a generic fallback the product team has approved for end-user display.
+//
+// Never surface raw HTTP bodies / stack traces / shell output from here —
+// those belong in the worker logs and Sentry, not the SaaS UI.
+func provisionErrorMessage(server *models.Server, latestTask *models.Task) string {
+	if server != nil && server.ProvisionError != nil && *server.ProvisionError != "" {
+		return *server.ProvisionError
+	}
+	if latestTask != nil && latestTask.Status == string(types.TaskStatusFailed) {
+		if out := latestTask.Output.String(); out != "" {
+			return classifyTaskFailure(out)
+		}
+	}
+	return "We couldn't finish provisioning this server. Please try again, or contact support if it keeps happening."
+}
+
+// stripLaunchMarkers removes our internal `::LAUNCH::<type>::<value>` lines
+// from script output. Without this, the customer-facing failure banner
+// echoes things like "::LAUNCH::step_completed::configure_firewall
+// ::LAUNCH::progress::15" which looks like a stack trace to a non-technical
+// user and exposes our internal protocol.
+var launchMarkerLine = regexp.MustCompile(`::LAUNCH::[^\s]+`)
+
+func stripLaunchMarkers(s string) string {
+	return strings.TrimSpace(launchMarkerLine.ReplaceAllString(s, ""))
+}
+
+// classifyTaskFailure maps raw bash/apt output into a single user-friendly
+// sentence. Keep these branches narrow (specific signal in the output) and
+// in priority order — first match wins. When in doubt, fall through to the
+// generic copy rather than echoing a confusing tail of shell output.
+//
+// The patterns here are all motivated by actual production failures we've
+// seen. Don't add speculative ones — if a class of failure isn't surfacing
+// in tickets, leaving it on the generic fallback is fine.
+func classifyTaskFailure(rawOutput string) string {
+	out := stripLaunchMarkers(rawOutput)
+	low := strings.ToLower(out)
+
+	switch {
+	case strings.Contains(low, "could not get lock /var/lib/dpkg") ||
+		strings.Contains(low, "unable to acquire the dpkg frontend lock"):
+		return "Another package manager is still running on the server. This usually clears up within a few minutes — please try again shortly."
+
+	case strings.Contains(low, "unable to locate package") ||
+		strings.Contains(low, "has no installation candidate"):
+		return "A required package isn't available in the server's repositories. Please contact support so we can investigate."
+
+	case strings.Contains(low, "permission denied") && strings.Contains(low, "sudo"):
+		return "We don't have permission to run setup commands on this server. Please verify the SSH user has sudo access without a password prompt."
+
+	case strings.Contains(low, "no space left on device"):
+		return "The server ran out of disk space during setup. Please resize it or use a larger plan and try again."
+
+	case strings.Contains(low, "temporary failure resolving") ||
+		strings.Contains(low, "could not resolve host"):
+		return "The server couldn't reach the internet to download packages. Please check the server's DNS and outbound network access, then retry."
+
+	case strings.Contains(low, "connection timed out") ||
+		strings.Contains(low, "connection refused"):
+		return "We couldn't reach the server while installing required software. Please verify the server is online and reachable, then retry."
+
+	case strings.Contains(low, "ssl certificate problem") ||
+		strings.Contains(low, "certificate has expired"):
+		return "An SSL certificate verification error stopped the installation. This is usually a server-side clock issue — set the server's time correctly and retry."
+
+	case strings.Contains(low, "killed") && strings.Contains(low, "out of memory"):
+		return "The server ran out of memory during setup. Please use a plan with more RAM and try again."
+	}
+
+	return "Setup didn't complete on this server. Please try again, or contact support if it keeps happening."
+}
+
 
 // TaskResponse represents the response for a task
 type TaskResponse struct {
