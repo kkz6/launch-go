@@ -48,6 +48,13 @@ ENV MODE=api
 
 EXPOSE 8080
 
+# Kamal v2 inspects container.State.Health to gate rolling deploys. Without
+# a HEALTHCHECK directive the inspect returns null and Kamal fails the
+# deploy even when the app is actually healthy. wget ships in the alpine
+# base; --spider performs a HEAD request that the /health endpoint serves.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=15s --retries=3 \
+  CMD wget -q --spider http://localhost:8080/health || exit 1
+
 # Usage:
 #   docker run <image>                              # runs api (default)
 #   docker run -e MODE=worker <image>               # runs worker
