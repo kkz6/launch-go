@@ -5,6 +5,7 @@ package handlers
 
 import (
 	"errors"
+	"strconv"
 
 	gofiber "github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
@@ -86,10 +87,8 @@ func (h *StoredCertificateHandler) Update(c *gofiber.Ctx) error {
 	if err != nil {
 		return mapCreateOrUpdateError(c, err)
 	}
-	return fiberutil.OK(c, "Stored certificate updated", gofiber.Map{
-		"certificate":       row,
-		"pending_redeploys": pendingRedeploys,
-	})
+	c.Set("X-Pending-Redeploys", strconv.Itoa(pendingRedeploys))
+	return fiberutil.OK(c, "Stored certificate updated", row)
 }
 
 // Delete soft-deletes a stored certificate. If ?force=true is set,
@@ -102,7 +101,7 @@ func (h *StoredCertificateHandler) Delete(c *gofiber.Ctx) error {
 		return err
 	}
 	id := c.Params("id")
-	force := c.Query("force") == "true"
+	force := c.Query("force") == "true" || c.Query("force") == "1"
 
 	if force {
 		if err := h.svc.DeleteWithForce(c.Context(), teamID, id); err != nil {
@@ -140,16 +139,21 @@ func (h *StoredCertificateHandler) Usages(c *gofiber.Ctx) error {
 	}
 	usages, err := h.svc.Usages(c.Context(), teamID, c.Params("id"))
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fiberutil.NotFound("Stored certificate not found")
+		}
 		return err
 	}
 	return fiberutil.OK(c, "Usages retrieved", usages)
 }
 
 // mapCreateOrUpdateError maps service errors to HTTP responses:
-//   - ErrDuplicateFingerprint → 409 with {existing:{id,name}}
-//   - ErrPartialCertKeyUpdate → 422 with field error
-//   - gorm.ErrRecordNotFound  → 404
-//   - everything else         → fall through to the global error handler
+//   - ErrDuplicateFingerprint   → 409 with {existing:{id,name}}
+//   - ErrPartialCertKeyUpdate   → 422 with field error
+//   - ErrInvalidCertificatePEM  → 422 with field error
+//   - ErrPrivateKeyMismatch     → 422 with field error
+//   - gorm.ErrRecordNotFound    → 404
+//   - everything else           → fall through to the global error handler
 func mapCreateOrUpdateError(c *gofiber.Ctx, err error) error {
 	var dupErr services.ErrDuplicateFingerprint
 	if errors.As(err, &dupErr) {
@@ -170,6 +174,22 @@ func mapCreateOrUpdateError(c *gofiber.Ctx, err error) error {
 			"errors": gofiber.Map{
 				"certificate": "must be sent together with private_key",
 				"private_key": "must be sent together with certificate",
+			},
+		})
+	}
+	if errors.Is(err, services.ErrInvalidCertificatePEM) {
+		return c.Status(gofiber.StatusUnprocessableEntity).JSON(gofiber.Map{
+			"message": "Invalid certificate PEM",
+			"errors": gofiber.Map{
+				"certificate": "not a valid PEM-encoded certificate",
+			},
+		})
+	}
+	if errors.Is(err, services.ErrPrivateKeyMismatch) {
+		return c.Status(gofiber.StatusUnprocessableEntity).JSON(gofiber.Map{
+			"message": "Private key does not match certificate",
+			"errors": gofiber.Map{
+				"private_key": "does not match the certificate",
 			},
 		})
 	}

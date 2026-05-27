@@ -81,11 +81,15 @@ func (s *StoredCertificateService) Create(
 	userID *string,
 	req dto.CreateStoredCertificateRequest,
 ) (*models.StoredCertificate, error) {
-	if err := ValidateKeyMatchesCert(req.Certificate, req.PrivateKey); err != nil {
-		return nil, err
-	}
+	// Parse the cert FIRST so a malformed PEM surfaces
+	// ErrInvalidCertificatePEM rather than the less specific
+	// ErrPrivateKeyMismatch that tls.X509KeyPair would emit when it
+	// can't find PEM data in the cert blob.
 	parsed, err := ParseCertificate(req.Certificate)
 	if err != nil {
+		return nil, err
+	}
+	if err := ValidateKeyMatchesCert(req.Certificate, req.PrivateKey); err != nil {
 		return nil, err
 	}
 
@@ -187,11 +191,14 @@ func (s *StoredCertificateService) Update(
 	}
 
 	if contentChange != nil {
-		if err := ValidateKeyMatchesCert(contentChange.cert, contentChange.key); err != nil {
-			return nil, 0, err
-		}
+		// Parse first so malformed PEM surfaces ErrInvalidCertificatePEM
+		// rather than the less-specific ErrPrivateKeyMismatch that
+		// X509KeyPair would emit on a missing cert block.
 		parsed, err := ParseCertificate(contentChange.cert)
 		if err != nil {
+			return nil, 0, err
+		}
+		if err := ValidateKeyMatchesCert(contentChange.cert, contentChange.key); err != nil {
 			return nil, 0, err
 		}
 
@@ -271,7 +278,15 @@ func normalizeContentChange(certPtr, keyPtr *string) (*certContentChange, error)
 // Usages returns the resources (sites + docker domains) that
 // currently reference the stored cert. Used by the /usages endpoint
 // and by Delete to decide whether to short-circuit into ErrInUse.
+//
+// Returns gorm.ErrRecordNotFound (caught by the handler as 404) when
+// the cert id doesn't exist in the team — without this pre-check the
+// endpoint would return 200 with [] for unknown ids, letting the UI
+// act on stale state.
 func (s *StoredCertificateService) Usages(ctx context.Context, teamID, certID string) ([]dto.CertificateUsage, error) {
+	if _, err := s.repos.StoredCertificates.FindByID(ctx, teamID, certID); err != nil {
+		return nil, err
+	}
 	return s.repos.StoredCertificates.Usages(ctx, teamID, certID)
 }
 
@@ -281,6 +296,9 @@ func (s *StoredCertificateService) Usages(ctx context.Context, teamID, certID st
 // prompt the user and call DeleteWithForce to cascade-clear the
 // references.
 func (s *StoredCertificateService) Delete(ctx context.Context, teamID, id string) error {
+	if _, err := s.repos.StoredCertificates.FindByID(ctx, teamID, id); err != nil {
+		return err // propagates gorm.ErrRecordNotFound to the handler
+	}
 	usages, err := s.repos.StoredCertificates.Usages(ctx, teamID, id)
 	if err != nil {
 		return err
@@ -309,6 +327,9 @@ func (s *StoredCertificateService) Delete(ctx context.Context, teamID, id string
 // (certificates.team_id) and via the parent table join for the
 // docker path (docker_application_domains has no team_id of its own).
 func (s *StoredCertificateService) DeleteWithForce(ctx context.Context, teamID, id string) error {
+	if _, err := s.repos.StoredCertificates.FindByID(ctx, teamID, id); err != nil {
+		return err // propagates gorm.ErrRecordNotFound to the handler
+	}
 	return s.repos.StoredCertificates.Transaction(ctx, func(tx *gorm.DB) error {
 		// Reset tls_setting on the parent sites for any site cert
 		// that points at this stored cert. We do this BEFORE

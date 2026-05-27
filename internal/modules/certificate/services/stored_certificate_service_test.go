@@ -250,6 +250,7 @@ func TestService_Create_KeyMismatch_422(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "private key does not match certificate")
+	assert.ErrorIs(t, err, services.ErrPrivateKeyMismatch)
 	assert.Equal(t, int64(0), countRows(t, db), "validation failure must not insert")
 }
 
@@ -264,6 +265,7 @@ func TestService_Create_MalformedPEM_422(t *testing.T) {
 		PrivateKey:  mustRead(t, "leaf.key"),
 	})
 	require.Error(t, err)
+	assert.ErrorIs(t, err, services.ErrInvalidCertificatePEM)
 	assert.Equal(t, int64(0), countRows(t, db), "malformed PEM must not insert")
 }
 
@@ -540,6 +542,7 @@ func TestService_Update_KeyMismatch_Errors(t *testing.T) {
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "private key does not match certificate")
+	assert.ErrorIs(t, err, services.ErrPrivateKeyMismatch)
 }
 
 func TestService_Update_DuplicateFingerprintWithDifferentRow(t *testing.T) {
@@ -635,10 +638,12 @@ func TestService_Delete_NotInUse_Succeeds(t *testing.T) {
 
 	require.NoError(t, svc.Delete(ctx, "team-a", c.ID))
 
-	// Subsequent FindByID via the repository should return NotFound
-	// because GORM's default scope hides soft-deleted rows.
-	_, err := svc.Usages(ctx, "team-a", c.ID) // safe call — no error path here
-	require.NoError(t, err)
+	// Usages now pre-checks FindByID, so after the soft-delete it
+	// surfaces gorm.ErrRecordNotFound instead of returning [].
+	_, err := svc.Usages(ctx, "team-a", c.ID)
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, gorm.ErrRecordNotFound),
+		"Usages on a soft-deleted cert must return ErrRecordNotFound")
 
 	var count int64
 	require.NoError(t, db.Model(&models.StoredCertificate{}).Where("id = ?", c.ID).Count(&count).Error)
@@ -895,4 +900,45 @@ func TestService_DeleteWithForce_OtherTeamRefsUntouched(t *testing.T) {
 	assert.Equal(t, c.ID, *domStoredID)
 	assert.Equal(t, "stored", domProvider,
 		"team-b docker domain certificate_provider must be unchanged (still 'stored')")
+}
+
+// TestService_Delete_NotFound_ReturnsErrRecordNotFound verifies that
+// deleting a non-existent cert id surfaces gorm.ErrRecordNotFound so
+// the handler can map it to a 404 instead of silently 204-ing.
+func TestService_Delete_NotFound_ReturnsErrRecordNotFound(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	err := svc.Delete(ctx, "team-a", "01HZZZZZZZZZZZZZZZZZZZZZZZ")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, gorm.ErrRecordNotFound),
+		"expected ErrRecordNotFound, got %v", err)
+}
+
+// TestService_DeleteWithForce_NotFound_ReturnsErrRecordNotFound is the
+// force-path mirror of the previous test: a force-delete on an unknown
+// id must also report 404, not pretend to succeed.
+func TestService_DeleteWithForce_NotFound_ReturnsErrRecordNotFound(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	err := svc.DeleteWithForce(ctx, "team-a", "01HZZZZZZZZZZZZZZZZZZZZZZZ")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, gorm.ErrRecordNotFound),
+		"expected ErrRecordNotFound, got %v", err)
+}
+
+// TestService_Usages_NotFound_ReturnsErrRecordNotFound verifies that
+// Usages pre-checks FindByID so the UI can't act on a stale cert id.
+func TestService_Usages_NotFound_ReturnsErrRecordNotFound(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	_, err := svc.Usages(ctx, "team-a", "01HZZZZZZZZZZZZZZZZZZZZZZZ")
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, gorm.ErrRecordNotFound),
+		"expected ErrRecordNotFound, got %v", err)
 }

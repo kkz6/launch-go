@@ -49,6 +49,7 @@ func TestParser_ExpiredCert_StillParses_WarnsCaller(t *testing.T) {
 func TestParser_Malformed_ReturnsError(t *testing.T) {
 	_, err := services.ParseCertificate("not a pem block")
 	assert.Error(t, err)
+	assert.ErrorIs(t, err, services.ErrInvalidCertificatePEM)
 }
 
 func TestParser_KeyCertMatch_OK(t *testing.T) {
@@ -65,4 +66,5 @@ func TestParser_KeyCertMismatch_Errors(t *testing.T) {
 		mustRead(t, "mismatched.key"),
 	)
 	assert.Error(t, err)
+	assert.ErrorIs(t, err, services.ErrPrivateKeyMismatch)
 }

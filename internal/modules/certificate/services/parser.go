@@ -13,6 +13,15 @@ import (
 	"time"
 )
 
+// ErrInvalidCertificatePEM is returned when the cert blob can't be
+// decoded or parsed. User-correctable (paste a valid cert).
+var ErrInvalidCertificatePEM = errors.New("not a valid PEM-encoded certificate")
+
+// ErrPrivateKeyMismatch is returned when the private key doesn't
+// match the certificate's public key. User-correctable (paste the
+// matching key).
+var ErrPrivateKeyMismatch = errors.New("private key does not match certificate")
+
 // ParsedCertificate is the metadata the service layer extracts from a
 // user-supplied cert PEM. Stored verbatim on stored_certificates so
 // the picker can render "name · *.acme.io · expires Mar 12" without
@@ -33,11 +42,11 @@ type ParsedCertificate struct {
 func ParseCertificate(pemContent string) (*ParsedCertificate, error) {
 	block, _ := pem.Decode([]byte(pemContent))
 	if block == nil || block.Type != "CERTIFICATE" {
-		return nil, errors.New("not a valid PEM-encoded certificate")
+		return nil, ErrInvalidCertificatePEM
 	}
 	cert, err := x509.ParseCertificate(block.Bytes)
 	if err != nil {
-		return nil, fmt.Errorf("parse certificate: %w", err)
+		return nil, fmt.Errorf("%w: %v", ErrInvalidCertificatePEM, err)
 	}
 
 	domains := uniqueStrings(append([]string{cert.Subject.CommonName}, cert.DNSNames...))
@@ -66,7 +75,7 @@ func ParseCertificate(pemContent string) (*ParsedCertificate, error) {
 // certificate's public key (i.e. tls.X509KeyPair would succeed).
 func ValidateKeyMatchesCert(certPEM, keyPEM string) error {
 	if _, err := tls.X509KeyPair([]byte(certPEM), []byte(keyPEM)); err != nil {
-		return fmt.Errorf("private key does not match certificate: %w", err)
+		return fmt.Errorf("%w: %v", ErrPrivateKeyMismatch, err)
 	}
 	return nil
 }
