@@ -27,7 +27,10 @@ func TestParser_LeafCert_ExtractsAllFields(t *testing.T) {
 	assert.ElementsMatch(t, []string{"acme.io", "*.acme.io"}, parsed.Domains)
 	assert.Equal(t, "acme.io", parsed.CommonName)
 	assert.NotEmpty(t, parsed.Issuer)
-	assert.WithinDuration(t, time.Now().Add(365*24*time.Hour), parsed.NotAfter, 1*time.Hour)
+	// 365 days from the cert's own NotBefore — independent of wall clock,
+	// so the assertion stays valid even as the fixture ages.
+	expected := parsed.NotBefore.Add(365 * 24 * time.Hour)
+	assert.WithinDuration(t, expected, parsed.NotAfter, 1*time.Minute)
 	assert.Len(t, parsed.FingerprintSHA256, 64) // hex chars
 }
 
