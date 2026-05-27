@@ -438,12 +438,15 @@ package repositories
 
 import "gorm.io/gorm"
 
-type Repositories struct {
+// Registry bundles the certificate module's repositories. Matches the
+// `Registry` naming convention used by docker / server / site modules
+// (not "Repositories" — distinct from the package name).
+type Registry struct {
 	StoredCertificates *StoredCertificateRepository
 }
 
-func NewRepositories(db *gorm.DB) *Repositories {
-	return &Repositories{
+func NewRegistry(db *gorm.DB) *Registry {
+	return &Registry{
 		StoredCertificates: NewStoredCertificateRepository(db),
 	}
 }
@@ -460,10 +463,10 @@ import (
 )
 
 type StoredCertificateService struct {
-	repos *repositories.Repositories
+	repos *repositories.Registry
 }
 
-func NewStoredCertificateService(repos *repositories.Repositories) *StoredCertificateService {
+func NewStoredCertificateService(repos *repositories.Registry) *StoredCertificateService {
 	return &StoredCertificateService{repos: repos}
 }
 ```
@@ -815,10 +818,10 @@ import (
 )
 
 type StoredCertificateService struct {
-	repos *repositories.Repositories
+	repos *repositories.Registry
 }
 
-func NewStoredCertificateService(repos *repositories.Repositories) *StoredCertificateService {
+func NewStoredCertificateService(repos *repositories.Registry) *StoredCertificateService {
 	return &StoredCertificateService{repos: repos}
 }
 
