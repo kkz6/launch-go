@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/certificate/dto"
@@ -27,6 +28,9 @@ func NewStoredCertificateService(repos *repositories.Registry) *StoredCertificat
 // row with the same fingerprint already exists in the team. The
 // embedded *models.StoredCertificate is the existing row so handlers
 // can surface its name + id to the UI ("Open existing").
+//
+// Callers should use errors.As(err, &target) to access .Existing;
+// errors.Is is not meaningful here (the error carries per-call state).
 type ErrDuplicateFingerprint struct {
 	Existing *models.StoredCertificate
 }
@@ -76,6 +80,20 @@ func (s *StoredCertificateService) Create(
 		FingerprintSHA256: nilIfEmpty(parsed.FingerprintSHA256),
 	}
 	if err := s.repos.StoredCertificates.Create(ctx, c); err != nil {
+		// Translate a PG unique-violation on the fingerprint partial
+		// index into ErrDuplicateFingerprint. This closes the TOCTOU
+		// between FindByFingerprint and Create: two concurrent
+		// uploads of the same cert can both pass the pre-check, and
+		// the second insert then races into 23505. Re-run the
+		// fingerprint lookup so the caller still gets a structured
+		// 409 with the existing row, not a raw DB error that the
+		// handler would map to 500.
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "idx_stored_certs_team_fingerprint_alive" {
+			if existing, lookupErr := s.repos.StoredCertificates.FindByFingerprint(ctx, teamID, parsed.FingerprintSHA256); lookupErr == nil && existing != nil {
+				return nil, ErrDuplicateFingerprint{Existing: existing}
+			}
+		}
 		return nil, err
 	}
 	return c, nil

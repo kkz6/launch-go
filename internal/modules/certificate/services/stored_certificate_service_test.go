@@ -86,6 +86,18 @@ func setupServiceDB(t *testing.T) *gorm.DB {
 		 WHERE deleted_at IS NULL`,
 	).Error)
 
+	// Match the fingerprint partial unique index from migration 0046.
+	// In production a concurrent insert with the same fingerprint
+	// trips this index and the service translates the resulting
+	// 23505 into ErrDuplicateFingerprint; mirroring the constraint
+	// here keeps the test schema honest even though the single-
+	// threaded tests below only exercise the pre-check path.
+	require.NoError(t, db.Exec(
+		`CREATE UNIQUE INDEX idx_stored_certs_team_fingerprint_alive
+		 ON stored_certificates (team_id, fingerprint_sha256)
+		 WHERE deleted_at IS NULL AND fingerprint_sha256 IS NOT NULL`,
+	).Error)
+
 	return db
 }
 
