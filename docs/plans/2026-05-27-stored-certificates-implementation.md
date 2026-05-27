@@ -53,6 +53,15 @@ kernel, no HTTP routes yet, `go test ./... && go vet ./...` green.
 > uniqueness expressed by including `deleted_at` in the index columns
 > (not via `WHERE deleted_at IS NULL`, which MySQL doesn't support).
 > All SQL below follows that convention.
+>
+> **Collation gotcha:** MySQL 8's default database collation
+> (`utf8mb4_0900_ai_ci`) is FK-incompatible with the legacy tables
+> (which use `utf8mb4_unicode_ci`, including `teams.id`). Every new
+> CREATE TABLE in this codebase must end with
+> `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+> or the FK to `teams(id)` will fail with `Error 3780`. See
+> migration `0021_05_22_000000_create_docker_projects_table.go:46-50`
+> for the documented precedent.
 
 **Step 1: Read a recent migration as a template**
 
@@ -119,7 +128,7 @@ func createStoredCertificatesUp(db *gorm.DB) error {
 			deleted_at          TIMESTAMP    NULL,
 			PRIMARY KEY (id),
 			CONSTRAINT fk_stored_certs_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
-		)
+		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
 	`).Error; err != nil {
 		return err
 	}
