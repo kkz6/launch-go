@@ -625,3 +625,108 @@ func TestService_Usages_TeamScoped(t *testing.T) {
 	require.NoError(t, err)
 	assert.Empty(t, got)
 }
+
+func TestService_Delete_NotInUse_Succeeds(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+
+	require.NoError(t, svc.Delete(ctx, "team-a", c.ID))
+
+	// Subsequent FindByID via the repository should return NotFound
+	// because GORM's default scope hides soft-deleted rows.
+	_, err := svc.Usages(ctx, "team-a", c.ID) // safe call — no error path here
+	require.NoError(t, err)
+
+	var count int64
+	require.NoError(t, db.Model(&models.StoredCertificate{}).Where("id = ?", c.ID).Count(&count).Error)
+	assert.Equal(t, int64(0), count, "soft-delete should hide the row from default scope")
+
+	// Unscoped, the row should still exist with deleted_at set.
+	var unscoped int64
+	require.NoError(t, db.Unscoped().Model(&models.StoredCertificate{}).Where("id = ?", c.ID).Count(&unscoped).Error)
+	assert.Equal(t, int64(1), unscoped, "soft-delete keeps the row in storage")
+}
+
+func TestService_Delete_InUse_ReturnsErrInUse(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+	insertSiteRef(t, db, "team-a", c.ID, "acme.io")
+	insertDomainRef(t, db, "team-a", c.ID, "api.acme.io")
+
+	err := svc.Delete(ctx, "team-a", c.ID)
+	require.Error(t, err)
+
+	var inUse services.ErrInUse
+	require.True(t, errors.As(err, &inUse), "expected ErrInUse, got %T: %v", err, err)
+	assert.Len(t, inUse.Usages, 2)
+
+	// Cert is still alive.
+	var count int64
+	require.NoError(t, db.Model(&models.StoredCertificate{}).Where("id = ?", c.ID).Count(&count).Error)
+	assert.Equal(t, int64(1), count, "in-use delete must not soft-delete the cert")
+}
+
+func TestService_DeleteWithForce_ClearsFKsAndSoftDeletes(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+	siteID := insertSiteRef(t, db, "team-a", c.ID, "acme.io")
+	domID := insertDomainRef(t, db, "team-a", c.ID, "api.acme.io")
+
+	require.NoError(t, svc.DeleteWithForce(ctx, "team-a", c.ID))
+
+	// Cert is soft-deleted.
+	var aliveCount int64
+	require.NoError(t, db.Model(&models.StoredCertificate{}).Where("id = ?", c.ID).Count(&aliveCount).Error)
+	assert.Equal(t, int64(0), aliveCount, "DeleteWithForce should soft-delete the stored cert")
+
+	// certificates.stored_certificate_id should be NULL on the
+	// referencing row, and the parent site's tls_setting back to
+	// 'auto'.
+	var certStoredID *string
+	require.NoError(t, db.Raw(
+		`SELECT stored_certificate_id FROM certificates WHERE site_id = ?`, siteID,
+	).Row().Scan(&certStoredID))
+	assert.Nil(t, certStoredID, "site cert link should be cleared")
+
+	var tlsSetting string
+	require.NoError(t, db.Raw(
+		`SELECT tls_setting FROM sites WHERE id = ?`, siteID,
+	).Row().Scan(&tlsSetting))
+	assert.Equal(t, "auto", tlsSetting, "site tls_setting must be reset to auto")
+
+	// docker_application_domains: stored_certificate_id cleared,
+	// certificate_provider reset to letsencrypt.
+	var domStoredID *string
+	var provider string
+	require.NoError(t, db.Raw(
+		`SELECT stored_certificate_id, certificate_provider FROM docker_application_domains WHERE id = ?`, domID,
+	).Row().Scan(&domStoredID, &provider))
+	assert.Nil(t, domStoredID, "docker domain cert link should be cleared")
+	assert.Equal(t, "letsencrypt", provider, "docker domain provider must reset to letsencrypt")
+}
+
+func TestService_Delete_WrongTeam_NotFound(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+
+	// team-b tries to delete team-a's cert. Should not delete the
+	// row; SoftDelete being a no-op or returning ErrRecordNotFound
+	// are both acceptable. We just verify the row stays alive.
+	_ = svc.Delete(ctx, "team-b", c.ID) // ignore error: no-op is allowed
+
+	var count int64
+	require.NoError(t, db.Model(&models.StoredCertificate{}).Where("id = ?", c.ID).Count(&count).Error)
+	assert.Equal(t, int64(1), count, "wrong-team delete must not soft-delete the cert")
+}

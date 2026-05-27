@@ -46,6 +46,19 @@ func (e ErrDuplicateFingerprint) Error() string {
 // cert. Handlers should map this to a 422.
 var ErrPartialCertKeyUpdate = errors.New("certificate and private_key must be updated together")
 
+// ErrInUse is returned by Delete when the cert is still referenced
+// by at least one site or docker domain. Carries the usage list so
+// the handler can prompt for confirmation ("used by 3 sites — delete
+// anyway?") and the caller can decide whether to switch to
+// DeleteWithForce.
+type ErrInUse struct {
+	Usages []dto.CertificateUsage
+}
+
+func (e ErrInUse) Error() string {
+	return "certificate is still in use"
+}
+
 // Create validates the input, parses metadata from the cert PEM,
 // checks fingerprint dedupe, and persists. Returns
 // ErrDuplicateFingerprint with the existing row when the cert is
@@ -231,6 +244,86 @@ func normalizeContentChange(certPtr, keyPtr *string) (*certContentChange, error)
 // and by Delete to decide whether to short-circuit into ErrInUse.
 func (s *StoredCertificateService) Usages(ctx context.Context, teamID, certID string) ([]dto.CertificateUsage, error) {
 	return s.repos.StoredCertificates.Usages(ctx, teamID, certID)
+}
+
+// Delete soft-deletes the stored cert if nothing references it.
+// Returns ErrInUse (with the populated usage list) when at least one
+// site or docker domain still points at it — the caller should
+// prompt the user and call DeleteWithForce to cascade-clear the
+// references.
+func (s *StoredCertificateService) Delete(ctx context.Context, teamID, id string) error {
+	usages, err := s.repos.StoredCertificates.Usages(ctx, teamID, id)
+	if err != nil {
+		return err
+	}
+	if len(usages) > 0 {
+		return ErrInUse{Usages: usages}
+	}
+	return s.repos.StoredCertificates.SoftDelete(ctx, teamID, id)
+}
+
+// DeleteWithForce clears every reference to the cert across the
+// site + docker domain tables and then soft-deletes the cert itself.
+// All three steps run in a single transaction so a partial cascade
+// can't leave a dangling stored_certificate_id pointing at a
+// soft-deleted row.
+//
+// Behaviour per referencing kind:
+//   - `certificates` rows have their stored_certificate_id NULLed.
+//     The parent `sites` row's tls_setting is reset to 'auto' so the
+//     next deploy installs Let's Encrypt. (tls_setting lives on
+//     sites, NOT certificates — verified against the live schema.)
+//   - `docker_application_domains` rows have stored_certificate_id
+//     NULLed and certificate_provider reset to 'letsencrypt'.
+//
+// The team_id check is enforced on the link table for the site path
+// (certificates.team_id) and via the parent table join for the
+// docker path (docker_application_domains has no team_id of its own).
+func (s *StoredCertificateService) DeleteWithForce(ctx context.Context, teamID, id string) error {
+	return s.repos.StoredCertificates.Transaction(ctx, func(tx *gorm.DB) error {
+		// Reset tls_setting on the parent sites for any site cert
+		// that points at this stored cert. We do this BEFORE
+		// clearing the FK so the subquery still finds the rows.
+		if err := tx.Exec(
+			`UPDATE sites SET tls_setting = 'auto'
+			 WHERE id IN (
+			   SELECT site_id FROM certificates
+			   WHERE stored_certificate_id = ? AND team_id = ?
+			 )`,
+			id, teamID,
+		).Error; err != nil {
+			return err
+		}
+		// Clear the FK on the certificates link rows.
+		if err := tx.Exec(
+			`UPDATE certificates SET stored_certificate_id = NULL
+			 WHERE stored_certificate_id = ? AND team_id = ?`,
+			id, teamID,
+		).Error; err != nil {
+			return err
+		}
+		// Clear FK + reset provider on docker domains. Scope via the
+		// parent application/compose team_id since docker_application_domains
+		// has no team_id column.
+		if err := tx.Exec(
+			`UPDATE docker_application_domains
+			 SET stored_certificate_id = NULL, certificate_provider = 'letsencrypt'
+			 WHERE stored_certificate_id = ?
+			   AND id IN (
+			     SELECT d.id FROM docker_application_domains d
+			     LEFT JOIN docker_applications a ON a.id = d.application_id
+			     LEFT JOIN docker_composes     c ON c.id = d.compose_id
+			     WHERE d.stored_certificate_id = ?
+			       AND COALESCE(a.team_id, c.team_id) = ?
+			   )`,
+			id, id, teamID,
+		).Error; err != nil {
+			return err
+		}
+		// Finally soft-delete the stored cert itself.
+		return tx.Where("team_id = ? AND id = ?", teamID, id).
+			Delete(&models.StoredCertificate{}).Error
+	})
 }
 
 func nilIfEmpty(s string) *string {
