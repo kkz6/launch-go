@@ -27,11 +27,21 @@ func NewServerRepository(db *gorm.DB) *ServerRepository {
 	}
 }
 
+// servicesByInstallOrder forces preloaded services to come back in the
+// order they were installed. Without an explicit ORDER BY, Postgres is
+// free to return rows in any order — usually heap order, but it shifts
+// after VACUUM or row updates. That manifested in the UI as the
+// installed-services list (Supervisor, Caddy, PHP, …) reshuffling
+// between page loads of the provision-status sheet.
+func servicesByInstallOrder(db *gorm.DB) *gorm.DB {
+	return db.Order("services.created_at ASC")
+}
+
 // FindWithRelations finds a server with all relations
 func (r *ServerRepository) FindWithRelations(ctx context.Context, id, teamID string) (*models.Server, error) {
 	var server models.Server
 	err := r.DB.WithContext(ctx).
-		Preload("Services").
+		Preload("Services", servicesByInstallOrder).
 		Preload("FirewallRules").
 		Preload("Crons").
 		Preload("Daemons").
@@ -102,7 +112,7 @@ func (r *ServerRepository) FindAllByTeam(ctx context.Context, teamID string) ([]
 	var servers []models.Server
 	err := r.DB.WithContext(ctx).
 		Select(r.listSelect(), r.sitesCountSubquery(), r.projectsCountSubquery(), r.workloadsCountSubquery()).
-		Preload("Services").
+		Preload("Services", servicesByInstallOrder).
 		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
 		Order("created_at DESC").
 		Find(&servers).Error
@@ -117,7 +127,7 @@ func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID st
 
 	dataQuery := r.DB.WithContext(ctx).
 		Select(r.listSelect(), r.sitesCountSubquery(), r.projectsCountSubquery(), r.workloadsCountSubquery()).
-		Preload("Services").
+		Preload("Services", servicesByInstallOrder).
 		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
 		Order("created_at DESC")
 
