@@ -253,6 +253,7 @@ func (a *Application) registerModules() {
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
 	siteModule.SetCronCreator(adapters.NewCronCreatorAdapter(serverModule.Service()))
 	siteModule.SetDatabaseManager(adapters.NewDatabaseManagerAdapter(databaseModule.Service()))
+	siteModule.SetStoredCertificateRepository(certificateModule.Repos().StoredCertificates)
 	serverModule.SetSiteReader(siteModule.SiteReader())
 	gitModule.SetSiteChecker(siteModule.SiteChecker())
 

@@ -3,6 +3,7 @@ package site
 import (
 	"github.com/hibiken/asynq"
 
+	certrepos "github.com/kkz6/launch-go/internal/modules/certificate/repositories"
 	dnscontracts "github.com/kkz6/launch-go/internal/modules/dns/contracts"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	gitrepos "github.com/kkz6/launch-go/internal/modules/git/repositories"
@@ -52,6 +53,12 @@ type Module struct {
 
 	// Domain repository for cross-module verification (set via SetDomainRepository)
 	domainRepo dnscontracts.DomainRepository
+
+	// StoredCertificates is the certificate module's stored cert
+	// repository, set via SetStoredCertificateRepository. The SSL
+	// service consults it when resolving a stored_certificate_id in
+	// an UpdateSSL request.
+	storedCerts *certrepos.StoredCertificateRepository
 }
 
 // NewModule creates a new site module
@@ -108,6 +115,14 @@ func (m *Module) SetDomainRepository(repo dnscontracts.DomainRepository) {
 	m.domainRepo = repo
 }
 
+// SetStoredCertificateRepository injects the certificate module's
+// stored cert repository so the SSL service can resolve the optional
+// stored_certificate_id passed into UpdateSSL requests. Mirrors the
+// repo-passing pattern used by SetDomainRepository above.
+func (m *Module) SetStoredCertificateRepository(r *certrepos.StoredCertificateRepository) {
+	m.storedCerts = r
+}
+
 // SetCronCreator sets the cron creator for cross-module operations
 func (m *Module) SetCronCreator(creator contracts.CronCreator) {
 	m.cronCreator = creator
@@ -152,6 +167,7 @@ func (m *Module) createServices(taskRunnerDeps *servertasks.TaskRunnerDeps) *ser
 		CronCreator:     m.cronCreator,
 		DatabaseManager: m.databaseManager,
 		ProviderFactory: m.providerFactory,
+		StoredCerts:     m.storedCerts,
 	})
 
 	return registry

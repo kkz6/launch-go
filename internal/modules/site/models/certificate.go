@@ -23,6 +23,14 @@ type Certificate struct {
 	UploadedAt  *time.Time                `gorm:"column:uploaded_at;type:timestamp null" json:"uploaded_at,omitempty"`
 	IsActive    bool                      `gorm:"column:is_active;default:false" json:"is_active"`
 
+	// StoredCertificateID is the FK to the team-scoped
+	// stored_certificates library row this certificate was sourced
+	// from. Populated when the site SSL update specifies a stored
+	// cert; nil for legacy inline-paste certs and Let's Encrypt certs.
+	// The DB column was added in migration 0047 with ON DELETE SET
+	// NULL, so the FK self-clears on stored cert hard-delete.
+	StoredCertificateID *string `gorm:"column:stored_certificate_id;type:char(26)" json:"stored_certificate_id,omitempty"`
+
 	// Relations
 	Site *Site `gorm:"foreignKey:SiteID;references:ID" json:"site,omitempty"`
 }

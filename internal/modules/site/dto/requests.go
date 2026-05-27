@@ -62,11 +62,21 @@ type UpdateSiteRequest struct {
 	QueueDeployments             *bool   `json:"queue_deployments" validate:"omitempty"`
 }
 
-// UpdateSSLRequest represents the request to update SSL settings
+// UpdateSSLRequest represents the request to update SSL settings.
+//
+// Three input shapes are supported:
+//   - tls_setting=auto|internal|off — no cert payload required
+//   - tls_setting=custom + private_key + certificate — inline paste
+//   - stored_certificate_id set (with tls_setting=custom or =stored) —
+//     pick from the team's stored cert library; the service resolves
+//     the PEM + decrypted key and writes them to the site's
+//     certificates row, also recording the FK back to the library
+//     entry so a later force-delete can cascade-clear references.
 type UpdateSSLRequest struct {
-	TLSSetting  string  `json:"tls_setting" validate:"required,oneof=auto custom internal off"`
-	PrivateKey  *string `json:"private_key" validate:"omitempty"`
-	Certificate *string `json:"certificate" validate:"omitempty"`
+	TLSSetting           string  `json:"tls_setting" validate:"required,oneof=auto custom internal off stored"`
+	PrivateKey           *string `json:"private_key" validate:"omitempty"`
+	Certificate          *string `json:"certificate" validate:"omitempty"`
+	StoredCertificateID  *string `json:"stored_certificate_id" validate:"omitempty,len=26"`
 }
 
 // UpdateDeploymentSettingsRequest represents deployment settings update

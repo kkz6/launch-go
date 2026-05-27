@@ -90,13 +90,18 @@ type DeploymentResponse struct {
 
 // CertificateResponse represents a certificate in API responses
 type CertificateResponse struct {
-	ID         string   `json:"id"`
-	SiteID     string   `json:"site_id"`
-	Type       string   `json:"type"`
-	Domains    []string `json:"domains,omitempty"`
-	IsActive   bool     `json:"is_active"`
-	UploadedAt *string  `json:"uploaded_at,omitempty"`
-	CreatedAt  string   `json:"created_at"`
+	ID                  string   `json:"id"`
+	SiteID              string   `json:"site_id"`
+	Type                string   `json:"type"`
+	Domains             []string `json:"domains,omitempty"`
+	IsActive            bool     `json:"is_active"`
+	UploadedAt          *string  `json:"uploaded_at,omitempty"`
+	CreatedAt           string   `json:"created_at"`
+	// StoredCertificateID points to the stored cert library row this
+	// active certificate was sourced from. Allows the frontend to
+	// default the SSL dialog's radio to "stored" and pre-select the
+	// linked cert when reopening the dialog.
+	StoredCertificateID *string `json:"stored_certificate_id,omitempty"`
 }
 
 // QueueResponse represents a queue in API responses
@@ -306,13 +311,14 @@ func ToDeploymentResponse(deployment *models.Deployment) DeploymentResponse {
 // ToCertificateResponse converts a Certificate model to a response DTO
 func ToCertificateResponse(cert *models.Certificate) CertificateResponse {
 	return CertificateResponse{
-		ID:         cert.ID,
-		SiteID:     cert.SiteID,
-		Type:       string(cert.Type),
-		Domains:    cert.Domains,
-		IsActive:   cert.IsActive,
-		UploadedAt: pkgdto.FormatTime(cert.UploadedAt),
-		CreatedAt:  pkgdto.FormatTimeOrEmpty(cert.CreatedAt),
+		ID:                  cert.ID,
+		SiteID:              cert.SiteID,
+		Type:                string(cert.Type),
+		Domains:             cert.Domains,
+		IsActive:            cert.IsActive,
+		UploadedAt:          pkgdto.FormatTime(cert.UploadedAt),
+		CreatedAt:           pkgdto.FormatTimeOrEmpty(cert.CreatedAt),
+		StoredCertificateID: cert.StoredCertificateID,
 	}
 }
 
