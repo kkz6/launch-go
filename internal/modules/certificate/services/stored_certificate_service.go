@@ -24,6 +24,18 @@ func NewStoredCertificateService(repos *repositories.Registry) *StoredCertificat
 	return &StoredCertificateService{repos: repos}
 }
 
+// List returns all alive stored certs for the team, ordered by
+// not_after ASC (soonest expiry first — matches the picker UX).
+func (s *StoredCertificateService) List(ctx context.Context, teamID string) ([]models.StoredCertificate, error) {
+	return s.repos.StoredCertificates.List(ctx, teamID)
+}
+
+// Get returns a single stored cert by id within the team. Returns
+// gorm.ErrRecordNotFound (caught by the handler as 404) when missing.
+func (s *StoredCertificateService) Get(ctx context.Context, teamID, id string) (*models.StoredCertificate, error) {
+	return s.repos.StoredCertificates.FindByID(ctx, teamID, id)
+}
+
 // ErrDuplicateFingerprint is returned by Create/Update when an alive
 // row with the same fingerprint already exists in the team. The
 // embedded *models.StoredCertificate is the existing row so handlers
