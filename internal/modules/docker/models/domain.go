@@ -66,6 +66,13 @@ type ApplicationDomain struct {
 	HTTPS               bool    `gorm:"column:https;not null;default:true" json:"https"`
 	CertificateProvider string  `gorm:"column:certificate_provider;type:varchar(32);not null;default:letsencrypt" json:"certificate_provider"`
 	CertificateID       *string `gorm:"column:certificate_id;type:char(26)" json:"certificate_id,omitempty"`
+	// StoredCertificateID is the FK to the team-scoped certificate
+	// library. Populated when certificate_provider == "stored".
+	// Migration 0047 added the column with ON DELETE SET NULL — the
+	// FK self-clears when the stored cert is hard-deleted; the
+	// certificate module's DeleteWithForce additionally resets
+	// certificate_provider back to 'letsencrypt' alongside.
+	StoredCertificateID *string `gorm:"column:stored_certificate_id;type:char(26)" json:"stored_certificate_id,omitempty"`
 	// ServiceName names the compose YAML service this row targets.
 	// NULL on application-owned rows; required on compose-owned rows
 	// (service layer rejects empty / nil).

@@ -102,6 +102,7 @@ func (s *DomainService) CreateDomain(
 		ContainerPort:       req.ContainerPort,
 		HTTPS:               https,
 		CertificateProvider: certProvider,
+		StoredCertificateID: req.StoredCertificateID,
 	}
 	if err := s.Repos().Domain().Create(ctx, d); err != nil {
 		return dto.DomainResponse{}, err
@@ -159,6 +160,13 @@ func (s *DomainService) UpdateDomain(
 	}
 	if req.CertificateProvider != nil && *req.CertificateProvider != "" {
 		updates["certificate_provider"] = *req.CertificateProvider
+	}
+	if req.StoredCertificateID != nil {
+		if *req.StoredCertificateID == "" {
+			updates["stored_certificate_id"] = nil
+		} else {
+			updates["stored_certificate_id"] = *req.StoredCertificateID
+		}
 	}
 	if len(updates) > 0 {
 		if err := s.Repos().Domain().UpdateFields(ctx, id, updates); err != nil {
@@ -455,6 +463,7 @@ func (s *DomainService) CreateComposeDomain(
 		ContainerPort:       req.ContainerPort,
 		HTTPS:               https,
 		CertificateProvider: certProvider,
+		StoredCertificateID: req.StoredCertificateID,
 		ServiceName:         &serviceName,
 	}
 	if err := s.Repos().Domain().Create(ctx, d); err != nil {
@@ -513,6 +522,13 @@ func (s *DomainService) UpdateComposeDomain(
 	}
 	if req.CertificateProvider != nil && *req.CertificateProvider != "" {
 		updates["certificate_provider"] = *req.CertificateProvider
+	}
+	if req.StoredCertificateID != nil {
+		if *req.StoredCertificateID == "" {
+			updates["stored_certificate_id"] = nil
+		} else {
+			updates["stored_certificate_id"] = *req.StoredCertificateID
+		}
 	}
 	if req.ServiceName != nil {
 		s := strings.TrimSpace(*req.ServiceName)

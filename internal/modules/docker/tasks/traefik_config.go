@@ -42,6 +42,13 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 		return fmt.Sprintf("# %s — no domains configured\nhttp: {}\n", id)
 	}
 
+	// Collect unique stored-cert ids so the top-level tls.certificates
+	// block lists each pair once even if multiple domains share a cert.
+	// Order is the insertion order of first-occurrence (matches the
+	// domain row order — keeps the rendered YAML stable for tests).
+	storedCertIDs := make([]string, 0)
+	seenStoredCertIDs := make(map[string]struct{})
+
 	var b strings.Builder
 	b.WriteString("# Managed by Launch. Do not edit by hand.\n")
 	fmt.Fprintf(&b, "# app: %s\n", id)
@@ -71,7 +78,19 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 			b.WriteString("      entryPoints: [websecure]\n")
 			fmt.Fprintf(&b, "      service: %s\n", id)
 			b.WriteString("      tls:\n")
-			b.WriteString("        certresolver: letsencrypt\n")
+			// Stored cert: empty tls block + cert listed at top-level
+			// tls.certificates. Traefik picks via SNI. letsencrypt is
+			// the default fallback.
+			if d.CertificateProvider == "stored" && d.StoredCertificateID != nil && *d.StoredCertificateID != "" {
+				cid := *d.StoredCertificateID
+				if _, ok := seenStoredCertIDs[cid]; !ok {
+					seenStoredCertIDs[cid] = struct{}{}
+					storedCertIDs = append(storedCertIDs, cid)
+				}
+				b.WriteString("        # cert sourced from stored library; see tls.certificates below\n")
+			} else {
+				b.WriteString("        certresolver: letsencrypt\n")
+			}
 		}
 	}
 
@@ -83,6 +102,19 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 	// launch-network. Port is the app's *internal* port; Traefik handles
 	// the public 80/443 itself.
 	fmt.Fprintf(&b, "          - url: \"http://%s:%d\"\n", args.ContainerName, args.InternalPort)
+
+	// Top-level tls.certificates block: lists every stored cert
+	// referenced above. Cert files are materialised on disk by the
+	// deploy task at /var/lib/launch/traefik/certs/<id>/{cert.pem,key.pem}
+	// (worker writes them before reloading Traefik — see Phase 6).
+	if len(storedCertIDs) > 0 {
+		b.WriteString("tls:\n")
+		b.WriteString("  certificates:\n")
+		for _, cid := range storedCertIDs {
+			fmt.Fprintf(&b, "    - certFile: /var/lib/launch/traefik/certs/%s/cert.pem\n", cid)
+			fmt.Fprintf(&b, "      keyFile: /var/lib/launch/traefik/certs/%s/key.pem\n", cid)
+		}
+	}
 
 	return b.String()
 }
@@ -212,6 +244,12 @@ func RenderComposeTraefikConfig(args ComposeTraefikConfigArgs) string {
 		}
 	}
 
+	// Collect unique stored-cert ids (same approach as the application
+	// writer above) so the top-level tls.certificates block lists each
+	// cert once.
+	storedCertIDs := make([]string, 0)
+	seenStoredCertIDs := make(map[string]struct{})
+
 	var b strings.Builder
 	b.WriteString("# Managed by Launch. Do not edit by hand.\n")
 	fmt.Fprintf(&b, "# compose: %s\n", id)
@@ -243,7 +281,16 @@ func RenderComposeTraefikConfig(args ComposeTraefikConfigArgs) string {
 			b.WriteString("      entryPoints: [websecure]\n")
 			fmt.Fprintf(&b, "      service: %s\n", svcName)
 			b.WriteString("      tls:\n")
-			b.WriteString("        certresolver: letsencrypt\n")
+			if d.CertificateProvider == "stored" && d.StoredCertificateID != nil && *d.StoredCertificateID != "" {
+				cid := *d.StoredCertificateID
+				if _, ok := seenStoredCertIDs[cid]; !ok {
+					seenStoredCertIDs[cid] = struct{}{}
+					storedCertIDs = append(storedCertIDs, cid)
+				}
+				b.WriteString("        # cert sourced from stored library; see tls.certificates below\n")
+			} else {
+				b.WriteString("        certresolver: letsencrypt\n")
+			}
 		}
 	}
 
@@ -262,6 +309,15 @@ func RenderComposeTraefikConfig(args ComposeTraefikConfigArgs) string {
 		fmt.Fprintf(&b, "          - url: \"http://%s-%s-1:%d\"\n",
 			args.ProjectName, key.service, key.port,
 		)
+	}
+
+	if len(storedCertIDs) > 0 {
+		b.WriteString("tls:\n")
+		b.WriteString("  certificates:\n")
+		for _, cid := range storedCertIDs {
+			fmt.Fprintf(&b, "    - certFile: /var/lib/launch/traefik/certs/%s/cert.pem\n", cid)
+			fmt.Fprintf(&b, "      keyFile: /var/lib/launch/traefik/certs/%s/key.pem\n", cid)
+		}
 	}
 
 	return b.String()
