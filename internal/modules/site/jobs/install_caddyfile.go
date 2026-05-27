@@ -60,6 +60,37 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 	}
 	j.server = server
 
+	// Resolve the active custom certificate (if any) so generateTLSSnippet
+	// can reference real file paths AND we can ship the PEM bytes
+	// alongside the Caddyfile write below. nil when the site is on
+	// auto / internal / off — the snippet generator handles that.
+	activeCert, _ := j.Deps.Repos.Certificate().FindActiveBySite(ctx, site.ID)
+
+	// If the active cert is in play, materialise its PEM bytes on
+	// disk BEFORE the Caddyfile write so the new config doesn't
+	// reference files that don't exist yet. Skipped silently when no
+	// active cert (auto/internal/off) or when TLSSetting isn't custom
+	// (defensive — FindActiveBySite returns the latest activated row;
+	// we still gate on the snippet check below).
+	if activeCert != nil && site.TLSSetting == sitetypes.TLSSettingCustom {
+		certTask := tasks.WriteSiteCertificatesTask([]tasks.CertificateFile{{
+			CertificateID: activeCert.ID,
+			SitePath:      site.Path,
+			SiteUser:      site.User,
+			CertPEM:       pointerString(activeCert.Certificate),
+			KeyPEM:        string(activeCert.PrivateKey),
+		}})
+		certResult, certErr := j.Deps.RunTask(server, certTask).AsRoot().Dispatch(ctx)
+		if certErr != nil {
+			j.Deps.Logger.Error().Err(certErr).Str("site_id", site.ID).Msg("Failed to write certificate files")
+			return certErr
+		}
+		if certResult != nil && certResult.GetExitCode() != 0 {
+			j.Deps.Logger.Error().Str("site_id", site.ID).Int("exit_code", certResult.GetExitCode()).Msg("Certificate file write failed")
+			return fmt.Errorf("certificate file write failed with exit code %d", certResult.GetExitCode())
+		}
+	}
+
 	// Get redirects for Caddyfile generation (installed + pending)
 	installedRedirects, _ := j.Deps.Repos.Redirect().FindBySiteForCaddy(ctx, site.ID)
 	pendingRedirects, _ := j.Deps.Repos.Redirect().FindPendingBySite(ctx, site.ID)
@@ -68,8 +99,9 @@ func (j *InstallCaddyfileJob) Handle(ctx context.Context) error {
 	// Resolve load balancer IP if site is behind a load balancer
 	loadBalancerIP := j.resolveLoadBalancerIP(ctx, site)
 
-	// Generate Caddyfile content
-	caddyfileContent := j.generateCaddyfileContent(site, allRedirects, loadBalancerIP)
+	// Generate Caddyfile content — pass the active cert so the TLS
+	// snippet can emit real file paths instead of the placeholder.
+	caddyfileContent := j.generateCaddyfileContent(site, allRedirects, loadBalancerIP, activeCert)
 	caddyfilePath := fmt.Sprintf("%s/Caddyfile", site.Path)
 
 	// Create update Caddyfile task
@@ -152,20 +184,35 @@ func (j *InstallCaddyfileJob) Failed(ctx context.Context, err error) {
 	}
 }
 
-// generateCaddyfileContent generates the Caddyfile content for a site
-func (j *InstallCaddyfileJob) generateCaddyfileContent(site *models.Site, redirects []models.Redirect, loadBalancerIP string) string {
-	return generateCaddyfile(site, redirects, loadBalancerIP)
+// generateCaddyfileContent generates the Caddyfile content for a site.
+// activeCert may be nil when the site is on auto / off / internal TLS.
+func (j *InstallCaddyfileJob) generateCaddyfileContent(site *models.Site, redirects []models.Redirect, loadBalancerIP string, activeCert *models.Certificate) string {
+	return generateCaddyfile(site, redirects, loadBalancerIP, activeCert)
 }
 
 // generateCaddyfile generates the Caddyfile content for a site (shared function).
 // When loadBalancerIP is non-empty and the site is load balanced, a dedicated
 // port-8080 Caddyfile is generated with HTTP only and IP restriction.
-func generateCaddyfile(site *models.Site, redirects []models.Redirect, loadBalancerIP string) string {
+//
+// activeCert is the currently-active Certificate row (or nil). It's
+// only consulted by generateTLSSnippet when site.TLSSetting == custom.
+func generateCaddyfile(site *models.Site, redirects []models.Redirect, loadBalancerIP string, activeCert *models.Certificate) string {
 	if site.IsLoadBalanced() && loadBalancerIP != "" {
 		return generateLoadBalancedCaddyfile(site, redirects, loadBalancerIP)
 	}
 
-	return generateStandardCaddyfile(site, redirects)
+	return generateStandardCaddyfile(site, redirects, activeCert)
+}
+
+// pointerString unwraps a *string with "" for nil. Used by the
+// Certificate.Certificate field which is *string (nullable in the
+// schema for forward-compat with let's-encrypt rows that don't carry
+// inline PEM).
+func pointerString(p *string) string {
+	if p == nil {
+		return ""
+	}
+	return *p
 }
 
 // generateLoadBalancedCaddyfile generates a Caddyfile for a site behind a load balancer.
@@ -251,7 +298,8 @@ func generateLoadBalancedCaddyfile(site *models.Site, redirects []models.Redirec
 }
 
 // generateStandardCaddyfile generates the standard Caddyfile for a directly-served site.
-func generateStandardCaddyfile(site *models.Site, redirects []models.Redirect) string {
+// activeCert may be nil (auto / off / internal TLS) — generateTLSSnippet handles that.
+func generateStandardCaddyfile(site *models.Site, redirects []models.Redirect, activeCert *models.Certificate) string {
 	var builder strings.Builder
 	port := site.GetPort()
 
@@ -271,7 +319,7 @@ func generateStandardCaddyfile(site *models.Site, redirects []models.Redirect) s
 
 	// TLS snippet
 	builder.WriteString("# Do not remove this tls-* snippet\n")
-	builder.WriteString(generateTLSSnippet(site))
+	builder.WriteString(generateTLSSnippet(site, activeCert))
 	builder.WriteString("\n")
 
 	// Main server block
@@ -384,16 +432,29 @@ func generateRedirectDirective(r *models.Redirect) string {
 }
 
 // generateTLSSnippet generates the TLS snippet for a site
-func generateTLSSnippet(site *models.Site) string {
+func generateTLSSnippet(site *models.Site, activeCert *models.Certificate) string {
 	var builder strings.Builder
 
 	builder.WriteString(fmt.Sprintf("(tls-%s) {\n", site.ID))
 
 	switch site.TLSSetting {
 	case sitetypes.TLSSettingCustom:
-		// TODO: Get active certificate and use its paths
-		// For now, just add a placeholder comment
-		builder.WriteString("\t# Custom TLS certificate\n")
+		// Reference the cert + key files materialised on disk by
+		// InstallCaddyfileJob (WriteSiteCertificatesTask) — the paths
+		// are derived from <site.Path>/certificates/<cert.id>/. If the
+		// active cert is somehow missing (race between TLS update +
+		// install_caddyfile), emit a placeholder comment so the
+		// Caddyfile still parses; Caddy will fall back to auto-TLS
+		// for the site, which is the safer failure mode than refusing
+		// to serve the site at all.
+		if activeCert != nil {
+			builder.WriteString(fmt.Sprintf("\ttls %s %s\n",
+				activeCert.CertificatePath(site.Path),
+				activeCert.PrivateKeyPath(site.Path),
+			))
+		} else {
+			builder.WriteString("\t# Custom TLS configured but active certificate row not found\n")
+		}
 	case sitetypes.TLSSettingInternal:
 		builder.WriteString("\ttls internal\n")
 	default:
@@ -499,6 +560,31 @@ func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 	}
 	j.server = server
 
+	// Resolve the active custom certificate (if any) — same flow as
+	// InstallCaddyfileJob. The UpdateCaddyfileJob fires from the SSL
+	// update path (and other config changes); we re-materialise the
+	// cert files here so a `stored → letsencrypt` switch (which
+	// activates a new certificates row with empty PEMs) doesn't try
+	// to reference files that aren't on disk.
+	activeCert, _ := j.Deps.Repos.Certificate().FindActiveBySite(ctx, site.ID)
+	if activeCert != nil && site.TLSSetting == sitetypes.TLSSettingCustom && pointerString(activeCert.Certificate) != "" {
+		certTask := tasks.WriteSiteCertificatesTask([]tasks.CertificateFile{{
+			CertificateID: activeCert.ID,
+			SitePath:      site.Path,
+			SiteUser:      site.User,
+			CertPEM:       pointerString(activeCert.Certificate),
+			KeyPEM:        string(activeCert.PrivateKey),
+		}})
+		certResult, certErr := j.Deps.RunTask(server, certTask).AsRoot().Dispatch(ctx)
+		if certErr != nil {
+			j.Deps.Logger.Error().Err(certErr).Str("site_id", site.ID).Msg("Failed to write certificate files")
+			return certErr
+		}
+		if certResult != nil && certResult.GetExitCode() != 0 {
+			return fmt.Errorf("certificate file write failed with exit code %d", certResult.GetExitCode())
+		}
+	}
+
 	// Get redirects for Caddyfile generation (installed + pending)
 	installedRedirects, _ := j.Deps.Repos.Redirect().FindBySiteForCaddy(ctx, site.ID)
 	pendingRedirects, _ := j.Deps.Repos.Redirect().FindPendingBySite(ctx, site.ID)
@@ -507,8 +593,9 @@ func (j *UpdateCaddyfileJob) Handle(ctx context.Context) error {
 	// Resolve load balancer IP if site is behind a load balancer
 	loadBalancerIP := j.resolveLoadBalancerIP(ctx, site)
 
-	// Generate Caddyfile content
-	caddyfileContent := j.generateCaddyfileContent(site, allRedirects, loadBalancerIP)
+	// Generate Caddyfile content with the active cert threaded
+	// through so the TLS snippet references real on-disk paths.
+	caddyfileContent := j.generateCaddyfileContent(site, allRedirects, loadBalancerIP, activeCert)
 	caddyfilePath := fmt.Sprintf("%s/Caddyfile", site.Path)
 
 	// Create update Caddyfile task
@@ -552,9 +639,10 @@ func (j *UpdateCaddyfileJob) Failed(ctx context.Context, err error) {
 	j.Deps.Logger.Error().Err(err).Str("site_id", j.Payload.SiteID).Msg("Update Caddyfile job failed")
 }
 
-// generateCaddyfileContent generates the Caddyfile content for a site
-func (j *UpdateCaddyfileJob) generateCaddyfileContent(site *models.Site, redirects []models.Redirect, loadBalancerIP string) string {
-	return generateCaddyfile(site, redirects, loadBalancerIP)
+// generateCaddyfileContent generates the Caddyfile content for a site.
+// activeCert may be nil for non-custom TLS settings.
+func (j *UpdateCaddyfileJob) generateCaddyfileContent(site *models.Site, redirects []models.Redirect, loadBalancerIP string, activeCert *models.Certificate) string {
+	return generateCaddyfile(site, redirects, loadBalancerIP, activeCert)
 }
 
 // resolveLoadBalancerIP looks up the load balancer server's public IP for a load-balanced site.

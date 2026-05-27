@@ -104,19 +104,35 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 	fmt.Fprintf(&b, "          - url: \"http://%s:%d\"\n", args.ContainerName, args.InternalPort)
 
 	// Top-level tls.certificates block: lists every stored cert
-	// referenced above. Cert files are materialised on disk by the
-	// deploy task at /var/lib/launch/traefik/certs/<id>/{cert.pem,key.pem}
-	// (worker writes them before reloading Traefik — see Phase 6).
+	// referenced above. Cert files are materialised on disk on the
+	// host at /etc/launch/traefik/certs/<id>/{cert.pem,key.pem};
+	// inside the Traefik container that path is /etc/traefik/certs/
+	// because the install_traefik script mounts the host
+	// /etc/launch/traefik directory at /etc/traefik. The YAML
+	// references the in-container path.
 	if len(storedCertIDs) > 0 {
 		b.WriteString("tls:\n")
 		b.WriteString("  certificates:\n")
 		for _, cid := range storedCertIDs {
-			fmt.Fprintf(&b, "    - certFile: /var/lib/launch/traefik/certs/%s/cert.pem\n", cid)
-			fmt.Fprintf(&b, "      keyFile: /var/lib/launch/traefik/certs/%s/key.pem\n", cid)
+			fmt.Fprintf(&b, "    - certFile: %s\n", storedCertContainerPath(cid, "cert.pem"))
+			fmt.Fprintf(&b, "      keyFile: %s\n", storedCertContainerPath(cid, "key.pem"))
 		}
 	}
 
 	return b.String()
+}
+
+// StoredCertHostDir returns the on-host directory the worker writes
+// stored cert files to. Mounted into the Traefik container at
+// StoredCertContainerDir (see install_traefik.sh's volume mount).
+func StoredCertHostDir(certificateID string) string {
+	return fmt.Sprintf("/etc/launch/traefik/certs/%s", certificateID)
+}
+
+// storedCertContainerPath returns the in-container path Traefik reads
+// the cert file from. Used by the YAML writer.
+func storedCertContainerPath(certificateID, filename string) string {
+	return fmt.Sprintf("/etc/traefik/certs/%s/%s", certificateID, filename)
 }
 
 // TraefikConfigPath returns the canonical on-server path for this app's
@@ -170,7 +186,7 @@ echo "::LAUNCH::traefik_config::deleted"
 }
 
 // StoredCertMaterial is a single (cert.pem, key.pem) pair the worker
-// writes to /var/lib/launch/traefik/certs/<id>/ before reloading
+// writes to /etc/launch/traefik/certs/<id>/ before reloading
 // Traefik's dynamic config. Traefik picks it up via SNI thanks to the
 // top-level tls.certificates block emitted by RenderTraefikConfig.
 type StoredCertMaterial struct {
@@ -180,7 +196,7 @@ type StoredCertMaterial struct {
 }
 
 // WriteStoredCertificatesTask uploads each cert+key pair to the docker
-// server under /var/lib/launch/traefik/certs/<id>/. Files are written
+// server under /etc/launch/traefik/certs/<id>/. Files are written
 // 0600 (root-owned) so they're not world-readable; the parent dir is
 // 0700.
 //
@@ -203,9 +219,9 @@ func WriteStoredCertificatesTask(materials []StoredCertMaterial) taskrunner.Task
 
 	var script strings.Builder
 	script.WriteString("#!/usr/bin/env bash\nset -euo pipefail\n")
-	script.WriteString("sudo install -d -m 0700 /var/lib/launch/traefik/certs\n")
+	script.WriteString("sudo install -d -m 0700 /etc/launch/traefik/certs\n")
 	for _, m := range materials {
-		dir := fmt.Sprintf("/var/lib/launch/traefik/certs/%s", m.CertificateID)
+		dir := StoredCertHostDir(m.CertificateID)
 		certPath := dir + "/cert.pem"
 		keyPath := dir + "/key.pem"
 		// Per-file random heredoc sentinel — the PEM content can contain
@@ -376,8 +392,8 @@ func RenderComposeTraefikConfig(args ComposeTraefikConfigArgs) string {
 		b.WriteString("tls:\n")
 		b.WriteString("  certificates:\n")
 		for _, cid := range storedCertIDs {
-			fmt.Fprintf(&b, "    - certFile: /var/lib/launch/traefik/certs/%s/cert.pem\n", cid)
-			fmt.Fprintf(&b, "      keyFile: /var/lib/launch/traefik/certs/%s/key.pem\n", cid)
+			fmt.Fprintf(&b, "    - certFile: %s\n", storedCertContainerPath(cid, "cert.pem"))
+			fmt.Fprintf(&b, "      keyFile: %s\n", storedCertContainerPath(cid, "key.pem"))
 		}
 	}
 

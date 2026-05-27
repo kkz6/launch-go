@@ -118,3 +118,89 @@ func TestTraefikConfigPath(t *testing.T) {
 		t.Fatalf("TraefikConfigPath = %q, want %q", got, want)
 	}
 }
+
+
+func TestRenderTraefikConfig_StoredCertificate(t *testing.T) {
+	certID := "01abcdefghijklmnopqrstuvwx"
+	out := RenderTraefikConfig(TraefikConfigArgs{
+		ProjectSlug:   "acme",
+		AppSlug:       "api",
+		ContainerName: "launch-acme-api",
+		InternalPort:  80,
+		Domains: []models.ApplicationDomain{
+			{
+				Host:                "api.example.com",
+				HTTPS:               true,
+				CertificateProvider: "stored",
+				StoredCertificateID: &certID,
+			},
+		},
+	})
+	// Stored-cert routers must NOT emit certresolver: letsencrypt;
+	// that path is reserved for the auto-TLS branch.
+	if strings.Contains(out, "certresolver: letsencrypt") {
+		t.Fatalf("stored-cert router must not reference letsencrypt resolver, got:\n%s", out)
+	}
+	// Cert files are referenced by their in-container path
+	// (/etc/traefik/...), NOT the host path (/etc/launch/traefik/...) —
+	// the install_traefik script mounts the host dir at /etc/traefik
+	// inside the container.
+	if !strings.Contains(out, "certFile: /etc/traefik/certs/"+certID+"/cert.pem") {
+		t.Fatalf("expected certFile reference at /etc/traefik/certs/<id>/cert.pem, got:\n%s", out)
+	}
+	if !strings.Contains(out, "keyFile: /etc/traefik/certs/"+certID+"/key.pem") {
+		t.Fatalf("expected keyFile reference at /etc/traefik/certs/<id>/key.pem, got:\n%s", out)
+	}
+}
+
+func TestRenderTraefikConfig_StoredCertificatesDeduped(t *testing.T) {
+	certID := "01abcdefghijklmnopqrstuvwx"
+	out := RenderTraefikConfig(TraefikConfigArgs{
+		ProjectSlug:   "acme",
+		AppSlug:       "api",
+		ContainerName: "launch-acme-api",
+		InternalPort:  80,
+		Domains: []models.ApplicationDomain{
+			{Host: "a.example.com", HTTPS: true, CertificateProvider: "stored", StoredCertificateID: &certID},
+			{Host: "b.example.com", HTTPS: true, CertificateProvider: "stored", StoredCertificateID: &certID},
+		},
+	})
+	// Two domains, same cert id → one tls.certificates entry only.
+	if got := strings.Count(out, "certFile: /etc/traefik/certs/"+certID+"/cert.pem"); got != 1 {
+		t.Fatalf("expected one cert-file entry for shared cert, got %d. yaml:\n%s", got, out)
+	}
+}
+
+func TestWriteStoredCertificatesTask_NoOpForEmpty(t *testing.T) {
+	task := WriteStoredCertificatesTask(nil)
+	script := task.Script()
+	if !strings.Contains(script, "site_certs::skipped") &&
+		!strings.Contains(script, "stored_certs::skipped") {
+		t.Fatalf("empty materials should produce a no-op script, got:\n%s", script)
+	}
+}
+
+func TestWriteStoredCertificatesTask_WritesPerCertDir(t *testing.T) {
+	cid := "01abcdefghijklmnopqrstuvwx"
+	task := WriteStoredCertificatesTask([]StoredCertMaterial{{
+		CertificateID: cid,
+		CertPEM:       "-----BEGIN CERTIFICATE-----\nMIIB\n-----END CERTIFICATE-----",
+		KeyPEM:        "-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----",
+	}})
+	script := task.Script()
+	wantDir := StoredCertHostDir(cid)
+	if !strings.Contains(script, wantDir+"\"") && !strings.Contains(script, "\""+wantDir) {
+		t.Fatalf("script must reference per-cert dir %s, got:\n%s", wantDir, script)
+	}
+	if !strings.Contains(script, "chmod 0600") {
+		t.Fatalf("cert files must be chmod 0600 for safety, got:\n%s", script)
+	}
+}
+
+func TestStoredCertHostDir_NamespacedUnderEtcLaunch(t *testing.T) {
+	got := StoredCertHostDir("01abc")
+	want := "/etc/launch/traefik/certs/01abc"
+	if got != want {
+		t.Fatalf("StoredCertHostDir = %q, want %q", got, want)
+	}
+}
