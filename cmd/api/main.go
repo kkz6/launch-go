@@ -85,10 +85,11 @@ func bootstrap() *Application {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Initialize email templates with app name and URL
-	mailtemplates.Initialize(cfg.App.Name, cfg.App.URL)
+	// Email template logo / "open in app" links go to the user-facing
+	// frontend, not the API.
+	mailtemplates.Initialize(cfg.App.Name, cfg.App.Frontend())
 
-	// Initialize webhook base URL for deploy webhook URLs
+	// Webhook callback URLs are API-self-referencing — keep cfg.App.URL.
 	sitedto.SetWebhookBaseURL(cfg.Core.WebhookURL, cfg.App.URL)
 
 	appLogger := logger.NewWithConfig(cfg.App.Environment, cfg.App.Debug)

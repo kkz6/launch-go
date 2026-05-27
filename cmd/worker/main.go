@@ -50,8 +50,9 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	// Initialize email templates with app name and URL
-	mailtemplates.Initialize(cfg.App.Name, cfg.App.URL)
+	// Email template logo / "open in app" links go to the user-facing
+	// frontend, not the API.
+	mailtemplates.Initialize(cfg.App.Name, cfg.App.Frontend())
 
 	// Initialize logger
 	appLogger := logger.New(cfg.App.Environment)

@@ -337,11 +337,13 @@ func (s *TeamMemberService) sendInvitationEmail(ctx context.Context, invitation 
 		return
 	}
 
-	registerURL := fmt.Sprintf("%s/invite/%s", s.config.App.URL, invitation.ID)
+	// User-facing links: send users to the frontend, not the API.
+	frontend := s.config.App.Frontend()
+	registerURL := fmt.Sprintf("%s/invite/%s", frontend, invitation.ID)
 
 	acceptURL := s.GenerateInvitationURL(invitation.ID)
-	if s.config.App.URL != "" {
-		acceptURL = fmt.Sprintf("%s%s", s.config.App.URL, acceptURL)
+	if frontend != "" {
+		acceptURL = fmt.Sprintf("%s%s", frontend, acceptURL)
 	}
 
 	htmlContent, _, err := templates.TeamInvitationEmail(teamName, acceptURL, registerURL, !hasAccount)

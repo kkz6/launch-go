@@ -10,7 +10,9 @@ import (
 // RegisterRoutes registers the module routes (implements app.RouteRegistrar)
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
 	deps := m.Deps()
-	handler := handlers.NewBillingHandler(m.service, m.serverCountFn, deps.Config.App.URL)
+	// Billing redirects (Dodo Payments success/cancel) land the user back
+	// in the frontend, not the API.
+	handler := handlers.NewBillingHandler(m.service, m.serverCountFn, deps.Config.App.Frontend())
 
 	m.registerBillingRoutes(router, authMiddleware, handler)
 	m.registerSubscriptionRoutes(router, authMiddleware, handler)

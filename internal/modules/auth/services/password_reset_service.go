@@ -72,7 +72,8 @@ func (s *PasswordResetService) SendPasswordResetLink(ctx context.Context, email 
 		return nil
 	}
 
-	resetURL := fmt.Sprintf("%s/reset-password?token=%s&email=%s", s.config.App.URL, url.QueryEscape(tokenStr), url.QueryEscape(email))
+	// User-facing reset link: must land on the frontend, not the API.
+	resetURL := fmt.Sprintf("%s/reset-password?token=%s&email=%s", s.config.App.Frontend(), url.QueryEscape(tokenStr), url.QueryEscape(email))
 
 	htmlContent, _, err := templates.PasswordResetEmail(resetURL, 60)
 	if err != nil {

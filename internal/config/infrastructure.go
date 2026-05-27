@@ -12,7 +12,17 @@ type AppConfig struct {
 	Environment string `env:"APP_ENV" default:"development"`
 	Port        string `env:"APP_PORT" default:"8080"`
 	Debug       bool   `env:"APP_DEBUG" default:"true"`
-	URL         string `env:"APP_URL" default:"http://localhost:8080"`
+	// URL is the API's own public URL (e.g. https://api.example.com).
+	// Used for API self-reference: signed-URL bases, webhook callback URLs
+	// emitted by this app to itself, server-callback URLs sent to
+	// provisioned servers, etc.
+	URL string `env:"APP_URL" default:"http://localhost:8080"`
+	// FrontendURL is the public URL of the user-facing frontend
+	// (e.g. https://example.com — typically Nuxt/SPA, on a DIFFERENT
+	// host than the API). Used in EMAIL LINKS and OAuth/payment-flow
+	// redirects so users land on the UI, not the API.
+	// Falls back to URL if unset (single-host deployments).
+	FrontendURL string `env:"APP_FRONTEND_URL" default:""`
 	Key         string `env:"APP_KEY" default:""`
 	LocalMode   bool   `env:"APP_LOCAL_MODE" default:"false"`
 }
@@ -20,6 +30,17 @@ type AppConfig struct {
 // IsLocal returns true if the application is running in local development mode
 func (c AppConfig) IsLocal() bool {
 	return c.LocalMode || c.Environment == "local" || c.Environment == "development"
+}
+
+// Frontend returns the user-facing frontend URL. Falls back to URL when
+// APP_FRONTEND_URL is unset (single-host dev / legacy deployments).
+// Always use this — not c.URL — for links sent to users (emails,
+// OAuth/billing redirects).
+func (c AppConfig) Frontend() string {
+	if c.FrontendURL != "" {
+		return c.FrontendURL
+	}
+	return c.URL
 }
 
 // DatabaseConfig holds database configuration
