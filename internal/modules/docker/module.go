@@ -11,6 +11,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
+	certrepos "github.com/kkz6/launch-go/internal/modules/certificate/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/services"
@@ -34,6 +35,12 @@ type Module struct {
 	repos       *repositories.Registry
 	serverRepos *serverrepos.Registry
 	backupRepos *backuprepos.Registry
+	// certRepos exposes the team-scoped certificate library so the
+	// Traefik sync job can resolve stored cert PEMs and ship them to
+	// the docker server. Injected at app boot via
+	// SetCertificateRepository (cross-module — owned by the
+	// certificate module).
+	certRepos *certrepos.Registry
 }
 
 // NewModule constructs the module. ServerRepos + BackupRepos are
@@ -53,10 +60,17 @@ func NewModule(b *app.Builder) *Module {
 // Repos exposes the repository registry for cross-module access.
 func (m *Module) Repos() *repositories.Registry { return m.repos }
 
+// SetCertificateRepository injects the certificate module's repository
+// so SyncTraefikConfig can resolve PEMs for stored-cert domains.
+// Called once at boot from cmd/api/main.go.
+func (m *Module) SetCertificateRepository(r *certrepos.Registry) {
+	m.certRepos = r
+}
+
 // RegisterJobs implements app.JobRegistrar. Binds every docker asynq task
 // type to its handler.
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
-	jobs.Register(mux, m.Deps(), m.repos, m.serverRepos, m.backupRepos)
+	jobs.Register(mux, m.Deps(), m.repos, m.serverRepos, m.backupRepos, m.certRepos)
 }
 
 // newProjectService builds the project service once per request boot.

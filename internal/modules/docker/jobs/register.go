@@ -4,6 +4,7 @@ import (
 	"github.com/hibiken/asynq"
 
 	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
+	certrepos "github.com/kkz6/launch-go/internal/modules/certificate/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/app"
@@ -23,8 +24,9 @@ func Register(
 	repos *repositories.Registry,
 	serverRepos *serverrepos.Registry,
 	backupRepos *backuprepos.Registry,
+	certRepos *certrepos.Registry,
 ) {
-	deps = NewJobDeps(appDeps, repos, serverRepos, backupRepos)
+	deps = NewJobDeps(appDeps, repos, serverRepos, backupRepos, certRepos)
 	pkgjobs.RegisterTyped(mux, TypeDeployApplication, NewDeployApplicationJob)
 	pkgjobs.RegisterTyped(mux, TypeRemoveApplication, NewRemoveApplicationJob)
 	pkgjobs.RegisterTyped(mux, TypeApplicationLifecycle, NewApplicationLifecycleJob)

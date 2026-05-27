@@ -4,24 +4,47 @@ import (
 	"context"
 	"errors"
 
+	"github.com/hibiken/asynq"
 	"github.com/jackc/pgx/v5/pgconn"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/certificate/dto"
+	certjobs "github.com/kkz6/launch-go/internal/modules/certificate/jobs"
 	"github.com/kkz6/launch-go/internal/modules/certificate/models"
 	"github.com/kkz6/launch-go/internal/modules/certificate/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/dbtype"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
+
+// FanoutDispatcher is the narrow interface the service uses to enqueue
+// the certificate:fanout task after a content-change Update. Defined
+// here (not imported from the jobs package) to keep the service ←
+// jobs dependency direction one-way (jobs depends on service via the
+// repo, never the other way).
+type FanoutDispatcher interface {
+	Enqueue(task *asynq.Task, opts ...asynq.Option) (*asynq.TaskInfo, error)
+}
 
 // StoredCertificateService is the service-layer entry point for the
 // certificate module. Create / Update / Delete / Usages live here;
 // the parser sub-service does the PEM parsing.
 type StoredCertificateService struct {
 	repos *repositories.Registry
+	// queue is the asynq client used to enqueue the certificate:fanout
+	// task. Nil-safe: when not wired (e.g. test boots without a queue),
+	// Update silently skips the dispatch and the caller is informed via
+	// the returned pending_redeploys count.
+	queue *queue.Client
 }
 
 func NewStoredCertificateService(repos *repositories.Registry) *StoredCertificateService {
 	return &StoredCertificateService{repos: repos}
+}
+
+// SetQueue wires the asynq client used for fanout-on-content-change.
+// Called once at boot from the module's constructor.
+func (s *StoredCertificateService) SetQueue(q *queue.Client) {
+	s.queue = q
 }
 
 // List returns all alive stored certs for the team, ordered by
@@ -249,6 +272,18 @@ func (s *StoredCertificateService) Update(
 			return nil, 0, err
 		}
 		pendingRedeploys = len(usages)
+
+		// Dispatch the fanout task — the worker walks the same usage
+		// list (re-fetched, so a domain added/removed between this
+		// call and the job firing is correctly included/excluded) and
+		// enqueues install_ssl per site + sync_traefik_config per
+		// docker resource. Nil-safe when the queue isn't wired (tests).
+		if s.queue != nil && pendingRedeploys > 0 {
+			task, taskErr := certjobs.NewFanoutCertificateTask(c.ID, teamID)
+			if taskErr == nil {
+				_, _ = s.queue.Enqueue(task)
+			}
+		}
 	}
 
 	return c, pendingRedeploys, nil

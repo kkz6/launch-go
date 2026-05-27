@@ -6,6 +6,7 @@ import (
 
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/docker/models"
 	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 )
@@ -77,6 +78,23 @@ func (j *SyncTraefikConfigJob) Handle(ctx context.Context) error {
 		Domains:       domains,
 	})
 
+	// Before writing the YAML, materialise PEM bytes for any
+	// domain that references a stored certificate. RenderTraefikConfig
+	// emits paths under /var/lib/launch/traefik/certs/<id>/; Traefik
+	// hot-loads them via SNI matching.
+	if certMaterials, mErr := resolveStoredCertMaterials(ctx, j.Deps, j.Payload.TeamID, domains); mErr != nil {
+		return fmt.Errorf("resolve stored certs: %w", mErr)
+	} else if len(certMaterials) > 0 {
+		certTask := tasks.WriteStoredCertificatesTask(certMaterials)
+		certResult, certErr := j.Deps.RunTask(server, certTask).AsRoot().Dispatch(ctx)
+		if certErr != nil {
+			return fmt.Errorf("ssh write stored certs: %w", certErr)
+		}
+		if certResult != nil && !certResult.IsSuccessful() {
+			return fmt.Errorf("stored cert write failed: %s", certResult.GetOutput())
+		}
+	}
+
 	task := tasks.WriteTraefikConfigTask(projectSlug, appSlug, yaml)
 	result, runErr := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	if runErr != nil {
@@ -113,4 +131,58 @@ func NewSyncTraefikConfigTask(applicationID, serverID, teamID string) (*asynq.Ta
 		ServerID:      serverID,
 		TeamID:        teamID,
 	}, pkgjobs.Dedup("docker-traefik-sync", applicationID))
+}
+
+// resolveStoredCertMaterials walks the given domains and, for any that
+// reference a stored certificate, loads the cert + private key from
+// the certificate library so the worker can ship them to the server
+// alongside the YAML. Deduplicates by cert id (one entry per cert
+// even if multiple domains share it).
+//
+// Shared between SyncTraefikConfig (application) and
+// SyncComposeTraefikConfig (compose) — same resolution semantics
+// across the two YAML writers.
+//
+// Returns an empty slice when CertRepos is nil (defensive — the wiring
+// in cmd/api/main.go sets it, but if a test boots without that we
+// degrade to "no stored certs" rather than panic).
+func resolveStoredCertMaterials(
+	ctx context.Context,
+	deps *JobDeps,
+	teamID string,
+	domains []models.ApplicationDomain,
+) ([]tasks.StoredCertMaterial, error) {
+	if deps.CertRepos == nil {
+		return nil, nil
+	}
+	seen := make(map[string]struct{})
+	out := make([]tasks.StoredCertMaterial, 0)
+	for _, d := range domains {
+		if d.CertificateProvider != "stored" || d.StoredCertificateID == nil || *d.StoredCertificateID == "" {
+			continue
+		}
+		cid := *d.StoredCertificateID
+		if _, ok := seen[cid]; ok {
+			continue
+		}
+		seen[cid] = struct{}{}
+
+		cert, err := deps.CertRepos.StoredCertificates.FindByID(ctx, teamID, cid)
+		if err != nil {
+			// Hard-deleted? FK has ON DELETE SET NULL so this should
+			// be unreachable in steady state, but log and skip so
+			// the rest of the sync still lands.
+			deps.Logger.Warn().Err(err).
+				Str("certificate_id", cid).
+				Str("team_id", teamID).
+				Msg("stored cert lookup failed during traefik sync; skipping")
+			continue
+		}
+		out = append(out, tasks.StoredCertMaterial{
+			CertificateID: cert.ID,
+			CertPEM:       cert.Certificate,
+			KeyPEM:        string(cert.PrivateKey),
+		})
+	}
+	return out, nil
 }

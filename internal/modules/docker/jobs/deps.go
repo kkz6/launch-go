@@ -6,6 +6,7 @@ package jobs
 
 import (
 	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
+	certrepos "github.com/kkz6/launch-go/internal/modules/certificate/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
@@ -24,19 +25,24 @@ type JobDeps struct {
 	// RunBackup job needs it to load S3 credentials for the database
 	// backup target (the docker_database_backups row only carries the
 	// FK now, not the creds themselves).
-	BackupRepos    *backuprepos.Registry
+	BackupRepos *backuprepos.Registry
+	// CertRepos exposes the team-scoped stored-certificate library so
+	// SyncTraefikConfig can resolve PEM bytes for the domains that
+	// reference a stored cert and ship them to the server alongside the
+	// YAML.
+	CertRepos      *certrepos.Registry
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
 }
 
 // NewJobDeps wires JobDeps from app-level dependencies. ServerRepos +
-// BackupRepos are passed explicitly (not constructed here) so the
-// docker module and the rest of the system share the same connection-
-// backed registries.
+// BackupRepos + CertRepos are passed explicitly (not constructed here)
+// so every module shares the same connection-backed registries.
 func NewJobDeps(
 	appDeps app.Deps,
 	repos *repositories.Registry,
 	serverRepos *serverrepos.Registry,
 	backupRepos *backuprepos.Registry,
+	certRepos *certrepos.Registry,
 ) *JobDeps {
 	return &JobDeps{
 		Deps: &pkgjobs.Deps{
@@ -49,6 +55,7 @@ func NewJobDeps(
 		Repos:       repos,
 		ServerRepos: serverRepos,
 		BackupRepos: backupRepos,
+		CertRepos:   certRepos,
 		TaskRunnerDeps: &servertasks.TaskRunnerDeps{
 			DB:          appDeps.DB,
 			Queue:       appDeps.Queue,

@@ -37,6 +37,11 @@ func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 	repos := repositories.NewRegistry(deps.DB)
 	svc := services.NewStoredCertificateService(repos)
+	// Wire the asynq client so service.Update can fan out to
+	// per-resource redeploys on content change. Tests that bypass
+	// app.Builder leave the queue nil and the service degrades to
+	// "no fanout dispatch" (the count is still returned).
+	svc.SetQueue(deps.Queue)
 	return &Module{
 		Base:    app.NewBase(ModuleName, b),
 		repos:   repos,

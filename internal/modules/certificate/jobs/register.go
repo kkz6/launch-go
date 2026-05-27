@@ -22,4 +22,5 @@ func Register(
 ) {
 	deps = NewJobDeps(appDeps, repos)
 	pkgjobs.RegisterTyped(mux, TypeWarnExpiringCertificates, NewWarnExpiringCertificatesJob)
+	pkgjobs.RegisterTyped(mux, TypeFanoutCertificate, NewFanoutCertificateJob)
 }

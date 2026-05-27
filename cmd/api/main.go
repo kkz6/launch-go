@@ -254,6 +254,7 @@ func (a *Application) registerModules() {
 	siteModule.SetCronCreator(adapters.NewCronCreatorAdapter(serverModule.Service()))
 	siteModule.SetDatabaseManager(adapters.NewDatabaseManagerAdapter(databaseModule.Service()))
 	siteModule.SetStoredCertificateRepository(certificateModule.Repos().StoredCertificates)
+	dockerModule.SetCertificateRepository(certificateModule.Repos())
 	serverModule.SetSiteReader(siteModule.SiteReader())
 	gitModule.SetSiteChecker(siteModule.SiteChecker())
 

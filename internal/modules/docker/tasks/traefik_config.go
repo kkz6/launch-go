@@ -169,6 +169,67 @@ echo "::LAUNCH::traefik_config::deleted"
 	)
 }
 
+// StoredCertMaterial is a single (cert.pem, key.pem) pair the worker
+// writes to /var/lib/launch/traefik/certs/<id>/ before reloading
+// Traefik's dynamic config. Traefik picks it up via SNI thanks to the
+// top-level tls.certificates block emitted by RenderTraefikConfig.
+type StoredCertMaterial struct {
+	CertificateID string
+	CertPEM       string // leaf + chain, plaintext
+	KeyPEM        string // private key, plaintext (decrypted on Scan)
+}
+
+// WriteStoredCertificatesTask uploads each cert+key pair to the docker
+// server under /var/lib/launch/traefik/certs/<id>/. Files are written
+// 0600 (root-owned) so they're not world-readable; the parent dir is
+// 0700.
+//
+// The task is idempotent — re-writing the same content is a no-op as
+// far as Traefik is concerned (it watches the file mtime; identical
+// content with a newer mtime triggers a hot-reload which is harmless).
+// We don't fingerprint-skip server-side; the caller dedupes by
+// certificate id in the Render step, so writes are already bounded.
+//
+// Returns a no-op task when len(materials) == 0 so callers can wire
+// this unconditionally before the YAML write.
+func WriteStoredCertificatesTask(materials []StoredCertMaterial) taskrunner.Task {
+	if len(materials) == 0 {
+		return taskrunner.NewBaseTask(
+			taskrunner.WithName("Write Stored Certificates (no-op)"),
+			taskrunner.WithScript("#!/usr/bin/env bash\necho '::LAUNCH::stored_certs::skipped'\n"),
+			taskrunner.WithTimeoutSeconds(5),
+		)
+	}
+
+	var script strings.Builder
+	script.WriteString("#!/usr/bin/env bash\nset -euo pipefail\n")
+	script.WriteString("sudo install -d -m 0700 /var/lib/launch/traefik/certs\n")
+	for _, m := range materials {
+		dir := fmt.Sprintf("/var/lib/launch/traefik/certs/%s", m.CertificateID)
+		certPath := dir + "/cert.pem"
+		keyPath := dir + "/key.pem"
+		// Per-file random heredoc sentinel — the PEM content can contain
+		// any printable ASCII, so a fixed sentinel could collide with a
+		// pasted certificate. The sentinel includes random hex so a
+		// hostile cert can't terminate the heredoc.
+		certSentinel := RandomHeredocSentinel()
+		keySentinel := RandomHeredocSentinel()
+
+		fmt.Fprintf(&script, "sudo install -d -m 0700 %q\n", dir)
+		fmt.Fprintf(&script, "sudo tee %q >/dev/null <<'%s'\n%s\n%s\n", certPath, certSentinel, m.CertPEM, certSentinel)
+		fmt.Fprintf(&script, "sudo chmod 0600 %q\n", certPath)
+		fmt.Fprintf(&script, "sudo tee %q >/dev/null <<'%s'\n%s\n%s\n", keyPath, keySentinel, m.KeyPEM, keySentinel)
+		fmt.Fprintf(&script, "sudo chmod 0600 %q\n", keyPath)
+	}
+	script.WriteString("echo '::LAUNCH::stored_certs::written'\n")
+
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Write Stored Certificates"),
+		taskrunner.WithScript(script.String()),
+		taskrunner.WithTimeoutSeconds(60),
+	)
+}
+
 // --- Compose-side Traefik rendering --------------------------------
 //
 // Per-compose dynamic-config file lives at
