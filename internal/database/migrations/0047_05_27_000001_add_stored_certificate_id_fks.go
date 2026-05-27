@@ -54,7 +54,11 @@ func addStoredCertificateFKsUp(db *gorm.DB) error {
 // in strict reverse order; this is a one-line reminder for whoever
 // reads this migration in isolation.
 func addStoredCertificateFKsDown(db *gorm.DB) error {
-	_ = db.Exec(`ALTER TABLE certificates DROP COLUMN IF EXISTS stored_certificate_id`).Error
-	_ = db.Exec(`ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS stored_certificate_id`).Error
+	if err := db.Exec(`ALTER TABLE certificates DROP COLUMN IF EXISTS stored_certificate_id`).Error; err != nil {
+		return err
+	}
+	if err := db.Exec(`ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS stored_certificate_id`).Error; err != nil {
+		return err
+	}
 	return nil
 }
