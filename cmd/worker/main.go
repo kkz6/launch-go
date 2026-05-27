@@ -70,6 +70,9 @@ func main() {
 	// Initialize signed URL signer with app key and base URL
 	signer := signedurl.NewSigner(cfg.App.Key).WithBaseURL(cfg.App.URL)
 	signedurl.SetDefaultSigner(signer)
+	// User-facing URLs (provision script, etc.) render on the frontend host;
+	// Nuxt proxies them back to the API and the default signer verifies.
+	signedurl.SetPublicSigner(signedurl.NewSigner(cfg.App.Key).WithBaseURL(cfg.App.Frontend()))
 
 	// Initialize database
 	db, err := database.Connect(cfg.Database)

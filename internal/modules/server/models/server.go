@@ -128,11 +128,13 @@ func (s *Server) GetProvisionCommand() string {
 	return fmt.Sprintf("wget --no-verbose -O - '%s' | bash", s.GetProvisionScriptURL())
 }
 
-// GetProvisionScriptURL returns a signed URL for the provision script
-// This uses a permanent signature since custom servers need to run this at any time
+// GetProvisionScriptURL returns a signed URL for the provision script.
+// Lives on a dedicated `/provision/:id` path on the frontend domain — kept
+// out of the `/servers/*` namespace so it doesn't collide with the
+// authenticated server routes (which are registered as a Fiber group with
+// auth middleware applied as a `/servers/*` wildcard).
 func (s *Server) GetProvisionScriptURL() string {
-	path := fmt.Sprintf("/servers/%s/provision-script", s.ID)
-	return signedurl.PermanentSign(path, nil)
+	return signedurl.PublicPermanentSign(fmt.Sprintf("/provision/%s", s.ID), nil)
 }
 
 func (s *Server) HasFeature(feature types.ServerFeature) bool {

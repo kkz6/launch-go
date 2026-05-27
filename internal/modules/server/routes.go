@@ -181,9 +181,14 @@ func (m *Module) RegisterWebhookRoutes(router fiber.Router) {
 	m.registerMetricsWebhookRoutes(router, metricsWebhookHandler)
 }
 
-// registerProvisionScriptRoutes registers provision script routes (signed URL protected)
+// registerProvisionScriptRoutes registers the provision script route. Lives
+// at `/provision/:id` rather than `/servers/:id/provision-script` so it
+// doesn't collide with the `/servers/*` auth group registered by
+// registerServerRoutes — Fiber group middleware is a wildcard `Use` that
+// matches any subpath, so a later root-level route under `/servers/...`
+// still gets intercepted by the earlier auth middleware and returns 401.
 func (m *Module) registerProvisionScriptRoutes(router fiber.Router, handler *handlers.ProvisionScriptHandler) {
-	router.Get("/servers/:id/provision-script",
+	router.Get("/provision/:id",
 		signedurl.RequireSignedURL(nil),
 		handler.GetProvisionScript,
 	)

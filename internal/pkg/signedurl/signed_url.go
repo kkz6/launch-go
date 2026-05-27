@@ -242,3 +242,28 @@ func PermanentSign(path string, params map[string]string) string {
 	}
 	return defaultSigner.PermanentSignedURL(path, params)
 }
+
+// publicSigner is the signer for user-facing URLs (rendered on the frontend
+// domain, then proxied to the API). Verification still happens on the API
+// with the default signer — both share the same secret key, so the
+// signature matches regardless of which host the user hits.
+var publicSigner *Signer
+
+// SetPublicSigner sets the global public-facing signer instance.
+func SetPublicSigner(signer *Signer) {
+	publicSigner = signer
+}
+
+// PublicPermanentSign generates a permanent signed URL on the public-facing
+// (frontend) host. Falls back to the default signer when the public signer
+// isn't configured.
+func PublicPermanentSign(path string, params map[string]string) string {
+	s := publicSigner
+	if s == nil {
+		s = defaultSigner
+	}
+	if s == nil {
+		panic("signedurl: no signer configured")
+	}
+	return s.PermanentSignedURL(path, params)
+}

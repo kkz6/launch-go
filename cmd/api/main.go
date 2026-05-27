@@ -105,6 +105,13 @@ func bootstrap() *Application {
 	signer := signedurl.NewSigner(cfg.App.Key).WithBaseURL(cfg.App.URL)
 	signedurl.SetDefaultSigner(signer)
 
+	// Public-facing signer renders URLs on the frontend host (e.g. the
+	// provision-script command a user copies into their server). Nuxt
+	// proxies the path back to this API, which validates against the
+	// default signer — they share the secret key so signatures match
+	// regardless of host.
+	signedurl.SetPublicSigner(signedurl.NewSigner(cfg.App.Key).WithBaseURL(cfg.App.Frontend()))
+
 	db, err := database.ConnectWithLogger(cfg.Database, appLogger)
 	if err != nil {
 		appLogger.Fatal().Err(err).Msg("Failed to connect to database")
