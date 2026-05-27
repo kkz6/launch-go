@@ -6,7 +6,10 @@
 package certificate
 
 import (
+	"github.com/hibiken/asynq"
+
 	"github.com/kkz6/launch-go/internal/modules/certificate/handlers"
+	"github.com/kkz6/launch-go/internal/modules/certificate/jobs"
 	"github.com/kkz6/launch-go/internal/modules/certificate/repositories"
 	"github.com/kkz6/launch-go/internal/modules/certificate/services"
 	"github.com/kkz6/launch-go/internal/pkg/app"
@@ -18,6 +21,7 @@ const ModuleName = "certificate"
 var (
 	_ app.Module         = (*Module)(nil)
 	_ app.RouteRegistrar = (*Module)(nil)
+	_ app.JobRegistrar   = (*Module)(nil)
 )
 
 // Module wires the certificate module into the framework.
@@ -43,3 +47,9 @@ func NewModule(b *app.Builder) *Module {
 
 // Repos exposes the repository registry for cross-module access.
 func (m *Module) Repos() *repositories.Registry { return m.repos }
+
+// RegisterJobs implements app.JobRegistrar. Binds the certificate
+// module's asynq task types to their handlers.
+func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
+	jobs.Register(mux, m.Deps(), m.repos)
+}

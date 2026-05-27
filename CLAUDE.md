@@ -373,6 +373,28 @@ authoritative — adding a new event means adding it here AND to
 **Site events (site channel):**
 - `site.updated`
 
+**Certificate events (team channel):**
+- `certificate.created`, `certificate.updated`, `certificate.deleted`
+  — fired by the API path on stored-certificate library CRUD.
+- `certificate.expiring_soon` — fired daily by the
+  `certificate:warn_expiring` job (one event per cert in the next
+  30 days). Payload carries `certificate_id`, `name`, `not_after`,
+  `days_remaining`. Drives the dashboard alert banner.
+- `certificate.fanout_required` — placeholder for Phase-6-follow-up:
+  emitted when a stored cert's content is rotated so the UI can
+  surface "N redeploys pending" until the worker actually re-pushes
+  the cert files to every referencing site / docker server.
+
+**Docker events (team channel):**
+- `docker.application.created`, `.updated`, `.deleted`,
+  `.deploying`, `.deployed`, `.failed`, `.stopped`
+- `docker.application.domain.added`, `.updated`, `.removed`
+- `docker.compose.created`, `.updated`, `.deleted`, `.deploying`,
+  `.deployed`, `.failed`, `.stopped`
+- `docker.compose.domain.added`, `.updated`, `.removed`
+- `docker.database.created`, `.updated`, `.deleted`, `.starting`,
+  `.running`, `.stopped`, `.failed`
+
 ## Task Enums Reference
 
 The Laravel project uses task enums for organizing jobs. Reference:

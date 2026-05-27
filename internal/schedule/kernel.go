@@ -1,6 +1,7 @@
 package schedule
 
 import (
+	certjobs "github.com/kkz6/launch-go/internal/modules/certificate/jobs"
 	dockerjobs "github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	serverjobs "github.com/kkz6/launch-go/internal/modules/server/jobs"
 	sitejobs "github.com/kkz6/launch-go/internal/modules/site/jobs"
@@ -141,6 +142,22 @@ func GetScheduledTasks() []queue.ScheduledTask {
 		// Daily(billingjobs.NewSyncSubscriptionsTask,
 		//     WithName("sync-subscriptions"),
 		// ),
+
+		// ┌─────────────────────────────────────────────────────────────────┐
+		// │                     SSL Certificates                            │
+		// └─────────────────────────────────────────────────────────────────┘
+
+		// Daily walk over the stored_certificates library — emits a
+		// certificate.expiring_soon event for every cert whose
+		// not_after lies inside the next 30 days. Drives the dashboard
+		// "N certificates expire in the next 30 days" banner and the
+		// in-app alert listings. See
+		// internal/modules/certificate/jobs/warn_expiring.go for the
+		// rationale on a daily walk vs per-cert scheduling.
+		Daily(certjobs.NewWarnExpiringCertificatesTask,
+			WithName("certificate-warn-expiring"),
+			LowPriority(),
+		),
 
 		// ┌─────────────────────────────────────────────────────────────────┐
 		// │                     Notifications                               │
