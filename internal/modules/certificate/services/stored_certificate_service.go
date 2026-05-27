@@ -150,6 +150,23 @@ func (s *StoredCertificateService) Update(
 		return nil, 0, err
 	}
 
+	// No-op content guard: if the caller resent the cert + key that
+	// are byte-identical to what we already have on the row, treat
+	// this as a metadata-only Update. Without this, every PATCH that
+	// re-sends the unchanged content would re-parse, re-dedupe,
+	// rewrite the metadata columns, and (worst of all) report a non-
+	// zero pending_redeploys, which Phase 6 will turn into a fan-out
+	// of spurious site:install_ssl / docker:redeploy jobs.
+	//
+	// EncryptedString decrypts on Scan, so string(c.PrivateKey) here
+	// is the plaintext PEM already in memory — direct comparison is
+	// correct.
+	if contentChange != nil &&
+		contentChange.cert == c.Certificate &&
+		contentChange.key == string(c.PrivateKey) {
+		contentChange = nil
+	}
+
 	if req.Name != nil {
 		c.Name = *req.Name
 	}
@@ -305,6 +322,15 @@ func (s *StoredCertificateService) DeleteWithForce(ctx context.Context, teamID, 
 		// Clear FK + reset provider on docker domains. Scope via the
 		// parent application/compose team_id since docker_application_domains
 		// has no team_id column.
+		//
+		// The inner subquery also filters `d.deleted_at IS NULL` so we
+		// don't touch soft-deleted domain rows — those rows are hidden
+		// from the read path (Usages), and clearing their FK now would
+		// mean that if they're ever restored they'd point at a stored
+		// cert that's itself soft-deleted moments later. Leaving the
+		// dangling FK in place keeps the historical state intact; the
+		// soft-deleted cert is still resolvable via Unscoped if anyone
+		// ever needs to reconstruct what was wired up.
 		if err := tx.Exec(
 			`UPDATE docker_application_domains
 			 SET stored_certificate_id = NULL, certificate_provider = 'letsencrypt'
@@ -314,6 +340,7 @@ func (s *StoredCertificateService) DeleteWithForce(ctx context.Context, teamID, 
 			     LEFT JOIN docker_applications a ON a.id = d.application_id
 			     LEFT JOIN docker_composes     c ON c.id = d.compose_id
 			     WHERE d.stored_certificate_id = ?
+			       AND d.deleted_at IS NULL
 			       AND COALESCE(a.team_id, c.team_id) = ?
 			   )`,
 			id, id, teamID,

@@ -730,3 +730,169 @@ func TestService_Delete_WrongTeam_NotFound(t *testing.T) {
 	require.NoError(t, db.Model(&models.StoredCertificate{}).Where("id = ?", c.ID).Count(&count).Error)
 	assert.Equal(t, int64(1), count, "wrong-team delete must not soft-delete the cert")
 }
+
+// TestService_Update_NoOpContentChange covers the case where the
+// caller re-sends the EXACT same cert + key on a PATCH. The service
+// must recognise this as a no-op and skip the re-parse / dedupe /
+// metadata-refresh path. Crucially pending_redeploys must be 0 — if
+// it weren't, Phase 6 would fan out site:install_ssl / docker:redeploy
+// jobs to every linked resource for what is, semantically, a metadata
+// edit (e.g. the user only meant to change the Name field but the
+// frontend re-sent the full form).
+func TestService_Update_NoOpContentChange(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+	// Snapshot the metadata that a re-parse would rewrite. We assert
+	// against these copies after Update to confirm the metadata
+	// columns weren't touched.
+	origFP := c.FingerprintSHA256
+	origNotBefore := c.NotBefore
+	origNotAfter := c.NotAfter
+	origDomains := append([]string(nil), []string(c.Domains)...) // copy, not pointer alias
+
+	// Two referencing rows: if Update mistakenly entered the content-
+	// change branch, pendingRedeploys would come back as 2.
+	insertSiteRef(t, db, "team-a", c.ID, "acme.io")
+	insertDomainRef(t, db, "team-a", c.ID, "api.acme.io")
+
+	// Re-send the EXACT same cert + key bytes that the row currently
+	// holds. The service should detect "nothing changed" and short-
+	// circuit the content-change branch.
+	sameCert := c.Certificate
+	sameKey := string(c.PrivateKey)
+	got, pending, err := svc.Update(ctx, "team-a", c.ID, dto.UpdateStoredCertificateRequest{
+		Certificate: &sameCert,
+		PrivateKey:  &sameKey,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 0, pending,
+		"no-op content change must report zero pending redeploys; "+
+			"non-zero here would trigger spurious Phase 6 fanout")
+
+	// Metadata columns unchanged — proves the re-parse path was
+	// skipped. We compare ElementsMatch on Domains rather than slice
+	// identity because GORM's JSON serializer may reallocate the
+	// backing slice even when the contents are equal.
+	require.NotNil(t, got.FingerprintSHA256)
+	require.NotNil(t, origFP)
+	assert.Equal(t, *origFP, *got.FingerprintSHA256, "fingerprint must not change on no-op")
+	assert.True(t, origNotBefore.Equal(got.NotBefore), "not_before must not change on no-op")
+	assert.True(t, origNotAfter.Equal(got.NotAfter), "not_after must not change on no-op")
+	assert.ElementsMatch(t, origDomains, []string(got.Domains), "domains must not change on no-op")
+	assert.Equal(t, c.Certificate, got.Certificate, "certificate PEM unchanged")
+}
+
+// TestService_Update_NameAndContent_BothApplied covers the case where
+// the caller sends BOTH a name change and a new cert+key pair in a
+// single PATCH. The service must:
+//   - apply the new name,
+//   - refresh metadata from the new cert (fingerprint changes),
+//   - report pendingRedeploys correctly from the existing usage refs.
+//
+// This is the "rotation while renaming" path — common enough that we
+// want it covered as a unit, not just inferred from the single-field
+// tests above.
+func TestService_Update_NameAndContent_BothApplied(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+	origFP := c.FingerprintSHA256
+
+	// Single site ref → pendingRedeploys should be 1 on a real
+	// content change.
+	insertSiteRef(t, db, "team-a", c.ID, "acme.io")
+
+	renamed := "renamed"
+	newCert, newKey := makeOtherCertPEM(t)
+	got, pending, err := svc.Update(ctx, "team-a", c.ID, dto.UpdateStoredCertificateRequest{
+		Name:        &renamed,
+		Certificate: &newCert,
+		PrivateKey:  &newKey,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "renamed", got.Name, "name change must be applied")
+	require.NotNil(t, got.FingerprintSHA256)
+	require.NotNil(t, origFP)
+	assert.NotEqual(t, *origFP, *got.FingerprintSHA256, "fingerprint must refresh from new cert")
+	assert.Equal(t, 1, pending, "one site ref → one pending redeploy")
+
+	// Persistence check: re-fetch via the service and confirm both
+	// the name and the new fingerprint round-tripped through the DB.
+	usages, err := svc.Usages(ctx, "team-a", c.ID)
+	require.NoError(t, err)
+	require.Len(t, usages, 1)
+
+	var reread models.StoredCertificate
+	require.NoError(t, db.First(&reread, "id = ?", c.ID).Error)
+	assert.Equal(t, "renamed", reread.Name)
+	require.NotNil(t, reread.FingerprintSHA256)
+	assert.Equal(t, *got.FingerprintSHA256, *reread.FingerprintSHA256,
+		"new fingerprint must be persisted")
+}
+
+// TestService_DeleteWithForce_OtherTeamRefsUntouched proves the
+// team_id filter in DeleteWithForce's UPDATEs is enforced. We seed
+// the corruption case directly: rows in team-b that point at a stored
+// cert in team-a (which the service layer would never allow, but the
+// DB schema doesn't enforce same-team via FK — only an app-layer
+// invariant). When team-a force-deletes their cert, team-b's stale
+// references must stay exactly where they were.
+func TestService_DeleteWithForce_OtherTeamRefsUntouched(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	// Cert lives in team-a.
+	c := seedCert(t, svc, "team-a", "acme prod")
+
+	// Cross-team site ref: certificates row in team-b that points
+	// at team-a's stored cert. This simulates the corruption case
+	// the service-layer team filter is meant to defend against.
+	otherSiteID := insertSiteRef(t, db, "team-b", c.ID, "acme.io")
+	otherCertRowID := otherSiteID + "-c"
+
+	// Cross-team docker domain ref similarly.
+	otherDomID := insertDomainRef(t, db, "team-b", c.ID, "api.acme.io")
+
+	require.NoError(t, svc.DeleteWithForce(ctx, "team-a", c.ID))
+
+	// team-a's stored cert is soft-deleted (the good behaviour).
+	var aliveCount int64
+	require.NoError(t, db.Model(&models.StoredCertificate{}).Where("id = ?", c.ID).Count(&aliveCount).Error)
+	assert.Equal(t, int64(0), aliveCount, "team-a stored cert should be soft-deleted")
+
+	// team-b's site cert ref is UNTOUCHED — stored_certificate_id
+	// still points at the (now soft-deleted) cert, tls_setting
+	// still 'manual'. The asymmetry here is intentional: team-a's
+	// force-delete must not silently mutate rows owned by team-b.
+	var storedID *string
+	require.NoError(t, db.Raw(
+		`SELECT stored_certificate_id FROM certificates WHERE id = ?`, otherCertRowID,
+	).Row().Scan(&storedID))
+	require.NotNil(t, storedID, "team-b certificates row must not be cleared by team-a delete")
+	assert.Equal(t, c.ID, *storedID)
+
+	var tlsSetting string
+	require.NoError(t, db.Raw(
+		`SELECT tls_setting FROM sites WHERE id = ?`, otherSiteID,
+	).Row().Scan(&tlsSetting))
+	assert.Equal(t, "manual", tlsSetting,
+		"team-b sites.tls_setting must be unchanged (still 'manual', not reset to 'auto')")
+
+	// team-b's docker domain ref is UNTOUCHED — stored_certificate_id
+	// still set, certificate_provider still 'stored'.
+	var domStoredID *string
+	var domProvider string
+	require.NoError(t, db.Raw(
+		`SELECT stored_certificate_id, certificate_provider FROM docker_application_domains WHERE id = ?`, otherDomID,
+	).Row().Scan(&domStoredID, &domProvider))
+	require.NotNil(t, domStoredID, "team-b docker domain ref must not be cleared by team-a delete")
+	assert.Equal(t, c.ID, *domStoredID)
+	assert.Equal(t, "stored", domProvider,
+		"team-b docker domain certificate_provider must be unchanged (still 'stored')")
+}
