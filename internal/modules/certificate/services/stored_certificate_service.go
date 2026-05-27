@@ -99,6 +99,13 @@ func (s *StoredCertificateService) Create(
 	return c, nil
 }
 
+// Usages returns the resources (sites + docker domains) that
+// currently reference the stored cert. Used by the /usages endpoint
+// and by Delete to decide whether to short-circuit into ErrInUse.
+func (s *StoredCertificateService) Usages(ctx context.Context, teamID, certID string) ([]dto.CertificateUsage, error) {
+	return s.repos.StoredCertificates.Usages(ctx, teamID, certID)
+}
+
 func nilIfEmpty(s string) *string {
 	if s == "" {
 		return nil

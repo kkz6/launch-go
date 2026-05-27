@@ -98,6 +98,60 @@ func setupServiceDB(t *testing.T) *gorm.DB {
 		 WHERE deleted_at IS NULL AND fingerprint_sha256 IS NOT NULL`,
 	).Error)
 
+	// Minimal shells of the foreign tables that Usages / Delete /
+	// DeleteWithForce read or write. We don't pull in the real site /
+	// docker models — the queries only touch a handful of columns, and
+	// reproducing those columns here keeps the test self-contained.
+	//
+	// Schema notes carried over from production (verified against the
+	// live launch DB on 2026-05-27):
+	//   - certificates has team_id but NO deleted_at column.
+	//   - certificates has NO tls_setting column — tls_setting lives
+	//     on sites. So DeleteWithForce updates sites.tls_setting, not
+	//     certificates.tls_setting (see the Force tests below).
+	//   - docker_application_domains has NO team_id; team scope comes
+	//     from docker_applications.team_id or docker_composes.team_id
+	//     via the application_id / compose_id FK.
+	require.NoError(t, db.Exec(`
+		CREATE TABLE IF NOT EXISTS sites (
+			id          char(26) PRIMARY KEY,
+			team_id     char(26) NOT NULL,
+			address     varchar(255) NOT NULL,
+			tls_setting varchar(32) NOT NULL DEFAULT 'auto'
+		)
+	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE IF NOT EXISTS certificates (
+			id                    char(26) PRIMARY KEY,
+			team_id               char(26) NOT NULL,
+			site_id               char(26) NOT NULL,
+			stored_certificate_id char(26) NULL
+		)
+	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE IF NOT EXISTS docker_applications (
+			id      char(26) PRIMARY KEY,
+			team_id char(26) NOT NULL
+		)
+	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE IF NOT EXISTS docker_composes (
+			id      char(26) PRIMARY KEY,
+			team_id char(26) NOT NULL
+		)
+	`).Error)
+	require.NoError(t, db.Exec(`
+		CREATE TABLE IF NOT EXISTS docker_application_domains (
+			id                    char(26) PRIMARY KEY,
+			application_id        char(26) NULL,
+			compose_id            char(26) NULL,
+			host                  varchar(255) NOT NULL,
+			certificate_provider  varchar(32) NOT NULL DEFAULT 'letsencrypt',
+			stored_certificate_id char(26) NULL,
+			deleted_at            datetime NULL
+		)
+	`).Error)
+
 	return db
 }
 
@@ -271,4 +325,124 @@ func TestService_Create_NameCollision_409(t *testing.T) {
 	// Sqlite surfaces "UNIQUE constraint failed" for this case; we
 	// don't bind to that exact string, just confirm one row.
 	assert.Equal(t, int64(1), countRows(t, db), "name collision must not create a second row")
+}
+
+// seedCert creates a stored cert via the service using the test
+// fixture pair. Tests that need a referenceable cert call this rather
+// than re-running the parse path inline.
+func seedCert(t *testing.T, svc *services.StoredCertificateService, teamID, name string) *models.StoredCertificate {
+	t.Helper()
+	c, err := svc.Create(context.Background(), teamID, nil, dto.CreateStoredCertificateRequest{
+		Name:        name,
+		Certificate: mustRead(t, "leaf.pem"),
+		PrivateKey:  mustRead(t, "leaf.key"),
+	})
+	require.NoError(t, err)
+	return c
+}
+
+// insertSiteRef inserts the minimum row pair (sites + certificates)
+// that points a site's cert at the given stored cert. Returns the
+// site id.
+func insertSiteRef(t *testing.T, db *gorm.DB, teamID, certStoredID, address string) string {
+	t.Helper()
+	siteID := "site_" + address // sqlite doesn't care about ulid shape; uniqueness is enough
+	// Pad to 26 chars so char(26) PK doesn't truncate something else
+	// like another site row with a prefix collision.
+	for len(siteID) < 26 {
+		siteID += "x"
+	}
+	siteID = siteID[:26]
+	require.NoError(t, db.Exec(
+		`INSERT INTO sites (id, team_id, address, tls_setting) VALUES (?, ?, ?, 'manual')`,
+		siteID, teamID, address,
+	).Error)
+	require.NoError(t, db.Exec(
+		`INSERT INTO certificates (id, team_id, site_id, stored_certificate_id) VALUES (?, ?, ?, ?)`,
+		siteID+"-c", teamID, siteID, certStoredID,
+	).Error)
+	return siteID
+}
+
+// insertDomainRef inserts a docker_application_domains row pointing
+// at the given stored cert, scoped via a parent docker_applications
+// row with the given team_id. Returns the domain id.
+func insertDomainRef(t *testing.T, db *gorm.DB, teamID, certStoredID, host string) string {
+	t.Helper()
+	appID := "app_" + host
+	for len(appID) < 26 {
+		appID += "x"
+	}
+	appID = appID[:26]
+	domID := "dom_" + host
+	for len(domID) < 26 {
+		domID += "x"
+	}
+	domID = domID[:26]
+	require.NoError(t, db.Exec(
+		`INSERT INTO docker_applications (id, team_id) VALUES (?, ?)`,
+		appID, teamID,
+	).Error)
+	require.NoError(t, db.Exec(
+		`INSERT INTO docker_application_domains (id, application_id, host, certificate_provider, stored_certificate_id)
+		 VALUES (?, ?, ?, 'stored', ?)`,
+		domID, appID, host, certStoredID,
+	).Error)
+	return domID
+}
+
+func TestService_Usages_Empty(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+
+	got, err := svc.Usages(ctx, "team-a", c.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got, "fresh cert with no refs should return no usages")
+}
+
+func TestService_Usages_OneSiteOneDomain(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+
+	siteID := insertSiteRef(t, db, "team-a", c.ID, "acme.io")
+	domID := insertDomainRef(t, db, "team-a", c.ID, "api.acme.io")
+
+	got, err := svc.Usages(ctx, "team-a", c.ID)
+	require.NoError(t, err)
+	require.Len(t, got, 2)
+
+	// We don't pin order; check by kind.
+	bykind := map[string]dto.CertificateUsage{}
+	for _, u := range got {
+		bykind[u.Kind] = u
+	}
+	require.Contains(t, bykind, "site")
+	require.Contains(t, bykind, "docker_domain")
+	assert.Equal(t, siteID, bykind["site"].ID)
+	assert.Equal(t, "acme.io", bykind["site"].Name)
+	assert.Equal(t, domID, bykind["docker_domain"].ID)
+	assert.Equal(t, "api.acme.io", bykind["docker_domain"].Name)
+}
+
+func TestService_Usages_TeamScoped(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	// Cert lives in team-a; the referencing rows live in team-b.
+	c := seedCert(t, svc, "team-a", "acme prod")
+	_ = insertSiteRef(t, db, "team-b", c.ID, "acme.io")
+	_ = insertDomainRef(t, db, "team-b", c.ID, "api.acme.io")
+
+	// Asking team-a for usages of its cert finds nothing — the refs
+	// are scoped to a different team.
+	got, err := svc.Usages(ctx, "team-a", c.ID)
+	require.NoError(t, err)
+	assert.Empty(t, got)
 }
