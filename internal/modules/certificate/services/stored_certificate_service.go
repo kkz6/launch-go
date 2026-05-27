@@ -39,6 +39,13 @@ func (e ErrDuplicateFingerprint) Error() string {
 	return "certificate already exists in this team"
 }
 
+// ErrPartialCertKeyUpdate is returned by Update when the request
+// changes exactly one of (Certificate, PrivateKey). The pair must
+// be updated together to preserve the match — accepting a partial
+// update would leave the row with a key that no longer signs the
+// cert. Handlers should map this to a 422.
+var ErrPartialCertKeyUpdate = errors.New("certificate and private_key must be updated together")
+
 // Create validates the input, parses metadata from the cert PEM,
 // checks fingerprint dedupe, and persists. Returns
 // ErrDuplicateFingerprint with the existing row when the cert is
@@ -97,6 +104,126 @@ func (s *StoredCertificateService) Create(
 		return nil, err
 	}
 	return c, nil
+}
+
+// Update applies the request to an existing stored cert. Name/notes
+// can be updated independently. The cert/key pair must be updated
+// together — supplying only one side is ErrPartialCertKeyUpdate.
+//
+// When the cert content changes the parsed metadata (domains, dates,
+// fingerprint, issuer, serial, common name) is refreshed in lock-step
+// so the picker shows the new shape on the next list call. A
+// fingerprint dedupe runs on content changes (excluding the current
+// row), and the same TOCTOU window handled by Create is closed by the
+// partial unique DB index in production.
+//
+// Returns the updated row plus a `pending_redeploys` count: the
+// number of resources currently pointing at this cert. The count is
+// 0 when only name/notes change. In Phase 6 the API handler will use
+// this number to fan out site:install_ssl / docker:redeploy jobs;
+// for now the service just reports the count.
+func (s *StoredCertificateService) Update(
+	ctx context.Context,
+	teamID, id string,
+	req dto.UpdateStoredCertificateRequest,
+) (*models.StoredCertificate, int, error) {
+	c, err := s.repos.StoredCertificates.FindByID(ctx, teamID, id)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	contentChange, err := normalizeContentChange(req.Certificate, req.PrivateKey)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	if req.Name != nil {
+		c.Name = *req.Name
+	}
+	if req.Notes != nil {
+		c.Notes = req.Notes
+	}
+
+	if contentChange != nil {
+		if err := ValidateKeyMatchesCert(contentChange.cert, contentChange.key); err != nil {
+			return nil, 0, err
+		}
+		parsed, err := ParseCertificate(contentChange.cert)
+		if err != nil {
+			return nil, 0, err
+		}
+
+		// Fingerprint dedupe — only collides if the matching alive
+		// row is a DIFFERENT cert in the same team. The current row
+		// is excluded by id; the partial-unique DB index will still
+		// catch the rare TOCTOU race between this check and Save.
+		if existing, lookupErr := s.repos.StoredCertificates.FindByFingerprint(ctx, teamID, parsed.FingerprintSHA256); lookupErr == nil && existing != nil {
+			if existing.ID != c.ID {
+				return nil, 0, ErrDuplicateFingerprint{Existing: existing}
+			}
+		} else if lookupErr != nil && !errors.Is(lookupErr, gorm.ErrRecordNotFound) {
+			return nil, 0, lookupErr
+		}
+
+		c.Certificate = contentChange.cert
+		c.PrivateKey = dbtype.EncryptedString(contentChange.key)
+		c.Domains = parsed.Domains
+		c.CommonName = nilIfEmpty(parsed.CommonName)
+		c.Issuer = nilIfEmpty(parsed.Issuer)
+		c.NotBefore = parsed.NotBefore
+		c.NotAfter = parsed.NotAfter
+		c.SerialNumber = nilIfEmpty(parsed.SerialNumber)
+		c.FingerprintSHA256 = nilIfEmpty(parsed.FingerprintSHA256)
+	}
+
+	if err := s.repos.StoredCertificates.Update(ctx, c); err != nil {
+		// Mirror Create's TOCTOU translation: a concurrent Update
+		// could land between the dedupe pre-check and Save, tripping
+		// the partial unique index. Surface the structured error so
+		// the handler can show "this cert already exists" instead of
+		// a 500.
+		var pgErr *pgconn.PgError
+		if contentChange != nil && errors.As(err, &pgErr) && pgErr.Code == "23505" && pgErr.ConstraintName == "idx_stored_certs_team_fingerprint_alive" {
+			if fp := c.FingerprintSHA256; fp != nil {
+				if existing, lookupErr := s.repos.StoredCertificates.FindByFingerprint(ctx, teamID, *fp); lookupErr == nil && existing != nil && existing.ID != c.ID {
+					return nil, 0, ErrDuplicateFingerprint{Existing: existing}
+				}
+			}
+		}
+		return nil, 0, err
+	}
+
+	pendingRedeploys := 0
+	if contentChange != nil {
+		usages, err := s.repos.StoredCertificates.Usages(ctx, teamID, c.ID)
+		if err != nil {
+			return nil, 0, err
+		}
+		pendingRedeploys = len(usages)
+	}
+
+	return c, pendingRedeploys, nil
+}
+
+// certContentChange bundles the new cert + key when both are present
+// on an Update request. nil means the caller isn't touching the
+// content (name/notes only). All-or-nothing is enforced by
+// normalizeContentChange.
+type certContentChange struct {
+	cert string
+	key  string
+}
+
+// normalizeContentChange enforces the rule that cert and key must
+// change together. Returns nil when neither is supplied.
+func normalizeContentChange(certPtr, keyPtr *string) (*certContentChange, error) {
+	if certPtr == nil && keyPtr == nil {
+		return nil, nil
+	}
+	if certPtr == nil || keyPtr == nil {
+		return nil, ErrPartialCertKeyUpdate
+	}
+	return &certContentChange{cert: *certPtr, key: *keyPtr}, nil
 }
 
 // Usages returns the resources (sites + docker domains) that

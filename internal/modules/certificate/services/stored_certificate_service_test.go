@@ -430,6 +430,185 @@ func TestService_Usages_OneSiteOneDomain(t *testing.T) {
 	assert.Equal(t, "api.acme.io", bykind["docker_domain"].Name)
 }
 
+func TestService_Update_NameOnly(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+	origFP := c.FingerprintSHA256
+
+	newName := "acme renamed"
+	got, pending, err := svc.Update(ctx, "team-a", c.ID, dto.UpdateStoredCertificateRequest{
+		Name: &newName,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 0, pending, "name-only update should not flag any redeploys")
+	assert.Equal(t, "acme renamed", got.Name)
+	// Metadata untouched.
+	assert.Equal(t, origFP, got.FingerprintSHA256)
+}
+
+func TestService_Update_NotesOnly(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+
+	notes := "rotated 2026-05"
+	got, pending, err := svc.Update(ctx, "team-a", c.ID, dto.UpdateStoredCertificateRequest{
+		Notes: &notes,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 0, pending)
+	require.NotNil(t, got.Notes)
+	assert.Equal(t, "rotated 2026-05", *got.Notes)
+}
+
+func TestService_Update_CertAndKey_RefreshesMetadata(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+	origFP := c.FingerprintSHA256
+	origNotAfter := c.NotAfter
+	origDomains := []string(c.Domains)
+
+	newCert, newKey := makeOtherCertPEM(t)
+	got, pending, err := svc.Update(ctx, "team-a", c.ID, dto.UpdateStoredCertificateRequest{
+		Certificate: &newCert,
+		PrivateKey:  &newKey,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 0, pending, "no refs yet — pending should be zero even on content change")
+
+	// Metadata should reflect the new cert.
+	require.NotNil(t, got.FingerprintSHA256)
+	require.NotNil(t, origFP)
+	assert.NotEqual(t, *origFP, *got.FingerprintSHA256, "fingerprint must refresh")
+	assert.NotEqual(t, origNotAfter.UTC(), got.NotAfter.UTC(), "not_after must refresh")
+	assert.NotEqual(t, origDomains, []string(got.Domains), "domains must refresh")
+	assert.Equal(t, newCert, got.Certificate)
+}
+
+func TestService_Update_PartialCertOnly_Errors(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+
+	newCert, _ := makeOtherCertPEM(t)
+	_, _, err := svc.Update(ctx, "team-a", c.ID, dto.UpdateStoredCertificateRequest{
+		Certificate: &newCert,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, services.ErrPartialCertKeyUpdate)
+}
+
+func TestService_Update_PartialKeyOnly_Errors(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+
+	_, newKey := makeOtherCertPEM(t)
+	_, _, err := svc.Update(ctx, "team-a", c.ID, dto.UpdateStoredCertificateRequest{
+		PrivateKey: &newKey,
+	})
+	require.Error(t, err)
+	assert.ErrorIs(t, err, services.ErrPartialCertKeyUpdate)
+}
+
+func TestService_Update_KeyMismatch_Errors(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+
+	// New cert paired with a non-matching key (the mismatched test
+	// fixture is paired with leaf.pem, not the freshly generated cert).
+	newCert, _ := makeOtherCertPEM(t)
+	mismatched := mustRead(t, "mismatched.key")
+	_, _, err := svc.Update(ctx, "team-a", c.ID, dto.UpdateStoredCertificateRequest{
+		Certificate: &newCert,
+		PrivateKey:  &mismatched,
+	})
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "private key does not match certificate")
+}
+
+func TestService_Update_DuplicateFingerprintWithDifferentRow(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	// Cert A — uses the leaf.pem fixture.
+	a := seedCert(t, svc, "team-a", "acme prod")
+
+	// Cert B — uses an unrelated generated pair.
+	otherCert, otherKey := makeOtherCertPEM(t)
+	b, err := svc.Create(ctx, "team-a", nil, dto.CreateStoredCertificateRequest{
+		Name:        "acme staging",
+		Certificate: otherCert,
+		PrivateKey:  otherKey,
+	})
+	require.NoError(t, err)
+
+	// Now try to update B's content to match A. Should fail with
+	// ErrDuplicateFingerprint pointing at A.
+	leafCert := mustRead(t, "leaf.pem")
+	leafKey := mustRead(t, "leaf.key")
+	_, _, err = svc.Update(ctx, "team-a", b.ID, dto.UpdateStoredCertificateRequest{
+		Certificate: &leafCert,
+		PrivateKey:  &leafKey,
+	})
+	require.Error(t, err)
+
+	var dupErr services.ErrDuplicateFingerprint
+	require.True(t, errors.As(err, &dupErr), "expected ErrDuplicateFingerprint, got %T: %v", err, err)
+	require.NotNil(t, dupErr.Existing)
+	assert.Equal(t, a.ID, dupErr.Existing.ID)
+}
+
+func TestService_Update_PendingRedeploysCount(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	c := seedCert(t, svc, "team-a", "acme prod")
+
+	// Two site refs + one docker domain ref → 3 pending redeploys.
+	insertSiteRef(t, db, "team-a", c.ID, "one.example")
+	insertSiteRef(t, db, "team-a", c.ID, "two.example")
+	insertDomainRef(t, db, "team-a", c.ID, "api.example")
+
+	newCert, newKey := makeOtherCertPEM(t)
+	_, pending, err := svc.Update(ctx, "team-a", c.ID, dto.UpdateStoredCertificateRequest{
+		Certificate: &newCert,
+		PrivateKey:  &newKey,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, 3, pending)
+}
+
+func TestService_Update_NotFound(t *testing.T) {
+	db := setupServiceDB(t)
+	svc := newService(t, db)
+	ctx := context.Background()
+
+	newName := "anything"
+	_, _, err := svc.Update(ctx, "team-a", "01HZZZZZZZZZZZZZZZZZZZZZZZ", dto.UpdateStoredCertificateRequest{
+		Name: &newName,
+	})
+	require.Error(t, err)
+	assert.True(t, errors.Is(err, gorm.ErrRecordNotFound), "expected ErrRecordNotFound, got %v", err)
+}
+
 func TestService_Usages_TeamScoped(t *testing.T) {
 	db := setupServiceDB(t)
 	svc := newService(t, db)
