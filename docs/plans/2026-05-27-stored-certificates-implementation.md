@@ -47,21 +47,16 @@ kernel, no HTTP routes yet, `go test ./... && go vet ./...` green.
 **Files:**
 - Create: `internal/database/migrations/0046_05_27_000000_create_stored_certificates.go`
 
-> **DB note:** the local + production DB is **MySQL 8** (confirmed via
-> `.env` `DB_DRIVER=mysql`). Migration `0037` is the canonical template
-> — written portably with `TEXT` (no `JSONB`), and soft-delete
-> uniqueness expressed by including `deleted_at` in the index columns
-> (not via `WHERE deleted_at IS NULL`, which MySQL doesn't support).
-> All SQL below follows that convention.
->
-> **Collation gotcha:** MySQL 8's default database collation
-> (`utf8mb4_0900_ai_ci`) is FK-incompatible with the legacy tables
-> (which use `utf8mb4_unicode_ci`, including `teams.id`). Every new
-> CREATE TABLE in this codebase must end with
-> `ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
-> or the FK to `teams(id)` will fail with `Error 3780`. See
-> migration `0021_05_22_000000_create_docker_projects_table.go:46-50`
-> for the documented precedent.
+> **DB note:** the codebase has been moved to **Postgres** (the local
+> DB is restored from `launch_app_new_may26.pg.sql`; `.env` now has
+> `DB_DRIVER=postgres`, port 5432). All SQL below uses Postgres idioms:
+> `JSONB` for the domains column, partial unique indexes with
+> `WHERE deleted_at IS NULL` for soft-delete uniqueness, and functional
+> indexes (`LOWER(name)`) where case-insensitivity matters. No
+> `ENGINE=`/`CHARSET=`/`COLLATE=` clauses — those are MySQL artefacts.
+> Migration `0037` is still the structural template (Register shape,
+> Up/Down naming, comment density) — just don't copy its `TEXT` /
+> non-partial-index choices, which were MySQL-portable concessions.
 
 **Step 1: Read a recent migration as a template**
 
@@ -98,14 +93,14 @@ func init() {
 // recorded for audit only, `private_key` encrypted at rest via
 // dbtype.EncryptedString.
 //
-// `domains` is a JSON-encoded string slice (dbtype.JSONStringSlice
-// handles the GORM scan/value); `TEXT` keeps the column portable
-// (Postgres maps it to text, MySQL to LONGTEXT-equivalent storage).
+// `domains` is JSONB so we can later query "certs covering host X"
+// via JSONB containment if needed; dbtype.JSONStringSlice handles
+// the GORM scan/value.
 //
-// Soft-delete uniqueness pattern matches 0037: deleted_at is part of
-// the unique index, so re-using a name after delete is allowed. Same
-// pattern is applied to the fingerprint index so the same cert can
-// be saved again after being removed.
+// Soft-delete uniqueness uses Postgres partial unique indexes
+// (WHERE deleted_at IS NULL) — re-using a name after soft-delete is
+// allowed because the deleted row is excluded from the index. Same
+// pattern applies to the fingerprint dedupe.
 func createStoredCertificatesUp(db *gorm.DB) error {
 	if err := db.Exec(`
 		CREATE TABLE stored_certificates (
@@ -113,22 +108,22 @@ func createStoredCertificatesUp(db *gorm.DB) error {
 			team_id             CHAR(26)     NOT NULL,
 			user_id             CHAR(26)     NULL,
 			name                VARCHAR(255) NOT NULL,
-			notes               TEXT         NULL,
-			certificate         TEXT         NOT NULL,
-			private_key         TEXT         NOT NULL,
-			domains             TEXT         NOT NULL,
-			common_name         VARCHAR(255) NULL,
-			issuer              VARCHAR(255) NULL,
-			not_before          TIMESTAMP    NOT NULL,
-			not_after           TIMESTAMP    NOT NULL,
-			serial_number       VARCHAR(255) NULL,
-			fingerprint_sha256  VARCHAR(64)  NULL,
-			created_at          TIMESTAMP    NULL,
-			updated_at          TIMESTAMP    NULL,
-			deleted_at          TIMESTAMP    NULL,
+			notes               TEXT          NULL,
+			certificate         TEXT          NOT NULL,
+			private_key         TEXT          NOT NULL,
+			domains             JSONB         NOT NULL DEFAULT '[]'::jsonb,
+			common_name         VARCHAR(255)  NULL,
+			issuer              VARCHAR(255)  NULL,
+			not_before          TIMESTAMPTZ   NOT NULL,
+			not_after           TIMESTAMPTZ   NOT NULL,
+			serial_number       VARCHAR(255)  NULL,
+			fingerprint_sha256  VARCHAR(64)   NULL,
+			created_at          TIMESTAMPTZ   NULL,
+			updated_at          TIMESTAMPTZ   NULL,
+			deleted_at          TIMESTAMPTZ   NULL,
 			PRIMARY KEY (id),
 			CONSTRAINT fk_stored_certs_team FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE
-		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+		)
 	`).Error; err != nil {
 		return err
 	}
@@ -138,23 +133,29 @@ func createStoredCertificatesUp(db *gorm.DB) error {
 	if err := db.Exec(`CREATE INDEX idx_stored_certs_deleted ON stored_certificates (deleted_at)`).Error; err != nil {
 		return err
 	}
-	// Per-team unique name (live rows only — deleted_at in the
-	// index column so soft-deletes don't block re-using a name).
+	// Per-team unique name, alive rows only. LOWER(name) so users
+	// can't sneak in "Acme" vs "acme" as separate certs.
 	if err := db.Exec(`
-		CREATE UNIQUE INDEX idx_stored_certs_team_name
-		ON stored_certificates (team_id, name, deleted_at)
+		CREATE UNIQUE INDEX idx_stored_certs_team_name_alive
+		ON stored_certificates (team_id, LOWER(name))
+		WHERE deleted_at IS NULL
 	`).Error; err != nil {
 		return err
 	}
-	// Per-team fingerprint dedupe (live rows only — same trick).
+	// Per-team fingerprint dedupe, alive rows only.
 	if err := db.Exec(`
-		CREATE UNIQUE INDEX idx_stored_certs_team_fingerprint
-		ON stored_certificates (team_id, fingerprint_sha256, deleted_at)
+		CREATE UNIQUE INDEX idx_stored_certs_team_fingerprint_alive
+		ON stored_certificates (team_id, fingerprint_sha256)
+		WHERE deleted_at IS NULL AND fingerprint_sha256 IS NOT NULL
 	`).Error; err != nil {
 		return err
 	}
 	// Expiry queries — "what's expiring in the next 30 days for this team".
-	if err := db.Exec(`CREATE INDEX idx_stored_certs_expiry ON stored_certificates (team_id, not_after)`).Error; err != nil {
+	if err := db.Exec(`
+		CREATE INDEX idx_stored_certs_expiry
+		ON stored_certificates (team_id, not_after)
+		WHERE deleted_at IS NULL
+	`).Error; err != nil {
 		return err
 	}
 	return nil
@@ -178,12 +179,14 @@ verify with `grep ^migrate Makefile` if unsure.)
 **Step 4: Verify schema**
 
 ```bash
-mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" \
-  -e "SHOW CREATE TABLE stored_certificates\G"
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" \
+  -c "\d+ stored_certificates"
 ```
 
-Expected: table with 17 columns, 5 indexes (PK + `team`, `deleted`,
-`team_name`, `team_fingerprint`, `expiry`), one FK to `teams`.
+Expected: 17 columns, 5 indexes (PK + `team`, `deleted`,
+`team_name_alive` (partial unique on `LOWER(name)`),
+`team_fingerprint_alive` (partial unique), `expiry` (partial)),
+one FK to `teams(id) ON DELETE CASCADE`.
 
 **Step 5: Commit**
 
@@ -201,10 +204,10 @@ git commit -m "stored_certificates: migration for new team-scoped table"
 
 **Step 1: Write the migration**
 
-MySQL needs the column + named constraint added separately (no inline
-`REFERENCES` clause in `ALTER TABLE ADD COLUMN`). Mirror 0037's
-pattern of adding the column, an index on the FK column, then the
-named FK constraint as a second `ALTER`.
+Postgres supports inline `REFERENCES … ON DELETE …` in `ALTER TABLE
+ADD COLUMN`, so the FK column lands in a single statement per table.
+Indexes on the FK columns are added separately (for fast joins from
+the parent stored_certificate back to its referencing rows).
 
 ```go
 package migrations
@@ -226,35 +229,25 @@ func init() {
 }
 
 func addStoredCertificateFKsUp(db *gorm.DB) error {
-	if err := db.Exec(`ALTER TABLE certificates ADD COLUMN stored_certificate_id CHAR(26) NULL`).Error; err != nil {
+	if err := db.Exec(`
+		ALTER TABLE certificates
+		ADD COLUMN stored_certificate_id CHAR(26) NULL
+		REFERENCES stored_certificates(id) ON DELETE SET NULL
+	`).Error; err != nil {
 		return err
 	}
 	if err := db.Exec(`CREATE INDEX idx_certificates_stored_cert ON certificates (stored_certificate_id)`).Error; err != nil {
 		return err
 	}
-	if err := db.Exec(`
-		ALTER TABLE certificates
-			ADD CONSTRAINT fk_certificates_stored_cert
-			FOREIGN KEY (stored_certificate_id)
-			REFERENCES stored_certificates(id)
-			ON DELETE SET NULL
-	`).Error; err != nil {
-		return err
-	}
 
-	if err := db.Exec(`ALTER TABLE docker_application_domains ADD COLUMN stored_certificate_id CHAR(26) NULL`).Error; err != nil {
+	if err := db.Exec(`
+		ALTER TABLE docker_application_domains
+		ADD COLUMN stored_certificate_id CHAR(26) NULL
+		REFERENCES stored_certificates(id) ON DELETE SET NULL
+	`).Error; err != nil {
 		return err
 	}
 	if err := db.Exec(`CREATE INDEX idx_docker_app_domains_stored_cert ON docker_application_domains (stored_certificate_id)`).Error; err != nil {
-		return err
-	}
-	if err := db.Exec(`
-		ALTER TABLE docker_application_domains
-			ADD CONSTRAINT fk_docker_app_domains_stored_cert
-			FOREIGN KEY (stored_certificate_id)
-			REFERENCES stored_certificates(id)
-			ON DELETE SET NULL
-	`).Error; err != nil {
 		return err
 	}
 
@@ -262,14 +255,11 @@ func addStoredCertificateFKsUp(db *gorm.DB) error {
 }
 
 func addStoredCertificateFKsDown(db *gorm.DB) error {
-	// MySQL needs FKs dropped before the columns can be removed.
-	_ = db.Exec(`ALTER TABLE certificates DROP FOREIGN KEY fk_certificates_stored_cert`).Error
-	_ = db.Exec(`ALTER TABLE certificates DROP INDEX idx_certificates_stored_cert`).Error
-	_ = db.Exec(`ALTER TABLE certificates DROP COLUMN stored_certificate_id`).Error
-
-	_ = db.Exec(`ALTER TABLE docker_application_domains DROP FOREIGN KEY fk_docker_app_domains_stored_cert`).Error
-	_ = db.Exec(`ALTER TABLE docker_application_domains DROP INDEX idx_docker_app_domains_stored_cert`).Error
-	_ = db.Exec(`ALTER TABLE docker_application_domains DROP COLUMN stored_certificate_id`).Error
+	// Postgres DROP COLUMN cascades the FK constraint and the index
+	// automatically. IF EXISTS keeps Down idempotent across partial
+	// migration states.
+	_ = db.Exec(`ALTER TABLE certificates DROP COLUMN IF EXISTS stored_certificate_id`).Error
+	_ = db.Exec(`ALTER TABLE docker_application_domains DROP COLUMN IF EXISTS stored_certificate_id`).Error
 	return nil
 }
 ```
@@ -278,12 +268,13 @@ func addStoredCertificateFKsDown(db *gorm.DB) error {
 
 ```bash
 make migrate
-mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USERNAME" -p"$DB_PASSWORD" "$DB_DATABASE" \
-  -e "SHOW COLUMNS FROM certificates LIKE 'stored_certificate_id'; \
-      SHOW COLUMNS FROM docker_application_domains LIKE 'stored_certificate_id';"
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" \
+  -c "\d certificates" | grep stored_certificate_id
+PGPASSWORD="$DB_PASSWORD" psql -h "$DB_HOST" -p "$DB_PORT" -U "$DB_USERNAME" -d "$DB_DATABASE" \
+  -c "\d docker_application_domains" | grep stored_certificate_id
 ```
 
-Expected: both tables show the new nullable `CHAR(26)` column.
+Expected: both tables show the new nullable `character(26)` column.
 
 **Step 3: Commit**
 
@@ -354,14 +345,14 @@ type StoredCertificate struct {
 	Name  string  `gorm:"type:varchar(255);not null" json:"name"`
 	Notes *string `gorm:"type:text" json:"notes,omitempty"`
 
-	Certificate string                 `gorm:"type:longtext;not null" json:"certificate"`
-	PrivateKey  dbtype.EncryptedString `gorm:"column:private_key;type:longtext;not null" json:"-"`
+	Certificate string                 `gorm:"type:text;not null" json:"certificate"`
+	PrivateKey  dbtype.EncryptedString `gorm:"column:private_key;type:text;not null" json:"-"`
 
-	Domains           dbtype.JSONStringSlice `gorm:"type:jsonb;not null;default:'[]'" json:"domains"`
+	Domains           dbtype.JSONStringSlice `gorm:"type:jsonb;not null;default:'[]'::jsonb" json:"domains"`
 	CommonName        *string                `gorm:"column:common_name;type:varchar(255)" json:"common_name,omitempty"`
 	Issuer            *string                `gorm:"type:varchar(255)" json:"issuer,omitempty"`
-	NotBefore         time.Time              `gorm:"column:not_before;type:timestamp;not null" json:"not_before"`
-	NotAfter          time.Time              `gorm:"column:not_after;type:timestamp;not null" json:"not_after"`
+	NotBefore         time.Time              `gorm:"column:not_before;type:timestamptz;not null" json:"not_before"`
+	NotAfter          time.Time              `gorm:"column:not_after;type:timestamptz;not null" json:"not_after"`
 	SerialNumber      *string                `gorm:"column:serial_number;type:varchar(255)" json:"serial_number,omitempty"`
 	FingerprintSHA256 *string                `gorm:"column:fingerprint_sha256;type:varchar(64)" json:"fingerprint_sha256,omitempty"`
 }
