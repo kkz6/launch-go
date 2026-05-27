@@ -84,6 +84,24 @@ func (j *SyncComposeTraefikConfigJob) Handle(ctx context.Context) error {
 		Domains:     domains,
 	})
 
+	// Same stored-cert materialisation as the application sync —
+	// resolve PEMs for any domain that references a stored cert and
+	// upload them under /var/lib/launch/traefik/certs/<id>/.
+	// The application job has the canonical resolver (this module
+	// shares the certificate repo via JobDeps.CertRepos).
+	if certMaterials, mErr := resolveStoredCertMaterials(ctx, j.Deps, j.Payload.TeamID, domains); mErr != nil {
+		return fmt.Errorf("resolve stored certs: %w", mErr)
+	} else if len(certMaterials) > 0 {
+		certTask := tasks.WriteStoredCertificatesTask(certMaterials)
+		certResult, certErr := j.Deps.RunTask(server, certTask).AsRoot().Dispatch(ctx)
+		if certErr != nil {
+			return fmt.Errorf("ssh write stored certs: %w", certErr)
+		}
+		if certResult != nil && !certResult.IsSuccessful() {
+			return fmt.Errorf("stored cert write failed: %s", certResult.GetOutput())
+		}
+	}
+
 	task := tasks.WriteComposeTraefikConfigTask(projectSlug, composeSlug, yaml)
 	result, runErr := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
 	if runErr != nil {

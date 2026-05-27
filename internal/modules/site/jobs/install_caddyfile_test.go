@@ -79,7 +79,7 @@ func TestGenerateCaddyfile_LoadBalancedSite(t *testing.T) {
 	site.LoadBalancedUpstreamID = strPtr("01HLBUPSTREAM00000000001")
 	loadBalancerIP := "10.0.0.50"
 
-	result := generateCaddyfile(site, nil, loadBalancerIP)
+	result := generateCaddyfile(site, nil, loadBalancerIP, nil)
 
 	if !strings.Contains(result, "http://example.com:8080") {
 		t.Errorf("expected load balanced Caddyfile with http:// and :8080, got:\n%s", result)
@@ -100,7 +100,7 @@ func TestGenerateCaddyfile_LoadBalancedSite(t *testing.T) {
 func TestGenerateCaddyfile_StandardSite(t *testing.T) {
 	site := newLaravelSite()
 
-	result := generateCaddyfile(site, nil, "")
+	result := generateCaddyfile(site, nil, "", nil)
 
 	// Standard site should have the address with port (443 for TLS auto)
 	if !strings.Contains(result, "example.com:443") {
@@ -297,7 +297,7 @@ func TestGenerateLoadBalancedCaddyfile_WithRedirects(t *testing.T) {
 func TestGenerateStandardCaddyfile_NonWwwSite(t *testing.T) {
 	site := newLaravelSite()
 
-	result := generateStandardCaddyfile(site, nil)
+	result := generateStandardCaddyfile(site, nil, nil)
 
 	// Should redirect www.example.com to example.com
 	if !strings.Contains(result, "www.example.com:443 {") {
@@ -329,7 +329,7 @@ func TestGenerateStandardCaddyfile_WwwSite(t *testing.T) {
 	site := newLaravelSite()
 	site.Address = "www.example.com"
 
-	result := generateStandardCaddyfile(site, nil)
+	result := generateStandardCaddyfile(site, nil, nil)
 
 	// Should redirect example.com to www.example.com
 	if !strings.Contains(result, "example.com:443 {") {
@@ -355,7 +355,7 @@ func TestGenerateStandardCaddyfile_OctaneReverseProxy(t *testing.T) {
 		{Name: "octane", OctanePort: &port, OctaneServer: strPtr("frankenphp")},
 	}
 
-	result := generateStandardCaddyfile(site, nil)
+	result := generateStandardCaddyfile(site, nil, nil)
 
 	if !strings.Contains(result, "reverse_proxy localhost:8000") {
 		t.Errorf("expected reverse_proxy localhost:8000, got:\n%s", result)
@@ -386,7 +386,7 @@ func TestGenerateStandardCaddyfile_OctaneDifferentPorts(t *testing.T) {
 				{Name: "octane", OctanePort: &port, OctaneServer: strPtr("swoole")},
 			}
 
-			result := generateStandardCaddyfile(site, nil)
+			result := generateStandardCaddyfile(site, nil, nil)
 
 			expected := fmt.Sprintf("reverse_proxy localhost:%d", tt.port)
 			if !strings.Contains(result, expected) {
@@ -401,7 +401,7 @@ func TestGenerateStandardCaddyfile_OctaneDifferentPorts(t *testing.T) {
 func TestGenerateStandardCaddyfile_NoOctane_HasPhpFastcgi(t *testing.T) {
 	site := newLaravelSite()
 
-	result := generateStandardCaddyfile(site, nil)
+	result := generateStandardCaddyfile(site, nil, nil)
 
 	if !strings.Contains(result, "php_fastcgi") {
 		t.Errorf("non-Octane site should have php_fastcgi block, got:\n%s", result)
@@ -421,7 +421,7 @@ func TestGenerateStandardCaddyfile_OctaneStillHasOtherDirectives(t *testing.T) {
 		{Name: "octane", OctanePort: &port, OctaneServer: strPtr("frankenphp")},
 	}
 
-	result := generateStandardCaddyfile(site, nil)
+	result := generateStandardCaddyfile(site, nil, nil)
 
 	if !strings.Contains(result, "root * ") {
 		t.Errorf("expected root directive, got:\n%s", result)
@@ -452,7 +452,7 @@ func TestGenerateStandardCaddyfile_OctaneWithRedirects(t *testing.T) {
 		newRedirect("01HREDIR0000000000000010", "/old", "/new", 301),
 	}
 
-	result := generateStandardCaddyfile(site, redirects)
+	result := generateStandardCaddyfile(site, redirects, nil)
 
 	if !strings.Contains(result, "reverse_proxy localhost:8000") {
 		t.Errorf("expected reverse_proxy, got:\n%s", result)
@@ -521,7 +521,7 @@ func TestGenerateCaddyfile_OctaneRouting(t *testing.T) {
 			{Name: "octane", OctanePort: &port, OctaneServer: strPtr("frankenphp")},
 		}
 
-		result := generateCaddyfile(site, nil, "")
+		result := generateCaddyfile(site, nil, "", nil)
 
 		if !strings.Contains(result, "reverse_proxy localhost:8000") {
 			t.Errorf("expected reverse_proxy in standard Octane Caddyfile, got:\n%s", result)
@@ -536,7 +536,7 @@ func TestGenerateCaddyfile_OctaneRouting(t *testing.T) {
 			{Name: "octane", OctanePort: &port, OctaneServer: strPtr("roadrunner")},
 		}
 
-		result := generateCaddyfile(site, nil, "10.0.0.1")
+		result := generateCaddyfile(site, nil, "10.0.0.1", nil)
 
 		if !strings.Contains(result, "reverse_proxy localhost:8001") {
 			t.Errorf("expected reverse_proxy in LB Octane Caddyfile, got:\n%s", result)
@@ -552,7 +552,7 @@ func TestGenerateStandardCaddyfile_OctaneNilPort(t *testing.T) {
 		{Name: "octane", OctaneServer: strPtr("frankenphp")},
 	}
 
-	result := generateStandardCaddyfile(site, nil)
+	result := generateStandardCaddyfile(site, nil, nil)
 
 	if strings.Contains(result, "reverse_proxy localhost:") {
 		t.Errorf("nil octane port should fall back to php_fastcgi, got:\n%s", result)
@@ -572,7 +572,7 @@ func TestGenerateStandardCaddyfile_ReverbWebSocketProxy(t *testing.T) {
 		{Name: "reverb", ReverbPort: &port, QueueID: strPtr("q1")},
 	}
 
-	result := generateStandardCaddyfile(site, nil)
+	result := generateStandardCaddyfile(site, nil, nil)
 
 	if !strings.Contains(result, "@websocket {") {
 		t.Errorf("expected @websocket matcher block, got:\n%s", result)
@@ -620,7 +620,7 @@ func TestGenerateStandardCaddyfile_ReverbDifferentPorts(t *testing.T) {
 				{Name: "reverb", ReverbPort: &port, QueueID: strPtr("q1")},
 			}
 
-			result := generateStandardCaddyfile(site, nil)
+			result := generateStandardCaddyfile(site, nil, nil)
 
 			expected := fmt.Sprintf("reverse_proxy @websocket localhost:%d", tt.port)
 			if !strings.Contains(result, expected) {
@@ -635,7 +635,7 @@ func TestGenerateStandardCaddyfile_ReverbDifferentPorts(t *testing.T) {
 func TestGenerateStandardCaddyfile_NoReverb_NoWebSocket(t *testing.T) {
 	site := newLaravelSite()
 
-	result := generateStandardCaddyfile(site, nil)
+	result := generateStandardCaddyfile(site, nil, nil)
 
 	if strings.Contains(result, "@websocket") {
 		t.Errorf("non-Reverb site should NOT have @websocket matcher, got:\n%s", result)
@@ -654,7 +654,7 @@ func TestGenerateStandardCaddyfile_ReverbNilPort(t *testing.T) {
 		{Name: "reverb", QueueID: strPtr("q1")},
 	}
 
-	result := generateStandardCaddyfile(site, nil)
+	result := generateStandardCaddyfile(site, nil, nil)
 
 	if strings.Contains(result, "@websocket") {
 		t.Errorf("nil reverb port should not generate @websocket matcher, got:\n%s", result)
@@ -676,7 +676,7 @@ func TestGenerateStandardCaddyfile_ReverbWithOctane(t *testing.T) {
 		{Name: "reverb", ReverbPort: &reverbPort, QueueID: strPtr("q1")},
 	}
 
-	result := generateStandardCaddyfile(site, nil)
+	result := generateStandardCaddyfile(site, nil, nil)
 
 	// Should have Octane reverse_proxy
 	if !strings.Contains(result, "reverse_proxy localhost:8000") {
@@ -800,7 +800,7 @@ func TestGenerateCaddyfile_ReverbRouting(t *testing.T) {
 			{Name: "reverb", ReverbPort: &port, QueueID: strPtr("q1")},
 		}
 
-		result := generateCaddyfile(site, nil, "")
+		result := generateCaddyfile(site, nil, "", nil)
 
 		if !strings.Contains(result, "reverse_proxy @websocket localhost:6001") {
 			t.Errorf("expected reverse_proxy @websocket in standard Reverb Caddyfile, got:\n%s", result)
@@ -815,7 +815,7 @@ func TestGenerateCaddyfile_ReverbRouting(t *testing.T) {
 			{Name: "reverb", ReverbPort: &port, QueueID: strPtr("q1")},
 		}
 
-		result := generateCaddyfile(site, nil, "10.0.0.1")
+		result := generateCaddyfile(site, nil, "10.0.0.1", nil)
 
 		if !strings.Contains(result, "reverse_proxy @websocket localhost:6042") {
 			t.Errorf("expected reverse_proxy @websocket in LB Reverb Caddyfile, got:\n%s", result)

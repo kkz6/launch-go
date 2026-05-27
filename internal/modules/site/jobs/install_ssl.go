@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/hibiken/asynq"
 
@@ -16,7 +17,17 @@ type InstallSSLPayload struct {
 	Address string `json:"address"`
 }
 
-// InstallSSLJob handles SSL certificate installation
+// InstallSSLJob handles SSL certificate installation by delegating to
+// the Caddyfile install pipeline. Caddy's auto-TLS handles Let's
+// Encrypt provisioning when site.TLSSetting == "auto"; the custom and
+// internal paths are configured via the TLS snippet that
+// InstallCaddyfileJob renders. The site-cert PEM materialisation is
+// also handled there (via WriteSiteCertificatesTask), so SSL install
+// boils down to "reload the Caddyfile with the current settings."
+//
+// Callers (the SSL update handler, the certificate fanout job) get a
+// single asynq task type to enqueue; the worker takes care of
+// dispatching the downstream Caddyfile job.
 type InstallSSLJob struct {
 	Deps    *JobDeps
 	Payload InstallSSLPayload
@@ -26,19 +37,22 @@ func NewInstallSSLJob(p InstallSSLPayload) pkgjobs.Handler {
 	return &InstallSSLJob{Deps: deps, Payload: p}
 }
 
-// Handle executes the install SSL job
+// Handle dispatches a downstream Caddyfile install for the site —
+// install_caddyfile re-resolves the active certificate, writes the
+// PEM bytes to disk, and reloads Caddy with the updated config.
 func (j *InstallSSLJob) Handle(ctx context.Context) error {
-	// TODO: Implement SSL installation logic
-	// 1. Get site
-	// 2. Request certificate from Let's Encrypt
-	// 3. Update Caddy configuration
-	// 4. Reload Caddy
-	// 5. Update certificate record
 	j.Deps.Logger.Info().
 		Str("site_id", j.Payload.SiteID).
 		Str("address", j.Payload.Address).
-		Msg("Install SSL job executed (not implemented)")
+		Msg("install_ssl: delegating to install_caddyfile")
 
+	task, err := NewInstallCaddyfileTask(j.Payload.SiteID, nil)
+	if err != nil {
+		return fmt.Errorf("build install_caddyfile task: %w", err)
+	}
+	if _, err := j.Deps.Queue.Enqueue(task); err != nil {
+		return fmt.Errorf("enqueue install_caddyfile: %w", err)
+	}
 	return nil
 }
 

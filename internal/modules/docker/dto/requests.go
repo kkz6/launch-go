@@ -479,10 +479,13 @@ type CreateDomainRequest struct {
 	// this specific domain. Nil falls back to app.internal_port.
 	ContainerPort *int  `json:"container_port,omitempty" validate:"omitempty,min=1,max=65535"`
 	HTTPS         *bool `json:"https,omitempty"`
-	// CertificateProvider is "letsencrypt" today; field exists so a
-	// future migration that adds ZeroSSL doesn't need a schema bump
-	// on the request body.
-	CertificateProvider *string `json:"certificate_provider,omitempty" validate:"omitempty,oneof=letsencrypt"`
+	// CertificateProvider is "letsencrypt" (default) or "stored"
+	// (pick from the team's certificate library). Future providers
+	// (ZeroSSL, etc.) extend the oneof here.
+	CertificateProvider *string `json:"certificate_provider,omitempty" validate:"omitempty,oneof=letsencrypt stored"`
+	// StoredCertificateID is required when certificate_provider == "stored".
+	// Points at a row in the team's stored_certificates library.
+	StoredCertificateID *string `json:"stored_certificate_id,omitempty" validate:"omitempty,len=26"`
 	// CreateDNSRecord — when true (and the domain matches a
 	// connected DNS provider), the service also creates an A record
 	// pointing at the docker server's public IP. Same flow Site
@@ -527,7 +530,9 @@ type UpdateDomainRequest struct {
 	StripPath           *bool   `json:"strip_path,omitempty"`
 	ContainerPort       *int    `json:"container_port,omitempty" validate:"omitempty,min=1,max=65535"`
 	HTTPS               *bool   `json:"https,omitempty"`
-	CertificateProvider *string `json:"certificate_provider,omitempty" validate:"omitempty,oneof=letsencrypt"`
+	CertificateProvider *string `json:"certificate_provider,omitempty" validate:"omitempty,oneof=letsencrypt stored"`
+	// StoredCertificateID — same semantics as on CreateDomainRequest.
+	StoredCertificateID *string `json:"stored_certificate_id,omitempty" validate:"omitempty,len=26"`
 	// ServiceName retargets a compose domain at a different YAML
 	// service. Ignored on application-domain rows; on compose rows an
 	// empty value clears nothing (we'd reject the resulting row at

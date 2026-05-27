@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	certrepos "github.com/kkz6/launch-go/internal/modules/certificate/repositories"
 	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/site/contracts"
@@ -77,6 +78,17 @@ type CrossModuleDeps struct {
 	CronCreator     contracts.CronCreator
 	DatabaseManager contracts.DatabaseManager
 	ProviderFactory *gitproviders.ProviderFactory
+	// StoredCerts is the certificate module's stored cert repository.
+	// The SSL service uses it to resolve an optional
+	// stored_certificate_id from the UpdateSSL request into the PEM +
+	// decrypted private key that get written to the site's
+	// certificates row. Passed as a concrete repo (rather than an
+	// interface) because the SSL service also needs to read the
+	// model's parsed-metadata fields (NotAfter for the expiry guard)
+	// — wrapping it behind an interface would just duplicate the
+	// model's surface for no testability gain (the certificate model
+	// has no behaviour, only data).
+	StoredCerts *certrepos.StoredCertificateRepository
 }
 
 // NewServiceRegistry creates all services and wires them together
@@ -116,6 +128,9 @@ func (r *ServiceRegistry) SetCrossModuleDeps(deps *CrossModuleDeps) {
 	}
 	if deps.ProviderFactory != nil {
 		r.deployment.SetProviderFactory(deps.ProviderFactory)
+	}
+	if deps.StoredCerts != nil {
+		r.ssl.SetStoredCertificateRepository(deps.StoredCerts)
 	}
 }
 

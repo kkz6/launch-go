@@ -21,6 +21,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth"
 	"github.com/kkz6/launch-go/internal/modules/backup"
 	"github.com/kkz6/launch-go/internal/modules/billing"
+	"github.com/kkz6/launch-go/internal/modules/certificate"
 	"github.com/kkz6/launch-go/internal/modules/dashboard"
 	databasemodule "github.com/kkz6/launch-go/internal/modules/database"
 	"github.com/kkz6/launch-go/internal/modules/dns"
@@ -239,6 +240,7 @@ func (a *Application) registerModules() {
 	siteModule := site.NewModule(builder)
 	dnsModule := dns.NewModule(builder)
 	backupModule := backup.NewModule(builder)
+	certificateModule := certificate.NewModule(builder)
 	billingModule := billing.NewModule(builder)
 	gitModule := git.NewModule(builder)
 	scriptModule := script.NewModule(builder)
@@ -251,6 +253,8 @@ func (a *Application) registerModules() {
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
 	siteModule.SetCronCreator(adapters.NewCronCreatorAdapter(serverModule.Service()))
 	siteModule.SetDatabaseManager(adapters.NewDatabaseManagerAdapter(databaseModule.Service()))
+	siteModule.SetStoredCertificateRepository(certificateModule.Repos().StoredCertificates)
+	dockerModule.SetCertificateRepository(certificateModule.Repos())
 	serverModule.SetSiteReader(siteModule.SiteReader())
 	gitModule.SetSiteChecker(siteModule.SiteChecker())
 
@@ -263,6 +267,7 @@ func (a *Application) registerModules() {
 		Register(siteModule).
 		Register(dnsModule).
 		Register(backupModule).
+		Register(certificateModule).
 		Register(billingModule).
 		Register(gitModule).
 		Register(notificationModule).

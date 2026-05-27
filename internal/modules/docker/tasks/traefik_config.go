@@ -42,6 +42,13 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 		return fmt.Sprintf("# %s — no domains configured\nhttp: {}\n", id)
 	}
 
+	// Collect unique stored-cert ids so the top-level tls.certificates
+	// block lists each pair once even if multiple domains share a cert.
+	// Order is the insertion order of first-occurrence (matches the
+	// domain row order — keeps the rendered YAML stable for tests).
+	storedCertIDs := make([]string, 0)
+	seenStoredCertIDs := make(map[string]struct{})
+
 	var b strings.Builder
 	b.WriteString("# Managed by Launch. Do not edit by hand.\n")
 	fmt.Fprintf(&b, "# app: %s\n", id)
@@ -71,7 +78,19 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 			b.WriteString("      entryPoints: [websecure]\n")
 			fmt.Fprintf(&b, "      service: %s\n", id)
 			b.WriteString("      tls:\n")
-			b.WriteString("        certresolver: letsencrypt\n")
+			// Stored cert: empty tls block + cert listed at top-level
+			// tls.certificates. Traefik picks via SNI. letsencrypt is
+			// the default fallback.
+			if d.CertificateProvider == "stored" && d.StoredCertificateID != nil && *d.StoredCertificateID != "" {
+				cid := *d.StoredCertificateID
+				if _, ok := seenStoredCertIDs[cid]; !ok {
+					seenStoredCertIDs[cid] = struct{}{}
+					storedCertIDs = append(storedCertIDs, cid)
+				}
+				b.WriteString("        # cert sourced from stored library; see tls.certificates below\n")
+			} else {
+				b.WriteString("        certresolver: letsencrypt\n")
+			}
 		}
 	}
 
@@ -84,7 +103,36 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 	// the public 80/443 itself.
 	fmt.Fprintf(&b, "          - url: \"http://%s:%d\"\n", args.ContainerName, args.InternalPort)
 
+	// Top-level tls.certificates block: lists every stored cert
+	// referenced above. Cert files are materialised on disk on the
+	// host at /etc/launch/traefik/certs/<id>/{cert.pem,key.pem};
+	// inside the Traefik container that path is /etc/traefik/certs/
+	// because the install_traefik script mounts the host
+	// /etc/launch/traefik directory at /etc/traefik. The YAML
+	// references the in-container path.
+	if len(storedCertIDs) > 0 {
+		b.WriteString("tls:\n")
+		b.WriteString("  certificates:\n")
+		for _, cid := range storedCertIDs {
+			fmt.Fprintf(&b, "    - certFile: %s\n", storedCertContainerPath(cid, "cert.pem"))
+			fmt.Fprintf(&b, "      keyFile: %s\n", storedCertContainerPath(cid, "key.pem"))
+		}
+	}
+
 	return b.String()
+}
+
+// StoredCertHostDir returns the on-host directory the worker writes
+// stored cert files to. Mounted into the Traefik container at
+// StoredCertContainerDir (see install_traefik.sh's volume mount).
+func StoredCertHostDir(certificateID string) string {
+	return fmt.Sprintf("/etc/launch/traefik/certs/%s", certificateID)
+}
+
+// storedCertContainerPath returns the in-container path Traefik reads
+// the cert file from. Used by the YAML writer.
+func storedCertContainerPath(certificateID, filename string) string {
+	return fmt.Sprintf("/etc/traefik/certs/%s/%s", certificateID, filename)
 }
 
 // TraefikConfigPath returns the canonical on-server path for this app's
@@ -134,6 +182,67 @@ echo "::LAUNCH::traefik_config::deleted"
 		taskrunner.WithName("Delete Traefik Config"),
 		taskrunner.WithScript(script),
 		taskrunner.WithTimeoutSeconds(30),
+	)
+}
+
+// StoredCertMaterial is a single (cert.pem, key.pem) pair the worker
+// writes to /etc/launch/traefik/certs/<id>/ before reloading
+// Traefik's dynamic config. Traefik picks it up via SNI thanks to the
+// top-level tls.certificates block emitted by RenderTraefikConfig.
+type StoredCertMaterial struct {
+	CertificateID string
+	CertPEM       string // leaf + chain, plaintext
+	KeyPEM        string // private key, plaintext (decrypted on Scan)
+}
+
+// WriteStoredCertificatesTask uploads each cert+key pair to the docker
+// server under /etc/launch/traefik/certs/<id>/. Files are written
+// 0600 (root-owned) so they're not world-readable; the parent dir is
+// 0700.
+//
+// The task is idempotent — re-writing the same content is a no-op as
+// far as Traefik is concerned (it watches the file mtime; identical
+// content with a newer mtime triggers a hot-reload which is harmless).
+// We don't fingerprint-skip server-side; the caller dedupes by
+// certificate id in the Render step, so writes are already bounded.
+//
+// Returns a no-op task when len(materials) == 0 so callers can wire
+// this unconditionally before the YAML write.
+func WriteStoredCertificatesTask(materials []StoredCertMaterial) taskrunner.Task {
+	if len(materials) == 0 {
+		return taskrunner.NewBaseTask(
+			taskrunner.WithName("Write Stored Certificates (no-op)"),
+			taskrunner.WithScript("#!/usr/bin/env bash\necho '::LAUNCH::stored_certs::skipped'\n"),
+			taskrunner.WithTimeoutSeconds(5),
+		)
+	}
+
+	var script strings.Builder
+	script.WriteString("#!/usr/bin/env bash\nset -euo pipefail\n")
+	script.WriteString("sudo install -d -m 0700 /etc/launch/traefik/certs\n")
+	for _, m := range materials {
+		dir := StoredCertHostDir(m.CertificateID)
+		certPath := dir + "/cert.pem"
+		keyPath := dir + "/key.pem"
+		// Per-file random heredoc sentinel — the PEM content can contain
+		// any printable ASCII, so a fixed sentinel could collide with a
+		// pasted certificate. The sentinel includes random hex so a
+		// hostile cert can't terminate the heredoc.
+		certSentinel := RandomHeredocSentinel()
+		keySentinel := RandomHeredocSentinel()
+
+		fmt.Fprintf(&script, "sudo install -d -m 0700 %q\n", dir)
+		fmt.Fprintf(&script, "sudo tee %q >/dev/null <<'%s'\n%s\n%s\n", certPath, certSentinel, m.CertPEM, certSentinel)
+		fmt.Fprintf(&script, "sudo chmod 0600 %q\n", certPath)
+		fmt.Fprintf(&script, "sudo tee %q >/dev/null <<'%s'\n%s\n%s\n", keyPath, keySentinel, m.KeyPEM, keySentinel)
+		fmt.Fprintf(&script, "sudo chmod 0600 %q\n", keyPath)
+	}
+	script.WriteString("echo '::LAUNCH::stored_certs::written'\n")
+
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Write Stored Certificates"),
+		taskrunner.WithScript(script.String()),
+		taskrunner.WithTimeoutSeconds(60),
 	)
 }
 
@@ -212,6 +321,12 @@ func RenderComposeTraefikConfig(args ComposeTraefikConfigArgs) string {
 		}
 	}
 
+	// Collect unique stored-cert ids (same approach as the application
+	// writer above) so the top-level tls.certificates block lists each
+	// cert once.
+	storedCertIDs := make([]string, 0)
+	seenStoredCertIDs := make(map[string]struct{})
+
 	var b strings.Builder
 	b.WriteString("# Managed by Launch. Do not edit by hand.\n")
 	fmt.Fprintf(&b, "# compose: %s\n", id)
@@ -243,7 +358,16 @@ func RenderComposeTraefikConfig(args ComposeTraefikConfigArgs) string {
 			b.WriteString("      entryPoints: [websecure]\n")
 			fmt.Fprintf(&b, "      service: %s\n", svcName)
 			b.WriteString("      tls:\n")
-			b.WriteString("        certresolver: letsencrypt\n")
+			if d.CertificateProvider == "stored" && d.StoredCertificateID != nil && *d.StoredCertificateID != "" {
+				cid := *d.StoredCertificateID
+				if _, ok := seenStoredCertIDs[cid]; !ok {
+					seenStoredCertIDs[cid] = struct{}{}
+					storedCertIDs = append(storedCertIDs, cid)
+				}
+				b.WriteString("        # cert sourced from stored library; see tls.certificates below\n")
+			} else {
+				b.WriteString("        certresolver: letsencrypt\n")
+			}
 		}
 	}
 
@@ -262,6 +386,15 @@ func RenderComposeTraefikConfig(args ComposeTraefikConfigArgs) string {
 		fmt.Fprintf(&b, "          - url: \"http://%s-%s-1:%d\"\n",
 			args.ProjectName, key.service, key.port,
 		)
+	}
+
+	if len(storedCertIDs) > 0 {
+		b.WriteString("tls:\n")
+		b.WriteString("  certificates:\n")
+		for _, cid := range storedCertIDs {
+			fmt.Fprintf(&b, "    - certFile: %s\n", storedCertContainerPath(cid, "cert.pem"))
+			fmt.Fprintf(&b, "      keyFile: %s\n", storedCertContainerPath(cid, "key.pem"))
+		}
 	}
 
 	return b.String()
