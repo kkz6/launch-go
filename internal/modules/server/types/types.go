@@ -26,25 +26,32 @@ const (
 	ServerStatusArchived     ServerStatus = "archived"
 	ServerStatusUnknown      ServerStatus = "unknown"
 	ServerStatusFailed       ServerStatus = "failed"
+	// ServerStatusAwaitingConnection is set on custom (BYO) servers right
+	// after creation. The user must SSH in and run the provision script
+	// themselves; the platform doesn't poll. They click "Try Connection"
+	// in the UI to advance to provisioning.
+	ServerStatusAwaitingConnection ServerStatus = "awaiting_connection"
 )
 
 var allServerStatuses = []ServerStatus{
 	ServerStatusNew, ServerStatusStarting, ServerStatusProvisioning,
 	ServerStatusRunning, ServerStatusPaused, ServerStatusStopped,
 	ServerStatusDeleting, ServerStatusArchived, ServerStatusUnknown, ServerStatusFailed,
+	ServerStatusAwaitingConnection,
 }
 
 var serverStatusLabels = map[ServerStatus]string{
-	ServerStatusNew:          "Connecting",
-	ServerStatusStarting:     "Starting",
-	ServerStatusProvisioning: "Provisioning",
-	ServerStatusRunning:      "Running",
-	ServerStatusPaused:       "Paused",
-	ServerStatusStopped:      "Stopped",
-	ServerStatusDeleting:     "Deleting",
-	ServerStatusArchived:     "Archived",
-	ServerStatusUnknown:      "Unknown",
-	ServerStatusFailed:       "Failed",
+	ServerStatusNew:                "Connecting",
+	ServerStatusStarting:           "Starting",
+	ServerStatusProvisioning:       "Provisioning",
+	ServerStatusRunning:            "Running",
+	ServerStatusPaused:             "Paused",
+	ServerStatusStopped:            "Stopped",
+	ServerStatusDeleting:           "Deleting",
+	ServerStatusArchived:           "Archived",
+	ServerStatusUnknown:            "Unknown",
+	ServerStatusFailed:             "Failed",
+	ServerStatusAwaitingConnection: "Awaiting Connection",
 }
 
 func (s ServerStatus) String() string {

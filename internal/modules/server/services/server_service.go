@@ -125,13 +125,22 @@ func (s *Service) buildAndDispatchServer(ctx context.Context, teamID, userID str
 	password := security.GeneratePassword(32)
 	databasePassword := security.GeneratePassword(32)
 
+	// Custom (BYO) servers sit in awaiting_connection until the user runs
+	// the provision script and clicks "Try Connection". Cloud servers go
+	// through the auto-polling path (status=new, advanced by the
+	// WaitForServerToConnect job once the VM boots).
+	initialStatus := types.ServerStatusNew
+	if provider == types.ProviderCustom {
+		initialStatus = types.ServerStatusAwaitingConnection
+	}
+
 	server := &models.Server{
 		Name:             req.Name,
 		Description:      req.Description,
 		Provider:         provider,
 		Type:             &serverTypeStr,
 		OperatingSystem:  &osStr,
-		Status:           types.ServerStatusNew,
+		Status:           initialStatus,
 		SSHPort:          &defaultSSHPort,
 		Username:         &defaultUsername,
 		Password:         dbtype.EncryptedString(password),
@@ -196,14 +205,11 @@ func (s *Service) buildAndDispatchServer(ctx context.Context, teamID, userID str
 
 	activity.RecordCreated(ctx, userID, server, "Server was created")
 
-	// Dispatch appropriate job based on provider type
-	if provider == types.ProviderCustom {
-		// Custom servers skip cloud creation, go straight to waiting for connection
-		if err := s.dispatchWaitForConnectionJob(server, req.SSHKeyIDs); err != nil {
-			s.LogError(err, "Failed to dispatch wait for connection job", "server_id", server.ID)
-		}
-	} else {
-		// Cloud servers need to be created on the provider first
+	// Custom servers don't dispatch any job here — the user must paste the
+	// provision script into their box and then trigger TryConnection from
+	// the UI. Cloud servers need the VM created on the provider first;
+	// WaitForServerToConnect then auto-polls and dispatches provisioning.
+	if provider != types.ProviderCustom {
 		if err := s.dispatchCreateOnProviderJob(server, req.CredentialID, req.SSHKeyIDs); err != nil {
 			s.LogError(err, "Failed to dispatch create on provider job", "server_id", server.ID)
 		}
@@ -383,6 +389,95 @@ func (s *Service) ConnectServer(ctx context.Context, id, teamID, userID string) 
 	})
 }
 
+// TryConnection performs a one-shot SSH check on a custom server sitting in
+// awaiting_connection. Triggered by the user clicking "Try Connection" in
+// the UI after they've pasted the provision script. On success the server
+// advances to provisioning (ProvisionServer job dispatched). On failure no
+// state changes — the caller surfaces the error and the user clicks again.
+//
+// Signature matches ActionFunc so it can be wired up via fiberutil.Action.
+func (s *Service) TryConnection(ctx context.Context, id, teamID, userID string) error {
+	_ = userID
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, id, teamID)
+	if err != nil {
+		return err
+	}
+
+	if server.Provider != types.ProviderCustom {
+		return errors.New("try-connection only applies to custom servers")
+	}
+
+	if server.Status != types.ServerStatusAwaitingConnection {
+		return fmt.Errorf("server is not awaiting connection (status: %s)", server.Status)
+	}
+
+	if server.PublicIPv4 == nil || *server.PublicIPv4 == "" {
+		return errors.New("server has no IP address")
+	}
+
+	if server.PrivateKey.IsEmpty() {
+		return errors.New("server has no private key")
+	}
+
+	// Single SSH attempt with a tight timeout. The HTTP request is already
+	// bounded — we just want to fail fast so the user gets a real answer
+	// rather than waiting on a hung TCP.
+	dialCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	client, err := server.ConnectionAsRoot().Dial()
+	if err != nil {
+		return fmt.Errorf("could not reach server: %w", err)
+	}
+	defer client.Close()
+
+	result, err := client.Run(dialCtx, "whoami")
+	if err != nil {
+		return fmt.Errorf("ssh failed: %w", err)
+	}
+
+	if result.ExitCode != 0 {
+		return fmt.Errorf("ssh whoami exited %d", result.ExitCode)
+	}
+
+	now := time.Now()
+	if err := s.repos.Server().UpdateFields(ctx, id, map[string]any{
+		"connected":               true,
+		"last_connectivity_check": now,
+		"status":                  types.ServerStatusStarting,
+	}); err != nil {
+		return fmt.Errorf("failed to persist connection state: %w", err)
+	}
+
+	// Reload so the broadcast carries the new status.
+	if updated, ferr := s.repos.Server().FindByID(ctx, id); ferr == nil {
+		s.BroadcastToTeam(server.TeamID, "server.connected", map[string]any{
+			"server_id": updated.ID,
+			"status":    string(updated.Status),
+		})
+		s.broadcastServerUpdate(updated)
+	}
+
+	// Hand off to provisioning. Collect the SSH key ids the same way
+	// RetryProvision does so deploy keys land on the box.
+	sshKeys, _ := s.repos.SSHKey().FindByServer(ctx, id)
+	var sshKeyIDs []string
+	for _, k := range sshKeys {
+		sshKeyIDs = append(sshKeyIDs, k.ID)
+	}
+
+	task, err := jobs.NewProvisionServerTask(id, teamID, nil, sshKeyIDs)
+	if err != nil {
+		return fmt.Errorf("failed to create provision task: %w", err)
+	}
+	if err := s.EnqueueTask(task); err != nil {
+		return fmt.Errorf("failed to enqueue provision task: %w", err)
+	}
+
+	activity.RecordEvent(ctx, "connection_established", "", server, "User confirmed SSH connection; provisioning queued")
+	return nil
+}
+
 // HasLaunchAgent checks if a server has the Launch Agent installed
 func (s *Service) HasLaunchAgent(ctx context.Context, serverID string) (bool, error) {
 	return s.repos.Server().HasLaunchAgent(ctx, serverID)
@@ -488,12 +583,6 @@ func (s *Service) broadcastServerUpdate(server *models.Server) {
 func (s *Service) dispatchCreateOnProviderJob(server *models.Server, serverProviderID string, sshKeyIDs []string) error {
 	return s.MustDispatchWithOptions(func() (*asynq.Task, error) {
 		return jobs.NewCreateOnProviderTask(server.ID, server.TeamID, serverProviderID, nil, sshKeyIDs)
-	})
-}
-
-func (s *Service) dispatchWaitForConnectionJob(server *models.Server, sshKeyIDs []string) error {
-	return s.MustDispatchWithOptions(func() (*asynq.Task, error) {
-		return jobs.NewWaitForServerToConnectTask(server.ID, server.TeamID, "", nil, sshKeyIDs)
 	})
 }
 

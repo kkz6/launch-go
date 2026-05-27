@@ -62,6 +62,10 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 
 		// Provisioning actions (don't require provisioned server)
 		servers.Post("/:id/retry-provision", fiberutil.Action("Server provisioning has been queued", m.service.RetryProvision))
+		// Custom-server only: user clicks this after pasting the provision
+		// script into their box. One synchronous SSH attempt; on success
+		// the server advances to provisioning.
+		servers.Post("/:id/try-connection", fiberutil.Action("Connected — provisioning started", m.service.TryConnection))
 		servers.Get("/:id/provision-status", handler.GetProvisionStatus)
 		servers.Get("/:id/provision-script-content", handler.GetProvisionScriptContent)
 		servers.Post("/:id/archive", fiberutil.Action("Server archived", m.service.ArchiveServer))
