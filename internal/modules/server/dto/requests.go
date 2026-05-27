@@ -6,7 +6,7 @@ type CreateServerRequest struct {
 	Description     *string  `json:"description" validate:"omitempty,max=1000"`
 	Provider        string   `json:"provider" validate:"required,oneof=digitalocean hetzner linode vultr aws custom_server"`
 	Type            string   `json:"type" validate:"required,oneof=php database loadbalancer docker"`
-	OperatingSystem string   `json:"operating_system" validate:"omitempty,oneof=ubuntu_20 ubuntu_22 ubuntu_24"`
+	OperatingSystem string   `json:"operating_system" validate:"omitempty,oneof=ubuntu_22 ubuntu_24"`
 	Region          string   `json:"region" validate:"required_unless=Provider custom_server"`
 	Size            string   `json:"size" validate:"required_unless=Provider custom_server"`
 	PHPVersion      string   `json:"php_version" validate:"omitempty,oneof=none php56 php70 php71 php72 php73 php74 php80 php81 php82 php83 php84"`

@@ -638,15 +638,13 @@ func AllProcessManagers() []ProcessManager {
 type OperatingSystem string
 
 const (
-	OSUbuntu20 OperatingSystem = "ubuntu_20"
 	OSUbuntu22 OperatingSystem = "ubuntu_22"
 	OSUbuntu24 OperatingSystem = "ubuntu_24"
 )
 
-var allOperatingSystems = []OperatingSystem{OSUbuntu20, OSUbuntu22, OSUbuntu24}
+var allOperatingSystems = []OperatingSystem{OSUbuntu22, OSUbuntu24}
 
 var operatingSystemLabels = map[OperatingSystem]string{
-	OSUbuntu20: "Ubuntu 20.04",
 	OSUbuntu22: "Ubuntu 22.04",
 	OSUbuntu24: "Ubuntu 24.04",
 }

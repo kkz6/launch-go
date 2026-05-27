@@ -24,16 +24,15 @@ func allActiveOSes() []string {
 }
 
 // providerSupportedOSes captures, per provider, which OSes we still have
-// working upstream images for. When an upstream retires an image (DO killed
-// `ubuntu-20-04-x64`) it drops out of the provider's entry here AND out of
-// the provider's Images map in options.go — and the test asserts the two
-// stay in sync, so a future config edit can't silently leave a half-removed
-// OS visible to users.
+// working upstream images for. When an upstream retires an image it drops
+// out of the provider's entry here AND out of the provider's Images map in
+// options.go — and the test asserts the two stay in sync, so a future
+// config edit can't silently leave a half-removed OS visible to users.
 var providerSupportedOSes = map[string][]string{
-	"digitalocean": {"ubuntu_22", "ubuntu_24"}, // ubuntu_20 retired by DO
-	"hetzner":      {"ubuntu_20", "ubuntu_22", "ubuntu_24"},
-	"linode":       {"ubuntu_20", "ubuntu_22", "ubuntu_24"},
-	"vultr":        {"ubuntu_20", "ubuntu_22", "ubuntu_24"},
+	"digitalocean": {"ubuntu_22", "ubuntu_24"},
+	"hetzner":      {"ubuntu_22", "ubuntu_24"},
+	"linode":       {"ubuntu_22", "ubuntu_24"},
+	"vultr":        {"ubuntu_22", "ubuntu_24"},
 }
 
 func TestProviderConfigs_MatchSupportedOSes(t *testing.T) {

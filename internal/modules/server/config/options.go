@@ -108,11 +108,6 @@ func getDigitalOceanConfig() ProviderConfig {
 		// the worker hit a 422 "image no longer available" when 168977420 was
 		// pulled. Slugs like `ubuntu-24-04-x64` are the stable reference; DO
 		// repoints the slug to whatever the current published snapshot is.
-		//
-		// Note: `ubuntu-20-04-x64` was retired on DigitalOcean (confirmed via
-		// `GET /v2/images/ubuntu-20-04-x64` returning 404). Selecting
-		// ubuntu_20 on DO is now unsupported here; the UI hides OS choices
-		// the provider can't fulfil (see GetImagesByProvider).
 		Images: map[string]interface{}{
 			"ubuntu_22": "ubuntu-22-04-x64",
 			"ubuntu_24": "ubuntu-24-04-x64",
@@ -157,7 +152,6 @@ func getHetznerConfig() ProviderConfig {
 			{Value: "hil", Title: "US - Hillsboro, OR"},
 		},
 		Images: map[string]interface{}{
-			"ubuntu_20": "ubuntu-20.04",
 			"ubuntu_22": "ubuntu-22.04",
 			"ubuntu_24": "ubuntu-24.04",
 		},
@@ -210,7 +204,6 @@ func getLinodeConfig() ProviderConfig {
 			{Value: "ap-northeast", Title: "ap-northeast - Japan"},
 		},
 		Images: map[string]interface{}{
-			"ubuntu_20": "linode/ubuntu20.04",
 			"ubuntu_22": "linode/ubuntu22.04",
 			"ubuntu_24": "linode/ubuntu24.04",
 		},
@@ -268,7 +261,6 @@ func getVultrConfig() ProviderConfig {
 		// a 422 fires from Vultr, re-check these against `GET /v2/os` and
 		// the cmd/validate-images helper.
 		Images: map[string]interface{}{
-			"ubuntu_20": "387",
 			"ubuntu_22": "1743",
 			"ubuntu_24": "2284",
 		},
@@ -323,35 +315,35 @@ func getAWSConfig() ProviderConfig {
 			{Value: "sa-east-1", Title: "South America (São Paulo)"},
 		},
 		Images: map[string]interface{}{
-			"eu-south-2":     map[string]string{"ubuntu_24": "ami-0a50f993202fe4f22", "ubuntu_22": "ami-043e9941c6aec0f52", "ubuntu_20": "ami-086f353893612e446"},
-			"eu-west-1":      map[string]string{"ubuntu_24": "ami-0776c814353b4814d", "ubuntu_22": "ami-0d0fa503c811361ab", "ubuntu_20": "ami-0008aa5cb0cde3400"},
-			"af-south-1":     map[string]string{"ubuntu_24": "ami-0bfda59e8f84ff5ed", "ubuntu_22": "ami-0d06a4031539a9be6", "ubuntu_20": "ami-0ea465fccfaf199ce"},
-			"eu-west-2":      map[string]string{"ubuntu_24": "ami-053a617c6207ecc7b", "ubuntu_22": "ami-0eb5c35d7b89f3488", "ubuntu_20": "ami-0608dbf22649c0159"},
-			"eu-south-1":     map[string]string{"ubuntu_24": "ami-0355c99d0faba8847", "ubuntu_22": "ami-0bdcf995dcfebf29c", "ubuntu_20": "ami-034ea9dc86027e603"},
-			"ap-south-1":     map[string]string{"ubuntu_24": "ami-0f58b397bc5c1f2e8", "ubuntu_22": "ami-0f16c6c3de733b474", "ubuntu_20": "ami-02f829375c976f810"},
-			"il-central-1":   map[string]string{"ubuntu_24": "ami-04a4b28d712600827", "ubuntu_22": "ami-09cd8eea397932e88", "ubuntu_20": "ami-03988803bd4e18212"},
-			"eu-north-1":     map[string]string{"ubuntu_24": "ami-0705384c0b33c194c", "ubuntu_22": "ami-0fff1012fc5cb9f25", "ubuntu_20": "ami-07cca21629288f454"},
-			"me-central-1":   map[string]string{"ubuntu_24": "ami-048798fd481c4c791", "ubuntu_22": "ami-042fcc4c33a3b6429", "ubuntu_20": "ami-0f98fff9d77968c80"},
-			"ca-central-1":   map[string]string{"ubuntu_24": "ami-0c4596ce1e7ae3e68", "ubuntu_22": "ami-04fea581fe25e2675", "ubuntu_20": "ami-05690acfbddfbeaf6"},
-			"eu-west-3":      map[string]string{"ubuntu_24": "ami-00ac45f3035ff009e", "ubuntu_22": "ami-0b020d95f579c8f43", "ubuntu_20": "ami-0130b7d3ec1d07e4f"},
-			"ap-south-2":     map[string]string{"ubuntu_24": "ami-008616ec4a2c6975e", "ubuntu_22": "ami-088e75eecea53e53e", "ubuntu_20": "ami-0688d182e7c22ec3f"},
-			"ca-west-1":      map[string]string{"ubuntu_24": "ami-07022089d2e36ace0", "ubuntu_22": "ami-02e22cefcad05a835", "ubuntu_20": "ami-03890126b7675fac8"},
-			"eu-central-1":   map[string]string{"ubuntu_24": "ami-01e444924a2233b07", "ubuntu_22": "ami-01a93368cab494eb5", "ubuntu_20": "ami-07fd6b7604806e876"},
-			"me-south-1":     map[string]string{"ubuntu_24": "ami-087f3ec3fdda67295", "ubuntu_22": "ami-03ae386fab11fa0a1", "ubuntu_20": "ami-0f65a186b3552f348"},
-			"ap-northeast-1": map[string]string{"ubuntu_24": "ami-01bef798938b7644d", "ubuntu_22": "ami-08e32db9e33e28876", "ubuntu_20": "ami-0ed286a950292f370"},
-			"ap-southeast-1": map[string]string{"ubuntu_24": "ami-003c463c8207b4dfa", "ubuntu_22": "ami-084cab24460184bd3", "ubuntu_20": "ami-081ee02c4cdf3917c"},
-			"us-west-1":      map[string]string{"ubuntu_24": "ami-08012c0a9ee8e21c4", "ubuntu_22": "ami-023f8bebe991375fd", "ubuntu_20": "ami-0344f34a6875de16a"},
-			"ap-southeast-3": map[string]string{"ubuntu_24": "ami-00c31062c5966e820", "ubuntu_22": "ami-0fd547652d1673e30", "ubuntu_20": "ami-0699dddffd3542faf"},
-			"ap-northeast-2": map[string]string{"ubuntu_24": "ami-0e6f2b2fa0ca704d0", "ubuntu_22": "ami-0720c7fcba4b88b36", "ubuntu_20": "ami-03ec7d02334d21d49"},
-			"ap-southeast-2": map[string]string{"ubuntu_24": "ami-080660c9757080771", "ubuntu_22": "ami-0d9d3b991cfa8ac6e", "ubuntu_20": "ami-06c7a70c38594fef6"},
-			"us-east-1":      map[string]string{"ubuntu_24": "ami-04b70fa74e45c3917", "ubuntu_22": "ami-0cfa2ad4242c3168d", "ubuntu_20": "ami-0e3a6d8ff4c8fe246"},
-			"us-west-2":      map[string]string{"ubuntu_24": "ami-0cf2b4e024cdb6960", "ubuntu_22": "ami-09c3a3c2cf6003f6c", "ubuntu_20": "ami-091c4300a778841cc"},
-			"ap-east-1":      map[string]string{"ubuntu_24": "ami-026789b06a607b9a5", "ubuntu_22": "ami-0361acb22fef7522b", "ubuntu_20": "ami-0c0665dcea29a292d"},
-			"eu-central-2":   map[string]string{"ubuntu_24": "ami-053ea2f9d1d6ac54c", "ubuntu_22": "ami-09407f9985de426af", "ubuntu_20": "ami-00c9866441e3616dd"},
-			"us-east-2":      map[string]string{"ubuntu_24": "ami-09040d770ffe2224f", "ubuntu_22": "ami-0b986fc833876b42e", "ubuntu_20": "ami-010e55fe08af05fa7"},
-			"ap-northeast-3": map[string]string{"ubuntu_24": "ami-0b9bc7dcdbcff394e", "ubuntu_22": "ami-063600dcf13c07ebc", "ubuntu_20": "ami-0b7108d627f57c7c8"},
-			"sa-east-1":      map[string]string{"ubuntu_24": "ami-04716897be83e3f04", "ubuntu_22": "ami-0e6dfcf4e0e4dfc52", "ubuntu_20": "ami-050e1159c5a10dd81"},
-			"ap-southeast-4": map[string]string{"ubuntu_24": "ami-0396cf525fd0aa5c1", "ubuntu_22": "ami-097638dc9b6250206", "ubuntu_20": "ami-02d0fccf5cdcdd8c5"},
+			"eu-south-2":     map[string]string{"ubuntu_24": "ami-0a50f993202fe4f22", "ubuntu_22": "ami-043e9941c6aec0f52"},
+			"eu-west-1":      map[string]string{"ubuntu_24": "ami-0776c814353b4814d", "ubuntu_22": "ami-0d0fa503c811361ab"},
+			"af-south-1":     map[string]string{"ubuntu_24": "ami-0bfda59e8f84ff5ed", "ubuntu_22": "ami-0d06a4031539a9be6"},
+			"eu-west-2":      map[string]string{"ubuntu_24": "ami-053a617c6207ecc7b", "ubuntu_22": "ami-0eb5c35d7b89f3488"},
+			"eu-south-1":     map[string]string{"ubuntu_24": "ami-0355c99d0faba8847", "ubuntu_22": "ami-0bdcf995dcfebf29c"},
+			"ap-south-1":     map[string]string{"ubuntu_24": "ami-0f58b397bc5c1f2e8", "ubuntu_22": "ami-0f16c6c3de733b474"},
+			"il-central-1":   map[string]string{"ubuntu_24": "ami-04a4b28d712600827", "ubuntu_22": "ami-09cd8eea397932e88"},
+			"eu-north-1":     map[string]string{"ubuntu_24": "ami-0705384c0b33c194c", "ubuntu_22": "ami-0fff1012fc5cb9f25"},
+			"me-central-1":   map[string]string{"ubuntu_24": "ami-048798fd481c4c791", "ubuntu_22": "ami-042fcc4c33a3b6429"},
+			"ca-central-1":   map[string]string{"ubuntu_24": "ami-0c4596ce1e7ae3e68", "ubuntu_22": "ami-04fea581fe25e2675"},
+			"eu-west-3":      map[string]string{"ubuntu_24": "ami-00ac45f3035ff009e", "ubuntu_22": "ami-0b020d95f579c8f43"},
+			"ap-south-2":     map[string]string{"ubuntu_24": "ami-008616ec4a2c6975e", "ubuntu_22": "ami-088e75eecea53e53e"},
+			"ca-west-1":      map[string]string{"ubuntu_24": "ami-07022089d2e36ace0", "ubuntu_22": "ami-02e22cefcad05a835"},
+			"eu-central-1":   map[string]string{"ubuntu_24": "ami-01e444924a2233b07", "ubuntu_22": "ami-01a93368cab494eb5"},
+			"me-south-1":     map[string]string{"ubuntu_24": "ami-087f3ec3fdda67295", "ubuntu_22": "ami-03ae386fab11fa0a1"},
+			"ap-northeast-1": map[string]string{"ubuntu_24": "ami-01bef798938b7644d", "ubuntu_22": "ami-08e32db9e33e28876"},
+			"ap-southeast-1": map[string]string{"ubuntu_24": "ami-003c463c8207b4dfa", "ubuntu_22": "ami-084cab24460184bd3"},
+			"us-west-1":      map[string]string{"ubuntu_24": "ami-08012c0a9ee8e21c4", "ubuntu_22": "ami-023f8bebe991375fd"},
+			"ap-southeast-3": map[string]string{"ubuntu_24": "ami-00c31062c5966e820", "ubuntu_22": "ami-0fd547652d1673e30"},
+			"ap-northeast-2": map[string]string{"ubuntu_24": "ami-0e6f2b2fa0ca704d0", "ubuntu_22": "ami-0720c7fcba4b88b36"},
+			"ap-southeast-2": map[string]string{"ubuntu_24": "ami-080660c9757080771", "ubuntu_22": "ami-0d9d3b991cfa8ac6e"},
+			"us-east-1":      map[string]string{"ubuntu_24": "ami-04b70fa74e45c3917", "ubuntu_22": "ami-0cfa2ad4242c3168d"},
+			"us-west-2":      map[string]string{"ubuntu_24": "ami-0cf2b4e024cdb6960", "ubuntu_22": "ami-09c3a3c2cf6003f6c"},
+			"ap-east-1":      map[string]string{"ubuntu_24": "ami-026789b06a607b9a5", "ubuntu_22": "ami-0361acb22fef7522b"},
+			"eu-central-2":   map[string]string{"ubuntu_24": "ami-053ea2f9d1d6ac54c", "ubuntu_22": "ami-09407f9985de426af"},
+			"us-east-2":      map[string]string{"ubuntu_24": "ami-09040d770ffe2224f", "ubuntu_22": "ami-0b986fc833876b42e"},
+			"ap-northeast-3": map[string]string{"ubuntu_24": "ami-0b9bc7dcdbcff394e", "ubuntu_22": "ami-063600dcf13c07ebc"},
+			"sa-east-1":      map[string]string{"ubuntu_24": "ami-04716897be83e3f04", "ubuntu_22": "ami-0e6dfcf4e0e4dfc52"},
+			"ap-southeast-4": map[string]string{"ubuntu_24": "ami-0396cf525fd0aa5c1", "ubuntu_22": "ami-097638dc9b6250206"},
 		},
 	}
 }
@@ -371,10 +363,10 @@ func GetAWSImageForRegion(region, os string) string {
 
 // GetSupportedOSesByProvider returns the set of OS keys each provider can
 // actually fulfil right now. Driven entirely by the Images maps so removing
-// a retired image (e.g. ubuntu_20 from DigitalOcean) automatically hides
-// the OS from the picker for that provider. AWS is keyed by region, so we
-// derive the OS list from one of the region maps (all regions carry the
-// same set of OSes — guarded by TestAWSConfig_ImagesCoverAllRegions).
+// a retired image automatically hides the OS from the picker for that
+// provider. AWS is keyed by region, so we derive the OS list from one of
+// the region maps (all regions carry the same set of OSes — guarded by
+// TestAWSConfig_ImagesCoverAllRegions).
 func GetSupportedOSesByProvider() map[string][]string {
 	out := make(map[string][]string)
 	for provider, cfg := range GetProviderConfigs() {
