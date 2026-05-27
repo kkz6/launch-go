@@ -997,20 +997,42 @@ Method-per-route, mapping service errors to HTTP statuses:
 
 **Step 3: Register routes in `module.go`**
 
+The actual interface (per `internal/pkg/app/module.go:25`) is
+`RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler)` —
+NOT `RegisterTeamRoutes`. Team scoping is added via
+`middleware.AuthenticatedChain(authMiddleware)`, which threads auth +
+team + subscription middleware in one shot.
+
 ```go
-func (m *Module) RegisterTeamRoutes(router fiber.Router, authMiddleware fiber.Handler) {
-    grp := router.Group("/certificates", authMiddleware)
+import (
+    "github.com/kkz6/launch-go/internal/middleware"
+)
+
+func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Handler) {
+    auth := middleware.AuthenticatedChain(authMiddleware)
+
+    grp := router.Group("/certificates", auth...)
     grp.Get("/", m.handler.List)
     grp.Post("/", m.handler.Create)
     grp.Get("/:id", m.handler.Get)
     grp.Patch("/:id", m.handler.Update)
-    grp.Delete("/:id", m.handler.Delete)
+    grp.Delete("/:id", m.handler.Delete)            // ?force=true for cascade
     grp.Get("/:id/usages", m.handler.Usages)
 }
 ```
 
-(Follow the existing module interface in
-`internal/pkg/app/kernel.go` — look at how `dockerModule` is wired.)
+Also add the interface assertion:
+
+```go
+var (
+    _ app.Module         = (*Module)(nil)
+    _ app.RouteRegistrar = (*Module)(nil)
+)
+```
+
+DELETE with cascade uses a `?force=true` query parameter. The handler
+reads `c.Query("force") == "true"` and routes to `DeleteWithForce`
+instead of `Delete`.
 
 **Step 4: Smoke test**
 
