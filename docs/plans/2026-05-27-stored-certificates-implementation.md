@@ -779,14 +779,34 @@ git commit -m "certificate: parser service — x509 metadata extraction + key-ce
 
 **Step 1: Write the Create test (RED)**
 
-```go
-// internal/modules/certificate/services/stored_certificate_service_test.go
-package services_test
+Test-DB strategy: in-memory SQLite via `gorm.io/driver/sqlite` +
+`db.AutoMigrate(&models.StoredCertificate{})`. The canonical existing
+pattern lives at
+`internal/modules/docker/repositories/project_repository_test.go` —
+copy the `setupDB(t *testing.T) *gorm.DB` helper shape.
 
-// ... (uses testhelpers.NewSQLiteDB() or the existing in-mem test DB
-// helper that other module tests use — read internal/modules/docker/
-// services/registry_credential_service_test.go for the pattern)
-```
+Two extra setup needs that pattern doesn't cover:
+
+1. **Encryption key.** `dbtype.EncryptedString.Value()` calls
+   `serializers.Encrypt`, which needs a global AES-256 key. Set it
+   once in `TestMain`:
+   ```go
+   func TestMain(m *testing.M) {
+       // Any 32-byte key works for tests; the same key is needed for
+       // round-trip decrypt.
+       if err := serializers.SetEncryptionKey([]byte("0123456789abcdef0123456789abcdef")); err != nil {
+           panic(err)
+       }
+       os.Exit(m.Run())
+   }
+   ```
+
+2. **PEM fixture loading.** Re-use the testdata files from Task 2.1
+   via `mustRead(t, "leaf.pem")`. The shared helper from `parser_test.go`
+   is package-private (`services_test`), but the new test file is also
+   `package services_test` so it can call it directly. If the helper
+   isn't visible (because Go's external test packages compile
+   separately), copy the small `mustRead` body into the new file.
 
 Tests to cover:
 - `TestService_Create_Success` — happy path; row written; fingerprint set.
@@ -818,6 +838,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/certificate/dto"
 	"github.com/kkz6/launch-go/internal/modules/certificate/models"
 	"github.com/kkz6/launch-go/internal/modules/certificate/repositories"
+	"github.com/kkz6/launch-go/internal/pkg/dbtype"
 )
 
 type StoredCertificateService struct {
@@ -867,7 +888,7 @@ func (s *StoredCertificateService) Create(
 		Name:              req.Name,
 		Notes:             req.Notes,
 		Certificate:       req.Certificate,
-		PrivateKey:        []byte(req.PrivateKey), // EncryptedString encrypts on save
+		PrivateKey:        dbtype.EncryptedString(req.PrivateKey), // encrypts on save
 		Domains:           parsed.Domains,
 		CommonName:        nilIfEmpty(parsed.CommonName),
 		Issuer:            nilIfEmpty(parsed.Issuer),
