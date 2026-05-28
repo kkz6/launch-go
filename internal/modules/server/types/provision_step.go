@@ -11,6 +11,13 @@ import (
 type ProvisionStep string
 
 const (
+	// DetectOS is the first step in every provision flow. Sources
+	// /etc/os-release + uname on the box, writes the result back via a
+	// ::LAUNCH::detected_os marker. Downstream steps that need to
+	// branch on distro (install_docker, install_php, …) consult the
+	// detected fields rather than whatever the user picked in the
+	// dashboard dropdown.
+	ProvisionStepDetectOS                 ProvisionStep = "detect_os"
 	ProvisionStepConfigureFirewall        ProvisionStep = "configure_firewall"
 	ProvisionStepConfigureSwap            ProvisionStep = "configure_swap"
 	ProvisionStepInstallEssentialPackages ProvisionStep = "install_essential_packages"
@@ -34,6 +41,7 @@ const (
 )
 
 var allProvisionSteps = []ProvisionStep{
+	ProvisionStepDetectOS,
 	ProvisionStepConfigureFirewall,
 	ProvisionStepConfigureSwap,
 	ProvisionStepInstallEssentialPackages,
@@ -51,6 +59,7 @@ var allProvisionSteps = []ProvisionStep{
 }
 
 var provisionStepLabels = map[ProvisionStep]string{
+	ProvisionStepDetectOS:                 "Detect Operating System",
 	ProvisionStepConfigureFirewall:        "Configure Firewall",
 	ProvisionStepConfigureSwap:            "Configure Swap",
 	ProvisionStepInstallEssentialPackages: "Install Essential Packages",
@@ -73,6 +82,7 @@ func (p ProvisionStep) String() string {
 // TemplateName returns the template path for this provision step
 func (p ProvisionStep) TemplateName() string {
 	templateNames := map[ProvisionStep]string{
+		ProvisionStepDetectOS:                 "provision/detect_os.sh",
 		ProvisionStepConfigureFirewall:        "provision/configure_firewall.sh",
 		ProvisionStepConfigureSwap:            "provision/configure_swap.sh",
 		ProvisionStepInstallEssentialPackages: "provision/install_essential_packages.sh",
@@ -113,6 +123,7 @@ func (p ProvisionStep) RequiresData() bool {
 // Description returns a human-readable description of this step
 func (p ProvisionStep) Description() string {
 	descriptions := map[ProvisionStep]string{
+		ProvisionStepDetectOS:                 "Detect the operating system, version, architecture and kernel",
 		ProvisionStepConfigureFirewall:        "Configure the firewall with the default rules (SSH, HTTP, HTTPS)",
 		ProvisionStepConfigureSwap:            "Configure a swap file so the server can handle more memory-intensive tasks",
 		ProvisionStepInstallEssentialPackages: "Install essential packages (curl, git, wget, etc.)",
@@ -159,6 +170,7 @@ func (p ProvisionStep) IsValid() bool {
 //     restoreUnattendedUpgrades() at the end of provisioning.
 func ForFreshServer() []ProvisionStep {
 	return []ProvisionStep{
+		ProvisionStepDetectOS,
 		ProvisionStepConfigureSwap,
 		ProvisionStepConfigureFirewall,
 		ProvisionStepInstallEssentialPackages,
@@ -179,6 +191,7 @@ func ForFreshServer() []ProvisionStep {
 // running) but new provisions never opt in to swarm.
 func ForDockerServer() []ProvisionStep {
 	return []ProvisionStep{
+		ProvisionStepDetectOS,
 		ProvisionStepConfigureSwap,
 		ProvisionStepConfigureFirewall,
 		ProvisionStepInstallEssentialPackages,

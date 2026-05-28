@@ -59,6 +59,17 @@ type Server struct {
 	LastUpdateCheck           *time.Time             `gorm:"column:last_update_check;type:timestamp null" json:"-"`
 	LastConnectivityCheck     *time.Time             `gorm:"column:last_connectivity_check;type:timestamp null" json:"last_connectivity_check,omitempty"`
 	ArchivedAt                *time.Time             `gorm:"column:archived_at;type:timestamp null" json:"archived_at,omitempty"`
+	// Detected runtime facts about the box, populated by the detect_os
+	// provision step from /etc/os-release + uname. Distinct from
+	// OperatingSystem above (which is what the user picked in the
+	// dropdown) — downstream scripts trust these, the UI surfaces them
+	// so any mismatch is visible.
+	DetectedOSID              *string                `gorm:"column:detected_os_id;type:varchar(64)" json:"detected_os_id,omitempty"`
+	DetectedOSVersion         *string                `gorm:"column:detected_os_version;type:varchar(64)" json:"detected_os_version,omitempty"`
+	DetectedOSVersionCodename *string                `gorm:"column:detected_os_version_codename;type:varchar(64)" json:"detected_os_version_codename,omitempty"`
+	DetectedArch              *string                `gorm:"column:detected_arch;type:varchar(32)" json:"detected_arch,omitempty"`
+	DetectedKernel            *string                `gorm:"column:detected_kernel;type:varchar(128)" json:"detected_kernel,omitempty"`
+	DetectedAt                *time.Time             `gorm:"column:detected_at;type:timestamptz" json:"detected_at,omitempty"`
 
 	// Relations
 	Services      []InstalledService `gorm:"foreignKey:ServerID;references:ID" json:"services,omitempty"`

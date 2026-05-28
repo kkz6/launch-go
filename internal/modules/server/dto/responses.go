@@ -41,6 +41,16 @@ type ServerResponse struct {
 	StorageInGB           *int                 `json:"storage_in_gb,omitempty"`
 	OperatingSystem       string               `json:"operating_system"`
 	OperatingSystemLabel  string               `json:"operating_system_label"`
+	// Detected* mirror the server's runtime-detected facts (populated
+	// by the detect_os provision step from /etc/os-release + uname).
+	// Distinct from OperatingSystem above (which is the user's
+	// dashboard choice). UI surfaces both so any mismatch is visible.
+	DetectedOSID              *string `json:"detected_os_id,omitempty"`
+	DetectedOSVersion         *string `json:"detected_os_version,omitempty"`
+	DetectedOSVersionCodename *string `json:"detected_os_version_codename,omitempty"`
+	DetectedArch              *string `json:"detected_arch,omitempty"`
+	DetectedKernel            *string `json:"detected_kernel,omitempty"`
+	DetectedAt                *string `json:"detected_at,omitempty"`
 	Status                string               `json:"status"`
 	StatusLabel           string               `json:"status_label"`
 	PublicIPv4            *string              `json:"public_ipv4,omitempty"`
@@ -147,6 +157,16 @@ func ToServerResponse(server *models.Server) ServerResponse {
 	resp.ProvisionedAt = pkgdto.FormatTime(server.ProvisionedAt)
 	resp.LastConnectivityCheck = pkgdto.FormatTime(server.LastConnectivityCheck)
 	resp.ArchivedAt = pkgdto.FormatTime(server.ArchivedAt)
+	// Detected* fields pass through as nullable pointers so the frontend
+	// can render "Detected: <…>" only when the detect_os step has
+	// actually run. Legacy servers (provisioned before the step
+	// existed) come back with nil and the UI hides the row.
+	resp.DetectedOSID = server.DetectedOSID
+	resp.DetectedOSVersion = server.DetectedOSVersion
+	resp.DetectedOSVersionCodename = server.DetectedOSVersionCodename
+	resp.DetectedArch = server.DetectedArch
+	resp.DetectedKernel = server.DetectedKernel
+	resp.DetectedAt = pkgdto.FormatTime(server.DetectedAt)
 
 	// Include provision command for custom servers that need manual provisioning
 	// (status: new, starting, or failed - before successful provisioning)
