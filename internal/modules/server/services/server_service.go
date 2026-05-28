@@ -851,7 +851,18 @@ func shellEscape(s string) string {
 //     (e.g. when a user did `sudo -E bash`, or when piped through some
 //     CI shells). Hard-coding the path removes the variable entirely.
 func (s *Service) generateAuthorizeKeyScript(server *models.Server) string {
-	publicKey := string(server.PublicKey)
+	// TrimSpace is load-bearing. ssh.MarshalAuthorizedKey appends a
+	// trailing newline, which would otherwise be baked into the script
+	// as `PUBLIC_KEY="ssh-rsa AAAA...==\n"`. When bash later expands
+	// "$PUBLIC_KEY" for `grep -qF`, grep treats a multi-line pattern
+	// as OR-ed lines — and one of those lines is empty. The empty
+	// pattern matches every line in any non-empty file, so grep -qF
+	// silently always succeeds, the script reports "Management key
+	// already authorized", and the `echo >> authorized_keys` write
+	// never runs. That bug stranded a customer's server in
+	// awaiting_connection — every retry no-op'd. Trim the key so the
+	// shell variable is a clean single-line value.
+	publicKey := strings.TrimSpace(string(server.PublicKey))
 	escapedName := shellEscape(server.Name)
 
 	script := `#!/bin/bash
