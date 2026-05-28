@@ -985,6 +985,34 @@ func (s *Service) RetryProvision(ctx context.Context, serverID, teamID, userID s
 	return nil
 }
 
+// BackfillDetectedOS enqueues a job that SSHes into the server, parses
+// /etc/os-release + uname, and writes the detected_os_* / detected_arch
+// / detected_kernel columns. Used for:
+//
+//   - Legacy servers provisioned before the detect_os step existed
+//     (their detected_* fields are all NULL).
+//   - Refreshing the cached facts after a distro/kernel upgrade.
+//
+// Synchronous part is just enqueue-and-return; the actual SSH and DB
+// update happen in the worker so the HTTP request isn't gated on a
+// potentially-slow network round-trip. Result broadcasts as
+// server.updated when the job finishes.
+//
+// Signature matches ActionFunc.
+func (s *Service) BackfillDetectedOS(ctx context.Context, serverID, teamID, userID string) error {
+	_ = userID
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return err
+	}
+	if !server.Connected {
+		return fiberutil.Validation("Server is not connected; cannot detect OS facts yet.")
+	}
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewBackfillDetectedOSTask(serverID)
+	})
+}
+
 // RunVulnerabilityAudit runs a security vulnerability audit on a server
 func (s *Service) RunVulnerabilityAudit(ctx context.Context, serverID, teamID, userID string, emailRecipient *string) error {
 	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)

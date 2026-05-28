@@ -68,6 +68,12 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		servers.Post("/:id/try-connection", fiberutil.Action("Connected — provisioning started", m.service.TryConnection))
 		servers.Get("/:id/provision-status", handler.GetProvisionStatus)
 		servers.Get("/:id/provision-script-content", handler.GetProvisionScriptContent)
+		// Manually re-detect OS facts on an already-provisioned server.
+		// Useful for backfilling rows that pre-date the detect_os
+		// provision step, or for refreshing after a kernel/distro
+		// upgrade. The endpoint enqueues a job; the actual SSH happens
+		// in the worker and the result is broadcast via server.updated.
+		servers.Post("/:id/detect-os", fiberutil.Action("OS detection has been queued", m.service.BackfillDetectedOS))
 		servers.Post("/:id/archive", fiberutil.Action("Server archived", m.service.ArchiveServer))
 		servers.Post("/:id/unarchive", fiberutil.Action("Server unarchived", m.service.UnarchiveServer))
 
