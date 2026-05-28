@@ -162,6 +162,30 @@ func (p *VultrProvider) GetImage(os types.OperatingSystem) string {
 	return p.GetImageFromConfig(os, "2284") // Ubuntu 24.04
 }
 
+// LookupImage asks Vultr whether the given OS id is still served.
+// Vultr identifies OS images by numeric ID (e.g. "2284" = Ubuntu
+// 24.04 at time of writing). GET /v2/os/{os-id} returns 200 with the
+// record on success, 404 otherwise. Mirrors DigitalOceanProvider's
+// LookupImage so checkProviderImages can switch on provider.Type()
+// without ad-hoc dispatch logic.
+//
+// Numeric IDs are the exact class of identifier that bit us on DO
+// (snapshot 168977420 got retired silently); having a live API check
+// for Vultr means we'll spot the same kind of incident here.
+//
+// API ref: https://www.vultr.com/api/#tag/os/operation/get-os
+func (p *VultrProvider) LookupImage(ctx context.Context, credentials map[string]interface{}, image string) error {
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return err
+	}
+	client := p.NewClient(token)
+	if _, err := DoGet(ctx, client, "/os/"+image); err != nil {
+		return WrapHTTPError(err, "lookup OS "+image)
+	}
+	return nil
+}
+
 // CredentialRules returns validation rules
 func (p *VultrProvider) CredentialRules() map[string]string {
 	return CommonCredentialRules()

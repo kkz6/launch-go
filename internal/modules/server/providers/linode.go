@@ -144,6 +144,25 @@ func (p *LinodeProvider) GetImage(os types.OperatingSystem) string {
 	return p.GetImageFromConfig(os, "linode/ubuntu24.04")
 }
 
+// LookupImage asks Linode whether the given image identifier (e.g.
+// "linode/ubuntu24.04") is still served. Linode's GET /v4/images/{id}
+// returns 200 with the image record on success, 404 otherwise.
+// Mirrors DigitalOceanProvider.LookupImage so checkProviderImages can
+// switch on provider.Type() without ad-hoc dispatch logic.
+//
+// API ref: https://www.linode.com/docs/api/images/#image-view
+func (p *LinodeProvider) LookupImage(ctx context.Context, credentials map[string]interface{}, image string) error {
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return err
+	}
+	client := p.NewClient(token)
+	if _, err := DoGet(ctx, client, "/images/"+image); err != nil {
+		return WrapHTTPError(err, "lookup image "+image)
+	}
+	return nil
+}
+
 // CredentialRules returns validation rules
 func (p *LinodeProvider) CredentialRules() map[string]string {
 	return CommonCredentialRules()
