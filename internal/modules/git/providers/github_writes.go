@@ -14,8 +14,13 @@ import (
 // PutContents creates or updates a file in the repo at the given
 // path. existingSHA == "" → create; non-empty → update (acts as
 // If-Match — GitHub rejects with 409 if the file's current SHA
-// doesn't match). Returns the new file's commit SHA so the caller
-// can persist it for next-sync drift detection.
+// doesn't match). Returns the new **file blob SHA** (content.sha
+// in the response) so the caller can persist it and pass it back as
+// existingSHA on the next sync. NOT the commit SHA — those are
+// different values in the same response and PUT contents needs the
+// blob SHA for its If-Match check. Storing the commit SHA causes
+// every subsequent update to 409 with "file was modified since last
+// sync" even when nothing actually changed.
 //
 // GitHub API: PUT /repos/{owner}/{repo}/contents/{path}
 // docs: https://docs.github.com/en/rest/repos/contents#create-or-update-file-contents
@@ -68,8 +73,19 @@ func (p *GitHubProvider) PutContents(
 		return "", fmt.Errorf("PutContents %s/%s/%s: status %d body %s", owner, repo, path, resp.StatusCode, string(raw))
 	}
 
-	// Response shape: { "content": {...}, "commit": { "sha": "...", ... } }
+	// Response shape (abbreviated):
+	//   { "content": { "sha": "<blob>", "path": "...", ... },
+	//     "commit":  { "sha": "<commit>", ... } }
+	//
+	// We return content.sha (the file blob). It's what gets passed
+	// back as the "sha" field in the next PUT — i.e. the value
+	// GitHub uses for its If-Match conflict check. The commit SHA is
+	// useful for "show me the commit that did this" UX, but you can
+	// not use it as the existingSHA on a subsequent update.
 	var out struct {
+		Content struct {
+			SHA string `json:"sha"`
+		} `json:"content"`
 		Commit struct {
 			SHA string `json:"sha"`
 		} `json:"commit"`
@@ -77,7 +93,15 @@ func (p *GitHubProvider) PutContents(
 	if err := DecodeJSON(resp, &out); err != nil {
 		return "", err
 	}
-	return out.Commit.SHA, nil
+	if out.Content.SHA == "" {
+		// Defensive: don't silently fall back to the commit SHA
+		// here. The bug we just fixed was caused by that exact
+		// behavior — if GitHub ever changes the response shape so
+		// content is missing, we want a loud failure on the next
+		// sync rather than a silent 409 cascade.
+		return "", errors.New("PutContents: response missing content.sha")
+	}
+	return out.Content.SHA, nil
 }
 
 // GetActionsPublicKey fetches the repo's libsodium public key used to

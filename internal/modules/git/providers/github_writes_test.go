@@ -94,9 +94,15 @@ func (f *fakeGitHub) serve(w http.ResponseWriter, r *http.Request) {
 	case r.Method == http.MethodPatch && strings.Contains(r.URL.Path, "/actions/variables/"):
 		w.WriteHeader(http.StatusNoContent)
 	case r.Method == http.MethodPut && strings.Contains(r.URL.Path, "/contents/"):
+		// Mirror the real GitHub response shape — BOTH content.sha
+		// (file blob) and commit.sha (the commit). The provider must
+		// return content.sha; returning commit.sha caused every
+		// subsequent sync to 409 with "file modified since last
+		// sync" — locked in by TestPutContents_ReturnsBlobSHA.
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(map[string]any{
-			"commit": map[string]any{"sha": "abc1234567890fakecommitsha"},
+			"content": map[string]any{"sha": "fakeBlobSha000000000000000000000000000000"},
+			"commit":  map[string]any{"sha": "abc1234567890fakecommitsha"},
 		})
 	case r.Method == http.MethodDelete && strings.Contains(r.URL.Path, "/actions/secrets/"):
 		w.WriteHeader(http.StatusNoContent)
@@ -168,7 +174,7 @@ func TestDecodeRepoPublicKey_RoundTrip(t *testing.T) {
 	assert.Equal(t, pub[:], got)
 }
 
-func TestPutContents_SendsBase64BodyAndReturnsCommitSHA(t *testing.T) {
+func TestPutContents_SendsBase64BodyAndReturnsBlobSHA(t *testing.T) {
 	fake := newFakeGitHub(t)
 	defer fake.Close()
 	p := testProvider(t, fake.srv.URL)
@@ -184,7 +190,14 @@ func TestPutContents_SendsBase64BodyAndReturnsCommitSHA(t *testing.T) {
 		"main",
 	)
 	require.NoError(t, err)
-	assert.Equal(t, "abc1234567890fakecommitsha", sha)
+	// Must return content.sha (the FILE BLOB sha), not commit.sha.
+	// PUT contents uses the blob sha for If-Match on subsequent
+	// updates — returning the commit sha caused every re-sync to
+	// 409 with "file modified since last sync". See the regression
+	// test below for the failure mode.
+	assert.Equal(t, "fakeBlobSha000000000000000000000000000000", sha)
+	assert.NotEqual(t, "abc1234567890fakecommitsha", sha,
+		"returning the commit sha breaks subsequent syncs — see PutContents docs")
 
 	// The contents PUT body must carry base64-encoded content + the
 	// commit message + the branch. The token mint hits first so the
@@ -196,6 +209,32 @@ func TestPutContents_SendsBase64BodyAndReturnsCommitSHA(t *testing.T) {
 	assert.Equal(t, "Bearer ghs_fake_installation_token", contents.Auth)
 	assert.Contains(t, contents.Body, base64.StdEncoding.EncodeToString([]byte("name: Launch Deploy\n")))
 	assert.Contains(t, contents.Body, `"branch":"main"`)
+}
+
+// Regression test for the "every re-sync 409s" bug. The provider
+// previously returned commit.sha; round-tripping that as `existingSHA`
+// on the next PutContents would 409 because GitHub compared it to the
+// stored blob SHA. The fix returns content.sha; this test pins that
+// behavior even if the fake's response shape drifts.
+func TestPutContents_DoesNotReturnCommitSHA(t *testing.T) {
+	fake := newFakeGitHub(t)
+	defer fake.Close()
+	p := testProvider(t, fake.srv.URL)
+
+	sha, err := p.PutContents(
+		context.Background(),
+		"100", "kkz6", "test-repo",
+		"some-file.txt", "hello", "commit msg", "", "main",
+	)
+	require.NoError(t, err)
+	// content.sha and commit.sha are intentionally different in the
+	// fake's response. Returning the commit sha is the bug; we
+	// assert NotEqual rather than just Equal-on-blob so the failure
+	// mode is named in the assertion message when this regresses.
+	assert.NotEqual(t, "abc1234567890fakecommitsha", sha,
+		"PutContents must return content.sha (blob), not commit.sha "+
+			"— otherwise every subsequent update 409s on If-Match")
+	assert.Equal(t, "fakeBlobSha000000000000000000000000000000", sha)
 }
 
 func TestPutActionsSecret_EncryptsValueAndPosts(t *testing.T) {
