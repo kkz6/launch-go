@@ -107,28 +107,41 @@ func (r *ServerRepository) listSelect() string {
 	return "servers.*, (?) as sites_count, (?) as projects_count, (?) as workloads_count"
 }
 
-// FindAllByTeam finds all active (non-archived) servers for a team
+// FindAllByTeam finds all active (non-archived) servers for a team.
+//
+// Servers in the "deleting" status are filtered out: once the DELETE
+// handler flips the status the row is on borrowed time (the async
+// DeleteServerJob will hard-delete it within seconds), and surfacing it
+// in the list creates the customer-facing "I deleted it but it's still
+// there" race — the redirect back to the list happens long before the
+// job-driven `server.deleted` broadcast removes it from the client.
+// FindByID is intentionally left unfiltered so a direct URL hit still
+// resolves while deletion is in flight.
 func (r *ServerRepository) FindAllByTeam(ctx context.Context, teamID string) ([]models.Server, error) {
 	var servers []models.Server
 	err := r.DB.WithContext(ctx).
 		Select(r.listSelect(), r.sitesCountSubquery(), r.projectsCountSubquery(), r.workloadsCountSubquery()).
 		Preload("Services", servicesByInstallOrder).
 		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
+		Where("status <> ?", types.ServerStatusDeleting).
 		Order("created_at DESC").
 		Find(&servers).Error
 	return servers, err
 }
 
-// FindAllByTeamPaginated finds all servers for a team with pagination
+// FindAllByTeamPaginated finds all servers for a team with pagination.
+// See FindAllByTeam for the "deleting" status filter rationale.
 func (r *ServerRepository) FindAllByTeamPaginated(ctx context.Context, teamID string, page, perPage int) (*repository.PaginatedResult[models.Server], error) {
 	countQuery := r.DB.WithContext(ctx).
 		Model(&models.Server{}).
-		Scopes(repository.WithTeamID(teamID), repository.WithActive())
+		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
+		Where("status <> ?", types.ServerStatusDeleting)
 
 	dataQuery := r.DB.WithContext(ctx).
 		Select(r.listSelect(), r.sitesCountSubquery(), r.projectsCountSubquery(), r.workloadsCountSubquery()).
 		Preload("Services", servicesByInstallOrder).
 		Scopes(repository.WithTeamID(teamID), repository.WithActive()).
+		Where("status <> ?", types.ServerStatusDeleting).
 		Order("created_at DESC")
 
 	return repository.PaginateWithCount[models.Server](countQuery, dataQuery, page, perPage)
