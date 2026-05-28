@@ -21,14 +21,41 @@ const (
 	ConfigureOpcacheTaskType      = "server:configure_opcache"
 )
 
-// AddPhpVersion creates a task to install a PHP version
+// AddPhpVersion creates a task to install a PHP version on a server
+// that's already been provisioned. Reuses the same Ubuntu (ondrej PPA)
+// vs Debian (sury.org repo) branching as install_php.sh — see
+// PhpPpaFunctions in internal/pkg/taskrunner/templates/functions.go
+// for the longer rationale.
 func AddPhpVersion(version string) *taskrunner.BaseTask {
-	script := fmt.Sprintf(`sudo add-apt-repository ppa:ondrej/php -y
+	script := fmt.Sprintf(`#!/bin/bash
+set -e
+
+. /etc/os-release
+case "${ID}" in
+    ubuntu)
+        sudo add-apt-repository ppa:ondrej/php -y
+        ;;
+    debian)
+        if [ ! -f /etc/apt/sources.list.d/sury-php.list ]; then
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                apt-transport-https lsb-release ca-certificates curl gnupg
+            sudo install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL https://packages.sury.org/php/apt.gpg \
+                | sudo gpg --dearmor -o /etc/apt/keyrings/sury-php.gpg
+            sudo chmod a+r /etc/apt/keyrings/sury-php.gpg
+            echo "deb [signed-by=/etc/apt/keyrings/sury-php.gpg] https://packages.sury.org/php/ ${VERSION_CODENAME} main" \
+                | sudo tee /etc/apt/sources.list.d/sury-php.list >/dev/null
+        fi
+        ;;
+    *)
+        echo "ERROR: PHP install supports only Ubuntu or Debian. ID=${ID:-<unset>}" >&2
+        exit 1
+        ;;
+esac
+
 sudo apt-get update
-sudo apt-get install -y php%s php%s-fpm php%s-cli php%s-common php%s-mysql php%s-pgsql php%s-sqlite3 php%s-curl php%s-gd php%s-mbstring php%s-xml php%s-zip php%s-bcmath php%s-intl php%s-readline php%s-soap php%s-ldap php%s-imap php%s-opcache`,
-		version, version, version, version, version, version, version, version,
-		version, version, version, version, version, version, version, version,
-		version, version, version)
+sudo apt-get install -y php%[1]s php%[1]s-fpm php%[1]s-cli php%[1]s-common php%[1]s-mysql php%[1]s-pgsql php%[1]s-sqlite3 php%[1]s-curl php%[1]s-gd php%[1]s-mbstring php%[1]s-xml php%[1]s-zip php%[1]s-bcmath php%[1]s-intl php%[1]s-readline php%[1]s-soap php%[1]s-ldap php%[1]s-imap php%[1]s-opcache`,
+		version)
 
 	return taskrunner.NewBaseTask(
 		taskrunner.WithName(fmt.Sprintf("Install PHP %s", version)),

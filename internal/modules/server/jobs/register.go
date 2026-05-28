@@ -27,6 +27,7 @@ func registerHandlers(mux *asynq.ServeMux) {
 	pkgjobs.RegisterTyped(mux, TypeArchiveServer, NewArchiveServerJob)
 	pkgjobs.RegisterTyped(mux, TypeUnarchiveServer, NewUnarchiveServerJob)
 	pkgjobs.RegisterTyped(mux, TypeUpdateConnectivity, NewUpdateConnectivityJob)
+	pkgjobs.RegisterTyped(mux, TypeBackfillDetectedOS, NewBackfillDetectedOSJob)
 
 	// Cron jobs
 	pkgjobs.RegisterTyped(mux, TypeInstallCron, NewInstallCronJob)

@@ -43,6 +43,14 @@ const (
 	// ExitCode indicates the script's exit code (used at end of script)
 	// Value: integer exit code
 	ExitCode = "exit_code"
+
+	// DetectedOS reports facts about the running box.
+	// Value: pipe-separated string of os_id|os_version|os_version_codename|arch|kernel,
+	// e.g. "ubuntu|24.04|noble|amd64|6.8.0-31-generic"
+	// (any individual field may be empty; the receiver tolerates blanks).
+	// Pipe separator chosen because OS identifiers from /etc/os-release
+	// never contain it and it survives shell echoing without quoting.
+	DetectedOS = "detected_os"
 )
 
 // Marker represents a parsed output marker

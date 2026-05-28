@@ -403,20 +403,29 @@ func (s *Service) TryConnection(ctx context.Context, id, teamID, userID string) 
 		return err
 	}
 
+	// Validation/state errors below return proper 4xx status codes via the
+	// fiberutil helpers instead of plain errors.New. Without the helpers
+	// Fiber's default handler maps every Go error to 500, which surfaces
+	// as a generic "Internal Server Error" on the client — useless to the
+	// customer trying to figure out why their box wasn't reachable.
 	if server.Provider != types.ProviderCustom {
-		return errors.New("try-connection only applies to custom servers")
+		return fiberutil.Validation("Try Connection only applies to custom servers.")
 	}
 
 	if server.Status != types.ServerStatusAwaitingConnection {
-		return fmt.Errorf("server is not awaiting connection (status: %s)", server.Status)
+		// Most common cause: a previous Try Connection already succeeded
+		// and the server has moved on to starting/provisioning. 409 is
+		// the right shape for "the resource state doesn't allow this
+		// action right now."
+		return fiberutil.Conflict(fmt.Sprintf("Server is not awaiting connection (current status: %s).", server.Status))
 	}
 
 	if server.PublicIPv4 == nil || *server.PublicIPv4 == "" {
-		return errors.New("server has no IP address")
+		return fiberutil.Validation("Server has no IP address recorded yet.")
 	}
 
 	if server.PrivateKey.IsEmpty() {
-		return errors.New("server has no private key")
+		return fiberutil.Validation("Server has no private key recorded yet.")
 	}
 
 	// Single SSH attempt with a tight timeout. The HTTP request is already
@@ -427,17 +436,20 @@ func (s *Service) TryConnection(ctx context.Context, id, teamID, userID string) 
 
 	client, err := server.ConnectionAsRoot().Dial()
 	if err != nil {
-		return fmt.Errorf("could not reach server: %w", err)
+		// Customer-fixable (provision script didn't run, firewall blocking
+		// SSH, wrong IP). Surface the underlying network error so the
+		// toast tells them what to fix instead of "Internal Server Error".
+		return fiberutil.Validation(fmt.Sprintf("Could not reach server: %s. Make sure the provision command ran successfully and SSH is reachable.", err.Error()))
 	}
 	defer client.Close()
 
 	result, err := client.Run(dialCtx, "whoami")
 	if err != nil {
-		return fmt.Errorf("ssh failed: %w", err)
+		return fiberutil.Validation(fmt.Sprintf("SSH command failed: %s.", err.Error()))
 	}
 
 	if result.ExitCode != 0 {
-		return fmt.Errorf("ssh whoami exited %d", result.ExitCode)
+		return fiberutil.Validation(fmt.Sprintf("SSH whoami returned exit code %d.", result.ExitCode))
 	}
 
 	now := time.Now()
@@ -817,9 +829,40 @@ func shellEscape(s string) string {
 	return strings.ReplaceAll(s, "'", "'\\''")
 }
 
-// generateAuthorizeKeyScript generates a bash script to authorize the management key
+// generateAuthorizeKeyScript generates a bash script to authorize the management key.
+//
+// Two correctness invariants, both learned the hard way from a real
+// customer hitting "ssh: unable to authenticate" after running the
+// quick command:
+//
+//  1. The script MUST run as root. Launch's backend SSH's into the box
+//     as the root user (server.RootUsername() returns "root" for the
+//     custom_server provider) and presents server.PrivateKey. The
+//     matching public key therefore has to live in
+//     /root/.ssh/authorized_keys. If the user SSH's in as ubuntu/admin
+//     and pipes to bash without sudo, ~/.ssh expands to /home/<user>/
+//     and the key lands in the wrong place — the script reports
+//     "Management key authorized successfully" but the backend's later
+//     Try Connection fails with no path to recover from the user's
+//     terminal output. So: refuse to run as non-root, loudly.
+//
+//  2. Write to /root/.ssh/authorized_keys explicitly, never ~/.ssh.
+//     Even when EUID is 0, $HOME can still be set to something else
+//     (e.g. when a user did `sudo -E bash`, or when piped through some
+//     CI shells). Hard-coding the path removes the variable entirely.
 func (s *Service) generateAuthorizeKeyScript(server *models.Server) string {
-	publicKey := string(server.PublicKey)
+	// TrimSpace is load-bearing. ssh.MarshalAuthorizedKey appends a
+	// trailing newline, which would otherwise be baked into the script
+	// as `PUBLIC_KEY="ssh-rsa AAAA...==\n"`. When bash later expands
+	// "$PUBLIC_KEY" for `grep -qF`, grep treats a multi-line pattern
+	// as OR-ed lines — and one of those lines is empty. The empty
+	// pattern matches every line in any non-empty file, so grep -qF
+	// silently always succeeds, the script reports "Management key
+	// already authorized", and the `echo >> authorized_keys` write
+	// never runs. That bug stranded a customer's server in
+	// awaiting_connection — every retry no-op'd. Trim the key so the
+	// shell variable is a clean single-line value.
+	publicKey := strings.TrimSpace(string(server.PublicKey))
 	escapedName := shellEscape(server.Name)
 
 	script := `#!/bin/bash
@@ -828,24 +871,41 @@ set -e
 # Launch Server Provisioning Script
 # Server: '%s'
 
+if [ "$EUID" -ne 0 ]; then
+    echo "ERROR: This script must be run as root."
+    echo
+    echo "Re-run the provision command from your terminal with sudo, e.g.:"
+    echo "  wget --no-verbose -O - 'https://...' | sudo bash"
+    echo "or, if you're already in a shell, prefix it with sudo:"
+    echo "  sudo bash provision.sh"
+    exit 1
+fi
+
 echo "Authorizing Launch management key..."
 
-# Create .ssh directory if it doesn't exist
-mkdir -p ~/.ssh
-chmod 700 ~/.ssh
+# Install into /root/.ssh explicitly — Launch connects as root, so the
+# key must land in root's authorized_keys regardless of $HOME at run
+# time. Using ~/.ssh would silently install under the wrong user when
+# the script is run with "sudo -E bash" or similar HOME-preserving
+# invocations.
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+chown root:root /root/.ssh
 
-# Add the public key to authorized_keys if not already present
 PUBLIC_KEY="%s"
 
-if ! grep -q "$PUBLIC_KEY" ~/.ssh/authorized_keys 2>/dev/null; then
-    echo "$PUBLIC_KEY" >> ~/.ssh/authorized_keys
-    chmod 600 ~/.ssh/authorized_keys
+# grep -F: treat $PUBLIC_KEY as a fixed string (it contains +, /, =
+# from base64 that grep would otherwise read as regex metacharacters).
+# --: end option processing in case the key happens to start with -.
+if ! grep -qF -- "$PUBLIC_KEY" /root/.ssh/authorized_keys 2>/dev/null; then
+    echo "$PUBLIC_KEY" >> /root/.ssh/authorized_keys
+    chmod 600 /root/.ssh/authorized_keys
+    chown root:root /root/.ssh/authorized_keys
     echo "Management key authorized successfully."
 else
     echo "Management key already authorized."
 fi
 
-# Notify the server that provisioning is complete
 echo "Provisioning script completed."
 `
 	return fmt.Sprintf(script, escapedName, publicKey)
@@ -923,6 +983,34 @@ func (s *Service) RetryProvision(ctx context.Context, serverID, teamID, userID s
 	}
 	activity.RecordEvent(ctx, "provision_retry", "", server, "Server provisioning was retried")
 	return nil
+}
+
+// BackfillDetectedOS enqueues a job that SSHes into the server, parses
+// /etc/os-release + uname, and writes the detected_os_* / detected_arch
+// / detected_kernel columns. Used for:
+//
+//   - Legacy servers provisioned before the detect_os step existed
+//     (their detected_* fields are all NULL).
+//   - Refreshing the cached facts after a distro/kernel upgrade.
+//
+// Synchronous part is just enqueue-and-return; the actual SSH and DB
+// update happen in the worker so the HTTP request isn't gated on a
+// potentially-slow network round-trip. Result broadcasts as
+// server.updated when the job finishes.
+//
+// Signature matches ActionFunc.
+func (s *Service) BackfillDetectedOS(ctx context.Context, serverID, teamID, userID string) error {
+	_ = userID
+	server, err := s.repos.Server().FindByIDAndTeam(ctx, serverID, teamID)
+	if err != nil {
+		return err
+	}
+	if !server.Connected {
+		return fiberutil.Validation("Server is not connected; cannot detect OS facts yet.")
+	}
+	return s.MustDispatch(func() (*asynq.Task, error) {
+		return jobs.NewBackfillDetectedOSTask(serverID)
+	})
 }
 
 // RunVulnerabilityAudit runs a security vulnerability audit on a server

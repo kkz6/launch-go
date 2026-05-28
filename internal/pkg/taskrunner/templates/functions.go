@@ -192,23 +192,68 @@ export APT_LISTCHANGES_FRONTEND=none
 export APT_LOCK_WAIT_OPTS='-o DPkg::Lock::Timeout=120'`
 }
 
-// PhpPpaFunctions returns the PHP PPA installation function for Ubuntu.
+// PhpPpaFunctions returns the function that ensures the upstream PHP
+// apt repo is configured. Branches on /etc/os-release ID:
+//
+//   - Ubuntu uses Ondrej Surý's launchpad PPA (ppa:ondrej/php). The
+//     add-apt-repository tool understands this URL form natively.
+//   - Debian uses the same maintainer's sury.org repo (Launchpad PPAs
+//     don't work on Debian — different package archive system). We
+//     wire it up manually with apt-transport-https + a fetched signing
+//     key + a deb entry pointing at the box's codename.
+//
+// Falls back to bailing with a clear error on anything else so a
+// customer running an unsupported distro sees "we don't support X"
+// rather than a confusing apt failure mid-install.
 func PhpPpaFunctions() string {
 	return `function ensurePhpPpaInstalled() {
-    if ! grep -q "ondrej/php" /etc/apt/sources.list.d/*.list 2>/dev/null && ! grep -q "ondrej/php" /etc/apt/sources.list.d/*.sources 2>/dev/null; then
-        echo "Adding ondrej/php PPA..."
-        waitForAptUnlock
-        sudo DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
-        waitForAptUnlock
-        sudo DEBIAN_FRONTEND=noninteractive add-apt-repository ppa:ondrej/php -y
-        waitForAptUnlock
-        sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
-        echo "ondrej/php PPA installed successfully"
-    else
-        echo "ondrej/php PPA already installed, refreshing package lists..."
-        waitForAptUnlock
-        sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
-    fi
+    . /etc/os-release
+    case "${ID}" in
+        ubuntu)
+            if ! grep -q "ondrej/php" /etc/apt/sources.list.d/*.list 2>/dev/null && ! grep -q "ondrej/php" /etc/apt/sources.list.d/*.sources 2>/dev/null; then
+                echo "Adding ondrej/php PPA (Ubuntu)..."
+                waitForAptUnlock
+                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y software-properties-common
+                waitForAptUnlock
+                sudo DEBIAN_FRONTEND=noninteractive add-apt-repository ppa:ondrej/php -y
+                waitForAptUnlock
+                sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+                echo "ondrej/php PPA installed successfully"
+            else
+                echo "ondrej/php PPA already installed, refreshing package lists..."
+                waitForAptUnlock
+                sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+            fi
+            ;;
+        debian)
+            if [ ! -f /etc/apt/sources.list.d/sury-php.list ]; then
+                echo "Adding sury.org PHP repo (Debian)..."
+                waitForAptUnlock
+                sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                    apt-transport-https lsb-release ca-certificates curl gnupg
+                sudo install -m 0755 -d /etc/apt/keyrings
+                if [ ! -f /etc/apt/keyrings/sury-php.gpg ]; then
+                    curl -fsSL https://packages.sury.org/php/apt.gpg \
+                        | sudo gpg --dearmor -o /etc/apt/keyrings/sury-php.gpg
+                    sudo chmod a+r /etc/apt/keyrings/sury-php.gpg
+                fi
+                echo "deb [signed-by=/etc/apt/keyrings/sury-php.gpg] https://packages.sury.org/php/ ${VERSION_CODENAME} main" \
+                    | sudo tee /etc/apt/sources.list.d/sury-php.list >/dev/null
+                waitForAptUnlock
+                sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+                echo "sury.org PHP repo installed successfully"
+            else
+                echo "sury.org PHP repo already installed, refreshing package lists..."
+                waitForAptUnlock
+                sudo DEBIAN_FRONTEND=noninteractive apt-get update -y
+            fi
+            ;;
+        *)
+            echo "ERROR: PHP install supports only Ubuntu or Debian." >&2
+            echo "  /etc/os-release reports ID=${ID:-<unset>}" >&2
+            exit 1
+            ;;
+    esac
 }`
 }
 

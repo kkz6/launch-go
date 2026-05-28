@@ -2,6 +2,8 @@ package tasks
 
 import (
 	"context"
+	"strings"
+	"time"
 
 	"github.com/rs/zerolog"
 	"gorm.io/gorm"
@@ -73,9 +75,93 @@ func (h *ProvisionMarkerHandler) OnMarker(ctx context.Context, taskID string, ma
 
 	case markers.Error:
 		return h.handleError(ctx, marker)
+
+	case markers.DetectedOS:
+		return h.handleDetectedOS(ctx, marker)
 	}
 
 	return nil
+}
+
+// handleDetectedOS persists the OS facts the detect_os provision step
+// captured from /etc/os-release + uname. Value format:
+//
+//	os_id|os_version|os_version_codename|arch|kernel
+//
+// Any individual field may be empty — that's how the script signals
+// "couldn't determine this one" without us treating it as an error.
+// We zero out empty fields (nil pointer) rather than writing empty
+// strings so downstream code that checks `IfNotNil` still works.
+func (h *ProvisionMarkerHandler) handleDetectedOS(ctx context.Context, marker *markers.Marker) error {
+	parts := strings.SplitN(marker.Value, "|", 5)
+	for len(parts) < 5 {
+		parts = append(parts, "")
+	}
+
+	updates := map[string]any{
+		"detected_os_id":               stringOrNil(parts[0]),
+		"detected_os_version":          stringOrNil(parts[1]),
+		"detected_os_version_codename": stringOrNil(parts[2]),
+		"detected_arch":                stringOrNil(parts[3]),
+		"detected_kernel":              stringOrNil(parts[4]),
+		"detected_at":                  time.Now(),
+	}
+
+	if h.db != nil {
+		if err := h.db.WithContext(ctx).
+			Model(&models.Server{}).
+			Where("id = ?", h.serverID).
+			Updates(updates).Error; err != nil {
+			if h.logger != nil {
+				h.logger.Warn().Err(err).
+					Str("server_id", h.serverID).
+					Msg("Failed to persist detected OS facts")
+			}
+			return err
+		}
+	}
+
+	// Two broadcasts: a dedicated event for any UI that wants the
+	// detected payload directly (saves a refetch), and the generic
+	// server.updated so the existing model-event listeners refresh.
+	h.broadcast("server.detected_os", map[string]any{
+		"server_id":                    h.serverID,
+		"detected_os_id":               parts[0],
+		"detected_os_version":          parts[1],
+		"detected_os_version_codename": parts[2],
+		"detected_arch":                parts[3],
+		"detected_kernel":              parts[4],
+	})
+	h.broadcast("server.updated", map[string]any{
+		"id":        h.serverID,
+		"model":     "server",
+		"action":    "updated",
+		"server_id": h.serverID,
+		"team_id":   h.teamID,
+	})
+
+	if h.logger != nil {
+		h.logger.Info().
+			Str("server_id", h.serverID).
+			Str("os_id", parts[0]).
+			Str("os_version", parts[1]).
+			Str("os_codename", parts[2]).
+			Str("arch", parts[3]).
+			Str("kernel", parts[4]).
+			Msg("Detected OS facts recorded")
+	}
+	return nil
+}
+
+// stringOrNil returns nil for empty strings so DB columns end up as
+// NULL rather than empty strings. Matches the *string semantics on
+// the Server model's Detected* fields.
+func stringOrNil(s string) *string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil
+	}
+	return &s
 }
 
 func (h *ProvisionMarkerHandler) handleProgress(ctx context.Context, marker *markers.Marker) error {
