@@ -20,6 +20,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Set up the buildx docker-container driver. The default driver
+      # baked into the runner is plain `docker` which does NOT support
+      # `cache-from: type=gha` / `cache-to: type=gha,mode=max` — without
+      # this step the dockerfile build below dies with
+      # "Cache export is not supported for the docker driver."
+      - uses: docker/setup-buildx-action@v3
+
       - name: Compute image tag
         id: meta
         run: |
@@ -52,12 +59,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Nixpacks via shell. The previous template used
+      # iloveitaly/nixpacks-action, which no longer exists in the
+      # GHA Marketplace — GitHub resolves every `uses:` reference
+      # during "Set up job" before any `if:` runs, so even though
+      # the Dockerfile path wins for most workloads, an unresolvable
+      # action ID killed the whole job. Inline the install + build
+      # script instead so the workflow only depends on actions that
+      # actually exist (checkout, login-action, build-push-action).
       - name: Build (Nixpacks)
         if: steps.builder.outputs.kind == 'nixpacks'
-        uses: iloveitaly/nixpacks-action@v0.1
-        with:
-          tags: ${{ steps.meta.outputs.image }}
-          push: true
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+        run: |
+          set -euo pipefail
+          curl -sSL https://nixpacks.com/install.sh | bash
+          nixpacks build . --name "$IMAGE"
+          docker push "$IMAGE"
 
       - name: Notify Launch (success)
         env:
