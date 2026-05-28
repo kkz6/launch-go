@@ -119,7 +119,6 @@ func TestTraefikConfigPath(t *testing.T) {
 	}
 }
 
-
 func TestRenderTraefikConfig_StoredCertificate(t *testing.T) {
 	certID := "01abcdefghijklmnopqrstuvwx"
 	out := RenderTraefikConfig(TraefikConfigArgs{

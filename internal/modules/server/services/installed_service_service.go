@@ -118,7 +118,7 @@ func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, 
 
 func (s *Service) dispatchServiceInstallJob(server *models.Server, svc *models.InstalledService) error {
 	return s.MustDispatch(func() (*asynq.Task, error) {
-		return jobs.NewAddServiceTask(server.ID, svc.ID, string(svc.Software))
+		return jobs.NewAddServiceTask(server.ID, svc.ID, svc.Software)
 	})
 }
 

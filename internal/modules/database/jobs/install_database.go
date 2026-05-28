@@ -104,7 +104,7 @@ func (j *InstallDatabaseJob) Failed(ctx context.Context, err error) {
 		j.server = server
 	}
 
-	j.Deps.Repos.Database().MarkInstallationFailed(ctx, j.Payload.DatabaseID)
+	_ = j.Deps.Repos.Database().MarkInstallationFailed(ctx, j.Payload.DatabaseID)
 
 	j.Deps.BroadcastDatabaseProgress(j.server, "database.progress", j.Payload.DatabaseID, "failed", fmt.Sprintf("Failed to create database: %s", j.database.Name))
 }

@@ -102,12 +102,13 @@ func extractJSON(s string) string {
 	braceCount := 0
 
 	for i, char := range s {
-		if char == '{' {
+		switch char {
+		case '{':
 			if start == -1 {
 				start = i
 			}
 			braceCount++
-		} else if char == '}' {
+		case '}':
 			braceCount--
 			if braceCount == 0 && start != -1 {
 				candidate := s[start : i+1]

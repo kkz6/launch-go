@@ -81,7 +81,7 @@ func (j *RunPlatformUpdateJob) Handle(ctx context.Context) error {
 		RunAsync(ctx)
 	if err != nil {
 		// Update status to failed
-		j.Deps.Repos.ServerPlatformUpdate().UpdateStatus(
+		_ = j.Deps.Repos.ServerPlatformUpdate().UpdateStatus(
 			ctx, j.Payload.ServerPlatformUpdateID, types.UpdateStatusFailed,
 		)
 

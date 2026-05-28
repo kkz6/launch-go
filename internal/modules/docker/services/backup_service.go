@@ -265,7 +265,7 @@ func (s *BackupService) RunNow(
 	// Run synchronously through the existing taskrunner so we get the
 	// captured output for marker parsing.
 	taskWrapper := tasks.RunBackup(cfg)
-	result, runErr := dispatchTaskAsRoot(s.BaseService, ctx, server, taskWrapper)
+	result, runErr := dispatchTaskAsRoot(ctx, s.BaseService, server, taskWrapper)
 
 	finishedAt := time.Now().UTC()
 	if runErr != nil || (result != nil && result.ExitCode != 0) {
@@ -429,7 +429,7 @@ func (s *BackupService) Restore(
 	}
 
 	taskWrapper := tasks.Restore(cfg)
-	result, runErr := dispatchTaskAsRoot(s.BaseService, ctx, server, taskWrapper)
+	result, runErr := dispatchTaskAsRoot(ctx, s.BaseService, server, taskWrapper)
 	if runErr != nil {
 		return fmt.Errorf("restore failed: %w", runErr)
 	}
@@ -627,7 +627,7 @@ func (s *BackupService) pruneRunsAndObjects(
 			SecretKey:  s3Creds.Secret,
 		}
 		task := tasks.PruneBackupObjects(cfg)
-		if _, err := dispatchTaskAsRoot(s.BaseService, ctx, server, task); err != nil {
+		if _, err := dispatchTaskAsRoot(ctx, s.BaseService, server, task); err != nil {
 			return fmt.Errorf("prune remote objects: %w", err)
 		}
 	}
@@ -671,7 +671,7 @@ func normaliseOptionalString(s *string) *string {
 // + restore are user-initiated and benefit from the synchronous
 // "wait for result" semantics.
 func dispatchTaskAsRoot(
-	base *BaseService, ctx context.Context,
+	ctx context.Context, base *BaseService,
 	server interface {
 		ConnectionAsRoot() *taskrunner.Connection
 	},

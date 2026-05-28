@@ -133,7 +133,7 @@ func (j *InstallDatabaseUserJob) Failed(ctx context.Context, err error) {
 		j.server = server
 	}
 
-	j.Deps.Repos.User().MarkInstallationFailed(ctx, j.Payload.DatabaseUserID)
+	_ = j.Deps.Repos.User().MarkInstallationFailed(ctx, j.Payload.DatabaseUserID)
 
 	j.Deps.BroadcastUserProgress(j.server, "database_user.progress", j.Payload.DatabaseUserID, "failed", fmt.Sprintf("Failed to create database user: %s", j.dbUser.Name))
 }

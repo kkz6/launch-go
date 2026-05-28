@@ -127,9 +127,10 @@ func TestAggregator_Check(t *testing.T) {
 
 		var healthyCount, unhealthyCount int
 		for _, check := range result.Checks {
-			if check.Status == StatusHealthy {
+			switch check.Status {
+			case StatusHealthy:
 				healthyCount++
-			} else if check.Status == StatusUnhealthy {
+			case StatusUnhealthy:
 				unhealthyCount++
 				assert.Equal(t, "connection refused", check.Message)
 			}

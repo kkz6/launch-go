@@ -73,10 +73,10 @@ type UpdateSiteRequest struct {
 //     certificates row, also recording the FK back to the library
 //     entry so a later force-delete can cascade-clear references.
 type UpdateSSLRequest struct {
-	TLSSetting           string  `json:"tls_setting" validate:"required,oneof=auto custom internal off stored"`
-	PrivateKey           *string `json:"private_key" validate:"omitempty"`
-	Certificate          *string `json:"certificate" validate:"omitempty"`
-	StoredCertificateID  *string `json:"stored_certificate_id" validate:"omitempty,len=26"`
+	TLSSetting          string  `json:"tls_setting" validate:"required,oneof=auto custom internal off stored"`
+	PrivateKey          *string `json:"private_key" validate:"omitempty"`
+	Certificate         *string `json:"certificate" validate:"omitempty"`
+	StoredCertificateID *string `json:"stored_certificate_id" validate:"omitempty,len=26"`
 }
 
 // UpdateDeploymentSettingsRequest represents deployment settings update

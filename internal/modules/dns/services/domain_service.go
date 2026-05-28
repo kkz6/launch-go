@@ -280,7 +280,7 @@ func (s *DomainService) SyncDomainRecords(ctx context.Context, domainID, teamID,
 		record := models.DNSRecord{
 			DomainID:   domainID,
 			ProviderID: pr.ID,
-			Type:       dnstypes.RecordType(pr.Type),
+			Type:       pr.Type,
 			Name:       pr.Name,
 			Value:      pr.Value,
 			TTL:        pr.TTL,

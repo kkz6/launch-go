@@ -90,13 +90,13 @@ type DeploymentResponse struct {
 
 // CertificateResponse represents a certificate in API responses
 type CertificateResponse struct {
-	ID                  string   `json:"id"`
-	SiteID              string   `json:"site_id"`
-	Type                string   `json:"type"`
-	Domains             []string `json:"domains,omitempty"`
-	IsActive            bool     `json:"is_active"`
-	UploadedAt          *string  `json:"uploaded_at,omitempty"`
-	CreatedAt           string   `json:"created_at"`
+	ID         string   `json:"id"`
+	SiteID     string   `json:"site_id"`
+	Type       string   `json:"type"`
+	Domains    []string `json:"domains,omitempty"`
+	IsActive   bool     `json:"is_active"`
+	UploadedAt *string  `json:"uploaded_at,omitempty"`
+	CreatedAt  string   `json:"created_at"`
 	// StoredCertificateID points to the stored cert library row this
 	// active certificate was sourced from. Allows the frontend to
 	// default the SSL dialog's radio to "stored" and pre-select the

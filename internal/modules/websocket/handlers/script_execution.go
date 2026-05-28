@@ -100,9 +100,10 @@ func (h *ScriptExecutionHandler) Handler() fiber.Handler {
 		}
 
 		// If execution is still pending, update to running and execute
-		if execution.Status == scriptModels.ExecutionStatusPending {
+		switch execution.Status {
+		case scriptModels.ExecutionStatusPending:
 			h.executeScript(c, &execution, &script, &server)
-		} else if execution.Status == scriptModels.ExecutionStatusRunning {
+		case scriptModels.ExecutionStatusRunning:
 			// Already running elsewhere - just notify and close
 			h.sendJSON(c, map[string]any{
 				"type":    "error",
@@ -320,7 +321,7 @@ func (h *ScriptExecutionHandler) finishWithError(c *websocket.Conn, execution *s
 
 func (h *ScriptExecutionHandler) sendError(c *websocket.Conn, msg string) {
 	h.LogWarn(msg)
-	_ = h.Base.SendJSON(c, map[string]any{
+	_ = h.SendJSON(c, map[string]any{
 		"type":    "error",
 		"message": msg,
 	})
@@ -328,7 +329,7 @@ func (h *ScriptExecutionHandler) sendError(c *websocket.Conn, msg string) {
 }
 
 func (h *ScriptExecutionHandler) sendJSON(c *websocket.Conn, data map[string]any) {
-	_ = h.Base.SendJSON(c, data)
+	_ = h.SendJSON(c, data)
 }
 
 // resolveRunAsUser resolves the run-as type to the actual username from the server
