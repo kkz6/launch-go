@@ -403,20 +403,29 @@ func (s *Service) TryConnection(ctx context.Context, id, teamID, userID string) 
 		return err
 	}
 
+	// Validation/state errors below return proper 4xx status codes via the
+	// fiberutil helpers instead of plain errors.New. Without the helpers
+	// Fiber's default handler maps every Go error to 500, which surfaces
+	// as a generic "Internal Server Error" on the client — useless to the
+	// customer trying to figure out why their box wasn't reachable.
 	if server.Provider != types.ProviderCustom {
-		return errors.New("try-connection only applies to custom servers")
+		return fiberutil.Validation("Try Connection only applies to custom servers.")
 	}
 
 	if server.Status != types.ServerStatusAwaitingConnection {
-		return fmt.Errorf("server is not awaiting connection (status: %s)", server.Status)
+		// Most common cause: a previous Try Connection already succeeded
+		// and the server has moved on to starting/provisioning. 409 is
+		// the right shape for "the resource state doesn't allow this
+		// action right now."
+		return fiberutil.Conflict(fmt.Sprintf("Server is not awaiting connection (current status: %s).", server.Status))
 	}
 
 	if server.PublicIPv4 == nil || *server.PublicIPv4 == "" {
-		return errors.New("server has no IP address")
+		return fiberutil.Validation("Server has no IP address recorded yet.")
 	}
 
 	if server.PrivateKey.IsEmpty() {
-		return errors.New("server has no private key")
+		return fiberutil.Validation("Server has no private key recorded yet.")
 	}
 
 	// Single SSH attempt with a tight timeout. The HTTP request is already
@@ -427,17 +436,20 @@ func (s *Service) TryConnection(ctx context.Context, id, teamID, userID string) 
 
 	client, err := server.ConnectionAsRoot().Dial()
 	if err != nil {
-		return fmt.Errorf("could not reach server: %w", err)
+		// Customer-fixable (provision script didn't run, firewall blocking
+		// SSH, wrong IP). Surface the underlying network error so the
+		// toast tells them what to fix instead of "Internal Server Error".
+		return fiberutil.Validation(fmt.Sprintf("Could not reach server: %s. Make sure the provision command ran successfully and SSH is reachable.", err.Error()))
 	}
 	defer client.Close()
 
 	result, err := client.Run(dialCtx, "whoami")
 	if err != nil {
-		return fmt.Errorf("ssh failed: %w", err)
+		return fiberutil.Validation(fmt.Sprintf("SSH command failed: %s.", err.Error()))
 	}
 
 	if result.ExitCode != 0 {
-		return fmt.Errorf("ssh whoami exited %d", result.ExitCode)
+		return fiberutil.Validation(fmt.Sprintf("SSH whoami returned exit code %d.", result.ExitCode))
 	}
 
 	now := time.Now()
