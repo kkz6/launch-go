@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
+	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 )
 
 // ProjectResponse is the API representation of a docker project.
@@ -64,6 +65,19 @@ type ApplicationResponse struct {
 	LastDeployedAt *time.Time `json:"last_deployed_at,omitempty"`
 	CreatedAt      *time.Time `json:"created_at,omitempty"`
 	UpdatedAt      *time.Time `json:"updated_at,omitempty"`
+
+	// BuildLocation is "server" (today's on-host docker build) or
+	// "github_actions" (build runs on GHA, deploy pulls from GHCR).
+	// Always populated; legacy rows return "server" via the column
+	// default. UI uses this to gate the GitHub Actions detail subtab.
+	BuildLocation string `json:"build_location"`
+
+	// GHABuildReady is true once the bootstrap_workflow job has
+	// successfully committed the workflow file and provisioned the
+	// repo secret + variables. Derived: BuildLocation=="github_actions"
+	// AND GHADeployTokenHash present AND source_config has the synced
+	// commit SHA. UI gates the "ready to deploy" affordance on this.
+	GHABuildReady bool `json:"gha_build_ready"`
 }
 
 // DeploymentResponse is the API representation of a deploy attempt or
@@ -96,6 +110,17 @@ type DeploymentResponse struct {
 	Error      *string    `json:"error,omitempty"`
 	CreatedAt  *time.Time `json:"created_at,omitempty"`
 	UpdatedAt  *time.Time `json:"updated_at,omitempty"`
+
+	// TriggerSource tags how this deploy was initiated. "manual" for
+	// pre-existing rows + UI-button deploys, "auto" for webhook-driven
+	// auto-deploys, "github_actions" when the GHA workflow notified us
+	// on a successful build+push. UI renders a 'via GitHub Actions'
+	// badge linked to GHARunURL when this is "github_actions".
+	TriggerSource string `json:"trigger_source"`
+
+	// GHARunURL is the deep link to the GitHub Actions run that
+	// produced this deployment. Empty for non-GHA deploys.
+	GHARunURL *string `json:"gha_run_url,omitempty"`
 }
 
 // ComposeResponse is the API representation of a docker compose stack.
@@ -127,12 +152,18 @@ type ComposeResponse struct {
 	// on the compose detail page renders this so the user can see
 	// which logins this stack uses without a separate fetch.
 	RegistryCredentials []RegistryCredentialSummary `json:"registry_credentials,omitempty"`
+
+	// BuildLocation + GHABuildReady — see ApplicationResponse for the
+	// semantics. Same shape applies to composes.
+	BuildLocation string `json:"build_location"`
+	GHABuildReady bool   `json:"gha_build_ready"`
 }
 
 // ToComposeResponse converts a Compose model to the API shape. The
 // includeRaw flag controls whether the raw YAML body (potentially KB-
 // scale) is included; list endpoints should pass false.
 func ToComposeResponse(c *models.Compose, includeRaw bool) *ComposeResponse {
+	sourceConfig := map[string]any(c.SourceConfig)
 	resp := &ComposeResponse{
 		ID:                c.ID,
 		TeamID:            c.TeamID,
@@ -140,12 +171,14 @@ func ToComposeResponse(c *models.Compose, includeRaw bool) *ComposeResponse {
 		ProjectID:         c.ProjectID,
 		Name:              c.Name,
 		ComposeSourceType: c.ComposeSourceType,
-		SourceConfig:      map[string]any(c.SourceConfig),
+		SourceConfig:      sourceConfig,
 		ComposeFilePath:   c.ComposeFilePath,
 		Status:            string(c.Status),
 		LastDeployedAt:    c.LastDeployedAt,
 		CreatedAt:         c.CreatedAt,
 		UpdatedAt:         c.UpdatedAt,
+		BuildLocation:     string(c.BuildLocation),
+		GHABuildReady:     ghaBuildReady(c.BuildLocation, c.GHADeployTokenHash, sourceConfig),
 	}
 	if includeRaw {
 		resp.RawYAML = c.RawYAML
@@ -608,7 +641,31 @@ func ToDeploymentResponse(d *models.Deployment) *DeploymentResponse {
 		Error:      d.Error,
 		CreatedAt:  d.CreatedAt,
 		UpdatedAt:  d.UpdatedAt,
+
+		TriggerSource: string(d.TriggerSource),
+		GHARunURL:     d.GHARunURL,
 	}
+}
+
+// ghaBuildReady mirrors the design doc's derivation: a workload's
+// GHA build pipeline is considered "ready" once we've minted the
+// deploy token AND the bootstrap_workflow job has landed the file
+// (recorded as gha_workflow_sha in source_config). Surfaced on
+// ApplicationResponse / ComposeResponse so the UI can decide
+// whether to render the GitHub Actions detail subtab as armed or
+// "still bootstrapping…".
+func ghaBuildReady(buildLocation dockertypes.BuildLocation, tokenHash *string, sourceConfig map[string]any) bool {
+	if buildLocation != dockertypes.BuildLocationGitHubActions {
+		return false
+	}
+	if tokenHash == nil || *tokenHash == "" {
+		return false
+	}
+	if sourceConfig == nil {
+		return false
+	}
+	sha, _ := sourceConfig["gha_workflow_sha"].(string)
+	return sha != ""
 }
 
 // ToApplicationResponse maps an Application model to its API response shape.
@@ -618,6 +675,7 @@ func ToApplicationResponse(a *models.Application) *ApplicationResponse {
 		bt := string(*a.BuildType)
 		buildType = &bt
 	}
+	sourceConfig := map[string]any(a.SourceConfig)
 	return &ApplicationResponse{
 		ID:             a.ID,
 		TeamID:         a.TeamID,
@@ -626,7 +684,7 @@ func ToApplicationResponse(a *models.Application) *ApplicationResponse {
 		Name:           a.Name,
 		InternalPort:   a.InternalPort,
 		SourceType:     string(a.SourceType),
-		SourceConfig:   map[string]any(a.SourceConfig),
+		SourceConfig:   sourceConfig,
 		BuildType:      buildType,
 		BuildConfig:    map[string]any(a.BuildConfig),
 		Status:         string(a.Status),
@@ -634,6 +692,9 @@ func ToApplicationResponse(a *models.Application) *ApplicationResponse {
 		LastDeployedAt: a.LastDeployedAt,
 		CreatedAt:      a.CreatedAt,
 		UpdatedAt:      a.UpdatedAt,
+
+		BuildLocation: string(a.BuildLocation),
+		GHABuildReady: ghaBuildReady(a.BuildLocation, a.GHADeployTokenHash, sourceConfig),
 	}
 }
 

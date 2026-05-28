@@ -57,6 +57,23 @@ type Application struct {
 	RegistryCredentialID *string                `gorm:"column:registry_credential_id;type:char(26);index" json:"registry_credential_id,omitempty"`
 	RegistryUsername     *string                `gorm:"column:registry_username;type:varchar(255)" json:"registry_username,omitempty"`
 	RegistryPassword     dbtype.EncryptedString `gorm:"column:registry_password;type:longtext" json:"-"`
+
+	// --- GitHub Actions builds (migration 0050_05_28_000002) ---------
+	//
+	// BuildLocation picks which build path runs when this application
+	// deploys. "server" = today's on-host build; "github_actions" =
+	// commit a workflow into the customer's repo via the GitHub App,
+	// the workflow builds and pushes to GHCR, and a webhook on success
+	// calls back here to enqueue an image-source deploy. Default
+	// "server" so legacy rows behave exactly as before.
+	BuildLocation dockertypes.BuildLocation `gorm:"column:build_location;type:varchar(32);not null;default:'server'" json:"build_location"`
+
+	// GHADeployTokenHash is the sha256 of the per-app deploy token we
+	// mint at enable time. The raw value is shown to the customer once
+	// (one-time toast on enable) and never persisted; only the hash
+	// lives here. Webhook handler compares with subtle.ConstantTimeCompare
+	// so a hash leak can't be brute-forced via timing.
+	GHADeployTokenHash *string `gorm:"column:gha_deploy_token_hash;type:varchar(255)" json:"-"`
 }
 
 func (Application) TableName() string { return "docker_applications" }
@@ -103,6 +120,15 @@ type Compose struct {
 	// serialization — the service layer maps the join into a curated
 	// response DTO (id + name + registry_url, never the secrets).
 	RegistryCredentials []RegistryCredential `gorm:"many2many:docker_compose_registry_credentials;joinForeignKey:ComposeID;joinReferences:RegistryCredentialID" json:"-"`
+
+	// --- GitHub Actions builds (migration 0050_05_28_000003) ---------
+	// Mirror of Application.BuildLocation / GHADeployTokenHash; see
+	// the Application struct above for the rationale. Compose stacks
+	// support the same toggle because the workflow YAML can build
+	// multiple service images in a matrix and emit them as a
+	// service_images map back to Launch.
+	BuildLocation      dockertypes.BuildLocation `gorm:"column:build_location;type:varchar(32);not null;default:'server'" json:"build_location"`
+	GHADeployTokenHash *string                   `gorm:"column:gha_deploy_token_hash;type:varchar(255)" json:"-"`
 }
 
 func (Compose) TableName() string { return "docker_composes" }
