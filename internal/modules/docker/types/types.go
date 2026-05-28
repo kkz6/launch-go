@@ -63,3 +63,43 @@ const (
 )
 
 func (s DeploymentStatus) String() string { return string(s) }
+
+// BuildLocation chooses where the customer's source gets turned into a
+// runnable docker image. "server" is today's behaviour — the worker
+// SSHes onto the target host, clones, and runs docker build there.
+// "github_actions" hands the build to a GitHub Actions workflow that
+// Launch commits + manages; the workflow pushes to GHCR and calls
+// back to a webhook on success.
+type BuildLocation string
+
+const (
+	BuildLocationServer        BuildLocation = "server"
+	BuildLocationGitHubActions BuildLocation = "github_actions"
+)
+
+func (b BuildLocation) String() string { return string(b) }
+
+// IsValid is convenience for handler validation when the frontend
+// sends a raw string. Anything other than the two declared values is
+// rejected — we never want a typo silently dropping a workload into
+// an unknown build mode.
+func (b BuildLocation) IsValid() bool {
+	switch b {
+	case BuildLocationServer, BuildLocationGitHubActions:
+		return true
+	}
+	return false
+}
+
+// DeploymentTriggerSource tags how a deployment was initiated.
+// Pre-existing rows are implicitly "manual"; the column default in
+// migration 0050_05_28_000004 fills that in for the backfill.
+type DeploymentTriggerSource string
+
+const (
+	DeploymentTriggerManual        DeploymentTriggerSource = "manual"
+	DeploymentTriggerAuto          DeploymentTriggerSource = "auto"
+	DeploymentTriggerGitHubActions DeploymentTriggerSource = "github_actions"
+)
+
+func (t DeploymentTriggerSource) String() string { return string(t) }

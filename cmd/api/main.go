@@ -251,6 +251,7 @@ func (a *Application) registerModules() {
 	// Wire cross-module dependencies
 	siteModule.SetDomainRepository(dnsModule.Repos().Domain())
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
+	dockerModule.SetProviderFactory(gitModule.ProviderFactory())
 	siteModule.SetCronCreator(adapters.NewCronCreatorAdapter(serverModule.Service()))
 	siteModule.SetDatabaseManager(adapters.NewDatabaseManagerAdapter(databaseModule.Service()))
 	siteModule.SetStoredCertificateRepository(certificateModule.Repos().StoredCertificates)

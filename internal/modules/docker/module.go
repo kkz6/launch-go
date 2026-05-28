@@ -8,13 +8,16 @@
 package docker
 
 import (
+	gofiber "github.com/gofiber/fiber/v2"
 	"github.com/hibiken/asynq"
 
 	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	certrepos "github.com/kkz6/launch-go/internal/modules/certificate/repositories"
+	"github.com/kkz6/launch-go/internal/modules/docker/handlers"
 	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/services"
+	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/service"
@@ -24,9 +27,10 @@ import (
 const ModuleName = "docker"
 
 var (
-	_ app.Module         = (*Module)(nil)
-	_ app.RouteRegistrar = (*Module)(nil)
-	_ app.JobRegistrar   = (*Module)(nil)
+	_ app.Module           = (*Module)(nil)
+	_ app.RouteRegistrar   = (*Module)(nil)
+	_ app.JobRegistrar     = (*Module)(nil)
+	_ app.WebhookRegistrar = (*Module)(nil)
 )
 
 // Module wires the docker module into the framework.
@@ -41,6 +45,14 @@ type Module struct {
 	// SetCertificateRepository (cross-module — owned by the
 	// certificate module).
 	certRepos *certrepos.Registry
+
+	// providerFactory hands the docker module access to git providers
+	// (GitHub today). Used by the gha:bootstrap_workflow job to commit
+	// the workflow file + write Actions secrets + variables on the
+	// customer's repo via the existing GitHub App installation. Set
+	// at app boot from cmd/api/main.go via SetProviderFactory, same
+	// pattern the site module uses.
+	providerFactory *gitproviders.ProviderFactory
 }
 
 // NewModule constructs the module. ServerRepos + BackupRepos are
@@ -67,10 +79,48 @@ func (m *Module) SetCertificateRepository(r *certrepos.Registry) {
 	m.certRepos = r
 }
 
+// SetProviderFactory injects the git provider factory. Called once
+// at boot from cmd/api/main.go after gitModule is built. Required for
+// the gha:bootstrap_workflow job — without it, the docker module
+// can't reach the GitHub App to commit workflow files.
+func (m *Module) SetProviderFactory(f *gitproviders.ProviderFactory) {
+	m.providerFactory = f
+}
+
+// ProviderFactory exposes the git provider factory to the jobs
+// package so its handlers can resolve a GitHubProvider at runtime.
+func (m *Module) ProviderFactory() *gitproviders.ProviderFactory {
+	return m.providerFactory
+}
+
 // RegisterJobs implements app.JobRegistrar. Binds every docker asynq task
 // type to its handler.
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
-	jobs.Register(mux, m.Deps(), m.repos, m.serverRepos, m.backupRepos, m.certRepos)
+	jobs.Register(mux, m.Deps(), m.repos, m.serverRepos, m.backupRepos, m.certRepos, m.providerFactory)
+}
+
+// RegisterWebhookRoutes implements app.WebhookRegistrar. Mounts the
+// GitHub Actions notify endpoints at /api/webhooks/docker/... outside
+// the team-auth middleware so GitHub's runners can reach them with
+// only the per-workload bearer token.
+//
+// These are the ONLY public endpoints the docker module exposes —
+// every other docker route lives behind RequireProvisionedServer +
+// team-auth in RegisterRoutes.
+func (m *Module) RegisterWebhookRoutes(router gofiber.Router) {
+	deps := m.Deps()
+	handler := handlers.NewGHAWebhookHandler(handlers.GHAWebhookHandlerConfig{
+		DB:           deps.DB,
+		Queue:        deps.Queue,
+		GitProviders: m.providerFactory,
+		Logger:       deps.Logger,
+	})
+
+	g := router.Group("/api/webhooks/docker")
+	g.Post("/applications/:id/deploy", handler.GHAApplicationDeploy)
+	g.Post("/applications/:id/status", handler.GHAApplicationStatus)
+	g.Post("/composes/:id/deploy", handler.GHAComposeDeploy)
+	g.Post("/composes/:id/status", handler.GHAComposeStatus)
 }
 
 // newProjectService builds the project service once per request boot.
@@ -147,6 +197,10 @@ func (m *Module) newRegistryCredentialService() *services.RegistryCredentialServ
 
 func (m *Module) serviceDeps() *services.ServiceDeps {
 	deps := m.Deps()
+	appURL := ""
+	if deps.Config != nil {
+		appURL = deps.Config.App.URL
+	}
 	return &services.ServiceDeps{
 		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
 			Dependencies: deps.ServiceDeps(),
@@ -160,5 +214,8 @@ func (m *Module) serviceDeps() *services.ServiceDeps {
 		// NotifyOnSuccess / NotifyOnFailure the same as scheduled
 		// runs do — same notification structs, same channel routing.
 		Notifier: deps.Notifier,
+		// AppURL flows into GHA workflow template renders so the
+		// committed workflow file knows where to POST notifies.
+		AppURL: appURL,
 	}
 }

@@ -65,6 +65,25 @@ type Deployment struct {
 	StartedAt  *time.Time `gorm:"column:started_at;type:timestamp null" json:"started_at,omitempty"`
 	FinishedAt *time.Time `gorm:"column:finished_at;type:timestamp null" json:"finished_at,omitempty"`
 	Error      *string    `gorm:"type:text" json:"error,omitempty"`
+
+	// --- GitHub Actions builds (migration 0050_05_28_000004) ---------
+	//
+	// TriggerSource tags how this deploy was initiated. Pre-existing
+	// rows default to "manual" via the column default; the GHA webhook
+	// path writes "github_actions". UI surfaces this as a badge in
+	// the deployment list.
+	TriggerSource dockertypes.DeploymentTriggerSource `gorm:"column:trigger_source;type:varchar(32);not null;default:'manual'" json:"trigger_source"`
+
+	// GHARunID is the GitHub Actions run identifier from the webhook.
+	// Doubles as the webhook idempotency key — a partial UNIQUE index
+	// on (target_type, target_id, gha_run_id) prevents two notifies
+	// for the same run from creating duplicate deployment rows.
+	// NULL for non-GHA deploys.
+	GHARunID *string `gorm:"column:gha_run_id;type:varchar(64);index" json:"gha_run_id,omitempty"`
+
+	// GHARunURL deep-links to the Actions run page on github.com.
+	// Surfaced in the deployment-list 'via GitHub Actions' badge.
+	GHARunURL *string `gorm:"column:gha_run_url;type:varchar(512)" json:"gha_run_url,omitempty"`
 }
 
 func (Deployment) TableName() string { return "docker_deployments" }

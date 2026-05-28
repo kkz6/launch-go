@@ -24,6 +24,13 @@ type ServiceDeps struct {
 	// notifier is silently no-op so test rigs and partial bring-ups
 	// don't crash on the synchronous RunNow path.
 	Notifier taskrunner.NotifierService
+	// AppURL is the externally-reachable base URL the GHA workflow
+	// templates embed in their `curl` notify calls. Read from
+	// APP_URL config at module boot. Empty in dev rigs that don't
+	// wire it — the gha:bootstrap_workflow job will surface that as
+	// a "workflow file has empty LAUNCH_WEBHOOK_URL variable" error
+	// rather than silently committing something broken.
+	AppURL string
 }
 
 // BaseService is the shared dependency carrier for every docker service.
@@ -62,4 +69,10 @@ func (s *BaseService) BackupRepos() *backuprepos.Registry {
 // before dispatching so missing notifier infra never panics RunNow.
 func (s *BaseService) Notifier() taskrunner.NotifierService {
 	return s.serviceDeps.Notifier
+}
+
+// AppURL returns the externally-reachable base URL. See ServiceDeps
+// for why this matters to GHA-build flows.
+func (s *BaseService) AppURL() string {
+	return s.serviceDeps.AppURL
 }

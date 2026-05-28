@@ -83,6 +83,14 @@ type GitSourceInput struct {
 	// DockerfilePath, when BuildType=dockerfile, overrides the default
 	// `./Dockerfile`. Useful for monorepos.
 	DockerfilePath *string `json:"dockerfile_path,omitempty" validate:"omitempty,max=512"`
+	// BuildLocation switches the build pipeline between on-server
+	// `docker build` (default) and GitHub Actions ("github_actions").
+	// When github_actions, the create service mints a deploy token,
+	// enqueues gha:bootstrap_workflow to commit the workflow file +
+	// repo secret + variables, and from then on deploys are triggered
+	// by GHA notifying our webhook. See
+	// docs/plans/2026-05-27-github-actions-builds-design.md.
+	BuildLocation *string `json:"build_location,omitempty" validate:"omitempty,oneof=server github_actions"`
 }
 
 // DockerfileSourceInput carries a raw Dockerfile pasted into the UI.
@@ -140,6 +148,12 @@ type ComposeGitInput struct {
 	SourceControlID *string `json:"source_control_id,omitempty"`
 	// ComposeFilePath defaults to docker-compose.yml if empty.
 	ComposeFilePath *string `json:"compose_file_path,omitempty" validate:"omitempty,max=512"`
+	// BuildLocation matches the application-side toggle. When set to
+	// "github_actions" the compose stack uses the matrix-build GHA
+	// workflow (one service per `build:` directive in the compose
+	// file) instead of an on-server build. See ComposeGitInput's
+	// twin on GitSourceInput for the rationale + wiring.
+	BuildLocation *string `json:"build_location,omitempty" validate:"omitempty,oneof=server github_actions"`
 }
 
 // ComposeRawYAMLInput stores the docker-compose YAML inline. Capped at

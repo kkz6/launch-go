@@ -232,6 +232,51 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Deployment started", dto.ToDeploymentResponse(deployment))
 	})
 
+	// GitHub Actions detail-page actions (slice I).
+	//   rotate-token: mint a fresh deploy token + push the new secret
+	//                 to the repo via gha:bootstrap_workflow
+	//   resync:       re-render + re-PUT the workflow file only
+	//   disable:      flip back to build_location=server + clear local
+	//                 GHA state. GitHub-side cleanup (delete secret +
+	//                 vars, orphan the workflow file) is a follow-up.
+	apps.Post("/:id/gha/rotate-token", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		resp, err := applicationSvc.RotateGHAToken(
+			c.Context(), c.Params("id"), c.Params("projectId"), c.Params("serverId"), teamID, userID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Token rotation queued", resp)
+	})
+	apps.Post("/:id/gha/resync", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := applicationSvc.ResyncGHA(
+			c.Context(), c.Params("id"), c.Params("projectId"), c.Params("serverId"), teamID, userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Workflow re-sync queued", nil)
+	})
+	apps.Post("/:id/gha/disable", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := applicationSvc.DisableGHA(
+			c.Context(), c.Params("id"), c.Params("projectId"), c.Params("serverId"), teamID, userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "GitHub Actions builds disabled", nil)
+	})
+
 	// Reload / Stop / Start map to docker restart / stop / start on
 	// the running container. We expose them as separate POST verbs
 	// (instead of one /:id/lifecycle with an `action` body field)
@@ -961,6 +1006,47 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			return err
 		}
 		return fiberutil.Created(c, "Deployment started", dto.ToDeploymentResponse(deployment))
+	})
+
+	// GitHub Actions detail-page actions for composes — mirror of the
+	// application trio above. Same semantics, just routed at the
+	// compose's URL.
+	composes.Post("/:id/gha/rotate-token", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		resp, err := composeSvc.RotateGHAToken(
+			c.Context(), c.Params("id"), c.Params("projectId"), c.Params("serverId"), teamID, userID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Token rotation queued", resp)
+	})
+	composes.Post("/:id/gha/resync", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := composeSvc.ResyncGHA(
+			c.Context(), c.Params("id"), c.Params("projectId"), c.Params("serverId"), teamID, userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Workflow re-sync queued", nil)
+	})
+	composes.Post("/:id/gha/disable", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := composeSvc.DisableGHA(
+			c.Context(), c.Params("id"), c.Params("projectId"), c.Params("serverId"), teamID, userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "GitHub Actions builds disabled", nil)
 	})
 
 	// Compose volume routes — list / create / update / delete. Shares

@@ -6,6 +6,7 @@ import (
 	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	certrepos "github.com/kkz6/launch-go/internal/modules/certificate/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
+	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -25,8 +26,9 @@ func Register(
 	serverRepos *serverrepos.Registry,
 	backupRepos *backuprepos.Registry,
 	certRepos *certrepos.Registry,
+	gitProviders *gitproviders.ProviderFactory,
 ) {
-	deps = NewJobDeps(appDeps, repos, serverRepos, backupRepos, certRepos)
+	deps = NewJobDeps(appDeps, repos, serverRepos, backupRepos, certRepos, gitProviders)
 	pkgjobs.RegisterTyped(mux, TypeDeployApplication, NewDeployApplicationJob)
 	pkgjobs.RegisterTyped(mux, TypeRemoveApplication, NewRemoveApplicationJob)
 	pkgjobs.RegisterTyped(mux, TypeApplicationLifecycle, NewApplicationLifecycleJob)
@@ -40,4 +42,5 @@ func Register(
 	pkgjobs.RegisterTyped(mux, TypeDatabaseLifecycle, NewDatabaseLifecycleJob)
 	pkgjobs.RegisterTyped(mux, TypeRunBackup, NewRunBackupJob)
 	pkgjobs.RegisterTyped(mux, TypePollDueBackups, NewPollDueBackupsJob)
+	pkgjobs.RegisterTyped(mux, TypeGHABootstrapWorkflow, NewGHABootstrapWorkflowJob)
 }
