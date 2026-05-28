@@ -131,3 +131,110 @@ func assertErr(s string) error { return errString(s) }
 type errString string
 
 func (e errString) Error() string { return string(e) }
+
+// --- parseGHASourceConfig + parseRepoIdentifier -------------------
+//
+// Regression: the docker application/compose services persist the git
+// source as `source_config.repo = "<full clone URL>"` (e.g.
+// `git@github.com:owner/name.git`). The bootstrap job's parser
+// previously looked for separate `owner` + `repo` keys or a combined
+// `repository` field, both of which are absent — so every GHA-backed
+// application failed with "owner/repo missing from source_config".
+// These cases lock the URL-aware parsing in.
+
+func TestParseRepoIdentifier_Shapes(t *testing.T) {
+	cases := []struct {
+		in       string
+		owner    string
+		repo     string
+		ok       bool
+		scenario string
+	}{
+		{"", "", "", false, "empty"},
+		{"   ", "", "", false, "whitespace"},
+		{"single", "", "", false, "no slash"},
+		{"owner/repo", "owner", "repo", true, "bare owner/repo"},
+		{"owner/repo.git", "owner", "repo", true, "trailing .git"},
+		{"git@github.com:owner/repo.git", "owner", "repo", true, "scp-like ssh"},
+		{"git@github.com:owner/repo", "owner", "repo", true, "scp-like ssh no suffix"},
+		{"https://github.com/owner/repo.git", "owner", "repo", true, "https"},
+		{"https://github.com/owner/repo", "owner", "repo", true, "https no suffix"},
+		{"ssh://git@github.com/owner/repo.git", "owner", "repo", true, "ssh:// scheme"},
+		{"git@github.com:", "", "", false, "scp prefix but no path"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.scenario, func(t *testing.T) {
+			owner, repo, ok := parseRepoIdentifier(tc.in)
+			assert.Equal(t, tc.ok, ok)
+			assert.Equal(t, tc.owner, owner)
+			assert.Equal(t, tc.repo, repo)
+		})
+	}
+}
+
+func TestParseGHASourceConfig_AcceptsCloneURLInRepoField(t *testing.T) {
+	// This is the exact shape application_service.go writes today.
+	raw := map[string]any{
+		"repo":              "git@github.com:kkz6/launch-gha-test.git",
+		"branch":            "main",
+		"source_control_id": "01k0pzy8ynwnz1j4ytd7eyncdp",
+	}
+	cfg, err := parseGHASourceConfig(raw)
+	assert.NoError(t, err)
+	assert.Equal(t, "kkz6", cfg.Owner)
+	assert.Equal(t, "launch-gha-test", cfg.Repo)
+	assert.Equal(t, "main", cfg.Branch)
+	assert.Equal(t, "01k0pzy8ynwnz1j4ytd7eyncdp", cfg.SourceControlID)
+	// Defaults filled in.
+	assert.Equal(t, "Dockerfile", cfg.DockerfilePath)
+	assert.Equal(t, "docker-compose.yml", cfg.ComposeFilePath)
+	assert.Equal(t, ".github/workflows/launch-deploy.yml", cfg.WorkflowPath)
+}
+
+func TestParseGHASourceConfig_AcceptsHTTPSCloneURL(t *testing.T) {
+	cfg, err := parseGHASourceConfig(map[string]any{
+		"repo":              "https://github.com/kkz6/launch-gha-test",
+		"source_control_id": "01k0pzy8ynwnz1j4ytd7eyncdp",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "kkz6", cfg.Owner)
+	assert.Equal(t, "launch-gha-test", cfg.Repo)
+}
+
+func TestParseGHASourceConfig_StillAcceptsExplicitOwnerRepo(t *testing.T) {
+	// Older write-paths or admin-tooling might still set owner+repo as
+	// separate keys; the parser must not regress on that contract.
+	cfg, err := parseGHASourceConfig(map[string]any{
+		"owner":             "kkz6",
+		"repo":              "launch-gha-test",
+		"source_control_id": "01k0pzy8ynwnz1j4ytd7eyncdp",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "kkz6", cfg.Owner)
+	assert.Equal(t, "launch-gha-test", cfg.Repo)
+}
+
+func TestParseGHASourceConfig_LegacyRepositoryKey(t *testing.T) {
+	cfg, err := parseGHASourceConfig(map[string]any{
+		"repository":        "kkz6/launch-gha-test",
+		"source_control_id": "01k0pzy8ynwnz1j4ytd7eyncdp",
+	})
+	assert.NoError(t, err)
+	assert.Equal(t, "kkz6", cfg.Owner)
+	assert.Equal(t, "launch-gha-test", cfg.Repo)
+}
+
+func TestParseGHASourceConfig_MissingSourceControlID(t *testing.T) {
+	_, err := parseGHASourceConfig(map[string]any{
+		"repo": "git@github.com:kkz6/launch-gha-test.git",
+	})
+	assert.ErrorContains(t, err, "source_control_id missing")
+}
+
+func TestParseGHASourceConfig_UnparseableRepo(t *testing.T) {
+	_, err := parseGHASourceConfig(map[string]any{
+		"repo":              "not-a-url",
+		"source_control_id": "01k0pzy8ynwnz1j4ytd7eyncdp",
+	})
+	assert.ErrorContains(t, err, "owner/repo missing")
+}

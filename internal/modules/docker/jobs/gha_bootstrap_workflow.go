@@ -298,17 +298,20 @@ func parseGHASourceConfig(raw map[string]any) (*ghaSourceConfig, error) {
 		ExistingSHA:     stringAt(raw, "gha_workflow_sha"),
 	}
 
-	// Repository may have been saved as "owner/repo" rather than as
-	// separate fields. Parse it apart for the API helpers.
+	// The application + compose service stores the git source as a
+	// single `repo` field that holds the full clone URL (e.g.
+	// `git@github.com:owner/name.git` or `https://github.com/owner/name`).
+	// Split that into Owner+Repo so the GitHub API helpers (which take
+	// them separately) work without forcing a DB shape migration.
+	if cfg.Owner == "" || cfg.Repo == "" || looksLikeGitURL(cfg.Repo) {
+		if owner, repo, ok := parseRepoIdentifier(stringAt(raw, "repo")); ok {
+			cfg.Owner, cfg.Repo = owner, repo
+		}
+	}
+	// Legacy "owner/repo" combined form, still supported.
 	if cfg.Owner == "" || cfg.Repo == "" {
-		if combined := stringAt(raw, "repository"); combined != "" {
-			for i := 0; i < len(combined); i++ {
-				if combined[i] == '/' {
-					cfg.Owner = combined[:i]
-					cfg.Repo = combined[i+1:]
-					break
-				}
-			}
+		if owner, repo, ok := parseRepoIdentifier(stringAt(raw, "repository")); ok {
+			cfg.Owner, cfg.Repo = owner, repo
 		}
 	}
 	if cfg.SourceControlID == "" {
@@ -318,6 +321,57 @@ func parseGHASourceConfig(raw map[string]any) (*ghaSourceConfig, error) {
 		return nil, errors.New("owner/repo missing from source_config")
 	}
 	return cfg, nil
+}
+
+// looksLikeGitURL is true when s isn't a bare repo name — i.e. it
+// contains the scheme/host prefix of a clone URL. We use this to decide
+// whether to re-parse the `repo` field of source_config rather than
+// trusting it verbatim.
+func looksLikeGitURL(s string) bool {
+	return strings.Contains(s, "://") || strings.Contains(s, "@") || strings.Contains(s, ":")
+}
+
+// parseRepoIdentifier accepts any of the common shapes the docker
+// services write into source_config and returns (owner, repo, ok):
+//
+//	"owner/repo"
+//	"git@github.com:owner/repo.git"
+//	"https://github.com/owner/repo.git"
+//	"https://github.com/owner/repo"
+//	"ssh://git@github.com/owner/repo.git"
+//
+// Returns ok=false when the input is empty or doesn't yield both a
+// non-empty owner AND repo. The job validator above turns ok=false into
+// a clean "owner/repo missing" error.
+func parseRepoIdentifier(raw string) (string, string, bool) {
+	s := strings.TrimSpace(raw)
+	if s == "" {
+		return "", "", false
+	}
+	s = strings.TrimSuffix(s, ".git")
+	// scp-like ssh: git@github.com:owner/repo
+	if strings.HasPrefix(s, "git@") {
+		if idx := strings.Index(s, ":"); idx >= 0 {
+			s = s[idx+1:]
+		}
+	}
+	// scheme://host/owner/repo
+	if i := strings.Index(s, "://"); i >= 0 {
+		rest := s[i+3:]
+		if slash := strings.Index(rest, "/"); slash >= 0 {
+			s = rest[slash+1:]
+		}
+	}
+	parts := strings.Split(s, "/")
+	if len(parts) < 2 {
+		return "", "", false
+	}
+	owner := strings.TrimSpace(parts[len(parts)-2])
+	repo := strings.TrimSpace(parts[len(parts)-1])
+	if owner == "" || repo == "" {
+		return "", "", false
+	}
+	return owner, repo, true
 }
 
 func stringAt(m map[string]any, key string) string {
