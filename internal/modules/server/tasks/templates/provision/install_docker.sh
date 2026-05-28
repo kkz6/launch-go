@@ -71,21 +71,23 @@ if id "{{ .Username }}" >/dev/null 2>&1; then
     sudo usermod -aG docker "{{ .Username }}"
 fi
 
-# Install the AWS CLI so the database-backup task can `aws s3 cp` dumps
-# to the user's storage provider. Database backups run on this host; if
-# awscli is missing every backup silently fails at "aws CLI not
-# installed on this server" inside the backup script. Ubuntu's `awscli`
-# package is AWS CLI v1, which is sufficient for our `s3 cp` / `s3 rm`
-# usage. Idempotent — skipped when already installed.
-echo "Installing AWS CLI"
-if command -v aws >/dev/null 2>&1; then
-    echo "AWS CLI already installed: $(aws --version 2>&1 | head -n1)"
-else
-    # If Docker was pre-installed (custom AMI, snap, etc.) the Docker
-    # block above short-circuited and the apt cache may be stale, so
-    # refresh before the install.
-    waitForAptUnlock
-    sudo apt-get update -qq
-    waitForAptUnlock
-    sudo apt-get install -y -qq awscli
-fi
+# AWS CLI was previously installed here so the database-backup task
+# could shell out to `aws s3 cp` for S3-backed storage providers.
+# Removed because:
+#
+#   - The `awscli` apt package exists on Ubuntu but NOT in Debian's
+#     official archives, so every Debian provision died with
+#     "E: Package 'awscli' has no installation candidate". The
+#     install isn't strictly required mid-provision anyway.
+#   - Every server paid the cost — apt download + install time — even
+#     when the user never configures an S3 backup destination.
+#   - We ship our own agent (launch-agent, installed in the
+#     subsequent step). Storage uploads should funnel through that
+#     so credentials, retries, and provider abstraction live in one
+#     place instead of being spread across an unrelated CLI tool.
+#
+# Follow-up: rewire internal/modules/docker/tasks/database_backup.go
+# to call the agent's storage subcommand instead of bare `aws s3`.
+# Until then, configured S3 backups will fail with the existing
+# `command -v aws` guard's "aws CLI not installed" message, which is
+# a deliberate signal rather than a silent regression.
