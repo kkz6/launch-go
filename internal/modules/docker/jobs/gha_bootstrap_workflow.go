@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/hibiken/asynq"
 	gitcontracts "github.com/kkz6/launch-go/internal/modules/git/contracts"
@@ -126,6 +127,15 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	}
 
 	if err := j.bootstrap(ctx, cfg, rawToken, "application", app.ID); err != nil {
+		// Special-case the "GitHub App installation removed" failure
+		// mode so the UI can render a banner the customer can actually
+		// act on, rather than the user staring at a generic asynq
+		// retry loop in Sentry. installationGone is true when our
+		// installation token request 404s — meaning the customer
+		// uninstalled the GitHub App from their account.
+		if isInstallationGone(err) {
+			j.broadcastInstallationBroken(app.TeamID, "application", app.ID, err)
+		}
 		return err
 	}
 
@@ -158,6 +168,48 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	return nil
 }
 
+// isInstallationGone classifies an error as "the GitHub App
+// installation no longer exists." Checked at the bootstrap error
+// boundary so we can fire a distinct broadcast for the UI's
+// reconnection banner.
+//
+// The GitHub provider currently returns ErrInstallationNotFound for
+// the canonical 404-on-installation case; we string-match defensively
+// in case the installation-token path bubbles up a different shape.
+func isInstallationGone(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gitproviders.ErrInstallationNotFound) {
+		return true
+	}
+	s := err.Error()
+	return strings.Contains(s, "installation_not_found") ||
+		strings.Contains(s, "installation not found") ||
+		strings.Contains(s, "status 404")
+}
+
+// broadcastInstallationBroken fires a team-channel event the UI
+// subscribes to. The handler in launch-nuxt's useChannelEvents
+// allow-list flips the workload's detail subtab into a "Reconnect
+// GitHub App to resume" banner. Idempotent: sending it twice is
+// harmless — the UI just refreshes its banner state.
+func (j *GHABootstrapWorkflowJob) broadcastInstallationBroken(teamID, kind, id string, cause error) {
+	if j.Deps.Broadcaster == nil {
+		return
+	}
+	event := "docker.application.gha_installation_broken"
+	idField := "application_id"
+	if kind == "compose" {
+		event = "docker.compose.gha_installation_broken"
+		idField = "compose_id"
+	}
+	j.Deps.Broadcaster.BroadcastToTeam(teamID, event, map[string]any{
+		idField: id,
+		"error": cause.Error(),
+	})
+}
+
 func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 	var compose dockermodels.Compose
 	if err := j.Deps.DB.WithContext(ctx).Where("id = ?", j.Payload.WorkloadID).First(&compose).Error; err != nil {
@@ -178,6 +230,9 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 	}
 
 	if err := j.bootstrap(ctx, cfg, rawToken, "compose", compose.ID); err != nil {
+		if isInstallationGone(err) {
+			j.broadcastInstallationBroken(compose.TeamID, "compose", compose.ID, err)
+		}
 		return err
 	}
 

@@ -2,6 +2,7 @@ package tasks
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -68,6 +69,18 @@ type ComposeDeployConfig struct {
 	// Plaintext only lives in this in-memory config struct; at-rest
 	// stays encrypted via dbtype.EncryptedString on the saved row.
 	RegistryLogins []ComposeRegistryLogin
+
+	// ServiceImages, when non-empty, switches the compose deploy into
+	// "GHA-built images" mode. For each (service → image) pair the
+	// deploy script rewrites the compose file in place to replace the
+	// service's `build:` block with `image: <image>`, then runs
+	// `docker compose up -d` WITHOUT --build. Used by the GitHub
+	// Actions webhook path — GHA built + pushed each image to GHCR
+	// in a matrix job, and we just deploy them.
+	//
+	// Empty / nil = today's behaviour: build on the host with
+	// `docker compose up --build`.
+	ServiceImages map[string]string
 }
 
 // ComposeRegistryLogin is one resolved registry login. RegistryURL
@@ -183,6 +196,45 @@ fi
 	} else {
 		// Should be unreachable due to service validation — defensive.
 		b.WriteString("echo \"compose deploy missing source\" >&2; exit 1\n")
+	}
+
+	// GHA-built images path: rewrite each named service's `build:` block
+	// with `image: <ghcr image>` so the subsequent `docker compose up`
+	// pulls instead of building. The customer's repo already has a
+	// compose file with `build:` directives — GHA matrix-built each
+	// service into GHCR, and we're just retargeting the YAML.
+	//
+	// We use yq (mikefarah's Go yq, which is widely available via snap
+	// or a single-binary download). When yq isn't present we install
+	// it; the download is ~5MB and idempotent across deploys.
+	if len(cfg.ServiceImages) > 0 {
+		b.WriteString(`echo "::LAUNCH::deploy_step::rewriting_compose_for_gha"
+if ! command -v yq >/dev/null 2>&1; then
+  echo "Installing yq for compose image rewriting"
+  sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq
+  sudo chmod +x /usr/local/bin/yq
+fi
+`)
+		// Sort for deterministic script output — golden tests would
+		// otherwise see different bytes on each render because Go map
+		// iteration order is randomised.
+		serviceNames := make([]string, 0, len(cfg.ServiceImages))
+		for name := range cfg.ServiceImages {
+			serviceNames = append(serviceNames, name)
+		}
+		sort.Strings(serviceNames)
+		for _, name := range serviceNames {
+			image := cfg.ServiceImages[name]
+			// Set image, remove build. Quoting the service name keeps
+			// hyphenated or numeric-only service keys from breaking the
+			// yq expression. We pass the image value as an env var so
+			// special characters in tags (rare but possible) can't
+			// terminate the yq string literal.
+			fmt.Fprintf(&b,
+				"LAUNCH_GHA_IMAGE=%q yq -i '.services.\"%s\".image = strenv(LAUNCH_GHA_IMAGE) | del(.services.\"%s\".build)' \"${COMPOSE_FILE_PATH}\"\n",
+				image, name, name,
+			)
+		}
 	}
 
 	// Write or remove the `.env` file based on EnvFile content. For

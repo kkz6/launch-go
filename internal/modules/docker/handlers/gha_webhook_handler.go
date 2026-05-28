@@ -331,13 +331,59 @@ func (h *GHAWebhookHandler) GHAComposeDeploy(c *gofiber.Ctx) error {
 		return err
 	}
 
-	// TODO(slice F + H): enqueue deploy_compose, pass through
-	// ServiceImages so the renderer rewrites the compose YAML before
-	// `docker compose up`.
+	if err := h.enqueueComposeDeploy(c.Context(), compose, deployment, payload.ServiceImages); err != nil {
+		if h.logger != nil {
+			h.logger.Error().Err(err).
+				Str("compose_id", compose.ID).
+				Str("deployment_id", deployment.ID).
+				Msg("GHA compose webhook: enqueue failed")
+		}
+		return fiberutil.Internal("failed to queue deployment")
+	}
 
 	return fiberutil.OK(c, "Deployment queued", map[string]any{
 		"deployment_id": deployment.ID,
 	})
+}
+
+// enqueueComposeDeploy mirrors enqueueApplicationDeploy for compose
+// stacks. Resolves a fresh GHCR installation token, builds a
+// deploy_compose task with the service_images map + override creds,
+// enqueues it. Skipped when queue or gitProviders are nil (slice C
+// test rigs).
+func (h *GHAWebhookHandler) enqueueComposeDeploy(
+	ctx context.Context,
+	compose *dockermodels.Compose,
+	deployment *dockermodels.Deployment,
+	serviceImages map[string]string,
+) error {
+	if h.queue == nil {
+		return nil
+	}
+	if h.gitProviders == nil {
+		return errors.New("gha webhook: git provider factory not wired")
+	}
+	installationToken, err := h.resolveInstallationToken(ctx, compose.SourceConfig)
+	if err != nil {
+		return fmt.Errorf("resolve installation token: %w", err)
+	}
+	task, err := dockerjobs.NewDeployComposeTaskFromGHA(
+		compose.ID,
+		deployment.ID,
+		compose.ServerID,
+		compose.TeamID,
+		serviceImages,
+		"ghcr.io",
+		"x-access-token",
+		installationToken,
+	)
+	if err != nil {
+		return fmt.Errorf("build deploy task: %w", err)
+	}
+	if _, err := h.queue.Enqueue(task); err != nil {
+		return fmt.Errorf("enqueue deploy task: %w", err)
+	}
+	return nil
 }
 
 // GHAComposeStatus mirrors GHAApplicationStatus for composes.
