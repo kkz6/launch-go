@@ -98,6 +98,7 @@ const (
 	NotificationTypeFailedToDeleteServer        NotificationType = "failed_to_delete_server"
 	NotificationTypeDatabaseBackupSucceeded     NotificationType = "database_backup_succeeded"
 	NotificationTypeDatabaseBackupFailed        NotificationType = "database_backup_failed"
+	NotificationTypeStaleProviderImages         NotificationType = "stale_provider_images"
 )
 
 var allNotificationTypes = []NotificationType{
@@ -115,6 +116,7 @@ var allNotificationTypes = []NotificationType{
 	NotificationTypeFailedToDeleteServer,
 	NotificationTypeDatabaseBackupSucceeded,
 	NotificationTypeDatabaseBackupFailed,
+	NotificationTypeStaleProviderImages,
 }
 
 var notificationTypeLabels = map[NotificationType]string{
@@ -132,6 +134,7 @@ var notificationTypeLabels = map[NotificationType]string{
 	NotificationTypeFailedToDeleteServer:        "Failed To Delete Server",
 	NotificationTypeDatabaseBackupSucceeded:     "Database Backup Succeeded",
 	NotificationTypeDatabaseBackupFailed:        "Database Backup Failed",
+	NotificationTypeStaleProviderImages:         "Stale Provider Images",
 }
 
 // AllNotificationTypes returns all valid notification types

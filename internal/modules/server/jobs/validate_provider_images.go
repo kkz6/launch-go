@@ -9,10 +9,10 @@ import (
 	"github.com/getsentry/sentry-go"
 	"github.com/hibiken/asynq"
 
+	"github.com/kkz6/launch-go/internal/modules/notification/notifications"
 	"github.com/kkz6/launch-go/internal/modules/server/config"
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/providers"
-	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/launch/sshkey"
 )
@@ -54,8 +54,12 @@ func (j *ValidateProviderImagesJob) Handle(ctx context.Context) error {
 
 	// Track results per provider-type so we only report each unique
 	// (provider, image) failure once per run even if multiple accounts
-	// surface the same broken slug.
+	// surface the same broken slug. Carry team_id alongside so we can
+	// route notifications to the team owners whose server_providers
+	// row was actually affected (different teams may have credentials
+	// for the same provider; only the teams hitting failures get paged).
 	type failure struct {
+		TeamID   string
 		Provider string
 		OS       string
 		Image    string
@@ -98,8 +102,13 @@ func (j *ValidateProviderImagesJob) Handle(ctx context.Context) error {
 			continue
 		}
 
+		teamID := ""
+		if row.TeamID != nil {
+			teamID = *row.TeamID
+		}
 		for _, f := range checkProviderImages(ctx, provider, cfg, creds) {
 			failures = append(failures, failure{
+				TeamID:   teamID,
 				Provider: row.Provider.String(),
 				OS:       f.OS,
 				Image:    f.Image,
@@ -115,11 +124,10 @@ func (j *ValidateProviderImagesJob) Handle(ctx context.Context) error {
 		return nil
 	}
 
-	// Surface failures: structured log + Sentry. Engineers see this once a
-	// day before customers do. Notifications-to-team is the natural next
-	// step but is intentionally out of scope here.
+	// Surface failures: structured log + Sentry + per-team notification.
 	for _, f := range failures {
 		j.Deps.Logger.Error().
+			Str("team_id", f.TeamID).
 			Str("provider", f.Provider).
 			Str("os", f.OS).
 			Str("image", f.Image).
@@ -134,6 +142,40 @@ func (j *ValidateProviderImagesJob) Handle(ctx context.Context) error {
 		scope.SetExtra("failures", string(body))
 		sentry.CaptureMessage(fmt.Sprintf("Provider image validation failed: %d configured images no longer available", len(failures)))
 	})
+
+	// Group findings by team so each owner gets one notification
+	// summarising the cumulative state of their providers, rather
+	// than N separate pages per image. Skip silently when the
+	// notifier isn't wired (dev mode, tests).
+	if j.Deps.TaskRunnerDeps != nil && j.Deps.TaskRunnerDeps.Notifier != nil {
+		byTeam := make(map[string][]notifications.StaleProviderImageFinding, 4)
+		for _, f := range failures {
+			byTeam[f.TeamID] = append(byTeam[f.TeamID], notifications.StaleProviderImageFinding{
+				Provider: f.Provider,
+				OS:       f.OS,
+				Image:    f.Image,
+				Reason:   f.Reason,
+			})
+		}
+		for teamID, findings := range byTeam {
+			if teamID == "" {
+				// Unscoped server_providers row (shouldn't happen in
+				// practice — every row has a team). Skip rather than
+				// trying to fan out to "all teams".
+				continue
+			}
+			notif := notifications.NewStaleProviderImagesNotification(findings)
+			if err := j.Deps.TaskRunnerDeps.Notifier.SendToTeam(ctx, teamID, notif); err != nil {
+				// Per-team failure: log and continue with the rest.
+				// One unreachable channel for one team shouldn't block
+				// the cron from notifying the others.
+				j.Deps.Logger.Warn().
+					Err(err).
+					Str("team_id", teamID).
+					Msg("validate_provider_images: failed to send stale-images notification")
+			}
+		}
+	}
 
 	// Not a fatal error from asynq's perspective — retrying won't fix a
 	// retired upstream image. Return nil so the cron doesn't churn.
@@ -151,10 +193,25 @@ type imageFailure struct {
 	Reason string
 }
 
-// checkProviderImages knows how to verify each provider's images against the
-// upstream API. Only DO has a real per-image lookup today; the others fall
-// back to a static-shape check (numeric IDs flagged for review). Extend with
-// LookupImage methods on each provider type as needed.
+// imageLookup is the live-verification subset of the Provider interface.
+// Each provider implementation that can validate an image against its
+// upstream API satisfies this. checkProviderImages branches on it so we
+// don't have to switch on provider.Type() for every new provider that
+// gains a LookupImage method.
+type imageLookup interface {
+	LookupImage(ctx context.Context, credentials map[string]any, image string) error
+}
+
+// checkProviderImages verifies each provider's configured images against
+// the upstream API. Providers that implement imageLookup get a real
+// per-image check; the rest fall through to the "looks like an unstable
+// numeric ID" static signal so we still know to manually review.
+//
+// AWS is a special case: its config.Images map is region->{os->ami_id}
+// (and the static AMI IDs drift weekly as Canonical publishes patches),
+// so we resolve through SSM Parameter Store instead. The legacy static
+// map is still checked as a defence-in-depth so a region we haven't yet
+// migrated to SSM gets the same alerting.
 func checkProviderImages(
 	ctx context.Context,
 	provider providers.Provider,
@@ -163,35 +220,96 @@ func checkProviderImages(
 ) []imageFailure {
 	var failures []imageFailure
 
-	switch provider.Type() {
-	case types.ProviderDigitalOcean:
-		do, ok := provider.(*providers.DigitalOceanProvider)
-		if !ok {
-			return nil
-		}
+	// AWS has the region->os->ami nested-map shape and SSM-parameter
+	// resolution that doesn't fit the simple imageLookup contract.
+	if aws, ok := provider.(*providers.AWSProvider); ok {
+		return checkAWSImages(ctx, aws, cfg, creds)
+	}
+
+	if lookuper, ok := provider.(imageLookup); ok {
 		for osKey, raw := range cfg.Images {
 			img, _ := raw.(string)
-			if err := do.LookupImage(ctx, creds, img); err != nil {
+			if err := lookuper.LookupImage(ctx, creds, img); err != nil {
 				failures = append(failures, imageFailure{OS: osKey, Image: img, Reason: err.Error()})
 			}
 		}
+		return failures
+	}
 
-	default:
-		// For providers without a LookupImage helper we still surface the
-		// "looks like an unstable numeric ID" signal so we know to review.
-		for osKey, raw := range cfg.Images {
-			img, _ := raw.(string)
-			if isAllDigits(img) {
+	// No LookupImage available — flag numeric-shape IDs for review.
+	for osKey, raw := range cfg.Images {
+		img, _ := raw.(string)
+		if isAllDigits(img) {
+			failures = append(failures, imageFailure{
+				OS:     osKey,
+				Image:  img,
+				Reason: "image is a numeric ID; recommend periodic manual review (provider has no API to verify without a lookup helper)",
+			})
+		}
+	}
+	return failures
+}
+
+// checkAWSImages handles AWS's region->{os->ami} shape. For each
+// configured OS, it first tries the SSM parameter (the canonical Ubuntu
+// "always-current AMI" pointer) — if Canonical removes a release, that
+// fails loudly. As defence-in-depth, it also verifies the static AMI
+// IDs in each region; those drift week-over-week, so any deregistered
+// AMI in any region surfaces here before a customer hits it during a
+// provision in that region.
+func checkAWSImages(
+	ctx context.Context,
+	aws *providers.AWSProvider,
+	cfg config.ProviderConfig,
+	creds map[string]any,
+) []imageFailure {
+	var failures []imageFailure
+
+	// Pass 1: resolve each OS through its SSM parameter.
+	for osKey := range providers.AWSSSMParameterByOS {
+		if _, err := aws.ResolveSSMImage(ctx, creds, osKey); err != nil {
+			failures = append(failures, imageFailure{
+				OS:     osKey,
+				Image:  providers.AWSSSMParameterByOS[osKey],
+				Reason: err.Error(),
+			})
+		}
+	}
+
+	// Pass 2: validate the static AMI map's IDs region-by-region.
+	// cfg.Images for AWS is map[region]map[osKey]amiID. We're tolerant
+	// of mixed shapes (raw could be a string OR a map) since the same
+	// validation framework runs against other providers' flat maps.
+	for region, raw := range cfg.Images {
+		osMap, ok := raw.(map[string]string)
+		if !ok {
+			continue
+		}
+		credsForRegion := cloneCreds(creds)
+		credsForRegion["region"] = region
+		for osKey, amiID := range osMap {
+			if err := aws.LookupImage(ctx, credsForRegion, amiID); err != nil {
 				failures = append(failures, imageFailure{
-					OS:     osKey,
-					Image:  img,
-					Reason: "image is a numeric ID; recommend periodic manual review (provider has no API to verify without a lookup helper)",
+					OS:     osKey + " (" + region + ")",
+					Image:  amiID,
+					Reason: err.Error(),
 				})
 			}
 		}
 	}
 
 	return failures
+}
+
+// cloneCreds returns a shallow copy of the credentials map with a
+// patched region field so the AWS provider hits the right regional
+// endpoint without us mutating the caller's map.
+func cloneCreds(in map[string]any) map[string]any {
+	out := make(map[string]any, len(in)+1)
+	for k, v := range in {
+		out[k] = v
+	}
+	return out
 }
 
 func decryptCredentials(row *models.ServerProvider) (map[string]any, error) {

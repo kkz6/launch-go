@@ -154,6 +154,35 @@ func (p *HetznerProvider) GetImage(os types.OperatingSystem) string {
 	return p.GetImageFromConfig(os, "ubuntu-24.04")
 }
 
+// LookupImage asks Hetzner whether the given image identifier is still
+// served. Hetzner accepts both numeric IDs and named system images
+// (e.g. "ubuntu-24.04") at /v1/images?name=... — we hit the named
+// endpoint because our configured values in options.go are names,
+// not numeric IDs. Returns nil on a 1+ result, an error otherwise.
+// Mirrors DigitalOceanProvider.LookupImage so checkProviderImages can
+// switch on provider.Type() without ad-hoc dispatch logic.
+//
+// API ref: https://docs.hetzner.cloud/#images-list-images
+func (p *HetznerProvider) LookupImage(ctx context.Context, credentials map[string]interface{}, image string) error {
+	token, err := ExtractToken(credentials)
+	if err != nil {
+		return err
+	}
+	client := p.NewClient(token)
+	// /v1/images?name=ubuntu-24.04&type=system returns {"images":[…]} —
+	// empty array means "the name we have in options.go isn't a current
+	// system image", which is exactly the failure mode we want flagged.
+	resp, err := DoGet(ctx, client, "/images?name="+image+"&type=system")
+	if err != nil {
+		return WrapHTTPError(err, "lookup image "+image)
+	}
+	images, _ := resp["images"].([]interface{})
+	if len(images) == 0 {
+		return fmt.Errorf("image %q not found on Hetzner (name lookup returned 0 results)", image)
+	}
+	return nil
+}
+
 // CredentialRules returns validation rules
 func (p *HetznerProvider) CredentialRules() map[string]string {
 	return CommonCredentialRules()

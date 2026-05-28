@@ -9,6 +9,7 @@ import (
 func TestForFreshServer_Order(t *testing.T) {
 	steps := ForFreshServer()
 	require := []ProvisionStep{
+		ProvisionStepDetectOS,
 		ProvisionStepConfigureSwap,
 		ProvisionStepConfigureFirewall,
 		ProvisionStepInstallEssentialPackages,
@@ -22,10 +23,12 @@ func TestForFreshServer_Order(t *testing.T) {
 func TestForDockerServer_Order(t *testing.T) {
 	steps := ForDockerServer()
 
-	// Must contain all 6 base hardening steps in the same order as ForFreshServer,
-	// then the 5 docker-specific steps appended. Swarm step is intentionally
-	// excluded from the fresh-provision flow — see ForDockerServer() comment.
+	// Must contain all 7 base hardening steps in the same order as ForFreshServer
+	// (detect_os + 6 base hardening), then the 5 docker-specific steps appended.
+	// Swarm step is intentionally excluded from the fresh-provision flow — see
+	// ForDockerServer() comment.
 	expected := []ProvisionStep{
+		ProvisionStepDetectOS,
 		ProvisionStepConfigureSwap,
 		ProvisionStepConfigureFirewall,
 		ProvisionStepInstallEssentialPackages,
@@ -39,7 +42,7 @@ func TestForDockerServer_Order(t *testing.T) {
 		ProvisionStepInstallTraefik,
 	}
 	assert.Equal(t, expected, steps, "docker stack must run base hardening then docker-specific steps")
-	assert.Len(t, steps, 11)
+	assert.Len(t, steps, 12)
 
 	// Swarm step is reachable via the enum (for parsing historical rows)
 	// but must NEVER appear in the live provision sequence.
