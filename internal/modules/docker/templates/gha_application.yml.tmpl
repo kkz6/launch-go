@@ -1,0 +1,90 @@
+# Managed by Launch. Edits will be overwritten on the next sync.
+name: Launch Deploy
+
+on:
+  push:
+    branches: ["{{.Branch}}"]
+  workflow_dispatch:
+
+concurrency:
+  group: launch-deploy-${{ "{{" }} github.ref {{ "}}" }}
+  cancel-in-progress: false
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: meta
+        run: |
+          echo "image=ghcr.io/${{ "{{" }} github.repository {{ "}}" }}:launch-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ "{{" }} github.actor {{ "}}" }}
+          password: ${{ "{{" }} secrets.GITHUB_TOKEN {{ "}}" }}
+
+      - name: Detect builder
+        id: builder
+        run: |
+          if [ -f "{{.DockerfilePath}}" ]; then
+            echo "kind=dockerfile" >> $GITHUB_OUTPUT
+          else
+            echo "kind=nixpacks"   >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build (Dockerfile)
+        if: steps.builder.outputs.kind == 'dockerfile'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: {{.DockerfilePath}}
+          push: true
+          tags: ${{ "{{" }} steps.meta.outputs.image {{ "}}" }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build (Nixpacks)
+        if: steps.builder.outputs.kind == 'nixpacks'
+        uses: iloveitaly/nixpacks-action@v0.1
+        with:
+          tags: ${{ "{{" }} steps.meta.outputs.image {{ "}}" }}
+          push: true
+
+      - name: Notify Launch (success)
+        env:
+          TOKEN: ${{ "{{" }} secrets.LAUNCH_DEPLOY_TOKEN {{ "}}" }}
+        run: |
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc \
+              --arg image  '${{ "{{" }} steps.meta.outputs.image {{ "}}" }}' \
+              --arg sha    '${{ "{{" }} github.sha {{ "}}" }}' \
+              --arg branch '${{ "{{" }} github.ref_name {{ "}}" }}' \
+              --arg run_id '${{ "{{" }} github.run_id {{ "}}" }}' \
+              --arg url    '${{ "{{" }} github.server_url {{ "}}" }}/${{ "{{" }} github.repository {{ "}}" }}/actions/runs/${{ "{{" }} github.run_id {{ "}}" }}' \
+              '{image_tag:$image, commit_sha:$sha, branch:$branch, run_id:$run_id, run_url:$url}')" \
+            "{{.LaunchBaseURL}}/api/webhooks/docker/applications/{{.AppID}}/deploy"
+
+      - name: Notify Launch (failure)
+        if: failure()
+        env:
+          TOKEN: ${{ "{{" }} secrets.LAUNCH_DEPLOY_TOKEN {{ "}}" }}
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc \
+              --arg run_id '${{ "{{" }} github.run_id {{ "}}" }}' \
+              --arg url    '${{ "{{" }} github.server_url {{ "}}" }}/${{ "{{" }} github.repository {{ "}}" }}/actions/runs/${{ "{{" }} github.run_id {{ "}}" }}' \
+              '{status:"failed", run_id:$run_id, run_url:$url}')" \
+            "{{.LaunchBaseURL}}/api/webhooks/docker/applications/{{.AppID}}/status"

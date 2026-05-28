@@ -1,0 +1,152 @@
+# Managed by Launch. Edits will be overwritten on the next sync.
+name: Launch Deploy
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+concurrency:
+  group: launch-deploy-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      services: ${{ steps.list.outputs.services }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # yq extracts services with a `build:` directive. The result is a
+      # JSON array of service names, fed into the matrix below. If the
+      # compose file declares no `build:` (everything is `image:`), the
+      # matrix is empty and the build job is skipped — the user picked
+      # an all-prebuilt-images compose so there's nothing for GHA to do.
+      - name: Install yq
+        run: sudo snap install yq || (sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq)
+
+      - name: List buildable services
+        id: list
+        run: |
+          services=$(yq -o=json '[.services | to_entries[] | select(.value.build != null) | .key]' "docker-compose.yml")
+          echo "services=$services" >> $GITHUB_OUTPUT
+
+  build:
+    needs: discover
+    if: ${{ needs.discover.outputs.services != '[]' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        service: ${{ fromJson(needs.discover.outputs.services) }}
+    outputs:
+      image_map: ${{ steps.collect.outputs.image_map }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compute image tag
+        id: meta
+        run: |
+          echo "image=ghcr.io/${{ github.repository }}:launch-${{ matrix.service }}-${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve build context + Dockerfile
+        id: ctx
+        run: |
+          context=$(yq -r ".services.\"${{ matrix.service }}\".build.context // \".\"" "docker-compose.yml")
+          dockerfile=$(yq -r ".services.\"${{ matrix.service }}\".build.dockerfile // \"Dockerfile\"" "docker-compose.yml")
+          echo "context=$context"       >> $GITHUB_OUTPUT
+          echo "dockerfile=$dockerfile" >> $GITHUB_OUTPUT
+
+      - name: Build + push
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ steps.ctx.outputs.context }}
+          file: ${{ steps.ctx.outputs.context }}/${{ steps.ctx.outputs.dockerfile }}
+          push: true
+          tags: ${{ steps.meta.outputs.image }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      # Each matrix shard appends its (service, image) pair to a shared
+      # artifact. The collect job downstream rolls them into the JSON
+      # map the notify call posts to Launch.
+      - name: Record image
+        run: |
+          mkdir -p .gha-launch-images
+          echo "${{ steps.meta.outputs.image }}" > ".gha-launch-images/${{ matrix.service }}"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: launch-image-${{ matrix.service }}
+          path: .gha-launch-images/${{ matrix.service }}
+          retention-days: 1
+
+  collect-and-notify:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: launch-image-*
+          path: .gha-launch-images/
+          merge-multiple: true
+
+      - name: Build service_images map
+        id: collect
+        run: |
+          map='{}'
+          for f in .gha-launch-images/*; do
+            svc=$(basename "$f")
+            img=$(cat "$f")
+            map=$(jq --arg svc "$svc" --arg img "$img" '. + {($svc): $img}' <<<"$map")
+          done
+          echo "service_images=$(echo "$map" | jq -c .)" >> $GITHUB_OUTPUT
+
+      - name: Notify Launch (success)
+        env:
+          TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
+        run: |
+          curl --fail-with-body -sS -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc \
+              --argjson images '${{ steps.collect.outputs.service_images }}' \
+              --arg sha    '${{ github.sha }}' \
+              --arg branch '${{ github.ref_name }}' \
+              --arg run_id '${{ github.run_id }}' \
+              --arg url    '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
+              '{service_images:$images, commit_sha:$sha, branch:$branch, run_id:$run_id, run_url:$url}')" \
+            "https://launchctl.io/api/webhooks/docker/composes/01HJXVHGRGTQRX4P0G3Y8R6CK8/deploy"
+
+  notify-failure:
+    needs: [discover, build, collect-and-notify]
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Notify Launch (failure)
+        env:
+          TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
+        run: |
+          curl -sS -X POST \
+            -H "Authorization: Bearer $TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$(jq -nc \
+              --arg run_id '${{ github.run_id }}' \
+              --arg url    '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
+              '{status:"failed", run_id:$run_id, run_url:$url}')" \
+            "https://launchctl.io/api/webhooks/docker/composes/01HJXVHGRGTQRX4P0G3Y8R6CK8/status"

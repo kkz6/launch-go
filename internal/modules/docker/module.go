@@ -8,10 +8,12 @@
 package docker
 
 import (
+	gofiber "github.com/gofiber/fiber/v2"
 	"github.com/hibiken/asynq"
 
 	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	certrepos "github.com/kkz6/launch-go/internal/modules/certificate/repositories"
+	"github.com/kkz6/launch-go/internal/modules/docker/handlers"
 	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/services"
@@ -24,9 +26,10 @@ import (
 const ModuleName = "docker"
 
 var (
-	_ app.Module         = (*Module)(nil)
-	_ app.RouteRegistrar = (*Module)(nil)
-	_ app.JobRegistrar   = (*Module)(nil)
+	_ app.Module           = (*Module)(nil)
+	_ app.RouteRegistrar   = (*Module)(nil)
+	_ app.JobRegistrar     = (*Module)(nil)
+	_ app.WebhookRegistrar = (*Module)(nil)
 )
 
 // Module wires the docker module into the framework.
@@ -71,6 +74,24 @@ func (m *Module) SetCertificateRepository(r *certrepos.Registry) {
 // type to its handler.
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 	jobs.Register(mux, m.Deps(), m.repos, m.serverRepos, m.backupRepos, m.certRepos)
+}
+
+// RegisterWebhookRoutes implements app.WebhookRegistrar. Mounts the
+// GitHub Actions notify endpoints at /api/webhooks/docker/... outside
+// the team-auth middleware so GitHub's runners can reach them with
+// only the per-workload bearer token.
+//
+// These are the ONLY public endpoints the docker module exposes —
+// every other docker route lives behind RequireProvisionedServer +
+// team-auth in RegisterRoutes.
+func (m *Module) RegisterWebhookRoutes(router gofiber.Router) {
+	handler := handlers.NewGHAWebhookHandler(m.Deps().DB)
+
+	g := router.Group("/api/webhooks/docker")
+	g.Post("/applications/:id/deploy", handler.GHAApplicationDeploy)
+	g.Post("/applications/:id/status", handler.GHAApplicationStatus)
+	g.Post("/composes/:id/deploy", handler.GHAComposeDeploy)
+	g.Post("/composes/:id/status", handler.GHAComposeStatus)
 }
 
 // newProjectService builds the project service once per request boot.
