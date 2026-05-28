@@ -103,7 +103,7 @@ func (s *EncryptedSerializer) Scan(ctx context.Context, field *schema.Field, dst
 	}
 
 	// Handle pointer types
-	if fieldValue.Kind() == reflect.Ptr {
+	if fieldValue.Kind() == reflect.Pointer {
 		if fieldValue.IsNil() {
 			fieldValue.Set(reflect.New(fieldValue.Type().Elem()))
 		}

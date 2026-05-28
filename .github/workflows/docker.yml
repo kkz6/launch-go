@@ -1,11 +1,14 @@
 name: Docker
 
 on:
+  # Build + push only on main pushes and on semver tags. PRs and
+  # feature branches don't need an image — the CI workflow (lint /
+  # build / test / security) covers their gate. Restricting this
+  # avoids 3-minute container builds on every PR push and keeps
+  # ghcr.io free of branch-tagged images.
   push:
     branches: [main]
     tags: ["v*"]
-  pull_request:
-    branches: [main]
 
 env:
   REGISTRY: ghcr.io

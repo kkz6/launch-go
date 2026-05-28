@@ -76,6 +76,7 @@ linters:
         - "-QF1001"  # "could apply De Morgan's law" — stylistic
         - "-QF1003"  # "could use tagged switch" — stylistic
         - "-QF1008"  # "could remove embedded field from selector" — style
+        - "-QF1012"  # "use fmt.Fprintf instead of WriteString(Sprintf(..))" — style
 
     revive:
       severity: warning
@@ -132,7 +133,11 @@ linters:
             - "fmt.Printf"
             - "fmt.Println"
             - "fmt.Print"
+            - "fmt.Fprintf"
+            - "fmt.Fprintln"
             - "strings\\.Builder\\.WriteString"
+            - "strings\\.Builder\\.WriteRune"
+            - "strings\\.Builder\\.WriteByte"
         - name: useless-break
         - name: waitgroup-by-value
         # Muted (pre-existing style noise, not bugs):
@@ -174,6 +179,9 @@ linters:
       - linters: [errcheck]
         text: 'Error return value of `\(?[^`]*\)?\.?(Close|WriteMessage|SetReadDeadline|Signal|Wait|Shutdown|Log|Write|Remove|Unmarshal)`'
       # Cleanup helpers in cmd/api/main.go fire on shutdown and have
-      # nothing useful to do with their error returns.
+      # nothing useful to do with their error returns. cmd/ tools are
+      # CLI utilities (test-do, validate-images, shellcheck, etc.)
+      # where uncheck'd errors on stdout writes / json.Unmarshal of
+      # known-good responses are acceptable.
       - path: cmd/.*\.go
-        linters: [errcheck]
+        linters: [errcheck, revive]

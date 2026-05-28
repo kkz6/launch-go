@@ -676,7 +676,7 @@ func (r *TaskRunner) broadcastTaskRunning(taskModel *models.Task) {
 
 func getTaskTypeName(task taskrunner.Task) string {
 	t := reflect.TypeOf(task)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return t.PkgPath() + "." + t.Name()
