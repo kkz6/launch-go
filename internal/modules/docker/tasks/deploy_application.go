@@ -239,29 +239,46 @@ echo "::LAUNCH::deploy_step::done"
 // history. The login → pull → logout sequence is wrapped in a
 // subshell so a non-auth pull failure still tears the login down.
 //
-// We `set +x` around the login block defensively even though the
-// outer script doesn't set `-x` — same belt-and-braces idiom you'd
-// add to a CI script that pipes secrets through a heredoc.
+// docker login + docker logout both print
+//   "WARNING! Your credentials are stored unencrypted in
+//    /root/.docker/config.json. Configure a credential helper..."
+// to stderr unconditionally — there's no --quiet flag. Operators
+// can't act on it without host-level credential-helper setup that
+// Launch deliberately doesn't take over, so we filter just those
+// three known lines through process substitution. docker's exit
+// code is preserved (proc-sub doesn't sit in the pipeline) so a
+// genuine auth failure still surfaces. Bash-only — the remote
+// script always runs under bash.
+const dockerCredFilter = `2> >(grep -v -E 'credentials are stored unencrypted|Configure a credential helper|credential-store' >&2)`
+
 func buildImageStanza(cfg DeployConfig) string {
 	var b strings.Builder
 	if cfg.RegistryUsername != "" && cfg.RegistryPassword != "" {
 		b.WriteString("\necho \"::LAUNCH::deploy_step::registry_login\"\n")
 		fmt.Fprintf(&b, "DOCKER_REGISTRY_URL=%q\n", cfg.RegistryURL)
 		fmt.Fprintf(&b, "DOCKER_REGISTRY_USER=%q\n", cfg.RegistryUsername)
-		// Heredoc the password so it's not on the command line. The
-		// trailing `set +x` is a no-op here but keeps the shape
-		// uniform with the per-cred login loop the compose path uses.
+		// Heredoc the password so it doesn't land in `ps` or the
+		// script's shell history. `set +x` is defensive against a
+		// future `set -x` getting flipped on for debugging — keeps
+		// the password out of any shell trace regardless.
+		//
+		// IMPORTANT: closing this block with `set +x` (not `set -x`)
+		// so we don't accidentally LEAK shell tracing into the rest
+		// of the deploy. An earlier version closed with `set -x` and
+		// every subsequent docker command got echoed as `+ docker...`
+		// in the captured log, which buried the actually-useful
+		// program output behind a wall of trace lines.
 		b.WriteString("set +x\n")
 		b.WriteString("if [ -n \"${DOCKER_REGISTRY_URL}\" ]; then\n")
-		b.WriteString("  docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin \"${DOCKER_REGISTRY_URL}\" <<'LAUNCH_DOCKER_PW_EOF'\n")
+		fmt.Fprintf(&b, "  docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin \"${DOCKER_REGISTRY_URL}\" %s <<'LAUNCH_DOCKER_PW_EOF'\n", dockerCredFilter)
 		b.WriteString(cfg.RegistryPassword)
 		b.WriteString("\nLAUNCH_DOCKER_PW_EOF\n")
 		b.WriteString("else\n")
-		b.WriteString("  docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin <<'LAUNCH_DOCKER_PW_EOF'\n")
+		fmt.Fprintf(&b, "  docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin %s <<'LAUNCH_DOCKER_PW_EOF'\n", dockerCredFilter)
 		b.WriteString(cfg.RegistryPassword)
 		b.WriteString("\nLAUNCH_DOCKER_PW_EOF\n")
 		b.WriteString("fi\n")
-		b.WriteString("set -x\n")
+		// (no `set -x` here — that was the bug; see comment above)
 	}
 	fmt.Fprintf(&b, `
 echo "::LAUNCH::deploy_step::pulling_image"
@@ -272,10 +289,14 @@ docker pull "${DOCKER_IMAGE}"
 		// Best-effort logout. Failure here doesn't abort the deploy —
 		// the pull already happened. `|| true` keeps `set -e` from
 		// killing a successful run on a quirky logout.
+		//
+		// docker logout re-touches the same config.json that triggered
+		// the credential-store warning on login, so it ALSO prints
+		// the warning on stderr. Same filter to keep the log clean.
 		b.WriteString("if [ -n \"${DOCKER_REGISTRY_URL}\" ]; then\n")
-		b.WriteString("  docker logout \"${DOCKER_REGISTRY_URL}\" || true\n")
+		fmt.Fprintf(&b, "  docker logout \"${DOCKER_REGISTRY_URL}\" %s || true\n", dockerCredFilter)
 		b.WriteString("else\n")
-		b.WriteString("  docker logout || true\n")
+		fmt.Fprintf(&b, "  docker logout %s || true\n", dockerCredFilter)
 		b.WriteString("fi\n")
 	}
 	return b.String()
