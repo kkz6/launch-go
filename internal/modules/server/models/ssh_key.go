@@ -14,7 +14,7 @@ type SSHKey struct {
 	basemodels.BaseModel
 	basemodels.UserScoped
 	basemodels.TeamScoped
-	IsGlobal    bool    `gorm:"column:is_global;type:tinyint(1);not null;default:0" json:"is_global"`
+	IsGlobal    bool    `gorm:"column:is_global;type:boolean;not null;default:false" json:"is_global"`
 	Description *string `gorm:"type:varchar(255)" json:"description,omitempty"`
 	PublicKey   string  `gorm:"type:longtext;not null" json:"-"`
 	Name        string  `gorm:"type:varchar(255);not null" json:"name"`
