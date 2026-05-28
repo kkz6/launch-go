@@ -17,12 +17,34 @@ import (
 // TypeDeployCompose is the asynq task type for deploying a compose stack.
 const TypeDeployCompose = "docker:deploy_compose"
 
-// DeployComposePayload travels through asynq — IDs only.
+// DeployComposePayload travels through asynq — IDs only, except for
+// the GHA-built image map which flows from the GitHub Actions webhook
+// straight to the deploy script without persisting on the workload row.
+//
+// Override fields semantics match DeployApplicationPayload's
+// Override* group: nil/empty = today's behaviour, non-empty = treat
+// as the GHA path (skip on-host build, rewrite compose `build:` to
+// `image:` per service, docker login GHCR with the supplied creds).
 type DeployComposePayload struct {
 	ComposeID    string `json:"compose_id"`
 	DeploymentID string `json:"deployment_id"`
 	ServerID     string `json:"server_id"`
 	TeamID       string `json:"team_id"`
+
+	// ServiceImages maps compose service name → fully-qualified image
+	// reference (e.g. {"web": "ghcr.io/kkz6/test:launch-web-abc1234"}).
+	// When non-empty the deploy script rewrites the compose YAML in
+	// place to swap each service's `build:` block for `image: <value>`,
+	// then runs `docker compose up -d` without --build.
+	ServiceImages map[string]string `json:"service_images,omitempty"`
+
+	// OverrideRegistry{URL,Username,Password} are the docker-login
+	// credentials the deploy script pipes to --password-stdin BEFORE
+	// `docker compose up`. For GHA they're ghcr.io / "x-access-token"
+	// / a fresh installation token minted by the webhook handler.
+	OverrideRegistryURL      string `json:"override_registry_url,omitempty"`
+	OverrideRegistryUsername string `json:"override_registry_username,omitempty"`
+	OverrideRegistryPassword string `json:"override_registry_password,omitempty"`
 }
 
 // DeployComposeJob mirrors DeployApplicationJob but runs the compose
@@ -76,6 +98,23 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 	hydrateComposeSource(&cfg, j.compose)
 	// Same authenticated-clone treatment as application git deploys.
 	cfg.GitRepo = j.Deps.resolveAuthenticatedCloneURL(ctx, map[string]any(j.compose.SourceConfig), cfg.GitRepo)
+
+	// GHA path: if the webhook handed us a service_images map, thread
+	// it onto the deploy config. The renderer inserts a yq rewrite
+	// step that replaces each service's `build:` block with
+	// `image: <ghcr image>` so the subsequent `docker compose up`
+	// pulls instead of building. Override creds go into the registry
+	// logins so the script logs into GHCR first.
+	if len(j.Payload.ServiceImages) > 0 {
+		cfg.ServiceImages = j.Payload.ServiceImages
+		if j.Payload.OverrideRegistryURL != "" {
+			cfg.RegistryLogins = append(cfg.RegistryLogins, tasks.ComposeRegistryLogin{
+				RegistryURL: j.Payload.OverrideRegistryURL,
+				Username:    j.Payload.OverrideRegistryUsername,
+				Password:    j.Payload.OverrideRegistryPassword,
+			})
+		}
+	}
 
 	// Type=file rows attached to this stack get materialized to
 	// ${STACK_DIR}/files/<path> by the deploy script. Pulling them
@@ -324,5 +363,26 @@ func NewDeployComposeTask(composeID, deploymentID, serverID, teamID string) (*as
 		DeploymentID: deploymentID,
 		ServerID:     serverID,
 		TeamID:       teamID,
+	}, pkgjobs.Dedup("docker-deploy-compose", deploymentID))
+}
+
+// NewDeployComposeTaskFromGHA wraps NewDeployComposeTask with the
+// GHA-built image map + GHCR pull credentials the webhook handler
+// resolved. Dedup key still keys off deployment_id so two retried
+// notifies for the same run reuse the same dedup slot.
+func NewDeployComposeTaskFromGHA(
+	composeID, deploymentID, serverID, teamID string,
+	serviceImages map[string]string,
+	registryURL, registryUsername, registryPassword string,
+) (*asynq.Task, error) {
+	return pkgjobs.TaskWithID(TypeDeployCompose, DeployComposePayload{
+		ComposeID:                composeID,
+		DeploymentID:             deploymentID,
+		ServerID:                 serverID,
+		TeamID:                   teamID,
+		ServiceImages:            serviceImages,
+		OverrideRegistryURL:      registryURL,
+		OverrideRegistryUsername: registryUsername,
+		OverrideRegistryPassword: registryPassword,
 	}, pkgjobs.Dedup("docker-deploy-compose", deploymentID))
 }

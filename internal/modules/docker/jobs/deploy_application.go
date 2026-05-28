@@ -115,27 +115,9 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	}
 	hydrateSourceConfig(&cfg, j.app)
 
-	// GitHub-Actions override path: when the webhook handed us a
-	// freshly-built image + short-lived installation token, force
-	// the image-source code path with those values. This bypasses
-	// the application row's persisted source_type (still "git" for
-	// build_location=github_actions apps) so the deploy script runs
-	// the docker login + docker pull stanza on the agent's image.
-	// The cred lookup below sees an empty RegistryCredentialID and
-	// doesn't try to load a saved credential.
-	if j.Payload.OverrideImage != "" {
-		cfg.SourceType = dockertypes.SourceTypeImage
-		cfg.Image = j.Payload.OverrideImage
-		if j.Payload.OverrideRegistryURL != "" {
-			cfg.RegistryURL = j.Payload.OverrideRegistryURL
-		}
-		if j.Payload.OverrideRegistryUsername != "" {
-			cfg.RegistryUsername = j.Payload.OverrideRegistryUsername
-		}
-		if j.Payload.OverrideRegistryPassword != "" {
-			cfg.RegistryPassword = j.Payload.OverrideRegistryPassword
-		}
-	}
+	// GitHub-Actions override path. Pure function so it's unit-testable
+	// without standing up a worker or stubbing the DB.
+	applyDeployApplicationOverrides(&cfg, j.Payload)
 	// Rewrite the git URL with embedded credentials when a connected
 	// source-control account was selected on the application. No-op for
 	// public repos. Failures fall back to the original URL — see
@@ -506,6 +488,38 @@ func summarise(s string) string {
 		return s[:200] + "…"
 	}
 	return s
+}
+
+// applyDeployApplicationOverrides flips the deploy config to the
+// image-source path when the webhook handler supplied an override
+// image + creds. Idempotent + a no-op when OverrideImage is empty —
+// the existing non-GHA flow runs unchanged.
+//
+// Extracted as a pure function (no DB, no SSH) so the GHA override
+// branch can be unit-tested without standing up the full job. The
+// caller is the deploy job's Handle; tests exercise it directly with
+// a synthetic config + payload.
+//
+// Mutation contract:
+//   - OverrideImage == "" → returns without touching cfg
+//   - OverrideImage set   → SourceType flipped to image, Image set,
+//     each Registry* field that's non-empty in the payload overwrites
+//     the corresponding cfg field (empty in payload = keep cfg as-is)
+func applyDeployApplicationOverrides(cfg *tasks.DeployConfig, payload DeployApplicationPayload) {
+	if payload.OverrideImage == "" {
+		return
+	}
+	cfg.SourceType = dockertypes.SourceTypeImage
+	cfg.Image = payload.OverrideImage
+	if payload.OverrideRegistryURL != "" {
+		cfg.RegistryURL = payload.OverrideRegistryURL
+	}
+	if payload.OverrideRegistryUsername != "" {
+		cfg.RegistryUsername = payload.OverrideRegistryUsername
+	}
+	if payload.OverrideRegistryPassword != "" {
+		cfg.RegistryPassword = payload.OverrideRegistryPassword
+	}
 }
 
 // NewDeployApplicationTask packages the asynq task for enqueueing from
