@@ -330,7 +330,12 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
 			fmt.Fprintf(&b, "%s\n", tag)
 			b.WriteString("fi\n")
 		}
-		b.WriteString("set -x\n")
+		// (no `set -x` here — closing the login block with `set -x`
+		// would LEAK shell tracing into every subsequent step,
+		// burying the actual program output behind `+ command` echoes
+		// in the captured log. Mirrors the same fix on the
+		// application path; see deploy_application.go#buildImageStanza
+		// for the longer-form rationale.)
 	}
 
 	// `--network launch-network` happens inside the compose file (each
@@ -364,11 +369,16 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
 	// from failing the deploy if the logout itself errors — the
 	// containers are already up, the deploy succeeded.
 	if len(cfg.RegistryLogins) > 0 {
+		// docker logout also touches the same config.json that triggers
+		// the credential-store warning on login, so it prints the
+		// warning on stderr too. Same filter applied here to keep
+		// the captured log clean.
+		const stderrFilter = `2> >(grep -v -E 'credentials are stored unencrypted|Configure a credential helper|credential-store' >&2)`
 		for i := range cfg.RegistryLogins {
 			fmt.Fprintf(&b, "if [ -n \"${DOCKER_REGISTRY_URL_%d}\" ]; then\n", i)
-			fmt.Fprintf(&b, "  docker logout \"${DOCKER_REGISTRY_URL_%d}\" || true\n", i)
+			fmt.Fprintf(&b, "  docker logout \"${DOCKER_REGISTRY_URL_%d}\" %s || true\n", i, stderrFilter)
 			b.WriteString("else\n")
-			b.WriteString("  docker logout || true\n")
+			fmt.Fprintf(&b, "  docker logout %s || true\n", stderrFilter)
 			b.WriteString("fi\n")
 		}
 	}

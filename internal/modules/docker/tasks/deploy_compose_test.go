@@ -104,7 +104,16 @@ func TestBuildComposeDeployScript_MultipleRegistryLogins(t *testing.T) {
 	mustContain(t, s, "dh_two")
 	// `set +x` defensively wraps the login block.
 	mustContain(t, s, "set +x")
+	// REGRESSION: must NOT enable `set -x` anywhere in the rendered
+	// script. An earlier version closed the login block with
+	// `set -x` and every subsequent docker command leaked into the
+	// log as `+ command` shell-trace. See the same assertion +
+	// rationale in deploy_application_test.go.
+	mustNotContain(t, s, "set -x")
 	// Logout pairs run AFTER compose up — both URLs accounted for.
-	mustContain(t, s, `docker logout "${DOCKER_REGISTRY_URL_0}" || true`)
-	mustContain(t, s, `docker logout "${DOCKER_REGISTRY_URL_1}" || true`)
+	// The stderr filter for the credential warning sits between the
+	// command and the `|| true`.
+	mustContain(t, s, `docker logout "${DOCKER_REGISTRY_URL_0}"`)
+	mustContain(t, s, `docker logout "${DOCKER_REGISTRY_URL_1}"`)
+	mustContain(t, s, ") || true")
 }
