@@ -136,9 +136,10 @@ func TestEnumMapToResponses(t *testing.T) {
 		found := make(map[string]bool)
 		for _, r := range responses {
 			found[r.Value] = true
-			if r.Value == "a" {
+			switch r.Value {
+			case "a":
 				assert.Equal(t, "Alpha", r.Label)
-			} else if r.Value == "b" {
+			case "b":
 				assert.Equal(t, "Beta", r.Label)
 			}
 		}

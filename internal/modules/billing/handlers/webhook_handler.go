@@ -89,11 +89,11 @@ func (h *WebhookHandler) HandleWebhook(c *fiber.Ctx) error {
 
 	if err := h.processEvent(c.Context(), eventType, parsed.AsUnion()); err != nil {
 		h.logger.Error().Err(err).Str("event_id", event.ID).Msg("Failed to process webhook")
-		h.webhookService.MarkWebhookEventFailed(c.Context(), event.ID, err.Error())
+		_ = h.webhookService.MarkWebhookEventFailed(c.Context(), event.ID, err.Error())
 		return fiberctx.OK(c, "Webhook received but processing failed", nil)
 	}
 
-	h.webhookService.MarkWebhookEventProcessed(c.Context(), event.ID)
+	_ = h.webhookService.MarkWebhookEventProcessed(c.Context(), event.ID)
 
 	return fiberctx.OK(c, "Webhook processed successfully", nil)
 }
@@ -298,18 +298,18 @@ func (h *WebhookHandler) ProcessPendingWebhooks(ctx context.Context) error {
 	for _, event := range events {
 		parsed, err := h.dodoPayments.UnsafeUnwrapWebhook([]byte(event.Payload))
 		if err != nil {
-			h.webhookService.MarkWebhookEventFailed(ctx, event.ID, err.Error())
+			_ = h.webhookService.MarkWebhookEventFailed(ctx, event.ID, err.Error())
 			continue
 		}
 
 		eventType := billingtypes.WebhookEventType(parsed.Type)
 
 		if err := h.processEventFromUnsafe(ctx, eventType, parsed.AsUnion()); err != nil {
-			h.webhookService.MarkWebhookEventFailed(ctx, event.ID, err.Error())
+			_ = h.webhookService.MarkWebhookEventFailed(ctx, event.ID, err.Error())
 			continue
 		}
 
-		h.webhookService.MarkWebhookEventProcessed(ctx, event.ID)
+		_ = h.webhookService.MarkWebhookEventProcessed(ctx, event.ID)
 	}
 
 	return nil

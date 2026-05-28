@@ -142,7 +142,7 @@ func (l *Logger) save() (*ActivityLog, error) {
 
 func getTypeName(v any) string {
 	t := reflect.TypeOf(v)
-	if t.Kind() == reflect.Ptr {
+	if t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	return t.Name()

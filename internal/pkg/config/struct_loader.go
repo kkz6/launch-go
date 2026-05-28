@@ -44,7 +44,7 @@ func Load[T any]() T {
 func LoadInto(cfg any) error {
 	v := reflect.ValueOf(cfg)
 
-	if v.Kind() != reflect.Ptr {
+	if v.Kind() != reflect.Pointer {
 		return errors.New("config.LoadInto: cfg must be a pointer")
 	}
 

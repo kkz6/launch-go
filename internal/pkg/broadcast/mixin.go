@@ -157,7 +157,7 @@ type ModelMixin struct {
 // This also sets the base broadcaster for compatibility.
 func (m *ModelMixin) SetModelBroadcaster(ws ModelBroadcaster) {
 	m.modelWs = ws
-	m.Mixin.ws = ws // ModelBroadcaster extends Broadcaster
+	m.ws = ws // ModelBroadcaster extends Broadcaster
 }
 
 // GetModelBroadcaster returns the underlying model broadcaster, or nil if not set.

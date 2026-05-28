@@ -457,7 +457,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 		if marker := markers.Parse(line); marker != nil {
 			m.logger.Info().
 				Str("task_id", taskID).
-				Str("marker_type", string(marker.Type)).
+				Str("marker_type", marker.Type).
 				Str("marker_value", marker.Value).
 				Msg("MonitorBackgroundTask: detected marker")
 
@@ -467,7 +467,7 @@ func (m *StreamMonitor) MonitorBackgroundTask(
 				if err := taskMarkerHandler.OnMarker(streamCtx, taskID, marker); err != nil {
 					m.logger.Warn().Err(err).
 						Str("task_id", taskID).
-						Str("marker_type", string(marker.Type)).
+						Str("marker_type", marker.Type).
 						Msg("MonitorBackgroundTask: per-task marker handler error")
 				}
 			}

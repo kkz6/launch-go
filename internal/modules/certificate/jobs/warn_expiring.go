@@ -71,11 +71,11 @@ func (j *WarnExpiringCertificatesJob) Handle(ctx context.Context) error {
 			Msg("stored certificate expiring soon")
 
 		j.Deps.Broadcaster.BroadcastToTeam(c.TeamID, "certificate.expiring_soon", map[string]any{
-			"team_id":         c.TeamID,
-			"certificate_id":  c.ID,
-			"name":            c.Name,
-			"not_after":       c.NotAfter,
-			"days_remaining":  daysRemaining,
+			"team_id":        c.TeamID,
+			"certificate_id": c.ID,
+			"name":           c.Name,
+			"not_after":      c.NotAfter,
+			"days_remaining": daysRemaining,
 		})
 	}
 	return nil

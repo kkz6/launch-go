@@ -181,11 +181,12 @@ func (r *TaskRecoverer) finalizeCompletedTask(ctx context.Context, task *models.
 	task.ExitCode = &exitCode
 	task.Output = dbtype.EncryptedString(output)
 
-	if exitCode == 0 {
+	switch exitCode {
+	case 0:
 		task.Status = string(servertypes.TaskStatusFinished)
-	} else if exitCode == 124 {
+	case 124:
 		task.Status = string(servertypes.TaskStatusTimeout)
-	} else {
+	default:
 		task.Status = string(servertypes.TaskStatusFailed)
 	}
 
@@ -367,11 +368,12 @@ func (r *TaskRecoverer) dispatchCompletionJobs(task *models.Task, exitCode int, 
 	}
 
 	var jobRef *taskrunner.JobRef
-	if exitCode == 0 {
+	switch exitCode {
+	case 0:
 		jobRef = config.OnFinished
-	} else if exitCode == 124 {
+	case 124:
 		jobRef = config.OnTimeout
-	} else {
+	default:
 		jobRef = config.OnFailed
 	}
 

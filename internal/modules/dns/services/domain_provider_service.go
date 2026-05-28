@@ -124,11 +124,11 @@ func (s *DomainProviderService) CheckProviderConnectivity(ctx context.Context, i
 	}
 
 	if err := provider.ValidateCredentials(ctx); err != nil {
-		s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{"connected": false})
+		_ = s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{"connected": false})
 		return fiberutil.BadRequest("Provider connectivity check failed")
 	}
 
-	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{"connected": true})
+	_ = s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{"connected": true})
 	return nil
 }
 
@@ -141,7 +141,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, teamID, use
 		return notFoundAs(err, "Provider not found")
 	}
 
-	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
+	_ = s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"sync_status":        dnstypes.SyncStatusSyncing,
 		"sync_error_message": nil,
 	})
@@ -210,7 +210,7 @@ func (s *DomainProviderService) SyncDomains(ctx context.Context, id, teamID, use
 		return fiberutil.BadRequest("Failed to sync domains")
 	}
 
-	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
+	_ = s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"sync_status":        dnstypes.SyncStatusCompleted,
 		"last_synced_at":     util.NewULID(),
 		"sync_error_message": nil,
@@ -224,26 +224,17 @@ func (s *DomainProviderService) CountDomainsByProvider(ctx context.Context, prov
 }
 
 func (s *DomainProviderService) markSyncFailed(ctx context.Context, id, errMsg string) {
-	s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
+	_ = s.Repos().Provider().UpdateFields(ctx, id, map[string]interface{}{
 		"sync_status":        dnstypes.SyncStatusFailed,
 		"sync_error_message": errMsg,
 	})
 }
 
 // fromProviderRecord converts a providers.ProviderRecord to models.ProviderRecord.
+// They are the same underlying type (models.ProviderRecord is a type
+// alias for providers.ProviderRecord), so this is identity — kept as a
+// named function for readability at the call site and so the alias
+// boundary stays explicit if someone later splits the types apart.
 func fromProviderRecord(r providers.ProviderRecord) models.ProviderRecord {
-	return models.ProviderRecord{
-		ID:       r.ID,
-		Type:     dnstypes.RecordType(r.Type),
-		Name:     r.Name,
-		Value:    r.Value,
-		TTL:      r.TTL,
-		Priority: r.Priority,
-		Tag:      r.Tag,
-		Weight:   r.Weight,
-		Port:     r.Port,
-		Flags:    r.Flags,
-		Comment:  r.Comment,
-		Proxied:  r.Proxied,
-	}
+	return r
 }

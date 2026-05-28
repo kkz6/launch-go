@@ -235,7 +235,7 @@ func (s *WebhookService) updateSubscriptionCardInfo(ctx context.Context, provide
 
 	subscription.CardBrand = stringOrNil(cardNetwork)
 	subscription.CardLastFour = stringOrNil(cardLastFour)
-	s.repos.Subscription().Update(ctx, subscription)
+	_ = s.repos.Subscription().Update(ctx, subscription)
 }
 
 // RefundOrder marks an order as refunded by payment ID

@@ -178,7 +178,7 @@ func toProviderDNSRecord(r *models.DNSRecord) *providers.DNSRecord {
 	return &providers.DNSRecord{
 		ID:         r.ID,
 		ProviderID: r.ProviderID,
-		Type:       providers.RecordType(r.Type),
+		Type:       r.Type,
 		Name:       r.Name,
 		Value:      r.Value,
 		TTL:        r.TTL,
