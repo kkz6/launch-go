@@ -622,6 +622,17 @@ func ToDomainResponse(d *models.ApplicationDomain) *DomainResponse {
 	}
 }
 
+// GHATokenRotateResponse is returned by the rotate-token endpoint.
+// The raw token isn't included — the bootstrap_workflow job mints +
+// writes it to GitHub Actions on its own asynchronous path; the
+// frontend tells the user to find it in the repo's secrets list, or
+// observes the docker.application.gha_synced broadcast for a
+// "rotation complete" toast.
+type GHATokenRotateResponse struct {
+	Status  string `json:"status"`
+	Message string `json:"message"`
+}
+
 // ToDeploymentResponse maps a Deployment model to the API response.
 func ToDeploymentResponse(d *models.Deployment) *DeploymentResponse {
 	return &DeploymentResponse{
