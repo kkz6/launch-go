@@ -829,7 +829,27 @@ func shellEscape(s string) string {
 	return strings.ReplaceAll(s, "'", "'\\''")
 }
 
-// generateAuthorizeKeyScript generates a bash script to authorize the management key
+// generateAuthorizeKeyScript generates a bash script to authorize the management key.
+//
+// Two correctness invariants, both learned the hard way from a real
+// customer hitting "ssh: unable to authenticate" after running the
+// quick command:
+//
+//  1. The script MUST run as root. Launch's backend SSH's into the box
+//     as the root user (server.RootUsername() returns "root" for the
+//     custom_server provider) and presents server.PrivateKey. The
+//     matching public key therefore has to live in
+//     /root/.ssh/authorized_keys. If the user SSH's in as ubuntu/admin
+//     and pipes to bash without sudo, ~/.ssh expands to /home/<user>/
+//     and the key lands in the wrong place — the script reports
+//     "Management key authorized successfully" but the backend's later
+//     Try Connection fails with no path to recover from the user's
+//     terminal output. So: refuse to run as non-root, loudly.
+//
+//  2. Write to /root/.ssh/authorized_keys explicitly, never ~/.ssh.
+//     Even when EUID is 0, $HOME can still be set to something else
+//     (e.g. when a user did `sudo -E bash`, or when piped through some
+//     CI shells). Hard-coding the path removes the variable entirely.
 func (s *Service) generateAuthorizeKeyScript(server *models.Server) string {
 	publicKey := string(server.PublicKey)
 	escapedName := shellEscape(server.Name)
@@ -840,24 +860,41 @@ set -e
 # Launch Server Provisioning Script
 # Server: '%s'
 
+if [ "$EUID" -ne 0 ]; then
+    echo "ERROR: This script must be run as root."
+    echo
+    echo "Re-run the provision command from your terminal with sudo, e.g.:"
+    echo "  wget --no-verbose -O - 'https://...' | sudo bash"
+    echo "or, if you're already in a shell, prefix it with sudo:"
+    echo "  sudo bash provision.sh"
+    exit 1
+fi
+
 echo "Authorizing Launch management key..."
 
-# Create .ssh directory if it doesn't exist
-mkdir -p ~/.ssh
-chmod 700 ~/.ssh
+# Install into /root/.ssh explicitly — Launch connects as root, so the
+# key must land in root's authorized_keys regardless of $HOME at run
+# time. Using ~/.ssh would silently install under the wrong user when
+# the script is run with "sudo -E bash" or similar HOME-preserving
+# invocations.
+mkdir -p /root/.ssh
+chmod 700 /root/.ssh
+chown root:root /root/.ssh
 
-# Add the public key to authorized_keys if not already present
 PUBLIC_KEY="%s"
 
-if ! grep -q "$PUBLIC_KEY" ~/.ssh/authorized_keys 2>/dev/null; then
-    echo "$PUBLIC_KEY" >> ~/.ssh/authorized_keys
-    chmod 600 ~/.ssh/authorized_keys
+# grep -F: treat $PUBLIC_KEY as a fixed string (it contains +, /, =
+# from base64 that grep would otherwise read as regex metacharacters).
+# --: end option processing in case the key happens to start with -.
+if ! grep -qF -- "$PUBLIC_KEY" /root/.ssh/authorized_keys 2>/dev/null; then
+    echo "$PUBLIC_KEY" >> /root/.ssh/authorized_keys
+    chmod 600 /root/.ssh/authorized_keys
+    chown root:root /root/.ssh/authorized_keys
     echo "Management key authorized successfully."
 else
     echo "Management key already authorized."
 fi
 
-# Notify the server that provisioning is complete
 echo "Provisioning script completed."
 `
 	return fmt.Sprintf(script, escapedName, publicKey)

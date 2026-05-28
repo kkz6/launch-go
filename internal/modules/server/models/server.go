@@ -124,8 +124,16 @@ func (s *Server) RootUsername() string {
 	return s.Provider.GetDefaultUsername(os)
 }
 
+// GetProvisionCommand returns the one-liner the customer pastes into
+// their server. Pipes to `sudo bash` (not bare `bash`) because the
+// script must run as root for the SSH public key to land in
+// /root/.ssh/authorized_keys where Launch's backend looks for it.
+// Most cloud images default to a non-root user (ubuntu/admin/ec2-user)
+// with passwordless sudo, so this just works for them; if the user is
+// already root, sudo is a no-op. See generateAuthorizeKeyScript for
+// the matching root-check at the top of the script itself.
 func (s *Server) GetProvisionCommand() string {
-	return fmt.Sprintf("wget --no-verbose -O - '%s' | bash", s.GetProvisionScriptURL())
+	return fmt.Sprintf("wget --no-verbose -O - '%s' | sudo bash", s.GetProvisionScriptURL())
 }
 
 // GetProvisionScriptURL returns a signed URL for the provision script.
