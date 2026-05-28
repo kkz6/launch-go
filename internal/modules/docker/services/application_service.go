@@ -139,9 +139,22 @@ func (s *ApplicationService) CreateApplication(
 		BuildType:    buildType,
 		BuildConfig:  buildConfig,
 		Status:       dockertypes.ApplicationStatusIdle,
+		// Default to on-server build. The git-source branch flips this
+		// to github_actions when the customer picks the GHA radio in
+		// the create sheet.
+		BuildLocation: dockertypes.BuildLocationServer,
 	}
 	app.TeamID = teamID
 	app.ServerID = serverID
+
+	// Honour the build_location toggle on git-source applications. We
+	// don't allow GHA builds on image/dockerfile sources — those have
+	// no repo to commit a workflow into. The DTO validator already
+	// restricted the string to the two enum values.
+	if req.SourceType == "git" && req.Git != nil && req.Git.BuildLocation != nil &&
+		*req.Git.BuildLocation == string(dockertypes.BuildLocationGitHubActions) {
+		app.BuildLocation = dockertypes.BuildLocationGitHubActions
+	}
 
 	// Wire registry authentication — only meaningful for image
 	// sources. The DTO field validation already capped lengths; the
@@ -158,9 +171,32 @@ func (s *ApplicationService) CreateApplication(
 		return dto.ApplicationResponse{}, err
 	}
 
+	// If the app opted into GHA builds, kick off the bootstrap job to
+	// commit the workflow file + provision repo secret + variables.
+	// Best-effort — a dispatch error doesn't fail the create; the user
+	// can re-sync from the GitHub Actions detail subtab in slice I.
+	if app.BuildLocation == dockertypes.BuildLocationGitHubActions {
+		baseURL := s.appURL()
+		task, err := jobs.NewGHABootstrapWorkflowTask("application", app.ID, true, baseURL)
+		if err != nil {
+			s.LogError(err, "build gha bootstrap task", "application_id", app.ID)
+		} else if err := s.EnqueueTask(task); err != nil {
+			s.LogError(err, "enqueue gha bootstrap task", "application_id", app.ID)
+		}
+	}
+
 	resp := dto.ToApplicationResponse(app)
 	s.BroadcastToTeam(teamID, "docker.application.created", resp)
 	return *resp, nil
+}
+
+// appURL returns the externally-reachable base URL the GHA workflow
+// should POST notifies to. Pulled from runtime config; fallback empty
+// (the workflow embeds it literally, so an empty here means the
+// resulting workflow won't be usable — surfaces immediately if app
+// boot didn't wire AppURL).
+func (s *ApplicationService) appURL() string {
+	return s.AppURL()
 }
 
 // UpdateApplication renames an application. Other fields are immutable in

@@ -197,6 +197,10 @@ func (m *Module) newRegistryCredentialService() *services.RegistryCredentialServ
 
 func (m *Module) serviceDeps() *services.ServiceDeps {
 	deps := m.Deps()
+	appURL := ""
+	if deps.Config != nil {
+		appURL = deps.Config.App.URL
+	}
 	return &services.ServiceDeps{
 		ModuleDeps: service.ModuleDeps[*repositories.Registry]{
 			Dependencies: deps.ServiceDeps(),
@@ -210,5 +214,8 @@ func (m *Module) serviceDeps() *services.ServiceDeps {
 		// NotifyOnSuccess / NotifyOnFailure the same as scheduled
 		// runs do — same notification structs, same channel routing.
 		Notifier: deps.Notifier,
+		// AppURL flows into GHA workflow template renders so the
+		// committed workflow file knows where to POST notifies.
+		AppURL: appURL,
 	}
 }
