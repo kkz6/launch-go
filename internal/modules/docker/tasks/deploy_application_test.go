@@ -131,6 +131,15 @@ func TestBuildDeployScript_Image_RegistryAuth_NamedHost(t *testing.T) {
 	// outer script doesn't enable -x — keeps the toggle visible if
 	// debug tracing gets added later.
 	mustContain(t, s, "set +x")
+	// docker login's "credentials stored unencrypted" warning gets
+	// filtered out via a stderr process substitution. Operators
+	// can't act on that warning without host-level credential
+	// helper setup Launch deliberately doesn't take over, so we
+	// scrub it from the captured logs. Locked in here so a future
+	// refactor doesn't silently lose the filter and have the
+	// warning leak back into the deploy log viewer.
+	mustContain(t, s, "credentials are stored unencrypted")
+	mustContain(t, s, "Configure a credential helper")
 	// Logout pairs with the login, namespaced under the same URL.
 	mustContain(t, s, `docker logout "${DOCKER_REGISTRY_URL}" || true`)
 }

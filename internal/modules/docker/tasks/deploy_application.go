@@ -251,13 +251,25 @@ func buildImageStanza(cfg DeployConfig) string {
 		// Heredoc the password so it's not on the command line. The
 		// trailing `set +x` is a no-op here but keeps the shape
 		// uniform with the per-cred login loop the compose path uses.
+		//
+		// docker login's `--password-stdin` works but the daemon
+		// unconditionally prints
+		//   "WARNING! Your credentials are stored unencrypted in
+		//    /root/.docker/config.json. Configure a credential
+		//    helper to remove this warning. ..."
+		// to stderr, which is noise an operator can't act on (a
+		// credential helper would require host-level config that
+		// Launch deliberately doesn't take over). Filter just those
+		// known lines via process substitution so any *real* docker
+		// error still surfaces with its exit code intact. Bash-only
+		// — the remote script always runs under bash.
 		b.WriteString("set +x\n")
 		b.WriteString("if [ -n \"${DOCKER_REGISTRY_URL}\" ]; then\n")
-		b.WriteString("  docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin \"${DOCKER_REGISTRY_URL}\" <<'LAUNCH_DOCKER_PW_EOF'\n")
+		b.WriteString("  docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin \"${DOCKER_REGISTRY_URL}\" 2> >(grep -v -E 'credentials are stored unencrypted|Configure a credential helper|credential-store' >&2) <<'LAUNCH_DOCKER_PW_EOF'\n")
 		b.WriteString(cfg.RegistryPassword)
 		b.WriteString("\nLAUNCH_DOCKER_PW_EOF\n")
 		b.WriteString("else\n")
-		b.WriteString("  docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin <<'LAUNCH_DOCKER_PW_EOF'\n")
+		b.WriteString("  docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin 2> >(grep -v -E 'credentials are stored unencrypted|Configure a credential helper|credential-store' >&2) <<'LAUNCH_DOCKER_PW_EOF'\n")
 		b.WriteString(cfg.RegistryPassword)
 		b.WriteString("\nLAUNCH_DOCKER_PW_EOF\n")
 		b.WriteString("fi\n")

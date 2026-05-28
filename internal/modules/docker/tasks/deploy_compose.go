@@ -298,14 +298,20 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
 	if len(cfg.RegistryLogins) > 0 {
 		b.WriteString("\necho \"::LAUNCH::deploy_step::registry_login\"\n")
 		b.WriteString("set +x\n")
+		// Same stderr-filter applied to every login: docker emits the
+		// "credentials stored unencrypted" warning unconditionally and
+		// it's noise an operator can't act on without host-level
+		// credential-helper setup that Launch doesn't take over. See
+		// deploy_application.go#buildImageStanza for the rationale.
+		const stderrFilter = `2> >(grep -v -E 'credentials are stored unencrypted|Configure a credential helper|credential-store' >&2)`
 		for i, l := range cfg.RegistryLogins {
 			tag := fmt.Sprintf("LAUNCH_DOCKER_PW_EOF_%d", i)
 			fmt.Fprintf(&b, "DOCKER_REGISTRY_URL_%d=%q\n", i, l.RegistryURL)
 			fmt.Fprintf(&b, "DOCKER_REGISTRY_USER_%d=%q\n", i, l.Username)
 			fmt.Fprintf(&b, "if [ -n \"${DOCKER_REGISTRY_URL_%d}\" ]; then\n", i)
 			fmt.Fprintf(&b,
-				"  docker login --username \"${DOCKER_REGISTRY_USER_%d}\" --password-stdin \"${DOCKER_REGISTRY_URL_%d}\" <<'%s'\n",
-				i, i, tag,
+				"  docker login --username \"${DOCKER_REGISTRY_USER_%d}\" --password-stdin \"${DOCKER_REGISTRY_URL_%d}\" %s <<'%s'\n",
+				i, i, stderrFilter, tag,
 			)
 			b.WriteString(l.Password)
 			if !strings.HasSuffix(l.Password, "\n") {
@@ -314,8 +320,8 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
 			fmt.Fprintf(&b, "%s\n", tag)
 			b.WriteString("else\n")
 			fmt.Fprintf(&b,
-				"  docker login --username \"${DOCKER_REGISTRY_USER_%d}\" --password-stdin <<'%s'\n",
-				i, tag,
+				"  docker login --username \"${DOCKER_REGISTRY_USER_%d}\" --password-stdin %s <<'%s'\n",
+				i, stderrFilter, tag,
 			)
 			b.WriteString(l.Password)
 			if !strings.HasSuffix(l.Password, "\n") {
