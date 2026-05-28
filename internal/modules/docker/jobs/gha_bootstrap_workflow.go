@@ -139,10 +139,14 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 		return err
 	}
 
-	// Persist tokenHash + workflow SHA back onto the row.
+	// Persist tokenHash + workflow SHA + image-repository binding back
+	// onto the row. The image repository is what the webhook handler
+	// validates incoming `image_tag` against — without it, every GHA
+	// deploy notify fails closed at validation.
 	updates := map[string]any{
 		"source_config": appendSourceConfig(app.SourceConfig, map[string]any{
-			"gha_workflow_sha": cfg.LastCommitSHA,
+			"gha_workflow_sha":     cfg.LastCommitSHA,
+			"gha_image_repository": ghcrImageRepository(cfg.Owner, cfg.Repo),
 		}),
 	}
 	if tokenHash != "" {
@@ -238,7 +242,8 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 
 	updates := map[string]any{
 		"source_config": appendSourceConfig(compose.SourceConfig, map[string]any{
-			"gha_workflow_sha": cfg.LastCommitSHA,
+			"gha_workflow_sha":     cfg.LastCommitSHA,
+			"gha_image_repository": ghcrImageRepository(cfg.Owner, cfg.Repo),
 		}),
 	}
 	if tokenHash != "" {
@@ -321,6 +326,16 @@ func parseGHASourceConfig(raw map[string]any) (*ghaSourceConfig, error) {
 		return nil, errors.New("owner/repo missing from source_config")
 	}
 	return cfg, nil
+}
+
+// ghcrImageRepository is the canonical GHCR image-repository prefix
+// the GHA workflow we render publishes images under (it uses
+// `ghcr.io/${{ github.repository }}:launch-<sha>`). The webhook
+// handler validates the incoming `image_tag` against this value to
+// foreclose token-leak → arbitrary-image swaps, so the prefix must be
+// lowercased — GHCR rejects mixed-case image refs.
+func ghcrImageRepository(owner, repo string) string {
+	return "ghcr.io/" + strings.ToLower(owner+"/"+repo)
 }
 
 // looksLikeGitURL is true when s isn't a bare repo name — i.e. it
