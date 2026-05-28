@@ -1,3 +1,28 @@
-sudo add-apt-repository ppa:ondrej/php -y
+#!/bin/bash
+set -e
+
+. /etc/os-release
+case "${ID}" in
+    ubuntu)
+        sudo add-apt-repository ppa:ondrej/php -y
+        ;;
+    debian)
+        if [ ! -f /etc/apt/sources.list.d/sury-php.list ]; then
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y \
+                apt-transport-https lsb-release ca-certificates curl gnupg
+            sudo install -m 0755 -d /etc/apt/keyrings
+            curl -fsSL https://packages.sury.org/php/apt.gpg \
+                | sudo gpg --dearmor -o /etc/apt/keyrings/sury-php.gpg
+            sudo chmod a+r /etc/apt/keyrings/sury-php.gpg
+            echo "deb [signed-by=/etc/apt/keyrings/sury-php.gpg] https://packages.sury.org/php/ ${VERSION_CODENAME} main" \
+                | sudo tee /etc/apt/sources.list.d/sury-php.list >/dev/null
+        fi
+        ;;
+    *)
+        echo "ERROR: PHP install supports only Ubuntu or Debian. ID=${ID:-<unset>}" >&2
+        exit 1
+        ;;
+esac
+
 sudo apt-get update
 sudo apt-get install -y php8.2 php8.2-fpm php8.2-cli php8.2-common php8.2-mysql php8.2-pgsql php8.2-sqlite3 php8.2-curl php8.2-gd php8.2-mbstring php8.2-xml php8.2-zip php8.2-bcmath php8.2-intl php8.2-readline php8.2-soap php8.2-ldap php8.2-imap php8.2-opcache

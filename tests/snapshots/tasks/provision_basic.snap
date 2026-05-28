@@ -113,6 +113,64 @@ export APT_LOCK_WAIT_OPTS='-o DPkg::Lock::Timeout=120'
 quiesceAptForProvisioning
 
 
+# === Provision Step: Detect the operating system, version, architecture and kernel ===
+echo "::LAUNCH::status::Detect the operating system, version, architecture and kernel"
+#!/bin/bash
+set -euo pipefail
+trap '' PIPE
+export DEBIAN_FRONTEND=noninteractive
+
+# Detect what's actually running on this box so downstream provision
+# steps can branch on the truth instead of whatever the user picked in
+# the dashboard dropdown. Emits a single ::LAUNCH::detected_os marker
+# with five pipe-separated fields:
+#
+#   os_id | os_version | os_version_codename | arch | kernel
+#
+# Pipe is safe — none of these fields can contain it. Any field that
+# can't be determined is left empty; the Go-side handler treats blanks
+# as "still unknown" rather than failing.
+
+OS_ID=""
+OS_VERSION=""
+OS_VERSION_CODENAME=""
+
+if [ -r /etc/os-release ]; then
+    # Subshell so the variables in /etc/os-release don't pollute the
+    # outer script (it sets things like NAME, HOME_URL etc. that could
+    # clobber our state).
+    eval "$(
+        . /etc/os-release
+        printf 'OS_ID=%q\nOS_VERSION=%q\nOS_VERSION_CODENAME=%q\n' \
+            "${ID:-}" "${VERSION_ID:-}" "${VERSION_CODENAME:-}"
+    )"
+fi
+
+# uname -m → architecture as the kernel reports it (x86_64 / aarch64 /
+# armv7l / …). We translate the kernel form to the Debian/Ubuntu apt
+# form (amd64 / arm64 / armhf) so downstream consumers don't have to
+# duplicate this mapping.
+KERNEL_ARCH="$(uname -m 2>/dev/null || echo "")"
+case "${KERNEL_ARCH}" in
+    x86_64)  DETECTED_ARCH="amd64" ;;
+    aarch64) DETECTED_ARCH="arm64" ;;
+    armv7l)  DETECTED_ARCH="armhf" ;;
+    *)       DETECTED_ARCH="${KERNEL_ARCH}" ;;
+esac
+
+DETECTED_KERNEL="$(uname -r 2>/dev/null || echo "")"
+
+echo "Detected OS: id=${OS_ID} version=${OS_VERSION} codename=${OS_VERSION_CODENAME} arch=${DETECTED_ARCH} kernel=${DETECTED_KERNEL}"
+
+# Marker the Go-side handler picks up. The handler parses this single
+# line and writes the values onto the server row + broadcasts the
+# update, so the UI sees the detected facts within a second of this
+# step completing.
+echo "::LAUNCH::detected_os::${OS_ID}|${OS_VERSION}|${OS_VERSION_CODENAME}|${DETECTED_ARCH}|${DETECTED_KERNEL}"
+
+echo "::LAUNCH::step_completed::detect_os"
+echo "::LAUNCH::progress::11"
+
 # === Provision Step: Configure a swap file so the server can handle more memory-intensive tasks ===
 echo "::LAUNCH::status::Configure a swap file so the server can handle more memory-intensive tasks"
 #!/bin/bash
@@ -137,7 +195,7 @@ if [ ! -f /swapfile ]; then
 fi
 
 echo "::LAUNCH::step_completed::configure_swap"
-echo "::LAUNCH::progress::12"
+echo "::LAUNCH::progress::22"
 
 # === Provision Step: Configure the firewall with the default rules (SSH, HTTP, HTTPS) ===
 echo "::LAUNCH::status::Configure the firewall with the default rules (SSH, HTTP, HTTPS)"
@@ -155,7 +213,7 @@ sudo ufw --force enable
 sudo service ufw restart
 
 echo "::LAUNCH::step_completed::configure_firewall"
-echo "::LAUNCH::progress::25"
+echo "::LAUNCH::progress::33"
 
 # === Provision Step: Install essential packages (curl, git, wget, etc.) ===
 echo "::LAUNCH::status::Install essential packages (curl, git, wget, etc.)"
@@ -202,7 +260,7 @@ sudo apt-get ${APT_LOCK_WAIT_OPTS} install -y -qq \
     zip
 
 echo "::LAUNCH::step_completed::install_essential_packages"
-echo "::LAUNCH::progress::38"
+echo "::LAUNCH::progress::45"
 
 # === Provision Step: Configure the root user ===
 echo "::LAUNCH::status::Configure the root user"
@@ -239,7 +297,7 @@ sudo ssh-keyscan -H gitlab.com | sudo tee -a /root/.ssh/known_hosts > /dev/null
 
 
 echo "::LAUNCH::step_completed::setup_root"
-echo "::LAUNCH::progress::51"
+echo "::LAUNCH::progress::56"
 
 # === Provision Step: Enhance SSH security by disabling password authentication and root login ===
 echo "::LAUNCH::status::Enhance SSH security by disabling password authentication and root login"
@@ -263,7 +321,7 @@ then
 fi
 
 echo "::LAUNCH::step_completed::ssh_security"
-echo "::LAUNCH::progress::64"
+echo "::LAUNCH::progress::67"
 
 # === Provision Step: Create a default user account ===
 echo "::LAUNCH::status::Create a default user account"
@@ -363,7 +421,7 @@ sudo chmod 700 /home/launcher/.ssh/id_rsa
 sudo chmod 600 /home/launcher/.ssh/authorized_keys
 
 echo "::LAUNCH::step_completed::setup_default_user"
-echo "::LAUNCH::progress::77"
+echo "::LAUNCH::progress::78"
 
 # === Install Software: Caddy 2 ===
 echo "::LAUNCH::status::Installing Caddy 2"
