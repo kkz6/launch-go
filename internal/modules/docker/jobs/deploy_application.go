@@ -22,11 +22,32 @@ const TypeDeployApplication = "docker:deploy_application"
 
 // DeployApplicationPayload travels through asynq — IDs only, never model
 // pointers (per CLAUDE.md "Callback data must only contain IDs").
+//
+// Override* fields are used by the GitHub Actions webhook path so a
+// successful CI build can hand us a freshly-built GHCR image plus a
+// short-lived installation token without persisting either on the
+// application row. When any Override* is set, the deploy job uses the
+// overrides verbatim instead of reading source_type/RegistryCredential
+// off the application. The whole shape stays IDs-only — these are
+// passed by the webhook handler from the GHA notify body, not loaded
+// from the DB.
 type DeployApplicationPayload struct {
 	ApplicationID string `json:"application_id"`
 	DeploymentID  string `json:"deployment_id"`
 	ServerID      string `json:"server_id"`
 	TeamID        string `json:"team_id"`
+
+	// OverrideImage forces SourceType=image with this image. Set by the
+	// GHA webhook with the tag the workflow just pushed to GHCR.
+	OverrideImage string `json:"override_image,omitempty"`
+	// OverrideRegistryURL / Username / Password override the docker
+	// login credentials the deploy script uses before `docker pull`.
+	// For GHA the URL is "ghcr.io", the username is "x-access-token",
+	// and the password is a fresh installation token minted by the
+	// webhook handler.
+	OverrideRegistryURL      string `json:"override_registry_url,omitempty"`
+	OverrideRegistryUsername string `json:"override_registry_username,omitempty"`
+	OverrideRegistryPassword string `json:"override_registry_password,omitempty"`
 }
 
 // DeployApplicationJob runs the deploy script on the docker server,
@@ -93,6 +114,28 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 		SourceType:    j.app.SourceType,
 	}
 	hydrateSourceConfig(&cfg, j.app)
+
+	// GitHub-Actions override path: when the webhook handed us a
+	// freshly-built image + short-lived installation token, force
+	// the image-source code path with those values. This bypasses
+	// the application row's persisted source_type (still "git" for
+	// build_location=github_actions apps) so the deploy script runs
+	// the docker login + docker pull stanza on the agent's image.
+	// The cred lookup below sees an empty RegistryCredentialID and
+	// doesn't try to load a saved credential.
+	if j.Payload.OverrideImage != "" {
+		cfg.SourceType = dockertypes.SourceTypeImage
+		cfg.Image = j.Payload.OverrideImage
+		if j.Payload.OverrideRegistryURL != "" {
+			cfg.RegistryURL = j.Payload.OverrideRegistryURL
+		}
+		if j.Payload.OverrideRegistryUsername != "" {
+			cfg.RegistryUsername = j.Payload.OverrideRegistryUsername
+		}
+		if j.Payload.OverrideRegistryPassword != "" {
+			cfg.RegistryPassword = j.Payload.OverrideRegistryPassword
+		}
+	}
 	// Rewrite the git URL with embedded credentials when a connected
 	// source-control account was selected on the application. No-op for
 	// public repos. Failures fall back to the original URL — see
@@ -106,7 +149,7 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	// credential lookup fails (deleted between create and deploy)
 	// we fall through to no-auth and the pull will surface the real
 	// "image not found" error on the deploy log.
-	if j.app.SourceType == dockertypes.SourceTypeImage {
+	if j.Payload.OverrideImage == "" && j.app.SourceType == dockertypes.SourceTypeImage {
 		if j.app.RegistryCredentialID != nil && *j.app.RegistryCredentialID != "" {
 			if cred, err := j.Deps.Repos.RegistryCredential().FindByIDForTeam(
 				ctx, *j.app.RegistryCredentialID, j.app.TeamID,
@@ -475,5 +518,29 @@ func NewDeployApplicationTask(
 		DeploymentID:  deploymentID,
 		ServerID:      serverID,
 		TeamID:        teamID,
+	}, pkgjobs.Dedup("docker-deploy-app", deploymentID))
+}
+
+// NewDeployApplicationTaskFromGHA mirrors NewDeployApplicationTask but
+// carries the image + registry credentials the GHA workflow built and
+// the webhook handler resolved. Used exclusively from the GHA webhook
+// path; everywhere else continues to call NewDeployApplicationTask.
+//
+// Dedup key still keys off deployment_id, so two webhook retries for
+// the same run_id (which reuse the existing deployment row) reuse the
+// same dedup slot and asynq drops the duplicate enqueue.
+func NewDeployApplicationTaskFromGHA(
+	applicationID, deploymentID, serverID, teamID string,
+	image, registryURL, registryUsername, registryPassword string,
+) (*asynq.Task, error) {
+	return pkgjobs.TaskWithID(TypeDeployApplication, DeployApplicationPayload{
+		ApplicationID:            applicationID,
+		DeploymentID:             deploymentID,
+		ServerID:                 serverID,
+		TeamID:                   teamID,
+		OverrideImage:            image,
+		OverrideRegistryURL:      registryURL,
+		OverrideRegistryUsername: registryUsername,
+		OverrideRegistryPassword: registryPassword,
 	}, pkgjobs.Dedup("docker-deploy-app", deploymentID))
 }

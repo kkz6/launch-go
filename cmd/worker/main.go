@@ -154,6 +154,7 @@ func main() {
 
 	// Set up cross-module dependencies
 	siteModule.SetProviderFactory(gitModule.ProviderFactory())
+	dockerModule.SetProviderFactory(gitModule.ProviderFactory())
 	siteModule.SetCronCreator(adapters.NewCronCreatorAdapter(serverModule.Service()))
 	siteModule.SetDatabaseManager(adapters.NewDatabaseManagerAdapter(databaseModule.Service()))
 

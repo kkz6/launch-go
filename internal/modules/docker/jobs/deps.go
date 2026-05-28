@@ -8,6 +8,7 @@ import (
 	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	certrepos "github.com/kkz6/launch-go/internal/modules/certificate/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
+	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
@@ -32,6 +33,13 @@ type JobDeps struct {
 	// YAML.
 	CertRepos      *certrepos.Registry
 	TaskRunnerDeps *servertasks.TaskRunnerDeps
+	// GitProviders gives jobs (currently the GHA bootstrap_workflow
+	// job) access to the GitHub provider so they can commit files +
+	// write Actions secrets/variables via the existing GitHub App
+	// installation. Nil-safe — callers must check before use; not
+	// every deployment has it wired (e.g. dev environments without
+	// a configured GitHub App).
+	GitProviders *gitproviders.ProviderFactory
 }
 
 // NewJobDeps wires JobDeps from app-level dependencies. ServerRepos +
@@ -43,6 +51,7 @@ func NewJobDeps(
 	serverRepos *serverrepos.Registry,
 	backupRepos *backuprepos.Registry,
 	certRepos *certrepos.Registry,
+	gitProviders *gitproviders.ProviderFactory,
 ) *JobDeps {
 	return &JobDeps{
 		Deps: &pkgjobs.Deps{
@@ -52,10 +61,11 @@ func NewJobDeps(
 			Broadcaster: appDeps.WebSocket,
 			Dispatcher:  appDeps.Dispatcher,
 		},
-		Repos:       repos,
-		ServerRepos: serverRepos,
-		BackupRepos: backupRepos,
-		CertRepos:   certRepos,
+		Repos:        repos,
+		ServerRepos:  serverRepos,
+		BackupRepos:  backupRepos,
+		CertRepos:    certRepos,
+		GitProviders: gitProviders,
 		TaskRunnerDeps: &servertasks.TaskRunnerDeps{
 			DB:          appDeps.DB,
 			Queue:       appDeps.Queue,

@@ -66,7 +66,7 @@ func setupHandler(t *testing.T) (*gofiber.App, *gorm.DB, *dockermodels.Applicati
 	app.ServerID = util.NewULID()
 	require.NoError(t, db.Create(app).Error)
 
-	h := NewGHAWebhookHandler(db)
+	h := NewGHAWebhookHandler(GHAWebhookHandlerConfig{DB: db})
 	fapp := gofiber.New(gofiber.Config{
 		ErrorHandler: func(c *gofiber.Ctx, err error) error {
 			// Use Fiber's stock error mapping so our fiberutil.* helpers
@@ -104,7 +104,7 @@ func setupComposeHandler(t *testing.T) (*gofiber.App, *gorm.DB, *dockermodels.Co
 	compose.ServerID = util.NewULID()
 	require.NoError(t, db.Create(compose).Error)
 
-	h := NewGHAWebhookHandler(db)
+	h := NewGHAWebhookHandler(GHAWebhookHandlerConfig{DB: db})
 	fapp := gofiber.New(gofiber.Config{
 		ErrorHandler: gofiber.DefaultErrorHandler,
 	})

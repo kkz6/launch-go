@@ -17,6 +17,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/services"
+	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/service"
@@ -44,6 +45,14 @@ type Module struct {
 	// SetCertificateRepository (cross-module — owned by the
 	// certificate module).
 	certRepos *certrepos.Registry
+
+	// providerFactory hands the docker module access to git providers
+	// (GitHub today). Used by the gha:bootstrap_workflow job to commit
+	// the workflow file + write Actions secrets + variables on the
+	// customer's repo via the existing GitHub App installation. Set
+	// at app boot from cmd/api/main.go via SetProviderFactory, same
+	// pattern the site module uses.
+	providerFactory *gitproviders.ProviderFactory
 }
 
 // NewModule constructs the module. ServerRepos + BackupRepos are
@@ -70,10 +79,24 @@ func (m *Module) SetCertificateRepository(r *certrepos.Registry) {
 	m.certRepos = r
 }
 
+// SetProviderFactory injects the git provider factory. Called once
+// at boot from cmd/api/main.go after gitModule is built. Required for
+// the gha:bootstrap_workflow job — without it, the docker module
+// can't reach the GitHub App to commit workflow files.
+func (m *Module) SetProviderFactory(f *gitproviders.ProviderFactory) {
+	m.providerFactory = f
+}
+
+// ProviderFactory exposes the git provider factory to the jobs
+// package so its handlers can resolve a GitHubProvider at runtime.
+func (m *Module) ProviderFactory() *gitproviders.ProviderFactory {
+	return m.providerFactory
+}
+
 // RegisterJobs implements app.JobRegistrar. Binds every docker asynq task
 // type to its handler.
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
-	jobs.Register(mux, m.Deps(), m.repos, m.serverRepos, m.backupRepos, m.certRepos)
+	jobs.Register(mux, m.Deps(), m.repos, m.serverRepos, m.backupRepos, m.certRepos, m.providerFactory)
 }
 
 // RegisterWebhookRoutes implements app.WebhookRegistrar. Mounts the
@@ -85,7 +108,13 @@ func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
 // every other docker route lives behind RequireProvisionedServer +
 // team-auth in RegisterRoutes.
 func (m *Module) RegisterWebhookRoutes(router gofiber.Router) {
-	handler := handlers.NewGHAWebhookHandler(m.Deps().DB)
+	deps := m.Deps()
+	handler := handlers.NewGHAWebhookHandler(handlers.GHAWebhookHandlerConfig{
+		DB:           deps.DB,
+		Queue:        deps.Queue,
+		GitProviders: m.providerFactory,
+		Logger:       deps.Logger,
+	})
 
 	g := router.Group("/api/webhooks/docker")
 	g.Post("/applications/:id/deploy", handler.GHAApplicationDeploy)

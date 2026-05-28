@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"crypto/sha256"
 	"crypto/subtle"
 	"encoding/hex"
@@ -11,11 +12,17 @@ import (
 
 	gofiber "github.com/gofiber/fiber/v2"
 	"github.com/oklog/ulid/v2"
+	"github.com/rs/zerolog"
 	"gorm.io/gorm"
 
+	dockerjobs "github.com/kkz6/launch-go/internal/modules/docker/jobs"
 	dockermodels "github.com/kkz6/launch-go/internal/modules/docker/models"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
+	gitmodels "github.com/kkz6/launch-go/internal/modules/git/models"
+	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
+	gittypes "github.com/kkz6/launch-go/internal/modules/git/types"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
+	"github.com/kkz6/launch-go/internal/pkg/queue"
 )
 
 // GHAWebhookHandler implements the four routes the GitHub Actions
@@ -30,19 +37,41 @@ import (
 // workload by team — the routes mount OUTSIDE team-auth middleware so
 // GitHub's runner can reach them without a JWT.
 //
-// Slice C deliberately stops at "row recorded, return 202". Slice F
-// wires the enqueue to deploy_application / deploy_compose. Splitting
-// these lets the test surface for "auth + idempotency" stay isolated
-// from "did the worker job actually run".
+// On a successful deploy notify, the handler:
+//
+//  1. Auth: sha256(bearer) ConstantTimeCompare against stored hash
+//  2. Validate image_tag prefix matches configured gha_image_repository
+//  3. Upsert docker_deployments by (target_id, gha_run_id) for idempotency
+//  4. Mint a fresh GitHub App installation token for GHCR pull auth
+//  5. Enqueue deploy_application with the override-image fields so the
+//     existing image-source code path runs against the built image
+//
+// queue + gitProviders can be nil in tests; when nil the handler still
+// records the deployment row but skips the enqueue + token mint. The
+// row-level idempotency tests don't need the actual queue.
 type GHAWebhookHandler struct {
-	db *gorm.DB
+	db           *gorm.DB
+	queue        *queue.Client
+	gitProviders *gitproviders.ProviderFactory
+	logger       *zerolog.Logger
 }
 
-// NewGHAWebhookHandler keeps the constructor surface minimal — only
-// the DB. Once slice F wires the enqueue, we add the asynq client + a
-// broadcast.TeamBroadcaster here.
-func NewGHAWebhookHandler(db *gorm.DB) *GHAWebhookHandler {
-	return &GHAWebhookHandler{db: db}
+// GHAWebhookHandlerConfig groups the handler's collaborators so the
+// constructor doesn't keep accumulating positional arguments.
+type GHAWebhookHandlerConfig struct {
+	DB           *gorm.DB
+	Queue        *queue.Client
+	GitProviders *gitproviders.ProviderFactory
+	Logger       *zerolog.Logger
+}
+
+func NewGHAWebhookHandler(cfg GHAWebhookHandlerConfig) *GHAWebhookHandler {
+	return &GHAWebhookHandler{
+		db:           cfg.DB,
+		queue:        cfg.Queue,
+		gitProviders: cfg.GitProviders,
+		logger:       cfg.Logger,
+	}
 }
 
 // applicationDeployPayload is the success-notify body from
@@ -118,12 +147,100 @@ func (h *GHAWebhookHandler) GHAApplicationDeploy(c *gofiber.Ctx) error {
 		return err
 	}
 
-	// TODO(slice F): enqueue deploy_application with SourceType=image,
-	// RegistryURL=ghcr.io, fresh installation token as password.
+	// Resolve a fresh installation token for GHCR pull auth. The
+	// existing token saved on the workload is too short-lived to be
+	// useful here (it's only used by the bootstrap job at enable
+	// time); we mint a new one per deploy so the worker has a fresh
+	// ~1-hour window.
+	if err := h.enqueueApplicationDeploy(c.Context(), app, deployment, payload.ImageTag); err != nil {
+		// Log + return 5xx so GitHub Actions retries the notify. The
+		// idempotent upsert means the retry won't create a duplicate
+		// deployment row — it'll find the one we just inserted and
+		// re-attempt the enqueue.
+		if h.logger != nil {
+			h.logger.Error().Err(err).
+				Str("application_id", app.ID).
+				Str("deployment_id", deployment.ID).
+				Msg("GHA webhook: enqueue failed")
+		}
+		return fiberutil.Internal("failed to queue deployment")
+	}
 
 	return fiberutil.OK(c, "Deployment queued", map[string]any{
 		"deployment_id": deployment.ID,
 	})
+}
+
+// enqueueApplicationDeploy resolves a fresh GHCR installation token
+// and enqueues the deploy_application job. Skipped when queue or
+// gitProviders are nil — the slice C tests use that shape.
+func (h *GHAWebhookHandler) enqueueApplicationDeploy(
+	ctx context.Context,
+	app *dockermodels.Application,
+	deployment *dockermodels.Deployment,
+	imageTag string,
+) error {
+	if h.queue == nil {
+		return nil // dry-run mode (tests)
+	}
+	if h.gitProviders == nil {
+		return errors.New("gha webhook: git provider factory not wired")
+	}
+
+	installationToken, err := h.resolveInstallationToken(ctx, app.SourceConfig)
+	if err != nil {
+		return fmt.Errorf("resolve installation token: %w", err)
+	}
+
+	task, err := dockerjobs.NewDeployApplicationTaskFromGHA(
+		app.ID,
+		deployment.ID,
+		app.ServerID,
+		app.TeamID,
+		imageTag,
+		"ghcr.io",
+		"x-access-token",
+		installationToken,
+	)
+	if err != nil {
+		return fmt.Errorf("build deploy task: %w", err)
+	}
+	if _, err := h.queue.Enqueue(task); err != nil {
+		return fmt.Errorf("enqueue deploy task: %w", err)
+	}
+	return nil
+}
+
+// resolveInstallationToken pulls the source_control_id from the
+// workload's source_config, looks up the corresponding source_controls
+// row, and asks the GitHub provider for a fresh installation token.
+// Used to authenticate `docker login ghcr.io` from the deploy script.
+func (h *GHAWebhookHandler) resolveInstallationToken(ctx context.Context, sourceConfig map[string]any) (string, error) {
+	if sourceConfig == nil {
+		return "", errors.New("source_config missing")
+	}
+	scID, _ := sourceConfig["source_control_id"].(string)
+	if scID == "" {
+		return "", errors.New("source_control_id missing from source_config")
+	}
+
+	var sc gitmodels.SourceControl
+	if err := h.db.WithContext(ctx).Where("id = ?", scID).First(&sc).Error; err != nil {
+		return "", fmt.Errorf("load source_control %s: %w", scID, err)
+	}
+	if sc.InstallationID == nil || *sc.InstallationID == "" {
+		return "", errors.New("source_control has no installation_id")
+	}
+
+	provider, err := h.gitProviders.GetProvider(gitproviders.GitProviderType(gittypes.GitProviderGitHub))
+	if err != nil {
+		return "", fmt.Errorf("resolve github provider: %w", err)
+	}
+	gh, ok := provider.(*gitproviders.GitHubProvider)
+	if !ok {
+		return "", errors.New("github provider has unexpected type")
+	}
+	return gh.GetInstallationToken(ctx, *sc.InstallationID)
 }
 
 // GHAApplicationStatus handles a failure-only notification (the
