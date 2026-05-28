@@ -153,12 +153,35 @@ func (s *ComposeService) CreateCompose(
 		ComposeFilePath:   composeFilePath,
 		RawYAML:           rawYAML,
 		Status:            dockertypes.ApplicationStatusIdle,
+		BuildLocation:     dockertypes.BuildLocationServer,
 	}
 	c.TeamID = teamID
 	c.ServerID = serverID
 
+	// Honour build_location on git-source composes. Only meaningful
+	// for git source — the raw_yaml branch has no repo to commit a
+	// workflow into; the validator on ComposeGitInput.BuildLocation
+	// has already restricted the value space to {server, github_actions}.
+	if req.ComposeSourceType == "git" && req.Git != nil && req.Git.BuildLocation != nil &&
+		*req.Git.BuildLocation == string(dockertypes.BuildLocationGitHubActions) {
+		c.BuildLocation = dockertypes.BuildLocationGitHubActions
+	}
+
 	if err := s.Repos().Compose().Create(ctx, c); err != nil {
 		return dto.ComposeResponse{}, err
+	}
+
+	// Mirror the application-side bootstrap dispatch: if the compose
+	// opted into GHA builds, kick off gha:bootstrap_workflow so the
+	// workflow YAML + secret + variables land on the repo.
+	if c.BuildLocation == dockertypes.BuildLocationGitHubActions {
+		baseURL := s.AppURL()
+		task, err := jobs.NewGHABootstrapWorkflowTask("compose", c.ID, true, baseURL)
+		if err != nil {
+			s.LogError(err, "build gha bootstrap task (compose)", "compose_id", c.ID)
+		} else if err := s.EnqueueTask(task); err != nil {
+			s.LogError(err, "enqueue gha bootstrap task (compose)", "compose_id", c.ID)
+		}
 	}
 
 	// Attach saved registry credentials (many-to-many). Empty / nil

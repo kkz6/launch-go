@@ -148,6 +148,12 @@ type ComposeGitInput struct {
 	SourceControlID *string `json:"source_control_id,omitempty"`
 	// ComposeFilePath defaults to docker-compose.yml if empty.
 	ComposeFilePath *string `json:"compose_file_path,omitempty" validate:"omitempty,max=512"`
+	// BuildLocation matches the application-side toggle. When set to
+	// "github_actions" the compose stack uses the matrix-build GHA
+	// workflow (one service per `build:` directive in the compose
+	// file) instead of an on-server build. See ComposeGitInput's
+	// twin on GitSourceInput for the rationale + wiring.
+	BuildLocation *string `json:"build_location,omitempty" validate:"omitempty,oneof=server github_actions"`
 }
 
 // ComposeRawYAMLInput stores the docker-compose YAML inline. Capped at
