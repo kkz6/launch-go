@@ -77,21 +77,70 @@ jobs:
           nixpacks build . --name "$IMAGE"
           docker push "$IMAGE"
 
+      # Mint a short-lived (~1h) GHCR pull bearer scoped to THIS repo
+      # via the standard token-exchange endpoint. The Launch deploy
+      # worker uses this for `docker login ghcr.io` on the target host
+      # so private GHCR packages pull cleanly — no Personal Access
+      # Token, no public-package workaround, no GitHub App
+      # installation-token quirk (App tokens can't pull private GHCR
+      # packages regardless of permissions).
+      #
+      # ::add-mask::$bearer is critical — without it any future
+      # step that echoes the bearer would expose it in the workflow
+      # log. With it, GitHub redacts the literal string in all
+      # subsequent log output.
+      - name: Mint GHCR pull token
+        id: ghcr_token
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          # GHCR's /token endpoint uses Docker Registry v2 Basic auth,
+          # NOT Bearer — the username can be any non-empty placeholder
+          # (we use github.actor for symmetry with the docker login
+          # step above), password is the workflow's GITHUB_TOKEN. The
+          # response is a fresh ~1h JWT scoped to repository:<owner>/
+          # <repo>:pull, suitable for `docker login` as the password
+          # on the deploy host. Repo name lowercased — GHCR requires
+          # it even when the GitHub repo name has uppercase letters.
+          bearer=$(curl -fsSL \
+            -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
+            "https://ghcr.io/token?service=ghcr.io&scope=repository:${GITHUB_REPOSITORY,,}:pull" \
+            | jq -r '.token // empty')
+          if [ -z "$bearer" ]; then
+            echo "::error::Failed to mint GHCR pull token"
+            exit 1
+          fi
+          echo "::add-mask::$bearer"
+          {
+            echo "bearer<<LAUNCH_BEARER_EOF"
+            echo "$bearer"
+            echo "LAUNCH_BEARER_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "minted_at=$(date -u +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Notify Launch (success)
         env:
           TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
+          # Pass the bearer through an env var so jq's --arg gets it
+          # verbatim — inlining via `${{ steps.* }}`
+          # in jq args invites shell-quote escapes on edge cases.
+          GHCR_BEARER: ${{ steps.ghcr_token.outputs.bearer }}
+          GHCR_BEARER_MINTED_AT: ${{ steps.ghcr_token.outputs.minted_at }}
         run: |
           curl --fail-with-body -sS -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(jq -nc \
-              --arg image  '${{ steps.meta.outputs.image }}' \
-              --arg sha    '${{ github.sha }}' \
-              --arg branch '${{ github.ref_name }}' \
-              --arg run_id '${{ github.run_id }}' \
-              --arg url    '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
-              '{image_tag:$image, commit_sha:$sha, branch:$branch, run_id:$run_id, run_url:$url}')" \
-            "https://launchctl.io/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/deploy"
+              --arg image     '${{ steps.meta.outputs.image }}' \
+              --arg sha       '${{ github.sha }}' \
+              --arg branch    '${{ github.ref_name }}' \
+              --arg run_id    '${{ github.run_id }}' \
+              --arg url       '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
+              --arg pull      "$GHCR_BEARER" \
+              --arg minted_at "$GHCR_BEARER_MINTED_AT" \
+              '{image_tag:$image, commit_sha:$sha, branch:$branch, run_id:$run_id, run_url:$url, ghcr_pull_token:$pull, ghcr_pull_token_minted_at:$minted_at}')" \
+            "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/deploy"
 
       - name: Notify Launch (failure)
         if: failure()
@@ -105,4 +154,4 @@ jobs:
               --arg run_id '${{ github.run_id }}' \
               --arg url    '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
               '{status:"failed", run_id:$run_id, run_url:$url}')" \
-            "https://launchctl.io/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/status"
+            "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/status"

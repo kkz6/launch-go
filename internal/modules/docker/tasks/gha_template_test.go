@@ -113,9 +113,18 @@ func TestRenderedYAMLContainsExpectedAnchors(t *testing.T) {
 	// build-push-action input.
 	assert.Contains(t, got, `if [ -f "deploy/Dockerfile" ]`)
 	assert.Contains(t, got, `file: deploy/Dockerfile`)
-	// LaunchBaseURL + AppID together build the webhook target URL.
-	assert.Contains(t, got, `https://my-launch.example/api/webhooks/docker/applications/01TESTAPP/deploy`)
-	assert.Contains(t, got, `https://my-launch.example/api/webhooks/docker/applications/01TESTAPP/status`)
+	// The webhook URL is built at workflow-RUN time from the
+	// LAUNCH_WEBHOOK_URL Actions variable (so customers can move
+	// Launch without re-syncing the workflow file). The rendered
+	// YAML carries the GHA-expression placeholder, NOT the literal
+	// LaunchBaseURL value — but the bootstrap job still pushes
+	// LaunchBaseURL into the variable, so the round-trip works.
+	assert.Contains(t, got, "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01TESTAPP/deploy")
+	assert.Contains(t, got, "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01TESTAPP/status")
+	// LaunchBaseURL is intentionally NOT baked into the YAML body
+	// — the variable indirection is the point. Locked in to catch a
+	// future regression that re-bakes it.
+	assert.NotContains(t, got, "https://my-launch.example")
 
 	// Negative: there should be no Go-template residue. If our
 	// {{ "{{" }} escaping is wrong, "<no value>" or "{{...}}" pieces

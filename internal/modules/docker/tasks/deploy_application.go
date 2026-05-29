@@ -269,14 +269,45 @@ func buildImageStanza(cfg DeployConfig) string {
 		// in the captured log, which buried the actually-useful
 		// program output behind a wall of trace lines.
 		b.WriteString("set +x\n")
-		b.WriteString("if [ -n \"${DOCKER_REGISTRY_URL}\" ]; then\n")
-		fmt.Fprintf(&b, "  docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin \"${DOCKER_REGISTRY_URL}\" %s <<'LAUNCH_DOCKER_PW_EOF'\n", dockerCredFilter)
+		// When the password is a registry-bearer (workflow-minted GHCR
+		// pull token relay), `docker login` rejects it — GHCR's login
+		// validator expects PATs / install tokens, not pre-minted
+		// bearers. So instead of going through docker login we write
+		// the bearer DIRECTLY to ~/.docker/config.json's
+		// `auths.<registry>.registrytoken` field, which makes docker
+		// attach `Authorization: Bearer <bearer>` to subsequent pulls
+		// without any login round-trip.
+		//
+		// Detection: when the username is "oauth2" the deploy was
+		// initiated by the GHA bearer-relay path; anything else
+		// (e.g. "x-access-token" for install-token fallback,
+		// real customer usernames for Docker Hub etc.) is a normal
+		// PAT/credential and goes through docker login as before.
+		b.WriteString(`if [ "${DOCKER_REGISTRY_USER}" = "oauth2" ]; then
+  # Bearer-relay path. Write the token directly into the docker
+  # config so subsequent pulls send Authorization: Bearer <token>
+  # without trying to round-trip through docker login.
+  REG_HOST="${DOCKER_REGISTRY_URL:-ghcr.io}"
+  mkdir -p "${HOME}/.docker"
+  cat <<DOCKER_CONFIG_EOF > "${HOME}/.docker/config.json"
+{"auths":{"${REG_HOST}":{"registrytoken":"$(cat <<'LAUNCH_DOCKER_PW_EOF'
+`)
+		b.WriteString(cfg.RegistryPassword)
+		b.WriteString(`
+LAUNCH_DOCKER_PW_EOF
+)"}}}
+DOCKER_CONFIG_EOF
+else
+`)
+		fmt.Fprintf(&b, "  if [ -n \"${DOCKER_REGISTRY_URL}\" ]; then\n")
+		fmt.Fprintf(&b, "    docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin \"${DOCKER_REGISTRY_URL}\" %s <<'LAUNCH_DOCKER_PW_EOF'\n", dockerCredFilter)
 		b.WriteString(cfg.RegistryPassword)
 		b.WriteString("\nLAUNCH_DOCKER_PW_EOF\n")
-		b.WriteString("else\n")
-		fmt.Fprintf(&b, "  docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin %s <<'LAUNCH_DOCKER_PW_EOF'\n", dockerCredFilter)
+		b.WriteString("  else\n")
+		fmt.Fprintf(&b, "    docker login --username \"${DOCKER_REGISTRY_USER}\" --password-stdin %s <<'LAUNCH_DOCKER_PW_EOF'\n", dockerCredFilter)
 		b.WriteString(cfg.RegistryPassword)
 		b.WriteString("\nLAUNCH_DOCKER_PW_EOF\n")
+		b.WriteString("  fi\n")
 		b.WriteString("fi\n")
 		// (no `set -x` here — that was the bug; see comment above)
 	}
@@ -286,17 +317,23 @@ DOCKER_IMAGE=%q
 docker pull "${DOCKER_IMAGE}"
 `, cfg.Image)
 	if cfg.RegistryUsername != "" && cfg.RegistryPassword != "" {
-		// Best-effort logout. Failure here doesn't abort the deploy —
-		// the pull already happened. `|| true` keeps `set -e` from
-		// killing a successful run on a quirky logout.
-		//
-		// docker logout re-touches the same config.json that triggered
-		// the credential-store warning on login, so it ALSO prints
-		// the warning on stderr. Same filter to keep the log clean.
-		b.WriteString("if [ -n \"${DOCKER_REGISTRY_URL}\" ]; then\n")
-		fmt.Fprintf(&b, "  docker logout \"${DOCKER_REGISTRY_URL}\" %s || true\n", dockerCredFilter)
-		b.WriteString("else\n")
-		fmt.Fprintf(&b, "  docker logout %s || true\n", dockerCredFilter)
+		// Cleanup. The bearer-relay path manages its own config.json
+		// directly so the canonical `docker logout` is a no-op there;
+		// just overwrite the config.json back to an empty auths map
+		// so the next deploy on the same host starts from a clean
+		// slate. PAT path keeps `docker logout` since it owns the
+		// credential helper entry.
+		b.WriteString(`if [ "${DOCKER_REGISTRY_USER}" = "oauth2" ]; then
+  if [ -f "${HOME}/.docker/config.json" ]; then
+    echo '{"auths":{}}' > "${HOME}/.docker/config.json"
+  fi
+else
+`)
+		fmt.Fprintf(&b, "  if [ -n \"${DOCKER_REGISTRY_URL}\" ]; then\n")
+		fmt.Fprintf(&b, "    docker logout \"${DOCKER_REGISTRY_URL}\" %s || true\n", dockerCredFilter)
+		b.WriteString("  else\n")
+		fmt.Fprintf(&b, "    docker logout %s || true\n", dockerCredFilter)
+		b.WriteString("  fi\n")
 		b.WriteString("fi\n")
 	}
 	return b.String()

@@ -2,8 +2,10 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"regexp"
+	"strconv"
 	"strings"
 	"time"
 
@@ -42,12 +44,45 @@ type DeployApplicationPayload struct {
 	OverrideImage string `json:"override_image,omitempty"`
 	// OverrideRegistryURL / Username / Password override the docker
 	// login credentials the deploy script uses before `docker pull`.
-	// For GHA the URL is "ghcr.io", the username is "x-access-token",
-	// and the password is a fresh installation token minted by the
-	// webhook handler.
+	// For GHA the URL is "ghcr.io", the username is "oauth2" (when
+	// the workflow minted a GHCR pull bearer) or "x-access-token"
+	// (when falling back to the GitHub App installation token), and
+	// the password is the corresponding token.
+	//
+	// NOTE: OverrideRegistryPassword is a secret. The custom String()
+	// method on this struct redacts it; if you add another channel
+	// that formats this struct, mirror the redaction there.
 	OverrideRegistryURL      string `json:"override_registry_url,omitempty"`
 	OverrideRegistryUsername string `json:"override_registry_username,omitempty"`
 	OverrideRegistryPassword string `json:"override_registry_password,omitempty"`
+	// OverrideRegistryPasswordMintedAtUnix carries the unix-seconds
+	// timestamp at which the GHCR pull bearer was minted (workflow
+	// side, UTC). Used to fail fast with a clear error if the bearer
+	// is about to expire by the time the deploy job actually runs —
+	// rather than letting docker pull surface an opaque 401. Empty
+	// when the password isn't a workflow-minted bearer (e.g. when
+	// falling back to the GitHub App installation token path).
+	OverrideRegistryPasswordMintedAtUnix string `json:"override_registry_password_minted_at_unix,omitempty"`
+}
+
+// String returns a redacted JSON view of the payload. Any code path
+// that prints this struct (logger.Interface, fmt.Sprintf, asynq
+// retry logs, debug dumps) ends up here — making the bearer
+// IMPOSSIBLE to leak via accidental formatting.
+//
+// This is the SINGLE place to update if the payload ever gains
+// another secret. Locked in by TestDeployApplicationPayload_StringRedaction.
+func (p DeployApplicationPayload) String() string {
+	redacted := p
+	if redacted.OverrideRegistryPassword != "" {
+		redacted.OverrideRegistryPassword = "[REDACTED]"
+	}
+	b, err := json.Marshal(redacted)
+	if err != nil {
+		return fmt.Sprintf("DeployApplicationPayload{app=%s, deploy=%s, marshal_err=%v}",
+			p.ApplicationID, p.DeploymentID, err)
+	}
+	return string(b)
 }
 
 // DeployApplicationJob runs the deploy script on the docker server,
@@ -83,6 +118,28 @@ func NewDeployApplicationJob(p DeployApplicationPayload) pkgjobs.Handler {
 func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	if err := j.loadModels(ctx); err != nil {
 		return err
+	}
+
+	// Fail fast if the GHCR pull bearer the workflow stamped on the
+	// payload is about to expire. Without this, docker pull would
+	// surface an opaque 401 with no hint why — and asynq would retry
+	// the same stale-token deploy in a loop. The customer is far
+	// better off seeing a clear "your queue was stalled; re-trigger
+	// the workflow" message + a non-retriable failure than wasting
+	// asynq retries on a token that's already dead. See
+	// gha_webhook_handler.go for where mintedAtUnix gets stamped.
+	if reason, expired := ghcrBearerExpiredSoon(j.Payload.OverrideRegistryPasswordMintedAtUnix, time.Now().UTC()); expired {
+		j.Deps.Logger.Warn().
+			Str("application_id", j.Payload.ApplicationID).
+			Str("deployment_id", j.Payload.DeploymentID).
+			Str("reason", reason).
+			Msg("GHA deploy: GHCR pull bearer expired before deploy ran")
+		j.markDeploymentFailed(ctx,
+			"GHCR pull token expired before this deploy could run "+
+				"(the queue was stalled for longer than the token's ~1h "+
+				"lifetime). Re-trigger the workflow on GitHub to mint a "+
+				"fresh token and try again.")
+		return nil
 	}
 
 	now := time.Now().UTC()
@@ -490,6 +547,71 @@ func summarise(s string) string {
 	return s
 }
 
+// ghcrBearerMaxAge is how long after the workflow minted a GHCR pull
+// bearer we still consider it usable. GHCR docs say bearers live ~1h;
+// we use a 50-minute cap to give the deploy a few minutes' headroom
+// between this check and the actual `docker pull` on the remote host.
+const ghcrBearerMaxAge = 50 * time.Minute
+
+// ghcrBearerExpiredSoon reports whether the workflow-stamped GHCR pull
+// bearer is close enough to its TTL that we shouldn't hand it to
+// docker pull. Returns (humanReadableReason, true) when the bearer is
+// too old; ("", false) when it's fresh OR when no workflow-stamped
+// bearer accompanied this deploy (install-token fallback path, or
+// non-GHA deploy).
+//
+// Package-level (not a method) so the compose job + tests can call it
+// without pulling in DeployApplicationJob.
+func ghcrBearerExpiredSoon(mintedAtUnix string, now time.Time) (string, bool) {
+	stamp := strings.TrimSpace(mintedAtUnix)
+	if stamp == "" {
+		return "", false
+	}
+	mintedUnix, err := strconv.ParseInt(stamp, 10, 64)
+	if err != nil || mintedUnix == 0 {
+		return "", false
+	}
+	mintedAt := time.Unix(mintedUnix, 0).UTC()
+	age := now.Sub(mintedAt)
+	if age < 0 {
+		// Stamp is in the future — almost certainly clock drift
+		// between the GHA runner and our host; tolerate small skew
+		// silently. (Anything beyond a couple of minutes here is
+		// pathological enough we don't want to silently proceed.)
+		if age < -5*time.Minute {
+			return fmt.Sprintf("token minted in the future (%v ahead)", -age), true
+		}
+		return "", false
+	}
+	if age > ghcrBearerMaxAge {
+		return fmt.Sprintf("token age %v exceeds max %v", age.Round(time.Second), ghcrBearerMaxAge), true
+	}
+	return "", false
+}
+
+// markDeploymentFailed flips the deployment row to status=failed +
+// the application row to status=failed + broadcasts the failure
+// event. Used by the pre-flight bearer-age guard so we surface a
+// clean, non-retriable failure to the UI rather than letting docker
+// pull eventually error with an opaque 401.
+func (j *DeployApplicationJob) markDeploymentFailed(ctx context.Context, errMsg string) {
+	finishedAt := time.Now().UTC()
+	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+		"status":      dockertypes.DeploymentStatusFailed,
+		"finished_at": finishedAt,
+		"error":       errMsg,
+	})
+	_ = j.Deps.Repos.Application().UpdateFields(ctx, j.app.ID, map[string]any{
+		"status": dockertypes.ApplicationStatusFailed,
+	})
+	j.broadcast("docker.application.failed", map[string]any{
+		"application_id": j.app.ID,
+		"deployment_id":  j.deployment.ID,
+		"status":         "failed",
+		"error":          errMsg,
+	})
+}
+
 // applyDeployApplicationOverrides flips the deploy config to the
 // image-source path when the webhook handler supplied an override
 // image + creds. Idempotent + a no-op when OverrideImage is empty —
@@ -546,15 +668,17 @@ func NewDeployApplicationTask(
 func NewDeployApplicationTaskFromGHA(
 	applicationID, deploymentID, serverID, teamID string,
 	image, registryURL, registryUsername, registryPassword string,
+	mintedAtUnix string,
 ) (*asynq.Task, error) {
 	return pkgjobs.TaskWithID(TypeDeployApplication, DeployApplicationPayload{
-		ApplicationID:            applicationID,
-		DeploymentID:             deploymentID,
-		ServerID:                 serverID,
-		TeamID:                   teamID,
-		OverrideImage:            image,
-		OverrideRegistryURL:      registryURL,
-		OverrideRegistryUsername: registryUsername,
-		OverrideRegistryPassword: registryPassword,
+		ApplicationID:                        applicationID,
+		DeploymentID:                         deploymentID,
+		ServerID:                             serverID,
+		TeamID:                               teamID,
+		OverrideImage:                        image,
+		OverrideRegistryURL:                  registryURL,
+		OverrideRegistryUsername:             registryUsername,
+		OverrideRegistryPassword:             registryPassword,
+		OverrideRegistryPasswordMintedAtUnix: mintedAtUnix,
 	}, pkgjobs.Dedup("docker-deploy-app", deploymentID))
 }

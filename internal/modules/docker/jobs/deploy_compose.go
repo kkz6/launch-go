@@ -2,6 +2,7 @@ package jobs
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -40,11 +41,35 @@ type DeployComposePayload struct {
 
 	// OverrideRegistry{URL,Username,Password} are the docker-login
 	// credentials the deploy script pipes to --password-stdin BEFORE
-	// `docker compose up`. For GHA they're ghcr.io / "x-access-token"
-	// / a fresh installation token minted by the webhook handler.
+	// `docker compose up`. For GHA, URL is ghcr.io and the password
+	// is either a workflow-minted bearer (username "oauth2") or a
+	// GitHub App installation token (username "x-access-token").
+	//
+	// NOTE: OverrideRegistryPassword is a secret. The custom String()
+	// method on this struct redacts it; if you add another channel
+	// that formats this struct, mirror the redaction there.
 	OverrideRegistryURL      string `json:"override_registry_url,omitempty"`
 	OverrideRegistryUsername string `json:"override_registry_username,omitempty"`
 	OverrideRegistryPassword string `json:"override_registry_password,omitempty"`
+	// OverrideRegistryPasswordMintedAtUnix mirrors the application
+	// payload — see DeployApplicationPayload for the rationale.
+	OverrideRegistryPasswordMintedAtUnix string `json:"override_registry_password_minted_at_unix,omitempty"`
+}
+
+// String returns a redacted JSON view of the payload — same redaction
+// + same rationale as DeployApplicationPayload.String(). Locked in by
+// TestDeployComposePayload_StringRedaction.
+func (p DeployComposePayload) String() string {
+	redacted := p
+	if redacted.OverrideRegistryPassword != "" {
+		redacted.OverrideRegistryPassword = "[REDACTED]"
+	}
+	b, err := json.Marshal(redacted)
+	if err != nil {
+		return fmt.Sprintf("DeployComposePayload{compose=%s, deploy=%s, marshal_err=%v}",
+			p.ComposeID, p.DeploymentID, err)
+	}
+	return string(b)
 }
 
 // DeployComposeJob mirrors DeployApplicationJob but runs the compose
@@ -73,6 +98,23 @@ func NewDeployComposeJob(p DeployComposePayload) pkgjobs.Handler {
 func (j *DeployComposeJob) Handle(ctx context.Context) error {
 	if err := j.loadModels(ctx); err != nil {
 		return err
+	}
+
+	// Pre-flight GHCR bearer age check — same rationale as in
+	// DeployApplicationJob.Handle. See ghcrBearerExpiredSoon on the
+	// app job for the longer-form comment.
+	if reason, expired := ghcrBearerExpiredSoon(j.Payload.OverrideRegistryPasswordMintedAtUnix, time.Now().UTC()); expired {
+		j.Deps.Logger.Warn().
+			Str("compose_id", j.Payload.ComposeID).
+			Str("deployment_id", j.Payload.DeploymentID).
+			Str("reason", reason).
+			Msg("GHA deploy: GHCR pull bearer expired before compose deploy ran")
+		j.markComposeDeploymentFailed(ctx,
+			"GHCR pull token expired before this deploy could run "+
+				"(the queue was stalled for longer than the token's ~1h "+
+				"lifetime). Re-trigger the workflow on GitHub to mint a "+
+				"fresh token and try again.")
+		return nil
 	}
 
 	now := time.Now().UTC()
@@ -311,6 +353,29 @@ func (j *DeployComposeJob) handleFailure(ctx context.Context, output string, run
 	})
 }
 
+// markComposeDeploymentFailed mirrors markDeploymentFailed on the
+// application job — flips deployment + compose rows to failed +
+// broadcasts the WS event. Used by the pre-flight bearer-age guard
+// so we surface a clean, non-retriable failure instead of letting
+// docker pull eventually error with an opaque 401.
+func (j *DeployComposeJob) markComposeDeploymentFailed(ctx context.Context, errMsg string) {
+	finishedAt := time.Now().UTC()
+	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+		"status":      dockertypes.DeploymentStatusFailed,
+		"finished_at": finishedAt,
+		"error":       errMsg,
+	})
+	_ = j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
+		"status": dockertypes.ApplicationStatusFailed,
+	})
+	j.broadcast("docker.compose.failed", map[string]any{
+		"compose_id":    j.compose.ID,
+		"deployment_id": j.deployment.ID,
+		"status":        "failed",
+		"error":         errMsg,
+	})
+}
+
 func (j *DeployComposeJob) broadcast(event string, data map[string]any) {
 	if data == nil {
 		data = map[string]any{}
@@ -374,15 +439,17 @@ func NewDeployComposeTaskFromGHA(
 	composeID, deploymentID, serverID, teamID string,
 	serviceImages map[string]string,
 	registryURL, registryUsername, registryPassword string,
+	mintedAtUnix string,
 ) (*asynq.Task, error) {
 	return pkgjobs.TaskWithID(TypeDeployCompose, DeployComposePayload{
-		ComposeID:                composeID,
-		DeploymentID:             deploymentID,
-		ServerID:                 serverID,
-		TeamID:                   teamID,
-		ServiceImages:            serviceImages,
-		OverrideRegistryURL:      registryURL,
-		OverrideRegistryUsername: registryUsername,
-		OverrideRegistryPassword: registryPassword,
+		ComposeID:                            composeID,
+		DeploymentID:                         deploymentID,
+		ServerID:                             serverID,
+		TeamID:                               teamID,
+		ServiceImages:                        serviceImages,
+		OverrideRegistryURL:                  registryURL,
+		OverrideRegistryUsername:             registryUsername,
+		OverrideRegistryPassword:             registryPassword,
+		OverrideRegistryPasswordMintedAtUnix: mintedAtUnix,
 	}, pkgjobs.Dedup("docker-deploy-compose", deploymentID))
 }
