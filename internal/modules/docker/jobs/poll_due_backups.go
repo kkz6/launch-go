@@ -100,7 +100,7 @@ func (j *PollDueBackupsJob) Handle(ctx context.Context) error {
 		}
 
 		task, err := NewRunBackupTask(
-			b.ID, b.DatabaseID, db.ProjectID, db.ServerID, b.TeamID, "schedule",
+			b.ID, b.DatabaseID, db.ProjectID, db.ServerID, b.TeamID, "", "schedule",
 		)
 		if err != nil {
 			j.Deps.Logger.Warn().Err(err).
