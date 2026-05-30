@@ -132,7 +132,7 @@ func (h *GHAWebhookHandler) GHAApplicationDeploy(c *gofiber.Ctx) error {
 		return err
 	}
 
-	deployment, err := h.upsertGHADeployment(gha_deployment_upsert{
+	deployment, err := h.upsertGHADeployment(ghaDeploymentUpsert{
 		TargetType:    "application",
 		TargetID:      app.ID,
 		TeamID:        app.TeamID,
@@ -316,7 +316,7 @@ func (h *GHAWebhookHandler) GHAComposeDeploy(c *gofiber.Ctx) error {
 	// between deploys.
 	primaryImage := primaryServiceImage(payload.ServiceImages)
 
-	deployment, err := h.upsertGHADeployment(gha_deployment_upsert{
+	deployment, err := h.upsertGHADeployment(ghaDeploymentUpsert{
 		TargetType:    "compose",
 		TargetID:      compose.ID,
 		TeamID:        compose.TeamID,
@@ -532,7 +532,7 @@ func validateImagePrefix(image string, sourceConfig map[string]any) error {
 
 // --- deployment upsert ----------------------------------------------
 
-type gha_deployment_upsert struct {
+type ghaDeploymentUpsert struct {
 	TargetType    string
 	TargetID      string
 	TeamID        string
@@ -550,7 +550,7 @@ type gha_deployment_upsert struct {
 // rather than spawning a duplicate. We do the lookup ourselves
 // (rather than ON CONFLICT) because GORM's OnConflict-ignore returns
 // no useful "did we insert or hit conflict" signal across drivers.
-func (h *GHAWebhookHandler) upsertGHADeployment(input gha_deployment_upsert) (*dockermodels.Deployment, error) {
+func (h *GHAWebhookHandler) upsertGHADeployment(input ghaDeploymentUpsert) (*dockermodels.Deployment, error) {
 	var existing dockermodels.Deployment
 	err := h.db.Where(
 		"target_type = ? AND target_id = ? AND gha_run_id = ?",
