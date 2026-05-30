@@ -265,4 +265,3 @@ func (p *GitHubProvider) DeleteActionsVariable(
 	raw, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("DeleteActionsVariable %s: status %d body %s", name, resp.StatusCode, string(raw))
 }
-

@@ -64,12 +64,12 @@ type Server struct {
 	// OperatingSystem above (which is what the user picked in the
 	// dropdown) — downstream scripts trust these, the UI surfaces them
 	// so any mismatch is visible.
-	DetectedOSID              *string                `gorm:"column:detected_os_id;type:varchar(64)" json:"detected_os_id,omitempty"`
-	DetectedOSVersion         *string                `gorm:"column:detected_os_version;type:varchar(64)" json:"detected_os_version,omitempty"`
-	DetectedOSVersionCodename *string                `gorm:"column:detected_os_version_codename;type:varchar(64)" json:"detected_os_version_codename,omitempty"`
-	DetectedArch              *string                `gorm:"column:detected_arch;type:varchar(32)" json:"detected_arch,omitempty"`
-	DetectedKernel            *string                `gorm:"column:detected_kernel;type:varchar(128)" json:"detected_kernel,omitempty"`
-	DetectedAt                *time.Time             `gorm:"column:detected_at;type:timestamptz" json:"detected_at,omitempty"`
+	DetectedOSID              *string    `gorm:"column:detected_os_id;type:varchar(64)" json:"detected_os_id,omitempty"`
+	DetectedOSVersion         *string    `gorm:"column:detected_os_version;type:varchar(64)" json:"detected_os_version,omitempty"`
+	DetectedOSVersionCodename *string    `gorm:"column:detected_os_version_codename;type:varchar(64)" json:"detected_os_version_codename,omitempty"`
+	DetectedArch              *string    `gorm:"column:detected_arch;type:varchar(32)" json:"detected_arch,omitempty"`
+	DetectedKernel            *string    `gorm:"column:detected_kernel;type:varchar(128)" json:"detected_kernel,omitempty"`
+	DetectedAt                *time.Time `gorm:"column:detected_at;type:timestamptz" json:"detected_at,omitempty"`
 
 	// Relations
 	Services      []InstalledService `gorm:"foreignKey:ServerID;references:ID" json:"services,omitempty"`
