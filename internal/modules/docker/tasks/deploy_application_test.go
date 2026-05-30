@@ -131,8 +131,30 @@ func TestBuildDeployScript_Image_RegistryAuth_NamedHost(t *testing.T) {
 	// outer script doesn't enable -x — keeps the toggle visible if
 	// debug tracing gets added later.
 	mustContain(t, s, "set +x")
-	// Logout pairs with the login, namespaced under the same URL.
-	mustContain(t, s, `docker logout "${DOCKER_REGISTRY_URL}" || true`)
+	// REGRESSION: an earlier version closed the login block with
+	// `set -x`, which LEAKED shell tracing across the rest of the
+	// deploy and buried the captured log under `+ command` echoes.
+	// Must NOT appear — there's no scenario where we want tracing
+	// on for the whole script. (`set +x` is fine; `set -x` is not.)
+	mustNotContain(t, s, "set -x")
+	// docker login's "credentials stored unencrypted" warning gets
+	// filtered out via a stderr process substitution. Same filter
+	// is applied to docker logout — it touches the same config.json
+	// and emits the same warning. Operators can't act on that
+	// warning without host-level credential helper setup that
+	// Launch deliberately doesn't take over.
+	mustContain(t, s, "credentials are stored unencrypted")
+	mustContain(t, s, "Configure a credential helper")
+	// Logout pairs with the login AND carries the stderr filter
+	// (the credential warning fires on logout too).
+	mustContain(t, s, `docker logout "${DOCKER_REGISTRY_URL}"`)
+	// Count of stderr-filter occurrences: 2x login (URL set / not set)
+	// + 2x logout (URL set / not set) = 4. Catches a future
+	// regression where someone drops the filter from logout (only)
+	// without touching login — the warning would silently return.
+	if got := strings.Count(s, "credentials are stored unencrypted"); got != 4 {
+		t.Fatalf("stderr filter must wrap BOTH docker login AND docker logout — got %d occurrences, want 4", got)
+	}
 }
 
 func TestBuildDeployScript_Image_RegistryAuth_DockerHub(t *testing.T) {
@@ -154,8 +176,12 @@ func TestBuildDeployScript_Image_RegistryAuth_DockerHub(t *testing.T) {
 	mustContain(t, s, `if [ -n "${DOCKER_REGISTRY_URL}" ]; then`)
 	mustContain(t, s, "else")
 	mustContain(t, s, "fi")
-	// Logout also conditional on URL presence.
-	mustContain(t, s, "docker logout || true")
+	// Logout also conditional on URL presence. The stderr filter
+	// for the credential warning sits between the command and the
+	// `|| true`, so the literal-string assertion would over-tighten;
+	// just confirm both halves are present in order.
+	mustContain(t, s, "docker logout 2> >(")
+	mustContain(t, s, ") || true")
 }
 
 // --- Run-line: env vars, volumes, build_config knobs --------------
