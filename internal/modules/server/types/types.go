@@ -551,11 +551,16 @@ const (
 	ServiceOptionRestart ServiceOption = "restart"
 	ServiceOptionRemove  ServiceOption = "remove"
 	ServiceOptionStatus  ServiceOption = "status"
+	// ServiceOptionUpdate re-runs a service's install script to upgrade
+	// it in place. Used by the Launch Agent update banner — the agent's
+	// install script self-detects a version mismatch and pulls the
+	// latest release.
+	ServiceOptionUpdate ServiceOption = "update"
 )
 
 var allServiceOptions = []ServiceOption{
 	ServiceOptionStart, ServiceOptionStop, ServiceOptionRestart,
-	ServiceOptionRemove, ServiceOptionStatus,
+	ServiceOptionRemove, ServiceOptionStatus, ServiceOptionUpdate,
 }
 
 var serviceOptionLabels = map[ServiceOption]string{
@@ -564,6 +569,7 @@ var serviceOptionLabels = map[ServiceOption]string{
 	ServiceOptionRestart: "Restart",
 	ServiceOptionRemove:  "Remove",
 	ServiceOptionStatus:  "Status",
+	ServiceOptionUpdate:  "Update",
 }
 
 func (o ServiceOption) String() string {

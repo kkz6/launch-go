@@ -96,6 +96,8 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 
 		// Services
 		servers.Get("/:id/services", provisioned, fiberutil.IndexNested("id", "Services retrieved", m.service.ListServices))
+		// Launch Agent update-availability check — drives the update banner.
+		servers.Get("/:id/agent-version", provisioned, fiberutil.IndexNested("id", "Agent version retrieved", m.service.GetAgentVersionInfo))
 		servers.Get("/:id/services/create", provisioned, fiberutil.IndexNested("id", "Available services retrieved", m.service.GetAvailableServices))
 		servers.Post("/:id/services", provisioned, fiberutil.CreateNested[dto.CreateServiceRequest]("id", "Service installation initiated", m.service.InstallService))
 		servers.Post("/:id/services/:serviceId/:action", provisioned, handler.ServiceOperationByAction)

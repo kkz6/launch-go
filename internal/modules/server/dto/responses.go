@@ -1181,6 +1181,23 @@ type BackendHealthStatus struct {
 	LastHealthCheckAt *time.Time `json:"last_health_check_at,omitempty"`
 }
 
+// AgentVersionResponse tells the UI whether a server's Launch Agent has
+// an update available, driving the update banner + "Update" action.
+type AgentVersionResponse struct {
+	// ServiceID is the installed launch_agent service row id (empty if
+	// the agent isn't installed on this server).
+	ServiceID string `json:"service_id"`
+	// Installed is the version the server currently reports (no leading
+	// "v"); may be empty or a legacy placeholder ("latest"/"master").
+	Installed string `json:"installed"`
+	// Latest is the newest published agent version (no leading "v"), or
+	// empty if the GitHub lookup is unavailable.
+	Latest string `json:"latest"`
+	// UpdateAvailable is true when the agent is installed and a newer
+	// (or unknown-vs-known) version is available.
+	UpdateAvailable bool `json:"update_available"`
+}
+
 // ToServerProviderResponse converts a ServerProvider model to response
 func ToServerProviderResponse(sp *models.ServerProvider) ServerProviderResponse {
 	profile := ""
