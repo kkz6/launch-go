@@ -111,6 +111,12 @@ func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, 
 		return s.dispatchServiceRemoveJob(server, service)
 	case types.ServiceOptionStatus:
 		return s.dispatchServiceStatusJob(server, service)
+	case types.ServiceOptionUpdate:
+		// Re-run the install job in place. The Launch Agent install
+		// script self-detects a version mismatch and upgrades to the
+		// latest published release; for other software it's a no-op
+		// reinstall. Operates on the existing service row (svc.ID).
+		return s.dispatchServiceInstallJob(server, service)
 	default:
 		return fmt.Errorf("unknown operation: %s", operation)
 	}
