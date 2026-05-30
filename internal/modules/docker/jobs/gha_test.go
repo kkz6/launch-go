@@ -231,6 +231,29 @@ func TestParseGHASourceConfig_MissingSourceControlID(t *testing.T) {
 	assert.ErrorContains(t, err, "source_control_id missing")
 }
 
+// --- ghcrImageRepository -------------------------------------------
+//
+// The webhook handler validates incoming `image_tag` against
+// source_config.gha_image_repository (which the bootstrap writes).
+// GHCR rejects mixed-case refs so the value must be lowercased.
+
+func TestGHCRImageRepository_Lowercases(t *testing.T) {
+	cases := []struct {
+		owner, repo string
+		want        string
+	}{
+		{"kkz6", "launch-gha-test", "ghcr.io/kkz6/launch-gha-test"},
+		{"KKZ6", "Launch-GHA-Test", "ghcr.io/kkz6/launch-gha-test"},
+		{"Acme", "MyRepo", "ghcr.io/acme/myrepo"},
+		{"a", "b", "ghcr.io/a/b"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.owner+"/"+tc.repo, func(t *testing.T) {
+			assert.Equal(t, tc.want, ghcrImageRepository(tc.owner, tc.repo))
+		})
+	}
+}
+
 func TestParseGHASourceConfig_UnparseableRepo(t *testing.T) {
 	_, err := parseGHASourceConfig(map[string]any{
 		"repo":              "not-a-url",

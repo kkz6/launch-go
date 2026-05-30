@@ -80,15 +80,15 @@ func NewGHABootstrapWorkflowTask(kind, id string, rotate bool, baseURL string) (
 
 // Handle does the actual repo writes. Steps:
 //
-//	1. Load workload (application | compose). Bail if not configured for GHA.
-//	2. Decode source_config: repo, branch, installation_id, dockerfile_path.
-//	3. If RotateToken (or no existing hash), mint a fresh deploy token.
-//	4. Resolve installation token via the GitHub provider.
-//	5. PutActionsSecret("LAUNCH_DEPLOY_TOKEN") — sealed-box via GH's pubkey.
-//	6. PutActionsVariable("LAUNCH_APP_ID" or "LAUNCH_COMPOSE_ID").
-//	7. PutActionsVariable("LAUNCH_WEBHOOK_URL") — base URL the curl posts to.
-//	8. Render workflow YAML + PutContents (.github/workflows/launch-deploy.yml).
-//	9. Persist the returned commit SHA into source_config.gha_workflow_sha.
+//  1. Load workload (application | compose). Bail if not configured for GHA.
+//  2. Decode source_config: repo, branch, installation_id, dockerfile_path.
+//  3. If RotateToken (or no existing hash), mint a fresh deploy token.
+//  4. Resolve installation token via the GitHub provider.
+//  5. PutActionsSecret("LAUNCH_DEPLOY_TOKEN") — sealed-box via GH's pubkey.
+//  6. PutActionsVariable("LAUNCH_APP_ID" or "LAUNCH_COMPOSE_ID").
+//  7. PutActionsVariable("LAUNCH_WEBHOOK_URL") — base URL the curl posts to.
+//  8. Render workflow YAML + PutContents (.github/workflows/launch-deploy.yml).
+//  9. Persist the returned commit SHA into source_config.gha_workflow_sha.
 //
 // On success, broadcast docker.application.gha_synced (or
 // .compose.gha_synced) so the UI subtab can refresh.
@@ -139,10 +139,14 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 		return err
 	}
 
-	// Persist tokenHash + workflow SHA back onto the row.
+	// Persist tokenHash + workflow SHA + image-repository binding back
+	// onto the row. The image repository is what the webhook handler
+	// validates incoming `image_tag` against — without it, every GHA
+	// deploy notify fails closed at validation.
 	updates := map[string]any{
 		"source_config": appendSourceConfig(app.SourceConfig, map[string]any{
-			"gha_workflow_sha": cfg.LastCommitSHA,
+			"gha_workflow_sha":     cfg.LastCommitSHA,
+			"gha_image_repository": ghcrImageRepository(cfg.Owner, cfg.Repo),
 		}),
 	}
 	if tokenHash != "" {
@@ -238,7 +242,8 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 
 	updates := map[string]any{
 		"source_config": appendSourceConfig(compose.SourceConfig, map[string]any{
-			"gha_workflow_sha": cfg.LastCommitSHA,
+			"gha_workflow_sha":     cfg.LastCommitSHA,
+			"gha_image_repository": ghcrImageRepository(cfg.Owner, cfg.Repo),
 		}),
 	}
 	if tokenHash != "" {
@@ -321,6 +326,16 @@ func parseGHASourceConfig(raw map[string]any) (*ghaSourceConfig, error) {
 		return nil, errors.New("owner/repo missing from source_config")
 	}
 	return cfg, nil
+}
+
+// ghcrImageRepository is the canonical GHCR image-repository prefix
+// the GHA workflow we render publishes images under (it uses
+// `ghcr.io/${{ github.repository }}:launch-<sha>`). The webhook
+// handler validates the incoming `image_tag` against this value to
+// foreclose token-leak → arbitrary-image swaps, so the prefix must be
+// lowercased — GHCR rejects mixed-case image refs.
+func ghcrImageRepository(owner, repo string) string {
+	return "ghcr.io/" + strings.ToLower(owner+"/"+repo)
 }
 
 // looksLikeGitURL is true when s isn't a bare repo name — i.e. it

@@ -28,8 +28,9 @@ import (
 // any new AWS image resolution should go through these parameters.
 //
 // API docs:
-//   https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami.html#finding-an-ami-parameter-store
-//   https://ubuntu.com/blog/finding-ubuntu-images-on-aws
+//
+//	https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/finding-an-ami.html#finding-an-ami-parameter-store
+//	https://ubuntu.com/blog/finding-ubuntu-images-on-aws
 var AWSSSMParameterByOS = map[string]string{
 	"ubuntu_24": "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id",
 	"ubuntu_22": "/aws/service/canonical/ubuntu/server/22.04/stable/current/amd64/hvm/ebs-gp3/ami-id",
