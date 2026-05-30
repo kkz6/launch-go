@@ -10,6 +10,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/launch/status"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
 const TypeAddService = "server:add_service"
@@ -92,6 +94,13 @@ func (j *AddServiceJob) Handle(ctx context.Context) error {
 		return fmt.Errorf("update service status: %w", err)
 	}
 
+	// Detect + persist the REAL installed version now, so the row never
+	// shows the install-time placeholder/static default (e.g. supervisor
+	// "latest", docker "27.3"). Best-effort: the live status probe also
+	// self-heals this on the Services tab, so a probe failure here is not
+	// fatal to the install.
+	j.persistInstalledVersion(ctx)
+
 	j.Deps.Logger.Info().
 		Str("service_id", j.service.ID).
 		Str("server_id", j.server.ID).
@@ -105,6 +114,36 @@ func (j *AddServiceJob) Handle(ctx context.Context) error {
 	})
 
 	return nil
+}
+
+// persistInstalledVersion probes the freshly-installed software for its
+// real version over SSH and writes it to the service row, replacing the
+// install-time placeholder/static default. Best-effort: any failure is
+// logged and ignored (the live status probe self-heals later).
+func (j *AddServiceJob) persistInstalledVersion(ctx context.Context) {
+	vcmd := status.VersionCommand(j.Payload.Software)
+	if vcmd == "" {
+		return
+	}
+	probe := taskrunner.NewBaseTask(
+		taskrunner.WithName("Probe "+j.Payload.Software+" version"),
+		taskrunner.WithScript(vcmd),
+		taskrunner.WithTimeoutSeconds(30),
+	)
+	res, err := j.Deps.RunTask(j.server, probe).AsRoot().Run(ctx)
+	if err != nil || res == nil {
+		return
+	}
+	v := status.ParseVersion(res.GetOutput())
+	if v == "" {
+		return
+	}
+	if err := j.Deps.Repos.Service().UpdateFields(ctx, j.service.ID, map[string]any{"version": v}); err != nil {
+		j.Deps.Logger.Warn().Err(err).
+			Str("service_id", j.service.ID).
+			Str("version", v).
+			Msg("failed to persist detected service version")
+	}
 }
 
 func (j *AddServiceJob) Failed(ctx context.Context, err error) {

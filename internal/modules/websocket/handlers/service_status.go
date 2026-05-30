@@ -220,15 +220,18 @@ func (h *ServiceStatusHandler) getServiceStatus(conn *ssh.Client, svc *serverMod
 		IsActive: false,
 	}
 
+	// Probe the real installed version for ANY service that exposes a
+	// version command — runs regardless of how status is determined below
+	// (CLI / container / systemd). Self-heals the install-time placeholder
+	// (e.g. supervisor/redis stored as "latest", or a stale static default
+	// like docker "27.3") with what's actually on the box.
+	if vcmd := status.VersionCommand(svc.Software); vcmd != "" {
+		h.probeAndPersistVersion(conn, svc, &svcStatus, vcmd)
+	}
+
 	// Check if this is a non-daemon service (CLI tool, package manager)
 	if !status.IsDaemonService(svc.Software) {
 		svcStatus.Status = status.StateInstalled
-		// Self-versioning agents (launch_agent) are installed at version
-		// "latest"; probe the binary for its real version so the UI shows
-		// it, and self-heal the stored placeholder.
-		if vcmd := status.AgentVersionCommand(svc.Software); vcmd != "" {
-			h.probeAndPersistVersion(conn, svc, &svcStatus, vcmd)
-		}
 		return svcStatus
 	}
 
