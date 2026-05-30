@@ -154,20 +154,27 @@ func shellEscapeArg(s string) string {
 	return string(out)
 }
 
-// launchAgentS3Flags builds the shared `--bucket/--region/--endpoint`
-// suffix for `launch-agent {upload,download,delete}` invocations. Region
-// and endpoint are omitted when empty (AWS-native + region-from-env
-// cases). Returns a leading-space string so callers can append it
-// directly after the command's own flags. Credentials are NOT included
-// here — they travel via AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env
-// to stay off the commandline.
-func launchAgentS3Flags(bucket, region, endpoint string) string {
+// launchAgentS3Flags builds the shared
+// `--bucket/--region/--endpoint/--force-path-style` suffix for
+// `launch-agent {upload,download,delete}` invocations. Region and
+// endpoint are omitted when empty (AWS-native + region-from-env cases),
+// and --force-path-style is added only when the provider requires it
+// (most non-AWS S3: Contabo, MinIO, Wasabi — their endpoints lack the
+// wildcard DNS that virtual-host addressing needs). Returns a
+// leading-space string so callers can append it directly after the
+// command's own flags. Credentials are NOT included here — they travel
+// via AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env to stay off the
+// commandline.
+func launchAgentS3Flags(bucket, region, endpoint string, forcePathStyle bool) string {
 	out := " --bucket " + shellEscapeArg(bucket)
 	if region != "" {
 		out += " --region " + shellEscapeArg(region)
 	}
 	if endpoint != "" {
 		out += " --endpoint " + shellEscapeArg(endpoint)
+	}
+	if forcePathStyle {
+		out += " --force-path-style"
 	}
 	return out
 }

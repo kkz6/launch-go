@@ -260,6 +260,8 @@ func (s *BackupService) RunNow(
 		PathPrefix: tasks.BackupObjectPath(b.Path, s3Creds.Path),
 		AccessKey:  s3Creds.Key,
 		SecretKey:  s3Creds.Secret,
+		// Non-AWS S3 (Contabo/MinIO/Wasabi) needs path-style addressing.
+		ForcePathStyle: s3Creds.ForcePathStyle,
 	}
 
 	// Run synchronously through the existing taskrunner so we get the
@@ -426,6 +428,8 @@ func (s *BackupService) Restore(
 		ObjectKey: *run.ObjectKey,
 		AccessKey: s3Creds.Key,
 		SecretKey: s3Creds.Secret,
+		// Non-AWS S3 (Contabo/MinIO/Wasabi) needs path-style addressing.
+		ForcePathStyle: s3Creds.ForcePathStyle,
 	}
 
 	taskWrapper := tasks.Restore(cfg)
@@ -619,12 +623,13 @@ func (s *BackupService) pruneRunsAndObjects(
 	//    object orphans the storage.
 	if len(objectKeys) > 0 {
 		cfg := tasks.PruneBackupObjectsConfig{
-			ObjectKeys: objectKeys,
-			Endpoint:   s3Creds.Endpoint,
-			Region:     s3Creds.Region,
-			Bucket:     s3Creds.Bucket,
-			AccessKey:  s3Creds.Key,
-			SecretKey:  s3Creds.Secret,
+			ObjectKeys:     objectKeys,
+			Endpoint:       s3Creds.Endpoint,
+			Region:         s3Creds.Region,
+			Bucket:         s3Creds.Bucket,
+			AccessKey:      s3Creds.Key,
+			SecretKey:      s3Creds.Secret,
+			ForcePathStyle: s3Creds.ForcePathStyle,
 		}
 		task := tasks.PruneBackupObjects(cfg)
 		if _, err := dispatchTaskAsRoot(ctx, s.BaseService, server, task); err != nil {
