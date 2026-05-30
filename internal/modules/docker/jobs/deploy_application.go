@@ -308,7 +308,22 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	// frontend can stream live build/deploy output via ServerLogViewer
 	// entity="task" :entity-id="task_id" — same pattern site
 	// deployments use.
-	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().TrackInDB().Dispatch(ctx)
+	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().TrackInDB().
+		OnTaskCreated(func(taskID string) {
+			// Persist + broadcast the task ID the moment the task row is
+			// created (before SSH finishes) so the Deployments tab's
+			// "View Logs" button appears and streams the live build/deploy
+			// output WHILE it runs — not only after the deploy completes.
+			_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{"task_id": taskID})
+			j.deployment.TaskID = &taskID
+			j.broadcast("docker.application.deploying", map[string]any{
+				"application_id": j.app.ID,
+				"deployment_id":  j.deployment.ID,
+				"task_id":        taskID,
+				"status":         "building",
+			})
+		}).
+		Dispatch(ctx)
 
 	output := ""
 	exitCode := -1

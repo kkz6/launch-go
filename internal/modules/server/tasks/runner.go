@@ -76,6 +76,7 @@ type TaskRunner struct {
 	throwOnError     bool
 	completionConfig *taskrunner.CompletionConfig
 	markerHandler    taskrunner.MarkerHandler
+	onTaskCreated    func(taskID string)
 }
 
 // NewTaskRunner creates a new TaskRunner for a server.
@@ -84,6 +85,17 @@ func NewTaskRunner(server *models.Server, task taskrunner.Task) *TaskRunner {
 		server: server,
 		task:   task,
 	}
+}
+
+// OnTaskCreated registers a callback fired as soon as the tracked task
+// row is created (status "running") and BEFORE the SSH command runs.
+// Requires TrackInDB(). Use it to surface the task ID to the caller
+// mid-flight — e.g. persist it on a deployment/backup-run row and
+// broadcast so the UI can open the live log stream (ServerLogViewer
+// entity="task") WHILE the task runs, instead of only after it returns.
+func (r *TaskRunner) OnTaskCreated(cb func(taskID string)) *TaskRunner {
+	r.onTaskCreated = cb
+	return r
 }
 
 // WithDB sets the database connection for task tracking.
@@ -235,6 +247,13 @@ func (r *TaskRunner) Run(ctx context.Context) (*TaskRunnerResult, error) {
 		}
 		r.db.Model(taskModel).Update("status", string(servertypes.TaskStatusRunning))
 		r.broadcastTaskRunning(taskModel)
+		// Surface the task ID to the caller now — the live log file
+		// (task-<id>.log) is being tee'd as the command runs, so a
+		// caller that persists this ID + broadcasts can open the live
+		// log stream WHILE the task executes, not only after.
+		if r.onTaskCreated != nil {
+			r.onTaskCreated(taskModel.ID)
+		}
 	}
 
 	pendingTask := taskrunner.NewPendingTask(r.task)

@@ -77,6 +77,10 @@ type DatabaseBackupRun struct {
 	ObjectKey  *string    `gorm:"column:object_key;type:varchar(512)" json:"object_key,omitempty"`
 	SizeBytes  *int64     `gorm:"column:size_bytes" json:"size_bytes,omitempty"`
 	Error      *string    `gorm:"type:text" json:"error,omitempty"`
+	// TaskID links to the server-tasks row the worker created for this
+	// run; the UI uses it to stream the live dump/upload output
+	// (ServerLogViewer entity="task"). NULL for pre-task-tracking runs.
+	TaskID *string `gorm:"column:task_id;type:char(26);index" json:"task_id,omitempty"`
 }
 
 func (DatabaseBackupRun) TableName() string { return "docker_database_backup_runs" }

@@ -213,7 +213,24 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 	})
 
 	task := tasks.RunBackup(cfg)
-	result, runErr := j.Deps.RunTask(server, task).AsRoot().WithMarkerHandler(markerHandler).Dispatch(ctx)
+	result, runErr := j.Deps.RunTask(server, task).AsRoot().
+		TrackInDB().
+		WithMarkerHandler(markerHandler).
+		OnTaskCreated(func(taskID string) {
+			// Link the run to its server-task + broadcast so the UI can
+			// stream the live dump/upload output (ServerLogViewer
+			// entity="task") while the backup runs, not only after.
+			_ = j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, map[string]any{"task_id": taskID})
+			j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.started", map[string]any{
+				"database_id": db.ID,
+				"backup_id":   backup.ID,
+				"run_id":      run.ID,
+				"server_id":   server.ID,
+				"team_id":     j.Payload.TeamID,
+				"task_id":     taskID,
+			})
+		}).
+		Dispatch(ctx)
 
 	finishedAt := time.Now().UTC()
 	output := ""
