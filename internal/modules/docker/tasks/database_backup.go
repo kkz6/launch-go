@@ -75,9 +75,14 @@ fi
 
 mkdir -p "${TMP_DIR}"
 trap 'rm -rf "${TMP_DIR}"' EXIT
-
-echo "::LAUNCH::backup_step::dumping"
 `)
+	// Human-readable progress lines (the ::LAUNCH:: markers drive the
+	// step pill but are stripped from the log console). These + the
+	// dump's --verbose stderr give the run a real, readable transcript.
+	fmt.Fprintf(&b, "echo \"==> Backing up %s database %q from container %q\"\n",
+		cfg.Engine, cfg.Database, cfg.ContainerName)
+	b.WriteString("echo \"==> [1/3] Dumping database (verbose)...\"\n")
+	b.WriteString("echo \"::LAUNCH::backup_step::dumping\"\n")
 	fmt.Fprintf(&b, "%s | gzip > \"${TMP_FILE}\"\n", dumpCmd)
 	b.WriteString(`
 # Sanity-check the dump before uploading. With set -o pipefail a failing
@@ -96,9 +101,10 @@ fi
 
 SIZE=$(wc -c <"${TMP_FILE}" | tr -d ' ')
 echo "::LAUNCH::size_bytes::${SIZE}"
-
-echo "::LAUNCH::backup_step::uploading"
+echo "==> Dump complete — ${SIZE} bytes (gzip-compressed)"
 `)
+	fmt.Fprintf(&b, "echo \"==> [2/3] Uploading to s3://%s/${OBJECT_KEY}...\"\n", cfg.Bucket)
+	b.WriteString("echo \"::LAUNCH::backup_step::uploading\"\n")
 	// Creds come from env vars to keep them off the commandline (ps
 	// would expose --access-key flags); launch-agent reads them from
 	// AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY. Bucket/region/endpoint
@@ -108,8 +114,10 @@ echo "::LAUNCH::backup_step::uploading"
 	fmt.Fprintf(&b, "launch-agent upload --file \"${TMP_FILE}\" --key \"${OBJECT_KEY}\"%s\n",
 		launchAgentS3Flags(cfg.Bucket, cfg.Region, cfg.Endpoint, cfg.ForcePathStyle))
 	b.WriteString(`
+echo "==> [3/3] Upload complete"
 echo "::LAUNCH::object_key::${OBJECT_KEY}"
 echo "::LAUNCH::backup_step::done"
+echo "==> Backup finished successfully"
 `)
 	return b.String()
 }
@@ -125,8 +133,11 @@ func backupDumpCommand(cfg BackupRunConfig) (string, string) {
 		// PGPASSWORD is set inline on the docker exec invocation so it
 		// never lands in the container's stored env (pg_dump only needs
 		// it for the duration of this command).
+		// --verbose makes pg_dump log per-object progress to stderr,
+		// which surfaces in the run's live log console (stdout carries
+		// the SQL into the gzip pipe; stderr flows to the task output).
 		return fmt.Sprintf(
-			`docker exec -e PGPASSWORD=%s %s pg_dump -U %s %s`,
+			`docker exec -e PGPASSWORD=%s %s pg_dump --verbose -U %s %s`,
 			shellEscapeArg(cfg.Password),
 			shellEscapeArg(cfg.ContainerName),
 			shellEscapeArg(cfg.Username),
@@ -138,7 +149,7 @@ func backupDumpCommand(cfg BackupRunConfig) (string, string) {
 		// but mysql-client demands it; the long-form --password=...
 		// is at least scrubbed in newer mysql versions.
 		return fmt.Sprintf(
-			`docker exec %s mysqldump -u %s --password=%s %s`,
+			`docker exec %s mysqldump --verbose -u %s --password=%s %s`,
 			shellEscapeArg(cfg.ContainerName),
 			shellEscapeArg(cfg.Username),
 			shellEscapeArg(cfg.Password),
@@ -161,7 +172,7 @@ func backupDumpCommand(cfg BackupRunConfig) (string, string) {
 			dbFlag = " --db=" + shellEscapeArg(cfg.Database)
 		}
 		return fmt.Sprintf(
-			`docker exec %s mongodump --username=%s --password=%s --authenticationDatabase=admin%s --archive`,
+			`docker exec %s mongodump --username=%s --password=%s --authenticationDatabase=admin%s --verbose --archive`,
 			shellEscapeArg(cfg.ContainerName),
 			shellEscapeArg(cfg.Username),
 			shellEscapeArg(cfg.Password),
