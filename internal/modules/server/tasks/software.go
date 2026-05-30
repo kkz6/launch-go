@@ -176,6 +176,21 @@ func InstallLaunchAgent(config LaunchAgentInstallConfig) *taskrunner.BaseTask {
 	)
 }
 
+// UpdateLaunchAgent re-runs the agent installer to swap the binary to the
+// latest published release and restarts the service. Unlike
+// InstallLaunchAgent it does NOT rewrite the agent config or systemd unit,
+// so it needs no config vars (AgentConfigPath/AgentURL) — those already
+// exist from the original install. Backs the "Update" action on the
+// agent-version banner.
+func UpdateLaunchAgent() *taskrunner.BaseTask {
+	script := templates.MustRender("server", "software/update_launch_agent.sh", nil)
+	return taskrunner.NewBaseTask(
+		taskrunner.WithName("Update Launch Agent"),
+		taskrunner.WithScript(script),
+		taskrunner.WithTimeoutSeconds(300),
+	)
+}
+
 // RemoveRedis creates a task to remove Redis
 func RemoveRedis() *taskrunner.BaseTask {
 	script := templates.MustRender("server", "software/remove_redis.sh", nil)

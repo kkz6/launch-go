@@ -112,11 +112,11 @@ func (s *Service) HandleServiceOperation(ctx context.Context, serverID, teamID, 
 	case types.ServiceOptionStatus:
 		return s.dispatchServiceStatusJob(server, service)
 	case types.ServiceOptionUpdate:
-		// Re-run the install job in place. The Launch Agent install
-		// script self-detects a version mismatch and upgrades to the
-		// latest published release; for other software it's a no-op
-		// reinstall. Operates on the existing service row (svc.ID).
-		return s.dispatchServiceInstallJob(server, service)
+		// In-place binary upgrade via the service-operation job — NOT the
+		// full install, which rewrites config/systemd and needs template
+		// vars the generic install path doesn't populate. For the Launch
+		// Agent this re-runs the installer's binary swap + restart.
+		return s.dispatchServiceOperationJob(server, service, "update")
 	default:
 		return fmt.Errorf("unknown operation: %s", operation)
 	}
