@@ -8,6 +8,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/tasks"
+	"github.com/kkz6/launch-go/internal/modules/server/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
@@ -66,6 +67,14 @@ func (j *ServiceOperationJob) Handle(ctx context.Context) error {
 		task = tasks.RestartService(serviceName)
 	case "reload":
 		task = tasks.ReloadService(serviceName)
+	case "update":
+		// In-place upgrade. Only the Launch Agent supports it: re-run its
+		// installer (binary swap) + restart, without touching config or
+		// the systemd unit. Other software has no update path here.
+		if j.service.GetSoftware() != types.SoftwareLaunchAgent {
+			return fmt.Errorf("update operation is only supported for the launch agent")
+		}
+		task = tasks.UpdateLaunchAgent()
 	default:
 		return fmt.Errorf("unknown operation: %s", j.Payload.Operation)
 	}
