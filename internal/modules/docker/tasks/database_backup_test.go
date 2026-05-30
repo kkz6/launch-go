@@ -57,9 +57,10 @@ func TestComposeObjectKey_RespectsPrefix(t *testing.T) {
 	}
 }
 
-func TestRunBackupScript_AWSCLISanityCheck(t *testing.T) {
-	// We exit early if the aws CLI isn't installed. Pin the marker
-	// since the worker's failure handler keys off it.
+func TestRunBackupScript_AgentSanityCheck(t *testing.T) {
+	// We exit early if the launch-agent isn't installed (it performs the
+	// S3 upload natively, replacing the old aws-CLI dependency). Pin the
+	// guard + the upload invocation.
 	script := RunBackupScript(BackupRunConfig{
 		RunID:         "01HZ",
 		ContainerName: "launch-db-x",
@@ -69,8 +70,15 @@ func TestRunBackupScript_AWSCLISanityCheck(t *testing.T) {
 		AccessKey:     "AK",
 		SecretKey:     "SK",
 	})
-	if !strings.Contains(script, `command -v aws`) {
-		t.Errorf("backup script must guard on aws CLI presence")
+	if !strings.Contains(script, `command -v launch-agent`) {
+		t.Errorf("backup script must guard on launch-agent presence")
+	}
+	if !strings.Contains(script, `launch-agent upload --file "${TMP_FILE}" --key "${OBJECT_KEY}" --bucket test-bucket`) {
+		t.Errorf("backup script must upload via launch-agent, got:\n%s", script)
+	}
+	// The aws CLI must be fully gone.
+	if strings.Contains(script, "aws s3") || strings.Contains(script, "command -v aws ") {
+		t.Errorf("backup script must not reference the aws CLI anymore, got:\n%s", script)
 	}
 	if !strings.Contains(script, "::LAUNCH::object_key::") {
 		t.Errorf("backup script must emit object_key marker")
@@ -265,20 +273,20 @@ func TestPruneBackupObjectsScript_RendersOneRmPerKey(t *testing.T) {
 		AccessKey: "AK",
 		SecretKey: "SK",
 	})
-	// Bucket name is shell-escaped via the printf concatenation idiom
-	// `"s3://"<bucket>"/key"` so the rendered form has the bucket as
-	// its own quoted segment. With a safe bucket name, shellEscapeArg
-	// returns it unquoted, so the literal we expect is:
-	//   "s3://"mybucket"/acme/.../01HA.sql.gz"
-	// (shell parses this as the concatenation s3://mybucket/acme/...).
-	if !strings.Contains(got, `aws s3 rm "s3://"mybucket"/acme/2026-01-01/01HA.sql.gz"`) {
-		t.Errorf("prune script missing rm for first key, got:\n%s", got)
+	// Each key is removed via `launch-agent delete --key <key> --bucket
+	// <bucket> [--endpoint <ep>]`. Keys are shell-escaped (safe names
+	// render unquoted).
+	if !strings.Contains(got, `launch-agent delete --key acme/2026-01-01/01HA.sql.gz --bucket mybucket`) {
+		t.Errorf("prune script missing delete for first key, got:\n%s", got)
 	}
-	if !strings.Contains(got, `aws s3 rm "s3://"mybucket"/acme/2026-01-02/01HB.sql.gz"`) {
-		t.Errorf("prune script missing rm for second key, got:\n%s", got)
+	if !strings.Contains(got, `launch-agent delete --key acme/2026-01-02/01HB.sql.gz --bucket mybucket`) {
+		t.Errorf("prune script missing delete for second key, got:\n%s", got)
 	}
-	if !strings.Contains(got, "--endpoint-url=") {
-		t.Errorf("prune script must propagate --endpoint-url when set, got:\n%s", got)
+	if !strings.Contains(got, "--endpoint ") {
+		t.Errorf("prune script must propagate --endpoint when set, got:\n%s", got)
+	}
+	if strings.Contains(got, "aws s3") {
+		t.Errorf("prune script must not reference the aws CLI anymore, got:\n%s", got)
 	}
 	// `set -e` is DELIBERATELY absent so one missing key doesn't halt
 	// the whole sweep. This is the exact "loop continues past per-key

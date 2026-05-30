@@ -86,6 +86,18 @@ jobs:
           tags: ${{ "{{" }} steps.meta.outputs.image {{ "}}" }}
           cache-from: type=gha,scope=${{ "{{" }} matrix.service {{ "}}" }}
           cache-to: type=gha,mode=max,scope=${{ "{{" }} matrix.service {{ "}}" }}
+          {{- if .BuildSecretNames}}
+          # Build-time secrets — one set is available to every service
+          # in the matrix. Values come from per-name repo secrets
+          # (LAUNCH_BUILD_<NAME>) that Launch pushes alongside this
+          # workflow. Add/remove secrets in Launch to keep this block
+          # in sync (the platform re-syncs the workflow file on each
+          # save).
+          secrets: |
+{{- range .BuildSecretNames}}
+            {{.}}=${{ "{{" }} secrets.LAUNCH_BUILD_{{.}} {{ "}}" }}
+{{- end}}
+          {{- end}}
 
       # Each matrix shard appends its (service, image) pair to a shared
       # artifact. The collect job downstream rolls them into the JSON

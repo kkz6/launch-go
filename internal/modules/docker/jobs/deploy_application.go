@@ -243,6 +243,24 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 			Msg("failed to load env vars; deploying without them")
 	}
 
+	// Build-time secrets ride alongside runtime env vars but flow into
+	// `docker build --mount=type=secret`, not `docker run --env-file`.
+	// Same best-effort posture — a read failure logs + skips; the build
+	// proceeds without secrets (and any RUN steps that need them will
+	// fail loudly, which is the correct failure mode).
+	if buildSecrets, err := j.Deps.Repos.BuildSecret().ListForApplication(ctx, j.app.ID); err == nil {
+		cfg.BuildSecrets = make([]tasks.BuildSecret, 0, len(buildSecrets))
+		for _, s := range buildSecrets {
+			cfg.BuildSecrets = append(cfg.BuildSecrets, tasks.BuildSecret{
+				Name:  s.Name,
+				Value: string(s.Value),
+			})
+		}
+	} else {
+		j.Deps.Logger.Warn().Err(err).Str("application_id", j.app.ID).
+			Msg("failed to load build secrets; building without them")
+	}
+
 	// Advanced knobs travel through build_config; missing keys leave
 	// the corresponding cfg field at zero (the script picks its default).
 	build := map[string]any(j.app.BuildConfig)

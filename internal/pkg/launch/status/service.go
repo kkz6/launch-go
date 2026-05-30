@@ -17,7 +17,47 @@ type ServiceStatus struct {
 	Memory   string `json:"memory,omitempty"`
 	Uptime   string `json:"uptime,omitempty"`
 	PID      int    `json:"pid,omitempty"`
+	Version  string `json:"version,omitempty"`
 	Error    string `json:"error,omitempty"`
+}
+
+// AgentVersionCommand returns the shell command that prints the installed
+// version of a self-versioning binary, or "" if the software doesn't
+// support a version probe. Used to replace the placeholder "latest"
+// stored at install time with the real running version.
+func AgentVersionCommand(software string) string {
+	switch software {
+	case "launch_agent":
+		return "launch-agent --version 2>/dev/null"
+	default:
+		return ""
+	}
+}
+
+// ParseAgentVersion extracts a version string from a CLI `--version`
+// output. urfave/cli prints "<name> version <X.Y.Z>", so we take the
+// last whitespace-delimited token and normalise a leading "v".
+// Returns "" when nothing usable is found (caller keeps the stored value).
+func ParseAgentVersion(output string) string {
+	line := strings.TrimSpace(output)
+	if line == "" {
+		return ""
+	}
+	// Use the first non-empty line in case the binary prints extra noise.
+	if idx := strings.IndexAny(line, "\r\n"); idx >= 0 {
+		line = strings.TrimSpace(line[:idx])
+	}
+	fields := strings.Fields(line)
+	if len(fields) == 0 {
+		return ""
+	}
+	v := fields[len(fields)-1]
+	// Reject obviously-non-version tails (e.g. a bare "version" or an
+	// error word) by requiring at least one digit.
+	if !strings.ContainsAny(v, "0123456789") {
+		return ""
+	}
+	return strings.TrimPrefix(v, "v")
 }
 
 // ServiceState constants for service status
@@ -113,8 +153,52 @@ func GetSystemdServiceName(software string) string {
 		return "supervisor"
 	case software == "memcached":
 		return "memcached"
+	case software == "docker":
+		// The Docker daemon runs as a real systemd unit (docker.service),
+		// so `systemctl is-active docker` is the correct probe. Without
+		// this case it fell through to "" and reported "Unknown".
+		return "docker"
 	default:
 		return ""
+	}
+}
+
+// GetContainerName maps software identifiers that run as Docker
+// containers (rather than systemd units) to their container name, so the
+// status probe can use `docker inspect` instead of `systemctl`. Returns
+// "" for software that is not container-based.
+//
+// Traefik on a Launch docker server runs as the container `launch-traefik`
+// (see server/tasks/docker_constants.go TraefikContainerName); systemctl
+// can't see it, which is why it previously reported "Unknown".
+func GetContainerName(software string) string {
+	switch software {
+	case "traefik":
+		return "launch-traefik"
+	default:
+		return ""
+	}
+}
+
+// ParseContainerState maps the output of
+// `docker inspect -f '{{.State.Status}}' <container>` to our service
+// state vocabulary. Docker reports one of: created, running, paused,
+// restarting, removing, exited, dead (or empty when the container/daemon
+// can't be inspected).
+func ParseContainerState(state string) (status string, isActive bool) {
+	switch strings.TrimSpace(strings.ToLower(state)) {
+	case "running":
+		return StateRunning, true
+	case "restarting":
+		// A container perpetually restarting is crash-looping — surface it
+		// as failed rather than a healthy "running".
+		return StateFailed, false
+	case "paused", "created", "exited", "dead", "removing":
+		return StateStopped, false
+	default:
+		// Empty output (container absent / not inspectable) or an
+		// unrecognised state.
+		return StateUnknown, false
 	}
 }
 

@@ -223,7 +223,21 @@ func (h *ServiceStatusHandler) getServiceStatus(conn *ssh.Client, svc *serverMod
 	// Check if this is a non-daemon service (CLI tool, package manager)
 	if !status.IsDaemonService(svc.Software) {
 		svcStatus.Status = status.StateInstalled
+		// Self-versioning agents (launch_agent) are installed at version
+		// "latest"; probe the binary for its real version so the UI shows
+		// it, and self-heal the stored placeholder.
+		if vcmd := status.AgentVersionCommand(svc.Software); vcmd != "" {
+			h.probeAndPersistVersion(conn, svc, &svcStatus, vcmd)
+		}
 		return svcStatus
+	}
+
+	// Container-based services (e.g. Traefik) run as Docker containers,
+	// not systemd units, so probe them with `docker inspect`. Without
+	// this branch they fell through to GetSystemdServiceName=="" and
+	// always reported "Unknown".
+	if containerName := status.GetContainerName(svc.Software); containerName != "" {
+		return h.getContainerServiceStatus(conn, svcStatus, containerName)
 	}
 
 	// Determine the systemd service name based on software
@@ -256,6 +270,76 @@ func (h *ServiceStatusHandler) getServiceStatus(conn *ssh.Client, svc *serverMod
 	// Parse the output
 	h.parseServiceOutput(string(output), &svcStatus)
 
+	return svcStatus
+}
+
+// probeAndPersistVersion runs a binary's `--version` over SSH, sets the
+// live status's Version, and persists it to the service row when it
+// differs from the stored value (self-healing the install-time
+// "latest" placeholder). Best-effort: failures are logged, never fatal
+// to the status stream.
+func (h *ServiceStatusHandler) probeAndPersistVersion(
+	conn *ssh.Client, svc *serverModels.InstalledService, svcStatus *status.ServiceStatus, versionCmd string,
+) {
+	session, err := conn.NewSession()
+	if err != nil {
+		return
+	}
+	defer session.Close()
+
+	output, _ := session.CombinedOutput(versionCmd)
+	v := status.ParseAgentVersion(string(output))
+	if v == "" {
+		return
+	}
+	svcStatus.Version = v
+
+	if svc.Version != v {
+		if err := h.DB.Model(&serverModels.InstalledService{}).
+			Where("id = ?", svc.ID).
+			Update("version", v).Error; err != nil {
+			h.Logger.Warn().Err(err).Str("service_id", svc.ID).
+				Msg("failed to persist agent version")
+		}
+	}
+}
+
+// getContainerServiceStatus probes a container-based service (Traefik)
+// via `docker inspect`. The status + uptime come from the container's
+// State, not systemd. The launch SSH user already has docker access
+// (deploys run docker commands over the same connection).
+func (h *ServiceStatusHandler) getContainerServiceStatus(
+	conn *ssh.Client, svcStatus status.ServiceStatus, containerName string,
+) status.ServiceStatus {
+	session, err := conn.NewSession()
+	if err != nil {
+		svcStatus.Error = "Failed to create SSH session"
+		return svcStatus
+	}
+	defer session.Close()
+
+	// State.Status → running/exited/... ; State.StartedAt for uptime.
+	command := fmt.Sprintf(
+		`docker inspect -f '{{.State.Status}}|{{.State.StartedAt}}|{{.State.Pid}}' %s 2>/dev/null`,
+		containerName,
+	)
+	output, _ := session.CombinedOutput(command)
+
+	fields := strings.SplitN(strings.TrimSpace(string(output)), "|", 3)
+	state := ""
+	if len(fields) > 0 {
+		state = fields[0]
+	}
+	svcStatus.Status, svcStatus.IsActive = status.ParseContainerState(state)
+
+	if svcStatus.IsActive && len(fields) >= 2 {
+		svcStatus.Uptime = status.CalculateUptimeFromTimestamp(strings.TrimSpace(fields[1]))
+	}
+	if len(fields) >= 3 {
+		if pid, perr := strconv.Atoi(strings.TrimSpace(fields[2])); perr == nil && pid > 0 {
+			svcStatus.PID = pid
+		}
+	}
 	return svcStatus
 }
 

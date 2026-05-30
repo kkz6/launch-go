@@ -58,10 +58,12 @@ func RunBackupScript(cfg BackupRunConfig) string {
 	fmt.Fprintf(&b, "TMP_DIR=/var/lib/launch/backups/${RUN_ID}\n")
 	fmt.Fprintf(&b, "TMP_FILE=${TMP_DIR}/dump.%s.gz\n\n", dumpExt)
 
-	// AWS CLI sanity check up-front. Avoids dumping a multi-GB file
-	// just to discover the upload tool isn't installed.
-	b.WriteString(`if ! command -v aws >/dev/null 2>&1; then
-  echo "aws CLI not installed on this server — install with 'apt install awscli'" >&2
+	// launch-agent sanity check up-front. Avoids dumping a multi-GB file
+	// just to discover the upload tool isn't installed. The agent is
+	// installed by the platform during provisioning, so this should
+	// always be present — the guard catches a half-provisioned host.
+	b.WriteString(`if ! command -v launch-agent >/dev/null 2>&1; then
+  echo "launch-agent not installed on this server — backups require the Launch agent" >&2
   exit 1
 fi
 
@@ -91,19 +93,14 @@ echo "::LAUNCH::size_bytes::${SIZE}"
 
 echo "::LAUNCH::backup_step::uploading"
 `)
-	// AWS creds + region come from env vars to keep them off the
-	// commandline (ps would expose --access-key flags).
+	// Creds come from env vars to keep them off the commandline (ps
+	// would expose --access-key flags); launch-agent reads them from
+	// AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY. Bucket/region/endpoint
+	// are non-secret and travel as flags.
 	fmt.Fprintf(&b, "export AWS_ACCESS_KEY_ID=%s\n", shellEscapeArg(cfg.AccessKey))
 	fmt.Fprintf(&b, "export AWS_SECRET_ACCESS_KEY=%s\n", shellEscapeArg(cfg.SecretKey))
-	if cfg.Region != "" {
-		fmt.Fprintf(&b, "export AWS_DEFAULT_REGION=%s\n", shellEscapeArg(cfg.Region))
-	}
-	endpointArg := ""
-	if cfg.Endpoint != "" {
-		endpointArg = fmt.Sprintf(" --endpoint-url=%s", shellEscapeArg(cfg.Endpoint))
-	}
-	fmt.Fprintf(&b, "aws s3 cp \"${TMP_FILE}\" \"s3://\"%s\"/${OBJECT_KEY}\"%s\n",
-		shellEscapeArg(cfg.Bucket), endpointArg)
+	fmt.Fprintf(&b, "launch-agent upload --file \"${TMP_FILE}\" --key \"${OBJECT_KEY}\"%s\n",
+		launchAgentS3Flags(cfg.Bucket, cfg.Region, cfg.Endpoint))
 	b.WriteString(`
 echo "::LAUNCH::object_key::${OBJECT_KEY}"
 echo "::LAUNCH::backup_step::done"
@@ -247,8 +244,8 @@ func PruneBackupObjectsScript(cfg PruneBackupObjectsConfig) string {
 	// failures. We still want -u and -o pipefail for catch-all sanity.
 	b.WriteString("set -uo pipefail\n\n")
 
-	b.WriteString(`if ! command -v aws >/dev/null 2>&1; then
-  echo "aws CLI not installed on this server — install with 'apt install awscli'" >&2
+	b.WriteString(`if ! command -v launch-agent >/dev/null 2>&1; then
+  echo "launch-agent not installed on this server — backups require the Launch agent" >&2
   exit 1
 fi
 
@@ -257,23 +254,19 @@ FAILED=0
 
 	fmt.Fprintf(&b, "export AWS_ACCESS_KEY_ID=%s\n", shellEscapeArg(cfg.AccessKey))
 	fmt.Fprintf(&b, "export AWS_SECRET_ACCESS_KEY=%s\n", shellEscapeArg(cfg.SecretKey))
-	if cfg.Region != "" {
-		fmt.Fprintf(&b, "export AWS_DEFAULT_REGION=%s\n", shellEscapeArg(cfg.Region))
-	}
-	endpointArg := ""
-	if cfg.Endpoint != "" {
-		endpointArg = " --endpoint-url=" + shellEscapeArg(cfg.Endpoint)
-	}
+	s3Flags := launchAgentS3Flags(cfg.Bucket, cfg.Region, cfg.Endpoint)
 
 	for _, key := range cfg.ObjectKeys {
 		// Per-key marker + per-key failure handling — one missing object
 		// shouldn't stop the loop, but we count failures so the script's
 		// exit code reflects whether anything actually broke. Caller
-		// surfaces FAILED=N via the recorded job status.
+		// surfaces FAILED=N via the recorded job status. `launch-agent
+		// delete` is idempotent (a missing key is a no-op), so only a
+		// real error increments FAILED.
 		fmt.Fprintf(&b,
 			"echo \"::LAUNCH::prune_key::%s\"\n"+
-				"if ! aws s3 rm \"s3://\"%s\"/%s\"%s; then echo \"::LAUNCH::prune_failed::%s\"; FAILED=$((FAILED+1)); fi\n",
-			key, shellEscapeArg(cfg.Bucket), key, endpointArg, key,
+				"if ! launch-agent delete --key %s%s; then echo \"::LAUNCH::prune_failed::%s\"; FAILED=$((FAILED+1)); fi\n",
+			key, shellEscapeArg(key), s3Flags, key,
 		)
 	}
 
@@ -346,8 +339,8 @@ func RestoreBackupScript(cfg RestoreBackupConfig) string {
 	b.WriteString(`TMP_FILE="${TMP_DIR}/dump.gz"
 TMP_UNZIP="${TMP_DIR}/dump"
 
-if ! command -v aws >/dev/null 2>&1; then
-  echo "aws CLI not installed on this server" >&2
+if ! command -v launch-agent >/dev/null 2>&1; then
+  echo "launch-agent not installed on this server — restores require the Launch agent" >&2
   exit 1
 fi
 
@@ -358,15 +351,8 @@ echo "::LAUNCH::restore_step::downloading"
 `)
 	fmt.Fprintf(&b, "export AWS_ACCESS_KEY_ID=%s\n", shellEscapeArg(cfg.AccessKey))
 	fmt.Fprintf(&b, "export AWS_SECRET_ACCESS_KEY=%s\n", shellEscapeArg(cfg.SecretKey))
-	if cfg.Region != "" {
-		fmt.Fprintf(&b, "export AWS_DEFAULT_REGION=%s\n", shellEscapeArg(cfg.Region))
-	}
-	endpointArg := ""
-	if cfg.Endpoint != "" {
-		endpointArg = fmt.Sprintf(" --endpoint-url=%s", shellEscapeArg(cfg.Endpoint))
-	}
-	fmt.Fprintf(&b, "aws s3 cp \"s3://\"%s\"/${OBJECT_KEY}\" \"${TMP_FILE}\"%s\n",
-		shellEscapeArg(cfg.Bucket), endpointArg)
+	fmt.Fprintf(&b, "launch-agent download --key \"${OBJECT_KEY}\" --dest \"${TMP_FILE}\"%s\n",
+		launchAgentS3Flags(cfg.Bucket, cfg.Region, cfg.Endpoint))
 
 	b.WriteString(`
 echo "::LAUNCH::restore_step::restoring"

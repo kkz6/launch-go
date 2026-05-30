@@ -58,6 +58,18 @@ jobs:
           tags: ${{ "{{" }} steps.meta.outputs.image {{ "}}" }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          {{- if .BuildSecretNames}}
+          # Build-time secrets — values come from per-name repo secrets
+          # (LAUNCH_BUILD_<NAME>) that Launch pushes alongside this
+          # workflow. Each maps to a Dockerfile reference like:
+          #   RUN --mount=type=secret,id=<NAME> cat /run/secrets/<NAME>
+          # Adding/removing a build secret in Launch re-syncs this
+          # workflow file so the list stays current.
+          secrets: |
+{{- range .BuildSecretNames}}
+            {{.}}=${{ "{{" }} secrets.LAUNCH_BUILD_{{.}} {{ "}}" }}
+{{- end}}
+          {{- end}}
 
       # Nixpacks via shell. The previous template used
       # iloveitaly/nixpacks-action, which no longer exists in the

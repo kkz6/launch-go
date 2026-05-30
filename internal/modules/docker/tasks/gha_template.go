@@ -28,6 +28,13 @@ type ApplicationWorkflowData struct {
 	DockerfilePath string
 	LaunchBaseURL  string
 	AppID          string
+	// BuildSecretNames are the build-time secret identifiers the
+	// workflow's docker/build-push-action should mount via its
+	// `secrets:` input. Each entry maps to a repo secret named
+	// LAUNCH_BUILD_<NAME> that the bootstrap job pushes alongside
+	// the workflow commit. Empty/nil → no `secrets:` block rendered
+	// (clean YAML for the common no-secrets case).
+	BuildSecretNames []string
 }
 
 // ComposeWorkflowData is the matching input for the compose template.
@@ -39,6 +46,10 @@ type ComposeWorkflowData struct {
 	ComposeFilePath string
 	LaunchBaseURL   string
 	ComposeID       string
+	// BuildSecretNames behave identically to ApplicationWorkflowData
+	// — one set of names available to every service's build step in
+	// the matrix.
+	BuildSecretNames []string
 }
 
 // RenderApplicationWorkflow returns the YAML body Launch should commit

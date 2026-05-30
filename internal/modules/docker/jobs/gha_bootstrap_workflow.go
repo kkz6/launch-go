@@ -126,7 +126,15 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 		return err
 	}
 
-	if err := j.bootstrap(ctx, cfg, rawToken, "application", app.ID); err != nil {
+	// Load build secrets so they can be pushed to GitHub as repo
+	// secrets (LAUNCH_BUILD_<NAME>) AND enumerated in the rendered
+	// workflow YAML's `secrets:` block. Best-effort: a read failure
+	// logs + proceeds with an empty list; the workflow still commits
+	// (just without the secrets:) so the customer's pipeline isn't
+	// blocked on a transient DB hiccup.
+	buildSecrets := j.loadApplicationBuildSecrets(ctx, app.ID)
+
+	if err := j.bootstrap(ctx, cfg, rawToken, "application", app.ID, buildSecrets); err != nil {
 		// Special-case the "GitHub App installation removed" failure
 		// mode so the UI can render a banner the customer can actually
 		// act on, rather than the user staring at a generic asynq
@@ -233,7 +241,9 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 		return err
 	}
 
-	if err := j.bootstrap(ctx, cfg, rawToken, "compose", compose.ID); err != nil {
+	buildSecrets := j.loadComposeBuildSecrets(ctx, compose.ID)
+
+	if err := j.bootstrap(ctx, cfg, rawToken, "compose", compose.ID, buildSecrets); err != nil {
 		if isInstallationGone(err) {
 			j.broadcastInstallationBroken(compose.TeamID, "compose", compose.ID, err)
 		}
@@ -436,11 +446,21 @@ func (j *GHABootstrapWorkflowJob) mintTokenIfNeeded(existing *string) (raw, hash
 // bootstrap is the GitHub-side write sequence. Token writes happen
 // only when rawToken is non-empty (the rotate path or first-time
 // enable); a re-sync without rotation skips the secret PUT.
+// buildSecretKV pairs a build-secret name with its plaintext value so
+// the bootstrap can both push the value to GitHub (as a repo secret)
+// AND render the name into the workflow YAML's `secrets:` block. Lives
+// inside this file because no other job needs the shape.
+type buildSecretKV struct {
+	Name  string
+	Value string
+}
+
 func (j *GHABootstrapWorkflowJob) bootstrap(
 	ctx context.Context,
 	cfg *ghaSourceConfig,
 	rawToken string,
 	workloadKind, workloadID string,
+	buildSecrets []buildSecretKV,
 ) error {
 	// Provider lookup: the source_controls row's installation_id is
 	// what GetInstallationToken needs. We look up the installation
@@ -464,6 +484,34 @@ func (j *GHABootstrapWorkflowJob) bootstrap(
 		}
 	}
 
+	// Build-time secrets — push each as LAUNCH_BUILD_<NAME> so the
+	// workflow can reference them via ${{ secrets.LAUNCH_BUILD_<NAME> }}
+	// in docker/build-push-action's `secrets:` input. We push BEFORE
+	// committing the workflow YAML so a successful workflow commit
+	// implies the secrets are already in place — no race where a
+	// newly-committed YAML references a secret GitHub doesn't know
+	// about yet.
+	//
+	// Failures are not fatal: a single secret-push failure logs +
+	// excludes that name from the workflow YAML, so the workflow
+	// still commits and the other secrets keep working. The
+	// customer sees the missing one as a build-time failure when
+	// they next push. The alternative (failing the whole bootstrap)
+	// would block all builds for one transient hiccup.
+	pushedSecretNames := make([]string, 0, len(buildSecrets))
+	for _, s := range buildSecrets {
+		repoSecretName := "LAUNCH_BUILD_" + s.Name
+		if err := gh.PutActionsSecret(ctx, installationID, cfg.Owner, cfg.Repo, repoSecretName, s.Value); err != nil {
+			j.Deps.Logger.Warn().Err(err).
+				Str("workload_kind", workloadKind).
+				Str("workload_id", workloadID).
+				Str("repo_secret", repoSecretName).
+				Msg("gha bootstrap: failed to push build secret; excluding from workflow")
+			continue
+		}
+		pushedSecretNames = append(pushedSecretNames, s.Name)
+	}
+
 	// Variables — overwrite each run (PATCH if exists). Cheap and
 	// avoids drift if someone manually edits them in GH's UI.
 	idVarName := "LAUNCH_APP_ID"
@@ -479,7 +527,7 @@ func (j *GHABootstrapWorkflowJob) bootstrap(
 
 	// Render + commit the workflow YAML. PutContents returns the new
 	// commit SHA which we stash on cfg for the caller to persist.
-	yaml, err := j.renderWorkflow(cfg, workloadKind, workloadID)
+	yaml, err := j.renderWorkflow(cfg, workloadKind, workloadID, pushedSecretNames)
 	if err != nil {
 		return err
 	}
@@ -500,26 +548,77 @@ func (j *GHABootstrapWorkflowJob) bootstrap(
 }
 
 // renderWorkflow picks the right template based on workload kind and
-// runs slice B's renderer with the resolved field values.
-func (j *GHABootstrapWorkflowJob) renderWorkflow(cfg *ghaSourceConfig, kind, id string) (string, error) {
+// runs slice B's renderer with the resolved field values. buildSecretNames
+// drives the optional `secrets:` block on docker/build-push-action — empty
+// list produces a clean workflow with no secrets block at all.
+func (j *GHABootstrapWorkflowJob) renderWorkflow(
+	cfg *ghaSourceConfig, kind, id string, buildSecretNames []string,
+) (string, error) {
 	switch kind {
 	case "application":
 		return dockertasks.RenderApplicationWorkflow(dockertasks.ApplicationWorkflowData{
-			Branch:         cfg.Branch,
-			DockerfilePath: cfg.DockerfilePath,
-			LaunchBaseURL:  j.Payload.LaunchBaseURL,
-			AppID:          id,
+			Branch:           cfg.Branch,
+			DockerfilePath:   cfg.DockerfilePath,
+			LaunchBaseURL:    j.Payload.LaunchBaseURL,
+			AppID:            id,
+			BuildSecretNames: buildSecretNames,
 		})
 	case "compose":
 		return dockertasks.RenderComposeWorkflow(dockertasks.ComposeWorkflowData{
-			Branch:          cfg.Branch,
-			ComposeFilePath: cfg.ComposeFilePath,
-			LaunchBaseURL:   j.Payload.LaunchBaseURL,
-			ComposeID:       id,
+			Branch:           cfg.Branch,
+			ComposeFilePath:  cfg.ComposeFilePath,
+			LaunchBaseURL:    j.Payload.LaunchBaseURL,
+			ComposeID:        id,
+			BuildSecretNames: buildSecretNames,
 		})
 	default:
 		return "", fmt.Errorf("renderWorkflow: unsupported workload kind %q", kind)
 	}
+}
+
+// loadApplicationBuildSecrets fetches all live build secrets for the
+// application via direct GORM query (the jobs package doesn't have the
+// repository registry in JobDeps). Returns plaintext name/value pairs
+// — the model column is EncryptedString so GORM decrypts on read.
+//
+// Best-effort: failure logs + returns empty so the bootstrap commit
+// still proceeds (with no secrets:). Tested via the existing bootstrap
+// integration; the unit-test surface is the template renderer +
+// service layer.
+func (j *GHABootstrapWorkflowJob) loadApplicationBuildSecrets(ctx context.Context, appID string) []buildSecretKV {
+	var rows []dockermodels.ApplicationBuildSecret
+	if err := j.Deps.DB.WithContext(ctx).
+		Where("application_id = ?", appID).
+		Order("name ASC").
+		Find(&rows).Error; err != nil {
+		j.Deps.Logger.Warn().Err(err).Str("application_id", appID).
+			Msg("gha bootstrap: failed to load build secrets; workflow will commit without them")
+		return nil
+	}
+	out := make([]buildSecretKV, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, buildSecretKV{Name: r.Name, Value: string(r.Value)})
+	}
+	return out
+}
+
+// loadComposeBuildSecrets is the compose mirror of
+// loadApplicationBuildSecrets. Same shape, different table.
+func (j *GHABootstrapWorkflowJob) loadComposeBuildSecrets(ctx context.Context, composeID string) []buildSecretKV {
+	var rows []dockermodels.ComposeBuildSecret
+	if err := j.Deps.DB.WithContext(ctx).
+		Where("compose_id = ?", composeID).
+		Order("name ASC").
+		Find(&rows).Error; err != nil {
+		j.Deps.Logger.Warn().Err(err).Str("compose_id", composeID).
+			Msg("gha bootstrap: failed to load build secrets; workflow will commit without them")
+		return nil
+	}
+	out := make([]buildSecretKV, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, buildSecretKV{Name: r.Name, Value: string(r.Value)})
+	}
+	return out
 }
 
 // resolveInstallationID reads the source_controls row to find the

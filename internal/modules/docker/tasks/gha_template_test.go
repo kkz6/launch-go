@@ -133,6 +133,59 @@ func TestRenderedYAMLContainsExpectedAnchors(t *testing.T) {
 	assert.NotContains(t, got, "{{.")
 }
 
+// TestRenderApplicationWorkflow_BuildSecretsRenderSecretsBlock exercises
+// the optional `secrets:` block on docker/build-push-action that gets
+// populated when BuildSecretNames is non-empty. Each name maps to a
+// repo secret named LAUNCH_BUILD_<NAME> — the bootstrap job is
+// responsible for pushing those alongside the workflow file. Empty
+// list (covered by the golden test above) produces NO secrets block,
+// keeping the no-secrets workflow clean.
+func TestRenderApplicationWorkflow_BuildSecretsRenderSecretsBlock(t *testing.T) {
+	got, err := RenderApplicationWorkflow(ApplicationWorkflowData{
+		Branch:           "main",
+		DockerfilePath:   "Dockerfile",
+		LaunchBaseURL:    "https://launchctl.io",
+		AppID:            "01HJX",
+		BuildSecretNames: []string{"NPM_TOKEN", "GH_PAT"},
+	})
+	require.NoError(t, err)
+
+	// secrets: block is present on the Dockerfile build step.
+	assert.Contains(t, got, "secrets: |")
+	// Each name maps to its LAUNCH_BUILD_<NAME> repo secret.
+	assert.Contains(t, got, "NPM_TOKEN=${{ secrets.LAUNCH_BUILD_NPM_TOKEN }}")
+	assert.Contains(t, got, "GH_PAT=${{ secrets.LAUNCH_BUILD_GH_PAT }}")
+}
+
+func TestRenderApplicationWorkflow_NoBuildSecretsOmitsBlock(t *testing.T) {
+	// Symmetric assertion: with no BuildSecretNames, the YAML must
+	// not contain a stray `secrets:` line. Otherwise GitHub Actions
+	// would parse the empty multiline as "no secrets" but customers
+	// would see a confusing dangling YAML key.
+	got, err := RenderApplicationWorkflow(ApplicationWorkflowData{
+		Branch:         "main",
+		DockerfilePath: "Dockerfile",
+		LaunchBaseURL:  "https://launchctl.io",
+		AppID:          "01HJX",
+	})
+	require.NoError(t, err)
+	assert.NotContains(t, got, "secrets: |")
+	assert.NotContains(t, got, "LAUNCH_BUILD_")
+}
+
+func TestRenderComposeWorkflow_BuildSecretsRenderSecretsBlock(t *testing.T) {
+	got, err := RenderComposeWorkflow(ComposeWorkflowData{
+		Branch:           "main",
+		ComposeFilePath:  "docker-compose.yml",
+		LaunchBaseURL:    "https://launchctl.io",
+		ComposeID:        "01HJX",
+		BuildSecretNames: []string{"PIP_INDEX_URL"},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, got, "secrets: |")
+	assert.Contains(t, got, "PIP_INDEX_URL=${{ secrets.LAUNCH_BUILD_PIP_INDEX_URL }}")
+}
+
 func assertGolden(t *testing.T, path, actual string) {
 	t.Helper()
 	if *updateGolden {

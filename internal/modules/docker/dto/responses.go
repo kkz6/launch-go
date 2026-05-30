@@ -348,6 +348,48 @@ func ToEnvVarResponse(v *models.ApplicationEnvVar, revealSecret bool) *EnvVarRes
 	}
 }
 
+// BuildSecretResponse is the API shape for a build-time secret. The
+// value is NEVER returned (would defeat the point of treating these
+// as write-only). HasValue is always true for live rows but we still
+// surface it explicitly so the UI can render a "value set" indicator
+// without inventing a convention.
+type BuildSecretResponse struct {
+	ID            string     `json:"id"`
+	ApplicationID string     `json:"application_id,omitempty"`
+	ComposeID     string     `json:"compose_id,omitempty"`
+	Name          string     `json:"name"`
+	HasValue      bool       `json:"has_value"`
+	CreatedAt     *time.Time `json:"created_at,omitempty"`
+	UpdatedAt     *time.Time `json:"updated_at,omitempty"`
+}
+
+// ToApplicationBuildSecretResponse renders an application build secret
+// without its value. There's no reveal=true variant — the value
+// genuinely should not come back through the API, only through the
+// deploy pipeline.
+func ToApplicationBuildSecretResponse(v *models.ApplicationBuildSecret) *BuildSecretResponse {
+	return &BuildSecretResponse{
+		ID:            v.ID,
+		ApplicationID: v.ApplicationID,
+		Name:          v.Name,
+		HasValue:      string(v.Value) != "",
+		CreatedAt:     v.CreatedAt,
+		UpdatedAt:     v.UpdatedAt,
+	}
+}
+
+// ToComposeBuildSecretResponse is the compose-stack mirror.
+func ToComposeBuildSecretResponse(v *models.ComposeBuildSecret) *BuildSecretResponse {
+	return &BuildSecretResponse{
+		ID:        v.ID,
+		ComposeID: v.ComposeID,
+		Name:      v.Name,
+		HasValue:  string(v.Value) != "",
+		CreatedAt: v.CreatedAt,
+		UpdatedAt: v.UpdatedAt,
+	}
+}
+
 // VolumeResponse is the API shape for an application or compose-stack
 // volume / mount. Carries all three mount-kinds (bind / volume / file)
 // in a single shape — fields not relevant to the row's `type` are
