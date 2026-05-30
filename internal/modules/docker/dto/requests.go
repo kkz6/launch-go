@@ -241,6 +241,25 @@ type SetEnvVarsRequest struct {
 	Vars []CreateEnvVarRequest `json:"vars" validate:"required,dive"`
 }
 
+// CreateBuildSecretRequest adds a single build-time secret to an
+// application or compose. Identical request shape for both owners —
+// the route binds owner identity. Value is write-only; we never
+// return it back to the API caller after this create. Name validation
+// matches env-var keys (POSIX env-name shape) because Dockerfiles
+// reference them by id=NAME under --mount=type=secret.
+type CreateBuildSecretRequest struct {
+	Name  string `json:"name" validate:"required,min=1,max=255"`
+	Value string `json:"value"`
+}
+
+// UpdateBuildSecretRequest mutates the value only. Name is immutable
+// (same reason as env-var keys — Dockerfile id=NAME references would
+// silently break). Value is required since "no value" is what Delete
+// is for.
+type UpdateBuildSecretRequest struct {
+	Value string `json:"value" validate:"required"`
+}
+
 // CreateVolumeRequest attaches a mount to an application. Type is
 // the discriminator:
 //

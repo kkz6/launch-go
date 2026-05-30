@@ -113,15 +113,77 @@ func TestRenderedYAMLContainsExpectedAnchors(t *testing.T) {
 	// build-push-action input.
 	assert.Contains(t, got, `if [ -f "deploy/Dockerfile" ]`)
 	assert.Contains(t, got, `file: deploy/Dockerfile`)
-	// LaunchBaseURL + AppID together build the webhook target URL.
-	assert.Contains(t, got, `https://my-launch.example/api/webhooks/docker/applications/01TESTAPP/deploy`)
-	assert.Contains(t, got, `https://my-launch.example/api/webhooks/docker/applications/01TESTAPP/status`)
+	// The webhook URL is built at workflow-RUN time from the
+	// LAUNCH_WEBHOOK_URL Actions variable (so customers can move
+	// Launch without re-syncing the workflow file). The rendered
+	// YAML carries the GHA-expression placeholder, NOT the literal
+	// LaunchBaseURL value — but the bootstrap job still pushes
+	// LaunchBaseURL into the variable, so the round-trip works.
+	assert.Contains(t, got, "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01TESTAPP/deploy")
+	assert.Contains(t, got, "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01TESTAPP/status")
+	// LaunchBaseURL is intentionally NOT baked into the YAML body
+	// — the variable indirection is the point. Locked in to catch a
+	// future regression that re-bakes it.
+	assert.NotContains(t, got, "https://my-launch.example")
 
 	// Negative: there should be no Go-template residue. If our
 	// {{ "{{" }} escaping is wrong, "<no value>" or "{{...}}" pieces
 	// referencing our struct fields would leak.
 	assert.NotContains(t, got, "<no value>")
 	assert.NotContains(t, got, "{{.")
+}
+
+// TestRenderApplicationWorkflow_BuildSecretsRenderSecretsBlock exercises
+// the optional `secrets:` block on docker/build-push-action that gets
+// populated when BuildSecretNames is non-empty. Each name maps to a
+// repo secret named LAUNCH_BUILD_<NAME> — the bootstrap job is
+// responsible for pushing those alongside the workflow file. Empty
+// list (covered by the golden test above) produces NO secrets block,
+// keeping the no-secrets workflow clean.
+func TestRenderApplicationWorkflow_BuildSecretsRenderSecretsBlock(t *testing.T) {
+	got, err := RenderApplicationWorkflow(ApplicationWorkflowData{
+		Branch:           "main",
+		DockerfilePath:   "Dockerfile",
+		LaunchBaseURL:    "https://launchctl.io",
+		AppID:            "01HJX",
+		BuildSecretNames: []string{"NPM_TOKEN", "GH_PAT"},
+	})
+	require.NoError(t, err)
+
+	// secrets: block is present on the Dockerfile build step.
+	assert.Contains(t, got, "secrets: |")
+	// Each name maps to its LAUNCH_BUILD_<NAME> repo secret.
+	assert.Contains(t, got, "NPM_TOKEN=${{ secrets.LAUNCH_BUILD_NPM_TOKEN }}")
+	assert.Contains(t, got, "GH_PAT=${{ secrets.LAUNCH_BUILD_GH_PAT }}")
+}
+
+func TestRenderApplicationWorkflow_NoBuildSecretsOmitsBlock(t *testing.T) {
+	// Symmetric assertion: with no BuildSecretNames, the YAML must
+	// not contain a stray `secrets:` line. Otherwise GitHub Actions
+	// would parse the empty multiline as "no secrets" but customers
+	// would see a confusing dangling YAML key.
+	got, err := RenderApplicationWorkflow(ApplicationWorkflowData{
+		Branch:         "main",
+		DockerfilePath: "Dockerfile",
+		LaunchBaseURL:  "https://launchctl.io",
+		AppID:          "01HJX",
+	})
+	require.NoError(t, err)
+	assert.NotContains(t, got, "secrets: |")
+	assert.NotContains(t, got, "LAUNCH_BUILD_")
+}
+
+func TestRenderComposeWorkflow_BuildSecretsRenderSecretsBlock(t *testing.T) {
+	got, err := RenderComposeWorkflow(ComposeWorkflowData{
+		Branch:           "main",
+		ComposeFilePath:  "docker-compose.yml",
+		LaunchBaseURL:    "https://launchctl.io",
+		ComposeID:        "01HJX",
+		BuildSecretNames: []string{"PIP_INDEX_URL"},
+	})
+	require.NoError(t, err)
+	assert.Contains(t, got, "secrets: |")
+	assert.Contains(t, got, "PIP_INDEX_URL=${{ secrets.LAUNCH_BUILD_PIP_INDEX_URL }}")
 }
 
 func assertGolden(t *testing.T, path, actual string) {

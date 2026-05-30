@@ -308,9 +308,26 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
 			tag := fmt.Sprintf("LAUNCH_DOCKER_PW_EOF_%d", i)
 			fmt.Fprintf(&b, "DOCKER_REGISTRY_URL_%d=%q\n", i, l.RegistryURL)
 			fmt.Fprintf(&b, "DOCKER_REGISTRY_USER_%d=%q\n", i, l.Username)
-			fmt.Fprintf(&b, "if [ -n \"${DOCKER_REGISTRY_URL_%d}\" ]; then\n", i)
+			// Two paths: workflow-minted GHCR bearer (username
+			// "oauth2") → write directly to ~/.docker/config.json;
+			// everything else → docker login. See
+			// deploy_application.go#buildImageStanza for the rationale.
+			pwTag := tag
+			fmt.Fprintf(&b, "if [ \"${DOCKER_REGISTRY_USER_%d}\" = \"oauth2\" ]; then\n", i)
+			fmt.Fprintf(&b, "  REG_HOST_%d=\"${DOCKER_REGISTRY_URL_%d:-ghcr.io}\"\n", i, i)
+			b.WriteString("  mkdir -p \"${HOME}/.docker\"\n")
+			fmt.Fprintf(&b, "  cat <<DOCKER_CONFIG_EOF_%d > \"${HOME}/.docker/config.json\"\n", i)
+			fmt.Fprintf(&b, "{\"auths\":{\"${REG_HOST_%d}\":{\"registrytoken\":\"$(cat <<'%s'\n", i, pwTag)
+			b.WriteString(l.Password)
+			if !strings.HasSuffix(l.Password, "\n") {
+				b.WriteString("\n")
+			}
+			fmt.Fprintf(&b, "%s\n)\"}}}\n", pwTag)
+			fmt.Fprintf(&b, "DOCKER_CONFIG_EOF_%d\n", i)
+			b.WriteString("else\n")
+			fmt.Fprintf(&b, "  if [ -n \"${DOCKER_REGISTRY_URL_%d}\" ]; then\n", i)
 			fmt.Fprintf(&b,
-				"  docker login --username \"${DOCKER_REGISTRY_USER_%d}\" --password-stdin \"${DOCKER_REGISTRY_URL_%d}\" %s <<'%s'\n",
+				"    docker login --username \"${DOCKER_REGISTRY_USER_%d}\" --password-stdin \"${DOCKER_REGISTRY_URL_%d}\" %s <<'%s'\n",
 				i, i, stderrFilter, tag,
 			)
 			b.WriteString(l.Password)
@@ -318,9 +335,9 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
 				b.WriteString("\n")
 			}
 			fmt.Fprintf(&b, "%s\n", tag)
-			b.WriteString("else\n")
+			b.WriteString("  else\n")
 			fmt.Fprintf(&b,
-				"  docker login --username \"${DOCKER_REGISTRY_USER_%d}\" --password-stdin %s <<'%s'\n",
+				"    docker login --username \"${DOCKER_REGISTRY_USER_%d}\" --password-stdin %s <<'%s'\n",
 				i, stderrFilter, tag,
 			)
 			b.WriteString(l.Password)
@@ -328,6 +345,7 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
 				b.WriteString("\n")
 			}
 			fmt.Fprintf(&b, "%s\n", tag)
+			b.WriteString("  fi\n")
 			b.WriteString("fi\n")
 		}
 		// (no `set -x` here — closing the login block with `set -x`

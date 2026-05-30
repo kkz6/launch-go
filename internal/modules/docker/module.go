@@ -167,6 +167,21 @@ func (m *Module) newDatabaseEnvVarService() *services.DatabaseEnvVarService {
 	return services.NewDatabaseEnvVarService(m.serviceDeps())
 }
 
+// newBuildSecretService builds the application build-time secret
+// service — values mounted into `docker build` via BuildKit
+// --mount=type=secret. Sibling of EnvVarService; the API exposes
+// them on separate routes because they have different semantics
+// (build-time vs runtime) and different exposure (value never
+// echoed back through the API).
+func (m *Module) newBuildSecretService() *services.BuildSecretService {
+	return services.NewBuildSecretService(m.serviceDeps())
+}
+
+// newComposeBuildSecretService is the compose-stack mirror.
+func (m *Module) newComposeBuildSecretService() *services.ComposeBuildSecretService {
+	return services.NewComposeBuildSecretService(m.serviceDeps())
+}
+
 // newVolumeService builds the application volume service.
 func (m *Module) newVolumeService() *services.VolumeService {
 	return services.NewVolumeService(m.serviceDeps())

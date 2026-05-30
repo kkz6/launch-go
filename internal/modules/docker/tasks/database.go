@@ -154,6 +154,24 @@ func shellEscapeArg(s string) string {
 	return string(out)
 }
 
+// launchAgentS3Flags builds the shared `--bucket/--region/--endpoint`
+// suffix for `launch-agent {upload,download,delete}` invocations. Region
+// and endpoint are omitted when empty (AWS-native + region-from-env
+// cases). Returns a leading-space string so callers can append it
+// directly after the command's own flags. Credentials are NOT included
+// here — they travel via AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env
+// to stay off the commandline.
+func launchAgentS3Flags(bucket, region, endpoint string) string {
+	out := " --bucket " + shellEscapeArg(bucket)
+	if region != "" {
+		out += " --region " + shellEscapeArg(region)
+	}
+	if endpoint != "" {
+		out += " --endpoint " + shellEscapeArg(endpoint)
+	}
+	return out
+}
+
 // DatabaseAdvancedUpdate carries the Advanced subtab knobs that map
 // to `docker update` flags. Empty strings mean "leave unchanged" —
 // docker update needs the flag to be omitted in that case, so the

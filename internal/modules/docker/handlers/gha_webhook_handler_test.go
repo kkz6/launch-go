@@ -205,6 +205,45 @@ func TestGHAApplicationDeploy_IdempotentRetry_SameRunReusesRow(t *testing.T) {
 	assert.Equal(t, int64(2), count)
 }
 
+// The workflow's "Mint GHCR pull token" step adds two new fields to
+// the success payload — ghcr_pull_token + ghcr_pull_token_minted_at.
+// Older workflows (pre-bearer-relay) don't send them. Both shapes
+// must continue to produce a clean 200 + deployment row.
+func TestGHAApplicationDeploy_AcceptsGHCRBearerPayload(t *testing.T) {
+	app, db, application := setupHandler(t)
+
+	body := applicationDeployPayload{
+		ImageTag:              "ghcr.io/kkz6/test-repo:launch-bearer",
+		CommitSHA:             "abc1234567890",
+		Branch:                "main",
+		RunID:                 "with-bearer-001",
+		RunURL:                "https://github.com/kkz6/test-repo/actions/runs/with-bearer-001",
+		GHCRPullToken:         "ghs_VeryDefinitelyFakeBearerForTestingOnly_xxxxxxxxxxx",
+		GHCRPullTokenMintedAt: "1717000000",
+	}
+	resp, raw := post(t, app, "/api/webhooks/docker/applications/"+application.ID+"/deploy", rawToken, body)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	// The token itself MUST NOT appear in the response body —
+	// nothing the customer's UI receives should ever contain it.
+	assert.NotContains(t, string(raw), body.GHCRPullToken,
+		"the bearer must never echo back to the caller")
+
+	var rows []dockermodels.Deployment
+	require.NoError(t, db.Find(&rows).Error)
+	require.Len(t, rows, 1)
+	assert.Equal(t, dockertypes.DeploymentStatusPending, rows[0].Status)
+	// The bearer must also NOT land on the deployment row anywhere
+	// (error / image_ref / log_path) — the row gets persisted long
+	// before docker login runs, and operators view this through the
+	// UI's View Logs sheet.
+	if rows[0].ImageRef != nil {
+		assert.NotContains(t, *rows[0].ImageRef, body.GHCRPullToken)
+	}
+	if rows[0].Error != nil {
+		assert.NotContains(t, *rows[0].Error, body.GHCRPullToken)
+	}
+}
+
 func TestGHAApplicationDeploy_RejectsImageOutsideConfiguredRepository(t *testing.T) {
 	app, db, application := setupHandler(t)
 

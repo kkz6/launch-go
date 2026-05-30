@@ -4,39 +4,43 @@ import "gorm.io/gorm"
 
 // Registry holds all docker-module repositories.
 type Registry struct {
-	project        *ProjectRepository
-	application    *ApplicationRepository
-	compose        *ComposeRepository
-	database       *DatabaseRepository
-	deployment     *DeploymentRepository
-	domain         *DomainRepository
-	envVar         *EnvVarRepository
-	projectEnvVar  *ProjectEnvVarRepository
-	databaseEnvVar *DatabaseEnvVarRepository
-	volume         *VolumeRepository
-	schedule       *ScheduleRepository
-	backup         *BackupRepository
-	backupRun      *BackupRunRepository
-	registryCred   *RegistryCredentialRepository
+	project            *ProjectRepository
+	application        *ApplicationRepository
+	compose            *ComposeRepository
+	database           *DatabaseRepository
+	deployment         *DeploymentRepository
+	domain             *DomainRepository
+	envVar             *EnvVarRepository
+	projectEnvVar      *ProjectEnvVarRepository
+	databaseEnvVar     *DatabaseEnvVarRepository
+	buildSecret        *BuildSecretRepository
+	composeBuildSecret *ComposeBuildSecretRepository
+	volume             *VolumeRepository
+	schedule           *ScheduleRepository
+	backup             *BackupRepository
+	backupRun          *BackupRunRepository
+	registryCred       *RegistryCredentialRepository
 }
 
 // NewRegistry wires up the repositories.
 func NewRegistry(db *gorm.DB) *Registry {
 	return &Registry{
-		project:        NewProjectRepository(db),
-		application:    NewApplicationRepository(db),
-		compose:        NewComposeRepository(db),
-		database:       NewDatabaseRepository(db),
-		deployment:     NewDeploymentRepository(db),
-		domain:         NewDomainRepository(db),
-		envVar:         NewEnvVarRepository(db),
-		projectEnvVar:  NewProjectEnvVarRepository(db),
-		databaseEnvVar: NewDatabaseEnvVarRepository(db),
-		volume:         NewVolumeRepository(db),
-		schedule:       NewScheduleRepository(db),
-		backup:         NewBackupRepository(db),
-		backupRun:      NewBackupRunRepository(db),
-		registryCred:   NewRegistryCredentialRepository(db),
+		project:            NewProjectRepository(db),
+		application:        NewApplicationRepository(db),
+		compose:            NewComposeRepository(db),
+		database:           NewDatabaseRepository(db),
+		deployment:         NewDeploymentRepository(db),
+		domain:             NewDomainRepository(db),
+		envVar:             NewEnvVarRepository(db),
+		projectEnvVar:      NewProjectEnvVarRepository(db),
+		databaseEnvVar:     NewDatabaseEnvVarRepository(db),
+		buildSecret:        NewBuildSecretRepository(db),
+		composeBuildSecret: NewComposeBuildSecretRepository(db),
+		volume:             NewVolumeRepository(db),
+		schedule:           NewScheduleRepository(db),
+		backup:             NewBackupRepository(db),
+		backupRun:          NewBackupRunRepository(db),
+		registryCred:       NewRegistryCredentialRepository(db),
 	}
 }
 
@@ -70,6 +74,19 @@ func (r *Registry) ProjectEnvVar() *ProjectEnvVarRepository { return r.projectEn
 // database (user-added extras on top of the auto-generated engine
 // credentials).
 func (r *Registry) DatabaseEnvVar() *DatabaseEnvVarRepository { return r.databaseEnvVar }
+
+// BuildSecret returns the application build-secret repository — name/
+// value pairs mounted into `docker build` via BuildKit's
+// --mount=type=secret. NOT visible to `docker run`; for runtime use
+// EnvVar instead.
+func (r *Registry) BuildSecret() *BuildSecretRepository { return r.buildSecret }
+
+// ComposeBuildSecret returns the compose-stack mirror of BuildSecret.
+// One secret name is available to every service in the stack that
+// references it from its Dockerfile.
+func (r *Registry) ComposeBuildSecret() *ComposeBuildSecretRepository {
+	return r.composeBuildSecret
+}
 
 // Volume returns the docker volume repository — polymorphic by
 // owner. The same row type backs application volumes AND compose-

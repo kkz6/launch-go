@@ -1,9 +1,13 @@
 package jobs
 
 import (
+	"fmt"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
@@ -260,4 +264,181 @@ func TestParseGHASourceConfig_UnparseableRepo(t *testing.T) {
 		"source_control_id": "01k0pzy8ynwnz1j4ytd7eyncdp",
 	})
 	assert.ErrorContains(t, err, "owner/repo missing")
+}
+
+// --- DeployApplicationPayload.String redaction ---
+//
+// The asynq payload carries OverrideRegistryPassword which on the GHA
+// path holds either a GHCR pull bearer (the new "token-exchange relay"
+// flow) or a GitHub App installation token (fallback). Both are
+// secrets. The custom Stringer redacts them so:
+//
+//   logger.Info().Stringer("payload", payload)   →  doesn't leak
+//   fmt.Sprintf("%v",  payload)                  →  doesn't leak
+//   fmt.Sprintf("%+v", payload)                  →  doesn't leak
+//   fmt.Sprintf("%s",  payload)                  →  doesn't leak
+//
+// (Note: `Sprintf("%#v", payload)` still goes through reflection and
+//  bypasses Stringer — but `%#v` is a debug-shape and shouldn't be
+//  used in any code path that ships logs to a customer log sink. The
+//  rest of the format verbs all hit String().)
+
+func TestDeployApplicationPayload_StringRedaction(t *testing.T) {
+	secret := "ghs_ThisIsThePullBearerWeDoNotWantToLeak_0123456789"
+	p := DeployApplicationPayload{
+		ApplicationID:                        "01ks_app",
+		DeploymentID:                         "01ks_deploy",
+		ServerID:                             "01ks_server",
+		TeamID:                               "01ks_team",
+		OverrideImage:                        "ghcr.io/example/repo:tag",
+		OverrideRegistryURL:                  "ghcr.io",
+		OverrideRegistryUsername:             "oauth2",
+		OverrideRegistryPassword:             secret,
+		OverrideRegistryPasswordMintedAtUnix: "1717000000",
+	}
+
+	// Direct call.
+	s := p.String()
+	assert.NotContains(t, s, secret, "String() must not contain the bearer")
+	assert.Contains(t, s, "[REDACTED]")
+	// Non-secret fields must still survive — the point is REDACTION,
+	// not stripping. An operator looking at the log needs the
+	// application + deployment IDs to find the right row.
+	assert.Contains(t, s, "01ks_app")
+	assert.Contains(t, s, "01ks_deploy")
+	assert.Contains(t, s, "ghcr.io")
+
+	// Format verbs that go through Stringer.
+	for _, verb := range []string{"%v", "%s", "%+v"} {
+		got := fmt.Sprintf(verb, p)
+		assert.NotContainsf(t, got, secret, "Sprintf(%q) must not leak", verb)
+	}
+}
+
+func TestDeployApplicationPayload_StringRedaction_NoPassword_NoChange(t *testing.T) {
+	// When there's no bearer (e.g. non-GHA deploys) the field is
+	// empty — redaction should leave the empty string as the empty
+	// string, NOT print "[REDACTED]" for nothing.
+	p := DeployApplicationPayload{
+		ApplicationID: "01ks_app",
+		DeploymentID:  "01ks_deploy",
+	}
+	assert.NotContains(t, p.String(), "[REDACTED]")
+}
+
+// --- ghcrBearerExpiredSoon ---
+//
+// Pre-flight age check on the workflow-stamped bearer. Fails fast
+// with a clear "queue was stalled" message instead of letting
+// docker pull report an opaque 401 mid-deploy. Pure function so
+// the table below covers every interesting branch without standing
+// up a deploy job.
+
+func TestGHCRBearerExpiredSoon_Cases(t *testing.T) {
+	now := time.Date(2026, 5, 28, 22, 30, 0, 0, time.UTC)
+	cases := []struct {
+		name            string
+		mintedAt        string
+		expectedExpired bool
+		expectedSubstr  string
+	}{
+		{
+			name:            "empty stamp (install-token fallback path)",
+			mintedAt:        "",
+			expectedExpired: false,
+		},
+		{
+			name:            "zero stamp ignored same as empty",
+			mintedAt:        "0",
+			expectedExpired: false,
+		},
+		{
+			name:            "garbage stamp ignored (defensive)",
+			mintedAt:        "not-a-unix-timestamp",
+			expectedExpired: false,
+		},
+		{
+			name: "just-minted bearer is fresh",
+			// 30 seconds ago — well within window.
+			mintedAt:        fmt.Sprintf("%d", now.Add(-30*time.Second).Unix()),
+			expectedExpired: false,
+		},
+		{
+			name:            "right at 49 min — still fresh",
+			mintedAt:        fmt.Sprintf("%d", now.Add(-49*time.Minute).Unix()),
+			expectedExpired: false,
+		},
+		{
+			name:            "51 min — expired",
+			mintedAt:        fmt.Sprintf("%d", now.Add(-51*time.Minute).Unix()),
+			expectedExpired: true,
+			expectedSubstr:  "token age",
+		},
+		{
+			name:            "2 hours old — expired",
+			mintedAt:        fmt.Sprintf("%d", now.Add(-2*time.Hour).Unix()),
+			expectedExpired: true,
+			expectedSubstr:  "token age",
+		},
+		{
+			name:            "30s in the future — tolerated (clock skew)",
+			mintedAt:        fmt.Sprintf("%d", now.Add(30*time.Second).Unix()),
+			expectedExpired: false,
+		},
+		{
+			name:            "10 min in the future — rejected as clock pathology",
+			mintedAt:        fmt.Sprintf("%d", now.Add(10*time.Minute).Unix()),
+			expectedExpired: true,
+			expectedSubstr:  "minted in the future",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			reason, expired := ghcrBearerExpiredSoon(tc.mintedAt, now)
+			assert.Equal(t, tc.expectedExpired, expired)
+			if tc.expectedExpired {
+				require.NotEmpty(t, reason)
+				if tc.expectedSubstr != "" {
+					assert.Contains(t, reason, tc.expectedSubstr)
+				}
+			} else {
+				assert.Equal(t, "", reason)
+			}
+		})
+	}
+}
+
+// --- DeployComposePayload.String redaction (mirror) ---
+
+func TestDeployComposePayload_StringRedaction(t *testing.T) {
+	secret := "ghs_ComposeBearerSecret_xxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+	p := DeployComposePayload{
+		ComposeID:                "01ks_compose",
+		DeploymentID:             "01ks_deploy_compose",
+		ServiceImages:            map[string]string{"web": "ghcr.io/x/y/web:t"},
+		OverrideRegistryPassword: secret,
+	}
+	s := p.String()
+	assert.NotContains(t, s, secret)
+	assert.Contains(t, s, "[REDACTED]")
+	assert.Contains(t, s, "01ks_compose")
+	for _, verb := range []string{"%v", "%s", "%+v"} {
+		assert.NotContainsf(t, fmt.Sprintf(verb, p), secret, "Sprintf(%q) must not leak", verb)
+	}
+}
+
+// Belt-and-braces: scan the rendered Stringer output for anything that
+// looks like a GitHub token prefix. If a future struct field gets
+// added that should be redacted but isn't, this catches it.
+func TestDeployApplicationPayload_StringerDoesNotLeakTokenPrefixes(t *testing.T) {
+	p := DeployApplicationPayload{
+		OverrideRegistryPassword:             "ghs_super_secret_pat_classic_format",
+		OverrideRegistryPasswordMintedAtUnix: "1717000000",
+	}
+	s := p.String()
+	for _, prefix := range []string{"ghs_", "ghp_", "github_pat_", "ghu_", "gho_"} {
+		if strings.Contains(s, prefix) {
+			t.Fatalf("payload Stringer leaked a token-looking prefix %q: %s", prefix, s)
+		}
+	}
 }

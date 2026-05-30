@@ -24,6 +24,8 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	envVarSvc := m.newEnvVarService()
 	projectEnvVarSvc := m.newProjectEnvVarService()
 	databaseEnvVarSvc := m.newDatabaseEnvVarService()
+	buildSecretSvc := m.newBuildSecretService()
+	composeBuildSecretSvc := m.newComposeBuildSecretService()
 	volumeSvc := m.newVolumeService()
 	hostSvc := m.newHostInspectService()
 	scheduleSvc := m.newScheduleService()
@@ -626,6 +628,98 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.NoContent(c)
 	})
 
+	// Build-time secrets — values mounted into `docker build` via
+	// --mount=type=secret. Separate from env-vars: build-time vs
+	// runtime, and write-only (the value is never returned in any
+	// response). When the application is GHA-backed the service also
+	// triggers a workflow re-sync so the YAML's `secrets:` block + the
+	// LAUNCH_BUILD_<NAME> repo secrets stay in lock-step with this list.
+	apps.Get("/:id/build-secrets", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := buildSecretSvc.ListBuildSecrets(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Build secrets retrieved", rows)
+	})
+
+	apps.Post("/:id/build-secrets", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateBuildSecretRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := buildSecretSvc.CreateBuildSecret(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Build secret added", out)
+	})
+
+	apps.Patch("/:id/build-secrets/:buildSecretId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateBuildSecretRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := buildSecretSvc.UpdateBuildSecret(
+			c.Context(),
+			c.Params("buildSecretId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Build secret updated", out)
+	})
+
+	apps.Delete("/:id/build-secrets/:buildSecretId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := buildSecretSvc.DeleteBuildSecret(
+			c.Context(),
+			c.Params("buildSecretId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
+	})
+
 	// Volume routes — list / create / update / delete.
 	apps.Get("/:id/volumes", func(c *gofiber.Ctx) error {
 		teamID, err := fiberutil.MustGetTeamID(c)
@@ -1047,6 +1141,96 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			return err
 		}
 		return fiberutil.OK(c, "GitHub Actions builds disabled", nil)
+	})
+
+	// Compose build-time secrets — same write-only semantics as the
+	// application build-secret routes above. One secret name is
+	// available to every service in the stack that references it
+	// from its own Dockerfile via id=NAME under --mount=type=secret.
+	composes.Get("/:id/build-secrets", func(c *gofiber.Ctx) error {
+		teamID, err := fiberutil.MustGetTeamID(c)
+		if err != nil {
+			return err
+		}
+		rows, err := composeBuildSecretSvc.ListBuildSecrets(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Build secrets retrieved", rows)
+	})
+
+	composes.Post("/:id/build-secrets", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.CreateBuildSecretRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := composeBuildSecretSvc.CreateBuildSecret(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Build secret added", out)
+	})
+
+	composes.Patch("/:id/build-secrets/:buildSecretId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		req, err := fiberutil.MustParseAndValidate[dto.UpdateBuildSecretRequest](c)
+		if err != nil {
+			return err
+		}
+		out, err := composeBuildSecretSvc.UpdateBuildSecret(
+			c.Context(),
+			c.Params("buildSecretId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+			req,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Build secret updated", out)
+	})
+
+	composes.Delete("/:id/build-secrets/:buildSecretId", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		if err := composeBuildSecretSvc.DeleteBuildSecret(
+			c.Context(),
+			c.Params("buildSecretId"),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.NoContent(c)
 	})
 
 	// Compose volume routes — list / create / update / delete. Shares

@@ -76,23 +76,45 @@ func NewGHAWebhookHandler(cfg GHAWebhookHandlerConfig) *GHAWebhookHandler {
 
 // applicationDeployPayload is the success-notify body from
 // gha_application.yml.tmpl.
+//
+// GHCRPullToken is a short-lived (~1h) bearer the workflow minted
+// via GitHub's token-exchange endpoint, scoped to
+// `repository:<owner>/<repo>:pull`. It lets the deploy worker pull
+// a private GHCR package without the customer wiring up a long-lived
+// PAT or flipping the package public. See deploy_application.go +
+// the bearer-redaction Stringer for how it travels onward without
+// leaking into logs.
+//
+// GHCRPullTokenMintedAt is the unix timestamp (seconds, UTC) at
+// which the workflow minted the bearer. Used by the worker to fail
+// fast with a clear error if the deploy queue was stalled long
+// enough that the bearer is about to expire — rather than letting
+// docker pull report an opaque 401 after the fact.
 type applicationDeployPayload struct {
-	ImageTag  string `json:"image_tag"`
-	CommitSHA string `json:"commit_sha"`
-	Branch    string `json:"branch"`
-	RunID     string `json:"run_id"`
-	RunURL    string `json:"run_url"`
+	ImageTag              string `json:"image_tag"`
+	CommitSHA             string `json:"commit_sha"`
+	Branch                string `json:"branch"`
+	RunID                 string `json:"run_id"`
+	RunURL                string `json:"run_url"`
+	GHCRPullToken         string `json:"ghcr_pull_token,omitempty"`
+	GHCRPullTokenMintedAt string `json:"ghcr_pull_token_minted_at,omitempty"`
 }
 
 // composeDeployPayload is the success-notify body from
 // gha_compose.yml.tmpl. Multi-service: ServiceImages is the per-service
 // image map collected from the matrix build's artifacts.
+//
+// One bearer covers every service image since they all live under
+// the same `<owner>/<repo>` GHCR namespace — GHCR's token-exchange
+// scopes by repository name, not per-package.
 type composeDeployPayload struct {
-	ServiceImages map[string]string `json:"service_images"`
-	CommitSHA     string            `json:"commit_sha"`
-	Branch        string            `json:"branch"`
-	RunID         string            `json:"run_id"`
-	RunURL        string            `json:"run_url"`
+	ServiceImages         map[string]string `json:"service_images"`
+	CommitSHA             string            `json:"commit_sha"`
+	Branch                string            `json:"branch"`
+	RunID                 string            `json:"run_id"`
+	RunURL                string            `json:"run_url"`
+	GHCRPullToken         string            `json:"ghcr_pull_token,omitempty"`
+	GHCRPullTokenMintedAt string            `json:"ghcr_pull_token_minted_at,omitempty"`
 }
 
 // statusPayload is the failure-notify body (same for both kinds).
@@ -147,12 +169,16 @@ func (h *GHAWebhookHandler) GHAApplicationDeploy(c *gofiber.Ctx) error {
 		return err
 	}
 
-	// Resolve a fresh installation token for GHCR pull auth. The
-	// existing token saved on the workload is too short-lived to be
-	// useful here (it's only used by the bootstrap job at enable
-	// time); we mint a new one per deploy so the worker has a fresh
-	// ~1-hour window.
-	if err := h.enqueueApplicationDeploy(c.Context(), app, deployment, payload.ImageTag); err != nil {
+	// Resolve a fresh installation token for GHCR pull auth as a
+	// FALLBACK only. The workflow normally mints a per-build GHCR
+	// bearer (payload.GHCRPullToken) and includes it in this
+	// callback — that bearer is what actually works on private
+	// packages (GitHub App install tokens can't pull private GHCR,
+	// regardless of permissions; verified twice on real repos).
+	// The install-token path is kept for backward-compat with
+	// workflow files still on the pre-relay template + for public
+	// packages where either path works.
+	if err := h.enqueueApplicationDeploy(c.Context(), app, deployment, payload.ImageTag, payload.GHCRPullToken, payload.GHCRPullTokenMintedAt); err != nil {
 		// Log + return 5xx so GitHub Actions retries the notify. The
 		// idempotent upsert means the retry won't create a duplicate
 		// deployment row — it'll find the one we just inserted and
@@ -171,25 +197,53 @@ func (h *GHAWebhookHandler) GHAApplicationDeploy(c *gofiber.Ctx) error {
 	})
 }
 
-// enqueueApplicationDeploy resolves a fresh GHCR installation token
-// and enqueues the deploy_application job. Skipped when queue or
+// enqueueApplicationDeploy picks the right GHCR pull credential and
+// enqueues the deploy_application job. Skipped when queue or
 // gitProviders are nil — the slice C tests use that shape.
+//
+// Credential selection (in order):
+//
+//  1. ghcrPullToken from the webhook payload — minted by the
+//     workflow via token-exchange. This is the only path that works
+//     for private GHCR packages. Username for the docker login is
+//     hard-coded "oauth2" — GHCR ignores the value for bearer
+//     auth but requires the field to be present.
+//
+//  2. Fresh GitHub App installation token via the source-control
+//     install. Fallback for older workflow files that don't carry a
+//     bearer; works fine for public packages, doesn't work for
+//     private ones. Username "x-access-token" per the App
+//     installation-token convention.
+//
+// `mintedAtUnix` is the workflow-stamped unix timestamp at which
+// the bearer was minted; the deploy job checks the age before
+// using it so a stalled queue surfaces a "bearer expired" error
+// instead of an opaque 401.
 func (h *GHAWebhookHandler) enqueueApplicationDeploy(
 	ctx context.Context,
 	app *dockermodels.Application,
 	deployment *dockermodels.Deployment,
 	imageTag string,
+	ghcrPullToken string,
+	mintedAtUnix string,
 ) error {
 	if h.queue == nil {
 		return nil // dry-run mode (tests)
 	}
-	if h.gitProviders == nil {
-		return errors.New("gha webhook: git provider factory not wired")
-	}
 
-	installationToken, err := h.resolveInstallationToken(ctx, app.SourceConfig)
-	if err != nil {
-		return fmt.Errorf("resolve installation token: %w", err)
+	username := "oauth2"
+	password := strings.TrimSpace(ghcrPullToken)
+	if password == "" {
+		// Path 2: fallback to install token.
+		if h.gitProviders == nil {
+			return errors.New("gha webhook: git provider factory not wired")
+		}
+		token, err := h.resolveInstallationToken(ctx, app.SourceConfig)
+		if err != nil {
+			return fmt.Errorf("resolve installation token: %w", err)
+		}
+		username = "x-access-token"
+		password = token
 	}
 
 	task, err := dockerjobs.NewDeployApplicationTaskFromGHA(
@@ -199,8 +253,9 @@ func (h *GHAWebhookHandler) enqueueApplicationDeploy(
 		app.TeamID,
 		imageTag,
 		"ghcr.io",
-		"x-access-token",
-		installationToken,
+		username,
+		password,
+		mintedAtUnix,
 	)
 	if err != nil {
 		return fmt.Errorf("build deploy task: %w", err)
@@ -331,7 +386,7 @@ func (h *GHAWebhookHandler) GHAComposeDeploy(c *gofiber.Ctx) error {
 		return err
 	}
 
-	if err := h.enqueueComposeDeploy(c.Context(), compose, deployment, payload.ServiceImages); err != nil {
+	if err := h.enqueueComposeDeploy(c.Context(), compose, deployment, payload.ServiceImages, payload.GHCRPullToken, payload.GHCRPullTokenMintedAt); err != nil {
 		if h.logger != nil {
 			h.logger.Error().Err(err).
 				Str("compose_id", compose.ID).
@@ -347,25 +402,31 @@ func (h *GHAWebhookHandler) GHAComposeDeploy(c *gofiber.Ctx) error {
 }
 
 // enqueueComposeDeploy mirrors enqueueApplicationDeploy for compose
-// stacks. Resolves a fresh GHCR installation token, builds a
-// deploy_compose task with the service_images map + override creds,
-// enqueues it. Skipped when queue or gitProviders are nil (slice C
-// test rigs).
+// stacks. Credential selection rules + redaction semantics are
+// identical — see the application path for the longer comment.
 func (h *GHAWebhookHandler) enqueueComposeDeploy(
 	ctx context.Context,
 	compose *dockermodels.Compose,
 	deployment *dockermodels.Deployment,
 	serviceImages map[string]string,
+	ghcrPullToken string,
+	mintedAtUnix string,
 ) error {
 	if h.queue == nil {
 		return nil
 	}
-	if h.gitProviders == nil {
-		return errors.New("gha webhook: git provider factory not wired")
-	}
-	installationToken, err := h.resolveInstallationToken(ctx, compose.SourceConfig)
-	if err != nil {
-		return fmt.Errorf("resolve installation token: %w", err)
+	username := "oauth2"
+	password := strings.TrimSpace(ghcrPullToken)
+	if password == "" {
+		if h.gitProviders == nil {
+			return errors.New("gha webhook: git provider factory not wired")
+		}
+		token, err := h.resolveInstallationToken(ctx, compose.SourceConfig)
+		if err != nil {
+			return fmt.Errorf("resolve installation token: %w", err)
+		}
+		username = "x-access-token"
+		password = token
 	}
 	task, err := dockerjobs.NewDeployComposeTaskFromGHA(
 		compose.ID,
@@ -374,8 +435,9 @@ func (h *GHAWebhookHandler) enqueueComposeDeploy(
 		compose.TeamID,
 		serviceImages,
 		"ghcr.io",
-		"x-access-token",
-		installationToken,
+		username,
+		password,
+		mintedAtUnix,
 	)
 	if err != nil {
 		return fmt.Errorf("build deploy task: %w", err)

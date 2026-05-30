@@ -86,6 +86,18 @@ jobs:
           tags: ${{ "{{" }} steps.meta.outputs.image {{ "}}" }}
           cache-from: type=gha,scope=${{ "{{" }} matrix.service {{ "}}" }}
           cache-to: type=gha,mode=max,scope=${{ "{{" }} matrix.service {{ "}}" }}
+          {{- if .BuildSecretNames}}
+          # Build-time secrets — one set is available to every service
+          # in the matrix. Values come from per-name repo secrets
+          # (LAUNCH_BUILD_<NAME>) that Launch pushes alongside this
+          # workflow. Add/remove secrets in Launch to keep this block
+          # in sync (the platform re-syncs the workflow file on each
+          # save).
+          secrets: |
+{{- range .BuildSecretNames}}
+            {{.}}=${{ "{{" }} secrets.LAUNCH_BUILD_{{.}} {{ "}}" }}
+{{- end}}
+          {{- end}}
 
       # Each matrix shard appends its (service, image) pair to a shared
       # artifact. The collect job downstream rolls them into the JSON
@@ -105,6 +117,12 @@ jobs:
     needs: build
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    # `packages: read` so the GHCR token-exchange step below can
+    # mint a pull bearer. The build job has `packages: write` for
+    # the per-service push; collect-and-notify only needs read.
+    permissions:
+      contents: read
+      packages: read
     steps:
       - uses: actions/download-artifact@v4
         with:
@@ -123,21 +141,54 @@ jobs:
           done
           echo "service_images=$(echo "$map" | jq -c .)" >> $GITHUB_OUTPUT
 
+      # Short-lived (~1h) GHCR pull bearer for the deploy host. See
+      # the application template for the longer-form rationale; the
+      # compose case publishes one package per service but they all
+      # live under the same `<owner>/<repo>` GHCR namespace so one
+      # bearer covers every service image.
+      - name: Mint GHCR pull token
+        id: ghcr_token
+        env:
+          GITHUB_TOKEN: ${{ "{{" }} secrets.GITHUB_TOKEN {{ "}}" }}
+        run: |
+          set -euo pipefail
+          # Docker Registry v2 Basic auth — see the application
+          # template for the longer-form rationale.
+          bearer=$(curl -fsSL \
+            -u "${GITHUB_ACTOR}:${GITHUB_TOKEN}" \
+            "https://ghcr.io/token?service=ghcr.io&scope=repository:${GITHUB_REPOSITORY,,}:pull" \
+            | jq -r '.token // empty')
+          if [ -z "$bearer" ]; then
+            echo "::error::Failed to mint GHCR pull token"
+            exit 1
+          fi
+          echo "::add-mask::$bearer"
+          {
+            echo "bearer<<LAUNCH_BEARER_EOF"
+            echo "$bearer"
+            echo "LAUNCH_BEARER_EOF"
+          } >> "$GITHUB_OUTPUT"
+          echo "minted_at=$(date -u +%s)" >> "$GITHUB_OUTPUT"
+
       - name: Notify Launch (success)
         env:
           TOKEN: ${{ "{{" }} secrets.LAUNCH_DEPLOY_TOKEN {{ "}}" }}
+          GHCR_BEARER: ${{ "{{" }} steps.ghcr_token.outputs.bearer {{ "}}" }}
+          GHCR_BEARER_MINTED_AT: ${{ "{{" }} steps.ghcr_token.outputs.minted_at {{ "}}" }}
         run: |
           curl --fail-with-body -sS -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(jq -nc \
-              --argjson images '${{ "{{" }} steps.collect.outputs.service_images {{ "}}" }}' \
-              --arg sha    '${{ "{{" }} github.sha {{ "}}" }}' \
-              --arg branch '${{ "{{" }} github.ref_name {{ "}}" }}' \
-              --arg run_id '${{ "{{" }} github.run_id {{ "}}" }}' \
-              --arg url    '${{ "{{" }} github.server_url {{ "}}" }}/${{ "{{" }} github.repository {{ "}}" }}/actions/runs/${{ "{{" }} github.run_id {{ "}}" }}' \
-              '{service_images:$images, commit_sha:$sha, branch:$branch, run_id:$run_id, run_url:$url}')" \
-            "{{.LaunchBaseURL}}/api/webhooks/docker/composes/{{.ComposeID}}/deploy"
+              --argjson images    '${{ "{{" }} steps.collect.outputs.service_images {{ "}}" }}' \
+              --arg sha           '${{ "{{" }} github.sha {{ "}}" }}' \
+              --arg branch        '${{ "{{" }} github.ref_name {{ "}}" }}' \
+              --arg run_id        '${{ "{{" }} github.run_id {{ "}}" }}' \
+              --arg url           '${{ "{{" }} github.server_url {{ "}}" }}/${{ "{{" }} github.repository {{ "}}" }}/actions/runs/${{ "{{" }} github.run_id {{ "}}" }}' \
+              --arg pull          "$GHCR_BEARER" \
+              --arg minted_at     "$GHCR_BEARER_MINTED_AT" \
+              '{service_images:$images, commit_sha:$sha, branch:$branch, run_id:$run_id, run_url:$url, ghcr_pull_token:$pull, ghcr_pull_token_minted_at:$minted_at}')" \
+            "${{ "{{" }} vars.LAUNCH_WEBHOOK_URL {{ "}}" }}/api/webhooks/docker/composes/{{.ComposeID}}/deploy"
 
   notify-failure:
     needs: [discover, build, collect-and-notify]
@@ -156,4 +207,4 @@ jobs:
               --arg run_id '${{ "{{" }} github.run_id {{ "}}" }}' \
               --arg url    '${{ "{{" }} github.server_url {{ "}}" }}/${{ "{{" }} github.repository {{ "}}" }}/actions/runs/${{ "{{" }} github.run_id {{ "}}" }}' \
               '{status:"failed", run_id:$run_id, run_url:$url}')" \
-            "{{.LaunchBaseURL}}/api/webhooks/docker/composes/{{.ComposeID}}/status"
+            "${{ "{{" }} vars.LAUNCH_WEBHOOK_URL {{ "}}" }}/api/webhooks/docker/composes/{{.ComposeID}}/status"
