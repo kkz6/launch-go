@@ -80,15 +80,15 @@ func NewGHABootstrapWorkflowTask(kind, id string, rotate bool, baseURL string) (
 
 // Handle does the actual repo writes. Steps:
 //
-//	1. Load workload (application | compose). Bail if not configured for GHA.
-//	2. Decode source_config: repo, branch, installation_id, dockerfile_path.
-//	3. If RotateToken (or no existing hash), mint a fresh deploy token.
-//	4. Resolve installation token via the GitHub provider.
-//	5. PutActionsSecret("LAUNCH_DEPLOY_TOKEN") — sealed-box via GH's pubkey.
-//	6. PutActionsVariable("LAUNCH_APP_ID" or "LAUNCH_COMPOSE_ID").
-//	7. PutActionsVariable("LAUNCH_WEBHOOK_URL") — base URL the curl posts to.
-//	8. Render workflow YAML + PutContents (.github/workflows/launch-deploy.yml).
-//	9. Persist the returned commit SHA into source_config.gha_workflow_sha.
+//  1. Load workload (application | compose). Bail if not configured for GHA.
+//  2. Decode source_config: repo, branch, installation_id, dockerfile_path.
+//  3. If RotateToken (or no existing hash), mint a fresh deploy token.
+//  4. Resolve installation token via the GitHub provider.
+//  5. PutActionsSecret("LAUNCH_DEPLOY_TOKEN") — sealed-box via GH's pubkey.
+//  6. PutActionsVariable("LAUNCH_APP_ID" or "LAUNCH_COMPOSE_ID").
+//  7. PutActionsVariable("LAUNCH_WEBHOOK_URL") — base URL the curl posts to.
+//  8. Render workflow YAML + PutContents (.github/workflows/launch-deploy.yml).
+//  9. Persist the returned commit SHA into source_config.gha_workflow_sha.
 //
 // On success, broadcast docker.application.gha_synced (or
 // .compose.gha_synced) so the UI subtab can refresh.

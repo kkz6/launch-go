@@ -240,8 +240,10 @@ echo "::LAUNCH::deploy_step::done"
 // subshell so a non-auth pull failure still tears the login down.
 //
 // docker login + docker logout both print
-//   "WARNING! Your credentials are stored unencrypted in
-//    /root/.docker/config.json. Configure a credential helper..."
+//
+//	"WARNING! Your credentials are stored unencrypted in
+//	 /root/.docker/config.json. Configure a credential helper..."
+//
 // to stderr unconditionally — there's no --quiet flag. Operators
 // can't act on it without host-level credential-helper setup that
 // Launch deliberately doesn't take over, so we filter just those
