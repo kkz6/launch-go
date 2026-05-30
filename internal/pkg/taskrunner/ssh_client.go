@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"io"
 	"net"
@@ -180,9 +181,28 @@ func (c *SSHClient) Run(ctx context.Context, command string) (*SSHCommandResult,
 
 // RunScript executes a script on the remote server
 func (c *SSHClient) RunScript(ctx context.Context, script string) (*SSHCommandResult, error) {
-	// Wrap script in bash
-	command := fmt.Sprintf("bash -c %q", script)
-	return c.Run(ctx, command)
+	// Upload the script to a temp file and execute the file, rather than
+	// `bash -c "<script>"`. Passing a multi-line script through bash -c is
+	// unsafe: Go's %q escapes the script's newlines to the literal two
+	// characters `\n`, so the remote shell receives a single broken line
+	// — the `#!`-prefixed blob collapses into one comment and the script
+	// silently no-ops (exit 0, no output). Writing the script to a file
+	// preserves it verbatim, matching how the async dispatcher runs tasks.
+	if c.conn == nil {
+		if err := c.Connect(); err != nil {
+			return nil, err
+		}
+	}
+
+	sum := sha256.Sum256([]byte(script))
+	remotePath := fmt.Sprintf("/tmp/launch-runscript-%x.sh", sum[:8])
+	if err := c.Upload(ctx, []byte(script), remotePath, 0o700); err != nil {
+		return nil, fmt.Errorf("upload script: %w", err)
+	}
+
+	// Run the file, then remove it while preserving the script's exit code.
+	cmd := fmt.Sprintf("bash %s; ec=$?; rm -f %s; exit $ec", remotePath, remotePath)
+	return c.Run(ctx, cmd)
 }
 
 // RunWithOutput executes a command and writes output to the provided writer
