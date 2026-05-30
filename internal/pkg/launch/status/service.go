@@ -21,44 +21,81 @@ type ServiceStatus struct {
 	Error    string `json:"error,omitempty"`
 }
 
-// AgentVersionCommand returns the shell command that prints the installed
-// version of a self-versioning binary, or "" if the software doesn't
-// support a version probe. Used to replace the placeholder "latest"
-// stored at install time with the real running version.
-func AgentVersionCommand(software string) string {
+// VersionCommand returns the shell command that prints the installed
+// version of a service, or "" if we don't know how to probe it. The
+// command runs over SSH as root on the target server. Used to replace
+// the placeholder/static version stored at install time with the real
+// running version, for EVERY service — not just self-versioning agents.
+//
+// Each tool formats `--version` differently; ParseVersion handles the
+// variety with a single semver regex, so this only needs the right
+// invocation per tool. Container-based services exec into their
+// container (Traefik runs as the launch-traefik container).
+func VersionCommand(software string) string {
 	switch software {
 	case "launch_agent":
 		return "launch-agent --version 2>/dev/null"
+	case "docker":
+		return "docker --version 2>/dev/null"
+	case "traefik":
+		return "docker exec launch-traefik traefik version 2>/dev/null"
+	case "supervisor":
+		return "supervisord --version 2>/dev/null"
+	case "redis":
+		return "redis-server --version 2>/dev/null"
+	case "mysql80":
+		return "mysqld --version 2>/dev/null"
+	case "postgresql16":
+		return "psql --version 2>/dev/null"
+	case "caddy2", "caddy2_lb":
+		return "caddy version 2>/dev/null"
+	case "composer2":
+		return "composer --version 2>/dev/null"
+	case "node21":
+		return "node --version 2>/dev/null"
+	case "bun":
+		return "bun --version 2>/dev/null"
 	default:
-		return ""
+		// PHP: software key is "phpXY" → binary "phpX.Y" (php82 → php8.2).
+		return phpVersionCommand(software)
 	}
 }
 
-// ParseAgentVersion extracts a version string from a CLI `--version`
-// output. urfave/cli prints "<name> version <X.Y.Z>", so we take the
-// last whitespace-delimited token and normalise a leading "v".
-// Returns "" when nothing usable is found (caller keeps the stored value).
-func ParseAgentVersion(output string) string {
-	line := strings.TrimSpace(output)
-	if line == "" {
+// phpVersionCommand maps a "phpXY" software key to its versioned binary's
+// --version invocation, or "" if the key isn't a PHP version.
+func phpVersionCommand(software string) string {
+	if !strings.HasPrefix(software, "php") {
 		return ""
 	}
-	// Use the first non-empty line in case the binary prints extra noise.
-	if idx := strings.IndexAny(line, "\r\n"); idx >= 0 {
-		line = strings.TrimSpace(line[:idx])
-	}
-	fields := strings.Fields(line)
-	if len(fields) == 0 {
+	digits := strings.TrimPrefix(software, "php")
+	if len(digits) < 2 {
 		return ""
 	}
-	v := fields[len(fields)-1]
-	// Reject obviously-non-version tails (e.g. a bare "version" or an
-	// error word) by requiring at least one digit.
-	if !strings.ContainsAny(v, "0123456789") {
-		return ""
-	}
-	return strings.TrimPrefix(v, "v")
+	// Last digit is the minor, the rest is the major: php82 → 8.2, php74 → 7.4.
+	major, minor := digits[:len(digits)-1], digits[len(digits)-1:]
+	return fmt.Sprintf("php%s.%s --version 2>/dev/null", major, minor)
 }
+
+// versionRe matches the first semver-ish token (MAJOR.MINOR[.PATCH]) in a
+// tool's version output. Deliberately liberal so one parser covers every
+// tool's format: "Docker version 27.3.1, build …", "Version: 3.1.2",
+// "Redis server v=7.0.11 …", "psql (PostgreSQL) 16.2", "v21.7.3", etc.
+var versionRe = regexp.MustCompile(`\d+\.\d+(?:\.\d+)?`)
+
+// ParseVersion extracts a version string from arbitrary `--version`
+// output by returning the first MAJOR.MINOR[.PATCH] token. Returns ""
+// when nothing usable is found (caller keeps the stored value).
+func ParseVersion(output string) string {
+	return versionRe.FindString(strings.TrimSpace(output))
+}
+
+// AgentVersionCommand is retained for callers/tests; it now delegates to
+// the generalised VersionCommand.
+func AgentVersionCommand(software string) string { return VersionCommand(software) }
+
+// ParseAgentVersion is retained for callers/tests; it now delegates to
+// the generalised ParseVersion.
+func ParseAgentVersion(output string) string { return ParseVersion(output) }
 
 // ServiceState constants for service status
 const (

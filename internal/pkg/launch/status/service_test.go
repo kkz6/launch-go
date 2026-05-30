@@ -51,9 +51,13 @@ func TestParseContainerState(t *testing.T) {
 }
 
 func TestAgentVersionCommand(t *testing.T) {
+	// AgentVersionCommand now delegates to the generalised VersionCommand,
+	// so it returns a probe for every known service — not just the agent.
 	assert.Equal(t, "launch-agent --version 2>/dev/null", AgentVersionCommand("launch_agent"))
-	assert.Equal(t, "", AgentVersionCommand("docker"))
-	assert.Equal(t, "", AgentVersionCommand("mysql"))
+	assert.Equal(t, "docker --version 2>/dev/null", AgentVersionCommand("docker"))
+	// Unknown / unmapped software still yields no probe.
+	assert.Equal(t, "", AgentVersionCommand("mysql")) // key is "mysql80", not "mysql"
+	assert.Equal(t, "", AgentVersionCommand("totally_unknown"))
 }
 
 func TestParseAgentVersion(t *testing.T) {
