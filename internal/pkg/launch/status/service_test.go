@@ -59,7 +59,7 @@ func TestAgentVersionCommand(t *testing.T) {
 func TestParseAgentVersion(t *testing.T) {
 	cases := []struct{ in, want string }{
 		{"launch-agent version 1.4.2", "1.4.2"},
-		{"launch-agent version v1.4.2", "1.4.2"},       // leading v stripped
+		{"launch-agent version v1.4.2", "1.4.2"},             // leading v stripped
 		{"launch-agent version 1.4.2\nextra noise", "1.4.2"}, // first line only
 		{"  launch-agent version 0.9.0  ", "0.9.0"},
 		{"", ""},

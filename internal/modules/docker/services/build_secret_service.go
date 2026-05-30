@@ -96,11 +96,11 @@ func (s *BuildSecretService) CreateBuildSecret(
 
 	resp := dto.ToApplicationBuildSecretResponse(v)
 	s.BroadcastToTeam(teamID, "docker.application.build_secret.added", map[string]any{
-		"application_id":   app.ID,
-		"server_id":        app.ServerID,
-		"team_id":          app.TeamID,
-		"build_secret_id":  v.ID,
-		"name":             v.Name,
+		"application_id":  app.ID,
+		"server_id":       app.ServerID,
+		"team_id":         app.TeamID,
+		"build_secret_id": v.ID,
+		"name":            v.Name,
 	})
 	s.queueResyncIfGHA(ctx, app)
 	return *resp, nil
@@ -138,11 +138,11 @@ func (s *BuildSecretService) UpdateBuildSecret(
 		return dto.BuildSecretResponse{}, err
 	}
 	s.BroadcastToTeam(teamID, "docker.application.build_secret.updated", map[string]any{
-		"application_id":   app.ID,
-		"server_id":        app.ServerID,
-		"team_id":          app.TeamID,
-		"build_secret_id":  id,
-		"name":             reloaded.Name,
+		"application_id":  app.ID,
+		"server_id":       app.ServerID,
+		"team_id":         app.TeamID,
+		"build_secret_id": id,
+		"name":            reloaded.Name,
 	})
 	s.queueResyncIfGHA(ctx, app)
 	return *dto.ToApplicationBuildSecretResponse(reloaded), nil
@@ -172,11 +172,11 @@ func (s *BuildSecretService) DeleteBuildSecret(
 		return err
 	}
 	s.BroadcastToTeam(teamID, "docker.application.build_secret.deleted", map[string]any{
-		"application_id":   app.ID,
-		"server_id":        app.ServerID,
-		"team_id":          app.TeamID,
-		"build_secret_id":  id,
-		"name":             name,
+		"application_id":  app.ID,
+		"server_id":       app.ServerID,
+		"team_id":         app.TeamID,
+		"build_secret_id": id,
+		"name":            name,
 	})
 	s.queueResyncIfGHA(ctx, app)
 	return nil
