@@ -164,6 +164,9 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		PathPrefix: tasks.BackupObjectPath(backup.Path, s3Creds.Path),
 		AccessKey:  s3Creds.Key,
 		SecretKey:  s3Creds.Secret,
+		// Non-AWS S3 (Contabo/MinIO/Wasabi) needs path-style
+		// addressing; their endpoints have no per-bucket wildcard DNS.
+		ForcePathStyle: s3Creds.ForcePathStyle,
 	}
 
 	task := tasks.RunBackup(cfg)
@@ -405,12 +408,13 @@ func (j *RunBackupJob) pruneRunsAndObjects(
 
 	if len(objectKeys) > 0 {
 		cfg := tasks.PruneBackupObjectsConfig{
-			ObjectKeys: objectKeys,
-			Endpoint:   s3Creds.Endpoint,
-			Region:     s3Creds.Region,
-			Bucket:     s3Creds.Bucket,
-			AccessKey:  s3Creds.Key,
-			SecretKey:  s3Creds.Secret,
+			ObjectKeys:     objectKeys,
+			Endpoint:       s3Creds.Endpoint,
+			Region:         s3Creds.Region,
+			Bucket:         s3Creds.Bucket,
+			AccessKey:      s3Creds.Key,
+			SecretKey:      s3Creds.Secret,
+			ForcePathStyle: s3Creds.ForcePathStyle,
 		}
 		task := tasks.PruneBackupObjects(cfg)
 		if _, err := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx); err != nil {

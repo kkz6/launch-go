@@ -28,6 +28,12 @@ type BackupRunConfig struct {
 	PathPrefix string
 	AccessKey  string
 	SecretKey  string
+	// ForcePathStyle selects path-style addressing
+	// (https://endpoint/bucket/key) instead of virtual-host
+	// (https://bucket.endpoint/key). Required by most non-AWS S3
+	// providers (Contabo, MinIO, Wasabi) whose endpoints have no
+	// wildcard DNS for per-bucket hostnames.
+	ForcePathStyle bool
 }
 
 // RunBackupScript renders the bash that dumps the database inside the
@@ -100,7 +106,7 @@ echo "::LAUNCH::backup_step::uploading"
 	fmt.Fprintf(&b, "export AWS_ACCESS_KEY_ID=%s\n", shellEscapeArg(cfg.AccessKey))
 	fmt.Fprintf(&b, "export AWS_SECRET_ACCESS_KEY=%s\n", shellEscapeArg(cfg.SecretKey))
 	fmt.Fprintf(&b, "launch-agent upload --file \"${TMP_FILE}\" --key \"${OBJECT_KEY}\"%s\n",
-		launchAgentS3Flags(cfg.Bucket, cfg.Region, cfg.Endpoint))
+		launchAgentS3Flags(cfg.Bucket, cfg.Region, cfg.Endpoint, cfg.ForcePathStyle))
 	b.WriteString(`
 echo "::LAUNCH::object_key::${OBJECT_KEY}"
 echo "::LAUNCH::backup_step::done"
@@ -224,6 +230,8 @@ type PruneBackupObjectsConfig struct {
 	Bucket    string
 	AccessKey string
 	SecretKey string
+	// ForcePathStyle — see BackupRunConfig.ForcePathStyle.
+	ForcePathStyle bool
 }
 
 // PruneBackupObjectsScript renders a bash script that removes one or
@@ -254,7 +262,7 @@ FAILED=0
 
 	fmt.Fprintf(&b, "export AWS_ACCESS_KEY_ID=%s\n", shellEscapeArg(cfg.AccessKey))
 	fmt.Fprintf(&b, "export AWS_SECRET_ACCESS_KEY=%s\n", shellEscapeArg(cfg.SecretKey))
-	s3Flags := launchAgentS3Flags(cfg.Bucket, cfg.Region, cfg.Endpoint)
+	s3Flags := launchAgentS3Flags(cfg.Bucket, cfg.Region, cfg.Endpoint, cfg.ForcePathStyle)
 
 	for _, key := range cfg.ObjectKeys {
 		// Per-key marker + per-key failure handling — one missing object
@@ -310,6 +318,8 @@ type RestoreBackupConfig struct {
 	ObjectKey string
 	AccessKey string
 	SecretKey string
+	// ForcePathStyle — see BackupRunConfig.ForcePathStyle.
+	ForcePathStyle bool
 }
 
 // RestoreBackupScript downloads the snapshot from S3 and restores it
@@ -352,7 +362,7 @@ echo "::LAUNCH::restore_step::downloading"
 	fmt.Fprintf(&b, "export AWS_ACCESS_KEY_ID=%s\n", shellEscapeArg(cfg.AccessKey))
 	fmt.Fprintf(&b, "export AWS_SECRET_ACCESS_KEY=%s\n", shellEscapeArg(cfg.SecretKey))
 	fmt.Fprintf(&b, "launch-agent download --key \"${OBJECT_KEY}\" --dest \"${TMP_FILE}\"%s\n",
-		launchAgentS3Flags(cfg.Bucket, cfg.Region, cfg.Endpoint))
+		launchAgentS3Flags(cfg.Bucket, cfg.Region, cfg.Endpoint, cfg.ForcePathStyle))
 
 	b.WriteString(`
 echo "::LAUNCH::restore_step::restoring"

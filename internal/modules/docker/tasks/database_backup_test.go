@@ -88,6 +88,56 @@ func TestRunBackupScript_AgentSanityCheck(t *testing.T) {
 	}
 }
 
+func TestBackupScripts_ForcePathStyle(t *testing.T) {
+	// Non-AWS S3 (Contabo/MinIO/Wasabi) has no per-bucket wildcard DNS,
+	// so the agent MUST use path-style addressing. When the provider sets
+	// ForcePathStyle, every S3-touching script must pass
+	// --force-path-style; when it doesn't, the flag must be absent (so AWS
+	// keeps virtual-host addressing).
+	const flag = "--force-path-style"
+
+	upload := RunBackupScript(BackupRunConfig{
+		RunID: "01HZ", ContainerName: "launch-db-x",
+		Engine: dockertypes.DatabaseEnginePostgres, Database: "acme",
+		Endpoint: "https://sin1.contabostorage.com", Region: "sin1",
+		Bucket: "gigcodes-backup", AccessKey: "AK", SecretKey: "SK",
+		ForcePathStyle: true,
+	})
+	if !strings.Contains(upload, "launch-agent upload") || !strings.Contains(upload, flag) {
+		t.Errorf("upload script must pass %s when ForcePathStyle=true, got:\n%s", flag, upload)
+	}
+
+	restore := RestoreBackupScript(RestoreBackupConfig{
+		RunID: "01HZ", ContainerName: "launch-db-x",
+		Engine: dockertypes.DatabaseEnginePostgres, Database: "acme",
+		Endpoint: "https://sin1.contabostorage.com", Region: "sin1",
+		Bucket: "gigcodes-backup", ObjectKey: "k.gz", AccessKey: "AK", SecretKey: "SK",
+		ForcePathStyle: true,
+	})
+	if !strings.Contains(restore, "launch-agent download") || !strings.Contains(restore, flag) {
+		t.Errorf("restore script must pass %s when ForcePathStyle=true, got:\n%s", flag, restore)
+	}
+
+	prune := PruneBackupObjectsScript(PruneBackupObjectsConfig{
+		ObjectKeys: []string{"a.gz"}, Endpoint: "https://sin1.contabostorage.com",
+		Region: "sin1", Bucket: "gigcodes-backup", AccessKey: "AK", SecretKey: "SK",
+		ForcePathStyle: true,
+	})
+	if !strings.Contains(prune, "launch-agent delete") || !strings.Contains(prune, flag) {
+		t.Errorf("prune script must pass %s when ForcePathStyle=true, got:\n%s", flag, prune)
+	}
+
+	// AWS-native (no force) must NOT emit the flag.
+	awsUpload := RunBackupScript(BackupRunConfig{
+		RunID: "01HZ", ContainerName: "launch-db-x",
+		Engine: dockertypes.DatabaseEnginePostgres, Database: "acme",
+		Bucket: "aws-bucket", Region: "us-east-1", AccessKey: "AK", SecretKey: "SK",
+	})
+	if strings.Contains(awsUpload, flag) {
+		t.Errorf("upload script must NOT pass %s when ForcePathStyle=false, got:\n%s", flag, awsUpload)
+	}
+}
+
 func TestRunBackupScript_PgDumpUsesPGPassword(t *testing.T) {
 	// PGPASSWORD has to be set on the `docker exec` invocation, not the
 	// containing shell — otherwise other commands in the script could
