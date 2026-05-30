@@ -15,6 +15,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/docker/tasks"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
+	"github.com/kkz6/launch-go/internal/pkg/taskrunner/markers"
 )
 
 // TypeRunBackup is the asynq task type for executing a single database
@@ -41,8 +43,14 @@ type RunBackupPayload struct {
 	ProjectID  string `json:"project_id"`
 	ServerID   string `json:"server_id"`
 	TeamID     string `json:"team_id"`
+	// RunID, when set, is a pre-created backup_run row the job adopts
+	// (set status running → success/failed) instead of creating its own.
+	// The manual "Run now" path creates the row as "triggered" up-front
+	// so the UI shows it immediately, then hands the id here. Empty for
+	// the scheduled path, which creates its own run.
+	RunID string `json:"run_id,omitempty"`
 	// Source records who/what triggered this run — "schedule" for the
-	// cron poller; empty / "manual" for ad-hoc dispatches. Mostly for
+	// cron poller; "manual" for ad-hoc dispatches. Mostly for
 	// debugging via the worker log.
 	Source string `json:"source,omitempty"`
 }
@@ -118,13 +126,28 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 	}
 
 	now := time.Now().UTC()
-	run := &models.DatabaseBackupRun{
-		BackupID:  backup.ID,
-		Status:    "running",
-		StartedAt: &now,
-	}
-	if err := j.Deps.Repos.BackupRun().Create(ctx, run); err != nil {
-		return fmt.Errorf("create run row: %w", err)
+	var run *models.DatabaseBackupRun
+	if j.Payload.RunID != "" {
+		// Adopt the row the manual "Run now" path pre-created as
+		// "triggered" and flip it to "running" now that the job is
+		// actually executing.
+		run, err = j.Deps.Repos.BackupRun().FindByID(ctx, j.Payload.RunID)
+		if err != nil {
+			return fmt.Errorf("find pre-created run row: %w", err)
+		}
+		_ = j.Deps.Repos.BackupRun().UpdateFields(ctx, run.ID, map[string]any{
+			"status":     "running",
+			"started_at": now,
+		})
+	} else {
+		run = &models.DatabaseBackupRun{
+			BackupID:  backup.ID,
+			Status:    "running",
+			StartedAt: &now,
+		}
+		if err := j.Deps.Repos.BackupRun().Create(ctx, run); err != nil {
+			return fmt.Errorf("create run row: %w", err)
+		}
 	}
 
 	j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.started", map[string]any{
@@ -169,8 +192,28 @@ func (j *RunBackupJob) Handle(ctx context.Context) error {
 		ForcePathStyle: s3Creds.ForcePathStyle,
 	}
 
+	// Stream the backup's step markers (dumping / uploading / done +
+	// size_bytes / object_key) to the UI live over WebSocket as the
+	// script runs, so the run shows progress instead of a single
+	// after-the-fact status. Fires per-marker in the background/streaming
+	// dispatch path.
+	runID := run.ID
+	markerHandler := taskrunner.MarkerHandlerFunc(func(_ context.Context, _ string, m *markers.Marker) error {
+		j.Deps.BroadcastToTeam(j.Payload.TeamID, "docker.database.backup.run.progress", map[string]any{
+			"database_id": db.ID,
+			"project_id":  j.Payload.ProjectID,
+			"backup_id":   backup.ID,
+			"run_id":      runID,
+			"server_id":   server.ID,
+			"team_id":     j.Payload.TeamID,
+			"type":        m.Type,
+			"value":       m.Value,
+		})
+		return nil
+	})
+
 	task := tasks.RunBackup(cfg)
-	result, runErr := j.Deps.RunTask(server, task).AsRoot().Dispatch(ctx)
+	result, runErr := j.Deps.RunTask(server, task).AsRoot().WithMarkerHandler(markerHandler).Dispatch(ctx)
 
 	finishedAt := time.Now().UTC()
 	output := ""
@@ -307,17 +350,25 @@ func (j *RunBackupJob) recordFailure(ctx context.Context, backupID, runID, msg s
 // same minute (e.g. on restart) don't double-fire, but distinct minutes
 // each get their own run.
 func NewRunBackupTask(
-	backupID, databaseID, projectID, serverID, teamID, source string,
+	backupID, databaseID, projectID, serverID, teamID, runID, source string,
 ) (*asynq.Task, error) {
-	minuteKey := time.Now().UTC().Format("2006-01-02T15:04")
+	// Dedup key: a manual run carries a unique pre-created run id, so key
+	// on that (lets a user trigger several distinct runs). The scheduled
+	// path has no run id, so key on the dispatch minute to collapse
+	// duplicate ticks in the same minute.
+	dedupKey := runID
+	if dedupKey == "" {
+		dedupKey = time.Now().UTC().Format("2006-01-02T15:04")
+	}
 	return pkgjobs.TaskWithID(TypeRunBackup, RunBackupPayload{
 		BackupID:   backupID,
 		DatabaseID: databaseID,
 		ProjectID:  projectID,
 		ServerID:   serverID,
 		TeamID:     teamID,
+		RunID:      runID,
 		Source:     source,
-	}, pkgjobs.Dedup("docker-run-backup", backupID, minuteKey))
+	}, pkgjobs.Dedup("docker-run-backup", backupID, dedupKey))
 }
 
 // loadProviderS3Creds resolves the storage_provider FK on a backup row
