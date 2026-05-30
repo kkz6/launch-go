@@ -30,23 +30,43 @@ func init() {
 }
 
 func convertSshKeysIsGlobalToBooleanUp(db *gorm.DB) error {
-	// Postgres refuses to alter the column type while the existing
-	// `DEFAULT '0'::smallint` is still attached — it can't cast that
-	// default to the new boolean type. Drop it first, change the type,
-	// then re-attach the boolean default.
-	if err := db.Exec(`ALTER TABLE ssh_keys ALTER COLUMN is_global DROP DEFAULT`).Error; err != nil {
+	// Idempotency guard. The `ALTER … TYPE boolean` below auto-commits
+	// the moment it runs; if a later statement in this migration ever
+	// failed (or the migration row wasn't recorded), the column is left
+	// already-boolean and the migration re-runs on the next deploy. On
+	// that re-run `is_global <> 0` blows up with
+	//   ERROR: operator does not exist: boolean <> integer (SQLSTATE 42883)
+	// which crashes the API on boot and fails the Kamal deploy. So only
+	// do the type conversion while the column is still the legacy
+	// smallint; the steps after it are all idempotent.
+	var dataType string
+	if err := db.Raw(`
+		SELECT data_type FROM information_schema.columns
+		WHERE table_name = 'ssh_keys' AND column_name = 'is_global'
+	`).Scan(&dataType).Error; err != nil {
 		return err
 	}
-	// USING <expr> tells Postgres how to coerce existing rows. Treat any
-	// non-zero smallint as true so the legacy 0/1 encoding maps cleanly
-	// onto the new boolean.
-	if err := db.Exec(`
-		ALTER TABLE ssh_keys
-		ALTER COLUMN is_global TYPE boolean
-		USING (is_global <> 0)
-	`).Error; err != nil {
-		return err
+
+	if dataType != "boolean" {
+		// Postgres refuses to alter the column type while the existing
+		// `DEFAULT '0'::smallint` is still attached — it can't cast that
+		// default to the new boolean type. Drop it first, change the
+		// type, then re-attach the boolean default.
+		if err := db.Exec(`ALTER TABLE ssh_keys ALTER COLUMN is_global DROP DEFAULT`).Error; err != nil {
+			return err
+		}
+		// USING <expr> tells Postgres how to coerce existing rows. Treat
+		// any non-zero smallint as true so the legacy 0/1 encoding maps
+		// cleanly onto the new boolean.
+		if err := db.Exec(`
+			ALTER TABLE ssh_keys
+			ALTER COLUMN is_global TYPE boolean
+			USING (is_global <> 0)
+		`).Error; err != nil {
+			return err
+		}
 	}
+
 	if err := db.Exec(`
 		ALTER TABLE ssh_keys
 		ALTER COLUMN is_global SET DEFAULT false
