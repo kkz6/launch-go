@@ -216,7 +216,21 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 	// TrackInDB() persists a server-tasks row so the frontend can
 	// stream live `docker compose up` output via ServerLogViewer —
 	// matches the application + database paths.
-	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().TrackInDB().Dispatch(ctx)
+	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().TrackInDB().
+		OnTaskCreated(func(taskID string) {
+			// Surface the task ID early so the Compose Deployments tab's
+			// "View Logs" appears and streams live output during the
+			// deploy, not only after it finishes.
+			_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{"task_id": taskID})
+			j.deployment.TaskID = &taskID
+			j.broadcast("docker.compose.deploying", map[string]any{
+				"compose_id":    j.compose.ID,
+				"deployment_id": j.deployment.ID,
+				"task_id":       taskID,
+				"status":        "building",
+			})
+		}).
+		Dispatch(ctx)
 
 	output := ""
 	exitCode := -1

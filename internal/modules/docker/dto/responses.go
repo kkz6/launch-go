@@ -463,7 +463,10 @@ type BackupRunResponse struct {
 	ObjectKey  *string    `json:"object_key,omitempty"`
 	SizeBytes  *int64     `json:"size_bytes,omitempty"`
 	Error      *string    `json:"error,omitempty"`
-	CreatedAt  *time.Time `json:"created_at,omitempty"`
+	// TaskID drives the live log console: the UI streams the run's
+	// dump/upload output via ServerLogViewer entity="task".
+	TaskID    *string    `json:"task_id,omitempty"`
+	CreatedAt *time.Time `json:"created_at,omitempty"`
 }
 
 // ToBackupResponse renders a backup config. Credentials live on the
@@ -496,6 +499,7 @@ func ToBackupRunResponse(r *models.DatabaseBackupRun) *BackupRunResponse {
 		ObjectKey:  r.ObjectKey,
 		SizeBytes:  r.SizeBytes,
 		Error:      r.Error,
+		TaskID:     r.TaskID,
 		CreatedAt:  r.CreatedAt,
 	}
 }
