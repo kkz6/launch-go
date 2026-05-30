@@ -108,3 +108,31 @@ jobs:
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
           govulncheck ./...
+
+  client-submodule:
+    name: Client submodule up to date
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # Verify the `client` submodule (kkz6/launch-nuxt) is pinned to the
+      # latest commit on its main branch. Reads the gitlink SHA from the
+      # tree (no submodule checkout needed) and compares to the remote.
+      # Fails the build if the pin is behind so the frontend shipped with
+      # the API is never stale.
+      - name: Verify client submodule is at latest launch-nuxt main
+        run: |
+          pinned=$(git ls-tree HEAD client | awk '{print $3}')
+          latest=$(git ls-remote https://github.com/kkz6/launch-nuxt.git refs/heads/main | awk '{print $1}')
+          echo "pinned client submodule: $pinned"
+          echo "latest launch-nuxt main:  $latest"
+          if [ -z "$pinned" ] || [ -z "$latest" ]; then
+            echo "::error::could not resolve client submodule or remote SHA"
+            exit 1
+          fi
+          if [ "$pinned" != "$latest" ]; then
+            echo "::error::client submodule ($pinned) is behind launch-nuxt main ($latest). Bump it: git submodule update --remote client && git add client && commit."
+            exit 1
+          fi
+          echo "client submodule is at the latest launch-nuxt main."
