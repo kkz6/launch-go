@@ -15,6 +15,29 @@ func TestGetSystemdServiceName_Docker(t *testing.T) {
 	assert.Equal(t, "docker", GetSystemdServiceName("docker"))
 }
 
+// TestGetSystemdServiceName_LaunchAgent is the regression guard for
+// the "Launch Agent perpetually shows Installed" bug. The install
+// script writes /etc/systemd/system/launch-agent.service so this MUST
+// resolve to "launch-agent". Falling through to "" used to make the
+// status probe short-circuit and the row never updated to Running /
+// Failed.
+func TestGetSystemdServiceName_LaunchAgent(t *testing.T) {
+	assert.Equal(t, "launch-agent", GetSystemdServiceName("launch_agent"))
+}
+
+// TestIsDaemonService_LaunchAgent guards the second half of the same
+// bug: launch_agent IS a daemon (systemd unit), so the probe must NOT
+// classify it as a CLI/non-daemon and skip the systemctl check.
+func TestIsDaemonService_LaunchAgent(t *testing.T) {
+	assert.True(t, IsDaemonService("launch_agent"))
+	// git stays non-daemon — it's a CLI tool with no running process
+	// to probe.
+	assert.False(t, IsDaemonService("git"))
+	// CLI tool prefixes still bypass the daemon probe.
+	assert.False(t, IsDaemonService("node21"))
+	assert.False(t, IsDaemonService("composer"))
+}
+
 // TestGetContainerName guards the Traefik "Unknown" bug: Traefik runs as
 // a Docker container, so it must resolve to a container name (probed via
 // docker inspect) rather than a systemd unit.

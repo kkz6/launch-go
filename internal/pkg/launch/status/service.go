@@ -157,10 +157,16 @@ func IsDaemonService(software string) bool {
 		}
 	}
 
-	// Non-daemon services (CLI tools, package managers)
+	// Non-daemon services (CLI tools, package managers). launch_agent
+	// is intentionally NOT here: install_launch_agent.sh writes
+	// /etc/systemd/system/launch-agent.service, so the service IS a
+	// real systemd daemon and `systemctl is-active launch-agent` is
+	// the correct probe. Marking it non-daemon used to short-circuit
+	// the probe to StateInstalled regardless of actual state — that's
+	// why the Services tab perpetually showed the agent as "Installed"
+	// even when it was Running (or Failed).
 	nonDaemonServices := map[string]bool{
-		"launch_agent": true,
-		"git":          true,
+		"git": true,
 	}
 
 	return !nonDaemonServices[software]
@@ -195,6 +201,12 @@ func GetSystemdServiceName(software string) string {
 		// so `systemctl is-active docker` is the correct probe. Without
 		// this case it fell through to "" and reported "Unknown".
 		return "docker"
+	case software == "launch_agent":
+		// install_launch_agent.sh writes /etc/systemd/system/launch-agent.service
+		// — same shape as Docker. Without this case the probe fell
+		// through to "" and the row sat on the persisted (often months
+		// stale) status.
+		return "launch-agent"
 	default:
 		return ""
 	}
