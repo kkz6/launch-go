@@ -102,25 +102,30 @@ func (s *Service) GetAgentVersionInfo(ctx context.Context, serverID, teamID stri
 	}, nil
 }
 
-// agentUpdateAvailable is true when `latest` is a known semver and
-// `installed` is either older or unparseable (e.g. the stale "latest" /
-// "master" placeholders that predate version injection — those should
-// prompt an update so the row picks up a real version).
+// agentUpdateAvailable is true whenever the installed version differs
+// from the latest published release. We deliberately don't gate purely
+// on semver "less-than" — legacy seed builds report nonsense major
+// numbers like "v1.0" that compare as newer than the real latest
+// (v0.8.0), which would hide the update banner from exactly the
+// servers that need it most. The launch-util release line is the
+// single source of truth; if the installed string isn't equal to
+// latest (normalising whitespace + leading "v"), we offer an update.
+//
+// "Unparseable" stays an update-trigger so the legacy "latest" /
+// "master" placeholders also surface the banner.
 func agentUpdateAvailable(installed, latest string) bool {
-	lp := parseSemver(latest)
-	if lp == nil {
+	latestNorm := normalizeAgentVersion(latest)
+	if latestNorm == "" {
 		return false // we don't actually know what the latest is
 	}
-	ip := parseSemver(installed)
-	if ip == nil {
-		return true // installed version unknown but a real release exists
+	installedNorm := normalizeAgentVersion(installed)
+	if installedNorm == "" {
+		return true // installed unknown but a real release exists
 	}
-	for i := 0; i < 3; i++ {
-		if ip[i] != lp[i] {
-			return ip[i] < lp[i]
-		}
-	}
-	return false
+	// Anything that doesn't exactly match the latest tag is treated as
+	// out-of-date. This is the right call for a single-line release
+	// channel (one repo, one stream of vN.M.P tags).
+	return installedNorm != latestNorm
 }
 
 func normalizeAgentVersion(v string) string {
