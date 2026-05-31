@@ -172,10 +172,13 @@ func (s *Service) ListDatabases(ctx context.Context, serverID, teamID string) ([
 		Enabled    bool   `gorm:"column:enabled"`
 	}
 	var rows []backupRow
+	// NOTE: the backups table has no soft-delete column (BaseModel only
+	// carries id/created_at/updated_at), so we don't filter on deleted_at
+	// — adding the column would be a schema change, not a query fix.
 	err = s.DB().WithContext(ctx).
 		Table("backup_databases AS bd").
 		Select("bd.database_id, bd.backup_id, b.path, b.enabled").
-		Joins("JOIN backups AS b ON b.id = bd.backup_id AND b.deleted_at IS NULL").
+		Joins("JOIN backups AS b ON b.id = bd.backup_id").
 		Where("bd.database_id IN ?", dbIDs).
 		Where("b.server_id = ?", serverID).
 		Where("b.team_id = ?", teamID).
