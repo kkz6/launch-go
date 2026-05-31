@@ -101,8 +101,11 @@ type BackupJobResponse struct {
 	Size              int64  `json:"size"`
 	SizeInMB          int64  `json:"size_in_mb"`
 	Error             string `json:"error,omitempty"`
-	CreatedAt         string `json:"created_at"`
-	UpdatedAt         string `json:"updated_at"`
+	// TaskID drives the live log console: the UI streams the run's
+	// tar/upload output via ServerLogViewer entity="task".
+	TaskID    *string `json:"task_id,omitempty"`
+	CreatedAt string  `json:"created_at"`
+	UpdatedAt string  `json:"updated_at"`
 }
 
 // ToBackupJobResponse converts a BackupJob model to BackupJobResponse
@@ -119,6 +122,7 @@ func ToBackupJobResponse(job *models.BackupJob) BackupJobResponse {
 		Status:            string(job.Status),
 		Size:              size,
 		SizeInMB:          job.GetSizeInMB(),
+		TaskID:            job.TaskID,
 		CreatedAt:         pkgdto.FormatTimeOrEmpty(job.CreatedAt),
 		UpdatedAt:         pkgdto.FormatTimeOrEmpty(job.UpdatedAt),
 	}

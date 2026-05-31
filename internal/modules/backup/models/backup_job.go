@@ -16,6 +16,10 @@ type BackupJob struct {
 	StorageProviderID uint64                      `gorm:"column:storage_provider_id;not null;index" json:"storage_provider_id"`
 	Size              *int                        `gorm:"type:int" json:"size,omitempty"`
 	Error             *string                     `gorm:"type:longtext" json:"error,omitempty"`
+	// TaskID links the run to the server-tasks row the worker created;
+	// the UI uses it to stream live tar/upload output via
+	// ServerLogViewer entity="task". NULL for legacy/pending rows.
+	TaskID *string `gorm:"column:task_id;type:char(26);index" json:"task_id,omitempty"`
 
 	// Relations
 	Backup          *Backup          `gorm:"foreignKey:BackupID;references:ID" json:"backup,omitempty"`
