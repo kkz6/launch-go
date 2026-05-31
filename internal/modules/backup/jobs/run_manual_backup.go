@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/hibiken/asynq"
@@ -137,7 +138,12 @@ func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 			msg = runErr.Error()
 		}
 		if output != "" {
-			msg += "\n" + output
+			// The full transcript still lives behind View Logs; the
+			// error column only needs a clean one-liner. Strip the
+			// `::LAUNCH::` control markers + the verbose `==>` step
+			// echoes so the row tooltip shows just the actionable
+			// failure message (e.g. "no include paths configured").
+			msg += "\n" + cleanScriptError(output)
 		}
 		j.recordFailure(ctx, msg, j.job.TaskID)
 		return nil
@@ -278,6 +284,33 @@ func truncate(s string, n int) string {
 		return s
 	}
 	return s[:n] + "…"
+}
+
+// cleanScriptError reduces the raw script transcript to just the lines
+// worth surfacing on the row tooltip: drop `::LAUNCH::` control markers
+// (they're for the marker handler, not humans) and the verbose `==>`
+// step echoes. The full transcript still lives behind View Logs.
+func cleanScriptError(output string) string {
+	var keep []string
+	for _, line := range strings.Split(output, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "::LAUNCH::") {
+			continue
+		}
+		if strings.HasPrefix(trimmed, "==>") {
+			continue
+		}
+		keep = append(keep, trimmed)
+	}
+	// Last few lines are the most diagnostic (the actual failure tail);
+	// cap to avoid dumping a multi-page script into a tooltip.
+	if len(keep) > 5 {
+		keep = keep[len(keep)-5:]
+	}
+	return strings.Join(keep, "\n")
 }
 
 func NewRunManualBackupTask(serverID, backupID string, userID *string) (*asynq.Task, error) {
