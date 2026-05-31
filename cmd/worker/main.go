@@ -150,6 +150,15 @@ func main() {
 	dockerModule := docker.NewModule(builder)
 	gitModule := git.NewModule(builder)
 	siteModule := site.NewModule(builder)
+
+	// Worker-side host-key persister: same wiring as the API
+	// process, registered so deploy/backup/site jobs that connect
+	// over SSH pin the host key the first time and refuse on
+	// mismatch afterwards. Boot-time registration only — no per-job
+	// plumbing required downstream.
+	taskrunner.RegisterHostKeyPersister(func(ctx context.Context, serverID, hostKey string) error {
+		return serverModule.Repos().Server().UpdateHostKey(ctx, serverID, hostKey)
+	})
 	scriptModule := script.NewModule(builder)
 
 	// Set up cross-module dependencies

@@ -24,6 +24,7 @@ type ServerRepository interface {
 	UpdateStatus(ctx context.Context, id string, status types.ServerStatus) error
 	UpdateProgress(ctx context.Context, id string, progress int, step string) error
 	UpdateFields(ctx context.Context, id string, fields map[string]any) error
+	UpdateHostKey(ctx context.Context, serverID, hostKey string) error
 	Archive(ctx context.Context, id string) error
 	Unarchive(ctx context.Context, id string) error
 	Delete(ctx context.Context, id string) error
