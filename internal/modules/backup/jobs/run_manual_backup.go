@@ -88,9 +88,20 @@ func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 	_ = json.Unmarshal([]byte(j.backup.IncludeFiles), &includes)
 	_ = json.Unmarshal([]byte(j.backup.ExcludeFiles), &excludes)
 
+	// Resolve linked databases → dump specs. Best-effort: skip any that
+	// can't be resolved and log instead of failing the whole run, but if
+	// the operator selected databases and NONE can be resolved, fail
+	// loudly (better than silently uploading an empty archive).
+	dumps, dumpErr := j.resolveDatabaseDumps(ctx)
+	if dumpErr != nil {
+		j.recordFailure(ctx, fmt.Sprintf("resolve database dumps: %v", dumpErr), nil)
+		return nil
+	}
+
 	cfg := tasks.RunBackupConfig{
 		JobID:          j.job.ID,
 		BackupID:       j.backup.ID,
+		Databases:      dumps,
 		IncludeFiles:   includes,
 		ExcludeFiles:   excludes,
 		Endpoint:       s3.Endpoint,
@@ -227,6 +238,104 @@ func (j *RunManualBackupJob) broadcast(event string, data map[string]any) {
 		data["team_id"] = j.backup.TeamID
 	}
 	j.Deps.BroadcastToTeam(j.backup.TeamID, event, data)
+}
+
+// resolveDatabaseDumps loads the databases linked to this backup
+// (backup_databases → databases → users) and pairs them with the
+// server's installed DB engine to produce one DatabaseDump per
+// selected database, each with an authenticated dump command shape.
+//
+// Returns nil if the backup has no linked databases (the run is then
+// files-only). Returns an error if linked DBs exist but none can be
+// resolved — better to fail loudly than silently skip a backup the
+// operator explicitly asked for.
+func (j *RunManualBackupJob) resolveDatabaseDumps(ctx context.Context) ([]tasks.DatabaseDump, error) {
+	databaseIDs, err := j.Deps.Repos.Backup().GetBackupDatabaseIDs(ctx, j.backup.ID)
+	if err != nil {
+		return nil, fmt.Errorf("load backup_databases: %w", err)
+	}
+	if len(databaseIDs) == 0 {
+		return nil, nil
+	}
+	if j.Deps.DatabaseRepos == nil {
+		return nil, fmt.Errorf(
+			"backup links %d database(s) but the database module is not wired into the worker", len(databaseIDs),
+		)
+	}
+
+	// Engine is per-server, not per-database — look it up once. The
+	// services table records what was installed via the provision flow.
+	engine, err := j.detectServerDBEngine(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("detect server database engine: %w", err)
+	}
+
+	out := make([]tasks.DatabaseDump, 0, len(databaseIDs))
+	for _, dbID := range databaseIDs {
+		db, err := j.Deps.DatabaseRepos.Database().FindByIDsAndServer(ctx, []string{dbID}, j.server.ID)
+		if err != nil || len(db) == 0 {
+			j.Deps.Logger.Warn().Str("database_id", dbID).
+				Msg("backup: linked database not found — skipping")
+			continue
+		}
+		// Pick the first user that has access — a backup just needs
+		// read perms, so any linked user works; root is preferred.
+		users, err := j.Deps.DatabaseRepos.User().FindByDatabase(ctx, dbID)
+		if err != nil || len(users) == 0 {
+			j.Deps.Logger.Warn().Str("database_id", dbID).
+				Msg("backup: no database_users linked — skipping")
+			continue
+		}
+		user := users[0]
+		for _, u := range users {
+			if u.Name == "root" {
+				user = u
+				break
+			}
+		}
+		password := ""
+		if user.Password != nil && user.Password.Valid {
+			// EncryptedNullableString stores the plaintext on .String
+			// after GORM Scan decrypts it; .Valid distinguishes NULL.
+			password = user.Password.String
+		}
+		out = append(out, tasks.DatabaseDump{
+			Name:     db[0].Name,
+			Engine:   engine,
+			Username: user.Name,
+			Password: password,
+		})
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf(
+			"all %d linked database(s) were unresolvable (missing rows / no users)", len(databaseIDs),
+		)
+	}
+	return out, nil
+}
+
+// detectServerDBEngine returns "mysql" / "postgres" / "mariadb" based
+// on which database-server service is installed on this server. We
+// pick the first hit; servers running multiple engines simultaneously
+// aren't a supported configuration today.
+func (j *RunManualBackupJob) detectServerDBEngine(ctx context.Context) (string, error) {
+	svcs, err := j.Deps.ServerRepos.Service().FindByServer(ctx, j.server.ID)
+	if err != nil {
+		return "", err
+	}
+	for _, s := range svcs {
+		// Match by prefix so future mysql/postgres versions don't need
+		// a code change here.
+		switch {
+		case strings.HasPrefix(s.Software, "mysql"):
+			return "mysql", nil
+		case strings.HasPrefix(s.Software, "postgres") || strings.HasPrefix(s.Software, "postgresql"):
+			return "postgres", nil
+		case strings.HasPrefix(s.Software, "mariadb"):
+			return "mariadb", nil
+		}
+	}
+	return "", fmt.Errorf("no database engine (mysql/postgres/mariadb) installed on this server")
 }
 
 // loadS3Creds materialises the linked storage provider's S3Credentials.

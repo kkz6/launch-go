@@ -158,12 +158,18 @@ func main() {
 	siteModule.SetCronCreator(adapters.NewCronCreatorAdapter(serverModule.Service()))
 	siteModule.SetDatabaseManager(adapters.NewDatabaseManagerAdapter(databaseModule.Service()))
 
+	// Backup module needs the database module's repos so manual backup
+	// runs can dump linked databases. Construct once and wire before
+	// kernel registration so RegisterJobs sees a non-nil registry.
+	backupModule := backup.NewModule(builder)
+	backupModule.SetDatabaseRepos(databaseModule.Repos())
+
 	// Register all modules with the kernel
 	kernel.
 		Register(serverModule).
 		Register(databaseModule).
 		Register(dockerModule).
-		Register(backup.NewModule(builder)).
+		Register(backupModule).
 		Register(gitModule).
 		Register(siteModule).
 		Register(scriptModule).

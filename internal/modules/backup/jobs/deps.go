@@ -5,6 +5,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
+	databaserepos "github.com/kkz6/launch-go/internal/modules/database/repositories"
 	servercontracts "github.com/kkz6/launch-go/internal/modules/server/contracts"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertasks "github.com/kkz6/launch-go/internal/modules/server/tasks"
@@ -20,6 +21,13 @@ type JobDeps struct {
 	*pkgjobs.Deps
 	Repos       *repositories.Registry
 	ServerRepos servercontracts.RepositoryRegistry
+	// DatabaseRepos is the launch-go database module's repository
+	// registry — backup jobs need it to resolve the linked databases
+	// + database_users for a backup config so the run script can dump
+	// each selected database before tarring/uploading. nil-tolerant:
+	// when not wired (e.g. older callers, tests), database dumps are
+	// skipped and the backup is files-only.
+	DatabaseRepos *databaserepos.Registry
 	// TaskRunnerDeps lets backup jobs build a taskrunner.TaskRunner the
 	// same way the docker/server modules do, so a manual backup can run
 	// an SSH script with TrackInDB + OnTaskCreated (powers the live log
@@ -34,8 +42,15 @@ func (d *JobDeps) RunTask(server *servermodels.Server, task taskrunner.Task) *se
 	return d.TaskRunnerDeps.NewRunner(server, task)
 }
 
-// NewJobDeps creates a new JobDeps from app dependencies.
-func NewJobDeps(appDeps app.Deps, repos *repositories.Registry, serverRepos servercontracts.RepositoryRegistry) *JobDeps {
+// NewJobDeps creates a new JobDeps from app dependencies. databaseRepos
+// is optional — pass nil from older callers; backup jobs degrade
+// gracefully to files-only when it isn't wired.
+func NewJobDeps(
+	appDeps app.Deps,
+	repos *repositories.Registry,
+	serverRepos servercontracts.RepositoryRegistry,
+	databaseRepos *databaserepos.Registry,
+) *JobDeps {
 	return &JobDeps{
 		Deps: &pkgjobs.Deps{
 			DB:          appDeps.DB,
@@ -44,8 +59,9 @@ func NewJobDeps(appDeps app.Deps, repos *repositories.Registry, serverRepos serv
 			Broadcaster: appDeps.WebSocket,
 			Dispatcher:  appDeps.Dispatcher,
 		},
-		Repos:       repos,
-		ServerRepos: serverRepos,
+		Repos:         repos,
+		ServerRepos:   serverRepos,
+		DatabaseRepos: databaseRepos,
 		TaskRunnerDeps: &servertasks.TaskRunnerDeps{
 			DB:          appDeps.DB,
 			Queue:       appDeps.Queue,
