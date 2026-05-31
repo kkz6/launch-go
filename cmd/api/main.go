@@ -240,6 +240,11 @@ func (a *Application) registerModules() {
 	siteModule := site.NewModule(builder)
 	dnsModule := dns.NewModule(builder)
 	backupModule := backup.NewModule(builder)
+	// Manual backup runs in the worker need the database module's repos
+	// to dump linked databases — same wiring lives in cmd/worker/main.go
+	// for the actual job execution. The API doesn't run backup jobs but
+	// wires the same setter so the dependency graph stays consistent.
+	backupModule.SetDatabaseRepos(databaseModule.Repos())
 	certificateModule := certificate.NewModule(builder)
 	billingModule := billing.NewModule(builder)
 	gitModule := git.NewModule(builder)

@@ -10,15 +10,27 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
 )
 
+// DatabaseDump describes one database to dump as part of the backup.
+// Engine selects the dump command (mysqldump vs pg_dump). Password
+// travels inline; we keep it off the commandline via env vars in the
+// generated script (PGPASSWORD / MYSQL_PWD).
+type DatabaseDump struct {
+	Name     string // database name on the server
+	Engine   string // "mysql", "postgres" (normalised from server-software keys)
+	Username string
+	Password string
+}
+
 // RunBackupConfig carries everything the rendered script needs to dump
 // + upload one server backup. Credentials travel via env vars to keep
 // them off the commandline; bucket/region/endpoint/path-style are
 // non-secret and ride as flags.
 type RunBackupConfig struct {
-	JobID        string   // backup_jobs row id (ULID)
-	BackupID     string   // parent backup row id (ULID) — drives the S3 key
-	IncludeFiles []string // server-side paths to archive
-	ExcludeFiles []string // glob-style exclusions passed to tar
+	JobID        string         // backup_jobs row id (ULID)
+	BackupID     string         // parent backup row id (ULID) — drives the S3 key
+	Databases    []DatabaseDump // logical databases to dump before tarring
+	IncludeFiles []string       // server-side filesystem paths to archive
+	ExcludeFiles []string       // glob-style exclusions passed to tar
 
 	Endpoint       string
 	Region         string
@@ -59,16 +71,52 @@ func RunBackupScript(cfg RunBackupConfig) string {
 fi
 
 mkdir -p "${TMP_DIR}"
+DUMP_DIR="${TMP_DIR}/databases"
+mkdir -p "${DUMP_DIR}"
 trap 'rm -rf "${TMP_DIR}"' EXIT
 
 echo "==> Server backup starting (job ${JOB_ID})"
-echo "==> [1/2] Archiving include paths..."
-echo "::LAUNCH::backup_step::archiving"
 `)
 
-	// Build the tar command. tar's --exclude can repeat; include paths
-	// come positionally. -C / so the archive stores absolute paths
-	// rooted at /, matching how operators expect to restore them.
+	// Step 1 — database dumps. Each linked database becomes a
+	// per-engine dump file under $DUMP_DIR; tar in step 2 picks them
+	// up. Credentials ride via env vars (MYSQL_PWD / PGPASSWORD) so
+	// they don't appear in `ps`.
+	hasDumps := false
+	for _, d := range cfg.Databases {
+		if d.Name == "" {
+			continue
+		}
+		hasDumps = true
+		engine := strings.ToLower(d.Engine)
+		safe := safeFilename(d.Name)
+		out := fmt.Sprintf("${DUMP_DIR}/%s.sql.gz", safe)
+		fmt.Fprintf(&b, "echo \"==> Dumping %s database %q...\"\n", engine, d.Name)
+		switch {
+		case strings.HasPrefix(engine, "mysql") || engine == "mariadb":
+			// `MYSQL_PWD` is honoured by the mysql client. Use
+			// --single-transaction for crash-consistent InnoDB
+			// dumps without locking tables.
+			fmt.Fprintf(&b, "MYSQL_PWD=%s mysqldump --single-transaction --quick -u %s %s | gzip > %s\n",
+				shellEscape(d.Password), shellEscape(d.Username), shellEscape(d.Name), out)
+		case strings.HasPrefix(engine, "postgres"):
+			fmt.Fprintf(&b, "PGPASSWORD=%s pg_dump -U %s %s | gzip > %s\n",
+				shellEscape(d.Password), shellEscape(d.Username), shellEscape(d.Name), out)
+		default:
+			fmt.Fprintf(&b, "echo \"unsupported database engine %s for %s — skipping\" >&2\n",
+				shellEscape(engine), shellEscape(d.Name))
+			continue
+		}
+	}
+
+	b.WriteString("\necho \"==> Archiving backup...\"\n")
+	b.WriteString("echo \"::LAUNCH::backup_step::archiving\"\n")
+
+	// Step 2 — tar everything (include paths + the dumps directory).
+	// tar's --exclude can repeat; positional args come last. -C / so
+	// the archive stores absolute paths rooted at /, matching how
+	// operators expect to restore them. The dumps directory lives
+	// under TMP_DIR so we add it via a second `-C` block.
 	var tarArgs strings.Builder
 	tarArgs.WriteString("tar --warning=no-file-changed -czf \"${TMP_FILE}\"")
 	for _, ex := range cfg.ExcludeFiles {
@@ -77,21 +125,29 @@ echo "::LAUNCH::backup_step::archiving"
 		}
 		fmt.Fprintf(&tarArgs, " --exclude=%s", shellEscape(ex))
 	}
-	tarArgs.WriteString(" -C /")
-	includesEmpty := true
-	for _, inc := range cfg.IncludeFiles {
-		inc = strings.TrimPrefix(strings.TrimSpace(inc), "/")
-		if inc == "" {
-			continue
+	hasIncludes := false
+	if len(cfg.IncludeFiles) > 0 {
+		tarArgs.WriteString(" -C /")
+		for _, inc := range cfg.IncludeFiles {
+			inc = strings.TrimPrefix(strings.TrimSpace(inc), "/")
+			if inc == "" {
+				continue
+			}
+			fmt.Fprintf(&tarArgs, " %s", shellEscape(inc))
+			hasIncludes = true
 		}
-		fmt.Fprintf(&tarArgs, " %s", shellEscape(inc))
-		includesEmpty = false
 	}
-	if includesEmpty {
-		// Defensive — the configure-time form requires at least one
-		// include path, but a misconfigured row would silently archive
-		// the whole filesystem rooted at /. Fail loudly.
-		b.WriteString("echo \"backup has no include paths configured — refusing to run\" >&2\nexit 1\n")
+	if hasDumps {
+		// Add the dumps directory contents (databases/ subfolder in
+		// the archive). Switching -C mid-command applies to following
+		// positional args.
+		tarArgs.WriteString(" -C \"${TMP_DIR}\" databases")
+	}
+
+	if !hasDumps && !hasIncludes {
+		// Truly nothing to back up — fail loudly. (Refusing to run is
+		// safer than tar'ing an empty archive into S3.)
+		b.WriteString("echo \"backup has no databases selected and no include paths — nothing to back up\" >&2\nexit 1\n")
 	} else {
 		fmt.Fprintf(&b, "%s\n", tarArgs.String())
 	}
@@ -160,6 +216,28 @@ func s3Flags(bucket, region, endpoint string, forcePath bool) string {
 // is closed-then-reopened around an escaped literal.
 func shellEscape(s string) string {
 	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
+}
+
+// safeFilename strips characters that are awkward in a dump filename
+// (path separators, NULs) so a database with a colourful name doesn't
+// blow up the tar archive layout. Conservative — anything not in
+// [A-Za-z0-9._-] becomes "_".
+func safeFilename(name string) string {
+	var b strings.Builder
+	for _, r := range name {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9',
+			r == '.', r == '_', r == '-':
+			b.WriteRune(r)
+		default:
+			b.WriteRune('_')
+		}
+	}
+	out := b.String()
+	if out == "" {
+		out = "db"
+	}
+	return out
 }
 
 // ParseRunMarkers pulls the final object_key + size_bytes out of the

@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/backup/jobs"
 	"github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/backup/services"
+	databaserepos "github.com/kkz6/launch-go/internal/modules/database/repositories"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/service"
@@ -30,6 +31,19 @@ type Module struct {
 
 	// Cross-module repositories (needed for backup jobs that access server data)
 	serverRepos *serverrepos.Registry
+
+	// Database module's repo registry. Optional — set via
+	// SetDatabaseRepos() from the host process so manual backup runs
+	// can dump the linked databases (mysqldump / pg_dump) before
+	// tarring. Without it, runs are files-only.
+	databaseRepos *databaserepos.Registry
+}
+
+// SetDatabaseRepos wires the database module's repository registry so
+// backup jobs can resolve linked databases + database_users for dump.
+// Call this from the host process after both modules are constructed.
+func (m *Module) SetDatabaseRepos(repos *databaserepos.Registry) {
+	m.databaseRepos = repos
 }
 
 // NewModule creates a new backup module
@@ -61,7 +75,7 @@ func (m *Module) createServices() *services.ServiceRegistry {
 
 // RegisterJobs registers background job handlers (implements app.JobRegistrar)
 func (m *Module) RegisterJobs(mux *asynq.ServeMux) {
-	jobs.Register(mux, m.Deps(), m.repos, m.serverRepos)
+	jobs.Register(mux, m.Deps(), m.repos, m.serverRepos, m.databaseRepos)
 }
 
 // Repos returns the repository registry
