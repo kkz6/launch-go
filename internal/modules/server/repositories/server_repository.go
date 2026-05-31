@@ -27,6 +27,18 @@ func NewServerRepository(db *gorm.DB) *ServerRepository {
 	}
 }
 
+// UpdateHostKey persists the SSH host key discovered the first time
+// we connected to the server (trust-on-first-use). Subsequent
+// connections will compare against this stored value and refuse
+// the handshake on mismatch. Scoped tight: just the one column,
+// no touching of updated_at, no race with other writers.
+func (r *ServerRepository) UpdateHostKey(ctx context.Context, serverID, hostKey string) error {
+	return r.DB.WithContext(ctx).
+		Model(&models.Server{}).
+		Where("id = ?", serverID).
+		Update("host_key", hostKey).Error
+}
+
 // servicesByInstallOrder forces preloaded services to come back in the
 // order they were installed. Without an explicit ORDER BY, Postgres is
 // free to return rows in any order — usually heap order, but it shifts

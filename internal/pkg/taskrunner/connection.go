@@ -14,6 +14,23 @@ type Connection struct {
 	User       string
 	PrivateKey string
 	ScriptPath string // Remote path for scripts (default: ~/.launch)
+
+	// ServerID + HostKey power TOFU host-key verification.
+	//
+	//   HostKey == "" → first connect on a server that's never been
+	//                   pinned. The callback captures the live key
+	//                   and persists it via the package-level
+	//                   persister registered at boot.
+	//   HostKey != "" → every subsequent connect compares against
+	//                   the stored value and refuses on mismatch.
+	//
+	// ServerID is needed only so the persister knows which row to
+	// update on the TOFU path; callers connecting to one-off boxes
+	// (e.g. fresh provisions where the row already exists but the
+	// model hasn't been refetched) can leave it empty and the
+	// persister silently no-ops.
+	ServerID string
+	HostKey  string
 }
 
 // GetScriptPath returns the script storage path on the remote server
@@ -52,6 +69,8 @@ func (c *Connection) NewSSHClient(t ...time.Duration) (*SSHClient, error) {
 		Port:       port,
 		User:       c.User,
 		PrivateKey: c.PrivateKey,
+		ServerID:   c.ServerID,
+		HostKey:    c.HostKey,
 		Timeout:    sshTimeout,
 	})
 }

@@ -240,6 +240,18 @@ func (a *Application) registerModules() {
 	siteModule := site.NewModule(builder)
 	dnsModule := dns.NewModule(builder)
 	backupModule := backup.NewModule(builder)
+
+	// Wire the SSH host-key TOFU persister so the taskrunner can
+	// pin a server's host key the first time we connect to it.
+	// Subsequent connections refuse the handshake if the live host
+	// key doesn't match — the only path that still falls back to
+	// the legacy "ignore host keys" behaviour is ad-hoc CLI usage
+	// where no ServerID is supplied. Registered at boot so every
+	// downstream caller (terminal WS, deploy jobs, backup jobs, …)
+	// gets the same persister without explicit plumbing.
+	taskrunner.RegisterHostKeyPersister(func(ctx context.Context, serverID, hostKey string) error {
+		return serverModule.Repos().Server().UpdateHostKey(ctx, serverID, hostKey)
+	})
 	// Manual backup runs in the worker need the database module's repos
 	// to dump linked databases — same wiring lives in cmd/worker/main.go
 	// for the actual job execution. The API doesn't run backup jobs but

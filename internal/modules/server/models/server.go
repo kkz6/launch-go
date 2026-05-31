@@ -40,6 +40,13 @@ type Server struct {
 	PrivateIPv4               *string                `gorm:"column:private_ipv4;type:varchar(255)" json:"-"`
 	PublicKey                 dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
 	PrivateKey                dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
+	// HostKey is the SSH host key (base64-encoded wire format) pinned
+	// on the first connection. Empty until the first connect — then
+	// every subsequent connection compares the live key against this
+	// stored value and refuses to authenticate on mismatch. Public
+	// data by definition, so this is plain text rather than the
+	// EncryptedString that wraps the private key on line 42.
+	HostKey                   string                 `gorm:"column:host_key;type:text" json:"-"`
 	UserPublicKey             dbtype.EncryptedString `gorm:"column:user_public_key;type:longtext" json:"-"`
 	Username                  *string                `gorm:"type:varchar(255)" json:"username,omitempty"`
 	Password                  dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
@@ -209,6 +216,8 @@ func (s *Server) ConnectionAsRoot() *taskrunner.Connection {
 		User:       s.RootUsername(),
 		PrivateKey: s.PrivateKey.String(),
 		ScriptPath: s.GetScriptPath(s.RootUsername()),
+		ServerID:   s.ID,
+		HostKey:    s.HostKey,
 	}
 }
 
@@ -231,6 +240,8 @@ func (s *Server) ConnectionAsUser(username ...string) *taskrunner.Connection {
 		User:       user,
 		PrivateKey: s.PrivateKey.String(),
 		ScriptPath: s.GetScriptPath(user),
+		ServerID:   s.ID,
+		HostKey:    s.HostKey,
 	}
 }
 

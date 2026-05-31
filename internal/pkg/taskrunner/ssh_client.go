@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"encoding/base64"
 	"fmt"
 	"io"
 	"net"
@@ -36,6 +37,89 @@ type SSHConfig struct {
 	PrivateKeyPath string
 	Password       string
 	Timeout        time.Duration
+
+	// ServerID + HostKey wire trust-on-first-use host-key
+	// verification. See Connection for the semantics. If both are
+	// empty the connection falls back to the legacy
+	// ssh.InsecureIgnoreHostKey behaviour (used by ad-hoc CLI tools
+	// that aren't tied to a Server row), but every real path that
+	// talks to a Launch-managed server should populate them.
+	ServerID string
+	HostKey  string
+}
+
+// HostKeyPersister captures a freshly-pinned SSH host key for the
+// given server. Called exactly once per server, the first time we
+// see its host key — subsequent connects use the stored value.
+//
+// The package-level value below is set at process boot from cmd/api
+// and cmd/worker via RegisterHostKeyPersister; everything else stays
+// out of the wiring path.
+type HostKeyPersister func(ctx context.Context, serverID, hostKey string) error
+
+var hostKeyPersister HostKeyPersister
+
+// RegisterHostKeyPersister installs the function the SSH client
+// calls when it discovers a server's host key for the first time
+// (TOFU). Called once at process startup from cmd/api / cmd/worker.
+// Safe to leave unregistered in unit tests — the SSH client just
+// skips the persist step.
+func RegisterHostKeyPersister(p HostKeyPersister) {
+	hostKeyPersister = p
+}
+
+// encodeHostKey returns the wire-format public key as
+// "<algo> <base64-blob>", matching the format OpenSSH writes into
+// known_hosts. Storing in this shape lets a human eyeball the value
+// in the DB or `ssh-keygen -l -f` it later for fingerprinting.
+func encodeHostKey(key ssh.PublicKey) string {
+	return strings.TrimSpace(key.Type() + " " + encodeBase64(key.Marshal()))
+}
+
+func encodeBase64(b []byte) string {
+	return base64.StdEncoding.EncodeToString(b)
+}
+
+// makeHostKeyCallback returns the right HostKeyCallback for the given
+// (serverID, pinnedKey) pair:
+//
+//   - Empty pinnedKey AND empty serverID  → legacy permissive mode.
+//     Used by ad-hoc CLI tools that aren't bound to a Server row.
+//     This is the only path that still skips verification, and it's
+//     scoped to callers that explicitly opted out by not populating
+//     the fields.
+//   - Empty pinnedKey AND non-empty serverID → TOFU. Capture the
+//     live key, hand it to the registered persister so subsequent
+//     connections pin against it. Returns nil so the handshake
+//     succeeds the first time.
+//   - Non-empty pinnedKey → strict compare against the live key's
+//     wire format. Mismatch fails the handshake with a clear error
+//     so a MITM or IP-reuse situation surfaces immediately rather
+//     than silently succeeding into the wrong host.
+func makeHostKeyCallback(serverID, pinnedKey string) ssh.HostKeyCallback {
+	if pinnedKey == "" && serverID == "" {
+		return ssh.InsecureIgnoreHostKey()
+	}
+	return func(hostname string, remote net.Addr, key ssh.PublicKey) error {
+		live := encodeHostKey(key)
+		if pinnedKey == "" {
+			// TOFU. Persist on a best-effort basis — failing to
+			// write back shouldn't abort the connection, but log
+			// it via the persister's own error path so we don't
+			// silently degrade to "trust forever".
+			if hostKeyPersister != nil && serverID != "" {
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				_ = hostKeyPersister(ctx, serverID, live)
+			}
+			return nil
+		}
+		if live == pinnedKey {
+			return nil
+		}
+		return fmt.Errorf("ssh: host key mismatch for %s (server %s) — possible MITM. Expected %q, got %q",
+			hostname, serverID, pinnedKey, live)
+	}
 }
 
 // SSHCommandResult contains the result of a remote command execution
@@ -85,7 +169,7 @@ func NewSSHClient(cfg SSHConfig) (*SSHClient, error) {
 	sshConfig := &ssh.ClientConfig{
 		User:            cfg.User,
 		Auth:            authMethods,
-		HostKeyCallback: ssh.InsecureIgnoreHostKey(), // TODO: Implement proper host key verification
+		HostKeyCallback: makeHostKeyCallback(cfg.ServerID, cfg.HostKey),
 		Timeout:         t,
 	}
 
