@@ -116,10 +116,40 @@ func (r *ServiceRepository) UpdateWithTypeData(ctx context.Context, id string, s
 	})
 }
 
-// SetDefault sets the is_default flag for a service
+// SetDefault sets the is_default flag for a service. When marking a
+// service as default, all sibling services of the same type on the
+// same server are atomically unset — there can only be one default
+// per (server_id, type). Belt-and-braces against callers forgetting
+// to call UnsetDefaultPhp first (which is how the two-stars-on-PHP
+// bug crept in: schema column default was TRUE, so newly-installed
+// PHP versions auto-claimed the flag without ever going through
+// SetDefault).
 func (r *ServiceRepository) SetDefault(ctx context.Context, id string, isDefault bool) error {
-	return r.UpdateFields(ctx, id, map[string]interface{}{
-		"is_default": isDefault,
+	if !isDefault {
+		// Clearing a single row is harmless — no exclusion required.
+		return r.UpdateFields(ctx, id, map[string]interface{}{
+			"is_default": false,
+		})
+	}
+	return r.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		// Resolve the target's (server_id, type) so the unset-siblings
+		// update can be scoped without a second round-trip.
+		var target models.InstalledService
+		if err := tx.Select("id", "server_id", "type").
+			First(&target, "id = ?", id).Error; err != nil {
+			return err
+		}
+		// Unset every other row in the same (server_id, type) group
+		// before flipping the target on. Doing it in this order avoids
+		// the brief window where two rows could appear default.
+		if err := tx.Model(&models.InstalledService{}).
+			Where("server_id = ? AND type = ? AND id <> ?", target.ServerID, target.Type, id).
+			Update("is_default", false).Error; err != nil {
+			return err
+		}
+		return tx.Model(&models.InstalledService{}).
+			Where("id = ?", id).
+			Update("is_default", true).Error
 	})
 }
 
