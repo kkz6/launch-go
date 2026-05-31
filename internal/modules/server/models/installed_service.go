@@ -17,7 +17,13 @@ type InstalledService struct {
 	Name      string              `gorm:"type:varchar(255);not null" json:"name"`
 	Version   string              `gorm:"type:varchar(255);not null" json:"version"`
 	Status    types.ServiceStatus `gorm:"type:varchar(255);not null" json:"status"`
-	IsDefault bool                `gorm:"column:is_default;type:tinyint(1);not null" json:"is_default"`
+	// default:false is intentional — without it GORM relies on the
+	// database column default, which was historically TRUE and caused
+	// every newly-installed service to silently steal the "default"
+	// flag from siblings (PHP 8.4 grabbing the star from PHP 8.3,
+	// etc). Migration 0054 also flips the column default; the tag
+	// makes the insert side belt-and-braces.
+	IsDefault bool                `gorm:"column:is_default;type:tinyint(1);not null;default:false" json:"is_default"`
 	Unit      *string             `gorm:"type:varchar(255)" json:"unit,omitempty"`
 	Software  string              `gorm:"type:varchar(255);not null" json:"software"`
 	TaskID    *string             `gorm:"column:task_id;type:char(26);index" json:"task_id,omitempty"`
