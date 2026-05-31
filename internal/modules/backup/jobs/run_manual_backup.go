@@ -88,15 +88,27 @@ func (j *RunManualBackupJob) Handle(ctx context.Context) error {
 	_ = json.Unmarshal([]byte(j.backup.IncludeFiles), &includes)
 	_ = json.Unmarshal([]byte(j.backup.ExcludeFiles), &excludes)
 
+	// Backup row's `Path` field — the form labels it "Backup Path"
+	// with helper "The path on the server to backup". Treat it as an
+	// implicit include so an operator who fills in just that field
+	// (the common case before the include/exclude inputs landed)
+	// still gets a working backup. Explicit includes are additive.
+	if rootPath := strings.TrimSpace(j.backup.Path); rootPath != "" && rootPath != "/" {
+		includes = append([]string{rootPath}, includes...)
+	}
+
 	cfg := tasks.RunBackupConfig{
-		JobID:          j.job.ID,
-		BackupID:       j.backup.ID,
-		IncludeFiles:   includes,
-		ExcludeFiles:   excludes,
-		Endpoint:       s3.Endpoint,
-		Region:         s3.Region,
-		Bucket:         s3.Bucket,
-		PathPrefix:     joinPath(j.backup.Path, s3.Path),
+		JobID:        j.job.ID,
+		BackupID:     j.backup.ID,
+		IncludeFiles: includes,
+		ExcludeFiles: excludes,
+		Endpoint:     s3.Endpoint,
+		Region:       s3.Region,
+		Bucket:       s3.Bucket,
+		// S3 sub-prefix comes from the provider's default Path (the
+		// per-team "where do uploads go in the bucket"), NOT from
+		// the backup row's Path (that's a source path on the box).
+		PathPrefix:     strings.Trim(s3.Path, "/"),
 		AccessKey:      s3.Key,
 		SecretKey:      s3.Secret,
 		ForcePathStyle: s3.ForcePathStyle,
@@ -251,32 +263,6 @@ func (j *RunManualBackupJob) loadS3Creds(ctx context.Context) (models.S3Credenti
 		return models.S3Credentials{}, fmt.Errorf("provider %d has incomplete S3 credentials", j.backup.StorageProviderID)
 	}
 	return c, nil
-}
-
-// joinPath stitches the backup-row sub-path with the provider's default
-// prefix — neither is required, both are stripped of stray slashes.
-func joinPath(backupPath, providerPath string) string {
-	a := trimSlash(providerPath)
-	b := trimSlash(backupPath)
-	switch {
-	case a != "" && b != "":
-		return a + "/" + b
-	case a != "":
-		return a
-	default:
-		return b
-	}
-}
-
-func trimSlash(s string) string {
-	for len(s) > 0 && (s[0] == '/' || s[len(s)-1] == '/') {
-		if s[0] == '/' {
-			s = s[1:]
-		} else {
-			s = s[:len(s)-1]
-		}
-	}
-	return s
 }
 
 func truncate(s string, n int) string {
