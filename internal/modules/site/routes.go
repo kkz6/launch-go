@@ -164,6 +164,9 @@ func (m *Module) registerRedirectRoutes(router gofiber.Router, svc *services.Ser
 	r := svc.Redirect()
 	router.Get("/:id/redirects", fiberutil.IndexDoubleNested("serverId", "id", "Redirects retrieved", r.List))
 	router.Post("/:id/redirects", fiberutil.CreateDoubleNested[dto.CreateRedirectRequest]("serverId", "id", "Redirect created", r.Create))
+	// Patch matches what the launch-nuxt Edit dialog has been calling
+	// all along; without this route the PATCH came back 405.
+	router.Patch("/:id/redirects/:redirectId", fiberutil.UpdateDoubleNested[dto.UpdateRedirectRequest]("serverId", "id", "redirectId", "Redirect updated", r.Update))
 	router.Delete("/:id/redirects/:redirectId", fiberutil.DeleteDoubleNested("serverId", "id", "redirectId", r.Delete))
 }
 

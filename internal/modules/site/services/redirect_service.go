@@ -8,6 +8,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site/dto"
 	"github.com/kkz6/launch-go/internal/modules/site/jobs"
 	"github.com/kkz6/launch-go/internal/modules/site/models"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/launch/activity"
 )
 
@@ -65,6 +66,47 @@ func (s *RedirectService) List(ctx context.Context, siteID, serverID, teamID str
 		out[i] = dto.ToRedirectResponse(&redirects[i])
 	}
 	return out, nil
+}
+
+// Update edits an existing redirect (from/to/type) and re-triggers
+// the Caddyfile update so the on-server reverse proxy picks up the
+// new rule. Signature matches UpdateDoubleNestedFunc:
+// (ctx, redirectID, parent=siteID, grandparent=serverID, teamID, userID, req).
+//
+// Status is reset to "pending" so the Caddyfile update job can flip
+// it back to "installed" on success — mirrors the Create lifecycle.
+func (s *RedirectService) Update(ctx context.Context, redirectID, siteID, serverID, teamID, userID string, req *dto.UpdateRedirectRequest) (dto.RedirectResponse, error) {
+	_ = teamID
+	if _, err := s.Repos().Site().FindByIDAndServer(ctx, siteID, serverID); err != nil {
+		return dto.RedirectResponse{}, err
+	}
+	redirect, err := s.Repos().Redirect().FindByID(ctx, redirectID)
+	if err != nil {
+		return dto.RedirectResponse{}, err
+	}
+	if redirect.SiteID != siteID {
+		return dto.RedirectResponse{}, fiberutil.NotFound()
+	}
+
+	if req.From != nil {
+		redirect.From = *req.From
+	}
+	if req.To != nil {
+		redirect.To = *req.To
+	}
+	if req.Type != nil {
+		redirect.Mode = *req.Type
+	}
+	// Flip back to pending so the caddyfile-update job re-applies it.
+	redirect.Status = "pending"
+
+	if err := s.Repos().Redirect().Update(ctx, redirect); err != nil {
+		return dto.RedirectResponse{}, err
+	}
+
+	activity.RecordWithLog(ctx, "site", "updated", userID, redirect, "Redirect was updated")
+	s.dispatchCaddyfileUpdate(redirect.SiteID, userID)
+	return dto.ToRedirectResponse(redirect), nil
 }
 
 // Delete deletes a redirect. Signature matches DeleteDoubleNestedFunc.

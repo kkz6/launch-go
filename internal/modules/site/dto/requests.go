@@ -140,6 +140,17 @@ type CreateRedirectRequest struct {
 	Type int    `json:"type" validate:"required,oneof=301 302 307 308"`
 }
 
+// UpdateRedirectRequest represents the request to update an existing
+// redirect. All fields optional — caller sends only what's
+// changing. Previously the Edit dialog in launch-nuxt POSTed a
+// PATCH to /redirects/:id which had no matching route → 405. This
+// DTO + the route + the service method close that gap.
+type UpdateRedirectRequest struct {
+	From *string `json:"from" validate:"omitempty,max=500"`
+	To   *string `json:"to" validate:"omitempty,max=500"`
+	Type *int    `json:"type" validate:"omitempty,oneof=301 302 307 308"`
+}
+
 // RollbackRequest represents a rollback request
 type RollbackRequest struct {
 	DeploymentID string `json:"deployment_id" validate:"required,ulid"`
