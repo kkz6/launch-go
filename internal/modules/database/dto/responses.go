@@ -17,12 +17,26 @@ type DatabaseResponse struct {
 	CreatedAt                 string              `json:"created_at"`
 	UpdatedAt                 string              `json:"updated_at"`
 	Users                     []DatabaseUserBrief `json:"users,omitempty"`
+	// Backups are the server-level backup configurations that include
+	// this database in their dump set. Populated by ListDatabases so the
+	// UI can surface a "Run Backup" row action that targets the right
+	// backup record. Empty when no backup is configured for the DB.
+	Backups []DatabaseBackupBrief `json:"backups,omitempty"`
 }
 
 // DatabaseUserBrief is a brief representation of a database user
 type DatabaseUserBrief struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
+}
+
+// DatabaseBackupBrief lists a backup configuration that includes a
+// database. The UI uses it to render a per-row "Run Backup" action and
+// to know which backup record to POST .../backups/:id/run against.
+type DatabaseBackupBrief struct {
+	ID      string `json:"id"`
+	Path    string `json:"path"`
+	Enabled bool   `json:"enabled"`
 }
 
 // DatabaseUserResponse represents the response for a database user

@@ -149,7 +149,59 @@ func (s *Service) ListDatabases(ctx context.Context, serverID, teamID string) ([
 	if err != nil {
 		return nil, err
 	}
-	return dto.ToDatabaseResponseList(databases), nil
+	resp := dto.ToDatabaseResponseList(databases)
+
+	// Attach the backup configurations that include each database so
+	// the Databases tab can render a "Run Backup" row action. Done via
+	// a single join keyed by database_id to avoid the N+1 a per-row
+	// repo call would produce. We deliberately query by raw table name
+	// (backup_databases / backups) to keep the database module
+	// independent of the backup module's Go types — the schema
+	// contract is owned by migration 0048+ and is stable.
+	if len(resp) == 0 || !s.HasDB() {
+		return resp, nil
+	}
+	dbIDs := make([]string, 0, len(resp))
+	for _, d := range resp {
+		dbIDs = append(dbIDs, d.ID)
+	}
+	type backupRow struct {
+		DatabaseID string `gorm:"column:database_id"`
+		BackupID   string `gorm:"column:backup_id"`
+		Path       string `gorm:"column:path"`
+		Enabled    bool   `gorm:"column:enabled"`
+	}
+	var rows []backupRow
+	err = s.DB().WithContext(ctx).
+		Table("backup_databases AS bd").
+		Select("bd.database_id, bd.backup_id, b.path, b.enabled").
+		Joins("JOIN backups AS b ON b.id = bd.backup_id AND b.deleted_at IS NULL").
+		Where("bd.database_id IN ?", dbIDs).
+		Where("b.server_id = ?", serverID).
+		Where("b.team_id = ?", teamID).
+		Find(&rows).Error
+	if err != nil {
+		// Don't fail the whole list response if the join hits a transient
+		// error — the row action just won't show. Surface in logs so we
+		// notice; the rest of the page is unaffected.
+		s.Logger.Warn().Err(err).Str("server_id", serverID).
+			Msg("failed to load backup associations for databases list")
+		return resp, nil
+	}
+	byDB := make(map[string][]dto.DatabaseBackupBrief, len(rows))
+	for _, r := range rows {
+		byDB[r.DatabaseID] = append(byDB[r.DatabaseID], dto.DatabaseBackupBrief{
+			ID:      r.BackupID,
+			Path:    r.Path,
+			Enabled: r.Enabled,
+		})
+	}
+	for i := range resp {
+		if bs, ok := byDB[resp[i].ID]; ok {
+			resp[i].Backups = bs
+		}
+	}
+	return resp, nil
 }
 
 // DeleteDatabase marks a database for uninstallation and dispatches the
