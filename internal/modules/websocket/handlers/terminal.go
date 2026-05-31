@@ -338,6 +338,25 @@ func (h *TerminalHandler) handleSSHConnection(wsConn *websocket.Conn, conn *task
 	// Wait for session to end
 	session.Wait()
 	close(done)
+
+	// Signal the browser that the shell has exited so the UI's status
+	// indicator flips to "Disconnected" immediately. Without this
+	// frame the WS sits open until the next ping fails or the read
+	// deadline expires (~minutes), and the browser ends up rendering
+	// "1006 abnormal closure" long after the actual exit.
+	//
+	// Tightening the read deadline to "now" also unblocks the
+	// handleWebSocketInput goroutine's ReadMessage call so wg.Wait()
+	// below returns promptly instead of stalling on the shell's exit.
+	writeMu.Lock()
+	_ = wsConn.WriteControl(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocket.CloseNormalClosure, "shell exited"),
+		time.Now().Add(terminalWriteWait),
+	)
+	writeMu.Unlock()
+	_ = wsConn.SetReadDeadline(time.Now())
+
 	wg.Wait()
 
 	h.LogInfo("SSH session ended", "server", serverName)
