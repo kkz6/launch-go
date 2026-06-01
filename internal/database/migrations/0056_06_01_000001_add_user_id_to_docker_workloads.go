@@ -39,49 +39,52 @@ func init() {
 }
 
 func addUserIDToDockerWorkloadsUp(db *gorm.DB) error {
-	if err := db.Exec(`
-		ALTER TABLE docker_applications
-			ADD COLUMN user_id CHAR(26) NULL;
-		CREATE INDEX IF NOT EXISTS docker_applications_user_id_idx
-			ON docker_applications (user_id);
-
-		ALTER TABLE docker_composes
-			ADD COLUMN user_id CHAR(26) NULL;
-		CREATE INDEX IF NOT EXISTS docker_composes_user_id_idx
-			ON docker_composes (user_id);
-	`).Error; err != nil {
-		return err
-	}
-
-	// Backfill from source_controls.user_id where the workload's
-	// source_config references one. UPDATE … FROM … WHERE … is
-	// Postgres-style and matches the rest of the migrations in this
-	// directory.
-	if err := db.Exec(`
-		UPDATE docker_applications da
+	// Each db.Exec carries ONE statement. The Postgres driver
+	// auto-prepares every Exec; bundling multiple semicolon-separated
+	// commands into a single call fails with SQLSTATE 42601 ("cannot
+	// insert multiple commands into a prepared statement"), as we
+	// learned the hard way on a production deploy. ALTER + CREATE
+	// INDEX have to be separate calls.
+	statements := []string{
+		`ALTER TABLE docker_applications ADD COLUMN user_id CHAR(26) NULL`,
+		`CREATE INDEX IF NOT EXISTS docker_applications_user_id_idx
+			ON docker_applications (user_id)`,
+		`ALTER TABLE docker_composes ADD COLUMN user_id CHAR(26) NULL`,
+		`CREATE INDEX IF NOT EXISTS docker_composes_user_id_idx
+			ON docker_composes (user_id)`,
+		// Backfill from source_controls.user_id where the workload's
+		// source_config references one. UPDATE … FROM … WHERE … is
+		// Postgres-style and matches the rest of the migrations in this
+		// directory.
+		`UPDATE docker_applications da
 		   SET user_id = sc.user_id
 		  FROM source_controls sc
 		 WHERE da.user_id IS NULL
-		   AND sc.id = NULLIF(da.source_config->>'source_control_id', '')
-	`).Error; err != nil {
-		return err
-	}
-
-	return db.Exec(`
-		UPDATE docker_composes dc
+		   AND sc.id = NULLIF(da.source_config->>'source_control_id', '')`,
+		`UPDATE docker_composes dc
 		   SET user_id = sc.user_id
 		  FROM source_controls sc
 		 WHERE dc.user_id IS NULL
-		   AND sc.id = NULLIF(dc.source_config->>'source_control_id', '')
-	`).Error
+		   AND sc.id = NULLIF(dc.source_config->>'source_control_id', '')`,
+	}
+
+	for _, sql := range statements {
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func addUserIDToDockerWorkloadsDown(db *gorm.DB) error {
-	return db.Exec(`
-		ALTER TABLE docker_applications
-			DROP COLUMN IF EXISTS user_id;
-
-		ALTER TABLE docker_composes
-			DROP COLUMN IF EXISTS user_id;
-	`).Error
+	statements := []string{
+		`ALTER TABLE docker_applications DROP COLUMN IF EXISTS user_id`,
+		`ALTER TABLE docker_composes DROP COLUMN IF EXISTS user_id`,
+	}
+	for _, sql := range statements {
+		if err := db.Exec(sql).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
