@@ -322,24 +322,53 @@ func (s *ApplicationService) DeleteApplication(
 		}
 	}
 
-	if err := s.Repos().Application().Delete(ctx, id); err != nil {
+	// In-flight delete: flip status to "deleting" and broadcast
+	// `docker.application.updated` so the UI shows a spinner + label
+	// instead of the old "row vanishes the instant the API returns"
+	// shape. The actual soft-delete + container teardown happens in
+	// RemoveApplicationJob — on success it broadcasts
+	// `docker.application.deleted` which removes the row; on failure
+	// it reverts the status to `previousStatus` so the row stays
+	// usable.
+	//
+	// Refuse a second Delete on an app already mid-delete (409) —
+	// otherwise duplicate clicks would each dispatch a removal job
+	// and the second one would race the soft-delete.
+	if app.Status == dockertypes.ApplicationStatusDeleting {
+		return fiberutil.Conflict("This application is already being deleted.")
+	}
+	previousStatus := string(app.Status)
+	if err := s.Repos().Application().UpdateStatus(ctx, app.ID, string(dockertypes.ApplicationStatusDeleting)); err != nil {
 		return err
 	}
 
-	if rmTask, err := jobs.NewRemoveApplicationTask(
-		app.ID, app.ProjectID, app.ServerID, app.TeamID, containerName, volumeNames,
-	); err == nil {
-		if enqErr := s.EnqueueTask(rmTask); enqErr != nil {
-			s.LogError(enqErr, "failed to dispatch app removal", "application_id", app.ID)
-		}
-	}
-
-	s.BroadcastToTeam(teamID, "docker.application.deleted", map[string]any{
+	s.BroadcastToTeam(teamID, "docker.application.updated", map[string]any{
 		"id":         app.ID,
 		"project_id": app.ProjectID,
 		"server_id":  app.ServerID,
 		"team_id":    app.TeamID,
+		"status":     string(dockertypes.ApplicationStatusDeleting),
 	})
+
+	if rmTask, err := jobs.NewRemoveApplicationTask(
+		app.ID, app.ProjectID, app.ServerID, app.TeamID, containerName, volumeNames, previousStatus,
+	); err == nil {
+		if enqErr := s.EnqueueTask(rmTask); enqErr != nil {
+			// Couldn't queue — revert immediately so the row isn't
+			// stuck on "deleting" forever waiting for a job that
+			// never came.
+			s.LogError(enqErr, "failed to dispatch app removal", "application_id", app.ID)
+			_ = s.Repos().Application().UpdateStatus(ctx, app.ID, previousStatus)
+			s.BroadcastToTeam(teamID, "docker.application.updated", map[string]any{
+				"id":         app.ID,
+				"project_id": app.ProjectID,
+				"server_id":  app.ServerID,
+				"team_id":    app.TeamID,
+				"status":     previousStatus,
+			})
+			return fiberutil.Internal("Failed to queue the deletion. Try again.")
+		}
+	}
 	return nil
 }
 

@@ -11,6 +11,16 @@ const (
 	ApplicationStatusRunning  ApplicationStatus = "running"
 	ApplicationStatusStopped  ApplicationStatus = "stopped"
 	ApplicationStatusFailed   ApplicationStatus = "failed"
+	// ApplicationStatusDeleting marks the in-flight window between
+	// "user clicked Delete" and "container is actually gone". The row
+	// stays visible during this period so the UI can show a spinner
+	// and the operator knows the delete is real but not done. On the
+	// success path the row is then soft-deleted and the
+	// docker.application.deleted event removes it from the listing.
+	// On failure (docker stop / rm errors, SSH dies, asynq retries
+	// exhaust) the status reverts to whatever it was before the
+	// delete so the row stays usable.
+	ApplicationStatusDeleting ApplicationStatus = "deleting"
 )
 
 func (s ApplicationStatus) String() string { return string(s) }
