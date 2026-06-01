@@ -3,6 +3,7 @@ package services
 import (
 	backuprepos "github.com/kkz6/launch-go/internal/modules/backup/repositories"
 	"github.com/kkz6/launch-go/internal/modules/docker/repositories"
+	gitproviders "github.com/kkz6/launch-go/internal/modules/git/providers"
 	serverrepos "github.com/kkz6/launch-go/internal/modules/server/repositories"
 	"github.com/kkz6/launch-go/internal/pkg/service"
 	"github.com/kkz6/launch-go/internal/pkg/taskrunner"
@@ -31,6 +32,16 @@ type ServiceDeps struct {
 	// a "workflow file has empty LAUNCH_WEBHOOK_URL variable" error
 	// rather than silently committing something broken.
 	AppURL string
+	// GitProviders gives services that handle GHA-aware actions
+	// (currently ApplicationService.Deploy + ComposeService.Deploy)
+	// access to the GitHub provider so they can call
+	// workflow_dispatch when build_location=github_actions. Without
+	// this, the "Deploy" button silently falls through to the on-
+	// server git+docker-build path even on GHA-configured workloads.
+	// Nil-tolerant: dev rigs without a configured GitHub App still
+	// boot; services surface a clean "GitHub App not configured"
+	// error when a user actually tries to deploy a GHA app there.
+	GitProviders *gitproviders.ProviderFactory
 }
 
 // BaseService is the shared dependency carrier for every docker service.
@@ -75,4 +86,12 @@ func (s *BaseService) Notifier() taskrunner.NotifierService {
 // for why this matters to GHA-build flows.
 func (s *BaseService) AppURL() string {
 	return s.serviceDeps.AppURL
+}
+
+// GitProviders returns the git provider factory injected at module
+// boot. May be nil on dev rigs without a configured GitHub App —
+// callers that need it (the Deploy path on github_actions workloads)
+// MUST nil-check and surface a clean error rather than panicking.
+func (s *BaseService) GitProviders() *gitproviders.ProviderFactory {
+	return s.serviceDeps.GitProviders
 }

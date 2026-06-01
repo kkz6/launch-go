@@ -492,6 +492,24 @@ func (s *ApplicationService) Deploy(
 		return nil, fiberutil.Conflict("A deployment is already in progress for this application")
 	}
 
+	// GitHub-Actions branch. When the application is configured to
+	// build via GHA, the "Deploy" button MUST NOT enqueue the legacy
+	// on-server docker:deploy_application job — that would clone the
+	// repo and try to `docker build` on the target server, which is
+	// the exact bug we're fixing. Instead, we fire a workflow_dispatch
+	// on the customer's repo; GitHub Actions then builds + pushes the
+	// image and webhooks Launch back via /api/webhooks/docker/...
+	// which creates the real "deploying" deployment row.
+	//
+	// The pre-row we create here is a UX placeholder so the user sees
+	// "Pending — GitHub Actions dispatched" immediately. The terminal
+	// row will be a separate one keyed on the eventual gha_run_id —
+	// acceptable for v1; we can dedupe later by claim-on-arrive if
+	// the duplicate-row UX bothers anyone.
+	if app.BuildLocation == dockertypes.BuildLocationGitHubActions {
+		return s.deployViaGitHubActions(ctx, app, serverID, teamID)
+	}
+
 	now := time.Now().UTC()
 	deployment := &models.Deployment{
 		TargetType: "application",

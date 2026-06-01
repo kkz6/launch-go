@@ -232,5 +232,11 @@ func (m *Module) serviceDeps() *services.ServiceDeps {
 		// AppURL flows into GHA workflow template renders so the
 		// committed workflow file knows where to POST notifies.
 		AppURL: appURL,
+		// GitProviders is shared with the jobs package so the
+		// ApplicationService.Deploy / ComposeService.Deploy paths can
+		// call workflow_dispatch on GitHub when build_location=
+		// github_actions, instead of falling through to the legacy
+		// on-server build path. Nil-safe — services check before use.
+		GitProviders: m.providerFactory,
 	}
 }

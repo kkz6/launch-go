@@ -11,6 +11,22 @@ import (
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
+// putContentsResponseShaCarrier holds just the `sha` field from a
+// content / commit object in PutContents responses. Named (rather
+// than nested anonymous) so revive's no-nested-structs rule stays
+// happy — same JSON wire shape either way.
+type putContentsResponseShaCarrier struct {
+	SHA string `json:"sha"`
+}
+
+// putContentsResponse is the slim view of GitHub's PUT contents
+// response. Carries the blob sha (which the next update needs as the
+// If-Match-like "sha" field) and the commit sha (kept for log/UX).
+type putContentsResponse struct {
+	Content putContentsResponseShaCarrier `json:"content"`
+	Commit  putContentsResponseShaCarrier `json:"commit"`
+}
+
 // PutContents creates or updates a file in the repo at the given
 // path. existingSHA == "" → create; non-empty → update (acts as
 // If-Match — GitHub rejects with 409 if the file's current SHA
@@ -82,14 +98,7 @@ func (p *GitHubProvider) PutContents(
 	// GitHub uses for its If-Match conflict check. The commit SHA is
 	// useful for "show me the commit that did this" UX, but you can
 	// not use it as the existingSHA on a subsequent update.
-	var out struct {
-		Content struct {
-			SHA string `json:"sha"`
-		} `json:"content"`
-		Commit struct {
-			SHA string `json:"sha"`
-		} `json:"commit"`
-	}
+	var out putContentsResponse
 	if err := DecodeJSON(resp, &out); err != nil {
 		return "", err
 	}
@@ -288,4 +297,75 @@ func (p *GitHubProvider) DeleteActionsVariable(
 	}
 	raw, _ := io.ReadAll(resp.Body)
 	return fmt.Errorf("DeleteActionsVariable %s: status %d body %s", name, resp.StatusCode, string(raw))
+}
+
+// ErrWorkflowNotFound is returned by TriggerWorkflowDispatch when the
+// workflow file is not yet present on the repo (or has been deleted).
+// Callers that drive the GHA-deploy button use this to surface a clean
+// "GitHub Actions setup hasn't finished yet — retry once the workflow
+// has been committed" message rather than a generic 500.
+var ErrWorkflowNotFound = errors.New("workflow file not present on repo")
+
+// TriggerWorkflowDispatch fires a manual run of the named workflow on
+// the given branch. Used by the docker module's "Deploy" button when an
+// application or compose is configured for build_location=github_actions:
+// instead of running an on-server build, we ask GitHub Actions to run
+// the workflow whose `on: workflow_dispatch:` trigger we committed at
+// bootstrap time. The build then notifies Launch via the existing
+// webhook path on completion.
+//
+// GitHub API: POST /repos/{owner}/{repo}/actions/workflows/{workflow_file}/dispatches
+// docs: https://docs.github.com/en/rest/actions/workflows#create-a-workflow-dispatch-event
+//
+// workflowFile is the basename of the workflow file under
+// .github/workflows/ — e.g. "launch-deploy.yml". GitHub also accepts the
+// numeric workflow id; we use the filename so we don't have to keep an
+// id around. Returns 204 on success, ErrWorkflowNotFound on 404 (the
+// workflow file isn't on the repo yet — bootstrap hasn't run or the
+// user deleted it), permission errors otherwise.
+func (p *GitHubProvider) TriggerWorkflowDispatch(
+	ctx context.Context,
+	installationID, owner, repo, workflowFile, branch string,
+) error {
+	if workflowFile == "" {
+		return errors.New("TriggerWorkflowDispatch: workflowFile is required")
+	}
+	if branch == "" {
+		return errors.New("TriggerWorkflowDispatch: branch is required")
+	}
+
+	token, err := p.GetInstallationToken(ctx, installationID)
+	if err != nil {
+		return err
+	}
+
+	apiPath := fmt.Sprintf(
+		"/repos/%s/%s/actions/workflows/%s/dispatches",
+		owner, repo, workflowFile,
+	)
+	body := map[string]interface{}{"ref": branch}
+
+	resp, err := p.DoRaw(ctx, http.MethodPost, apiPath, token, body)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	switch resp.StatusCode {
+	case http.StatusNoContent:
+		return nil
+	case http.StatusNotFound:
+		// GitHub returns 404 when the workflow file doesn't exist on
+		// the default branch (or whichever ref it indexes from). Caller
+		// surfaces this as "GHA setup not finished yet" — actionable.
+		return ErrWorkflowNotFound
+	case http.StatusForbidden:
+		return ErrPermissionDenied
+	default:
+		raw, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf(
+			"TriggerWorkflowDispatch %s/%s/%s on %s: status %d body %s",
+			owner, repo, workflowFile, branch, resp.StatusCode, string(raw),
+		)
+	}
 }

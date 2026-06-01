@@ -434,18 +434,18 @@ func (s *ComposeService) PurgeComposeResources(
 	}
 
 	syntheticID := fmt.Sprintf("purge-%s", req.ProjectName)
-	if rmTask, err := jobs.NewRemoveComposeTask(
+	rmTask, err := jobs.NewRemoveComposeTask(
 		syntheticID, "", serverID, teamID,
 		req.ProjectName,
 		req.ProjectSlug,
 		req.ComposeSlug,
 		req.RemoveVolumes,
-	); err == nil {
-		if enqErr := s.EnqueueTask(rmTask); enqErr != nil {
-			return fmt.Errorf("enqueue purge job: %w", enqErr)
-		}
-	} else {
+	)
+	if err != nil {
 		return fmt.Errorf("build purge task: %w", err)
+	}
+	if enqErr := s.EnqueueTask(rmTask); enqErr != nil {
+		return fmt.Errorf("enqueue purge job: %w", enqErr)
 	}
 
 	s.BroadcastToTeam(teamID, "docker.compose.removed", map[string]any{
@@ -495,6 +495,15 @@ func (s *ComposeService) Deploy(
 	}
 	if c.Status == dockertypes.ApplicationStatusBuilding {
 		return nil, fiberutil.Conflict("A deployment is already in progress for this compose stack")
+	}
+
+	// GitHub-Actions branch — same rationale as
+	// ApplicationService.Deploy: when build_location=github_actions,
+	// fire a workflow_dispatch on the customer's repo instead of
+	// running the on-server compose build path. The eventual run
+	// notifies us back via /api/webhooks/docker/composes/.../deploy.
+	if c.BuildLocation == dockertypes.BuildLocationGitHubActions {
+		return s.deployViaGitHubActions(ctx, c, serverID, teamID)
 	}
 
 	now := time.Now().UTC()
