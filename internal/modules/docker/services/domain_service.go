@@ -29,6 +29,28 @@ func NewDomainService(deps *ServiceDeps) *DomainService {
 	return &DomainService{BaseService: NewBaseService(deps)}
 }
 
+// validateStoredCert enforces the one cross-field rule the struct tags
+// can't express on a *string: a "stored"-provider domain needs a real
+// 26-char (ULID) stored_certificate_id, while a letsencrypt domain
+// ignores it entirely. The DTO tag is only `omitempty,max=26` (NOT
+// len=26) on purpose: go-playground/validator's omitempty skips only
+// NIL pointers, so a non-nil pointer to "" — which the UI sends for
+// letsencrypt domains — used to trip `len=26` and 422 the whole
+// request even though the cert id is irrelevant. The exact-length
+// check lives here instead, gated on the provider actually being
+// "stored". provider must be the EFFECTIVE provider (empty string when
+// the caller isn't changing it on an update).
+func validateStoredCert(provider string, storedID *string) error {
+	if provider != "stored" {
+		return nil
+	}
+	if storedID == nil || len(*storedID) != 26 {
+		return fiberutil.Validation(
+			"Pick a certificate from your library — a stored-certificate domain needs a stored_certificate_id.")
+	}
+	return nil
+}
+
 // ListDomains returns the live domains attached to an application,
 // after validating the (server, project, app) chain.
 func (s *DomainService) ListDomains(
@@ -87,6 +109,9 @@ func (s *DomainService) CreateDomain(
 	certProvider := "letsencrypt"
 	if req.CertificateProvider != nil && *req.CertificateProvider != "" {
 		certProvider = *req.CertificateProvider
+	}
+	if err := validateStoredCert(certProvider, req.StoredCertificateID); err != nil {
+		return dto.DomainResponse{}, err
 	}
 
 	// ApplicationID is `*string` since the model went polymorphic
@@ -160,6 +185,18 @@ func (s *DomainService) UpdateDomain(
 	}
 	if req.CertificateProvider != nil && *req.CertificateProvider != "" {
 		updates["certificate_provider"] = *req.CertificateProvider
+	}
+	// Only enforce the stored-cert pairing when the caller is actually
+	// (re)setting the provider to "stored" — leaving it unset keeps the
+	// row's existing provider and shouldn't re-validate.
+	{
+		provider := ""
+		if req.CertificateProvider != nil {
+			provider = *req.CertificateProvider
+		}
+		if err := validateStoredCert(provider, req.StoredCertificateID); err != nil {
+			return dto.DomainResponse{}, err
+		}
 	}
 	if req.StoredCertificateID != nil {
 		if *req.StoredCertificateID == "" {
@@ -452,6 +489,9 @@ func (s *DomainService) CreateComposeDomain(
 	if req.CertificateProvider != nil && *req.CertificateProvider != "" {
 		certProvider = *req.CertificateProvider
 	}
+	if err := validateStoredCert(certProvider, req.StoredCertificateID); err != nil {
+		return dto.DomainResponse{}, err
+	}
 
 	ownerID := composeID
 	d := &models.ApplicationDomain{
@@ -522,6 +562,18 @@ func (s *DomainService) UpdateComposeDomain(
 	}
 	if req.CertificateProvider != nil && *req.CertificateProvider != "" {
 		updates["certificate_provider"] = *req.CertificateProvider
+	}
+	// Only enforce the stored-cert pairing when the caller is actually
+	// (re)setting the provider to "stored" — leaving it unset keeps the
+	// row's existing provider and shouldn't re-validate.
+	{
+		provider := ""
+		if req.CertificateProvider != nil {
+			provider = *req.CertificateProvider
+		}
+		if err := validateStoredCert(provider, req.StoredCertificateID); err != nil {
+			return dto.DomainResponse{}, err
+		}
 	}
 	if req.StoredCertificateID != nil {
 		if *req.StoredCertificateID == "" {
