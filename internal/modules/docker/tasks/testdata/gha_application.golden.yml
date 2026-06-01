@@ -138,7 +138,7 @@ jobs:
           GHCR_BEARER: ${{ steps.ghcr_token.outputs.bearer }}
           GHCR_BEARER_MINTED_AT: ${{ steps.ghcr_token.outputs.minted_at }}
         run: |
-          resp=$(curl --fail-with-body -sS -X POST \
+          resp=$(curl --fail-with-body -sS --connect-timeout 10 --max-time 30 -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(jq -nc \
@@ -176,27 +176,55 @@ jobs:
       # Bonus: the run now goes red when the deploy fails, instead of
       # reporting success for a build whose deploy never landed.
       - name: Wait for Launch deploy to finish
+        # Hard wall-clock cap on this step regardless of what the loop
+        # below does — if anything wedges, GitHub kills the step rather
+        # than letting the run hang for the whole job budget.
+        timeout-minutes: 22
         env:
           TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
           DEPLOYMENT_ID: ${{ steps.notify.outputs.deployment_id }}
         run: |
           set -uo pipefail
           url="${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/deployments/${DEPLOYMENT_ID}"
-          # ~25 min ceiling, comfortably under the job's timeout-minutes.
-          deadline=$(( $(date +%s) + 1500 ))
+          # Upper bound on a healthy-but-slow deploy; sits just under the
+          # step timeout so we exit cleanly with a message first.
+          deadline=$(( $(date +%s) + 1200 ))   # 20 min
+          # Fail FAST if Launch itself is unreachable or erroring — a
+          # broken backend must NOT keep this Action (and its runner)
+          # alive for the whole window. Brief blips (e.g. an API container
+          # restarting mid-deploy) are tolerated; a sustained outage bails.
+          fails=0
+          max_fails=10
           while :; do
-            body=$(curl -sS -H "Authorization: Bearer $TOKEN" "$url" || true)
-            status=$(printf '%s' "$body" | jq -r '.data.status // empty')
-            echo "deploy status: ${status:-<pending>}"
-            case "$status" in
-              success)
-                echo "Launch deploy succeeded."
-                exit 0 ;;
-              failed|cancelled|timeout)
-                echo "::error::Launch deploy ${status}"
-                printf '%s' "$body" | jq -r '.data.error // empty'
-                exit 1 ;;
-            esac
+            # --connect-timeout / --max-time so a hung backend can't make a
+            # single poll block forever. -w appends the HTTP status as the
+            # last line so we can tell "deploy in progress" from "backend
+            # broke".
+            resp=$(curl -sS --connect-timeout 10 --max-time 20 -w $'\n%{http_code}' \
+              -H "Authorization: Bearer $TOKEN" "$url" || true)
+            http=$(printf '%s' "$resp" | tail -n1); http=${http:-000}
+            body=$(printf '%s' "$resp" | sed '$d')
+            if [ "$http" = "200" ]; then
+              fails=0
+              status=$(printf '%s' "$body" | jq -r '.data.status // empty' 2>/dev/null || true)
+              echo "deploy status: ${status:-<pending>}"
+              case "$status" in
+                success)
+                  echo "Launch deploy succeeded."
+                  exit 0 ;;
+                failed|cancelled|timeout)
+                  echo "::error::Launch deploy ${status}"
+                  printf '%s' "$body" | jq -r '.data.error // empty' 2>/dev/null || true
+                  exit 1 ;;
+              esac
+            else
+              fails=$(( fails + 1 ))
+              echo "::warning::deploy status check failed (HTTP ${http}, ${fails}/${max_fails})"
+              if [ "$fails" -ge "$max_fails" ]; then
+                echo "::error::Launch status endpoint unreachable/erroring — aborting so this run doesn't hang."
+                exit 1
+              fi
+            fi
             if [ "$(date +%s)" -ge "$deadline" ]; then
               echo "::error::Timed out waiting for Launch deploy to finish"
               exit 1
@@ -206,14 +234,15 @@ jobs:
 
       - name: Notify Launch (failure)
         if: failure()
+        timeout-minutes: 2
         env:
           TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
         run: |
-          curl -sS -X POST \
+          curl -sS --connect-timeout 10 --max-time 30 -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(jq -nc \
               --arg run_id '${{ github.run_id }}' \
               --arg url    '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
               '{status:"failed", run_id:$run_id, run_url:$url}')" \
-            "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/status"
+            "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/status" || true
