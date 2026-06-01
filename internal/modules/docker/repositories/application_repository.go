@@ -21,6 +21,19 @@ func NewApplicationRepository(db *gorm.DB) *ApplicationRepository {
 	return &ApplicationRepository{Base: repository.NewBase[models.Application](db)}
 }
 
+// UpdateStatus is the single-column write used by lifecycle
+// transitions (deploy, delete, stop). Goes through Model+Update so
+// gorm doesn't bump every other column — keeps a delete-status
+// flip from accidentally touching, say, last_deployed_at.
+func (r *ApplicationRepository) UpdateStatus(
+	ctx context.Context, id string, status string,
+) error {
+	return r.DB.WithContext(ctx).
+		Model(&models.Application{}).
+		Where("id = ?", id).
+		Update("status", status).Error
+}
+
 // FindByIDAndTeamServer returns the application iff the (id, team, server)
 // triple matches. Same tenancy-defence as ProjectRepository — wrong
 // team/server returns NotFound rather than leaking that an ID exists.
