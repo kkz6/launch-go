@@ -129,6 +129,7 @@ jobs:
           echo "minted_at=$(date -u +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Notify Launch (success)
+        id: notify
         env:
           TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
           # Pass the bearer through an env var so jq's --arg gets it
@@ -137,7 +138,7 @@ jobs:
           GHCR_BEARER: ${{ steps.ghcr_token.outputs.bearer }}
           GHCR_BEARER_MINTED_AT: ${{ steps.ghcr_token.outputs.minted_at }}
         run: |
-          curl --fail-with-body -sS -X POST \
+          resp=$(curl --fail-with-body -sS -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(jq -nc \
@@ -149,7 +150,59 @@ jobs:
               --arg pull      "$GHCR_BEARER" \
               --arg minted_at "$GHCR_BEARER_MINTED_AT" \
               '{image_tag:$image, commit_sha:$sha, branch:$branch, run_id:$run_id, run_url:$url, ghcr_pull_token:$pull, ghcr_pull_token_minted_at:$minted_at}')" \
-            "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/deploy"
+            "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/deploy") \
+            || { echo "::error::Launch rejected the deploy notify"; echo "$resp"; exit 1; }
+          echo "$resp"
+          # Capture the deployment id so the next step can poll it. This
+          # is what lets us hold the job open until the deploy finishes.
+          deployment_id=$(printf '%s' "$resp" | jq -r '.data.deployment_id // empty')
+          if [ -z "$deployment_id" ]; then
+            echo "::error::Launch accepted the notify but returned no deployment_id; cannot wait for completion"
+            exit 1
+          fi
+          echo "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
+
+      # Block until Launch's worker has actually pulled + deployed.
+      #
+      # This is load-bearing, not cosmetic: the deploy worker pulls the
+      # private image from GHCR using the bearer we minted + relayed
+      # above, and that bearer is only valid WHILE THIS JOB IS RUNNING —
+      # GitHub revokes the run's GITHUB_TOKEN (and any registry token
+      # minted from it) the instant the job ends. If the job finished at
+      # "Notify Launch", the async pull raced job-teardown and died with
+      # "unauthenticated: User cannot be authenticated with the token
+      # provided." Polling keeps the token alive until the pull is done.
+      #
+      # Bonus: the run now goes red when the deploy fails, instead of
+      # reporting success for a build whose deploy never landed.
+      - name: Wait for Launch deploy to finish
+        env:
+          TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
+          DEPLOYMENT_ID: ${{ steps.notify.outputs.deployment_id }}
+        run: |
+          set -uo pipefail
+          url="${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/deployments/${DEPLOYMENT_ID}"
+          # ~25 min ceiling, comfortably under the job's timeout-minutes.
+          deadline=$(( $(date +%s) + 1500 ))
+          while :; do
+            body=$(curl -sS -H "Authorization: Bearer $TOKEN" "$url" || true)
+            status=$(printf '%s' "$body" | jq -r '.data.status // empty')
+            echo "deploy status: ${status:-<pending>}"
+            case "$status" in
+              success)
+                echo "Launch deploy succeeded."
+                exit 0 ;;
+              failed|cancelled|timeout)
+                echo "::error::Launch deploy ${status}"
+                printf '%s' "$body" | jq -r '.data.error // empty'
+                exit 1 ;;
+            esac
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Timed out waiting for Launch deploy to finish"
+              exit 1
+            fi
+            sleep 5
+          done
 
       - name: Notify Launch (failure)
         if: failure()

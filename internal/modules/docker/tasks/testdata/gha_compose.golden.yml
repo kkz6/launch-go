@@ -111,7 +111,11 @@ jobs:
   collect-and-notify:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 30 min (was 5): this job now blocks on the deploy itself via the
+    # "Wait for Launch deploy to finish" step below, which holds the job
+    # — and therefore the short-lived GHCR pull token it minted — open
+    # until Launch's worker has finished pulling + deploying.
+    timeout-minutes: 30
     # `packages: read` so the GHCR token-exchange step below can
     # mint a pull bearer. The build job has `packages: write` for
     # the per-service push; collect-and-notify only needs read.
@@ -166,12 +170,13 @@ jobs:
           echo "minted_at=$(date -u +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Notify Launch (success)
+        id: notify
         env:
           TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
           GHCR_BEARER: ${{ steps.ghcr_token.outputs.bearer }}
           GHCR_BEARER_MINTED_AT: ${{ steps.ghcr_token.outputs.minted_at }}
         run: |
-          curl --fail-with-body -sS -X POST \
+          resp=$(curl --fail-with-body -sS -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(jq -nc \
@@ -183,7 +188,50 @@ jobs:
               --arg pull          "$GHCR_BEARER" \
               --arg minted_at     "$GHCR_BEARER_MINTED_AT" \
               '{service_images:$images, commit_sha:$sha, branch:$branch, run_id:$run_id, run_url:$url, ghcr_pull_token:$pull, ghcr_pull_token_minted_at:$minted_at}')" \
-            "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/composes/01HJXVHGRGTQRX4P0G3Y8R6CK8/deploy"
+            "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/composes/01HJXVHGRGTQRX4P0G3Y8R6CK8/deploy") \
+            || { echo "::error::Launch rejected the deploy notify"; echo "$resp"; exit 1; }
+          echo "$resp"
+          deployment_id=$(printf '%s' "$resp" | jq -r '.data.deployment_id // empty')
+          if [ -z "$deployment_id" ]; then
+            echo "::error::Launch accepted the notify but returned no deployment_id; cannot wait for completion"
+            exit 1
+          fi
+          echo "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
+
+      # Block until the deploy lands. The relayed GHCR bearer is only
+      # valid while this job runs (GitHub revokes the run's GITHUB_TOKEN
+      # — and tokens minted from it — when the job ends), so we must hold
+      # the job open until the worker has pulled every service image.
+      # Without this the async pull races job-teardown and fails with
+      # "unauthenticated: User cannot be authenticated with the token
+      # provided." See the application template for the full rationale.
+      - name: Wait for Launch deploy to finish
+        env:
+          TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
+          DEPLOYMENT_ID: ${{ steps.notify.outputs.deployment_id }}
+        run: |
+          set -uo pipefail
+          url="${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/composes/01HJXVHGRGTQRX4P0G3Y8R6CK8/deployments/${DEPLOYMENT_ID}"
+          deadline=$(( $(date +%s) + 1500 ))
+          while :; do
+            body=$(curl -sS -H "Authorization: Bearer $TOKEN" "$url" || true)
+            status=$(printf '%s' "$body" | jq -r '.data.status // empty')
+            echo "deploy status: ${status:-<pending>}"
+            case "$status" in
+              success)
+                echo "Launch deploy succeeded."
+                exit 0 ;;
+              failed|cancelled|timeout)
+                echo "::error::Launch deploy ${status}"
+                printf '%s' "$body" | jq -r '.data.error // empty'
+                exit 1 ;;
+            esac
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Timed out waiting for Launch deploy to finish"
+              exit 1
+            fi
+            sleep 5
+          done
 
   notify-failure:
     needs: [discover, build, collect-and-notify]
