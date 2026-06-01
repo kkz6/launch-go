@@ -26,8 +26,14 @@ import (
 type ApplicationWorkflowData struct {
 	Branch         string
 	DockerfilePath string
-	LaunchBaseURL  string
-	AppID          string
+	// BuildType is the chosen builder: "dockerfile" | "nixpacks" | "".
+	// Empty means auto-detect (by Dockerfile presence) in the workflow;
+	// a non-empty value is honoured verbatim so an explicit choice isn't
+	// silently overridden (e.g. a "dockerfile" app fails loudly when the
+	// Dockerfile is missing instead of quietly building with Nixpacks).
+	BuildType     string
+	LaunchBaseURL string
+	AppID         string
 	// BuildSecretNames are the build-time secret identifiers the
 	// workflow's docker/build-push-action should mount via its
 	// `secrets:` input. Each entry maps to a repo secret named

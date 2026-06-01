@@ -2,8 +2,10 @@
 name: Launch Deploy
 
 on:
-  push:
-    branches: ["main"]
+  # Deploys are triggered explicitly from Launch (the Deploy button →
+  # workflow_dispatch). We intentionally do NOT auto-deploy on push:
+  # committing/syncing this workflow file, or pushing code, must never
+  # kick off a deploy on its own — only an explicit action does.
   workflow_dispatch:
 
 concurrency:
@@ -51,11 +53,28 @@ jobs:
       - name: Detect builder
         id: builder
         run: |
-          if [ -f "Dockerfile" ]; then
-            echo "kind=dockerfile" >> $GITHUB_OUTPUT
-          else
-            echo "kind=nixpacks"   >> $GITHUB_OUTPUT
-          fi
+          # Honour the build method chosen in Launch. Only "auto" (an
+          # empty BuildType) falls back to detecting by Dockerfile
+          # presence — an explicit choice is respected so e.g. a
+          # "dockerfile" app fails LOUDLY when its Dockerfile is missing
+          # instead of silently building with Nixpacks (and producing a
+          # surprising image).
+          case "" in
+            dockerfile)
+              if [ ! -f "Dockerfile" ]; then
+                echo "::error::Build method is 'dockerfile' but Dockerfile was not found in the repo. Add the Dockerfile, or switch the build method to Nixpacks in Launch."
+                exit 1
+              fi
+              echo "kind=dockerfile" >> $GITHUB_OUTPUT ;;
+            nixpacks)
+              echo "kind=nixpacks" >> $GITHUB_OUTPUT ;;
+            *)
+              if [ -f "Dockerfile" ]; then
+                echo "kind=dockerfile" >> $GITHUB_OUTPUT
+              else
+                echo "kind=nixpacks" >> $GITHUB_OUTPUT
+              fi ;;
+          esac
 
       - name: Build (Dockerfile)
         if: steps.builder.outputs.kind == 'dockerfile'
