@@ -1102,6 +1102,28 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Deployment started", dto.ToDeploymentResponse(deployment))
 	})
 
+	// Reload: recreate the stack with the current .env and no rebuild
+	// (reuse on-host images) so saved env changes apply fast. Build-time
+	// changes still go through /deploy.
+	composes.Post("/:id/reload", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		deployment, err := composeSvc.Reload(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		)
+		if err != nil {
+			return err
+		}
+		return fiberutil.Created(c, "Reload started", dto.ToDeploymentResponse(deployment))
+	})
+
 	// GitHub Actions detail-page actions for composes — mirror of the
 	// application trio above. Same semantics, just routed at the
 	// compose's URL.

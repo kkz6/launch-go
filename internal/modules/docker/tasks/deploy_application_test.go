@@ -51,6 +51,36 @@ func TestBuildDeployScript_Image(t *testing.T) {
 	mustNotContain(t, s, "docker build")
 }
 
+// TestBuildDeployScript_RecreateOnly pins the "Reload" path: even for a
+// git/dockerfile app (which would normally build), RecreateOnly skips
+// the build/clone/pull and re-runs the existing image with the fresh
+// env, preferring the running container's actual image.
+func TestBuildDeployScript_RecreateOnly(t *testing.T) {
+	s := buildDeployScript(DeployConfig{
+		DeploymentID:  "01HZ",
+		ProjectSlug:   "acme",
+		AppSlug:       "api",
+		ContainerName: "launch-acme-api",
+		SourceType:    dockertypes.SourceTypeGit, // would normally build…
+		RecreateOnly:  true,                      // …but reload skips it
+		Image:         "ghcr.io/acme/api:launch-abc1234",
+		EnvVars:       []EnvVar{{Key: "FOO", Value: "bar"}},
+	})
+	// Fallback image is the latest deployment's image_ref…
+	mustContain(t, s, `DOCKER_IMAGE="ghcr.io/acme/api:launch-abc1234"`)
+	// …but it prefers the running container's actual image.
+	mustContain(t, s, `docker inspect --format '{{.Config.Image}}' "${CONTAINER_NAME}"`)
+	// Guards the image is present locally — no pull on the reload path.
+	mustContain(t, s, `docker image inspect "${DOCKER_IMAGE}"`)
+	// Fresh env is written and the container is recreated.
+	mustContain(t, s, "FOO=bar")
+	mustContain(t, s, "docker run -d")
+	// The whole point: no build / clone / pull.
+	mustNotContain(t, s, "git clone")
+	mustNotContain(t, s, "docker build")
+	mustNotContain(t, s, `docker pull "${DOCKER_IMAGE}"`)
+}
+
 func TestBuildDeployScript_Git_DefaultDockerfilePath(t *testing.T) {
 	s := buildDeployScript(DeployConfig{
 		DeploymentID:  "01HZ",

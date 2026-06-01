@@ -54,6 +54,13 @@ type DeployComposePayload struct {
 	// OverrideRegistryPasswordMintedAtUnix mirrors the application
 	// payload — see DeployApplicationPayload for the rationale.
 	OverrideRegistryPasswordMintedAtUnix string `json:"override_registry_password_minted_at_unix,omitempty"`
+
+	// Recreate switches the stack into "reload" mode: re-run
+	// `docker compose up -d --remove-orphans` WITHOUT --build (ignoring
+	// any RunCommand override) after rewriting the .env, so changed
+	// runtime env is applied by reusing the on-host images. Used by the
+	// Reload action; build-time changes still go through a full Deploy.
+	Recreate bool `json:"recreate,omitempty"`
 }
 
 // String returns a redacted JSON view of the payload — same redaction
@@ -140,6 +147,11 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 	hydrateComposeSource(&cfg, j.compose)
 	// Same authenticated-clone treatment as application git deploys.
 	cfg.GitRepo = j.Deps.resolveAuthenticatedCloneURL(ctx, map[string]any(j.compose.SourceConfig), cfg.GitRepo)
+
+	// Reload mode: force a no-build `up -d` that reuses on-host images
+	// and applies the refreshed .env. Set before the ServiceImages
+	// branch so a reload never takes the GHA-rewrite path.
+	cfg.RecreateOnly = j.Payload.Recreate
 
 	// GHA path: if the webhook handed us a service_images map, thread
 	// it onto the deploy config. The renderer inserts a yq rewrite
@@ -442,6 +454,19 @@ func NewDeployComposeTask(composeID, deploymentID, serverID, teamID string) (*as
 		DeploymentID: deploymentID,
 		ServerID:     serverID,
 		TeamID:       teamID,
+	}, pkgjobs.Dedup("docker-deploy-compose", deploymentID))
+}
+
+// NewRecreateComposeTask enqueues a compose "reload": re-up the stack
+// with the current .env and no rebuild (reuse on-host images). Same job
+// + dedup slot as a deploy, with Recreate set.
+func NewRecreateComposeTask(composeID, deploymentID, serverID, teamID string) (*asynq.Task, error) {
+	return pkgjobs.TaskWithID(TypeDeployCompose, DeployComposePayload{
+		ComposeID:    composeID,
+		DeploymentID: deploymentID,
+		ServerID:     serverID,
+		TeamID:       teamID,
+		Recreate:     true,
 	}, pkgjobs.Dedup("docker-deploy-compose", deploymentID))
 }
 

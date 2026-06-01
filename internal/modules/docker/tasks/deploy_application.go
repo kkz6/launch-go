@@ -25,6 +25,19 @@ type DeployConfig struct {
 	SourceType dockertypes.SourceType
 	// Image source.
 	Image string
+
+	// RecreateOnly switches the script into "reload" mode: skip the
+	// source-resolution / build / pull stanza entirely and re-run the
+	// container from an image that's ALREADY on the host (Image must be
+	// set to that existing tag). Used by the Reload/Restart action to
+	// apply changed env vars / runtime config WITHOUT a rebuild — the
+	// container is removed and recreated (env is fixed at create time,
+	// so a plain `docker restart` would NOT pick up new env). The
+	// script guards that the image is present locally and fails with a
+	// "redeploy to rebuild" hint if it was pruned, rather than silently
+	// triggering a pull that would need registry creds we don't carry
+	// on the reload path.
+	RecreateOnly bool
 	// Git source.
 	GitRepo        string
 	GitBranch      string
@@ -152,12 +165,39 @@ func buildDeployScript(cfg DeployConfig) string {
 
 	b.WriteString("echo \"::LAUNCH::deploy_step::resolving_source\"\n")
 
-	switch cfg.SourceType {
-	case dockertypes.SourceTypeImage:
+	switch {
+	case cfg.RecreateOnly:
+		// Reload mode: reuse the image already on the host, no
+		// build/clone/pull. Everything downstream (env file, ports,
+		// volumes, labels, healthcheck) is identical to a normal deploy
+		// — only DOCKER_IMAGE's provenance differs. Guard that the
+		// image is actually present so a pruned host fails loud with an
+		// actionable hint instead of triggering an unauthenticated pull.
+		// Prefer the image the running/stopped container is actually
+		// using — that's the literal "what's deployed right now" we want
+		// to re-run. Fall back to the latest deployment's image_ref
+		// (passed as cfg.Image) only when there's no container to read.
+		fmt.Fprintf(&b, "DOCKER_IMAGE=%q\n", cfg.Image)
+		b.WriteString(`EXISTING_IMAGE="$(docker inspect --format '{{.Config.Image}}' "${CONTAINER_NAME}" 2>/dev/null || true)"
+if [ -n "${EXISTING_IMAGE}" ]; then
+  DOCKER_IMAGE="${EXISTING_IMAGE}"
+fi
+if [ -z "${DOCKER_IMAGE}" ]; then
+  echo "::LAUNCH::deploy_step::image_missing"
+  echo "No image found to restart from (no running container and no recorded image). Click Redeploy to build/pull it first." >&2
+  exit 1
+fi
+if ! docker image inspect "${DOCKER_IMAGE}" >/dev/null 2>&1; then
+  echo "::LAUNCH::deploy_step::image_missing"
+  echo "Image ${DOCKER_IMAGE} is not present on this host — it may have been pruned. Click Redeploy to rebuild/pull it, then Restart will work again." >&2
+  exit 1
+fi
+`)
+	case cfg.SourceType == dockertypes.SourceTypeImage:
 		b.WriteString(buildImageStanza(cfg))
-	case dockertypes.SourceTypeGit:
+	case cfg.SourceType == dockertypes.SourceTypeGit:
 		b.WriteString(buildGitStanza(cfg))
-	case dockertypes.SourceTypeDockerfile:
+	case cfg.SourceType == dockertypes.SourceTypeDockerfile:
 		b.WriteString(buildDockerfileStanza(cfg))
 	default:
 		// Defensive: should be caught by service validation, but never

@@ -81,6 +81,16 @@ type ComposeDeployConfig struct {
 	// Empty / nil = today's behaviour: build on the host with
 	// `docker compose up --build`.
 	ServiceImages map[string]string
+
+	// RecreateOnly switches the stack into "reload" mode: write the
+	// current .env, then force a plain `docker compose up -d
+	// --remove-orphans` WITHOUT --build, IGNORING any RunCommand
+	// override (which might carry --build) and any ServiceImages
+	// rewrite. `up` reuses the images already built/pulled on the host
+	// and recreates only the services whose config (env) changed — so
+	// runtime env changes apply with no rebuild. Used by the Reload
+	// action; build-time changes still go through a normal Deploy.
+	RecreateOnly bool
 }
 
 // ComposeRegistryLogin is one resolved registry login. RegistryURL
@@ -371,12 +381,23 @@ cat > .env <<'LAUNCH_COMPOSE_ENV_EOF'
 	// bring-your-own-tail flexibility that's otherwise impossible to
 	// express through structured flags.
 	b.WriteString("\necho \"::LAUNCH::deploy_step::compose_up\"\n")
-	if cfg.RunCommand != "" {
+	switch {
+	case cfg.RecreateOnly:
+		// Reload mode: force a plain no-build `up`, ignoring any
+		// RunCommand override (which may carry --build). `up` reuses the
+		// on-host images and recreates only services whose config (env)
+		// changed — applying the refreshed .env written above with no
+		// rebuild.
+		b.WriteString(`docker compose --project-name "${COMPOSE_PROJECT_NAME}" \
+  -f "${COMPOSE_FILE_PATH}" \
+  up -d --remove-orphans
+`)
+	case cfg.RunCommand != "":
 		// Single-line invocation so the user's command goes through
 		// the shell exactly as written. They're responsible for any
 		// quoting / escaping — same trust model dokploy applies.
 		fmt.Fprintf(&b, "docker %s\n", cfg.RunCommand)
-	} else {
+	default:
 		b.WriteString(`docker compose --project-name "${COMPOSE_PROJECT_NAME}" \
   -f "${COMPOSE_FILE_PATH}" \
   up -d --remove-orphans
