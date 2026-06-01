@@ -48,6 +48,40 @@ func TestRenderComposeWorkflow_GoldenStable(t *testing.T) {
 	assertGolden(t, goldenCompose, got)
 }
 
+// TestRenderApplicationWorkflow_RespectsBuildType pins that an explicit
+// build method is honoured in the Detect-builder step rather than
+// auto-detected: "dockerfile" fails loudly if the Dockerfile is missing,
+// "nixpacks" forces nixpacks, and "" (auto) falls back to detection.
+func TestRenderApplicationWorkflow_RespectsBuildType(t *testing.T) {
+	base := func(bt string) ApplicationWorkflowData {
+		return ApplicationWorkflowData{
+			Branch:         "main",
+			DockerfilePath: "Dockerfile",
+			BuildType:      bt,
+			LaunchBaseURL:  "https://launchctl.io",
+			AppID:          "01HJX",
+		}
+	}
+
+	df, err := RenderApplicationWorkflow(base("dockerfile"))
+	require.NoError(t, err)
+	// Explicit dockerfile: guards the file and errors clearly if absent;
+	// no silent nixpacks fallback in the case body.
+	assert.Contains(t, df, `case "dockerfile" in`)
+	assert.Contains(t, df, `if [ ! -f "Dockerfile" ]`)
+	assert.Contains(t, df, "Build method is 'dockerfile' but Dockerfile was not found")
+
+	np, err := RenderApplicationWorkflow(base("nixpacks"))
+	require.NoError(t, err)
+	assert.Contains(t, np, `case "nixpacks" in`)
+
+	auto, err := RenderApplicationWorkflow(base(""))
+	require.NoError(t, err)
+	// Auto (empty): detect by Dockerfile presence in the fallback arm.
+	assert.Contains(t, auto, `case "" in`)
+	assert.Contains(t, auto, `if [ -f "Dockerfile" ]`)
+}
+
 func TestRenderApplicationWorkflow_RejectsMissingFields(t *testing.T) {
 	cases := []struct {
 		name string
@@ -106,9 +140,11 @@ func TestRenderedYAMLContainsExpectedAnchors(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	// Branch is referenced in the on.push.branches list AND nowhere
-	// else — assert presence in the expected literal.
-	assert.Contains(t, got, `branches: ["deploy-branch"]`)
+	// Deploys are manual-only: the workflow triggers on workflow_dispatch
+	// and must NOT auto-deploy on push (committing/syncing the workflow
+	// file, or pushing code, shouldn't kick off a deploy).
+	assert.Contains(t, got, "workflow_dispatch:")
+	assert.NotContains(t, got, "branches:")
 	// DockerfilePath shows up in two places: the existence check + the
 	// build-push-action input.
 	assert.Contains(t, got, `if [ -f "deploy/Dockerfile" ]`)
