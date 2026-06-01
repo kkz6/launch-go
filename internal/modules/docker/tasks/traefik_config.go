@@ -28,8 +28,13 @@ type TraefikConfigArgs struct {
 //   - Each domain gets its own HTTP router. If domain.HTTPS is true, the
 //     router is duplicated onto websecure with tls.certresolver=letsencrypt
 //     and the http router rewrites to https via the redirect middleware.
-//   - All routers point to a single service that resolves the container
-//     by its docker network name (Traefik runs in the same launch-network).
+//   - Each router points to the service for its destination port. A domain
+//     routes to its own ContainerPort when set, otherwise the app's
+//     InternalPort — so the per-domain container_port override actually
+//     takes effect (parity with the compose renderer + the documented DTO
+//     contract). We emit one service per distinct effective port; the
+//     service resolves the container by its docker network name (Traefik
+//     runs in the same launch-network).
 //
 // Returning a string (not []byte) so the SSH heredoc upload is trivial;
 // the YAML is ASCII and short enough that the extra copy doesn't matter.
@@ -40,6 +45,30 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 		// file still exists (lets us track existence separately from a
 		// deleted file representing a deleted app).
 		return fmt.Sprintf("# %s — no domains configured\nhttp: {}\n", id)
+	}
+
+	// Effective destination port for a domain: its explicit container_port
+	// when set (>0), else the app's internal_port. The service name embeds
+	// the port so domains on different ports get distinct service blocks.
+	portForDomain := func(d models.ApplicationDomain) int {
+		if d.ContainerPort != nil && *d.ContainerPort > 0 {
+			return *d.ContainerPort
+		}
+		return args.InternalPort
+	}
+	serviceNameForPort := func(port int) string {
+		return fmt.Sprintf("%s-%d", id, port)
+	}
+	// Distinct effective ports in first-occurrence order — deterministic
+	// emit order keeps the rendered YAML stable across re-syncs/tests.
+	portOrder := make([]int, 0, len(args.Domains))
+	seenPort := make(map[int]struct{})
+	for _, d := range args.Domains {
+		p := portForDomain(d)
+		if _, ok := seenPort[p]; !ok {
+			seenPort[p] = struct{}{}
+			portOrder = append(portOrder, p)
+		}
 	}
 
 	// Collect unique stored-cert ids so the top-level tls.certificates
@@ -57,6 +86,7 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 	for i, d := range args.Domains {
 		host := d.Host
 		safeName := fmt.Sprintf("%s-%d", id, i)
+		svc := serviceNameForPort(portForDomain(d))
 		hostRule := fmt.Sprintf("Host(`%s`)", host)
 		if d.Path != nil && *d.Path != "" {
 			hostRule += fmt.Sprintf(" && PathPrefix(`%s`)", *d.Path)
@@ -69,14 +99,14 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 		fmt.Fprintf(&b, "    %s-http:\n", safeName)
 		fmt.Fprintf(&b, "      rule: %q\n", hostRule)
 		b.WriteString("      entryPoints: [web]\n")
-		fmt.Fprintf(&b, "      service: %s\n", id)
+		fmt.Fprintf(&b, "      service: %s\n", svc)
 		if d.HTTPS {
 			b.WriteString("      middlewares: [redirect-to-https]\n")
 
 			fmt.Fprintf(&b, "    %s-https:\n", safeName)
 			fmt.Fprintf(&b, "      rule: %q\n", hostRule)
 			b.WriteString("      entryPoints: [websecure]\n")
-			fmt.Fprintf(&b, "      service: %s\n", id)
+			fmt.Fprintf(&b, "      service: %s\n", svc)
 			b.WriteString("      tls:\n")
 			// Stored cert: empty tls block + cert listed at top-level
 			// tls.certificates. Traefik picks via SNI. letsencrypt is
@@ -94,14 +124,16 @@ func RenderTraefikConfig(args TraefikConfigArgs) string {
 		}
 	}
 
+	// One service per distinct destination port. Traefik reaches the
+	// container by its docker DNS name on the shared launch-network and
+	// Traefik handles the public 80/443 itself.
 	b.WriteString("  services:\n")
-	fmt.Fprintf(&b, "    %s:\n", id)
-	b.WriteString("      loadBalancer:\n")
-	b.WriteString("        servers:\n")
-	// Traefik reaches the container by its docker DNS name on the shared
-	// launch-network. Port is the app's *internal* port; Traefik handles
-	// the public 80/443 itself.
-	fmt.Fprintf(&b, "          - url: \"http://%s:%d\"\n", args.ContainerName, args.InternalPort)
+	for _, port := range portOrder {
+		fmt.Fprintf(&b, "    %s:\n", serviceNameForPort(port))
+		b.WriteString("      loadBalancer:\n")
+		b.WriteString("        servers:\n")
+		fmt.Fprintf(&b, "          - url: \"http://%s:%d\"\n", args.ContainerName, port)
+	}
 
 	// Top-level tls.certificates block: lists every stored cert
 	// referenced above. Cert files are materialised on disk on the
