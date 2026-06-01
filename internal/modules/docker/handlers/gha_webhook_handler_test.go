@@ -76,6 +76,7 @@ func setupHandler(t *testing.T) (*gofiber.App, *gorm.DB, *dockermodels.Applicati
 	})
 	fapp.Post("/api/webhooks/docker/applications/:id/deploy", h.GHAApplicationDeploy)
 	fapp.Post("/api/webhooks/docker/applications/:id/status", h.GHAApplicationStatus)
+	fapp.Get("/api/webhooks/docker/applications/:id/deployments/:deploymentId", h.GHAApplicationDeploymentStatus)
 	return fapp, db, app
 }
 
@@ -110,7 +111,23 @@ func setupComposeHandler(t *testing.T) (*gofiber.App, *gorm.DB, *dockermodels.Co
 	})
 	fapp.Post("/api/webhooks/docker/composes/:id/deploy", h.GHAComposeDeploy)
 	fapp.Post("/api/webhooks/docker/composes/:id/status", h.GHAComposeStatus)
+	fapp.Get("/api/webhooks/docker/composes/:id/deployments/:deploymentId", h.GHAComposeDeploymentStatus)
 	return fapp, db, compose
+}
+
+// get issues an authenticated GET against the test app, mirroring post().
+func get(t *testing.T, app *gofiber.App, path, bearer string) (*http.Response, []byte) {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, path, nil)
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	}
+	resp, err := app.Test(req, -1)
+	require.NoError(t, err)
+	defer func() { _ = resp.Body.Close() }()
+	out, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	return resp, out
 }
 
 func post(t *testing.T, app *gofiber.App, path, bearer string, body any) (*http.Response, []byte) {
@@ -358,4 +375,92 @@ func TestPrimaryServiceImage_IsDeterministic(t *testing.T) {
 	for i := 0; i < 50; i++ {
 		assert.Equal(t, "img-queue", primaryServiceImage(m))
 	}
+}
+
+// deploymentIDFromDeploy POSTs a success notify and pulls the
+// deployment_id back out of the response envelope so the status-poll
+// tests have a real row to query.
+func deploymentIDFromDeploy(t *testing.T, app *gofiber.App, path string, body any) string {
+	t.Helper()
+	resp, raw := post(t, app, path, rawToken, body)
+	require.Equal(t, http.StatusOK, resp.StatusCode, "deploy notify should succeed: %s", string(raw))
+	var env struct {
+		Data struct {
+			DeploymentID string `json:"deployment_id"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(raw, &env))
+	require.NotEmpty(t, env.Data.DeploymentID)
+	return env.Data.DeploymentID
+}
+
+// TestGHAApplicationDeploymentStatus_ReturnsStatus is the happy path for
+// the poll endpoint the workflow uses to block until the deploy lands.
+func TestGHAApplicationDeploymentStatus_ReturnsStatus(t *testing.T) {
+	app, _, application := setupHandler(t)
+
+	depID := deploymentIDFromDeploy(t, app,
+		"/api/webhooks/docker/applications/"+application.ID+"/deploy",
+		applicationDeployPayload{ImageTag: "ghcr.io/kkz6/test-repo:launch-a", RunID: "501", RunURL: "https://x/runs/501"})
+
+	resp, raw := get(t, app, "/api/webhooks/docker/applications/"+application.ID+"/deployments/"+depID, rawToken)
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(raw))
+	assert.Contains(t, string(raw), `"status":"pending"`)
+}
+
+// TestGHAApplicationDeploymentStatus_ReportsTerminalError surfaces the
+// stored error on a failed row so the workflow can echo it.
+func TestGHAApplicationDeploymentStatus_ReportsTerminalError(t *testing.T) {
+	app, db, application := setupHandler(t)
+
+	depID := deploymentIDFromDeploy(t, app,
+		"/api/webhooks/docker/applications/"+application.ID+"/deploy",
+		applicationDeployPayload{ImageTag: "ghcr.io/kkz6/test-repo:launch-b", RunID: "502", RunURL: "https://x/runs/502"})
+
+	require.NoError(t, db.Model(&dockermodels.Deployment{}).
+		Where("id = ?", depID).
+		Updates(map[string]any{"status": dockertypes.DeploymentStatusFailed, "error": "boom"}).Error)
+
+	resp, raw := get(t, app, "/api/webhooks/docker/applications/"+application.ID+"/deployments/"+depID, rawToken)
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(raw))
+	assert.Contains(t, string(raw), `"status":"failed"`)
+	assert.Contains(t, string(raw), "boom")
+}
+
+// TestGHAApplicationDeploymentStatus_BadToken_401 — the poll endpoint is
+// bearer-gated like every other webhook route.
+func TestGHAApplicationDeploymentStatus_BadToken_401(t *testing.T) {
+	app, _, application := setupHandler(t)
+	depID := deploymentIDFromDeploy(t, app,
+		"/api/webhooks/docker/applications/"+application.ID+"/deploy",
+		applicationDeployPayload{ImageTag: "ghcr.io/kkz6/test-repo:launch-c", RunID: "503", RunURL: "https://x/runs/503"})
+
+	resp, _ := get(t, app, "/api/webhooks/docker/applications/"+application.ID+"/deployments/"+depID, "wrong-token")
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+// TestGHAApplicationDeploymentStatus_UnknownDeployment_404 — a deployment
+// id that doesn't belong to this workload must not resolve (scoping
+// guard against reading another workload's rows with a valid token).
+func TestGHAApplicationDeploymentStatus_UnknownDeployment_404(t *testing.T) {
+	app, _, application := setupHandler(t)
+	resp, _ := get(t, app, "/api/webhooks/docker/applications/"+application.ID+"/deployments/"+util.NewULID(), rawToken)
+	assert.Equal(t, http.StatusNotFound, resp.StatusCode)
+}
+
+// TestGHAComposeDeploymentStatus_ReturnsStatus mirrors the application
+// happy path for the compose poll endpoint.
+func TestGHAComposeDeploymentStatus_ReturnsStatus(t *testing.T) {
+	app, _, compose := setupComposeHandler(t)
+
+	depID := deploymentIDFromDeploy(t, app,
+		"/api/webhooks/docker/composes/"+compose.ID+"/deploy",
+		composeDeployPayload{
+			ServiceImages: map[string]string{"web": "ghcr.io/kkz6/test-stack:launch-web-abc1234"},
+			RunID:         "601", RunURL: "https://x/runs/601",
+		})
+
+	resp, raw := get(t, app, "/api/webhooks/docker/composes/"+compose.ID+"/deployments/"+depID, rawToken)
+	require.Equal(t, http.StatusOK, resp.StatusCode, string(raw))
+	assert.Contains(t, string(raw), `"status":"pending"`)
 }

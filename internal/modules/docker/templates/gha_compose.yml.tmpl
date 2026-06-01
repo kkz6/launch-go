@@ -123,7 +123,11 @@ jobs:
   collect-and-notify:
     needs: build
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # 30 min (was 5): this job now blocks on the deploy itself via the
+    # "Wait for Launch deploy to finish" step below, which holds the job
+    # — and therefore the short-lived GHCR pull token it minted — open
+    # until Launch's worker has finished pulling + deploying.
+    timeout-minutes: 30
     # `packages: read` so the GHCR token-exchange step below can
     # mint a pull bearer. The build job has `packages: write` for
     # the per-service push; collect-and-notify only needs read.
@@ -178,12 +182,13 @@ jobs:
           echo "minted_at=$(date -u +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Notify Launch (success)
+        id: notify
         env:
           TOKEN: ${{ "{{" }} secrets.LAUNCH_DEPLOY_TOKEN {{ "}}" }}
           GHCR_BEARER: ${{ "{{" }} steps.ghcr_token.outputs.bearer {{ "}}" }}
           GHCR_BEARER_MINTED_AT: ${{ "{{" }} steps.ghcr_token.outputs.minted_at {{ "}}" }}
         run: |
-          curl --fail-with-body -sS -X POST \
+          resp=$(curl --fail-with-body -sS --connect-timeout 10 --max-time 30 -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(jq -nc \
@@ -195,7 +200,73 @@ jobs:
               --arg pull          "$GHCR_BEARER" \
               --arg minted_at     "$GHCR_BEARER_MINTED_AT" \
               '{service_images:$images, commit_sha:$sha, branch:$branch, run_id:$run_id, run_url:$url, ghcr_pull_token:$pull, ghcr_pull_token_minted_at:$minted_at}')" \
-            "${{ "{{" }} vars.LAUNCH_WEBHOOK_URL {{ "}}" }}/api/webhooks/docker/composes/{{.ComposeID}}/deploy"
+            "${{ "{{" }} vars.LAUNCH_WEBHOOK_URL {{ "}}" }}/api/webhooks/docker/composes/{{.ComposeID}}/deploy") \
+            || { echo "::error::Launch rejected the deploy notify"; echo "$resp"; exit 1; }
+          echo "$resp"
+          deployment_id=$(printf '%s' "$resp" | jq -r '.data.deployment_id // empty')
+          if [ -z "$deployment_id" ]; then
+            echo "::error::Launch accepted the notify but returned no deployment_id; cannot wait for completion"
+            exit 1
+          fi
+          echo "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
+
+      # Block until the deploy lands. The relayed GHCR bearer is only
+      # valid while this job runs (GitHub revokes the run's GITHUB_TOKEN
+      # — and tokens minted from it — when the job ends), so we must hold
+      # the job open until the worker has pulled every service image.
+      # Without this the async pull races job-teardown and fails with
+      # "unauthenticated: User cannot be authenticated with the token
+      # provided." See the application template for the full rationale.
+      - name: Wait for Launch deploy to finish
+        # Hard wall-clock cap regardless of the loop — a wedged poll must
+        # not hold the runner for the whole job budget.
+        timeout-minutes: 22
+        env:
+          TOKEN: ${{ "{{" }} secrets.LAUNCH_DEPLOY_TOKEN {{ "}}" }}
+          DEPLOYMENT_ID: ${{ "{{" }} steps.notify.outputs.deployment_id {{ "}}" }}
+        run: |
+          set -uo pipefail
+          url="${{ "{{" }} vars.LAUNCH_WEBHOOK_URL {{ "}}" }}/api/webhooks/docker/composes/{{.ComposeID}}/deployments/${DEPLOYMENT_ID}"
+          # Upper bound on a healthy-but-slow deploy; under the step timeout
+          # so the loop exits cleanly with a message first.
+          deadline=$(( $(date +%s) + 1200 ))   # 20 min
+          # Fail FAST if Launch itself is unreachable/erroring — a broken
+          # backend must not keep this Action alive for the whole window.
+          # Brief blips are tolerated; a sustained outage bails.
+          fails=0
+          max_fails=10
+          while :; do
+            resp=$(curl -sS --connect-timeout 10 --max-time 20 -w $'\n%{http_code}' \
+              -H "Authorization: Bearer $TOKEN" "$url" || true)
+            http=$(printf '%s' "$resp" | tail -n1); http=${http:-000}
+            body=$(printf '%s' "$resp" | sed '$d')
+            if [ "$http" = "200" ]; then
+              fails=0
+              status=$(printf '%s' "$body" | jq -r '.data.status // empty' 2>/dev/null || true)
+              echo "deploy status: ${status:-<pending>}"
+              case "$status" in
+                success)
+                  echo "Launch deploy succeeded."
+                  exit 0 ;;
+                failed|cancelled|timeout)
+                  echo "::error::Launch deploy ${status}"
+                  printf '%s' "$body" | jq -r '.data.error // empty' 2>/dev/null || true
+                  exit 1 ;;
+              esac
+            else
+              fails=$(( fails + 1 ))
+              echo "::warning::deploy status check failed (HTTP ${http}, ${fails}/${max_fails})"
+              if [ "$fails" -ge "$max_fails" ]; then
+                echo "::error::Launch status endpoint unreachable/erroring — aborting so this run doesn't hang."
+                exit 1
+              fi
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Timed out waiting for Launch deploy to finish"
+              exit 1
+            fi
+            sleep 5
+          done
 
   notify-failure:
     needs: [discover, build, collect-and-notify]
@@ -207,11 +278,11 @@ jobs:
         env:
           TOKEN: ${{ "{{" }} secrets.LAUNCH_DEPLOY_TOKEN {{ "}}" }}
         run: |
-          curl -sS -X POST \
+          curl -sS --connect-timeout 10 --max-time 30 -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(jq -nc \
               --arg run_id '${{ "{{" }} github.run_id {{ "}}" }}' \
               --arg url    '${{ "{{" }} github.server_url {{ "}}" }}/${{ "{{" }} github.repository {{ "}}" }}/actions/runs/${{ "{{" }} github.run_id {{ "}}" }}' \
               '{status:"failed", run_id:$run_id, run_url:$url}')" \
-            "${{ "{{" }} vars.LAUNCH_WEBHOOK_URL {{ "}}" }}/api/webhooks/docker/composes/{{.ComposeID}}/status"
+            "${{ "{{" }} vars.LAUNCH_WEBHOOK_URL {{ "}}" }}/api/webhooks/docker/composes/{{.ComposeID}}/status" || true

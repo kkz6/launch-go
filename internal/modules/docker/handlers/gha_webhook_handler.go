@@ -298,6 +298,97 @@ func (h *GHAWebhookHandler) resolveInstallationToken(ctx context.Context, source
 	return gh.GetInstallationToken(ctx, *sc.InstallationID)
 }
 
+// deploymentStatusResponse is the slim status view the workflow's
+// "Wait for Launch deploy to finish" poll loop reads. Error is only
+// populated for failed rows so the workflow log can echo the reason
+// inline rather than sending the operator hunting through Launch.
+type deploymentStatusResponse struct {
+	Status     string `json:"status"`
+	Error      string `json:"error,omitempty"`
+	FinishedAt string `json:"finished_at,omitempty"`
+}
+
+// GHAApplicationDeploymentStatus returns the current status of a single
+// deployment row so the GitHub Actions workflow can BLOCK until the
+// deploy reaches a terminal state.
+//
+// Why this exists: the workflow mints a short-lived GHCR pull bearer and
+// relays it to Launch, and the worker uses it to `docker pull` the
+// private image on the target host. That bearer is derived from the
+// run's GITHUB_TOKEN, which GitHub REVOKES the instant the job ends — so
+// if the workflow finishes before the async worker pulls, the relayed
+// token is already dead and the pull dies with
+// "unauthenticated: User cannot be authenticated with the token
+// provided." By polling this endpoint, the workflow keeps its job (and
+// therefore the token) alive until the deploy is genuinely done.
+// See gha_application.yml.tmpl "Wait for Launch deploy to finish".
+func (h *GHAWebhookHandler) GHAApplicationDeploymentStatus(c *gofiber.Ctx) error {
+	return h.deploymentStatus(c, "application")
+}
+
+// GHAComposeDeploymentStatus mirrors GHAApplicationDeploymentStatus for
+// compose stacks.
+func (h *GHAWebhookHandler) GHAComposeDeploymentStatus(c *gofiber.Ctx) error {
+	return h.deploymentStatus(c, "compose")
+}
+
+// deploymentStatus is the shared body for the application/compose poll
+// endpoints. Auth is the same per-workload bearer the deploy/status
+// notifies use; we load the workload to get the stored token hash, then
+// fetch the deployment scoped to (target_type, target_id, id) so a token
+// for one workload can't read another workload's deployment rows.
+func (h *GHAWebhookHandler) deploymentStatus(c *gofiber.Ctx, targetType string) error {
+	id := c.Params("id")
+	deploymentID := c.Params("deploymentId")
+	if id == "" || deploymentID == "" {
+		return fiberutil.NotFound()
+	}
+
+	var tokenHash *string
+	var targetID string
+	switch targetType {
+	case "application":
+		app, err := h.loadApplicationForGHA(id)
+		if err != nil {
+			return err
+		}
+		tokenHash, targetID = app.GHADeployTokenHash, app.ID
+	case "compose":
+		compose, err := h.loadComposeForGHA(id)
+		if err != nil {
+			return err
+		}
+		tokenHash, targetID = compose.GHADeployTokenHash, compose.ID
+	default:
+		return fiberutil.NotFound()
+	}
+
+	if err := authenticateBearer(c, tokenHash); err != nil {
+		return err
+	}
+
+	var dep dockermodels.Deployment
+	err := h.db.Where(
+		"id = ? AND target_type = ? AND target_id = ?",
+		deploymentID, targetType, targetID,
+	).First(&dep).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fiberutil.NotFound()
+		}
+		return err
+	}
+
+	resp := deploymentStatusResponse{Status: dep.Status.String()}
+	if dep.Error != nil {
+		resp.Error = *dep.Error
+	}
+	if dep.FinishedAt != nil {
+		resp.FinishedAt = dep.FinishedAt.UTC().Format(time.RFC3339)
+	}
+	return fiberutil.OK(c, "Deployment status", resp)
+}
+
 // GHAApplicationStatus handles a failure-only notification (the
 // `if: failure()` step in the workflow). Marks the corresponding
 // deployment row as failed.
