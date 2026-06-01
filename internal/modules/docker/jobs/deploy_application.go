@@ -63,6 +63,14 @@ type DeployApplicationPayload struct {
 	// when the password isn't a workflow-minted bearer (e.g. when
 	// falling back to the GitHub App installation token path).
 	OverrideRegistryPasswordMintedAtUnix string `json:"override_registry_password_minted_at_unix,omitempty"`
+
+	// Recreate switches the job into "reload" mode: re-run the
+	// container from the image already on the host (app.image_tag)
+	// with the freshly-hydrated env vars + volumes, skipping the
+	// clone/build/pull entirely. Used by the Restart/Reload action to
+	// apply env/config changes without a rebuild. Fails fast if the
+	// app has no built image yet.
+	Recreate bool `json:"recreate,omitempty"`
 }
 
 // String returns a redacted JSON view of the payload. Any code path
@@ -142,6 +150,15 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 		return nil
 	}
 
+	// Reload/restart ("recreate with current env") vs a real deploy.
+	// The in-flight UI label differs ("Restarting…" vs "Deploying…")
+	// but the persisted application status is "building" either way —
+	// both run the SSH task and flip to a terminal state below.
+	inflightStatus := "building"
+	if j.Payload.Recreate {
+		inflightStatus = "restarting"
+	}
+
 	now := time.Now().UTC()
 	if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
 		"status":     dockertypes.DeploymentStatusDeploying,
@@ -160,7 +177,7 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	j.broadcast("docker.application.deploying", map[string]any{
 		"application_id": j.app.ID,
 		"deployment_id":  j.deployment.ID,
-		"status":         "building",
+		"status":         inflightStatus,
 	})
 
 	cfg := tasks.DeployConfig{
@@ -175,6 +192,22 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	// GitHub-Actions override path. Pure function so it's unit-testable
 	// without standing up a worker or stubbing the DB.
 	applyDeployApplicationOverrides(&cfg, j.Payload)
+
+	// Reload/restart path: reuse the image already on the host and skip
+	// clone/build/pull. The container is recreated with the env vars +
+	// volumes hydrated below, so changed runtime config is applied
+	// without a rebuild. The script prefers the image the running
+	// container is currently using; cfg.Image is a best-effort fallback
+	// (latest deployment's image_ref) for when the container is gone.
+	if j.Payload.Recreate {
+		cfg.RecreateOnly = true
+		if ref, err := j.Deps.Repos.Deployment().LatestImageRefForTarget(ctx, "application", j.app.ID); err != nil {
+			j.Deps.Logger.Warn().Err(err).Str("application_id", j.app.ID).
+				Msg("recreate: could not resolve fallback image_ref; relying on the running container's image")
+		} else {
+			cfg.Image = ref
+		}
+	}
 	// Rewrite the git URL with embedded credentials when a connected
 	// source-control account was selected on the application. No-op for
 	// public repos. Failures fall back to the original URL — see
@@ -687,6 +720,23 @@ func NewDeployApplicationTask(
 		DeploymentID:  deploymentID,
 		ServerID:      serverID,
 		TeamID:        teamID,
+	}, pkgjobs.Dedup("docker-deploy-app", deploymentID))
+}
+
+// NewRecreateApplicationTask enqueues a "reload": recreate the
+// container from the image already on the host with the current env +
+// config, skipping clone/build/pull. Same job + dedup slot as a deploy
+// (keyed on deployment_id) with Recreate set, so the script takes the
+// no-build path. Used by the Restart action to apply env changes fast.
+func NewRecreateApplicationTask(
+	applicationID, deploymentID, serverID, teamID string,
+) (*asynq.Task, error) {
+	return pkgjobs.TaskWithID(TypeDeployApplication, DeployApplicationPayload{
+		ApplicationID: applicationID,
+		DeploymentID:  deploymentID,
+		ServerID:      serverID,
+		TeamID:        teamID,
+		Recreate:      true,
 	}, pkgjobs.Dedup("docker-deploy-app", deploymentID))
 }
 

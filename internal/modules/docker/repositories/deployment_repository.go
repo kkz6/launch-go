@@ -49,3 +49,29 @@ func (r *DeploymentRepository) ListForTarget(
 		Find(&deployments).Error
 	return deployments, err
 }
+
+// LatestImageRefForTarget returns the image_ref of the most recent
+// deployment for a target that recorded one. Used by the Reload/restart
+// (recreate) path as a FALLBACK image source: the recreate script
+// prefers the image the running container is actually using, and only
+// falls back to this DB value when there's no container to inspect.
+// Returns "" (no error) when no deployment has an image_ref yet.
+func (r *DeploymentRepository) LatestImageRefForTarget(
+	ctx context.Context, targetType, targetID string,
+) (string, error) {
+	var dep models.Deployment
+	err := r.DB.WithContext(ctx).
+		Where("target_type = ? AND target_id = ? AND image_ref IS NOT NULL AND image_ref <> ''", targetType, targetID).
+		Order("created_at DESC").
+		First(&dep).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return "", nil
+	}
+	if err != nil {
+		return "", err
+	}
+	if dep.ImageRef == nil {
+		return "", nil
+	}
+	return *dep.ImageRef, nil
+}

@@ -25,6 +25,30 @@ func TestBuildComposeDeployScript_RawYAML(t *testing.T) {
 	}
 }
 
+// TestBuildComposeDeployScript_RecreateOnly pins the compose "Reload"
+// path: it forces a plain no-build `up -d`, IGNORING a RunCommand that
+// would otherwise carry --build, and rewrites the .env so saved env
+// applies by reusing the on-host images.
+func TestBuildComposeDeployScript_RecreateOnly(t *testing.T) {
+	s := buildComposeDeployScript(ComposeDeployConfig{
+		DeploymentID: "01HZ",
+		ProjectSlug:  "acme",
+		ComposeSlug:  "stack",
+		ProjectName:  "acme-stack",
+		RawYAML:      "services:\n  web:\n    build: .\n",
+		EnvFile:      "FOO=bar\n",
+		RunCommand:   "compose -p acme-stack -f docker-compose.yml up -d --build",
+		RecreateOnly: true,
+	})
+	// Forces the structured no-build up, not the --build RunCommand.
+	mustContain(t, s, `up -d --remove-orphans`)
+	if strings.Contains(s, "--build") {
+		t.Fatalf("reload must not pass --build:\n%s", s)
+	}
+	// Refreshed .env is written so new env applies on recreate.
+	mustContain(t, s, "FOO=bar")
+}
+
 func TestBuildComposeDeployScript_Git(t *testing.T) {
 	s := buildComposeDeployScript(ComposeDeployConfig{
 		DeploymentID:    "01HZ",
