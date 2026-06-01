@@ -22,24 +22,24 @@ type Server struct {
 	basemodels.BaseModel
 	basemodels.TeamScoped
 	basemodels.UserScoped
-	ServerProviderID          *string                `gorm:"column:server_provider_id;type:char(26);index" json:"server_provider_id,omitempty"`
-	Name                      string                 `gorm:"type:varchar(255);not null;index" json:"name"`
-	Description               *string                `gorm:"type:varchar(255)" json:"description,omitempty"`
-	Provider                  types.ServerProvider   `gorm:"type:varchar(255);not null" json:"provider"`
-	ProviderData              dbtype.JSONMap         `gorm:"type:json" json:"-"`
-	Type                      *string                `gorm:"type:varchar(255)" json:"type,omitempty"`
-	Connected                 bool                   `gorm:"type:tinyint(1);not null;default:0" json:"connected"`
-	LaunchToken               string                 `gorm:"type:varchar(32);not null" json:"-"`
-	MonitoringEnabled         bool                   `gorm:"column:monitoring_enabled;type:tinyint(1);not null;default:0" json:"monitoring_enabled"`
-	CPUCores                  *int                   `gorm:"column:cpu_cores;type:int" json:"cpu_cores,omitempty"`
-	MemoryInMB                *int                   `gorm:"column:memory_in_mb;type:int" json:"memory_in_mb,omitempty"`
-	StorageInGB               *int                   `gorm:"column:storage_in_gb;type:int" json:"storage_in_gb,omitempty"`
-	OperatingSystem           *string                `gorm:"column:operating_system;type:varchar(255)" json:"operating_system,omitempty"`
-	Status                    types.ServerStatus     `gorm:"type:varchar(255);not null" json:"status"`
-	PublicIPv4                *string                `gorm:"column:public_ipv4;type:varchar(255)" json:"public_ipv4,omitempty"`
-	PrivateIPv4               *string                `gorm:"column:private_ipv4;type:varchar(255)" json:"-"`
-	PublicKey                 dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
-	PrivateKey                dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
+	ServerProviderID  *string                `gorm:"column:server_provider_id;type:char(26);index" json:"server_provider_id,omitempty"`
+	Name              string                 `gorm:"type:varchar(255);not null;index" json:"name"`
+	Description       *string                `gorm:"type:varchar(255)" json:"description,omitempty"`
+	Provider          types.ServerProvider   `gorm:"type:varchar(255);not null" json:"provider"`
+	ProviderData      dbtype.JSONMap         `gorm:"type:json" json:"-"`
+	Type              *string                `gorm:"type:varchar(255)" json:"type,omitempty"`
+	Connected         bool                   `gorm:"type:tinyint(1);not null;default:0" json:"connected"`
+	LaunchToken       string                 `gorm:"type:varchar(32);not null" json:"-"`
+	MonitoringEnabled bool                   `gorm:"column:monitoring_enabled;type:tinyint(1);not null;default:0" json:"monitoring_enabled"`
+	CPUCores          *int                   `gorm:"column:cpu_cores;type:int" json:"cpu_cores,omitempty"`
+	MemoryInMB        *int                   `gorm:"column:memory_in_mb;type:int" json:"memory_in_mb,omitempty"`
+	StorageInGB       *int                   `gorm:"column:storage_in_gb;type:int" json:"storage_in_gb,omitempty"`
+	OperatingSystem   *string                `gorm:"column:operating_system;type:varchar(255)" json:"operating_system,omitempty"`
+	Status            types.ServerStatus     `gorm:"type:varchar(255);not null" json:"status"`
+	PublicIPv4        *string                `gorm:"column:public_ipv4;type:varchar(255)" json:"public_ipv4,omitempty"`
+	PrivateIPv4       *string                `gorm:"column:private_ipv4;type:varchar(255)" json:"-"`
+	PublicKey         dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
+	PrivateKey        dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
 	// HostKey is the SSH host key (base64-encoded wire format) pinned
 	// on the first connection. Empty until the first connect — then
 	// every subsequent connection compares the live key against this

@@ -67,7 +67,7 @@ func NewRemoveApplicationJob(p RemoveApplicationPayload) pkgjobs.Handler {
 //
 //   - succeeds → soft-delete row + broadcast docker.application.deleted
 //   - fails    → revert status to PreviousStatus + broadcast
-//                docker.application.updated (row stays usable)
+//     docker.application.updated (row stays usable)
 //
 // Any returned error puts the job back in asynq's retry queue;
 // asynq's default policy is ~25 attempts over a few hours, which
