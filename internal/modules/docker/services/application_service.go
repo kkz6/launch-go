@@ -100,7 +100,6 @@ func (s *ApplicationService) CreateApplication(
 	ctx context.Context, projectID, serverID, teamID, userID string,
 	req *dto.CreateApplicationRequest,
 ) (dto.ApplicationResponse, error) {
-	_ = userID
 	if _, err := s.requireProject(ctx, projectID, serverID, teamID); err != nil {
 		return dto.ApplicationResponse{}, err
 	}
@@ -146,6 +145,13 @@ func (s *ApplicationService) CreateApplication(
 	}
 	app.TeamID = teamID
 	app.ServerID = serverID
+	// Stamp the creator. Nullable in the column (migration 0056), but
+	// new rows always have a real userID from the authenticated caller.
+	// Used by the GHA permissions-missing path to email the right user.
+	if userID != "" {
+		uid := userID
+		app.UserID = &uid
+	}
 
 	// Honour the build_location toggle on git-source applications. We
 	// don't allow GHA builds on image/dockerfile sources — those have

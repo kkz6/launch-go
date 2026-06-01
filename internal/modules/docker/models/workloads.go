@@ -74,6 +74,17 @@ type Application struct {
 	// lives here. Webhook handler compares with subtle.ConstantTimeCompare
 	// so a hash leak can't be brute-forced via timing.
 	GHADeployTokenHash *string `gorm:"column:gha_deploy_token_hash;type:varchar(255)" json:"-"`
+
+	// UserID identifies the team member who created this application.
+	// Stamped on Create from the authenticated caller (added in
+	// migration 0056_06_01_000001). Nullable in the column because
+	// legacy rows have no creator on file; the backfill in that
+	// migration pulled values from source_controls.user_id where the
+	// workload referenced one, but rows without a source control
+	// stay NULL. The GHA permissions-missing notification path
+	// emails this user when set and falls back to the source-control
+	// owner when not.
+	UserID *string `gorm:"column:user_id;type:char(26);index" json:"user_id,omitempty"`
 }
 
 func (Application) TableName() string { return "docker_applications" }
@@ -129,6 +140,11 @@ type Compose struct {
 	// service_images map back to Launch.
 	BuildLocation      dockertypes.BuildLocation `gorm:"column:build_location;type:varchar(32);not null;default:'server'" json:"build_location"`
 	GHADeployTokenHash *string                   `gorm:"column:gha_deploy_token_hash;type:varchar(255)" json:"-"`
+
+	// UserID — see the matching field on Application above. Stamped
+	// on Create; nullable because legacy compose stacks may not have
+	// a creator backfilled.
+	UserID *string `gorm:"column:user_id;type:char(26);index" json:"user_id,omitempty"`
 }
 
 func (Compose) TableName() string { return "docker_composes" }

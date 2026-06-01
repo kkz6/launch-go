@@ -93,6 +93,13 @@ func (j *ProcessGitWebhookJob) processGitHubWebhook(ctx context.Context, data ma
 				return j.handleInstallationDeleted(ctx, installationID)
 			case "repositories_added", "repositories_removed":
 				return j.handleRepositoriesChanged(ctx, installationID)
+			case "new_permissions_accepted":
+				// Owner just granted the new permission set on the App.
+				// Re-bootstrap any docker workloads we previously
+				// flagged as permissions_missing — they should now
+				// succeed and the UI banner clears via the
+				// gha_synced broadcast.
+				return j.handleGHAPermissionsAccepted(ctx, installationID)
 			}
 		}
 	}
@@ -319,4 +326,160 @@ func NewProcessGitWebhookTask(provider, payload, signature string) (*asynq.Task,
 		Payload:   payload,
 		Signature: signature,
 	})
+}
+
+// dockerGHABootstrapTaskType is the canonical asynq task type the
+// docker module registers for its bootstrap-workflow handler. Kept as
+// a string constant in this file rather than imported from the docker
+// jobs package to avoid a cross-module dependency cycle (docker
+// already imports git for source-control lookups). The string is part
+// of the asynq queue's wire shape — any change to it has to land in
+// the docker module first, then here.
+const dockerGHABootstrapTaskType = "docker:gha_bootstrap_workflow"
+
+// ghaBootstrapPayload mirrors docker/jobs.GHABootstrapWorkflowPayload's
+// JSON shape just closely enough to enqueue a task. Same reason as
+// above — we don't import the docker types to avoid a cycle. Keep
+// the field tags in sync.
+type ghaBootstrapPayload struct {
+	WorkloadKind  string `json:"workload_kind"`
+	WorkloadID    string `json:"workload_id"`
+	RotateToken   bool   `json:"rotate_token,omitempty"`
+	LaunchBaseURL string `json:"launch_base_url,omitempty"`
+}
+
+// handleGHAPermissionsAccepted is the recovery path for the GitHub
+// App permissions-missing failure mode. Fires when the App owner
+// accepts a new permission set on an existing installation. We use
+// it to re-enqueue the bootstrap for any docker workloads we
+// previously marked permissions_missing — they should now succeed,
+// the gha_synced broadcast clears the UI banner, and the customer
+// doesn't have to click Re-sync manually.
+//
+// Lives in this package (not docker/) because the GitHub event
+// surfaces on the git module's webhook endpoint. We talk to the
+// docker tables via raw SQL + enqueue the well-known docker task
+// type, both of which avoid importing the docker module (which
+// already depends on git, so the reverse import would be a cycle).
+func (j *ProcessGitWebhookJob) handleGHAPermissionsAccepted(ctx context.Context, installationID string) error {
+	// 1. Find source_controls rows under this installation. There can
+	//    be more than one (different teams installed the same App on
+	//    different repos) so we collect IDs and pass them through to
+	//    the workload lookup.
+	var sourceControlIDs []string
+	if err := j.Deps.DB.WithContext(ctx).
+		Table("source_controls").
+		Where("installation_id = ?", installationID).
+		Pluck("id", &sourceControlIDs).Error; err != nil {
+		return fmt.Errorf("find source_controls for installation %s: %w", installationID, err)
+	}
+	if len(sourceControlIDs) == 0 {
+		j.Deps.Logger.Info().
+			Str("installation_id", installationID).
+			Msg("gha permissions accepted: no source controls found for installation")
+		return nil
+	}
+
+	// 2. Find docker_applications + docker_composes under those source
+	//    controls that are currently flagged permissions_missing.
+	//    JSON ->> lets us read the embedded gha_install_status +
+	//    source_control_id without unmarshalling the whole blob.
+	type workloadRow struct {
+		ID     string
+		TeamID string
+	}
+
+	var apps []workloadRow
+	if err := j.Deps.DB.WithContext(ctx).
+		Table("docker_applications").
+		Select("id, team_id").
+		Where(`build_location = 'github_actions'
+			AND source_config->>'gha_install_status' = 'permissions_missing'
+			AND source_config->>'source_control_id' IN ?`, sourceControlIDs).
+		Where("deleted_at IS NULL").
+		Find(&apps).Error; err != nil {
+		return fmt.Errorf("find applications to re-bootstrap: %w", err)
+	}
+
+	var composes []workloadRow
+	if err := j.Deps.DB.WithContext(ctx).
+		Table("docker_composes").
+		Select("id, team_id").
+		Where(`build_location = 'github_actions'
+			AND source_config->>'gha_install_status' = 'permissions_missing'
+			AND source_config->>'source_control_id' IN ?`, sourceControlIDs).
+		Where("deleted_at IS NULL").
+		Find(&composes).Error; err != nil {
+		return fmt.Errorf("find composes to re-bootstrap: %w", err)
+	}
+
+	if len(apps) == 0 && len(composes) == 0 {
+		j.Deps.Logger.Info().
+			Str("installation_id", installationID).
+			Int("source_controls", len(sourceControlIDs)).
+			Msg("gha permissions accepted: no permissions_missing workloads to re-bootstrap")
+		return nil
+	}
+
+	// 3. Enqueue a bootstrap task per workload. Dedup is implicit via
+	//    asynq.TaskID — the docker side computes
+	//    Dedup("gha_bootstrap_workflow", kind, id) for each task; if
+	//    a previous bootstrap for this workload is still in the queue
+	//    (rare; it's archived after the non-retriable 403 return)
+	//    asynq drops the duplicate harmlessly.
+	enqueueOne := func(kind, id string) {
+		task, err := newGHABootstrapTask(kind, id)
+		if err != nil {
+			j.Deps.Logger.Warn().Err(err).
+				Str("workload_kind", kind).
+				Str("workload_id", id).
+				Msg("gha permissions accepted: failed to build bootstrap task")
+			return
+		}
+		if err := j.Deps.DispatchTask(task); err != nil {
+			j.Deps.Logger.Warn().Err(err).
+				Str("workload_kind", kind).
+				Str("workload_id", id).
+				Msg("gha permissions accepted: failed to enqueue bootstrap")
+			return
+		}
+	}
+
+	for _, a := range apps {
+		enqueueOne("application", a.ID)
+	}
+	for _, c := range composes {
+		enqueueOne("compose", c.ID)
+	}
+
+	j.Deps.Logger.Info().
+		Str("installation_id", installationID).
+		Int("applications", len(apps)).
+		Int("composes", len(composes)).
+		Msg("gha permissions accepted: re-bootstrap dispatched for permissions_missing workloads")
+
+	return nil
+}
+
+// newGHABootstrapTask builds an asynq task that the docker module's
+// bootstrap handler will consume. Mirrors docker/jobs.
+// NewGHABootstrapWorkflowTask but lives here to avoid an import
+// cycle. RotateToken=false because we're just re-running the
+// previously-failed bootstrap — the existing token hash on the
+// workload row stays valid as long as it's set.
+func newGHABootstrapTask(kind, id string) (*asynq.Task, error) {
+	payload, err := json.Marshal(ghaBootstrapPayload{
+		WorkloadKind: kind,
+		WorkloadID:   id,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("marshal gha bootstrap payload: %w", err)
+	}
+	// Dedup ID matches the docker module's Dedup() format so two
+	// concurrent enqueues (e.g. a webhook AND a manual Re-sync click
+	// arriving milliseconds apart) collapse into one execution.
+	return asynq.NewTask(
+		dockerGHABootstrapTaskType, payload,
+		asynq.TaskID(fmt.Sprintf("gha_bootstrap_workflow:%s:%s", kind, id)),
+	), nil
 }

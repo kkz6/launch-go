@@ -78,6 +78,14 @@ type ApplicationResponse struct {
 	// AND GHADeployTokenHash present AND source_config has the synced
 	// commit SHA. UI gates the "ready to deploy" affordance on this.
 	GHABuildReady bool `json:"gha_build_ready"`
+
+	// GHAInstallStatus is the terminal state of the latest bootstrap
+	// attempt — surfaces "ok" / "permissions_missing" /
+	// "installation_gone" so the GHA tab can show a status-aware
+	// banner that survives reloads. Empty when bootstrap hasn't
+	// run yet (still in "Setting up") or when build_location is
+	// "server". See dockertypes.GHAInstallStatus for values.
+	GHAInstallStatus string `json:"gha_install_status,omitempty"`
 }
 
 // DeploymentResponse is the API representation of a deploy attempt or
@@ -153,10 +161,12 @@ type ComposeResponse struct {
 	// which logins this stack uses without a separate fetch.
 	RegistryCredentials []RegistryCredentialSummary `json:"registry_credentials,omitempty"`
 
-	// BuildLocation + GHABuildReady — see ApplicationResponse for the
-	// semantics. Same shape applies to composes.
-	BuildLocation string `json:"build_location"`
-	GHABuildReady bool   `json:"gha_build_ready"`
+	// BuildLocation + GHABuildReady + GHAInstallStatus — see
+	// ApplicationResponse for the semantics. Same shape applies to
+	// composes.
+	BuildLocation    string `json:"build_location"`
+	GHABuildReady    bool   `json:"gha_build_ready"`
+	GHAInstallStatus string `json:"gha_install_status,omitempty"`
 }
 
 // ToComposeResponse converts a Compose model to the API shape. The
@@ -179,6 +189,7 @@ func ToComposeResponse(c *models.Compose, includeRaw bool) *ComposeResponse {
 		UpdatedAt:         c.UpdatedAt,
 		BuildLocation:     string(c.BuildLocation),
 		GHABuildReady:     ghaBuildReady(c.BuildLocation, c.GHADeployTokenHash, sourceConfig),
+		GHAInstallStatus:  ghaInstallStatusOf(sourceConfig),
 	}
 	if includeRaw {
 		resp.RawYAML = c.RawYAML
@@ -750,9 +761,23 @@ func ToApplicationResponse(a *models.Application) *ApplicationResponse {
 		CreatedAt:      a.CreatedAt,
 		UpdatedAt:      a.UpdatedAt,
 
-		BuildLocation: string(a.BuildLocation),
-		GHABuildReady: ghaBuildReady(a.BuildLocation, a.GHADeployTokenHash, sourceConfig),
+		BuildLocation:    string(a.BuildLocation),
+		GHABuildReady:    ghaBuildReady(a.BuildLocation, a.GHADeployTokenHash, sourceConfig),
+		GHAInstallStatus: ghaInstallStatusOf(sourceConfig),
 	}
+}
+
+// ghaInstallStatusOf reads the bootstrap pipeline's terminal status
+// flag back out of source_config so the API response can surface it
+// to the UI. Empty when the field isn't set (bootstrap hasn't run
+// yet, or the workload is build_location=server). See
+// dockertypes.GHAInstallStatus for value semantics.
+func ghaInstallStatusOf(sourceConfig map[string]any) string {
+	if sourceConfig == nil {
+		return ""
+	}
+	v, _ := sourceConfig["gha_install_status"].(string)
+	return v
 }
 
 // --- Registry credentials -----------------------------------------

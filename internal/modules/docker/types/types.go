@@ -101,6 +101,46 @@ func (b BuildLocation) IsValid() bool {
 	return false
 }
 
+// GHAInstallStatus is the bootstrap pipeline's terminal outcome for a
+// GHA-enabled workload. It lives in source_config["gha_install_status"]
+// (no schema change required) and is surfaced on the API response so
+// the UI can render a status-aware banner that survives reloads.
+//
+// "" / missing = never bootstrapped (still in "Setting up" state) or
+// the workload is build_location=server — no banner.
+//
+// "ok" — bootstrap succeeded; clear any previous failure state.
+//
+// "permissions_missing" — GitHub returned 403 "Resource not accessible
+// by integration" because the App lacks one of: Contents R/W, Actions
+// Write, Secrets R/W, Variables R/W. Detected at any step of the
+// bootstrap. Frontend banner explains which permissions to grant.
+//
+// "installation_gone" — GitHub returned 404 on the installation token
+// request. The App was uninstalled from the customer's account; they
+// need to reinstall before any further deploys can run.
+type GHAInstallStatus string
+
+const (
+	GHAInstallStatusOK                 GHAInstallStatus = "ok"
+	GHAInstallStatusPermissionsMissing GHAInstallStatus = "permissions_missing"
+	GHAInstallStatusInstallationGone   GHAInstallStatus = "installation_gone"
+)
+
+func (s GHAInstallStatus) String() string { return string(s) }
+
+// IsValid mirrors BuildLocation.IsValid — a guard for any future code
+// path that reads the value back from source_config and wants to
+// branch on it. Empty is also accepted because that's the canonical
+// "not set yet" representation.
+func (s GHAInstallStatus) IsValid() bool {
+	switch s {
+	case "", GHAInstallStatusOK, GHAInstallStatusPermissionsMissing, GHAInstallStatusInstallationGone:
+		return true
+	}
+	return false
+}
+
 // DeploymentTriggerSource tags how a deployment was initiated.
 // Pre-existing rows are implicitly "manual"; the column default in
 // migration 0050_05_28_000004 fills that in for the backfill.

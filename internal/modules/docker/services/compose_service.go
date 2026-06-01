@@ -121,7 +121,6 @@ func (s *ComposeService) CreateCompose(
 	ctx context.Context, projectID, serverID, teamID, userID string,
 	req *dto.CreateComposeRequest,
 ) (dto.ComposeResponse, error) {
-	_ = userID
 	if _, err := s.requireProjectScoped(ctx, projectID, serverID, teamID); err != nil {
 		return dto.ComposeResponse{}, err
 	}
@@ -157,6 +156,13 @@ func (s *ComposeService) CreateCompose(
 	}
 	c.TeamID = teamID
 	c.ServerID = serverID
+	// Stamp the creator (added in migration 0056). Used by the GHA
+	// permissions-missing notification path. Nullable in the column
+	// so missing userID stays silent rather than blowing up create.
+	if userID != "" {
+		uid := userID
+		c.UserID = &uid
+	}
 
 	// Honour build_location on git-source composes. Only meaningful
 	// for git source — the raw_yaml branch has no repo to commit a

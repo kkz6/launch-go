@@ -18,6 +18,7 @@ import (
 	"gorm.io/gorm"
 
 	dockermodels "github.com/kkz6/launch-go/internal/modules/docker/models"
+	dockernotifications "github.com/kkz6/launch-go/internal/modules/docker/notifications"
 	dockertasks "github.com/kkz6/launch-go/internal/modules/docker/tasks"
 	dockertypes "github.com/kkz6/launch-go/internal/modules/docker/types"
 	pkgjobs "github.com/kkz6/launch-go/internal/pkg/jobs"
@@ -135,16 +136,7 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	buildSecrets := j.loadApplicationBuildSecrets(ctx, app.ID)
 
 	if err := j.bootstrap(ctx, cfg, rawToken, "application", app.ID, buildSecrets); err != nil {
-		// Special-case the "GitHub App installation removed" failure
-		// mode so the UI can render a banner the customer can actually
-		// act on, rather than the user staring at a generic asynq
-		// retry loop in Sentry. installationGone is true when our
-		// installation token request 404s — meaning the customer
-		// uninstalled the GitHub App from their account.
-		if isInstallationGone(err) {
-			j.broadcastInstallationBroken(app.TeamID, "application", app.ID, err)
-		}
-		return err
+		return j.recordBootstrapFailure(ctx, &app, nil, "application", err)
 	}
 
 	// Persist tokenHash + workflow SHA + image-repository binding back
@@ -155,6 +147,10 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 		"source_config": appendSourceConfig(app.SourceConfig, map[string]any{
 			"gha_workflow_sha":     cfg.LastCommitSHA,
 			"gha_image_repository": ghcrImageRepository(cfg.Owner, cfg.Repo),
+			// Success clears any previous failure state so a retry
+			// after the customer grants permissions flips the banner
+			// off without the UI having to track it separately.
+			"gha_install_status": string(dockertypes.GHAInstallStatusOK),
 		}),
 	}
 	if tokenHash != "" {
@@ -201,6 +197,31 @@ func isInstallationGone(err error) bool {
 		strings.Contains(s, "status 404")
 }
 
+// isPermissionsMissing classifies an error as "the GitHub App is
+// installed but lacks one of the permissions bootstrap needs"
+// (Contents R/W, Actions Write, Secrets R/W, or Variables R/W).
+// GitHub's canonical phrasing is the literal string
+// "Resource not accessible by integration" attached to a 403 — we
+// match on that substring rather than the status code alone because
+// the error chain wraps the raw response body verbatim
+// (`PutActionsSecret %s: status %d body %s` in github_writes.go).
+//
+// Detected at the bootstrap error boundary so we can mark the
+// workload non-retriable (asynq otherwise burns ~25 retries against
+// a 403 that's never going to succeed), email the creator, and flip
+// the UI banner — instead of letting the worker thrash silently
+// while the customer wonders why "Setting up" never moves.
+func isPermissionsMissing(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, gitproviders.ErrPermissionDenied) {
+		return true
+	}
+	s := err.Error()
+	return strings.Contains(s, "Resource not accessible by integration")
+}
+
 // broadcastInstallationBroken fires a team-channel event the UI
 // subscribes to. The handler in launch-nuxt's useChannelEvents
 // allow-list flips the workload's detail subtab into a "Reconnect
@@ -220,6 +241,244 @@ func (j *GHABootstrapWorkflowJob) broadcastInstallationBroken(teamID, kind, id s
 		idField: id,
 		"error": cause.Error(),
 	})
+}
+
+// recordBootstrapFailure is the unified terminal-failure handler for
+// the bootstrap pipeline. It classifies the error, persists the
+// resulting gha_install_status on the workload's source_config,
+// broadcasts the appropriate WS event so the UI flips to an
+// actionable banner, sends a notification, and decides whether asynq
+// should retry.
+//
+// Exactly one of (app, compose) must be non-nil. The two paths share
+// almost all the work — only the broadcast event name + id field
+// differ — so I'd rather one branchy helper than two near-duplicate
+// copies that drift.
+//
+// Return value contract:
+//
+//   - nil when we've classified the error as a NON-retriable user
+//     failure (permissions missing, installation gone). asynq stops
+//     retrying; the UI banner is the user's action item.
+//   - err propagates when the error is unclassified — likely a real
+//     transient (network, DB hiccup). asynq's retry policy then
+//     backs off and tries again.
+func (j *GHABootstrapWorkflowJob) recordBootstrapFailure(
+	ctx context.Context,
+	app *dockermodels.Application,
+	compose *dockermodels.Compose,
+	kind string,
+	cause error,
+) error {
+	var (
+		status       dockertypes.GHAInstallStatus
+		nonRetriable bool
+		workloadID   string
+		teamID       string
+		workloadName string
+		projectID    string
+		serverID     string
+		sourceConfig map[string]any
+		userID       *string
+	)
+
+	switch {
+	case isPermissionsMissing(cause):
+		status, nonRetriable = dockertypes.GHAInstallStatusPermissionsMissing, true
+	case isInstallationGone(cause):
+		status, nonRetriable = dockertypes.GHAInstallStatusInstallationGone, true
+	default:
+		// Unclassified — let asynq retry. Don't persist status, the
+		// workload stays in "Setting up" and the next attempt will
+		// resolve.
+		return cause
+	}
+
+	if app != nil {
+		workloadID, teamID, workloadName = app.ID, app.TeamID, app.Name
+		projectID, serverID = app.ProjectID, app.ServerID
+		sourceConfig, userID = map[string]any(app.SourceConfig), app.UserID
+	} else if compose != nil {
+		workloadID, teamID, workloadName = compose.ID, compose.TeamID, compose.Name
+		projectID, serverID = compose.ProjectID, compose.ServerID
+		sourceConfig, userID = map[string]any(compose.SourceConfig), compose.UserID
+	}
+
+	// Persist the status flag on source_config so the UI banner
+	// survives reloads. Best-effort — a DB hiccup here logs but
+	// shouldn't block the broadcast/email, which are the actionable
+	// signals.
+	newCfg := appendSourceConfig(sourceConfig, map[string]any{
+		"gha_install_status": string(status),
+	})
+	var persistErr error
+	if app != nil {
+		persistErr = j.Deps.DB.WithContext(ctx).Model(app).
+			Update("source_config", newCfg).Error
+	} else {
+		persistErr = j.Deps.DB.WithContext(ctx).Model(compose).
+			Update("source_config", newCfg).Error
+	}
+	if persistErr != nil {
+		j.Deps.Logger.Warn().Err(persistErr).
+			Str("workload_kind", kind).
+			Str("workload_id", workloadID).
+			Msg("gha bootstrap: failed to persist gha_install_status; banner won't survive reload")
+	}
+
+	// Broadcast. The installation_gone path retains its existing event
+	// name for backwards compat with the UI; the new permissions_missing
+	// path gets a sibling event with the same payload shape.
+	if j.Deps.Broadcaster != nil {
+		switch status {
+		case dockertypes.GHAInstallStatusInstallationGone:
+			j.broadcastInstallationBroken(teamID, kind, workloadID, cause)
+		case dockertypes.GHAInstallStatusPermissionsMissing:
+			event := "docker.application.gha_permissions_missing"
+			idField := "application_id"
+			if kind == "compose" {
+				event = "docker.compose.gha_permissions_missing"
+				idField = "compose_id"
+			}
+			j.Deps.Broadcaster.BroadcastToTeam(teamID, event, map[string]any{
+				idField: workloadID,
+				"error": cause.Error(),
+			})
+		}
+	}
+
+	// Email — only for permissions_missing for now. The
+	// installation_gone path already has the in-app banner; adding
+	// email for the App-uninstalled case can be a follow-up if
+	// customers ask. We log enough context that an operator can
+	// notice it in the meantime.
+	if status == dockertypes.GHAInstallStatusPermissionsMissing {
+		j.sendPermissionsMissingNotification(
+			ctx, teamID, kind, workloadID, workloadName,
+			projectID, serverID, sourceConfig, userID,
+		)
+	}
+
+	j.Deps.Logger.Warn().Err(cause).
+		Str("workload_kind", kind).
+		Str("workload_id", workloadID).
+		Str("status", string(status)).
+		Bool("non_retriable", nonRetriable).
+		Msg("gha bootstrap: terminal failure recorded")
+
+	if nonRetriable {
+		return nil
+	}
+	return cause
+}
+
+// sendPermissionsMissingNotification routes the
+// GHAPermissionsMissingNotification through the team-channel pipe.
+// Best-effort: a notifier failure logs + continues so the UI banner
+// still shows even if email infra is down.
+//
+// userID is the workload's creator (migration 0056). Today we still
+// fan out via the team channel because the notifier doesn't have a
+// SendToUser entry point yet; including the creator's id on the
+// payload makes it trivial to swap later. The email body already
+// names the workload, so a team member who isn't the creator can
+// still hand the message to the App owner.
+func (j *GHABootstrapWorkflowJob) sendPermissionsMissingNotification(
+	ctx context.Context,
+	teamID, kind, workloadID, workloadName, projectID, serverID string,
+	sourceConfig map[string]any,
+	userID *string,
+) {
+	if j.Deps.TaskRunnerDeps == nil || j.Deps.TaskRunnerDeps.Notifier == nil {
+		return
+	}
+	notifier := j.Deps.TaskRunnerDeps.Notifier
+
+	projectName := lookupProjectNameForGHA(ctx, j.Deps.DB, teamID, projectID, serverID)
+	serverName := lookupServerNameForGHA(ctx, j.Deps.DB, teamID, serverID)
+	repository := repositoryFromSourceConfig(sourceConfig)
+	appSettingsURL := githubAppSettingsURL(sourceConfig)
+
+	notif := dockernotifications.NewGHAPermissionsMissingNotification(
+		kind, workloadName, projectName, serverName,
+	).
+		WithRepository(repository).
+		WithAppSettingsURL(appSettingsURL)
+
+	_ = userID // surfaced for future SendToUser plumbing
+	if err := notifier.SendToTeam(ctx, teamID, notif); err != nil {
+		j.Deps.Logger.Warn().Err(err).
+			Str("workload_kind", kind).
+			Str("workload_id", workloadID).
+			Msg("gha bootstrap: failed to send permissions-missing notification")
+	}
+}
+
+// lookupProjectNameForGHA resolves a project name for the notification
+// body without coupling to the docker repositories registry (which
+// jobs has access to anyway, but this keeps the helper self-contained).
+// Returns empty string on any failure — fallback() in the notification
+// renders "—" so a missing value doesn't crash the body.
+func lookupProjectNameForGHA(ctx context.Context, db *gorm.DB, teamID, projectID, serverID string) string {
+	if projectID == "" {
+		return ""
+	}
+	var name string
+	err := db.WithContext(ctx).Table("docker_projects").
+		Select("name").
+		Where("id = ? AND team_id = ? AND server_id = ?", projectID, teamID, serverID).
+		Scan(&name).Error
+	if err != nil {
+		return ""
+	}
+	return name
+}
+
+// lookupServerNameForGHA resolves a server name for the notification.
+// Same best-effort posture as lookupProjectNameForGHA.
+func lookupServerNameForGHA(ctx context.Context, db *gorm.DB, teamID, serverID string) string {
+	if serverID == "" {
+		return ""
+	}
+	var name string
+	err := db.WithContext(ctx).Table("servers").
+		Select("name").
+		Where("id = ? AND team_id = ?", serverID, teamID).
+		Scan(&name).Error
+	if err != nil {
+		return ""
+	}
+	return name
+}
+
+// repositoryFromSourceConfig extracts "owner/repo" for display.
+// Prefers explicit owner/repo, falls back to parsing the clone URL.
+// Empty when neither path yields a value — the email shows "—".
+func repositoryFromSourceConfig(sc map[string]any) string {
+	if sc == nil {
+		return ""
+	}
+	owner, _ := sc["owner"].(string)
+	repo, _ := sc["repo"].(string)
+	if owner != "" && repo != "" {
+		return owner + "/" + repo
+	}
+	// Fall back to whatever's in the repo field (a clone URL or
+	// owner/repo) without re-parsing — the email shows it verbatim,
+	// human-readable either way.
+	if v, ok := sc["repo"].(string); ok {
+		return v
+	}
+	return ""
+}
+
+// githubAppSettingsURL gives the user a clickable link to the GitHub
+// App's settings page. We don't know the App slug from source_config
+// alone (it's set at the provider-config level), so this currently
+// returns a generic "where to find your installed Apps" link. A
+// future improvement would thread the App slug through via JobDeps.
+func githubAppSettingsURL(_ map[string]any) string {
+	return "https://github.com/settings/installations"
 }
 
 func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
@@ -244,16 +503,14 @@ func (j *GHABootstrapWorkflowJob) handleCompose(ctx context.Context) error {
 	buildSecrets := j.loadComposeBuildSecrets(ctx, compose.ID)
 
 	if err := j.bootstrap(ctx, cfg, rawToken, "compose", compose.ID, buildSecrets); err != nil {
-		if isInstallationGone(err) {
-			j.broadcastInstallationBroken(compose.TeamID, "compose", compose.ID, err)
-		}
-		return err
+		return j.recordBootstrapFailure(ctx, nil, &compose, "compose", err)
 	}
 
 	updates := map[string]any{
 		"source_config": appendSourceConfig(compose.SourceConfig, map[string]any{
 			"gha_workflow_sha":     cfg.LastCommitSHA,
 			"gha_image_repository": ghcrImageRepository(cfg.Owner, cfg.Repo),
+			"gha_install_status":   string(dockertypes.GHAInstallStatusOK),
 		}),
 	}
 	if tokenHash != "" {
@@ -368,7 +625,7 @@ func looksLikeGitURL(s string) bool {
 // Returns ok=false when the input is empty or doesn't yield both a
 // non-empty owner AND repo. The job validator above turns ok=false into
 // a clean "owner/repo missing" error.
-func parseRepoIdentifier(raw string) (string, string, bool) {
+func parseRepoIdentifier(raw string) (owner, repo string, ok bool) {
 	s := strings.TrimSpace(raw)
 	if s == "" {
 		return "", "", false
@@ -391,8 +648,8 @@ func parseRepoIdentifier(raw string) (string, string, bool) {
 	if len(parts) < 2 {
 		return "", "", false
 	}
-	owner := strings.TrimSpace(parts[len(parts)-2])
-	repo := strings.TrimSpace(parts[len(parts)-1])
+	owner = strings.TrimSpace(parts[len(parts)-2])
+	repo = strings.TrimSpace(parts[len(parts)-1])
 	if owner == "" || repo == "" {
 		return "", "", false
 	}
