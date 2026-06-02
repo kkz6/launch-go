@@ -82,6 +82,45 @@ func TestRenderApplicationWorkflow_RespectsBuildType(t *testing.T) {
 	assert.Contains(t, auto, `if [ -f "Dockerfile" ]`)
 }
 
+// TestRenderApplicationWorkflow_AutoDeployTrigger pins the auto-deploy
+// behaviour: ON adds an `on: push: branches: [<branch>]` trigger (so a push
+// auto-deploys) while keeping workflow_dispatch; OFF is manual-only and emits
+// NO push trigger (committing the workflow must never auto-deploy).
+func TestRenderApplicationWorkflow_AutoDeployTrigger(t *testing.T) {
+	base := func(auto bool) ApplicationWorkflowData {
+		return ApplicationWorkflowData{
+			Branch:         "release",
+			DockerfilePath: "Dockerfile",
+			LaunchBaseURL:  "https://launchctl.io",
+			AppID:          "01HJX",
+			AutoDeploy:     auto,
+		}
+	}
+
+	on, err := RenderApplicationWorkflow(base(true))
+	require.NoError(t, err)
+	// The push *trigger* is identified by `branches: [<branch>]` — note the
+	// build step always has `push: true`, so we key off `branches:` here.
+	assert.Contains(t, on, "branches: [release]", "auto-deploy ON must add a push trigger scoped to the deploy branch")
+	assert.Contains(t, on, "workflow_dispatch:", "manual dispatch must remain available")
+
+	off, err := RenderApplicationWorkflow(base(false))
+	require.NoError(t, err)
+	assert.NotContains(t, off, "branches:", "auto-deploy OFF must NOT emit a push trigger")
+	assert.Contains(t, off, "workflow_dispatch:", "manual dispatch is the only trigger when off")
+}
+
+func TestRenderComposeWorkflow_AutoDeployTrigger(t *testing.T) {
+	on, err := RenderComposeWorkflow(ComposeWorkflowData{
+		Branch: "main", ComposeFilePath: "docker-compose.yml",
+		LaunchBaseURL: "https://launchctl.io", ComposeID: "01HJX", AutoDeploy: true,
+	})
+	require.NoError(t, err)
+	assert.Contains(t, on, "push:")
+	assert.Contains(t, on, "branches: [main]")
+	assert.Contains(t, on, "workflow_dispatch:")
+}
+
 func TestRenderApplicationWorkflow_RejectsMissingFields(t *testing.T) {
 	cases := []struct {
 		name string

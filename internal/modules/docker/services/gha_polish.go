@@ -77,6 +77,54 @@ func (s *ApplicationService) ResyncGHA(
 	return s.EnqueueTask(task)
 }
 
+// withAutoDeploy returns a copy of a source_config map with auto_deploy set.
+// Copy (not mutate) so GORM's JSON serializer sees a fresh value.
+func withAutoDeploy(orig map[string]any, enabled bool) map[string]any {
+	out := make(map[string]any, len(orig)+1)
+	for k, v := range orig {
+		out[k] = v
+	}
+	out["auto_deploy"] = enabled
+	return out
+}
+
+// SetAutoDeployGHA flips auto-deploy for a GHA application and re-syncs the
+// committed workflow so its `on:` trigger reflects the change: push to the
+// deploy branch (+ manual workflow_dispatch) when on, manual-only when off.
+func (s *ApplicationService) SetAutoDeployGHA(
+	ctx context.Context, applicationID, projectID, serverID, teamID, userID string, enabled bool,
+) error {
+	_ = userID
+	if _, err := s.requireProject(ctx, projectID, serverID, teamID); err != nil {
+		return err
+	}
+	app, err := s.Repos().Application().FindByIDAndTeamServer(ctx, applicationID, teamID, serverID)
+	if err != nil {
+		return err
+	}
+	if app.BuildLocation != dockertypes.BuildLocationGitHubActions {
+		return fiberutil.Validation("Application is not configured for GitHub Actions builds")
+	}
+	if err := s.Repos().Application().UpdateFields(ctx, app.ID, map[string]any{
+		"source_config": withAutoDeploy(app.SourceConfig, enabled),
+	}); err != nil {
+		return err
+	}
+	task, err := jobs.NewGHABootstrapWorkflowTask("application", app.ID, false, s.AppURL())
+	if err != nil {
+		return err
+	}
+	if err := s.EnqueueTask(task); err != nil {
+		return err
+	}
+	s.BroadcastToTeam(teamID, "docker.application.updated", map[string]any{
+		"application_id": app.ID,
+		"id":             app.ID,
+		"auto_deploy":    enabled,
+	})
+	return nil
+}
+
 func (s *ApplicationService) DisableGHA(
 	ctx context.Context, applicationID, projectID, serverID, teamID, userID string,
 ) error {
@@ -152,6 +200,42 @@ func (s *ComposeService) ResyncGHA(
 		return err
 	}
 	return s.EnqueueTask(task)
+}
+
+// SetAutoDeployGHA flips auto-deploy for a GHA compose stack and re-syncs the
+// committed workflow (push + workflow_dispatch when on, manual-only when off).
+func (s *ComposeService) SetAutoDeployGHA(
+	ctx context.Context, composeID, projectID, serverID, teamID, userID string, enabled bool,
+) error {
+	_ = userID
+	if _, err := s.requireProjectScoped(ctx, projectID, serverID, teamID); err != nil {
+		return err
+	}
+	compose, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, composeID, teamID, serverID)
+	if err != nil {
+		return err
+	}
+	if compose.BuildLocation != dockertypes.BuildLocationGitHubActions {
+		return fiberutil.Validation("Compose stack is not configured for GitHub Actions builds")
+	}
+	if err := s.Repos().Compose().UpdateFields(ctx, compose.ID, map[string]any{
+		"source_config": withAutoDeploy(compose.SourceConfig, enabled),
+	}); err != nil {
+		return err
+	}
+	task, err := jobs.NewGHABootstrapWorkflowTask("compose", compose.ID, false, s.AppURL())
+	if err != nil {
+		return err
+	}
+	if err := s.EnqueueTask(task); err != nil {
+		return err
+	}
+	s.BroadcastToTeam(teamID, "docker.compose.updated", map[string]any{
+		"compose_id":  compose.ID,
+		"id":          compose.ID,
+		"auto_deploy": enabled,
+	})
+	return nil
 }
 
 func (s *ComposeService) DisableGHA(
