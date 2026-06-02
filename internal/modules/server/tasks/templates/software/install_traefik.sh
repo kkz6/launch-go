@@ -44,17 +44,24 @@ log:
   level: INFO
 EOF
 
-if [ -n "{{ .ACMEEmail }}" ]; then
-    sudo tee -a "{{ .RootDir }}/traefik/traefik.yml" >/dev/null <<EOF
+# Let's Encrypt resolver. Traefik's ACME config requires an `email`, but the
+# value is only the account's expiry-notice address — it is NOT user-facing.
+# So we ALWAYS configure the resolver (defaulting to a valid placeholder when
+# none is provided), the same way Dokploy hard-codes one. Omitting the resolver
+# is what leaves HTTPS domains stuck on Traefik's self-signed default cert.
+ACME_EMAIL="{{ .ACMEEmail }}"
+if [ -z "${ACME_EMAIL}" ]; then
+    ACME_EMAIL="ssl@launchctl.io"
+fi
+sudo tee -a "{{ .RootDir }}/traefik/traefik.yml" >/dev/null <<EOF
 certificatesResolvers:
   letsencrypt:
     acme:
-      email: {{ .ACMEEmail }}
+      email: ${ACME_EMAIL}
       storage: /etc/traefik/acme.json
       httpChallenge:
         entryPoint: web
 EOF
-fi
 
 sudo touch "{{ .RootDir }}/traefik/acme.json"
 sudo chmod 600 "{{ .RootDir }}/traefik/acme.json"
@@ -79,8 +86,11 @@ fi
 
 # Container path. Idempotent: re-running the step is safe.
 if sudo docker ps -a --format '{{`{{`}}.Names{{`}}`}}' | grep -qx '{{ .ContainerName }}'; then
-    echo "Traefik container {{ .ContainerName }} already exists; ensuring it's running"
-    sudo docker start {{ .ContainerName }} >/dev/null || true
+    echo "Traefik container {{ .ContainerName }} already exists; restarting to apply static config"
+    # `restart` (not `start`) so a re-provision picks up changes to
+    # traefik.yml (e.g. a newly-added certificatesResolvers block) — the
+    # static config is only read at Traefik startup.
+    sudo docker restart {{ .ContainerName }} >/dev/null || true
 else
     sudo docker run -d \
         --name {{ .ContainerName }} \

@@ -152,6 +152,28 @@ func TestProvisionDockerServer_ScriptIncludesACMEWhenEmailProvided(t *testing.T)
 	assert.Contains(t, script, "certificatesResolvers:", "ACME resolver block must be emitted")
 }
 
+func TestProvisionDockerServer_ACMEResolverAlwaysEmitted(t *testing.T) {
+	// Even without an ACME email the resolver MUST be configured (with a
+	// default account email) — otherwise Traefik serves its self-signed
+	// default cert and every HTTPS domain fails validation. Mirrors how
+	// Dokploy hard-codes a placeholder account email.
+	config := testDockerConfig()
+	config.ACMEEmail = ""
+	script := ProvisionDockerServer(config).Script()
+
+	assert.Contains(t, script, "certificatesResolvers:", "ACME resolver must be emitted even without an email")
+	assert.Contains(t, script, "ssl@launchctl.io", "a default ACME account email must be used when none is provided")
+	assert.Contains(t, script, "httpChallenge:", "HTTP-01 challenge must be configured")
+}
+
+func TestProvisionDockerServer_RestartsTraefikOnReprovision(t *testing.T) {
+	// Re-provisioning must `docker restart` an existing Traefik so changes to
+	// the static config (traefik.yml) are picked up — `docker start` alone
+	// would leave a running Traefik on its old static config.
+	script := ProvisionDockerServer(testDockerConfig()).Script()
+	assert.Contains(t, script, "docker restart", "must restart existing Traefik to apply static config changes")
+}
+
 func TestProvisionDockerServer_DockerTemplateEscaping(t *testing.T) {
 	// Docker's {{ .Name }} format strings collide with Go's template engine. The
 	// template uses {{`{{`}}.Name{{`}}`}} to emit literal braces. If the escape
