@@ -160,11 +160,13 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	}
 
 	now := time.Now().UTC()
-	if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
-		"status":     dockertypes.DeploymentStatusDeploying,
-		"started_at": now,
-	}); err != nil {
-		j.Deps.Logger.Error().Err(err).Msg("failed to mark deployment as deploying")
+	if j.deployment != nil {
+		if err := j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+			"status":     dockertypes.DeploymentStatusDeploying,
+			"started_at": now,
+		}); err != nil {
+			j.Deps.Logger.Error().Err(err).Msg("failed to mark deployment as deploying")
+		}
 	}
 
 	// Flip application status to "building" so the UI shows a spinner
@@ -174,14 +176,19 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	}); err != nil {
 		j.Deps.Logger.Error().Err(err).Msg("failed to mark application as building")
 	}
-	j.broadcast("docker.application.deploying", map[string]any{
+	deployingPayload := map[string]any{
 		"application_id": j.app.ID,
-		"deployment_id":  j.deployment.ID,
 		"status":         inflightStatus,
-	})
+	}
+	// No deployment_id on the toast-only restart path — the frontend keys
+	// the "View logs" affordance off it, and there's no row to view.
+	if j.deployment != nil {
+		deployingPayload["deployment_id"] = j.deployment.ID
+	}
+	j.broadcast("docker.application.deploying", deployingPayload)
 
 	cfg := tasks.DeployConfig{
-		DeploymentID:  j.deployment.ID,
+		DeploymentID:  j.Payload.DeploymentID,
 		ProjectSlug:   tasks.SlugFromName(j.project.Name),
 		AppSlug:       tasks.SlugFromName(j.app.Name),
 		ContainerName: tasks.ContainerNameFor(j.project, j.app),
@@ -343,6 +350,11 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	// deployments use.
 	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().TrackInDB().
 		OnTaskCreated(func(taskID string) {
+			// Toast-only restart: no deployment row, so nothing to attach
+			// the task to and no "View Logs" affordance to surface.
+			if j.deployment == nil {
+				return
+			}
 			// Persist + broadcast the task ID the moment the task row is
 			// created (before SSH finishes) so the Deployments tab's
 			// "View Logs" button appears and streams the live build/deploy
@@ -372,7 +384,7 @@ func (j *DeployApplicationJob) Handle(ctx context.Context) error {
 	// tab's "View logs" can subscribe to the live log stream. Done
 	// before the success/failure branch so the task_id is visible
 	// whether the deploy passed or failed.
-	if taskID != "" {
+	if taskID != "" && j.deployment != nil {
 		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
 			"task_id": taskID,
 		})
@@ -401,7 +413,11 @@ func (j *DeployApplicationJob) Failed(ctx context.Context, err error) {
 		Str("deployment_id", j.Payload.DeploymentID).
 		Msg("deploy application job failed at the framework level")
 
-	// Best-effort: mark the deployment as failed if we can.
+	// Best-effort: mark the deployment as failed if we can. The toast-only
+	// restart path carries no deployment ID — nothing to mark.
+	if j.Payload.DeploymentID == "" {
+		return
+	}
 	finishedAt := time.Now().UTC()
 	errMsg := err.Error()
 	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.Payload.DeploymentID, map[string]any{
@@ -415,9 +431,17 @@ func (j *DeployApplicationJob) Failed(ctx context.Context, err error) {
 // a wrapped error indicating which lookup failed.
 func (j *DeployApplicationJob) loadModels(ctx context.Context) error {
 	var err error
-	j.deployment, err = j.Deps.Repos.Deployment().FindByID(ctx, j.Payload.DeploymentID)
-	if err != nil {
-		return fmt.Errorf("find deployment: %w", err)
+	// Restart ("recreate with current env") runs WITHOUT a Deployment
+	// history row — it's a lightweight, toast-only action (see
+	// ApplicationService.recreateApplication). Only load the deployment
+	// when the payload carries an ID; every deployment-row write below is
+	// gated on j.deployment != nil, so a normal deploy (which always has
+	// an ID) behaves exactly as before.
+	if j.Payload.DeploymentID != "" {
+		j.deployment, err = j.Deps.Repos.Deployment().FindByID(ctx, j.Payload.DeploymentID)
+		if err != nil {
+			return fmt.Errorf("find deployment: %w", err)
+		}
 	}
 	j.app, err = j.Deps.Repos.Application().FindByIDAndTeamServer(
 		ctx, j.Payload.ApplicationID, j.Payload.TeamID, j.Payload.ServerID,
@@ -441,14 +465,16 @@ func (j *DeployApplicationJob) loadModels(ctx context.Context) error {
 func (j *DeployApplicationJob) handleSuccess(ctx context.Context, containerID, imageRef string) {
 	finishedAt := time.Now().UTC()
 
-	deploymentUpdates := map[string]any{
-		"status":      dockertypes.DeploymentStatusSuccess,
-		"finished_at": finishedAt,
+	if j.deployment != nil {
+		deploymentUpdates := map[string]any{
+			"status":      dockertypes.DeploymentStatusSuccess,
+			"finished_at": finishedAt,
+		}
+		if imageRef != "" {
+			deploymentUpdates["image_ref"] = imageRef
+		}
+		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, deploymentUpdates)
 	}
-	if imageRef != "" {
-		deploymentUpdates["image_ref"] = imageRef
-	}
-	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, deploymentUpdates)
 
 	appUpdates := map[string]any{
 		"status":           dockertypes.ApplicationStatusRunning,
@@ -470,13 +496,16 @@ func (j *DeployApplicationJob) handleSuccess(ctx context.Context, containerID, i
 		}
 	}
 
-	j.broadcast("docker.application.deployed", map[string]any{
+	deployedPayload := map[string]any{
 		"application_id": j.app.ID,
-		"deployment_id":  j.deployment.ID,
 		"container_id":   containerID,
 		"image_ref":      imageRef,
 		"status":         "running",
-	})
+	}
+	if j.deployment != nil {
+		deployedPayload["deployment_id"] = j.deployment.ID
+	}
+	j.broadcast("docker.application.deployed", deployedPayload)
 }
 
 func (j *DeployApplicationJob) handleFailure(ctx context.Context, output string, runErr error, exitCode int) {
@@ -500,24 +529,29 @@ func (j *DeployApplicationJob) handleFailure(ctx context.Context, output string,
 		}
 	}
 
-	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
-		"status":      dockertypes.DeploymentStatusFailed,
-		"finished_at": finishedAt,
-		"error":       errMsg,
-	})
+	if j.deployment != nil {
+		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+			"status":      dockertypes.DeploymentStatusFailed,
+			"finished_at": finishedAt,
+			"error":       errMsg,
+		})
+	}
 	_ = j.Deps.Repos.Application().UpdateFields(ctx, j.app.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusFailed,
 	})
 
-	j.broadcast("docker.application.failed", map[string]any{
+	failedPayload := map[string]any{
 		"application_id": j.app.ID,
-		"deployment_id":  j.deployment.ID,
 		"status":         "failed",
 		"exit_code":      exitCode,
-		// Send a short error summary to the UI; the full output sits on
-		// the deployment row for the user to inspect.
+		// Send a short error summary to the UI; on the deploy path the full
+		// output sits on the deployment row for the user to inspect.
 		"error": summarise(errMsg),
-	})
+	}
+	if j.deployment != nil {
+		failedPayload["deployment_id"] = j.deployment.ID
+	}
+	j.broadcast("docker.application.failed", failedPayload)
 }
 
 // broadcast sends an event to the team channel with the routing fields
@@ -662,20 +696,25 @@ func ghcrBearerExpiredSoon(mintedAtUnix string, now time.Time) (string, bool) {
 // pull eventually error with an opaque 401.
 func (j *DeployApplicationJob) markDeploymentFailed(ctx context.Context, errMsg string) {
 	finishedAt := time.Now().UTC()
-	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
-		"status":      dockertypes.DeploymentStatusFailed,
-		"finished_at": finishedAt,
-		"error":       errMsg,
-	})
+	if j.deployment != nil {
+		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+			"status":      dockertypes.DeploymentStatusFailed,
+			"finished_at": finishedAt,
+			"error":       errMsg,
+		})
+	}
 	_ = j.Deps.Repos.Application().UpdateFields(ctx, j.app.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusFailed,
 	})
-	j.broadcast("docker.application.failed", map[string]any{
+	failedPayload := map[string]any{
 		"application_id": j.app.ID,
-		"deployment_id":  j.deployment.ID,
 		"status":         "failed",
 		"error":          errMsg,
-	})
+	}
+	if j.deployment != nil {
+		failedPayload["deployment_id"] = j.deployment.ID
+	}
+	j.broadcast("docker.application.failed", failedPayload)
 }
 
 // applyDeployApplicationOverrides flips the deploy config to the
@@ -725,19 +764,22 @@ func NewDeployApplicationTask(
 
 // NewRecreateApplicationTask enqueues a "reload": recreate the
 // container from the image already on the host with the current env +
-// config, skipping clone/build/pull. Same job + dedup slot as a deploy
-// (keyed on deployment_id) with Recreate set, so the script takes the
-// no-build path. Used by the Restart action to apply env changes fast.
+// config, skipping clone/build/pull. This backs the Restart action,
+// which is a lightweight, toast-only operation — it runs WITHOUT a
+// Deployment history row (no deployment_id), so the job skips every
+// deployment-row write and just broadcasts the running/errored status.
+// Dedup is keyed on the application ID (not a deployment ID, which is
+// empty here) so two restarts of the same app collapse while restarts
+// of different apps never collide.
 func NewRecreateApplicationTask(
-	applicationID, deploymentID, serverID, teamID string,
+	applicationID, serverID, teamID string,
 ) (*asynq.Task, error) {
 	return pkgjobs.TaskWithID(TypeDeployApplication, DeployApplicationPayload{
 		ApplicationID: applicationID,
-		DeploymentID:  deploymentID,
 		ServerID:      serverID,
 		TeamID:        teamID,
 		Recreate:      true,
-	}, pkgjobs.Dedup("docker-deploy-app", deploymentID))
+	}, pkgjobs.Dedup("docker-recreate-app", applicationID))
 }
 
 // NewDeployApplicationTaskFromGHA mirrors NewDeployApplicationTask but

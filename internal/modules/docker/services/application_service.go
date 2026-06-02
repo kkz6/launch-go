@@ -412,9 +412,11 @@ func (s *ApplicationService) Lifecycle(
 		// changed env vars would be ignored. Instead we RECREATE the
 		// container from the image already on the host with the current
 		// env/config (no rebuild) — which is what actually applies env
-		// changes. Routed through the deploy job in recreate mode so it
-		// reuses the full run-spec and gets live logs + a history row.
-		return s.recreateApplication(ctx, app)
+		// changes. It's a lightweight, toast-only action though: no
+		// deployment history row and no build logs (the deploy job runs
+		// in recreate mode with an empty deployment ID). See
+		// recreateApplication.
+		return s.recreateApplication(app)
 	case "stop", "start":
 		// ok — quick docker stop/start below.
 	default:
@@ -451,39 +453,20 @@ func (s *ApplicationService) Lifecycle(
 }
 
 // recreateApplication implements "Restart" = recreate-with-current-env.
-// Records a deployment row (action="restart") so the run appears in
-// history with live logs, then enqueues the deploy job in recreate mode
-// (reuse the on-host image, no build/pull). Image presence + the
-// env-file rewrite happen inside the job/script — see
+// It's a lightweight, toast-only action: it does NOT create a Deployment
+// history row and does NOT stream build logs — the user just wants the
+// container bounced with its current env applied. It enqueues the deploy
+// job in recreate mode (reuse the on-host image, no build/pull) with an
+// empty deployment ID, which makes the job skip every deployment-row
+// write and just broadcast the running/errored status when done. Image
+// presence + the env-file rewrite happen inside the job/script — see
 // DeployApplicationPayload.Recreate.
-func (s *ApplicationService) recreateApplication(ctx context.Context, app *models.Application) error {
-	now := time.Now().UTC()
-	restart := "restart"
-	deployment := &models.Deployment{
-		TargetType: "application",
-		TargetID:   app.ID,
-		Status:     dockertypes.DeploymentStatusPending,
-		StartedAt:  &now,
-		Action:     &restart,
-	}
-	deployment.TeamID = app.TeamID
-	deployment.ServerID = app.ServerID
-	if err := s.Repos().Deployment().Create(ctx, deployment); err != nil {
-		return err
-	}
-
-	task, err := jobs.NewRecreateApplicationTask(app.ID, deployment.ID, app.ServerID, app.TeamID)
+func (s *ApplicationService) recreateApplication(app *models.Application) error {
+	task, err := jobs.NewRecreateApplicationTask(app.ID, app.ServerID, app.TeamID)
 	if err != nil {
 		return err
 	}
 	if err := s.EnqueueTask(task); err != nil {
-		// Don't leave a permanent "pending" row if the enqueue failed.
-		finishedAt := time.Now().UTC()
-		_ = s.Repos().Deployment().UpdateFields(ctx, deployment.ID, map[string]any{
-			"status":      dockertypes.DeploymentStatusFailed,
-			"finished_at": finishedAt,
-			"error":       "failed to enqueue restart job: " + err.Error(),
-		})
 		return err
 	}
 

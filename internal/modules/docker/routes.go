@@ -1110,18 +1110,20 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		if err != nil {
 			return err
 		}
-		deployment, err := composeSvc.Reload(
+		// Reload is a toast-only action: no deployment row, so there's
+		// nothing to serialize back. The UI just shows a "Reload queued"
+		// toast and the WS status events drive the badge.
+		if err := composeSvc.Reload(
 			c.Context(),
 			c.Params("id"),
 			c.Params("projectId"),
 			c.Params("serverId"),
 			teamID,
 			userID,
-		)
-		if err != nil {
+		); err != nil {
 			return err
 		}
-		return fiberutil.Created(c, "Reload started", dto.ToDeploymentResponse(deployment))
+		return fiberutil.OK(c, "Reload started", nil)
 	})
 
 	// GitHub Actions detail-page actions for composes — mirror of the
