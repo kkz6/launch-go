@@ -487,65 +487,46 @@ func (s *ComposeService) ListDeployments(
 // already on the host — so saved runtime env changes apply fast.
 // Unlike Deploy it never routes GHA stacks to a workflow_dispatch: it
 // re-ups the local images directly (build-time changes still need a
-// full Deploy). Records a deployment row with action="restart".
+// full Deploy). It's a lightweight, toast-only action: NO deployment
+// history row and NO build logs — the deploy job runs in recreate mode
+// with an empty deployment ID, which makes it skip every deployment-row
+// write and just broadcast the running/errored status when done.
 func (s *ComposeService) Reload(
 	ctx context.Context, composeID, projectID, serverID, teamID, userID string,
-) (*models.Deployment, error) {
+) error {
 	_ = userID
 	if _, err := s.requireProjectScoped(ctx, projectID, serverID, teamID); err != nil {
-		return nil, err
+		return err
 	}
 	c, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, composeID, teamID, serverID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if c.ProjectID != projectID {
-		return nil, fiberutil.NotFound()
+		return fiberutil.NotFound()
 	}
 	if c.Status == dockertypes.ApplicationStatusBuilding {
-		return nil, fiberutil.Conflict("A deployment is already in progress for this compose stack")
+		return fiberutil.Conflict("A deployment is already in progress for this compose stack")
 	}
 	if c.LastDeployedAt == nil {
-		return nil, fiberutil.Conflict("Deploy this compose stack first — there's nothing to reload yet.")
+		return fiberutil.Conflict("Deploy this compose stack first — there's nothing to reload yet.")
 	}
 
-	now := time.Now().UTC()
-	restart := "restart"
-	deployment := &models.Deployment{
-		TargetType: "compose",
-		TargetID:   composeID,
-		Status:     dockertypes.DeploymentStatusPending,
-		StartedAt:  &now,
-		Action:     &restart,
-	}
-	deployment.TeamID = teamID
-	deployment.ServerID = serverID
-	if err := s.Repos().Deployment().Create(ctx, deployment); err != nil {
-		return nil, err
-	}
-
-	task, err := jobs.NewRecreateComposeTask(composeID, deployment.ID, serverID, teamID)
+	task, err := jobs.NewRecreateComposeTask(composeID, serverID, teamID)
 	if err != nil {
-		return nil, err
+		return err
 	}
 	if err := s.EnqueueTask(task); err != nil {
-		finishedAt := time.Now().UTC()
-		_ = s.Repos().Deployment().UpdateFields(ctx, deployment.ID, map[string]any{
-			"status":      dockertypes.DeploymentStatusFailed,
-			"finished_at": finishedAt,
-			"error":       "failed to enqueue reload job: " + err.Error(),
-		})
-		return nil, err
+		return err
 	}
 
 	s.BroadcastToTeam(teamID, "docker.compose.deploying", map[string]any{
-		"compose_id":    c.ID,
-		"deployment_id": deployment.ID,
-		"server_id":     serverID,
-		"team_id":       teamID,
-		"status":        "restarting",
+		"compose_id": c.ID,
+		"server_id":  serverID,
+		"team_id":    teamID,
+		"status":     "restarting",
 	})
-	return deployment, nil
+	return nil
 }
 
 // Deploy enqueues a compose deploy. Same shape as
