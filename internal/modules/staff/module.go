@@ -34,6 +34,14 @@ func NewModule(b *app.Builder) *Module {
 	deps := b.Deps()
 	repos := repositories.NewRegistry(deps.DB)
 	service := services.NewService(repos)
+
+	// Wire the JWT signing secret used to mint scoped impersonation tokens.
+	// Sourced from config (never the environment directly) at construction time,
+	// since the builder exposes config here.
+	if deps.Config != nil {
+		service.SetJWTSecret(deps.Config.JWT.Secret)
+	}
+
 	handler := handlers.NewAdminHandler(service)
 
 	return &Module{

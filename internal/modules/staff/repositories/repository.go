@@ -121,6 +121,29 @@ func (r *Registry) ListServers(ctx context.Context, limit, offset int) ([]server
 	return servers, total, nil
 }
 
+// UserByID loads a single user by id, or nil if no such user exists. Used by
+// the impersonation flow to read the target user's email/name/current team for
+// the minted token. Returns nil (not an error) when the user is absent.
+func (r *Registry) UserByID(ctx context.Context, id string) (*authmodels.User, error) {
+	if id == "" {
+		return nil, nil
+	}
+
+	var user authmodels.User
+	err := r.db.WithContext(ctx).
+		Where("id = ?", id).
+		First(&user).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &user, nil
+}
+
 // CreateImpersonationSession inserts a new impersonation session (start of a
 // spectate session). It assigns a ULID id and a started_at timestamp when those
 // are not already set on the record.

@@ -28,11 +28,22 @@ type ServerLogReader interface {
 type Service struct {
 	repos     *repositories.Registry
 	logReader ServerLogReader
+
+	// jwtSecret signs the scoped impersonation token. Wired from main.go/module
+	// via SetJWTSecret out of config; never read from the environment directly.
+	jwtSecret string
 }
 
 // NewService creates a new staff service.
 func NewService(repos *repositories.Registry) *Service {
 	return &Service{repos: repos}
+}
+
+// SetJWTSecret wires the HS256 signing secret used to mint scoped impersonation
+// tokens. Injected from the module constructor out of config (config.JWT.Secret),
+// mirroring how SetServerLogReader wires its cross-module dependency.
+func (s *Service) SetJWTSecret(secret string) {
+	s.jwtSecret = secret
 }
 
 // SetServerLogReader wires the cross-module reader used to fetch a server's
