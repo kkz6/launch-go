@@ -10,6 +10,7 @@ import (
 	"gorm.io/gorm"
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
+	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	staffmodels "github.com/kkz6/launch-go/internal/modules/staff/models"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
@@ -53,6 +54,37 @@ func (r *Registry) StaffRole(ctx context.Context, userID string) *stafftypes.Sta
 	}
 
 	return &role
+}
+
+// UserStatus reads the user's status column and parses it. Returns
+// UserStatusActive as the safe default for a NULL/empty value, a missing user,
+// a query error, or an unparseable value. Mirrors StaffRole's sql.NullString
+// approach (Pluck into a pointer was a prior bug; sql.NullString is correct).
+func (r *Registry) UserStatus(ctx context.Context, userID string) authtypes.UserStatus {
+	if userID == "" {
+		return authtypes.UserStatusActive
+	}
+
+	var raw sql.NullString
+	err := r.db.WithContext(ctx).
+		Model(&authmodels.User{}).
+		Where("id = ?", userID).
+		Limit(1).
+		Pluck("status", &raw).Error
+	if err != nil {
+		return authtypes.UserStatusActive
+	}
+
+	if !raw.Valid || strings.TrimSpace(raw.String) == "" {
+		return authtypes.UserStatusActive
+	}
+
+	status, err := authtypes.ParseUserStatus(raw.String)
+	if err != nil {
+		return authtypes.UserStatusActive
+	}
+
+	return status
 }
 
 // ListUsers returns a cross-tenant page of users ordered by created_at desc

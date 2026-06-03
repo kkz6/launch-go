@@ -127,6 +127,13 @@ func Auth(jwtSecret string, db *gorm.DB) fiber.Handler {
 				return fiberctx.RespondForbidden(c, readOnlyImpersonationMessage)
 			}
 
+			// Freeze suspended accounts at the chokepoint: every authenticated
+			// request from a suspended user is rejected immediately, regardless
+			// of how the route wires its auth middleware.
+			if isUserSuspended(c) {
+				return fiberctx.RespondForbidden(c, suspendedAccountMessage)
+			}
+
 			return c.Next()
 		}
 

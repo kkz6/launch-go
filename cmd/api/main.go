@@ -19,6 +19,7 @@ import (
 	"github.com/kkz6/launch-go/internal/database"
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/auth"
+	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	"github.com/kkz6/launch-go/internal/modules/backup"
 	"github.com/kkz6/launch-go/internal/modules/billing"
 	"github.com/kkz6/launch-go/internal/modules/certificate"
@@ -329,6 +330,13 @@ func (a *Application) registerModules() {
 	// Must run before BootHTTP registers the staff module's routes.
 	middleware.InitStaffMiddleware(func(userID string) *stafftypes.StaffRole {
 		return staffModule.Service().StaffRoleForUser(context.Background(), userID)
+	})
+
+	// Wire the account-status lookup so the Auth chokepoint can freeze
+	// suspended users on every authenticated request. Must run before
+	// BootHTTP registers routes guarded by the auth middleware.
+	middleware.InitUserStatus(func(userID string) authtypes.UserStatus {
+		return staffModule.Service().UserStatusForUser(context.Background(), userID)
 	})
 
 	// Boot all HTTP routes through the kernel

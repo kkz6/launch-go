@@ -142,6 +142,11 @@ func (s *AuthService) Login(ctx context.Context, req *dto.LoginRequest) (*dto.Lo
 		return nil, fiberutil.Unauthorized()
 	}
 
+	// Block suspended accounts before issuing any token or 2FA challenge.
+	if user.IsSuspended() {
+		return nil, fiberutil.Forbidden("Account suspended")
+	}
+
 	// If 2FA is enabled, issue a challenge token instead of auth tokens
 	if user.HasEnabledTwoFactorAuthentication() {
 		challengeToken, err := s.createTwoFactorChallenge(ctx, user.ID, req.IPAddress, req.UserAgent)

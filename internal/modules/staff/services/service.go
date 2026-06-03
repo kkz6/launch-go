@@ -4,6 +4,7 @@ import (
 	"context"
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
+	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/staff/repositories"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
@@ -56,6 +57,13 @@ func (s *Service) SetServerLogReader(reader ServerLogReader) {
 // lookup wired into the RequireStaff middleware.
 func (s *Service) StaffRoleForUser(ctx context.Context, userID string) *stafftypes.StaffRole {
 	return s.repos.StaffRole(ctx, userID)
+}
+
+// UserStatusForUser resolves a user's account status (active by safe default).
+// This is the lookup wired into the suspended-account enforcement at the Auth
+// chokepoint via middleware.InitUserStatus.
+func (s *Service) UserStatusForUser(ctx context.Context, userID string) authtypes.UserStatus {
+	return s.repos.UserStatus(ctx, userID)
 }
 
 // ListUsers returns a cross-tenant page of users and the total count.
