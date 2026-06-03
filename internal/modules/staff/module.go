@@ -68,6 +68,7 @@ func (m *Module) SetServerLogReader(reader services.ServerLogReader) {
 // RegisterRoutes registers the back-office /admin routes behind the staff gate.
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
 	admin := router.Group("/admin", middleware.StaffChain(authMiddleware, stafftypes.StaffRoleSupport)...)
+	admin.Get("/overview", m.handler.Overview)
 	admin.Get("/users", m.handler.ListUsers)
 	admin.Get("/teams", m.handler.ListTeams)
 	admin.Get("/servers", m.handler.ListServers)

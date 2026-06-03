@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"errors"
+	"time"
 
 	"github.com/gofiber/fiber/v2"
 
@@ -19,6 +20,18 @@ type AdminHandler struct {
 // NewAdminHandler creates a new AdminHandler.
 func NewAdminHandler(service *services.Service) *AdminHandler {
 	return &AdminHandler{service: service}
+}
+
+// Overview returns the back-office revenue/MRR dashboard computed from existing
+// billing data (Stripe-like metrics). Staff-only. The current wall clock is
+// passed into the service so month-boundary math stays testable.
+func (h *AdminHandler) Overview(c *fiber.Ctx) error {
+	overview, err := h.service.Overview(c.Context(), time.Now())
+	if err != nil {
+		return fiberutil.HandleError(c, err)
+	}
+
+	return fiberutil.OK(c, "Overview", overview)
 }
 
 // ListUsers returns a cross-tenant page of users, each row folding in the teams

@@ -29,6 +29,13 @@ func NewRegistry(db *gorm.DB) *Registry {
 	return &Registry{db: db}
 }
 
+// DB exposes the underlying gorm handle for read-only aggregate queries that
+// don't warrant a dedicated repository method (e.g. the overview dashboard's
+// sums and counts).
+func (r *Registry) DB() *gorm.DB {
+	return r.db
+}
+
 // StaffRole reads the user's staff_role column and parses it. Returns nil for
 // a NULL/empty value, a missing user, or an unparseable value (defensive).
 func (r *Registry) StaffRole(ctx context.Context, userID string) *stafftypes.StaffRole {

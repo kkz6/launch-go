@@ -34,6 +34,12 @@ type Service struct {
 	// jwtSecret signs the scoped impersonation token. Wired from main.go/module
 	// via SetJWTSecret out of config; never read from the environment directly.
 	jwtSecret string
+
+	// monthlyEquivByProduct maps a billing product id to its monthly-equivalent
+	// price in cents (yearly products divided by 12). Used to compute MRR. When
+	// nil it is lazily built from the default plan config; tests inject a fixed
+	// map via SetMonthlyEquivByProduct for determinism.
+	monthlyEquivByProduct map[string]int64
 }
 
 // NewService creates a new staff service.
