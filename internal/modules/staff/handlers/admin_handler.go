@@ -225,6 +225,66 @@ func (h *AdminHandler) UnsuspendUser(c *fiber.Ctx) error {
 	})
 }
 
+// DeleteUser hard-deletes a customer account. Super-admin only
+// (RequireStaff(StaffRoleSuperAdmin) runs ahead of it). This is a DESTRUCTIVE
+// operation: deleting the users row cascades at the DB level to every resource
+// the user owns (teams, servers, sites, ssh keys, providers, ...). It is only
+// permitted when the user never had a paying/active subscription and never
+// placed a paid order, and never for a staff member or the actor themselves.
+//
+// The actor id is taken from the request context, never the body, so the
+// service can enforce the self-delete guard. The deletability check runs first
+// to surface a precise 409 reason; the service then re-checks the guards inside
+// its delete transaction so a lost race can never delete a paying user.
+func (h *AdminHandler) DeleteUser(c *fiber.Ctx) error {
+	targetID := c.Params("id")
+	if targetID == "" {
+		return fiberutil.RespondBadRequest(c, "User id is required")
+	}
+
+	actorID, _ := c.Locals(fiberutil.KeyUserID).(string)
+
+	if actorID != "" && actorID == targetID {
+		return fiberutil.RespondConflict(c, services.ErrCannotDeleteSelf.Error())
+	}
+
+	deletable, reason, err := h.service.CanDeleteUser(c.Context(), targetID)
+	if err != nil {
+		return mapUserDeleteError(c, err)
+	}
+
+	if !deletable {
+		return fiberutil.RespondConflict(c, reason)
+	}
+
+	if err := h.service.DeleteUser(c.Context(), actorID, targetID); err != nil {
+		return mapUserDeleteError(c, err)
+	}
+
+	return fiberutil.OK(c, "User deleted", fiber.Map{"id": targetID})
+}
+
+// mapUserDeleteError translates delete service sentinels to HTTP statuses:
+// missing target -> 404; self-delete or a not-deletable user (staff role, paid
+// order, paid subscription — including a lost-race refusal from the in-tx
+// re-check) -> 409 carrying the reason; anything else falls through to
+// HandleError's 500.
+func mapUserDeleteError(c *fiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, services.ErrUserNotFound):
+		return fiberutil.RespondNotFound(c, err.Error())
+	case errors.Is(err, services.ErrCannotDeleteSelf):
+		return fiberutil.RespondConflict(c, err.Error())
+	}
+
+	var notDeletable *services.NotDeletableError
+	if errors.As(err, &notDeletable) {
+		return fiberutil.RespondConflict(c, notDeletable.Reason)
+	}
+
+	return fiberutil.HandleError(c, err)
+}
+
 // mapUserStatusError translates suspend/unsuspend service sentinels to HTTP
 // statuses: missing target -> 404; suspending a staff member or yourself -> 409
 // (a conflict with the resource's protected state); anything else falls through

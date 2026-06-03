@@ -1,6 +1,9 @@
 package services
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // ErrServerLogReaderUnavailable is returned when the cross-module server log
 // reader has not been wired into the staff service.
@@ -31,3 +34,25 @@ var ErrCannotSuspendStaff = errors.New("cannot suspend a staff member")
 // ErrCannotSuspendSelf is returned when a staff member targets their own
 // account, which would lock themselves out. The handler maps it to 409.
 var ErrCannotSuspendSelf = errors.New("cannot change your own account status")
+
+// ErrCannotDeleteSelf is returned when a staff member targets their own account
+// for deletion. The handler maps it to 409.
+var ErrCannotDeleteSelf = errors.New("cannot delete your own account")
+
+// NotDeletableError carries the human-readable reason a user cannot be deleted
+// (holds a staff role, has a paid order, has/had a paid subscription). The
+// handler surfaces Reason in a 409 response. It is the typed error returned by
+// DeleteUser when the in-transaction re-check refuses the delete, and is also
+// constructed from the reason CanDeleteUser reports.
+type NotDeletableError struct {
+	Reason string
+}
+
+func (e *NotDeletableError) Error() string {
+	return fmt.Sprintf("user not deletable: %s", e.Reason)
+}
+
+// newNotDeletableError builds a NotDeletableError for the given reason.
+func newNotDeletableError(reason string) *NotDeletableError {
+	return &NotDeletableError{Reason: reason}
+}

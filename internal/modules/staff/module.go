@@ -92,4 +92,11 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	// the inline super_admin check.
 	admin.Post("/users/:id/suspend", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.SuspendUser)
 	admin.Post("/users/:id/unsuspend", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.UnsuspendUser)
+
+	// Delete is the single DESTRUCTIVE account action: it removes the users row,
+	// which cascades at the DB level to every resource the user owns. It is
+	// gated identically to suspend (super_admin on top of the support-tier
+	// group gate) and additionally refuses any user who ever paid (paid order
+	// or non-trial subscription), holds a staff role, or is the actor.
+	admin.Delete("/users/:id", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.DeleteUser)
 }
