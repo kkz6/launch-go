@@ -130,4 +130,95 @@ func TestExecute_DefaultPathReturnsAllRows(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, got.Data, 3)
 	require.EqualValues(t, 3, got.Pagination.Total)
+
+	// The default path now projects declared columns; baseWidgetTable
+	// declares name + kind, so both must be present on every row.
+	for _, row := range got.Data {
+		require.Contains(t, row, "name")
+		require.Contains(t, row, "kind")
+	}
+}
+
+// ─── 4. Declared-column projection (secret-safety) ──────────────────
+
+// account carries a secret column that must never reach the response.
+type account struct {
+	ID     uint   `gorm:"primaryKey" json:"id"`
+	Name   string `json:"name"`
+	Email  string `json:"email"`
+	Secret string `json:"secret"`
+}
+
+func (account) TableName() string { return "accounts" }
+
+type accountTable struct {
+	model func() any
+}
+
+func (a accountTable) Config() Config {
+	return Config{Name: "accounts", Model: a.model}
+}
+
+// Columns declares only name + email — deliberately NOT secret.
+func (a accountTable) Columns() []Column {
+	return []Column{
+		NewTextColumn("name").AsSortable(),
+		NewTextColumn("email"),
+	}
+}
+
+func (a accountTable) Filters() []Filter       { return nil }
+func (a accountTable) Actions() []*Action      { return nil }
+func (a accountTable) EmptyState() *EmptyState { return nil }
+
+func setupAccountDB(t *testing.T) *gorm.DB {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
+	require.NoError(t, err)
+	require.NoError(t, db.AutoMigrate(&account{}))
+	require.NoError(t, db.Create(&[]account{
+		{Name: "charlie", Email: "charlie@example.com", Secret: "s-charlie"},
+		{Name: "alice", Email: "alice@example.com", Secret: "s-alice"},
+		{Name: "bob", Email: "bob@example.com", Secret: "s-bob"},
+	}).Error)
+	return db
+}
+
+func TestExecute_ProjectsOnlyDeclaredColumns(t *testing.T) {
+	db := setupAccountDB(t)
+	svc := &QueryService{db: db}
+
+	at := accountTable{model: func() any { return &account{} }}
+
+	got, err := svc.Execute(context.Background(), at, Request{Page: 1, PerPage: 10})
+	require.NoError(t, err)
+	require.Len(t, got.Data, 3)
+
+	for _, row := range got.Data {
+		require.Contains(t, row, "id")
+		require.Contains(t, row, "name")
+		require.Contains(t, row, "email")
+		// The secret column was never declared, so it must be absent.
+		require.NotContains(t, row, "secret")
+	}
+}
+
+func TestExecute_DeclaredColumnStillSorts(t *testing.T) {
+	db := setupAccountDB(t)
+	svc := &QueryService{db: db}
+
+	at := accountTable{model: func() any { return &account{} }}
+
+	got, err := svc.Execute(context.Background(), at, Request{Page: 1, PerPage: 10, Sort: "name:asc"})
+	require.NoError(t, err)
+	require.Len(t, got.Data, 3)
+
+	names := make([]string, len(got.Data))
+	for i, row := range got.Data {
+		names[i] = row["name"].(string)
+		require.NotContains(t, row, "secret")
+	}
+	require.Equal(t, []string{"alice", "bob", "charlie"}, names)
 }

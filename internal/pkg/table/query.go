@@ -40,7 +40,8 @@ func (s *QueryService) Execute(ctx context.Context, t Table, req Request) (*Tabl
 	tableName := stmt.Table
 
 	q := s.db.WithContext(ctx).Table(tableName)
-	if bq, ok := t.(BaseQueryProvider); ok {
+	bq, hasBaseQuery := t.(BaseQueryProvider)
+	if hasBaseQuery {
 		q = bq.BaseQuery(s.db.WithContext(ctx))
 	}
 
@@ -92,7 +93,19 @@ func (s *QueryService) Execute(ctx context.Context, t Table, req Request) (*Tabl
 	}
 	offset := (page - 1) * perPage
 
-	rows, err := fetchRows(q.Offset(offset).Limit(perPage), model, cfg.SoftDeletes)
+	fetchQuery := q.Offset(offset).Limit(perPage)
+
+	// Secret-safety: pure model-driven tables SELECT only their declared
+	// columns, so an undeclared column can never reach the response. Tables
+	// that own their projection (BaseQueryProvider) or fetch (Resolver) are
+	// exempt — the Resolver path already returned above.
+	if !hasBaseQuery {
+		if selectCols := projectionColumns(t, stmt, cfg.SoftDeletes); len(selectCols) > 0 {
+			fetchQuery = fetchQuery.Select(selectCols)
+		}
+	}
+
+	rows, err := fetchRows(fetchQuery, model, cfg.SoftDeletes)
 	if err != nil {
 		return nil, fmt.Errorf("fetch rows: %w", err)
 	}
@@ -129,6 +142,47 @@ func (s *QueryService) Execute(ctx context.Context, t Table, req Request) (*Tabl
 			To:          to,
 		},
 	}, nil
+}
+
+// projectionColumns builds the SELECT list for a pure model-driven table:
+// every declared non-nested column's attribute, plus the model's primary key
+// (so rows always carry an id for actions), plus deleted_at when soft-deletes
+// are enabled (fetchRows/extractDeletedAt need it). The list is de-duplicated.
+func projectionColumns(t Table, stmt *gorm.Statement, softDeletes bool) []string {
+	cols := make([]string, 0)
+	seen := map[string]struct{}{}
+	add := func(name string) {
+		if name == "" {
+			return
+		}
+		if _, ok := seen[name]; ok {
+			return
+		}
+		seen[name] = struct{}{}
+		cols = append(cols, name)
+	}
+
+	pk := "id"
+	if stmt.Schema != nil && stmt.Schema.PrioritizedPrimaryField != nil {
+		pk = stmt.Schema.PrioritizedPrimaryField.DBName
+	}
+	add(pk)
+
+	for _, c := range t.Columns() {
+		if c.IsNested() {
+			continue
+		}
+		if c.Attribute() == "_actions" {
+			continue
+		}
+		add(c.Attribute())
+	}
+
+	if softDeletes {
+		add("deleted_at")
+	}
+
+	return cols
 }
 
 func choosePaginationType(t PaginationType) PaginationType {
