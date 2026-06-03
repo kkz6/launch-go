@@ -34,6 +34,8 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/site"
 	"github.com/kkz6/launch-go/internal/modules/site/adapters"
 	sitedto "github.com/kkz6/launch-go/internal/modules/site/dto"
+	"github.com/kkz6/launch-go/internal/modules/staff"
+	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
 	wsmodule "github.com/kkz6/launch-go/internal/modules/websocket"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
@@ -263,6 +265,7 @@ func (a *Application) registerModules() {
 	scriptModule := script.NewModule(builder)
 	platformModule := platform.NewModule(builder)
 	dashboardModule := dashboard.NewModule(builder)
+	staffModule := staff.NewModule(builder)
 	wsModule := wsmodule.NewModule(builder)
 
 	// Wire cross-module dependencies
@@ -292,6 +295,7 @@ func (a *Application) registerModules() {
 		Register(scriptModule).
 		Register(platformModule).
 		Register(dashboardModule).
+		Register(staffModule).
 		Register(wsModule)
 
 	// Boot task callbacks (needed for webhook handlers in production mode)
@@ -319,6 +323,12 @@ func (a *Application) registerModules() {
 
 	// Initialize server provisioned middleware
 	middleware.InitServerProvisionedMiddleware(a.db)
+
+	// Wire the staff-role lookup so RequireStaff can gate /admin routes.
+	// Must run before BootHTTP registers the staff module's routes.
+	middleware.InitStaffMiddleware(func(userID string) *stafftypes.StaffRole {
+		return staffModule.Service().StaffRoleForUser(context.Background(), userID)
+	})
 
 	// Boot all HTTP routes through the kernel
 	// Note: TeamContext middleware is applied at the route level where team scope is required
