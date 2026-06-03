@@ -1,0 +1,29 @@
+# Codecov configuration.
+#
+# Coverage is uploaded from CI (.github/workflows/ci.yml) via
+# `go test -race -coverprofile=coverage.out ./...`. The `ignore` list below
+# keeps non-product code out of the coverage percentage:
+#   - test files (*_test.go) — the tests themselves, not code under test
+#   - mocks (mockery-generated) and test harness/utilities — support code
+#   - generated migrations and binary entry points — boilerplate, not unit-tested
+ignore:
+  # Test files (Go does not instrument these, but exclude them explicitly so
+  # Codecov never surfaces them in the report).
+  - "**/*_test.go"
+
+  # Mockery-generated mocks and other mock_*.go helpers.
+  - "**/mocks"
+  - "**/mocks/**"
+  - "**/mock_*.go"
+
+  # Test harness + utilities (fixtures, fakes, in-memory stores).
+  - "tests"
+  - "tests/**"
+
+  # Database migrations — schema boilerplate registered via init().
+  - "internal/database/migrations"
+  - "internal/database/migrations/**"
+
+  # Binary entry points (wiring/bootstrap, exercised end-to-end, not unit-tested).
+  - "cmd"
+  - "cmd/**"
