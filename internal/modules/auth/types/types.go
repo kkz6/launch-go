@@ -85,3 +85,57 @@ func (r TeamRole) Value() (driver.Value, error) {
 func ParseTeamRole(s string) (TeamRole, error) {
 	return enumtypes.ParseEnum(s, allTeamRoles)
 }
+
+// =============================================================================
+// UserStatus
+// =============================================================================
+
+// UserStatus represents the account status of a user
+type UserStatus string
+
+const (
+	UserStatusActive    UserStatus = "active"
+	UserStatusSuspended UserStatus = "suspended"
+)
+
+var allUserStatuses = []UserStatus{UserStatusActive, UserStatusSuspended}
+
+var userStatusLabels = map[UserStatus]string{
+	UserStatusActive:    "Active",
+	UserStatusSuspended: "Suspended",
+}
+
+// AllUserStatuses returns all valid user statuses
+func AllUserStatuses() []UserStatus {
+	return allUserStatuses
+}
+
+// String returns the string representation of the status
+func (s UserStatus) String() string {
+	return string(s)
+}
+
+// Label returns the human-readable label for the status
+func (s UserStatus) Label() string {
+	return enumtypes.Label(s, userStatusLabels, string(s))
+}
+
+// IsValid checks if the status is valid
+func (s UserStatus) IsValid() bool {
+	return enumtypes.IsValid(s, allUserStatuses...)
+}
+
+// Scan implements sql.Scanner for database reads
+func (s *UserStatus) Scan(value any) error {
+	return enumtypes.ScanString(s, value)
+}
+
+// Value implements driver.Valuer for database writes
+func (s UserStatus) Value() (driver.Value, error) {
+	return enumtypes.ValueString(s)
+}
+
+// ParseUserStatus parses a string into a UserStatus
+func ParseUserStatus(s string) (UserStatus, error) {
+	return enumtypes.ParseEnum(s, allUserStatuses)
+}
