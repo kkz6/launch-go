@@ -102,7 +102,9 @@ func (h *handler) action(c *fiber.Ctx) error {
 	if target.Handler() == nil {
 		return fiber.NewError(fiber.StatusBadRequest, "Action "+name+" has no handler")
 	}
-	if err := target.Handler()(c.Context(), req.IDs); err != nil {
+	userID, _ := fiberctx.GetUserID(c)
+	actionCtx := WithActorID(c.Context(), userID)
+	if err := target.Handler()(actionCtx, req.IDs); err != nil {
 		return err
 	}
 	return fiberctx.OK(c, "Action executed", nil)

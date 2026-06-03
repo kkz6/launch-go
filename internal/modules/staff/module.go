@@ -138,4 +138,14 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	// endpoint above stays in place — this table is additive.
 	failuresTable := tables.NewFailuresTable(m.service)
 	table.Mount(admin.Group("/failures/table"), failuresTable, tableQuery, tableViews)
+
+	// Declarative users table. A pure Resolver table: it owns its data fetch by
+	// delegating to ListUsersWithBilling (user + owned teams + each team's
+	// subscription status). Reads (/meta, /data) inherit the group's support-tier
+	// gate; the mutating /action/:name route (suspend, unsuspend, delete) is
+	// additionally gated behind super_admin via the action middleware, matching
+	// the REST suspend/unsuspend/delete endpoints above. The REST /admin/users
+	// endpoint stays in place — this table is additive.
+	usersTable := tables.NewUsersTable(m.service)
+	table.Mount(admin.Group("/users/table"), usersTable, tableQuery, tableViews, middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin))
 }
