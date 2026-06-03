@@ -192,7 +192,7 @@ func (s *Service) populateRevenue(ctx context.Context, overview *staffdto.AdminO
 func (s *Service) sumPaidOrders(ctx context.Context, window *time.Time, from, to time.Time) (int64, error) {
 	query := s.repos.DB().WithContext(ctx).
 		Model(&billingmodels.Order{}).
-		Where("status = ?", billingtypes.OrderStatusPaid)
+		Where("status = ? AND billable_type IN ?", billingtypes.OrderStatusPaid, billingmodels.TeamBillableTypes())
 
 	if window != nil {
 		query = query.Where("ordered_at >= ? AND ordered_at < ?", from, to)
@@ -211,7 +211,7 @@ func (s *Service) populateRecentPayments(ctx context.Context, overview *staffdto
 	var orders []billingmodels.Order
 	err := s.repos.DB().WithContext(ctx).
 		Model(&billingmodels.Order{}).
-		Where("status = ?", billingtypes.OrderStatusPaid).
+		Where("status = ? AND billable_type IN ?", billingtypes.OrderStatusPaid, billingmodels.TeamBillableTypes()).
 		Order("ordered_at DESC").
 		Limit(overviewRecentPaymentsLimit).
 		Find(&orders).Error
@@ -309,7 +309,7 @@ func (s *Service) populateCurrency(ctx context.Context, overview *staffdto.Admin
 	err := s.repos.DB().WithContext(ctx).
 		Model(&billingmodels.Order{}).
 		Select("currency, COUNT(*) as count").
-		Where("status = ?", billingtypes.OrderStatusPaid).
+		Where("status = ? AND billable_type IN ?", billingtypes.OrderStatusPaid, billingmodels.TeamBillableTypes()).
 		Group("currency").
 		Scan(&rows).Error
 	if err != nil {
