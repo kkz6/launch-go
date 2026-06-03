@@ -83,4 +83,13 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	// Fiber matches it first.
 	admin.Post("/impersonate/stop", m.handler.StopImpersonation)
 	admin.Post("/impersonate/:userId", m.handler.StartImpersonation)
+
+	// Suspend/unsuspend freeze or restore a customer account. These are
+	// destructive account-state writes, so they require super_admin on top of
+	// the support-tier gate the group already applies: the chain runs auth ->
+	// RequireStaff(support) (from StaffChain) -> RequireStaff(super_admin) ->
+	// handler. A support-tier staffer clears the group gate but is rejected by
+	// the inline super_admin check.
+	admin.Post("/users/:id/suspend", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.SuspendUser)
+	admin.Post("/users/:id/unsuspend", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.UnsuspendUser)
 }

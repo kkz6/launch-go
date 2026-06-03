@@ -18,3 +18,16 @@ var ErrTargetUserNotFound = errors.New("target user not found")
 // without a configured signing secret. Failing closed prevents minting tokens
 // signed with an empty key.
 var ErrJWTSecretNotConfigured = errors.New("jwt secret not configured")
+
+// ErrUserNotFound is returned by SetUserStatus when the target user does not
+// exist. The handler maps it to 404.
+var ErrUserNotFound = errors.New("user not found")
+
+// ErrCannotSuspendStaff is returned when a suspend/unsuspend action targets a
+// user who holds a staff role. Staff members (and peers) must not be lockable
+// through this endpoint. The handler maps it to 409.
+var ErrCannotSuspendStaff = errors.New("cannot suspend a staff member")
+
+// ErrCannotSuspendSelf is returned when a staff member targets their own
+// account, which would lock themselves out. The handler maps it to 409.
+var ErrCannotSuspendSelf = errors.New("cannot change your own account status")

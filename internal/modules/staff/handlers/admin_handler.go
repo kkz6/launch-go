@@ -6,6 +6,7 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 
+	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	staffdto "github.com/kkz6/launch-go/internal/modules/staff/dto"
 	"github.com/kkz6/launch-go/internal/modules/staff/services"
 	"github.com/kkz6/launch-go/internal/pkg/dto"
@@ -179,6 +180,66 @@ func (h *AdminHandler) StopImpersonation(c *fiber.Ctx) error {
 	}
 
 	return fiberutil.OK(c, "Impersonation stopped", nil)
+}
+
+// SuspendUser freezes a customer account by flipping users.status to
+// suspended. Super-admin only (RequireStaff(StaffRoleSuperAdmin) runs ahead of
+// it). The actor id is taken from the request context, never the body, so the
+// service can enforce the self-suspend guard. Effect is immediate: Auth()
+// rejects suspended users on every subsequent request.
+func (h *AdminHandler) SuspendUser(c *fiber.Ctx) error {
+	targetID := c.Params("id")
+	if targetID == "" {
+		return fiberutil.RespondBadRequest(c, "User id is required")
+	}
+
+	actorID, _ := c.Locals(fiberutil.KeyUserID).(string)
+
+	if err := h.service.SetUserStatus(c.Context(), actorID, targetID, authtypes.UserStatusSuspended); err != nil {
+		return mapUserStatusError(c, err)
+	}
+
+	return fiberutil.OK(c, "User suspended", fiber.Map{
+		"id":     targetID,
+		"status": authtypes.UserStatusSuspended.String(),
+	})
+}
+
+// UnsuspendUser restores a suspended customer account to active. Super-admin
+// only. Same context/guard handling as SuspendUser.
+func (h *AdminHandler) UnsuspendUser(c *fiber.Ctx) error {
+	targetID := c.Params("id")
+	if targetID == "" {
+		return fiberutil.RespondBadRequest(c, "User id is required")
+	}
+
+	actorID, _ := c.Locals(fiberutil.KeyUserID).(string)
+
+	if err := h.service.SetUserStatus(c.Context(), actorID, targetID, authtypes.UserStatusActive); err != nil {
+		return mapUserStatusError(c, err)
+	}
+
+	return fiberutil.OK(c, "User unsuspended", fiber.Map{
+		"id":     targetID,
+		"status": authtypes.UserStatusActive.String(),
+	})
+}
+
+// mapUserStatusError translates suspend/unsuspend service sentinels to HTTP
+// statuses: missing target -> 404; suspending a staff member or yourself -> 409
+// (a conflict with the resource's protected state); anything else falls through
+// to HandleError's 500.
+func mapUserStatusError(c *fiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, services.ErrUserNotFound):
+		return fiberutil.RespondNotFound(c, err.Error())
+	case errors.Is(err, services.ErrCannotSuspendStaff):
+		return fiberutil.RespondConflict(c, err.Error())
+	case errors.Is(err, services.ErrCannotSuspendSelf):
+		return fiberutil.RespondConflict(c, err.Error())
+	default:
+		return fiberutil.HandleError(c, err)
+	}
 }
 
 // mapImpersonationError translates impersonation service sentinels to sensible

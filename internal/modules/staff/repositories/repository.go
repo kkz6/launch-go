@@ -96,6 +96,44 @@ func (r *Registry) UserStatus(ctx context.Context, userID string) authtypes.User
 	return status
 }
 
+// UserExists reports whether a user row with the given id exists. Used by the
+// suspend/unsuspend flow to distinguish a missing target (404) from a no-op
+// status update (e.g. setting an already-suspended user to suspended).
+func (r *Registry) UserExists(ctx context.Context, userID string) (bool, error) {
+	if userID == "" {
+		return false, nil
+	}
+
+	var count int64
+	err := r.db.WithContext(ctx).
+		Model(&authmodels.User{}).
+		Where("id = ?", userID).
+		Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+
+	return count > 0, nil
+}
+
+// SetUserStatus updates a user's status column. Returns gorm.ErrRecordNotFound
+// when no row matched the id so callers can surface a 404.
+func (r *Registry) SetUserStatus(ctx context.Context, userID string, status authtypes.UserStatus) error {
+	res := r.db.WithContext(ctx).
+		Model(&authmodels.User{}).
+		Where("id = ?", userID).
+		Update("status", status)
+	if res.Error != nil {
+		return res.Error
+	}
+
+	if res.RowsAffected == 0 {
+		return gorm.ErrRecordNotFound
+	}
+
+	return nil
+}
+
 // ListUsersWithBilling returns a cross-tenant page of users ordered by
 // created_at desc, the teams each user owns, and the current subscription for
 // each of those teams. The work is done in three cheap queries (users page,
