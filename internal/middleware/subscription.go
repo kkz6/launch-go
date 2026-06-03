@@ -78,19 +78,17 @@ func isTeamSubscribed(teamID string) bool {
 	return count > 0
 }
 
-// isUserAdmin checks if a user has admin or manager role
+// isUserAdmin reports whether a user has any staff role (support or
+// super_admin) — staff bypass subscription checks. Replaces the legacy
+// Spatie model_has_roles lookup.
 func isUserAdmin(userID string) bool {
 	if subscriptionMiddleware.db == nil {
 		return false
 	}
-
-	var count int64
-	subscriptionMiddleware.db.Table("model_has_roles").
-		Joins("JOIN roles ON roles.id = model_has_roles.role_id").
-		Where("model_has_roles.model_id = ?", userID).
-		Where("model_has_roles.model_type IN ?", []string{"Modules\\Auth\\Models\\User", "App\\Models\\User"}).
-		Where("roles.name IN ?", []string{"admin", "manager"}).
-		Count(&count)
-
-	return count > 0
+	var role *string
+	subscriptionMiddleware.db.Table("users").
+		Select("staff_role").
+		Where("id = ?", userID).
+		Scan(&role)
+	return role != nil && *role != ""
 }
