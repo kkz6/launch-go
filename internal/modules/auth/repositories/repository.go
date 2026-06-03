@@ -80,15 +80,13 @@ func (r *Registry) IsTeamSubscribed(ctx context.Context, teamID string) bool {
 	return count > 0
 }
 
-// IsUserAdmin checks if a user has admin or manager role (from Spatie Permission tables)
+// IsUserAdmin reports whether the user holds any staff role. Replaces the
+// legacy Spatie model_has_roles lookup (now reads users.staff_role).
 func (r *Registry) IsUserAdmin(ctx context.Context, userID string) bool {
-	var count int64
-	r.db.WithContext(ctx).Table("model_has_roles").
-		Joins("JOIN roles ON roles.id = model_has_roles.role_id").
-		Where("model_has_roles.model_id = ?", userID).
-		Where("model_has_roles.model_type IN ?", []string{"Modules\\Auth\\Models\\User", "App\\Models\\User"}).
-		Where("roles.name IN ?", []string{"admin", "manager"}).
-		Count(&count)
-
-	return count > 0
+	var role *string
+	r.db.WithContext(ctx).Table("users").
+		Select("staff_role").
+		Where("id = ?", userID).
+		Scan(&role)
+	return role != nil && *role != ""
 }
