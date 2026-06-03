@@ -293,6 +293,15 @@ func (h *AdminHandler) CreateInvitation(c *fiber.Ctx) error {
 
 	invitation, err := h.service.InviteUser(c.Context(), body.Email, trialEndsAt, actorID)
 	if err != nil {
+		// A non-nil invitation with an error means the row was created but email
+		// delivery failed (a transport hiccup, or no mail key in local dev). The
+		// invite is valid and the link works, so this is success-with-warning,
+		// not a 500 — the admin would otherwise think the whole invite failed.
+		if invitation != nil {
+			return fiberutil.OK(c,
+				"Invitation created, but the email could not be delivered — share the invite link with the user manually.",
+				invitation)
+		}
 		return mapInvitationError(c, err)
 	}
 
