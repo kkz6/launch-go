@@ -23,13 +23,18 @@ func Chain(handlers ...fiber.Handler) []fiber.Handler {
 // AuthenticatedChain returns the standard middleware chain for authenticated API routes.
 // This includes JWT authentication, team scope, and subscription verification.
 //
+// Read-only impersonation write-blocking is NOT repeated in these chains: it is
+// enforced centrally inside Auth() (the authMiddleware), which runs first in
+// every authenticated chain. Enforcing it there also covers routes wired with a
+// bare authMiddleware inline (e.g. server/site/billing), which never go through
+// these helpers. See middleware.Auth and isImpersonationWriteBlocked.
+//
 // Usage:
 //
 //	router.Group("/servers", middleware.AuthenticatedChain(authMiddleware)...)
 func AuthenticatedChain(authMiddleware fiber.Handler) []fiber.Handler {
 	return []fiber.Handler{
 		authMiddleware,
-		BlockImpersonationWrites(),
 		TeamScope(),
 		VerifySubscription(),
 	}
@@ -44,7 +49,6 @@ func AuthenticatedChain(authMiddleware fiber.Handler) []fiber.Handler {
 func AuthenticatedChainWithRole(authMiddleware fiber.Handler, minRole string) []fiber.Handler {
 	return []fiber.Handler{
 		authMiddleware,
-		BlockImpersonationWrites(),
 		TeamScope(),
 		VerifySubscription(),
 		RequireRole(minRole),
@@ -60,7 +64,6 @@ func AuthenticatedChainWithRole(authMiddleware fiber.Handler, minRole string) []
 func TeamScopeChain(authMiddleware fiber.Handler) []fiber.Handler {
 	return []fiber.Handler{
 		authMiddleware,
-		BlockImpersonationWrites(),
 		TeamScope(),
 	}
 }
@@ -122,7 +125,6 @@ func APIChain(maxRequests int, window time.Duration) []fiber.Handler {
 func AuthenticatedAPIChain(authMiddleware fiber.Handler, maxRequests int, window time.Duration) []fiber.Handler {
 	return []fiber.Handler{
 		authMiddleware,
-		BlockImpersonationWrites(),
 		TeamScope(),
 		VerifySubscription(),
 		RateLimit(maxRequests, window),

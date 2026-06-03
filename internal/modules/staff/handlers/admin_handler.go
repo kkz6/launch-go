@@ -104,6 +104,7 @@ func (h *AdminHandler) StartImpersonation(c *fiber.Ctx) error {
 	var body struct {
 		Reason string `json:"reason"`
 	}
+	// reason is optional; ignore body-parse errors
 	_ = c.BodyParser(&body)
 
 	token, session, err := h.service.StartImpersonation(c.Context(), staffID, targetUserID, body.Reason)
