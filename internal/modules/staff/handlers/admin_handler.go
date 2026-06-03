@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"errors"
+
 	"github.com/gofiber/fiber/v2"
 
 	staffdto "github.com/kkz6/launch-go/internal/modules/staff/dto"
@@ -89,4 +91,64 @@ func (h *AdminHandler) ServerLogs(c *fiber.Ctx) error {
 	}
 
 	return fiberutil.OK(c, "Server logs retrieved successfully", tasks)
+}
+
+// StartImpersonation begins a read-only "spectate as user" session as the
+// target user. The authenticated caller is the staff member (RequireStaff runs
+// ahead of this); the impersonator id is taken from the request context, never
+// the body. Returns the minted short-lived token plus the audit session.
+func (h *AdminHandler) StartImpersonation(c *fiber.Ctx) error {
+	staffID, _ := c.Locals(fiberutil.KeyUserID).(string)
+	targetUserID := c.Params("userId")
+
+	var body struct {
+		Reason string `json:"reason"`
+	}
+	_ = c.BodyParser(&body)
+
+	token, session, err := h.service.StartImpersonation(c.Context(), staffID, targetUserID, body.Reason)
+	if err != nil {
+		return mapImpersonationError(c, err)
+	}
+
+	return fiberutil.OK(c, "Impersonation started", fiber.Map{
+		"token":   token,
+		"session": session,
+	})
+}
+
+// StopImpersonation ends the authenticated staff member's active spectate
+// session. The exit flow is driven with the STAFF token, so the session is
+// resolved from the authenticated staff identity rather than a request-supplied
+// id. A no-op (no active session) still returns 200 so the frontend can safely
+// always call stop when leaving spectate mode.
+func (h *AdminHandler) StopImpersonation(c *fiber.Ctx) error {
+	staffID, _ := c.Locals(fiberutil.KeyUserID).(string)
+
+	stopped, err := h.service.StopImpersonationForStaff(c.Context(), staffID)
+	if err != nil {
+		return mapImpersonationError(c, err)
+	}
+
+	if !stopped {
+		return fiberutil.OK(c, "No active impersonation session", nil)
+	}
+
+	return fiberutil.OK(c, "Impersonation stopped", nil)
+}
+
+// mapImpersonationError translates impersonation service sentinels to sensible
+// HTTP statuses. HandleError only maps fiber.Error/ValidationError, so the
+// bare sentinels are mapped explicitly here: invalid input -> 400, target not
+// found -> 404, and any other error (incl. ErrJWTSecretNotConfigured) falls
+// through to HandleError's 500.
+func mapImpersonationError(c *fiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, services.ErrInvalidImpersonationRequest):
+		return fiberutil.RespondBadRequest(c, err.Error())
+	case errors.Is(err, services.ErrTargetUserNotFound):
+		return fiberutil.RespondNotFound(c, err.Error())
+	default:
+		return fiberutil.HandleError(c, err)
+	}
 }

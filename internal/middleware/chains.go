@@ -29,6 +29,7 @@ func Chain(handlers ...fiber.Handler) []fiber.Handler {
 func AuthenticatedChain(authMiddleware fiber.Handler) []fiber.Handler {
 	return []fiber.Handler{
 		authMiddleware,
+		BlockImpersonationWrites(),
 		TeamScope(),
 		VerifySubscription(),
 	}
@@ -43,6 +44,7 @@ func AuthenticatedChain(authMiddleware fiber.Handler) []fiber.Handler {
 func AuthenticatedChainWithRole(authMiddleware fiber.Handler, minRole string) []fiber.Handler {
 	return []fiber.Handler{
 		authMiddleware,
+		BlockImpersonationWrites(),
 		TeamScope(),
 		VerifySubscription(),
 		RequireRole(minRole),
@@ -58,6 +60,7 @@ func AuthenticatedChainWithRole(authMiddleware fiber.Handler, minRole string) []
 func TeamScopeChain(authMiddleware fiber.Handler) []fiber.Handler {
 	return []fiber.Handler{
 		authMiddleware,
+		BlockImpersonationWrites(),
 		TeamScope(),
 	}
 }
@@ -119,6 +122,7 @@ func APIChain(maxRequests int, window time.Duration) []fiber.Handler {
 func AuthenticatedAPIChain(authMiddleware fiber.Handler, maxRequests int, window time.Duration) []fiber.Handler {
 	return []fiber.Handler{
 		authMiddleware,
+		BlockImpersonationWrites(),
 		TeamScope(),
 		VerifySubscription(),
 		RateLimit(maxRequests, window),

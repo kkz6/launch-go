@@ -34,24 +34,24 @@ func TestAuthenticatedChain(t *testing.T) {
 	authMiddleware := mockHandler()
 	chain := AuthenticatedChain(authMiddleware)
 
-	// Should have auth, team scope, and subscription verification
-	assert.Len(t, chain, 3)
+	// Should have auth, impersonation-write block, team scope, and subscription verification
+	assert.Len(t, chain, 4)
 }
 
 func TestAuthenticatedChainWithRole(t *testing.T) {
 	authMiddleware := mockHandler()
 	chain := AuthenticatedChainWithRole(authMiddleware, "admin")
 
-	// Should have auth, team scope, subscription verification, and role check
-	assert.Len(t, chain, 4)
+	// Should have auth, impersonation-write block, team scope, subscription verification, and role check
+	assert.Len(t, chain, 5)
 }
 
 func TestTeamScopeChain(t *testing.T) {
 	authMiddleware := mockHandler()
 	chain := TeamScopeChain(authMiddleware)
 
-	// Should have auth and team scope only (no subscription)
-	assert.Len(t, chain, 2)
+	// Should have auth, impersonation-write block, and team scope only (no subscription)
+	assert.Len(t, chain, 3)
 }
 
 func TestOptionalAuthChain(t *testing.T) {
@@ -86,8 +86,8 @@ func TestAuthenticatedAPIChain(t *testing.T) {
 	authMiddleware := mockHandler()
 	chain := AuthenticatedAPIChain(authMiddleware, 100, time.Minute)
 
-	// Should have auth, team scope, subscription, and rate limiting
-	assert.Len(t, chain, 4)
+	// Should have auth, impersonation-write block, team scope, subscription, and rate limiting
+	assert.Len(t, chain, 5)
 }
 
 func TestAppend(t *testing.T) {

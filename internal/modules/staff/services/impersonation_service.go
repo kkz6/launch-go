@@ -76,6 +76,33 @@ func (s *Service) StopImpersonation(ctx context.Context, sessionID string) error
 	return s.repos.EndImpersonationSession(ctx, sessionID, time.Now())
 }
 
+// StopImpersonationForStaff ends the authenticated staff member's active
+// spectate session. The exit flow is driven with the STAFF token (not the
+// impersonation token), so the session is derived from the staff identity
+// rather than trusting a session id from the request. Returns (false, nil)
+// when the staff member has no active session — a clean no-op for the caller
+// to surface as a success.
+func (s *Service) StopImpersonationForStaff(ctx context.Context, staffID string) (stopped bool, err error) {
+	if staffID == "" {
+		return false, ErrInvalidImpersonationRequest
+	}
+
+	session, err := s.repos.ActiveImpersonationForStaff(ctx, staffID)
+	if err != nil {
+		return false, err
+	}
+
+	if session == nil {
+		return false, nil
+	}
+
+	if err := s.repos.EndImpersonationSession(ctx, session.ID, time.Now()); err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
 func nilIfEmpty(s string) *string {
 	if s == "" {
 		return nil

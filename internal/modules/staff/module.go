@@ -72,4 +72,13 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	admin.Get("/teams", m.handler.ListTeams)
 	admin.Get("/servers", m.handler.ListServers)
 	admin.Get("/servers/:id/logs", m.handler.ServerLogs)
+
+	// Impersonation is driven with the STAFF token: start mints a scoped
+	// read-only token for the target; stop ends the staff member's active
+	// session. Both run under StaffChain, so an impersonation token (sub=target)
+	// can't reach them — you must hold the staff token to start or stop.
+	// The static /stop route is registered before the /:userId param route so
+	// Fiber matches it first.
+	admin.Post("/impersonate/stop", m.handler.StopImpersonation)
+	admin.Post("/impersonate/:userId", m.handler.StartImpersonation)
 }
