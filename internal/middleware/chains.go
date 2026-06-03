@@ -6,6 +6,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"gorm.io/gorm"
 
+	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
 	"github.com/kkz6/launch-go/internal/pkg/signedurl"
 )
 
@@ -138,6 +139,20 @@ func TeamRoleChain(authMiddleware fiber.Handler, service TeamService, role strin
 		return []fiber.Handler{authMiddleware, TeamAdmin(service)}
 	default:
 		return []fiber.Handler{authMiddleware, TeamMember(service)}
+	}
+}
+
+// StaffChain returns the middleware chain for back-office /admin routes:
+// JWT auth then a staff-tier requirement. No team scope or subscription —
+// staff access is a product-wide axis independent of any team.
+//
+// Usage:
+//
+//	router.Group("/admin", middleware.StaffChain(authMiddleware, stafftypes.StaffRoleSupport)...)
+func StaffChain(authMiddleware fiber.Handler, minRole stafftypes.StaffRole) []fiber.Handler {
+	return []fiber.Handler{
+		authMiddleware,
+		RequireStaff(minRole),
 	}
 }
 
