@@ -105,7 +105,14 @@ func (h *handler) action(c *fiber.Ctx) error {
 	userID, _ := fiberctx.GetUserID(c)
 	actionCtx := WithActorID(c.Context(), userID)
 	if err := target.Handler()(actionCtx, req.IDs); err != nil {
-		return err
+		// Surface business-rule failures (e.g. self-guards) as a 422 carrying
+		// the message, so the DataTable can toast the real reason instead of a
+		// blank 500. Handlers that already return a typed fiber error keep
+		// their chosen status.
+		if _, ok := err.(*fiber.Error); ok {
+			return err
+		}
+		return fiber.NewError(fiber.StatusUnprocessableEntity, err.Error())
 	}
 	return fiberctx.OK(c, "Action executed", nil)
 }

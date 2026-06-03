@@ -164,7 +164,7 @@ func (t *UsersTable) Resolve(ctx context.Context, req table.Request) (*table.Tab
 			})
 		}
 
-		rows = append(rows, map[string]any{
+		row := map[string]any{
 			"id":         u.ID,
 			"name":       u.Name,
 			"email":      u.Email,
@@ -172,7 +172,16 @@ func (t *UsersTable) Resolve(ctx context.Context, req table.Request) (*table.Tab
 			"status":     u.Status,
 			"created_at": u.CreatedAt,
 			"teams":      teams,
-		})
+		}
+
+		// A Resolver table skips the model-driven transformRow, so it must
+		// serialize its own per-row actions; otherwise suspend/unsuspend/delete
+		// never reach the DataTable.
+		if actions := table.SerializeRowActions(t, row); len(actions) > 0 {
+			row["_actions"] = actions
+		}
+
+		rows = append(rows, row)
 	}
 
 	lastPage := int((total + int64(perPage) - 1) / int64(perPage))

@@ -222,3 +222,52 @@ func TestExecute_DeclaredColumnStillSorts(t *testing.T) {
 	}
 	require.Equal(t, []string{"alice", "bob", "charlie"}, names)
 }
+
+// ─── SerializeRowActions (Resolver tables must call this themselves) ──
+
+type actionWidgetTable struct {
+	baseWidgetTable
+}
+
+func (actionWidgetTable) Actions() []*Action {
+	return []*Action{
+		NewAction("suspend", "Suspend").
+			AsButton().
+			Hidden(func(row map[string]any) bool { return row["status"] == "suspended" }),
+		NewAction("unsuspend", "Unsuspend").
+			AsButton().
+			Hidden(func(row map[string]any) bool { return row["status"] != "suspended" }),
+		NewAction("delete", "Delete").AsButton(),
+		NewAction("bulkPurge", "Purge").AsButton().Bulk(),
+	}
+}
+
+func hiddenByName(actions []map[string]any) map[string]bool {
+	out := map[string]bool{}
+	for _, a := range actions {
+		hidden, _ := a["hidden"].(bool)
+		out[a["name"].(string)] = hidden
+	}
+	return out
+}
+
+func TestSerializeRowActions_AppliesHiddenAndDropsBulk(t *testing.T) {
+	tbl := actionWidgetTable{}
+
+	active := SerializeRowActions(tbl, map[string]any{"id": 1, "status": "active"})
+	require.Len(t, active, 3, "bulk action must be excluded from row actions")
+	h := hiddenByName(active)
+	require.False(t, h["suspend"], "suspend visible for an active row")
+	require.True(t, h["unsuspend"], "unsuspend hidden for an active row")
+	require.False(t, h["delete"], "delete always visible")
+	require.NotContains(t, h, "bulkPurge")
+
+	suspended := SerializeRowActions(tbl, map[string]any{"id": 2, "status": "suspended"})
+	hs := hiddenByName(suspended)
+	require.True(t, hs["suspend"], "suspend hidden for a suspended row")
+	require.False(t, hs["unsuspend"], "unsuspend visible for a suspended row")
+}
+
+func TestSerializeRowActions_NilWhenNoActions(t *testing.T) {
+	require.Nil(t, SerializeRowActions(baseWidgetTable{}, map[string]any{"id": 1}))
+}

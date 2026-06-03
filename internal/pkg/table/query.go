@@ -356,26 +356,42 @@ func transformRow(row map[string]any, t Table) map[string]any {
 		out[c.Attribute()] = c.MapForTable(raw, row)
 	}
 
-	rowActions := effectiveRowActions(t)
-	if len(rowActions) > 0 {
-		serialized := make([]map[string]any, 0, len(rowActions))
-		for _, a := range rowActions {
-			s := a.Serialize()
-			if a.IsHiddenFor(row) {
-				s.Hidden = true
-			}
-			if a.IsDisabledFor(row) {
-				s.Disabled = true
-			}
-			if url := a.ResolveURL(row); url != nil {
-				s.URL = url
-			}
-			b, _ := json.Marshal(s)
-			var m map[string]any
-			_ = json.Unmarshal(b, &m)
-			serialized = append(serialized, m)
-		}
+	if serialized := SerializeRowActions(t, row); len(serialized) > 0 {
 		out["_actions"] = serialized
 	}
 	return out
+}
+
+// SerializeRowActions resolves a table's row actions against a single row,
+// applying each action's Hidden/Disabled/URL resolver and returning the wire
+// shape the frontend's RowActions component consumes under `_actions`.
+//
+// The model-driven query path applies this inside transformRow. Resolver
+// tables — which own their entire data fetch and therefore skip transformRow —
+// must call this themselves for each row they emit, otherwise row actions
+// never reach the client.
+func SerializeRowActions(t Table, row map[string]any) []map[string]any {
+	rowActions := effectiveRowActions(t)
+	if len(rowActions) == 0 {
+		return nil
+	}
+
+	serialized := make([]map[string]any, 0, len(rowActions))
+	for _, a := range rowActions {
+		s := a.Serialize()
+		if a.IsHiddenFor(row) {
+			s.Hidden = true
+		}
+		if a.IsDisabledFor(row) {
+			s.Disabled = true
+		}
+		if url := a.ResolveURL(row); url != nil {
+			s.URL = url
+		}
+		b, _ := json.Marshal(s)
+		var m map[string]any
+		_ = json.Unmarshal(b, &m)
+		serialized = append(serialized, m)
+	}
+	return serialized
 }
