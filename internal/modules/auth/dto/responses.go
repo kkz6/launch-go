@@ -29,6 +29,7 @@ type UserResponse struct {
 	Onboarded        bool          `json:"onboarded"`
 	TwoFactorEnabled bool          `json:"two_factor_enabled"`
 	StaffRole        *string       `json:"staff_role,omitempty"`
+	Status           string        `json:"status"`
 	CreatedAt        string        `json:"created_at"`
 }
 
@@ -165,6 +166,12 @@ func ToUserResponseWithStatus(user *models.User, isSubscribed bool, onboarded bo
 	if user.StaffRole != nil {
 		staffRole := user.StaffRole.String()
 		resp.StaffRole = &staffRole
+	}
+
+	resp.Status = string(user.Status)
+
+	if user.IsStaff() && resp.CurrentTeam != nil {
+		resp.CurrentTeam.IsSubscribed = true
 	}
 
 	return resp

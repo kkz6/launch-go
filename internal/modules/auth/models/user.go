@@ -4,6 +4,7 @@ import (
 	"net/url"
 	"time"
 
+	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
@@ -24,6 +25,7 @@ type User struct {
 	Timezone               *string               `gorm:"type:varchar(255);default:'UTC'" json:"timezone,omitempty"`
 	Onboarded              bool                  `gorm:"type:tinyint(1);not null;default:0" json:"onboarded"`
 	StaffRole              *stafftypes.StaffRole `gorm:"column:staff_role;type:varchar(20)" json:"staff_role,omitempty"`
+	Status                 authtypes.UserStatus  `gorm:"column:status;type:varchar(20);default:active" json:"status"`
 
 	// Relations
 	Teams       []Team `gorm:"many2many:team_user;" json:"teams,omitempty"`
@@ -49,6 +51,11 @@ func (u *User) IsStaff() bool {
 // HasStaffRole reports whether the user's staff tier is at least minRole.
 func (u *User) HasStaffRole(minRole stafftypes.StaffRole) bool {
 	return u.StaffRole != nil && u.StaffRole.Level() >= minRole.Level()
+}
+
+// IsSuspended reports whether the user account is suspended.
+func (u *User) IsSuspended() bool {
+	return u.Status == authtypes.UserStatusSuspended
 }
 
 // HasEnabledTwoFactorAuthentication checks if 2FA is enabled
