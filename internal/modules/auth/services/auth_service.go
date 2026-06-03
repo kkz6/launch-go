@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -43,6 +44,11 @@ type AuthService struct {
 	config *config.Config
 	logger *zerolog.Logger
 	cache  cache.Cache
+
+	// platformInvites consumes a platform invite during registration (grants an
+	// on_trial subscription on the new personal team). Wired from main.go via
+	// SetPlatformInviteReader. When nil, the trial-grant step is skipped.
+	platformInvites PlatformInviteReader
 }
 
 // NewAuthService creates a new AuthService instance
@@ -114,6 +120,11 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 		return nil, err
 	}
 
+	// Consume a platform invite if one was supplied. A bad/expired/used/
+	// mismatched token must NEVER block signup — on any problem we simply
+	// register normally without a trial.
+	s.consumePlatformInvite(ctx, req, user)
+
 	// Create session
 	sessionID, err := s.createSession(ctx, user.ID, req.IPAddress, req.UserAgent)
 	if err != nil {
@@ -121,6 +132,47 @@ func (s *AuthService) Register(ctx context.Context, req *dto.RegisterRequest) (*
 	}
 
 	return s.buildAuthResponse(ctx, user, sessionID)
+}
+
+// consumePlatformInvite grants an on_trial subscription on the user's personal
+// team when a valid, email-matched platform invite token was supplied during
+// registration. It is best-effort: any error or mismatch is skipped so the
+// registration still succeeds without a trial.
+func (s *AuthService) consumePlatformInvite(ctx context.Context, req *dto.RegisterRequest, user *models.User) {
+	if req.PlatformInviteToken == "" || s.platformInvites == nil {
+		return
+	}
+
+	// A platform invite grants a trial on the user's personal team. If no
+	// personal team was created (e.g. joined via a team invitation), there is
+	// nothing to attach the trial to.
+	if user.CurrentTeamID == nil {
+		return
+	}
+
+	email, _, ok, err := s.platformInvites.PlatformInviteByToken(ctx, req.PlatformInviteToken)
+	if err != nil || !ok {
+		return
+	}
+
+	if !platformInviteEmailMatches(email, req.Email) {
+		return
+	}
+
+	if err := s.platformInvites.AcceptPlatformInviteWithTrial(ctx, req.PlatformInviteToken, *user.CurrentTeamID); err != nil {
+		s.logger.Error().
+			Err(err).
+			Str("user_id", user.ID).
+			Str("team_id", *user.CurrentTeamID).
+			Msg("failed to grant platform-invite trial during registration")
+	}
+}
+
+// platformInviteEmailMatches reports whether the invite's email matches the
+// registering user's email, case-insensitively. The trial is only granted on a
+// match so a leaked token cannot be redeemed by a different account.
+func platformInviteEmailMatches(inviteEmail, registerEmail string) bool {
+	return strings.EqualFold(inviteEmail, registerEmail)
 }
 
 // Login authenticates a user. If the user has 2FA enabled, a challenge token

@@ -12,6 +12,7 @@ type RegisterRequest struct {
 	PasswordConfirmation string  `json:"password_confirmation" validate:"required,eqfield=Password"`
 	Timezone             string  `json:"timezone" validate:"omitempty,max=50"`
 	InvitationID         *string `json:"invitation_id" validate:"omitempty"`
+	PlatformInviteToken  string  `json:"platform_invite_token" validate:"omitempty,max=64"`
 	CreatePersonalTeam   bool    `json:"create_personal_team"`
 	IPAddress            string  `json:"-"`
 	UserAgent            string  `json:"-"`

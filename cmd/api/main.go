@@ -281,6 +281,10 @@ func (a *Application) registerModules() {
 	gitModule.SetSiteChecker(siteModule.SiteChecker())
 	staffModule.SetServerLogReader(serverModule.Repos().Task())
 	staffModule.Service().SetInvitationDeps(emailSender, a.config.App.Frontend())
+	// Registration consumes a platform invite by delegating to the staff service
+	// (which owns invitations + billing models). Auth defines the interface; staff
+	// implements it; the direction stays staff -> auth, so no import cycle.
+	authModule.Service().Auth.SetPlatformInviteReader(staffModule.Service())
 
 	// Register all modules with the kernel
 	a.kernel.

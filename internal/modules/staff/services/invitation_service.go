@@ -4,9 +4,12 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
+
+	"gorm.io/gorm"
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
@@ -114,6 +117,60 @@ func (s *Service) ListPendingInvitations(ctx context.Context, limit, offset int)
 // gorm.ErrRecordNotFound (via the repo) when no row matched.
 func (s *Service) RevokeInvitation(ctx context.Context, id string) error {
 	return s.repos.DeleteInvitation(ctx, id)
+}
+
+// PlatformInviteByToken looks up a platform invite by token and reports whether
+// it is usable. ok is false (with a nil error) when the token is unknown,
+// expired, or already accepted — the registration flow treats all of these as
+// "register normally, no trial". A non-nil error indicates a real lookup
+// failure. Implements auth/services.PlatformInviteReader.
+func (s *Service) PlatformInviteByToken(ctx context.Context, token string) (string, time.Time, bool, error) {
+	invitation, err := s.repos.FindInvitationByToken(ctx, token)
+	if err != nil {
+		return "", time.Time{}, false, err
+	}
+
+	if invitation == nil {
+		return "", time.Time{}, false, nil
+	}
+
+	if invitation.IsExpired(time.Now()) || invitation.IsAccepted() {
+		return "", time.Time{}, false, nil
+	}
+
+	return invitation.Email, invitation.TrialEndsAt, true, nil
+}
+
+// AcceptPlatformInviteWithTrial marks the invite accepted and creates an
+// on_trial subscription for the personal team, atomically. The invite is
+// re-found and re-validated inside the transaction to guard against a race
+// where it was consumed or expired between the read and the write.
+// Implements auth/services.PlatformInviteReader.
+func (s *Service) AcceptPlatformInviteWithTrial(ctx context.Context, token, personalTeamID string) error {
+	if strings.TrimSpace(personalTeamID) == "" {
+		return errors.New("personal team id is required to grant a trial")
+	}
+
+	return s.repos.DB().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		invitation, err := s.repos.FindInvitationByTokenTx(ctx, tx, token)
+		if err != nil {
+			return err
+		}
+
+		if invitation == nil {
+			return errors.New("platform invite not found")
+		}
+
+		if invitation.IsExpired(time.Now()) || invitation.IsAccepted() {
+			return errors.New("platform invite is no longer usable")
+		}
+
+		if err := s.repos.CreateTrialSubscription(ctx, tx, personalTeamID, invitation.TrialEndsAt); err != nil {
+			return err
+		}
+
+		return s.repos.MarkInvitationAccepted(ctx, tx, invitation.ID, time.Now())
+	})
 }
 
 // generateInviteToken returns a random URL-safe token built from 32 bytes of

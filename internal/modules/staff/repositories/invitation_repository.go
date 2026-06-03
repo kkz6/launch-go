@@ -3,11 +3,14 @@ package repositories
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 
 	"gorm.io/gorm"
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
+	billingmodels "github.com/kkz6/launch-go/internal/modules/billing/models"
+	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
@@ -48,12 +51,24 @@ func (r *Registry) FindPendingInvitationByEmail(ctx context.Context, email strin
 // (nil, nil) when none exists. Used by the registration flow (Task 11) to
 // consume an invite.
 func (r *Registry) FindInvitationByToken(ctx context.Context, token string) (*authmodels.PlatformInvitation, error) {
+	return r.FindInvitationByTokenTx(ctx, r.db, token)
+}
+
+// FindInvitationByTokenTx is FindInvitationByToken bound to a specific db handle
+// (e.g. a transaction). The trial-accept flow re-finds the invite on the same
+// transaction it writes on; using the base pool handle there would deadlock when
+// the pool is pinned to a single connection.
+func (r *Registry) FindInvitationByTokenTx(ctx context.Context, db *gorm.DB, token string) (*authmodels.PlatformInvitation, error) {
 	if token == "" {
 		return nil, nil
 	}
 
+	if db == nil {
+		db = r.db
+	}
+
 	var invitation authmodels.PlatformInvitation
-	err := r.db.WithContext(ctx).
+	err := db.WithContext(ctx).
 		Where("token = ?", token).
 		First(&invitation).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -65,6 +80,51 @@ func (r *Registry) FindInvitationByToken(ctx context.Context, token string) (*au
 	}
 
 	return &invitation, nil
+}
+
+// MarkInvitationAccepted stamps accepted_at on the platform invitation with the
+// given id. Used by the registration flow (Task 11) to consume an invite. The
+// db handle may be a transaction so the accept and the trial insert commit
+// together.
+func (r *Registry) MarkInvitationAccepted(ctx context.Context, db *gorm.DB, id string, acceptedAt time.Time) error {
+	if db == nil {
+		db = r.db
+	}
+
+	return db.WithContext(ctx).
+		Model(&authmodels.PlatformInvitation{}).
+		Where("id = ?", id).
+		Update("accepted_at", acceptedAt).Error
+}
+
+// CreateTrialSubscription inserts an on_trial subscription for the given
+// personal team. The insert is owned by the staff repo (which already imports
+// billing/models) so the trial-grant stays inside the staff transaction without
+// reaching into the billing module's repositories.
+//
+// The subscriptions table requires a unique, non-null provider_subscription_id;
+// since a trial has no real provider record, a deterministic "trial:{teamID}"
+// placeholder is used. type/product_id/variant_id are NOT NULL but carry no
+// meaning for a trial, so they are set to sensible defaults ("default"/"").
+func (r *Registry) CreateTrialSubscription(ctx context.Context, db *gorm.DB, teamID string, trialEndsAt time.Time) error {
+	if db == nil {
+		db = r.db
+	}
+
+	trialEnds := trialEndsAt
+	subscription := &billingmodels.Subscription{
+		BillableType:           billingmodels.BillableTypeTeam,
+		BillableID:             teamID,
+		Type:                   "default",
+		Provider:               billingmodels.ProviderDodoPayments,
+		ProviderSubscriptionID: fmt.Sprintf("trial:%s", teamID),
+		Status:                 billingtypes.SubscriptionStatusOnTrial,
+		ProductID:              "",
+		VariantID:              "",
+		TrialEndsAt:            &trialEnds,
+	}
+
+	return db.WithContext(ctx).Create(subscription).Error
 }
 
 // UserExistsByEmail reports whether a user row with the given email exists.
