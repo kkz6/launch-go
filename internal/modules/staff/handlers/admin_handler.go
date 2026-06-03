@@ -108,6 +108,34 @@ func (h *AdminHandler) ServerLogs(c *fiber.Ctx) error {
 	return fiberutil.OK(c, "Server logs retrieved successfully", tasks)
 }
 
+// Failures returns a unified, newest-first feed of operational failures across
+// provisions, tasks and deployments, read from existing tables. Staff-only. An
+// optional `kind` query (provision|task|deployment) narrows the feed to a
+// single source; any other value is rejected. Pagination meta carries the total
+// across the full merged feed before paging.
+func (h *AdminHandler) Failures(c *fiber.Ctx) error {
+	kind := c.Query("kind")
+	switch kind {
+	case "", "provision", "task", "deployment":
+		// valid
+	default:
+		return fiberutil.RespondBadRequest(c, "kind must be one of provision, task, deployment")
+	}
+
+	limit := fiberutil.ParseLimit(c, 25, 100)
+	offset := fiberutil.ParseOffset(c)
+
+	response, total, err := h.service.Failures(c.Context(), kind, limit, offset)
+	if err != nil {
+		return fiberutil.HandleError(c, err)
+	}
+
+	page := offset/limit + 1
+	meta := dto.NewPaginationMeta(page, limit, total)
+
+	return fiberutil.SuccessWithMeta(c, fiber.StatusOK, "Failures retrieved successfully", response, meta)
+}
+
 // StartImpersonation begins a read-only "spectate as user" session as the
 // target user. The authenticated caller is the staff member (RequireStaff runs
 // ahead of this); the impersonator id is taken from the request context, never
