@@ -21,13 +21,15 @@ func NewAdminHandler(service *services.Service) *AdminHandler {
 	return &AdminHandler{service: service}
 }
 
-// ListUsers returns a cross-tenant page of users. Proof endpoint for the
-// staff gate: only reachable by staff (RequireStaff runs ahead of it).
+// ListUsers returns a cross-tenant page of users, each row folding in the teams
+// the user owns and every team's current subscription status. Staff-only
+// (RequireStaff runs ahead of it). Rows are mapped to AdminUserRow so only an
+// explicit allow-list of fields is serialized — no passwords or 2FA secrets.
 func (h *AdminHandler) ListUsers(c *fiber.Ctx) error {
 	limit := fiberutil.ParseLimit(c, 25, 100)
 	offset := fiberutil.ParseOffset(c)
 
-	users, total, err := h.service.ListUsers(c.Context(), limit, offset)
+	rows, total, err := h.service.ListUsersWithBilling(c.Context(), limit, offset)
 	if err != nil {
 		return fiberutil.HandleError(c, err)
 	}
@@ -35,7 +37,7 @@ func (h *AdminHandler) ListUsers(c *fiber.Ctx) error {
 	page := offset/limit + 1
 	meta := dto.NewPaginationMeta(page, limit, total)
 
-	return fiberutil.SuccessWithMeta(c, fiber.StatusOK, "Users retrieved successfully", users, meta)
+	return fiberutil.SuccessWithMeta(c, fiber.StatusOK, "Users retrieved successfully", rows, meta)
 }
 
 // ListTeams returns a cross-tenant page of teams. Staff-only.

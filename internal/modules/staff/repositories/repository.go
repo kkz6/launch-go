@@ -11,6 +11,8 @@ import (
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
+	billingmodels "github.com/kkz6/launch-go/internal/modules/billing/models"
+	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	staffmodels "github.com/kkz6/launch-go/internal/modules/staff/models"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
@@ -87,12 +89,16 @@ func (r *Registry) UserStatus(ctx context.Context, userID string) authtypes.User
 	return status
 }
 
-// ListUsers returns a cross-tenant page of users ordered by created_at desc
-// together with the total count of users.
-func (r *Registry) ListUsers(ctx context.Context, limit, offset int) ([]authmodels.User, int64, error) {
+// ListUsersWithBilling returns a cross-tenant page of users ordered by
+// created_at desc, the teams each user owns, and the current subscription for
+// each of those teams. The work is done in three cheap queries (users page,
+// owned teams for that page, current subscriptions for those teams) so there is
+// no N+1 fan-out per user/team. The returned maps are keyed by user id (owned
+// teams) and team id (current subscription, nil when a team has none).
+func (r *Registry) ListUsersWithBilling(ctx context.Context, limit, offset int) ([]authmodels.User, map[string][]authmodels.Team, map[string]*billingmodels.Subscription, int64, error) {
 	var total int64
 	if err := r.db.WithContext(ctx).Model(&authmodels.User{}).Count(&total).Error; err != nil {
-		return nil, 0, err
+		return nil, nil, nil, 0, err
 	}
 
 	var users []authmodels.User
@@ -103,10 +109,101 @@ func (r *Registry) ListUsers(ctx context.Context, limit, offset int) ([]authmode
 		Offset(offset).
 		Find(&users).Error
 	if err != nil {
-		return nil, 0, err
+		return nil, nil, nil, 0, err
 	}
 
-	return users, total, nil
+	userIDs := make([]string, 0, len(users))
+	for _, user := range users {
+		userIDs = append(userIDs, user.ID)
+	}
+
+	teamsByOwner, err := r.TeamsByOwners(ctx, userIDs)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+
+	teamIDs := make([]string, 0)
+	for _, teams := range teamsByOwner {
+		for _, team := range teams {
+			teamIDs = append(teamIDs, team.ID)
+		}
+	}
+
+	subscriptionsByTeam, err := r.CurrentSubscriptionsByTeams(ctx, teamIDs)
+	if err != nil {
+		return nil, nil, nil, 0, err
+	}
+
+	return users, teamsByOwner, subscriptionsByTeam, total, nil
+}
+
+// TeamsByOwners loads all teams owned by the given user ids in a single query
+// and groups them by owner id. Returns an empty map when no ids are supplied.
+func (r *Registry) TeamsByOwners(ctx context.Context, userIDs []string) (map[string][]authmodels.Team, error) {
+	grouped := make(map[string][]authmodels.Team, len(userIDs))
+	if len(userIDs) == 0 {
+		return grouped, nil
+	}
+
+	var teams []authmodels.Team
+	err := r.db.WithContext(ctx).
+		Model(&authmodels.Team{}).
+		Where("user_id IN ?", userIDs).
+		Order("created_at ASC").
+		Find(&teams).Error
+	if err != nil {
+		return nil, err
+	}
+
+	for _, team := range teams {
+		grouped[team.UserID] = append(grouped[team.UserID], team)
+	}
+
+	return grouped, nil
+}
+
+// CurrentSubscriptionsByTeams loads subscriptions for the given team ids in a
+// single query and selects the most relevant one per team: an active/on_trial
+// subscription is preferred, otherwise the newest by id. Teams without any
+// subscription are simply absent from the returned map.
+func (r *Registry) CurrentSubscriptionsByTeams(ctx context.Context, teamIDs []string) (map[string]*billingmodels.Subscription, error) {
+	current := make(map[string]*billingmodels.Subscription, len(teamIDs))
+	if len(teamIDs) == 0 {
+		return current, nil
+	}
+
+	var subscriptions []billingmodels.Subscription
+	err := r.db.WithContext(ctx).
+		Model(&billingmodels.Subscription{}).
+		Where("billable_type IN ? AND billable_id IN ?", billingmodels.TeamBillableTypes(), teamIDs).
+		Order("id DESC").
+		Find(&subscriptions).Error
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range subscriptions {
+		sub := &subscriptions[i]
+		existing, ok := current[sub.BillableID]
+		if !ok {
+			current[sub.BillableID] = sub
+			continue
+		}
+
+		if isPreferredSubscription(sub.Status) && !isPreferredSubscription(existing.Status) {
+			current[sub.BillableID] = sub
+		}
+	}
+
+	return current, nil
+}
+
+// isPreferredSubscription reports whether a status should win when picking a
+// team's current subscription: active and on-trial subscriptions are preferred
+// over any other status.
+func isPreferredSubscription(status billingtypes.SubscriptionStatus) bool {
+	return status == billingtypes.SubscriptionStatusActive ||
+		status == billingtypes.SubscriptionStatusOnTrial
 }
 
 // ListTeams returns a cross-tenant page of teams ordered by created_at desc

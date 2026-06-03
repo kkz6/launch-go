@@ -6,6 +6,7 @@ import (
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	staffdto "github.com/kkz6/launch-go/internal/modules/staff/dto"
 	"github.com/kkz6/launch-go/internal/modules/staff/repositories"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
 )
@@ -66,9 +67,58 @@ func (s *Service) UserStatusForUser(ctx context.Context, userID string) authtype
 	return s.repos.UserStatus(ctx, userID)
 }
 
-// ListUsers returns a cross-tenant page of users and the total count.
-func (s *Service) ListUsers(ctx context.Context, limit, offset int) ([]authmodels.User, int64, error) {
-	return s.repos.ListUsers(ctx, limit, offset)
+// ListUsersWithBilling returns a cross-tenant page of users as admin rows, each
+// carrying the teams the user owns and every team's current subscription
+// status. The repo fetches users + teams + subscriptions in three queries (no
+// N+1); this method assembles them into the back-office DTO, exposing only the
+// allow-listed fields (no passwords, 2FA secrets, customer ids or card data).
+func (s *Service) ListUsersWithBilling(ctx context.Context, limit, offset int) ([]staffdto.AdminUserRow, int64, error) {
+	users, teamsByOwner, subscriptionsByTeam, total, err := s.repos.ListUsersWithBilling(ctx, limit, offset)
+	if err != nil {
+		return nil, 0, err
+	}
+
+	rows := make([]staffdto.AdminUserRow, 0, len(users))
+	for i := range users {
+		user := users[i]
+
+		var staffRole *string
+		if user.StaffRole != nil {
+			role := user.StaffRole.String()
+			staffRole = &role
+		}
+
+		ownedTeams := teamsByOwner[user.ID]
+		teams := make([]staffdto.AdminTeam, 0, len(ownedTeams))
+		for _, team := range ownedTeams {
+			adminTeam := staffdto.AdminTeam{
+				ID:           team.ID,
+				Name:         team.Name,
+				PersonalTeam: team.PersonalTeam,
+			}
+
+			if sub := subscriptionsByTeam[team.ID]; sub != nil {
+				adminTeam.Subscription = &staffdto.AdminTeamSubscription{
+					Status:      sub.Status.String(),
+					TrialEndsAt: sub.TrialEndsAt,
+				}
+			}
+
+			teams = append(teams, adminTeam)
+		}
+
+		rows = append(rows, staffdto.AdminUserRow{
+			ID:        user.ID,
+			Name:      user.Name,
+			Email:     user.Email,
+			StaffRole: staffRole,
+			Status:    string(user.Status),
+			CreatedAt: user.CreatedAt,
+			Teams:     teams,
+		})
+	}
+
+	return rows, total, nil
 }
 
 // ListTeams returns a cross-tenant page of teams and the total count.
