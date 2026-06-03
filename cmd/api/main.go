@@ -280,6 +280,7 @@ func (a *Application) registerModules() {
 	serverModule.SetSiteReader(siteModule.SiteReader())
 	gitModule.SetSiteChecker(siteModule.SiteChecker())
 	staffModule.SetServerLogReader(serverModule.Repos().Task())
+	staffModule.Service().SetInvitationDeps(emailSender, a.config.App.Frontend())
 
 	// Register all modules with the kernel
 	a.kernel.

@@ -39,6 +39,27 @@ var ErrCannotSuspendSelf = errors.New("cannot change your own account status")
 // for deletion. The handler maps it to 409.
 var ErrCannotDeleteSelf = errors.New("cannot delete your own account")
 
+// ErrUserAlreadyExists is returned by InviteUser when a registered user already
+// holds the invited email. The handler maps it to 409.
+var ErrUserAlreadyExists = errors.New("a user with this email already exists")
+
+// ErrInvitePending is returned by InviteUser when a pending (non-accepted,
+// non-expired) invitation already exists for the email. The handler maps it to
+// 409.
+var ErrInvitePending = errors.New("a pending invitation already exists for this email")
+
+// ErrInvalidTrialDate is returned by InviteUser when the trial end date is not
+// in the future. The handler maps it to 400.
+var ErrInvalidTrialDate = errors.New("trial end date must be in the future")
+
+// ErrInvalidInviteEmail is returned by InviteUser when the email is empty. The
+// handler maps it to 400.
+var ErrInvalidInviteEmail = errors.New("email is required")
+
+// ErrEmailSenderNotConfigured is returned when the platform-invitation email
+// transport has not been wired into the staff service.
+var ErrEmailSenderNotConfigured = errors.New("email sender not configured")
+
 // NotDeletableError carries the human-readable reason a user cannot be deleted
 // (holds a staff role, has a paid order, has/had a paid subscription). The
 // handler surfaces Reason in a 409 response. It is the typed error returned by

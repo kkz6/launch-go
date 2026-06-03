@@ -126,6 +126,32 @@ func TeamInvitationEmail(teamName, acceptURL, registerURL string, hasRegistratio
 	return html, builder.BuildPlainText(), nil
 }
 
+// PlatformInvitationEmail creates an HTML email inviting someone to try the
+// platform. The trial runs free until trialEndsAt; the recipient activates it
+// by registering through inviteURL.
+func PlatformInvitationEmail(inviteURL string, trialEndsAt time.Time) (htmlContent string, plainText string, err error) {
+	cfg := GetConfig()
+	appName := cfg.AppName
+	if appName == "" {
+		appName = "Launch"
+	}
+
+	builder := NewEmail().
+		WithGreeting("You're Invited").
+		WithIntro(fmt.Sprintf("You've been invited to try **%s** — free until **%s**.", appName, trialEndsAt.Format("January 2, 2006"))).
+		WithIntro("Click the button below to create your account and start your trial:").
+		WithAction("Accept Invitation", inviteURL, "primary").
+		WithOutro("If you did not expect this invitation, you may discard this email.").
+		WithSubcopy(fmt.Sprintf("If you're having trouble clicking the \"Accept Invitation\" button, copy and paste the URL below into your web browser: %s", inviteURL))
+
+	html, err := builder.Build()
+	if err != nil {
+		return "", "", err
+	}
+
+	return html, builder.BuildPlainText(), nil
+}
+
 // PasswordResetEmail creates an HTML email for password reset
 func PasswordResetEmail(resetURL string, expiresIn int) (htmlContent string, plainText string, err error) {
 	builder := NewEmail().

@@ -5,6 +5,7 @@ import (
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
+	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	staffdto "github.com/kkz6/launch-go/internal/modules/staff/dto"
 	"github.com/kkz6/launch-go/internal/modules/staff/repositories"
@@ -40,6 +41,16 @@ type Service struct {
 	// nil it is lazily built from the default plan config; tests inject a fixed
 	// map via SetMonthlyEquivByProduct for determinism.
 	monthlyEquivByProduct map[string]int64
+
+	// emailSender delivers the platform-invitation email. Wired from main.go via
+	// SetInvitationDeps. When nil, InviteUser still creates the invite row but
+	// surfaces an error so the missing transport is visible.
+	emailSender channels.EmailSender
+
+	// frontendURL is the public frontend base used to build the invite link
+	// ({frontendURL}/register?invite={token}). Wired from main.go via
+	// SetInvitationDeps out of config (App.Frontend()).
+	frontendURL string
 }
 
 // NewService creates a new staff service.
@@ -58,6 +69,15 @@ func (s *Service) SetJWTSecret(secret string) {
 // recent task/activity records. Injected from main.go.
 func (s *Service) SetServerLogReader(reader ServerLogReader) {
 	s.logReader = reader
+}
+
+// SetInvitationDeps wires the email transport and frontend base URL used by the
+// platform-invitation flow. Injected from main.go, mirroring SetServerLogReader
+// and SetJWTSecret. The frontend URL is sourced from config (App.Frontend()),
+// never the environment directly.
+func (s *Service) SetInvitationDeps(emailSender channels.EmailSender, frontendURL string) {
+	s.emailSender = emailSender
+	s.frontendURL = frontendURL
 }
 
 // StaffRoleForUser resolves a user's staff role (nil = not staff). This is the

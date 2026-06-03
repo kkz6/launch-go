@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	staffdto "github.com/kkz6/launch-go/internal/modules/staff/dto"
@@ -262,6 +263,110 @@ func (h *AdminHandler) DeleteUser(c *fiber.Ctx) error {
 	}
 
 	return fiberutil.OK(c, "User deleted", fiber.Map{"id": targetID})
+}
+
+// CreateInvitation issues a platform-level invitation with a trial period and
+// emails the recipient an invite link. Super-admin only (RequireStaff(
+// StaffRoleSuperAdmin) runs ahead of it). The inviter id is taken from the
+// request context, never the body. The body carries the target email and the
+// trial end date (RFC3339, or a YYYY-MM-DD date). The invitation JSON omits the
+// token (json:"-"), so the secret never leaves through the response.
+func (h *AdminHandler) CreateInvitation(c *fiber.Ctx) error {
+	var body struct {
+		Email       string `json:"email"`
+		TrialEndsAt string `json:"trial_ends_at"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return fiberutil.RespondBadRequest(c, "Invalid request body")
+	}
+
+	if body.Email == "" {
+		return fiberutil.RespondBadRequest(c, "Email is required")
+	}
+
+	trialEndsAt, err := parseTrialEndsAt(body.TrialEndsAt)
+	if err != nil {
+		return fiberutil.RespondBadRequest(c, "trial_ends_at must be an RFC3339 timestamp or a YYYY-MM-DD date")
+	}
+
+	actorID, _ := c.Locals(fiberutil.KeyUserID).(string)
+
+	invitation, err := h.service.InviteUser(c.Context(), body.Email, trialEndsAt, actorID)
+	if err != nil {
+		return mapInvitationError(c, err)
+	}
+
+	return fiberutil.OK(c, "Invitation sent", invitation)
+}
+
+// ListInvitations returns a page of pending (non-accepted, non-expired)
+// platform invitations. Support-tier (the group gate already applies).
+func (h *AdminHandler) ListInvitations(c *fiber.Ctx) error {
+	limit := fiberutil.ParseLimit(c, 25, 100)
+	offset := fiberutil.ParseOffset(c)
+
+	invitations, total, err := h.service.ListPendingInvitations(c.Context(), limit, offset)
+	if err != nil {
+		return fiberutil.HandleError(c, err)
+	}
+
+	page := offset/limit + 1
+	meta := dto.NewPaginationMeta(page, limit, total)
+
+	return fiberutil.SuccessWithMeta(c, fiber.StatusOK, "Invitations retrieved successfully", invitations, meta)
+}
+
+// RevokeInvitation deletes a pending invitation by id. Super-admin only. A
+// missing invitation yields a 404.
+func (h *AdminHandler) RevokeInvitation(c *fiber.Ctx) error {
+	id := c.Params("id")
+	if id == "" {
+		return fiberutil.RespondBadRequest(c, "Invitation id is required")
+	}
+
+	if err := h.service.RevokeInvitation(c.Context(), id); err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return fiberutil.RespondNotFound(c, "Invitation not found")
+		}
+		return fiberutil.HandleError(c, err)
+	}
+
+	return fiberutil.OK(c, "Invitation revoked", fiber.Map{"id": id})
+}
+
+// parseTrialEndsAt accepts either an RFC3339 timestamp or a bare YYYY-MM-DD
+// date for the trial end. A bare date is interpreted at UTC midnight.
+func parseTrialEndsAt(raw string) (time.Time, error) {
+	if raw == "" {
+		return time.Time{}, errors.New("trial_ends_at is required")
+	}
+
+	if t, err := time.Parse(time.RFC3339, raw); err == nil {
+		return t, nil
+	}
+
+	return time.Parse("2006-01-02", raw)
+}
+
+// mapInvitationError translates invitation service sentinels to HTTP statuses:
+// an existing user or a pending invite -> 409; an invalid email or trial date ->
+// 400. An email-delivery failure wraps the created invitation and is not a
+// sentinel, so it falls through to HandleError's 500 — the invite row still
+// exists and the link is usable; the error just tells the admin the mail did
+// not go out.
+func mapInvitationError(c *fiber.Ctx, err error) error {
+	switch {
+	case errors.Is(err, services.ErrUserAlreadyExists):
+		return fiberutil.RespondConflict(c, err.Error())
+	case errors.Is(err, services.ErrInvitePending):
+		return fiberutil.RespondConflict(c, err.Error())
+	case errors.Is(err, services.ErrInvalidTrialDate):
+		return fiberutil.RespondBadRequest(c, err.Error())
+	case errors.Is(err, services.ErrInvalidInviteEmail):
+		return fiberutil.RespondBadRequest(c, err.Error())
+	default:
+		return fiberutil.HandleError(c, err)
+	}
 }
 
 // mapUserDeleteError translates delete service sentinels to HTTP statuses:

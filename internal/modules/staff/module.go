@@ -99,4 +99,11 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	// group gate) and additionally refuses any user who ever paid (paid order
 	// or non-trial subscription), holds a staff role, or is the actor.
 	admin.Delete("/users/:id", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.DeleteUser)
+
+	// Platform invitations: super_admin creates and revokes (destructive /
+	// account-creating writes), support-tier may read the pending list. Create
+	// emails the recipient a trial invite link; revoke deletes a pending invite.
+	admin.Post("/invitations", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.CreateInvitation)
+	admin.Get("/invitations", m.handler.ListInvitations)
+	admin.Delete("/invitations/:id", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.RevokeInvitation)
 }
