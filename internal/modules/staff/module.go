@@ -2,13 +2,16 @@ package staff
 
 import (
 	"github.com/gofiber/fiber/v2"
+	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/staff/handlers"
 	"github.com/kkz6/launch-go/internal/modules/staff/repositories"
 	"github.com/kkz6/launch-go/internal/modules/staff/services"
+	"github.com/kkz6/launch-go/internal/modules/staff/tables"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
 	"github.com/kkz6/launch-go/internal/pkg/app"
+	"github.com/kkz6/launch-go/internal/pkg/table"
 )
 
 // ModuleName is the staff module's unique identifier.
@@ -24,6 +27,7 @@ var (
 // independent of any customer team.
 type Module struct {
 	app.Base
+	db      *gorm.DB
 	repos   *repositories.Registry
 	service *services.Service
 	handler *handlers.AdminHandler
@@ -46,6 +50,7 @@ func NewModule(b *app.Builder) *Module {
 
 	return &Module{
 		Base:    app.NewBase(ModuleName, b),
+		db:      deps.DB,
 		repos:   repos,
 		service: service,
 		handler: handler,
@@ -106,4 +111,15 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	admin.Post("/invitations", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.CreateInvitation)
 	admin.Get("/invitations", m.handler.ListInvitations)
 	admin.Delete("/invitations/:id", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.RevokeInvitation)
+
+	// Declarative invitations table. Reads (/meta, /data) inherit the group's
+	// support-tier gate; the mutating /action/:name route is additionally gated
+	// behind super_admin via the action middleware, matching the REST revoke
+	// endpoint above. The REST endpoints stay in place — this table is additive
+	// while the frontend migrates.
+	tableQuery := table.NewQueryService(m.db)
+	tableViews := table.NewViewService(m.db)
+	invTable := tables.NewInvitationsTable(m.service)
+	invGroup := admin.Group("/invitations/table")
+	table.Mount(invGroup, invTable, tableQuery, tableViews, middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin))
 }

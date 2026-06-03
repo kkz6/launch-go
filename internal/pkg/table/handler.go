@@ -16,11 +16,19 @@ import (
 //
 //	users := router.Group("/users", authMw)
 //	table.Mount(users.Group("/table"), m.table, m.tableQuery, m.tableViews)
-func Mount(router fiber.Router, t Table, query *QueryService, views *ViewService) {
+//
+// Optional actionMiddleware runs only on the mutating POST /action/:name
+// route, in front of the action handler. This lets a module keep /meta and
+// /data on the group's tier (e.g. support) while gating mutations behind a
+// stricter role (e.g. super_admin). Omitting it leaves the action route on
+// the group's middleware chain unchanged.
+func Mount(router fiber.Router, t Table, query *QueryService, views *ViewService, actionMiddleware ...fiber.Handler) {
 	h := &handler{table: t, query: query, views: views}
 	router.Get("/meta", h.meta)
 	router.Get("/data", h.data)
-	router.Post("/action/:name", h.action)
+
+	actionHandlers := append(append([]fiber.Handler{}, actionMiddleware...), h.action)
+	router.Post("/action/:name", actionHandlers...)
 
 	v := router.Group("/views")
 	v.Get("/", h.listViews)
