@@ -3,13 +3,17 @@ package repositories
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"strings"
+	"time"
 
 	"gorm.io/gorm"
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	staffmodels "github.com/kkz6/launch-go/internal/modules/staff/models"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
+	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
 // Registry holds the staff module's database access.
@@ -115,4 +119,47 @@ func (r *Registry) ListServers(ctx context.Context, limit, offset int) ([]server
 	}
 
 	return servers, total, nil
+}
+
+// CreateImpersonationSession inserts a new impersonation session (start of a
+// spectate session). It assigns a ULID id and a started_at timestamp when those
+// are not already set on the record.
+func (r *Registry) CreateImpersonationSession(ctx context.Context, session *staffmodels.ImpersonationSession) error {
+	if session.ID == "" {
+		session.ID = util.NewULID()
+	}
+
+	if session.StartedAt.IsZero() {
+		session.StartedAt = time.Now()
+	}
+
+	return r.db.WithContext(ctx).Create(session).Error
+}
+
+// EndImpersonationSession stamps ended_at on an active session by id. Only
+// sessions that are still active (ended_at IS NULL) are affected.
+func (r *Registry) EndImpersonationSession(ctx context.Context, sessionID string, endedAt time.Time) error {
+	return r.db.WithContext(ctx).
+		Model(&staffmodels.ImpersonationSession{}).
+		Where("id = ? AND ended_at IS NULL", sessionID).
+		Update("ended_at", endedAt).Error
+}
+
+// ActiveImpersonationForStaff returns the staff member's most recent active
+// (ended_at IS NULL) session, or nil if none exists.
+func (r *Registry) ActiveImpersonationForStaff(ctx context.Context, staffID string) (*staffmodels.ImpersonationSession, error) {
+	var session staffmodels.ImpersonationSession
+	err := r.db.WithContext(ctx).
+		Where("staff_id = ? AND ended_at IS NULL", staffID).
+		Order("started_at DESC").
+		First(&session).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &session, nil
 }
