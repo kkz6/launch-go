@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
+	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
 )
 
@@ -70,4 +71,48 @@ func (r *Registry) ListUsers(ctx context.Context, limit, offset int) ([]authmode
 	}
 
 	return users, total, nil
+}
+
+// ListTeams returns a cross-tenant page of teams ordered by created_at desc
+// together with the total count of teams.
+func (r *Registry) ListTeams(ctx context.Context, limit, offset int) ([]authmodels.Team, int64, error) {
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&authmodels.Team{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var teams []authmodels.Team
+	err := r.db.WithContext(ctx).
+		Model(&authmodels.Team{}).
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&teams).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return teams, total, nil
+}
+
+// ListServers returns a cross-tenant page of servers ordered by created_at desc
+// together with the total count of servers.
+func (r *Registry) ListServers(ctx context.Context, limit, offset int) ([]servermodels.Server, int64, error) {
+	var total int64
+	if err := r.db.WithContext(ctx).Model(&servermodels.Server{}).Count(&total).Error; err != nil {
+		return nil, 0, err
+	}
+
+	var servers []servermodels.Server
+	err := r.db.WithContext(ctx).
+		Model(&servermodels.Server{}).
+		Order("created_at DESC").
+		Limit(limit).
+		Offset(offset).
+		Find(&servers).Error
+	if err != nil {
+		return nil, 0, err
+	}
+
+	return servers, total, nil
 }

@@ -50,8 +50,18 @@ func (m *Module) Service() *services.Service {
 	return m.service
 }
 
+// SetServerLogReader wires the cross-module reader used by the server-logs
+// endpoint to fetch a server's recent task/activity records. Injected from
+// main.go with the server module's task repository.
+func (m *Module) SetServerLogReader(reader services.ServerLogReader) {
+	m.service.SetServerLogReader(reader)
+}
+
 // RegisterRoutes registers the back-office /admin routes behind the staff gate.
 func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handler) {
 	admin := router.Group("/admin", middleware.StaffChain(authMiddleware, stafftypes.StaffRoleSupport)...)
 	admin.Get("/users", m.handler.ListUsers)
+	admin.Get("/teams", m.handler.ListTeams)
+	admin.Get("/servers", m.handler.ListServers)
+	admin.Get("/servers/:id/logs", m.handler.ServerLogs)
 }

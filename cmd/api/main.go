@@ -278,6 +278,7 @@ func (a *Application) registerModules() {
 	dockerModule.SetCertificateRepository(certificateModule.Repos())
 	serverModule.SetSiteReader(siteModule.SiteReader())
 	gitModule.SetSiteChecker(siteModule.SiteChecker())
+	staffModule.SetServerLogReader(serverModule.Repos().Task())
 
 	// Register all modules with the kernel
 	a.kernel.
