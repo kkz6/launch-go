@@ -130,4 +130,12 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	// place — this table is additive.
 	serversTable := tables.NewServersTable()
 	table.Mount(admin.Group("/servers/table"), serversTable, tableQuery, tableViews)
+
+	// Declarative failures table. A pure Resolver table: it owns its data fetch
+	// by delegating to the Failures service (merging provision/task/deployment
+	// failures), so the model-driven query path is skipped. Read-only — no row
+	// actions, so no action middleware is mounted. The REST /admin/failures
+	// endpoint above stays in place — this table is additive.
+	failuresTable := tables.NewFailuresTable(m.service)
+	table.Mount(admin.Group("/failures/table"), failuresTable, tableQuery, tableViews)
 }
