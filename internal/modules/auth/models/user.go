@@ -4,24 +4,26 @@ import (
 	"net/url"
 	"time"
 
+	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
 	basemodels "github.com/kkz6/launch-go/internal/pkg/models"
 )
 
 // User represents an authenticated user in the system
 type User struct {
 	basemodels.BaseModel
-	Name                   string     `gorm:"type:varchar(255);not null" json:"name"`
-	Email                  string     `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
-	EmailVerifiedAt        *time.Time `gorm:"type:timestamp null" json:"email_verified_at,omitempty"`
-	Password               string     `gorm:"type:varchar(255);not null" json:"-"`
-	TwoFactorSecret        *string    `gorm:"type:text" json:"-"`
-	TwoFactorRecoveryCodes *string    `gorm:"type:text" json:"-"`
-	TwoFactorConfirmedAt   *time.Time `gorm:"type:timestamp null" json:"-"`
-	RememberToken          *string    `gorm:"type:varchar(100)" json:"-"`
-	CurrentTeamID          *string    `gorm:"column:current_team_id;type:char(26)" json:"current_team_id,omitempty"`
-	ProfilePhotoPath       *string    `gorm:"column:profile_photo_path;type:varchar(2048)" json:"profile_photo_path,omitempty"`
-	Timezone               *string    `gorm:"type:varchar(255);default:'UTC'" json:"timezone,omitempty"`
-	Onboarded              bool       `gorm:"type:tinyint(1);not null;default:0" json:"onboarded"`
+	Name                   string                `gorm:"type:varchar(255);not null" json:"name"`
+	Email                  string                `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
+	EmailVerifiedAt        *time.Time            `gorm:"type:timestamp null" json:"email_verified_at,omitempty"`
+	Password               string                `gorm:"type:varchar(255);not null" json:"-"`
+	TwoFactorSecret        *string               `gorm:"type:text" json:"-"`
+	TwoFactorRecoveryCodes *string               `gorm:"type:text" json:"-"`
+	TwoFactorConfirmedAt   *time.Time            `gorm:"type:timestamp null" json:"-"`
+	RememberToken          *string               `gorm:"type:varchar(100)" json:"-"`
+	CurrentTeamID          *string               `gorm:"column:current_team_id;type:char(26)" json:"current_team_id,omitempty"`
+	ProfilePhotoPath       *string               `gorm:"column:profile_photo_path;type:varchar(2048)" json:"profile_photo_path,omitempty"`
+	Timezone               *string               `gorm:"type:varchar(255);default:'UTC'" json:"timezone,omitempty"`
+	Onboarded              bool                  `gorm:"type:tinyint(1);not null;default:0" json:"onboarded"`
+	StaffRole              *stafftypes.StaffRole `gorm:"column:staff_role;type:varchar(20)" json:"staff_role,omitempty"`
 
 	// Relations
 	Teams       []Team `gorm:"many2many:team_user;" json:"teams,omitempty"`
@@ -37,6 +39,16 @@ func (User) TableName() string {
 // HasVerifiedEmail checks if the user has verified their email
 func (u *User) HasVerifiedEmail() bool {
 	return u.EmailVerifiedAt != nil
+}
+
+// IsStaff reports whether the user has any back-office staff access.
+func (u *User) IsStaff() bool {
+	return u.StaffRole != nil && u.StaffRole.IsValid()
+}
+
+// HasStaffRole reports whether the user's staff tier is at least minRole.
+func (u *User) HasStaffRole(minRole stafftypes.StaffRole) bool {
+	return u.StaffRole != nil && u.StaffRole.Level() >= minRole.Level()
 }
 
 // HasEnabledTwoFactorAuthentication checks if 2FA is enabled
