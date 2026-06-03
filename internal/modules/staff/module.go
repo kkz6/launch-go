@@ -122,4 +122,12 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	invTable := tables.NewInvitationsTable(m.service)
 	invGroup := admin.Group("/invitations/table")
 	table.Mount(invGroup, invTable, tableQuery, tableViews, middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin))
+
+	// Declarative servers table. Read-only: only safe columns are declared, so
+	// the declared-column projection guarantees no secret server column (SSH
+	// keys, tokens, passwords) reaches /data. No row actions, so no action
+	// middleware is needed. The REST /admin/servers endpoint above stays in
+	// place — this table is additive.
+	serversTable := tables.NewServersTable()
+	table.Mount(admin.Group("/servers/table"), serversTable, tableQuery, tableViews)
 }
