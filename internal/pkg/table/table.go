@@ -1,8 +1,11 @@
 package table
 
 import (
+	"context"
 	"strings"
 	"unicode"
+
+	"gorm.io/gorm"
 )
 
 // Config carries the static, per-table configuration. Equivalent to the
@@ -50,6 +53,22 @@ type Table interface {
 	Filters() []Filter
 	Actions() []*Action
 	EmptyState() *EmptyState
+}
+
+// BaseQueryProvider lets a table supply a scoped/joined base query instead of
+// the default db.Model(cfg.Model()). The returned *gorm.DB should already have
+// the model/table set (e.g. db.Model(&X{}).Joins(...).Where(...)). The query
+// service then applies search/filter/sort/count/pagination on top.
+type BaseQueryProvider interface {
+	BaseQuery(db *gorm.DB) *gorm.DB
+}
+
+// Resolver lets a table fully own its data fetch (custom assembly, unions,
+// pagination). When a Table implements Resolver, the query service delegates
+// entirely and returns its TableResponse; the declared Columns()/Filters() are
+// then used only for the /meta schema, not for querying.
+type Resolver interface {
+	Resolve(ctx context.Context, req Request) (*TableResponse, error)
 }
 
 // Render builds the meta payload for a table.

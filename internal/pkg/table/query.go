@@ -24,6 +24,12 @@ func NewQueryService(db *gorm.DB) *QueryService {
 
 // Execute runs a query and returns the table response.
 func (s *QueryService) Execute(ctx context.Context, t Table, req Request) (*TableResponse, error) {
+	// A Resolver table owns its entire data fetch — delegate before touching
+	// cfg.Model(), which a pure Resolver table may leave nil.
+	if r, ok := t.(Resolver); ok {
+		return r.Resolve(ctx, req)
+	}
+
 	cfg := t.Config()
 	model := cfg.Model()
 
@@ -34,6 +40,9 @@ func (s *QueryService) Execute(ctx context.Context, t Table, req Request) (*Tabl
 	tableName := stmt.Table
 
 	q := s.db.WithContext(ctx).Table(tableName)
+	if bq, ok := t.(BaseQueryProvider); ok {
+		q = bq.BaseQuery(s.db.WithContext(ctx))
+	}
 
 	// Apply search.
 	if req.Search != "" {
