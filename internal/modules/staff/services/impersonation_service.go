@@ -36,6 +36,12 @@ func (s *Service) StartImpersonation(ctx context.Context, staffID, targetUserID,
 		return "", nil, ErrTargetUserNotFound
 	}
 
+	// Enforce the single-active invariant: end any sessions this staffer left
+	// open before opening a new one. This also cleans up orphaned rows.
+	if _, err := s.repos.EndActiveImpersonationsForStaff(ctx, staffID, time.Now()); err != nil {
+		return "", nil, err
+	}
+
 	session = &models.ImpersonationSession{
 		StaffID:      staffID,
 		TargetUserID: target.ID,
@@ -87,20 +93,12 @@ func (s *Service) StopImpersonationForStaff(ctx context.Context, staffID string)
 		return false, ErrInvalidImpersonationRequest
 	}
 
-	session, err := s.repos.ActiveImpersonationForStaff(ctx, staffID)
+	closed, err := s.repos.EndActiveImpersonationsForStaff(ctx, staffID, time.Now())
 	if err != nil {
 		return false, err
 	}
 
-	if session == nil {
-		return false, nil
-	}
-
-	if err := s.repos.EndImpersonationSession(ctx, session.ID, time.Now()); err != nil {
-		return false, err
-	}
-
-	return true, nil
+	return closed > 0, nil
 }
 
 func nilIfEmpty(s string) *string {

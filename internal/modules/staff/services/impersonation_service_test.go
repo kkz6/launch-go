@@ -22,7 +22,7 @@ const testJWTSecret = "test-impersonation-secret"
 // DB with the impersonation_sessions and users tables migrated, plus a seeded
 // target user. The User model uses only standard column types, so it migrates
 // cleanly under sqlite without stubbing.
-func setupImpersonationService(t *testing.T) (*Service, *authmodels.User) {
+func setupImpersonationService(t *testing.T) (*Service, *authmodels.User, *gorm.DB) {
 	t.Helper()
 
 	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{
@@ -45,11 +45,24 @@ func setupImpersonationService(t *testing.T) (*Service, *authmodels.User) {
 	svc := NewService(repositories.NewRegistry(db))
 	svc.SetJWTSecret(testJWTSecret)
 
-	return svc, target
+	return svc, target, db
+}
+
+// activeImpersonationCount counts a staffer's currently-active sessions.
+func activeImpersonationCount(t *testing.T, db *gorm.DB, staffID string) int64 {
+	t.Helper()
+
+	var count int64
+	require.NoError(t, db.
+		Model(&staffmodels.ImpersonationSession{}).
+		Where("staff_id = ? AND ended_at IS NULL", staffID).
+		Count(&count).Error)
+
+	return count
 }
 
 func TestService_StartImpersonation_MintsScopedTokenAndRecordsSession(t *testing.T) {
-	svc, target := setupImpersonationService(t)
+	svc, target, _ := setupImpersonationService(t)
 	ctx := context.Background()
 
 	before := time.Now()
@@ -88,7 +101,7 @@ func TestService_StartImpersonation_MintsScopedTokenAndRecordsSession(t *testing
 }
 
 func TestService_StopImpersonation_EndsActiveSession(t *testing.T) {
-	svc, target := setupImpersonationService(t)
+	svc, target, _ := setupImpersonationService(t)
 	ctx := context.Background()
 
 	_, session, err := svc.StartImpersonation(ctx, "staff1", target.ID, "")
@@ -101,8 +114,60 @@ func TestService_StopImpersonation_EndsActiveSession(t *testing.T) {
 	require.Nil(t, active)
 }
 
+func TestService_StartImpersonation_EndsPriorActiveSession(t *testing.T) {
+	svc, target, db := setupImpersonationService(t)
+	ctx := context.Background()
+
+	_, first, err := svc.StartImpersonation(ctx, "staff1", target.ID, "")
+	require.NoError(t, err)
+
+	_, second, err := svc.StartImpersonation(ctx, "staff1", target.ID, "")
+	require.NoError(t, err)
+	require.NotEqual(t, first.ID, second.ID)
+
+	require.Equal(t, int64(1), activeImpersonationCount(t, db, "staff1"),
+		"starting a new session must end any prior active session")
+
+	active, err := svc.repos.ActiveImpersonationForStaff(ctx, "staff1")
+	require.NoError(t, err)
+	require.NotNil(t, active)
+	require.Equal(t, second.ID, active.ID)
+}
+
+func TestService_StopImpersonationForStaff_EndsAllActiveSessions(t *testing.T) {
+	svc, target, db := setupImpersonationService(t)
+	ctx := context.Background()
+
+	// Force two concurrently-active rows for the same staffer by inserting
+	// directly, bypassing the start-time single-active enforcement. This
+	// simulates a pre-existing dirty audit trail.
+	first := &staffmodels.ImpersonationSession{StaffID: "staff1", TargetUserID: target.ID}
+	require.NoError(t, svc.repos.CreateImpersonationSession(ctx, first))
+
+	second := &staffmodels.ImpersonationSession{StaffID: "staff1", TargetUserID: target.ID}
+	require.NoError(t, svc.repos.CreateImpersonationSession(ctx, second))
+
+	require.Equal(t, int64(2), activeImpersonationCount(t, db, "staff1"),
+		"precondition: two active sessions")
+
+	stopped, err := svc.StopImpersonationForStaff(ctx, "staff1")
+	require.NoError(t, err)
+	require.True(t, stopped)
+
+	require.Equal(t, int64(0), activeImpersonationCount(t, db, "staff1"),
+		"stopping must close ALL active sessions, leaving no orphan")
+
+	active, err := svc.repos.ActiveImpersonationForStaff(ctx, "staff1")
+	require.NoError(t, err)
+	require.Nil(t, active)
+
+	stopped, err = svc.StopImpersonationForStaff(ctx, "staff1")
+	require.NoError(t, err)
+	require.False(t, stopped, "no active sessions remain to stop")
+}
+
 func TestService_StartImpersonation_Validations(t *testing.T) {
-	svc, target := setupImpersonationService(t)
+	svc, target, _ := setupImpersonationService(t)
 	ctx := context.Background()
 
 	_, _, err := svc.StartImpersonation(ctx, "", target.ID, "")

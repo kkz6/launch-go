@@ -43,18 +43,12 @@ func setAuthContext(c *fiber.Ctx, claims jwt.MapClaims) {
 		c.Locals("sessionID", sessionID)
 	}
 
-	// Surface impersonation claims so downstream middleware can enforce the
-	// read-only ("spectate") contract. Only present on minted impersonation
-	// tokens; absent on normal staff/customer tokens.
-	if sid, ok := claims["impersonation_sid"].(string); ok && sid != "" {
-		c.Locals("impersonationSID", sid)
-
+	// Surface the read-only flag so the auth chokepoint can enforce the
+	// spectate contract. Only present on minted impersonation tokens; absent
+	// on normal staff/customer tokens.
+	if _, ok := claims["impersonation_sid"].(string); ok {
 		if ro, ok := claims["read_only"].(bool); ok {
 			c.Locals("impersonationReadOnly", ro)
-		}
-
-		if imp, ok := claims["impersonator_id"].(string); ok {
-			c.Locals("impersonatorID", imp)
 		}
 	}
 }

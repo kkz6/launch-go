@@ -168,6 +168,16 @@ func (r *Registry) EndImpersonationSession(ctx context.Context, sessionID string
 		Update("ended_at", endedAt).Error
 }
 
+// EndActiveImpersonationsForStaff stamps ended_at on ALL of a staff member's
+// currently-active sessions. Returns the number of sessions closed.
+func (r *Registry) EndActiveImpersonationsForStaff(ctx context.Context, staffID string, endedAt time.Time) (int64, error) {
+	res := r.db.WithContext(ctx).
+		Model(&staffmodels.ImpersonationSession{}).
+		Where("staff_id = ? AND ended_at IS NULL", staffID).
+		Update("ended_at", endedAt)
+	return res.RowsAffected, res.Error
+}
+
 // ActiveImpersonationForStaff returns the staff member's most recent active
 // (ended_at IS NULL) session, or nil if none exists.
 func (r *Registry) ActiveImpersonationForStaff(ctx context.Context, staffID string) (*staffmodels.ImpersonationSession, error) {
