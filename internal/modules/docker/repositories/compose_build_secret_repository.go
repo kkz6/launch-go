@@ -2,12 +2,10 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -23,15 +21,9 @@ func NewComposeBuildSecretRepository(db *gorm.DB) *ComposeBuildSecretRepository 
 }
 
 func (r *ComposeBuildSecretRepository) FindByID(ctx context.Context, id string) (*models.ComposeBuildSecret, error) {
-	var v models.ComposeBuildSecret
-	err := r.DB.WithContext(ctx).Where("id = ?", id).First(&v).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &v, nil
+	return repository.FindOne[models.ComposeBuildSecret](ctx, r.DB,
+		repository.WithID(id),
+	)
 }
 
 func (r *ComposeBuildSecretRepository) ListForCompose(

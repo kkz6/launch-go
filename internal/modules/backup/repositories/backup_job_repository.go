@@ -2,11 +2,8 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
-
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 
 	"github.com/kkz6/launch-go/internal/modules/backup/models"
 	backuptypes "github.com/kkz6/launch-go/internal/modules/backup/types"
@@ -32,21 +29,11 @@ func (r *BackupJobRepository) CreateBackupJob(ctx context.Context, job *models.B
 
 // FindBackupJobByID finds a backup job by ID
 func (r *BackupJobRepository) FindBackupJobByID(ctx context.Context, id string) (*models.BackupJob, error) {
-	var job models.BackupJob
-	err := r.DB.WithContext(ctx).
-		Preload("Backup").
-		Preload("StorageProvider").
-		First(&job, "id = ?", id).Error
-
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fiberutil.NotFound()
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &job, nil
+	return repository.FindOne[models.BackupJob](ctx, r.DB,
+		repository.WithID(id),
+		repository.Preload("Backup"),
+		repository.Preload("StorageProvider"),
+	)
 }
 
 // FindBackupJobsByBackupID finds all jobs for a backup

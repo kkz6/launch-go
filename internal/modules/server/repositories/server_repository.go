@@ -2,12 +2,9 @@ package repositories
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"gorm.io/gorm"
-
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 
 	"github.com/kkz6/launch-go/internal/modules/server/models"
 	"github.com/kkz6/launch-go/internal/modules/server/types"
@@ -51,21 +48,15 @@ func servicesByInstallOrder(db *gorm.DB) *gorm.DB {
 
 // FindWithRelations finds a server with all relations
 func (r *ServerRepository) FindWithRelations(ctx context.Context, id, teamID string) (*models.Server, error) {
-	var server models.Server
-	err := r.DB.WithContext(ctx).
-		Preload("Services", servicesByInstallOrder).
-		Preload("FirewallRules").
-		Preload("Crons").
-		Preload("Daemons").
-		Preload("SSHKeys").
-		First(&server, "id = ? AND team_id = ?", id, teamID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &server, nil
+	return repository.FindOne[models.Server](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithTeamID(teamID),
+		repository.PreloadWithScope("Services", servicesByInstallOrder),
+		repository.Preload("FirewallRules"),
+		repository.Preload("Crons"),
+		repository.Preload("Daemons"),
+		repository.Preload("SSHKeys"),
+	)
 }
 
 // sitesCountSubquery returns a GORM subquery for counting sites per server (database-agnostic)
@@ -192,20 +183,13 @@ func (r *ServerRepository) Unarchive(ctx context.Context, id string) error {
 
 // CountByTeam counts the total number of servers for a team
 func (r *ServerRepository) CountByTeam(ctx context.Context, teamID string) (int64, error) {
-	var count int64
-	err := r.DB.WithContext(ctx).
-		Model(&models.Server{}).
-		Where("team_id = ?", teamID).
-		Count(&count).Error
-	return count, err
+	return repository.Count[models.Server](ctx, r.DB, repository.WithTeamID(teamID))
 }
 
 // HasLaunchAgent checks if a server has the Launch Agent installed
 func (r *ServerRepository) HasLaunchAgent(ctx context.Context, serverID string) (bool, error) {
-	var count int64
-	err := r.DB.WithContext(ctx).
-		Model(&models.InstalledService{}).
-		Where("server_id = ? AND type = ?", serverID, types.ServiceTypeLaunchAgent).
-		Count(&count).Error
-	return count > 0, err
+	return repository.Exists[models.InstalledService](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.WithType(string(types.ServiceTypeLaunchAgent)),
+	)
 }

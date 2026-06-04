@@ -9,6 +9,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/platform/models"
 	"github.com/kkz6/launch-go/internal/modules/platform/types"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // ServerPlatformUpdateRepository handles per-server update status tracking
@@ -23,16 +24,7 @@ func NewServerPlatformUpdateRepository(db *gorm.DB) *ServerPlatformUpdateReposit
 
 // FindByID finds a server platform update by ID
 func (r *ServerPlatformUpdateRepository) FindByID(ctx context.Context, id string) (*models.ServerPlatformUpdate, error) {
-	var update models.ServerPlatformUpdate
-	err := r.db.WithContext(ctx).First(&update, "id = ?", id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-
-	return &update, nil
+	return repository.FindOne[models.ServerPlatformUpdate](ctx, r.db, repository.WithID(id))
 }
 
 // Create creates a new server platform update

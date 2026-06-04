@@ -2,12 +2,10 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -23,15 +21,9 @@ func NewDomainRepository(db *gorm.DB) *DomainRepository {
 
 // FindByID returns a domain by ID, mapping NotFound to a HTTP 404.
 func (r *DomainRepository) FindByID(ctx context.Context, id string) (*models.ApplicationDomain, error) {
-	var d models.ApplicationDomain
-	err := r.DB.WithContext(ctx).Where("id = ?", id).First(&d).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &d, nil
+	return repository.FindOne[models.ApplicationDomain](ctx, r.DB,
+		repository.WithID(id),
+	)
 }
 
 // ListForApplication returns every live domain attached to an application,

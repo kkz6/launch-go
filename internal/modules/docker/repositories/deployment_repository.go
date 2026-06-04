@@ -7,7 +7,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -23,15 +22,9 @@ func NewDeploymentRepository(db *gorm.DB) *DeploymentRepository {
 
 // FindByID looks up a deployment by ID; wraps NotFound for handler use.
 func (r *DeploymentRepository) FindByID(ctx context.Context, id string) (*models.Deployment, error) {
-	var d models.Deployment
-	err := r.DB.WithContext(ctx).Where("id = ?", id).First(&d).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &d, nil
+	return repository.FindOne[models.Deployment](ctx, r.DB,
+		repository.WithID(id),
+	)
 }
 
 // ListForTarget returns deployment history for a given (type, id) pair,

@@ -2,13 +2,9 @@ package repositories
 
 import (
 	"context"
-	"errors"
-
-	"gorm.io/gorm"
-
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 
 	"github.com/kkz6/launch-go/internal/modules/database/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // FindByIDsAndServer finds databases by a list of IDs belonging to the given server
@@ -24,19 +20,12 @@ func (r *DatabaseRepository) FindByIDsAndServer(ctx context.Context, ids []strin
 
 // FindByIDAndServerAndTeam finds a database by ID, server ID, and team ID
 func (r *DatabaseRepository) FindByIDAndServerAndTeam(ctx context.Context, id, serverID, teamID string) (*models.Database, error) {
-	var database models.Database
-
-	err := r.QueryCtx(ctx).
-		First(&database, "id = ? AND server_id = ? AND team_id = ?", id, serverID, teamID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-
-		return nil, err
-	}
-
-	return &database, nil
+	return repository.FindOne[models.Database](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithServerID(serverID),
+		repository.WithTeamID(teamID),
+		repository.Preload("Users"),
+	)
 }
 
 // CountByTeam counts all databases for a team

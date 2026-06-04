@@ -37,13 +37,10 @@ func (r *RedirectRepository) FindByID(ctx context.Context, id string) (*models.R
 
 // FindBySite finds all redirects for a site
 func (r *RedirectRepository) FindBySite(ctx context.Context, siteID string) ([]models.Redirect, error) {
-	var redirects []models.Redirect
-	err := r.DB.WithContext(ctx).
-		Where("site_id = ?", siteID).
-		Order("created_at DESC").
-		Find(&redirects).Error
-
-	return redirects, err
+	return repository.FindAll[models.Redirect](ctx, r.DB,
+		repository.WithSiteID(siteID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // DeleteBySite deletes all redirects for a site
@@ -55,23 +52,19 @@ func (r *RedirectRepository) DeleteBySite(ctx context.Context, siteID string) er
 
 // FindBySiteForCaddy returns active redirects for Caddyfile generation
 func (r *RedirectRepository) FindBySiteForCaddy(ctx context.Context, siteID string) ([]models.Redirect, error) {
-	var redirects []models.Redirect
-	err := r.DB.WithContext(ctx).
-		Where("site_id = ? AND status = ?", siteID, "installed").
-		Order("created_at ASC").
-		Find(&redirects).Error
-
-	return redirects, err
+	return repository.FindAll[models.Redirect](ctx, r.DB,
+		repository.WithSiteID(siteID),
+		repository.WithStatus("installed"),
+		repository.OrderByCreatedAsc(),
+	)
 }
 
 // FindPendingBySite returns pending redirects for a site
 func (r *RedirectRepository) FindPendingBySite(ctx context.Context, siteID string) ([]models.Redirect, error) {
-	var redirects []models.Redirect
-	err := r.DB.WithContext(ctx).
-		Where("site_id = ? AND status = ?", siteID, "pending").
-		Find(&redirects).Error
-
-	return redirects, err
+	return repository.FindAll[models.Redirect](ctx, r.DB,
+		repository.WithSiteID(siteID),
+		repository.WithStatus("pending"),
+	)
 }
 
 // UpdateStatusBySite updates status of all redirects for a site matching a current status

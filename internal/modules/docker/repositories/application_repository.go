@@ -2,12 +2,10 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -40,17 +38,11 @@ func (r *ApplicationRepository) UpdateStatus(
 func (r *ApplicationRepository) FindByIDAndTeamServer(
 	ctx context.Context, id, teamID, serverID string,
 ) (*models.Application, error) {
-	var a models.Application
-	err := r.DB.WithContext(ctx).
-		Where("id = ? AND team_id = ? AND server_id = ?", id, teamID, serverID).
-		First(&a).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &a, nil
+	return repository.FindOne[models.Application](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithTeamID(teamID),
+		repository.WithServerID(serverID),
+	)
 }
 
 // ListForProject returns every live application belonging to a project,

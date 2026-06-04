@@ -38,27 +38,18 @@ func (r *QueueRepository) FindByID(ctx context.Context, id string) (*models.Queu
 
 // FindByIDAndSite finds a queue by ID and site ID
 func (r *QueueRepository) FindByIDAndSite(ctx context.Context, id, siteID string) (*models.Queue, error) {
-	var queue models.Queue
-	err := r.DB.WithContext(ctx).
-		First(&queue, "id = ? AND site_id = ?", id, siteID).Error
-	if err != nil {
-		if repository.IsNotFound(err) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &queue, nil
+	return repository.FindOne[models.Queue](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithSiteID(siteID),
+	)
 }
 
 // FindBySite finds all queues for a site
 func (r *QueueRepository) FindBySite(ctx context.Context, siteID string) ([]models.Queue, error) {
-	var queues []models.Queue
-	err := r.DB.WithContext(ctx).
-		Where("site_id = ?", siteID).
-		Order("created_at DESC").
-		Find(&queues).Error
-
-	return queues, err
+	return repository.FindAll[models.Queue](ctx, r.DB,
+		repository.WithSiteID(siteID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // CountBySite counts queues for a site

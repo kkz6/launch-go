@@ -39,27 +39,18 @@ func (r *DeploymentRepository) FindByID(ctx context.Context, id string) (*models
 
 // FindByIDAndSite finds a deployment by ID and site ID
 func (r *DeploymentRepository) FindByIDAndSite(ctx context.Context, id, siteID string) (*models.Deployment, error) {
-	var deployment models.Deployment
-	err := r.DB.WithContext(ctx).
-		First(&deployment, "id = ? AND site_id = ?", id, siteID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &deployment, nil
+	return repository.FindOne[models.Deployment](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithSiteID(siteID),
+	)
 }
 
 // FindBySite finds all deployments for a site
 func (r *DeploymentRepository) FindBySite(ctx context.Context, siteID string) ([]models.Deployment, error) {
-	var deployments []models.Deployment
-	err := r.DB.WithContext(ctx).
-		Where("site_id = ?", siteID).
-		Order("created_at DESC").
-		Find(&deployments).Error
-
-	return deployments, err
+	return repository.FindAll[models.Deployment](ctx, r.DB,
+		repository.WithSiteID(siteID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // FindLatestBySiteIDs finds the latest deployment for each of the given site IDs.
@@ -94,18 +85,10 @@ func (r *DeploymentRepository) FindLatestBySiteIDs(ctx context.Context, siteIDs 
 
 // FindLatestBySite finds the latest deployment for a site
 func (r *DeploymentRepository) FindLatestBySite(ctx context.Context, siteID string) (*models.Deployment, error) {
-	var deployment models.Deployment
-	err := r.DB.WithContext(ctx).
-		Where("site_id = ?", siteID).
-		Order("created_at DESC").
-		First(&deployment).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	return &deployment, nil
+	return repository.FindOneOrNil[models.Deployment](ctx, r.DB,
+		repository.WithSiteID(siteID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // FindActiveBySite finds an active deployment for a site
@@ -126,13 +109,11 @@ func (r *DeploymentRepository) FindActiveBySite(ctx context.Context, siteID stri
 
 // FindQueuedBySite finds queued deployments for a site
 func (r *DeploymentRepository) FindQueuedBySite(ctx context.Context, siteID string) ([]models.Deployment, error) {
-	var deployments []models.Deployment
-	err := r.DB.WithContext(ctx).
-		Where("site_id = ? AND status = ?", siteID, sitetypes.DeploymentStatusQueued).
-		Order("created_at ASC").
-		Find(&deployments).Error
-
-	return deployments, err
+	return repository.FindAll[models.Deployment](ctx, r.DB,
+		repository.WithSiteID(siteID),
+		repository.WithStatus(string(sitetypes.DeploymentStatusQueued)),
+		repository.OrderByCreatedAsc(),
+	)
 }
 
 // CountQueuedBySite counts queued deployments for a site

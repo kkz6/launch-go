@@ -37,11 +37,8 @@ func (r *ServerProviderRepository) FindByID(ctx context.Context, id string) (*mo
 
 // FindByUserID finds all server providers for a user
 func (r *ServerProviderRepository) FindByUserID(ctx context.Context, userID string) ([]models.ServerProvider, error) {
-	var providers []models.ServerProvider
-	err := r.DB.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order("created_at DESC").
-		Find(&providers).Error
-
-	return providers, err
+	return repository.FindAll[models.ServerProvider](ctx, r.DB,
+		repository.WithUserID(userID),
+		repository.OrderByCreatedDesc(),
+	)
 }

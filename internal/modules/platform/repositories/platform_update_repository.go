@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/platform/models"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
 // PlatformUpdateRepository handles CRUD operations for platform updates
@@ -22,16 +23,7 @@ func NewPlatformUpdateRepository(db *gorm.DB) *PlatformUpdateRepository {
 
 // FindByID finds a platform update by ID
 func (r *PlatformUpdateRepository) FindByID(ctx context.Context, id string) (*models.PlatformUpdate, error) {
-	var update models.PlatformUpdate
-	err := r.db.WithContext(ctx).First(&update, "id = ?", id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-
-	return &update, nil
+	return repository.FindOne[models.PlatformUpdate](ctx, r.db, repository.WithID(id))
 }
 
 // FindByKey finds a platform update by its unique key

@@ -25,20 +25,12 @@ func NewLoadBalancerBackendRepository(db *gorm.DB) *LoadBalancerBackendRepositor
 
 // FindByIDWithRelations returns a backend by ID with upstream and server preloaded
 func (r *LoadBalancerBackendRepository) FindByIDWithRelations(ctx context.Context, id string) (*models.LoadBalancerBackend, error) {
-	var backend models.LoadBalancerBackend
-	err := r.DB.WithContext(ctx).
-		Preload("Upstream").
-		Preload("Upstream.Server").
-		Preload("Server").
-		First(&backend, "id = ?", id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-
-	return &backend, nil
+	return repository.FindOne[models.LoadBalancerBackend](ctx, r.DB,
+		repository.WithID(id),
+		repository.Preload("Upstream"),
+		repository.Preload("Upstream.Server"),
+		repository.Preload("Server"),
+	)
 }
 
 // FindByUpstreamID returns all backends for a specific upstream
@@ -55,12 +47,7 @@ func (r *LoadBalancerBackendRepository) FindByUpstreamID(ctx context.Context, up
 
 // FindBySiteID returns all backends for a specific site
 func (r *LoadBalancerBackendRepository) FindBySiteID(ctx context.Context, siteID string) ([]models.LoadBalancerBackend, error) {
-	var backends []models.LoadBalancerBackend
-	err := r.DB.WithContext(ctx).
-		Where("site_id = ?", siteID).
-		Find(&backends).Error
-
-	return backends, err
+	return repository.FindAll[models.LoadBalancerBackend](ctx, r.DB, repository.WithSiteID(siteID))
 }
 
 // CountByUpstreamID returns the number of backends for an upstream

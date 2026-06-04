@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
@@ -24,21 +23,10 @@ func NewTeamRepository(db *gorm.DB) *TeamRepository {
 
 // FindByID finds a team by its ID with preloaded relations
 func (r *TeamRepository) FindByID(ctx context.Context, id string) (*models.Team, error) {
-	var team models.Team
-	err := r.DB.WithContext(ctx).
-		Preload("Owner").
-		Preload("Members").
-		First(&team, "id = ?", id).Error
-
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	return &team, nil
+	return repository.FindOneOrNil[models.Team](ctx, r.DB,
+		repository.WithID(id),
+		repository.PreloadMany("Owner", "Members"),
+	)
 }
 
 // Delete deletes a team by its ID
@@ -108,11 +96,8 @@ func (r *TeamRepository) GetUserTeams(ctx context.Context, userID string) ([]mod
 
 // GetMembers gets all members of a team
 func (r *TeamRepository) GetMembers(ctx context.Context, teamID string) ([]models.TeamMember, error) {
-	var members []models.TeamMember
-	err := r.DB.WithContext(ctx).
-		Preload("User").
-		Where("team_id = ?", teamID).
-		Find(&members).Error
-
-	return members, err
+	return repository.FindAll[models.TeamMember](ctx, r.DB,
+		repository.WithTeamID(teamID),
+		repository.Preload("User"),
+	)
 }

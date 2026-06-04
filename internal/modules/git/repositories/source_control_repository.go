@@ -52,30 +52,19 @@ func (r *SourceControlRepository) Delete(ctx context.Context, id string) error {
 
 // FindByID finds a source control by ID
 func (r *SourceControlRepository) FindByID(ctx context.Context, id string) (*models.SourceControl, error) {
-	var sc models.SourceControl
-	err := r.DB.WithContext(ctx).
-		Preload("Repositories").
-		First(&sc, "id = ?", id).Error
-
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fiberutil.NotFound()
-	}
-
-	return &sc, err
+	return repository.FindOne[models.SourceControl](ctx, r.DB,
+		repository.WithID(id),
+		repository.Preload("Repositories"),
+	)
 }
 
 // FindByIDAndTeam finds a source control by ID and team ID
 func (r *SourceControlRepository) FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.SourceControl, error) {
-	var sc models.SourceControl
-	err := r.DB.WithContext(ctx).
-		Preload("Repositories").
-		First(&sc, "id = ? AND team_id = ?", id, teamID).Error
-
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fiberutil.NotFound()
-	}
-
-	return &sc, err
+	return repository.FindOne[models.SourceControl](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithTeamID(teamID),
+		repository.Preload("Repositories"),
+	)
 }
 
 // FindAllByTeam finds all source controls for a team

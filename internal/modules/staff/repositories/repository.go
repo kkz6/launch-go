@@ -17,6 +17,7 @@ import (
 	sitemodels "github.com/kkz6/launch-go/internal/modules/site/models"
 	staffmodels "github.com/kkz6/launch-go/internal/modules/staff/models"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
+	"github.com/kkz6/launch-go/internal/pkg/repository"
 	"github.com/kkz6/launch-go/internal/pkg/util"
 )
 
@@ -105,16 +106,9 @@ func (r *Registry) UserExists(ctx context.Context, userID string) (bool, error) 
 		return false, nil
 	}
 
-	var count int64
-	err := r.db.WithContext(ctx).
-		Model(&authmodels.User{}).
-		Where("id = ?", userID).
-		Count(&count).Error
-	if err != nil {
-		return false, err
-	}
-
-	return count > 0, nil
+	return repository.Exists[authmodels.User](ctx, r.db,
+		repository.WithID(userID),
+	)
 }
 
 // SetUserStatus updates a user's status column. Returns gorm.ErrRecordNotFound
@@ -400,16 +394,9 @@ func (r *Registry) ServerByID(ctx context.Context, id string) (*servermodels.Ser
 		return nil, nil
 	}
 
-	var server servermodels.Server
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&server).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return &server, nil
+	return repository.FindOneOrNil[servermodels.Server](ctx, r.db,
+		repository.WithID(id),
+	)
 }
 
 // TeamByID loads a single team by id across tenants, or nil when no team
@@ -419,16 +406,9 @@ func (r *Registry) TeamByID(ctx context.Context, id string) (*authmodels.Team, e
 		return nil, nil
 	}
 
-	var team authmodels.Team
-	err := r.db.WithContext(ctx).Where("id = ?", id).First(&team).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-
-	return &team, nil
+	return repository.FindOneOrNil[authmodels.Team](ctx, r.db,
+		repository.WithID(id),
+	)
 }
 
 // UserByID loads a single user by id, or nil if no such user exists. Used by
@@ -439,19 +419,9 @@ func (r *Registry) UserByID(ctx context.Context, id string) (*authmodels.User, e
 		return nil, nil
 	}
 
-	var user authmodels.User
-	err := r.db.WithContext(ctx).
-		Where("id = ?", id).
-		First(&user).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &user, nil
+	return repository.FindOneOrNil[authmodels.User](ctx, r.db,
+		repository.WithID(id),
+	)
 }
 
 // CreateImpersonationSession inserts a new impersonation session (start of a

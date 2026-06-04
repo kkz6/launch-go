@@ -7,7 +7,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/dns/models"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -29,20 +28,12 @@ func NewDomainRepository(db *gorm.DB) *DomainRepository {
 // FindByIDAndTeam finds a domain by ID and team with Records ordered by
 // type, name. This shadows Base.FindByIDAndTeam to apply the ordering.
 func (r *DomainRepository) FindByIDAndTeam(ctx context.Context, id, teamID string) (*models.Domain, error) {
-	var domain models.Domain
-	err := r.DB.WithContext(ctx).
-		Preload("Provider").
-		Preload("Records", func(db *gorm.DB) *gorm.DB {
-			return db.Order("type ASC, name ASC")
-		}).
-		First(&domain, "id = ? AND team_id = ?", id, teamID).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &domain, nil
+	return repository.FindOne[models.Domain](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithTeamID(teamID),
+		repository.Preload("Provider"),
+		repository.PreloadOrdered("Records", "type ASC, name ASC"),
+	)
 }
 
 // FindByProvider finds all domains for a provider.

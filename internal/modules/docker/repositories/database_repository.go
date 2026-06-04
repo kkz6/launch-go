@@ -4,10 +4,10 @@ import (
 	"context"
 	"errors"
 
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -24,17 +24,11 @@ func NewDatabaseRepository(db *gorm.DB) *DatabaseRepository {
 func (r *DatabaseRepository) FindByIDAndTeamServer(
 	ctx context.Context, id, teamID, serverID string,
 ) (*models.Database, error) {
-	var d models.Database
-	err := r.DB.WithContext(ctx).
-		Where("id = ? AND team_id = ? AND server_id = ?", id, teamID, serverID).
-		First(&d).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &d, nil
+	return repository.FindOne[models.Database](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithTeamID(teamID),
+		repository.WithServerID(serverID),
+	)
 }
 
 // FindByIDUnscoped includes soft-deleted rows. Called by the
@@ -83,12 +77,11 @@ func (r *DatabaseRepository) ListForProject(
 func (r *DatabaseRepository) ListForServer(
 	ctx context.Context, teamID, serverID string,
 ) ([]models.Database, error) {
-	var rows []models.Database
-	err := r.DB.WithContext(ctx).
-		Where("team_id = ? AND server_id = ?", teamID, serverID).
-		Order("name ASC").
-		Find(&rows).Error
-	return rows, err
+	return repository.FindAll[models.Database](ctx, r.DB,
+		repository.WithTeamID(teamID),
+		repository.WithServerID(serverID),
+		repository.OrderBy("name", "asc"),
+	)
 }
 
 func (r *DatabaseRepository) ExistsByNameInProject(

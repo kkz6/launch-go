@@ -48,40 +48,25 @@ func (r *StorageProviderRepository) FindStorageProviderByID(ctx context.Context,
 
 // FindStorageProviderByIDString finds a storage provider by string ID
 func (r *StorageProviderRepository) FindStorageProviderByIDString(ctx context.Context, id string) (*models.StorageProvider, error) {
-	var provider models.StorageProvider
-	err := r.DB.WithContext(ctx).First(&provider, "id = ?", id).Error
-
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fiberutil.NotFound()
-	}
-
-	if err != nil {
-		return nil, err
-	}
-
-	return &provider, nil
+	return repository.FindOne[models.StorageProvider](ctx, r.DB,
+		repository.WithID(id),
+	)
 }
 
 // FindStorageProvidersByTeamID finds all storage providers for a team
 func (r *StorageProviderRepository) FindStorageProvidersByTeamID(ctx context.Context, teamID string) ([]models.StorageProvider, error) {
-	var providers []models.StorageProvider
-	err := r.DB.WithContext(ctx).
-		Where("team_id = ?", teamID).
-		Order("created_at DESC").
-		Find(&providers).Error
-
-	return providers, err
+	return repository.FindAll[models.StorageProvider](ctx, r.DB,
+		repository.WithTeamID(teamID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // FindByUserID finds all storage providers for a user
 func (r *StorageProviderRepository) FindByUserID(ctx context.Context, userID string) ([]models.StorageProvider, error) {
-	var providers []models.StorageProvider
-	err := r.DB.WithContext(ctx).
-		Where("user_id = ?", userID).
-		Order("created_at DESC").
-		Find(&providers).Error
-
-	return providers, err
+	return repository.FindAll[models.StorageProvider](ctx, r.DB,
+		repository.WithUserID(userID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // FindStorageProvidersByDriver finds all storage providers of a specific type

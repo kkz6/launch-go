@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
@@ -25,60 +24,35 @@ func NewLoadBalancerUpstreamRepository(db *gorm.DB) *LoadBalancerUpstreamReposit
 
 // FindByIDWithBackends returns an upstream by ID with backends and their servers preloaded
 func (r *LoadBalancerUpstreamRepository) FindByIDWithBackends(ctx context.Context, id string) (*models.LoadBalancerUpstream, error) {
-	var upstream models.LoadBalancerUpstream
-	err := r.DB.WithContext(ctx).
-		Preload("Backends").
-		Preload("Backends.Server").
-		Preload("Server").
-		First(&upstream, "id = ?", id).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-
-	return &upstream, nil
+	return repository.FindOne[models.LoadBalancerUpstream](ctx, r.DB,
+		repository.WithID(id),
+		repository.Preload("Backends"),
+		repository.Preload("Backends.Server"),
+		repository.Preload("Server"),
+	)
 }
 
 // FindByServerID returns all upstreams for a load balancer server
 func (r *LoadBalancerUpstreamRepository) FindByServerID(ctx context.Context, serverID string) ([]models.LoadBalancerUpstream, error) {
-	var upstreams []models.LoadBalancerUpstream
-	err := r.DB.WithContext(ctx).
-		Preload("Backends").
-		Preload("Backends.Server").
-		Where("server_id = ?", serverID).
-		Order("created_at DESC").
-		Find(&upstreams).Error
-
-	return upstreams, err
+	return repository.FindAll[models.LoadBalancerUpstream](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.Preload("Backends"),
+		repository.Preload("Backends.Server"),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // FindByServerIDAndAddress returns an upstream by server and address (for uniqueness check)
 func (r *LoadBalancerUpstreamRepository) FindByServerIDAndAddress(ctx context.Context, serverID, address string) (*models.LoadBalancerUpstream, error) {
-	var upstream models.LoadBalancerUpstream
-	err := r.DB.WithContext(ctx).
-		Where("server_id = ? AND address = ?", serverID, address).
-		First(&upstream).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-		return nil, err
-	}
-
-	return &upstream, nil
+	return repository.FindOneOrNil[models.LoadBalancerUpstream](ctx, r.DB,
+		repository.WithServerID(serverID),
+		repository.WithAddress(address),
+	)
 }
 
 // CountByServerID returns the number of upstreams for a server
 func (r *LoadBalancerUpstreamRepository) CountByServerID(ctx context.Context, serverID string) (int64, error) {
-	var count int64
-	err := r.DB.WithContext(ctx).
-		Model(&models.LoadBalancerUpstream{}).
-		Where("server_id = ?", serverID).
-		Count(&count).Error
-
-	return count, err
+	return repository.Count[models.LoadBalancerUpstream](ctx, r.DB, repository.WithServerID(serverID))
 }
 
 // Update updates an upstream's fields

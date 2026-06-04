@@ -2,12 +2,10 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -21,15 +19,9 @@ func NewScheduleRepository(db *gorm.DB) *ScheduleRepository {
 }
 
 func (r *ScheduleRepository) FindByID(ctx context.Context, id string) (*models.ApplicationSchedule, error) {
-	var s models.ApplicationSchedule
-	err := r.DB.WithContext(ctx).Where("id = ?", id).First(&s).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &s, nil
+	return repository.FindOne[models.ApplicationSchedule](ctx, r.DB,
+		repository.WithID(id),
+	)
 }
 
 func (r *ScheduleRepository) ListForApplication(

@@ -2,12 +2,10 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -30,15 +28,9 @@ func NewRegistryCredentialRepository(db *gorm.DB) *RegistryCredentialRepository 
 func (r *RegistryCredentialRepository) FindByID(
 	ctx context.Context, id string,
 ) (*models.RegistryCredential, error) {
-	var c models.RegistryCredential
-	err := r.DB.WithContext(ctx).Where("id = ?", id).First(&c).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &c, nil
+	return repository.FindOne[models.RegistryCredential](ctx, r.DB,
+		repository.WithID(id),
+	)
 }
 
 // FindByIDForTeam combines FindByID + team-scope check. Used on the
@@ -47,17 +39,10 @@ func (r *RegistryCredentialRepository) FindByID(
 func (r *RegistryCredentialRepository) FindByIDForTeam(
 	ctx context.Context, id, teamID string,
 ) (*models.RegistryCredential, error) {
-	var c models.RegistryCredential
-	err := r.DB.WithContext(ctx).
-		Where("id = ? AND team_id = ?", id, teamID).
-		First(&c).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &c, nil
+	return repository.FindOne[models.RegistryCredential](ctx, r.DB,
+		repository.WithID(id),
+		repository.WithTeamID(teamID),
+	)
 }
 
 // ListForTeam returns every live credential the team owns. Ordered
@@ -66,12 +51,10 @@ func (r *RegistryCredentialRepository) FindByIDForTeam(
 func (r *RegistryCredentialRepository) ListForTeam(
 	ctx context.Context, teamID string,
 ) ([]models.RegistryCredential, error) {
-	var rows []models.RegistryCredential
-	err := r.DB.WithContext(ctx).
-		Where("team_id = ?", teamID).
-		Order("name ASC").
-		Find(&rows).Error
-	return rows, err
+	return repository.FindAll[models.RegistryCredential](ctx, r.DB,
+		repository.WithTeamID(teamID),
+		repository.OrderBy("name", "asc"),
+	)
 }
 
 // FindManyForTeam loads a specific set of credentials, scoped to the

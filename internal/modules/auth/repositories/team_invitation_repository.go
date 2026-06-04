@@ -2,7 +2,6 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
@@ -24,48 +23,25 @@ func NewTeamInvitationRepository(db *gorm.DB) *TeamInvitationRepository {
 
 // FindByID finds a team invitation by its ID with preloaded Team
 func (r *TeamInvitationRepository) FindByID(ctx context.Context, id string) (*models.TeamInvitation, error) {
-	var invitation models.TeamInvitation
-	err := r.DB.WithContext(ctx).
-		Preload("Team").
-		First(&invitation, "id = ?", id).Error
-
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	return &invitation, nil
+	return repository.FindOneOrNil[models.TeamInvitation](ctx, r.DB,
+		repository.WithID(id),
+		repository.Preload("Team"),
+	)
 }
 
 // FindByEmail finds a team invitation by team ID and email
 func (r *TeamInvitationRepository) FindByEmail(ctx context.Context, teamID, email string) (*models.TeamInvitation, error) {
-	var invitation models.TeamInvitation
-	err := r.DB.WithContext(ctx).
-		Preload("Team").
-		Where("team_id = ? AND email = ?", teamID, email).
-		First(&invitation).Error
-
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, nil
-		}
-
-		return nil, err
-	}
-
-	return &invitation, nil
+	return repository.FindOneOrNil[models.TeamInvitation](ctx, r.DB,
+		repository.WithTeamID(teamID),
+		repository.WithEmail(email),
+		repository.Preload("Team"),
+	)
 }
 
 // GetByTeam gets all invitations for a team
 func (r *TeamInvitationRepository) GetByTeam(ctx context.Context, teamID string) ([]models.TeamInvitation, error) {
-	var invitations []models.TeamInvitation
-	err := r.DB.WithContext(ctx).
-		Preload("Team").
-		Where("team_id = ?", teamID).
-		Find(&invitations).Error
-
-	return invitations, err
+	return repository.FindAll[models.TeamInvitation](ctx, r.DB,
+		repository.WithTeamID(teamID),
+		repository.Preload("Team"),
+	)
 }

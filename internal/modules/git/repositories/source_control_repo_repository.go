@@ -63,16 +63,10 @@ func (r *SourceControlRepoRepository) DeleteRepositoriesByIDs(ctx context.Contex
 
 // FindRepositoryByID finds a repository by ID
 func (r *SourceControlRepoRepository) FindRepositoryByID(ctx context.Context, id string) (*models.SourceControlRepository, error) {
-	var repo models.SourceControlRepository
-	err := r.DB.WithContext(ctx).
-		Preload("SourceControl").
-		First(&repo, "id = ?", id).Error
-
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, fiberutil.NotFound()
-	}
-
-	return &repo, err
+	return repository.FindOne[models.SourceControlRepository](ctx, r.DB,
+		repository.WithID(id),
+		repository.Preload("SourceControl"),
+	)
 }
 
 // FindRepositoryByFullName finds a repository by its full name

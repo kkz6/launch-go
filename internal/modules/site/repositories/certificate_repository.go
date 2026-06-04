@@ -39,13 +39,10 @@ func (r *CertificateRepository) FindByID(ctx context.Context, id string) (*model
 
 // FindBySite finds all certificates for a site
 func (r *CertificateRepository) FindBySite(ctx context.Context, siteID string) ([]models.Certificate, error) {
-	var certs []models.Certificate
-	err := r.DB.WithContext(ctx).
-		Where("site_id = ?", siteID).
-		Order("created_at DESC").
-		Find(&certs).Error
-
-	return certs, err
+	return repository.FindAll[models.Certificate](ctx, r.DB,
+		repository.WithSiteID(siteID),
+		repository.OrderByCreatedDesc(),
+	)
 }
 
 // FindActiveBySite finds the active certificate for a site

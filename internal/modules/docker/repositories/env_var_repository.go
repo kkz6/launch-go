@@ -2,12 +2,10 @@ package repositories
 
 import (
 	"context"
-	"errors"
 
 	"gorm.io/gorm"
 
 	"github.com/kkz6/launch-go/internal/modules/docker/models"
-	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/repository"
 )
 
@@ -21,15 +19,9 @@ func NewEnvVarRepository(db *gorm.DB) *EnvVarRepository {
 }
 
 func (r *EnvVarRepository) FindByID(ctx context.Context, id string) (*models.ApplicationEnvVar, error) {
-	var v models.ApplicationEnvVar
-	err := r.DB.WithContext(ctx).Where("id = ?", id).First(&v).Error
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return nil, fiberutil.NotFound()
-		}
-		return nil, err
-	}
-	return &v, nil
+	return repository.FindOne[models.ApplicationEnvVar](ctx, r.DB,
+		repository.WithID(id),
+	)
 }
 
 func (r *EnvVarRepository) ListForApplication(
