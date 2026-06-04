@@ -5,6 +5,7 @@ import (
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
+	billingmodels "github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	staffdto "github.com/kkz6/launch-go/internal/modules/staff/dto"
@@ -106,45 +107,85 @@ func (s *Service) ListUsersWithBilling(ctx context.Context, limit, offset int) (
 
 	rows := make([]staffdto.AdminUserRow, 0, len(users))
 	for i := range users {
-		user := users[i]
-
-		var staffRole *string
-		if user.StaffRole != nil {
-			role := user.StaffRole.String()
-			staffRole = &role
-		}
-
-		ownedTeams := teamsByOwner[user.ID]
-		teams := make([]staffdto.AdminTeam, 0, len(ownedTeams))
-		for _, team := range ownedTeams {
-			adminTeam := staffdto.AdminTeam{
-				ID:           team.ID,
-				Name:         team.Name,
-				PersonalTeam: team.PersonalTeam,
-			}
-
-			if sub := subscriptionsByTeam[team.ID]; sub != nil {
-				adminTeam.Subscription = &staffdto.AdminTeamSubscription{
-					Status:      sub.Status.String(),
-					TrialEndsAt: sub.TrialEndsAt,
-				}
-			}
-
-			teams = append(teams, adminTeam)
-		}
-
-		rows = append(rows, staffdto.AdminUserRow{
-			ID:        user.ID,
-			Name:      user.Name,
-			Email:     user.Email,
-			StaffRole: staffRole,
-			Status:    string(user.Status),
-			CreatedAt: user.CreatedAt,
-			Teams:     teams,
-		})
+		rows = append(rows, buildAdminUserRow(users[i], teamsByOwner, subscriptionsByTeam))
 	}
 
 	return rows, total, nil
+}
+
+// GetUserWithBilling returns a single admin user row (profile + owned teams +
+// each team's current subscription) for the detail page. Returns
+// ErrUserNotFound when no user matches the id. Exposes the same allow-listed
+// fields as the listing — nothing billing-sensitive or credential-bearing.
+func (s *Service) GetUserWithBilling(ctx context.Context, userID string) (*staffdto.AdminUserRow, error) {
+	user, err := s.repos.UserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+
+	teamsByOwner, err := s.repos.TeamsByOwners(ctx, []string{user.ID})
+	if err != nil {
+		return nil, err
+	}
+
+	teamIDs := make([]string, 0)
+	for _, team := range teamsByOwner[user.ID] {
+		teamIDs = append(teamIDs, team.ID)
+	}
+
+	subscriptionsByTeam, err := s.repos.CurrentSubscriptionsByTeams(ctx, teamIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	row := buildAdminUserRow(*user, teamsByOwner, subscriptionsByTeam)
+	return &row, nil
+}
+
+// buildAdminUserRow maps a user plus the owner→teams and team→subscription
+// lookups into the back-office row DTO, exposing only allow-listed fields.
+func buildAdminUserRow(
+	user authmodels.User,
+	teamsByOwner map[string][]authmodels.Team,
+	subscriptionsByTeam map[string]*billingmodels.Subscription,
+) staffdto.AdminUserRow {
+	var staffRole *string
+	if user.StaffRole != nil {
+		role := user.StaffRole.String()
+		staffRole = &role
+	}
+
+	ownedTeams := teamsByOwner[user.ID]
+	teams := make([]staffdto.AdminTeam, 0, len(ownedTeams))
+	for _, team := range ownedTeams {
+		adminTeam := staffdto.AdminTeam{
+			ID:           team.ID,
+			Name:         team.Name,
+			PersonalTeam: team.PersonalTeam,
+		}
+
+		if sub := subscriptionsByTeam[team.ID]; sub != nil {
+			adminTeam.Subscription = &staffdto.AdminTeamSubscription{
+				Status:      sub.Status.String(),
+				TrialEndsAt: sub.TrialEndsAt,
+			}
+		}
+
+		teams = append(teams, adminTeam)
+	}
+
+	return staffdto.AdminUserRow{
+		ID:        user.ID,
+		Name:      user.Name,
+		Email:     user.Email,
+		StaffRole: staffRole,
+		Status:    string(user.Status),
+		CreatedAt: user.CreatedAt,
+		Teams:     teams,
+	}
 }
 
 // ListTeams returns a cross-tenant page of teams and the total count.

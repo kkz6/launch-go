@@ -75,6 +75,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	admin := router.Group("/admin", middleware.StaffChain(authMiddleware, stafftypes.StaffRoleSupport)...)
 	admin.Get("/overview", m.handler.Overview)
 	admin.Get("/users", m.handler.ListUsers)
+	admin.Get("/users/:id", m.handler.ShowUser)
 	admin.Get("/teams", m.handler.ListTeams)
 	admin.Get("/servers", m.handler.ListServers)
 	admin.Get("/servers/:id/logs", m.handler.ServerLogs)

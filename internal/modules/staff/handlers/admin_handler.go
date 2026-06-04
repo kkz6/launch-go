@@ -55,6 +55,21 @@ func (h *AdminHandler) ListUsers(c *fiber.Ctx) error {
 	return fiberutil.SuccessWithMeta(c, fiber.StatusOK, "Users retrieved successfully", rows, meta)
 }
 
+// ShowUser returns a single user's back-office detail (profile + owned teams +
+// each team's current subscription) for the user detail page. Staff-only
+// (support tier); returns 404 when no user matches the id.
+func (h *AdminHandler) ShowUser(c *fiber.Ctx) error {
+	row, err := h.service.GetUserWithBilling(c.Context(), c.Params("id"))
+	if err != nil {
+		if errors.Is(err, services.ErrUserNotFound) {
+			return fiberutil.RespondNotFound(c, "User not found")
+		}
+		return fiberutil.HandleError(c, err)
+	}
+
+	return fiberutil.Success(c, fiber.StatusOK, "User retrieved successfully", row)
+}
+
 // ListTeams returns a cross-tenant page of teams. Staff-only.
 func (h *AdminHandler) ListTeams(c *fiber.Ctx) error {
 	limit := fiberutil.ParseLimit(c, 25, 100)
