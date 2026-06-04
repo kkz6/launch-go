@@ -30,6 +30,10 @@ var ErrUserNotFound = errors.New("user not found")
 // id. The handler maps it to 404.
 var ErrServerNotFound = errors.New("server not found")
 
+// ErrFailureNotFound is returned by FailureLog when no failure matches the
+// kind+id. The handler maps it to 404.
+var ErrFailureNotFound = errors.New("failure not found")
+
 // ErrCannotSuspendStaff is returned when a suspend/unsuspend action targets a
 // user who holds a staff role. Staff members (and peers) must not be lockable
 // through this endpoint. The handler maps it to 409.

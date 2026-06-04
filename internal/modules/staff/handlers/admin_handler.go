@@ -222,6 +222,30 @@ func (h *AdminHandler) Failures(c *fiber.Ctx) error {
 	return fiberutil.SuccessWithMeta(c, fiber.StatusOK, "Failures retrieved successfully", response, meta)
 }
 
+// ShowFailureLog returns the COMPLETE (untruncated) output for one failure,
+// identified by its kind (query) + id (path). The table only carries a
+// truncated Detail; the log viewer fetches the full text here. Staff-only;
+// returns 404 when the failure does not resolve.
+func (h *AdminHandler) ShowFailureLog(c *fiber.Ctx) error {
+	kind := c.Query("kind")
+	switch kind {
+	case "provision", "task", "deployment":
+		// valid
+	default:
+		return fiberutil.RespondBadRequest(c, "kind must be one of provision, task, deployment")
+	}
+
+	log, err := h.service.FailureLog(c.Context(), kind, c.Params("id"))
+	if err != nil {
+		if errors.Is(err, services.ErrFailureNotFound) {
+			return fiberutil.RespondNotFound(c, "Failure not found")
+		}
+		return fiberutil.HandleError(c, err)
+	}
+
+	return fiberutil.Success(c, fiber.StatusOK, "Failure log retrieved", fiber.Map{"log": log})
+}
+
 // StartImpersonation begins a read-only "spectate as user" session as the
 // target user. The authenticated caller is the staff member (RequireStaff runs
 // ahead of this); the impersonator id is taken from the request context, never

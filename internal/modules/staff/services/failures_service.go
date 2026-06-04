@@ -183,6 +183,47 @@ func pageFailures(failures []staffdto.AdminFailure, limit, offset int) []staffdt
 	return window
 }
 
+// FailureLog returns the COMPLETE (untruncated) output for a single failure,
+// looked up by its kind + id. The list/table path truncates Detail to keep the
+// payload light; this powers the per-failure log viewer which needs the full
+// text. Returns ErrFailureNotFound when the id does not resolve.
+func (s *Service) FailureLog(ctx context.Context, kind, id string) (string, error) {
+	switch kind {
+	case "task":
+		task, err := s.repos.FailedTaskByID(ctx, id)
+		if err != nil {
+			return "", err
+		}
+		if task == nil {
+			return "", ErrFailureNotFound
+		}
+		return task.Output.String(), nil
+	case "deployment":
+		row, err := s.repos.FailedDeploymentByID(ctx, id)
+		if err != nil {
+			return "", err
+		}
+		if row == nil {
+			return "", ErrFailureNotFound
+		}
+		return row.TaskOutput.String(), nil
+	case "provision":
+		server, err := s.repos.ServerByID(ctx, id)
+		if err != nil {
+			return "", err
+		}
+		if server == nil {
+			return "", ErrFailureNotFound
+		}
+		if server.ProvisionError != nil {
+			return *server.ProvisionError, nil
+		}
+		return "", nil
+	default:
+		return "", ErrFailureNotFound
+	}
+}
+
 // truncate shortens s to at most maxBytes bytes, appending an ellipsis marker
 // when content was dropped. It truncates on a byte boundary, then trims any
 // partial trailing UTF-8 rune so the result stays valid UTF-8.

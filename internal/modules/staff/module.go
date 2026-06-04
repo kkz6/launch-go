@@ -84,6 +84,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	admin.Get("/servers/:id", m.handler.ShowServer)
 	admin.Get("/servers/:id/logs", m.handler.ServerLogs)
 	admin.Get("/failures", m.handler.Failures)
+	admin.Get("/failures/:id/log", m.handler.ShowFailureLog)
 
 	// Impersonation is driven with the STAFF token: start mints a scoped
 	// read-only token for the target; stop ends the staff member's active

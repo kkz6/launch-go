@@ -2,6 +2,9 @@ package repositories
 
 import (
 	"context"
+	"errors"
+
+	"gorm.io/gorm"
 
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
 	servertypes "github.com/kkz6/launch-go/internal/modules/server/types"
@@ -57,6 +60,49 @@ func (r *Registry) FailedTasks(ctx context.Context, limit int) ([]servermodels.T
 	}
 
 	return tasks, nil
+}
+
+// FailedTaskByID loads a single task by id (full, decrypted output). Returns
+// nil when absent. Used to surface the complete log for one failure.
+func (r *Registry) FailedTaskByID(ctx context.Context, id string) (*servermodels.Task, error) {
+	if id == "" {
+		return nil, nil
+	}
+
+	var task servermodels.Task
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&task).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &task, nil
+}
+
+// FailedDeploymentByID loads a single failed deployment by id joined to its
+// task's full output. Returns nil when absent.
+func (r *Registry) FailedDeploymentByID(ctx context.Context, id string) (*FailedDeploymentRow, error) {
+	if id == "" {
+		return nil, nil
+	}
+
+	var row FailedDeploymentRow
+	err := r.db.WithContext(ctx).
+		Model(&sitemodels.Deployment{}).
+		Select("deployments.*, tasks.output AS task_output, tasks.exit_code AS task_exit_code").
+		Joins("LEFT JOIN tasks ON tasks.id = deployments.task_id").
+		Where("deployments.id = ?", id).
+		First(&row).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &row, nil
 }
 
 // FailedDeployments returns failed deployments joined to their task's error
