@@ -146,7 +146,7 @@ func TestRegistry_ListUsersWithBilling_FoldsTeamsAndSubscriptions(t *testing.T) 
 		TrialEndsAt:            &trialEndsAt,
 	}).Error)
 
-	users, teamsByOwner, subsByTeam, total, err := repo.ListUsersWithBilling(ctx, 25, 0)
+	users, teamsByOwner, subsByTeam, total, err := repo.ListUsersWithBilling(ctx, ListUsersOptions{Limit: 25, Offset: 0})
 	require.NoError(t, err)
 	require.Equal(t, int64(2), total)
 	require.Len(t, users, 2)

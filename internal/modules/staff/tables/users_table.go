@@ -2,8 +2,10 @@ package tables
 
 import (
 	"context"
+	"strings"
 
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
+	"github.com/kkz6/launch-go/internal/modules/staff/repositories"
 	"github.com/kkz6/launch-go/internal/modules/staff/services"
 	"github.com/kkz6/launch-go/internal/pkg/table"
 )
@@ -36,28 +38,41 @@ func (t *UsersTable) Config() table.Config {
 		DefaultPerPage: 20,
 		PerPageOptions: []int{20, 50, 100},
 		StickyHeader:   true,
+		// Declares the search box; Resolve honours req.Search against name/email.
+		Searchable: []string{"name", "email"},
 	}
 }
 
 func (t *UsersTable) Columns() []table.Column {
 	return []table.Column{
-		table.NewTextColumn("name", "Name"),
-		table.NewTextColumn("email", "Email"),
+		table.NewTextColumn("name", "Name").AsSortable().AsSearchable(),
+		table.NewTextColumn("email", "Email").AsSortable().AsSearchable(),
 		// teams is the nested teams[] array; the frontend renders it with a
 		// custom cell. The row map carries the []map[string]any verbatim.
 		table.NewTextColumn("teams", "Teams"),
 		table.NewBadgeColumn("staff_role", "Staff role"),
-		table.NewBadgeColumn("status", "Status").Variants(map[string]table.Variant{
+		table.NewBadgeColumn("status", "Status").AsSortable().Variants(map[string]table.Variant{
 			"active":    table.VariantSuccess,
 			"suspended": table.VariantDestructive,
 		}),
-		table.NewDateTimeColumn("created_at", "Created").Format("2006-01-02"),
+		table.NewDateTimeColumn("created_at", "Created").AsSortable().Format("2006-01-02"),
 		table.NewActionColumn(),
 	}
 }
 
-// Filters returns nil: the users table has no toolbar filters yet.
-func (t *UsersTable) Filters() []table.Filter { return nil }
+// Filters exposes a status set-filter (active / suspended). Resolve honours it
+// via req.Filters["status"].
+func (t *UsersTable) Filters() []table.Filter {
+	return []table.Filter{
+		table.NewSetFilter("status", "Status").
+			Single().
+			WithoutClause().
+			Options([]table.FilterOption{
+				{Value: "active", Label: "Active"},
+				{Value: "suspended", Label: "Suspended"},
+			}),
+	}
+}
 
 // Actions returns the three super_admin account actions. The mutating
 // /action/:name route is gated behind super_admin at mount time. Each handler
@@ -138,7 +153,15 @@ func (t *UsersTable) Resolve(ctx context.Context, req table.Request) (*table.Tab
 	}
 	offset := (page - 1) * perPage
 
-	users, total, err := t.svc.ListUsersWithBilling(ctx, perPage, offset)
+	sortColumn, sortDir := parseSort(req.Sort)
+	users, total, err := t.svc.ListUsersWithBilling(ctx, repositories.ListUsersOptions{
+		Limit:      perPage,
+		Offset:     offset,
+		Search:     req.Search,
+		Status:     extractStatusFilter(req),
+		SortColumn: sortColumn,
+		SortDir:    sortDir,
+	})
 	if err != nil {
 		return nil, err
 	}
@@ -211,4 +234,50 @@ func (t *UsersTable) Resolve(ctx context.Context, req table.Request) (*table.Tab
 			To:          to,
 		},
 	}, nil
+}
+
+// parseSort splits the framework's "column:direction" sort token into its
+// parts. An empty or malformed token yields ("", "") so the repository applies
+// its default (created_at desc). The column is validated downstream.
+func parseSort(sort string) (column, direction string) {
+	sort = strings.TrimSpace(sort)
+	if sort == "" {
+		return "", ""
+	}
+	parts := strings.SplitN(sort, ":", 2)
+	column = strings.TrimSpace(parts[0])
+	if len(parts) == 2 {
+		direction = strings.TrimSpace(parts[1])
+	}
+	return column, direction
+}
+
+// extractStatusFilter reads the status set-filter out of the request, returning
+// the first "active"|"suspended" value it finds, or "" to match all statuses.
+func extractStatusFilter(req table.Request) string {
+	clauseMap, ok := req.Filters["status"]
+	if !ok {
+		return ""
+	}
+	for _, raw := range clauseMap {
+		switch v := raw.(type) {
+		case string:
+			if v == "active" || v == "suspended" {
+				return v
+			}
+		case []any:
+			for _, item := range v {
+				if s, ok := item.(string); ok && (s == "active" || s == "suspended") {
+					return s
+				}
+			}
+		case []string:
+			for _, s := range v {
+				if s == "active" || s == "suspended" {
+					return s
+				}
+			}
+		}
+	}
+	return ""
 }

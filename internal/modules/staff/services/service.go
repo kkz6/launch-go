@@ -99,8 +99,8 @@ func (s *Service) UserStatusForUser(ctx context.Context, userID string) authtype
 // status. The repo fetches users + teams + subscriptions in three queries (no
 // N+1); this method assembles them into the back-office DTO, exposing only the
 // allow-listed fields (no passwords, 2FA secrets, customer ids or card data).
-func (s *Service) ListUsersWithBilling(ctx context.Context, limit, offset int) ([]staffdto.AdminUserRow, int64, error) {
-	users, teamsByOwner, subscriptionsByTeam, total, err := s.repos.ListUsersWithBilling(ctx, limit, offset)
+func (s *Service) ListUsersWithBilling(ctx context.Context, opts repositories.ListUsersOptions) ([]staffdto.AdminUserRow, int64, error) {
+	users, teamsByOwner, subscriptionsByTeam, total, err := s.repos.ListUsersWithBilling(ctx, opts)
 	if err != nil {
 		return nil, 0, err
 	}

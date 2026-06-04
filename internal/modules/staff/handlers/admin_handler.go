@@ -9,6 +9,7 @@ import (
 
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	staffdto "github.com/kkz6/launch-go/internal/modules/staff/dto"
+	"github.com/kkz6/launch-go/internal/modules/staff/repositories"
 	"github.com/kkz6/launch-go/internal/modules/staff/services"
 	"github.com/kkz6/launch-go/internal/pkg/dto"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -44,7 +45,10 @@ func (h *AdminHandler) ListUsers(c *fiber.Ctx) error {
 	limit := fiberutil.ParseLimit(c, 25, 100)
 	offset := fiberutil.ParseOffset(c)
 
-	rows, total, err := h.service.ListUsersWithBilling(c.Context(), limit, offset)
+	rows, total, err := h.service.ListUsersWithBilling(c.Context(), repositories.ListUsersOptions{
+		Limit:  limit,
+		Offset: offset,
+	})
 	if err != nil {
 		return fiberutil.HandleError(c, err)
 	}

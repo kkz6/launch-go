@@ -140,18 +140,51 @@ func (r *Registry) SetUserStatus(ctx context.Context, userID string, status auth
 // owned teams for that page, current subscriptions for those teams) so there is
 // no N+1 fan-out per user/team. The returned maps are keyed by user id (owned
 // teams) and team id (current subscription, nil when a team has none).
-func (r *Registry) ListUsersWithBilling(ctx context.Context, limit, offset int) ([]authmodels.User, map[string][]authmodels.Team, map[string]*billingmodels.Subscription, int64, error) {
+// ListUsersOptions carries the page + toolbar state for the users listing.
+// Search matches name/email (case-insensitive), Status filters by exact status
+// ("" = all), and SortColumn/SortDir order the result (whitelisted by the repo,
+// defaulting to created_at desc).
+type ListUsersOptions struct {
+	Limit      int
+	Offset     int
+	Search     string
+	Status     string
+	SortColumn string
+	SortDir    string
+}
+
+func (r *Registry) ListUsersWithBilling(ctx context.Context, opts ListUsersOptions) ([]authmodels.User, map[string][]authmodels.Team, map[string]*billingmodels.Subscription, int64, error) {
+	base := r.db.WithContext(ctx).Model(&authmodels.User{})
+
+	if search := strings.TrimSpace(opts.Search); search != "" {
+		like := "%" + strings.ToLower(search) + "%"
+		base = base.Where("LOWER(name) LIKE ? OR LOWER(email) LIKE ?", like, like)
+	}
+	if opts.Status != "" {
+		base = base.Where("status = ?", opts.Status)
+	}
+
 	var total int64
-	if err := r.db.WithContext(ctx).Model(&authmodels.User{}).Count(&total).Error; err != nil {
+	if err := base.Count(&total).Error; err != nil {
 		return nil, nil, nil, 0, err
 	}
 
+	// Whitelist the sort column to avoid SQL injection via the sort param.
+	sortColumn := "created_at"
+	switch opts.SortColumn {
+	case "name", "email", "status", "created_at":
+		sortColumn = opts.SortColumn
+	}
+	sortDir := "DESC"
+	if strings.EqualFold(opts.SortDir, "asc") {
+		sortDir = "ASC"
+	}
+
 	var users []authmodels.User
-	err := r.db.WithContext(ctx).
-		Model(&authmodels.User{}).
-		Order("created_at DESC").
-		Limit(limit).
-		Offset(offset).
+	err := base.
+		Order(sortColumn + " " + sortDir).
+		Limit(opts.Limit).
+		Offset(opts.Offset).
 		Find(&users).Error
 	if err != nil {
 		return nil, nil, nil, 0, err
