@@ -56,31 +56,23 @@ func (h *StoredCertificateHandler) Get(c *gofiber.Ctx) error {
 // Create saves a new stored certificate. Returns 201 on success, 409
 // with {existing:{id,name}} on fingerprint dedupe, 422 on validation
 // failure / cert parse failure / key mismatch.
-func (h *StoredCertificateHandler) Create(c *gofiber.Ctx, req *dto.CreateStoredCertificateRequest) error {
-	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+func (h *StoredCertificateHandler) Create(r *fiberutil.Request, req *dto.CreateStoredCertificateRequest) error {
+	uid := r.UserID
+	row, err := h.svc.Create(r.Context(), r.TeamID, &uid, *req)
 	if err != nil {
-		return err
+		return mapCreateOrUpdateError(r.Ctx, err)
 	}
-	uid := userID
-	row, err := h.svc.Create(c.Context(), teamID, &uid, *req)
-	if err != nil {
-		return mapCreateOrUpdateError(c, err)
-	}
-	return fiberutil.Created(c, "Stored certificate created", row)
+	return fiberutil.Created(r.Ctx, "Stored certificate created", row)
 }
 
 // Update modifies an existing stored certificate. Same error mapping as Create.
-func (h *StoredCertificateHandler) Update(c *gofiber.Ctx, req *dto.UpdateStoredCertificateRequest) error {
-	teamID, _, err := fiberutil.MustGetTeamAndUserID(c)
+func (h *StoredCertificateHandler) Update(r *fiberutil.Request, req *dto.UpdateStoredCertificateRequest) error {
+	row, pendingRedeploys, err := h.svc.Update(r.Context(), r.TeamID, r.Params("id"), *req)
 	if err != nil {
-		return err
+		return mapCreateOrUpdateError(r.Ctx, err)
 	}
-	row, pendingRedeploys, err := h.svc.Update(c.Context(), teamID, c.Params("id"), *req)
-	if err != nil {
-		return mapCreateOrUpdateError(c, err)
-	}
-	c.Set("X-Pending-Redeploys", strconv.Itoa(pendingRedeploys))
-	return fiberutil.OK(c, "Stored certificate updated", row)
+	r.Set("X-Pending-Redeploys", strconv.Itoa(pendingRedeploys))
+	return fiberutil.OK(r.Ctx, "Stored certificate updated", row)
 }
 
 // Delete soft-deletes a stored certificate. If ?force=true is set,

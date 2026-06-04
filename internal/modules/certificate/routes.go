@@ -15,9 +15,9 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 
 	grp := router.Group("/certificates", auth...)
 	grp.Get("/", m.handler.List)
-	grp.Post("/", middleware.Can("certificate.create"), fiberutil.Validate(m.handler.Create))
+	grp.Post("/", middleware.Can("certificate.create"), fiberutil.Bind(m.handler.Create))
 	grp.Get("/:id", m.handler.Get)
-	grp.Patch("/:id", middleware.Can("certificate.update"), fiberutil.Validate(m.handler.Update))
+	grp.Patch("/:id", middleware.Can("certificate.update"), fiberutil.Bind(m.handler.Update))
 	grp.Delete("/:id", middleware.Can("certificate.delete"), m.handler.Delete)
 	grp.Get("/:id/usages", m.handler.Usages)
 }
