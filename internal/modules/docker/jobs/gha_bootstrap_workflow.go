@@ -562,6 +562,10 @@ type ghaSourceConfig struct {
 	// application row in handleApplication (not parsed from
 	// source_config); irrelevant for compose (per-service builds).
 	BuildType string
+	// AutoDeploy, when true, makes the rendered workflow trigger on push
+	// to Branch (in addition to manual workflow_dispatch). Persisted in
+	// source_config so it survives re-syncs; toggled via the API.
+	AutoDeploy bool
 	// LastCommitSHA is populated by bootstrap() with the SHA returned
 	// from PutContents. Read back into the row's source_config so the
 	// next re-sync can detect drift.
@@ -581,6 +585,7 @@ func parseGHASourceConfig(raw map[string]any) (*ghaSourceConfig, error) {
 		ComposeFilePath: firstNonEmpty(stringAt(raw, "compose_file_path"), "docker-compose.yml"),
 		WorkflowPath:    firstNonEmpty(stringAt(raw, "gha_workflow_path"), ".github/workflows/launch-deploy.yml"),
 		ExistingSHA:     stringAt(raw, "gha_workflow_sha"),
+		AutoDeploy:      boolAt(raw, "auto_deploy"),
 	}
 
 	// The application + compose service stores the git source as a
@@ -672,6 +677,19 @@ func parseRepoIdentifier(raw string) (owner, repo string, ok bool) {
 func stringAt(m map[string]any, key string) string {
 	v, _ := m[key].(string)
 	return v
+}
+
+// boolAt reads a bool from the source_config map. JSON unmarshals booleans
+// to bool, but tolerate the occasional string ("true") for hand-edited rows.
+func boolAt(m map[string]any, key string) bool {
+	switch v := m[key].(type) {
+	case bool:
+		return v
+	case string:
+		return v == "true" || v == "1"
+	default:
+		return false
+	}
 }
 
 func firstNonEmpty(s, fallback string) string {
@@ -833,6 +851,7 @@ func (j *GHABootstrapWorkflowJob) renderWorkflow(
 			LaunchBaseURL:    j.Payload.LaunchBaseURL,
 			AppID:            id,
 			BuildSecretNames: buildSecretNames,
+			AutoDeploy:       cfg.AutoDeploy,
 		})
 	case "compose":
 		return dockertasks.RenderComposeWorkflow(dockertasks.ComposeWorkflowData{
@@ -841,6 +860,7 @@ func (j *GHABootstrapWorkflowJob) renderWorkflow(
 			LaunchBaseURL:    j.Payload.LaunchBaseURL,
 			ComposeID:        id,
 			BuildSecretNames: buildSecretNames,
+			AutoDeploy:       cfg.AutoDeploy,
 		})
 	default:
 		return "", fmt.Errorf("renderWorkflow: unsupported workload kind %q", kind)

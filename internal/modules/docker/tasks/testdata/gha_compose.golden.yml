@@ -2,10 +2,9 @@
 name: Launch Deploy
 
 on:
-  # Deploys are triggered explicitly from Launch (the Deploy button →
-  # workflow_dispatch). We intentionally do NOT auto-deploy on push:
-  # committing/syncing this workflow file, or pushing code, must never
-  # kick off a deploy on its own — only an explicit action does.
+  # Auto-deploy is OFF: deploys are triggered explicitly from Launch
+  # (the Deploy button → workflow_dispatch). Pushing code or syncing this
+  # workflow file must never kick off a deploy on its own.
   workflow_dispatch:
 
 concurrency:
