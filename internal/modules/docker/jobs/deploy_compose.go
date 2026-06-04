@@ -54,6 +54,13 @@ type DeployComposePayload struct {
 	// OverrideRegistryPasswordMintedAtUnix mirrors the application
 	// payload — see DeployApplicationPayload for the rationale.
 	OverrideRegistryPasswordMintedAtUnix string `json:"override_registry_password_minted_at_unix,omitempty"`
+
+	// Recreate switches the stack into "reload" mode: re-run
+	// `docker compose up -d --remove-orphans` WITHOUT --build (ignoring
+	// any RunCommand override) after rewriting the .env, so changed
+	// runtime env is applied by reusing the on-host images. Used by the
+	// Reload action; build-time changes still go through a full Deploy.
+	Recreate bool `json:"recreate,omitempty"`
 }
 
 // String returns a redacted JSON view of the payload — same redaction
@@ -118,21 +125,32 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 	}
 
 	now := time.Now().UTC()
-	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
-		"status":     dockertypes.DeploymentStatusDeploying,
-		"started_at": now,
-	})
+	if j.deployment != nil {
+		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+			"status":     dockertypes.DeploymentStatusDeploying,
+			"started_at": now,
+		})
+	}
 	_ = j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusBuilding,
 	})
-	j.broadcast("docker.compose.deploying", map[string]any{
-		"compose_id":    j.compose.ID,
-		"deployment_id": j.deployment.ID,
-		"status":        "building",
-	})
+	inflightStatus := "building"
+	if j.Payload.Recreate {
+		inflightStatus = "restarting"
+	}
+	deployingPayload := map[string]any{
+		"compose_id": j.compose.ID,
+		"status":     inflightStatus,
+	}
+	// No deployment_id on the toast-only reload path — the frontend keys
+	// the "View logs" affordance off it, and there's no row to view.
+	if j.deployment != nil {
+		deployingPayload["deployment_id"] = j.deployment.ID
+	}
+	j.broadcast("docker.compose.deploying", deployingPayload)
 
 	cfg := tasks.ComposeDeployConfig{
-		DeploymentID: j.deployment.ID,
+		DeploymentID: j.Payload.DeploymentID,
 		ProjectSlug:  tasks.SlugFromName(j.project.Name),
 		ComposeSlug:  tasks.SlugFromName(j.compose.Name),
 		ProjectName:  fmt.Sprintf("%s-%s", tasks.SlugFromName(j.project.Name), tasks.SlugFromName(j.compose.Name)),
@@ -140,6 +158,11 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 	hydrateComposeSource(&cfg, j.compose)
 	// Same authenticated-clone treatment as application git deploys.
 	cfg.GitRepo = j.Deps.resolveAuthenticatedCloneURL(ctx, map[string]any(j.compose.SourceConfig), cfg.GitRepo)
+
+	// Reload mode: force a no-build `up -d` that reuses on-host images
+	// and applies the refreshed .env. Set before the ServiceImages
+	// branch so a reload never takes the GHA-rewrite path.
+	cfg.RecreateOnly = j.Payload.Recreate
 
 	// GHA path: if the webhook handed us a service_images map, thread
 	// it onto the deploy config. The renderer inserts a yq rewrite
@@ -218,6 +241,11 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 	// matches the application + database paths.
 	result, runErr := j.Deps.RunTask(j.server, task).AsRoot().TrackInDB().
 		OnTaskCreated(func(taskID string) {
+			// Toast-only reload: no deployment row, so nothing to attach
+			// the task to and no "View Logs" affordance to surface.
+			if j.deployment == nil {
+				return
+			}
 			// Surface the task ID early so the Compose Deployments tab's
 			// "View Logs" appears and streams live output during the
 			// deploy, not only after it finishes.
@@ -242,7 +270,7 @@ func (j *DeployComposeJob) Handle(ctx context.Context) error {
 			taskID = result.TaskModel.ID
 		}
 	}
-	if taskID != "" {
+	if taskID != "" && j.deployment != nil {
 		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
 			"task_id": taskID,
 		})
@@ -263,6 +291,10 @@ func (j *DeployComposeJob) Failed(ctx context.Context, err error) {
 		Str("deployment_id", j.Payload.DeploymentID).
 		Msg("deploy compose job failed at the framework level")
 
+	// Toast-only reload carries no deployment ID — nothing to mark.
+	if j.Payload.DeploymentID == "" {
+		return
+	}
 	finishedAt := time.Now().UTC()
 	errMsg := err.Error()
 	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.Payload.DeploymentID, map[string]any{
@@ -274,9 +306,17 @@ func (j *DeployComposeJob) Failed(ctx context.Context, err error) {
 
 func (j *DeployComposeJob) loadModels(ctx context.Context) error {
 	var err error
-	j.deployment, err = j.Deps.Repos.Deployment().FindByID(ctx, j.Payload.DeploymentID)
-	if err != nil {
-		return fmt.Errorf("find deployment: %w", err)
+	// Reload ("recreate with current env") runs WITHOUT a Deployment
+	// history row — it's a lightweight, toast-only action (see
+	// ComposeService.Reload). Only load the deployment when the payload
+	// carries an ID; every deployment-row write below is gated on
+	// j.deployment != nil, so a normal deploy (which always has an ID)
+	// behaves exactly as before.
+	if j.Payload.DeploymentID != "" {
+		j.deployment, err = j.Deps.Repos.Deployment().FindByID(ctx, j.Payload.DeploymentID)
+		if err != nil {
+			return fmt.Errorf("find deployment: %w", err)
+		}
 	}
 	j.compose, err = j.Deps.Repos.Compose().FindByIDAndTeamServer(
 		ctx, j.Payload.ComposeID, j.Payload.TeamID, j.Payload.ServerID,
@@ -299,10 +339,12 @@ func (j *DeployComposeJob) loadModels(ctx context.Context) error {
 
 func (j *DeployComposeJob) handleSuccess(ctx context.Context) {
 	finishedAt := time.Now().UTC()
-	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
-		"status":      dockertypes.DeploymentStatusSuccess,
-		"finished_at": finishedAt,
-	})
+	if j.deployment != nil {
+		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+			"status":      dockertypes.DeploymentStatusSuccess,
+			"finished_at": finishedAt,
+		})
+	}
 	_ = j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
 		"status":           dockertypes.ApplicationStatusRunning,
 		"last_deployed_at": finishedAt,
@@ -326,11 +368,14 @@ func (j *DeployComposeJob) handleSuccess(ctx context.Context) {
 		}
 	}
 
-	j.broadcast("docker.compose.deployed", map[string]any{
-		"compose_id":    j.compose.ID,
-		"deployment_id": j.deployment.ID,
-		"status":        "running",
-	})
+	deployedPayload := map[string]any{
+		"compose_id": j.compose.ID,
+		"status":     "running",
+	}
+	if j.deployment != nil {
+		deployedPayload["deployment_id"] = j.deployment.ID
+	}
+	j.broadcast("docker.compose.deployed", deployedPayload)
 }
 
 func (j *DeployComposeJob) handleFailure(ctx context.Context, output string, runErr error, exitCode int) {
@@ -350,21 +395,26 @@ func (j *DeployComposeJob) handleFailure(ctx context.Context, output string, run
 			errMsg = tail
 		}
 	}
-	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
-		"status":      dockertypes.DeploymentStatusFailed,
-		"finished_at": finishedAt,
-		"error":       errMsg,
-	})
+	if j.deployment != nil {
+		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+			"status":      dockertypes.DeploymentStatusFailed,
+			"finished_at": finishedAt,
+			"error":       errMsg,
+		})
+	}
 	_ = j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusFailed,
 	})
-	j.broadcast("docker.compose.failed", map[string]any{
-		"compose_id":    j.compose.ID,
-		"deployment_id": j.deployment.ID,
-		"status":        "failed",
-		"exit_code":     exitCode,
-		"error":         summarise(errMsg),
-	})
+	failedPayload := map[string]any{
+		"compose_id": j.compose.ID,
+		"status":     "failed",
+		"exit_code":  exitCode,
+		"error":      summarise(errMsg),
+	}
+	if j.deployment != nil {
+		failedPayload["deployment_id"] = j.deployment.ID
+	}
+	j.broadcast("docker.compose.failed", failedPayload)
 }
 
 // markComposeDeploymentFailed mirrors markDeploymentFailed on the
@@ -374,20 +424,25 @@ func (j *DeployComposeJob) handleFailure(ctx context.Context, output string, run
 // docker pull eventually error with an opaque 401.
 func (j *DeployComposeJob) markComposeDeploymentFailed(ctx context.Context, errMsg string) {
 	finishedAt := time.Now().UTC()
-	_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
-		"status":      dockertypes.DeploymentStatusFailed,
-		"finished_at": finishedAt,
-		"error":       errMsg,
-	})
+	if j.deployment != nil {
+		_ = j.Deps.Repos.Deployment().UpdateFields(ctx, j.deployment.ID, map[string]any{
+			"status":      dockertypes.DeploymentStatusFailed,
+			"finished_at": finishedAt,
+			"error":       errMsg,
+		})
+	}
 	_ = j.Deps.Repos.Compose().UpdateFields(ctx, j.compose.ID, map[string]any{
 		"status": dockertypes.ApplicationStatusFailed,
 	})
-	j.broadcast("docker.compose.failed", map[string]any{
-		"compose_id":    j.compose.ID,
-		"deployment_id": j.deployment.ID,
-		"status":        "failed",
-		"error":         errMsg,
-	})
+	failedPayload := map[string]any{
+		"compose_id": j.compose.ID,
+		"status":     "failed",
+		"error":      errMsg,
+	}
+	if j.deployment != nil {
+		failedPayload["deployment_id"] = j.deployment.ID
+	}
+	j.broadcast("docker.compose.failed", failedPayload)
 }
 
 func (j *DeployComposeJob) broadcast(event string, data map[string]any) {
@@ -443,6 +498,23 @@ func NewDeployComposeTask(composeID, deploymentID, serverID, teamID string) (*as
 		ServerID:     serverID,
 		TeamID:       teamID,
 	}, pkgjobs.Dedup("docker-deploy-compose", deploymentID))
+}
+
+// NewRecreateComposeTask enqueues a compose "reload": re-up the stack
+// with the current .env and no rebuild (reuse on-host images). This
+// backs the Reload action, which is a lightweight, toast-only operation
+// — it runs WITHOUT a Deployment history row (no deployment_id), so the
+// job skips every deployment-row write and just broadcasts the
+// running/errored status. Dedup is keyed on the compose ID (not a
+// deployment ID, which is empty here) so two reloads of the same stack
+// collapse while reloads of different stacks never collide.
+func NewRecreateComposeTask(composeID, serverID, teamID string) (*asynq.Task, error) {
+	return pkgjobs.TaskWithID(TypeDeployCompose, DeployComposePayload{
+		ComposeID: composeID,
+		ServerID:  serverID,
+		TeamID:    teamID,
+		Recreate:  true,
+	}, pkgjobs.Dedup("docker-recreate-compose", composeID))
 }
 
 // NewDeployComposeTaskFromGHA wraps NewDeployComposeTask with the

@@ -406,8 +406,19 @@ func (s *ApplicationService) Lifecycle(
 	}
 
 	switch action {
-	case "stop", "restart", "start":
-		// ok
+	case "restart":
+		// "Restart" is NOT a plain `docker restart` — that re-runs the
+		// same container with its env baked in at create time, so
+		// changed env vars would be ignored. Instead we RECREATE the
+		// container from the image already on the host with the current
+		// env/config (no rebuild) — which is what actually applies env
+		// changes. It's a lightweight, toast-only action though: no
+		// deployment history row and no build logs (the deploy job runs
+		// in recreate mode with an empty deployment ID). See
+		// recreateApplication.
+		return s.recreateApplication(app)
+	case "stop", "start":
+		// ok — quick docker stop/start below.
 	default:
 		return fiberutil.BadRequest("Unsupported action: " + action)
 	}
@@ -427,9 +438,8 @@ func (s *ApplicationService) Lifecycle(
 	// worker will broadcast the terminal state when the docker call
 	// returns; on failure it broadcasts status=errored.
 	pending := map[string]string{
-		"stop":    "stopping",
-		"restart": "restarting",
-		"start":   "starting",
+		"stop":  "stopping",
+		"start": "starting",
 	}[action]
 	s.BroadcastToTeam(teamID, "docker.application.updated", map[string]any{
 		"id":             app.ID,
@@ -438,6 +448,35 @@ func (s *ApplicationService) Lifecycle(
 		"server_id":      app.ServerID,
 		"team_id":        app.TeamID,
 		"status":         pending,
+	})
+	return nil
+}
+
+// recreateApplication implements "Restart" = recreate-with-current-env.
+// It's a lightweight, toast-only action: it does NOT create a Deployment
+// history row and does NOT stream build logs — the user just wants the
+// container bounced with its current env applied. It enqueues the deploy
+// job in recreate mode (reuse the on-host image, no build/pull) with an
+// empty deployment ID, which makes the job skip every deployment-row
+// write and just broadcast the running/errored status when done. Image
+// presence + the env-file rewrite happen inside the job/script — see
+// DeployApplicationPayload.Recreate.
+func (s *ApplicationService) recreateApplication(app *models.Application) error {
+	task, err := jobs.NewRecreateApplicationTask(app.ID, app.ServerID, app.TeamID)
+	if err != nil {
+		return err
+	}
+	if err := s.EnqueueTask(task); err != nil {
+		return err
+	}
+
+	s.BroadcastToTeam(app.TeamID, "docker.application.updated", map[string]any{
+		"id":             app.ID,
+		"application_id": app.ID,
+		"project_id":     app.ProjectID,
+		"server_id":      app.ServerID,
+		"team_id":        app.TeamID,
+		"status":         "restarting",
 	})
 	return nil
 }

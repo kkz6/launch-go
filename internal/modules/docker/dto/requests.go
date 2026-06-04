@@ -518,7 +518,7 @@ type CreateDomainRequest struct {
 	CertificateProvider *string `json:"certificate_provider,omitempty" validate:"omitempty,oneof=letsencrypt stored"`
 	// StoredCertificateID is required when certificate_provider == "stored".
 	// Points at a row in the team's stored_certificates library.
-	StoredCertificateID *string `json:"stored_certificate_id,omitempty" validate:"omitempty,len=26"`
+	StoredCertificateID *string `json:"stored_certificate_id,omitempty" validate:"omitempty,max=26"`
 	// CreateDNSRecord — when true (and the domain matches a
 	// connected DNS provider), the service also creates an A record
 	// pointing at the docker server's public IP. Same flow Site
@@ -565,7 +565,7 @@ type UpdateDomainRequest struct {
 	HTTPS               *bool   `json:"https,omitempty"`
 	CertificateProvider *string `json:"certificate_provider,omitempty" validate:"omitempty,oneof=letsencrypt stored"`
 	// StoredCertificateID — same semantics as on CreateDomainRequest.
-	StoredCertificateID *string `json:"stored_certificate_id,omitempty" validate:"omitempty,len=26"`
+	StoredCertificateID *string `json:"stored_certificate_id,omitempty" validate:"omitempty,max=26"`
 	// ServiceName retargets a compose domain at a different YAML
 	// service. Ignored on application-domain rows; on compose rows an
 	// empty value clears nothing (we'd reject the resulting row at

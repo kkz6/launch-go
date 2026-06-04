@@ -121,6 +121,12 @@ func (m *Module) RegisterWebhookRoutes(router gofiber.Router) {
 	g.Post("/applications/:id/status", handler.GHAApplicationStatus)
 	g.Post("/composes/:id/deploy", handler.GHAComposeDeploy)
 	g.Post("/composes/:id/status", handler.GHAComposeStatus)
+	// Deploy-status poll endpoints. The workflow blocks on these after
+	// notifying success so its job (and the short-lived GHCR pull token
+	// it relayed) stays alive until the async worker finishes pulling +
+	// deploying — see gha_webhook_handler.deploymentStatus.
+	g.Get("/applications/:id/deployments/:deploymentId", handler.GHAApplicationDeploymentStatus)
+	g.Get("/composes/:id/deployments/:deploymentId", handler.GHAComposeDeploymentStatus)
 }
 
 // newProjectService builds the project service once per request boot.

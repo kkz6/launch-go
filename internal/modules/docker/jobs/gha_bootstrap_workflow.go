@@ -121,6 +121,12 @@ func (j *GHABootstrapWorkflowJob) handleApplication(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("gha bootstrap: application %s: %w", app.ID, err)
 	}
+	// Carry the chosen builder into the workflow so it's honoured rather
+	// than auto-detected. Empty (nil) = auto-detect by Dockerfile
+	// presence.
+	if app.BuildType != nil {
+		cfg.BuildType = string(*app.BuildType)
+	}
 
 	rawToken, tokenHash, err := j.mintTokenIfNeeded(app.GHADeployTokenHash)
 	if err != nil {
@@ -549,6 +555,13 @@ type ghaSourceConfig struct {
 	ComposeFilePath string
 	WorkflowPath    string
 	ExistingSHA     string
+	// BuildType is the application's chosen builder ("dockerfile" |
+	// "nixpacks" | ""). Empty means "auto" — let the workflow detect by
+	// Dockerfile presence. A non-empty value is honoured verbatim so an
+	// explicit choice isn't silently overridden. Set from the
+	// application row in handleApplication (not parsed from
+	// source_config); irrelevant for compose (per-service builds).
+	BuildType string
 	// LastCommitSHA is populated by bootstrap() with the SHA returned
 	// from PutContents. Read back into the row's source_config so the
 	// next re-sync can detect drift.
@@ -816,6 +829,7 @@ func (j *GHABootstrapWorkflowJob) renderWorkflow(
 		return dockertasks.RenderApplicationWorkflow(dockertasks.ApplicationWorkflowData{
 			Branch:           cfg.Branch,
 			DockerfilePath:   cfg.DockerfilePath,
+			BuildType:        cfg.BuildType,
 			LaunchBaseURL:    j.Payload.LaunchBaseURL,
 			AppID:            id,
 			BuildSecretNames: buildSecretNames,

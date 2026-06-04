@@ -22,7 +22,7 @@ type ApplicationEnvVar struct {
 	basemodels.SoftDeleteModel
 	ApplicationID string                 `gorm:"column:application_id;type:char(26);not null;index" json:"application_id"`
 	Key           string                 `gorm:"type:varchar(255);not null" json:"key"`
-	Value         dbtype.EncryptedString `gorm:"type:longtext;not null" json:"-"`
+	Value         dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
 	IsSecret      bool                   `gorm:"column:is_secret;not null;default:false" json:"is_secret"`
 }
 
@@ -44,7 +44,7 @@ type ProjectEnvVar struct {
 	basemodels.SoftDeleteModel
 	ProjectID string                 `gorm:"column:project_id;type:char(26);not null;index" json:"project_id"`
 	Key       string                 `gorm:"type:varchar(255);not null" json:"key"`
-	Value     dbtype.EncryptedString `gorm:"type:longtext;not null" json:"-"`
+	Value     dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
 	IsSecret  bool                   `gorm:"column:is_secret;not null;default:false" json:"is_secret"`
 }
 
@@ -68,7 +68,7 @@ type DatabaseEnvVar struct {
 	basemodels.SoftDeleteModel
 	DatabaseID string                 `gorm:"column:database_id;type:char(26);not null;index" json:"database_id"`
 	Key        string                 `gorm:"type:varchar(255);not null" json:"key"`
-	Value      dbtype.EncryptedString `gorm:"type:longtext;not null" json:"-"`
+	Value      dbtype.EncryptedString `gorm:"type:longtext" json:"-"`
 	IsSecret   bool                   `gorm:"column:is_secret;not null;default:false" json:"is_secret"`
 }
 

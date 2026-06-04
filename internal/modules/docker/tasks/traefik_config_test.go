@@ -111,6 +111,90 @@ func TestRenderTraefikConfig_MultipleDomains(t *testing.T) {
 	}
 }
 
+func TestRenderTraefikConfig_ContainerPortOverridesInternalPort(t *testing.T) {
+	cp := 3000
+	out := RenderTraefikConfig(TraefikConfigArgs{
+		ProjectSlug:   "acme",
+		AppSlug:       "web",
+		ContainerName: "launch-acme-web",
+		InternalPort:  80, // deliberately "wrong" — must be overridden
+		Domains: []models.ApplicationDomain{
+			{Host: "app.example.com", HTTPS: true, ContainerPort: &cp},
+		},
+	})
+	// Backend must target the domain's container_port, NOT internal_port.
+	if !strings.Contains(out, `url: "http://launch-acme-web:3000"`) {
+		t.Fatalf("expected backend on container_port 3000, got:\n%s", out)
+	}
+	if strings.Contains(out, `:80"`) {
+		t.Fatalf("internal_port 80 must not be used when container_port is set, got:\n%s", out)
+	}
+	// Routers must reference the port-suffixed service.
+	if !strings.Contains(out, "service: acme-web-3000") {
+		t.Fatalf("expected router to reference port-suffixed service, got:\n%s", out)
+	}
+}
+
+func TestRenderTraefikConfig_FallsBackToInternalPort(t *testing.T) {
+	out := RenderTraefikConfig(TraefikConfigArgs{
+		ProjectSlug:   "acme",
+		AppSlug:       "api",
+		ContainerName: "launch-acme-api",
+		InternalPort:  8080,
+		Domains: []models.ApplicationDomain{
+			{Host: "api.example.com", HTTPS: true}, // no container_port
+		},
+	})
+	if !strings.Contains(out, `url: "http://launch-acme-api:8080"`) {
+		t.Fatalf("expected fallback to internal_port 8080, got:\n%s", out)
+	}
+	if !strings.Contains(out, "service: acme-api-8080") {
+		t.Fatalf("expected port-suffixed service for fallback, got:\n%s", out)
+	}
+}
+
+func TestRenderTraefikConfig_PerDomainDistinctPorts(t *testing.T) {
+	front := 3000
+	api := 8080
+	out := RenderTraefikConfig(TraefikConfigArgs{
+		ProjectSlug:   "gj",
+		AppSlug:       "stack",
+		ContainerName: "launch-gj-stack",
+		InternalPort:  80,
+		Domains: []models.ApplicationDomain{
+			{Host: "app.example.com", HTTPS: true, ContainerPort: &front},
+			{Host: "api.example.com", HTTPS: true, ContainerPort: &api},
+		},
+	})
+	// One service per distinct port, each pointing at the right port.
+	if !strings.Contains(out, `url: "http://launch-gj-stack:3000"`) ||
+		!strings.Contains(out, `url: "http://launch-gj-stack:8080"`) {
+		t.Fatalf("expected a service per distinct port, got:\n%s", out)
+	}
+	if !strings.Contains(out, "service: gj-stack-3000") ||
+		!strings.Contains(out, "service: gj-stack-8080") {
+		t.Fatalf("expected routers to reference both port services, got:\n%s", out)
+	}
+}
+
+func TestRenderTraefikConfig_SharedPortEmitsOneService(t *testing.T) {
+	p := 3000
+	out := RenderTraefikConfig(TraefikConfigArgs{
+		ProjectSlug:   "acme",
+		AppSlug:       "web",
+		ContainerName: "launch-acme-web",
+		InternalPort:  80,
+		Domains: []models.ApplicationDomain{
+			{Host: "a.example.com", HTTPS: true, ContainerPort: &p},
+			{Host: "b.example.com", HTTPS: true, ContainerPort: &p},
+		},
+	})
+	// Two domains, same port → exactly one service block (one loadBalancer).
+	if got := strings.Count(out, "loadBalancer:"); got != 1 {
+		t.Fatalf("expected one service for a shared port, got %d. yaml:\n%s", got, out)
+	}
+}
+
 func TestTraefikConfigPath(t *testing.T) {
 	got := TraefikConfigPath("acme", "api")
 	want := "/etc/launch/traefik/dynamic/acme-api.yml"

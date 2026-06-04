@@ -289,12 +289,34 @@ func (s *DatabaseService) Lifecycle(
 		return dto.DatabaseResponse{}, fiberutil.NotFound()
 	}
 
-	task, err := jobs.NewDatabaseLifecycleTask(d.ID, d.ProjectID, serverID, teamID, action, false)
-	if err != nil {
-		return dto.DatabaseResponse{}, err
-	}
-	if err := s.EnqueueTask(task); err != nil {
-		return dto.DatabaseResponse{}, err
+	// "restart" RECREATES the container from the existing image with the
+	// current env (engine credentials + user-added env vars), preserving
+	// the data volume — so saved runtime env changes are applied. A plain
+	// `docker restart` keeps the env baked in at container-create time.
+	// RunDatabaseJob (WipeVolume=false) is idempotent: stop + rm the old
+	// container, keep the named volume, re-run.
+	//
+	// CAVEAT: engine credential env (e.g. POSTGRES_PASSWORD) is only
+	// honoured on FIRST init against an empty data dir, so this does NOT
+	// rotate an existing database's password — that needs a dedicated
+	// change-credentials action (engine ALTER USER), tracked separately.
+	switch action {
+	case "restart":
+		task, err := jobs.NewRunDatabaseTask(d.ID, serverID, teamID)
+		if err != nil {
+			return dto.DatabaseResponse{}, err
+		}
+		if err := s.EnqueueTask(task); err != nil {
+			return dto.DatabaseResponse{}, err
+		}
+	default: // start, stop — quick docker start/stop, no recreate.
+		task, err := jobs.NewDatabaseLifecycleTask(d.ID, d.ProjectID, serverID, teamID, action, false)
+		if err != nil {
+			return dto.DatabaseResponse{}, err
+		}
+		if err := s.EnqueueTask(task); err != nil {
+			return dto.DatabaseResponse{}, err
+		}
 	}
 
 	s.BroadcastToTeam(teamID, "docker.database.lifecycle", map[string]any{

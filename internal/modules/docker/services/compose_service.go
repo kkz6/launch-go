@@ -482,6 +482,53 @@ func (s *ComposeService) ListDeployments(
 	return s.Repos().Deployment().ListForTarget(ctx, "compose", composeID)
 }
 
+// Reload recreates the compose stack with the current .env and NO
+// rebuild — `docker compose up -d --remove-orphans` reusing the images
+// already on the host — so saved runtime env changes apply fast.
+// Unlike Deploy it never routes GHA stacks to a workflow_dispatch: it
+// re-ups the local images directly (build-time changes still need a
+// full Deploy). It's a lightweight, toast-only action: NO deployment
+// history row and NO build logs — the deploy job runs in recreate mode
+// with an empty deployment ID, which makes it skip every deployment-row
+// write and just broadcast the running/errored status when done.
+func (s *ComposeService) Reload(
+	ctx context.Context, composeID, projectID, serverID, teamID, userID string,
+) error {
+	_ = userID
+	if _, err := s.requireProjectScoped(ctx, projectID, serverID, teamID); err != nil {
+		return err
+	}
+	c, err := s.Repos().Compose().FindByIDAndTeamServer(ctx, composeID, teamID, serverID)
+	if err != nil {
+		return err
+	}
+	if c.ProjectID != projectID {
+		return fiberutil.NotFound()
+	}
+	if c.Status == dockertypes.ApplicationStatusBuilding {
+		return fiberutil.Conflict("A deployment is already in progress for this compose stack")
+	}
+	if c.LastDeployedAt == nil {
+		return fiberutil.Conflict("Deploy this compose stack first — there's nothing to reload yet.")
+	}
+
+	task, err := jobs.NewRecreateComposeTask(composeID, serverID, teamID)
+	if err != nil {
+		return err
+	}
+	if err := s.EnqueueTask(task); err != nil {
+		return err
+	}
+
+	s.BroadcastToTeam(teamID, "docker.compose.deploying", map[string]any{
+		"compose_id": c.ID,
+		"server_id":  serverID,
+		"team_id":    teamID,
+		"status":     "restarting",
+	})
+	return nil
+}
+
 // Deploy enqueues a compose deploy. Same shape as
 // ApplicationService.Deploy — pending row + asynq job that does the
 // actual SSH work.

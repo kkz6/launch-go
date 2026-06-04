@@ -1102,6 +1102,30 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Deployment started", dto.ToDeploymentResponse(deployment))
 	})
 
+	// Reload: recreate the stack with the current .env and no rebuild
+	// (reuse on-host images) so saved env changes apply fast. Build-time
+	// changes still go through /deploy.
+	composes.Post("/:id/reload", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		// Reload is a toast-only action: no deployment row, so there's
+		// nothing to serialize back. The UI just shows a "Reload queued"
+		// toast and the WS status events drive the badge.
+		if err := composeSvc.Reload(
+			c.Context(),
+			c.Params("id"),
+			c.Params("projectId"),
+			c.Params("serverId"),
+			teamID,
+			userID,
+		); err != nil {
+			return err
+		}
+		return fiberutil.OK(c, "Reload started", nil)
+	})
+
 	// GitHub Actions detail-page actions for composes — mirror of the
 	// application trio above. Same semantics, just routed at the
 	// compose's URL.

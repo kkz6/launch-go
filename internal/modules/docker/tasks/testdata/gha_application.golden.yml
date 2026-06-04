@@ -2,8 +2,10 @@
 name: Launch Deploy
 
 on:
-  push:
-    branches: ["main"]
+  # Deploys are triggered explicitly from Launch (the Deploy button →
+  # workflow_dispatch). We intentionally do NOT auto-deploy on push:
+  # committing/syncing this workflow file, or pushing code, must never
+  # kick off a deploy on its own — only an explicit action does.
   workflow_dispatch:
 
 concurrency:
@@ -51,11 +53,28 @@ jobs:
       - name: Detect builder
         id: builder
         run: |
-          if [ -f "Dockerfile" ]; then
-            echo "kind=dockerfile" >> $GITHUB_OUTPUT
-          else
-            echo "kind=nixpacks"   >> $GITHUB_OUTPUT
-          fi
+          # Honour the build method chosen in Launch. Only "auto" (an
+          # empty BuildType) falls back to detecting by Dockerfile
+          # presence — an explicit choice is respected so e.g. a
+          # "dockerfile" app fails LOUDLY when its Dockerfile is missing
+          # instead of silently building with Nixpacks (and producing a
+          # surprising image).
+          case "" in
+            dockerfile)
+              if [ ! -f "Dockerfile" ]; then
+                echo "::error::Build method is 'dockerfile' but Dockerfile was not found in the repo. Add the Dockerfile, or switch the build method to Nixpacks in Launch."
+                exit 1
+              fi
+              echo "kind=dockerfile" >> $GITHUB_OUTPUT ;;
+            nixpacks)
+              echo "kind=nixpacks" >> $GITHUB_OUTPUT ;;
+            *)
+              if [ -f "Dockerfile" ]; then
+                echo "kind=dockerfile" >> $GITHUB_OUTPUT
+              else
+                echo "kind=nixpacks" >> $GITHUB_OUTPUT
+              fi ;;
+          esac
 
       - name: Build (Dockerfile)
         if: steps.builder.outputs.kind == 'dockerfile'
@@ -129,6 +148,7 @@ jobs:
           echo "minted_at=$(date -u +%s)" >> "$GITHUB_OUTPUT"
 
       - name: Notify Launch (success)
+        id: notify
         env:
           TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
           # Pass the bearer through an env var so jq's --arg gets it
@@ -137,7 +157,7 @@ jobs:
           GHCR_BEARER: ${{ steps.ghcr_token.outputs.bearer }}
           GHCR_BEARER_MINTED_AT: ${{ steps.ghcr_token.outputs.minted_at }}
         run: |
-          curl --fail-with-body -sS -X POST \
+          resp=$(curl --fail-with-body -sS --connect-timeout 10 --max-time 30 -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(jq -nc \
@@ -149,18 +169,99 @@ jobs:
               --arg pull      "$GHCR_BEARER" \
               --arg minted_at "$GHCR_BEARER_MINTED_AT" \
               '{image_tag:$image, commit_sha:$sha, branch:$branch, run_id:$run_id, run_url:$url, ghcr_pull_token:$pull, ghcr_pull_token_minted_at:$minted_at}')" \
-            "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/deploy"
+            "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/deploy") \
+            || { echo "::error::Launch rejected the deploy notify"; echo "$resp"; exit 1; }
+          echo "$resp"
+          # Capture the deployment id so the next step can poll it. This
+          # is what lets us hold the job open until the deploy finishes.
+          deployment_id=$(printf '%s' "$resp" | jq -r '.data.deployment_id // empty')
+          if [ -z "$deployment_id" ]; then
+            echo "::error::Launch accepted the notify but returned no deployment_id; cannot wait for completion"
+            exit 1
+          fi
+          echo "deployment_id=$deployment_id" >> "$GITHUB_OUTPUT"
+
+      # Block until Launch's worker has actually pulled + deployed.
+      #
+      # This is load-bearing, not cosmetic: the deploy worker pulls the
+      # private image from GHCR using the bearer we minted + relayed
+      # above, and that bearer is only valid WHILE THIS JOB IS RUNNING —
+      # GitHub revokes the run's GITHUB_TOKEN (and any registry token
+      # minted from it) the instant the job ends. If the job finished at
+      # "Notify Launch", the async pull raced job-teardown and died with
+      # "unauthenticated: User cannot be authenticated with the token
+      # provided." Polling keeps the token alive until the pull is done.
+      #
+      # Bonus: the run now goes red when the deploy fails, instead of
+      # reporting success for a build whose deploy never landed.
+      - name: Wait for Launch deploy to finish
+        # Hard wall-clock cap on this step regardless of what the loop
+        # below does — if anything wedges, GitHub kills the step rather
+        # than letting the run hang for the whole job budget.
+        timeout-minutes: 22
+        env:
+          TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
+          DEPLOYMENT_ID: ${{ steps.notify.outputs.deployment_id }}
+        run: |
+          set -uo pipefail
+          url="${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/deployments/${DEPLOYMENT_ID}"
+          # Upper bound on a healthy-but-slow deploy; sits just under the
+          # step timeout so we exit cleanly with a message first.
+          deadline=$(( $(date +%s) + 1200 ))   # 20 min
+          # Fail FAST if Launch itself is unreachable or erroring — a
+          # broken backend must NOT keep this Action (and its runner)
+          # alive for the whole window. Brief blips (e.g. an API container
+          # restarting mid-deploy) are tolerated; a sustained outage bails.
+          fails=0
+          max_fails=10
+          while :; do
+            # --connect-timeout / --max-time so a hung backend can't make a
+            # single poll block forever. -w appends the HTTP status as the
+            # last line so we can tell "deploy in progress" from "backend
+            # broke".
+            resp=$(curl -sS --connect-timeout 10 --max-time 20 -w $'\n%{http_code}' \
+              -H "Authorization: Bearer $TOKEN" "$url" || true)
+            http=$(printf '%s' "$resp" | tail -n1); http=${http:-000}
+            body=$(printf '%s' "$resp" | sed '$d')
+            if [ "$http" = "200" ]; then
+              fails=0
+              status=$(printf '%s' "$body" | jq -r '.data.status // empty' 2>/dev/null || true)
+              echo "deploy status: ${status:-<pending>}"
+              case "$status" in
+                success)
+                  echo "Launch deploy succeeded."
+                  exit 0 ;;
+                failed|cancelled|timeout)
+                  echo "::error::Launch deploy ${status}"
+                  printf '%s' "$body" | jq -r '.data.error // empty' 2>/dev/null || true
+                  exit 1 ;;
+              esac
+            else
+              fails=$(( fails + 1 ))
+              echo "::warning::deploy status check failed (HTTP ${http}, ${fails}/${max_fails})"
+              if [ "$fails" -ge "$max_fails" ]; then
+                echo "::error::Launch status endpoint unreachable/erroring — aborting so this run doesn't hang."
+                exit 1
+              fi
+            fi
+            if [ "$(date +%s)" -ge "$deadline" ]; then
+              echo "::error::Timed out waiting for Launch deploy to finish"
+              exit 1
+            fi
+            sleep 5
+          done
 
       - name: Notify Launch (failure)
         if: failure()
+        timeout-minutes: 2
         env:
           TOKEN: ${{ secrets.LAUNCH_DEPLOY_TOKEN }}
         run: |
-          curl -sS -X POST \
+          curl -sS --connect-timeout 10 --max-time 30 -X POST \
             -H "Authorization: Bearer $TOKEN" \
             -H "Content-Type: application/json" \
             -d "$(jq -nc \
               --arg run_id '${{ github.run_id }}' \
               --arg url    '${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}' \
               '{status:"failed", run_id:$run_id, run_url:$url}')" \
-            "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/status"
+            "${{ vars.LAUNCH_WEBHOOK_URL }}/api/webhooks/docker/applications/01HJXVHGRGTQRX4P0G3Y8R6CK7/status" || true
