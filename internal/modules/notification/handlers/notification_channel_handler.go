@@ -24,44 +24,36 @@ func NewNotificationChannelHandler(service *services.NotificationChannelService)
 
 // Test sends a test notification through a channel. The request body is
 // optional; an empty or invalid body falls back to the default message.
-func (h *NotificationChannelHandler) Test(c *fiber.Ctx) error {
-	teamID, err := fiberutil.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-	channelID, err := fiberutil.GetID(c)
+func (h *NotificationChannelHandler) Test(r *fiberutil.Request) error {
+	channelID, err := fiberutil.GetID(r.Ctx)
 	if err != nil {
 		return err
 	}
 
 	message := "This is a test notification from Launch."
-	if req, perr := fiberutil.MustParseAndValidate[dto.TestChannelRequest](c); perr == nil && req.Message != "" {
+	if req, perr := fiberutil.MustParseAndValidate[dto.TestChannelRequest](r.Ctx); perr == nil && req.Message != "" {
 		message = req.Message
 	}
 
-	if err := h.service.TestChannel(c.Context(), channelID, teamID, message); err != nil {
+	if err := h.service.TestChannel(r.Context(), channelID, r.TeamID, message); err != nil {
 		return err
 	}
-	return fiberutil.OK(c, "Test notification sent successfully", nil)
+	return fiberutil.OK(r.Ctx, "Test notification sent successfully", nil)
 }
 
 // UpdatePreferences updates notification preferences for the current
 // team. PUT to a team-singleton resource — no :id, body required — so
 // it does not fit the generic Update helper.
-func (h *NotificationChannelHandler) UpdatePreferences(c *fiber.Ctx, req *dto.UpdateNotificationPreferencesRequest) error {
-	teamID, err := fiberutil.MustGetTeamID(c)
+func (h *NotificationChannelHandler) UpdatePreferences(r *fiberutil.Request, req *dto.UpdateNotificationPreferencesRequest) error {
+	resp, err := h.service.UpdatePreferences(r.Context(), r.TeamID, req)
 	if err != nil {
 		return err
 	}
-	resp, err := h.service.UpdatePreferences(c.Context(), teamID, req)
-	if err != nil {
-		return err
-	}
-	return fiberutil.OK(c, "Notification preferences updated", resp)
+	return fiberutil.OK(r.Ctx, "Notification preferences updated", resp)
 }
 
 // ListChannelTypes returns all available notification channel types.
-// Static catalogue, not team-scoped.
+// Static catalogue, not team-scoped — no MustGet to remove.
 func (h *NotificationChannelHandler) ListChannelTypes(c *fiber.Ctx) error {
 	channelTypes := notificationtypes.AllChannelTypes()
 	result := make([]dto.ChannelTypeResponse, len(channelTypes))

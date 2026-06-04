@@ -98,14 +98,14 @@ func (m *Module) registerSiteRoutes(router gofiber.Router, handler *handlers.Sit
 	// :serverId; the helper extracts :serverId as the parent).
 	router.Get("/", fiberutil.IndexNested("serverId", "Sites retrieved", site.List))
 	router.Post("/", middleware.Can("site.create"), fiberutil.CreateNested[dto.CreateSiteRequest]("serverId", "Site created", site.Create))
-	router.Get("/:id", handler.Show) // bespoke: enriched with queue count + source-control info
+	router.Get("/:id", fiberutil.Handler(handler.Show)) // bespoke: enriched with queue count + source-control info
 	router.Put("/:id", middleware.Can("site.update"), fiberutil.UpdateNested[dto.UpdateSiteRequest]("serverId", "id", "Site updated", site.Update))
-	router.Delete("/:id", middleware.Can("site.delete"), handler.Delete) // bespoke: returns 200 + status message (async deletion)
+	router.Delete("/:id", middleware.Can("site.delete"), fiberutil.Handler(handler.Delete)) // bespoke: returns 200 + status message (async deletion)
 
 	router.Get("/:id/deletion-resources", fiberutil.ShowNested("serverId", "id", "Deletion summary retrieved", site.GetDeletionSummary))
-	router.Post("/:id/deploy-token/regenerate", middleware.Can("site.deploy_token.regenerate"), handler.RegenerateDeployToken)
-	router.Patch("/:id/deployment-settings", middleware.Can("site.update"), fiberutil.Validate(handler.UpdateDeploymentSettings))
-	router.Get("/:id/settings", handler.GetSettings)
+	router.Post("/:id/deploy-token/regenerate", middleware.Can("site.deploy_token.regenerate"), fiberutil.Handler(handler.RegenerateDeployToken))
+	router.Patch("/:id/deployment-settings", middleware.Can("site.update"), fiberutil.Bind(handler.UpdateDeploymentSettings))
+	router.Get("/:id/settings", fiberutil.Handler(handler.GetSettings))
 }
 
 // registerDeploymentRoutes registers deployment-related routes.
@@ -181,6 +181,6 @@ func (m *Module) registerFileRoutes(router gofiber.Router, handler *handlers.Fil
 
 // registerFeatureRoutes registers Laravel feature management routes.
 func (m *Module) registerFeatureRoutes(router gofiber.Router, handler *handlers.FeatureHandler) {
-	router.Post("/:id/features/:feature/enable", middleware.Can("site.feature.enable"), handler.EnableFeature)
-	router.Post("/:id/features/:feature/disable", middleware.Can("site.feature.disable"), handler.DisableFeature)
+	router.Post("/:id/features/:feature/enable", middleware.Can("site.feature.enable"), fiberutil.Handler(handler.EnableFeature))
+	router.Post("/:id/features/:feature/disable", middleware.Can("site.feature.disable"), fiberutil.Handler(handler.DisableFeature))
 }

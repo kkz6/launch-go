@@ -34,7 +34,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	storage.Get("/", fiberutil.Index("Storage providers retrieved", svc.StorageProvider().ListStorageProviders))
 	storage.Get("/dropdown", fiberutil.Index("Storage providers retrieved", svc.StorageProvider().ListStorageProvidersDropdown))
 	storage.Get("/:id", fiberutil.Show("Storage provider retrieved", svc.StorageProvider().GetStorageProvider))
-	storage.Post("/:provider/connect", middleware.Can("storage_provider.create"), storageProviderHandler.ConnectStorageProvider)
+	storage.Post("/:provider/connect", middleware.Can("storage_provider.create"), fiberutil.Handler(storageProviderHandler.ConnectStorageProvider))
 	storage.Put("/:provider", middleware.Can("storage_provider.update"), storageProviderHandler.UpdateStorageProvider)
 	storage.Delete("/:provider", middleware.Can("storage_provider.delete"), storageProviderHandler.DeleteStorageProvider)
 }

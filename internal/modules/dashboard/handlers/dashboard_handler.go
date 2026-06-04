@@ -18,18 +18,13 @@ func NewDashboardHandler(service *services.DashboardService) *DashboardHandler {
 }
 
 // Index returns dashboard data for the current team
-func (h *DashboardHandler) Index(c *fiber.Ctx) error {
-	teamID, err := fiberctx.MustGetTeamID(c)
+func (h *DashboardHandler) Index(r *fiberctx.Request) error {
+	dashboard, err := h.service.GetDashboard(r.Context(), r.TeamID)
 	if err != nil {
-		return err
+		return fiberctx.HandleError(r.Ctx, err)
 	}
 
-	dashboard, err := h.service.GetDashboard(c.Context(), teamID)
-	if err != nil {
-		return fiberctx.HandleError(c, err)
-	}
-
-	return fiberctx.OK(c, "Dashboard data retrieved", dashboard)
+	return fiberctx.OK(r.Ctx, "Dashboard data retrieved", dashboard)
 }
 
 // OnboardingStatus returns the onboarding status for the current user

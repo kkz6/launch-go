@@ -92,7 +92,7 @@ func (m *Module) registerServerRoutes(router fiber.Router, authMiddleware fiber.
 		// Actions
 		servers.Post("/:id/reboot", provisioned, middleware.Can("server.reboot"), fiberutil.Action("Server reboot initiated", m.service.RebootServer))
 		servers.Post("/:id/connect", provisioned, middleware.Can("server.manage"), fiberutil.Action("Server connection successful", m.service.ConnectServer))
-		servers.Post("/:id/vulnerability-audit", provisioned, middleware.Can("server.audit"), fiberutil.Validate(handler.RunVulnerabilityAudit))
+		servers.Post("/:id/vulnerability-audit", provisioned, middleware.Can("server.audit"), fiberutil.Bind(handler.RunVulnerabilityAudit))
 
 		// Services
 		servers.Get("/:id/services", provisioned, fiberutil.IndexNested("id", "Services retrieved", m.service.ListServices))

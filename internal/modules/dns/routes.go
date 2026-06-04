@@ -41,7 +41,7 @@ func (m *Module) registerDomainRoutes(router gofiber.Router, authMiddleware gofi
 	g.Post("/", middleware.Can("dns.domain.create"), fiberutil.Create[dto.CreateDomainRequest]("Domain created", svc.Domain().CreateDomain))
 	g.Get("/:id", fiberutil.Show("Domain retrieved", svc.Domain().GetDomainPage))
 	g.Patch("/:id", middleware.Can("dns.domain.update"), fiberutil.Update[dto.UpdateDomainRequest]("Domain updated", svc.Domain().UpdateDomain))
-	g.Delete("/:id", middleware.Can("dns.domain.delete"), domainHandler.DeleteDomain)
+	g.Delete("/:id", middleware.Can("dns.domain.delete"), fiberutil.Handler(domainHandler.DeleteDomain))
 	g.Post("/:id/sync", middleware.Can("dns.domain.sync"), fiberutil.Action("DNS records synced successfully", svc.Domain().SyncDomainRecords))
 
 	// Nested DNS records.

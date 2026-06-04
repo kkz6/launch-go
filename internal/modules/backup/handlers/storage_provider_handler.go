@@ -34,28 +34,24 @@ func NewStorageProviderHandler(providerService *services.StorageProviderService)
 }
 
 // ConnectStorageProvider creates a new storage provider connection.
-func (h *StorageProviderHandler) ConnectStorageProvider(c *fiber.Ctx) error {
-	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-	if err != nil {
-		return err
-	}
-	providerType := c.Params("provider")
+func (h *StorageProviderHandler) ConnectStorageProvider(r *fiberutil.Request) error {
+	providerType := r.Params("provider")
 
 	if !backuptypes.StorageDriver(providerType).IsValid() {
 		return fiberutil.BadRequest("Invalid storage provider type")
 	}
 
-	req, err := fiberutil.MustParseAndValidate[dto.CreateStorageProviderRequest](c)
+	req, err := fiberutil.MustParseAndValidate[dto.CreateStorageProviderRequest](r.Ctx)
 	if err != nil {
 		return err
 	}
 	req.Provider = providerType
 
-	resp, err := h.providerService.ConnectStorageProvider(c.Context(), teamID, userID, req)
+	resp, err := h.providerService.ConnectStorageProvider(r.Context(), r.TeamID, r.UserID, req)
 	if err != nil {
 		return err
 	}
-	return fiberutil.Created(c, "Storage provider connected successfully", resp)
+	return fiberutil.Created(r.Ctx, "Storage provider connected successfully", resp)
 }
 
 // UpdateStorageProvider updates an existing storage provider. The path

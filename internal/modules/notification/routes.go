@@ -25,14 +25,14 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	notifications.Get("/:id", fiberutil.Show("Notification channel retrieved", chanSvc.GetChannel))
 	notifications.Put("/:id", middleware.Can("notification.update"), fiberutil.Update[dto.UpdateChannelRequest]("Notification channel updated", chanSvc.UpdateChannel))
 	notifications.Delete("/:id", middleware.Can("notification.delete"), fiberutil.Delete(chanSvc.DeleteChannel))
-	notifications.Post("/:id/test", middleware.Can("notification.manage"), handler.Test)
+	notifications.Post("/:id/test", middleware.Can("notification.manage"), fiberutil.Handler(handler.Test))
 	notifications.Post("/:id/default", middleware.Can("notification.manage"), fiberutil.Action("Default channel updated", chanSvc.SetChannelDefault))
 	notifications.Post("/:id/disconnect", middleware.Can("notification.manage"), fiberutil.Action("Channel disconnected", chanSvc.DisconnectChannel))
 	notifications.Post("/:id/reconnect", middleware.Can("notification.manage"), fiberutil.Action("Channel reconnected successfully", chanSvc.ReconnectChannel))
 
 	preferences := router.Group("/settings/notification-preferences", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	preferences.Get("/", fiberutil.Index("Notification preferences retrieved", chanSvc.GetPreferences))
-	preferences.Put("/", middleware.Can("notification.update"), fiberutil.Validate(handler.UpdatePreferences))
+	preferences.Put("/", middleware.Can("notification.update"), fiberutil.Bind(handler.UpdatePreferences))
 
 	channelTypes := router.Group("/notification-channels", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	channelTypes.Get("/", handler.ListChannelTypes)

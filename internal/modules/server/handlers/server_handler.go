@@ -61,19 +61,15 @@ func (h *Handler) GetProvisionStatus(c *fiber.Ctx) error {
 
 // RunVulnerabilityAudit queues a security audit. POST with a body
 // carrying the email recipient — does not fit ActionFunc.
-func (h *Handler) RunVulnerabilityAudit(c *fiber.Ctx, req *dto.VulnerabilityAuditRequest) error {
-	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
+func (h *Handler) RunVulnerabilityAudit(r *fiberctx.Request, req *dto.VulnerabilityAuditRequest) error {
+	id, err := fiberctx.GetID(r.Ctx)
 	if err != nil {
 		return err
 	}
-	id, err := fiberctx.GetID(c)
-	if err != nil {
+	if err := h.service.RunVulnerabilityAudit(r.Context(), id, r.TeamID, r.UserID, req.Email); err != nil {
 		return err
 	}
-	if err := h.service.RunVulnerabilityAudit(c.Context(), id, teamID, userID, req.Email); err != nil {
-		return err
-	}
-	return fiberctx.OK(c, "Vulnerability audit has been queued and will be sent to your email when completed.", nil)
+	return fiberctx.OK(r.Ctx, "Vulnerability audit has been queued and will be sent to your email when completed.", nil)
 }
 
 // GetSiteCount returns the number of sites for a server. Uses an

@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"github.com/gofiber/fiber/v2"
-
 	"github.com/kkz6/launch-go/internal/modules/platform/dto"
 	"github.com/kkz6/launch-go/internal/modules/platform/services"
 	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
@@ -19,81 +17,56 @@ func NewPlatformUpdateHandler(service *services.PlatformUpdateService) *Platform
 }
 
 // ListPendingUpdates returns updates with pending servers for the team
-func (h *PlatformUpdateHandler) ListPendingUpdates(c *fiber.Ctx) error {
-	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+func (h *PlatformUpdateHandler) ListPendingUpdates(r *fiberutil.Request) error {
+	updates, err := h.service.GetPendingUpdates(r.Context(), r.TeamID, r.UserID)
 	if err != nil {
-		return err
+		return fiberutil.HandleError(r.Ctx, err)
 	}
 
-	updates, err := h.service.GetPendingUpdates(c.Context(), teamID, userID)
-	if err != nil {
-		return fiberutil.HandleError(c, err)
-	}
-
-	return fiberutil.OK(c, "Platform updates retrieved", updates)
+	return fiberutil.OK(r.Ctx, "Platform updates retrieved", updates)
 }
 
 // ShowUpdate returns detailed update info with server statuses
-func (h *PlatformUpdateHandler) ShowUpdate(c *fiber.Ctx) error {
-	teamID, err := fiberutil.MustGetTeamID(c)
+func (h *PlatformUpdateHandler) ShowUpdate(r *fiberutil.Request) error {
+	id := r.Params("id")
+
+	detail, err := h.service.GetUpdateDetail(r.Context(), id, r.TeamID)
 	if err != nil {
-		return err
+		return fiberutil.HandleError(r.Ctx, err)
 	}
 
-	id := c.Params("id")
-
-	detail, err := h.service.GetUpdateDetail(c.Context(), id, teamID)
-	if err != nil {
-		return fiberutil.HandleError(c, err)
-	}
-
-	return fiberutil.OK(c, "Platform update retrieved", detail)
+	return fiberutil.OK(r.Ctx, "Platform update retrieved", detail)
 }
 
 // RunUpdate dispatches the update task on a specific server
-func (h *PlatformUpdateHandler) RunUpdate(c *fiber.Ctx, req *dto.RunUpdateRequest) error {
-	teamID, err := fiberutil.MustGetTeamID(c)
-	if err != nil {
-		return err
+func (h *PlatformUpdateHandler) RunUpdate(r *fiberutil.Request, req *dto.RunUpdateRequest) error {
+	id := r.Params("id")
+
+	if err := h.service.RunUpdate(r.Context(), id, req.ServerID, r.TeamID); err != nil {
+		return fiberutil.HandleError(r.Ctx, err)
 	}
 
-	id := c.Params("id")
-
-	if err := h.service.RunUpdate(c.Context(), id, req.ServerID, teamID); err != nil {
-		return fiberutil.HandleError(c, err)
-	}
-
-	return fiberutil.OK(c, "Update dispatched", nil)
+	return fiberutil.OK(r.Ctx, "Update dispatched", nil)
 }
 
 // RunUpdateAll dispatches the update task for all pending servers in the team
-func (h *PlatformUpdateHandler) RunUpdateAll(c *fiber.Ctx) error {
-	teamID, err := fiberutil.MustGetTeamID(c)
-	if err != nil {
-		return err
+func (h *PlatformUpdateHandler) RunUpdateAll(r *fiberutil.Request) error {
+	id := r.Params("id")
+
+	if err := h.service.RunUpdateAll(r.Context(), id, r.TeamID); err != nil {
+		return fiberutil.HandleError(r.Ctx, err)
 	}
 
-	id := c.Params("id")
-
-	if err := h.service.RunUpdateAll(c.Context(), id, teamID); err != nil {
-		return fiberutil.HandleError(c, err)
-	}
-
-	return fiberutil.OK(c, "Updates dispatched for all servers", nil)
+	return fiberutil.OK(r.Ctx, "Updates dispatched for all servers", nil)
 }
 
 // DismissBanner marks the update banner as dismissed for the current user
-func (h *PlatformUpdateHandler) DismissBanner(c *fiber.Ctx) error {
-	_, userID, err := fiberutil.MustGetTeamAndUserID(c)
-	if err != nil {
-		return err
+func (h *PlatformUpdateHandler) DismissBanner(r *fiberutil.Request) error {
+	id := r.Params("id")
+
+	if err := h.service.DismissBanner(r.Context(), id, r.UserID); err != nil {
+		return fiberutil.HandleError(r.Ctx, err)
 	}
 
-	id := c.Params("id")
-
-	if err := h.service.DismissBanner(c.Context(), id, userID); err != nil {
-		return fiberutil.HandleError(c, err)
-	}
-
-	return fiberutil.OK(c, "Update dismissed", nil)
+	return fiberutil.OK(r.Ctx, "Update dismissed", nil)
 }

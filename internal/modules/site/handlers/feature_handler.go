@@ -1,8 +1,6 @@
 package handlers
 
 import (
-	"github.com/gofiber/fiber/v2"
-
 	"github.com/kkz6/launch-go/internal/modules/site/services"
 	fiberctx "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
@@ -25,27 +23,17 @@ func NewFeatureHandler(featureService *services.FeatureService) *FeatureHandler 
 }
 
 // EnableFeature enables a Laravel feature for a site
-func (h *FeatureHandler) EnableFeature(c *fiber.Ctx) error {
-	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
+func (h *FeatureHandler) EnableFeature(r *fiberctx.Request) error {
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(r.Ctx)
 	if err != nil {
 		return err
 	}
 
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	userID, err := fiberctx.MustGetUserID(c)
-	if err != nil {
-		return err
-	}
-
-	featureName := c.Params("feature")
+	featureName := r.Params("feature")
 
 	// Parse optional request body (allow empty body for simple toggles)
 	var req EnableFeatureRequest
-	_ = c.BodyParser(&req)
+	_ = r.BodyParser(&req)
 
 	opts := services.EnableFeatureOptions{
 		DeleteQueues:    req.DeleteQueues,
@@ -53,35 +41,25 @@ func (h *FeatureHandler) EnableFeature(c *fiber.Ctx) error {
 		UpdateCaddyfile: req.UpdateCaddyfile,
 	}
 
-	if err := h.featureService.EnableFeature(c.Context(), siteID, serverID, teamID, &userID, featureName, opts); err != nil {
-		return fiberctx.HandleError(c, err)
+	if err := h.featureService.EnableFeature(r.Context(), siteID, serverID, r.TeamID, &r.UserID, featureName, opts); err != nil {
+		return fiberctx.HandleError(r.Ctx, err)
 	}
 
-	return fiberctx.OK(c, "Feature is being enabled", nil)
+	return fiberctx.OK(r.Ctx, "Feature is being enabled", nil)
 }
 
 // DisableFeature disables a Laravel feature for a site
-func (h *FeatureHandler) DisableFeature(c *fiber.Ctx) error {
-	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
+func (h *FeatureHandler) DisableFeature(r *fiberctx.Request) error {
+	serverID, siteID, err := fiberctx.GetServerAndSiteID(r.Ctx)
 	if err != nil {
 		return err
 	}
 
-	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
+	featureName := r.Params("feature")
+
+	if err := h.featureService.DisableFeature(r.Context(), siteID, serverID, r.TeamID, &r.UserID, featureName); err != nil {
+		return fiberctx.HandleError(r.Ctx, err)
 	}
 
-	userID, err := fiberctx.MustGetUserID(c)
-	if err != nil {
-		return err
-	}
-
-	featureName := c.Params("feature")
-
-	if err := h.featureService.DisableFeature(c.Context(), siteID, serverID, teamID, &userID, featureName); err != nil {
-		return fiberctx.HandleError(c, err)
-	}
-
-	return fiberctx.OK(c, "Feature is being disabled", nil)
+	return fiberctx.OK(r.Ctx, "Feature is being disabled", nil)
 }

@@ -22,10 +22,10 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 
 	updates := router.Group("/platform/updates", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
-		updates.Get("/", handler.ListPendingUpdates)
-		updates.Get("/:id", handler.ShowUpdate)
-		updates.Post("/:id/run", middleware.Can("platform.update"), fiberutil.Validate(handler.RunUpdate))
-		updates.Post("/:id/run-all", middleware.Can("platform.update"), handler.RunUpdateAll)
-		updates.Post("/:id/dismiss", middleware.Can("platform.update"), handler.DismissBanner)
+		updates.Get("/", fiberutil.Handler(handler.ListPendingUpdates))
+		updates.Get("/:id", fiberutil.Handler(handler.ShowUpdate))
+		updates.Post("/:id/run", middleware.Can("platform.update"), fiberutil.Bind(handler.RunUpdate))
+		updates.Post("/:id/run-all", middleware.Can("platform.update"), fiberutil.Handler(handler.RunUpdateAll))
+		updates.Post("/:id/dismiss", middleware.Can("platform.update"), fiberutil.Handler(handler.DismissBanner))
 	}
 }

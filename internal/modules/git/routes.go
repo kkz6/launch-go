@@ -20,12 +20,12 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 
 	// Settings UI routes.
 	settings := router.Group("/settings", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
-	settings.Get("/git-providers", handler.GetInstallationsWithCounts)
+	settings.Get("/git-providers", fiberutil.Handler(handler.GetInstallationsWithCounts))
 	settings.Get("/git-providers/:provider/installation-url", handler.GetInstallationURL)
-	settings.Get("/git-providers/:provider/installations", handler.GetInstallations)
-	settings.Get("/git-providers/:provider/installations/:installationId/repositories", handler.GetInstallationRepositories)
-	settings.Get("/git-providers/:provider/installations/:installationId/cached-repositories", handler.GetCachedInstallationRepositories)
-	settings.Post("/git-providers/:provider/installations/:installationId/refresh-repositories", middleware.Can("git.source_control.sync"), handler.RefreshInstallationRepositories)
+	settings.Get("/git-providers/:provider/installations", fiberutil.Handler(handler.GetInstallations))
+	settings.Get("/git-providers/:provider/installations/:installationId/repositories", fiberutil.Handler(handler.GetInstallationRepositories))
+	settings.Get("/git-providers/:provider/installations/:installationId/cached-repositories", fiberutil.Handler(handler.GetCachedInstallationRepositories))
+	settings.Post("/git-providers/:provider/installations/:installationId/refresh-repositories", middleware.Can("git.source_control.sync"), fiberutil.Handler(handler.RefreshInstallationRepositories))
 	// OAuth callback: GET but finalises installation (calls SyncUserInstallation).
 	// Guarded so only editors+ may complete a provider connection flow.
 	settings.Get("/git-providers/:provider/callback", middleware.Can("git.source_control.connect"), handler.HandleInstallationCallback)
@@ -33,9 +33,9 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// App-based integration routes.
 	integrations := router.Group("/integrations/git-apps", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	integrations.Get("/:provider/installation-url", handler.GetInstallationURL)
-	integrations.Get("/:provider/installations", handler.GetInstallations)
-	integrations.Get("/:provider/installations/:installationId", handler.GetInstallation)
-	integrations.Get("/:provider/installations/:installationId/repositories", handler.GetInstallationRepositories)
+	integrations.Get("/:provider/installations", fiberutil.Handler(handler.GetInstallations))
+	integrations.Get("/:provider/installations/:installationId", fiberutil.Handler(handler.GetInstallation))
+	integrations.Get("/:provider/installations/:installationId/repositories", fiberutil.Handler(handler.GetInstallationRepositories))
 	integrations.Get("/:provider/test-connection", handler.TestConnection)
 
 	// Source-control CRUD via framework helpers.
@@ -64,11 +64,11 @@ func (m *Module) RegisterAPIRoutes(router gofiber.Router, authMiddleware gofiber
 
 	providers := api.Group("/providers")
 	providers.Get("/:provider/installation-url", handler.GetInstallationURL)
-	providers.Get("/:provider/installations", handler.GetInstallations)
-	providers.Get("/:provider/installations/:installationId", handler.GetInstallation)
-	providers.Get("/:provider/installations/:installationId/repositories", handler.GetInstallationRepositories)
+	providers.Get("/:provider/installations", fiberutil.Handler(handler.GetInstallations))
+	providers.Get("/:provider/installations/:installationId", fiberutil.Handler(handler.GetInstallation))
+	providers.Get("/:provider/installations/:installationId/repositories", fiberutil.Handler(handler.GetInstallationRepositories))
 	providers.Get("/:provider/test-connection", handler.TestConnection)
-	providers.Post("/:provider/installations/:installationId/sync", middleware.Can("git.source_control.sync"), handler.RefreshInstallationRepositories)
+	providers.Post("/:provider/installations/:installationId/sync", middleware.Can("git.source_control.sync"), fiberutil.Handler(handler.RefreshInstallationRepositories))
 }
 
 // registerSourceControlRoutes wires standard team-scoped CRUD on a
