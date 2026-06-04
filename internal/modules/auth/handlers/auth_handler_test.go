@@ -16,6 +16,7 @@ import (
 	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
 	"github.com/kkz6/launch-go/internal/modules/auth/models"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
@@ -76,7 +77,7 @@ func generateRefreshToken(userID, sessionID string) string {
 
 func TestAuthHandler_Register_ValidationError_MissingFields(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
-	app.Post("/register", handler.Register)
+	app.Post("/register", fiberutil.Validate(handler.Register))
 
 	body := map[string]string{}
 	resp, err := app.Test(makeJSONRequest(http.MethodPost, "/register", body), testTimeout)
@@ -96,7 +97,7 @@ func TestAuthHandler_Register_ValidationError_MissingFields(t *testing.T) {
 
 func TestAuthHandler_Register_ValidationError_InvalidEmail(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
-	app.Post("/register", handler.Register)
+	app.Post("/register", fiberutil.Validate(handler.Register))
 
 	body := map[string]string{
 		"name":                  "Test User",
@@ -119,7 +120,7 @@ func TestAuthHandler_Register_ValidationError_InvalidEmail(t *testing.T) {
 
 func TestAuthHandler_Register_ValidationError_PasswordMismatch(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
-	app.Post("/register", handler.Register)
+	app.Post("/register", fiberutil.Validate(handler.Register))
 
 	body := map[string]string{
 		"name":                  "Test User",
@@ -142,7 +143,7 @@ func TestAuthHandler_Register_ValidationError_PasswordMismatch(t *testing.T) {
 
 func TestAuthHandler_Register_ValidationError_ShortPassword(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
-	app.Post("/register", handler.Register)
+	app.Post("/register", fiberutil.Validate(handler.Register))
 
 	body := map[string]string{
 		"name":                  "Test User",
@@ -169,7 +170,7 @@ func TestAuthHandler_Register_ValidationError_ShortPassword(t *testing.T) {
 
 func TestAuthHandler_Login_Success(t *testing.T) {
 	app, reg, handler := setupAuthHandler(t)
-	app.Post("/login", handler.Login)
+	app.Post("/login", fiberutil.Validate(handler.Login))
 
 	hashedPassword, err := security.HashPassword("correct-password")
 	require.NoError(t, err)
@@ -206,7 +207,7 @@ func TestAuthHandler_Login_Success(t *testing.T) {
 
 func TestAuthHandler_Login_InvalidCredentials_WrongPassword(t *testing.T) {
 	app, reg, handler := setupAuthHandler(t)
-	app.Post("/login", handler.Login)
+	app.Post("/login", fiberutil.Validate(handler.Login))
 
 	hashedPassword, err := security.HashPassword("correct-password")
 	require.NoError(t, err)
@@ -230,7 +231,7 @@ func TestAuthHandler_Login_InvalidCredentials_WrongPassword(t *testing.T) {
 
 func TestAuthHandler_Login_UserNotFound(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
-	app.Post("/login", handler.Login)
+	app.Post("/login", fiberutil.Validate(handler.Login))
 
 	body := map[string]string{
 		"email":    "nonexistent@example.com",
@@ -248,7 +249,7 @@ func TestAuthHandler_Login_UserNotFound(t *testing.T) {
 
 func TestAuthHandler_Login_ValidationError_MissingEmail(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
-	app.Post("/login", handler.Login)
+	app.Post("/login", fiberutil.Validate(handler.Login))
 
 	body := map[string]string{
 		"password": "some-password",
@@ -268,7 +269,7 @@ func TestAuthHandler_Login_ValidationError_MissingEmail(t *testing.T) {
 
 func TestAuthHandler_Login_ValidationError_MissingPassword(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
-	app.Post("/login", handler.Login)
+	app.Post("/login", fiberutil.Validate(handler.Login))
 
 	body := map[string]string{
 		"email": "test@example.com",
@@ -288,7 +289,7 @@ func TestAuthHandler_Login_ValidationError_MissingPassword(t *testing.T) {
 
 func TestAuthHandler_Login_CreatesSession(t *testing.T) {
 	app, reg, handler := setupAuthHandler(t)
-	app.Post("/login", handler.Login)
+	app.Post("/login", fiberutil.Validate(handler.Login))
 
 	hashedPassword, err := security.HashPassword("correct-password")
 	require.NoError(t, err)
@@ -365,7 +366,7 @@ func TestAuthHandler_Logout_NoSessionID(t *testing.T) {
 
 func TestAuthHandler_RefreshToken_Success(t *testing.T) {
 	app, reg, handler := setupAuthHandler(t)
-	app.Post("/refresh", handler.RefreshToken)
+	app.Post("/refresh", fiberutil.Validate(handler.RefreshToken))
 
 	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
 	reg.user.users["user_001"] = user
@@ -399,7 +400,7 @@ func TestAuthHandler_RefreshToken_Success(t *testing.T) {
 
 func TestAuthHandler_RefreshToken_InvalidToken(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
-	app.Post("/refresh", handler.RefreshToken)
+	app.Post("/refresh", fiberutil.Validate(handler.RefreshToken))
 
 	body := map[string]string{
 		"refresh_token": "invalid-jwt-token",
@@ -416,7 +417,7 @@ func TestAuthHandler_RefreshToken_InvalidToken(t *testing.T) {
 
 func TestAuthHandler_RefreshToken_ValidationError_EmptyBody(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
-	app.Post("/refresh", handler.RefreshToken)
+	app.Post("/refresh", fiberutil.Validate(handler.RefreshToken))
 
 	body := map[string]string{}
 
@@ -434,7 +435,7 @@ func TestAuthHandler_RefreshToken_ValidationError_EmptyBody(t *testing.T) {
 
 func TestAuthHandler_RefreshToken_ExpiredToken(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
-	app.Post("/refresh", handler.RefreshToken)
+	app.Post("/refresh", fiberutil.Validate(handler.RefreshToken))
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":        "user_001",
@@ -460,7 +461,7 @@ func TestAuthHandler_RefreshToken_ExpiredToken(t *testing.T) {
 
 func TestAuthHandler_RefreshToken_WrongTokenType(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
-	app.Post("/refresh", handler.RefreshToken)
+	app.Post("/refresh", fiberutil.Validate(handler.RefreshToken))
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":        "user_001",
@@ -486,7 +487,7 @@ func TestAuthHandler_RefreshToken_WrongTokenType(t *testing.T) {
 
 func TestAuthHandler_RefreshToken_WrongSecret(t *testing.T) {
 	app, _, handler := setupAuthHandler(t)
-	app.Post("/refresh", handler.RefreshToken)
+	app.Post("/refresh", fiberutil.Validate(handler.RefreshToken))
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 		"sub":        "user_001",
@@ -511,7 +512,7 @@ func TestAuthHandler_RefreshToken_WrongSecret(t *testing.T) {
 
 func TestAuthHandler_RefreshToken_RevokedSession(t *testing.T) {
 	app, reg, handler := setupAuthHandler(t)
-	app.Post("/refresh", handler.RefreshToken)
+	app.Post("/refresh", fiberutil.Validate(handler.RefreshToken))
 
 	user := newTestUser("user_001", "Test User", "test@example.com", "hashed")
 	reg.user.users["user_001"] = user
@@ -535,7 +536,7 @@ func TestAuthHandler_RefreshToken_RevokedSession(t *testing.T) {
 
 func TestAuthHandler_RefreshToken_UserNotFound(t *testing.T) {
 	app, reg, handler := setupAuthHandler(t)
-	app.Post("/refresh", handler.RefreshToken)
+	app.Post("/refresh", fiberutil.Validate(handler.RefreshToken))
 
 	// Do NOT add the user to the mock -- user has been deleted
 

@@ -160,7 +160,7 @@ func GetScheduledTasks() []queue.ScheduledTask {
 		),
 
 		// ┌─────────────────────────────────────────────────────────────────┐
-		// │                     Notifications                               │
+		// │                     Notifications                                │
 		// └─────────────────────────────────────────────────────────────────┘
 
 		// Example: Send daily digest - weekdays at 9 AM

@@ -48,12 +48,8 @@ func (h *NotificationChannelHandler) Test(c *fiber.Ctx) error {
 // UpdatePreferences updates notification preferences for the current
 // team. PUT to a team-singleton resource — no :id, body required — so
 // it does not fit the generic Update helper.
-func (h *NotificationChannelHandler) UpdatePreferences(c *fiber.Ctx) error {
+func (h *NotificationChannelHandler) UpdatePreferences(c *fiber.Ctx, req *dto.UpdateNotificationPreferencesRequest) error {
 	teamID, err := fiberutil.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-	req, err := fiberutil.MustParseAndValidate[dto.UpdateNotificationPreferencesRequest](c)
 	if err != nil {
 		return err
 	}

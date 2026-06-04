@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/billing/handlers"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // RegisterRoutes registers the module routes (implements app.RouteRegistrar)
@@ -24,9 +25,9 @@ func (m *Module) registerBillingRoutes(router fiber.Router, authMiddleware fiber
 	{
 		billing.Get("/", handler.Index)
 		billing.Get("/plans", handler.GetPlans)
-		billing.Post("/generate-checkout-url", handler.GenerateCheckoutURL)
-		billing.Post("/cancel-subscription", handler.CancelSubscription)
-		billing.Post("/resume-subscription", handler.ResumeSubscription)
+		billing.Post("/generate-checkout-url", middleware.Can("billing.update"), fiberutil.Validate(handler.GenerateCheckoutURL))
+		billing.Post("/cancel-subscription", middleware.Can("billing.update"), fiberutil.Validate(handler.CancelSubscription))
+		billing.Post("/resume-subscription", middleware.Can("billing.update"), fiberutil.Validate(handler.ResumeSubscription))
 
 		billing.Get("/subscriptions", handler.GetSubscriptions)
 		billing.Get("/subscriptions/:id", handler.GetSubscription)

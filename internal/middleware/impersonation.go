@@ -40,8 +40,7 @@ func BlockImpersonationWrites() fiber.Handler {
 }
 
 func isImpersonationWriteBlocked(c *fiber.Ctx) bool {
-	ro, _ := c.Locals("impersonationReadOnly").(bool)
-	if !ro {
+	if !fiberctx.IsImpersonationReadOnly(c) {
 		return false
 	}
 

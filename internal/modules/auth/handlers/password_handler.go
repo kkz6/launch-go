@@ -19,12 +19,7 @@ func NewPasswordHandler(service *services.Service) *PasswordHandler {
 }
 
 // ForgotPassword initiates password reset
-func (h *PasswordHandler) ForgotPassword(c *fiber.Ctx) error {
-	req, err := fiberctx.MustParseAndValidate[dto.ForgotPasswordRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *PasswordHandler) ForgotPassword(c *fiber.Ctx, req *dto.ForgotPasswordRequest) error {
 	// Always return success to prevent email enumeration
 	_ = h.Service().PasswordReset.SendPasswordResetLink(c.Context(), req.Email)
 
@@ -32,12 +27,7 @@ func (h *PasswordHandler) ForgotPassword(c *fiber.Ctx) error {
 }
 
 // ResetPassword resets the user's password
-func (h *PasswordHandler) ResetPassword(c *fiber.Ctx) error {
-	req, err := fiberctx.MustParseAndValidate[dto.ResetPasswordRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *PasswordHandler) ResetPassword(c *fiber.Ctx, req *dto.ResetPasswordRequest) error {
 	if err := h.Service().PasswordReset.ResetPassword(c.Context(), req); err != nil {
 		return fiberctx.HandleError(c, err)
 	}

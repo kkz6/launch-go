@@ -15,6 +15,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/modules/auth/handlers"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 	"github.com/kkz6/launch-go/internal/pkg/security"
 )
 
@@ -99,7 +100,7 @@ func TestUserHandler_User_NoUserID(t *testing.T) {
 
 func TestUserHandler_UpdateProfile_Success(t *testing.T) {
 	app, reg, handler := setupUserHandlerWithAuth(t, "user_001")
-	app.Put("/user/profile", handler.UpdateProfile)
+	app.Put("/user/profile", fiberutil.Validate(handler.UpdateProfile))
 
 	user := newTestUser("user_001", "John Doe", "john@example.com", "hashed")
 	reg.user.users["user_001"] = user
@@ -124,7 +125,7 @@ func TestUserHandler_UpdateProfile_Success(t *testing.T) {
 
 func TestUserHandler_UpdateProfile_ValidationError_MissingName(t *testing.T) {
 	app, reg, handler := setupUserHandlerWithAuth(t, "user_001")
-	app.Put("/user/profile", handler.UpdateProfile)
+	app.Put("/user/profile", fiberutil.Validate(handler.UpdateProfile))
 
 	user := newTestUser("user_001", "John Doe", "john@example.com", "hashed")
 	reg.user.users["user_001"] = user
@@ -143,7 +144,7 @@ func TestUserHandler_UpdateProfile_ValidationError_MissingName(t *testing.T) {
 
 func TestUserHandler_UpdateProfile_EmailConflict(t *testing.T) {
 	app, reg, handler := setupUserHandlerWithAuth(t, "user_001")
-	app.Put("/user/profile", handler.UpdateProfile)
+	app.Put("/user/profile", fiberutil.Validate(handler.UpdateProfile))
 
 	user := newTestUser("user_001", "John Doe", "john@example.com", "hashed")
 	reg.user.users["user_001"] = user
@@ -170,7 +171,7 @@ func TestUserHandler_UpdateProfile_EmailConflict(t *testing.T) {
 
 func TestUserHandler_ChangePassword_Success(t *testing.T) {
 	app, reg, handler := setupUserHandlerWithAuth(t, "user_001")
-	app.Put("/user/password", handler.ChangePassword)
+	app.Put("/user/password", fiberutil.Validate(handler.ChangePassword))
 
 	hashedPwd, err := security.HashPassword("password123")
 	require.NoError(t, err)
@@ -199,7 +200,7 @@ func TestUserHandler_ChangePassword_Success(t *testing.T) {
 
 func TestUserHandler_ChangePassword_WrongCurrentPassword(t *testing.T) {
 	app, reg, handler := setupUserHandlerWithAuth(t, "user_001")
-	app.Put("/user/password", handler.ChangePassword)
+	app.Put("/user/password", fiberutil.Validate(handler.ChangePassword))
 
 	hashedPwd, err := security.HashPassword("password123")
 	require.NoError(t, err)
@@ -223,7 +224,7 @@ func TestUserHandler_ChangePassword_WrongCurrentPassword(t *testing.T) {
 
 func TestUserHandler_ChangePassword_ValidationError_PasswordTooShort(t *testing.T) {
 	app, reg, handler := setupUserHandlerWithAuth(t, "user_001")
-	app.Put("/user/password", handler.ChangePassword)
+	app.Put("/user/password", fiberutil.Validate(handler.ChangePassword))
 
 	hashedPwd, err := security.HashPassword("password123")
 	require.NoError(t, err)
@@ -251,7 +252,7 @@ func TestUserHandler_ChangePassword_ValidationError_PasswordTooShort(t *testing.
 
 func TestUserHandler_DeleteAccount_ValidationError_MissingPassword(t *testing.T) {
 	app, reg, handler := setupUserHandlerWithAuth(t, "user_001")
-	app.Delete("/user/account", handler.DeleteAccount)
+	app.Delete("/user/account", fiberutil.Validate(handler.DeleteAccount))
 
 	hashedPwd, err := security.HashPassword("password123")
 	require.NoError(t, err)
@@ -275,7 +276,7 @@ func TestUserHandler_DeleteAccount_ValidationError_MissingPassword(t *testing.T)
 
 func TestUserHandler_CheckUserStatus_ExistingUser(t *testing.T) {
 	app, reg, handler := setupUserHandler(t)
-	app.Post("/user/status", handler.CheckUserStatus)
+	app.Post("/user/status", fiberutil.Validate(handler.CheckUserStatus))
 
 	now := time.Now()
 	user := newTestUser("user_001", "John Doe", "john@example.com", "hashed")
@@ -305,7 +306,7 @@ func TestUserHandler_CheckUserStatus_ExistingUser(t *testing.T) {
 
 func TestUserHandler_CheckUserStatus_NonExistentUser(t *testing.T) {
 	app, _, handler := setupUserHandler(t)
-	app.Post("/user/status", handler.CheckUserStatus)
+	app.Post("/user/status", fiberutil.Validate(handler.CheckUserStatus))
 
 	body := map[string]string{
 		"email": "nobody@example.com",

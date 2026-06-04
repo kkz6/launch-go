@@ -59,13 +59,8 @@ func (h *ScriptHandler) Show(c *fiber.Ctx) error {
 }
 
 // Create creates a new script
-func (h *ScriptHandler) Create(c *fiber.Ctx) error {
+func (h *ScriptHandler) Create(c *fiber.Ctx, req *dto.CreateScriptRequest) error {
 	userID, err := fiberutil.MustGetUserID(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberutil.MustParseAndValidate[dto.CreateScriptRequest](c)
 	if err != nil {
 		return err
 	}
@@ -79,17 +74,12 @@ func (h *ScriptHandler) Create(c *fiber.Ctx) error {
 }
 
 // Update updates a script
-func (h *ScriptHandler) Update(c *fiber.Ctx) error {
+func (h *ScriptHandler) Update(c *fiber.Ctx, req *dto.UpdateScriptRequest) error {
 	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
 	scriptID := c.Params("id")
-
-	req, err := fiberutil.MustParseAndValidate[dto.UpdateScriptRequest](c)
-	if err != nil {
-		return err
-	}
 
 	script, err := h.service.Update(c.Context(), scriptID, userID, teamID, req)
 	if err != nil {
@@ -123,17 +113,12 @@ func (h *ScriptHandler) Delete(c *fiber.Ctx) error {
 }
 
 // Execute executes a script on servers
-func (h *ScriptHandler) Execute(c *fiber.Ctx) error {
+func (h *ScriptHandler) Execute(c *fiber.Ctx, req *dto.ExecuteScriptRequest) error {
 	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
 	scriptID := c.Params("id")
-
-	req, err := fiberutil.MustParseAndValidate[dto.ExecuteScriptRequest](c)
-	if err != nil {
-		return err
-	}
 
 	result, err := h.service.Execute(c.Context(), scriptID, userID, teamID, req)
 	if err != nil {

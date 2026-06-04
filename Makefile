@@ -2,23 +2,19 @@
 
 # Build variables
 BINARY_API=bin/api
-BINARY_WORKER=bin/worker
-BINARY_MIGRATE=bin/migrate
-BINARY_SHELLCHECK=bin/shellcheck
+BINARY_CONSOLE=bin/console
 GO_FILES=$(shell find . -name '*.go' -type f -not -path "./vendor/*")
 GOBIN=$(shell go env GOPATH)/bin
 
 # Default target
 all: build
 
-## build: Build the API, worker, and migrate binaries
+## build: Build the API and console binaries
 build:
 	@echo "Building API..."
 	@go build -o $(BINARY_API) ./cmd/api
-	@echo "Building Worker..."
-	@go build -o $(BINARY_WORKER) ./cmd/worker
-	@echo "Building Migrate..."
-	@go build -o $(BINARY_MIGRATE) ./cmd/migrate
+	@echo "Building Console (worker + migrations + ops commands)..."
+	@go build -o $(BINARY_CONSOLE) ./cmd/console
 	@echo "Build complete!"
 
 ## run: Run the API server
@@ -27,7 +23,7 @@ run:
 
 ## worker: Run the queue worker
 worker:
-	@go run ./cmd/worker
+	@go run ./cmd/console queue:work
 
 ## dev: Run API with hot reload (requires air)
 dev:
@@ -45,7 +41,7 @@ client-dev:
 dev-all:
 	@trap 'kill 0' EXIT; \
 	$(shell go env GOPATH)/bin/air -c .air.toml & \
-	go run ./cmd/worker & \
+	go run ./cmd/console queue:work & \
 	cd client && npm run dev & \
 	wait
 
@@ -146,26 +142,19 @@ deps:
 
 ## migrate: Run all pending migrations
 migrate:
-	@go run ./cmd/migrate migrate
+	@go run ./cmd/console migrate:run
 
 ## migrate-rollback: Rollback the last batch of migrations
 migrate-rollback:
-	@go run ./cmd/migrate rollback
+	@go run ./cmd/console migrate:rollback
 
 ## migrate-fresh: Drop all tables and re-run all migrations
 migrate-fresh:
-	@go run ./cmd/migrate fresh
+	@go run ./cmd/console migrate:fresh
 
 ## migrate-status: Show the status of all migrations
 migrate-status:
-	@go run ./cmd/migrate status
-
-## migrate-encryption: Migrate Laravel-encrypted data to new format (one-time)
-migrate-encryption:
-	@echo "⚠️  This will decrypt Laravel-encrypted data and store as plaintext."
-	@echo "    Make sure your APP_KEY is set correctly in .env"
-	@echo ""
-	@go run ./cmd/migrate-encryption
+	@go run ./cmd/console migrate:status
 
 ## docker-build: Build docker image
 docker-build:
@@ -185,7 +174,7 @@ docker-logs:
 
 ## shellcheck-render: Render shell scripts for ShellCheck validation
 shellcheck-render:
-	@go run ./cmd/shellcheck -output storage/shellcheck
+	@go run ./cmd/console scripts:render --output storage/shellcheck
 	@echo "Scripts rendered to storage/shellcheck/"
 
 ## shellcheck: Run ShellCheck on rendered scripts

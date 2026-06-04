@@ -44,6 +44,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	)
 	projects.Post(
 		"/",
+		middleware.Can("docker.project.create"),
 		fiberutil.CreateNested[dto.CreateProjectRequest]("serverId", "Project created", projectSvc.CreateProject),
 	)
 	projects.Get(
@@ -52,10 +53,12 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	)
 	projects.Patch(
 		"/:id",
+		middleware.Can("docker.project.update"),
 		fiberutil.UpdateNested[dto.UpdateProjectRequest]("serverId", "id", "Project updated", projectSvc.UpdateProject),
 	)
 	projects.Delete(
 		"/:id",
+		middleware.Can("docker.project.delete"),
 		fiberutil.DeleteNested("serverId", "id", projectSvc.DeleteProject),
 	)
 
@@ -82,7 +85,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Project env vars retrieved", rows)
 	})
 
-	projects.Post("/:id/env-vars", func(c *gofiber.Ctx) error {
+	projects.Post("/:id/env-vars", middleware.Can("docker.project.env_var.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -105,7 +108,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Project env var added", out)
 	})
 
-	projects.Patch("/:id/env-vars/:envVarId", func(c *gofiber.Ctx) error {
+	projects.Patch("/:id/env-vars/:envVarId", middleware.Can("docker.project.env_var.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -129,7 +132,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Project env var updated", out)
 	})
 
-	projects.Delete("/:id/env-vars/:envVarId", func(c *gofiber.Ctx) error {
+	projects.Delete("/:id/env-vars/:envVarId", middleware.Can("docker.project.env_var.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -157,6 +160,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	)
 	apps.Post(
 		"/",
+		middleware.Can("docker.application.create"),
 		fiberutil.CreateDoubleNested[dto.CreateApplicationRequest]("serverId", "projectId", "Application created", applicationSvc.CreateApplication),
 	)
 	apps.Get(
@@ -165,13 +169,14 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	)
 	apps.Patch(
 		"/:id",
+		middleware.Can("docker.application.update"),
 		fiberutil.UpdateDoubleNested[dto.UpdateApplicationRequest]("serverId", "projectId", "id", "Application updated", applicationSvc.UpdateApplication),
 	)
 	// Application delete reads `?remove_volumes=true` from the query
 	// string. Default false — preserves named volumes the app declared
 	// so a fat-fingered Delete doesn't lose persistent data. See the
 	// matching closure on the compose DELETE for the same shape.
-	apps.Delete("/:id", func(c *gofiber.Ctx) error {
+	apps.Delete("/:id", middleware.Can("docker.application.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -215,7 +220,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Deployments retrieved", out)
 	})
 
-	apps.Post("/:id/deploy", func(c *gofiber.Ctx) error {
+	apps.Post("/:id/deploy", middleware.Can("docker.application.deploy"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -241,7 +246,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	//   disable:      flip back to build_location=server + clear local
 	//                 GHA state. GitHub-side cleanup (delete secret +
 	//                 vars, orphan the workflow file) is a follow-up.
-	apps.Post("/:id/gha/rotate-token", func(c *gofiber.Ctx) error {
+	apps.Post("/:id/gha/rotate-token", middleware.Can("docker.application.gha.rotate_token"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -254,7 +259,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Token rotation queued", resp)
 	})
-	apps.Post("/:id/gha/resync", func(c *gofiber.Ctx) error {
+	apps.Post("/:id/gha/resync", middleware.Can("docker.application.gha.resync"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -266,7 +271,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Workflow re-sync queued", nil)
 	})
-	apps.Post("/:id/gha/disable", func(c *gofiber.Ctx) error {
+	apps.Post("/:id/gha/disable", middleware.Can("docker.application.gha.disable"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -278,7 +283,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "GitHub Actions builds disabled", nil)
 	})
-	apps.Post("/:id/gha/auto-deploy", func(c *gofiber.Ctx) error {
+	apps.Post("/:id/gha/auto-deploy", middleware.Can("docker.application.gha.auto_deploy"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -319,7 +324,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		if verb == "reload" {
 			action = "restart"
 		}
-		apps.Post("/:id/"+verb, func(c *gofiber.Ctx) error {
+		apps.Post("/:id/"+verb, middleware.Can("docker.application.restart"), func(c *gofiber.Ctx) error {
 			teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 			if err != nil {
 				return err
@@ -358,7 +363,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Domains retrieved", rows)
 	})
 
-	apps.Post("/:id/domains", func(c *gofiber.Ctx) error {
+	apps.Post("/:id/domains", middleware.Can("docker.application.domain.add"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -382,7 +387,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Domain added", out)
 	})
 
-	apps.Patch("/:id/domains/:domainId", func(c *gofiber.Ctx) error {
+	apps.Patch("/:id/domains/:domainId", middleware.Can("docker.application.domain.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -407,7 +412,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Domain updated", out)
 	})
 
-	apps.Delete("/:id/domains/:domainId", func(c *gofiber.Ctx) error {
+	apps.Delete("/:id/domains/:domainId", middleware.Can("docker.application.domain.remove"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -471,7 +476,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Redirects retrieved", rows)
 	})
 
-	apps.Post("/:id/redirects", func(c *gofiber.Ctx) error {
+	apps.Post("/:id/redirects", middleware.Can("docker.application.redirect.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -495,7 +500,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Redirect added", out)
 	})
 
-	apps.Patch("/:id/redirects/:redirectId", func(c *gofiber.Ctx) error {
+	apps.Patch("/:id/redirects/:redirectId", middleware.Can("docker.application.redirect.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -520,7 +525,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Redirect updated", out)
 	})
 
-	apps.Delete("/:id/redirects/:redirectId", func(c *gofiber.Ctx) error {
+	apps.Delete("/:id/redirects/:redirectId", middleware.Can("docker.application.redirect.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -558,7 +563,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Env vars retrieved", rows)
 	})
 
-	apps.Post("/:id/env-vars", func(c *gofiber.Ctx) error {
+	apps.Post("/:id/env-vars", middleware.Can("docker.application.env_var.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -582,7 +587,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Env var added", out)
 	})
 
-	apps.Put("/:id/env-vars", func(c *gofiber.Ctx) error {
+	apps.Put("/:id/env-vars", middleware.Can("docker.application.env_var.set"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -606,7 +611,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Env vars saved", out)
 	})
 
-	apps.Patch("/:id/env-vars/:envVarId", func(c *gofiber.Ctx) error {
+	apps.Patch("/:id/env-vars/:envVarId", middleware.Can("docker.application.env_var.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -631,7 +636,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Env var updated", out)
 	})
 
-	apps.Delete("/:id/env-vars/:envVarId", func(c *gofiber.Ctx) error {
+	apps.Delete("/:id/env-vars/:envVarId", middleware.Can("docker.application.env_var.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -674,7 +679,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Build secrets retrieved", rows)
 	})
 
-	apps.Post("/:id/build-secrets", func(c *gofiber.Ctx) error {
+	apps.Post("/:id/build-secrets", middleware.Can("docker.application.build_secret.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -698,7 +703,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Build secret added", out)
 	})
 
-	apps.Patch("/:id/build-secrets/:buildSecretId", func(c *gofiber.Ctx) error {
+	apps.Patch("/:id/build-secrets/:buildSecretId", middleware.Can("docker.application.build_secret.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -723,7 +728,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Build secret updated", out)
 	})
 
-	apps.Delete("/:id/build-secrets/:buildSecretId", func(c *gofiber.Ctx) error {
+	apps.Delete("/:id/build-secrets/:buildSecretId", middleware.Can("docker.application.build_secret.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -761,7 +766,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Volumes retrieved", rows)
 	})
 
-	apps.Post("/:id/volumes", func(c *gofiber.Ctx) error {
+	apps.Post("/:id/volumes", middleware.Can("docker.application.volume.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -785,7 +790,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Volume added", out)
 	})
 
-	apps.Patch("/:id/volumes/:volumeId", func(c *gofiber.Ctx) error {
+	apps.Patch("/:id/volumes/:volumeId", middleware.Can("docker.application.volume.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -810,7 +815,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Volume updated", out)
 	})
 
-	apps.Delete("/:id/volumes/:volumeId", func(c *gofiber.Ctx) error {
+	apps.Delete("/:id/volumes/:volumeId", middleware.Can("docker.application.volume.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -847,7 +852,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Schedules retrieved", rows)
 	})
-	apps.Post("/:id/schedules", func(c *gofiber.Ctx) error {
+	apps.Post("/:id/schedules", middleware.Can("docker.application.schedule.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -870,7 +875,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.Created(c, "Schedule added", out)
 	})
-	apps.Patch("/:id/schedules/:scheduleId", func(c *gofiber.Ctx) error {
+	apps.Patch("/:id/schedules/:scheduleId", middleware.Can("docker.application.schedule.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -894,7 +899,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Schedule updated", out)
 	})
-	apps.Delete("/:id/schedules/:scheduleId", func(c *gofiber.Ctx) error {
+	apps.Delete("/:id/schedules/:scheduleId", middleware.Can("docker.application.schedule.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -940,7 +945,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Traefik config retrieved", out)
 	})
-	apps.Patch("/:id/traefik-config", func(c *gofiber.Ctx) error {
+	apps.Patch("/:id/traefik-config", middleware.Can("docker.application.traefik_config.update"), func(c *gofiber.Ctx) error {
 		teamID, err := fiberutil.MustGetTeamID(c)
 		if err != nil {
 			return err
@@ -969,7 +974,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 
 	// Advanced runtime settings — merged into build_config and applied on
 	// the next deploy.
-	apps.Patch("/:id/advanced", func(c *gofiber.Ctx) error {
+	apps.Patch("/:id/advanced", middleware.Can("docker.application.advanced.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1003,6 +1008,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	)
 	composes.Post(
 		"/",
+		middleware.Can("docker.compose.create"),
 		fiberutil.CreateDoubleNested[dto.CreateComposeRequest]("serverId", "projectId", "Compose stack created", composeSvc.CreateCompose),
 	)
 	composes.Get(
@@ -1011,6 +1017,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	)
 	composes.Patch(
 		"/:id",
+		middleware.Can("docker.compose.update"),
 		fiberutil.UpdateDoubleNested[dto.UpdateComposeRequest]("serverId", "projectId", "id", "Compose stack updated", composeSvc.UpdateCompose),
 	)
 	// Compose delete reads `?remove_volumes=true` from the query
@@ -1019,7 +1026,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// (preserves data); the UI surfaces a checkbox on the Delete
 	// confirmation dialog. We can't use fiberutil.DeleteDoubleNested
 	// because that helper doesn't pass the query through.
-	composes.Delete("/:id", func(c *gofiber.Ctx) error {
+	composes.Delete("/:id", middleware.Can("docker.compose.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1105,7 +1112,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Deployments retrieved", out)
 	})
 
-	composes.Post("/:id/deploy", func(c *gofiber.Ctx) error {
+	composes.Post("/:id/deploy", middleware.Can("docker.compose.deploy"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1127,7 +1134,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// Reload: recreate the stack with the current .env and no rebuild
 	// (reuse on-host images) so saved env changes apply fast. Build-time
 	// changes still go through /deploy.
-	composes.Post("/:id/reload", func(c *gofiber.Ctx) error {
+	composes.Post("/:id/reload", middleware.Can("docker.compose.reload"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1151,7 +1158,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// GitHub Actions detail-page actions for composes — mirror of the
 	// application trio above. Same semantics, just routed at the
 	// compose's URL.
-	composes.Post("/:id/gha/rotate-token", func(c *gofiber.Ctx) error {
+	composes.Post("/:id/gha/rotate-token", middleware.Can("docker.compose.gha.rotate_token"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1164,7 +1171,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Token rotation queued", resp)
 	})
-	composes.Post("/:id/gha/resync", func(c *gofiber.Ctx) error {
+	composes.Post("/:id/gha/resync", middleware.Can("docker.compose.gha.resync"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1176,7 +1183,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Workflow re-sync queued", nil)
 	})
-	composes.Post("/:id/gha/disable", func(c *gofiber.Ctx) error {
+	composes.Post("/:id/gha/disable", middleware.Can("docker.compose.gha.disable"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1188,7 +1195,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "GitHub Actions builds disabled", nil)
 	})
-	composes.Post("/:id/gha/auto-deploy", func(c *gofiber.Ctx) error {
+	composes.Post("/:id/gha/auto-deploy", middleware.Can("docker.compose.gha.auto_deploy"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1233,7 +1240,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Build secrets retrieved", rows)
 	})
 
-	composes.Post("/:id/build-secrets", func(c *gofiber.Ctx) error {
+	composes.Post("/:id/build-secrets", middleware.Can("docker.compose.build_secret.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1257,7 +1264,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Build secret added", out)
 	})
 
-	composes.Patch("/:id/build-secrets/:buildSecretId", func(c *gofiber.Ctx) error {
+	composes.Patch("/:id/build-secrets/:buildSecretId", middleware.Can("docker.compose.build_secret.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1282,7 +1289,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Build secret updated", out)
 	})
 
-	composes.Delete("/:id/build-secrets/:buildSecretId", func(c *gofiber.Ctx) error {
+	composes.Delete("/:id/build-secrets/:buildSecretId", middleware.Can("docker.compose.build_secret.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1327,7 +1334,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Volumes retrieved", rows)
 	})
 
-	composes.Post("/:id/volumes", func(c *gofiber.Ctx) error {
+	composes.Post("/:id/volumes", middleware.Can("docker.compose.volume.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1351,7 +1358,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Volume added", out)
 	})
 
-	composes.Patch("/:id/volumes/:volumeId", func(c *gofiber.Ctx) error {
+	composes.Patch("/:id/volumes/:volumeId", middleware.Can("docker.compose.volume.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1376,7 +1383,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Volume updated", out)
 	})
 
-	composes.Delete("/:id/volumes/:volumeId", func(c *gofiber.Ctx) error {
+	composes.Delete("/:id/volumes/:volumeId", middleware.Can("docker.compose.volume.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1417,7 +1424,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Domains retrieved", rows)
 	})
 
-	composes.Post("/:id/domains", func(c *gofiber.Ctx) error {
+	composes.Post("/:id/domains", middleware.Can("docker.compose.domain.add"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1441,7 +1448,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Domain added", out)
 	})
 
-	composes.Patch("/:id/domains/:domainId", func(c *gofiber.Ctx) error {
+	composes.Patch("/:id/domains/:domainId", middleware.Can("docker.compose.domain.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1466,7 +1473,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Domain updated", out)
 	})
 
-	composes.Delete("/:id/domains/:domainId", func(c *gofiber.Ctx) error {
+	composes.Delete("/:id/domains/:domainId", middleware.Can("docker.compose.domain.remove"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1526,7 +1533,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Traefik config retrieved", out)
 	})
-	composes.Patch("/:id/traefik-config", func(c *gofiber.Ctx) error {
+	composes.Patch("/:id/traefik-config", middleware.Can("docker.compose.traefik_config.update"), func(c *gofiber.Ctx) error {
 		teamID, err := fiberutil.MustGetTeamID(c)
 		if err != nil {
 			return err
@@ -1559,10 +1566,12 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	)
 	databases.Post(
 		"/",
+		middleware.Can("docker.database.create"),
 		fiberutil.CreateDoubleNested[dto.CreateDatabaseRequest]("serverId", "projectId", "Database creation queued", databaseSvc.CreateDatabase),
 	)
 	databases.Delete(
 		"/:id",
+		middleware.Can("docker.database.delete"),
 		// Database delete reads `?remove_volumes=true` and threads it
 		// into the rm lifecycle action. False (default) keeps the named
 		// data volume; true wipes it so the database starts fresh on
@@ -1631,7 +1640,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Deployments retrieved", out)
 	})
 
-	databases.Post("/:id/lifecycle", func(c *gofiber.Ctx) error {
+	databases.Post("/:id/lifecycle", middleware.Can("docker.database.lifecycle"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1659,7 +1668,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// (defaulting to the engine's standard) puts a -p mapping on the
 	// container; Enabled=false clears it. RunDatabaseJob's idempotent
 	// script recreates the container with the new state.
-	databases.Post("/:id/expose", func(c *gofiber.Ctx) error {
+	databases.Post("/:id/expose", middleware.Can("docker.database.expose"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1687,7 +1696,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// the named data volume, then starts it again so the engine
 	// reinitialises from scratch with the same image + credentials. No
 	// request body: the URL fully identifies the target.
-	databases.Post("/:id/rebuild", func(c *gofiber.Ctx) error {
+	databases.Post("/:id/rebuild", middleware.Can("docker.database.rebuild"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1710,7 +1719,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// (CPU / memory + reservations). Persists into build_config and
 	// dispatches a `docker update` over SSH so the change applies to
 	// the running container immediately.
-	databases.Patch("/:id/advanced", func(c *gofiber.Ctx) error {
+	databases.Patch("/:id/advanced", middleware.Can("docker.database.advanced.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1757,7 +1766,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Database env vars retrieved", rows)
 	})
 
-	databases.Post("/:id/env-vars", func(c *gofiber.Ctx) error {
+	databases.Post("/:id/env-vars", middleware.Can("docker.database.env_var.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1781,7 +1790,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.Created(c, "Database env var added", out)
 	})
 
-	databases.Patch("/:id/env-vars/:envVarId", func(c *gofiber.Ctx) error {
+	databases.Patch("/:id/env-vars/:envVarId", middleware.Can("docker.database.env_var.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1806,7 +1815,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		return fiberutil.OK(c, "Database env var updated", out)
 	})
 
-	databases.Delete("/:id/env-vars/:envVarId", func(c *gofiber.Ctx) error {
+	databases.Delete("/:id/env-vars/:envVarId", middleware.Can("docker.database.env_var.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1845,7 +1854,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Backup config retrieved", out)
 	})
-	databases.Put("/:id/backup", func(c *gofiber.Ctx) error {
+	databases.Put("/:id/backup", middleware.Can("docker.database.backup.configure"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1868,7 +1877,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Backup config saved", out)
 	})
-	databases.Delete("/:id/backup", func(c *gofiber.Ctx) error {
+	databases.Delete("/:id/backup", middleware.Can("docker.database.backup.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1902,7 +1911,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Backup runs retrieved", rows)
 	})
-	databases.Post("/:id/backup/run", func(c *gofiber.Ctx) error {
+	databases.Post("/:id/backup/run", middleware.Can("docker.database.backup.run"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1920,7 +1929,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.Created(c, "Backup run started", out)
 	})
-	databases.Post("/:id/backup/restore", func(c *gofiber.Ctx) error {
+	databases.Post("/:id/backup/restore", middleware.Can("docker.database.backup.restore"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -1989,7 +1998,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// com.docker.compose.project label value). Sits at the server level
 	// so it can't be confused with the per-compose delete endpoint.
 	hostGroup2 := router.Group("/servers/:serverId/docker", auth...)
-	hostGroup2.Post("/purge-compose-resources", func(c *gofiber.Ctx) error {
+	hostGroup2.Post("/purge-compose-resources", middleware.Can("docker.compose.purge"), func(c *gofiber.Ctx) error {
 		teamID, err := fiberutil.MustGetTeamID(c)
 		if err != nil {
 			return err
@@ -2075,7 +2084,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	// rather than the body so the route reads as a normal resource and
 	// the path-validation helper has the canonical input. The body is
 	// just the YAML contents.
-	hostGroup.Put("/traefik/files/:filename", func(c *gofiber.Ctx) error {
+	hostGroup.Put("/traefik/files/:filename", middleware.Can("docker.host.traefik.update"), func(c *gofiber.Ctx) error {
 		teamID, err := fiberutil.MustGetTeamID(c)
 		if err != nil {
 			return err
@@ -2119,7 +2128,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Registry credentials retrieved", out)
 	})
-	regCreds.Post("/", func(c *gofiber.Ctx) error {
+	regCreds.Post("/", middleware.Can("docker.registry_credential.create"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -2134,7 +2143,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.Created(c, "Registry credential created", out)
 	})
-	regCreds.Patch("/:id", func(c *gofiber.Ctx) error {
+	regCreds.Patch("/:id", middleware.Can("docker.registry_credential.update"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err
@@ -2149,7 +2158,7 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "Registry credential updated", out)
 	})
-	regCreds.Delete("/:id", func(c *gofiber.Ctx) error {
+	regCreds.Delete("/:id", middleware.Can("docker.registry_credential.delete"), func(c *gofiber.Ctx) error {
 		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
 		if err != nil {
 			return err

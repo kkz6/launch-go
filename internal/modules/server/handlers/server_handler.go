@@ -61,16 +61,12 @@ func (h *Handler) GetProvisionStatus(c *fiber.Ctx) error {
 
 // RunVulnerabilityAudit queues a security audit. POST with a body
 // carrying the email recipient — does not fit ActionFunc.
-func (h *Handler) RunVulnerabilityAudit(c *fiber.Ctx) error {
+func (h *Handler) RunVulnerabilityAudit(c *fiber.Ctx, req *dto.VulnerabilityAuditRequest) error {
 	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
 	if err != nil {
 		return err
 	}
 	id, err := fiberctx.GetID(c)
-	if err != nil {
-		return err
-	}
-	req, err := fiberctx.MustParseAndValidate[dto.VulnerabilityAuditRequest](c)
 	if err != nil {
 		return err
 	}

@@ -32,14 +32,12 @@ RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
     go build -ldflags="-w -s -X main.Version=${VERSION}" -o /api ./cmd/api
+# The console binary hosts the worker (queue:work), migrations (migrate:run),
+# and every other ops command in one Artisan-style CLI.
 RUN --mount=type=cache,target=/root/.cache/go-build \
     --mount=type=cache,target=/go/pkg/mod \
     CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
-    go build -ldflags="-w -s" -o /worker ./cmd/worker
-RUN --mount=type=cache,target=/root/.cache/go-build \
-    --mount=type=cache,target=/go/pkg/mod \
-    CGO_ENABLED=0 GOOS=${TARGETOS:-linux} GOARCH=${TARGETARCH:-amd64} \
-    go build -ldflags="-w -s" -o /migrate ./cmd/migrate
+    go build -ldflags="-w -s -X main.Version=${VERSION}" -o /console ./cmd/console
 
 # Final stage
 FROM alpine:3.21
@@ -50,8 +48,7 @@ WORKDIR /app
 
 # Copy binaries from builder
 COPY --from=builder /api .
-COPY --from=builder /worker .
-COPY --from=builder /migrate .
+COPY --from=builder /console .
 
 # Copy scripts
 COPY scripts ./scripts

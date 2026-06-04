@@ -97,14 +97,14 @@ func (m *Module) registerSiteRoutes(router gofiber.Router, handler *handlers.Sit
 	// CRUD via single-nested helpers (sites are the leaf resource under
 	// :serverId; the helper extracts :serverId as the parent).
 	router.Get("/", fiberutil.IndexNested("serverId", "Sites retrieved", site.List))
-	router.Post("/", fiberutil.CreateNested[dto.CreateSiteRequest]("serverId", "Site created", site.Create))
+	router.Post("/", middleware.Can("site.create"), fiberutil.CreateNested[dto.CreateSiteRequest]("serverId", "Site created", site.Create))
 	router.Get("/:id", handler.Show) // bespoke: enriched with queue count + source-control info
-	router.Put("/:id", fiberutil.UpdateNested[dto.UpdateSiteRequest]("serverId", "id", "Site updated", site.Update))
-	router.Delete("/:id", handler.Delete) // bespoke: returns 200 + status message (async deletion)
+	router.Put("/:id", middleware.Can("site.update"), fiberutil.UpdateNested[dto.UpdateSiteRequest]("serverId", "id", "Site updated", site.Update))
+	router.Delete("/:id", middleware.Can("site.delete"), handler.Delete) // bespoke: returns 200 + status message (async deletion)
 
 	router.Get("/:id/deletion-resources", fiberutil.ShowNested("serverId", "id", "Deletion summary retrieved", site.GetDeletionSummary))
-	router.Post("/:id/deploy-token/regenerate", handler.RegenerateDeployToken)
-	router.Patch("/:id/deployment-settings", handler.UpdateDeploymentSettings)
+	router.Post("/:id/deploy-token/regenerate", middleware.Can("site.deploy_token.regenerate"), handler.RegenerateDeployToken)
+	router.Patch("/:id/deployment-settings", middleware.Can("site.update"), fiberutil.Validate(handler.UpdateDeploymentSettings))
 	router.Get("/:id/settings", handler.GetSettings)
 }
 
@@ -114,20 +114,20 @@ func (m *Module) registerSiteRoutes(router gofiber.Router, handler *handlers.Sit
 // endpoints (CancelQueued, autodeploy body-toggle) stay bespoke.
 func (m *Module) registerDeploymentRoutes(router gofiber.Router, handler *handlers.DeploymentHandler, svc *services.ServiceRegistry) {
 	d := svc.Deployment()
-	router.Post("/:id/deploy", handler.Deploy)
+	router.Post("/:id/deploy", middleware.Can("site.deployment.create"), handler.Deploy)
 	router.Get("/:id/deployments", fiberutil.IndexDoubleNested("serverId", "id", "Deployments retrieved", d.ListResponses))
 	router.Get("/:id/deployments/:deploymentId", fiberutil.ShowDoubleNested("serverId", "id", "deploymentId", "Deployment retrieved", d.ShowResponse))
-	router.Post("/:id/rollback/:deploymentId", handler.Rollback)
-	router.Delete("/:id/deployments/queued", handler.CancelQueuedDeployments)
+	router.Post("/:id/rollback/:deploymentId", middleware.Can("site.deployment.rollback"), handler.Rollback)
+	router.Delete("/:id/deployments/queued", middleware.Can("site.deployment.cancel"), handler.CancelQueuedDeployments)
 
-	router.Post("/:id/autodeploy", handler.ToggleAutoDeployment)
-	router.Post("/:id/auto-deployment/enable", fiberutil.ActionDoubleNested("serverId", "id", "Auto-deployment enabled", d.EnableAutoDeploymentAction))
-	router.Post("/:id/auto-deployment/disable", fiberutil.ActionDoubleNested("serverId", "id", "Auto-deployment disabled", d.DisableAutoDeploymentAction))
+	router.Post("/:id/autodeploy", middleware.Can("site.deployment.autodeploy"), handler.ToggleAutoDeployment)
+	router.Post("/:id/auto-deployment/enable", middleware.Can("site.deployment.autodeploy"), fiberutil.ActionDoubleNested("serverId", "id", "Auto-deployment enabled", d.EnableAutoDeploymentAction))
+	router.Post("/:id/auto-deployment/disable", middleware.Can("site.deployment.autodeploy"), fiberutil.ActionDoubleNested("serverId", "id", "Auto-deployment disabled", d.DisableAutoDeploymentAction))
 }
 
 // registerSSLRoutes registers SSL/TLS routes.
 func (m *Module) registerSSLRoutes(router gofiber.Router, handler *handlers.SSLHandler) {
-	router.Put("/:id/ssl", handler.UpdateSSL)
+	router.Put("/:id/ssl", middleware.Can("site.ssl.update"), fiberutil.Validate(handler.UpdateSSL))
 }
 
 // registerSSLListRoutes wires the certificates list via the
@@ -142,45 +142,45 @@ func (m *Module) registerSSLListRoutes(router gofiber.Router, svc *services.Serv
 func (m *Module) registerQueueRoutes(router gofiber.Router, handler *handlers.QueueHandler, svc *services.ServiceRegistry) {
 	q := svc.Queue()
 	router.Get("/:id/queues", fiberutil.IndexDoubleNested("serverId", "id", "Queues retrieved", q.List))
-	router.Post("/:id/queues", fiberutil.CreateDoubleNested[dto.CreateQueueRequest]("serverId", "id", "Queue created", q.Create))
-	router.Post("/:id/queues/sync", fiberutil.ActionDoubleNested("serverId", "id", "Queue sync initiated", q.SyncStatus))
-	router.Patch("/:id/queues/:queueId", fiberutil.UpdateDoubleNested[dto.UpdateQueueRequest]("serverId", "id", "queueId", "Queue updated", q.Update))
-	router.Post("/:id/queues/:queueId/restart", fiberutil.ActionItemDoubleNested("serverId", "id", "queueId", "Queue restart initiated", q.Restart))
-	router.Delete("/:id/queues/:queueId", fiberutil.DeleteDoubleNested("serverId", "id", "queueId", q.Delete))
+	router.Post("/:id/queues", middleware.Can("site.queue.create"), fiberutil.CreateDoubleNested[dto.CreateQueueRequest]("serverId", "id", "Queue created", q.Create))
+	router.Post("/:id/queues/sync", middleware.Can("site.queue.sync"), fiberutil.ActionDoubleNested("serverId", "id", "Queue sync initiated", q.SyncStatus))
+	router.Patch("/:id/queues/:queueId", middleware.Can("site.queue.update"), fiberutil.UpdateDoubleNested[dto.UpdateQueueRequest]("serverId", "id", "queueId", "Queue updated", q.Update))
+	router.Post("/:id/queues/:queueId/restart", middleware.Can("site.queue.restart"), fiberutil.ActionItemDoubleNested("serverId", "id", "queueId", "Queue restart initiated", q.Restart))
+	router.Delete("/:id/queues/:queueId", middleware.Can("site.queue.delete"), fiberutil.DeleteDoubleNested("serverId", "id", "queueId", q.Delete))
 
-	router.Put("/:id/auto-restart-queue", handler.UpdateAutoRestartQueue)
+	router.Put("/:id/auto-restart-queue", middleware.Can("site.queue.update"), fiberutil.Validate(handler.UpdateAutoRestartQueue))
 }
 
 // registerCommandRoutes registers command routes via double-nested helpers.
 func (m *Module) registerCommandRoutes(router gofiber.Router, svc *services.ServiceRegistry) {
 	c := svc.Command()
 	router.Get("/:id/commands", fiberutil.IndexDoubleNested("serverId", "id", "Commands retrieved", c.List))
-	router.Post("/:id/commands", fiberutil.CreateDoubleNested[dto.CreateCommandRequest]("serverId", "id", "Command created", c.Create))
-	router.Delete("/:id/commands/:commandId", fiberutil.DeleteDoubleNested("serverId", "id", "commandId", c.Delete))
+	router.Post("/:id/commands", middleware.Can("site.command.create"), fiberutil.CreateDoubleNested[dto.CreateCommandRequest]("serverId", "id", "Command created", c.Create))
+	router.Delete("/:id/commands/:commandId", middleware.Can("site.command.delete"), fiberutil.DeleteDoubleNested("serverId", "id", "commandId", c.Delete))
 }
 
 // registerRedirectRoutes registers redirect routes via double-nested helpers.
 func (m *Module) registerRedirectRoutes(router gofiber.Router, svc *services.ServiceRegistry) {
 	r := svc.Redirect()
 	router.Get("/:id/redirects", fiberutil.IndexDoubleNested("serverId", "id", "Redirects retrieved", r.List))
-	router.Post("/:id/redirects", fiberutil.CreateDoubleNested[dto.CreateRedirectRequest]("serverId", "id", "Redirect created", r.Create))
+	router.Post("/:id/redirects", middleware.Can("site.redirect.create"), fiberutil.CreateDoubleNested[dto.CreateRedirectRequest]("serverId", "id", "Redirect created", r.Create))
 	// Patch matches what the launch-nuxt Edit dialog has been calling
 	// all along; without this route the PATCH came back 405.
-	router.Patch("/:id/redirects/:redirectId", fiberutil.UpdateDoubleNested[dto.UpdateRedirectRequest]("serverId", "id", "redirectId", "Redirect updated", r.Update))
-	router.Delete("/:id/redirects/:redirectId", fiberutil.DeleteDoubleNested("serverId", "id", "redirectId", r.Delete))
+	router.Patch("/:id/redirects/:redirectId", middleware.Can("site.redirect.update"), fiberutil.UpdateDoubleNested[dto.UpdateRedirectRequest]("serverId", "id", "redirectId", "Redirect updated", r.Update))
+	router.Delete("/:id/redirects/:redirectId", middleware.Can("site.redirect.delete"), fiberutil.DeleteDoubleNested("serverId", "id", "redirectId", r.Delete))
 }
 
 // registerFileRoutes registers file management routes.
 func (m *Module) registerFileRoutes(router gofiber.Router, handler *handlers.FileHandler) {
 	router.Get("/:id/files", handler.ListFiles)
 	router.Get("/:id/files/:file", handler.ShowFile)
-	router.Put("/:id/files/:file", handler.UpdateFile)
-	router.Patch("/:id/files/:file", handler.UpdateFile)
+	router.Put("/:id/files/:file", middleware.Can("site.file.update"), handler.UpdateFile)
+	router.Patch("/:id/files/:file", middleware.Can("site.file.update"), handler.UpdateFile)
 	router.Get("/:id/logs", handler.ListLogs)
 }
 
 // registerFeatureRoutes registers Laravel feature management routes.
 func (m *Module) registerFeatureRoutes(router gofiber.Router, handler *handlers.FeatureHandler) {
-	router.Post("/:id/features/:feature/enable", handler.EnableFeature)
-	router.Post("/:id/features/:feature/disable", handler.DisableFeature)
+	router.Post("/:id/features/:feature/enable", middleware.Can("site.feature.enable"), handler.EnableFeature)
+	router.Post("/:id/features/:feature/disable", middleware.Can("site.feature.disable"), handler.DisableFeature)
 }

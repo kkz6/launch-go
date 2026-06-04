@@ -15,12 +15,8 @@ func (h *Handler) GetOpcacheDefaults(c *fiber.Ctx) error {
 
 // ConfigureOpcache configures OPcache settings for a PHP version.
 // Action with body — does not fit ActionItemNested.
-func (h *Handler) ConfigureOpcache(c *fiber.Ctx) error {
+func (h *Handler) ConfigureOpcache(c *fiber.Ctx, req *dto.ConfigureOpcacheRequest) error {
 	teamID, serverID, phpID, err := fiberctx.GetTeamServerAndEntityID(c, "phpId")
-	if err != nil {
-		return err
-	}
-	req, err := fiberctx.MustParseAndValidate[dto.ConfigureOpcacheRequest](c)
 	if err != nil {
 		return err
 	}

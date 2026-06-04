@@ -1,9 +1,12 @@
 package auth
 
 import (
+	authaccess "github.com/kkz6/launch-go/internal/modules/auth/access"
+	"github.com/kkz6/launch-go/internal/modules/auth/policies"
 	"github.com/kkz6/launch-go/internal/modules/auth/repositories"
 	"github.com/kkz6/launch-go/internal/modules/auth/services"
 	"github.com/kkz6/launch-go/internal/modules/notification/channels"
+	"github.com/kkz6/launch-go/internal/pkg/access"
 	"github.com/kkz6/launch-go/internal/pkg/app"
 	"github.com/kkz6/launch-go/internal/pkg/cache"
 )
@@ -22,6 +25,7 @@ type Module struct {
 	service *services.Service
 	repos   *repositories.Registry
 	cache   cache.Cache
+	gate    *access.Gate
 }
 
 // NewModule creates a new auth Module instance
@@ -34,12 +38,25 @@ func NewModule(b *app.Builder, emailSender channels.EmailSender, redisCache cach
 		return nil, err
 	}
 
+	// Build the shared authorization gate. The auth module owns it; other
+	// modules register their policies into it at boot via authModule.Gate().
+	gate := access.New()
+	gate.Before(authaccess.ReadOnlyFreeze) // deny mutations under read-only impersonation
+	policies.Register(gate)                // auth's own team/member abilities
+
 	return &Module{
 		Base:    app.NewBase(ModuleName, b),
 		service: service,
 		repos:   repos,
 		cache:   redisCache,
+		gate:    gate,
 	}, nil
+}
+
+// Gate returns the shared authorization gate. Other modules register their
+// policies into it and the Can middleware authorizes against it.
+func (m *Module) Gate() *access.Gate {
+	return m.gate
 }
 
 // Service returns the auth service

@@ -25,8 +25,10 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 	settings.Get("/git-providers/:provider/installations", handler.GetInstallations)
 	settings.Get("/git-providers/:provider/installations/:installationId/repositories", handler.GetInstallationRepositories)
 	settings.Get("/git-providers/:provider/installations/:installationId/cached-repositories", handler.GetCachedInstallationRepositories)
-	settings.Post("/git-providers/:provider/installations/:installationId/refresh-repositories", handler.RefreshInstallationRepositories)
-	settings.Get("/git-providers/:provider/callback", handler.HandleInstallationCallback)
+	settings.Post("/git-providers/:provider/installations/:installationId/refresh-repositories", middleware.Can("git.source_control.sync"), handler.RefreshInstallationRepositories)
+	// OAuth callback: GET but finalises installation (calls SyncUserInstallation).
+	// Guarded so only editors+ may complete a provider connection flow.
+	settings.Get("/git-providers/:provider/callback", middleware.Can("git.source_control.connect"), handler.HandleInstallationCallback)
 
 	// App-based integration routes.
 	integrations := router.Group("/integrations/git-apps", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
@@ -66,7 +68,7 @@ func (m *Module) RegisterAPIRoutes(router gofiber.Router, authMiddleware gofiber
 	providers.Get("/:provider/installations/:installationId", handler.GetInstallation)
 	providers.Get("/:provider/installations/:installationId/repositories", handler.GetInstallationRepositories)
 	providers.Get("/:provider/test-connection", handler.TestConnection)
-	providers.Post("/:provider/installations/:installationId/sync", handler.RefreshInstallationRepositories)
+	providers.Post("/:provider/installations/:installationId/sync", middleware.Can("git.source_control.sync"), handler.RefreshInstallationRepositories)
 }
 
 // registerSourceControlRoutes wires standard team-scoped CRUD on a
@@ -75,6 +77,6 @@ func registerSourceControlRoutes(g gofiber.Router, svc *services.ServiceRegistry
 	g.Get("/", fiberutil.Index("Source controls retrieved", svc.SourceControl().ListSourceControls))
 	g.Get("/:id", fiberutil.Show("Source control retrieved", svc.SourceControl().GetSourceControl))
 	g.Get("/:id/repositories", fiberutil.IndexNested("id", "Repositories retrieved", svc.SourceControl().GetSourceControlRepositories))
-	g.Post("/", fiberutil.Create[dto.ConnectProviderRequest]("Provider connected successfully", svc.SourceControl().Connect))
-	g.Delete("/:id", fiberutil.Delete(svc.SourceControl().Disconnect))
+	g.Post("/", middleware.Can("git.source_control.connect"), fiberutil.Create[dto.ConnectProviderRequest]("Provider connected successfully", svc.SourceControl().Connect))
+	g.Delete("/:id", middleware.Can("git.source_control.delete"), fiberutil.Delete(svc.SourceControl().Disconnect))
 }

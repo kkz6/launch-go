@@ -4,6 +4,8 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/hibiken/asynq"
 	"github.com/rs/zerolog"
+
+	"github.com/kkz6/launch-go/internal/pkg/console"
 )
 
 // Kernel is the application kernel that manages all modules.
@@ -136,6 +138,19 @@ func (k *Kernel) BootTaskCallbacks() {
 			registrar.RegisterTaskCallbacks()
 			if k.logger != nil {
 				k.logger.Debug().Str("module", module.Name()).Msg("Task callbacks registered")
+			}
+		}
+	}
+}
+
+// BootCommands registers all console commands from all modules with the given
+// console application. Call this when setting up the console runner.
+func (k *Kernel) BootCommands(cliApp *console.Application) {
+	for _, module := range k.modules {
+		if provider, ok := module.(CommandProvider); ok {
+			cliApp.Register(provider.Commands()...)
+			if k.logger != nil {
+				k.logger.Debug().Str("module", module.Name()).Msg("Console commands registered")
 			}
 		}
 	}

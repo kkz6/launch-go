@@ -21,12 +21,7 @@ func NewAuthHandler(service *services.Service) *AuthHandler {
 }
 
 // Register handles user registration
-func (h *AuthHandler) Register(c *fiber.Ctx) error {
-	req, err := fiberctx.MustParseAndValidate[dto.RegisterRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *AuthHandler) Register(c *fiber.Ctx, req *dto.RegisterRequest) error {
 	req.IPAddress = c.IP()
 	req.UserAgent = c.Get("User-Agent")
 
@@ -40,12 +35,7 @@ func (h *AuthHandler) Register(c *fiber.Ctx) error {
 
 // Login handles user authentication.
 // If the user has 2FA enabled, returns a challenge token instead of auth tokens.
-func (h *AuthHandler) Login(c *fiber.Ctx) error {
-	req, err := fiberctx.MustParseAndValidate[dto.LoginRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *AuthHandler) Login(c *fiber.Ctx, req *dto.LoginRequest) error {
 	req.IPAddress = c.IP()
 	req.UserAgent = c.Get("User-Agent")
 
@@ -78,12 +68,7 @@ func (h *AuthHandler) Logout(c *fiber.Ctx) error {
 }
 
 // RefreshToken handles token refresh
-func (h *AuthHandler) RefreshToken(c *fiber.Ctx) error {
-	req, err := fiberctx.MustParseAndValidate[dto.RefreshTokenRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *AuthHandler) RefreshToken(c *fiber.Ctx, req *dto.RefreshTokenRequest) error {
 	result, err := h.Service().Auth.RefreshToken(c.Context(), req.RefreshToken)
 	if err != nil {
 		return fiberctx.RespondUnauthorized(c, fiberctx.MsgInvalidToken)

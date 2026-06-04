@@ -51,13 +51,8 @@ func (h *PlatformUpdateHandler) ShowUpdate(c *fiber.Ctx) error {
 }
 
 // RunUpdate dispatches the update task on a specific server
-func (h *PlatformUpdateHandler) RunUpdate(c *fiber.Ctx) error {
+func (h *PlatformUpdateHandler) RunUpdate(c *fiber.Ctx, req *dto.RunUpdateRequest) error {
 	teamID, err := fiberutil.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberutil.MustParseAndValidate[dto.RunUpdateRequest](c)
 	if err != nil {
 		return err
 	}

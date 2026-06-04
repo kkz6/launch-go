@@ -61,13 +61,8 @@ func (h *BillingHandler) GetPlans(c *fiber.Ctx) error {
 }
 
 // GenerateCheckoutURL generates a checkout URL for subscribing
-func (h *BillingHandler) GenerateCheckoutURL(c *fiber.Ctx) error {
+func (h *BillingHandler) GenerateCheckoutURL(c *fiber.Ctx, req *dto.GenerateCheckoutURLRequest) error {
 	teamID, err := fiberctx.MustGetTeamID(c)
-	if err != nil {
-		return err
-	}
-
-	req, err := fiberctx.MustParseAndValidate[dto.GenerateCheckoutURLRequest](c)
 	if err != nil {
 		return err
 	}
@@ -87,12 +82,7 @@ func (h *BillingHandler) GenerateCheckoutURL(c *fiber.Ctx) error {
 }
 
 // CancelSubscription cancels a subscription
-func (h *BillingHandler) CancelSubscription(c *fiber.Ctx) error {
-	req, err := fiberctx.MustParseAndValidate[dto.CancelSubscriptionRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *BillingHandler) CancelSubscription(c *fiber.Ctx, req *dto.CancelSubscriptionRequest) error {
 	if err := h.service.CancelSubscription(c.Context(), req.SubscriptionID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}
@@ -101,12 +91,7 @@ func (h *BillingHandler) CancelSubscription(c *fiber.Ctx) error {
 }
 
 // ResumeSubscription resumes a cancelled subscription
-func (h *BillingHandler) ResumeSubscription(c *fiber.Ctx) error {
-	req, err := fiberctx.MustParseAndValidate[dto.ResumeSubscriptionRequest](c)
-	if err != nil {
-		return err
-	}
-
+func (h *BillingHandler) ResumeSubscription(c *fiber.Ctx, req *dto.ResumeSubscriptionRequest) error {
 	if err := h.service.ResumeSubscription(c.Context(), req.SubscriptionID); err != nil {
 		return fiberctx.HandleError(c, err)
 	}

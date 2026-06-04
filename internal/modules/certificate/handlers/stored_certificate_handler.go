@@ -56,12 +56,8 @@ func (h *StoredCertificateHandler) Get(c *gofiber.Ctx) error {
 // Create saves a new stored certificate. Returns 201 on success, 409
 // with {existing:{id,name}} on fingerprint dedupe, 422 on validation
 // failure / cert parse failure / key mismatch.
-func (h *StoredCertificateHandler) Create(c *gofiber.Ctx) error {
+func (h *StoredCertificateHandler) Create(c *gofiber.Ctx, req *dto.CreateStoredCertificateRequest) error {
 	teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
-	if err != nil {
-		return err
-	}
-	req, err := fiberutil.MustParseAndValidate[dto.CreateStoredCertificateRequest](c)
 	if err != nil {
 		return err
 	}
@@ -74,12 +70,8 @@ func (h *StoredCertificateHandler) Create(c *gofiber.Ctx) error {
 }
 
 // Update modifies an existing stored certificate. Same error mapping as Create.
-func (h *StoredCertificateHandler) Update(c *gofiber.Ctx) error {
+func (h *StoredCertificateHandler) Update(c *gofiber.Ctx, req *dto.UpdateStoredCertificateRequest) error {
 	teamID, _, err := fiberutil.MustGetTeamAndUserID(c)
-	if err != nil {
-		return err
-	}
-	req, err := fiberutil.MustParseAndValidate[dto.UpdateStoredCertificateRequest](c)
 	if err != nil {
 		return err
 	}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/script/handlers"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // RegisterRoutes registers all script routes
@@ -16,13 +17,13 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	scripts := router.Group("/scripts", authMiddleware, middleware.TeamScope(), middleware.VerifySubscription())
 	{
 		scripts.Get("/", handler.List)
-		scripts.Post("/", handler.Create)
+		scripts.Post("/", middleware.Can("script.create"), fiberutil.Validate(handler.Create))
 		scripts.Get("/:id", handler.Show)
-		scripts.Put("/:id", handler.Update)
-		scripts.Delete("/:id", handler.Delete)
+		scripts.Put("/:id", middleware.Can("script.update"), fiberutil.Validate(handler.Update))
+		scripts.Delete("/:id", middleware.Can("script.delete"), handler.Delete)
 
 		// Execution
-		scripts.Post("/:id/execute", handler.Execute)
+		scripts.Post("/:id/execute", middleware.Can("script.execute"), fiberutil.Validate(handler.Execute))
 		scripts.Get("/:id/executions", handler.ListExecutions)
 	}
 

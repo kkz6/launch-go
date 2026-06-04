@@ -6,6 +6,7 @@ import (
 	"github.com/kkz6/launch-go/internal/middleware"
 	"github.com/kkz6/launch-go/internal/modules/platform/handlers"
 	"github.com/kkz6/launch-go/internal/modules/platform/services"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // RegisterRoutes registers all platform module routes
@@ -23,8 +24,8 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	{
 		updates.Get("/", handler.ListPendingUpdates)
 		updates.Get("/:id", handler.ShowUpdate)
-		updates.Post("/:id/run", handler.RunUpdate)
-		updates.Post("/:id/run-all", handler.RunUpdateAll)
-		updates.Post("/:id/dismiss", handler.DismissBanner)
+		updates.Post("/:id/run", middleware.Can("platform.update"), fiberutil.Validate(handler.RunUpdate))
+		updates.Post("/:id/run-all", middleware.Can("platform.update"), handler.RunUpdateAll)
+		updates.Post("/:id/dismiss", middleware.Can("platform.update"), handler.DismissBanner)
 	}
 }

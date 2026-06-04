@@ -4,6 +4,7 @@ import (
 	gofiber "github.com/gofiber/fiber/v2"
 
 	"github.com/kkz6/launch-go/internal/middleware"
+	fiberutil "github.com/kkz6/launch-go/internal/pkg/fiber"
 )
 
 // RegisterRoutes mounts the certificate module's HTTP routes under
@@ -14,9 +15,9 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 
 	grp := router.Group("/certificates", auth...)
 	grp.Get("/", m.handler.List)
-	grp.Post("/", m.handler.Create)
+	grp.Post("/", middleware.Can("certificate.create"), fiberutil.Validate(m.handler.Create))
 	grp.Get("/:id", m.handler.Get)
-	grp.Patch("/:id", m.handler.Update)
-	grp.Delete("/:id", m.handler.Delete)
+	grp.Patch("/:id", middleware.Can("certificate.update"), fiberutil.Validate(m.handler.Update))
+	grp.Delete("/:id", middleware.Can("certificate.delete"), m.handler.Delete)
 	grp.Get("/:id/usages", m.handler.Usages)
 }

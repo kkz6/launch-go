@@ -3,6 +3,8 @@ package app
 import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/hibiken/asynq"
+
+	"github.com/kkz6/launch-go/internal/pkg/console"
 )
 
 // Module is the interface that all application modules must implement.
@@ -71,6 +73,15 @@ type TaskCallbackRegistrar interface {
 	Module
 	// RegisterTaskCallbacks registers the module's task callback handlers
 	RegisterTaskCallbacks()
+}
+
+// CommandProvider is implemented by modules that expose console commands.
+// The kernel collects these via BootCommands and registers them with the
+// console application, mirroring how routes and jobs are gathered.
+type CommandProvider interface {
+	Module
+	// Commands returns the module's console commands.
+	Commands() []console.Command
 }
 
 // Bootable is implemented by modules that need initialization after registration

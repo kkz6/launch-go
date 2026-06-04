@@ -101,16 +101,12 @@ func (h *SiteHandler) RegenerateDeployToken(c *fiber.Ctx) error {
 // UpdateDeploymentSettings updates a subset of site fields. PATCH that
 // reuses Update with a coerced request — stays bespoke for the
 // translation step.
-func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx) error {
+func (h *SiteHandler) UpdateDeploymentSettings(c *fiber.Ctx, req *dto.UpdateDeploymentSettingsRequest) error {
 	serverID, siteID, err := fiberctx.GetServerAndSiteID(c)
 	if err != nil {
 		return err
 	}
 	teamID, userID, err := fiberctx.MustGetTeamAndUserID(c)
-	if err != nil {
-		return err
-	}
-	req, err := fiberctx.MustParseAndValidate[dto.UpdateDeploymentSettingsRequest](c)
 	if err != nil {
 		return err
 	}
