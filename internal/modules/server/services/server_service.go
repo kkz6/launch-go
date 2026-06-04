@@ -757,10 +757,20 @@ func (s *Service) createLoadBalancerServerServices(ctx context.Context, server *
 
 // createService creates a single service record for a server
 func (s *Service) createService(ctx context.Context, serverID string, software types.Software, isDefault bool) error {
+	version := software.GetVersion()
+	// The launch-agent installer always pulls the latest published release,
+	// so seed the row with that real version (e.g. "0.8.0") instead of the
+	// "latest" placeholder — otherwise the UI shows "vlatest" right after
+	// provisioning, until a live `launch-agent --version` probe corrects it.
+	if software == types.SoftwareLaunchAgent {
+		if v := latestAgentVersion(ctx); v != "" {
+			version = v
+		}
+	}
 	service := &models.InstalledService{
 		Type:      software.GetServiceType(),
 		Name:      software.Label(),
-		Version:   software.GetVersion(),
+		Version:   version,
 		Status:    types.ServiceStatusPending,
 		Software:  software.String(),
 		IsDefault: isDefault,
