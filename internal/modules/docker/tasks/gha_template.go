@@ -41,6 +41,9 @@ type ApplicationWorkflowData struct {
 	// the workflow commit. Empty/nil → no `secrets:` block rendered
 	// (clean YAML for the common no-secrets case).
 	BuildSecretNames []string
+	// AutoDeploy adds an `on: push: [branch]` trigger so a push to the
+	// deploy branch auto-deploys. Off → manual (workflow_dispatch) only.
+	AutoDeploy bool
 }
 
 // ComposeWorkflowData is the matching input for the compose template.
@@ -56,6 +59,9 @@ type ComposeWorkflowData struct {
 	// — one set of names available to every service's build step in
 	// the matrix.
 	BuildSecretNames []string
+	// AutoDeploy adds an `on: push: [branch]` trigger so a push to the
+	// deploy branch auto-deploys. Off → manual (workflow_dispatch) only.
+	AutoDeploy bool
 }
 
 // RenderApplicationWorkflow returns the YAML body Launch should commit

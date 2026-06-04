@@ -278,6 +278,28 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 		}
 		return fiberutil.OK(c, "GitHub Actions builds disabled", nil)
 	})
+	apps.Post("/:id/gha/auto-deploy", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return fiberutil.BadRequest("Invalid request body")
+		}
+		if err := applicationSvc.SetAutoDeployGHA(
+			c.Context(), c.Params("id"), c.Params("projectId"), c.Params("serverId"), teamID, userID, body.Enabled,
+		); err != nil {
+			return err
+		}
+		msg := "Auto-deploy disabled"
+		if body.Enabled {
+			msg = "Auto-deploy enabled"
+		}
+		return fiberutil.OK(c, msg, nil)
+	})
 
 	// Reload / Stop / Start map to docker restart / stop / start on
 	// the running container. We expose them as separate POST verbs
@@ -1165,6 +1187,28 @@ func (m *Module) RegisterRoutes(router gofiber.Router, authMiddleware gofiber.Ha
 			return err
 		}
 		return fiberutil.OK(c, "GitHub Actions builds disabled", nil)
+	})
+	composes.Post("/:id/gha/auto-deploy", func(c *gofiber.Ctx) error {
+		teamID, userID, err := fiberutil.MustGetTeamAndUserID(c)
+		if err != nil {
+			return err
+		}
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := c.BodyParser(&body); err != nil {
+			return fiberutil.BadRequest("Invalid request body")
+		}
+		if err := composeSvc.SetAutoDeployGHA(
+			c.Context(), c.Params("id"), c.Params("projectId"), c.Params("serverId"), teamID, userID, body.Enabled,
+		); err != nil {
+			return err
+		}
+		msg := "Auto-deploy disabled"
+		if body.Enabled {
+			msg = "Auto-deploy enabled"
+		}
+		return fiberutil.OK(c, msg, nil)
 	})
 
 	// Compose build-time secrets — same write-only semantics as the
