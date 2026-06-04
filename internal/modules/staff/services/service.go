@@ -198,6 +198,64 @@ func (s *Service) ListServers(ctx context.Context, limit, offset int) ([]serverm
 	return s.repos.ListServers(ctx, limit, offset)
 }
 
+// GetServerDetail returns the back-office detail for a single server, including
+// its owning team and the user it is scoped to. Returns ErrServerNotFound when
+// the id does not resolve. Exposes only the allow-listed, non-sensitive fields
+// (never private key/host key/passwords/launch token/credentials/private IP).
+func (s *Service) GetServerDetail(ctx context.Context, serverID string) (*staffdto.AdminServerDetail, error) {
+	server, err := s.repos.ServerByID(ctx, serverID)
+	if err != nil {
+		return nil, err
+	}
+	if server == nil {
+		return nil, ErrServerNotFound
+	}
+
+	owner := staffdto.AdminServerOwner{
+		TeamID: server.TeamID,
+		UserID: server.UserID,
+	}
+
+	if team, err := s.repos.TeamByID(ctx, server.TeamID); err != nil {
+		return nil, err
+	} else if team != nil {
+		owner.TeamName = team.Name
+		owner.PersonalTeam = team.PersonalTeam
+	}
+
+	if user, err := s.repos.UserByID(ctx, server.UserID); err != nil {
+		return nil, err
+	} else if user != nil {
+		owner.UserName = user.Name
+		owner.UserEmail = user.Email
+	}
+
+	return &staffdto.AdminServerDetail{
+		ID:                    server.ID,
+		Name:                  server.Name,
+		Description:           server.Description,
+		Provider:              string(server.Provider),
+		Type:                  server.Type,
+		Status:                string(server.Status),
+		Connected:             server.Connected,
+		PublicIPv4:            server.PublicIPv4,
+		CPUCores:              server.CPUCores,
+		MemoryInMB:            server.MemoryInMB,
+		StorageInGB:           server.StorageInGB,
+		OperatingSystem:       server.OperatingSystem,
+		DetectedOSID:          server.DetectedOSID,
+		DetectedOSVersion:     server.DetectedOSVersion,
+		DetectedArch:          server.DetectedArch,
+		DetectedKernel:        server.DetectedKernel,
+		MonitoringEnabled:     server.MonitoringEnabled,
+		AutoUpdate:            server.AutoUpdate,
+		ProvisionedAt:         server.ProvisionedAt,
+		LastConnectivityCheck: server.LastConnectivityCheck,
+		CreatedAt:             server.CreatedAt,
+		Owner:                 owner,
+	}, nil
+}
+
 // ServerLogs returns a server's recent task/activity records. Returns
 // ErrServerLogReaderUnavailable if the cross-module reader was not wired.
 func (s *Service) ServerLogs(ctx context.Context, serverID string, limit int) ([]servermodels.Task, error) {

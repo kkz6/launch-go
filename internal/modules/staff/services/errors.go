@@ -26,6 +26,10 @@ var ErrJWTSecretNotConfigured = errors.New("jwt secret not configured")
 // exist. The handler maps it to 404.
 var ErrUserNotFound = errors.New("user not found")
 
+// ErrServerNotFound is returned by GetServerDetail when no server matches the
+// id. The handler maps it to 404.
+var ErrServerNotFound = errors.New("server not found")
+
 // ErrCannotSuspendStaff is returned when a suspend/unsuspend action targets a
 // user who holds a staff role. Staff members (and peers) must not be lockable
 // through this endpoint. The handler maps it to 409.

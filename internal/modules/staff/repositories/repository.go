@@ -295,6 +295,44 @@ func (r *Registry) ListServers(ctx context.Context, limit, offset int) ([]server
 	return servers, total, nil
 }
 
+// ServerByID loads a single server by id across tenants, or nil when no server
+// matches. Returns nil (not an error) when absent.
+func (r *Registry) ServerByID(ctx context.Context, id string) (*servermodels.Server, error) {
+	if id == "" {
+		return nil, nil
+	}
+
+	var server servermodels.Server
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&server).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &server, nil
+}
+
+// TeamByID loads a single team by id across tenants, or nil when no team
+// matches. Returns nil (not an error) when absent.
+func (r *Registry) TeamByID(ctx context.Context, id string) (*authmodels.Team, error) {
+	if id == "" {
+		return nil, nil
+	}
+
+	var team authmodels.Team
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&team).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+
+	return &team, nil
+}
+
 // UserByID loads a single user by id, or nil if no such user exists. Used by
 // the impersonation flow to read the target user's email/name/current team for
 // the minted token. Returns nil (not an error) when the user is absent.

@@ -78,6 +78,7 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	admin.Get("/users/:id", m.handler.ShowUser)
 	admin.Get("/teams", m.handler.ListTeams)
 	admin.Get("/servers", m.handler.ListServers)
+	admin.Get("/servers/:id", m.handler.ShowServer)
 	admin.Get("/servers/:id/logs", m.handler.ServerLogs)
 	admin.Get("/failures", m.handler.Failures)
 

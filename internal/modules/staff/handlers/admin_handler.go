@@ -106,6 +106,22 @@ func (h *AdminHandler) ListServers(c *fiber.Ctx) error {
 	return fiberutil.SuccessWithMeta(c, fiber.StatusOK, "Servers retrieved successfully", summaries, meta)
 }
 
+// ShowServer returns a single server's back-office detail (specs, network, OS,
+// status) plus its owner (team + user). Staff-only (support tier); returns 404
+// when no server matches the id. Never exposes keys, passwords or the private
+// IP — the detail DTO carries an explicit allow-list.
+func (h *AdminHandler) ShowServer(c *fiber.Ctx) error {
+	server, err := h.service.GetServerDetail(c.Context(), c.Params("id"))
+	if err != nil {
+		if errors.Is(err, services.ErrServerNotFound) {
+			return fiberutil.RespondNotFound(c, "Server not found")
+		}
+		return fiberutil.HandleError(c, err)
+	}
+
+	return fiberutil.Success(c, fiber.StatusOK, "Server retrieved successfully", server)
+}
+
 // ServerLogs returns a server's recent task/activity records. Staff-only.
 // Reuses the server module's task store via the injected ServerLogReader —
 // this is operational activity, not live log streaming.
