@@ -265,3 +265,110 @@ func (s *Service) ServerLogs(ctx context.Context, serverID string, limit int) ([
 
 	return s.logReader.FindByServer(ctx, serverID, limit)
 }
+
+// userTeamIDs resolves the team ids a user owns (a user owns resources through
+// the teams they own). Returns ErrUserNotFound when no user matches the id.
+func (s *Service) userTeamIDs(ctx context.Context, userID string) ([]string, error) {
+	user, err := s.repos.UserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+
+	teamsByOwner, err := s.repos.TeamsByOwners(ctx, []string{user.ID})
+	if err != nil {
+		return nil, err
+	}
+
+	teamIDs := make([]string, 0)
+	for _, team := range teamsByOwner[user.ID] {
+		teamIDs = append(teamIDs, team.ID)
+	}
+
+	return teamIDs, nil
+}
+
+// GetUserServers returns the servers owned by the user's teams as safe summary
+// views. Returns ErrUserNotFound when no user matches the id. The summary DTO is
+// an explicit allow-list, so no secret server field (keys, tokens, passwords,
+// private IP) ever leaves through this endpoint.
+func (s *Service) GetUserServers(ctx context.Context, userID string) ([]staffdto.ServerSummary, error) {
+	teamIDs, err := s.userTeamIDs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	servers, err := s.repos.ServersByTeamIDs(ctx, teamIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	return staffdto.NewServerSummaries(servers), nil
+}
+
+// GetUserSites returns the sites hosted on servers owned by the user's teams as
+// safe summary views, each folding in its owning server's name. Returns
+// ErrUserNotFound when no user matches the id. The summary DTO is an explicit
+// allow-list, so no secret site field (deploy token, deploy keys, VCS/type data)
+// ever leaves through this endpoint.
+func (s *Service) GetUserSites(ctx context.Context, userID string) ([]staffdto.SiteSummary, error) {
+	teamIDs, err := s.userTeamIDs(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	servers, err := s.repos.ServersByTeamIDs(ctx, teamIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	serverIDs := make([]string, 0, len(servers))
+	serverNames := make(map[string]string, len(servers))
+	for i := range servers {
+		serverIDs = append(serverIDs, servers[i].ID)
+		serverNames[servers[i].ID] = servers[i].Name
+	}
+
+	sites, err := s.repos.SitesByServerIDs(ctx, serverIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	return staffdto.NewSiteSummaries(sites, serverNames), nil
+}
+
+// GetUserSubscriptions returns every subscription across the user's owned teams
+// as safe summary views, each folding in its owning team's name. Returns
+// ErrUserNotFound when no user matches the id. The summary DTO is an explicit
+// allow-list, so no internal billing identifier (customer id, provider
+// subscription id, product/variant id) ever leaves through this endpoint.
+func (s *Service) GetUserSubscriptions(ctx context.Context, userID string) ([]staffdto.SubscriptionSummary, error) {
+	user, err := s.repos.UserByID(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if user == nil {
+		return nil, ErrUserNotFound
+	}
+
+	teamsByOwner, err := s.repos.TeamsByOwners(ctx, []string{user.ID})
+	if err != nil {
+		return nil, err
+	}
+
+	teamIDs := make([]string, 0)
+	teamNames := make(map[string]string)
+	for _, team := range teamsByOwner[user.ID] {
+		teamIDs = append(teamIDs, team.ID)
+		teamNames[team.ID] = team.Name
+	}
+
+	subscriptions, err := s.repos.AllSubscriptionsByTeams(ctx, teamIDs)
+	if err != nil {
+		return nil, err
+	}
+
+	return staffdto.NewSubscriptionSummaries(subscriptions, teamNames), nil
+}

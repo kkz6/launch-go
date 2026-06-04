@@ -14,6 +14,7 @@ import (
 	billingmodels "github.com/kkz6/launch-go/internal/modules/billing/models"
 	billingtypes "github.com/kkz6/launch-go/internal/modules/billing/types"
 	servermodels "github.com/kkz6/launch-go/internal/modules/server/models"
+	sitemodels "github.com/kkz6/launch-go/internal/modules/site/models"
 	staffmodels "github.com/kkz6/launch-go/internal/modules/staff/models"
 	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
 	"github.com/kkz6/launch-go/internal/pkg/util"
@@ -326,6 +327,70 @@ func (r *Registry) ListServers(ctx context.Context, limit, offset int) ([]server
 	}
 
 	return servers, total, nil
+}
+
+// ServersByTeamIDs loads all servers owned by the given team ids in a single
+// query, ordered by created_at desc. Returns an empty slice (no query) when no
+// team ids are supplied.
+func (r *Registry) ServersByTeamIDs(ctx context.Context, teamIDs []string) ([]servermodels.Server, error) {
+	if len(teamIDs) == 0 {
+		return []servermodels.Server{}, nil
+	}
+
+	var servers []servermodels.Server
+	err := r.db.WithContext(ctx).
+		Model(&servermodels.Server{}).
+		Where("team_id IN ?", teamIDs).
+		Order("created_at DESC").
+		Find(&servers).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return servers, nil
+}
+
+// SitesByServerIDs loads all sites hosted on the given server ids in a single
+// query, ordered by created_at desc. Returns an empty slice (no query) when no
+// server ids are supplied.
+func (r *Registry) SitesByServerIDs(ctx context.Context, serverIDs []string) ([]sitemodels.Site, error) {
+	if len(serverIDs) == 0 {
+		return []sitemodels.Site{}, nil
+	}
+
+	var sites []sitemodels.Site
+	err := r.db.WithContext(ctx).
+		Model(&sitemodels.Site{}).
+		Where("server_id IN ?", serverIDs).
+		Order("created_at DESC").
+		Find(&sites).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return sites, nil
+}
+
+// AllSubscriptionsByTeams loads every subscription for the given team ids in a
+// single query, ordered by id desc. Unlike CurrentSubscriptionsByTeams (one
+// current subscription per team), this returns the full history. Returns an
+// empty slice (no query) when no team ids are supplied.
+func (r *Registry) AllSubscriptionsByTeams(ctx context.Context, teamIDs []string) ([]billingmodels.Subscription, error) {
+	if len(teamIDs) == 0 {
+		return []billingmodels.Subscription{}, nil
+	}
+
+	var subscriptions []billingmodels.Subscription
+	err := r.db.WithContext(ctx).
+		Model(&billingmodels.Subscription{}).
+		Where("billable_type IN ? AND billable_id IN ?", billingmodels.TeamBillableTypes(), teamIDs).
+		Order("id DESC").
+		Find(&subscriptions).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return subscriptions, nil
 }
 
 // ServerByID loads a single server by id across tenants, or nil when no server

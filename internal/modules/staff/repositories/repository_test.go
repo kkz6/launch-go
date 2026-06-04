@@ -206,6 +206,51 @@ func TestRegistry_CurrentSubscriptionsByTeams_PrefersActiveOverNewer(t *testing.
 	require.Equal(t, billingtypes.SubscriptionStatusActive, subs[team.ID].Status)
 }
 
+func TestRegistry_AllSubscriptionsByTeams_ReturnsFullHistory(t *testing.T) {
+	db := setupBillingDB(t)
+	repo := NewRegistry(db)
+	ctx := context.Background()
+
+	team := authmodels.Team{Name: "Team", UserID: "owner-1"}
+	require.NoError(t, db.Create(&team).Error)
+
+	require.NoError(t, db.Create(&billingmodels.Subscription{
+		BillableType:           billingmodels.BillableTypeTeam,
+		BillableID:             team.ID,
+		Type:                   "default",
+		ProviderSubscriptionID: "sub_active",
+		Status:                 billingtypes.SubscriptionStatusActive,
+		ProductID:              "prod_1",
+		VariantID:              "var_1",
+	}).Error)
+	require.NoError(t, db.Create(&billingmodels.Subscription{
+		BillableType:           billingmodels.BillableTypeTeam,
+		BillableID:             team.ID,
+		Type:                   "default",
+		ProviderSubscriptionID: "sub_cancelled",
+		Status:                 billingtypes.SubscriptionStatusCancelled,
+		ProductID:              "prod_1",
+		VariantID:              "var_1",
+	}).Error)
+
+	subs, err := repo.AllSubscriptionsByTeams(ctx, []string{team.ID})
+	require.NoError(t, err)
+	require.Len(t, subs, 2)
+
+	// Ordered id DESC -> the cancelled (newer) row first.
+	require.Equal(t, billingtypes.SubscriptionStatusCancelled, subs[0].Status)
+	require.Equal(t, billingtypes.SubscriptionStatusActive, subs[1].Status)
+}
+
+func TestRegistry_AllSubscriptionsByTeams_EmptyTeamIDsNoQuery(t *testing.T) {
+	db := setupBillingDB(t)
+	repo := NewRegistry(db)
+
+	subs, err := repo.AllSubscriptionsByTeams(context.Background(), nil)
+	require.NoError(t, err)
+	require.Empty(t, subs)
+}
+
 // baseModelAt builds a BaseModel with a fixed CreatedAt so ordering is
 // deterministic in tests (BeforeCreate still assigns the ULID id).
 func baseModelAt(at time.Time) basemodels.BaseModel {

@@ -74,6 +74,55 @@ func (h *AdminHandler) ShowUser(c *fiber.Ctx) error {
 	return fiberutil.Success(c, fiber.StatusOK, "User retrieved successfully", row)
 }
 
+// ShowUserServers returns the servers owned by a user's teams for the user
+// detail page's Servers tab. Staff-only (support tier); returns 404 when no user
+// matches the id. Servers are mapped to ServerSummary so only an explicit
+// allow-list of safe fields is serialized — no secrets ever leave here.
+func (h *AdminHandler) ShowUserServers(c *fiber.Ctx) error {
+	servers, err := h.service.GetUserServers(c.Context(), c.Params("id"))
+	if err != nil {
+		if errors.Is(err, services.ErrUserNotFound) {
+			return fiberutil.RespondNotFound(c, "User not found")
+		}
+		return fiberutil.HandleError(c, err)
+	}
+
+	return fiberutil.Success(c, fiber.StatusOK, "User servers retrieved successfully", servers)
+}
+
+// ShowUserSites returns the sites hosted on servers owned by a user's teams for
+// the user detail page's Sites tab. Staff-only (support tier); returns 404 when
+// no user matches the id. Sites are mapped to SiteSummary so only an explicit
+// allow-list of safe fields is serialized — no secrets ever leave here.
+func (h *AdminHandler) ShowUserSites(c *fiber.Ctx) error {
+	sites, err := h.service.GetUserSites(c.Context(), c.Params("id"))
+	if err != nil {
+		if errors.Is(err, services.ErrUserNotFound) {
+			return fiberutil.RespondNotFound(c, "User not found")
+		}
+		return fiberutil.HandleError(c, err)
+	}
+
+	return fiberutil.Success(c, fiber.StatusOK, "User sites retrieved successfully", sites)
+}
+
+// ShowUserSubscriptions returns every subscription across a user's owned teams
+// for the user detail page's Subscriptions tab. Staff-only (support tier);
+// returns 404 when no user matches the id. Subscriptions are mapped to
+// SubscriptionSummary so only an explicit allow-list of safe fields is
+// serialized — no internal billing identifiers ever leave here.
+func (h *AdminHandler) ShowUserSubscriptions(c *fiber.Ctx) error {
+	subscriptions, err := h.service.GetUserSubscriptions(c.Context(), c.Params("id"))
+	if err != nil {
+		if errors.Is(err, services.ErrUserNotFound) {
+			return fiberutil.RespondNotFound(c, "User not found")
+		}
+		return fiberutil.HandleError(c, err)
+	}
+
+	return fiberutil.Success(c, fiber.StatusOK, "User subscriptions retrieved successfully", subscriptions)
+}
+
 // ListTeams returns a cross-tenant page of teams. Staff-only.
 func (h *AdminHandler) ListTeams(c *fiber.Ctx) error {
 	limit := fiberutil.ParseLimit(c, 25, 100)
