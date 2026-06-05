@@ -270,7 +270,7 @@ func applySort(db *gorm.DB, t Table, sort string) *gorm.DB {
 // Restore/ForceDelete for live rows.
 func fetchRows(db *gorm.DB, model any, includeDeletedAt bool) ([]map[string]any, error) {
 	t := reflect.TypeOf(model)
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	sliceType := reflect.SliceOf(t)
@@ -291,7 +291,7 @@ func fetchRows(db *gorm.DB, model any, includeDeletedAt bool) ([]map[string]any,
 		slice := slicePtr.Elem()
 		for i := 0; i < slice.Len(); i++ {
 			elem := slice.Index(i)
-			for elem.Kind() == reflect.Ptr {
+			for elem.Kind() == reflect.Pointer {
 				elem = elem.Elem()
 			}
 			if ts, ok := extractDeletedAt(elem); ok {

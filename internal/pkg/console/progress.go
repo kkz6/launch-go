@@ -28,7 +28,7 @@ func (p *textProgress) Advance(step ...int) {
 func (p *textProgress) Finish() {
 	p.current = p.total
 	p.render()
-	fmt.Fprintln(p.out)
+	_, _ = fmt.Fprintln(p.out)
 }
 
 func (p *textProgress) render() {
@@ -39,5 +39,5 @@ func (p *textProgress) render() {
 	}
 	filled := int(ratio * width)
 	bar := strings.Repeat("=", filled) + strings.Repeat(" ", width-filled)
-	fmt.Fprintf(p.out, "\r[%s] %d/%d", bar, p.current, p.total)
+	_, _ = fmt.Fprintf(p.out, "\r[%s] %d/%d", bar, p.current, p.total)
 }

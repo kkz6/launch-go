@@ -135,9 +135,11 @@ func (h *handler) storeView(c *fiber.Ctx) error {
 	if strings.TrimSpace(req.Title) == "" {
 		return fiber.NewError(fiber.StatusBadRequest, "Title is required")
 	}
-	out, err := h.views.Create(c.Context(), h.table.Config().Name, userID, *req)
-	//lint:ignore SA4023 ViewService.Create is currently stubbed to always error (saved views not enabled); the handler is correct for the real implementation.
-	if err != nil {
+	// ViewService.Create is currently stubbed to always error (saved views not
+	// enabled); the handler is correct for the real implementation.
+	out, err := h.views.Create(c.Context(), h.table.Config().Name, userID, *req) //nolint:staticcheck // SA4023: stubbed Create always errors
+	//lint:ignore SA4023 stubbed Create always returns a non-nil error
+	if err != nil { //nolint:staticcheck // SA4023: stubbed Create always errors
 		return err
 	}
 	return fiberctx.Created(c, "View saved", out)

@@ -43,11 +43,11 @@ func Policy(fn TypedPolicy) access.PolicyFunc {
 // belongs to the resource's team AND holds at least the minimum role. It is the
 // single source of truth for team + role authorization, replacing ad-hoc checks
 // scattered across handlers and middleware.
-func TeamGate(a Actor, resourceTeamID string, min authtypes.TeamRole) access.Response {
+func TeamGate(a Actor, resourceTeamID string, minRole authtypes.TeamRole) access.Response {
 	if a.TeamID == "" || a.TeamID != resourceTeamID {
 		return access.Deny("resource does not belong to your team")
 	}
-	if !a.TeamRole.AtLeast(min) {
+	if !a.TeamRole.AtLeast(minRole) {
 		return access.Deny("your team role lacks permission for this action")
 	}
 	return access.Allow()
@@ -59,9 +59,9 @@ func TeamGate(a Actor, resourceTeamID string, min authtypes.TeamRole) access.Res
 // membership in the scoped team, and services load resources via
 // FindByIDAndTeam), so the gate's remaining job is the per-action role check.
 // This is the workhorse policy for the Can(ability) route middleware.
-func RequireRole(min authtypes.TeamRole) TypedPolicy {
+func RequireRole(minRole authtypes.TeamRole) TypedPolicy {
 	return func(_ context.Context, a Actor, _ any) access.Response {
-		if a.TeamRole.AtLeast(min) {
+		if a.TeamRole.AtLeast(minRole) {
 			return access.Allow()
 		}
 		return access.Deny("your team role (" + a.TeamRole.Label() + ") lacks permission for this action")

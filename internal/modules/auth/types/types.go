@@ -66,9 +66,9 @@ func (r TeamRole) Level() int {
 	return teamRoleLevels[r]
 }
 
-// AtLeast reports whether this role has at least the privilege of min.
-func (r TeamRole) AtLeast(min TeamRole) bool {
-	return r.Level() >= min.Level() && r.Level() > 0
+// AtLeast reports whether this role has at least the privilege of minRole.
+func (r TeamRole) AtLeast(minRole TeamRole) bool {
+	return r.Level() >= minRole.Level() && r.Level() > 0
 }
 
 // CanManageTeam checks if this role can manage team settings

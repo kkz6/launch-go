@@ -103,19 +103,25 @@ func (c *cobraContext) OptionIntSlice(key string) []int {
 
 // --- Output ---
 
-func (c *cobraContext) Info(message string)    { fmt.Fprintln(c.out, styleInfo.Render(message)) }
-func (c *cobraContext) Success(message string) { fmt.Fprintln(c.out, styleSuccess.Render(message)) }
-func (c *cobraContext) Warning(message string) { fmt.Fprintln(c.out, styleWarning.Render(message)) }
-func (c *cobraContext) Error(message string)   { fmt.Fprintln(c.out, styleError.Render(message)) }
-func (c *cobraContext) Line(message string)    { fmt.Fprintln(c.out, message) }
-func (c *cobraContext) Comment(message string) { fmt.Fprintln(c.out, styleComment.Render(message)) }
+func (c *cobraContext) Info(message string) { _, _ = fmt.Fprintln(c.out, styleInfo.Render(message)) }
+func (c *cobraContext) Success(message string) {
+	_, _ = fmt.Fprintln(c.out, styleSuccess.Render(message))
+}
+func (c *cobraContext) Warning(message string) {
+	_, _ = fmt.Fprintln(c.out, styleWarning.Render(message))
+}
+func (c *cobraContext) Error(message string) { _, _ = fmt.Fprintln(c.out, styleError.Render(message)) }
+func (c *cobraContext) Line(message string)  { _, _ = fmt.Fprintln(c.out, message) }
+func (c *cobraContext) Comment(message string) {
+	_, _ = fmt.Fprintln(c.out, styleComment.Render(message))
+}
 
 func (c *cobraContext) NewLine(times ...int) {
 	n := 1
 	if len(times) > 0 && times[0] > 0 {
 		n = times[0]
 	}
-	fmt.Fprint(c.out, strings.Repeat("\n", n))
+	_, _ = fmt.Fprint(c.out, strings.Repeat("\n", n))
 }
 
 // --- Interactive prompts ---
@@ -135,9 +141,9 @@ func (c *cobraContext) Ask(question string, options ...AskOption) (string, error
 		def = options[0].Default
 	}
 	if def != "" {
-		fmt.Fprintf(c.out, "%s [%s]: ", question, def)
+		_, _ = fmt.Fprintf(c.out, "%s [%s]: ", question, def)
 	} else {
-		fmt.Fprintf(c.out, "%s: ", question)
+		_, _ = fmt.Fprintf(c.out, "%s: ", question)
 	}
 	answer, err := c.readLine()
 	if err != nil {
@@ -153,9 +159,9 @@ func (c *cobraContext) Secret(question string, options ...AskOption) (string, er
 	// Use no-echo input only for a real terminal; otherwise read a line so the
 	// method is testable and pipe-friendly.
 	if f, ok := c.in.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
-		fmt.Fprintf(c.out, "%s: ", question)
+		_, _ = fmt.Fprintf(c.out, "%s: ", question)
 		b, err := term.ReadPassword(int(f.Fd()))
-		fmt.Fprintln(c.out)
+		_, _ = fmt.Fprintln(c.out)
 		if err != nil {
 			return "", err
 		}
@@ -173,7 +179,7 @@ func (c *cobraContext) Confirm(question string, options ...ConfirmOption) bool {
 	if def {
 		hint = "Y/n"
 	}
-	fmt.Fprintf(c.out, "%s [%s]: ", question, hint)
+	_, _ = fmt.Fprintf(c.out, "%s [%s]: ", question, hint)
 	answer, err := c.readLine()
 	if err != nil {
 		return def
@@ -190,11 +196,11 @@ func (c *cobraContext) Choice(question string, choices []Choice, options ...Choi
 	if len(options) > 0 {
 		def = options[0].Default
 	}
-	fmt.Fprintln(c.out, question)
+	_, _ = fmt.Fprintln(c.out, question)
 	for i, ch := range choices {
-		fmt.Fprintf(c.out, "  [%d] %s\n", i+1, ch.Label)
+		_, _ = fmt.Fprintf(c.out, "  [%d] %s\n", i+1, ch.Label)
 	}
-	fmt.Fprint(c.out, "> ")
+	_, _ = fmt.Fprint(c.out, "> ")
 	answer, err := c.readLine()
 	if err != nil {
 		return "", err
@@ -216,11 +222,11 @@ func (c *cobraContext) Choice(question string, choices []Choice, options ...Choi
 }
 
 func (c *cobraContext) MultiSelect(question string, choices []Choice) ([]string, error) {
-	fmt.Fprintln(c.out, question+" (comma-separated)")
+	_, _ = fmt.Fprintln(c.out, question+" (comma-separated)")
 	for i, ch := range choices {
-		fmt.Fprintf(c.out, "  [%d] %s\n", i+1, ch.Label)
+		_, _ = fmt.Fprintf(c.out, "  [%d] %s\n", i+1, ch.Label)
 	}
-	fmt.Fprint(c.out, "> ")
+	_, _ = fmt.Fprint(c.out, "> ")
 	answer, err := c.readLine()
 	if err != nil {
 		return nil, err
@@ -257,19 +263,19 @@ func (c *cobraContext) Table(headers []string, rows [][]string) {
 		}).
 		Headers(headers...).
 		Rows(rows...)
-	fmt.Fprintln(c.out, t.Render())
+	_, _ = fmt.Fprintln(c.out, t.Render())
 }
 
 func (c *cobraContext) Spinner(message string, fn func() error) error {
 	// Simple, dependency-free spinner: announce, run, report. A live animation
 	// is reserved for interactive terminals and intentionally omitted here to
 	// keep output clean in pipes, CI, and tests.
-	fmt.Fprintf(c.out, "%s ... ", message)
+	_, _ = fmt.Fprintf(c.out, "%s ... ", message)
 	if err := fn(); err != nil {
-		fmt.Fprintln(c.out, styleError.Render("failed"))
+		_, _ = fmt.Fprintln(c.out, styleError.Render("failed"))
 		return err
 	}
-	fmt.Fprintln(c.out, styleSuccess.Render("done"))
+	_, _ = fmt.Fprintln(c.out, styleSuccess.Render("done"))
 	return nil
 }
 
