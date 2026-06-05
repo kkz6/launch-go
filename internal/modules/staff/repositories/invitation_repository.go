@@ -104,9 +104,10 @@ func (r *Registry) MarkInvitationAccepted(ctx context.Context, db *gorm.DB, id s
 //
 // The subscriptions table requires a unique, non-null provider_subscription_id;
 // since a trial has no real provider record, a deterministic "trial:{teamID}"
-// placeholder is used. type/product_id/variant_id are NOT NULL but carry no
-// meaning for a trial, so they are set to sensible defaults ("default"/"").
-func (r *Registry) CreateTrialSubscription(ctx context.Context, db *gorm.DB, teamID string, trialEndsAt time.Time) error {
+// placeholder is used. product_id carries the invited plan's product id (empty
+// for a plan-less trial); type/variant_id are NOT NULL but carry no meaning for
+// a trial, so they default to "default"/"".
+func (r *Registry) CreateTrialSubscription(ctx context.Context, db *gorm.DB, teamID, productID string, trialEndsAt time.Time) error {
 	if db == nil {
 		db = r.db
 	}
@@ -119,7 +120,7 @@ func (r *Registry) CreateTrialSubscription(ctx context.Context, db *gorm.DB, tea
 		Provider:               billingmodels.ProviderDodoPayments,
 		ProviderSubscriptionID: fmt.Sprintf("trial:%s", teamID),
 		Status:                 billingtypes.SubscriptionStatusOnTrial,
-		ProductID:              "",
+		ProductID:              productID,
 		VariantID:              "",
 		TrialEndsAt:            &trialEnds,
 	}

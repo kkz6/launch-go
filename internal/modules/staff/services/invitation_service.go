@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
+	billingmodels "github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/pkg/mail/templates"
 )
 
@@ -38,10 +39,15 @@ const inviteTokenBytes = 32
 // via the returned error path only when no other work succeeded. Here we keep
 // the row and surface the send error to the caller so the failure is visible,
 // while still returning the created invitation.
-func (s *Service) InviteUser(ctx context.Context, email string, trialEndsAt time.Time, invitedBy string) (*authmodels.PlatformInvitation, error) {
+func (s *Service) InviteUser(ctx context.Context, email, planID string, trialEndsAt time.Time, invitedBy string) (*authmodels.PlatformInvitation, error) {
 	email = strings.TrimSpace(email)
 	if email == "" {
 		return nil, ErrInvalidInviteEmail
+	}
+
+	planID = strings.TrimSpace(planID)
+	if _, ok := billingmodels.PlanByID(planID); !ok {
+		return nil, ErrInvalidPlan
 	}
 
 	now := time.Now()
@@ -73,6 +79,7 @@ func (s *Service) InviteUser(ctx context.Context, email string, trialEndsAt time
 	invitation := &authmodels.PlatformInvitation{
 		Email:       email,
 		Token:       token,
+		PlanID:      planID,
 		TrialEndsAt: trialEndsAt,
 		InvitedBy:   invitedBy,
 		ExpiresAt:   now.Add(invitationValidity),
@@ -165,7 +172,15 @@ func (s *Service) AcceptPlatformInviteWithTrial(ctx context.Context, token, pers
 			return errors.New("platform invite is no longer usable")
 		}
 
-		if err := s.repos.CreateTrialSubscription(ctx, tx, personalTeamID, invitation.TrialEndsAt); err != nil {
+		// Scope the trial to the invited plan. We store the monthly product id
+		// (the admin picks the plan, not the cycle); an unknown/blank plan_id
+		// leaves the product empty so the trial is simply plan-less.
+		productID := ""
+		if plan, ok := billingmodels.PlanByID(invitation.PlanID); ok {
+			productID = plan.MonthlyID
+		}
+
+		if err := s.repos.CreateTrialSubscription(ctx, tx, personalTeamID, productID, invitation.TrialEndsAt); err != nil {
 			return err
 		}
 

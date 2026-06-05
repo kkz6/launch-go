@@ -70,7 +70,7 @@ func TestInviteUser_CreatesRowAndSendsEmail(t *testing.T) {
 	trialEndsAt := time.Now().Add(30 * 24 * time.Hour)
 	before := time.Now()
 
-	invitation, err := svc.InviteUser(ctx, "invitee@example.com", trialEndsAt, "inviter-id")
+	invitation, err := svc.InviteUser(ctx, "invitee@example.com", "hobby", trialEndsAt, "inviter-id")
 	require.NoError(t, err)
 	require.NotNil(t, invitation)
 
@@ -101,9 +101,9 @@ func TestInviteUser_GeneratesUniqueTokens(t *testing.T) {
 	ctx := context.Background()
 	trialEndsAt := time.Now().Add(30 * 24 * time.Hour)
 
-	first, err := svc.InviteUser(ctx, "a@example.com", trialEndsAt, "inviter")
+	first, err := svc.InviteUser(ctx, "a@example.com", "hobby", trialEndsAt, "inviter")
 	require.NoError(t, err)
-	second, err := svc.InviteUser(ctx, "b@example.com", trialEndsAt, "inviter")
+	second, err := svc.InviteUser(ctx, "b@example.com", "hobby", trialEndsAt, "inviter")
 	require.NoError(t, err)
 
 	assert.NotEqual(t, first.Token, second.Token)
@@ -118,7 +118,7 @@ func TestInviteUser_UserAlreadyExists(t *testing.T) {
 		Email: "taken@example.com",
 	}).Error)
 
-	invitation, err := svc.InviteUser(ctx, "taken@example.com", time.Now().Add(24*time.Hour), "inviter")
+	invitation, err := svc.InviteUser(ctx, "taken@example.com", "hobby", time.Now().Add(24*time.Hour), "inviter")
 	require.ErrorIs(t, err, ErrUserAlreadyExists)
 	assert.Nil(t, invitation)
 
@@ -134,11 +134,11 @@ func TestInviteUser_PendingInviteExists(t *testing.T) {
 	ctx := context.Background()
 	trialEndsAt := time.Now().Add(30 * 24 * time.Hour)
 
-	_, err := svc.InviteUser(ctx, "dupe@example.com", trialEndsAt, "inviter")
+	_, err := svc.InviteUser(ctx, "dupe@example.com", "hobby", trialEndsAt, "inviter")
 	require.NoError(t, err)
 
 	sender.calls = 0
-	invitation, err := svc.InviteUser(ctx, "dupe@example.com", trialEndsAt, "inviter")
+	invitation, err := svc.InviteUser(ctx, "dupe@example.com", "hobby", trialEndsAt, "inviter")
 	require.ErrorIs(t, err, ErrInvitePending)
 	assert.Nil(t, invitation)
 	assert.Equal(t, 0, sender.calls)
@@ -148,7 +148,7 @@ func TestInviteUser_TrialDateInPast(t *testing.T) {
 	svc, db, sender := setupInvitationService(t)
 	ctx := context.Background()
 
-	invitation, err := svc.InviteUser(ctx, "past@example.com", time.Now().Add(-time.Hour), "inviter")
+	invitation, err := svc.InviteUser(ctx, "past@example.com", "hobby", time.Now().Add(-time.Hour), "inviter")
 	require.ErrorIs(t, err, ErrInvalidTrialDate)
 	assert.Nil(t, invitation)
 
@@ -161,9 +161,36 @@ func TestInviteUser_TrialDateInPast(t *testing.T) {
 func TestInviteUser_EmailRequired(t *testing.T) {
 	svc, _, _ := setupInvitationService(t)
 
-	invitation, err := svc.InviteUser(context.Background(), "  ", time.Now().Add(time.Hour), "inviter")
+	invitation, err := svc.InviteUser(context.Background(), "  ", "hobby", time.Now().Add(time.Hour), "inviter")
 	require.ErrorIs(t, err, ErrInvalidInviteEmail)
 	assert.Nil(t, invitation)
+}
+
+func TestInviteUser_PlanRequired(t *testing.T) {
+	svc, _, _ := setupInvitationService(t)
+	future := time.Now().Add(time.Hour)
+
+	// Empty plan is rejected.
+	invitation, err := svc.InviteUser(context.Background(), "noplan@example.com", "", future, "inviter")
+	require.ErrorIs(t, err, ErrInvalidPlan)
+	assert.Nil(t, invitation)
+
+	// Unknown plan id is rejected.
+	invitation, err = svc.InviteUser(context.Background(), "badplan@example.com", "nonexistent", future, "inviter")
+	require.ErrorIs(t, err, ErrInvalidPlan)
+	assert.Nil(t, invitation)
+}
+
+func TestInviteUser_StoresPlanID(t *testing.T) {
+	svc, db, _ := setupInvitationService(t)
+
+	inv, err := svc.InviteUser(context.Background(), "plan@example.com", "compact", time.Now().Add(24*time.Hour), "inviter")
+	require.NoError(t, err)
+	assert.Equal(t, "compact", inv.PlanID)
+
+	var stored authmodels.PlatformInvitation
+	require.NoError(t, db.First(&stored, "email = ?", "plan@example.com").Error)
+	assert.Equal(t, "compact", stored.PlanID)
 }
 
 func TestInviteUser_EmailFailureKeepsRow(t *testing.T) {
@@ -171,7 +198,7 @@ func TestInviteUser_EmailFailureKeepsRow(t *testing.T) {
 	sender.shouldFail = true
 	ctx := context.Background()
 
-	invitation, err := svc.InviteUser(ctx, "kept@example.com", time.Now().Add(24*time.Hour), "inviter")
+	invitation, err := svc.InviteUser(ctx, "kept@example.com", "hobby", time.Now().Add(24*time.Hour), "inviter")
 	// The row is still returned even though delivery failed.
 	require.Error(t, err)
 	require.NotNil(t, invitation)
@@ -215,7 +242,7 @@ func TestRevokeInvitation(t *testing.T) {
 	ctx := context.Background()
 	trialEndsAt := time.Now().Add(30 * 24 * time.Hour)
 
-	invitation, err := svc.InviteUser(ctx, "revoke@example.com", trialEndsAt, "inviter")
+	invitation, err := svc.InviteUser(ctx, "revoke@example.com", "hobby", trialEndsAt, "inviter")
 	require.NoError(t, err)
 
 	require.NoError(t, svc.RevokeInvitation(ctx, invitation.ID))

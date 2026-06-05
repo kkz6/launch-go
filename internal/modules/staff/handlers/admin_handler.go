@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
+	billingmodels "github.com/kkz6/launch-go/internal/modules/billing/models"
 	staffdto "github.com/kkz6/launch-go/internal/modules/staff/dto"
 	"github.com/kkz6/launch-go/internal/modules/staff/repositories"
 	"github.com/kkz6/launch-go/internal/modules/staff/services"
@@ -382,6 +383,7 @@ func (h *AdminHandler) DeleteUser(c *fiber.Ctx) error {
 func (h *AdminHandler) CreateInvitation(c *fiber.Ctx) error {
 	var body struct {
 		Email       string `json:"email"`
+		PlanID      string `json:"plan_id"`
 		TrialEndsAt string `json:"trial_ends_at"`
 	}
 	if err := c.BodyParser(&body); err != nil {
@@ -392,6 +394,10 @@ func (h *AdminHandler) CreateInvitation(c *fiber.Ctx) error {
 		return fiberutil.RespondBadRequest(c, "Email is required")
 	}
 
+	if body.PlanID == "" {
+		return fiberutil.RespondBadRequest(c, "Plan is required")
+	}
+
 	trialEndsAt, err := parseTrialEndsAt(body.TrialEndsAt)
 	if err != nil {
 		return fiberutil.RespondBadRequest(c, "trial_ends_at must be an RFC3339 timestamp or a YYYY-MM-DD date")
@@ -399,7 +405,7 @@ func (h *AdminHandler) CreateInvitation(c *fiber.Ctx) error {
 
 	actorID, _ := c.Locals(fiberutil.KeyUserID).(string)
 
-	invitation, err := h.service.InviteUser(c.Context(), body.Email, trialEndsAt, actorID)
+	invitation, err := h.service.InviteUser(c.Context(), body.Email, body.PlanID, trialEndsAt, actorID)
 	if err != nil {
 		// A non-nil invitation with an error means the row was created but email
 		// delivery failed (a transport hiccup, or no mail key in local dev). The
@@ -481,9 +487,29 @@ func mapInvitationError(c *fiber.Ctx, err error) error {
 		return fiberutil.RespondBadRequest(c, err.Error())
 	case errors.Is(err, services.ErrInvalidInviteEmail):
 		return fiberutil.RespondBadRequest(c, err.Error())
+	case errors.Is(err, services.ErrInvalidPlan):
+		return fiberutil.RespondBadRequest(c, err.Error())
 	default:
 		return fiberutil.HandleError(c, err)
 	}
+}
+
+// ListPlans returns the configured billing plans (id + display name + pricing)
+// for the invite dialog's plan selector. Staff-only; the plans are static
+// config, so no team scope or billing service is involved.
+func (h *AdminHandler) ListPlans(c *fiber.Ctx) error {
+	plans := billingmodels.DefaultPlans()
+	out := make([]fiber.Map, 0, len(plans))
+	for _, p := range plans {
+		out = append(out, fiber.Map{
+			"id":              p.ID,
+			"name":            p.Name,
+			"monthly_pricing": p.MonthlyPricing,
+			"yearly_pricing":  p.YearlyPricing,
+			"recommended":     p.Recommended,
+		})
+	}
+	return fiberutil.OK(c, "Plans retrieved", out)
 }
 
 // mapUserDeleteError translates delete service sentinels to HTTP statuses:

@@ -102,3 +102,14 @@ func DefaultPlans() []Plan {
 		},
 	}
 }
+
+// PlanByID returns the configured plan with the given id (e.g. "hobby") and
+// true, or a zero Plan and false when no plan matches.
+func PlanByID(id string) (Plan, bool) {
+	for _, p := range DefaultPlans() {
+		if p.ID == id {
+			return p, true
+		}
+	}
+	return Plan{}, false
+}

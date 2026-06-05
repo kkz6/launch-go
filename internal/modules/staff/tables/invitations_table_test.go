@@ -27,7 +27,7 @@ func TestInvitationsTableMeta(t *testing.T) {
 	}
 
 	require.ElementsMatch(t, []string{
-		"email", "trial_ends_at", "expires_at", "accepted_at", "_actions",
+		"email", "plan_id", "trial_ends_at", "expires_at", "accepted_at", "_actions",
 	}, keys)
 
 	require.NotContains(t, keys, "token")

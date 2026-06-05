@@ -118,6 +118,10 @@ func (m *Module) RegisterRoutes(router fiber.Router, authMiddleware fiber.Handle
 	admin.Get("/invitations", m.handler.ListInvitations)
 	admin.Delete("/invitations/:id", middleware.RequireStaff(stafftypes.StaffRoleSuperAdmin), m.handler.RevokeInvitation)
 
+	// Billing plans for the invite dialog's plan selector (static config; any
+	// staff tier may read).
+	admin.Get("/plans", m.handler.ListPlans)
+
 	// Declarative invitations table. Reads (/meta, /data) inherit the group's
 	// support-tier gate; the mutating /action/:name route is additionally gated
 	// behind super_admin via the action middleware, matching the REST revoke

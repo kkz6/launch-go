@@ -6,6 +6,7 @@ type PlatformInvitation struct {
 	ID          string     `gorm:"type:char(26);primaryKey" json:"id"`
 	Email       string     `gorm:"column:email;type:varchar(255);not null" json:"email"`
 	Token       string     `gorm:"column:token;type:varchar(64);not null" json:"-"`
+	PlanID      string     `gorm:"column:plan_id;type:varchar(50);not null;default:''" json:"plan_id"`
 	TrialEndsAt time.Time  `gorm:"column:trial_ends_at;type:timestamp;not null" json:"trial_ends_at"`
 	InvitedBy   string     `gorm:"column:invited_by;type:char(26);not null" json:"invited_by"`
 	AcceptedAt  *time.Time `gorm:"column:accepted_at;type:timestamp" json:"accepted_at,omitempty"`

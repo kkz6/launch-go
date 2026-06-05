@@ -6,9 +6,21 @@ import (
 	"context"
 
 	authmodels "github.com/kkz6/launch-go/internal/modules/auth/models"
+	billingmodels "github.com/kkz6/launch-go/internal/modules/billing/models"
 	"github.com/kkz6/launch-go/internal/modules/staff/services"
 	"github.com/kkz6/launch-go/internal/pkg/table"
 )
+
+// planLabels maps each plan id to its display name (e.g. "hobby" → "Hobby
+// Plan"), sourced from the billing config so the table stays in sync.
+func planLabels() map[string]string {
+	plans := billingmodels.DefaultPlans()
+	m := make(map[string]string, len(plans))
+	for _, p := range plans {
+		m[p.ID] = p.Name
+	}
+	return m
+}
 
 // InvitationsTable backs the DataTable on /admin/invitations. Only declared
 // columns are selected and returned, so the secret invite token (which is
@@ -38,6 +50,7 @@ func (t *InvitationsTable) Config() table.Config {
 func (t *InvitationsTable) Columns() []table.Column {
 	return []table.Column{
 		table.NewTextColumn("email", "Email").AsSortable().AsSearchable(),
+		table.NewTextColumn("plan_id", "Plan").Labels(planLabels()),
 		table.NewDateTimeColumn("trial_ends_at", "Trial ends").Format("2006-01-02").AsSortable(),
 		table.NewDateTimeColumn("expires_at", "Invite expires").Format("2006-01-02").AsSortable(),
 		table.NewDateTimeColumn("accepted_at", "Accepted").Format("2006-01-02"),

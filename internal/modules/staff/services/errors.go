@@ -64,6 +64,10 @@ var ErrInvalidTrialDate = errors.New("trial end date must be in the future")
 // handler maps it to 400.
 var ErrInvalidInviteEmail = errors.New("email is required")
 
+// ErrInvalidPlan is returned by InviteUser when the plan id is empty or does not
+// match a configured plan. The handler maps it to 400.
+var ErrInvalidPlan = errors.New("a valid plan is required")
+
 // ErrEmailSenderNotConfigured is returned when the platform-invitation email
 // transport has not been wired into the staff service.
 var ErrEmailSenderNotConfigured = errors.New("email sender not configured")
