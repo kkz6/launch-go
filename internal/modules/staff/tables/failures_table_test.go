@@ -79,7 +79,7 @@ func TestFailuresResolve(t *testing.T) {
 
 	now := time.Now()
 	tProvision := now.Add(-1 * time.Minute)
-	tTask := now.Add(-2 * time.Minute)
+	tInstall := now.Add(-2 * time.Minute)
 
 	server := servermodels.Server{
 		BaseModel:      basemodels.BaseModel{ID: "srv00000000000000000000001", CreatedAt: &tProvision, UpdatedAt: &tProvision},
@@ -91,12 +91,12 @@ func TestFailuresResolve(t *testing.T) {
 	require.NoError(t, db.Create(&server).Error)
 
 	task := servermodels.Task{
-		BaseModel: basemodels.BaseModel{ID: "tsk00000000000000000000001", CreatedAt: &tTask, UpdatedAt: &tTask},
-		Name:      "Deploy Site",
-		User:      "deploy",
-		Type:      "site:deploy",
+		BaseModel: basemodels.BaseModel{ID: "tsk00000000000000000000001", CreatedAt: &tInstall, UpdatedAt: &tInstall},
+		Name:      "Install PHP 8.3",
+		User:      "root",
+		Type:      "github.com/kkz6/launch-go/internal/pkg/taskrunner.BaseTask",
 		Status:    string(servertypes.TaskStatusFailed),
-		Output:    dbtype.EncryptedString("composer install failed"),
+		Output:    dbtype.EncryptedString("apt install php8.3 failed"),
 		ExitCode:  intPtr(1),
 	}
 	task.ServerID = server.ID
@@ -113,20 +113,32 @@ func TestFailuresResolve(t *testing.T) {
 	require.Equal(t, int64(2), resp.Pagination.To)
 	require.Len(t, resp.Data, 2)
 
-	// Newest-first: provision (-1m) then task (-2m).
+	// Newest-first: provision (-1m) then service install (-2m). The kind cell is
+	// mapped to a labelled badge {value,variant} by table.MapRow.
 	prov := resp.Data[0]
-	require.Equal(t, "provision", prov["kind"])
+	require.Equal(t, "Provision", badgeValue(prov["kind"]))
 	require.Equal(t, "web-1", prov["title"])
 	require.Equal(t, "apt-get failed", prov["error"])
 
 	taskRow := resp.Data[1]
-	require.Equal(t, "task", taskRow["kind"])
-	require.Equal(t, "site:deploy", taskRow["title"])
+	require.Equal(t, "Service installation", badgeValue(taskRow["kind"]))
+	require.Equal(t, "Install PHP 8.3", taskRow["title"])
 	require.Equal(t, "exit code 1", taskRow["error"])
-	require.Equal(t, "composer install failed", taskRow["detail"])
+	require.Equal(t, "apt install php8.3 failed", taskRow["detail"])
 
 	// Meta schema travels with the data response.
 	require.NotEmpty(t, resp.Meta.Columns)
+}
+
+// badgeValue extracts the display text from a mapped badge cell
+// ({value,variant}); returns "" when the cell is not a badge map.
+func badgeValue(cell any) string {
+	m, ok := cell.(map[string]any)
+	if !ok {
+		return ""
+	}
+	v, _ := m["value"].(string)
+	return v
 }
 
 func TestFailuresResolveKindFilter(t *testing.T) {
@@ -147,9 +159,9 @@ func TestFailuresResolveKindFilter(t *testing.T) {
 
 	task := servermodels.Task{
 		BaseModel: basemodels.BaseModel{ID: "tsk00000000000000000000010", CreatedAt: &now, UpdatedAt: &now},
-		Name:      "Install PHP",
+		Name:      "Install PHP 8.3",
 		User:      "root",
-		Type:      "server:install_php",
+		Type:      "github.com/kkz6/launch-go/internal/pkg/taskrunner.BaseTask",
 		Status:    string(servertypes.TaskStatusFailed),
 		ExitCode:  intPtr(1),
 	}
@@ -159,7 +171,7 @@ func TestFailuresResolveKindFilter(t *testing.T) {
 	req := table.Request{
 		PerPage: 25,
 		Filters: map[string]map[table.Clause]any{
-			"kind": {table.ClauseEquals: "task"},
+			"kind": {table.ClauseEquals: services.KindServiceInstallation},
 		},
 	}
 	resp, err := tbl.Resolve(ctx, req)
@@ -167,6 +179,6 @@ func TestFailuresResolveKindFilter(t *testing.T) {
 
 	require.Equal(t, int64(1), resp.Pagination.Total)
 	require.Len(t, resp.Data, 1)
-	require.Equal(t, "task", resp.Data[0]["kind"])
-	require.Equal(t, "server:install_php", resp.Data[0]["title"])
+	require.Equal(t, "Service installation", badgeValue(resp.Data[0]["kind"]))
+	require.Equal(t, "Install PHP 8.3", resp.Data[0]["title"])
 }

@@ -7,8 +7,19 @@ import (
 	authtypes "github.com/kkz6/launch-go/internal/modules/auth/types"
 	"github.com/kkz6/launch-go/internal/modules/staff/repositories"
 	"github.com/kkz6/launch-go/internal/modules/staff/services"
+	stafftypes "github.com/kkz6/launch-go/internal/modules/staff/types"
 	"github.com/kkz6/launch-go/internal/pkg/table"
 )
+
+// staffRoleLabels maps each staff role value to its human display label
+// (e.g. "super_admin" → "Super Admin"), sourced from the enum.
+func staffRoleLabels() map[string]string {
+	m := make(map[string]string, len(stafftypes.AllStaffRoles()))
+	for _, r := range stafftypes.AllStaffRoles() {
+		m[string(r)] = r.Label()
+	}
+	return m
+}
 
 // UsersTable backs the DataTable on /admin/users/table. It is a pure Resolver
 // table: it owns its entire data fetch by delegating to the existing staff
@@ -50,11 +61,21 @@ func (t *UsersTable) Columns() []table.Column {
 		// teams is the nested teams[] array; the frontend renders it with a
 		// custom cell. The row map carries the []map[string]any verbatim.
 		table.NewTextColumn("teams", "Teams"),
-		table.NewBadgeColumn("staff_role", "Staff role"),
-		table.NewBadgeColumn("status", "Status").AsSortable().Variants(map[string]table.Variant{
-			"active":    table.VariantSuccess,
-			"suspended": table.VariantDestructive,
-		}),
+		table.NewBadgeColumn("staff_role", "Staff role").
+			Variants(map[string]table.Variant{
+				string(stafftypes.StaffRoleSuperAdmin): table.VariantInfo,
+				string(stafftypes.StaffRoleSupport):    table.VariantSecondary,
+			}).
+			Labels(staffRoleLabels()),
+		table.NewBadgeColumn("status", "Status").AsSortable().
+			Variants(map[string]table.Variant{
+				"active":    table.VariantSuccess,
+				"suspended": table.VariantDestructive,
+			}).
+			Labels(map[string]string{
+				string(authtypes.UserStatusActive):    authtypes.UserStatusActive.Label(),
+				string(authtypes.UserStatusSuspended): authtypes.UserStatusSuspended.Label(),
+			}),
 		table.NewDateTimeColumn("created_at", "Created").AsSortable().Format("2006-01-02"),
 		table.NewActionColumn(),
 	}
@@ -203,6 +224,11 @@ func (t *UsersTable) Resolve(ctx context.Context, req table.Request) (*table.Tab
 		if actions := table.SerializeRowActions(t, row); len(actions) > 0 {
 			row["_actions"] = actions
 		}
+
+		// Apply declared-column mapping (badge {value,variant} shapes + enum
+		// labels) now that the row actions — which read the raw status — have
+		// been serialized.
+		table.MapRow(t, row)
 
 		rows = append(rows, row)
 	}

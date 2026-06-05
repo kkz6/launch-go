@@ -22,14 +22,25 @@ const failuresPerSourceLimit = 100
 // detailMaxBytes caps the truncated task output included in a failure's Detail.
 const detailMaxBytes = 2048
 
-// Failures returns a unified, newest-first feed of operational failures across
-// provisions, tasks and deployments. When kind is one of provision|task|
-// deployment only that source is included; an empty kind merges all three. The
-// total reflects the full merged list before offset/limit paging is applied.
+// Failure kinds. The admin monitor is deliberately scoped to the three log
+// categories operators care about — server provisioning, site installation
+// (deploys), and service/software installation — and excludes the rest of the
+// task feed (generic uploads, restarts, status checks, …).
+const (
+	KindProvision           = "provision"
+	KindSiteInstallation    = "site_installation"
+	KindServiceInstallation = "service_installation"
+)
+
+// Failures returns a unified, newest-first feed of the three operational
+// failure categories: provision, site_installation and service_installation.
+// When kind names one category only that source is included; an empty kind
+// merges all three. The total reflects the full merged list before offset/limit
+// paging is applied.
 func (s *Service) Failures(ctx context.Context, kind string, limit, offset int) (*staffdto.AdminFailuresResponse, int64, error) {
 	merged := make([]staffdto.AdminFailure, 0)
 
-	if kind == "" || kind == "provision" {
+	if kind == "" || kind == KindProvision {
 		servers, err := s.repos.FailedProvisions(ctx, failuresPerSourceLimit)
 		if err != nil {
 			return nil, 0, err
@@ -37,20 +48,20 @@ func (s *Service) Failures(ctx context.Context, kind string, limit, offset int) 
 		merged = append(merged, mapProvisions(servers)...)
 	}
 
-	if kind == "" || kind == "task" {
-		tasks, err := s.repos.FailedTasks(ctx, failuresPerSourceLimit)
-		if err != nil {
-			return nil, 0, err
-		}
-		merged = append(merged, mapTasks(tasks)...)
-	}
-
-	if kind == "" || kind == "deployment" {
+	if kind == "" || kind == KindSiteInstallation {
 		rows, err := s.repos.FailedDeployments(ctx, failuresPerSourceLimit)
 		if err != nil {
 			return nil, 0, err
 		}
 		merged = append(merged, mapDeployments(rows)...)
+	}
+
+	if kind == "" || kind == KindServiceInstallation {
+		tasks, err := s.repos.FailedServiceInstalls(ctx, failuresPerSourceLimit)
+		if err != nil {
+			return nil, 0, err
+		}
+		merged = append(merged, mapTasks(tasks)...)
 	}
 
 	sortFailuresByWhenDesc(merged)
@@ -76,7 +87,7 @@ func mapProvisions(servers []servermodels.Server) []staffdto.AdminFailure {
 		}
 
 		out = append(out, staffdto.AdminFailure{
-			Kind:     "provision",
+			Kind:     KindProvision,
 			ID:       server.ID,
 			Title:    server.Name,
 			TeamID:   server.TeamID,
@@ -89,19 +100,21 @@ func mapProvisions(servers []servermodels.Server) []staffdto.AdminFailure {
 	return out
 }
 
-// mapTasks maps failed/timed-out tasks to task failures.
+// mapTasks maps failed/timed-out service-installation tasks to failures. The
+// title is the task's human Name (e.g. "Install PHP 8.3"), not its reflect
+// `type` (which is the noisy "github.com/…/taskrunner.BaseTask" path).
 func mapTasks(tasks []servermodels.Task) []staffdto.AdminFailure {
 	out := make([]staffdto.AdminFailure, 0, len(tasks))
 	for i := range tasks {
 		task := tasks[i]
 
-		title := task.Type
+		title := task.Name
 		if title == "" {
-			title = task.Name
+			title = task.Type
 		}
 
 		out = append(out, staffdto.AdminFailure{
-			Kind:     "task",
+			Kind:     KindServiceInstallation,
 			ID:       task.ID,
 			Title:    title,
 			ServerID: task.ServerID,
@@ -122,7 +135,7 @@ func mapDeployments(rows []repositories.FailedDeploymentRow) []staffdto.AdminFai
 		row := rows[i]
 
 		out = append(out, staffdto.AdminFailure{
-			Kind:   "deployment",
+			Kind:   KindSiteInstallation,
 			ID:     row.ID,
 			Title:  "site " + row.SiteID,
 			TeamID: row.TeamID,
@@ -189,7 +202,7 @@ func pageFailures(failures []staffdto.AdminFailure, limit, offset int) []staffdt
 // text. Returns ErrFailureNotFound when the id does not resolve.
 func (s *Service) FailureLog(ctx context.Context, kind, id string) (string, error) {
 	switch kind {
-	case "task":
+	case KindServiceInstallation:
 		task, err := s.repos.FailedTaskByID(ctx, id)
 		if err != nil {
 			return "", err
@@ -198,7 +211,7 @@ func (s *Service) FailureLog(ctx context.Context, kind, id string) (string, erro
 			return "", ErrFailureNotFound
 		}
 		return task.Output.String(), nil
-	case "deployment":
+	case KindSiteInstallation:
 		row, err := s.repos.FailedDeploymentByID(ctx, id)
 		if err != nil {
 			return "", err
@@ -207,7 +220,7 @@ func (s *Service) FailureLog(ctx context.Context, kind, id string) (string, erro
 			return "", ErrFailureNotFound
 		}
 		return row.TaskOutput.String(), nil
-	case "provision":
+	case KindProvision:
 		server, err := s.repos.ServerByID(ctx, id)
 		if err != nil {
 			return "", err

@@ -270,7 +270,7 @@ func applySort(db *gorm.DB, t Table, sort string) *gorm.DB {
 // Restore/ForceDelete for live rows.
 func fetchRows(db *gorm.DB, model any, includeDeletedAt bool) ([]map[string]any, error) {
 	t := reflect.TypeOf(model)
-	for t.Kind() == reflect.Ptr {
+	for t.Kind() == reflect.Pointer {
 		t = t.Elem()
 	}
 	sliceType := reflect.SliceOf(t)
@@ -291,7 +291,7 @@ func fetchRows(db *gorm.DB, model any, includeDeletedAt bool) ([]map[string]any,
 		slice := slicePtr.Elem()
 		for i := 0; i < slice.Len(); i++ {
 			elem := slice.Index(i)
-			for elem.Kind() == reflect.Ptr {
+			for elem.Kind() == reflect.Pointer {
 				elem = elem.Elem()
 			}
 			if ts, ok := extractDeletedAt(elem); ok {
@@ -340,6 +340,29 @@ func extractDeletedAt(v reflect.Value) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// MapRow applies each declared column's MapForTable to a row that a Resolver
+// table built by hand, so resolver rows get the same value mapping
+// (badge {value,variant} shapes, enum labels, boolean labels) as model-driven
+// rows. It mutates and returns the same row map.
+//
+// Call it AFTER SerializeRowActions: row-action Hidden/Disabled predicates read
+// the raw values (e.g. row["status"] == "suspended"), which mapping would
+// replace with a {value,variant} object. Nested and action columns are skipped,
+// and keys the resolver did not populate are left untouched.
+func MapRow(t Table, row map[string]any) map[string]any {
+	for _, c := range t.Columns() {
+		attr := c.Attribute()
+		if attr == "_actions" || c.IsNested() {
+			continue
+		}
+		if _, ok := row[attr]; !ok {
+			continue
+		}
+		row[attr] = c.MapForTable(c.GetDataFrom(row), row)
+	}
+	return row
 }
 
 // transformRow walks every column and produces the wire shape: for non-action

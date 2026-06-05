@@ -134,6 +134,7 @@ func (b *Base) baseSerialize(typeName string) ColumnSerialized {
 
 type TextColumn struct {
 	Base
+	labels map[string]string
 }
 
 // NewTextColumn — header is optional, defaults to a humanized attribute.
@@ -147,6 +148,27 @@ func (c *TextColumn) AsSearchable() *TextColumn     { c.searchable = true; retur
 func (c *TextColumn) NotToggleable() *TextColumn    { c.toggleable = false; return c }
 func (c *TextColumn) Align(a Alignment) *TextColumn { c.alignment = a; return c }
 func (c *TextColumn) Serialize() ColumnSerialized   { return c.baseSerialize(c.Type()) }
+
+// Labels maps raw cell values → human display labels (e.g. an enum's
+// "custom_server" → "Custom"). Unmapped values pass through unchanged, so a
+// partial map is fine. Build it from an enum's Label() methods to keep the
+// table display in sync with the rest of the app.
+func (c *TextColumn) Labels(m map[string]string) *TextColumn {
+	c.labels = m
+	return c
+}
+
+func (c *TextColumn) MapForTable(value any, _ any) any {
+	if value == nil {
+		return nil
+	}
+	if c.labels != nil {
+		if label, ok := c.labels[fmt.Sprint(value)]; ok {
+			return label
+		}
+	}
+	return value
+}
 
 // ─── DateColumn / DateTimeColumn ────────────────────────────────────
 
@@ -289,6 +311,7 @@ func (c *BooleanColumn) Serialize() ColumnSerialized {
 type BadgeColumn struct {
 	Base
 	variants map[string]Variant
+	labels   map[string]string
 }
 
 // NewBadgeColumn renders the value as a coloured pill. variants maps
@@ -305,13 +328,27 @@ func (c *BadgeColumn) Variants(m map[string]Variant) *BadgeColumn {
 	return c
 }
 
+// Labels maps raw values → human display labels for the pill text. The variant
+// is still keyed on the raw value, so colour mapping is unaffected. Unmapped
+// values render their raw form.
+func (c *BadgeColumn) Labels(m map[string]string) *BadgeColumn {
+	c.labels = m
+	return c
+}
+
 func (c *BadgeColumn) MapForTable(value any, _ any) any {
-	v := fmt.Sprint(value)
+	raw := fmt.Sprint(value)
 	var variant Variant
 	if c.variants != nil {
-		variant = c.variants[v]
+		variant = c.variants[raw]
 	}
-	return map[string]any{"value": v, "variant": string(variant)}
+	display := raw
+	if c.labels != nil {
+		if label, ok := c.labels[raw]; ok {
+			display = label
+		}
+	}
+	return map[string]any{"value": display, "variant": string(variant)}
 }
 
 func (c *BadgeColumn) Serialize() ColumnSerialized {

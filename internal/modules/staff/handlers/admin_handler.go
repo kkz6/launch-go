@@ -194,18 +194,18 @@ func (h *AdminHandler) ServerLogs(c *fiber.Ctx) error {
 	return fiberutil.OK(c, "Server logs retrieved successfully", tasks)
 }
 
-// Failures returns a unified, newest-first feed of operational failures across
-// provisions, tasks and deployments, read from existing tables. Staff-only. An
-// optional `kind` query (provision|task|deployment) narrows the feed to a
-// single source; any other value is rejected. Pagination meta carries the total
-// across the full merged feed before paging.
+// Failures returns a unified, newest-first feed of the three operational
+// failure categories — provision, site_installation and service_installation —
+// read from existing tables. Staff-only. An optional `kind` query narrows the
+// feed to a single category; any other value is rejected. Pagination meta
+// carries the total across the full merged feed before paging.
 func (h *AdminHandler) Failures(c *fiber.Ctx) error {
 	kind := c.Query("kind")
 	switch kind {
-	case "", "provision", "task", "deployment":
+	case "", services.KindProvision, services.KindSiteInstallation, services.KindServiceInstallation:
 		// valid
 	default:
-		return fiberutil.RespondBadRequest(c, "kind must be one of provision, task, deployment")
+		return fiberutil.RespondBadRequest(c, "kind must be one of provision, site_installation, service_installation")
 	}
 
 	limit := fiberutil.ParseLimit(c, 25, 100)
@@ -229,10 +229,10 @@ func (h *AdminHandler) Failures(c *fiber.Ctx) error {
 func (h *AdminHandler) ShowFailureLog(c *fiber.Ctx) error {
 	kind := c.Query("kind")
 	switch kind {
-	case "provision", "task", "deployment":
+	case services.KindProvision, services.KindSiteInstallation, services.KindServiceInstallation:
 		// valid
 	default:
-		return fiberutil.RespondBadRequest(c, "kind must be one of provision, task, deployment")
+		return fiberutil.RespondBadRequest(c, "kind must be one of provision, site_installation, service_installation")
 	}
 
 	log, err := h.service.FailureLog(c.Context(), kind, c.Params("id"))

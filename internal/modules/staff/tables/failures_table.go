@@ -9,8 +9,9 @@ import (
 
 // FailuresTable backs the DataTable on /admin/failures/table. It is a pure
 // Resolver table: it owns its entire data fetch by delegating to the existing
-// Failures service, which merges provision/task/deployment failures into one
-// newest-first feed. Because it implements table.Resolver, the query service
+// Failures service, which merges provision / site-installation /
+// service-installation failures into one newest-first feed. Because it
+// implements table.Resolver, the query service
 // skips the model-driven path entirely — Config.Model returns nil and the
 // declared Columns()/Filters() are used only for the /meta schema.
 type FailuresTable struct {
@@ -34,7 +35,9 @@ func (t *FailuresTable) Config() table.Config {
 
 func (t *FailuresTable) Columns() []table.Column {
 	return []table.Column{
-		table.NewBadgeColumn("kind", "Kind").Variants(failureKindVariants()),
+		table.NewBadgeColumn("kind", "Kind").
+			Variants(failureKindVariants()).
+			Labels(failureKindLabels()),
 		table.NewTextColumn("title", "Title"),
 		table.NewDateTimeColumn("when", "When").Format("2006-01-02 15:04"),
 		table.NewTextColumn("error", "Error"),
@@ -51,9 +54,9 @@ func (t *FailuresTable) Filters() []table.Filter {
 			Single().
 			WithoutClause().
 			Options([]table.FilterOption{
-				{Value: "provision", Label: "Provision"},
-				{Value: "task", Label: "Task"},
-				{Value: "deployment", Label: "Deployment"},
+				{Value: services.KindProvision, Label: "Provision"},
+				{Value: services.KindSiteInstallation, Label: "Site installation"},
+				{Value: services.KindServiceInstallation, Label: "Service installation"},
 			}),
 	}
 }
@@ -66,7 +69,7 @@ func (t *FailuresTable) Actions() []*table.Action { return nil }
 func (t *FailuresTable) EmptyState() *table.EmptyState {
 	return table.NewEmptyState().
 		Title("No failures").
-		Message("Failed provisions, tasks and deployments will appear here.").
+		Message("Failed provisions, site installations and service installations will appear here.").
 		Icon("circle-check")
 }
 
@@ -93,7 +96,7 @@ func (t *FailuresTable) Resolve(ctx context.Context, req table.Request) (*table.
 	rows := make([]map[string]any, 0, len(resp.Failures))
 	for i := range resp.Failures {
 		f := resp.Failures[i]
-		rows = append(rows, map[string]any{
+		row := map[string]any{
 			"id":        f.ID,
 			"kind":      f.Kind,
 			"title":     f.Title,
@@ -102,7 +105,16 @@ func (t *FailuresTable) Resolve(ctx context.Context, req table.Request) (*table.
 			"detail":    f.Detail,
 			"team_id":   f.TeamID,
 			"server_id": f.ServerID,
-		})
+			// kind_raw preserves the unmapped kind string for the frontend's
+			// "View log" action (which calls the log endpoint with ?kind=…),
+			// since MapRow rewrites the declared "kind" column into a badge
+			// {value,variant} object for display.
+			"kind_raw": f.Kind,
+		}
+		// Apply declared-column mapping so the kind renders as a labelled,
+		// coloured badge ({value,variant}) like a model-driven table would.
+		table.MapRow(t, row)
+		rows = append(rows, row)
 	}
 
 	lastPage := int((total + int64(perPage) - 1) / int64(perPage))
@@ -136,7 +148,8 @@ func (t *FailuresTable) Resolve(ctx context.Context, req table.Request) (*table.
 
 // extractKindFilter reads the kind filter out of the request, accepting any of
 // the clauses the kind SetFilter may emit (equals/in). It returns the first
-// non-empty provision|task|deployment value, or "" to merge all sources.
+// non-empty provision | site_installation | service_installation value, or ""
+// to merge all sources.
 func extractKindFilter(req table.Request) string {
 	clauseMap, ok := req.Filters["kind"]
 	if !ok {
@@ -176,7 +189,7 @@ func firstKind(raw any) string {
 
 func isValidKind(s string) bool {
 	switch s {
-	case "provision", "task", "deployment":
+	case services.KindProvision, services.KindSiteInstallation, services.KindServiceInstallation:
 		return true
 	}
 	return false
@@ -186,8 +199,18 @@ func isValidKind(s string) bool {
 // pill.
 func failureKindVariants() map[string]table.Variant {
 	return map[string]table.Variant{
-		"provision":  table.VariantWarning,
-		"task":       table.VariantDestructive,
-		"deployment": table.VariantInfo,
+		services.KindProvision:           table.VariantWarning,
+		services.KindSiteInstallation:    table.VariantInfo,
+		services.KindServiceInstallation: table.VariantDestructive,
+	}
+}
+
+// failureKindLabels maps each failure kind to its human display label for the
+// kind pill (e.g. "service_installation" → "Service installation").
+func failureKindLabels() map[string]string {
+	return map[string]string{
+		services.KindProvision:           "Provision",
+		services.KindSiteInstallation:    "Site installation",
+		services.KindServiceInstallation: "Service installation",
 	}
 }

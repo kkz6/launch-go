@@ -42,9 +42,20 @@ func (r *Registry) FailedProvisions(ctx context.Context, limit int) ([]servermod
 	return servers, nil
 }
 
-// FailedTasks returns tasks that failed or timed out, newest first. The Task's
-// Output column is an encrypted string and is decrypted on read.
-func (r *Registry) FailedTasks(ctx context.Context, limit int) ([]servermodels.Task, error) {
+// serviceInstallNamePrefix matches the Name every software-installation task
+// sets via WithName ("Install MySQL 8.0", "Install PHP 8.3", "Install Redis",
+// …). Filtering on it isolates service installs from the rest of the task feed:
+// these tasks are built from the generic taskrunner.BaseTask, so their reflect
+// `type` column is shared with unrelated tasks and can't distinguish them —
+// only the human Name can. The trailing space avoids matching "Uninstall …".
+const serviceInstallNamePrefix = "Install %"
+
+// FailedServiceInstalls returns failed/timed-out software-installation tasks
+// (PHP, MySQL, Caddy, Redis, …), newest first. The admin failures monitor only
+// surfaces these — not the full task feed — so the query restricts by the
+// "Install …" Name prefix. The Task's Output column is encrypted and decrypted
+// on read.
+func (r *Registry) FailedServiceInstalls(ctx context.Context, limit int) ([]servermodels.Task, error) {
 	var tasks []servermodels.Task
 	err := r.db.WithContext(ctx).
 		Model(&servermodels.Task{}).
@@ -52,6 +63,7 @@ func (r *Registry) FailedTasks(ctx context.Context, limit int) ([]servermodels.T
 			string(servertypes.TaskStatusFailed),
 			string(servertypes.TaskStatusTimeout),
 		}).
+		Where("name LIKE ?", serviceInstallNamePrefix).
 		Order("updated_at DESC").
 		Limit(limit).
 		Find(&tasks).Error

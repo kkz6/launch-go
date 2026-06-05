@@ -33,9 +33,11 @@ func (t *ServersTable) Config() table.Config {
 func (t *ServersTable) Columns() []table.Column {
 	return []table.Column{
 		table.NewTextColumn("name", "Name").AsSortable().AsSearchable(),
-		table.NewTextColumn("provider", "Provider").AsSortable(),
+		table.NewTextColumn("provider", "Provider").AsSortable().Labels(serverProviderLabels()),
 		table.NewTextColumn("public_ipv4", "IP").AsSearchable(),
-		table.NewBadgeColumn("status", "Status").AsSortable().Variants(serverStatusVariants()),
+		table.NewBadgeColumn("status", "Status").AsSortable().
+			Variants(serverStatusVariants()).
+			Labels(serverStatusLabels()),
 		table.NewDateTimeColumn("created_at", "Created").Format("2006-01-02").AsSortable(),
 	}
 }
@@ -51,6 +53,27 @@ func (t *ServersTable) EmptyState() *table.EmptyState {
 		Title("No servers yet").
 		Message("Servers provisioned by teams will appear here.").
 		Icon("server")
+}
+
+// serverProviderLabels maps each provider value to its human display label
+// (e.g. "custom_server" → "Custom"), sourced from the enum so the admin table
+// stays in sync with the rest of the app.
+func serverProviderLabels() map[string]string {
+	m := make(map[string]string, len(servertypes.AllServerProviders()))
+	for _, p := range servertypes.AllServerProviders() {
+		m[string(p)] = p.Label()
+	}
+	return m
+}
+
+// serverStatusLabels maps each status value to its human display label
+// (e.g. "running" → "Running").
+func serverStatusLabels() map[string]string {
+	m := make(map[string]string, len(servertypes.AllServerStatuses()))
+	for _, s := range servertypes.AllServerStatuses() {
+		m[string(s)] = s.Label()
+	}
+	return m
 }
 
 // serverStatusVariants maps each server status to a badge variant for the
