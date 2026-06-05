@@ -11,6 +11,16 @@ import (
 	"github.com/kkz6/launch-go/internal/pkg/table"
 )
 
+// staffRoleString dereferences the nullable staff role into its raw string
+// ("" when the user holds no staff role) so the row map carries a plain value
+// — not a pointer, which would render as "<nil>"/an address.
+func staffRoleString(r *string) string {
+	if r == nil {
+		return ""
+	}
+	return *r
+}
+
 // staffRoleLabels maps each staff role value to its human display label
 // (e.g. "super_admin" → "Super Admin"), sourced from the enum.
 func staffRoleLabels() map[string]string {
@@ -212,7 +222,7 @@ func (t *UsersTable) Resolve(ctx context.Context, req table.Request) (*table.Tab
 			"id":         u.ID,
 			"name":       u.Name,
 			"email":      u.Email,
-			"staff_role": u.StaffRole,
+			"staff_role": staffRoleString(u.StaffRole),
 			"status":     u.Status,
 			"created_at": u.CreatedAt,
 			"teams":      teams,

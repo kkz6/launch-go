@@ -337,7 +337,15 @@ func (c *BadgeColumn) Labels(m map[string]string) *BadgeColumn {
 }
 
 func (c *BadgeColumn) MapForTable(value any, _ any) any {
+	// An absent value renders as nothing rather than an empty pill (e.g. a
+	// nullable enum like a user's staff role, which is nil for most users).
+	if value == nil {
+		return nil
+	}
 	raw := fmt.Sprint(value)
+	if raw == "" {
+		return nil
+	}
 	var variant Variant
 	if c.variants != nil {
 		variant = c.variants[raw]
