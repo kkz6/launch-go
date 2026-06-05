@@ -1,14 +1,13 @@
 name: Docker
 
 on:
-  # Build + push only on main pushes and on semver tags. PRs and
-  # feature branches don't need an image — the CI workflow (lint /
-  # build / test / security) covers their gate. Restricting this
-  # avoids 3-minute container builds on every PR push and keeps
-  # ghcr.io free of branch-tagged images.
-  push:
-    branches: [main]
-    tags: ["v*"]
+  # Build, push, and deploy the API image only when a GitHub Release is
+  # published. Day-to-day pushes to main are validated by the CI workflow
+  # (lint / build / test / security) and no longer produce or deploy an
+  # image — cutting a release (a semver tag like v1.2.3) is the single,
+  # deliberate path to production.
+  release:
+    types: [published]
 
 env:
   REGISTRY: ghcr.io
@@ -30,7 +29,6 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Log in to GitHub Container Registry
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -42,13 +40,13 @@ jobs:
         uses: docker/metadata-action@v5
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          # Tag the release image by full version, major.minor, and short sha.
+          # `latest` is applied automatically (flavor latest=auto) to the newest
+          # non-prerelease semver tag.
           tags: |
-            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=sha,prefix=,format=long
-            type=sha,prefix=
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=sha,prefix=,format=short
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -57,18 +55,20 @@ jobs:
           # Contabo VPS is amd64. Drop arm64 from the prod path to halve build
           # time and image storage. Reinstate if/when we run arm CI agents.
           platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: |
             ${{ steps.meta.outputs.labels }}
             service=launch-api
           build-args: |
-            VERSION=${{ github.sha }}
+            VERSION=${{ github.ref_name }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
       - name: Dispatch deploy to launch-deploy
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        # Deploy published releases, but never prereleases (those are cut for
+        # testing, not production).
+        if: github.event.release.prerelease == false
         uses: peter-evans/repository-dispatch@v3
         with:
           # Fine-grained PAT with `Actions: Read & write` on kkz6/launch-deploy.
@@ -78,7 +78,8 @@ jobs:
           event-type: deploy-api
           client-payload: |
             {
-              "image_tag": "${{ github.sha }}",
+              "image_tag": "${{ steps.meta.outputs.version }}",
               "source_repo": "${{ github.repository }}",
+              "source_ref": "${{ github.ref_name }}",
               "source_sha": "${{ github.sha }}"
             }
